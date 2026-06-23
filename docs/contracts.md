@@ -182,6 +182,29 @@ caller **owns** the media or **shares a chat** with a message referencing it.
 
 ---
 
+## Web Push
+
+Push is sent only when a recipient has **no active WebSocket** and has **not muted**
+the chat. Subscriptions are per device. Requires the server to have VAPID keys set.
+
+### GET /push/vapid_public_key  · auth
+- 200: `{ "public_key": "<base64 VAPID public key>" }`
+
+### POST /push/subscribe  · auth
+Register the current device's browser push subscription.
+- Request: `{ "endpoint": "https://fcm…", "p256dh": "<key>", "auth": "<key>" }`
+- 200: `{ "ok": true }` · 400 missing fields
+
+### Push payload (delivered to the Service Worker)
+```json
+{ "chat_id": 1, "msg_id": 10, "seq": 5,
+  "sender": { "name": "Alice" }, "text": "hello", "badge": 3 }
+```
+The Service Worker checks for an active window, muted state, and passcode lock
+before showing the notification; clicking it focuses/opens the chat.
+
+---
+
 ## System / docs
 
 - `GET /health` → `{ "status": "ok" }`
