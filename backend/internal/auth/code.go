@@ -1,6 +1,9 @@
 package auth
 
-import "strings"
+import (
+	"crypto/subtle"
+	"strings"
+)
 
 // NormalizePhone strips spaces, parentheses, and dashes, keeping a leading +.
 func NormalizePhone(phone string) string {
@@ -22,5 +25,8 @@ func NormalizePhone(phone string) string {
 
 // CodeMatches reports whether the supplied code equals the expected code.
 func CodeMatches(expected, supplied string) bool {
-	return expected != "" && expected == supplied
+	if expected == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(expected), []byte(supplied)) == 1
 }

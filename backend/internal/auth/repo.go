@@ -102,5 +102,8 @@ func (r *Repo) UserByTokenHash(ctx context.Context, tokenHash string) (User, err
 		`SELECT u.id, u.phone, u.username, u.display_name, u.avatar_url
 		 FROM users u JOIN devices d ON d.user_id=u.id WHERE d.token_hash=$1`,
 		tokenHash).Scan(&u.ID, &u.Phone, &u.Username, &u.DisplayName, &u.AvatarURL)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return User{}, ErrNotFound
+	}
 	return u, err
 }

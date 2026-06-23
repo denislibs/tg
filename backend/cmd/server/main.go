@@ -31,7 +31,14 @@ func main() {
 	defer pool.Close()
 
 	svc := auth.NewService(auth.NewRepo(pool), cfg.DevOTPCode, log.Printf)
-	srv := &http.Server{Addr: cfg.HTTPAddr, Handler: httptransport.NewRouter(svc)}
+	srv := &http.Server{
+		Addr:              cfg.HTTPAddr,
+		Handler:           httptransport.NewRouter(svc),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 
 	go func() {
 		log.Printf("listening on %s", cfg.HTTPAddr)
