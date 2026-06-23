@@ -4,3 +4,6 @@ dist/
 *.log
 .env
 .DS_Store
+
+# Frontend mock has its own git repo — not part of the backend repo
+telegram-ui-clone/
