@@ -33,6 +33,11 @@ func NewRouter(authSvc *auth.Service, chatSvc *messaging.Service) http.Handler {
 		pr.Get("/chats/{chatID}/history", ch.History)
 		pr.Post("/chats/{chatID}/read", ch.Read)
 		pr.Get("/sync", ch.Sync)
+
+		sh := NewSessionHandler(authSvc)
+		pr.Get("/sessions", sh.List)
+		pr.Delete("/sessions/{deviceID}", sh.Revoke)
+		pr.Post("/auth/logout", sh.Logout)
 	})
 	return r
 }
