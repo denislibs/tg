@@ -60,9 +60,13 @@ func (c *Conn) run(ctx context.Context) {
 	}
 	go c.writePump(ctx)
 	c.readPump(ctx) // blocks until the connection closes
-	lastUser := c.hub.Unregister(ctx, c.userID, c.deviceID, c)
+	// Cleanup must not ride the request context: on an abrupt client disconnect
+	// it may already be cancelled, which would silently skip the Redis
+	// unsubscribe and the offline fan-out (last_seen / presence(offline)).
+	cleanupCtx := context.Background()
+	lastUser := c.hub.Unregister(cleanupCtx, c.userID, c.deviceID, c)
 	if c.presence != nil && lastUser {
-		_ = c.presence.Offline(ctx, c.userID)
+		_ = c.presence.Offline(cleanupCtx, c.userID)
 	}
 	close(c.send)
 }
