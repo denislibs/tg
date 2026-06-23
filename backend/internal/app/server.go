@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/messenger-denis/backend/internal/auth"
 	"github.com/messenger-denis/backend/internal/config"
 	"github.com/messenger-denis/backend/internal/media"
 	"github.com/messenger-denis/backend/internal/messaging"
@@ -17,6 +16,7 @@ import (
 	"github.com/messenger-denis/backend/internal/realtime"
 	httptransport "github.com/messenger-denis/backend/internal/transport/http"
 	"github.com/messenger-denis/backend/internal/transport/ws"
+	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 	"go.uber.org/fx"
 )
 
@@ -30,7 +30,7 @@ type serverParams struct {
 	Pool    *pgxpool.Pool
 	Redis   RedisResult
 	Minio   MinioResult
-	AuthSvc *auth.Service
+	AuthUC  *usecaseauth.Interactor
 	ChatSvc *messaging.Service
 }
 
@@ -40,14 +40,14 @@ type serverParams struct {
 func registerServer(p serverParams) {
 	var wsHandler http.Handler
 	if p.Redis.OK {
-		p.AuthSvc.SetCache(redisSessionCache(p.Redis))
+		p.AuthUC.SetCache(redisSessionCache(p.Redis))
 		publisher := realtime.NewRedisPublisher(p.Redis.Client)
 		p.ChatSvc.SetPublisher(publisher)
-		p.AuthSvc.SetRevocationNotifier(publisher)
+		p.AuthUC.SetRevocationNotifier(publisher)
 		presenceMgr := presence.NewManager(p.Redis.Client, publisher, p.ChatSvc.ChatPartners, 35*time.Second)
 		hub := ws.NewHub(p.Ctx, p.Redis.Client)
 		p.LC.Append(fx.Hook{OnStop: func(context.Context) error { return hub.Close() }})
-		wsHandler = ws.NewHandler(hub, p.AuthSvc, p.ChatSvc, presenceMgr)
+		wsHandler = ws.NewHandler(hub, p.AuthUC, p.ChatSvc, presenceMgr)
 		log.Printf("session cache + realtime + presence enabled (redis)")
 	}
 
@@ -72,7 +72,7 @@ func registerServer(p serverParams) {
 
 	srv := &http.Server{
 		Addr:              p.Cfg.HTTPAddr,
-		Handler:           httptransport.NewRouter(p.AuthSvc, p.ChatSvc, wsHandler, mediaHandler, pushHandler),
+		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatSvc, wsHandler, mediaHandler, pushHandler),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
@@ -95,6 +95,6 @@ func registerServer(p serverParams) {
 }
 
 // redisSessionCache is a tiny helper so server.go doesn't import redisstore twice.
-func redisSessionCache(r RedisResult) auth.SessionCache {
+func redisSessionCache(r RedisResult) usecaseauth.SessionCache {
 	return newSessionCache(r.Client)
 }
