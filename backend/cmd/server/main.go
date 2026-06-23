@@ -62,7 +62,7 @@ func main() {
 	} else if err := mc.EnsureBucket(ctx); err != nil {
 		log.Printf("minio bucket setup failed, media disabled: %v", err)
 	} else {
-		mediaHandler = httptransport.NewMediaHandler(media.NewService(media.NewRepo(pool), mc))
+		mediaHandler = httptransport.NewMediaHandler(media.NewService(media.NewRepo(pool), mc), chatSvc)
 		log.Printf("media enabled (minio bucket %q)", cfg.MinioBucket)
 	}
 

@@ -28,7 +28,7 @@ func newMediaRouter(t *testing.T) (http.Handler, *pgxpool.Pool) {
 	pool := postgres.NewTestDB(t)
 	authSvc := auth.NewService(auth.NewRepo(pool), "12345", func(string, ...any) {})
 	chatSvc := messaging.NewService(pool)
-	mediaH := NewMediaHandler(media.NewService(media.NewRepo(pool), fakeStorage{}))
+	mediaH := NewMediaHandler(media.NewService(media.NewRepo(pool), fakeStorage{}), chatSvc)
 	return NewRouter(authSvc, chatSvc, nil, mediaH), pool
 }
 
@@ -62,5 +62,41 @@ func TestMedia_UploadAndGet_HTTP(t *testing.T) {
 	_ = json.Unmarshal(rec.Body.Bytes(), &got)
 	if got.DownloadURL == "" || got.Mime != "image/jpeg" {
 		t.Fatalf("bad get response: %s", rec.Body.String())
+	}
+}
+
+func TestMedia_AccessControl_HTTP(t *testing.T) {
+	h, pool := newMediaRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990000040")
+	tokenB, idB := signUp(t, h, pool, "+79990000041")
+
+	// A uploads media.
+	rec := authedReq(t, h, http.MethodPost, "/media/upload", tokenA, map[string]any{"mime": "image/jpeg", "size": 2048})
+	var created struct {
+		MediaID int64 `json:"media_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+	mid := itoa(created.MediaID)
+
+	// B, sharing no chat with A, cannot resolve A's media → 404.
+	rec = authedReq(t, h, http.MethodGet, "/media/"+mid, tokenB, nil)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for unrelated user, got %d", rec.Code)
+	}
+
+	// A creates a chat with B and sends the media; now B can resolve it.
+	rec = authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": idB})
+	var chat struct {
+		ChatID int64 `json:"chat_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &chat)
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+itoa(chat.ChatID)+"/messages", tokenA,
+		map[string]any{"type": "photo", "media_id": created.MediaID})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("send with media: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodGet, "/media/"+mid, tokenB, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected B to access shared media, got %d %s", rec.Code, rec.Body.String())
 	}
 }

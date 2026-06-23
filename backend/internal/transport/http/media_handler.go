@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -8,9 +9,19 @@ import (
 	"github.com/messenger-denis/backend/internal/media"
 )
 
-type MediaHandler struct{ svc *media.Service }
+// MediaAccess decides whether a user may download a media object.
+type MediaAccess interface {
+	CanAccessMedia(ctx context.Context, userID, mediaID int64) (bool, error)
+}
 
-func NewMediaHandler(svc *media.Service) *MediaHandler { return &MediaHandler{svc: svc} }
+type MediaHandler struct {
+	svc    *media.Service
+	access MediaAccess
+}
+
+func NewMediaHandler(svc *media.Service, access MediaAccess) *MediaHandler {
+	return &MediaHandler{svc: svc, access: access}
+}
 
 type uploadBody struct {
 	Mime        string `json:"mime"`
@@ -32,6 +43,10 @@ func (h *MediaHandler) CreateUpload(w http.ResponseWriter, r *http.Request) {
 		OwnerID: user.ID, Mime: body.Mime, Size: body.Size,
 		Width: body.Width, Height: body.Height, Duration: body.Duration, BlurPreview: body.BlurPreview,
 	})
+	if errors.Is(err, media.ErrBadSize) {
+		writeError(w, http.StatusBadRequest, "invalid size")
+		return
+	}
 	if errors.Is(err, media.ErrTooLarge) {
 		writeError(w, http.StatusRequestEntityTooLarge, "file too large")
 		return
@@ -46,8 +61,21 @@ func (h *MediaHandler) CreateUpload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *MediaHandler) Get(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
 	id, ok := pathInt(w, r, "mediaID")
 	if !ok {
+		return
+	}
+	// Authorize before issuing a presigned URL: the caller must own the media or
+	// share a chat with a message referencing it. A failed check returns 404 so
+	// sequential media ids can't be enumerated.
+	allowed, err := h.access.CanAccessMedia(r.Context(), user.ID, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load media")
+		return
+	}
+	if !allowed {
+		writeError(w, http.StatusNotFound, "media not found")
 		return
 	}
 	m, downloadURL, err := h.svc.GetMedia(r.Context(), id)
@@ -62,6 +90,6 @@ func (h *MediaHandler) Get(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id": m.ID, "mime": m.Mime, "size": m.Size,
 		"width": m.Width, "height": m.Height, "duration": m.Duration,
-		"download_url": downloadURL,
+		"blur_preview": m.BlurPreview, "download_url": downloadURL,
 	})
 }

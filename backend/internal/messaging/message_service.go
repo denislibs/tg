@@ -3,6 +3,7 @@ package messaging
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"slices"
 
 	"github.com/jackc/pgx/v5"
@@ -36,8 +37,11 @@ func (s *Service) Send(ctx context.Context, in SendInput) (Message, error) {
 	if in.MediaID != nil {
 		var ownerID int64
 		err := s.pool.QueryRow(ctx, `SELECT owner_id FROM media WHERE id=$1`, *in.MediaID).Scan(&ownerID)
-		if err != nil || ownerID != in.SenderID {
-			return Message{}, ErrNotFound
+		if errors.Is(err, pgx.ErrNoRows) || (err == nil && ownerID != in.SenderID) {
+			return Message{}, ErrNotFound // media absent or not owned by sender
+		}
+		if err != nil {
+			return Message{}, err // propagate real DB errors (don't mask as 403)
 		}
 	}
 

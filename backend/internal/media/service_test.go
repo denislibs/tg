@@ -39,11 +39,15 @@ func TestService_CreateUploadAndGet(t *testing.T) {
 	}
 }
 
-func TestService_RejectsOversize(t *testing.T) {
+func TestService_RejectsBadSize(t *testing.T) {
 	pool := postgres.NewTestDB(t)
 	s := NewService(NewRepo(pool), fakeStorage{})
-	owner := seedUser(t, NewRepo(pool), "+701")
-	if _, _, err := s.CreateUpload(context.Background(), UploadInput{OwnerID: owner, Size: maxSize + 1}); err != ErrTooLarge {
+	ctx := context.Background()
+	// Size guards fire before any DB write, so no user needs to exist.
+	if _, _, err := s.CreateUpload(ctx, UploadInput{OwnerID: 1, Size: maxSize + 1}); err != ErrTooLarge {
 		t.Fatalf("expected ErrTooLarge, got %v", err)
+	}
+	if _, _, err := s.CreateUpload(ctx, UploadInput{OwnerID: 1, Size: 0}); err != ErrBadSize {
+		t.Fatalf("expected ErrBadSize, got %v", err)
 	}
 }

@@ -81,3 +81,18 @@ func (s *Service) ListDialogs(ctx context.Context, userID int64) ([]Dialog, erro
 func (s *Service) ChatPartners(ctx context.Context, userID int64) ([]int64, error) {
 	return s.chats.ChatPartners(ctx, s.pool, userID)
 }
+
+// CanAccessMedia reports whether userID may download a media object: either they
+// own it, or they are a member of a chat that has a message referencing it.
+func (s *Service) CanAccessMedia(ctx context.Context, userID, mediaID int64) (bool, error) {
+	var allowed bool
+	err := s.pool.QueryRow(ctx,
+		`SELECT EXISTS(
+		   SELECT 1 FROM media WHERE id=$1 AND owner_id=$2
+		   UNION ALL
+		   SELECT 1 FROM messages m
+		     JOIN chat_members cm ON cm.chat_id = m.chat_id
+		     WHERE m.media_id=$1 AND cm.user_id=$2
+		 )`, mediaID, userID).Scan(&allowed)
+	return allowed, err
+}

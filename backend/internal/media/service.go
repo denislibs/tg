@@ -14,6 +14,9 @@ const presignTTL = 15 * time.Minute
 // ErrTooLarge is returned when the declared size exceeds the limit.
 var ErrTooLarge = errors.New("file too large")
 
+// ErrBadSize is returned for a non-positive declared size.
+var ErrBadSize = errors.New("invalid size")
+
 const maxSize = 100 << 20 // 100 MiB
 
 // Storage is the subset of miniostore.Client the service needs.
@@ -46,7 +49,10 @@ type UploadInput struct {
 // CreateUpload records media metadata and returns the row plus a presigned PUT
 // URL the client uploads the bytes to directly.
 func (s *Service) CreateUpload(ctx context.Context, in UploadInput) (Media, string, error) {
-	if in.Size <= 0 || in.Size > maxSize {
+	if in.Size <= 0 {
+		return Media{}, "", ErrBadSize
+	}
+	if in.Size > maxSize {
 		return Media{}, "", ErrTooLarge
 	}
 	objectKey := fmt.Sprintf("%d/%s", in.OwnerID, randomKey())
