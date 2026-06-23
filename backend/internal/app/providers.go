@@ -83,3 +83,7 @@ func provideAuthService(cfg *config.Config, pool *pgxpool.Pool) *auth.Service {
 func provideChatService(pool *pgxpool.Pool) *messaging.Service {
 	return messaging.NewService(pool)
 }
+
+func newSessionCache(client *redis.Client) auth.SessionCache {
+	return redisstore.NewSessionCache(client)
+}
