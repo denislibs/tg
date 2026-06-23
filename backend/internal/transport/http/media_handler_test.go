@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/messenger-denis/backend/internal/auth"
 	"github.com/messenger-denis/backend/internal/media"
 	"github.com/messenger-denis/backend/internal/messaging"
 	"github.com/messenger-denis/backend/internal/store/postgres"
@@ -26,10 +25,9 @@ func (fakeStorage) PresignedGet(_ context.Context, key string, _ time.Duration) 
 
 func newMediaRouter(t *testing.T) (http.Handler, *pgxpool.Pool) {
 	pool := postgres.NewTestDB(t)
-	authSvc := auth.NewService(auth.NewRepo(pool), "12345", func(string, ...any) {})
 	chatSvc := messaging.NewService(pool)
 	mediaH := NewMediaHandler(media.NewService(media.NewRepo(pool), fakeStorage{}), chatSvc)
-	return NewRouter(authSvc, chatSvc, nil, mediaH, nil), pool
+	return NewRouter(newAuthUC(pool), chatSvc, nil, mediaH, nil), pool
 }
 
 func TestMedia_UploadAndGet_HTTP(t *testing.T) {

@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/messenger-denis/backend/internal/auth"
 	"github.com/messenger-denis/backend/internal/messaging"
 	"github.com/messenger-denis/backend/internal/store/postgres"
 )
@@ -49,9 +48,8 @@ func authedReq(t *testing.T, h http.Handler, method, path, token string, body an
 
 func newMessagingRouter(t *testing.T) (http.Handler, *pgxpool.Pool) {
 	pool := postgres.NewTestDB(t)
-	authSvc := auth.NewService(auth.NewRepo(pool), "12345", func(string, ...any) {})
 	chatSvc := messaging.NewService(pool)
-	return NewRouter(authSvc, chatSvc, nil, nil, nil), pool
+	return NewRouter(newAuthUC(pool), chatSvc, nil, nil, nil), pool
 }
 
 func TestChatFlow_HTTP(t *testing.T) {

@@ -8,16 +8,24 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/messenger-denis/backend/internal/auth"
+	"github.com/jackc/pgx/v5/pgxpool"
+	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
 	"github.com/messenger-denis/backend/internal/messaging"
 	"github.com/messenger-denis/backend/internal/store/postgres"
+	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 )
+
+// newAuthUC builds the auth usecase from the postgres adapter (which satisfies
+// all three repo ports) for use in delivery tests.
+func newAuthUC(pool *pgxpool.Pool) *usecaseauth.Interactor {
+	r := pgadapter.NewAuthRepo(pool)
+	return usecaseauth.New(r, r, r, "12345", func(string, ...any) {})
+}
 
 func newTestRouter(t *testing.T) http.Handler {
 	pool := postgres.NewTestDB(t)
-	svc := auth.NewService(auth.NewRepo(pool), "12345", func(string, ...any) {})
 	chatSvc := messaging.NewService(pool)
-	return NewRouter(svc, chatSvc, nil, nil, nil)
+	return NewRouter(newAuthUC(pool), chatSvc, nil, nil, nil)
 }
 
 func postJSON(t *testing.T, h http.Handler, path string, body any) *httptest.ResponseRecorder {
