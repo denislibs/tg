@@ -11,11 +11,16 @@ import (
 
 // Service owns transactions and business rules over the repositories.
 type Service struct {
-	pool    *pgxpool.Pool
-	chats   *ChatsRepo
-	msgs    *MessagesRepo
-	updates *UpdatesRepo
+	pool      *pgxpool.Pool
+	chats     *ChatsRepo
+	msgs      *MessagesRepo
+	updates   *UpdatesRepo
+	publisher Publisher
 }
+
+// SetPublisher attaches a realtime publisher (optional). When nil, the service
+// records updates in the DB but pushes nothing live.
+func (s *Service) SetPublisher(p Publisher) { s.publisher = p }
 
 func NewService(pool *pgxpool.Pool) *Service {
 	return &Service{
