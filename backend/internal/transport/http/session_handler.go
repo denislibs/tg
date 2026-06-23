@@ -3,12 +3,12 @@ package http
 import (
 	"net/http"
 
-	"github.com/messenger-denis/backend/internal/auth"
+	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 )
 
-type SessionHandler struct{ svc *auth.Service }
+type SessionHandler struct{ svc *usecaseauth.Interactor }
 
-func NewSessionHandler(svc *auth.Service) *SessionHandler { return &SessionHandler{svc: svc} }
+func NewSessionHandler(svc *usecaseauth.Interactor) *SessionHandler { return &SessionHandler{svc: svc} }
 
 func (h *SessionHandler) List(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())

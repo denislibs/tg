@@ -5,12 +5,13 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/messenger-denis/backend/internal/auth"
+	"github.com/messenger-denis/backend/internal/domain"
+	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 )
 
-type AuthHandler struct{ svc *auth.Service }
+type AuthHandler struct{ svc *usecaseauth.Interactor }
 
-func NewAuthHandler(svc *auth.Service) *AuthHandler { return &AuthHandler{svc: svc} }
+func NewAuthHandler(svc *usecaseauth.Interactor) *AuthHandler { return &AuthHandler{svc: svc} }
 
 type requestCodeBody struct {
 	Phone string `json:"phone"`
@@ -43,7 +44,7 @@ func (h *AuthHandler) SignIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res, err := h.svc.SignIn(r.Context(), body.Phone, body.Code, body.Device, body.Platform)
-	if errors.Is(err, auth.ErrInvalidCode) {
+	if errors.Is(err, domain.ErrInvalidCode) {
 		writeError(w, http.StatusUnauthorized, "invalid code")
 		return
 	}

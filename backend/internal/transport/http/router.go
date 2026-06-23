@@ -5,17 +5,17 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/messenger-denis/backend/internal/auth"
 	"github.com/messenger-denis/backend/internal/messaging"
 	"github.com/messenger-denis/backend/internal/openapi"
+	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 )
 
-func NewRouter(authSvc *auth.Service, chatSvc *messaging.Service, wsHandler http.Handler, mediaH *MediaHandler, pushH *PushHandler) http.Handler {
+func NewRouter(authUC *usecaseauth.Interactor, chatSvc *messaging.Service, wsHandler http.Handler, mediaH *MediaHandler, pushH *PushHandler) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
-	authH := NewAuthHandler(authSvc)
+	authH := NewAuthHandler(authUC)
 	r.Post("/auth/request_code", authH.RequestCode)
 	r.Post("/auth/sign_in", authH.SignIn)
 
@@ -32,7 +32,7 @@ func NewRouter(authSvc *auth.Service, chatSvc *messaging.Service, wsHandler http
 	}
 
 	r.Group(func(pr chi.Router) {
-		pr.Use(AuthMiddleware(authSvc))
+		pr.Use(AuthMiddleware(authUC))
 		pr.Get("/me", MeHandler)
 
 		ch := NewChatHandler(chatSvc)
@@ -56,7 +56,7 @@ func NewRouter(authSvc *auth.Service, chatSvc *messaging.Service, wsHandler http
 			pr.Post("/push/subscribe", pushH.Subscribe)
 		}
 
-		sh := NewSessionHandler(authSvc)
+		sh := NewSessionHandler(authUC)
 		pr.Get("/sessions", sh.List)
 		pr.Delete("/sessions/{deviceID}", sh.Revoke)
 		pr.Post("/auth/logout", sh.Logout)

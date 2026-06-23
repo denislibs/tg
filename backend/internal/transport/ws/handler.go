@@ -1,27 +1,33 @@
 package ws
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gorilla/websocket"
-	"github.com/messenger-denis/backend/internal/auth"
+	"github.com/messenger-denis/backend/internal/domain"
 	"github.com/messenger-denis/backend/internal/messaging"
 )
+
+// Authenticator resolves a token to the authenticated user + device.
+type Authenticator interface {
+	Authenticate(ctx context.Context, token string) (domain.User, int64, error)
+}
 
 // Handler upgrades HTTP to WebSocket, authenticates via the ?token= query
 // parameter (browsers can't set headers on WS), and runs the connection.
 type Handler struct {
 	hub      *Hub
-	authSvc  *auth.Service
+	auth     Authenticator
 	chatSvc  *messaging.Service
 	presence Presence
 	upgrader websocket.Upgrader
 }
 
-func NewHandler(hub *Hub, authSvc *auth.Service, chatSvc *messaging.Service, presence Presence) *Handler {
+func NewHandler(hub *Hub, auth Authenticator, chatSvc *messaging.Service, presence Presence) *Handler {
 	return &Handler{
 		hub:      hub,
-		authSvc:  authSvc,
+		auth:     auth,
 		chatSvc:  chatSvc,
 		presence: presence,
 		upgrader: websocket.Upgrader{
@@ -36,7 +42,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing token", http.StatusUnauthorized)
 		return
 	}
-	user, deviceID, err := h.authSvc.Authenticate(r.Context(), token)
+	user, deviceID, err := h.auth.Authenticate(r.Context(), token)
 	if err != nil {
 		http.Error(w, "invalid token", http.StatusUnauthorized)
 		return
