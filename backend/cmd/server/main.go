@@ -14,6 +14,7 @@ import (
 	"github.com/messenger-denis/backend/internal/messaging"
 	httptransport "github.com/messenger-denis/backend/internal/transport/http"
 	"github.com/messenger-denis/backend/internal/store/postgres"
+	"github.com/messenger-denis/backend/internal/store/redisstore"
 )
 
 func main() {
@@ -32,6 +33,13 @@ func main() {
 	defer pool.Close()
 
 	authSvc := auth.NewService(auth.NewRepo(pool), cfg.DevOTPCode, log.Printf)
+	if rdb, err := redisstore.Connect(ctx, cfg.RedisURL); err != nil {
+		log.Printf("redis unavailable, running without session cache: %v", err)
+	} else {
+		defer rdb.Close()
+		authSvc.SetCache(redisstore.NewSessionCache(rdb))
+		log.Printf("session cache enabled (redis)")
+	}
 	chatSvc := messaging.NewService(pool)
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
