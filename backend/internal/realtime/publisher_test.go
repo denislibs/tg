@@ -37,3 +37,30 @@ func TestRedisPublisher_PublishToUser(t *testing.T) {
 		t.Fatal("did not receive published frame")
 	}
 }
+
+func TestRedisPublisher_NotifyRevoked(t *testing.T) {
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+	ctx := context.Background()
+
+	sub := rdb.Subscribe(ctx, DeviceChannel(99))
+	defer sub.Close()
+	if _, err := sub.Receive(ctx); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	ch := sub.Channel()
+
+	if err := NewRedisPublisher(rdb).NotifyRevoked(ctx, 99); err != nil {
+		t.Fatalf("notify: %v", err)
+	}
+	select {
+	case msg := <-ch:
+		if msg.Payload != "close" {
+			t.Fatalf("payload = %q", msg.Payload)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no close signal received")
+	}
+}

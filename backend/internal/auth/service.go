@@ -15,7 +15,17 @@ type Service struct {
 	devCode string // fixed dev OTP, also logged
 	logf    func(format string, args ...any)
 	cache   SessionCache
+	revoker RevocationNotifier
 }
+
+// RevocationNotifier is told when a device session is revoked, so a live socket
+// for that device can be closed. Optional.
+type RevocationNotifier interface {
+	NotifyRevoked(ctx context.Context, deviceID int64) error
+}
+
+// SetRevocationNotifier attaches a revocation notifier (optional).
+func (s *Service) SetRevocationNotifier(n RevocationNotifier) { s.revoker = n }
 
 // SetCache attaches a session cache (optional). When nil, Authenticate always
 // resolves via Postgres.
@@ -106,6 +116,9 @@ func (s *Service) RevokeSession(ctx context.Context, userID, deviceID int64) (bo
 	}
 	if s.cache != nil {
 		_ = s.cache.DelSession(ctx, tokenHash)
+	}
+	if s.revoker != nil {
+		_ = s.revoker.NotifyRevoked(ctx, deviceID)
 	}
 	return true, nil
 }
