@@ -105,6 +105,16 @@ func (r *MessagesRepo) CountUnread(ctx context.Context, q Querier, chatID, userI
 	return n, err
 }
 
+// GetMessageMeta resolves a message id to its chat id. Returns ErrNotFound if
+// the message does not exist.
+func (r *MessagesRepo) GetMessageMeta(ctx context.Context, q Querier, messageID int64) (chatID int64, err error) {
+	err = q.QueryRow(ctx, `SELECT chat_id FROM messages WHERE id=$1`, messageID).Scan(&chatID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	return chatID, err
+}
+
 type scanner interface {
 	Scan(dest ...any) error
 }
