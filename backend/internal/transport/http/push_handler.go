@@ -4,16 +4,17 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/messenger-denis/backend/internal/push"
+	"github.com/messenger-denis/backend/internal/domain"
+	usecasepush "github.com/messenger-denis/backend/internal/usecase/push"
 )
 
 type PushHandler struct {
-	repo      *push.Repo
+	subs      usecasepush.SubRepo
 	publicKey string
 }
 
-func NewPushHandler(repo *push.Repo, publicKey string) *PushHandler {
-	return &PushHandler{repo: repo, publicKey: publicKey}
+func NewPushHandler(subs usecasepush.SubRepo, publicKey string) *PushHandler {
+	return &PushHandler{subs: subs, publicKey: publicKey}
 }
 
 func (h *PushHandler) VAPIDPublicKey(w http.ResponseWriter, _ *http.Request) {
@@ -37,7 +38,7 @@ func (h *PushHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "endpoint, p256dh, auth required")
 		return
 	}
-	if err := h.repo.AddSubscription(r.Context(), deviceID, push.Subscription{
+	if err := h.subs.Add(r.Context(), deviceID, domain.PushSubscription{
 		Endpoint: body.Endpoint, P256dh: body.P256dh, Auth: body.Auth,
 	}); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not subscribe")
