@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/messenger-denis/backend/internal/auth"
 	"github.com/messenger-denis/backend/internal/messaging"
 	"github.com/messenger-denis/backend/internal/push"
 	"github.com/messenger-denis/backend/internal/store/postgres"
@@ -13,10 +12,9 @@ import (
 
 func TestPush_SubscribeAndVAPID_HTTP(t *testing.T) {
 	pool := postgres.NewTestDB(t)
-	authSvc := auth.NewService(auth.NewRepo(pool), "12345", func(string, ...any) {})
 	chatSvc := messaging.NewService(pool)
 	pushH := NewPushHandler(push.NewRepo(pool), "TEST_PUBLIC_KEY")
-	h := NewRouter(authSvc, chatSvc, nil, nil, pushH)
+	h := NewRouter(newAuthUC(pool), chatSvc, nil, nil, pushH)
 
 	token, _ := signUp(t, h, pool, "+79990000050")
 

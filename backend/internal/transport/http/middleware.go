@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/messenger-denis/backend/internal/auth"
+	"github.com/messenger-denis/backend/internal/domain"
 )
 
 type ctxKey int
@@ -13,8 +13,13 @@ type ctxKey int
 const userKey ctxKey = 0
 const deviceKey ctxKey = 1
 
+// Authenticator resolves a bearer token to the authenticated user + device.
+type Authenticator interface {
+	Authenticate(ctx context.Context, token string) (domain.User, int64, error)
+}
+
 // AuthMiddleware validates the Bearer token and injects the user into the context.
-func AuthMiddleware(svc *auth.Service) func(http.Handler) http.Handler {
+func AuthMiddleware(a Authenticator) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			token := bearerToken(r)
@@ -22,7 +27,7 @@ func AuthMiddleware(svc *auth.Service) func(http.Handler) http.Handler {
 				writeError(w, http.StatusUnauthorized, "missing token")
 				return
 			}
-			user, deviceID, err := svc.Authenticate(r.Context(), token)
+			user, deviceID, err := a.Authenticate(r.Context(), token)
 			if err != nil {
 				writeError(w, http.StatusUnauthorized, "invalid token")
 				return
@@ -43,8 +48,8 @@ func bearerToken(r *http.Request) string {
 }
 
 // UserFromContext returns the authenticated user, if any.
-func UserFromContext(ctx context.Context) (auth.User, bool) {
-	u, ok := ctx.Value(userKey).(auth.User)
+func UserFromContext(ctx context.Context) (domain.User, bool) {
+	u, ok := ctx.Value(userKey).(domain.User)
 	return u, ok
 }
 

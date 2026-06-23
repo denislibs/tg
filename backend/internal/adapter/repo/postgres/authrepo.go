@@ -1,4 +1,6 @@
-package auth
+// Package postgres holds the postgres-backed repository adapters. It is distinct
+// from internal/store/postgres (the low-level pool/migration helpers).
+package postgres
 
 import (
 	"context"
@@ -7,33 +9,27 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/messenger-denis/backend/internal/domain"
+	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 )
 
-type User struct {
-	ID          int64
-	Phone       string
-	Username    *string
-	DisplayName string
-	AvatarURL   string
-}
+// AuthRepo is a postgres-backed adapter implementing the auth usecase's
+// UserRepo, DeviceRepo and CodeRepo ports.
+type AuthRepo struct{ pool *pgxpool.Pool }
 
-type Device struct {
-	ID         int64
-	UserID     int64
-	Name       string
-	Platform   string
-	TokenHash  string
-	LastActive time.Time
-}
+var (
+	_ usecaseauth.UserRepo   = (*AuthRepo)(nil)
+	_ usecaseauth.DeviceRepo = (*AuthRepo)(nil)
+	_ usecaseauth.CodeRepo   = (*AuthRepo)(nil)
+)
 
-var ErrNotFound = errors.New("not found")
+func NewAuthRepo(pool *pgxpool.Pool) *AuthRepo { return &AuthRepo{pool: pool} }
 
-type Repo struct{ pool *pgxpool.Pool }
-
-func NewRepo(pool *pgxpool.Pool) *Repo { return &Repo{pool: pool} }
+// --- CodeRepo ---
 
 // SaveCode upserts a verification code for a phone with an expiry.
-func (r *Repo) SaveCode(ctx context.Context, phone, code string, expires time.Time) error {
+func (r *AuthRepo) SaveCode(ctx context.Context, phone, code string, expires time.Time) error {
 	_, err := r.pool.Exec(ctx,
 		`INSERT INTO auth_codes (phone, code, expires_at) VALUES ($1,$2,$3)
 		 ON CONFLICT (phone) DO UPDATE SET code=$2, expires_at=$3`,
@@ -41,33 +37,35 @@ func (r *Repo) SaveCode(ctx context.Context, phone, code string, expires time.Ti
 	return err
 }
 
-// GetCode returns the stored code for a phone if not expired.
-func (r *Repo) GetCode(ctx context.Context, phone string) (string, error) {
+// GetCode returns the stored code for a phone if not expired, else domain.ErrNotFound.
+func (r *AuthRepo) GetCode(ctx context.Context, phone string) (string, error) {
 	var code string
 	var expires time.Time
 	err := r.pool.QueryRow(ctx,
 		`SELECT code, expires_at FROM auth_codes WHERE phone=$1`, phone).Scan(&code, &expires)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", ErrNotFound
+		return "", domain.ErrNotFound
 	}
 	if err != nil {
 		return "", err
 	}
 	if time.Now().After(expires) {
-		return "", ErrNotFound
+		return "", domain.ErrNotFound
 	}
 	return code, nil
 }
 
 // DeleteCode removes a used code.
-func (r *Repo) DeleteCode(ctx context.Context, phone string) error {
+func (r *AuthRepo) DeleteCode(ctx context.Context, phone string) error {
 	_, err := r.pool.Exec(ctx, `DELETE FROM auth_codes WHERE phone=$1`, phone)
 	return err
 }
 
-// UpsertUserByPhone returns the existing user for a phone or creates one.
-func (r *Repo) UpsertUserByPhone(ctx context.Context, phone string) (User, error) {
-	var u User
+// --- UserRepo ---
+
+// UpsertByPhone returns the existing user for a phone or creates one.
+func (r *AuthRepo) UpsertByPhone(ctx context.Context, phone string) (domain.User, error) {
+	var u domain.User
 	err := r.pool.QueryRow(ctx,
 		`INSERT INTO users (phone, display_name) VALUES ($1,$1)
 		 ON CONFLICT (phone) DO UPDATE SET phone=EXCLUDED.phone
@@ -76,9 +74,11 @@ func (r *Repo) UpsertUserByPhone(ctx context.Context, phone string) (User, error
 	return u, err
 }
 
-// CreateDevice inserts a device row holding the token hash.
-func (r *Repo) CreateDevice(ctx context.Context, userID int64, name, platform, tokenHash string) (Device, error) {
-	var d Device
+// --- DeviceRepo ---
+
+// Create inserts a device row holding the token hash.
+func (r *AuthRepo) Create(ctx context.Context, userID int64, name, platform, tokenHash string) (domain.Device, error) {
+	var d domain.Device
 	err := r.pool.QueryRow(ctx,
 		`INSERT INTO devices (user_id, name, platform, token_hash)
 		 VALUES ($1,$2,$3,$4)
@@ -87,49 +87,27 @@ func (r *Repo) CreateDevice(ctx context.Context, userID int64, name, platform, t
 	return d, err
 }
 
-// UserByTokenHash resolves a session token hash to a user, touching last_active.
-func (r *Repo) UserByTokenHash(ctx context.Context, tokenHash string) (User, error) {
-	var u User
-	err := r.pool.QueryRow(ctx,
-		`UPDATE devices SET last_active=now() WHERE token_hash=$1
-		 RETURNING user_id`, tokenHash).Scan(new(int64))
-	if errors.Is(err, pgx.ErrNoRows) {
-		return User{}, ErrNotFound
-	}
-	if err != nil {
-		return User{}, err
-	}
-	err = r.pool.QueryRow(ctx,
-		`SELECT u.id, u.phone, u.username, u.display_name, u.avatar_url
-		 FROM users u JOIN devices d ON d.user_id=u.id WHERE d.token_hash=$1`,
-		tokenHash).Scan(&u.ID, &u.Phone, &u.Username, &u.DisplayName, &u.AvatarURL)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return User{}, ErrNotFound
-	}
-	return u, err
-}
-
 // SessionByTokenHash resolves a token hash to its user and device id, and
-// lazily touches last_active. Returns ErrNotFound if unknown.
-func (r *Repo) SessionByTokenHash(ctx context.Context, tokenHash string) (User, int64, error) {
-	var u User
+// lazily touches last_active. Returns domain.ErrNotFound if unknown.
+func (r *AuthRepo) SessionByTokenHash(ctx context.Context, tokenHash string) (domain.User, int64, error) {
+	var u domain.User
 	var deviceID int64
 	err := r.pool.QueryRow(ctx,
 		`SELECT u.id, u.phone, u.username, u.display_name, u.avatar_url, d.id
 		 FROM users u JOIN devices d ON d.user_id=u.id WHERE d.token_hash=$1`,
 		tokenHash).Scan(&u.ID, &u.Phone, &u.Username, &u.DisplayName, &u.AvatarURL, &deviceID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return User{}, 0, ErrNotFound
+		return domain.User{}, 0, domain.ErrNotFound
 	}
 	if err != nil {
-		return User{}, 0, err
+		return domain.User{}, 0, err
 	}
 	_, _ = r.pool.Exec(ctx, `UPDATE devices SET last_active=now() WHERE id=$1`, deviceID)
 	return u, deviceID, nil
 }
 
-// ListDevices returns a user's devices, most recently active first.
-func (r *Repo) ListDevices(ctx context.Context, userID int64) ([]Device, error) {
+// ListByUser returns a user's devices, most recently active first.
+func (r *AuthRepo) ListByUser(ctx context.Context, userID int64) ([]domain.Device, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, user_id, name, platform, last_active FROM devices
 		 WHERE user_id=$1 ORDER BY last_active DESC`, userID)
@@ -137,9 +115,9 @@ func (r *Repo) ListDevices(ctx context.Context, userID int64) ([]Device, error) 
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Device
+	var out []domain.Device
 	for rows.Next() {
-		var d Device
+		var d domain.Device
 		if err := rows.Scan(&d.ID, &d.UserID, &d.Name, &d.Platform, &d.LastActive); err != nil {
 			return nil, err
 		}
@@ -148,9 +126,9 @@ func (r *Repo) ListDevices(ctx context.Context, userID int64) ([]Device, error) 
 	return out, rows.Err()
 }
 
-// DeleteDevice removes a user's device by id and returns its token hash (so the
+// Delete removes a user's device by id and returns its token hash (so the
 // caller can evict the cache). found is false if no such device exists.
-func (r *Repo) DeleteDevice(ctx context.Context, userID, deviceID int64) (tokenHash string, found bool, err error) {
+func (r *AuthRepo) Delete(ctx context.Context, userID, deviceID int64) (tokenHash string, found bool, err error) {
 	err = r.pool.QueryRow(ctx,
 		`DELETE FROM devices WHERE id=$1 AND user_id=$2 RETURNING token_hash`,
 		deviceID, userID).Scan(&tokenHash)

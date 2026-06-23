@@ -11,12 +11,13 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gorilla/websocket"
-	"github.com/messenger-denis/backend/internal/auth"
+	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
 	"github.com/messenger-denis/backend/internal/messaging"
 	"github.com/messenger-denis/backend/internal/presence"
 	"github.com/messenger-denis/backend/internal/realtime"
 	"github.com/messenger-denis/backend/internal/store/postgres"
 	"github.com/messenger-denis/backend/internal/transport/ws"
+	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -28,7 +29,7 @@ type wsEnv struct {
 	deviceA int64
 	chatID  int64
 	ctx     context.Context
-	authSvc *auth.Service
+	authUC  *usecaseauth.Interactor
 	chatSvc *messaging.Service
 	srv     *httptest.Server
 	hub     *ws.Hub
@@ -50,28 +51,29 @@ func newWSEnv(t *testing.T) *wsEnv {
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	ctx := context.Background()
 
-	authSvc := auth.NewService(auth.NewRepo(pool), "12345", func(string, ...any) {})
+	repo := pgadapter.NewAuthRepo(pool)
+	authUC := usecaseauth.New(repo, repo, repo, "12345", func(string, ...any) {})
 	chatSvc := messaging.NewService(pool)
 	publisher := realtime.NewRedisPublisher(rdb)
 	chatSvc.SetPublisher(publisher)
-	authSvc.SetRevocationNotifier(publisher)
+	authUC.SetRevocationNotifier(publisher)
 	presenceMgr := presence.NewManager(rdb, publisher, chatSvc.ChatPartners, 35*time.Second)
 	hub := ws.NewHub(ctx, rdb)
-	handler := ws.NewHandler(hub, authSvc, chatSvc, presenceMgr)
+	handler := ws.NewHandler(hub, authUC, chatSvc, presenceMgr)
 	srv := httptest.NewServer(http.HandlerFunc(handler.ServeHTTP))
 
-	_ = authSvc.RequestCode(ctx, "+700")
-	ra, _ := authSvc.SignIn(ctx, "+700", "12345", "web", "browser")
-	_ = authSvc.RequestCode(ctx, "+701")
-	rb, _ := authSvc.SignIn(ctx, "+701", "12345", "web", "browser")
+	_ = authUC.RequestCode(ctx, "+700")
+	ra, _ := authUC.SignIn(ctx, "+700", "12345", "web", "browser")
+	_ = authUC.RequestCode(ctx, "+701")
+	rb, _ := authUC.SignIn(ctx, "+701", "12345", "web", "browser")
 	chatID, _ := chatSvc.CreatePrivateChat(ctx, ra.User.ID, rb.User.ID)
-	_, deviceA, _ := authSvc.Authenticate(ctx, ra.Token)
+	_, deviceA, _ := authUC.Authenticate(ctx, ra.Token)
 
 	return &wsEnv{
 		url:     "ws" + strings.TrimPrefix(srv.URL, "http"),
 		tokenA:  ra.Token, tokenB: rb.Token,
 		userA:   ra.User.ID, deviceA: deviceA, chatID: chatID,
-		ctx:     ctx, authSvc: authSvc, chatSvc: chatSvc,
+		ctx:     ctx, authUC: authUC, chatSvc: chatSvc,
 		srv:     srv, hub: hub, mr: mr, rdb: rdb,
 	}
 }
@@ -123,7 +125,7 @@ func TestWS_RevokeClosesSocket(t *testing.T) {
 	time.Sleep(150 * time.Millisecond)
 
 	// Revoke A's session → A's socket must close (next read errors).
-	if _, err := env.authSvc.RevokeSession(env.ctx, env.userA, env.deviceA); err != nil {
+	if _, err := env.authUC.RevokeSession(env.ctx, env.userA, env.deviceA); err != nil {
 		t.Fatalf("revoke: %v", err)
 	}
 	_ = connA.SetReadDeadline(time.Now().Add(2 * time.Second))

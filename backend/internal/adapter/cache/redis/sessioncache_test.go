@@ -1,4 +1,4 @@
-package redisstore
+package redis
 
 import (
 	"context"
@@ -6,13 +6,18 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/messenger-denis/backend/internal/auth"
+	goredis "github.com/redis/go-redis/v9"
+
+	"github.com/messenger-denis/backend/internal/domain"
 )
 
 func TestSessionCache_RoundTrip(t *testing.T) {
-	mr, _ := miniredis.Run()
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
 	defer mr.Close()
-	c, _ := Connect(context.Background(), "redis://"+mr.Addr())
+	c := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
 	defer c.Close()
 	cache := NewSessionCache(c)
 	ctx := context.Background()
@@ -23,7 +28,7 @@ func TestSessionCache_RoundTrip(t *testing.T) {
 		t.Fatalf("miss = %v, %v; want nil,nil", got, err)
 	}
 
-	want := auth.CachedSession{User: auth.User{ID: 7, Phone: "+700", DisplayName: "Bob"}, DeviceID: 3}
+	want := domain.Session{User: domain.User{ID: 7, Phone: "+700", DisplayName: "Bob"}, DeviceID: 3}
 	if err := cache.SetSession(ctx, "h1", want, time.Minute); err != nil {
 		t.Fatalf("set: %v", err)
 	}

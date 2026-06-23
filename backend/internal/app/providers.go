@@ -6,12 +6,14 @@ import (
 	"log"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/messenger-denis/backend/internal/auth"
+	cacheredis "github.com/messenger-denis/backend/internal/adapter/cache/redis"
+	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
 	"github.com/messenger-denis/backend/internal/config"
 	"github.com/messenger-denis/backend/internal/messaging"
 	"github.com/messenger-denis/backend/internal/store/miniostore"
 	"github.com/messenger-denis/backend/internal/store/postgres"
 	"github.com/messenger-denis/backend/internal/store/redisstore"
+	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/fx"
 )
@@ -76,14 +78,16 @@ func provideMinio(cfg *config.Config, ctx context.Context) MinioResult {
 	return MinioResult{Client: mc, OK: true}
 }
 
-func provideAuthService(cfg *config.Config, pool *pgxpool.Pool) *auth.Service {
-	return auth.NewService(auth.NewRepo(pool), cfg.DevOTPCode, log.Printf)
+func provideAuthRepo(pool *pgxpool.Pool) *pgadapter.AuthRepo { return pgadapter.NewAuthRepo(pool) }
+
+func provideAuthUsecase(cfg *config.Config, repo *pgadapter.AuthRepo) *usecaseauth.Interactor {
+	return usecaseauth.New(repo, repo, repo, cfg.DevOTPCode, log.Printf)
 }
 
 func provideChatService(pool *pgxpool.Pool) *messaging.Service {
 	return messaging.NewService(pool)
 }
 
-func newSessionCache(client *redis.Client) auth.SessionCache {
-	return redisstore.NewSessionCache(client)
+func newSessionCache(client *redis.Client) usecaseauth.SessionCache {
+	return cacheredis.NewSessionCache(client)
 }
