@@ -8,16 +8,18 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	webpushadapter "github.com/messenger-denis/backend/internal/adapter/push/webpush"
+	queueredis "github.com/messenger-denis/backend/internal/adapter/queue/redis"
 	rtredis "github.com/messenger-denis/backend/internal/adapter/realtime/redis"
 	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
 	"github.com/messenger-denis/backend/internal/config"
-	"github.com/messenger-denis/backend/internal/push"
 	httptransport "github.com/messenger-denis/backend/internal/transport/http"
 	"github.com/messenger-denis/backend/internal/transport/ws"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 	usecasemedia "github.com/messenger-denis/backend/internal/usecase/media"
 	usecasepresence "github.com/messenger-denis/backend/internal/usecase/presence"
+	usecasepush "github.com/messenger-denis/backend/internal/usecase/push"
 	"go.uber.org/fx"
 )
 
@@ -54,12 +56,14 @@ func registerServer(p serverParams) {
 
 	var pushHandler *httptransport.PushHandler
 	if p.Redis.OK && p.Cfg.VAPIDPublicKey != "" && p.Cfg.VAPIDPrivateKey != "" {
-		pushSvc := push.NewService(p.Redis.Client, p.Pool)
-		p.ChatUC.SetNotifier(pushSvc)
-		sender := push.NewWebPushSender(p.Cfg.VAPIDPublicKey, p.Cfg.VAPIDPrivateKey, p.Cfg.VAPIDSubject)
-		worker := push.NewWorker(p.Redis.Client, p.Pool, sender)
+		pushRepo := pgadapter.NewPushRepo(p.Pool)
+		queue := queueredis.NewQueue(p.Redis.Client)
+		notifier := usecasepush.NewNotifier(rtredis.NewPresenceStore(p.Redis.Client), pushRepo, queue)
+		p.ChatUC.SetNotifier(notifier)
+		sender := webpushadapter.NewSender(p.Cfg.VAPIDPublicKey, p.Cfg.VAPIDPrivateKey, p.Cfg.VAPIDSubject)
+		worker := usecasepush.NewWorker(queue, pushRepo, sender, pushRepo)
 		p.LC.Append(fx.Hook{OnStart: func(context.Context) error { go worker.Run(p.Ctx); return nil }})
-		pushHandler = httptransport.NewPushHandler(push.NewRepo(p.Pool), p.Cfg.VAPIDPublicKey)
+		pushHandler = httptransport.NewPushHandler(pushRepo, p.Cfg.VAPIDPublicKey)
 		log.Printf("web push enabled")
 	} else {
 		log.Printf("web push disabled (needs redis + VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY)")

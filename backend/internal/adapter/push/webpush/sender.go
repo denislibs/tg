@@ -1,24 +1,30 @@
-package push
+// Package webpush sends Web Push notifications via the VAPID protocol.
+package webpush
 
 import (
 	"context"
 	"io"
 
 	webpush "github.com/SherClockHolmes/webpush-go"
+
+	"github.com/messenger-denis/backend/internal/domain"
+	usecasepush "github.com/messenger-denis/backend/internal/usecase/push"
 )
 
-// WebPushSender sends notifications via the Web Push protocol (VAPID).
+// WebPushSender implements usecasepush.Sender over the Web Push protocol.
 type WebPushSender struct {
 	publicKey  string
 	privateKey string
 	subject    string
 }
 
-func NewWebPushSender(publicKey, privateKey, subject string) *WebPushSender {
+func NewSender(publicKey, privateKey, subject string) *WebPushSender {
 	return &WebPushSender{publicKey: publicKey, privateKey: privateKey, subject: subject}
 }
 
-func (s *WebPushSender) Send(ctx context.Context, sub Subscription, payload []byte) (int, error) {
+var _ usecasepush.Sender = (*WebPushSender)(nil)
+
+func (s *WebPushSender) Send(ctx context.Context, sub domain.PushSubscription, payload []byte) (int, error) {
 	resp, err := webpush.SendNotificationWithContext(ctx, payload, &webpush.Subscription{
 		Endpoint: sub.Endpoint,
 		Keys:     webpush.Keys{P256dh: sub.P256dh, Auth: sub.Auth},
