@@ -37,6 +37,37 @@ func (p *fakePublisher) countFor(userID int64) int {
 	return n
 }
 
+type fakeNotifier struct {
+	mu         sync.Mutex
+	recipients []int64
+}
+
+func (n *fakeNotifier) NotifyNewMessage(_ context.Context, recipientID, _, _, _, _ int64, _ string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.recipients = append(n.recipients, recipientID)
+}
+
+func TestSend_NotifiesNonSenderRecipients(t *testing.T) {
+	pool := postgres.NewTestDB(t)
+	s := NewService(pool)
+	nf := &fakeNotifier{}
+	s.SetNotifier(nf)
+	ctx := context.Background()
+	a := seedUser(t, pool, "+840")
+	b := seedUser(t, pool, "+841")
+	chatID, _ := s.CreatePrivateChat(ctx, a, b)
+
+	if _, err := s.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "hi"}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	nf.mu.Lock()
+	defer nf.mu.Unlock()
+	if len(nf.recipients) != 1 || nf.recipients[0] != b {
+		t.Fatalf("notifier recipients = %v; want [%d]", nf.recipients, b)
+	}
+}
+
 func TestSend_PublishesToAllMembers(t *testing.T) {
 	pool := postgres.NewTestDB(t)
 	s := NewService(pool)

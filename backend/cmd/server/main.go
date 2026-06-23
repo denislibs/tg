@@ -14,12 +14,14 @@ import (
 	"github.com/messenger-denis/backend/internal/media"
 	"github.com/messenger-denis/backend/internal/messaging"
 	"github.com/messenger-denis/backend/internal/presence"
+	"github.com/messenger-denis/backend/internal/push"
 	"github.com/messenger-denis/backend/internal/realtime"
 	"github.com/messenger-denis/backend/internal/store/miniostore"
 	"github.com/messenger-denis/backend/internal/store/postgres"
 	"github.com/messenger-denis/backend/internal/store/redisstore"
 	httptransport "github.com/messenger-denis/backend/internal/transport/http"
 	"github.com/messenger-denis/backend/internal/transport/ws"
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -30,7 +32,8 @@ func main() {
 	if err := postgres.Migrate(cfg.DatabaseURL); err != nil {
 		log.Fatalf("migrate: %v", err)
 	}
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel() // cancels the push worker (and other ctx users) on shutdown
 	pool, err := postgres.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("connect: %v", err)
@@ -41,9 +44,13 @@ func main() {
 	chatSvc := messaging.NewService(pool)
 
 	var wsHandler http.Handler
-	if rdb, err := redisstore.Connect(ctx, cfg.RedisURL); err != nil {
+	var rdb *redis.Client
+	redisOK := false
+	if c, err := redisstore.Connect(ctx, cfg.RedisURL); err != nil {
 		log.Printf("redis unavailable, running without cache/realtime: %v", err)
 	} else {
+		rdb = c
+		redisOK = true
 		defer rdb.Close()
 		authSvc.SetCache(redisstore.NewSessionCache(rdb))
 		publisher := realtime.NewRedisPublisher(rdb)
@@ -54,6 +61,19 @@ func main() {
 		defer hub.Close()
 		wsHandler = ws.NewHandler(hub, authSvc, chatSvc, presenceMgr)
 		log.Printf("session cache + realtime + presence enabled (redis)")
+	}
+
+	var pushHandler *httptransport.PushHandler
+	if redisOK && cfg.VAPIDPublicKey != "" && cfg.VAPIDPrivateKey != "" {
+		pushSvc := push.NewService(rdb, pool)
+		chatSvc.SetNotifier(pushSvc)
+		sender := push.NewWebPushSender(cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey, cfg.VAPIDSubject)
+		worker := push.NewWorker(rdb, pool, sender)
+		go worker.Run(ctx)
+		pushHandler = httptransport.NewPushHandler(push.NewRepo(pool), cfg.VAPIDPublicKey)
+		log.Printf("web push enabled")
+	} else {
+		log.Printf("web push disabled (needs redis + VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY)")
 	}
 
 	var mediaHandler *httptransport.MediaHandler
@@ -68,7 +88,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httptransport.NewRouter(authSvc, chatSvc, wsHandler, mediaHandler),
+		Handler:           httptransport.NewRouter(authSvc, chatSvc, wsHandler, mediaHandler, pushHandler),
 		ReadHeaderTimeout: 5 * time.Second,
 		// ReadTimeout and WriteTimeout are intentionally omitted (0): both would
 		// terminate long-lived WS connections. Slow-header attacks are bounded by

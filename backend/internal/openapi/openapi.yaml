@@ -16,6 +16,7 @@ tags:
   - name: reactions
   - name: sync
   - name: media
+  - name: push
   - name: system
 
 components:
@@ -392,6 +393,35 @@ paths:
                   blur_preview: { type: string, format: byte, nullable: true }
                   download_url: { type: string, description: presigned GET (expires ~15m) }
         "404": { description: not found / no access, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /push/vapid_public_key:
+    get:
+      tags: [push]
+      summary: VAPID public key for the browser to subscribe with
+      responses:
+        "200":
+          description: key
+          content:
+            application/json:
+              schema: { type: object, properties: { public_key: { type: string } } }
+  /push/subscribe:
+    post:
+      tags: [push]
+      summary: Register the current device's Web Push subscription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [endpoint, p256dh, auth]
+              properties:
+                endpoint: { type: string }
+                p256dh: { type: string }
+                auth: { type: string }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
+        "400": { description: missing fields, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /ws:
     get:

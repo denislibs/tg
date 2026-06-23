@@ -42,3 +42,15 @@ func TestLoad_MinioDefaults(t *testing.T) {
 		t.Error("MinioUseSSL should default to false")
 	}
 }
+
+func TestLoad_VAPIDSubjectDefault(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/db")
+	t.Setenv("VAPID_SUBJECT", "")
+	c, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.VAPIDSubject != "mailto:admin@example.com" {
+		t.Errorf("VAPIDSubject default = %q", c.VAPIDSubject)
+	}
+}
