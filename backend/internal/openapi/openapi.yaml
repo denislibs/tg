@@ -1,0 +1,413 @@
+openapi: 3.0.3
+info:
+  title: Messenger API
+  version: "0.1.0 (Phase 0)"
+  description: |
+    REST + WebSocket API for the messenger backend (Phase 0).
+    Realtime delivery uses WebSocket (`/ws`); see `docs/contracts.md` for the WS frame protocol.
+servers:
+  - url: /
+    description: Same-origin (behind nginx, the API is mounted under /api/)
+tags:
+  - name: auth
+  - name: sessions
+  - name: chats
+  - name: messages
+  - name: reactions
+  - name: sync
+  - name: media
+  - name: system
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Opaque device session token returned by /auth/sign_in.
+  schemas:
+    Error:
+      type: object
+      properties: { error: { type: string } }
+    OK:
+      type: object
+      properties: { ok: { type: boolean, example: true } }
+    User:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        phone: { type: string }
+        display_name: { type: string }
+    Message:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        chat_id: { type: integer, format: int64 }
+        seq: { type: integer, format: int64, description: monotonic per-chat sequence }
+        sender_id: { type: integer, format: int64 }
+        type: { type: string, example: text, description: "text | photo | video | voice | document | …" }
+        text: { type: string }
+        reply_to_id: { type: integer, format: int64, nullable: true }
+        media_id: { type: integer, format: int64, nullable: true }
+        created_at: { type: string, format: date-time }
+        deleted: { type: boolean }
+    Dialog:
+      type: object
+      properties:
+        chat_id: { type: integer, format: int64 }
+        type: { type: string, example: private }
+        last_read_seq: { type: integer, format: int64 }
+        unread: { type: integer }
+        muted: { type: boolean }
+        last_message:
+          nullable: true
+          type: object
+          properties:
+            seq: { type: integer, format: int64 }
+            text: { type: string }
+            sender_id: { type: integer, format: int64 }
+            at: { type: string, format: date-time }
+    Difference:
+      type: object
+      description: getDifference-style result; client tracks state.pts as its cursor.
+      properties:
+        new_messages:
+          type: array
+          items: { type: object, description: new_message update payload }
+        other_updates:
+          type: array
+          items: { type: object, description: "read / reaction / edit / delete update payloads" }
+        state:
+          type: object
+          properties:
+            pts: { type: integer, format: int64 }
+            date: { type: integer, format: int64, description: server time (ms) }
+        slice: { type: boolean, description: more updates remain; call /sync again }
+        too_long: { type: boolean, description: too far behind; do a full resync }
+    ReactionCount:
+      type: object
+      properties:
+        emoji: { type: string }
+        count: { type: integer }
+    Session:
+      type: object
+      properties:
+        id: { type: integer, format: int64, description: device id }
+        name: { type: string }
+        platform: { type: string, example: ios }
+        last_active: { type: string, format: date-time }
+        current: { type: boolean }
+
+paths:
+  /health:
+    get:
+      tags: [system]
+      summary: Liveness probe
+      security: []
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { type: object, properties: { status: { type: string, example: ok } } } } }
+
+  /auth/request_code:
+    post:
+      tags: [auth]
+      summary: Request a login code (dev OTP is logged server-side)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties: { phone: { type: string, example: "+79990000000" } }
+      responses:
+        "200": { description: code issued, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
+        "400": { description: phone required, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /auth/sign_in:
+    post:
+      tags: [auth]
+      summary: Verify the code, create the user+device, return a session token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, code]
+              properties:
+                phone: { type: string, example: "+79990000000" }
+                code: { type: string, example: "12345" }
+                device: { type: string, example: web }
+                platform: { type: string, example: browser }
+      responses:
+        "200":
+          description: signed in
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user: { $ref: "#/components/schemas/User" }
+        "401": { description: invalid code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /auth/logout:
+    post:
+      tags: [sessions]
+      summary: Revoke the current session (and close its live socket)
+      responses:
+        "200": { description: logged out, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
+
+  /me:
+    get:
+      tags: [auth]
+      summary: Current user
+      responses:
+        "200": { description: the authenticated user, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
+        "401": { description: missing/invalid token, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /sessions:
+    get:
+      tags: [sessions]
+      summary: List the user's devices/sessions
+      responses:
+        "200":
+          description: sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions: { type: array, items: { $ref: "#/components/schemas/Session" } }
+  /sessions/{deviceID}:
+    delete:
+      tags: [sessions]
+      summary: Revoke a specific session (closes its live socket)
+      parameters:
+        - { name: deviceID, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        "200": { description: revoked, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
+        "404": { description: session not found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /chats:
+    post:
+      tags: [chats]
+      summary: Create (or get existing) a private chat with another user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id]
+              properties: { user_id: { type: integer, format: int64 } }
+      responses:
+        "200": { description: chat id, content: { application/json: { schema: { type: object, properties: { chat_id: { type: integer, format: int64 } } } } } }
+    get:
+      tags: [chats]
+      summary: List the user's chats (dialogs), newest activity first
+      responses:
+        "200":
+          description: dialogs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  chats: { type: array, items: { $ref: "#/components/schemas/Dialog" } }
+
+  /chats/{chatID}/messages:
+    post:
+      tags: [messages]
+      summary: Send a message (also delivered live over WS to members)
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type: { type: string, example: text }
+                text: { type: string }
+                reply_to_id: { type: integer, format: int64, nullable: true }
+                client_msg_id: { type: string, description: client UUID for idempotency }
+                media_id: { type: integer, format: int64, nullable: true, description: must be owned by the sender }
+      responses:
+        "200": { description: the created (or deduplicated) message, content: { application/json: { schema: { $ref: "#/components/schemas/Message" } } } }
+        "403": { description: not a member / media not owned, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /chats/{chatID}/history:
+    get:
+      tags: [messages]
+      summary: Paginated message window (offset_id/add_offset/limit), like getHistory
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+        - { name: offset_id, in: query, schema: { type: integer, format: int64, default: 0 }, description: "reference seq; 0 = newest" }
+        - { name: add_offset, in: query, schema: { type: integer, default: 0 }, description: ">0 older, <=0 newer than offset_id" }
+        - { name: limit, in: query, schema: { type: integer, default: 40 } }
+      responses:
+        "200":
+          description: a window plus total count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages: { type: array, items: { $ref: "#/components/schemas/Message" } }
+                  count: { type: integer }
+        "403": { description: not a member, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /chats/{chatID}/read:
+    post:
+      tags: [messages]
+      summary: Mark read up to a sequence (fans out a read receipt)
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [up_to_seq]
+              properties: { up_to_seq: { type: integer, format: int64 } }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
+        "403": { description: not a member, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /chats/{chatID}/messages/{msgID}/reactions:
+    post:
+      tags: [reactions]
+      summary: Add an emoji reaction
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+        - { name: msgID, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [emoji]
+              properties: { emoji: { type: string, example: "🔥" } }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
+        "400": { description: invalid emoji, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: message not found / no access, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    get:
+      tags: [reactions]
+      summary: Aggregated reaction counts for a message
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+        - { name: msgID, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        "200":
+          description: counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reactions: { type: array, items: { $ref: "#/components/schemas/ReactionCount" } }
+        "404": { description: message not found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /chats/{chatID}/messages/{msgID}/reactions/{emoji}:
+    delete:
+      tags: [reactions]
+      summary: Remove a reaction (emoji is URL-escaped)
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+        - { name: msgID, in: path, required: true, schema: { type: integer, format: int64 } }
+        - { name: emoji, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
+        "400": { description: invalid emoji, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: message not found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /sync:
+    get:
+      tags: [sync]
+      summary: Catch up on missed updates since a pts cursor (getDifference)
+      parameters:
+        - { name: pts, in: query, schema: { type: integer, format: int64, default: 0 } }
+        - { name: date, in: query, schema: { type: integer, format: int64, default: 0 } }
+      responses:
+        "200": { description: difference, content: { application/json: { schema: { $ref: "#/components/schemas/Difference" } } } }
+
+  /media/upload:
+    post:
+      tags: [media]
+      summary: Register media metadata and get a presigned PUT URL (upload bytes directly to storage)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mime, size]
+              properties:
+                mime: { type: string, example: image/jpeg }
+                size: { type: integer, format: int64, description: bytes; 1..104857600 }
+                width: { type: integer }
+                height: { type: integer }
+                duration: { type: integer, description: seconds (audio/video) }
+                blur_preview: { type: string, format: byte, description: base64 LQIP placeholder }
+      responses:
+        "200":
+          description: media row + presigned upload URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  media_id: { type: integer, format: int64 }
+                  object_key: { type: string }
+                  upload_url: { type: string, description: presigned PUT (expires ~15m) }
+        "400": { description: invalid size, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "413": { description: file too large, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /media/{mediaID}:
+    get:
+      tags: [media]
+      summary: Resolve media to metadata + a presigned GET URL (owner or chat member only)
+      parameters:
+        - { name: mediaID, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        "200":
+          description: media metadata + download URL (Range-capable)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer, format: int64 }
+                  mime: { type: string }
+                  size: { type: integer, format: int64 }
+                  width: { type: integer }
+                  height: { type: integer }
+                  duration: { type: integer }
+                  blur_preview: { type: string, format: byte, nullable: true }
+                  download_url: { type: string, description: presigned GET (expires ~15m) }
+        "404": { description: not found / no access, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /ws:
+    get:
+      tags: [system]
+      summary: WebSocket upgrade for realtime (authenticate via ?token=)
+      description: |
+        Upgrades to a WebSocket (HTTP 101). Authenticate with the session token as
+        the `token` query parameter (browsers cannot set headers on WS).
+        Frames are JSON envelopes `{ "t": <type>, "d": <payload> }`.
+        See `docs/contracts.md` for the full frame protocol.
+      security: []
+      parameters:
+        - { name: token, in: query, required: true, schema: { type: string } }
+      responses:
+        "101": { description: switching protocols (WebSocket) }
+        "401": { description: missing/invalid token }
+
+security:
+  - bearerAuth: []
