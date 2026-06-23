@@ -8,8 +8,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/messenger-denis/backend/internal/media"
+	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
 	"github.com/messenger-denis/backend/internal/store/postgres"
+	usecasemedia "github.com/messenger-denis/backend/internal/usecase/media"
 )
 
 type fakeStorage struct{}
@@ -25,7 +26,7 @@ func (fakeStorage) PresignedGet(_ context.Context, key string, _ time.Duration) 
 func newMediaRouter(t *testing.T) (http.Handler, *pgxpool.Pool) {
 	pool := postgres.NewTestDB(t)
 	chatUC := newChatUC(pool)
-	mediaH := NewMediaHandler(media.NewService(media.NewRepo(pool), fakeStorage{}), chatUC)
+	mediaH := NewMediaHandler(usecasemedia.New(pgadapter.NewMediaRepo(pool), fakeStorage{}), chatUC)
 	return NewRouter(newAuthUC(pool), chatUC, nil, mediaH, nil), pool
 }
 

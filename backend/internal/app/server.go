@@ -9,13 +9,14 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	rtredis "github.com/messenger-denis/backend/internal/adapter/realtime/redis"
+	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
 	"github.com/messenger-denis/backend/internal/config"
-	"github.com/messenger-denis/backend/internal/media"
 	"github.com/messenger-denis/backend/internal/push"
 	httptransport "github.com/messenger-denis/backend/internal/transport/http"
 	"github.com/messenger-denis/backend/internal/transport/ws"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
+	usecasemedia "github.com/messenger-denis/backend/internal/usecase/media"
 	usecasepresence "github.com/messenger-denis/backend/internal/usecase/presence"
 	"go.uber.org/fx"
 )
@@ -66,7 +67,8 @@ func registerServer(p serverParams) {
 
 	var mediaHandler *httptransport.MediaHandler
 	if p.Minio.OK {
-		mediaHandler = httptransport.NewMediaHandler(media.NewService(media.NewRepo(p.Pool), p.Minio.Client), p.ChatUC)
+		mediaUC := usecasemedia.New(pgadapter.NewMediaRepo(p.Pool), p.Minio.Client)
+		mediaHandler = httptransport.NewMediaHandler(mediaUC, p.ChatUC)
 		log.Printf("media enabled (minio bucket %q)", p.Cfg.MinioBucket)
 	}
 
