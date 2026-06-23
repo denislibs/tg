@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/messenger-denis/backend/internal/auth"
 	"github.com/messenger-denis/backend/internal/messaging"
+	"github.com/messenger-denis/backend/internal/openapi"
 )
 
 func NewRouter(authSvc *auth.Service, chatSvc *messaging.Service, wsHandler http.Handler, mediaH *MediaHandler) http.Handler {
@@ -21,6 +22,10 @@ func NewRouter(authSvc *auth.Service, chatSvc *messaging.Service, wsHandler http
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+
+	// API documentation (public).
+	r.Get("/openapi.yaml", openapi.SpecHandler())
+	r.Get("/swagger", openapi.UIHandler())
 
 	if wsHandler != nil {
 		r.Get("/ws", wsHandler.ServeHTTP)
