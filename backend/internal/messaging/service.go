@@ -16,11 +16,15 @@ type Service struct {
 	msgs      *MessagesRepo
 	updates   *UpdatesRepo
 	publisher Publisher
+	notifier  Notifier
 }
 
 // SetPublisher attaches a realtime publisher (optional). When nil, the service
 // records updates in the DB but pushes nothing live.
 func (s *Service) SetPublisher(p Publisher) { s.publisher = p }
+
+// SetNotifier attaches a push notifier (optional).
+func (s *Service) SetNotifier(n Notifier) { s.notifier = n }
 
 func NewService(pool *pgxpool.Pool) *Service {
 	return &Service{

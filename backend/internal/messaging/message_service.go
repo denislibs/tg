@@ -9,6 +9,12 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// Notifier is told about a new message for a recipient, so an offline recipient
+// can be sent a push notification. Optional; never blocks delivery.
+type Notifier interface {
+	NotifyNewMessage(ctx context.Context, recipientID, chatID, msgID, seq, senderID int64, text string)
+}
+
 // SendInput describes an outgoing message.
 type SendInput struct {
 	ChatID      int64
@@ -100,10 +106,15 @@ func (s *Service) Send(ctx context.Context, in SendInput) (Message, error) {
 	if err != nil {
 		return Message{}, err
 	}
-	if s.publisher != nil && recipients != nil {
+	if recipients != nil {
 		f := frame("new_message", messageUpdatePayload(msg))
 		for _, uid := range recipients {
-			_ = s.publisher.PublishToUser(ctx, uid, f)
+			if s.publisher != nil {
+				_ = s.publisher.PublishToUser(ctx, uid, f)
+			}
+			if s.notifier != nil && uid != in.SenderID {
+				s.notifier.NotifyNewMessage(ctx, uid, msg.ChatID, msg.ID, msg.Seq, msg.SenderID, msg.Text)
+			}
 		}
 	}
 	return msg, nil
