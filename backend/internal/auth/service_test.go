@@ -95,9 +95,15 @@ func TestService_AuthenticateUsesCache(t *testing.T) {
 	if len(cache.m) != 1 {
 		t.Fatalf("cache not populated: %d entries", len(cache.m))
 	}
-	// Second auth: served from cache.
+	// Second auth: served from cache (cache consulted both times, still 1 entry).
 	if _, _, err := s.Authenticate(ctx, res.Token); err != nil {
 		t.Fatalf("auth 2: %v", err)
+	}
+	if cache.gets != 2 {
+		t.Fatalf("expected 2 cache lookups, got %d", cache.gets)
+	}
+	if len(cache.m) != 1 {
+		t.Fatalf("expected 1 cache entry, got %d", len(cache.m))
 	}
 }
 

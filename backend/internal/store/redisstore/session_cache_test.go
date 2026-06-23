@@ -39,4 +39,14 @@ func TestSessionCache_RoundTrip(t *testing.T) {
 	if got != nil {
 		t.Fatal("expected miss after delete")
 	}
+
+	// TTL: the key disappears after its duration elapses.
+	if err := cache.SetSession(ctx, "h2", want, 5*time.Second); err != nil {
+		t.Fatalf("set for ttl: %v", err)
+	}
+	mr.FastForward(6 * time.Second)
+	got, _ = cache.GetSession(ctx, "h2")
+	if got != nil {
+		t.Fatal("expected key expired after TTL")
+	}
 }

@@ -15,10 +15,10 @@ type SessionCache struct{ rdb *redis.Client }
 
 func NewSessionCache(rdb *redis.Client) *SessionCache { return &SessionCache{rdb: rdb} }
 
-func key(tokenHash string) string { return "session:" + tokenHash }
+func sessionKey(tokenHash string) string { return "session:" + tokenHash }
 
 func (c *SessionCache) GetSession(ctx context.Context, tokenHash string) (*auth.CachedSession, error) {
-	b, err := c.rdb.Get(ctx, key(tokenHash)).Bytes()
+	b, err := c.rdb.Get(ctx, sessionKey(tokenHash)).Bytes()
 	if errors.Is(err, redis.Nil) {
 		return nil, nil // miss
 	}
@@ -37,9 +37,9 @@ func (c *SessionCache) SetSession(ctx context.Context, tokenHash string, s auth.
 	if err != nil {
 		return err
 	}
-	return c.rdb.Set(ctx, key(tokenHash), b, ttl).Err()
+	return c.rdb.Set(ctx, sessionKey(tokenHash), b, ttl).Err()
 }
 
 func (c *SessionCache) DelSession(ctx context.Context, tokenHash string) error {
-	return c.rdb.Del(ctx, key(tokenHash)).Err()
+	return c.rdb.Del(ctx, sessionKey(tokenHash)).Err()
 }
