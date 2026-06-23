@@ -101,9 +101,6 @@ func provideMediaAccessRepo(pool *pgxpool.Pool) *pgadapter.MediaAccessRepo {
 func provideMediaRepo(pool *pgxpool.Pool) *pgadapter.MediaRepo {
 	return pgadapter.NewMediaRepo(pool)
 }
-func providePushRepo(pool *pgxpool.Pool) *pgadapter.PushRepo {
-	return pgadapter.NewPushRepo(pool)
-}
 
 func provideChatUsecase(
 	tx *pgadapter.TxManager,
