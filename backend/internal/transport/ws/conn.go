@@ -103,7 +103,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		}
 		msg, err := c.svc.Send(ctx, messaging.SendInput{
 			ChatID: d.ChatID, SenderID: c.userID, Type: d.Type, Text: d.Text,
-			ReplyToID: d.ReplyToID, ClientMsgID: d.ClientMsgID,
+			ReplyToID: d.ReplyToID, ClientMsgID: d.ClientMsgID, MediaID: d.MediaID,
 		})
 		if err != nil {
 			return

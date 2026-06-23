@@ -109,3 +109,35 @@ func TestService_MarkRead(t *testing.T) {
 		t.Fatalf("after read: unread=%d lastRead=%d", d[0].UnreadCount, d[0].LastReadSeq)
 	}
 }
+
+func TestService_Send_WithMedia(t *testing.T) {
+	pool := postgres.NewTestDB(t)
+	s := NewService(pool)
+	ctx := context.Background()
+	a := seedUser(t, pool, "+790")
+	b := seedUser(t, pool, "+791")
+	chatID, _ := s.CreatePrivateChat(ctx, a, b)
+
+	// Seed a media row owned by a.
+	var mediaID int64
+	_ = pool.QueryRow(ctx,
+		`INSERT INTO media (owner_id, bucket, object_key, mime) VALUES ($1,'media','k','image/jpeg') RETURNING id`,
+		a).Scan(&mediaID)
+
+	msg, err := s.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Type: "photo", Text: "look", MediaID: &mediaID})
+	if err != nil {
+		t.Fatalf("Send with media: %v", err)
+	}
+	if msg.MediaID == nil || *msg.MediaID != mediaID {
+		t.Fatalf("message media_id = %v; want %d", msg.MediaID, mediaID)
+	}
+
+	// Media owned by someone else is rejected.
+	var otherMedia int64
+	_ = pool.QueryRow(ctx,
+		`INSERT INTO media (owner_id, bucket, object_key, mime) VALUES ($1,'media','k2','image/jpeg') RETURNING id`,
+		b).Scan(&otherMedia)
+	if _, err := s.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Type: "photo", MediaID: &otherMedia}); err != ErrNotFound {
+		t.Fatalf("expected ErrNotFound for foreign media, got %v", err)
+	}
+}

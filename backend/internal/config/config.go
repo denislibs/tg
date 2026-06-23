@@ -10,6 +10,12 @@ type Config struct {
 	DatabaseURL string
 	RedisURL    string
 	DevOTPCode  string
+
+	MinioEndpoint  string
+	MinioAccessKey string
+	MinioSecretKey string
+	MinioBucket    string
+	MinioUseSSL    bool
 }
 
 func Load() (*Config, error) {
@@ -22,6 +28,11 @@ func Load() (*Config, error) {
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
 	}
+	c.MinioEndpoint = getenv("MINIO_ENDPOINT", "localhost:9000")
+	c.MinioAccessKey = getenv("MINIO_ACCESS_KEY", "minioadmin")
+	c.MinioSecretKey = getenv("MINIO_SECRET_KEY", "minioadmin")
+	c.MinioBucket = getenv("MINIO_BUCKET", "media")
+	c.MinioUseSSL = getenv("MINIO_USE_SSL", "false") == "true"
 	return c, nil
 }
 

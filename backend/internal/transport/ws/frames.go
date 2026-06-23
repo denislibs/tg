@@ -14,6 +14,7 @@ type sendMessageData struct {
 	Text        string `json:"text"`
 	ReplyToID   *int64 `json:"reply_to_id"`
 	ClientMsgID string `json:"client_msg_id"`
+	MediaID     *int64 `json:"media_id"`
 }
 
 type readData struct {

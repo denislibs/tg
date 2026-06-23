@@ -64,6 +64,7 @@ type sendBody struct {
 	Text        string `json:"text"`
 	ReplyToID   *int64 `json:"reply_to_id"`
 	ClientMsgID string `json:"client_msg_id"`
+	MediaID     *int64 `json:"media_id"`
 }
 
 func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
@@ -78,7 +79,7 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 	}
 	msg, err := h.svc.Send(r.Context(), messaging.SendInput{
 		ChatID: chatID, SenderID: h.meID(r), Type: body.Type, Text: body.Text,
-		ReplyToID: body.ReplyToID, ClientMsgID: body.ClientMsgID,
+		ReplyToID: body.ReplyToID, ClientMsgID: body.ClientMsgID, MediaID: body.MediaID,
 	})
 	if errors.Is(err, messaging.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
@@ -234,7 +235,7 @@ func messageJSON(m messaging.Message) map[string]any {
 	return map[string]any{
 		"id": m.ID, "chat_id": m.ChatID, "seq": m.Seq, "sender_id": m.SenderID,
 		"type": m.Type, "text": m.Text, "reply_to_id": m.ReplyToID,
-		"created_at": m.CreatedAt, "deleted": m.Deleted,
+		"media_id": m.MediaID, "created_at": m.CreatedAt, "deleted": m.Deleted,
 	}
 }
 

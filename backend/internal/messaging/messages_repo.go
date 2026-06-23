@@ -17,6 +17,7 @@ type Message struct {
 	Text        string
 	ReplyToID   *int64
 	ClientMsgID *string
+	MediaID     *int64
 	CreatedAt   time.Time
 	Deleted     bool
 }
@@ -40,7 +41,7 @@ func (r *MessagesRepo) NextSeq(ctx context.Context, q Querier, chatID int64) (in
 // FindByClientMsgID returns an existing message for idempotent sends, or ErrNotFound.
 func (r *MessagesRepo) FindByClientMsgID(ctx context.Context, q Querier, chatID, senderID int64, clientMsgID string) (Message, error) {
 	return r.scanOne(q.QueryRow(ctx,
-		`SELECT id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, created_at, deleted_at
+		`SELECT id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at
 		 FROM messages WHERE chat_id=$1 AND sender_id=$2 AND client_msg_id=$3`,
 		chatID, senderID, clientMsgID))
 }
@@ -48,10 +49,10 @@ func (r *MessagesRepo) FindByClientMsgID(ctx context.Context, q Querier, chatID,
 // Insert writes a new message row.
 func (r *MessagesRepo) Insert(ctx context.Context, q Querier, m Message) (Message, error) {
 	return r.scanOne(q.QueryRow(ctx,
-		`INSERT INTO messages (chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7)
-		 RETURNING id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, created_at, deleted_at`,
-		m.ChatID, m.Seq, m.SenderID, m.Type, m.Text, m.ReplyToID, m.ClientMsgID))
+		`INSERT INTO messages (chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+		 RETURNING id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at`,
+		m.ChatID, m.Seq, m.SenderID, m.Type, m.Text, m.ReplyToID, m.ClientMsgID, m.MediaID))
 }
 
 // GetHistory returns up to limit messages around offsetSeq. addOffset>0 fetches
@@ -63,15 +64,15 @@ func (r *MessagesRepo) GetHistory(ctx context.Context, q Querier, chatID, offset
 	switch {
 	case offsetSeq == 0:
 		rows, err = q.Query(ctx,
-			`SELECT id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, created_at, deleted_at
+			`SELECT id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at
 			 FROM messages WHERE chat_id=$1 ORDER BY seq DESC LIMIT $2`, chatID, limit)
 	case addOffset <= 0: // newer than offset
 		rows, err = q.Query(ctx,
-			`SELECT id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, created_at, deleted_at
+			`SELECT id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at
 			 FROM messages WHERE chat_id=$1 AND seq>$2 ORDER BY seq ASC LIMIT $3`, chatID, offsetSeq, limit)
 	default: // older, inclusive of offset
 		rows, err = q.Query(ctx,
-			`SELECT id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, created_at, deleted_at
+			`SELECT id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at
 			 FROM messages WHERE chat_id=$1 AND seq<=$2 ORDER BY seq DESC LIMIT $3`, chatID, offsetSeq, limit)
 	}
 	if err != nil {
@@ -131,7 +132,7 @@ func (r *MessagesRepo) scanInto(s scanner) (Message, error) {
 	var m Message
 	var deletedAt *time.Time
 	err := s.Scan(&m.ID, &m.ChatID, &m.Seq, &m.SenderID, &m.Type, &m.Text,
-		&m.ReplyToID, &m.ClientMsgID, &m.CreatedAt, &deletedAt)
+		&m.ReplyToID, &m.ClientMsgID, &m.MediaID, &m.CreatedAt, &deletedAt)
 	m.Deleted = deletedAt != nil
 	return m, err
 }

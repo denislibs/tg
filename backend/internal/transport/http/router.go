@@ -9,7 +9,7 @@ import (
 	"github.com/messenger-denis/backend/internal/messaging"
 )
 
-func NewRouter(authSvc *auth.Service, chatSvc *messaging.Service, wsHandler http.Handler) http.Handler {
+func NewRouter(authSvc *auth.Service, chatSvc *messaging.Service, wsHandler http.Handler, mediaH *MediaHandler) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -40,6 +40,11 @@ func NewRouter(authSvc *auth.Service, chatSvc *messaging.Service, wsHandler http
 		pr.Post("/chats/{chatID}/messages/{msgID}/reactions", ch.AddReaction)
 		pr.Delete("/chats/{chatID}/messages/{msgID}/reactions/{emoji}", ch.RemoveReaction)
 		pr.Get("/chats/{chatID}/messages/{msgID}/reactions", ch.ListReactions)
+
+		if mediaH != nil {
+			pr.Post("/media/upload", mediaH.CreateUpload)
+			pr.Get("/media/{mediaID}", mediaH.Get)
+		}
 
 		sh := NewSessionHandler(authSvc)
 		pr.Get("/sessions", sh.List)
