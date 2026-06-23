@@ -18,8 +18,9 @@ type SendInput struct {
 	ClientMsgID string // optional; enables idempotency
 }
 
-// Send inserts a message and appends a new_message update to every member,
-// bumping unread for everyone except the sender. Idempotent on ClientMsgID.
+// Send inserts a message, appends a new_message update to every member (bumping
+// unread for non-senders), and — after commit — publishes a live new_message
+// frame to each member. Idempotent on ClientMsgID (duplicates publish nothing).
 func (s *Service) Send(ctx context.Context, in SendInput) (Message, error) {
 	ok, err := s.chats.IsMember(ctx, s.pool, in.ChatID, in.SenderID)
 	if err != nil {
@@ -33,11 +34,12 @@ func (s *Service) Send(ctx context.Context, in SendInput) (Message, error) {
 	}
 
 	var msg Message
+	var recipients []int64 // non-nil only when a NEW message was inserted
 	err = s.inTx(ctx, func(tx pgx.Tx) error {
 		if in.ClientMsgID != "" {
 			if existing, e := s.msgs.FindByClientMsgID(ctx, tx, in.ChatID, in.SenderID, in.ClientMsgID); e == nil {
 				msg = existing
-				return nil // duplicate send: return the original, no new updates
+				return nil
 			} else if e != ErrNotFound {
 				return e
 			}
@@ -61,7 +63,7 @@ func (s *Service) Send(ctx context.Context, in SendInput) (Message, error) {
 		if e != nil {
 			return e
 		}
-		slices.Sort(members) // deterministic lock order across fan-outs avoids deadlocks
+		slices.Sort(members)
 		payload, e := json.Marshal(messageUpdatePayload(msg))
 		if e != nil {
 			return e
@@ -79,9 +81,19 @@ func (s *Service) Send(ctx context.Context, in SendInput) (Message, error) {
 				}
 			}
 		}
+		recipients = members
 		return nil
 	})
-	return msg, err
+	if err != nil {
+		return Message{}, err
+	}
+	if s.publisher != nil && recipients != nil {
+		f := frame("new_message", messageUpdatePayload(msg))
+		for _, uid := range recipients {
+			_ = s.publisher.PublishToUser(ctx, uid, f)
+		}
+	}
+	return msg, nil
 }
 
 // MarkRead advances a member's last_read_seq, recomputes unread, and appends a
@@ -94,19 +106,21 @@ func (s *Service) MarkRead(ctx context.Context, chatID, userID, upToSeq int64) e
 	if !ok {
 		return ErrNotFound
 	}
-	return s.inTx(ctx, func(tx pgx.Tx) error {
-		// The effective read marker never moves backwards: an out-of-order or
-		// replayed read with a smaller up_to_seq must not inflate unread again.
+	var members []int64
+	var effective int64
+	var advanced bool
+	err = s.inTx(ctx, func(tx pgx.Tx) error {
 		var cur int64
 		if e := tx.QueryRow(ctx,
 			`SELECT last_read_seq FROM chat_members WHERE chat_id=$1 AND user_id=$2`,
 			chatID, userID).Scan(&cur); e != nil {
 			return e
 		}
-		effective := upToSeq
+		effective = upToSeq
 		if cur > effective {
 			effective = cur
 		}
+		advanced = effective > cur
 		unread, e := s.msgs.CountUnread(ctx, tx, chatID, userID, effective)
 		if e != nil {
 			return e
@@ -116,11 +130,12 @@ func (s *Service) MarkRead(ctx context.Context, chatID, userID, upToSeq int64) e
 			 WHERE chat_id=$1 AND user_id=$2`, chatID, userID, effective, unread); e != nil {
 			return e
 		}
-		members, e := s.chats.MemberIDs(ctx, tx, chatID)
+		m, e := s.chats.MemberIDs(ctx, tx, chatID)
 		if e != nil {
 			return e
 		}
-		slices.Sort(members) // deterministic lock order across fan-outs avoids deadlocks
+		slices.Sort(m)
+		members = m
 		payload, e := json.Marshal(map[string]any{
 			"chat_id": chatID, "user_id": userID, "up_to_seq": effective,
 		})
@@ -135,6 +150,18 @@ func (s *Service) MarkRead(ctx context.Context, chatID, userID, upToSeq int64) e
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	// Only fan out when the read marker actually advanced — a no-op re-read
+	// must not spam every member with a redundant read frame.
+	if s.publisher != nil && advanced {
+		f := frame("read", map[string]any{"chat_id": chatID, "user_id": userID, "up_to_seq": effective})
+		for _, uid := range members {
+			_ = s.publisher.PublishToUser(ctx, uid, f)
+		}
+	}
+	return nil
 }
 
 func (s *Service) inTx(ctx context.Context, fn func(pgx.Tx) error) error {
@@ -155,4 +182,27 @@ func messageUpdatePayload(m Message) map[string]any {
 		"sender_id": m.SenderID, "type": m.Type, "text": m.Text,
 		"created_at": m.CreatedAt,
 	}
+}
+
+// Typing publishes an ephemeral typing indicator to the other chat members.
+// No DB write. No-op if the user isn't a member or no publisher is attached.
+func (s *Service) Typing(ctx context.Context, chatID, userID int64) error {
+	if s.publisher == nil {
+		return nil
+	}
+	ok, err := s.chats.IsMember(ctx, s.pool, chatID, userID)
+	if err != nil || !ok {
+		return err
+	}
+	members, err := s.chats.MemberIDs(ctx, s.pool, chatID)
+	if err != nil {
+		return err
+	}
+	f := frame("typing", map[string]any{"chat_id": chatID, "user_id": userID})
+	for _, uid := range members {
+		if uid != userID {
+			_ = s.publisher.PublishToUser(ctx, uid, f)
+		}
+	}
+	return nil
 }

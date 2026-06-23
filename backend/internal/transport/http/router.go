@@ -9,7 +9,7 @@ import (
 	"github.com/messenger-denis/backend/internal/messaging"
 )
 
-func NewRouter(authSvc *auth.Service, chatSvc *messaging.Service) http.Handler {
+func NewRouter(authSvc *auth.Service, chatSvc *messaging.Service, wsHandler http.Handler) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -21,6 +21,10 @@ func NewRouter(authSvc *auth.Service, chatSvc *messaging.Service) http.Handler {
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+
+	if wsHandler != nil {
+		r.Get("/ws", wsHandler.ServeHTTP)
+	}
 
 	r.Group(func(pr chi.Router) {
 		pr.Use(AuthMiddleware(authSvc))
