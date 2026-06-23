@@ -59,3 +59,27 @@ func TestChatsRepo_ListDialogs(t *testing.T) {
 		t.Fatal("expected no last message in empty chat")
 	}
 }
+
+func TestChatsRepo_ChatPartners(t *testing.T) {
+	pool := postgres.NewTestDB(t)
+	repo := NewChatsRepo()
+	ctx := context.Background()
+	a := seedUser(t, pool, "+770")
+	b := seedUser(t, pool, "+771")
+	c := seedUser(t, pool, "+772")
+	_, _ = repo.CreatePrivateChat(ctx, pool, a, b)
+	_, _ = repo.CreatePrivateChat(ctx, pool, a, c)
+
+	partners, err := repo.ChatPartners(ctx, pool, a)
+	if err != nil {
+		t.Fatalf("ChatPartners: %v", err)
+	}
+	if len(partners) != 2 {
+		t.Fatalf("expected 2 partners, got %v", partners)
+	}
+	// b has only a as a partner.
+	bp, _ := repo.ChatPartners(ctx, pool, b)
+	if len(bp) != 1 || bp[0] != a {
+		t.Fatalf("b partners = %v; want [%d]", bp, a)
+	}
+}

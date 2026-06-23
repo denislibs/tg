@@ -136,3 +136,30 @@ func TestService_RevokeSession(t *testing.T) {
 		t.Fatalf("cache not evicted: %d entries", len(cache.m))
 	}
 }
+
+type fakeRevoker struct{ revoked []int64 }
+
+func (r *fakeRevoker) NotifyRevoked(_ context.Context, deviceID int64) error {
+	r.revoked = append(r.revoked, deviceID)
+	return nil
+}
+
+func TestService_RevokeNotifies(t *testing.T) {
+	pool := postgres.NewTestDB(t)
+	s := NewService(NewRepo(pool), "12345", func(string, ...any) {})
+	rev := &fakeRevoker{}
+	s.SetRevocationNotifier(rev)
+	ctx := context.Background()
+
+	_ = s.RequestCode(ctx, "+79991240000")
+	res, _ := s.SignIn(ctx, "+79991240000", "12345", "web", "browser")
+	_, deviceID, _ := s.Authenticate(ctx, res.Token)
+
+	ok, err := s.RevokeSession(ctx, res.User.ID, deviceID)
+	if err != nil || !ok {
+		t.Fatalf("RevokeSession = %v, %v", ok, err)
+	}
+	if len(rev.revoked) != 1 || rev.revoked[0] != deviceID {
+		t.Fatalf("notifier got %v; want [%d]", rev.revoked, deviceID)
+	}
+}

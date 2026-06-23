@@ -13,53 +13,122 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/messenger-denis/backend/internal/auth"
 	"github.com/messenger-denis/backend/internal/messaging"
+	"github.com/messenger-denis/backend/internal/presence"
 	"github.com/messenger-denis/backend/internal/realtime"
 	"github.com/messenger-denis/backend/internal/store/postgres"
 	"github.com/messenger-denis/backend/internal/transport/ws"
 	"github.com/redis/go-redis/v9"
 )
 
-func TestWS_LiveDelivery(t *testing.T) {
+type wsEnv struct {
+	url     string
+	tokenA  string
+	tokenB  string
+	userA   int64
+	deviceA int64
+	chatID  int64
+	ctx     context.Context
+	authSvc *auth.Service
+	chatSvc *messaging.Service
+	srv     *httptest.Server
+	hub     *ws.Hub
+	mr      *miniredis.Miniredis
+	rdb     *redis.Client
+}
+
+func (e *wsEnv) close() {
+	e.srv.Close()
+	e.hub.Close()
+	e.rdb.Close()
+	e.mr.Close()
+}
+
+func newWSEnv(t *testing.T) *wsEnv {
+	t.Helper()
 	pool := postgres.NewTestDB(t)
 	mr, _ := miniredis.Run()
-	defer mr.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer rdb.Close()
 	ctx := context.Background()
 
 	authSvc := auth.NewService(auth.NewRepo(pool), "12345", func(string, ...any) {})
 	chatSvc := messaging.NewService(pool)
-	chatSvc.SetPublisher(realtime.NewRedisPublisher(rdb))
+	publisher := realtime.NewRedisPublisher(rdb)
+	chatSvc.SetPublisher(publisher)
+	authSvc.SetRevocationNotifier(publisher)
+	presenceMgr := presence.NewManager(rdb, publisher, chatSvc.ChatPartners, 35*time.Second)
 	hub := ws.NewHub(ctx, rdb)
-	defer hub.Close()
-	handler := ws.NewHandler(hub, authSvc, chatSvc)
-
+	handler := ws.NewHandler(hub, authSvc, chatSvc, presenceMgr)
 	srv := httptest.NewServer(http.HandlerFunc(handler.ServeHTTP))
-	defer srv.Close()
 
-	// Seed two users + a chat directly via the services.
 	_ = authSvc.RequestCode(ctx, "+700")
 	ra, _ := authSvc.SignIn(ctx, "+700", "12345", "web", "browser")
 	_ = authSvc.RequestCode(ctx, "+701")
 	rb, _ := authSvc.SignIn(ctx, "+701", "12345", "web", "browser")
 	chatID, _ := chatSvc.CreatePrivateChat(ctx, ra.User.ID, rb.User.ID)
+	_, deviceA, _ := authSvc.Authenticate(ctx, ra.Token)
 
-	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
-	connA := dial(t, wsURL, ra.Token)
+	return &wsEnv{
+		url:     "ws" + strings.TrimPrefix(srv.URL, "http"),
+		tokenA:  ra.Token, tokenB: rb.Token,
+		userA:   ra.User.ID, deviceA: deviceA, chatID: chatID,
+		ctx:     ctx, authSvc: authSvc, chatSvc: chatSvc,
+		srv:     srv, hub: hub, mr: mr, rdb: rdb,
+	}
+}
+
+func TestWS_LiveDelivery(t *testing.T) {
+	env := newWSEnv(t)
+	defer env.close()
+
+	connA := dial(t, env.url, env.tokenA)
 	defer connA.Close()
-	connB := dial(t, wsURL, rb.Token)
+	connB := dial(t, env.url, env.tokenB)
 	defer connB.Close()
 	time.Sleep(150 * time.Millisecond) // let both register + subscribe
 
 	// A sends a message.
-	sendFrame(t, connA, "send_message", map[string]any{"chat_id": chatID, "text": "hi", "client_msg_id": "c1"})
+	sendFrame(t, connA, "send_message", map[string]any{"chat_id": env.chatID, "text": "hi", "client_msg_id": "c1"})
 
 	// A receives an ack; B receives a new_message.
-	if got := readFrameType(t, connA); got != "message_ack" && got != "new_message" {
-		t.Fatalf("A first frame = %q", got)
+	if got := readUntil(t, connA, "message_ack"); got == nil {
+		t.Fatal("A did not receive message_ack")
 	}
 	if got := readUntil(t, connB, "new_message"); got == nil {
 		t.Fatal("B did not receive new_message")
+	}
+}
+
+func TestWS_Presence(t *testing.T) {
+	env := newWSEnv(t)
+	defer env.close()
+
+	connA := dial(t, env.url, env.tokenA)
+	defer connA.Close()
+	time.Sleep(150 * time.Millisecond)
+	// B comes online → A should get a presence(online) frame for B.
+	connB := dial(t, env.url, env.tokenB)
+	defer connB.Close()
+
+	if data := readUntil(t, connA, "presence"); data == nil {
+		t.Fatal("A did not receive B's presence")
+	}
+}
+
+func TestWS_RevokeClosesSocket(t *testing.T) {
+	env := newWSEnv(t)
+	defer env.close()
+
+	connA := dial(t, env.url, env.tokenA)
+	defer connA.Close()
+	time.Sleep(150 * time.Millisecond)
+
+	// Revoke A's session → A's socket must close (next read errors).
+	if _, err := env.authSvc.RevokeSession(env.ctx, env.userA, env.deviceA); err != nil {
+		t.Fatalf("revoke: %v", err)
+	}
+	_ = connA.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, _, err := connA.ReadMessage(); err == nil {
+		t.Fatal("expected socket to be closed after revoke")
 	}
 }
 

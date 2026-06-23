@@ -17,19 +17,32 @@ const (
 	sendBuffer     = 32
 )
 
+// Presence is the subset of presence.Manager the connection uses (kept as an
+// interface so ws doesn't import presence).
+type Presence interface {
+	Online(ctx context.Context, userID int64) error
+	Heartbeat(ctx context.Context, userID int64) error
+	Offline(ctx context.Context, userID int64) error
+}
+
 // Conn is one client WebSocket connection. It implements Sink.
 type Conn struct {
 	ws       *websocket.Conn
 	hub      *Hub
 	svc      *messaging.Service
+	presence Presence
 	userID   int64
 	deviceID int64
 	send     chan []byte
 }
 
-func newConn(ws *websocket.Conn, hub *Hub, svc *messaging.Service, userID, deviceID int64) *Conn {
-	return &Conn{ws: ws, hub: hub, svc: svc, userID: userID, deviceID: deviceID, send: make(chan []byte, sendBuffer)}
+func newConn(ws *websocket.Conn, hub *Hub, svc *messaging.Service, presence Presence, userID, deviceID int64) *Conn {
+	return &Conn{ws: ws, hub: hub, svc: svc, presence: presence, userID: userID, deviceID: deviceID, send: make(chan []byte, sendBuffer)}
 }
+
+// Close force-closes the underlying socket (used by the hub on revoke). The
+// read pump then exits and run() cleans up.
+func (c *Conn) Close() { _ = c.ws.Close() }
 
 // Send queues a frame for the writer. Drops the frame if the buffer is full
 // (a stuck client must not block fan-out).
@@ -41,10 +54,20 @@ func (c *Conn) Send(frame []byte) {
 }
 
 func (c *Conn) run(ctx context.Context) {
-	c.hub.Register(ctx, c.userID, c)
-	go c.writePump()
+	c.hub.Register(ctx, c.userID, c.deviceID, c)
+	if c.presence != nil {
+		_ = c.presence.Online(ctx, c.userID)
+	}
+	go c.writePump(ctx)
 	c.readPump(ctx) // blocks until the connection closes
-	c.hub.Unregister(ctx, c.userID, c)
+	// Cleanup must not ride the request context: on an abrupt client disconnect
+	// it may already be cancelled, which would silently skip the Redis
+	// unsubscribe and the offline fan-out (last_seen / presence(offline)).
+	cleanupCtx := context.Background()
+	lastUser := c.hub.Unregister(cleanupCtx, c.userID, c.deviceID, c)
+	if c.presence != nil && lastUser {
+		_ = c.presence.Offline(cleanupCtx, c.userID)
+	}
 	close(c.send)
 }
 
@@ -105,7 +128,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 	}
 }
 
-func (c *Conn) writePump() {
+func (c *Conn) writePump(ctx context.Context) {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
@@ -123,6 +146,9 @@ func (c *Conn) writePump() {
 				return
 			}
 		case <-ticker.C:
+			if c.presence != nil {
+				_ = c.presence.Heartbeat(ctx, c.userID)
+			}
 			_ = c.ws.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.ws.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return

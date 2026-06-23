@@ -76,3 +76,8 @@ func (s *Service) CreatePrivateChat(ctx context.Context, me, other int64) (int64
 func (s *Service) ListDialogs(ctx context.Context, userID int64) ([]Dialog, error) {
 	return s.chats.ListDialogs(ctx, s.pool, userID)
 }
+
+// ChatPartners returns the user ids that share a chat with userID.
+func (s *Service) ChatPartners(ctx context.Context, userID int64) ([]int64, error) {
+	return s.chats.ChatPartners(ctx, s.pool, userID)
+}
