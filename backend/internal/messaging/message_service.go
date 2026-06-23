@@ -108,6 +108,7 @@ func (s *Service) MarkRead(ctx context.Context, chatID, userID, upToSeq int64) e
 	}
 	var members []int64
 	var effective int64
+	var advanced bool
 	err = s.inTx(ctx, func(tx pgx.Tx) error {
 		var cur int64
 		if e := tx.QueryRow(ctx,
@@ -119,6 +120,7 @@ func (s *Service) MarkRead(ctx context.Context, chatID, userID, upToSeq int64) e
 		if cur > effective {
 			effective = cur
 		}
+		advanced = effective > cur
 		unread, e := s.msgs.CountUnread(ctx, tx, chatID, userID, effective)
 		if e != nil {
 			return e
@@ -151,7 +153,9 @@ func (s *Service) MarkRead(ctx context.Context, chatID, userID, upToSeq int64) e
 	if err != nil {
 		return err
 	}
-	if s.publisher != nil {
+	// Only fan out when the read marker actually advanced — a no-op re-read
+	// must not spam every member with a redundant read frame.
+	if s.publisher != nil && advanced {
 		f := frame("read", map[string]any{"chat_id": chatID, "user_id": userID, "up_to_seq": effective})
 		for _, uid := range members {
 			_ = s.publisher.PublishToUser(ctx, uid, f)

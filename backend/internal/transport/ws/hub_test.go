@@ -13,7 +13,15 @@ import (
 type fakeSink struct{ ch chan []byte }
 
 func newFakeSink() *fakeSink { return &fakeSink{ch: make(chan []byte, 4)} }
-func (s *fakeSink) Send(frame []byte) { s.ch <- frame }
+
+// Send is non-blocking so it can never stall hub.deliver while it holds the
+// read lock (mirrors production Conn.Send behaviour).
+func (s *fakeSink) Send(frame []byte) {
+	select {
+	case s.ch <- frame:
+	default:
+	}
+}
 
 func TestHub_DeliversPublishedFrame(t *testing.T) {
 	mr, _ := miniredis.Run()

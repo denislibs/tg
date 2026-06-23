@@ -54,9 +54,10 @@ func main() {
 		Addr:              cfg.HTTPAddr,
 		Handler:           httptransport.NewRouter(authSvc, chatSvc, wsHandler),
 		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       10 * time.Second,
-		// WriteTimeout intentionally omitted (0): it would terminate long-lived
-		// WS connections. Per-write deadlines in the write pump bound writes.
+		// ReadTimeout and WriteTimeout are intentionally omitted (0): both would
+		// terminate long-lived WS connections. Slow-header attacks are bounded by
+		// ReadHeaderTimeout; WS read/write liveness is governed by the conn pumps
+		// (ping/pong + per-write deadlines).
 		IdleTimeout: 120 * time.Second,
 	}
 
