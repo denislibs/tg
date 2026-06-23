@@ -15,8 +15,8 @@ type Update struct {
 }
 
 type UserState struct {
-	Pts  int64
-	Date int64
+	Pts  int64 `json:"pts"`
+	Date int64 `json:"date"`
 }
 
 type UpdatesRepo struct{}
