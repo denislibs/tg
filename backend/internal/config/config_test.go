@@ -28,3 +28,17 @@ func TestLoad_MissingDatabaseURL(t *testing.T) {
 		t.Fatal("expected error when DATABASE_URL is empty")
 	}
 }
+
+func TestLoad_MinioDefaults(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/db")
+	c, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.MinioEndpoint != "localhost:9000" || c.MinioBucket != "media" {
+		t.Errorf("minio defaults wrong: %+v", c)
+	}
+	if c.MinioUseSSL {
+		t.Error("MinioUseSSL should default to false")
+	}
+}
