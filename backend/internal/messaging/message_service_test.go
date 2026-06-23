@@ -64,6 +64,30 @@ func TestService_Send_IdempotentClientMsgID(t *testing.T) {
 	}
 }
 
+func TestService_MarkRead_OutOfOrderDoesNotRegress(t *testing.T) {
+	pool := postgres.NewTestDB(t)
+	s := NewService(pool)
+	ctx := context.Background()
+	a := seedUser(t, pool, "+785")
+	b := seedUser(t, pool, "+786")
+	chatID, _ := s.CreatePrivateChat(ctx, a, b)
+	for i := 0; i < 3; i++ {
+		_, _ = s.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "m"})
+	}
+	// Read up to 3, then a stale read up to 1 arrives: marker must not move back
+	// and unread must stay 0.
+	if err := s.MarkRead(ctx, chatID, b, 3); err != nil {
+		t.Fatalf("MarkRead(3): %v", err)
+	}
+	if err := s.MarkRead(ctx, chatID, b, 1); err != nil {
+		t.Fatalf("MarkRead(1): %v", err)
+	}
+	d, _ := s.ListDialogs(ctx, b)
+	if d[0].LastReadSeq != 3 || d[0].UnreadCount != 0 {
+		t.Fatalf("after stale read: lastRead=%d unread=%d, want 3/0", d[0].LastReadSeq, d[0].UnreadCount)
+	}
+}
+
 func TestService_MarkRead(t *testing.T) {
 	pool := postgres.NewTestDB(t)
 	s := NewService(pool)

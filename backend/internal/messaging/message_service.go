@@ -3,6 +3,7 @@ package messaging
 import (
 	"context"
 	"encoding/json"
+	"slices"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -60,6 +61,7 @@ func (s *Service) Send(ctx context.Context, in SendInput) (Message, error) {
 		if e != nil {
 			return e
 		}
+		slices.Sort(members) // deterministic lock order across fan-outs avoids deadlocks
 		payload, e := json.Marshal(messageUpdatePayload(msg))
 		if e != nil {
 			return e
@@ -93,21 +95,34 @@ func (s *Service) MarkRead(ctx context.Context, chatID, userID, upToSeq int64) e
 		return ErrNotFound
 	}
 	return s.inTx(ctx, func(tx pgx.Tx) error {
-		unread, e := s.msgs.CountUnread(ctx, tx, chatID, userID, upToSeq)
+		// The effective read marker never moves backwards: an out-of-order or
+		// replayed read with a smaller up_to_seq must not inflate unread again.
+		var cur int64
+		if e := tx.QueryRow(ctx,
+			`SELECT last_read_seq FROM chat_members WHERE chat_id=$1 AND user_id=$2`,
+			chatID, userID).Scan(&cur); e != nil {
+			return e
+		}
+		effective := upToSeq
+		if cur > effective {
+			effective = cur
+		}
+		unread, e := s.msgs.CountUnread(ctx, tx, chatID, userID, effective)
 		if e != nil {
 			return e
 		}
 		if _, e := tx.Exec(ctx,
-			`UPDATE chat_members SET last_read_seq=GREATEST(last_read_seq,$3), unread_count=$4
-			 WHERE chat_id=$1 AND user_id=$2`, chatID, userID, upToSeq, unread); e != nil {
+			`UPDATE chat_members SET last_read_seq=$3, unread_count=$4
+			 WHERE chat_id=$1 AND user_id=$2`, chatID, userID, effective, unread); e != nil {
 			return e
 		}
 		members, e := s.chats.MemberIDs(ctx, tx, chatID)
 		if e != nil {
 			return e
 		}
+		slices.Sort(members) // deterministic lock order across fan-outs avoids deadlocks
 		payload, e := json.Marshal(map[string]any{
-			"chat_id": chatID, "user_id": userID, "up_to_seq": upToSeq,
+			"chat_id": chatID, "user_id": userID, "up_to_seq": effective,
 		})
 		if e != nil {
 			return e

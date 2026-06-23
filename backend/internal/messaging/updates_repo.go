@@ -3,6 +3,7 @@ package messaging
 import (
 	"context"
 	"encoding/json"
+	"errors"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -44,7 +45,7 @@ func (r *UpdatesRepo) AppendUpdate(ctx context.Context, q Querier, userID int64,
 func (r *UpdatesRepo) GetUserState(ctx context.Context, q Querier, userID int64) (UserState, error) {
 	var s UserState
 	err := q.QueryRow(ctx, `SELECT pts, date FROM user_state WHERE user_id=$1`, userID).Scan(&s.Pts, &s.Date)
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return UserState{}, nil
 	}
 	return s, err

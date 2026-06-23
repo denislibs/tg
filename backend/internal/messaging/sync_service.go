@@ -52,6 +52,9 @@ type Difference struct {
 // GetDifference returns updates with pts>sincePts, split by kind. If the client is
 // too far behind, TooLong is set so it can do a full resync (snapshot via ListDialogs).
 func (s *Service) GetDifference(ctx context.Context, userID, sincePts int64) (Difference, error) {
+	if sincePts < 0 {
+		sincePts = 0
+	}
 	state, err := s.updates.GetUserState(ctx, s.pool, userID)
 	if err != nil {
 		return Difference{}, err
