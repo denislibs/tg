@@ -1,8 +1,12 @@
 # Backend Clean Architecture + DI (fx) — Design
 
 **Date:** 2026-06-24
-**Status:** approved for planning
+**Status:** implemented
 **Scope:** Refactor the existing, fully-working Phase 0 backend (`backend/`) to canonical Clean Architecture with a `uber/fx` DI container. **Behavior and the public API are unchanged** (`docs/contracts.md` / `openapi.yaml` stay identical).
+
+## Outcome
+
+Implemented across slices 0–6 with no behavior/API change (full suite + race + docker e2e green; `contracts.md`/`openapi.yaml` unchanged). All features migrated to usecases (ports) with adapter implementations: auth, chat/message/sync/reactions, realtime publisher + presence, media, and push. Delivery lives at `internal/adapter/delivery/{http,ws}`. `internal/store/{postgres,redisstore}` serve as the infra/db + infra/redis layer (connection, migrations, redis client) while repositories live in `internal/adapter/repo/postgres`. Layer purity is verified by grep: `internal/domain` imports nothing from this module, and non-test `internal/usecase` files import only domain/their own ports (no adapter/app/store). The fx graph was tidied (dead `providePushRepo` removed; the push repo is built directly in the server assembler).
 
 ## 1. Goal
 
