@@ -9,11 +9,11 @@ import (
 	cacheredis "github.com/messenger-denis/backend/internal/adapter/cache/redis"
 	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
 	"github.com/messenger-denis/backend/internal/config"
-	"github.com/messenger-denis/backend/internal/messaging"
 	"github.com/messenger-denis/backend/internal/store/miniostore"
 	"github.com/messenger-denis/backend/internal/store/postgres"
 	"github.com/messenger-denis/backend/internal/store/redisstore"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
+	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/fx"
 )
@@ -84,8 +84,30 @@ func provideAuthUsecase(cfg *config.Config, repo *pgadapter.AuthRepo) *usecaseau
 	return usecaseauth.New(repo, repo, repo, cfg.DevOTPCode, log.Printf)
 }
 
-func provideChatService(pool *pgxpool.Pool) *messaging.Service {
-	return messaging.NewService(pool)
+func provideTxManager(pool *pgxpool.Pool) *pgadapter.TxManager { return pgadapter.NewTxManager(pool) }
+func provideChatsRepo(pool *pgxpool.Pool) *pgadapter.ChatsRepo { return pgadapter.NewChatsRepo(pool) }
+func provideMessagesRepo(pool *pgxpool.Pool) *pgadapter.MessagesRepo {
+	return pgadapter.NewMessagesRepo(pool)
+}
+func provideUpdatesRepo(pool *pgxpool.Pool) *pgadapter.UpdatesRepo {
+	return pgadapter.NewUpdatesRepo(pool)
+}
+func provideReactionsRepo(pool *pgxpool.Pool) *pgadapter.ReactionsRepo {
+	return pgadapter.NewReactionsRepo(pool)
+}
+func provideMediaAccessRepo(pool *pgxpool.Pool) *pgadapter.MediaAccessRepo {
+	return pgadapter.NewMediaAccessRepo(pool)
+}
+
+func provideChatUsecase(
+	tx *pgadapter.TxManager,
+	chats *pgadapter.ChatsRepo,
+	msgs *pgadapter.MessagesRepo,
+	updates *pgadapter.UpdatesRepo,
+	reactions *pgadapter.ReactionsRepo,
+	mediaAccess *pgadapter.MediaAccessRepo,
+) *usecasechat.Interactor {
+	return usecasechat.New(tx, chats, msgs, updates, reactions, mediaAccess)
 }
 
 func newSessionCache(client *redis.Client) usecaseauth.SessionCache {

@@ -12,12 +12,12 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gorilla/websocket"
 	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
-	"github.com/messenger-denis/backend/internal/messaging"
 	"github.com/messenger-denis/backend/internal/presence"
 	"github.com/messenger-denis/backend/internal/realtime"
 	"github.com/messenger-denis/backend/internal/store/postgres"
 	"github.com/messenger-denis/backend/internal/transport/ws"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
+	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -30,7 +30,7 @@ type wsEnv struct {
 	chatID  int64
 	ctx     context.Context
 	authUC  *usecaseauth.Interactor
-	chatSvc *messaging.Service
+	chatSvc *usecasechat.Interactor
 	srv     *httptest.Server
 	hub     *ws.Hub
 	mr      *miniredis.Miniredis
@@ -53,7 +53,14 @@ func newWSEnv(t *testing.T) *wsEnv {
 
 	repo := pgadapter.NewAuthRepo(pool)
 	authUC := usecaseauth.New(repo, repo, repo, "12345", func(string, ...any) {})
-	chatSvc := messaging.NewService(pool)
+	chatSvc := usecasechat.New(
+		pgadapter.NewTxManager(pool),
+		pgadapter.NewChatsRepo(pool),
+		pgadapter.NewMessagesRepo(pool),
+		pgadapter.NewUpdatesRepo(pool),
+		pgadapter.NewReactionsRepo(pool),
+		pgadapter.NewMediaAccessRepo(pool),
+	)
 	publisher := realtime.NewRedisPublisher(rdb)
 	chatSvc.SetPublisher(publisher)
 	authUC.SetRevocationNotifier(publisher)

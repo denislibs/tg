@@ -10,9 +10,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
-	"github.com/messenger-denis/backend/internal/messaging"
 	"github.com/messenger-denis/backend/internal/store/postgres"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
+	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 )
 
 // newAuthUC builds the auth usecase from the postgres adapter (which satisfies
@@ -22,10 +22,21 @@ func newAuthUC(pool *pgxpool.Pool) *usecaseauth.Interactor {
 	return usecaseauth.New(r, r, r, "12345", func(string, ...any) {})
 }
 
+// newChatUC builds the chat usecase from the postgres adapters for delivery tests.
+func newChatUC(pool *pgxpool.Pool) *usecasechat.Interactor {
+	return usecasechat.New(
+		pgadapter.NewTxManager(pool),
+		pgadapter.NewChatsRepo(pool),
+		pgadapter.NewMessagesRepo(pool),
+		pgadapter.NewUpdatesRepo(pool),
+		pgadapter.NewReactionsRepo(pool),
+		pgadapter.NewMediaAccessRepo(pool),
+	)
+}
+
 func newTestRouter(t *testing.T) http.Handler {
 	pool := postgres.NewTestDB(t)
-	chatSvc := messaging.NewService(pool)
-	return NewRouter(newAuthUC(pool), chatSvc, nil, nil, nil)
+	return NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil)
 }
 
 func postJSON(t *testing.T, h http.Handler, path string, body any) *httptest.ResponseRecorder {
