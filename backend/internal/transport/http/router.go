@@ -20,5 +20,10 @@ func NewRouter(svc *auth.Service) http.Handler {
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+
+	r.Group(func(pr chi.Router) {
+		pr.Use(AuthMiddleware(svc))
+		pr.Get("/me", MeHandler)
+	})
 	return r
 }
