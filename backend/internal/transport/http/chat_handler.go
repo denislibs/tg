@@ -234,7 +234,7 @@ func messageJSON(m messaging.Message) map[string]any {
 	return map[string]any{
 		"id": m.ID, "chat_id": m.ChatID, "seq": m.Seq, "sender_id": m.SenderID,
 		"type": m.Type, "text": m.Text, "reply_to_id": m.ReplyToID,
-		"created_at": m.CreatedAt, "deleted": m.Deleted,
+		"media_id": m.MediaID, "created_at": m.CreatedAt, "deleted": m.Deleted,
 	}
 }
 

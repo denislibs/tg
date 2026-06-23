@@ -11,9 +11,11 @@ import (
 
 	"github.com/messenger-denis/backend/internal/auth"
 	"github.com/messenger-denis/backend/internal/config"
+	"github.com/messenger-denis/backend/internal/media"
 	"github.com/messenger-denis/backend/internal/messaging"
 	"github.com/messenger-denis/backend/internal/presence"
 	"github.com/messenger-denis/backend/internal/realtime"
+	"github.com/messenger-denis/backend/internal/store/miniostore"
 	"github.com/messenger-denis/backend/internal/store/postgres"
 	"github.com/messenger-denis/backend/internal/store/redisstore"
 	httptransport "github.com/messenger-denis/backend/internal/transport/http"
@@ -54,9 +56,19 @@ func main() {
 		log.Printf("session cache + realtime + presence enabled (redis)")
 	}
 
+	var mediaHandler *httptransport.MediaHandler
+	if mc, err := miniostore.Connect(cfg.MinioEndpoint, cfg.MinioAccessKey, cfg.MinioSecretKey, cfg.MinioBucket, cfg.MinioUseSSL); err != nil {
+		log.Printf("minio unavailable, media disabled: %v", err)
+	} else if err := mc.EnsureBucket(ctx); err != nil {
+		log.Printf("minio bucket setup failed, media disabled: %v", err)
+	} else {
+		mediaHandler = httptransport.NewMediaHandler(media.NewService(media.NewRepo(pool), mc))
+		log.Printf("media enabled (minio bucket %q)", cfg.MinioBucket)
+	}
+
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httptransport.NewRouter(authSvc, chatSvc, wsHandler),
+		Handler:           httptransport.NewRouter(authSvc, chatSvc, wsHandler, mediaHandler),
 		ReadHeaderTimeout: 5 * time.Second,
 		// ReadTimeout and WriteTimeout are intentionally omitted (0): both would
 		// terminate long-lived WS connections. Slow-header attacks are bounded by

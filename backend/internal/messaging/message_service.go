@@ -16,6 +16,7 @@ type SendInput struct {
 	Text        string
 	ReplyToID   *int64
 	ClientMsgID string // optional; enables idempotency
+	MediaID     *int64
 }
 
 // Send inserts a message, appends a new_message update to every member (bumping
@@ -31,6 +32,13 @@ func (s *Service) Send(ctx context.Context, in SendInput) (Message, error) {
 	}
 	if in.Type == "" {
 		in.Type = "text"
+	}
+	if in.MediaID != nil {
+		var ownerID int64
+		err := s.pool.QueryRow(ctx, `SELECT owner_id FROM media WHERE id=$1`, *in.MediaID).Scan(&ownerID)
+		if err != nil || ownerID != in.SenderID {
+			return Message{}, ErrNotFound
+		}
 	}
 
 	var msg Message
@@ -55,6 +63,7 @@ func (s *Service) Send(ctx context.Context, in SendInput) (Message, error) {
 		msg, e = s.msgs.Insert(ctx, tx, Message{
 			ChatID: in.ChatID, Seq: seq, SenderID: in.SenderID,
 			Type: in.Type, Text: in.Text, ReplyToID: in.ReplyToID, ClientMsgID: cmid,
+			MediaID: in.MediaID,
 		})
 		if e != nil {
 			return e
@@ -180,7 +189,7 @@ func messageUpdatePayload(m Message) map[string]any {
 	return map[string]any{
 		"chat_id": m.ChatID, "msg_id": m.ID, "seq": m.Seq,
 		"sender_id": m.SenderID, "type": m.Type, "text": m.Text,
-		"created_at": m.CreatedAt,
+		"media_id": m.MediaID, "created_at": m.CreatedAt,
 	}
 }
 
