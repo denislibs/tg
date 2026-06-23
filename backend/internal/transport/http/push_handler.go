@@ -33,7 +33,7 @@ func (h *PushHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body subscribeBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Endpoint == "" {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Endpoint == "" || body.P256dh == "" || body.Auth == "" {
 		writeError(w, http.StatusBadRequest, "endpoint, p256dh, auth required")
 		return
 	}

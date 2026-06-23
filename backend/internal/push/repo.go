@@ -21,9 +21,11 @@ func NewRepo(pool *pgxpool.Pool) *Repo { return &Repo{pool: pool} }
 // AddSubscription upserts a subscription for a device (keyed by endpoint).
 func (r *Repo) AddSubscription(ctx context.Context, deviceID int64, s Subscription) error {
 	_, err := r.pool.Exec(ctx,
+		// On conflict keep the original device_id (the endpoint is owned by whoever
+		// first registered it) — only refresh the rotating keys.
 		`INSERT INTO push_subscriptions (device_id, endpoint, p256dh, auth)
 		 VALUES ($1,$2,$3,$4)
-		 ON CONFLICT (endpoint) DO UPDATE SET device_id=$1, p256dh=$3, auth=$4`,
+		 ON CONFLICT (endpoint) DO UPDATE SET p256dh=$3, auth=$4`,
 		deviceID, s.Endpoint, s.P256dh, s.Auth)
 	return err
 }

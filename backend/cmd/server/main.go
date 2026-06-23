@@ -32,7 +32,8 @@ func main() {
 	if err := postgres.Migrate(cfg.DatabaseURL); err != nil {
 		log.Fatalf("migrate: %v", err)
 	}
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel() // cancels the push worker (and other ctx users) on shutdown
 	pool, err := postgres.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("connect: %v", err)

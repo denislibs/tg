@@ -55,4 +55,13 @@ func TestWorker_SendsAndPrunesGone(t *testing.T) {
 	if len(subs) != 0 {
 		t.Fatalf("expected subscription pruned after 410, got %d", len(subs))
 	}
+
+	// The job was ACKed → no pending entries remain.
+	pending, err := rdb.XPending(context.Background(), QueueStream, consumerGroup).Result()
+	if err != nil {
+		t.Fatalf("xpending: %v", err)
+	}
+	if pending.Count != 0 {
+		t.Fatalf("expected 0 pending entries after ack, got %d", pending.Count)
+	}
 }

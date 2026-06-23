@@ -1,8 +1,8 @@
 package push
 
 import (
-	"bytes"
 	"context"
+	"io"
 
 	webpush "github.com/SherClockHolmes/webpush-go"
 )
@@ -32,6 +32,6 @@ func (s *WebPushSender) Send(ctx context.Context, sub Subscription, payload []by
 		return 0, err
 	}
 	defer resp.Body.Close()
-	_, _ = bytes.NewBuffer(nil).ReadFrom(resp.Body)
+	_, _ = io.Copy(io.Discard, resp.Body)
 	return resp.StatusCode, nil
 }
