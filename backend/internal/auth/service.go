@@ -14,7 +14,12 @@ type Service struct {
 	repo    *Repo
 	devCode string // fixed dev OTP, also logged
 	logf    func(format string, args ...any)
+	cache   SessionCache
 }
+
+// SetCache attaches a session cache (optional). When nil, Authenticate always
+// resolves via Postgres.
+func (s *Service) SetCache(c SessionCache) { s.cache = c }
 
 func NewService(repo *Repo, devCode string, logf func(string, ...any)) *Service {
 	return &Service{repo: repo, devCode: devCode, logf: logf}
@@ -68,7 +73,39 @@ func (s *Service) SignIn(ctx context.Context, rawPhone, suppliedCode, deviceName
 	return SignInResult{Token: token, User: user}, nil
 }
 
-// Authenticate resolves a raw token to a user.
-func (s *Service) Authenticate(ctx context.Context, token string) (User, error) {
-	return s.repo.UserByTokenHash(ctx, HashToken(token))
+// Authenticate resolves a raw token to its user and device id, using the cache
+// when available and falling back to Postgres (then populating the cache).
+func (s *Service) Authenticate(ctx context.Context, token string) (User, int64, error) {
+	hash := HashToken(token)
+	if s.cache != nil {
+		if cs, err := s.cache.GetSession(ctx, hash); err == nil && cs != nil {
+			return cs.User, cs.DeviceID, nil
+		}
+	}
+	user, deviceID, err := s.repo.SessionByTokenHash(ctx, hash)
+	if err != nil {
+		return User{}, 0, err
+	}
+	if s.cache != nil {
+		_ = s.cache.SetSession(ctx, hash, CachedSession{User: user, DeviceID: deviceID}, SessionCacheTTL)
+	}
+	return user, deviceID, nil
+}
+
+// ListSessions returns the user's devices.
+func (s *Service) ListSessions(ctx context.Context, userID int64) ([]Device, error) {
+	return s.repo.ListDevices(ctx, userID)
+}
+
+// RevokeSession deletes a user's device and evicts its cached session. Returns
+// false if the device does not belong to the user / does not exist.
+func (s *Service) RevokeSession(ctx context.Context, userID, deviceID int64) (bool, error) {
+	tokenHash, found, err := s.repo.DeleteDevice(ctx, userID, deviceID)
+	if err != nil || !found {
+		return false, err
+	}
+	if s.cache != nil {
+		_ = s.cache.DelSession(ctx, tokenHash)
+	}
+	return true, nil
 }

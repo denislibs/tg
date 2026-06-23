@@ -21,7 +21,7 @@ func AuthMiddleware(svc *auth.Service) func(http.Handler) http.Handler {
 				writeError(w, http.StatusUnauthorized, "missing token")
 				return
 			}
-			user, err := svc.Authenticate(r.Context(), token)
+			user, _, err := svc.Authenticate(r.Context(), token)
 			if err != nil {
 				writeError(w, http.StatusUnauthorized, "invalid token")
 				return
