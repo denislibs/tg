@@ -10,13 +10,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/messenger-denis/backend/internal/config"
 	"github.com/messenger-denis/backend/internal/media"
-	"github.com/messenger-denis/backend/internal/messaging"
 	"github.com/messenger-denis/backend/internal/presence"
 	"github.com/messenger-denis/backend/internal/push"
 	"github.com/messenger-denis/backend/internal/realtime"
 	httptransport "github.com/messenger-denis/backend/internal/transport/http"
 	"github.com/messenger-denis/backend/internal/transport/ws"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
+	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 	"go.uber.org/fx"
 )
 
@@ -30,8 +30,8 @@ type serverParams struct {
 	Pool    *pgxpool.Pool
 	Redis   RedisResult
 	Minio   MinioResult
-	AuthUC  *usecaseauth.Interactor
-	ChatSvc *messaging.Service
+	AuthUC *usecaseauth.Interactor
+	ChatUC *usecasechat.Interactor
 }
 
 // registerServer wires the (optional) realtime/push/media features onto the
@@ -42,19 +42,19 @@ func registerServer(p serverParams) {
 	if p.Redis.OK {
 		p.AuthUC.SetCache(redisSessionCache(p.Redis))
 		publisher := realtime.NewRedisPublisher(p.Redis.Client)
-		p.ChatSvc.SetPublisher(publisher)
+		p.ChatUC.SetPublisher(publisher)
 		p.AuthUC.SetRevocationNotifier(publisher)
-		presenceMgr := presence.NewManager(p.Redis.Client, publisher, p.ChatSvc.ChatPartners, 35*time.Second)
+		presenceMgr := presence.NewManager(p.Redis.Client, publisher, p.ChatUC.ChatPartners, 35*time.Second)
 		hub := ws.NewHub(p.Ctx, p.Redis.Client)
 		p.LC.Append(fx.Hook{OnStop: func(context.Context) error { return hub.Close() }})
-		wsHandler = ws.NewHandler(hub, p.AuthUC, p.ChatSvc, presenceMgr)
+		wsHandler = ws.NewHandler(hub, p.AuthUC, p.ChatUC, presenceMgr)
 		log.Printf("session cache + realtime + presence enabled (redis)")
 	}
 
 	var pushHandler *httptransport.PushHandler
 	if p.Redis.OK && p.Cfg.VAPIDPublicKey != "" && p.Cfg.VAPIDPrivateKey != "" {
 		pushSvc := push.NewService(p.Redis.Client, p.Pool)
-		p.ChatSvc.SetNotifier(pushSvc)
+		p.ChatUC.SetNotifier(pushSvc)
 		sender := push.NewWebPushSender(p.Cfg.VAPIDPublicKey, p.Cfg.VAPIDPrivateKey, p.Cfg.VAPIDSubject)
 		worker := push.NewWorker(p.Redis.Client, p.Pool, sender)
 		p.LC.Append(fx.Hook{OnStart: func(context.Context) error { go worker.Run(p.Ctx); return nil }})
@@ -66,13 +66,13 @@ func registerServer(p serverParams) {
 
 	var mediaHandler *httptransport.MediaHandler
 	if p.Minio.OK {
-		mediaHandler = httptransport.NewMediaHandler(media.NewService(media.NewRepo(p.Pool), p.Minio.Client), p.ChatSvc)
+		mediaHandler = httptransport.NewMediaHandler(media.NewService(media.NewRepo(p.Pool), p.Minio.Client), p.ChatUC)
 		log.Printf("media enabled (minio bucket %q)", p.Cfg.MinioBucket)
 	}
 
 	srv := &http.Server{
 		Addr:              p.Cfg.HTTPAddr,
-		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatSvc, wsHandler, mediaHandler, pushHandler),
+		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, pushHandler),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}

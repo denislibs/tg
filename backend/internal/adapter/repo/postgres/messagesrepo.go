@@ -1,4 +1,4 @@
-package messaging
+package postgres
 
 import (
 	"context"
@@ -6,49 +6,45 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/messenger-denis/backend/internal/domain"
+	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 )
 
-type Message struct {
-	ID          int64
-	ChatID      int64
-	Seq         int64
-	SenderID    int64
-	Type        string
-	Text        string
-	ReplyToID   *int64
-	ClientMsgID *string
-	MediaID     *int64
-	CreatedAt   time.Time
-	Deleted     bool
-}
+// MessagesRepo is a postgres-backed adapter implementing the chat usecase's MessageRepo port.
+type MessagesRepo struct{ pool *pgxpool.Pool }
 
-type MessagesRepo struct{}
+var _ usecasechat.MessageRepo = (*MessagesRepo)(nil)
 
-func NewMessagesRepo() *MessagesRepo { return &MessagesRepo{} }
+func NewMessagesRepo(pool *pgxpool.Pool) *MessagesRepo { return &MessagesRepo{pool: pool} }
 
 // NextSeq atomically increments and returns the chat's sequence counter.
-func (r *MessagesRepo) NextSeq(ctx context.Context, q Querier, chatID int64) (int64, error) {
+func (r *MessagesRepo) NextSeq(ctx context.Context, chatID int64) (int64, error) {
+	q := querier(ctx, r.pool)
 	var seq int64
 	err := q.QueryRow(ctx,
 		`UPDATE chats SET last_seq = last_seq + 1 WHERE id=$1 RETURNING last_seq`,
 		chatID).Scan(&seq)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, ErrNotFound
+		return 0, domain.ErrNotFound
 	}
 	return seq, err
 }
 
-// FindByClientMsgID returns an existing message for idempotent sends, or ErrNotFound.
-func (r *MessagesRepo) FindByClientMsgID(ctx context.Context, q Querier, chatID, senderID int64, clientMsgID string) (Message, error) {
-	return r.scanOne(q.QueryRow(ctx,
+// FindByClientMsgID returns an existing message for idempotent sends, or domain.ErrNotFound.
+func (r *MessagesRepo) FindByClientMsgID(ctx context.Context, chatID, senderID int64, clientMsgID string) (domain.Message, error) {
+	q := querier(ctx, r.pool)
+	return scanOneMessage(q.QueryRow(ctx,
 		`SELECT id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at
 		 FROM messages WHERE chat_id=$1 AND sender_id=$2 AND client_msg_id=$3`,
 		chatID, senderID, clientMsgID))
 }
 
 // Insert writes a new message row.
-func (r *MessagesRepo) Insert(ctx context.Context, q Querier, m Message) (Message, error) {
-	return r.scanOne(q.QueryRow(ctx,
+func (r *MessagesRepo) Insert(ctx context.Context, m domain.Message) (domain.Message, error) {
+	q := querier(ctx, r.pool)
+	return scanOneMessage(q.QueryRow(ctx,
 		`INSERT INTO messages (chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 		 RETURNING id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at`,
@@ -58,7 +54,8 @@ func (r *MessagesRepo) Insert(ctx context.Context, q Querier, m Message) (Messag
 // GetHistory returns up to limit messages around offsetSeq. addOffset>0 fetches
 // older messages (seq < offsetSeq); addOffset<=0 fetches newer (seq > offsetSeq).
 // offsetSeq==0 means "from the newest".
-func (r *MessagesRepo) GetHistory(ctx context.Context, q Querier, chatID, offsetSeq int64, addOffset, limit int) ([]Message, error) {
+func (r *MessagesRepo) GetHistory(ctx context.Context, chatID, offsetSeq int64, addOffset, limit int) ([]domain.Message, error) {
+	q := querier(ctx, r.pool)
 	var rows pgx.Rows
 	var err error
 	switch {
@@ -79,9 +76,9 @@ func (r *MessagesRepo) GetHistory(ctx context.Context, q Querier, chatID, offset
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Message
+	var out []domain.Message
 	for rows.Next() {
-		m, err := r.scanRow(rows)
+		m, err := scanMessage(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -91,14 +88,16 @@ func (r *MessagesRepo) GetHistory(ctx context.Context, q Querier, chatID, offset
 }
 
 // CountMessages returns the total number of messages in a chat.
-func (r *MessagesRepo) CountMessages(ctx context.Context, q Querier, chatID int64) (int, error) {
+func (r *MessagesRepo) CountMessages(ctx context.Context, chatID int64) (int, error) {
+	q := querier(ctx, r.pool)
 	var n int
 	err := q.QueryRow(ctx, `SELECT count(*) FROM messages WHERE chat_id=$1`, chatID).Scan(&n)
 	return n, err
 }
 
 // CountUnread returns messages in a chat with seq>afterSeq not sent by the user.
-func (r *MessagesRepo) CountUnread(ctx context.Context, q Querier, chatID, userID, afterSeq int64) (int, error) {
+func (r *MessagesRepo) CountUnread(ctx context.Context, chatID, userID, afterSeq int64) (int, error) {
+	q := querier(ctx, r.pool)
 	var n int
 	err := q.QueryRow(ctx,
 		`SELECT count(*) FROM messages WHERE chat_id=$1 AND seq>$2 AND sender_id<>$3 AND deleted_at IS NULL`,
@@ -106,12 +105,14 @@ func (r *MessagesRepo) CountUnread(ctx context.Context, q Querier, chatID, userI
 	return n, err
 }
 
-// GetMessageMeta resolves a message id to its chat id. Returns ErrNotFound if
-// the message does not exist.
-func (r *MessagesRepo) GetMessageMeta(ctx context.Context, q Querier, messageID int64) (chatID int64, err error) {
-	err = q.QueryRow(ctx, `SELECT chat_id FROM messages WHERE id=$1`, messageID).Scan(&chatID)
+// MessageChatID resolves a message id to its chat id. Returns domain.ErrNotFound
+// if the message does not exist.
+func (r *MessagesRepo) MessageChatID(ctx context.Context, messageID int64) (int64, error) {
+	q := querier(ctx, r.pool)
+	var chatID int64
+	err := q.QueryRow(ctx, `SELECT chat_id FROM messages WHERE id=$1`, messageID).Scan(&chatID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, ErrNotFound
+		return 0, domain.ErrNotFound
 	}
 	return chatID, err
 }
@@ -120,19 +121,19 @@ type scanner interface {
 	Scan(dest ...any) error
 }
 
-func (r *MessagesRepo) scanRow(s scanner) (Message, error) { return r.scanInto(s) }
-func (r *MessagesRepo) scanOne(row pgx.Row) (Message, error) {
-	m, err := r.scanInto(row)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return Message{}, ErrNotFound
-	}
-	return m, err
-}
-func (r *MessagesRepo) scanInto(s scanner) (Message, error) {
-	var m Message
+func scanMessage(s scanner) (domain.Message, error) {
+	var m domain.Message
 	var deletedAt *time.Time
 	err := s.Scan(&m.ID, &m.ChatID, &m.Seq, &m.SenderID, &m.Type, &m.Text,
 		&m.ReplyToID, &m.ClientMsgID, &m.MediaID, &m.CreatedAt, &deletedAt)
 	m.Deleted = deletedAt != nil
+	return m, err
+}
+
+func scanOneMessage(row pgx.Row) (domain.Message, error) {
+	m, err := scanMessage(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Message{}, domain.ErrNotFound
+	}
 	return m, err
 }

@@ -7,12 +7,13 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/messenger-denis/backend/internal/messaging"
+	"github.com/messenger-denis/backend/internal/domain"
+	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 )
 
-type ChatHandler struct{ svc *messaging.Service }
+type ChatHandler struct{ svc *usecasechat.Interactor }
 
-func NewChatHandler(svc *messaging.Service) *ChatHandler { return &ChatHandler{svc: svc} }
+func NewChatHandler(svc *usecasechat.Interactor) *ChatHandler { return &ChatHandler{svc: svc} }
 
 func (h *ChatHandler) meID(r *http.Request) int64 {
 	u, _ := UserFromContext(r.Context())
@@ -77,11 +78,11 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	msg, err := h.svc.Send(r.Context(), messaging.SendInput{
+	msg, err := h.svc.Send(r.Context(), usecasechat.SendInput{
 		ChatID: chatID, SenderID: h.meID(r), Type: body.Type, Text: body.Text,
 		ReplyToID: body.ReplyToID, ClientMsgID: body.ClientMsgID, MediaID: body.MediaID,
 	})
-	if errors.Is(err, messaging.ErrNotFound) {
+	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
 		return
 	}
@@ -101,7 +102,7 @@ func (h *ChatHandler) History(w http.ResponseWriter, r *http.Request) {
 	addOffset := int(queryInt(r, "add_offset", 0))
 	limit := int(queryInt(r, "limit", 40))
 	res, err := h.svc.GetHistory(r.Context(), chatID, h.meID(r), offsetSeq, addOffset, limit)
-	if errors.Is(err, messaging.ErrNotFound) {
+	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
 		return
 	}
@@ -131,7 +132,7 @@ func (h *ChatHandler) Read(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err := h.svc.MarkRead(r.Context(), chatID, h.meID(r), body.UpToSeq)
-	if errors.Is(err, messaging.ErrNotFound) {
+	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
 		return
 	}
@@ -192,11 +193,11 @@ func (h *ChatHandler) RemoveReaction(w http.ResponseWriter, r *http.Request) {
 
 func (h *ChatHandler) react(w http.ResponseWriter, r *http.Request, chatID, msgID int64, emoji string, add bool) {
 	err := h.svc.React(r.Context(), chatID, msgID, h.meID(r), emoji, add)
-	if errors.Is(err, messaging.ErrBadReaction) {
+	if errors.Is(err, domain.ErrBadReaction) {
 		writeError(w, http.StatusBadRequest, "invalid reaction")
 		return
 	}
-	if errors.Is(err, messaging.ErrNotFound) {
+	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "message not found")
 		return
 	}
@@ -217,7 +218,7 @@ func (h *ChatHandler) ListReactions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	counts, err := h.svc.ReactionsOf(r.Context(), chatID, msgID, h.meID(r))
-	if errors.Is(err, messaging.ErrNotFound) {
+	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "message not found")
 		return
 	}
@@ -226,12 +227,12 @@ func (h *ChatHandler) ListReactions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if counts == nil {
-		counts = []messaging.ReactionCount{}
+		counts = []domain.ReactionCount{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"reactions": counts})
 }
 
-func messageJSON(m messaging.Message) map[string]any {
+func messageJSON(m domain.Message) map[string]any {
 	return map[string]any{
 		"id": m.ID, "chat_id": m.ChatID, "seq": m.Seq, "sender_id": m.SenderID,
 		"type": m.Type, "text": m.Text, "reply_to_id": m.ReplyToID,

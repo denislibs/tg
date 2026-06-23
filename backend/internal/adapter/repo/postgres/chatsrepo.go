@@ -1,41 +1,28 @@
-package messaging
+package postgres
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/messenger-denis/backend/internal/domain"
+	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 )
 
-var ErrNotFound = errors.New("not found")
+// ChatsRepo is a postgres-backed adapter implementing the chat usecase's ChatRepo port.
+type ChatsRepo struct{ pool *pgxpool.Pool }
 
-type Chat struct {
-	ID   int64
-	Type string
-}
+var _ usecasechat.ChatRepo = (*ChatsRepo)(nil)
 
-// Dialog is one row of a user's chat list: the chat plus that user's read state
-// and the chat's last message (may be zero if empty).
-type Dialog struct {
-	ChatID       int64
-	Type         string
-	LastReadSeq  int64
-	UnreadCount  int
-	Muted        bool
-	LastSeq      int64
-	LastText     string
-	LastSenderID int64
-	LastAt       time.Time
-	HasLast      bool
-}
+func NewChatsRepo(pool *pgxpool.Pool) *ChatsRepo { return &ChatsRepo{pool: pool} }
 
-type ChatsRepo struct{}
-
-func NewChatsRepo() *ChatsRepo { return &ChatsRepo{} }
-
-// FindPrivateChat returns the id of the existing private chat between two users, or ErrNotFound.
-func (r *ChatsRepo) FindPrivateChat(ctx context.Context, q Querier, a, b int64) (int64, error) {
+// FindPrivate returns the id of the existing private chat between two users, or domain.ErrNotFound.
+func (r *ChatsRepo) FindPrivate(ctx context.Context, a, b int64) (int64, error) {
+	q := querier(ctx, r.pool)
 	var id int64
 	err := q.QueryRow(ctx,
 		`SELECT c.id FROM chats c
@@ -43,13 +30,24 @@ func (r *ChatsRepo) FindPrivateChat(ctx context.Context, q Querier, a, b int64) 
 		 JOIN chat_members m2 ON m2.chat_id=c.id AND m2.user_id=$2
 		 WHERE c.type='private' LIMIT 1`, a, b).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, ErrNotFound
+		return 0, domain.ErrNotFound
 	}
 	return id, err
 }
 
-// CreatePrivateChat creates a private chat with two members. Caller ensures it doesn't exist.
-func (r *ChatsRepo) CreatePrivateChat(ctx context.Context, q Querier, a, b int64) (int64, error) {
+// CreatePrivate creates a private chat with two members. It takes a tx-scoped
+// advisory lock keyed on the sorted user pair so concurrent first-time creation
+// is serialized; it must run inside a transaction (via TxManager).
+func (r *ChatsRepo) CreatePrivate(ctx context.Context, a, b int64) (int64, error) {
+	q := querier(ctx, r.pool)
+	lo, hi := a, b
+	if lo > hi {
+		lo, hi = hi, lo
+	}
+	lockKey := fmt.Sprintf("private:%d:%d", lo, hi)
+	if _, err := q.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, lockKey); err != nil {
+		return 0, err
+	}
 	var chatID int64
 	if err := q.QueryRow(ctx,
 		`INSERT INTO chats (type) VALUES ('private') RETURNING id`).Scan(&chatID); err != nil {
@@ -64,7 +62,8 @@ func (r *ChatsRepo) CreatePrivateChat(ctx context.Context, q Querier, a, b int64
 }
 
 // MemberIDs returns the user ids of a chat's members.
-func (r *ChatsRepo) MemberIDs(ctx context.Context, q Querier, chatID int64) ([]int64, error) {
+func (r *ChatsRepo) MemberIDs(ctx context.Context, chatID int64) ([]int64, error) {
+	q := querier(ctx, r.pool)
 	rows, err := q.Query(ctx, `SELECT user_id FROM chat_members WHERE chat_id=$1`, chatID)
 	if err != nil {
 		return nil, err
@@ -82,7 +81,8 @@ func (r *ChatsRepo) MemberIDs(ctx context.Context, q Querier, chatID int64) ([]i
 }
 
 // IsMember reports whether a user belongs to a chat.
-func (r *ChatsRepo) IsMember(ctx context.Context, q Querier, chatID, userID int64) (bool, error) {
+func (r *ChatsRepo) IsMember(ctx context.Context, chatID, userID int64) (bool, error) {
+	q := querier(ctx, r.pool)
 	var one int
 	err := q.QueryRow(ctx,
 		`SELECT 1 FROM chat_members WHERE chat_id=$1 AND user_id=$2`, chatID, userID).Scan(&one)
@@ -93,8 +93,9 @@ func (r *ChatsRepo) IsMember(ctx context.Context, q Querier, chatID, userID int6
 }
 
 // ChatPartners returns the distinct user ids that share at least one chat with
-// the given user (i.e. people who should see the user's presence).
-func (r *ChatsRepo) ChatPartners(ctx context.Context, q Querier, userID int64) ([]int64, error) {
+// the given user.
+func (r *ChatsRepo) ChatPartners(ctx context.Context, userID int64) ([]int64, error) {
+	q := querier(ctx, r.pool)
 	rows, err := q.Query(ctx,
 		`SELECT DISTINCT m2.user_id FROM chat_members m1
 		 JOIN chat_members m2 ON m2.chat_id = m1.chat_id AND m2.user_id <> m1.user_id
@@ -115,7 +116,8 @@ func (r *ChatsRepo) ChatPartners(ctx context.Context, q Querier, userID int64) (
 }
 
 // ListDialogs returns a user's chats with read state and last message, newest first.
-func (r *ChatsRepo) ListDialogs(ctx context.Context, q Querier, userID int64) ([]Dialog, error) {
+func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dialog, error) {
+	q := querier(ctx, r.pool)
 	rows, err := q.Query(ctx,
 		`SELECT c.id, c.type, m.last_read_seq, m.unread_count, m.muted,
 		        lm.seq, lm.text, lm.sender_id, lm.created_at
@@ -132,9 +134,9 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, q Querier, userID int64) ([
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Dialog
+	var out []domain.Dialog
 	for rows.Next() {
-		var d Dialog
+		var d domain.Dialog
 		var seq *int64
 		var text *string
 		var senderID *int64
@@ -153,4 +155,35 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, q Querier, userID int64) ([
 		out = append(out, d)
 	}
 	return out, rows.Err()
+}
+
+// IncUnread bumps a member's unread counter by one.
+func (r *ChatsRepo) IncUnread(ctx context.Context, chatID, userID int64) error {
+	q := querier(ctx, r.pool)
+	_, err := q.Exec(ctx,
+		`UPDATE chat_members SET unread_count = unread_count + 1 WHERE chat_id=$1 AND user_id=$2`,
+		chatID, userID)
+	return err
+}
+
+// CurrentReadSeq returns a member's current last_read_seq.
+func (r *ChatsRepo) CurrentReadSeq(ctx context.Context, chatID, userID int64) (int64, error) {
+	q := querier(ctx, r.pool)
+	var cur int64
+	err := q.QueryRow(ctx,
+		`SELECT last_read_seq FROM chat_members WHERE chat_id=$1 AND user_id=$2`,
+		chatID, userID).Scan(&cur)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, domain.ErrNotFound
+	}
+	return cur, err
+}
+
+// SetRead sets a member's last_read_seq and unread_count.
+func (r *ChatsRepo) SetRead(ctx context.Context, chatID, userID, seq int64, unread int) error {
+	q := querier(ctx, r.pool)
+	_, err := q.Exec(ctx,
+		`UPDATE chat_members SET last_read_seq=$3, unread_count=$4
+		 WHERE chat_id=$1 AND user_id=$2`, chatID, userID, seq, unread)
+	return err
 }
