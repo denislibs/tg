@@ -11,13 +11,13 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gorilla/websocket"
+	rtredis "github.com/messenger-denis/backend/internal/adapter/realtime/redis"
 	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
-	"github.com/messenger-denis/backend/internal/presence"
-	"github.com/messenger-denis/backend/internal/realtime"
 	"github.com/messenger-denis/backend/internal/store/postgres"
 	"github.com/messenger-denis/backend/internal/transport/ws"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
+	usecasepresence "github.com/messenger-denis/backend/internal/usecase/presence"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -61,10 +61,10 @@ func newWSEnv(t *testing.T) *wsEnv {
 		pgadapter.NewReactionsRepo(pool),
 		pgadapter.NewMediaAccessRepo(pool),
 	)
-	publisher := realtime.NewRedisPublisher(rdb)
+	publisher := rtredis.NewRedisPublisher(rdb)
 	chatSvc.SetPublisher(publisher)
 	authUC.SetRevocationNotifier(publisher)
-	presenceMgr := presence.NewManager(rdb, publisher, chatSvc.ChatPartners, 35*time.Second)
+	presenceMgr := usecasepresence.NewManager(rtredis.NewPresenceStore(rdb), publisher, chatSvc.ChatPartners, 35*time.Second)
 	hub := ws.NewHub(ctx, rdb)
 	handler := ws.NewHandler(hub, authUC, chatSvc, presenceMgr)
 	srv := httptest.NewServer(http.HandlerFunc(handler.ServeHTTP))

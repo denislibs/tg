@@ -1,4 +1,4 @@
-package realtime
+package redis
 
 import (
 	"context"
@@ -6,13 +6,13 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/redis/go-redis/v9"
+	goredis "github.com/redis/go-redis/v9"
 )
 
 func TestRedisPublisher_PublishToUser(t *testing.T) {
 	mr, _ := miniredis.Run()
 	defer mr.Close()
-	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	rdb := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
 	defer rdb.Close()
 	ctx := context.Background()
 
@@ -41,7 +41,7 @@ func TestRedisPublisher_PublishToUser(t *testing.T) {
 func TestRedisPublisher_NotifyRevoked(t *testing.T) {
 	mr, _ := miniredis.Run()
 	defer mr.Close()
-	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	rdb := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
 	defer rdb.Close()
 	ctx := context.Background()
 
