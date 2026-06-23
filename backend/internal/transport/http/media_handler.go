@@ -6,7 +6,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/messenger-denis/backend/internal/media"
+	"github.com/messenger-denis/backend/internal/domain"
+	usecasemedia "github.com/messenger-denis/backend/internal/usecase/media"
 )
 
 // MediaAccess decides whether a user may download a media object.
@@ -15,11 +16,11 @@ type MediaAccess interface {
 }
 
 type MediaHandler struct {
-	svc    *media.Service
+	svc    *usecasemedia.Interactor
 	access MediaAccess
 }
 
-func NewMediaHandler(svc *media.Service, access MediaAccess) *MediaHandler {
+func NewMediaHandler(svc *usecasemedia.Interactor, access MediaAccess) *MediaHandler {
 	return &MediaHandler{svc: svc, access: access}
 }
 
@@ -39,15 +40,15 @@ func (h *MediaHandler) CreateUpload(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	m, uploadURL, err := h.svc.CreateUpload(r.Context(), media.UploadInput{
+	m, uploadURL, err := h.svc.CreateUpload(r.Context(), usecasemedia.UploadInput{
 		OwnerID: user.ID, Mime: body.Mime, Size: body.Size,
 		Width: body.Width, Height: body.Height, Duration: body.Duration, BlurPreview: body.BlurPreview,
 	})
-	if errors.Is(err, media.ErrBadSize) {
+	if errors.Is(err, usecasemedia.ErrBadSize) {
 		writeError(w, http.StatusBadRequest, "invalid size")
 		return
 	}
-	if errors.Is(err, media.ErrTooLarge) {
+	if errors.Is(err, usecasemedia.ErrTooLarge) {
 		writeError(w, http.StatusRequestEntityTooLarge, "file too large")
 		return
 	}
@@ -79,7 +80,7 @@ func (h *MediaHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m, downloadURL, err := h.svc.GetMedia(r.Context(), id)
-	if errors.Is(err, media.ErrNotFound) {
+	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "media not found")
 		return
 	}

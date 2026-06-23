@@ -1,0 +1,48 @@
+import { Box, IconButton, Typography, useTheme } from '@mui/material'
+import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
+import { motion } from 'framer-motion'
+import { useT } from '../i18n'
+
+interface Props {
+  onClose: () => void
+}
+
+export default function NotificationBanner({ onClose }: Props) {
+  const tg = useTheme().tg
+  const t = useT()
+  return (
+    <motion.div
+      initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+      animate={{ opacity: 1, height: 'auto', marginBottom: 8 }}
+      exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+      transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
+      style={{ overflow: 'hidden' }}
+    >
+      <Box
+        sx={{
+          mx: 1.5,
+          mt: 1,
+          px: 2,
+          py: 1.5,
+          borderRadius: '16px',
+          background: tg.bannerBg,
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 1,
+        }}
+      >
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography sx={{ fontWeight: 600, fontSize: 15, color: tg.textPrimary }}>
+            {t('Never miss a message! 🔔')}
+          </Typography>
+          <Typography sx={{ fontSize: 14, color: tg.textSecondary, mt: 0.25 }}>
+            {t('Enable notifications to stay updated.')}
+          </Typography>
+        </Box>
+        <IconButton size="small" onClick={onClose} sx={{ color: tg.textFaint, mt: -0.5, mr: -0.5 }}>
+          <CloseRoundedIcon fontSize="small" />
+        </IconButton>
+      </Box>
+    </motion.div>
+  )
+}

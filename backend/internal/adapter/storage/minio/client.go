@@ -1,5 +1,5 @@
-// Package miniostore wraps the MinIO SDK: bucket setup and presigned URLs.
-package miniostore
+// Package minio wraps the MinIO SDK: bucket setup and presigned URLs.
+package minio
 
 import (
 	"context"

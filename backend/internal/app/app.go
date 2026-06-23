@@ -21,6 +21,7 @@ var Module = fx.Options(
 		provideUpdatesRepo,
 		provideReactionsRepo,
 		provideMediaAccessRepo,
+		provideMediaRepo,
 		provideChatUsecase,
 	),
 	fx.Invoke(registerServer),

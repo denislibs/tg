@@ -8,8 +8,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	cacheredis "github.com/messenger-denis/backend/internal/adapter/cache/redis"
 	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
+	minioadapter "github.com/messenger-denis/backend/internal/adapter/storage/minio"
 	"github.com/messenger-denis/backend/internal/config"
-	"github.com/messenger-denis/backend/internal/store/miniostore"
 	"github.com/messenger-denis/backend/internal/store/postgres"
 	"github.com/messenger-denis/backend/internal/store/redisstore"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
@@ -27,7 +27,7 @@ type RedisResult struct {
 
 // MinioResult carries an optional MinIO client.
 type MinioResult struct {
-	Client *miniostore.Client
+	Client *minioadapter.Client
 	OK     bool
 }
 
@@ -66,7 +66,7 @@ func provideRedis(lc fx.Lifecycle, cfg *config.Config, ctx context.Context) Redi
 }
 
 func provideMinio(cfg *config.Config, ctx context.Context) MinioResult {
-	mc, err := miniostore.Connect(cfg.MinioEndpoint, cfg.MinioAccessKey, cfg.MinioSecretKey, cfg.MinioBucket, cfg.MinioUseSSL)
+	mc, err := minioadapter.Connect(cfg.MinioEndpoint, cfg.MinioAccessKey, cfg.MinioSecretKey, cfg.MinioBucket, cfg.MinioUseSSL)
 	if err != nil {
 		log.Printf("minio unavailable, media disabled: %v", err)
 		return MinioResult{}
@@ -97,6 +97,9 @@ func provideReactionsRepo(pool *pgxpool.Pool) *pgadapter.ReactionsRepo {
 }
 func provideMediaAccessRepo(pool *pgxpool.Pool) *pgadapter.MediaAccessRepo {
 	return pgadapter.NewMediaAccessRepo(pool)
+}
+func provideMediaRepo(pool *pgxpool.Pool) *pgadapter.MediaRepo {
+	return pgadapter.NewMediaRepo(pool)
 }
 
 func provideChatUsecase(
