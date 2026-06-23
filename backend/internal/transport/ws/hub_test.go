@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/messenger-denis/backend/internal/realtime"
+	rtredis "github.com/messenger-denis/backend/internal/adapter/realtime/redis"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -57,7 +57,7 @@ func TestHub_DeliversPublishedFrame(t *testing.T) {
 	// Give the subscription a moment to register on miniredis.
 	time.Sleep(100 * time.Millisecond)
 
-	pub := realtime.NewRedisPublisher(pubRDB)
+	pub := rtredis.NewRedisPublisher(pubRDB)
 	if err := pub.PublishToUser(ctx, 7, []byte(`hello`)); err != nil {
 		t.Fatalf("publish: %v", err)
 	}

@@ -8,15 +8,15 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	rtredis "github.com/messenger-denis/backend/internal/adapter/realtime/redis"
 	"github.com/messenger-denis/backend/internal/config"
 	"github.com/messenger-denis/backend/internal/media"
-	"github.com/messenger-denis/backend/internal/presence"
 	"github.com/messenger-denis/backend/internal/push"
-	"github.com/messenger-denis/backend/internal/realtime"
 	httptransport "github.com/messenger-denis/backend/internal/transport/http"
 	"github.com/messenger-denis/backend/internal/transport/ws"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
+	usecasepresence "github.com/messenger-denis/backend/internal/usecase/presence"
 	"go.uber.org/fx"
 )
 
@@ -41,10 +41,10 @@ func registerServer(p serverParams) {
 	var wsHandler http.Handler
 	if p.Redis.OK {
 		p.AuthUC.SetCache(redisSessionCache(p.Redis))
-		publisher := realtime.NewRedisPublisher(p.Redis.Client)
+		publisher := rtredis.NewRedisPublisher(p.Redis.Client)
 		p.ChatUC.SetPublisher(publisher)
 		p.AuthUC.SetRevocationNotifier(publisher)
-		presenceMgr := presence.NewManager(p.Redis.Client, publisher, p.ChatUC.ChatPartners, 35*time.Second)
+		presenceMgr := usecasepresence.NewManager(rtredis.NewPresenceStore(p.Redis.Client), publisher, p.ChatUC.ChatPartners, 35*time.Second)
 		hub := ws.NewHub(p.Ctx, p.Redis.Client)
 		p.LC.Append(fx.Hook{OnStop: func(context.Context) error { return hub.Close() }})
 		wsHandler = ws.NewHandler(hub, p.AuthUC, p.ChatUC, presenceMgr)
