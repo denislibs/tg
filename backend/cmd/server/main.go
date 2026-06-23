@@ -11,6 +11,7 @@ import (
 
 	"github.com/messenger-denis/backend/internal/auth"
 	"github.com/messenger-denis/backend/internal/config"
+	"github.com/messenger-denis/backend/internal/messaging"
 	httptransport "github.com/messenger-denis/backend/internal/transport/http"
 	"github.com/messenger-denis/backend/internal/store/postgres"
 )
@@ -30,10 +31,11 @@ func main() {
 	}
 	defer pool.Close()
 
-	svc := auth.NewService(auth.NewRepo(pool), cfg.DevOTPCode, log.Printf)
+	authSvc := auth.NewService(auth.NewRepo(pool), cfg.DevOTPCode, log.Printf)
+	chatSvc := messaging.NewService(pool)
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httptransport.NewRouter(svc),
+		Handler:           httptransport.NewRouter(authSvc, chatSvc),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,

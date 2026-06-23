@@ -9,13 +9,15 @@ import (
 	"testing"
 
 	"github.com/messenger-denis/backend/internal/auth"
+	"github.com/messenger-denis/backend/internal/messaging"
 	"github.com/messenger-denis/backend/internal/store/postgres"
 )
 
 func newTestRouter(t *testing.T) http.Handler {
 	pool := postgres.NewTestDB(t)
 	svc := auth.NewService(auth.NewRepo(pool), "12345", func(string, ...any) {})
-	return NewRouter(svc)
+	chatSvc := messaging.NewService(pool)
+	return NewRouter(svc, chatSvc)
 }
 
 func postJSON(t *testing.T, h http.Handler, path string, body any) *httptest.ResponseRecorder {
