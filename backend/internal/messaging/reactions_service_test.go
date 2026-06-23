@@ -31,6 +31,16 @@ func TestService_React_FanoutAndAggregate(t *testing.T) {
 		t.Fatalf("counts = %+v", counts)
 	}
 
+	// The reaction must also reach the pts log: a syncs from after the message
+	// (pts=1) and sees the reaction in other_updates.
+	diff, err := s.GetDifference(ctx, a, 1)
+	if err != nil {
+		t.Fatalf("GetDifference: %v", err)
+	}
+	if len(diff.OtherUpdates) != 1 || len(diff.NewMessages) != 0 {
+		t.Fatalf("expected 1 reaction in other_updates, got new=%d other=%d", len(diff.NewMessages), len(diff.OtherUpdates))
+	}
+
 	// Remove it.
 	if err := s.React(ctx, chatID, msg.ID, b, "🔥", false); err != nil {
 		t.Fatalf("React remove: %v", err)

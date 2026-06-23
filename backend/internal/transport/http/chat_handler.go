@@ -182,6 +182,10 @@ func (h *ChatHandler) RemoveReaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	emoji := chi.URLParam(r, "emoji")
+	if emoji == "" {
+		writeError(w, http.StatusBadRequest, "emoji is required")
+		return
+	}
 	h.react(w, r, chatID, msgID, emoji, false)
 }
 

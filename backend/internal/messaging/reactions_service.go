@@ -39,6 +39,13 @@ func (s *Service) React(ctx context.Context, chatID, messageID, userID int64, em
 		return ErrNotFound
 	}
 
+	// Build the payload once so the pts log and the live frame can never diverge.
+	action := "remove"
+	if add {
+		action = "add"
+	}
+	p := reactionPayload(chatID, messageID, userID, emoji, action)
+
 	var members []int64
 	err = s.inTx(ctx, func(tx pgx.Tx) error {
 		if add {
@@ -55,11 +62,7 @@ func (s *Service) React(ctx context.Context, chatID, messageID, userID int64, em
 			return e
 		}
 		members = m
-		action := "remove"
-		if add {
-			action = "add"
-		}
-		payload, e := json.Marshal(reactionPayload(chatID, messageID, userID, emoji, action))
+		payload, e := json.Marshal(p)
 		if e != nil {
 			return e
 		}
@@ -75,11 +78,7 @@ func (s *Service) React(ctx context.Context, chatID, messageID, userID int64, em
 		return err
 	}
 	if s.publisher != nil {
-		action := "remove"
-		if add {
-			action = "add"
-		}
-		f := frame("reaction", reactionPayload(chatID, messageID, userID, emoji, action))
+		f := frame("reaction", p)
 		for _, uid := range members {
 			_ = s.publisher.PublishToUser(ctx, uid, f)
 		}
