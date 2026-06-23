@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"testing"
 
@@ -119,4 +120,54 @@ func itoa(v int64) string { return strconvFormat(v) }
 
 func strconvFormat(v int64) string {
 	return strconv.FormatInt(v, 10)
+}
+
+func TestReactions_HTTP(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990000020")
+	_, idB := signUp(t, h, pool, "+79990000021")
+
+	rec := authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": idB})
+	var created struct {
+		ChatID int64 `json:"chat_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+	cid := itoa(created.ChatID)
+
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/messages", tokenA, map[string]any{"text": "hi"})
+	var msg struct {
+		ID int64 `json:"id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &msg)
+	mid := itoa(msg.ID)
+
+	// Add 🔥.
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/messages/"+mid+"/reactions", tokenA, map[string]string{"emoji": "🔥"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("add reaction: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// List shows 🔥:1.
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/messages/"+mid+"/reactions", tokenA, nil)
+	var listed struct {
+		Reactions []struct {
+			Emoji string `json:"emoji"`
+			Count int    `json:"count"`
+		} `json:"reactions"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &listed)
+	if len(listed.Reactions) != 1 || listed.Reactions[0].Emoji != "🔥" || listed.Reactions[0].Count != 1 {
+		t.Fatalf("reactions = %+v", listed.Reactions)
+	}
+
+	// Remove it (emoji is URL-escaped by the client).
+	rec = authedReq(t, h, http.MethodDelete, "/chats/"+cid+"/messages/"+mid+"/reactions/"+url.PathEscape("🔥"), tokenA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("remove reaction: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/messages/"+mid+"/reactions", tokenA, nil)
+	_ = json.Unmarshal(rec.Body.Bytes(), &listed)
+	if len(listed.Reactions) != 0 {
+		t.Fatalf("expected no reactions after remove, got %+v", listed.Reactions)
+	}
 }

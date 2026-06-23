@@ -76,3 +76,23 @@ func TestMessagesRepo_FindByClientMsgID(t *testing.T) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
+
+func TestMessagesRepo_GetMessageMeta(t *testing.T) {
+	pool := postgres.NewTestDB(t)
+	chats := NewChatsRepo()
+	msgs := NewMessagesRepo()
+	ctx := context.Background()
+	a := seedUser(t, pool, "+740")
+	b := seedUser(t, pool, "+741")
+	chatID, _ := chats.CreatePrivateChat(ctx, pool, a, b)
+	seq, _ := msgs.NextSeq(ctx, pool, chatID)
+	m, _ := msgs.Insert(ctx, pool, Message{ChatID: chatID, Seq: seq, SenderID: a, Type: "text", Text: "x"})
+
+	got, err := msgs.GetMessageMeta(ctx, pool, m.ID)
+	if err != nil || got != chatID {
+		t.Fatalf("GetMessageMeta = %d, %v; want %d", got, err, chatID)
+	}
+	if _, err := msgs.GetMessageMeta(ctx, pool, 999999); err != ErrNotFound {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}

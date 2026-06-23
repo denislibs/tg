@@ -151,6 +151,85 @@ func (h *ChatHandler) Sync(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, d)
 }
 
+type reactionBody struct {
+	Emoji string `json:"emoji"`
+}
+
+func (h *ChatHandler) AddReaction(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	msgID, ok := pathInt(w, r, "msgID")
+	if !ok {
+		return
+	}
+	var body reactionBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Emoji == "" {
+		writeError(w, http.StatusBadRequest, "emoji is required")
+		return
+	}
+	h.react(w, r, chatID, msgID, body.Emoji, true)
+}
+
+func (h *ChatHandler) RemoveReaction(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	msgID, ok := pathInt(w, r, "msgID")
+	if !ok {
+		return
+	}
+	emoji := chi.URLParam(r, "emoji")
+	if emoji == "" {
+		writeError(w, http.StatusBadRequest, "emoji is required")
+		return
+	}
+	h.react(w, r, chatID, msgID, emoji, false)
+}
+
+func (h *ChatHandler) react(w http.ResponseWriter, r *http.Request, chatID, msgID int64, emoji string, add bool) {
+	err := h.svc.React(r.Context(), chatID, msgID, h.meID(r), emoji, add)
+	if errors.Is(err, messaging.ErrBadReaction) {
+		writeError(w, http.StatusBadRequest, "invalid reaction")
+		return
+	}
+	if errors.Is(err, messaging.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "message not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "reaction failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (h *ChatHandler) ListReactions(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	msgID, ok := pathInt(w, r, "msgID")
+	if !ok {
+		return
+	}
+	counts, err := h.svc.ReactionsOf(r.Context(), chatID, msgID, h.meID(r))
+	if errors.Is(err, messaging.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "message not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load reactions")
+		return
+	}
+	if counts == nil {
+		counts = []messaging.ReactionCount{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"reactions": counts})
+}
+
 func messageJSON(m messaging.Message) map[string]any {
 	return map[string]any{
 		"id": m.ID, "chat_id": m.ChatID, "seq": m.Seq, "sender_id": m.SenderID,

@@ -37,6 +37,9 @@ func NewRouter(authSvc *auth.Service, chatSvc *messaging.Service, wsHandler http
 		pr.Get("/chats/{chatID}/history", ch.History)
 		pr.Post("/chats/{chatID}/read", ch.Read)
 		pr.Get("/sync", ch.Sync)
+		pr.Post("/chats/{chatID}/messages/{msgID}/reactions", ch.AddReaction)
+		pr.Delete("/chats/{chatID}/messages/{msgID}/reactions/{emoji}", ch.RemoveReaction)
+		pr.Get("/chats/{chatID}/messages/{msgID}/reactions", ch.ListReactions)
 
 		sh := NewSessionHandler(authSvc)
 		pr.Get("/sessions", sh.List)
