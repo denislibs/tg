@@ -67,3 +67,41 @@ func TestRepo_UserAndDeviceAndToken(t *testing.T) {
 		t.Fatalf("expected ErrNotFound for missing token, got %v", err)
 	}
 }
+
+func TestRepo_SessionListDelete(t *testing.T) {
+	pool := postgres.NewTestDB(t)
+	repo := NewRepo(pool)
+	ctx := context.Background()
+
+	u, _ := repo.UpsertUserByPhone(ctx, "+790")
+	d1, _ := repo.CreateDevice(ctx, u.ID, "web", "browser", "hash-1")
+	_, _ = repo.CreateDevice(ctx, u.ID, "phone", "ios", "hash-2")
+
+	// SessionByTokenHash resolves user + device.
+	gotUser, gotDevice, err := repo.SessionByTokenHash(ctx, "hash-1")
+	if err != nil || gotUser.ID != u.ID || gotDevice != d1.ID {
+		t.Fatalf("SessionByTokenHash = %v, %d, %v", gotUser, gotDevice, err)
+	}
+	if _, _, err := repo.SessionByTokenHash(ctx, "missing"); err != ErrNotFound {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+
+	// ListDevices returns both.
+	devices, err := repo.ListDevices(ctx, u.ID)
+	if err != nil || len(devices) != 2 {
+		t.Fatalf("ListDevices = %v, %v", devices, err)
+	}
+
+	// DeleteDevice returns the token hash and removes it.
+	th, found, err := repo.DeleteDevice(ctx, u.ID, d1.ID)
+	if err != nil || !found || th != "hash-1" {
+		t.Fatalf("DeleteDevice = %q, %v, %v", th, found, err)
+	}
+	if _, _, err := repo.SessionByTokenHash(ctx, "hash-1"); err != ErrNotFound {
+		t.Fatalf("expected device gone, got %v", err)
+	}
+	// Deleting a non-existent / other-user device reports not found.
+	if _, found, _ := repo.DeleteDevice(ctx, u.ID, 99999); found {
+		t.Fatal("expected found=false for unknown device")
+	}
+}

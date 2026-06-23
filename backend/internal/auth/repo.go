@@ -18,11 +18,12 @@ type User struct {
 }
 
 type Device struct {
-	ID        int64
-	UserID    int64
-	Name      string
-	Platform  string
-	TokenHash string
+	ID         int64
+	UserID     int64
+	Name       string
+	Platform   string
+	TokenHash  string
+	LastActive time.Time
 }
 
 var ErrNotFound = errors.New("not found")
@@ -106,4 +107,58 @@ func (r *Repo) UserByTokenHash(ctx context.Context, tokenHash string) (User, err
 		return User{}, ErrNotFound
 	}
 	return u, err
+}
+
+// SessionByTokenHash resolves a token hash to its user and device id, and
+// lazily touches last_active. Returns ErrNotFound if unknown.
+func (r *Repo) SessionByTokenHash(ctx context.Context, tokenHash string) (User, int64, error) {
+	var u User
+	var deviceID int64
+	err := r.pool.QueryRow(ctx,
+		`SELECT u.id, u.phone, u.username, u.display_name, u.avatar_url, d.id
+		 FROM users u JOIN devices d ON d.user_id=u.id WHERE d.token_hash=$1`,
+		tokenHash).Scan(&u.ID, &u.Phone, &u.Username, &u.DisplayName, &u.AvatarURL, &deviceID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return User{}, 0, ErrNotFound
+	}
+	if err != nil {
+		return User{}, 0, err
+	}
+	_, _ = r.pool.Exec(ctx, `UPDATE devices SET last_active=now() WHERE id=$1`, deviceID)
+	return u, deviceID, nil
+}
+
+// ListDevices returns a user's devices, most recently active first.
+func (r *Repo) ListDevices(ctx context.Context, userID int64) ([]Device, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, user_id, name, platform, last_active FROM devices
+		 WHERE user_id=$1 ORDER BY last_active DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Device
+	for rows.Next() {
+		var d Device
+		if err := rows.Scan(&d.ID, &d.UserID, &d.Name, &d.Platform, &d.LastActive); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// DeleteDevice removes a user's device by id and returns its token hash (so the
+// caller can evict the cache). found is false if no such device exists.
+func (r *Repo) DeleteDevice(ctx context.Context, userID, deviceID int64) (tokenHash string, found bool, err error) {
+	err = r.pool.QueryRow(ctx,
+		`DELETE FROM devices WHERE id=$1 AND user_id=$2 RETURNING token_hash`,
+		deviceID, userID).Scan(&tokenHash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return tokenHash, true, nil
 }
