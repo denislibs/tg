@@ -92,6 +92,28 @@ func (r *ChatsRepo) IsMember(ctx context.Context, q Querier, chatID, userID int6
 	return err == nil, err
 }
 
+// ChatPartners returns the distinct user ids that share at least one chat with
+// the given user (i.e. people who should see the user's presence).
+func (r *ChatsRepo) ChatPartners(ctx context.Context, q Querier, userID int64) ([]int64, error) {
+	rows, err := q.Query(ctx,
+		`SELECT DISTINCT m2.user_id FROM chat_members m1
+		 JOIN chat_members m2 ON m2.chat_id = m1.chat_id AND m2.user_id <> m1.user_id
+		 WHERE m1.user_id = $1`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
 // ListDialogs returns a user's chats with read state and last message, newest first.
 func (r *ChatsRepo) ListDialogs(ctx context.Context, q Querier, userID int64) ([]Dialog, error) {
 	rows, err := q.Query(ctx,
