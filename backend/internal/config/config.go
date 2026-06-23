@@ -16,6 +16,10 @@ type Config struct {
 	MinioSecretKey string
 	MinioBucket    string
 	MinioUseSSL    bool
+
+	VAPIDPublicKey  string
+	VAPIDPrivateKey string
+	VAPIDSubject    string
 }
 
 func Load() (*Config, error) {
@@ -33,6 +37,9 @@ func Load() (*Config, error) {
 	c.MinioSecretKey = getenv("MINIO_SECRET_KEY", "minioadmin")
 	c.MinioBucket = getenv("MINIO_BUCKET", "media")
 	c.MinioUseSSL = getenv("MINIO_USE_SSL", "false") == "true"
+	c.VAPIDPublicKey = os.Getenv("VAPID_PUBLIC_KEY")
+	c.VAPIDPrivateKey = os.Getenv("VAPID_PRIVATE_KEY")
+	c.VAPIDSubject = getenv("VAPID_SUBJECT", "mailto:admin@example.com")
 	return c, nil
 }
 
