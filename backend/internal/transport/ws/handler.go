@@ -6,7 +6,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/messenger-denis/backend/internal/domain"
-	"github.com/messenger-denis/backend/internal/messaging"
+	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 )
 
 // Authenticator resolves a token to the authenticated user + device.
@@ -19,12 +19,12 @@ type Authenticator interface {
 type Handler struct {
 	hub      *Hub
 	auth     Authenticator
-	chatSvc  *messaging.Service
+	chatSvc  *usecasechat.Interactor
 	presence Presence
 	upgrader websocket.Upgrader
 }
 
-func NewHandler(hub *Hub, auth Authenticator, chatSvc *messaging.Service, presence Presence) *Handler {
+func NewHandler(hub *Hub, auth Authenticator, chatSvc *usecasechat.Interactor, presence Presence) *Handler {
 	return &Handler{
 		hub:      hub,
 		auth:     auth,

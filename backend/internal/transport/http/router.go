@@ -5,12 +5,12 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/messenger-denis/backend/internal/messaging"
 	"github.com/messenger-denis/backend/internal/openapi"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
+	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 )
 
-func NewRouter(authUC *usecaseauth.Interactor, chatSvc *messaging.Service, wsHandler http.Handler, mediaH *MediaHandler, pushH *PushHandler) http.Handler {
+func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, pushH *PushHandler) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -35,7 +35,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatSvc *messaging.Service, wsHan
 		pr.Use(AuthMiddleware(authUC))
 		pr.Get("/me", MeHandler)
 
-		ch := NewChatHandler(chatSvc)
+		ch := NewChatHandler(chatUC)
 		pr.Post("/chats", ch.CreatePrivate)
 		pr.Get("/chats", ch.ListDialogs)
 		pr.Post("/chats/{chatID}/messages", ch.Send)

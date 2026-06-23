@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/messenger-denis/backend/internal/messaging"
+	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 )
 
 const (
@@ -29,14 +29,14 @@ type Presence interface {
 type Conn struct {
 	ws       *websocket.Conn
 	hub      *Hub
-	svc      *messaging.Service
+	svc      *usecasechat.Interactor
 	presence Presence
 	userID   int64
 	deviceID int64
 	send     chan []byte
 }
 
-func newConn(ws *websocket.Conn, hub *Hub, svc *messaging.Service, presence Presence, userID, deviceID int64) *Conn {
+func newConn(ws *websocket.Conn, hub *Hub, svc *usecasechat.Interactor, presence Presence, userID, deviceID int64) *Conn {
 	return &Conn{ws: ws, hub: hub, svc: svc, presence: presence, userID: userID, deviceID: deviceID, send: make(chan []byte, sendBuffer)}
 }
 
@@ -101,7 +101,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		if json.Unmarshal(f.D, &d) != nil {
 			return
 		}
-		msg, err := c.svc.Send(ctx, messaging.SendInput{
+		msg, err := c.svc.Send(ctx, usecasechat.SendInput{
 			ChatID: d.ChatID, SenderID: c.userID, Type: d.Type, Text: d.Text,
 			ReplyToID: d.ReplyToID, ClientMsgID: d.ClientMsgID, MediaID: d.MediaID,
 		})
