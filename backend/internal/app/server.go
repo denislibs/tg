@@ -14,7 +14,7 @@ import (
 	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
 	"github.com/messenger-denis/backend/internal/config"
 	httptransport "github.com/messenger-denis/backend/internal/adapter/delivery/http"
-	"github.com/messenger-denis/backend/internal/transport/ws"
+	"github.com/messenger-denis/backend/internal/adapter/delivery/ws"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 	usecasemedia "github.com/messenger-denis/backend/internal/usecase/media"

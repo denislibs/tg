@@ -14,7 +14,7 @@ import (
 	rtredis "github.com/messenger-denis/backend/internal/adapter/realtime/redis"
 	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
 	"github.com/messenger-denis/backend/internal/store/postgres"
-	"github.com/messenger-denis/backend/internal/transport/ws"
+	"github.com/messenger-denis/backend/internal/adapter/delivery/ws"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 	usecasepresence "github.com/messenger-denis/backend/internal/usecase/presence"
