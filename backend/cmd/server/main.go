@@ -12,6 +12,7 @@ import (
 	"github.com/messenger-denis/backend/internal/auth"
 	"github.com/messenger-denis/backend/internal/config"
 	"github.com/messenger-denis/backend/internal/messaging"
+	"github.com/messenger-denis/backend/internal/presence"
 	"github.com/messenger-denis/backend/internal/realtime"
 	"github.com/messenger-denis/backend/internal/store/postgres"
 	"github.com/messenger-denis/backend/internal/store/redisstore"
@@ -43,11 +44,14 @@ func main() {
 	} else {
 		defer rdb.Close()
 		authSvc.SetCache(redisstore.NewSessionCache(rdb))
-		chatSvc.SetPublisher(realtime.NewRedisPublisher(rdb))
+		publisher := realtime.NewRedisPublisher(rdb)
+		chatSvc.SetPublisher(publisher)
+		authSvc.SetRevocationNotifier(publisher)
+		presenceMgr := presence.NewManager(rdb, publisher, chatSvc.ChatPartners, 35*time.Second)
 		hub := ws.NewHub(ctx, rdb)
 		defer hub.Close()
-		wsHandler = ws.NewHandler(hub, authSvc, chatSvc)
-		log.Printf("session cache + realtime enabled (redis)")
+		wsHandler = ws.NewHandler(hub, authSvc, chatSvc, presenceMgr)
+		log.Printf("session cache + realtime + presence enabled (redis)")
 	}
 
 	srv := &http.Server{

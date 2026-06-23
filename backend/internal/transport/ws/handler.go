@@ -14,14 +14,16 @@ type Handler struct {
 	hub      *Hub
 	authSvc  *auth.Service
 	chatSvc  *messaging.Service
+	presence Presence
 	upgrader websocket.Upgrader
 }
 
-func NewHandler(hub *Hub, authSvc *auth.Service, chatSvc *messaging.Service) *Handler {
+func NewHandler(hub *Hub, authSvc *auth.Service, chatSvc *messaging.Service, presence Presence) *Handler {
 	return &Handler{
-		hub:     hub,
-		authSvc: authSvc,
-		chatSvc: chatSvc,
+		hub:      hub,
+		authSvc:  authSvc,
+		chatSvc:  chatSvc,
+		presence: presence,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(*http.Request) bool { return true }, // dev: allow all origins
 		},
@@ -43,6 +45,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return // Upgrade already wrote the error
 	}
-	conn := newConn(wsConn, h.hub, h.chatSvc, user.ID, deviceID)
+	conn := newConn(wsConn, h.hub, h.chatSvc, h.presence, user.ID, deviceID)
 	conn.run(r.Context())
 }
