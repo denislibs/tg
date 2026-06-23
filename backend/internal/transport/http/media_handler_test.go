@@ -29,7 +29,7 @@ func newMediaRouter(t *testing.T) (http.Handler, *pgxpool.Pool) {
 	authSvc := auth.NewService(auth.NewRepo(pool), "12345", func(string, ...any) {})
 	chatSvc := messaging.NewService(pool)
 	mediaH := NewMediaHandler(media.NewService(media.NewRepo(pool), fakeStorage{}), chatSvc)
-	return NewRouter(authSvc, chatSvc, nil, mediaH), pool
+	return NewRouter(authSvc, chatSvc, nil, mediaH, nil), pool
 }
 
 func TestMedia_UploadAndGet_HTTP(t *testing.T) {

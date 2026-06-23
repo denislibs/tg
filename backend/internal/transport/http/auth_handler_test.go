@@ -17,7 +17,7 @@ func newTestRouter(t *testing.T) http.Handler {
 	pool := postgres.NewTestDB(t)
 	svc := auth.NewService(auth.NewRepo(pool), "12345", func(string, ...any) {})
 	chatSvc := messaging.NewService(pool)
-	return NewRouter(svc, chatSvc, nil, nil)
+	return NewRouter(svc, chatSvc, nil, nil, nil)
 }
 
 func postJSON(t *testing.T, h http.Handler, path string, body any) *httptest.ResponseRecorder {

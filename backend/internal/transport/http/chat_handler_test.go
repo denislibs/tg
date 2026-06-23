@@ -51,7 +51,7 @@ func newMessagingRouter(t *testing.T) (http.Handler, *pgxpool.Pool) {
 	pool := postgres.NewTestDB(t)
 	authSvc := auth.NewService(auth.NewRepo(pool), "12345", func(string, ...any) {})
 	chatSvc := messaging.NewService(pool)
-	return NewRouter(authSvc, chatSvc, nil, nil), pool
+	return NewRouter(authSvc, chatSvc, nil, nil, nil), pool
 }
 
 func TestChatFlow_HTTP(t *testing.T) {

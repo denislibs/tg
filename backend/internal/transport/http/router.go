@@ -10,7 +10,7 @@ import (
 	"github.com/messenger-denis/backend/internal/openapi"
 )
 
-func NewRouter(authSvc *auth.Service, chatSvc *messaging.Service, wsHandler http.Handler, mediaH *MediaHandler) http.Handler {
+func NewRouter(authSvc *auth.Service, chatSvc *messaging.Service, wsHandler http.Handler, mediaH *MediaHandler, pushH *PushHandler) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -49,6 +49,11 @@ func NewRouter(authSvc *auth.Service, chatSvc *messaging.Service, wsHandler http
 		if mediaH != nil {
 			pr.Post("/media/upload", mediaH.CreateUpload)
 			pr.Get("/media/{mediaID}", mediaH.Get)
+		}
+
+		if pushH != nil {
+			pr.Get("/push/vapid_public_key", pushH.VAPIDPublicKey)
+			pr.Post("/push/subscribe", pushH.Subscribe)
 		}
 
 		sh := NewSessionHandler(authSvc)
