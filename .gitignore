@@ -14,3 +14,4 @@ docker-compose.verify.yml
 nginx/Dockerfile.verify
 .playwright-mcp/
 slice3-real-chat-verified.png
+*-verified.png
