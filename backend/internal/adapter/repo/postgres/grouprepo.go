@@ -112,12 +112,13 @@ func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.Ch
 	err := q.QueryRow(ctx,
 		`SELECT c.id, c.type, c.title, COALESCE(c.username,''), c.about, c.photo_media_id,
 		        COALESCE(c.creator_id,0), c.member_count, c.is_public,
+		        COALESCE(c.discussion_chat_id,0),
 		        m.role, m.rights, m.muted
 		   FROM chats c
 		   LEFT JOIN chat_members m ON m.chat_id=c.id AND m.user_id=$2
 		  WHERE c.id=$1`,
 		chatID, viewerID).Scan(&c.ID, &c.Type, &c.Title, &c.Username, &c.About, &c.PhotoMediaID,
-		&c.CreatorID, &c.MemberCount, &c.IsPublic, &role, &rights, &muted)
+		&c.CreatorID, &c.MemberCount, &c.IsPublic, &c.DiscussionChatID, &role, &rights, &muted)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.ChatCard{}, domain.ErrNotFound
 	}

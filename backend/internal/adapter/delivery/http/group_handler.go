@@ -192,6 +192,7 @@ func (h *GroupHandler) Card(w http.ResponseWriter, r *http.Request) {
 		"id": c.ID, "type": c.Type, "title": c.Title, "username": c.Username, "about": c.About,
 		"photo_media_id": c.PhotoMediaID, "creator_id": c.CreatorID, "member_count": c.MemberCount,
 		"is_public": c.IsPublic, "my_role": c.MyRole, "my_rights": int(c.MyRights), "muted": c.Muted,
+		"discussion_chat_id": c.DiscussionChatID,
 	})
 }
 

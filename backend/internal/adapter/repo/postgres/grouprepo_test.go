@@ -70,4 +70,36 @@ func TestGroupRepo_CreateAndMembership(t *testing.T) {
 	if err != nil || len(cards) != 2 {
 		t.Fatalf("usersByIDs: %v %d", err, len(cards))
 	}
+
+	// Discussion chat id is exposed on the card: a default channel reports 0,
+	// and once a discussion group is linked the card reflects it.
+	chID, err := r.CreateMultiMember(ctx, "channel", "My Channel", "", "", true, u1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.AddMember(ctx, chID, u1, domain.RoleCreator, domain.AllRights); err != nil {
+		t.Fatal(err)
+	}
+	cc, err := r.Card(ctx, chID, u1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cc.DiscussionChatID != 0 {
+		t.Fatalf("default channel DiscussionChatID = %d, want 0", cc.DiscussionChatID)
+	}
+
+	grpID, err := r.CreateMultiMember(ctx, "group", "Discussion Group", "", "", false, u1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.SetDiscussion(ctx, chID, grpID); err != nil {
+		t.Fatal(err)
+	}
+	cc2, err := r.Card(ctx, chID, u1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cc2.DiscussionChatID != grpID {
+		t.Fatalf("linked channel DiscussionChatID = %d, want %d", cc2.DiscussionChatID, grpID)
+	}
 }
