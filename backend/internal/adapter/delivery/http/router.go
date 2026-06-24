@@ -52,6 +52,20 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Delete("/chats/{chatID}/messages/{msgID}/reactions/{emoji}", ch.RemoveReaction)
 		pr.Get("/chats/{chatID}/messages/{msgID}/reactions", ch.ListReactions)
 
+		gh := NewGroupHandler(chatUC)
+		pr.Post("/groups", gh.CreateGroup)
+		pr.Get("/chats/{chatID}/card", gh.Card)
+		pr.Patch("/chats/{chatID}", gh.EditInfo)
+		pr.Post("/chats/{chatID}/members", gh.AddMember)
+		pr.Delete("/chats/{chatID}/members/{userID}", gh.RemoveMember)
+		pr.Post("/chats/{chatID}/admins", gh.PromoteAdmin)
+		pr.Delete("/chats/{chatID}/admins/{userID}", gh.DemoteAdmin)
+		pr.Post("/chats/{chatID}/mute", gh.SetMute)
+		pr.Post("/chats/{chatID}/invite_links", gh.CreateInvite)
+		pr.Get("/chats/{chatID}/invite_links", gh.ListInvites)
+		pr.Post("/join/{token}", gh.Join)
+		pr.Get("/users", gh.Users)
+
 		if mediaH != nil {
 			pr.Post("/media/upload", mediaH.CreateUpload)
 			pr.Get("/media/{mediaID}", mediaH.Get)
