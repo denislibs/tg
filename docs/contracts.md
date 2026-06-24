@@ -180,20 +180,39 @@ Set the caller's own per-chat mute flag.
 
 ### POST /chats/{chatID}/invite_links  · auth · needs `INVITE_USERS`
 Create an invite link with a random token.
-- Request: `{ "usage_limit": 10 }`  (`usage_limit` optional/nullable = unlimited)
-- 200: `{ "token": "<hex>", "url": "/join/<hex>" }`
+- Request: `{ "usage_limit": 10, "requires_approval": false }`  (`usage_limit` optional/nullable = unlimited; `requires_approval` optional, default `false`)
+- 200: `{ "token": "<hex>", "url": "/join/<hex>", "requires_approval": false }`
 - 403: `{ "error": "forbidden" }`
 
 ### GET /chats/{chatID}/invite_links  · auth · needs `INVITE_USERS`
 List the chat's active (non-revoked) invite links.
-- 200: `{ "invite_links": [ { "token": "<hex>", "uses": 3, "url": "/join/<hex>" } ] }`
+- 200: `{ "invite_links": [ { "token": "<hex>", "uses": 3, "url": "/join/<hex>", "requires_approval": false } ] }`
 - 403: `{ "error": "forbidden" }`
 
 ### POST /join/{token}  · auth
-Join a chat via an invite token; the caller becomes a `member` and the link's
-`uses` counter increments.
-- 200: `{ "ok": true }`
+Join a chat via an invite token. If the link does not require approval the caller
+becomes a `member` immediately and the link's `uses` counter increments. If the
+link requires approval, a pending join request is recorded instead (idempotent).
+- 200: `{ "status": "joined" }` — joined immediately (no approval required)
+- 200: `{ "status": "requested" }` — pending admin approval (approval-required link)
 - 404: `{ "error": "not found" }` (unknown or revoked token)
+
+### GET /chats/{chatID}/join_requests  · auth · needs `INVITE_USERS`
+List pending join requests for the chat.
+- 200: `{ "requests": [ { "user_id": 42 } ] }`
+- 403: `{ "error": "forbidden" }`
+
+### POST /chats/{chatID}/join_requests/{userID}/approve  · auth · needs `INVITE_USERS`
+Approve a pending join request; the user becomes a `member` and the request is removed.
+- 200: `{ "ok": true }`
+- 403: `{ "error": "forbidden" }`
+- 404: `{ "error": "not found" }`
+
+### POST /chats/{chatID}/join_requests/{userID}/decline  · auth · needs `INVITE_USERS`
+Decline (remove) a pending join request.
+- 200: `{ "ok": true }`
+- 403: `{ "error": "forbidden" }`
+- 404: `{ "error": "not found" }`
 
 ### GET /users?ids=  · auth
 Batch-resolve minimal public user cards (for member lists, sender names).

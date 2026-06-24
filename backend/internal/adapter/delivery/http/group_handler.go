@@ -254,15 +254,16 @@ func (h *GroupHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var b struct {
-		UsageLimit *int `json:"usage_limit"`
+		UsageLimit       *int `json:"usage_limit"`
+		RequiresApproval bool `json:"requires_approval"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&b)
-	link, err := h.uc.CreateInvite(r.Context(), chatID, user.ID, b.UsageLimit, false)
+	link, err := h.uc.CreateInvite(r.Context(), chatID, user.ID, b.UsageLimit, b.RequiresApproval)
 	if err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"token": link.Token, "url": "/join/" + link.Token})
+	writeJSON(w, http.StatusOK, map[string]any{"token": link.Token, "url": "/join/" + link.Token, "requires_approval": link.RequiresApproval})
 }
 
 func (h *GroupHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
@@ -278,7 +279,7 @@ func (h *GroupHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]map[string]any, 0, len(links))
 	for _, l := range links {
-		out = append(out, map[string]any{"token": l.Token, "uses": l.Uses, "url": "/join/" + l.Token})
+		out = append(out, map[string]any{"token": l.Token, "uses": l.Uses, "url": "/join/" + l.Token, "requires_approval": l.RequiresApproval})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"invite_links": out})
 }
@@ -286,7 +287,64 @@ func (h *GroupHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
 func (h *GroupHandler) Join(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	token := chi.URLParam(r, "token")
-	if _, err := h.uc.JoinByToken(r.Context(), token, user.ID); err != nil {
+	requested, err := h.uc.JoinByToken(r.Context(), token, user.ID)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	status := "joined"
+	if requested {
+		status = "requested"
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": status})
+}
+
+func (h *GroupHandler) JoinRequests(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	reqs, err := h.uc.ListJoinRequests(r.Context(), chatID, user.ID)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	out := make([]map[string]any, 0, len(reqs))
+	for _, rq := range reqs {
+		out = append(out, map[string]any{"user_id": rq.UserID})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"requests": out})
+}
+
+func (h *GroupHandler) ApproveJoinRequest(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	uid, ok := pathInt(w, r, "userID")
+	if !ok {
+		return
+	}
+	if err := h.uc.ApproveJoinRequest(r.Context(), chatID, user.ID, uid); err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (h *GroupHandler) DeclineJoinRequest(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	uid, ok := pathInt(w, r, "userID")
+	if !ok {
+		return
+	}
+	if err := h.uc.DeclineJoinRequest(r.Context(), chatID, user.ID, uid); err != nil {
 		h.mapErr(w, err)
 		return
 	}
