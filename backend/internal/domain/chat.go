@@ -52,18 +52,19 @@ type Member struct {
 
 // ChatCard is the read model for a group/channel info screen.
 type ChatCard struct {
-	ID           int64
-	Type         string
-	Title        string
-	Username     string
-	About        string
-	PhotoMediaID *int64
-	CreatorID    int64
-	MemberCount  int
-	IsPublic     bool
-	MyRole       string
-	MyRights     Rights
-	Muted        bool
+	ID               int64
+	Type             string
+	Title            string
+	Username         string
+	About            string
+	PhotoMediaID     *int64
+	CreatorID        int64
+	MemberCount      int
+	IsPublic         bool
+	MyRole           string
+	MyRights         Rights
+	Muted            bool
+	DiscussionChatID int64
 }
 
 // InviteLink is a join token for a chat.
