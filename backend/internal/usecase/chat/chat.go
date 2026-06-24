@@ -17,12 +17,14 @@ type Interactor struct {
 	updates     UpdateRepo
 	reactions   ReactionRepo
 	mediaAccess MediaAccessRepo
+	groups      GroupRepo
+	invites     InviteRepo
 	publisher   EventPublisher
 	notifier    PushNotifier
 }
 
 // New constructs the chat interactor from its ports.
-func New(tx TxManager, chats ChatRepo, msgs MessageRepo, updates UpdateRepo, reactions ReactionRepo, mediaAccess MediaAccessRepo) *Interactor {
+func New(tx TxManager, chats ChatRepo, msgs MessageRepo, updates UpdateRepo, reactions ReactionRepo, mediaAccess MediaAccessRepo, groups GroupRepo, invites InviteRepo) *Interactor {
 	return &Interactor{
 		tx:          tx,
 		chats:       chats,
@@ -30,6 +32,8 @@ func New(tx TxManager, chats ChatRepo, msgs MessageRepo, updates UpdateRepo, rea
 		updates:     updates,
 		reactions:   reactions,
 		mediaAccess: mediaAccess,
+		groups:      groups,
+		invites:     invites,
 	}
 }
 

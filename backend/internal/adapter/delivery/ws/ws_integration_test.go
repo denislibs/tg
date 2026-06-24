@@ -60,6 +60,8 @@ func newWSEnv(t *testing.T) *wsEnv {
 		pgadapter.NewUpdatesRepo(pool),
 		pgadapter.NewReactionsRepo(pool),
 		pgadapter.NewMediaAccessRepo(pool),
+		pgadapter.NewGroupRepo(pool),
+		pgadapter.NewInviteRepo(pool),
 	)
 	publisher := rtredis.NewRedisPublisher(rdb)
 	chatSvc.SetPublisher(publisher)
