@@ -102,11 +102,11 @@ func (i *Interactor) ListMembers(ctx context.Context, chatID, viewerID int64, of
 	return i.groups.ListMembers(ctx, chatID, offset, limit)
 }
 
-func (i *Interactor) CreateInvite(ctx context.Context, chatID, actorID int64, usageLimit *int) (domain.InviteLink, error) {
+func (i *Interactor) CreateInvite(ctx context.Context, chatID, actorID int64, usageLimit *int, requiresApproval bool) (domain.InviteLink, error) {
 	if err := i.requireRight(ctx, chatID, actorID, domain.RightInviteUsers); err != nil {
 		return domain.InviteLink{}, err
 	}
-	return i.invites.Create(ctx, chatID, actorID, tokenGen(), usageLimit, false)
+	return i.invites.Create(ctx, chatID, actorID, tokenGen(), usageLimit, requiresApproval)
 }
 
 func (i *Interactor) ListInvites(ctx context.Context, chatID, actorID int64) ([]domain.InviteLink, error) {
@@ -123,15 +123,58 @@ func (i *Interactor) RevokeInvite(ctx context.Context, chatID, actorID int64, to
 	return i.invites.Revoke(ctx, chatID, token)
 }
 
-func (i *Interactor) JoinByToken(ctx context.Context, token string, userID int64) error {
+// JoinByToken resolves an invite link and either joins the user immediately or,
+// for approval-required links, records a pending join request. The returned
+// requested bool is true when a request was filed (approval needed) and false
+// when the user was added as a member.
+func (i *Interactor) JoinByToken(ctx context.Context, token string, userID int64) (requested bool, err error) {
 	link, err := i.invites.GetByToken(ctx, token)
 	if err != nil {
-		return err
+		return false, err
 	}
-	return i.tx.WithinTx(ctx, func(ctx context.Context) error {
+	if link.RequiresApproval {
+		if e := i.joinReqs.Create(ctx, link.ChatID, userID, token); e != nil {
+			return false, e
+		}
+		return true, nil
+	}
+	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if e := i.groups.AddMember(ctx, link.ChatID, userID, domain.RoleMember, 0); e != nil {
 			return e
 		}
 		return i.invites.IncUses(ctx, link.ID)
 	})
+	return false, err
+}
+
+// ListJoinRequests returns the pending join requests for a chat. The actor must
+// hold INVITE_USERS.
+func (i *Interactor) ListJoinRequests(ctx context.Context, chatID, actorID int64) ([]domain.JoinRequest, error) {
+	if err := i.requireRight(ctx, chatID, actorID, domain.RightInviteUsers); err != nil {
+		return nil, err
+	}
+	return i.joinReqs.List(ctx, chatID)
+}
+
+// ApproveJoinRequest adds the requesting user as a member and clears the pending
+// request. The actor must hold INVITE_USERS.
+func (i *Interactor) ApproveJoinRequest(ctx context.Context, chatID, actorID, userID int64) error {
+	if err := i.requireRight(ctx, chatID, actorID, domain.RightInviteUsers); err != nil {
+		return err
+	}
+	return i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		if e := i.groups.AddMember(ctx, chatID, userID, domain.RoleMember, 0); e != nil {
+			return e
+		}
+		return i.joinReqs.Delete(ctx, chatID, userID)
+	})
+}
+
+// DeclineJoinRequest drops a pending join request. The actor must hold
+// INVITE_USERS.
+func (i *Interactor) DeclineJoinRequest(ctx context.Context, chatID, actorID, userID int64) error {
+	if err := i.requireRight(ctx, chatID, actorID, domain.RightInviteUsers); err != nil {
+		return err
+	}
+	return i.joinReqs.Delete(ctx, chatID, userID)
 }

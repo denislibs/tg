@@ -257,7 +257,7 @@ func (h *GroupHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 		UsageLimit *int `json:"usage_limit"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&b)
-	link, err := h.uc.CreateInvite(r.Context(), chatID, user.ID, b.UsageLimit)
+	link, err := h.uc.CreateInvite(r.Context(), chatID, user.ID, b.UsageLimit, false)
 	if err != nil {
 		h.mapErr(w, err)
 		return
@@ -286,7 +286,7 @@ func (h *GroupHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
 func (h *GroupHandler) Join(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	token := chi.URLParam(r, "token")
-	if err := h.uc.JoinByToken(r.Context(), token, user.ID); err != nil {
+	if _, err := h.uc.JoinByToken(r.Context(), token, user.ID); err != nil {
 		h.mapErr(w, err)
 		return
 	}

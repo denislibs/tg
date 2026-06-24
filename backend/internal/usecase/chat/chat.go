@@ -19,6 +19,7 @@ type Interactor struct {
 	mediaAccess MediaAccessRepo
 	groups      GroupRepo
 	invites     InviteRepo
+	joinReqs    JoinRequestRepo
 	channels    ChannelRepo
 	search      SearchRepo
 	publisher   EventPublisher
@@ -27,7 +28,7 @@ type Interactor struct {
 }
 
 // New constructs the chat interactor from its ports.
-func New(tx TxManager, chats ChatRepo, msgs MessageRepo, updates UpdateRepo, reactions ReactionRepo, mediaAccess MediaAccessRepo, groups GroupRepo, invites InviteRepo, channels ChannelRepo, search SearchRepo) *Interactor {
+func New(tx TxManager, chats ChatRepo, msgs MessageRepo, updates UpdateRepo, reactions ReactionRepo, mediaAccess MediaAccessRepo, groups GroupRepo, invites InviteRepo, channels ChannelRepo, search SearchRepo, joinReqs JoinRequestRepo) *Interactor {
 	return &Interactor{
 		tx:          tx,
 		chats:       chats,
@@ -37,6 +38,7 @@ func New(tx TxManager, chats ChatRepo, msgs MessageRepo, updates UpdateRepo, rea
 		mediaAccess: mediaAccess,
 		groups:      groups,
 		invites:     invites,
+		joinReqs:    joinReqs,
 		channels:    channels,
 		search:      search,
 	}

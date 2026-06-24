@@ -107,6 +107,9 @@ func provideGroupRepo(pool *pgxpool.Pool) *pgadapter.GroupRepo {
 func provideInviteRepo(pool *pgxpool.Pool) *pgadapter.InviteRepo {
 	return pgadapter.NewInviteRepo(pool)
 }
+func provideJoinRequestRepo(pool *pgxpool.Pool) *pgadapter.JoinRequestRepo {
+	return pgadapter.NewJoinRequestRepo(pool)
+}
 func provideChannelRepo(pool *pgxpool.Pool) *pgadapter.ChannelRepo {
 	return pgadapter.NewChannelRepo(pool)
 }
@@ -125,8 +128,9 @@ func provideChatUsecase(
 	invites *pgadapter.InviteRepo,
 	channels *pgadapter.ChannelRepo,
 	search *pgadapter.SearchRepo,
+	joinReqs *pgadapter.JoinRequestRepo,
 ) *usecasechat.Interactor {
-	return usecasechat.New(tx, chats, msgs, updates, reactions, mediaAccess, groups, invites, channels, search)
+	return usecasechat.New(tx, chats, msgs, updates, reactions, mediaAccess, groups, invites, channels, search, joinReqs)
 }
 
 func newSessionCache(client *redis.Client) usecaseauth.SessionCache {
