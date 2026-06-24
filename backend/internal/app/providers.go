@@ -14,6 +14,7 @@ import (
 	"github.com/messenger-denis/backend/internal/store/redisstore"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
+	storyusecase "github.com/messenger-denis/backend/internal/usecase/story"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/fx"
 )
@@ -131,6 +132,17 @@ func provideChatUsecase(
 	joinReqs *pgadapter.JoinRequestRepo,
 ) *usecasechat.Interactor {
 	return usecasechat.New(tx, chats, msgs, updates, reactions, mediaAccess, groups, invites, channels, search, joinReqs)
+}
+
+func provideStoryRepo(pool *pgxpool.Pool) *pgadapter.StoryRepo { return pgadapter.NewStoryRepo(pool) }
+
+func provideStoryService(
+	repo *pgadapter.StoryRepo,
+	chatUC *usecasechat.Interactor,
+	mediaAccess *pgadapter.MediaAccessRepo,
+	tx *pgadapter.TxManager,
+) *storyusecase.Service {
+	return storyusecase.New(repo, chatUC, mediaAccess, tx)
 }
 
 func newSessionCache(client *redis.Client) usecaseauth.SessionCache {
