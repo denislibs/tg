@@ -75,6 +75,10 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Post("/channels/{chatID}/messages", chh.Post)
 		pr.Get("/channels/{chatID}/difference", chh.Difference)
 		pr.Post("/channels/join", chh.Join)
+		pr.Post("/channels/{chatID}/discussion", chh.EnableDiscussion)
+		pr.Post("/channels/{chatID}/posts/{postId}/comments", chh.PostComment)
+		pr.Get("/channels/{chatID}/posts/{postId}/comments", chh.ListComments)
+		pr.Get("/channels/{chatID}/comment_counts", chh.CommentCounts)
 		pr.Get("/search", chh.Search)
 
 		if mediaH != nil {

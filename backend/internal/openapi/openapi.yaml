@@ -52,6 +52,7 @@ components:
         text: { type: string }
         reply_to_id: { type: integer, format: int64, nullable: true }
         media_id: { type: integer, format: int64, nullable: true }
+        thread_root_id: { type: integer, format: int64, nullable: true, description: "channel post id this comment threads under; null for normal messages" }
         created_at: { type: string, format: date-time }
         deleted: { type: boolean }
     Dialog:
@@ -637,6 +638,89 @@ paths:
         "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
         "400": { description: username required, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "404": { description: no public chat with that username, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /channels/{chatID}/discussion:
+    post:
+      tags: [channels]
+      summary: Enable discussions on a channel (needs CHANGE_INFO); idempotent
+      description: |
+        Auto-creates a backing group chat and links it via the channel's
+        discussion_chat_id. Idempotent: returns the existing discussion group id
+        if discussions are already enabled.
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        "200":
+          description: the linked discussion group id
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  discussion_chat_id: { type: integer, format: int64 }
+        "403": { description: caller lacks CHANGE_INFO, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: channel not found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /channels/{chatID}/posts/{postId}/comments:
+    post:
+      tags: [channels]
+      summary: Post a comment on a channel post (auto-joins the discussion group)
+      description: |
+        The comment is a message in the linked discussion group stamped with
+        thread_root_id = postId. The caller auto-joins the discussion group.
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+        - { name: postId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text: { type: string }
+                client_msg_id: { type: string, description: client UUID for idempotency }
+      responses:
+        "200": { description: the created comment, content: { application/json: { schema: { $ref: "#/components/schemas/Message" } } } }
+        "404": { description: discussions not enabled, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    get:
+      tags: [channels]
+      summary: List the comment thread for a channel post (ascending by seq)
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+        - { name: postId, in: path, required: true, schema: { type: integer, format: int64 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
+        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 100 } }
+      responses:
+        "200":
+          description: the comment thread and total count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages: { type: array, items: { $ref: "#/components/schemas/Message" } }
+                  count: { type: integer }
+        "404": { description: discussions not enabled, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /channels/{chatID}/comment_counts:
+    get:
+      tags: [channels]
+      summary: Batch comment counts for channel posts
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+        - { name: ids, in: query, schema: { type: string }, description: "CSV of post message ids, e.g. 55,56,57" }
+      responses:
+        "200":
+          description: post id (string key) -> comment count; empty object when discussions are off
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  counts:
+                    type: object
+                    additionalProperties: { type: integer }
 
   /search:
     get:

@@ -67,6 +67,97 @@ func (h *ChannelHandler) Post(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *ChannelHandler) EnableDiscussion(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	disc, err := h.uc.EnableDiscussion(r.Context(), chatID, user.ID)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"discussion_chat_id": disc})
+}
+
+func (h *ChannelHandler) PostComment(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	postID, ok := pathInt(w, r, "postId")
+	if !ok {
+		return
+	}
+	var b struct {
+		Text        string `json:"text"`
+		ClientMsgID string `json:"client_msg_id"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&b)
+	m, err := h.uc.PostComment(r.Context(), chatID, postID, user.ID, b.Text, b.ClientMsgID)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, messageJSON(m))
+}
+
+func (h *ChannelHandler) ListComments(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	postID, ok := pathInt(w, r, "postId")
+	if !ok {
+		return
+	}
+	offset := int(queryInt(r, "offset", 0))
+	limit := int(queryInt(r, "limit", 50))
+	msgs, count, err := h.uc.ListComments(r.Context(), chatID, postID, user.ID, offset, limit)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	out := make([]map[string]any, 0, len(msgs))
+	for _, m := range msgs {
+		out = append(out, messageJSON(m))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": count})
+}
+
+func (h *ChannelHandler) CommentCounts(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	ids := make([]int64, 0)
+	for _, s := range strings.Split(r.URL.Query().Get("ids"), ",") {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		id, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid ids")
+			return
+		}
+		ids = append(ids, id)
+	}
+	counts, err := h.uc.CommentCounts(r.Context(), chatID, ids)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	out := make(map[string]int, len(counts))
+	for id, n := range counts {
+		out[strconv.FormatInt(id, 10)] = n
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"counts": out})
+}
+
 func (h *ChannelHandler) Difference(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	chatID, ok := pathInt(w, r, "chatID")

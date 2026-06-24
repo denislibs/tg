@@ -282,6 +282,52 @@ Join a public channel by its `@username`; the caller becomes a `subscriber`.
 - 400: `{ "error": "username required" }`
 - 404: `{ "error": "not found" }` (no public chat with that username)
 
+### Discussions (channel-post comments)
+
+A channel can enable **discussions**: a backing `group` chat is auto-created and
+linked via the channel's `discussion_chat_id`. Comments are ordinary group
+messages stamped with `thread_root_id` = the channel post's message `id`, so they
+reuse the standard send path (fan-out + per-user `pts` + live `new_message`).
+Commenters auto-join the discussion group on first comment (idempotent).
+
+### POST /channels/{chatID}/discussion  · auth · needs `CHANGE_INFO`
+Enable discussions on a channel. Idempotent: returns the existing discussion
+group id if already enabled. The caller must be an admin (CHANGE_INFO right).
+- 200: `{ "discussion_chat_id": 42 }`
+- 403: `{ "error": "forbidden" }` (not allowed to change channel info)
+- 404: `{ "error": "not found" }` (channel does not exist)
+
+### POST /channels/{chatID}/posts/{postId}/comments  · auth
+Post a comment on the channel post `postId`. The comment is a message in the
+linked discussion group with `thread_root_id = postId`. The caller is auto-joined
+to the discussion group.
+- Request: `{ "text": "nice post", "client_msg_id": "uuid-from-client" }`
+- 200: a message object, e.g.
+```json
+{ "id": 99, "chat_id": 42, "seq": 1, "sender_id": 7, "type": "text",
+  "text": "nice post", "reply_to_id": null, "media_id": null,
+  "thread_root_id": 55, "created_at": "2026-06-24T00:00:00Z", "deleted": false }
+```
+- 404: `{ "error": "not found" }` (discussions not enabled)
+
+### GET /channels/{chatID}/posts/{postId}/comments  · auth
+List the comment thread (ascending by `seq`) for a channel post, plus the total
+count.
+- Query: `offset` (default 0), `limit` (default 50, max 100).
+- 200:
+```json
+{ "messages": [ { "id": 99, "chat_id": 42, "seq": 1, "sender_id": 7,
+  "type": "text", "text": "nice post", "thread_root_id": 55,
+  "created_at": "2026-06-24T00:00:00Z", "deleted": false } ], "count": 1 }
+```
+- 404: `{ "error": "not found" }` (discussions not enabled)
+
+### GET /channels/{chatID}/comment_counts?ids=  · auth
+Return comment counts for a batch of channel posts. Returns `0` (or omits) for
+posts with no comments and `{}` when discussions are not enabled.
+- Query: `ids` — CSV of post message ids, e.g. `?ids=55,56,57`.
+- 200: `{ "counts": { "55": 1, "56": 0 } }` (JSON object keys are post id strings)
+
 ### GET /search?q=  · auth
 Global directory search: public chats (channels/public groups) by `@username` or
 title prefix, plus users by `username`/`display_name` prefix. Private chats are
