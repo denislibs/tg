@@ -48,6 +48,12 @@ type InviteRepo interface {
 	Revoke(ctx context.Context, chatID int64, token string) error
 }
 
+type JoinRequestRepo interface {
+	Create(ctx context.Context, chatID, userID int64, inviteToken string) error // idempotent (ON CONFLICT DO NOTHING)
+	List(ctx context.Context, chatID int64) ([]domain.JoinRequest, error)
+	Delete(ctx context.Context, chatID, userID int64) error
+}
+
 type MessageRepo interface {
 	NextSeq(ctx context.Context, chatID int64) (int64, error)
 	Insert(ctx context.Context, m domain.Message) (domain.Message, error)
