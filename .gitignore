@@ -7,3 +7,6 @@ dist/
 
 # Frontend mock has its own git repo — not part of the backend repo
 telegram-ui-clone/
+
+# Vite build output served by nginx
+client-build/

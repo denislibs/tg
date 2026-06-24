@@ -60,7 +60,7 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       # Vite build output (run `npm run build:watch` in telegram-ui-clone first).
-      - ./telegram-ui-clone/dist:/usr/share/nginx/html:ro
+      - ./client-build:/usr/share/nginx/html:ro
     ports: ["8080:80"]
     depends_on: [backend]
 
