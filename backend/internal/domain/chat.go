@@ -28,6 +28,8 @@ type DialogPeer struct {
 type Dialog struct {
 	ChatID       int64
 	Type         string
+	Title        string
+	Username     string
 	LastReadSeq  int64
 	UnreadCount  int
 	Muted        bool
