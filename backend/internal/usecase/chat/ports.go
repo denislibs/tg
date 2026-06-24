@@ -63,6 +63,13 @@ type UpdateRepo interface {
 	UpdatesSince(ctx context.Context, userID, sincePts int64, limit int) ([]domain.Update, error)
 }
 
+type ChannelRepo interface {
+	// AppendUpdate bumps the channel's pts by 1 and records the update; returns the new pts.
+	AppendUpdate(ctx context.Context, channelID int64, payload json.RawMessage) (int64, error)
+	UpdatesSince(ctx context.Context, channelID, sincePts int64, limit int) ([]domain.ChannelUpdate, error)
+	CurrentPts(ctx context.Context, channelID int64) (int64, error)
+}
+
 type ReactionRepo interface {
 	Add(ctx context.Context, messageID, userID int64, emoji string) error
 	Remove(ctx context.Context, messageID, userID int64, emoji string) error
