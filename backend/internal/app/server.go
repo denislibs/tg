@@ -47,6 +47,7 @@ func registerServer(p serverParams) {
 	var presenceMgr *usecasepresence.Manager
 	if p.Redis.OK {
 		p.AuthUC.SetCache(redisSessionCache(p.Redis))
+		p.AuthUC.SetQRStore(redisQRStore(p.Redis))
 		publisher := rtredis.NewRedisPublisher(p.Redis.Client)
 		p.ChatUC.SetPublisher(publisher)
 		p.ChatUC.SetChannelPublisher(publisher)
@@ -117,4 +118,9 @@ func registerServer(p serverParams) {
 // redisSessionCache is a tiny helper so server.go doesn't import redisstore twice.
 func redisSessionCache(r RedisResult) usecaseauth.SessionCache {
 	return newSessionCache(r.Client)
+}
+
+// redisQRStore is a tiny helper so server.go doesn't import redisstore twice.
+func redisQRStore(r RedisResult) usecaseauth.QRStore {
+	return newQRStore(r.Client)
 }

@@ -148,3 +148,7 @@ func provideStoryService(
 func newSessionCache(client *redis.Client) usecaseauth.SessionCache {
 	return cacheredis.NewSessionCache(client)
 }
+
+func newQRStore(client *redis.Client) usecaseauth.QRStore {
+	return cacheredis.NewQRStore(client)
+}
