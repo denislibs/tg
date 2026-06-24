@@ -29,8 +29,15 @@ func (r *MediaAccessRepo) OwnerID(ctx context.Context, mediaID int64) (int64, er
 	return ownerID, err
 }
 
-// CanAccess reports whether userID may download a media object: either they own
-// it, or they are a member of a chat that has a message referencing it.
+// CanAccess reports whether userID may download a media object. Access is granted if any holds:
+//   - they own it;
+//   - they are a member of a chat that has a message referencing it;
+//   - the media backs an active story they may view — i.e. they authored it, or
+//     they are a chat partner of the author and the story is 'everyone'/'contacts',
+//     or the story is 'selected' and they are on its allowlist.
+//
+// The story branch mirrors the visibility predicate used by the stories feed
+// (see StoryRepo.ActiveFeed) so a viewer who can see a story can fetch its media.
 func (r *MediaAccessRepo) CanAccess(ctx context.Context, userID, mediaID int64) (bool, error) {
 	q := querier(ctx, r.pool)
 	var allowed bool
@@ -41,6 +48,23 @@ func (r *MediaAccessRepo) CanAccess(ctx context.Context, userID, mediaID int64) 
 		   SELECT 1 FROM messages m
 		     JOIN chat_members cm ON cm.chat_id = m.chat_id
 		     WHERE m.media_id=$1 AND cm.user_id=$2
+		   UNION ALL
+		   SELECT 1 FROM stories s
+		     WHERE s.media_id=$1 AND s.expires_at > now()
+		       AND (
+		         s.author_id = $2
+		         OR (
+		           EXISTS(
+		             SELECT 1 FROM chat_members cm1
+		               JOIN chat_members cm2 ON cm2.chat_id = cm1.chat_id AND cm2.user_id = s.author_id
+		             WHERE cm1.user_id = $2
+		           )
+		           AND (
+		             s.privacy IN ('everyone','contacts')
+		             OR EXISTS(SELECT 1 FROM story_allow sa WHERE sa.story_id = s.id AND sa.user_id = $2)
+		           )
+		         )
+		       )
 		 )`, mediaID, userID).Scan(&allowed)
 	return allowed, err
 }

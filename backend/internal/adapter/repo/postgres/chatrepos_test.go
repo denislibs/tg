@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -471,6 +472,69 @@ func TestMediaAccessRepo_OwnerAndCanAccess(t *testing.T) {
 	// c (stranger) still cannot.
 	if ok, _ := repo.CanAccess(ctx, c, mediaID); ok {
 		t.Fatal("stranger should not access media")
+	}
+}
+
+func TestMediaAccessRepo_StoryMedia(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewMediaAccessRepo(pool)
+	stories := NewStoryRepo(pool)
+	ctx := context.Background()
+	author := seedUser(t, pool, "+8100")
+	partner := seedUser(t, pool, "+8101")
+	selected := seedUser(t, pool, "+8102")
+	stranger := seedUser(t, pool, "+8103")
+	// author shares a private chat with partner and with selected (both are chat partners),
+	// but NOT with stranger.
+	createPrivate(t, pool, author, partner)
+	createPrivate(t, pool, author, selected)
+
+	// A 'contacts' story: visible to any chat partner, not to strangers.
+	contactsMedia := seedMedia(t, pool, author, "story-contacts")
+	_, err := stories.Create(ctx, domain.Story{
+		AuthorID: author, MediaID: contactsMedia, Privacy: "contacts",
+		CreatedAt: time.Now(), ExpiresAt: time.Now().Add(24 * time.Hour),
+	}, nil)
+	if err != nil {
+		t.Fatalf("create contacts story: %v", err)
+	}
+	if ok, _ := repo.CanAccess(ctx, author, contactsMedia); !ok {
+		t.Fatal("author should access own story media")
+	}
+	if ok, _ := repo.CanAccess(ctx, partner, contactsMedia); !ok {
+		t.Fatal("chat partner should access a 'contacts' story's media")
+	}
+	if ok, _ := repo.CanAccess(ctx, stranger, contactsMedia); ok {
+		t.Fatal("stranger should not access a 'contacts' story's media")
+	}
+
+	// A 'selected' story: only the allowlisted partner may view; another partner may not.
+	selMedia := seedMedia(t, pool, author, "story-selected")
+	_, err = stories.Create(ctx, domain.Story{
+		AuthorID: author, MediaID: selMedia, Privacy: "selected",
+		CreatedAt: time.Now(), ExpiresAt: time.Now().Add(24 * time.Hour),
+	}, []int64{selected})
+	if err != nil {
+		t.Fatalf("create selected story: %v", err)
+	}
+	if ok, _ := repo.CanAccess(ctx, selected, selMedia); !ok {
+		t.Fatal("allowlisted user should access a 'selected' story's media")
+	}
+	if ok, _ := repo.CanAccess(ctx, partner, selMedia); ok {
+		t.Fatal("non-allowlisted partner should not access a 'selected' story's media")
+	}
+
+	// An expired story's media is not accessible to viewers (only the owner).
+	expMedia := seedMedia(t, pool, author, "story-expired")
+	_, err = stories.Create(ctx, domain.Story{
+		AuthorID: author, MediaID: expMedia, Privacy: "contacts",
+		CreatedAt: time.Now().Add(-48 * time.Hour), ExpiresAt: time.Now().Add(-24 * time.Hour),
+	}, nil)
+	if err != nil {
+		t.Fatalf("create expired story: %v", err)
+	}
+	if ok, _ := repo.CanAccess(ctx, partner, expMedia); ok {
+		t.Fatal("partner should not access an expired story's media")
 	}
 }
 
