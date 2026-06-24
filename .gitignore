@@ -10,3 +10,7 @@ telegram-ui-clone/
 
 # Vite build output served by nginx
 client-build/
+docker-compose.verify.yml
+nginx/Dockerfile.verify
+.playwright-mcp/
+slice3-real-chat-verified.png
