@@ -71,10 +71,12 @@ List the user's dialogs, newest activity first.
 ```json
 { "chats": [
   { "chat_id": 1, "type": "private", "last_read_seq": 4, "unread": 0, "muted": false,
+    "peer": { "id": 2, "display_name": "Bob", "avatar_url": "" },
     "last_message": { "seq": 4, "text": "hi", "sender_id": 2, "at": "2026-06-24T10:00:00Z" } }
 ] }
 ```
-`last_message` is omitted for empty chats.
+`last_message` is omitted for empty chats. `peer` is the other participant of a
+private chat (its `id`/`display_name`/`avatar_url`); it is omitted for non-private chats.
 
 ---
 

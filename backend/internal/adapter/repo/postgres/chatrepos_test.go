@@ -103,6 +103,24 @@ func TestChatsRepo_ListDialogs(t *testing.T) {
 	if dialogs[0].HasLast {
 		t.Fatal("expected no last message in empty chat")
 	}
+	// A's dialog should carry the peer (B) for a private chat.
+	if dialogs[0].Peer == nil {
+		t.Fatalf("expected peer set for private chat, got nil")
+	}
+	if dialogs[0].Peer.ID != b {
+		t.Fatalf("peer id = %d; want %d", dialogs[0].Peer.ID, b)
+	}
+	if dialogs[0].Peer.DisplayName != "+711" {
+		t.Fatalf("peer display_name = %q; want %q", dialogs[0].Peer.DisplayName, "+711")
+	}
+	// And symmetrically, B's dialog should carry A as the peer.
+	bDialogs, err := repo.ListDialogs(ctx, b)
+	if err != nil {
+		t.Fatalf("ListDialogs(b): %v", err)
+	}
+	if len(bDialogs) != 1 || bDialogs[0].Peer == nil || bDialogs[0].Peer.ID != a {
+		t.Fatalf("b's peer = %+v; want id %d", bDialogs[0].Peer, a)
+	}
 }
 
 func TestChatsRepo_ChatPartners(t *testing.T) {

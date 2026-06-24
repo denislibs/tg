@@ -16,6 +16,14 @@ type ChatMember struct {
 	Muted          bool
 }
 
+// DialogPeer is the other participant of a private chat, used to render a
+// chat's name and avatar in the chat list. It is nil for non-private chats.
+type DialogPeer struct {
+	ID          int64
+	DisplayName string
+	AvatarURL   string
+}
+
 // Dialog is a chat-list read model: a chat + the viewer's read state + last message.
 type Dialog struct {
 	ChatID       int64
@@ -28,4 +36,6 @@ type Dialog struct {
 	LastText     string
 	LastSenderID int64
 	LastAt       time.Time
+	// Peer is the other member of a private chat (nil for non-private chats).
+	Peer *DialogPeer
 }

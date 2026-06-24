@@ -55,6 +55,11 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 				"seq": d.LastSeq, "text": d.LastText, "sender_id": d.LastSenderID, "at": d.LastAt,
 			}
 		}
+		if d.Peer != nil {
+			row["peer"] = map[string]any{
+				"id": d.Peer.ID, "display_name": d.Peer.DisplayName, "avatar_url": d.Peer.AvatarURL,
+			}
+		}
 		out = append(out, row)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"chats": out})

@@ -120,7 +120,8 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 	q := querier(ctx, r.pool)
 	rows, err := q.Query(ctx,
 		`SELECT c.id, c.type, m.last_read_seq, m.unread_count, m.muted,
-		        lm.seq, lm.text, lm.sender_id, lm.created_at
+		        lm.seq, lm.text, lm.sender_id, lm.created_at,
+		        peer.id, peer.display_name, peer.avatar_url
 		 FROM chat_members m
 		 JOIN chats c ON c.id = m.chat_id
 		 LEFT JOIN LATERAL (
@@ -128,6 +129,12 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		   WHERE chat_id = c.id AND deleted_at IS NULL
 		   ORDER BY seq DESC LIMIT 1
 		 ) lm ON true
+		 LEFT JOIN LATERAL (
+		   SELECT u.id, u.display_name, u.avatar_url
+		   FROM chat_members om JOIN users u ON u.id = om.user_id
+		   WHERE om.chat_id = c.id AND om.user_id <> $1
+		   LIMIT 1
+		 ) peer ON c.type = 'private'
 		 WHERE m.user_id = $1
 		 ORDER BY lm.created_at DESC NULLS LAST`, userID)
 	if err != nil {
@@ -141,8 +148,12 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		var text *string
 		var senderID *int64
 		var at *time.Time
+		var peerID *int64
+		var peerName *string
+		var peerAvatar *string
 		if err := rows.Scan(&d.ChatID, &d.Type, &d.LastReadSeq, &d.UnreadCount, &d.Muted,
-			&seq, &text, &senderID, &at); err != nil {
+			&seq, &text, &senderID, &at,
+			&peerID, &peerName, &peerAvatar); err != nil {
 			return nil, err
 		}
 		if seq != nil {
@@ -151,6 +162,16 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 			d.LastText = *text
 			d.LastSenderID = *senderID
 			d.LastAt = *at
+		}
+		if peerID != nil {
+			p := domain.DialogPeer{ID: *peerID}
+			if peerName != nil {
+				p.DisplayName = *peerName
+			}
+			if peerAvatar != nil {
+				p.AvatarURL = *peerAvatar
+			}
+			d.Peer = &p
 		}
 		out = append(out, d)
 	}
