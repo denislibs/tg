@@ -70,6 +70,12 @@ type ChannelRepo interface {
 	CurrentPts(ctx context.Context, channelID int64) (int64, error)
 }
 
+type SearchRepo interface {
+	SearchChats(ctx context.Context, q string, limit int) ([]domain.ChatCard, error) // public only
+	SearchUsers(ctx context.Context, q string, limit int) ([]domain.UserCard, error)
+	PublicChatByUsername(ctx context.Context, username string) (int64, error) // domain.ErrNotFound
+}
+
 type ReactionRepo interface {
 	Add(ctx context.Context, messageID, userID int64, emoji string) error
 	Remove(ctx context.Context, messageID, userID int64, emoji string) error
