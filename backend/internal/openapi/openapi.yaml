@@ -59,6 +59,14 @@ components:
         last_read_seq: { type: integer, format: int64 }
         unread: { type: integer }
         muted: { type: boolean }
+        peer:
+          nullable: true
+          description: the other participant of a private chat; null for non-private chats
+          type: object
+          properties:
+            id: { type: integer, format: int64 }
+            display_name: { type: string }
+            avatar_url: { type: string }
         last_message:
           nullable: true
           type: object

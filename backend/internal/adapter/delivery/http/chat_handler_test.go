@@ -84,6 +84,28 @@ func TestChatFlow_HTTP(t *testing.T) {
 	if hist.Count != 1 || len(hist.Messages) != 1 || hist.Messages[0].Text != "hello" {
 		t.Fatalf("history = %+v", hist)
 	}
+
+	// GET /chats includes the private-chat peer (B) so the UI can show a name.
+	rec = authedReq(t, h, http.MethodGet, "/chats", tokenA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list chats: %d %s", rec.Code, rec.Body.String())
+	}
+	var dialogs struct {
+		Chats []struct {
+			ChatID int64 `json:"chat_id"`
+			Peer   *struct {
+				ID          int64  `json:"id"`
+				DisplayName string `json:"display_name"`
+			} `json:"peer"`
+		} `json:"chats"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &dialogs)
+	if len(dialogs.Chats) != 1 || dialogs.Chats[0].Peer == nil {
+		t.Fatalf("expected one chat with a peer, got %s", rec.Body.String())
+	}
+	if dialogs.Chats[0].Peer.ID != idB {
+		t.Fatalf("peer id = %d; want %d", dialogs.Chats[0].Peer.ID, idB)
+	}
 }
 
 func TestSync_HTTP(t *testing.T) {
