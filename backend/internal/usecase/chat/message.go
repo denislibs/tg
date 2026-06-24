@@ -55,7 +55,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		msg, e = i.msgs.Insert(ctx, domain.Message{
 			ChatID: in.ChatID, Seq: seq, SenderID: in.SenderID,
 			Type: in.Type, Text: in.Text, ReplyToID: in.ReplyToID, ClientMsgID: cmid,
-			MediaID: in.MediaID,
+			MediaID: in.MediaID, ThreadRootID: in.ThreadRootID,
 		})
 		if e != nil {
 			return e

@@ -38,6 +38,8 @@ type GroupRepo interface {
 	EditInfo(ctx context.Context, chatID int64, title, about, username string) error
 	UsersByIDs(ctx context.Context, ids []int64) ([]domain.UserCard, error)
 	ListMembers(ctx context.Context, chatID int64, offset, limit int) ([]domain.Member, error)
+	SetDiscussion(ctx context.Context, channelID, groupID int64) error
+	GetDiscussion(ctx context.Context, channelID int64) (int64, error) // 0 = none
 }
 
 type InviteRepo interface {
@@ -59,6 +61,8 @@ type MessageRepo interface {
 	Insert(ctx context.Context, m domain.Message) (domain.Message, error)
 	FindByClientMsgID(ctx context.Context, chatID, senderID int64, clientMsgID string) (domain.Message, error)
 	GetHistory(ctx context.Context, chatID, offsetSeq int64, addOffset, limit int) ([]domain.Message, error)
+	ListThread(ctx context.Context, chatID, threadRootID int64, offset, limit int) ([]domain.Message, error)
+	CountThread(ctx context.Context, chatID, threadRootID int64) (int, error)
 	CountMessages(ctx context.Context, chatID int64) (int, error)
 	CountUnread(ctx context.Context, chatID, userID, afterSeq int64) (int, error)
 	MessageChatID(ctx context.Context, messageID int64) (int64, error)
@@ -114,6 +118,7 @@ type SendInput struct {
 	ReplyToID        *int64
 	ClientMsgID      string
 	MediaID          *int64
+	ThreadRootID     *int64
 }
 
 type HistoryResult struct {

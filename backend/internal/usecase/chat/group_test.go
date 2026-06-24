@@ -17,16 +17,31 @@ type fakeGroupRepo struct {
 	nextID   int64
 	cards    map[int64]domain.ChatCard         // chatID -> card (title/about/etc)
 	members  map[int64]map[int64]domain.Member // chatID -> userID -> member
-	users    map[int64]domain.UserCard
-	onCreate func(id int64) // optional hook fired after a chat is created
+	users      map[int64]domain.UserCard
+	discussion map[int64]int64 // channelID -> discussion groupID
+	onCreate   func(id int64)  // optional hook fired after a chat is created
 }
 
 func newFakeGroupRepo() *fakeGroupRepo {
 	return &fakeGroupRepo{
-		cards:   map[int64]domain.ChatCard{},
-		members: map[int64]map[int64]domain.Member{},
-		users:   map[int64]domain.UserCard{},
+		cards:      map[int64]domain.ChatCard{},
+		members:    map[int64]map[int64]domain.Member{},
+		users:      map[int64]domain.UserCard{},
+		discussion: map[int64]int64{},
 	}
+}
+
+func (r *fakeGroupRepo) SetDiscussion(_ context.Context, channelID, groupID int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.discussion[channelID] = groupID
+	return nil
+}
+
+func (r *fakeGroupRepo) GetDiscussion(_ context.Context, channelID int64) (int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.discussion[channelID], nil
 }
 
 func (r *fakeGroupRepo) CreateMultiMember(_ context.Context, typ, title, about, username string, isPublic bool, creatorID int64) (int64, error) {

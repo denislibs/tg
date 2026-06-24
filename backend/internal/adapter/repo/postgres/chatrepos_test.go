@@ -304,6 +304,65 @@ func TestMessagesRepo_InsertWithMediaAndMessageChatID(t *testing.T) {
 	}
 }
 
+func TestMessagesRepo_Thread(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	msgs := NewMessagesRepo(pool)
+	ctx := context.Background()
+	a := seedUser(t, pool, "+820")
+	b := seedUser(t, pool, "+821")
+	chatID := createPrivate(t, pool, a, b)
+
+	root := int64(100)
+	// Two threaded messages on root=100, plus one normal (no thread).
+	for i := 0; i < 2; i++ {
+		seq, _ := msgs.NextSeq(ctx, chatID)
+		if _, err := msgs.Insert(ctx, domain.Message{ChatID: chatID, Seq: seq, SenderID: a, Type: "text", Text: "c", ThreadRootID: &root}); err != nil {
+			t.Fatalf("Insert threaded: %v", err)
+		}
+	}
+	seq, _ := msgs.NextSeq(ctx, chatID)
+	normal, err := msgs.Insert(ctx, domain.Message{ChatID: chatID, Seq: seq, SenderID: a, Type: "text", Text: "n"})
+	if err != nil {
+		t.Fatalf("Insert normal: %v", err)
+	}
+	// A normal message round-trips ThreadRootID == nil (from Insert return).
+	if normal.ThreadRootID != nil {
+		t.Fatalf("normal message ThreadRootID = %v; want nil", normal.ThreadRootID)
+	}
+
+	thread, err := msgs.ListThread(ctx, chatID, root, 0, 50)
+	if err != nil {
+		t.Fatalf("ListThread: %v", err)
+	}
+	if len(thread) != 2 {
+		t.Fatalf("ListThread len = %d; want 2", len(thread))
+	}
+	if thread[0].Seq > thread[1].Seq {
+		t.Fatalf("ListThread not ascending: %d then %d", thread[0].Seq, thread[1].Seq)
+	}
+	for _, m := range thread {
+		if m.ThreadRootID == nil || *m.ThreadRootID != root {
+			t.Fatalf("thread message ThreadRootID = %v; want %d", m.ThreadRootID, root)
+		}
+	}
+
+	cnt, err := msgs.CountThread(ctx, chatID, root)
+	if err != nil || cnt != 2 {
+		t.Fatalf("CountThread = %d, %v; want 2", cnt, err)
+	}
+
+	// GetHistory still scans correctly and the normal message has nil thread root.
+	hist, err := msgs.GetHistory(ctx, chatID, 0, 0, 10)
+	if err != nil || len(hist) != 3 {
+		t.Fatalf("GetHistory = %+v, %v; want 3", hist, err)
+	}
+	for _, m := range hist {
+		if m.ID == normal.ID && m.ThreadRootID != nil {
+			t.Fatalf("normal message via GetHistory ThreadRootID = %v; want nil", m.ThreadRootID)
+		}
+	}
+}
+
 func TestUpdatesRepo_AppendAndSince(t *testing.T) {
 	pool := storepostgres.NewTestDB(t)
 	repo := NewUpdatesRepo(pool)

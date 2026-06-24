@@ -256,6 +256,37 @@ func (r fakeMsgs) GetHistory(_ context.Context, chatID, offsetSeq int64, addOffs
 	return picked, nil
 }
 
+func (r fakeMsgs) ListThread(_ context.Context, chatID, threadRootID int64, offset, limit int) ([]domain.Message, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var picked []domain.Message
+	for _, m := range r.s.messages[chatID] {
+		if m.ThreadRootID != nil && *m.ThreadRootID == threadRootID && !m.Deleted {
+			picked = append(picked, m)
+		}
+	}
+	if offset > len(picked) {
+		offset = len(picked)
+	}
+	picked = picked[offset:]
+	if limit > 0 && len(picked) > limit {
+		picked = picked[:limit]
+	}
+	return picked, nil
+}
+
+func (r fakeMsgs) CountThread(_ context.Context, chatID, threadRootID int64) (int, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	n := 0
+	for _, m := range r.s.messages[chatID] {
+		if m.ThreadRootID != nil && *m.ThreadRootID == threadRootID && !m.Deleted {
+			n++
+		}
+	}
+	return n, nil
+}
+
 func (r fakeMsgs) CountMessages(_ context.Context, chatID int64) (int, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
