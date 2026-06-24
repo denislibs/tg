@@ -23,5 +23,6 @@ type readData struct {
 }
 
 type typingData struct {
-	ChatID int64 `json:"chat_id"`
+	ChatID int64  `json:"chat_id"`
+	Action string `json:"action"` // "typing" | "voice" | "video" (default typing)
 }

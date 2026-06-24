@@ -78,6 +78,9 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Post("/chats/{chatID}/join_requests/{userID}/decline", gh.DeclineJoinRequest)
 		pr.Get("/users", gh.Users)
 
+		presenceH := NewPresenceHandler(memberPresence)
+		pr.Get("/presence", presenceH.Get)
+
 		chh := NewChannelHandler(chatUC)
 		pr.Post("/channels", chh.Create)
 		pr.Post("/channels/{chatID}/messages", chh.Post)

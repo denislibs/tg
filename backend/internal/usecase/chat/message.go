@@ -166,9 +166,15 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 
 // Typing publishes an ephemeral typing indicator to the other chat members.
 // No DB write. No-op if the user isn't a member or no publisher is attached.
-func (i *Interactor) Typing(ctx context.Context, chatID, userID int64) error {
+func (i *Interactor) Typing(ctx context.Context, chatID, userID int64, action string) error {
 	if i.publisher == nil {
 		return nil
+	}
+	switch action {
+	case "voice", "video":
+		// keep
+	default:
+		action = "typing"
 	}
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
 	if err != nil || !ok {
@@ -178,7 +184,7 @@ func (i *Interactor) Typing(ctx context.Context, chatID, userID int64) error {
 	if err != nil {
 		return err
 	}
-	f := frame("typing", map[string]any{"chat_id": chatID, "user_id": userID})
+	f := frame("typing", map[string]any{"chat_id": chatID, "user_id": userID, "action": action})
 	for _, uid := range members {
 		if uid != userID {
 			_ = i.publisher.PublishToUser(ctx, uid, f)

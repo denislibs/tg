@@ -124,7 +124,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		if json.Unmarshal(f.D, &d) != nil {
 			return
 		}
-		_ = c.svc.Typing(ctx, d.ChatID, c.userID)
+		_ = c.svc.Typing(ctx, d.ChatID, c.userID, d.Action)
 	case "subscribe_channel":
 		var d struct {
 			ChatID int64 `json:"chat_id"`

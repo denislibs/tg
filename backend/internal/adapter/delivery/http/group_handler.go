@@ -18,6 +18,8 @@ import (
 // client overlay its own presence store.
 type PresenceQuery interface {
 	IsOnline(ctx context.Context, userID int64) (bool, error)
+	// Snapshot returns the user's online state and last-seen (ms; 0 when online).
+	Snapshot(ctx context.Context, userID int64) (online bool, lastSeen int64)
 }
 
 type GroupHandler struct {

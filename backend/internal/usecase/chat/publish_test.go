@@ -85,7 +85,7 @@ func TestTyping_PublishesToOthers(t *testing.T) {
 	const a, b int64 = 1, 2
 	chatID, _ := in.CreatePrivateChat(ctx, a, b)
 
-	if err := in.Typing(ctx, chatID, a); err != nil {
+	if err := in.Typing(ctx, chatID, a, "voice"); err != nil {
 		t.Fatalf("Typing: %v", err)
 	}
 	if pub.countFor(b) != 1 || pub.countFor(a) != 0 {
