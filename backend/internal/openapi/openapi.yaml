@@ -401,6 +401,52 @@ paths:
                   blur_preview: { type: string, format: byte, nullable: true }
                   download_url: { type: string, description: presigned GET (expires ~15m) }
         "404": { description: not found / no access, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /media/{mediaID}/content:
+    put:
+      tags: [media]
+      summary: Stream raw media bytes through the backend into storage (owner only)
+      description: >
+        Bearer auth. The request body is the raw object bytes (not JSON);
+        Content-Type should be the media's mime. Only the owner may upload.
+        Body capped at 100 MiB.
+      parameters:
+        - { name: mediaID, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        "204": { description: uploaded }
+        "403": { description: not the owner, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: media not found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    get:
+      tags: [media]
+      summary: Stream media bytes (Range-capable); authenticates via ?token= query, not Bearer
+      description: >
+        Streams the object bytes through the backend via http.ServeContent, so
+        HTTP Range requests yield 206 Partial Content. Browser <img>/<video>
+        elements can't set an Authorization header, so this endpoint authenticates
+        via the `token` query parameter (the same mechanism as /ws) and is mounted
+        OUTSIDE the Bearer group. Access is checked like GET /media/{mediaID}
+        (owner or shares a chat referencing the media).
+      security: []
+      parameters:
+        - { name: mediaID, in: path, required: true, schema: { type: integer, format: int64 } }
+        - name: token
+          in: query
+          required: true
+          description: session token (query param, not a Bearer header)
+          schema: { type: string }
+      responses:
+        "200":
+          description: full object bytes
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "206": { description: partial content (Range request) }
+        "401": { description: missing/invalid token, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: not found / no access, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /push/vapid_public_key:
     get:

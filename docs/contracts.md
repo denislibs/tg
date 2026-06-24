@@ -182,6 +182,28 @@ caller **owns** the media or **shares a chat** with a message referencing it.
 - 404: `{ "error": "media not found" }` (also when not authorized — no enumeration leak)
 - The `download_url` honors `Range: bytes=…` → `206 Partial Content` (streaming).
 
+### PUT /media/{mediaID}/content  · auth (Bearer, owner)
+Stream the raw object bytes through the backend into storage. The body is the
+raw file bytes; `Content-Type` should be the media's mime. Only the **owner**
+may upload; the body is capped at 100 MiB.
+- Request: raw bytes (not JSON).
+- 204: success (no body).
+- 403: `{ "error": "not your media" }` (caller is not the owner).
+- 404: `{ "error": "media not found" }`.
+
+### GET /media/{mediaID}/content?token=<session-token>  · token-query auth
+Stream the object bytes back through the backend. Browser `<img>`/`<video>`
+elements can't send an `Authorization` header, so this endpoint authenticates via
+the `?token=` **query parameter** (the same mechanism as `/ws`) and is mounted
+**outside** the Bearer group. The worker builds the URL (token stays in the
+worker); the UI drops the string into `src`. Access is checked exactly like
+`GET /media/{mediaID}` (owner or shares a chat referencing the media).
+- Streams bytes and honors `Range: bytes=…` → `206 Partial Content` (via
+  `http.ServeContent`); sets `Content-Type` (declared mime) and a long
+  `Cache-Control: private, max-age=31536000, immutable`.
+- 401: `{ "error": "invalid token" }` (missing/invalid `token`).
+- 404: `{ "error": "media not found" }` (no access — no enumeration leak).
+
 ---
 
 ## Web Push
