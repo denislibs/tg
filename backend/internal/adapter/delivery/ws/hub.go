@@ -22,6 +22,7 @@ type Hub struct {
 	mu          sync.RWMutex
 	conns       map[int64]map[Sink]struct{} // by user id
 	deviceConns map[int64]map[Sink]struct{} // by device id
+	channelSubs map[int64]map[Sink]struct{} // by channel id (live channel posts)
 	rdb         *redis.Client
 	pubsub      *redis.PubSub
 }
@@ -30,6 +31,7 @@ func NewHub(ctx context.Context, rdb *redis.Client) *Hub {
 	h := &Hub{
 		conns:       make(map[int64]map[Sink]struct{}),
 		deviceConns: make(map[int64]map[Sink]struct{}),
+		channelSubs: make(map[int64]map[Sink]struct{}),
 		rdb:         rdb,
 		pubsub:      rdb.Subscribe(ctx),
 	}
@@ -39,6 +41,7 @@ func NewHub(ctx context.Context, rdb *redis.Client) *Hub {
 
 func userChannel(userID int64) string     { return "user:" + strconv.FormatInt(userID, 10) }
 func deviceChannel(deviceID int64) string { return "device:" + strconv.FormatInt(deviceID, 10) }
+func channelTopic(channelID int64) string { return "channel:" + strconv.FormatInt(channelID, 10) }
 
 func idFromChannel(ch, prefix string) (int64, bool) {
 	if !strings.HasPrefix(ch, prefix) {
@@ -54,6 +57,8 @@ func (h *Hub) run() {
 			h.deliver(userID, []byte(msg.Payload))
 		} else if deviceID, ok := idFromChannel(msg.Channel, "device:"); ok {
 			h.closeDevice(deviceID)
+		} else if chID, ok := idFromChannel(msg.Channel, "channel:"); ok {
+			h.deliverChannel(chID, []byte(msg.Payload))
 		}
 	}
 }
@@ -95,6 +100,19 @@ func (h *Hub) Unregister(ctx context.Context, userID, deviceID int64, s Sink) (l
 	if lastDevice {
 		delete(h.deviceConns, deviceID)
 	}
+	// Drop this sink from every channel subscription so a disconnecting conn
+	// doesn't leak channel topic subscriptions; collect now-empty topics to
+	// unsubscribe outside the lock.
+	var emptiedChannels []int64
+	for chID, subs := range h.channelSubs {
+		if _, ok := subs[s]; ok {
+			delete(subs, s)
+			if len(subs) == 0 {
+				delete(h.channelSubs, chID)
+				emptiedChannels = append(emptiedChannels, chID)
+			}
+		}
+	}
 	h.mu.Unlock()
 	if lastUser {
 		_ = h.pubsub.Unsubscribe(ctx, userChannel(userID))
@@ -102,7 +120,58 @@ func (h *Hub) Unregister(ctx context.Context, userID, deviceID int64, s Sink) (l
 	if lastDevice {
 		_ = h.pubsub.Unsubscribe(ctx, deviceChannel(deviceID))
 	}
+	for _, chID := range emptiedChannels {
+		_ = h.pubsub.Unsubscribe(ctx, channelTopic(chID))
+	}
 	return lastUser
+}
+
+// SubscribeChannel adds a sink to a channel's local subscriber set, subscribing
+// the Redis topic on the first local subscriber.
+func (h *Hub) SubscribeChannel(ctx context.Context, channelID int64, s Sink) {
+	h.mu.Lock()
+	subs := h.channelSubs[channelID]
+	first := len(subs) == 0
+	if first {
+		subs = make(map[Sink]struct{})
+		h.channelSubs[channelID] = subs
+	}
+	subs[s] = struct{}{}
+	h.mu.Unlock()
+	if first {
+		_ = h.pubsub.Subscribe(ctx, channelTopic(channelID))
+	}
+}
+
+// UnsubscribeChannel removes a sink from a channel's local subscriber set,
+// unsubscribing the Redis topic when the last local subscriber leaves.
+func (h *Hub) UnsubscribeChannel(ctx context.Context, channelID int64, s Sink) {
+	h.mu.Lock()
+	subs := h.channelSubs[channelID]
+	last := false
+	if subs != nil {
+		delete(subs, s)
+		if len(subs) == 0 {
+			delete(h.channelSubs, channelID)
+			last = true
+		}
+	}
+	h.mu.Unlock()
+	if last {
+		_ = h.pubsub.Unsubscribe(ctx, channelTopic(channelID))
+	}
+}
+
+func (h *Hub) deliverChannel(channelID int64, frame []byte) {
+	h.mu.RLock()
+	sinks := make([]Sink, 0, len(h.channelSubs[channelID]))
+	for s := range h.channelSubs[channelID] {
+		sinks = append(sinks, s)
+	}
+	h.mu.RUnlock()
+	for _, s := range sinks {
+		s.Send(frame)
+	}
 }
 
 func (h *Hub) deliver(userID int64, frame []byte) {

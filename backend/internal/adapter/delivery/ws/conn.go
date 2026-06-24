@@ -125,6 +125,20 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			return
 		}
 		_ = c.svc.Typing(ctx, d.ChatID, c.userID)
+	case "subscribe_channel":
+		var d struct {
+			ChatID int64 `json:"chat_id"`
+		}
+		if json.Unmarshal(f.D, &d) == nil && d.ChatID != 0 {
+			c.hub.SubscribeChannel(ctx, d.ChatID, c)
+		}
+	case "unsubscribe_channel":
+		var d struct {
+			ChatID int64 `json:"chat_id"`
+		}
+		if json.Unmarshal(f.D, &d) == nil && d.ChatID != 0 {
+			c.hub.UnsubscribeChannel(ctx, d.ChatID, c)
+		}
 	}
 }
 

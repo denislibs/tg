@@ -83,6 +83,49 @@ func TestHub_DeliversPublishedFrame(t *testing.T) {
 	}
 }
 
+func TestHub_DeliversChannelFrame(t *testing.T) {
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+	subRDB := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	pubRDB := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer subRDB.Close()
+	defer pubRDB.Close()
+	ctx := context.Background()
+
+	hub := NewHub(ctx, subRDB)
+	defer hub.Close()
+
+	sink := newFakeSink()
+	hub.SubscribeChannel(ctx, 5, sink)
+	// Give the subscription a moment to register on miniredis.
+	time.Sleep(100 * time.Millisecond)
+
+	pub := rtredis.NewRedisPublisher(pubRDB)
+	if err := pub.PublishToChannel(ctx, 5, []byte(`post`)); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	select {
+	case got := <-sink.ch:
+		if string(got) != "post" {
+			t.Fatalf("got %q", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("frame not delivered to channel sink")
+	}
+
+	// After unsubscribe, no further delivery.
+	hub.UnsubscribeChannel(ctx, 5, sink)
+	time.Sleep(100 * time.Millisecond)
+	_ = pub.PublishToChannel(ctx, 5, []byte(`again`))
+	select {
+	case got := <-sink.ch:
+		t.Fatalf("unexpected delivery after unsubscribe: %q", got)
+	case <-time.After(300 * time.Millisecond):
+		// good: nothing delivered
+	}
+}
+
 func TestHub_ClosesDeviceOnRevoke(t *testing.T) {
 	mr, _ := miniredis.Run()
 	defer mr.Close()
