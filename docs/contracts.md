@@ -188,6 +188,81 @@ Batch-resolve minimal public user cards (for member lists, sender names).
 
 ---
 
+## Channels
+
+Broadcast chats (`type: "channel"`) that scale to millions of subscribers.
+Channels reuse the group machinery — membership, roles, rights, `member_count`,
+mute, the info card (`GET /chats/{chatID}/card`) and message **history**
+(`GET /chats/{chatID}/history`) are all the same as for groups. Subscribers join
+with role `subscriber` (no admin rights); posting is gated by the `POST_MESSAGES`
+right (creator/admins only).
+
+**Scalability model — O(1) per post.** Posting does **not** fan out to
+subscribers. Each post is one message insert + one bump of the channel's own
+`channel_pts` counter + one row appended to the channel's `channel_updates` log +
+**one** `PUBLISH channel:{id}` to Redis (no per-subscriber `pts` rows, no
+per-subscriber publishes). Live clients receive the post by subscribing the
+`channel:{id}` topic over WS (see `subscribe_channel` below); offline/lagging
+clients catch up by pulling `GET /channels/{chatID}/difference?pts=`. The
+per-channel `pts` is **independent** of the per-user `/sync` `pts` cursor.
+
+### POST /channels  · auth
+Create a channel; the caller becomes its `creator` (with all rights) and first member.
+- Request: `{ "title": "News", "about": "", "username": "news", "is_public": true }`
+  (`title` required; `about`/`username` optional; `username` only meaningful when public)
+- 200: `{ "chat_id": 1 }`
+- 400: `{ "error": "title required" }`
+
+### POST /channels/{chatID}/messages  · auth · needs `POST_MESSAGES`
+Post to a channel. O(1) delivery: insert message → bump `channel_pts` → append a
+`channel_updates` row → **one** `PUBLISH channel:{chatID}`. No per-subscriber fan-out.
+- Request: `{ "text": "hello world", "client_msg_id": "uuid-from-client" }`
+  (`client_msg_id` optional, makes the post idempotent)
+- 200: `{ "id": 10, "chat_id": 1, "seq": 5, "created_at": "2026-06-24T10:00:00Z" }`
+- 403: `{ "error": "forbidden" }` (caller lacks `POST_MESSAGES`)
+
+### GET /channels/{chatID}/difference?pts=  · auth
+getDifference-style catch-up for a single channel, using the channel's own `pts`.
+Membership-gated. The client stores the channel's last seen `pts` and passes it back.
+- Query: `pts` (last seen channel pts, default 0).
+- 200:
+```json
+{
+  "updates": [
+    { "chat_id": 1, "msg_id": 10, "seq": 5, "sender_id": 7, "type": "text",
+      "text": "hello world", "media_id": null, "created_at": "2026-06-24T10:00:00Z" }
+  ],
+  "pts": 6,
+  "slice": false
+}
+```
+  - each entry of `updates` is a `new_message` payload (the post).
+  - `pts` is the highest channel pts in this batch (the new cursor).
+  - `slice: true` → the batch hit the page cap (100); call again with the new `pts`.
+- 403: `{ "error": "forbidden" }` (caller is not a member/subscriber)
+
+### POST /channels/join  · auth
+Join a public channel by its `@username`; the caller becomes a `subscriber`.
+- Request: `{ "username": "news" }`
+- 200: `{ "ok": true }`
+- 400: `{ "error": "username required" }`
+- 404: `{ "error": "not found" }` (no public chat with that username)
+
+### GET /search?q=  · auth
+Global directory search: public chats (channels/public groups) by `@username` or
+title prefix, plus users by `username`/`display_name` prefix. Private chats are
+never returned. Both lists are capped at 20 and ordered (chats by `member_count`).
+- Query: `q` — search prefix (empty `q` yields empty results).
+- 200:
+```json
+{
+  "chats": [ { "id": 1, "type": "channel", "title": "News", "username": "news", "member_count": 1234 } ],
+  "users": [ { "id": 2, "username": "alice", "display_name": "Alice", "avatar_url": "" } ]
+}
+```
+
+---
+
 ## Messages & history
 
 ### POST /chats/{chatID}/messages  · auth
@@ -360,6 +435,8 @@ Every frame is JSON: `{ "t": "<type>", "d": { … } }`.
 | `send_message` | `{ chat_id, type?, text?, reply_to_id?, client_msg_id, media_id? }` | Same as `POST /chats/{id}/messages`; replies with `message_ack` and fans out `new_message`. |
 | `read` | `{ chat_id, up_to_seq }` | Same as `POST /chats/{id}/read`; fans out `read`. |
 | `typing` | `{ chat_id }` | Ephemeral; fans out `typing` to other members (no persistence). |
+| `subscribe_channel` | `{ chat_id }` | Subscribe this connection to a channel's live posts. The Hub lazily joins the Redis `channel:{chat_id}` topic on the first local subscriber; subsequent posts arrive as `new_message`. |
+| `unsubscribe_channel` | `{ chat_id }` | Stop receiving live posts for the channel; the Hub leaves the `channel:{chat_id}` topic once no local connection is subscribed. Subscriptions are also dropped automatically on disconnect. |
 | `ping` | — | Server replies `{ "t": "pong" }`. |
 
 ### Server → client
@@ -379,5 +456,15 @@ Every frame is JSON: `{ "t": "<type>", "d": { … } }`.
   while disconnected is recovered via `GET /sync`.
 - On a slow client, live frames may be dropped (bounded send buffer) — the client
   reconciles via `/sync`.
+- **Channels** use a separate, **topic-based** delivery path that scales O(1) per
+  post: each post is published **once** to the Redis topic `channel:{id}` (no
+  per-subscriber fan-out, no per-subscriber `pts` rows). A client opts in per
+  channel via `subscribe_channel {chat_id}`; the Hub joins the `channel:{id}` topic
+  on the first local subscriber and routes incoming posts (`new_message`) only to
+  the connections that subscribed it, leaving the topic once the last one drops.
+  Missed channel posts are recovered per-channel via
+  `GET /channels/{id}/difference?pts=` (the channel's own `pts`, independent of the
+  per-user `/sync` cursor); channel **history** is the regular
+  `GET /chats/{id}/history`.
 - Heartbeat: server pings ~every 25s; the client should respond (WS pong) or send
   `{"t":"ping"}`. Presence stays "online" while heartbeats arrive (TTL ~35s).

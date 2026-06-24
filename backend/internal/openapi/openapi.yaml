@@ -13,6 +13,8 @@ tags:
   - name: sessions
   - name: chats
   - name: groups
+  - name: channels
+  - name: search
   - name: messages
   - name: reactions
   - name: sync
@@ -136,6 +138,46 @@ components:
         token: { type: string, description: random hex token }
         uses: { type: integer }
         url: { type: string, example: /join/abc123, description: relative join URL }
+    ChannelUpdate:
+      type: object
+      description: A single channel post (new_message payload) from the channel_updates log.
+      properties:
+        chat_id: { type: integer, format: int64 }
+        msg_id: { type: integer, format: int64 }
+        seq: { type: integer, format: int64, description: monotonic per-chat sequence }
+        sender_id: { type: integer, format: int64 }
+        type: { type: string, example: text }
+        text: { type: string }
+        media_id: { type: integer, format: int64, nullable: true }
+        created_at: { type: string, format: date-time }
+    ChannelDifference:
+      type: object
+      description: |
+        Per-channel getDifference catch-up. Uses the channel's own pts cursor,
+        independent of the per-user /sync pts.
+      properties:
+        updates:
+          type: array
+          items: { $ref: "#/components/schemas/ChannelUpdate" }
+        pts: { type: integer, format: int64, description: highest channel pts in this batch (new cursor) }
+        slice: { type: boolean, description: batch hit the page cap (100); call again with the new pts }
+    SearchResult:
+      type: object
+      description: Global directory search results (public chats + users); private chats never returned.
+      properties:
+        chats:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer, format: int64 }
+              type: { type: string, example: channel }
+              title: { type: string }
+              username: { type: string }
+              member_count: { type: integer }
+        users:
+          type: array
+          items: { $ref: "#/components/schemas/UserCard" }
 
 paths:
   /health:
@@ -446,6 +488,97 @@ paths:
                 properties:
                   users: { type: array, items: { $ref: "#/components/schemas/UserCard" } }
 
+  /channels:
+    post:
+      tags: [channels]
+      summary: Create a channel (caller becomes creator + first member)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: { type: string, example: News }
+                about: { type: string }
+                username: { type: string, description: only meaningful when is_public }
+                is_public: { type: boolean }
+      responses:
+        "200": { description: chat id, content: { application/json: { schema: { type: object, properties: { chat_id: { type: integer, format: int64 } } } } } }
+        "400": { description: title required, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /channels/{chatID}/messages:
+    post:
+      tags: [channels]
+      summary: Post to a channel (needs POST_MESSAGES); O(1) delivery, one PUBLISH channel:{id}
+      description: |
+        Inserts the message, bumps the channel's channel_pts, appends a
+        channel_updates row, then publishes once to the Redis topic channel:{chatID}.
+        No per-subscriber fan-out and no per-subscriber pts rows.
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text: { type: string }
+                client_msg_id: { type: string, description: client UUID for idempotency }
+      responses:
+        "200":
+          description: the created post
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer, format: int64 }
+                  chat_id: { type: integer, format: int64 }
+                  seq: { type: integer, format: int64 }
+                  created_at: { type: string, format: date-time }
+        "403": { description: caller lacks POST_MESSAGES, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /channels/{chatID}/difference:
+    get:
+      tags: [channels]
+      summary: Per-channel getDifference catch-up (channel's own pts cursor)
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+        - { name: pts, in: query, schema: { type: integer, format: int64, default: 0 }, description: last seen channel pts }
+      responses:
+        "200": { description: channel updates since pts, content: { application/json: { schema: { $ref: "#/components/schemas/ChannelDifference" } } } }
+        "403": { description: not a member/subscriber, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /channels/join:
+    post:
+      tags: [channels]
+      summary: Join a public channel by @username (caller becomes a subscriber)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username]
+              properties:
+                username: { type: string, example: news }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
+        "400": { description: username required, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: no public chat with that username, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /search:
+    get:
+      tags: [search]
+      summary: Global directory search (public chats by username/title + users)
+      parameters:
+        - { name: q, in: query, schema: { type: string }, description: "search prefix; empty q yields empty results" }
+      responses:
+        "200": { description: matching public chats and users, content: { application/json: { schema: { $ref: "#/components/schemas/SearchResult" } } } }
+
   /chats/{chatID}/messages:
     post:
       tags: [messages]
@@ -703,6 +836,8 @@ paths:
         Upgrades to a WebSocket (HTTP 101). Authenticate with the session token as
         the `token` query parameter (browsers cannot set headers on WS).
         Frames are JSON envelopes `{ "t": <type>, "d": <payload> }`.
+        Channel live delivery: `subscribe_channel`/`unsubscribe_channel` `{ chat_id }`
+        opt a connection in/out of a channel's `channel:{id}` topic (O(1) post fan-out).
         See `docs/contracts.md` for the full frame protocol.
       security: []
       parameters:
