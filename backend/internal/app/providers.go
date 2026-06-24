@@ -52,6 +52,11 @@ func providePool(lc fx.Lifecycle, cfg *config.Config, ctx context.Context) (*pgx
 	if err != nil {
 		return nil, err
 	}
+	if cfg.SeedDemo {
+		if err := postgres.SeedDemo(ctx, pool); err != nil {
+			log.Printf("seed demo failed: %v", err)
+		}
+	}
 	lc.Append(fx.Hook{OnStop: func(context.Context) error { pool.Close(); return nil }})
 	return pool, nil
 }

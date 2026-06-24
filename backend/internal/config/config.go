@@ -10,6 +10,7 @@ type Config struct {
 	DatabaseURL string
 	RedisURL    string
 	DevOTPCode  string
+	SeedDemo    bool
 
 	MinioEndpoint  string
 	MinioAccessKey string
@@ -28,6 +29,7 @@ func Load() (*Config, error) {
 		DatabaseURL: os.Getenv("DATABASE_URL"),
 		RedisURL:    getenv("REDIS_URL", "redis://localhost:6379"),
 		DevOTPCode:  getenv("DEV_OTP_CODE", "12345"),
+		SeedDemo:    getenv("SEED_DEMO", "") == "true" || getenv("SEED_DEMO", "") == "1",
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
