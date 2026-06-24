@@ -27,6 +27,18 @@ type ChatRepo interface {
 	SetRead(ctx context.Context, chatID, userID, seq int64, unread int) error
 }
 
+type GroupRepo interface {
+	CreateMultiMember(ctx context.Context, typ, title, about, username string, isPublic bool, creatorID int64) (int64, error)
+	AddMember(ctx context.Context, chatID, userID int64, role string, rights domain.Rights) error
+	RemoveMember(ctx context.Context, chatID, userID int64) error
+	GetMember(ctx context.Context, chatID, userID int64) (domain.Member, error) // domain.ErrNotFound if not a member
+	SetRole(ctx context.Context, chatID, userID int64, role string, rights domain.Rights) error
+	SetMuted(ctx context.Context, chatID, userID int64, muted bool) error
+	Card(ctx context.Context, chatID, viewerID int64) (domain.ChatCard, error) // domain.ErrNotFound if no chat
+	EditInfo(ctx context.Context, chatID int64, title, about, username string) error
+	UsersByIDs(ctx context.Context, ids []int64) ([]domain.UserCard, error)
+}
+
 type MessageRepo interface {
 	NextSeq(ctx context.Context, chatID int64) (int64, error)
 	Insert(ctx context.Context, m domain.Message) (domain.Message, error)
