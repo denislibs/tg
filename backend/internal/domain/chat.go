@@ -39,3 +39,46 @@ type Dialog struct {
 	// Peer is the other member of a private chat (nil for non-private chats).
 	Peer *DialogPeer
 }
+
+// Member is a full membership row (role + admin rights + mute).
+type Member struct {
+	ChatID, UserID int64
+	Role           string
+	Rights         Rights
+	Muted          bool
+}
+
+// ChatCard is the read model for a group/channel info screen.
+type ChatCard struct {
+	ID           int64
+	Type         string
+	Title        string
+	Username     string
+	About        string
+	PhotoMediaID *int64
+	CreatorID    int64
+	MemberCount  int
+	IsPublic     bool
+	MyRole       string
+	MyRights     Rights
+	Muted        bool
+}
+
+// InviteLink is a join token for a chat.
+type InviteLink struct {
+	ID         int64
+	ChatID     int64
+	Token      string
+	CreatedBy  int64
+	UsageLimit *int
+	Uses       int
+	Revoked    bool
+}
+
+// UserCard is a minimal public user record (batch lookups, sender names).
+type UserCard struct {
+	ID          int64
+	Username    string
+	DisplayName string
+	AvatarURL   string
+}

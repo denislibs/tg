@@ -12,6 +12,7 @@ tags:
   - name: auth
   - name: sessions
   - name: chats
+  - name: groups
   - name: messages
   - name: reactions
   - name: sync
@@ -105,6 +106,36 @@ components:
         platform: { type: string, example: ios }
         last_active: { type: string, format: date-time }
         current: { type: boolean }
+    ChatCard:
+      type: object
+      description: Group/channel info screen, including the caller's own role/rights/mute.
+      properties:
+        id: { type: integer, format: int64 }
+        type: { type: string, example: group }
+        title: { type: string }
+        username: { type: string }
+        about: { type: string }
+        photo_media_id: { type: integer, format: int64, nullable: true }
+        creator_id: { type: integer, format: int64 }
+        member_count: { type: integer, description: "denormalized; maintained on add/remove" }
+        is_public: { type: boolean }
+        my_role: { type: string, description: "creator | admin | member; empty if the caller is not a member", example: creator }
+        my_rights: { type: integer, description: "admin rights bitmask of the caller (0 if member/non-member)" }
+        muted: { type: boolean }
+    UserCard:
+      type: object
+      description: Minimal public user record (batch lookups, sender names).
+      properties:
+        id: { type: integer, format: int64 }
+        username: { type: string }
+        display_name: { type: string }
+        avatar_url: { type: string }
+    InviteLink:
+      type: object
+      properties:
+        token: { type: string, description: random hex token }
+        uses: { type: integer }
+        url: { type: string, example: /join/abc123, description: relative join URL }
 
 paths:
   /health:
@@ -227,6 +258,193 @@ paths:
                 type: object
                 properties:
                   chats: { type: array, items: { $ref: "#/components/schemas/Dialog" } }
+
+  /groups:
+    post:
+      tags: [groups]
+      summary: Create a group (caller becomes creator + first member)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: { type: string, example: Team }
+                about: { type: string }
+                username: { type: string, description: only meaningful when is_public }
+                is_public: { type: boolean }
+      responses:
+        "200": { description: chat id, content: { application/json: { schema: { type: object, properties: { chat_id: { type: integer, format: int64 } } } } } }
+        "400": { description: title required, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /chats/{chatID}/card:
+    get:
+      tags: [groups]
+      summary: Group/channel info card (with the caller's own role/rights/mute)
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        "200": { description: chat card, content: { application/json: { schema: { $ref: "#/components/schemas/ChatCard" } } } }
+        "404": { description: no such chat, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /chats/{chatID}:
+    patch:
+      tags: [groups]
+      summary: Edit group info (needs CHANGE_INFO right)
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                about: { type: string }
+                username: { type: string }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
+        "403": { description: forbidden, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /chats/{chatID}/members:
+    post:
+      tags: [groups]
+      summary: Add a user as a plain member (needs INVITE_USERS right)
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id]
+              properties: { user_id: { type: integer, format: int64 } }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
+        "400": { description: user_id required, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: forbidden, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /chats/{chatID}/members/{userID}:
+    delete:
+      tags: [groups]
+      summary: Remove a member (kick needs BAN_USERS; self-leave always allowed)
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+        - { name: userID, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
+        "403": { description: forbidden, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /chats/{chatID}/admins:
+    post:
+      tags: [groups]
+      summary: Promote a member to admin with a rights bitmask (needs MANAGE_ADMINS)
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id]
+              properties:
+                user_id: { type: integer, format: int64 }
+                rights: { type: integer, description: "rights bitmask (POST=1,EDIT=2,DELETE=4,BAN=8,INVITE=16,PIN=32,CHANGE_INFO=64,MANAGE_ADMINS=128)" }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
+        "400": { description: user_id required, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: forbidden, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /chats/{chatID}/admins/{userID}:
+    delete:
+      tags: [groups]
+      summary: Demote an admin back to member (needs MANAGE_ADMINS)
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+        - { name: userID, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
+        "403": { description: forbidden, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /chats/{chatID}/mute:
+    post:
+      tags: [groups]
+      summary: Set the caller's own per-chat mute flag
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [muted]
+              properties: { muted: { type: boolean } }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
+
+  /chats/{chatID}/invite_links:
+    post:
+      tags: [groups]
+      summary: Create an invite link (needs INVITE_USERS right)
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: { usage_limit: { type: integer, nullable: true, description: null = unlimited } }
+      responses:
+        "200": { description: created link, content: { application/json: { schema: { type: object, properties: { token: { type: string }, url: { type: string } } } } } }
+        "403": { description: forbidden, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    get:
+      tags: [groups]
+      summary: List active (non-revoked) invite links (needs INVITE_USERS right)
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        "200":
+          description: invite links
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invite_links: { type: array, items: { $ref: "#/components/schemas/InviteLink" } }
+        "403": { description: forbidden, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /join/{token}:
+    post:
+      tags: [groups]
+      summary: Join a chat via an invite token (caller becomes a member)
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
+        "404": { description: unknown or revoked token, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /users:
+    get:
+      tags: [groups]
+      summary: Batch-resolve minimal public user cards
+      parameters:
+        - { name: ids, in: query, schema: { type: string }, description: "comma-separated int64 ids, e.g. 1,2,3 (unknown ids skipped)" }
+      responses:
+        "200":
+          description: user cards
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users: { type: array, items: { $ref: "#/components/schemas/UserCard" } }
 
   /chats/{chatID}/messages:
     post:

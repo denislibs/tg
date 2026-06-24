@@ -453,6 +453,6 @@ func (n *fakeNotifier) NotifyNewMessage(_ context.Context, recipientID, _, _, _,
 // newInteractor wires the interactor against a fresh in-memory store.
 func newInteractor() (*Interactor, *store) {
 	s := newStore()
-	in := New(fakeTx{}, fakeChats{s}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s})
+	in := New(fakeTx{}, fakeChats{s}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, nil, nil)
 	return in, s
 }
