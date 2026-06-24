@@ -66,6 +66,13 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Post("/join/{token}", gh.Join)
 		pr.Get("/users", gh.Users)
 
+		chh := NewChannelHandler(chatUC)
+		pr.Post("/channels", chh.Create)
+		pr.Post("/channels/{chatID}/messages", chh.Post)
+		pr.Get("/channels/{chatID}/difference", chh.Difference)
+		pr.Post("/channels/join", chh.Join)
+		pr.Get("/search", chh.Search)
+
 		if mediaH != nil {
 			pr.Post("/media/upload", mediaH.CreateUpload)
 			pr.Get("/media/{mediaID}", mediaH.Get)
