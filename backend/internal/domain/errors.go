@@ -4,6 +4,7 @@ import "errors"
 
 var (
 	ErrNotFound    = errors.New("not found")
+	ErrForbidden   = errors.New("forbidden")
 	ErrInvalidCode = errors.New("invalid code")
 	ErrBadReaction = errors.New("invalid reaction")
 )
