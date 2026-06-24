@@ -10,6 +10,11 @@ import (
 
 type UserRepo interface {
 	UpsertByPhone(ctx context.Context, phone string) (domain.User, error)
+	GetByID(ctx context.Context, id int64) (domain.User, error)
+	UpdateProfile(ctx context.Context, id int64, first, last, bio string, birthday *time.Time, phoneVisibility string) (domain.User, error)
+	UsernameAvailable(ctx context.Context, username string, excludeID int64) (bool, error)
+	SetUsername(ctx context.Context, id int64, username *string) (domain.User, error) // domain.ErrConflict if taken
+	SetAvatar(ctx context.Context, id int64, url string) (domain.User, error)
 }
 
 type DeviceRepo interface {

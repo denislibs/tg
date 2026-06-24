@@ -7,4 +7,5 @@ var (
 	ErrForbidden   = errors.New("forbidden")
 	ErrInvalidCode = errors.New("invalid code")
 	ErrBadReaction = errors.New("invalid reaction")
+	ErrConflict    = errors.New("conflict") // e.g. username already taken
 )

@@ -8,11 +8,30 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/messenger-denis/backend/internal/domain"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 )
+
+// userCols is the canonical user column list / scan order, shared by every
+// query that returns a full domain.User.
+const userCols = `id, phone, username, first_name, last_name, display_name, bio, birthday, avatar_url, phone_visibility`
+
+// scanUser scans a row selected with userCols into a domain.User.
+func scanUser(row pgx.Row) (domain.User, error) {
+	var u domain.User
+	err := row.Scan(&u.ID, &u.Phone, &u.Username, &u.FirstName, &u.LastName,
+		&u.DisplayName, &u.Bio, &u.Birthday, &u.AvatarURL, &u.PhoneVisibility)
+	return u, err
+}
+
+// isUniqueViolation reports whether err is a Postgres unique-constraint error.
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
 
 // AuthRepo is a postgres-backed adapter implementing the auth usecase's
 // UserRepo, DeviceRepo and CodeRepo ports.
@@ -65,13 +84,56 @@ func (r *AuthRepo) DeleteCode(ctx context.Context, phone string) error {
 
 // UpsertByPhone returns the existing user for a phone or creates one.
 func (r *AuthRepo) UpsertByPhone(ctx context.Context, phone string) (domain.User, error) {
-	var u domain.User
-	err := r.pool.QueryRow(ctx,
+	return scanUser(r.pool.QueryRow(ctx,
 		`INSERT INTO users (phone, display_name) VALUES ($1,$1)
 		 ON CONFLICT (phone) DO UPDATE SET phone=EXCLUDED.phone
-		 RETURNING id, phone, username, display_name, avatar_url`,
-		phone).Scan(&u.ID, &u.Phone, &u.Username, &u.DisplayName, &u.AvatarURL)
+		 RETURNING `+userCols,
+		phone))
+}
+
+// GetByID returns the full user record, or domain.ErrNotFound.
+func (r *AuthRepo) GetByID(ctx context.Context, id int64) (domain.User, error) {
+	u, err := scanUser(r.pool.QueryRow(ctx, `SELECT `+userCols+` FROM users WHERE id=$1`, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.User{}, domain.ErrNotFound
+	}
 	return u, err
+}
+
+// UpdateProfile writes the editable profile fields and returns the fresh user.
+// The caller is responsible for having computed display_name.
+func (r *AuthRepo) UpdateProfile(ctx context.Context, id int64, first, last, bio string, birthday *time.Time, phoneVisibility string) (domain.User, error) {
+	display := domain.BuildDisplayName(first, last)
+	return scanUser(r.pool.QueryRow(ctx,
+		`UPDATE users SET first_name=$2, last_name=$3, display_name=$4, bio=$5, birthday=$6, phone_visibility=$7
+		 WHERE id=$1 RETURNING `+userCols,
+		id, first, last, display, bio, birthday, phoneVisibility))
+}
+
+// UsernameAvailable reports whether a (normalized, CITEXT) username is free,
+// ignoring the caller's own row.
+func (r *AuthRepo) UsernameAvailable(ctx context.Context, username string, excludeID int64) (bool, error) {
+	var n int
+	err := r.pool.QueryRow(ctx,
+		`SELECT count(*) FROM users WHERE username=$1 AND id<>$2`, username, excludeID).Scan(&n)
+	return n == 0, err
+}
+
+// SetUsername sets (or clears, when username is nil) the user's username,
+// returning domain.ErrConflict on a uniqueness collision.
+func (r *AuthRepo) SetUsername(ctx context.Context, id int64, username *string) (domain.User, error) {
+	u, err := scanUser(r.pool.QueryRow(ctx,
+		`UPDATE users SET username=$2 WHERE id=$1 RETURNING `+userCols, id, username))
+	if isUniqueViolation(err) {
+		return domain.User{}, domain.ErrConflict
+	}
+	return u, err
+}
+
+// SetAvatar writes the avatar URL (a /media/{id}/content path) and returns the user.
+func (r *AuthRepo) SetAvatar(ctx context.Context, id int64, url string) (domain.User, error) {
+	return scanUser(r.pool.QueryRow(ctx,
+		`UPDATE users SET avatar_url=$2 WHERE id=$1 RETURNING `+userCols, id, url))
 }
 
 // --- DeviceRepo ---
@@ -93,9 +155,11 @@ func (r *AuthRepo) SessionByTokenHash(ctx context.Context, tokenHash string) (do
 	var u domain.User
 	var deviceID int64
 	err := r.pool.QueryRow(ctx,
-		`SELECT u.id, u.phone, u.username, u.display_name, u.avatar_url, d.id
+		`SELECT u.id, u.phone, u.username, u.first_name, u.last_name, u.display_name,
+		        u.bio, u.birthday, u.avatar_url, u.phone_visibility, d.id
 		 FROM users u JOIN devices d ON d.user_id=u.id WHERE d.token_hash=$1`,
-		tokenHash).Scan(&u.ID, &u.Phone, &u.Username, &u.DisplayName, &u.AvatarURL, &deviceID)
+		tokenHash).Scan(&u.ID, &u.Phone, &u.Username, &u.FirstName, &u.LastName, &u.DisplayName,
+		&u.Bio, &u.Birthday, &u.AvatarURL, &u.PhoneVisibility, &deviceID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.User{}, 0, domain.ErrNotFound
 	}

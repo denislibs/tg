@@ -56,11 +56,7 @@ func (h *AuthHandler) SignIn(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"token": res.Token,
-		"user": map[string]any{
-			"id":           res.User.ID,
-			"phone":        res.User.Phone,
-			"display_name": res.User.DisplayName,
-		},
+		"user":  userJSON(res.User),
 	})
 }
 

@@ -41,7 +41,13 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 
 	r.Group(func(pr chi.Router) {
 		pr.Use(AuthMiddleware(authUC))
-		pr.Get("/me", MeHandler)
+
+		ph := NewProfileHandler(authUC)
+		pr.Get("/me", ph.Me)
+		pr.Patch("/me", ph.Update)
+		pr.Put("/me/username", ph.SetUsername)
+		pr.Get("/username/available", ph.CheckUsername)
+		pr.Put("/me/avatar", ph.SetAvatar)
 
 		ch := NewChatHandler(chatUC)
 		pr.Post("/chats", ch.CreatePrivate)

@@ -28,6 +28,70 @@ func (r *fakeUserRepo) UpsertByPhone(_ context.Context, phone string) (domain.Us
 	return u, nil
 }
 
+func (r *fakeUserRepo) find(id int64) (string, domain.User, bool) {
+	for phone, u := range r.byPhone {
+		if u.ID == id {
+			return phone, u, true
+		}
+	}
+	return "", domain.User{}, false
+}
+
+func (r *fakeUserRepo) GetByID(_ context.Context, id int64) (domain.User, error) {
+	if _, u, ok := r.find(id); ok {
+		return u, nil
+	}
+	return domain.User{}, domain.ErrNotFound
+}
+
+func (r *fakeUserRepo) UpdateProfile(_ context.Context, id int64, first, last, bio string, birthday *time.Time, pv string) (domain.User, error) {
+	phone, u, ok := r.find(id)
+	if !ok {
+		return domain.User{}, domain.ErrNotFound
+	}
+	u.FirstName, u.LastName, u.Bio = first, last, bio
+	u.DisplayName = domain.BuildDisplayName(first, last)
+	u.Birthday, u.PhoneVisibility = birthday, pv
+	r.byPhone[phone] = u
+	return u, nil
+}
+
+func (r *fakeUserRepo) UsernameAvailable(_ context.Context, username string, excludeID int64) (bool, error) {
+	for _, u := range r.byPhone {
+		if u.ID != excludeID && u.Username != nil && *u.Username == username {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func (r *fakeUserRepo) SetUsername(_ context.Context, id int64, username *string) (domain.User, error) {
+	phone, u, ok := r.find(id)
+	if !ok {
+		return domain.User{}, domain.ErrNotFound
+	}
+	if username != nil {
+		for _, other := range r.byPhone {
+			if other.ID != id && other.Username != nil && *other.Username == *username {
+				return domain.User{}, domain.ErrConflict
+			}
+		}
+	}
+	u.Username = username
+	r.byPhone[phone] = u
+	return u, nil
+}
+
+func (r *fakeUserRepo) SetAvatar(_ context.Context, id int64, url string) (domain.User, error) {
+	phone, u, ok := r.find(id)
+	if !ok {
+		return domain.User{}, domain.ErrNotFound
+	}
+	u.AvatarURL = url
+	r.byPhone[phone] = u
+	return u, nil
+}
+
 // fakeDeviceRepo stores devices keyed by token hash and id.
 type fakeDeviceRepo struct {
 	byHash map[string]domain.Device
