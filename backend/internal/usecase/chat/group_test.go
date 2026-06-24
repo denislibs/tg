@@ -17,6 +17,7 @@ type fakeGroupRepo struct {
 	cards     map[int64]domain.ChatCard       // chatID -> card (title/about/etc)
 	members   map[int64]map[int64]domain.Member // chatID -> userID -> member
 	users     map[int64]domain.UserCard
+	onCreate  func(id int64) // optional hook fired after a chat is created
 }
 
 func newFakeGroupRepo() *fakeGroupRepo {
@@ -37,6 +38,9 @@ func (r *fakeGroupRepo) CreateMultiMember(_ context.Context, typ, title, about, 
 		IsPublic: isPublic, CreatorID: creatorID,
 	}
 	r.members[id] = map[int64]domain.Member{}
+	if r.onCreate != nil {
+		r.onCreate(id)
+	}
 	return id, nil
 }
 
@@ -221,7 +225,7 @@ func newGroupTestInteractor(t *testing.T) (*Interactor, *fakeGroupRepo) {
 	prev := tokenGen
 	tokenGen = func() string { return "test-token" }
 	t.Cleanup(func() { tokenGen = prev })
-	in := New(fakeTx{}, nil, nil, nil, nil, nil, fg, fi)
+	in := New(fakeTx{}, nil, nil, nil, nil, nil, fg, fi, nil, nil)
 	return in, fg
 }
 

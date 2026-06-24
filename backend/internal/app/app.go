@@ -24,6 +24,8 @@ var Module = fx.Options(
 		provideMediaRepo,
 		provideGroupRepo,
 		provideInviteRepo,
+		provideChannelRepo,
+		provideSearchRepo,
 		provideChatUsecase,
 	),
 	fx.Invoke(registerServer),

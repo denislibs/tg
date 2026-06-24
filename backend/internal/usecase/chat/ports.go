@@ -63,6 +63,19 @@ type UpdateRepo interface {
 	UpdatesSince(ctx context.Context, userID, sincePts int64, limit int) ([]domain.Update, error)
 }
 
+type ChannelRepo interface {
+	// AppendUpdate bumps the channel's pts by 1 and records the update; returns the new pts.
+	AppendUpdate(ctx context.Context, channelID int64, payload json.RawMessage) (int64, error)
+	UpdatesSince(ctx context.Context, channelID, sincePts int64, limit int) ([]domain.ChannelUpdate, error)
+	CurrentPts(ctx context.Context, channelID int64) (int64, error)
+}
+
+type SearchRepo interface {
+	SearchChats(ctx context.Context, q string, limit int) ([]domain.ChatCard, error) // public only
+	SearchUsers(ctx context.Context, q string, limit int) ([]domain.UserCard, error)
+	PublicChatByUsername(ctx context.Context, username string) (int64, error) // domain.ErrNotFound
+}
+
 type ReactionRepo interface {
 	Add(ctx context.Context, messageID, userID int64, emoji string) error
 	Remove(ctx context.Context, messageID, userID int64, emoji string) error
@@ -76,6 +89,10 @@ type MediaAccessRepo interface {
 
 type EventPublisher interface {
 	PublishToUser(ctx context.Context, userID int64, frame []byte) error
+}
+
+type ChannelPublisher interface {
+	PublishToChannel(ctx context.Context, channelID int64, frame []byte) error
 }
 
 type PushNotifier interface {

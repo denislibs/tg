@@ -82,3 +82,11 @@ type UserCard struct {
 	DisplayName string
 	AvatarURL   string
 }
+
+// ChannelUpdate is one entry in a channel's per-channel updates log
+// (the catch-up feed read by GET /channels/{id}/difference).
+type ChannelUpdate struct {
+	Pts      int64
+	PtsCount int
+	Payload  []byte
+}

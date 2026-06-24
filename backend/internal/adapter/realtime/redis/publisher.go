@@ -21,6 +21,16 @@ func (p *RedisPublisher) PublishToUser(ctx context.Context, userID int64, frame 
 	return p.rdb.Publish(ctx, UserChannel(userID), frame).Err()
 }
 
+// ChannelTopic is the Redis pub/sub topic for a channel's posts.
+func ChannelTopic(channelID int64) string { return fmt.Sprintf("channel:%d", channelID) }
+
+// PublishToChannel publishes a frame once to a channel's topic. Subscribers are
+// fanned out per-replica by the WS Hub, so a channel post is O(1) regardless of
+// the number of subscribers.
+func (p *RedisPublisher) PublishToChannel(ctx context.Context, channelID int64, frame []byte) error {
+	return p.rdb.Publish(ctx, ChannelTopic(channelID), frame).Err()
+}
+
 // DeviceChannel is the Redis control channel for a device (close-on-revoke).
 func DeviceChannel(deviceID int64) string { return fmt.Sprintf("device:%d", deviceID) }
 
