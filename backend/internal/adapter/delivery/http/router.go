@@ -10,7 +10,7 @@ import (
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 )
 
-func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, pushH *PushHandler) http.Handler {
+func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, pushH *PushHandler, memberPresence PresenceQuery) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -52,9 +52,10 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Delete("/chats/{chatID}/messages/{msgID}/reactions/{emoji}", ch.RemoveReaction)
 		pr.Get("/chats/{chatID}/messages/{msgID}/reactions", ch.ListReactions)
 
-		gh := NewGroupHandler(chatUC)
+		gh := NewGroupHandler(chatUC, memberPresence)
 		pr.Post("/groups", gh.CreateGroup)
 		pr.Get("/chats/{chatID}/card", gh.Card)
+		pr.Get("/chats/{chatID}/members", gh.ListMembers)
 		pr.Patch("/chats/{chatID}", gh.EditInfo)
 		pr.Post("/chats/{chatID}/members", gh.AddMember)
 		pr.Delete("/chats/{chatID}/members/{userID}", gh.RemoveMember)

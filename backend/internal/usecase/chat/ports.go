@@ -37,6 +37,7 @@ type GroupRepo interface {
 	Card(ctx context.Context, chatID, viewerID int64) (domain.ChatCard, error) // domain.ErrNotFound if no chat
 	EditInfo(ctx context.Context, chatID int64, title, about, username string) error
 	UsersByIDs(ctx context.Context, ids []int64) ([]domain.UserCard, error)
+	ListMembers(ctx context.Context, chatID int64, offset, limit int) ([]domain.Member, error)
 }
 
 type InviteRepo interface {

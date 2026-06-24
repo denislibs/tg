@@ -42,13 +42,14 @@ type serverParams struct {
 // This mirrors the previous main.go assembly; later slices decompose it.
 func registerServer(p serverParams) {
 	var wsHandler http.Handler
+	var presenceMgr *usecasepresence.Manager
 	if p.Redis.OK {
 		p.AuthUC.SetCache(redisSessionCache(p.Redis))
 		publisher := rtredis.NewRedisPublisher(p.Redis.Client)
 		p.ChatUC.SetPublisher(publisher)
 		p.ChatUC.SetChannelPublisher(publisher)
 		p.AuthUC.SetRevocationNotifier(publisher)
-		presenceMgr := usecasepresence.NewManager(rtredis.NewPresenceStore(p.Redis.Client), publisher, p.ChatUC.ChatPartners, 35*time.Second)
+		presenceMgr = usecasepresence.NewManager(rtredis.NewPresenceStore(p.Redis.Client), publisher, p.ChatUC.ChatPartners, 35*time.Second)
 		hub := ws.NewHub(p.Ctx, p.Redis.Client)
 		p.LC.Append(fx.Hook{OnStop: func(context.Context) error { return hub.Close() }})
 		wsHandler = ws.NewHandler(hub, p.AuthUC, p.ChatUC, presenceMgr)
@@ -77,9 +78,17 @@ func registerServer(p serverParams) {
 		log.Printf("media enabled (minio bucket %q)", p.Cfg.MinioBucket)
 	}
 
+	// Pass presence as a PresenceQuery only when it's actually wired; passing a
+	// typed-nil *Manager would yield a non-nil interface and defeat the handler's
+	// nil-check. When disabled, the members endpoint reports online=false.
+	var memberPresence httptransport.PresenceQuery
+	if presenceMgr != nil {
+		memberPresence = presenceMgr
+	}
+
 	srv := &http.Server{
 		Addr:              p.Cfg.HTTPAddr,
-		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, pushHandler),
+		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, pushHandler, memberPresence),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}

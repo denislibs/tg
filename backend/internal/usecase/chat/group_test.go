@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"errors"
+	"sort"
 	"sync"
 	"testing"
 
@@ -138,6 +139,33 @@ func (r *fakeGroupRepo) EditInfo(_ context.Context, chatID int64, title, about, 
 	return nil
 }
 
+func (r *fakeGroupRepo) ListMembers(_ context.Context, chatID int64, offset, limit int) ([]domain.Member, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if limit <= 0 || limit > 200 {
+		limit = 200
+	}
+	var out []domain.Member
+	for _, m := range r.members[chatID] {
+		out = append(out, m)
+	}
+	// role DESC, user_id ASC — matches the SQL ordering.
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Role != out[j].Role {
+			return out[i].Role > out[j].Role
+		}
+		return out[i].UserID < out[j].UserID
+	})
+	if offset >= len(out) {
+		return []domain.Member{}, nil
+	}
+	out = out[offset:]
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
 func (r *fakeGroupRepo) UsersByIDs(_ context.Context, ids []int64) ([]domain.UserCard, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -216,6 +244,29 @@ func (r *fakeInviteRepo) Revoke(_ context.Context, chatID int64, token string) e
 	return nil
 }
 
+// groupChats is a tiny ChatRepo whose membership view is backed by a
+// fakeGroupRepo, so the groups usecase's membership gating (ListMembers) can be
+// exercised without the full in-memory store.
+type groupChats struct{ fg *fakeGroupRepo }
+
+func (c groupChats) FindPrivate(context.Context, int64, int64) (int64, error) {
+	return 0, domain.ErrNotFound
+}
+func (c groupChats) CreatePrivate(context.Context, int64, int64) (int64, error)  { return 0, nil }
+func (c groupChats) MemberIDs(context.Context, int64) ([]int64, error)           { return nil, nil }
+func (c groupChats) ListDialogs(context.Context, int64) ([]domain.Dialog, error) { return nil, nil }
+func (c groupChats) ChatPartners(context.Context, int64) ([]int64, error)        { return nil, nil }
+func (c groupChats) IncUnread(context.Context, int64, int64) error               { return nil }
+func (c groupChats) CurrentReadSeq(context.Context, int64, int64) (int64, error) { return 0, nil }
+func (c groupChats) SetRead(context.Context, int64, int64, int64, int) error     { return nil }
+func (c groupChats) IsMember(ctx context.Context, chatID, userID int64) (bool, error) {
+	_, err := c.fg.GetMember(ctx, chatID, userID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 // newGroupTestInteractor wires the interactor with fake group/invite repos and a
 // deterministic tokenGen so JoinByToken/CreateInvite are predictable in tests.
 func newGroupTestInteractor(t *testing.T) (*Interactor, *fakeGroupRepo) {
@@ -225,8 +276,38 @@ func newGroupTestInteractor(t *testing.T) (*Interactor, *fakeGroupRepo) {
 	prev := tokenGen
 	tokenGen = func() string { return "test-token" }
 	t.Cleanup(func() { tokenGen = prev })
-	in := New(fakeTx{}, nil, nil, nil, nil, nil, fg, fi, nil, nil)
+	in := New(fakeTx{}, groupChats{fg}, nil, nil, nil, nil, fg, fi, nil, nil)
 	return in, fg
+}
+
+func TestListMembers_RequiresMembership(t *testing.T) {
+	i, fg := newGroupTestInteractor(t)
+	id, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false)
+	_ = fg.AddMember(context.Background(), id, 8, domain.RoleMember, 0)
+
+	// Non-member 99 → forbidden.
+	if _, err := i.ListMembers(context.Background(), id, 99, 0, 200); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("non-member want ErrForbidden, got %v", err)
+	}
+
+	// Member 8 sees the full list (creator 7 + member 8).
+	ms, err := i.ListMembers(context.Background(), id, 8, 0, 200)
+	if err != nil {
+		t.Fatalf("member list: %v", err)
+	}
+	if len(ms) != 2 {
+		t.Fatalf("members = %d; want 2 (%+v)", len(ms), ms)
+	}
+	roles := map[int64]string{}
+	for _, m := range ms {
+		roles[m.UserID] = m.Role
+	}
+	if roles[7] != domain.RoleCreator {
+		t.Fatalf("user 7 role = %q; want creator", roles[7])
+	}
+	if roles[8] != domain.RoleMember {
+		t.Fatalf("user 8 role = %q; want member", roles[8])
+	}
 }
 
 func TestCreateGroup_AddsCreator(t *testing.T) {

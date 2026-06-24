@@ -40,7 +40,7 @@ func newChatUC(pool *pgxpool.Pool) *usecasechat.Interactor {
 
 func newTestRouter(t *testing.T) http.Handler {
 	pool := postgres.NewTestDB(t)
-	return NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil)
+	return NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil)
 }
 
 func postJSON(t *testing.T, h http.Handler, path string, body any) *httptest.ResponseRecorder {
