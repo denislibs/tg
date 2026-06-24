@@ -194,10 +194,13 @@ export default function QrCode({
 
     const regen = async () => {
       try {
-        const { token, url } = await managers.auth.qrNew('web')
+        const { token } = await managers.auth.qrNew('web')
         if (!alive) return
         qrTokenRef.current = token
-        setQrUrl(url)
+        // Build the scan URL client-side from the real origin. The backend's
+        // `url` is derived from proxy Host headers and can lose the port
+        // (e.g. behind nginx → "http://localhost/qr/..."), so don't trust it.
+        setQrUrl(`${location.origin}/qr/${token}`)
         setQrError(false)
       } catch {
         if (alive) setQrError(true)
