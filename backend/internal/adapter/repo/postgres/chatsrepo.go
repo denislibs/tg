@@ -119,7 +119,7 @@ func (r *ChatsRepo) ChatPartners(ctx context.Context, userID int64) ([]int64, er
 func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dialog, error) {
 	q := querier(ctx, r.pool)
 	rows, err := q.Query(ctx,
-		`SELECT c.id, c.type, m.last_read_seq, m.unread_count, m.muted,
+		`SELECT c.id, c.type, c.title, COALESCE(c.username,''), m.last_read_seq, m.unread_count, m.muted,
 		        lm.seq, lm.text, lm.sender_id, lm.created_at,
 		        peer.id, peer.display_name, peer.avatar_url
 		 FROM chat_members m
@@ -151,7 +151,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		var peerID *int64
 		var peerName *string
 		var peerAvatar *string
-		if err := rows.Scan(&d.ChatID, &d.Type, &d.LastReadSeq, &d.UnreadCount, &d.Muted,
+		if err := rows.Scan(&d.ChatID, &d.Type, &d.Title, &d.Username, &d.LastReadSeq, &d.UnreadCount, &d.Muted,
 			&seq, &text, &senderID, &at,
 			&peerID, &peerName, &peerAvatar); err != nil {
 			return nil, err

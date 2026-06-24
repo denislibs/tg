@@ -123,6 +123,40 @@ func TestChatsRepo_ListDialogs(t *testing.T) {
 	}
 }
 
+func TestChatsRepo_ListDialogs_GroupTitle(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewChatsRepo(pool)
+	groups := NewGroupRepo(pool)
+	ctx := context.Background()
+	u := seedUser(t, pool, "+715")
+
+	groupID, err := groups.CreateMultiMember(ctx, "group", "My Group", "", "", false, u)
+	if err != nil {
+		t.Fatalf("CreateMultiMember: %v", err)
+	}
+	if err := groups.AddMember(ctx, groupID, u, domain.RoleCreator, domain.AllRights); err != nil {
+		t.Fatalf("AddMember: %v", err)
+	}
+
+	dialogs, err := repo.ListDialogs(ctx, u)
+	if err != nil {
+		t.Fatalf("ListDialogs: %v", err)
+	}
+	var found *domain.Dialog
+	for i := range dialogs {
+		if dialogs[i].ChatID == groupID {
+			found = &dialogs[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("group dialog %d not found in %+v", groupID, dialogs)
+	}
+	if found.Title != "My Group" {
+		t.Fatalf("group dialog Title = %q; want %q", found.Title, "My Group")
+	}
+}
+
 func TestChatsRepo_ChatPartners(t *testing.T) {
 	pool := storepostgres.NewTestDB(t)
 	repo := NewChatsRepo(pool)
