@@ -8,6 +8,10 @@ import (
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
+// ErrQRUnavailable is returned when QR login is requested but no QRStore is
+// configured (e.g. Redis is down).
+var ErrQRUnavailable = errors.New("qr login unavailable")
+
 const codeTTL = 5 * time.Minute
 
 type Interactor struct {
@@ -18,6 +22,7 @@ type Interactor struct {
 	logf    func(string, ...any)
 	cache   SessionCache       // optional
 	revoker RevocationNotifier // optional
+	qr      QRStore            // optional
 }
 
 func New(users UserRepo, devices DeviceRepo, codes CodeRepo, devCode string, logf func(string, ...any)) *Interactor {
@@ -26,6 +31,7 @@ func New(users UserRepo, devices DeviceRepo, codes CodeRepo, devCode string, log
 
 func (i *Interactor) SetCache(c SessionCache)                    { i.cache = c }
 func (i *Interactor) SetRevocationNotifier(n RevocationNotifier) { i.revoker = n }
+func (i *Interactor) SetQRStore(q QRStore)                       { i.qr = q }
 
 func (i *Interactor) RequestCode(ctx context.Context, rawPhone string) error {
 	phone := domain.NormalizePhone(rawPhone)
@@ -86,6 +92,70 @@ func (i *Interactor) Authenticate(ctx context.Context, token string) (domain.Use
 		_ = i.cache.SetSession(ctx, hash, domain.Session{User: user, DeviceID: deviceID}, SessionCacheTTL)
 	}
 	return user, deviceID, nil
+}
+
+// NewQRLogin creates a pending QR-login record and returns the raw token and
+// its expiry. The raw token is only ever returned here; the store keys on its
+// hash.
+func (i *Interactor) NewQRLogin(ctx context.Context, platform string) (token string, expiresAt time.Time, err error) {
+	if i.qr == nil {
+		return "", time.Time{}, ErrQRUnavailable
+	}
+	token, hash, err := domain.GenerateToken()
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	now := time.Now()
+	rec := domain.QRLogin{Status: domain.QRPending, Platform: platform, CreatedAt: now}
+	if err := i.qr.Put(ctx, hash, rec, QRLoginTTL); err != nil {
+		return "", time.Time{}, err
+	}
+	return token, now.Add(QRLoginTTL), nil
+}
+
+// QRStatus returns the record for a token. A confirmed record is single-use: it
+// is deleted on read so the desktop consumes the session token exactly once.
+func (i *Interactor) QRStatus(ctx context.Context, token string) (domain.QRLogin, error) {
+	if i.qr == nil {
+		return domain.QRLogin{}, ErrQRUnavailable
+	}
+	hash := domain.HashToken(token)
+	rec, err := i.qr.Get(ctx, hash)
+	if err != nil {
+		return domain.QRLogin{}, err // ErrNotFound ⇒ caller maps to "expired"
+	}
+	if rec.Status == domain.QRConfirmed {
+		_ = i.qr.Delete(ctx, hash)
+	}
+	return rec, nil
+}
+
+// ConfirmQRLogin is called by an already-authenticated user (the scanning
+// device). It mints a fresh session for that user and stores it on the record
+// so the waiting desktop can read it.
+func (i *Interactor) ConfirmQRLogin(ctx context.Context, token string, user domain.User) error {
+	if i.qr == nil {
+		return ErrQRUnavailable
+	}
+	hash := domain.HashToken(token)
+	rec, err := i.qr.Get(ctx, hash)
+	if err != nil {
+		return err // ErrNotFound (absent/expired)
+	}
+	if rec.Status != domain.QRPending {
+		return domain.ErrNotFound // already used
+	}
+	sessionToken, sessionHash, err := domain.GenerateToken()
+	if err != nil {
+		return err
+	}
+	if _, err := i.devices.Create(ctx, user.ID, "QR login", rec.Platform, sessionHash); err != nil {
+		return err
+	}
+	rec.Status = domain.QRConfirmed
+	rec.SessionToken = sessionToken
+	rec.User = user
+	return i.qr.Put(ctx, hash, rec, QRLoginTTL)
 }
 
 func (i *Interactor) ListSessions(ctx context.Context, userID int64) ([]domain.Device, error) {

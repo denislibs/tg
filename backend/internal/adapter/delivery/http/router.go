@@ -18,6 +18,8 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 	authH := NewAuthHandler(authUC)
 	r.Post("/auth/request_code", authH.RequestCode)
 	r.Post("/auth/sign_in", authH.SignIn)
+	r.Post("/auth/qr/new", authH.QRNew)
+	r.Get("/auth/qr/{token}", authH.QRStatus)
 
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -104,6 +106,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/sessions", sh.List)
 		pr.Delete("/sessions/{deviceID}", sh.Revoke)
 		pr.Post("/auth/logout", sh.Logout)
+		pr.Post("/auth/qr/confirm", authH.QRConfirm)
 	})
 	return r
 }

@@ -239,6 +239,69 @@ paths:
                   user: { $ref: "#/components/schemas/User" }
         "401": { description: invalid code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
+  /auth/qr/new:
+    post:
+      tags: [auth]
+      summary: Start a QR login (ephemeral pending record + scan URL)
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: { platform: { type: string, example: web } }
+      responses:
+        "200":
+          description: pending QR login created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  url: { type: string, example: "https://app.example/qr/<token>" }
+                  expires_at: { type: string, format: date-time }
+        "503": { description: qr login unavailable, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /auth/qr/{token}:
+    get:
+      tags: [auth]
+      summary: Poll a QR login (confirmed records are single-use)
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: status (pending | confirmed | expired)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [pending, confirmed, expired] }
+                  session_token: { type: string }
+                  user: { $ref: "#/components/schemas/User" }
+        "503": { description: qr login unavailable, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /auth/qr/confirm:
+    post:
+      tags: [auth]
+      summary: Confirm a pending QR login (mints a session for the caller)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties: { token: { type: string } }
+      responses:
+        "200": { description: confirmed, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
+        "400": { description: token required, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: invalid or expired token, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: qr login unavailable, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
   /auth/logout:
     post:
       tags: [sessions]

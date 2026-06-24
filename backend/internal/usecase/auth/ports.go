@@ -38,3 +38,12 @@ type RevocationNotifier interface {
 }
 
 const SessionCacheTTL = 30 * time.Minute
+
+// QRStore persists ephemeral QR-login records keyed by the token hash.
+type QRStore interface {
+	Put(ctx context.Context, tokenHash string, rec domain.QRLogin, ttl time.Duration) error
+	Get(ctx context.Context, tokenHash string) (domain.QRLogin, error) // domain.ErrNotFound when absent/expired
+	Delete(ctx context.Context, tokenHash string) error
+}
+
+const QRLoginTTL = 60 * time.Second

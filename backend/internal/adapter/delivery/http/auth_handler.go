@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/messenger-denis/backend/internal/domain"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 )
@@ -60,6 +62,97 @@ func (h *AuthHandler) SignIn(w http.ResponseWriter, r *http.Request) {
 			"display_name": res.User.DisplayName,
 		},
 	})
+}
+
+type qrNewBody struct {
+	Platform string `json:"platform"`
+}
+
+func (h *AuthHandler) QRNew(w http.ResponseWriter, r *http.Request) {
+	var body qrNewBody
+	_ = json.NewDecoder(r.Body).Decode(&body) // platform optional
+	token, expiresAt, err := h.svc.NewQRLogin(r.Context(), body.Platform)
+	if errors.Is(err, usecaseauth.ErrQRUnavailable) {
+		writeError(w, http.StatusServiceUnavailable, "qr login unavailable")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not start qr login")
+		return
+	}
+	// Build the scan URL from the request origin so a confirming device lands on
+	// the SPA's /qr/{token} route. Fall back to Host when Origin is absent.
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		scheme := "https"
+		if r.TLS == nil {
+			scheme = "http"
+		}
+		origin = scheme + "://" + r.Host
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"token":      token,
+		"url":        origin + "/qr/" + token,
+		"expires_at": expiresAt.UTC().Format(time.RFC3339),
+	})
+}
+
+func (h *AuthHandler) QRStatus(w http.ResponseWriter, r *http.Request) {
+	token := chi.URLParam(r, "token")
+	rec, err := h.svc.QRStatus(r.Context(), token)
+	if errors.Is(err, domain.ErrNotFound) {
+		writeJSON(w, http.StatusOK, map[string]any{"status": "expired"})
+		return
+	}
+	if errors.Is(err, usecaseauth.ErrQRUnavailable) {
+		writeError(w, http.StatusServiceUnavailable, "qr login unavailable")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "qr status failed")
+		return
+	}
+	resp := map[string]any{"status": rec.Status}
+	if rec.Status == domain.QRConfirmed {
+		resp["session_token"] = rec.SessionToken
+		resp["user"] = map[string]any{
+			"id":           rec.User.ID,
+			"phone":        rec.User.Phone,
+			"display_name": rec.User.DisplayName,
+		}
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+type qrConfirmBody struct {
+	Token string `json:"token"`
+}
+
+func (h *AuthHandler) QRConfirm(w http.ResponseWriter, r *http.Request) {
+	var body qrConfirmBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Token == "" {
+		writeError(w, http.StatusBadRequest, "token is required")
+		return
+	}
+	user, ok := UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	err := h.svc.ConfirmQRLogin(r.Context(), body.Token, user)
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "invalid or expired token")
+		return
+	}
+	if errors.Is(err, usecaseauth.ErrQRUnavailable) {
+		writeError(w, http.StatusServiceUnavailable, "qr login unavailable")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "qr confirm failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
