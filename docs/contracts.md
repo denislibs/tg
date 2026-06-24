@@ -39,6 +39,32 @@ Verify the code, create the user (if new) + a device, return a session token.
 - 200: `{ "token": "<opaque>", "user": { "id": 1, "phone": "+79990000000", "display_name": "+79990000000" } }`
 - 401: `{ "error": "invalid code" }`
 
+### POST /auth/qr/new  · public
+Start a QR login. Creates an ephemeral pending record (Redis, ~60s TTL) and
+returns the raw token plus a scan URL (`<origin>/qr/{token}`, origin taken from
+the `Origin` header, falling back to the request host).
+- Request: `{ "platform": "web" }` (`platform` optional)
+- 200: `{ "token": "<opaque>", "url": "https://app.example/qr/<token>", "expires_at": "2026-06-24T10:01:00Z" }`
+- 503: `{ "error": "qr login unavailable" }` (no QRStore / Redis down)
+
+### GET /auth/qr/{token}  · public
+Poll the QR-login record. A confirmed record is single-use — it is deleted on
+read, so a second poll returns `expired`. Unknown/expired tokens return
+`expired` (never an error).
+- 200 pending: `{ "status": "pending" }`
+- 200 confirmed: `{ "status": "confirmed", "session_token": "<opaque>", "user": { "id": 1, "phone": "+79990000000", "display_name": "..." } }`
+- 200 expired: `{ "status": "expired" }`
+- 503: `{ "error": "qr login unavailable" }`
+
+### POST /auth/qr/confirm  · auth
+Called by an already-authenticated device (the scanner) to approve a pending QR
+login. Mints a fresh session for the caller and attaches it to the record.
+- Request: `{ "token": "<opaque>" }`
+- 200: `{ "ok": true }`
+- 400: `{ "error": "token is required" }`
+- 404: `{ "error": "invalid or expired token" }` (unknown/expired/already used)
+- 503: `{ "error": "qr login unavailable" }`
+
 ### GET /me  · auth
 - 200: `{ "id": 1, "phone": "+79990000000", "display_name": "..." }`
 - 401: `{ "error": "missing token" | "invalid token" }`
