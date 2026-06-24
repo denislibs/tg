@@ -83,7 +83,7 @@ func newMediaRouter(t *testing.T) (http.Handler, *pgxpool.Pool) {
 	chatUC := newChatUC(pool)
 	authUC := newAuthUC(pool)
 	mediaH := NewMediaHandler(usecasemedia.New(pgadapter.NewMediaRepo(pool), newFakeStorage()), chatUC, authUC)
-	return NewRouter(authUC, chatUC, nil, mediaH, nil), pool
+	return NewRouter(authUC, chatUC, nil, mediaH, nil, nil), pool
 }
 
 func TestMedia_UploadAndGet_HTTP(t *testing.T) {

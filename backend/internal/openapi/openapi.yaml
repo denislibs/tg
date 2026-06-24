@@ -352,6 +352,30 @@ paths:
         "403": { description: forbidden, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /chats/{chatID}/members:
+    get:
+      tags: [groups]
+      summary: List chat members with role and online status (caller must be a member)
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+        - { name: offset, in: query, required: false, schema: { type: integer, default: 0 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, default: 200, maximum: 200 } }
+      responses:
+        "200":
+          description: member list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  members:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        user_id: { type: integer, format: int64 }
+                        role: { type: string, enum: [creator, admin, member] }
+                        online: { type: boolean, description: "realtime presence; always false when presence is disabled" }
+        "403": { description: caller is not a member, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     post:
       tags: [groups]
       summary: Add a user as a plain member (needs INVITE_USERS right)

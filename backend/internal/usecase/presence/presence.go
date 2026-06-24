@@ -72,6 +72,12 @@ func (m *Manager) Offline(ctx context.Context, userID int64) error {
 	return m.fanout(ctx, userID, false, now)
 }
 
+// IsOnline reports whether a user is currently online. It satisfies the HTTP
+// layer's PresenceQuery seam (used by GET /chats/{id}/members).
+func (m *Manager) IsOnline(ctx context.Context, userID int64) (bool, error) {
+	return m.store.IsOnline(ctx, userID)
+}
+
 // Snapshot returns whether a user is currently online and their last-seen (ms).
 func (m *Manager) Snapshot(ctx context.Context, userID int64) (online bool, lastSeen int64) {
 	online, _ = m.store.IsOnline(ctx, userID)

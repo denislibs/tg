@@ -127,6 +127,21 @@ Group/channel info screen, including the caller's own role/rights/mute.
   `my_role` is empty and `my_rights` is `0` when the caller is not a member.
 - 404: `{ "error": "not found" }` (no such chat)
 
+### GET /chats/{chatID}/members  · auth
+List the chat's members with their role and current online status. The caller
+must be a member of the chat. Supports `?offset=` (default `0`) and `?limit=`
+(default and max `200`); members are ordered by role then `user_id`.
+- 200:
+```json
+{ "members": [
+  { "user_id": 7, "role": "creator", "online": true },
+  { "user_id": 9, "role": "member",  "online": false }
+] }
+```
+  `online` reflects realtime presence when enabled; when presence is disabled it
+  is always `false` and clients should overlay their own presence store.
+- 403: `{ "error": "forbidden" }` (caller is not a member)
+
 ### PATCH /chats/{chatID}  · auth · needs `CHANGE_INFO`
 Edit group info.
 - Request: `{ "title": "New", "about": "desc", "username": "team" }`

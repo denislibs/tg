@@ -63,6 +63,37 @@ func TestGroupFlow_HTTP(t *testing.T) {
 		t.Fatalf("card creator_id = %d; want %d", card.CreatorID, idA)
 	}
 
+	// GET /chats/{id}/members: 2 entries (A=creator, B=member), online=false
+	// since no presence is wired into the test router.
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/members", tokenA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("members: %d %s", rec.Code, rec.Body.String())
+	}
+	var ml struct {
+		Members []struct {
+			UserID int64  `json:"user_id"`
+			Role   string `json:"role"`
+			Online bool   `json:"online"`
+		} `json:"members"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &ml)
+	if len(ml.Members) != 2 {
+		t.Fatalf("members = %d; want 2 (%s)", len(ml.Members), rec.Body.String())
+	}
+	roleByUser := map[int64]string{}
+	for _, m := range ml.Members {
+		roleByUser[m.UserID] = m.Role
+		if m.Online {
+			t.Fatalf("member %d online=true; want false (no presence wired)", m.UserID)
+		}
+	}
+	if roleByUser[idA] != "creator" {
+		t.Fatalf("A role = %q; want creator", roleByUser[idA])
+	}
+	if roleByUser[idB] != "member" {
+		t.Fatalf("B role = %q; want member", roleByUser[idB])
+	}
+
 	// GET /users?ids= returns the requested users.
 	rec = authedReq(t, h, http.MethodGet, "/users?ids="+itoa(idA)+","+itoa(idB), tokenA, nil)
 	if rec.Code != http.StatusOK {

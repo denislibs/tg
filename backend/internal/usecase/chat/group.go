@@ -89,6 +89,19 @@ func (i *Interactor) UsersByIDs(ctx context.Context, ids []int64) ([]domain.User
 	return i.groups.UsersByIDs(ctx, ids)
 }
 
+// ListMembers returns the chat's members (role + rights + mute). The viewer must
+// be a member of the chat; otherwise domain.ErrForbidden.
+func (i *Interactor) ListMembers(ctx context.Context, chatID, viewerID int64, offset, limit int) ([]domain.Member, error) {
+	ok, err := i.chats.IsMember(ctx, chatID, viewerID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, domain.ErrForbidden
+	}
+	return i.groups.ListMembers(ctx, chatID, offset, limit)
+}
+
 func (i *Interactor) CreateInvite(ctx context.Context, chatID, actorID int64, usageLimit *int) (domain.InviteLink, error) {
 	if err := i.requireRight(ctx, chatID, actorID, domain.RightInviteUsers); err != nil {
 		return domain.InviteLink{}, err

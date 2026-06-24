@@ -136,6 +136,34 @@ func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.Ch
 	return c, nil
 }
 
+func (r *GroupRepo) ListMembers(ctx context.Context, chatID int64, offset, limit int) ([]domain.Member, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 200
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT chat_id, user_id, role, rights, muted FROM chat_members
+		  WHERE chat_id=$1 ORDER BY role DESC, user_id LIMIT $2 OFFSET $3`,
+		chatID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]domain.Member, 0)
+	for rows.Next() {
+		var m domain.Member
+		var rights int
+		if err := rows.Scan(&m.ChatID, &m.UserID, &m.Role, &rights, &m.Muted); err != nil {
+			return nil, err
+		}
+		m.Rights = domain.Rights(rights)
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
 func (r *GroupRepo) UsersByIDs(ctx context.Context, ids []int64) ([]domain.UserCard, error) {
 	if len(ids) == 0 {
 		return []domain.UserCard{}, nil

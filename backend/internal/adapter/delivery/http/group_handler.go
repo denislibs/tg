@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -12,9 +13,21 @@ import (
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 )
 
-type GroupHandler struct{ uc *usecasechat.Interactor }
+// PresenceQuery reports whether a user is currently online. It's an optional
+// seam: when nil, the members endpoint reports everyone as offline and lets the
+// client overlay its own presence store.
+type PresenceQuery interface {
+	IsOnline(ctx context.Context, userID int64) (bool, error)
+}
 
-func NewGroupHandler(uc *usecasechat.Interactor) *GroupHandler { return &GroupHandler{uc: uc} }
+type GroupHandler struct {
+	uc       *usecasechat.Interactor
+	presence PresenceQuery
+}
+
+func NewGroupHandler(uc *usecasechat.Interactor, presence PresenceQuery) *GroupHandler {
+	return &GroupHandler{uc: uc, presence: presence}
+}
 
 func (h *GroupHandler) mapErr(w http.ResponseWriter, err error) {
 	switch {
@@ -180,6 +193,35 @@ func (h *GroupHandler) Card(w http.ResponseWriter, r *http.Request) {
 		"photo_media_id": c.PhotoMediaID, "creator_id": c.CreatorID, "member_count": c.MemberCount,
 		"is_public": c.IsPublic, "my_role": c.MyRole, "my_rights": int(c.MyRights), "muted": c.Muted,
 	})
+}
+
+func (h *GroupHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	limit := 200
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			limit = n
+		}
+	}
+	members, err := h.uc.ListMembers(r.Context(), chatID, user.ID, offset, limit)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	out := make([]map[string]any, 0, len(members))
+	for _, m := range members {
+		online := false
+		if h.presence != nil {
+			online, _ = h.presence.IsOnline(r.Context(), m.UserID)
+		}
+		out = append(out, map[string]any{"user_id": m.UserID, "role": m.Role, "online": online})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"members": out})
 }
 
 func (h *GroupHandler) Users(w http.ResponseWriter, r *http.Request) {
