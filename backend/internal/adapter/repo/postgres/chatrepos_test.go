@@ -124,6 +124,42 @@ func TestChatsRepo_ListDialogs(t *testing.T) {
 	}
 }
 
+func TestChatsRepo_ListDialogs_PeerReadSeq(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewChatsRepo(pool)
+	msgs := NewMessagesRepo(pool)
+	ctx := context.Background()
+	a := seedUser(t, pool, "+720")
+	b := seedUser(t, pool, "+721")
+	chatID := createPrivate(t, pool, a, b)
+
+	// A sends 3 messages.
+	for k := 0; k < 3; k++ {
+		seq, _ := msgs.NextSeq(ctx, chatID)
+		if _, err := msgs.Insert(ctx, domain.Message{ChatID: chatID, Seq: seq, SenderID: a, Type: "text", Text: "m"}); err != nil {
+			t.Fatalf("insert: %v", err)
+		}
+	}
+	// Before B reads, A's peer horizon is 0.
+	da, _ := repo.ListDialogs(ctx, a)
+	if da[0].PeerReadSeq != 0 {
+		t.Fatalf("peer_read_seq before read = %d; want 0", da[0].PeerReadSeq)
+	}
+	// B reads up to seq 2.
+	if err := repo.SetRead(ctx, chatID, b, 2, 1); err != nil {
+		t.Fatalf("SetRead: %v", err)
+	}
+	da, _ = repo.ListDialogs(ctx, a)
+	if da[0].PeerReadSeq != 2 {
+		t.Fatalf("A peer_read_seq = %d; want 2 (B read to 2)", da[0].PeerReadSeq)
+	}
+	// B's own dialog: A hasn't read anything → peer horizon 0.
+	db, _ := repo.ListDialogs(ctx, b)
+	if db[0].PeerReadSeq != 0 {
+		t.Fatalf("B peer_read_seq = %d; want 0 (A read nothing)", db[0].PeerReadSeq)
+	}
+}
+
 func TestChatsRepo_ListDialogs_GroupTitle(t *testing.T) {
 	pool := storepostgres.NewTestDB(t)
 	repo := NewChatsRepo(pool)

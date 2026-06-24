@@ -31,6 +31,11 @@ type Dialog struct {
 	Title        string
 	Username     string
 	LastReadSeq  int64
+	// PeerReadSeq is the OTHER side's read horizon (read_outbox): the peer's
+	// last_read_seq for a private chat, the MIN across other members for a group
+	// (read-by-all), 0 for channels. Used for outgoing sent/read ticks
+	// (message seq <= PeerReadSeq ⇒ delivered+read ✓✓).
+	PeerReadSeq  int64
 	UnreadCount  int
 	Muted        bool
 	HasLast      bool

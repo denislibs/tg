@@ -49,7 +49,7 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 		row := map[string]any{
 			"chat_id": d.ChatID, "type": d.Type,
 			"title": d.Title, "username": d.Username,
-			"last_read_seq": d.LastReadSeq, "unread": d.UnreadCount, "muted": d.Muted,
+			"last_read_seq": d.LastReadSeq, "peer_read_seq": d.PeerReadSeq, "unread": d.UnreadCount, "muted": d.Muted,
 		}
 		if d.HasLast {
 			row["last_message"] = map[string]any{
