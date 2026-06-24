@@ -68,13 +68,21 @@ type ChatCard struct {
 
 // InviteLink is a join token for a chat.
 type InviteLink struct {
-	ID         int64
-	ChatID     int64
-	Token      string
-	CreatedBy  int64
-	UsageLimit *int
-	Uses       int
-	Revoked    bool
+	ID               int64
+	ChatID           int64
+	Token            string
+	CreatedBy        int64
+	UsageLimit       *int
+	Uses             int
+	Revoked          bool
+	RequiresApproval bool
+}
+
+// JoinRequest is a pending request to join a chat via an approval-required link.
+type JoinRequest struct {
+	ChatID    int64
+	UserID    int64
+	CreatedAt time.Time
 }
 
 // UserCard is a minimal public user record (batch lookups, sender names).

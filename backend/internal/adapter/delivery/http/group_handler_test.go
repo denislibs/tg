@@ -116,3 +116,102 @@ func TestGroupFlow_HTTP(t *testing.T) {
 		t.Fatalf("users missing requested ids: %+v", got)
 	}
 }
+
+func TestJoinRequestFlow_HTTP(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990002001")
+	tokenB, idB := signUp(t, h, pool, "+79990002002")
+	tokenC, _ := signUp(t, h, pool, "+79990002003")
+
+	// A creates a group.
+	rec := authedReq(t, h, http.MethodPost, "/groups", tokenA, map[string]any{"title": "Approvals"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create group: %d %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ChatID int64 `json:"chat_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+	cid := itoa(created.ChatID)
+
+	// A creates an invite link that requires approval.
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/invite_links", tokenA, map[string]any{"requires_approval": true})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create invite: %d %s", rec.Code, rec.Body.String())
+	}
+	var inv struct {
+		Token            string `json:"token"`
+		RequiresApproval bool   `json:"requires_approval"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &inv)
+	if inv.Token == "" || !inv.RequiresApproval {
+		t.Fatalf("expected token + requires_approval=true, got %s", rec.Body.String())
+	}
+
+	// B joins via token → requested (not yet a member).
+	rec = authedReq(t, h, http.MethodPost, "/join/"+inv.Token, tokenB, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("join: %d %s", rec.Code, rec.Body.String())
+	}
+	var jr struct {
+		Status string `json:"status"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &jr)
+	if jr.Status != "requested" {
+		t.Fatalf("join status = %q; want requested", jr.Status)
+	}
+
+	// A lists join requests → contains B.
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/join_requests", tokenA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("join_requests: %d %s", rec.Code, rec.Body.String())
+	}
+	var reqs struct {
+		Requests []struct {
+			UserID int64 `json:"user_id"`
+		} `json:"requests"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &reqs)
+	foundB := false
+	for _, rq := range reqs.Requests {
+		if rq.UserID == idB {
+			foundB = true
+		}
+	}
+	if !foundB {
+		t.Fatalf("join_requests missing B (%d): %s", idB, rec.Body.String())
+	}
+
+	// A non-member (C) cannot approve → 403.
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/join_requests/"+itoa(idB)+"/approve", tokenC, nil)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("non-member approve: want 403, got %d %s", rec.Code, rec.Body.String())
+	}
+
+	// A approves B.
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/join_requests/"+itoa(idB)+"/approve", tokenA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("approve: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// B is now a member.
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/members", tokenA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("members: %d %s", rec.Code, rec.Body.String())
+	}
+	var ml struct {
+		Members []struct {
+			UserID int64 `json:"user_id"`
+		} `json:"members"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &ml)
+	isMember := false
+	for _, m := range ml.Members {
+		if m.UserID == idB {
+			isMember = true
+		}
+	}
+	if !isMember {
+		t.Fatalf("B (%d) not a member after approve: %s", idB, rec.Body.String())
+	}
+}

@@ -132,7 +132,7 @@ func newChannelTestInteractor(t *testing.T) (*Interactor, *fakeGroupRepo, *fakeS
 	fch := newFakeChannelRepo()
 	fs := newFakeSearchRepo()
 	fpub := &fakeChannelPublisher{}
-	in := New(fakeTx{}, groupMembershipChats{fg}, fakeMsgs{s}, nil, nil, nil, fg, nil, fch, fs)
+	in := New(fakeTx{}, groupMembershipChats{fg}, fakeMsgs{s}, nil, nil, nil, fg, nil, fch, fs, nil)
 	in.SetChannelPublisher(fpub)
 	// fakeMsgs.NextSeq requires the chat to exist in the store's chatType map;
 	// register channels there as fg.CreateMultiMember creates them.

@@ -65,6 +65,9 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Post("/chats/{chatID}/invite_links", gh.CreateInvite)
 		pr.Get("/chats/{chatID}/invite_links", gh.ListInvites)
 		pr.Post("/join/{token}", gh.Join)
+		pr.Get("/chats/{chatID}/join_requests", gh.JoinRequests)
+		pr.Post("/chats/{chatID}/join_requests/{userID}/approve", gh.ApproveJoinRequest)
+		pr.Post("/chats/{chatID}/join_requests/{userID}/decline", gh.DeclineJoinRequest)
 		pr.Get("/users", gh.Users)
 
 		chh := NewChannelHandler(chatUC)

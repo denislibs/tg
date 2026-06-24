@@ -41,11 +41,17 @@ type GroupRepo interface {
 }
 
 type InviteRepo interface {
-	Create(ctx context.Context, chatID, createdBy int64, token string, usageLimit *int) (domain.InviteLink, error)
+	Create(ctx context.Context, chatID, createdBy int64, token string, usageLimit *int, requiresApproval bool) (domain.InviteLink, error)
 	GetByToken(ctx context.Context, token string) (domain.InviteLink, error) // domain.ErrNotFound
 	List(ctx context.Context, chatID int64) ([]domain.InviteLink, error)
 	IncUses(ctx context.Context, id int64) error
 	Revoke(ctx context.Context, chatID int64, token string) error
+}
+
+type JoinRequestRepo interface {
+	Create(ctx context.Context, chatID, userID int64, inviteToken string) error // idempotent (ON CONFLICT DO NOTHING)
+	List(ctx context.Context, chatID int64) ([]domain.JoinRequest, error)
+	Delete(ctx context.Context, chatID, userID int64) error
 }
 
 type MessageRepo interface {

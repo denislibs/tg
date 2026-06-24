@@ -24,6 +24,7 @@ var Module = fx.Options(
 		provideMediaRepo,
 		provideGroupRepo,
 		provideInviteRepo,
+		provideJoinRequestRepo,
 		provideChannelRepo,
 		provideSearchRepo,
 		provideChatUsecase,

@@ -138,6 +138,7 @@ components:
         token: { type: string, description: random hex token }
         uses: { type: integer }
         url: { type: string, example: /join/abc123, description: relative join URL }
+        requires_approval: { type: boolean, description: if true, joins create a pending request instead of adding the member }
     ChannelUpdate:
       type: object
       description: A single channel post (new_message payload) from the channel_updates log.
@@ -466,9 +467,11 @@ paths:
           application/json:
             schema:
               type: object
-              properties: { usage_limit: { type: integer, nullable: true, description: null = unlimited } }
+              properties:
+                usage_limit: { type: integer, nullable: true, description: null = unlimited }
+                requires_approval: { type: boolean, description: "if true, joins via this link require admin approval (default false)" }
       responses:
-        "200": { description: created link, content: { application/json: { schema: { type: object, properties: { token: { type: string }, url: { type: string } } } } } }
+        "200": { description: created link, content: { application/json: { schema: { type: object, properties: { token: { type: string }, url: { type: string }, requires_approval: { type: boolean } } } } } }
         "403": { description: forbidden, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     get:
       tags: [groups]
@@ -489,12 +492,53 @@ paths:
   /join/{token}:
     post:
       tags: [groups]
-      summary: Join a chat via an invite token (caller becomes a member)
+      summary: Join a chat via an invite token (member immediately, or pending request if the link requires approval)
       parameters:
         - { name: token, in: path, required: true, schema: { type: string } }
       responses:
-        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
+        "200": { description: "joined or requested", content: { application/json: { schema: { type: object, properties: { status: { type: string, enum: [joined, requested] } } } } } }
         "404": { description: unknown or revoked token, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /chats/{chatID}/join_requests:
+    get:
+      tags: [groups]
+      summary: List pending join requests (needs INVITE_USERS right)
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        "200":
+          description: pending join requests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requests: { type: array, items: { type: object, properties: { user_id: { type: integer, format: int64 } } } }
+        "403": { description: forbidden, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /chats/{chatID}/join_requests/{userID}/approve:
+    post:
+      tags: [groups]
+      summary: Approve a pending join request (needs INVITE_USERS right)
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+        - { name: userID, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
+        "403": { description: forbidden, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: not found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /chats/{chatID}/join_requests/{userID}/decline:
+    post:
+      tags: [groups]
+      summary: Decline (remove) a pending join request (needs INVITE_USERS right)
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+        - { name: userID, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
+        "403": { description: forbidden, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: not found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /users:
     get:
