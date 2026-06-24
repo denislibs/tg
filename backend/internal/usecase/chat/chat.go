@@ -19,12 +19,15 @@ type Interactor struct {
 	mediaAccess MediaAccessRepo
 	groups      GroupRepo
 	invites     InviteRepo
+	channels    ChannelRepo
+	search      SearchRepo
 	publisher   EventPublisher
+	chPub       ChannelPublisher
 	notifier    PushNotifier
 }
 
 // New constructs the chat interactor from its ports.
-func New(tx TxManager, chats ChatRepo, msgs MessageRepo, updates UpdateRepo, reactions ReactionRepo, mediaAccess MediaAccessRepo, groups GroupRepo, invites InviteRepo) *Interactor {
+func New(tx TxManager, chats ChatRepo, msgs MessageRepo, updates UpdateRepo, reactions ReactionRepo, mediaAccess MediaAccessRepo, groups GroupRepo, invites InviteRepo, channels ChannelRepo, search SearchRepo) *Interactor {
 	return &Interactor{
 		tx:          tx,
 		chats:       chats,
@@ -34,12 +37,19 @@ func New(tx TxManager, chats ChatRepo, msgs MessageRepo, updates UpdateRepo, rea
 		mediaAccess: mediaAccess,
 		groups:      groups,
 		invites:     invites,
+		channels:    channels,
+		search:      search,
 	}
 }
 
 // SetPublisher attaches a realtime publisher (optional). When nil, the
 // interactor records updates in the DB but pushes nothing live.
 func (i *Interactor) SetPublisher(p EventPublisher) { i.publisher = p }
+
+// SetChannelPublisher attaches a channel-topic publisher (optional). When nil,
+// channel posts are recorded in the channel_updates log but pushed nowhere live;
+// clients catch up via GET /channels/{id}/difference.
+func (i *Interactor) SetChannelPublisher(p ChannelPublisher) { i.chPub = p }
 
 // SetNotifier attaches a push notifier (optional).
 func (i *Interactor) SetNotifier(n PushNotifier) { i.notifier = n }

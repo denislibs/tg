@@ -91,6 +91,10 @@ type EventPublisher interface {
 	PublishToUser(ctx context.Context, userID int64, frame []byte) error
 }
 
+type ChannelPublisher interface {
+	PublishToChannel(ctx context.Context, channelID int64, frame []byte) error
+}
+
 type PushNotifier interface {
 	NotifyNewMessage(ctx context.Context, recipientID, chatID, msgID, seq, senderID int64, text string)
 }

@@ -46,6 +46,7 @@ func registerServer(p serverParams) {
 		p.AuthUC.SetCache(redisSessionCache(p.Redis))
 		publisher := rtredis.NewRedisPublisher(p.Redis.Client)
 		p.ChatUC.SetPublisher(publisher)
+		p.ChatUC.SetChannelPublisher(publisher)
 		p.AuthUC.SetRevocationNotifier(publisher)
 		presenceMgr := usecasepresence.NewManager(rtredis.NewPresenceStore(p.Redis.Client), publisher, p.ChatUC.ChatPartners, 35*time.Second)
 		hub := ws.NewHub(p.Ctx, p.Redis.Client)

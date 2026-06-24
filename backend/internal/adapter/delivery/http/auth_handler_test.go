@@ -33,6 +33,8 @@ func newChatUC(pool *pgxpool.Pool) *usecasechat.Interactor {
 		pgadapter.NewMediaAccessRepo(pool),
 		pgadapter.NewGroupRepo(pool),
 		pgadapter.NewInviteRepo(pool),
+		pgadapter.NewChannelRepo(pool),
+		pgadapter.NewSearchRepo(pool),
 	)
 }
 
