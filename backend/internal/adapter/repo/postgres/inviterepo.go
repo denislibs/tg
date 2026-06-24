@@ -24,21 +24,21 @@ func NewInviteRepo(pool *pgxpool.Pool) *InviteRepo { return &InviteRepo{pool: po
 
 func scanLink(row pgx.Row) (domain.InviteLink, error) {
 	var l domain.InviteLink
-	err := row.Scan(&l.ID, &l.ChatID, &l.Token, &l.CreatedBy, &l.UsageLimit, &l.Uses, &l.Revoked)
+	err := row.Scan(&l.ID, &l.ChatID, &l.Token, &l.CreatedBy, &l.UsageLimit, &l.Uses, &l.Revoked, &l.RequiresApproval)
 	return l, err
 }
 
-func (r *InviteRepo) Create(ctx context.Context, chatID, createdBy int64, token string, usageLimit *int) (domain.InviteLink, error) {
+func (r *InviteRepo) Create(ctx context.Context, chatID, createdBy int64, token string, usageLimit *int, requiresApproval bool) (domain.InviteLink, error) {
 	l, err := scanLink(querier(ctx, r.pool).QueryRow(ctx,
-		`INSERT INTO invite_links (chat_id, created_by, token, usage_limit)
-		 VALUES ($1,$2,$3,$4) RETURNING id, chat_id, token, created_by, usage_limit, uses, revoked`,
-		chatID, createdBy, token, usageLimit))
+		`INSERT INTO invite_links (chat_id, created_by, token, usage_limit, requires_approval)
+		 VALUES ($1,$2,$3,$4,$5) RETURNING id, chat_id, token, created_by, usage_limit, uses, revoked, requires_approval`,
+		chatID, createdBy, token, usageLimit, requiresApproval))
 	return l, err
 }
 
 func (r *InviteRepo) GetByToken(ctx context.Context, token string) (domain.InviteLink, error) {
 	l, err := scanLink(querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT id, chat_id, token, created_by, usage_limit, uses, revoked
+		`SELECT id, chat_id, token, created_by, usage_limit, uses, revoked, requires_approval
 		   FROM invite_links WHERE token=$1 AND revoked=false`, token))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.InviteLink{}, domain.ErrNotFound
@@ -48,7 +48,7 @@ func (r *InviteRepo) GetByToken(ctx context.Context, token string) (domain.Invit
 
 func (r *InviteRepo) List(ctx context.Context, chatID int64) ([]domain.InviteLink, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT id, chat_id, token, created_by, usage_limit, uses, revoked
+		`SELECT id, chat_id, token, created_by, usage_limit, uses, revoked, requires_approval
 		   FROM invite_links WHERE chat_id=$1 AND revoked=false ORDER BY id DESC`, chatID)
 	if err != nil {
 		return nil, err

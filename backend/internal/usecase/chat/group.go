@@ -106,7 +106,7 @@ func (i *Interactor) CreateInvite(ctx context.Context, chatID, actorID int64, us
 	if err := i.requireRight(ctx, chatID, actorID, domain.RightInviteUsers); err != nil {
 		return domain.InviteLink{}, err
 	}
-	return i.invites.Create(ctx, chatID, actorID, tokenGen(), usageLimit)
+	return i.invites.Create(ctx, chatID, actorID, tokenGen(), usageLimit, false)
 }
 
 func (i *Interactor) ListInvites(ctx context.Context, chatID, actorID int64) ([]domain.InviteLink, error) {

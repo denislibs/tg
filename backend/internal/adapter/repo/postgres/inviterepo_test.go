@@ -15,14 +15,15 @@ func TestInviteRepo(t *testing.T) {
 	chatID, _ := g.CreateMultiMember(ctx, "group", "G", "", "", false, u)
 	r := NewInviteRepo(pool)
 
-	link, err := r.Create(ctx, chatID, u, "tok123", nil)
-	if err != nil || link.Token != "tok123" {
+	link, err := r.Create(ctx, chatID, u, "tok123", nil, false)
+	if err != nil || link.Token != "tok123" || link.RequiresApproval {
 		t.Fatalf("create: %+v %v", link, err)
 	}
 	got, err := r.GetByToken(ctx, "tok123")
-	if err != nil || got.ChatID != chatID {
+	if err != nil || got.ChatID != chatID || got.RequiresApproval {
 		t.Fatalf("get: %+v %v", got, err)
 	}
+
 	if err := r.IncUses(ctx, link.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -35,5 +36,15 @@ func TestInviteRepo(t *testing.T) {
 	}
 	if _, err := r.GetByToken(ctx, "tok123"); err == nil {
 		t.Fatal("revoked token should not resolve")
+	}
+
+	// requires_approval round-trips through Create/GetByToken.
+	approval, err := r.Create(ctx, chatID, u, "tok456", nil, true)
+	if err != nil || !approval.RequiresApproval {
+		t.Fatalf("create approval: %+v %v", approval, err)
+	}
+	gotApproval, err := r.GetByToken(ctx, "tok456")
+	if err != nil || !gotApproval.RequiresApproval {
+		t.Fatalf("get approval: %+v %v", gotApproval, err)
 	}
 }
