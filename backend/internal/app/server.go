@@ -72,7 +72,7 @@ func registerServer(p serverParams) {
 	var mediaHandler *httptransport.MediaHandler
 	if p.Minio.OK {
 		mediaUC := usecasemedia.New(pgadapter.NewMediaRepo(p.Pool), p.Minio.Client)
-		mediaHandler = httptransport.NewMediaHandler(mediaUC, p.ChatUC)
+		mediaHandler = httptransport.NewMediaHandler(mediaUC, p.ChatUC, p.AuthUC)
 		log.Printf("media enabled (minio bucket %q)", p.Cfg.MinioBucket)
 	}
 

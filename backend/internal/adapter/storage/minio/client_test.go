@@ -11,7 +11,11 @@ import (
 	tcminio "github.com/testcontainers/testcontainers-go/modules/minio"
 )
 
-func TestClient_PresignedRoundTrip(t *testing.T) {
+// newTestClient boots a throwaway MinIO container, connects a Client to a fresh
+// "media" bucket, and returns it. It skips the test (not fails) when Docker is
+// unavailable so the suite degrades gracefully on machines without Docker.
+func newTestClient(t *testing.T) *Client {
+	t.Helper()
 	ctx := context.Background()
 	container, err := tcminio.Run(ctx, "minio/minio:latest")
 	if err != nil {
@@ -30,6 +34,12 @@ func TestClient_PresignedRoundTrip(t *testing.T) {
 	if err := c.EnsureBucket(ctx); err != nil {
 		t.Fatalf("ensure bucket: %v", err)
 	}
+	return c
+}
+
+func TestClient_PresignedRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	c := newTestClient(t)
 
 	// Upload via presigned PUT.
 	putURL, err := c.PresignedPut(ctx, "obj1", time.Minute)
@@ -67,4 +77,26 @@ func TestClient_PresignedRoundTrip(t *testing.T) {
 		t.Fatalf("range request: %v status=%v", err, rresp.StatusCode)
 	}
 	rresp.Body.Close()
+}
+
+func TestClient_PutGetObject(t *testing.T) {
+	c := newTestClient(t)
+	ctx := context.Background()
+	key := "7/streamtest"
+	payload := []byte("hello media bytes")
+	if err := c.PutObject(ctx, key, bytes.NewReader(payload), int64(len(payload)), "text/plain"); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+	rc, info, err := c.GetObject(ctx, key)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	defer rc.Close()
+	if info.Size != int64(len(payload)) {
+		t.Fatalf("size = %d, want %d", info.Size, len(payload))
+	}
+	got, _ := io.ReadAll(rc)
+	if string(got) != string(payload) {
+		t.Fatalf("body = %q, want %q", got, payload)
+	}
 }

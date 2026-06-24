@@ -31,6 +31,12 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		r.Get("/ws", wsHandler.ServeHTTP)
 	}
 
+	// GET media content is mounted outside the Bearer group: browser <img>/<video>
+	// elements can't set an Authorization header, so it authenticates via ?token=.
+	if mediaH != nil {
+		r.Get("/media/{mediaID}/content", mediaH.GetContent)
+	}
+
 	r.Group(func(pr chi.Router) {
 		pr.Use(AuthMiddleware(authUC))
 		pr.Get("/me", MeHandler)
@@ -49,6 +55,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		if mediaH != nil {
 			pr.Post("/media/upload", mediaH.CreateUpload)
 			pr.Get("/media/{mediaID}", mediaH.Get)
+			pr.Put("/media/{mediaID}/content", mediaH.PutContent)
 		}
 
 		if pushH != nil {
