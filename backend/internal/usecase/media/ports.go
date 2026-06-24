@@ -14,8 +14,9 @@ import (
 // ErrTooLarge is returned when the declared size exceeds the limit.
 // ErrBadSize is returned for a non-positive declared size.
 var (
-	ErrTooLarge = errors.New("file too large")
-	ErrBadSize  = errors.New("invalid size")
+	ErrTooLarge  = errors.New("file too large")
+	ErrBadSize   = errors.New("invalid size")
+	ErrForbidden = errors.New("forbidden")
 )
 
 const (
