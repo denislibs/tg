@@ -11,7 +11,8 @@ type Message struct {
 	Text        string
 	ReplyToID   *int64
 	MediaID     *int64
-	ClientMsgID *string
-	CreatedAt   time.Time
-	Deleted     bool
+	ClientMsgID  *string
+	ThreadRootID *int64
+	CreatedAt    time.Time
+	Deleted      bool
 }

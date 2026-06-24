@@ -36,7 +36,7 @@ func (r *MessagesRepo) NextSeq(ctx context.Context, chatID int64) (int64, error)
 func (r *MessagesRepo) FindByClientMsgID(ctx context.Context, chatID, senderID int64, clientMsgID string) (domain.Message, error) {
 	q := querier(ctx, r.pool)
 	return scanOneMessage(q.QueryRow(ctx,
-		`SELECT id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at
+		`SELECT id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id
 		 FROM messages WHERE chat_id=$1 AND sender_id=$2 AND client_msg_id=$3`,
 		chatID, senderID, clientMsgID))
 }
@@ -45,10 +45,10 @@ func (r *MessagesRepo) FindByClientMsgID(ctx context.Context, chatID, senderID i
 func (r *MessagesRepo) Insert(ctx context.Context, m domain.Message) (domain.Message, error) {
 	q := querier(ctx, r.pool)
 	return scanOneMessage(q.QueryRow(ctx,
-		`INSERT INTO messages (chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-		 RETURNING id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at`,
-		m.ChatID, m.Seq, m.SenderID, m.Type, m.Text, m.ReplyToID, m.ClientMsgID, m.MediaID))
+		`INSERT INTO messages (chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, thread_root_id)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+		 RETURNING id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id`,
+		m.ChatID, m.Seq, m.SenderID, m.Type, m.Text, m.ReplyToID, m.ClientMsgID, m.MediaID, m.ThreadRootID))
 }
 
 // GetHistory returns up to limit messages around offsetSeq. addOffset>0 fetches
@@ -61,15 +61,15 @@ func (r *MessagesRepo) GetHistory(ctx context.Context, chatID, offsetSeq int64, 
 	switch {
 	case offsetSeq == 0:
 		rows, err = q.Query(ctx,
-			`SELECT id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at
+			`SELECT id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id
 			 FROM messages WHERE chat_id=$1 ORDER BY seq DESC LIMIT $2`, chatID, limit)
 	case addOffset <= 0: // newer than offset
 		rows, err = q.Query(ctx,
-			`SELECT id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at
+			`SELECT id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id
 			 FROM messages WHERE chat_id=$1 AND seq>$2 ORDER BY seq ASC LIMIT $3`, chatID, offsetSeq, limit)
 	default: // older, inclusive of offset
 		rows, err = q.Query(ctx,
-			`SELECT id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at
+			`SELECT id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id
 			 FROM messages WHERE chat_id=$1 AND seq<=$2 ORDER BY seq DESC LIMIT $3`, chatID, offsetSeq, limit)
 	}
 	if err != nil {
@@ -85,6 +85,39 @@ func (r *MessagesRepo) GetHistory(ctx context.Context, chatID, offsetSeq int64, 
 		out = append(out, m)
 	}
 	return out, rows.Err()
+}
+
+// ListThread returns messages belonging to a thread (thread_root_id) in a chat,
+// ascending by seq, excluding deleted messages.
+func (r *MessagesRepo) ListThread(ctx context.Context, chatID, threadRootID int64, offset, limit int) ([]domain.Message, error) {
+	q := querier(ctx, r.pool)
+	rows, err := q.Query(ctx,
+		`SELECT id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id
+		 FROM messages WHERE chat_id=$1 AND thread_root_id=$2 AND deleted_at IS NULL ORDER BY seq ASC LIMIT $3 OFFSET $4`,
+		chatID, threadRootID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Message
+	for rows.Next() {
+		m, err := scanMessage(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// CountThread returns the number of non-deleted messages in a thread.
+func (r *MessagesRepo) CountThread(ctx context.Context, chatID, threadRootID int64) (int, error) {
+	q := querier(ctx, r.pool)
+	var n int
+	err := q.QueryRow(ctx,
+		`SELECT count(*) FROM messages WHERE chat_id=$1 AND thread_root_id=$2 AND deleted_at IS NULL`,
+		chatID, threadRootID).Scan(&n)
+	return n, err
 }
 
 // CountMessages returns the total number of messages in a chat.
@@ -125,7 +158,7 @@ func scanMessage(s scanner) (domain.Message, error) {
 	var m domain.Message
 	var deletedAt *time.Time
 	err := s.Scan(&m.ID, &m.ChatID, &m.Seq, &m.SenderID, &m.Type, &m.Text,
-		&m.ReplyToID, &m.ClientMsgID, &m.MediaID, &m.CreatedAt, &deletedAt)
+		&m.ReplyToID, &m.ClientMsgID, &m.MediaID, &m.CreatedAt, &deletedAt, &m.ThreadRootID)
 	m.Deleted = deletedAt != nil
 	return m, err
 }
