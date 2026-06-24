@@ -80,6 +80,114 @@ private chat (its `id`/`display_name`/`avatar_url`); it is omitted for non-priva
 
 ---
 
+## Groups
+
+Multi-member chats (`type: "group"`). Membership carries a **role** and, for
+admins, a granular **rights** bitmask.
+
+- **Roles** (`chat_members.role`): `creator` | `admin` | `member`.
+  - `creator` — implicitly holds **all** rights (never checked against the bitmask).
+  - `admin` — holds exactly the rights in its bitmask.
+  - `member` — a plain member; holds **no** admin rights.
+- **Rights bitmask** (sum the values you want; `admins` only):
+
+  | Right | Value | Grants |
+  |-------|------:|--------|
+  | `POST_MESSAGES`  | `1`   | post messages |
+  | `EDIT_MESSAGES`  | `2`   | edit others' messages |
+  | `DELETE_MESSAGES`| `4`   | delete others' messages |
+  | `BAN_USERS`      | `8`   | kick/ban members |
+  | `INVITE_USERS`   | `16`  | add members, create/list/revoke invite links |
+  | `PIN_MESSAGES`   | `32`  | pin messages |
+  | `CHANGE_INFO`    | `64`  | edit title/about/username |
+  | `MANAGE_ADMINS`  | `128` | promote/demote admins |
+
+  e.g. an admin who may post and invite has `rights = 17` (`1 + 16`).
+- **`member_count`** is a denormalized counter on the chat, maintained on add/remove
+  (re-adding an existing member or re-removing a non-member does not double-count).
+- **Errors:** an action the caller is not entitled to perform (or performs while
+  not a member) → `403 {"error": "forbidden"}`. A missing chat/member → `404
+  {"error": "not found"}`.
+
+### POST /groups  · auth
+Create a group; the caller becomes its `creator` (with all rights) and first member.
+- Request: `{ "title": "Team", "about": "", "username": "", "is_public": false }`
+  (`title` required; `about`/`username` optional; `username` only meaningful when public)
+- 200: `{ "chat_id": 1 }`
+- 400: `{ "error": "title required" }`
+
+### GET /chats/{chatID}/card  · auth
+Group/channel info screen, including the caller's own role/rights/mute.
+- 200:
+```json
+{ "id": 1, "type": "group", "title": "Team", "username": "", "about": "",
+  "photo_media_id": null, "creator_id": 7, "member_count": 3,
+  "is_public": false, "my_role": "creator", "my_rights": 255, "muted": false }
+```
+  `my_role` is empty and `my_rights` is `0` when the caller is not a member.
+- 404: `{ "error": "not found" }` (no such chat)
+
+### PATCH /chats/{chatID}  · auth · needs `CHANGE_INFO`
+Edit group info.
+- Request: `{ "title": "New", "about": "desc", "username": "team" }`
+- 200: `{ "ok": true }`
+- 403: `{ "error": "forbidden" }`
+
+### POST /chats/{chatID}/members  · auth · needs `INVITE_USERS`
+Add a user as a plain `member`.
+- Request: `{ "user_id": 9 }`
+- 200: `{ "ok": true }`
+- 400: `{ "error": "user_id required" }`
+- 403: `{ "error": "forbidden" }`
+
+### DELETE /chats/{chatID}/members/{userID}  · auth
+Remove a member. Kicking another user needs `BAN_USERS`; removing **yourself**
+(self-leave, `userID` == caller) is always allowed.
+- 200: `{ "ok": true }`
+- 403: `{ "error": "forbidden" }`
+
+### POST /chats/{chatID}/admins  · auth · needs `MANAGE_ADMINS`
+Promote a member to `admin` with the given rights bitmask.
+- Request: `{ "user_id": 9, "rights": 17 }`
+- 200: `{ "ok": true }`
+- 400: `{ "error": "user_id required" }`
+- 403: `{ "error": "forbidden" }`
+
+### DELETE /chats/{chatID}/admins/{userID}  · auth · needs `MANAGE_ADMINS`
+Demote an admin back to `member` (clears rights).
+- 200: `{ "ok": true }`
+- 403: `{ "error": "forbidden" }`
+
+### POST /chats/{chatID}/mute  · auth
+Set the caller's own per-chat mute flag.
+- Request: `{ "muted": true }`
+- 200: `{ "ok": true }`
+
+### POST /chats/{chatID}/invite_links  · auth · needs `INVITE_USERS`
+Create an invite link with a random token.
+- Request: `{ "usage_limit": 10 }`  (`usage_limit` optional/nullable = unlimited)
+- 200: `{ "token": "<hex>", "url": "/join/<hex>" }`
+- 403: `{ "error": "forbidden" }`
+
+### GET /chats/{chatID}/invite_links  · auth · needs `INVITE_USERS`
+List the chat's active (non-revoked) invite links.
+- 200: `{ "invite_links": [ { "token": "<hex>", "uses": 3, "url": "/join/<hex>" } ] }`
+- 403: `{ "error": "forbidden" }`
+
+### POST /join/{token}  · auth
+Join a chat via an invite token; the caller becomes a `member` and the link's
+`uses` counter increments.
+- 200: `{ "ok": true }`
+- 404: `{ "error": "not found" }` (unknown or revoked token)
+
+### GET /users?ids=  · auth
+Batch-resolve minimal public user cards (for member lists, sender names).
+- Query: `ids` — comma-separated int64 ids (e.g. `?ids=1,2,3`). Unknown ids are
+  silently skipped; an empty/absent `ids` yields an empty list.
+- 200: `{ "users": [ { "id": 1, "username": "alice", "display_name": "Alice", "avatar_url": "" } ] }`
+
+---
+
 ## Messages & history
 
 ### POST /chats/{chatID}/messages  · auth
