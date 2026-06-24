@@ -39,6 +39,14 @@ type GroupRepo interface {
 	UsersByIDs(ctx context.Context, ids []int64) ([]domain.UserCard, error)
 }
 
+type InviteRepo interface {
+	Create(ctx context.Context, chatID, createdBy int64, token string, usageLimit *int) (domain.InviteLink, error)
+	GetByToken(ctx context.Context, token string) (domain.InviteLink, error) // domain.ErrNotFound
+	List(ctx context.Context, chatID int64) ([]domain.InviteLink, error)
+	IncUses(ctx context.Context, id int64) error
+	Revoke(ctx context.Context, chatID int64, token string) error
+}
+
 type MessageRepo interface {
 	NextSeq(ctx context.Context, chatID int64) (int64, error)
 	Insert(ctx context.Context, m domain.Message) (domain.Message, error)
