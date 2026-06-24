@@ -28,6 +28,8 @@ var Module = fx.Options(
 		provideChannelRepo,
 		provideSearchRepo,
 		provideChatUsecase,
+		provideStoryRepo,
+		provideStoryService,
 	),
 	fx.Invoke(registerServer),
 	// Keep our own log.Printf lines as the signal; silence fx's event log.

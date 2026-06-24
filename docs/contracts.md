@@ -492,6 +492,44 @@ before showing the notification; clicking it focuses/opens the chat.
 
 ---
 
+## Stories
+
+24h ephemeral posts backed by a media object. Visibility is by privacy:
+`everyone` / `contacts` (chat partners) / `selected` (an explicit allow-list).
+The feed shows the viewer's own active stories plus those of their chat
+partners; expired stories (created more than 24h ago) are filtered out on read.
+
+### POST /stories  · auth
+Post a story from a media object the caller owns.
+- Request: `{ "media_id": 5, "caption": "hi", "privacy": "contacts", "allow_user_ids": [7] }`
+  (`caption` optional; `privacy` defaults to `contacts`; `allow_user_ids` used only when `privacy="selected"`)
+- 200: `{ "id": 1 }` · 400 missing `media_id` · 403 media not owned by caller
+
+### GET /stories  · auth
+The viewer's active story feed (own group first), grouped by author.
+- 200:
+```json
+{ "groups": [
+  { "author": { "id": 1, "display_name": "Alice", "avatar_url": "" },
+    "stories": [ { "id": 1, "media_id": 5, "caption": "hi", "created_at": "2026-06-24T…Z", "viewed": false } ] }
+] }
+```
+
+### POST /stories/{storyID}/view  · auth
+Mark a story as seen. Idempotent.
+- 200: `{ "ok": true }` · 403 story not visible to caller
+
+### GET /stories/{storyID}/viewers  · auth · author only
+Who has seen the story (author-gated).
+- 200: `{ "viewers": [ { "id": 7, "display_name": "Bob", "avatar_url": "" } ], "count": 1 }`
+- 403 caller is not the author
+
+### DELETE /stories/{storyID}  · auth · author only
+Delete the caller's own story.
+- 200: `{ "ok": true }`
+
+---
+
 ## System / docs
 
 - `GET /health` → `{ "status": "ok" }`
