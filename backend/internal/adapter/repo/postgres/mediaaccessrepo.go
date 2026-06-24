@@ -45,6 +45,10 @@ func (r *MediaAccessRepo) CanAccess(ctx context.Context, userID, mediaID int64) 
 		`SELECT EXISTS(
 		   SELECT 1 FROM media WHERE id=$1 AND owner_id=$2
 		   UNION ALL
+		   -- avatars are visible to any authenticated user (the media id is some
+		   -- user's current avatar)
+		   SELECT 1 FROM users WHERE avatar_url = '/media/' || $1 || '/content'
+		   UNION ALL
 		   SELECT 1 FROM messages m
 		     JOIN chat_members cm ON cm.chat_id = m.chat_id
 		     WHERE m.media_id=$1 AND cm.user_id=$2

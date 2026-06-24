@@ -90,6 +90,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/search", chh.Search)
 
 		if mediaH != nil {
+			pr.Get("/media/token", mediaH.MediaToken)
 			pr.Post("/media/upload", mediaH.CreateUpload)
 			pr.Get("/media/{mediaID}", mediaH.Get)
 			pr.Put("/media/{mediaID}/content", mediaH.PutContent)

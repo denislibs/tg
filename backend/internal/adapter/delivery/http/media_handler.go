@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 	usecasemedia "github.com/messenger-denis/backend/internal/usecase/media"
@@ -19,13 +20,30 @@ type MediaAccess interface {
 // can auth via a ?token= query — browser <img>/<video> elements can't send an
 // Authorization header, mirroring the WS gateway.
 type MediaHandler struct {
-	svc    *usecasemedia.Interactor
-	access MediaAccess
-	auth   Authenticator
+	svc       *usecasemedia.Interactor
+	access    MediaAccess
+	auth      Authenticator
+	urlSecret []byte
 }
 
-func NewMediaHandler(svc *usecasemedia.Interactor, access MediaAccess, auth Authenticator) *MediaHandler {
-	return &MediaHandler{svc: svc, access: access, auth: auth}
+func NewMediaHandler(svc *usecasemedia.Interactor, access MediaAccess, auth Authenticator, urlSecret string) *MediaHandler {
+	return &MediaHandler{svc: svc, access: access, auth: auth, urlSecret: []byte(urlSecret)}
+}
+
+// MediaToken mints a short-lived, media-scoped token for the authenticated user
+// (Bearer). The client appends it as ?token= on content URLs instead of the
+// session token, so a leaked URL can't be used against the account.
+func (h *MediaHandler) MediaToken(w http.ResponseWriter, r *http.Request) {
+	user, ok := UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "no user")
+		return
+	}
+	now := time.Now()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"token":      signMediaToken(h.urlSecret, user.ID, now),
+		"expires_at": now.Add(mediaTokenTTL).UTC().Format(time.RFC3339),
+	})
 }
 
 type uploadBody struct {
@@ -129,16 +147,21 @@ func (h *MediaHandler) PutContent(w http.ResponseWriter, r *http.Request) {
 // route authenticates via ?token= (like /ws) and is mounted outside the Bearer group.
 func (h *MediaHandler) GetContent(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
-	user, _, err := h.auth.Authenticate(r.Context(), token)
-	if err != nil {
-		writeError(w, http.StatusUnauthorized, "invalid token")
-		return
+	// Prefer a media-scoped token; fall back to a session token for back-compat.
+	userID, ok := parseMediaToken(h.urlSecret, token, time.Now())
+	if !ok {
+		user, _, err := h.auth.Authenticate(r.Context(), token)
+		if err != nil {
+			writeError(w, http.StatusUnauthorized, "invalid token")
+			return
+		}
+		userID = user.ID
 	}
 	id, ok := pathInt(w, r, "mediaID")
 	if !ok {
 		return
 	}
-	allowed, err := h.access.CanAccessMedia(r.Context(), user.ID, id)
+	allowed, err := h.access.CanAccessMedia(r.Context(), userID, id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load media")
 		return
