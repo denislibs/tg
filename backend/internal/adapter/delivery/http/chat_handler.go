@@ -54,6 +54,7 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 		if d.HasLast {
 			row["last_message"] = map[string]any{
 				"seq": d.LastSeq, "text": d.LastText, "sender_id": d.LastSenderID, "at": d.LastAt,
+				"media_id": d.LastMediaID, "type": d.LastType,
 			}
 		}
 		if d.Peer != nil {

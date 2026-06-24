@@ -125,12 +125,12 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		          WHEN c.type = 'group'   THEN (SELECT MIN(om.last_read_seq) FROM chat_members om WHERE om.chat_id = c.id AND om.user_id <> $1)
 		          ELSE 0
 		        END, 0) AS peer_read_seq,
-		        lm.seq, lm.text, lm.sender_id, lm.created_at,
+		        lm.seq, lm.text, lm.sender_id, lm.created_at, COALESCE(lm.media_id,0), lm.type,
 		        peer.id, peer.display_name, peer.avatar_url
 		 FROM chat_members m
 		 JOIN chats c ON c.id = m.chat_id
 		 LEFT JOIN LATERAL (
-		   SELECT seq, text, sender_id, created_at FROM messages
+		   SELECT seq, text, sender_id, created_at, media_id, type FROM messages
 		   WHERE chat_id = c.id AND deleted_at IS NULL
 		   ORDER BY seq DESC LIMIT 1
 		 ) lm ON true
@@ -153,11 +153,13 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		var text *string
 		var senderID *int64
 		var at *time.Time
+		var mediaID *int64
+		var msgType *string
 		var peerID *int64
 		var peerName *string
 		var peerAvatar *string
 		if err := rows.Scan(&d.ChatID, &d.Type, &d.Title, &d.Username, &d.LastReadSeq, &d.UnreadCount, &d.Muted, &d.PeerReadSeq,
-			&seq, &text, &senderID, &at,
+			&seq, &text, &senderID, &at, &mediaID, &msgType,
 			&peerID, &peerName, &peerAvatar); err != nil {
 			return nil, err
 		}
@@ -167,6 +169,12 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 			d.LastText = *text
 			d.LastSenderID = *senderID
 			d.LastAt = *at
+			if mediaID != nil {
+				d.LastMediaID = *mediaID
+			}
+			if msgType != nil {
+				d.LastType = *msgType
+			}
 		}
 		if peerID != nil {
 			p := domain.DialogPeer{ID: *peerID}

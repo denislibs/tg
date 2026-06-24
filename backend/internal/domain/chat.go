@@ -43,6 +43,10 @@ type Dialog struct {
 	LastText     string
 	LastSenderID int64
 	LastAt       time.Time
+	// LastMediaID/LastType describe the last message's media for the sidebar
+	// preview thumbnail + type label (0/"" when it's a plain text message).
+	LastMediaID  int64
+	LastType     string
 	// Peer is the other member of a private chat (nil for non-private chats).
 	Peer *DialogPeer
 }
