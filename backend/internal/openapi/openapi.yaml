@@ -20,6 +20,7 @@ tags:
   - name: sync
   - name: media
   - name: push
+  - name: stories
   - name: system
 
 components:
@@ -979,6 +980,107 @@ paths:
       responses:
         "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
         "400": { description: missing fields, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /stories:
+    post:
+      tags: [stories]
+      summary: Post a 24h story from a media object the caller owns
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [media_id]
+              properties:
+                media_id: { type: integer, format: int64 }
+                caption: { type: string }
+                privacy: { type: string, enum: [everyone, contacts, selected], default: contacts }
+                allow_user_ids:
+                  type: array
+                  items: { type: integer, format: int64 }
+                  description: explicit allow-list, used only when privacy=selected
+      responses:
+        "200":
+          description: created
+          content:
+            application/json:
+              schema: { type: object, properties: { id: { type: integer, format: int64 } } }
+        "400": { description: missing media_id, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: media not owned by caller, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    get:
+      tags: [stories]
+      summary: The viewer's active story feed (own group first), grouped by author
+      responses:
+        "200":
+          description: active story groups
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groups:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        author:
+                          type: object
+                          properties:
+                            id: { type: integer, format: int64 }
+                            display_name: { type: string }
+                            avatar_url: { type: string }
+                        stories:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id: { type: integer, format: int64 }
+                              media_id: { type: integer, format: int64 }
+                              caption: { type: string }
+                              created_at: { type: string, format: date-time }
+                              viewed: { type: boolean }
+  /stories/{storyID}/view:
+    post:
+      tags: [stories]
+      summary: Mark a story as seen (idempotent)
+      parameters:
+        - { name: storyID, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
+        "403": { description: story not visible to caller, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /stories/{storyID}/viewers:
+    get:
+      tags: [stories]
+      summary: Who has seen the story (author only)
+      parameters:
+        - { name: storyID, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        "200":
+          description: viewers list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  viewers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer, format: int64 }
+                        display_name: { type: string }
+                        avatar_url: { type: string }
+                  count: { type: integer }
+        "403": { description: caller is not the author, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /stories/{storyID}:
+    delete:
+      tags: [stories]
+      summary: Delete the caller's own story
+      parameters:
+        - { name: storyID, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
 
   /ws:
     get:

@@ -20,6 +20,7 @@ import (
 	usecasemedia "github.com/messenger-denis/backend/internal/usecase/media"
 	usecasepresence "github.com/messenger-denis/backend/internal/usecase/presence"
 	usecasepush "github.com/messenger-denis/backend/internal/usecase/push"
+	storyusecase "github.com/messenger-denis/backend/internal/usecase/story"
 	"go.uber.org/fx"
 )
 
@@ -33,8 +34,9 @@ type serverParams struct {
 	Pool    *pgxpool.Pool
 	Redis   RedisResult
 	Minio   MinioResult
-	AuthUC *usecaseauth.Interactor
-	ChatUC *usecasechat.Interactor
+	AuthUC  *usecaseauth.Interactor
+	ChatUC  *usecasechat.Interactor
+	StoryUC *storyusecase.Service
 }
 
 // registerServer wires the (optional) realtime/push/media features onto the
@@ -86,9 +88,11 @@ func registerServer(p serverParams) {
 		memberPresence = presenceMgr
 	}
 
+	storyHandler := httptransport.NewStoryHandler(p.StoryUC)
+
 	srv := &http.Server{
 		Addr:              p.Cfg.HTTPAddr,
-		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, pushHandler, memberPresence),
+		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, pushHandler, storyHandler, memberPresence),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}

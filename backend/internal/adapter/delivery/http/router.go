@@ -10,7 +10,7 @@ import (
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 )
 
-func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, pushH *PushHandler, memberPresence PresenceQuery) http.Handler {
+func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -90,6 +90,14 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		if pushH != nil {
 			pr.Get("/push/vapid_public_key", pushH.VAPIDPublicKey)
 			pr.Post("/push/subscribe", pushH.Subscribe)
+		}
+
+		if storyH != nil {
+			pr.Post("/stories", storyH.Post)
+			pr.Get("/stories", storyH.Feed)
+			pr.Post("/stories/{storyID}/view", storyH.View)
+			pr.Get("/stories/{storyID}/viewers", storyH.Viewers)
+			pr.Delete("/stories/{storyID}", storyH.Delete)
 		}
 
 		sh := NewSessionHandler(authUC)
