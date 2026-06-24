@@ -5,6 +5,7 @@ package media
 import (
 	"context"
 	"errors"
+	"io"
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -28,11 +29,20 @@ type MediaRepo interface {
 	GetByID(ctx context.Context, id int64) (domain.Media, error) // domain.ErrNotFound if absent
 }
 
+// ObjectInfo is the storage-level metadata needed to stream an object.
+type ObjectInfo struct {
+	Size        int64
+	ContentType string
+	ModTime     time.Time
+}
+
 // ObjectStorage brokers presigned URLs against a bucket.
 type ObjectStorage interface {
 	Bucket() string
 	PresignedPut(ctx context.Context, objectKey string, expiry time.Duration) (string, error)
 	PresignedGet(ctx context.Context, objectKey string, expiry time.Duration) (string, error)
+	PutObject(ctx context.Context, objectKey string, r io.Reader, size int64, contentType string) error
+	GetObject(ctx context.Context, objectKey string) (io.ReadSeekCloser, ObjectInfo, error)
 }
 
 // UploadInput describes a media object the client is about to upload.
