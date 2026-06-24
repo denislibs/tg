@@ -164,6 +164,22 @@ func (r *GroupRepo) ListMembers(ctx context.Context, chatID int64, offset, limit
 	return out, rows.Err()
 }
 
+func (r *GroupRepo) SetDiscussion(ctx context.Context, channelID, groupID int64) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE chats SET discussion_chat_id=$2 WHERE id=$1`, channelID, groupID)
+	return err
+}
+
+func (r *GroupRepo) GetDiscussion(ctx context.Context, channelID int64) (int64, error) {
+	var id int64
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT COALESCE(discussion_chat_id,0) FROM chats WHERE id=$1`, channelID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, domain.ErrNotFound
+	}
+	return id, err
+}
+
 func (r *GroupRepo) UsersByIDs(ctx context.Context, ids []int64) ([]domain.UserCard, error) {
 	if len(ids) == 0 {
 		return []domain.UserCard{}, nil

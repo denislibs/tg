@@ -38,6 +38,8 @@ type GroupRepo interface {
 	EditInfo(ctx context.Context, chatID int64, title, about, username string) error
 	UsersByIDs(ctx context.Context, ids []int64) ([]domain.UserCard, error)
 	ListMembers(ctx context.Context, chatID int64, offset, limit int) ([]domain.Member, error)
+	SetDiscussion(ctx context.Context, channelID, groupID int64) error
+	GetDiscussion(ctx context.Context, channelID int64) (int64, error) // 0 = none
 }
 
 type InviteRepo interface {
