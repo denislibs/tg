@@ -15,4 +15,10 @@ type Message struct {
 	ThreadRootID *int64
 	CreatedAt    time.Time
 	Deleted      bool
+	EditedAt     *time.Time
+	// Forward attribution (set when the message was forwarded from elsewhere).
+	FwdFromUserID *int64
+	FwdFromChatID *int64
+	FwdFromMsgID  *int64
+	FwdDate       *time.Time
 }

@@ -19,7 +19,7 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 	if limit <= 0 || limit > 100 {
 		limit = 40
 	}
-	msgs, err := i.msgs.GetHistory(ctx, chatID, offsetSeq, addOffset, limit)
+	msgs, err := i.msgs.GetHistory(ctx, chatID, userID, offsetSeq, addOffset, limit)
 	if err != nil {
 		return HistoryResult{}, err
 	}

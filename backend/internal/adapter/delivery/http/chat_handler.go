@@ -150,6 +150,66 @@ func (h *ChatHandler) Read(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+type editBody struct {
+	Text string `json:"text"`
+}
+
+func (h *ChatHandler) EditMessage(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	msgID, ok := pathInt(w, r, "msgID")
+	if !ok {
+		return
+	}
+	var body editBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	msg, err := h.svc.EditMessage(r.Context(), chatID, msgID, h.meID(r), body.Text)
+	if errors.Is(err, domain.ErrForbidden) {
+		writeError(w, http.StatusForbidden, "only the author can edit")
+		return
+	}
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "message not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "edit failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, messageJSON(msg))
+}
+
+func (h *ChatHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	msgID, ok := pathInt(w, r, "msgID")
+	if !ok {
+		return
+	}
+	revoke := r.URL.Query().Get("revoke") == "true"
+	err := h.svc.DeleteMessage(r.Context(), chatID, msgID, h.meID(r), revoke)
+	if errors.Is(err, domain.ErrForbidden) {
+		writeError(w, http.StatusForbidden, "only the author can delete for everyone")
+		return
+	}
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "message not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "delete failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 func (h *ChatHandler) Sync(w http.ResponseWriter, r *http.Request) {
 	sincePts := queryInt(r, "pts", 0)
 	d, err := h.svc.GetDifference(r.Context(), h.meID(r), sincePts)
@@ -245,6 +305,9 @@ func messageJSON(m domain.Message) map[string]any {
 		"type": m.Type, "text": m.Text, "reply_to_id": m.ReplyToID,
 		"media_id": m.MediaID, "thread_root_id": m.ThreadRootID,
 		"created_at": m.CreatedAt, "deleted": m.Deleted,
+		"edited_at": m.EditedAt,
+		"fwd_from_user_id": m.FwdFromUserID, "fwd_from_chat_id": m.FwdFromChatID,
+		"fwd_from_msg_id": m.FwdFromMsgID, "fwd_date": m.FwdDate,
 	}
 }
 

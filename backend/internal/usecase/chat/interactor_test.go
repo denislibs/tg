@@ -244,3 +244,72 @@ func TestGetDifference_ClampsNegativePts(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+func TestEditMessage(t *testing.T) {
+	in, _ := newInteractor()
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	msg, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "orig"})
+
+	// Author edits.
+	upd, err := in.EditMessage(ctx, chatID, msg.ID, a, "edited")
+	if err != nil {
+		t.Fatalf("EditMessage: %v", err)
+	}
+	if upd.Text != "edited" || upd.EditedAt == nil {
+		t.Fatalf("edit result = %+v", upd)
+	}
+	res, _ := in.GetHistory(ctx, chatID, a, 0, 0, 10)
+	if res.Messages[0].Text != "edited" || res.Messages[0].EditedAt == nil {
+		t.Fatalf("history not edited: %+v", res.Messages[0])
+	}
+
+	// Non-author cannot edit.
+	if _, err := in.EditMessage(ctx, chatID, msg.ID, b, "hack"); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("non-author edit: want ErrForbidden, got %v", err)
+	}
+}
+
+func TestDeleteMessage_ForEveryone(t *testing.T) {
+	in, _ := newInteractor()
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	msg, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "bye"})
+
+	// Non-author cannot revoke.
+	if err := in.DeleteMessage(ctx, chatID, msg.ID, b, true); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("non-author revoke: want ErrForbidden, got %v", err)
+	}
+	// Author deletes for everyone → both sides see it gone (deleted flag).
+	if err := in.DeleteMessage(ctx, chatID, msg.ID, a, true); err != nil {
+		t.Fatalf("DeleteMessage revoke: %v", err)
+	}
+	res, _ := in.GetHistory(ctx, chatID, b, 0, 0, 10)
+	if len(res.Messages) != 1 || !res.Messages[0].Deleted {
+		t.Fatalf("after revoke (b view): %+v", res.Messages)
+	}
+}
+
+func TestDeleteMessage_ForMe(t *testing.T) {
+	in, _ := newInteractor()
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	msg, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "hi"})
+
+	// b deletes for themselves only.
+	if err := in.DeleteMessage(ctx, chatID, msg.ID, b, false); err != nil {
+		t.Fatalf("DeleteMessage forMe: %v", err)
+	}
+	// b no longer sees it; a still does.
+	resB, _ := in.GetHistory(ctx, chatID, b, 0, 0, 10)
+	if len(resB.Messages) != 0 {
+		t.Fatalf("b should not see hidden msg: %+v", resB.Messages)
+	}
+	resA, _ := in.GetHistory(ctx, chatID, a, 0, 0, 10)
+	if len(resA.Messages) != 1 {
+		t.Fatalf("a should still see msg: %+v", resA.Messages)
+	}
+}

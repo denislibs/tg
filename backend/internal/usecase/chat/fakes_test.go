@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -35,6 +36,7 @@ type store struct {
 	messages    map[int64][]domain.Message  // chatID -> messages (by seq order)
 	owners      map[int64]int64           // mediaID -> ownerID
 	reactions   map[int64]map[int64]map[string]bool // msgID -> userID -> emoji set
+	hidden      map[int64]map[int64]bool            // userID -> msgID -> hidden ("delete for me")
 
 	// per-user update log
 	pts     map[int64]int64
@@ -221,14 +223,77 @@ func (r fakeMsgs) FindByClientMsgID(_ context.Context, chatID, senderID int64, c
 	return domain.Message{}, domain.ErrNotFound
 }
 
-func (r fakeMsgs) GetHistory(_ context.Context, chatID, offsetSeq int64, addOffset, limit int) ([]domain.Message, error) {
+func (r fakeMsgs) GetByID(_ context.Context, msgID int64) (domain.Message, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	for _, msgs := range r.s.messages {
+		for _, m := range msgs {
+			if m.ID == msgID {
+				return m, nil
+			}
+		}
+	}
+	return domain.Message{}, domain.ErrNotFound
+}
+
+func (r fakeMsgs) UpdateText(_ context.Context, msgID int64, text string) (domain.Message, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	now := time.Now()
+	for chatID, msgs := range r.s.messages {
+		for idx, m := range msgs {
+			if m.ID == msgID {
+				m.Text = text
+				m.EditedAt = &now
+				r.s.messages[chatID][idx] = m
+				return m, nil
+			}
+		}
+	}
+	return domain.Message{}, domain.ErrNotFound
+}
+
+func (r fakeMsgs) SoftDelete(_ context.Context, msgID int64) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	for chatID, msgs := range r.s.messages {
+		for idx, m := range msgs {
+			if m.ID == msgID {
+				m.Deleted = true
+				m.Text = ""
+				r.s.messages[chatID][idx] = m
+				return nil
+			}
+		}
+	}
+	return domain.ErrNotFound
+}
+
+func (r fakeMsgs) HideForUser(_ context.Context, userID, msgID int64) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	if r.s.hidden == nil {
+		r.s.hidden = map[int64]map[int64]bool{}
+	}
+	if r.s.hidden[userID] == nil {
+		r.s.hidden[userID] = map[int64]bool{}
+	}
+	r.s.hidden[userID][msgID] = true
+	return nil
+}
+
+func (r fakeMsgs) GetHistory(_ context.Context, chatID, userID, offsetSeq int64, addOffset, limit int) ([]domain.Message, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	all := r.s.messages[chatID]
+	isHidden := func(m domain.Message) bool { return r.s.hidden != nil && r.s.hidden[userID] != nil && r.s.hidden[userID][m.ID] }
 	var picked []domain.Message
 	switch {
 	case offsetSeq == 0: // newest, desc
 		for i := len(all) - 1; i >= 0; i-- {
+			if isHidden(all[i]) {
+				continue
+			}
 			picked = append(picked, all[i])
 			if len(picked) == limit {
 				break
@@ -236,7 +301,7 @@ func (r fakeMsgs) GetHistory(_ context.Context, chatID, offsetSeq int64, addOffs
 		}
 	case addOffset <= 0: // newer than offset, asc
 		for _, m := range all {
-			if m.Seq > offsetSeq {
+			if m.Seq > offsetSeq && !isHidden(m) {
 				picked = append(picked, m)
 				if len(picked) == limit {
 					break
@@ -245,7 +310,7 @@ func (r fakeMsgs) GetHistory(_ context.Context, chatID, offsetSeq int64, addOffs
 		}
 	default: // older, inclusive of offset, desc
 		for i := len(all) - 1; i >= 0; i-- {
-			if all[i].Seq <= offsetSeq {
+			if all[i].Seq <= offsetSeq && !isHidden(all[i]) {
 				picked = append(picked, all[i])
 				if len(picked) == limit {
 					break
