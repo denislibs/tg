@@ -282,9 +282,10 @@ func TestDeleteMessage_ForEveryone(t *testing.T) {
 	if err := in.DeleteMessage(ctx, chatID, msg.ID, b, true); err != nil {
 		t.Fatalf("private non-author revoke: %v", err)
 	}
+	// Deleted messages are never shown — gone from history for both sides.
 	res, _ := in.GetHistory(ctx, chatID, a, 0, 0, 10)
-	if len(res.Messages) != 1 || !res.Messages[0].Deleted {
-		t.Fatalf("after revoke (a view): %+v", res.Messages)
+	if len(res.Messages) != 0 {
+		t.Fatalf("after revoke (a view) should be empty: %+v", res.Messages)
 	}
 }
 

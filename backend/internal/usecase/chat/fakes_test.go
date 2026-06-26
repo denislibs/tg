@@ -352,7 +352,12 @@ func (r fakeMsgs) GetHistory(_ context.Context, chatID, userID, offsetSeq int64,
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	all := r.s.messages[chatID]
-	isHidden := func(m domain.Message) bool { return r.s.hidden != nil && r.s.hidden[userID] != nil && r.s.hidden[userID][m.ID] }
+	isHidden := func(m domain.Message) bool {
+		if m.Deleted {
+			return true // deleted messages are never returned
+		}
+		return r.s.hidden != nil && r.s.hidden[userID] != nil && r.s.hidden[userID][m.ID]
+	}
 	var picked []domain.Message
 	switch {
 	case offsetSeq == 0: // newest, desc

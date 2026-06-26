@@ -104,8 +104,9 @@ func (r *MessagesRepo) HideForUser(ctx context.Context, userID, msgID int64) err
 // "from the newest".
 func (r *MessagesRepo) GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int) ([]domain.Message, error) {
 	q := querier(ctx, r.pool)
-	// Skip rows this user hid for themselves. Placeholder differs per query shape.
-	const exclN = ` AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id=messages.id AND h.user_id=$%d)`
+	// Skip deleted (never shown) and rows this user hid for themselves. Placeholder
+	// differs per query shape.
+	const exclN = ` AND deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id=messages.id AND h.user_id=$%d)`
 	var rows pgx.Rows
 	var err error
 	switch {
@@ -174,7 +175,7 @@ func (r *MessagesRepo) CountThread(ctx context.Context, chatID, threadRootID int
 func (r *MessagesRepo) CountMessages(ctx context.Context, chatID int64) (int, error) {
 	q := querier(ctx, r.pool)
 	var n int
-	err := q.QueryRow(ctx, `SELECT count(*) FROM messages WHERE chat_id=$1`, chatID).Scan(&n)
+	err := q.QueryRow(ctx, `SELECT count(*) FROM messages WHERE chat_id=$1 AND deleted_at IS NULL`, chatID).Scan(&n)
 	return n, err
 }
 
