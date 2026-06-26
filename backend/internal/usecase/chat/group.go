@@ -16,6 +16,9 @@ var tokenGen = func() string {
 }
 
 func (i *Interactor) requireRight(ctx context.Context, chatID, userID int64, r domain.Rights) error {
+	if i.groups == nil {
+		return domain.ErrForbidden // no group repo (e.g. private chat) ⇒ no admin rights
+	}
 	m, err := i.groups.GetMember(ctx, chatID, userID)
 	if err != nil {
 		return domain.ErrForbidden // not a member ⇒ forbidden

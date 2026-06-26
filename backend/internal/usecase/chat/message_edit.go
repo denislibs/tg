@@ -87,7 +87,11 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 		return domain.ErrNotFound
 	}
 	if revoke && cur.SenderID != userID {
-		return domain.ErrForbidden // only the author may delete for everyone
+		// A non-author may delete for everyone only as a group admin with the
+		// delete-messages right (requireRight is forbidden in private chats).
+		if err := i.requireRight(ctx, chatID, userID, domain.RightDeleteMessages); err != nil {
+			return domain.ErrForbidden
+		}
 	}
 
 	var members []int64
