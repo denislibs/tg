@@ -316,6 +316,7 @@ func (c groupChats) ChatPartners(context.Context, int64) ([]int64, error)       
 func (c groupChats) IncUnread(context.Context, int64, int64) error               { return nil }
 func (c groupChats) CurrentReadSeq(context.Context, int64, int64) (int64, error) { return 0, nil }
 func (c groupChats) SetRead(context.Context, int64, int64, int64, int) error     { return nil }
+func (c groupChats) ChatType(context.Context, int64) (string, error)             { return "group", nil }
 func (c groupChats) PinMessage(context.Context, int64, int64, int64) error       { return nil }
 func (c groupChats) UnpinMessage(context.Context, int64, int64) error            { return nil }
 func (c groupChats) ListPins(context.Context, int64) ([]domain.Message, error)   { return nil, nil }

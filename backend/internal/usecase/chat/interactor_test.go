@@ -278,17 +278,13 @@ func TestDeleteMessage_ForEveryone(t *testing.T) {
 	chatID, _ := in.CreatePrivateChat(ctx, a, b)
 	msg, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "bye"})
 
-	// Non-author cannot revoke.
-	if err := in.DeleteMessage(ctx, chatID, msg.ID, b, true); !errors.Is(err, domain.ErrForbidden) {
-		t.Fatalf("non-author revoke: want ErrForbidden, got %v", err)
+	// In a private 1:1 the non-author (b) may delete for everyone (Telegram).
+	if err := in.DeleteMessage(ctx, chatID, msg.ID, b, true); err != nil {
+		t.Fatalf("private non-author revoke: %v", err)
 	}
-	// Author deletes for everyone → both sides see it gone (deleted flag).
-	if err := in.DeleteMessage(ctx, chatID, msg.ID, a, true); err != nil {
-		t.Fatalf("DeleteMessage revoke: %v", err)
-	}
-	res, _ := in.GetHistory(ctx, chatID, b, 0, 0, 10)
+	res, _ := in.GetHistory(ctx, chatID, a, 0, 0, 10)
 	if len(res.Messages) != 1 || !res.Messages[0].Deleted {
-		t.Fatalf("after revoke (b view): %+v", res.Messages)
+		t.Fatalf("after revoke (a view): %+v", res.Messages)
 	}
 }
 

@@ -87,10 +87,16 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 		return domain.ErrNotFound
 	}
 	if revoke && cur.SenderID != userID {
-		// A non-author may delete for everyone only as a group admin with the
-		// delete-messages right (requireRight is forbidden in private chats).
-		if err := i.requireRight(ctx, chatID, userID, domain.RightDeleteMessages); err != nil {
-			return domain.ErrForbidden
+		// In a private 1:1 either participant may delete for everyone (Telegram).
+		// Elsewhere a non-author needs the group-admin delete-messages right.
+		typ, e := i.chats.ChatType(ctx, chatID)
+		if e != nil {
+			return e
+		}
+		if typ != "private" {
+			if err := i.requireRight(ctx, chatID, userID, domain.RightDeleteMessages); err != nil {
+				return domain.ErrForbidden
+			}
 		}
 	}
 

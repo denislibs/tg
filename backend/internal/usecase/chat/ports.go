@@ -20,6 +20,7 @@ type ChatRepo interface {
 	CreatePrivate(ctx context.Context, a, b int64) (int64, error)
 	MemberIDs(ctx context.Context, chatID int64) ([]int64, error)
 	IsMember(ctx context.Context, chatID, userID int64) (bool, error)
+	ChatType(ctx context.Context, chatID int64) (string, error) // 'private'|'group'|'channel'|'saved'
 	ListDialogs(ctx context.Context, userID int64) ([]domain.Dialog, error)
 	ChatPartners(ctx context.Context, userID int64) ([]int64, error)
 	IncUnread(ctx context.Context, chatID, userID int64) error

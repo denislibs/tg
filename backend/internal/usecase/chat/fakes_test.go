@@ -190,6 +190,15 @@ func (r fakeChats) SetRead(_ context.Context, chatID, userID, seq int64, unread 
 	return nil
 }
 
+func (r fakeChats) ChatType(_ context.Context, chatID int64) (string, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	if t, ok := r.s.chatType[chatID]; ok {
+		return t, nil
+	}
+	return "", domain.ErrNotFound
+}
+
 func (r fakeChats) PinMessage(_ context.Context, chatID, msgID, _ int64) error {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()

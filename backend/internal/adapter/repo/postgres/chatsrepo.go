@@ -81,6 +81,17 @@ func (r *ChatsRepo) MemberIDs(ctx context.Context, chatID int64) ([]int64, error
 }
 
 // IsMember reports whether a user belongs to a chat.
+// ChatType returns a chat's type ('private'|'group'|'channel'|'saved').
+func (r *ChatsRepo) ChatType(ctx context.Context, chatID int64) (string, error) {
+	q := querier(ctx, r.pool)
+	var t string
+	err := q.QueryRow(ctx, `SELECT type FROM chats WHERE id=$1`, chatID).Scan(&t)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", domain.ErrNotFound
+	}
+	return t, err
+}
+
 func (r *ChatsRepo) IsMember(ctx context.Context, chatID, userID int64) (bool, error) {
 	q := querier(ctx, r.pool)
 	var one int
