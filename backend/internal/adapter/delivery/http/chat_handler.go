@@ -210,6 +210,108 @@ func (h *ChatHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+type forwardBody struct {
+	FromChatID int64   `json:"from_chat_id"`
+	MsgIDs     []int64 `json:"msg_ids"`
+}
+
+func (h *ChatHandler) Forward(w http.ResponseWriter, r *http.Request) {
+	toChatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	var body forwardBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.FromChatID == 0 || len(body.MsgIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "from_chat_id and msg_ids are required")
+		return
+	}
+	msgs, err := h.svc.ForwardMessages(r.Context(), usecasechat.ForwardInput{
+		FromChatID: body.FromChatID, ToChatID: toChatID, MsgIDs: body.MsgIDs, SenderID: h.meID(r),
+	})
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusForbidden, "not a member or message not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "forward failed")
+		return
+	}
+	out := make([]map[string]any, 0, len(msgs))
+	for _, m := range msgs {
+		out = append(out, messageJSON(m))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"messages": out})
+}
+
+func (h *ChatHandler) Pin(w http.ResponseWriter, r *http.Request)   { h.setPin(w, r, true) }
+func (h *ChatHandler) Unpin(w http.ResponseWriter, r *http.Request) { h.setPin(w, r, false) }
+
+func (h *ChatHandler) setPin(w http.ResponseWriter, r *http.Request, pin bool) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	msgID, ok := pathInt(w, r, "msgID")
+	if !ok {
+		return
+	}
+	err := h.svc.SetPin(r.Context(), chatID, msgID, h.meID(r), pin)
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "message not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "pin failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (h *ChatHandler) ListPins(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	msgs, err := h.svc.ListPins(r.Context(), chatID, h.meID(r))
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusForbidden, "not a member of this chat")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not list pins")
+		return
+	}
+	out := make([]map[string]any, 0, len(msgs))
+	for _, m := range msgs {
+		out = append(out, messageJSON(m))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"messages": out})
+}
+
+func (h *ChatHandler) Viewers(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	msgID, ok := pathInt(w, r, "msgID")
+	if !ok {
+		return
+	}
+	ids, err := h.svc.MessageViewers(r.Context(), chatID, msgID, h.meID(r))
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "message not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load viewers")
+		return
+	}
+	if ids == nil {
+		ids = []int64{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"user_ids": ids})
+}
+
 func (h *ChatHandler) Sync(w http.ResponseWriter, r *http.Request) {
 	sincePts := queryInt(r, "pts", 0)
 	d, err := h.svc.GetDifference(r.Context(), h.meID(r), sincePts)

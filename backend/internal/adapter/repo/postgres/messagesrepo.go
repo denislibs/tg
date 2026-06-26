@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -23,6 +24,16 @@ func NewMessagesRepo(pool *pgxpool.Pool) *MessagesRepo { return &MessagesRepo{po
 // The full ordered column list every message SELECT/RETURNING uses, so the scan
 // order in scanMessage stays in sync across all queries.
 const messageCols = `id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id, edited_at, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date`
+
+// messageColsPrefixed returns messageCols with each column qualified by a table
+// alias (for JOINs where bare column names like chat_id would be ambiguous).
+func messageColsPrefixed(alias string) string {
+	cols := strings.Split(messageCols, ", ")
+	for i, c := range cols {
+		cols[i] = alias + "." + c
+	}
+	return strings.Join(cols, ", ")
+}
 
 // NextSeq atomically increments and returns the chat's sequence counter.
 func (r *MessagesRepo) NextSeq(ctx context.Context, chatID int64) (int64, error) {

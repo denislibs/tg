@@ -221,3 +221,63 @@ func (r *ChatsRepo) SetRead(ctx context.Context, chatID, userID, seq int64, unre
 		 WHERE chat_id=$1 AND user_id=$2`, chatID, userID, seq, unread)
 	return err
 }
+
+// PinMessage pins a message in a chat (idempotent).
+func (r *ChatsRepo) PinMessage(ctx context.Context, chatID, msgID, byUser int64) error {
+	q := querier(ctx, r.pool)
+	_, err := q.Exec(ctx,
+		`INSERT INTO pinned_messages (chat_id, msg_id, pinned_by) VALUES ($1,$2,$3)
+		 ON CONFLICT (chat_id, msg_id) DO NOTHING`, chatID, msgID, byUser)
+	return err
+}
+
+// UnpinMessage removes a pin.
+func (r *ChatsRepo) UnpinMessage(ctx context.Context, chatID, msgID int64) error {
+	q := querier(ctx, r.pool)
+	_, err := q.Exec(ctx, `DELETE FROM pinned_messages WHERE chat_id=$1 AND msg_id=$2`, chatID, msgID)
+	return err
+}
+
+// ListPins returns the chat's pinned messages, newest pin first.
+func (r *ChatsRepo) ListPins(ctx context.Context, chatID int64) ([]domain.Message, error) {
+	q := querier(ctx, r.pool)
+	rows, err := q.Query(ctx,
+		`SELECT `+messageColsPrefixed("m")+`
+		 FROM pinned_messages p JOIN messages m ON m.id=p.msg_id
+		 WHERE p.chat_id=$1 AND m.deleted_at IS NULL ORDER BY p.pinned_at DESC`, chatID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Message
+	for rows.Next() {
+		m, e := scanMessage(rows)
+		if e != nil {
+			return nil, e
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// Viewers returns the ids of members who have read up to at least seq, excluding
+// the message's sender (the "seen by" list for a message).
+func (r *ChatsRepo) Viewers(ctx context.Context, chatID, seq, excludeUser int64) ([]int64, error) {
+	q := querier(ctx, r.pool)
+	rows, err := q.Query(ctx,
+		`SELECT user_id FROM chat_members WHERE chat_id=$1 AND last_read_seq>=$2 AND user_id<>$3 ORDER BY user_id`,
+		chatID, seq, excludeUser)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []int64
+	for rows.Next() {
+		var id int64
+		if e := rows.Scan(&id); e != nil {
+			return nil, e
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}

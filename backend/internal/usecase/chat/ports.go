@@ -25,6 +25,10 @@ type ChatRepo interface {
 	IncUnread(ctx context.Context, chatID, userID int64) error
 	CurrentReadSeq(ctx context.Context, chatID, userID int64) (int64, error)
 	SetRead(ctx context.Context, chatID, userID, seq int64, unread int) error
+	PinMessage(ctx context.Context, chatID, msgID, byUser int64) error
+	UnpinMessage(ctx context.Context, chatID, msgID int64) error
+	ListPins(ctx context.Context, chatID int64) ([]domain.Message, error)
+	Viewers(ctx context.Context, chatID, seq, excludeUser int64) ([]int64, error)
 }
 
 type GroupRepo interface {

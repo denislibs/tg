@@ -37,6 +37,7 @@ type store struct {
 	owners      map[int64]int64           // mediaID -> ownerID
 	reactions   map[int64]map[int64]map[string]bool // msgID -> userID -> emoji set
 	hidden      map[int64]map[int64]bool            // userID -> msgID -> hidden ("delete for me")
+	pins        map[int64][]int64                   // chatID -> pinned msgIDs (newest first)
 
 	// per-user update log
 	pts     map[int64]int64
@@ -187,6 +188,62 @@ func (r fakeChats) SetRead(_ context.Context, chatID, userID, seq int64, unread 
 		m.unread = unread
 	}
 	return nil
+}
+
+func (r fakeChats) PinMessage(_ context.Context, chatID, msgID, _ int64) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	if r.s.pins == nil {
+		r.s.pins = map[int64][]int64{}
+	}
+	for _, id := range r.s.pins[chatID] {
+		if id == msgID {
+			return nil
+		}
+	}
+	r.s.pins[chatID] = append([]int64{msgID}, r.s.pins[chatID]...) // newest first
+	return nil
+}
+
+func (r fakeChats) UnpinMessage(_ context.Context, chatID, msgID int64) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	cur := r.s.pins[chatID]
+	out := cur[:0]
+	for _, id := range cur {
+		if id != msgID {
+			out = append(out, id)
+		}
+	}
+	r.s.pins[chatID] = out
+	return nil
+}
+
+func (r fakeChats) ListPins(_ context.Context, chatID int64) ([]domain.Message, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var out []domain.Message
+	for _, msgID := range r.s.pins[chatID] {
+		for _, m := range r.s.messages[chatID] {
+			if m.ID == msgID && !m.Deleted {
+				out = append(out, m)
+			}
+		}
+	}
+	return out, nil
+}
+
+func (r fakeChats) Viewers(_ context.Context, chatID, seq, excludeUser int64) ([]int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var out []int64
+	for uid, m := range r.s.members[chatID] {
+		if uid != excludeUser && m.lastReadSeq >= seq {
+			out = append(out, uid)
+		}
+	}
+	sort.Slice(out, func(a, b int) bool { return out[a] < out[b] })
+	return out, nil
 }
 
 // ---- MessageRepo ----

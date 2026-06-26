@@ -313,3 +313,70 @@ func TestDeleteMessage_ForMe(t *testing.T) {
 		t.Fatalf("a should still see msg: %+v", resA.Messages)
 	}
 }
+
+func TestForwardMessages(t *testing.T) {
+	in, _ := newInteractor()
+	ctx := context.Background()
+	const a, b, c int64 = 1, 2, 3
+	src, _ := in.CreatePrivateChat(ctx, a, b)
+	dst, _ := in.CreatePrivateChat(ctx, a, c)
+	orig, _ := in.Send(ctx, SendInput{ChatID: src, SenderID: b, Text: "hello"})
+
+	fwd, err := in.ForwardMessages(ctx, ForwardInput{FromChatID: src, ToChatID: dst, MsgIDs: []int64{orig.ID}, SenderID: a})
+	if err != nil {
+		t.Fatalf("ForwardMessages: %v", err)
+	}
+	if len(fwd) != 1 {
+		t.Fatalf("forwarded %d, want 1", len(fwd))
+	}
+	m := fwd[0]
+	if m.ChatID != dst || m.SenderID != a || m.Text != "hello" {
+		t.Fatalf("copy = %+v", m)
+	}
+	if m.FwdFromUserID == nil || *m.FwdFromUserID != b || m.FwdFromMsgID == nil || *m.FwdFromMsgID != orig.ID {
+		t.Fatalf("forward origin = %+v", m)
+	}
+	// It lands in the destination history.
+	res, _ := in.GetHistory(ctx, dst, c, 0, 0, 10)
+	if len(res.Messages) != 1 || res.Messages[0].FwdFromUserID == nil {
+		t.Fatalf("dst history = %+v", res.Messages)
+	}
+
+	// Non-member of source cannot forward.
+	if _, err := in.ForwardMessages(ctx, ForwardInput{FromChatID: src, ToChatID: dst, MsgIDs: []int64{orig.ID}, SenderID: c}); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("non-member forward: want ErrNotFound, got %v", err)
+	}
+}
+
+func TestPinAndViewers(t *testing.T) {
+	in, _ := newInteractor()
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	msg, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "pin me"})
+
+	// Pin → appears in ListPins; unpin → gone.
+	if err := in.SetPin(ctx, chatID, msg.ID, a, true); err != nil {
+		t.Fatalf("SetPin: %v", err)
+	}
+	pins, _ := in.ListPins(ctx, chatID, b)
+	if len(pins) != 1 || pins[0].ID != msg.ID {
+		t.Fatalf("pins = %+v", pins)
+	}
+	if err := in.SetPin(ctx, chatID, msg.ID, a, false); err != nil {
+		t.Fatalf("Unpin: %v", err)
+	}
+	if pins, _ := in.ListPins(ctx, chatID, b); len(pins) != 0 {
+		t.Fatalf("after unpin: %+v", pins)
+	}
+
+	// Viewers: nobody has read a's message yet → empty; after b reads, b appears.
+	if v, _ := in.MessageViewers(ctx, chatID, msg.ID, a); len(v) != 0 {
+		t.Fatalf("viewers before read = %v", v)
+	}
+	_ = in.MarkRead(ctx, chatID, b, msg.Seq)
+	v, _ := in.MessageViewers(ctx, chatID, msg.ID, a)
+	if len(v) != 1 || v[0] != b {
+		t.Fatalf("viewers after read = %v, want [%d]", v, b)
+	}
+}

@@ -121,6 +121,14 @@ func (c groupMembershipChats) CurrentReadSeq(context.Context, int64, int64) (int
 	return 0, nil
 }
 func (c groupMembershipChats) SetRead(context.Context, int64, int64, int64, int) error { return nil }
+func (c groupMembershipChats) PinMessage(context.Context, int64, int64, int64) error    { return nil }
+func (c groupMembershipChats) UnpinMessage(context.Context, int64, int64) error         { return nil }
+func (c groupMembershipChats) ListPins(context.Context, int64) ([]domain.Message, error) {
+	return nil, nil
+}
+func (c groupMembershipChats) Viewers(context.Context, int64, int64, int64) ([]int64, error) {
+	return nil, nil
+}
 
 // newChannelTestInteractor wires the interactor with fake group/channel/search
 // repos plus a recording channel publisher, sharing membership state so
