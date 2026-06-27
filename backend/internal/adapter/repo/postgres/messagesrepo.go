@@ -88,27 +88,44 @@ func (r *MessagesRepo) GetAround(ctx context.Context, chatID, userID, centerSeq 
 		}
 		return out, rows.Err()
 	}
-	// Older incl. center (DESC), then newer (ASC).
+	// Fetch up to `limit` on each side (older incl. center DESC, newer ASC), then
+	// keep `limit` total centered on the message. When one side is short (a jump
+	// near the very top/bottom of history), the deficit is filled from the other
+	// side so the window is always ~limit messages — otherwise an edge jump returns
+	// a tiny window with no room to scroll, and scroll-to-load can't engage (tweb
+	// keeps the focused message centered but still returns a full page).
 	older, err := scan(q.Query(ctx,
 		`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq<=$2`+excl+` ORDER BY seq DESC LIMIT $3`,
-		chatID, centerSeq, half+1, userID))
+		chatID, centerSeq, limit, userID))
 	if err != nil {
 		return nil, false, false, err
 	}
 	newer, err := scan(q.Query(ctx,
 		`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq>$2`+excl+` ORDER BY seq ASC LIMIT $3`,
-		chatID, centerSeq, half, userID))
+		chatID, centerSeq, limit, userID))
 	if err != nil {
 		return nil, false, false, err
 	}
-	reachedTop := len(older) < half+1
-	reachedBottom := len(newer) < half
-	// older is DESC → reverse to ASC, then append newer.
-	out := make([]domain.Message, 0, len(older)+len(newer))
-	for i := len(older) - 1; i >= 0; i-- {
+	wantOlder := half + 1          // older includes the centered message
+	wantNewer := limit - wantOlder // the rest below it
+	takeOlder := min(len(older), wantOlder)
+	takeNewer := min(len(newer), wantNewer)
+	if d := wantOlder - takeOlder; d > 0 { // short on top → take more below
+		takeNewer = min(len(newer), takeNewer+d)
+	}
+	if d := wantNewer - takeNewer; d > 0 { // short on bottom → take more above
+		takeOlder = min(len(older), takeOlder+d)
+	}
+	// We hit the real top/bottom when we took everything that side returned AND
+	// that query wasn't capped at `limit` (so nothing more exists beyond it).
+	reachedTop := takeOlder == len(older) && len(older) < limit
+	reachedBottom := takeNewer == len(newer) && len(newer) < limit
+	// older is DESC → reverse the taken slice to ASC, then append the taken newer.
+	out := make([]domain.Message, 0, takeOlder+takeNewer)
+	for i := takeOlder - 1; i >= 0; i-- {
 		out = append(out, older[i])
 	}
-	out = append(out, newer...)
+	out = append(out, newer[:takeNewer]...)
 	return out, reachedTop, reachedBottom, nil
 }
 
