@@ -19,7 +19,7 @@ func newStoryRouter(t *testing.T) (http.Handler, *pgxpool.Pool) {
 	pool := postgres.NewTestDB(t)
 	chatUC := newChatUC(pool)
 	authUC := newAuthUC(pool)
-	mediaH := NewMediaHandler(usecasemedia.New(pgadapter.NewMediaRepo(pool), newFakeStorage()), chatUC, authUC, "test-secret")
+	mediaH := NewMediaHandler(usecasemedia.New(pgadapter.NewMediaRepo(pool), newFakeStorage(), nil), chatUC, authUC, "test-secret")
 	storySvc := storyusecase.New(
 		pgadapter.NewStoryRepo(pool),
 		chatUC,

@@ -44,6 +44,10 @@ func (r *fakeRepo) GetByID(_ context.Context, id int64) (domain.Media, error) {
 	return domain.Media{}, domain.ErrNotFound
 }
 
+func (r *fakeRepo) UpdateProcessed(_ context.Context, _ int64, _, _, _ int, _ string) error {
+	return nil
+}
+
 type fakeStorage struct{ blobs map[string][]byte }
 
 func newFakeStorage() *fakeStorage { return &fakeStorage{blobs: map[string][]byte{}} }
@@ -76,7 +80,7 @@ type nopSeekCloser struct{ *bytes.Reader }
 func (nopSeekCloser) Close() error { return nil }
 
 func TestInteractor_CreateUploadAndGet(t *testing.T) {
-	s := New(newFakeRepo(), newFakeStorage())
+	s := New(newFakeRepo(), newFakeStorage(), nil)
 	ctx := context.Background()
 
 	m, uploadURL, err := s.CreateUpload(ctx, UploadInput{OwnerID: 7, Mime: "image/jpeg", Size: 2048, Width: 100, Height: 100})
@@ -100,14 +104,14 @@ func TestInteractor_CreateUploadAndGet(t *testing.T) {
 }
 
 func TestInteractor_GetMediaNotFound(t *testing.T) {
-	s := New(newFakeRepo(), newFakeStorage())
+	s := New(newFakeRepo(), newFakeStorage(), nil)
 	if _, _, err := s.GetMedia(context.Background(), 999999); err != domain.ErrNotFound {
 		t.Fatalf("expected domain.ErrNotFound, got %v", err)
 	}
 }
 
 func TestInteractor_RejectsBadSize(t *testing.T) {
-	s := New(newFakeRepo(), newFakeStorage())
+	s := New(newFakeRepo(), newFakeStorage(), nil)
 	ctx := context.Background()
 	if _, _, err := s.CreateUpload(ctx, UploadInput{OwnerID: 1, Size: maxSize + 1}); err != ErrTooLarge {
 		t.Fatalf("expected ErrTooLarge, got %v", err)
@@ -120,7 +124,7 @@ func TestInteractor_RejectsBadSize(t *testing.T) {
 func TestPutContent_OwnerOnly(t *testing.T) {
 	repo := &fakeRepo{m: domain.Media{ID: 1, OwnerID: 7, ObjectKey: "7/x", Mime: "image/png", Size: 5}}
 	st := newFakeStorage()
-	s := New(repo, st)
+	s := New(repo, st, nil)
 	if err := s.PutContent(context.Background(), 1, 7, bytes.NewReader([]byte("12345")), 5); err != nil {
 		t.Fatalf("owner put: %v", err)
 	}
@@ -133,7 +137,7 @@ func TestGetContent(t *testing.T) {
 	repo := &fakeRepo{m: domain.Media{ID: 1, OwnerID: 7, ObjectKey: "7/x", Mime: "image/png", Size: 3}}
 	st := newFakeStorage()
 	_ = st.PutObject(context.Background(), "7/x", bytes.NewReader([]byte("abc")), 3, "image/png")
-	s := New(repo, st)
+	s := New(repo, st, nil)
 	rc, info, m, err := s.GetContent(context.Background(), 1)
 	if err != nil {
 		t.Fatal(err)

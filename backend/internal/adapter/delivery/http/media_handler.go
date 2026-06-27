@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"time"
 
@@ -53,6 +54,7 @@ type uploadBody struct {
 	Height      int    `json:"height"`
 	Duration    int    `json:"duration"`
 	BlurPreview []byte `json:"blur_preview"` // base64 in JSON
+	FileName    string `json:"file_name"`
 }
 
 func (h *MediaHandler) CreateUpload(w http.ResponseWriter, r *http.Request) {
@@ -65,6 +67,7 @@ func (h *MediaHandler) CreateUpload(w http.ResponseWriter, r *http.Request) {
 	m, uploadURL, err := h.svc.CreateUpload(r.Context(), usecasemedia.UploadInput{
 		OwnerID: user.ID, Mime: body.Mime, Size: body.Size,
 		Width: body.Width, Height: body.Height, Duration: body.Duration, BlurPreview: body.BlurPreview,
+		FileName: body.FileName,
 	})
 	if errors.Is(err, usecasemedia.ErrBadSize) {
 		writeError(w, http.StatusBadRequest, "invalid size")
@@ -114,6 +117,7 @@ func (h *MediaHandler) Get(w http.ResponseWriter, r *http.Request) {
 		"id": m.ID, "mime": m.Mime, "size": m.Size,
 		"width": m.Width, "height": m.Height, "duration": m.Duration,
 		"blur_preview": m.BlurPreview, "download_url": downloadURL,
+		"file_name": m.FileName, "has_thumb": m.ThumbKey != "",
 	})
 }
 
@@ -170,7 +174,16 @@ func (h *MediaHandler) GetContent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "media not found")
 		return
 	}
-	rc, info, _, err := h.svc.GetContent(r.Context(), id)
+	// ?v=thumb serves the generated thumbnail/poster (jpeg); default = original.
+	var (
+		rc   io.ReadSeekCloser
+		info usecasemedia.ObjectInfo
+	)
+	if r.URL.Query().Get("v") == "thumb" {
+		rc, info, err = h.svc.GetThumbContent(r.Context(), id)
+	} else {
+		rc, info, _, err = h.svc.GetContent(r.Context(), id)
+	}
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "media not found")
 		return

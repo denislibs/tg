@@ -13,5 +13,10 @@ type Media struct {
 	Height      int
 	Duration    int
 	BlurPreview []byte
-	CreatedAt   time.Time
+	// FileName is the original upload name (shown for documents/music).
+	FileName string
+	// ThumbKey is the object key of a server-generated thumbnail/poster (jpeg),
+	// empty until processing completes (or for non-visual media).
+	ThumbKey  string
+	CreatedAt time.Time
 }

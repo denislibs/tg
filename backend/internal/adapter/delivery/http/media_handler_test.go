@@ -62,6 +62,9 @@ func (f *fakeMediaRepo) GetByID(_ context.Context, id int64) (domain.Media, erro
 	}
 	return f.m, nil
 }
+func (f *fakeMediaRepo) UpdateProcessed(_ context.Context, _ int64, _, _, _ int, _ string) error {
+	return nil
+}
 
 // fakeAccess answers CanAccessMedia with a fixed verdict.
 type fakeAccess struct{ allow bool }
@@ -82,7 +85,7 @@ func newMediaRouter(t *testing.T) (http.Handler, *pgxpool.Pool) {
 	pool := postgres.NewTestDB(t)
 	chatUC := newChatUC(pool)
 	authUC := newAuthUC(pool)
-	mediaH := NewMediaHandler(usecasemedia.New(pgadapter.NewMediaRepo(pool), newFakeStorage()), chatUC, authUC, "test-secret")
+	mediaH := NewMediaHandler(usecasemedia.New(pgadapter.NewMediaRepo(pool), newFakeStorage(), nil), chatUC, authUC, "test-secret")
 	return NewRouter(authUC, chatUC, nil, mediaH, nil, nil, nil), pool
 }
 
@@ -161,7 +164,7 @@ func contentRouter(owner, authUser int64, allow bool) (http.Handler, *fakeStorag
 	st := newFakeStorage()
 	repo := &fakeMediaRepo{m: domain.Media{ID: 1, OwnerID: owner, ObjectKey: "k1", Mime: "image/png", Size: 3}}
 	_ = st.PutObject(context.Background(), "k1", bytes.NewReader([]byte("abc")), 3, "image/png")
-	h := NewMediaHandler(usecasemedia.New(repo, st), fakeAccess{allow: allow}, fakeAuth{userID: authUser}, "test-secret")
+	h := NewMediaHandler(usecasemedia.New(repo, st, nil), fakeAccess{allow: allow}, fakeAuth{userID: authUser}, "test-secret")
 	r := chi.NewRouter()
 	r.Put("/media/{mediaID}/content", h.PutContent)
 	r.Get("/media/{mediaID}/content", h.GetContent)
@@ -207,7 +210,7 @@ func TestGetContent_AccessDenied(t *testing.T) {
 func TestPutContent_NonOwner(t *testing.T) {
 	st := newFakeStorage()
 	repo := &fakeMediaRepo{m: domain.Media{ID: 1, OwnerID: 7, ObjectKey: "k1", Mime: "image/png", Size: 3}}
-	h := NewMediaHandler(usecasemedia.New(repo, st), fakeAccess{allow: true}, fakeAuth{userID: 99}, "test-secret")
+	h := NewMediaHandler(usecasemedia.New(repo, st, nil), fakeAccess{allow: true}, fakeAuth{userID: 99}, "test-secret")
 	r := chi.NewRouter()
 	r.Put("/media/{mediaID}/content", h.PutContent)
 

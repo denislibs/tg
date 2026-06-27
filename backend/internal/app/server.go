@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/messenger-denis/backend/internal/adapter/media/ffmpeg"
 	webpushadapter "github.com/messenger-denis/backend/internal/adapter/push/webpush"
 	queueredis "github.com/messenger-denis/backend/internal/adapter/queue/redis"
 	rtredis "github.com/messenger-denis/backend/internal/adapter/realtime/redis"
@@ -76,7 +77,7 @@ func registerServer(p serverParams) {
 
 	var mediaHandler *httptransport.MediaHandler
 	if p.Minio.OK {
-		mediaUC := usecasemedia.New(pgadapter.NewMediaRepo(p.Pool), p.Minio.Client)
+		mediaUC := usecasemedia.New(pgadapter.NewMediaRepo(p.Pool), p.Minio.Client, ffmpeg.New())
 		mediaHandler = httptransport.NewMediaHandler(mediaUC, p.ChatUC, p.AuthUC, p.Cfg.MediaURLSecret)
 		log.Printf("media enabled (minio bucket %q)", p.Cfg.MinioBucket)
 	}

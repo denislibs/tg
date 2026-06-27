@@ -28,6 +28,21 @@ const (
 type MediaRepo interface {
 	Create(ctx context.Context, m domain.Media) (domain.Media, error)
 	GetByID(ctx context.Context, id int64) (domain.Media, error) // domain.ErrNotFound if absent
+	// UpdateProcessed records ffprobe dims/duration and the thumbnail key.
+	UpdateProcessed(ctx context.Context, id int64, width, height, duration int, thumbKey string) error
+}
+
+// ProcessResult is what the media processor extracts/produces from an original.
+type ProcessResult struct {
+	Width, Height, Duration int
+	// Thumb is a generated jpeg thumbnail/poster (nil for non-visual media).
+	Thumb []byte
+}
+
+// MediaProcessor probes and derives assets from an uploaded original (ffmpeg).
+// Implementations must be safe to call from a background goroutine.
+type MediaProcessor interface {
+	Process(ctx context.Context, src io.Reader, mime string) (ProcessResult, error)
 }
 
 // ObjectInfo is the storage-level metadata needed to stream an object.
@@ -55,4 +70,5 @@ type UploadInput struct {
 	Height      int
 	Duration    int
 	BlurPreview []byte
+	FileName    string
 }
