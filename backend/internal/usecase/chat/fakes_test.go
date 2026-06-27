@@ -303,6 +303,36 @@ func (r fakeMsgs) GetByID(_ context.Context, msgID int64) (domain.Message, error
 	return domain.Message{}, domain.ErrNotFound
 }
 
+func (r fakeMsgs) GetAround(_ context.Context, chatID, userID, centerSeq int64, limit int) ([]domain.Message, bool, bool, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	if limit <= 0 {
+		limit = 40
+	}
+	half := limit / 2
+	all := r.s.messages[chatID]
+	var older, newer []domain.Message
+	for _, m := range all {
+		if m.Deleted {
+			continue
+		}
+		if m.Seq <= centerSeq {
+			older = append(older, m)
+		} else {
+			newer = append(newer, m)
+		}
+	}
+	reachedTop := len(older) <= half+1
+	reachedBottom := len(newer) <= half
+	if len(older) > half+1 {
+		older = older[len(older)-(half+1):]
+	}
+	if len(newer) > half {
+		newer = newer[:half]
+	}
+	return append(older, newer...), reachedTop, reachedBottom, nil
+}
+
 func (r fakeMsgs) SearchMessages(_ context.Context, chatID int64, q string, offset, limit int) ([]domain.Message, int, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()

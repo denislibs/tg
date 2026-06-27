@@ -29,6 +29,7 @@ type Message struct {
 // ReplyPreview is the quoted snippet shown above a reply bubble.
 type ReplyPreview struct {
 	MsgID    int64
+	Seq      int64
 	SenderID int64
 	Text     string
 	Type     string

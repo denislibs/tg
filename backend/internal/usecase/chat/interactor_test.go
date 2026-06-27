@@ -422,3 +422,33 @@ func TestSearchMessages(t *testing.T) {
 		t.Fatalf("non-member search: want ErrNotFound, got %v", err)
 	}
 }
+
+func TestGetHistoryAround(t *testing.T) {
+	in, _ := newInteractor()
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	for i := 0; i < 20; i++ {
+		_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "m"})
+	}
+	res, err := in.GetHistoryAround(ctx, chatID, a, 10, 6)
+	if err != nil {
+		t.Fatalf("GetHistoryAround: %v", err)
+	}
+	// window around seq 10 should contain seq 10 and neighbours, ascending.
+	var hasCenter bool
+	for i, m := range res.Messages {
+		if m.Seq == 10 {
+			hasCenter = true
+		}
+		if i > 0 && res.Messages[i-1].Seq > m.Seq {
+			t.Fatalf("not ascending: %+v", res.Messages)
+		}
+	}
+	if !hasCenter {
+		t.Fatalf("center seq 10 missing: %+v", res.Messages)
+	}
+	if res.ReachedTop || res.ReachedBottom {
+		t.Fatalf("mid-history window should not report ends: top=%v bottom=%v", res.ReachedTop, res.ReachedBottom)
+	}
+}

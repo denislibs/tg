@@ -68,9 +68,44 @@ func (i *Interactor) hydrateReplies(ctx context.Context, msgs []domain.Message) 
 		if len([]rune(text)) > 120 {
 			text = string([]rune(text)[:120])
 		}
-		msgs[idx].ReplyTo = &domain.ReplyPreview{MsgID: t.ID, SenderID: t.SenderID, Text: text, Type: t.Type}
+		msgs[idx].ReplyTo = &domain.ReplyPreview{MsgID: t.ID, Seq: t.Seq, SenderID: t.SenderID, Text: text, Type: t.Type}
 	}
 	return nil
+}
+
+// AroundResult is a jump-to-message window: messages around a seq + end flags.
+type AroundResult struct {
+	Messages      []domain.Message
+	ReachedTop    bool
+	ReachedBottom bool
+	Count         int
+}
+
+// GetHistoryAround returns a window centered on centerSeq (for jump-to-message),
+// with reply previews hydrated.
+func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, centerSeq int64, limit int) (AroundResult, error) {
+	ok, err := i.chats.IsMember(ctx, chatID, userID)
+	if err != nil {
+		return AroundResult{}, err
+	}
+	if !ok {
+		return AroundResult{}, domain.ErrNotFound
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 40
+	}
+	msgs, top, bottom, err := i.msgs.GetAround(ctx, chatID, userID, centerSeq, limit)
+	if err != nil {
+		return AroundResult{}, err
+	}
+	if e := i.hydrateReplies(ctx, msgs); e != nil {
+		return AroundResult{}, e
+	}
+	count, err := i.msgs.CountMessages(ctx, chatID)
+	if err != nil {
+		return AroundResult{}, err
+	}
+	return AroundResult{Messages: msgs, ReachedTop: top, ReachedBottom: bottom, Count: count}, nil
 }
 
 // SearchMessages returns messages in a chat matching q (newest first) + total count.

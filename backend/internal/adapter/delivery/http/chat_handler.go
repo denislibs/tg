@@ -105,9 +105,27 @@ func (h *ChatHandler) History(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	limit := int(queryInt(r, "limit", 40))
+	// Jump-to-message: ?around=<seq> returns a window centered on that message.
+	if around := queryInt(r, "around", 0); around > 0 {
+		a, err := h.svc.GetHistoryAround(r.Context(), chatID, h.meID(r), around, limit)
+		if errors.Is(err, domain.ErrNotFound) {
+			writeError(w, http.StatusForbidden, "not a member of this chat")
+			return
+		}
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "history failed")
+			return
+		}
+		out := make([]map[string]any, 0, len(a.Messages))
+		for _, m := range a.Messages {
+			out = append(out, messageJSON(m))
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": a.Count, "reached_top": a.ReachedTop, "reached_bottom": a.ReachedBottom})
+		return
+	}
 	offsetSeq := queryInt(r, "offset_id", 0)
 	addOffset := int(queryInt(r, "add_offset", 0))
-	limit := int(queryInt(r, "limit", 40))
 	res, err := h.svc.GetHistory(r.Context(), chatID, h.meID(r), offsetSeq, addOffset, limit)
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
@@ -437,7 +455,7 @@ func messageJSON(m domain.Message) map[string]any {
 	}
 	if m.ReplyTo != nil {
 		j["reply_to"] = map[string]any{
-			"msg_id": m.ReplyTo.MsgID, "sender_id": m.ReplyTo.SenderID,
+			"msg_id": m.ReplyTo.MsgID, "seq": m.ReplyTo.Seq, "sender_id": m.ReplyTo.SenderID,
 			"text": m.ReplyTo.Text, "type": m.ReplyTo.Type,
 		}
 	}

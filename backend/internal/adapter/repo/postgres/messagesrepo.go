@@ -63,6 +63,55 @@ func (r *MessagesRepo) GetByID(ctx context.Context, msgID int64) (domain.Message
 		`SELECT `+messageCols+` FROM messages WHERE id=$1`, msgID))
 }
 
+// GetAround returns a window of messages centered on centerSeq (older + the
+// message + newer), ascending, excluding deleted/self-hidden, plus whether the
+// real top/bottom of history was reached. Used for jump-to-message.
+func (r *MessagesRepo) GetAround(ctx context.Context, chatID, userID, centerSeq int64, limit int) ([]domain.Message, bool, bool, error) {
+	if limit <= 0 {
+		limit = 40
+	}
+	half := limit / 2
+	q := querier(ctx, r.pool)
+	const excl = ` AND deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id=messages.id AND h.user_id=$4)`
+	scan := func(rows pgx.Rows, err error) ([]domain.Message, error) {
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		var out []domain.Message
+		for rows.Next() {
+			m, e := scanMessage(rows)
+			if e != nil {
+				return nil, e
+			}
+			out = append(out, m)
+		}
+		return out, rows.Err()
+	}
+	// Older incl. center (DESC), then newer (ASC).
+	older, err := scan(q.Query(ctx,
+		`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq<=$2`+excl+` ORDER BY seq DESC LIMIT $3`,
+		chatID, centerSeq, half+1, userID))
+	if err != nil {
+		return nil, false, false, err
+	}
+	newer, err := scan(q.Query(ctx,
+		`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq>$2`+excl+` ORDER BY seq ASC LIMIT $3`,
+		chatID, centerSeq, half, userID))
+	if err != nil {
+		return nil, false, false, err
+	}
+	reachedTop := len(older) < half+1
+	reachedBottom := len(newer) < half
+	// older is DESC → reverse to ASC, then append newer.
+	out := make([]domain.Message, 0, len(older)+len(newer))
+	for i := len(older) - 1; i >= 0; i-- {
+		out = append(out, older[i])
+	}
+	out = append(out, newer...)
+	return out, reachedTop, reachedBottom, nil
+}
+
 // SearchMessages returns messages in a chat whose text matches q (case-insensitive
 // substring), newest first, plus the total match count. Excludes deleted.
 func (r *MessagesRepo) SearchMessages(ctx context.Context, chatID int64, q string, offset, limit int) ([]domain.Message, int, error) {
