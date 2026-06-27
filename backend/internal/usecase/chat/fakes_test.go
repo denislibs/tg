@@ -302,6 +302,24 @@ func (r fakeMsgs) GetByID(_ context.Context, msgID int64) (domain.Message, error
 	return domain.Message{}, domain.ErrNotFound
 }
 
+func (r fakeMsgs) GetByIDs(_ context.Context, ids []int64) ([]domain.Message, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	want := map[int64]bool{}
+	for _, id := range ids {
+		want[id] = true
+	}
+	var out []domain.Message
+	for _, msgs := range r.s.messages {
+		for _, m := range msgs {
+			if want[m.ID] {
+				out = append(out, m)
+			}
+		}
+	}
+	return out, nil
+}
+
 func (r fakeMsgs) UpdateText(_ context.Context, msgID int64, text string) (domain.Message, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()

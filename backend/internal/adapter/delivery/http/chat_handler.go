@@ -402,7 +402,7 @@ func (h *ChatHandler) ListReactions(w http.ResponseWriter, r *http.Request) {
 }
 
 func messageJSON(m domain.Message) map[string]any {
-	return map[string]any{
+	j := map[string]any{
 		"id": m.ID, "chat_id": m.ChatID, "seq": m.Seq, "sender_id": m.SenderID,
 		"type": m.Type, "text": m.Text, "reply_to_id": m.ReplyToID,
 		"media_id": m.MediaID, "thread_root_id": m.ThreadRootID,
@@ -411,6 +411,13 @@ func messageJSON(m domain.Message) map[string]any {
 		"fwd_from_user_id": m.FwdFromUserID, "fwd_from_chat_id": m.FwdFromChatID,
 		"fwd_from_msg_id": m.FwdFromMsgID, "fwd_date": m.FwdDate,
 	}
+	if m.ReplyTo != nil {
+		j["reply_to"] = map[string]any{
+			"msg_id": m.ReplyTo.MsgID, "sender_id": m.ReplyTo.SenderID,
+			"text": m.ReplyTo.Text, "type": m.ReplyTo.Type,
+		}
+	}
+	return j
 }
 
 func pathInt(w http.ResponseWriter, r *http.Request, key string) (int64, bool) {

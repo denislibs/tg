@@ -63,6 +63,29 @@ func (r *MessagesRepo) GetByID(ctx context.Context, msgID int64) (domain.Message
 		`SELECT `+messageCols+` FROM messages WHERE id=$1`, msgID))
 }
 
+// GetByIDs returns messages for the given ids (order unspecified); missing ids
+// are simply absent. Empty input → empty result.
+func (r *MessagesRepo) GetByIDs(ctx context.Context, ids []int64) ([]domain.Message, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	q := querier(ctx, r.pool)
+	rows, err := q.Query(ctx, `SELECT `+messageCols+` FROM messages WHERE id = ANY($1)`, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Message
+	for rows.Next() {
+		m, e := scanMessage(rows)
+		if e != nil {
+			return nil, e
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
 // Insert writes a new message row (incl. forward attribution when set).
 func (r *MessagesRepo) Insert(ctx context.Context, m domain.Message) (domain.Message, error) {
 	q := querier(ctx, r.pool)

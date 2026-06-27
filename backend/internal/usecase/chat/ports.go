@@ -66,6 +66,7 @@ type MessageRepo interface {
 	Insert(ctx context.Context, m domain.Message) (domain.Message, error)
 	FindByClientMsgID(ctx context.Context, chatID, senderID int64, clientMsgID string) (domain.Message, error)
 	GetByID(ctx context.Context, msgID int64) (domain.Message, error)
+	GetByIDs(ctx context.Context, ids []int64) ([]domain.Message, error)
 	GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int) ([]domain.Message, error)
 	UpdateText(ctx context.Context, msgID int64, text string) (domain.Message, error)
 	SoftDelete(ctx context.Context, msgID int64) error

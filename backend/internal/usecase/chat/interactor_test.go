@@ -377,3 +377,26 @@ func TestPinAndViewers(t *testing.T) {
 		t.Fatalf("viewers after read = %v, want [%d]", v, b)
 	}
 }
+
+func TestGetHistory_HydratesReply(t *testing.T) {
+	in, _ := newInteractor()
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	orig, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "original"})
+	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: b, Text: "reply", ReplyToID: &orig.ID})
+
+	res, _ := in.GetHistory(ctx, chatID, a, 0, 0, 10)
+	var replyMsg *domain.Message
+	for i := range res.Messages {
+		if res.Messages[i].Text == "reply" {
+			replyMsg = &res.Messages[i]
+		}
+	}
+	if replyMsg == nil || replyMsg.ReplyTo == nil {
+		t.Fatalf("reply not hydrated: %+v", res.Messages)
+	}
+	if replyMsg.ReplyTo.SenderID != a || replyMsg.ReplyTo.Text != "original" {
+		t.Fatalf("reply preview = %+v", replyMsg.ReplyTo)
+	}
+}

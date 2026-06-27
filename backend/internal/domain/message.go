@@ -21,4 +21,15 @@ type Message struct {
 	FwdFromChatID *int64
 	FwdFromMsgID  *int64
 	FwdDate       *time.Time
+	// ReplyTo is a lightweight preview of the replied-to message, populated by
+	// the history read model (not stored). Nil when this isn't a reply.
+	ReplyTo *ReplyPreview
+}
+
+// ReplyPreview is the quoted snippet shown above a reply bubble.
+type ReplyPreview struct {
+	MsgID    int64
+	SenderID int64
+	Text     string
+	Type     string
 }
