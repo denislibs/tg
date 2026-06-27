@@ -63,6 +63,35 @@ func (r *MessagesRepo) GetByID(ctx context.Context, msgID int64) (domain.Message
 		`SELECT `+messageCols+` FROM messages WHERE id=$1`, msgID))
 }
 
+// SearchMessages returns messages in a chat whose text matches q (case-insensitive
+// substring), newest first, plus the total match count. Excludes deleted.
+func (r *MessagesRepo) SearchMessages(ctx context.Context, chatID int64, q string, offset, limit int) ([]domain.Message, int, error) {
+	qq := querier(ctx, r.pool)
+	pattern := "%" + q + "%"
+	var count int
+	if err := qq.QueryRow(ctx,
+		`SELECT count(*) FROM messages WHERE chat_id=$1 AND deleted_at IS NULL AND text ILIKE $2`,
+		chatID, pattern).Scan(&count); err != nil {
+		return nil, 0, err
+	}
+	rows, err := qq.Query(ctx,
+		`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND deleted_at IS NULL AND text ILIKE $2
+		 ORDER BY seq DESC LIMIT $3 OFFSET $4`, chatID, pattern, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var out []domain.Message
+	for rows.Next() {
+		m, e := scanMessage(rows)
+		if e != nil {
+			return nil, 0, e
+		}
+		out = append(out, m)
+	}
+	return out, count, rows.Err()
+}
+
 // GetByIDs returns messages for the given ids (order unspecified); missing ids
 // are simply absent. Empty input → empty result.
 func (r *MessagesRepo) GetByIDs(ctx context.Context, ids []int64) ([]domain.Message, error) {

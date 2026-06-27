@@ -312,6 +312,30 @@ func (h *ChatHandler) Viewers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"user_ids": ids})
 }
 
+func (h *ChatHandler) SearchMessages(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	q := r.URL.Query().Get("q")
+	offset := int(queryInt(r, "offset", 0))
+	limit := int(queryInt(r, "limit", 20))
+	res, err := h.svc.SearchMessages(r.Context(), chatID, h.meID(r), q, offset, limit)
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusForbidden, "not a member of this chat")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "search failed")
+		return
+	}
+	out := make([]map[string]any, 0, len(res.Messages))
+	for _, m := range res.Messages {
+		out = append(out, messageJSON(m))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": res.Count})
+}
+
 func (h *ChatHandler) Sync(w http.ResponseWriter, r *http.Request) {
 	sincePts := queryInt(r, "pts", 0)
 	d, err := h.svc.GetDifference(r.Context(), h.meID(r), sincePts)

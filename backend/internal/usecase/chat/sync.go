@@ -73,6 +73,28 @@ func (i *Interactor) hydrateReplies(ctx context.Context, msgs []domain.Message) 
 	return nil
 }
 
+// SearchMessages returns messages in a chat matching q (newest first) + total count.
+func (i *Interactor) SearchMessages(ctx context.Context, chatID, userID int64, q string, offset, limit int) (HistoryResult, error) {
+	ok, err := i.chats.IsMember(ctx, chatID, userID)
+	if err != nil {
+		return HistoryResult{}, err
+	}
+	if !ok {
+		return HistoryResult{}, domain.ErrNotFound
+	}
+	if limit <= 0 || limit > 50 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	msgs, count, err := i.msgs.SearchMessages(ctx, chatID, q, offset, limit)
+	if err != nil {
+		return HistoryResult{}, err
+	}
+	return HistoryResult{Messages: msgs, Count: count}, nil
+}
+
 // GetDifference returns updates with pts>sincePts, split by kind. If the client is
 // too far behind, TooLong is set so it can do a full resync (snapshot via ListDialogs).
 func (i *Interactor) GetDifference(ctx context.Context, userID, sincePts int64) (Difference, error) {

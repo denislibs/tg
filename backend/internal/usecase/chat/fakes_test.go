@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -300,6 +301,28 @@ func (r fakeMsgs) GetByID(_ context.Context, msgID int64) (domain.Message, error
 		}
 	}
 	return domain.Message{}, domain.ErrNotFound
+}
+
+func (r fakeMsgs) SearchMessages(_ context.Context, chatID int64, q string, offset, limit int) ([]domain.Message, int, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var hits []domain.Message
+	all := r.s.messages[chatID]
+	for i := len(all) - 1; i >= 0; i-- { // newest first
+		m := all[i]
+		if !m.Deleted && q != "" && strings.Contains(strings.ToLower(m.Text), strings.ToLower(q)) {
+			hits = append(hits, m)
+		}
+	}
+	count := len(hits)
+	if offset > len(hits) {
+		offset = len(hits)
+	}
+	hits = hits[offset:]
+	if limit > 0 && len(hits) > limit {
+		hits = hits[:limit]
+	}
+	return hits, count, nil
 }
 
 func (r fakeMsgs) GetByIDs(_ context.Context, ids []int64) ([]domain.Message, error) {

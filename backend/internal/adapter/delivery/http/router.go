@@ -61,6 +61,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/chats/{chatID}/pins", ch.ListPins)
 		pr.Get("/chats/{chatID}/messages/{msgID}/viewers", ch.Viewers)
 		pr.Get("/chats/{chatID}/history", ch.History)
+		pr.Get("/chats/{chatID}/search", ch.SearchMessages)
 		pr.Post("/chats/{chatID}/read", ch.Read)
 		pr.Get("/sync", ch.Sync)
 		pr.Post("/chats/{chatID}/messages/{msgID}/reactions", ch.AddReaction)

@@ -400,3 +400,25 @@ func TestGetHistory_HydratesReply(t *testing.T) {
 		t.Fatalf("reply preview = %+v", replyMsg.ReplyTo)
 	}
 }
+
+func TestSearchMessages(t *testing.T) {
+	in, _ := newInteractor()
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "привет мир"})
+	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: b, Text: "пока"})
+	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "ПРИВЕТ снова"})
+
+	res, err := in.SearchMessages(ctx, chatID, a, "привет", 0, 20)
+	if err != nil {
+		t.Fatalf("SearchMessages: %v", err)
+	}
+	if res.Count != 2 || len(res.Messages) != 2 {
+		t.Fatalf("search count=%d msgs=%d, want 2/2", res.Count, len(res.Messages))
+	}
+	// Non-member rejected.
+	if _, err := in.SearchMessages(ctx, chatID, 999, "привет", 0, 20); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("non-member search: want ErrNotFound, got %v", err)
+	}
+}
