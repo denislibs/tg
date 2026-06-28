@@ -77,7 +77,7 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 			}
 			msg, e := i.msgs.Insert(ctx, domain.Message{
 				ChatID: in.ToChatID, Seq: seq, SenderID: in.SenderID,
-				Type: src.Type, Text: src.Text, MediaID: src.MediaID,
+				Type: src.Type, Text: src.Text, Entities: src.Entities, MediaID: src.MediaID,
 				FwdFromUserID: fwdUser, FwdFromChatID: fwdChat, FwdFromMsgID: fwdMsg, FwdDate: fwdDate,
 			})
 			if e != nil {

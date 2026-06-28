@@ -22,6 +22,7 @@ type DialogPeer struct {
 	ID          int64
 	DisplayName string
 	AvatarURL   string
+	Verified    bool // official/service account (blue check)
 }
 
 // Dialog is a chat-list read model: a chat + the viewer's read state + last message.
@@ -47,6 +48,9 @@ type Dialog struct {
 	// preview thumbnail + type label (0/"" when it's a plain text message).
 	LastMediaID  int64
 	LastType     string
+	// LastForwarded is true when the last message was forwarded (shows a forward
+	// arrow before the chat-list preview, like Telegram).
+	LastForwarded bool
 	// Peer is the other member of a private chat (nil for non-private chats).
 	Peer *DialogPeer
 }

@@ -89,6 +89,48 @@ func (i *Interactor) CreatePrivateChat(ctx context.Context, me, other int64) (in
 	return chatID, err
 }
 
+// GetOrCreateSaved returns the user's "Saved Messages" self-chat, creating it on
+// first access. Mirrors CreatePrivateChat's find-then-lock-then-create pattern.
+func (i *Interactor) GetOrCreateSaved(ctx context.Context, userID int64) (int64, error) {
+	if id, err := i.chats.FindSaved(ctx, userID); err == nil {
+		return id, nil
+	} else if !errors.Is(err, domain.ErrNotFound) {
+		return 0, err
+	}
+	var chatID int64
+	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		id, e := i.chats.FindSaved(ctx, userID)
+		if e == nil {
+			chatID = id
+			return nil
+		}
+		if !errors.Is(e, domain.ErrNotFound) {
+			return e
+		}
+		id, e = i.chats.CreateSaved(ctx, userID)
+		chatID = id
+		return e
+	})
+	return chatID, err
+}
+
+// PostServiceMessage delivers a message from the official service account
+// (domain.ServiceUserID) into its private chat with toUserID, creating that chat on
+// first use. Reuses the normal Send pipeline (seq, updates, realtime, push).
+func (i *Interactor) PostServiceMessage(ctx context.Context, toUserID int64, text string) error {
+	if toUserID == domain.ServiceUserID {
+		return nil
+	}
+	chatID, err := i.CreatePrivateChat(ctx, toUserID, domain.ServiceUserID)
+	if err != nil {
+		return err
+	}
+	_, err = i.Send(ctx, SendInput{ChatID: chatID, SenderID: domain.ServiceUserID, Text: text})
+	return err
+}
+
+// NotifyNewLogin posts a security notification to the user's service chat (satisfies
+// auth.ServiceNotifier). Called best-effort after a new device signs in.
 // ListDialogs returns the user's chat list.
 func (i *Interactor) ListDialogs(ctx context.Context, userID int64) ([]domain.Dialog, error) {
 	return i.chats.ListDialogs(ctx, userID)

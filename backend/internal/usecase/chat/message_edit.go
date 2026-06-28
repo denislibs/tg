@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"slices"
+	"unicode/utf8"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -11,7 +12,7 @@ import (
 // EditMessage replaces the text of the caller's own message, stamps edited_at,
 // and fans out an "edit_message" update to every member (so all see the new text
 // and the "edited" marker). Text-only; author-only.
-func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int64, text string) (domain.Message, error) {
+func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int64, text string, entities []domain.MessageEntity) (domain.Message, error) {
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
 	if err != nil {
 		return domain.Message{}, err
@@ -29,11 +30,15 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 	if cur.SenderID != userID {
 		return domain.Message{}, domain.ErrForbidden // only the author may edit
 	}
+	if utf8.RuneCountInString(text) > maxMessageRunes {
+		return domain.Message{}, domain.ErrTooLong
+	}
+	entities = sanitizeEntities(entities)
 
 	var msg domain.Message
 	var members []int64
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		m, e := i.msgs.UpdateText(ctx, msgID, text)
+		m, e := i.msgs.UpdateText(ctx, msgID, text, entities)
 		if e != nil {
 			return e
 		}

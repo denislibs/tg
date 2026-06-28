@@ -1,0 +1,33 @@
+// src/core/realtime/events.ts
+import type { MessageEntity } from '../models'
+// Worker -> UI event names (over SuperMessagePort.emit). Live frames AND /sync
+// catch-up both surface through these, so the UI handles them uniformly.
+export const RT = {
+  newMessage: 'rt:new_message',
+  editMessage: 'rt:edit_message',
+  deleteMessage: 'rt:delete_message',
+  pinMessage: 'rt:pin_message',
+  read: 'rt:read',
+  typing: 'rt:typing',
+  presence: 'rt:presence',
+  reaction: 'rt:reaction',
+  ack: 'rt:ack',
+  messageError: 'rt:message_error',
+  state: 'rt:state',
+} as const
+
+export type ConnState = 'connecting' | 'ready' | 'reconnecting' | 'offline'
+
+export interface NewMessageEvt { chat_id: number; msg_id: number; seq: number; sender_id: number; type: string; text: string; entities?: MessageEntity[] | null; media_id: number | null; created_at: string; thread_root_id?: number | null; reply_to_id?: number | null; fwd_from_user_id?: number | null; fwd_from_chat_id?: number | null; fwd_from_msg_id?: number | null; fwd_date?: string | null }
+export interface EditMessageEvt { chat_id: number; msg_id: number; seq: number; text: string; entities?: MessageEntity[] | null; edited_at: string }
+export interface DeleteMessageEvt { chat_id: number; msg_id: number; seq: number; for_me: boolean }
+export interface PinMessageEvt { chat_id: number; msg_id: number; pinned: boolean }
+export interface ReadEvt { chat_id: number; user_id: number; up_to_seq: number }
+export type TypingAction = 'typing' | 'voice' | 'video'
+export interface TypingEvt { chat_id: number; user_id: number; action?: TypingAction }
+export interface PresenceEvt { user_id: number; online: boolean; last_seen: number }
+export interface ReactionEvt { chat_id: number; msg_id: number; user_id: number; emoji: string; action: 'add' | 'remove' }
+export interface AckEvt { client_msg_id: string; msg_id: number; seq: number; created_at: string }
+// Server rejected a send (e.g. text too long). The client drops it from the outbox
+// (no infinite retry) and removes the optimistic bubble.
+export interface MessageErrorEvt { client_msg_id: string; reason: string }

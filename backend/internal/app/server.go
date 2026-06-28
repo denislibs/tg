@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/messenger-denis/backend/internal/adapter/geoip"
 	"github.com/messenger-denis/backend/internal/adapter/media/ffmpeg"
 	webpushadapter "github.com/messenger-denis/backend/internal/adapter/push/webpush"
 	queueredis "github.com/messenger-denis/backend/internal/adapter/queue/redis"
@@ -18,6 +19,7 @@ import (
 	"github.com/messenger-denis/backend/internal/adapter/delivery/ws"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
+	usecasecontacts "github.com/messenger-denis/backend/internal/usecase/contacts"
 	usecasemedia "github.com/messenger-denis/backend/internal/usecase/media"
 	usecasepresence "github.com/messenger-denis/backend/internal/usecase/presence"
 	usecasepush "github.com/messenger-denis/backend/internal/usecase/push"
@@ -35,15 +37,24 @@ type serverParams struct {
 	Pool    *pgxpool.Pool
 	Redis   RedisResult
 	Minio   MinioResult
-	AuthUC  *usecaseauth.Interactor
-	ChatUC  *usecasechat.Interactor
-	StoryUC *storyusecase.Service
+	AuthUC     *usecaseauth.Interactor
+	ChatUC     *usecasechat.Interactor
+	StoryUC    *storyusecase.Service
+	ContactsUC *usecasecontacts.Interactor
+	GeoIP      *geoip.Resolver
 }
 
 // registerServer wires the (optional) realtime/push/media features onto the
 // services, builds the router + HTTP server, and registers lifecycle hooks.
 // This mirrors the previous main.go assembly; later slices decompose it.
 func registerServer(p serverParams) {
+	// The chat usecase delivers system notifications (login alerts) into the
+	// official service account's chat; auth fires them after a new device signs in.
+	p.AuthUC.SetServiceNotifier(p.ChatUC)
+	if p.GeoIP != nil {
+		p.AuthUC.SetGeoResolver(p.GeoIP)
+	}
+
 	var wsHandler http.Handler
 	var presenceMgr *usecasepresence.Manager
 	if p.Redis.OK {
@@ -94,7 +105,7 @@ func registerServer(p serverParams) {
 
 	srv := &http.Server{
 		Addr:              p.Cfg.HTTPAddr,
-		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, pushHandler, storyHandler, memberPresence),
+		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, pushHandler, storyHandler, memberPresence, p.ContactsUC),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}

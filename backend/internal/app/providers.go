@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	cacheredis "github.com/messenger-denis/backend/internal/adapter/cache/redis"
+	"github.com/messenger-denis/backend/internal/adapter/geoip"
 	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
 	minioadapter "github.com/messenger-denis/backend/internal/adapter/storage/minio"
 	"github.com/messenger-denis/backend/internal/config"
@@ -14,6 +15,7 @@ import (
 	"github.com/messenger-denis/backend/internal/store/redisstore"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
+	usecasecontacts "github.com/messenger-denis/backend/internal/usecase/contacts"
 	storyusecase "github.com/messenger-denis/backend/internal/usecase/story"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/fx"
@@ -148,6 +150,31 @@ func provideStoryService(
 	tx *pgadapter.TxManager,
 ) *storyusecase.Service {
 	return storyusecase.New(repo, chatUC, mediaAccess, tx)
+}
+
+// provideGeoIP opens the MaxMind GeoLite2 DB when GEOIP_DB_PATH is set and
+// readable; otherwise returns nil (login alerts then omit the location line).
+func provideGeoIP(lc fx.Lifecycle, cfg *config.Config) *geoip.Resolver {
+	if cfg.GeoIPDBPath == "" {
+		log.Printf("geoip disabled (set GEOIP_DB_PATH to a GeoLite2-City.mmdb to enable)")
+		return nil
+	}
+	r, err := geoip.Open(cfg.GeoIPDBPath)
+	if err != nil {
+		log.Printf("geoip open failed (%s): %v — location disabled", cfg.GeoIPDBPath, err)
+		return nil
+	}
+	lc.Append(fx.Hook{OnStop: func(context.Context) error { return r.Close() }})
+	log.Printf("geoip enabled (%s)", cfg.GeoIPDBPath)
+	return r
+}
+
+func provideContactsRepo(pool *pgxpool.Pool) *pgadapter.ContactsRepo {
+	return pgadapter.NewContactsRepo(pool)
+}
+
+func provideContactsUsecase(repo *pgadapter.ContactsRepo) *usecasecontacts.Interactor {
+	return usecasecontacts.New(repo)
 }
 
 func newSessionCache(client *redis.Client) usecaseauth.SessionCache {

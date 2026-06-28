@@ -22,6 +22,10 @@ type Config struct {
 	VAPIDPublicKey  string
 	VAPIDPrivateKey string
 	VAPIDSubject    string
+
+	// GeoIPDBPath points at a MaxMind GeoLite2-City .mmdb file. Optional: when
+	// empty or missing, login alerts simply omit the location line.
+	GeoIPDBPath string
 }
 
 func Load() (*Config, error) {
@@ -44,6 +48,7 @@ func Load() (*Config, error) {
 	c.VAPIDPublicKey = os.Getenv("VAPID_PUBLIC_KEY")
 	c.VAPIDPrivateKey = os.Getenv("VAPID_PRIVATE_KEY")
 	c.VAPIDSubject = getenv("VAPID_SUBJECT", "mailto:admin@example.com")
+	c.GeoIPDBPath = os.Getenv("GEOIP_DB_PATH")
 	return c, nil
 }
 

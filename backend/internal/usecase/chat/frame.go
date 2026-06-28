@@ -20,6 +20,7 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 	return map[string]any{
 		"chat_id": m.ChatID, "msg_id": m.ID, "seq": m.Seq,
 		"sender_id": m.SenderID, "type": m.Type, "text": m.Text,
+		"entities": m.Entities,
 		"media_id": m.MediaID, "created_at": m.CreatedAt,
 		"reply_to_id": m.ReplyToID,
 		"fwd_from_user_id": m.FwdFromUserID, "fwd_from_chat_id": m.FwdFromChatID,
@@ -31,7 +32,7 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 func editUpdatePayload(m domain.Message) map[string]any {
 	return map[string]any{
 		"chat_id": m.ChatID, "msg_id": m.ID, "seq": m.Seq,
-		"text": m.Text, "edited_at": m.EditedAt,
+		"text": m.Text, "entities": m.Entities, "edited_at": m.EditedAt,
 	}
 }
 

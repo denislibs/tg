@@ -5,9 +5,6 @@ dist/
 .env
 .DS_Store
 
-# Frontend mock has its own git repo — not part of the backend repo
-telegram-ui-clone/
-
 # Vite build output served by nginx
 client-build/
 docker-compose.verify.yml
@@ -16,3 +13,6 @@ nginx/Dockerfile.verify
 slice3-real-chat-verified.png
 *-verified.png
 .idea/
+
+# MaxMind GeoLite2 DB (licensed, not redistributable)
+backend/data/geoip/*.mmdb

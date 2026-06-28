@@ -8,9 +8,10 @@ import (
 	"github.com/messenger-denis/backend/internal/openapi"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
+	usecasecontacts "github.com/messenger-denis/backend/internal/usecase/contacts"
 )
 
-func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery) http.Handler {
+func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -51,6 +52,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 
 		ch := NewChatHandler(chatUC)
 		pr.Post("/chats", ch.CreatePrivate)
+		pr.Post("/saved", ch.Saved)
 		pr.Get("/chats", ch.ListDialogs)
 		pr.Post("/chats/{chatID}/messages", ch.Send)
 		pr.Patch("/chats/{chatID}/messages/{msgID}", ch.EditMessage)
@@ -118,6 +120,13 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 			pr.Post("/stories/{storyID}/view", storyH.View)
 			pr.Get("/stories/{storyID}/viewers", storyH.Viewers)
 			pr.Delete("/stories/{storyID}", storyH.Delete)
+		}
+
+		if contactsUC != nil {
+			coh := NewContactsHandler(contactsUC)
+			pr.Post("/contacts", coh.Add)
+			pr.Get("/contacts", coh.List)
+			pr.Delete("/contacts/{userID}", coh.Delete)
 		}
 
 		sh := NewSessionHandler(authUC)

@@ -253,7 +253,7 @@ func TestEditMessage(t *testing.T) {
 	msg, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "orig"})
 
 	// Author edits.
-	upd, err := in.EditMessage(ctx, chatID, msg.ID, a, "edited")
+	upd, err := in.EditMessage(ctx, chatID, msg.ID, a, "edited", nil)
 	if err != nil {
 		t.Fatalf("EditMessage: %v", err)
 	}
@@ -266,7 +266,7 @@ func TestEditMessage(t *testing.T) {
 	}
 
 	// Non-author cannot edit.
-	if _, err := in.EditMessage(ctx, chatID, msg.ID, b, "hack"); !errors.Is(err, domain.ErrForbidden) {
+	if _, err := in.EditMessage(ctx, chatID, msg.ID, b, "hack", nil); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("non-author edit: want ErrForbidden, got %v", err)
 	}
 }

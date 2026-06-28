@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -23,6 +24,70 @@ type Interactor struct {
 	cache   SessionCache       // optional
 	revoker RevocationNotifier // optional
 	qr      QRStore            // optional
+	svc     ServiceNotifier    // optional
+	geo     GeoResolver        // optional
+}
+
+// GeoResolver turns an IP into a human place ("Москва, Россия"). Backed by a
+// MaxMind GeoLite2 lookup; optional, so auth runs without it (returns "").
+type GeoResolver interface {
+	Locate(ip string) string
+}
+
+// ServiceNotifier delivers a system message into a user's official-service chat.
+// Wired to the chat usecase; optional so auth can run without it.
+type ServiceNotifier interface {
+	PostServiceMessage(ctx context.Context, userID int64, text string) error
+}
+
+// ClientInfo describes the device/browser that signed in, for the login alert.
+// Populated by the delivery layer from the request (User-Agent, IP) and carried
+// to the usecase via the request context (see WithClientInfo).
+type ClientInfo struct {
+	Device   string // high-level kind, e.g. "QR-код" (else derived from browser/OS)
+	Browser  string // "Chrome", "Safari", …
+	OS       string // "macOS", "Windows", "Android", …
+	IP       string
+	Location string // human place, when a GeoIP lookup is available (else empty)
+}
+
+type clientInfoKey struct{}
+
+// WithClientInfo attaches sign-in client details to the context (delivery layer).
+func WithClientInfo(ctx context.Context, ci ClientInfo) context.Context {
+	return context.WithValue(ctx, clientInfoKey{}, ci)
+}
+
+func clientInfoFromContext(ctx context.Context) ClientInfo {
+	ci, _ := ctx.Value(clientInfoKey{}).(ClientInfo)
+	return ci
+}
+
+// buildLoginText composes the "new login" service message from whatever client
+// details we have (fields are omitted when unknown).
+func buildLoginText(ci ClientInfo) string {
+	var b strings.Builder
+	b.WriteString("🔐 Новый вход в аккаунт\n\nВыполнен вход с нового устройства.")
+	if ci.Device != "" {
+		b.WriteString("\n\nСпособ: " + ci.Device)
+	}
+	app := ci.Browser
+	if app != "" && ci.OS != "" {
+		app += " · " + ci.OS
+	} else if app == "" {
+		app = ci.OS
+	}
+	if app != "" {
+		b.WriteString("\nПриложение: " + app)
+	}
+	if ci.Location != "" {
+		b.WriteString("\nМесто: " + ci.Location)
+	}
+	if ci.IP != "" {
+		b.WriteString("\nIP-адрес: " + ci.IP)
+	}
+	b.WriteString("\n\nЕсли это были вы — всё в порядке. Если нет — завершите этот сеанс в Настройках → Устройства и смените код доступа.")
+	return b.String()
 }
 
 func New(users UserRepo, devices DeviceRepo, codes CodeRepo, devCode string, logf func(string, ...any)) *Interactor {
@@ -30,6 +95,8 @@ func New(users UserRepo, devices DeviceRepo, codes CodeRepo, devCode string, log
 }
 
 func (i *Interactor) SetCache(c SessionCache)                    { i.cache = c }
+func (i *Interactor) SetServiceNotifier(n ServiceNotifier)       { i.svc = n }
+func (i *Interactor) SetGeoResolver(g GeoResolver)               { i.geo = g }
 func (i *Interactor) SetRevocationNotifier(n RevocationNotifier) { i.revoker = n }
 func (i *Interactor) SetQRStore(q QRStore)                       { i.qr = q }
 
@@ -74,7 +141,28 @@ func (i *Interactor) SignIn(ctx context.Context, rawPhone, suppliedCode, deviceN
 		return SignInResult{}, err
 	}
 	_ = i.codes.DeleteCode(ctx, phone)
+	i.notifyLogin(user.ID, clientInfoFromContext(ctx))
 	return SignInResult{Token: token, User: user}, nil
+}
+
+// notifyLogin fires a best-effort "new login" service message. It runs detached
+// (own context, goroutine) so a slow/failing notification never blocks or fails
+// sign-in; the request context would also be cancelled once the response is sent.
+func (i *Interactor) notifyLogin(userID int64, ci ClientInfo) {
+	if i.svc == nil {
+		return
+	}
+	if ci.Location == "" && i.geo != nil && ci.IP != "" {
+		ci.Location = i.geo.Locate(ci.IP)
+	}
+	text := buildLoginText(ci)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := i.svc.PostServiceMessage(ctx, userID, text); err != nil {
+			i.logf("service login notification failed: %v", err)
+		}
+	}()
 }
 
 func (i *Interactor) Authenticate(ctx context.Context, token string) (domain.User, int64, error) {
@@ -152,6 +240,7 @@ func (i *Interactor) ConfirmQRLogin(ctx context.Context, token string, user doma
 	if _, err := i.devices.Create(ctx, user.ID, "QR login", rec.Platform, sessionHash); err != nil {
 		return err
 	}
+	i.notifyLogin(user.ID, ClientInfo{Device: "QR-код", OS: rec.Platform})
 	rec.Status = domain.QRConfirmed
 	rec.SessionToken = sessionToken
 	rec.User = user

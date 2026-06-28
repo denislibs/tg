@@ -24,6 +24,10 @@ type User struct {
 	PhoneVisibility string
 }
 
+// ServiceUserID is the reserved id of the official "Telegram" service account
+// that delivers system notifications (login alerts, etc.). Seeded by migration.
+const ServiceUserID int64 = 777000
+
 // Phone visibility settings.
 const (
 	PhoneVisibilityNobody    = "nobody"

@@ -38,6 +38,40 @@ func (r *ChatsRepo) FindPrivate(ctx context.Context, a, b int64) (int64, error) 
 // CreatePrivate creates a private chat with two members. It takes a tx-scoped
 // advisory lock keyed on the sorted user pair so concurrent first-time creation
 // is serialized; it must run inside a transaction (via TxManager).
+//
+// FindSaved returns the id of the user's "Saved Messages" self-chat, or
+// domain.ErrNotFound (a single-member chat of type 'saved').
+func (r *ChatsRepo) FindSaved(ctx context.Context, userID int64) (int64, error) {
+	q := querier(ctx, r.pool)
+	var id int64
+	err := q.QueryRow(ctx,
+		`SELECT c.id FROM chats c
+		 JOIN chat_members m ON m.chat_id=c.id AND m.user_id=$1
+		 WHERE c.type='saved' LIMIT 1`, userID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, domain.ErrNotFound
+	}
+	return id, err
+}
+
+// CreateSaved creates the user's "Saved Messages" chat (type 'saved', one member).
+// A tx-scoped advisory lock keyed on the user serializes concurrent first-time
+// creation; it must run inside a transaction (via TxManager).
+func (r *ChatsRepo) CreateSaved(ctx context.Context, userID int64) (int64, error) {
+	q := querier(ctx, r.pool)
+	if _, err := q.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, fmt.Sprintf("saved:%d", userID)); err != nil {
+		return 0, err
+	}
+	var chatID int64
+	if err := q.QueryRow(ctx, `INSERT INTO chats (type) VALUES ('saved') RETURNING id`).Scan(&chatID); err != nil {
+		return 0, err
+	}
+	if _, err := q.Exec(ctx, `INSERT INTO chat_members (chat_id, user_id) VALUES ($1,$2)`, chatID, userID); err != nil {
+		return 0, err
+	}
+	return chatID, nil
+}
+
 func (r *ChatsRepo) CreatePrivate(ctx context.Context, a, b int64) (int64, error) {
 	q := querier(ctx, r.pool)
 	lo, hi := a, b
@@ -136,17 +170,19 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		          WHEN c.type = 'group'   THEN (SELECT MIN(om.last_read_seq) FROM chat_members om WHERE om.chat_id = c.id AND om.user_id <> $1)
 		          ELSE 0
 		        END, 0) AS peer_read_seq,
-		        lm.seq, lm.text, lm.sender_id, lm.created_at, COALESCE(lm.media_id,0), lm.type,
-		        peer.id, peer.display_name, peer.avatar_url
+		        lm.seq, lm.text, lm.sender_id, lm.created_at, COALESCE(lm.media_id,0), lm.type, lm.forwarded,
+		        peer.id, peer.display_name, peer.avatar_url, peer.is_verified
 		 FROM chat_members m
 		 JOIN chats c ON c.id = m.chat_id
 		 LEFT JOIN LATERAL (
-		   SELECT seq, text, sender_id, created_at, media_id, type FROM messages
+		   SELECT seq, text, sender_id, created_at, media_id, type,
+		          (fwd_from_user_id IS NOT NULL OR fwd_from_chat_id IS NOT NULL) AS forwarded
+		   FROM messages
 		   WHERE chat_id = c.id AND deleted_at IS NULL
 		   ORDER BY seq DESC LIMIT 1
 		 ) lm ON true
 		 LEFT JOIN LATERAL (
-		   SELECT u.id, u.display_name, u.avatar_url
+		   SELECT u.id, u.display_name, u.avatar_url, u.is_verified
 		   FROM chat_members om JOIN users u ON u.id = om.user_id
 		   WHERE om.chat_id = c.id AND om.user_id <> $1
 		   LIMIT 1
@@ -166,13 +202,18 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		var at *time.Time
 		var mediaID *int64
 		var msgType *string
+		var forwarded *bool
 		var peerID *int64
 		var peerName *string
 		var peerAvatar *string
+		var peerVerified *bool
 		if err := rows.Scan(&d.ChatID, &d.Type, &d.Title, &d.Username, &d.LastReadSeq, &d.UnreadCount, &d.Muted, &d.PeerReadSeq,
-			&seq, &text, &senderID, &at, &mediaID, &msgType,
-			&peerID, &peerName, &peerAvatar); err != nil {
+			&seq, &text, &senderID, &at, &mediaID, &msgType, &forwarded,
+			&peerID, &peerName, &peerAvatar, &peerVerified); err != nil {
 			return nil, err
+		}
+		if forwarded != nil {
+			d.LastForwarded = *forwarded
 		}
 		if seq != nil {
 			d.HasLast = true
@@ -194,6 +235,9 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 			}
 			if peerAvatar != nil {
 				p.AvatarURL = *peerAvatar
+			}
+			if peerVerified != nil {
+				p.Verified = *peerVerified
 			}
 			d.Peer = &p
 		}

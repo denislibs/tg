@@ -96,6 +96,28 @@ func (r fakeChats) CreatePrivate(_ context.Context, a, b int64) (int64, error) {
 	return cid, nil
 }
 
+func (r fakeChats) FindSaved(_ context.Context, userID int64) (int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	for cid, typ := range r.s.chatType {
+		if typ == "saved" && r.s.members[cid][userID] != nil {
+			return cid, nil
+		}
+	}
+	return 0, domain.ErrNotFound
+}
+
+func (r fakeChats) CreateSaved(_ context.Context, userID int64) (int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	r.s.nextChatID++
+	cid := r.s.nextChatID
+	r.s.chatType[cid] = "saved"
+	r.s.chatSeq[cid] = 0
+	r.s.members[cid] = map[int64]*member{userID: {}}
+	return cid, nil
+}
+
 func (r fakeChats) MemberIDs(_ context.Context, chatID int64) ([]int64, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
@@ -373,7 +395,7 @@ func (r fakeMsgs) GetByIDs(_ context.Context, ids []int64) ([]domain.Message, er
 	return out, nil
 }
 
-func (r fakeMsgs) UpdateText(_ context.Context, msgID int64, text string) (domain.Message, error) {
+func (r fakeMsgs) UpdateText(_ context.Context, msgID int64, text string, entities []domain.MessageEntity) (domain.Message, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	now := time.Now()
@@ -381,6 +403,7 @@ func (r fakeMsgs) UpdateText(_ context.Context, msgID int64, text string) (domai
 		for idx, m := range msgs {
 			if m.ID == msgID {
 				m.Text = text
+				m.Entities = entities
 				m.EditedAt = &now
 				r.s.messages[chatID][idx] = m
 				return m, nil
@@ -613,6 +636,10 @@ func (r fakeReactions) ReactionsFor(_ context.Context, messageID int64) ([]domai
 // ---- MediaAccessRepo ----
 
 type fakeMedia struct{ s *store }
+
+func (r fakeMedia) DimsByIDs(_ context.Context, _ []int64) (map[int64]MediaDims, error) {
+	return map[int64]MediaDims{}, nil
+}
 
 func (r fakeMedia) OwnerID(_ context.Context, mediaID int64) (int64, error) {
 	r.s.mu.Lock()

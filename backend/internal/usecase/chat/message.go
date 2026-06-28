@@ -5,9 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"unicode/utf8"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
+
+// maxMessageRunes caps message/caption text length (Telegram's message limit),
+// bounding storage, bandwidth, and client render cost.
+const maxMessageRunes = 4096
 
 // Send inserts a message, appends a new_message update to every member (bumping
 // unread for non-senders), and — after commit — publishes a live new_message
@@ -23,6 +28,10 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	if in.Type == "" {
 		in.Type = "text"
 	}
+	if utf8.RuneCountInString(in.Text) > maxMessageRunes {
+		return domain.Message{}, domain.ErrTooLong
+	}
+	in.Entities = sanitizeEntities(in.Entities)
 	if in.MediaID != nil {
 		ownerID, err := i.mediaAccess.OwnerID(ctx, *in.MediaID)
 		if errors.Is(err, domain.ErrNotFound) || (err == nil && ownerID != in.SenderID) {
@@ -54,7 +63,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		}
 		msg, e = i.msgs.Insert(ctx, domain.Message{
 			ChatID: in.ChatID, Seq: seq, SenderID: in.SenderID,
-			Type: in.Type, Text: in.Text, ReplyToID: in.ReplyToID, ClientMsgID: cmid,
+			Type: in.Type, Text: in.Text, Entities: in.Entities, ReplyToID: in.ReplyToID, ClientMsgID: cmid,
 			MediaID: in.MediaID, ThreadRootID: in.ThreadRootID,
 		})
 		if e != nil {

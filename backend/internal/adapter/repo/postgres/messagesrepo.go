@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -23,7 +24,7 @@ func NewMessagesRepo(pool *pgxpool.Pool) *MessagesRepo { return &MessagesRepo{po
 
 // The full ordered column list every message SELECT/RETURNING uses, so the scan
 // order in scanMessage stays in sync across all queries.
-const messageCols = `id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id, edited_at, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date`
+const messageCols = `id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id, edited_at, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, entities`
 
 // messageColsPrefixed returns messageCols with each column qualified by a table
 // alias (for JOINs where bare column names like chat_id would be ambiguous).
@@ -129,20 +130,22 @@ func (r *MessagesRepo) GetAround(ctx context.Context, chatID, userID, centerSeq 
 	return out, reachedTop, reachedBottom, nil
 }
 
-// SearchMessages returns messages in a chat whose text matches q (case-insensitive
-// substring), newest first, plus the total match count. Excludes deleted.
+// SearchMessages returns messages in a chat whose text OR attached media filename
+// matches q (case-insensitive substring), newest first, plus the total match
+// count. Excludes deleted. The LEFT JOIN on media lets a query like "report.pdf"
+// or "song" find media messages by their file name, not just text/captions.
 func (r *MessagesRepo) SearchMessages(ctx context.Context, chatID int64, q string, offset, limit int) ([]domain.Message, int, error) {
 	qq := querier(ctx, r.pool)
 	pattern := "%" + q + "%"
+	const where = ` FROM messages m LEFT JOIN media md ON md.id = m.media_id
+		WHERE m.chat_id=$1 AND m.deleted_at IS NULL AND (m.text ILIKE $2 OR md.file_name ILIKE $2)`
 	var count int
-	if err := qq.QueryRow(ctx,
-		`SELECT count(*) FROM messages WHERE chat_id=$1 AND deleted_at IS NULL AND text ILIKE $2`,
-		chatID, pattern).Scan(&count); err != nil {
+	if err := qq.QueryRow(ctx, `SELECT count(*)`+where, chatID, pattern).Scan(&count); err != nil {
 		return nil, 0, err
 	}
 	rows, err := qq.Query(ctx,
-		`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND deleted_at IS NULL AND text ILIKE $2
-		 ORDER BY seq DESC LIMIT $3 OFFSET $4`, chatID, pattern, limit, offset)
+		`SELECT `+messageColsPrefixed("m")+where+`
+		 ORDER BY m.seq DESC LIMIT $3 OFFSET $4`, chatID, pattern, limit, offset)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -185,19 +188,20 @@ func (r *MessagesRepo) GetByIDs(ctx context.Context, ids []int64) ([]domain.Mess
 func (r *MessagesRepo) Insert(ctx context.Context, m domain.Message) (domain.Message, error) {
 	q := querier(ctx, r.pool)
 	return scanOneMessage(q.QueryRow(ctx,
-		`INSERT INTO messages (chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, thread_root_id, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+		`INSERT INTO messages (chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, thread_root_id, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, entities)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 		 RETURNING `+messageCols,
 		m.ChatID, m.Seq, m.SenderID, m.Type, m.Text, m.ReplyToID, m.ClientMsgID, m.MediaID, m.ThreadRootID,
-		m.FwdFromUserID, m.FwdFromChatID, m.FwdFromMsgID, m.FwdDate))
+		m.FwdFromUserID, m.FwdFromChatID, m.FwdFromMsgID, m.FwdDate, entitiesParam(m.Entities)))
 }
 
 // UpdateText replaces a message's text and stamps edited_at=now(); returns the
 // updated row.
-func (r *MessagesRepo) UpdateText(ctx context.Context, msgID int64, text string) (domain.Message, error) {
+func (r *MessagesRepo) UpdateText(ctx context.Context, msgID int64, text string, entities []domain.MessageEntity) (domain.Message, error) {
 	q := querier(ctx, r.pool)
 	return scanOneMessage(q.QueryRow(ctx,
-		`UPDATE messages SET text=$2, edited_at=now() WHERE id=$1 RETURNING `+messageCols, msgID, text))
+		`UPDATE messages SET text=$2, entities=$3, edited_at=now() WHERE id=$1 RETURNING `+messageCols,
+		msgID, text, entitiesParam(entities)))
 }
 
 // SoftDelete marks a message deleted for everyone (deleted_at=now()).
@@ -323,13 +327,31 @@ type scanner interface {
 	Scan(dest ...any) error
 }
 
+// entitiesParam encodes message entities for the jsonb column: nil/empty → SQL
+// NULL, otherwise the JSON text passed as a string so pgx stores it as jsonb
+// (a []byte would be encoded as bytea).
+func entitiesParam(es []domain.MessageEntity) any {
+	if len(es) == 0 {
+		return nil
+	}
+	b, err := json.Marshal(es)
+	if err != nil {
+		return nil
+	}
+	return string(b)
+}
+
 func scanMessage(s scanner) (domain.Message, error) {
 	var m domain.Message
 	var deletedAt *time.Time
+	var entitiesRaw []byte
 	err := s.Scan(&m.ID, &m.ChatID, &m.Seq, &m.SenderID, &m.Type, &m.Text,
 		&m.ReplyToID, &m.ClientMsgID, &m.MediaID, &m.CreatedAt, &deletedAt, &m.ThreadRootID,
-		&m.EditedAt, &m.FwdFromUserID, &m.FwdFromChatID, &m.FwdFromMsgID, &m.FwdDate)
+		&m.EditedAt, &m.FwdFromUserID, &m.FwdFromChatID, &m.FwdFromMsgID, &m.FwdDate, &entitiesRaw)
 	m.Deleted = deletedAt != nil
+	if err == nil && len(entitiesRaw) > 0 && string(entitiesRaw) != "null" {
+		_ = json.Unmarshal(entitiesRaw, &m.Entities)
+	}
 	return m, err
 }
 

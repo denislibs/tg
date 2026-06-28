@@ -30,6 +30,9 @@ var Module = fx.Options(
 		provideChatUsecase,
 		provideStoryRepo,
 		provideStoryService,
+		provideContactsRepo,
+		provideContactsUsecase,
+		provideGeoIP,
 	),
 	fx.Invoke(registerServer),
 	// Keep our own log.Printf lines as the signal; silence fx's event log.

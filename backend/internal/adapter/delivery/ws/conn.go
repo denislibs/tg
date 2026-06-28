@@ -3,9 +3,11 @@ package ws
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/messenger-denis/backend/internal/domain"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 )
 
@@ -102,10 +104,20 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			return
 		}
 		msg, err := c.svc.Send(ctx, usecasechat.SendInput{
-			ChatID: d.ChatID, SenderID: c.userID, Type: d.Type, Text: d.Text,
+			ChatID: d.ChatID, SenderID: c.userID, Type: d.Type, Text: d.Text, Entities: d.Entities,
 			ReplyToID: d.ReplyToID, ClientMsgID: d.ClientMsgID, MediaID: d.MediaID,
 		})
 		if err != nil {
+			// NACK the sender so the client stops retrying and can clear the bubble.
+			reason := "failed"
+			if errors.Is(err, domain.ErrTooLong) {
+				reason = "too_long"
+			}
+			nack, _ := json.Marshal(map[string]any{
+				"t": "message_error",
+				"d": map[string]any{"client_msg_id": d.ClientMsgID, "reason": reason},
+			})
+			c.Send(nack)
 			return
 		}
 		ack, _ := json.Marshal(map[string]any{

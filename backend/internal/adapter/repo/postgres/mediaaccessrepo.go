@@ -18,6 +18,35 @@ var _ usecasechat.MediaAccessRepo = (*MediaAccessRepo)(nil)
 
 func NewMediaAccessRepo(pool *pgxpool.Pool) *MediaAccessRepo { return &MediaAccessRepo{pool: pool} }
 
+// DimsByIDs batch-loads width/height/mime for the given media ids in one query.
+func (r *MediaAccessRepo) DimsByIDs(ctx context.Context, ids []int64) (map[int64]usecasechat.MediaDims, error) {
+	out := make(map[int64]usecasechat.MediaDims, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	q := querier(ctx, r.pool)
+	// blur_preview is bytea (scanned into []byte; NULL → nil). COALESCE the nullable
+	// text columns so a NULL doesn't fail a scan into a Go string.
+	rows, err := q.Query(ctx, `SELECT id, COALESCE(width,0), COALESCE(height,0), COALESCE(mime,''),
+		blur_preview, COALESCE(thumb_key,''), COALESCE(duration,0), COALESCE(size,0), COALESCE(file_name,'')
+		FROM media WHERE id = ANY($1)`, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var d usecasechat.MediaDims
+		var thumbKey string
+		if e := rows.Scan(&id, &d.Width, &d.Height, &d.Mime, &d.Blur, &thumbKey, &d.Duration, &d.Size, &d.FileName); e != nil {
+			return nil, e
+		}
+		d.HasThumb = thumbKey != ""
+		out[id] = d
+	}
+	return out, rows.Err()
+}
+
 // OwnerID returns the owner of a media object, or domain.ErrNotFound if absent.
 func (r *MediaAccessRepo) OwnerID(ctx context.Context, mediaID int64) (int64, error) {
 	q := querier(ctx, r.pool)

@@ -1,0 +1,119 @@
+/// <reference lib="webworker" />
+import { SuperMessagePort, type Endpoint } from '../rpc/superMessagePort'
+import { registerManagers } from '../rpc/managersProxy'
+import { RestClient } from './net/restClient'
+import { WsClient } from './net/wsClient'
+import { newHealthManager } from './managers/healthManager'
+import { TokenStore } from './auth/tokenStore'
+import { newAuthManager } from './managers/authManager'
+import { newProfileManager } from './managers/profileManager'
+import { newChatsManager } from './managers/chatsManager'
+import { newMessagesManager } from './managers/messagesManager'
+import { newMediaManager } from './managers/mediaManager'
+import { newPushManager } from './managers/pushManager'
+import { newGroupsManager } from './managers/groupsManager'
+import { newChannelsManager } from './managers/channelsManager'
+import { newPeersManager } from './managers/peersManager'
+import { newPresenceManager } from './managers/presenceManager'
+import { newStoriesManager } from './managers/storiesManager'
+import { newContactsManager } from './managers/contactsManager'
+import { newConnectionManager } from './realtime/connectionManager'
+import { newSyncEngine } from './realtime/syncEngine'
+import { RT } from './realtime/events'
+import { idbGet, idbSet } from './store/idbKv'
+
+const tokens = new TokenStore()
+void tokens.load()
+const rest = new RestClient('/api', () => tokens.get())
+const auth = newAuthManager({ rest, store: tokens })
+const profile = newProfileManager({ rest })
+const chats = newChatsManager({ rest })
+const messages = newMessagesManager({ rest })
+const media = newMediaManager({ rest })
+const push = newPushManager({ rest })
+const groups = newGroupsManager({ rest })
+const channels = newChannelsManager({ rest })
+const peers = newPeersManager({ rest })
+const presence = newPresenceManager({ rest })
+const stories = newStoriesManager({ rest })
+const contacts = newContactsManager({ rest })
+
+// every connected tab's port — events broadcast to all
+const ports: SuperMessagePort[] = []
+const broadcast = (event: string, payload: unknown) => { for (const p of ports) p.emit(event, payload) }
+
+// map an `other_update` from /sync to the right rt:* event
+function dispatchOther(u: unknown) {
+  const o = u as Record<string, unknown>
+  if (!o) return
+  if ('up_to_seq' in o) broadcast(RT.read, o)
+  else if ('emoji' in o) broadcast(RT.reaction, o)
+  else if ('edited_at' in o) broadcast(RT.editMessage, o)
+  else if ('for_me' in o) broadcast(RT.deleteMessage, o)
+  else if ('pinned' in o) broadcast(RT.pinMessage, o)
+}
+
+const ws = new WsClient('/ws')
+const sync = newSyncEngine({
+  rest, store: { get: idbGet, set: idbSet },
+  onNewMessage: (m) => broadcast(RT.newMessage, m),
+  onOtherUpdate: dispatchOther,
+  onResync: () => broadcast('rt:resync', null),
+})
+const conn = newConnectionManager({
+  ws, getToken: () => tokens.get(),
+  onReady: () => { void sync.catchUp() },
+  onState: (s) => broadcast(RT.state, { state: s }),
+  onFrame: (type, payload) => {
+    if (type === 'message_ack') broadcast(RT.ack, payload)
+    else if (type === 'message_error') broadcast(RT.messageError, payload)
+    else if (type === 'new_message') broadcast(RT.newMessage, payload)
+    else if (type === 'edit_message') broadcast(RT.editMessage, payload)
+    else if (type === 'delete_message') broadcast(RT.deleteMessage, payload)
+    else if (type === 'pin_message') broadcast(RT.pinMessage, payload)
+    else if (type === 'read') broadcast(RT.read, payload)
+    else if (type === 'typing') broadcast(RT.typing, payload)
+    else if (type === 'presence') broadcast(RT.presence, payload)
+    else if (type === 'reaction') broadcast(RT.reaction, payload)
+  },
+})
+
+const realtime = {
+  async start() { await tokens.load(); conn.start(); return { state: conn.state() } },
+  async sendMessage(args: { chatId: number; text: string; entities?: import('./models').MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; mediaId?: number | null; type?: string }) { conn.sendMessage(args); return { ok: true } },
+  async markRead(args: { chatId: number; upToSeq: number }) { conn.markRead(args.chatId, args.upToSeq); return { ok: true } },
+  async sendTyping(args: { chatId: number; action?: 'typing' | 'voice' | 'video' }) { conn.sendTyping(args.chatId, args.action ?? 'typing'); return { ok: true } },
+  async subscribeChannel(args: { chatId: number }) { conn.subscribeChannel(args.chatId); return { ok: true } },
+  async unsubscribeChannel(args: { chatId: number }) { conn.unsubscribeChannel(args.chatId); return { ok: true } },
+}
+
+function bind(ep: Endpoint) {
+  const smp = new SuperMessagePort(ep)
+  ports.push(smp)
+  registerManagers(smp, {
+    health: newHealthManager(rest),
+    auth: auth as unknown as Record<string, (...a: unknown[]) => unknown>,
+    profile: profile as unknown as Record<string, (...a: unknown[]) => unknown>,
+    chats: chats as unknown as Record<string, (...a: unknown[]) => unknown>,
+    messages: messages as unknown as Record<string, (...a: unknown[]) => unknown>,
+    realtime: realtime as unknown as Record<string, (...a: unknown[]) => unknown>,
+    media: media as unknown as Record<string, (...a: unknown[]) => unknown>,
+    push: push as unknown as Record<string, (...a: unknown[]) => unknown>,
+    groups: groups as unknown as Record<string, (...a: unknown[]) => unknown>,
+    channels: channels as unknown as Record<string, (...a: unknown[]) => unknown>,
+    peers: peers as unknown as Record<string, (...a: unknown[]) => unknown>,
+    presence: presence as unknown as Record<string, (...a: unknown[]) => unknown>,
+    stories: stories as unknown as Record<string, (...a: unknown[]) => unknown>,
+    contacts: contacts as unknown as Record<string, (...a: unknown[]) => unknown>,
+  })
+}
+
+const g = self as unknown as {
+  onconnect?: (e: MessageEvent) => void
+  addEventListener: (t: string, cb: (e: MessageEvent) => void) => void
+}
+if ('onconnect' in g) {
+  g.onconnect = (e: MessageEvent) => bind((e as MessageEvent & { ports: MessagePort[] }).ports[0])
+} else {
+  bind(g as unknown as Endpoint)
+}

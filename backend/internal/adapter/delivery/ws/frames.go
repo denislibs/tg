@@ -1,6 +1,10 @@
 package ws
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/messenger-denis/backend/internal/domain"
+)
 
 // Frame is the WS envelope: a type tag and an opaque JSON payload.
 type Frame struct {
@@ -9,12 +13,13 @@ type Frame struct {
 }
 
 type sendMessageData struct {
-	ChatID      int64  `json:"chat_id"`
-	Type        string `json:"type"`
-	Text        string `json:"text"`
-	ReplyToID   *int64 `json:"reply_to_id"`
-	ClientMsgID string `json:"client_msg_id"`
-	MediaID     *int64 `json:"media_id"`
+	ChatID      int64                  `json:"chat_id"`
+	Type        string                 `json:"type"`
+	Text        string                 `json:"text"`
+	Entities    []domain.MessageEntity `json:"entities"`
+	ReplyToID   *int64                 `json:"reply_to_id"`
+	ClientMsgID string                 `json:"client_msg_id"`
+	MediaID     *int64                 `json:"media_id"`
 }
 
 type readData struct {

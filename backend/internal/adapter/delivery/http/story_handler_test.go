@@ -27,7 +27,7 @@ func newStoryRouter(t *testing.T) (http.Handler, *pgxpool.Pool) {
 		pgadapter.NewTxManager(pool),
 	)
 	storyH := NewStoryHandler(storySvc)
-	return NewRouter(authUC, chatUC, nil, mediaH, nil, storyH, nil), pool
+	return NewRouter(authUC, chatUC, nil, mediaH, nil, storyH, nil, nil), pool
 }
 
 func TestStories_Flow_HTTP(t *testing.T) {

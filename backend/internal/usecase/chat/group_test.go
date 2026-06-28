@@ -13,10 +13,10 @@ import (
 // ---- in-memory fake repos for the groups usecase ----
 
 type fakeGroupRepo struct {
-	mu       sync.Mutex
-	nextID   int64
-	cards    map[int64]domain.ChatCard         // chatID -> card (title/about/etc)
-	members  map[int64]map[int64]domain.Member // chatID -> userID -> member
+	mu         sync.Mutex
+	nextID     int64
+	cards      map[int64]domain.ChatCard         // chatID -> card (title/about/etc)
+	members    map[int64]map[int64]domain.Member // chatID -> userID -> member
 	users      map[int64]domain.UserCard
 	discussion map[int64]int64 // channelID -> discussion groupID
 	onCreate   func(id int64)  // optional hook fired after a chat is created
@@ -310,6 +310,8 @@ func (c groupChats) FindPrivate(context.Context, int64, int64) (int64, error) {
 	return 0, domain.ErrNotFound
 }
 func (c groupChats) CreatePrivate(context.Context, int64, int64) (int64, error)  { return 0, nil }
+func (c groupChats) FindSaved(context.Context, int64) (int64, error)             { return 0, domain.ErrNotFound }
+func (c groupChats) CreateSaved(context.Context, int64) (int64, error)           { return 0, nil }
 func (c groupChats) MemberIDs(context.Context, int64) ([]int64, error)           { return nil, nil }
 func (c groupChats) ListDialogs(context.Context, int64) ([]domain.Dialog, error) { return nil, nil }
 func (c groupChats) ChatPartners(context.Context, int64) ([]int64, error)        { return nil, nil }

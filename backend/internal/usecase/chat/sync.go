@@ -26,6 +26,9 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 	if e := i.hydrateReplies(ctx, msgs); e != nil {
 		return HistoryResult{}, e
 	}
+	if e := i.hydrateMedia(ctx, msgs); e != nil {
+		return HistoryResult{}, e
+	}
 	count, err := i.msgs.CountMessages(ctx, chatID)
 	if err != nil {
 		return HistoryResult{}, err
@@ -65,10 +68,51 @@ func (i *Interactor) hydrateReplies(ctx context.Context, msgs []domain.Message) 
 			continue
 		}
 		text := t.Text
+		// Carry formatting only for untruncated snippets — entity offsets are over
+		// the full text, so clipping the string would misalign them.
+		entities := t.Entities
 		if len([]rune(text)) > 120 {
 			text = string([]rune(text)[:120])
+			entities = nil
 		}
-		msgs[idx].ReplyTo = &domain.ReplyPreview{MsgID: t.ID, Seq: t.Seq, SenderID: t.SenderID, Text: text, Type: t.Type}
+		msgs[idx].ReplyTo = &domain.ReplyPreview{MsgID: t.ID, Seq: t.Seq, SenderID: t.SenderID, Text: text, Entities: entities, Type: t.Type, MediaID: t.MediaID}
+	}
+	return nil
+}
+
+// hydrateMedia fills width/height/mime on messages that carry media, batch-fetching
+// dims by media id (one query). Lets the client reserve the exact media box before
+// the bytes load (no layout shift). Missing/unprocessed media are left at zero.
+func (i *Interactor) hydrateMedia(ctx context.Context, msgs []domain.Message) error {
+	ids := make([]int64, 0)
+	seen := map[int64]bool{}
+	for _, m := range msgs {
+		if m.MediaID != nil && *m.MediaID > 0 && !seen[*m.MediaID] {
+			seen[*m.MediaID] = true
+			ids = append(ids, *m.MediaID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	dims, err := i.mediaAccess.DimsByIDs(ctx, ids)
+	if err != nil {
+		return err
+	}
+	for idx := range msgs {
+		if msgs[idx].MediaID == nil {
+			continue
+		}
+		if d, ok := dims[*msgs[idx].MediaID]; ok {
+			msgs[idx].MediaWidth = d.Width
+			msgs[idx].MediaHeight = d.Height
+			msgs[idx].MediaMime = d.Mime
+			msgs[idx].MediaBlur = d.Blur
+			msgs[idx].MediaHasThumb = d.HasThumb
+			msgs[idx].MediaDuration = d.Duration
+			msgs[idx].MediaSize = d.Size
+			msgs[idx].MediaName = d.FileName
+		}
 	}
 	return nil
 }
@@ -101,6 +145,9 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 	if e := i.hydrateReplies(ctx, msgs); e != nil {
 		return AroundResult{}, e
 	}
+	if e := i.hydrateMedia(ctx, msgs); e != nil {
+		return AroundResult{}, e
+	}
 	count, err := i.msgs.CountMessages(ctx, chatID)
 	if err != nil {
 		return AroundResult{}, err
@@ -126,6 +173,9 @@ func (i *Interactor) SearchMessages(ctx context.Context, chatID, userID int64, q
 	msgs, count, err := i.msgs.SearchMessages(ctx, chatID, q, offset, limit)
 	if err != nil {
 		return HistoryResult{}, err
+	}
+	if e := i.hydrateMedia(ctx, msgs); e != nil {
+		return HistoryResult{}, e
 	}
 	return HistoryResult{Messages: msgs, Count: count}, nil
 }

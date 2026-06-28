@@ -3,13 +3,68 @@ package http
 import (
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/messenger-denis/backend/internal/domain"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 )
+
+// clientInfoFromRequest extracts the signing-in device's browser/OS (from the
+// User-Agent) and IP (X-Forwarded-For when behind a proxy) for the login alert.
+func clientInfoFromRequest(r *http.Request) usecaseauth.ClientInfo {
+	browser, os := parseUserAgent(r.UserAgent())
+	return usecaseauth.ClientInfo{Browser: browser, OS: os, IP: clientIP(r)}
+}
+
+func clientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		return strings.TrimSpace(strings.Split(xff, ",")[0])
+	}
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return host
+	}
+	return r.RemoteAddr
+}
+
+// parseUserAgent does a light, dependency-free best-effort parse of the browser
+// and OS names. Order matters (Edge/Opera/Yandex masquerade as Chrome).
+func parseUserAgent(ua string) (browser, os string) {
+	switch {
+	case strings.Contains(ua, "Windows NT 10"):
+		os = "Windows 10"
+	case strings.Contains(ua, "Windows"):
+		os = "Windows"
+	case strings.Contains(ua, "iPhone"):
+		os = "iOS"
+	case strings.Contains(ua, "iPad"):
+		os = "iPadOS"
+	case strings.Contains(ua, "Android"):
+		os = "Android"
+	case strings.Contains(ua, "Mac OS X"):
+		os = "macOS"
+	case strings.Contains(ua, "Linux"):
+		os = "Linux"
+	}
+	switch {
+	case strings.Contains(ua, "Edg/"):
+		browser = "Edge"
+	case strings.Contains(ua, "YaBrowser"):
+		browser = "Yandex Browser"
+	case strings.Contains(ua, "OPR/"), strings.Contains(ua, "Opera"):
+		browser = "Opera"
+	case strings.Contains(ua, "Firefox/"):
+		browser = "Firefox"
+	case strings.Contains(ua, "Chrome/"):
+		browser = "Chrome"
+	case strings.Contains(ua, "Safari/"):
+		browser = "Safari"
+	}
+	return
+}
 
 type AuthHandler struct{ svc *usecaseauth.Interactor }
 
@@ -45,7 +100,8 @@ func (h *AuthHandler) SignIn(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	res, err := h.svc.SignIn(r.Context(), body.Phone, body.Code, body.Device, body.Platform)
+	ctx := usecaseauth.WithClientInfo(r.Context(), clientInfoFromRequest(r))
+	res, err := h.svc.SignIn(ctx, body.Phone, body.Code, body.Device, body.Platform)
 	if errors.Is(err, domain.ErrInvalidCode) {
 		writeError(w, http.StatusUnauthorized, "invalid code")
 		return

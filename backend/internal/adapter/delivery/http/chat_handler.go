@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -38,6 +39,16 @@ func (h *ChatHandler) CreatePrivate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"chat_id": id})
 }
 
+// Saved returns (creating on first access) the caller's "Saved Messages" chat.
+func (h *ChatHandler) Saved(w http.ResponseWriter, r *http.Request) {
+	id, err := h.svc.GetOrCreateSaved(r.Context(), h.meID(r))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not open saved messages")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"chat_id": id})
+}
+
 func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 	dialogs, err := h.svc.ListDialogs(r.Context(), h.meID(r))
 	if err != nil {
@@ -54,12 +65,13 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 		if d.HasLast {
 			row["last_message"] = map[string]any{
 				"seq": d.LastSeq, "text": d.LastText, "sender_id": d.LastSenderID, "at": d.LastAt,
-				"media_id": d.LastMediaID, "type": d.LastType,
+				"media_id": d.LastMediaID, "type": d.LastType, "forwarded": d.LastForwarded,
 			}
 		}
 		if d.Peer != nil {
 			row["peer"] = map[string]any{
 				"id": d.Peer.ID, "display_name": d.Peer.DisplayName, "avatar_url": d.Peer.AvatarURL,
+				"verified": d.Peer.Verified,
 			}
 		}
 		out = append(out, row)
@@ -68,11 +80,12 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 }
 
 type sendBody struct {
-	Type        string `json:"type"`
-	Text        string `json:"text"`
-	ReplyToID   *int64 `json:"reply_to_id"`
-	ClientMsgID string `json:"client_msg_id"`
-	MediaID     *int64 `json:"media_id"`
+	Type        string                 `json:"type"`
+	Text        string                 `json:"text"`
+	Entities    []domain.MessageEntity `json:"entities"`
+	ReplyToID   *int64                 `json:"reply_to_id"`
+	ClientMsgID string                 `json:"client_msg_id"`
+	MediaID     *int64                 `json:"media_id"`
 }
 
 func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
@@ -86,11 +99,15 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	msg, err := h.svc.Send(r.Context(), usecasechat.SendInput{
-		ChatID: chatID, SenderID: h.meID(r), Type: body.Type, Text: body.Text,
+		ChatID: chatID, SenderID: h.meID(r), Type: body.Type, Text: body.Text, Entities: body.Entities,
 		ReplyToID: body.ReplyToID, ClientMsgID: body.ClientMsgID, MediaID: body.MediaID,
 	})
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
+		return
+	}
+	if errors.Is(err, domain.ErrTooLong) {
+		writeError(w, http.StatusBadRequest, "message too long")
 		return
 	}
 	if err != nil {
@@ -132,6 +149,7 @@ func (h *ChatHandler) History(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		log.Printf("history failed chat=%d: %v", chatID, err)
 		writeError(w, http.StatusInternalServerError, "history failed")
 		return
 	}
@@ -169,7 +187,8 @@ func (h *ChatHandler) Read(w http.ResponseWriter, r *http.Request) {
 }
 
 type editBody struct {
-	Text string `json:"text"`
+	Text     string                 `json:"text"`
+	Entities []domain.MessageEntity `json:"entities"`
 }
 
 func (h *ChatHandler) EditMessage(w http.ResponseWriter, r *http.Request) {
@@ -186,13 +205,17 @@ func (h *ChatHandler) EditMessage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	msg, err := h.svc.EditMessage(r.Context(), chatID, msgID, h.meID(r), body.Text)
+	msg, err := h.svc.EditMessage(r.Context(), chatID, msgID, h.meID(r), body.Text, body.Entities)
 	if errors.Is(err, domain.ErrForbidden) {
 		writeError(w, http.StatusForbidden, "only the author can edit")
 		return
 	}
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "message not found")
+		return
+	}
+	if errors.Is(err, domain.ErrTooLong) {
+		writeError(w, http.StatusBadRequest, "message too long")
 		return
 	}
 	if err != nil {
@@ -453,11 +476,46 @@ func messageJSON(m domain.Message) map[string]any {
 		"fwd_from_user_id": m.FwdFromUserID, "fwd_from_chat_id": m.FwdFromChatID,
 		"fwd_from_msg_id": m.FwdFromMsgID, "fwd_date": m.FwdDate,
 	}
+	if len(m.Entities) > 0 {
+		j["entities"] = m.Entities
+	}
 	if m.ReplyTo != nil {
-		j["reply_to"] = map[string]any{
+		rt := map[string]any{
 			"msg_id": m.ReplyTo.MsgID, "seq": m.ReplyTo.Seq, "sender_id": m.ReplyTo.SenderID,
 			"text": m.ReplyTo.Text, "type": m.ReplyTo.Type,
 		}
+		if len(m.ReplyTo.Entities) > 0 {
+			rt["entities"] = m.ReplyTo.Entities
+		}
+		if m.ReplyTo.MediaID != nil {
+			rt["media_id"] = *m.ReplyTo.MediaID
+		}
+		j["reply_to"] = rt
+	}
+	// Media metadata (history read model) so the client renders the media bubble
+	// entirely from the message — exact box, blur placeholder, poster, mime, etc. —
+	// with no per-media meta request.
+	if m.MediaWidth > 0 && m.MediaHeight > 0 {
+		j["media_w"] = m.MediaWidth
+		j["media_h"] = m.MediaHeight
+	}
+	if m.MediaMime != "" {
+		j["media_mime"] = m.MediaMime
+	}
+	if len(m.MediaBlur) > 0 {
+		j["media_blur"] = m.MediaBlur // []byte → base64 string in JSON
+	}
+	if m.MediaHasThumb {
+		j["media_has_thumb"] = true
+	}
+	if m.MediaDuration > 0 {
+		j["media_duration"] = m.MediaDuration
+	}
+	if m.MediaSize > 0 {
+		j["media_size"] = m.MediaSize
+	}
+	if m.MediaName != "" {
+		j["media_name"] = m.MediaName
 	}
 	return j
 }

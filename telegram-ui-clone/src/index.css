@@ -1,0 +1,119 @@
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  background: #181818;
+}
+
+html,
+body {
+  min-height: 100%;
+  overscroll-behavior: none;
+  scrollbar-gutter: stable;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Peer-typing indicator animations (1:1 from tweb _peerTyping.scss + _chat.scss).
+   Three bouncing dots for "typing", a single blinking dot for "recording
+   voice/video". scale/opacity values are tweb's sass vars resolved to literals
+   (scale-min .66667 / mid .83333 / max 1; opacity-min .8 / mid .9 / max 1). */
+@keyframes typingDotFirst {
+  0% { transform: scale(0.66667); opacity: 0.8; }
+  50% { transform: scale(0.66667); opacity: 0.8; }
+  75% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.66667); opacity: 0.8; }
+}
+@keyframes typingDotMiddle {
+  0% { transform: scale(0.83333); opacity: 0.9; }
+  12.5% { transform: scale(0.66667); opacity: 0.8; }
+  62.5% { transform: scale(0.66667); opacity: 0.8; }
+  87.5% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.83333); opacity: 0.9; }
+}
+@keyframes typingDotLast {
+  0% { transform: scale(1); opacity: 1; }
+  25% { transform: scale(0.66667); opacity: 0.8; }
+  75% { transform: scale(0.66667); opacity: 0.8; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes recordBlink {
+  0% { opacity: 1; }
+  50% { opacity: 0.2; }
+  100% { opacity: 1; }
+}
+
+/* Loading sweep over a media placeholder (blur preview) until the image decodes —
+   a light band travels left→right, like Telegram's shimmer. */
+@keyframes mediaShimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Theme toggle circular reveal: disable the default cross-fade so only our
+   clip-path animation on ::view-transition-new(root) is visible. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-new(root) {
+  z-index: 1;
+}
+::view-transition-old(root) {
+  z-index: 0;
+}
+
+/* While drag-selecting messages, suppress the native text selection the drag would
+   otherwise paint across bubbles (tweb adds body.no-select for the same reason). */
+body.rt-no-select,
+body.rt-no-select * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+/* Telegram icon font (tgico) — ported 1:1 from tweb (icomoon export). Glyphs are
+   addressed by codepoint via the <TgIcon> component / tgico-icons map. */
+@font-face {
+  font-family: 'tgico';
+  src: url('/fonts/tgico.woff') format('woff'),
+       url('/fonts/tgico.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+.tgico {
+  font-family: 'tgico' !important;
+  speak: never;
+  font-style: normal;
+  font-weight: normal;
+  font-variant: normal;
+  text-transform: none;
+  line-height: 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Prism syntax-highlight palette for code blocks (CodeBlock.tsx). Mid-tone colors
+   chosen to read on both the light and dark code-block panels. */
+.token.comment, .token.prolog, .token.doctype, .token.cdata { color: #8a8f98; font-style: italic; }
+.token.punctuation { color: #9aa0a6; }
+.token.property, .token.tag, .token.boolean, .token.number, .token.constant,
+.token.symbol, .token.deleted { color: #e2557b; }
+.token.selector, .token.attr-name, .token.string, .token.char, .token.builtin,
+.token.inserted { color: #2e9e6b; }
+.token.operator, .token.entity, .token.url,
+.language-css .token.string, .style .token.string { color: #c98a3f; }
+.token.atrule, .token.attr-value, .token.keyword { color: #8c6ff0; }
+.token.function, .token.class-name { color: #4a9eea; }
+.token.regex, .token.important, .token.variable { color: #c98a3f; }
+.token.important, .token.bold { font-weight: 600; }
+.token.italic { font-style: italic; }

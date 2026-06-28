@@ -18,6 +18,8 @@ type TxManager interface {
 type ChatRepo interface {
 	FindPrivate(ctx context.Context, a, b int64) (int64, error) // domain.ErrNotFound if none
 	CreatePrivate(ctx context.Context, a, b int64) (int64, error)
+	FindSaved(ctx context.Context, userID int64) (int64, error) // domain.ErrNotFound if none
+	CreateSaved(ctx context.Context, userID int64) (int64, error)
 	MemberIDs(ctx context.Context, chatID int64) ([]int64, error)
 	IsMember(ctx context.Context, chatID, userID int64) (bool, error)
 	ChatType(ctx context.Context, chatID int64) (string, error) // 'private'|'group'|'channel'|'saved'
@@ -70,7 +72,7 @@ type MessageRepo interface {
 	SearchMessages(ctx context.Context, chatID int64, q string, offset, limit int) ([]domain.Message, int, error)
 	GetAround(ctx context.Context, chatID, userID, centerSeq int64, limit int) ([]domain.Message, bool, bool, error)
 	GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int) ([]domain.Message, error)
-	UpdateText(ctx context.Context, msgID int64, text string) (domain.Message, error)
+	UpdateText(ctx context.Context, msgID int64, text string, entities []domain.MessageEntity) (domain.Message, error)
 	SoftDelete(ctx context.Context, msgID int64) error
 	HideForUser(ctx context.Context, userID, msgID int64) error
 	ListThread(ctx context.Context, chatID, threadRootID int64, offset, limit int) ([]domain.Message, error)
@@ -108,6 +110,23 @@ type ReactionRepo interface {
 type MediaAccessRepo interface {
 	OwnerID(ctx context.Context, mediaID int64) (int64, error) // domain.ErrNotFound if absent
 	CanAccess(ctx context.Context, userID, mediaID int64) (bool, error)
+	// DimsByIDs batch-loads width/height/mime for media ids (history read model,
+	// so the client can reserve the media box before the bytes load). Missing ids
+	// are simply absent from the map.
+	DimsByIDs(ctx context.Context, ids []int64) (map[int64]MediaDims, error)
+}
+
+// MediaDims is the media metadata the message read model attaches so the client
+// can render a media bubble fully from the message — no per-media meta request.
+type MediaDims struct {
+	Width    int
+	Height   int
+	Mime     string
+	Blur     []byte // blur preview bytes (JSON-encoded as base64, LQIP placeholder)
+	HasThumb bool
+	Duration int
+	Size     int64
+	FileName string
 }
 
 type EventPublisher interface {
@@ -127,6 +146,7 @@ type PushNotifier interface {
 type SendInput struct {
 	ChatID, SenderID int64
 	Type, Text       string
+	Entities         []domain.MessageEntity
 	ReplyToID        *int64
 	ClientMsgID      string
 	MediaID          *int64

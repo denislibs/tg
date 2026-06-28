@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Messenger — Архитектура стейта</title>
+<style>
+  :root{
+    --bg:#0e1621; --panel:#17212b; --panel2:#1d2a36; --line:#243443;
+    --text:#e8edf2; --muted:#8b9aa8; --faint:#6b7a88;
+    --accent:#5eb5f7; --accent2:#7c83ff; --green:#62c466; --amber:#e8b84b;
+    --red:#ff6b6b; --pink:#ee7aae;
+    --mono:'SF Mono',ui-monospace,'JetBrains Mono',Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:radial-gradient(1200px 800px at 70% -10%,#1b2a3a 0%,var(--bg) 55%);
+    color:var(--text);font-family:var(--sans);line-height:1.55;font-size:15px}
+  .wrap{max-width:1080px;margin:0 auto;padding:48px 24px 120px}
+  header.hero{margin-bottom:36px}
+  h1{font-size:30px;font-weight:700;margin:0 0 6px;letter-spacing:-.4px}
+  .sub{color:var(--muted);font-size:15px}
+  .tag{display:inline-block;font-family:var(--mono);font-size:12px;color:var(--accent);
+    background:rgba(94,181,247,.1);border:1px solid rgba(94,181,247,.25);
+    padding:2px 9px;border-radius:20px;margin-right:6px}
+  nav.toc{position:sticky;top:0;z-index:10;display:flex;flex-wrap:wrap;gap:6px;
+    background:rgba(14,22,33,.82);backdrop-filter:blur(12px);
+    padding:12px 0;margin:24px 0 8px;border-bottom:1px solid var(--line)}
+  nav.toc a{color:var(--muted);text-decoration:none;font-size:13px;
+    padding:5px 10px;border-radius:8px;border:1px solid transparent;white-space:nowrap}
+  nav.toc a:hover{color:var(--text);background:var(--panel);border-color:var(--line)}
+  section{margin:40px 0;scroll-margin-top:70px}
+  h2{font-size:21px;margin:0 0 14px;padding-bottom:8px;border-bottom:1px solid var(--line);
+    display:flex;align-items:baseline;gap:10px}
+  h2 .n{font-family:var(--mono);color:var(--accent2);font-size:16px}
+  h3{font-size:16px;margin:22px 0 10px;color:var(--accent)}
+  p{margin:10px 0}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin:14px 0}
+  pre.diagram{font-family:var(--mono);font-size:12.5px;line-height:1.5;color:#cdd9e3;
+    background:#0b121b;border:1px solid var(--line);border-radius:14px;
+    padding:18px;overflow-x:auto;white-space:pre}
+  pre.diagram .a{color:var(--accent)} pre.diagram .g{color:var(--green)}
+  pre.diagram .m{color:var(--muted)} pre.diagram .p{color:var(--accent2)}
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13.5px;
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:var(--panel2);color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.4px}
+  tr:last-child td{border-bottom:none}
+  code{font-family:var(--mono);font-size:.92em;background:rgba(124,131,255,.12);
+    color:#bcc4ff;padding:1px 6px;border-radius:6px}
+  .mono{font-family:var(--mono)}
+  .muted{color:var(--muted)} .faint{color:var(--faint)}
+  ul{margin:8px 0;padding-left:22px} li{margin:4px 0}
+  .note{border-left:3px solid var(--amber);background:rgba(232,184,75,.08);
+    padding:10px 16px;border-radius:0 10px 10px 0;margin:14px 0;color:#f0e0bf}
+  .rec{border-left:3px solid var(--green);background:rgba(98,196,102,.08);
+    padding:10px 16px;border-radius:0 10px 10px 0;margin:14px 0}
+
+  /* state tree */
+  .tree{font-family:var(--mono);font-size:13px;line-height:1.7}
+  .tree ul{list-style:none;margin:0;padding-left:20px;border-left:1px dashed var(--line)}
+  .tree>ul{padding-left:4px;border-left:none}
+  .tree li{position:relative;padding-left:14px}
+  .tree li::before{content:'';position:absolute;left:0;top:13px;width:12px;height:1px;background:var(--line)}
+  .tree>ul>li::before{display:none}
+  .node{display:inline-flex;align-items:center;gap:8px;padding:2px 0}
+  .pill{font-size:11px;padding:1px 8px;border-radius:20px;font-family:var(--sans);font-weight:600}
+  .store{color:var(--accent);font-weight:700}
+  .hook{color:var(--green)}
+  .comp{color:var(--accent2);font-weight:700}
+  .field{color:#cdd9e3}
+  .A{background:rgba(139,154,168,.18);color:#b9c6d2}
+  .B{background:rgba(94,181,247,.16);color:#9fd0fb}
+  .C{background:rgba(98,196,102,.16);color:#a6e0a9}
+  .D{background:rgba(232,184,75,.16);color:#f0d493}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin:10px 0 4px;font-size:13px}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .arrow{color:var(--faint)}
+  .phase{display:grid;grid-template-columns:48px 1fr;gap:0;margin:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel)}
+  .phase .ph{background:var(--panel2);display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-weight:700;font-size:18px;color:var(--accent2);border-right:1px solid var(--line)}
+  .phase .bd{padding:12px 16px}
+  .phase + .phase{margin-top:10px}
+  .risk{font-size:11px;font-weight:700;padding:1px 9px;border-radius:20px;font-family:var(--sans)}
+  .r0{background:rgba(98,196,102,.18);color:#a6e0a9}
+  .rlow{background:rgba(94,181,247,.16);color:#9fd0fb}
+  .rmid{background:rgba(232,184,75,.16);color:#f0d493}
+  .rhigh{background:rgba(255,107,107,.16);color:#ffb3b3}
+  footer{margin-top:60px;color:var(--faint);font-size:12px;text-align:center;border-top:1px solid var(--line);padding-top:18px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div><span class="tag">telegram-ui-clone</span><span class="tag">React · TS · zustand 5</span><span class="tag">анализ стейта</span></div>
+    <h1>Архитектура состояния приложения</h1>
+    <div class="sub">Граф потока данных, дерево стейтов и план декомпозиции на zustand-сторы и хуки.</div>
+  </header>
+
+  <nav class="toc">
+    <a href="#g1">1 · Граф</a>
+    <a href="#tree">Дерево стейтов</a>
+    <a href="#g2">2 · Сторы сейчас</a>
+    <a href="#g3">3 · Стейт CV</a>
+    <a href="#g4">4 · Принцип</a>
+    <a href="#g5">5 · Целевая архитектура</a>
+    <a href="#g6">6 · Фазы миграции</a>
+    <a href="#g7">7 · Паттерны</a>
+  </nav>
+
+  <!-- 1 -->
+  <section id="g1">
+    <h2><span class="n">1</span> Граф приложения (слои + поток данных)</h2>
+<pre class="diagram">                         <span class="g">Backend (Go: Postgres / Redis / MinIO)</span>
+                          │ HTTP /api        │ WS /ws        │ REST /sync
+                          ▼                  ▼               ▼
+┌──────────────────── <span class="a">SharedWorker</span> (один на ВСЕ вкладки браузера) ─────────────────────┐
+│  RestClient (инъекция auth-токена)                                                    │
+│  <span class="a">Managers</span> (stateful, у каждого свой кэш):                                            │
+│     auth · profile · chats · messages(SlicedArray) · media(token) · peers(Map) ·      │
+│     presence · groups · channels(pts/IndexedDB) · stories · push · health             │
+│  ConnectionManager (WS + heartbeat + reconnect)  +  SyncEngine (pts/date, IndexedDB)  │
+└───────────────┬───────────────────────────────────────────┬───────────────────────────┘
+      <span class="m">invoke (req→resp, await)</span>                       <span class="m">emit (push, fire-and-forget)</span>
+      ▲  SuperMessagePort  (RPC envelope)            ▼  SuperMessagePort (pub/sub)
+┌─────┴────────────────────┐               ┌─────────┴─────────────────────────────────┐
+│ managers <span class="p">Proxy</span>           │               │ <span class="a">realtimeBridge</span>.startRealtime() — 1 раз  │
+│ startClient().managers.X │               │   каждый RT.* идёт в ДВА места:            │
+│   .method(...)           │               │     ├─→ chatsStore.applyX(...)  (диалоги)  │
+└─────┬────────────────────┘               │     └─→ uiEvents.emit(RT.*)     (детали)   │
+      │                                     └─────────┬─────────────────────────────────┘
+      ▼ ── <span class="p">UI (React)</span> ──────────────────────────────  ▼ ──────────────────────────────────┐
+      │ zustand сторы:  chats · audio · connection · stories · voicePlayed                  │
+      │ uiEvents (in-memory EventEmitter) — покадровые апдейты для ConversationView          │
+      │ хуки:  useMessageWindow · usePeers · useTypingLabel · useChatSearch · useVoiceRecorder│
+      │ дерево:  App → Shell → Sidebar / ConversationView → Composer · feed · NowPlayingBar  │
+      └─────────────────────────────────────────────────────────────────────────────────────┘</pre>
+
+    <p><b>Два контура связи</b> (важно для рефакторинга):</p>
+    <ul>
+      <li><b>RPC (invoke/result)</b> — все managers, запрос-ответ. Воркер прозрачно кэширует (<code>SlicedArray</code> для истории, <code>Map</code> для peers/media). UI кэш не видит.</li>
+      <li><b>Realtime (emit/on)</b> — <code>realtimeBridge</code> — единственный «писатель» в <code>chatsStore</code> + дублирует в <code>uiEvents</code>. <code>RT.newMessage/read/presence/typing</code> → стор <b>и</b> шину; <code>RT.ack/edit/delete/pin/reaction</code> → <b>только</b> шину (их слушает <code>ConversationView</code>).</li>
+    </ul>
+    <div class="note"><b>Ключевой вывод:</b> <code>chatsStore</code> хранит только то, что нужно сайдбару (диалоги, presence, typing, me). Вся per-chat «начинка» (история, пины, card, счётчики комментов, online-сет) живёт <b>локально в ConversationView</b> — отсюда 28 <code>useState</code> + 18 <code>useRef</code> + 22 <code>useEffect</code>.</div>
+  </section>
+
+  <!-- STATE TREE -->
+  <section id="tree">
+    <h2><span class="n">★</span> Дерево стейтов приложения</h2>
+    <div class="legend">
+      <span><span class="pill store">●</span> zustand стор</span>
+      <span><span class="pill hook">●</span> хук</span>
+      <span><span class="pill comp">●</span> компонент</span>
+      <span><span class="pill A">A</span> локальный UI</span>
+      <span><span class="pill B">B</span> → в стор</span>
+      <span><span class="pill C">C</span> читается из стора</span>
+      <span><span class="pill D">D</span> → в хук (DOM/scroll)</span>
+    </div>
+    <div class="card tree">
+      <ul>
+        <li><span class="node"><span class="comp">App</span> <span class="faint">провайдеры: I18n · Settings · ThemeProvider(MUI)</span></span>
+          <ul>
+            <li><span class="node">🌐 <span class="store">Глобальные zustand-сторы</span></span>
+              <ul>
+                <li><span class="node"><span class="store">chatsStore</span></span>
+                  <ul>
+                    <li><span class="node"><span class="field">dialogs[]</span> · <span class="field">me</span> · <span class="field">meId</span> · <span class="field">activeChatId</span></span></li>
+                    <li><span class="node"><span class="field">presence{userId}</span> · <span class="field">typing{chatId}</span> <span class="faint">← realtimeBridge</span></span></li>
+                  </ul>
+                </li>
+                <li><span class="node"><span class="store">audioStore</span> <span class="field">track · playing · time · rate · volume</span> <span class="faint">+ singleton &lt;audio&gt;</span></span></li>
+                <li><span class="node"><span class="store">connectionStore</span> <span class="field">backendOk</span></span></li>
+                <li><span class="node"><span class="store">storiesStore</span> <span class="field">groups[]</span></span></li>
+                <li><span class="node"><span class="store">voicePlayedStore</span> <span class="field">played{msgId}</span> <span class="faint">(localStorage)</span></span></li>
+              </ul>
+            </li>
+            <li><span class="node">📡 <span class="hook">uiEvents</span> <span class="faint">EventEmitter — ack/new/edit/delete/pin/reaction</span></span></li>
+            <li><span class="node"><span class="comp">Shell</span> <span class="faint">selectedId · drawer · joinToast · qrConfirm</span></span>
+              <ul>
+                <li><span class="node"><span class="comp">Sidebar</span> <span class="faint">8+ модалок/меню (локально)</span></span>
+                  <ul>
+                    <li><span class="node"><span class="comp">ChatListItem</span> <span class="faint">ripple, menu · читает</span> <span class="pill C">presence</span></span></li>
+                  </ul>
+                </li>
+                <li><span class="node"><span class="comp">ConversationView</span> <span class="faint">~2560 строк</span></span>
+                  <ul>
+                    <li><span class="node">🪝 хуки: <span class="hook">useMessageWindow</span> · <span class="hook">usePeers</span> · <span class="hook">useTypingLabel</span> · <span class="hook">useChatSearch</span> · <span class="hook">useVoiceRecorder</span></span></li>
+                    <li><span class="node"><span class="pill A">A</span> Эфемерный UI (остаётся локально)</span>
+                      <ul><li><span class="node mono faint">msgMenu · headerMenu · attachAnchor · viewers · delIds · forwardIds · addMemberOpen · call · cancelRecOpen · showScrollDown · infoOpen · highlightSeq · viewerMedia · lightbox · pendingMedia · typing(mock)</span></li></ul>
+                    </li>
+                    <li><span class="node"><span class="pill B">B</span> Серверный кэш по чату → <span class="store">conversationStore</span></span>
+                      <ul><li><span class="node mono">pins · card · commentCounts · onlineIds · mockMsgs · discussion</span></li></ul>
+                    </li>
+                    <li><span class="node"><span class="pill C">C</span> Уже из стора (не трогаем)</span>
+                      <ul><li><span class="node mono faint">peerPresence · peerReadSeq · muted · peers</span></li></ul>
+                    </li>
+                    <li><span class="node"><span class="pill D">D</span> DOM / scroll-машинерия → <span class="hook">useConversationScroll</span></span>
+                      <ul><li><span class="node mono faint">scrollRef · contentRef · atBottomRef · lastScrollTopRef · pendingRestore · restoreTimer · pendingJumpSeq · pinBottomNext · ladderArmedRef · ladderChatRef · prevPlayerOffset · lastTypingRef · memberIds · spinner* · fileInputRef · pickAsFileRef</span></li></ul>
+                    </li>
+                    <li><span class="node"><span class="comp">Composer</span> <span class="pill A">локальный</span> <span class="field">text · emojiOpen</span> <span class="faint">(вынесен ✓)</span></span></li>
+                    <li><span class="node"><span class="comp">NowPlayingBar</span> <span class="faint">memo, читает audioStore</span></span></li>
+                    <li><span class="node"><span class="comp">feed (memo)</span> · <span class="comp">headerBar (memo)</span> · <span class="comp">pinnedBar (memo)</span></span></li>
+                  </ul>
+                </li>
+              </ul>
+            </li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section id="g2">
+    <h2><span class="n">2</span> Что уже есть в zustand</h2>
+    <table>
+      <tr><th>Стор</th><th>Хранит</th><th>Паттерн подписки</th></tr>
+      <tr><td class="mono store">chatsStore</td><td>dialogs, me, meId, activeChatId, presence{}, typing{}</td><td class="mono">useChatsStore(s =&gt; s.x)</td></tr>
+      <tr><td class="mono store">audioStore</td><td>глобальный плеер (track, playing, time…) + singleton &lt;audio&gt;</td><td>инлайн-селекторы по полю</td></tr>
+      <tr><td class="mono store">connectionStore</td><td>backendOk</td><td>1 селектор в App</td></tr>
+      <tr><td class="mono store">storiesStore</td><td>groups</td><td>setGroups</td></tr>
+      <tr><td class="mono store">voicePlayedStore</td><td>played{msgId} + ручной localStorage</td><td>2 селектора</td></tr>
+    </table>
+    <p class="muted">Нет middleware (кроме ручного localStorage в <code>voicePlayed</code>), нет фабрики/слайсов, <b>нет выделенных селектор-хуков</b> — везде инлайн-стрелки. Это и будем улучшать.</p>
+  </section>
+
+  <!-- 3 -->
+  <section id="g3">
+    <h2><span class="n">3</span> Инвентаризация стейта ConversationView</h2>
+    <p class="muted">28 <code>useState</code> · 18 <code>useRef</code> · 22 <code>useEffect</code></p>
+    <table>
+      <tr><th>Корзина</th><th>Стейт</th></tr>
+      <tr><td><span class="pill A">A · локальный UI</span></td><td class="mono">msgMenu, headerMenu, attachAnchor, viewers, delIds, forwardIds, addMemberOpen, call, cancelRecOpen, showScrollDown, infoOpen, highlightSeq, viewerMedia, lightbox, pendingMedia, typing(mock)</td></tr>
+      <tr><td><span class="pill B">B · в стор</span></td><td class="mono">pins, card, commentCounts, onlineIds, mockMsgs, discussion</td></tr>
+      <tr><td><span class="pill C">C · из стора</span></td><td class="mono">peerPresence, peerReadSeq, muted, peers (через usePeers)</td></tr>
+      <tr><td><span class="pill D">D · в хук</span></td><td class="mono">scrollRef, contentRef, atBottomRef, lastScrollTopRef, pendingRestore, restoreTimer, pendingJumpSeq, pinBottomNext, ladderArmedRef, ladderChatRef, prevPlayerOffset, lastTypingRef, memberIds, spinnerShownAt/showSpinnerRef, fileInputRef, pickAsFileRef</td></tr>
+    </table>
+    <p class="muted"><b>Эффекты (22):</b> ~8 — scroll/restore/jump/ladder/player-offset (D); ~6 — подписки uiEvents (ack/new/edit/delete/pin) + markRead; ~5 — фетч card/pins/commentCounts/online + RT; остальные — reset/spinner/active-chat.</p>
+  </section>
+
+  <!-- 4 -->
+  <section id="g4">
+    <h2><span class="n">4</span> Принцип: НЕ всё в zustand</h2>
+    <table>
+      <tr><th>Корзина</th><th>Что</th><th>Куда</th></tr>
+      <tr><td><b>Локальный useState</b></td><td>эфемерный UI компонента (корзина A)</td><td>остаётся в компоненте</td></tr>
+      <tr><td><b>Кастомный хук</b></td><td>императивная DOM/scroll-машинерия (D), realtime-подписки</td><td>хук, инкапсулирующий рефы+эффекты <span class="faint">(это не «глобальный стейт»)</span></td></tr>
+      <tr><td><b>zustand стор</b></td><td>переживает &gt;1 компонента, серверный кэш по чату, нужна гранулярная подписка (B, C)</td><td>стор + селектор-хуки</td></tr>
+    </table>
+    <div class="note">Запихивать якоря меню в глобальный стор — антипаттерн (лишняя индирекция). Большой выигрыш по ререндерам мы уже взяли мемоизацией; zustand-декомпозиция здесь про <b>поддерживаемость + правильную гранулярность подписок</b>, а не про скорость печати.</div>
+  </section>
+
+  <!-- 5 -->
+  <section id="g5">
+    <h2><span class="n">5</span> Целевая архитектура</h2>
+    <h3>Новые сторы</h3>
+    <ul>
+      <li><code>conversationStore</code> — per-chat серверный кэш, ключ = <code>chatId</code>. Поля: <code>pins</code>, <code>card</code>, <code>commentCounts</code>, <code>onlineIds</code>. Экшены <code>loadCard/loadPins/…</code> + апдейты от RT (pin) централизованно. Убирает из CV ~5 стейтов и ~5 эффектов.</li>
+      <li><code>selectionStore</code> <span class="faint">(опц.)</span> — <code>selected:Set</code>, <code>toggle/clear</code>. Маленький, per-chat.</li>
+      <li><code>uiStore</code> <span class="faint">(опц., осторожно)</span> — только оверлеи, открываемые из разных мест (<code>lightbox/viewerMedia/discussion/call</code>). Остальные меню — локально.</li>
+    </ul>
+    <h3>Слой селектор-хуков над chatsStore</h3>
+    <p>Вместо разбросанных инлайн-стрелок, все с <code>useShallow</code> для массивов/объектов:</p>
+<pre class="diagram">useMe() · useMeId() · useDialog(chatId) · useDialogs() · usePresence(peerId)
+useTyping(chatId) · useMuted(chatId) · usePeerReadSeq(chatId)
+<span class="m">// и для нового стора:</span>
+usePins(chatId) · useChatCard(chatId) · useCommentCounts(chatId) · useOnlineCount(chatId)</pre>
+    <h3>Кастомные хуки, выносимые из CV</h3>
+<pre class="diagram">useConversationScroll(...)   <span class="m">// корзина D: atBottom, restore, ResizeObserver, jump, ladder, player-offset</span>
+useChatRealtime(chatId, win) <span class="m">// uiEvents: ack/new/edit/delete/pin + markRead</span>
+useChatMeta(chatId)          <span class="m">// фасад над conversationStore (card/pins/counts/online)</span></pre>
+    <div class="rec"><b>Итог:</b> <code>ConversationView</code> ужимается с ~2560 строк до оркестратора, который дёргает 3 хука и рендерит <code>header/feed/composer</code>.</div>
+  </section>
+
+  <!-- 6 -->
+  <section id="g6">
+    <h2><span class="n">6</span> План миграции по фазам</h2>
+    <p class="muted">От безрискового к глубокому.</p>
+
+    <div class="phase"><div class="ph">0</div><div class="bd">
+      <b>Слой селектор-хуков над chatsStore + useShallow.</b> Заменяем инлайн-селекторы.
+      <div style="margin-top:6px"><span class="risk r0">риск ~0</span> &nbsp;<span class="muted">→ единая точка, готовит почву</span></div>
+    </div></div>
+
+    <div class="phase"><div class="ph">1</div><div class="bd">
+      <b>Вынести <code>useConversationScroll</code> и <code>useChatRealtime</code> из CV</b> (без zustand).
+      <div style="margin-top:6px"><span class="risk rlow">низкий *</span> &nbsp;<span class="muted">→ −15 рефов/эффектов из CV</span></div>
+    </div></div>
+
+    <div class="phase"><div class="ph">2</div><div class="bd">
+      <b><code>conversationStore</code></b> (pins/card/commentCounts/online) + селектор-хуки; вырезать стейт+эффекты из CV.
+      <div style="margin-top:6px"><span class="risk rmid">средний</span> &nbsp;<span class="muted">→ per-chat данные шарятся, гранулярные подписки</span></div>
+    </div></div>
+
+    <div class="phase"><div class="ph">3</div><div class="bd">
+      <b>опц.:</b> <code>selectionStore</code>, <code>uiStore</code> для оверлеев; <code>settings.tsx</code> Context → zustand + <code>persist</code>.
+      <div style="margin-top:6px"><span class="risk rlow">низкий</span> &nbsp;<span class="muted">→ меньше Context, persist бесплатно</span></div>
+    </div></div>
+
+    <div class="phase"><div class="ph">4</div><div class="bd">
+      <b>опц.:</b> влить <code>useMessageWindow</code> в <code>conversationStore</code>.
+      <div style="margin-top:6px"><span class="risk rhigh">высокий</span> &nbsp;<span class="muted">→ единый источник истории</span></div>
+    </div></div>
+
+    <div class="note">* Фаза 1 трогает scroll-машинерию — самое хрупкое место (<code>atBottomRef/restore/jump</code>). Поэтому выносим её в изолированный хук и прогоняем сценарии (джамп к сообщению, подгрузка вверх/вниз, плеер, ладдер) через Playwright, как делали раньше.</div>
+    <div class="rec"><b>Рекомендация:</b> начать с <b>Фазы 0 → 1</b> (чистый, проверяемый выигрыш и резкое ужатие CV), <code>conversationStore</code> (Фаза 2) — следом.</div>
+  </section>
+
+  <!-- 7 -->
+  <section id="g7">
+    <h2><span class="n">7</span> Паттерны zustand, которые внедрим</h2>
+    <ul>
+      <li><b>Селектор-хуки</b> вместо инлайн-стрелок (DRY, единое место, типобезопасно).</li>
+      <li><b><code>useShallow</code></b> для селекторов, возвращающих объект/массив (иначе ререндер на каждый <code>set</code>).</li>
+      <li><b>Slices pattern</b> (<code>combine</code>/композиция) — если <code>conversationStore</code> разрастётся.</li>
+      <li><b><code>persist</code> middleware</b> для settings/voicePlayed (заменит ручной localStorage).</li>
+      <li><b>Атомарные селекторы</b> — подписываемся на минимальный кусок (<code>usePins</code> не тянет <code>card</code>).</li>
+    </ul>
+  </section>
+
+  <footer>messenger · state architecture — сгенерировано для изучения · все имена соответствуют реальным файлам в <span class="mono">src/</span></footer>
+</div>
+</body>
+</html>
