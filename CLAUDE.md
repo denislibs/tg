@@ -31,31 +31,12 @@ cd telegram-ui-clone && npx vite build --base=/ --outDir ../client-build && cd .
 docker compose up -d --build          # приложение на http://localhost:8080
 ```
 
-Бэкенд локально:
+Команды для разработки и зональные правила — в [`backend/CLAUDE.md`](backend/CLAUDE.md)
+и [`telegram-ui-clone/CLAUDE.md`](telegram-ui-clone/CLAUDE.md).
 
-```bash
-cd backend && go run ./cmd/server     # :8080, миграции применяются на старте (goose)
-go test ./...                         # интеграционные тесты на testcontainers (нужен Docker)
-```
+## Кросс-каттинг (общее для обеих частей)
 
-Фронтенд локально:
-
-```bash
-cd telegram-ui-clone && npm run dev    # :5173, проксирует /api и /ws на бэкенд :38080
-npm test                               # vitest
-```
-
-## Ключевые домены
-
-- **Сообщения и rich-text:** `MessageEntity` (bold/italic/underline/strike/code/pre/spoiler/blockquote/text_link),
-  offset/length в **UTF-16** (как в JS). Инпут хранит сырые markdown-маркеры, разбор — на отправке
-  (`telegram-ui-clone/src/core/markdown.ts`, `parseMarkdown`). Сущности санитизируются на бэке
-  (`backend/internal/usecase/chat/sanitize.go`).
-- **Realtime:** WebSocket `/ws?token=` с кадрами `{t, d}`; `send_message` → `message_ack`/`message_error`,
-  outbox переотправляет неподтверждённое.
-- **Медиа:** presigned-загрузка в MinIO, ffmpeg-превью на сервере.
-
-## Замечания
-
-- Миграции Postgres — `backend/internal/store/postgres/migrations/NNNN_*.sql`, применяются автоматически.
+- **Rich-text:** `MessageEntity` (bold/italic/underline/strike/code/pre/spoiler/blockquote/text_link),
+  offset/length в **UTF-16**. Инпут хранит сырые markdown-маркеры, разбор — на отправке; на бэке сущности санитизируются.
+- **Realtime:** WebSocket `/ws?token=` с кадрами `{t, d}`; `send_message` → `message_ack`/`message_error`.
 - В dev OTP-код входа — `12345` (`DEV_OTP_CODE`).
