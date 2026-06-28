@@ -7,6 +7,9 @@ dist/
 
 # Vite build output served by nginx
 client-build/
+
+# Local TLS certs (private key — never commit)
+nginx/certs/
 docker-compose.verify.yml
 nginx/Dockerfile.verify
 .playwright-mcp/
