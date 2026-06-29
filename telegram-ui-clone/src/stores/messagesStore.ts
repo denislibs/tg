@@ -24,8 +24,12 @@ export const EMPTY_WINDOW: ChatWindow = {
   loadingOlder: false, loadingNewer: false, loading: true, loadedFromCache: false,
 }
 
-// clientMsgId -> tentative seq, per chat. Not rendered, so kept out of reactive
-// state (mirrors the old `pending` ref inside useMessageWindow).
+// clientMsgId -> tentative seq, per chat. This is the UI reconcile index only
+// (maps an ack back to the optimistic bubble's tentative seq); not rendered, so
+// kept out of reactive state. It is NOT a duplicate of connectionManager.outbox:
+// that lives in the worker and is the transport retry buffer (full SendArgs,
+// resent on reconnect). Different threads, different jobs — the UI window's single
+// source of truth is this store; the outbox never feeds the UI.
 const pendingByChat = new Map<number, Map<string, number>>()
 function pendingFor(chatId: number): Map<string, number> {
   let m = pendingByChat.get(chatId)
