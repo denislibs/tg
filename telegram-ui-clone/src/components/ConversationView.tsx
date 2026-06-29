@@ -23,6 +23,7 @@ import { useMessageWindow } from '../core/hooks/useMessageWindow'
 import { useEvent } from '../core/hooks/useEvent'
 import { useChatSelection } from '../core/hooks/useChatSelection'
 import { useChatInfoCard } from '../core/hooks/useChatInfoCard'
+import { usePinnedBar } from '../core/hooks/usePinnedBar'
 import Composer from './Composer'
 import ChatFeed from './messages/ChatFeed'
 import ChatHeader, { type SearchResultRow } from './conversation/ChatHeader'
@@ -35,7 +36,7 @@ import { usePeers, peersKey } from '../core/hooks/usePeers'
 import { useChatsStore, loadChats } from '../stores/chatsStore'
 import { uiEvents } from '../core/hooks/uiEvents'
 import { RT, type NewMessageEvt } from '../core/realtime/events'
-import { type Message, type MessageEntity } from '../core/models'
+import { type MessageEntity } from '../core/models'
 import { splitRich } from '../core/markdown'
 
 // Max characters per message (matches the backend's maxMessageRunes / Telegram 4096).
@@ -273,7 +274,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // Pending forward: message ids to forward (opens the chat picker).
   const [forwardIds, setForwardIds] = useState<number[] | null>(null)
   // Pinned messages in this chat (newest pin first) — drives the pinned bar.
-  const [pins, setPins] = useState<Message[]>([])
+  const pins = usePinnedBar(numericChatId, isRealChat, managers)
   // "Seen by" popup: the resolved viewers of a message.
   const [viewers, setViewers] = useState<{ x: number; y: number; names: string[] } | null>(null)
   // Briefly highlighted message (jump-to target), by seq.
@@ -904,18 +905,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // (Live edit/delete now run in realtimeBridge → messagesStore, keyed by chat_id;
   // no per-chat listener needed here.)
 
-  // Pinned messages: load on open, refresh on live pin_message for this chat.
-  useEffect(() => {
-    if (!isRealChat) { setPins([]); return }
-    let alive = true
-    const refresh = () => { void managers.messages.listPins(numericChatId).then((p) => { if (alive) setPins(p) }) }
-    refresh()
-    const off = uiEvents.on(RT.pinMessage, (raw) => {
-      const e = raw as { chat_id: number }
-      if (e.chat_id === numericChatId) refresh()
-    })
-    return () => { alive = false; off() }
-  }, [isRealChat, numericChatId, managers])
+  // (Pinned-bar state + live refresh now live in usePinnedBar.)
 
   // Step 4: mark read on open — when the newest is loaded and the window is
   // focused, read up to max seq (clears the unread badge). Gated on focus like
