@@ -2,9 +2,10 @@
 import { startClient } from './bootstrap'
 import { loadChats, useChatsStore } from '../stores/chatsStore'
 import { useMessagesStore } from '../stores/messagesStore'
+import { usePinsStore } from '../stores/pinsStore'
 import { mapMessage } from '../core/models'
 import { uiEvents } from '../core/hooks/uiEvents'
-import { RT, type NewMessageEvt, type ReadEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt } from '../core/realtime/events'
+import { RT, type NewMessageEvt, type ReadEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt } from '../core/realtime/events'
 import { playMessageSent, playIncoming } from '../core/audio/sounds'
 
 let started = false
@@ -67,7 +68,12 @@ export function startRealtime(): void {
     const e = raw as DeleteMessageEvt
     useMessagesStore.getState().applyDelete(e.chat_id, e.msg_id)
   })
-  smp.on(RT.pinMessage, (e) => uiEvents.emit(RT.pinMessage, e))
+  // Pin/unpin: refetch the chat's pins and write them to the store (the only
+  // socket subscription for pins — usePinnedBar just reads the store).
+  smp.on(RT.pinMessage, (raw) => {
+    const e = raw as PinMessageEvt
+    void managers.messages.listPins(e.chat_id).then((p) => usePinsStore.getState().setPins(e.chat_id, p))
+  })
   smp.on(RT.reaction, (r) => uiEvents.emit(RT.reaction, r))
   // Ack/error carry only client_msg_id → reconcile by clientMsgId (store maps it to the chat).
   smp.on(RT.ack, (raw) => {
