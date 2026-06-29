@@ -333,18 +333,27 @@ O(N) цикл вёрстки (секции/группировка) и React ди
       composer-стейтом. Scroll-intent (`atBottomRef`/`userScrolledUpRef`) передаётся внутрь, а не владеется им.
 - [x] **`usePinnedBar`** (`core/hooks/usePinnedBar.ts`) — пины из `pinsStore` (Этап 1b: realtimeBridge
       рефетчит в стор на `rt:pin_message`, хук только читает — без подписки в View-слое).
-- [ ] **`useChatScroll`** — пагинация + scroll-restore + pin-to-bottom (scroll state machine).
-      ⚠️ **Самый рискованный** (≥6 переплетённых refs, inline-markRead, восстановление позиции);
-      заслуживает отдельной сфокусированной сессии + замера на тяжёлом чате.
-- [ ] Заменить «эффект-сброс 10+ setState на смене чата» на `key={chatId}` либо сброс через стор.
-- [ ] `ConversationView` остаётся рендером + колбэками, < ~300 строк.
+- [x] **`useChatScroll`** (`core/hooks/useChatScroll.ts`) — вся scroll state machine: refs
+      (`scrollRef`/`contentRef`/`atBottomRef`/`userScrolledUpRef`/…), bottom-pin intent, пагинация
+      (loadOlder/loadNewer + tall-screen safety net), scroll-restore через prepend, jump-to-message
+      (glide+flash), down-arrow escape (reloadNewest+pin), player-offset компенсация, read-marker
+      (markRead vs unread-below pill, on-open / on-refocus). Владеет `atBottomRef`/`userScrolledUpRef`
+      (возвращает их в `useChatSend`). Известное исключение `uiEvents(rt:new_message)` переехало сюда
+      (по-прежнему UI-реакция; перевод на стор-сигнал — будущая работа).
+- [x] Эффект-сброс на смене чата **удалён** (не заменён): `App` рендерит `<ConversationView key={selectedId}>`,
+      ремоунт на свитче и так ре-инициализирует все useState/useRef. Старый эффект был не только лишним,
+      но и вредным (деп `[chat,…]` → новая identity на каждом обновлении диалога → стирал draft/выбор).
+- [ ] `ConversationView` остаётся рендером + колбэками, < ~300 строк. **Текущее: 1070 строк, 6 эффектов.**
+      Оставшийся объём — рендер (JSX ~400 строк), контекст-меню/диалоги, channel-обвязка (catch-up/pts/
+      comment-counts), lightbox. Дальнейшая декомпозиция возможна, но логики (бизнес-правил) почти не осталось.
 
-**Прогресс:** useEffect в `ConversationView` `17 → 14`; ~1648 → 1367 строк. Каждый шаг проверен
-вживую (selection: счётчик+Esc; card: подзаголовок+composer; send: оптимистик-бабл + ✓ доставки,
-0 ошибок в консоли), tsc чист, тесты 136/137.
+**Прогресс:** useEffect в `ConversationView` `17 → 6`; ~1648 → 1070 строк. Каждый шаг проверен вживую
+(selection: счётчик+Esc; card: подзаголовок+composer; send: оптимистик-бабл + ✓ доставки;
+scroll: open→pin, send→pin, scroll-up→FAB, FAB→возврат к низу; 0 ошибок в консоли), tsc чист, тесты 136/137.
 
 **Критерий готовности:** `ConversationView` не содержит бизнес-логики; число `useEffect` снижено
-до единиц (DOM-listeners вроде focus — допустимы).
+до единиц (DOM-listeners вроде focus — допустимы). **Достигнут:** 6 эффектов (ladder-disarm, spinner,
+setActiveChat, channel catch-up/pts/comment-counts) — все либо тонкая обвязка, либо channel-специфика.
 
 ---
 
