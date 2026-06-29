@@ -33,7 +33,7 @@ import { messageToConvMsg } from '../core/messageToConvMsg'
 import { usePeers, peersKey } from '../core/hooks/usePeers'
 import { useChatsStore, loadChats } from '../stores/chatsStore'
 import { uiEvents } from '../core/hooks/uiEvents'
-import { RT, type NewMessageEvt, type AckEvt, type MessageErrorEvt, type PresenceEvt, type EditMessageEvt, type DeleteMessageEvt } from '../core/realtime/events'
+import { RT, type NewMessageEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt } from '../core/realtime/events'
 import { mapMessage, type Message, type MessageEntity } from '../core/models'
 import { splitRich } from '../core/markdown'
 
@@ -165,7 +165,9 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // the member set + a live online set driven by rt:presence frames.
   const [card, setCard] = useState<{ type: string; memberCount: number; myRole: string; myRights: number; discussionChatId: number } | null>(null)
   const memberIds = useRef<Set<number>>(new Set())
-  const [onlineIds, setOnlineIds] = useState<Set<number>>(new Set())
+  // Online status is single-sourced from chatsStore.presence (fed by realtimeBridge);
+  // we seed members' presence on load and derive the count below — no local listener.
+  const setPresence = useChatsStore((s) => s.setPresence)
   // Peer's read horizon (real chats): out messages with seq<=peerReadSeq render the
   // double-check (read). Read straight from the store dialog — it's seeded from
   // GET /chats (peer_read_seq) on load and advanced by applyRead on live rt:read,
@@ -1026,7 +1028,6 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   useEffect(() => {
     setCard(null)
     memberIds.current = new Set()
-    setOnlineIds(new Set())
     if (!isRealChat) return
     let alive = true
     void managers.groups.card(numericChatId).then((c) => {
@@ -1036,12 +1037,15 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
         void managers.groups.members(numericChatId).then((mem) => {
           if (!alive) return
           memberIds.current = new Set(mem.map((m) => m.userId))
-          setOnlineIds(new Set(mem.filter((m) => m.online).map((m) => m.userId)))
+          // Seed members' presence into the store (single source of truth); preserve
+          // any existing lastSeen so a private-chat peer's "last seen" text isn't lost.
+          const cur = useChatsStore.getState().presence
+          for (const m of mem) setPresence({ user_id: m.userId, online: m.online, last_seen: cur[m.userId]?.lastSeen ?? 0 })
         })
       }
     })
     return () => { alive = false }
-  }, [isRealChat, numericChatId, managers])
+  }, [isRealChat, numericChatId, managers, setPresence])
 
   // Channel live + catch-up (mirrors tweb's getChannelDifference on open): subscribe
   // to the channel topic so live posts arrive via rt:new_message (existing path), and
@@ -1082,22 +1086,8 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [discussionsEnabled, numericChatId, win.msgs.length, managers])
 
-  // Live online updates: a presence frame for a known member toggles the online set.
-  useEffect(() => {
-    if (!isRealChat) return
-    return uiEvents.on(RT.presence, (raw) => {
-      const ev = raw as PresenceEvt
-      if (!memberIds.current.has(ev.user_id)) return
-      setOnlineIds((prev) => {
-        const has = prev.has(ev.user_id)
-        if (ev.online === has) return prev
-        const next = new Set(prev)
-        if (ev.online) next.add(ev.user_id)
-        else next.delete(ev.user_id)
-        return next
-      })
-    })
-  }, [isRealChat])
+  // (Live online updates need no local listener: realtimeBridge writes every
+  // presence frame into chatsStore.presence, and onlineCount below derives from it.)
 
   // (Peer read horizon now comes straight from the store dialog — see peerReadSeq
   // above. chatsStore.applyRead advances it on every live rt:read, so no local
@@ -1231,7 +1221,13 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // Header subtitle for real group/channel chats: derive a member/online (or
   // subscriber) count from the card + live online set. Private chats and mock
   // chats keep the existing chat.status text (returned as null here).
-  const onlineCount = onlineIds.size
+  // Derived from the store: count members currently online. Re-renders only when the
+  // number changes (presence frames for non-members don't touch it).
+  const onlineCount = useChatsStore((s) => {
+    let n = 0
+    for (const id of memberIds.current) if (s.presence[id]?.online) n++
+    return n
+  })
   const realSubtitle: string | null = (() => {
     if (!isRealChat || !card) return null
     if (card.type === 'channel') return `${card.memberCount} подписчиков`
