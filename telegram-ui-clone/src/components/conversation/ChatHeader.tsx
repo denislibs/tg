@@ -12,7 +12,13 @@ import VerifiedBadge from '../VerifiedBadge'
 import TypingIndicator from './TypingIndicator'
 import { useCall } from '../call/CallProvider'
 import { useManagers } from '../../core/hooks/useManagers'
-import { useT } from '../../i18n'
+import { useChatSearch } from '../../core/hooks/useChatSearch'
+import { usePeers } from '../../core/hooks/usePeers'
+import { useChatsStore } from '../../stores/chatsStore'
+import { gradientFor } from '../../core/dialogToChat'
+import { friendlyMsgTime } from '../../core/friendlyTime'
+import { useT, useLang } from '../../i18n'
+import { useMemo } from 'react'
 import { EASE, DUR } from '../../motion'
 import type { Chat } from '../../data'
 import type { TypingKind } from '../../core/hooks/useTypingLabel'
@@ -120,14 +126,10 @@ export interface ChatHeaderProps {
   status: string
   online: boolean
   playerOffset: number
-  searchOpen: boolean
-  searchQuery: string
-  searchResults: SearchResultRow[]
-  onSearchChange: (v: string) => void
-  onSearchOpen: () => void
-  onSearchClear: () => void
-  onSearchClose: () => void
-  onPickResult: (seq: number) => void
+  // The only thing the header needs from the parent for search: jump the feed to a
+  // result's seq (the scroll machine lives in useChatScroll). Everything else about
+  // search — open state, query, the backend fetch, the result rows — the header owns.
+  onJumpToSeq: (seq: number) => void
   onBack?: () => void
   onToggleInfo: () => void
   onOpenMenu: (rect: DOMRect) => void
@@ -135,15 +137,47 @@ export interface ChatHeaderProps {
 
 function ChatHeader({
   chat, avatarSrc, peerOnline, typingActive, typingText, typingKind, status, online,
-  playerOffset, searchOpen, searchQuery, searchResults,
-  onSearchChange, onSearchOpen, onSearchClear, onSearchClose, onPickResult,
-  onBack, onToggleInfo, onOpenMenu,
+  playerOffset, onJumpToSeq, onBack, onToggleInfo, onOpenMenu,
 }: ChatHeaderProps) {
   const theme = useTheme()
   const tg = theme.tg
   const mode = theme.palette.mode
   const t = useT()
+  const [lang] = useLang()
   const { start: startCall } = useCall()
+  const managers = useManagers()
+
+  // The header owns in-chat search: open/query (single-sourced in searchStore, so the
+  // pinned bar / sticky-date offset can read it), the debounced fetch, and the result
+  // rows (sender name + time resolved here from peers/me/lang).
+  const numericChatId = Number(chat.id)
+  const isRealChat = Number.isFinite(numericChatId) && String(numericChatId) === chat.id
+  const search = useChatSearch(numericChatId, isRealChat, managers)
+  const searchOpen = search.open
+  const searchQuery = search.query
+  const onSearchChange = search.setQuery
+  const onSearchOpen = () => search.setOpen(true)
+  const onSearchClear = () => search.setQuery('')
+  const onSearchClose = () => search.setOpen(false)
+  const onPickResult = (seq: number) => { search.reset(); onJumpToSeq(seq) }
+
+  const meId = useChatsStore((s) => s.meId)
+  // usePeers keys its fetch on peersKey(ids) internally, so a fresh array each render is fine.
+  const resultPeers = usePeers(useMemo(() => search.results.map((m) => m.senderId), [search.results]))
+  const searchResults: SearchResultRow[] = useMemo(
+    () =>
+      search.results.map((m) => ({
+        id: m.id,
+        seq: m.seq,
+        sender: m.senderId === meId ? 'Вы' : resultPeers.get(m.senderId)?.displayName || chat.name,
+        avatar: gradientFor(m.senderId),
+        time: friendlyMsgTime(m.createdAt, lang),
+        text: m.text ?? '',
+        mediaId: m.mediaId ?? undefined,
+        mediaType: m.type,
+      })),
+    [search.results, resultPeers, meId, chat.name, lang],
+  )
 
   // Active result for the ↑/↓ navigation in the search bar (tweb): the arrows
   // step through hits and jump the feed to each; the active row is highlighted.

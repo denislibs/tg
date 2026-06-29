@@ -4,7 +4,6 @@ import { Box, Typography, useMediaQuery, useTheme } from '@mui/material'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import { useAvatarSrc } from './useAvatarSrc'
-import { gradientFor } from '../core/dialogToChat'
 import UserInfoPanel from './UserInfoPanel'
 import AddContactView from './AddContactView'
 import DiscussionView from './DiscussionView'
@@ -28,7 +27,7 @@ import { useChatSend } from '../core/hooks/useChatSend'
 import { useChatScroll } from '../core/hooks/useChatScroll'
 import Composer from './Composer'
 import ChatFeed from './messages/ChatFeed'
-import ChatHeader, { type SearchResultRow } from './conversation/ChatHeader'
+import ChatHeader from './conversation/ChatHeader'
 import PinnedBar from './conversation/PinnedBar'
 import ScrollDownFab from './conversation/ScrollDownFab'
 import SelectionBar from './conversation/SelectionBar'
@@ -37,7 +36,8 @@ import { messageToConvMsg } from '../core/messageToConvMsg'
 import { usePeers, peersKey } from '../core/hooks/usePeers'
 import { useChatsStore, loadChats } from '../stores/chatsStore'
 import { type MessageEntity } from '../core/models'
-import { useChatSearch } from '../core/hooks/useChatSearch'
+import { friendlyMsgTime } from '../core/friendlyTime'
+import { useSearchStore } from '../stores/searchStore'
 import { peerColor } from './peerColor'
 import { DeleteMessageDialog, ForwardPicker, ViewersPopup, AddMemberDialog } from './messages/ChatDialogs'
 import SendMediaPopup from './messages/SendMediaPopup'
@@ -50,22 +50,6 @@ import MediaLightbox, { type LightboxItem } from './messages/MediaLightbox'
 const FADE_TOP = 76 // clear the floating header
 const FADE_BOTTOM = 84 // clear the floating composer
 
-// "Сегодня в 08:17" / "Вчера в 08:17" / "12.06 в 08:17" for the now-playing subtitle.
-function friendlyMsgTime(iso: string, lang: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ''
-  const hhmm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-  const now = new Date()
-  const sameDay = d.toDateString() === now.toDateString()
-  const yest = new Date(now)
-  yest.setDate(now.getDate() - 1)
-  const isYest = d.toDateString() === yest.toDateString()
-  const ru = lang === 'ru'
-  if (sameDay) return ru ? `Сегодня в ${hhmm}` : `Today at ${hhmm}`
-  if (isYest) return ru ? `Вчера в ${hhmm}` : `Yesterday at ${hhmm}`
-  const date = `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`
-  return ru ? `${date} в ${hhmm}` : `${date} at ${hhmm}`
-}
 // Local start-of-day in ms (the date "bucket"), and a friendly day label for the
 // date divider — tweb shows Today / Yesterday / "14 June" (with year if not this year).
 const FLOOR = 'rgba(255,255,255,0.24)'
@@ -249,7 +233,9 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const pins = usePinnedBar(numericChatId, isRealChat, managers)
   // "Seen by" popup: the resolved viewers of a message.
   const [viewers, setViewers] = useState<{ x: number; y: number; names: string[] } | null>(null)
-  const search = useChatSearch(numericChatId, isRealChat, managers)
+  // Search is owned by ChatHeader now; here we only read whether it's open (single-sourced
+  // in searchStore) to hide the pinned bar + adjust the sticky-date offset.
+  const searchOpen = useSearchStore((s) => s.byChat[numericChatId]?.open ?? false)
   const [headerMenu, setHeaderMenu] = useState<{ top: number; right: number } | null>(null)
   const [addMemberOpen, setAddMemberOpen] = useState(false)
   const [addContactOpen, setAddContactOpen] = useState(false)
@@ -646,7 +632,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
 
   // Sticky date-pill offset: below the floating header, plus the player plate
   // and the pinned-message bar when shown.
-  const dateStickyTop = playerOffset + (pins.length > 0 && !search.open ? 122 : 66)
+  const dateStickyTop = playerOffset + (pins.length > 0 && !searchOpen ? 122 : 66)
   // Stable callback for the memoized feed to open a channel post's discussion.
   const onOpenDiscussion = useEvent((postId: number, text?: string) => setDiscussion({ postId, post: { text } }))
 
@@ -654,11 +640,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // across the parent's transient re-renders.
   const onToggleInfo = useEvent(() => setInfoOpen((o) => !o))
   const onOpenHeaderMenu = useEvent((r: DOMRect) => setHeaderMenu({ top: r.bottom + 6, right: window.innerWidth - r.right }))
-  const onSearchOpen = useEvent(() => search.setOpen(true))
-  const onSearchClose = useEvent(() => search.setOpen(false))
-  const onSearchClear = useEvent(() => search.setQuery(''))
   const onUnpin = useEvent((id: number) => { void managers.messages.unpin(numericChatId, id) })
-  const onPickSearchResult = useEvent((seq: number) => { search.reset(); jumpToSeq(seq) })
   // Stable composer callbacks so the memoized <Composer> doesn't re-render on
   // unrelated parent renders (e.g. the scroll handler toggling showScrollDown).
   const onComposerSend = useEvent((text: string, entities?: MessageEntity[]) => send(text, entities))
@@ -670,23 +652,6 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // Files pasted/dropped into the composer → open the same media-preview popup as
   // the attach button (lets the user add a caption + choose media/file).
   const onComposerPasteFiles = useEvent((files: File[]) => setPendingMedia({ files, asFile: false }))
-  // Display-ready search hits (sender name + time resolved here) — memoized so the
-  // header's memo only busts when results/peers actually change.
-  const searchRows: SearchResultRow[] = useMemo(
-    () =>
-      search.results.map((m) => ({
-        id: m.id,
-        seq: m.seq,
-        sender: m.senderId === meId ? 'Вы' : peers.get(m.senderId)?.displayName || chat.name,
-        avatar: gradientFor(m.senderId),
-        time: friendlyMsgTime(m.createdAt, lang),
-        text: m.text ?? '',
-        mediaId: m.mediaId ?? undefined,
-        mediaType: m.type,
-      })),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [search.results, peers, meId, chat.name, lang],
-  )
 
   return (
     <CallProvider chat={chat}>
@@ -729,14 +694,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           status={headerStatus}
           online={headerOnline}
           playerOffset={playerOffset}
-          searchOpen={search.open}
-          searchQuery={search.query}
-          searchResults={searchRows}
-          onSearchChange={search.setQuery}
-          onSearchOpen={onSearchOpen}
-          onSearchClear={onSearchClear}
-          onSearchClose={onSearchClose}
-          onPickResult={onPickSearchResult}
+          onJumpToSeq={jumpToSeqE}
           onBack={onBack}
           onToggleInfo={onToggleInfo}
           onOpenMenu={onOpenHeaderMenu}
@@ -744,7 +702,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
 
         <PinnedBar
           pins={pins}
-          searchOpen={search.open}
+          searchOpen={searchOpen}
           playerOffset={playerOffset}
           onJump={jumpToSeqE}
           onUnpin={onUnpin}
