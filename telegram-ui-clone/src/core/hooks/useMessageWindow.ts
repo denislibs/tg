@@ -1,7 +1,12 @@
 // src/core/hooks/useMessageWindow.ts
-import { useCallback, useEffect, useRef, useState } from 'react'
+//
+// Thin selector/actions wrapper over messagesStore: the per-chat window lives in
+// the store (single source of truth, normalized, survives unmount), this hook
+// just binds it to a chatId and preserves the original MessageWindow interface.
+import { useCallback, useEffect, useRef } from 'react'
 import type { Message, MessageEntity } from '../models'
 import type { HistoryResult } from '../managers/messagesManager'
+import { useMessagesStore, EMPTY_WINDOW } from '../../stores/messagesStore'
 
 interface ManagersLike {
   messages: {
@@ -40,59 +45,47 @@ export interface MessageWindow {
   applyDelete: (msgId: number, forMe: boolean) => void
 }
 
-function dedupAsc(list: Message[]): Message[] {
-  const bySeq = new Map<number, Message>()
-  for (const m of list) bySeq.set(m.seq, m)
-  return Array.from(bySeq.values()).sort((a, b) => a.seq - b.seq)
-}
-
 export function useMessageWindow(chatId: number, managers: ManagersLike, limit = 40): MessageWindow {
-  const [msgs, setMsgs] = useState<Message[]>([])
-  const [reachedTop, setReachedTop] = useState(false)
-  const [reachedBottom, setReachedBottom] = useState(false)
-  const [loadingOlder, setLoadingOlder] = useState(false)
-  const [loadingNewer, setLoadingNewer] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [loadedFromCache, setLoadedFromCache] = useState(false)
+  const win = useMessagesStore((s) => s.byChat[chatId]) ?? EMPTY_WINDOW
   // guards against overlapping loads / stale chat responses
   const reqChat = useRef(chatId)
 
   useEffect(() => {
     reqChat.current = chatId
-    setMsgs([]); setReachedTop(false); setReachedBottom(false); setLoading(true)
+    const st = useMessagesStore.getState()
+    st.beginLoad(chatId)
     let cancelled = false
     ;(async () => {
       const r = await managers.messages.getHistory({ chatId, offsetSeq: 0, addOffset: 0, limit })
       if (cancelled || reqChat.current !== chatId) return
-      setMsgs(dedupAsc(r.messages))
-      setReachedTop(r.reachedTop)
-      setReachedBottom(r.reachedBottom)
-      setLoadedFromCache(!!r.cached)
-      setLoading(false)
+      useMessagesStore.getState().setWindow(chatId, { msgs: r.messages, reachedTop: r.reachedTop, reachedBottom: r.reachedBottom, cached: r.cached })
     })()
     return () => { cancelled = true }
   }, [chatId, managers, limit])
 
   const loadOlder = useCallback(async () => {
-    if (reachedTop || loadingOlder || loading) return
-    const oldest = msgs[0]
+    const w = useMessagesStore.getState().byChat[chatId] ?? EMPTY_WINDOW
+    if (w.reachedTop || w.loadingOlder || w.loading) return
+    const oldest = w.msgs[0]
     if (!oldest) return
-    setLoadingOlder(true)
+    const st = useMessagesStore.getState()
+    st.setLoadingOlder(chatId, true)
     try {
       const r = await managers.messages.getHistory({ chatId, offsetSeq: oldest.seq, addOffset: 1, limit })
       if (reqChat.current !== chatId) return
-      setMsgs((prev) => dedupAsc([...r.messages, ...prev]))
-      setReachedTop(r.reachedTop)
+      useMessagesStore.getState().prepend(chatId, r.messages, r.reachedTop)
     } finally {
-      setLoadingOlder(false)
+      useMessagesStore.getState().setLoadingOlder(chatId, false)
     }
-  }, [chatId, managers, limit, msgs, reachedTop, loadingOlder, loading])
+  }, [chatId, managers, limit])
 
   const loadNewer = useCallback(async () => {
-    if (reachedBottom || loadingNewer || loading) return
-    const newest = msgs[msgs.length - 1]
+    const w = useMessagesStore.getState().byChat[chatId] ?? EMPTY_WINDOW
+    if (w.reachedBottom || w.loadingNewer || w.loading) return
+    const newest = w.msgs[w.msgs.length - 1]
     if (!newest) return
-    setLoadingNewer(true)
+    const st = useMessagesStore.getState()
+    st.setLoadingNewer(chatId, true)
     try {
       // addOffset = -limit means "load `limit` messages NEWER than newest.seq"
       // (tweb semantics). Passing 0 made the cache's sliceMe walk the OLDER
@@ -101,63 +94,43 @@ export function useMessageWindow(chatId: number, managers: ManagersLike, limit =
       // only checks the sign (<=0 ⇒ newer), so the network result is unchanged.
       const r = await managers.messages.getHistory({ chatId, offsetSeq: newest.seq, addOffset: -limit, limit })
       if (reqChat.current !== chatId) return
-      setMsgs((prev) => dedupAsc([...prev, ...r.messages]))
-      setReachedBottom(r.reachedBottom)
+      useMessagesStore.getState().append(chatId, r.messages, r.reachedBottom)
     } finally {
-      setLoadingNewer(false)
+      useMessagesStore.getState().setLoadingNewer(chatId, false)
     }
-  }, [chatId, managers, limit, msgs, reachedBottom, loadingNewer, loading])
+  }, [chatId, managers, limit])
 
-  const appendLocal = useCallback((m: Message) => {
-    setMsgs((prev) => dedupAsc([...prev, m]))
-  }, [])
+  const appendLocal = useCallback((m: Message) => useMessagesStore.getState().appendLocal(chatId, m), [chatId])
 
-  const pending = useRef<Map<string, number>>(new Map())
+  const appendOptimistic = useCallback(
+    (text: string, meId: number, clientMsgId: string, mediaId?: number, type = 'text', entities?: MessageEntity[]) =>
+      useMessagesStore.getState().appendOptimistic(chatId, text, meId, clientMsgId, mediaId, type, entities),
+    [chatId],
+  )
 
-  const appendOptimistic = useCallback((text: string, meId: number, clientMsgId: string, mediaId?: number, type = 'text', entities?: MessageEntity[]) => {
-    setMsgs((prev) => {
-      const maxSeq = prev.length ? prev[prev.length - 1].seq : 0
-      const tentativeSeq = maxSeq + 1
-      pending.current.set(clientMsgId, tentativeSeq)
-      const tmp: Message = { id: -Date.now(), chatId, seq: tentativeSeq, senderId: meId, type, text, entities, replyToId: null, mediaId: mediaId ?? null, createdAt: new Date().toISOString(), threadRootId: null, clientId: clientMsgId }
-      return dedupAsc([...prev, tmp])
-    })
-  }, [chatId])
+  const reconcileAck = useCallback(
+    (clientMsgId: string, ack: { msgId: number; seq: number; createdAt: string }) =>
+      useMessagesStore.getState().reconcileAck(chatId, clientMsgId, ack),
+    [chatId],
+  )
 
-  const reconcileAck = useCallback((clientMsgId: string, ack: { msgId: number; seq: number; createdAt: string }) => {
-    const tentativeSeq = pending.current.get(clientMsgId)
-    if (tentativeSeq === undefined) return
-    pending.current.delete(clientMsgId)
-    setMsgs((prev) => dedupAsc(prev.map((m) => m.seq === tentativeSeq ? { ...m, id: ack.msgId, seq: ack.seq, createdAt: ack.createdAt } : m)))
-  }, [])
+  const failOptimistic = useCallback((clientMsgId: string) => useMessagesStore.getState().failOptimistic(chatId, clientMsgId), [chatId])
 
-  const failOptimistic = useCallback((clientMsgId: string) => {
-    pending.current.delete(clientMsgId)
-    setMsgs((prev) => prev.filter((m) => m.clientId !== clientMsgId))
-  }, [])
+  const applyIncoming = useCallback((m: Message) => useMessagesStore.getState().applyIncoming(chatId, m), [chatId])
 
-  const applyIncoming = useCallback((m: Message) => {
-    setMsgs((prev) => {
-      if (prev.some((x) => x.id === m.id)) return prev
-      // The realtime echo of our OWN just-sent message arrives with the server
-      // id/seq but no clientId, and dedupAsc (keyed by seq) would replace the
-      // optimistic entry — flipping its React key (clientId → m-<id>) and
-      // remounting the bubble mid-appear. Carry the optimistic clientId over so
-      // the key stays stable and the appear animation isn't cut short.
-      const optimistic = prev.find((x) => x.clientId && x.seq === m.seq)
-      const merged = optimistic ? { ...m, clientId: optimistic.clientId } : m
-      return dedupAsc([...prev, merged])
-    })
-  }, [])
+  const applyEdit = useCallback(
+    (msgId: number, text: string, editedAt: string, entities?: MessageEntity[]) =>
+      useMessagesStore.getState().applyEdit(chatId, msgId, text, editedAt, entities),
+    [chatId],
+  )
+
+  const applyDelete = useCallback((msgId: number, _forMe: boolean) => useMessagesStore.getState().applyDelete(chatId, msgId), [chatId])
 
   const jumpTo = useCallback(async (centerSeq: number) => {
     if (!managers.messages.getAround) return
     const r = await managers.messages.getAround(chatId, centerSeq, limit)
     if (reqChat.current !== chatId) return
-    setMsgs(dedupAsc(r.messages))
-    setReachedTop(r.reachedTop)
-    setReachedBottom(r.reachedBottom)
-    setLoading(false)
+    useMessagesStore.getState().setWindow(chatId, { msgs: r.messages, reachedTop: r.reachedTop, reachedBottom: r.reachedBottom })
   }, [chatId, managers, limit])
 
   // Escape hatch after a jump: re-fetch the newest page and replace the window
@@ -165,19 +138,18 @@ export function useMessageWindow(chatId: number, managers: ManagersLike, limit =
   const reloadNewest = useCallback(async () => {
     const r = await managers.messages.getHistory({ chatId, offsetSeq: 0, addOffset: 0, limit })
     if (reqChat.current !== chatId) return
-    setMsgs(dedupAsc(r.messages))
-    setReachedTop(r.reachedTop)
-    setReachedBottom(r.reachedBottom)
-    setLoading(false)
+    useMessagesStore.getState().setWindow(chatId, { msgs: r.messages, reachedTop: r.reachedTop, reachedBottom: r.reachedBottom })
   }, [chatId, managers, limit])
 
-  const applyEdit = useCallback((msgId: number, text: string, editedAt: string, entities?: MessageEntity[]) => {
-    setMsgs((prev) => prev.map((m) => (m.id === msgId ? { ...m, text, editedAt, entities } : m)))
-  }, [])
-
-  const applyDelete = useCallback((msgId: number, _forMe: boolean) => {
-    setMsgs((prev) => prev.filter((m) => m.id !== msgId))
-  }, [])
-
-  return { msgs, reachedTop, reachedBottom, loadingOlder, loadingNewer, loading, loadedFromCache, loadOlder, loadNewer, jumpTo, reloadNewest, appendLocal, appendOptimistic, reconcileAck, failOptimistic, applyIncoming, applyEdit, applyDelete }
+  return {
+    msgs: win.msgs,
+    reachedTop: win.reachedTop,
+    reachedBottom: win.reachedBottom,
+    loadingOlder: win.loadingOlder,
+    loadingNewer: win.loadingNewer,
+    loading: win.loading,
+    loadedFromCache: win.loadedFromCache,
+    loadOlder, loadNewer, jumpTo, reloadNewest,
+    appendLocal, appendOptimistic, reconcileAck, failOptimistic, applyIncoming, applyEdit, applyDelete,
+  }
 }
