@@ -22,6 +22,7 @@ import { startClient } from '../client/bootstrap'
 import { useMessageWindow } from '../core/hooks/useMessageWindow'
 import { useEvent } from '../core/hooks/useEvent'
 import { useChatSelection } from '../core/hooks/useChatSelection'
+import { useChatInfoCard } from '../core/hooks/useChatInfoCard'
 import Composer from './Composer'
 import ChatFeed from './messages/ChatFeed'
 import ChatHeader, { type SearchResultRow } from './conversation/ChatHeader'
@@ -161,13 +162,10 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // Mock chats (local group/channel stubs) keep the old in-memory message list;
   // real chats render the windowed history mapped to ConvMsg.
   const [mockMsgs, setMockMsgs] = useState<ConvMsg[]>(chat.messages ?? [])
-  // Real group/channel header counts: card (memberCount + type) and, for groups,
-  // the member set + a live online set driven by rt:presence frames.
-  const [card, setCard] = useState<{ type: string; memberCount: number; myRole: string; myRights: number; discussionChatId: number } | null>(null)
-  const memberIds = useRef<Set<number>>(new Set())
-  // Online status is single-sourced from chatsStore.presence (fed by realtimeBridge);
-  // we seed members' presence on load and derive the count below — no local listener.
-  const setPresence = useChatsStore((s) => s.setPresence)
+  // Real group/channel header card (type/counts/rights) + member presence seeding +
+  // post/type permission + discussion wiring + live online count — view-model hook.
+  const { card, canType, discussionChatId, discussionsEnabled, onlineCount } =
+    useChatInfoCard({ isRealChat, isChannel, numericChatId, managers })
   // Peer's read horizon (real chats): out messages with seq<=peerReadSeq render the
   // double-check (read). Read straight from the store dialog — it's seeded from
   // GET /chats (peer_read_seq) on load and advanced by applyRead on live rt:read,
@@ -177,16 +175,8 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     isRealChat ? s.dialogs.find((d) => d.chatId === numericChatId)?.peerReadSeq ?? 0 : 0,
   )
   // Channel discussions: comment counts per post id + the open thread overlay.
-  const discussionChatId = card?.discussionChatId ?? 0
-  const discussionsEnabled = isRealChat && isChannel && discussionChatId > 0
   const [commentCounts, setCommentCounts] = useState<Map<number, number>>(new Map())
   const [discussion, setDiscussion] = useState<{ postId: number; post: { text?: string } } | null>(null)
-  // Channel control plate (mirrors tweb input.ts): an admin who may post sees the
-  // composer; a subscriber without POST_MESSAGES sees the Mute bar. The post
-  // permission comes from the fetched card (creator, or the POST_MESSAGES rights bit = 1).
-  const canPostChannel = card?.myRole === 'creator' || ((card?.myRights ?? 0) & 1) === 1
-  // Groups/private unchanged (canType true); channels only type for posters.
-  const canType = !isChannel || canPostChannel
   // For real group chats, resolve incoming sender ids -> display names so bubbles
   // can show the author. Private chats never pass a senderName (unchanged).
   const resolveSenders = isRealChat && isGroup
@@ -955,30 +945,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // Incoming typing for real chats is centralized in the store (see realtimeBridge
   // + useTypingLabel below); the local `typing` boolean is only used by mock chats.
 
-  // Header counts for real group/channel chats: fetch the card (type + memberCount)
-  // and, for groups, the member snapshot (seeds memberIds + the initial online set).
-  // Reset everything when the chat changes so a stale count never leaks across chats.
-  useEffect(() => {
-    setCard(null)
-    memberIds.current = new Set()
-    if (!isRealChat) return
-    let alive = true
-    void managers.groups.card(numericChatId).then((c) => {
-      if (!alive) return
-      setCard({ type: c.type, memberCount: c.memberCount, myRole: c.myRole, myRights: c.myRights, discussionChatId: c.discussionChatId })
-      if (c.type === 'group') {
-        void managers.groups.members(numericChatId).then((mem) => {
-          if (!alive) return
-          memberIds.current = new Set(mem.map((m) => m.userId))
-          // Seed members' presence into the store (single source of truth); preserve
-          // any existing lastSeen so a private-chat peer's "last seen" text isn't lost.
-          const cur = useChatsStore.getState().presence
-          for (const m of mem) setPresence({ user_id: m.userId, online: m.online, last_seen: cur[m.userId]?.lastSeen ?? 0 })
-        })
-      }
-    })
-    return () => { alive = false }
-  }, [isRealChat, numericChatId, managers, setPresence])
+  // (Header card + member presence seeding now live in useChatInfoCard.)
 
   // Channel live + catch-up (mirrors tweb's getChannelDifference on open): subscribe
   // to the channel topic so live posts arrive via rt:new_message (existing path), and
@@ -1152,15 +1119,8 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   })
 
   // Header subtitle for real group/channel chats: derive a member/online (or
-  // subscriber) count from the card + live online set. Private chats and mock
+  // subscriber) count from the card + live online count. Private chats and mock
   // chats keep the existing chat.status text (returned as null here).
-  // Derived from the store: count members currently online. Re-renders only when the
-  // number changes (presence frames for non-members don't touch it).
-  const onlineCount = useChatsStore((s) => {
-    let n = 0
-    for (const id of memberIds.current) if (s.presence[id]?.online) n++
-    return n
-  })
   const realSubtitle: string | null = (() => {
     if (!isRealChat || !card) return null
     if (card.type === 'channel') return `${card.memberCount} подписчиков`
