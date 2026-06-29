@@ -18,7 +18,7 @@ import type { Chat, ConvMsg, OpenPeer } from '../data'
 import { useT, useLang } from '../i18n'
 import { useTypingLabel } from '../core/hooks/useTypingLabel'
 import { lastSeenLabel } from '../core/presence'
-import { startClient } from '../client/bootstrap'
+import { useManagers } from '../core/hooks/useManagers'
 import { useMessageWindow } from '../core/hooks/useMessageWindow'
 import { useEvent } from '../core/hooks/useEvent'
 import { useChatSelection } from '../core/hooks/useChatSelection'
@@ -112,7 +112,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     isRealChat ? s.dialogs.find((d) => d.chatId === numericChatId)?.muted : undefined,
   )
   const muted = dialogMuted ?? !!chat.muted
-  const { managers } = startClient()
+  const managers = useManagers()
   const win = useMessageWindow(isRealChat ? numericChatId : -1, managers, 40)
 
   // ── Open-chat ladder (tweb animateAsLadder) ──────────────────────────────

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { startClient } from '../../client/bootstrap'
+import { useManagers } from './useManagers'
 import type { Peer } from '../managers/peersManager'
 
 // Stable cache key for a set of ids: sorted, deduped, comma-joined.
@@ -13,11 +13,11 @@ export function peersKey(ids: number[]): string {
 // Resolve a set of user ids to a name map, fetching missing ones via the worker.
 export function usePeers(ids: number[]): Map<number, Peer> {
   const [map, setMap] = useState<Map<number, Peer>>(new Map())
+  const managers = useManagers()
   const key = peersKey(ids)
   useEffect(() => {
     if (ids.length === 0) return
     let alive = true
-    const { managers } = startClient()
     managers.peers.getUsers(ids).then((peers) => {
       if (!alive) return
       setMap((prev) => {
