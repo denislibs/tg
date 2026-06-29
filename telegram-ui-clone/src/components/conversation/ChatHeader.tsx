@@ -11,7 +11,7 @@ import Avatar from '../Avatar'
 import VerifiedBadge from '../VerifiedBadge'
 import TypingIndicator from './TypingIndicator'
 import { useCall } from '../call/CallProvider'
-import { startClient } from '../../client/bootstrap'
+import { useManagers } from '../../core/hooks/useManagers'
 import { useT } from '../../i18n'
 import { EASE, DUR } from '../../motion'
 import type { Chat } from '../../data'
@@ -43,6 +43,7 @@ function splitMatch(text: string, q: string): { t: string; m: boolean }[] {
 // the query bolded); media hits show a type icon + the file name (fetched) or a
 // type label — e.g. 🎵 song.mp3, 📄 report.pdf, 🖼 Фото.
 function ResultPreview({ row, query }: { row: SearchResultRow; query: string }) {
+  const managers = useManagers()
   const tg = useTheme().tg
   const { text, mediaId, mediaType } = row
   const isMedia = !text.trim() && mediaId != null
@@ -53,9 +54,9 @@ function ResultPreview({ row, query }: { row: SearchResultRow; query: string }) 
   useEffect(() => {
     if (!wantsName || mediaId == null) return
     let alive = true
-    void startClient().managers.media.meta(mediaId).then((m) => { if (alive) setMeta({ fileName: m.fileName || '', mime: m.mime || '' }) })
+    void managers.media.meta(mediaId).then((m) => { if (alive) setMeta({ fileName: m.fileName || '', mime: m.mime || '' }) })
     return () => { alive = false }
-  }, [wantsName, mediaId])
+  }, [wantsName, mediaId, managers])
   const fileName = meta?.fileName || ''
 
   if (!isMedia) {

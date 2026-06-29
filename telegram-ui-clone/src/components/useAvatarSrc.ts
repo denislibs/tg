@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { startClient } from '../client/bootstrap'
+import { useManagers } from '../core/hooks/useManagers'
 
 // Resolves a stored avatar URL into something an <img> can load. Avatars are
 // stored as a "/media/{id}/content" path; the actual bytes are served by an
@@ -7,6 +7,7 @@ import { startClient } from '../client/bootstrap'
 // media manager. An already-absolute URL (or empty) is returned unchanged.
 export function useAvatarSrc(avatarUrl?: string): string {
   const [src, setSrc] = useState('')
+  const managers = useManagers()
   useEffect(() => {
     if (!avatarUrl) {
       setSrc('')
@@ -18,13 +19,12 @@ export function useAvatarSrc(avatarUrl?: string): string {
       return
     }
     let alive = true
-    const { managers } = startClient()
     void Promise.resolve(managers.media.contentUrl(Number(m[1]))).then((u) => {
       if (alive) setSrc(u)
     })
     return () => {
       alive = false
     }
-  }, [avatarUrl])
+  }, [avatarUrl, managers])
   return src
 }

@@ -13,7 +13,7 @@ import { EASE, DUR } from '../motion'
 import TgIcon from './TgIcon'
 import Avatar from './Avatar'
 import { useAvatarSrc } from './useAvatarSrc'
-import { startClient } from '../client/bootstrap'
+import { useManagers } from '../core/hooks/useManagers'
 import type { Chat } from '../data'
 
 // Split a display name into a first/last seed (everything after the first token is
@@ -32,6 +32,7 @@ export default function AddContactView({
   onClose: () => void
   onAdded?: () => void
 }) {
+  const managers = useManagers()
   const theme = useTheme()
   const tg = theme.tg
   const narrow = useMediaQuery('(max-width:900px)')
@@ -51,7 +52,7 @@ export default function AddContactView({
     if (!canSave) return
     setSaving(true)
     try {
-      await startClient().managers.contacts.add({
+      await managers.contacts.add({
         contactId: chat.peerId!,
         firstName: first.trim(),
         lastName: last.trim(),

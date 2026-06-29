@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
 import { EASE, DUR } from '../../motion'
 import { useT } from '../../i18n'
-import { startClient } from '../../client/bootstrap'
+import { useManagers } from '../../core/hooks/useManagers'
 import QrCode from './QrCode'
 
 type Step = 'phone' | 'qr' | 'code'
@@ -63,7 +63,7 @@ export default function AuthFlow({ onComplete }: { onComplete: () => void }) {
   const tg = useTheme().tg
   const t = useT()
 
-  const { managers } = startClient()
+  const managers = useManagers()
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
-import { startClient } from './client/bootstrap'
+import { useManagers } from './core/hooks/useManagers'
 import { useConnectionStore, pingBackend } from './stores/connectionStore'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Box, CssBaseline, ThemeProvider, Typography, useMediaQuery, useTheme } from '@mui/material'
@@ -25,6 +25,7 @@ export type ToggleMode = (coords?: { x: number; y: number }) => void
 let joinDeepLinkHandled = false
 
 function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout: () => void }) {
+  const managers = useManagers()
   const tg = useTheme().tg
   const t = useT()
   const dialogs = useChatsStore((s) => s.dialogs)
@@ -43,13 +44,12 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   }
 
   useEffect(() => {
-    const { managers } = startClient()
     void loadChats(managers).then(() => loadPresence(managers))
     void loadStories(managers)
     void primeMediaToken() // cache the media token so media bubbles build URLs sync
     startRealtime()
     void setupPush()
-  }, [])
+  }, [managers])
 
   // /join/:token deep link — authed only, runs once. Joins or sends a request,
   // shows a transient banner, then clears the path.
@@ -59,7 +59,6 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     if (!m) return
     joinDeepLinkHandled = true
     const token = m[1]
-    const { managers } = startClient()
     void managers.groups
       .joinByToken(token)
       .then(async (res) => {
@@ -77,7 +76,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     return () => {
       if (joinToastTimer.current) clearTimeout(joinToastTimer.current)
     }
-  }, [])
+  }, [managers])
 
   // /qr/:token confirm deep link — authed only. Shows a confirm overlay; on
   // confirm, approves the desktop's QR login, then clears the path.
@@ -89,7 +88,6 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 
   const confirmQr = async () => {
     if (!qrConfirmToken) return
-    const { managers } = startClient()
     try {
       await managers.auth.qrConfirm(qrConfirmToken)
       showJoinToast('Вход подтверждён')
@@ -128,14 +126,12 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   }, [dialogs, meId])
 
   const createGroup = async (name: string) => {
-    const { managers } = startClient()
     const chatId = await managers.groups.createGroup({ title: name || 'New Group' })
     await loadChats(managers)
     setSelectedId(String(chatId))
   }
 
   const createChannel = async (name: string, description: string) => {
-    const { managers } = startClient()
     const chatId = await managers.channels.createChannel({ title: name || 'New Channel', about: description })
     await loadChats(managers)
     setSelectedId(String(chatId))
@@ -165,7 +161,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     setDraftPeer(peer)
     setSelectedId(`draft:${peer.id}`)
     setDrawerOpen(false)
-    void loadPresence(startClient().managers, [peer.id])
+    void loadPresence(managers, [peer.id])
   }
 
   // The draft chat (id "draft:<peerId>"), rendered when no real dialog is selected.
@@ -189,7 +185,6 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 
   // First message in a draft created the real chat: refresh dialogs and switch to it.
   const onChatCreated = (chatId: number) => {
-    const { managers } = startClient()
     setDraftPeer(null)
     setSelectedId(String(chatId))
     void loadChats(managers)
@@ -405,19 +400,18 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 }
 
 function ThemedApp() {
+  const managers = useManagers()
   const { themeChoice, update } = useSettings()
   const preset = resolvePreset(themeChoice)
   const theme = useMemo(() => buildTheme(preset), [preset])
   const [authed, setAuthed] = useState<boolean | null>(null) // null = checking
 
   useEffect(() => {
-    const { managers } = startClient()
     managers.auth.me().then((u) => setAuthed(!!u)).catch(() => setAuthed(false))
-  }, [])
+  }, [managers])
 
   const login = () => setAuthed(true)
   const logout = () => {
-    const { managers } = startClient()
     void managers.auth.logout()
     setAuthed(false)
   }
@@ -468,11 +462,11 @@ function ThemedApp() {
 }
 
 export default function App() {
+  const managers = useManagers()
   const backendOk = useConnectionStore((s) => s.backendOk)
   useEffect(() => {
-    const { managers } = startClient()
     void pingBackend(managers)
-  }, [])
+  }, [managers])
 
   return (
     <I18nProvider>

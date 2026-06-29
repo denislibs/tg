@@ -18,7 +18,6 @@ export interface ChatSearch {
   query: string
   setQuery: (v: string) => void
   results: Message[]
-  /** close the panel and clear the query (e.g. on chat switch or result click) */
   reset: () => void
 }
 
@@ -34,7 +33,8 @@ export function useChatSearch(chatId: number, enabled: boolean, managers: ChatSe
     if (!q) { setResults([]); return }
     let alive = true
     const t = window.setTimeout(() => {
-      void managers.messages.searchMessages(chatId, q).then((r) => { if (alive) setResults(r.messages) })
+      void managers.messages.searchMessages(chatId, q)
+          .then((r) => { if (alive) setResults(r.messages) })
     }, 250)
     return () => { alive = false; window.clearTimeout(t) }
   }, [enabled, open, query, chatId, managers])

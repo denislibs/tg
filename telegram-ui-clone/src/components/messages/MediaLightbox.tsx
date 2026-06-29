@@ -14,7 +14,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import TgIcon from '../TgIcon'
 import Avatar from '../Avatar'
 import { peerColor } from '../peerColor'
-import { startClient } from '../../client/bootstrap'
+import { useManagers } from '../../core/hooks/useManagers'
 import type { MediaMeta } from '../../core/managers/mediaManager'
 
 export interface LightboxItem { mediaId: number; type?: string; sender?: string; date?: string }
@@ -41,6 +41,7 @@ export default function MediaLightbox({ items, index, originRect, originSrc, onC
   // behind the shrinking/fading clone.
   onClosingStart?: () => void
 }) {
+  const managers = useManagers()
   const [idx, setIdx] = useState(index)
   const [meta, setMeta] = useState<MediaMeta | null>(null)
   const [url, setUrl] = useState('')
@@ -61,7 +62,6 @@ export default function MediaLightbox({ items, index, originRect, originSrc, onC
 
   useEffect(() => {
     let alive = true
-    const { managers } = startClient()
     setMeta(null); setUrl('')
     const video = item.type === 'video'
     void managers.media.meta(item.mediaId).then((m) => {
@@ -81,7 +81,7 @@ export default function MediaLightbox({ items, index, originRect, originSrc, onC
       pre.src = u
     })
     return () => { alive = false }
-  }, [item.mediaId, item.type])
+  }, [item.mediaId, item.type, managers])
 
   const stepZoom = (d: number) => setZoom((z) => Math.min(4, Math.max(1, +(z + d).toFixed(2))))
   const nav = (dir: number) => {
@@ -136,7 +136,6 @@ export default function MediaLightbox({ items, index, originRect, originSrc, onC
   const c = zoom * 140
   const multi = items.length > 1
   const download = async () => {
-    const { managers } = startClient()
     const m = await managers.media.meta(item.mediaId)
     const a = document.createElement('a')
     a.href = url; a.download = m.fileName || `media-${item.mediaId}`

@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Box, Typography, useTheme } from '@mui/material'
-import { startClient } from '../client/bootstrap'
+import { useManagers } from '../core/hooks/useManagers'
 import TgIcon from './TgIcon'
 import { motion } from 'framer-motion'
 import Avatar from './Avatar'
@@ -28,12 +28,13 @@ interface Props {
 // Small rounded thumbnail of the last message's photo, shown before the preview
 // text (tweb's dialog-subtitle media). Resolves the content URL via the worker.
 function SidebarThumb({ id }: { id: number }) {
+  const managers = useManagers()
   const [url, setUrl] = useState('')
   useEffect(() => {
     let alive = true
-    void startClient().managers.media.contentUrl(id).then((u) => { if (alive) setUrl(u) })
+    void managers.media.contentUrl(id).then((u) => { if (alive) setUrl(u) })
     return () => { alive = false }
-  }, [id])
+  }, [id, managers])
   return (
     <Box
       sx={{

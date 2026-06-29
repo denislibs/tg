@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Box, Typography, useTheme, alpha } from '@mui/material'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
-import { startClient } from '../../client/bootstrap'
+import { useManagers } from '../../core/hooks/useManagers'
 import { useAudioStore } from '../../stores/audioStore'
 import { useVoicePlayed } from '../../stores/voicePlayedStore'
 import { useWaveform, WAVE_BARS } from '../../core/audio/waveform'
@@ -36,6 +36,7 @@ export default function VoiceMessage({
   tickColor: string
   onPlay: () => void
 }) {
+  const managers = useManagers()
   const tg = useTheme().tg
   const decoded = useWaveform(mediaId)
   const bars = decoded.length ? decoded : PLACEHOLDER
@@ -54,13 +55,13 @@ export default function VoiceMessage({
   // Backend-reported duration (recorded length) for the idle display.
   useEffect(() => {
     let alive = true
-    void startClient().managers.media.meta(mediaId).then((m) => {
+    void managers.media.meta(mediaId).then((m) => {
       if (alive) setMetaDur(m.duration || 0)
     })
     return () => {
       alive = false
     }
-  }, [mediaId])
+  }, [mediaId, managers])
 
   const duration = isCurrent && curDur ? curDur : metaDur
   const progress = isCurrent && duration ? curTime / duration : 0

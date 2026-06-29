@@ -17,7 +17,7 @@ import NewGroupFlow from './NewGroupFlow'
 import NewChannelFlow from './NewChannelFlow'
 import NewPrivateChat from './NewPrivateChat'
 import SearchView from './SearchView'
-import { startClient } from '../client/bootstrap'
+import { useManagers } from '../core/hooks/useManagers'
 import { loadChats } from '../stores/chatsStore'
 import { loadStories } from '../stores/storiesStore'
 import type { SearchResult } from '../core/managers/channelsManager'
@@ -68,6 +68,7 @@ export default function Sidebar({
   onOpenPeer,
   fullWidth = false,
 }: Props) {
+  const managers = useManagers()
   const theme = useTheme()
   const t = useT()
   const tg = theme.tg
@@ -228,9 +229,8 @@ export default function Sidebar({
     inputRef.current?.blur()
   }
 
-  const searchReal = (q: string): Promise<SearchResult> => startClient().managers.channels.search(q)
+  const searchReal = (q: string): Promise<SearchResult> => managers.channels.search(q)
   const onJoin = async (username: string) => {
-    const { managers } = startClient()
     await managers.channels.join(username)
     await loadChats(managers)
     closeSearch()
@@ -253,7 +253,6 @@ export default function Sidebar({
         // dimensions are best-effort; proceed without them
       }
     }
-    const { managers } = startClient()
     const mediaId = await managers.media.upload({ bytes, mime: file.type, size: file.size, width, height })
     setPendingMediaId(mediaId)
   }
@@ -264,7 +263,6 @@ export default function Sidebar({
     allowIds: number[]
   }) => {
     if (pendingMediaId == null) return
-    const { managers } = startClient()
     await managers.stories.post({ mediaId: pendingMediaId, ...args })
     await loadStories(managers)
     setPendingMediaId(null)
@@ -301,7 +299,6 @@ export default function Sidebar({
           onOpenSettings={() => setShowSettings(true)}
           onOpenContacts={() => setShowContacts(true)}
           onOpenSaved={async () => {
-            const { managers } = startClient()
             const id = await managers.chats.saved()
             await loadChats(managers)
             onSelect(String(id))
@@ -508,7 +505,7 @@ export default function Sidebar({
             groupIndex={storyIndex}
             onClose={() => {
               setStoryIndex(null)
-              void loadStories(startClient().managers)
+              void loadStories(managers)
             }}
           />
         )}

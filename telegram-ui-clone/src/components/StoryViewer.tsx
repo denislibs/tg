@@ -7,7 +7,7 @@ import { EASE, DUR } from '../motion'
 import Avatar from './Avatar'
 import { useStoriesStore } from '../stores/storiesStore'
 import { useChatsStore } from '../stores/chatsStore'
-import { startClient } from '../client/bootstrap'
+import { useManagers } from '../core/hooks/useManagers'
 import { gradientFor } from '../core/dialogToChat'
 
 interface Viewer {
@@ -25,6 +25,7 @@ interface Viewer {
  * stories a "Просмотры (N)" affordance reveals the viewers list.
  */
 export default function StoryViewer({ groupIndex, onClose }: { groupIndex: number; onClose: () => void }) {
+  const managers = useManagers()
   const groups = useStoriesStore((s) => s.groups)
   const setGroups = useStoriesStore((s) => s.setGroups)
   const meId = useChatsStore((s) => s.meId)
@@ -73,7 +74,6 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
     let alive = true
     setMediaUrl('')
     setIsVideo(false)
-    const { managers } = startClient()
     void Promise.all([managers.media.contentUrl(story.mediaId), managers.media.meta(story.mediaId)]).then(
       ([url, meta]) => {
         if (!alive) return
@@ -102,7 +102,6 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
   const openViewers = () => {
     if (!story) return
     setShowViewers(true)
-    const { managers } = startClient()
     void managers.stories.viewers(story.id).then(setViewers)
   }
 

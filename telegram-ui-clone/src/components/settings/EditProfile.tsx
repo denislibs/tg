@@ -7,7 +7,7 @@ import BirthdayModal from './BirthdayModal'
 import AvatarCropper from './AvatarCropper'
 import { useT, useLang } from '../../i18n'
 import { SettingsScreen, Section, Row, useCardBg, useFieldSx } from './kit'
-import { startClient } from '../../client/bootstrap'
+import { useManagers } from '../../core/hooks/useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
 import { gradientFor } from '../../core/dialogToChat'
 import type { Birthday, PhoneVisibility } from '../../core/managers/authManager'
@@ -31,6 +31,7 @@ function formatBirthday(b: Birthday, lang: string): string {
 }
 
 export default function EditProfile({ onBack }: { onBack: () => void }) {
+  const managers = useManagers()
   const tg = useTheme().tg
   const t = useT()
   const [lang] = useLang()
@@ -71,13 +72,12 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
     }
     setUnameState('checking')
     const id = window.setTimeout(() => {
-      const { managers } = startClient()
       void managers.profile.checkUsername(uname).then((r) => {
         setUnameState(r.available ? 'available' : 'taken')
       })
     }, 400)
     return () => window.clearTimeout(id)
-  }, [uname, usernameChanged])
+  }, [uname, usernameChanged, managers])
 
   const usernameMsg =
     unameState === 'checking'
@@ -97,7 +97,6 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
   const onCropConfirm = async (blob: Blob, width: number, height: number) => {
     setCropFile(null)
     setUploading(true)
-    const { managers } = startClient()
     try {
       const bytes = await blob.arrayBuffer()
       const mediaId = await managers.media.upload({ bytes, mime: 'image/jpeg', size: blob.size, width, height })
@@ -111,7 +110,6 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
   const onDone = async () => {
     if (saving || !first.trim()) return
     setSaving(true)
-    const { managers } = startClient()
     try {
       if (usernameChanged) {
         const res = await managers.profile.setUsername(uname)

@@ -5,7 +5,7 @@ import TgIcon from './TgIcon'
 import { slideInRight } from '../motion'
 import { useT } from '../i18n'
 import Avatar from './Avatar'
-import { startClient } from '../client/bootstrap'
+import { useManagers } from '../core/hooks/useManagers'
 import { useChatsStore } from '../stores/chatsStore'
 import { uiEvents } from '../core/hooks/uiEvents'
 import { RT, type NewMessageEvt } from '../core/realtime/events'
@@ -51,7 +51,7 @@ export default function DiscussionView({
   const t = useT()
   const tg = useTheme().tg
   const meId = useChatsStore((s) => s.meId)
-  const { managers } = startClient()
+  const managers = useManagers()
   const [comments, setComments] = useState<Comment[]>([])
   const [draft, setDraft] = useState('')
   // Track seen message ids to dedupe optimistic vs server/live echoes.

@@ -10,7 +10,7 @@ import { useAvatarSrc } from './useAvatarSrc'
 import EditView from './EditView'
 import type { Chat, OpenPeer } from '../data'
 import { useT } from '../i18n'
-import { startClient } from '../client/bootstrap'
+import { useManagers } from '../core/hooks/useManagers'
 
 // Admin-rights bits, mirroring tweb's userPermissions.tsx (one toggle per right).
 const RIGHTS: { label: string; bit: number }[] = [
@@ -64,6 +64,7 @@ const tileGradients = [
 ]
 
 export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void }) {
+  const managers = useManagers()
   const theme = useTheme()
   const tg = theme.tg
   const t = useT()
@@ -110,7 +111,6 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
       return
     }
     let alive = true
-    const { managers } = startClient()
     // Viewer role drives whether the rights editor / invite section are available.
     void managers.groups.card(numericId).then((c) => {
       if (!alive) return
@@ -159,11 +159,10 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
     return () => {
       alive = false
     }
-  }, [isRealChat, numericId])
+  }, [isRealChat, numericId, managers])
 
   // Refresh the members section/count (used after approving a join request).
   async function refreshMembers() {
-    const { managers } = startClient()
     const mem = await managers.groups.members(numericId)
     const peers = await managers.peers.getUsers(mem.map((m) => m.userId))
     const byId = new Map(peers.map((p) => [p.id, p]))
@@ -178,20 +177,17 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
   }
 
   async function approveJoinRequest(userId: number) {
-    const { managers } = startClient()
     await managers.groups.approveRequest(numericId, userId)
     setJoinRequests((prev) => prev.filter((r) => r.userId !== userId))
     void refreshMembers()
   }
 
   async function declineJoinRequest(userId: number) {
-    const { managers } = startClient()
     await managers.groups.declineRequest(numericId, userId)
     setJoinRequests((prev) => prev.filter((r) => r.userId !== userId))
   }
 
   async function saveRights(userId: number, bitmask: number) {
-    const { managers } = startClient()
     await managers.groups.promoteAdmin(numericId, userId, bitmask)
     setRealMembers((prev) =>
       prev ? prev.map((m) => (m.userId === userId ? { ...m, role: bitmask ? 'admin' : 'member' } : m)) : prev,
@@ -200,7 +196,6 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
   }
 
   async function removeRights(userId: number) {
-    const { managers } = startClient()
     await managers.groups.demoteAdmin(numericId, userId)
     setRealMembers((prev) =>
       prev ? prev.map((m) => (m.userId === userId ? { ...m, role: 'member' } : m)) : prev,
@@ -212,7 +207,6 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
     if (enablingDiscussion) return
     setEnablingDiscussion(true)
     try {
-      const { managers } = startClient()
       const id = await managers.channels.enableDiscussion(numericId)
       setDiscussionChatId(id)
     } finally {
@@ -224,7 +218,6 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
     if (creatingInvite) return
     setCreatingInvite(true)
     try {
-      const { managers } = startClient()
       const link = await managers.groups.createInvite(numericId, { requiresApproval: requireApproval })
       setInviteLinks((prev) => [{ token: link.token, uses: 0, url: link.url, requiresApproval: link.requiresApproval }, ...prev])
     } finally {
