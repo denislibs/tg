@@ -21,7 +21,7 @@ import { lastSeenLabel } from '../core/presence'
 import { startClient } from '../client/bootstrap'
 import { useMessageWindow } from '../core/hooks/useMessageWindow'
 import { useEvent } from '../core/hooks/useEvent'
-import { useDragSelect } from '../core/hooks/useDragSelect'
+import { useChatSelection } from '../core/hooks/useChatSelection'
 import Composer from './Composer'
 import ChatFeed from './messages/ChatFeed'
 import ChatHeader, { type SearchResultRow } from './conversation/ChatHeader'
@@ -288,30 +288,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const [viewers, setViewers] = useState<{ x: number; y: number; names: string[] } | null>(null)
   // Briefly highlighted message (jump-to target), by seq.
   const [highlightSeq, setHighlightSeq] = useState<number | null>(null)
-  // Multi-select: a set of selected message ids; non-empty ⇒ selection mode.
-  const [selected, setSelected] = useState<Set<number>>(new Set())
-  // Selection mode can be on with nothing yet selected (entered from the header
-  // menu's "Select Messages" / a message's "Select"), so it's an explicit flag —
-  // not just `selected.size > 0`. Cleared by the selection bar's ✕ (or Escape).
-  const [selectionMode, setSelectionMode] = useState(false)
-  const selecting = selectionMode || selected.size > 0
-  // Latest selection in a ref so the drag-select handler reads it without a stale
-  // closure; suppressClickRef makes the trailing click after a drag a no-op.
-  const selectedRef = useRef(selected)
-  selectedRef.current = selected
-  const dragSuppressClickRef = useRef(false)
-  const toggleSelect = (id: number) => {
-    if (dragSuppressClickRef.current) return
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-  const clearSelection = () => { setSelected(new Set()); setSelectionMode(false) }
-  // Enter selection mode from the header menu with nothing selected yet.
-  const startSelectMode = () => { setSelectionMode(true); setHeaderMenu(null) }
+  // Multi-select state lives in useChatSelection (wired below, once scrollRef exists).
   const search = useChatSearch(numericChatId, isRealChat, managers)
   const [headerMenu, setHeaderMenu] = useState<{ top: number; right: number } | null>(null)
   const [addMemberOpen, setAddMemberOpen] = useState(false)
@@ -323,14 +300,11 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const [attachAnchor, setAttachAnchor] = useState<{ left: number; bottom: number } | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const lastScrollTopRef = useRef(0)
-  // Press-and-drag multi-select across the feed (tweb): active only in selection mode.
-  const dragSelect = useDragSelect({
-    scrollRef,
-    enabled: selecting,
-    selectedRef,
-    setSelected,
-    suppressClickRef: dragSuppressClickRef,
-  })
+  // Multi-select state + press-and-drag selection (extracted view-model hook).
+  const { selected, setSelected, setSelectionMode, selecting, toggleSelect, clearSelection, dragSelect } =
+    useChatSelection(scrollRef)
+  // Enter selection mode from the header menu with nothing selected yet.
+  const startSelectMode = () => { setSelectionMode(true); setHeaderMenu(null) }
 
   // Real-node rendering (tweb model): we render the loaded window directly — no
   // estimated spacers — so scrollHeight is REAL and stable. Scroll position is
@@ -378,14 +352,6 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       }, 1100 + Math.random() * 900)
     },
   })
-
-  // Esc exits multi-select.
-  useEffect(() => {
-    if (!selecting) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); clearSelection() } }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [selecting])
 
   // Show the "scroll to bottom" button once the user scrolls up away from the latest messages
   useEffect(() => {
