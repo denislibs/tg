@@ -34,7 +34,7 @@ import { usePeers, peersKey } from '../core/hooks/usePeers'
 import { useChatsStore, loadChats } from '../stores/chatsStore'
 import { uiEvents } from '../core/hooks/uiEvents'
 import { RT, type NewMessageEvt } from '../core/realtime/events'
-import { mapMessage, type Message, type MessageEntity } from '../core/models'
+import { type Message, type MessageEntity } from '../core/models'
 import { splitRich } from '../core/markdown'
 
 // Max characters per message (matches the backend's maxMessageRunes / Telegram 4096).
@@ -928,26 +928,22 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // (Ack reconcile + send-rejection now run in realtimeBridge → messagesStore,
   // keyed by client_msg_id; no per-chat listener needed here.)
 
-  // Step 3: incoming new_message for this chat — append, mark read, conditional scroll.
+  // Step 3: the message DATA is appended by realtimeBridge → messagesStore. Here we
+  // only handle the view-side read decision for a live message in THIS open chat:
+  // mark read if the user is at the bottom & focused, else bump the unread-below pill
+  // (tweb: read only what's seen). This is a UI reaction, not a data path.
   useEffect(() => {
     if (!isRealChat) return
     return uiEvents.on(RT.newMessage, (raw) => {
       const m = raw as NewMessageEvt
       if (m.chat_id !== numericChatId) return
-      // Live new_message carries reply_to_id but no preview — resolve it from the
-      // loaded window so a reply shows its quote immediately (history hydrates the rest).
-      const rt = m.reply_to_id != null ? win.msgs.find((x) => x.id === m.reply_to_id) : undefined
-      const replyTo = rt ? { msg_id: rt.id, seq: rt.seq, sender_id: rt.senderId, text: rt.text, type: rt.type } : null
-      win.applyIncoming(mapMessage({ id: m.msg_id, chat_id: m.chat_id, seq: m.seq, sender_id: m.sender_id, type: m.type, text: m.text, entities: m.entities ?? null, reply_to_id: m.reply_to_id ?? null, media_id: m.media_id, created_at: m.created_at, fwd_from_user_id: m.fwd_from_user_id ?? null, fwd_from_chat_id: m.fwd_from_chat_id ?? null, fwd_from_msg_id: m.fwd_from_msg_id ?? null, fwd_date: m.fwd_date ?? null, reply_to: replyTo }))
-      // The content observer follows the bottom when atBottomRef is set; here we
-      // only decide read vs. the unread-below counter (tweb: read only what's seen).
       if (atBottomRef.current && document.hasFocus()) {
         void managers.realtime.markRead({ chatId: numericChatId, upToSeq: m.seq })
       } else {
         setUnreadBelow((c) => c + 1)
       }
     })
-  }, [isRealChat, numericChatId, win, managers])
+  }, [isRealChat, numericChatId, managers])
 
   // (Live edit/delete now run in realtimeBridge → messagesStore, keyed by chat_id;
   // no per-chat listener needed here.)
