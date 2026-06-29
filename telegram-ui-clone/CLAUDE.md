@@ -27,6 +27,40 @@ npx vite build --base=/ --outDir ../client-build
 - **framer-motion** — анимации. **TS strict** — без `any`, неиспользуемые переменные не пройдут сборку.
 - Тяжёлые списки: `MessageRow`/`ChatFeed` мемоизированы — не ломай стабильность пропсов/рефов.
 
+## Архитектура клиента (инварианты — НЕ нарушать)
+
+Однонаправленный поток. Подробности и обоснование — в
+[`../docs/research/2026-06-29-frontend-refactor-plan.md`](../docs/research/2026-06-29-frontend-refactor-plan.md).
+
+```
+вверх (данные):  сервер → smp → realtimeBridge → store → селектор → View
+вниз (команды):  View → хук (use*) → managers → сервер
+```
+
+**Слои и кто за что:**
+- **View** (`components/*`) — только рендер + колбэки. Не фетчит, не слушает сокет, не держит данные.
+- **ViewModel-хуки** (`core/hooks/use*`) — presentation logic: читают стор селектором, отдают данные + действия.
+- **Store** (`stores/*`) — нормализованное хранилище сущностей по id, единственный источник истины.
+- **realtimeBridge** (`client/realtimeBridge.ts`) — **единственный** канал «сервер → store».
+- **managers** (`core/managers/*`) — команды/запросы к бэку; не знают про React/DOM.
+
+**НЕЛЬЗЯ:**
+- Подписываться на сокет (`smp.on` / `uiEvents.on(RT.*)`) где-либо, кроме `realtimeBridge`.
+  Компоненты и хуки **читают из стора**, а не из сокета.
+- Дублировать realtime-данные: одна сущность живёт в сторе один раз (нормализовано по id).
+  `connectionManager.outbox` (worker) — **только** транспортный буфер resend, не источник для UI.
+- Держать в `useState` копию того, что уже в сторе. Производные значения — мемо-селектором, не дублем поля.
+- Складывать бизнес-логику в `useEffect` ради синхронизации состояния (эффект — для честных side-effect'ов:
+  DOM-listener, императивный скролл).
+
+**МОЖНО:**
+- Фетчить через `managers` (REST) из хука — это read/command-путь, не подписка на сокет.
+- `store.getState()/.setState()` из не-React кода (worker/`realtimeBridge`).
+- Вынести кластер логики в свой `core/hooks/useChat*.ts` (как `useChatSelection`/`useChatInfoCard`/`usePinnedBar`).
+
+**Известное исключение (не копировать):** `ConversationView` слушает `RT.newMessage` ради UI read-marker
+(markRead/unread-below зависят от scroll/focus). Это осознанный временный трейд-офф — новый код так не делает.
+
 ## Безопасность (критично)
 
 - **НИКОГДА не рендерить пользовательский контент как сырую HTML-строку** (ни raw-HTML React-пропами,
