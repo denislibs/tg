@@ -1,8 +1,9 @@
 // src/client/realtimeBridge.ts
 import { startClient } from './bootstrap'
 import { loadChats, useChatsStore } from '../stores/chatsStore'
+import { useMessagesStore } from '../stores/messagesStore'
 import { uiEvents } from '../core/hooks/uiEvents'
-import { RT, type NewMessageEvt, type ReadEvt, type PresenceEvt, type TypingEvt } from '../core/realtime/events'
+import { RT, type NewMessageEvt, type ReadEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt } from '../core/realtime/events'
 import { playMessageSent, playIncoming } from '../core/audio/sounds'
 
 let started = false
@@ -48,16 +49,27 @@ export function startRealtime(): void {
     )
     uiEvents.emit(RT.typing, t)
   })
-  smp.on(RT.editMessage, (e) => uiEvents.emit(RT.editMessage, e))
-  smp.on(RT.deleteMessage, (e) => uiEvents.emit(RT.deleteMessage, e))
+  // Edit/delete carry chat_id → apply straight to that chat's message window.
+  smp.on(RT.editMessage, (raw) => {
+    const e = raw as EditMessageEvt
+    useMessagesStore.getState().applyEdit(e.chat_id, e.msg_id, e.text, e.edited_at, e.entities ?? undefined)
+  })
+  smp.on(RT.deleteMessage, (raw) => {
+    const e = raw as DeleteMessageEvt
+    useMessagesStore.getState().applyDelete(e.chat_id, e.msg_id)
+  })
   smp.on(RT.pinMessage, (e) => uiEvents.emit(RT.pinMessage, e))
   smp.on(RT.reaction, (r) => uiEvents.emit(RT.reaction, r))
-  smp.on(RT.ack, (a) => {
-    uiEvents.emit(RT.ack, a)
+  // Ack/error carry only client_msg_id → reconcile by clientMsgId (store maps it to the chat).
+  smp.on(RT.ack, (raw) => {
+    const a = raw as AckEvt
+    useMessagesStore.getState().reconcileAckByClient(a.client_msg_id, { msgId: a.msg_id, seq: a.seq, createdAt: a.created_at })
     // Server confirmed one of our sends → the "pak" (tweb's message_sent).
     playMessageSent()
   })
-  smp.on(RT.messageError, (e) => uiEvents.emit(RT.messageError, e))
+  smp.on(RT.messageError, (raw) => {
+    useMessagesStore.getState().failOptimisticByClient((raw as MessageErrorEvt).client_msg_id)
+  })
   smp.on('rt:resync', () => { void loadChats(managers) })
 
   void managers.realtime.start()

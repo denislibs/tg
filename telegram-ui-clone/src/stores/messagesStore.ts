@@ -32,6 +32,9 @@ function pendingFor(chatId: number): Map<string, number> {
   if (!m) pendingByChat.set(chatId, (m = new Map()))
   return m
 }
+// Reverse index clientMsgId -> chatId. An ack/error frame carries only the
+// client_msg_id (no chat_id), so realtimeBridge resolves the chat through this.
+const clientToChat = new Map<string, number>()
 
 function dedupAsc(list: Message[]): Message[] {
   const bySeq = new Map<number, Message>()
@@ -53,6 +56,9 @@ interface MessagesState {
   appendOptimistic: (chatId: number, text: string, meId: number, clientMsgId: string, mediaId?: number, type?: string, entities?: MessageEntity[]) => void
   reconcileAck: (chatId: number, clientMsgId: string, ack: { msgId: number; seq: number; createdAt: string }) => void
   failOptimistic: (chatId: number, clientMsgId: string) => void
+  /** Reconcile/fail by clientMsgId alone (ack/error frames carry no chat_id). */
+  reconcileAckByClient: (clientMsgId: string, ack: { msgId: number; seq: number; createdAt: string }) => void
+  failOptimisticByClient: (clientMsgId: string) => void
   applyIncoming: (chatId: number, m: Message) => void
   applyEdit: (chatId: number, msgId: number, text: string, editedAt: string, entities?: MessageEntity[]) => void
   applyDelete: (chatId: number, msgId: number) => void
@@ -68,7 +74,7 @@ function patch(
   return { byChat: { ...state.byChat, [chatId]: { ...cur, ...fn(cur) } } }
 }
 
-export const useMessagesStore = create<MessagesState>((set) => ({
+export const useMessagesStore = create<MessagesState>((set, get) => ({
   byChat: {},
 
   beginLoad: (chatId) =>
@@ -103,6 +109,7 @@ export const useMessagesStore = create<MessagesState>((set) => ({
         const maxSeq = w.msgs.length ? w.msgs[w.msgs.length - 1].seq : 0
         const tentativeSeq = maxSeq + 1
         pendingFor(chatId).set(clientMsgId, tentativeSeq)
+        clientToChat.set(clientMsgId, chatId)
         const tmp: Message = {
           id: -Date.now(), chatId, seq: tentativeSeq, senderId: meId, type, text, entities,
           replyToId: null, mediaId: mediaId ?? null, createdAt: new Date().toISOString(),
@@ -117,6 +124,7 @@ export const useMessagesStore = create<MessagesState>((set) => ({
       const tentativeSeq = pendingFor(chatId).get(clientMsgId)
       if (tentativeSeq === undefined) return {}
       pendingFor(chatId).delete(clientMsgId)
+      clientToChat.delete(clientMsgId)
       return patch(s, chatId, (w) => ({
         msgs: dedupAsc(
           w.msgs.map((m) => (m.seq === tentativeSeq ? { ...m, id: ack.msgId, seq: ack.seq, createdAt: ack.createdAt } : m)),
@@ -127,12 +135,24 @@ export const useMessagesStore = create<MessagesState>((set) => ({
   failOptimistic: (chatId, clientMsgId) =>
     set((s) => {
       pendingFor(chatId).delete(clientMsgId)
+      clientToChat.delete(clientMsgId)
       return patch(s, chatId, (w) => ({ msgs: w.msgs.filter((m) => m.clientId !== clientMsgId) }))
     }),
 
+  reconcileAckByClient: (clientMsgId, ack) => {
+    const chatId = clientToChat.get(clientMsgId)
+    if (chatId !== undefined) get().reconcileAck(chatId, clientMsgId, ack)
+  },
+
+  failOptimisticByClient: (clientMsgId) => {
+    const chatId = clientToChat.get(clientMsgId)
+    if (chatId !== undefined) get().failOptimistic(chatId, clientMsgId)
+  },
+
   applyIncoming: (chatId, m) =>
-    set((s) =>
-      patch(s, chatId, (w) => {
+    set((s) => {
+      if (!s.byChat[chatId]) return {} // only apply to a loaded window (else refetched on open)
+      return patch(s, chatId, (w) => {
         if (w.msgs.some((x) => x.id === m.id)) return {}
         // The realtime echo of our OWN just-sent message arrives with the server
         // id/seq but no clientId, and dedupAsc (keyed by seq) would replace the
@@ -142,12 +162,12 @@ export const useMessagesStore = create<MessagesState>((set) => ({
         const optimistic = w.msgs.find((x) => x.clientId && x.seq === m.seq)
         const merged = optimistic ? { ...m, clientId: optimistic.clientId } : m
         return { msgs: dedupAsc([...w.msgs, merged]) }
-      }),
-    ),
+      })
+    }),
 
   applyEdit: (chatId, msgId, text, editedAt, entities) =>
-    set((s) => patch(s, chatId, (w) => ({ msgs: w.msgs.map((m) => (m.id === msgId ? { ...m, text, editedAt, entities } : m)) }))),
+    set((s) => (s.byChat[chatId] ? patch(s, chatId, (w) => ({ msgs: w.msgs.map((m) => (m.id === msgId ? { ...m, text, editedAt, entities } : m)) })) : {})),
 
   applyDelete: (chatId, msgId) =>
-    set((s) => patch(s, chatId, (w) => ({ msgs: w.msgs.filter((m) => m.id !== msgId) }))),
+    set((s) => (s.byChat[chatId] ? patch(s, chatId, (w) => ({ msgs: w.msgs.filter((m) => m.id !== msgId) })) : {})),
 }))

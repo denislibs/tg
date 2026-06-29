@@ -33,7 +33,7 @@ import { messageToConvMsg } from '../core/messageToConvMsg'
 import { usePeers, peersKey } from '../core/hooks/usePeers'
 import { useChatsStore, loadChats } from '../stores/chatsStore'
 import { uiEvents } from '../core/hooks/uiEvents'
-import { RT, type NewMessageEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt } from '../core/realtime/events'
+import { RT, type NewMessageEvt } from '../core/realtime/events'
 import { mapMessage, type Message, type MessageEntity } from '../core/models'
 import { splitRich } from '../core/markdown'
 
@@ -925,24 +925,8 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     }
   }
 
-  // Reconcile optimistic sends with the server ack (real chats only).
-  useEffect(() => {
-    if (!isRealChat) return
-    return uiEvents.on(RT.ack, (a) => {
-      const ack = a as AckEvt
-      win.reconcileAck(ack.client_msg_id, { msgId: ack.msg_id, seq: ack.seq, createdAt: ack.created_at })
-    })
-  }, [isRealChat, win])
-
-  // Server rejected one of our sends (e.g. too long) — drop the optimistic bubble
-  // so it doesn't linger as if delivered. The composer already blocks over-limit
-  // sends; this covers the rejection path defensively.
-  useEffect(() => {
-    if (!isRealChat) return
-    return uiEvents.on(RT.messageError, (e) => {
-      win.failOptimistic((e as MessageErrorEvt).client_msg_id)
-    })
-  }, [isRealChat, win])
+  // (Ack reconcile + send-rejection now run in realtimeBridge → messagesStore,
+  // keyed by client_msg_id; no per-chat listener needed here.)
 
   // Step 3: incoming new_message for this chat — append, mark read, conditional scroll.
   useEffect(() => {
@@ -965,21 +949,8 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     })
   }, [isRealChat, numericChatId, win, managers])
 
-  // Live edit/delete for this chat → patch/drop the message in the window.
-  useEffect(() => {
-    if (!isRealChat) return
-    const offE = uiEvents.on(RT.editMessage, (raw) => {
-      const e = raw as EditMessageEvt
-      if (e.chat_id !== numericChatId) return
-      win.applyEdit(e.msg_id, e.text, e.edited_at, e.entities ?? undefined)
-    })
-    const offD = uiEvents.on(RT.deleteMessage, (raw) => {
-      const e = raw as DeleteMessageEvt
-      if (e.chat_id !== numericChatId) return
-      win.applyDelete(e.msg_id, e.for_me)
-    })
-    return () => { offE(); offD() }
-  }, [isRealChat, numericChatId, win])
+  // (Live edit/delete now run in realtimeBridge → messagesStore, keyed by chat_id;
+  // no per-chat listener needed here.)
 
   // Pinned messages: load on open, refresh on live pin_message for this chat.
   useEffect(() => {
