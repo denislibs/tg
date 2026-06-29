@@ -328,16 +328,20 @@ O(N) цикл вёрстки (секции/группировка) и React ди
       selected/selectionMode/selecting + refs + toggle/clear + drag-select + Esc. Поведение 1:1.
 - [x] **`useChatInfoCard`** (`core/hooks/useChatInfoCard.ts`) — карточка группы/канала, посев
       presence участников, `canType`, discussion-обвязка, live `onlineCount`.
+- [x] **`useChatSend`** (`core/hooks/useChatSend.ts`) — весь «исходящий» путь: send/sticker/gif/media/voice
+      + оптимистический бабл + создание draft-чата на первой отправке + троттл typing; владеет reply/editing
+      composer-стейтом. Scroll-intent (`atBottomRef`/`userScrolledUpRef`) передаётся внутрь, а не владеется им.
+- [x] **`usePinnedBar`** (`core/hooks/usePinnedBar.ts`) — пины из `pinsStore` (Этап 1b: realtimeBridge
+      рефетчит в стор на `rt:pin_message`, хук только читает — без подписки в View-слое).
 - [ ] **`useChatScroll`** — пагинация + scroll-restore + pin-to-bottom (scroll state machine).
       ⚠️ **Самый рискованный** (≥6 переплетённых refs, inline-markRead, восстановление позиции);
       заслуживает отдельной сфокусированной сессии + замера на тяжёлом чате.
-- [ ] **`useChatSend`** — обработчики send/sticker/gif/voice + оптимистика + draft-создание.
-- [ ] **`usePinnedBar`** — пины (совмещается с Этапом 1b: стор пинов вместо рефетча).
 - [ ] Заменить «эффект-сброс 10+ setState на смене чата» на `key={chatId}` либо сброс через стор.
 - [ ] `ConversationView` остаётся рендером + колбэками, < ~300 строк.
 
-**Прогресс:** useEffect в `ConversationView` `17 → 15`; ~1648 → ~1588 строк. Каждый шаг проверен
-вживую (selection: счётчик+Esc; card: подзаголовок+composer), tsc чист, тесты 136/137.
+**Прогресс:** useEffect в `ConversationView` `17 → 14`; ~1648 → 1367 строк. Каждый шаг проверен
+вживую (selection: счётчик+Esc; card: подзаголовок+composer; send: оптимистик-бабл + ✓ доставки,
+0 ошибок в консоли), tsc чист, тесты 136/137.
 
 **Критерий готовности:** `ConversationView` не содержит бизнес-логики; число `useEffect` снижено
 до единиц (DOM-listeners вроде focus — допустимы).

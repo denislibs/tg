@@ -24,6 +24,7 @@ import { useEvent } from '../core/hooks/useEvent'
 import { useChatSelection } from '../core/hooks/useChatSelection'
 import { useChatInfoCard } from '../core/hooks/useChatInfoCard'
 import { usePinnedBar } from '../core/hooks/usePinnedBar'
+import { useChatSend } from '../core/hooks/useChatSend'
 import Composer from './Composer'
 import ChatFeed from './messages/ChatFeed'
 import ChatHeader, { type SearchResultRow } from './conversation/ChatHeader'
@@ -37,13 +38,7 @@ import { useChatsStore, loadChats } from '../stores/chatsStore'
 import { uiEvents } from '../core/hooks/uiEvents'
 import { RT, type NewMessageEvt } from '../core/realtime/events'
 import { type MessageEntity } from '../core/models'
-import { splitRich } from '../core/markdown'
-
-// Max characters per message (matches the backend's maxMessageRunes / Telegram 4096).
-// Longer drafts are split into several messages on send.
-const MAX_MESSAGE_LEN = 4096
 import { smoothCenterElement, afterScrollSettles } from '../core/dom/smoothScrollToElement'
-import { useVoiceRecorder, fmtDur } from '../core/hooks/useVoiceRecorder'
 import { useChatSearch } from '../core/hooks/useChatSearch'
 import { peerColor } from './peerColor'
 import { DeleteMessageDialog, ForwardPicker, ViewersPopup, AddMemberDialog } from './messages/ChatDialogs'
@@ -81,17 +76,6 @@ const FLOOR = 'rgba(255,255,255,0.24)'
 const mixB = (k: number) => `color-mix(in srgb, #000 ${k}%, ${FLOOR})`
 const mixT = (k: number) => `color-mix(in srgb, #000 ${k}%, transparent)`
 const FEED_MASK = `linear-gradient(to bottom, transparent 0, ${mixT(8.6)} ${FADE_TOP * 0.2}px, ${mixT(33.4)} ${FADE_TOP * 0.4}px, ${mixT(66.6)} ${FADE_TOP * 0.6}px, ${mixT(91.4)} ${FADE_TOP * 0.8}px, #000 ${FADE_TOP}px, #000 calc(100% - ${FADE_BOTTOM}px), ${mixB(91.4)} calc(100% - ${FADE_BOTTOM * 0.8}px), ${mixB(66.6)} calc(100% - ${FADE_BOTTOM * 0.6}px), ${mixB(33.4)} calc(100% - ${FADE_BOTTOM * 0.4}px), ${mixB(8.6)} calc(100% - ${FADE_BOTTOM * 0.2}px), ${FLOOR} 100%)`
-
-const replies = [
-  'ахах да', 'ну ты даёшь 😄', 'согласен', 'хахаха', 'ладно', 'ок 👌', 'и не говори',
-  'позже наберу', '🔥', 'да ну? серьёзно?', 'интересно', 'понятно', 'ну такое',
-  'договорились 😌', 'я уже почти сплю 😴',
-]
-
-function nowTime() {
-  const d = new Date()
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
 
 // Telegram's per-peer color palette (used to tint reply previews by their author)
 
@@ -156,9 +140,6 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     if (isRealChat) setActiveChat(numericChatId)
     return () => setActiveChat(null)
   }, [isRealChat, numericChatId, setActiveChat])
-
-  // throttle for outgoing `typing` frames
-  const lastTypingRef = useRef(0)
 
   // Mock chats (local group/channel stubs) keep the old in-memory message list;
   // real chats render the windowed history mapped to ConvMsg.
@@ -233,7 +214,6 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     for (const key of cache.keys()) if (!seen.has(key)) cache.delete(key)
     return next
   }, [isRealChat, win.msgs, mockMsgs, meId, resolveSenders, peers, peerReadSeq])
-  const setMsgs = setMockMsgs
 
   // Voice/audio queue for the global player (chat order); play one and the
   // now-playing bar can step prev/next through the rest.
@@ -266,9 +246,6 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const [typing, setTyping] = useState(false)
   const [infoOpen, setInfoOpen] = useState(false)
   const [msgMenu, setMsgMenu] = useState<{ x: number; y: number; idx: number; originX: 'left' | 'right'; originY: 'top' | 'bottom' } | null>(null)
-  const [reply, setReply] = useState<{ msgId?: number; name: string; text: string; color: string } | null>(null)
-  // Editing an existing message (composer switches to edit mode).
-  const [editing, setEditing] = useState<{ msgId: number; text: string; entities?: MessageEntity[] } | null>(null)
   // Pending delete confirmation: message ids + whether "for everyone" is offered.
   const [delIds, setDelIds] = useState<{ ids: number[]; canRevoke: boolean } | null>(null)
   // Pending forward: message ids to forward (opens the chat picker).
@@ -302,47 +279,6 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // owned by a single scrolledDown state machine (the only place
   // that corrects scrollTop); see the scroll effects below. Lazy window trimming
   // (cull) keeps the loaded set bounded.
-
-  const canSendVoice = isRealChat || draftPeerId != null
-
-  // Voice-recording mechanics live in useVoiceRecorder; here we only decide what to
-  // do with a finished clip: upload + send on a real/draft chat, else a mock bubble.
-  const pingVoiceTyping = () => { if (isRealChat) void managers.realtime.sendTyping({ chatId: numericChatId, action: 'voice' }) }
-  const rec = useVoiceRecorder({
-    capture: canSendVoice,
-    onStart: pingVoiceTyping,
-    onSecond: pingVoiceTyping,
-    onComplete: async (r) => {
-      if (!r) return
-      const { secs, blob, mime } = r
-      if (canSendVoice && blob) {
-        const bytes = await blob.arrayBuffer()
-        const mediaId = await managers.media.upload({ bytes, mime, size: blob.size, duration: secs })
-        const clientMsgId = `c-${chat.id}-${performance.now()}-${Math.random().toString(36).slice(2)}`
-        let cid = numericChatId
-        if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
-        atBottomRef.current = true; userScrolledUpRef.current = false
-        if (isRealChat) win.appendOptimistic('', meId ?? -1, clientMsgId, mediaId, 'voice')
-        void managers.realtime.sendMessage({ chatId: cid, text: '', clientMsgId, mediaId, type: 'voice' })
-        window.dispatchEvent(new Event('tg-send'))
-        if (draftPeerId != null) onChatCreated?.(cid)
-        return
-      }
-      // mock chat: keep the design-time bubble + canned reply
-      const waveform = Array.from({ length: 28 }, () => 0.25 + Math.random() * 0.75)
-      setMsgs((prev) => [
-        ...prev,
-        { type: 'voice', out: true, time: nowTime(), status: 'sent', duration: fmtDur(secs), waveform },
-      ])
-      window.dispatchEvent(new Event('tg-send'))
-      setTyping(true)
-      window.setTimeout(() => {
-        const canned = replies[Math.floor(Math.random() * replies.length)]
-        setMsgs((prev) => [...prev, { type: 'text', out: false, text: canned, time: nowTime() }])
-        setTyping(false)
-      }, 1100 + Math.random() * 900)
-    },
-  })
 
   // Show the "scroll to bottom" button once the user scrolls up away from the latest messages
   useEffect(() => {
@@ -660,6 +596,22 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const restoreTimer = useRef<number | undefined>(undefined)
   useEffect(() => { atBottomRef.current = true; userScrolledUpRef.current = false; pendingRestore.current = null }, [numericChatId])
 
+  // Outgoing side (text/sticker/gif/media/voice + optimistic + draft creation +
+  // typing throttle) and the reply/editing composer state — extracted view-model
+  // hook. Scroll intent (atBottomRef/userScrolledUpRef) is owned here and passed in.
+  const {
+    reply, setReply, editing, setEditing,
+    rec,
+    send, sendSticker, sendGif,
+    onComposerTyping,
+    pendingMedia, setPendingMedia, sendPendingMedia,
+    openPicker, fileInputRef, pickAsFileRef,
+  } = useChatSend({
+    chat, numericChatId, isRealChat, isChannel, isGroup, draftPeerId, canType,
+    meId, win, managers, atBottomRef, userScrolledUpRef,
+    setMockMsgs, setTyping, onChatCreated,
+  })
+
   // Loader policy: don't show the spinner for a cached/instant open. Only reveal
   // it if the load is still going after a short grace period; once shown, keep
   // it for a minimum so it can't flash. Cache hit ⇒ resolves < grace ⇒ no spinner.
@@ -772,57 +724,6 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     if (el && delta !== 0) el.scrollTop += delta
   }, [playerOffset])
 
-  const replyToId = reply?.msgId ?? null
-  const mkClientMsgId = (k = 0) => `c-${chat.id}-${performance.now()}-${k}-${Math.random().toString(36).slice(2)}`
-  const sendReal = (text: string, entities?: MessageEntity[], replyTo: number | null = replyToId) => {
-    const clientMsgId = mkClientMsgId()
-    atBottomRef.current = true; userScrolledUpRef.current = false // sending pins to bottom
-    win.appendOptimistic(text, meId ?? -1, clientMsgId, undefined, 'text', entities)
-    void managers.realtime.sendMessage({ chatId: numericChatId, text, entities, clientMsgId, replyToId: replyTo })
-  }
-
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  // Set by the attach menu before opening the picker: send the chosen files as
-  // raw documents (true) or with media treatment (false). The accept filter is
-  // applied imperatively right before .click().
-  const pickAsFileRef = useRef(false)
-  const openPicker = (accept: string, asFile: boolean) => {
-    pickAsFileRef.current = asFile
-    const el = fileInputRef.current
-    if (el) { el.accept = accept; el.click() }
-    setAttachAnchor(null)
-  }
-
-  const readImageSize = (file: File): Promise<{ width: number; height: number }> =>
-    new Promise((resolve) => {
-      if (!file.type.startsWith('image/')) return resolve({ width: 0, height: 0 })
-      const img = new Image()
-      const url = URL.createObjectURL(file)
-      img.onload = () => { resolve({ width: img.naturalWidth, height: img.naturalHeight }); URL.revokeObjectURL(url) }
-      img.onerror = () => { resolve({ width: 0, height: 0 }); URL.revokeObjectURL(url) }
-      img.src = url
-    })
-
-  // asFile=true sends without "media" treatment (a photo/video becomes a
-  // downloadable document). Otherwise the type is inferred from the mime.
-  // caption (optional) is attached as the message text.
-  const onPickFile = async (file: File, asFile = false, caption = '') => {
-    if (!isRealChat) return
-    const mime = file.type || 'application/octet-stream'
-    const type = asFile
-      ? 'document'
-      : mime.startsWith('image/') ? 'photo'
-      : mime.startsWith('video/') ? 'video'
-      : mime.startsWith('audio/') ? 'audio'
-      : 'document'
-    const bytes = await file.arrayBuffer()
-    const { width, height } = type === 'photo' ? await readImageSize(file) : { width: 0, height: 0 }
-    const mediaId = await managers.media.upload({ bytes, mime, size: file.size, width, height, fileName: file.name })
-    const clientMsgId = `c-${chat.id}-${performance.now()}-${Math.random().toString(36).slice(2)}`
-    atBottomRef.current = true; userScrolledUpRef.current = false
-    win.appendOptimistic(caption, meId ?? -1, clientMsgId, mediaId, type)
-    void managers.realtime.sendMessage({ chatId: numericChatId, text: caption, clientMsgId, mediaId, type })
-  }
   // Full-screen media viewer: the list of photo/video media currently loaded in
   // this chat, the index to open at, and the clicked thumbnail's rect (zoom origin).
   const [lightbox, setLightbox] = useState<{ items: LightboxItem[]; index: number; originRect: { top: number; left: number; width: number; height: number }; originSrc?: string; originEl: HTMLElement } | null>(null)
@@ -870,17 +771,6 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     }),
     [openSenderE, playVoiceE, toggleSelectE, openMsgMenuE, jumpToSeqE, openLightboxE],
   )
-  // Picked files awaiting the compose popup (caption + as-media/as-file choice).
-  const [pendingMedia, setPendingMedia] = useState<{ files: File[]; asFile: boolean } | null>(null)
-  const sendPendingMedia = async (caption: string, asFile: boolean) => {
-    const pm = pendingMedia
-    setPendingMedia(null)
-    if (!pm) return
-    // The caption goes on the first item only (albums come in Phase 3).
-    for (let i = 0; i < pm.files.length; i++) {
-      await onPickFile(pm.files[i], asFile, i === 0 ? caption : '')
-    }
-  }
 
   // (Ack reconcile + send-rejection now run in realtimeBridge → messagesStore,
   // keyed by client_msg_id; no per-chat listener needed here.)
@@ -983,96 +873,6 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // above. chatsStore.applyRead advances it on every live rt:read, so no local
   // listener is needed here.)
 
-  // Called by the Composer with the trimmed draft text (the Composer owns the
-  // text state + clears itself afterwards); we route by chat kind / edit / reply.
-  const send = (text: string, entities?: MessageEntity[]) => {
-    if (!text || !canType) return
-    // Edit mode: PATCH the existing message instead of sending a new one.
-    if (editing && isRealChat) {
-      const { msgId } = editing
-      setEditing(null)
-      void managers.messages.editMessage(numericChatId, msgId, text, entities)
-      return
-    }
-    // Over the message limit → split into multiple messages (tweb splitStringByLength).
-    // A span crossing a boundary (e.g. a long code block) becomes one per chunk.
-    const parts = splitRich(text, entities ?? [], MAX_MESSAGE_LEN)
-    const entOf = (p: { entities: MessageEntity[] }) => (p.entities.length ? p.entities : undefined)
-    if (draftPeerId != null) {
-      // First message in a draft: create the private chat, send all parts, then let
-      // the shell switch to the now-real chat (and surface it in the sidebar).
-      setReply(null)
-      window.dispatchEvent(new Event('tg-send'))
-      void (async () => {
-        const id = await managers.chats.createPrivate(draftPeerId)
-        for (let k = 0; k < parts.length; k++) {
-          await managers.realtime.sendMessage({ chatId: id, text: parts[k].text, entities: entOf(parts[k]), clientMsgId: mkClientMsgId(k) })
-        }
-        onChatCreated?.(id)
-      })()
-      return
-    }
-    if (isRealChat && isChannel) {
-      // Channels post through the REST channel endpoint (not the group WS send);
-      // optimistic append (sender is the posting admin = me), reusing the existing
-      // optimistic + scroll-to-bottom pattern. Live echo arrives via rt:new_message.
-      // (Channel posts are plain text — no entities on this path yet.)
-      setReply(null)
-      window.dispatchEvent(new Event('tg-send'))
-      atBottomRef.current = true; userScrolledUpRef.current = false
-      for (let k = 0; k < parts.length; k++) {
-        const clientMsgId = mkClientMsgId(k)
-        win.appendOptimistic(parts[k].text, meId ?? -1, clientMsgId)
-        void managers.channels.post(numericChatId, parts[k].text, clientMsgId)
-      }
-      return
-    }
-    if (isRealChat) {
-      setReply(null)
-      window.dispatchEvent(new Event('tg-send'))
-      // reply attaches to the first message only (Telegram behaviour)
-      parts.forEach((p, k) => sendReal(p.text, entOf(p), k === 0 ? replyToId : null))
-      return
-    }
-    setMsgs((prev) => [
-      ...prev,
-      ...parts.map((p, k) => ({ type: 'text' as const, out: true, text: p.text, entities: entOf(p), time: nowTime(), status: 'sent' as const, reply: k === 0 ? reply ?? undefined : undefined })),
-    ])
-    setReply(null)
-    setTyping(true)
-    window.dispatchEvent(new Event('tg-send')) // shift the wallpaper gradient
-    window.setTimeout(() => {
-      const r = replies[Math.floor(Math.random() * replies.length)]
-      const botReply: ConvMsg = { type: 'text', out: false, text: r, time: nowTime() }
-      if (isGroup) {
-        const senders = [
-          { n: 'Аня', c: '#ee7aae' },
-          { n: 'Макс', c: '#65aadd' },
-          { n: 'Лёха', c: '#7bc862' },
-        ]
-        const s = senders[Math.floor(Math.random() * senders.length)]
-        botReply.sender = s.n
-        botReply.senderColor = s.c
-      }
-      setMsgs((prev) => [...prev, botReply])
-      setTyping(false)
-    }, 1100 + Math.random() * 900)
-  }
-
-  const sendSticker = (emoji: string) => {
-    if (!canType) return
-    setMsgs((prev) => [...prev, { type: 'sticker', out: true, emoji, time: nowTime(), status: 'sent' }])
-    window.dispatchEvent(new Event('tg-send'))
-  }
-  const sendGif = (gradient: string) => {
-    if (!canType) return
-    setMsgs((prev) => [
-      ...prev,
-      { type: 'video', out: true, media: { gradient, emoji: '🎬' }, videoDuration: 'GIF', time: nowTime(), status: 'sent' },
-    ])
-    window.dispatchEvent(new Event('tg-send'))
-  }
-
   const toggleMute = () => {
     if (!isRealChat) return
     const next = !muted
@@ -1096,17 +896,6 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     setAddMemberOpen(false)
     void managers.groups.addMember(numericChatId, userId).then(() => loadChats(managers))
   }
-
-  // Throttled outgoing typing frame (real chats); called by the Composer on each
-  // keystroke. Kept here so the Composer needs no chat/managers knowledge.
-  const onComposerTyping = useEvent(() => {
-    if (!isRealChat) return
-    const now = performance.now()
-    if (now - lastTypingRef.current > 3000) {
-      lastTypingRef.current = now
-      void managers.realtime.sendTyping({ chatId: numericChatId })
-    }
-  })
 
   // Header subtitle for real group/channel chats: derive a member/online (or
   // subscriber) count from the card + live online count. Private chats and mock
@@ -1513,8 +1302,8 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
         <AttachMenu
           anchor={attachAnchor}
           onClose={() => setAttachAnchor(null)}
-          onPhotoVideo={isRealChat ? () => openPicker('image/*,video/*', false) : undefined}
-          onFile={isRealChat ? () => openPicker('*/*', true) : undefined}
+          onPhotoVideo={isRealChat ? () => { setAttachAnchor(null); openPicker('image/*,video/*', false) } : undefined}
+          onFile={isRealChat ? () => { setAttachAnchor(null); openPicker('*/*', true) } : undefined}
         />
       )}
 
