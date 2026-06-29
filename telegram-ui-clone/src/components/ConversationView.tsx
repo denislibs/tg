@@ -92,8 +92,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const tg = theme.tg
   const headerAvatarSrc = useAvatarSrc(chat.avatarUrl)
   const [lang] = useLang()
-  // On narrow screens the chat is full-width; give the header/feed/composer a
-  // side gutter so the floating pills don't sit flush against the screen edges.
+
   const narrow = useMediaQuery('(max-width:900px)')
   const incomingBg = tg.bubble
   const isChannel = chat.type === 'channel'
@@ -101,17 +100,15 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
 
   const numericChatId = Number(chat.id)
   const isRealChat = Number.isFinite(numericChatId) && String(numericChatId) === chat.id
-  // Draft private chat ("draft:<peerId>"): no server chat yet — it's created on
-  // the first send. isRealChat is false here, so history/markRead stay disabled.
+
   const draftPeerId = chat.id.startsWith('draft:') ? Number(chat.id.slice('draft:'.length)) : null
   const meId = useChatsStore((s) => s.meId)
   const me = useChatsStore((s) => s.me)
   const allDialogs = useChatsStore((s) => s.dialogs)
-  // Live typing label (real chats) + peer presence (private chats) for the header.
+
   const typingLabel = useTypingLabel(numericChatId, isGroup)
   const peerPresence = useChatsStore((s) => (chat.peerId != null ? s.presence[chat.peerId] : undefined))
   const setDialogMuted = useChatsStore((s) => s.setDialogMuted)
-  // Live muted state for real chats: read from the store dialog so an optimistic
   // toggle re-renders the menu; fall back to the chat prop.
   const dialogMuted = useChatsStore((s) =>
     isRealChat ? s.dialogs.find((d) => d.chatId === numericChatId)?.muted : undefined,
@@ -561,23 +558,12 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     ...(isRealChat ? [{ icon: <TgIcon name="delete" size={20} />, label: 'Delete', danger: true, onClick: openDelete }] : []),
   ]
 
-  // reset when switching chats (the Composer is keyed by chat, so it remounts and
-  // clears its own draft + autofocuses).
-  useEffect(() => {
-    setMockMsgs(chat.messages ?? [])
-    setTyping(false)
-    setInfoOpen(false)
-    search.reset()
-    setReply(null)
-    setEditing(null)
-    setDelIds(null)
-    setForwardIds(null)
-    setViewers(null)
-    setSelected(new Set())
-    setDiscussion(null)
-    setCommentCounts(new Map())
-    lastScrollTopRef.current = 0
-  }, [chat, canType])
+  // No chat-switch reset effect needed: App renders <ConversationView key={selectedId}>,
+  // so switching chats fully remounts this component and every useState/useRef (here and
+  // in useChatSend/useChatSelection/useChatSearch) re-initialises to its default. A manual
+  // reset effect keyed on `chat` was not only redundant but harmful — `chat` gets a new
+  // object identity on every dialog update (e.g. a message arriving in the open chat),
+  // which would wipe the reply draft / selection / open discussion mid-session.
 
   // `atBottomRef` is the SINGLE source of truth for scroll intent (tweb's
   // `scrolledDown`): true = follow the bottom, false = the user is browsing
