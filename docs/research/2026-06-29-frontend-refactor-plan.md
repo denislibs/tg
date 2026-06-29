@@ -319,18 +319,28 @@ O(N) цикл вёрстки (секции/группировка) и React ди
 
 ---
 
-### Этап 4 — Декомпозиция `ConversationView` на хуки-вьюмодели (3–5 дней)
+### Этап 4 — Декомпозиция `ConversationView` на хуки-вьюмодели (в процессе)
 
-- [ ] Выделить логику в хуки (логика ↔ рендер, как manager ↔ view в tweb):
-  - `useChatScroll` — пагинация + scroll-restore + pin-to-bottom (сейчас `389-466`, `753-814`);
-  - `useChatRealtime` — мост к store по текущему чату (read-маркеры, фокус);
-  - `usePinnedBar`, `useSelection`, `useChatInfoCard` (group/channel card + members `1026-1057`).
-- [ ] Заменить «эффект-сброс 10+ setState на смене чата» (`671-685`) на пересоздание компонента
-      по `key={chatId}` либо на сброс через store.
+Извлекаем кластеры логики в хуки-вьюмодели (логика ↔ рендер, как manager ↔ view в tweb).
+Делается **инкрементально**: один хук → tsc/тесты/живой смоук → коммит.
+
+- [x] **`useChatSelection`** (`core/hooks/useChatSelection.ts`) — режим множественного выбора:
+      selected/selectionMode/selecting + refs + toggle/clear + drag-select + Esc. Поведение 1:1.
+- [x] **`useChatInfoCard`** (`core/hooks/useChatInfoCard.ts`) — карточка группы/канала, посев
+      presence участников, `canType`, discussion-обвязка, live `onlineCount`.
+- [ ] **`useChatScroll`** — пагинация + scroll-restore + pin-to-bottom (scroll state machine).
+      ⚠️ **Самый рискованный** (≥6 переплетённых refs, inline-markRead, восстановление позиции);
+      заслуживает отдельной сфокусированной сессии + замера на тяжёлом чате.
+- [ ] **`useChatSend`** — обработчики send/sticker/gif/voice + оптимистика + draft-создание.
+- [ ] **`usePinnedBar`** — пины (совмещается с Этапом 1b: стор пинов вместо рефетча).
+- [ ] Заменить «эффект-сброс 10+ setState на смене чата» на `key={chatId}` либо сброс через стор.
 - [ ] `ConversationView` остаётся рендером + колбэками, < ~300 строк.
 
-**Критерий готовности:** `ConversationView` не содержит бизнес-логики; число `useEffect` в нём
-снижено с 22 до единиц (DOM-listeners вроде Escape/focus — допустимы).
+**Прогресс:** useEffect в `ConversationView` `17 → 15`; ~1648 → ~1588 строк. Каждый шаг проверен
+вживую (selection: счётчик+Esc; card: подзаголовок+composer), tsc чист, тесты 136/137.
+
+**Критерий готовности:** `ConversationView` не содержит бизнес-логики; число `useEffect` снижено
+до единиц (DOM-listeners вроде focus — допустимы).
 
 ---
 
