@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Box, Slider, Typography, useTheme } from '@mui/material'
+import { Box, Slider, useTheme } from '@mui/material'
 import { AnimatePresence } from 'framer-motion'
+import Text from '../../shared/ui/Text'
 import WallpaperRounded from '@mui/icons-material/WallpaperRounded'
 import BatterySaverRounded from '@mui/icons-material/BatterySaverRounded'
 import TgIcon from '../TgIcon'
@@ -61,8 +62,8 @@ function RadioRow({
         <TgIcon name="radiooff" color={tg.textFaint} />
       )}
       <Box>
-        <Typography sx={{ fontSize: 16, color: tg.textPrimary }}>{t(label)}</Typography>
-        {sublabel && <Typography sx={{ fontSize: 13, color: tg.textSecondary }}>{sublabel}</Typography>}
+        <Text size={16} color={tg.textPrimary}>{t(label)}</Text>
+        {sublabel && <Text size={13} color={tg.textSecondary}>{sublabel}</Text>}
       </Box>
     </Box>
   )
@@ -81,8 +82,8 @@ export default function GeneralSettings({ onBack }: { onBack: () => void }) {
       <Section caption="Settings">
         <Box sx={{ px: 2, pt: 1 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <Typography sx={{ fontSize: 16, color: tg.textPrimary }}>{t('Message Text Size')}</Typography>
-            <Typography sx={{ fontSize: 16, color: tg.textFaint }}>{textSize}</Typography>
+            <Text size={16} color={tg.textPrimary}>{t('Message Text Size')}</Text>
+            <Text size={16} color={tg.textFaint}>{textSize}</Text>
           </Box>
           <Slider
             value={textSize}
@@ -174,7 +175,7 @@ export default function GeneralSettings({ onBack }: { onBack: () => void }) {
                       }}
                     />
                   </Box>
-                  <Typography sx={{ fontSize: 16, lineHeight: 1, zIndex: 1 }}>{c.emoji}</Typography>
+                  <Text size={16} style={{ lineHeight: 1, zIndex: 1 }}>{c.emoji}</Text>
                 </Box>
               </Box>
             )

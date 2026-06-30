@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Box, InputBase, Typography, useTheme } from '@mui/material'
+import { Box, InputBase, useTheme } from '@mui/material'
+import Text from '../shared/ui/Text'
 import IconButton from '../shared/ui/IconButton'
 import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
@@ -61,9 +62,9 @@ export default function ContactsView({
         <IconButton onClick={onBack} color={tg.textSecondary}>
           <TgIcon name="back" />
         </IconButton>
-        <Typography sx={{ flex: 1, fontSize: 19, fontWeight: 600, color: tg.textPrimary }}>
+        <Text size={19} weight={600} color={tg.textPrimary} style={{ flex: 1 }}>
           {t('Contacts')}
-        </Typography>
+        </Text>
         <IconButton color={tg.textSecondary}>
           <TgIcon name="adduser" />
         </IconButton>
@@ -95,15 +96,15 @@ export default function ContactsView({
       {/* List */}
       <Box sx={{ flex: 1, overflowY: 'auto', pb: 2 }}>
         {groups.length === 0 && (
-          <Typography sx={{ px: 3, py: 2, fontSize: 14, color: tg.textSecondary }}>
+          <Text size={14} color={tg.textSecondary} style={{ paddingLeft: '24px', paddingRight: '24px', paddingTop: '16px', paddingBottom: '16px' }}>
             {t('No contacts found.')}
-          </Typography>
+          </Text>
         )}
         {groups.map(([letter, list]) => (
           <Box key={letter}>
-            <Typography sx={{ px: 2.5, pt: 1.5, pb: 0.5, fontSize: 13, fontWeight: 600, color: tg.accent }}>
+            <Text size={13} weight={600} color={tg.accent} style={{ paddingLeft: '20px', paddingRight: '20px', paddingTop: '12px', paddingBottom: '4px' }}>
               {letter}
-            </Typography>
+            </Text>
             {list.map((c) => (
               <Box
                 key={c.id}
@@ -128,12 +129,12 @@ export default function ContactsView({
                   online={c.online}
                 />
                 <Box sx={{ minWidth: 0, flex: 1 }}>
-                  <Typography noWrap sx={{ fontSize: 16, color: tg.textPrimary }}>
+                  <Text noWrap size={16} color={tg.textPrimary}>
                     {c.name}
-                  </Typography>
-                  <Typography noWrap sx={{ fontSize: 13.5, color: c.online ? tg.accent : tg.textSecondary }}>
+                  </Text>
+                  <Text noWrap size={13.5} color={c.online ? tg.accent : tg.textSecondary}>
                     {c.online ? t('online') : c.status || t('last seen recently')}
-                  </Typography>
+                  </Text>
                 </Box>
               </Box>
             ))}

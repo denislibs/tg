@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Box, Typography, useTheme } from '@mui/material'
+import { Box, useTheme } from '@mui/material'
+import Text from '../../shared/ui/Text'
 import { useT } from '../../i18n'
 import { SettingsScreen, useCardBg } from './kit'
 
@@ -15,9 +16,9 @@ export default function QuickReaction({ onBack }: { onBack: () => void }) {
     <SettingsScreen title="Quick Reaction" onBack={onBack}>
       <Box sx={{ textAlign: 'center', pt: 3, pb: 1 }}>
         <Box sx={{ fontSize: 72, lineHeight: 1 }}>{picked}</Box>
-        <Typography sx={{ fontSize: 14, color: tg.textSecondary, mt: 1, px: 5 }}>
+        <Text size={14} color={tg.textSecondary} style={{ marginTop: '8px', paddingLeft: '40px', paddingRight: '40px' }}>
           {t('Double-tap a message to send this reaction quickly.')}
-        </Typography>
+        </Text>
       </Box>
       <Box
         sx={{

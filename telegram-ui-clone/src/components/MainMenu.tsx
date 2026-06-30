@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Box, Typography, useTheme } from '@mui/material'
+import { Box, useTheme } from '@mui/material'
 import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
+import Text from '../shared/ui/Text'
 import Avatar from '../shared/ui/Avatar'
 import { useAvatarSrc } from './useAvatarSrc'
 import { useChatsStore } from '../stores/chatsStore'
@@ -50,7 +51,7 @@ function Row({
       }}
     >
       <Box sx={{ color: color ?? tg.textSecondary, display: 'flex', '& svg': { fontSize: 20 } }}>{icon}</Box>
-      <Typography sx={{ flex: 1, fontSize: 14.5, color: color ?? tg.textPrimary }}>{label}</Typography>
+      <Text size={14.5} color={color ?? tg.textPrimary} style={{ flex: 1 }}>{label}</Text>
       {chevron && <TgIcon name="next" size={20} color={tg.textFaint} />}
     </Box>
   )
@@ -119,9 +120,9 @@ export default function MainMenu({
                     size={30}
                   />
                 </Box>
-                <Typography noWrap sx={{ fontSize: 15, fontWeight: 600, color: tg.textPrimary, maxWidth: 200 }}>
+                <Text noWrap size={15} weight={600} color={tg.textPrimary} style={{ maxWidth: 200 }}>
                   {meName}
-                </Typography>
+                </Text>
               </Box>
               <Row icon={<TgIcon name="add" size={20} />} label={t('Add Account')} onClick={onClose} />
               {divider}

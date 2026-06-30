@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Box, Typography, InputBase, useTheme } from '@mui/material'
+import { Box, InputBase, useTheme } from '@mui/material'
 import IconButton from '../shared/ui/IconButton'
 import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
+import Text from '../shared/ui/Text'
 import { slideInRight } from '../motion'
 import { useT } from '../i18n'
 import Avatar from '../shared/ui/Avatar'
@@ -63,9 +64,9 @@ export default function DiscussionView({
         <IconButton onClick={onBack} color={tg.textPrimary}>
           <TgIcon name="back" />
         </IconButton>
-        <Typography sx={{ flex: 1, fontSize: 19, fontWeight: 600, color: tg.textPrimary }}>
+        <Text size={19} weight={600} color={tg.textPrimary} style={{ flex: 1 }}>
           {t('Comments')}
-        </Typography>
+        </Text>
       </Box>
 
       {/* Body */}
@@ -91,11 +92,11 @@ export default function DiscussionView({
             </Box>
           )}
           {post.title && (
-            <Typography sx={{ fontWeight: 700, fontSize: 15, color: tg.textPrimary, mb: 0.25 }}>
+            <Text weight={700} size={15} color={tg.textPrimary} style={{ marginBottom: '2px' }}>
               {post.title}
-            </Typography>
+            </Text>
           )}
-          {post.text && <Typography sx={{ fontSize: 15, color: tg.textPrimary }}>{post.text}</Typography>}
+          {post.text && <Text size={15} color={tg.textPrimary}>{post.text}</Text>}
         </Box>
 
         {/* Comments */}
@@ -112,10 +113,10 @@ export default function DiscussionView({
                   maxWidth: '75%',
                 }}
               >
-                <Typography sx={{ fontSize: 15 }}>{c.text}</Typography>
-                <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', textAlign: 'right', mt: 0.25 }}>
+                <Text size={15}>{c.text}</Text>
+                <Text size={12} color="rgba(255,255,255,0.7)" style={{ textAlign: 'right', marginTop: '2px' }}>
                   {c.time}
-                </Typography>
+                </Text>
               </Box>
             </Box>
           ) : (
@@ -130,11 +131,11 @@ export default function DiscussionView({
                   maxWidth: '75%',
                 }}
               >
-                <Typography sx={{ fontSize: 13.5, fontWeight: 600, color: c.color }}>{c.name}</Typography>
-                <Typography sx={{ fontSize: 15, color: tg.textPrimary }}>{c.text}</Typography>
-                <Typography sx={{ fontSize: 12, color: tg.textFaint, textAlign: 'right', mt: 0.25 }}>
+                <Text size={13.5} weight={600} color={c.color}>{c.name}</Text>
+                <Text size={15} color={tg.textPrimary}>{c.text}</Text>
+                <Text size={12} color={tg.textFaint} style={{ textAlign: 'right', marginTop: '2px' }}>
                   {c.time}
-                </Typography>
+                </Text>
               </Box>
             </Box>
           )

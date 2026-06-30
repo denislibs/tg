@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Box, Typography, useTheme } from '@mui/material'
+import { Box, useTheme } from '@mui/material'
+import Text from '../shared/ui/Text'
 import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import type { Chat } from '../data'
@@ -125,7 +126,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
             {autoItems.map((a) => (
               <Box key={a} onClick={onClose} sx={rowSx()}>
                 {a === 'Other' ? <TgIcon name="tools" size={22} /> : a === 'Never' ? <TgIcon name="auto_delete_circle_off" size={22} /> : <TgIcon name="timer" size={22} />}
-                <Typography sx={{ fontSize: 15, color: tg.textPrimary }}>{t(a)}</Typography>
+                <Text size={15} color={tg.textPrimary}>{t(a)}</Text>
               </Box>
             ))}
           </Box>
@@ -155,9 +156,9 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
               sx={rowSx(it.danger)}
             >
               {it.icon}
-              <Typography sx={{ flex: 1, fontSize: 15, color: it.danger ? '#ff595a' : tg.textPrimary }}>
+              <Text size={15} color={it.danger ? '#ff595a' : tg.textPrimary} style={{ flex: 1 }}>
                 {t(it.label)}
-              </Typography>
+              </Text>
               {it.submenu && <TgIcon name="next" size={20} color={tg.textFaint} />}
             </Box>
           ))}

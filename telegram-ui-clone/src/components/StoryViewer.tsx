@@ -1,5 +1,6 @@
 import { createPortal } from 'react-dom'
-import { Box, Typography } from '@mui/material'
+import { Box } from '@mui/material'
+import Text from '../shared/ui/Text'
 import IconButton from '../shared/ui/IconButton'
 import { motion, AnimatePresence } from 'framer-motion'
 import TgIcon from './TgIcon'
@@ -151,9 +152,9 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
             }}
           >
             <Avatar background={bg} text={group.author.displayName.charAt(0)} size="xs" />
-            <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>
+            <Text color="#fff" weight={700} size={14}>
               {group.author.displayName}
-            </Typography>
+            </Text>
             <Box sx={{ flex: 1 }} />
             <IconButton onClick={onClose} color="#fff" size="small">
               <TgIcon name="close" />
@@ -187,7 +188,7 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
                 zIndex: 2,
               }}
             >
-              <Typography sx={{ color: '#fff', fontSize: 15 }}>{story.caption}</Typography>
+              <Text color="#fff" size={15}>{story.caption}</Text>
             </Box>
           )}
 
@@ -216,9 +217,9 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
               }}
             >
               <TgIcon name="eye" size={20} color="#fff" />
-              <Typography sx={{ color: '#fff', fontSize: 15 }}>
+              <Text color="#fff" size={15}>
                 Просмотры{viewers ? ` (${viewers.length})` : ''}
-              </Typography>
+              </Text>
             </Box>
           )}
 
@@ -256,28 +257,28 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
                     background: 'rgba(20,20,20,0.96)',
                   }}
                 >
-                  <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: 15, flex: 1 }}>
+                  <Text color="#fff" weight={700} size={15} style={{ flex: 1 }}>
                     Просмотры{viewers ? ` (${viewers.length})` : ''}
-                  </Typography>
+                  </Text>
                   <IconButton onClick={() => setShowViewers(false)} color="#fff" size="small">
                     <TgIcon name="close" />
                   </IconButton>
                 </Box>
                 {viewers == null ? (
-                  <Typography sx={{ color: 'rgba(255,255,255,0.6)', px: 2, py: 1.5, fontSize: 14 }}>
+                  <Text color="rgba(255,255,255,0.6)" size={14} style={{ paddingLeft: '16px', paddingRight: '16px', paddingTop: '12px', paddingBottom: '12px' }}>
                     Загрузка…
-                  </Typography>
+                  </Text>
                 ) : viewers.length === 0 ? (
-                  <Typography sx={{ color: 'rgba(255,255,255,0.6)', px: 2, py: 1.5, fontSize: 14 }}>
+                  <Text color="rgba(255,255,255,0.6)" size={14} style={{ paddingLeft: '16px', paddingRight: '16px', paddingTop: '12px', paddingBottom: '12px' }}>
                     Пока нет просмотров
-                  </Typography>
+                  </Text>
                 ) : (
                   viewers.map((v) => (
                     <Box key={v.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1 }}>
                       <Avatar background={gradientFor(v.id)} text={v.displayName.charAt(0)} size={36} />
-                      <Typography noWrap sx={{ color: '#fff', fontSize: 15 }}>
+                      <Text noWrap color="#fff" size={15}>
                         {v.displayName}
-                      </Typography>
+                      </Text>
                     </Box>
                   ))
                 )}

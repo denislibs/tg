@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { Box, Typography } from '@mui/material'
+import { Box } from '@mui/material'
 import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import IconButton from '../shared/ui/IconButton'
+import Text from '../shared/ui/Text'
 import { EASE } from '../motion'
 import { useT } from '../i18n'
 import Avatar from '../shared/ui/Avatar'
@@ -102,10 +103,10 @@ export default function CallScreen({
         }}
       >
         <Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} size={136} />
-        <Typography sx={{ fontSize: 28, fontWeight: 600 }}>{chat.name}</Typography>
-        <Typography sx={{ fontSize: 16, opacity: 0.85 }}>
+        <Text size={28} weight={600}>{chat.name}</Text>
+        <Text size={16} style={{ opacity: 0.85 }}>
           {video ? `${t('Video Call')} · ${status}` : status}
-        </Typography>
+        </Text>
       </Box>
 
       {/* Controls */}

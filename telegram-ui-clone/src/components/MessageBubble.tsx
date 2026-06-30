@@ -1,5 +1,6 @@
-import { Box, Typography, useTheme } from '@mui/material'
+import { Box, useTheme } from '@mui/material'
 import TgIcon from './TgIcon'
+import Text from '../shared/ui/Text'
 import { motion } from 'framer-motion'
 import PostImage from './PostImage'
 import Reaction from './Reaction'
@@ -37,36 +38,36 @@ export default function MessageBubble() {
 
         {/* Body */}
         <Box sx={{ px: 1.75, py: 1.5 }}>
-          <Typography sx={{ fontWeight: 700, fontSize: 15, mb: 1.25, color: tg.textPrimary }}>
+          <Text weight={700} size={15} color={tg.textPrimary} style={{ marginBottom: '10px' }}>
             ОЧЕНЬ ВАЖНО!!!
-          </Typography>
+          </Text>
 
-          <Typography sx={{ fontSize: 15, lineHeight: 1.5, mb: 1.5, color: tg.textPrimary }}>
+          <Text size={15} color={tg.textPrimary} style={{ lineHeight: 1.5, marginBottom: '12px' }}>
             🧧 <Box component="span" sx={link}>Наш основной канал</Box> заблокировали у большинства
             подписчиков
-          </Typography>
+          </Text>
 
-          <Typography sx={{ fontSize: 15, lineHeight: 1.5, mb: 1.5, color: tg.textPrimary }}>
+          <Text size={15} color={tg.textPrimary} style={{ lineHeight: 1.5, marginBottom: '12px' }}>
             Причина? Алгоритмы решили, что у нас тут порнография. Очень суровый комплемент нашей
             индустрии 🤝
-          </Typography>
+          </Text>
 
-          <Typography sx={{ fontSize: 15, lineHeight: 1.5, mb: 1.5, color: tg.textPrimary }}>
+          <Text size={15} color={tg.textPrimary} style={{ lineHeight: 1.5, marginBottom: '12px' }}>
             Но мы не из тех, кто сдается после первого раунда. <Box component="span" sx={link}>Новый канал</Box>{' '}
             уже создан, весь контент перенесён, работа продолжается в штатном режиме.
-          </Typography>
+          </Text>
 
-          <Typography sx={{ fontSize: 15, lineHeight: 1.5, mb: 1.5, color: tg.textPrimary }}>
+          <Text size={15} color={tg.textPrimary} style={{ lineHeight: 1.5, marginBottom: '12px' }}>
             ГОСПОДА, <Box component="span" sx={link}>подписывайтесь на наш новый канал</Box>. Тут мы
             будем продолжать делать всё ровно то же самое, что делали и до этого.
-          </Typography>
+          </Text>
 
-          <Typography sx={{ fontSize: 15, lineHeight: 1.5, mb: 0.5, color: tg.textPrimary }}>
+          <Text size={15} color={tg.textPrimary} style={{ lineHeight: 1.5, marginBottom: '4px' }}>
             Так что жмем по ссылке и продолжаем
-          </Typography>
-          <Typography sx={{ fontSize: 15, lineHeight: 1.5, color: tg.textPrimary }}>
+          </Text>
+          <Text size={15} color={tg.textPrimary} style={{ lineHeight: 1.5 }}>
             👉<Box component="span" sx={link}>https://t.me/+Y4yhqW7nAQcxNDdi</Box>
-          </Typography>
+          </Text>
 
           {/* Reactions */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1.75 }}>
@@ -75,9 +76,9 @@ export default function MessageBubble() {
             <Reaction emoji="❤️" count={1} />
             <Box sx={{ flex: 1 }} />
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: tg.textFaint }}>
-              <Typography sx={{ fontSize: 13.5 }}>1.5K</Typography>
+              <Text size={13.5}>1.5K</Text>
               <TgIcon name="eye" size={17} />
-              <Typography sx={{ fontSize: 13.5, ml: 0.5 }}>22:09</Typography>
+              <Text size={13.5} style={{ marginLeft: '4px' }}>22:09</Text>
             </Box>
           </Box>
         </Box>

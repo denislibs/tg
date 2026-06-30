@@ -9,7 +9,8 @@
 // which is what used to make the feed jitter while scrolling.
 import { useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Box, Typography, useTheme } from '@mui/material'
+import { Box, useTheme } from '@mui/material'
+import Text from '../../shared/ui/Text'
 import TgIcon from '../TgIcon'
 import { calcImageInBox } from '../../core/dom/calcImageInBox'
 import { fmtDur } from '../../core/hooks/useVoiceRecorder'
@@ -81,7 +82,7 @@ export default function RealMediaBubble({
 
   const timeCluster: ReactNode = time ? (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-      <Typography sx={{ fontSize: 12, color: out ? tickColor : tg.textFaint, fontVariantNumeric: 'tabular-nums' }}>{time}</Typography>
+      <Text size={12} color={out ? tickColor : tg.textFaint} style={{ fontVariantNumeric: 'tabular-nums' }}>{time}</Text>
       {out && <Ticks status={status} color={tickColor} />}
     </Box>
   ) : null
@@ -115,7 +116,7 @@ export default function RealMediaBubble({
         {displaySrc ? <img ref={imgRef} src={displaySrc} alt="" decoding="async" onLoad={() => setImgLoaded(true)} onError={() => { void primeMediaToken(true) }} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
         {isGif && (
           <Box sx={{ position: 'absolute', left: 8, top: 8, px: 0.75, py: 0.25, borderRadius: '10px', background: 'rgba(0,0,0,0.45)', pointerEvents: 'none' }}>
-            <Typography sx={{ fontSize: 11, fontWeight: 700, color: '#fff', letterSpacing: '0.04em' }}>GIF</Typography>
+            <Text size={11} weight={700} color="#fff" style={{ letterSpacing: '0.04em' }}>GIF</Text>
           </Box>
         )}
         {isVideo && (
@@ -127,12 +128,12 @@ export default function RealMediaBubble({
         )}
         {isVideo && !!duration && (
           <Box sx={{ position: 'absolute', left: 8, top: 8, px: 0.75, py: 0.25, borderRadius: '10px', background: 'rgba(0,0,0,0.45)', pointerEvents: 'none' }}>
-            <Typography sx={{ fontSize: 12, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>{fmtDur(duration)}</Typography>
+            <Text size={12} color="#fff" style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtDur(duration)}</Text>
           </Box>
         )}
         {time && (
           <Box sx={{ position: 'absolute', right: 8, bottom: 8, display: 'flex', alignItems: 'center', gap: 0.25, px: 0.75, py: 0.25, borderRadius: '10px', background: 'rgba(0,0,0,0.45)' }}>
-            <Typography sx={{ fontSize: 12, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>{time}</Typography>
+            <Text size={12} color="#fff" style={{ fontVariantNumeric: 'tabular-nums' }}>{time}</Text>
             {out && <Ticks status={status} color="#fff" />}
           </Box>
         )}
@@ -160,15 +161,15 @@ export default function RealMediaBubble({
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, px: 1.25, py: 1, minWidth: 200 }}>
       <Box component="a" href={href} download={name} sx={{ width: 48, height: 48, flexShrink: 0, borderRadius: '50%', background: out ? 'rgba(255,255,255,0.22)' : tg.accent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', position: 'relative', '&:hover .dl': { opacity: 1 } }}>
-        {ext ? <Typography sx={{ fontSize: 11, fontWeight: 700 }}>{ext}</Typography> : <TgIcon name="document" />}
+        {ext ? <Text size={11} weight={700}>{ext}</Text> : <TgIcon name="document" />}
         <Box className="dl" sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: 'opacity .15s', background: 'rgba(0,0,0,0.25)', borderRadius: '50%' }}>
           <TgIcon name="download" size={22} />
         </Box>
       </Box>
       <Box sx={{ minWidth: 0, flex: 1 }}>
-        <Typography noWrap sx={{ fontSize: 14.5, fontWeight: 600, color: out ? '#fff' : tg.textPrimary }}>{name}</Typography>
+        <Text noWrap size={14.5} weight={600} color={out ? '#fff' : tg.textPrimary}>{name}</Text>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
-          <Typography sx={{ fontSize: 12.5, color: out ? 'rgba(255,255,255,0.7)' : tg.textSecondary }}>{sub}</Typography>
+          <Text size={12.5} color={out ? 'rgba(255,255,255,0.7)' : tg.textSecondary}>{sub}</Text>
           {timeCluster}
         </Box>
       </Box>
@@ -217,7 +218,7 @@ function AudioRow({ mediaId, name, duration, size, accent, primary, secondary, t
         {playing ? <TgIcon name="pause" size={28} /> : <TgIcon name="play" size={28} />}
       </Box>
       <Box sx={{ minWidth: 0, flex: 1 }}>
-        <Typography noWrap sx={{ fontSize: 14.5, fontWeight: 600, color: primary }}>{name}</Typography>
+        <Text noWrap size={14.5} weight={600} color={primary}>{name}</Text>
         {isCurrent ? (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
             <Box
@@ -226,12 +227,12 @@ function AudioRow({ mediaId, name, duration, size, accent, primary, secondary, t
             >
               <Box sx={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${frac * 100}%`, background: accent, borderRadius: 2 }} />
             </Box>
-            <Typography sx={{ fontSize: 12.5, color: secondary, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{fmtDur(Math.floor(curTime))}</Typography>
+            <Text size={12.5} color={secondary} style={{ fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{fmtDur(Math.floor(curTime))}</Text>
             {time}
           </Box>
         ) : (
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
-            <Typography sx={{ fontSize: 12.5, color: secondary }}>{sub}</Typography>
+            <Text size={12.5} color={secondary}>{sub}</Text>
             {time}
           </Box>
         )}

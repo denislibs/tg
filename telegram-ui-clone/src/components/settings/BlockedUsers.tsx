@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Box, Typography, useTheme } from '@mui/material'
+import { Box, useTheme } from '@mui/material'
 import TgIcon from '../TgIcon'
 import Avatar from '../../shared/ui/Avatar'
+import Text from '../../shared/ui/Text'
 import { useT } from '../../i18n'
 import { SettingsScreen, Section, Row, useCardBg } from './kit'
 
@@ -37,8 +38,8 @@ export default function BlockedUsers({ onBack }: { onBack: () => void }) {
             <Box key={b.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1, mx: 0.5 }}>
               <Avatar background={b.bg} text={b.letter} size={46} />
               <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography noWrap sx={{ fontSize: 16, color: tg.textPrimary }}>{b.name}</Typography>
-                <Typography noWrap sx={{ fontSize: 13.5, color: tg.textSecondary }}>{b.hint}</Typography>
+                <Text noWrap size={16} color={tg.textPrimary}>{b.name}</Text>
+                <Text noWrap size={13.5} color={tg.textSecondary}>{b.hint}</Text>
               </Box>
               <TgIcon
                 name="close"
@@ -51,9 +52,9 @@ export default function BlockedUsers({ onBack }: { onBack: () => void }) {
           ))}
         </Box>
       ) : (
-        <Typography sx={{ px: 3, fontSize: 14, color: tg.textSecondary }}>
+        <Text size={14} color={tg.textSecondary} style={{ paddingLeft: '24px', paddingRight: '24px' }}>
           {t("You haven't blocked anyone.")}
-        </Typography>
+        </Text>
       )}
     </SettingsScreen>
   )

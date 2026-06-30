@@ -2,7 +2,8 @@
 // confirm, forward target picker, "seen by" popup, add-member picker, and the
 // discard-voice confirm. Each is dumb — it self-sources theme + i18n + motion
 // constants and emits its actions via callbacks; the parent owns the state.
-import { Box, Typography, useTheme } from '@mui/material'
+import { Box, useTheme } from '@mui/material'
+import Text from '../../shared/ui/Text'
 import IconButton from '../../shared/ui/IconButton'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
@@ -42,8 +43,8 @@ export function DeleteMessageDialog({ canRevoke, onDeleteForEveryone, onDeleteFo
         transition={{ duration: 0.2, ease: EASE_STD }}
         sx={{ width: 320, maxWidth: '90vw', p: 2.5, borderRadius: '12px', background: tg.menuBg, boxShadow: tg.menuShadow }}
       >
-        <Typography sx={{ fontSize: 17, fontWeight: 600, color: tg.textPrimary, mb: 1 }}>{t('Delete message')}</Typography>
-        <Typography sx={{ fontSize: 14.5, color: tg.textSecondary, mb: 2 }}>{t('Are you sure you want to delete this message?')}</Typography>
+        <Text size={17} weight={600} color={tg.textPrimary} style={{ marginBottom: '8px' }}>{t('Delete message')}</Text>
+        <Text size={14.5} color={tg.textSecondary} style={{ marginBottom: '16px' }}>{t('Are you sure you want to delete this message?')}</Text>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
           {canRevoke && (
             <Box
@@ -93,7 +94,7 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
         transition={{ duration: 0.2, ease: EASE_STD }}
         sx={{ width: 360, maxWidth: '92vw', maxHeight: '70vh', display: 'flex', flexDirection: 'column', borderRadius: '12px', background: tg.menuBg, boxShadow: tg.menuShadow, overflow: 'hidden' }}
       >
-        <Typography sx={{ fontSize: 17, fontWeight: 600, color: tg.textPrimary, px: 2, py: 1.75 }}>{t('Forward to…')}</Typography>
+        <Text size={17} weight={600} color={tg.textPrimary} style={{ paddingLeft: '16px', paddingRight: '16px', paddingTop: '14px', paddingBottom: '14px' }}>{t('Forward to…')}</Text>
         <Box sx={{ overflowY: 'auto', pb: 1 }}>
           {dialogs.map((d) => {
             const title = d.title || d.peer?.displayName || `Чат ${d.chatId}`
@@ -104,7 +105,7 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
                 sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1, cursor: 'pointer', '&:hover': { background: tg.hover } }}
               >
                 <Avatar background={peerColor(title)} text={title[0] ?? '?'} size="sm" />
-                <Typography noWrap sx={{ fontSize: 15, color: tg.textPrimary }}>{title}</Typography>
+                <Text noWrap size={15} color={tg.textPrimary}>{title}</Text>
               </Box>
             )
           })}
@@ -137,13 +138,13 @@ export function ViewersPopup({ x, y, names, onClose }: {
           py: 1, borderRadius: '12px', background: tg.menuBg, boxShadow: tg.menuShadow, transformOrigin: 'top left',
         }}
       >
-        <Typography sx={{ px: 2, py: 0.5, fontSize: 13, color: tg.textFaint }}>
+        <Text size={13} color={tg.textFaint} style={{ paddingLeft: '16px', paddingRight: '16px', paddingTop: '4px', paddingBottom: '4px' }}>
           {names.length ? t('Seen by') : t('No views yet')}
-        </Typography>
+        </Text>
         {names.map((n, i) => (
           <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1.25, px: 2, py: 0.75 }}>
             <Avatar background={peerColor(n)} text={n[0] ?? '?'} size={28} />
-            <Typography noWrap sx={{ fontSize: 14.5, color: tg.textPrimary }}>{n}</Typography>
+            <Text noWrap size={14.5} color={tg.textPrimary}>{n}</Text>
           </Box>
         ))}
       </Box>
@@ -179,18 +180,18 @@ export function AddMemberDialog({ contacts, onAdd, onClose }: {
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1.5 }}>
-          <Typography sx={{ flex: 1, fontSize: 17, fontWeight: 600, color: tg.textPrimary }}>
+          <Text size={17} weight={600} color={tg.textPrimary} style={{ flex: 1 }}>
             {t('Add member')}
-          </Typography>
+          </Text>
           <IconButton size="small" onClick={onClose} color={tg.textFaint}>
             <TgIcon name="close" size={20} />
           </IconButton>
         </Box>
         <Box sx={{ flex: 1, overflowY: 'auto', pb: 1 }}>
           {contacts.length === 0 ? (
-            <Typography sx={{ px: 2, py: 2, fontSize: 14.5, color: tg.textSecondary, textAlign: 'center' }}>
+            <Text size={14.5} color={tg.textSecondary} style={{ paddingLeft: '16px', paddingRight: '16px', paddingTop: '16px', paddingBottom: '16px', textAlign: 'center' }}>
               {t('No contacts to add')}
-            </Typography>
+            </Text>
           ) : (
             contacts.map((p) => (
               <Box
@@ -211,9 +212,9 @@ export function AddMemberDialog({ contacts, onAdd, onClose }: {
                 }}
               >
                 <Avatar background={p.avatarUrl || tg.accent} text={p.displayName[0] ?? '?'} size="sm" />
-                <Typography noWrap sx={{ flex: 1, fontSize: 15.5, color: tg.textPrimary }}>
+                <Text noWrap size={15.5} color={tg.textPrimary} style={{ flex: 1 }}>
                   {p.displayName}
-                </Typography>
+                </Text>
               </Box>
             ))
           )}
@@ -248,12 +249,12 @@ export function DiscardVoiceDialog({ onCancel, onDiscard }: { onCancel: () => vo
         onClick={(e) => e.stopPropagation()}
         sx={{ width: 'min(92%, 360px)', borderRadius: '14px', background: tg.sidebarBg, p: 2.5 }}
       >
-        <Typography sx={{ fontSize: 17, fontWeight: 600, color: tg.textPrimary, mb: 1 }}>
+        <Text size={17} weight={600} color={tg.textPrimary} style={{ marginBottom: '8px' }}>
           {t('Discard voice message?')}
-        </Typography>
-        <Typography sx={{ fontSize: 14.5, color: tg.textSecondary, mb: 2 }}>
+        </Text>
+        <Text size={14.5} color={tg.textSecondary} style={{ marginBottom: '16px' }}>
           {t('Are you sure you want to discard this voice message?')}
-        </Typography>
+        </Text>
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
           <Box onClick={onCancel} sx={{ px: 2, py: 1, borderRadius: '10px', cursor: 'pointer', fontSize: 15, fontWeight: 600, color: tg.accent, '&:hover': { background: tg.hover } }}>
             {t('Cancel')}

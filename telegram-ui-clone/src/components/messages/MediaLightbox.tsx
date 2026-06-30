@@ -9,7 +9,8 @@
 // On top of the FLIP: zoom (wheel / +- / double-click), rotate (R), drag-to-pan
 // when zoomed, a toolbar, and ←/→ paging across every photo/video in the chat.
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { Box, Typography } from '@mui/material'
+import { Box } from '@mui/material'
+import Text from '../../shared/ui/Text'
 import IconButton from '../../shared/ui/IconButton'
 import { motion, AnimatePresence } from 'framer-motion'
 import TgIcon from '../TgIcon'
@@ -160,10 +161,10 @@ export default function MediaLightbox({ items, index, originRect, originSrc, onC
       <Box onClick={(e) => e.stopPropagation()} sx={{ position: 'fixed', top: 0, left: 0, right: 0, display: 'flex', alignItems: 'center', px: 1.5, py: 1.25, zIndex: 2, color: '#fff' }}>
         {item?.sender && <Avatar background={peerColor(item.sender)} size={36} text={item.sender.charAt(0)} />}
         <Box sx={{ ml: 1.25, minWidth: 0, lineHeight: 1.25 }}>
-          {item?.sender && <Typography noWrap sx={{ fontSize: 15, fontWeight: 600 }}>{item.sender}</Typography>}
-          <Typography noWrap sx={{ fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>
+          {item?.sender && <Text noWrap size={15} weight={600}>{item.sender}</Text>}
+          <Text noWrap size={13} color="rgba(255,255,255,0.6)">
             {item?.date}{multi ? `${item?.date ? ' · ' : ''}${idx + 1} из ${items.length}` : ''}
-          </Typography>
+          </Text>
         </Box>
         <Box sx={{ ml: 'auto', display: 'flex', gap: 0.5 }}>
           <IconButton title="Повернуть (R)" onClick={() => setRot((r) => r - 90)} color="#fff"><TgIcon name="rotate_left" /></IconButton>

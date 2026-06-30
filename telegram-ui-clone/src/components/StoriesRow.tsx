@@ -1,6 +1,7 @@
-import { Box, Typography, useTheme } from '@mui/material'
+import { Box, useTheme } from '@mui/material'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
+import Text from '../shared/ui/Text'
 import Avatar from '../shared/ui/Avatar'
 import { useStoriesStore } from '../stores/storiesStore'
 import { useChatsStore } from '../stores/chatsStore'
@@ -205,20 +206,21 @@ export default function StoriesRow({
                 </Box>
               )}
             </Box>
-            <Typography
+            <Text
               noWrap
-              sx={{
-                mt: 0.625,
+              size={12}
+              color={tg.textSecondary}
+              style={{
+                marginTop: '5px',
                 width: '100%',
-                px: '2px',
-                fontSize: 12,
+                paddingLeft: '2px',
+                paddingRight: '2px',
                 lineHeight: '15px',
-                color: tg.textSecondary,
                 textAlign: 'center',
               }}
             >
               {item.name}
-            </Typography>
+            </Text>
           </Box>
         )
       })}

@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Box, Typography, useTheme } from '@mui/material'
+import { Box, useTheme } from '@mui/material'
 import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
+import Text from '../shared/ui/Text'
 import { EASE } from '../motion'
 import { useT } from '../i18n'
 
@@ -24,9 +25,9 @@ function Row({ icon, label, onClick }: { icon: ReactNode; label: string; onClick
       }}
     >
       <Box sx={{ display: 'flex', color: tg.textSecondary, '& svg': { fontSize: 22 } }}>{icon}</Box>
-      <Typography sx={{ fontSize: 15, color: tg.textPrimary, whiteSpace: 'nowrap' }}>
+      <Text size={15} color={tg.textPrimary} style={{ whiteSpace: 'nowrap' }}>
         {label}
-      </Typography>
+      </Text>
     </Box>
   )
 }

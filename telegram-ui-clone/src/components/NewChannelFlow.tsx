@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Box, TextField, Typography, useTheme } from '@mui/material'
+import { Box, TextField, useTheme } from '@mui/material'
 import IconButton from '../shared/ui/IconButton'
+import Text from '../shared/ui/Text'
 import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import { useT } from '../i18n'
@@ -53,9 +54,9 @@ export default function NewChannelFlow({ onClose, onCreate }: Props) {
         <IconButton onClick={onClose} color={tg.textSecondary}>
           <TgIcon name="back" />
         </IconButton>
-        <Typography sx={{ fontSize: 19, fontWeight: 600, color: tg.textPrimary }}>
+        <Text size={19} weight={600} color={tg.textPrimary}>
           {t('New Channel')}
-        </Typography>
+        </Text>
       </Box>
 
       <Box sx={{ flex: 1, overflowY: 'auto' }}>
@@ -98,9 +99,9 @@ export default function NewChannelFlow({ onClose, onCreate }: Props) {
             sx={fieldSx}
           />
         </Box>
-        <Typography sx={{ fontSize: 14.5, color: tg.textSecondary, px: 3 }}>
+        <Text size={14.5} color={tg.textSecondary} style={{ paddingLeft: '24px', paddingRight: '24px' }}>
           {t('You can provide an optional description for your channel.')}
-        </Typography>
+        </Text>
       </Box>
 
       <Box

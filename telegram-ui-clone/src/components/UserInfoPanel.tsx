@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Box, Typography, useMediaQuery, useTheme } from '@mui/material'
 import IconButton from '../shared/ui/IconButton'
+import Text from '../shared/ui/Text'
 import TgSwitch from './TgSwitch'
 import { Tabs } from './Tabs'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -129,9 +130,9 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
           <IconButton onClick={onClose} color={tg.textSecondary}>
             <TgIcon name="close" />
           </IconButton>
-          <Typography sx={{ flex: 1, fontSize: 19, fontWeight: 600, color: tg.textPrimary }}>
+          <Text size={19} weight={600} color={tg.textPrimary} style={{ flex: 1 }}>
             {t(title)}
-          </Typography>
+          </Text>
           {(isGroup || isChannel) && (
             <IconButton onClick={() => setEditing(true)} color={tg.textSecondary}>
               <TgIcon name="edit" />
@@ -143,10 +144,10 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
           {/* Avatar + name */}
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, pt: 1, pb: 2.5 }}>
             <Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={headerAvatarSrc} size="profile" />
-            <Typography sx={{ fontSize: 21, fontWeight: 600, color: tg.textPrimary, mt: 1, textAlign: 'center', px: 2 }}>
+            <Text size={21} weight={600} color={tg.textPrimary} style={{ marginTop: '8px', textAlign: 'center', paddingLeft: '16px', paddingRight: '16px' }}>
               {chat.name}
-            </Typography>
-            <Typography sx={{ fontSize: 14, color: tg.textSecondary }}>{chat.status}</Typography>
+            </Text>
+            <Text size={14} color={tg.textSecondary}>{chat.status}</Text>
           </Box>
 
           {/* Info card */}
@@ -155,28 +156,28 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
               <Box sx={{ display: 'flex', gap: 2, px: 2, py: 1.25 }}>
                 <TgIcon name="info" size={24} color={tg.textSecondary} style={{ marginTop: 4 }} />
                 <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography sx={{ fontSize: 15.5, color: tg.textPrimary, mb: linkText ? 1.5 : 0 }}>
+                  <Text size={15.5} color={tg.textPrimary} style={{ marginBottom: linkText ? '12px' : 0 }}>
                     {chat.description ?? t('Channel description.')}
-                  </Typography>
+                  </Text>
                   {linkText?.map((l) => (
                     <Box key={l.label} sx={{ mb: 1.25 }}>
-                      <Typography sx={{ fontSize: 15.5, color: tg.textPrimary }}>{l.label}:</Typography>
-                      <Typography sx={{ fontSize: 15.5, color: tg.link, wordBreak: 'break-all' }}>
+                      <Text size={15.5} color={tg.textPrimary}>{l.label}:</Text>
+                      <Text size={15.5} color={tg.link} style={{ wordBreak: 'break-all' }}>
                         {l.value}
-                      </Typography>
+                      </Text>
                     </Box>
                   ))}
-                  <Typography sx={{ fontSize: 13.5, color: tg.textSecondary }}>{t('Info')}</Typography>
+                  <Text size={13.5} color={tg.textSecondary}>{t('Info')}</Text>
                 </Box>
               </Box>
             ) : isGroup ? (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, px: 2, py: 1, mx: 0.5, borderRadius: '12px', cursor: 'pointer', '&:hover': { background: tg.hover } }}>
                 <TgIcon name="link" size={24} color={tg.textSecondary} />
                 <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography sx={{ fontSize: 16, color: tg.textPrimary, wordBreak: 'break-all' }}>
+                  <Text size={16} color={tg.textPrimary} style={{ wordBreak: 'break-all' }}>
                     t.me/+{chat.id}9yJiODEy
-                  </Typography>
-                  <Typography sx={{ fontSize: 13.5, color: tg.textSecondary }}>{t('Link')}</Typography>
+                  </Text>
+                  <Text size={13.5} color={tg.textSecondary}>{t('Link')}</Text>
                 </Box>
                 <TgIcon name="qr" size={22} color={tg.textSecondary} />
               </Box>
@@ -184,10 +185,10 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, px: 2, py: 1, mx: 0.5, borderRadius: '12px', cursor: 'pointer', '&:hover': { background: tg.hover } }}>
                 <TgIcon name="mention" size={24} color={tg.textSecondary} />
                 <Box sx={{ flex: 1 }}>
-                  <Typography sx={{ fontSize: 16, color: tg.textPrimary }}>
+                  <Text size={16} color={tg.textPrimary}>
                     {chat.username ?? chat.name.toLowerCase()}
-                  </Typography>
-                  <Typography sx={{ fontSize: 13.5, color: tg.textSecondary }}>{t('Username')}</Typography>
+                  </Text>
+                  <Text size={13.5} color={tg.textSecondary}>{t('Username')}</Text>
                 </Box>
                 <TgIcon name="qr" size={22} color={tg.textSecondary} />
               </Box>
@@ -195,7 +196,7 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
 
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, px: 2, py: 0.5, mx: 0.5, borderRadius: '12px' }}>
               <TgIcon name="unmute" size={24} color={tg.textSecondary} />
-              <Typography sx={{ flex: 1, fontSize: 16, color: tg.textPrimary }}>{t('Notifications')}</Typography>
+              <Text size={16} color={tg.textPrimary} style={{ flex: 1 }}>{t('Notifications')}</Text>
               <TgSwitch checked={notif} onClick={() => setNotif((v) => !v)} />
             </Box>
           </Box>
@@ -223,13 +224,13 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
           {/* Channel discussions: admin (creator/CHANGE_INFO) toggle / enabled state */}
           {isRealChat && isChannel && canManageDiscussion && (
             <Box sx={{ mx: 1.5, mt: 1 }}>
-              <Typography sx={{ px: 1.5, pb: 0.5, fontSize: 14, fontWeight: 600, color: tg.accent }}>
+              <Text size={14} weight={600} color={tg.accent} style={{ paddingLeft: '12px', paddingRight: '12px', paddingBottom: '4px' }}>
                 Обсуждения
-              </Typography>
+              </Text>
               <Box sx={{ borderRadius: '16px', background: cardBg, py: 0.75 }}>
                 {discussionChatId > 0 ? (
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, px: 2, py: 1, mx: 0.5, borderRadius: '12px' }}>
-                    <Typography sx={{ flex: 1, fontSize: 16, color: tg.textPrimary }}>Обсуждения включены</Typography>
+                    <Text size={16} color={tg.textPrimary} style={{ flex: 1 }}>Обсуждения включены</Text>
                     <TgIcon name="check" size={22} color={tg.accent} />
                   </Box>
                 ) : (
@@ -251,9 +252,9 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
           {/* Real group/channel: members/subscribers list (loaded from groups.members) */}
           {isRealChat && realMembers && (
             <Box sx={{ mx: 1.5 }}>
-              <Typography sx={{ px: 1.5, pb: 0.5, fontSize: 14, fontWeight: 600, color: tg.accent }}>
+              <Text size={14} weight={600} color={tg.accent} style={{ paddingLeft: '12px', paddingRight: '12px', paddingBottom: '4px' }}>
                 {isChannel ? 'Подписчики' : 'Участники'}
-              </Typography>
+              </Text>
               <Box sx={{ borderRadius: '16px', background: cardBg, py: 0.75 }}>
                 {realMembers.map((mem) => {
                   const openChat = () =>
@@ -270,10 +271,10 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
                       >
                         <Avatar background={tg.accent} text={mem.displayName[0]?.toUpperCase()} src={mem.avatarUrl} size="md" />
                         <Box sx={{ flex: 1, minWidth: 0 }}>
-                          <Typography noWrap sx={{ fontSize: 16, color: tg.textPrimary }}>{mem.displayName}</Typography>
-                          <Typography sx={{ fontSize: 13.5, color: mem.online ? tg.accent : tg.textSecondary }}>
+                          <Text noWrap size={16} color={tg.textPrimary}>{mem.displayName}</Text>
+                          <Text size={13.5} color={mem.online ? tg.accent : tg.textSecondary}>
                             {mem.online ? t('online') : t('last seen recently')}
-                          </Typography>
+                          </Text>
                         </Box>
                       </Box>
                       {/* role label → admin rights editor (creator/admins only) */}
@@ -293,12 +294,12 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
           {/* Real group/channel: invite links (admins with INVITE_USERS / creator) */}
           {isRealChat && canInvite && (
             <Box sx={{ mx: 1.5, mt: 1 }}>
-              <Typography sx={{ px: 1.5, pb: 0.5, fontSize: 14, fontWeight: 600, color: tg.accent }}>
+              <Text size={14} weight={600} color={tg.accent} style={{ paddingLeft: '12px', paddingRight: '12px', paddingBottom: '4px' }}>
                 Пригласительные ссылки
-              </Typography>
+              </Text>
               <Box sx={{ borderRadius: '16px', background: cardBg, py: 0.75 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, px: 2, py: 0.75, mx: 0.5, borderRadius: '12px' }}>
-                  <Typography sx={{ flex: 1, fontSize: 16, color: tg.textPrimary }}>Запрашивать одобрение</Typography>
+                  <Text size={16} color={tg.textPrimary} style={{ flex: 1 }}>Запрашивать одобрение</Text>
                   <TgSwitch checked={requireApproval} onClick={() => setRequireApproval((v) => !v)} />
                 </Box>
                 {inviteLinks.map((link) => {
@@ -307,12 +308,12 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
                     <Box key={link.token} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 0.75, mx: 0.5, borderRadius: '12px' }}>
                       <TgIcon name="link" size={24} color={tg.textSecondary} style={{ flexShrink: 0 }} />
                       <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography sx={{ fontSize: 15, color: tg.link, wordBreak: 'break-all' }}>{fullUrl}</Typography>
+                        <Text size={15} color={tg.link} style={{ wordBreak: 'break-all' }}>{fullUrl}</Text>
                         {copiedToken === link.token ? (
-                          <Typography sx={{ fontSize: 12.5, color: tg.accent }}>Скопировано</Typography>
+                          <Text size={12.5} color={tg.accent}>Скопировано</Text>
                         ) : (
                           link.requiresApproval && (
-                            <Typography sx={{ fontSize: 12.5, color: tg.textSecondary }}>по заявке</Typography>
+                            <Text size={12.5} color={tg.textSecondary}>по заявке</Text>
                           )
                         )}
                       </Box>
@@ -340,9 +341,9 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
           {/* Real group/channel: pending join requests (admins with INVITE_USERS / creator) */}
           {isRealChat && canInvite && joinRequests.length > 0 && (
             <Box sx={{ mx: 1.5, mt: 1 }}>
-              <Typography sx={{ px: 1.5, pb: 0.5, fontSize: 14, fontWeight: 600, color: tg.accent }}>
+              <Text size={14} weight={600} color={tg.accent} style={{ paddingLeft: '12px', paddingRight: '12px', paddingBottom: '4px' }}>
                 Заявки на вступление
-              </Typography>
+              </Text>
               <Box sx={{ borderRadius: '16px', background: cardBg, py: 0.75 }}>
                 {joinRequests.map((req) => (
                   <Box
@@ -351,7 +352,7 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
                   >
                     <Avatar background={tg.accent} text={req.displayName[0]?.toUpperCase()} size="md" />
                     <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Typography noWrap sx={{ fontSize: 16, color: tg.textPrimary }}>{req.displayName}</Typography>
+                      <Text noWrap size={16} color={tg.textPrimary}>{req.displayName}</Text>
                     </Box>
                     <IconButton
                       aria-label={`Одобрить заявку: ${req.displayName}`}
@@ -471,16 +472,16 @@ function RightsEditor({
         <IconButton onClick={onBack} color={tg.textSecondary}>
           <TgIcon name="back" />
         </IconButton>
-        <Typography noWrap sx={{ flex: 1, fontSize: 19, fontWeight: 600, color: tg.textPrimary }}>
+        <Text noWrap size={19} weight={600} color={tg.textPrimary} style={{ flex: 1 }}>
           {member.displayName}
-        </Typography>
+        </Text>
       </Box>
 
       <Box sx={{ flex: 1, overflowY: 'auto', pb: 3 }}>
         <Box sx={{ mx: 1.5 }}>
-          <Typography sx={{ px: 1.5, pb: 0.5, fontSize: 14, fontWeight: 600, color: tg.accent }}>
+          <Text size={14} weight={600} color={tg.accent} style={{ paddingLeft: '12px', paddingRight: '12px', paddingBottom: '4px' }}>
             Права администратора
-          </Typography>
+          </Text>
           <Box sx={{ borderRadius: '16px', background: cardBg, py: 0.5 }}>
             {RIGHTS.map((r) => (
               <Box
@@ -488,7 +489,7 @@ function RightsEditor({
                 onClick={() => toggle(r.bit)}
                 sx={{ display: 'flex', alignItems: 'center', gap: 2, px: 2, py: 1.15, mx: 0.5, borderRadius: '12px', cursor: 'pointer', '&:hover': { background: tg.hover } }}
               >
-                <Typography sx={{ flex: 1, fontSize: 16, color: tg.textPrimary }}>{r.label}</Typography>
+                <Text size={16} color={tg.textPrimary} style={{ flex: 1 }}>{r.label}</Text>
                 <TgSwitch checked={(bits & r.bit) !== 0} />
               </Box>
             ))}

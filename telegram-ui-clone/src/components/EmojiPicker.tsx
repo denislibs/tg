@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Box, InputBase, Typography, useTheme } from '@mui/material'
+import { Box, InputBase, useTheme } from '@mui/material'
+import Text from '../shared/ui/Text'
 import { AnimatePresence, motion } from 'framer-motion'
 import EmojiSymbolsRounded from '@mui/icons-material/EmojiSymbolsRounded'
 import TgIcon, { type IconName } from './TgIcon'
@@ -270,16 +271,16 @@ export default function EmojiPicker({
           results.length ? (
             <Box sx={gridSx}>{results.map((e, i) => emojiCell(e, `r-${e}-${i}`, false))}</Box>
           ) : (
-            <Typography sx={{ textAlign: 'center', color: tg.textSecondary, fontSize: 14, mt: 4 }}>
+            <Text color={tg.textSecondary} size={14} style={{ textAlign: 'center', marginTop: '32px' }}>
               {t('No emoji found.')}
-            </Typography>
+            </Text>
           )
         ) : (
           cats.map((c) => (
             <Box key={c.key} ref={(el: HTMLDivElement | null) => (sectionRefs.current[c.key] = el)} sx={{ mb: 0.5 }}>
-              <Typography sx={{ fontSize: 14, fontWeight: 500, color: tg.textFaint, px: '6px', py: '8px' }}>
+              <Text size={14} weight={500} color={tg.textFaint} style={{ paddingLeft: '6px', paddingRight: '6px', paddingTop: '8px', paddingBottom: '8px' }}>
                 {t(c.label)}
-              </Typography>
+              </Text>
               <Box sx={gridSx}>{c.emojis.map((e, i) => emojiCell(e, `${c.key}-${i}`, c.key !== 'recent'))}</Box>
             </Box>
           ))

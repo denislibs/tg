@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Box, Typography, useTheme } from '@mui/material'
+import { Box, useTheme } from '@mui/material'
+import Text from '../../shared/ui/Text'
 import { useLang, LANGS, type Lang } from '../../i18n'
 import { SettingsScreen, Section, Row, useCardBg } from './kit'
 
@@ -112,8 +113,8 @@ export default function LanguageSettings({ onBack }: { onBack: () => void }) {
             >
               <Radio on={on} />
               <Box sx={{ minWidth: 0 }}>
-                <Typography sx={{ fontSize: 16, color: tg.textPrimary }}>{it.en}</Typography>
-                <Typography sx={{ fontSize: 13.5, color: tg.textSecondary }}>{it.native}</Typography>
+                <Text size={16} color={tg.textPrimary}>{it.en}</Text>
+                <Text size={13.5} color={tg.textSecondary}>{it.native}</Text>
               </Box>
             </Box>
           )

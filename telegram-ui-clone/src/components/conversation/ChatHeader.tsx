@@ -5,6 +5,7 @@
 // re-renders it — only its own data (chat, presence/typing, search) does.
 import { memo, useEffect, useState } from 'react'
 import { Box, InputBase, Typography, useTheme } from '@mui/material'
+import Text from '../../shared/ui/Text'
 import IconButton from '../../shared/ui/IconButton'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon, { type IconName } from '../TgIcon'
@@ -266,11 +267,11 @@ function ChatHeader({
                 <Box sx={{ borderTop: `1px solid ${cardDivider}` }} />
                 <Box sx={{ maxHeight: '60vh', overflowY: 'auto' }}>
                   {searchResults.length === 0 ? (
-                    <Typography sx={{ fontSize: 15, color: tg.textSecondary, px: 2, py: 2, textAlign: 'center' }}>
+                    <Text size={15} color={tg.textSecondary} style={{ paddingLeft: '16px', paddingRight: '16px', paddingTop: '16px', paddingBottom: '16px', textAlign: 'center' }}>
                       {t('There were no results for')}{' '}
                       <Box component="span" sx={{ fontWeight: 700, color: tg.textPrimary }}>“{searchQuery}”</Box>
                       {t('. Try a new search.')}
-                    </Typography>
+                    </Text>
                   ) : (
                     searchResults.map((r, i) => (
                       <Box
@@ -281,8 +282,8 @@ function ChatHeader({
                         <Avatar background={r.avatar} text={r.sender.charAt(0)} size="sm" />
                         <Box sx={{ flex: 1, minWidth: 0 }}>
                           <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
-                            <Typography noWrap sx={{ flex: 1, fontSize: 14.5, fontWeight: 600, color: tg.textPrimary }}>{r.sender}</Typography>
-                            <Typography sx={{ fontSize: 12, color: tg.textFaint, flexShrink: 0 }}>{r.time}</Typography>
+                            <Text noWrap size={14.5} weight={600} color={tg.textPrimary} style={{ flex: 1 }}>{r.sender}</Text>
+                            <Text size={12} color={tg.textFaint} style={{ flexShrink: 0 }}>{r.time}</Text>
                           </Box>
                           <Typography noWrap component="div" sx={{ fontSize: 14, color: tg.textSecondary, mt: 0.1 }}>
                             <ResultPreview row={r} query={searchQuery} />
@@ -335,15 +336,15 @@ function ChatHeader({
             />
             <Box sx={{ flex: 1, minWidth: 0 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
-                <Typography noWrap sx={{ fontWeight: 500, fontSize: 16, lineHeight: 1.2, color: tg.textPrimary }}>
+                <Text noWrap weight={500} size={16} color={tg.textPrimary} style={{ lineHeight: 1.2 }}>
                   {chat.name}
-                </Typography>
+                </Text>
                 {chat.verified && <VerifiedBadge size={18} />}
               </Box>
-              <Typography noWrap sx={{ fontSize: 13.5, lineHeight: 1.2, color: typingActive || online ? tg.accent : tg.textSecondary }}>
+              <Text noWrap size={13.5} color={typingActive || online ? tg.accent : tg.textSecondary} style={{ lineHeight: 1.2 }}>
                 {typingActive && <TypingIndicator kind={typingKind} color={tg.accent} />}
                 {typingActive ? typingText : status}
-              </Typography>
+              </Text>
             </Box>
           </Box>
           {chat.type === 'private' && (

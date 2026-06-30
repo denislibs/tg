@@ -1,5 +1,6 @@
 import { memo, useState, type ReactNode } from 'react'
-import { Box, Menu, MenuItem, Slider, Typography, useTheme } from '@mui/material'
+import { Box, Menu, MenuItem, Slider, useTheme } from '@mui/material'
+import Text from '../shared/ui/Text'
 import { withAlpha } from '../core/cssColor'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon, { type IconName } from './TgIcon'
@@ -135,13 +136,13 @@ function NowPlayingBar() {
             </RoundBtn>
 
             <Box sx={{ flex: 1, minWidth: 0, px: 1.25 }}>
-              <Typography noWrap sx={{ fontSize: 15, fontWeight: 600, color: tg.textPrimary, lineHeight: 1.25 }}>
+              <Text noWrap size={15} weight={600} color={tg.textPrimary} style={{ lineHeight: 1.25 }}>
                 {track.title}
-              </Typography>
-              <Typography noWrap sx={{ fontSize: 13, color: tg.textSecondary, lineHeight: 1.25 }}>
+              </Text>
+              <Text noWrap size={13} color={tg.textSecondary} style={{ lineHeight: 1.25 }}>
                 {fmt(currentTime)}
                 {track.subtitle ? ` • ${track.subtitle}` : ''}
-              </Typography>
+              </Text>
             </Box>
 
             {/* volume with a vertical slider popup (hover/focus) */}

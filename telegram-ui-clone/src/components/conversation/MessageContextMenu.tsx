@@ -3,7 +3,8 @@
 // the click point and grown from the nearest corner. Rendered into a portal.
 import { memo, type ReactNode, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { Box, Typography, useTheme } from '@mui/material'
+import { Box, useTheme } from '@mui/material'
+import Text from '../../shared/ui/Text'
 import { motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
 import { useT } from '../../i18n'
@@ -115,9 +116,9 @@ function MessageContextMenu({ menu, items, onClose }: MessageContextMenuProps) {
               <Box sx={{ display: 'flex', color: it.danger ? '#ff595a' : tg.textSecondary, '& svg': { fontSize: 20 } }}>
                 {it.icon}
               </Box>
-              <Typography sx={{ fontSize: 15, color: it.danger ? '#ff595a' : tg.textPrimary }}>
+              <Text size={15} color={it.danger ? '#ff595a' : tg.textPrimary}>
                 {t(it.label)}
-              </Typography>
+              </Text>
             </Box>
           ))}
         </Box>

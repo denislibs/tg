@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { Box, TextField, Typography, useTheme } from '@mui/material'
+import { Box, TextField, useTheme } from '@mui/material'
 import IconButton from '../shared/ui/IconButton'
+import Text from '../shared/ui/Text'
 import { motion } from 'framer-motion'
 import { slideInRight } from '../motion'
 import TgIcon from './TgIcon'
@@ -66,7 +67,7 @@ export default function EditView({ chat, onBack }: { chat: Chat; onBack: () => v
         <IconButton onClick={onBack} color={tg.textSecondary}>
           <TgIcon name="back" />
         </IconButton>
-        <Typography sx={{ fontSize: 19, fontWeight: 600, color: tg.textPrimary }}>{t('Edit')}</Typography>
+        <Text size={19} weight={600} color={tg.textPrimary}>{t('Edit')}</Text>
       </Box>
 
       <Box sx={{ flex: 1, overflowY: 'auto', pb: 3 }}>
@@ -108,9 +109,9 @@ export default function EditView({ chat, onBack }: { chat: Chat; onBack: () => v
             sx={fieldSx}
           />
         </Box>
-        <Typography sx={{ fontSize: 14, color: tg.textSecondary, px: 2.5, mb: 1 }}>
+        <Text size={14} color={tg.textSecondary} style={{ paddingLeft: '20px', paddingRight: '20px', marginBottom: '8px' }}>
           {t('You can provide an optional description for your')} {t(isChannel ? 'channel' : 'group')}.
-        </Typography>
+        </Text>
 
         {/* Settings list */}
         <Box sx={{ mx: 1.25, mb: 1.5, borderRadius: '16px', background: cardBg, py: 0.5 }}>
@@ -119,9 +120,9 @@ export default function EditView({ chat, onBack }: { chat: Chat; onBack: () => v
           ))}
         </Box>
 
-        <Typography sx={{ fontSize: 14, color: tg.textSecondary, px: 2.5, mb: 1 }}>
+        <Text size={14} color={tg.textSecondary} style={{ paddingLeft: '20px', paddingRight: '20px', marginBottom: '8px' }}>
           {t('Add a group chat for comments')}
-        </Typography>
+        </Text>
 
         <Box sx={{ mx: 1.25, borderRadius: '16px', background: cardBg, py: 0.5 }}>
           {bottom.map((r) => (
@@ -150,8 +151,8 @@ function EditRow({ icon, label, value, tg }: { icon: ReactNode; label: string; v
     >
       <Box sx={{ color: tg.textSecondary, display: 'flex', '& svg': { fontSize: 24 } }}>{icon}</Box>
       <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography sx={{ fontSize: 16, color: tg.textPrimary }}>{label}</Typography>
-        {value && <Typography sx={{ fontSize: 13.5, color: tg.textSecondary }}>{value}</Typography>}
+        <Text size={16} color={tg.textPrimary}>{label}</Text>
+        {value && <Text size={13.5} color={tg.textSecondary}>{value}</Text>}
       </Box>
     </Box>
   )

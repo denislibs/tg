@@ -1,4 +1,5 @@
 import { Box, Typography, useTheme } from '@mui/material'
+import Text from '../shared/ui/Text'
 import { motion } from 'framer-motion'
 
 const MotionBox = motion(Box)
@@ -35,7 +36,7 @@ export default function Reaction({ emoji, count, highlighted }: Props) {
         {emoji}
       </Typography>
       {count != null && (
-        <Typography sx={{ fontSize: 13.5, fontWeight: 600, color: tg.accent }}>{count}</Typography>
+        <Text size={13.5} weight={600} color={tg.accent}>{count}</Text>
       )}
     </MotionBox>
   )

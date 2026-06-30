@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Box, InputBase, TextField, Typography, useTheme } from '@mui/material'
+import { Box, InputBase, TextField, useTheme } from '@mui/material'
+import Text from '../shared/ui/Text'
 import IconButton from '../shared/ui/IconButton'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
@@ -51,9 +52,9 @@ export default function NewGroupFlow({ onClose, onCreate }: Props) {
         <IconButton onClick={back} color={tg.textSecondary}>
           <TgIcon name="back" />
         </IconButton>
-        <Typography sx={{ fontSize: 19, fontWeight: 600, color: tg.textPrimary }}>
+        <Text size={19} weight={600} color={tg.textPrimary}>
           {step === 0 ? t('New Group') : t('Add Members')}
-        </Typography>
+        </Text>
       </Box>
 
       <Box sx={{ flex: 1, position: 'relative' }}>
@@ -155,8 +156,8 @@ export default function NewGroupFlow({ onClose, onCreate }: Props) {
                 }}
               >
                 <Box sx={{ fontSize: 90, lineHeight: 1 }}>🐤</Box>
-                <Typography sx={{ fontSize: 19, fontWeight: 600, color: tg.textPrimary }}>{t('No Results')}</Typography>
-                <Typography sx={{ fontSize: 15, color: tg.textSecondary }}>{t('Try searching.')}</Typography>
+                <Text size={19} weight={600} color={tg.textPrimary}>{t('No Results')}</Text>
+                <Text size={15} color={tg.textSecondary}>{t('Try searching.')}</Text>
               </Box>
             </motion.div>
           )}

@@ -1,0 +1,17 @@
+// Text — текстовый примитив (замена MUI <Typography>). Размер/вес/цвет приходят
+// CSS-переменными на элементе; line-height 1.5 = паритет MUI body1 (чтобы вертикаль
+// не съезжала при миграции). noWrap = однострочный эллипсис.
+.root {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--text-size, 1rem);
+  font-weight: var(--text-weight, 400);
+  color: var(--text-color, inherit);
+  line-height: 1.5;
+}
+
+.noWrap {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

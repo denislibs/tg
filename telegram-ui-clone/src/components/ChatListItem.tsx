@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Box, Typography, useTheme } from '@mui/material'
+import { Box, useTheme } from '@mui/material'
+import Text from '../shared/ui/Text'
 import { useManagers } from '../core/hooks/useManagers'
 import TgIcon from './TgIcon'
 import { motion } from 'framer-motion'
@@ -170,18 +171,15 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
 
       <Box sx={{ minWidth: 0, flex: 1 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          <Typography
+          <Text
             noWrap
-            sx={{
-              fontWeight: 500,
-              fontSize: 16,
-              flex: 1,
-              minWidth: 0,
-              color: onAccent ? '#fff' : tg.textPrimary,
-            }}
+            weight={500}
+            size={16}
+            color={onAccent ? '#fff' : tg.textPrimary}
+            style={{ flex: 1 }}
           >
             {chat.name}
-          </Typography>
+          </Text>
           {chat.verified && (
             <VerifiedBadge
               size={20}
@@ -201,27 +199,26 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
               style={{ marginLeft: 4, flexShrink: 0 }}
             />
           )}
-          <Typography
-            sx={{
-              fontSize: 14,
-              ml: chat.sent ? 0.25 : 0.5,
-              flexShrink: 0,
-              color: onAccent ? 'rgba(255,255,255,0.85)' : tg.textFaint,
-            }}
+          <Text
+            size={14}
+            color={onAccent ? 'rgba(255,255,255,0.85)' : tg.textFaint}
+            style={{ marginLeft: chat.sent ? '2px' : '4px', flexShrink: 0 }}
           >
             {fmtTime(chat.date)}
-          </Typography>
+          </Text>
         </Box>
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
           {typingLabel.active ? (
-            <Typography
+            <Text
               noWrap
-              sx={{ fontSize: 16, flex: 1, minWidth: 0, color: onAccent ? '#fff' : tg.accent }}
+              size={16}
+              color={onAccent ? '#fff' : tg.accent}
+              style={{ flex: 1 }}
             >
               <TypingIndicator kind={typingLabel.kind} color={onAccent ? '#fff' : tg.accent} />
               {typingLabel.label}
-            </Typography>
+            </Text>
           ) : (
             <>
               {chat.forwarded && (
@@ -233,17 +230,14 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
                 />
               )}
               {chat.previewMediaId != null && <SidebarThumb id={chat.previewMediaId} />}
-              <Typography
+              <Text
                 noWrap
-                sx={{
-                  fontSize: 16,
-                  flex: 1,
-                  minWidth: 0,
-                  color: onAccent ? 'rgba(255,255,255,0.9)' : tg.textSecondary,
-                }}
+                size={16}
+                color={onAccent ? 'rgba(255,255,255,0.9)' : tg.textSecondary}
+                style={{ flex: 1 }}
               >
                 {chat.preview}
-              </Typography>
+              </Text>
             </>
           )}
           {chat.unread != null && <Badge muted={chat.muted}>{chat.unread}</Badge>}
@@ -309,9 +303,9 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
                 >
                   {it.icon}
                 </Box>
-                <Typography sx={{ fontSize: 14.5, color: it.danger ? '#ff595a' : tg.textPrimary }}>
+                <Text size={14.5} color={it.danger ? '#ff595a' : tg.textPrimary}>
                   {t(it.label)}
-                </Typography>
+                </Text>
               </Box>
             ))}
            </Box>

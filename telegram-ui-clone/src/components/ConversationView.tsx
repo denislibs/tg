@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Box, Typography, useMediaQuery, useTheme } from '@mui/material'
+import { Box, useMediaQuery, useTheme } from '@mui/material'
+import Text from '../shared/ui/Text'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import { useAvatarSrc } from './useAvatarSrc'
@@ -534,7 +535,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               }}
             >
               <TgIcon name="volume_off" size={20} color={tg.textSecondary} />
-              <Typography sx={{ fontWeight: 600, fontSize: 15.5 }}>{t('Mute')}</Typography>
+              <Text weight={600} size={15.5}>{t('Mute')}</Text>
             </Box>
             <Box
               sx={{

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Box, Typography, useTheme } from '@mui/material'
+import { Box, useTheme } from '@mui/material'
 import { AnimatePresence, motion } from 'framer-motion'
+import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import Avatar from '../shared/ui/Avatar'
 import { useAvatarSrc } from './useAvatarSrc'
@@ -198,8 +199,8 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                     </Section>
                   )}
                   <Box sx={{ display: 'flex', alignItems: 'center', px: 2.5, pt: 1.5, pb: 0.5 }}>
-                    <Typography sx={{ flex: 1, fontSize: 15, fontWeight: 600, color: tg.accent }}>{t('Messages')}</Typography>
-                    <Typography sx={{ fontSize: 15, fontWeight: 600, color: tg.accent, cursor: 'pointer' }}>{t('All Chats')}</Typography>
+                    <Text size={15} weight={600} color={tg.accent} style={{ flex: 1 }}>{t('Messages')}</Text>
+                    <Text size={15} weight={600} color={tg.accent} style={{ cursor: 'pointer' }}>{t('All Chats')}</Text>
                   </Box>
                   {messages.map((m) => (
                     <Box
@@ -210,12 +211,12 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                       <Avatar background={m.avatar} text={m.t} emoji={m.e} size="lg" />
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Box sx={{ display: 'flex' }}>
-                          <Typography noWrap sx={{ flex: 1, fontSize: 16, fontWeight: 600, color: tg.textPrimary }}>{m.name}</Typography>
-                          <Typography sx={{ fontSize: 13, color: tg.textFaint }}>{m.date}</Typography>
+                          <Text noWrap size={16} weight={600} color={tg.textPrimary} style={{ flex: 1 }}>{m.name}</Text>
+                          <Text size={13} color={tg.textFaint}>{m.date}</Text>
                         </Box>
-                        <Typography noWrap sx={{ fontSize: 15, color: tg.textPrimary }}>
+                        <Text noWrap size={15} color={tg.textPrimary}>
                           <Highlighted text={m.text} q={query} color={tg.accent} />
-                        </Typography>
+                        </Text>
                       </Box>
                     </Box>
                   ))}
@@ -260,12 +261,12 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                       <Avatar background={l.bg} text={l.t} size="md" />
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Box sx={{ display: 'flex' }}>
-                          <Typography noWrap sx={{ flex: 1, fontSize: 16, fontWeight: 600, color: tg.textPrimary }}>{l.name}</Typography>
-                          <Typography sx={{ fontSize: 13, color: tg.textFaint }}>{l.date}</Typography>
+                          <Text noWrap size={16} weight={600} color={tg.textPrimary} style={{ flex: 1 }}>{l.name}</Text>
+                          <Text size={13} color={tg.textFaint}>{l.date}</Text>
                         </Box>
-                        <Typography sx={{ fontSize: 14.5, color: tg.textSecondary, mt: 0.25 }}>{l.body}</Typography>
-                        <Typography noWrap sx={{ fontSize: 14.5, color: tg.link, mt: 0.25 }}>{l.link}</Typography>
-                        <Typography sx={{ fontSize: 13.5, color: tg.textFaint, mt: 0.25 }}>{l.from}</Typography>
+                        <Text size={14.5} color={tg.textSecondary} style={{ marginTop: '2px' }}>{l.body}</Text>
+                        <Text noWrap size={14.5} color={tg.link} style={{ marginTop: '2px' }}>{l.link}</Text>
+                        <Text size={13.5} color={tg.textFaint} style={{ marginTop: '2px' }}>{l.from}</Text>
                       </Box>
                     </Box>
                   ))}
@@ -287,7 +288,7 @@ function Section({ title, children, tg, cardBg }: { title: string; children: Rea
   return (
     <Box sx={{ mx: 1.25, mt: 1, p: title ? 1.25 : 0.75, borderRadius: '16px', background: cardBg }}>
       {title && (
-        <Typography sx={{ fontSize: 15, fontWeight: 600, color: tg.accent, px: 1, pb: 0.5 }}>{title}</Typography>
+        <Text size={15} weight={600} color={tg.accent} style={{ paddingLeft: '8px', paddingRight: '8px', paddingBottom: '4px' }}>{title}</Text>
       )}
       {children}
     </Box>
@@ -311,10 +312,10 @@ function ResultRow({ bg, src, t, tc, title, subtitle, verified, tg, onClick }: {
       <Avatar background={bg} src={avatarSrc} text={t} size="lg" color={tc ?? '#fff'} />
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          <Typography noWrap sx={{ fontSize: 16, fontWeight: 600, color: tg.textPrimary }}>{title}</Typography>
+          <Text noWrap size={16} weight={600} color={tg.textPrimary}>{title}</Text>
           {verified && <VerifiedBadge size={16} color={tg.accent} />}
         </Box>
-        <Typography noWrap sx={{ fontSize: 14.5, color: tg.textSecondary }}>{subtitle}</Typography>
+        <Text noWrap size={14.5} color={tg.textSecondary}>{subtitle}</Text>
       </Box>
     </Box>
   )
@@ -331,14 +332,14 @@ function MediaRow({ m, query, tg, onSelect }: {
       <Avatar background={m.avatar} text={m.t} emoji={m.e} size="lg" />
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Box sx={{ display: 'flex' }}>
-          <Typography noWrap sx={{ flex: 1, fontSize: 16, fontWeight: 600, color: tg.textPrimary }}>{m.name}</Typography>
-          <Typography sx={{ fontSize: 13, color: tg.textFaint }}>{m.date}</Typography>
+          <Text noWrap size={16} weight={600} color={tg.textPrimary} style={{ flex: 1 }}>{m.name}</Text>
+          <Text size={13} color={tg.textFaint}>{m.date}</Text>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           <TgIcon name="play" size={18} color={tg.textSecondary} />
-          <Typography noWrap sx={{ fontSize: 15, color: tg.textPrimary }}>
+          <Text noWrap size={15} color={tg.textPrimary}>
             <Highlighted text={m.text} q={query} color={tg.accent} />
-          </Typography>
+          </Text>
         </Box>
       </Box>
     </Box>
@@ -348,9 +349,9 @@ function MediaRow({ m, query, tg, onSelect }: {
 function Empty({ text, tg }: { text: string; tg: TgTokens }) {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pt: 14, gap: 0.5 }}>
-      <Typography sx={{ fontSize: 16, color: tg.textSecondary, textAlign: 'center', whiteSpace: 'pre-line' }}>
+      <Text size={16} color={tg.textSecondary} style={{ textAlign: 'center', whiteSpace: 'pre-line' }}>
         {text}
-      </Typography>
+      </Text>
     </Box>
   )
 }

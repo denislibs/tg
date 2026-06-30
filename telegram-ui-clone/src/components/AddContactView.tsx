@@ -7,8 +7,9 @@
 // phone" checkbox, and a floating ✓ that POSTs to /contacts. Russian copy is
 // hardcoded (the app renders Russian; sibling panels do the same).
 import { useState } from 'react'
-import { Box, InputAdornment, TextField, Typography, useMediaQuery, useTheme } from '@mui/material'
+import { Box, InputAdornment, TextField, useMediaQuery, useTheme } from '@mui/material'
 import IconButton from '../shared/ui/IconButton'
+import Text from '../shared/ui/Text'
 import { motion } from 'framer-motion'
 import { EASE, DUR } from '../motion'
 import TgIcon from './TgIcon'
@@ -143,15 +144,15 @@ export default function AddContactView({
           <IconButton onClick={onClose} color={tg.textSecondary}>
             <TgIcon name="back" />
           </IconButton>
-          <Typography sx={{ fontSize: 19, fontWeight: 600, color: tg.textPrimary }}>Добавить контакт</Typography>
+          <Text size={19} weight={600} color={tg.textPrimary}>Добавить контакт</Text>
         </Box>
 
         <Box sx={{ flex: 1, overflowY: 'auto', pb: 12 }}>
           {/* Avatar + original name */}
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mt: 1, mb: 3 }}>
             <Avatar background={chat.avatar} text={chat.avatarText ?? chat.name[0]} src={avatarSrc} size="profile" />
-            <Typography sx={{ fontSize: 22, fontWeight: 600, color: tg.textPrimary, mt: 2 }}>{chat.name}</Typography>
-            <Typography sx={{ fontSize: 14, color: tg.textSecondary, mt: 0.25 }}>исходное имя</Typography>
+            <Text size={22} weight={600} color={tg.textPrimary} style={{ marginTop: '16px' }}>{chat.name}</Text>
+            <Text size={14} color={tg.textSecondary} style={{ marginTop: '2px' }}>исходное имя</Text>
           </Box>
 
           {/* Fields card */}
@@ -193,10 +194,10 @@ export default function AddContactView({
             <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, mt: 2.5, px: 0.5 }}>
               <TgIcon name="phone" size={24} color={tg.textSecondary} style={{ marginTop: 2 }} />
               <Box sx={{ minWidth: 0 }}>
-                <Typography sx={{ fontSize: 16, fontWeight: 600, color: tg.textPrimary }}>Номер скрыт</Typography>
-                <Typography sx={{ fontSize: 14, color: tg.textSecondary, lineHeight: 1.35 }}>
+                <Text size={16} weight={600} color={tg.textPrimary}>Номер скрыт</Text>
+                <Text size={14} color={tg.textSecondary} style={{ lineHeight: 1.35 }}>
                   Номер телефона будет виден, когда {displayFirst} добавит Вас в контакты.
-                </Typography>
+                </Text>
               </Box>
             </Box>
           </Box>
@@ -232,11 +233,11 @@ export default function AddContactView({
             >
               {sharePhone && <TgIcon name="check" size={18} color="#fff" />}
             </Box>
-            <Typography sx={{ fontSize: 16, color: tg.textPrimary }}>Показать номер телефона</Typography>
+            <Text size={16} color={tg.textPrimary}>Показать номер телефона</Text>
           </Box>
-          <Typography sx={{ fontSize: 14, color: tg.textSecondary, px: 2.5, mt: 1 }}>
+          <Text size={14} color={tg.textSecondary} style={{ paddingLeft: '20px', paddingRight: '20px', marginTop: '8px' }}>
             Вы можете разрешить {displayFirst} видеть Ваш номер телефона.
-          </Typography>
+          </Text>
         </Box>
 
         {/* Floating submit */}

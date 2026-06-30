@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { Box, Typography, useTheme } from '@mui/material'
+import { Box, useTheme } from '@mui/material'
+import Text from '../shared/ui/Text'
 import IconButton from '../shared/ui/IconButton'
 import { AnimatePresence, motion } from 'framer-motion'
 import { slideInRight } from '../motion'
@@ -80,9 +81,9 @@ export default function SettingsView({
         <IconButton onClick={onBack} color={tg.textSecondary}>
           <TgIcon name="back" />
         </IconButton>
-        <Typography sx={{ flex: 1, fontSize: 19, fontWeight: 600, color: tg.textPrimary }}>
+        <Text size={19} weight={600} color={tg.textPrimary} style={{ flex: 1 }}>
           {t('Settings')}
-        </Typography>
+        </Text>
         <IconButton color={tg.textSecondary}>
           <TgIcon name="qr" />
         </IconButton>
@@ -108,10 +109,10 @@ export default function SettingsView({
           }}
         >
           <Avatar background={avatarBg} src={avatarSrc} text={avatarText} size={130} />
-          <Typography sx={{ fontSize: 21, fontWeight: 600, color: tg.textPrimary, mt: 1 }}>
+          <Text size={21} weight={600} color={tg.textPrimary} style={{ marginTop: '8px' }}>
             {name}
-          </Typography>
-          <Typography sx={{ fontSize: 14, color: tg.textSecondary }}>{t('online')}</Typography>
+          </Text>
+          <Text size={14} color={tg.textSecondary}>{t('online')}</Text>
         </Box>
 
         {/* Contact card */}
@@ -142,7 +143,7 @@ export default function SettingsView({
             }}
           >
             <TgIcon name="darkmode" size={24} color={tg.textSecondary} />
-            <Typography sx={{ flex: 1, fontSize: 16, color: tg.textPrimary }}>{t('Night Mode')}</Typography>
+            <Text size={16} color={tg.textPrimary} style={{ flex: 1 }}>{t('Night Mode')}</Text>
             <TgSwitch checked={isDark} />
           </Box>
         </Box>
@@ -174,13 +175,13 @@ export default function SettingsView({
                 <Box sx={{ color: tg.textSecondary, display: 'flex', '& svg': { fontSize: 24 } }}>
                   {it.icon}
                 </Box>
-                <Typography sx={{ flex: 1, fontSize: 16, color: tg.textPrimary }}>
+                <Text size={16} color={tg.textPrimary} style={{ flex: 1 }}>
                   {t(it.label)}
-                </Typography>
+                </Text>
                 {it.value && (
-                  <Typography sx={{ fontSize: 15, color: tg.textFaint }}>
+                  <Text size={15} color={tg.textFaint}>
                     {it.label === 'Language' ? currentLangName : t(it.value)}
-                  </Typography>
+                  </Text>
                 )}
               </Box>
             )
@@ -204,9 +205,9 @@ export default function SettingsView({
             }}
           >
             <TgIcon name="star_filled" size={24} color={tg.accent} />
-            <Typography sx={{ flex: 1, fontSize: 16, color: tg.textPrimary }}>
+            <Text size={16} color={tg.textPrimary} style={{ flex: 1 }}>
               {t('Telegram Premium')}
-            </Typography>
+            </Text>
           </Box>
           <Box
             sx={{
@@ -222,7 +223,7 @@ export default function SettingsView({
             }}
           >
             <TgIcon name="gift" size={24} color={tg.textSecondary} />
-            <Typography sx={{ flex: 1, fontSize: 16, color: tg.textPrimary }}>{t('Send a Gift')}</Typography>
+            <Text size={16} color={tg.textPrimary} style={{ flex: 1 }}>{t('Send a Gift')}</Text>
           </Box>
         </Box>
       </Box>
@@ -261,8 +262,8 @@ function InfoRow({ icon, title, subtitle }: { icon: ReactNode; title: string; su
     >
       <Box sx={{ color: tg.textSecondary, display: 'flex', '& svg': { fontSize: 24 } }}>{icon}</Box>
       <Box>
-        <Typography sx={{ fontSize: 16, color: tg.textPrimary }}>{title}</Typography>
-        <Typography sx={{ fontSize: 13.5, color: tg.textSecondary }}>{subtitle}</Typography>
+        <Text size={16} color={tg.textPrimary}>{title}</Text>
+        <Text size={13.5} color={tg.textSecondary}>{subtitle}</Text>
       </Box>
     </Box>
   )

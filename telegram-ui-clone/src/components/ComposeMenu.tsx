@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Box, Typography, useTheme } from '@mui/material'
+import { Box, useTheme } from '@mui/material'
 import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
+import Text from '../shared/ui/Text'
 import { useT } from '../i18n'
 
 interface Props {
@@ -31,9 +32,9 @@ function Row({ icon, label, onClick }: { icon: ReactNode; label: string; onClick
       }}
     >
       <Box sx={{ color: tg.textPrimary, display: 'flex', '& svg': { fontSize: 20 } }}>{icon}</Box>
-      <Typography sx={{ fontSize: 14.5, fontWeight: 500, color: tg.textPrimary, whiteSpace: 'nowrap' }}>
+      <Text size={14.5} weight={500} color={tg.textPrimary} style={{ whiteSpace: 'nowrap' }}>
         {label}
-      </Typography>
+      </Text>
     </Box>
   )
 }
