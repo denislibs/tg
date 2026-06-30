@@ -68,16 +68,16 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
   const destructive =
     chat.type === 'channel' ? 'Leave Channel' : chat.type === 'group' ? 'Delete Group' : 'Delete Chat'
   const menuItems: { icon: ReactNode; label: string; danger?: boolean }[] = [
-    { icon: <TgIcon name="newtab" size={24} />, label: 'Open in new tab' },
-    { icon: <TgIcon name="eye" size={24} />, label: 'Preview' },
-    { icon: <TgIcon name="messageunread" size={24} />, label: 'Mark as unread' },
-    { icon: <TgIcon name="pin" size={24} />, label: 'Pin' },
+    { icon: <TgIcon name="newtab" size={20} />, label: 'Open in new tab' },
+    { icon: <TgIcon name="eye" size={20} />, label: 'Preview' },
+    { icon: <TgIcon name="messageunread" size={20} />, label: 'Mark as unread' },
+    { icon: <TgIcon name="pin" size={20} />, label: 'Pin' },
     {
-      icon: <TgIcon name={chat.muted ? 'unmute' : 'mute'} size={24} />,
+      icon: <TgIcon name={chat.muted ? 'unmute' : 'mute'} size={20} />,
       label: chat.muted ? 'Unmute' : 'Mute',
     },
-    { icon: <TgIcon name="archive" size={24} />, label: 'Archive' },
-    { icon: <TgIcon name="delete" size={24} />, label: destructive, danger: true },
+    { icon: <TgIcon name="archive" size={20} />, label: 'Archive' },
+    { icon: <TgIcon name="delete" size={20} />, label: destructive, danger: true },
   ]
 
   return (

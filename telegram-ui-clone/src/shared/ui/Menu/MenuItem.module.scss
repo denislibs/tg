@@ -3,9 +3,9 @@
 .item {
   display: flex;
   align-items: center;
-  height: 3rem;
-  padding: 0 1rem;
-  font-size: 1rem;
+  height: 2.75rem; // 44px — компактнее дефолтного tweb 3rem (был «амбальный»)
+  padding: 0 0.875rem; // 14px
+  font-size: 1rem; // 16px
   font-weight: 400;
   line-height: 1;
   color: var(--tg-textPrimary);
@@ -27,7 +27,7 @@
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  margin-right: 1.5rem; // tweb --icon-margin
+  margin-right: 0.875rem; // 14px — эффективный gap tweb (icon-margin − add), не 24px
   color: var(--tg-textSecondary);
 }
 
