@@ -10,7 +10,8 @@
 // formatting inline (bold/italic/spoiler/code/quote/link), 1:1 with tweb. On send
 // the DOM is serialized to plain text + a MessageEntity[] (see core/markdown).
 import { memo, useEffect, useRef, useState } from 'react'
-import { Box, IconButton, Typography, useTheme, alpha } from '@mui/material'
+import { Box, IconButton, Typography, useTheme } from '@mui/material'
+import { withAlpha } from '../core/cssColor'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import EmojiPicker from './EmojiPicker'
@@ -363,7 +364,7 @@ function Composer({
               transition={{ duration: DUR_OUT, ease: EASE_STD }}
               style={{ overflow: 'hidden' }}
             >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1.5, py: 1, background: alpha(tg.accent, 0.12) }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1.5, py: 1, background: withAlpha(tg.accent, 0.12) }}>
                 <TgIcon name="edit" size={22} color={tg.accent} />
                 <Box sx={{ flex: 1, minWidth: 0, borderLeft: `2px solid ${tg.accent}`, pl: 1.25 }}>
                   <Typography sx={{ fontSize: 14, fontWeight: 600, color: tg.accent }}>{t('Edit message')}</Typography>
@@ -393,7 +394,7 @@ function Composer({
                   display: 'flex',
                   alignItems: 'center',
                   gap: 1.25,
-                  background: alpha(tg.accent, 0.16),
+                  background: withAlpha(tg.accent, 0.16),
                   borderRadius: '18px',
                   py: 0.75,
                   pl: 1,
@@ -479,7 +480,7 @@ function Composer({
                     '& .md-pre': { display: 'block', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: '0.92em', background: 'rgba(127,127,127,0.16)', borderRadius: '8px', padding: '8px 10px', whiteSpace: 'pre-wrap', my: '2px' },
                     // language header inside the input so the block looks like the sent one (WYSIWYG)
                     '& .md-pre[data-language]::before': { content: 'attr(data-language)', display: 'block', fontSize: 11, fontWeight: 700, color: tg.accent, textTransform: 'uppercase', marginBottom: '4px', userSelect: 'none' },
-                    '& .md-spoiler': { background: alpha(tg.textPrimary, 0.18), borderRadius: '4px' },
+                    '& .md-spoiler': { background: withAlpha(tg.textPrimary, 0.18), borderRadius: '4px' },
                     '& .md-quote': { display: 'inline-block', borderLeft: `3px solid ${tg.accent}`, paddingLeft: '8px', opacity: 0.95 },
                     '& a': { color: tg.accent },
                   }}

@@ -5,6 +5,7 @@ import EmojiSymbolsRounded from '@mui/icons-material/EmojiSymbolsRounded'
 import TgIcon, { type IconName } from './TgIcon'
 import { EASE } from '../motion'
 import { useT } from '../i18n'
+import { withAlpha } from '../core/cssColor'
 import { CATEGORIES, SKIN, TONES, NAMES, DEFAULT_FREQUENT, QUICK_CHIPS } from './emoji/emojiData'
 import Emoji from './emoji/Emoji'
 
@@ -172,8 +173,8 @@ export default function EmojiPicker({
                       borderRadius: '8px',
                       cursor: 'pointer',
                       color: on ? tg.accent : tg.textFaint,
-                      background: on ? `${tg.accent}1f` : 'transparent',
-                      '&:hover': { background: on ? `${tg.accent}1f` : tg.hover },
+                      background: on ? withAlpha(tg.accent, 0.12) : 'transparent',
+                      '&:hover': { background: on ? withAlpha(tg.accent, 0.12) : tg.hover },
                     }}
                   >
                     {typeof icon === 'string' ? (
@@ -306,7 +307,7 @@ export default function EmojiPicker({
             justifyContent: 'center',
             borderRadius: '8px',
             color: tg.accent,
-            background: `${tg.accent}1f`,
+            background: withAlpha(tg.accent, 0.12),
           }}
         >
           <TgIcon name="smile" size={24} />

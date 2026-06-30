@@ -1,4 +1,5 @@
-import { Box, useTheme } from '@mui/material'
+import type { CSSProperties } from 'react'
+import s from './Avatar.module.scss'
 
 interface AvatarProps {
   background: string
@@ -23,35 +24,20 @@ export default function Avatar({
   online = false,
   ringColor,
 }: AvatarProps) {
-  const tg = useTheme().tg
-  const dot = Math.max(8, Math.round(size * 0.26)) // tweb: 14px on a 54px avatar
-  const ring = Math.max(1.5, Math.round(size * 0.037)) // ~2px on 54px
+  // Dynamic per-instance values ride in as CSS variables; the module derives the
+  // dot/ring/font sizes from --size in pure CSS (no JS math, no theme read).
+  const style = {
+    '--size': `${size}px`,
+    '--avatar-bg': background,
+    '--avatar-color': color,
+    ...(ringColor ? { '--avatar-ring': ringColor } : {}),
+  } as CSSProperties
 
   return (
-    <Box sx={{ position: 'relative', flexShrink: 0, width: size, height: size }}>
-      <Box
-        sx={{
-          width: size,
-          height: size,
-          borderRadius: '50%',
-          background,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color,
-          fontWeight: 600,
-          fontSize: size * 0.42,
-          userSelect: 'none',
-          lineHeight: 1,
-          overflow: 'hidden',
-        }}
-      >
+    <div className={s.root} style={style}>
+      <div className={s.circle}>
         {src ? (
-          <img
-            src={src}
-            alt=""
-            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-          />
+          <img className={s.image} src={src} alt="" />
         ) : emoji === 'tg-logo' ? (
           <svg width={size * 0.62} height={size * 0.62} viewBox="0 0 24 24" fill="#fff" aria-label="Telegram">
             <path d="M21.8 3.1 1.9 10.8c-1 .4-1 1.8 0 2.1l5 1.6 1.9 6c.3.9 1.4 1.1 2 .4l2.7-2.7 5 3.7c.7.5 1.7.1 1.9-.7l3.4-16c.2-1-.7-1.8-1.6-1.4zM9.5 14.3l8.6-5.3c.2-.1.4.2.2.3l-7 6.6c-.2.2-.3.5-.3.8l-.2 2.4-1.3-4.1c-.1-.3 0-.6.2-.7z" />
@@ -61,24 +47,10 @@ export default function Avatar({
             <path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z" />
           </svg>
         ) : (
-          (text ?? emoji)
+          text ?? emoji
         )}
-      </Box>
-      {online && (
-        <Box
-          sx={{
-            position: 'absolute',
-            right: '6%',
-            bottom: '6%',
-            width: dot,
-            height: dot,
-            borderRadius: '50%',
-            background: '#4dcd5e',
-            border: `${ring}px solid ${ringColor ?? tg.sidebarBg}`,
-            boxSizing: 'border-box',
-          }}
-        />
-      )}
-    </Box>
+      </div>
+      {online && <div className={s.online} />}
+    </div>
   )
 }

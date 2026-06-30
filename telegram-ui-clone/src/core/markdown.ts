@@ -13,7 +13,7 @@
 import type { EntityType, MessageEntity } from './models'
 import { safeUrl } from './safeUrl'
 
-// CSS classes the composer markup uses (see index.css). Kept here so serialize()
+// CSS classes the composer markup uses (see styles/index.scss). Kept here so serialize()
 // and apply() agree on what a span of each type looks like.
 const CLS: Record<string, EntityType> = {
   'md-code': 'code',

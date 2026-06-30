@@ -3,7 +3,7 @@
 // row with the language name + a copy button, and a syntax-highlighted body.
 // Highlighting uses prismjs (same lib as tweb). Prism tokens are rendered to React
 // nodes (not innerHTML) so there's no injection surface; token colors come from
-// the `.token.*` CSS in index.css.
+// the `.token.*` CSS in styles/index.scss.
 import { useMemo, useState, type ReactNode } from 'react'
 import { Box, useTheme } from '@mui/material'
 import Prism from 'prismjs'
@@ -51,7 +51,7 @@ const LANGS: Record<string, { grammar: string; label: string }> = {
 }
 
 // Recursively render Prism's token stream into React nodes with `.token.<type>`
-// classes (styled in index.css).
+// classes (styled in styles/index.scss).
 function renderTokens(tokens: (string | Prism.Token)[], keyBase: string): ReactNode[] {
   return tokens.map((tok, i) => {
     const key = `${keyBase}-${i}`

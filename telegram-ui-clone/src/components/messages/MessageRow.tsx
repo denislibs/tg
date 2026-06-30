@@ -6,7 +6,8 @@
 // the parent's conversion cache, and every other prop is a primitive or a stable
 // callback object (feedFns). The media viewer is opened via context (useMediaViewer).
 import { memo, type MouseEvent } from 'react'
-import { Box, Typography, useTheme, alpha } from '@mui/material'
+import { Box, Typography, useTheme } from '@mui/material'
+import { withAlpha } from '../../core/cssColor'
 import { mediaThumbUrl, hasMediaToken, useMediaTokenVersion } from '../../core/mediaUrl'
 import { motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
@@ -98,7 +99,7 @@ function MessageRow({
           sx={{
             position: 'absolute', top: 0, bottom: `${-(lastInGroup ? 6 : 2)}px`,
             left: '50%', transform: 'translateX(-50%)', width: '100vw',
-            background: alpha(tg.accent, 0.3), zIndex: 0, pointerEvents: 'none',
+            background: withAlpha(tg.accent, 0.3), zIndex: 0, pointerEvents: 'none',
           }}
         />
       )}
@@ -116,7 +117,7 @@ function MessageRow({
             left: '50%',
             transform: 'translateX(-50%)',
             width: '100vw',
-            background: alpha(tg.accent, 0.3),
+            background: withAlpha(tg.accent, 0.3),
             zIndex: 0,
             pointerEvents: 'none',
           }}
@@ -293,11 +294,11 @@ function MessageRow({
               ))}
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
-              <Typography sx={{ fontSize: 12.5, color: out ? alpha(tg.bubbleOutText, 0.85) : tg.textSecondary }}>
+              <Typography sx={{ fontSize: 12.5, color: out ? withAlpha(tg.bubbleOutText, 0.85) : tg.textSecondary }}>
                 {m.duration}
               </Typography>
               <Box sx={{ flex: 1 }} />
-              <Typography sx={{ fontSize: 12, color: out ? alpha(tg.bubbleOutText, 0.7) : tg.textFaint }}>
+              <Typography sx={{ fontSize: 12, color: out ? withAlpha(tg.bubbleOutText, 0.7) : tg.textFaint }}>
                 {fmtTime(m.time)}
               </Typography>
               <Ticks status={m.status} color={tickColor} />
@@ -337,7 +338,7 @@ function MessageRow({
           )}
           {m.forwardFrom && (
             <Box sx={{ mb: 0.25 }}>
-              <Typography sx={{ fontSize: 13, color: out ? alpha(tg.bubbleOutText, 0.7) : tg.textFaint }}>
+              <Typography sx={{ fontSize: 13, color: out ? withAlpha(tg.bubbleOutText, 0.7) : tg.textFaint }}>
                 {t('Forwarded from')}
               </Typography>
               <Typography sx={{ fontSize: 14, fontWeight: 600, color: out ? tg.bubbleOutAccent : (m.forwardFrom.color ?? tg.accent) }}>
@@ -355,7 +356,7 @@ function MessageRow({
                 borderRadius: '6px',
                 cursor: m.reply.seq != null ? 'pointer' : 'default',
                 borderLeft: `3px solid ${out ? tg.bubbleOutAccent : m.reply.color ?? tg.accent}`,
-                background: out ? alpha(tg.bubbleOutText, 0.12) : `${m.reply.color ?? tg.accent}1f`,
+                background: out ? withAlpha(tg.bubbleOutText, 0.12) : withAlpha(m.reply.color ?? tg.accent, 0.12),
                 display: 'flex',
                 alignItems: 'center',
                 gap: 0.75,
@@ -366,7 +367,7 @@ function MessageRow({
                 <Typography noWrap sx={{ fontSize: 13.5, fontWeight: 600, color: out ? tg.bubbleOutAccent : m.reply.color ?? tg.accent }}>
                   {m.reply.name}
                 </Typography>
-                <Typography noWrap sx={{ fontSize: 13.5, color: out ? alpha(tg.bubbleOutText, 0.85) : tg.textSecondary, maxWidth: 240 }}>
+                <Typography noWrap sx={{ fontSize: 13.5, color: out ? withAlpha(tg.bubbleOutText, 0.85) : tg.textSecondary, maxWidth: 240 }}>
                   <RichText text={m.reply.text} entities={m.reply.entities} linkColor={out ? tg.bubbleOutAccent : tg.link} />
                 </Typography>
               </Box>
@@ -390,7 +391,7 @@ function MessageRow({
                 component="span"
                 sx={{
                   fontSize: 12,
-                  color: out ? alpha(tg.bubbleOutText, 0.7) : tg.textFaint,
+                  color: out ? withAlpha(tg.bubbleOutText, 0.7) : tg.textFaint,
                   whiteSpace: 'nowrap',
                 }}
               >

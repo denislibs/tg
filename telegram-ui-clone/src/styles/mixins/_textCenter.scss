@@ -1,0 +1,5 @@
+// ПОРТ 1:1 из tweb src/scss/mixins/_textCenter.scss.
+@mixin text-center() {
+  text-align: center;
+  text-wrap: balance;
+}

@@ -1,0 +1,103 @@
+// src/styles/_tokens.scss
+//
+// Дизайн-токены тем как CSS custom properties. Значения 1:1 из theme.ts
+// (classic/day/night/dark — сэмплы палитр Telegram Web-K). Активная тема
+// выбирается атрибутом `data-theme` на <html> (см. App.tsx); смена темы — это
+// смена атрибута, без пересчёта стилей в JS. Структура повторяет спреды theme.ts:
+// :root = classic (база), day = дельты поверх classic, night = полный набор,
+// dark = дельты поверх night (одинаковая специфичность → решает порядок в файле).
+//
+// pattern/patternMask не здесь: это бандл-URL ассета (один на все темы), живёт в
+// theme.ts как литерал.
+
+:root {
+  --tg-accent: #7d63e8;
+  --tg-accentGradient: linear-gradient(135deg, #8a6cf0 0%, #a079f6 100%);
+  --tg-appBg: #e7ddf5;
+  --tg-sidebarBg: #ffffff;
+  --tg-bubble: #ffffff;
+  --tg-bubbleOut: #ede9fc;
+  --tg-bubbleOutText: #1c1c1e;
+  --tg-bubbleOutAccent: #7d63e8;
+  --tg-bubbleBorder: rgba(0, 0, 0, 0.04);
+  --tg-hover: rgba(0, 0, 0, 0.035);
+  --tg-selectedText: #ffffff;
+  --tg-divider: rgba(0, 0, 0, 0.07);
+  --tg-textPrimary: #1c1c1e;
+  --tg-textSecondary: #82868d;
+  --tg-textFaint: #a0a2a8;
+  --tg-link: #5b51d8;
+  --tg-searchBg: rgba(0, 0, 0, 0.045);
+  --tg-bannerBg: rgba(125, 99, 232, 0.06);
+  --tg-badge: #7d63e8;
+  --tg-composeShadow: 0 6px 22px rgba(120, 90, 240, 0.4);
+  --tg-menuBg: rgba(255, 255, 255, 0.82);
+  --tg-menuShadow: 0 12px 44px rgba(80, 60, 160, 0.2);
+  --tg-bgGrad0: #dbddbb;
+  --tg-bgGrad1: #6ba587;
+  --tg-bgGrad2: #d5d88d;
+  --tg-bgGrad3: #88b884;
+}
+
+// "Day" — brighter light theme, teal/blue accent; rest inherits classic (:root).
+[data-theme='day'] {
+  --tg-accent: #3390ec;
+  --tg-accentGradient: linear-gradient(135deg, #3390ec 0%, #58a6f5 100%);
+  --tg-appBg: #dfe6ec;
+  --tg-bubbleOut: #e2f0fc;
+  --tg-bubbleOutAccent: #3390ec;
+  --tg-link: #3390ec;
+  --tg-bannerBg: rgba(51, 144, 236, 0.07);
+  --tg-badge: #3390ec;
+  --tg-composeShadow: 0 6px 22px rgba(51, 144, 236, 0.4);
+}
+
+// "Night" — full dark set (purple accent). Also base for "dark".
+[data-theme='night'],
+[data-theme='dark'] {
+  --tg-accent: #8774e1;
+  --tg-accentGradient: linear-gradient(135deg, #8774e1 0%, #9a86ec 100%);
+  --tg-appBg: #181818;
+  --tg-sidebarBg: #212121;
+  --tg-bubble: #212121;
+  --tg-bubbleOut: #353246;
+  --tg-bubbleOutText: #ffffff;
+  --tg-bubbleOutAccent: #c3b9f0;
+  --tg-bubbleBorder: rgba(255, 255, 255, 0.04);
+  --tg-hover: rgba(255, 255, 255, 0.08);
+  --tg-selectedText: #ffffff;
+  --tg-divider: rgba(255, 255, 255, 0.08);
+  --tg-textPrimary: #ffffff;
+  --tg-textSecondary: #aaaaaa;
+  --tg-textFaint: #707579;
+  --tg-link: #8774e1;
+  --tg-searchBg: #2b2b2b;
+  --tg-bannerBg: rgba(255, 255, 255, 0.04);
+  --tg-badge: #8774e1;
+  --tg-composeShadow: 0 6px 22px rgba(135, 116, 225, 0.5);
+  --tg-menuBg: rgba(30, 30, 30, 0.8);
+  --tg-menuShadow: 0 12px 44px rgba(0, 0, 0, 0.55);
+  --tg-bgGrad0: #fec496;
+  --tg-bgGrad1: #dd6cb9;
+  --tg-bgGrad2: #962fbf;
+  --tg-bgGrad3: #4f5bd5;
+}
+
+// "Dark" — neutral near-black (vs Night's purple), blue accent; deltas over night.
+[data-theme='dark'] {
+  --tg-accent: #5ea7e8;
+  --tg-accentGradient: linear-gradient(135deg, #5ea7e8 0%, #7bb8ee 100%);
+  --tg-appBg: #0e0e0e;
+  --tg-sidebarBg: #181818;
+  --tg-bubble: #181818;
+  --tg-bubbleOut: #263542;
+  --tg-bubbleOutAccent: #aed3f3;
+  --tg-searchBg: #222;
+  --tg-link: #5ea7e8;
+  --tg-badge: #5ea7e8;
+  --tg-composeShadow: 0 6px 22px rgba(94, 167, 232, 0.45);
+  --tg-bgGrad0: #4a5a6a;
+  --tg-bgGrad1: #2e3a48;
+  --tg-bgGrad2: #3a4654;
+  --tg-bgGrad3: #28323e;
+}

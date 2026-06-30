@@ -1,0 +1,46 @@
+// Avatar — SCSS-модуль (подход/значения базового аватара tweb _avatar.scss, без MUI).
+// Размер задаётся CSS-переменной --size на корне; производные (шрифт, точка online,
+// толщина кольца) считаются в CSS через calc()/max() — без JS. Динамика пира (фон-
+// градиент, цвет инициалов, цвет кольца) приходит CSS-переменными на элементе.
+.root {
+  position: relative;
+  flex-shrink: 0;
+  width: var(--size);
+  height: var(--size);
+}
+
+.circle {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: var(--avatar-bg);
+  color: var(--avatar-color, #fff);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: calc(var(--size) * 0.42);
+  line-height: 1;
+  user-select: none;
+  overflow: hidden;
+}
+
+.image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+// Online dot — tweb places it bottom-right with a surface-coloured ring.
+.online {
+  position: absolute;
+  right: 6%;
+  bottom: 6%;
+  width: max(8px, calc(var(--size) * 0.26));
+  height: max(8px, calc(var(--size) * 0.26));
+  border-radius: 50%;
+  background: #4dcd5e;
+  border: max(1.5px, calc(var(--size) * 0.037)) solid var(--avatar-ring, var(--tg-sidebarBg));
+  box-sizing: border-box;
+}

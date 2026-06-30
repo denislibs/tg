@@ -33,7 +33,7 @@ import {
   type ReactNode,
 } from 'react'
 import { Box, useTheme } from '@mui/material'
-import { alpha } from '@mui/material/styles'
+import { withAlpha } from '../core/cssColor'
 import { AnimatePresence, motion } from 'framer-motion'
 
 export type TabValue = string | number
@@ -145,7 +145,7 @@ function List({ children, framed }: { children: ReactNode; framed?: boolean }) {
             width: pill.width,
             transform: `translate(${pill.left}px, -50%)`,
             borderRadius: '24px',
-            background: alpha(tg.accent, 0.12),
+            background: withAlpha(tg.accent, 0.12),
             transition: `transform ${TAB_DUR}s ease-in-out, width ${TAB_DUR}s ease-in-out`,
             zIndex: 0,
             pointerEvents: 'none',

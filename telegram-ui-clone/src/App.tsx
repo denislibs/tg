@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useManagers } from './core/hooks/useManagers'
 import { useConnectionStore, pingBackend } from './stores/connectionStore'
@@ -405,6 +405,13 @@ function ThemedApp() {
   const preset = resolvePreset(themeChoice)
   const theme = useMemo(() => buildTheme(preset), [preset])
   const [authed, setAuthed] = useState<boolean | null>(null) // null = checking
+
+  // Drive the active theme via a `data-theme` attribute on <html> — token CSS-vars
+  // (styles/_tokens.scss) resolve from it, so a theme switch is just the attribute
+  // (no per-element JS value swap). useLayoutEffect sets it before paint (no FOUC).
+  useLayoutEffect(() => {
+    document.documentElement.dataset.theme = preset
+  }, [preset])
 
   useEffect(() => {
     managers.auth.me().then((u) => setAuthed(!!u)).catch(() => setAuthed(false))

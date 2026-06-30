@@ -156,6 +156,40 @@ export const PRESET_MODE: Record<ThemePreset, Mode> = {
   dark: 'dark',
 }
 
+// What our app code (theme.tg.*) actually reads: every token is a `var(--tg-*)`
+// reference resolved by the active `data-theme` on <html> (see styles/_tokens.scss
+// + App.tsx). This is theme-independent — switching themes is just the attribute,
+// no JS value swap — so all existing `sx={{ color: tg.textPrimary }}` become
+// var-driven for free. `pattern`/`patternMask` stay literals (one bundled asset,
+// not theme-dependent); `bgGradient` maps to the four --tg-bgGrad* vars.
+const tgVars: TgTokens = {
+  accent: 'var(--tg-accent)',
+  accentGradient: 'var(--tg-accentGradient)',
+  appBg: 'var(--tg-appBg)',
+  sidebarBg: 'var(--tg-sidebarBg)',
+  bubble: 'var(--tg-bubble)',
+  bubbleOut: 'var(--tg-bubbleOut)',
+  bubbleOutText: 'var(--tg-bubbleOutText)',
+  bubbleOutAccent: 'var(--tg-bubbleOutAccent)',
+  bubbleBorder: 'var(--tg-bubbleBorder)',
+  hover: 'var(--tg-hover)',
+  selectedText: 'var(--tg-selectedText)',
+  divider: 'var(--tg-divider)',
+  textPrimary: 'var(--tg-textPrimary)',
+  textSecondary: 'var(--tg-textSecondary)',
+  textFaint: 'var(--tg-textFaint)',
+  link: 'var(--tg-link)',
+  searchBg: 'var(--tg-searchBg)',
+  bannerBg: 'var(--tg-bannerBg)',
+  badge: 'var(--tg-badge)',
+  pattern,
+  patternMask: pattern,
+  composeShadow: 'var(--tg-composeShadow)',
+  menuBg: 'var(--tg-menuBg)',
+  menuShadow: 'var(--tg-menuShadow)',
+  bgGradient: ['var(--tg-bgGrad0)', 'var(--tg-bgGrad1)', 'var(--tg-bgGrad2)', 'var(--tg-bgGrad3)'],
+}
+
 // Resolve a user's theme choice ('system' → OS preference) to a concrete preset.
 export function resolvePreset(choice: ThemeChoice): ThemePreset {
   if (choice !== 'system') return choice
@@ -163,9 +197,13 @@ export function resolvePreset(choice: ThemeChoice): ThemePreset {
 }
 
 export function buildTheme(preset: ThemePreset): Theme {
+  // `tg` (concrete preset values) drives MUI's palette so its colour math
+  // (contrast text, light/dark) stays correct; our app reads `tgVars` (CSS vars).
+  // EXCEPTION: bgGradient feeds the wallpaper canvas (TWallpaper), which parses
+  // real hex in JS — a `var(...)` string would break it — so it stays concrete.
   const { mode, tg } = PRESETS[preset]
   return createTheme({
-    tg,
+    tg: { ...tgVars, bgGradient: tg.bgGradient },
     palette: {
       mode,
       primary: { main: tg.accent },
