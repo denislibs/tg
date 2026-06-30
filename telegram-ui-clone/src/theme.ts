@@ -9,7 +9,7 @@ export type ThemePreset = 'classic' | 'day' | 'night' | 'dark'
 export type ThemeChoice = ThemePreset | 'system'
 
 // Custom design tokens layered on top of the MUI theme.
-interface TgTokens {
+export interface TgTokens {
   accent: string
   accentGradient: string
   appBg: string

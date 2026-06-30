@@ -1,36 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { Box, Typography, IconButton, InputBase, useTheme } from '@mui/material'
 import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import { slideInRight } from '../motion'
 import { useT } from '../i18n'
 import Avatar from './Avatar'
-import { useManagers } from '../core/hooks/useManagers'
-import { useChatsStore } from '../stores/chatsStore'
-import { uiEvents } from '../core/hooks/uiEvents'
-import { RT, type NewMessageEvt } from '../core/realtime/events'
-import type { Message } from '../core/models'
-
-interface Comment {
-  id?: number
-  name: string
-  text: string
-  time: string
-  gradient: string
-  color: string
-  out?: boolean
-}
-
-// Per-author tint for sender names (same palette tweb uses for peers).
-const PEER_COLORS = ['#e17076', '#7bc862', '#65aadd', '#a695e7', '#ee7aae', '#6ec9cb', '#faa774']
-function peerColor(seed: number) {
-  return PEER_COLORS[Math.abs(seed) % PEER_COLORS.length]
-}
-function fmtTime(iso: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ''
-  return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`
-}
+import { useDiscussion } from '../core/hooks/useDiscussion'
 
 export default function DiscussionView({
   channelId,
@@ -47,92 +22,13 @@ export default function DiscussionView({
 }) {
   const t = useT()
   const tg = useTheme().tg
-  const meId = useChatsStore((s) => s.meId)
-  const managers = useManagers()
-  const [comments, setComments] = useState<Comment[]>([])
+  const { comments, send } = useDiscussion(channelId, postId, discussionChatId)
   const [draft, setDraft] = useState('')
-  // Track seen message ids to dedupe optimistic vs server/live echoes.
-  const seenIds = useRef<Set<number>>(new Set())
 
-  // Resolve a Message into a display Comment (sender name via peersManager).
-  const toComment = async (m: Message): Promise<Comment> => {
-    const out = m.senderId === meId
-    let name = 'You'
-    if (!out) {
-      const peers = await managers.peers.getUsers([m.senderId])
-      const p = peers.find((x) => x.id === m.senderId)
-      name = p?.displayName || p?.username || `#${m.senderId}`
-    }
-    return {
-      id: m.id,
-      name,
-      text: m.text,
-      time: fmtTime(m.createdAt),
-      gradient: out ? '' : peerColor(m.senderId),
-      color: out ? '' : peerColor(m.senderId),
-      out,
-    }
-  }
-
-  // Initial load: real comments for this post.
-  useEffect(() => {
-    let alive = true
-    seenIds.current = new Set()
-    setComments([])
-    void managers.channels.listComments(channelId, postId).then(async ({ messages }) => {
-      const mapped = await Promise.all(messages.map(toComment))
-      if (!alive) return
-      for (const m of messages) seenIds.current.add(m.id)
-      setComments(mapped)
-    })
-    return () => { alive = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channelId, postId])
-
-  // Live: discussion-group new_message frames for this thread.
-  useEffect(() => {
-    const off = uiEvents.on(RT.newMessage, (raw) => {
-      const m = raw as NewMessageEvt
-      if (m.chat_id !== discussionChatId || m.thread_root_id !== postId) return
-      if (seenIds.current.has(m.msg_id)) return
-      seenIds.current.add(m.msg_id)
-      const out = m.sender_id === meId
-      const append = (name: string) =>
-        setComments((c) => [
-          ...c,
-          {
-            id: m.msg_id,
-            name,
-            text: m.text,
-            time: fmtTime(m.created_at),
-            gradient: out ? '' : peerColor(m.sender_id),
-            color: out ? '' : peerColor(m.sender_id),
-            out,
-          },
-        ])
-      if (out) append('You')
-      else
-        void managers.peers.getUsers([m.sender_id]).then((peers) => {
-          const p = peers.find((x) => x.id === m.sender_id)
-          append(p?.displayName || p?.username || `#${m.sender_id}`)
-        })
-    })
-    return off
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [discussionChatId, postId, meId])
-
-  const send = () => {
-    const text = draft.trim()
-    if (!text) return
+  const submit = () => {
+    if (!draft.trim()) return
+    send(draft)
     setDraft('')
-    // Optimistic append; for real threads the server echo (same id) is deduped.
-    const now = new Date()
-    const time = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`
-    setComments((c) => [...c, { name: 'You', text, time, gradient: '', color: '', out: true }])
-    const clientMsgId = `c-disc-${postId}-${performance.now()}-${Math.random().toString(36).slice(2)}`
-    void managers.channels.postComment(channelId, postId, text, clientMsgId).then((m) => {
-      seenIds.current.add(m.id)
-    })
   }
 
   return (
@@ -202,9 +98,9 @@ export default function DiscussionView({
         </Box>
 
         {/* Comments */}
-        {comments.map((c, i) =>
+        {comments.map((c) =>
           c.out ? (
-            <Box key={i} sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <Box key={c.key} sx={{ display: 'flex', justifyContent: 'flex-end' }}>
               <Box
                 sx={{
                   background: tg.accent,
@@ -222,8 +118,8 @@ export default function DiscussionView({
               </Box>
             </Box>
           ) : (
-            <Box key={i} sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
-              <Avatar background={c.gradient} size={32} text={c.name.charAt(0)} />
+            <Box key={c.key} sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
+              <Avatar background={c.color} size={32} text={c.name.charAt(0)} />
               <Box
                 sx={{
                   background: tg.bubble,
@@ -264,14 +160,14 @@ export default function DiscussionView({
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault()
-              send()
+              submit()
             }
           }}
           placeholder={t('Comment')}
           sx={{ flex: 1, color: tg.textPrimary, px: 1, fontSize: 15 }}
         />
         <Box
-          onClick={send}
+          onClick={submit}
           sx={{
             width: 40,
             height: 40,

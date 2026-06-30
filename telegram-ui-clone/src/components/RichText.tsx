@@ -1,6 +1,7 @@
 import { useState, type CSSProperties, type ReactNode } from 'react'
 import { Box } from '@mui/material'
 import type { EntityType, MessageEntity } from '../core/models'
+import { safeUrl } from '../core/safeUrl'
 import CodeBlock from './CodeBlock'
 
 // Matches URLs, t.me links, @usernames and #hashtags
@@ -86,18 +87,6 @@ function Spoiler({ children }: { children: ReactNode }) {
       {children}
     </Box>
   )
-}
-
-// Allow-list URL schemes for link entities. Anything with a disallowed scheme
-// (javascript:, data:, vbscript:, file:, …) is rejected so a crafted text_link
-// entity can't run code via href. Relative / scheme-less URLs are allowed.
-const SAFE_SCHEMES = new Set(['http', 'https', 'mailto', 'tel', 'tg'])
-function safeUrl(url?: string): string | undefined {
-  if (!url) return undefined
-  const u = url.trim()
-  const m = u.match(/^([a-z][a-z0-9+.-]*):/i)
-  if (m && !SAFE_SCHEMES.has(m[1].toLowerCase())) return undefined
-  return u
 }
 
 interface Seg { text: string; types: Set<EntityType>; url?: string }

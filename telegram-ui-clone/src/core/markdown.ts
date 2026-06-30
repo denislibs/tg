@@ -11,6 +11,7 @@
 //   3. entitiesToHtml() — rebuild markup HTML from { text, entities } so editing
 //      an existing message re-loads it formatted.
 import type { EntityType, MessageEntity } from './models'
+import { safeUrl } from './safeUrl'
 
 // CSS classes the composer markup uses (see index.css). Kept here so serialize()
 // and apply() agree on what a span of each type looks like.
@@ -217,7 +218,7 @@ export function apply(root: HTMLElement, type: EntityType, url?: string) {
     ancestor(range.endContainer, root, matcherFor(type))
   const wrapperEl = ancestor(range.commonAncestorContainer, root, matcherFor(type))
   if (existing && wrapperEl) {
-    if (type === 'text_link' && url) { (wrapperEl as HTMLAnchorElement).href = url; return }
+    if (type === 'text_link' && url) { (wrapperEl as HTMLAnchorElement).href = safeUrl(url) || ''; return }
     unwrap(wrapperEl)
     return
   }
@@ -225,7 +226,7 @@ export function apply(root: HTMLElement, type: EntityType, url?: string) {
   wrapRange(range, () => {
     if (type === 'text_link') {
       const a = document.createElement('a')
-      a.href = url || ''
+      a.href = safeUrl(url) || ''
       a.className = 'md-link'
       return a
     }
@@ -293,7 +294,7 @@ function elementFor(type: EntityType, url?: string, language?: string): HTMLElem
     case 'spoiler': { const s = document.createElement('span'); s.className = 'md-spoiler'; return s }
     case 'blockquote': { const s = document.createElement('span'); s.className = 'md-quote'; return s }
     case 'pre': { const s = document.createElement('span'); s.className = 'md-pre'; if (language) s.dataset.language = language; return s }
-    case 'text_link': { const a = document.createElement('a'); a.className = 'md-link'; a.setAttribute('href', url || ''); return a }
+    case 'text_link': { const a = document.createElement('a'); a.className = 'md-link'; a.setAttribute('href', safeUrl(url) || ''); return a }
     default: { const s = document.createElement('span'); s.className = 'md-code'; return s } // code
   }
 }

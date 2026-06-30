@@ -145,51 +145,6 @@ export default class SlicedArray<T extends ItemType> {
       slice[i] = items[i];
     }
     return slice;
-
-    // ! code below will slow execution in 15 times
-    /* const self = this;
-    const p: Slice = new Proxy(slice, {
-      get: function(target, name: any) {
-        if(name === 'constructor') {
-          const p = new Proxy(Slice, {
-            construct: (target, args) => {
-              return self.constructSlice(...args);
-            }
-          });
-
-          return p;
-        }
-
-        return target[name];
-      }
-    });
-
-    return p; */
-
-    /*
-    var p = slicedArray.constructSlice();
-    p.length = 100000;
-    p.fill(255);
-
-    var a = new Array(100000);
-    a.fill(255);
-
-    var b = 0;
-    var perf = performance.now();
-    for(var i = 0; i < p.length; ++i) {
-        b += p[i];
-    }
-
-    console.log('perf 1', performance.now() - perf);
-
-    b = 0;
-    perf = performance.now();
-    for(var i = 0; i < a.length; ++i) {
-        b += a[i];
-    }
-
-    console.log('perf 2', performance.now() - perf);
-    */
   }
 
   public insertSlice(slice: T[], flatten = true) {

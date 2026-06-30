@@ -7,6 +7,7 @@ import Avatar from './Avatar'
 import { useAvatarSrc } from './useAvatarSrc'
 import VerifiedBadge from './VerifiedBadge'
 import type { Chat, OpenPeer } from '../data'
+import type { TgTokens } from '../theme'
 import type { SearchResult } from '../core/managers/channelsManager'
 import { useT } from '../i18n'
 import { Tabs } from './Tabs'
@@ -282,7 +283,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
 }
 
 // ── helpers ─────────────────────────────────────────────────────────
-function Section({ title, children, tg, cardBg }: { title: string; children: ReactNode; tg: any; cardBg: string }) {
+function Section({ title, children, tg, cardBg }: { title: string; children: ReactNode; tg: TgTokens; cardBg: string }) {
   return (
     <Box sx={{ mx: 1.25, mt: 1, p: title ? 1.25 : 0.75, borderRadius: '16px', background: cardBg }}>
       {title && (
@@ -293,7 +294,17 @@ function Section({ title, children, tg, cardBg }: { title: string; children: Rea
   )
 }
 
-function ResultRow({ bg, src, t, tc, title, subtitle, verified, tg, onClick }: any) {
+function ResultRow({ bg, src, t, tc, title, subtitle, verified, tg, onClick }: {
+  bg: string
+  src?: string
+  t: string
+  tc?: string
+  title: string
+  subtitle: string
+  verified?: boolean
+  tg: TgTokens
+  onClick?: () => void
+}) {
   const avatarSrc = useAvatarSrc(src)
   return (
     <Box onClick={onClick} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1, py: 0.65, borderRadius: '12px', cursor: 'pointer', '&:hover': { background: tg.hover } }}>
@@ -309,7 +320,12 @@ function ResultRow({ bg, src, t, tc, title, subtitle, verified, tg, onClick }: a
   )
 }
 
-function MediaRow({ m, query, tg, onSelect }: any) {
+function MediaRow({ m, query, tg, onSelect }: {
+  m: { id: string; name: string; avatar: string; t?: string; e?: string; date: string; text: string }
+  query: string
+  tg: TgTokens
+  onSelect: (id: string) => void
+}) {
   return (
     <Box onClick={() => onSelect(m.id)} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1, py: 0.65, borderRadius: '12px', cursor: 'pointer', '&:hover': { background: tg.hover } }}>
       <Avatar background={m.avatar} text={m.t} emoji={m.e} size={48} />
@@ -329,7 +345,7 @@ function MediaRow({ m, query, tg, onSelect }: any) {
   )
 }
 
-function Empty({ text, tg }: { text: string; tg: any }) {
+function Empty({ text, tg }: { text: string; tg: TgTokens }) {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pt: 14, gap: 0.5 }}>
       <Typography sx={{ fontSize: 16, color: tg.textSecondary, textAlign: 'center', whiteSpace: 'pre-line' }}>

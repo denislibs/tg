@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import { slideInRight } from '../motion'
 import TgIcon from './TgIcon'
 import type { Chat } from '../data'
+import type { TgTokens } from '../theme'
 import { useT } from '../i18n'
 
 export default function EditView({ chat, onBack }: { chat: Chat; onBack: () => void }) {
@@ -131,7 +132,7 @@ export default function EditView({ chat, onBack }: { chat: Chat; onBack: () => v
   )
 }
 
-function EditRow({ icon, label, value, tg }: { icon: ReactNode; label: string; value: string; tg: any }) {
+function EditRow({ icon, label, value, tg }: { icon: ReactNode; label: string; value: string; tg: TgTokens }) {
   return (
     <Box
       sx={{

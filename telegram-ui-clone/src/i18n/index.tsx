@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import { create } from 'zustand'
 import { dicts, type Lang } from './dict'
 
 export type { Lang }
@@ -13,14 +13,6 @@ export const LANGS: { code: Lang; name: string }[] = [
   { code: 'fr', name: 'Français' },
 ]
 
-interface Ctx {
-  lang: Lang
-  setLang: (l: Lang) => void
-  t: (s: string) => string
-}
-
-const I18nContext = createContext<Ctx>({ lang: 'en', setLang: () => {}, t: (s) => s })
-
 function getInitial(): Lang {
   const saved = localStorage.getItem('tg-lang')
   if (saved && saved in dicts) return saved as Lang
@@ -28,22 +20,36 @@ function getInitial(): Lang {
   return (nav && nav in dicts ? nav : 'en') as Lang
 }
 
-export function I18nProvider({ children }: { children: ReactNode }) {
-  const [lang, setLangState] = useState<Lang>(getInitial)
-  const setLang = useCallback((l: Lang) => {
-    localStorage.setItem('tg-lang', l)
-    setLangState(l)
-  }, [])
-  // `t` looks up the translation for the current language; English is the key
-  // itself, so it falls back to the original string when no entry exists.
-  const t = useCallback((s: string) => dicts[lang]?.[s] ?? s, [lang])
-  const value = useMemo(() => ({ lang, setLang, t }), [lang, setLang, t])
-  return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>
+// `t` looks up the translation for the current language; English is the key
+// itself, so it falls back to the original string when no entry exists. A fresh
+// `t` is produced on every language change so consumers selecting `t` re-render.
+function makeT(lang: Lang): (s: string) => string {
+  return (s) => dicts[lang]?.[s] ?? s
 }
 
-export const useI18n = () => useContext(I18nContext)
-export const useT = () => useContext(I18nContext).t
+interface I18nState {
+  lang: Lang
+  t: (s: string) => string
+  setLang: (l: Lang) => void
+}
+
+// Global language lives in a store (not a React context).
+export const useI18nStore = create<I18nState>((set) => {
+  const lang = getInitial()
+  return {
+    lang,
+    t: makeT(lang),
+    setLang: (l) => {
+      localStorage.setItem('tg-lang', l)
+      set({ lang: l, t: makeT(l) })
+    },
+  }
+})
+
+export const useI18n = () => useI18nStore()
+export const useT = () => useI18nStore((s) => s.t)
 export function useLang() {
-  const { lang, setLang } = useContext(I18nContext)
+  const lang = useI18nStore((s) => s.lang)
+  const setLang = useI18nStore((s) => s.setLang)
   return [lang, setLang] as const
 }

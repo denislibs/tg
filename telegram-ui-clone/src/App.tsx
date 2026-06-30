@@ -5,12 +5,12 @@ import { useConnectionStore, pingBackend } from './stores/connectionStore'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Box, CssBaseline, ThemeProvider, Typography, useMediaQuery, useTheme } from '@mui/material'
 import { buildTheme, resolvePreset, PRESET_MODE, type ThemeChoice } from './theme'
-import { SettingsProvider, useSettings } from './settings'
+import { useSettings } from './settings'
 import Sidebar from './components/Sidebar'
 import ConversationView from './components/ConversationView'
 import ChatBackground from './components/ChatBackground'
 import AuthFlow from './components/auth/AuthFlow'
-import { I18nProvider, useT } from './i18n'
+import { useT } from './i18n'
 import type { Chat, OpenPeer } from './data'
 import { useChatsStore, loadChats, loadPresence } from './stores/chatsStore'
 import { primeMediaToken } from './core/mediaUrl'
@@ -469,14 +469,12 @@ export default function App() {
   }, [managers])
 
   return (
-    <I18nProvider>
-      <SettingsProvider>
-        <ThemedApp />
-      </SettingsProvider>
+    <>
+      <ThemedApp />
       <div style={{ position: 'fixed', bottom: 6, right: 8, zIndex: 9999, fontSize: 11, padding: '2px 6px', borderRadius: 6,
         background: backendOk == null ? '#888' : backendOk ? '#1a7f37' : '#b3261e', color: '#fff' }}>
         api: {backendOk == null ? '…' : backendOk ? 'ok' : 'down'}
       </div>
-    </I18nProvider>
+    </>
   )
 }

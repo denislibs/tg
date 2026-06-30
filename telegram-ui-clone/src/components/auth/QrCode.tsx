@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { Box } from '@mui/material'
+import type QRCodeStyling from 'qr-code-styling'
 
 /**
  * A real (scannable) QR rendered with `qr-code-styling`, styled to match tweb's
@@ -25,14 +26,14 @@ export default function QrCode({
   color?: string
 }) {
   const ref = useRef<HTMLDivElement>(null)
-  const qrRef = useRef<any>(null)
+  const qrRef = useRef<QRCodeStyling | null>(null)
 
   useEffect(() => {
     if (!data) return
     let alive = true
     void import('qr-code-styling').then((mod) => {
       if (!alive || !ref.current) return
-      const QRCodeStyling = (mod as any).default
+      const Ctor = mod.default
       const opts = {
         width: size,
         height: size,
@@ -48,7 +49,7 @@ export default function QrCode({
       // Recreate the instance on every `data` change: `.update({ data })`
       // doesn't reliably repaint the svg renderer across versions.
       ref.current.replaceChildren()
-      qrRef.current = new QRCodeStyling(opts)
+      qrRef.current = new Ctor(opts)
       qrRef.current.append(ref.current)
     })
     return () => {

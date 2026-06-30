@@ -6,12 +6,21 @@ interface StoriesState {
   groups: StoryGroup[]
   loaded: boolean
   setGroups: (g: StoryGroup[]) => void
+  markViewed: (authorId: number, storyId: number) => void
 }
 
 export const useStoriesStore = create<StoriesState>((set) => ({
   groups: [],
   loaded: false,
   setGroups: (groups) => set({ groups, loaded: true }),
+  markViewed: (authorId, storyId) =>
+    set((state) => ({
+      groups: state.groups.map((g) =>
+        g.author.id === authorId
+          ? { ...g, stories: g.stories.map((s) => (s.id === storyId ? { ...s, viewed: true } : s)) }
+          : g,
+      ),
+    })),
 }))
 
 interface LoadDeps {
