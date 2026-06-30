@@ -1,38 +1,26 @@
 // src/core/hooks/useChatSend.ts
 //
-// View-model hook for everything "outgoing" in a conversation: text/sticker/gif
-// sends, media picking + upload, voice recording, the optimistic bubble, draft-chat
-// creation on first send, and the throttled typing frame. It also owns the reply /
-// editing composer state (set here on send, by the context menu via the returned
-// setters, and read by the Composer).
+// View-model hook for everything "outgoing" in a conversation: text sends, media
+// picking + upload, voice recording, the optimistic bubble, draft-chat creation on
+// first send, and the throttled typing frame. It also owns the reply / editing
+// composer state (set here on send, by the context menu via the returned setters,
+// and read by the Composer).
 //
 // It does NOT own scroll intent — `atBottomRef`/`userScrolledUpRef` are passed in
 // (they belong to the scroll state machine); sending just pins them to the bottom.
-// Mock (design-time) chats keep their in-memory bubble list via the passed setters.
 import { useRef, useState } from 'react'
-import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
+import type { MutableRefObject } from 'react'
 import { useEvent } from './useEvent'
-import { useVoiceRecorder, fmtDur } from './useVoiceRecorder'
+import { useVoiceRecorder } from './useVoiceRecorder'
 import { splitRich } from '../markdown'
 import type { MessageEntity } from '../models'
-import type { Chat, ConvMsg } from '../../data'
+import type { Chat } from '../../data'
 import type { MessageWindow } from './useMessageWindow'
 import type { Managers } from '../../client/bootstrap'
 
 // Max characters per message (matches the backend's maxMessageRunes / Telegram 4096).
 // Longer drafts are split into several messages on send.
 const MAX_MESSAGE_LEN = 4096
-
-const replies = [
-  'ахах да', 'ну ты даёшь 😄', 'согласен', 'хахаха', 'ладно', 'ок 👌', 'и не говори',
-  'позже наберу', '🔥', 'да ну? серьёзно?', 'интересно', 'понятно', 'ну такое',
-  'договорились 😌', 'я уже почти сплю 😴',
-]
-
-function nowTime() {
-  const d = new Date()
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
 
 export type ReplyState = { msgId?: number; name: string; text: string; color: string } | null
 export type EditState = { msgId: number; text: string; entities?: MessageEntity[] } | null
@@ -42,7 +30,6 @@ interface UseChatSendArgs {
   numericChatId: number
   isRealChat: boolean
   isChannel: boolean
-  isGroup: boolean
   draftPeerId: number | null
   canType: boolean
   meId: number | null
@@ -51,9 +38,6 @@ interface UseChatSendArgs {
   // Scroll intent (owned elsewhere): sending pins to the bottom.
   atBottomRef: MutableRefObject<boolean>
   userScrolledUpRef: MutableRefObject<boolean>
-  // Mock (design-time) chat bubble list + typing indicator.
-  setMockMsgs: Dispatch<SetStateAction<ConvMsg[]>>
-  setTyping: Dispatch<SetStateAction<boolean>>
   onChatCreated?: (chatId: number) => void
 }
 
@@ -62,7 +46,6 @@ export function useChatSend({
   numericChatId,
   isRealChat,
   isChannel,
-  isGroup,
   draftPeerId,
   canType,
   meId,
@@ -70,54 +53,33 @@ export function useChatSend({
   managers,
   atBottomRef,
   userScrolledUpRef,
-  setMockMsgs,
-  setTyping,
   onChatCreated,
 }: UseChatSendArgs) {
   // Reply / editing composer state (set on send, by the context menu via the
   // returned setters, and read by the Composer).
   const [reply, setReply] = useState<ReplyState>(null)
   const [editing, setEditing] = useState<EditState>(null)
-  const setMsgs = setMockMsgs
-
-  const canSendVoice = isRealChat || draftPeerId != null
 
   // Voice-recording mechanics live in useVoiceRecorder; here we only decide what to
-  // do with a finished clip: upload + send on a real/draft chat, else a mock bubble.
+  // do with a finished clip: upload + send (creating the private chat first on a draft).
   const pingVoiceTyping = () => { if (isRealChat) void managers.realtime.sendTyping({ chatId: numericChatId, action: 'voice' }) }
   const rec = useVoiceRecorder({
-    capture: canSendVoice,
     onStart: pingVoiceTyping,
     onSecond: pingVoiceTyping,
     onComplete: async (r) => {
       if (!r) return
       const { secs, blob, mime } = r
-      if (canSendVoice && blob) {
-        const bytes = await blob.arrayBuffer()
-        const mediaId = await managers.media.upload({ bytes, mime, size: blob.size, duration: secs })
-        const clientMsgId = `c-${chat.id}-${performance.now()}-${Math.random().toString(36).slice(2)}`
-        let cid = numericChatId
-        if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
-        atBottomRef.current = true; userScrolledUpRef.current = false
-        if (isRealChat) win.appendOptimistic('', meId ?? -1, clientMsgId, mediaId, 'voice')
-        void managers.realtime.sendMessage({ chatId: cid, text: '', clientMsgId, mediaId, type: 'voice' })
-        window.dispatchEvent(new Event('tg-send'))
-        if (draftPeerId != null) onChatCreated?.(cid)
-        return
-      }
-      // mock chat: keep the design-time bubble + canned reply
-      const waveform = Array.from({ length: 28 }, () => 0.25 + Math.random() * 0.75)
-      setMsgs((prev) => [
-        ...prev,
-        { type: 'voice', out: true, time: nowTime(), status: 'sent', duration: fmtDur(secs), waveform },
-      ])
+      if (!blob) return
+      const bytes = await blob.arrayBuffer()
+      const mediaId = await managers.media.upload({ bytes, mime, size: blob.size, duration: secs })
+      const clientMsgId = `c-${chat.id}-${performance.now()}-${Math.random().toString(36).slice(2)}`
+      let cid = numericChatId
+      if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
+      atBottomRef.current = true; userScrolledUpRef.current = false
+      if (isRealChat) win.appendOptimistic('', meId ?? -1, clientMsgId, mediaId, 'voice')
+      void managers.realtime.sendMessage({ chatId: cid, text: '', clientMsgId, mediaId, type: 'voice' })
       window.dispatchEvent(new Event('tg-send'))
-      setTyping(true)
-      window.setTimeout(() => {
-        const canned = replies[Math.floor(Math.random() * replies.length)]
-        setMsgs((prev) => [...prev, { type: 'text', out: false, text: canned, time: nowTime() }])
-        setTyping(false)
-      }, 1100 + Math.random() * 900)
+      if (draftPeerId != null) onChatCreated?.(cid)
     },
   })
 
@@ -228,50 +190,11 @@ export function useChatSend({
       }
       return
     }
-    if (isRealChat) {
-      setReply(null)
-      window.dispatchEvent(new Event('tg-send'))
-      // reply attaches to the first message only (Telegram behaviour)
-      parts.forEach((p, k) => sendReal(p.text, entOf(p), k === 0 ? replyToId : null))
-      return
-    }
-    setMsgs((prev) => [
-      ...prev,
-      ...parts.map((p, k) => ({ type: 'text' as const, out: true, text: p.text, entities: entOf(p), time: nowTime(), status: 'sent' as const, reply: k === 0 ? reply ?? undefined : undefined })),
-    ])
+    // Plain real chat (private/group).
     setReply(null)
-    setTyping(true)
-    window.dispatchEvent(new Event('tg-send')) // shift the wallpaper gradient
-    window.setTimeout(() => {
-      const r = replies[Math.floor(Math.random() * replies.length)]
-      const botReply: ConvMsg = { type: 'text', out: false, text: r, time: nowTime() }
-      if (isGroup) {
-        const senders = [
-          { n: 'Аня', c: '#ee7aae' },
-          { n: 'Макс', c: '#65aadd' },
-          { n: 'Лёха', c: '#7bc862' },
-        ]
-        const s = senders[Math.floor(Math.random() * senders.length)]
-        botReply.sender = s.n
-        botReply.senderColor = s.c
-      }
-      setMsgs((prev) => [...prev, botReply])
-      setTyping(false)
-    }, 1100 + Math.random() * 900)
-  }
-
-  const sendSticker = (emoji: string) => {
-    if (!canType) return
-    setMsgs((prev) => [...prev, { type: 'sticker', out: true, emoji, time: nowTime(), status: 'sent' }])
     window.dispatchEvent(new Event('tg-send'))
-  }
-  const sendGif = (gradient: string) => {
-    if (!canType) return
-    setMsgs((prev) => [
-      ...prev,
-      { type: 'video', out: true, media: { gradient, emoji: '🎬' }, videoDuration: 'GIF', time: nowTime(), status: 'sent' },
-    ])
-    window.dispatchEvent(new Event('tg-send'))
+    // reply attaches to the first message only (Telegram behaviour)
+    parts.forEach((p, k) => sendReal(p.text, entOf(p), k === 0 ? replyToId : null))
   }
 
   // Throttled outgoing typing frame (real chats); called by the Composer on each
@@ -289,7 +212,7 @@ export function useChatSend({
   return {
     reply, setReply, editing, setEditing,
     rec,
-    send, sendSticker, sendGif,
+    send,
     onComposerTyping,
     pendingMedia, setPendingMedia, sendPendingMedia,
     openPicker, fileInputRef, pickAsFileRef,

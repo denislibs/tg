@@ -39,15 +39,12 @@ export default function DiscussionView({
   post,
   onBack,
 }: {
-  // Real channel discussions pass these; the design-time ChatView mock omits them
-  // and falls back to a purely local (no-network) comment list.
-  channelId?: number
-  postId?: number
-  discussionChatId?: number
+  channelId: number
+  postId: number
+  discussionChatId: number
   post: { title?: string; text?: string; gradient?: string; emoji?: string }
   onBack: () => void
 }) {
-  const real = channelId != null && postId != null && discussionChatId != null
   const t = useT()
   const tg = useTheme().tg
   const meId = useChatsStore((s) => s.meId)
@@ -79,11 +76,10 @@ export default function DiscussionView({
 
   // Initial load: real comments for this post.
   useEffect(() => {
-    if (!real) return
     let alive = true
     seenIds.current = new Set()
     setComments([])
-    void managers.channels.listComments(channelId!, postId!).then(async ({ messages }) => {
+    void managers.channels.listComments(channelId, postId).then(async ({ messages }) => {
       const mapped = await Promise.all(messages.map(toComment))
       if (!alive) return
       for (const m of messages) seenIds.current.add(m.id)
@@ -91,11 +87,10 @@ export default function DiscussionView({
     })
     return () => { alive = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [real, channelId, postId])
+  }, [channelId, postId])
 
   // Live: discussion-group new_message frames for this thread.
   useEffect(() => {
-    if (!real) return
     const off = uiEvents.on(RT.newMessage, (raw) => {
       const m = raw as NewMessageEvt
       if (m.chat_id !== discussionChatId || m.thread_root_id !== postId) return
@@ -124,7 +119,7 @@ export default function DiscussionView({
     })
     return off
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [real, discussionChatId, postId, meId])
+  }, [discussionChatId, postId, meId])
 
   const send = () => {
     const text = draft.trim()
@@ -134,9 +129,8 @@ export default function DiscussionView({
     const now = new Date()
     const time = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`
     setComments((c) => [...c, { name: 'You', text, time, gradient: '', color: '', out: true }])
-    if (!real) return
     const clientMsgId = `c-disc-${postId}-${performance.now()}-${Math.random().toString(36).slice(2)}`
-    void managers.channels.postComment(channelId!, postId!, text, clientMsgId).then((m) => {
+    void managers.channels.postComment(channelId, postId, text, clientMsgId).then((m) => {
       seenIds.current.add(m.id)
     })
   }

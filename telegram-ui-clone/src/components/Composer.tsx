@@ -50,8 +50,6 @@ interface Props {
   onCancelEdit: () => void
   // Open the attach menu anchored to the paperclip button.
   onOpenAttach: (rect: DOMRect) => void
-  onSticker: (emoji: string) => void
-  onGif: (gradient: string) => void
   // Files pasted/dropped into the input (images, etc.) — routed to the attach flow.
   onPasteFiles?: (files: File[]) => void
 }
@@ -87,7 +85,7 @@ function placeCaretEnd(el: HTMLElement) {
 }
 
 function Composer({
-  reply, editing, rec, onSend, onTyping, onCancelReply, onCancelEdit, onOpenAttach, onSticker, onGif, onPasteFiles,
+  reply, editing, rec, onSend, onTyping, onCancelReply, onCancelEdit, onOpenAttach, onPasteFiles,
 }: Props) {
   const theme = useTheme()
   const tg = theme.tg
@@ -546,8 +544,6 @@ function Composer({
         {emojiOpen && (
           <EmojiPicker
             onPick={insertEmoji}
-            onSticker={onSticker}
-            onGif={onGif}
             onClose={() => setEmojiOpen(false)}
           />
         )}

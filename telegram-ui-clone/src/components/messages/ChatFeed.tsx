@@ -125,7 +125,7 @@ function ChatFeed({
 
   msgs.forEach((m, i) => {
     // Stable React key: prefer the optimistic clientId (survives the ack that
-    // rewrites id/seq), else the backend message id, else the index (mock).
+    // rewrites id/seq), else the backend message id, else the index (last resort).
     const k = m.clientId ?? (m.id != null ? `m-${m.id}` : `i-${i}`)
     // Real chats: inject a per-day date divider when the calendar day changes.
     if (isRealChat && winMsgs[i]) {

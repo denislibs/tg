@@ -3,9 +3,7 @@
 // getUserMedia + MediaRecorder + the live waveform analyser + the elapsed/viz
 // timers + recording state. It is deliberately decoupled from the app (no
 // managers / chat / send logic): when a recording finishes it hands the result
-// back via onComplete, and the caller decides whether to upload+send it or fall
-// back to a mock bubble. On a mock chat (capture=false) it runs the timer UI but
-// never touches the mic, and onComplete gets a null blob.
+// back via onComplete, and the caller uploads + sends it.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useEvent } from './useEvent'
 
@@ -13,14 +11,12 @@ export const REC_WAVE_BARS = 90 // live recording waveform bar count (fills the 
 
 export interface VoiceResult {
   secs: number
-  /** the recorded audio, or null when nothing was captured (mock chat / empty) */
+  /** the recorded audio, or null when nothing was captured (empty recording) */
   blob: Blob | null
   mime: string
 }
 
 export interface VoiceRecorderOptions {
-  /** whether to actually capture the mic (false → mock chat: timer UI only) */
-  capture: boolean
   /** fired when capture actually begins (e.g. to ping the 'voice' typing status) */
   onStart?: () => void
   /** fired once per elapsed second (re-ping typing) */
@@ -61,8 +57,8 @@ export function useVoiceRecorder(opts: VoiceRecorderOptions): VoiceRecorder {
   const analyser = useRef<AnalyserNode | null>(null)
 
   // Keep the latest options in a ref so the async timers / MediaRecorder.onstop
-  // callbacks always see fresh closures (capture flag, onComplete with current
-  // managers/chat), not the values from the render where recording started.
+  // callbacks always see fresh closures (onComplete with current managers/chat),
+  // not the values from the render where recording started.
   const o = useRef(opts)
   o.current = opts
 
@@ -121,41 +117,38 @@ export function useVoiceRecorder(opts: VoiceRecorderOptions): VoiceRecorder {
     o.current.onComplete({ secs: recordedSecs, blob, mime })
   }
 
-  // Start capturing. On a mock chat (capture=false) we run the timer UI but
-  // simulate the result in finish via a null blob.
+  // Start capturing: open the mic, wire the recorder + live waveform analyser.
   const start = useEvent(async () => {
-    if (o.current.capture) {
-      try {
-        const s = await navigator.mediaDevices.getUserMedia({
-          audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        })
-        stream.current = s
-        chunks.current = []
-        // Prefer Opus at a decent bitrate (default browser bitrate is low → poor
-        // quality); fall back to whatever the platform supports.
-        const recOpts: MediaRecorderOptions = { audioBitsPerSecond: 96000 }
-        if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported?.('audio/webm;codecs=opus')) {
-          recOpts.mimeType = 'audio/webm;codecs=opus'
-        }
-        const mr = new MediaRecorder(s, recOpts)
-        mediaRec.current = mr
-        mr.ondataavailable = (e) => { if (e.data.size) chunks.current.push(e.data) }
-        mr.onstop = () => { void finish() }
-        mr.start()
-        try {
-          const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-          const ac = new Ctor()
-          audioCtx.current = ac
-          const an = ac.createAnalyser()
-          an.fftSize = 512
-          ac.createMediaStreamSource(s).connect(an)
-          analyser.current = an
-          setBars([])
-          startVizTimer()
-        } catch { /* visualizer optional */ }
-      } catch {
-        return // no mic / permission denied
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      })
+      stream.current = s
+      chunks.current = []
+      // Prefer Opus at a decent bitrate (default browser bitrate is low → poor
+      // quality); fall back to whatever the platform supports.
+      const recOpts: MediaRecorderOptions = { audioBitsPerSecond: 96000 }
+      if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported?.('audio/webm;codecs=opus')) {
+        recOpts.mimeType = 'audio/webm;codecs=opus'
       }
+      const mr = new MediaRecorder(s, recOpts)
+      mediaRec.current = mr
+      mr.ondataavailable = (e) => { if (e.data.size) chunks.current.push(e.data) }
+      mr.onstop = () => { void finish() }
+      mr.start()
+      try {
+        const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+        const ac = new Ctor()
+        audioCtx.current = ac
+        const an = ac.createAnalyser()
+        an.fftSize = 512
+        ac.createMediaStreamSource(s).connect(an)
+        analyser.current = an
+        setBars([])
+        startVizTimer()
+      } catch { /* visualizer optional */ }
+    } catch {
+      return // no mic / permission denied
     }
     setRecording(true)
     setPaused(false)

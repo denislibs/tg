@@ -1,7 +1,9 @@
 // src/core/hooks/useMessageWindow.test.ts
+import { createElement, type ReactNode } from 'react'
 import { describe, it, expect } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { useMessageWindow } from './useMessageWindow'
+import { ManagersProvider } from './useManagers'
 import type { Message } from '../models'
 import type { HistoryArgs, HistoryResult } from '../managers/messagesManager'
 
@@ -14,12 +16,20 @@ function fakeManagers(handler: (a: HistoryArgs) => HistoryResult) {
   return { messages: { getHistory: async (a: HistoryArgs) => handler(a), sendMessage: async () => msg(99) } }
 }
 
+// useMessageWindow now reads managers from context (useManagers); mount the hook
+// under a ManagersProvider carrying the test's fake managers.
+function mount(managers: unknown) {
+  const wrapper = ({ children }: { children: ReactNode }) =>
+    createElement(ManagersProvider, { managers: managers as never, children })
+  return renderHook(() => useMessageWindow(1, 40), { wrapper })
+}
+
 describe('useMessageWindow', () => {
   it('loads the newest window on mount (ascending)', async () => {
     const managers = fakeManagers(() => ({
       messages: [msg(3), msg(4), msg(5)], count: 3, reachedBottom: true, reachedTop: false,
     }))
-    const { result } = renderHook(() => useMessageWindow(1, managers as never, 40))
+    const { result } = mount(managers)
     await waitFor(() => expect(result.current.msgs.length).toBe(3))
     expect(result.current.msgs.map((m) => m.seq)).toEqual([3, 4, 5])
     expect(result.current.reachedBottom).toBe(true)
@@ -32,7 +42,7 @@ describe('useMessageWindow', () => {
       if (a.offsetSeq === 0) return { messages: [msg(3), msg(4), msg(5)], count: 3, reachedBottom: true, reachedTop: false }
       return { messages: [msg(1), msg(2)], count: 2, reachedBottom: false, reachedTop: true }
     })
-    const { result } = renderHook(() => useMessageWindow(1, managers as never, 40))
+    const { result } = mount(managers)
     await waitFor(() => expect(result.current.msgs.length).toBe(3))
     await act(async () => { await result.current.loadOlder() })
     expect(result.current.msgs.map((m) => m.seq)).toEqual([1, 2, 3, 4, 5])
@@ -47,7 +57,7 @@ describe('useMessageWindow', () => {
       if (a.offsetSeq === 0) return { messages: [msg(1), msg(2)], count: 2, reachedBottom: true, reachedTop: true }
       return { messages: [], count: 0, reachedBottom: false, reachedTop: true }
     })
-    const { result } = renderHook(() => useMessageWindow(1, managers as never, 40))
+    const { result } = mount(managers)
     await waitFor(() => expect(result.current.reachedTop).toBe(true))
     await act(async () => { await result.current.loadOlder() })
     expect(call).toBe(1)
@@ -55,7 +65,7 @@ describe('useMessageWindow', () => {
 
   it('appendOptimistic then reconcileAck swaps the tentative seq', async () => {
     const managers = fakeManagers(() => ({ messages: [], count: 0, reachedTop: true, reachedBottom: true }))
-    const { result } = renderHook(() => useMessageWindow(1, managers as never, 40))
+    const { result } = mount(managers)
     await waitFor(() => expect(result.current.reachedBottom).toBe(true))
     act(() => { result.current.appendOptimistic('hi', 7, 'c1', 42) })
     expect(result.current.msgs[result.current.msgs.length - 1]?.text).toBe('hi')
@@ -67,7 +77,7 @@ describe('useMessageWindow', () => {
 
   it('applyIncoming appends and dedups by id', async () => {
     const managers = fakeManagers(() => ({ messages: [], count: 0, reachedTop: true, reachedBottom: true }))
-    const { result } = renderHook(() => useMessageWindow(1, managers as never, 40))
+    const { result } = mount(managers)
     await waitFor(() => expect(result.current.reachedBottom).toBe(true))
     const m = { id: 9, chatId: 1, seq: 3, senderId: 5, type: 'text', text: 'yo', replyToId: null, mediaId: null, createdAt: 'now', threadRootId: null }
     act(() => { result.current.applyIncoming(m) })
@@ -77,7 +87,7 @@ describe('useMessageWindow', () => {
 
   it('applyIncoming echo of our own message keeps the optimistic clientId (stable key)', async () => {
     const managers = fakeManagers(() => ({ messages: [], count: 0, reachedTop: true, reachedBottom: true }))
-    const { result } = renderHook(() => useMessageWindow(1, managers as never, 40))
+    const { result } = mount(managers)
     await waitFor(() => expect(result.current.reachedBottom).toBe(true))
     // Send → optimistic entry carries a stable clientId at tentative seq 1.
     act(() => { result.current.appendOptimistic('hey', 7, 'c-stable') })
@@ -94,7 +104,7 @@ describe('useMessageWindow', () => {
 
   it('applyEdit patches text + editedAt in place', async () => {
     const managers = fakeManagers(() => ({ messages: [msg(3)], count: 1, reachedTop: true, reachedBottom: true }))
-    const { result } = renderHook(() => useMessageWindow(1, managers as never, 40))
+    const { result } = mount(managers)
     await waitFor(() => expect(result.current.msgs.length).toBe(1))
     act(() => { result.current.applyEdit(3, 'edited!', 'now') })
     const m = result.current.msgs.find((x) => x.id === 3)!
@@ -104,7 +114,7 @@ describe('useMessageWindow', () => {
 
   it('applyDelete drops the row (deleted messages are never shown)', async () => {
     const managers = fakeManagers(() => ({ messages: [msg(3), msg(4)], count: 2, reachedTop: true, reachedBottom: true }))
-    const { result } = renderHook(() => useMessageWindow(1, managers as never, 40))
+    const { result } = mount(managers)
     await waitFor(() => expect(result.current.msgs.length).toBe(2))
     act(() => { result.current.applyDelete(3, false) }) // revoke
     expect(result.current.msgs.find((x) => x.id === 3)).toBeUndefined()

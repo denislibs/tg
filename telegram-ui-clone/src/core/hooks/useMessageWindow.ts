@@ -3,17 +3,16 @@
 // Thin selector/actions wrapper over messagesStore: the per-chat window lives in
 // the store (single source of truth, normalized, survives unmount), this hook
 // just binds it to a chatId and preserves the original MessageWindow interface.
+//
+// State + actions are pulled through useMessagesStore selectors only (no
+// getState()). The paging callbacks read the latest committed window through a
+// ref mirror of the selected value, and guard re-entry with synchronous in-flight
+// refs (a burst of scroll events can fire several times before React re-renders,
+// so the store's loading flag isn't visible yet).
 import { useCallback, useEffect, useRef } from 'react'
 import type { Message, MessageEntity } from '../models'
-import type { HistoryResult } from '../managers/messagesManager'
 import { useMessagesStore, EMPTY_WINDOW } from '../../stores/messagesStore'
-
-interface ManagersLike {
-  messages: {
-    getHistory(args: { chatId: number; offsetSeq?: number; addOffset?: number; limit?: number }): Promise<HistoryResult>
-    getAround?(chatId: number, centerSeq: number, limit?: number): Promise<{ messages: Message[]; reachedTop: boolean; reachedBottom: boolean }>
-  }
-}
+import { useManagers } from './useManagers'
 
 export interface MessageWindow {
   msgs: Message[]
@@ -45,47 +44,73 @@ export interface MessageWindow {
   applyDelete: (msgId: number, forMe: boolean) => void
 }
 
-export function useMessageWindow(chatId: number, managers: ManagersLike, limit = 40): MessageWindow {
+export function useMessageWindow(chatId: number, limit = 40): MessageWindow {
   const win = useMessagesStore((s) => s.byChat[chatId]) ?? EMPTY_WINDOW
+  const managers = useManagers()
+
+  // Store actions — stable references, pulled via selectors (never getState()).
+  const beginLoad = useMessagesStore((s) => s.beginLoad)
+  const setWindow = useMessagesStore((s) => s.setWindow)
+  const setLoadingOlder = useMessagesStore((s) => s.setLoadingOlder)
+  const setLoadingNewer = useMessagesStore((s) => s.setLoadingNewer)
+  const prepend = useMessagesStore((s) => s.prepend)
+  const append = useMessagesStore((s) => s.append)
+  const appendLocalAction = useMessagesStore((s) => s.appendLocal)
+  const appendOptimisticAction = useMessagesStore((s) => s.appendOptimistic)
+  const reconcileAckAction = useMessagesStore((s) => s.reconcileAck)
+  const failOptimisticAction = useMessagesStore((s) => s.failOptimistic)
+  const applyIncomingAction = useMessagesStore((s) => s.applyIncoming)
+  const applyEditAction = useMessagesStore((s) => s.applyEdit)
+  const applyDeleteAction = useMessagesStore((s) => s.applyDelete)
+
   // guards against overlapping loads / stale chat responses
   const reqChat = useRef(chatId)
+  // Latest committed window, mirrored from the selector so the paging callbacks can
+  // read current msgs/flags without subscribing-in-deps or getState().
+  const winRef = useRef(win)
+  winRef.current = win
+  // Synchronous in-flight guards (the store's loading flag lags a render behind).
+  const loadingOlderRef = useRef(false)
+  const loadingNewerRef = useRef(false)
 
   useEffect(() => {
     reqChat.current = chatId
-    const st = useMessagesStore.getState()
-    st.beginLoad(chatId)
-    let cancelled = false
-    ;(async () => {
+    loadingOlderRef.current = false
+    loadingNewerRef.current = false
+    beginLoad(chatId)
+    let cancelled = false;
+    (async () => {
       const r = await managers.messages.getHistory({ chatId, offsetSeq: 0, addOffset: 0, limit })
       if (cancelled || reqChat.current !== chatId) return
-      useMessagesStore.getState().setWindow(chatId, { msgs: r.messages, reachedTop: r.reachedTop, reachedBottom: r.reachedBottom, cached: r.cached })
+      setWindow(chatId, { msgs: r.messages, reachedTop: r.reachedTop, reachedBottom: r.reachedBottom, cached: r.cached })
     })()
     return () => { cancelled = true }
-  }, [chatId, managers, limit])
+  }, [chatId, managers, limit, beginLoad, setWindow])
 
   const loadOlder = useCallback(async () => {
-    const w = useMessagesStore.getState().byChat[chatId] ?? EMPTY_WINDOW
-    if (w.reachedTop || w.loadingOlder || w.loading) return
+    const w = winRef.current
+    if (w.reachedTop || loadingOlderRef.current || w.loading) return
     const oldest = w.msgs[0]
     if (!oldest) return
-    const st = useMessagesStore.getState()
-    st.setLoadingOlder(chatId, true)
+    loadingOlderRef.current = true
+    setLoadingOlder(chatId, true)
     try {
       const r = await managers.messages.getHistory({ chatId, offsetSeq: oldest.seq, addOffset: 1, limit })
       if (reqChat.current !== chatId) return
-      useMessagesStore.getState().prepend(chatId, r.messages, r.reachedTop)
+      prepend(chatId, r.messages, r.reachedTop)
     } finally {
-      useMessagesStore.getState().setLoadingOlder(chatId, false)
+      loadingOlderRef.current = false
+      setLoadingOlder(chatId, false)
     }
-  }, [chatId, managers, limit])
+  }, [chatId, managers, limit, setLoadingOlder, prepend])
 
   const loadNewer = useCallback(async () => {
-    const w = useMessagesStore.getState().byChat[chatId] ?? EMPTY_WINDOW
-    if (w.reachedBottom || w.loadingNewer || w.loading) return
+    const w = winRef.current
+    if (w.reachedBottom || loadingNewerRef.current || w.loading) return
     const newest = w.msgs[w.msgs.length - 1]
     if (!newest) return
-    const st = useMessagesStore.getState()
-    st.setLoadingNewer(chatId, true)
+    loadingNewerRef.current = true
+    setLoadingNewer(chatId, true)
     try {
       // addOffset = -limit means "load `limit` messages NEWER than newest.seq"
       // (tweb semantics). Passing 0 made the cache's sliceMe walk the OLDER
@@ -94,52 +119,53 @@ export function useMessageWindow(chatId: number, managers: ManagersLike, limit =
       // only checks the sign (<=0 ⇒ newer), so the network result is unchanged.
       const r = await managers.messages.getHistory({ chatId, offsetSeq: newest.seq, addOffset: -limit, limit })
       if (reqChat.current !== chatId) return
-      useMessagesStore.getState().append(chatId, r.messages, r.reachedBottom)
+      append(chatId, r.messages, r.reachedBottom)
     } finally {
-      useMessagesStore.getState().setLoadingNewer(chatId, false)
+      loadingNewerRef.current = false
+      setLoadingNewer(chatId, false)
     }
-  }, [chatId, managers, limit])
+  }, [chatId, managers, limit, setLoadingNewer, append])
 
-  const appendLocal = useCallback((m: Message) => useMessagesStore.getState().appendLocal(chatId, m), [chatId])
+  const appendLocal = useCallback((m: Message) => appendLocalAction(chatId, m), [chatId, appendLocalAction])
 
   const appendOptimistic = useCallback(
     (text: string, meId: number, clientMsgId: string, mediaId?: number, type = 'text', entities?: MessageEntity[]) =>
-      useMessagesStore.getState().appendOptimistic(chatId, text, meId, clientMsgId, mediaId, type, entities),
-    [chatId],
+      appendOptimisticAction(chatId, text, meId, clientMsgId, mediaId, type, entities),
+    [chatId, appendOptimisticAction],
   )
 
   const reconcileAck = useCallback(
     (clientMsgId: string, ack: { msgId: number; seq: number; createdAt: string }) =>
-      useMessagesStore.getState().reconcileAck(chatId, clientMsgId, ack),
-    [chatId],
+      reconcileAckAction(chatId, clientMsgId, ack),
+    [chatId, reconcileAckAction],
   )
 
-  const failOptimistic = useCallback((clientMsgId: string) => useMessagesStore.getState().failOptimistic(chatId, clientMsgId), [chatId])
+  const failOptimistic = useCallback((clientMsgId: string) => failOptimisticAction(chatId, clientMsgId), [chatId, failOptimisticAction])
 
-  const applyIncoming = useCallback((m: Message) => useMessagesStore.getState().applyIncoming(chatId, m), [chatId])
+  const applyIncoming = useCallback((m: Message) => applyIncomingAction(chatId, m), [chatId, applyIncomingAction])
 
   const applyEdit = useCallback(
     (msgId: number, text: string, editedAt: string, entities?: MessageEntity[]) =>
-      useMessagesStore.getState().applyEdit(chatId, msgId, text, editedAt, entities),
-    [chatId],
+      applyEditAction(chatId, msgId, text, editedAt, entities),
+    [chatId, applyEditAction],
   )
 
-  const applyDelete = useCallback((msgId: number, _forMe: boolean) => useMessagesStore.getState().applyDelete(chatId, msgId), [chatId])
+  const applyDelete = useCallback((msgId: number, _forMe: boolean) => applyDeleteAction(chatId, msgId), [chatId, applyDeleteAction])
 
   const jumpTo = useCallback(async (centerSeq: number) => {
     if (!managers.messages.getAround) return
     const r = await managers.messages.getAround(chatId, centerSeq, limit)
     if (reqChat.current !== chatId) return
-    useMessagesStore.getState().setWindow(chatId, { msgs: r.messages, reachedTop: r.reachedTop, reachedBottom: r.reachedBottom })
-  }, [chatId, managers, limit])
+    setWindow(chatId, { msgs: r.messages, reachedTop: r.reachedTop, reachedBottom: r.reachedBottom })
+  }, [chatId, managers, limit, setWindow])
 
   // Escape hatch after a jump: re-fetch the newest page and replace the window
   // with it (mirrors tweb's setMessageId() with no target — go to dialog.top).
   const reloadNewest = useCallback(async () => {
     const r = await managers.messages.getHistory({ chatId, offsetSeq: 0, addOffset: 0, limit })
     if (reqChat.current !== chatId) return
-    useMessagesStore.getState().setWindow(chatId, { msgs: r.messages, reachedTop: r.reachedTop, reachedBottom: r.reachedBottom })
-  }, [chatId, managers, limit])
+    setWindow(chatId, { msgs: r.messages, reachedTop: r.reachedTop, reachedBottom: r.reachedBottom })
+  }, [chatId, managers, limit, setWindow])
 
   return {
     msgs: win.msgs,

@@ -93,5 +93,4 @@ export interface Chat {
   username?: string
   description?: string
   links?: { label: string; value: string }[]
-  messages?: ConvMsg[]
 }

@@ -236,16 +236,6 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
     setTimeout(() => setCopiedToken((t) => (t === token ? null : t)), 1500)
   }
 
-  // group members (owner + unique senders)
-  const seen = new Set<string>()
-  const members = [{ name: 'Дн', status: 'online', role: 'owner', bg: 'linear-gradient(135deg,#ff8a5b,#ff6a3d)' }]
-  chat.messages?.forEach((m) => {
-    if (m.sender && !seen.has(m.sender)) {
-      seen.add(m.sender)
-      members.push({ name: m.sender, status: 'last seen recently', role: '', bg: m.senderColor ?? tg.accent })
-    }
-  })
-
   const linkText = chat.links?.length ? chat.links : null
 
   return (
@@ -556,23 +546,6 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
             </Box>
           )}
 
-          {/* Mock group: members (design-time chats only) */}
-          {isGroup && !isRealChat && (
-            <Box sx={{ mx: 1.5, borderRadius: '16px', background: cardBg, py: 0.75 }}>
-              {members.map((mem) => (
-                <Box key={mem.name} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1.5, py: 0.75, mx: 0.5, borderRadius: '12px', cursor: 'pointer', '&:hover': { background: tg.hover } }}>
-                  <Avatar background={mem.bg} text={mem.name[0]} size={44} />
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography noWrap sx={{ fontSize: 16, color: tg.textPrimary }}>{mem.name}</Typography>
-                    <Typography sx={{ fontSize: 13.5, color: mem.status === 'online' ? tg.accent : tg.textSecondary }}>
-                      {t(mem.status)}
-                    </Typography>
-                  </Box>
-                  {mem.role && <Typography sx={{ fontSize: 13.5, color: tg.textSecondary }}>{t(mem.role)}</Typography>}
-                </Box>
-              ))}
-            </Box>
-          )}
         </Box>
 
         {/* Group add-member FAB */}

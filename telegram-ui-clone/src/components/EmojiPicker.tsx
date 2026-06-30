@@ -8,8 +8,6 @@ import { useT } from '../i18n'
 import { CATEGORIES, SKIN, TONES, NAMES, DEFAULT_FREQUENT, QUICK_CHIPS } from './emoji/emojiData'
 import Emoji from './emoji/Emoji'
 
-type Tab = 'emoji' | 'stickers' | 'gifs'
-
 // tgico glyph name per category; `symbols` has no tgico equivalent so it keeps
 // the MUI EmojiSymbolsRounded component (rendered specially below).
 const CAT_ICON: Record<string, IconName | typeof EmojiSymbolsRounded> = {
@@ -33,40 +31,16 @@ function loadRecent(): string[] {
   }
 }
 
-const STICKER_PACKS = [
-  { name: 'Cats', emojis: ['😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾', '🐱', '🐈', '🐈‍⬛'] },
-  { name: 'Hands', emojis: ['👍', '👎', '👏', '🙌', '🤝', '✌️', '🤟', '🤙', '👊', '✊', '🤛', '🤜'] },
-  { name: 'Party', emojis: ['🎉', '🎊', '🥳', '🎂', '🎈', '🎁', '🍾', '🥂', '✨', '💫', '🪅', '🎆'] },
-  { name: 'Love', emojis: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '💕', '💞', '💓', '💗', '💖'] },
-]
-const GIF_TILES = [
-  { g: 'linear-gradient(135deg,#ff6a88,#ff99ac)', h: 100, e: '🐱' },
-  { g: 'linear-gradient(135deg,#43cea2,#185a9d)', h: 150, e: '🌊' },
-  { g: 'linear-gradient(135deg,#f7971e,#ffd200)', h: 120, e: '😂' },
-  { g: 'linear-gradient(135deg,#654ea3,#eaafc8)', h: 140, e: '🎉' },
-  { g: 'linear-gradient(135deg,#8a5bff,#5b8dff)', h: 110, e: '🔥' },
-  { g: 'linear-gradient(135deg,#2980b9,#6dd5fa)', h: 160, e: '👍' },
-  { g: 'linear-gradient(135deg,#ee9ca7,#ffdde1)', h: 130, e: '🥰' },
-  { g: 'linear-gradient(135deg,#c471f5,#fa71cd)', h: 120, e: '💃' },
-  { g: 'linear-gradient(135deg,#42e695,#3bb2b8)', h: 150, e: '🤩' },
-  { g: 'linear-gradient(135deg,#f7971e,#ffd200)', h: 100, e: '🎬' },
-]
-
 export default function EmojiPicker({
   onPick,
-  onSticker,
-  onGif,
   onClose,
 }: {
   onPick: (emoji: string) => void
-  onSticker?: (emoji: string) => void
-  onGif?: (gradient: string) => void
   onClose: () => void
 }) {
   const theme = useTheme()
   const tg = theme.tg
   const t = useT()
-  const [tab, setTab] = useState<Tab>('emoji')
   const [query, setQuery] = useState('')
   const [tone, setTone] = useState(0)
   const [toneOpen, setToneOpen] = useState(false)
@@ -178,10 +152,8 @@ export default function EmojiPicker({
         zIndex: 30,
       }}
     >
-      {tab === 'emoji' && (
-        <>
-          {/* category nav */}
-          <Box sx={{ display: 'flex', alignItems: 'center', px: 0.5, pt: 0.5 }}>
+      {/* category nav */}
+      <Box sx={{ display: 'flex', alignItems: 'center', px: 0.5, pt: 0.5 }}>
             <Box sx={{ display: 'flex', flex: 1, overflowX: 'auto', '&::-webkit-scrollbar': { display: 'none' } }}>
               {cats.map((c) => {
                 const icon = CAT_ICON[c.key]
@@ -290,71 +262,30 @@ export default function EmojiPicker({
               </Box>
             )}
           </Box>
-        </>
-      )}
 
       {/* Content */}
       <Box ref={scrollRef} onScroll={onScroll} sx={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', px: 0.5, pb: 0.5 }}>
-        {tab === 'emoji' ? (
-          query.trim() ? (
-            results.length ? (
-              <Box sx={gridSx}>{results.map((e, i) => emojiCell(e, `r-${e}-${i}`, false))}</Box>
-            ) : (
-              <Typography sx={{ textAlign: 'center', color: tg.textSecondary, fontSize: 14, mt: 4 }}>
-                {t('No emoji found.')}
-              </Typography>
-            )
+        {query.trim() ? (
+          results.length ? (
+            <Box sx={gridSx}>{results.map((e, i) => emojiCell(e, `r-${e}-${i}`, false))}</Box>
           ) : (
-            cats.map((c) => (
-              <Box key={c.key} ref={(el: HTMLDivElement | null) => (sectionRefs.current[c.key] = el)} sx={{ mb: 0.5 }}>
-                <Typography sx={{ fontSize: 14, fontWeight: 500, color: tg.textFaint, px: '6px', py: '8px' }}>
-                  {t(c.label)}
-                </Typography>
-                <Box sx={gridSx}>{c.emojis.map((e, i) => emojiCell(e, `${c.key}-${i}`, c.key !== 'recent'))}</Box>
-              </Box>
-            ))
+            <Typography sx={{ textAlign: 'center', color: tg.textSecondary, fontSize: 14, mt: 4 }}>
+              {t('No emoji found.')}
+            </Typography>
           )
-        ) : tab === 'stickers' ? (
-          STICKER_PACKS.map((p) => (
-            <Box key={p.name} sx={{ mb: 0.5 }}>
+        ) : (
+          cats.map((c) => (
+            <Box key={c.key} ref={(el: HTMLDivElement | null) => (sectionRefs.current[c.key] = el)} sx={{ mb: 0.5 }}>
               <Typography sx={{ fontSize: 14, fontWeight: 500, color: tg.textFaint, px: '6px', py: '8px' }}>
-                {p.name}
+                {t(c.label)}
               </Typography>
-              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)' }}>
-                {p.emojis.map((e, i) => (
-                  <Box
-                    key={`${p.name}-${i}`}
-                    onClick={() => {
-                      onSticker?.(e)
-                      onClose()
-                    }}
-                    sx={{ height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '10px', cursor: 'pointer', '&:hover': { background: tg.hover } }}
-                  >
-                    <Emoji e={e} size={48} />
-                  </Box>
-                ))}
-              </Box>
+              <Box sx={gridSx}>{c.emojis.map((e, i) => emojiCell(e, `${c.key}-${i}`, c.key !== 'recent'))}</Box>
             </Box>
           ))
-        ) : (
-          <Box sx={{ columnCount: 2, columnGap: '4px', px: '2px', pt: '4px' }}>
-            {GIF_TILES.map((tile, i) => (
-              <Box
-                key={i}
-                onClick={() => {
-                  onGif?.(tile.g)
-                  onClose()
-                }}
-                sx={{ breakInside: 'avoid', mb: '4px', height: tile.h, borderRadius: '8px', background: tile.g, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40, cursor: 'pointer' }}
-              >
-                {tile.e}
-              </Box>
-            ))}
-          </Box>
         )}
       </Box>
 
-      {/* Bottom tab bar: emoji / stickers / gifs centered, backspace right */}
+      {/* Bottom bar: emoji indicator centered, backspace right */}
       <Box
         sx={{
           height: 49,
@@ -362,41 +293,24 @@ export default function EmojiPicker({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: 1,
           position: 'relative',
           borderTop: `1px solid ${tg.divider}`,
         }}
       >
-        {([
-          ['emoji', <TgIcon name="smile" size={24} />],
-          ['stickers', <TgIcon name="enhance" size={24} />],
-          ['gifs', <TgIcon name="gifs" size={24} />],
-        ] as [Tab, React.ReactNode][]).map(([key, icon]) => {
-          const active = key === tab
-          return (
-            <Box
-              key={key}
-              onClick={() => {
-                setTab(key)
-                setQuery('')
-              }}
-              sx={{
-                width: 40,
-                height: 36,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                color: active ? tg.accent : tg.textSecondary,
-                background: active ? `${tg.accent}1f` : 'transparent',
-                '&:hover': { background: active ? `${tg.accent}1f` : tg.hover },
-              }}
-            >
-              {icon}
-            </Box>
-          )
-        })}
+        <Box
+          sx={{
+            width: 40,
+            height: 36,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: '8px',
+            color: tg.accent,
+            background: `${tg.accent}1f`,
+          }}
+        >
+          <TgIcon name="smile" size={24} />
+        </Box>
         <Box
           onClick={() => onPick('\b')}
           sx={{ position: 'absolute', right: 8, width: 40, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px', cursor: 'pointer', color: tg.textSecondary, '&:hover': { background: tg.hover } }}
