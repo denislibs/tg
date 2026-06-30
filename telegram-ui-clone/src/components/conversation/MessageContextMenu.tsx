@@ -1,17 +1,17 @@
 // src/components/conversation/MessageContextMenu.tsx
-// The message right-click menu: a reactions strip + an action list, anchored at
-// the click point and grown from the nearest corner. The action list uses the
-// shared Menu/MenuItem surface; the reactions strip is its own pill panel that
-// floats just above the menu (kept as a sibling so it reads as a separate bubble,
-// like tweb).
+// The message right-click menu: a reactions pill + an action list, stacked in one
+// vertical column (tweb .btn-menu.has-items-wrapper) so the reactions always sit
+// ABOVE the actions. The column is anchored by a corner at the click point — top-
+// anchored when it grows down, bottom-anchored when it grows up — so the reactions
+// land above the menu without needing to know the menu's height. Rows use MenuItem;
+// each pill carries the shared menu surface (bg/blur/shadow).
 import { memo, useRef, type ReactNode, type MouseEvent, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { Box, useTheme } from '@mui/material'
 import { motion } from 'framer-motion'
-import Menu, { MenuItem } from '../../shared/ui/Menu'
+import { useTheme } from '@mui/material'
+import { MenuItem } from '../../shared/ui/Menu'
 import TgIcon from '../TgIcon'
 import { useT } from '../../i18n'
-import { EASE } from '../../motion'
 
 const REACTIONS = ['❤️', '👍', '👎', '🔥', '🥰', '👏', '😁']
 
@@ -35,91 +35,86 @@ function MessageContextMenu({ menu, items, onClose }: MessageContextMenuProps) {
   // event on a wrapper so MenuItem's (event-less) onClick can still forward it.
   const lastEvent = useRef<MouseEvent | null>(null)
 
-  // Anchor a corner at the click point (right/bottom flip via CSS so it stays
-  // exactly at the cursor regardless of menu size). transform-origin grows it
-  // from that corner.
+  // Anchor a corner at the click: top/left when growing down-right, right/bottom
+  // (via CSS) when growing up-left — exact at the cursor regardless of menu size.
   const xPos: CSSProperties =
     menu.originX === 'left' ? { left: menu.x } : { right: window.innerWidth - menu.x }
-  const transformOrigin = `${menu.originY} ${menu.originX}`
+  const yPos: CSSProperties =
+    menu.originY === 'top' ? { top: menu.y } : { bottom: window.innerHeight - menu.y }
 
-  // Reactions strip: floats above the action list with an 8px gap. When the menu
-  // grows up (originY 'bottom'), the list bottom is at menu.y, so the strip is
-  // bottom-anchored to a column that holds both; otherwise anchor it by its own
-  // bottom just above the list top (menu.y - 8).
-  const REACTIONS_H = 44
-  const yMenu: CSSProperties =
-    menu.originY === 'top'
-      ? { top: menu.y + REACTIONS_H + 8 }
-      : { bottom: window.innerHeight - menu.y }
-  const yReactions: CSSProperties =
-    menu.originY === 'top'
-      ? { top: menu.y }
-      : { bottom: window.innerHeight - menu.y + 8, transform: 'translateY(-100%)' }
+  // Shared menu surface (bg/blur/shadow) for both pills.
+  const surface: CSSProperties = {
+    background: tg.menuBg,
+    backdropFilter: 'blur(40px)',
+    WebkitBackdropFilter: 'blur(40px)',
+    boxShadow: tg.menuShadow,
+  }
 
-  return (
+  return createPortal(
     <>
-      {/* Reactions strip — its own pill panel above the backdrop */}
-      {createPortal(
-        <Box
-          component={motion.div}
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.2, ease: EASE }}
-          onContextMenu={(e: MouseEvent) => { e.preventDefault(); onClose() }}
-          sx={{
-            position: 'fixed',
-            ...xPos,
-            ...yReactions,
-            zIndex: 2002,
+      <div
+        onClick={onClose}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          onClose()
+        }}
+        style={{ position: 'fixed', inset: 0, zIndex: 2000 }}
+      />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+        style={{
+          position: 'fixed',
+          ...xPos,
+          ...yPos,
+          zIndex: 2001,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: menu.originX === 'left' ? 'flex-start' : 'flex-end',
+          gap: 8,
+          transformOrigin: `${menu.originY} ${menu.originX}`,
+        }}
+      >
+        {/* Reactions pill — always on top */}
+        <div
+          style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 0.5,
-            px: 1,
-            py: 0.5,
-            borderRadius: '24px',
-            background: tg.menuBg,
-            backdropFilter: 'blur(40px)',
-            WebkitBackdropFilter: 'blur(40px)',
-            boxShadow: tg.menuShadow,
-            transformOrigin,
+            gap: 4,
+            padding: '4px 8px',
+            borderRadius: 24,
+            ...surface,
           }}
         >
           {REACTIONS.map((r) => (
-            <Box
+            <div
               key={r}
-              component={motion.div}
-              whileHover={{ scale: 1.25 }}
-              whileTap={{ scale: 0.9 }}
               onClick={onClose}
-              sx={{ fontSize: 24, lineHeight: 1, cursor: 'pointer', px: 0.25 }}
+              style={{ fontSize: 24, lineHeight: 1, cursor: 'pointer', padding: '0 2px' }}
             >
               {r}
-            </Box>
+            </div>
           ))}
           <TgIcon name="down" size={22} color={tg.textSecondary} style={{ marginLeft: 2 }} />
-        </Box>,
-        document.body,
-      )}
+        </div>
 
-      {/* Actions — shared Menu surface */}
-      <Menu open onClose={onClose} style={{ ...xPos, ...yMenu, minWidth: 220, transformOrigin }}>
-        {items.map((it) => (
-          <div
-            key={it.label}
-            onClickCapture={(e) => {
-              lastEvent.current = e
-            }}
-          >
-            <MenuItem
-              icon={it.icon}
-              label={t(it.label)}
-              danger={it.danger}
-              onClick={() => (it.onClick ? it.onClick(lastEvent.current as MouseEvent) : onClose())}
-            />
-          </div>
-        ))}
-      </Menu>
-    </>
+        {/* Actions pill — MenuItem rows on the shared surface */}
+        <div style={{ padding: '4px 0', borderRadius: 12, minWidth: 220, ...surface }}>
+          {items.map((it) => (
+            <div key={it.label} onClickCapture={(e) => (lastEvent.current = e)}>
+              <MenuItem
+                icon={it.icon}
+                label={t(it.label)}
+                danger={it.danger}
+                onClick={() => (it.onClick ? it.onClick(lastEvent.current as MouseEvent) : onClose())}
+              />
+            </div>
+          ))}
+        </div>
+      </motion.div>
+    </>,
+    document.body,
   )
 }
 
