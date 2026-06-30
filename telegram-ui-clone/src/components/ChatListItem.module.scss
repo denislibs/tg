@@ -68,32 +68,14 @@
   background-position: center;
 }
 
-// --- context menu (right-click) ---
-.menuBackdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 2000;
-}
-
-.menu {
-  position: fixed;
-  z-index: 2001;
-  min-width: 200px;
-  padding: 6px 0;
-  border-radius: 12px;
-  background: var(--tg-menuBg);
-  backdrop-filter: blur(40px);
-  -webkit-backdrop-filter: blur(40px);
-  box-shadow: var(--tg-menuShadow);
-  transform-origin: top left; // grow from the click corner (tweb)
-}
-
+// --- context menu rows (surface/animation provided by shared/ui/Menu) ---
 .menuItem {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 4.8px 12px; // py 0.6 / px 1.5
   margin: 0 4px;
+  min-width: 200px;
   border-radius: 8px;
   cursor: pointer;
 

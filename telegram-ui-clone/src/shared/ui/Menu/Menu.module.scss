@@ -1,0 +1,19 @@
+// Menu — общая «плашка» меню (контекст-меню/дропдаун). Анимация открытия/закрытия
+// едина для всех мест: scale .8 + fade за .2s (tweb .btn-menu). Позиция и
+// transform-origin задаются через style (угол плашки якорится в точке клика).
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+}
+
+.panel {
+  position: fixed;
+  z-index: 2001;
+  padding: 6px 0;
+  border-radius: 12px;
+  background: var(--tg-menuBg);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  box-shadow: var(--tg-menuShadow);
+}

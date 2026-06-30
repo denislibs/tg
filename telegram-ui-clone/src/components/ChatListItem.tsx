@@ -1,10 +1,9 @@
-import { memo, useEffect, useState, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
-import { AnimatePresence, motion } from 'framer-motion'
+import { memo, useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { useTheme } from '@mui/material'
 import Text from '../shared/ui/Text'
 import Avatar from '../shared/ui/Avatar'
 import Badge from '../shared/ui/Badge'
+import Menu from '../shared/ui/Menu'
 import { useRipple } from '../shared/ui/Ripple/useRipple'
 import TgIcon from './TgIcon'
 import { useManagers } from '../core/hooks/useManagers'
@@ -51,13 +50,20 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
   const onAccent = selected
   const { onPointerDown, ripple } = useRipple()
 
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  // Anchor a corner of the menu AT the click point and grow toward free space
+  // (right/bottom edges flip via right/bottom CSS so it stays exactly at the cursor).
+  const [menuPos, setMenuPos] = useState<CSSProperties | null>(null)
   const openMenu = (e: React.MouseEvent) => {
     e.preventDefault()
-    setMenu({
-      x: Math.min(e.clientX, window.innerWidth - 246),
-      y: Math.min(e.clientY, window.innerHeight - 360),
-    })
+    const MW = 220, MH = 320 // rough size, only to decide the grow direction
+    const flipLeft = e.clientX + MW > window.innerWidth
+    const flipUp = e.clientY + MH > window.innerHeight
+    const pos: CSSProperties = { transformOrigin: `${flipUp ? 'bottom' : 'top'} ${flipLeft ? 'right' : 'left'}` }
+    if (flipLeft) pos.right = window.innerWidth - e.clientX
+    else pos.left = e.clientX
+    if (flipUp) pos.bottom = window.innerHeight - e.clientY
+    else pos.top = e.clientY
+    setMenuPos(pos)
   }
   const destructive =
     chat.type === 'channel' ? 'Leave Channel' : chat.type === 'group' ? 'Delete Group' : 'Delete Chat'
@@ -154,47 +160,18 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
         </div>
       </div>
 
-      {createPortal(
-        <>
-          {menu && (
-            <div
-              className={s.menuBackdrop}
-              onClick={() => setMenu(null)}
-              onContextMenu={(e) => {
-                e.preventDefault()
-                setMenu(null)
-              }}
-            />
-          )}
-          {/* AnimatePresence so closing animates (scale .8 + fade) like tweb btn-menu,
-              instead of an instant unmount. */}
-          <AnimatePresence>
-            {menu && (
-              <motion.div
-                key="ctx-menu"
-                className={s.menu}
-                style={{ top: menu.y, left: menu.x }}
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.8 }}
-                transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-              >
-                {menuItems.map((it) => (
-                  <div key={it.label} className={s.menuItem} onClick={() => setMenu(null)}>
-                    <span className={s.menuItemIcon} style={{ color: it.danger ? '#ff595a' : tg.textSecondary }}>
-                      {it.icon}
-                    </span>
-                    <Text size={14.5} color={it.danger ? '#ff595a' : tg.textPrimary}>
-                      {t(it.label)}
-                    </Text>
-                  </div>
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </>,
-        document.body,
-      )}
+      <Menu open={!!menuPos} onClose={() => setMenuPos(null)} style={menuPos ?? undefined}>
+        {menuItems.map((it) => (
+          <div key={it.label} className={s.menuItem} onClick={() => setMenuPos(null)}>
+            <span className={s.menuItemIcon} style={{ color: it.danger ? '#ff595a' : tg.textSecondary }}>
+              {it.icon}
+            </span>
+            <Text size={14.5} color={it.danger ? '#ff595a' : tg.textPrimary}>
+              {t(it.label)}
+            </Text>
+          </div>
+        ))}
+      </Menu>
     </>
   )
 }

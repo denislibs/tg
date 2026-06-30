@@ -1,10 +1,9 @@
 import type { ReactNode } from 'react'
-import { createPortal } from 'react-dom'
 import { Box, useTheme } from '@mui/material'
-import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import Text from '../shared/ui/Text'
 import Avatar from '../shared/ui/Avatar'
+import Menu from '../shared/ui/Menu'
 import { useAvatarSrc } from './useAvatarSrc'
 import { useChatsStore } from '../stores/chatsStore'
 import { gradientFor } from '../core/dialogToChat'
@@ -75,34 +74,12 @@ export default function MainMenu({
     <Box sx={{ height: '1px', background: tg.divider, mx: 0, my: 0.75 }} />
   )
 
-  if (!open) return null
-
-  return createPortal(
-    <>
-      <Box onClick={onClose} sx={{ position: 'fixed', inset: 0, zIndex: 2000 }} />
-      <Box
-        sx={{
-          position: 'fixed',
-          top: 68,
-          left: 22,
-          zIndex: 2001,
-          width: 300,
-              background: tg.menuBg,
-              backdropFilter: 'blur(40px)',
-              WebkitBackdropFilter: 'blur(40px)',
-              borderRadius: '14px',
-              boxShadow: tg.menuShadow,
-              py: 0.75,
-              transformOrigin: 'top left',
-            }}
-          >
-            <Box
-              component={motion.div}
-              initial={{ opacity: 0, scale: 0.95, y: -8 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-              sx={{ transformOrigin: 'top left' }}
-            >
+  return (
+    <Menu
+      open={open}
+      onClose={onClose}
+      style={{ top: 68, left: 22, width: 300, borderRadius: '14px', transformOrigin: 'top left' }}
+    >
               {/* Account */}
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1.5, py: 0.75 }}>
                 <Box
@@ -147,15 +124,12 @@ export default function MainMenu({
               {divider}
               <Row icon={<TgIcon name="settings" size={20} />} label={t('Settings')} onClick={onOpenSettings} />
               <Row icon={<TgIcon name="more" size={20} />} label={t('More')} chevron onClick={onClose} />
-              {onLogout && (
-                <>
-                  {divider}
-                  <Row icon={<TgIcon name="logout" size={20} />} label={t('Log Out')} danger onClick={onLogout} />
-                </>
-              )}
-            </Box>
-          </Box>
-        </>,
-    document.body
+      {onLogout && (
+        <>
+          {divider}
+          <Row icon={<TgIcon name="logout" size={20} />} label={t('Log Out')} danger onClick={onLogout} />
+        </>
+      )}
+    </Menu>
   )
 }
