@@ -33,8 +33,6 @@ function ComposeFab({ searching, onNewGroup, onNewPrivate, onNewChannel }: Compo
             initial={{ y: 96, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 96, opacity: 0 }}
-            whileHover={{ scale: 1.08 }}
-            whileTap={{ scale: 0.92 }}
             transition={{ type: 'spring', stiffness: 420, damping: 32 }}
             color="#fff"
             style={{

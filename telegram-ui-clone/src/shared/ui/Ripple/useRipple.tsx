@@ -2,15 +2,14 @@
 // Возвращает обработчик pointerdown и узел-контейнер с «каплями». Хост должен быть
 // position:relative (контейнер сам overflow:hidden + border-radius:inherit).
 //
-// Размер круга = расстояние от клика до дальнего угла (формула tweb), круг
-// центрируется в точке клика и растёт через keyframe scale. Гашение (.hiding) —
-// как в tweb: с гарантированным минимальным временем жизни, чтобы при быстром
-// клике круг успел вырасти, а не мигнул (tweb: delay = max(duration−elapsed,
-// duration/2); hiding в delay−duration/2; удаление в delay).
+// Размер круга = расстояние от клика до дальнего угла (формула tweb) → при scale до
+// --ripple-end-scale круг полностью заливает элемент. Ключевое: гашение начинается
+// ТОЛЬКО когда круг доехал до конца (animationend) И указатель отпущен — поэтому
+// даже на быстрый клик заливка всегда доигрывается до полного круга, а не мигает.
 import { useCallback, useRef, useState, type PointerEvent, type ReactNode } from 'react'
 import s from './Ripple.module.scss'
 
-const DURATION = 700 // --ripple-duration .7s (desktop)
+const FADE = 350 // opacity fade-out (ms), = --ripple-duration .7s / 2 (см. Ripple.module.scss)
 
 interface Drop {
   key: number
@@ -26,13 +25,24 @@ export function useRipple(): {
 } {
   const [drops, setDrops] = useState<Drop[]>([])
   const idRef = useRef(0)
+  // Per-drop gate: fade only once the grow finished AND the pointer was released.
+  const gate = useRef(new Map<number, { up: boolean; grown: boolean }>())
 
-  const setHiding = useCallback((key: number) => {
+  const startHide = useCallback((key: number) => {
     setDrops((d) => d.map((it) => (it.key === key ? { ...it, hiding: true } : it)))
+    window.setTimeout(() => {
+      setDrops((d) => d.filter((it) => it.key !== key))
+      gate.current.delete(key)
+    }, FADE)
   }, [])
-  const remove = useCallback((key: number) => {
-    setDrops((d) => d.filter((it) => it.key !== key))
-  }, [])
+
+  const maybeHide = useCallback(
+    (key: number) => {
+      const g = gate.current.get(key)
+      if (g && g.up && g.grown) startHide(key)
+    },
+    [startHide],
+  )
 
   const onPointerDown = useCallback(
     (e: PointerEvent<HTMLElement>) => {
@@ -41,30 +51,36 @@ export function useRipple(): {
       const rect = e.currentTarget.getBoundingClientRect()
       const cx = e.clientX - rect.left
       const cy = e.clientY - rect.top
-      // tweb's radius: distance from the click to the farthest corner.
       const size = Math.sqrt(
         (Math.abs(cy - rect.height / 2) + rect.height / 2) ** 2 +
           (Math.abs(cx - rect.width / 2) + rect.width / 2) ** 2,
       )
       const key = idRef.current++
-      const startTime = Date.now()
+      gate.current.set(key, { up: false, grown: false })
       setDrops((d) => [...d, { key, x: cx - size / 2, y: cy - size / 2, size, hiding: false }])
 
-      const onUp = () => {
-        const elapsed = Date.now() - startTime
-        if (elapsed >= DURATION) {
-          setHiding(key)
-          window.setTimeout(() => remove(key), DURATION / 2)
-        } else {
-          const delay = Math.max(DURATION - elapsed, DURATION / 2)
-          window.setTimeout(() => setHiding(key), Math.max(delay - DURATION / 2, 0))
-          window.setTimeout(() => remove(key), delay)
+      const up = () => {
+        const g = gate.current.get(key)
+        if (g) {
+          g.up = true
+          maybeHide(key)
         }
       }
-      window.addEventListener('pointerup', onUp, { once: true })
-      window.addEventListener('pointercancel', onUp, { once: true })
+      window.addEventListener('pointerup', up, { once: true })
+      window.addEventListener('pointercancel', up, { once: true })
     },
-    [setHiding, remove],
+    [maybeHide],
+  )
+
+  const onGrown = useCallback(
+    (key: number) => {
+      const g = gate.current.get(key)
+      if (g) {
+        g.grown = true
+        maybeHide(key)
+      }
+    },
+    [maybeHide],
   )
 
   const ripple = (
@@ -74,6 +90,7 @@ export function useRipple(): {
           key={d.key}
           className={d.hiding ? `${s.circle} ${s.hiding}` : s.circle}
           style={{ left: d.x, top: d.y, width: d.size, height: d.size }}
+          onAnimationEnd={() => onGrown(d.key)}
         />
       ))}
     </span>

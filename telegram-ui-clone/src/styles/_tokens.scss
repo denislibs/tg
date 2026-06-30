@@ -37,8 +37,8 @@
   --tg-bgGrad1: #6ba587;
   --tg-bgGrad2: #d5d88d;
   --tg-bgGrad3: #88b884;
-  // ripple (tweb base.scss): light surface uses dark wash at $hover-alpha (.08)
-  --ripple-color: rgba(0, 0, 0, 0.08);
+  // ripple wash on light surfaces (чуть заметнее tweb-овых .08 — иначе плохо читается)
+  --ripple-color: rgba(0, 0, 0, 0.13);
 }
 
 // "Day" — brighter light theme, teal/blue accent; rest inherits classic (:root).
@@ -83,7 +83,7 @@
   --tg-bgGrad1: #dd6cb9;
   --tg-bgGrad2: #962fbf;
   --tg-bgGrad3: #4f5bd5;
-  --ripple-color: rgba(255, 255, 255, 0.08);
+  --ripple-color: rgba(255, 255, 255, 0.18);
 }
 
 // "Dark" — neutral near-black (vs Night's purple), blue accent; deltas over night.
