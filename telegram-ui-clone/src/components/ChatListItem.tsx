@@ -1,6 +1,6 @@
 import { memo, useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import { useTheme } from '@mui/material'
 import Text from '../shared/ui/Text'
 import Avatar from '../shared/ui/Avatar'
@@ -154,9 +154,9 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
         </div>
       </div>
 
-      {menu &&
-        createPortal(
-          <>
+      {createPortal(
+        <>
+          {menu && (
             <div
               className={s.menuBackdrop}
               onClick={() => setMenu(null)}
@@ -165,11 +165,18 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
                 setMenu(null)
               }}
             />
-            <div className={s.menu} style={{ top: menu.y, left: menu.x }}>
+          )}
+          {/* AnimatePresence so closing animates (scale .8 + fade) like tweb btn-menu,
+              instead of an instant unmount. */}
+          <AnimatePresence>
+            {menu && (
               <motion.div
-                className={s.menuInner}
-                initial={{ opacity: 0, scale: 0.92 }}
+                key="ctx-menu"
+                className={s.menu}
+                style={{ top: menu.y, left: menu.x }}
+                initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
                 transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
               >
                 {menuItems.map((it) => (
@@ -183,10 +190,11 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
                   </div>
                 ))}
               </motion.div>
-            </div>
-          </>,
-          document.body,
-        )}
+            )}
+          </AnimatePresence>
+        </>,
+        document.body,
+      )}
     </>
   )
 }
