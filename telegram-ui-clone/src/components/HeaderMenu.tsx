@@ -1,10 +1,7 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { createPortal } from 'react-dom'
-import { Box, useTheme } from '@mui/material'
-import Text from '../shared/ui/Text'
-import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
+import Menu, { MenuItem } from '../shared/ui/Menu'
 import type { Chat } from '../data'
 import { useT } from '../i18n'
 
@@ -21,8 +18,6 @@ interface Props {
 }
 
 export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddMember, onSelectMessages, onAddContact }: Props) {
-  const theme = useTheme()
-  const tg = theme.tg
   const t = useT()
   const [autoOpen, setAutoOpen] = useState(false)
   const muted = !!chat.muted
@@ -31,140 +26,96 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
     ? () => { onToggleMute(); onClose() }
     : undefined
   const muteItem: Item = muted
-    ? { icon: <TgIcon name="unmute" size={22} />, label: 'Unmute', onClick: handleMute }
-    : { icon: <TgIcon name="mute" size={22} />, label: 'Mute', onClick: handleMute }
+    ? { icon: <TgIcon name="unmute" size={20} />, label: 'Unmute', onClick: handleMute }
+    : { icon: <TgIcon name="mute" size={20} />, label: 'Mute', onClick: handleMute }
 
   let items: Item[]
   if (chat.type === 'private') {
     items = [
-      { icon: <TgIcon name="timer" size={22} />, label: 'Auto-delete', submenu: true },
+      { icon: <TgIcon name="timer" size={20} />, label: 'Auto-delete', submenu: true },
       muteItem,
-      { icon: <TgIcon name="phone" size={22} />, label: 'Call' },
-      { icon: <TgIcon name="videocamera" size={22} />, label: 'Video Call' },
-      { icon: <TgIcon name="checkround" size={22} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); onClose() } : undefined },
-      { icon: <TgIcon name="adduser" size={22} />, label: 'Add to contacts', onClick: onAddContact ? () => { onAddContact(); onClose() } : undefined },
-      { icon: <TgIcon name="gift" size={22} />, label: 'Send a Gift' },
-      { icon: <TgIcon name="restrict" size={22} />, label: 'Block user' },
-      { icon: <TgIcon name="deleteuser" size={22} />, label: 'Disable Sharing' },
-      { icon: <TgIcon name="delete" size={22} />, label: 'Delete Chat', danger: true },
+      { icon: <TgIcon name="phone" size={20} />, label: 'Call' },
+      { icon: <TgIcon name="videocamera" size={20} />, label: 'Video Call' },
+      { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); onClose() } : undefined },
+      { icon: <TgIcon name="adduser" size={20} />, label: 'Add to contacts', onClick: onAddContact ? () => { onAddContact(); onClose() } : undefined },
+      { icon: <TgIcon name="gift" size={20} />, label: 'Send a Gift' },
+      { icon: <TgIcon name="restrict" size={20} />, label: 'Block user' },
+      { icon: <TgIcon name="deleteuser" size={20} />, label: 'Disable Sharing' },
+      { icon: <TgIcon name="delete" size={20} />, label: 'Delete Chat', danger: true },
     ]
   } else if (chat.type === 'group') {
     items = [
-      { icon: <TgIcon name="timer" size={22} />, label: 'Auto-delete', submenu: true },
+      { icon: <TgIcon name="timer" size={20} />, label: 'Auto-delete', submenu: true },
       muteItem,
       ...(onAddMember
-        ? [{ icon: <TgIcon name="adduser" size={22} />, label: 'Add member', onClick: () => { onAddMember(); onClose() } }]
+        ? [{ icon: <TgIcon name="adduser" size={20} />, label: 'Add member', onClick: () => { onAddMember(); onClose() } }]
         : []),
-      { icon: <TgIcon name="checkround" size={22} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); onClose() } : undefined },
-      { icon: <TgIcon name="gift" size={22} />, label: 'Send a Gift' },
-      { icon: <TgIcon name="delete" size={22} />, label: owned ? 'Delete Group' : 'Leave Group', danger: true },
+      { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); onClose() } : undefined },
+      { icon: <TgIcon name="gift" size={20} />, label: 'Send a Gift' },
+      { icon: <TgIcon name="delete" size={20} />, label: owned ? 'Delete Group' : 'Leave Group', danger: true },
     ]
   } else if (owned) {
     // owned channel
     items = [
-      { icon: <TgIcon name="timer" size={22} />, label: 'Auto-delete', submenu: true },
+      { icon: <TgIcon name="timer" size={20} />, label: 'Auto-delete', submenu: true },
       muteItem,
-      { icon: <TgIcon name="livestream" size={22} />, label: 'Live Stream' },
-      { icon: <TgIcon name="checkround" size={22} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); onClose() } : undefined },
-      { icon: <TgIcon name="gift" size={22} />, label: 'Send a Gift' },
-      { icon: <TgIcon name="boost" size={22} />, label: 'Boost Channel' },
-      { icon: <TgIcon name="delete" size={22} />, label: 'Delete Channel', danger: true },
+      { icon: <TgIcon name="livestream" size={20} />, label: 'Live Stream' },
+      { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); onClose() } : undefined },
+      { icon: <TgIcon name="gift" size={20} />, label: 'Send a Gift' },
+      { icon: <TgIcon name="boost" size={20} />, label: 'Boost Channel' },
+      { icon: <TgIcon name="delete" size={20} />, label: 'Delete Channel', danger: true },
     ]
   } else {
     // channel you don't own
     items = [
       muteItem,
-      { icon: <TgIcon name="message" size={22} />, label: 'View discussion' },
-      { icon: <TgIcon name="checkround" size={22} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); onClose() } : undefined },
-      { icon: <TgIcon name="gift" size={22} />, label: 'Send a Gift' },
-      { icon: <TgIcon name="boost" size={22} />, label: 'Boost Channel' },
-      { icon: <TgIcon name="delete" size={22} />, label: 'Leave Channel', danger: true },
+      { icon: <TgIcon name="message" size={20} />, label: 'View discussion' },
+      { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); onClose() } : undefined },
+      { icon: <TgIcon name="gift" size={20} />, label: 'Send a Gift' },
+      { icon: <TgIcon name="boost" size={20} />, label: 'Boost Channel' },
+      { icon: <TgIcon name="delete" size={20} />, label: 'Leave Channel', danger: true },
     ]
   }
 
   const autoItems = ['Never', '1 day', '1 week', '1 month', 'Other']
 
-  const rowSx = (danger?: boolean) => ({
-    display: 'flex',
-    alignItems: 'center',
-    gap: 1.75,
-    px: 1.75,
-    py: 0.7,
-    mx: 0.5,
-    borderRadius: '8px',
-    cursor: 'pointer',
-    '&:hover': { background: tg.hover },
-    color: danger ? '#ff595a' : tg.textSecondary,
-    '& svg': { fontSize: 22, color: danger ? '#ff595a' : tg.textSecondary },
-  })
-
-  return createPortal(
+  return (
     <>
-      <Box onClick={onClose} sx={{ position: 'fixed', inset: 0, zIndex: 2000 }} />
-      <Box sx={{ position: 'fixed', top: anchor.top, right: anchor.right, zIndex: 2001 }}>
-        {/* Auto-delete submenu (to the left) */}
-        {autoOpen && (
-          <Box
-            component={motion.div}
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-            sx={{
-              position: 'absolute',
-              top: 0,
-              right: 256,
-              minWidth: 200,
-              py: 0.75,
-              borderRadius: '12px',
-              background: tg.menuBg,
-              backdropFilter: 'blur(40px)',
-              WebkitBackdropFilter: 'blur(40px)',
-              boxShadow: tg.menuShadow,
-              transformOrigin: 'top right',
-            }}
-          >
-            {autoItems.map((a) => (
-              <Box key={a} onClick={onClose} sx={rowSx()}>
-                {a === 'Other' ? <TgIcon name="tools" size={22} /> : a === 'Never' ? <TgIcon name="auto_delete_circle_off" size={22} /> : <TgIcon name="timer" size={22} />}
-                <Text size={15} color={tg.textPrimary}>{t(a)}</Text>
-              </Box>
-            ))}
-          </Box>
-        )}
+      {/* Auto-delete submenu (to the left of the main menu) */}
+      <Menu
+        open={autoOpen}
+        onClose={onClose}
+        style={{ top: anchor.top, right: anchor.right + 256, transformOrigin: 'top right' }}
+      >
+        {autoItems.map((a) => (
+          <MenuItem
+            key={a}
+            icon={
+              a === 'Other' ? <TgIcon name="tools" size={20} /> : a === 'Never' ? <TgIcon name="auto_delete_circle_off" size={20} /> : <TgIcon name="timer" size={20} />
+            }
+            label={t(a)}
+            onClick={onClose}
+          />
+        ))}
+      </Menu>
 
-        {/* Main menu */}
-        <Box
-          component={motion.div}
-          initial={{ opacity: 0, scale: 0.92 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-          sx={{
-            width: 244,
-            py: 0.75,
-            borderRadius: '12px',
-            background: tg.menuBg,
-            backdropFilter: 'blur(40px)',
-            WebkitBackdropFilter: 'blur(40px)',
-            boxShadow: tg.menuShadow,
-            transformOrigin: 'top right',
-          }}
-        >
-          {items.map((it) => (
-            <Box
-              key={it.label}
-              onClick={() => (it.submenu ? setAutoOpen((o) => !o) : it.onClick ? it.onClick() : onClose())}
-              sx={rowSx(it.danger)}
-            >
-              {it.icon}
-              <Text size={15} color={it.danger ? '#ff595a' : tg.textPrimary} style={{ flex: 1 }}>
-                {t(it.label)}
-              </Text>
-              {it.submenu && <TgIcon name="next" size={20} color={tg.textFaint} />}
-            </Box>
-          ))}
-        </Box>
-      </Box>
-    </>,
-    document.body
+      {/* Main menu */}
+      <Menu
+        open
+        onClose={onClose}
+        style={{ top: anchor.top, right: anchor.right, width: 244, transformOrigin: 'top right' }}
+      >
+        {items.map((it) => (
+          <MenuItem
+            key={it.label}
+            icon={it.icon}
+            label={t(it.label)}
+            danger={it.danger}
+            right={it.submenu ? <TgIcon name="next" size={20} /> : undefined}
+            onClick={() => (it.submenu ? setAutoOpen((o) => !o) : it.onClick ? it.onClick() : onClose())}
+          />
+        ))}
+      </Menu>
+    </>
   )
 }

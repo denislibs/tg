@@ -1,8 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Box, InputBase, useMediaQuery, useTheme } from '@mui/material'
+import { Box, useMediaQuery, useTheme } from '@mui/material'
 import { useChatsStore } from '../stores/chatsStore'
-import Preloader from './Preloader'
-import TgIcon from './TgIcon'
 import { AnimatePresence, motion } from 'framer-motion'
 import { EASE } from '../motion'
 import type { Chat, OpenPeer } from '../data'
@@ -22,6 +20,7 @@ import { loadChats } from '../stores/chatsStore'
 import { loadStories } from '../stores/storiesStore'
 import type { SearchResult } from '../core/managers/channelsManager'
 import StoriesRow, { StoriesStack, FULL_H } from './StoriesRow'
+import InputSearch from '../shared/ui/InputSearch'
 import AddStorySheet from './AddStorySheet'
 import StoryViewer from './StoryViewer'
 import FolderTabs, { type FolderKey } from './FolderTabs'
@@ -306,62 +305,17 @@ export default function Sidebar({
           onOpenPremium={() => setPremiumOpen(true)}
           onLogout={onLogout}
         />
-        <Box
-          onClick={() => inputRef.current?.focus()}
-          sx={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1,
-            cursor: 'text',
-            background: mode === 'dark' ? '#181818' : '#f0f0f2',
-            borderRadius: '9999px',
-            height: 44,
-            px: 1.75,
-            py: 0,
-            border: `1.5px solid ${searching ? tg.accent : 'transparent'}`,
-            transition: 'border-color .18s ease, background .18s ease',
-            '&:hover': {
-              borderColor: searching
-                ? tg.accent
-                : mode === 'dark'
-                  ? 'rgba(255,255,255,0.18)'
-                  : 'rgba(0,0,0,0.18)',
-            },
-          }}
-        >
-          {loaded ? (
-            <TgIcon name="search" size={22} color={searching ? tg.accent : tg.textFaint} />
-          ) : (
-            <Preloader size={20} stroke={2.2} color={tg.textFaint} />
-          )}
-          <InputBase
-            inputRef={inputRef}
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <InputSearch
+            ref={inputRef}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={setQuery}
             onFocus={() => setSearching(true)}
+            onClear={() => setQuery('')}
             placeholder={loaded ? t('Search') : t('Updating…')}
-            sx={{
-              flex: 1,
-              fontFamily:
-                'Roboto, -apple-system, "apple color emoji", "system-ui", "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif',
-              fontSize: '16px',
-              fontWeight: 400,
-              lineHeight: '21px',
-              fontStyle: 'normal',
-              color: tg.textPrimary,
-              '& input': {
-                padding: 0,
-                height: '21px',
-                fontSize: '16px',
-                fontWeight: 400,
-                lineHeight: '21px',
-                color: tg.textPrimary,
-              },
-              '& input::placeholder': { color: tg.textFaint, opacity: 1 },
-            }}
+            focused={searching}
+            right={!searching ? <StoriesStack onOpen={(i) => setStoryIndex(i)} show={stackShown} /> : null}
           />
-          {!searching && <StoriesStack onOpen={(i) => setStoryIndex(i)} show={stackShown} />}
         </Box>
       </Box>
 

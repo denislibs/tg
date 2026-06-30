@@ -1,0 +1,89 @@
+// InputSearch — порт tweb .input-search.old-style: pill 44px (radius height/2),
+// заполненный фон, иконка поиска слева (~16px), placeholder, кнопка очистки справа,
+// акцентная рамка/иконка в фокусе. Геометрия 1:1 из tweb _inputSearch.scss.
+.root {
+  --height: 44px;
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+
+.input {
+  width: 100%;
+  height: var(--height);
+  box-sizing: border-box;
+  padding: 0 44px 0 48px; // место под иконку слева и clear справа
+  border-radius: calc(var(--height) / 2);
+  border: 1.5px solid transparent;
+  background: var(--tg-inputSearchBg);
+  color: var(--tg-textPrimary);
+  font-size: 16px;
+  line-height: 21px;
+  outline: none;
+  transition: border-color 0.18s ease, background 0.18s ease;
+
+  &::placeholder {
+    color: transparent; // настоящий placeholder рисуем своим .placeholder (tweb)
+  }
+
+  @media (hover: hover) {
+    &:not(:focus):hover {
+      border-color: var(--tg-textFaint);
+    }
+  }
+}
+
+// search icon + clear share .part positioning helpers
+.icon {
+  position: absolute;
+  inset-inline-start: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  color: var(--tg-textSecondary);
+  opacity: 0.6;
+  pointer-events: none;
+  z-index: 1;
+  transition: color 0.18s ease, opacity 0.18s ease;
+}
+
+.placeholder {
+  position: absolute;
+  inset-inline-start: 48px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--tg-textFaint);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.clear {
+  position: absolute;
+  inset-inline-end: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+}
+
+// right-side slot (e.g. folded stories) when not searching
+.right {
+  position: absolute;
+  inset-inline-end: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+  display: flex;
+}
+
+// Focused/active (parent-controlled "searching"): accent border + accent icon.
+.root.focused .input,
+.input:focus {
+  border-color: var(--tg-accent);
+}
+.root.focused .icon {
+  color: var(--tg-accent);
+  opacity: 1;
+}

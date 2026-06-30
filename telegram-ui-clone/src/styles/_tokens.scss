@@ -39,6 +39,8 @@
   --tg-bgGrad3: #88b884;
   // ripple wash on light surfaces (чуть заметнее tweb-овых .08 — иначе плохо читается)
   --ripple-color: rgba(0, 0, 0, 0.13);
+  // filled search-input background (tweb --old-input-background-color)
+  --tg-inputSearchBg: #f0f0f2;
 }
 
 // "Day" — brighter light theme, teal/blue accent; rest inherits classic (:root).
@@ -84,6 +86,7 @@
   --tg-bgGrad2: #962fbf;
   --tg-bgGrad3: #4f5bd5;
   --ripple-color: rgba(255, 255, 255, 0.18);
+  --tg-inputSearchBg: #181818;
 }
 
 // "Dark" — neutral near-black (vs Night's purple), blue accent; deltas over night.
