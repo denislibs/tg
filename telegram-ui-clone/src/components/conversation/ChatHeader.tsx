@@ -4,10 +4,11 @@
 // transient parent state (composer text, context menu, media viewer) never
 // re-renders it — only its own data (chat, presence/typing, search) does.
 import { memo, useEffect, useState } from 'react'
-import { Box, IconButton, InputBase, Typography, useTheme } from '@mui/material'
+import { Box, InputBase, Typography, useTheme } from '@mui/material'
+import IconButton from '../../shared/ui/IconButton'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon, { type IconName } from '../TgIcon'
-import Avatar from '../Avatar'
+import Avatar from '../../shared/ui/Avatar'
 import VerifiedBadge from '../VerifiedBadge'
 import TypingIndicator from './TypingIndicator'
 import { useCall } from '../call/CallProvider'
@@ -237,15 +238,15 @@ function ChatHeader({
             />
             {searchQuery.trim() && searchResults.length > 0 && (
               <>
-                <IconButton size="small" onClick={() => jumpTo(activeIdx - 1)} disabled={activeIdx <= 0} sx={{ color: tg.textFaint }}>
+                <IconButton size="small" onClick={() => jumpTo(activeIdx - 1)} disabled={activeIdx <= 0} color={tg.textFaint}>
                   <TgIcon name="up" />
                 </IconButton>
-                <IconButton size="small" onClick={() => jumpTo(activeIdx + 1)} disabled={activeIdx >= searchResults.length - 1} sx={{ color: tg.textFaint }}>
+                <IconButton size="small" onClick={() => jumpTo(activeIdx + 1)} disabled={activeIdx >= searchResults.length - 1} color={tg.textFaint}>
                   <TgIcon name="down" />
                 </IconButton>
               </>
             )}
-            <IconButton size="small" onClick={() => { if (searchQuery) onSearchClear(); else onSearchClose() }} sx={{ color: tg.textFaint }}>
+            <IconButton size="small" onClick={() => { if (searchQuery) onSearchClear(); else onSearchClose() }} color={tg.textFaint}>
               <TgIcon name="close" />
             </IconButton>
           </Box>
@@ -277,7 +278,7 @@ function ChatHeader({
                         onClick={() => { setActiveIdx(i); onPickResult(r.seq) }}
                         sx={{ display: 'flex', alignItems: 'center', gap: 1.25, px: 1.5, py: 0.75, cursor: 'pointer', background: i === activeIdx ? tg.hover : 'transparent', '&:hover': { background: tg.hover } }}
                       >
-                        <Avatar background={r.avatar} text={r.sender.charAt(0)} size={40} />
+                        <Avatar background={r.avatar} text={r.sender.charAt(0)} size="sm" />
                         <Box sx={{ flex: 1, minWidth: 0 }}>
                           <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
                             <Typography noWrap sx={{ flex: 1, fontSize: 14.5, fontWeight: 600, color: tg.textPrimary }}>{r.sender}</Typography>
@@ -318,7 +319,7 @@ function ChatHeader({
           }}
         >
           {onBack && (
-            <IconButton onClick={onBack} sx={{ color: tg.textSecondary, ml: -0.5 }}>
+            <IconButton onClick={onBack} color={tg.textSecondary} style={{ marginLeft: '-4px' }}>
               <TgIcon name="back" />
             </IconButton>
           )}
@@ -328,7 +329,7 @@ function ChatHeader({
               text={chat.avatarText}
               emoji={chat.avatarEmoji}
               src={avatarSrc}
-              size={40}
+              size="sm"
               online={chat.online || peerOnline}
               ringColor={tg.bubble}
             />
@@ -347,18 +348,18 @@ function ChatHeader({
           </Box>
           {chat.type === 'private' && (
             <>
-              <IconButton onClick={() => startCall(false)} sx={{ color: tg.textSecondary }}>
+              <IconButton onClick={() => startCall(false)} color={tg.textSecondary}>
                 <TgIcon name="phone" />
               </IconButton>
-              <IconButton onClick={() => startCall(true)} sx={{ color: tg.textSecondary }}>
+              <IconButton onClick={() => startCall(true)} color={tg.textSecondary}>
                 <TgIcon name="videocamera" />
               </IconButton>
             </>
           )}
-          <IconButton onClick={onSearchOpen} sx={{ color: tg.textSecondary }}>
+          <IconButton onClick={onSearchOpen} color={tg.textSecondary}>
             <TgIcon name="search" />
           </IconButton>
-          <IconButton onClick={(e) => onOpenMenu(e.currentTarget.getBoundingClientRect())} sx={{ color: tg.textSecondary }}>
+          <IconButton onClick={(e) => onOpenMenu(e.currentTarget.getBoundingClientRect())} color={tg.textSecondary}>
             <TgIcon name="more" />
           </IconButton>
         </Box>

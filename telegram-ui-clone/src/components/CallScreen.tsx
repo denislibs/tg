@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { Box, IconButton, Typography } from '@mui/material'
+import { Box, Typography } from '@mui/material'
 import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
+import IconButton from '../shared/ui/IconButton'
 import { EASE } from '../motion'
 import { useT } from '../i18n'
-import Avatar from './Avatar'
+import Avatar from '../shared/ui/Avatar'
 import type { Chat } from '../data'
 
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
@@ -47,17 +48,14 @@ export default function CallScreen({
     ? 'linear-gradient(135deg, #6d5bd0, #3f7fd6, #8a5bff, #4f86e8)'
     : 'linear-gradient(135deg, #2faf86, #3bb2b8, #43cea2, #2a8f7a)'
 
-  const ctrlSx = {
+  const ctrlStyle: CSSProperties = {
     width: 54,
     height: 54,
-    borderRadius: '50%',
-    color: '#fff',
     background: 'rgba(255,255,255,0.15)',
     backdropFilter: 'blur(12px)',
     WebkitBackdropFilter: 'blur(12px)',
-    '&:hover': { background: 'rgba(255,255,255,0.25)' },
-    '& svg': { fontSize: 26 },
-  }
+    '--ib-hover': 'rgba(255,255,255,0.25)',
+  } as CSSProperties
 
   return createPortal(
     <Box
@@ -120,34 +118,32 @@ export default function CallScreen({
           gap: 4,
         }}
       >
-        <IconButton onClick={() => setMuted((v) => !v)} sx={ctrlSx}>
+        <IconButton onClick={() => setMuted((v) => !v)} color="#fff" style={ctrlStyle}>
           {muted ? (
             <TgIcon name="microphone_crossed" size={26} color="#fff" />
           ) : (
             <TgIcon name="microphone_filled" size={26} color="#fff" />
           )}
         </IconButton>
-        <IconButton onClick={() => setCam((v) => !v)} sx={ctrlSx}>
+        <IconButton onClick={() => setCam((v) => !v)} color="#fff" style={ctrlStyle}>
           {cam ? (
             <TgIcon name="videocamera" size={26} color="#fff" />
           ) : (
             <TgIcon name="videocamera_crossed_filled" size={26} color="#fff" />
           )}
         </IconButton>
-        <IconButton sx={ctrlSx}>
+        <IconButton color="#fff" style={ctrlStyle}>
           <TgIcon name="volume_up" size={26} color="#fff" />
         </IconButton>
         <IconButton
           onClick={onClose}
-          sx={{
+          color="#fff"
+          style={{
             width: 64,
             height: 64,
-            borderRadius: '50%',
             background: '#ff595a',
-            color: '#fff',
-            '&:hover': { background: '#e84a4b' },
-            '& svg': { fontSize: 30 },
-          }}
+            '--ib-hover': '#e84a4b',
+          } as CSSProperties}
         >
           <TgIcon name="endcall_filled" size={30} color="#fff" />
         </IconButton>

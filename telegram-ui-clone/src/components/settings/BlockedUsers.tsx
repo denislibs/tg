@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Box, Typography, useTheme } from '@mui/material'
 import TgIcon from '../TgIcon'
-import Avatar from '../Avatar'
+import Avatar from '../../shared/ui/Avatar'
 import { useT } from '../../i18n'
 import { SettingsScreen, Section, Row, useCardBg } from './kit'
 

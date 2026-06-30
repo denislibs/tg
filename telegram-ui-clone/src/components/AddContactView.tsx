@@ -7,11 +7,12 @@
 // phone" checkbox, and a floating ✓ that POSTs to /contacts. Russian copy is
 // hardcoded (the app renders Russian; sibling panels do the same).
 import { useState } from 'react'
-import { Box, IconButton, InputAdornment, TextField, Typography, useMediaQuery, useTheme } from '@mui/material'
+import { Box, InputAdornment, TextField, Typography, useMediaQuery, useTheme } from '@mui/material'
+import IconButton from '../shared/ui/IconButton'
 import { motion } from 'framer-motion'
 import { EASE, DUR } from '../motion'
 import TgIcon from './TgIcon'
-import Avatar from './Avatar'
+import Avatar from '../shared/ui/Avatar'
 import { useAvatarSrc } from './useAvatarSrc'
 import { useManagers } from '../core/hooks/useManagers'
 import type { Chat } from '../data'
@@ -139,7 +140,7 @@ export default function AddContactView({
       >
         {/* Header — back + title */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1.5, py: 1.5, flexShrink: 0 }}>
-          <IconButton onClick={onClose} sx={{ color: tg.textSecondary }}>
+          <IconButton onClick={onClose} color={tg.textSecondary}>
             <TgIcon name="back" />
           </IconButton>
           <Typography sx={{ fontSize: 19, fontWeight: 600, color: tg.textPrimary }}>Добавить контакт</Typography>
@@ -148,7 +149,7 @@ export default function AddContactView({
         <Box sx={{ flex: 1, overflowY: 'auto', pb: 12 }}>
           {/* Avatar + original name */}
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mt: 1, mb: 3 }}>
-            <Avatar background={chat.avatar} text={chat.avatarText ?? chat.name[0]} src={avatarSrc} size={120} />
+            <Avatar background={chat.avatar} text={chat.avatarText ?? chat.name[0]} src={avatarSrc} size="profile" />
             <Typography sx={{ fontSize: 22, fontWeight: 600, color: tg.textPrimary, mt: 2 }}>{chat.name}</Typography>
             <Typography sx={{ fontSize: 14, color: tg.textSecondary, mt: 0.25 }}>исходное имя</Typography>
           </Box>

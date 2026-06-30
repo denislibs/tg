@@ -4,7 +4,7 @@ import { Box, Typography, useTheme } from '@mui/material'
 import { useManagers } from '../core/hooks/useManagers'
 import TgIcon from './TgIcon'
 import { motion } from 'framer-motion'
-import Avatar from './Avatar'
+import Avatar from '../shared/ui/Avatar'
 import { useAvatarSrc } from './useAvatarSrc'
 import { useChatsStore } from '../stores/chatsStore'
 import { useTypingLabel } from '../core/hooks/useTypingLabel'
@@ -162,7 +162,7 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
         text={chat.avatarText}
         emoji={chat.avatarEmoji}
         src={avatarSrc}
-        size={54}
+        size="dialog"
         online={chat.online || presence?.online}
         ringColor={selected ? tg.accent : tg.sidebarBg}
       />

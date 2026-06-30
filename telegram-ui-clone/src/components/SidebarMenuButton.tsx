@@ -3,7 +3,8 @@
 // (so Sidebar no longer holds menuOpen) and renders the MainMenu itself. When the
 // search is open it morphs into a back arrow that closes the search instead.
 import { memo, useState } from 'react'
-import { IconButton, useTheme } from '@mui/material'
+import { useTheme } from '@mui/material'
+import IconButton from '../shared/ui/IconButton'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import MainMenu from './MainMenu'
@@ -31,7 +32,7 @@ function SidebarMenuButton({
     <>
       <IconButton
         onClick={() => (searching ? onBack() : setMenuOpen((o) => !o))}
-        sx={{ color: tg.textSecondary }}
+        color={tg.textSecondary}
       >
         <AnimatePresence mode="wait" initial={false}>
           <motion.span

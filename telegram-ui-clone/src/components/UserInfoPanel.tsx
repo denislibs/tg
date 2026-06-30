@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { Box, IconButton, Typography, useMediaQuery, useTheme } from '@mui/material'
+import { Box, Typography, useMediaQuery, useTheme } from '@mui/material'
+import IconButton from '../shared/ui/IconButton'
 import TgSwitch from './TgSwitch'
 import { Tabs } from './Tabs'
 import { AnimatePresence, motion } from 'framer-motion'
 import { EASE, DUR, slideInRight } from '../motion'
 import TgIcon from './TgIcon'
-import Avatar from './Avatar'
+import Avatar from '../shared/ui/Avatar'
 import { useAvatarSrc } from './useAvatarSrc'
 import EditView from './EditView'
 import type { Chat, OpenPeer } from '../data'
@@ -125,14 +126,14 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
       >
         {/* Header */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1.5, py: 1.5 }}>
-          <IconButton onClick={onClose} sx={{ color: tg.textSecondary }}>
+          <IconButton onClick={onClose} color={tg.textSecondary}>
             <TgIcon name="close" />
           </IconButton>
           <Typography sx={{ flex: 1, fontSize: 19, fontWeight: 600, color: tg.textPrimary }}>
             {t(title)}
           </Typography>
           {(isGroup || isChannel) && (
-            <IconButton onClick={() => setEditing(true)} sx={{ color: tg.textSecondary }}>
+            <IconButton onClick={() => setEditing(true)} color={tg.textSecondary}>
               <TgIcon name="edit" />
             </IconButton>
           )}
@@ -141,7 +142,7 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
         <Box sx={{ flex: 1, overflowY: 'auto', pb: 3 }}>
           {/* Avatar + name */}
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, pt: 1, pb: 2.5 }}>
-            <Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={headerAvatarSrc} size={120} />
+            <Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={headerAvatarSrc} size="profile" />
             <Typography sx={{ fontSize: 21, fontWeight: 600, color: tg.textPrimary, mt: 1, textAlign: 'center', px: 2 }}>
               {chat.name}
             </Typography>
@@ -267,7 +268,7 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
                         onClick={openChat}
                         sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1, minWidth: 0, cursor: 'pointer', borderRadius: '12px', '&:hover': { background: tg.hover } }}
                       >
-                        <Avatar background={tg.accent} text={mem.displayName[0]?.toUpperCase()} src={mem.avatarUrl} size={44} />
+                        <Avatar background={tg.accent} text={mem.displayName[0]?.toUpperCase()} src={mem.avatarUrl} size="md" />
                         <Box sx={{ flex: 1, minWidth: 0 }}>
                           <Typography noWrap sx={{ fontSize: 16, color: tg.textPrimary }}>{mem.displayName}</Typography>
                           <Typography sx={{ fontSize: 13.5, color: mem.online ? tg.accent : tg.textSecondary }}>
@@ -315,7 +316,7 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
                           )
                         )}
                       </Box>
-                      <IconButton onClick={() => copyInvite(link.token)} sx={{ color: copiedToken === link.token ? tg.accent : tg.textSecondary, flexShrink: 0 }}>
+                      <IconButton onClick={() => copyInvite(link.token)} color={copiedToken === link.token ? tg.accent : tg.textSecondary} style={{ flexShrink: 0 }}>
                         <TgIcon name="copy" size={20} />
                       </IconButton>
                     </Box>
@@ -348,21 +349,23 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
                     key={req.userId}
                     sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1.5, py: 0.75, mx: 0.5, borderRadius: '12px' }}
                   >
-                    <Avatar background={tg.accent} text={req.displayName[0]?.toUpperCase()} size={44} />
+                    <Avatar background={tg.accent} text={req.displayName[0]?.toUpperCase()} size="md" />
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       <Typography noWrap sx={{ fontSize: 16, color: tg.textPrimary }}>{req.displayName}</Typography>
                     </Box>
                     <IconButton
                       aria-label={`Одобрить заявку: ${req.displayName}`}
                       onClick={() => void approveJoinRequest(req.userId)}
-                      sx={{ color: tg.accent, flexShrink: 0 }}
+                      color={tg.accent}
+                      style={{ flexShrink: 0 }}
                     >
                       <TgIcon name="check" size={22} />
                     </IconButton>
                     <IconButton
                       aria-label={`Отклонить заявку: ${req.displayName}`}
                       onClick={() => void declineJoinRequest(req.userId)}
-                      sx={{ color: '#ff595a', flexShrink: 0 }}
+                      color="#ff595a"
+                      style={{ flexShrink: 0 }}
                     >
                       <TgIcon name="close" size={22} />
                     </IconButton>
@@ -465,7 +468,7 @@ function RightsEditor({
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 1.25 }}>
-        <IconButton onClick={onBack} sx={{ color: tg.textSecondary }}>
+        <IconButton onClick={onBack} color={tg.textSecondary}>
           <TgIcon name="back" />
         </IconButton>
         <Typography noWrap sx={{ flex: 1, fontSize: 19, fontWeight: 600, color: tg.textPrimary }}>

@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Box, IconButton, TextField, Typography, useTheme } from '@mui/material'
+import { Box, TextField, Typography, useTheme } from '@mui/material'
+import IconButton from '../shared/ui/IconButton'
 import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
-import Avatar from './Avatar'
+import Avatar from '../shared/ui/Avatar'
 import { useChatsStore } from '../stores/chatsStore'
 import { gradientFor } from '../core/dialogToChat'
 
@@ -83,7 +84,7 @@ export default function AddStorySheet({
     >
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 1.25 }}>
-        <IconButton onClick={onBack} aria-label="Назад" sx={{ color: tg.textSecondary }}>
+        <IconButton onClick={onBack} aria-label="Назад" color={tg.textSecondary}>
           <TgIcon name="back" />
         </IconButton>
         <Typography sx={{ fontSize: 19, fontWeight: 600, color: tg.textPrimary }}>
@@ -207,7 +208,7 @@ export default function AddStorySheet({
                     <Avatar
                       background={gradientFor(c.id)}
                       text={c.displayName.charAt(0).toUpperCase()}
-                      size={40}
+                      size="sm"
                     />
                     <Typography noWrap sx={{ flex: 1, fontSize: 16, color: tg.textPrimary }}>
                       {c.displayName}

@@ -7,7 +7,7 @@
 // the previous-last row whose group tail flips), not the whole list.
 import { memo, type ReactNode } from 'react'
 import { Box } from '@mui/material'
-import Avatar from '../Avatar'
+import Avatar from '../../shared/ui/Avatar'
 import CommentsBar from '../CommentsBar'
 import { peerColor } from '../peerColor'
 import { useLang } from '../../i18n'
@@ -94,7 +94,7 @@ function ChatFeed({
               onClick={g.senderId != null ? () => feedFns.openSender(g.senderId!, g.sender) : undefined}
               sx={{ position: 'sticky', bottom: '72px', width: 40, height: 40, cursor: g.senderId != null ? 'pointer' : 'default' }}
             >
-              <Avatar background={g.color} text={g.sender[0]} size={40} />
+              <Avatar background={g.color} text={g.sender[0]} size="sm" />
             </Box>
           </Box>
           <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>{rows}</Box>

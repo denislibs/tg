@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { Box, Typography, useTheme } from '@mui/material'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
-import Avatar from './Avatar'
+import Avatar from '../shared/ui/Avatar'
 import { useAvatarSrc } from './useAvatarSrc'
 import VerifiedBadge from './VerifiedBadge'
 import type { Chat, OpenPeer } from '../data'
@@ -207,7 +207,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                       onClick={() => onSelect(m.id)}
                       sx={{ display: 'flex', gap: 1.5, alignItems: 'center', px: 1.5, py: 0.85, mx: 0.75, borderRadius: '12px', cursor: 'pointer', '&:hover': { background: tg.hover } }}
                     >
-                      <Avatar background={m.avatar} text={m.t} emoji={m.e} size={48} />
+                      <Avatar background={m.avatar} text={m.t} emoji={m.e} size="lg" />
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Box sx={{ display: 'flex' }}>
                           <Typography noWrap sx={{ flex: 1, fontSize: 16, fontWeight: 600, color: tg.textPrimary }}>{m.name}</Typography>
@@ -257,7 +257,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                 <Section title="" tg={tg} cardBg={cardBg}>
                   {links.map((l) => (
                     <Box key={l.name} sx={{ display: 'flex', gap: 1.5, px: 1.5, py: 1, mx: 0.75 }}>
-                      <Avatar background={l.bg} text={l.t} size={44} />
+                      <Avatar background={l.bg} text={l.t} size="md" />
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Box sx={{ display: 'flex' }}>
                           <Typography noWrap sx={{ flex: 1, fontSize: 16, fontWeight: 600, color: tg.textPrimary }}>{l.name}</Typography>
@@ -308,7 +308,7 @@ function ResultRow({ bg, src, t, tc, title, subtitle, verified, tg, onClick }: {
   const avatarSrc = useAvatarSrc(src)
   return (
     <Box onClick={onClick} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1, py: 0.65, borderRadius: '12px', cursor: 'pointer', '&:hover': { background: tg.hover } }}>
-      <Avatar background={bg} src={avatarSrc} text={t} size={48} color={tc ?? '#fff'} />
+      <Avatar background={bg} src={avatarSrc} text={t} size="lg" color={tc ?? '#fff'} />
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           <Typography noWrap sx={{ fontSize: 16, fontWeight: 600, color: tg.textPrimary }}>{title}</Typography>
@@ -328,7 +328,7 @@ function MediaRow({ m, query, tg, onSelect }: {
 }) {
   return (
     <Box onClick={() => onSelect(m.id)} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1, py: 0.65, borderRadius: '12px', cursor: 'pointer', '&:hover': { background: tg.hover } }}>
-      <Avatar background={m.avatar} text={m.t} emoji={m.e} size={48} />
+      <Avatar background={m.avatar} text={m.t} emoji={m.e} size="lg" />
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Box sx={{ display: 'flex' }}>
           <Typography noWrap sx={{ flex: 1, fontSize: 16, fontWeight: 600, color: tg.textPrimary }}>{m.name}</Typography>

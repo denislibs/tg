@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Box, IconButton, TextField, Typography, useTheme } from '@mui/material'
+import { Box, TextField, Typography, useTheme } from '@mui/material'
+import IconButton from '../shared/ui/IconButton'
 import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import { useT } from '../i18n'
@@ -49,7 +50,7 @@ export default function NewChannelFlow({ onClose, onCreate }: Props) {
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 1.25 }}>
-        <IconButton onClick={onClose} sx={{ color: tg.textSecondary }}>
+        <IconButton onClick={onClose} color={tg.textSecondary}>
           <TgIcon name="back" />
         </IconButton>
         <Typography sx={{ fontSize: 19, fontWeight: 600, color: tg.textPrimary }}>

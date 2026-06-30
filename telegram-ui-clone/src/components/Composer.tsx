@@ -10,7 +10,8 @@
 // formatting inline (bold/italic/spoiler/code/quote/link), 1:1 with tweb. On send
 // the DOM is serialized to plain text + a MessageEntity[] (see core/markdown).
 import { memo, useEffect, useRef, useState } from 'react'
-import { Box, IconButton, Typography, useTheme } from '@mui/material'
+import { Box, Typography, useTheme } from '@mui/material'
+import IconButton from '../shared/ui/IconButton'
 import { withAlpha } from '../core/cssColor'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
@@ -346,7 +347,7 @@ function Composer({
                     {reply.text}
                   </Typography>
                 </Box>
-                <IconButton size="small" onClick={onCancelReply} sx={{ color: tg.textFaint }}>
+                <IconButton size="small" onClick={onCancelReply} color={tg.textFaint}>
                   <TgIcon name="close" size={20} />
                 </IconButton>
               </Box>
@@ -370,7 +371,7 @@ function Composer({
                   <Typography sx={{ fontSize: 14, fontWeight: 600, color: tg.accent }}>{t('Edit message')}</Typography>
                   <Typography noWrap sx={{ fontSize: 14, color: tg.textSecondary }}>{editing.text}</Typography>
                 </Box>
-                <IconButton size="small" onClick={() => { onCancelEdit(); clearEditor() }} sx={{ color: tg.textFaint }}>
+                <IconButton size="small" onClick={() => { onCancelEdit(); clearEditor() }} color={tg.textFaint}>
                   <TgIcon name="close" size={20} />
                 </IconButton>
               </Box>
@@ -383,7 +384,7 @@ function Composer({
           {rec.recording ? (
             <>
               {/* cancel (discard) */}
-              <IconButton onClick={() => rec.stop(false)} sx={{ width: 40, height: 40, color: '#ff5a5a', flexShrink: 0 }}>
+              <IconButton onClick={() => rec.stop(false)} color="#ff5a5a" style={{ width: 40, height: 40, flexShrink: 0 }}>
                 <TgIcon name="delete" />
               </IconButton>
               {/* tinted pill: dot/timer + live waveform (tweb voice-recording-pill) */}
@@ -428,7 +429,7 @@ function Composer({
                 </Box>
               </Box>
               {/* pause / resume toggle */}
-              <IconButton onClick={rec.togglePause} sx={{ width: 40, height: 40, color: tg.accent, flexShrink: 0 }}>
+              <IconButton onClick={rec.togglePause} color={tg.accent} style={{ width: 40, height: 40, flexShrink: 0 }}>
                 {rec.paused ? <TgIcon name="microphone_filled" /> : <TgIcon name="pause" />}
               </IconButton>
             </>
@@ -436,7 +437,8 @@ function Composer({
             <>
               <IconButton
                 onClick={(e) => onOpenAttach(e.currentTarget.getBoundingClientRect())}
-                sx={{ width: 40, height: 40, color: tg.textSecondary }}
+                color={tg.textSecondary}
+                style={{ width: 40, height: 40 }}
               >
                 <TgIcon name="attach" />
               </IconButton>
@@ -498,7 +500,8 @@ function Composer({
               )}
               <IconButton
                 onClick={() => setEmojiOpen((o) => !o)}
-                sx={{ width: 40, height: 40, color: emojiOpen ? tg.accent : tg.textSecondary }}
+                color={emojiOpen ? tg.accent : tg.textSecondary}
+                style={{ width: 40, height: 40 }}
               >
                 <TgIcon name="smile" />
               </IconButton>

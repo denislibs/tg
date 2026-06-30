@@ -1,0 +1,41 @@
+// IconButton — порт tweb `.btn-icon` (_button.scss): круглая кнопка-иконка с
+// hover-фоном. hover адаптирован на современный `@media (hover: hover)` вместо
+// tweb-класса `html.no-touch`. Цвет иконки = currentColor (каскадит в TgIcon),
+// задаётся через --ib-color.
+.root {
+  appearance: none;
+  background: none;
+  outline: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  padding: 0.5rem;
+  position: relative;
+  flex-shrink: 0;
+  line-height: 1;
+  color: var(--ib-color, var(--tg-textSecondary));
+  transition: color 0.15s ease, background-color 0.15s ease, opacity 0.15s ease;
+
+  @media (hover: hover) {
+    &:hover {
+      background-color: var(--ib-hover, var(--tg-hover));
+    }
+  }
+
+  &:active {
+    background-color: var(--ib-hover, var(--tg-hover));
+  }
+
+  &:disabled {
+    pointer-events: none;
+    opacity: 0.5;
+  }
+}
+
+// MUI `size="small"` parity — tighter padding.
+.small {
+  padding: 0.3125rem; // 5px, как MUI small
+}

@@ -2,13 +2,14 @@
 // confirm, forward target picker, "seen by" popup, add-member picker, and the
 // discard-voice confirm. Each is dumb — it self-sources theme + i18n + motion
 // constants and emits its actions via callbacks; the parent owns the state.
-import { Box, IconButton, Typography, useTheme } from '@mui/material'
+import { Box, Typography, useTheme } from '@mui/material'
+import IconButton from '../../shared/ui/IconButton'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
 import { EASE, DUR } from '../../motion'
 import { useT } from '../../i18n'
-import Avatar from '../Avatar'
+import Avatar from '../../shared/ui/Avatar'
 import { peerColor } from '../peerColor'
 import type { Dialog } from '../../core/models'
 
@@ -102,7 +103,7 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
                 onClick={() => onPick(d.chatId)}
                 sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1, cursor: 'pointer', '&:hover': { background: tg.hover } }}
               >
-                <Avatar background={peerColor(title)} text={title[0] ?? '?'} size={40} />
+                <Avatar background={peerColor(title)} text={title[0] ?? '?'} size="sm" />
                 <Typography noWrap sx={{ fontSize: 15, color: tg.textPrimary }}>{title}</Typography>
               </Box>
             )
@@ -181,7 +182,7 @@ export function AddMemberDialog({ contacts, onAdd, onClose }: {
           <Typography sx={{ flex: 1, fontSize: 17, fontWeight: 600, color: tg.textPrimary }}>
             {t('Add member')}
           </Typography>
-          <IconButton size="small" onClick={onClose} sx={{ color: tg.textFaint }}>
+          <IconButton size="small" onClick={onClose} color={tg.textFaint}>
             <TgIcon name="close" size={20} />
           </IconButton>
         </Box>
@@ -209,7 +210,7 @@ export function AddMemberDialog({ contacts, onAdd, onClose }: {
                   '&:focus-visible': { outline: `2px solid ${tg.accent}`, outlineOffset: -2 },
                 }}
               >
-                <Avatar background={p.avatarUrl || tg.accent} text={p.displayName[0] ?? '?'} size={40} />
+                <Avatar background={p.avatarUrl || tg.accent} text={p.displayName[0] ?? '?'} size="sm" />
                 <Typography noWrap sx={{ flex: 1, fontSize: 15.5, color: tg.textPrimary }}>
                   {p.displayName}
                 </Typography>

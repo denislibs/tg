@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import { Box, IconButton, InputBase, Typography, useTheme } from '@mui/material'
+import { Box, InputBase, Typography, useTheme } from '@mui/material'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
+import IconButton from '../../shared/ui/IconButton'
 import { EASE, DUR } from '../../motion'
 import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import QrCode from './QrCode'
+
+const MotionIconButton = motion(IconButton)
 
 type Step = 'phone' | 'qr' | 'code'
 
@@ -539,16 +542,16 @@ export default function AuthFlow({ onComplete }: { onComplete: () => void }) {
       {/* back arrow (not on first step) */}
       <AnimatePresence>
         {step !== 'phone' && (
-          <IconButton
-            component={motion.button}
+          <MotionIconButton
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => go('phone', -1)}
-            sx={{ position: 'fixed', top: 20, left: 20, color: tg.textSecondary }}
+            color={tg.textSecondary}
+            style={{ position: 'fixed', top: 20, left: 20 }}
           >
             <TgIcon name="back" />
-          </IconButton>
+          </MotionIconButton>
         )}
       </AnimatePresence>
 

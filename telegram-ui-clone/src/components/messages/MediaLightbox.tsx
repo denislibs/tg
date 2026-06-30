@@ -8,11 +8,12 @@
 //
 // On top of the FLIP: zoom (wheel / +- / double-click), rotate (R), drag-to-pan
 // when zoomed, a toolbar, and ←/→ paging across every photo/video in the chat.
-import { useEffect, useMemo, useState } from 'react'
-import { Box, IconButton, Typography } from '@mui/material'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { Box, Typography } from '@mui/material'
+import IconButton from '../../shared/ui/IconButton'
 import { motion, AnimatePresence } from 'framer-motion'
 import TgIcon from '../TgIcon'
-import Avatar from '../Avatar'
+import Avatar from '../../shared/ui/Avatar'
 import { peerColor } from '../peerColor'
 import { useManagers } from '../../core/hooks/useManagers'
 import type { MediaMeta } from '../../core/managers/mediaManager'
@@ -165,18 +166,18 @@ export default function MediaLightbox({ items, index, originRect, originSrc, onC
           </Typography>
         </Box>
         <Box sx={{ ml: 'auto', display: 'flex', gap: 0.5 }}>
-          <IconButton title="Повернуть (R)" onClick={() => setRot((r) => r - 90)} sx={{ color: '#fff' }}><TgIcon name="rotate_left" /></IconButton>
-          <IconButton title="Увеличить (+)" onClick={() => stepZoom(0.5)} sx={{ color: '#fff' }}><TgIcon name="zoomin" /></IconButton>
-          <IconButton title="Скачать" onClick={download} sx={{ color: '#fff' }}><TgIcon name="download" /></IconButton>
-          <IconButton title="Закрыть (Esc)" onClick={close} sx={{ color: '#fff' }}><TgIcon name="close" /></IconButton>
+          <IconButton title="Повернуть (R)" onClick={() => setRot((r) => r - 90)} color="#fff"><TgIcon name="rotate_left" /></IconButton>
+          <IconButton title="Увеличить (+)" onClick={() => stepZoom(0.5)} color="#fff"><TgIcon name="zoomin" /></IconButton>
+          <IconButton title="Скачать" onClick={download} color="#fff"><TgIcon name="download" /></IconButton>
+          <IconButton title="Закрыть (Esc)" onClick={close} color="#fff"><TgIcon name="close" /></IconButton>
         </Box>
       </Box>
 
       {/* prev / next */}
       {multi && (
         <>
-          <IconButton onClick={(e) => { e.stopPropagation(); nav(-1) }} title="Назад (←)" sx={{ position: 'fixed', left: 16, top: '50%', transform: 'translateY(-50%)', color: '#fff', width: 54, height: 54, background: 'rgba(255,255,255,0.08)', zIndex: 2, '&:hover': { background: 'rgba(255,255,255,0.16)' } }}><TgIcon name="previous" size={30} /></IconButton>
-          <IconButton onClick={(e) => { e.stopPropagation(); nav(1) }} title="Вперёд (→)" sx={{ position: 'fixed', right: 16, top: '50%', transform: 'translateY(-50%)', color: '#fff', width: 54, height: 54, background: 'rgba(255,255,255,0.08)', zIndex: 2, '&:hover': { background: 'rgba(255,255,255,0.16)' } }}><TgIcon name="next" size={30} /></IconButton>
+          <IconButton onClick={(e) => { e.stopPropagation(); nav(-1) }} title="Назад (←)" color="#fff" style={{ position: 'fixed', left: 16, top: '50%', transform: 'translateY(-50%)', width: 54, height: 54, background: 'rgba(255,255,255,0.08)', zIndex: 2, '--ib-hover': 'rgba(255,255,255,0.16)' } as CSSProperties}><TgIcon name="previous" size={30} /></IconButton>
+          <IconButton onClick={(e) => { e.stopPropagation(); nav(1) }} title="Вперёд (→)" color="#fff" style={{ position: 'fixed', right: 16, top: '50%', transform: 'translateY(-50%)', width: 54, height: 54, background: 'rgba(255,255,255,0.08)', zIndex: 2, '--ib-hover': 'rgba(255,255,255,0.16)' } as CSSProperties}><TgIcon name="next" size={30} /></IconButton>
         </>
       )}
 

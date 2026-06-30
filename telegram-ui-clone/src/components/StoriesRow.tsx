@@ -1,7 +1,7 @@
 import { Box, Typography, useTheme } from '@mui/material'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
-import Avatar from './Avatar'
+import Avatar from '../shared/ui/Avatar'
 import { useStoriesStore } from '../stores/storiesStore'
 import { useChatsStore } from '../stores/chatsStore'
 import { gradientFor } from '../core/dialogToChat'
@@ -175,7 +175,7 @@ export default function StoriesRow({
                   justifyContent: 'center',
                 }}
               >
-                <Avatar background={item.bg} text={item.text} emoji={isAdd ? '➕' : undefined} size={54} />
+                <Avatar background={item.bg} text={item.text} emoji={isAdd ? '➕' : undefined} size="dialog" />
               </Box>
               {/* "+" add badge on the self avatar (always available to post a story) */}
               {item.isMe && !isAdd && onAddStory && (

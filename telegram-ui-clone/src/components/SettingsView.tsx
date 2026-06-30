@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { Box, IconButton, Typography, useTheme } from '@mui/material'
+import { Box, Typography, useTheme } from '@mui/material'
+import IconButton from '../shared/ui/IconButton'
 import { AnimatePresence, motion } from 'framer-motion'
 import { slideInRight } from '../motion'
 import TgSwitch from './TgSwitch'
@@ -8,7 +9,7 @@ import SettingsSubScreen, { hasSubScreen } from './SettingsSubScreen'
 import EditProfile from './settings/EditProfile'
 import PremiumModal from './PremiumModal'
 import TgIcon from './TgIcon'
-import Avatar from './Avatar'
+import Avatar from '../shared/ui/Avatar'
 import { useT, useLang, LANGS } from '../i18n'
 import { useChatsStore } from '../stores/chatsStore'
 import { gradientFor } from '../core/dialogToChat'
@@ -76,19 +77,19 @@ export default function SettingsView({
     >
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 1.25 }}>
-        <IconButton onClick={onBack} sx={{ color: tg.textSecondary }}>
+        <IconButton onClick={onBack} color={tg.textSecondary}>
           <TgIcon name="back" />
         </IconButton>
         <Typography sx={{ flex: 1, fontSize: 19, fontWeight: 600, color: tg.textPrimary }}>
           {t('Settings')}
         </Typography>
-        <IconButton sx={{ color: tg.textSecondary }}>
+        <IconButton color={tg.textSecondary}>
           <TgIcon name="qr" />
         </IconButton>
-        <IconButton onClick={() => setEditProfile(true)} sx={{ color: tg.textSecondary }}>
+        <IconButton onClick={() => setEditProfile(true)} color={tg.textSecondary}>
           <TgIcon name="edit" />
         </IconButton>
-        <IconButton sx={{ color: tg.textSecondary }}>
+        <IconButton color={tg.textSecondary}>
           <TgIcon name="more" />
         </IconButton>
       </Box>

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Box, IconButton, InputBase, Typography, useTheme } from '@mui/material'
+import { Box, InputBase, Typography, useTheme } from '@mui/material'
+import IconButton from '../shared/ui/IconButton'
 import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
-import Avatar from './Avatar'
+import Avatar from '../shared/ui/Avatar'
 import type { Chat } from '../data'
 import { useT } from '../i18n'
 
@@ -50,7 +51,7 @@ export default function NewPrivateChat({ chats, onClose, onSelect }: Props) {
     >
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 1.25 }}>
-        <IconButton onClick={onClose} sx={{ color: tg.textSecondary }}>
+        <IconButton onClick={onClose} color={tg.textSecondary}>
           <TgIcon name="back" />
         </IconButton>
         <Typography sx={{ fontSize: 19, fontWeight: 600, color: tg.textPrimary }}>
@@ -126,7 +127,7 @@ export default function NewPrivateChat({ chats, onClose, onSelect }: Props) {
                 '&:hover': { background: tg.hover },
               }}
             >
-              <Avatar background={c.avatar} text={c.avatarText} emoji={c.avatarEmoji} size={48} />
+              <Avatar background={c.avatar} text={c.avatarText} emoji={c.avatarEmoji} size="lg" />
               <Box sx={{ minWidth: 0 }}>
                 <Typography noWrap sx={{ fontSize: 16, fontWeight: 500, color: tg.textPrimary }}>
                   {c.name}

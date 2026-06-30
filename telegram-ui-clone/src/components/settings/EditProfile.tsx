@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { Box, CircularProgress, IconButton, TextField, Typography, useTheme } from '@mui/material'
+import { Box, CircularProgress, TextField, Typography, useTheme } from '@mui/material'
+import IconButton from '../../shared/ui/IconButton'
 import TgIcon from '../TgIcon'
-import Avatar from '../Avatar'
+import Avatar from '../../shared/ui/Avatar'
 import { useAvatarSrc } from '../useAvatarSrc'
 import BirthdayModal from './BirthdayModal'
 import AvatarCropper from './AvatarCropper'
@@ -143,7 +144,7 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
       title="Edit Profile"
       onBack={onBack}
       headerRight={
-        <IconButton onClick={onDone} disabled={saving} sx={{ color: tg.accent }}>
+        <IconButton onClick={onDone} disabled={saving} color={tg.accent}>
           {saving ? <CircularProgress size={22} sx={{ color: tg.accent }} /> : <TgIcon name="check" />}
         </IconButton>
       }
@@ -151,7 +152,7 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
       {/* avatar with camera overlay */}
       <Box sx={{ display: 'flex', justifyContent: 'center', py: 2.5 }}>
         <Box sx={{ position: 'relative', cursor: 'pointer' }} onClick={() => fileInputRef.current?.click()}>
-          <Avatar background={avatarBg} src={avatarSrc} text={avatarText} size={120} />
+          <Avatar background={avatarBg} src={avatarSrc} text={avatarText} size="profile" />
           <Box
             sx={{
               position: 'absolute',

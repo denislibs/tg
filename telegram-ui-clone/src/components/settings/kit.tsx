@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
-import { Box, IconButton, Typography, useTheme } from '@mui/material'
+import { Box, Typography, useTheme } from '@mui/material'
+import IconButton from '../../shared/ui/IconButton'
 import { motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
 import { slideInRight } from '../../motion'
@@ -67,7 +68,7 @@ export function SettingsScreen({
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 1.25 }}>
-        <IconButton onClick={onBack} sx={{ color: tg.textSecondary }}>
+        <IconButton onClick={onBack} color={tg.textSecondary}>
           <TgIcon name="back" />
         </IconButton>
         <Typography sx={{ flex: 1, fontSize: 19, fontWeight: 600, color: tg.textPrimary }}>

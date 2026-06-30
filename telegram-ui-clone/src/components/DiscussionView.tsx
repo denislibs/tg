@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { Box, Typography, IconButton, InputBase, useTheme } from '@mui/material'
+import { Box, Typography, InputBase, useTheme } from '@mui/material'
+import IconButton from '../shared/ui/IconButton'
 import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import { slideInRight } from '../motion'
 import { useT } from '../i18n'
-import Avatar from './Avatar'
+import Avatar from '../shared/ui/Avatar'
 import { useDiscussion } from '../core/hooks/useDiscussion'
 
 export default function DiscussionView({
@@ -59,7 +60,7 @@ export default function DiscussionView({
           flexShrink: 0,
         }}
       >
-        <IconButton onClick={onBack} sx={{ color: tg.textPrimary }}>
+        <IconButton onClick={onBack} color={tg.textPrimary}>
           <TgIcon name="back" />
         </IconButton>
         <Typography sx={{ flex: 1, fontSize: 19, fontWeight: 600, color: tg.textPrimary }}>
@@ -119,7 +120,7 @@ export default function DiscussionView({
             </Box>
           ) : (
             <Box key={c.key} sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
-              <Avatar background={c.color} size={32} text={c.name.charAt(0)} />
+              <Avatar background={c.color} size="xs" text={c.name.charAt(0)} />
               <Box
                 sx={{
                   background: tg.bubble,

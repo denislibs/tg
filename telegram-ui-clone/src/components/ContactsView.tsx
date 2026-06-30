@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
-import { Box, IconButton, InputBase, Typography, useTheme } from '@mui/material'
+import { Box, InputBase, Typography, useTheme } from '@mui/material'
+import IconButton from '../shared/ui/IconButton'
 import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import { slideInRight } from '../motion'
-import Avatar from './Avatar'
+import Avatar from '../shared/ui/Avatar'
 import { useT } from '../i18n'
 import type { Chat } from '../data'
 
@@ -57,13 +58,13 @@ export default function ContactsView({
     >
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 1.25 }}>
-        <IconButton onClick={onBack} sx={{ color: tg.textSecondary }}>
+        <IconButton onClick={onBack} color={tg.textSecondary}>
           <TgIcon name="back" />
         </IconButton>
         <Typography sx={{ flex: 1, fontSize: 19, fontWeight: 600, color: tg.textPrimary }}>
           {t('Contacts')}
         </Typography>
-        <IconButton sx={{ color: tg.textSecondary }}>
+        <IconButton color={tg.textSecondary}>
           <TgIcon name="adduser" />
         </IconButton>
       </Box>

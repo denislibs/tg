@@ -1,9 +1,10 @@
 import { createPortal } from 'react-dom'
-import { Box, Typography, IconButton } from '@mui/material'
+import { Box, Typography } from '@mui/material'
+import IconButton from '../shared/ui/IconButton'
 import { motion, AnimatePresence } from 'framer-motion'
 import TgIcon from './TgIcon'
 import { EASE, DUR } from '../motion'
-import Avatar from './Avatar'
+import Avatar from '../shared/ui/Avatar'
 import { gradientFor } from '../core/dialogToChat'
 import { useStoryViewer } from '../core/hooks/useStoryViewer'
 
@@ -149,12 +150,12 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
               zIndex: 2,
             }}
           >
-            <Avatar background={bg} text={group.author.displayName.charAt(0)} size={32} />
+            <Avatar background={bg} text={group.author.displayName.charAt(0)} size="xs" />
             <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>
               {group.author.displayName}
             </Typography>
             <Box sx={{ flex: 1 }} />
-            <IconButton onClick={onClose} sx={{ color: '#fff' }} size="small">
+            <IconButton onClick={onClose} color="#fff" size="small">
               <TgIcon name="close" />
             </IconButton>
           </Box>
@@ -258,7 +259,7 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
                   <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: 15, flex: 1 }}>
                     Просмотры{viewers ? ` (${viewers.length})` : ''}
                   </Typography>
-                  <IconButton onClick={() => setShowViewers(false)} sx={{ color: '#fff' }} size="small">
+                  <IconButton onClick={() => setShowViewers(false)} color="#fff" size="small">
                     <TgIcon name="close" />
                   </IconButton>
                 </Box>

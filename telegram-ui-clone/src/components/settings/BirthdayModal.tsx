@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Box, Button, IconButton, TextField, Typography, useTheme } from '@mui/material'
+import { Box, Button, TextField, Typography, useTheme } from '@mui/material'
+import IconButton from '../../shared/ui/IconButton'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
 import type { Birthday } from '../../core/managers/authManager'
@@ -80,7 +81,7 @@ export default function BirthdayModal({
               position: 'relative',
             }}
           >
-            <IconButton onClick={onClose} sx={{ position: 'absolute', top: 8, left: 8, color: tg.textSecondary }}>
+            <IconButton onClick={onClose} color={tg.textSecondary} style={{ position: 'absolute', top: 8, left: 8 }}>
               <TgIcon name="close" />
             </IconButton>
 

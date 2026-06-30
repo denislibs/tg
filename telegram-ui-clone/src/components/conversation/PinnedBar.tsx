@@ -2,7 +2,8 @@
 // The pinned-message bar under the header (most recent pin; click jumps to it).
 // Memoized — only its own inputs (pins, searchOpen, playerOffset) re-render it.
 import { memo } from 'react'
-import { Box, IconButton, Typography, useTheme } from '@mui/material'
+import { Box, Typography, useTheme } from '@mui/material'
+import IconButton from '../../shared/ui/IconButton'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
 import { useT } from '../../i18n'
@@ -62,7 +63,7 @@ function PinnedBar({ pins, searchOpen, playerOffset, onJump, onUnpin }: PinnedBa
           <IconButton
             size="small"
             onClick={(e) => { e.stopPropagation(); if (pins[0]?.id != null) onUnpin(pins[0].id) }}
-            sx={{ color: tg.textFaint }}
+            color={tg.textFaint}
           >
             <TgIcon name="close" size={20} />
           </IconButton>

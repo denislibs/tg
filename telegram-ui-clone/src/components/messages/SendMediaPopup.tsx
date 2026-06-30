@@ -3,7 +3,8 @@
 // picked files, add a caption, toggle "as media" vs "as file", then send. The
 // parent owns the actual upload/send (onSend).
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Box, IconButton, InputBase, Typography, useTheme } from '@mui/material'
+import { Box, InputBase, Typography, useTheme } from '@mui/material'
+import IconButton from '../../shared/ui/IconButton'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
@@ -75,11 +76,11 @@ export default function SendMediaPopup({
       >
         {/* header */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 1 }}>
-          <IconButton size="small" onClick={onClose} sx={{ color: tg.textPrimary }}><TgIcon name="close" /></IconButton>
+          <IconButton size="small" onClick={onClose} color={tg.textPrimary}><TgIcon name="close" /></IconButton>
           <Typography sx={{ flex: 1, fontSize: 18, fontWeight: 600, color: tg.textPrimary }}>{title}</Typography>
           {anyMedia && (
             <Box sx={{ position: 'relative' }}>
-              <IconButton size="small" onClick={() => setMenuOpen((v) => !v)} sx={{ color: tg.textPrimary }}><TgIcon name="more" /></IconButton>
+              <IconButton size="small" onClick={() => setMenuOpen((v) => !v)} color={tg.textPrimary}><TgIcon name="more" /></IconButton>
               {menuOpen && (
                 <Box sx={{ position: 'absolute', right: 0, top: '100%', mt: 0.5, minWidth: 220, py: 0.75, borderRadius: '12px', background: tg.menuBg, boxShadow: tg.menuShadow, zIndex: 1 }}>
                   <MenuItem icon={<TgIcon name="image" size={20} />} label={t('Send as media')} active={!asFile} onClick={() => { setAsFile(false); setMenuOpen(false) }} tg={tg} />
