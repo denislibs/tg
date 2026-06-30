@@ -68,22 +68,4 @@
   background-position: center;
 }
 
-// --- context menu rows (surface/animation provided by shared/ui/Menu) ---
-.menuItem {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 4.8px 12px; // py 0.6 / px 1.5
-  margin: 0 4px;
-  min-width: 200px;
-  border-radius: 8px;
-  cursor: pointer;
-
-  &:hover {
-    background: var(--tg-hover);
-  }
-}
-
-.menuItemIcon {
-  display: flex;
-}
+// context-menu surface/rows provided by shared/ui/Menu + MenuItem.

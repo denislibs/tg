@@ -1,6 +1,9 @@
-// Menu — общая «плашка» меню (контекст-меню/дропдаун). Анимация открытия/закрытия
-// едина для всех мест: scale .8 + fade за .2s (tweb .btn-menu). Позиция и
-// transform-origin задаются через style (угол плашки якорится в точке клика).
+// Menu — общая «плашка» меню (контекст-меню/дропдаун). Значения 1:1 из tweb
+// .btn-menu: padding .25rem, radius $border-radius-medium, min-width 11.25rem,
+// backdrop blur 50px. overflow:hidden — чтобы ховер пунктов на всю ширину клипался
+// по скруглённым углам. Анимация открытия/закрытия едина для всех мест (Menu.tsx).
+@use '../../../styles/foundation' as *;
+
 .backdrop {
   position: fixed;
   inset: 0;
@@ -10,10 +13,13 @@
 .panel {
   position: fixed;
   z-index: 2001;
-  padding: 6px 0;
-  border-radius: 12px;
+  min-width: 11.25rem;
+  padding: 0.25rem 0;
+  border-radius: $border-radius-medium;
   background: var(--tg-menuBg);
-  backdrop-filter: blur(40px);
-  -webkit-backdrop-filter: blur(40px);
+  backdrop-filter: blur(50px);
+  -webkit-backdrop-filter: blur(50px);
   box-shadow: var(--tg-menuShadow);
+  overflow: hidden;
+  font-size: 1rem;
 }

@@ -3,7 +3,7 @@ import { useTheme } from '@mui/material'
 import Text from '../shared/ui/Text'
 import Avatar from '../shared/ui/Avatar'
 import Badge from '../shared/ui/Badge'
-import Menu from '../shared/ui/Menu'
+import Menu, { MenuItem } from '../shared/ui/Menu'
 import { useRipple } from '../shared/ui/Ripple/useRipple'
 import TgIcon from './TgIcon'
 import { useManagers } from '../core/hooks/useManagers'
@@ -68,16 +68,16 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
   const destructive =
     chat.type === 'channel' ? 'Leave Channel' : chat.type === 'group' ? 'Delete Group' : 'Delete Chat'
   const menuItems: { icon: ReactNode; label: string; danger?: boolean }[] = [
-    { icon: <TgIcon name="newtab" size={20} />, label: 'Open in new tab' },
-    { icon: <TgIcon name="eye" size={20} />, label: 'Preview' },
-    { icon: <TgIcon name="messageunread" size={20} />, label: 'Mark as unread' },
-    { icon: <TgIcon name="pin" size={20} />, label: 'Pin' },
+    { icon: <TgIcon name="newtab" size={24} />, label: 'Open in new tab' },
+    { icon: <TgIcon name="eye" size={24} />, label: 'Preview' },
+    { icon: <TgIcon name="messageunread" size={24} />, label: 'Mark as unread' },
+    { icon: <TgIcon name="pin" size={24} />, label: 'Pin' },
     {
-      icon: <TgIcon name={chat.muted ? 'unmute' : 'mute'} size={20} />,
+      icon: <TgIcon name={chat.muted ? 'unmute' : 'mute'} size={24} />,
       label: chat.muted ? 'Unmute' : 'Mute',
     },
-    { icon: <TgIcon name="archive" size={20} />, label: 'Archive' },
-    { icon: <TgIcon name="delete" size={20} />, label: destructive, danger: true },
+    { icon: <TgIcon name="archive" size={24} />, label: 'Archive' },
+    { icon: <TgIcon name="delete" size={24} />, label: destructive, danger: true },
   ]
 
   return (
@@ -162,14 +162,13 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
 
       <Menu open={!!menuPos} onClose={() => setMenuPos(null)} style={menuPos ?? undefined}>
         {menuItems.map((it) => (
-          <div key={it.label} className={s.menuItem} onClick={() => setMenuPos(null)}>
-            <span className={s.menuItemIcon} style={{ color: it.danger ? '#ff595a' : tg.textSecondary }}>
-              {it.icon}
-            </span>
-            <Text size={14.5} color={it.danger ? '#ff595a' : tg.textPrimary}>
-              {t(it.label)}
-            </Text>
-          </div>
+          <MenuItem
+            key={it.label}
+            icon={it.icon}
+            label={t(it.label)}
+            danger={it.danger}
+            onClick={() => setMenuPos(null)}
+          />
         ))}
       </Menu>
     </>
