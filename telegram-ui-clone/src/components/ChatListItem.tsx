@@ -5,6 +5,7 @@ import { useManagers } from '../core/hooks/useManagers'
 import TgIcon from './TgIcon'
 import { motion } from 'framer-motion'
 import Avatar from '../shared/ui/Avatar'
+import Badge from '../shared/ui/Badge'
 import { useAvatarSrc } from './useAvatarSrc'
 import { useChatsStore } from '../stores/chatsStore'
 import { useTypingLabel } from '../core/hooks/useTypingLabel'
@@ -245,26 +246,7 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
               </Typography>
             </>
           )}
-          {chat.unread != null && (
-            <Box
-              sx={{
-                minWidth: 22,
-                height: 22,
-                px: 0.75,
-                borderRadius: 11,
-                background: chat.muted ? tg.textFaint : tg.badge,
-                color: '#fff',
-                fontSize: 13,
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              {chat.unread}
-            </Box>
-          )}
+          {chat.unread != null && <Badge muted={chat.muted}>{chat.unread}</Badge>}
         </Box>
       </Box>
     </MotionBox>

@@ -1,0 +1,26 @@
+// Badge — порт tweb src/scss/partials/_badge.scss (.badge). Счётчик непрочитанных:
+// пилюля высотой --size с min-width = --size (круг для одной цифры), bold, белый текст.
+// Значения 1:1 из tweb (size 1.375rem, padding .4375rem, font .875rem, radius size/2).
+.root {
+  --size: 1.375rem;
+  --padding: 0.4375rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--size);
+  min-width: var(--size);
+  padding: 0 var(--padding);
+  border-radius: calc(var(--size) / 2);
+  font-weight: 600;
+  font-size: 0.875rem;
+  line-height: 1;
+  text-align: center;
+  color: #fff;
+  background-color: var(--tg-badge);
+  flex-shrink: 0;
+}
+
+// Muted dialogs: gray badge instead of the accent.
+.muted {
+  background-color: var(--tg-textFaint);
+}
