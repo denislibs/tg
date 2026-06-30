@@ -1,0 +1,38 @@
+// Ripple — порт tweb src/scss/partials/_ripple.scss (.c-ripple / __circle + keyframe).
+// Контейнер кладётся в position:relative-хост; overflow:hidden + border-radius:inherit
+// клипуют круг по форме хоста (круглую кнопку и т.п.). Значения duration/scale — как в
+// tweb base.scss (desktop): duration .7s, scale 0→2; цвет — тема-токен --ripple-color.
+.root {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.circle {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+  transform: scale(var(--ripple-start-scale, 0));
+  opacity: var(--ripple-max-opacity, 1);
+  background-color: var(--ripple-color);
+  pointer-events: none;
+  animation-name: ripple-effect;
+  animation-fill-mode: forwards;
+  animation-duration: var(--ripple-duration, 0.7s);
+  transition: calc(var(--ripple-duration, 0.7s) / 2) opacity, calc(var(--ripple-duration, 0.7s) / 2) background-color;
+}
+
+.hiding {
+  opacity: 0;
+}
+
+@keyframes ripple-effect {
+  from {
+    transform: scale(var(--ripple-start-scale, 0));
+  }
+  to {
+    transform: scale(var(--ripple-end-scale, 2));
+  }
+}
