@@ -14,12 +14,10 @@
   position: fixed;
   z-index: 2001;
   min-width: 11.25rem;
-  padding: 0.25rem 0;
-  border-radius: $border-radius; // 12px
+  padding: 0.25rem 0; // tweb --btn-menu-padding (items are inset via their own margin)
+  border-radius: $border-radius-medium; // 16px (tweb .btn-menu)
   background: var(--tg-menuBg);
   backdrop-filter: blur(50px);
   -webkit-backdrop-filter: blur(50px);
   box-shadow: var(--tg-menuShadow);
-  overflow: hidden;
-  font-size: 1rem;
 }
