@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Box, useTheme } from '@mui/material'
 import Text from '../../shared/ui/Text'
-import { withAlpha } from '../../core/cssColor'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
 import { useManagers } from '../../core/hooks/useManagers'
@@ -10,6 +8,7 @@ import { useVoicePlayed } from '../../stores/voicePlayedStore'
 import { useWaveform, WAVE_BARS } from '../../core/audio/waveform'
 import { Ticks } from './MessageBubbles'
 import type { MsgStatus } from '../../data'
+import s from './VoiceMessage.module.scss'
 
 // A flat placeholder shown until the real waveform is decoded.
 const PLACEHOLDER = Array.from({ length: WAVE_BARS }, () => 0.25)
@@ -39,7 +38,6 @@ export default function VoiceMessage({
   onPlay: () => void
 }) {
   const managers = useManagers()
-  const tg = useTheme().tg
   const decoded = useWaveform(mediaId)
   const bars = decoded.length ? decoded : PLACEHOLDER
   const [metaDur, setMetaDur] = useState(0)
@@ -84,80 +82,54 @@ export default function VoiceMessage({
     }
   }
 
-  // On the light-tinted out bubble, the play/waveform use the saturated accent
-  // (bubbleOutText); incoming uses the accent on the grey bubble.
-  const accentOnBubble = out ? tg.bubbleOutAccent : tg.accent
-  const onBg = accentOnBubble
-  const offBg = out ? withAlpha(tg.bubbleOutAccent, 0.3) : tg.textFaint
   const showUnplayedDot = !out && msgId != null && !played
 
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, px: 1.25, py: 1, minWidth: 200 }}>
-      <Box
-        onClick={handlePlay}
-        sx={{
-          position: 'relative',
-          width: 44,
-          height: 44,
-          flexShrink: 0,
-          borderRadius: '50%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          // saturated accent circle with a white glyph on both light-tint
-          // (out) and grey (in) bubbles (tweb).
-          background: accentOnBubble,
-          color: '#fff',
-          cursor: 'pointer',
-        }}
-      >
+    <div className={s.voice} data-out={out || undefined}>
+      <div className={s.playBtn} onClick={handlePlay}>
         {/* play ↔ pause morph (tweb cross-fades + rotates the glyph) */}
         <AnimatePresence initial={false} mode="popLayout">
-          <Box
+          <motion.span
             key={playing ? 'pause' : 'play'}
-            component={motion.span}
+            className={s.glyph}
             initial={{ opacity: 0, scale: 0.4, rotate: -45 }}
             animate={{ opacity: 1, scale: 1, rotate: 0 }}
             exit={{ opacity: 0, scale: 0.4, rotate: 45 }}
             transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
-            sx={{ position: 'absolute', display: 'flex' }}
           >
             {playing ? <TgIcon name="pause" /> : <TgIcon name="play" />}
-          </Box>
+          </motion.span>
         </AnimatePresence>
-      </Box>
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Box
+      </div>
+      <div className={s.body}>
+        <div
+          className={s.wave}
           onClick={handleSeek}
-          sx={{ display: 'flex', alignItems: 'center', gap: '2px', height: 24, cursor: isCurrent ? 'pointer' : 'default' }}
+          style={{ cursor: isCurrent ? 'pointer' : 'default' }}
         >
           {bars.map((h, i) => (
-            <Box
+            <div
               key={i}
-              sx={{
-                width: '3px',
-                flexShrink: 0,
-                borderRadius: '2px',
+              className={s.waveBar}
+              style={{
                 height: `${Math.round(5 + h * 18)}px`,
-                background: i / bars.length <= progress ? onBg : offBg,
+                background: i / bars.length <= progress ? 'var(--v-accent)' : 'var(--v-off)',
               }}
             />
           ))}
-        </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.25 }}>
-          <Text size={12.5} color={out ? tg.bubbleOutText : tg.textSecondary}>
+        </div>
+        <div className={s.meta}>
+          <Text size={12.5} color="var(--v-dur)">
             {isCurrent ? `${fmt(curTime)} / ${fmt(duration)}` : fmt(duration)}
           </Text>
-          {showUnplayedDot && (
-            <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: tg.accent, flexShrink: 0 }} />
-          )}
-          <Box sx={{ flex: 1 }} />
-          <Text size={12} color={out ? withAlpha(tg.bubbleOutText, 0.7) : tg.textFaint}>
+          {showUnplayedDot && <div className={s.dot} />}
+          <div className={s.spacer} />
+          <Text size={12} color="var(--v-time)">
             {time}
           </Text>
           {out && <Ticks status={status} color={tickColor} />}
-        </Box>
-      </Box>
-    </Box>
+        </div>
+      </div>
+    </div>
   )
 }
