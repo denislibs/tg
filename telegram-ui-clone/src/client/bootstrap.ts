@@ -95,6 +95,7 @@ export interface Managers {
     postComment(channelId: number, postId: number, text: string, clientMsgId: string): Promise<Message>
     listComments(channelId: number, postId: number, offset?: number, limit?: number): Promise<{ messages: Message[]; count: number }>
     commentCounts(channelId: number, postIds: number[]): Promise<Record<number, number>>
+    viewCounts(channelId: number, postIds: number[]): Promise<Record<number, number>>
   }
   peers: { getUsers(ids: number[]): Promise<Peer[]> }
   presence: { get(ids: number[]): Promise<PresenceEvt[]> }

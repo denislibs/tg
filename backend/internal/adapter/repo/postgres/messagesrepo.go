@@ -24,7 +24,7 @@ func NewMessagesRepo(pool *pgxpool.Pool) *MessagesRepo { return &MessagesRepo{po
 
 // The full ordered column list every message SELECT/RETURNING uses, so the scan
 // order in scanMessage stays in sync across all queries.
-const messageCols = `id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id, edited_at, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, entities`
+const messageCols = `id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id, edited_at, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, entities, views`
 
 // messageColsPrefixed returns messageCols with each column qualified by a table
 // alias (for JOINs where bare column names like chat_id would be ambiguous).
@@ -180,6 +180,52 @@ func (r *MessagesRepo) GetByIDs(ctx context.Context, ids []int64) ([]domain.Mess
 			return nil, e
 		}
 		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// RegisterChannelViews records that userID has seen every channel post in chatID
+// up to upToSeq, incrementing messages.views once per (post, user) pair. The
+// message_views PK dedups re-reads (ON CONFLICT DO NOTHING), and the JOIN to
+// chats gates this to channels — for non-channel chats it matches no rows and is
+// a no-op, so callers can invoke it unconditionally on read.
+func (r *MessagesRepo) RegisterChannelViews(ctx context.Context, chatID, userID, upToSeq int64) error {
+	q := querier(ctx, r.pool)
+	_, err := q.Exec(ctx, `
+		WITH ins AS (
+			INSERT INTO message_views (message_id, user_id)
+			SELECT m.id, $2
+			FROM messages m
+			JOIN chats c ON c.id = m.chat_id AND c.type = 'channel'
+			WHERE m.chat_id = $1 AND m.seq <= $3 AND m.deleted_at IS NULL
+			ON CONFLICT DO NOTHING
+			RETURNING message_id
+		)
+		UPDATE messages m SET views = views + 1
+		FROM ins WHERE m.id = ins.message_id`,
+		chatID, userID, upToSeq)
+	return err
+}
+
+// ViewCounts returns the current view count for each of the given message ids
+// (missing ids are absent). Empty input → empty map.
+func (r *MessagesRepo) ViewCounts(ctx context.Context, ids []int64) (map[int64]int64, error) {
+	out := map[int64]int64{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	q := querier(ctx, r.pool)
+	rows, err := q.Query(ctx, `SELECT id, views FROM messages WHERE id = ANY($1)`, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, views int64
+		if e := rows.Scan(&id, &views); e != nil {
+			return nil, e
+		}
+		out[id] = views
 	}
 	return out, rows.Err()
 }
@@ -347,7 +393,7 @@ func scanMessage(s scanner) (domain.Message, error) {
 	var entitiesRaw []byte
 	err := s.Scan(&m.ID, &m.ChatID, &m.Seq, &m.SenderID, &m.Type, &m.Text,
 		&m.ReplyToID, &m.ClientMsgID, &m.MediaID, &m.CreatedAt, &deletedAt, &m.ThreadRootID,
-		&m.EditedAt, &m.FwdFromUserID, &m.FwdFromChatID, &m.FwdFromMsgID, &m.FwdDate, &entitiesRaw)
+		&m.EditedAt, &m.FwdFromUserID, &m.FwdFromChatID, &m.FwdFromMsgID, &m.FwdDate, &entitiesRaw, &m.Views)
 	m.Deleted = deletedAt != nil
 	if err == nil && len(entitiesRaw) > 0 && string(entitiesRaw) != "null" {
 		_ = json.Unmarshal(entitiesRaw, &m.Entities)

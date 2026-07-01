@@ -142,6 +142,15 @@ function ChatFeed({
     // bottom up, capped). Live appends mount with ladderActive=false → plain insert.
     const ladderDelay = ladderActive ? Math.min(msgs.length - 1 - i, 12) * 0.03 : 0
 
+    // Channel post with discussions on: the "N комментариев" replies-footer is
+    // attached to the bottom of the post bubble (tweb .replies-footer), not a
+    // detached card — so it's passed as a footer slot into the bubble itself.
+    const postId = discussionsEnabled && lastInGroup ? (winMsgs[i]?.id ?? 0) : 0
+    const footer =
+      postId > 0 ? (
+        <CommentsBar count={commentCounts.get(postId) ?? 0} onOpen={() => onOpenDiscussion(postId, m.text)} />
+      ) : undefined
+
     const row = (
       <MessageRow
         key={k}
@@ -156,6 +165,7 @@ function ChatFeed({
         ladderActive={ladderActive}
         ladderDelay={ladderDelay}
         feedFns={feedFns}
+        footer={footer}
       />
     )
 
@@ -166,23 +176,6 @@ function ChatFeed({
         gm = { key: k, sender: m.sender, senderId: m.senderId, color: m.senderColor ?? peerColor(m.sender) }
       }
       buf.push(row)
-    } else if (discussionsEnabled && lastInGroup) {
-      // Channel post with discussions on: bubble + per-post "Комментарии (N)" bar.
-      flushGroup()
-      const postId = winMsgs[i]?.id ?? 0
-      body().push(
-        <div key={`post-${k}`} className={s.post}>
-          {row}
-          {postId > 0 && (
-            <div className={s.postBar} data-out={out || undefined}>
-              <CommentsBar
-                count={commentCounts.get(postId) ?? 0}
-                onOpen={() => onOpenDiscussion(postId, m.text)}
-              />
-            </div>
-          )}
-        </div>,
-      )
     } else {
       flushGroup()
       body().push(row)

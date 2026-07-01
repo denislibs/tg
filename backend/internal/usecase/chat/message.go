@@ -170,6 +170,13 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 			_ = i.publisher.PublishToUser(ctx, uid, f)
 		}
 	}
+	// Channel posts track a per-viewer view count: register this reader's view of
+	// every post up to the read marker (deduped, self-gated to channels). Only on a
+	// real advance — a no-op re-read shouldn't re-run it. Best-effort: views are
+	// approximate and must never fail the read.
+	if advanced {
+		_ = i.msgs.RegisterChannelViews(ctx, chatID, userID, effective)
+	}
 	return nil
 }
 

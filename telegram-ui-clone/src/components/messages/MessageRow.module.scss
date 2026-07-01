@@ -264,3 +264,28 @@
   white-space: nowrap;
   color: var(--b-time);
 }
+// Channel-post view count + eye icon (tweb .post-views), shown before the time.
+.metaViews {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-right: 4px;
+  font-size: 12px;
+  color: var(--b-time);
+  font-variant-numeric: tabular-nums;
+}
+
+// Replies-footer slot at the bottom of a channel post bubble (tweb .replies-footer
+// sits inside bubble-content). The slot makes it full-bleed to the bubble edges.
+// Text bubble: cancel the .375rem .625rem content padding; round the bottom to the
+// incoming bubble radius (bottom-left squared for the tail) and clip the footer to it.
+.footerText {
+  margin: 0.375rem -0.625rem -0.375rem;
+  overflow: hidden;
+  border-bottom-right-radius: 15px; // $bubble-border-radius-big
+}
+// Media bubble: .mediaInner already clips to its rounded corners; only cancel the
+// 1px framed border so the footer reaches the edges.
+.footerMedia {
+  margin: 0 -1px -1px;
+}

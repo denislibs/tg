@@ -48,6 +48,16 @@ export function newChannelsManager({ rest }: { rest: Pick<RestClient, 'post' | '
       for (const k in r.counts) out[+k] = r.counts[k]
       return out
     },
+    // Current view counts per channel post ("9.2K 👁"), fetched per open to stay
+    // fresh (mirrors commentCounts — channel posts are cached by pts, so a snapshot
+    // field would go stale).
+    async viewCounts(channelId: number, postIds: number[]): Promise<Record<number, number>> {
+      if (!postIds.length) return {}
+      const r = await rest.get<{ counts: Record<string, number> }>(`/channels/${channelId}/view_counts`, { ids: postIds.join(',') })
+      const out: Record<number, number> = {}
+      for (const k in r.counts) out[+k] = r.counts[k]
+      return out
+    },
     async search(q: string): Promise<SearchResult> {
       // Allow "@username" queries: usernames are stored without the @, so strip
       // a leading one before hitting the directory search.

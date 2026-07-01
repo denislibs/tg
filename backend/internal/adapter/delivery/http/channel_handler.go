@@ -158,6 +158,35 @@ func (h *ChannelHandler) CommentCounts(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"counts": out})
 }
 
+func (h *ChannelHandler) ViewCounts(w http.ResponseWriter, r *http.Request) {
+	if _, ok := pathInt(w, r, "chatID"); !ok {
+		return
+	}
+	ids := make([]int64, 0)
+	for _, s := range strings.Split(r.URL.Query().Get("ids"), ",") {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		id, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid ids")
+			return
+		}
+		ids = append(ids, id)
+	}
+	counts, err := h.uc.ViewCounts(r.Context(), ids)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	out := make(map[string]int64, len(counts))
+	for id, n := range counts {
+		out[strconv.FormatInt(id, 10)] = n
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"counts": out})
+}
+
 func (h *ChannelHandler) Difference(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	chatID, ok := pathInt(w, r, "chatID")

@@ -5,26 +5,10 @@ import TgIcon from './TgIcon'
 import Text from '../shared/ui/Text'
 import { slideInRight } from '../motion'
 import { useT, useLang } from '../i18n'
-import type { Lang } from '../i18n'
 import Avatar from '../shared/ui/Avatar'
 import { useDiscussion } from '../core/hooks/useDiscussion'
+import { commentsLabel } from '../core/commentsLabel'
 import s from './DiscussionView.module.scss'
-
-// Заголовок треда «N комментариев» (tweb: Chat.Title.Comments). Русский/укр — по
-// славянским правилам плюрализации (1 / 2-4 / 5+); прочие локали — англо-стиль.
-function commentsTitle(count: number, lang: Lang, t: (s: string) => string): string {
-  if (count === 0) return t('Comments')
-  if (lang === 'ru' || lang === 'uk') {
-    const m10 = count % 10
-    const m100 = count % 100
-    let word: string
-    if (m10 === 1 && m100 !== 11) word = lang === 'ru' ? 'комментарий' : 'коментар'
-    else if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) word = lang === 'ru' ? 'комментария' : 'коментарі'
-    else word = lang === 'ru' ? 'комментариев' : 'коментарів'
-    return `${count} ${word}`
-  }
-  return `${count} ${count === 1 ? t('Comment') : t('Comments')}`
-}
 
 export default function DiscussionView({
   channelId,
@@ -71,7 +55,7 @@ export default function DiscussionView({
           <TgIcon name="back" />
         </IconButton>
         <Text size={19} weight={600} color="var(--tg-textPrimary)" className={s.title}>
-          {commentsTitle(count, lang, t)}
+          {commentsLabel(count, lang, t)}
         </Text>
       </div>
 
