@@ -1,8 +1,9 @@
-import { Box, useTheme } from '@mui/material'
 import Text from '../../shared/ui/Text'
+import classNames from '../../shared/lib/classNames'
 import TgIcon from '../TgIcon'
 import type { ConvMsg, MsgStatus } from '../../data'
 import { useTimeFormatter } from '../../settings'
+import s from './MessageBubbles.module.scss'
 
 export function Ticks({ status, color }: { status?: MsgStatus; color: string }) {
   if (!status) return null
@@ -23,22 +24,15 @@ export function bubbleRadius(out: boolean, firstInGroup: boolean, lastInGroup: b
  */
 export function BubbleTail({ out, color }: { out: boolean; color: string }) {
   return (
-    <Box
-      component="svg"
+    <svg
+      className={s.tail}
       viewBox="0 0 11 20"
       width="11"
       height="20"
-      sx={{
-        position: 'absolute',
-        bottom: 0,
+      style={{
         [out ? 'right' : 'left']: '-8.4px',
-        width: '11px',
-        height: '20px',
-        flexShrink: 0,
         color,
         transform: out ? 'translateY(1px) scaleX(-1)' : 'translateY(1px)',
-        pointerEvents: 'none',
-        zIndex: 0,
       }}
     >
       <g transform="translate(9 -14)" fillRule="evenodd">
@@ -48,7 +42,7 @@ export function BubbleTail({ out, color }: { out: boolean; color: string }) {
           fill="currentColor"
         />
       </g>
-    </Box>
+    </svg>
   )
 }
 
@@ -61,146 +55,90 @@ interface Ctx {
 
 /** document / file */
 export function DocumentBubble({ m, out, firstInGroup, lastInGroup }: Ctx) {
-  const tg = useTheme().tg
   const fmtTime = useTimeFormatter()
   const d = m.document
   return (
-    <Box
-      sx={{
-        position: 'relative',
-        maxWidth: 'min(340px, 82%)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 1.25,
-        px: 1.25,
-        py: 1,
-        background: out ? tg.accent : tg.bubble,
-        color: out ? '#fff' : tg.textPrimary,
-        borderRadius: bubbleRadius(out, firstInGroup, lastInGroup),
-      }}
+    <div
+      className={classNames(s.fileBubble, s.doc)}
+      data-out={out || undefined}
+      style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}
     >
-      {lastInGroup && <BubbleTail out={out} color={out ? tg.accent : tg.bubble} />}
-      <Box
-        sx={{
-          width: 46,
-          height: 46,
-          flexShrink: 0,
-          borderRadius: '50%',
-          background: out ? 'rgba(255,255,255,0.22)' : d?.color ?? tg.accent,
-          color: '#fff',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
+      {lastInGroup && <BubbleTail out={out} color="var(--bb-bg)" />}
+      <div
+        className={s.fileIcon}
+        style={{ background: out ? 'rgba(255,255,255,0.22)' : d?.color ?? 'var(--tg-accent)' }}
       >
         <TgIcon name="download" />
-      </Box>
-      <Box sx={{ minWidth: 0, flex: 1 }}>
+      </div>
+      <div className={s.fileBody}>
         <Text noWrap size={15} weight={500}>
           {d?.name}
         </Text>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          <Text size={13} color={out ? 'rgba(255,255,255,0.8)' : tg.textSecondary}>
+        <div className={s.fileMetaRow}>
+          <Text size={13} color="var(--bb-sub)">
             {d?.size} · {d?.ext}
           </Text>
-          <Box sx={{ flex: 1 }} />
-          <Text size={12} color={out ? 'rgba(255,255,255,0.8)' : tg.textFaint}>
+          <div className={s.spacer} />
+          <Text size={12} color="var(--bb-meta)">
             {fmtTime(m.time)}
           </Text>
-          <Ticks status={m.status} color={out ? 'rgba(255,255,255,0.85)' : tg.textFaint} />
-        </Box>
-      </Box>
-    </Box>
+          <Ticks status={m.status} color="var(--bb-tick)" />
+        </div>
+      </div>
+    </div>
   )
 }
 
 /** audio / music */
 export function AudioBubble({ m, out, firstInGroup, lastInGroup }: Ctx) {
-  const tg = useTheme().tg
   const fmtTime = useTimeFormatter()
   const a = m.audio
   return (
-    <Box
-      sx={{
-        position: 'relative',
-        maxWidth: 'min(320px, 82%)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 1.25,
-        px: 1.25,
-        py: 1,
-        background: out ? tg.accent : tg.bubble,
-        color: out ? '#fff' : tg.textPrimary,
-        borderRadius: bubbleRadius(out, firstInGroup, lastInGroup),
-      }}
+    <div
+      className={classNames(s.fileBubble, s.audio)}
+      data-out={out || undefined}
+      style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}
     >
-      {lastInGroup && <BubbleTail out={out} color={out ? tg.accent : tg.bubble} />}
-      <Box
-        sx={{
-          width: 46,
-          height: 46,
-          flexShrink: 0,
-          borderRadius: '50%',
-          background: out ? 'rgba(255,255,255,0.22)' : tg.accent,
-          color: '#fff',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          cursor: 'pointer',
-        }}
+      {lastInGroup && <BubbleTail out={out} color="var(--bb-bg)" />}
+      <div
+        className={classNames(s.fileIcon, s.fileIconAudio)}
+        style={{ background: out ? 'rgba(255,255,255,0.22)' : 'var(--tg-accent)' }}
       >
         <TgIcon name="music" />
-      </Box>
-      <Box sx={{ minWidth: 0, flex: 1 }}>
+      </div>
+      <div className={s.fileBody}>
         <Text noWrap size={15} weight={500}>
           {a?.title}
         </Text>
-        <Text noWrap size={13} color={out ? 'rgba(255,255,255,0.8)' : tg.textSecondary}>
+        <Text noWrap size={13} color="var(--bb-sub)">
           {a?.artist}
         </Text>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
-          <Text size={12} color={out ? 'rgba(255,255,255,0.8)' : tg.textFaint}>
+        <div className={s.fileMetaRow} style={{ marginTop: 2 }}>
+          <Text size={12} color="var(--bb-meta)">
             {a?.duration}
           </Text>
-          <Box sx={{ flex: 1 }} />
-          <Text size={12} color={out ? 'rgba(255,255,255,0.8)' : tg.textFaint}>
+          <div className={s.spacer} />
+          <Text size={12} color="var(--bb-meta)">
             {fmtTime(m.time)}
           </Text>
-          <Ticks status={m.status} color={out ? 'rgba(255,255,255,0.85)' : tg.textFaint} />
-        </Box>
-      </Box>
-    </Box>
+          <Ticks status={m.status} color="var(--bb-tick)" />
+        </div>
+      </div>
+    </div>
   )
 }
 
 /** round video note */
 export function RoundVideoBubble({ m, out }: Ctx) {
-  const tg = useTheme().tg
   const fmtTime = useTimeFormatter()
-  const size = 200
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: out ? 'flex-end' : 'flex-start' }}>
-      <Box sx={{ position: 'relative', width: size, height: size }}>
-        <Box
-          sx={{
-            width: size,
-            height: size,
-            borderRadius: '50%',
-            background: m.media?.gradient ?? tg.accentGradient,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            overflow: 'hidden',
-          }}
-        >
+    <div className={s.round} data-out={out || undefined}>
+      <div className={s.roundInner}>
+        <div className={s.roundDisc} style={{ background: m.media?.gradient ?? 'var(--tg-accentGradient)' }}>
           <Text size={72} style={{ userSelect: 'none' }}>{m.media?.emoji ?? '🎥'}</Text>
-        </Box>
+        </div>
         {/* progress ring */}
-        <Box
-          component="svg"
-          viewBox="0 0 200 200"
-          sx={{ position: 'absolute', inset: 0, transform: 'rotate(-90deg)', pointerEvents: 'none' }}
-        >
+        <svg className={s.roundRing} viewBox="0 0 200 200">
           <circle cx="100" cy="100" r="97" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="3" />
           <circle
             cx="100"
@@ -213,32 +151,14 @@ export function RoundVideoBubble({ m, out }: Ctx) {
             strokeDasharray={2 * Math.PI * 97}
             strokeDashoffset={2 * Math.PI * 97 * 0.7}
           />
-        </Box>
-        <Box
-          sx={{
-            position: 'absolute',
-            left: '50%',
-            bottom: 14,
-            transform: 'translateX(-50%)',
-            px: 0.75,
-            py: 0.2,
-            borderRadius: '10px',
-            background: 'rgba(0,0,0,0.45)',
-            color: '#fff',
-            fontSize: 12,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 0.5,
-          }}
-        >
-          {m.videoDuration ?? '0:08'}
-        </Box>
-      </Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, mt: 0.5, mr: out ? 1 : 0, ml: out ? 0 : 1 }}>
-        <Text size={12} color={tg.textFaint}>{fmtTime(m.time)}</Text>
-        <Ticks status={m.status} color={tg.textFaint} />
-      </Box>
-    </Box>
+        </svg>
+        <div className={s.roundDur}>{m.videoDuration ?? '0:08'}</div>
+      </div>
+      <div className={s.roundMeta}>
+        <Text size={12} color="var(--tg-textFaint)">{fmtTime(m.time)}</Text>
+        <Ticks status={m.status} color="var(--tg-textFaint)" />
+      </div>
+    </div>
   )
 }
 
@@ -252,52 +172,25 @@ export function WebPagePreview({
   out: boolean
   linkColor: string
 }) {
-  const tg = useTheme().tg
+  const accent = out ? '#fff' : linkColor
   return (
-    <Box
-      sx={{
-        mt: 0.5,
-        pl: 1,
-        borderLeft: `3px solid ${out ? '#fff' : linkColor}`,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 0.25,
-      }}
-    >
-      <Text size={14} weight={600} color={out ? '#fff' : linkColor}>
+    <div className={s.webpage} data-out={out || undefined} style={{ borderLeft: `3px solid ${accent}` }}>
+      <Text size={14} weight={600} color={accent}>
         {wp.siteName}
       </Text>
-      <Text size={14.5} weight={600} color={out ? '#fff' : tg.textPrimary}>
+      <Text size={14.5} weight={600} color="var(--wp-title)">
         {wp.title}
       </Text>
       {wp.description && (
-        <Text size={14} color={out ? 'rgba(255,255,255,0.85)' : tg.textSecondary} style={{ lineHeight: 1.35 }}>
+        <Text size={14} color="var(--wp-desc)" style={{ lineHeight: 1.35 }}>
           {wp.description}
         </Text>
       )}
       {wp.gradient && (
-        <Box
-          sx={{
-            mt: 0.5,
-            height: 160,
-            borderRadius: '10px',
-            background: wp.gradient,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            position: 'relative',
-            '&::after': {
-              content: '""',
-              position: 'absolute',
-              inset: 0,
-              borderRadius: '10px',
-              background: 'radial-gradient(circle at 50% 35%, rgba(255,255,255,0.16), transparent 60%)',
-            },
-          }}
-        >
+        <div className={s.webImg} style={{ background: wp.gradient }}>
           {wp.emoji && <Text size={56} style={{ zIndex: 1 }}>{wp.emoji}</Text>}
-        </Box>
+        </div>
       )}
-    </Box>
+    </div>
   )
 }

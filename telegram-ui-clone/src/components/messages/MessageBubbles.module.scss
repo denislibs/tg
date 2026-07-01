@@ -1,0 +1,163 @@
+// Подкомпоненты баблов (document/audio/roundVideo/webpage) + хвост.
+// Исходящие document/audio — акцентный фон, белый текст (не bubbleOut); палитра
+// переключается через [data-out]. Динамика (цвет иконки по документу, градиенты,
+// радиус группы) — инлайн.
+@use '../../styles/foundation' as *;
+
+// Хвост бабла (SVG). Сторона/зеркало/цвет зависят от out — задаются инлайн.
+.tail {
+  position: absolute;
+  bottom: 0;
+  width: 11px;
+  height: 20px;
+  flex-shrink: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+// ── document / audio (акцентный бабл при исходящем) ──
+.fileBubble {
+  --bb-bg: var(--tg-bubble);
+  --bb-text: var(--tg-textPrimary);
+  --bb-sub: var(--tg-textSecondary);
+  --bb-meta: var(--tg-textFaint);
+  --bb-tick: var(--tg-textFaint);
+
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--bb-bg);
+  color: var(--bb-text);
+
+  &[data-out] {
+    --bb-bg: var(--tg-accent);
+    --bb-text: #fff;
+    --bb-sub: rgba(255, 255, 255, 0.8);
+    --bb-meta: rgba(255, 255, 255, 0.8);
+    --bb-tick: rgba(255, 255, 255, 0.85);
+  }
+}
+.doc {
+  max-width: min(340px, 82%);
+}
+.audio {
+  max-width: min(320px, 82%);
+}
+.fileIcon {
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.fileIconAudio {
+  cursor: pointer;
+}
+.fileBody {
+  min-width: 0;
+  flex: 1;
+}
+.fileMetaRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.spacer {
+  flex: 1;
+}
+
+// ── round video note ──
+.round {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+
+  &[data-out] {
+    align-items: flex-end;
+  }
+}
+.roundInner {
+  position: relative;
+  width: 200px;
+  height: 200px;
+}
+.roundDisc {
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.roundRing {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+  pointer-events: none;
+}
+.roundDur {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.roundMeta {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 4px;
+  margin-left: 8px;
+
+  .round[data-out] & {
+    margin-left: 0;
+    margin-right: 8px;
+  }
+}
+
+// ── web page preview (внутри текстового бабла) ──
+.webpage {
+  --wp-title: var(--tg-textPrimary);
+  --wp-desc: var(--tg-textSecondary);
+
+  margin-top: 4px;
+  padding-left: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  &[data-out] {
+    --wp-title: #fff;
+    --wp-desc: rgba(255, 255, 255, 0.85);
+  }
+}
+.webImg {
+  margin-top: 4px;
+  height: 160px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 10px;
+    background: radial-gradient(circle at 50% 35%, rgba(255, 255, 255, 0.16), transparent 60%);
+  }
+}
