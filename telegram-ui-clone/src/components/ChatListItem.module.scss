@@ -1,21 +1,35 @@
-// ChatListItem — строка диалога. Стили перенесены 1:1 из прежних sx; динамика
-// состояний (selected, цвета по onAccent, online/typing/forwarded и т.д.) остаётся
-// на пропсах дочерних примитивов (Avatar/Text/TgIcon/Badge). Ripple — useRipple (tweb).
+// ChatListItem — строка диалога. Метрики из tweb (.row/_row.scss + .chatlist-chat/
+// _chatlist.scss): padding-block .4375rem, radius $row-border-radius, боковой инсет
+// как у ul.chatlist (.5rem). Цвета контента — CSS-переменные на .row, чтобы дети
+// (Avatar/Text/TgIcon) не тянули тему из JS; в выбранной строке ([data-selected])
+// переменные переключаются на «на акценте». Ripple — useRipple (tweb).
+@use '../styles/foundation' as *;
+
 .row {
   position: relative;
   overflow: hidden;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 9.2px 12px; // py 1.15 / px 1.5 (×8)
-  margin: 0 6px; // mx 0.75
-  border-radius: 16px;
+  gap: 0.75rem;
+  padding: 0.4375rem 0.75rem; // tweb .row padding-block .4375rem
+  margin: 0 0.5rem; // tweb ul.chatlist padding: 0 .5rem
+  border-radius: $border-radius-medium; // tweb $row-border-radius
   cursor: pointer;
-  color: var(--tg-textPrimary);
-  background: transparent;
   transition: background 0.18s ease;
 
-  // content (avatar + body) sits above the absolute ripple layer
+  // Палитра контента строки (обычное состояние).
+  --cl-title: var(--tg-textPrimary);
+  --cl-subtitle: var(--tg-textSecondary);
+  --cl-meta: var(--tg-textFaint);
+  --cl-accent: var(--tg-accent);
+  --cl-muted: var(--tg-textFaint);
+  --cl-ring: var(--tg-sidebarBg);
+  --cl-check: #fff;
+
+  color: var(--tg-textPrimary);
+  background: transparent;
+
+  // контент (аватар + тело) над абсолютным слоем ripple
   & > div {
     position: relative;
     z-index: 1;
@@ -27,11 +41,17 @@
     }
   }
 
-  // Selected dialog: accent gradient, white content, lighter ripple (tweb .active).
+  // Выбранный диалог: акцентный градиент, «на акценте» палитра (tweb .active).
   &[data-selected] {
     background: var(--tg-accentGradient);
-    color: #fff;
     --ripple-color: rgba(255, 255, 255, 0.25);
+    --cl-title: #fff;
+    --cl-subtitle: rgba(255, 255, 255, 0.9);
+    --cl-meta: rgba(255, 255, 255, 0.85);
+    --cl-accent: #fff;
+    --cl-muted: rgba(255, 255, 255, 0.7);
+    --cl-ring: var(--tg-accent);
+    --cl-check: var(--tg-accent);
 
     &:hover {
       background: var(--tg-accentGradient);
@@ -54,10 +74,10 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-top: 2px; // mt 0.25
+  margin-top: 0.1875rem; // tweb .row-subtitle margin-top
 }
 
-// Small rounded thumbnail of the last message's photo (background-image set inline).
+// Мелкий скруглённый превью-thumb последнего фото (background-image задаётся инлайн).
 .thumb {
   width: 18px;
   height: 18px;
@@ -68,4 +88,4 @@
   background-position: center;
 }
 
-// context-menu surface/rows provided by shared/ui/Menu + MenuItem.
+// поверхность/строки контекст-меню — из shared/ui/Menu + MenuItem.
