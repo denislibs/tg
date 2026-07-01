@@ -1,46 +1,67 @@
 @use '../styles/foundation' as *;
 
-// Тред обсуждения поверх колонки чата. Фон прозрачный — сквозь него проступают
-// глобальные обои (ChatBackground в App), как в обычном чате; баблы рисует ChatFeed.
+// Тред обсуждения поверх колонки чата, раскладка 1:1 с ConversationView: плавающий
+// хедер-карточка, центрированная лента (max-width 688), плавающий композер. Фон
+// прозрачный — сквозь него проступают глобальные обои (ChatBackground в App).
 .root {
   position: absolute;
   inset: 0;
   z-index: 20;
-  display: flex;
-  flex-direction: column;
   background: transparent;
 }
 
-// Шапка (solid-хром, читается поверх обоев)
-.header {
+// Плавающий хедер (как ChatHeader .bar + .header)
+.headerBar {
+  position: absolute;
+  top: 16px;
+  left: 0;
+  right: 0;
+  z-index: 6;
+  width: 100%;
+  max-width: 688px;
+  margin: 0 auto;
+}
+.headerCard {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 56px;
-  padding: 10px 8px;
-  background: var(--tg-sidebarBg);
-  border-bottom: 1px solid var(--tg-divider);
-  flex-shrink: 0;
+  gap: 12px;
+  padding: 4px;
+  height: 48px;
+  border-radius: 24px;
+  background: var(--tg-bubble);
+  box-shadow: var(--tg-plateShadow);
 }
 .title {
   flex: 1;
+  line-height: 1.2;
 }
 
-// Pinned-плашка исходного поста под шапкой (tweb .pinned-message).
-.pinned {
+// Плавающая pinned-плашка поста (под хедером)
+.pinnedBar {
+  position: absolute;
+  top: 72px; // 16 + 48 + 8
+  left: 0;
+  right: 0;
+  z-index: 6;
+  width: 100%;
+  max-width: 688px;
+  margin: 0 auto;
+}
+.pinnedCard {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 8px 6px 12px;
-  background: var(--tg-sidebarBg);
-  border-bottom: 1px solid var(--tg-divider);
+  height: 48px;
+  padding: 0 8px 0 12px;
+  border-radius: 24px;
+  background: var(--tg-searchCardBg);
+  box-shadow: var(--tg-plateShadow);
   cursor: pointer;
-  flex-shrink: 0;
   user-select: none;
 }
 .pinnedLine {
   width: 2px;
-  align-self: stretch;
+  height: 30px;
   border-radius: 1px;
   background: var(--tg-accent);
   flex-shrink: 0;
@@ -52,51 +73,36 @@
   flex-direction: column;
 }
 
-// Прокручиваемая лента треда (прозрачная — обои видны).
+// Прокручиваемая лента — центрированная колонка (как ConversationView .scroll/.content)
 .scroll {
-  flex: 1;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
   overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 .content {
-  padding: 12px 0;
+  width: 100%;
+  max-width: 688px;
+  padding-inline: 4px;
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
 }
 
-// Композер снизу
-.composer {
-  margin: 8px;
-  background: var(--tg-bubble);
-  border-radius: 24px;
-  height: 48px;
+// Плавающий композер (как ConversationView .footer)
+.footer {
+  position: absolute;
+  bottom: 16px;
+  left: 0;
+  right: 0;
+  z-index: 6;
   display: flex;
-  align-items: center;
-  padding: 0 8px;
-  gap: 4px;
-  flex-shrink: 0;
-  box-shadow: var(--tg-plateShadow);
-}
-.input {
-  flex: 1;
-  border: none;
-  outline: none;
-  background: transparent;
-  color: var(--tg-textPrimary);
-  padding: 0 8px;
-  font-size: 15px;
-  font-family: inherit;
-
-  &::placeholder {
-    color: var(--tg-textFaint);
-    opacity: 1;
-  }
-}
-.sendBtn {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: var(--tg-accentGradient);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  flex-shrink: 0;
+  align-items: flex-end;
+  width: 100%;
+  max-width: 688px;
+  margin: 0 auto;
 }
