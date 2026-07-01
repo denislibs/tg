@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { Box, Slider, useTheme } from '@mui/material'
+import { useEffect, useRef, useState } from 'react'
 import IconButton from '../../shared/ui/IconButton'
+import Slider from '../../shared/ui/Slider'
 import { motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
+import s from './AvatarCropper.module.scss'
 
 const CROP = 300 // on-screen crop diameter (square)
 const OUT = 640 // exported avatar size (square px)
@@ -20,7 +21,6 @@ export default function AvatarCropper({
   onCancel: () => void
   onConfirm: (blob: Blob, width: number, height: number) => void
 }) {
-  const tg = useTheme().tg
   const [img, setImg] = useState<HTMLImageElement | null>(null)
   const [zoom, setZoom] = useState(1)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
@@ -95,80 +95,46 @@ export default function AvatarCropper({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
-      style={{
-        position: 'absolute',
-        inset: 0,
-        zIndex: 90,
-        background: '#000',
-        display: 'flex',
-        flexDirection: 'column',
-      }}
+      className={s.root}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', px: 1, py: 1.25 }}>
+      <div className={s.header}>
         <IconButton onClick={onCancel} color="#fff">
           <TgIcon name="close" />
         </IconButton>
-      </Box>
+      </div>
 
-      <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Box
+      <div className={s.stage}>
+        <div
+          className={s.crop}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
-          sx={{
-            position: 'relative',
-            width: CROP,
-            height: CROP,
-            overflow: 'hidden',
-            cursor: 'grab',
-            touchAction: 'none',
-            borderRadius: '50%',
-            boxShadow: '0 0 0 2000px rgba(0,0,0,0.55)',
-          }}
         >
           {img && (
             <img
+              className={s.img}
               src={img.src}
               alt=""
               draggable={false}
-              style={{
-                position: 'absolute',
-                left: offset.x,
-                top: offset.y,
-                width: dispW,
-                height: dispH,
-                maxWidth: 'none',
-                userSelect: 'none',
-              }}
+              style={{ left: offset.x, top: offset.y, width: dispW, height: dispH }}
             />
           )}
-        </Box>
-      </Box>
+        </div>
+      </div>
 
       {/* zoom control */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 4, pb: 2 }}>
+      <div className={s.zoom}>
         <TgIcon name="minus" color="#fff" />
-        <Slider
-          min={1}
-          max={MAX_ZOOM}
-          step={0.01}
-          value={zoom}
-          onChange={(_, v) => setZoom(v as number)}
-          sx={{ color: tg.accent }}
-        />
+        <Slider min={1} max={MAX_ZOOM} step={0.01} value={zoom} onChange={setZoom} color="#fff" />
         <TgIcon name="add" color="#fff" />
-      </Box>
+      </div>
 
       {/* confirm */}
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', px: 3, pb: 3 }}>
-        <IconButton
-          onClick={confirm}
-          color="#fff"
-          style={{ width: 56, height: 56, background: tg.accent, '--ib-hover': tg.accent } as CSSProperties}
-        >
+      <div className={s.confirm}>
+        <IconButton onClick={confirm} color="#fff" className={s.confirmBtn}>
           <TgIcon name="check" />
         </IconButton>
-      </Box>
+      </div>
     </motion.div>
   )
 }

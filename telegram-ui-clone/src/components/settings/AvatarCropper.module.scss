@@ -1,0 +1,51 @@
+.root {
+  position: absolute;
+  inset: 0;
+  z-index: 90;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  display: flex;
+  align-items: center;
+  padding: 10px 8px;
+}
+.stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.crop {
+  position: relative;
+  width: 300px;
+  height: 300px;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2000px rgba(0, 0, 0, 0.55);
+}
+.img {
+  position: absolute;
+  max-width: none;
+  user-select: none;
+}
+.zoom {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 32px 16px;
+}
+.confirm {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 24px 24px;
+}
+.confirmBtn {
+  width: 56px;
+  height: 56px;
+  background: var(--tg-accent);
+  --ib-hover: var(--tg-accent);
+}

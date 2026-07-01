@@ -10,34 +10,6 @@ import TgSwitch from '../TgSwitch'
 import { useT } from '../../i18n'
 import s from './kit.module.scss'
 
-/** Surface colour of a settings card (on the neutral screen backdrop). */
-export function useCardBg() {
-  return 'var(--tg-sidebarBg)'
-}
-
-/**
- * Telegram outlined input with a floating label — styles matched to tweb's
- * `.input-field` (_input.scss): 16px radius, 48px height, 13px×16px padding,
- * idle border (--tg-inputBorderIdle), 2px accent border + bold accent label on
- * focus. Returned as an MUI `sx` object for the (still-MUI) TextField consumers.
- */
-export function useFieldSx() {
-  return {
-    '& .MuiOutlinedInput-root': {
-      borderRadius: '16px',
-      minHeight: 48,
-      color: 'var(--tg-textPrimary)',
-      fontSize: 16,
-      '& fieldset': { borderColor: 'var(--tg-inputBorderIdle)', transition: 'border-color .2s' },
-      '&:hover fieldset': { borderColor: 'var(--tg-accent)' },
-      '&.Mui-focused fieldset': { borderColor: 'var(--tg-accent)', borderWidth: '2px' },
-    },
-    '& .MuiOutlinedInput-input': { padding: '13px 16px' },
-    '& .MuiInputLabel-root': { color: 'var(--tg-textFaint)', fontSize: 16 },
-    '& .MuiInputLabel-root.Mui-focused': { color: 'var(--tg-accent)', fontWeight: 600 },
-  }
-}
-
 /** Full-height slide-in settings screen with a back header. */
 export function SettingsScreen({
   title,

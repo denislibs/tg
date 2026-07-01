@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { Box, CircularProgress, TextField, useTheme } from '@mui/material'
 import IconButton from '../../shared/ui/IconButton'
 import Text from '../../shared/ui/Text'
+import Input from '../../shared/ui/Input'
+import Spinner from '../../shared/ui/Spinner'
 import TgIcon from '../TgIcon'
 import Avatar from '../../shared/ui/Avatar'
 import { useAvatarSrc } from '../useAvatarSrc'
 import BirthdayModal from './BirthdayModal'
 import AvatarCropper from './AvatarCropper'
 import { useT, useLang } from '../../i18n'
-import { SettingsScreen, Section, Row, useCardBg, useFieldSx } from './kit'
+import { SettingsScreen, Section, Row } from './kit'
+import s from './EditProfile.module.scss'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
 import { gradientFor } from '../../core/dialogToChat'
@@ -34,11 +36,8 @@ function formatBirthday(b: Birthday, lang: string): string {
 
 export default function EditProfile({ onBack }: { onBack: () => void }) {
   const managers = useManagers()
-  const tg = useTheme().tg
   const t = useT()
   const [lang] = useLang()
-  const cardBg = useCardBg()
-  const fieldSx = useFieldSx()
   const me = useChatsStore((s) => s.me)
   const setMe = useChatsStore((s) => s.setMe)
 
@@ -94,7 +93,7 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
               ? t('Username must be 5–32 chars: letters, digits, underscore.')
               : ''
   const usernameColor =
-    unameState === 'available' ? '#4dcd5e' : unameState === 'taken' || unameState === 'invalid' ? '#ff595a' : tg.textSecondary
+    unameState === 'available' ? '#4dcd5e' : unameState === 'taken' || unameState === 'invalid' ? '#ff595a' : 'var(--tg-textSecondary)'
 
   const onCropConfirm = async (blob: Blob, width: number, height: number) => {
     setCropFile(null)
@@ -145,33 +144,19 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
       title="Edit Profile"
       onBack={onBack}
       headerRight={
-        <IconButton onClick={onDone} disabled={saving} color={tg.accent}>
-          {saving ? <CircularProgress size={22} sx={{ color: tg.accent }} /> : <TgIcon name="check" />}
+        <IconButton onClick={onDone} disabled={saving} color="var(--tg-accent)">
+          {saving ? <Spinner size={22} color="var(--tg-accent)" /> : <TgIcon name="check" />}
         </IconButton>
       }
     >
       {/* avatar with camera overlay */}
-      <Box sx={{ display: 'flex', justifyContent: 'center', py: 2.5 }}>
-        <Box sx={{ position: 'relative', cursor: 'pointer' }} onClick={() => fileInputRef.current?.click()}>
+      <div className={s.avatarWrap}>
+        <div className={s.avatar} onClick={() => fileInputRef.current?.click()}>
           <Avatar background={avatarBg} src={avatarSrc} text={avatarText} size="profile" />
-          <Box
-            sx={{
-              position: 'absolute',
-              inset: 0,
-              borderRadius: '50%',
-              background: 'rgba(0,0,0,0.32)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            {uploading ? (
-              <CircularProgress size={36} sx={{ color: '#fff' }} />
-            ) : (
-              <TgIcon name="camera" size={40} color="#fff" />
-            )}
-          </Box>
-        </Box>
+          <div className={s.avatarOverlay}>
+            {uploading ? <Spinner size={36} color="#fff" /> : <TgIcon name="camera" size={40} color="#fff" />}
+          </div>
+        </div>
         <input
           ref={fileInputRef}
           type="file"
@@ -183,68 +168,46 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
             e.target.value = '' // allow re-picking the same file
           }}
         />
-      </Box>
+      </div>
 
       {/* name / last / bio + birthday */}
-      <Box sx={{ mx: 1.25, p: 2, borderRadius: '18px', background: cardBg, display: 'flex', flexDirection: 'column', gap: 1.75 }}>
-        <TextField fullWidth label={t('Name')} variant="outlined" value={first} onChange={(e) => setFirst(e.target.value)} sx={fieldSx} />
-        <TextField fullWidth label={t('Last name')} variant="outlined" value={last} onChange={(e) => setLast(e.target.value)} sx={fieldSx} />
-        <TextField
-          fullWidth
-          label={t('Bio (optional)')}
-          variant="outlined"
-          value={bio}
-          onChange={(e) => setBio(e.target.value.slice(0, BIO_MAX))}
-          sx={fieldSx}
-        />
-        <Box
-          onClick={() => setBdayOpen(true)}
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 2,
-            px: 1,
-            py: 0.5,
-            borderRadius: '12px',
-            cursor: 'pointer',
-            '&:hover': { background: tg.hover },
-          }}
-        >
-          <TgIcon name="gift" size={24} color={tg.textSecondary} />
-          <Text size={16} color={birthday ? tg.textPrimary : tg.accent}>
+      <div className={`${s.card} ${s.form}`}>
+        <Input label={t('Name')} value={first} onChange={setFirst} />
+        <Input label={t('Last name')} value={last} onChange={setLast} />
+        <Input label={t('Bio (optional)')} value={bio} onChange={(v) => setBio(v.slice(0, BIO_MAX))} />
+        <div className={s.bday} onClick={() => setBdayOpen(true)}>
+          <TgIcon name="gift" size={24} color="var(--tg-textSecondary)" />
+          <Text size={16} color={birthday ? 'var(--tg-textPrimary)' : 'var(--tg-accent)'}>
             {birthday ? formatBirthday(birthday, lang) : t('Add birthday')}
           </Text>
-        </Box>
-      </Box>
-      <Text size={14} color={tg.textSecondary} style={{ paddingLeft: '24px', paddingRight: '24px', paddingTop: '8px', lineHeight: 1.45 }}>
+        </div>
+      </div>
+      <Text size={14} color="var(--tg-textSecondary)" style={{ paddingLeft: '24px', paddingRight: '24px', paddingTop: '8px', lineHeight: 1.45 }}>
         {t('Any details such as age, occupation or city. Example: 23 y.o. designer from San Francisco.')}
       </Text>
 
       {/* username */}
-      <Text size={14} weight={600} color={tg.accent} style={{ paddingLeft: '24px', paddingRight: '24px', paddingTop: '20px', paddingBottom: '4px' }}>
+      <Text size={14} weight={600} color="var(--tg-accent)" className={s.usernameCaption}>
         {t('Username')}
       </Text>
-      <Box sx={{ mx: 1.25, p: 2, borderRadius: '18px', background: cardBg }}>
-        <TextField
-          fullWidth
+      <div className={s.card}>
+        <Input
           label={t('Username (optional)')}
-          variant="outlined"
           value={username}
-          onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
-          sx={fieldSx}
+          onChange={(v) => setUsername(v.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
         />
-      </Box>
+      </div>
       {usernameMsg && (
         <Text size={14} color={usernameColor} style={{ paddingLeft: '24px', paddingRight: '24px', paddingTop: '8px', lineHeight: 1.45 }}>
           {usernameMsg}
         </Text>
       )}
-      <Text size={14} color={tg.textSecondary} style={{ paddingLeft: '24px', paddingRight: '24px', paddingTop: '8px', lineHeight: 1.45 }}>
+      <Text size={14} color="var(--tg-textSecondary)" style={{ paddingLeft: '24px', paddingRight: '24px', paddingTop: '8px', lineHeight: 1.45 }}>
         {t('You can choose a public username so people can find you and contact you without knowing your phone number.')}
       </Text>
 
       {/* phone-number visibility (privacy) */}
-      <Box sx={{ pt: 2 }}>
+      <div className={s.phoneWrap}>
         <Section caption="Who can see my phone number">
           {PHONE_VIS.map((o) => (
             <Row
@@ -255,7 +218,7 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
             />
           ))}
         </Section>
-      </Box>
+      </div>
 
       <BirthdayModal
         open={bdayOpen}

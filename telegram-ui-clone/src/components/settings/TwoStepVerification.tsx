@@ -1,77 +1,44 @@
 import { useState } from 'react'
-import { Box, InputBase, useTheme } from '@mui/material'
 import TgIcon from '../TgIcon'
 import Text from '../../shared/ui/Text'
+import Button from '../../shared/ui/Button'
+import Input from '../../shared/ui/Input'
 import { useT } from '../../i18n'
-import { SettingsScreen, Section, Row, useCardBg } from './kit'
+import { SettingsScreen, Section, Row } from './kit'
+import s from './TwoStepVerification.module.scss'
 
 type Step = 'intro' | 'password' | 'confirm' | 'hint' | 'email' | 'enabled'
 
 export default function TwoStepVerification({ onBack }: { onBack: () => void }) {
-  const tg = useTheme().tg
   const t = useT()
-  const cardBg = useCardBg()
   const [step, setStep] = useState<Step>('intro')
   const [pwd, setPwd] = useState('')
   const [confirm, setConfirm] = useState('')
 
   const btn = (label: string, onClick: () => void, disabled = false) => (
-    <Box
-      onClick={disabled ? undefined : onClick}
-      sx={{
-        mx: 2.5,
-        mt: 3,
-        height: 50,
-        borderRadius: '12px',
-        background: tg.accent,
-        color: '#fff',
-        fontSize: 15,
-        fontWeight: 600,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        cursor: disabled ? 'default' : 'pointer',
-        opacity: disabled ? 0.5 : 1,
-      }}
-    >
-      {t(label)}
-    </Box>
+    <div className={s.btnWrap}>
+      <Button fullWidth disabled={disabled} onClick={onClick}>{t(label)}</Button>
+    </div>
   )
 
   const hero = (text: string) => (
-    <Box sx={{ textAlign: 'center', px: 4, pt: 3 }}>
-      <Box
-        sx={{
-          width: 96,
-          height: 96,
-          borderRadius: '50%',
-          background: tg.accentGradient,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          mx: 'auto',
-          mb: 2,
-        }}
-      >
+    <div className={s.hero}>
+      <div className={s.heroIcon}>
         <TgIcon name="lock" size={46} color="#fff" />
-      </Box>
-      <Text size={15} color={tg.textSecondary} style={{ lineHeight: 1.5 }}>{t(text)}</Text>
-    </Box>
+      </div>
+      <Text size={15} color="var(--tg-textSecondary)" style={{ lineHeight: 1.5 }}>{t(text)}</Text>
+    </div>
   )
 
   const passField = (value: string, onChange: (v: string) => void, placeholder: string) => (
-    <Box sx={{ mx: 1.25, mt: 2, borderRadius: '16px', background: cardBg }}>
-      <Box sx={{ px: 2, py: 1.25, mx: 0.5 }}>
-        <InputBase
-          autoFocus
-          type="password"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={t(placeholder)}
-          sx={{ width: '100%', fontSize: 16, color: tg.textPrimary, '& input::placeholder': { color: tg.textFaint, opacity: 1 } }}
-        />
-      </Box>
-    </Box>
+    <Input
+      autoFocus
+      type="password"
+      value={value}
+      onChange={onChange}
+      label={t(placeholder)}
+      wrapClassName={s.field}
+    />
   )
 
   if (step === 'intro')
@@ -127,13 +94,13 @@ export default function TwoStepVerification({ onBack }: { onBack: () => void }) 
   return (
     <SettingsScreen title="Two-Step Verification" onBack={onBack}>
       {hero('Your account is protected with a Two-Step Verification password.')}
-      <Box sx={{ mt: 2 }}>
+      <div style={{ marginTop: 16 }}>
         <Section>
           <Row label="Change Password" accent onClick={() => setStep('password')} />
           <Row label="Set Recovery Email" accent onClick={() => setStep('email')} />
           <Row label="Turn Password Off" danger onClick={() => { setPwd(''); setConfirm(''); setStep('intro') }} />
         </Section>
-      </Box>
+      </div>
     </SettingsScreen>
   )
 }

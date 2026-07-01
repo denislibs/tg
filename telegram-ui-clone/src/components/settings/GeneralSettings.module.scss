@@ -1,0 +1,84 @@
+.textSize {
+  padding: 8px 16px 0;
+}
+.textSizeTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.slider {
+  margin-top: 4px;
+}
+
+.themeGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  padding: 8px 12px 4px;
+}
+.themeCard {
+  aspect-ratio: 3 / 4;
+  border-radius: 12px;
+  cursor: pointer;
+  padding: 4px;
+  border: 2px solid transparent;
+  transition: border-color 0.15s;
+
+  &[data-selected] {
+    border-color: var(--card-accent);
+  }
+}
+.themeInner {
+  position: relative;
+  height: 100%;
+  border-radius: 9px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 6px;
+}
+.pattern {
+  position: absolute;
+  inset: 0;
+  background-size: 120px;
+  mix-blend-mode: overlay;
+  opacity: 0.5;
+}
+.bubbles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 1;
+}
+.bubbleIn {
+  width: 70%;
+  height: 11px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.28);
+}
+.bubbleOut {
+  align-self: flex-end;
+  width: 55%;
+  height: 11px;
+  border-radius: 6px;
+}
+.emoji {
+  line-height: 1;
+  z-index: 1;
+}
+
+.radioRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  border-radius: 12px;
+  cursor: pointer;
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+    }
+  }
+}
