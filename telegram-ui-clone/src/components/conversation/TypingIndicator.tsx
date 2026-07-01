@@ -5,9 +5,9 @@
 // dot aligns to the text's x-height centre (flex-centering sits it too high
 // because Cyrillic lowercase has no ascenders). tweb nudges the record/upload
 // variants up 1px on top of that.
-import { memo } from 'react'
-import { Box } from '@mui/material'
+import { memo, type CSSProperties } from 'react'
 import type { TypingKind } from '../../core/hooks/useTypingLabel'
+import s from './TypingIndicator.module.scss'
 
 interface Props {
   kind: TypingKind
@@ -15,55 +15,20 @@ interface Props {
 }
 
 function TypingIndicator({ kind, color }: Props) {
+  const style = { '--typing-color': color } as CSSProperties
+
+  // tweb .peer-typing-record: one 6px dot, recordBlink 1.25s infinite.
   if (kind === 'record') {
-    // tweb .peer-typing-record: one 6px dot, recordBlink 1.25s infinite.
-    return (
-      <Box
-        component="span"
-        sx={{
-          display: 'inline-block',
-          verticalAlign: 'middle',
-          transform: 'translateY(-1px)',
-          width: 6,
-          height: 6,
-          borderRadius: '50%',
-          backgroundColor: color,
-          mr: '0.375rem',
-          animation: 'recordBlink 1.25s infinite',
-        }}
-      />
-    )
+    return <span className={s.record} style={style} />
   }
 
   // tweb .peer-typing-text: three 6px dots, .6s linear infinite, staggered.
   return (
-    <Box
-      component="span"
-      sx={{
-        display: 'inline-block',
-        verticalAlign: 'middle',
-        mr: '4px',
-        '& > span': {
-          display: 'inline-block',
-          verticalAlign: 'middle',
-          width: 6,
-          height: 6,
-          borderRadius: '50%',
-          backgroundColor: color,
-          mx: '0.5px',
-          animationDuration: '0.6s',
-          animationIterationCount: 'infinite',
-          animationTimingFunction: 'linear',
-          animationName: 'typingDotMiddle',
-        },
-        '& > span:first-of-type': { animationName: 'typingDotFirst' },
-        '& > span:last-of-type': { animationName: 'typingDotLast' },
-      }}
-    >
+    <span className={s.dots} style={style}>
       <span />
       <span />
       <span />
-    </Box>
+    </span>
   )
 }
 

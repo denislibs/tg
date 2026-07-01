@@ -1,0 +1,27 @@
+// PinnedBar — плашка закреплённого сообщения под шапкой. top задаётся инлайн
+// (динамический offset от плеера).
+.bar {
+  position: absolute;
+  transition: top 0.22s ease;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: 100%;
+  max-width: 688px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  height: 44px;
+  border-radius: 16px;
+  cursor: pointer;
+  background: var(--tg-bubble);
+  box-shadow: var(--tg-plateShadow);
+}
+.body {
+  flex: 1;
+  min-width: 0;
+  border-left: 2px solid var(--tg-accent);
+  padding-left: 8px;
+}
