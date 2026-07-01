@@ -1,39 +1,40 @@
 import type { ReactNode } from 'react'
-import { Box, useTheme } from '@mui/material'
 import IconButton from '../../shared/ui/IconButton'
 import Text from '../../shared/ui/Text'
+import SidebarSection from '../../shared/ui/SidebarSection'
+import classNames from '../../shared/lib/classNames'
 import { motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
 import { slideInRight } from '../../motion'
 import TgSwitch from '../TgSwitch'
 import { useT } from '../../i18n'
+import s from './kit.module.scss'
 
+/** Surface colour of a settings card (on the neutral screen backdrop). */
 export function useCardBg() {
-  return useTheme().palette.mode === 'dark' ? '#2b2b2b' : '#ffffff'
+  return 'var(--tg-sidebarBg)'
 }
 
 /**
  * Telegram outlined input with a floating label — styles matched to tweb's
  * `.input-field` (_input.scss): 16px radius, 48px height, 13px×16px padding,
- * idle border #2f2f2f/#dfe1e5, 2px accent border + bold accent label on focus.
+ * idle border (--tg-inputBorderIdle), 2px accent border + bold accent label on
+ * focus. Returned as an MUI `sx` object for the (still-MUI) TextField consumers.
  */
 export function useFieldSx() {
-  const theme = useTheme()
-  const tg = theme.tg
-  const idle = theme.palette.mode === 'dark' ? '#2f2f2f' : '#dfe1e5'
   return {
     '& .MuiOutlinedInput-root': {
       borderRadius: '16px',
       minHeight: 48,
-      color: tg.textPrimary,
+      color: 'var(--tg-textPrimary)',
       fontSize: 16,
-      '& fieldset': { borderColor: idle, transition: 'border-color .2s' },
-      '&:hover fieldset': { borderColor: tg.accent },
-      '&.Mui-focused fieldset': { borderColor: tg.accent, borderWidth: '2px' },
+      '& fieldset': { borderColor: 'var(--tg-inputBorderIdle)', transition: 'border-color .2s' },
+      '&:hover fieldset': { borderColor: 'var(--tg-accent)' },
+      '&.Mui-focused fieldset': { borderColor: 'var(--tg-accent)', borderWidth: '2px' },
     },
     '& .MuiOutlinedInput-input': { padding: '13px 16px' },
-    '& .MuiInputLabel-root': { color: tg.textFaint, fontSize: 16 },
-    '& .MuiInputLabel-root.Mui-focused': { color: tg.accent, fontWeight: 600 },
+    '& .MuiInputLabel-root': { color: 'var(--tg-textFaint)', fontSize: 16 },
+    '& .MuiInputLabel-root.Mui-focused': { color: 'var(--tg-accent)', fontWeight: 600 },
   }
 }
 
@@ -51,33 +52,26 @@ export function SettingsScreen({
   zIndex?: number
   children: ReactNode
 }) {
-  const tg = useTheme().tg
   const t = useT()
   return (
     <motion.div
+      className={s.screen}
       variants={slideInRight}
       initial="initial"
       animate="animate"
       exit="exit"
-      style={{
-        position: 'absolute',
-        inset: 0,
-        zIndex,
-        background: tg.sidebarBg,
-        display: 'flex',
-        flexDirection: 'column',
-      }}
+      style={{ zIndex }}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 1.25 }}>
-        <IconButton onClick={onBack} color={tg.textSecondary}>
+      <div className={s.header}>
+        <IconButton onClick={onBack} color="var(--tg-textSecondary)">
           <TgIcon name="back" />
         </IconButton>
-        <Text size={19} weight={600} color={tg.textPrimary} style={{ flex: 1 }}>
+        <Text size={19} weight={600} color="var(--tg-textPrimary)" className={s.title}>
           {t(title)}
         </Text>
         {headerRight}
-      </Box>
-      <Box sx={{ flex: 1, overflowY: 'auto', pb: 3 }}>{children}</Box>
+      </div>
+      <div className={s.body}>{children}</div>
     </motion.div>
   )
 }
@@ -91,23 +85,47 @@ export function Section({
   footer?: string
   children: ReactNode
 }) {
-  const tg = useTheme().tg
   const t = useT()
-  const cardBg = useCardBg()
   return (
-    <Box sx={{ mb: 1.5 }}>
+    <div className={s.section}>
       {caption && (
-        <Text size={14} weight={600} color={tg.accent} style={{ paddingLeft: '24px', paddingRight: '24px', paddingBottom: '4px' }}>
+        <Text size={14} weight={600} color="var(--tg-accent)" className={s.caption}>
           {t(caption)}
         </Text>
       )}
-      <Box sx={{ mx: 1.25, borderRadius: '16px', background: cardBg, py: 0.5 }}>{children}</Box>
+      <SidebarSection noMargin>{children}</SidebarSection>
       {footer && (
-        <Text size={13.5} color={tg.textSecondary} style={{ paddingLeft: '24px', paddingRight: '24px', paddingTop: '6px' }}>
+        <Text size={13.5} color="var(--tg-textSecondary)" className={s.footer}>
           {t(footer)}
         </Text>
       )}
-    </Box>
+    </div>
+  )
+}
+
+/** List entry: avatar/icon left + title (+ subtitle) + optional remove button. */
+export function EntryRow({
+  left,
+  title,
+  sub,
+  onRemove,
+}: {
+  left: ReactNode
+  title: string
+  sub?: string
+  onRemove?: () => void
+}) {
+  return (
+    <div className={s.entry}>
+      {left}
+      <div className={s.entryBody}>
+        <Text noWrap size={16} color="var(--tg-textPrimary)">{title}</Text>
+        {sub && <Text noWrap size={13.5} color="var(--tg-textSecondary)">{sub}</Text>}
+      </div>
+      {onRemove && (
+        <TgIcon name="close" size={20} color="var(--tg-textFaint)" onClick={onRemove} style={{ cursor: 'pointer', flexShrink: 0 }} />
+      )}
+    </div>
   )
 }
 
@@ -139,43 +157,27 @@ export function Row({
   selected?: boolean
   translate?: boolean
 }) {
-  const tg = useTheme().tg
   const t = useT()
-  const color = danger ? '#ff595a' : accent ? tg.accent : tg.textPrimary
+  const color = danger ? '#ff595a' : accent ? 'var(--tg-accent)' : 'var(--tg-textPrimary)'
   return (
-    <Box
-      onClick={onClick}
-      sx={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 2,
-        px: 2,
-        py: 1.15,
-        mx: 0.5,
-        borderRadius: '12px',
-        cursor: onClick ? 'pointer' : 'default',
-        '&:hover': onClick ? { background: tg.hover } : undefined,
-      }}
-    >
-      {icon && (
-        <Box sx={{ color: tg.textSecondary, display: 'flex', '& svg': { fontSize: 24 } }}>{icon}</Box>
-      )}
-      <Box sx={{ flex: 1, minWidth: 0 }}>
+    <div className={classNames(s.row, onClick ? s.rowClickable : '')} onClick={onClick}>
+      {icon && <div className={s.rowIcon}>{icon}</div>}
+      <div className={s.rowBody}>
         <Text noWrap size={16} color={color}>
           {translate ? t(label) : label}
         </Text>
         {sublabel && (
-          <Text noWrap size={13.5} color={tg.textSecondary}>
+          <Text noWrap size={13.5} color="var(--tg-textSecondary)">
             {sublabel}
           </Text>
         )}
-      </Box>
+      </div>
       {value != null && (
-        <Text size={15} color={tg.textFaint} style={{ flexShrink: 0 }}>{value}</Text>
+        <Text size={15} color="var(--tg-textFaint)" className={s.rowValue}>{value}</Text>
       )}
       {toggle && <TgSwitch checked={!!checked} />}
-      {selected && <TgIcon name="check" size={22} color={tg.accent} />}
-      {chevron && <TgIcon name="next" size={22} color={tg.textFaint} />}
-    </Box>
+      {selected && <TgIcon name="check" size={22} color="var(--tg-accent)" />}
+      {chevron && <TgIcon name="next" size={22} color="var(--tg-textFaint)" />}
+    </div>
   )
 }

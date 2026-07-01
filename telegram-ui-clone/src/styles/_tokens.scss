@@ -56,6 +56,8 @@
   // поисковая карточка в шапке чата (единая поверхность инпут + результаты)
   --tg-searchCardBg: #ffffff;
   --tg-searchCardShadow: 0 6px 28px -6px rgba(0, 0, 0, 0.22);
+  // рамка outlined-инпута в покое (tweb .input-field)
+  --tg-inputBorderIdle: #dfe1e5;
 }
 
 // "Day" — brighter light theme, teal/blue accent; rest inherits classic (:root).
@@ -110,6 +112,7 @@
   --tg-plateShadow: 0 1px 8px rgba(0, 0, 0, 0.45);
   --tg-searchCardBg: #2c2c2e;
   --tg-searchCardShadow: 0 6px 28px -4px rgba(0, 0, 0, 0.6);
+  --tg-inputBorderIdle: #2f2f2f;
 }
 
 // "Dark" — neutral near-black (vs Night's purple), blue accent; deltas over night.

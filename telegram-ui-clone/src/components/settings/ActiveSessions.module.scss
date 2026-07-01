@@ -1,0 +1,27 @@
+.session {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 9px 12px;
+}
+.icon {
+  color: var(--tg-accent);
+  display: flex;
+  margin-top: 2px;
+
+  svg {
+    font-size: 26px;
+  }
+}
+.body {
+  flex: 1;
+  min-width: 0;
+}
+.top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.app {
+  flex: 1;
+}
