@@ -188,6 +188,9 @@ function Composer({
     // (tweb splitStringByLength). The counter shows how many it'll be.
     onSend(text, entities.length ? entities : undefined)
     clearEditor()
+    // Keep focus in the input after sending (tweb) — clearEditor drops the
+    // selection/children which blurs the contenteditable, so restore it.
+    editorRef.current?.focus()
   }
 
   const applyFmt = (type: EntityType, url?: string) => {
