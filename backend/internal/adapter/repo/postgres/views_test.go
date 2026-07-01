@@ -8,6 +8,41 @@ import (
 	storepostgres "github.com/messenger-denis/backend/internal/store/postgres"
 )
 
+// A channel's linked discussion group is hidden from ListDialogs (access is only
+// via the post's "Comments" thread), but the channel itself stays visible.
+func TestChatsRepo_ListDialogs_HidesDiscussionGroup(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewChatsRepo(pool)
+	groups := NewGroupRepo(pool)
+	ctx := context.Background()
+
+	u := seedUser(t, pool, "+795")
+	ch, _ := groups.CreateMultiMember(ctx, "channel", "Chan", "", "", true, u)
+	_ = groups.AddMember(ctx, ch, u, domain.RoleCreator, domain.AllRights)
+	disc, _ := groups.CreateMultiMember(ctx, "group", "Discussion", "", "", false, u)
+	_ = groups.AddMember(ctx, disc, u, domain.RoleCreator, domain.AllRights)
+	if err := groups.SetDiscussion(ctx, ch, disc); err != nil {
+		t.Fatal(err)
+	}
+
+	dialogs, err := repo.ListDialogs(ctx, u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hasChannel bool
+	for _, d := range dialogs {
+		if d.ChatID == disc {
+			t.Fatalf("discussion group %d must be hidden from dialogs", disc)
+		}
+		if d.ChatID == ch {
+			hasChannel = true
+		}
+	}
+	if !hasChannel {
+		t.Fatalf("channel %d must stay visible in dialogs", ch)
+	}
+}
+
 // RegisterChannelViews on the real schema: increments views once per (post, viewer),
 // dedups re-reads, respects the read-seq boundary, and is a no-op for non-channels.
 func TestMessagesRepo_ChannelViews(t *testing.T) {

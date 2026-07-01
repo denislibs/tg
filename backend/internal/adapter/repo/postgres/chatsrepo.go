@@ -188,6 +188,9 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		   LIMIT 1
 		 ) peer ON c.type = 'private'
 		 WHERE m.user_id = $1
+		   -- Скрываем служебные группы обсуждения канала: доступ к ним только через
+		   -- «Комментарии» (тред), в списке диалогов они не нужны.
+		   AND c.id NOT IN (SELECT discussion_chat_id FROM chats WHERE discussion_chat_id IS NOT NULL)
 		 ORDER BY lm.created_at DESC NULLS LAST`, userID)
 	if err != nil {
 		return nil, err
