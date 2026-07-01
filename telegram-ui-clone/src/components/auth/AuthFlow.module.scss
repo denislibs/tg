@@ -1,0 +1,275 @@
+// Экран авторизации: телефон / QR / код. Порт с MUI sx на SCSS-модуль.
+
+// Полноэкранная подложка по центру.
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  background: var(--tg-appBg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+// Стрелка «назад» — фикс в левом верхнем углу.
+.back {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+}
+
+// Колонка формы.
+.card {
+  width: 100%;
+  max-width: 360px;
+}
+
+// Логотип-кружок с самолётиком.
+.logo {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: var(--tg-accentGradient);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px;
+  box-shadow: 0 8px 28px -8px rgba(0, 0, 0, 0.4);
+}
+
+// Общий бокс поля (селектор страны, ввод телефона).
+.fieldWrap {
+  border: 1.5px solid var(--tg-divider);
+  border-radius: 12px;
+  padding: 0 14px;
+  height: 54px;
+  display: flex;
+  align-items: center;
+  transition: border-color 0.15s ease;
+
+  &:focus-within {
+    border-color: var(--tg-accent);
+  }
+}
+
+// Селектор страны.
+.countryWrap {
+  position: relative;
+  margin-bottom: 10px;
+}
+.countrySelect {
+  cursor: pointer;
+  justify-content: space-between;
+}
+.countryLabel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.flag {
+  font-size: 22px;
+  line-height: 1;
+}
+
+// Выпадающий список стран.
+.dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 10;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--tg-menuBg);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border-radius: 12px;
+  box-shadow: var(--tg-menuShadow);
+  padding: 4px 0;
+}
+.dropdownItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--tg-hover);
+  }
+}
+.flagSmall {
+  font-size: 20px;
+  line-height: 1;
+}
+
+// Поле ввода телефона.
+.phoneInput {
+  flex: 1;
+  font-size: 16px;
+  color: var(--tg-textPrimary);
+  border: none;
+  outline: none;
+  background: transparent;
+  min-width: 0;
+
+  &::placeholder {
+    color: var(--tg-textFaint);
+    opacity: 1;
+  }
+}
+
+// «Оставаться в системе».
+.keepRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  cursor: pointer;
+  user-select: none;
+}
+.keepBox {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--tg-textFaint);
+  transition: background 0.15s ease;
+}
+.keepBoxOn {
+  background: var(--tg-accent);
+  border: none;
+}
+
+// Акцентная кнопка (Next).
+.accentBtn {
+  height: 54px;
+  border-radius: 12px;
+  background: var(--tg-accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: filter 0.15s ease, opacity 0.15s ease;
+  margin-top: 24px;
+
+  &:hover {
+    filter: brightness(1.06);
+  }
+}
+.accentBtnDisabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+// Текстовая ссылка-переключатель шага.
+.linkBtn {
+  margin-top: 20px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--tg-accent);
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+// Карточка QR-кода.
+.qrCard {
+  position: relative;
+  width: fit-content;
+  margin: 0 auto;
+  padding: 16px;
+  border-radius: 18px;
+  background: #fff;
+}
+.qrFallback {
+  width: 220px;
+  height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+// Оверлей логотипа в центре QR.
+.qrLogo {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--tg-accentGradient);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+// Список инструкций под QR.
+.qrSteps {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.qrStepRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.qrStepNum {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--tg-accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.linkQr {
+  margin-top: 24px;
+}
+
+// Ячейка ввода кода.
+.codeRow {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+.codeCell {
+  width: 48px;
+  height: 56px;
+  border: 1.5px solid var(--tg-divider);
+  border-radius: 12px;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--tg-textPrimary);
+  text-align: center;
+  outline: none;
+  background: transparent;
+  transition: border-color 0.15s ease;
+
+  &:focus {
+    border-color: var(--tg-accent);
+  }
+}
+.codeCellFilled {
+  border-color: var(--tg-accent);
+}

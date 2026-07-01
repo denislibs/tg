@@ -1,0 +1,41 @@
+// Тумблер, 1:1 с tweb .checkbox-field-toggle: трек 31×14 (pill), круглый thumb
+// 20px (surface) с 2px рамкой цвета трека (серый off / accent on), thumb выступает
+// за трек на 3px с каждой стороны. Цвет линии — --sw-line (off / accent).
+.root {
+  --sw-line: var(--tg-switchOff);
+  position: relative;
+  width: 37px; // 31 + 3*2
+  height: 20px;
+  flex-shrink: 0;
+  cursor: pointer;
+
+  &[data-on] {
+    --sw-line: var(--tg-accent);
+  }
+}
+.track {
+  position: absolute;
+  top: 3px; // (20 - 14)/2
+  left: 3px;
+  width: 31px;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--sw-line);
+  transition: background-color 0.1s ease;
+}
+.thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 20px;
+  height: 20px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: var(--tg-sidebarBg);
+  border: 2px solid var(--sw-line);
+  transition: left 0.14s cubic-bezier(0.22, 0.75, 0.7, 1.3), border-color 0.1s ease;
+
+  .root[data-on] & {
+    left: 17px; // 37 - 20
+  }
+}

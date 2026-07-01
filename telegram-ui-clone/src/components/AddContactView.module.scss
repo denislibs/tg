@@ -1,0 +1,175 @@
+// AddContactView — экран «Добавить контакт» (порт tweb editContact, isNew).
+// Док-панель: 380px-колонка на широких экранах, оверлей на узких. Цвета — токены --tg-*.
+
+// затемнение под оверлеем (узкий режим)
+.backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+// карточка-панель (общая база)
+.panel {
+  background: var(--tg-sidebarBg);
+  border-radius: 18px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+// узкий режим: плавающая справа панель
+.panelNarrow {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  bottom: 16px;
+  width: min(380px, calc(100vw - 32px));
+}
+
+// широкий режим: колонка внутри контента
+.panelWide {
+  width: 380px;
+  height: 100%;
+  margin-left: 8px;
+  margin-right: 16px;
+  position: relative;
+}
+
+// шапка: назад + заголовок
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  flex-shrink: 0;
+}
+
+// скроллируемое тело
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 96px;
+}
+
+// аватар + исходное имя
+.avatarBlock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 8px;
+  margin-bottom: 24px;
+}
+
+// карточка с полями (фон зависит от темы)
+.card {
+  margin: 0 10px 12px;
+  padding: 16px;
+  border-radius: 16px;
+  background: #ffffff;
+
+  :global(html[data-theme='night']) &,
+  :global(html[data-theme='dark']) & {
+    background: #2b2b2b;
+  }
+}
+
+// поле: лейбл всплывает на фон карточки
+.field {
+  --input-bg: #ffffff;
+
+  :global(html[data-theme='night']) &,
+  :global(html[data-theme='dark']) & {
+    --input-bg: #2b2b2b;
+  }
+}
+
+.fieldGap {
+  margin-bottom: 16px;
+}
+
+// обёртка поля-заметки с иконкой-смайлом справа
+.noteWrap {
+  position: relative;
+}
+
+// иконка-смайл в конце поля-заметки
+.noteIcon {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+// ряд «номер скрыт»
+.phoneRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-top: 20px;
+  padding: 0 4px;
+}
+
+.phoneText {
+  min-width: 0;
+}
+
+// ряд с чекбоксом «показать номер» (фон зависит от темы)
+.shareRow {
+  margin: 0 10px;
+  padding: 12px 16px;
+  border-radius: 16px;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  cursor: pointer;
+
+  :global(html[data-theme='night']) &,
+  :global(html[data-theme='dark']) & {
+    background: #2b2b2b;
+  }
+}
+
+// квадратный чекбокс (tweb CheckboxField)
+.check {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s;
+  border: 2px solid var(--tg-textFaint);
+}
+
+.checkOn {
+  background: var(--tg-accent);
+  border-color: var(--tg-accent);
+}
+
+// подпись под чекбоксом
+.shareHint {
+  padding-left: 20px;
+  padding-right: 20px;
+  margin-top: 8px;
+}
+
+// плавающая кнопка submit
+.fab {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: none;
+  background: var(--tg-accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  transition: opacity 0.2s;
+}

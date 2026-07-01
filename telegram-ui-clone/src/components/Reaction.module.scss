@@ -1,0 +1,26 @@
+.reaction {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 30px;
+  width: 30px;
+  border-radius: 15px;
+  cursor: pointer;
+  user-select: none;
+  background: var(--tg-searchBg);
+  color: var(--tg-accent);
+
+  &.hasCount {
+    width: auto;
+    padding: 0 10px;
+  }
+  &.highlighted {
+    background: linear-gradient(135deg, #f7b733, #fc8a3b);
+    color: #fff;
+  }
+}
+.emoji {
+  font-size: 16px;
+  line-height: 1;
+}

@@ -1,4 +1,3 @@
-import { Box, useTheme } from '@mui/material'
 import TgIcon from './TgIcon'
 import Avatar from '../shared/ui/Avatar'
 import Menu, { MenuItem } from '../shared/ui/Menu'
@@ -26,13 +25,12 @@ export default function MainMenu({
   onOpenPremium,
   onLogout,
 }: Props) {
-  const tg = useTheme().tg
   const t = useT()
   const me = useChatsStore((s) => s.me)
   const meAvatar = useAvatarSrc(me?.avatarUrl)
   const meName = me?.displayName?.trim() || [me?.firstName, me?.lastName].filter(Boolean).join(' ').trim() || me?.username || 'Аккаунт'
   const divider = (
-    <Box sx={{ height: '1px', background: tg.divider, mx: 0, my: 0.75 }} />
+    <div style={{ height: '1px', background: 'var(--tg-divider)', margin: '6px 0' }} />
   )
 
   return (
@@ -44,7 +42,7 @@ export default function MainMenu({
       {/* Account row — same height as items, small ringed avatar in the icon slot (tweb) */}
       <MenuItem
         icon={
-          <span style={{ padding: 2, borderRadius: '50%', border: `2px solid ${tg.accent}`, display: 'flex' }}>
+          <span style={{ padding: 2, borderRadius: '50%', border: '2px solid var(--tg-accent)', display: 'flex' }}>
             <Avatar background={gradientFor(me?.id ?? 0)} text={meName.charAt(0).toUpperCase()} src={meAvatar} size={26} />
           </span>
         }
@@ -59,7 +57,7 @@ export default function MainMenu({
       {divider}
       <MenuItem icon={<TgIcon name="card_outline" size={20} />} label={t('Wallet')} onClick={onClose} />
       <MenuItem
-        icon={<TgIcon name="star_filled" size={20} color={tg.accent} />}
+        icon={<TgIcon name="star_filled" size={20} color="var(--tg-accent)" />}
         label={t('Telegram Premium')}
         onClick={onOpenPremium ?? onClose}
       />
@@ -68,7 +66,7 @@ export default function MainMenu({
       <MenuItem
         icon={<TgIcon name="more" size={20} />}
         label={t('More')}
-        right={<TgIcon name="next" size={20} color={tg.textFaint} />}
+        right={<TgIcon name="next" size={20} color="var(--tg-textFaint)" />}
         onClick={onClose}
       />
       {onLogout && (

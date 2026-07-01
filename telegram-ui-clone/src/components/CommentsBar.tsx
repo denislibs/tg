@@ -1,10 +1,8 @@
-import { Box, useTheme } from '@mui/material'
 import TgIcon from './TgIcon'
 import { motion } from 'framer-motion'
 import Text from '../shared/ui/Text'
 import { useT } from '../i18n'
-
-const MotionBox = motion(Box)
+import s from './CommentsBar.module.scss'
 
 const commenters = [
   { bg: 'linear-gradient(135deg,#ff5f6d,#ffc371)', label: 'ДЧ' },
@@ -14,74 +12,29 @@ const commenters = [
 
 export default function CommentsBar({ onOpen, count }: { onOpen?: () => void; count?: number }) {
   const t = useT()
-  const tg = useTheme().tg
-
-  const roundBtn = {
-    width: 44,
-    height: 44,
-    borderRadius: '50%',
-    background: tg.bubble,
-    border: `1px solid ${tg.bubbleBorder}`,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-    flexShrink: 0,
-  }
 
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, maxWidth: 520, width: '100%', mt: 0.75 }}>
-      <MotionBox
-        onClick={onOpen}
-        whileHover={{ background: tg.hover }}
-        sx={{
-          flex: 1,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1.25,
-          background: tg.bubble,
-          border: `1px solid ${tg.bubbleBorder}`,
-          borderRadius: '14px',
-          px: 1.5,
-          py: 1.25,
-          cursor: 'pointer',
-        }}
-      >
-        <Box sx={{ display: 'flex' }}>
+    <div className={s.bar}>
+      <div className={s.main} onClick={onOpen}>
+        <div className={s.avatars}>
           {commenters.map((c, i) => (
-            <Box
-              key={i}
-              sx={{
-                width: 26,
-                height: 26,
-                borderRadius: '50%',
-                background: c.bg,
-                ml: i === 0 ? 0 : '-9px',
-                border: `2px solid ${tg.bubble}`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 10,
-                fontWeight: 700,
-                color: '#fff',
-              }}
-            >
+            <div key={i} className={s.avatar} style={{ background: c.bg }}>
               {c.label}
-            </Box>
+            </div>
           ))}
-        </Box>
-        <Text size={14.5} weight={600} color={tg.accent} style={{ flex: 1 }}>
+        </div>
+        <Text size={14.5} weight={600} color="var(--tg-accent)" className={s.label}>
           {t('Comments')}{count != null ? ` (${count})` : ''}
         </Text>
-        <TgIcon name="next" color={tg.textFaint} />
-      </MotionBox>
+        <TgIcon name="next" color="var(--tg-textFaint)" />
+      </div>
 
-      <MotionBox whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.9 }} sx={roundBtn}>
+      <motion.div className={s.roundBtn} whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.9 }}>
         <TgIcon name="reactions_filled" size={20} color="#ff3b5c" />
-      </MotionBox>
-      <MotionBox whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.9 }} sx={roundBtn}>
-        <TgIcon name="reply" size={20} color={tg.textSecondary} style={{ transform: 'scaleX(-1)' }} />
-      </MotionBox>
-    </Box>
+      </motion.div>
+      <motion.div className={s.roundBtn} whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.9 }}>
+        <TgIcon name="reply" size={20} color="var(--tg-textSecondary)" style={{ transform: 'scaleX(-1)' }} />
+      </motion.div>
+    </div>
   )
 }

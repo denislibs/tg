@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { Box, TextField, useTheme } from '@mui/material'
 import IconButton from '../shared/ui/IconButton'
 import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
@@ -7,6 +6,8 @@ import Avatar from '../shared/ui/Avatar'
 import Text from '../shared/ui/Text'
 import { useChatsStore } from '../stores/chatsStore'
 import { gradientFor } from '../core/dialogToChat'
+import classNames from '../shared/lib/classNames'
+import s from './AddStorySheet.module.scss'
 
 export type StoryPrivacy = 'everyone' | 'contacts' | 'selected'
 
@@ -29,11 +30,6 @@ export default function AddStorySheet({
   onBack: () => void
   onPublish: (args: { caption: string; privacy: StoryPrivacy; allowIds: number[] }) => void | Promise<void>
 }) {
-  const theme = useTheme()
-  const tg = theme.tg
-  const mode = theme.palette.mode
-  const cardBg = mode === 'dark' ? '#2b2b2b' : '#ffffff'
-
   const dialogs = useChatsStore((s) => s.dialogs)
   // private peers only — the contact pool for the "Выбранные" audience
   const contacts = dialogs
@@ -77,63 +73,48 @@ export default function AddStorySheet({
         position: 'absolute',
         inset: 0,
         zIndex: 42,
-        background: tg.sidebarBg,
+        background: 'var(--tg-sidebarBg)',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
       }}
     >
-      {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 1.25 }}>
-        <IconButton onClick={onBack} aria-label="Назад" color={tg.textSecondary}>
+      {/* Шапка */}
+      <div className={s.header}>
+        <IconButton onClick={onBack} aria-label="Назад" color="var(--tg-textSecondary)">
           <TgIcon name="back" />
         </IconButton>
-        <Text size={19} weight={600} color={tg.textPrimary}>
+        <Text size={19} weight={600} color="var(--tg-textPrimary)">
           Новая история
         </Text>
-      </Box>
+      </div>
 
-      <Box sx={{ flex: 1, overflowY: 'auto', pb: 12 }}>
-        {/* Caption */}
-        <Box sx={{ m: 1.5, px: 2.5, py: 3, borderRadius: '18px', background: cardBg }}>
-          <TextField
-            autoFocus
-            fullWidth
-            multiline
-            maxRows={4}
-            label="Подпись"
-            variant="outlined"
-            value={caption}
-            onChange={(e) => setCaption(e.target.value)}
-            sx={{
-              '& .MuiOutlinedInput-root': {
-                borderRadius: '14px',
-                color: tg.textPrimary,
-                fontSize: 16,
-                '& fieldset': { borderColor: tg.divider },
-                '&:hover fieldset': { borderColor: tg.textFaint },
-                '&.Mui-focused fieldset': { borderColor: tg.accent, borderWidth: '1.5px' },
-              },
-              '& .MuiInputLabel-root': { color: tg.textSecondary, fontSize: 16 },
-              '& .MuiInputLabel-root.Mui-focused': { color: tg.accent },
-            }}
-          />
-        </Box>
+      <div className={s.body}>
+        {/* Подпись */}
+        <div className={classNames(s.card, s.captionCard)}>
+          <div className={s.captionField}>
+            <textarea
+              autoFocus
+              rows={1}
+              className={s.captionInput}
+              placeholder=" "
+              value={caption}
+              onChange={(e) => setCaption(e.target.value)}
+            />
+            <label className={s.captionLabel}>Подпись</label>
+          </div>
+        </div>
 
-        {/* Privacy selector (segmented buttons) */}
-        <Box sx={{ mx: 1.5 }}>
-          <Text size={14} weight={600} color={tg.accent} style={{ paddingLeft: '12px', paddingRight: '12px', paddingBottom: '4px' }}>
+        {/* Селектор приватности (сегментированные кнопки) */}
+        <div className={s.privacyBlock}>
+          <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionLabel}>
             Кто может видеть
           </Text>
-          <Box
-            role="radiogroup"
-            aria-label="Кто может видеть историю"
-            sx={{ display: 'flex', gap: 1, p: 0.5, borderRadius: '16px', background: cardBg }}
-          >
+          <div className={classNames(s.card, s.segments)} role="radiogroup" aria-label="Кто может видеть историю">
             {PRIVACY_OPTIONS.map((opt) => {
               const active = privacy === opt.key
               return (
-                <Box
+                <div
                   key={opt.key}
                   role="radio"
                   aria-checked={active}
@@ -145,43 +126,31 @@ export default function AddStorySheet({
                       setPrivacy(opt.key)
                     }
                   }}
-                  sx={{
-                    flex: 1,
-                    textAlign: 'center',
-                    py: 1.1,
-                    borderRadius: '12px',
-                    cursor: 'pointer',
-                    fontSize: 15,
-                    fontWeight: 500,
-                    color: active ? '#fff' : tg.textPrimary,
-                    background: active ? tg.accentGradient : 'transparent',
-                    transition: 'background .18s ease, color .18s ease',
-                    '&:hover': { background: active ? tg.accentGradient : tg.hover },
-                  }}
+                  className={classNames(s.segment, active ? s.segmentActive : '')}
                 >
                   {opt.label}
-                </Box>
+                </div>
               )
             })}
-          </Box>
-        </Box>
+          </div>
+        </div>
 
-        {/* Contact picker for the "Выбранные" audience */}
+        {/* Выбор контактов для аудитории "Выбранные" */}
         {privacy === 'selected' && (
-          <Box sx={{ mx: 1.5, mt: 1.5 }}>
-            <Text size={14} weight={600} color={tg.accent} style={{ paddingLeft: '12px', paddingRight: '12px', paddingBottom: '4px' }}>
+          <div className={s.contactsBlock}>
+            <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionLabel}>
               Контакты
             </Text>
-            <Box sx={{ borderRadius: '16px', background: cardBg, py: 0.5 }}>
+            <div className={classNames(s.card, s.contactsList)}>
               {contacts.length === 0 && (
-                <Text size={15} color={tg.textSecondary} style={{ paddingLeft: '16px', paddingRight: '16px', paddingTop: '12px', paddingBottom: '12px' }}>
+                <Text size={15} color="var(--tg-textSecondary)" className={s.emptyRow}>
                   Нет контактов
                 </Text>
               )}
               {contacts.map((c) => {
                 const checked = allow.has(c.id)
                 return (
-                  <Box
+                  <div
                     key={c.id}
                     role="checkbox"
                     aria-checked={checked}
@@ -194,79 +163,39 @@ export default function AddStorySheet({
                         toggleContact(c.id)
                       }
                     }}
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 1.5,
-                      px: 1.5,
-                      py: 1,
-                      mx: 0.5,
-                      borderRadius: '12px',
-                      cursor: 'pointer',
-                      '&:hover': { background: tg.hover },
-                    }}
+                    className={s.contactRow}
                   >
                     <Avatar
                       background={gradientFor(c.id)}
                       text={c.displayName.charAt(0).toUpperCase()}
                       size="sm"
                     />
-                    <Text noWrap size={16} color={tg.textPrimary} style={{ flex: 1 }}>
+                    <Text noWrap size={16} color="var(--tg-textPrimary)" className={s.contactName}>
                       {c.displayName}
                     </Text>
-                    <Box
-                      sx={{
-                        width: 22,
-                        height: 22,
-                        borderRadius: '50%',
-                        flexShrink: 0,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        background: checked ? tg.accent : 'transparent',
-                        border: checked ? 'none' : `2px solid ${tg.textFaint}`,
-                        color: '#fff',
-                        transition: 'background .15s ease, border-color .15s ease',
-                      }}
-                    >
+                    <div className={classNames(s.check, checked ? s.checkOn : '')}>
                       {checked && <TgIcon name="check" size={16} />}
-                    </Box>
-                  </Box>
+                    </div>
+                  </div>
                 )
               })}
-            </Box>
-          </Box>
+            </div>
+          </div>
         )}
-      </Box>
+      </div>
 
-      {/* Publish FAB */}
-      <Box
-        component={motion.div}
+      {/* FAB публикации */}
+      <motion.div
         onClick={publish}
         role="button"
         aria-label="Опубликовать"
         aria-disabled={busy}
         whileHover={{ scale: busy ? 1 : 1.06 }}
         whileTap={{ scale: busy ? 1 : 0.92 }}
-        sx={{
-          position: 'absolute',
-          right: 20,
-          bottom: 20,
-          width: 56,
-          height: 56,
-          borderRadius: '50%',
-          background: tg.accentGradient,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: '#fff',
-          cursor: busy ? 'default' : 'pointer',
-          opacity: busy ? 0.5 : 1,
-          transition: 'opacity .2s ease',
-        }}
+        className={classNames(s.fab, busy ? s.fabBusy : '')}
       >
         <TgIcon name="check" />
-      </Box>
+      </motion.div>
     </motion.div>
   )
 }

@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react'
-import { Box, useTheme } from '@mui/material'
 import { TWallpaper, type TWallpaperHandlers, type PatternOptions } from '@twallpaper/react'
 import '@twallpaper/react/css'
 import patternUrl from '../assets/pattern.svg'
@@ -26,16 +25,28 @@ function patternFor(mode: 'light' | 'dark', appBg: string, blur: boolean): Patte
     : { ...base, mask: false }
 }
 
+// The TWallpaper canvas renderer parses CONCRETE hex — not CSS var() — so the theme
+// values are read from the resolved custom properties (не из var-строк) + data-theme.
+function readTheme() {
+  const cs = getComputedStyle(document.documentElement)
+  const v = (n: string) => cs.getPropertyValue(n).trim()
+  const dt = document.documentElement.getAttribute('data-theme')
+  return {
+    mode: (dt === 'night' || dt === 'dark' ? 'dark' : 'light') as 'light' | 'dark',
+    appBg: v('--tg-appBg'),
+    grad: [v('--tg-bgGrad0'), v('--tg-bgGrad1'), v('--tg-bgGrad2'), v('--tg-bgGrad3')],
+  }
+}
+
 export default function ChatBackground() {
-  const theme = useTheme()
-  const tg = theme.tg
-  const mode = theme.palette.mode
-  const { wallpaper, wallpaperBlur } = useSettings()
+  const { wallpaper, wallpaperBlur, themeChoice } = useSettings()
   const ref = useRef<TWallpaperHandlers>(null)
   const painted = useRef(false)
 
+  const th = readTheme()
+  const mode = th.mode
   // The gradient colours: an explicit preset, otherwise the theme default.
-  const colors = wallpaper.kind === 'preset' ? wallpaper.colors : tg.bgGradient
+  const colors = wallpaper.kind === 'preset' ? wallpaper.colors : th.grad
 
   // A solid colour or uploaded image replaces the animated gradient entirely.
   const overlay =
@@ -58,14 +69,18 @@ export default function ChatBackground() {
       painted.current = false // TWallpaper is unmounted while the overlay shows
       return
     }
-    ref.current?.updateColors(colors)
-    ref.current?.updatePattern(patternFor(mode, tg.appBg, wallpaperBlur))
+    // Read fresh values here (this passive effect runs after App's layout effect
+    // has applied the new data-theme), so a theme switch repaints with real hex.
+    const fresh = readTheme()
+    const freshColors = wallpaper.kind === 'preset' ? wallpaper.colors : fresh.grad
+    ref.current?.updateColors(freshColors)
+    ref.current?.updatePattern(patternFor(fresh.mode, fresh.appBg, wallpaperBlur))
     // updateColors only stores the colours; the canvas is painted by init() on
     // first mount, so force a repaint (one position step) on later changes.
     if (painted.current) ref.current?.toNextPosition()
     else painted.current = true
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, colors.join(), tg.appBg, wallpaperBlur, !!overlay])
+  }, [themeChoice, colors.join(), wallpaperBlur, !!overlay])
 
   // Animate the gradient one step forward on each sent message.
   useEffect(() => {
@@ -76,8 +91,8 @@ export default function ChatBackground() {
 
   if (overlay) {
     return (
-      <Box
-        sx={{
+      <div
+        style={{
           position: 'fixed',
           inset: 0,
           zIndex: 0,
@@ -96,7 +111,7 @@ export default function ChatBackground() {
         fps: 30,
         tails: 90,
         animate: false,
-        pattern: patternFor(mode, tg.appBg, wallpaperBlur),
+        pattern: patternFor(mode, th.appBg, wallpaperBlur),
       }}
       style={{ zIndex: 0 }}
     />

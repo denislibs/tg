@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react'
-import { Box } from '@mui/material'
 import type QRCodeStyling from 'qr-code-styling'
 
 /**
@@ -57,5 +56,5 @@ export default function QrCode({
     }
   }, [data, size, color])
 
-  return <Box ref={ref} sx={{ width: size, height: size }} aria-label="QR code" />
+  return <div ref={ref} style={{ width: size, height: size }} aria-label="QR code" />
 }

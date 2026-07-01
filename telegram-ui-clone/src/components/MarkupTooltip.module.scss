@@ -1,0 +1,68 @@
+// Стили плавающей панели форматирования (перенос с MUI/inline). Позиция
+// (left/top/transform) задаётся inline в TSX — зависит от выделения.
+@use '../styles/foundation' as *;
+
+.bar {
+  position: fixed;
+  z-index: 1400;
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 4px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+
+  :global(html[data-theme='night']) &,
+  :global(html[data-theme='dark']) & {
+    background: #2b2b2b;
+  }
+}
+
+// режим ввода ссылки
+.linkRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+}
+
+.linkInput {
+  width: 260px;
+  height: 32px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--tg-textPrimary);
+  font-size: 15px;
+  padding: 0 8px;
+}
+
+.linkApply {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--tg-accent);
+  padding: 6px;
+  display: inline-flex;
+}
+
+// кнопка инструмента
+.tool {
+  width: 32px;
+  height: 32px;
+  margin: 0 1px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--tg-textSecondary);
+
+  &.active {
+    background: var(--tg-accent);
+    color: #fff;
+  }
+}

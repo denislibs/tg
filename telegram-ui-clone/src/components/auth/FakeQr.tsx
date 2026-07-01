@@ -1,4 +1,4 @@
-import { Box } from '@mui/material'
+import s from './FakeQr.module.scss'
 
 const N = 25 // modules per side
 const QUIET = 0 // handled by padding on the wrapper
@@ -67,28 +67,14 @@ export default function FakeQr({
   }
 
   return (
-    <Box sx={{ position: 'relative', width: size, height: size }}>
+    <div className={s.root} style={{ width: size, height: size }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         {cells}
         {finder(0, 0)}
         {finder(N - 7, 0)}
         {finder(0, N - 7)}
       </svg>
-      {logo && (
-        <Box
-          sx={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          {logo}
-        </Box>
-      )}
-    </Box>
+      {logo && <div className={s.logo}>{logo}</div>}
+    </div>
   )
 }

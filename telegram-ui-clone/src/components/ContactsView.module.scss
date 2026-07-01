@@ -1,0 +1,84 @@
+// ContactsView — список контактов (порт tweb contacts): поиск + группы по буквам.
+// Цвета — через токены --tg-*.
+
+// шапка: назад + заголовок + добавить
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px;
+}
+
+.title {
+  flex: 1;
+}
+
+// обёртка поиска
+.searchWrap {
+  padding: 0 12px 8px;
+}
+
+// пилюля поиска
+.searchBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--tg-bubble);
+  border-radius: 9999px;
+  height: 40px;
+  padding: 0 14px;
+}
+
+// нативный инпут поиска
+.searchInput {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 15px;
+  font-family: inherit;
+  color: var(--tg-textPrimary);
+
+  &::placeholder {
+    color: var(--tg-textFaint);
+    opacity: 1;
+  }
+}
+
+// список
+.list {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 16px;
+}
+
+// подпись «нет контактов»
+.emptyHint {
+  padding: 16px 24px;
+}
+
+// буквенный заголовок группы
+.groupLetter {
+  padding: 12px 20px 4px;
+}
+
+// строка контакта
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6.8px 16px;
+  margin: 0 6px;
+  border-radius: 12px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--tg-hover);
+  }
+}
+
+// текстовая колонка
+.rowText {
+  min-width: 0;
+  flex: 1;
+}

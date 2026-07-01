@@ -10,10 +10,8 @@
 // formatting inline (bold/italic/spoiler/code/quote/link), 1:1 with tweb. On send
 // the DOM is serialized to plain text + a MessageEntity[] (see core/markdown).
 import { memo, useEffect, useRef, useState } from 'react'
-import { Box, useTheme } from '@mui/material'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
-import { withAlpha } from '../core/cssColor'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import EmojiPicker from './EmojiPicker'
@@ -24,6 +22,7 @@ import { fmtDur, REC_WAVE_BARS, type VoiceRecorder } from '../core/hooks/useVoic
 import { EASE, DUR } from '../motion'
 import { useT } from '../i18n'
 import {DiscardVoiceDialog} from "./messages/ChatDialogs.tsx";
+import s from './Composer.module.scss'
 
 const EASE_STD = EASE
 const DUR_OUT = DUR.out
@@ -90,9 +89,6 @@ function placeCaretEnd(el: HTMLElement) {
 function Composer({
   reply, editing, rec, onSend, onTyping, onCancelReply, onCancelEdit, onOpenAttach, onPasteFiles,
 }: Props) {
-  const theme = useTheme()
-  const tg = theme.tg
-  const mode = theme.palette.mode
   const t = useT()
   const [emptyDraft, setEmptyDraft] = useState(true)
   const [emojiOpen, setEmojiOpen] = useState(false)
@@ -304,21 +300,7 @@ function Composer({
   return (
     <>
       {/* Composer container: reply section + input row in ONE box */}
-      <Box
-        sx={{
-          flex: 1,
-          minWidth: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          background: tg.bubble,
-          borderRadius: '24px',
-          overflow: 'hidden',
-          boxShadow:
-            mode === 'dark'
-              ? '0 1px 8px 1px rgba(0,0,0,0.35)'
-              : '0 1px 8px 1px rgba(0,0,0,0.12)',
-        }}
-      >
+      <div className={s.container}>
         {/* Animated reply bar (inside the container) */}
         <AnimatePresence initial={false}>
           {reply && (
@@ -329,29 +311,20 @@ function Composer({
               transition={{ duration: DUR_OUT, ease: EASE_STD }}
               style={{ overflow: 'hidden' }}
             >
-              <Box
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 1.5,
-                  px: 1.5,
-                  py: 1,
-                  background: `${reply.color}1f`,
-                }}
-              >
+              <div className={s.bar} style={{ background: `${reply.color}1f` }}>
                 <TgIcon name="reply" size={22} color={reply.color} />
-                <Box sx={{ flex: 1, minWidth: 0, borderLeft: `2px solid ${reply.color}`, pl: 1.25 }}>
+                <div className={s.barBody} style={{ borderLeft: `2px solid ${reply.color}` }}>
                   <Text size={14} weight={600} color={reply.color}>
                     {t('Reply to')} {reply.name}
                   </Text>
-                  <Text noWrap size={14} color={tg.textSecondary}>
+                  <Text noWrap size={14} color="var(--tg-textSecondary)">
                     {reply.text}
                   </Text>
-                </Box>
-                <IconButton size="small" onClick={onCancelReply} color={tg.textFaint}>
+                </div>
+                <IconButton size="small" onClick={onCancelReply} color="var(--tg-textFaint)">
                   <TgIcon name="close" size={20} />
                 </IconButton>
-              </Box>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -366,22 +339,22 @@ function Composer({
               transition={{ duration: DUR_OUT, ease: EASE_STD }}
               style={{ overflow: 'hidden' }}
             >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1.5, py: 1, background: withAlpha(tg.accent, 0.12) }}>
-                <TgIcon name="edit" size={22} color={tg.accent} />
-                <Box sx={{ flex: 1, minWidth: 0, borderLeft: `2px solid ${tg.accent}`, pl: 1.25 }}>
-                  <Text size={14} weight={600} color={tg.accent}>{t('Edit message')}</Text>
-                  <Text noWrap size={14} color={tg.textSecondary}>{editing.text}</Text>
-                </Box>
-                <IconButton size="small" onClick={() => { onCancelEdit(); clearEditor() }} color={tg.textFaint}>
+              <div className={s.bar} style={{ background: 'color-mix(in srgb, var(--tg-accent) 12%, transparent)' }}>
+                <TgIcon name="edit" size={22} color="var(--tg-accent)" />
+                <div className={s.barBody} style={{ borderLeft: '2px solid var(--tg-accent)' }}>
+                  <Text size={14} weight={600} color="var(--tg-accent)">{t('Edit message')}</Text>
+                  <Text noWrap size={14} color="var(--tg-textSecondary)">{editing.text}</Text>
+                </div>
+                <IconButton size="small" onClick={() => { onCancelEdit(); clearEditor() }} color="var(--tg-textFaint)">
                   <TgIcon name="close" size={20} />
                 </IconButton>
-              </Box>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
 
         {/* Input row — buttons anchor to the BOTTOM so they stay put as the input grows */}
-        <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 0.5, minHeight: 48, pl: 0.5, pr: 0.5, py: 0.5 }}>
+        <div className={s.inputRow}>
           {rec.recording ? (
             <>
               {/* cancel (discard) */}
@@ -389,48 +362,35 @@ function Composer({
                 <TgIcon name="delete" />
               </IconButton>
               {/* tinted pill: dot/timer + live waveform (tweb voice-recording-pill) */}
-              <Box
-                sx={{
-                  flex: 1,
-                  minWidth: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 1.25,
-                  background: withAlpha(tg.accent, 0.16),
-                  borderRadius: '18px',
-                  py: 0.75,
-                  pl: 1,
-                  pr: 1.25,
-                }}
-              >
+              <div className={s.recPill}>
                 {rec.paused ? (
-                  <Box sx={{ width: 10, height: 10, borderRadius: '50%', background: tg.accent, flexShrink: 0 }} />
+                  <div className={s.recDotPaused} />
                 ) : (
-                  <Box
-                    component={motion.span}
+                  <motion.span
+                    className={s.recDotLive}
                     animate={{ opacity: [1, 0.25, 1] }}
                     transition={{ duration: 1.1, repeat: Infinity, ease: 'easeInOut' }}
-                    sx={{ width: 10, height: 10, borderRadius: '50%', background: '#ff3b30', flexShrink: 0 }}
                   />
                 )}
-                <Text size={16} color={tg.textPrimary} style={{ fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                <Text size={16} color="var(--tg-textPrimary)" style={{ fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
                   {fmtDur(rec.secs)}
                 </Text>
                 {/* live input-level waveform — fills the full pill width
                     (left-padded with a baseline, each bar flexes to fill) */}
-                <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: '1.5px', height: 24, overflow: 'hidden' }}>
+                <div className={s.wave}>
                   {[...Array(Math.max(0, REC_WAVE_BARS - rec.bars.length)).fill(0.05), ...rec.bars]
                     .slice(-REC_WAVE_BARS)
                     .map((h, i) => (
-                      <Box
+                      <div
                         key={i}
-                        sx={{ flex: 1, minWidth: 0, borderRadius: '2px', height: `${Math.round(4 + h * 20)}px`, background: tg.accent, opacity: 0.45 + 0.55 * (i / REC_WAVE_BARS) }}
+                        className={s.waveBar}
+                        style={{ height: `${Math.round(4 + h * 20)}px`, opacity: 0.45 + 0.55 * (i / REC_WAVE_BARS) }}
                       />
                     ))}
-                </Box>
-              </Box>
+                </div>
+              </div>
               {/* pause / resume toggle */}
-              <IconButton onClick={rec.togglePause} color={tg.accent} style={{ width: 40, height: 40, flexShrink: 0 }}>
+              <IconButton onClick={rec.togglePause} color="var(--tg-accent)" style={{ width: 40, height: 40, flexShrink: 0 }}>
                 {rec.paused ? <TgIcon name="microphone_filled" /> : <TgIcon name="pause" />}
               </IconButton>
             </>
@@ -438,7 +398,7 @@ function Composer({
             <>
               <IconButton
                 onClick={(e) => onOpenAttach(e.currentTarget.getBoundingClientRect())}
-                color={tg.textSecondary}
+                color="var(--tg-textSecondary)"
                 style={{ width: 40, height: 40 }}
               >
                 <TgIcon name="attach" />
@@ -446,20 +406,19 @@ function Composer({
               {/* contenteditable input + placeholder overlay. minHeight matches the
                   40px buttons and centers a single line with them; multi-line grows
                   upward (the row is flex-end, so buttons stay pinned to the bottom). */}
-              <Box sx={{ flex: 1, minWidth: 0, position: 'relative', minHeight: 40, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <div className={s.editorWrap}>
                 {emptyDraft && (
                   <Text
                     aria-hidden
                     size={16}
-                    color={tg.textFaint}
-                    style={{ position: 'absolute', top: '50%', left: 2, transform: 'translateY(-50%)', lineHeight: '21px', pointerEvents: 'none' }}
+                    color="var(--tg-textFaint)"
+                    className={s.placeholder}
                   >
                     {t('Message')}
                   </Text>
                 )}
-                <Box
+                <div
                   ref={editorRef}
-                  component="div"
                   contentEditable
                   suppressContentEditableWarning
                   role="textbox"
@@ -470,42 +429,24 @@ function Composer({
                   onKeyDown={onEditorKeyDown}
                   onPaste={onPaste}
                   onDrop={onDrop}
-                  sx={{
-                    fontSize: 16,
-                    lineHeight: '21px',
-                    color: tg.textPrimary,
-                    outline: 'none',
-                    overflowY: 'hidden',
-                    transition: 'height .12s ease',
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                    py: '4px',
-                    // composer-side rendering of the markup spans
-                    '& .md-code': { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', background: 'rgba(127,127,127,0.16)', borderRadius: '4px', padding: '0 .25em' },
-                    '& .md-pre': { display: 'block', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: '0.92em', background: 'rgba(127,127,127,0.16)', borderRadius: '8px', padding: '8px 10px', whiteSpace: 'pre-wrap', my: '2px' },
-                    // language header inside the input so the block looks like the sent one (WYSIWYG)
-                    '& .md-pre[data-language]::before': { content: 'attr(data-language)', display: 'block', fontSize: 11, fontWeight: 700, color: tg.accent, textTransform: 'uppercase', marginBottom: '4px', userSelect: 'none' },
-                    '& .md-spoiler': { background: withAlpha(tg.textPrimary, 0.18), borderRadius: '4px' },
-                    '& .md-quote': { display: 'inline-block', borderLeft: `3px solid ${tg.accent}`, paddingLeft: '8px', opacity: 0.95 },
-                    '& a': { color: tg.accent },
-                  }}
+                  className={s.editor}
                 />
-              </Box>
+              </div>
               {/* Near the limit: remaining chars. Over it: how many messages the
                   draft will split into on send (tweb-style). */}
               {(len > MAX_LEN - 256 || msgCount > 1) && (
                 <Text
                   title={msgCount > 1 ? `Будет отправлено сообщений: ${msgCount}` : undefined}
                   size={12}
-                  color={msgCount > 1 ? tg.accent : tg.textFaint}
-                  style={{ alignSelf: 'flex-end', marginBottom: '10px', marginRight: '2px', lineHeight: 1, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}
+                  color={msgCount > 1 ? 'var(--tg-accent)' : 'var(--tg-textFaint)'}
+                  className={s.counter}
                 >
                   {msgCount > 1 ? `${msgCount} 💬` : MAX_LEN - len}
                 </Text>
               )}
               <IconButton
                 onClick={() => setEmojiOpen((o) => !o)}
-                color={emojiOpen ? tg.accent : tg.textSecondary}
+                color={emojiOpen ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'}
                 style={{ width: 40, height: 40 }}
               >
                 <TgIcon name="smile" />
@@ -513,22 +454,10 @@ function Composer({
             </>
           )}
           {/* Mic / Send — 48×40 rounded pill inside the bar (1:1 with TG .btn-send) */}
-          <Box
-            component={motion.div}
+          <motion.div
             onClick={() => (hasText ? submit() : rec.recording ? rec.stop(true) : rec.start())}
             whileTap={{ scale: 0.92 }}
-            sx={{
-              width: 48,
-              height: 40,
-              flexShrink: 0,
-              borderRadius: '20px',
-              background: tg.accentGradient,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#fff',
-            }}
+            className={s.sendBtn}
           >
             <AnimatePresence mode="wait" initial={false}>
               <motion.span
@@ -542,9 +471,9 @@ function Composer({
                 {hasText || rec.recording ? <TgIcon name="send" /> : <TgIcon name="microphone_filled" />}
               </motion.span>
             </AnimatePresence>
-          </Box>
-        </Box>
-      </Box>
+          </motion.div>
+        </div>
+      </div>
 
       {/* Floating formatting bar over a text selection (tweb MarkupTooltip) */}
       <MarkupTooltip editorRef={editorRef} onApply={applyFmt} />

@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { Box, InputBase, useTheme } from '@mui/material'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import { motion } from 'framer-motion'
@@ -7,6 +6,7 @@ import TgIcon from './TgIcon'
 import Avatar from '../shared/ui/Avatar'
 import type { Chat } from '../data'
 import { useT } from '../i18n'
+import s from './NewPrivateChat.module.scss'
 
 interface Props {
   chats: Chat[]
@@ -16,9 +16,6 @@ interface Props {
 
 export default function NewPrivateChat({ chats, onClose, onSelect }: Props) {
   const t = useT()
-  const theme = useTheme()
-  const tg = theme.tg
-  const cardBg = theme.palette.mode === 'dark' ? '#2b2b2b' : '#ffffff'
   const [query, setQuery] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -44,103 +41,67 @@ export default function NewPrivateChat({ chats, onClose, onSelect }: Props) {
         position: 'absolute',
         inset: 0,
         zIndex: 41,
-        background: tg.sidebarBg,
+        background: 'var(--tg-sidebarBg)',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
       }}
     >
       {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 1.25 }}>
-        <IconButton onClick={onClose} color={tg.textSecondary}>
+      <div className={s.header}>
+        <IconButton onClick={onClose} color="var(--tg-textSecondary)">
           <TgIcon name="back" />
         </IconButton>
-        <Text size={19} weight={600} color={tg.textPrimary}>
+        <Text size={19} weight={600} color="var(--tg-textPrimary)">
           {t('New Message')}
         </Text>
-      </Box>
+      </div>
 
       {/* Search */}
-      <Box
-        sx={{
-          mx: 1.25,
-          mb: 1,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1,
-          background: cardBg,
-          borderRadius: '9999px',
-          height: 44,
-          px: 1.75,
-        }}
-      >
-        <TgIcon name="search" size={22} color={tg.textFaint} />
-        <InputBase
-          inputRef={inputRef}
+      <div className={s.searchBar}>
+        <TgIcon name="search" size={22} color="var(--tg-textFaint)" />
+        <input
+          ref={inputRef}
+          className={s.searchInput}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t('Search')}
-          sx={{
-            flex: 1,
-            fontSize: 16,
-            color: tg.textPrimary,
-            '& input::placeholder': { color: tg.textFaint, opacity: 1 },
-          }}
         />
-      </Box>
+      </div>
 
       {/* Contact list */}
-      <Box sx={{ flex: 1, overflowY: 'auto', pb: 2 }}>
+      <div className={s.list}>
         {people.length === 0 ? (
-          <Box
-            sx={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 1,
-              pt: 8,
-            }}
-          >
-            <Box sx={{ fontSize: 80, lineHeight: 1 }}>🐤</Box>
-            <Text size={19} weight={600} color={tg.textPrimary}>
+          <div className={s.empty}>
+            <div className={s.emoji}>🐤</div>
+            <Text size={19} weight={600} color="var(--tg-textPrimary)">
               {t('No Results')}
             </Text>
-            <Text size={15} color={tg.textSecondary}>{t('Try searching.')}</Text>
-          </Box>
+            <Text size={15} color="var(--tg-textSecondary)">{t('Try searching.')}</Text>
+          </div>
         ) : (
           people.map((c) => (
-            <Box
+            <div
               key={c.id}
+              className={s.row}
               onClick={() => {
                 onSelect(c.id)
                 onClose()
               }}
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1.5,
-                px: 1.5,
-                py: 0.85,
-                mx: 0.75,
-                borderRadius: '12px',
-                cursor: 'pointer',
-                '&:hover': { background: tg.hover },
-              }}
             >
               <Avatar background={c.avatar} text={c.avatarText} emoji={c.avatarEmoji} size="lg" />
-              <Box sx={{ minWidth: 0 }}>
-                <Text noWrap size={16} weight={500} color={tg.textPrimary}>
+              <div className={s.rowText}>
+                <Text noWrap size={16} weight={500} color="var(--tg-textPrimary)">
                   {c.name}
                 </Text>
-                <Text noWrap size={14} color={tg.textSecondary}>
+                <Text noWrap size={14} color="var(--tg-textSecondary)">
                   {c.status}
                 </Text>
-              </Box>
-            </Box>
+              </div>
+            </div>
           ))
         )}
-      </Box>
+      </div>
     </motion.div>
   )
 }

@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react'
-import { Box, InputBase, useTheme } from '@mui/material'
 import Text from '../shared/ui/Text'
 import IconButton from '../shared/ui/IconButton'
 import { motion } from 'framer-motion'
@@ -8,6 +7,7 @@ import { slideInRight } from '../motion'
 import Avatar from '../shared/ui/Avatar'
 import { useT } from '../i18n'
 import type { Chat } from '../data'
+import s from './ContactsView.module.scss'
 
 export default function ContactsView({
   chats,
@@ -18,7 +18,6 @@ export default function ContactsView({
   onSelect: (id: string) => void
   onBack: () => void
 }) {
-  const tg = useTheme().tg
   const t = useT()
   const [query, setQuery] = useState('')
 
@@ -52,75 +51,51 @@ export default function ContactsView({
         position: 'absolute',
         inset: 0,
         zIndex: 40,
-        background: tg.sidebarBg,
+        background: 'var(--tg-sidebarBg)',
         display: 'flex',
         flexDirection: 'column',
       }}
     >
       {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 1.25 }}>
-        <IconButton onClick={onBack} color={tg.textSecondary}>
+      <div className={s.header}>
+        <IconButton onClick={onBack} color="var(--tg-textSecondary)">
           <TgIcon name="back" />
         </IconButton>
-        <Text size={19} weight={600} color={tg.textPrimary} style={{ flex: 1 }}>
+        <Text size={19} weight={600} color="var(--tg-textPrimary)" className={s.title}>
           {t('Contacts')}
         </Text>
-        <IconButton color={tg.textSecondary}>
+        <IconButton color="var(--tg-textSecondary)">
           <TgIcon name="adduser" />
         </IconButton>
-      </Box>
+      </div>
 
       {/* Search */}
-      <Box sx={{ px: 1.5, pb: 1 }}>
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1,
-            background: tg.bubble,
-            borderRadius: '9999px',
-            height: 40,
-            px: 1.75,
-          }}
-        >
-          <TgIcon name="search" size={20} color={tg.textFaint} />
-          <InputBase
+      <div className={s.searchWrap}>
+        <div className={s.searchBar}>
+          <TgIcon name="search" size={20} color="var(--tg-textFaint)" />
+          <input
+            className={s.searchInput}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t('Search')}
-            sx={{ flex: 1, fontSize: 15, color: tg.textPrimary, '& input::placeholder': { color: tg.textFaint, opacity: 1 } }}
           />
-        </Box>
-      </Box>
+        </div>
+      </div>
 
       {/* List */}
-      <Box sx={{ flex: 1, overflowY: 'auto', pb: 2 }}>
+      <div className={s.list}>
         {groups.length === 0 && (
-          <Text size={14} color={tg.textSecondary} style={{ paddingLeft: '24px', paddingRight: '24px', paddingTop: '16px', paddingBottom: '16px' }}>
+          <Text size={14} color="var(--tg-textSecondary)" className={s.emptyHint}>
             {t('No contacts found.')}
           </Text>
         )}
         {groups.map(([letter, list]) => (
-          <Box key={letter}>
-            <Text size={13} weight={600} color={tg.accent} style={{ paddingLeft: '20px', paddingRight: '20px', paddingTop: '12px', paddingBottom: '4px' }}>
+          <div key={letter}>
+            <Text size={13} weight={600} color="var(--tg-accent)" className={s.groupLetter}>
               {letter}
             </Text>
             {list.map((c) => (
-              <Box
-                key={c.id}
-                onClick={() => onSelect(c.id)}
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 1.5,
-                  px: 2,
-                  py: 0.85,
-                  mx: 0.75,
-                  borderRadius: '12px',
-                  cursor: 'pointer',
-                  '&:hover': { background: tg.hover },
-                }}
-              >
+              <div key={c.id} className={s.row} onClick={() => onSelect(c.id)}>
                 <Avatar
                   background={c.avatar}
                   text={c.avatarText}
@@ -128,19 +103,19 @@ export default function ContactsView({
                   size={46}
                   online={c.online}
                 />
-                <Box sx={{ minWidth: 0, flex: 1 }}>
-                  <Text noWrap size={16} color={tg.textPrimary}>
+                <div className={s.rowText}>
+                  <Text noWrap size={16} color="var(--tg-textPrimary)">
                     {c.name}
                   </Text>
-                  <Text noWrap size={13.5} color={c.online ? tg.accent : tg.textSecondary}>
+                  <Text noWrap size={13.5} color={c.online ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'}>
                     {c.online ? t('online') : c.status || t('last seen recently')}
                   </Text>
-                </Box>
-              </Box>
+                </div>
+              </div>
             ))}
-          </Box>
+          </div>
         ))}
-      </Box>
+      </div>
     </motion.div>
   )
 }

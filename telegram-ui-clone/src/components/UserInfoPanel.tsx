@@ -1,5 +1,4 @@
-import { useState } from 'react'
-import { Box, Typography, useMediaQuery, useTheme } from '@mui/material'
+import { useEffect, useState } from 'react'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import TgSwitch from './TgSwitch'
@@ -10,9 +9,24 @@ import TgIcon from './TgIcon'
 import Avatar from '../shared/ui/Avatar'
 import { useAvatarSrc } from './useAvatarSrc'
 import EditView from './EditView'
+import classNames from '../shared/lib/classNames'
 import type { Chat, OpenPeer } from '../data'
 import { useT } from '../i18n'
 import { useGroupInfo, RIGHTS, roleLabel, type RealMember } from '../core/hooks/useGroupInfo'
+import s from './UserInfoPanel.module.scss'
+
+// Мини-хук media query (замена MUI useMediaQuery) на window.matchMedia.
+function useMediaQuery(query: string): boolean {
+  const [match, setMatch] = useState(() => window.matchMedia?.(query).matches ?? false)
+  useEffect(() => {
+    const mql = window.matchMedia(query)
+    const onChange = () => setMatch(mql.matches)
+    onChange()
+    mql.addEventListener('change', onChange)
+    return () => mql.removeEventListener('change', onChange)
+  }, [query])
+  return match
+}
 
 const tileGradients = [
   'linear-gradient(135deg,#3a2b5e,#120d20)',
@@ -24,12 +38,8 @@ const tileGradients = [
 ]
 
 export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void }) {
-  const theme = useTheme()
-  const tg = theme.tg
   const t = useT()
-  const mode = theme.palette.mode
   const narrow = useMediaQuery('(max-width:900px)')
-  const cardBg = mode === 'dark' ? '#2b2b2b' : '#ffffff'
   const [tab, setTab] = useState('Media')
   const [editing, setEditing] = useState(false)
   const [notif, setNotif] = useState(true)
@@ -86,120 +96,88 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
             }
       }
     >
-      {narrow && (
-        <Box
-          onClick={onClose}
-          sx={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)' }}
-        />
-      )}
-      <Box
-        component={motion.div}
+      {narrow && <div className={s.backdrop} onClick={onClose} />}
+      <motion.div
         {...(narrow
           ? { initial: { x: '100%' }, animate: { x: '0%' }, transition: { duration: DUR.in, ease: EASE } }
           : {})}
-        sx={
-          narrow
-            ? {
-                position: 'absolute',
-                top: '16px',
-                right: '16px',
-                bottom: '16px',
-                width: 'min(380px, calc(100vw - 32px))',
-                background: tg.sidebarBg,
-                borderRadius: '18px',
-                overflow: 'hidden',
-                display: 'flex',
-                flexDirection: 'column',
-              }
-            : {
-                width: 380,
-                height: '100%',
-                ml: '8px',
-                mr: '16px',
-                background: tg.sidebarBg,
-                borderRadius: '18px',
-                overflow: 'hidden',
-                display: 'flex',
-                flexDirection: 'column',
-                position: 'relative',
-              }
-        }
+        className={classNames(s.panel, narrow ? s.panelNarrow : s.panelWide)}
       >
         {/* Header */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1.5, py: 1.5 }}>
-          <IconButton onClick={onClose} color={tg.textSecondary}>
+        <div className={s.header}>
+          <IconButton onClick={onClose} color="var(--tg-textSecondary)">
             <TgIcon name="close" />
           </IconButton>
-          <Text size={19} weight={600} color={tg.textPrimary} style={{ flex: 1 }}>
+          <Text size={19} weight={600} color="var(--tg-textPrimary)" style={{ flex: 1 }}>
             {t(title)}
           </Text>
           {(isGroup || isChannel) && (
-            <IconButton onClick={() => setEditing(true)} color={tg.textSecondary}>
+            <IconButton onClick={() => setEditing(true)} color="var(--tg-textSecondary)">
               <TgIcon name="edit" />
             </IconButton>
           )}
-        </Box>
+        </div>
 
-        <Box sx={{ flex: 1, overflowY: 'auto', pb: 3 }}>
+        <div className={s.body}>
           {/* Avatar + name */}
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, pt: 1, pb: 2.5 }}>
+          <div className={s.avatarBlock}>
             <Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={headerAvatarSrc} size="profile" />
-            <Text size={21} weight={600} color={tg.textPrimary} style={{ marginTop: '8px', textAlign: 'center', paddingLeft: '16px', paddingRight: '16px' }}>
+            <Text size={21} weight={600} color="var(--tg-textPrimary)" style={{ marginTop: '8px', textAlign: 'center', paddingLeft: '16px', paddingRight: '16px' }}>
               {chat.name}
             </Text>
-            <Text size={14} color={tg.textSecondary}>{chat.status}</Text>
-          </Box>
+            <Text size={14} color="var(--tg-textSecondary)">{chat.status}</Text>
+          </div>
 
           {/* Info card */}
-          <Box sx={{ mx: 1.5, mb: 1.5, borderRadius: '16px', background: cardBg, py: 0.5 }}>
+          <div className={s.card}>
             {isChannel ? (
-              <Box sx={{ display: 'flex', gap: 2, px: 2, py: 1.25 }}>
-                <TgIcon name="info" size={24} color={tg.textSecondary} style={{ marginTop: 4 }} />
-                <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Text size={15.5} color={tg.textPrimary} style={{ marginBottom: linkText ? '12px' : 0 }}>
+              <div className={s.channelRow}>
+                <TgIcon name="info" size={24} color="var(--tg-textSecondary)" style={{ marginTop: 4 }} />
+                <div className={s.grow}>
+                  <Text size={15.5} color="var(--tg-textPrimary)" style={{ marginBottom: linkText ? '12px' : 0 }}>
                     {chat.description ?? t('Channel description.')}
                   </Text>
                   {linkText?.map((l) => (
-                    <Box key={l.label} sx={{ mb: 1.25 }}>
-                      <Text size={15.5} color={tg.textPrimary}>{l.label}:</Text>
-                      <Text size={15.5} color={tg.link} style={{ wordBreak: 'break-all' }}>
+                    <div key={l.label} style={{ marginBottom: '10px' }}>
+                      <Text size={15.5} color="var(--tg-textPrimary)">{l.label}:</Text>
+                      <Text size={15.5} color="var(--tg-link)" style={{ wordBreak: 'break-all' }}>
                         {l.value}
                       </Text>
-                    </Box>
+                    </div>
                   ))}
-                  <Text size={13.5} color={tg.textSecondary}>{t('Info')}</Text>
-                </Box>
-              </Box>
+                  <Text size={13.5} color="var(--tg-textSecondary)">{t('Info')}</Text>
+                </div>
+              </div>
             ) : isGroup ? (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, px: 2, py: 1, mx: 0.5, borderRadius: '12px', cursor: 'pointer', '&:hover': { background: tg.hover } }}>
-                <TgIcon name="link" size={24} color={tg.textSecondary} />
-                <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Text size={16} color={tg.textPrimary} style={{ wordBreak: 'break-all' }}>
+              <div className={s.linkRow}>
+                <TgIcon name="link" size={24} color="var(--tg-textSecondary)" />
+                <div className={s.grow}>
+                  <Text size={16} color="var(--tg-textPrimary)" style={{ wordBreak: 'break-all' }}>
                     t.me/+{chat.id}9yJiODEy
                   </Text>
-                  <Text size={13.5} color={tg.textSecondary}>{t('Link')}</Text>
-                </Box>
-                <TgIcon name="qr" size={22} color={tg.textSecondary} />
-              </Box>
+                  <Text size={13.5} color="var(--tg-textSecondary)">{t('Link')}</Text>
+                </div>
+                <TgIcon name="qr" size={22} color="var(--tg-textSecondary)" />
+              </div>
             ) : (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, px: 2, py: 1, mx: 0.5, borderRadius: '12px', cursor: 'pointer', '&:hover': { background: tg.hover } }}>
-                <TgIcon name="mention" size={24} color={tg.textSecondary} />
-                <Box sx={{ flex: 1 }}>
-                  <Text size={16} color={tg.textPrimary}>
+              <div className={s.linkRow}>
+                <TgIcon name="mention" size={24} color="var(--tg-textSecondary)" />
+                <div style={{ flex: 1 }}>
+                  <Text size={16} color="var(--tg-textPrimary)">
                     {chat.username ?? chat.name.toLowerCase()}
                   </Text>
-                  <Text size={13.5} color={tg.textSecondary}>{t('Username')}</Text>
-                </Box>
-                <TgIcon name="qr" size={22} color={tg.textSecondary} />
-              </Box>
+                  <Text size={13.5} color="var(--tg-textSecondary)">{t('Username')}</Text>
+                </div>
+                <TgIcon name="qr" size={22} color="var(--tg-textSecondary)" />
+              </div>
             )}
 
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, px: 2, py: 0.5, mx: 0.5, borderRadius: '12px' }}>
-              <TgIcon name="unmute" size={24} color={tg.textSecondary} />
-              <Text size={16} color={tg.textPrimary} style={{ flex: 1 }}>{t('Notifications')}</Text>
+            <div className={s.notifRow}>
+              <TgIcon name="unmute" size={24} color="var(--tg-textSecondary)" />
+              <Text size={16} color="var(--tg-textPrimary)" style={{ flex: 1 }}>{t('Notifications')}</Text>
               <TgSwitch checked={notif} onClick={() => setNotif((v) => !v)} />
-            </Box>
-          </Box>
+            </div>
+          </div>
 
           {/* Channel: tabs + media grid */}
           {isChannel && (
@@ -213,151 +191,146 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
                   ))}
                 </Tabs.List>
               </Tabs>
-              <Box sx={{ mx: 1.5, mt: 1, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '3px' }}>
+              <div className={s.mediaGrid}>
                 {tileGradients.map((g, i) => (
-                  <Box key={i} sx={{ aspectRatio: '1 / 1', background: g, borderRadius: i < 3 ? (i === 0 ? '8px 0 0 0' : i === 2 ? '0 8px 0 0' : 0) : 0 }} />
+                  <div
+                    key={i}
+                    className={s.mediaTile}
+                    style={{ background: g, borderRadius: i === 0 ? '8px 0 0 0' : i === 2 ? '0 8px 0 0' : 0 }}
+                  />
                 ))}
-              </Box>
+              </div>
             </>
           )}
 
           {/* Channel discussions: admin (creator/CHANGE_INFO) toggle / enabled state */}
           {isRealChat && isChannel && canManageDiscussion && (
-            <Box sx={{ mx: 1.5, mt: 1 }}>
-              <Text size={14} weight={600} color={tg.accent} style={{ paddingLeft: '12px', paddingRight: '12px', paddingBottom: '4px' }}>
+            <div className={s.section}>
+              <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionTitle}>
                 Обсуждения
               </Text>
-              <Box sx={{ borderRadius: '16px', background: cardBg, py: 0.75 }}>
+              <div className={s.cardPlain}>
                 {discussionChatId > 0 ? (
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, px: 2, py: 1, mx: 0.5, borderRadius: '12px' }}>
-                    <Text size={16} color={tg.textPrimary} style={{ flex: 1 }}>Обсуждения включены</Text>
-                    <TgIcon name="check" size={22} color={tg.accent} />
-                  </Box>
+                  <div className={s.enabledRow}>
+                    <Text size={16} color="var(--tg-textPrimary)" style={{ flex: 1 }}>Обсуждения включены</Text>
+                    <TgIcon name="check" size={22} color="var(--tg-accent)" />
+                  </div>
                 ) : (
-                  <Box sx={{ px: 1.5, py: 0.5 }}>
-                    <Box
-                      component={motion.div}
+                  <div className={s.actionWrap}>
+                    <motion.div
                       whileTap={{ scale: 0.98 }}
                       onClick={() => void enableDiscussion()}
-                      sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, py: 1, borderRadius: '12px', color: tg.accent, fontSize: 16, fontWeight: 600, cursor: 'pointer', opacity: enablingDiscussion ? 0.6 : 1, '&:hover': { background: tg.hover } }}
+                      className={s.actionBtn}
+                      style={{ opacity: enablingDiscussion ? 0.6 : 1 }}
                     >
                       Включить обсуждения
-                    </Box>
-                  </Box>
+                    </motion.div>
+                  </div>
                 )}
-              </Box>
-            </Box>
+              </div>
+            </div>
           )}
 
           {/* Real group/channel: members/subscribers list (loaded from groups.members) */}
           {isRealChat && realMembers && (
-            <Box sx={{ mx: 1.5 }}>
-              <Text size={14} weight={600} color={tg.accent} style={{ paddingLeft: '12px', paddingRight: '12px', paddingBottom: '4px' }}>
+            <div className={s.section}>
+              <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionTitle}>
                 {isChannel ? 'Подписчики' : 'Участники'}
               </Text>
-              <Box sx={{ borderRadius: '16px', background: cardBg, py: 0.75 }}>
+              <div className={s.cardPlain}>
                 {realMembers.map((mem) => {
                   const openChat = () =>
                     onOpenPeer?.({ id: mem.userId, displayName: mem.displayName, username: mem.username, avatarUrl: mem.avatarUrl })
                   return (
-                    <Box
-                      key={mem.userId}
-                      sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1.5, py: 0.75, mx: 0.5, borderRadius: '12px' }}
-                    >
+                    <div key={mem.userId} className={s.memberRow}>
                       {/* avatar + name → open a private chat with this member */}
-                      <Box
-                        onClick={openChat}
-                        sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1, minWidth: 0, cursor: 'pointer', borderRadius: '12px', '&:hover': { background: tg.hover } }}
-                      >
-                        <Avatar background={tg.accent} text={mem.displayName[0]?.toUpperCase()} src={mem.avatarUrl} size="md" />
-                        <Box sx={{ flex: 1, minWidth: 0 }}>
-                          <Text noWrap size={16} color={tg.textPrimary}>{mem.displayName}</Text>
-                          <Text size={13.5} color={mem.online ? tg.accent : tg.textSecondary}>
+                      <div onClick={openChat} className={s.memberTap}>
+                        <Avatar background="var(--tg-accent)" text={mem.displayName[0]?.toUpperCase()} src={mem.avatarUrl} size="md" />
+                        <div className={s.grow}>
+                          <Text noWrap size={16} color="var(--tg-textPrimary)">{mem.displayName}</Text>
+                          <Text size={13.5} color={mem.online ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'}>
                             {mem.online ? t('online') : t('last seen recently')}
                           </Text>
-                        </Box>
-                      </Box>
+                        </div>
+                      </div>
                       {/* role label → admin rights editor (creator/admins only) */}
-                      <Typography
+                      <span
                         onClick={canManageAdmins ? () => setEditMember(mem) : undefined}
-                        sx={{ fontSize: 13.5, color: tg.textSecondary, cursor: canManageAdmins ? 'pointer' : 'default', px: canManageAdmins ? 0.5 : 0, borderRadius: '8px', '&:hover': canManageAdmins ? { background: tg.hover } : undefined }}
+                        className={classNames(s.roleLabel, canManageAdmins ? s.roleClickable : '')}
                       >
                         {roleLabel(mem.role, isChannel)}
-                      </Typography>
-                    </Box>
+                      </span>
+                    </div>
                   )
                 })}
-              </Box>
-            </Box>
+              </div>
+            </div>
           )}
 
           {/* Real group/channel: invite links (admins with INVITE_USERS / creator) */}
           {isRealChat && canInvite && (
-            <Box sx={{ mx: 1.5, mt: 1 }}>
-              <Text size={14} weight={600} color={tg.accent} style={{ paddingLeft: '12px', paddingRight: '12px', paddingBottom: '4px' }}>
+            <div className={s.section}>
+              <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionTitle}>
                 Пригласительные ссылки
               </Text>
-              <Box sx={{ borderRadius: '16px', background: cardBg, py: 0.75 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, px: 2, py: 0.75, mx: 0.5, borderRadius: '12px' }}>
-                  <Text size={16} color={tg.textPrimary} style={{ flex: 1 }}>Запрашивать одобрение</Text>
+              <div className={s.cardPlain}>
+                <div className={s.inviteRow}>
+                  <Text size={16} color="var(--tg-textPrimary)" style={{ flex: 1 }}>Запрашивать одобрение</Text>
                   <TgSwitch checked={requireApproval} onClick={() => setRequireApproval((v) => !v)} />
-                </Box>
+                </div>
                 {inviteLinks.map((link) => {
                   const fullUrl = `${location.origin}/join/${link.token}`
                   return (
-                    <Box key={link.token} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 0.75, mx: 0.5, borderRadius: '12px' }}>
-                      <TgIcon name="link" size={24} color={tg.textSecondary} style={{ flexShrink: 0 }} />
-                      <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Text size={15} color={tg.link} style={{ wordBreak: 'break-all' }}>{fullUrl}</Text>
+                    <div key={link.token} className={s.inviteRow}>
+                      <TgIcon name="link" size={24} color="var(--tg-textSecondary)" style={{ flexShrink: 0 }} />
+                      <div className={s.grow}>
+                        <Text size={15} color="var(--tg-link)" style={{ wordBreak: 'break-all' }}>{fullUrl}</Text>
                         {copiedToken === link.token ? (
-                          <Text size={12.5} color={tg.accent}>Скопировано</Text>
+                          <Text size={12.5} color="var(--tg-accent)">Скопировано</Text>
                         ) : (
                           link.requiresApproval && (
-                            <Text size={12.5} color={tg.textSecondary}>по заявке</Text>
+                            <Text size={12.5} color="var(--tg-textSecondary)">по заявке</Text>
                           )
                         )}
-                      </Box>
-                      <IconButton onClick={() => copyInvite(link.token)} color={copiedToken === link.token ? tg.accent : tg.textSecondary} style={{ flexShrink: 0 }}>
+                      </div>
+                      <IconButton onClick={() => copyInvite(link.token)} color={copiedToken === link.token ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'} style={{ flexShrink: 0 }}>
                         <TgIcon name="copy" size={20} />
                       </IconButton>
-                    </Box>
+                    </div>
                   )
                 })}
-                <Box sx={{ px: 1.5, pt: 0.5 }}>
-                  <Box
-                    component={motion.div}
+                <div className={s.actionWrap}>
+                  <motion.div
                     whileTap={{ scale: 0.98 }}
                     onClick={() => void createInvite()}
-                    sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, py: 1, borderRadius: '12px', color: tg.accent, fontSize: 16, fontWeight: 600, cursor: 'pointer', opacity: creatingInvite ? 0.6 : 1, '&:hover': { background: tg.hover } }}
+                    className={s.actionBtn}
+                    style={{ opacity: creatingInvite ? 0.6 : 1 }}
                   >
                     <TgIcon name="adduser" size={22} />
                     Создать ссылку
-                  </Box>
-                </Box>
-              </Box>
-            </Box>
+                  </motion.div>
+                </div>
+              </div>
+            </div>
           )}
 
           {/* Real group/channel: pending join requests (admins with INVITE_USERS / creator) */}
           {isRealChat && canInvite && joinRequests.length > 0 && (
-            <Box sx={{ mx: 1.5, mt: 1 }}>
-              <Text size={14} weight={600} color={tg.accent} style={{ paddingLeft: '12px', paddingRight: '12px', paddingBottom: '4px' }}>
+            <div className={s.section}>
+              <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionTitle}>
                 Заявки на вступление
               </Text>
-              <Box sx={{ borderRadius: '16px', background: cardBg, py: 0.75 }}>
+              <div className={s.cardPlain}>
                 {joinRequests.map((req) => (
-                  <Box
-                    key={req.userId}
-                    sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1.5, py: 0.75, mx: 0.5, borderRadius: '12px' }}
-                  >
-                    <Avatar background={tg.accent} text={req.displayName[0]?.toUpperCase()} size="md" />
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Text noWrap size={16} color={tg.textPrimary}>{req.displayName}</Text>
-                    </Box>
+                  <div key={req.userId} className={s.requestRow}>
+                    <Avatar background="var(--tg-accent)" text={req.displayName[0]?.toUpperCase()} size="md" />
+                    <div className={s.grow}>
+                      <Text noWrap size={16} color="var(--tg-textPrimary)">{req.displayName}</Text>
+                    </div>
                     <IconButton
                       aria-label={`Одобрить заявку: ${req.displayName}`}
                       onClick={() => void approveJoinRequest(req.userId)}
-                      color={tg.accent}
+                      color="var(--tg-accent)"
                       style={{ flexShrink: 0 }}
                     >
                       <TgIcon name="check" size={22} />
@@ -370,37 +343,23 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
                     >
                       <TgIcon name="close" size={22} />
                     </IconButton>
-                  </Box>
+                  </div>
                 ))}
-              </Box>
-            </Box>
+              </div>
+            </div>
           )}
 
-        </Box>
+        </div>
 
         {/* Group add-member FAB */}
         {isGroup && (
-          <Box
-            component={motion.div}
+          <motion.div
             whileHover={{ scale: 1.06 }}
             whileTap={{ scale: 0.92 }}
-            sx={{
-              position: 'absolute',
-              right: 18,
-              bottom: 18,
-              width: 52,
-              height: 52,
-              borderRadius: '50%',
-              background: tg.accentGradient,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#fff',
-              cursor: 'pointer',
-            }}
+            className={s.fab}
           >
             <TgIcon name="adduser" />
-          </Box>
+          </motion.div>
         )}
 
         {/* Edit screen overlay */}
@@ -414,14 +373,13 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
             <RightsEditor
               key={editMember.userId}
               member={editMember}
-              cardBg={cardBg}
               onBack={() => setEditMember(null)}
               onSave={(bitmask) => saveRights(editMember.userId, bitmask)}
               onRemove={() => removeRights(editMember.userId)}
             />
           )}
         </AnimatePresence>
-      </Box>
+      </motion.div>
     </motion.div>
   )
 }
@@ -434,18 +392,15 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
  */
 function RightsEditor({
   member,
-  cardBg,
   onBack,
   onSave,
   onRemove,
 }: {
   member: RealMember
-  cardBg: string
   onBack: () => void
   onSave: (bitmask: number) => void | Promise<void>
   onRemove: () => void | Promise<void>
 }) {
-  const tg = useTheme().tg
   const isAdmin = member.role === 'creator' || member.role === 'admin'
   const initial = isAdmin ? RIGHTS.reduce((acc, r) => acc | r.bit, 0) : 0
   const [bits, setBits] = useState(initial)
@@ -459,46 +414,34 @@ function RightsEditor({
       initial="initial"
       animate="animate"
       exit="exit"
-      style={{
-        position: 'absolute',
-        inset: 0,
-        zIndex: 60,
-        background: tg.sidebarBg,
-        display: 'flex',
-        flexDirection: 'column',
-      }}
+      className={s.rights}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 1.25 }}>
-        <IconButton onClick={onBack} color={tg.textSecondary}>
+      <div className={s.rightsHeader}>
+        <IconButton onClick={onBack} color="var(--tg-textSecondary)">
           <TgIcon name="back" />
         </IconButton>
-        <Text noWrap size={19} weight={600} color={tg.textPrimary} style={{ flex: 1 }}>
+        <Text noWrap size={19} weight={600} color="var(--tg-textPrimary)" style={{ flex: 1 }}>
           {member.displayName}
         </Text>
-      </Box>
+      </div>
 
-      <Box sx={{ flex: 1, overflowY: 'auto', pb: 3 }}>
-        <Box sx={{ mx: 1.5 }}>
-          <Text size={14} weight={600} color={tg.accent} style={{ paddingLeft: '12px', paddingRight: '12px', paddingBottom: '4px' }}>
+      <div className={s.body}>
+        <div className={s.section} style={{ marginTop: 0 }}>
+          <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionTitle}>
             Права администратора
           </Text>
-          <Box sx={{ borderRadius: '16px', background: cardBg, py: 0.5 }}>
+          <div className={s.cardPlain}>
             {RIGHTS.map((r) => (
-              <Box
-                key={r.bit}
-                onClick={() => toggle(r.bit)}
-                sx={{ display: 'flex', alignItems: 'center', gap: 2, px: 2, py: 1.15, mx: 0.5, borderRadius: '12px', cursor: 'pointer', '&:hover': { background: tg.hover } }}
-              >
-                <Text size={16} color={tg.textPrimary} style={{ flex: 1 }}>{r.label}</Text>
+              <div key={r.bit} onClick={() => toggle(r.bit)} className={s.rightRow}>
+                <Text size={16} color="var(--tg-textPrimary)" style={{ flex: 1 }}>{r.label}</Text>
                 <TgSwitch checked={(bits & r.bit) !== 0} />
-              </Box>
+              </div>
             ))}
-          </Box>
-        </Box>
+          </div>
+        </div>
 
-        <Box sx={{ mx: 1.5, mt: 1.5 }}>
-          <Box
-            component={motion.div}
+        <div className={s.section} style={{ marginTop: 12 }}>
+          <motion.div
             whileTap={{ scale: 0.98 }}
             onClick={async () => {
               if (saving) return
@@ -509,12 +452,13 @@ function RightsEditor({
                 setSaving(false)
               }
             }}
-            sx={{ textAlign: 'center', py: 1.25, borderRadius: '14px', background: tg.accentGradient, color: '#fff', fontSize: 16, fontWeight: 600, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}
+            className={s.saveBtn}
+            style={{ opacity: saving ? 0.6 : 1 }}
           >
             Сохранить
-          </Box>
+          </motion.div>
           {isAdmin && (
-            <Box
+            <div
               onClick={async () => {
                 if (saving) return
                 setSaving(true)
@@ -524,13 +468,13 @@ function RightsEditor({
                   setSaving(false)
                 }
               }}
-              sx={{ textAlign: 'center', py: 1.25, mt: 1, fontSize: 16, color: '#ff595a', cursor: 'pointer' }}
+              className={s.removeBtn}
             >
               Снять права
-            </Box>
+            </div>
           )}
-        </Box>
-      </Box>
+        </div>
+      </div>
     </motion.div>
   )
 }

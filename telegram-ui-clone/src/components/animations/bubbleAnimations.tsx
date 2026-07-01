@@ -10,8 +10,8 @@
 //   BubbleHighlight        accent overlay flash 0 → 1(25%) → 0  (2s, "jump-to" highlight)
 
 import { motion, type Transition, type HTMLMotionProps } from 'framer-motion'
-import { Box } from '@mui/material'
 import { useState, type CSSProperties, type ReactNode } from 'react'
+import s from './bubbleAnimations.module.scss'
 
 const FADE_DUR = 0.2
 const LINEAR = 'linear' as const
@@ -151,21 +151,14 @@ export function BubbleHighlight({
   onComplete?: () => void
 }) {
   return (
-    <Box
-      component={motion.div}
+    <motion.div
       aria-hidden
+      className={s.highlight}
       initial={{ opacity: 0 }}
       animate={{ opacity: [0, 1, 0] }}
       transition={{ duration, ease: LINEAR, times: [0, 0.25, 1] }}
       onAnimationComplete={onComplete}
-      sx={{
-        position: 'absolute',
-        inset: 0,
-        borderRadius,
-        background: color,
-        pointerEvents: 'none',
-        zIndex: 0,
-      }}
+      style={{ borderRadius, background: color }}
     />
   )
 }

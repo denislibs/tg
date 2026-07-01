@@ -6,10 +6,10 @@
 // card with name/last-name/note fields and a "number hidden" phone row, a "show my
 // phone" checkbox, and a floating ✓ that POSTs to /contacts. Russian copy is
 // hardcoded (the app renders Russian; sibling panels do the same).
-import { useState } from 'react'
-import { Box, InputAdornment, TextField, useMediaQuery, useTheme } from '@mui/material'
+import { useEffect, useState } from 'react'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
+import Input from '../shared/ui/Input'
 import { motion } from 'framer-motion'
 import { EASE, DUR } from '../motion'
 import TgIcon from './TgIcon'
@@ -17,12 +17,26 @@ import Avatar from '../shared/ui/Avatar'
 import { useAvatarSrc } from './useAvatarSrc'
 import { useManagers } from '../core/hooks/useManagers'
 import type { Chat } from '../data'
+import s from './AddContactView.module.scss'
 
 // Split a display name into a first/last seed (everything after the first token is
 // the last name) — mirrors tweb prefilling first/last from the user's profile name.
 function splitName(full: string): { first: string; last: string } {
   const parts = full.trim().split(/\s+/)
   return { first: parts[0] ?? '', last: parts.slice(1).join(' ') }
+}
+
+// Мини-хук media query (замена MUI useMediaQuery) на window.matchMedia.
+function useMediaQuery(query: string): boolean {
+  const [match, setMatch] = useState(() => window.matchMedia?.(query).matches ?? false)
+  useEffect(() => {
+    const mql = window.matchMedia(query)
+    const onChange = () => setMatch(mql.matches)
+    onChange()
+    mql.addEventListener('change', onChange)
+    return () => mql.removeEventListener('change', onChange)
+  }, [query])
+  return match
 }
 
 export default function AddContactView({
@@ -35,10 +49,7 @@ export default function AddContactView({
   onAdded?: () => void
 }) {
   const managers = useManagers()
-  const theme = useTheme()
-  const tg = theme.tg
   const narrow = useMediaQuery('(max-width:900px)')
-  const cardBg = theme.palette.mode === 'dark' ? '#2b2b2b' : '#ffffff'
   const seed = splitName(chat.name)
   const [first, setFirst] = useState(seed.first)
   const [last, setLast] = useState(seed.last)
@@ -68,21 +79,6 @@ export default function AddContactView({
     }
   }
 
-  const fieldSx = {
-    '& .MuiOutlinedInput-root': {
-      borderRadius: '12px',
-      color: tg.textPrimary,
-      fontSize: 16,
-      background: cardBg,
-      '& fieldset': { borderColor: tg.divider },
-      '&:hover fieldset': { borderColor: tg.textFaint },
-      '&.Mui-focused fieldset': { borderColor: tg.accent, borderWidth: '1.5px' },
-    },
-    '& .MuiOutlinedInput-input': { padding: '14px 14px' },
-    '& .MuiInputLabel-root': { color: tg.textSecondary },
-    '& .MuiInputLabel-root.Mui-focused': { color: tg.accent },
-  }
-
   return (
     <motion.div
       initial={narrow ? { opacity: 0 } : { width: 0, opacity: 0 }}
@@ -103,171 +99,91 @@ export default function AddContactView({
             }
       }
     >
-      {narrow && (
-        <Box onClick={onClose} sx={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)' }} />
-      )}
-      <Box
-        component={motion.div}
+      {narrow && <div className={s.backdrop} onClick={onClose} />}
+      <motion.div
         {...(narrow
           ? { initial: { x: '100%' }, animate: { x: '0%' }, transition: { duration: DUR.in, ease: EASE } }
           : {})}
-        sx={
-          narrow
-            ? {
-                position: 'absolute',
-                top: '16px',
-                right: '16px',
-                bottom: '16px',
-                width: 'min(380px, calc(100vw - 32px))',
-                background: tg.sidebarBg,
-                borderRadius: '18px',
-                overflow: 'hidden',
-                display: 'flex',
-                flexDirection: 'column',
-              }
-            : {
-                width: 380,
-                height: '100%',
-                ml: '8px',
-                mr: '16px',
-                background: tg.sidebarBg,
-                borderRadius: '18px',
-                overflow: 'hidden',
-                display: 'flex',
-                flexDirection: 'column',
-                position: 'relative',
-              }
-        }
+        className={`${s.panel} ${narrow ? s.panelNarrow : s.panelWide}`}
       >
         {/* Header — back + title */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1.5, py: 1.5, flexShrink: 0 }}>
-          <IconButton onClick={onClose} color={tg.textSecondary}>
+        <div className={s.header}>
+          <IconButton onClick={onClose} color="var(--tg-textSecondary)">
             <TgIcon name="back" />
           </IconButton>
-          <Text size={19} weight={600} color={tg.textPrimary}>Добавить контакт</Text>
-        </Box>
+          <Text size={19} weight={600} color="var(--tg-textPrimary)">Добавить контакт</Text>
+        </div>
 
-        <Box sx={{ flex: 1, overflowY: 'auto', pb: 12 }}>
+        <div className={s.body}>
           {/* Avatar + original name */}
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mt: 1, mb: 3 }}>
+          <div className={s.avatarBlock}>
             <Avatar background={chat.avatar} text={chat.avatarText ?? chat.name[0]} src={avatarSrc} size="profile" />
-            <Text size={22} weight={600} color={tg.textPrimary} style={{ marginTop: '16px' }}>{chat.name}</Text>
-            <Text size={14} color={tg.textSecondary} style={{ marginTop: '2px' }}>исходное имя</Text>
-          </Box>
+            <Text size={22} weight={600} color="var(--tg-textPrimary)" style={{ marginTop: '16px' }}>{chat.name}</Text>
+            <Text size={14} color="var(--tg-textSecondary)" style={{ marginTop: '2px' }}>исходное имя</Text>
+          </div>
 
           {/* Fields card */}
-          <Box sx={{ mx: 1.25, mb: 1.5, p: 2, borderRadius: '16px', background: cardBg }}>
-            <TextField
-              fullWidth
+          <div className={s.card}>
+            <Input
               label="Имя (обязательно)"
-              variant="outlined"
               value={first}
-              onChange={(e) => setFirst(e.target.value)}
+              onChange={setFirst}
               autoFocus
-              sx={{ ...fieldSx, mb: 2 }}
+              wrapClassName={`${s.field} ${s.fieldGap}`}
             />
-            <TextField
-              fullWidth
+            <Input
               label="Фамилия (необязательно)"
-              variant="outlined"
               value={last}
-              onChange={(e) => setLast(e.target.value)}
-              sx={{ ...fieldSx, mb: 2 }}
+              onChange={setLast}
+              wrapClassName={`${s.field} ${s.fieldGap}`}
             />
-            <TextField
-              fullWidth
-              label="Заметка"
-              variant="outlined"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              sx={fieldSx}
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <TgIcon name="smile" color={tg.textFaint} />
-                  </InputAdornment>
-                ),
-              }}
-            />
+            <div className={s.noteWrap}>
+              <Input
+                label="Заметка"
+                value={note}
+                onChange={setNote}
+                wrapClassName={s.field}
+              />
+              <span className={s.noteIcon}>
+                <TgIcon name="smile" color="var(--tg-textFaint)" />
+              </span>
+            </div>
 
             {/* Phone "hidden" row */}
-            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, mt: 2.5, px: 0.5 }}>
-              <TgIcon name="phone" size={24} color={tg.textSecondary} style={{ marginTop: 2 }} />
-              <Box sx={{ minWidth: 0 }}>
-                <Text size={16} weight={600} color={tg.textPrimary}>Номер скрыт</Text>
-                <Text size={14} color={tg.textSecondary} style={{ lineHeight: 1.35 }}>
+            <div className={s.phoneRow}>
+              <TgIcon name="phone" size={24} color="var(--tg-textSecondary)" style={{ marginTop: 2 }} />
+              <div className={s.phoneText}>
+                <Text size={16} weight={600} color="var(--tg-textPrimary)">Номер скрыт</Text>
+                <Text size={14} color="var(--tg-textSecondary)" style={{ lineHeight: 1.35 }}>
                   Номер телефона будет виден, когда {displayFirst} добавит Вас в контакты.
                 </Text>
-              </Box>
-            </Box>
-          </Box>
+              </div>
+            </div>
+          </div>
 
           {/* Share-phone checkbox (square, left — tweb's CheckboxField) */}
-          <Box
-            onClick={() => setSharePhone((v) => !v)}
-            sx={{
-              mx: 1.25,
-              px: 2,
-              py: 1.5,
-              borderRadius: '16px',
-              background: cardBg,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 2,
-              cursor: 'pointer',
-            }}
-          >
-            <Box
-              sx={{
-                width: 24,
-                height: 24,
-                flexShrink: 0,
-                borderRadius: '7px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                transition: 'background 0.15s, border-color 0.15s',
-                background: sharePhone ? tg.accent : 'transparent',
-                border: sharePhone ? `2px solid ${tg.accent}` : `2px solid ${tg.textFaint}`,
-              }}
-            >
+          <div className={s.shareRow} onClick={() => setSharePhone((v) => !v)}>
+            <div className={`${s.check} ${sharePhone ? s.checkOn : ''}`}>
               {sharePhone && <TgIcon name="check" size={18} color="#fff" />}
-            </Box>
-            <Text size={16} color={tg.textPrimary}>Показать номер телефона</Text>
-          </Box>
-          <Text size={14} color={tg.textSecondary} style={{ paddingLeft: '20px', paddingRight: '20px', marginTop: '8px' }}>
+            </div>
+            <Text size={16} color="var(--tg-textPrimary)">Показать номер телефона</Text>
+          </div>
+          <Text size={14} color="var(--tg-textSecondary)" className={s.shareHint}>
             Вы можете разрешить {displayFirst} видеть Ваш номер телефона.
           </Text>
-        </Box>
+        </div>
 
         {/* Floating submit */}
-        <Box
-          component={motion.button}
+        <motion.button
           whileTap={{ scale: 0.92 }}
           onClick={submit}
           disabled={!canSave}
-          sx={{
-            position: 'absolute',
-            right: 18,
-            bottom: 18,
-            width: 56,
-            height: 56,
-            borderRadius: '50%',
-            border: 'none',
-            background: tg.accent,
-            color: '#fff',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: canSave ? 'pointer' : 'default',
-            opacity: canSave ? 1 : 0.5,
-            boxShadow: '0 4px 14px rgba(0,0,0,0.3)',
-            transition: 'opacity 0.2s',
-          }}
+          className={s.fab}
+          style={{ cursor: canSave ? 'pointer' : 'default', opacity: canSave ? 1 : 0.5 }}
         >
           <TgIcon name="check" size={28} />
-        </Box>
-      </Box>
+        </motion.button>
+      </motion.div>
     </motion.div>
   )
 }

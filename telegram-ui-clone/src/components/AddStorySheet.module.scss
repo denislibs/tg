@@ -1,0 +1,224 @@
+// AddStorySheet — панель подписи + приватности после выбора медиа истории.
+@use '../styles/foundation' as *;
+
+// Шапка панели
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px;
+}
+
+// Прокручиваемое тело (с отступом снизу под FAB)
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 96px;
+}
+
+// Карточка (подпись / приватность / контакты) — фон зависит от темы
+.card {
+  background: #ffffff;
+
+  :global(html[data-theme='night']) &,
+  :global(html[data-theme='dark']) & {
+    background: #2b2b2b;
+  }
+}
+
+// Карточка подписи
+.captionCard {
+  margin: 12px;
+  padding: 24px 20px;
+  border-radius: 18px;
+}
+
+// Поле подписи (multiline outlined с плавающим лейблом)
+.captionField {
+  position: relative;
+  display: flex;
+}
+
+.captionInput {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 13px 15px;
+  min-height: 48px;
+  max-height: 112px; // ~4 строки (maxRows={4})
+  resize: none;
+  border: 1px solid var(--tg-divider);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--tg-textPrimary);
+  font-size: 16px;
+  font-family: inherit;
+  line-height: 1.4;
+  outline: none;
+  transition: border-color 0.2s, border-width 0.2s;
+
+  @media (hover: hover) {
+    &:hover {
+      border-color: var(--tg-textFaint);
+    }
+  }
+  &:focus {
+    border-color: var(--tg-accent);
+    border-width: 1.5px;
+    padding: 12.5px 14.5px; // компенсация +0.5px рамки
+  }
+}
+
+// плавающий лейбл подписи (фон = фон карточки)
+.captionLabel {
+  position: absolute;
+  left: 12px;
+  top: 15px;
+  padding: 0 4px;
+  background: #ffffff;
+  color: var(--tg-textSecondary);
+  font-size: 16px;
+  pointer-events: none;
+  transition: top 0.15s, font-size 0.15s, color 0.15s;
+
+  :global(html[data-theme='night']) &,
+  :global(html[data-theme='dark']) & {
+    background: #2b2b2b;
+  }
+}
+.captionInput:focus ~ .captionLabel,
+.captionInput:not(:placeholder-shown) ~ .captionLabel {
+  top: -8px;
+  font-size: 13px;
+}
+.captionInput:focus ~ .captionLabel {
+  color: var(--tg-accent);
+}
+
+// Блок селектора приватности
+.privacyBlock {
+  margin: 0 12px;
+}
+
+// Заголовок секции
+.sectionLabel {
+  padding: 0 12px 4px;
+}
+
+// Сегментированная группа кнопок приватности
+.segments {
+  display: flex;
+  gap: 8px;
+  padding: 4px;
+  border-radius: 16px;
+}
+
+// Один сегмент
+.segment {
+  flex: 1;
+  text-align: center;
+  padding: 9px 0;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--tg-textPrimary);
+  background: transparent;
+  transition: background 0.18s ease, color 0.18s ease;
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+    }
+  }
+}
+
+// Активный сегмент
+.segmentActive {
+  color: #fff;
+  background: var(--tg-accentGradient);
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-accentGradient);
+    }
+  }
+}
+
+// Блок выбора контактов
+.contactsBlock {
+  margin: 12px 12px 0;
+}
+
+// Обёртка списка контактов
+.contactsList {
+  border-radius: 16px;
+  padding: 4px 0;
+}
+
+// Пустое состояние / текстовая строка
+.emptyRow {
+  padding: 12px 16px;
+}
+
+// Ряд контакта
+.contactRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  margin: 0 4px;
+  border-radius: 12px;
+  cursor: pointer;
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+    }
+  }
+}
+
+// Имя контакта
+.contactName {
+  flex: 1;
+}
+
+// Чекбокс-кружок справа
+.check {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--tg-textFaint);
+  color: #fff;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.checkOn {
+  background: var(--tg-accent);
+  border: none;
+}
+
+// Кнопка публикации (FAB)
+.fab {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--tg-accentGradient);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.fabBusy {
+  cursor: default;
+  opacity: 0.5;
+}

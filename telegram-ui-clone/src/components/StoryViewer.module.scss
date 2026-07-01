@@ -1,0 +1,179 @@
+// StoryViewer — полноэкранный просмотрщик историй поверх ленты.
+
+// Затемняющая подложка на весь экран
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+// Карточка истории (9:16), фон задаётся инлайном (runtime bg)
+.card {
+  position: relative;
+  aspect-ratio: 9 / 16;
+  height: min(92vh, 900px);
+  max-width: calc(min(92vh, 900px) * 9 / 16);
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+// Медиа (video/img)
+.media {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+// Плейсхолдер (первая буква автора)
+.placeholder {
+  font-size: 120px;
+  user-select: none;
+  line-height: 1;
+  color: #fff;
+}
+
+// Полоски прогресса
+.progress {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  gap: 3px;
+  z-index: 2;
+}
+
+// Один сегмент прогресса (фон-дорожка)
+.segment {
+  flex: 1;
+  height: 2px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.3);
+  overflow: hidden;
+}
+
+// Заполненная часть (просмотренные / текущий)
+.segmentFill {
+  width: 100%;
+  height: 100%;
+  background: #fff;
+}
+
+// Шапка (аватар + имя + закрыть)
+.header {
+  position: absolute;
+  top: 18px;
+  left: 8px;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 2;
+}
+
+// Распорка между именем и кнопкой закрытия
+.spacer {
+  flex: 1;
+}
+
+// Зоны тапа (назад / вперёд)
+.tapPrev {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 33.33%;
+  z-index: 1;
+  cursor: pointer;
+}
+.tapNext {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 66.66%;
+  z-index: 1;
+  cursor: pointer;
+}
+
+// Подпись истории
+.caption {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  padding: 10px 16px;
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 2;
+}
+// подпись приподнята, когда снизу плашка просмотров (свои истории)
+.captionRaised {
+  bottom: 64px;
+}
+
+// Плашка "Просмотры" (свои истории)
+.viewsBar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  cursor: pointer;
+  z-index: 2;
+}
+
+// Шторка со списком просмотревших
+.viewersSheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 60%;
+  overflow-y: auto;
+  background: rgba(20, 20, 20, 0.96);
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  z-index: 3;
+}
+
+// Шапка шторки (sticky)
+.viewersHeader {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  position: sticky;
+  top: 0;
+  background: rgba(20, 20, 20, 0.96);
+}
+
+// Заголовок шторки (flex 1)
+.viewersTitle {
+  flex: 1;
+}
+
+// Строка просмотревшего
+.viewerRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+}

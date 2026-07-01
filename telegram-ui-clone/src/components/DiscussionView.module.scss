@@ -1,0 +1,116 @@
+@use '../styles/foundation' as *;
+
+// Полноэкранный оверлей обсуждения (комментарии к посту канала).
+.root {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: var(--tg-appBg);
+  display: flex;
+  flex-direction: column;
+}
+
+// Шапка
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 56px;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--tg-divider);
+  flex-shrink: 0;
+}
+.title {
+  flex: 1;
+}
+
+// Тело со списком комментариев
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+// Закреплённый исходный пост
+.post {
+  background: var(--tg-bubble);
+  border-radius: 14px;
+  padding: 12px;
+}
+.postMedia {
+  height: 160px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 64px;
+  line-height: 1;
+  user-select: none;
+}
+
+// Ряд комментария
+.rowOut {
+  display: flex;
+  justify-content: flex-end;
+}
+.rowIn {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+.bubbleOut {
+  background: var(--tg-accent);
+  color: #fff;
+  border-radius: 14px 14px 4px 14px;
+  padding: 6px 10px;
+  max-width: 75%;
+}
+.bubbleIn {
+  background: var(--tg-bubble);
+  border-radius: 4px 14px 14px 14px;
+  padding: 6px 10px;
+  max-width: 75%;
+}
+
+// Композер снизу
+.composer {
+  margin: 8px;
+  background: var(--tg-bubble);
+  border-radius: 24px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--tg-textPrimary);
+  padding: 0 8px;
+  font-size: 15px;
+  font-family: inherit;
+
+  &::placeholder {
+    color: var(--tg-textFaint);
+    opacity: 1;
+  }
+}
+.sendBtn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--tg-accentGradient);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
