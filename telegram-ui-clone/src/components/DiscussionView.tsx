@@ -46,56 +46,102 @@ export default function DiscussionView({
   const [lang] = useLang()
   const { comments, count, send } = useDiscussion(channelId, postId, discussionChatId)
   const [pinnedHidden, setPinnedHidden] = useState(false)
+  // Search over comments: null = closed; '' or text = open with that query.
+  const [search, setSearch] = useState<string | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   // Real composer needs a voice recorder; comments don't support voice, so the
   // completed clip is discarded (the mic still records but nothing is sent).
   const rec = useVoiceRecorder({ onComplete: NOOP })
 
   // Тред как обычный чат: исходный пост → сервис «Начало обсуждения» → комментарии,
-  // настоящими баблами (ChatFeed) поверх обоев (глобальный ChatBackground).
+  // настоящими баблами (ChatFeed) поверх обоев. В режиме поиска — только совпавшие
+  // комментарии (пост/сервис прячутся).
   const feedMsgs = useMemo<ConvMsg[]>(() => {
+    const commentMsg = (c: (typeof comments)[number]): ConvMsg => ({
+      clientId: c.key,
+      type: 'text',
+      out: c.out,
+      sender: c.out ? undefined : c.name,
+      senderColor: c.out ? undefined : c.color,
+      text: c.text,
+      time: c.time,
+      status: c.out ? 'read' : undefined,
+    })
+    if (search !== null) {
+      const q = search.trim().toLowerCase()
+      const hits = q ? comments.filter((c) => c.text.toLowerCase().includes(q)) : comments
+      return hits.map(commentMsg)
+    }
     const postText = post.text || post.title || ''
     const list: ConvMsg[] = [
       { clientId: 'post', type: 'text', out: false, text: postText },
       { clientId: 'svc', type: 'service', text: t('Discussion started') },
     ]
-    for (const c of comments) {
-      list.push({
-        clientId: c.key,
-        type: 'text',
-        out: c.out,
-        sender: c.out ? undefined : c.name,
-        senderColor: c.out ? undefined : c.color,
-        text: c.text,
-        time: c.time,
-        status: c.out ? 'read' : undefined,
-      })
-    }
+    for (const c of comments) list.push(commentMsg(c))
     return list
-  }, [comments, post, t])
+  }, [comments, post, t, search])
 
   const jumpToPost = () => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
   const postPreview = post.text || post.title || t('Message')
-  const topClear = HEADER_H + (pinnedHidden ? 0 : PINNED_EXTRA)
+  const showPinned = !pinnedHidden && search === null
+  const topClear = HEADER_H + (showPinned ? PINNED_EXTRA : 0)
 
   return (
     <div className={s.root}>
-      {/* Плавающий хедер-карточка (как ChatHeader) — «N комментариев» */}
+      {/* Плавающий хедер-карточка (как ChatHeader): «N комментариев» + поиск + меню */}
       <div className={s.headerBar}>
         <div className={s.headerCard}>
-          <IconButton onClick={onBack} color="var(--tg-textSecondary)" style={{ marginLeft: '-4px' }}>
-            <TgIcon name="back" />
-          </IconButton>
-          <Text noWrap weight={500} size={16} color="var(--tg-textPrimary)" className={s.title}>
-            {commentsLabel(count, lang, t)}
-          </Text>
+          {search === null ? (
+            <>
+              <IconButton onClick={onBack} color="var(--tg-textSecondary)" style={{ marginLeft: '-4px' }}>
+                <TgIcon name="back" />
+              </IconButton>
+              <Text noWrap weight={500} size={16} color="var(--tg-textPrimary)" className={s.title}>
+                {commentsLabel(count, lang, t)}
+              </Text>
+              <IconButton onClick={() => { setMenuOpen(false); setSearch('') }} color="var(--tg-textFaint)">
+                <TgIcon name="search" />
+              </IconButton>
+              <IconButton onClick={() => setMenuOpen((o) => !o)} color="var(--tg-textFaint)">
+                <TgIcon name="more" />
+              </IconButton>
+            </>
+          ) : (
+            <>
+              <IconButton onClick={() => setSearch(null)} color="var(--tg-textSecondary)" style={{ marginLeft: '-4px' }}>
+                <TgIcon name="back" />
+              </IconButton>
+              <input
+                className={s.searchInput}
+                autoFocus
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={t('Search comments')}
+              />
+              <IconButton onClick={() => (search ? setSearch('') : setSearch(null))} color="var(--tg-textFaint)">
+                <TgIcon name="close" size={20} />
+              </IconButton>
+            </>
+          )}
         </div>
+        {menuOpen && (
+          <div className={s.menu}>
+            <button
+              className={s.menuItem}
+              onClick={() => { setPinnedHidden((h) => !h); setMenuOpen(false) }}
+            >
+              {pinnedHidden ? t('Show pinned message') : t('Hide pinned message')}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Плавающая pinned-плашка поста (tweb .pinned-message) */}
-      {!pinnedHidden && (
+      {showPinned && (
         <div className={s.pinnedBar}>
           <div className={s.pinnedCard} onClick={jumpToPost}>
+            <TgIcon name="pin" size={20} color="var(--tg-accent)" />
             <div className={s.pinnedLine} />
             <div className={s.pinnedBody}>
               <Text size={13} weight={600} color="var(--tg-accent)" style={{ lineHeight: 1.2 }}>

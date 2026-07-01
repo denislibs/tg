@@ -263,6 +263,9 @@ const ru: Dict = {
   Comments: 'Комментарии',
   Comment: 'Комментарий',
   'Discussion started': 'Начало обсуждения',
+  'Search comments': 'Поиск по комментариям',
+  'Hide pinned message': 'Скрыть закреплённое',
+  'Show pinned message': 'Показать закреплённое',
   // settings screens (#71–#79)
   "Edit Profile": "Изменить профиль",
   "Name": "Имя",
