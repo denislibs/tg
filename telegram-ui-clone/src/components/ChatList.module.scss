@@ -1,0 +1,31 @@
+// ChatList — контейнер прокрутки списка диалогов + слайд при смене папки.
+// Скроллбар тонкий-оверлейный (tweb): трек прозрачный, ползунок проявляется на hover.
+.scroll {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  // тонкий запас под скроллбар — ширина списка не прыгает при смене папки (tweb)
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--tg-textFaint) transparent;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 3px;
+    transition: background 0.2s;
+  }
+  &:hover::-webkit-scrollbar-thumb {
+    background: var(--tg-textFaint);
+  }
+}
+
+// верхний отступ = высота .chatlist-overlay (табы), нижний — клиренс compose-FAB
+.slide {
+  padding-top: 64px;
+  padding-bottom: 84px;
+  width: 100%;
+}

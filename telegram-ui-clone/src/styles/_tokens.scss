@@ -41,6 +41,16 @@
   --ripple-color: rgba(0, 0, 0, 0.13);
   // filled search-input background (tweb --old-input-background-color)
   --tg-inputSearchBg: #f0f0f2;
+  // tweb-набор теней секций/колонки (base.scss) — имена и композиция 1:1.
+  // Композиция в :root, цвета — по темам (ниже). Light: section .05, big .1, column .1.
+  --section-box-shadow-color: rgba(0, 0, 0, 0.05);
+  --section-box-shadow-big-color: rgba(0, 0, 0, 0.1);
+  --column-box-shadow-color: rgba(0, 0, 0, 0.1); // #0000001A
+  --section-box-shadow: 0px 1px 4px 0px var(--section-box-shadow-color);
+  --section-box-shadow-big: 0px 1px 8px 0px var(--section-box-shadow-big-color);
+  --column-box-shadow: 0px 0px 4px 0px var(--column-box-shadow-color);
+  // нейтральная подложка под секции-карточки (tweb --background-color)
+  --tg-sectionBackdrop: #f0f0f2;
 }
 
 // "Day" — brighter light theme, teal/blue accent; rest inherits classic (:root).
@@ -56,7 +66,7 @@
   --tg-composeShadow: 0 6px 22px rgba(51, 144, 236, 0.4);
 }
 
-// "Night" — full dark set (purple accent). Also base for "dark".
+// "Night" — full dark set (purple accАent). Also base for "dark".
 [data-theme='night'],
 [data-theme='dark'] {
   --tg-accent: #8774e1;
@@ -87,6 +97,11 @@
   --tg-bgGrad3: #4f5bd5;
   --ripple-color: rgba(255, 255, 255, 0.18);
   --tg-inputSearchBg: #181818;
+  // tweb night: section .12, big .24, column .24 (композиция наследуется из :root)
+  --section-box-shadow-color: rgba(0, 0, 0, 0.12);
+  --section-box-shadow-big-color: rgba(0, 0, 0, 0.24);
+  --column-box-shadow-color: rgba(0, 0, 0, 0.24);
+  --tg-sectionBackdrop: #1c1c1c;
 }
 
 // "Dark" — neutral near-black (vs Night's purple), blue accent; deltas over night.

@@ -18,6 +18,25 @@ html {
   font-size: 16px;
 }
 
+/* Layout-переменные колонок — порт tweb (helpers/updateColumnWidths.ts + base.scss).
+   У нас нет ресайза колонок, поэтому значения статичны: ширина = min(vw, 360),
+   внешний отступ страницы 16px (0 на handheld), радиус $border-radius-big (0 на
+   handheld), offset папок-сайдбара 0. Компоненты читают только var(...). */
+:root {
+  --default-column-width: min(100vw, #{$default-column-width});
+  --left-column-visual-width: var(--default-column-width);
+  --page-chats-padding: 16px;
+  --folders-sidebar-offset: 0px;
+  --main-column-border-radius: #{$border-radius-big};
+}
+
+@include respond-to(handhelds) {
+  :root {
+    --page-chats-padding: 0px;
+    --main-column-border-radius: 0px;
+  }
+}
+
 html,
 body {
   min-height: 100%;

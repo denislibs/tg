@@ -1,4 +1,4 @@
-import { Tabs } from './Tabs'
+import { Tabs } from '../shared/ui/Tabs'
 import { useT } from '../i18n'
 
 export type FolderKey = 'all' | 'private' | 'groups' | 'channels'
