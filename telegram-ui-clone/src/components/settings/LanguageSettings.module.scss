@@ -1,0 +1,42 @@
+.radio {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid var(--tg-textFaint);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s ease;
+
+  &[data-on] {
+    border-color: var(--tg-accent);
+  }
+}
+.radioDot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--tg-accent);
+}
+.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.langRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+    }
+  }
+}
+.langBody {
+  min-width: 0;
+}

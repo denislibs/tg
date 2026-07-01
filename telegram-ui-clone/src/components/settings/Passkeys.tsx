@@ -1,8 +1,6 @@
 import { useState } from 'react'
-import { Box, useTheme } from '@mui/material'
 import TgIcon from '../TgIcon'
-import Text from '../../shared/ui/Text'
-import { SettingsScreen, Section, Row, useCardBg } from './kit'
+import { SettingsScreen, Section, Row, EntryRow } from './kit'
 
 interface Key {
   id: string
@@ -16,8 +14,6 @@ const INITIAL: Key[] = [
 ]
 
 export default function Passkeys({ onBack }: { onBack: () => void }) {
-  const tg = useTheme().tg
-  const cardBg = useCardBg()
   const [keys, setKeys] = useState(INITIAL)
 
   return (
@@ -27,24 +23,17 @@ export default function Passkeys({ onBack }: { onBack: () => void }) {
       </Section>
 
       {keys.length > 0 && (
-        <Box sx={{ mx: 1.25, mb: 1.5, borderRadius: '16px', background: cardBg, py: 0.5 }}>
+        <Section>
           {keys.map((k) => (
-            <Box key={k.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, px: 2, py: 1, mx: 0.5 }}>
-              <TgIcon name="key" size={24} color={tg.accent} />
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Text noWrap size={16} color={tg.textPrimary}>{k.name}</Text>
-                <Text noWrap size={13.5} color={tg.textSecondary}>{k.added}</Text>
-              </Box>
-              <TgIcon
-                name="close"
-                size={20}
-                color={tg.textFaint}
-                onClick={() => setKeys((l) => l.filter((x) => x.id !== k.id))}
-                style={{ cursor: 'pointer' }}
-              />
-            </Box>
+            <EntryRow
+              key={k.id}
+              left={<TgIcon name="key" size={24} color="var(--tg-accent)" />}
+              title={k.name}
+              sub={k.added}
+              onRemove={() => setKeys((l) => l.filter((x) => x.id !== k.id))}
+            />
           ))}
-        </Box>
+        </Section>
       )}
 
       <Section caption="Login Email" footer="This email is used to log in if you lose access to your number.">

@@ -2,11 +2,11 @@
 // The bottom action bar shown in multi-select mode (count + forward + delete).
 // Replaces the composer while messages are selected.
 import { memo } from 'react'
-import { Box, useTheme } from '@mui/material'
 import Text from '../../shared/ui/Text'
 import IconButton from '../../shared/ui/IconButton'
 import TgIcon from '../TgIcon'
 import { useT } from '../../i18n'
+import s from './SelectionBar.module.scss'
 
 export interface SelectionBarProps {
   count: number
@@ -16,45 +16,23 @@ export interface SelectionBarProps {
 }
 
 function SelectionBar({ count, onClear, onForward, onDelete }: SelectionBarProps) {
-  const theme = useTheme()
-  const tg = theme.tg
-  const mode = theme.palette.mode
   const t = useT()
 
   return (
-    <Box
-      sx={{
-        position: 'absolute',
-        bottom: '16px',
-        left: 0,
-        right: 0,
-        zIndex: 6,
-        width: '100%',
-        maxWidth: 688,
-        mx: 'auto',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 0.5,
-        px: 1,
-        height: 56,
-        borderRadius: '24px',
-        background: tg.bubble,
-        boxShadow: mode === 'dark' ? '0 1px 8px 1px rgba(0,0,0,0.35)' : '0 1px 8px 1px rgba(0,0,0,0.12)',
-      }}
-    >
-      <IconButton onClick={onClear} color={tg.textSecondary}>
+    <div className={s.bar}>
+      <IconButton onClick={onClear} color="var(--tg-textSecondary)">
         <TgIcon name="close" />
       </IconButton>
-      <Text size={15} weight={600} color={tg.textPrimary} style={{ flex: 1 }}>
+      <Text size={15} weight={600} color="var(--tg-textPrimary)" className={s.count}>
         {t('Selected')}: {count}
       </Text>
-      <IconButton onClick={onForward} color={tg.accent}>
+      <IconButton onClick={onForward} color="var(--tg-accent)">
         <TgIcon name="reply" style={{ transform: 'scaleX(-1)' }} />
       </IconButton>
       <IconButton onClick={onDelete} color="#ff595a">
         <TgIcon name="delete" />
       </IconButton>
-    </Box>
+    </div>
   )
 }
 

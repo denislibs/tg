@@ -51,6 +51,13 @@
   --column-box-shadow: 0px 0px 4px 0px var(--column-box-shadow-color);
   // нейтральная подложка под секции-карточки (tweb --background-color)
   --tg-sectionBackdrop: #f0f0f2;
+  // тень плавающих плашек чата (selection/pinned/scroll-down FAB)
+  --tg-plateShadow: 0 1px 8px rgba(0, 0, 0, 0.16);
+  // поисковая карточка в шапке чата (единая поверхность инпут + результаты)
+  --tg-searchCardBg: #ffffff;
+  --tg-searchCardShadow: 0 6px 28px -6px rgba(0, 0, 0, 0.22);
+  // рамка outlined-инпута в покое (tweb .input-field)
+  --tg-inputBorderIdle: #dfe1e5;
 }
 
 // "Day" — brighter light theme, teal/blue accent; rest inherits classic (:root).
@@ -102,6 +109,10 @@
   --section-box-shadow-big-color: rgba(0, 0, 0, 0.24);
   --column-box-shadow-color: rgba(0, 0, 0, 0.24);
   --tg-sectionBackdrop: #1c1c1c;
+  --tg-plateShadow: 0 1px 8px rgba(0, 0, 0, 0.45);
+  --tg-searchCardBg: #2c2c2e;
+  --tg-searchCardShadow: 0 6px 28px -4px rgba(0, 0, 0, 0.6);
+  --tg-inputBorderIdle: #2f2f2f;
 }
 
 // "Dark" — neutral near-black (vs Night's purple), blue accent; deltas over night.

@@ -1,10 +1,9 @@
 import { useState } from 'react'
-import { Box, useTheme } from '@mui/material'
 import TgIcon from '../TgIcon'
 import Avatar from '../../shared/ui/Avatar'
 import Text from '../../shared/ui/Text'
 import { useT } from '../../i18n'
-import { SettingsScreen, Section, Row, useCardBg } from './kit'
+import { SettingsScreen, Section, Row, EntryRow } from './kit'
 
 interface Blocked {
   id: string
@@ -21,9 +20,7 @@ const INITIAL: Blocked[] = [
 ]
 
 export default function BlockedUsers({ onBack }: { onBack: () => void }) {
-  const tg = useTheme().tg
   const t = useT()
-  const cardBg = useCardBg()
   const [list, setList] = useState(INITIAL)
 
   return (
@@ -33,26 +30,19 @@ export default function BlockedUsers({ onBack }: { onBack: () => void }) {
       </Section>
 
       {list.length > 0 ? (
-        <Box sx={{ mx: 1.25, borderRadius: '16px', background: cardBg, py: 0.5 }}>
+        <Section>
           {list.map((b) => (
-            <Box key={b.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1, mx: 0.5 }}>
-              <Avatar background={b.bg} text={b.letter} size={46} />
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Text noWrap size={16} color={tg.textPrimary}>{b.name}</Text>
-                <Text noWrap size={13.5} color={tg.textSecondary}>{b.hint}</Text>
-              </Box>
-              <TgIcon
-                name="close"
-                size={20}
-                color={tg.textFaint}
-                onClick={() => setList((l) => l.filter((x) => x.id !== b.id))}
-                style={{ cursor: 'pointer' }}
-              />
-            </Box>
+            <EntryRow
+              key={b.id}
+              left={<Avatar background={b.bg} text={b.letter} size={46} />}
+              title={b.name}
+              sub={b.hint}
+              onRemove={() => setList((l) => l.filter((x) => x.id !== b.id))}
+            />
           ))}
-        </Box>
+        </Section>
       ) : (
-        <Text size={14} color={tg.textSecondary} style={{ paddingLeft: '24px', paddingRight: '24px' }}>
+        <Text size={14} color="var(--tg-textSecondary)" style={{ paddingLeft: '24px', paddingRight: '24px' }}>
           {t("You haven't blocked anyone.")}
         </Text>
       )}

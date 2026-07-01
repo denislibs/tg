@@ -1,0 +1,79 @@
+// Общий набор для экранов настроек: слайд-скрин, секция (на SidebarSection),
+// строка. Экран — нейтральная подложка, карточки — surface (как tweb settings).
+.screen {
+  position: absolute;
+  inset: 0;
+  background: var(--tg-sectionBackdrop);
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px;
+}
+.title {
+  flex: 1;
+}
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 24px;
+}
+
+// секция: caption над карточкой + карточка (SidebarSection) + footer под ней
+.section {
+  margin-bottom: 12px;
+}
+.caption {
+  padding: 0 24px 4px;
+}
+.footer {
+  padding: 6px 24px 0;
+}
+
+// строка настроек
+.row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 9px 12px;
+  border-radius: 12px;
+}
+.rowClickable {
+  cursor: pointer;
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+    }
+  }
+}
+.rowIcon {
+  color: var(--tg-textSecondary);
+  display: flex;
+
+  svg {
+    font-size: 24px;
+  }
+}
+.rowBody {
+  flex: 1;
+  min-width: 0;
+}
+.rowValue {
+  flex-shrink: 0;
+}
+
+// строка-запись списка (аватар/иконка + имя/подпись + удалить)
+.entry {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+}
+.entryBody {
+  flex: 1;
+  min-width: 0;
+}

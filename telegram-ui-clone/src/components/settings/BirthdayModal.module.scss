@@ -1,0 +1,54 @@
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 80;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dialog {
+  width: min(92%, 420px);
+  border-radius: 16px;
+  background: var(--tg-sidebarBg);
+  padding: 20px;
+  position: relative;
+}
+.close {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+}
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 0 8px;
+}
+.heroIcon {
+  width: 86px;
+  height: 86px;
+  border-radius: 50%;
+  background: var(--tg-hover);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+.fields {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+.day {
+  width: 90px;
+}
+.month {
+  flex: 1;
+}
+.year {
+  width: 100px;
+}
+.save {
+  margin-top: 16px;
+}

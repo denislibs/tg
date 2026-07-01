@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { Box, useTheme } from '@mui/material'
 import TgIcon from '../TgIcon'
 import Text from '../../shared/ui/Text'
 import type { ReactNode } from 'react'
 import { useT } from '../../i18n'
 import { SettingsScreen, Section, Row } from './kit'
+import s from './ActiveSessions.module.scss'
 
 interface Sess {
   id: string
@@ -22,34 +22,33 @@ const OTHERS: Sess[] = [
 ]
 
 export default function ActiveSessions({ onBack }: { onBack: () => void }) {
-  const tg = useTheme().tg
   const t = useT()
   const [others, setOthers] = useState(OTHERS)
 
-  const sessionRow = (s: Sess, current?: boolean) => (
-    <Box key={s.id} sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, px: 2, py: 1.15, mx: 0.5 }}>
-      <Box sx={{ color: tg.accent, display: 'flex', mt: 0.25, '& svg': { fontSize: 26 } }}>{s.icon}</Box>
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Text size={16} color={tg.textPrimary} style={{ flex: 1 }}>{s.app}</Text>
+  const sessionRow = (sess: Sess, current?: boolean) => (
+    <div key={sess.id} className={s.session}>
+      <div className={s.icon}>{sess.icon}</div>
+      <div className={s.body}>
+        <div className={s.top}>
+          <Text size={16} color="var(--tg-textPrimary)" className={s.app}>{sess.app}</Text>
           {current ? (
             <Text size={13.5} color="#4dcd5e">{t('online')}</Text>
           ) : (
             <TgIcon
               name="close"
               size={20}
-              color={tg.textFaint}
-              onClick={() => setOthers((o) => o.filter((x) => x.id !== s.id))}
+              color="var(--tg-textFaint)"
+              onClick={() => setOthers((o) => o.filter((x) => x.id !== sess.id))}
               style={{ cursor: 'pointer' }}
             />
           )}
-        </Box>
-        <Text size={14} color={tg.textSecondary}>{s.device}</Text>
-        <Text size={13.5} color={tg.textFaint}>
-          {s.loc} · {current ? t('online') : s.last}
+        </div>
+        <Text size={14} color="var(--tg-textSecondary)">{sess.device}</Text>
+        <Text size={13.5} color="var(--tg-textFaint)">
+          {sess.loc} · {current ? t('online') : sess.last}
         </Text>
-      </Box>
-    </Box>
+      </div>
+    </div>
   )
 
   return (
@@ -62,19 +61,15 @@ export default function ActiveSessions({ onBack }: { onBack: () => void }) {
       </Section>
 
       {others.length > 0 && (
-        <Box sx={{ mx: 1.25, mb: 1.5 }}>
-          <Row
-            label="Terminate All Other Sessions"
-            danger
-            onClick={() => setOthers([])}
-          />
-        </Box>
+        <Section>
+          <Row label="Terminate All Other Sessions" danger onClick={() => setOthers([])} />
+        </Section>
       )}
 
       {others.length > 0 ? (
-        <Section caption="Active sessions">{others.map((s) => sessionRow(s))}</Section>
+        <Section caption="Active sessions">{others.map((sess) => sessionRow(sess))}</Section>
       ) : (
-        <Text size={14} color={tg.textSecondary} style={{ paddingLeft: '24px', paddingRight: '24px' }}>
+        <Text size={14} color="var(--tg-textSecondary)" style={{ paddingLeft: '24px', paddingRight: '24px' }}>
           {t('No other active sessions.')}
         </Text>
       )}

@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { Box, useTheme } from '@mui/material'
 import Text from '../../shared/ui/Text'
 import { useLang, LANGS, type Lang } from '../../i18n'
-import { SettingsScreen, Section, Row, useCardBg } from './kit'
+import { SettingsScreen, Section, Row } from './kit'
+import s from './LanguageSettings.module.scss'
 
 interface LangItem {
   en: string
@@ -47,29 +47,14 @@ const LANGUAGES: LangItem[] = [
 ]
 
 function Radio({ on }: { on: boolean }) {
-  const tg = useTheme().tg
   return (
-    <Box
-      sx={{
-        width: 22,
-        height: 22,
-        flexShrink: 0,
-        borderRadius: '50%',
-        border: `2px solid ${on ? tg.accent : tg.textFaint}`,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        transition: 'border-color .15s ease',
-      }}
-    >
-      {on && <Box sx={{ width: 11, height: 11, borderRadius: '50%', background: tg.accent }} />}
-    </Box>
+    <div className={s.radio} data-on={on || undefined}>
+      {on && <div className={s.radioDot} />}
+    </div>
   )
 }
 
 export default function LanguageSettings({ onBack }: { onBack: () => void }) {
-  const tg = useTheme().tg
-  const cardBg = useCardBg()
   const [lang, setLang] = useLang()
   const [sel, setSel] = useState<string>(lang) // selection key: lang code or 'x:<en>'
   const [showBtn, setShowBtn] = useState(true)
@@ -82,44 +67,34 @@ export default function LanguageSettings({ onBack }: { onBack: () => void }) {
       {/* message translation */}
       <Section caption="Message Translation" footer="Watch real-time chat translations with a Telegram Premium subscription.">
         <Row label="Show Translate Button" toggle checked={showBtn} onClick={() => setShowBtn((v) => !v)} />
-        <Box sx={{ opacity: 0.5, pointerEvents: 'none' }}>
+        <div className={s.disabled}>
           <Row label="Translate Entire Chats" toggle checked={false} />
-        </Box>
+        </div>
         <Row label="Do Not Translate" value={currentNative} onClick={() => {}} />
       </Section>
 
       {/* language list */}
-      <Box sx={{ mx: 1.25, borderRadius: '16px', background: cardBg, py: 0.5 }}>
+      <Section>
         {LANGUAGES.map((it) => {
           const on = sel === keyOf(it)
           return (
-            <Box
+            <div
               key={it.en}
+              className={s.langRow}
               onClick={() => {
                 setSel(keyOf(it))
                 if (it.code) setLang(it.code)
               }}
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 2,
-                px: 2,
-                py: 1,
-                mx: 0.5,
-                borderRadius: '12px',
-                cursor: 'pointer',
-                '&:hover': { background: tg.hover },
-              }}
             >
               <Radio on={on} />
-              <Box sx={{ minWidth: 0 }}>
-                <Text size={16} color={tg.textPrimary}>{it.en}</Text>
-                <Text size={13.5} color={tg.textSecondary}>{it.native}</Text>
-              </Box>
-            </Box>
+              <div className={s.langBody}>
+                <Text size={16} color="var(--tg-textPrimary)">{it.en}</Text>
+                <Text size={13.5} color="var(--tg-textSecondary)">{it.native}</Text>
+              </div>
+            </div>
           )
         })}
-      </Box>
+      </Section>
     </SettingsScreen>
   )
 }

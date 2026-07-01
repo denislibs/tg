@@ -1,13 +1,12 @@
 import { useRef } from 'react'
-import { Box, useTheme } from '@mui/material'
 import TgIcon from '../TgIcon'
 import patternUrl from '../../assets/pattern.svg'
 import { useSettings } from '../../settings'
 import { WALLPAPER_PRESETS } from '../../wallpapers'
 import { SettingsScreen, Section, Row } from './kit'
+import s from './ChatWallpaper.module.scss'
 
 export default function ChatWallpaper({ onBack }: { onBack: () => void }) {
-  const tg = useTheme().tg
   const { wallpaper, wallpaperBlur, update } = useSettings()
   const fileRef = useRef<HTMLInputElement>(null)
   const colorRef = useRef<HTMLInputElement>(null)
@@ -54,64 +53,27 @@ export default function ChatWallpaper({ onBack }: { onBack: () => void }) {
       </Section>
 
       {/* preset grid */}
-      <Box
-        sx={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
-          gap: 0.5,
-          px: 1.25,
-          pt: 0.5,
-        }}
-      >
+      <div className={s.grid}>
         {WALLPAPER_PRESETS.map((p) => {
           const selected = activePreset === p.colors.join()
           return (
-            <Box
+            <div
               key={p.id}
+              className={s.tile}
+              data-selected={selected || undefined}
               onClick={() => update({ wallpaper: { kind: 'preset', colors: p.colors } })}
-              sx={{
-                position: 'relative',
-                aspectRatio: '3 / 4',
-                borderRadius: '10px',
-                cursor: 'pointer',
-                overflow: 'hidden',
-                background: `linear-gradient(150deg, ${p.colors[0]}, ${p.colors[1]}, ${p.colors[2]}, ${p.colors[3]})`,
-                outline: selected ? `2.5px solid ${tg.accent}` : 'none',
-                outlineOffset: '-2.5px',
-              }}
+              style={{ background: `linear-gradient(150deg, ${p.colors[0]}, ${p.colors[1]}, ${p.colors[2]}, ${p.colors[3]})` }}
             >
-              <Box
-                sx={{
-                  position: 'absolute',
-                  inset: 0,
-                  backgroundImage: `url("${patternUrl}")`,
-                  backgroundSize: '180px',
-                  mixBlendMode: 'overlay',
-                  opacity: 0.55,
-                }}
-              />
+              <div className={s.pattern} style={{ backgroundImage: `url("${patternUrl}")` }} />
               {selected && (
-                <Box
-                  sx={{
-                    position: 'absolute',
-                    top: 6,
-                    right: 6,
-                    width: 24,
-                    height: 24,
-                    borderRadius: '50%',
-                    background: tg.accent,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
+                <div className={s.check}>
                   <TgIcon name="check" size={17} color="#fff" />
-                </Box>
+                </div>
               )}
-            </Box>
+            </div>
           )
         })}
-      </Box>
+      </div>
     </SettingsScreen>
   )
 }

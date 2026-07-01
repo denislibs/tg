@@ -8,10 +8,11 @@
 import { memo, useRef, type ReactNode, type MouseEvent, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { useTheme } from '@mui/material'
+import classNames from '../../shared/lib/classNames'
 import { MenuItem } from '../../shared/ui/Menu'
 import TgIcon from '../TgIcon'
 import { useT } from '../../i18n'
+import s from './MessageContextMenu.module.scss'
 
 const REACTIONS = ['❤️', '👍', '👎', '🔥', '🥰', '👏', '😁']
 
@@ -29,7 +30,6 @@ export interface MessageContextMenuProps {
 }
 
 function MessageContextMenu({ menu, items, onClose }: MessageContextMenuProps) {
-  const tg = useTheme().tg
   const t = useT()
   // The "Viewers" action needs the click coordinates; capture the last pointer
   // event on a wrapper so MenuItem's (event-less) onClick can still forward it.
@@ -41,14 +41,6 @@ function MessageContextMenu({ menu, items, onClose }: MessageContextMenuProps) {
     menu.originX === 'left' ? { left: menu.x } : { right: window.innerWidth - menu.x }
   const yPos: CSSProperties =
     menu.originY === 'top' ? { top: menu.y } : { bottom: window.innerHeight - menu.y }
-
-  // Shared menu surface (bg/blur/shadow) for both pills.
-  const surface: CSSProperties = {
-    background: tg.menuBg,
-    backdropFilter: 'blur(40px)',
-    WebkitBackdropFilter: 'blur(40px)',
-    boxShadow: tg.menuShadow,
-  }
 
   return createPortal(
     <>
@@ -77,30 +69,17 @@ function MessageContextMenu({ menu, items, onClose }: MessageContextMenuProps) {
         }}
       >
         {/* Reactions pill — always on top */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            padding: '4px 8px',
-            borderRadius: 24,
-            ...surface,
-          }}
-        >
+        <div className={classNames(s.reactions, s.surface)}>
           {REACTIONS.map((r) => (
-            <div
-              key={r}
-              onClick={onClose}
-              style={{ fontSize: 24, lineHeight: 1, cursor: 'pointer', padding: '0 2px' }}
-            >
+            <div key={r} className={s.reaction} onClick={onClose}>
               {r}
             </div>
           ))}
-          <TgIcon name="down" size={22} color={tg.textSecondary} style={{ marginLeft: 2 }} />
+          <TgIcon name="down" size={22} color="var(--tg-textSecondary)" style={{ marginLeft: 2 }} />
         </div>
 
         {/* Actions pill — MenuItem rows on the shared surface */}
-        <div style={{ padding: '4px 0', borderRadius: 12, minWidth: 220, ...surface }}>
+        <div className={classNames(s.actions, s.surface)}>
           {items.map((it) => (
             <div key={it.label} onClickCapture={(e) => (lastEvent.current = e)}>
               <MenuItem
