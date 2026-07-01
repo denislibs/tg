@@ -335,6 +335,25 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // the attach button (lets the user add a caption + choose media/file).
   const onComposerPasteFiles = useEvent((files: File[]) => setPendingMedia({ files, asFile: false }))
 
+  // Channel post discussion thread: render it IN PLACE OF the channel column (not as
+  // an overlay) so the channel feed isn't mounted underneath and can't bleed through
+  // the thread's transparent (wallpaper-showing) background.
+  if (discussion && discussionsEnabled) {
+    return (
+      <div className={s.root}>
+        <div className={classNames(s.column, narrow ? s.columnNarrow : '')}>
+          <DiscussionView
+            channelId={numericChatId}
+            postId={discussion.postId}
+            discussionChatId={discussionChatId}
+            post={discussion.post}
+            onBack={closeDiscussion}
+          />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <CallProvider chat={chat}>
     <div className={s.root}>
@@ -488,20 +507,6 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       {/* Add-contact screen (private chats) */}
       <AnimatePresence>
         {addContactOpen && <AddContactView chat={chat} onClose={() => setAddContactOpen(false)} />}
-      </AnimatePresence>
-
-      {/* Channel post discussion thread (real comments + composer + live) */}
-      <AnimatePresence>
-        {discussion && discussionsEnabled && (
-          <DiscussionView
-            key={discussion.postId}
-            channelId={numericChatId}
-            postId={discussion.postId}
-            discussionChatId={discussionChatId}
-            post={discussion.post}
-            onBack={closeDiscussion}
-          />
-        )}
       </AnimatePresence>
 
       {/* Header "⋮" menu */}
