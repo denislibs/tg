@@ -45,6 +45,10 @@ body {
 }
 
 body {
+  // базовый шрифт (раньше задавал MUI CssBaseline/theme; теперь глобально)
+  font-family: Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 16px;
+  color: var(--tg-textPrimary);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
