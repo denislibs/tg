@@ -2,8 +2,7 @@
 // Compose-before-send dialog (port of tweb popups/newMedia.ts): preview the
 // picked files, add a caption, toggle "as media" vs "as file", then send. The
 // parent owns the actual upload/send (onSend).
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Box, InputBase, useTheme } from '@mui/material'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import Text from '../../shared/ui/Text'
 import IconButton from '../../shared/ui/IconButton'
 import { createPortal } from 'react-dom'
@@ -11,6 +10,7 @@ import { motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
 import { EASE, DUR } from '../../motion'
 import { useT } from '../../i18n'
+import s from './SendMediaPopup.module.scss'
 
 const isMediaFile = (f: File) => /^(image|video|audio)\//.test(f.type)
 
@@ -39,7 +39,6 @@ export default function SendMediaPopup({
   onClose: () => void
   onSend: (caption: string, asFile: boolean) => void
 }) {
-  const tg = useTheme().tg
   const t = useT()
   const [caption, setCaption] = useState('')
   const [asFile, setAsFile] = useState(initialAsFile)
@@ -63,83 +62,79 @@ export default function SendMediaPopup({
   const send = () => onSend(caption.trim(), asFile)
 
   return createPortal(
-    <Box
-      onClick={onClose}
-      sx={{ position: 'fixed', inset: 0, zIndex: 2200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.45)' }}
-    >
-      <Box
+    <div className={s.overlay} onClick={onClose}>
+      <motion.div
+        className={s.dialog}
         onClick={(e) => e.stopPropagation()}
-        component={motion.div}
         initial={{ opacity: 0, scale: 0.94 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: DUR.in, ease: EASE }}
-        sx={{ width: 'min(420px, calc(100vw - 32px))', maxHeight: '80vh', display: 'flex', flexDirection: 'column', background: tg.menuBg, borderRadius: '14px', boxShadow: tg.menuShadow, overflow: 'hidden' }}
       >
         {/* header */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 1 }}>
-          <IconButton size="small" onClick={onClose} color={tg.textPrimary}><TgIcon name="close" /></IconButton>
-          <Text size={18} weight={600} color={tg.textPrimary} style={{ flex: 1 }}>{title}</Text>
+        <div className={s.header}>
+          <IconButton size="small" onClick={onClose} color="var(--tg-textPrimary)"><TgIcon name="close" /></IconButton>
+          <Text size={18} weight={600} color="var(--tg-textPrimary)" className={s.title}>{title}</Text>
           {anyMedia && (
-            <Box sx={{ position: 'relative' }}>
-              <IconButton size="small" onClick={() => setMenuOpen((v) => !v)} color={tg.textPrimary}><TgIcon name="more" /></IconButton>
+            <div className={s.moreWrap}>
+              <IconButton size="small" onClick={() => setMenuOpen((v) => !v)} color="var(--tg-textPrimary)"><TgIcon name="more" /></IconButton>
               {menuOpen && (
-                <Box sx={{ position: 'absolute', right: 0, top: '100%', mt: 0.5, minWidth: 220, py: 0.75, borderRadius: '12px', background: tg.menuBg, boxShadow: tg.menuShadow, zIndex: 1 }}>
-                  <MenuItem icon={<TgIcon name="image" size={20} />} label={t('Send as media')} active={!asFile} onClick={() => { setAsFile(false); setMenuOpen(false) }} tg={tg} />
-                  <MenuItem icon={<TgIcon name="document" size={20} />} label={t('Send as file')} active={asFile} onClick={() => { setAsFile(true); setMenuOpen(false) }} tg={tg} />
-                </Box>
+                <div className={s.menu}>
+                  <MenuItem icon={<TgIcon name="image" size={20} />} label={t('Send as media')} active={!asFile} onClick={() => { setAsFile(false); setMenuOpen(false) }} />
+                  <MenuItem icon={<TgIcon name="document" size={20} />} label={t('Send as file')} active={asFile} onClick={() => { setAsFile(true); setMenuOpen(false) }} />
+                </div>
               )}
-            </Box>
+            </div>
           )}
-        </Box>
+        </div>
 
         {/* previews */}
-        <Box sx={{ flex: 1, overflowY: 'auto', px: 2, py: 1, display: 'flex', flexDirection: 'column', gap: 1, alignItems: showAsMedia ? 'center' : 'stretch' }}>
+        <div className={s.previews} data-media={showAsMedia || undefined}>
           {files.map((f, i) => {
             if (showAsMedia && f.type.startsWith('image/')) {
-              return <Box key={i} component="img" src={urls[i]} sx={{ maxWidth: '100%', maxHeight: 360, borderRadius: '10px', objectFit: 'contain' }} />
+              return <img key={i} className={`${s.preview} ${s.previewImg}`} src={urls[i]} alt="" />
             }
             if (showAsMedia && f.type.startsWith('video/')) {
-              return <Box key={i} component="video" src={urls[i]} controls sx={{ maxWidth: '100%', maxHeight: 360, borderRadius: '10px' }} />
+              return <video key={i} className={s.preview} src={urls[i]} controls />
             }
             // file row (documents, audio, or "as file" mode)
             const ext = (f.name.split('.').pop() || '').slice(0, 4).toUpperCase()
             return (
-              <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1.25, p: 1, borderRadius: '10px', background: tg.hover }}>
-                <Box sx={{ width: 44, height: 44, flexShrink: 0, borderRadius: '50%', background: tg.accent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700 }}>{ext || <TgIcon name="document" />}</Box>
-                <Box sx={{ minWidth: 0 }}>
-                  <Text noWrap size={14.5} weight={600} color={tg.textPrimary}>{f.name}</Text>
-                  <Text size={12.5} color={tg.textSecondary}>{fmtSize(f.size)}</Text>
-                </Box>
-              </Box>
+              <div key={i} className={s.fileRow}>
+                <div className={s.fileIcon}>{ext || <TgIcon name="document" />}</div>
+                <div className={s.fileBody}>
+                  <Text noWrap size={14.5} weight={600} color="var(--tg-textPrimary)">{f.name}</Text>
+                  <Text size={12.5} color="var(--tg-textSecondary)">{fmtSize(f.size)}</Text>
+                </div>
+              </div>
             )
           })}
-        </Box>
+        </div>
 
         {/* caption + send */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 1.25, borderTop: `1px solid ${tg.hover}` }}>
-          <InputBase
-            inputRef={inputRef}
+        <div className={s.footer}>
+          <input
+            ref={inputRef}
+            className={s.caption}
             value={caption}
             onChange={(e) => setCaption(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
             placeholder={t('Add a caption…')}
-            sx={{ flex: 1, fontSize: 16, color: tg.textPrimary, '& input::placeholder': { color: tg.textFaint, opacity: 1 } }}
           />
-          <Box component={motion.div} whileTap={{ scale: 0.92 }} onClick={send} sx={{ width: 48, height: 40, flexShrink: 0, borderRadius: '20px', background: tg.accentGradient, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer' }}>
+          <motion.div className={s.send} whileTap={{ scale: 0.92 }} onClick={send}>
             <TgIcon name="send" />
-          </Box>
-        </Box>
-      </Box>
-    </Box>,
+          </motion.div>
+        </div>
+      </motion.div>
+    </div>,
     document.body,
   )
 }
 
-function MenuItem({ icon, label, active, onClick, tg }: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void; tg: { hover: string; accent: string; textPrimary: string; textSecondary: string } }) {
+function MenuItem({ icon, label, active, onClick }: { icon: ReactNode; label: string; active: boolean; onClick: () => void }) {
   return (
-    <Box onClick={onClick} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1.5, py: 0.75, mx: 0.5, borderRadius: '8px', cursor: 'pointer', '&:hover': { background: tg.hover } }}>
-      <Box sx={{ display: 'flex', color: active ? tg.accent : tg.textSecondary, '& svg': { fontSize: 20 } }}>{icon}</Box>
-      <Text size={15} color={active ? tg.accent : tg.textPrimary}>{label}</Text>
-    </Box>
+    <div className={s.menuItem} data-active={active || undefined} onClick={onClick}>
+      <span className={s.menuIcon}>{icon}</span>
+      <Text size={15} color="var(--mi-color)">{label}</Text>
+    </div>
   )
 }

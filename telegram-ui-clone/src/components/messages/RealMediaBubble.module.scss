@@ -1,0 +1,168 @@
+// RealMediaBubble — медиа из истории: фото/видео (с оверлеями), музыка, файл.
+// Оверлеи фото/видео — фиксированные (rgba/белый). Текст/иконка документа и
+// музыки — палитра через CSS-переменные на .fileRow[data-out]. Геометрия
+// фото (размер/радиус/lqip) — инлайн (рантайм).
+@use '../../styles/foundation' as *;
+
+// ── фото / видео ──
+.media {
+  position: relative;
+  max-width: 100%;
+  cursor: pointer;
+  overflow: hidden;
+  background-color: rgba(127, 127, 127, 0.16);
+  background-size: cover;
+  background-position: center;
+
+  img {
+    cursor: pointer;
+  }
+}
+.img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.shimmerWrap {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.shimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.14) 50%, transparent 70%);
+  animation: mediaShimmer 1.25s infinite;
+}
+.badgeTL {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+.timeBadge {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.45);
+}
+.play {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.playDisc {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+// ── документ / музыка ──
+.fileRow {
+  --m-primary: var(--tg-textPrimary);
+  --m-secondary: var(--tg-textSecondary);
+  --m-circle: var(--tg-accent);
+
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+
+  &[data-out] {
+    --m-primary: #fff;
+    --m-secondary: rgba(255, 255, 255, 0.7);
+    --m-circle: rgba(255, 255, 255, 0.22);
+  }
+}
+.doc {
+  min-width: 200px;
+}
+.audio {
+  min-width: 240px;
+}
+.circle {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--m-circle);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  position: relative;
+}
+.circleBtn {
+  cursor: pointer;
+}
+.dl {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 50%;
+}
+.circle:hover .dl {
+  opacity: 1;
+}
+.fileBody {
+  min-width: 0;
+  flex: 1;
+}
+.fileSub {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.timeCluster {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+// ── прогресс музыки (активный трек) ──
+.progressRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.progressTrack {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(127, 127, 127, 0.35);
+  cursor: pointer;
+  position: relative;
+}
+.progressFill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 2px;
+}

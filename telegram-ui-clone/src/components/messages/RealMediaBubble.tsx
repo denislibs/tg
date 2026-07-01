@@ -9,14 +9,15 @@
 // which is what used to make the feed jitter while scrolling.
 import { useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Box, useTheme } from '@mui/material'
 import Text from '../../shared/ui/Text'
+import classNames from '../../shared/lib/classNames'
 import TgIcon from '../TgIcon'
 import { calcImageInBox } from '../../core/dom/calcImageInBox'
 import { fmtDur } from '../../core/hooks/useVoiceRecorder'
 import { useAudioStore } from '../../stores/audioStore'
 import { mediaContentUrl, mediaThumbUrl, hasMediaToken, primeMediaToken, useMediaTokenVersion } from '../../core/mediaUrl'
 import type { MsgStatus } from '../../data'
+import s from './RealMediaBubble.module.scss'
 
 // Display box (tweb mediaSizes.regular): photos/videos fit within, aspect kept.
 const BOX_W = 320
@@ -57,7 +58,6 @@ export default function RealMediaBubble({
   mediaId, type, width, height, mime, blur, hasThumb, duration, size, fileName,
   out, time, status, tickColor, onOpen, radius,
 }: Props) {
-  const tg = useTheme().tg
   useMediaTokenVersion() // re-render when the media token is (re)primed → fresh URLs
   const tokenReady = hasMediaToken()
   // Image fade-in: blur/shimmer placeholder → image fades in once decoded. We read
@@ -81,10 +81,10 @@ export default function RealMediaBubble({
   const isAudio = !asFile && (type === 'audio' || isAudioMime)
 
   const timeCluster: ReactNode = time ? (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-      <Text size={12} color={out ? tickColor : tg.textFaint} style={{ fontVariantNumeric: 'tabular-nums' }}>{time}</Text>
+    <div className={s.timeCluster}>
+      <Text size={12} color={out ? tickColor : 'var(--tg-textFaint)'} style={{ fontVariantNumeric: 'tabular-nums' }}>{time}</Text>
       {out && <Ticks status={status} color={tickColor} />}
-    </Box>
+    </div>
   ) : null
 
   // ---- Photo / video ----
@@ -100,44 +100,45 @@ export default function RealMediaBubble({
         ? mediaContentUrl(mediaId)
         : hasThumb ? mediaThumbUrl(mediaId) : mediaContentUrl(mediaId)
     return (
-      <Box
+      <div
+        className={s.media}
         onClick={(e) => onOpen?.(mediaId, e.currentTarget)}
-        sx={{ position: 'relative', width: box.width, height: box.height, maxWidth: '100%', cursor: 'pointer', borderRadius: radius, overflow: 'hidden', backgroundImage: lqip, backgroundSize: 'cover', backgroundPosition: 'center', backgroundColor: lqip ? undefined : 'rgba(127,127,127,0.16)', '& img': { cursor: 'pointer' } }}
+        style={{ width: box.width, height: box.height, borderRadius: radius, backgroundImage: lqip }}
       >
         {/* Shimmer over the blur preview while the image loads. It sits BEHIND the
             <img> (earlier in DOM, both absolute) so it never covers the picture;
             the image itself is never opacity-gated, so a browser-cached image (e.g.
             a bubble remounted on chat switch) paints instantly with no flash. */}
         {!imgLoaded && (
-          <Box sx={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden' }}>
-            <Box sx={{ position: 'absolute', inset: 0, background: 'linear-gradient(100deg, transparent 30%, rgba(255,255,255,0.14) 50%, transparent 70%)', animation: 'mediaShimmer 1.25s infinite' }} />
-          </Box>
+          <div className={s.shimmerWrap}>
+            <div className={s.shimmer} />
+          </div>
         )}
-        {displaySrc ? <img ref={imgRef} src={displaySrc} alt="" decoding="async" onLoad={() => setImgLoaded(true)} onError={() => { void primeMediaToken(true) }} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
+        {displaySrc ? <img ref={imgRef} className={s.img} src={displaySrc} alt="" decoding="async" onLoad={() => setImgLoaded(true)} onError={() => { void primeMediaToken(true) }} /> : null}
         {isGif && (
-          <Box sx={{ position: 'absolute', left: 8, top: 8, px: 0.75, py: 0.25, borderRadius: '10px', background: 'rgba(0,0,0,0.45)', pointerEvents: 'none' }}>
+          <div className={s.badgeTL}>
             <Text size={11} weight={700} color="#fff" style={{ letterSpacing: '0.04em' }}>GIF</Text>
-          </Box>
+          </div>
         )}
         {isVideo && (
-          <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-            <Box sx={{ width: 54, height: 54, borderRadius: '50%', background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className={s.play}>
+            <div className={s.playDisc}>
               <TgIcon name="play" size={34} color="#fff" />
-            </Box>
-          </Box>
+            </div>
+          </div>
         )}
         {isVideo && !!duration && (
-          <Box sx={{ position: 'absolute', left: 8, top: 8, px: 0.75, py: 0.25, borderRadius: '10px', background: 'rgba(0,0,0,0.45)', pointerEvents: 'none' }}>
+          <div className={s.badgeTL}>
             <Text size={12} color="#fff" style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtDur(duration)}</Text>
-          </Box>
+          </div>
         )}
         {time && (
-          <Box sx={{ position: 'absolute', right: 8, bottom: 8, display: 'flex', alignItems: 'center', gap: 0.25, px: 0.75, py: 0.25, borderRadius: '10px', background: 'rgba(0,0,0,0.45)' }}>
+          <div className={s.timeBadge}>
             <Text size={12} color="#fff" style={{ fontVariantNumeric: 'tabular-nums' }}>{time}</Text>
             {out && <Ticks status={status} color="#fff" />}
-          </Box>
+          </div>
         )}
-      </Box>
+      </div>
     )
   }
 
@@ -146,9 +147,9 @@ export default function RealMediaBubble({
     return (
       <AudioRow
         mediaId={mediaId} name={fileName || `audio-${mediaId}`} duration={duration} size={size}
-        accent={tg.accent} time={timeCluster}
-        primary={out ? '#fff' : tg.textPrimary}
-        secondary={out ? 'rgba(255,255,255,0.7)' : tg.textSecondary}
+        time={timeCluster}
+        primary={out ? '#fff' : 'var(--tg-textPrimary)'}
+        secondary={out ? 'rgba(255,255,255,0.7)' : 'var(--tg-textSecondary)'}
       />
     )
   }
@@ -159,21 +160,21 @@ export default function RealMediaBubble({
   const sub = size ? fmtSize(size) : ''
   const href = tokenReady ? mediaContentUrl(mediaId) : undefined
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, px: 1.25, py: 1, minWidth: 200 }}>
-      <Box component="a" href={href} download={name} sx={{ width: 48, height: 48, flexShrink: 0, borderRadius: '50%', background: out ? 'rgba(255,255,255,0.22)' : tg.accent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', position: 'relative', '&:hover .dl': { opacity: 1 } }}>
+    <div className={classNames(s.fileRow, s.doc)} data-out={out || undefined}>
+      <a className={s.circle} href={href} download={name}>
         {ext ? <Text size={11} weight={700}>{ext}</Text> : <TgIcon name="document" />}
-        <Box className="dl" sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: 'opacity .15s', background: 'rgba(0,0,0,0.25)', borderRadius: '50%' }}>
+        <div className={s.dl}>
           <TgIcon name="download" size={22} />
-        </Box>
-      </Box>
-      <Box sx={{ minWidth: 0, flex: 1 }}>
-        <Text noWrap size={14.5} weight={600} color={out ? '#fff' : tg.textPrimary}>{name}</Text>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
-          <Text size={12.5} color={out ? 'rgba(255,255,255,0.7)' : tg.textSecondary}>{sub}</Text>
+        </div>
+      </a>
+      <div className={s.fileBody}>
+        <Text noWrap size={14.5} weight={600} color="var(--m-primary)">{name}</Text>
+        <div className={s.fileSub}>
+          <Text size={12.5} color="var(--m-secondary)">{sub}</Text>
           {timeCluster}
-        </Box>
-      </Box>
-    </Box>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -181,12 +182,11 @@ export default function RealMediaBubble({
 // track shows in the now-playing plate and only one thing plays at a time. While
 // this file is the active track the row flips to pause + a seekable progress bar
 // (tweb). Otherwise it shows duration • size.
-function AudioRow({ mediaId, name, duration, size, accent, primary, secondary, time }: {
+function AudioRow({ mediaId, name, duration, size, primary, secondary, time }: {
   mediaId: number
   name: string
   duration?: number
   size?: number
-  accent: string
   primary: string
   secondary: string
   time: ReactNode
@@ -213,30 +213,27 @@ function AudioRow({ mediaId, name, duration, size, accent, primary, secondary, t
   const frac = curDur > 0 ? Math.min(1, curTime / curDur) : 0
 
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, px: 1.25, py: 1, minWidth: 240 }}>
-      <Box onClick={onPlay} sx={{ width: 48, height: 48, flexShrink: 0, borderRadius: '50%', background: accent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+    <div className={classNames(s.fileRow, s.audio)}>
+      <div className={classNames(s.circle, s.circleBtn)} onClick={onPlay}>
         {playing ? <TgIcon name="pause" size={28} /> : <TgIcon name="play" size={28} />}
-      </Box>
-      <Box sx={{ minWidth: 0, flex: 1 }}>
+      </div>
+      <div className={s.fileBody}>
         <Text noWrap size={14.5} weight={600} color={primary}>{name}</Text>
         {isCurrent ? (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-            <Box
-              onClick={onSeek}
-              sx={{ flex: 1, height: 3, borderRadius: 2, background: 'rgba(127,127,127,0.35)', cursor: 'pointer', position: 'relative' }}
-            >
-              <Box sx={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${frac * 100}%`, background: accent, borderRadius: 2 }} />
-            </Box>
+          <div className={s.progressRow}>
+            <div className={s.progressTrack} onClick={onSeek}>
+              <div className={s.progressFill} style={{ width: `${frac * 100}%`, background: 'var(--tg-accent)' }} />
+            </div>
             <Text size={12.5} color={secondary} style={{ fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{fmtDur(Math.floor(curTime))}</Text>
             {time}
-          </Box>
+          </div>
         ) : (
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+          <div className={s.fileSub}>
             <Text size={12.5} color={secondary}>{sub}</Text>
             {time}
-          </Box>
+          </div>
         )}
-      </Box>
-    </Box>
+      </div>
+    </div>
   )
 }

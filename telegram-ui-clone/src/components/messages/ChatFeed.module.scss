@@ -1,0 +1,92 @@
+// ChatFeed — лента сообщений: секции по дням со sticky-пилюлей даты, service-
+// сообщения, sticky-аватар для входящих групповых серий, бар комментариев.
+// Пилюли даты/сервиса — по tweb .bubble.service .service-msg (_chatBubble.scss):
+// padding .28125rem .625rem, radius .875rem, #fff, service-text-size (textSize−1),
+// line-height service+5. Фон — нейтральный (tweb тинтует от обоев через
+// --message-highlighting-color; мы этого не считаем).
+@use '../../styles/foundation' as *;
+
+.section {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+// sticky-обёртка пилюли даты (top задаётся инлайн — динамический offset шапки)
+.dayPill {
+  display: flex;
+  justify-content: center;
+  margin: 8px 0;
+  position: sticky;
+  transition: top 0.22s ease;
+  z-index: 4;
+  pointer-events: none;
+}
+
+// капсула service/date (tweb .service-msg)
+.pill {
+  padding: 0.28125rem 0.625rem;
+  border-radius: 0.875rem;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 15px; // messages-service-text-size (= textSize − 1, дефолт 16)
+  font-weight: 500;
+  line-height: 20px; // service-text-size + 5
+}
+
+// service-сообщение по центру
+.service {
+  display: flex;
+  justify-content: center;
+  margin: 4px 0;
+}
+.serviceMsg {
+  max-width: 80%;
+  text-align: center;
+  word-break: break-word;
+  white-space: break-spaces;
+  user-select: none;
+}
+
+// входящая групповая серия со sticky-аватаром
+.group {
+  position: relative;
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+.groupAvatarCol {
+  width: 40px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  // последний бабл несёт 6px group-margin — подгоняем, чтобы аватар встал по низу бабла
+  padding-bottom: 6px;
+}
+.groupAvatar {
+  position: sticky;
+  bottom: 72px; // над плавающим композером (≈64px + 16px offset)
+  width: 40px;
+  height: 40px;
+}
+.groupBody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+// пост канала + бар комментариев
+.post {
+  display: flex;
+  flex-direction: column;
+}
+.postBar {
+  display: flex;
+  justify-content: flex-start;
+
+  &[data-out] {
+    justify-content: flex-end;
+  }
+}
