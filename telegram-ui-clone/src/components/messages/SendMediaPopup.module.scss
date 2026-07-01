@@ -1,0 +1,157 @@
+// SendMediaPopup — диалог отправки медиа (порт tweb popups/newMedia): превью
+// файлов, подпись, переключатель «как медиа / как файл», отправка. Цвета — токены.
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.dialog {
+  width: min(420px, calc(100vw - 32px));
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--tg-menuBg);
+  border-radius: 14px;
+  box-shadow: var(--tg-menuShadow);
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+}
+.title {
+  flex: 1;
+}
+
+.moreWrap {
+  position: relative;
+}
+.menu {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  margin-top: 4px;
+  min-width: 220px;
+  padding: 6px 0;
+  border-radius: 12px;
+  background: var(--tg-menuBg);
+  box-shadow: var(--tg-menuShadow);
+  z-index: 1;
+}
+.menuItem {
+  --mi-color: var(--tg-textPrimary);
+  --mi-icon: var(--tg-textSecondary);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  margin: 0 4px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--mi-color);
+
+  &[data-active] {
+    --mi-color: var(--tg-accent);
+    --mi-icon: var(--tg-accent);
+  }
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+    }
+  }
+}
+.menuIcon {
+  display: flex;
+  color: var(--mi-icon);
+}
+
+// превью
+.previews {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+
+  &[data-media] {
+    align-items: center;
+  }
+}
+.preview {
+  max-width: 100%;
+  max-height: 360px;
+  border-radius: 10px;
+}
+.previewImg {
+  object-fit: contain;
+}
+.fileRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--tg-hover);
+}
+.fileIcon {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--tg-accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+}
+.fileBody {
+  min-width: 0;
+}
+
+// подпись + отправка
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--tg-hover);
+}
+.caption {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 16px;
+  color: var(--tg-textPrimary);
+  font-family: inherit;
+
+  &::placeholder {
+    color: var(--tg-textFaint);
+    opacity: 1;
+  }
+}
+.send {
+  width: 48px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 20px;
+  background: var(--tg-accentGradient);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  cursor: pointer;
+}
