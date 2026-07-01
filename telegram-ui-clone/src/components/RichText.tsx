@@ -1,8 +1,9 @@
 import { useState, type CSSProperties, type ReactNode } from 'react'
-import { Box } from '@mui/material'
 import type { EntityType, MessageEntity } from '../core/models'
 import { safeUrl } from '../core/safeUrl'
 import CodeBlock from './CodeBlock'
+import classNames from '../shared/lib/classNames'
+import s from './RichText.module.scss'
 
 // Matches URLs, t.me links, @usernames and #hashtags
 const ENTITY_RE = /(https?:\/\/\S+|t\.me\/\S+|@[A-Za-z0-9_]{3,}|#[\p{L}0-9_]+)/gu
@@ -31,13 +32,9 @@ function entityNodes(text: string, linkColor: string, keyBase: string): ReactNod
     const idx = m.index ?? 0
     if (idx > last) out.push(text.slice(last, idx))
     out.push(
-      <Box
-        key={`${keyBase}-${idx}`}
-        component="span"
-        sx={{ color: linkColor, cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
-      >
+      <span key={`${keyBase}-${idx}`} className={s.link} style={{ color: linkColor }}>
         {m[0]}
-      </Box>,
+      </span>,
     )
     last = idx + m[0].length
   }
@@ -54,13 +51,9 @@ function plainRun(text: string, linkColor: string, keyBase: string): ReactNode[]
     const idx = m.index ?? 0
     if (idx > last) out.push(...entityNodes(text.slice(last, idx), linkColor, `${keyBase}-s${seg++}`))
     out.push(
-      <Box
-        key={`${keyBase}-ce-${idx}`}
-        component="span"
-        sx={{ display: 'inline-block', fontSize: '1.3em', lineHeight: 1, verticalAlign: '-0.2em', mx: '1px' }}
-      >
+      <span key={`${keyBase}-ce-${idx}`} className={s.customEmoji}>
         {m[1]}
-      </Box>,
+      </span>,
     )
     last = idx + m[0].length
   }
@@ -72,20 +65,13 @@ function plainRun(text: string, linkColor: string, keyBase: string): ReactNode[]
 function Spoiler({ children }: { children: ReactNode }) {
   const [revealed, setRevealed] = useState(false)
   return (
-    <Box
-      component="span"
+    <span
       onClick={(e) => { e.stopPropagation(); setRevealed(true) }}
-      sx={{
-        cursor: revealed ? 'inherit' : 'pointer',
-        borderRadius: '4px',
-        transition: 'filter .2s, background .2s',
-        ...(revealed
-          ? {}
-          : { filter: 'blur(5px)', background: 'currentColor', borderRadius: '4px', userSelect: 'none' }),
-      }}
+      className={classNames(s.spoiler, revealed ? '' : s.spoilerHidden)}
+      style={{ cursor: revealed ? 'inherit' : 'pointer' }}
     >
       {children}
-    </Box>
+    </span>
   )
 }
 
@@ -194,16 +180,16 @@ function renderInline(text: string, entities: MessageEntity[], linkColor: string
         const isQuote = seg.types.has('blockquote')
 
         let content: ReactNode = isLink ? (
-          <Box
-            component="a"
+          <a
             href={href}
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e: React.MouseEvent) => e.stopPropagation()}
-            sx={{ color: linkColor, textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+            className={s.anchor}
+            style={{ color: linkColor }}
           >
             {seg.text}
-          </Box>
+          </a>
         ) : isCode ? (
           seg.text
         ) : (
@@ -211,49 +197,23 @@ function renderInline(text: string, entities: MessageEntity[], linkColor: string
         )
 
         if (isCode) {
-          content = (
-            <Box
-              component="code"
-              sx={{
-                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-                fontSize: '0.92em',
-                background: 'rgba(127,127,127,0.16)',
-                borderRadius: '4px',
-                padding: '0 .25em',
-              }}
-            >
-              {content}
-            </Box>
-          )
+          content = <code className={s.code}>{content}</code>
         }
         if (seg.types.has('spoiler')) content = <Spoiler>{content}</Spoiler>
 
         const style = segStyle(seg.types)
         const wrapped =
           Object.keys(style).length > 0 ? (
-            <Box component="span" style={style}>
-              {content}
-            </Box>
+            <span style={style}>{content}</span>
           ) : (
             content
           )
 
         if (isQuote) {
           return (
-            <Box
-              key={key}
-              component="span"
-              sx={{
-                display: 'inline-block',
-                borderLeft: '3px solid currentColor',
-                opacity: 0.92,
-                pl: 1,
-                my: '2px',
-                borderRadius: '2px',
-              }}
-            >
+            <span key={key} className={s.quote}>
               {wrapped}
-            </Box>
+            </span>
           )
         }
         return <span key={key}>{wrapped}</span>

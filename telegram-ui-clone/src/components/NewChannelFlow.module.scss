@@ -1,0 +1,86 @@
+// NewChannelFlow — экран создания канала (порт tweb newChannel).
+// Карточка с полями + FAB «дальше». Цвета — через токены --tg-*.
+
+// шапка: назад + заголовок
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px;
+}
+
+// скроллируемое тело
+.body {
+  flex: 1;
+  overflow-y: auto;
+}
+
+// карточка с полями (фон зависит от темы)
+.card {
+  margin: 12px;
+  padding: 32px 24px;
+  border-radius: 18px;
+  background: #ffffff;
+
+  :global(html[data-theme='night']) &,
+  :global(html[data-theme='dark']) & {
+    background: #2b2b2b;
+  }
+}
+
+// центрирующая обёртка аватара
+.avatarWrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 32px;
+}
+
+// круглая кнопка аватара с градиентом
+.avatarBtn {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: var(--tg-accentGradient);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  cursor: pointer;
+}
+
+// поле внутри карточки: лейбл всплывает на фон карточки
+.field {
+  --input-bg: #ffffff;
+
+  :global(html[data-theme='night']) &,
+  :global(html[data-theme='dark']) & {
+    --input-bg: #2b2b2b;
+  }
+}
+
+// отступ между полями
+.fieldGap {
+  margin-bottom: 16px;
+}
+
+// подпись под карточкой
+.hint {
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+// FAB «дальше»
+.fab {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--tg-accentGradient);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  transition: opacity 0.2s ease;
+}

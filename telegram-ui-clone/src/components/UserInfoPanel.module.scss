@@ -1,0 +1,320 @@
+// UserInfoPanel — панель профиля (пользователь/группа/канал). Порт разметки из
+// MUI sx. Цвета — токены --tg-*. Фон карточек (cardBg) зависит от темы.
+
+// затемнение под оверлеем (узкий режим)
+.backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+// карточка-панель (общая база)
+.panel {
+  background: var(--tg-sidebarBg);
+  border-radius: 18px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+// узкий режим: плавающая справа панель
+.panelNarrow {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  bottom: 16px;
+  width: min(380px, calc(100vw - 32px));
+}
+
+// широкий режим: колонка внутри контента
+.panelWide {
+  width: 380px;
+  height: 100%;
+  margin-left: 8px;
+  margin-right: 16px;
+  position: relative;
+}
+
+// шапка: закрыть + заголовок + (ред.)
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+}
+
+// скроллируемое тело
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 24px;
+}
+
+// аватар + имя
+.avatarBlock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  padding-bottom: 20px;
+}
+
+// карточка (фон зависит от темы)
+.card {
+  margin: 0 12px 12px;
+  border-radius: 16px;
+  background: #ffffff;
+  padding: 4px 0;
+
+  :global(html[data-theme='night']) &,
+  :global(html[data-theme='dark']) & {
+    background: #2b2b2b;
+  }
+}
+
+// вложенная карточка без внешних margin (обсуждения/участники/ссылки/заявки)
+.cardPlain {
+  border-radius: 16px;
+  background: #ffffff;
+  padding: 6px 0;
+
+  :global(html[data-theme='night']) &,
+  :global(html[data-theme='dark']) & {
+    background: #2b2b2b;
+  }
+}
+
+// ряд-описание канала (иконка + текст)
+.channelRow {
+  display: flex;
+  gap: 16px;
+  padding: 10px 16px;
+}
+
+// строка-ссылка/username (с hover)
+.linkRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  margin: 0 4px;
+  border-radius: 12px;
+  cursor: pointer;
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+    }
+  }
+}
+
+// ряд «уведомления»
+.notifRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 4px 16px;
+  margin: 0 4px;
+  border-radius: 12px;
+}
+
+.grow {
+  flex: 1;
+  min-width: 0;
+}
+
+// секция (заголовок + карточка)
+.section {
+  margin: 8px 12px 0;
+}
+
+.sectionTitle {
+  padding-left: 12px;
+  padding-right: 12px;
+  padding-bottom: 4px;
+}
+
+// медиа-сетка канала
+.mediaGrid {
+  margin: 8px 12px 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3px;
+}
+
+.mediaTile {
+  aspect-ratio: 1 / 1;
+}
+
+// ряд «обсуждения включены»
+.enabledRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  margin: 0 4px;
+  border-radius: 12px;
+}
+
+// обёртка кнопки-действия внутри карточки
+.actionWrap {
+  padding: 4px 12px;
+}
+
+// кнопка-действие (accent, по центру)
+.actionBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-radius: 12px;
+  color: var(--tg-accent);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+    }
+  }
+}
+
+// ряд участника/подписчика
+.memberRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  margin: 0 4px;
+  border-radius: 12px;
+}
+
+// кликабельная часть (аватар + имя)
+.memberTap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  border-radius: 12px;
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+    }
+  }
+}
+
+// метка роли (кликабельна у админов)
+.roleLabel {
+  font-size: 13.5px;
+  color: var(--tg-textSecondary);
+  border-radius: 8px;
+}
+
+.roleClickable {
+  cursor: pointer;
+  padding: 0 4px;
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+    }
+  }
+}
+
+// ряд пригласительной ссылки
+.inviteRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 16px;
+  margin: 0 4px;
+  border-radius: 12px;
+}
+
+// ряд заявки на вступление
+.requestRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  margin: 0 4px;
+  border-radius: 12px;
+}
+
+// FAB «добавить участника»
+.fab {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--tg-accentGradient);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  cursor: pointer;
+}
+
+// --- RightsEditor (подвью прав администратора) ---
+.rights {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  background: var(--tg-sidebarBg);
+  display: flex;
+  flex-direction: column;
+}
+
+.rightsHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px;
+}
+
+// ряд-переключатель права
+.rightRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 9px 16px;
+  margin: 0 4px;
+  border-radius: 12px;
+  cursor: pointer;
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+    }
+  }
+}
+
+// кнопка «Сохранить»
+.saveBtn {
+  text-align: center;
+  padding: 10px 0;
+  border-radius: 14px;
+  background: var(--tg-accentGradient);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+// «Снять права»
+.removeBtn {
+  text-align: center;
+  padding: 10px 0;
+  margin-top: 8px;
+  font-size: 16px;
+  color: #ff595a;
+  cursor: pointer;
+}

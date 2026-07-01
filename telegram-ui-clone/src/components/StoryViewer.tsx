@@ -1,5 +1,4 @@
 import { createPortal } from 'react-dom'
-import { Box } from '@mui/material'
 import Text from '../shared/ui/Text'
 import IconButton from '../shared/ui/IconButton'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -8,6 +7,8 @@ import { EASE, DUR } from '../motion'
 import Avatar from '../shared/ui/Avatar'
 import { gradientFor } from '../core/dialogToChat'
 import { useStoryViewer } from '../core/hooks/useStoryViewer'
+import classNames from '../shared/lib/classNames'
+import s from './StoryViewer.module.scss'
 
 /**
  * Full-screen story viewer over the real stories feed. Shows the selected
@@ -39,91 +40,37 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
 
   return createPortal(
     <AnimatePresence>
-      <Box
-        component={motion.div}
+      <motion.div
         key="story-overlay"
+        className={s.overlay}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1, transition: { duration: DUR.in, ease: EASE } }}
         exit={{ opacity: 0, transition: { duration: DUR.out, ease: EASE } }}
-        sx={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 3000,
-          background: 'rgba(0,0,0,0.9)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
       >
         {/* Story card */}
-        <Box
-          component={motion.div}
+        <motion.div
+          className={s.card}
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.25, ease: EASE }}
-          sx={{
-            position: 'relative',
-            aspectRatio: '9 / 16',
-            height: 'min(92vh, 900px)',
-            maxWidth: 'calc(min(92vh, 900px) * 9 / 16)',
-            width: '100%',
-            borderRadius: '12px',
-            overflow: 'hidden',
-            background: bg,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
+          style={{ background: bg }}
         >
           {/* Media */}
           {mediaUrl ? (
             isVideo ? (
-              <Box
-                component="video"
-                src={mediaUrl}
-                autoPlay
-                muted
-                playsInline
-                sx={{ width: '100%', height: '100%', objectFit: 'contain' }}
-              />
+              <video className={s.media} src={mediaUrl} autoPlay muted playsInline />
             ) : (
-              <Box
-                component="img"
-                src={mediaUrl}
-                alt=""
-                sx={{ width: '100%', height: '100%', objectFit: 'contain' }}
-              />
+              <img className={s.media} src={mediaUrl} alt="" />
             )
           ) : (
-            <Box sx={{ fontSize: 120, userSelect: 'none', lineHeight: 1, color: '#fff' }}>
-              {group.author.displayName.charAt(0)}
-            </Box>
+            <div className={s.placeholder}>{group.author.displayName.charAt(0)}</div>
           )}
 
           {/* Progress bars */}
-          <Box
-            sx={{
-              position: 'absolute',
-              top: 8,
-              left: 8,
-              right: 8,
-              display: 'flex',
-              gap: '3px',
-              zIndex: 2,
-            }}
-          >
-            {stories.map((s, i) => (
-              <Box
-                key={s.id}
-                sx={{
-                  flex: 1,
-                  height: 2,
-                  borderRadius: 2,
-                  background: 'rgba(255,255,255,0.3)',
-                  overflow: 'hidden',
-                }}
-              >
-                {i < current && <Box sx={{ width: '100%', height: '100%', background: '#fff' }} />}
+          <div className={s.progress}>
+            {stories.map((st, i) => (
+              <div key={st.id} className={s.segment}>
+                {i < current && <div className={s.segmentFill} />}
                 {i === current && (
                   <motion.div
                     key={current}
@@ -134,159 +81,85 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
                     style={{ height: '100%', background: '#fff' }}
                   />
                 )}
-              </Box>
+              </div>
             ))}
-          </Box>
+          </div>
 
           {/* Header */}
-          <Box
-            sx={{
-              position: 'absolute',
-              top: 18,
-              left: 8,
-              right: 4,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1,
-              zIndex: 2,
-            }}
-          >
+          <div className={s.header}>
             <Avatar background={bg} text={group.author.displayName.charAt(0)} size="xs" />
             <Text color="#fff" weight={700} size={14}>
               {group.author.displayName}
             </Text>
-            <Box sx={{ flex: 1 }} />
+            <div className={s.spacer} />
             <IconButton onClick={onClose} color="#fff" size="small">
               <TgIcon name="close" />
             </IconButton>
-          </Box>
+          </div>
 
           {/* Tap zones */}
-          <Box
-            onClick={prev}
-            sx={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: '33.33%', zIndex: 1, cursor: 'pointer' }}
-          />
-          <Box
-            onClick={next}
-            sx={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: '66.66%', zIndex: 1, cursor: 'pointer' }}
-          />
+          <div className={s.tapPrev} onClick={prev} />
+          <div className={s.tapNext} onClick={next} />
 
           {/* Caption */}
           {story.caption && (
-            <Box
-              sx={{
-                position: 'absolute',
-                left: 12,
-                right: 12,
-                bottom: isMe ? 64 : 12,
-                px: 2,
-                py: 1.25,
-                borderRadius: '16px',
-                background: 'rgba(0,0,0,0.5)',
-                backdropFilter: 'blur(12px)',
-                WebkitBackdropFilter: 'blur(12px)',
-                zIndex: 2,
-              }}
-            >
+            <div className={classNames(s.caption, isMe ? s.captionRaised : '')}>
               <Text color="#fff" size={15}>{story.caption}</Text>
-            </Box>
+            </div>
           )}
 
           {/* Own stories: viewers affordance */}
           {isMe && (
-            <Box
-              onClick={openViewers}
-              role="button"
-              aria-label="Просмотры"
-              sx={{
-                position: 'absolute',
-                left: 12,
-                right: 12,
-                bottom: 12,
-                height: 44,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-                px: 2,
-                borderRadius: '16px',
-                background: 'rgba(0,0,0,0.5)',
-                backdropFilter: 'blur(12px)',
-                WebkitBackdropFilter: 'blur(12px)',
-                cursor: 'pointer',
-                zIndex: 2,
-              }}
-            >
+            <div className={s.viewsBar} onClick={openViewers} role="button" aria-label="Просмотры">
               <TgIcon name="eye" size={20} color="#fff" />
               <Text color="#fff" size={15}>
                 Просмотры{viewers ? ` (${viewers.length})` : ''}
               </Text>
-            </Box>
+            </div>
           )}
 
           {/* Viewers list sheet (own stories) */}
           <AnimatePresence>
             {showViewers && (
-              <Box
-                component={motion.div}
+              <motion.div
                 key="viewers-sheet"
+                className={s.viewersSheet}
                 initial={{ y: '100%' }}
                 animate={{ y: 0 }}
                 exit={{ y: '100%' }}
                 transition={{ duration: 0.25, ease: EASE }}
-                sx={{
-                  position: 'absolute',
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  maxHeight: '60%',
-                  overflowY: 'auto',
-                  background: 'rgba(20,20,20,0.96)',
-                  borderTopLeftRadius: '16px',
-                  borderTopRightRadius: '16px',
-                  zIndex: 3,
-                }}
               >
-                <Box
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    px: 2,
-                    py: 1.5,
-                    position: 'sticky',
-                    top: 0,
-                    background: 'rgba(20,20,20,0.96)',
-                  }}
-                >
-                  <Text color="#fff" weight={700} size={15} style={{ flex: 1 }}>
+                <div className={s.viewersHeader}>
+                  <Text color="#fff" weight={700} size={15} className={s.viewersTitle}>
                     Просмотры{viewers ? ` (${viewers.length})` : ''}
                   </Text>
                   <IconButton onClick={() => setShowViewers(false)} color="#fff" size="small">
                     <TgIcon name="close" />
                   </IconButton>
-                </Box>
+                </div>
                 {viewers == null ? (
-                  <Text color="rgba(255,255,255,0.6)" size={14} style={{ paddingLeft: '16px', paddingRight: '16px', paddingTop: '12px', paddingBottom: '12px' }}>
+                  <Text color="rgba(255,255,255,0.6)" size={14} style={{ padding: '12px 16px' }}>
                     Загрузка…
                   </Text>
                 ) : viewers.length === 0 ? (
-                  <Text color="rgba(255,255,255,0.6)" size={14} style={{ paddingLeft: '16px', paddingRight: '16px', paddingTop: '12px', paddingBottom: '12px' }}>
+                  <Text color="rgba(255,255,255,0.6)" size={14} style={{ padding: '12px 16px' }}>
                     Пока нет просмотров
                   </Text>
                 ) : (
                   viewers.map((v) => (
-                    <Box key={v.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1 }}>
+                    <div key={v.id} className={s.viewerRow}>
                       <Avatar background={gradientFor(v.id)} text={v.displayName.charAt(0)} size={36} />
                       <Text noWrap color="#fff" size={15}>
                         {v.displayName}
                       </Text>
-                    </Box>
+                    </div>
                   ))
                 )}
-              </Box>
+              </motion.div>
             )}
           </AnimatePresence>
-        </Box>
-      </Box>
+        </motion.div>
+      </motion.div>
     </AnimatePresence>,
     document.body,
   )

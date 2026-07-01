@@ -1,4 +1,4 @@
-import { Box, useTheme } from '@mui/material'
+import type { CSSProperties } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import Text from '../shared/ui/Text'
@@ -7,9 +7,9 @@ import { useStoriesStore } from '../stores/storiesStore'
 import { useChatsStore } from '../stores/chatsStore'
 import { gradientFor } from '../core/dialogToChat'
 import type { StoryGroup } from '../core/managers/storiesManager'
+import s from './StoriesRow.module.scss'
 
 export const FULL_H = 92
-const ITEM_W = 74
 
 const UNSEEN_RING = 'linear-gradient(215deg, #34c76f -1.61%, #3da1fd 97.44%)'
 
@@ -99,132 +99,55 @@ export default function StoriesRow({
   // CSS var (set imperatively by the Sidebar scroll handler — no re-render).
   animated?: boolean
 }) {
-  const tg = useTheme().tg
   const groups = useStoriesStore((s) => s.groups)
   const meId = useChatsStore((s) => s.meId)
   const items = buildStoryItems(groups, meId)
 
+  // height driven by FULL_H (exported const) + transition toggled by `animated` — runtime
+  const rowStyle: CSSProperties = {
+    '--stories-full-h': `${FULL_H}px`,
+    transition: animated
+      ? 'height .26s cubic-bezier(.4,0,.2,1), opacity .26s ease, transform .26s cubic-bezier(.4,0,.2,1)'
+      : 'none',
+  } as CSSProperties
+
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        alignItems: 'flex-start',
-        boxSizing: 'border-box',
-        // Continuous collapse driven entirely by the --stories-fold CSS var
-        // (0 = shown, 1 = folded). border-box clips the padding to nothing as the
-        // height reaches 0, so scrolling the chat list never re-renders React.
-        height: `calc(${FULL_H}px * (1 - var(--stories-fold, 0)))`,
-        padding: '6px 8px 0',
-        overflowX: 'auto',
-        overflowY: 'hidden',
-        opacity: 'max(0, 1 - var(--stories-fold, 0) * 1.4)',
-        transform: 'translateY(calc(var(--stories-fold, 0) * -12px))',
-        transition: animated
-          ? 'height .26s cubic-bezier(.4,0,.2,1), opacity .26s ease, transform .26s cubic-bezier(.4,0,.2,1)'
-          : 'none',
-        '&::-webkit-scrollbar': { display: 'none' },
-        scrollbarWidth: 'none',
-      }}
-    >
+    <div className={s.row} style={rowStyle}>
       {items.map((item) => {
         const isAdd = item.isMe && item.groupIndex === null
         const seen = !item.hasUnseen
-        const ringBg = isAdd ? 'transparent' : seen ? tg.textFaint : UNSEEN_RING
+        const ringBg = isAdd ? 'transparent' : seen ? 'var(--tg-textFaint)' : UNSEEN_RING
         const onClick = () => {
           if (isAdd) onAddStory?.()
           else if (item.groupIndex !== null) onOpen(item.groupIndex)
         }
         return (
-          <Box
-            key={item.key}
-            onClick={onClick}
-            sx={{
-              flexShrink: 0,
-              width: ITEM_W,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              cursor: 'pointer',
-            }}
-          >
-            <Box
-              sx={{
-                position: 'relative',
-                width: 62,
-                height: 62,
-                borderRadius: '50%',
-                background: ringBg,
-                opacity: seen && !isAdd ? 0.45 : 1,
-                padding: '2px',
-                boxSizing: 'border-box',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <Box
-                sx={{
-                  width: '100%',
-                  height: '100%',
-                  borderRadius: '50%',
-                  background: tg.sidebarBg,
-                  padding: '2px',
-                  boxSizing: 'border-box',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
+          <div key={item.key} onClick={onClick} className={s.item}>
+            <div className={s.ring} style={{ background: ringBg, opacity: seen && !isAdd ? 0.45 : 1 }}>
+              <div className={s.ringInner}>
                 <Avatar background={item.bg} text={item.text} emoji={isAdd ? '➕' : undefined} size="dialog" />
-              </Box>
+              </div>
               {/* "+" add badge on the self avatar (always available to post a story) */}
               {item.isMe && !isAdd && onAddStory && (
-                <Box
+                <div
+                  className={s.addBadge}
                   onClick={(e) => {
                     e.stopPropagation()
                     onAddStory()
                   }}
                   aria-label="Добавить историю"
-                  sx={{
-                    position: 'absolute',
-                    right: -1,
-                    bottom: -1,
-                    width: 20,
-                    height: 20,
-                    borderRadius: '50%',
-                    background: UNSEEN_RING,
-                    border: `2px solid ${tg.sidebarBg}`,
-                    boxSizing: 'border-box',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#fff',
-                  }}
                 >
                   <TgIcon name="add" size={13} />
-                </Box>
+                </div>
               )}
-            </Box>
-            <Text
-              noWrap
-              size={12}
-              color={tg.textSecondary}
-              style={{
-                marginTop: '5px',
-                width: '100%',
-                paddingLeft: '2px',
-                paddingRight: '2px',
-                lineHeight: '15px',
-                textAlign: 'center',
-              }}
-            >
+            </div>
+            <Text noWrap size={12} color="var(--tg-textSecondary)" className={s.label}>
               {item.name}
             </Text>
-          </Box>
+          </div>
         )
       })}
-    </Box>
+    </div>
   )
 }
 
@@ -241,9 +164,6 @@ export function StoriesStack({
   // crossing, not per scroll frame).
   show: boolean
 }) {
-  const theme = useTheme()
-  const tg = theme.tg
-  const searchBg = theme.palette.mode === 'dark' ? '#181818' : '#f0f0f2'
   const groups = useStoriesStore((s) => s.groups)
   const meId = useChatsStore((s) => s.meId)
   // only the avatars that map to a real group (skip the "+" add affordance)
@@ -263,12 +183,13 @@ export function StoriesStack({
 
   if (items.length === 0) return null
 
+  // searchBg (обводка стека) зависит от темы — задаётся через CSS var с фолбэком для day
   return (
     <AnimatePresence>
       {show && (
-        <Box
+        <motion.div
           key="stories-stack"
-          component={motion.div}
+          className={s.stack}
           variants={container}
           initial="hidden"
           animate="show"
@@ -277,33 +198,26 @@ export function StoriesStack({
             e.stopPropagation()
             onOpen(items[0].groupIndex!)
           }}
-          sx={{ display: 'flex', alignItems: 'center', flexShrink: 0, cursor: 'pointer', ml: 0.5 }}
         >
           {items.map((it, i) => {
-            const ringBg = !it.hasUnseen ? tg.textFaint : UNSEEN_RING
+            const ringBg = !it.hasUnseen ? 'var(--tg-textFaint)' : UNSEEN_RING
             return (
-              <Box
+              <motion.div
                 key={it.key}
-                component={motion.div}
+                className={s.stackItem}
                 variants={item}
-                sx={{
-                  width: 24,
-                  height: 24,
-                  borderRadius: '50%',
+                style={{
                   background: ringBg,
-                  padding: '2px',
-                  boxSizing: 'border-box',
-                  flexShrink: 0,
-                  ml: i === 0 ? 0 : '-10px',
+                  marginLeft: i === 0 ? 0 : '-10px',
                   zIndex: 3 - i,
-                  boxShadow: `0 0 0 2px ${searchBg}`,
+                  boxShadow: '0 0 0 2px var(--tg-inputSearchBg)',
                 }}
               >
                 <Avatar background={it.bg} text={it.text} size={20} />
-              </Box>
+              </motion.div>
             )
           })}
-        </Box>
+        </motion.div>
       )}
     </AnimatePresence>
   )

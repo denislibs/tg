@@ -1,20 +1,24 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { Box, useTheme } from '@mui/material'
 import Text from '../shared/ui/Text'
 import IconButton from '../shared/ui/IconButton'
 import { AnimatePresence, motion } from 'framer-motion'
 import { slideInRight } from '../motion'
-import TgSwitch from './TgSwitch'
 import SettingsSubScreen, { hasSubScreen } from './SettingsSubScreen'
 import EditProfile from './settings/EditProfile'
 import PremiumModal from './PremiumModal'
 import TgIcon from './TgIcon'
+import TgSwitch from './TgSwitch'
 import Avatar from '../shared/ui/Avatar'
+import { Section, Row } from './settings/kit'
+import classNames from '../shared/lib/classNames'
 import { useT, useLang, LANGS } from '../i18n'
 import { useChatsStore } from '../stores/chatsStore'
 import { gradientFor } from '../core/dialogToChat'
 import { useAvatarSrc } from './useAvatarSrc'
+import { useSettings } from '../settings'
+import { resolvePreset, PRESET_MODE } from '../theme'
+import s from './SettingsView.module.scss'
 
 // Pretty-print a Russian +7XXXXXXXXXX number as "+7 925 481 7290"; any other
 // shape is shown as-is.
@@ -47,10 +51,8 @@ export default function SettingsView({
   const t = useT()
   const [lang] = useLang()
   const currentLangName = LANGS.find((l) => l.code === lang)?.name ?? 'English'
-  const theme = useTheme()
-  const tg = theme.tg
-  const isDark = theme.palette.mode === 'dark'
-  const cardBg = isDark ? '#2b2b2b' : '#ffffff'
+  const { themeChoice } = useSettings()
+  const isDark = PRESET_MODE[resolvePreset(themeChoice)] === 'dark'
   const [active, setActive] = useState('Notifications and Sounds')
   const [sub, setSub] = useState<string | null>(null)
   const [editProfile, setEditProfile] = useState(false)
@@ -63,170 +65,109 @@ export default function SettingsView({
 
   return (
     <motion.div
+      className={s.screen}
       variants={slideInRight}
       initial="initial"
       animate="animate"
       exit="exit"
-      style={{
-        position: 'absolute',
-        inset: 0,
-        zIndex: 40,
-        background: tg.sidebarBg,
-        display: 'flex',
-        flexDirection: 'column',
-      }}
     >
       {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 1.25 }}>
-        <IconButton onClick={onBack} color={tg.textSecondary}>
+      <div className={s.header}>
+        <IconButton onClick={onBack} color="var(--tg-textSecondary)">
           <TgIcon name="back" />
         </IconButton>
-        <Text size={19} weight={600} color={tg.textPrimary} style={{ flex: 1 }}>
+        <Text size={19} weight={600} color="var(--tg-textPrimary)" className={s.headerTitle}>
           {t('Settings')}
         </Text>
-        <IconButton color={tg.textSecondary}>
+        <IconButton color="var(--tg-textSecondary)">
           <TgIcon name="qr" />
         </IconButton>
-        <IconButton onClick={() => setEditProfile(true)} color={tg.textSecondary}>
+        <IconButton onClick={() => setEditProfile(true)} color="var(--tg-textSecondary)">
           <TgIcon name="edit" />
         </IconButton>
-        <IconButton color={tg.textSecondary}>
+        <IconButton color="var(--tg-textSecondary)">
           <TgIcon name="more" />
         </IconButton>
-      </Box>
+      </div>
 
       {/* Scrollable body */}
-      <Box sx={{ flex: 1, overflowY: 'auto', pb: 3 }}>
+      <div className={s.body}>
         {/* Avatar + name */}
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 1,
-            pt: 1,
-            pb: 3,
-          }}
-        >
+        <div className={s.profile}>
           <Avatar background={avatarBg} src={avatarSrc} text={avatarText} size={130} />
-          <Text size={21} weight={600} color={tg.textPrimary} style={{ marginTop: '8px' }}>
+          <Text size={21} weight={600} color="var(--tg-textPrimary)" className={s.profileName}>
             {name}
           </Text>
-          <Text size={14} color={tg.textSecondary}>{t('online')}</Text>
-        </Box>
+          <Text size={14} color="var(--tg-textSecondary)">{t('online')}</Text>
+        </div>
 
         {/* Contact card */}
-        <Box
-          onClick={() => setEditProfile(true)}
-          sx={{ mx: 1.25, mb: 1.5, borderRadius: '16px', background: cardBg, py: 0.5, cursor: 'pointer' }}
-        >
-          <InfoRow icon={<TgIcon name="phone" size={24} />} title={formatPhone(me?.phone) || '—'} subtitle={t('Phone')} />
+        <Section>
+          <Row
+            icon={<TgIcon name="phone" size={24} />}
+            label={formatPhone(me?.phone) || '—'}
+            sublabel={t('Phone')}
+            translate={false}
+            onClick={() => setEditProfile(true)}
+          />
           {me?.username && (
-            <InfoRow icon={<TgIcon name="mention" size={24} />} title={me.username} subtitle={t('Username')} />
+            <Row
+              icon={<TgIcon name="mention" size={24} />}
+              label={me.username}
+              sublabel={t('Username')}
+              translate={false}
+              onClick={() => setEditProfile(true)}
+            />
           )}
-        </Box>
+        </Section>
 
         {/* Appearance — theme toggle */}
-        <Box sx={{ mx: 1.25, mb: 1.5, borderRadius: '16px', background: cardBg, py: 0.5 }}>
-          <Box
-            onClick={(e) => onToggleMode({ x: e.clientX, y: e.clientY })}
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 2,
-              px: 2,
-              py: 0.75,
-              mx: 0.5,
-              borderRadius: '12px',
-              cursor: 'pointer',
-              '&:hover': { background: tg.hover },
-            }}
-          >
-            <TgIcon name="darkmode" size={24} color={tg.textSecondary} />
-            <Text size={16} color={tg.textPrimary} style={{ flex: 1 }}>{t('Night Mode')}</Text>
+        <Section>
+          <div className={s.rowClickable} onClick={(e) => onToggleMode({ x: e.clientX, y: e.clientY })}>
+            <div className={s.rowIcon}>
+              <TgIcon name="darkmode" size={24} color="var(--tg-textSecondary)" />
+            </div>
+            <Text size={16} color="var(--tg-textPrimary)" className={s.rowBody}>{t('Night Mode')}</Text>
             <TgSwitch checked={isDark} />
-          </Box>
-        </Box>
+          </div>
+        </Section>
 
-        {/* Settings list */}
-        <Box sx={{ mx: 1.25, borderRadius: '16px', background: cardBg, py: 0.75 }}>
-          {settingsItems.map((it) => {
-            const isActive = it.label === active
-            return (
-              <Box
-                key={it.label}
-                onClick={() => {
-                  setActive(it.label)
-                  if (hasSubScreen(it.label)) setSub(it.label)
-                }}
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 2,
-                  px: 2,
-                  py: 1.25,
-                  mx: 0.75,
-                  borderRadius: '12px',
-                  cursor: 'pointer',
-                  background: isActive ? tg.hover : 'transparent',
-                  '&:hover': { background: tg.hover },
-                }}
-              >
-                <Box sx={{ color: tg.textSecondary, display: 'flex', '& svg': { fontSize: 24 } }}>
-                  {it.icon}
-                </Box>
-                <Text size={16} color={tg.textPrimary} style={{ flex: 1 }}>
-                  {t(it.label)}
+        {/* Settings list — своя строка ради подсветки активного пункта */}
+        <Section>
+          {settingsItems.map((it) => (
+            <div
+              key={it.label}
+              className={classNames(s.rowClickable, it.label === active ? s.rowActive : '')}
+              onClick={() => {
+                setActive(it.label)
+                if (hasSubScreen(it.label)) setSub(it.label)
+              }}
+            >
+              <div className={s.rowIcon}>{it.icon}</div>
+              <Text size={16} color="var(--tg-textPrimary)" className={s.rowBody}>{t(it.label)}</Text>
+              {it.value && (
+                <Text size={15} color="var(--tg-textFaint)">
+                  {it.label === 'Language' ? currentLangName : t(it.value)}
                 </Text>
-                {it.value && (
-                  <Text size={15} color={tg.textFaint}>
-                    {it.label === 'Language' ? currentLangName : t(it.value)}
-                  </Text>
-                )}
-              </Box>
-            )
-          })}
-        </Box>
+              )}
+            </div>
+          ))}
+        </Section>
 
         {/* Premium / Gift */}
-        <Box sx={{ mx: 1.25, mt: 1.5, borderRadius: '16px', background: cardBg, py: 0.75 }}>
-          <Box
+        <Section>
+          <Row
+            icon={<TgIcon name="star_filled" size={24} color="var(--tg-accent)" />}
+            label="Telegram Premium"
             onClick={() => setPremiumOpen(true)}
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 2,
-              px: 2,
-              py: 1.25,
-              mx: 0.75,
-              borderRadius: '12px',
-              cursor: 'pointer',
-              '&:hover': { background: tg.hover },
-            }}
-          >
-            <TgIcon name="star_filled" size={24} color={tg.accent} />
-            <Text size={16} color={tg.textPrimary} style={{ flex: 1 }}>
-              {t('Telegram Premium')}
-            </Text>
-          </Box>
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 2,
-              px: 2,
-              py: 1.25,
-              mx: 0.75,
-              borderRadius: '12px',
-              cursor: 'pointer',
-              '&:hover': { background: tg.hover },
-            }}
-          >
-            <TgIcon name="gift" size={24} color={tg.textSecondary} />
-            <Text size={16} color={tg.textPrimary} style={{ flex: 1 }}>{t('Send a Gift')}</Text>
-          </Box>
-        </Box>
-      </Box>
+          />
+          <Row
+            icon={<TgIcon name="gift" size={24} color="var(--tg-textSecondary)" />}
+            label="Send a Gift"
+            onClick={() => {}}
+          />
+        </Section>
+      </div>
 
       {/* Sub-screen overlay */}
       <AnimatePresence>
@@ -241,30 +182,5 @@ export default function SettingsView({
       {/* Telegram Premium modal */}
       <PremiumModal open={premiumOpen} onClose={() => setPremiumOpen(false)} />
     </motion.div>
-  )
-}
-
-function InfoRow({ icon, title, subtitle }: { icon: ReactNode; title: string; subtitle: string }) {
-  const tg = useTheme().tg
-  return (
-    <Box
-      sx={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 2,
-        px: 2,
-        py: 1,
-        mx: 0.75,
-        borderRadius: '12px',
-        cursor: 'pointer',
-        '&:hover': { background: tg.hover },
-      }}
-    >
-      <Box sx={{ color: tg.textSecondary, display: 'flex', '& svg': { fontSize: 24 } }}>{icon}</Box>
-      <Box>
-        <Text size={16} color={tg.textPrimary}>{title}</Text>
-        <Text size={13.5} color={tg.textSecondary}>{subtitle}</Text>
-      </Box>
-    </Box>
   )
 }

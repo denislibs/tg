@@ -1,0 +1,189 @@
+// Composer — строка ввода сообщения (reply/edit-бары + contenteditable + запись
+// голоса). Порт разметки из MUI sx. Цвета — токены --tg-*.
+
+// контейнер композера (reply-секция + строка ввода в одном боксе)
+.container {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--tg-bubble);
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 1px 8px 1px rgba(0, 0, 0, 0.12);
+
+  :global(html[data-theme='night']) &,
+  :global(html[data-theme='dark']) & {
+    box-shadow: 0 1px 8px 1px rgba(0, 0, 0, 0.35);
+  }
+}
+
+// reply/edit-бар (фон задаётся инлайном — зависит от цвета автора/accent)
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+}
+
+// вертикальная полоса + текст reply/edit (border-left задаётся инлайном по цвету)
+.barBody {
+  flex: 1;
+  min-width: 0;
+  padding-left: 10px;
+}
+
+// строка ввода (кнопки прижаты к низу — не смещаются при росте инпута)
+.inputRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  min-height: 48px;
+  padding: 4px;
+}
+
+// тонированная пилюля записи голоса
+.recPill {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: color-mix(in srgb, var(--tg-accent) 16%, transparent);
+  border-radius: 18px;
+  padding: 6px 10px 6px 8px;
+}
+
+// точка-пауза
+.recDotPaused {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--tg-accent);
+  flex-shrink: 0;
+}
+
+// мигающая точка записи
+.recDotLive {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ff3b30;
+  flex-shrink: 0;
+}
+
+// контейнер живого волноформа
+.wave {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 1.5px;
+  height: 24px;
+  overflow: hidden;
+}
+
+// один бар волноформа (height/opacity — инлайном по уровню)
+.waveBar {
+  flex: 1;
+  min-width: 0;
+  border-radius: 2px;
+  background: var(--tg-accent);
+}
+
+// обёртка contenteditable + плейсхолдер
+.editorWrap {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  min-height: 40px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.placeholder {
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  transform: translateY(-50%);
+  line-height: 21px;
+  pointer-events: none;
+}
+
+// contenteditable-инпут + рендер markup-спанов
+.editor {
+  font-size: 16px;
+  line-height: 21px;
+  color: var(--tg-textPrimary);
+  outline: none;
+  overflow-y: hidden;
+  transition: height 0.12s ease;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 4px 0;
+
+  :global(.md-code) {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    background: rgba(127, 127, 127, 0.16);
+    border-radius: 4px;
+    padding: 0 0.25em;
+  }
+  :global(.md-pre) {
+    display: block;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.92em;
+    background: rgba(127, 127, 127, 0.16);
+    border-radius: 8px;
+    padding: 8px 10px;
+    white-space: pre-wrap;
+    margin: 2px 0;
+  }
+  // заголовок языка в блоке кода (WYSIWYG как в отправленном)
+  :global(.md-pre[data-language])::before {
+    content: attr(data-language);
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--tg-accent);
+    text-transform: uppercase;
+    margin-bottom: 4px;
+    user-select: none;
+  }
+  :global(.md-spoiler) {
+    background: color-mix(in srgb, var(--tg-textPrimary) 18%, transparent);
+    border-radius: 4px;
+  }
+  :global(.md-quote) {
+    display: inline-block;
+    border-left: 3px solid var(--tg-accent);
+    padding-left: 8px;
+    opacity: 0.95;
+  }
+  :global(a) {
+    color: var(--tg-accent);
+  }
+}
+
+// счётчик остатка/числа сообщений
+.counter {
+  align-self: flex-end;
+  margin-bottom: 10px;
+  margin-right: 2px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+// mic / send — 48×40 скруглённая пилюля (1:1 с TG .btn-send)
+.sendBtn {
+  width: 48px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 20px;
+  background: var(--tg-accentGradient);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}

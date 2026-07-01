@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { Box } from '@mui/material'
 import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import IconButton from '../shared/ui/IconButton'
@@ -9,6 +8,7 @@ import { EASE } from '../motion'
 import { useT } from '../i18n'
 import Avatar from '../shared/ui/Avatar'
 import type { Chat } from '../data'
+import s from './CallScreen.module.scss'
 
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
@@ -59,66 +59,33 @@ export default function CallScreen({
   } as CSSProperties
 
   return createPortal(
-    <Box
-      component={motion.div}
+    <motion.div
+      className={s.root}
       initial={{ opacity: 0, scale: 1.04 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 1.04 }}
       transition={{ duration: 0.3, ease: EASE }}
-      sx={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 5000,
-        overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        color: '#fff',
-      }}
     >
       {/* Animated gradient background */}
-      <Box
-        component={motion.div}
+      <motion.div
+        className={s.bg}
+        style={{ background: gradient }}
         animate={{ backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'] }}
         transition={{ duration: 16, repeat: Infinity, ease: 'linear' }}
-        sx={{
-          position: 'absolute',
-          inset: 0,
-          background: gradient,
-          backgroundSize: '300% 300%',
-          transition: 'background 0.6s ease',
-        }}
       />
-      <Box sx={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.18)' }} />
+      <div className={s.scrim} />
 
       {/* Peer */}
-      <Box
-        sx={{
-          position: 'relative',
-          mt: '18vh',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 2,
-        }}
-      >
+      <div className={s.peer}>
         <Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} size={136} />
         <Text size={28} weight={600}>{chat.name}</Text>
         <Text size={16} style={{ opacity: 0.85 }}>
           {video ? `${t('Video Call')} · ${status}` : status}
         </Text>
-      </Box>
+      </div>
 
       {/* Controls */}
-      <Box
-        sx={{
-          position: 'absolute',
-          bottom: '12vh',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 4,
-        }}
-      >
+      <div className={s.controls}>
         <IconButton onClick={() => setMuted((v) => !v)} color="#fff" style={ctrlStyle}>
           {muted ? (
             <TgIcon name="microphone_crossed" size={26} color="#fff" />
@@ -148,8 +115,8 @@ export default function CallScreen({
         >
           <TgIcon name="endcall_filled" size={30} color="#fff" />
         </IconButton>
-      </Box>
-    </Box>,
+      </div>
+    </motion.div>,
     document.body,
   )
 }

@@ -1,0 +1,142 @@
+// ConversationView — корневая раскладка чата (окно сообщений + хедер + композер).
+// Порт разметки из MUI sx. Цвета — токены --tg-*. Динамика (maskImage/offset/
+// paddings по playerOffset) — инлайном.
+
+// внешний ряд: чат + (info-панель справа)
+.root {
+  flex: 1;
+  min-width: 0;
+  min-height: 100vh;
+  display: flex;
+  align-items: flex-start;
+  position: relative;
+  background: transparent;
+}
+
+// колонка чата
+.column {
+  flex: 1;
+  min-width: 0;
+  height: 100dvh;
+  position: relative;
+  overflow: hidden;
+}
+
+.columnNarrow {
+  padding: 0 8px;
+}
+
+// плавающая пилюля «сейчас играет» над хедером
+.nowPlaying {
+  position: absolute;
+  top: 16px;
+  left: 0;
+  right: 0;
+  z-index: 25;
+  display: flex;
+  justify-content: center;
+  padding: 0 12px;
+}
+
+.nowPlayingNarrow {
+  padding: 0 8px;
+}
+
+.nowPlayingInner {
+  width: 100%;
+  max-width: 688px;
+}
+
+// оверлей спиннера первой загрузки
+.spinnerOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.spinnerBox {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+// скролл-контейнер ленты (маска задаётся инлайном — FEED_MASK)
+.scroll {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+// контент ленты (opacity/paddings по загрузке/playerOffset — инлайном)
+.content {
+  width: 100%;
+  max-width: 688px;
+  padding: 0 4px;
+  transition: opacity 0.2s ease;
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+// футер (композер / кнопка mute)
+.footer {
+  position: absolute;
+  bottom: 16px;
+  left: 0;
+  right: 0;
+  z-index: 6;
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  max-width: 688px;
+  margin: 0 auto;
+}
+
+.footerCompose {
+  align-items: flex-end;
+}
+
+.footerMuted {
+  align-items: center;
+  padding: 0;
+}
+
+// кнопка «Mute» (нет права писать)
+.muteBtn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--tg-bubble);
+  border-radius: 14px;
+  padding: 12px 0;
+  cursor: pointer;
+  color: var(--tg-textPrimary);
+}
+
+// квадратная кнопка «подарок»
+.giftBtn {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: var(--tg-bubble);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}

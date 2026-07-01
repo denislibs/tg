@@ -1,0 +1,54 @@
+// Экран редактирования чата/канала: слайд-скрин + шапка + аватар-форма.
+.screen {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  background: var(--tg-sectionBackdrop);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px;
+}
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 24px;
+}
+
+// карточка с аватаром и полями
+.card {
+  margin: 0 10px 12px;
+  padding: 16px;
+  border-radius: 16px;
+  background: var(--tg-sidebarBg);
+}
+.avatarRow {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+.avatar {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  cursor: pointer;
+}
+.field + .field {
+  margin-top: 16px;
+}
+
+.hint {
+  padding: 0 20px;
+  margin-bottom: 8px;
+}

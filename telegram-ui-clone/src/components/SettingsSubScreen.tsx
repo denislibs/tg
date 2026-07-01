@@ -1,12 +1,7 @@
 import { useState, type ReactNode } from 'react'
-import { Box, useTheme } from '@mui/material'
-import IconButton from '../shared/ui/IconButton'
-import Text from '../shared/ui/Text'
-import { AnimatePresence, motion } from 'framer-motion'
-import TgIcon from './TgIcon'
-import { slideInRight } from '../motion'
-import TgSwitch from './TgSwitch'
+import { AnimatePresence } from 'framer-motion'
 import { useT, useLang, LANGS } from '../i18n'
+import { SettingsScreen, Section, Row } from './settings/kit'
 import ActiveSessions from './settings/ActiveSessions'
 import BlockedUsers from './settings/BlockedUsers'
 import TwoStepVerification from './settings/TwoStepVerification'
@@ -271,10 +266,6 @@ const KEYBOARD_SHORTCUTS = new Set(['⌘ K', '⌘ ⇧ G', '⌘ ↓', '⌘ ↑', 
 export default function SettingsSubScreen({ title, onBack }: { title: string; onBack: () => void }) {
   const t = useT()
   const [lang, setLang] = useLang()
-  const theme = useTheme()
-  const tg = theme.tg
-  const isDark = theme.palette.mode === 'dark'
-  const cardBg = isDark ? '#2b2b2b' : '#ffffff'
   const sections = SCREENS[title] ?? []
 
   // local interactive state for toggles & radios
@@ -303,109 +294,54 @@ export default function SettingsSubScreen({ title, onBack }: { title: string; on
   if (title === 'General Settings') return <GeneralSettings onBack={onBack} />
 
   return (
-    <motion.div
-      variants={slideInRight}
-      initial="initial"
-      animate="animate"
-      exit="exit"
-      style={{
-        position: 'absolute',
-        inset: 0,
-        zIndex: 50,
-        background: tg.sidebarBg,
-        display: 'flex',
-        flexDirection: 'column',
-      }}
-    >
-      {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 1.25 }}>
-        <IconButton onClick={onBack} color={tg.textSecondary}>
-          <TgIcon name="back" />
-        </IconButton>
-        <Text size={19} weight={600} color={tg.textPrimary} style={{ flex: 1 }}>
-          {t(title)}
-        </Text>
-      </Box>
-
-      <Box sx={{ flex: 1, overflowY: 'auto', pb: 3 }}>
-        {sections.map((section, si) => (
-          <Box key={si} sx={{ mb: 1.5 }}>
-            {section.caption && (
-              <Text
-                size={14}
-                weight={600}
-                color={tg.accent}
-                style={{ paddingLeft: '24px', paddingRight: '24px', paddingBottom: '4px' }}
-              >
-                {section.caption && t(section.caption)}
-              </Text>
-            )}
-            <Box sx={{ mx: 1.25, borderRadius: '16px', background: cardBg, py: 0.5 }}>
-              {section.rows.map((r) => {
-                const key = `${si}:${r.label}`
-                // The Language screen's radios actually switch the app language
-                const langEntry =
-                  title === 'Language' && r.type === 'radio'
-                    ? LANGS.find((l) => l.name === r.label)
+    <SettingsScreen title={title} onBack={onBack} zIndex={50}>
+      {sections.map((section, si) => (
+        <Section key={si} caption={section.caption} footer={section.footer}>
+          {section.rows.map((r) => {
+            const key = `${si}:${r.label}`
+            // The Language screen's radios actually switch the app language
+            const langEntry =
+              title === 'Language' && r.type === 'radio'
+                ? LANGS.find((l) => l.name === r.label)
+                : undefined
+            const isNav = NAV.has(r.label)
+            const onRow = () => {
+              if (isNav) setDedicated(r.label)
+              else if (r.type === 'toggle') setToggles((prev) => ({ ...prev, [key]: !prev[key] }))
+              else if (langEntry) setLang(langEntry.code)
+              else if (r.type === 'radio') setRadios((rd) => ({ ...rd, [si]: r.label }))
+            }
+            const selected = langEntry
+              ? langEntry.code === lang
+              : r.type === 'radio' && radios[si] === r.label
+            const isNative = NATIVE_LANGUAGE_NAMES.has(r.label)
+            return (
+              <Row
+                key={r.label}
+                label={r.label}
+                translate={!isNative}
+                onClick={onRow}
+                danger={r.danger}
+                accent={r.type === 'button' && !r.danger}
+                toggle={r.type === 'toggle'}
+                checked={!!toggles[key]}
+                value={
+                  r.type === 'value'
+                    ? r.value && (KEYBOARD_SHORTCUTS.has(r.value) ? r.value : t(r.value))
                     : undefined
-                const isNav = NAV.has(r.label)
-                const onRow = () => {
-                  if (isNav) setDedicated(r.label)
-                  else if (r.type === 'toggle') setToggles((prev) => ({ ...prev, [key]: !prev[key] }))
-                  else if (langEntry) setLang(langEntry.code)
-                  else if (r.type === 'radio') setRadios((rd) => ({ ...rd, [si]: r.label }))
                 }
-                const selected = langEntry
-                  ? langEntry.code === lang
-                  : r.type === 'radio' && radios[si] === r.label
-                return (
-                  <Box
-                    key={r.label}
-                    onClick={onRow}
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 2,
-                      px: 2,
-                      py: 1.15,
-                      mx: 0.5,
-                      borderRadius: '12px',
-                      cursor: 'pointer',
-                      '&:hover': { background: tg.hover },
-                    }}
-                  >
-                    <Text
-                      size={16}
-                      color={r.danger ? '#ff595a' : r.type === 'button' ? tg.accent : tg.textPrimary}
-                      style={{ flex: 1 }}
-                    >
-                      {NATIVE_LANGUAGE_NAMES.has(r.label) ? r.label : t(r.label)}
-                    </Text>
-                    {r.type === 'toggle' && <TgSwitch checked={!!toggles[key]} />}
-                    {r.type === 'value' && (
-                      <Text size={15} color={tg.textFaint}>
-                        {r.value && (KEYBOARD_SHORTCUTS.has(r.value) ? r.value : t(r.value))}
-                      </Text>
-                    )}
-                    {isNav && <TgIcon name="next" size={22} color={tg.textFaint} />}
-                    {selected && <TgIcon name="check" size={22} color={tg.accent} />}
-                  </Box>
-                )
-              })}
-            </Box>
-            {section.footer && (
-              <Text size={13.5} color={tg.textSecondary} style={{ paddingLeft: '24px', paddingRight: '24px', paddingTop: '6px' }}>
-                {section.footer && t(section.footer)}
-              </Text>
-            )}
-          </Box>
-        ))}
-      </Box>
+                chevron={isNav}
+                selected={!!selected}
+              />
+            )
+          })}
+        </Section>
+      ))}
 
       {/* dedicated sub-sub-screen overlay */}
       <AnimatePresence>
         {dedicated && renderDedicated(dedicated, () => setDedicated(null))}
       </AnimatePresence>
-    </motion.div>
+    </SettingsScreen>
   )
 }

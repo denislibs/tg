@@ -1,0 +1,10 @@
+// Стили оверлея подсветки баббла (перенос с MUI sx). Динамика (color,
+// borderRadius) задаётся inline в TSX через пропы.
+@use '../../styles/foundation' as *;
+
+.highlight {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}

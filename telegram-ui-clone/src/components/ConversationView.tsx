@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Box, useMediaQuery, useTheme } from '@mui/material'
 import Text from '../shared/ui/Text'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
@@ -43,6 +42,21 @@ import { useSearchStore } from '../stores/searchStore'
 import { DeleteMessageDialog, ForwardPicker, ViewersPopup, AddMemberDialog } from './messages/ChatDialogs'
 import SendMediaPopup from './messages/SendMediaPopup'
 import MediaLightbox from './messages/MediaLightbox'
+import classNames from '../shared/lib/classNames'
+import s from './ConversationView.module.scss'
+
+// Мини-хук media query (замена MUI useMediaQuery) на window.matchMedia.
+function useMediaQuery(query: string): boolean {
+  const [match, setMatch] = useState(() => window.matchMedia?.(query).matches ?? false)
+  useEffect(() => {
+    const mql = window.matchMedia(query)
+    const onChange = () => setMatch(mql.matches)
+    onChange()
+    mql.addEventListener('change', onChange)
+    return () => mql.removeEventListener('change', onChange)
+  }, [query])
+  return match
+}
 
 
 // tweb's exact bubbles-scrollable fade: a pure alpha mask on the scroll viewport
@@ -71,10 +85,12 @@ interface Props {
 
 export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreated }: Props) {
   const t = useT()
-  const theme = useTheme()
-  const tg = theme.tg
   const headerAvatarSrc = useAvatarSrc(chat.avatarUrl)
   const [lang] = useLang()
+
+  // Реальное значение accent (нужно как цвет в JS: reply.color → hex, не var()).
+  // Читаем из CSS-переменной темы (как ChatBackground); обновляется при смене темы.
+  const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--tg-accent').trim() || '#3390ec'
 
   const narrow = useMediaQuery('(max-width:900px)')
   const isChannel = chat.type === 'channel'
@@ -185,7 +201,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     forwardIds, doForward, closeForward, openForwardFor,
     viewers, closeViewers,
   } = useMessageActions({
-    chat, numericChatId, isRealChat, win, msgs, meId, pins, managers, accent: tg.accent,
+    chat, numericChatId, isRealChat, win, msgs, meId, pins, managers, accent: accentColor,
     setReply, setEditing, setSelectionMode, setSelected, clearSelection, onChatCreated,
   })
 
@@ -321,34 +337,15 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
 
   return (
     <CallProvider chat={chat}>
-    <Box
-      sx={{
-        flex: 1,
-        minWidth: 0,
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'flex-start',
-        position: 'relative',
-        background: 'transparent',
-      }}
-    >
-      <Box
-        sx={{
-          flex: 1,
-          minWidth: 0,
-          height: '100dvh',
-          position: 'relative',
-          overflow: 'hidden',
-          px: narrow ? 1 : 0,
-        }}
-      >
+    <div className={s.root}>
+      <div className={classNames(s.column, narrow ? s.columnNarrow : '')}>
         {/* Global "now playing" plate — a floating pill above the header (tweb:
             the topbar slides down to make room). Matches the header geometry. */}
-        <Box sx={{ position: 'absolute', top: 16, left: 0, right: 0, zIndex: 25, display: 'flex', justifyContent: 'center', px: narrow ? 1 : 1.5 }}>
-          <Box sx={{ width: '100%', maxWidth: 688 }}>
+        <div className={classNames(s.nowPlaying, narrow ? s.nowPlayingNarrow : '')}>
+          <div className={s.nowPlayingInner}>
             <NowPlayingBar />
-          </Box>
-        </Box>
+          </div>
+        </div>
 
         <ChatHeader
           chat={chat}
@@ -377,53 +374,36 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
         {/* First-load spinner — only after the grace delay (skipped on cache hits) */}
         <AnimatePresence>
           {showSpinner && (
-            <Box
-              component={motion.div}
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              sx={{ position: 'absolute', inset: 0, zIndex: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}
+              className={s.spinnerOverlay}
             >
-              <Box sx={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div className={s.spinnerBox}>
                 <Preloader size={30} stroke={2.5} color="#fff" />
-              </Box>
-            </Box>
+              </div>
+            </motion.div>
           )}
         </AnimatePresence>
 
         {/* Conversation — own scroll container, masked like tweb's bubbles-scrollable */}
-        <Box
+        <div
           ref={scrollRef}
           onMouseDown={dragSelect.onMouseDown}
-          sx={{
-            position: 'absolute',
-            inset: 0,
-            zIndex: 1,
-            overflowY: 'auto',
-            overflowX: 'hidden',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            maskImage: FEED_MASK,
-            WebkitMaskImage: FEED_MASK,
-          }}
+          className={s.scroll}
+          style={{ maskImage: FEED_MASK, WebkitMaskImage: FEED_MASK }}
         >
-          <Box
+          <div
             ref={contentRef}
-            sx={{
-              width: '100%',
-              maxWidth: 688,
-              px: 0.5,
+            className={s.content}
+            style={{
               // fade messages in once the first page has loaded (tweb-like)
               opacity: feedLoading ? 0 : 1,
-              transition: 'opacity 0.2s ease',
-              // push content to the bottom when short; clear the floating header/composer
-              mt: 'auto',
-              pt: `${FADE_TOP + playerOffset}px`,
-              pb: `${FADE_BOTTOM}px`,
-              display: 'flex',
-              flexDirection: 'column',
+              // clear the floating header/composer
+              paddingTop: `${FADE_TOP + playerOffset}px`,
+              paddingBottom: `${FADE_BOTTOM}px`,
             }}
           >
             {/* Render the list only once revealed, so rows mount at reveal time
@@ -446,8 +426,8 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               />
             )}
 
-          </Box>
-        </Box>
+          </div>
+        </div>
 
         {/* Footer */}
         {selecting ? (
@@ -458,21 +438,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
             onDelete={() => openDeleteFor([...selected])}
           />
         ) : canType ? (
-          <Box
-            sx={{
-              position: 'absolute',
-              bottom: '16px',
-              left: 0,
-              right: 0,
-              zIndex: 6,
-              display: 'flex',
-              alignItems: 'flex-end',
-              gap: 1,
-              width: '100%',
-              maxWidth: 688,
-              mx: 'auto',
-            }}
-          >
+          <div className={classNames(s.footer, s.footerCompose)}>
             {scrollDownFab}
             {/* Hidden file picker — triggered by the attach menu (openPicker). */}
             <input
@@ -499,61 +465,20 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               onOpenAttach={onComposerOpenAttach}
               onPasteFiles={isRealChat ? onComposerPasteFiles : undefined}
             />
-          </Box>
+          </div>
         ) : (
-          <Box
-            sx={{
-              position: 'absolute',
-              bottom: '16px',
-              left: 0,
-              right: 0,
-              zIndex: 6,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1,
-              width: '100%',
-              maxWidth: 688,
-              mx: 'auto',
-              py: 0,
-            }}
-          >
+          <div className={classNames(s.footer, s.footerMuted)}>
             {scrollDownFab}
-            <Box
-              component={motion.div}
-              whileTap={{ scale: 0.995 }}
-              sx={{
-                flex: 1,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 1,
-                background: tg.bubble,
-                borderRadius: '14px',
-                py: 1.5,
-                cursor: 'pointer',
-                color: tg.textPrimary,
-              }}
-            >
-              <TgIcon name="volume_off" size={20} color={tg.textSecondary} />
+            <motion.div whileTap={{ scale: 0.995 }} className={s.muteBtn}>
+              <TgIcon name="volume_off" size={20} color="var(--tg-textSecondary)" />
               <Text weight={600} size={15.5}>{t('Mute')}</Text>
-            </Box>
-            <Box
-              sx={{
-                width: 52,
-                height: 52,
-                borderRadius: '14px',
-                background: tg.bubble,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-              }}
-            >
-              <TgIcon name="gift" color={tg.textSecondary} />
-            </Box>
-          </Box>
+            </motion.div>
+            <div className={s.giftBtn}>
+              <TgIcon name="gift" color="var(--tg-textSecondary)" />
+            </div>
+          </div>
         )}
-      </Box>
+      </div>
 
       {/* Info panel (private / group / channel) */}
       <AnimatePresence>
@@ -661,7 +586,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           onClose={closeDelete}
         />
       )}
-    </Box>
+    </div>
     </CallProvider>
   )
 }

@@ -1,0 +1,236 @@
+@use '../styles/foundation' as *;
+
+// Плавающая панель выбора эмодзи (над композером).
+.root {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  width: min(382px, calc(100vw - 24px));
+  height: 420px;
+  background: var(--tg-sidebarBg);
+  border-radius: 20px;
+  box-shadow: 0 5px 10px 5px rgba(16, 35, 47, 0.14);
+  border: 1px solid var(--tg-divider);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transform-origin: bottom right;
+  z-index: 30;
+}
+
+// Скрытие скроллбара для горизонтальных лент
+%no-scrollbar {
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+// Навигация по категориям
+.catNav {
+  display: flex;
+  align-items: center;
+  padding: 4px 4px 0;
+}
+.catStrip {
+  display: flex;
+  flex: 1;
+  overflow-x: auto;
+  @extend %no-scrollbar;
+}
+.catBtn {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--tg-textFaint);
+  background: transparent;
+
+  &:hover {
+    background: var(--tg-hover);
+  }
+}
+.catBtnOn {
+  color: var(--tg-accent);
+  background: color-mix(in srgb, var(--tg-accent) 12%, transparent);
+
+  &:hover {
+    background: color-mix(in srgb, var(--tg-accent) 12%, transparent);
+  }
+}
+
+// Скин-тон
+.toneWrap {
+  position: relative;
+  flex-shrink: 0;
+}
+.toneBtn {
+  width: 34px;
+  height: 34px;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--tg-hover);
+  }
+}
+.tonePop {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--tg-menuBg);
+  box-shadow: var(--tg-menuShadow);
+  z-index: 5;
+}
+.toneItem {
+  width: 30px;
+  height: 30px;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--tg-hover);
+  }
+}
+
+// Строка поиска + быстрые чипы
+.searchRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+}
+.searchBox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 18px;
+  background: var(--tg-bubble);
+  flex-shrink: 1;
+  min-width: 0;
+}
+.searchInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 15px;
+  color: var(--tg-textPrimary);
+  font-family: inherit;
+
+  &::placeholder {
+    color: var(--tg-textFaint);
+    opacity: 1;
+  }
+}
+.chips {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  @extend %no-scrollbar;
+}
+.chip {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  cursor: pointer;
+  opacity: 0.85;
+
+  &:hover {
+    background: var(--tg-hover);
+    opacity: 1;
+  }
+}
+
+// Контент со скроллом
+.content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0 4px 4px;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+}
+.section {
+  margin-bottom: 4px;
+}
+.cell {
+  width: 100%;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s;
+
+  &:hover {
+    background: var(--tg-hover);
+  }
+  &:active {
+    background: var(--tg-divider);
+  }
+}
+
+// Нижняя панель: индикатор по центру, backspace справа
+.footer {
+  height: 49px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  border-top: 1px solid var(--tg-divider);
+}
+.footerIndicator {
+  width: 40px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: var(--tg-accent);
+  background: color-mix(in srgb, var(--tg-accent) 12%, transparent);
+}
+.footerBackspace {
+  position: absolute;
+  right: 8px;
+  width: 40px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--tg-textSecondary);
+
+  &:hover {
+    background: var(--tg-hover);
+  }
+}

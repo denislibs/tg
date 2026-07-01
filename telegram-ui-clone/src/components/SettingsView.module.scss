@@ -1,0 +1,68 @@
+// Экран настроек: слайд-скрин + шапка + аватар-блок. Карточки/строки — из kit.
+.screen {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  background: var(--tg-sectionBackdrop);
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px;
+}
+.headerTitle {
+  flex: 1;
+}
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 24px;
+}
+
+// аватар + имя
+.profile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0 24px;
+}
+.profileName {
+  margin-top: 8px;
+}
+
+// строка настроек (те, где нужна подсветка активного пункта / кастомный контрол)
+.rowClickable {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+    }
+  }
+}
+.rowActive {
+  background: var(--tg-hover);
+}
+.rowIcon {
+  color: var(--tg-textSecondary);
+  display: flex;
+
+  svg {
+    font-size: 24px;
+  }
+}
+.rowBody {
+  flex: 1;
+  min-width: 0;
+}

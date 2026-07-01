@@ -1,0 +1,194 @@
+// Модалка Telegram Premium: оверлей + карточка + планы + фичи + CTA.
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+}
+
+.dialog {
+  width: min(440px, 100%);
+  max-height: 92vh;
+  border-radius: 16px;
+  background: var(--tg-sidebarBg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.5);
+}
+
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 20px 16px;
+}
+
+// шапка
+.header {
+  position: relative;
+  padding-top: 16px;
+}
+.close {
+  position: absolute;
+  left: -6px;
+  top: 6px;
+  padding: 6px;
+  border-radius: 50%;
+  cursor: pointer;
+  color: var(--tg-textPrimary);
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+    }
+  }
+}
+.title {
+  text-align: center;
+}
+.subtitle {
+  text-align: center;
+  margin-top: 8px;
+  padding: 0 8px;
+  line-height: 1.4;
+}
+
+// premium-звезда
+.star {
+  width: 96px;
+  height: 96px;
+  margin: 0 auto 8px;
+}
+
+// планы
+.plans {
+  margin-top: 20px;
+}
+.plan {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border-radius: 12px;
+  cursor: pointer;
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+    }
+  }
+}
+// светлая тема — активный план на нейтральной подложке
+.planSelected {
+  background: #f1f1f4;
+
+  @media (hover: hover) {
+    &:hover {
+      background: #f1f1f4;
+    }
+  }
+
+  :global(html[data-theme='night']) &,
+  :global(html[data-theme='dark']) & {
+    background: #2b2b2b;
+
+    @media (hover: hover) {
+      &:hover {
+        background: #2b2b2b;
+      }
+    }
+  }
+}
+.radio {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid var(--tg-textFaint);
+  transition: border-color 0.2s;
+}
+.radioOn {
+  border-color: var(--tg-accent);
+}
+.radioFill {
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background: var(--tg-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.planBody {
+  flex: 1;
+  min-width: 0;
+}
+.planMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+.discount {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--tg-accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+.planTotal {
+  flex-shrink: 0;
+}
+
+// фичи
+.features {
+  margin-top: 16px;
+}
+.feature {
+  display: flex;
+  gap: 16px;
+  padding: 10px 0;
+}
+.featureIcon {
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+
+  svg {
+    font-size: 24px;
+  }
+}
+.featureBody {
+  min-width: 0;
+}
+
+// CTA
+.ctaWrap {
+  padding: 12px;
+  flex-shrink: 0;
+}
+.cta {
+  height: 52px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, #6c7cf0 0%, #9c6cf0 50%, #e487c8 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}

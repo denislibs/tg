@@ -5,12 +5,13 @@
 // portal so it isn't clipped by the composer's overflow.
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
-import { useTheme } from '@mui/material'
 import { motion, AnimatePresence } from 'framer-motion'
 import TgIcon from './TgIcon'
+import classNames from '../shared/lib/classNames'
 import { activeTypes } from '../core/markdown'
 import type { EntityType } from '../core/models'
 import type { IconName } from '../core/tgico-icons'
+import s from './MarkupTooltip.module.scss'
 
 const TOOLS: { type: EntityType; icon: IconName; title: string }[] = [
   { type: 'bold', icon: 'bold', title: 'Жирный' },
@@ -30,8 +31,6 @@ export default function MarkupTooltip({
   editorRef: RefObject<HTMLDivElement | null>
   onApply: (type: EntityType, url?: string) => void
 }) {
-  const theme = useTheme()
-  const tg = theme.tg
   const [pos, setPos] = useState<{ x: number; y: number; below: boolean } | null>(null)
   const [active, setActive] = useState<Set<EntityType>>(new Set())
   const [linkMode, setLinkMode] = useState(false)
@@ -104,12 +103,11 @@ export default function MarkupTooltip({
 
   if (!pos) return null
 
-  const surface = theme.palette.mode === 'dark' ? '#2b2b2b' : '#fff'
-
   return createPortal(
     <AnimatePresence>
       <motion.div
         key="markup-tooltip"
+        className={s.bar}
         initial={{ opacity: 0, y: 6, scale: 0.94 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 6, scale: 0.94 }}
@@ -117,22 +115,13 @@ export default function MarkupTooltip({
         // keep the selection alive: never let the bar steal focus
         onMouseDown={(e) => e.preventDefault()}
         style={{
-          position: 'fixed',
           left: pos.x,
           top: pos.y,
           transform: pos.below ? 'translate(-50%, 0)' : 'translate(-50%, -100%)',
-          zIndex: 1400,
-          display: 'flex',
-          alignItems: 'center',
-          height: 44,
-          padding: '0 4px',
-          background: surface,
-          borderRadius: 10,
-          boxShadow: '0 4px 16px rgba(0,0,0,.28)',
         }}
       >
         {linkMode ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 4px' }}>
+          <div className={s.linkRow}>
             <input
               ref={linkInputRef}
               value={linkVal}
@@ -142,21 +131,9 @@ export default function MarkupTooltip({
                 if (e.key === 'Escape') { e.preventDefault(); setLinkMode(false) }
               }}
               placeholder="Введите ссылку…"
-              style={{
-                width: 260,
-                height: 32,
-                border: 'none',
-                outline: 'none',
-                background: 'transparent',
-                color: tg.textPrimary,
-                fontSize: 15,
-                padding: '0 8px',
-              }}
+              className={s.linkInput}
             />
-            <button
-              onClick={applyLink}
-              style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: tg.accent, padding: 6, display: 'inline-flex' }}
-            >
+            <button onClick={applyLink} className={s.linkApply}>
               <TgIcon name="check" size={22} />
             </button>
           </div>
@@ -168,19 +145,7 @@ export default function MarkupTooltip({
                 key={tool.type}
                 title={tool.title}
                 onClick={() => click(tool.type)}
-                style={{
-                  width: 32,
-                  height: 32,
-                  margin: '0 1px',
-                  border: 'none',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  background: on ? tg.accent : 'transparent',
-                  color: on ? '#fff' : tg.textSecondary,
-                }}
+                className={classNames(s.tool, on ? s.active : '')}
               >
                 <TgIcon name={tool.icon} size={20} />
               </button>

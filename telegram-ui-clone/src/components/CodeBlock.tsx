@@ -5,9 +5,10 @@
 // nodes (not innerHTML) so there's no injection surface; token colors come from
 // the `.token.*` CSS in styles/index.scss.
 import { useMemo, useState, type ReactNode } from 'react'
-import { Box, useTheme } from '@mui/material'
 import Prism from 'prismjs'
 import TgIcon from './TgIcon'
+import classNames from '../shared/lib/classNames'
+import s from './CodeBlock.module.scss'
 // Common languages, imported in dependency order: clike/markup/css are bases;
 // javascript needs clike; jsx needs markup+javascript; typescript needs javascript;
 // tsx needs jsx+typescript.
@@ -68,8 +69,6 @@ function renderTokens(tokens: (string | Prism.Token)[], keyBase: string): ReactN
 }
 
 export default function CodeBlock({ code, language }: { code: string; language?: string }) {
-  const theme = useTheme()
-  const tg = theme.tg
   const [copied, setCopied] = useState(false)
 
   const lang = language ? LANGS[language.toLowerCase()] : undefined
@@ -93,53 +92,23 @@ export default function CodeBlock({ code, language }: { code: string; language?:
   const label = lang?.label ?? (language ? language.toUpperCase() : 'Код')
 
   return (
-    <Box
-      component="div"
-      onClick={(e) => e.stopPropagation()}
-      sx={{
-        my: '4px',
-        borderRadius: '10px',
-        overflow: 'hidden',
-        background: alphaBg(theme.palette.mode),
-        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-        fontSize: '0.92em',
-      }}
-    >
+    <div onClick={(e) => e.stopPropagation()} className={s.root}>
       {/* header: language name + copy */}
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          px: 1.25,
-          py: 0.5,
-          borderBottom: `1px solid ${theme.palette.mode === 'dark' ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.08)'}`,
-        }}
-      >
-        <Box component="span" sx={{ fontWeight: 600, fontSize: 13, color: tg.accent, fontFamily: 'inherit' }}>
-          {label}
-        </Box>
-        <Box
-          component="span"
+      <div className={s.header}>
+        <span className={s.label}>{label}</span>
+        <span
           role="button"
           title="Скопировать"
           onClick={copy}
-          sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', color: copied ? tg.accent : tg.textSecondary, fontSize: 12 }}
+          className={classNames(s.copy, copied ? s.copied : '')}
         >
           <TgIcon name={copied ? 'check' : 'copy'} size={16} />
-        </Box>
-      </Box>
+        </span>
+      </div>
       {/* body */}
-      <Box
-        component="pre"
-        sx={{ m: 0, px: 1.25, py: 1, overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.45 }}
-      >
+      <pre className={s.body}>
         <code>{body}</code>
-      </Box>
-    </Box>
+      </pre>
+    </div>
   )
-}
-
-function alphaBg(mode: string) {
-  return mode === 'dark' ? 'rgba(0,0,0,0.28)' : 'rgba(0,0,0,0.05)'
 }

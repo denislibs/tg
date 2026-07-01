@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import { Box, InputBase, Typography, useTheme } from '@mui/material'
 import Text from '../../shared/ui/Text'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
 import IconButton from '../../shared/ui/IconButton'
+import classNames from '../../shared/lib/classNames'
 import { EASE, DUR } from '../../motion'
 import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import QrCode from './QrCode'
+import s from './AuthFlow.module.scss'
 
 const MotionIconButton = motion(IconButton)
 
@@ -64,7 +65,6 @@ function TgPlane({ size = 56 }: { size?: number }) {
 }
 
 export default function AuthFlow({ onComplete }: { onComplete: () => void }) {
-  const tg = useTheme().tg
   const t = useT()
 
   const managers = useManagers()
@@ -170,173 +170,94 @@ export default function AuthFlow({ onComplete }: { onComplete: () => void }) {
       setTimeout(() => submitCode(assembled), 120)
     }
   }
-  const onCodeKey = (i: number, e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const onCodeKey = (i: number, e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Backspace' && !code[i] && i > 0) codeRefs.current[i - 1]?.focus()
   }
 
-  const accentBtn = {
-    height: 54,
-    borderRadius: '12px',
-    background: tg.accent,
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: 600,
-    textTransform: 'uppercase' as const,
-    letterSpacing: 0.3,
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    transition: 'filter .15s ease, opacity .15s ease',
-    '&:hover': { filter: 'brightness(1.06)' },
-  }
-
-  const fieldWrap = {
-    border: `1.5px solid ${tg.divider}`,
-    borderRadius: '12px',
-    px: 1.75,
-    height: 54,
-    display: 'flex',
-    alignItems: 'center',
-    transition: 'border-color .15s ease',
-    '&:focus-within': { borderColor: tg.accent },
-  }
-
   const Logo = (
-    <Box
-      sx={{
-        width: 96,
-        height: 96,
-        borderRadius: '50%',
-        background: tg.accentGradient,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        mx: 'auto',
-        mb: 2.5,
-        boxShadow: '0 8px 28px -8px rgba(0,0,0,0.4)',
-      }}
-    >
+    <div className={s.logo}>
       <TgPlane />
-    </Box>
+    </div>
   )
 
   // ---- step contents ----
   const phoneStep = (
     <>
       {Logo}
-      <Text size={26} weight={600} color={tg.textPrimary} style={{ textAlign: 'center' }}>
+      <Text size={26} weight={600} color="var(--tg-textPrimary)" style={{ textAlign: 'center' }}>
         Telegram
       </Text>
       <Text
-        size={15} color={tg.textSecondary}
+        size={15} color="var(--tg-textSecondary)"
         style={{ textAlign: 'center', marginTop: '8px', marginBottom: '24px', lineHeight: 1.5 }}
       >
         {t('Please confirm your country code and enter your phone number.')}
       </Text>
 
       {/* country selector */}
-      <Box sx={{ position: 'relative', mb: 1.25 }}>
-        <Box
+      <div className={s.countryWrap}>
+        <div
           onClick={() => setCountryOpen((o) => !o)}
-          sx={{ ...fieldWrap, cursor: 'pointer', justifyContent: 'space-between' }}
+          className={classNames(s.fieldWrap, s.countrySelect)}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
-            <span style={{ fontSize: 22, lineHeight: 1 }}>{country.flag}</span>
-            <Text size={16} color={tg.textPrimary}>{country.name}</Text>
-          </Box>
-          <TgIcon name="down" color={tg.textFaint} />
-        </Box>
+          <div className={s.countryLabel}>
+            <span className={s.flag}>{country.flag}</span>
+            <Text size={16} color="var(--tg-textPrimary)">{country.name}</Text>
+          </div>
+          <TgIcon name="down" color="var(--tg-textFaint)" />
+        </div>
         <AnimatePresence>
           {countryOpen && (
-            <Box
-              component={motion.div}
+            <motion.div
               initial={{ opacity: 0, y: -6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.16, ease: EASE }}
-              sx={{
-                position: 'absolute',
-                top: 'calc(100% + 6px)',
-                left: 0,
-                right: 0,
-                zIndex: 10,
-                maxHeight: 240,
-                overflowY: 'auto',
-                background: tg.menuBg,
-                backdropFilter: 'blur(40px)',
-                WebkitBackdropFilter: 'blur(40px)',
-                borderRadius: '12px',
-                boxShadow: tg.menuShadow,
-                py: 0.5,
-              }}
+              className={s.dropdown}
             >
               {COUNTRIES.map((c) => (
-                <Box
+                <div
                   key={c.name}
                   onClick={() => {
                     setCountry(c)
                     setPhone((prev) => formatPhone(prev.replace(/\D/g, ''), c.pattern))
                     setCountryOpen(false)
                   }}
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 1.25,
-                    px: 1.75,
-                    py: 1,
-                    cursor: 'pointer',
-                    '&:hover': { background: tg.hover },
-                  }}
+                  className={s.dropdownItem}
                 >
-                  <span style={{ fontSize: 20, lineHeight: 1 }}>{c.flag}</span>
-                  <Text size={15} color={tg.textPrimary} style={{ flex: 1 }}>{c.name}</Text>
-                  <Text size={15} color={tg.textFaint}>{c.code}</Text>
-                </Box>
+                  <span className={s.flagSmall}>{c.flag}</span>
+                  <Text size={15} color="var(--tg-textPrimary)" style={{ flex: 1 }}>{c.name}</Text>
+                  <Text size={15} color="var(--tg-textFaint)">{c.code}</Text>
+                </div>
               ))}
-            </Box>
+            </motion.div>
           )}
         </AnimatePresence>
-      </Box>
+      </div>
 
       {/* phone field */}
-      <Box sx={fieldWrap}>
-        <Text size={16} color={tg.textPrimary} style={{ marginRight: '8px' }}>{country.code}</Text>
-        <InputBase
+      <div className={s.fieldWrap}>
+        <Text size={16} color="var(--tg-textPrimary)" style={{ marginRight: '8px' }}>{country.code}</Text>
+        <input
           autoFocus
+          className={s.phoneInput}
           value={phone}
           onChange={(e) => setPhone(formatPhone(e.target.value.replace(/\D/g, ''), country.pattern))}
           placeholder={t('Phone number')}
           inputMode="tel"
-          sx={{ flex: 1, fontSize: 16, color: tg.textPrimary, '& input::placeholder': { color: tg.textFaint, opacity: 1 } }}
         />
-      </Box>
+      </div>
 
       {/* keep signed in */}
-      <Box
-        onClick={() => setKeep((k) => !k)}
-        sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mt: 2, cursor: 'pointer', userSelect: 'none' }}
-      >
-        <Box
-          sx={{
-            width: 22,
-            height: 22,
-            borderRadius: '6px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: keep ? tg.accent : 'transparent',
-            border: keep ? 'none' : `2px solid ${tg.textFaint}`,
-            transition: 'background .15s ease',
-          }}
-        >
+      <div onClick={() => setKeep((k) => !k)} className={s.keepRow}>
+        <div className={classNames(s.keepBox, keep ? s.keepBoxOn : '')}>
           {keep && <TgIcon name="check" size={16} color="#fff" />}
-        </Box>
-        <Text size={15} color={tg.textPrimary}>{t('Keep me signed in')}</Text>
-      </Box>
+        </div>
+        <Text size={15} color="var(--tg-textPrimary)">{t('Keep me signed in')}</Text>
+      </div>
 
-      <Box
-        sx={{ ...accentBtn, mt: 3, opacity: phoneDigits.length >= 7 ? 1 : 0.5, pointerEvents: phoneDigits.length >= 7 ? 'auto' : 'none' }}
+      <div
+        className={classNames(s.accentBtn, phoneDigits.length >= 7 ? '' : s.accentBtnDisabled)}
         onClick={async () => {
           if (busy) return
           setError(''); setBusy(true)
@@ -350,198 +271,104 @@ export default function AuthFlow({ onComplete }: { onComplete: () => void }) {
         }}
       >
         {t('Next')}
-      </Box>
+      </div>
 
       {error && <Text size={13} color="#e53935" style={{ textAlign: 'center', marginTop: '12px' }}>{error}</Text>}
 
-      <Typography
-        onClick={() => go('qr', 1)}
-        sx={{
-          mt: 2.5,
-          textAlign: 'center',
-          fontSize: 14,
-          fontWeight: 600,
-          textTransform: 'uppercase',
-          letterSpacing: 0.3,
-          color: tg.accent,
-          cursor: 'pointer',
-          '&:hover': { textDecoration: 'underline' },
-        }}
-      >
+      <div onClick={() => go('qr', 1)} className={s.linkBtn}>
         {t('Log in by QR Code')}
-      </Typography>
+      </div>
     </>
   )
 
   const qrStep = (
     <>
-      <Text size={24} weight={600} color={tg.textPrimary} style={{ textAlign: 'center', marginBottom: '24px' }}>
+      <Text size={24} weight={600} color="var(--tg-textPrimary)" style={{ textAlign: 'center', marginBottom: '24px' }}>
         {t('Log in to Telegram by QR Code')}
       </Text>
 
-      <Box
-        sx={{
-          position: 'relative',
-          width: 'fit-content',
-          mx: 'auto',
-          p: 2,
-          borderRadius: '18px',
-          background: '#fff',
-        }}
-      >
+      <div className={s.qrCard}>
         {qrUrl && !qrError ? (
           <QrCode data={qrUrl} size={220} color="#000" />
         ) : (
-          <Box
-            sx={{
-              width: 220,
-              height: 220,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
+          <div className={s.qrFallback}>
             <Text size={14.5} color="#999">
               {qrError ? t('QR недоступен') : t('Обновление…')}
             </Text>
-          </Box>
+          </div>
         )}
 
         {/* center logo overlay */}
         {qrUrl && !qrError && (
-          <Box
-            sx={{
-              position: 'absolute',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              width: 52,
-              height: 52,
-              borderRadius: '50%',
-              background: tg.accentGradient,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
+          <div className={s.qrLogo}>
             <TgPlane size={30} />
-          </Box>
+          </div>
         )}
-      </Box>
+      </div>
 
-      <Box sx={{ mt: 3, display: 'flex', flexDirection: 'column', gap: 1.75 }}>
+      <div className={s.qrSteps}>
         {[
           t('Open Telegram on your phone'),
           t('Go to Settings → Devices → Link Desktop Device'),
           t('Point your phone at this screen to confirm login'),
         ].map((line, i) => (
-          <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <Box
-              sx={{
-                width: 24,
-                height: 24,
-                flexShrink: 0,
-                borderRadius: '50%',
-                background: tg.accent,
-                color: '#fff',
-                fontSize: 13,
-                fontWeight: 700,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              {i + 1}
-            </Box>
-            <Text size={14.5} color={tg.textSecondary}>{line}</Text>
-          </Box>
+          <div key={i} className={s.qrStepRow}>
+            <div className={s.qrStepNum}>{i + 1}</div>
+            <Text size={14.5} color="var(--tg-textSecondary)">{line}</Text>
+          </div>
         ))}
-      </Box>
+      </div>
 
-      <Typography
-        onClick={() => go('phone', -1)}
-        sx={{
-          mt: 3,
-          textAlign: 'center',
-          fontSize: 14,
-          fontWeight: 600,
-          textTransform: 'uppercase',
-          letterSpacing: 0.3,
-          color: tg.accent,
-          cursor: 'pointer',
-          '&:hover': { textDecoration: 'underline' },
-        }}
-      >
+      <div onClick={() => go('phone', -1)} className={classNames(s.linkBtn, s.linkQr)}>
         {t('Log in by phone Number')}
-      </Typography>
+      </div>
     </>
   )
 
   const codeStep = (
     <>
       {Logo}
-      <Text size={22} weight={600} color={tg.textPrimary} style={{ textAlign: 'center' }}>
+      <Text size={22} weight={600} color="var(--tg-textPrimary)" style={{ textAlign: 'center' }}>
         {country.code} {phone}
       </Text>
       <Text
-        size={15} color={tg.textSecondary}
+        size={15} color="var(--tg-textSecondary)"
         style={{ textAlign: 'center', marginTop: '8px', marginBottom: '24px', lineHeight: 1.5 }}
       >
         {t('We have sent you a message with the code.')}
       </Text>
 
-      <Box sx={{ display: 'flex', gap: 1.25, justifyContent: 'center' }}>
+      <div className={s.codeRow}>
         {code.map((d, i) => (
-          <InputBase
+          <input
             key={i}
-            inputRef={(el) => (codeRefs.current[i] = el)}
+            ref={(el) => { codeRefs.current[i] = el }}
+            className={classNames(s.codeCell, d ? s.codeCellFilled : '')}
             value={d}
             autoFocus={i === 0}
             onChange={(e) => setDigit(i, e.target.value)}
             onKeyDown={(e) => onCodeKey(i, e)}
-            inputProps={{ inputMode: 'numeric', maxLength: 1, style: { textAlign: 'center' } }}
-            sx={{
-              width: 48,
-              height: 56,
-              border: `1.5px solid ${d ? tg.accent : tg.divider}`,
-              borderRadius: '12px',
-              fontSize: 24,
-              fontWeight: 600,
-              color: tg.textPrimary,
-              transition: 'border-color .15s ease',
-              '&:focus-within': { borderColor: tg.accent },
-            }}
+            inputMode="numeric"
+            maxLength={1}
           />
         ))}
-      </Box>
+      </div>
 
       {error && <Text size={13} color="#e53935" style={{ textAlign: 'center', marginTop: '12px' }}>{error}</Text>}
 
-      <Box
-        sx={{ ...accentBtn, mt: 3, opacity: codeStr.length === CODE_LEN ? 1 : 0.5, pointerEvents: codeStr.length === CODE_LEN ? 'auto' : 'none' }}
+      <div
+        className={classNames(s.accentBtn, codeStr.length === CODE_LEN ? '' : s.accentBtnDisabled)}
         onClick={() => submitCode(codeStr)}
       >
         {t('Next')}
-      </Box>
+      </div>
     </>
   )
 
   const content = step === 'phone' ? phoneStep : step === 'qr' ? qrStep : codeStep
 
   return (
-    <Box
-      sx={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 5000,
-        background: tg.appBg,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        overflowY: 'auto',
-        p: 2,
-      }}
-    >
+    <div className={s.overlay}>
       {/* back arrow (not on first step) */}
       <AnimatePresence>
         {step !== 'phone' && (
@@ -550,28 +377,27 @@ export default function AuthFlow({ onComplete }: { onComplete: () => void }) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => go('phone', -1)}
-            color={tg.textSecondary}
-            style={{ position: 'fixed', top: 20, left: 20 }}
+            color="var(--tg-textSecondary)"
+            className={s.back}
           >
             <TgIcon name="back" />
           </MotionIconButton>
         )}
       </AnimatePresence>
 
-      <Box sx={{ width: '100%', maxWidth: 360 }}>
+      <div className={s.card}>
         <AnimatePresence mode="wait" initial={false}>
-          <Box
+          <motion.div
             key={step}
-            component={motion.div}
             initial={{ opacity: 0, x: dir * 40 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: dir * -40 }}
             transition={{ duration: DUR.fast, ease: EASE }}
           >
             {content}
-          </Box>
+          </motion.div>
         </AnimatePresence>
-      </Box>
-    </Box>
+      </div>
+    </div>
   )
 }

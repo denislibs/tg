@@ -3,9 +3,9 @@ import { flushSync } from 'react-dom'
 import { useManagers } from './core/hooks/useManagers'
 import { useConnectionStore, pingBackend } from './stores/connectionStore'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Box, CssBaseline, ThemeProvider, useMediaQuery, useTheme } from '@mui/material'
 import Text from './shared/ui/Text'
-import { buildTheme, resolvePreset, PRESET_MODE, type ThemeChoice } from './theme'
+import classNames from './shared/lib/classNames'
+import { resolvePreset, PRESET_MODE, type ThemeChoice } from './theme'
 import { useSettings } from './settings'
 import Sidebar from './components/Sidebar'
 import ConversationView from './components/ConversationView'
@@ -19,15 +19,28 @@ import { loadStories } from './stores/storiesStore'
 import { dialogToChat, gradientFor } from './core/dialogToChat'
 import { startRealtime } from './client/realtimeBridge'
 import { setupPush } from './client/pushSetup'
+import s from './App.module.scss'
 
 export type ToggleMode = (coords?: { x: number; y: number }) => void
+
+// Мини-хук media query (замена MUI useMediaQuery) на window.matchMedia.
+function useMediaQuery(query: string): boolean {
+  const [match, setMatch] = useState(() => window.matchMedia?.(query).matches ?? false)
+  useEffect(() => {
+    const mql = window.matchMedia(query)
+    const onChange = () => setMatch(mql.matches)
+    onChange()
+    mql.addEventListener('change', onChange)
+    return () => mql.removeEventListener('change', onChange)
+  }, [query])
+  return match
+}
 
 // Run the /join deep-link handler at most once per app session.
 let joinDeepLinkHandled = false
 
 function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout: () => void }) {
   const managers = useManagers()
-  const tg = useTheme().tg
   const t = useT()
   const dialogs = useChatsStore((s) => s.dialogs)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -215,145 +228,60 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     selected ? (
       <ConversationView key={selectedId} chat={selected} onBack={openDrawer} onOpenPeer={openPeer} onChatCreated={onChatCreated} />
     ) : (
-      <Box sx={{ flex: 1, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Box
-          sx={{
-            px: 2,
-            py: 0.85,
-            borderRadius: '16px',
-            background: 'rgba(0,0,0,0.45)',
-            backdropFilter: 'blur(8px)',
-            WebkitBackdropFilter: 'blur(8px)',
-            color: '#fff',
-            fontSize: 15,
-            fontWeight: 500,
-          }}
-        >
+      <div className={s.empty}>
+        <div className={s.emptyPill}>
           {t('Select a chat to start messaging')}
-        </Box>
-      </Box>
+        </div>
+      </div>
     )
 
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        alignItems: 'flex-start',
-        minHeight: '100vh',
-        background: tg.appBg,
-      }}
-    >
+    <div className={s.root}>
       {/* Animated 4-point gradient wallpaper + doodle pattern (tweb-style) */}
       <ChatBackground />
 
       {/* Transient /join deep-link banner */}
       <AnimatePresence>
         {joinToast && (
-          <Box
-            component={motion.div}
+          <motion.div
             initial={{ opacity: 0, y: -12 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -12 }}
             transition={{ duration: 0.24, ease: [0.4, 0, 0.2, 1] }}
-            sx={{
-              position: 'fixed',
-              top: 16,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              zIndex: 3000,
-              px: 2.5,
-              py: 1.25,
-              borderRadius: '14px',
-              background: 'rgba(0,0,0,0.78)',
-              backdropFilter: 'blur(8px)',
-              WebkitBackdropFilter: 'blur(8px)',
-              color: '#fff',
-              fontSize: 15,
-              fontWeight: 500,
-              boxShadow: '0 6px 24px rgba(0,0,0,0.35)',
-            }}
+            className={s.joinToast}
           >
             {joinToast}
-          </Box>
+          </motion.div>
         )}
       </AnimatePresence>
 
       {/* /qr/:token confirm overlay — approve a desktop QR login */}
       {qrConfirmToken && (
         <>
-          <Box
-            onClick={cancelQr}
-            sx={{ position: 'fixed', inset: 0, zIndex: 4100, background: 'rgba(0,0,0,0.45)' }}
-          />
-          <Box
+          <div onClick={cancelQr} className={s.qrScrim} />
+          <motion.div
             role="dialog"
             aria-label={t('Войти на новом устройстве?')}
-            component={motion.div}
             initial={{ opacity: 0, scale: 0.96 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
-            sx={{
-              position: 'fixed',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              zIndex: 4101,
-              width: 'min(360px, calc(100vw - 32px))',
-              p: 2.5,
-              background: tg.menuBg,
-              backdropFilter: 'blur(40px)',
-              WebkitBackdropFilter: 'blur(40px)',
-              borderRadius: '14px',
-              boxShadow: tg.menuShadow,
-            }}
+            className={s.qrCard}
           >
-            <Text size={17} weight={600} color={tg.textPrimary} style={{ marginBottom: '8px' }}>
+            <Text size={17} weight={600} color="var(--tg-textPrimary)" style={{ marginBottom: '8px' }}>
               {t('Войти на новом устройстве?')}
             </Text>
-            <Text size={14.5} color={tg.textSecondary} style={{ lineHeight: 1.5 }}>
+            <Text size={14.5} color="var(--tg-textSecondary)" style={{ lineHeight: 1.5 }}>
               {t('Подтвердите вход для нового устройства')}
             </Text>
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 2.5 }}>
-              <Box
-                role="button"
-                tabIndex={0}
-                onClick={cancelQr}
-                sx={{
-                  px: 2,
-                  py: 1,
-                  borderRadius: '10px',
-                  fontSize: 14.5,
-                  fontWeight: 600,
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.3,
-                  color: tg.textSecondary,
-                  cursor: 'pointer',
-                  '&:hover': { background: tg.hover },
-                }}
-              >
+            <div className={s.qrActions}>
+              <div role="button" tabIndex={0} onClick={cancelQr} className={classNames(s.qrBtn, s.qrCancel)}>
                 {t('Отмена')}
-              </Box>
-              <Box
-                role="button"
-                tabIndex={0}
-                onClick={() => void confirmQr()}
-                sx={{
-                  px: 2,
-                  py: 1,
-                  borderRadius: '10px',
-                  fontSize: 14.5,
-                  fontWeight: 600,
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.3,
-                  color: tg.accent,
-                  cursor: 'pointer',
-                  '&:hover': { background: tg.hover },
-                }}
-              >
+              </div>
+              <div role="button" tabIndex={0} onClick={() => void confirmQr()} className={classNames(s.qrBtn, s.qrConfirm)}>
                 {t('Подтвердить')}
-              </Box>
-            </Box>
-          </Box>
+              </div>
+            </div>
+          </motion.div>
         </>
       )}
 
@@ -373,30 +301,28 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
       {narrow && selectedId && (
         <AnimatePresence>
           {drawerOpen && (
-            <Box key="drawer">
-              <Box
-                component={motion.div}
+            <div key="drawer">
+              <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 onClick={() => setDrawerOpen(false)}
-                sx={{ position: 'fixed', inset: 0, zIndex: 1900, background: 'rgba(0,0,0,0.45)' }}
+                className={s.drawerScrim}
               />
-              <Box
-                component={motion.div}
+              <motion.div
                 initial={{ x: '-106%' }}
                 animate={{ x: '0%' }}
                 exit={{ x: '-106%' }}
                 transition={{ duration: 0.26, ease: [0.4, 0, 0.2, 1] }}
-                sx={{ position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 2000 }}
+                className={s.drawerPanel}
               >
                 {renderSidebar()}
-              </Box>
-            </Box>
+              </motion.div>
+            </div>
           )}
         </AnimatePresence>
       )}
-    </Box>
+    </div>
   )
 }
 
@@ -404,7 +330,6 @@ function ThemedApp() {
   const managers = useManagers()
   const { themeChoice, update } = useSettings()
   const preset = resolvePreset(themeChoice)
-  const theme = useMemo(() => buildTheme(preset), [preset])
   const [authed, setAuthed] = useState<boolean | null>(null) // null = checking
 
   // Drive the active theme via a `data-theme` attribute on <html> — token CSS-vars
@@ -457,15 +382,12 @@ function ThemedApp() {
     })
   }
 
-  return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      {authed === null ? null : authed ? (
-        <Shell onToggleMode={toggleMode} onLogout={logout} />
-      ) : (
-        <AuthFlow onComplete={login} />
-      )}
-    </ThemeProvider>
+  // Тема управляется атрибутом data-theme на <html> (токены CSS-vars из
+  // styles/_tokens.scss) — MUI ThemeProvider больше не нужен.
+  return authed === null ? null : authed ? (
+    <Shell onToggleMode={toggleMode} onLogout={logout} />
+  ) : (
+    <AuthFlow onComplete={login} />
   )
 }
 
@@ -479,8 +401,10 @@ export default function App() {
   return (
     <>
       <ThemedApp />
-      <div style={{ position: 'fixed', bottom: 6, right: 8, zIndex: 9999, fontSize: 11, padding: '2px 6px', borderRadius: 6,
-        background: backendOk == null ? '#888' : backendOk ? '#1a7f37' : '#b3261e', color: '#fff' }}>
+      <div
+        className={s.apiBadge}
+        style={{ background: backendOk == null ? '#888' : backendOk ? '#1a7f37' : '#b3261e' }}
+      >
         api: {backendOk == null ? '…' : backendOk ? 'ok' : 'down'}
       </div>
     </>
