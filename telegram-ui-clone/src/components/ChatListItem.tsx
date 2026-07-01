@@ -1,5 +1,4 @@
 import { memo, useEffect, useState, type CSSProperties, type ReactNode } from 'react'
-import { useTheme } from '@mui/material'
 import Text from '../shared/ui/Text'
 import Avatar from '../shared/ui/Avatar'
 import Badge from '../shared/ui/Badge'
@@ -41,13 +40,11 @@ function SidebarThumb({ id }: { id: number }) {
 
 function ChatListItem({ chat, selected, onSelect }: Props) {
   const onClick = () => onSelect(chat.id)
-  const tg = useTheme().tg
   const t = useT()
   const avatarSrc = useAvatarSrc(chat.avatarUrl)
   const typingLabel = useTypingLabel(Number(chat.id), chat.type === 'group')
   const presence = useChatsStore((s) => (chat.peerId != null ? s.presence[chat.peerId] : undefined))
   const fmtTime = useTimeFormatter()
-  const onAccent = selected
   const { onPointerDown, ripple } = useRipple()
 
   // Anchor a corner of the menu AT the click point and grow toward free space
@@ -97,37 +94,32 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
           src={avatarSrc}
           size="dialog"
           online={chat.online || presence?.online}
-          ringColor={selected ? tg.accent : tg.sidebarBg}
+          ringColor="var(--cl-ring)"
         />
 
         <div className={s.body}>
           <div className={s.titleRow}>
-            <Text noWrap weight={500} size={16} color={onAccent ? '#fff' : tg.textPrimary} style={{ flex: 1 }}>
+            <Text noWrap weight={500} size={16} color="var(--cl-title)" style={{ flex: 1 }}>
               {chat.name}
             </Text>
             {chat.verified && (
-              <VerifiedBadge
-                size={20}
-                color={onAccent ? '#fff' : tg.accent}
-                checkColor={onAccent ? tg.accent : '#fff'}
-              />
+              <VerifiedBadge size={20} color="var(--cl-accent)" checkColor="var(--cl-check)" />
             )}
-            {chat.muted && (
-              <TgIcon name="muted" size={17} color={onAccent ? 'rgba(255,255,255,0.7)' : tg.textFaint} />
-            )}
+            {chat.muted && <TgIcon name="muted" size={17} color="var(--cl-muted)" />}
             {/* tweb places the sent/read tick in the title row, just left of the time */}
             {chat.sent && (
               <TgIcon
                 name={chat.read ? 'checks' : 'check'}
                 size={18}
-                color={onAccent ? '#fff' : tg.accent}
+                color="var(--cl-accent)"
                 style={{ marginLeft: 4, flexShrink: 0 }}
               />
             )}
+            {/* tweb .dialog-title-details: .75rem, margin-inline-start .5rem */}
             <Text
-              size={14}
-              color={onAccent ? 'rgba(255,255,255,0.85)' : tg.textFaint}
-              style={{ marginLeft: chat.sent ? '2px' : '4px', flexShrink: 0 }}
+              size={12}
+              color="var(--cl-meta)"
+              style={{ marginLeft: chat.sent ? '2px' : '8px', flexShrink: 0 }}
             >
               {fmtTime(chat.date)}
             </Text>
@@ -135,8 +127,8 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
 
           <div className={s.subtitleRow}>
             {typingLabel.active ? (
-              <Text noWrap size={16} color={onAccent ? '#fff' : tg.accent} style={{ flex: 1 }}>
-                <TypingIndicator kind={typingLabel.kind} color={onAccent ? '#fff' : tg.accent} />
+              <Text noWrap size={16} color="var(--cl-accent)" style={{ flex: 1 }}>
+                <TypingIndicator kind={typingLabel.kind} color="var(--cl-accent)" />
                 {typingLabel.label}
               </Text>
             ) : (
@@ -145,12 +137,12 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
                   <TgIcon
                     name="forward_filled"
                     size={18}
-                    color={onAccent ? 'rgba(255,255,255,0.9)' : tg.textSecondary}
+                    color="var(--cl-subtitle)"
                     style={{ flexShrink: 0, marginRight: 4 }}
                   />
                 )}
                 {chat.previewMediaId != null && <SidebarThumb id={chat.previewMediaId} />}
-                <Text noWrap size={16} color={onAccent ? 'rgba(255,255,255,0.9)' : tg.textSecondary} style={{ flex: 1 }}>
+                <Text noWrap size={16} color="var(--cl-subtitle)" style={{ flex: 1 }}>
                   {chat.preview}
                 </Text>
               </>
