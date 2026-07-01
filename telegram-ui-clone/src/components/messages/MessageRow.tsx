@@ -23,6 +23,8 @@ import {
   Ticks,
   BubbleTail,
   bubbleRadius,
+  BUBBLE_R_BIG,
+  BUBBLE_R_MED,
   DocumentBubble,
   AudioBubble,
   RoundVideoBubble,
@@ -38,9 +40,9 @@ import s from './MessageRow.module.scss'
 
 // Радиус media/voice-бабла: скруглён везде, кроме хвостового угла последнего в группе.
 function mediaRadius(out: boolean, lastInGroup: boolean): string {
-  return out
-    ? `15px 15px ${lastInGroup ? 0 : 5}px 15px`
-    : `15px 15px 15px ${lastInGroup ? 0 : 5}px`
+  const B = BUBBLE_R_BIG
+  const last = lastInGroup ? 0 : BUBBLE_R_MED
+  return out ? `${B}px ${B}px ${last}px ${B}px` : `${B}px ${B}px ${B}px ${last}px`
 }
 
 // Stable handler bundle the feed/rows close over (identities never change — see

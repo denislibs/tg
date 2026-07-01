@@ -10,10 +10,16 @@ export function Ticks({ status, color }: { status?: MsgStatus; color: string }) 
   return <TgIcon name={status === 'read' ? 'checks' : 'check'} size={16} color={color} />
 }
 
+// Радиусы бабла — из tweb (_chatVariables.scss).
+export const BUBBLE_R_BIG = 15 // $bubble-border-radius-big
+export const BUBBLE_R_MED = 5 // $bubble-border-radius-medium
+
 export function bubbleRadius(out: boolean, firstInGroup: boolean, lastInGroup: boolean) {
-  return out
-    ? `15px ${firstInGroup ? 15 : 5}px ${lastInGroup ? 0 : 5}px 15px`
-    : `${firstInGroup ? 15 : 5}px 15px 15px ${lastInGroup ? 0 : 5}px`
+  const B = BUBBLE_R_BIG
+  const m = BUBBLE_R_MED
+  const first = firstInGroup ? B : m
+  const last = lastInGroup ? 0 : m
+  return out ? `${B}px ${first}px ${last}px ${B}px` : `${first}px ${B}px ${B}px ${last}px`
 }
 
 /**

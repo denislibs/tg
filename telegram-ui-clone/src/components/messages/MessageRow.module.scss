@@ -4,7 +4,7 @@
 @use '../../styles/foundation' as *;
 
 .row {
-  --row-mb: 2px;
+  --row-mb: #{$bubble-margin}; // tweb $bubble-margin
   --b-bg: var(--tg-bubble);
   --b-text: var(--tg-textPrimary);
   --b-link: var(--tg-link);
@@ -20,7 +20,7 @@
   cursor: default;
 
   &[data-last] {
-    --row-mb: 6px;
+    --row-mb: #{$bubble-margin-big}; // tweb $bubble-margin-big
   }
 
   &[data-out] {
@@ -205,7 +205,7 @@
   max-width: min(420px, 80%);
   display: flex;
   flex-direction: column;
-  padding: 5px 10px;
+  padding: 0.375rem 0.625rem; // tweb bubble-content .375rem .625rem
   background: var(--b-bg);
   color: var(--b-text);
 }

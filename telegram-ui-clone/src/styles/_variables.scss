@@ -6,6 +6,12 @@ $border-radius: 12px;
 $border-radius-medium: 16px;
 $border-radius-big: 24px;
 
+// геометрия баблов сообщений (порт tweb _chatVariables.scss)
+$bubble-margin: 0.125rem; // отступ между баблами в группе
+$bubble-margin-big: 0.375rem; // отступ в конце группы
+$bubble-border-radius-medium: 5px; // скруглённый угол внутри группы
+$bubble-border-radius-big: 15px; // основной радиус бабла
+
 $hover-alpha: .08;
 
 //$small-screen: 720px;
