@@ -4,9 +4,9 @@
 // transient parent state (composer text, context menu, media viewer) never
 // re-renders it — only its own data (chat, presence/typing, search) does.
 import { memo, useEffect, useState } from 'react'
-import { Box, InputBase, Typography, useTheme } from '@mui/material'
 import Text from '../../shared/ui/Text'
 import IconButton from '../../shared/ui/IconButton'
+import classNames from '../../shared/lib/classNames'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon, { type IconName } from '../TgIcon'
 import Avatar from '../../shared/ui/Avatar'
@@ -24,6 +24,7 @@ import { useMemo } from 'react'
 import { EASE, DUR } from '../../motion'
 import type { Chat } from '../../data'
 import type { TypingKind } from '../../core/hooks/useTypingLabel'
+import s from './ChatHeader.module.scss'
 
 const EASE_STD = EASE
 const DUR_IN = DUR.in
@@ -52,7 +53,6 @@ function splitMatch(text: string, q: string): { t: string; m: boolean }[] {
 // type label — e.g. 🎵 song.mp3, 📄 report.pdf, 🖼 Фото.
 function ResultPreview({ row, query }: { row: SearchResultRow; query: string }) {
   const managers = useManagers()
-  const tg = useTheme().tg
   const { text, mediaId, mediaType } = row
   const isMedia = !text.trim() && mediaId != null
   // Only audio/document carry a meaningful file name worth fetching; the rest use
@@ -71,7 +71,7 @@ function ResultPreview({ row, query }: { row: SearchResultRow; query: string }) 
     return (
       <>
         {splitMatch(text, query).map((p, j) => (
-          <Box key={j} component="span" sx={p.m ? { color: tg.textPrimary, fontWeight: 600 } : undefined}>{p.t}</Box>
+          <span key={j} className={p.m ? s.match : undefined}>{p.t}</span>
         ))}
       </>
     )
@@ -94,14 +94,14 @@ function ResultPreview({ row, query }: { row: SearchResultRow; query: string }) 
     : (mediaType ?? '')
   const { icon, label } = byType[kind] ?? { icon: 'document' as IconName, label: fileName || 'Файл' }
   return (
-    <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, verticalAlign: 'middle', minWidth: 0 }}>
-      <TgIcon name={icon} size={16} color={tg.textFaint} style={{ flexShrink: 0 }} />
-      <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+    <span className={s.mediaPreview}>
+      <TgIcon name={icon} size={16} color="var(--tg-textFaint)" style={{ flexShrink: 0 }} />
+      <span className={s.mediaLabel}>
         {splitMatch(label, query).map((p, j) => (
-          <Box key={j} component="span" sx={p.m ? { color: tg.textPrimary, fontWeight: 600 } : undefined}>{p.t}</Box>
+          <span key={j} className={p.m ? s.match : undefined}>{p.t}</span>
         ))}
-      </Box>
-    </Box>
+      </span>
+    </span>
   )
 }
 
@@ -141,9 +141,6 @@ function ChatHeader({
   chat, avatarSrc, peerOnline, typingActive, typingText, typingKind, status, online,
   playerOffset, onJumpToSeq, onBack, onToggleInfo, onOpenMenu,
 }: ChatHeaderProps) {
-  const theme = useTheme()
-  const tg = theme.tg
-  const mode = theme.palette.mode
   const t = useT()
   const [lang] = useLang()
   const { start: startCall } = useCall()
@@ -192,139 +189,110 @@ function ChatHeader({
     if (r) onPickResult(r.seq)
   }
 
-  // The search card is one continuous surface: the input is its top, the results
-  // grow out below within the same rounded box (white on light, grey on dark, with
-  // a soft shadow) — tweb.
-  const searchBg = mode === 'dark' ? '#2c2c2e' : '#ffffff'
-  const cardShadow = mode === 'dark' ? '0 6px 28px -4px rgba(0,0,0,0.6)' : '0 6px 28px -6px rgba(0,0,0,0.22)'
-  const cardDivider = mode === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)'
-
-  const barPos = {
-    position: 'absolute' as const,
-    top: `${16 + playerOffset}px`,
-    transition: 'top 0.22s ease',
-    left: 0,
-    right: 0,
-    zIndex: 6,
-    width: '100%',
-    maxWidth: 688,
-    mx: 'auto',
-  }
+  const barTop = { top: `${16 + playerOffset}px` }
 
   return (
     <AnimatePresence initial={false}>
       {searchOpen ? (
         // ── Unified search card: input row + (growing) results list as ONE rounded
         //    surface. The list grows the card's height as you type. ──
-        <Box
+        <motion.div
           key="search"
-          component={motion.div}
+          className={classNames(s.bar, s.searchCard)}
           initial={{ opacity: 0, y: -6, scale: 0.985 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -6, scale: 0.985 }}
           transition={{ duration: DUR_IN, ease: EASE_STD }}
-          style={{ transformOrigin: 'top center' }}
-          sx={{ ...barPos, zIndex: 7, background: searchBg, borderRadius: '24px', overflow: 'hidden', boxShadow: cardShadow }}
+          style={{ ...barTop, transformOrigin: 'top center' }}
         >
           {/* input row (the "input" — the card grows out of it) */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, height: 48 }}>
-            <TgIcon name="search" size={22} color={tg.textFaint} />
-            <InputBase
+          <div className={s.searchInputRow}>
+            <TgIcon name="search" size={22} color="var(--tg-textFaint)" />
+            <input
+              className={s.searchInput}
               autoFocus
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); onSearchClose() } }}
               placeholder={t('Search')}
-              sx={{ flex: 1, fontSize: 16, color: tg.textPrimary, '& input::placeholder': { color: tg.textFaint, opacity: 1 } }}
             />
             {searchQuery.trim() && searchResults.length > 0 && (
               <>
-                <IconButton size="small" onClick={() => jumpTo(activeIdx - 1)} disabled={activeIdx <= 0} color={tg.textFaint}>
+                <IconButton size="small" onClick={() => jumpTo(activeIdx - 1)} disabled={activeIdx <= 0} color="var(--tg-textFaint)">
                   <TgIcon name="up" />
                 </IconButton>
-                <IconButton size="small" onClick={() => jumpTo(activeIdx + 1)} disabled={activeIdx >= searchResults.length - 1} color={tg.textFaint}>
+                <IconButton size="small" onClick={() => jumpTo(activeIdx + 1)} disabled={activeIdx >= searchResults.length - 1} color="var(--tg-textFaint)">
                   <TgIcon name="down" />
                 </IconButton>
               </>
             )}
-            <IconButton size="small" onClick={() => { if (searchQuery) onSearchClear(); else onSearchClose() }} color={tg.textFaint}>
+            <IconButton size="small" onClick={() => { if (searchQuery) onSearchClear(); else onSearchClose() }} color="var(--tg-textFaint)">
               <TgIcon name="close" />
             </IconButton>
-          </Box>
+          </div>
 
           {/* results grow out of the input (height animates as you type) */}
           <AnimatePresence initial={false}>
             {searchQuery.trim() && (
-              <Box
+              <motion.div
                 key="results"
-                component={motion.div}
+                className={s.resultsWrap}
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
                 transition={{ duration: DUR_IN, ease: EASE_STD }}
-                sx={{ overflow: 'hidden' }}
               >
-                <Box sx={{ borderTop: `1px solid ${cardDivider}` }} />
-                <Box sx={{ maxHeight: '60vh', overflowY: 'auto' }}>
+                <div className={s.divider} />
+                <div className={s.resultsScroll}>
                   {searchResults.length === 0 ? (
-                    <Text size={15} color={tg.textSecondary} style={{ paddingLeft: '16px', paddingRight: '16px', paddingTop: '16px', paddingBottom: '16px', textAlign: 'center' }}>
+                    <Text size={15} color="var(--tg-textSecondary)" className={s.noResults}>
                       {t('There were no results for')}{' '}
-                      <Box component="span" sx={{ fontWeight: 700, color: tg.textPrimary }}>“{searchQuery}”</Box>
+                      <span className={s.bold}>“{searchQuery}”</span>
                       {t('. Try a new search.')}
                     </Text>
                   ) : (
                     searchResults.map((r, i) => (
-                      <Box
+                      <div
                         key={r.id}
+                        className={s.resultRow}
+                        data-active={i === activeIdx || undefined}
                         onClick={() => { setActiveIdx(i); onPickResult(r.seq) }}
-                        sx={{ display: 'flex', alignItems: 'center', gap: 1.25, px: 1.5, py: 0.75, cursor: 'pointer', background: i === activeIdx ? tg.hover : 'transparent', '&:hover': { background: tg.hover } }}
                       >
                         <Avatar background={r.avatar} text={r.sender.charAt(0)} size="sm" />
-                        <Box sx={{ flex: 1, minWidth: 0 }}>
-                          <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
-                            <Text noWrap size={14.5} weight={600} color={tg.textPrimary} style={{ flex: 1 }}>{r.sender}</Text>
-                            <Text size={12} color={tg.textFaint} style={{ flexShrink: 0 }}>{r.time}</Text>
-                          </Box>
-                          <Typography noWrap component="div" sx={{ fontSize: 14, color: tg.textSecondary, mt: 0.1 }}>
+                        <div className={s.resultBody}>
+                          <div className={s.resultTop}>
+                            <Text noWrap size={14.5} weight={600} color="var(--tg-textPrimary)" className={s.resultName}>{r.sender}</Text>
+                            <Text size={12} color="var(--tg-textFaint)" className={s.resultTime}>{r.time}</Text>
+                          </div>
+                          <div className={s.resultPreview}>
                             <ResultPreview row={r} query={searchQuery} />
-                          </Typography>
-                        </Box>
-                      </Box>
+                          </div>
+                        </div>
+                      </div>
                     ))
                   )}
-                </Box>
-              </Box>
+                </div>
+              </motion.div>
             )}
           </AnimatePresence>
-        </Box>
+        </motion.div>
       ) : (
         // ── Normal header: floating rounded pill ──
-        <Box
+        <motion.div
           key="normal"
-          component={motion.div}
+          className={classNames(s.bar, s.header)}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: DUR_IN, ease: EASE_STD }}
-          sx={{
-            ...barPos,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1.5,
-            px: 0.5,
-            py: 0.5,
-            height: 48,
-            borderRadius: '24px',
-            background: tg.bubble,
-            boxShadow: mode === 'dark' ? '0 1px 6px -1px rgba(0,0,0,0.5)' : '0 1px 5px -1px rgba(0,0,0,0.16)',
-          }}
+          style={barTop}
         >
           {onBack && (
-            <IconButton onClick={onBack} color={tg.textSecondary} style={{ marginLeft: '-4px' }}>
+            <IconButton onClick={onBack} color="var(--tg-textSecondary)" style={{ marginLeft: '-4px' }}>
               <TgIcon name="back" />
             </IconButton>
           )}
-          <Box onClick={onToggleInfo} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1, minWidth: 0, cursor: 'pointer' }}>
+          <div className={s.peer} onClick={onToggleInfo}>
             <Avatar
               background={chat.avatar}
               text={chat.avatarText}
@@ -332,38 +300,38 @@ function ChatHeader({
               src={avatarSrc}
               size="sm"
               online={chat.online || peerOnline}
-              ringColor={tg.bubble}
+              ringColor="var(--tg-bubble)"
             />
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
-                <Text noWrap weight={500} size={16} color={tg.textPrimary} style={{ lineHeight: 1.2 }}>
+            <div className={s.peerBody}>
+              <div className={s.peerTitle}>
+                <Text noWrap weight={500} size={16} color="var(--tg-textPrimary)" style={{ lineHeight: 1.2 }}>
                   {chat.name}
                 </Text>
                 {chat.verified && <VerifiedBadge size={18} />}
-              </Box>
-              <Text noWrap size={13.5} color={typingActive || online ? tg.accent : tg.textSecondary} style={{ lineHeight: 1.2 }}>
-                {typingActive && <TypingIndicator kind={typingKind} color={tg.accent} />}
+              </div>
+              <Text noWrap size={13.5} color={typingActive || online ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'} style={{ lineHeight: 1.2 }}>
+                {typingActive && <TypingIndicator kind={typingKind} color="var(--tg-accent)" />}
                 {typingActive ? typingText : status}
               </Text>
-            </Box>
-          </Box>
+            </div>
+          </div>
           {chat.type === 'private' && (
             <>
-              <IconButton onClick={() => startCall(false)} color={tg.textSecondary}>
+              <IconButton onClick={() => startCall(false)} color="var(--tg-textSecondary)">
                 <TgIcon name="phone" />
               </IconButton>
-              <IconButton onClick={() => startCall(true)} color={tg.textSecondary}>
+              <IconButton onClick={() => startCall(true)} color="var(--tg-textSecondary)">
                 <TgIcon name="videocamera" />
               </IconButton>
             </>
           )}
-          <IconButton onClick={onSearchOpen} color={tg.textSecondary}>
+          <IconButton onClick={onSearchOpen} color="var(--tg-textSecondary)">
             <TgIcon name="search" />
           </IconButton>
-          <IconButton onClick={(e) => onOpenMenu(e.currentTarget.getBoundingClientRect())} color={tg.textSecondary}>
+          <IconButton onClick={(e) => onOpenMenu(e.currentTarget.getBoundingClientRect())} color="var(--tg-textSecondary)">
             <TgIcon name="more" />
           </IconButton>
-        </Box>
+        </motion.div>
       )}
     </AnimatePresence>
   )

@@ -1,0 +1,148 @@
+// ChatHeader — плавающая шапка чата (пилюля) + режим поиска (единая карточка
+// инпут+результаты). top задаётся инлайн (динамический offset плеера).
+.bar {
+  position: absolute;
+  transition: top 0.22s ease;
+  left: 0;
+  right: 0;
+  z-index: 6;
+  width: 100%;
+  max-width: 688px;
+  margin: 0 auto;
+}
+
+// ── поисковая карточка ──
+.searchCard {
+  z-index: 7;
+  background: var(--tg-searchCardBg);
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: var(--tg-searchCardShadow);
+}
+.searchInputRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  height: 48px;
+}
+.searchInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 16px;
+  color: var(--tg-textPrimary);
+  font-family: inherit;
+
+  &::placeholder {
+    color: var(--tg-textFaint);
+    opacity: 1;
+  }
+}
+.resultsWrap {
+  overflow: hidden;
+}
+.divider {
+  border-top: 1px solid var(--tg-divider);
+}
+.resultsScroll {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.noResults {
+  padding: 16px;
+  text-align: center;
+}
+.bold {
+  font-weight: 700;
+  color: var(--tg-textPrimary);
+}
+.resultRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  cursor: pointer;
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+    }
+  }
+  &[data-active] {
+    background: var(--tg-hover);
+  }
+}
+.resultBody {
+  flex: 1;
+  min-width: 0;
+}
+.resultTop {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.resultName {
+  flex: 1;
+}
+.resultTime {
+  flex-shrink: 0;
+}
+.resultPreview {
+  font-size: 14px;
+  color: var(--tg-textSecondary);
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// ── ResultPreview (совпадения/медиа-превью) ──
+.match {
+  color: var(--tg-textPrimary);
+  font-weight: 600;
+}
+.mediaPreview {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: middle;
+  min-width: 0;
+}
+.mediaLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// ── обычная шапка ──
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px;
+  height: 48px;
+  border-radius: 24px;
+  background: var(--tg-bubble);
+  box-shadow: var(--tg-plateShadow);
+}
+.peer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+.peerBody {
+  flex: 1;
+  min-width: 0;
+}
+.peerTitle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
