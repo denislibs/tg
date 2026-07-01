@@ -1,14 +1,30 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import IconButton from '../shared/ui/IconButton'
 import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import Text from '../shared/ui/Text'
 import { slideInRight } from '../motion'
 import { useT, useLang } from '../i18n'
-import Avatar from '../shared/ui/Avatar'
 import { useDiscussion } from '../core/hooks/useDiscussion'
 import { commentsLabel } from '../core/commentsLabel'
+import ChatFeed from './messages/ChatFeed'
+import type { FeedFns } from './messages/MessageRow'
+import type { ConvMsg } from '../data'
 import s from './DiscussionView.module.scss'
+
+const NOOP = () => {}
+// The thread is a read-only feed here (send is via the composer); the feed's
+// callbacks (open sender, play voice, context menu, jump, lightbox) are no-ops.
+const FEED_FNS: FeedFns = {
+  openSender: NOOP,
+  playVoice: NOOP,
+  toggleSelect: NOOP,
+  openMsgMenu: NOOP,
+  jumpToSeq: NOOP,
+  openLightbox: NOOP,
+}
+const EMPTY_COUNTS = new Map<number, number>()
+const EMPTY_SELECTED = new Set<number>()
 
 export default function DiscussionView({
   channelId,
@@ -28,7 +44,32 @@ export default function DiscussionView({
   const { comments, count, send } = useDiscussion(channelId, postId, discussionChatId)
   const [draft, setDraft] = useState('')
   const [pinnedHidden, setPinnedHidden] = useState(false)
-  const postRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Тред как обычный чат: исходный пост → сервис «Начало обсуждения» → комментарии,
+  // отрисованные настоящими баблами (ChatFeed) поверх обоев (глобальный ChatBackground
+  // проступает через прозрачный фон). Данные — из useDiscussion (load/live/optimistic).
+  const feedMsgs = useMemo<ConvMsg[]>(() => {
+    const postText = post.text || post.title || ''
+    const list: ConvMsg[] = [
+      // исходный пост первым баблом (входящий, без sender → без аватар-колонки)
+      { clientId: 'post', type: 'text', out: false, text: postText },
+      { clientId: 'svc', type: 'service', text: t('Discussion started') },
+    ]
+    for (const c of comments) {
+      list.push({
+        clientId: c.key,
+        type: 'text',
+        out: c.out,
+        sender: c.out ? undefined : c.name,
+        senderColor: c.out ? undefined : c.color,
+        text: c.text,
+        time: c.time,
+        status: c.out ? 'read' : undefined,
+      })
+    }
+    return list
+  }, [comments, post, t])
 
   const submit = () => {
     if (!draft.trim()) return
@@ -37,8 +78,7 @@ export default function DiscussionView({
   }
 
   // Клик по плашке — скролл к посту (первому сообщению); поведение как в tweb.
-  const jumpToPost = () => postRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-
+  const jumpToPost = () => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
   const postPreview = post.text || post.title || t('Message')
 
   return (
@@ -59,7 +99,7 @@ export default function DiscussionView({
         </Text>
       </div>
 
-      {/* Pinned-плашка исходного поста (tweb .pinned-message в topbar-floating-plates) */}
+      {/* Pinned-плашка исходного поста (tweb .pinned-message) */}
       {!pinnedHidden && (
         <div className={s.pinned} onClick={jumpToPost}>
           <div className={s.pinnedLine} />
@@ -81,52 +121,25 @@ export default function DiscussionView({
         </div>
       )}
 
-      {/* Body */}
-      <div className={s.body}>
-        {/* Исходный пост — первое сообщение треда */}
-        <div className={s.post} ref={postRef}>
-          {post.gradient && (
-            <div className={s.postMedia} style={{ background: post.gradient }}>
-              {post.emoji}
-            </div>
-          )}
-          {post.title && (
-            <Text weight={700} size={15} color="var(--tg-textPrimary)" style={{ marginBottom: '2px' }}>
-              {post.title}
-            </Text>
-          )}
-          {post.text && <Text size={15} color="var(--tg-textPrimary)">{post.text}</Text>}
+      {/* Лента треда — настоящие баблы поверх обоев */}
+      <div ref={scrollRef} className={s.scroll}>
+        <div className={s.content}>
+          <ChatFeed
+            msgs={feedMsgs}
+            winMsgs={[]}
+            isRealChat={false}
+            isGroup
+            discussionsEnabled={false}
+            commentCounts={EMPTY_COUNTS}
+            highlightSeq={null}
+            selecting={false}
+            selected={EMPTY_SELECTED}
+            ladderActive={false}
+            dateStickyTop={0}
+            feedFns={FEED_FNS}
+            onOpenDiscussion={NOOP}
+          />
         </div>
-
-        {/* Сервис-сообщение «Начало обсуждения» (tweb messageActionDiscussionStarted) */}
-        <div className={s.service}>
-          <div className={s.serviceMsg}>{t('Discussion started')}</div>
-        </div>
-
-        {/* Комментарии */}
-        {comments.map((c) =>
-          c.out ? (
-            <div key={c.key} className={s.rowOut}>
-              <div className={s.bubbleOut}>
-                <Text size={15}>{c.text}</Text>
-                <Text size={12} color="rgba(255,255,255,0.7)" style={{ textAlign: 'right', marginTop: '2px' }}>
-                  {c.time}
-                </Text>
-              </div>
-            </div>
-          ) : (
-            <div key={c.key} className={s.rowIn}>
-              <Avatar background={c.color} size="xs" text={c.name.charAt(0)} />
-              <div className={s.bubbleIn}>
-                <Text size={13.5} weight={600} color={c.color}>{c.name}</Text>
-                <Text size={15} color="var(--tg-textPrimary)">{c.text}</Text>
-                <Text size={12} color="var(--tg-textFaint)" style={{ textAlign: 'right', marginTop: '2px' }}>
-                  {c.time}
-                </Text>
-              </div>
-            </div>
-          )
-        )}
       </div>
 
       {/* Footer composer */}

@@ -22,7 +22,8 @@ beforeEach(() => {
   state.count = 0
   sendSpy.mockClear()
   useI18nStore.getState().setLang('ru')
-  // happy-dom не реализует scrollIntoView — заглушка для клика по пину
+  // happy-dom не реализует scrollTo/scrollIntoView — заглушки для скролла ленты
+  Element.prototype.scrollTo = vi.fn() as unknown as typeof Element.prototype.scrollTo
   Element.prototype.scrollIntoView = vi.fn()
 })
 
@@ -79,12 +80,12 @@ describe('DiscussionView layout', () => {
     expect(iComment).toBeGreaterThan(iService)
   })
 
-  it('клик по pinned-плашке скроллит к посту (scrollIntoView)', () => {
+  it('клик по pinned-плашке скроллит ленту к посту (scrollTo)', () => {
     state.count = 2
     const { getByText } = renderView()
     const bar = getByText('Закреплённое сообщение')
     fireEvent.click(bar)
-    expect(Element.prototype.scrollIntoView).toHaveBeenCalled()
+    expect(Element.prototype.scrollTo).toHaveBeenCalled()
   })
 
   it('крестик прячет pinned-плашку', () => {

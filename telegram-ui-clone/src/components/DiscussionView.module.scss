@@ -1,22 +1,24 @@
 @use '../styles/foundation' as *;
 
-// Полноэкранный оверлей обсуждения (комментарии к посту канала).
+// Тред обсуждения поверх колонки чата. Фон прозрачный — сквозь него проступают
+// глобальные обои (ChatBackground в App), как в обычном чате; баблы рисует ChatFeed.
 .root {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  z-index: 1200;
-  background: var(--tg-appBg);
+  z-index: 20;
   display: flex;
   flex-direction: column;
+  background: transparent;
 }
 
-// Шапка
+// Шапка (solid-хром, читается поверх обоев)
 .header {
   display: flex;
   align-items: center;
   gap: 8px;
   height: 56px;
   padding: 10px 8px;
+  background: var(--tg-sidebarBg);
   border-bottom: 1px solid var(--tg-divider);
   flex-shrink: 0;
 }
@@ -30,8 +32,8 @@
   align-items: center;
   gap: 8px;
   padding: 6px 8px 6px 12px;
+  background: var(--tg-sidebarBg);
   border-bottom: 1px solid var(--tg-divider);
-  background: var(--tg-appBg);
   cursor: pointer;
   flex-shrink: 0;
   user-select: none;
@@ -50,76 +52,13 @@
   flex-direction: column;
 }
 
-// Сервис-сообщение «Начало обсуждения» (tweb .bubble.service .service-msg).
-.service {
-  display: flex;
-  justify-content: center;
-  margin: 4px 0;
-}
-.serviceMsg {
-  max-width: 80%;
-  padding: 0.28125rem 0.625rem;
-  border-radius: 0.875rem;
-  background: rgba(0, 0, 0, 0.45);
-  color: #fff;
-  font-size: 15px;
-  font-weight: 500;
-  line-height: 20px;
-  text-align: center;
-  word-break: break-word;
-  user-select: none;
-}
-
-// Тело со списком комментариев
-.body {
+// Прокручиваемая лента треда (прозрачная — обои видны).
+.scroll {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
 }
-
-// Закреплённый исходный пост
-.post {
-  background: var(--tg-bubble);
-  border-radius: 14px;
-  padding: 12px;
-}
-.postMedia {
-  height: 160px;
-  border-radius: 8px;
-  margin-bottom: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 64px;
-  line-height: 1;
-  user-select: none;
-}
-
-// Ряд комментария
-.rowOut {
-  display: flex;
-  justify-content: flex-end;
-}
-.rowIn {
-  display: flex;
-  gap: 8px;
-  align-items: flex-end;
-}
-.bubbleOut {
-  background: var(--tg-accent);
-  color: #fff;
-  border-radius: 14px 14px 4px 14px;
-  padding: 6px 10px;
-  max-width: 75%;
-}
-.bubbleIn {
-  background: var(--tg-bubble);
-  border-radius: 4px 14px 14px 14px;
-  padding: 6px 10px;
-  max-width: 75%;
+.content {
+  padding: 12px 0;
 }
 
 // Композер снизу
@@ -133,6 +72,7 @@
   padding: 0 8px;
   gap: 4px;
   flex-shrink: 0;
+  box-shadow: var(--tg-plateShadow);
 }
 .input {
   flex: 1;
