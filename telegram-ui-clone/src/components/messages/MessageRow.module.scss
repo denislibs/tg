@@ -1,0 +1,266 @@
+// MessageRow — один бабл сообщения. Палитра (bg/текст/ссылка/время/…) — CSS-переменные
+// на .row; исходящее сообщение переключает их через [data-out]. Геометрия, зависящая
+// от рантайм-флагов (радиусы группы, размер текста, размеры больших эмодзи) — инлайн.
+@use '../../styles/foundation' as *;
+
+.row {
+  --row-mb: 2px;
+  --b-bg: var(--tg-bubble);
+  --b-text: var(--tg-textPrimary);
+  --b-link: var(--tg-link);
+  --b-tick: var(--tg-bubbleOutAccent); // тики (только исходящие их показывают)
+  --b-time: var(--tg-textFaint);
+  --b-secondary: var(--tg-textSecondary);
+
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: var(--row-mb);
+  transform-origin: bottom left;
+  cursor: default;
+
+  &[data-last] {
+    --row-mb: 6px;
+  }
+
+  &[data-out] {
+    transform-origin: bottom right;
+    --b-bg: var(--tg-bubbleOut);
+    --b-text: var(--tg-bubbleOutText);
+    --b-link: var(--tg-bubbleOutAccent);
+    --b-time: color-mix(in srgb, var(--tg-bubbleOutText) 70%, transparent);
+    --b-secondary: color-mix(in srgb, var(--tg-bubbleOutText) 85%, transparent);
+  }
+
+  &[data-selecting] {
+    cursor: pointer;
+  }
+}
+
+// Полоса на всю ширину: flash при переходе к сообщению и полоса выделения (accent .3).
+.band {
+  position: absolute;
+  top: 0;
+  bottom: calc(var(--row-mb) * -1);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100vw;
+  background: color-mix(in srgb, var(--tg-accent) 30%, transparent);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.check {
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+}
+
+// Зона контента: выравнивание по стороне, сдвиг входящих при режиме выделения.
+.zone {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  justify-content: flex-start;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+  .row[data-out] & {
+    justify-content: flex-end;
+  }
+  .row[data-selecting]:not([data-out]) & {
+    transform: translateX(34px);
+  }
+}
+
+// ── media (photo/video/file) ──
+.media {
+  position: relative;
+  max-width: min(340px, 82%);
+}
+.mediaInner {
+  position: relative;
+  background: var(--b-bg);
+  color: var(--b-text);
+  overflow: hidden;
+
+  &.framed {
+    padding: 1px; // 1px рамка цвета бабла вокруг фото/видео (tweb «обводка»)
+  }
+}
+.mediaCaption {
+  padding: 0 10px 4px;
+}
+.mediaText {
+  font-size: var(--msg-text-size);
+  color: var(--b-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.mediaTime {
+  float: right;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 8px;
+  margin-top: 4px;
+}
+.mediaTimeText {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+// ── voice с mediaId (обёртка-бабл под VoiceMessage) ──
+.voiceMedia {
+  position: relative;
+  max-width: min(340px, 82%);
+  background: var(--b-bg);
+  color: var(--b-text);
+}
+
+// ── sticker / big emoji ──
+.sticker {
+  position: relative;
+  display: inline-block;
+  padding: 0 4px;
+}
+.stickerGlyph {
+  line-height: 1.1;
+  user-select: none;
+}
+.stickerMeta {
+  position: absolute;
+  right: 6px;
+  bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 6px;
+  border-radius: 11px;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+// ── voice (type=voice, без mediaId) ──
+.voice {
+  position: relative;
+  max-width: min(320px, 82%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--b-bg);
+  color: var(--b-text);
+}
+.voiceBtn {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  cursor: pointer;
+  background: var(--tg-accent);
+
+  .row[data-out] & {
+    background: var(--tg-bubbleOutAccent);
+  }
+}
+.voiceBody {
+  min-width: 150px;
+}
+.wave {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 22px;
+}
+.waveBar {
+  width: 2.5px;
+  flex-shrink: 0;
+  border-radius: 2px;
+  background: var(--tg-textFaint);
+
+  .row[data-out] & {
+    background: var(--tg-bubbleOutAccent);
+  }
+}
+.voiceMeta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+.spacer {
+  flex: 1;
+}
+
+// ── текстовый бабл ──
+.textBubble {
+  position: relative;
+  max-width: min(420px, 80%);
+  display: flex;
+  flex-direction: column;
+  padding: 5px 10px;
+  background: var(--b-bg);
+  color: var(--b-text);
+}
+.forward {
+  margin-bottom: 2px;
+}
+.reply {
+  margin-bottom: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.replyBody {
+  min-width: 0;
+}
+.replyThumb {
+  width: 34px;
+  height: 34px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex-shrink: 0;
+  display: block;
+}
+.textLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 6px;
+}
+.msgText {
+  font-size: var(--msg-text-size);
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-word;
+
+  &.block {
+    width: 100%;
+  }
+}
+.meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  transform: translateY(2px);
+
+  &.block {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+.metaTime {
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--b-time);
+}
