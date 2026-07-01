@@ -18,7 +18,7 @@ import TgIcon from '../TgIcon'
 import { BubbleAppear } from '../animations/bubbleAnimations'
 import RealMediaBubble from './RealMediaBubble'
 import VoiceMessage from './VoiceMessage'
-import SelectCheckbox from './SelectCheckbox'
+import Checkbox from '../../shared/ui/Checkbox'
 import {
   Ticks,
   BubbleTail,
@@ -119,7 +119,7 @@ function MessageRow({
       )}
       {selecting && m.id != null && (
         <div className={s.check}>
-          <SelectCheckbox checked={isSelected} accent="var(--tg-accent)" ring="var(--tg-textFaint)" />
+          <Checkbox checked={isSelected} />
         </div>
       )}
 

@@ -1,0 +1,27 @@
+// Checkbox — круглый чекбокс выбора (порт tweb .checkbox-field-round): кольцо в
+// невыбранном состоянии; при выборе вкатывается акцентный круг и рисуется белая
+// галочка. Цвета — через --cb-accent/--cb-ring (по умолчанию токены), размер — инлайн.
+.root {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--cb-ring, var(--tg-textFaint));
+  box-sizing: border-box;
+}
+
+.fill {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--cb-accent, var(--tg-accent));
+}
+
+.svg {
+  position: absolute;
+  inset: 0;
+}
