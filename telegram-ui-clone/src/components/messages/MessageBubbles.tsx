@@ -1,4 +1,5 @@
-import { Box, Typography, useTheme } from '@mui/material'
+import { Box, useTheme } from '@mui/material'
+import Text from '../../shared/ui/Text'
 import TgIcon from '../TgIcon'
 import type { ConvMsg, MsgStatus } from '../../data'
 import { useTimeFormatter } from '../../settings'
@@ -95,17 +96,17 @@ export function DocumentBubble({ m, out, firstInGroup, lastInGroup }: Ctx) {
         <TgIcon name="download" />
       </Box>
       <Box sx={{ minWidth: 0, flex: 1 }}>
-        <Typography noWrap sx={{ fontSize: 15, fontWeight: 500 }}>
+        <Text noWrap size={15} weight={500}>
           {d?.name}
-        </Typography>
+        </Text>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          <Typography sx={{ fontSize: 13, color: out ? 'rgba(255,255,255,0.8)' : tg.textSecondary }}>
+          <Text size={13} color={out ? 'rgba(255,255,255,0.8)' : tg.textSecondary}>
             {d?.size} · {d?.ext}
-          </Typography>
+          </Text>
           <Box sx={{ flex: 1 }} />
-          <Typography sx={{ fontSize: 12, color: out ? 'rgba(255,255,255,0.8)' : tg.textFaint }}>
+          <Text size={12} color={out ? 'rgba(255,255,255,0.8)' : tg.textFaint}>
             {fmtTime(m.time)}
-          </Typography>
+          </Text>
           <Ticks status={m.status} color={out ? 'rgba(255,255,255,0.85)' : tg.textFaint} />
         </Box>
       </Box>
@@ -151,20 +152,20 @@ export function AudioBubble({ m, out, firstInGroup, lastInGroup }: Ctx) {
         <TgIcon name="music" />
       </Box>
       <Box sx={{ minWidth: 0, flex: 1 }}>
-        <Typography noWrap sx={{ fontSize: 15, fontWeight: 500 }}>
+        <Text noWrap size={15} weight={500}>
           {a?.title}
-        </Typography>
-        <Typography noWrap sx={{ fontSize: 13, color: out ? 'rgba(255,255,255,0.8)' : tg.textSecondary }}>
+        </Text>
+        <Text noWrap size={13} color={out ? 'rgba(255,255,255,0.8)' : tg.textSecondary}>
           {a?.artist}
-        </Typography>
+        </Text>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
-          <Typography sx={{ fontSize: 12, color: out ? 'rgba(255,255,255,0.8)' : tg.textFaint }}>
+          <Text size={12} color={out ? 'rgba(255,255,255,0.8)' : tg.textFaint}>
             {a?.duration}
-          </Typography>
+          </Text>
           <Box sx={{ flex: 1 }} />
-          <Typography sx={{ fontSize: 12, color: out ? 'rgba(255,255,255,0.8)' : tg.textFaint }}>
+          <Text size={12} color={out ? 'rgba(255,255,255,0.8)' : tg.textFaint}>
             {fmtTime(m.time)}
-          </Typography>
+          </Text>
           <Ticks status={m.status} color={out ? 'rgba(255,255,255,0.85)' : tg.textFaint} />
         </Box>
       </Box>
@@ -192,7 +193,7 @@ export function RoundVideoBubble({ m, out }: Ctx) {
             overflow: 'hidden',
           }}
         >
-          <Typography sx={{ fontSize: 72, userSelect: 'none' }}>{m.media?.emoji ?? '🎥'}</Typography>
+          <Text size={72} style={{ userSelect: 'none' }}>{m.media?.emoji ?? '🎥'}</Text>
         </Box>
         {/* progress ring */}
         <Box
@@ -234,7 +235,7 @@ export function RoundVideoBubble({ m, out }: Ctx) {
         </Box>
       </Box>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, mt: 0.5, mr: out ? 1 : 0, ml: out ? 0 : 1 }}>
-        <Typography sx={{ fontSize: 12, color: tg.textFaint }}>{fmtTime(m.time)}</Typography>
+        <Text size={12} color={tg.textFaint}>{fmtTime(m.time)}</Text>
         <Ticks status={m.status} color={tg.textFaint} />
       </Box>
     </Box>
@@ -263,16 +264,16 @@ export function WebPagePreview({
         gap: 0.25,
       }}
     >
-      <Typography sx={{ fontSize: 14, fontWeight: 600, color: out ? '#fff' : linkColor }}>
+      <Text size={14} weight={600} color={out ? '#fff' : linkColor}>
         {wp.siteName}
-      </Typography>
-      <Typography sx={{ fontSize: 14.5, fontWeight: 600, color: out ? '#fff' : tg.textPrimary }}>
+      </Text>
+      <Text size={14.5} weight={600} color={out ? '#fff' : tg.textPrimary}>
         {wp.title}
-      </Typography>
+      </Text>
       {wp.description && (
-        <Typography sx={{ fontSize: 14, color: out ? 'rgba(255,255,255,0.85)' : tg.textSecondary, lineHeight: 1.35 }}>
+        <Text size={14} color={out ? 'rgba(255,255,255,0.85)' : tg.textSecondary} style={{ lineHeight: 1.35 }}>
           {wp.description}
-        </Typography>
+        </Text>
       )}
       {wp.gradient && (
         <Box
@@ -294,7 +295,7 @@ export function WebPagePreview({
             },
           }}
         >
-          {wp.emoji && <Typography sx={{ fontSize: 56, zIndex: 1 }}>{wp.emoji}</Typography>}
+          {wp.emoji && <Text size={56} style={{ zIndex: 1 }}>{wp.emoji}</Text>}
         </Box>
       )}
     </Box>

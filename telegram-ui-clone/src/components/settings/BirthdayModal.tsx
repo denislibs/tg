@@ -1,5 +1,7 @@
 import { useState } from 'react'
-import { Box, Button, IconButton, TextField, Typography, useTheme } from '@mui/material'
+import { Box, Button, TextField, useTheme } from '@mui/material'
+import IconButton from '../../shared/ui/IconButton'
+import Text from '../../shared/ui/Text'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
 import type { Birthday } from '../../core/managers/authManager'
@@ -80,7 +82,7 @@ export default function BirthdayModal({
               position: 'relative',
             }}
           >
-            <IconButton onClick={onClose} sx={{ position: 'absolute', top: 8, left: 8, color: tg.textSecondary }}>
+            <IconButton onClick={onClose} color={tg.textSecondary} style={{ position: 'absolute', top: 8, left: 8 }}>
               <TgIcon name="close" />
             </IconButton>
 
@@ -99,9 +101,9 @@ export default function BirthdayModal({
               >
                 <TgIcon name="gift" size={44} color={tg.accent} />
               </Box>
-              <Typography sx={{ fontSize: 20, fontWeight: 700, color: tg.textPrimary }}>
+              <Text size={20} weight={700} color={tg.textPrimary}>
                 {t('Birthday')}
-              </Typography>
+              </Text>
             </Box>
 
             <Box sx={{ display: 'flex', gap: 1.25, mt: 1.5 }}>
@@ -128,9 +130,9 @@ export default function BirthdayModal({
               />
             </Box>
 
-            <Typography sx={{ textAlign: 'center', fontSize: 14, color: tg.textSecondary, mt: 1.75, lineHeight: 1.45 }}>
+            <Text size={14} color={tg.textSecondary} style={{ textAlign: 'center', marginTop: '14px', lineHeight: 1.45 }}>
               {t('In settings you can choose who will see your birthday.')}
-            </Typography>
+            </Text>
 
             <Button
               fullWidth

@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { Box, IconButton, TextField, Typography, useTheme } from '@mui/material'
+import { Box, TextField, useTheme } from '@mui/material'
+import IconButton from '../shared/ui/IconButton'
 import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
-import Avatar from './Avatar'
+import Avatar from '../shared/ui/Avatar'
+import Text from '../shared/ui/Text'
 import { useChatsStore } from '../stores/chatsStore'
 import { gradientFor } from '../core/dialogToChat'
 
@@ -83,12 +85,12 @@ export default function AddStorySheet({
     >
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 1.25 }}>
-        <IconButton onClick={onBack} aria-label="Назад" sx={{ color: tg.textSecondary }}>
+        <IconButton onClick={onBack} aria-label="Назад" color={tg.textSecondary}>
           <TgIcon name="back" />
         </IconButton>
-        <Typography sx={{ fontSize: 19, fontWeight: 600, color: tg.textPrimary }}>
+        <Text size={19} weight={600} color={tg.textPrimary}>
           Новая история
-        </Typography>
+        </Text>
       </Box>
 
       <Box sx={{ flex: 1, overflowY: 'auto', pb: 12 }}>
@@ -120,9 +122,9 @@ export default function AddStorySheet({
 
         {/* Privacy selector (segmented buttons) */}
         <Box sx={{ mx: 1.5 }}>
-          <Typography sx={{ px: 1.5, pb: 0.5, fontSize: 14, fontWeight: 600, color: tg.accent }}>
+          <Text size={14} weight={600} color={tg.accent} style={{ paddingLeft: '12px', paddingRight: '12px', paddingBottom: '4px' }}>
             Кто может видеть
-          </Typography>
+          </Text>
           <Box
             role="radiogroup"
             aria-label="Кто может видеть историю"
@@ -167,14 +169,14 @@ export default function AddStorySheet({
         {/* Contact picker for the "Выбранные" audience */}
         {privacy === 'selected' && (
           <Box sx={{ mx: 1.5, mt: 1.5 }}>
-            <Typography sx={{ px: 1.5, pb: 0.5, fontSize: 14, fontWeight: 600, color: tg.accent }}>
+            <Text size={14} weight={600} color={tg.accent} style={{ paddingLeft: '12px', paddingRight: '12px', paddingBottom: '4px' }}>
               Контакты
-            </Typography>
+            </Text>
             <Box sx={{ borderRadius: '16px', background: cardBg, py: 0.5 }}>
               {contacts.length === 0 && (
-                <Typography sx={{ px: 2, py: 1.5, fontSize: 15, color: tg.textSecondary }}>
+                <Text size={15} color={tg.textSecondary} style={{ paddingLeft: '16px', paddingRight: '16px', paddingTop: '12px', paddingBottom: '12px' }}>
                   Нет контактов
-                </Typography>
+                </Text>
               )}
               {contacts.map((c) => {
                 const checked = allow.has(c.id)
@@ -207,11 +209,11 @@ export default function AddStorySheet({
                     <Avatar
                       background={gradientFor(c.id)}
                       text={c.displayName.charAt(0).toUpperCase()}
-                      size={40}
+                      size="sm"
                     />
-                    <Typography noWrap sx={{ flex: 1, fontSize: 16, color: tg.textPrimary }}>
+                    <Text noWrap size={16} color={tg.textPrimary} style={{ flex: 1 }}>
                       {c.displayName}
-                    </Typography>
+                    </Text>
                     <Box
                       sx={{
                         width: 22,

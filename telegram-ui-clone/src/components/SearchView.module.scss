@@ -1,0 +1,94 @@
+// SearchView — панель глобального поиска (tweb search-super): нейтральная подложка
+// + секции-карточки (SidebarSection). Ряды результатов — общий .row с hover.
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--tg-sectionBackdrop);
+}
+
+// обёртка табов: + .5rem к собственному margin framed-карточки (.5rem) = 1rem,
+// чтобы левый/правый край табов совпал с краем секций (SidebarSection padding-inline 1rem)
+.tabsWrap {
+  padding: 0.5rem;
+}
+
+// область анимированного контента вкладок
+.content {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.scroll {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+}
+
+.pad {
+  padding-bottom: 1rem;
+}
+
+// общий ряд результата (аватар + текст), с hover
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  border-radius: 12px;
+  cursor: pointer;
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+    }
+  }
+}
+
+// ряд без hover (ссылки)
+.rowStatic {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.5rem;
+}
+
+.body {
+  flex: 1;
+  min-width: 0;
+}
+
+// верхняя строка ряда: заголовок (flex 1) + дата справа
+.top {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.titleFlex {
+  flex: 1;
+  min-width: 0;
+}
+
+// строка с иконкой воспроизведения (media)
+.mediaLine {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+// подсветка совпадения в тексте
+.hl {
+  color: var(--tg-accent);
+  font-weight: 600;
+}
+
+// пустая вкладка
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-top: 7rem;
+  gap: 0.25rem;
+}

@@ -1,5 +1,7 @@
 import { memo, useState, type ReactNode } from 'react'
-import { Box, Menu, MenuItem, Slider, Typography, useTheme, alpha } from '@mui/material'
+import { Box, Menu, MenuItem, Slider, useTheme } from '@mui/material'
+import Text from '../shared/ui/Text'
+import { withAlpha } from '../core/cssColor'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon, { type IconName } from './TgIcon'
 import { useAudioStore } from '../stores/audioStore'
@@ -40,9 +42,9 @@ function RoundBtn({
         justifyContent: 'center',
         cursor: 'pointer',
         color,
-        background: active ? alpha(color, 0.16) : 'transparent',
+        background: active ? withAlpha(color, 0.16) : 'transparent',
         transition: 'background .15s',
-        '&:hover': { background: active ? alpha(color, 0.16) : hoverBg },
+        '&:hover': { background: active ? withAlpha(color, 0.16) : hoverBg },
       }}
     >
       {children}
@@ -134,13 +136,13 @@ function NowPlayingBar() {
             </RoundBtn>
 
             <Box sx={{ flex: 1, minWidth: 0, px: 1.25 }}>
-              <Typography noWrap sx={{ fontSize: 15, fontWeight: 600, color: tg.textPrimary, lineHeight: 1.25 }}>
+              <Text noWrap size={15} weight={600} color={tg.textPrimary} style={{ lineHeight: 1.25 }}>
                 {track.title}
-              </Typography>
-              <Typography noWrap sx={{ fontSize: 13, color: tg.textSecondary, lineHeight: 1.25 }}>
+              </Text>
+              <Text noWrap size={13} color={tg.textSecondary} style={{ lineHeight: 1.25 }}>
                 {fmt(currentTime)}
                 {track.subtitle ? ` • ${track.subtitle}` : ''}
-              </Typography>
+              </Text>
             </Box>
 
             {/* volume with a vertical slider popup (hover/focus) */}
@@ -189,7 +191,7 @@ function NowPlayingBar() {
                         color: tg.accent,
                         '& .MuiSlider-rail': { width: 4, opacity: 0.3 },
                         '& .MuiSlider-track': { width: 4, border: 'none' },
-                        '& .MuiSlider-thumb': { width: 14, height: 14, '&:hover, &.Mui-focusVisible': { boxShadow: `0 0 0 6px ${alpha(tg.accent, 0.16)}` } },
+                        '& .MuiSlider-thumb': { width: 14, height: 14, '&:hover, &.Mui-focusVisible': { boxShadow: `0 0 0 6px ${withAlpha(tg.accent, 0.16)}` } },
                       }}
                     />
                   </Box>
@@ -202,7 +204,7 @@ function NowPlayingBar() {
               type="button"
               onClick={(e: React.MouseEvent<HTMLElement>) => setRateAnchor(e.currentTarget)}
               whileTap={{ scale: 0.9 }}
-              sx={{ border: 'none', px: 1, py: 0.5, cursor: 'pointer', fontSize: 13.5, fontWeight: 700, color: rateAnchor ? tg.accent : tg.textSecondary, userSelect: 'none', borderRadius: '10px', background: rateAnchor ? alpha(tg.accent, 0.16) : 'transparent', '&:hover': { background: rateAnchor ? alpha(tg.accent, 0.16) : hoverBg } }}
+              sx={{ border: 'none', px: 1, py: 0.5, cursor: 'pointer', fontSize: 13.5, fontWeight: 700, color: rateAnchor ? tg.accent : tg.textSecondary, userSelect: 'none', borderRadius: '10px', background: rateAnchor ? withAlpha(tg.accent, 0.16) : 'transparent', '&:hover': { background: rateAnchor ? withAlpha(tg.accent, 0.16) : hoverBg } }}
             >
               {rateLabel}
             </Box>

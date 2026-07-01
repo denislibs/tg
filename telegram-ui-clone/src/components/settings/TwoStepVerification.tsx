@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Box, InputBase, Typography, useTheme } from '@mui/material'
+import { Box, InputBase, useTheme } from '@mui/material'
 import TgIcon from '../TgIcon'
+import Text from '../../shared/ui/Text'
 import { useT } from '../../i18n'
 import { SettingsScreen, Section, Row, useCardBg } from './kit'
 
@@ -54,7 +55,7 @@ export default function TwoStepVerification({ onBack }: { onBack: () => void }) 
       >
         <TgIcon name="lock" size={46} color="#fff" />
       </Box>
-      <Typography sx={{ fontSize: 15, color: tg.textSecondary, lineHeight: 1.5 }}>{t(text)}</Typography>
+      <Text size={15} color={tg.textSecondary} style={{ lineHeight: 1.5 }}>{t(text)}</Text>
     </Box>
   )
 
@@ -96,9 +97,9 @@ export default function TwoStepVerification({ onBack }: { onBack: () => void }) 
         {hero('Please confirm your password.')}
         {passField(confirm, setConfirm, 'Re-enter your password')}
         {confirm && confirm !== pwd && (
-          <Typography sx={{ px: 3, pt: 1, fontSize: 13.5, color: '#ff595a' }}>
+          <Text size={13.5} color="#ff595a" style={{ paddingLeft: '24px', paddingRight: '24px', paddingTop: '8px' }}>
             {t('Passwords don’t match.')}
-          </Typography>
+          </Text>
         )}
         {btn('Next', () => setStep('hint'), !confirm || confirm !== pwd)}
       </SettingsScreen>

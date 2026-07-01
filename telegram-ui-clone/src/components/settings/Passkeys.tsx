@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Box, Typography, useTheme } from '@mui/material'
+import { Box, useTheme } from '@mui/material'
 import TgIcon from '../TgIcon'
+import Text from '../../shared/ui/Text'
 import { SettingsScreen, Section, Row, useCardBg } from './kit'
 
 interface Key {
@@ -31,8 +32,8 @@ export default function Passkeys({ onBack }: { onBack: () => void }) {
             <Box key={k.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, px: 2, py: 1, mx: 0.5 }}>
               <TgIcon name="key" size={24} color={tg.accent} />
               <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography noWrap sx={{ fontSize: 16, color: tg.textPrimary }}>{k.name}</Typography>
-                <Typography noWrap sx={{ fontSize: 13.5, color: tg.textSecondary }}>{k.added}</Typography>
+                <Text noWrap size={16} color={tg.textPrimary}>{k.name}</Text>
+                <Text noWrap size={13.5} color={tg.textSecondary}>{k.added}</Text>
               </Box>
               <TgIcon
                 name="close"

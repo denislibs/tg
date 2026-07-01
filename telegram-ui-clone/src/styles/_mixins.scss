@@ -1,0 +1,15 @@
+// src/styles/_mixins.scss — DOM-независимые миксины, портированные 1:1 из tweb.
+// .module.scss подключают их через `@use '../styles/mixins' as *`.
+@forward "mixins/respondTo";
+@forward "mixins/textOverflow";
+@forward "mixins/textCenter";
+
+// НЕ портированы дословно (завязаны на runtime-классы tweb — адаптируются при
+// первом использовании в конвертируемом компоненте):
+//   _hover.scss          — `html.no-touch &:hover` / `:global(.night)`.
+//                          Адаптировать на современный `@media (hover: hover)`
+//                          + наш `[data-theme]` вместо `.night`.
+//   _animationLevel.scss — `body.animation-level-2` (настройка анимаций tweb).
+//   _premium.scss        — `body.is-premium`.
+//   _splitColor.scss     — система производных цветов (--light-*/--dark-*),
+//                          у нас тема уже выражена через --tg-* в _tokens.scss.

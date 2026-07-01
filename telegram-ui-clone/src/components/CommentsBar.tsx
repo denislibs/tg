@@ -1,6 +1,7 @@
-import { Box, Typography, useTheme } from '@mui/material'
+import { Box, useTheme } from '@mui/material'
 import TgIcon from './TgIcon'
 import { motion } from 'framer-motion'
+import Text from '../shared/ui/Text'
 import { useT } from '../i18n'
 
 const MotionBox = motion(Box)
@@ -69,9 +70,9 @@ export default function CommentsBar({ onOpen, count }: { onOpen?: () => void; co
             </Box>
           ))}
         </Box>
-        <Typography sx={{ flex: 1, fontSize: 14.5, fontWeight: 600, color: tg.accent }}>
+        <Text size={14.5} weight={600} color={tg.accent} style={{ flex: 1 }}>
           {t('Comments')}{count != null ? ` (${count})` : ''}
-        </Typography>
+        </Text>
         <TgIcon name="next" color={tg.textFaint} />
       </MotionBox>
 

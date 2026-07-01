@@ -1,15 +1,18 @@
 // src/components/conversation/MessageContextMenu.tsx
-// The message right-click menu: a reactions strip + an action list, anchored at
-// the click point and grown from the nearest corner. Rendered into a portal.
-import { memo, type ReactNode, type MouseEvent } from 'react'
+// The message right-click menu: a reactions pill + an action list, stacked in one
+// vertical column (tweb .btn-menu.has-items-wrapper) so the reactions always sit
+// ABOVE the actions. The column is anchored by a corner at the click point — top-
+// anchored when it grows down, bottom-anchored when it grows up — so the reactions
+// land above the menu without needing to know the menu's height. Rows use MenuItem;
+// each pill carries the shared menu surface (bg/blur/shadow).
+import { memo, useRef, type ReactNode, type MouseEvent, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { Box, Typography, useTheme } from '@mui/material'
 import { motion } from 'framer-motion'
+import { useTheme } from '@mui/material'
+import { MenuItem } from '../../shared/ui/Menu'
 import TgIcon from '../TgIcon'
 import { useT } from '../../i18n'
-import { EASE } from '../../motion'
 
-const EASE_STD = EASE
 const REACTIONS = ['❤️', '👍', '👎', '🔥', '🥰', '👏', '😁']
 
 export interface MsgMenuItem {
@@ -28,100 +31,88 @@ export interface MessageContextMenuProps {
 function MessageContextMenu({ menu, items, onClose }: MessageContextMenuProps) {
   const tg = useTheme().tg
   const t = useT()
+  // The "Viewers" action needs the click coordinates; capture the last pointer
+  // event on a wrapper so MenuItem's (event-less) onClick can still forward it.
+  const lastEvent = useRef<MouseEvent | null>(null)
+
+  // Anchor a corner at the click: top/left when growing down-right, right/bottom
+  // (via CSS) when growing up-left — exact at the cursor regardless of menu size.
+  const xPos: CSSProperties =
+    menu.originX === 'left' ? { left: menu.x } : { right: window.innerWidth - menu.x }
+  const yPos: CSSProperties =
+    menu.originY === 'top' ? { top: menu.y } : { bottom: window.innerHeight - menu.y }
+
+  // Shared menu surface (bg/blur/shadow) for both pills.
+  const surface: CSSProperties = {
+    background: tg.menuBg,
+    backdropFilter: 'blur(40px)',
+    WebkitBackdropFilter: 'blur(40px)',
+    boxShadow: tg.menuShadow,
+  }
 
   return createPortal(
     <>
-      <Box
+      <div
         onClick={onClose}
-        onContextMenu={(e) => { e.preventDefault(); onClose() }}
-        sx={{ position: 'fixed', inset: 0, zIndex: 2000 }}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          onClose()
+        }}
+        style={{ position: 'fixed', inset: 0, zIndex: 2000 }}
       />
-      <Box
-        component={motion.div}
+      <motion.div
         initial={{ opacity: 0, scale: 0.8 }}
         animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.2, ease: EASE_STD }}
-        sx={{
+        transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+        style={{
           position: 'fixed',
-          ...(menu.originX === 'left' ? { left: menu.x } : { right: window.innerWidth - menu.x }),
-          ...(menu.originY === 'top' ? { top: menu.y } : { bottom: window.innerHeight - menu.y }),
+          ...xPos,
+          ...yPos,
           zIndex: 2001,
           display: 'flex',
           flexDirection: 'column',
-          gap: 1,
-          alignItems: menu.originX === 'right' ? 'flex-end' : 'flex-start',
+          alignItems: menu.originX === 'left' ? 'flex-start' : 'flex-end',
+          gap: 8,
           transformOrigin: `${menu.originY} ${menu.originX}`,
         }}
       >
-        {/* Reactions */}
-        <Box
-          sx={{
+        {/* Reactions pill — always on top */}
+        <div
+          style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 0.5,
-            alignSelf: menu.originX === 'right' ? 'flex-end' : 'flex-start',
-            px: 1,
-            py: 0.5,
-            borderRadius: '24px',
-            background: tg.menuBg,
-            backdropFilter: 'blur(40px)',
-            WebkitBackdropFilter: 'blur(40px)',
-            boxShadow: tg.menuShadow,
+            gap: 4,
+            padding: '4px 8px',
+            borderRadius: 24,
+            ...surface,
           }}
         >
           {REACTIONS.map((r) => (
-            <Box
+            <div
               key={r}
-              component={motion.div}
-              whileHover={{ scale: 1.25 }}
-              whileTap={{ scale: 0.9 }}
               onClick={onClose}
-              sx={{ fontSize: 24, lineHeight: 1, cursor: 'pointer', px: 0.25 }}
+              style={{ fontSize: 24, lineHeight: 1, cursor: 'pointer', padding: '0 2px' }}
             >
               {r}
-            </Box>
+            </div>
           ))}
           <TgIcon name="down" size={22} color={tg.textSecondary} style={{ marginLeft: 2 }} />
-        </Box>
+        </div>
 
-        {/* Actions */}
-        <Box
-          sx={{
-            minWidth: 220,
-            py: 0.75,
-            borderRadius: '12px',
-            background: tg.menuBg,
-            backdropFilter: 'blur(40px)',
-            WebkitBackdropFilter: 'blur(40px)',
-            boxShadow: tg.menuShadow,
-          }}
-        >
+        {/* Actions pill — MenuItem rows on the shared surface */}
+        <div style={{ padding: '4px 0', borderRadius: 12, minWidth: 220, ...surface }}>
           {items.map((it) => (
-            <Box
-              key={it.label}
-              onClick={(e) => (it.onClick ? it.onClick(e) : onClose())}
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1.5,
-                px: 1.5,
-                py: 0.65,
-                mx: 0.5,
-                borderRadius: '8px',
-                cursor: 'pointer',
-                '&:hover': { background: tg.hover },
-              }}
-            >
-              <Box sx={{ display: 'flex', color: it.danger ? '#ff595a' : tg.textSecondary, '& svg': { fontSize: 20 } }}>
-                {it.icon}
-              </Box>
-              <Typography sx={{ fontSize: 15, color: it.danger ? '#ff595a' : tg.textPrimary }}>
-                {t(it.label)}
-              </Typography>
-            </Box>
+            <div key={it.label} onClickCapture={(e) => (lastEvent.current = e)}>
+              <MenuItem
+                icon={it.icon}
+                label={t(it.label)}
+                danger={it.danger}
+                onClick={() => (it.onClick ? it.onClick(lastEvent.current as MouseEvent) : onClose())}
+              />
+            </div>
           ))}
-        </Box>
-      </Box>
+        </div>
+      </motion.div>
     </>,
     document.body,
   )

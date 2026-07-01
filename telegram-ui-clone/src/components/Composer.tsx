@@ -10,7 +10,10 @@
 // formatting inline (bold/italic/spoiler/code/quote/link), 1:1 with tweb. On send
 // the DOM is serialized to plain text + a MessageEntity[] (see core/markdown).
 import { memo, useEffect, useRef, useState } from 'react'
-import { Box, IconButton, Typography, useTheme, alpha } from '@mui/material'
+import { Box, useTheme } from '@mui/material'
+import IconButton from '../shared/ui/IconButton'
+import Text from '../shared/ui/Text'
+import { withAlpha } from '../core/cssColor'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import EmojiPicker from './EmojiPicker'
@@ -338,14 +341,14 @@ function Composer({
               >
                 <TgIcon name="reply" size={22} color={reply.color} />
                 <Box sx={{ flex: 1, minWidth: 0, borderLeft: `2px solid ${reply.color}`, pl: 1.25 }}>
-                  <Typography sx={{ fontSize: 14, fontWeight: 600, color: reply.color }}>
+                  <Text size={14} weight={600} color={reply.color}>
                     {t('Reply to')} {reply.name}
-                  </Typography>
-                  <Typography noWrap sx={{ fontSize: 14, color: tg.textSecondary }}>
+                  </Text>
+                  <Text noWrap size={14} color={tg.textSecondary}>
                     {reply.text}
-                  </Typography>
+                  </Text>
                 </Box>
-                <IconButton size="small" onClick={onCancelReply} sx={{ color: tg.textFaint }}>
+                <IconButton size="small" onClick={onCancelReply} color={tg.textFaint}>
                   <TgIcon name="close" size={20} />
                 </IconButton>
               </Box>
@@ -363,13 +366,13 @@ function Composer({
               transition={{ duration: DUR_OUT, ease: EASE_STD }}
               style={{ overflow: 'hidden' }}
             >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1.5, py: 1, background: alpha(tg.accent, 0.12) }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1.5, py: 1, background: withAlpha(tg.accent, 0.12) }}>
                 <TgIcon name="edit" size={22} color={tg.accent} />
                 <Box sx={{ flex: 1, minWidth: 0, borderLeft: `2px solid ${tg.accent}`, pl: 1.25 }}>
-                  <Typography sx={{ fontSize: 14, fontWeight: 600, color: tg.accent }}>{t('Edit message')}</Typography>
-                  <Typography noWrap sx={{ fontSize: 14, color: tg.textSecondary }}>{editing.text}</Typography>
+                  <Text size={14} weight={600} color={tg.accent}>{t('Edit message')}</Text>
+                  <Text noWrap size={14} color={tg.textSecondary}>{editing.text}</Text>
                 </Box>
-                <IconButton size="small" onClick={() => { onCancelEdit(); clearEditor() }} sx={{ color: tg.textFaint }}>
+                <IconButton size="small" onClick={() => { onCancelEdit(); clearEditor() }} color={tg.textFaint}>
                   <TgIcon name="close" size={20} />
                 </IconButton>
               </Box>
@@ -382,7 +385,7 @@ function Composer({
           {rec.recording ? (
             <>
               {/* cancel (discard) */}
-              <IconButton onClick={() => rec.stop(false)} sx={{ width: 40, height: 40, color: '#ff5a5a', flexShrink: 0 }}>
+              <IconButton onClick={() => rec.stop(false)} color="#ff5a5a" style={{ width: 40, height: 40, flexShrink: 0 }}>
                 <TgIcon name="delete" />
               </IconButton>
               {/* tinted pill: dot/timer + live waveform (tweb voice-recording-pill) */}
@@ -393,7 +396,7 @@ function Composer({
                   display: 'flex',
                   alignItems: 'center',
                   gap: 1.25,
-                  background: alpha(tg.accent, 0.16),
+                  background: withAlpha(tg.accent, 0.16),
                   borderRadius: '18px',
                   py: 0.75,
                   pl: 1,
@@ -410,9 +413,9 @@ function Composer({
                     sx={{ width: 10, height: 10, borderRadius: '50%', background: '#ff3b30', flexShrink: 0 }}
                   />
                 )}
-                <Typography sx={{ fontSize: 16, color: tg.textPrimary, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                <Text size={16} color={tg.textPrimary} style={{ fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
                   {fmtDur(rec.secs)}
-                </Typography>
+                </Text>
                 {/* live input-level waveform — fills the full pill width
                     (left-padded with a baseline, each bar flexes to fill) */}
                 <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: '1.5px', height: 24, overflow: 'hidden' }}>
@@ -427,7 +430,7 @@ function Composer({
                 </Box>
               </Box>
               {/* pause / resume toggle */}
-              <IconButton onClick={rec.togglePause} sx={{ width: 40, height: 40, color: tg.accent, flexShrink: 0 }}>
+              <IconButton onClick={rec.togglePause} color={tg.accent} style={{ width: 40, height: 40, flexShrink: 0 }}>
                 {rec.paused ? <TgIcon name="microphone_filled" /> : <TgIcon name="pause" />}
               </IconButton>
             </>
@@ -435,7 +438,8 @@ function Composer({
             <>
               <IconButton
                 onClick={(e) => onOpenAttach(e.currentTarget.getBoundingClientRect())}
-                sx={{ width: 40, height: 40, color: tg.textSecondary }}
+                color={tg.textSecondary}
+                style={{ width: 40, height: 40 }}
               >
                 <TgIcon name="attach" />
               </IconButton>
@@ -444,12 +448,14 @@ function Composer({
                   upward (the row is flex-end, so buttons stay pinned to the bottom). */}
               <Box sx={{ flex: 1, minWidth: 0, position: 'relative', minHeight: 40, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                 {emptyDraft && (
-                  <Typography
+                  <Text
                     aria-hidden
-                    sx={{ position: 'absolute', top: '50%', left: 2, transform: 'translateY(-50%)', fontSize: 16, lineHeight: '21px', color: tg.textFaint, pointerEvents: 'none' }}
+                    size={16}
+                    color={tg.textFaint}
+                    style={{ position: 'absolute', top: '50%', left: 2, transform: 'translateY(-50%)', lineHeight: '21px', pointerEvents: 'none' }}
                   >
                     {t('Message')}
-                  </Typography>
+                  </Text>
                 )}
                 <Box
                   ref={editorRef}
@@ -479,7 +485,7 @@ function Composer({
                     '& .md-pre': { display: 'block', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: '0.92em', background: 'rgba(127,127,127,0.16)', borderRadius: '8px', padding: '8px 10px', whiteSpace: 'pre-wrap', my: '2px' },
                     // language header inside the input so the block looks like the sent one (WYSIWYG)
                     '& .md-pre[data-language]::before': { content: 'attr(data-language)', display: 'block', fontSize: 11, fontWeight: 700, color: tg.accent, textTransform: 'uppercase', marginBottom: '4px', userSelect: 'none' },
-                    '& .md-spoiler': { background: alpha(tg.textPrimary, 0.18), borderRadius: '4px' },
+                    '& .md-spoiler': { background: withAlpha(tg.textPrimary, 0.18), borderRadius: '4px' },
                     '& .md-quote': { display: 'inline-block', borderLeft: `3px solid ${tg.accent}`, paddingLeft: '8px', opacity: 0.95 },
                     '& a': { color: tg.accent },
                   }}
@@ -488,16 +494,19 @@ function Composer({
               {/* Near the limit: remaining chars. Over it: how many messages the
                   draft will split into on send (tweb-style). */}
               {(len > MAX_LEN - 256 || msgCount > 1) && (
-                <Typography
+                <Text
                   title={msgCount > 1 ? `Будет отправлено сообщений: ${msgCount}` : undefined}
-                  sx={{ alignSelf: 'flex-end', mb: 1.25, mr: 0.25, fontSize: 12, lineHeight: 1, fontVariantNumeric: 'tabular-nums', color: msgCount > 1 ? tg.accent : tg.textFaint, flexShrink: 0 }}
+                  size={12}
+                  color={msgCount > 1 ? tg.accent : tg.textFaint}
+                  style={{ alignSelf: 'flex-end', marginBottom: '10px', marginRight: '2px', lineHeight: 1, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}
                 >
                   {msgCount > 1 ? `${msgCount} 💬` : MAX_LEN - len}
-                </Typography>
+                </Text>
               )}
               <IconButton
                 onClick={() => setEmojiOpen((o) => !o)}
-                sx={{ width: 40, height: 40, color: emojiOpen ? tg.accent : tg.textSecondary }}
+                color={emojiOpen ? tg.accent : tg.textSecondary}
+                style={{ width: 40, height: 40 }}
               >
                 <TgIcon name="smile" />
               </IconButton>

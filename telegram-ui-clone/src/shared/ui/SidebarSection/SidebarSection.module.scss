@@ -1,0 +1,54 @@
+// SidebarSection — порт tweb .sidebar-left-section (_section.scss):
+// .container (боковой padding) > .section (карточка surface, скруглённая, с тенью)
+// > [.name (заголовок + действие справа)] + .content (контент с боковым инсетом).
+@use '../../../styles/foundation' as *;
+
+// tweb .sidebar-left-section-container — горизонтальный отступ вокруг карточки
+.container {
+  padding-inline: 1rem; // --section-padding-inline
+}
+
+// tweb .sidebar-left-section — сама карточка
+.section {
+  background-color: var(--tg-sidebarBg); // --surface-color
+  padding: 0.5rem 0;
+  border-radius: $section-rounded-border-radius; // = $border-radius-big (24px)
+  margin-bottom: 1rem; // --section-padding-bottom (= --section-padding-inline)
+  box-shadow: var(--section-box-shadow);
+}
+
+.noShadow {
+  box-shadow: none;
+}
+
+.noMargin {
+  margin-bottom: 0;
+}
+
+// tweb .sidebar-left-section-name — строка заголовка (акцент, bold) + действие справа
+.name {
+  padding: 0.5rem 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--tg-accent);
+  font-size: 16px; // --font-size-16
+  font-weight: 600;
+}
+
+// tweb -name-right — действие (нормальный вес)
+.nameRight {
+  font-weight: 400;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+// tweb .sidebar-left-section-content — боковой инсет контента
+.content {
+  margin: 0 0.5rem; // --section-margin-inline (rounded)
+}
+
+.fullWidth {
+  margin: 0;
+}

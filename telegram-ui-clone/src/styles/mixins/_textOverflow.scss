@@ -1,0 +1,18 @@
+// ПОРТ 1:1 из tweb src/scss/mixins/_textOverflow.scss.
+@use "sass:meta";
+
+@mixin text-overflow($no-wrap: true) {
+  @if meta.type-of($no-wrap) == number {
+    display: -webkit-box;
+    -webkit-line-clamp: $no-wrap;
+    -webkit-box-orient: vertical;
+    word-break: break-word;
+  } @else if $no-wrap != false {
+    white-space: nowrap;
+  } @else {
+    word-break: break-word;
+  }
+
+  text-overflow: ellipsis;
+  overflow: hidden;
+}

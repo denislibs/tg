@@ -1,4 +1,6 @@
-import { Box, IconButton, Typography, useTheme } from '@mui/material'
+import { Box, useTheme } from '@mui/material'
+import IconButton from '../shared/ui/IconButton'
+import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import { motion } from 'framer-motion'
 import { useT } from '../i18n'
@@ -32,14 +34,14 @@ export default function NotificationBanner({ onClose }: Props) {
         }}
       >
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography sx={{ fontWeight: 600, fontSize: 15, color: tg.textPrimary }}>
+          <Text weight={600} size={15} color={tg.textPrimary}>
             {t('Never miss a message! 🔔')}
-          </Typography>
-          <Typography sx={{ fontSize: 14, color: tg.textSecondary, mt: 0.25 }}>
+          </Text>
+          <Text size={14} color={tg.textSecondary} style={{ marginTop: '2px' }}>
             {t('Enable notifications to stay updated.')}
-          </Typography>
+          </Text>
         </Box>
-        <IconButton size="small" onClick={onClose} sx={{ color: tg.textFaint, mt: -0.5, mr: -0.5 }}>
+        <IconButton size="small" onClick={onClose} color={tg.textFaint} style={{ marginTop: '-4px', marginRight: '-4px' }}>
           <TgIcon name="close" size={20} />
         </IconButton>
       </Box>

@@ -1,5 +1,5 @@
 // Animated peer-typing indicator, ported 1:1 from tweb (.peer-typing-text /
-// .peer-typing-record + keyframes in index.css). Renders three bouncing dots
+// .peer-typing-record + keyframes in styles/index.scss). Renders three bouncing dots
 // for "typing" or a single blinking dot for "recording voice/round video".
 // Rendered inline before the typing text: it uses vertical-align:middle so the
 // dot aligns to the text's x-height centre (flex-centering sits it too high

@@ -1,7 +1,8 @@
-import { Box, Typography, useTheme } from '@mui/material'
+import { Box, useTheme } from '@mui/material'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
-import Avatar from './Avatar'
+import Text from '../shared/ui/Text'
+import Avatar from '../shared/ui/Avatar'
 import { useStoriesStore } from '../stores/storiesStore'
 import { useChatsStore } from '../stores/chatsStore'
 import { gradientFor } from '../core/dialogToChat'
@@ -175,7 +176,7 @@ export default function StoriesRow({
                   justifyContent: 'center',
                 }}
               >
-                <Avatar background={item.bg} text={item.text} emoji={isAdd ? '➕' : undefined} size={54} />
+                <Avatar background={item.bg} text={item.text} emoji={isAdd ? '➕' : undefined} size="dialog" />
               </Box>
               {/* "+" add badge on the self avatar (always available to post a story) */}
               {item.isMe && !isAdd && onAddStory && (
@@ -205,20 +206,21 @@ export default function StoriesRow({
                 </Box>
               )}
             </Box>
-            <Typography
+            <Text
               noWrap
-              sx={{
-                mt: 0.625,
+              size={12}
+              color={tg.textSecondary}
+              style={{
+                marginTop: '5px',
                 width: '100%',
-                px: '2px',
-                fontSize: 12,
+                paddingLeft: '2px',
+                paddingRight: '2px',
                 lineHeight: '15px',
-                color: tg.textSecondary,
                 textAlign: 'center',
               }}
             >
               {item.name}
-            </Typography>
+            </Text>
           </Box>
         )
       })}

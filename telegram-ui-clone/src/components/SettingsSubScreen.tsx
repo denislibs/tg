@@ -1,5 +1,7 @@
 import { useState, type ReactNode } from 'react'
-import { Box, IconButton, Typography, useTheme } from '@mui/material'
+import { Box, useTheme } from '@mui/material'
+import IconButton from '../shared/ui/IconButton'
+import Text from '../shared/ui/Text'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import { slideInRight } from '../motion'
@@ -317,23 +319,26 @@ export default function SettingsSubScreen({ title, onBack }: { title: string; on
     >
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 1.25 }}>
-        <IconButton onClick={onBack} sx={{ color: tg.textSecondary }}>
+        <IconButton onClick={onBack} color={tg.textSecondary}>
           <TgIcon name="back" />
         </IconButton>
-        <Typography sx={{ flex: 1, fontSize: 19, fontWeight: 600, color: tg.textPrimary }}>
+        <Text size={19} weight={600} color={tg.textPrimary} style={{ flex: 1 }}>
           {t(title)}
-        </Typography>
+        </Text>
       </Box>
 
       <Box sx={{ flex: 1, overflowY: 'auto', pb: 3 }}>
         {sections.map((section, si) => (
           <Box key={si} sx={{ mb: 1.5 }}>
             {section.caption && (
-              <Typography
-                sx={{ px: 3, pb: 0.5, fontSize: 14, fontWeight: 600, color: tg.accent }}
+              <Text
+                size={14}
+                weight={600}
+                color={tg.accent}
+                style={{ paddingLeft: '24px', paddingRight: '24px', paddingBottom: '4px' }}
               >
                 {section.caption && t(section.caption)}
-              </Typography>
+              </Text>
             )}
             <Box sx={{ mx: 1.25, borderRadius: '16px', background: cardBg, py: 0.5 }}>
               {section.rows.map((r) => {
@@ -369,20 +374,18 @@ export default function SettingsSubScreen({ title, onBack }: { title: string; on
                       '&:hover': { background: tg.hover },
                     }}
                   >
-                    <Typography
-                      sx={{
-                        flex: 1,
-                        fontSize: 16,
-                        color: r.danger ? '#ff595a' : r.type === 'button' ? tg.accent : tg.textPrimary,
-                      }}
+                    <Text
+                      size={16}
+                      color={r.danger ? '#ff595a' : r.type === 'button' ? tg.accent : tg.textPrimary}
+                      style={{ flex: 1 }}
                     >
                       {NATIVE_LANGUAGE_NAMES.has(r.label) ? r.label : t(r.label)}
-                    </Typography>
+                    </Text>
                     {r.type === 'toggle' && <TgSwitch checked={!!toggles[key]} />}
                     {r.type === 'value' && (
-                      <Typography sx={{ fontSize: 15, color: tg.textFaint }}>
+                      <Text size={15} color={tg.textFaint}>
                         {r.value && (KEYBOARD_SHORTCUTS.has(r.value) ? r.value : t(r.value))}
-                      </Typography>
+                      </Text>
                     )}
                     {isNav && <TgIcon name="next" size={22} color={tg.textFaint} />}
                     {selected && <TgIcon name="check" size={22} color={tg.accent} />}
@@ -391,9 +394,9 @@ export default function SettingsSubScreen({ title, onBack }: { title: string; on
               })}
             </Box>
             {section.footer && (
-              <Typography sx={{ px: 3, pt: 0.75, fontSize: 13.5, color: tg.textSecondary }}>
+              <Text size={13.5} color={tg.textSecondary} style={{ paddingLeft: '24px', paddingRight: '24px', paddingTop: '6px' }}>
                 {section.footer && t(section.footer)}
-              </Typography>
+              </Text>
             )}
           </Box>
         ))}

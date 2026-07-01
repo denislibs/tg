@@ -2,7 +2,9 @@
 // The pinned-message bar under the header (most recent pin; click jumps to it).
 // Memoized — only its own inputs (pins, searchOpen, playerOffset) re-render it.
 import { memo } from 'react'
-import { Box, IconButton, Typography, useTheme } from '@mui/material'
+import { Box, useTheme } from '@mui/material'
+import Text from '../../shared/ui/Text'
+import IconButton from '../../shared/ui/IconButton'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
 import { useT } from '../../i18n'
@@ -52,17 +54,17 @@ function PinnedBar({ pins, searchOpen, playerOffset, onJump, onUnpin }: PinnedBa
         >
           <TgIcon name="pin" size={20} color={tg.accent} />
           <Box sx={{ flex: 1, minWidth: 0, borderLeft: `2px solid ${tg.accent}`, pl: 1 }}>
-            <Typography sx={{ fontSize: 13, fontWeight: 600, color: tg.accent, lineHeight: 1.2 }}>
+            <Text size={13} weight={600} color={tg.accent} style={{ lineHeight: 1.2 }}>
               {t('Pinned message')}{pins.length > 1 ? ` (${pins.length})` : ''}
-            </Typography>
-            <Typography noWrap sx={{ fontSize: 13.5, color: tg.textSecondary }}>
+            </Text>
+            <Text noWrap size={13.5} color={tg.textSecondary}>
               {pins[0]?.text || t('Message')}
-            </Typography>
+            </Text>
           </Box>
           <IconButton
             size="small"
             onClick={(e) => { e.stopPropagation(); if (pins[0]?.id != null) onUnpin(pins[0].id) }}
-            sx={{ color: tg.textFaint }}
+            color={tg.textFaint}
           >
             <TgIcon name="close" size={20} />
           </IconButton>

@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Box, Typography, useTheme, alpha } from '@mui/material'
+import { Box, useTheme } from '@mui/material'
+import Text from '../../shared/ui/Text'
+import { withAlpha } from '../../core/cssColor'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
 import { useManagers } from '../../core/hooks/useManagers'
@@ -86,7 +88,7 @@ export default function VoiceMessage({
   // (bubbleOutText); incoming uses the accent on the grey bubble.
   const accentOnBubble = out ? tg.bubbleOutAccent : tg.accent
   const onBg = accentOnBubble
-  const offBg = out ? alpha(tg.bubbleOutAccent, 0.3) : tg.textFaint
+  const offBg = out ? withAlpha(tg.bubbleOutAccent, 0.3) : tg.textFaint
   const showUnplayedDot = !out && msgId != null && !played
 
   return (
@@ -143,16 +145,16 @@ export default function VoiceMessage({
           ))}
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.25 }}>
-          <Typography sx={{ fontSize: 12.5, color: out ? tg.bubbleOutText : tg.textSecondary }}>
+          <Text size={12.5} color={out ? tg.bubbleOutText : tg.textSecondary}>
             {isCurrent ? `${fmt(curTime)} / ${fmt(duration)}` : fmt(duration)}
-          </Typography>
+          </Text>
           {showUnplayedDot && (
             <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: tg.accent, flexShrink: 0 }} />
           )}
           <Box sx={{ flex: 1 }} />
-          <Typography sx={{ fontSize: 12, color: out ? alpha(tg.bubbleOutText, 0.7) : tg.textFaint }}>
+          <Text size={12} color={out ? withAlpha(tg.bubbleOutText, 0.7) : tg.textFaint}>
             {time}
-          </Typography>
+          </Text>
           {out && <Ticks status={status} color={tickColor} />}
         </Box>
       </Box>

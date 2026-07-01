@@ -4,7 +4,7 @@ import '@fontsource/roboto/400.css'
 import '@fontsource/roboto/500.css'
 import '@fontsource/roboto/700.css'
 import App from './App'
-import './index.css'
+import './styles/index.scss'
 import { ManagersProvider } from './core/hooks/useManagers'
 import { startClient } from './client/bootstrap'
 

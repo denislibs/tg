@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
-import { Box, Typography, useTheme } from '@mui/material'
 import { AnimatePresence, motion } from 'framer-motion'
+import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
-import Avatar from './Avatar'
+import Avatar from '../shared/ui/Avatar'
+import SidebarSection from '../shared/ui/SidebarSection'
 import { useAvatarSrc } from './useAvatarSrc'
 import VerifiedBadge from './VerifiedBadge'
 import type { Chat, OpenPeer } from '../data'
-import type { TgTokens } from '../theme'
 import type { SearchResult } from '../core/managers/channelsManager'
 import { useT } from '../i18n'
-import { Tabs } from './Tabs'
+import { Tabs } from '../shared/ui/Tabs'
+import s from './SearchView.module.scss'
 
 const TABS = ['Chats', 'Channels', 'Apps', 'Posts', 'Media', 'Links', 'Files', 'Music']
 
@@ -65,16 +65,14 @@ interface Props {
 const EMPTY_RESULT: SearchResult = { chats: [], users: [] }
 
 // highlight occurrences of the query inside text
-function Highlighted({ text, q, color }: { text: string; q: string; color: string }) {
+function Highlighted({ text, q }: { text: string; q: string }) {
   if (!q.trim()) return <>{text}</>
   const idx = text.toLowerCase().indexOf(q.toLowerCase())
   if (idx < 0) return <>{text}</>
   return (
     <>
       {text.slice(0, idx)}
-      <Box component="span" sx={{ color, fontWeight: 600 }}>
-        {text.slice(idx, idx + q.length)}
-      </Box>
+      <span className={s.hl}>{text.slice(idx, idx + q.length)}</span>
       {text.slice(idx + q.length)}
     </>
   )
@@ -82,9 +80,6 @@ function Highlighted({ text, q, color }: { text: string; q: string; color: strin
 
 export default function SearchView({ query, chats, onSelect, searchReal, onJoin, onOpenPeer }: Props) {
   const t = useT()
-  const theme = useTheme()
-  const tg = theme.tg
-  const cardBg = theme.palette.mode === 'dark' ? '#1c1c1c' : '#f0f0f2'
   const [tab, setTab] = useState(0)
   const dirRef = useRef(0)
   const [results, setResults] = useState<SearchResult>(EMPTY_RESULT)
@@ -134,23 +129,26 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
     .map((c) => ({ id: c.id, name: c.name, avatar: c.avatar, t: c.avatarText, e: c.avatarEmoji, date: c.date, text: 'Привет' }))
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Tabs strip (shared <Tabs> — tweb 1:1) */}
-      <Tabs value={tab} onChange={(v) => goTab(v as number)} order={TABS.map((_, i) => i)}>
-        <Tabs.List framed>
-          {TABS.map((label, i) => (
-            <Tabs.Tab key={label} value={i}>
-              {t(label)}
-            </Tabs.Tab>
-          ))}
-        </Tabs.List>
-      </Tabs>
+    <div className={s.root}>
+      {/* Tabs strip (shared <Tabs> — tweb 1:1), выровнен по краям секций */}
+      <div className={s.tabsWrap}>
+        <Tabs value={tab} onChange={(v) => goTab(v as number)} order={TABS.map((_, i) => i)}>
+          <Tabs.List framed>
+            {TABS.map((label, i) => (
+              <Tabs.Tab key={label} value={i}>
+                {t(label)}
+              </Tabs.Tab>
+            ))}
+          </Tabs.List>
+        </Tabs>
+      </div>
 
       {/* Animated content */}
-      <Box sx={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+      <div className={s.content}>
         <AnimatePresence mode="wait" custom={dirRef.current} initial={false}>
           <motion.div
             key={tab}
+            className={s.scroll}
             custom={dirRef.current}
             variants={{
               enter: (d: number) => ({ x: d >= 0 ? 80 : -80, opacity: 0 }),
@@ -161,13 +159,12 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
             animate="center"
             exit="exit"
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-            style={{ position: 'absolute', inset: 0, overflowY: 'auto' }}
           >
-            <Box sx={{ pb: 2 }}>
+            <div className={s.pad}>
               {tab === 0 && (
                 <>
                   {query.trim() && results.chats.length > 0 && (
-                    <Section title={t('Channels and groups')} tg={tg} cardBg={cardBg}>
+                    <SidebarSection title={t('Channels and groups')}>
                       {results.chats.map((c) => (
                         <ResultRow
                           key={`c-${c.id}`}
@@ -175,14 +172,13 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                           t={(c.title || '?').charAt(0).toUpperCase()}
                           title={c.title}
                           subtitle={`@${c.username}, ${c.memberCount} ${t('subscribers')}`}
-                          tg={tg}
                           onClick={() => onResultChat(c.id, c.username)}
                         />
                       ))}
-                    </Section>
+                    </SidebarSection>
                   )}
                   {query.trim() && results.users.length > 0 && (
-                    <Section title={t('Global search')} tg={tg} cardBg={cardBg}>
+                    <SidebarSection title={t('Global search')}>
                       {results.users.map((u) => (
                         <ResultRow
                           key={`u-${u.id}`}
@@ -191,110 +187,92 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                           t={(u.displayName || u.username || '?').charAt(0).toUpperCase()}
                           title={u.displayName || u.username}
                           subtitle={u.username ? `@${u.username}` : ''}
-                          tg={tg}
                           onClick={() => onResultUser(u)}
                         />
                       ))}
-                    </Section>
+                    </SidebarSection>
                   )}
-                  <Box sx={{ display: 'flex', alignItems: 'center', px: 2.5, pt: 1.5, pb: 0.5 }}>
-                    <Typography sx={{ flex: 1, fontSize: 15, fontWeight: 600, color: tg.accent }}>{t('Messages')}</Typography>
-                    <Typography sx={{ fontSize: 15, fontWeight: 600, color: tg.accent, cursor: 'pointer' }}>{t('All Chats')}</Typography>
-                  </Box>
-                  {messages.map((m) => (
-                    <Box
-                      key={m.id}
-                      onClick={() => onSelect(m.id)}
-                      sx={{ display: 'flex', gap: 1.5, alignItems: 'center', px: 1.5, py: 0.85, mx: 0.75, borderRadius: '12px', cursor: 'pointer', '&:hover': { background: tg.hover } }}
-                    >
-                      <Avatar background={m.avatar} text={m.t} emoji={m.e} size={48} />
-                      <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Box sx={{ display: 'flex' }}>
-                          <Typography noWrap sx={{ flex: 1, fontSize: 16, fontWeight: 600, color: tg.textPrimary }}>{m.name}</Typography>
-                          <Typography sx={{ fontSize: 13, color: tg.textFaint }}>{m.date}</Typography>
-                        </Box>
-                        <Typography noWrap sx={{ fontSize: 15, color: tg.textPrimary }}>
-                          <Highlighted text={m.text} q={query} color={tg.accent} />
-                        </Typography>
-                      </Box>
-                    </Box>
-                  ))}
+                  <SidebarSection title={t('Messages')} action={t('All Chats')}>
+                    {messages.map((m) => (
+                      <div key={m.id} className={s.row} onClick={() => onSelect(m.id)}>
+                        <Avatar background={m.avatar} text={m.t} emoji={m.e} size="lg" />
+                        <div className={s.body}>
+                          <div className={s.top}>
+                            <Text noWrap size={16} weight={600} color="var(--tg-textPrimary)" className={s.titleFlex}>{m.name}</Text>
+                            <Text size={13} color="var(--tg-textFaint)">{m.date}</Text>
+                          </div>
+                          <Text noWrap size={15} color="var(--tg-textPrimary)">
+                            <Highlighted text={m.text} q={query} />
+                          </Text>
+                        </div>
+                      </div>
+                    ))}
+                  </SidebarSection>
                 </>
               )}
 
               {tab === 1 && (
-                <Section title="" tg={tg} cardBg={cardBg}>
+                <SidebarSection>
                   {channelsList.map((c) => (
-                    <ResultRow key={c.name} bg={c.bg} t={c.t} tc={c.tc} title={c.name} subtitle={c.sub} verified={c.verified} tg={tg} />
+                    <ResultRow key={c.name} bg={c.bg} t={c.t} tc={c.tc} title={c.name} subtitle={c.sub} verified={c.verified} />
                   ))}
-                </Section>
+                </SidebarSection>
               )}
 
               {tab === 2 && (
                 <>
-                  <Section title={t('Apps you use')} tg={tg} cardBg={cardBg}>
-                    <ResultRow bg="linear-gradient(135deg,#2a2a2a,#000)" t="👁" title="Telescope" subtitle="1 554 419 users" tg={tg} />
-                  </Section>
-                  <Section title={t('Popular Apps')} tg={tg} cardBg={cardBg}>
+                  <SidebarSection title={t('Apps you use')}>
+                    <ResultRow bg="linear-gradient(135deg,#2a2a2a,#000)" t="👁" title="Telescope" subtitle="1 554 419 users" />
+                  </SidebarSection>
+                  <SidebarSection title={t('Popular Apps')}>
                     {popularApps.map((a) => (
-                      <ResultRow key={a.name} bg={a.bg} t={a.t} title={a.name} subtitle={a.sub} verified={a.verified} tg={tg} />
+                      <ResultRow key={a.name} bg={a.bg} t={a.t} title={a.name} subtitle={a.sub} verified={a.verified} />
                     ))}
-                  </Section>
+                  </SidebarSection>
                 </>
               )}
 
-              {tab === 3 && <Empty text={t('Nothing interesting here yet…')} tg={tg} />}
+              {tab === 3 && <Empty text={t('Nothing interesting here yet…')} />}
 
               {tab === 4 && (
-                <Section title="" tg={tg} cardBg={cardBg}>
+                <SidebarSection>
                   {messages.slice(0, 2).map((m) => (
-                    <MediaRow key={m.id} m={m} query={query} tg={tg} onSelect={onSelect} />
+                    <MediaRow key={m.id} m={m} query={query} onSelect={onSelect} />
                   ))}
-                </Section>
+                </SidebarSection>
               )}
 
               {tab === 5 && (
-                <Section title="" tg={tg} cardBg={cardBg}>
+                <SidebarSection>
                   {links.map((l) => (
-                    <Box key={l.name} sx={{ display: 'flex', gap: 1.5, px: 1.5, py: 1, mx: 0.75 }}>
-                      <Avatar background={l.bg} text={l.t} size={44} />
-                      <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Box sx={{ display: 'flex' }}>
-                          <Typography noWrap sx={{ flex: 1, fontSize: 16, fontWeight: 600, color: tg.textPrimary }}>{l.name}</Typography>
-                          <Typography sx={{ fontSize: 13, color: tg.textFaint }}>{l.date}</Typography>
-                        </Box>
-                        <Typography sx={{ fontSize: 14.5, color: tg.textSecondary, mt: 0.25 }}>{l.body}</Typography>
-                        <Typography noWrap sx={{ fontSize: 14.5, color: tg.link, mt: 0.25 }}>{l.link}</Typography>
-                        <Typography sx={{ fontSize: 13.5, color: tg.textFaint, mt: 0.25 }}>{l.from}</Typography>
-                      </Box>
-                    </Box>
+                    <div key={l.name} className={s.rowStatic}>
+                      <Avatar background={l.bg} text={l.t} size="md" />
+                      <div className={s.body}>
+                        <div className={s.top}>
+                          <Text noWrap size={16} weight={600} color="var(--tg-textPrimary)" className={s.titleFlex}>{l.name}</Text>
+                          <Text size={13} color="var(--tg-textFaint)">{l.date}</Text>
+                        </div>
+                        <Text size={14.5} color="var(--tg-textSecondary)" style={{ marginTop: '2px' }}>{l.body}</Text>
+                        <Text noWrap size={14.5} color="var(--tg-link)" style={{ marginTop: '2px' }}>{l.link}</Text>
+                        <Text size={13.5} color="var(--tg-textFaint)" style={{ marginTop: '2px' }}>{l.from}</Text>
+                      </div>
+                    </div>
                   ))}
-                </Section>
+                </SidebarSection>
               )}
 
-              {tab === 6 && <Empty text={t('Nothing interesting here yet…')} tg={tg} />}
-              {tab === 7 && <Empty text={t('Nothing interesting here yet…')} tg={tg} />}
-            </Box>
+              {tab === 6 && <Empty text={t('Nothing interesting here yet…')} />}
+              {tab === 7 && <Empty text={t('Nothing interesting here yet…')} />}
+            </div>
           </motion.div>
         </AnimatePresence>
-      </Box>
-    </Box>
+      </div>
+    </div>
   )
 }
 
 // ── helpers ─────────────────────────────────────────────────────────
-function Section({ title, children, tg, cardBg }: { title: string; children: ReactNode; tg: TgTokens; cardBg: string }) {
-  return (
-    <Box sx={{ mx: 1.25, mt: 1, p: title ? 1.25 : 0.75, borderRadius: '16px', background: cardBg }}>
-      {title && (
-        <Typography sx={{ fontSize: 15, fontWeight: 600, color: tg.accent, px: 1, pb: 0.5 }}>{title}</Typography>
-      )}
-      {children}
-    </Box>
-  )
-}
-
-function ResultRow({ bg, src, t, tc, title, subtitle, verified, tg, onClick }: {
+function ResultRow({ bg, src, t, tc, title, subtitle, verified, onClick }: {
   bg: string
   src?: string
   t: string
@@ -302,55 +280,53 @@ function ResultRow({ bg, src, t, tc, title, subtitle, verified, tg, onClick }: {
   title: string
   subtitle: string
   verified?: boolean
-  tg: TgTokens
   onClick?: () => void
 }) {
   const avatarSrc = useAvatarSrc(src)
   return (
-    <Box onClick={onClick} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1, py: 0.65, borderRadius: '12px', cursor: 'pointer', '&:hover': { background: tg.hover } }}>
-      <Avatar background={bg} src={avatarSrc} text={t} size={48} color={tc ?? '#fff'} />
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          <Typography noWrap sx={{ fontSize: 16, fontWeight: 600, color: tg.textPrimary }}>{title}</Typography>
-          {verified && <VerifiedBadge size={16} color={tg.accent} />}
-        </Box>
-        <Typography noWrap sx={{ fontSize: 14.5, color: tg.textSecondary }}>{subtitle}</Typography>
-      </Box>
-    </Box>
+    <div className={s.row} onClick={onClick}>
+      <Avatar background={bg} src={avatarSrc} text={t} size="lg" color={tc ?? '#fff'} />
+      <div className={s.body}>
+        <div className={s.top}>
+          <Text noWrap size={16} weight={600} color="var(--tg-textPrimary)">{title}</Text>
+          {verified && <VerifiedBadge size={16} color="var(--tg-accent)" />}
+        </div>
+        <Text noWrap size={14.5} color="var(--tg-textSecondary)">{subtitle}</Text>
+      </div>
+    </div>
   )
 }
 
-function MediaRow({ m, query, tg, onSelect }: {
+function MediaRow({ m, query, onSelect }: {
   m: { id: string; name: string; avatar: string; t?: string; e?: string; date: string; text: string }
   query: string
-  tg: TgTokens
   onSelect: (id: string) => void
 }) {
   return (
-    <Box onClick={() => onSelect(m.id)} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1, py: 0.65, borderRadius: '12px', cursor: 'pointer', '&:hover': { background: tg.hover } }}>
-      <Avatar background={m.avatar} text={m.t} emoji={m.e} size={48} />
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Box sx={{ display: 'flex' }}>
-          <Typography noWrap sx={{ flex: 1, fontSize: 16, fontWeight: 600, color: tg.textPrimary }}>{m.name}</Typography>
-          <Typography sx={{ fontSize: 13, color: tg.textFaint }}>{m.date}</Typography>
-        </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          <TgIcon name="play" size={18} color={tg.textSecondary} />
-          <Typography noWrap sx={{ fontSize: 15, color: tg.textPrimary }}>
-            <Highlighted text={m.text} q={query} color={tg.accent} />
-          </Typography>
-        </Box>
-      </Box>
-    </Box>
+    <div className={s.row} onClick={() => onSelect(m.id)}>
+      <Avatar background={m.avatar} text={m.t} emoji={m.e} size="lg" />
+      <div className={s.body}>
+        <div className={s.top}>
+          <Text noWrap size={16} weight={600} color="var(--tg-textPrimary)" className={s.titleFlex}>{m.name}</Text>
+          <Text size={13} color="var(--tg-textFaint)">{m.date}</Text>
+        </div>
+        <div className={s.mediaLine}>
+          <TgIcon name="play" size={18} color="var(--tg-textSecondary)" />
+          <Text noWrap size={15} color="var(--tg-textPrimary)">
+            <Highlighted text={m.text} q={query} />
+          </Text>
+        </div>
+      </div>
+    </div>
   )
 }
 
-function Empty({ text, tg }: { text: string; tg: TgTokens }) {
+function Empty({ text }: { text: string }) {
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pt: 14, gap: 0.5 }}>
-      <Typography sx={{ fontSize: 16, color: tg.textSecondary, textAlign: 'center', whiteSpace: 'pre-line' }}>
+    <div className={s.empty}>
+      <Text size={16} color="var(--tg-textSecondary)" style={{ textAlign: 'center', whiteSpace: 'pre-line' }}>
         {text}
-      </Typography>
-    </Box>
+      </Text>
+    </div>
   )
 }

@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Box, CircularProgress, IconButton, TextField, Typography, useTheme } from '@mui/material'
+import { Box, CircularProgress, TextField, useTheme } from '@mui/material'
+import IconButton from '../../shared/ui/IconButton'
+import Text from '../../shared/ui/Text'
 import TgIcon from '../TgIcon'
-import Avatar from '../Avatar'
+import Avatar from '../../shared/ui/Avatar'
 import { useAvatarSrc } from '../useAvatarSrc'
 import BirthdayModal from './BirthdayModal'
 import AvatarCropper from './AvatarCropper'
@@ -143,7 +145,7 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
       title="Edit Profile"
       onBack={onBack}
       headerRight={
-        <IconButton onClick={onDone} disabled={saving} sx={{ color: tg.accent }}>
+        <IconButton onClick={onDone} disabled={saving} color={tg.accent}>
           {saving ? <CircularProgress size={22} sx={{ color: tg.accent }} /> : <TgIcon name="check" />}
         </IconButton>
       }
@@ -151,7 +153,7 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
       {/* avatar with camera overlay */}
       <Box sx={{ display: 'flex', justifyContent: 'center', py: 2.5 }}>
         <Box sx={{ position: 'relative', cursor: 'pointer' }} onClick={() => fileInputRef.current?.click()}>
-          <Avatar background={avatarBg} src={avatarSrc} text={avatarText} size={120} />
+          <Avatar background={avatarBg} src={avatarSrc} text={avatarText} size="profile" />
           <Box
             sx={{
               position: 'absolute',
@@ -209,19 +211,19 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
           }}
         >
           <TgIcon name="gift" size={24} color={tg.textSecondary} />
-          <Typography sx={{ fontSize: 16, color: birthday ? tg.textPrimary : tg.accent }}>
+          <Text size={16} color={birthday ? tg.textPrimary : tg.accent}>
             {birthday ? formatBirthday(birthday, lang) : t('Add birthday')}
-          </Typography>
+          </Text>
         </Box>
       </Box>
-      <Typography sx={{ px: 3, pt: 1, fontSize: 14, color: tg.textSecondary, lineHeight: 1.45 }}>
+      <Text size={14} color={tg.textSecondary} style={{ paddingLeft: '24px', paddingRight: '24px', paddingTop: '8px', lineHeight: 1.45 }}>
         {t('Any details such as age, occupation or city. Example: 23 y.o. designer from San Francisco.')}
-      </Typography>
+      </Text>
 
       {/* username */}
-      <Typography sx={{ px: 3, pt: 2.5, pb: 0.5, fontSize: 14, fontWeight: 600, color: tg.accent }}>
+      <Text size={14} weight={600} color={tg.accent} style={{ paddingLeft: '24px', paddingRight: '24px', paddingTop: '20px', paddingBottom: '4px' }}>
         {t('Username')}
-      </Typography>
+      </Text>
       <Box sx={{ mx: 1.25, p: 2, borderRadius: '18px', background: cardBg }}>
         <TextField
           fullWidth
@@ -233,13 +235,13 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
         />
       </Box>
       {usernameMsg && (
-        <Typography sx={{ px: 3, pt: 1, fontSize: 14, color: usernameColor, lineHeight: 1.45 }}>
+        <Text size={14} color={usernameColor} style={{ paddingLeft: '24px', paddingRight: '24px', paddingTop: '8px', lineHeight: 1.45 }}>
           {usernameMsg}
-        </Typography>
+        </Text>
       )}
-      <Typography sx={{ px: 3, pt: 1, fontSize: 14, color: tg.textSecondary, lineHeight: 1.45 }}>
+      <Text size={14} color={tg.textSecondary} style={{ paddingLeft: '24px', paddingRight: '24px', paddingTop: '8px', lineHeight: 1.45 }}>
         {t('You can choose a public username so people can find you and contact you without knowing your phone number.')}
-      </Typography>
+      </Text>
 
       {/* phone-number visibility (privacy) */}
       <Box sx={{ pt: 2 }}>

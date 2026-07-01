@@ -1,0 +1,7 @@
+// src/styles/_foundation.scss — единая точка доступа к фундаменту (токены-консты,
+// функции, миксины), портированному 1:1 из tweb. Компоненты подключают так:
+//   @use '../styles/foundation' as *;
+// и используют $border-radius, respond-to(...), text-overflow(...) и т.д.
+@forward "variables";
+@forward "functions";
+@forward "mixins";

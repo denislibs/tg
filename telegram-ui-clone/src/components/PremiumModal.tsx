@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Box, Typography, useTheme } from '@mui/material'
+import { Box, useTheme } from '@mui/material'
 import { AnimatePresence, motion } from 'framer-motion'
+import Text from '../shared/ui/Text'
 import RocketLaunchRounded from '@mui/icons-material/RocketLaunchRounded'
 import TgIcon from './TgIcon'
 import type { ReactNode } from 'react'
@@ -117,14 +118,16 @@ export default function PremiumModal({ open, onClose }: { open: boolean; onClose
                   <TgIcon name="close" />
                 </Box>
                 <PremiumStar />
-                <Typography sx={{ textAlign: 'center', fontSize: 26, fontWeight: 700, color: tg.textPrimary }}>
+                <Text size={26} weight={700} color={tg.textPrimary} style={{ textAlign: 'center' }}>
                   Telegram Premium
-                </Typography>
-                <Typography
-                  sx={{ textAlign: 'center', fontSize: 15.5, color: tg.textSecondary, mt: 1, px: 1, lineHeight: 1.4 }}
+                </Text>
+                <Text
+                  size={15.5}
+                  color={tg.textSecondary}
+                  style={{ textAlign: 'center', marginTop: '8px', paddingLeft: '8px', paddingRight: '8px', lineHeight: 1.4 }}
                 >
                   {t('More freedom and dozens of exclusive features with a Telegram Premium subscription.')}
-                </Typography>
+                </Text>
               </Box>
 
               {/* plans */}
@@ -178,9 +181,9 @@ export default function PremiumModal({ open, onClose }: { open: boolean; onClose
                         </Box>
                       </Box>
                       <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography sx={{ fontSize: 17, fontWeight: 500, color: tg.textPrimary }}>
+                        <Text size={17} weight={500} color={tg.textPrimary}>
                           {t(p.label)}
-                        </Typography>
+                        </Text>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.25 }}>
                           {p.discount && (
                             <Box
@@ -198,15 +201,15 @@ export default function PremiumModal({ open, onClose }: { open: boolean; onClose
                             </Box>
                           )}
                           {p.discount && (
-                            <Typography sx={{ fontSize: 15, color: tg.textSecondary }}>
+                            <Text size={15} color={tg.textSecondary}>
                               {p.perMonth} ₽ {t('per month')}
-                            </Typography>
+                            </Text>
                           )}
                         </Box>
                       </Box>
-                      <Typography sx={{ fontSize: 16, color: tg.textPrimary, flexShrink: 0 }}>
+                      <Text size={16} color={tg.textPrimary} style={{ flexShrink: 0 }}>
                         {p.total} ₽
-                      </Typography>
+                      </Text>
                     </Box>
                   )
                 })}
@@ -233,12 +236,12 @@ export default function PremiumModal({ open, onClose }: { open: boolean; onClose
                       {f.icon}
                     </Box>
                     <Box sx={{ minWidth: 0 }}>
-                      <Typography sx={{ fontSize: 16, fontWeight: 500, color: tg.textPrimary }}>
+                      <Text size={16} weight={500} color={tg.textPrimary}>
                         {t(f.title)}
-                      </Typography>
-                      <Typography sx={{ fontSize: 14.5, color: tg.textSecondary, lineHeight: 1.35 }}>
+                      </Text>
+                      <Text size={14.5} color={tg.textSecondary} style={{ lineHeight: 1.35 }}>
                         {t(f.subtitle)}
-                      </Typography>
+                      </Text>
                     </Box>
                   </Box>
                 ))}

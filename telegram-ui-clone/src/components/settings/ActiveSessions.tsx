@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Box, Typography, useTheme } from '@mui/material'
+import { Box, useTheme } from '@mui/material'
 import TgIcon from '../TgIcon'
+import Text from '../../shared/ui/Text'
 import type { ReactNode } from 'react'
 import { useT } from '../../i18n'
 import { SettingsScreen, Section, Row } from './kit'
@@ -30,9 +31,9 @@ export default function ActiveSessions({ onBack }: { onBack: () => void }) {
       <Box sx={{ color: tg.accent, display: 'flex', mt: 0.25, '& svg': { fontSize: 26 } }}>{s.icon}</Box>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Typography sx={{ flex: 1, fontSize: 16, color: tg.textPrimary }}>{s.app}</Typography>
+          <Text size={16} color={tg.textPrimary} style={{ flex: 1 }}>{s.app}</Text>
           {current ? (
-            <Typography sx={{ fontSize: 13.5, color: '#4dcd5e' }}>{t('online')}</Typography>
+            <Text size={13.5} color="#4dcd5e">{t('online')}</Text>
           ) : (
             <TgIcon
               name="close"
@@ -43,10 +44,10 @@ export default function ActiveSessions({ onBack }: { onBack: () => void }) {
             />
           )}
         </Box>
-        <Typography sx={{ fontSize: 14, color: tg.textSecondary }}>{s.device}</Typography>
-        <Typography sx={{ fontSize: 13.5, color: tg.textFaint }}>
+        <Text size={14} color={tg.textSecondary}>{s.device}</Text>
+        <Text size={13.5} color={tg.textFaint}>
           {s.loc} · {current ? t('online') : s.last}
-        </Typography>
+        </Text>
       </Box>
     </Box>
   )
@@ -73,9 +74,9 @@ export default function ActiveSessions({ onBack }: { onBack: () => void }) {
       {others.length > 0 ? (
         <Section caption="Active sessions">{others.map((s) => sessionRow(s))}</Section>
       ) : (
-        <Typography sx={{ px: 3, fontSize: 14, color: tg.textSecondary }}>
+        <Text size={14} color={tg.textSecondary} style={{ paddingLeft: '24px', paddingRight: '24px' }}>
           {t('No other active sessions.')}
-        </Typography>
+        </Text>
       )}
     </SettingsScreen>
   )

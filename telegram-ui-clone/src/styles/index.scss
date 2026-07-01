@@ -1,9 +1,40 @@
+// src/styles/index.scss — глобальные стили приложения.
+// Токены тем (CSS-vars) подключаются первыми, затем база/кейфреймы/глобалки.
+// `foundation` (консты/функции/миксины из tweb) подключён для валидации графа;
+// эмитит 0 CSS — реально используется в .module.scss компонентов при конвертации.
+@use 'tokens';
+@use 'foundation' as *;
+
 html,
 body,
 #root {
   margin: 0;
   padding: 0;
   background: #181818;
+}
+
+/* rem-базис как в tweb (1rem = 16px) — токены/отступы из tweb в rem мапятся 1:1. */
+html {
+  font-size: 16px;
+}
+
+/* Layout-переменные колонок — порт tweb (helpers/updateColumnWidths.ts + base.scss).
+   У нас нет ресайза колонок, поэтому значения статичны: ширина = min(vw, 360),
+   внешний отступ страницы 16px (0 на handheld), радиус $border-radius-big (0 на
+   handheld), offset папок-сайдбара 0. Компоненты читают только var(...). */
+:root {
+  --default-column-width: min(100vw, #{$default-column-width});
+  --left-column-visual-width: var(--default-column-width);
+  --page-chats-padding: 16px;
+  --folders-sidebar-offset: 0px;
+  --main-column-border-radius: #{$border-radius-big};
+}
+
+@include respond-to(handhelds) {
+  :root {
+    --page-chats-padding: 0px;
+    --main-column-border-radius: 0px;
+  }
 }
 
 html,

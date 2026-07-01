@@ -8,11 +8,13 @@
 //
 // On top of the FLIP: zoom (wheel / +- / double-click), rotate (R), drag-to-pan
 // when zoomed, a toolbar, and ←/→ paging across every photo/video in the chat.
-import { useEffect, useMemo, useState } from 'react'
-import { Box, IconButton, Typography } from '@mui/material'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { Box } from '@mui/material'
+import Text from '../../shared/ui/Text'
+import IconButton from '../../shared/ui/IconButton'
 import { motion, AnimatePresence } from 'framer-motion'
 import TgIcon from '../TgIcon'
-import Avatar from '../Avatar'
+import Avatar from '../../shared/ui/Avatar'
 import { peerColor } from '../peerColor'
 import { useManagers } from '../../core/hooks/useManagers'
 import type { MediaMeta } from '../../core/managers/mediaManager'
@@ -159,24 +161,24 @@ export default function MediaLightbox({ items, index, originRect, originSrc, onC
       <Box onClick={(e) => e.stopPropagation()} sx={{ position: 'fixed', top: 0, left: 0, right: 0, display: 'flex', alignItems: 'center', px: 1.5, py: 1.25, zIndex: 2, color: '#fff' }}>
         {item?.sender && <Avatar background={peerColor(item.sender)} size={36} text={item.sender.charAt(0)} />}
         <Box sx={{ ml: 1.25, minWidth: 0, lineHeight: 1.25 }}>
-          {item?.sender && <Typography noWrap sx={{ fontSize: 15, fontWeight: 600 }}>{item.sender}</Typography>}
-          <Typography noWrap sx={{ fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>
+          {item?.sender && <Text noWrap size={15} weight={600}>{item.sender}</Text>}
+          <Text noWrap size={13} color="rgba(255,255,255,0.6)">
             {item?.date}{multi ? `${item?.date ? ' · ' : ''}${idx + 1} из ${items.length}` : ''}
-          </Typography>
+          </Text>
         </Box>
         <Box sx={{ ml: 'auto', display: 'flex', gap: 0.5 }}>
-          <IconButton title="Повернуть (R)" onClick={() => setRot((r) => r - 90)} sx={{ color: '#fff' }}><TgIcon name="rotate_left" /></IconButton>
-          <IconButton title="Увеличить (+)" onClick={() => stepZoom(0.5)} sx={{ color: '#fff' }}><TgIcon name="zoomin" /></IconButton>
-          <IconButton title="Скачать" onClick={download} sx={{ color: '#fff' }}><TgIcon name="download" /></IconButton>
-          <IconButton title="Закрыть (Esc)" onClick={close} sx={{ color: '#fff' }}><TgIcon name="close" /></IconButton>
+          <IconButton title="Повернуть (R)" onClick={() => setRot((r) => r - 90)} color="#fff"><TgIcon name="rotate_left" /></IconButton>
+          <IconButton title="Увеличить (+)" onClick={() => stepZoom(0.5)} color="#fff"><TgIcon name="zoomin" /></IconButton>
+          <IconButton title="Скачать" onClick={download} color="#fff"><TgIcon name="download" /></IconButton>
+          <IconButton title="Закрыть (Esc)" onClick={close} color="#fff"><TgIcon name="close" /></IconButton>
         </Box>
       </Box>
 
       {/* prev / next */}
       {multi && (
         <>
-          <IconButton onClick={(e) => { e.stopPropagation(); nav(-1) }} title="Назад (←)" sx={{ position: 'fixed', left: 16, top: '50%', transform: 'translateY(-50%)', color: '#fff', width: 54, height: 54, background: 'rgba(255,255,255,0.08)', zIndex: 2, '&:hover': { background: 'rgba(255,255,255,0.16)' } }}><TgIcon name="previous" size={30} /></IconButton>
-          <IconButton onClick={(e) => { e.stopPropagation(); nav(1) }} title="Вперёд (→)" sx={{ position: 'fixed', right: 16, top: '50%', transform: 'translateY(-50%)', color: '#fff', width: 54, height: 54, background: 'rgba(255,255,255,0.08)', zIndex: 2, '&:hover': { background: 'rgba(255,255,255,0.16)' } }}><TgIcon name="next" size={30} /></IconButton>
+          <IconButton onClick={(e) => { e.stopPropagation(); nav(-1) }} title="Назад (←)" color="#fff" style={{ position: 'fixed', left: 16, top: '50%', transform: 'translateY(-50%)', width: 54, height: 54, background: 'rgba(255,255,255,0.08)', zIndex: 2, '--ib-hover': 'rgba(255,255,255,0.16)' } as CSSProperties}><TgIcon name="previous" size={30} /></IconButton>
+          <IconButton onClick={(e) => { e.stopPropagation(); nav(1) }} title="Вперёд (→)" color="#fff" style={{ position: 'fixed', right: 16, top: '50%', transform: 'translateY(-50%)', width: 54, height: 54, background: 'rgba(255,255,255,0.08)', zIndex: 2, '--ib-hover': 'rgba(255,255,255,0.16)' } as CSSProperties}><TgIcon name="next" size={30} /></IconButton>
         </>
       )}
 

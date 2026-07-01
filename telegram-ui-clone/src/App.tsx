@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useManagers } from './core/hooks/useManagers'
 import { useConnectionStore, pingBackend } from './stores/connectionStore'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Box, CssBaseline, ThemeProvider, Typography, useMediaQuery, useTheme } from '@mui/material'
+import { Box, CssBaseline, ThemeProvider, useMediaQuery, useTheme } from '@mui/material'
+import Text from './shared/ui/Text'
 import { buildTheme, resolvePreset, PRESET_MODE, type ThemeChoice } from './theme'
 import { useSettings } from './settings'
 import Sidebar from './components/Sidebar'
@@ -306,12 +307,12 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
               boxShadow: tg.menuShadow,
             }}
           >
-            <Typography sx={{ fontSize: 17, fontWeight: 600, color: tg.textPrimary, mb: 1 }}>
+            <Text size={17} weight={600} color={tg.textPrimary} style={{ marginBottom: '8px' }}>
               {t('Войти на новом устройстве?')}
-            </Typography>
-            <Typography sx={{ fontSize: 14.5, color: tg.textSecondary, lineHeight: 1.5 }}>
+            </Text>
+            <Text size={14.5} color={tg.textSecondary} style={{ lineHeight: 1.5 }}>
               {t('Подтвердите вход для нового устройства')}
-            </Typography>
+            </Text>
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 2.5 }}>
               <Box
                 role="button"
@@ -405,6 +406,13 @@ function ThemedApp() {
   const preset = resolvePreset(themeChoice)
   const theme = useMemo(() => buildTheme(preset), [preset])
   const [authed, setAuthed] = useState<boolean | null>(null) // null = checking
+
+  // Drive the active theme via a `data-theme` attribute on <html> — token CSS-vars
+  // (styles/_tokens.scss) resolve from it, so a theme switch is just the attribute
+  // (no per-element JS value swap). useLayoutEffect sets it before paint (no FOUC).
+  useLayoutEffect(() => {
+    document.documentElement.dataset.theme = preset
+  }, [preset])
 
   useEffect(() => {
     managers.auth.me().then((u) => setAuthed(!!u)).catch(() => setAuthed(false))

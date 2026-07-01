@@ -5,13 +5,13 @@
 // re-render the list. The scroll container ref is forwarded back to Sidebar, which
 // owns the fold/reveal scroll listeners.
 import { forwardRef, memo } from 'react'
-import { Box, useTheme } from '@mui/material'
 import { AnimatePresence, motion } from 'framer-motion'
 import { EASE, DUR } from '../motion'
 import ChatListItem from './ChatListItem'
 import DialogSkeleton from './DialogSkeleton'
 import type { Chat } from '../data'
 import type { FolderKey } from './FolderTabs'
+import s from './ChatList.module.scss'
 
 export interface ChatListProps {
   chats: Chat[] // already filtered by folder
@@ -26,33 +26,11 @@ const ChatList = forwardRef<HTMLDivElement, ChatListProps>(function ChatList(
   { chats, selectedId, onSelect, loaded, folder, dir },
   ref,
 ) {
-  const tg = useTheme().tg
   return (
-    <Box
-      ref={ref}
-      sx={{
-        position: 'absolute',
-        inset: 0,
-        overflowY: 'auto',
-        overflowX: 'hidden',
-        // reserve a thin gutter so the list width stays constant whether or not it
-        // scrolls — switching folders no longer shifts the content (tweb keeps the
-        // scrollbar as a thin overlay for the same reason)
-        scrollbarGutter: 'stable',
-        scrollbarWidth: 'thin',
-        scrollbarColor: `${tg.textFaint} transparent`,
-        '&::-webkit-scrollbar': { width: '6px' },
-        '&::-webkit-scrollbar-thumb': {
-          background: 'transparent',
-          borderRadius: '3px',
-          transition: 'background .2s',
-        },
-        '&:hover::-webkit-scrollbar-thumb': { background: tg.textFaint },
-      }}
-    >
+    <div ref={ref} className={s.scroll}>
       <AnimatePresence mode="popLayout" custom={dir} initial={false}>
-        <Box
-          component={motion.div}
+        <motion.div
+          className={s.slide}
           key={folder}
           custom={dir}
           variants={{
@@ -64,7 +42,6 @@ const ChatList = forwardRef<HTMLDivElement, ChatListProps>(function ChatList(
           animate="center"
           exit="exit"
           transition={{ duration: DUR.in, ease: EASE }}
-          sx={{ pt: '64px', pb: '84px', width: '100%' }}
         >
           {loaded ? (
             chats.map((chat, i) => (
@@ -79,9 +56,9 @@ const ChatList = forwardRef<HTMLDivElement, ChatListProps>(function ChatList(
           ) : (
             <DialogSkeleton />
           )}
-        </Box>
+        </motion.div>
       </AnimatePresence>
-    </Box>
+    </div>
   )
 })
 

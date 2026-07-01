@@ -1,0 +1,71 @@
+// ChatListItem — строка диалога. Стили перенесены 1:1 из прежних sx; динамика
+// состояний (selected, цвета по onAccent, online/typing/forwarded и т.д.) остаётся
+// на пропсах дочерних примитивов (Avatar/Text/TgIcon/Badge). Ripple — useRipple (tweb).
+.row {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9.2px 12px; // py 1.15 / px 1.5 (×8)
+  margin: 0 6px; // mx 0.75
+  border-radius: 16px;
+  cursor: pointer;
+  color: var(--tg-textPrimary);
+  background: transparent;
+  transition: background 0.18s ease;
+
+  // content (avatar + body) sits above the absolute ripple layer
+  & > div {
+    position: relative;
+    z-index: 1;
+  }
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+    }
+  }
+
+  // Selected dialog: accent gradient, white content, lighter ripple (tweb .active).
+  &[data-selected] {
+    background: var(--tg-accentGradient);
+    color: #fff;
+    --ripple-color: rgba(255, 255, 255, 0.25);
+
+    &:hover {
+      background: var(--tg-accentGradient);
+    }
+  }
+}
+
+.body {
+  min-width: 0;
+  flex: 1;
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.subtitleRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px; // mt 0.25
+}
+
+// Small rounded thumbnail of the last message's photo (background-image set inline).
+.thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  background-color: rgba(0, 0, 0, 0.08);
+  background-size: cover;
+  background-position: center;
+}
+
+// context-menu surface/rows provided by shared/ui/Menu + MenuItem.

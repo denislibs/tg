@@ -3,7 +3,9 @@
 // picked files, add a caption, toggle "as media" vs "as file", then send. The
 // parent owns the actual upload/send (onSend).
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Box, IconButton, InputBase, Typography, useTheme } from '@mui/material'
+import { Box, InputBase, useTheme } from '@mui/material'
+import Text from '../../shared/ui/Text'
+import IconButton from '../../shared/ui/IconButton'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
@@ -75,11 +77,11 @@ export default function SendMediaPopup({
       >
         {/* header */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 1 }}>
-          <IconButton size="small" onClick={onClose} sx={{ color: tg.textPrimary }}><TgIcon name="close" /></IconButton>
-          <Typography sx={{ flex: 1, fontSize: 18, fontWeight: 600, color: tg.textPrimary }}>{title}</Typography>
+          <IconButton size="small" onClick={onClose} color={tg.textPrimary}><TgIcon name="close" /></IconButton>
+          <Text size={18} weight={600} color={tg.textPrimary} style={{ flex: 1 }}>{title}</Text>
           {anyMedia && (
             <Box sx={{ position: 'relative' }}>
-              <IconButton size="small" onClick={() => setMenuOpen((v) => !v)} sx={{ color: tg.textPrimary }}><TgIcon name="more" /></IconButton>
+              <IconButton size="small" onClick={() => setMenuOpen((v) => !v)} color={tg.textPrimary}><TgIcon name="more" /></IconButton>
               {menuOpen && (
                 <Box sx={{ position: 'absolute', right: 0, top: '100%', mt: 0.5, minWidth: 220, py: 0.75, borderRadius: '12px', background: tg.menuBg, boxShadow: tg.menuShadow, zIndex: 1 }}>
                   <MenuItem icon={<TgIcon name="image" size={20} />} label={t('Send as media')} active={!asFile} onClick={() => { setAsFile(false); setMenuOpen(false) }} tg={tg} />
@@ -105,8 +107,8 @@ export default function SendMediaPopup({
               <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1.25, p: 1, borderRadius: '10px', background: tg.hover }}>
                 <Box sx={{ width: 44, height: 44, flexShrink: 0, borderRadius: '50%', background: tg.accent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700 }}>{ext || <TgIcon name="document" />}</Box>
                 <Box sx={{ minWidth: 0 }}>
-                  <Typography noWrap sx={{ fontSize: 14.5, fontWeight: 600, color: tg.textPrimary }}>{f.name}</Typography>
-                  <Typography sx={{ fontSize: 12.5, color: tg.textSecondary }}>{fmtSize(f.size)}</Typography>
+                  <Text noWrap size={14.5} weight={600} color={tg.textPrimary}>{f.name}</Text>
+                  <Text size={12.5} color={tg.textSecondary}>{fmtSize(f.size)}</Text>
                 </Box>
               </Box>
             )
@@ -137,7 +139,7 @@ function MenuItem({ icon, label, active, onClick, tg }: { icon: React.ReactNode;
   return (
     <Box onClick={onClick} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1.5, py: 0.75, mx: 0.5, borderRadius: '8px', cursor: 'pointer', '&:hover': { background: tg.hover } }}>
       <Box sx={{ display: 'flex', color: active ? tg.accent : tg.textSecondary, '& svg': { fontSize: 20 } }}>{icon}</Box>
-      <Typography sx={{ fontSize: 15, color: active ? tg.accent : tg.textPrimary }}>{label}</Typography>
+      <Text size={15} color={active ? tg.accent : tg.textPrimary}>{label}</Text>
     </Box>
   )
 }

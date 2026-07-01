@@ -1,0 +1,136 @@
+// Tabs — порт tweb .menu-horizontal (src/scss/partials/_slider.scss).
+// Структура: [.scrollable (карточка, framed)] > .scrollableX (overflow-x) >
+// .div (flex-ряд) > .item (-span + -background). Активный таб подсвечивается
+// собственным -background (opacity 1); при переключении новый фон «переезжает»
+// из позиции/ширины предыдущего (приём Jolly Cobra из horizontalMenu.ts).
+@use '../../../styles/foundation' as *;
+
+// --- framed: карточка-обёртка (tweb .menu-horizontal-scrollable) ---
+.scrollable {
+  flex-shrink: 0;
+  margin: 0.5rem; // tweb .folders-tabs-scrollable
+  border-radius: $border-radius-big;
+  overflow: hidden;
+  box-shadow: var(--section-box-shadow-big);
+  background-color: var(--tg-sidebarBg);
+}
+
+// overflow-x контейнер (tweb .scrollable.scrollable-x)
+.scrollableX {
+  display: flex;
+  position: relative;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+// ряд табов (tweb .menu-horizontal-div)
+.div {
+  --size: 3rem; // $menu-height
+  height: var(--size);
+  display: flex;
+  flex-direction: row;
+  position: relative;
+  z-index: 2;
+  padding: 0.25rem 0;
+  color: var(--tg-textSecondary);
+
+  // вне framed — растягиваем на всю ширину и равномерно
+  width: 100%;
+  justify-content: space-around;
+
+  // внутри карточки (framed) — ширина по контенту, но flex-растяжение
+  .scrollableX & {
+    width: auto;
+    flex: 1 1 auto;
+  }
+}
+
+.item {
+  height: 100%;
+  padding: 0 1rem;
+  cursor: pointer;
+  text-align: center;
+  flex: 1 1 auto;
+  font-size: 1rem;
+  font-weight: 600; // var(--font-weight-bold)
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.3125; // var(--line-height)
+  border-radius: 1.25rem;
+  margin: 0 0.25rem;
+  min-width: 1px; // fix width
+  transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
+
+  @media (hover: hover) {
+    &:not(.active):hover {
+      background-color: var(--tg-hover);
+    }
+  }
+
+  &.active {
+    color: var(--tg-accent);
+
+    .background {
+      opacity: 1;
+    }
+
+    .badge {
+      background-color: var(--tg-accent);
+    }
+  }
+}
+
+// текст таба (tweb -span): над фоном, без переноса
+.span {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  overflow: visible;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 2;
+}
+
+// подложка активного таба (tweb -background)
+.background {
+  position: absolute;
+  left: 0;
+  opacity: 0;
+  background-color: color-mix(in srgb, var(--tg-accent) 12%, transparent);
+  height: 100%;
+  width: 100%;
+  border-radius: inherit;
+  pointer-events: none;
+  box-sizing: content-box;
+  transform-origin: left;
+  z-index: 1;
+
+  &.animate {
+    transition: transform 0.2s ease-in-out, width 0.2s ease-in-out;
+  }
+}
+
+// badge таба (tweb .badge.badge-18, неактивный — приглушённый)
+.badge {
+  margin-inline-start: 5px;
+  min-width: 1.125rem;
+  height: 1.125rem;
+  padding: 0 0.25rem;
+  border-radius: 0.5625rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  color: #fff;
+  background-color: var(--tg-textFaint);
+  transition: background-color 0.2s ease-in-out;
+}

@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { Box, IconButton, InputBase, Typography, useTheme } from '@mui/material'
+import { Box, InputBase, useTheme } from '@mui/material'
+import IconButton from '../shared/ui/IconButton'
+import Text from '../shared/ui/Text'
 import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
-import Avatar from './Avatar'
+import Avatar from '../shared/ui/Avatar'
 import type { Chat } from '../data'
 import { useT } from '../i18n'
 
@@ -50,12 +52,12 @@ export default function NewPrivateChat({ chats, onClose, onSelect }: Props) {
     >
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 1.25 }}>
-        <IconButton onClick={onClose} sx={{ color: tg.textSecondary }}>
+        <IconButton onClick={onClose} color={tg.textSecondary}>
           <TgIcon name="back" />
         </IconButton>
-        <Typography sx={{ fontSize: 19, fontWeight: 600, color: tg.textPrimary }}>
+        <Text size={19} weight={600} color={tg.textPrimary}>
           {t('New Message')}
-        </Typography>
+        </Text>
       </Box>
 
       {/* Search */}
@@ -101,10 +103,10 @@ export default function NewPrivateChat({ chats, onClose, onSelect }: Props) {
             }}
           >
             <Box sx={{ fontSize: 80, lineHeight: 1 }}>🐤</Box>
-            <Typography sx={{ fontSize: 19, fontWeight: 600, color: tg.textPrimary }}>
+            <Text size={19} weight={600} color={tg.textPrimary}>
               {t('No Results')}
-            </Typography>
-            <Typography sx={{ fontSize: 15, color: tg.textSecondary }}>{t('Try searching.')}</Typography>
+            </Text>
+            <Text size={15} color={tg.textSecondary}>{t('Try searching.')}</Text>
           </Box>
         ) : (
           people.map((c) => (
@@ -126,14 +128,14 @@ export default function NewPrivateChat({ chats, onClose, onSelect }: Props) {
                 '&:hover': { background: tg.hover },
               }}
             >
-              <Avatar background={c.avatar} text={c.avatarText} emoji={c.avatarEmoji} size={48} />
+              <Avatar background={c.avatar} text={c.avatarText} emoji={c.avatarEmoji} size="lg" />
               <Box sx={{ minWidth: 0 }}>
-                <Typography noWrap sx={{ fontSize: 16, fontWeight: 500, color: tg.textPrimary }}>
+                <Text noWrap size={16} weight={500} color={tg.textPrimary}>
                   {c.name}
-                </Typography>
-                <Typography noWrap sx={{ fontSize: 14, color: tg.textSecondary }}>
+                </Text>
+                <Text noWrap size={14} color={tg.textSecondary}>
                   {c.status}
-                </Typography>
+                </Text>
               </Box>
             </Box>
           ))

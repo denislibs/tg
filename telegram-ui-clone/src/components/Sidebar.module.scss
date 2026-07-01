@@ -1,0 +1,102 @@
+// Sidebar — левая колонка (порт tweb #column-left, _leftSidebar.scss). Все
+// размеры/радиусы/тени/отступы — из tweb-переменных (--left-column-visual-width,
+// --main-column-border-radius, --column-box-shadow, --page-chats-padding,
+// --folders-sidebar-offset), без хардкода.
+@use '../styles/foundation' as *;
+
+.root {
+  // ↓↓↓ дословно из tweb #column-left (_leftSidebar.scss) ↓↓↓
+  display: flex;
+  flex-direction: column;
+  flex: var(--left-column-visual-width) 1 auto;
+  width: var(--left-column-visual-width);
+  overflow: hidden;
+  border-radius: var(--main-column-border-radius);
+  box-shadow: var(--column-box-shadow);
+  z-index: 1;
+  margin-block: var(--page-chats-padding);
+  margin-inline-start: calc(var(--page-chats-padding) + var(--folders-sidebar-offset));
+  // ↑↑↑ конец tweb #column-left ↑↑↑
+
+  // Наш шелл — flex-ряд с align-items:flex-start (в tweb высоту даёт
+  // растягивающийся родитель), поэтому высоту и sticky задаём здесь; отступ —
+  // из той же --page-chats-padding. Фон — surface.
+  background: var(--tg-sidebarBg);
+  position: sticky;
+  top: var(--page-chats-padding);
+  height: calc(100vh - 2 * var(--page-chats-padding));
+}
+
+// Полноширинный режим (narrow/drawer): колонка занимает всё.
+.fullWidth {
+  flex: 1 1 auto;
+  width: auto;
+  margin-inline-end: var(--page-chats-padding);
+}
+
+// tweb .sidebar-header (_sidebar.scss) + .main-search-sidebar-header (_leftSidebar.scss).
+// Высота — из $header-height (3.5rem), горизонтальный padding 1rem (слева под бургер);
+// справа .5rem — модификатор is-input-the-last-child (у нас инпут всегда последний).
+.header {
+  background-color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: $header-height;
+  flex: 0 0 auto;
+  cursor: default;
+  padding-inline: 1rem 0.5rem;
+
+  @include respond-to(handhelds) {
+    padding-inline: 0.5rem;
+  }
+}
+
+.search {
+  flex: 1;
+  min-width: 0;
+}
+
+// tweb #chatlist-container: max-height:100%; position:relative; bg surface.
+.body {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+  max-height: 100%;
+  background-color: var(--tg-sidebarBg);
+}
+
+// tweb .chatlist-overlay: position:absolute; top:0; inset-inline:0; z-index:2.
+.overlay {
+  position: absolute;
+  top: 0;
+  inset-inline: 0;
+  z-index: 2;
+}
+
+// tweb .folders-tabs-gradient-container: position:absolute; inset:0; z-index:-1
+// (gradient height:100%; surface→transparent — гасит уплывающие строки).
+.gradientContainer {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+}
+
+.gradient {
+  height: 100%;
+  background: linear-gradient(180deg, var(--tg-sidebarBg), transparent 100%);
+}
+
+// tweb .sidebar-search — оверлей поиска поверх списка
+.searchOverlay {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--tg-sectionBackdrop);
+  z-index: 10;
+}
+
+.searchInner {
+  height: 100%;
+  transform-origin: top center;
+}

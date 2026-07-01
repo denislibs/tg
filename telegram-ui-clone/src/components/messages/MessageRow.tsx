@@ -6,7 +6,9 @@
 // the parent's conversion cache, and every other prop is a primitive or a stable
 // callback object (feedFns). The media viewer is opened via context (useMediaViewer).
 import { memo, type MouseEvent } from 'react'
-import { Box, Typography, useTheme, alpha } from '@mui/material'
+import { Box, Typography, useTheme } from '@mui/material'
+import Text from '../../shared/ui/Text'
+import { withAlpha } from '../../core/cssColor'
 import { mediaThumbUrl, hasMediaToken, useMediaTokenVersion } from '../../core/mediaUrl'
 import { motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
@@ -98,7 +100,7 @@ function MessageRow({
           sx={{
             position: 'absolute', top: 0, bottom: `${-(lastInGroup ? 6 : 2)}px`,
             left: '50%', transform: 'translateX(-50%)', width: '100vw',
-            background: alpha(tg.accent, 0.3), zIndex: 0, pointerEvents: 'none',
+            background: withAlpha(tg.accent, 0.3), zIndex: 0, pointerEvents: 'none',
           }}
         />
       )}
@@ -116,7 +118,7 @@ function MessageRow({
             left: '50%',
             transform: 'translateX(-50%)',
             width: '100vw',
-            background: alpha(tg.accent, 0.3),
+            background: withAlpha(tg.accent, 0.3),
             zIndex: 0,
             pointerEvents: 'none',
           }}
@@ -239,7 +241,7 @@ function MessageRow({
               background: 'rgba(0,0,0,0.45)',
             }}
           >
-            <Typography sx={{ fontSize: 12.5, color: '#fff' }}>{fmtTime(m.time)}</Typography>
+            <Text size={12.5} color="#fff">{fmtTime(m.time)}</Text>
             <Ticks status={m.status} color={tickColor} />
           </Box>
         </Box>
@@ -293,13 +295,13 @@ function MessageRow({
               ))}
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
-              <Typography sx={{ fontSize: 12.5, color: out ? alpha(tg.bubbleOutText, 0.85) : tg.textSecondary }}>
+              <Text size={12.5} color={out ? withAlpha(tg.bubbleOutText, 0.85) : tg.textSecondary}>
                 {m.duration}
-              </Typography>
+              </Text>
               <Box sx={{ flex: 1 }} />
-              <Typography sx={{ fontSize: 12, color: out ? alpha(tg.bubbleOutText, 0.7) : tg.textFaint }}>
+              <Text size={12} color={out ? withAlpha(tg.bubbleOutText, 0.7) : tg.textFaint}>
                 {fmtTime(m.time)}
-              </Typography>
+              </Text>
               <Ticks status={m.status} color={tickColor} />
             </Box>
           </Box>
@@ -328,21 +330,22 @@ function MessageRow({
         >
           {lastInGroup && <BubbleTail out={out} color={out ? tg.bubbleOut : incomingBg} />}
           {!out && m.sender && firstInGroup && (
-            <Typography
+            <Text
               onClick={m.senderId != null ? () => feedFns.openSender(m.senderId!, m.sender!) : undefined}
-              sx={{ fontSize: 14, fontWeight: 600, color: m.senderColor ?? peerColor(m.sender), cursor: m.senderId != null ? 'pointer' : 'default' }}
+              size={14} weight={600} color={m.senderColor ?? peerColor(m.sender)}
+              style={{ cursor: m.senderId != null ? 'pointer' : 'default' }}
             >
               {m.sender}
-            </Typography>
+            </Text>
           )}
           {m.forwardFrom && (
             <Box sx={{ mb: 0.25 }}>
-              <Typography sx={{ fontSize: 13, color: out ? alpha(tg.bubbleOutText, 0.7) : tg.textFaint }}>
+              <Text size={13} color={out ? withAlpha(tg.bubbleOutText, 0.7) : tg.textFaint}>
                 {t('Forwarded from')}
-              </Typography>
-              <Typography sx={{ fontSize: 14, fontWeight: 600, color: out ? tg.bubbleOutAccent : (m.forwardFrom.color ?? tg.accent) }}>
+              </Text>
+              <Text size={14} weight={600} color={out ? tg.bubbleOutAccent : (m.forwardFrom.color ?? tg.accent)}>
                 {m.forwardFrom.name}
-              </Typography>
+              </Text>
             </Box>
           )}
           {m.reply && (
@@ -355,7 +358,7 @@ function MessageRow({
                 borderRadius: '6px',
                 cursor: m.reply.seq != null ? 'pointer' : 'default',
                 borderLeft: `3px solid ${out ? tg.bubbleOutAccent : m.reply.color ?? tg.accent}`,
-                background: out ? alpha(tg.bubbleOutText, 0.12) : `${m.reply.color ?? tg.accent}1f`,
+                background: out ? withAlpha(tg.bubbleOutText, 0.12) : withAlpha(m.reply.color ?? tg.accent, 0.12),
                 display: 'flex',
                 alignItems: 'center',
                 gap: 0.75,
@@ -363,12 +366,12 @@ function MessageRow({
             >
               {m.reply.mediaId != null && <ReplyThumb id={m.reply.mediaId} />}
               <Box sx={{ minWidth: 0 }}>
-                <Typography noWrap sx={{ fontSize: 13.5, fontWeight: 600, color: out ? tg.bubbleOutAccent : m.reply.color ?? tg.accent }}>
+                <Text noWrap size={13.5} weight={600} color={out ? tg.bubbleOutAccent : m.reply.color ?? tg.accent}>
                   {m.reply.name}
-                </Typography>
-                <Typography noWrap sx={{ fontSize: 13.5, color: out ? alpha(tg.bubbleOutText, 0.85) : tg.textSecondary, maxWidth: 240 }}>
+                </Text>
+                <Text noWrap size={13.5} color={out ? withAlpha(tg.bubbleOutText, 0.85) : tg.textSecondary} style={{ maxWidth: 240 }}>
                   <RichText text={m.reply.text} entities={m.reply.entities} linkColor={out ? tg.bubbleOutAccent : tg.link} />
-                </Typography>
+                </Text>
               </Box>
             </Box>
           )}
@@ -390,7 +393,7 @@ function MessageRow({
                 component="span"
                 sx={{
                   fontSize: 12,
-                  color: out ? alpha(tg.bubbleOutText, 0.7) : tg.textFaint,
+                  color: out ? withAlpha(tg.bubbleOutText, 0.7) : tg.textFaint,
                   whiteSpace: 'nowrap',
                 }}
               >

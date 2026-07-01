@@ -2,10 +2,11 @@
 // The sidebar's compose FAB (bottom-right ✎). It owns the open/closed state of the
 // compose menu (so Sidebar no longer holds composeOpen) and renders ComposeMenu
 // itself. Hidden while the search is open.
-import { memo, useState } from 'react'
-import { IconButton, useTheme } from '@mui/material'
+import { memo, useState, type CSSProperties } from 'react'
+import { useTheme } from '@mui/material'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
+import IconButton from '../shared/ui/IconButton'
 import ComposeMenu from './ComposeMenu'
 
 const MotionFab = motion(IconButton)
@@ -32,10 +33,9 @@ function ComposeFab({ searching, onNewGroup, onNewPrivate, onNewChannel }: Compo
             initial={{ y: 96, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 96, opacity: 0 }}
-            whileHover={{ scale: 1.08 }}
-            whileTap={{ scale: 0.92 }}
             transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-            sx={{
+            color="#fff"
+            style={{
               position: 'absolute',
               right: 20,
               bottom: 20,
@@ -43,9 +43,8 @@ function ComposeFab({ searching, onNewGroup, onNewPrivate, onNewChannel }: Compo
               width: 56,
               height: 56,
               background: tg.accentGradient,
-              color: '#fff',
-              '&:hover': { background: tg.accentGradient },
-            }}
+              '--ib-hover': tg.accentGradient,
+            } as CSSProperties}
           >
             <motion.span
               animate={{ rotate: open ? 90 : 0 }}

@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
-import { Box, IconButton, Slider, useTheme } from '@mui/material'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { Box, Slider, useTheme } from '@mui/material'
+import IconButton from '../../shared/ui/IconButton'
 import { motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
 
@@ -104,7 +105,7 @@ export default function AvatarCropper({
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', px: 1, py: 1.25 }}>
-        <IconButton onClick={onCancel} sx={{ color: '#fff' }}>
+        <IconButton onClick={onCancel} color="#fff">
           <TgIcon name="close" />
         </IconButton>
       </Box>
@@ -162,7 +163,8 @@ export default function AvatarCropper({
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', px: 3, pb: 3 }}>
         <IconButton
           onClick={confirm}
-          sx={{ width: 56, height: 56, background: tg.accent, color: '#fff', '&:hover': { background: tg.accent, filter: 'brightness(1.05)' } }}
+          color="#fff"
+          style={{ width: 56, height: 56, background: tg.accent, '--ib-hover': tg.accent } as CSSProperties}
         >
           <TgIcon name="check" />
         </IconButton>

@@ -4,10 +4,12 @@
 // transient parent state (composer text, context menu, media viewer) never
 // re-renders it — only its own data (chat, presence/typing, search) does.
 import { memo, useEffect, useState } from 'react'
-import { Box, IconButton, InputBase, Typography, useTheme } from '@mui/material'
+import { Box, InputBase, Typography, useTheme } from '@mui/material'
+import Text from '../../shared/ui/Text'
+import IconButton from '../../shared/ui/IconButton'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon, { type IconName } from '../TgIcon'
-import Avatar from '../Avatar'
+import Avatar from '../../shared/ui/Avatar'
 import VerifiedBadge from '../VerifiedBadge'
 import TypingIndicator from './TypingIndicator'
 import { useCall } from '../call/CallProvider'
@@ -237,15 +239,15 @@ function ChatHeader({
             />
             {searchQuery.trim() && searchResults.length > 0 && (
               <>
-                <IconButton size="small" onClick={() => jumpTo(activeIdx - 1)} disabled={activeIdx <= 0} sx={{ color: tg.textFaint }}>
+                <IconButton size="small" onClick={() => jumpTo(activeIdx - 1)} disabled={activeIdx <= 0} color={tg.textFaint}>
                   <TgIcon name="up" />
                 </IconButton>
-                <IconButton size="small" onClick={() => jumpTo(activeIdx + 1)} disabled={activeIdx >= searchResults.length - 1} sx={{ color: tg.textFaint }}>
+                <IconButton size="small" onClick={() => jumpTo(activeIdx + 1)} disabled={activeIdx >= searchResults.length - 1} color={tg.textFaint}>
                   <TgIcon name="down" />
                 </IconButton>
               </>
             )}
-            <IconButton size="small" onClick={() => { if (searchQuery) onSearchClear(); else onSearchClose() }} sx={{ color: tg.textFaint }}>
+            <IconButton size="small" onClick={() => { if (searchQuery) onSearchClear(); else onSearchClose() }} color={tg.textFaint}>
               <TgIcon name="close" />
             </IconButton>
           </Box>
@@ -265,11 +267,11 @@ function ChatHeader({
                 <Box sx={{ borderTop: `1px solid ${cardDivider}` }} />
                 <Box sx={{ maxHeight: '60vh', overflowY: 'auto' }}>
                   {searchResults.length === 0 ? (
-                    <Typography sx={{ fontSize: 15, color: tg.textSecondary, px: 2, py: 2, textAlign: 'center' }}>
+                    <Text size={15} color={tg.textSecondary} style={{ paddingLeft: '16px', paddingRight: '16px', paddingTop: '16px', paddingBottom: '16px', textAlign: 'center' }}>
                       {t('There were no results for')}{' '}
                       <Box component="span" sx={{ fontWeight: 700, color: tg.textPrimary }}>“{searchQuery}”</Box>
                       {t('. Try a new search.')}
-                    </Typography>
+                    </Text>
                   ) : (
                     searchResults.map((r, i) => (
                       <Box
@@ -277,11 +279,11 @@ function ChatHeader({
                         onClick={() => { setActiveIdx(i); onPickResult(r.seq) }}
                         sx={{ display: 'flex', alignItems: 'center', gap: 1.25, px: 1.5, py: 0.75, cursor: 'pointer', background: i === activeIdx ? tg.hover : 'transparent', '&:hover': { background: tg.hover } }}
                       >
-                        <Avatar background={r.avatar} text={r.sender.charAt(0)} size={40} />
+                        <Avatar background={r.avatar} text={r.sender.charAt(0)} size="sm" />
                         <Box sx={{ flex: 1, minWidth: 0 }}>
                           <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
-                            <Typography noWrap sx={{ flex: 1, fontSize: 14.5, fontWeight: 600, color: tg.textPrimary }}>{r.sender}</Typography>
-                            <Typography sx={{ fontSize: 12, color: tg.textFaint, flexShrink: 0 }}>{r.time}</Typography>
+                            <Text noWrap size={14.5} weight={600} color={tg.textPrimary} style={{ flex: 1 }}>{r.sender}</Text>
+                            <Text size={12} color={tg.textFaint} style={{ flexShrink: 0 }}>{r.time}</Text>
                           </Box>
                           <Typography noWrap component="div" sx={{ fontSize: 14, color: tg.textSecondary, mt: 0.1 }}>
                             <ResultPreview row={r} query={searchQuery} />
@@ -318,7 +320,7 @@ function ChatHeader({
           }}
         >
           {onBack && (
-            <IconButton onClick={onBack} sx={{ color: tg.textSecondary, ml: -0.5 }}>
+            <IconButton onClick={onBack} color={tg.textSecondary} style={{ marginLeft: '-4px' }}>
               <TgIcon name="back" />
             </IconButton>
           )}
@@ -328,37 +330,37 @@ function ChatHeader({
               text={chat.avatarText}
               emoji={chat.avatarEmoji}
               src={avatarSrc}
-              size={40}
+              size="sm"
               online={chat.online || peerOnline}
               ringColor={tg.bubble}
             />
             <Box sx={{ flex: 1, minWidth: 0 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
-                <Typography noWrap sx={{ fontWeight: 500, fontSize: 16, lineHeight: 1.2, color: tg.textPrimary }}>
+                <Text noWrap weight={500} size={16} color={tg.textPrimary} style={{ lineHeight: 1.2 }}>
                   {chat.name}
-                </Typography>
+                </Text>
                 {chat.verified && <VerifiedBadge size={18} />}
               </Box>
-              <Typography noWrap sx={{ fontSize: 13.5, lineHeight: 1.2, color: typingActive || online ? tg.accent : tg.textSecondary }}>
+              <Text noWrap size={13.5} color={typingActive || online ? tg.accent : tg.textSecondary} style={{ lineHeight: 1.2 }}>
                 {typingActive && <TypingIndicator kind={typingKind} color={tg.accent} />}
                 {typingActive ? typingText : status}
-              </Typography>
+              </Text>
             </Box>
           </Box>
           {chat.type === 'private' && (
             <>
-              <IconButton onClick={() => startCall(false)} sx={{ color: tg.textSecondary }}>
+              <IconButton onClick={() => startCall(false)} color={tg.textSecondary}>
                 <TgIcon name="phone" />
               </IconButton>
-              <IconButton onClick={() => startCall(true)} sx={{ color: tg.textSecondary }}>
+              <IconButton onClick={() => startCall(true)} color={tg.textSecondary}>
                 <TgIcon name="videocamera" />
               </IconButton>
             </>
           )}
-          <IconButton onClick={onSearchOpen} sx={{ color: tg.textSecondary }}>
+          <IconButton onClick={onSearchOpen} color={tg.textSecondary}>
             <TgIcon name="search" />
           </IconButton>
-          <IconButton onClick={(e) => onOpenMenu(e.currentTarget.getBoundingClientRect())} sx={{ color: tg.textSecondary }}>
+          <IconButton onClick={(e) => onOpenMenu(e.currentTarget.getBoundingClientRect())} color={tg.textSecondary}>
             <TgIcon name="more" />
           </IconButton>
         </Box>

@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
-import { Box, IconButton, Typography, useTheme } from '@mui/material'
+import { Box, useTheme } from '@mui/material'
+import IconButton from '../../shared/ui/IconButton'
+import Text from '../../shared/ui/Text'
 import { motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
 import { slideInRight } from '../../motion'
@@ -67,12 +69,12 @@ export function SettingsScreen({
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 1.25 }}>
-        <IconButton onClick={onBack} sx={{ color: tg.textSecondary }}>
+        <IconButton onClick={onBack} color={tg.textSecondary}>
           <TgIcon name="back" />
         </IconButton>
-        <Typography sx={{ flex: 1, fontSize: 19, fontWeight: 600, color: tg.textPrimary }}>
+        <Text size={19} weight={600} color={tg.textPrimary} style={{ flex: 1 }}>
           {t(title)}
-        </Typography>
+        </Text>
         {headerRight}
       </Box>
       <Box sx={{ flex: 1, overflowY: 'auto', pb: 3 }}>{children}</Box>
@@ -95,15 +97,15 @@ export function Section({
   return (
     <Box sx={{ mb: 1.5 }}>
       {caption && (
-        <Typography sx={{ px: 3, pb: 0.5, fontSize: 14, fontWeight: 600, color: tg.accent }}>
+        <Text size={14} weight={600} color={tg.accent} style={{ paddingLeft: '24px', paddingRight: '24px', paddingBottom: '4px' }}>
           {t(caption)}
-        </Typography>
+        </Text>
       )}
       <Box sx={{ mx: 1.25, borderRadius: '16px', background: cardBg, py: 0.5 }}>{children}</Box>
       {footer && (
-        <Typography sx={{ px: 3, pt: 0.75, fontSize: 13.5, color: tg.textSecondary }}>
+        <Text size={13.5} color={tg.textSecondary} style={{ paddingLeft: '24px', paddingRight: '24px', paddingTop: '6px' }}>
           {t(footer)}
-        </Typography>
+        </Text>
       )}
     </Box>
   )
@@ -159,17 +161,17 @@ export function Row({
         <Box sx={{ color: tg.textSecondary, display: 'flex', '& svg': { fontSize: 24 } }}>{icon}</Box>
       )}
       <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography noWrap sx={{ fontSize: 16, color }}>
+        <Text noWrap size={16} color={color}>
           {translate ? t(label) : label}
-        </Typography>
+        </Text>
         {sublabel && (
-          <Typography noWrap sx={{ fontSize: 13.5, color: tg.textSecondary }}>
+          <Text noWrap size={13.5} color={tg.textSecondary}>
             {sublabel}
-          </Typography>
+          </Text>
         )}
       </Box>
       {value != null && (
-        <Typography sx={{ fontSize: 15, color: tg.textFaint, flexShrink: 0 }}>{value}</Typography>
+        <Text size={15} color={tg.textFaint} style={{ flexShrink: 0 }}>{value}</Text>
       )}
       {toggle && <TgSwitch checked={!!checked} />}
       {selected && <TgIcon name="check" size={22} color={tg.accent} />}

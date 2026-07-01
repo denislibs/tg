@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { Box, IconButton, InputBase, Typography, useTheme } from '@mui/material'
+import { Box, InputBase, Typography, useTheme } from '@mui/material'
+import Text from '../../shared/ui/Text'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
+import IconButton from '../../shared/ui/IconButton'
 import { EASE, DUR } from '../../motion'
 import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import QrCode from './QrCode'
+
+const MotionIconButton = motion(IconButton)
 
 type Step = 'phone' | 'qr' | 'code'
 
@@ -221,14 +225,15 @@ export default function AuthFlow({ onComplete }: { onComplete: () => void }) {
   const phoneStep = (
     <>
       {Logo}
-      <Typography sx={{ fontSize: 26, fontWeight: 600, textAlign: 'center', color: tg.textPrimary }}>
+      <Text size={26} weight={600} color={tg.textPrimary} style={{ textAlign: 'center' }}>
         Telegram
-      </Typography>
-      <Typography
-        sx={{ fontSize: 15, textAlign: 'center', color: tg.textSecondary, mt: 1, mb: 3, lineHeight: 1.5 }}
+      </Text>
+      <Text
+        size={15} color={tg.textSecondary}
+        style={{ textAlign: 'center', marginTop: '8px', marginBottom: '24px', lineHeight: 1.5 }}
       >
         {t('Please confirm your country code and enter your phone number.')}
-      </Typography>
+      </Text>
 
       {/* country selector */}
       <Box sx={{ position: 'relative', mb: 1.25 }}>
@@ -238,7 +243,7 @@ export default function AuthFlow({ onComplete }: { onComplete: () => void }) {
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
             <span style={{ fontSize: 22, lineHeight: 1 }}>{country.flag}</span>
-            <Typography sx={{ fontSize: 16, color: tg.textPrimary }}>{country.name}</Typography>
+            <Text size={16} color={tg.textPrimary}>{country.name}</Text>
           </Box>
           <TgIcon name="down" color={tg.textFaint} />
         </Box>
@@ -285,8 +290,8 @@ export default function AuthFlow({ onComplete }: { onComplete: () => void }) {
                   }}
                 >
                   <span style={{ fontSize: 20, lineHeight: 1 }}>{c.flag}</span>
-                  <Typography sx={{ fontSize: 15, color: tg.textPrimary, flex: 1 }}>{c.name}</Typography>
-                  <Typography sx={{ fontSize: 15, color: tg.textFaint }}>{c.code}</Typography>
+                  <Text size={15} color={tg.textPrimary} style={{ flex: 1 }}>{c.name}</Text>
+                  <Text size={15} color={tg.textFaint}>{c.code}</Text>
                 </Box>
               ))}
             </Box>
@@ -296,7 +301,7 @@ export default function AuthFlow({ onComplete }: { onComplete: () => void }) {
 
       {/* phone field */}
       <Box sx={fieldWrap}>
-        <Typography sx={{ fontSize: 16, color: tg.textPrimary, mr: 1 }}>{country.code}</Typography>
+        <Text size={16} color={tg.textPrimary} style={{ marginRight: '8px' }}>{country.code}</Text>
         <InputBase
           autoFocus
           value={phone}
@@ -327,7 +332,7 @@ export default function AuthFlow({ onComplete }: { onComplete: () => void }) {
         >
           {keep && <TgIcon name="check" size={16} color="#fff" />}
         </Box>
-        <Typography sx={{ fontSize: 15, color: tg.textPrimary }}>{t('Keep me signed in')}</Typography>
+        <Text size={15} color={tg.textPrimary}>{t('Keep me signed in')}</Text>
       </Box>
 
       <Box
@@ -347,7 +352,7 @@ export default function AuthFlow({ onComplete }: { onComplete: () => void }) {
         {t('Next')}
       </Box>
 
-      {error && <Typography sx={{ fontSize: 13, color: '#e53935', textAlign: 'center', mt: 1.5 }}>{error}</Typography>}
+      {error && <Text size={13} color="#e53935" style={{ textAlign: 'center', marginTop: '12px' }}>{error}</Text>}
 
       <Typography
         onClick={() => go('qr', 1)}
@@ -370,9 +375,9 @@ export default function AuthFlow({ onComplete }: { onComplete: () => void }) {
 
   const qrStep = (
     <>
-      <Typography sx={{ fontSize: 24, fontWeight: 600, textAlign: 'center', color: tg.textPrimary, mb: 3 }}>
+      <Text size={24} weight={600} color={tg.textPrimary} style={{ textAlign: 'center', marginBottom: '24px' }}>
         {t('Log in to Telegram by QR Code')}
-      </Typography>
+      </Text>
 
       <Box
         sx={{
@@ -396,9 +401,9 @@ export default function AuthFlow({ onComplete }: { onComplete: () => void }) {
               justifyContent: 'center',
             }}
           >
-            <Typography sx={{ fontSize: 14.5, color: '#999' }}>
+            <Text size={14.5} color="#999">
               {qrError ? t('QR недоступен') : t('Обновление…')}
-            </Typography>
+            </Text>
           </Box>
         )}
 
@@ -448,7 +453,7 @@ export default function AuthFlow({ onComplete }: { onComplete: () => void }) {
             >
               {i + 1}
             </Box>
-            <Typography sx={{ fontSize: 14.5, color: tg.textSecondary }}>{line}</Typography>
+            <Text size={14.5} color={tg.textSecondary}>{line}</Text>
           </Box>
         ))}
       </Box>
@@ -475,14 +480,15 @@ export default function AuthFlow({ onComplete }: { onComplete: () => void }) {
   const codeStep = (
     <>
       {Logo}
-      <Typography sx={{ fontSize: 22, fontWeight: 600, textAlign: 'center', color: tg.textPrimary }}>
+      <Text size={22} weight={600} color={tg.textPrimary} style={{ textAlign: 'center' }}>
         {country.code} {phone}
-      </Typography>
-      <Typography
-        sx={{ fontSize: 15, textAlign: 'center', color: tg.textSecondary, mt: 1, mb: 3, lineHeight: 1.5 }}
+      </Text>
+      <Text
+        size={15} color={tg.textSecondary}
+        style={{ textAlign: 'center', marginTop: '8px', marginBottom: '24px', lineHeight: 1.5 }}
       >
         {t('We have sent you a message with the code.')}
-      </Typography>
+      </Text>
 
       <Box sx={{ display: 'flex', gap: 1.25, justifyContent: 'center' }}>
         {code.map((d, i) => (
@@ -509,7 +515,7 @@ export default function AuthFlow({ onComplete }: { onComplete: () => void }) {
         ))}
       </Box>
 
-      {error && <Typography sx={{ fontSize: 13, color: '#e53935', textAlign: 'center', mt: 1.5 }}>{error}</Typography>}
+      {error && <Text size={13} color="#e53935" style={{ textAlign: 'center', marginTop: '12px' }}>{error}</Text>}
 
       <Box
         sx={{ ...accentBtn, mt: 3, opacity: codeStr.length === CODE_LEN ? 1 : 0.5, pointerEvents: codeStr.length === CODE_LEN ? 'auto' : 'none' }}
@@ -539,16 +545,16 @@ export default function AuthFlow({ onComplete }: { onComplete: () => void }) {
       {/* back arrow (not on first step) */}
       <AnimatePresence>
         {step !== 'phone' && (
-          <IconButton
-            component={motion.button}
+          <MotionIconButton
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => go('phone', -1)}
-            sx={{ position: 'fixed', top: 20, left: 20, color: tg.textSecondary }}
+            color={tg.textSecondary}
+            style={{ position: 'fixed', top: 20, left: 20 }}
           >
             <TgIcon name="back" />
-          </IconButton>
+          </MotionIconButton>
         )}
       </AnimatePresence>
 
