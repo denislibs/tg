@@ -1,14 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import { createElement as h } from 'react'
 import { render } from '@testing-library/react'
-import { ThemeProvider } from '@mui/material'
 import RichText from './RichText'
-import { buildTheme } from '../theme'
 import type { MessageEntity } from '../core/models'
 
-const theme = buildTheme('day')
+// RichText больше не зависит от темы — рендерим напрямую (без ThemeProvider).
 const renderRT = (text: string, entities: MessageEntity[]) =>
-  render(h(ThemeProvider, { theme }, h(RichText, { text, entities, linkColor: '#39c' })))
+  render(h(RichText, { text, entities, linkColor: '#39c' }))
 
 describe('RichText link sanitization (XSS gate)', () => {
   it('does NOT render a javascript: URL as an anchor href', () => {
