@@ -24,6 +24,52 @@
   flex: 1;
 }
 
+// Pinned-плашка исходного поста под шапкой (tweb .pinned-message).
+.pinned {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid var(--tg-divider);
+  background: var(--tg-appBg);
+  cursor: pointer;
+  flex-shrink: 0;
+  user-select: none;
+}
+.pinnedLine {
+  width: 2px;
+  align-self: stretch;
+  border-radius: 1px;
+  background: var(--tg-accent);
+  flex-shrink: 0;
+}
+.pinnedBody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+// Сервис-сообщение «Начало обсуждения» (tweb .bubble.service .service-msg).
+.service {
+  display: flex;
+  justify-content: center;
+  margin: 4px 0;
+}
+.serviceMsg {
+  max-width: 80%;
+  padding: 0.28125rem 0.625rem;
+  border-radius: 0.875rem;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 20px;
+  text-align: center;
+  word-break: break-word;
+  user-select: none;
+}
+
 // Тело со списком комментариев
 .body {
   flex: 1;

@@ -1,13 +1,30 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import IconButton from '../shared/ui/IconButton'
 import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import Text from '../shared/ui/Text'
 import { slideInRight } from '../motion'
-import { useT } from '../i18n'
+import { useT, useLang } from '../i18n'
+import type { Lang } from '../i18n'
 import Avatar from '../shared/ui/Avatar'
 import { useDiscussion } from '../core/hooks/useDiscussion'
 import s from './DiscussionView.module.scss'
+
+// Заголовок треда «N комментариев» (tweb: Chat.Title.Comments). Русский/укр — по
+// славянским правилам плюрализации (1 / 2-4 / 5+); прочие локали — англо-стиль.
+function commentsTitle(count: number, lang: Lang, t: (s: string) => string): string {
+  if (count === 0) return t('Comments')
+  if (lang === 'ru' || lang === 'uk') {
+    const m10 = count % 10
+    const m100 = count % 100
+    let word: string
+    if (m10 === 1 && m100 !== 11) word = lang === 'ru' ? 'комментарий' : 'коментар'
+    else if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) word = lang === 'ru' ? 'комментария' : 'коментарі'
+    else word = lang === 'ru' ? 'комментариев' : 'коментарів'
+    return `${count} ${word}`
+  }
+  return `${count} ${count === 1 ? t('Comment') : t('Comments')}`
+}
 
 export default function DiscussionView({
   channelId,
@@ -23,14 +40,22 @@ export default function DiscussionView({
   onBack: () => void
 }) {
   const t = useT()
-  const { comments, send } = useDiscussion(channelId, postId, discussionChatId)
+  const [lang] = useLang()
+  const { comments, count, send } = useDiscussion(channelId, postId, discussionChatId)
   const [draft, setDraft] = useState('')
+  const [pinnedHidden, setPinnedHidden] = useState(false)
+  const postRef = useRef<HTMLDivElement>(null)
 
   const submit = () => {
     if (!draft.trim()) return
     send(draft)
     setDraft('')
   }
+
+  // Клик по плашке — скролл к посту (первому сообщению); поведение как в tweb.
+  const jumpToPost = () => postRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
+  const postPreview = post.text || post.title || t('Message')
 
   return (
     <motion.div
@@ -40,20 +65,42 @@ export default function DiscussionView({
       animate="animate"
       exit="exit"
     >
-      {/* Header */}
+      {/* Header — «N комментариев» */}
       <div className={s.header}>
         <IconButton onClick={onBack} color="var(--tg-textPrimary)">
           <TgIcon name="back" />
         </IconButton>
         <Text size={19} weight={600} color="var(--tg-textPrimary)" className={s.title}>
-          {t('Comments')}
+          {commentsTitle(count, lang, t)}
         </Text>
       </div>
 
+      {/* Pinned-плашка исходного поста (tweb .pinned-message в topbar-floating-plates) */}
+      {!pinnedHidden && (
+        <div className={s.pinned} onClick={jumpToPost}>
+          <div className={s.pinnedLine} />
+          <div className={s.pinnedBody}>
+            <Text size={13} weight={600} color="var(--tg-accent)" style={{ lineHeight: 1.2 }}>
+              {t('Pinned message')}
+            </Text>
+            <Text noWrap size={13.5} color="var(--tg-textSecondary)">
+              {postPreview}
+            </Text>
+          </div>
+          <IconButton
+            size="small"
+            onClick={(e) => { e.stopPropagation(); setPinnedHidden(true) }}
+            color="var(--tg-textFaint)"
+          >
+            <TgIcon name="close" size={20} />
+          </IconButton>
+        </div>
+      )}
+
       {/* Body */}
       <div className={s.body}>
-        {/* Pinned original post */}
-        <div className={s.post}>
+        {/* Исходный пост — первое сообщение треда */}
+        <div className={s.post} ref={postRef}>
           {post.gradient && (
             <div className={s.postMedia} style={{ background: post.gradient }}>
               {post.emoji}
@@ -67,7 +114,12 @@ export default function DiscussionView({
           {post.text && <Text size={15} color="var(--tg-textPrimary)">{post.text}</Text>}
         </div>
 
-        {/* Comments */}
+        {/* Сервис-сообщение «Начало обсуждения» (tweb messageActionDiscussionStarted) */}
+        <div className={s.service}>
+          <div className={s.serviceMsg}>{t('Discussion started')}</div>
+        </div>
+
+        {/* Комментарии */}
         {comments.map((c) =>
           c.out ? (
             <div key={c.key} className={s.rowOut}>
