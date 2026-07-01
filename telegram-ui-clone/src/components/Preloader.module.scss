@@ -1,0 +1,12 @@
+// tweb-style circular preloader: постоянная дуга 3/4, вращение 1 об/сек.
+.svg {
+  display: block;
+  transform-origin: center;
+  animation: preloaderRotate 1s linear infinite;
+}
+
+@keyframes preloaderRotate {
+  100% {
+    transform: rotate(360deg);
+  }
+}

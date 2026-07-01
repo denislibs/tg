@@ -1,0 +1,59 @@
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 520px;
+  width: 100%;
+  margin-top: 6px;
+}
+.main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--tg-bubble);
+  border: 1px solid var(--tg-bubbleBorder);
+  border-radius: 14px;
+  padding: 10px 12px;
+  cursor: pointer;
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+    }
+  }
+}
+.avatars {
+  display: flex;
+}
+.avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--tg-bubble);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+
+  &:not(:first-child) {
+    margin-left: -9px;
+  }
+}
+.label {
+  flex: 1;
+}
+.roundBtn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--tg-bubble);
+  border: 1px solid var(--tg-bubbleBorder);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}

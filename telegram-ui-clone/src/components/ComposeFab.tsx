@@ -3,7 +3,6 @@
 // compose menu (so Sidebar no longer holds composeOpen) and renders ComposeMenu
 // itself. Hidden while the search is open.
 import { memo, useState, type CSSProperties } from 'react'
-import { useTheme } from '@mui/material'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import IconButton from '../shared/ui/IconButton'
@@ -19,7 +18,6 @@ export interface ComposeFabProps {
 }
 
 function ComposeFab({ searching, onNewGroup, onNewPrivate, onNewChannel }: ComposeFabProps) {
-  const tg = useTheme().tg
   const [open, setOpen] = useState(false)
   const close = () => setOpen(false)
 
@@ -42,8 +40,8 @@ function ComposeFab({ searching, onNewGroup, onNewPrivate, onNewChannel }: Compo
               zIndex: 32,
               width: 56,
               height: 56,
-              background: tg.accentGradient,
-              '--ib-hover': tg.accentGradient,
+              background: 'var(--tg-accentGradient)',
+              '--ib-hover': 'var(--tg-accentGradient)',
             } as CSSProperties}
           >
             <motion.span

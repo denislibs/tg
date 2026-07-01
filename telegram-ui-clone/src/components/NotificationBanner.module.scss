@@ -1,0 +1,17 @@
+.banner {
+  margin: 8px 12px 0;
+  padding: 12px 16px;
+  border-radius: 16px;
+  background: var(--tg-bannerBg);
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.body {
+  flex: 1;
+  min-width: 0;
+}
+.close {
+  margin-top: -4px;
+  margin-right: -4px;
+}

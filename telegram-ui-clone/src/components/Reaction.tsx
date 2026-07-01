@@ -1,8 +1,7 @@
-import { Box, Typography, useTheme } from '@mui/material'
 import Text from '../shared/ui/Text'
+import classNames from '../shared/lib/classNames'
 import { motion } from 'framer-motion'
-
-const MotionBox = motion(Box)
+import s from './Reaction.module.scss'
 
 interface Props {
   emoji: string
@@ -11,33 +10,17 @@ interface Props {
 }
 
 export default function Reaction({ emoji, count, highlighted }: Props) {
-  const tg = useTheme().tg
   return (
-    <MotionBox
+    <motion.div
+      className={classNames(s.reaction, count != null ? s.hasCount : '', highlighted ? s.highlighted : '')}
       whileHover={{ scale: 1.06 }}
       whileTap={{ scale: 0.94 }}
       transition={{ type: 'spring', stiffness: 500, damping: 22 }}
-      sx={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 0.5,
-        height: 30,
-        px: count != null ? 1.25 : 0,
-        width: count != null ? 'auto' : 30,
-        justifyContent: 'center',
-        borderRadius: 15,
-        cursor: 'pointer',
-        background: highlighted ? 'linear-gradient(135deg,#f7b733,#fc8a3b)' : tg.searchBg,
-        color: highlighted ? '#fff' : tg.accent,
-        userSelect: 'none',
-      }}
     >
-      <Typography component="span" sx={{ fontSize: 16, lineHeight: 1 }}>
-        {emoji}
-      </Typography>
+      <span className={s.emoji}>{emoji}</span>
       {count != null && (
-        <Text size={13.5} weight={600} color={tg.accent}>{count}</Text>
+        <Text size={13.5} weight={600} color="var(--tg-accent)">{count}</Text>
       )}
-    </MotionBox>
+    </motion.div>
   )
 }

@@ -58,6 +58,11 @@
   --tg-searchCardShadow: 0 6px 28px -6px rgba(0, 0, 0, 0.22);
   // рамка outlined-инпута в покое (tweb .input-field)
   --tg-inputBorderIdle: #dfe1e5;
+  // выключенный трек тумблера (tweb .checkbox-field-toggle)
+  --tg-switchOff: #c4c9cc;
+  // shimmer-скелетон списка диалогов
+  --tg-skelBase: #e6e6ea;
+  --tg-skelHi: #f2f2f5;
 }
 
 // "Day" — brighter light theme, teal/blue accent; rest inherits classic (:root).
@@ -113,6 +118,9 @@
   --tg-searchCardBg: #2c2c2e;
   --tg-searchCardShadow: 0 6px 28px -4px rgba(0, 0, 0, 0.6);
   --tg-inputBorderIdle: #2f2f2f;
+  --tg-switchOff: #707579;
+  --tg-skelBase: #2a2a2a;
+  --tg-skelHi: #3a3a3a;
 }
 
 // "Dark" — neutral near-black (vs Night's purple), blue accent; deltas over night.
