@@ -70,6 +70,7 @@ export interface RawMessage {
   media_duration?: number
   media_size?: number
   media_name?: string
+  views?: number
 }
 
 export interface Message {
@@ -109,6 +110,8 @@ export interface Message {
   mediaDuration?: number
   mediaSize?: number
   mediaName?: string
+  /** deduplicated viewer count for a channel post (undefined = not a channel post) */
+  views?: number
 }
 
 export function mapDialog(r: RawDialog): Dialog {
@@ -168,5 +171,6 @@ export function mapMessage(r: RawMessage): Message {
     mediaDuration: r.media_duration,
     mediaSize: r.media_size,
     mediaName: r.media_name,
+    views: r.views,
   }
 }

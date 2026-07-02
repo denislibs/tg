@@ -1,30 +1,33 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import IconButton from '../shared/ui/IconButton'
-import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import Text from '../shared/ui/Text'
-import { slideInRight } from '../motion'
 import { useT, useLang } from '../i18n'
-import type { Lang } from '../i18n'
-import Avatar from '../shared/ui/Avatar'
 import { useDiscussion } from '../core/hooks/useDiscussion'
+import { commentsLabel } from '../core/commentsLabel'
+import { useVoiceRecorder } from '../core/hooks/useVoiceRecorder'
+import Composer from './Composer'
+import ChatFeed from './messages/ChatFeed'
+import type { FeedFns } from './messages/MessageRow'
+import type { ConvMsg } from '../data'
 import s from './DiscussionView.module.scss'
 
-// Заголовок треда «N комментариев» (tweb: Chat.Title.Comments). Русский/укр — по
-// славянским правилам плюрализации (1 / 2-4 / 5+); прочие локали — англо-стиль.
-function commentsTitle(count: number, lang: Lang, t: (s: string) => string): string {
-  if (count === 0) return t('Comments')
-  if (lang === 'ru' || lang === 'uk') {
-    const m10 = count % 10
-    const m100 = count % 100
-    let word: string
-    if (m10 === 1 && m100 !== 11) word = lang === 'ru' ? 'комментарий' : 'коментар'
-    else if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) word = lang === 'ru' ? 'комментария' : 'коментарі'
-    else word = lang === 'ru' ? 'комментариев' : 'коментарів'
-    return `${count} ${word}`
-  }
-  return `${count} ${count === 1 ? t('Comment') : t('Comments')}`
+const NOOP = () => {}
+// Feed callbacks are inert here (sending is via the composer, no context menu/select).
+const FEED_FNS: FeedFns = {
+  openSender: NOOP,
+  playVoice: NOOP,
+  toggleSelect: NOOP,
+  openMsgMenu: NOOP,
+  jumpToSeq: NOOP,
+  openLightbox: NOOP,
 }
+const EMPTY_COUNTS = new Map<number, number>()
+const EMPTY_SELECTED = new Set<number>()
+
+// Match ConversationView's floating-chrome clearances.
+const HEADER_H = 76 // header card top(16)+height(48)+gap
+const PINNED_EXTRA = 56 // extra when the pinned plate is shown
 
 export default function DiscussionView({
   channelId,
@@ -42,127 +45,157 @@ export default function DiscussionView({
   const t = useT()
   const [lang] = useLang()
   const { comments, count, send } = useDiscussion(channelId, postId, discussionChatId)
-  const [draft, setDraft] = useState('')
   const [pinnedHidden, setPinnedHidden] = useState(false)
-  const postRef = useRef<HTMLDivElement>(null)
+  // Search over comments: null = closed; '' or text = open with that query.
+  const [search, setSearch] = useState<string | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  // Real composer needs a voice recorder; comments don't support voice, so the
+  // completed clip is discarded (the mic still records but nothing is sent).
+  const rec = useVoiceRecorder({ onComplete: NOOP })
 
-  const submit = () => {
-    if (!draft.trim()) return
-    send(draft)
-    setDraft('')
-  }
+  // Тред как обычный чат: исходный пост → сервис «Начало обсуждения» → комментарии,
+  // настоящими баблами (ChatFeed) поверх обоев. В режиме поиска — только совпавшие
+  // комментарии (пост/сервис прячутся).
+  const feedMsgs = useMemo<ConvMsg[]>(() => {
+    const commentMsg = (c: (typeof comments)[number]): ConvMsg => ({
+      clientId: c.key,
+      type: 'text',
+      out: c.out,
+      sender: c.out ? undefined : c.name,
+      senderColor: c.out ? undefined : c.color,
+      text: c.text,
+      time: c.time,
+      status: c.out ? 'read' : undefined,
+    })
+    if (search !== null) {
+      const q = search.trim().toLowerCase()
+      const hits = q ? comments.filter((c) => c.text.toLowerCase().includes(q)) : comments
+      return hits.map(commentMsg)
+    }
+    const postText = post.text || post.title || ''
+    const list: ConvMsg[] = [
+      { clientId: 'post', type: 'text', out: false, text: postText },
+      { clientId: 'svc', type: 'service', text: t('Discussion started') },
+    ]
+    for (const c of comments) list.push(commentMsg(c))
+    return list
+  }, [comments, post, t, search])
 
-  // Клик по плашке — скролл к посту (первому сообщению); поведение как в tweb.
-  const jumpToPost = () => postRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-
+  const jumpToPost = () => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
   const postPreview = post.text || post.title || t('Message')
+  const showPinned = !pinnedHidden && search === null
+  const topClear = HEADER_H + (showPinned ? PINNED_EXTRA : 0)
 
   return (
-    <motion.div
-      className={s.root}
-      variants={slideInRight}
-      initial="initial"
-      animate="animate"
-      exit="exit"
-    >
-      {/* Header — «N комментариев» */}
-      <div className={s.header}>
-        <IconButton onClick={onBack} color="var(--tg-textPrimary)">
-          <TgIcon name="back" />
-        </IconButton>
-        <Text size={19} weight={600} color="var(--tg-textPrimary)" className={s.title}>
-          {commentsTitle(count, lang, t)}
-        </Text>
-      </div>
-
-      {/* Pinned-плашка исходного поста (tweb .pinned-message в topbar-floating-plates) */}
-      {!pinnedHidden && (
-        <div className={s.pinned} onClick={jumpToPost}>
-          <div className={s.pinnedLine} />
-          <div className={s.pinnedBody}>
-            <Text size={13} weight={600} color="var(--tg-accent)" style={{ lineHeight: 1.2 }}>
-              {t('Pinned message')}
-            </Text>
-            <Text noWrap size={13.5} color="var(--tg-textSecondary)">
-              {postPreview}
-            </Text>
-          </div>
-          <IconButton
-            size="small"
-            onClick={(e) => { e.stopPropagation(); setPinnedHidden(true) }}
-            color="var(--tg-textFaint)"
-          >
-            <TgIcon name="close" size={20} />
-          </IconButton>
-        </div>
-      )}
-
-      {/* Body */}
-      <div className={s.body}>
-        {/* Исходный пост — первое сообщение треда */}
-        <div className={s.post} ref={postRef}>
-          {post.gradient && (
-            <div className={s.postMedia} style={{ background: post.gradient }}>
-              {post.emoji}
-            </div>
-          )}
-          {post.title && (
-            <Text weight={700} size={15} color="var(--tg-textPrimary)" style={{ marginBottom: '2px' }}>
-              {post.title}
-            </Text>
-          )}
-          {post.text && <Text size={15} color="var(--tg-textPrimary)">{post.text}</Text>}
-        </div>
-
-        {/* Сервис-сообщение «Начало обсуждения» (tweb messageActionDiscussionStarted) */}
-        <div className={s.service}>
-          <div className={s.serviceMsg}>{t('Discussion started')}</div>
-        </div>
-
-        {/* Комментарии */}
-        {comments.map((c) =>
-          c.out ? (
-            <div key={c.key} className={s.rowOut}>
-              <div className={s.bubbleOut}>
-                <Text size={15}>{c.text}</Text>
-                <Text size={12} color="rgba(255,255,255,0.7)" style={{ textAlign: 'right', marginTop: '2px' }}>
-                  {c.time}
-                </Text>
-              </div>
-            </div>
+    <div className={s.root}>
+      {/* Плавающий хедер-карточка (как ChatHeader): «N комментариев» + поиск + меню */}
+      <div className={s.headerBar}>
+        <div className={s.headerCard}>
+          {search === null ? (
+            <>
+              <IconButton onClick={onBack} color="var(--tg-textSecondary)" style={{ marginLeft: '-4px' }}>
+                <TgIcon name="back" />
+              </IconButton>
+              <Text noWrap weight={500} size={16} color="var(--tg-textPrimary)" className={s.title}>
+                {commentsLabel(count, lang, t)}
+              </Text>
+              <IconButton onClick={() => { setMenuOpen(false); setSearch('') }} color="var(--tg-textFaint)">
+                <TgIcon name="search" />
+              </IconButton>
+              <IconButton onClick={() => setMenuOpen((o) => !o)} color="var(--tg-textFaint)">
+                <TgIcon name="more" />
+              </IconButton>
+            </>
           ) : (
-            <div key={c.key} className={s.rowIn}>
-              <Avatar background={c.color} size="xs" text={c.name.charAt(0)} />
-              <div className={s.bubbleIn}>
-                <Text size={13.5} weight={600} color={c.color}>{c.name}</Text>
-                <Text size={15} color="var(--tg-textPrimary)">{c.text}</Text>
-                <Text size={12} color="var(--tg-textFaint)" style={{ textAlign: 'right', marginTop: '2px' }}>
-                  {c.time}
-                </Text>
-              </div>
-            </div>
-          )
+            <>
+              <IconButton onClick={() => setSearch(null)} color="var(--tg-textSecondary)" style={{ marginLeft: '-4px' }}>
+                <TgIcon name="back" />
+              </IconButton>
+              <input
+                className={s.searchInput}
+                autoFocus
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={t('Search comments')}
+              />
+              <IconButton onClick={() => (search ? setSearch('') : setSearch(null))} color="var(--tg-textFaint)">
+                <TgIcon name="close" size={20} />
+              </IconButton>
+            </>
+          )}
+        </div>
+        {menuOpen && (
+          <div className={s.menu}>
+            <button
+              className={s.menuItem}
+              onClick={() => { setPinnedHidden((h) => !h); setMenuOpen(false) }}
+            >
+              {pinnedHidden ? t('Show pinned message') : t('Hide pinned message')}
+            </button>
+          </div>
         )}
       </div>
 
-      {/* Footer composer */}
-      <div className={s.composer}>
-        <input
-          className={s.input}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              submit()
-            }
-          }}
-          placeholder={t('Comment')}
-        />
-        <div className={s.sendBtn} onClick={submit}>
-          <TgIcon name="microphone" size={22} color="#fff" />
+      {/* Плавающая pinned-плашка поста (tweb .pinned-message) */}
+      {showPinned && (
+        <div className={s.pinnedBar}>
+          <div className={s.pinnedCard} onClick={jumpToPost}>
+            <TgIcon name="pin" size={20} color="var(--tg-accent)" />
+            <div className={s.pinnedLine} />
+            <div className={s.pinnedBody}>
+              <Text size={13} weight={600} color="var(--tg-accent)" style={{ lineHeight: 1.2 }}>
+                {t('Pinned message')}
+              </Text>
+              <Text noWrap size={13.5} color="var(--tg-textSecondary)">
+                {postPreview}
+              </Text>
+            </div>
+            <IconButton
+              size="small"
+              onClick={(e) => { e.stopPropagation(); setPinnedHidden(true) }}
+              color="var(--tg-textFaint)"
+            >
+              <TgIcon name="close" size={20} />
+            </IconButton>
+          </div>
+        </div>
+      )}
+
+      {/* Лента — центрированная колонка (max-width) поверх обоев */}
+      <div ref={scrollRef} className={s.scroll}>
+        <div className={s.content} style={{ paddingTop: `${topClear}px`, paddingBottom: '84px' }}>
+          <ChatFeed
+            msgs={feedMsgs}
+            winMsgs={[]}
+            isRealChat={false}
+            isGroup
+            discussionsEnabled={false}
+            commentCounts={EMPTY_COUNTS}
+            highlightSeq={null}
+            selecting={false}
+            selected={EMPTY_SELECTED}
+            ladderActive={false}
+            dateStickyTop={topClear}
+            feedFns={FEED_FNS}
+            onOpenDiscussion={NOOP}
+          />
         </div>
       </div>
-    </motion.div>
+
+      {/* Плавающий композер (как в ConversationView) */}
+      <div className={s.footer}>
+        <Composer
+          reply={null}
+          editing={null}
+          rec={rec}
+          onSend={(text) => send(text)}
+          onTyping={NOOP}
+          onCancelReply={NOOP}
+          onCancelEdit={NOOP}
+          onOpenAttach={NOOP}
+        />
+      </div>
+    </div>
   )
 }

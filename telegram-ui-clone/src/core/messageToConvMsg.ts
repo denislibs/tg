@@ -70,6 +70,7 @@ export function messageToConvMsg(
     sender: !out && opts?.senderName ? opts.senderName : undefined,
     senderId: !out ? m.senderId : undefined,
     edited: m.editedAt != null,
+    views: m.views,
     deleted: m.deleted ?? false,
     forwardFrom: m.fwdFromUserId != null ? { name: opts?.forwardFromName ?? 'Неизвестно' } : undefined,
     reply: m.replyTo

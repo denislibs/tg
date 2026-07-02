@@ -39,6 +39,7 @@ type store struct {
 	reactions   map[int64]map[int64]map[string]bool // msgID -> userID -> emoji set
 	hidden      map[int64]map[int64]bool            // userID -> msgID -> hidden ("delete for me")
 	pins        map[int64][]int64                   // chatID -> pinned msgIDs (newest first)
+	viewed      map[int64]map[int64]bool            // msgID -> userID -> viewed (channel view dedup)
 
 	// per-user update log
 	pts     map[int64]int64
@@ -54,6 +55,7 @@ func newStore() *store {
 		messages:  map[int64][]domain.Message{},
 		owners:    map[int64]int64{},
 		reactions: map[int64]map[int64]map[string]bool{},
+		viewed:    map[int64]map[int64]bool{},
 		pts:       map[int64]int64{},
 		date:      map[int64]int64{},
 		updates:   map[int64][]domain.Update{},
@@ -533,6 +535,46 @@ func (r fakeMsgs) CountUnread(_ context.Context, chatID, userID, afterSeq int64)
 		}
 	}
 	return n, nil
+}
+
+func (r fakeMsgs) RegisterChannelViews(_ context.Context, chatID, userID, upToSeq int64) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	if r.s.chatType[chatID] != "channel" {
+		return nil
+	}
+	for idx, m := range r.s.messages[chatID] {
+		if m.Seq > upToSeq || m.Deleted {
+			continue
+		}
+		if r.s.viewed[m.ID] == nil {
+			r.s.viewed[m.ID] = map[int64]bool{}
+		}
+		if r.s.viewed[m.ID][userID] {
+			continue
+		}
+		r.s.viewed[m.ID][userID] = true
+		r.s.messages[chatID][idx].Views++
+	}
+	return nil
+}
+
+func (r fakeMsgs) ViewCounts(_ context.Context, ids []int64) (map[int64]int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	want := map[int64]bool{}
+	for _, id := range ids {
+		want[id] = true
+	}
+	out := map[int64]int64{}
+	for _, msgs := range r.s.messages {
+		for _, m := range msgs {
+			if want[m.ID] {
+				out[m.ID] = m.Views
+			}
+		}
+	}
+	return out, nil
 }
 
 func (r fakeMsgs) MessageChatID(_ context.Context, messageID int64) (int64, error) {

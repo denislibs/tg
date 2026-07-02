@@ -8,7 +8,7 @@
 //
 // Стили — MessageRow.module.scss; палитра исходящих/входящих через CSS-переменные
 // на .row ([data-out]); геометрия с рантайм-флагами (радиусы, textSize) — инлайн.
-import { memo, type CSSProperties, type MouseEvent } from 'react'
+import { memo, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import Text from '../../shared/ui/Text'
 import classNames from '../../shared/lib/classNames'
@@ -33,6 +33,7 @@ import {
 import RichText, { emojiOnlyCount } from '../RichText'
 import Emoji from '../emoji/Emoji'
 import { peerColor } from '../peerColor'
+import { fmtViews } from '../../core/fmtViews'
 import { useT } from '../../i18n'
 import { useSettings, useTimeFormatter } from '../../settings'
 import type { ConvMsg } from '../../data'
@@ -43,6 +44,16 @@ function mediaRadius(out: boolean, lastInGroup: boolean): string {
   const B = BUBBLE_R_BIG
   const last = lastInGroup ? 0 : BUBBLE_R_MED
   return out ? `${B}px ${B}px ${last}px ${B}px` : `${B}px ${B}px ${B}px ${last}px`
+}
+
+// The view-count span (count + eye icon) shown in a channel post's meta line.
+function ViewsMeta({ views, className }: { views: number; className: string }) {
+  return (
+    <span className={className}>
+      <TgIcon name="channelviews" size={15} color="var(--b-time)" />
+      {fmtViews(views)}
+    </span>
+  )
 }
 
 // Stable handler bundle the feed/rows close over (identities never change — see
@@ -68,12 +79,14 @@ export interface MessageRowProps {
   ladderActive: boolean
   ladderDelay: number
   feedFns: FeedFns
+  // Optional slot rendered at the bottom of the bubble (channel post replies-footer).
+  footer?: ReactNode
 }
 
 function MessageRow({
   m, seq, out, firstInGroup, lastInGroup,
   selecting, isSelected, isHighlighted, ladderActive, ladderDelay,
-  feedFns,
+  feedFns, footer,
 }: MessageRowProps) {
   const { textSize } = useSettings()
   const t = useT()
@@ -171,6 +184,7 @@ function MessageRow({
                   </span>
                   {m.time && (
                     <span className={s.mediaTime}>
+                      {m.views != null && <ViewsMeta views={m.views} className={s.metaViews} />}
                       <span className={s.mediaTimeText} style={{ color: out ? 'var(--tg-bubbleOutAccent)' : 'var(--tg-textFaint)' }}>
                         {m.time}
                       </span>
@@ -179,6 +193,7 @@ function MessageRow({
                   )}
                 </div>
               ) : null}
+              {footer && <div className={s.footerMedia}>{footer}</div>}
             </div>
           </div>
         ) : m.type === 'sticker' || bigEmoji ? (
@@ -269,6 +284,7 @@ function MessageRow({
                 <RichText text={m.text ?? ''} entities={m.entities} linkColor="var(--b-link)" />
               </span>
               <span className={classNames(s.meta, hasBlock ? s.block : '')}>
+                {m.views != null && <ViewsMeta views={m.views} className={s.metaViews} />}
                 <span className={s.metaTime}>{m.edited ? `${t('edited')} ` : ''}{fmtTime(m.time)}</span>
                 <Ticks status={m.status} color="var(--b-tick)" />
               </span>
@@ -276,6 +292,7 @@ function MessageRow({
             {m.webPage && (
               <WebPagePreview wp={m.webPage} out={out} linkColor="var(--b-link)" />
             )}
+            {footer && <div className={s.footerText}>{footer}</div>}
           </div>
         )}
       </div>

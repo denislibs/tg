@@ -66,6 +66,8 @@ interface MessagesState {
   applyIncoming: (chatId: number, m: Message) => void
   applyEdit: (chatId: number, msgId: number, text: string, editedAt: string, entities?: MessageEntity[]) => void
   applyDelete: (chatId: number, msgId: number) => void
+  /** Patch channel-post view counts from a per-open view_counts fetch. */
+  patchViews: (chatId: number, views: Map<number, number>) => void
 }
 
 // Update a single chat's window immutably.
@@ -174,4 +176,17 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
   applyDelete: (chatId, msgId) =>
     set((s) => (s.byChat[chatId] ? patch(s, chatId, (w) => ({ msgs: w.msgs.filter((m) => m.id !== msgId) })) : {})),
+
+  patchViews: (chatId, views) =>
+    set((s) =>
+      s.byChat[chatId]
+        ? patch(s, chatId, (w) => ({
+            // Only rebuild rows whose count actually changed, so unaffected bubbles keep
+            // their reference (memoized rows don't re-render).
+            msgs: w.msgs.some((m) => views.has(m.id) && views.get(m.id) !== m.views)
+              ? w.msgs.map((m) => (views.has(m.id) && views.get(m.id) !== m.views ? { ...m, views: views.get(m.id) } : m))
+              : w.msgs,
+          }))
+        : {},
+    ),
 }))

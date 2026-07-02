@@ -1,44 +1,113 @@
 @use '../styles/foundation' as *;
 
-// Полноэкранный оверлей обсуждения (комментарии к посту канала).
+// Тред обсуждения поверх колонки чата, раскладка 1:1 с ConversationView: плавающий
+// хедер-карточка, центрированная лента (max-width 688), плавающий композер. Фон
+// прозрачный — сквозь него проступают глобальные обои (ChatBackground в App).
 .root {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  z-index: 1200;
-  background: var(--tg-appBg);
-  display: flex;
-  flex-direction: column;
+  z-index: 20;
+  background: transparent;
 }
 
-// Шапка
-.header {
+// Плавающий хедер (как ChatHeader .bar + .header)
+.headerBar {
+  position: absolute;
+  top: 16px;
+  left: 0;
+  right: 0;
+  z-index: 6;
+  width: 100%;
+  max-width: 688px;
+  margin: 0 auto;
+}
+.headerCard {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 56px;
-  padding: 10px 8px;
-  border-bottom: 1px solid var(--tg-divider);
-  flex-shrink: 0;
+  gap: 12px;
+  padding: 4px;
+  height: 48px;
+  border-radius: 24px;
+  background: var(--tg-bubble);
+  box-shadow: var(--tg-plateShadow);
 }
 .title {
   flex: 1;
+  line-height: 1.2;
+}
+// Поиск по комментариям (инпут в шапке)
+.searchInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 16px;
+  color: var(--tg-textPrimary);
+  font-family: inherit;
+
+  &::placeholder {
+    color: var(--tg-textFaint);
+    opacity: 1;
+  }
+}
+// Дропдаун меню «три точки»
+.menu {
+  position: absolute;
+  top: 52px;
+  right: 4px;
+  z-index: 8;
+  min-width: 200px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--tg-menuBg);
+  box-shadow: var(--tg-menuShadow);
+  backdrop-filter: blur(24px);
+}
+.menuItem {
+  display: block;
+  width: 100%;
+  text-align: start;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  font-size: 15px;
+  color: var(--tg-textPrimary);
+  cursor: pointer;
+  font-family: inherit;
+
+  @media (hover: hover) {
+    &:hover { background: var(--tg-hover); }
+  }
 }
 
-// Pinned-плашка исходного поста под шапкой (tweb .pinned-message).
-.pinned {
+// Плавающая pinned-плашка поста (под хедером)
+.pinnedBar {
+  position: absolute;
+  top: 72px; // 16 + 48 + 8
+  left: 0;
+  right: 0;
+  z-index: 6;
+  width: 100%;
+  max-width: 688px;
+  margin: 0 auto;
+}
+.pinnedCard {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 8px 6px 12px;
-  border-bottom: 1px solid var(--tg-divider);
-  background: var(--tg-appBg);
+  height: 48px;
+  padding: 0 8px 0 12px;
+  border-radius: 24px;
+  background: var(--tg-searchCardBg);
+  box-shadow: var(--tg-plateShadow);
   cursor: pointer;
-  flex-shrink: 0;
   user-select: none;
 }
 .pinnedLine {
   width: 2px;
-  align-self: stretch;
+  height: 30px;
   border-radius: 1px;
   background: var(--tg-accent);
   flex-shrink: 0;
@@ -50,113 +119,36 @@
   flex-direction: column;
 }
 
-// Сервис-сообщение «Начало обсуждения» (tweb .bubble.service .service-msg).
-.service {
-  display: flex;
-  justify-content: center;
-  margin: 4px 0;
-}
-.serviceMsg {
-  max-width: 80%;
-  padding: 0.28125rem 0.625rem;
-  border-radius: 0.875rem;
-  background: rgba(0, 0, 0, 0.45);
-  color: #fff;
-  font-size: 15px;
-  font-weight: 500;
-  line-height: 20px;
-  text-align: center;
-  word-break: break-word;
-  user-select: none;
-}
-
-// Тело со списком комментариев
-.body {
-  flex: 1;
+// Прокручиваемая лента — центрированная колонка (как ConversationView .scroll/.content)
+.scroll {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
   overflow-y: auto;
-  padding: 16px;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-}
-
-// Закреплённый исходный пост
-.post {
-  background: var(--tg-bubble);
-  border-radius: 14px;
-  padding: 12px;
-}
-.postMedia {
-  height: 160px;
-  border-radius: 8px;
-  margin-bottom: 8px;
-  display: flex;
   align-items: center;
-  justify-content: center;
-  font-size: 64px;
-  line-height: 1;
-  user-select: none;
+}
+.content {
+  width: 100%;
+  max-width: 688px;
+  padding-inline: 4px;
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
 }
 
-// Ряд комментария
-.rowOut {
+// Плавающий композер (как ConversationView .footer)
+.footer {
+  position: absolute;
+  bottom: 16px;
+  left: 0;
+  right: 0;
+  z-index: 6;
   display: flex;
-  justify-content: flex-end;
-}
-.rowIn {
-  display: flex;
-  gap: 8px;
   align-items: flex-end;
-}
-.bubbleOut {
-  background: var(--tg-accent);
-  color: #fff;
-  border-radius: 14px 14px 4px 14px;
-  padding: 6px 10px;
-  max-width: 75%;
-}
-.bubbleIn {
-  background: var(--tg-bubble);
-  border-radius: 4px 14px 14px 14px;
-  padding: 6px 10px;
-  max-width: 75%;
-}
-
-// Композер снизу
-.composer {
-  margin: 8px;
-  background: var(--tg-bubble);
-  border-radius: 24px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  padding: 0 8px;
-  gap: 4px;
-  flex-shrink: 0;
-}
-.input {
-  flex: 1;
-  border: none;
-  outline: none;
-  background: transparent;
-  color: var(--tg-textPrimary);
-  padding: 0 8px;
-  font-size: 15px;
-  font-family: inherit;
-
-  &::placeholder {
-    color: var(--tg-textFaint);
-    opacity: 1;
-  }
-}
-.sendBtn {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: var(--tg-accentGradient);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  flex-shrink: 0;
+  width: 100%;
+  max-width: 688px;
+  margin: 0 auto;
 }

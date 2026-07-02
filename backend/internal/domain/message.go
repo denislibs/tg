@@ -49,6 +49,9 @@ type Message struct {
 	MediaDuration int
 	MediaSize     int64
 	MediaName     string
+	// Views is the deduplicated viewer count for a channel post (0 for
+	// group/private messages, which don't track views).
+	Views int64
 }
 
 // ReplyPreview is the quoted snippet shown above a reply bubble.
