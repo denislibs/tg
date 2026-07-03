@@ -76,17 +76,3 @@
   display: flex;
   flex-direction: column;
 }
-
-// пост канала + бар комментариев
-.post {
-  display: flex;
-  flex-direction: column;
-}
-.postBar {
-  display: flex;
-  justify-content: flex-start;
-
-  &[data-out] {
-    justify-content: flex-end;
-  }
-}

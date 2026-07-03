@@ -80,6 +80,11 @@ type MessageRepo interface {
 	CountMessages(ctx context.Context, chatID int64) (int, error)
 	CountUnread(ctx context.Context, chatID, userID, afterSeq int64) (int, error)
 	MessageChatID(ctx context.Context, messageID int64) (int64, error)
+	// RegisterChannelViews records userID's view of every channel post in chatID
+	// up to upToSeq (deduped per viewer); a no-op for non-channel chats.
+	RegisterChannelViews(ctx context.Context, chatID, userID, upToSeq int64) error
+	// ViewCounts returns current view counts for the given message ids.
+	ViewCounts(ctx context.Context, ids []int64) (map[int64]int64, error)
 }
 
 type UpdateRepo interface {

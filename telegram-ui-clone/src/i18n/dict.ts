@@ -261,6 +261,11 @@ const ru: Dict = {
   'Try searching.': 'Попробуйте поиск.',
   Music: 'Музыка',
   Comments: 'Комментарии',
+  Comment: 'Комментарий',
+  'Discussion started': 'Начало обсуждения',
+  'Search comments': 'Поиск по комментариям',
+  'Hide pinned message': 'Скрыть закреплённое',
+  'Show pinned message': 'Показать закреплённое',
   // settings screens (#71–#79)
   "Edit Profile": "Изменить профиль",
   "Name": "Имя",
@@ -590,6 +595,8 @@ const uk: Dict = {
   'Try searching.': 'Спробуйте пошук.',
   Music: 'Музика',
   Comments: 'Коментарі',
+  Comment: 'Коментар',
+  'Discussion started': 'Початок обговорення',
   // settings screens (#71–#79)
   "Edit Profile": "Редагувати профіль",
   "Name": "Ім'я",
@@ -908,6 +915,8 @@ const es: Dict = {
   'Try searching.': 'Prueba a buscar.',
   Music: 'Música',
   Comments: 'Comentarios',
+  Comment: 'Comentario',
+  'Discussion started': 'Discusión iniciada',
   // settings screens (#71–#79)
   "Edit Profile": "Editar perfil",
   "Name": "Nombre",
@@ -1228,6 +1237,8 @@ const de: Dict = {
   'Try searching.': 'Versuche zu suchen.',
   Music: 'Musik',
   Comments: 'Kommentare',
+  Comment: 'Kommentar',
+  'Discussion started': 'Diskussion gestartet',
   // settings screens (#71–#79)
   "Edit Profile": "Profil bearbeiten",
   "Name": "Name",
@@ -1548,6 +1559,8 @@ const fr: Dict = {
   'Try searching.': 'Essayez de rechercher.',
   Music: 'Musique',
   Comments: 'Commentaires',
+  Comment: 'Commentaire',
+  'Discussion started': 'Discussion démarrée',
   // settings screens (#71–#79)
   "Edit Profile": "Modifier le profil",
   "Name": "Nom",

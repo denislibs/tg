@@ -32,6 +32,7 @@ export interface DisplayComment {
 
 export function useDiscussion(channelId: number, postId: number, discussionChatId: number): {
   comments: DisplayComment[]
+  count: number
   send: (text: string) => void
 } {
   const managers = useManagers()
@@ -91,5 +92,5 @@ export function useDiscussion(channelId: number, postId: number, discussionChatI
     void managers.channels.postComment(channelId, postId, trimmed, clientMsgId).then((m) => reconcile(key, clientMsgId, m.id))
   }
 
-  return { comments: display, send }
+  return { comments: display, count: display.length, send }
 }

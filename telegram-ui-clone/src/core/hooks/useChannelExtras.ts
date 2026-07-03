@@ -5,6 +5,7 @@
 // discussion-thread overlay, and per-post comment counts. No-ops for non-channels.
 import { useEffect, useState } from 'react'
 import { useEvent } from './useEvent'
+import { useMessagesStore } from '../../stores/messagesStore'
 import type { Managers } from '../../client/bootstrap'
 import type { MessageWindow } from './useMessageWindow'
 
@@ -64,6 +65,25 @@ export function useChannelExtras({ isRealChat, isChannel, numericChatId, win, ma
     return () => { alive = false; window.clearTimeout(timer) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [discussionsEnabled, numericChatId, win.msgs.length, managers])
+
+  // Channel post view counts ("9.2K 👁"): fetch fresh per open for the loaded post
+  // ids (debounced on msgs change) and patch them onto the messages in the store, so
+  // the meta line renders a current count. Any channel post has views (independent of
+  // discussions). Mirrors the comment-counts fetch above.
+  useEffect(() => {
+    if (!isRealChat || !isChannel) return
+    const ids = win.msgs.map((m) => m.id).filter((id) => id > 0)
+    if (ids.length === 0) return
+    let alive = true
+    const timer = window.setTimeout(() => {
+      void managers.channels.viewCounts(numericChatId, ids).then((counts) => {
+        if (!alive) return
+        useMessagesStore.getState().patchViews(numericChatId, new Map(Object.entries(counts).map(([k, v]) => [Number(k), v])))
+      })
+    }, 300)
+    return () => { alive = false; window.clearTimeout(timer) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRealChat, isChannel, numericChatId, win.msgs.length, managers])
 
   // Stable handler for the memoized feed to open a channel post's discussion.
   const openDiscussion = useEvent((postId: number, text?: string) => setDiscussion({ postId, post: { text } }))

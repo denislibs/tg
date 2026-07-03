@@ -87,3 +87,10 @@ func (i *Interactor) CommentCounts(ctx context.Context, channelID int64, postIDs
 	}
 	return out, nil
 }
+
+// ViewCounts returns the current view count for each of the given channel post
+// ids (Telegram's "9.2K 👁"). Non-channel messages report 0. Mirrors the
+// commentCounts read path — the client fetches these per open to stay fresh.
+func (i *Interactor) ViewCounts(ctx context.Context, postIDs []int64) (map[int64]int64, error) {
+	return i.msgs.ViewCounts(ctx, postIDs)
+}
