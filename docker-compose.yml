@@ -55,6 +55,19 @@ services:
       redis: { condition: service_healthy }
       minio: { condition: service_healthy }
 
+  messenger_elixir:
+    build: ./messenger_elixir
+    ports: ["4000:4000"]
+    environment:
+      DATABASE_URL: "postgres://messenger:messenger@postgres:5432/messenger"
+      REDIS_URL: "redis://redis:6379"
+      SECRET_KEY_BASE: "dVBt0hNlwsRCLXbcIJmb7dVBt0hNlwsRCLXbcIJmb7dVBt0hNlwsRCLXbcIJmb7dVBt"
+      PHX_HOST: "localhost"
+      DEV_OTP_CODE: "12345"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
   nginx:
     image: nginx:alpine
     volumes:
