@@ -9,6 +9,7 @@ import TgIcon from './TgIcon'
 import Avatar from '../shared/ui/Avatar'
 import { useAvatarSrc } from './useAvatarSrc'
 import EditView from './EditView'
+import { Section, Row } from './settings/kit'
 import classNames from '../shared/lib/classNames'
 import type { Chat, OpenPeer } from '../data'
 import { useT } from '../i18n'
@@ -28,13 +29,41 @@ function useMediaQuery(query: string): boolean {
   return match
 }
 
-const tileGradients = [
-  'linear-gradient(135deg,#3a2b5e,#120d20)',
-  'linear-gradient(135deg,#5b7bd6,#2a3a6e)',
-  'linear-gradient(135deg,#caa98c,#7a5c44)',
-  'linear-gradient(135deg,#2c3e50,#4ca1af)',
-  'linear-gradient(135deg,#642b73,#c6426e)',
-  'linear-gradient(135deg,#11998e,#38ef7d)',
+// --- Моки шаред-медиа (пока нет реального API истории по типам контента).
+// Структура секции — 1:1 tweb sharedMedia.tsx: табы media/files/links/music/voice.
+const mockMedia: { gradient: string; emoji: string; duration?: string }[] = [
+  { gradient: 'linear-gradient(135deg,#3a2b5e,#120d20)', emoji: '🌃', duration: '0:21' },
+  { gradient: 'linear-gradient(135deg,#5b7bd6,#2a3a6e)', emoji: '🏔️' },
+  { gradient: 'linear-gradient(135deg,#caa98c,#7a5c44)', emoji: '🐕', duration: '0:19' },
+  { gradient: 'linear-gradient(135deg,#2c3e50,#4ca1af)', emoji: '🌊' },
+  { gradient: 'linear-gradient(135deg,#642b73,#c6426e)', emoji: '🌸' },
+  { gradient: 'linear-gradient(135deg,#11998e,#38ef7d)', emoji: '🌿' },
+  { gradient: 'linear-gradient(135deg,#f2994a,#f2c94c)', emoji: '🌅', duration: '1:02' },
+  { gradient: 'linear-gradient(135deg,#4b6cb7,#182848)', emoji: '🌌' },
+  { gradient: 'linear-gradient(135deg,#8e2de2,#4a00e0)', emoji: '🎆' },
+]
+const mockFiles = [
+  { name: 'Отчёт за июнь.pdf', meta: '2,4 МБ · 28 июн', ext: 'PDF', color: '#e5322e' },
+  { name: 'Смета_ремонт.xlsx', meta: '184 КБ · 25 июн', ext: 'XLS', color: '#00a884' },
+  { name: 'Договор аренды.docx', meta: '96 КБ · 19 июн', ext: 'DOC', color: '#4285f4' },
+  { name: 'backup_photos.zip', meta: '48,2 МБ · 11 июн', ext: 'ZIP', color: '#8774e1' },
+]
+const mockLinks = [
+  { title: 'Telegram Web', url: 'web.telegram.org/k', gradient: 'linear-gradient(135deg,#2aabee,#229ed9)' },
+  { title: 'tweb — Telegram Web K source', url: 'github.com/morethanwords/tweb', gradient: 'linear-gradient(135deg,#24292e,#57606a)' },
+  { title: 'MDN Web Docs', url: 'developer.mozilla.org', gradient: 'linear-gradient(135deg,#8e2de2,#4a00e0)' },
+]
+const mockMusic = [
+  { title: 'Shape of My Heart', artist: 'Sting', duration: '4:38' },
+  { title: 'Кукушка', artist: 'Кино', duration: '6:40' },
+  { title: 'Bohemian Rhapsody', artist: 'Queen', duration: '5:55' },
+]
+// высоты волноформы голосового (просто фиксированный узор)
+const VOICE_WAVE = [0.3, 0.5, 0.9, 0.6, 1, 0.7, 0.4, 0.8, 0.5, 0.9, 0.35, 0.6, 0.75, 0.4, 0.55]
+const mockVoice = [
+  { duration: '0:42', meta: '28 июн' },
+  { duration: '1:17', meta: '25 июн' },
+  { duration: '0:08', meta: '19 июн' },
 ]
 
 export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void }) {
@@ -78,9 +107,10 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
 
   return (
     <motion.div
-      initial={narrow ? { opacity: 0 } : { width: 0, opacity: 0 }}
-      animate={narrow ? { opacity: 1 } : { width: 404, opacity: 1 }}
-      exit={narrow ? { opacity: 0 } : { width: 0, opacity: 0 }}
+      // Узкий режим: обёртка статична — анимацию (заезд справа) играет сама панель.
+      initial={narrow ? false : { width: 0, opacity: 0 }}
+      animate={narrow ? {} : { width: 404, opacity: 1 }}
+      exit={narrow ? {} : { width: 0, opacity: 0 }}
       transition={{ duration: DUR.in, ease: EASE }}
       style={
         narrow
@@ -96,10 +126,14 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
             }
       }
     >
-      {narrow && <div className={s.backdrop} onClick={onClose} />}
       <motion.div
         {...(narrow
-          ? { initial: { x: '100%' }, animate: { x: '0%' }, transition: { duration: DUR.in, ease: EASE } }
+          ? {
+              initial: { x: '100%' },
+              animate: { x: '0%' },
+              exit: { x: '100%' },
+              transition: { duration: DUR.in, ease: EASE },
+            }
           : {})}
         className={classNames(s.panel, narrow ? s.panelNarrow : s.panelWide)}
       >
@@ -128,8 +162,8 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
             <Text size={14} color="var(--tg-textSecondary)">{chat.status}</Text>
           </div>
 
-          {/* Info card */}
-          <div className={s.card}>
+          {/* Info card — те же секции, что в настройках (settings/kit Section+Row) */}
+          <Section>
             {isChannel ? (
               <div className={s.channelRow}>
                 <TgIcon name="info" size={24} color="var(--tg-textSecondary)" style={{ marginTop: 4 }} />
@@ -149,59 +183,48 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
                 </div>
               </div>
             ) : isGroup ? (
-              <div className={s.linkRow}>
-                <TgIcon name="link" size={24} color="var(--tg-textSecondary)" />
-                <div className={s.grow}>
-                  <Text size={16} color="var(--tg-textPrimary)" style={{ wordBreak: 'break-all' }}>
-                    t.me/+{chat.id}9yJiODEy
-                  </Text>
-                  <Text size={13.5} color="var(--tg-textSecondary)">{t('Link')}</Text>
-                </div>
-                <TgIcon name="qr" size={22} color="var(--tg-textSecondary)" />
-              </div>
+              <Row
+                icon={<TgIcon name="link" size={24} />}
+                label={`t.me/+${chat.id}9yJiODEy`}
+                sublabel={t('Link')}
+                translate={false}
+              />
             ) : (
-              <div className={s.linkRow}>
-                <TgIcon name="mention" size={24} color="var(--tg-textSecondary)" />
-                <div style={{ flex: 1 }}>
-                  <Text size={16} color="var(--tg-textPrimary)">
-                    {chat.username ?? chat.name.toLowerCase()}
-                  </Text>
-                  <Text size={13.5} color="var(--tg-textSecondary)">{t('Username')}</Text>
-                </div>
-                <TgIcon name="qr" size={22} color="var(--tg-textSecondary)" />
-              </div>
+              <>
+                {/* Порядок строк — как в tweb peerProfile MainSection: Phone → Username → Bio.
+                    Телефон и bio — моки, пока бэк их не отдаёт. */}
+                <Row
+                  icon={<TgIcon name="phone" size={24} />}
+                  label="+7 999 000 11 22"
+                  sublabel={t('Phone')}
+                  translate={false}
+                />
+                <Row
+                  icon={<TgIcon name="mention" size={24} />}
+                  label={chat.username ?? chat.name.toLowerCase()}
+                  sublabel={t('Username')}
+                  translate={false}
+                />
+                <Row
+                  icon={<TgIcon name="info" size={24} />}
+                  label={chat.description ?? 'Люблю музыку, книги и путешествия'}
+                  sublabel={t('Bio')}
+                  translate={false}
+                />
+              </>
             )}
+          </Section>
 
-            <div className={s.notifRow}>
-              <TgIcon name="unmute" size={24} color="var(--tg-textSecondary)" />
-              <Text size={16} color="var(--tg-textPrimary)" style={{ flex: 1 }}>{t('Notifications')}</Text>
-              <TgSwitch checked={notif} onClick={() => setNotif((v) => !v)} />
-            </div>
-          </div>
-
-          {/* Channel: tabs + media grid */}
-          {isChannel && (
-            <>
-              <Tabs value={tab} onChange={(v) => setTab(v as string)} order={['Media', 'Gifts', 'Saved', 'Links']}>
-                <Tabs.List>
-                  {['Media', 'Gifts', 'Saved', 'Links'].map((tabName) => (
-                    <Tabs.Tab key={tabName} value={tabName}>
-                      {t(tabName)}
-                    </Tabs.Tab>
-                  ))}
-                </Tabs.List>
-              </Tabs>
-              <div className={s.mediaGrid}>
-                {tileGradients.map((g, i) => (
-                  <div
-                    key={i}
-                    className={s.mediaTile}
-                    style={{ background: g, borderRadius: i === 0 ? '8px 0 0 0' : i === 2 ? '0 8px 0 0' : 0 }}
-                  />
-                ))}
-              </div>
-            </>
-          )}
+          {/* Уведомления — отдельная карточка (как Night Mode в настройках) */}
+          <Section>
+            <Row
+              icon={<TgIcon name="unmute" size={24} />}
+              label="Notifications"
+              toggle
+              checked={notif}
+              onClick={() => setNotif((v) => !v)}
+            />
+          </Section>
 
           {/* Channel discussions: admin (creator/CHANGE_INFO) toggle / enabled state */}
           {isRealChat && isChannel && canManageDiscussion && (
@@ -349,6 +372,9 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
             </div>
           )}
 
+          {/* Shared media: табы Медиа/Файлы/Ссылки/Музыка/Голосовые (tweb sharedMedia).
+              Контент пока моковый — реального API истории по типам ещё нет. */}
+          <SharedMedia tab={tab} onTab={setTab} />
         </div>
 
         {/* Group add-member FAB */}
@@ -381,6 +407,111 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
         </AnimatePresence>
       </motion.div>
     </motion.div>
+  )
+}
+
+// Табы шаред-медиа профиля. Набор и порядок — из tweb sharedMedia.tsx
+// (media → files → links → music → voice); контент — моки на наших примитивах.
+const SHARED_TABS = ['Media', 'Files', 'Links', 'Music', 'Voice'] as const
+
+function SharedMedia({ tab, onTab }: { tab: string; onTab: (v: string) => void }) {
+  const t = useT()
+  return (
+    <>
+      {/* Тот же framed-таб-ряд, что и у папок в списке чатов (FolderTabs) */}
+      <div className={s.tabsWrap}>
+        <Tabs value={tab} onChange={(v) => onTab(v as string)}>
+          <Tabs.List framed>
+            {SHARED_TABS.map((name) => (
+              <Tabs.Tab key={name} value={name}>
+                {t(name)}
+              </Tabs.Tab>
+            ))}
+          </Tabs.List>
+        </Tabs>
+      </div>
+
+      {tab === 'Media' && (
+        <div className={s.mediaGrid}>
+          {mockMedia.map((m, i) => (
+            <div
+              key={i}
+              className={s.mediaTile}
+              style={{ background: m.gradient, borderRadius: i === 0 ? '8px 0 0 0' : i === 2 ? '0 8px 0 0' : 0 }}
+            >
+              <span className={s.tileEmoji}>{m.emoji}</span>
+              {m.duration && <span className={s.tileDuration}>{m.duration}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === 'Files' && (
+        <div className={s.mediaList}>
+          {mockFiles.map((f) => (
+            <div key={f.name} className={s.mediaRow}>
+              <div className={s.rowSquare} style={{ background: f.color }}>{f.ext}</div>
+              <div className={s.grow}>
+                <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{f.name}</Text>
+                <Text size={13.5} color="var(--tg-textSecondary)">{f.meta}</Text>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === 'Links' && (
+        <div className={s.mediaList}>
+          {mockLinks.map((l) => (
+            <div key={l.url} className={s.mediaRow}>
+              <div className={s.rowSquare} style={{ background: l.gradient }}>
+                <TgIcon name="link" size={22} color="#fff" />
+              </div>
+              <div className={s.grow}>
+                <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{l.title}</Text>
+                <Text noWrap size={13.5} color="var(--tg-link)">{l.url}</Text>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === 'Music' && (
+        <div className={s.mediaList}>
+          {mockMusic.map((a) => (
+            <div key={a.title} className={s.mediaRow}>
+              <div className={s.rowPlay}>
+                <TgIcon name="play" size={22} color="#fff" />
+              </div>
+              <div className={s.grow}>
+                <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{a.title}</Text>
+                <Text noWrap size={13.5} color="var(--tg-textSecondary)">{a.artist} · {a.duration}</Text>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === 'Voice' && (
+        <div className={s.mediaList}>
+          {mockVoice.map((v, i) => (
+            <div key={i} className={s.mediaRow}>
+              <div className={s.rowPlay}>
+                <TgIcon name="play" size={22} color="#fff" />
+              </div>
+              <div className={s.grow}>
+                <div className={s.voiceWave}>
+                  {VOICE_WAVE.map((h, wi) => (
+                    <span key={wi} className={s.voiceWaveBar} style={{ height: `${Math.round(4 + h * 14)}px` }} />
+                  ))}
+                </div>
+                <Text size={13.5} color="var(--tg-textSecondary)">{v.duration} · {v.meta}</Text>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
   )
 }
 

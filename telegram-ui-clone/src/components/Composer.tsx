@@ -188,9 +188,10 @@ function Composer({
     // (tweb splitStringByLength). The counter shows how many it'll be.
     onSend(text, entities.length ? entities : undefined)
     clearEditor()
-    // Keep focus in the input after sending (tweb) — clearEditor drops the
-    // selection/children which blurs the contenteditable, so restore it.
-    editorRef.current?.focus()
+    // Keep focus in the input after sending (tweb focusInput = focus + caret at
+    // the end) — clearEditor drops the selection which blurs the contenteditable.
+    const ed = editorRef.current
+    if (ed) { ed.focus(); placeCaretEnd(ed) }
   }
 
   const applyFmt = (type: EntityType, url?: string) => {
@@ -459,6 +460,9 @@ function Composer({
           {/* Mic / Send — 48×40 rounded pill inside the bar (1:1 with TG .btn-send) */}
           <motion.div
             onClick={() => (hasText ? submit() : rec.recording ? rec.stop(true) : rec.start())}
+            // Не отдавать фокус кнопке: без preventDefault тап/клик блюрит инпут и
+            // прячет клавиатуру на touch (tweb шлёт send на mousedown — фокус не теряется).
+            onMouseDown={(e) => e.preventDefault()}
             whileTap={{ scale: 0.92 }}
             className={s.sendBtn}
           >

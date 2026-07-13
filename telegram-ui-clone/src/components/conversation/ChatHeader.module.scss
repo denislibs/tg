@@ -9,6 +9,20 @@
   width: 100%;
   max-width: 688px;
   margin: 0 auto;
+
+  // tweb: на handhelds плейты стоят в 8px от краёв (--page-chats-padding: 8px)
+  @media (max-width: 900px) {
+    left: 8px;
+    right: 8px;
+    width: auto;
+  }
+}
+
+// кнопки, скрытые на мобилке (tweb: на handhelds в шапке остаётся только меню)
+.desktopOnly {
+  @media (max-width: 900px) {
+    display: none;
+  }
 }
 
 // ── поисковая карточка ──

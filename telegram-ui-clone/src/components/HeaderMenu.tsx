@@ -2,6 +2,8 @@ import { useState } from 'react'
 import type { ReactNode } from 'react'
 import TgIcon from './TgIcon'
 import Menu, { MenuItem } from '../shared/ui/Menu'
+import { useCall } from './call/CallProvider'
+import { SERVICE_USER_ID } from '../core/dialogToChat'
 import type { Chat } from '../data'
 import { useT } from '../i18n'
 
@@ -19,6 +21,7 @@ interface Props {
 
 export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddMember, onSelectMessages, onAddContact }: Props) {
   const t = useT()
+  const { start: startCall } = useCall()
   const [autoOpen, setAutoOpen] = useState(false)
   const muted = !!chat.muted
   const owned = !!chat.owned
@@ -31,16 +34,27 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
 
   let items: Item[]
   if (chat.type === 'private') {
+    // Сервисному аккаунту «Telegram» нельзя позвонить, заблокировать его или
+    // добавить в контакты — этих пунктов в меню нет (как в Telegram).
+    const isService = chat.peerId === SERVICE_USER_ID
     items = [
       { icon: <TgIcon name="timer" size={20} />, label: 'Auto-delete', submenu: true },
       muteItem,
-      { icon: <TgIcon name="phone" size={20} />, label: 'Call' },
-      { icon: <TgIcon name="videocamera" size={20} />, label: 'Video Call' },
+      ...(!isService
+        ? [
+            { icon: <TgIcon name="phone" size={20} />, label: 'Call', onClick: () => { startCall(false); onClose() } },
+            { icon: <TgIcon name="videocamera" size={20} />, label: 'Video Call', onClick: () => { startCall(true); onClose() } },
+          ]
+        : []),
       { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); onClose() } : undefined },
-      { icon: <TgIcon name="adduser" size={20} />, label: 'Add to contacts', onClick: onAddContact ? () => { onAddContact(); onClose() } : undefined },
-      { icon: <TgIcon name="gift" size={20} />, label: 'Send a Gift' },
-      { icon: <TgIcon name="restrict" size={20} />, label: 'Block user' },
-      { icon: <TgIcon name="deleteuser" size={20} />, label: 'Disable Sharing' },
+      ...(!isService
+        ? [
+            { icon: <TgIcon name="adduser" size={20} />, label: 'Add to contacts', onClick: onAddContact ? () => { onAddContact(); onClose() } : undefined },
+            { icon: <TgIcon name="gift" size={20} />, label: 'Send a Gift' },
+            { icon: <TgIcon name="restrict" size={20} />, label: 'Block user' },
+            { icon: <TgIcon name="deleteuser" size={20} />, label: 'Disable Sharing' },
+          ]
+        : []),
       { icon: <TgIcon name="delete" size={20} />, label: 'Delete Chat', danger: true },
     ]
   } else if (chat.type === 'group') {

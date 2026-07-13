@@ -8,12 +8,13 @@ import react from '@vitejs/plugin-react'
 export default defineConfig(({ command }) => ({
   base: command === 'serve' ? '/' : '/telegram-remake/',
   plugins: [react()],
-  // Dev server proxies the API + WebSocket to the running verify stack (nginx on
-  // :38080), so `npm run dev` gives hot-reload while talking to the real backend.
+  // Dev server proxies the API + WebSocket to the running verify stack (nginx
+  // redirects http :38080 → https :38443 with a self-signed dev cert, hence
+  // secure:false), so `npm run dev` gives hot-reload while talking to the real backend.
   server: {
     proxy: {
-      '/api': { target: 'http://localhost:38080', changeOrigin: true },
-      '/ws': { target: 'ws://localhost:38080', ws: true, changeOrigin: true },
+      '/api': { target: 'https://localhost:38443', changeOrigin: true, secure: false },
+      '/ws': { target: 'wss://localhost:38443', ws: true, changeOrigin: true, secure: false },
     },
   },
 }))

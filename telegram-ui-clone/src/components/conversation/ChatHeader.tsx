@@ -17,7 +17,7 @@ import { useManagers } from '../../core/hooks/useManagers'
 import { useChatSearch } from '../../core/hooks/useChatSearch'
 import { usePeers } from '../../core/hooks/usePeers'
 import { useChatsStore } from '../../stores/chatsStore'
-import { gradientFor } from '../../core/dialogToChat'
+import { gradientFor, SERVICE_USER_ID } from '../../core/dialogToChat'
 import { friendlyMsgTime } from '../../core/friendlyTime'
 import { useT, useLang } from '../../i18n'
 import { useMemo } from 'react'
@@ -315,12 +315,15 @@ function ChatHeader({
               </Text>
             </div>
           </div>
-          {chat.type === 'private' && (
+          {/* На handhelds tweb прячет кнопки звонков из шапки (остаются пунктами
+              меню «⋮») — _chatTopbar.scss .chat-utils > .btn-icon: display none.
+              Сервисному аккаунту «Telegram» звонить нельзя вовсе. */}
+          {chat.type === 'private' && chat.peerId !== SERVICE_USER_ID && (
             <>
-              <IconButton onClick={() => startCall(false)} color="var(--tg-textSecondary)">
+              <IconButton onClick={() => startCall(false)} color="var(--tg-textSecondary)" className={s.desktopOnly}>
                 <TgIcon name="phone" />
               </IconButton>
-              <IconButton onClick={() => startCall(true)} color="var(--tg-textSecondary)">
+              <IconButton onClick={() => startCall(true)} color="var(--tg-textSecondary)" className={s.desktopOnly}>
                 <TgIcon name="videocamera" />
               </IconButton>
             </>

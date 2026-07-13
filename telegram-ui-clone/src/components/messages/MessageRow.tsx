@@ -184,7 +184,8 @@ function MessageRow({
                   </span>
                   {m.time && (
                     <span className={s.mediaTime}>
-                      {m.views != null && <ViewsMeta views={m.views} className={s.metaViews} />}
+                      {/* truthy как в tweb (messageRender.ts): views=0 приходит для не-канальных сообщений */}
+                      {m.views ? <ViewsMeta views={m.views} className={s.metaViews} /> : null}
                       <span className={s.mediaTimeText} style={{ color: out ? 'var(--tg-bubbleOutAccent)' : 'var(--tg-textFaint)' }}>
                         {m.time}
                       </span>
@@ -284,7 +285,7 @@ function MessageRow({
                 <RichText text={m.text ?? ''} entities={m.entities} linkColor="var(--b-link)" />
               </span>
               <span className={classNames(s.meta, hasBlock ? s.block : '')}>
-                {m.views != null && <ViewsMeta views={m.views} className={s.metaViews} />}
+                {m.views ? <ViewsMeta views={m.views} className={s.metaViews} /> : null}
                 <span className={s.metaTime}>{m.edited ? `${t('edited')} ` : ''}{fmtTime(m.time)}</span>
                 <Ticks status={m.status} color="var(--b-tick)" />
               </span>

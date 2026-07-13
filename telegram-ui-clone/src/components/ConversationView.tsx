@@ -63,7 +63,11 @@ function useMediaQuery(query: string): boolean {
 // (no blur, no colour) so messages simply fade out to a 0.24 floor behind the
 // floating header/composer, eased iOS-style (cubic-bezier sampled at 0/.2/.4/.6/.8/1).
 const FADE_TOP = 76 // clear the floating header
-const FADE_BOTTOM = 84 // clear the floating composer
+// tweb: fade = 3.5rem + page-chats-padding, контент-паддинг ленты =
+// chat-input-height + page-chats-padding; page-chats-padding = 16px desktop /
+// 8px handheld — см. _chat.scss:447,1104 и updateColumnWidths.ts.
+const fadeBottom = (narrow: boolean) => (narrow ? 64 : 72) // mask only
+const padBottom = (narrow: boolean) => (narrow ? 56 : 64) // real feed padding
 
 // Local start-of-day in ms (the date "bucket"), and a friendly day label for the
 // date divider — tweb shows Today / Yesterday / "14 June" (with year if not this year).
@@ -72,7 +76,7 @@ const FLOOR = 'rgba(255,255,255,0.24)'
 // fully to transparent so nothing bleeds above the floating header.
 const mixB = (k: number) => `color-mix(in srgb, #000 ${k}%, ${FLOOR})`
 const mixT = (k: number) => `color-mix(in srgb, #000 ${k}%, transparent)`
-const FEED_MASK = `linear-gradient(to bottom, transparent 0, ${mixT(8.6)} ${FADE_TOP * 0.2}px, ${mixT(33.4)} ${FADE_TOP * 0.4}px, ${mixT(66.6)} ${FADE_TOP * 0.6}px, ${mixT(91.4)} ${FADE_TOP * 0.8}px, #000 ${FADE_TOP}px, #000 calc(100% - ${FADE_BOTTOM}px), ${mixB(91.4)} calc(100% - ${FADE_BOTTOM * 0.8}px), ${mixB(66.6)} calc(100% - ${FADE_BOTTOM * 0.6}px), ${mixB(33.4)} calc(100% - ${FADE_BOTTOM * 0.4}px), ${mixB(8.6)} calc(100% - ${FADE_BOTTOM * 0.2}px), ${FLOOR} 100%)`
+const feedMask = (fadeB: number) => `linear-gradient(to bottom, transparent 0, ${mixT(8.6)} ${FADE_TOP * 0.2}px, ${mixT(33.4)} ${FADE_TOP * 0.4}px, ${mixT(66.6)} ${FADE_TOP * 0.6}px, ${mixT(91.4)} ${FADE_TOP * 0.8}px, #000 ${FADE_TOP}px, #000 calc(100% - ${fadeB}px), ${mixB(91.4)} calc(100% - ${fadeB * 0.8}px), ${mixB(66.6)} calc(100% - ${fadeB * 0.6}px), ${mixB(33.4)} calc(100% - ${fadeB * 0.4}px), ${mixB(8.6)} calc(100% - ${fadeB * 0.2}px), ${FLOOR} 100%)`
 
 // Telegram's per-peer color palette (used to tint reply previews by their author)
 
@@ -412,7 +416,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           ref={scrollRef}
           onMouseDown={dragSelect.onMouseDown}
           className={s.scroll}
-          style={{ maskImage: FEED_MASK, WebkitMaskImage: FEED_MASK }}
+          style={{ maskImage: feedMask(fadeBottom(narrow)), WebkitMaskImage: feedMask(fadeBottom(narrow)) }}
         >
           <div
             ref={contentRef}
@@ -422,7 +426,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               opacity: feedLoading ? 0 : 1,
               // clear the floating header/composer
               paddingTop: `${FADE_TOP + playerOffset}px`,
-              paddingBottom: `${FADE_BOTTOM}px`,
+              paddingBottom: `${padBottom(narrow)}px`,
             }}
           >
             {/* Render the list only once revealed, so rows mount at reveal time

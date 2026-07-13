@@ -22,10 +22,6 @@
   overflow: hidden;
 }
 
-.columnNarrow {
-  padding: 0 8px;
-}
-
 // плавающая пилюля «сейчас играет» над хедером
 .nowPlaying {
   position: absolute;
@@ -90,6 +86,11 @@
   margin-top: auto;
   display: flex;
   flex-direction: column;
+
+  // tweb --chat-bubbles-padding: .5rem на handhelds (base.scss)
+  @media (max-width: 900px) {
+    padding: 0 8px;
+  }
 }
 
 // футер (композер / кнопка mute)
@@ -104,6 +105,14 @@
   width: 100%;
   max-width: 688px;
   margin: 0 auto;
+
+  // tweb: на handhelds плейты стоят в 8px от краёв (--page-chats-padding: 8px)
+  @media (max-width: 900px) {
+    bottom: 8px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+  }
 }
 
 .footerCompose {

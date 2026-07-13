@@ -1,29 +1,23 @@
 // UserInfoPanel — панель профиля (пользователь/группа/канал). Порт разметки из
 // MUI sx. Цвета — токены --tg-*. Фон карточек (cardBg) зависит от темы.
 
-// затемнение под оверлеем (узкий режим)
-.backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-}
-
-// карточка-панель (общая база)
+// карточка-панель (общая база) — фон как у экрана настроек (sectionBackdrop),
+// чтобы белые карточки-секции читались на нём
 .panel {
-  background: var(--tg-sidebarBg);
+  background: var(--tg-sectionBackdrop);
   border-radius: 18px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
-// узкий режим: плавающая справа панель
+// узкий режим: фуллскрин-колонка (tweb handheld: колонки перекрываются на весь
+// экран), заезжает справа
 .panelNarrow {
   position: absolute;
-  top: 16px;
-  right: 16px;
-  bottom: 16px;
-  width: min(380px, calc(100vw - 32px));
+  inset: 0;
+  width: 100%;
+  border-radius: 0;
 }
 
 // широкий режим: колонка внутри контента
@@ -60,29 +54,11 @@
   padding-bottom: 20px;
 }
 
-// карточка (фон зависит от темы)
-.card {
-  margin: 0 12px 12px;
-  border-radius: 16px;
-  background: #ffffff;
-  padding: 4px 0;
-
-  :global(html[data-theme='night']) &,
-  :global(html[data-theme='dark']) & {
-    background: #2b2b2b;
-  }
-}
-
 // вложенная карточка без внешних margin (обсуждения/участники/ссылки/заявки)
 .cardPlain {
   border-radius: 16px;
-  background: #ffffff;
+  background: var(--tg-sidebarBg); // surface, как у SidebarSection
   padding: 6px 0;
-
-  :global(html[data-theme='night']) &,
-  :global(html[data-theme='dark']) & {
-    background: #2b2b2b;
-  }
 }
 
 // ряд-описание канала (иконка + текст)
@@ -90,33 +66,6 @@
   display: flex;
   gap: 16px;
   padding: 10px 16px;
-}
-
-// строка-ссылка/username (с hover)
-.linkRow {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 8px 16px;
-  margin: 0 4px;
-  border-radius: 12px;
-  cursor: pointer;
-
-  @media (hover: hover) {
-    &:hover {
-      background: var(--tg-hover);
-    }
-  }
-}
-
-// ряд «уведомления»
-.notifRow {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 4px 16px;
-  margin: 0 4px;
-  border-radius: 12px;
 }
 
 .grow {
@@ -135,7 +84,14 @@
   padding-bottom: 4px;
 }
 
-// медиа-сетка канала
+// --- шаред-медиа (табы Медиа/Файлы/Ссылки/Музыка/Голосовые) ---
+
+// обёртка framed-таб-ряда (выравнивание с карточками секций)
+.tabsWrap {
+  margin: 8px 12px 0;
+}
+
+// сетка «Медиа»
 .mediaGrid {
   margin: 8px 12px 0;
   display: grid;
@@ -144,7 +100,88 @@
 }
 
 .mediaTile {
+  position: relative;
   aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+}
+
+// бейдж длительности видео (верхний левый угол, как в tweb .video-time)
+.tileDuration {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+// список строк (файлы/ссылки/музыка/голосовые)
+.mediaList {
+  margin: 8px 12px 0;
+  border-radius: 16px;
+  background: var(--tg-sidebarBg); // surface, как у SidebarSection
+  padding: 6px 0;
+}
+
+.mediaRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  margin: 0 4px;
+  border-radius: 12px;
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+    }
+  }
+}
+
+// квадрат-иконка файла/ссылки
+.rowSquare {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+// круглая кнопка play (музыка/голосовые)
+.rowPlay {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--tg-accentGradient);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+// волноформа голосового
+.voiceWave {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 20px;
+}
+
+.voiceWaveBar {
+  width: 2px;
+  border-radius: 1px;
+  background: var(--tg-accent);
 }
 
 // ряд «обсуждения включены»
@@ -268,7 +305,7 @@
   position: absolute;
   inset: 0;
   z-index: 60;
-  background: var(--tg-sidebarBg);
+  background: var(--tg-sectionBackdrop);
   display: flex;
   flex-direction: column;
 }

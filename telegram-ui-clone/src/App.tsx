@@ -151,16 +151,14 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     setSelectedId(String(chatId))
   }
 
-  // Responsive: below 900px the chat is full-width and the sidebar is hidden,
-  // sliding out from the left (over the chat) when the back arrow is tapped.
+  // Responsive: below 900px columns overlap fullscreen (tweb handheld) — the
+  // list fills the screen, opening a chat replaces it, back returns to the list.
   const narrow = useMediaQuery('(max-width:900px)')
-  const [drawerOpen, setDrawerOpen] = useState(false)
   const selectChat = useCallback((id: string) => {
     setSelectedId(id)
     setDraftPeer(null)
-    setDrawerOpen(false)
   }, [])
-  const openDrawer = narrow ? () => setDrawerOpen(true) : undefined
+  const backToList = narrow ? () => setSelectedId(null) : undefined
 
   // Open a conversation with a user (member row, group sender, search result).
   // Reuses an existing private dialog if there is one; otherwise opens a draft
@@ -174,7 +172,6 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     }
     setDraftPeer(peer)
     setSelectedId(`draft:${peer.id}`)
-    setDrawerOpen(false)
     void loadPresence(managers, [peer.id])
   }
 
@@ -211,11 +208,9 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
       onSelect={selectChat}
       onCreateGroup={(name) => {
         void createGroup(name)
-        setDrawerOpen(false)
       }}
       onCreateChannel={(name, description) => {
         void createChannel(name, description)
-        setDrawerOpen(false)
       }}
       onToggleMode={onToggleMode}
       onLogout={onLogout}
@@ -226,7 +221,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 
   const chatArea =
     selected ? (
-      <ConversationView key={selectedId} chat={selected} onBack={openDrawer} onOpenPeer={openPeer} onChatCreated={onChatCreated} />
+      <ConversationView key={selectedId} chat={selected} onBack={backToList} onOpenPeer={openPeer} onChatCreated={onChatCreated} />
     ) : (
       <div className={s.empty}>
         <div className={s.emptyPill}>
@@ -293,35 +288,10 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
         </>
       )}
 
-      {/* Narrow: no chat → the list fills the screen; a chat → chat + drawer */}
+      {/* Narrow: columns overlap fullscreen (tweb handheld) — the list fills the
+          screen, an open chat replaces it, back (onBack) returns to the list */}
       {narrow && !selectedId && renderSidebar(true)}
       {narrow && selectedId && chatArea}
-
-      {/* Narrow: sidebar as a slide-in drawer over the chat */}
-      {narrow && selectedId && (
-        <AnimatePresence>
-          {drawerOpen && (
-            <div key="drawer">
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={() => setDrawerOpen(false)}
-                className={s.drawerScrim}
-              />
-              <motion.div
-                initial={{ x: '-106%' }}
-                animate={{ x: '0%' }}
-                exit={{ x: '-106%' }}
-                transition={{ duration: 0.26, ease: [0.4, 0, 0.2, 1] }}
-                className={s.drawerPanel}
-              >
-                {renderSidebar()}
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
-      )}
     </div>
   )
 }
