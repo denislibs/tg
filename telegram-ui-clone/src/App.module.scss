@@ -9,6 +9,15 @@
   background: var(--tg-appBg);
 }
 
+// мобильная колонка (список чатов / чат) — фуллскрин-слой под классический
+// слайд 100%/-100% (tweb handheld: колонки перекрываются на весь экран)
+.mobileColumn {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+}
+
 // пустое состояние (нет выбранного чата)
 .empty {
   flex: 1;

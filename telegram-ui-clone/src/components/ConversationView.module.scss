@@ -77,10 +77,13 @@
   align-items: center;
 }
 
-// контент ленты (opacity/paddings по загрузке/playerOffset — инлайном)
+// контент ленты (opacity/paddings по загрузке/playerOffset — инлайном).
+// max-width = 688 (плейты хедера/композера) + 2×боковой паддинг, чтобы край
+// баблов совпадал с краем плейтов при любой ширине (в tweb bubbles-inner
+// точно так же: chat-width − bubbles-padding×2).
 .content {
   width: 100%;
-  max-width: 688px;
+  max-width: 696px;
   padding: 0 4px;
   transition: opacity 0.2s ease;
   margin-top: auto;
@@ -89,6 +92,7 @@
 
   // tweb --chat-bubbles-padding: .5rem на handhelds (base.scss)
   @media (max-width: 900px) {
+    max-width: 704px;
     padding: 0 8px;
   }
 }

@@ -288,10 +288,41 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
         </>
       )}
 
-      {/* Narrow: columns overlap fullscreen (tweb handheld) — the list fills the
-          screen, an open chat replaces it, back (onBack) returns to the list */}
-      {narrow && !selectedId && renderSidebar(true)}
-      {narrow && selectedId && chatArea}
+      {/* Narrow: columns overlap fullscreen (tweb handheld) — классический
+          синхронный слайд: список 0 → -100%, чат 100% → 0 (и обратно по «назад»).
+          Кромки движутся вместе, обои чата остаются статичным фоном под ними. */}
+      {narrow && (
+        <>
+          <AnimatePresence initial={false}>
+            {selectedId && (
+              <motion.div
+                key="chat"
+                className={s.mobileColumn}
+                initial={{ x: '100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '100%' }}
+                transition={{ duration: 0.26, ease: [0.4, 0, 0.2, 1] }}
+              >
+                {chatArea}
+              </motion.div>
+            )}
+          </AnimatePresence>
+          <AnimatePresence initial={false}>
+            {!selectedId && (
+              <motion.div
+                key="list"
+                className={s.mobileColumn}
+                initial={{ x: '-100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '-100%' }}
+                transition={{ duration: 0.26, ease: [0.4, 0, 0.2, 1] }}
+              >
+                {renderSidebar(true)}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </>
+      )}
     </div>
   )
 }
