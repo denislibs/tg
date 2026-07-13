@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import TgSwitch from './TgSwitch'
@@ -15,19 +15,8 @@ import type { Chat, OpenPeer } from '../data'
 import { useT } from '../i18n'
 import { useGroupInfo, RIGHTS, roleLabel, type RealMember } from '../core/hooks/useGroupInfo'
 import s from './UserInfoPanel.module.scss'
+import useMediaQuery from '../shared/lib/useMediaQuery'
 
-// Мини-хук media query (замена MUI useMediaQuery) на window.matchMedia.
-function useMediaQuery(query: string): boolean {
-  const [match, setMatch] = useState(() => window.matchMedia?.(query).matches ?? false)
-  useEffect(() => {
-    const mql = window.matchMedia(query)
-    const onChange = () => setMatch(mql.matches)
-    onChange()
-    mql.addEventListener('change', onChange)
-    return () => mql.removeEventListener('change', onChange)
-  }, [query])
-  return match
-}
 
 // --- Моки шаред-медиа (пока нет реального API истории по типам контента).
 // Структура секции — 1:1 tweb sharedMedia.tsx: табы media/files/links/music/voice.

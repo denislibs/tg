@@ -21,6 +21,7 @@ import { gradientFor, SERVICE_USER_ID } from '../../core/dialogToChat'
 import { friendlyMsgTime } from '../../core/friendlyTime'
 import { useT, useLang } from '../../i18n'
 import { useMemo } from 'react'
+import useMediaQuery from '../../shared/lib/useMediaQuery'
 import { EASE, DUR } from '../../motion'
 import type { Chat } from '../../data'
 import type { TypingKind } from '../../core/hooks/useTypingLabel'
@@ -189,7 +190,9 @@ function ChatHeader({
     if (r) onPickResult(r.seq)
   }
 
-  const barTop = { top: `${16 + playerOffset}px` }
+  // tweb: на handhelds плейты в 8px от краёв (--page-chats-padding: 8px)
+  const narrow = useMediaQuery('(max-width:900px)')
+  const barTop = { top: `${(narrow ? 8 : 16) + playerOffset}px` }
 
   return (
     <AnimatePresence initial={false}>

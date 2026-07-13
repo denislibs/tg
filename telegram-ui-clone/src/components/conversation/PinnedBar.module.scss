@@ -18,6 +18,13 @@
   cursor: pointer;
   background: var(--tg-bubble);
   box-shadow: var(--tg-plateShadow);
+
+  // tweb: на handhelds плейты в 8px от краёв (--page-chats-padding: 8px)
+  @media (max-width: 900px) {
+    left: 8px;
+    right: 8px;
+    width: auto;
+  }
 }
 .body {
   flex: 1;

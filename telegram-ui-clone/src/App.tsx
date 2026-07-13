@@ -20,21 +20,10 @@ import { dialogToChat, gradientFor } from './core/dialogToChat'
 import { startRealtime } from './client/realtimeBridge'
 import { setupPush } from './client/pushSetup'
 import s from './App.module.scss'
+import useMediaQuery from './shared/lib/useMediaQuery'
 
 export type ToggleMode = (coords?: { x: number; y: number }) => void
 
-// Мини-хук media query (замена MUI useMediaQuery) на window.matchMedia.
-function useMediaQuery(query: string): boolean {
-  const [match, setMatch] = useState(() => window.matchMedia?.(query).matches ?? false)
-  useEffect(() => {
-    const mql = window.matchMedia(query)
-    const onChange = () => setMatch(mql.matches)
-    onChange()
-    mql.addEventListener('change', onChange)
-    return () => mql.removeEventListener('change', onChange)
-  }, [query])
-  return match
-}
 
 // Run the /join deep-link handler at most once per app session.
 let joinDeepLinkHandled = false

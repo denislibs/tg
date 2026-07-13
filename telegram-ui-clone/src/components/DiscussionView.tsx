@@ -10,6 +10,7 @@ import Composer from './Composer'
 import ChatFeed from './messages/ChatFeed'
 import type { FeedFns } from './messages/MessageRow'
 import type { ConvMsg } from '../data'
+import useMediaQuery from '../shared/lib/useMediaQuery'
 import s from './DiscussionView.module.scss'
 
 const NOOP = () => {}
@@ -25,8 +26,10 @@ const FEED_FNS: FeedFns = {
 const EMPTY_COUNTS = new Map<number, number>()
 const EMPTY_SELECTED = new Set<number>()
 
-// Match ConversationView's floating-chrome clearances.
-const HEADER_H = 76 // header card top(16)+height(48)+gap
+// Match ConversationView's floating-chrome clearances (плейты на мобилке в 8px
+// от краёв — tweb --page-chats-padding: 8px handheld).
+const headerH = (narrow: boolean) => (narrow ? 8 : 16) + 48 + 12 // top + card + gap
+const padBottom = (narrow: boolean) => (narrow ? 56 : 64) // как ConversationView
 const PINNED_EXTRA = 56 // extra when the pinned plate is shown
 
 export default function DiscussionView({
@@ -85,7 +88,8 @@ export default function DiscussionView({
   const jumpToPost = () => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
   const postPreview = post.text || post.title || t('Message')
   const showPinned = !pinnedHidden && search === null
-  const topClear = HEADER_H + (showPinned ? PINNED_EXTRA : 0)
+  const narrow = useMediaQuery('(max-width:900px)')
+  const topClear = headerH(narrow) + (showPinned ? PINNED_EXTRA : 0)
 
   return (
     <div className={s.root}>
@@ -164,7 +168,7 @@ export default function DiscussionView({
 
       {/* Лента — центрированная колонка (max-width) поверх обоев */}
       <div ref={scrollRef} className={s.scroll}>
-        <div className={s.content} style={{ paddingTop: `${topClear}px`, paddingBottom: '84px' }}>
+        <div className={s.content} style={{ paddingTop: `${topClear}px`, paddingBottom: `${padBottom(narrow)}px` }}>
           <ChatFeed
             msgs={feedMsgs}
             winMsgs={[]}

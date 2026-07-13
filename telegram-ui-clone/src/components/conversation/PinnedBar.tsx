@@ -9,6 +9,7 @@ import TgIcon from '../TgIcon'
 import { useT } from '../../i18n'
 import { EASE, DUR } from '../../motion'
 import type { Message } from '../../core/models'
+import useMediaQuery from '../../shared/lib/useMediaQuery'
 import s from './PinnedBar.module.scss'
 
 const EASE_STD = EASE
@@ -24,6 +25,8 @@ export interface PinnedBarProps {
 
 function PinnedBar({ pins, searchOpen, playerOffset, onJump, onUnpin }: PinnedBarProps) {
   const t = useT()
+  // tweb: на handhelds плейты в 8px от краёв (--page-chats-padding: 8px)
+  const narrow = useMediaQuery('(max-width:900px)')
 
   return (
     <AnimatePresence initial={false}>
@@ -36,7 +39,7 @@ function PinnedBar({ pins, searchOpen, playerOffset, onJump, onUnpin }: PinnedBa
           exit={{ opacity: 0, y: -8 }}
           transition={{ duration: DUR_IN, ease: EASE_STD }}
           onClick={() => onJump(pins[0]?.seq)}
-          style={{ top: `${16 + 48 + 8 + playerOffset}px` }}
+          style={{ top: `${(narrow ? 8 : 16) + 48 + 8 + playerOffset}px` }}
         >
           <TgIcon name="pin" size={20} color="var(--tg-accent)" />
           <div className={s.body}>

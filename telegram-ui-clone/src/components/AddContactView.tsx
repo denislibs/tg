@@ -6,7 +6,7 @@
 // card with name/last-name/note fields and a "number hidden" phone row, a "show my
 // phone" checkbox, and a floating ✓ that POSTs to /contacts. Russian copy is
 // hardcoded (the app renders Russian; sibling panels do the same).
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import Input from '../shared/ui/Input'
@@ -18,6 +18,7 @@ import { useAvatarSrc } from './useAvatarSrc'
 import { useManagers } from '../core/hooks/useManagers'
 import type { Chat } from '../data'
 import s from './AddContactView.module.scss'
+import useMediaQuery from '../shared/lib/useMediaQuery'
 
 // Split a display name into a first/last seed (everything after the first token is
 // the last name) — mirrors tweb prefilling first/last from the user's profile name.
@@ -26,18 +27,6 @@ function splitName(full: string): { first: string; last: string } {
   return { first: parts[0] ?? '', last: parts.slice(1).join(' ') }
 }
 
-// Мини-хук media query (замена MUI useMediaQuery) на window.matchMedia.
-function useMediaQuery(query: string): boolean {
-  const [match, setMatch] = useState(() => window.matchMedia?.(query).matches ?? false)
-  useEffect(() => {
-    const mql = window.matchMedia(query)
-    const onChange = () => setMatch(mql.matches)
-    onChange()
-    mql.addEventListener('change', onChange)
-    return () => mql.removeEventListener('change', onChange)
-  }, [query])
-  return match
-}
 
 export default function AddContactView({
   chat,
