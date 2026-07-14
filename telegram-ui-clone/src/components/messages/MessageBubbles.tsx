@@ -1,6 +1,7 @@
 import Text from '../../shared/ui/Text'
 import classNames from '../../shared/lib/classNames'
 import TgIcon from '../TgIcon'
+import { useT } from '../../i18n'
 import type { ConvMsg, MsgStatus } from '../../data'
 import { useTimeFormatter } from '../../settings'
 import s from './MessageBubbles.module.scss'
@@ -199,6 +200,49 @@ export function WebPagePreview({
           {wp.emoji && <Text size={56} style={{ zIndex: 1 }}>{wp.emoji}</Text>}
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * Лог 1:1 звонка (tweb .bubble-call): иконка телефона/камеры, заголовок
+ * «Исходящий/Входящий (видео)звонок», стрелка (зелёная — состоялся, красная —
+ * нет) + длительность или причина, время + галочки.
+ */
+export function CallBubble({ m, out, firstInGroup, lastInGroup }: { m: ConvMsg; out: boolean; firstInGroup: boolean; lastInGroup: boolean }) {
+  const t = useT()
+  const call = m.call!
+  const title = out
+    ? (call.video ? t('Outgoing video call') : t('Outgoing call'))
+    : (call.video ? t('Incoming video call') : t('Incoming call'))
+  const sub =
+    call.duration != null
+      ? `${Math.floor(call.duration / 60)}:${String(call.duration % 60).padStart(2, '0')}`
+      : call.reason === 'busy' ? t('Busy')
+      : call.reason === 'missed' ? t('Missed call')
+      : t('Cancelled call')
+  return (
+    <div className={s.callBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
+      {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
+      <div className={s.callIcon}>
+        <TgIcon name={call.video ? 'videocamera' : 'phone'} size={24} color="var(--tg-accent)" />
+      </div>
+      <div className={s.callBody}>
+        <Text size={15.5} weight={600} color="var(--tg-textPrimary)">{title}</Text>
+        <div className={s.callSub}>
+          <TgIcon
+            name="arrow_next"
+            size={16}
+            color={call.duration != null ? '#4dcd5e' : '#ff595a'}
+            style={{ transform: call.duration != null ? 'rotate(135deg)' : 'rotate(-45deg)' }}
+          />
+          <Text size={13.5} color="var(--b-secondary)">{sub}</Text>
+        </div>
+      </div>
+      <span className={s.callMeta}>
+        <Text size={12.5} color="var(--b-time)">{m.time}</Text>
+        {out && <Ticks status={m.status} color="var(--b-tick)" />}
+      </span>
     </div>
   )
 }

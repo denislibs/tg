@@ -25,6 +25,7 @@ export interface ConvMsg {
     | 'document'
     | 'audio'
     | 'roundVideo'
+    | 'call'
   out?: boolean
   sender?: string
   senderId?: number // backend user id of the sender (real group chats) — for "open chat"
@@ -60,6 +61,14 @@ export interface ConvMsg {
   audio?: { title: string; artist: string; duration: string }
   // link preview attached to a text message
   webPage?: { siteName: string; title: string; description?: string; gradient?: string; emoji?: string }
+  /** лог 1:1 звонка (tweb messageActionPhoneCall): исход + длительность */
+  call?: CallLog
+}
+
+export interface CallLog {
+  video: boolean
+  reason: 'ok' | 'missed' | 'busy' | 'cancelled'
+  duration?: number // секунды; есть только у состоявшегося (ok)
 }
 
 // A minimal peer identity used to open a private chat from a click (member row,

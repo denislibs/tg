@@ -1,4 +1,4 @@
-import type { ConvMsg } from '../data'
+import type { CallLog, ConvMsg } from '../data'
 import type { Message } from './models'
 
 // Format an ISO timestamp as local 24h "HH:MM"; returns '' on an invalid date.
@@ -42,6 +42,7 @@ export function messageToConvMsg(
   // (keyed off mediaId), so everything else maps to 'text'.
   const convType =
     m.type === 'voice' ? 'voice'
+    : m.type === 'call' ? 'call'
     : m.type === 'service' ? 'service'
     : m.type === 'photo' || m.type === 'video' || m.type === 'document' || m.type === 'audio' ? m.type
     : 'text'
@@ -64,6 +65,7 @@ export function messageToConvMsg(
             ? 'read'
             : 'sent'
       : undefined,
+    call: m.type === 'call' ? parseCallLog(m.text) : undefined,
     mediaId: m.mediaId ?? undefined,
     mediaWidth: m.mediaWidth,
     mediaHeight: m.mediaHeight,
@@ -91,5 +93,19 @@ export function messageToConvMsg(
           mediaType: m.replyTo.type,
         }
       : undefined,
+  }
+}
+
+// Лог звонка хранится в text как JSON (см. callEngine.logCallMessage).
+function parseCallLog(text: string): CallLog {
+  try {
+    const p = JSON.parse(text) as Partial<CallLog>
+    return {
+      video: !!p.video,
+      reason: p.reason === 'ok' || p.reason === 'missed' || p.reason === 'busy' ? p.reason : 'cancelled',
+      duration: typeof p.duration === 'number' ? p.duration : undefined,
+    }
+  } catch {
+    return { video: false, reason: 'cancelled' }
   }
 }

@@ -43,6 +43,7 @@ function mediaLabel(type?: string): string {
     case 'audio': return 'Аудио'
     case 'document': return 'Файл'
     case 'sticker': return 'Стикер'
+    case 'call': return 'Звонок'
     default: return ''
   }
 }
@@ -59,7 +60,8 @@ export function dialogToChat(d: Dialog, meId?: number | null): Chat {
   const lastMine = lm != null && meId != null && lm.senderId === meId && d.type !== 'channel'
   // Preview text = caption, or a grey type label for caption-less media; prefix
   // "Вы: " for my own last message (tweb-style).
-  let preview = lm ? lm.text || mediaLabel(lm.mediaType) : ''
+  // У лога звонка text — служебный JSON, в превью всегда идёт лейбл.
+  let preview = lm ? (lm.mediaType === 'call' ? mediaLabel('call') : lm.text || mediaLabel(lm.mediaType)) : ''
   // Forwarded last message: a forward arrow stands in front (no "Вы:" prefix, like
   // Telegram) — the arrow itself signals it wasn't authored here.
   const forwarded = !!lm?.forwarded

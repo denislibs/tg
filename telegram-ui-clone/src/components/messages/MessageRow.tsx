@@ -29,6 +29,7 @@ import {
   AudioBubble,
   RoundVideoBubble,
   WebPagePreview,
+  CallBubble,
 } from './MessageBubbles'
 import RichText, { emojiOnlyCount } from '../RichText'
 import Emoji from '../emoji/Emoji'
@@ -246,6 +247,8 @@ function MessageRow({
           <AudioBubble m={m} out={out} firstInGroup={firstInGroup} lastInGroup={lastInGroup} />
         ) : m.type === 'roundVideo' ? (
           <RoundVideoBubble m={m} out={out} firstInGroup={firstInGroup} lastInGroup={lastInGroup} />
+        ) : m.type === 'call' ? (
+          <CallBubble m={m} out={out} firstInGroup={firstInGroup} lastInGroup={lastInGroup} />
         ) : (
           <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
             {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}

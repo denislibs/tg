@@ -15,6 +15,8 @@
 //
 // Не React-модуль: пишет состояние в callStore, UI зовёт его функции.
 import { useCallStore, type CallPeer, type CallEndReason } from '../../stores/callStore'
+import { useChatsStore } from '../../stores/chatsStore'
+import { useMessagesStore } from '../../stores/messagesStore'
 import { useSettingsStore } from '../../settings'
 import { playSound, stopSound } from '../audio/sounds'
 import { startClient } from '../../client/bootstrap'
@@ -71,6 +73,24 @@ function cleanupRtc() {
   }
 }
 
+// Лог звонка в историю чата (tweb messageActionPhoneCall): одно сообщение,
+// пишет ЗВОНЯЩИЙ — у него бабл «Исходящий звонок», у собеседника «Входящий».
+function logCallMessage(reason: CallEndReason) {
+  const call = store().call
+  if (!call || !call.outgoing || call.chatId == null) return
+  const duration = call.connectedAt ? Math.round((Date.now() - call.connectedAt) / 1000) : undefined
+  const mapped: 'ok' | 'missed' | 'busy' | 'cancelled' =
+    duration != null ? 'ok'
+    : reason === 'missed' ? 'missed'
+    : reason === 'busy' ? 'busy'
+    : 'cancelled'
+  const text = JSON.stringify({ video: call.video, reason: mapped, duration })
+  const clientMsgId = crypto.randomUUID()
+  const meId = useChatsStore.getState().meId
+  if (meId != null) useMessagesStore.getState().appendOptimistic(call.chatId, text, meId, clientMsgId, undefined, 'call')
+  void managers().realtime.sendMessage({ chatId: call.chatId, text, clientMsgId, type: 'call' })
+}
+
 // Завершение с показом финального статуса; экран закрывается через паузу.
 function finish(reason: CallEndReason) {
   clearRingTimer()
@@ -78,6 +98,7 @@ function finish(reason: CallEndReason) {
   stopSound()
   const call = store().call
   if (!call || call.phase === 'ended') return
+  logCallMessage(reason)
   playSound(reason === 'busy' || reason === 'declined' ? 'call_busy' : 'call_end')
   store().patch({ phase: 'ended', endReason: reason, localStream: null, remoteStream: null })
   setTimeout(() => {
@@ -205,11 +226,11 @@ async function handleSignal(d: Record<string, unknown>) {
 
 // ── публичное API (UI) ──
 
-export function startOutgoing(peer: CallPeer, video: boolean) {
+export function startOutgoing(peer: CallPeer, video: boolean, chatId: number | null = null) {
   if (store().call) return // уже в звонке
   const callId = crypto.randomUUID()
   useCallStore.getState().set({
-    callId, peer, outgoing: true, video, phase: 'outgoing',
+    callId, peer, chatId, outgoing: true, video, phase: 'outgoing',
     muted: false, camOn: video, screenOn: false, remoteMuted: false, remoteCamOn: false,
     connectedAt: null, localStream: null, remoteStream: null,
   })
@@ -350,7 +371,7 @@ export function handleFrame(evt: CallFrameEvt) {
     // имя/аватар звонящего подтягиваем асинхронно
     useCallStore.getState().set({
       callId, peer: { id: from, name: `ID ${from}`, avatar: 'var(--tg-accent)' },
-      outgoing: false, video, phase: 'incoming',
+      chatId: null, outgoing: false, video, phase: 'incoming',
       muted: false, camOn: video, screenOn: false, remoteMuted: false, remoteCamOn: false,
       connectedAt: null, localStream: null, remoteStream: null,
     })

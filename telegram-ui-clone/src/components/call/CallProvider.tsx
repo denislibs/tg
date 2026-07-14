@@ -18,6 +18,7 @@ export function CallProvider({ chat, children }: { chat: Chat; children: ReactNo
     () => ({
       start: (video: boolean) => {
         if (chat.peerId == null) return
+        const numericChatId = Number(chat.id)
         startOutgoing(
           {
             id: chat.peerId,
@@ -27,6 +28,7 @@ export function CallProvider({ chat, children }: { chat: Chat; children: ReactNo
             avatarUrl: chat.avatarUrl,
           },
           video,
+          Number.isFinite(numericChatId) && String(numericChatId) === chat.id ? numericChatId : null,
         )
       },
       end: hangup,
