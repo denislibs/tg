@@ -28,6 +28,10 @@ const managers = () => startClient().managers
 
 let pc: RTCPeerConnection | null = null
 let localStream: MediaStream | null = null
+let screenStream: MediaStream | null = null
+// единственный видео-sender: камера и шаринг экрана делят его через replaceTrack
+// (tweb: video и presentation взаимоисключающие)
+let videoSender: RTCRtpSender | null = null
 // perfect negotiation (по tweb: входящая сторона откатывает свой оффер при glare)
 let polite = false
 let makingOffer = false
@@ -54,6 +58,9 @@ function cleanupRtc() {
   pendingCandidates = []
   localStream?.getTracks().forEach((t) => t.stop())
   localStream = null
+  screenStream?.getTracks().forEach((t) => t.stop())
+  screenStream = null
+  videoSender = null
   if (pc) {
     pc.onicecandidate = null
     pc.ontrack = null
@@ -102,7 +109,7 @@ async function acquireLocal(withVideo: boolean): Promise<MediaStream | null> {
 function sendMediaState() {
   const call = store().call
   if (!call) return
-  sendFrame('call_signal', { media: { muted: call.muted, cam_on: call.camOn } })
+  sendFrame('call_signal', { media: { muted: call.muted, cam_on: call.camOn || call.screenOn } })
 }
 
 // ── WebRTC ──
@@ -150,7 +157,10 @@ async function startRtc(withVideo: boolean) {
   localStream = await acquireLocal(withVideo)
   if (!pc) return // повесили трубку, пока ждали getUserMedia (tweb: isClosing check)
   if (localStream) {
-    for (const track of localStream.getTracks()) pc.addTrack(track, localStream)
+    for (const track of localStream.getTracks()) {
+      const sender = pc.addTrack(track, localStream)
+      if (track.kind === 'video') videoSender = sender
+    }
     store().patch({ localStream, camOn: localStream.getVideoTracks().length > 0 })
   } else {
     // нет пермишена/устройств: соединяемся только на приём
@@ -200,7 +210,7 @@ export function startOutgoing(peer: CallPeer, video: boolean) {
   const callId = crypto.randomUUID()
   useCallStore.getState().set({
     callId, peer, outgoing: true, video, phase: 'outgoing',
-    muted: false, camOn: video, remoteMuted: false, remoteCamOn: false,
+    muted: false, camOn: video, screenOn: false, remoteMuted: false, remoteCamOn: false,
     connectedAt: null, localStream: null, remoteStream: null,
   })
   polite = false // звонящий — impolite (tweb: incoming сторона делает rollback)
@@ -248,14 +258,20 @@ export async function toggleCamera() {
   if (call.camOn) {
     // выключение: трек глушим (sender остаётся — tweb-паттерн track.enabled)
     localStream?.getVideoTracks().forEach((t) => { t.enabled = false })
+    if (videoSender?.track && localStream?.getVideoTracks().includes(videoSender.track)) {
+      // ок: тот же трек, enabled=false уже заглушил отправку
+    }
     store().patch({ camOn: false })
     sendMediaState()
     return
   }
+  // камера и шаринг взаимоисключающие (tweb): включение камеры гасит шаринг
+  if (call.screenOn) await stopScreenShare(false)
   const existing = localStream?.getVideoTracks()[0]
   if (existing) {
     existing.enabled = true
-    store().patch({ camOn: true })
+    if (videoSender && videoSender.track !== existing) await videoSender.replaceTrack(existing).catch(() => {})
+    store().patch({ camOn: true, localStream: localStream ? new MediaStream(localStream.getTracks()) : null })
     sendMediaState()
     return
   }
@@ -274,9 +290,43 @@ export async function toggleCamera() {
   } else {
     localStream.addTrack(track)
   }
-  pc.addTrack(track, localStream) // дёрнет onnegotiationneeded → новый offer
+  if (videoSender) await videoSender.replaceTrack(track).catch(() => {})
+  else videoSender = pc.addTrack(track, localStream) // дёрнет onnegotiationneeded → новый offer
   store().patch({ localStream: new MediaStream(localStream.getTracks()), camOn: true })
   sendMediaState()
+}
+
+// ── шаринг экрана (tweb presentation: делит видео-слот с камерой) ──
+
+export async function toggleScreenShare() {
+  const call = store().call
+  if (!call || !pc) return
+  if (call.screenOn) { await stopScreenShare(true); return }
+  let stream: MediaStream
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia({ video: true })
+  } catch { return } // отказ в пикере браузера — просто ничего не делаем
+  if (!pc || !store().call) { stream.getTracks().forEach((t) => t.stop()); return }
+  const track = stream.getVideoTracks()[0]
+  // «Stop sharing» из браузерного UI заканчивает шаринг и у нас
+  track.onended = () => { void stopScreenShare(true) }
+  screenStream = stream
+  // взаимоисключение: камера гаснет на время шаринга
+  localStream?.getVideoTracks().forEach((t) => { t.enabled = false })
+  if (videoSender) await videoSender.replaceTrack(track).catch(() => {})
+  else videoSender = pc.addTrack(track, stream) // renegotiation
+  store().patch({ screenOn: true, camOn: false, localStream: stream })
+  sendMediaState()
+}
+
+async function stopScreenShare(notify: boolean) {
+  if (!screenStream) return
+  screenStream.getTracks().forEach((t) => t.stop())
+  screenStream = null
+  if (videoSender) await videoSender.replaceTrack(null).catch(() => {})
+  const cur = store().call
+  if (cur) store().patch({ screenOn: false, localStream: localStream ? new MediaStream(localStream.getTracks()) : null })
+  if (notify) sendMediaState()
 }
 
 // ── входящие кадры (из realtimeBridge) ──
@@ -301,7 +351,7 @@ export function handleFrame(evt: CallFrameEvt) {
     useCallStore.getState().set({
       callId, peer: { id: from, name: `ID ${from}`, avatar: 'var(--tg-accent)' },
       outgoing: false, video, phase: 'incoming',
-      muted: false, camOn: video, remoteMuted: false, remoteCamOn: false,
+      muted: false, camOn: video, screenOn: false, remoteMuted: false, remoteCamOn: false,
       connectedAt: null, localStream: null, remoteStream: null,
     })
     void managers().peers.getUsers([from]).then((users) => {

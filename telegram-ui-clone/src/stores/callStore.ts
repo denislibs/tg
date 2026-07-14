@@ -24,6 +24,7 @@ export interface ActiveCall {
   phase: CallPhase
   muted: boolean
   camOn: boolean
+  screenOn: boolean
   remoteMuted: boolean
   remoteCamOn: boolean
   /** Date.now()-время перехода в active — для таймера длительности */

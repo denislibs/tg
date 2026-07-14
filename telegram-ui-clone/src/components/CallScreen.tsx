@@ -12,7 +12,7 @@ import { useT } from '../i18n'
 import Avatar from '../shared/ui/Avatar'
 import { useCallStore } from '../stores/callStore'
 import { useSettingsStore } from '../settings'
-import { accept, decline, hangup, toggleMute, toggleCamera } from '../core/calls/callEngine'
+import { accept, decline, hangup, toggleMute, toggleCamera, toggleScreenShare } from '../core/calls/callEngine'
 import { useAvatarSrc } from './useAvatarSrc'
 import s from './CallScreen.module.scss'
 
@@ -78,7 +78,7 @@ export default function CallScreen() {
     : 'linear-gradient(135deg, #6d5bd0, #3f7fd6, #8a5bff, #4f86e8)'
 
   const showRemoteVideo = active && call.remoteCamOn && !!call.remoteStream?.getVideoTracks().length
-  const showLocalVideo = call.camOn && !!call.localStream?.getVideoTracks().length
+  const showLocalVideo = (call.camOn || call.screenOn) && !!call.localStream?.getVideoTracks().length
 
   const ctrlStyle: CSSProperties = {
     width: 54,
@@ -109,7 +109,16 @@ export default function CallScreen() {
       {/* remote-медиа: звук всегда, видео — на весь экран когда есть */}
       <audio ref={remoteAudioRef} autoPlay />
       {showRemoteVideo && <video ref={remoteVideoRef} className={s.remoteVideo} autoPlay playsInline />}
-      {showLocalVideo && <video ref={localVideoRef} className={s.localVideo} autoPlay muted playsInline />}
+      {showLocalVideo && (
+        <video
+          ref={localVideoRef}
+          className={s.localVideo}
+          style={call.screenOn ? { transform: 'none' } : undefined}
+          autoPlay
+          muted
+          playsInline
+        />
+      )}
 
       {active && call.remoteMuted && (
         <div className={s.remoteMuted}>
@@ -157,6 +166,13 @@ export default function CallScreen() {
               ) : (
                 <TgIcon name="videocamera_crossed_filled" size={26} color="#fff" />
               )}
+            </IconButton>
+            <IconButton
+              onClick={() => void toggleScreenShare()}
+              color="#fff"
+              style={call.screenOn ? { ...ctrlStyle, background: 'rgba(255,255,255,0.45)' } : ctrlStyle}
+            >
+              <TgIcon name="sharescreen_filled" size={26} color="#fff" />
             </IconButton>
             <IconButton onClick={hangup} color="#fff" style={endStyle}>
               <TgIcon name="endcall_filled" size={30} color="#fff" />
