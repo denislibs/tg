@@ -16,6 +16,15 @@
   border-radius: 24px;
   background: var(--tg-bubble);
   box-shadow: var(--tg-plateShadow);
+
+  // мобилка: плейт 48px высотой, в 8px от низа и краёв (как остальные плейты)
+  @media (max-width: 900px) {
+    height: 48px;
+    bottom: 8px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+  }
 }
 .count {
   flex: 1;
