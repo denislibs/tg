@@ -32,6 +32,16 @@ export default function SpeakersCamera({ onBack }: { onBack: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const levelRef = useRef<HTMLDivElement>(null)
 
+  // tweb: список обновляется живьём при подключении/отключении устройств
+  useEffect(() => {
+    const refresh = () => {
+      void navigator.mediaDevices.enumerateDevices().then(setDevices).catch(() => setDevices([]))
+    }
+    refresh()
+    navigator.mediaDevices.addEventListener?.('devicechange', refresh)
+    return () => navigator.mediaDevices.removeEventListener?.('devicechange', refresh)
+  }, [])
+
   // Аудиопоток выбранного микрофона → живая полоска уровня (Analyser + rAF,
   // ширина пишется в DOM напрямую — без setState на каждый кадр).
   useEffect(() => {
