@@ -350,6 +350,51 @@ async function stopScreenShare(notify: boolean) {
   if (notify) sendMediaState()
 }
 
+// ── смена устройства на лету (tweb applyDeviceToActiveCall) ──
+// Динамик применяется в CallScreen (setSinkId по settings.speakerId);
+// микрофон/камера — здесь через getUserMedia → replaceTrack.
+
+export async function applyDeviceToActiveCall(kind: 'mic' | 'camera', deviceId: string) {
+  const call = store().call
+  if (!call || !pc) return
+  if (kind === 'mic') {
+    let stream: MediaStream
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: deviceId ? { deviceId: { exact: deviceId } } : true,
+      })
+    } catch { return }
+    if (!pc || !store().call) { stream.getTracks().forEach((t) => t.stop()); return }
+    const track = stream.getAudioTracks()[0]
+    track.enabled = !store().call!.muted // mute переживает смену устройства
+    const sender = pc.getSenders().find((s) => s.track?.kind === 'audio')
+    if (sender) await sender.replaceTrack(track).catch(() => {})
+    else pc.addTrack(track, stream)
+    const old = localStream?.getAudioTracks()[0]
+    if (localStream && old) { localStream.removeTrack(old); old.stop() }
+    if (localStream) localStream.addTrack(track)
+    else localStream = stream
+    return
+  }
+  // камера: применяем только когда она сейчас передаётся (не шаринг, не выкл)
+  if (!call.camOn) return
+  let stream: MediaStream
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: deviceId ? { deviceId: { exact: deviceId } } : true,
+    })
+  } catch { return }
+  if (!pc || !store().call) { stream.getTracks().forEach((t) => t.stop()); return }
+  const track = stream.getVideoTracks()[0]
+  if (videoSender) await videoSender.replaceTrack(track).catch(() => {})
+  else videoSender = pc.addTrack(track, localStream ?? stream)
+  const old = localStream?.getVideoTracks()[0]
+  if (localStream && old) { localStream.removeTrack(old); old.stop() }
+  if (localStream) localStream.addTrack(track)
+  else localStream = stream
+  store().patch({ localStream: new MediaStream(localStream.getTracks()) })
+}
+
 // ── входящие кадры (из realtimeBridge) ──
 
 export function handleFrame(evt: CallFrameEvt) {

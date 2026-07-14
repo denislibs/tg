@@ -9,6 +9,7 @@ import TgIcon from '../TgIcon'
 import { useT } from '../../i18n'
 import { useSettings } from '../../settings'
 import { SettingsScreen, Section, Row } from './kit'
+import { applyDeviceToActiveCall } from '../../core/calls/callEngine'
 import s from './SpeakersCamera.module.scss'
 
 type Kind = 'speaker' | 'mic' | 'camera'
@@ -119,9 +120,9 @@ export default function SpeakersCamera({ onBack }: { onBack: () => void }) {
     return devices.find((d) => d.deviceId === id)?.label || t('Default')
   }
   const save = (kind: Kind, id: string) => {
-    if (kind === 'speaker') update({ speakerId: id })
-    else if (kind === 'mic') update({ micId: id })
-    else update({ cameraId: id })
+    if (kind === 'speaker') update({ speakerId: id }) // динамик live: CallScreen следит за speakerId
+    else if (kind === 'mic') { update({ micId: id }); void applyDeviceToActiveCall('mic', id) }
+    else { update({ cameraId: id }); void applyDeviceToActiveCall('camera', id) }
     setPicker(null)
   }
 
