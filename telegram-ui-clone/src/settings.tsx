@@ -23,6 +23,8 @@ export interface Settings {
   micId: string
   cameraId: string
   acceptCalls: boolean
+  // Тип записи кнопкой в композере (tweb recordingMediaType): голос или кружок
+  recordingMediaType: 'voice' | 'round'
 }
 
 const DEFAULTS: Settings = {
@@ -35,6 +37,7 @@ const DEFAULTS: Settings = {
   micId: '',
   cameraId: '',
   acceptCalls: true,
+  recordingMediaType: 'voice',
 }
 
 const KEY = 'tg-settings'
@@ -76,6 +79,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       micId: s.micId,
       cameraId: s.cameraId,
       acceptCalls: s.acceptCalls,
+      recordingMediaType: s.recordingMediaType,
     }
     try {
       localStorage.setItem(KEY, JSON.stringify(toSave))

@@ -14,6 +14,7 @@ import classNames from '../shared/lib/classNames'
 import type { Chat, OpenPeer } from '../data'
 import { useT } from '../i18n'
 import { useGroupInfo, RIGHTS, roleLabel, type RealMember } from '../core/hooks/useGroupInfo'
+import { useMessagesStore } from '../stores/messagesStore'
 import { useManagers } from '../core/hooks/useManagers'
 import { useLang } from '../i18n'
 import { friendlyMsgTime } from '../core/friendlyTime'
@@ -406,6 +407,11 @@ function SharedMedia({ tab, onTab, chatId }: { tab: string; onTab: (v: string) =
   // кэш по фильтру: загружаем таб один раз за открытие панели
   const [byFilter, setByFilter] = useState<Partial<Record<string, Message[]>>>({})
   const filter = TAB_FILTER[tab]
+
+  // Live: новое сообщение в открытом чате инвалидирует кэш табов — активный
+  // таб перезагрузится и свежая отправка (голосовое/фото/…) появится сразу.
+  const winLen = useMessagesStore((st) => (chatId != null ? st.byChat[chatId]?.msgs.length ?? 0 : 0))
+  useEffect(() => { setByFilter({}) }, [winLen])
 
   useEffect(() => {
     if (chatId == null || byFilter[filter]) return

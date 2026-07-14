@@ -42,6 +42,7 @@ export function messageToConvMsg(
   // (keyed off mediaId), so everything else maps to 'text'.
   const convType =
     m.type === 'voice' ? 'voice'
+    : m.type === 'roundVideo' ? 'roundVideo'
     : m.type === 'call' ? 'call'
     : m.type === 'service' ? 'service'
     : m.type === 'photo' || m.type === 'video' || m.type === 'document' || m.type === 'audio' ? m.type

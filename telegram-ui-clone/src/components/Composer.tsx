@@ -21,6 +21,9 @@ import type { EntityType, MessageEntity } from '../core/models'
 import { fmtDur, REC_WAVE_BARS, type VoiceRecorder } from '../core/hooks/useVoiceRecorder'
 import { EASE, DUR } from '../motion'
 import { useT } from '../i18n'
+import { useSettingsStore } from '../settings'
+import Menu, { MenuItem } from '../shared/ui/Menu'
+import { createPortal } from 'react-dom'
 import {DiscardVoiceDialog} from "./messages/ChatDialogs.tsx";
 import s from './Composer.module.scss'
 
@@ -98,6 +101,17 @@ function Composer({
   const [cancelRecOpen, setCancelRecOpen] = useState(false)
   const editorRef = useRef<HTMLDivElement>(null)
   const hasText = !emptyDraft
+  // Тип записи (голос/кружок) — персист в settings; long-press/ПКМ по кнопке
+  // открывает меню переключения (tweb chatRecording.setupRecordingModeMenu).
+  const recordingMediaType = useSettingsStore((st) => st.recordingMediaType)
+  const updateSettings = useSettingsStore((st) => st.update)
+  const [recMenu, setRecMenu] = useState<{ right: number; bottom: number } | null>(null)
+  const longPressTimer = useRef<number | undefined>(undefined)
+  const longPressed = useRef(false)
+  const openRecMenu = (el: HTMLElement) => {
+    const r = el.getBoundingClientRect()
+    setRecMenu({ right: window.innerWidth - r.right, bottom: window.innerHeight - r.top + 8 })
+  }
   // Estimated message count once over the limit (the exact split happens on send).
   const msgCount = len > MAX_LEN ? Math.ceil(len / MAX_LEN) : 0
 
@@ -459,10 +473,32 @@ function Composer({
           )}
           {/* Mic / Send — 48×40 rounded pill inside the bar (1:1 with TG .btn-send) */}
           <motion.div
-            onClick={() => (hasText ? submit() : rec.recording ? rec.stop(true) : rec.start())}
+            onClick={() => {
+              if (longPressed.current) { longPressed.current = false; return } // long-press открыл меню — клик глотаем
+              if (hasText) submit()
+              else if (rec.recording) rec.stop(true)
+              else void rec.start(recordingMediaType)
+            }}
             // Не отдавать фокус кнопке: без preventDefault тап/клик блюрит инпут и
             // прячет клавиатуру на touch (tweb шлёт send на mousedown — фокус не теряется).
-            onMouseDown={(e) => e.preventDefault()}
+            // Плюс long-press ~400ms (tweb) открывает меню выбора голос/кружок.
+            onMouseDown={(e) => {
+              e.preventDefault()
+              if (hasText || rec.recording) return
+              window.clearTimeout(longPressTimer.current)
+              // таймер лишь помечает long-press; меню откроется на mouseup —
+              // так click после отпускания глотается кнопкой, а не бэкдропом меню
+              longPressTimer.current = window.setTimeout(() => { longPressed.current = true }, 400)
+            }}
+            onMouseUp={(e) => {
+              window.clearTimeout(longPressTimer.current)
+              if (longPressed.current) openRecMenu(e.currentTarget as HTMLElement)
+            }}
+            onMouseLeave={() => { window.clearTimeout(longPressTimer.current); longPressed.current = false }}
+            onContextMenu={(e) => {
+              e.preventDefault()
+              if (!hasText && !rec.recording) openRecMenu(e.currentTarget as HTMLElement)
+            }}
             whileTap={{ scale: 0.92 }}
             className={s.sendBtn}
           >
@@ -475,7 +511,7 @@ function Composer({
                 transition={{ duration: 0.4, ease: 'easeInOut' }}
                 style={{ display: 'inline-flex' }}
               >
-                {hasText || rec.recording ? <TgIcon name="send" /> : <TgIcon name="microphone_filled" />}
+                {hasText || rec.recording ? <TgIcon name="send" /> : <TgIcon name={recordingMediaType === 'round' ? 'recordround' : 'microphone_filled'} />}
               </motion.span>
             </AnimatePresence>
           </motion.div>
@@ -494,6 +530,32 @@ function Composer({
         )}
       </AnimatePresence>
 
+        {/* Выбор типа записи: голос / видео-кружок (tweb recording mode menu) */}
+        {recMenu && (
+          <Menu
+            open
+            onClose={() => setRecMenu(null)}
+            style={{ right: recMenu.right, bottom: recMenu.bottom, transformOrigin: 'bottom right' }}
+          >
+            <MenuItem
+              icon={<TgIcon name="microphone" size={20} />}
+              label={t('Record voice message')}
+              onClick={() => { updateSettings({ recordingMediaType: 'voice' }); setRecMenu(null) }}
+            />
+            <MenuItem
+              icon={<TgIcon name="recordround" size={20} />}
+              label={t('Record video message')}
+              onClick={() => { updateSettings({ recordingMediaType: 'round' }); setRecMenu(null) }}
+            />
+          </Menu>
+        )}
+
+        {/* Живое круглое превью записи кружка (tweb videoRecordingPanel, 360px) */}
+        {rec.recording && rec.mode === 'round' && rec.previewStream && createPortal(
+          <RoundRecordPreview stream={rec.previewStream} secs={rec.secs} />,
+          document.body,
+        )}
+
         {/* Discard-recording confirm (Esc) */}
         <AnimatePresence>
             {cancelRecOpen && (
@@ -504,6 +566,31 @@ function Composer({
             )}
         </AnimatePresence>
     </>
+  )
+}
+
+// Круглое зеркальное превью записываемого кружка по центру чата + кольцо
+// прогресса лимита (tweb: белая дуга бежит по кругу до 60с).
+const ROUND_LIMIT = 60
+function RoundRecordPreview({ stream, secs }: { stream: MediaStream; secs: number }) {
+  const ref = useRef<HTMLVideoElement>(null)
+  useEffect(() => {
+    if (ref.current) ref.current.srcObject = stream
+  }, [stream])
+  const C = 2 * Math.PI * 49
+  return (
+    <div className={s.roundPreviewWrap}>
+      <video ref={ref} className={s.roundPreview} autoPlay muted playsInline />
+      <svg className={s.roundProgress} viewBox="0 0 100 100">
+        <circle
+          cx="50" cy="50" r="49" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round"
+          strokeDasharray={C}
+          strokeDashoffset={C * (1 - Math.min(1, secs / ROUND_LIMIT))}
+          transform="rotate(-90 50 50)"
+          style={{ transition: 'stroke-dashoffset 1s linear' }}
+        />
+      </svg>
+    </div>
   )
 }
 

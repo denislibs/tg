@@ -9,11 +9,19 @@ import { useEvent } from './useEvent'
 
 export const REC_WAVE_BARS = 90 // live recording waveform bar count (fills the pill width)
 
+export type RecordingMode = 'voice' | 'round'
+
+// tweb chatRecording: видео-кружок пишется 400x400@30fps, 1.2Mbps/64kbps,
+// с капом длительности 60с (лимит официальных клиентов).
+const ROUND_SIZE = 400
+const ROUND_MAX_SECS = 60
+
 export interface VoiceResult {
   secs: number
-  /** the recorded audio, or null when nothing was captured (empty recording) */
+  /** the recorded clip, or null when nothing was captured (empty recording) */
   blob: Blob | null
   mime: string
+  mode: RecordingMode
 }
 
 export interface VoiceRecorderOptions {
@@ -30,7 +38,11 @@ export interface VoiceRecorder {
   secs: number
   bars: number[]
   paused: boolean
-  start: () => Promise<void>
+  /** что пишем сейчас (актуально при recording) */
+  mode: RecordingMode
+  /** live-поток записи видео-кружка — для круглого превью (null у голосового) */
+  previewStream: MediaStream | null
+  start: (mode?: RecordingMode) => Promise<void>
   /** stop and either send (true) or discard (false) */
   stop: (send: boolean) => void
   togglePause: () => void
@@ -45,6 +57,8 @@ export function useVoiceRecorder(opts: VoiceRecorderOptions): VoiceRecorder {
   const [secs, setSecs] = useState(0)
   const [bars, setBars] = useState<number[]>([])
   const [paused, setPaused] = useState(false)
+  const [mode, setMode] = useState<RecordingMode>('voice')
+  const [previewStream, setPreviewStream] = useState<MediaStream | null>(null)
 
   const timer = useRef<number | undefined>(undefined)
   const vizTimer = useRef<number | undefined>(undefined)
@@ -74,6 +88,8 @@ export function useVoiceRecorder(opts: VoiceRecorderOptions): VoiceRecorder {
       secsRef.current += 1
       setSecs(secsRef.current)
       o.current.onSecond?.()
+      // кап длительности кружка (tweb: 60с) — авто-отправка
+      if (modeRef.current === 'round' && secsRef.current >= ROUND_MAX_SECS) stop(true)
     }, 1000)
   }
   // The live input-level waveform sampler (reads the stored analyser).
@@ -103,6 +119,7 @@ export function useVoiceRecorder(opts: VoiceRecorderOptions): VoiceRecorder {
     const s = stream.current
     stream.current = null
     s?.getTracks().forEach((t) => t.stop())
+    setPreviewStream(null)
     const recordedSecs = secsRef.current
     secsRef.current = 0
     setSecs(0)
@@ -110,26 +127,43 @@ export function useVoiceRecorder(opts: VoiceRecorderOptions): VoiceRecorder {
     shouldSend.current = false
     const recordedChunks = chunks.current
     chunks.current = []
-    const mime = mediaRec.current?.mimeType || 'audio/webm'
+    const mime = mediaRec.current?.mimeType || (modeRef.current === 'round' ? 'video/webm' : 'audio/webm')
     mediaRec.current = null
     if (!send || recordedSecs < 1) { o.current.onComplete(null); return }
     const blob = recordedChunks.length ? new Blob(recordedChunks, { type: mime }) : null
-    o.current.onComplete({ secs: recordedSecs, blob, mime })
+    o.current.onComplete({ secs: recordedSecs, blob, mime, mode: modeRef.current })
   }
 
-  // Start capturing: open the mic, wire the recorder + live waveform analyser.
-  const start = useEvent(async () => {
+  const modeRef = useRef<RecordingMode>('voice')
+
+  // Start capturing: open the mic (+камеру для кружка), wire the recorder +
+  // live waveform analyser.
+  const start = useEvent(async (m: RecordingMode = 'voice') => {
     try {
       const s = await navigator.mediaDevices.getUserMedia({
         audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        video: m === 'round' ? { width: ROUND_SIZE, height: ROUND_SIZE, frameRate: 30, facingMode: 'user' } : false,
       })
+      modeRef.current = m
+      setMode(m)
       stream.current = s
       chunks.current = []
+      if (m === 'round') setPreviewStream(s)
       // Prefer Opus at a decent bitrate (default browser bitrate is low → poor
       // quality); fall back to whatever the platform supports.
-      const recOpts: MediaRecorderOptions = { audioBitsPerSecond: 96000 }
-      if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported?.('audio/webm;codecs=opus')) {
-        recOpts.mimeType = 'audio/webm;codecs=opus'
+      const recOpts: MediaRecorderOptions =
+        m === 'round'
+          ? { videoBitsPerSecond: 2_000_000, audioBitsPerSecond: 64_000 }
+          : { audioBitsPerSecond: 96000 }
+      // vp9 даёт заметно лучшее качество на том же битрейте; fallback на vp8
+      const wantMimes = m === 'round'
+        ? ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus']
+        : ['audio/webm;codecs=opus']
+      for (const mt of wantMimes) {
+        if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported?.(mt)) {
+          recOpts.mimeType = mt
+          break
+        }
       }
       const mr = new MediaRecorder(s, recOpts)
       mediaRec.current = mr
@@ -187,7 +221,7 @@ export function useVoiceRecorder(opts: VoiceRecorderOptions): VoiceRecorder {
   // are useEvent-stable) — only changes when recording state actually moves. Keeps
   // a memoized <Composer> from re-rendering on unrelated parent renders (e.g. scroll).
   return useMemo(
-    () => ({ recording, secs, bars, paused, start, stop, togglePause }),
-    [recording, secs, bars, paused, start, stop, togglePause],
+    () => ({ recording, secs, bars, paused, mode, previewStream, start, stop, togglePause }),
+    [recording, secs, bars, paused, mode, previewStream, start, stop, togglePause],
   )
 }

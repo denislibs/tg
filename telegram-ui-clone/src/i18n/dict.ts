@@ -139,6 +139,8 @@ const ru: Dict = {
   Speaker: 'Динамик',
   'Nothing here yet.': 'Здесь пока пусто.',
   'Voice message': 'Голосовое сообщение',
+  'Record voice message': 'Записать голосовое',
+  'Record video message': 'Записать видеосообщение',
   Audio: 'Аудио',
   'Ringing…': 'Звоним…',
   'Connecting…': 'Соединение…',

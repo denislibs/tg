@@ -68,16 +68,17 @@ export function useChatSend({
     onSecond: pingVoiceTyping,
     onComplete: async (r) => {
       if (!r) return
-      const { secs, blob, mime } = r
+      const { secs, blob, mime, mode } = r
       if (!blob) return
+      const type = mode === 'round' ? 'roundVideo' : 'voice' // кружок → круглое видеосообщение
       const bytes = await blob.arrayBuffer()
       const mediaId = await managers.media.upload({ bytes, mime, size: blob.size, duration: secs })
       const clientMsgId = `c-${chat.id}-${performance.now()}-${Math.random().toString(36).slice(2)}`
       let cid = numericChatId
       if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
       atBottomRef.current = true; userScrolledUpRef.current = false
-      if (isRealChat) win.appendOptimistic('', meId ?? -1, clientMsgId, mediaId, 'voice')
-      void managers.realtime.sendMessage({ chatId: cid, text: '', clientMsgId, mediaId, type: 'voice' })
+      if (isRealChat) win.appendOptimistic('', meId ?? -1, clientMsgId, mediaId, type)
+      void managers.realtime.sendMessage({ chatId: cid, text: '', clientMsgId, mediaId, type })
       window.dispatchEvent(new Event('tg-send'))
       if (draftPeerId != null) onChatCreated?.(cid)
     },

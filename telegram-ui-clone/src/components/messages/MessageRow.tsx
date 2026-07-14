@@ -30,6 +30,7 @@ import {
   RoundVideoBubble,
   WebPagePreview,
   CallBubble,
+  RoundVideoRealBubble,
 } from './MessageBubbles'
 import RichText, { emojiOnlyCount } from '../RichText'
 import Emoji from '../emoji/Emoji'
@@ -147,7 +148,9 @@ function MessageRow({
       )}
 
       <div className={s.zone}>
-        {m.mediaId && m.type === 'voice' ? (
+        {m.mediaId && m.type === 'roundVideo' ? (
+          <RoundVideoRealBubble m={m} />
+        ) : m.mediaId && m.type === 'voice' ? (
           <div className={s.voiceMedia} style={{ borderRadius: mediaRadius(out, lastInGroup) }}>
             {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
             <VoiceMessage

@@ -1,7 +1,9 @@
 import Text from '../../shared/ui/Text'
 import classNames from '../../shared/lib/classNames'
 import TgIcon from '../TgIcon'
+import { useRef, useState } from 'react'
 import { useT } from '../../i18n'
+import { mediaContentUrl } from '../../core/mediaUrl'
 import type { ConvMsg, MsgStatus } from '../../data'
 import { useTimeFormatter } from '../../settings'
 import s from './MessageBubbles.module.scss'
@@ -247,6 +249,73 @@ export function CallBubble({ m, out, firstInGroup, lastInGroup, onClick }: { m: 
         <Text size={12.5} color="var(--b-time)">{m.time}</Text>
         {out && <Ticks status={m.status} color="var(--b-tick)" />}
       </span>
+    </div>
+  )
+}
+
+/**
+ * Настоящий видео-кружок (tweb): бейдж длительности сверху слева (при игре —
+ * оставшееся время), кольцо прогресса по кругу, время+галочки внутри круга
+ * снизу; клик — play/pause.
+ */
+export function RoundVideoRealBubble({ m }: { m: ConvMsg }) {
+  const fmtTime = useTimeFormatter()
+  const ref = useRef<HTMLVideoElement>(null)
+  const [playing, setPlaying] = useState(false)
+  const [progress, setProgress] = useState(0) // 0..1
+  const [left, setLeft] = useState<number | null>(null)
+  const dur = m.mediaDuration ?? 0
+  const toggle = () => {
+    const v = ref.current
+    if (!v) return
+    if (v.paused) { void v.play(); setPlaying(true) }
+    else { v.pause(); setPlaying(false) }
+  }
+  const onTime = () => {
+    const v = ref.current
+    if (!v) return
+    const total = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : dur
+    if (total > 0) {
+      setProgress(v.currentTime / total)
+      setLeft(Math.max(0, Math.ceil(total - v.currentTime)))
+    }
+  }
+  const badge = playing && left != null
+    ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`
+    : `${Math.floor(dur / 60)}:${String(Math.round(dur % 60)).padStart(2, '0')}`
+  const C = 2 * Math.PI * 49
+  return (
+    <div className={s.roundReal} data-out={m.out || undefined}>
+      <div className={s.roundRealDisc} onClick={toggle}>
+        <video
+          ref={ref}
+          className={s.roundRealVideo}
+          src={m.mediaId != null ? mediaContentUrl(m.mediaId) : undefined}
+          playsInline
+          onTimeUpdate={onTime}
+          onEnded={() => { setPlaying(false); setProgress(0); setLeft(null) }}
+        />
+        {playing && (
+          <svg className={s.roundRealRing} viewBox="0 0 100 100">
+            <circle
+              cx="50" cy="50" r="49" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round"
+              strokeDasharray={C} strokeDashoffset={C * (1 - progress)} transform="rotate(-90 50 50)"
+            />
+          </svg>
+        )}
+        {!playing && (
+          <div className={s.roundRealPlay}>
+            <TgIcon name="play" size={34} color="#fff" />
+          </div>
+        )}
+        {/* бейдж длительности (tweb: сверху слева, при игре — остаток) */}
+        <div className={s.roundRealBadge}>{badge}</div>
+        {/* время + галочки — внутри круга снизу (tweb) */}
+        <div className={s.roundRealMeta}>
+          <Text size={12} color="#fff">{fmtTime(m.time)}</Text>
+          {m.out && <Ticks status={m.status} color="#fff" />}
+        </div>
+      </div>
     </div>
   )
 }

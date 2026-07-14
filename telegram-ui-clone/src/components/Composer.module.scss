@@ -187,3 +187,32 @@
   justify-content: center;
   color: #fff;
 }
+
+// ── запись видео-кружка: живое круглое превью по центру чата (tweb 360px) ──
+.roundPreviewWrap {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 4000;
+  width: min(360px, 78vw);
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+.roundPreview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1); // фронталка зеркалится, как self-view в tweb
+}
+
+// кольцо прогресса лимита записи поверх превью
+.roundProgress {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
