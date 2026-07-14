@@ -3,6 +3,7 @@ import Text from '../shared/ui/Text'
 import Slider from '../shared/ui/Slider'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon, { type IconName } from './TgIcon'
+import PlayPauseGlyph from './PlayPauseGlyph'
 import { useAudioStore } from '../stores/audioStore'
 import classNames from '../shared/lib/classNames'
 import s from './NowPlayingBar.module.scss'
@@ -89,18 +90,7 @@ function NowPlayingBar() {
             </RoundBtn>
             <RoundBtn onClick={toggle} color="var(--tg-accent)" label="play/pause">
               <div className={s.playIconWrap}>
-                <AnimatePresence initial={false} mode="popLayout">
-                  <motion.span
-                    key={playing ? 'pause' : 'play'}
-                    initial={{ opacity: 0, scale: 0.4, rotate: -45 }}
-                    animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                    exit={{ opacity: 0, scale: 0.4, rotate: 45 }}
-                    transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
-                    className={s.playIcon}
-                  >
-                    {playing ? <TgIcon name="pause" /> : <TgIcon name="play" />}
-                  </motion.span>
-                </AnimatePresence>
+                <PlayPauseGlyph playing={playing} className={s.playIcon} />
               </div>
             </RoundBtn>
             <RoundBtn onClick={next} color="var(--tg-accent)" label="next">

@@ -1,17 +1,16 @@
-// Popup (tweb .popup): скрим + центрированная карточка.
-.scrim {
+// Popup (tweb .popup): затемняющий overlay-флекс, карточка по центру (margin auto).
+.overlay {
   position: fixed;
   inset: 0;
   z-index: 4090;
   background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  overflow: auto;
+  padding: 30px; // tweb .popup padding 1.875rem
 }
 
 .card {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 4091;
+  margin: auto;
   max-height: min(86vh, 720px);
   display: flex;
   flex-direction: column;
@@ -27,6 +26,12 @@
   gap: 12px;
   padding: 4px 0 10px;
   flex: 0 0 auto;
+}
+
+// заголовок занимает всё между × и правым слотом (tweb .popup-title flex:1)
+.title {
+  flex: 1;
+  min-width: 0;
 }
 
 .body {

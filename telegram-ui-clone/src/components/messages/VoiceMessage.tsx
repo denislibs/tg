@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react'
 import Text from '../../shared/ui/Text'
-import { AnimatePresence, motion } from 'framer-motion'
-import TgIcon from '../TgIcon'
+import PlayPauseGlyph from '../PlayPauseGlyph'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useAudioStore } from '../../stores/audioStore'
-import { useVoicePlayed } from '../../stores/voicePlayedStore'
 import { useWaveform, WAVE_BARS } from '../../core/audio/waveform'
 import { Ticks } from './MessageBubbles'
 import type { MsgStatus } from '../../data'
@@ -25,7 +23,7 @@ export default function VoiceMessage({
   out,
   time,
   status,
-  msgId,
+  mediaUnread,
   tickColor,
   onPlay,
 }: {
@@ -33,7 +31,8 @@ export default function VoiceMessage({
   out: boolean
   time?: string
   status?: MsgStatus
-  msgId?: number
+  /** не прослушано получателем — точка после длительности (tweb is-unread) */
+  mediaUnread?: boolean
   tickColor: string
   onPlay: () => void
 }) {
@@ -48,9 +47,6 @@ export default function VoiceMessage({
   const curDur = useAudioStore((s) => (s.track?.mediaId === mediaId ? s.duration : 0))
   const seekFraction = useAudioStore((s) => s.seekFraction)
   const toggle = useAudioStore((s) => s.toggle)
-
-  const played = useVoicePlayed((s) => !!(msgId != null && s.played[msgId]))
-  const markPlayed = useVoicePlayed((s) => s.mark)
 
   // Backend-reported duration (recorded length) for the idle display.
   useEffect(() => {
@@ -68,10 +64,7 @@ export default function VoiceMessage({
 
   const handlePlay = () => {
     if (isCurrent) toggle()
-    else {
-      if (!out && msgId != null) markPlayed(msgId)
-      onPlay()
-    }
+    else onPlay() // снятие media_unread — в playVoice (useVoiceQueue)
   }
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     if (isCurrent) {
@@ -82,24 +75,14 @@ export default function VoiceMessage({
     }
   }
 
-  const showUnplayedDot = !out && msgId != null && !played
+  // tweb показывает точку обеим сторонам: у получателя — «не прослушал я»,
+  // у отправителя — «не прослушал собеседник» (гаснет по media_read).
+  const showUnplayedDot = !!mediaUnread
 
   return (
     <div className={s.voice} data-out={out || undefined}>
       <div className={s.playBtn} onClick={handlePlay}>
-        {/* play ↔ pause morph (tweb cross-fades + rotates the glyph) */}
-        <AnimatePresence initial={false} mode="popLayout">
-          <motion.span
-            key={playing ? 'pause' : 'play'}
-            className={s.glyph}
-            initial={{ opacity: 0, scale: 0.4, rotate: -45 }}
-            animate={{ opacity: 1, scale: 1, rotate: 0 }}
-            exit={{ opacity: 0, scale: 0.4, rotate: 45 }}
-            transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
-          >
-            {playing ? <TgIcon name="pause" /> : <TgIcon name="play" />}
-          </motion.span>
-        </AnimatePresence>
+        <PlayPauseGlyph playing={playing} className={s.glyph} />
       </div>
       <div className={s.body}>
         <div

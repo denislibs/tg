@@ -22,6 +22,10 @@ interface AudioState {
   volume: number
   // actions
   playQueue: (queue: AudioTrack[], index: number) => void
+  /** Внешний медиа-элемент (видео кружка) как текущий трек: плашка плеера
+   * управляет им (pause/seek/close) вместо внутреннего <audio> (tweb: round
+   * регистрируется в appMediaPlaybackController). */
+  playExternal: (track: AudioTrack, media: HTMLMediaElement) => void
   toggle: () => void
   seekFraction: (f: number) => void
   cycleRate: () => void
@@ -37,17 +41,35 @@ interface AudioState {
 
 const RATES = [0.5, 1, 1.5, 2]
 
-// A single shared <audio> element drives all playback.
+// A single shared <audio> element drives normal playback.
 let el: HTMLAudioElement | null = null
 function audio(): HTMLAudioElement {
   if (el) return el
   el = new Audio()
-  el.addEventListener('timeupdate', () => useAudioStore.getState()._sync({ currentTime: el!.currentTime }))
-  el.addEventListener('loadedmetadata', () => useAudioStore.getState()._sync({ duration: el!.duration || 0 }))
-  el.addEventListener('play', () => useAudioStore.getState()._sync({ playing: true }))
-  el.addEventListener('pause', () => useAudioStore.getState()._sync({ playing: false }))
-  el.addEventListener('ended', () => useAudioStore.getState().next())
+  el.addEventListener('timeupdate', () => { if (!external) useAudioStore.getState()._sync({ currentTime: el!.currentTime }) })
+  el.addEventListener('loadedmetadata', () => { if (!external) useAudioStore.getState()._sync({ duration: el!.duration || 0 }) })
+  el.addEventListener('play', () => { if (!external) useAudioStore.getState()._sync({ playing: true }) })
+  el.addEventListener('pause', () => { if (!external) useAudioStore.getState()._sync({ playing: false }) })
+  el.addEventListener('ended', () => { if (!external) useAudioStore.getState().next() })
   return el
+}
+
+// Attached external element (round-video bubble) + its listener teardown.
+let external: HTMLMediaElement | null = null
+let unwireExternal: (() => void) | null = null
+
+// Элемент, которым сейчас управляют кнопки плеера.
+function current(): HTMLMediaElement {
+  return external ?? audio()
+}
+
+// Отцепить внешний элемент (опционально ставя его на паузу).
+function detachExternal(pause: boolean) {
+  if (!external) return
+  if (pause) external.pause()
+  unwireExternal?.()
+  unwireExternal = null
+  external = null
 }
 
 // Load + play a track's bytes (resolving the media URL via the worker).
@@ -75,16 +97,45 @@ export const useAudioStore = create<AudioState>((set, get) => ({
   playQueue: (queue, index) => {
     const track = queue[index]
     if (!track) return
+    detachExternal(true)
     set({ queue, index, track, currentTime: 0, duration: 0 })
     void load(track, true)
   },
+  playExternal: (track, media) => {
+    // предыдущий источник (внутренний audio или другой кружок) — на паузу
+    if (external && external !== media) detachExternal(true)
+    else if (!external) audio().pause()
+    unwireExternal?.()
+    const sync = () => useAudioStore.getState()._sync({ currentTime: media.currentTime, duration: media.duration || 0 })
+    const onPlay = () => useAudioStore.getState()._sync({ playing: true })
+    const onPause = () => useAudioStore.getState()._sync({ playing: false })
+    // кружок докручен до конца — бабл сам вернётся в muted-превью, плашку прячем
+    const onEnded = () => { detachExternal(false); set({ track: null, queue: [], index: -1, playing: false, currentTime: 0, duration: 0 }) }
+    media.addEventListener('timeupdate', sync)
+    media.addEventListener('play', onPlay)
+    media.addEventListener('pause', onPause)
+    media.addEventListener('ended', onEnded)
+    external = media
+    unwireExternal = () => {
+      media.removeEventListener('timeupdate', sync)
+      media.removeEventListener('play', onPlay)
+      media.removeEventListener('pause', onPause)
+      media.removeEventListener('ended', onEnded)
+    }
+    set({
+      track, queue: [track], index: 0,
+      playing: !media.paused,
+      currentTime: media.currentTime,
+      duration: Number.isFinite(media.duration) ? media.duration || 0 : 0,
+    })
+  },
   toggle: () => {
-    const a = audio()
+    const a = current()
     if (a.paused) void a.play().catch(() => {})
     else a.pause()
   },
   seekFraction: (f) => {
-    const a = audio()
+    const a = current()
     const d = get().duration || a.duration || 0
     if (d > 0) {
       a.currentTime = Math.max(0, Math.min(1, f)) * d
@@ -93,26 +144,31 @@ export const useAudioStore = create<AudioState>((set, get) => ({
   },
   cycleRate: () => {
     const next = RATES[(RATES.indexOf(get().rate) + 1) % RATES.length]
-    audio().playbackRate = next
+    current().playbackRate = next
     set({ rate: next })
   },
   setRate: (r) => {
-    audio().playbackRate = r
+    current().playbackRate = r
     set({ rate: r })
   },
   toggleMute: () => {
     const m = !get().muted
-    audio().muted = m
+    current().muted = m
     set({ muted: m })
   },
   setVolume: (v) => {
     const vol = Math.max(0, Math.min(1, v))
-    const a = audio()
+    const a = current()
     a.volume = vol
     a.muted = vol === 0
     set({ volume: vol, muted: vol === 0 })
   },
   next: () => {
+    // для внешнего трека (кружок) очередь одиночная — перемотка в начало
+    if (external) {
+      get().seekFraction(0)
+      return
+    }
     const { queue, index } = get()
     const ni = index + 1
     if (ni < queue.length) {
@@ -125,9 +181,9 @@ export const useAudioStore = create<AudioState>((set, get) => ({
   prev: () => {
     const { queue, index, currentTime } = get()
     // Telegram: >3s in, restart the current track; else go to the previous one.
-    if (currentTime > 3 || index <= 0) {
+    if (external || currentTime > 3 || index <= 0) {
       get().seekFraction(0)
-      void audio().play().catch(() => {})
+      void current().play().catch(() => {})
       return
     }
     const pi = index - 1
@@ -135,6 +191,7 @@ export const useAudioStore = create<AudioState>((set, get) => ({
     void load(queue[pi], true)
   },
   close: () => {
+    detachExternal(true)
     const a = audio()
     a.pause()
     a.removeAttribute('src')

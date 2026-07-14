@@ -131,6 +131,12 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			return
 		}
 		_ = c.svc.MarkRead(ctx, d.ChatID, c.userID, d.UpToSeq)
+	case "read_media":
+		var d readMediaData
+		if json.Unmarshal(f.D, &d) != nil {
+			return
+		}
+		_ = c.svc.ReadMedia(ctx, d.ChatID, c.userID, d.MsgID)
 	case "typing":
 		var d typingData
 		if json.Unmarshal(f.D, &d) != nil {

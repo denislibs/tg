@@ -13,6 +13,8 @@ interface MenuProps {
   style?: CSSProperties
   /** extra panel styling (width, radius override, …) */
   className?: string
+  /** поверх модалок: z бэкдропа (панель — z+1); по умолчанию из CSS (2000/2001) */
+  zIndex?: number
   children: ReactNode
 }
 
@@ -20,12 +22,13 @@ interface MenuProps {
 // (scale .8 + fade, like tweb .btn-menu) so every dropdown/context menu behaves
 // identically. The caller positions it via `style` (top/left or right/bottom +
 // transform-origin) so the panel grows from the anchor (e.g. the click corner).
-export default function Menu({ open, onClose, onExitComplete, style, className, children }: MenuProps) {
+export default function Menu({ open, onClose, onExitComplete, style, className, zIndex, children }: MenuProps) {
   return createPortal(
     <>
       {open && (
         <div
           className={s.backdrop}
+          style={zIndex != null ? { zIndex } : undefined}
           onClick={onClose}
           onContextMenu={(e) => {
             e.preventDefault()
@@ -37,7 +40,7 @@ export default function Menu({ open, onClose, onExitComplete, style, className, 
         {open && (
           <motion.div
             className={classNames(s.panel, className ?? '')}
-            style={style}
+            style={zIndex != null ? { ...style, zIndex: zIndex + 1 } : style}
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}

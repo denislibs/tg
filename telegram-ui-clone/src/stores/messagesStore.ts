@@ -70,6 +70,8 @@ interface MessagesState {
   applyIncoming: (chatId: number, m: Message) => void
   applyEdit: (chatId: number, msgId: number, text: string, editedAt: string, entities?: MessageEntity[]) => void
   applyDelete: (chatId: number, msgId: number) => void
+  /** Голосовое/кружок прослушано → точка media_unread гаснет (обе стороны). */
+  applyMediaRead: (chatId: number, msgId: number) => void
   /** Patch channel-post view counts from a per-open view_counts fetch. */
   patchViews: (chatId: number, views: Map<number, number>) => void
 }
@@ -124,6 +126,9 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           id: -Date.now(), chatId, seq: tentativeSeq, senderId: meId, type, text, entities,
           replyToId: null, mediaId: mediaId ?? null, createdAt: new Date().toISOString(),
           threadRootId: null, clientId: clientMsgId,
+          // сервер ставит media_unread на voice/roundVideo — отразить сразу в
+          // оптимистичном бабле, чтобы точка не «моргала» после ack
+          mediaUnread: type === 'voice' || type === 'roundVideo' || undefined,
         }
         return { msgs: dedupAsc([...w.msgs, tmp]) }
       }),
@@ -193,6 +198,17 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
   applyDelete: (chatId, msgId) =>
     set((s) => (s.byChat[chatId] ? patch(s, chatId, (w) => ({ msgs: w.msgs.filter((m) => m.id !== msgId) })) : {})),
+
+  applyMediaRead: (chatId, msgId) =>
+    set((s) =>
+      s.byChat[chatId]
+        ? patch(s, chatId, (w) => ({
+            msgs: w.msgs.some((m) => m.id === msgId && m.mediaUnread)
+              ? w.msgs.map((m) => (m.id === msgId ? { ...m, mediaUnread: false } : m))
+              : w.msgs,
+          }))
+        : {},
+    ),
 
   patchViews: (chatId, views) =>
     set((s) =>

@@ -69,6 +69,10 @@ export interface FeedFns {
   openLightbox: (mediaId: number, el: HTMLElement) => void
   /** перезвонить по клику на бабл звонка (tweb: клик по messageMediaCall) */
   recall: (video: boolean) => void
+  /** кружок воспроизведён со звуком → снять media_unread (tweb readMessages) */
+  mediaPlayed: (msgId: number) => void
+  /** кружок заиграл со звуком → его <video> становится треком глобального плеера */
+  roundPlaying: (msgId: number, el: HTMLMediaElement) => void
 }
 
 export interface MessageRowProps {
@@ -149,7 +153,11 @@ function MessageRow({
 
       <div className={s.zone}>
         {m.mediaId && m.type === 'roundVideo' ? (
-          <RoundVideoRealBubble m={m} />
+          <RoundVideoRealBubble
+            m={m}
+            onPlayed={m.id != null ? () => feedFns.mediaPlayed(m.id as number) : undefined}
+            onSoundPlay={m.id != null ? (el) => feedFns.roundPlaying(m.id as number, el) : undefined}
+          />
         ) : m.mediaId && m.type === 'voice' ? (
           <div className={s.voiceMedia} style={{ borderRadius: mediaRadius(out, lastInGroup) }}>
             {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
@@ -158,7 +166,7 @@ function MessageRow({
               out={out}
               time={m.time}
               status={m.status}
-              msgId={m.id}
+              mediaUnread={m.mediaUnread}
               tickColor="var(--b-tick)"
               onPlay={() => feedFns.playVoice(m.mediaId as number)}
             />

@@ -142,6 +142,7 @@ const ru: Dict = {
   'Private Chat': 'Личный чат',
   'Nothing here yet.': 'Здесь пока пусто.',
   'Voice message': 'Голосовое сообщение',
+  'Video message': 'Видеосообщение',
   'Record voice message': 'Записать голосовое',
   'Record video message': 'Записать видеосообщение',
   Audio: 'Аудио',

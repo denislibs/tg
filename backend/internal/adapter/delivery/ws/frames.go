@@ -27,6 +27,11 @@ type readData struct {
 	UpToSeq int64 `json:"up_to_seq"`
 }
 
+type readMediaData struct {
+	ChatID int64 `json:"chat_id"`
+	MsgID  int64 `json:"msg_id"`
+}
+
 type typingData struct {
 	ChatID int64  `json:"chat_id"`
 	Action string `json:"action"` // "typing" | "voice" | "video" (default typing)

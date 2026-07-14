@@ -15,6 +15,10 @@ import type { Chat, OpenPeer } from '../data'
 import { useT } from '../i18n'
 import { useGroupInfo, RIGHTS, roleLabel, type RealMember } from '../core/hooks/useGroupInfo'
 import { useMessagesStore } from '../stores/messagesStore'
+import { useChatsStore } from '../stores/chatsStore'
+import { useAudioStore, type AudioTrack } from '../stores/audioStore'
+import { markMediaPlayed } from '../core/mediaRead'
+import PlayPauseGlyph from './PlayPauseGlyph'
 import { useManagers } from '../core/hooks/useManagers'
 import { useLang } from '../i18n'
 import { friendlyMsgTime } from '../core/friendlyTime'
@@ -404,6 +408,13 @@ function SharedMedia({ tab, onTab, chatId }: { tab: string; onTab: (v: string) =
   const t = useT()
   const [lang] = useLang()
   const managers = useManagers()
+  // Глобальный плеер: клик по строке «Музыка»/«Голосовые» ставит очередь из
+  // сообщений таба; плеер-плашка выезжает над шапкой чата (NowPlayingBar).
+  const meId = useChatsStore((st) => st.meId)
+  const playQueue = useAudioStore((st) => st.playQueue)
+  const togglePlay = useAudioStore((st) => st.toggle)
+  const curMediaId = useAudioStore((st) => st.track?.mediaId)
+  const audioPlaying = useAudioStore((st) => st.playing)
   // кэш по фильтру: загружаем таб один раз за открытие панели
   const [byFilter, setByFilter] = useState<Partial<Record<string, Message[]>>>({})
   const filter = TAB_FILTER[tab]
@@ -424,6 +435,26 @@ function SharedMedia({ tab, onTab, chatId }: { tab: string; onTab: (v: string) =
 
   const msgs = byFilter[filter]
   const when = (m: Message) => friendlyMsgTime(m.createdAt, lang)
+
+  // Клик по строке: текущий трек — play/pause, иначе очередь из всего таба
+  // с этой позиции; чужое непрослушанное голосовое гасит media_unread.
+  const playRow = (m: Message, title: string) => {
+    if (m.mediaId == null || chatId == null) return
+    if (m.mediaId === curMediaId) {
+      togglePlay()
+      return
+    }
+    const list = (msgs ?? []).filter((x) => x.mediaId != null)
+    const tracks: AudioTrack[] = list.map((x) => ({
+      mediaId: x.mediaId as number,
+      title: x.type === 'audio' ? x.mediaName || t('Audio') : title,
+      subtitle: when(x),
+      chatId,
+      msgId: x.id,
+    }))
+    playQueue(tracks, list.indexOf(m))
+    if (m.senderId !== meId && m.mediaUnread) markMediaPlayed(chatId, m.id)
+  }
 
   // Просмотрщик медиа — тот же MediaLightbox, что в чате (клик по тайлу).
   const [lightbox, setLightbox] = useState<{
@@ -523,9 +554,9 @@ function SharedMedia({ tab, onTab, chatId }: { tab: string; onTab: (v: string) =
       {tab === 'Music' && msgs != null && msgs.length > 0 && (
         <div className={s.mediaList}>
           {msgs.map((m) => (
-            <div key={m.id} className={s.mediaRow}>
+            <div key={m.id} className={s.mediaRow} onClick={() => playRow(m, m.mediaName || t('Audio'))} style={{ cursor: 'pointer' }}>
               <div className={s.rowPlay}>
-                <TgIcon name="play" size={22} color="#fff" />
+                <PlayPauseGlyph playing={audioPlaying && m.mediaId === curMediaId} size={22} className={s.rowGlyph} />
               </div>
               <div className={s.grow}>
                 <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{m.mediaName || t('Audio')}</Text>
@@ -550,12 +581,12 @@ function SharedMedia({ tab, onTab, chatId }: { tab: string; onTab: (v: string) =
       {tab === 'Voice' && msgs != null && msgs.length > 0 && (
         <div className={s.mediaList}>
           {msgs.map((m) => (
-            <div key={m.id} className={s.mediaRow}>
+            <div key={m.id} className={s.mediaRow} onClick={() => playRow(m, m.type === 'roundVideo' ? t('Video message') : t('Voice message'))} style={{ cursor: 'pointer' }}>
               <div className={s.rowPlay}>
-                <TgIcon name="play" size={22} color="#fff" />
+                <PlayPauseGlyph playing={audioPlaying && m.mediaId === curMediaId} size={22} className={s.rowGlyph} />
               </div>
               <div className={s.grow}>
-                <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{t('Voice message')}</Text>
+                <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{m.type === 'roundVideo' ? t('Video message') : t('Voice message')}</Text>
                 <Text size={13.5} color="var(--tg-textSecondary)">{[fmtDur(m.mediaDuration), when(m)].filter(Boolean).join(' · ')}</Text>
               </div>
             </div>

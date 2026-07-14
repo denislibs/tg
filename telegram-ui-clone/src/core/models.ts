@@ -71,6 +71,7 @@ export interface RawMessage {
   media_size?: number
   media_name?: string
   views?: number
+  media_unread?: boolean
 }
 
 export interface Message {
@@ -115,6 +116,8 @@ export interface Message {
   mediaName?: string
   /** deduplicated viewer count for a channel post (undefined = not a channel post) */
   views?: number
+  /** голосовое/кружок ещё не прослушано получателем (Telegram media_unread) */
+  mediaUnread?: boolean
 }
 
 export function mapDialog(r: RawDialog): Dialog {
@@ -175,5 +178,6 @@ export function mapMessage(r: RawMessage): Message {
     mediaSize: r.media_size,
     mediaName: r.media_name,
     views: r.views,
+    mediaUnread: r.media_unread,
   }
 }

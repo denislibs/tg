@@ -254,35 +254,79 @@ export function CallBubble({ m, out, firstInGroup, lastInGroup, onClick }: { m: 
 }
 
 /**
- * Настоящий видео-кружок (tweb): бейдж длительности сверху слева (при игре —
- * оставшееся время), кольцо прогресса по кругу, время+галочки внутри круга
- * снизу; клик — play/pause.
+ * Настоящий видео-кружок (tweb wrappers/video.ts, ветка doc.type === 'round'):
+ * без клика крутится muted-превью в цикле (как GIF) с иконкой nosound в бейдже;
+ * клик — воспроизведение со звуком с начала (бейдж считает остаток, кольцо
+ * прогресса бежит по кругу), повторный клик — пауза (кадр замирает). Белая
+ * точка в бейдже — media_unread («не просмотрено»), гаснет на первом
+ * timeupdate со звуком (tweb readMessages).
  */
-export function RoundVideoRealBubble({ m }: { m: ConvMsg }) {
+export function RoundVideoRealBubble({ m, onPlayed, onSoundPlay }: { m: ConvMsg; onPlayed?: () => void; onSoundPlay?: (el: HTMLVideoElement) => void }) {
   const fmtTime = useTimeFormatter()
   const ref = useRef<HTMLVideoElement>(null)
-  const [playing, setPlaying] = useState(false)
-  const [progress, setProgress] = useState(0) // 0..1
+  // preview — muted-loop; sound — со звуком (кольцо+остаток); в sound есть пауза
+  const [sound, setSound] = useState(false)
+  const [paused, setPaused] = useState(false)
+  const [progress, setProgress] = useState(0) // 0..1, только в sound-режиме
   const [left, setLeft] = useState<number | null>(null)
+  const reported = useRef(false)
   const dur = m.mediaDuration ?? 0
   const toggle = () => {
     const v = ref.current
     if (!v) return
-    if (v.paused) { void v.play(); setPlaying(true) }
-    else { v.pause(); setPlaying(false) }
+    if (!sound) {
+      // из muted-превью — звук с начала; кружок регистрируется в глобальном
+      // плеере (плашка над шапкой, tweb pinned-audio)
+      v.muted = false
+      v.loop = false
+      v.currentTime = 0
+      void v.play()
+      setSound(true)
+      setPaused(false)
+      onSoundPlay?.(v)
+    } else if (v.paused) {
+      void v.play()
+      setPaused(false)
+      onSoundPlay?.(v) // ре-аттач, если плашку успели закрыть
+    } else {
+      v.pause()
+      setPaused(true)
+    }
   }
+  // Пауза/резюм могут прийти извне (плашка плеера) — отражаем в состоянии бабла.
+  const onPauseEvt = () => { if (sound) setPaused(true) }
+  const onPlayEvt = () => { if (sound) setPaused(false) }
   const onTime = () => {
     const v = ref.current
-    if (!v) return
+    if (!v || !sound) return
+    if (!reported.current && !m.out && m.mediaUnread) {
+      reported.current = true
+      onPlayed?.()
+    }
     const total = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : dur
     if (total > 0) {
       setProgress(v.currentTime / total)
       setLeft(Math.max(0, Math.ceil(total - v.currentTime)))
     }
   }
-  const badge = playing && left != null
-    ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`
-    : `${Math.floor(dur / 60)}:${String(Math.round(dur % 60)).padStart(2, '0')}`
+  const onEnded = () => {
+    // досмотрели — назад в muted-loop превью (tweb показывает зацикленный кадр)
+    const v = ref.current
+    setSound(false)
+    setPaused(false)
+    setProgress(0)
+    setLeft(null)
+    if (v) {
+      v.muted = true
+      v.loop = true
+      v.currentTime = 0
+      void v.play()
+    }
+  }
+  const fmt = (secs: number) => `${Math.floor(secs / 60)}:${String(Math.floor(secs % 60)).padStart(2, '0')}`
+  const badge = sound && left != null ? fmt(left) : fmt(Math.round(dur))
+  // nosound в бейдже — пока не идёт воспроизведение со звуком (tweb setIsPaused)
+  const noSound = !sound || paused
   const C = 2 * Math.PI * 49
   return (
     <div className={s.roundReal} data-out={m.out || undefined}>
@@ -292,10 +336,15 @@ export function RoundVideoRealBubble({ m }: { m: ConvMsg }) {
           className={s.roundRealVideo}
           src={m.mediaId != null ? mediaContentUrl(m.mediaId) : undefined}
           playsInline
+          muted
+          loop
+          autoPlay
           onTimeUpdate={onTime}
-          onEnded={() => { setPlaying(false); setProgress(0); setLeft(null) }}
+          onEnded={onEnded}
+          onPause={onPauseEvt}
+          onPlay={onPlayEvt}
         />
-        {playing && (
+        {progress > 0 && (
           <svg className={s.roundRealRing} viewBox="0 0 100 100">
             <circle
               cx="50" cy="50" r="49" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round"
@@ -303,13 +352,12 @@ export function RoundVideoRealBubble({ m }: { m: ConvMsg }) {
             />
           </svg>
         )}
-        {!playing && (
-          <div className={s.roundRealPlay}>
-            <TgIcon name="play" size={34} color="#fff" />
-          </div>
-        )}
-        {/* бейдж длительности (tweb: сверху слева, при игре — остаток) */}
-        <div className={s.roundRealBadge}>{badge}</div>
+        {/* бейдж (tweb .video-time): остаток/длительность + nosound + точка unread */}
+        <div className={s.roundRealBadge}>
+          {badge}
+          {noSound && <TgIcon name="nosound" size={16} style={{ verticalAlign: '-3px', marginLeft: 2 }} />}
+          {m.mediaUnread && <span className={s.roundRealDot} />}
+        </div>
         {/* время + галочки — внутри круга снизу (tweb) */}
         <div className={s.roundRealMeta}>
           <Text size={12} color="#fff">{fmtTime(m.time)}</Text>

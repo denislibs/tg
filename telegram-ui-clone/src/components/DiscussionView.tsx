@@ -23,6 +23,8 @@ const FEED_FNS: FeedFns = {
   jumpToSeq: NOOP,
   openLightbox: NOOP,
   recall: NOOP,
+  mediaPlayed: NOOP,
+  roundPlaying: NOOP,
 }
 const EMPTY_COUNTS = new Map<number, number>()
 const EMPTY_SELECTED = new Set<number>()

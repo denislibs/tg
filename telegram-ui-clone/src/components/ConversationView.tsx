@@ -19,6 +19,7 @@ import { lastSeenLabel } from '../core/presence'
 import { useManagers } from '../core/hooks/useManagers'
 import { useMessageWindow } from '../core/hooks/useMessageWindow'
 import { useEvent } from '../core/hooks/useEvent'
+import { markMediaPlayed } from '../core/mediaRead'
 import { useChatSelection } from '../core/hooks/useChatSelection'
 import { useChatInfoCard } from '../core/hooks/useChatInfoCard'
 import { usePinnedBar } from '../core/hooks/usePinnedBar'
@@ -136,7 +137,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     })
   }
   // Voice/audio play queue for the global player + the player plate offset.
-  const { playVoice, playerOffset } = useVoiceQueue({
+  const { playVoice, attachRound, playerOffset } = useVoiceQueue({
     win, isRealChat, meId, meName: me?.displayName, peers, chatName: chat.name, numericChatId, lang,
   })
   const [infoOpen, setInfoOpen] = useState(false)
@@ -229,6 +230,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const openMsgMenuE = useEvent(openMsgMenu)
   const jumpToSeqE = useEvent(jumpToSeq)
   const openLightboxE = useEvent(openLightbox)
+  const roundPlayingE = useEvent(attachRound)
   // Перезвон по клику на бабл звонка (tweb: клик по messageMediaCall → startCall)
   const recallE = useEvent((video: boolean) => {
     if (chat.type !== 'private' || chat.peerId == null) return
@@ -237,6 +239,10 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       video,
       isRealChat ? numericChatId : null,
     )
+  })
+  // Кружок воспроизведён со звуком → снять media_unread (сервер разошлёт media_read)
+  const mediaPlayedE = useEvent((msgId: number) => {
+    if (isRealChat) markMediaPlayed(numericChatId, msgId)
   })
   const feedFns = useMemo(
     () => ({
@@ -247,8 +253,10 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       jumpToSeq: jumpToSeqE,
       openLightbox: openLightboxE,
       recall: recallE,
+      mediaPlayed: mediaPlayedE,
+      roundPlaying: roundPlayingE,
     }),
-    [openSenderE, playVoiceE, toggleSelectE, openMsgMenuE, jumpToSeqE, openLightboxE, recallE],
+    [openSenderE, playVoiceE, toggleSelectE, openMsgMenuE, jumpToSeqE, openLightboxE, recallE, mediaPlayedE, roundPlayingE],
   )
 
   // (Ack reconcile + send-rejection run in realtimeBridge → messagesStore; live

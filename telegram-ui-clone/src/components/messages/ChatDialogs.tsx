@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 // Presentational chat dialogs/popups extracted from ConversationView: delete
 // confirm, forward target picker, "seen by" popup, add-member picker, and the
 // discard-voice confirm. Each is dumb — it self-sources i18n + motion constants
@@ -64,6 +64,11 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
 }) {
   const t = useT()
   const [q, setQ] = useState('')
+  // exit-анимация: закрытие/выбор сначала гасят open; колбэк владельцу (который
+  // размонтирует пикер) — только из onExitComplete, когда карточка уехала.
+  const [open, setOpen] = useState(true)
+  const picked = useRef<number | null>(null)
+  const pick = (chatId: number) => { picked.current = chatId; setOpen(false) }
   const query = q.trim().toLowerCase()
   const rows = dialogs
     .map((d) => ({
@@ -73,7 +78,13 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
     }))
     .filter((r) => !query || r.title.toLowerCase().includes(query))
   return (
-    <Popup title={t('Send')} onClose={onClose} width={440}>
+    <Popup
+      open={open}
+      title={t('Send')}
+      onClose={() => setOpen(false)}
+      onExitComplete={() => { if (picked.current != null) onPick(picked.current); else onClose() }}
+      width={440}
+    >
       {/* поиск (tweb popup-forward: серое поле сверху) */}
       <div className={s.pickerSearch}>
         <TgIcon name="search" size={20} color="var(--tg-textFaint)" />
@@ -87,7 +98,7 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
       </div>
       <div className={s.pickerList}>
         {rows.map((r) => (
-          <div key={r.chatId} className={s.listRow} onClick={() => onPick(r.chatId)}>
+          <div key={r.chatId} className={s.listRow} onClick={() => pick(r.chatId)}>
             <Avatar background={peerColor(r.title)} text={r.title[0] ?? '?'} size="md" />
             <div className={s.pickerBody}>
               <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{r.title}</Text>

@@ -29,17 +29,17 @@ type member struct {
 type store struct {
 	mu sync.Mutex
 
-	nextChatID  int64
-	nextMsgID   int64
-	chatType    map[int64]string
-	chatSeq     map[int64]int64           // chatID -> last_seq
-	members     map[int64]map[int64]*member // chatID -> userID -> member
-	messages    map[int64][]domain.Message  // chatID -> messages (by seq order)
-	owners      map[int64]int64           // mediaID -> ownerID
-	reactions   map[int64]map[int64]map[string]bool // msgID -> userID -> emoji set
-	hidden      map[int64]map[int64]bool            // userID -> msgID -> hidden ("delete for me")
-	pins        map[int64][]int64                   // chatID -> pinned msgIDs (newest first)
-	viewed      map[int64]map[int64]bool            // msgID -> userID -> viewed (channel view dedup)
+	nextChatID int64
+	nextMsgID  int64
+	chatType   map[int64]string
+	chatSeq    map[int64]int64                     // chatID -> last_seq
+	members    map[int64]map[int64]*member         // chatID -> userID -> member
+	messages   map[int64][]domain.Message          // chatID -> messages (by seq order)
+	owners     map[int64]int64                     // mediaID -> ownerID
+	reactions  map[int64]map[int64]map[string]bool // msgID -> userID -> emoji set
+	hidden     map[int64]map[int64]bool            // userID -> msgID -> hidden ("delete for me")
+	pins       map[int64][]int64                   // chatID -> pinned msgIDs (newest first)
+	viewed     map[int64]map[int64]bool            // msgID -> userID -> viewed (channel view dedup)
 
 	// per-user update log
 	pts     map[int64]int64
@@ -595,6 +595,21 @@ func (r fakeMsgs) RegisterChannelViews(_ context.Context, chatID, userID, upToSe
 		r.s.messages[chatID][idx].Views++
 	}
 	return nil
+}
+
+func (r fakeMsgs) ClearMediaUnread(_ context.Context, msgID int64) (bool, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	for chatID, msgs := range r.s.messages {
+		for idx, m := range msgs {
+			if m.ID == msgID {
+				changed := m.MediaUnread
+				r.s.messages[chatID][idx].MediaUnread = false
+				return changed, nil
+			}
+		}
+	}
+	return false, nil
 }
 
 func (r fakeMsgs) ViewCounts(_ context.Context, ids []int64) (map[int64]int64, error) {

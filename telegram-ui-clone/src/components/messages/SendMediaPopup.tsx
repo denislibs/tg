@@ -1,14 +1,14 @@
 // src/components/messages/SendMediaPopup.tsx
-// Compose-before-send dialog (port of tweb popups/newMedia.ts): preview the
-// picked files, add a caption, toggle "as media" vs "as file", then send. The
-// parent owns the actual upload/send (onSend).
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+// Compose-before-send dialog (port of tweb popups/newMedia.ts) на общем Popup:
+// превью выбранных файлов, подпись, «как медиа / как файл» в меню «⋮», отправка.
+// The parent owns the actual upload/send (onSend).
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Text from '../../shared/ui/Text'
 import IconButton from '../../shared/ui/IconButton'
-import { createPortal } from 'react-dom'
+import Popup from '../../shared/ui/Popup'
+import Menu, { MenuItem } from '../../shared/ui/Menu'
 import { motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
-import { EASE, DUR } from '../../motion'
 import { useT } from '../../i18n'
 import s from './SendMediaPopup.module.scss'
 
@@ -43,6 +43,11 @@ export default function SendMediaPopup({
   const [caption, setCaption] = useState('')
   const [asFile, setAsFile] = useState(initialAsFile)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null)
+  // exit-анимация Popup: отправка/закрытие гасят open, onSend/onClose — из
+  // onExitComplete (владелец размонтирует уже невидимый диалог)
+  const [open, setOpen] = useState(true)
+  const sending = useRef(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Object URLs for previews; revoked on unmount.
@@ -59,58 +64,53 @@ export default function SendMediaPopup({
     : allImages ? 'photo' : allVideos ? 'video' : 'media'
   const title = `${t('Send')} ${files.length} ${titleWord(files.length, kind)}`
 
-  const send = () => onSend(caption.trim(), asFile)
+  const send = () => { sending.current = true; setOpen(false) }
 
-  return createPortal(
-    <div className={s.overlay} onClick={onClose}>
-      <motion.div
-        className={s.dialog}
-        onClick={(e) => e.stopPropagation()}
-        initial={{ opacity: 0, scale: 0.94 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: DUR.in, ease: EASE }}
-      >
-        {/* header */}
-        <div className={s.header}>
-          <IconButton size="small" onClick={onClose} color="var(--tg-textPrimary)"><TgIcon name="close" /></IconButton>
-          <Text size={18} weight={600} color="var(--tg-textPrimary)" className={s.title}>{title}</Text>
-          {anyMedia && (
-            <div className={s.moreWrap}>
-              <IconButton size="small" onClick={() => setMenuOpen((v) => !v)} color="var(--tg-textPrimary)"><TgIcon name="more" /></IconButton>
-              {menuOpen && (
-                <div className={s.menu}>
-                  <MenuItem icon={<TgIcon name="image" size={20} />} label={t('Send as media')} active={!asFile} onClick={() => { setAsFile(false); setMenuOpen(false) }} />
-                  <MenuItem icon={<TgIcon name="document" size={20} />} label={t('Send as file')} active={asFile} onClick={() => { setAsFile(true); setMenuOpen(false) }} />
-                </div>
-              )}
-            </div>
+  return (
+    <Popup
+      open={open}
+      title={title}
+      width={420}
+      onClose={() => setOpen(false)}
+      onExitComplete={() => { if (sending.current) onSend(caption.trim(), asFile); else onClose() }}
+      headerRight={anyMedia ? (
+        <>
+          <IconButton
+            size="small"
+            color="var(--tg-textPrimary)"
+            onClick={(e) => {
+              const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+              setMenuPos({ top: r.bottom + 4, right: window.innerWidth - r.right })
+              setMenuOpen(true)
+            }}
+          >
+            <TgIcon name="more" />
+          </IconButton>
+          {menuPos && (
+            <Menu
+              open={menuOpen}
+              onClose={() => setMenuOpen(false)}
+              onExitComplete={() => setMenuPos(null)}
+              zIndex={4100}
+              style={{ top: menuPos.top, right: menuPos.right, transformOrigin: 'top right' }}
+            >
+              <MenuItem
+                icon={<TgIcon name="image" size={20} />}
+                label={t('Send as media')}
+                right={!asFile ? <TgIcon name="check" size={18} color="var(--tg-accent)" /> : undefined}
+                onClick={() => { setAsFile(false); setMenuOpen(false) }}
+              />
+              <MenuItem
+                icon={<TgIcon name="document" size={20} />}
+                label={t('Send as file')}
+                right={asFile ? <TgIcon name="check" size={18} color="var(--tg-accent)" /> : undefined}
+                onClick={() => { setAsFile(true); setMenuOpen(false) }}
+              />
+            </Menu>
           )}
-        </div>
-
-        {/* previews */}
-        <div className={s.previews} data-media={showAsMedia || undefined}>
-          {files.map((f, i) => {
-            if (showAsMedia && f.type.startsWith('image/')) {
-              return <img key={i} className={`${s.preview} ${s.previewImg}`} src={urls[i]} alt="" />
-            }
-            if (showAsMedia && f.type.startsWith('video/')) {
-              return <video key={i} className={s.preview} src={urls[i]} controls />
-            }
-            // file row (documents, audio, or "as file" mode)
-            const ext = (f.name.split('.').pop() || '').slice(0, 4).toUpperCase()
-            return (
-              <div key={i} className={s.fileRow}>
-                <div className={s.fileIcon}>{ext || <TgIcon name="document" />}</div>
-                <div className={s.fileBody}>
-                  <Text noWrap size={14.5} weight={600} color="var(--tg-textPrimary)">{f.name}</Text>
-                  <Text size={12.5} color="var(--tg-textSecondary)">{fmtSize(f.size)}</Text>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-
-        {/* caption + send */}
+        </>
+      ) : undefined}
+      footer={
         <div className={s.footer}>
           <input
             ref={inputRef}
@@ -124,17 +124,29 @@ export default function SendMediaPopup({
             <TgIcon name="send" />
           </motion.div>
         </div>
-      </motion.div>
-    </div>,
-    document.body,
-  )
-}
-
-function MenuItem({ icon, label, active, onClick }: { icon: ReactNode; label: string; active: boolean; onClick: () => void }) {
-  return (
-    <div className={s.menuItem} data-active={active || undefined} onClick={onClick}>
-      <span className={s.menuIcon}>{icon}</span>
-      <Text size={15} color="var(--mi-color)">{label}</Text>
-    </div>
+      }
+    >
+      <div className={s.previews} data-media={showAsMedia || undefined}>
+        {files.map((f, i) => {
+          if (showAsMedia && f.type.startsWith('image/')) {
+            return <img key={i} className={`${s.preview} ${s.previewImg}`} src={urls[i]} alt="" />
+          }
+          if (showAsMedia && f.type.startsWith('video/')) {
+            return <video key={i} className={s.preview} src={urls[i]} controls />
+          }
+          // file row (documents, audio, or "as file" mode)
+          const ext = (f.name.split('.').pop() || '').slice(0, 4).toUpperCase()
+          return (
+            <div key={i} className={s.fileRow}>
+              <div className={s.fileIcon}>{ext || <TgIcon name="document" />}</div>
+              <div className={s.fileBody}>
+                <Text noWrap size={14.5} weight={600} color="var(--tg-textPrimary)">{f.name}</Text>
+                <Text size={12.5} color="var(--tg-textSecondary)">{fmtSize(f.size)}</Text>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </Popup>
   )
 }

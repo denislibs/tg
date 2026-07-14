@@ -55,6 +55,8 @@ function dispatchOther(u: unknown) {
   else if ('edited_at' in o) broadcast(RT.editMessage, o)
   else if ('for_me' in o) broadcast(RT.deleteMessage, o)
   else if ('pinned' in o) broadcast(RT.pinMessage, o)
+  // media_read несёт только {chat_id, msg_id} — распознаётся последним, по остатку
+  else if ('msg_id' in o) broadcast(RT.mediaRead, o)
 }
 
 const ws = new WsClient('/ws')
@@ -82,6 +84,7 @@ const conn = newConnectionManager({
     else if (type === 'delete_message') broadcast(RT.deleteMessage, payload)
     else if (type === 'pin_message') broadcast(RT.pinMessage, payload)
     else if (type === 'read') broadcast(RT.read, payload)
+    else if (type === 'media_read') broadcast(RT.mediaRead, payload)
     else if (type === 'typing') broadcast(RT.typing, payload)
     else if (type === 'presence') broadcast(RT.presence, payload)
     else if (type === 'reaction') broadcast(RT.reaction, payload)
@@ -93,6 +96,7 @@ const realtime = {
   async start() { await tokens.load(); conn.start(); return { state: conn.state() } },
   async sendMessage(args: { chatId: number; text: string; entities?: import('./models').MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; mediaId?: number | null; type?: string }) { conn.sendMessage(args); return { ok: true } },
   async markRead(args: { chatId: number; upToSeq: number }) { conn.markRead(args.chatId, args.upToSeq); return { ok: true } },
+  async markMediaRead(args: { chatId: number; msgId: number }) { conn.markMediaRead(args.chatId, args.msgId); return { ok: true } },
   async sendTyping(args: { chatId: number; action?: 'typing' | 'voice' | 'video' }) { conn.sendTyping(args.chatId, args.action ?? 'typing'); return { ok: true } },
   async sendCallFrame(args: { type: string; data: Record<string, unknown> }) { conn.sendCallFrame(args.type, args.data); return { ok: true } },
   async subscribeChannel(args: { chatId: number }) { conn.subscribeChannel(args.chatId); return { ok: true } },

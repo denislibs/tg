@@ -175,6 +175,12 @@
   justify-content: center;
 }
 
+// глиф play↔pause внутри круглой кнопки строки
+.rowGlyph {
+  display: inline-flex;
+  color: #fff;
+}
+
 // ряд «обсуждения включены»
 .enabledRow {
   display: flex;

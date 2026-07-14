@@ -6,7 +6,7 @@ import { usePinsStore } from '../stores/pinsStore'
 import { useDiscussionStore, threadKey } from '../stores/discussionStore'
 import { mapMessage } from '../core/models'
 import { uiEvents } from '../core/hooks/uiEvents'
-import { RT, type NewMessageEvt, type ReadEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt } from '../core/realtime/events'
+import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt } from '../core/realtime/events'
 import { playMessageSent, playIncoming } from '../core/audio/sounds'
 import * as callEngine from '../core/calls/callEngine'
 
@@ -34,7 +34,7 @@ export function startRealtime(): void {
     const ms = useMessagesStore.getState()
     const rt = evt.reply_to_id != null ? ms.byChat[evt.chat_id]?.msgs.find((x) => x.id === evt.reply_to_id) : undefined
     const replyTo = rt ? { msg_id: rt.id, seq: rt.seq, sender_id: rt.senderId, text: rt.text, type: rt.type } : null
-    ms.applyIncoming(evt.chat_id, mapMessage({ id: evt.msg_id, chat_id: evt.chat_id, seq: evt.seq, sender_id: evt.sender_id, type: evt.type, text: evt.text, entities: evt.entities ?? null, reply_to_id: evt.reply_to_id ?? null, media_id: evt.media_id, created_at: evt.created_at, fwd_from_user_id: evt.fwd_from_user_id ?? null, fwd_from_chat_id: evt.fwd_from_chat_id ?? null, fwd_from_msg_id: evt.fwd_from_msg_id ?? null, fwd_date: evt.fwd_date ?? null, reply_to: replyTo }))
+    ms.applyIncoming(evt.chat_id, mapMessage({ id: evt.msg_id, chat_id: evt.chat_id, seq: evt.seq, sender_id: evt.sender_id, type: evt.type, text: evt.text, entities: evt.entities ?? null, reply_to_id: evt.reply_to_id ?? null, media_id: evt.media_id, created_at: evt.created_at, fwd_from_user_id: evt.fwd_from_user_id ?? null, fwd_from_chat_id: evt.fwd_from_chat_id ?? null, fwd_from_msg_id: evt.fwd_from_msg_id ?? null, fwd_date: evt.fwd_date ?? null, reply_to: replyTo, media_unread: evt.media_unread }))
     // Discussion-thread comment: route into the discussion store (no-op unless
     // that thread is currently open). The View reads its slice via a selector.
     if (evt.thread_root_id != null) {
@@ -51,6 +51,10 @@ export function startRealtime(): void {
     if (incoming && s.activeChatId !== evt.chat_id && !muted) playIncoming()
   })
   smp.on(RT.read, (r) => { store.applyRead(r as ReadEvt); uiEvents.emit(RT.read, r) })
+  smp.on(RT.mediaRead, (raw) => {
+    const e = raw as MediaReadEvt
+    useMessagesStore.getState().applyMediaRead(e.chat_id, e.msg_id)
+  })
   smp.on(RT.presence, (p) => { store.setPresence(p as PresenceEvt); uiEvents.emit(RT.presence, p) })
   smp.on(RT.typing, (raw) => {
     const t = raw as TypingEvt

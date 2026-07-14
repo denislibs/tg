@@ -77,6 +77,47 @@ func TestMarkRead_PublishesRead(t *testing.T) {
 	}
 }
 
+func TestReadMedia_ClearsFlagAndPublishes(t *testing.T) {
+	in, _ := newInteractor()
+	pub := &fakePublisher{}
+	in.SetPublisher(pub)
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	msg, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Type: "voice"})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if !msg.MediaUnread {
+		t.Fatalf("voice message must start media_unread")
+	}
+	pub.reset()
+
+	// The recipient plays it → flag cleared, media_read fanned out to both.
+	if err := in.ReadMedia(ctx, chatID, b, msg.ID); err != nil {
+		t.Fatalf("ReadMedia: %v", err)
+	}
+	got, _ := in.msgs.GetByID(ctx, msg.ID)
+	if got.MediaUnread {
+		t.Fatalf("media_unread must be cleared")
+	}
+	if pub.countFor(a) != 1 || pub.countFor(b) != 1 {
+		t.Fatalf("media_read fan-out wrong: a=%d b=%d", pub.countFor(a), pub.countFor(b))
+	}
+
+	// Repeat play and the sender's own play must publish nothing.
+	pub.reset()
+	if err := in.ReadMedia(ctx, chatID, b, msg.ID); err != nil {
+		t.Fatalf("ReadMedia repeat: %v", err)
+	}
+	if err := in.ReadMedia(ctx, chatID, a, msg.ID); err != nil {
+		t.Fatalf("ReadMedia own: %v", err)
+	}
+	if pub.countFor(a) != 0 || pub.countFor(b) != 0 {
+		t.Fatalf("repeat/own play should not publish: a=%d b=%d", pub.countFor(a), pub.countFor(b))
+	}
+}
+
 func TestTyping_PublishesToOthers(t *testing.T) {
 	in, _ := newInteractor()
 	pub := &fakePublisher{}

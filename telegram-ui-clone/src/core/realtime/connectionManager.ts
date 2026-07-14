@@ -20,7 +20,7 @@ export interface CMDeps {
 const HEARTBEAT_MS = 20_000
 const PONG_GRACE = 2 // missed pongs before force-reconnect
 const MAX_BACKOFF = 30_000
-const FRAME_TYPES = ['new_message', 'edit_message', 'delete_message', 'pin_message', 'read', 'typing', 'presence', 'reaction', 'message_ack', 'message_error', 'pong', 'call_request', 'call_accept', 'call_decline', 'call_end', 'call_signal']
+const FRAME_TYPES = ['new_message', 'edit_message', 'delete_message', 'pin_message', 'read', 'media_read', 'typing', 'presence', 'reaction', 'message_ack', 'message_error', 'pong', 'call_request', 'call_accept', 'call_decline', 'call_end', 'call_signal']
 
 export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, outboxStore }: CMDeps) {
   const outbox = new Map<string, SendArgs>()
@@ -106,6 +106,8 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, 
     outboxSize: () => outbox.size,
     sendMessage(m: SendArgs) { outbox.set(m.clientMsgId, m); persistOutbox(); if (ws.isOpen()) sendFrame(m) },
     markRead(chatId: number, upToSeq: number) { if (ws.isOpen()) ws.send('read', { chat_id: chatId, up_to_seq: upToSeq }) },
+    // «Прослушано/просмотрено» для голосового/кружка (tweb readMessageContents).
+    markMediaRead(chatId: number, msgId: number) { if (ws.isOpen()) ws.send('read_media', { chat_id: chatId, msg_id: msgId }) },
     sendTyping(chatId: number, action: 'typing' | 'voice' | 'video' = 'typing') { if (ws.isOpen()) ws.send('typing', { chat_id: chatId, action }) },
     // Call signaling is ephemeral (no outbox): a frame lost while offline is
     // meaningless seconds later — WebRTC re-negotiates on its own timers.

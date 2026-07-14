@@ -8,23 +8,23 @@ import "time"
 // on both ends. The backend stores/returns these opaquely (jsonb) — only the
 // client interprets the units. URL is set only for "text_link" spans.
 type MessageEntity struct {
-	Type   string `json:"type"`             // bold|italic|underline|strikethrough|code|pre|spoiler|blockquote|text_link
-	Offset int    `json:"offset"`           // start, in UTF-16 code units
-	Length int    `json:"length"`           // span length, in UTF-16 code units
-	URL    string `json:"url,omitempty"`    // target for text_link
+	Type   string `json:"type"`               // bold|italic|underline|strikethrough|code|pre|spoiler|blockquote|text_link
+	Offset int    `json:"offset"`             // start, in UTF-16 code units
+	Length int    `json:"length"`             // span length, in UTF-16 code units
+	URL    string `json:"url,omitempty"`      // target for text_link
 	Lang   string `json:"language,omitempty"` // language hint for pre code blocks
 }
 
 type Message struct {
-	ID          int64
-	ChatID      int64
-	Seq         int64
-	SenderID    int64
-	Type        string
-	Text        string
-	Entities    []MessageEntity // rich-text formatting spans over Text (nil when plain)
-	ReplyToID   *int64
-	MediaID     *int64
+	ID           int64
+	ChatID       int64
+	Seq          int64
+	SenderID     int64
+	Type         string
+	Text         string
+	Entities     []MessageEntity // rich-text formatting spans over Text (nil when plain)
+	ReplyToID    *int64
+	MediaID      *int64
 	ClientMsgID  *string
 	ThreadRootID *int64
 	CreatedAt    time.Time
@@ -52,6 +52,10 @@ type Message struct {
 	// Views is the deduplicated viewer count for a channel post (0 for
 	// group/private messages, which don't track views).
 	Views int64
+	// MediaUnread mirrors Telegram's pFlags.media_unread: a voice/round-video
+	// message whose content hasn't been played by the recipient yet. Set on
+	// send, cleared by ReadMedia.
+	MediaUnread bool
 }
 
 // ReplyPreview is the quoted snippet shown above a reply bubble.

@@ -188,8 +188,18 @@ function DevicePicker({
 }) {
   const t = useT()
   const [value, setValue] = useState(selected)
+  // exit-анимация Popup: сохранение/закрытие гасят open, владелец размонтирует
+  // в onExitComplete (выбор применяется тоже там — когда карточка уехала)
+  const [open, setOpen] = useState(true)
+  const saved = useRef<string | null>(null)
   return (
-    <Popup title={title} onClose={onClose} action={{ label: t('Save'), onClick: () => onSave(value) }}>
+    <Popup
+      open={open}
+      title={title}
+      onClose={() => setOpen(false)}
+      onExitComplete={() => { if (saved.current != null) onSave(saved.current); else onClose() }}
+      action={{ label: t('Save'), onClick: () => { saved.current = value; setOpen(false) } }}
+    >
       <div className={s.options}>
         {options.map((o) => (
           <div key={o.id} className={s.option} onClick={() => setValue(o.id)}>

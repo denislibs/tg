@@ -65,6 +65,8 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			ChatID: in.ChatID, Seq: seq, SenderID: in.SenderID,
 			Type: in.Type, Text: in.Text, Entities: in.Entities, ReplyToID: in.ReplyToID, ClientMsgID: cmid,
 			MediaID: in.MediaID, ThreadRootID: in.ThreadRootID,
+			// Voice/round content starts "unlistened" (Telegram media_unread).
+			MediaUnread: in.Type == "voice" || in.Type == "roundVideo",
 		})
 		if e != nil {
 			return e
@@ -176,6 +178,63 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 	// approximate and must never fail the read.
 	if advanced {
 		_ = i.msgs.RegisterChannelViews(ctx, chatID, userID, effective)
+	}
+	return nil
+}
+
+// ReadMedia clears a voice/round message's media_unread flag when its recipient
+// plays it (tweb messages.readMessageContents) and fans out a media_read frame
+// to every member — the sender's "unlistened" dot goes out live. Idempotent:
+// repeat plays and own messages publish nothing.
+func (i *Interactor) ReadMedia(ctx context.Context, chatID, userID, msgID int64) error {
+	ok, err := i.chats.IsMember(ctx, chatID, userID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return domain.ErrNotFound
+	}
+	msg, err := i.msgs.GetByID(ctx, msgID)
+	if err != nil {
+		return err
+	}
+	if msg.ChatID != chatID || msg.SenderID == userID || !msg.MediaUnread {
+		return nil
+	}
+	var members []int64
+	var cleared bool
+	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		c, e := i.msgs.ClearMediaUnread(ctx, msgID)
+		if e != nil || !c {
+			return e
+		}
+		cleared = true
+		m, e := i.chats.MemberIDs(ctx, chatID)
+		if e != nil {
+			return e
+		}
+		slices.Sort(m)
+		members = m
+		payload, e := json.Marshal(map[string]any{"chat_id": chatID, "msg_id": msgID})
+		if e != nil {
+			return e
+		}
+		date := nowMillis()
+		for _, uid := range members {
+			if _, e := i.updates.AppendUpdate(ctx, uid, 1, date, "media_read", payload); e != nil {
+				return e
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if cleared && i.publisher != nil {
+		f := frame("media_read", map[string]any{"chat_id": chatID, "msg_id": msgID})
+		for _, uid := range members {
+			_ = i.publisher.PublishToUser(ctx, uid, f)
+		}
 	}
 	return nil
 }
