@@ -13,6 +13,7 @@ export const RT = {
   reaction: 'rt:reaction',
   ack: 'rt:ack',
   messageError: 'rt:message_error',
+  call: 'rt:call',
   state: 'rt:state',
 } as const
 
@@ -31,3 +32,10 @@ export interface AckEvt { client_msg_id: string; msg_id: number; seq: number; cr
 // Server rejected a send (e.g. text too long). The client drops it from the outbox
 // (no infinite retry) and removes the optimistic bubble.
 export interface MessageErrorEvt { client_msg_id: string; reason: string }
+
+// One envelope for every 1:1 call signaling frame (call_request / call_accept /
+// call_decline / call_end / call_signal); `d.from_user_id` is stamped by the server.
+export interface CallFrameEvt {
+  t: 'call_request' | 'call_accept' | 'call_decline' | 'call_end' | 'call_signal'
+  d: Record<string, unknown> & { from_user_id: number; call_id?: string }
+}

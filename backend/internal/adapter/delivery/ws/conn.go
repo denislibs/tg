@@ -151,6 +151,16 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		if json.Unmarshal(f.D, &d) == nil && d.ChatID != 0 {
 			c.hub.UnsubscribeChannel(ctx, d.ChatID, c)
 		}
+	// 1:1 call signaling (WebRTC): the server is a dumb relay — the frame is
+	// re-addressed to every device of to_user_id with from_user_id stamped in.
+	case "call_request", "call_accept", "call_decline", "call_end", "call_signal":
+		var d map[string]any
+		if json.Unmarshal(f.D, &d) != nil {
+			return
+		}
+		to, _ := d["to_user_id"].(float64)
+		delete(d, "to_user_id")
+		_ = c.svc.RelayCall(ctx, f.T, c.userID, int64(to), d)
 	}
 }
 

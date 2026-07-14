@@ -10,6 +10,7 @@ import { useSettings } from './settings'
 import Sidebar from './components/Sidebar'
 import ConversationView from './components/ConversationView'
 import ChatBackground from './components/ChatBackground'
+import CallOverlay from './components/call/CallOverlay'
 import AuthFlow from './components/auth/AuthFlow'
 import { useT } from './i18n'
 import type { Chat, OpenPeer } from './data'
@@ -312,6 +313,9 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
           </AnimatePresence>
         </>
       )}
+
+      {/* Глобальный экран звонка (входящие показываются из любого места) */}
+      <CallOverlay />
     </div>
   )
 }

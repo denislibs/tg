@@ -1,13 +1,9 @@
 // src/components/call/CallProvider.tsx
-// Renders the call UI (markup) from the global callStore and exposes a hook to
-// start/end a call bound to the conversation's chat — so the call screen is no
-// longer inline in ConversationView and no onCall callback is drilled into the
-// header. State/logic live in callStore; this provider owns only the markup + a
-// chat-bound convenience API.
+// Тонкая chat-bound обёртка над callEngine: хедер/меню зовут start(video) без
+// знания peer-деталей. Сам экран звонка глобален (CallOverlay в App) — входящий
+// звонок показывается из любого места, а не только из открытого чата.
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
-import { AnimatePresence } from 'framer-motion'
-import CallScreen from '../CallScreen'
-import { useCallStore } from '../../stores/callStore'
+import { startOutgoing, hangup } from '../../core/calls/callEngine'
 import type { Chat } from '../../data'
 
 interface CallContextValue {
@@ -18,23 +14,26 @@ interface CallContextValue {
 const CallContext = createContext<CallContextValue | null>(null)
 
 export function CallProvider({ chat, children }: { chat: Chat; children: ReactNode }) {
-  const call = useCallStore((s) => s.call)
-  const startCall = useCallStore((s) => s.startCall)
-  const endCall = useCallStore((s) => s.endCall)
-  // Stable, chat-bound API so consumers (the header) just call start(video).
   const value = useMemo(
-    () => ({ start: (video: boolean) => startCall(chat, video), end: endCall }),
-    [chat, startCall, endCall],
+    () => ({
+      start: (video: boolean) => {
+        if (chat.peerId == null) return
+        startOutgoing(
+          {
+            id: chat.peerId,
+            name: chat.name,
+            avatar: chat.avatar,
+            avatarText: chat.avatarText,
+            avatarUrl: chat.avatarUrl,
+          },
+          video,
+        )
+      },
+      end: hangup,
+    }),
+    [chat],
   )
-
-  return (
-    <CallContext.Provider value={value}>
-      {children}
-      <AnimatePresence>
-        {call && <CallScreen chat={call.chat} video={call.video} onClose={endCall} />}
-      </AnimatePresence>
-    </CallContext.Provider>
-  )
+  return <CallContext.Provider value={value}>{children}</CallContext.Provider>
 }
 
 export function useCall(): CallContextValue {

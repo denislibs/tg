@@ -56,6 +56,7 @@ export interface Managers {
     sendMessage(args: { chatId: number; text: string; entities?: MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; mediaId?: number | null; type?: string }): Promise<{ ok: boolean }>
     markRead(args: { chatId: number; upToSeq: number }): Promise<{ ok: boolean }>
     sendTyping(args: { chatId: number; action?: 'typing' | 'voice' | 'video' }): Promise<{ ok: boolean }>
+    sendCallFrame(args: { type: string; data: Record<string, unknown> }): Promise<{ ok: boolean }>
     subscribeChannel(args: { chatId: number }): Promise<{ ok: boolean }>
     unsubscribeChannel(args: { chatId: number }): Promise<{ ok: boolean }>
   }

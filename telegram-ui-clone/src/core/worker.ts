@@ -83,6 +83,7 @@ const conn = newConnectionManager({
     else if (type === 'typing') broadcast(RT.typing, payload)
     else if (type === 'presence') broadcast(RT.presence, payload)
     else if (type === 'reaction') broadcast(RT.reaction, payload)
+    else if (type.startsWith('call_')) broadcast(RT.call, { t: type, d: payload })
   },
 })
 
@@ -91,6 +92,7 @@ const realtime = {
   async sendMessage(args: { chatId: number; text: string; entities?: import('./models').MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; mediaId?: number | null; type?: string }) { conn.sendMessage(args); return { ok: true } },
   async markRead(args: { chatId: number; upToSeq: number }) { conn.markRead(args.chatId, args.upToSeq); return { ok: true } },
   async sendTyping(args: { chatId: number; action?: 'typing' | 'voice' | 'video' }) { conn.sendTyping(args.chatId, args.action ?? 'typing'); return { ok: true } },
+  async sendCallFrame(args: { type: string; data: Record<string, unknown> }) { conn.sendCallFrame(args.type, args.data); return { ok: true } },
   async subscribeChannel(args: { chatId: number }) { conn.subscribeChannel(args.chatId); return { ok: true } },
   async unsubscribeChannel(args: { chatId: number }) { conn.unsubscribeChannel(args.chatId); return { ok: true } },
 }

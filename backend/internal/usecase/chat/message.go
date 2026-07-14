@@ -180,6 +180,22 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 	return nil
 }
 
+// RelayCall forwards a 1:1 call signaling frame (call_request / call_accept /
+// call_decline / call_end / call_signal) to every device of the callee. The
+// server only relays — media is DTLS-encrypted peer-to-peer, so payloads stay
+// opaque. The sender id is stamped server-side so it can't be spoofed.
+// Ephemeral like Typing: no DB write, no-op without a publisher.
+func (i *Interactor) RelayCall(ctx context.Context, frameType string, fromUserID, toUserID int64, data map[string]any) error {
+	if i.publisher == nil || toUserID == 0 || toUserID == fromUserID {
+		return nil
+	}
+	if data == nil {
+		data = map[string]any{}
+	}
+	data["from_user_id"] = fromUserID
+	return i.publisher.PublishToUser(ctx, toUserID, frame(frameType, data))
+}
+
 // Typing publishes an ephemeral typing indicator to the other chat members.
 // No DB write. No-op if the user isn't a member or no publisher is attached.
 func (i *Interactor) Typing(ctx context.Context, chatID, userID int64, action string) error {

@@ -1,23 +1,47 @@
 // src/stores/callStore.ts
-// Global call state + actions (the "logic"). A call belongs to a chat and may be
-// voice or video. Lives in a store (not ConversationView) so any surface can start
-// or end a call, and the call survives navigating between chats.
+// Глобальное состояние 1:1 звонка. Стейт-машина — по tweb CALL_STATE
+// (REQUESTING/PENDING → CONNECTING → CONNECTED → CLOSED): фазы outgoing/incoming
+// (ringing) → connecting → active → ended. Пишет сюда только callEngine
+// (core/calls/callEngine.ts); UI (CallScreen) читает и зовёт методы движка.
 import { create } from 'zustand'
-import type { Chat } from '../data'
+
+export type CallPhase = 'outgoing' | 'incoming' | 'connecting' | 'active' | 'ended'
+export type CallEndReason = 'hangup' | 'declined' | 'busy' | 'missed' | 'failed'
+
+export interface CallPeer {
+  id: number
+  name: string
+  avatar: string // gradient background
+  avatarText?: string
+  avatarUrl?: string
+}
 
 export interface ActiveCall {
-  chat: Chat
-  video: boolean
+  callId: string
+  peer: CallPeer
+  outgoing: boolean
+  video: boolean // видеозвонок (камера включена при старте)
+  phase: CallPhase
+  muted: boolean
+  camOn: boolean
+  remoteMuted: boolean
+  remoteCamOn: boolean
+  /** Date.now()-время перехода в active — для таймера длительности */
+  connectedAt: number | null
+  endReason?: CallEndReason
+  /** live-потоки WebRTC (object refs; ставит движок) */
+  localStream: MediaStream | null
+  remoteStream: MediaStream | null
 }
 
 interface CallState {
   call: ActiveCall | null
-  startCall: (chat: Chat, video: boolean) => void
-  endCall: () => void
+  set: (call: ActiveCall | null) => void
+  patch: (p: Partial<ActiveCall>) => void
 }
 
 export const useCallStore = create<CallState>((set) => ({
   call: null,
-  startCall: (chat, video) => set({ call: { chat, video } }),
-  endCall: () => set({ call: null }),
+  set: (call) => set({ call }),
+  patch: (p) => set((s) => (s.call ? { call: { ...s.call, ...p } } : {})),
 }))

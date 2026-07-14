@@ -6,8 +6,9 @@ import { usePinsStore } from '../stores/pinsStore'
 import { useDiscussionStore, threadKey } from '../stores/discussionStore'
 import { mapMessage } from '../core/models'
 import { uiEvents } from '../core/hooks/uiEvents'
-import { RT, type NewMessageEvt, type ReadEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt } from '../core/realtime/events'
+import { RT, type NewMessageEvt, type ReadEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt } from '../core/realtime/events'
 import { playMessageSent, playIncoming } from '../core/audio/sounds'
+import * as callEngine from '../core/calls/callEngine'
 
 let started = false
 
@@ -93,6 +94,8 @@ export function startRealtime(): void {
   smp.on(RT.messageError, (raw) => {
     useMessagesStore.getState().failOptimisticByClient((raw as MessageErrorEvt).client_msg_id)
   })
+  // 1:1 call signaling → движок звонка (стейт живёт в callStore)
+  smp.on(RT.call, (raw) => { callEngine.handleFrame(raw as CallFrameEvt) })
   smp.on('rt:resync', () => { void loadChats(managers) })
 
   void managers.realtime.start()

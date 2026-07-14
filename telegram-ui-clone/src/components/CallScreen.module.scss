@@ -44,3 +44,39 @@
   align-items: center;
   gap: 32px;
 }
+
+// Удалённое видео — на весь экран под контролами
+.remoteVideo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+// Локальное превью — PIP в углу (зеркальное, как в tweb self-view)
+.localVideo {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: min(28vw, 180px);
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  transform: scaleX(-1);
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  z-index: 2;
+}
+
+// Плашка «микрофон собеседника выключен»
+.remoteMuted {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
+  z-index: 2;
+}
