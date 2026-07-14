@@ -22,7 +22,24 @@ import { playSound, stopSound } from '../audio/sounds'
 import { startClient } from '../../client/bootstrap'
 import type { CallFrameEvt } from '../realtime/events'
 
-const ICE_SERVERS: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
+// Fallback, если /calls/ice недоступен (без TURN звонок пройдёт только в
+// пределах одной сети).
+const FALLBACK_ICE: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
+
+// ICE-конфиг с бэка (STUN + эфемерные TURN-креды), кэш до истечения TTL.
+let cachedIce: { servers: RTCIceServer[]; until: number } | null = null
+async function iceServers(): Promise<RTCIceServer[]> {
+  if (cachedIce && Date.now() < cachedIce.until) return cachedIce.servers
+  try {
+    const cfg = await managers().calls.iceConfig()
+    if (cfg.servers.length) {
+      // обновляем за 5 минут до истечения кредов
+      cachedIce = { servers: cfg.servers, until: Date.now() + Math.max(60, cfg.ttlSeconds - 300) * 1000 }
+      return cfg.servers
+    }
+  } catch { /* бэк недоступен — деградация до STUN */ }
+  return FALLBACK_ICE
+}
 const RING_TIMEOUT_MS = 45_000 // tweb: 45s до missed
 
 const store = () => useCallStore.getState()
@@ -142,7 +159,7 @@ async function startRtc(withVideo: boolean) {
   stopSound()
   playSound('voip_connecting')
 
-  pc = new RTCPeerConnection({ iceServers: ICE_SERVERS, bundlePolicy: 'max-bundle' })
+  pc = new RTCPeerConnection({ iceServers: await iceServers(), bundlePolicy: 'max-bundle' })
 
   pc.onicecandidate = (e) => {
     if (e.candidate) sendFrame('call_signal', { ice: e.candidate.toJSON() })

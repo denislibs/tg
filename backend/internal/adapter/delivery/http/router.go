@@ -11,7 +11,7 @@ import (
 	usecasecontacts "github.com/messenger-denis/backend/internal/usecase/contacts"
 )
 
-func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor) http.Handler {
+func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -129,6 +129,9 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 			pr.Get("/contacts", coh.List)
 			pr.Delete("/contacts/{userID}", coh.Delete)
 		}
+
+		// ICE-конфиг для звонков (STUN + эфемерные TURN-креды)
+		pr.Get("/calls/ice", iceH.Get)
 
 		sh := NewSessionHandler(authUC)
 		pr.Get("/sessions", sh.List)

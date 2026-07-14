@@ -26,6 +26,13 @@ type Config struct {
 	// GeoIPDBPath points at a MaxMind GeoLite2-City .mmdb file. Optional: when
 	// empty or missing, login alerts simply omit the location line.
 	GeoIPDBPath string
+
+	// TURN relay for calls (coturn with use-auth-secret). TurnHost is the
+	// host/IP clients can reach (empty → /calls/ice returns STUN only, so
+	// calls work on one network but not across NATs). TurnSecret must match
+	// coturn's static-auth-secret.
+	TurnHost   string
+	TurnSecret string
 }
 
 func Load() (*Config, error) {
@@ -49,6 +56,8 @@ func Load() (*Config, error) {
 	c.VAPIDPrivateKey = os.Getenv("VAPID_PRIVATE_KEY")
 	c.VAPIDSubject = getenv("VAPID_SUBJECT", "mailto:admin@example.com")
 	c.GeoIPDBPath = os.Getenv("GEOIP_DB_PATH")
+	c.TurnHost = os.Getenv("TURN_HOST")
+	c.TurnSecret = getenv("TURN_SECRET", "dev-turn-secret-change-me")
 	return c, nil
 }
 

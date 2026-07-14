@@ -15,6 +15,7 @@ import type { Peer } from '../core/managers/peersManager'
 import type { StoryGroup } from '../core/managers/storiesManager'
 import type { Contact, AddContactInput } from '../core/managers/contactsManager'
 import type { Session } from '../core/managers/sessionsManager'
+import type { IceConfig } from '../core/managers/callsManager'
 
 export interface Managers {
   health: { check(): Promise<HealthStatus> }
@@ -117,6 +118,9 @@ export interface Managers {
     list(): Promise<Session[]>
     terminate(id: number): Promise<void>
     terminateOthers(): Promise<number>
+  }
+  calls: {
+    iceConfig(): Promise<IceConfig>
   }
 }
 

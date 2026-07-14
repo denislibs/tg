@@ -36,12 +36,37 @@ services:
       timeout: 3s
       retries: 10
 
+
+  # TURN-релей для звонков через интернет (за NAT). Клиенты получают адрес и
+  # эфемерные креды через GET /calls/ice (схема coturn use-auth-secret).
+  # TURN_HOST у backend должен указывать на адрес, ДОСТУПНЫЙ клиентам
+  # (в проде — публичный IP/домен этой машины).
+  coturn:
+    image: coturn/coturn:4.6-alpine
+    restart: unless-stopped
+    command: >
+      -n --log-file=stdout
+      --listening-port=3478
+      --fingerprint
+      --use-auth-secret
+      --static-auth-secret=${TURN_SECRET:-dev-turn-secret-change-me}
+      --realm=messenger
+      --min-port=49160 --max-port=49200
+      --no-cli
+    ports:
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+      - "49160-49200:49160-49200/udp"
+
   backend:
     build: ./backend
     environment:
       HTTP_ADDR: ":8080"
       DATABASE_URL: "postgres://messenger:messenger@postgres:5432/messenger?sslmode=disable"
       REDIS_URL: "redis://redis:6379"
+      # TURN для звонков: хост, достижимый клиентами (в проде — публичный IP)
+      TURN_HOST: "${TURN_HOST:-localhost}"
+      TURN_SECRET: "${TURN_SECRET:-dev-turn-secret-change-me}"
       DEV_OTP_CODE: "12345"
       MINIO_ENDPOINT: "minio:9000"
       MINIO_ACCESS_KEY: "minioadmin"
