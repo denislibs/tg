@@ -19,6 +19,7 @@ import { useLang } from '../i18n'
 import { friendlyMsgTime } from '../core/friendlyTime'
 import { mediaThumbUrl } from '../core/mediaUrl'
 import type { Message } from '../core/models'
+import MediaLightbox, { type LightboxItem } from './messages/MediaLightbox'
 import s from './UserInfoPanel.module.scss'
 import useMediaQuery from '../shared/lib/useMediaQuery'
 
@@ -417,6 +418,28 @@ function SharedMedia({ tab, onTab, chatId }: { tab: string; onTab: (v: string) =
 
   const msgs = byFilter[filter]
   const when = (m: Message) => friendlyMsgTime(m.createdAt, lang)
+
+  // Просмотрщик медиа — тот же MediaLightbox, что в чате (клик по тайлу).
+  const [lightbox, setLightbox] = useState<{
+    items: LightboxItem[]
+    index: number
+    originRect: { top: number; left: number; width: number; height: number }
+    originSrc?: string
+    originEl: HTMLElement
+  } | null>(null)
+  const openMedia = (index: number, e: React.MouseEvent<HTMLDivElement>) => {
+    const list = (msgs ?? []).filter((m) => m.mediaId != null)
+    const items: LightboxItem[] = list.map((m) => ({ mediaId: m.mediaId as number, type: m.type, date: when(m) }))
+    const el = e.currentTarget
+    const r = el.getBoundingClientRect()
+    const img = el.querySelector('img')
+    el.style.visibility = 'hidden' // как в чате: оригинал прячется под клоном
+    setLightbox({
+      items, index,
+      originRect: { top: r.top, left: r.left, width: r.width, height: r.height },
+      originSrc: img?.currentSrc || img?.src, originEl: el,
+    })
+  }
   const empty = (
     <Text size={14} color="var(--tg-textSecondary)" style={{ padding: '16px 24px', display: 'block', textAlign: 'center' }}>
       {t('Nothing here yet.')}
@@ -446,7 +469,8 @@ function SharedMedia({ tab, onTab, chatId }: { tab: string; onTab: (v: string) =
             <div
               key={m.id}
               className={s.mediaTile}
-              style={{ borderRadius: i === 0 ? '8px 0 0 0' : i === 2 ? '0 8px 0 0' : 0 }}
+              onClick={(e) => openMedia(i, e)}
+              style={{ borderRadius: i === 0 ? '8px 0 0 0' : i === 2 ? '0 8px 0 0' : 0, cursor: 'pointer' }}
             >
               {m.mediaId != null && <img className={s.tileImg} src={mediaThumbUrl(m.mediaId)} alt="" loading="lazy" />}
               {m.type === 'video' && <span className={s.tileDuration}>{fmtDur(m.mediaDuration)}</span>}
@@ -504,6 +528,17 @@ function SharedMedia({ tab, onTab, chatId }: { tab: string; onTab: (v: string) =
             </div>
           ))}
         </div>
+      )}
+
+      {lightbox && (
+        <MediaLightbox
+          items={lightbox.items}
+          index={lightbox.index}
+          originRect={lightbox.originRect}
+          originSrc={lightbox.originSrc}
+          onClosingStart={() => { lightbox.originEl.style.visibility = '' }}
+          onClose={() => { lightbox.originEl.style.visibility = ''; setLightbox(null) }}
+        />
       )}
 
       {tab === 'Voice' && msgs != null && msgs.length > 0 && (
