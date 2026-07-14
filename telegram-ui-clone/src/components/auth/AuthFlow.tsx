@@ -10,7 +10,7 @@ import { useManagers } from '../../core/hooks/useManagers'
 import QrCode from './QrCode'
 import s from './AuthFlow.module.scss'
 
-const MotionIconButton = motion(IconButton)
+const MotionIconButton = motion.create(IconButton)
 
 type Step = 'phone' | 'qr' | 'code'
 

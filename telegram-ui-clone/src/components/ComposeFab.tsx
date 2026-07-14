@@ -8,7 +8,7 @@ import TgIcon from './TgIcon'
 import IconButton from '../shared/ui/IconButton'
 import ComposeMenu from './ComposeMenu'
 
-const MotionFab = motion(IconButton)
+const MotionFab = motion.create(IconButton)
 
 export interface ComposeFabProps {
   searching: boolean
