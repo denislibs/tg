@@ -1,0 +1,52 @@
+// Popup (tweb .popup): скрим + центрированная карточка.
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 4090;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.card {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 4091;
+  max-height: min(86vh, 720px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 24px;
+  background: var(--tg-sectionBackdrop);
+  box-shadow: var(--tg-menuShadow);
+  padding: 12px 16px 16px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0 10px;
+  flex: 0 0 auto;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+// широкая accent-кнопка снизу (КОПИРОВАТЬ ССЫЛКУ / СОХРАНИТЬ / ...)
+.action {
+  flex: 0 0 auto;
+  margin-top: 14px;
+  text-align: center;
+  padding: 13px 0;
+  border-radius: 24px;
+  background: var(--tg-accentGradient);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+}

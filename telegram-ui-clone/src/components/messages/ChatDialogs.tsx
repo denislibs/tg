@@ -1,3 +1,4 @@
+import { useState } from 'react'
 // Presentational chat dialogs/popups extracted from ConversationView: delete
 // confirm, forward target picker, "seen by" popup, add-member picker, and the
 // discard-voice confirm. Each is dumb — it self-sources i18n + motion constants
@@ -11,6 +12,7 @@ import TgIcon from '../TgIcon'
 import { EASE, DUR } from '../../motion'
 import { useT } from '../../i18n'
 import Avatar from '../../shared/ui/Avatar'
+import Popup from '../../shared/ui/Popup'
 import { peerColor } from '../peerColor'
 import type { Dialog } from '../../core/models'
 import s from './ChatDialogs.module.scss'
@@ -61,30 +63,40 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
   onClose: () => void
 }) {
   const t = useT()
-  return createPortal(
-    <div className={s.overlay} onClick={onClose}>
-      <motion.div
-        className={classNames(s.card, s.picker)}
-        onClick={(e) => e.stopPropagation()}
-        initial={{ opacity: 0, scale: 0.92 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.2, ease: EASE_STD }}
-      >
-        <Text size={17} weight={600} color="var(--tg-textPrimary)" className={s.pickerTitle}>{t('Forward to…')}</Text>
-        <div className={s.list}>
-          {dialogs.map((d) => {
-            const title = d.title || d.peer?.displayName || `Чат ${d.chatId}`
-            return (
-              <div key={d.chatId} className={s.listRow} onClick={() => onPick(d.chatId)}>
-                <Avatar background={peerColor(title)} text={title[0] ?? '?'} size="sm" />
-                <Text noWrap size={15} color="var(--tg-textPrimary)">{title}</Text>
-              </div>
-            )
-          })}
-        </div>
-      </motion.div>
-    </div>,
-    document.body,
+  const [q, setQ] = useState('')
+  const query = q.trim().toLowerCase()
+  const rows = dialogs
+    .map((d) => ({
+      chatId: d.chatId,
+      title: d.title || d.peer?.displayName || `Чат ${d.chatId}`,
+      sub: d.type === 'channel' ? t('Channel') : d.type === 'group' ? t('Group') : t('Private Chat'),
+    }))
+    .filter((r) => !query || r.title.toLowerCase().includes(query))
+  return (
+    <Popup title={t('Send')} onClose={onClose} width={440}>
+      {/* поиск (tweb popup-forward: серое поле сверху) */}
+      <div className={s.pickerSearch}>
+        <TgIcon name="search" size={20} color="var(--tg-textFaint)" />
+        <input
+          className={s.pickerSearchInput}
+          autoFocus
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder={t('Search')}
+        />
+      </div>
+      <div className={s.pickerList}>
+        {rows.map((r) => (
+          <div key={r.chatId} className={s.listRow} onClick={() => onPick(r.chatId)}>
+            <Avatar background={peerColor(r.title)} text={r.title[0] ?? '?'} size="md" />
+            <div className={s.pickerBody}>
+              <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{r.title}</Text>
+              <Text noWrap size={13.5} color="var(--tg-textSecondary)">{r.sub}</Text>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Popup>
   )
 }
 

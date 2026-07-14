@@ -188,3 +188,39 @@
 .danger {
   color: #ff595a;
 }
+
+// ── ForwardPicker на Popup ──
+.pickerSearch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  border-radius: 20px;
+  padding: 0 12px;
+  background: var(--tg-hover);
+  margin-bottom: 10px;
+  flex-shrink: 0;
+}
+.pickerSearchInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 15px;
+  color: var(--tg-textPrimary);
+  font-family: inherit;
+
+  &::placeholder {
+    color: var(--tg-textFaint);
+  }
+}
+.pickerList {
+  border-radius: 16px;
+  background: var(--tg-sidebarBg);
+  padding: 6px 4px;
+}
+.pickerBody {
+  flex: 1;
+  min-width: 0;
+}

@@ -30,36 +30,14 @@
   transform: scaleX(-1);
 }
 
-// ── модалка выбора устройства ──
-.scrim {
-  position: fixed;
-  inset: 0;
-  z-index: 90;
-  background: rgba(0, 0, 0, 0.45);
-}
-.dialog {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 91;
-  width: min(420px, calc(100vw - 32px));
-  border-radius: 24px;
-  background: var(--tg-sidebarBg);
-  padding: 12px 16px 16px;
-  box-shadow: var(--tg-menuShadow);
-}
-.dialogHeader {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 4px 0 8px;
-}
+// ── модалка выбора устройства (общий Popup) ──
+
+
+
 .options {
   border-radius: 16px;
-  background: var(--tg-sectionBackdrop);
+  background: var(--tg-sidebarBg);
   padding: 6px 0;
-  margin-bottom: 14px;
   max-height: 50vh;
   overflow-y: auto;
 }
@@ -97,15 +75,4 @@
     }
   }
 }
-.saveBtn {
-  text-align: center;
-  padding: 12px 0;
-  border-radius: 24px;
-  background: var(--tg-accentGradient);
-  color: #fff;
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  cursor: pointer;
-}
+

@@ -3,13 +3,12 @@
 // сохраняется в settings (speakerId/micId/cameraId/acceptCalls) — при
 // реализации звонков CallProvider читает эти deviceId.
 import { useEffect, useRef, useState } from 'react'
-import IconButton from '../../shared/ui/IconButton'
 import Text from '../../shared/ui/Text'
-import TgIcon from '../TgIcon'
 import { useT } from '../../i18n'
 import { useSettings } from '../../settings'
 import { SettingsScreen, Section, Row } from './kit'
 import { applyDeviceToActiveCall } from '../../core/calls/callEngine'
+import Popup from '../../shared/ui/Popup'
 import s from './SpeakersCamera.module.scss'
 
 type Kind = 'speaker' | 'mic' | 'camera'
@@ -173,7 +172,7 @@ export default function SpeakersCamera({ onBack }: { onBack: () => void }) {
   )
 }
 
-// Модалка выбора устройства: радио-список + «Сохранить» (по скринам tweb).
+// Модалка выбора устройства: общий Popup + радио-список + «Сохранить».
 function DevicePicker({
   title,
   options,
@@ -190,27 +189,15 @@ function DevicePicker({
   const t = useT()
   const [value, setValue] = useState(selected)
   return (
-    <>
-      <div className={s.scrim} onClick={onClose} />
-      <div className={s.dialog}>
-        <div className={s.dialogHeader}>
-          <IconButton size="small" onClick={onClose} color="var(--tg-textSecondary)">
-            <TgIcon name="close" size={22} />
-          </IconButton>
-          <Text size={19} weight={600} color="var(--tg-textPrimary)">{title}</Text>
-        </div>
-        <div className={s.options}>
-          {options.map((o) => (
-            <div key={o.id} className={s.option} onClick={() => setValue(o.id)}>
-              <span className={s.radio} data-on={value === o.id || undefined} />
-              <Text size={16} color="var(--tg-textPrimary)">{o.label}</Text>
-            </div>
-          ))}
-        </div>
-        <div className={s.saveBtn} onClick={() => onSave(value)}>
-          {t('Save')}
-        </div>
+    <Popup title={title} onClose={onClose} action={{ label: t('Save'), onClick: () => onSave(value) }}>
+      <div className={s.options}>
+        {options.map((o) => (
+          <div key={o.id} className={s.option} onClick={() => setValue(o.id)}>
+            <span className={s.radio} data-on={value === o.id || undefined} />
+            <Text size={16} color="var(--tg-textPrimary)">{o.label}</Text>
+          </div>
+        ))}
       </div>
-    </>
+    </Popup>
   )
 }
