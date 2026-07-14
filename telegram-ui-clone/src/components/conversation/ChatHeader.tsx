@@ -179,16 +179,9 @@ function ChatHeader({
     [search.results, resultPeers, meId, chat.name, lang],
   )
 
-  // Active result for the ↑/↓ navigation in the search bar (tweb): the arrows
-  // step through hits and jump the feed to each; the active row is highlighted.
+  // Активный (последний открытый) результат — подсветка строки в списке.
   const [activeIdx, setActiveIdx] = useState(0)
   useEffect(() => { setActiveIdx(0) }, [searchQuery])
-  const jumpTo = (i: number) => {
-    const n = Math.max(0, Math.min(searchResults.length - 1, i))
-    setActiveIdx(n)
-    const r = searchResults[n]
-    if (r) onPickResult(r.seq)
-  }
 
   // tweb: на handhelds плейты в 8px от краёв (--page-chats-padding: 8px)
   const narrow = useMediaQuery('(max-width:900px)')
@@ -208,29 +201,35 @@ function ChatHeader({
           transition={{ duration: DUR_IN, ease: EASE_STD }}
           style={{ ...barTop, transformOrigin: 'top center' }}
         >
-          {/* input row (the "input" — the card grows out of it) */}
+          {/* строка tweb topbar-search: аватар чата + серое поле input-search
+              (лупа + инпут + × внутри) + фильтры «от отправителя»/«по дате» */}
           <div className={s.searchInputRow}>
-            <TgIcon name="search" size={22} color="var(--tg-textFaint)" />
-            <input
-              className={s.searchInput}
-              autoFocus
-              value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); onSearchClose() } }}
-              placeholder={t('Search')}
+            <Avatar
+              background={chat.avatar}
+              text={chat.avatarText}
+              emoji={chat.avatarEmoji}
+              src={avatarSrc}
+              size="sm"
             />
-            {searchQuery.trim() && searchResults.length > 0 && (
-              <>
-                <IconButton size="small" onClick={() => jumpTo(activeIdx - 1)} disabled={activeIdx <= 0} color="var(--tg-textFaint)">
-                  <TgIcon name="up" />
-                </IconButton>
-                <IconButton size="small" onClick={() => jumpTo(activeIdx + 1)} disabled={activeIdx >= searchResults.length - 1} color="var(--tg-textFaint)">
-                  <TgIcon name="down" />
-                </IconButton>
-              </>
-            )}
-            <IconButton size="small" onClick={() => { if (searchQuery) onSearchClear(); else onSearchClose() }} color="var(--tg-textFaint)">
-              <TgIcon name="close" />
+            <div className={s.searchField}>
+              <TgIcon name="search" size={22} color="var(--tg-textFaint)" />
+              <input
+                className={s.searchInput}
+                autoFocus
+                value={searchQuery}
+                onChange={(e) => onSearchChange(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); onSearchClose() } }}
+                placeholder={t('Search')}
+              />
+              <IconButton size="small" onClick={() => { if (searchQuery) onSearchClear(); else onSearchClose() }} color="var(--tg-textFaint)">
+                <TgIcon name="close" size={20} />
+              </IconButton>
+            </div>
+            <IconButton color="var(--tg-textSecondary)">
+              <TgIcon name="newprivate" />
+            </IconButton>
+            <IconButton color="var(--tg-textSecondary)">
+              <TgIcon name="calendar" />
             </IconButton>
           </div>
 
