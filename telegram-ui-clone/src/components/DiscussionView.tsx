@@ -22,6 +22,7 @@ const FEED_FNS: FeedFns = {
   openMsgMenu: NOOP,
   jumpToSeq: NOOP,
   openLightbox: NOOP,
+  recall: NOOP,
 }
 const EMPTY_COUNTS = new Map<number, number>()
 const EMPTY_SELECTED = new Set<number>()

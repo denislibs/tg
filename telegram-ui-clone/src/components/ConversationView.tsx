@@ -9,6 +9,7 @@ import DiscussionView from './DiscussionView'
 import HeaderMenu from './HeaderMenu'
 import AttachMenu from './AttachMenu'
 import { CallProvider } from './call/CallProvider'
+import { startOutgoing } from '../core/calls/callEngine'
 import NowPlayingBar from './NowPlayingBar'
 import Preloader from './Preloader'
 import type { Chat, OpenPeer } from '../data'
@@ -228,6 +229,15 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const openMsgMenuE = useEvent(openMsgMenu)
   const jumpToSeqE = useEvent(jumpToSeq)
   const openLightboxE = useEvent(openLightbox)
+  // Перезвон по клику на бабл звонка (tweb: клик по messageMediaCall → startCall)
+  const recallE = useEvent((video: boolean) => {
+    if (chat.type !== 'private' || chat.peerId == null) return
+    startOutgoing(
+      { id: chat.peerId, name: chat.name, avatar: chat.avatar, avatarText: chat.avatarText, avatarUrl: chat.avatarUrl },
+      video,
+      isRealChat ? numericChatId : null,
+    )
+  })
   const feedFns = useMemo(
     () => ({
       openSender: openSenderE,
@@ -236,8 +246,9 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       openMsgMenu: openMsgMenuE,
       jumpToSeq: jumpToSeqE,
       openLightbox: openLightboxE,
+      recall: recallE,
     }),
-    [openSenderE, playVoiceE, toggleSelectE, openMsgMenuE, jumpToSeqE, openLightboxE],
+    [openSenderE, playVoiceE, toggleSelectE, openMsgMenuE, jumpToSeqE, openLightboxE, recallE],
   )
 
   // (Ack reconcile + send-rejection run in realtimeBridge → messagesStore; live

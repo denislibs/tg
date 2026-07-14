@@ -66,6 +66,8 @@ export interface FeedFns {
   openMsgMenu: (e: MouseEvent, m: ConvMsg) => void
   jumpToSeq: (seq?: number) => void
   openLightbox: (mediaId: number, el: HTMLElement) => void
+  /** перезвонить по клику на бабл звонка (tweb: клик по messageMediaCall) */
+  recall: (video: boolean) => void
 }
 
 export interface MessageRowProps {
@@ -248,7 +250,13 @@ function MessageRow({
         ) : m.type === 'roundVideo' ? (
           <RoundVideoBubble m={m} out={out} firstInGroup={firstInGroup} lastInGroup={lastInGroup} />
         ) : m.type === 'call' ? (
-          <CallBubble m={m} out={out} firstInGroup={firstInGroup} lastInGroup={lastInGroup} />
+          <CallBubble
+            m={m}
+            out={out}
+            firstInGroup={firstInGroup}
+            lastInGroup={lastInGroup}
+            onClick={selecting ? undefined : () => feedFns.recall(!!m.call?.video)}
+          />
         ) : (
           <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
             {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}

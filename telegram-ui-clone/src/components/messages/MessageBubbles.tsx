@@ -209,7 +209,7 @@ export function WebPagePreview({
  * «Исходящий/Входящий (видео)звонок», стрелка (зелёная — состоялся, красная —
  * нет) + длительность или причина, время + галочки.
  */
-export function CallBubble({ m, out, firstInGroup, lastInGroup }: { m: ConvMsg; out: boolean; firstInGroup: boolean; lastInGroup: boolean }) {
+export function CallBubble({ m, out, firstInGroup, lastInGroup, onClick }: { m: ConvMsg; out: boolean; firstInGroup: boolean; lastInGroup: boolean; onClick?: () => void }) {
   const t = useT()
   const call = m.call!
   const title = out
@@ -222,7 +222,11 @@ export function CallBubble({ m, out, firstInGroup, lastInGroup }: { m: ConvMsg; 
       : call.reason === 'missed' ? t('Missed call')
       : t('Cancelled call')
   return (
-    <div className={s.callBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
+    <div
+      className={s.callBubble}
+      onClick={onClick}
+      style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup), cursor: onClick ? 'pointer' : undefined }}
+    >
       {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
       <div className={s.callIcon}>
         <TgIcon name={call.video ? 'videocamera' : 'phone'} size={24} color="var(--tg-accent)" />
