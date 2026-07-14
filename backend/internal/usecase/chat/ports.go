@@ -70,6 +70,7 @@ type MessageRepo interface {
 	GetByID(ctx context.Context, msgID int64) (domain.Message, error)
 	GetByIDs(ctx context.Context, ids []int64) ([]domain.Message, error)
 	SearchMessages(ctx context.Context, chatID int64, q string, offset, limit int) ([]domain.Message, int, error)
+	MediaHistory(ctx context.Context, chatID int64, filter string, offset, limit int) ([]domain.Message, int, error)
 	GetAround(ctx context.Context, chatID, userID, centerSeq int64, limit int) ([]domain.Message, bool, bool, error)
 	GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int) ([]domain.Message, error)
 	UpdateText(ctx context.Context, msgID int64, text string, entities []domain.MessageEntity) (domain.Message, error)

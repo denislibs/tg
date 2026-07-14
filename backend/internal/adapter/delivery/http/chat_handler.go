@@ -353,6 +353,32 @@ func (h *ChatHandler) Viewers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"user_ids": ids})
 }
 
+// MediaHistory serves the profile's shared-media tabs:
+// GET /chats/{chatID}/media?filter=media|files|links|music|voice
+func (h *ChatHandler) MediaHistory(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	filter := r.URL.Query().Get("filter")
+	offset := int(queryInt(r, "offset", 0))
+	limit := int(queryInt(r, "limit", 30))
+	res, err := h.svc.MediaHistory(r.Context(), chatID, h.meID(r), filter, offset, limit)
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusForbidden, "not a member of this chat")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "media history failed")
+		return
+	}
+	out := make([]map[string]any, 0, len(res.Messages))
+	for _, m := range res.Messages {
+		out = append(out, messageJSON(m))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": res.Count})
+}
+
 func (h *ChatHandler) SearchMessages(w http.ResponseWriter, r *http.Request) {
 	chatID, ok := pathInt(w, r, "chatID")
 	if !ok {

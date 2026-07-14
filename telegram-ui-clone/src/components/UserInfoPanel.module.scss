@@ -102,10 +102,15 @@
 .mediaTile {
   position: relative;
   aspect-ratio: 1 / 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 30px;
+  overflow: hidden;
+  background: var(--tg-hover);
+}
+
+.tileImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 // бейдж длительности видео (верхний левый угол, как в tweb .video-time)
@@ -168,20 +173,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-// волноформа голосового
-.voiceWave {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  height: 20px;
-}
-
-.voiceWaveBar {
-  width: 2px;
-  border-radius: 1px;
-  background: var(--tg-accent);
 }
 
 // ряд «обсуждения включены»

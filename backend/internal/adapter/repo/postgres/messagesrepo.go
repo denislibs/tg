@@ -161,6 +161,50 @@ func (r *MessagesRepo) SearchMessages(ctx context.Context, chatID int64, q strin
 	return out, count, rows.Err()
 }
 
+// MediaHistory returns a chat's messages of one shared-media kind (the
+// profile's Media/Files/Links/Music/Voice tabs — tweb inputMessagesFilter*),
+// newest first. "links" is text messages containing a URL; the rest filter by
+// message type.
+func (r *MessagesRepo) MediaHistory(ctx context.Context, chatID int64, filter string, offset, limit int) ([]domain.Message, int, error) {
+	qq := querier(ctx, r.pool)
+	var cond string
+	switch filter {
+	case "media":
+		cond = `m.type IN ('photo','video')`
+	case "files":
+		cond = `m.type = 'document'`
+	case "music":
+		cond = `m.type = 'audio'`
+	case "voice":
+		cond = `m.type IN ('voice','roundVideo')`
+	case "links":
+		cond = `m.type = 'text' AND m.text ~* 'https?://'`
+	default:
+		return nil, 0, nil
+	}
+	where := ` FROM messages m WHERE m.chat_id=$1 AND m.deleted_at IS NULL AND ` + cond
+	var count int
+	if err := qq.QueryRow(ctx, `SELECT count(*)`+where, chatID).Scan(&count); err != nil {
+		return nil, 0, err
+	}
+	rows, err := qq.Query(ctx,
+		`SELECT `+messageColsPrefixed("m")+where+` ORDER BY m.seq DESC LIMIT $2 OFFSET $3`,
+		chatID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var out []domain.Message
+	for rows.Next() {
+		m, e := scanMessage(rows)
+		if e != nil {
+			return nil, 0, e
+		}
+		out = append(out, m)
+	}
+	return out, count, rows.Err()
+}
+
 // GetByIDs returns messages for the given ids (order unspecified); missing ids
 // are simply absent. Empty input → empty result.
 func (r *MessagesRepo) GetByIDs(ctx context.Context, ids []int64) ([]domain.Message, error) {

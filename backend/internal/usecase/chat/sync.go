@@ -156,6 +156,28 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 }
 
 // SearchMessages returns messages in a chat matching q (newest first) + total count.
+// MediaHistory lists a chat's shared media of one kind (profile tabs).
+func (i *Interactor) MediaHistory(ctx context.Context, chatID, userID int64, filter string, offset, limit int) (HistoryResult, error) {
+	ok, err := i.chats.IsMember(ctx, chatID, userID)
+	if err != nil {
+		return HistoryResult{}, err
+	}
+	if !ok {
+		return HistoryResult{}, domain.ErrNotFound
+	}
+	if limit <= 0 || limit > 60 {
+		limit = 30
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	msgs, count, err := i.msgs.MediaHistory(ctx, chatID, filter, offset, limit)
+	if err != nil {
+		return HistoryResult{}, err
+	}
+	return HistoryResult{Messages: msgs, Count: count}, nil
+}
+
 func (i *Interactor) SearchMessages(ctx context.Context, chatID, userID int64, q string, offset, limit int) (HistoryResult, error) {
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
 	if err != nil {

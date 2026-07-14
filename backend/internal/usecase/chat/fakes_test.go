@@ -357,6 +357,44 @@ func (r fakeMsgs) GetAround(_ context.Context, chatID, userID, centerSeq int64, 
 	return append(older, newer...), reachedTop, reachedBottom, nil
 }
 
+func (r fakeMsgs) MediaHistory(_ context.Context, chatID int64, filter string, offset, limit int) ([]domain.Message, int, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var out []domain.Message
+	all := r.s.messages[chatID]
+	for i := len(all) - 1; i >= 0; i-- { // newest first
+		m := all[i]
+		if m.Deleted {
+			continue
+		}
+		ok := false
+		switch filter {
+		case "media":
+			ok = m.Type == "photo" || m.Type == "video"
+		case "files":
+			ok = m.Type == "document"
+		case "music":
+			ok = m.Type == "audio"
+		case "voice":
+			ok = m.Type == "voice" || m.Type == "roundVideo"
+		case "links":
+			ok = m.Type == "text" && (strings.Contains(m.Text, "http://") || strings.Contains(m.Text, "https://"))
+		}
+		if ok {
+			out = append(out, m)
+		}
+	}
+	total := len(out)
+	if offset > len(out) {
+		offset = len(out)
+	}
+	out = out[offset:]
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, total, nil
+}
+
 func (r fakeMsgs) SearchMessages(_ context.Context, chatID int64, q string, offset, limit int) ([]domain.Message, int, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()

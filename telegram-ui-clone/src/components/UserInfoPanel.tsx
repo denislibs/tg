@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import TgSwitch from './TgSwitch'
@@ -14,46 +14,14 @@ import classNames from '../shared/lib/classNames'
 import type { Chat, OpenPeer } from '../data'
 import { useT } from '../i18n'
 import { useGroupInfo, RIGHTS, roleLabel, type RealMember } from '../core/hooks/useGroupInfo'
+import { useManagers } from '../core/hooks/useManagers'
+import { useLang } from '../i18n'
+import { friendlyMsgTime } from '../core/friendlyTime'
+import { mediaThumbUrl } from '../core/mediaUrl'
+import type { Message } from '../core/models'
 import s from './UserInfoPanel.module.scss'
 import useMediaQuery from '../shared/lib/useMediaQuery'
 
-
-// --- Моки шаред-медиа (пока нет реального API истории по типам контента).
-// Структура секции — 1:1 tweb sharedMedia.tsx: табы media/files/links/music/voice.
-const mockMedia: { gradient: string; emoji: string; duration?: string }[] = [
-  { gradient: 'linear-gradient(135deg,#3a2b5e,#120d20)', emoji: '🌃', duration: '0:21' },
-  { gradient: 'linear-gradient(135deg,#5b7bd6,#2a3a6e)', emoji: '🏔️' },
-  { gradient: 'linear-gradient(135deg,#caa98c,#7a5c44)', emoji: '🐕', duration: '0:19' },
-  { gradient: 'linear-gradient(135deg,#2c3e50,#4ca1af)', emoji: '🌊' },
-  { gradient: 'linear-gradient(135deg,#642b73,#c6426e)', emoji: '🌸' },
-  { gradient: 'linear-gradient(135deg,#11998e,#38ef7d)', emoji: '🌿' },
-  { gradient: 'linear-gradient(135deg,#f2994a,#f2c94c)', emoji: '🌅', duration: '1:02' },
-  { gradient: 'linear-gradient(135deg,#4b6cb7,#182848)', emoji: '🌌' },
-  { gradient: 'linear-gradient(135deg,#8e2de2,#4a00e0)', emoji: '🎆' },
-]
-const mockFiles = [
-  { name: 'Отчёт за июнь.pdf', meta: '2,4 МБ · 28 июн', ext: 'PDF', color: '#e5322e' },
-  { name: 'Смета_ремонт.xlsx', meta: '184 КБ · 25 июн', ext: 'XLS', color: '#00a884' },
-  { name: 'Договор аренды.docx', meta: '96 КБ · 19 июн', ext: 'DOC', color: '#4285f4' },
-  { name: 'backup_photos.zip', meta: '48,2 МБ · 11 июн', ext: 'ZIP', color: '#8774e1' },
-]
-const mockLinks = [
-  { title: 'Telegram Web', url: 'web.telegram.org/k', gradient: 'linear-gradient(135deg,#2aabee,#229ed9)' },
-  { title: 'tweb — Telegram Web K source', url: 'github.com/morethanwords/tweb', gradient: 'linear-gradient(135deg,#24292e,#57606a)' },
-  { title: 'MDN Web Docs', url: 'developer.mozilla.org', gradient: 'linear-gradient(135deg,#8e2de2,#4a00e0)' },
-]
-const mockMusic = [
-  { title: 'Shape of My Heart', artist: 'Sting', duration: '4:38' },
-  { title: 'Кукушка', artist: 'Кино', duration: '6:40' },
-  { title: 'Bohemian Rhapsody', artist: 'Queen', duration: '5:55' },
-]
-// высоты волноформы голосового (просто фиксированный узор)
-const VOICE_WAVE = [0.3, 0.5, 0.9, 0.6, 1, 0.7, 0.4, 0.8, 0.5, 0.9, 0.35, 0.6, 0.75, 0.4, 0.55]
-const mockVoice = [
-  { duration: '0:42', meta: '28 июн' },
-  { duration: '1:17', meta: '25 июн' },
-  { duration: '0:08', meta: '19 июн' },
-]
 
 export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void }) {
   const t = useT()
@@ -363,7 +331,9 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
 
           {/* Shared media: табы Медиа/Файлы/Ссылки/Музыка/Голосовые (tweb sharedMedia).
               Контент пока моковый — реального API истории по типам ещё нет. */}
-          <SharedMedia tab={tab} onTab={setTab} />
+          {/* isRealChat из useGroupInfo — только группы/каналы; для шаред-медиа
+              реальность чата определяем по numeric id (private тоже подходит) */}
+          <SharedMedia tab={tab} onTab={setTab} chatId={sharedMediaChatId(chat.id)} />
         </div>
 
         {/* Group add-member FAB */}
@@ -400,11 +370,59 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
 }
 
 // Табы шаред-медиа профиля. Набор и порядок — из tweb sharedMedia.tsx
-// (media → files → links → music → voice); контент — моки на наших примитивах.
+// (media → files → links → music → voice); данные — реальная история чата
+// (GET /chats/{id}/media?filter=...), загружается при первом открытии таба.
 const SHARED_TABS = ['Media', 'Files', 'Links', 'Music', 'Voice'] as const
 
-function SharedMedia({ tab, onTab }: { tab: string; onTab: (v: string) => void }) {
+// numeric id реального чата (private/группа/канал) либо null для драфтов
+function sharedMediaChatId(id: string): number | null {
+  const n = Number(id)
+  return Number.isFinite(n) && String(n) === id ? n : null
+}
+const TAB_FILTER: Record<string, 'media' | 'files' | 'links' | 'music' | 'voice'> = {
+  Media: 'media', Files: 'files', Links: 'links', Music: 'music', Voice: 'voice',
+}
+
+const fmtDur = (sec?: number) => sec == null ? '' : `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`
+function fmtSize(b?: number): string {
+  if (b == null) return ''
+  if (b >= 1 << 20) return `${(b / (1 << 20)).toFixed(1)} МБ`
+  if (b >= 1 << 10) return `${Math.max(1, Math.round(b / (1 << 10)))} КБ`
+  return `${b} Б`
+}
+const EXT_COLORS: Record<string, string> = {
+  pdf: '#e5322e', doc: '#4285f4', docx: '#4285f4', xls: '#00a884', xlsx: '#00a884',
+  zip: '#8774e1', rar: '#8774e1', png: '#f2994a', jpg: '#f2994a', jpeg: '#f2994a', mp4: '#642bc6',
+}
+const extOf = (name?: string) => (name?.includes('.') ? name.slice(name.lastIndexOf('.') + 1).toLowerCase() : '')
+const firstUrl = (text: string) => text.match(/https?:\/\/[^\s]+/)?.[0] ?? ''
+const hostOf = (url: string) => { try { return new URL(url).hostname } catch { return url } }
+
+function SharedMedia({ tab, onTab, chatId }: { tab: string; onTab: (v: string) => void; chatId: number | null }) {
   const t = useT()
+  const [lang] = useLang()
+  const managers = useManagers()
+  // кэш по фильтру: загружаем таб один раз за открытие панели
+  const [byFilter, setByFilter] = useState<Partial<Record<string, Message[]>>>({})
+  const filter = TAB_FILTER[tab]
+
+  useEffect(() => {
+    if (chatId == null || byFilter[filter]) return
+    void managers.messages
+      .mediaHistory(chatId, filter)
+      .then((r) => setByFilter((d) => ({ ...d, [filter]: r.messages })))
+      .catch(() => setByFilter((d) => ({ ...d, [filter]: [] })))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId, filter])
+
+  const msgs = byFilter[filter]
+  const when = (m: Message) => friendlyMsgTime(m.createdAt, lang)
+  const empty = (
+    <Text size={14} color="var(--tg-textSecondary)" style={{ padding: '16px 24px', display: 'block', textAlign: 'center' }}>
+      {t('Nothing here yet.')}
+    </Text>
+  )
+
   return (
     <>
       {/* Тот же framed-таб-ряд, что и у папок в списке чатов (FolderTabs) */}
@@ -420,81 +438,84 @@ function SharedMedia({ tab, onTab }: { tab: string; onTab: (v: string) => void }
         </Tabs>
       </div>
 
-      {tab === 'Media' && (
+      {msgs != null && msgs.length === 0 && empty}
+
+      {tab === 'Media' && msgs != null && msgs.length > 0 && (
         <div className={s.mediaGrid}>
-          {mockMedia.map((m, i) => (
+          {msgs.map((m, i) => (
             <div
-              key={i}
+              key={m.id}
               className={s.mediaTile}
-              style={{ background: m.gradient, borderRadius: i === 0 ? '8px 0 0 0' : i === 2 ? '0 8px 0 0' : 0 }}
+              style={{ borderRadius: i === 0 ? '8px 0 0 0' : i === 2 ? '0 8px 0 0' : 0 }}
             >
-              <span className={s.tileEmoji}>{m.emoji}</span>
-              {m.duration && <span className={s.tileDuration}>{m.duration}</span>}
+              {m.mediaId != null && <img className={s.tileImg} src={mediaThumbUrl(m.mediaId)} alt="" loading="lazy" />}
+              {m.type === 'video' && <span className={s.tileDuration}>{fmtDur(m.mediaDuration)}</span>}
             </div>
           ))}
         </div>
       )}
 
-      {tab === 'Files' && (
+      {tab === 'Files' && msgs != null && msgs.length > 0 && (
         <div className={s.mediaList}>
-          {mockFiles.map((f) => (
-            <div key={f.name} className={s.mediaRow}>
-              <div className={s.rowSquare} style={{ background: f.color }}>{f.ext}</div>
-              <div className={s.grow}>
-                <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{f.name}</Text>
-                <Text size={13.5} color="var(--tg-textSecondary)">{f.meta}</Text>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {tab === 'Links' && (
-        <div className={s.mediaList}>
-          {mockLinks.map((l) => (
-            <div key={l.url} className={s.mediaRow}>
-              <div className={s.rowSquare} style={{ background: l.gradient }}>
-                <TgIcon name="link" size={22} color="#fff" />
+          {msgs.map((m) => (
+            <div key={m.id} className={s.mediaRow}>
+              <div className={s.rowSquare} style={{ background: EXT_COLORS[extOf(m.mediaName)] ?? 'var(--tg-accent)' }}>
+                {extOf(m.mediaName).toUpperCase().slice(0, 4) || 'FILE'}
               </div>
               <div className={s.grow}>
-                <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{l.title}</Text>
-                <Text noWrap size={13.5} color="var(--tg-link)">{l.url}</Text>
+                <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{m.mediaName || t('Document')}</Text>
+                <Text size={13.5} color="var(--tg-textSecondary)">{[fmtSize(m.mediaSize), when(m)].filter(Boolean).join(' · ')}</Text>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {tab === 'Music' && (
+      {tab === 'Links' && msgs != null && msgs.length > 0 && (
         <div className={s.mediaList}>
-          {mockMusic.map((a) => (
-            <div key={a.title} className={s.mediaRow}>
-              <div className={s.rowPlay}>
-                <TgIcon name="play" size={22} color="#fff" />
-              </div>
-              <div className={s.grow}>
-                <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{a.title}</Text>
-                <Text noWrap size={13.5} color="var(--tg-textSecondary)">{a.artist} · {a.duration}</Text>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {tab === 'Voice' && (
-        <div className={s.mediaList}>
-          {mockVoice.map((v, i) => (
-            <div key={i} className={s.mediaRow}>
-              <div className={s.rowPlay}>
-                <TgIcon name="play" size={22} color="#fff" />
-              </div>
-              <div className={s.grow}>
-                <div className={s.voiceWave}>
-                  {VOICE_WAVE.map((h, wi) => (
-                    <span key={wi} className={s.voiceWaveBar} style={{ height: `${Math.round(4 + h * 14)}px` }} />
-                  ))}
+          {msgs.map((m) => {
+            const url = firstUrl(m.text)
+            return (
+              <div key={m.id} className={s.mediaRow} onClick={() => window.open(url, '_blank', 'noopener')} style={{ cursor: 'pointer' }}>
+                <div className={s.rowSquare} style={{ background: 'var(--tg-accentGradient)' }}>
+                  {hostOf(url).charAt(0).toUpperCase()}
                 </div>
-                <Text size={13.5} color="var(--tg-textSecondary)">{v.duration} · {v.meta}</Text>
+                <div className={s.grow}>
+                  <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{hostOf(url)}</Text>
+                  <Text noWrap size={13.5} color="var(--tg-link)">{url}</Text>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {tab === 'Music' && msgs != null && msgs.length > 0 && (
+        <div className={s.mediaList}>
+          {msgs.map((m) => (
+            <div key={m.id} className={s.mediaRow}>
+              <div className={s.rowPlay}>
+                <TgIcon name="play" size={22} color="#fff" />
+              </div>
+              <div className={s.grow}>
+                <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{m.mediaName || t('Audio')}</Text>
+                <Text noWrap size={13.5} color="var(--tg-textSecondary)">{[fmtDur(m.mediaDuration), when(m)].filter(Boolean).join(' · ')}</Text>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === 'Voice' && msgs != null && msgs.length > 0 && (
+        <div className={s.mediaList}>
+          {msgs.map((m) => (
+            <div key={m.id} className={s.mediaRow}>
+              <div className={s.rowPlay}>
+                <TgIcon name="play" size={22} color="#fff" />
+              </div>
+              <div className={s.grow}>
+                <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{t('Voice message')}</Text>
+                <Text size={13.5} color="var(--tg-textSecondary)">{[fmtDur(m.mediaDuration), when(m)].filter(Boolean).join(' · ')}</Text>
               </div>
             </div>
           ))}

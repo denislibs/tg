@@ -50,6 +50,7 @@ export interface Managers {
     listPins(chatId: number): Promise<Message[]>
     viewers(chatId: number, msgId: number): Promise<number[]>
     searchMessages(chatId: number, q: string, offset?: number, limit?: number): Promise<{ messages: Message[]; count: number }>
+    mediaHistory(chatId: number, filter: 'media' | 'files' | 'links' | 'music' | 'voice', offset?: number, limit?: number): Promise<{ messages: Message[]; count: number }>
     getAround(chatId: number, centerSeq: number, limit?: number): Promise<{ messages: Message[]; reachedTop: boolean; reachedBottom: boolean }>
   }
   realtime: {

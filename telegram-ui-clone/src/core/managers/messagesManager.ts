@@ -207,6 +207,13 @@ export function newMessagesManager({ rest }: MessagesDeps) {
     },
 
     // Search messages in a chat by text (newest first) + total match count.
+    // Шаред-медиа профиля (табы Media/Files/Links/Music/Voice) — история чата
+    // одного типа, новые сверху (tweb inputMessagesFilter*).
+    async mediaHistory(chatId: number, filter: 'media' | 'files' | 'links' | 'music' | 'voice', offset = 0, limit = 30): Promise<{ messages: Message[]; count: number }> {
+      const r = await rest.get<{ messages: RawMessage[]; count: number }>(`/chats/${chatId}/media`, { filter, offset, limit })
+      return { messages: (r.messages ?? []).map(mapMessage), count: r.count }
+    },
+
     async searchMessages(chatId: number, q: string, offset = 0, limit = 20): Promise<{ messages: Message[]; count: number }> {
       const r = await rest.get<{ messages: RawMessage[]; count: number }>(`/chats/${chatId}/search`, { q, offset, limit })
       return { messages: (r.messages ?? []).map(mapMessage), count: r.count }
