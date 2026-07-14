@@ -38,7 +38,7 @@
   overflow: hidden;
   display: flex;
   align-items: center;
-  height: 48px;
+  height: var(--chat-plate-height);
   padding: 0 4px;
   border-radius: 24px;
   background: var(--tg-bubble);

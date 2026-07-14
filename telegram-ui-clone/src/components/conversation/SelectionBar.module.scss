@@ -19,7 +19,7 @@
 
   // мобилка: плейт 48px высотой, в 8px от низа и краёв (как остальные плейты)
   @media (max-width: 900px) {
-    height: 48px;
+    height: var(--chat-plate-height);
     bottom: 8px;
     left: 8px;
     right: 8px;

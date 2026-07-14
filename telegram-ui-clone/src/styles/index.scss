@@ -28,6 +28,9 @@ html {
   --page-chats-padding: 16px;
   --folders-sidebar-offset: 0px;
   --main-column-border-radius: #{$border-radius-big};
+  // Высота плавающих плейтов чата (хедер, поиск, pinned, selection, плеер,
+  // строка композера) — tweb --chat-input-height: 3rem (base.scss).
+  --chat-plate-height: 48px;
 }
 
 @include respond-to(handhelds) {
