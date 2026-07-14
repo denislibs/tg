@@ -331,7 +331,9 @@ function ChatHeader({
               </IconButton>
             </>
           )}
-          <IconButton onClick={onSearchOpen} color="var(--tg-textSecondary)">
+          {/* На мобилке лупа скрыта — поиск открывается пунктом меню «⋮»
+              (tweb topbar.ts: menuButton 'Search', verify isMobile) */}
+          <IconButton onClick={onSearchOpen} color="var(--tg-textSecondary)" className={s.desktopOnly}>
             <TgIcon name="search" />
           </IconButton>
           <IconButton onClick={(e) => onOpenMenu(e.currentTarget.getBoundingClientRect())} color="var(--tg-textSecondary)">

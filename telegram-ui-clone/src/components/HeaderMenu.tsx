@@ -4,6 +4,8 @@ import TgIcon from './TgIcon'
 import Menu, { MenuItem } from '../shared/ui/Menu'
 import { useCall } from './call/CallProvider'
 import { SERVICE_USER_ID } from '../core/dialogToChat'
+import { useSearchStore } from '../stores/searchStore'
+import useMediaQuery from '../shared/lib/useMediaQuery'
 import type { Chat } from '../data'
 import { useT } from '../i18n'
 
@@ -22,6 +24,7 @@ interface Props {
 export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddMember, onSelectMessages, onAddContact }: Props) {
   const t = useT()
   const { start: startCall } = useCall()
+  const setSearchOpen = useSearchStore((s) => s.setOpen)
   const [autoOpen, setAutoOpen] = useState(false)
   const muted = !!chat.muted
   const owned = !!chat.owned
@@ -32,6 +35,15 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
     ? { icon: <TgIcon name="unmute" size={20} />, label: 'Unmute', onClick: handleMute }
     : { icon: <TgIcon name="mute" size={20} />, label: 'Mute', onClick: handleMute }
 
+  // На мобилке лупа скрыта из шапки — поиск живёт пунктом меню
+  // (tweb topbar.ts: menuButton 'Search', verify: mediaSizes.isMobile).
+  const narrow = useMediaQuery('(max-width:900px)')
+  const numericChatId = Number(chat.id)
+  const searchItems: Item[] =
+    narrow && Number.isFinite(numericChatId) && String(numericChatId) === chat.id
+      ? [{ icon: <TgIcon name="search" size={20} />, label: 'Search', onClick: () => { setSearchOpen(numericChatId, true); onClose() } }]
+      : []
+
   let items: Item[]
   if (chat.type === 'private') {
     // Сервисному аккаунту «Telegram» нельзя позвонить, заблокировать его или
@@ -39,6 +51,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
     const isService = chat.peerId === SERVICE_USER_ID
     items = [
       { icon: <TgIcon name="timer" size={20} />, label: 'Auto-delete', submenu: true },
+      ...searchItems,
       muteItem,
       ...(!isService
         ? [
@@ -60,6 +73,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
   } else if (chat.type === 'group') {
     items = [
       { icon: <TgIcon name="timer" size={20} />, label: 'Auto-delete', submenu: true },
+      ...searchItems,
       muteItem,
       ...(onAddMember
         ? [{ icon: <TgIcon name="adduser" size={20} />, label: 'Add member', onClick: () => { onAddMember(); onClose() } }]
@@ -72,6 +86,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
     // owned channel
     items = [
       { icon: <TgIcon name="timer" size={20} />, label: 'Auto-delete', submenu: true },
+      ...searchItems,
       muteItem,
       { icon: <TgIcon name="livestream" size={20} />, label: 'Live Stream' },
       { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); onClose() } : undefined },
@@ -82,6 +97,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
   } else {
     // channel you don't own
     items = [
+      ...searchItems,
       muteItem,
       { icon: <TgIcon name="message" size={20} />, label: 'View discussion' },
       { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); onClose() } : undefined },

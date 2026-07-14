@@ -61,11 +61,10 @@ const padBottom = (narrow: boolean) => (narrow ? 56 : 64) // real feed padding
 // Local start-of-day in ms (the date "bucket"), and a friendly day label for the
 // date divider — tweb shows Today / Yesterday / "14 June" (with year if not this year).
 const FLOOR = 'rgba(255,255,255,0.24)'
-// Bottom keeps a faint floor (messages melt behind the composer); the TOP fades
-// fully to transparent so nothing bleeds above the floating header.
-const mixB = (k: number) => `color-mix(in srgb, #000 ${k}%, ${FLOOR})`
-const mixT = (k: number) => `color-mix(in srgb, #000 ${k}%, transparent)`
-const feedMask = (fadeT: number, fadeB: number) => `linear-gradient(to bottom, transparent 0, ${mixT(8.6)} ${fadeT * 0.2}px, ${mixT(33.4)} ${fadeT * 0.4}px, ${mixT(66.6)} ${fadeT * 0.6}px, ${mixT(91.4)} ${fadeT * 0.8}px, #000 ${fadeT}px, #000 calc(100% - ${fadeB}px), ${mixB(91.4)} calc(100% - ${fadeB * 0.8}px), ${mixB(66.6)} calc(100% - ${fadeB * 0.6}px), ${mixB(33.4)} calc(100% - ${fadeB * 0.4}px), ${mixB(8.6)} calc(100% - ${fadeB * 0.2}px), ${FLOOR} 100%)`
+// Both edges keep the same faint floor (tweb --bubbles-scrollable-fade-color):
+// messages stay slightly visible behind the floating header AND composer.
+const mix = (k: number) => `color-mix(in srgb, #000 ${k}%, ${FLOOR})`
+const feedMask = (fadeT: number, fadeB: number) => `linear-gradient(to bottom, ${FLOOR} 0, ${mix(8.6)} ${fadeT * 0.2}px, ${mix(33.4)} ${fadeT * 0.4}px, ${mix(66.6)} ${fadeT * 0.6}px, ${mix(91.4)} ${fadeT * 0.8}px, #000 ${fadeT}px, #000 calc(100% - ${fadeB}px), ${mix(91.4)} calc(100% - ${fadeB * 0.8}px), ${mix(66.6)} calc(100% - ${fadeB * 0.6}px), ${mix(33.4)} calc(100% - ${fadeB * 0.4}px), ${mix(8.6)} calc(100% - ${fadeB * 0.2}px), ${FLOOR} 100%)`
 
 // Telegram's per-peer color palette (used to tint reply previews by their author)
 
