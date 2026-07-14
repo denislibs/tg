@@ -2,7 +2,7 @@
 // The sidebar's compose FAB (bottom-right ✎). It owns the open/closed state of the
 // compose menu (so Sidebar no longer holds composeOpen) and renders ComposeMenu
 // itself. Hidden while the search is open.
-import { memo, useState, type CSSProperties } from 'react'
+import { memo, useRef, useState, type CSSProperties } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import IconButton from '../shared/ui/IconButton'
@@ -20,6 +20,15 @@ export interface ComposeFabProps {
 function ComposeFab({ searching, onNewGroup, onNewPrivate, onNewChannel }: ComposeFabProps) {
   const [open, setOpen] = useState(false)
   const close = () => setOpen(false)
+  const fabRef = useRef<HTMLButtonElement>(null)
+  // Меню растёт из правого верхнего угла FAB (tweb: btn-menu над кнопкой,
+  // выровнено по её правому краю) — позиция от живого ректа, а не хардкод.
+  const [anchor, setAnchor] = useState<{ right: number; bottom: number } | null>(null)
+  const toggle = () => {
+    const r = fabRef.current?.getBoundingClientRect()
+    if (r) setAnchor({ right: window.innerWidth - r.right, bottom: window.innerHeight - r.top + 8 })
+    setOpen((o) => !o)
+  }
 
   return (
     <>
@@ -27,7 +36,8 @@ function ComposeFab({ searching, onNewGroup, onNewPrivate, onNewChannel }: Compo
       <AnimatePresence>
         {!searching && (
           <MotionFab
-            onClick={() => setOpen((o) => !o)}
+            ref={fabRef}
+            onClick={toggle}
             initial={{ y: 96, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 96, opacity: 0 }}
@@ -57,6 +67,7 @@ function ComposeFab({ searching, onNewGroup, onNewPrivate, onNewChannel }: Compo
 
       <ComposeMenu
         open={open}
+        anchor={anchor}
         onClose={close}
         onNewGroup={onNewGroup}
         onNewPrivate={onNewPrivate}

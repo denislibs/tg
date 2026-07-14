@@ -4,19 +4,21 @@ import { useT } from '../i18n'
 
 interface Props {
   open: boolean
+  /** позиция от FAB (right/bottom в px от краёв вьюпорта); null до первого открытия */
+  anchor: { right: number; bottom: number } | null
   onClose: () => void
   onNewGroup?: () => void
   onNewPrivate?: () => void
   onNewChannel?: () => void
 }
 
-export default function ComposeMenu({ open, onClose, onNewGroup, onNewPrivate, onNewChannel }: Props) {
+export default function ComposeMenu({ open, anchor, onClose, onNewGroup, onNewPrivate, onNewChannel }: Props) {
   const t = useT()
   return (
     <Menu
       open={open}
       onClose={onClose}
-      style={{ left: 116, bottom: 96, transformOrigin: 'bottom right' }}
+      style={{ right: anchor?.right ?? 20, bottom: anchor?.bottom ?? 96, transformOrigin: 'bottom right' }}
     >
       <MenuItem
         icon={<TgIcon name="newchannel" size={20} />}
