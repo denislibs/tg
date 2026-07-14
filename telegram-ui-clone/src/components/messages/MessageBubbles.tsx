@@ -7,6 +7,8 @@ import s from './MessageBubbles.module.scss'
 
 export function Ticks({ status, color }: { status?: MsgStatus; color: string }) {
   if (!status) return null
+  if (status === 'sending') return <TgIcon name="sending" size={16} color={color} />
+  if (status === 'error') return <TgIcon name="sendingerror" size={16} color="#ff595a" />
   return <TgIcon name={status === 'read' ? 'checks' : 'check'} size={16} color={color} />
 }
 

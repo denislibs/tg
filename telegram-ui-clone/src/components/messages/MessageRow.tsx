@@ -109,7 +109,14 @@ function MessageRow({
       data-mid={m.id}
       data-seq={seq}
       onContextMenu={selecting ? undefined : (e: MouseEvent) => feedFns.openMsgMenu(e, m)}
-      onClick={selecting && m.id != null ? () => feedFns.toggleSelect(m.id!) : undefined}
+      // Обычный клик по error-баблу открывает то же меню (Переотправить/Удалить).
+      onClick={
+        selecting && m.id != null
+          ? () => feedFns.toggleSelect(m.id!)
+          : m.status === 'error'
+            ? (e: MouseEvent) => feedFns.openMsgMenu(e, m)
+            : undefined
+      }
       style={rowStyle}
     >
       {/* Jump-to-message flash (fades in then out). */}
@@ -189,7 +196,7 @@ function MessageRow({
                       <span className={s.mediaTimeText} style={{ color: out ? 'var(--tg-bubbleOutAccent)' : 'var(--tg-textFaint)' }}>
                         {m.time}
                       </span>
-                      {out && <TgIcon name={m.status === 'read' ? 'checks' : 'check'} size={16} color="var(--b-tick)" />}
+                      {out && <Ticks status={m.status} color="var(--b-tick)" />}
                     </span>
                   )}
                 </div>

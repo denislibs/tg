@@ -90,6 +90,9 @@ export interface Message {
    * (when `id`/`seq` are rewritten to server values) so the React key never
    * changes and the bubble isn't remounted mid-animation. */
   clientId?: string
+  /** Send was rejected (message_error): the bubble stays with a red error mark
+   * until the user retries or removes it (tweb sendingerror). */
+  failed?: boolean
   editedAt?: string | null
   deleted?: boolean
   // Forward attribution (set when the message was forwarded from elsewhere).

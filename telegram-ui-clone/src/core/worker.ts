@@ -62,6 +62,12 @@ const sync = newSyncEngine({
 })
 const conn = newConnectionManager({
   ws, getToken: () => tokens.get(),
+  // Unacked sends persist in IndexedDB: a reload doesn't lose queued messages —
+  // they're restored into the outbox and resent on the next connect.
+  outboxStore: {
+    load: () => idbGet<import('./realtime/connectionManager').SendArgs[]>('outbox'),
+    save: (list) => { void idbSet('outbox', list) },
+  },
   onReady: () => { void sync.catchUp() },
   onState: (s) => broadcast(RT.state, { state: s }),
   onFrame: (type, payload) => {

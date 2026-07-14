@@ -63,6 +63,10 @@ interface MessagesState {
   /** Reconcile/fail by clientMsgId alone (ack/error frames carry no chat_id). */
   reconcileAckByClient: (clientMsgId: string, ack: { msgId: number; seq: number; createdAt: string }) => void
   failOptimisticByClient: (clientMsgId: string) => void
+  /** Failed bubble → back to 'sending' before the send is retried. */
+  retryOptimistic: (chatId: number, clientMsgId: string) => void
+  /** Drop a failed optimistic bubble entirely (user chose «delete»). */
+  removeOptimistic: (chatId: number, clientMsgId: string) => void
   applyIncoming: (chatId: number, m: Message) => void
   applyEdit: (chatId: number, msgId: number, text: string, editedAt: string, entities?: MessageEntity[]) => void
   applyDelete: (chatId: number, msgId: number) => void
@@ -138,7 +142,20 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       }))
     }),
 
+  // Rejected send: keep the bubble with a red error mark (tweb sendingerror) —
+  // the user decides to retry or delete it. The pending maps stay so a later
+  // retry's ack can still reconcile the same bubble.
   failOptimistic: (chatId, clientMsgId) =>
+    set((s) => patch(s, chatId, (w) => ({
+      msgs: w.msgs.map((m) => (m.clientId === clientMsgId ? { ...m, failed: true } : m)),
+    }))),
+
+  retryOptimistic: (chatId, clientMsgId) =>
+    set((s) => patch(s, chatId, (w) => ({
+      msgs: w.msgs.map((m) => (m.clientId === clientMsgId ? { ...m, failed: undefined } : m)),
+    }))),
+
+  removeOptimistic: (chatId, clientMsgId) =>
     set((s) => {
       pendingFor(chatId).delete(clientMsgId)
       clientToChat.delete(clientMsgId)

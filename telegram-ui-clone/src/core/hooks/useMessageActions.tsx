@@ -11,6 +11,7 @@ import type { ReactNode } from 'react'
 import TgIcon from '../../components/TgIcon'
 import { peerColor } from '../../components/peerColor'
 import { useEvent } from './useEvent'
+import { useMessagesStore } from '../../stores/messagesStore'
 import type { Chat, ConvMsg } from '../../data'
 import type { Managers } from '../../client/bootstrap'
 import type { MessageWindow } from './useMessageWindow'
@@ -178,7 +179,31 @@ export function useMessageActions({
     setViewers({ x: Math.min(x, window.innerWidth - 240), y: Math.min(y, window.innerHeight - 320), names })
   }
 
-  const msgMenuItems: MsgMenuItem[] = [
+  // Неотправленное сообщение (message_error): вместо обычного меню — только
+  // «Переотправить» / «Удалить» (tweb: контекст-меню error-бабла).
+  const resendFailed = () => {
+    const raw = menuRawMsg()
+    setMsgMenu(null)
+    if (!raw?.failed || !raw.clientId) return
+    useMessagesStore.getState().retryOptimistic(numericChatId, raw.clientId)
+    void managers.realtime.sendMessage({
+      chatId: numericChatId, text: raw.text, entities: raw.entities,
+      clientMsgId: raw.clientId, replyToId: raw.replyToId, mediaId: raw.mediaId,
+      type: raw.type !== 'text' ? raw.type : undefined,
+    })
+  }
+  const removeFailed = () => {
+    const raw = menuRawMsg()
+    setMsgMenu(null)
+    if (raw?.clientId) useMessagesStore.getState().removeOptimistic(numericChatId, raw.clientId)
+  }
+  const failedMenuItems: MsgMenuItem[] = [
+    { icon: <TgIcon name="send" size={20} />, label: 'Resend', onClick: resendFailed },
+    { icon: <TgIcon name="copy" size={20} />, label: 'Copy', onClick: copyMsg },
+    { icon: <TgIcon name="delete" size={20} />, label: 'Delete', danger: true, onClick: removeFailed },
+  ]
+
+  const regularMenuItems: MsgMenuItem[] = [
     { icon: <TgIcon name="reply" size={20} />, label: 'Reply', onClick: startReply },
     ...(isRealChat && (msgs[msgMenu?.idx ?? -1]?.out ?? false)
       ? [{ icon: <TgIcon name="edit" size={20} />, label: 'Edit', onClick: startEdit }]
@@ -202,6 +227,8 @@ export function useMessageActions({
       : []),
     ...(isRealChat ? [{ icon: <TgIcon name="delete" size={20} />, label: 'Delete', danger: true, onClick: openDelete }] : []),
   ]
+
+  const msgMenuItems: MsgMenuItem[] = menuRawMsg()?.failed ? failedMenuItems : regularMenuItems
 
   return {
     msgMenu, openMsgMenu, closeMsgMenu: () => setMsgMenu(null), msgMenuItems,

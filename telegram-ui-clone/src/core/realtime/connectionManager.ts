@@ -11,6 +11,9 @@ export interface CMDeps {
   onReady: () => void
   onState: (s: ConnState) => void
   onFrame: (type: string, payload: unknown) => void // new_message/read/typing/presence/reaction/message_ack
+  /** Durable outbox storage (IndexedDB in the worker): unacked sends survive a
+   * page reload and are resent on the next connect. */
+  outboxStore?: { load: () => Promise<SendArgs[] | undefined>; save: (list: SendArgs[]) => void }
   now?: () => number
 }
 
@@ -19,8 +22,17 @@ const PONG_GRACE = 2 // missed pongs before force-reconnect
 const MAX_BACKOFF = 30_000
 const FRAME_TYPES = ['new_message', 'edit_message', 'delete_message', 'pin_message', 'read', 'typing', 'presence', 'reaction', 'message_ack', 'message_error', 'pong']
 
-export function newConnectionManager({ ws, getToken, onReady, onState, onFrame }: CMDeps) {
+export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, outboxStore }: CMDeps) {
   const outbox = new Map<string, SendArgs>()
+  const persistOutbox = () => { outboxStore?.save([...outbox.values()]) }
+  // Restore unacked sends from the previous session; entries queued this session
+  // win (restored ones never overwrite fresh ones with the same clientMsgId).
+  let outboxRestored = !outboxStore
+  const outboxRestoredP = outboxStore
+    ? outboxStore.load().then((list) => {
+        for (const m of list ?? []) if (!outbox.has(m.clientMsgId)) outbox.set(m.clientMsgId, m)
+      }).catch(() => {}).finally(() => { outboxRestored = true })
+    : null
   let state: ConnState = 'offline'
   let attempt = 0
   let hbTimer: ReturnType<typeof setInterval> | null = null
@@ -37,7 +49,12 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame }
       attempt = 0; missedPongs = 0
       setState('ready')
       startHeartbeat()
-      for (const m of outbox.values()) sendFrame(m) // resend unacked
+      // resend unacked (incl. entries restored from the durable store); sync when
+      // the restore already finished (or there is no store) — first connect only
+      // waits for the async IndexedDB load.
+      const resend = () => { for (const m of outbox.values()) sendFrame(m) }
+      if (outboxRestored) resend()
+      else void outboxRestoredP?.then(() => { if (ws.isOpen()) resend() })
       onReady()
     })
     ws.onClose(() => { stopHeartbeat(); if (state !== 'offline') scheduleReconnect() })
@@ -45,10 +62,10 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame }
     for (const t of FRAME_TYPES) {
       ws.on(t, (d) => {
         if (t === 'pong') { missedPongs = 0; return }
-        if (t === 'message_ack') { const id = (d as { client_msg_id?: string })?.client_msg_id; if (id) outbox.delete(id) }
+        if (t === 'message_ack') { const id = (d as { client_msg_id?: string })?.client_msg_id; if (id) { outbox.delete(id); persistOutbox() } }
         // A rejected send (e.g. too long): drop it from the outbox so it isn't
-        // resent forever on every reconnect, then let the UI clear the bubble.
-        if (t === 'message_error') { const id = (d as { client_msg_id?: string })?.client_msg_id; if (id) outbox.delete(id) }
+        // resent forever on every reconnect; the UI marks the bubble failed.
+        if (t === 'message_error') { const id = (d as { client_msg_id?: string })?.client_msg_id; if (id) { outbox.delete(id); persistOutbox() } }
         onFrame(t, d)
       })
     }
@@ -87,7 +104,7 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame }
     stop() { if (reconnectTimer) clearTimeout(reconnectTimer); stopHeartbeat(); state = 'offline'; ws.close() },
     state: () => state,
     outboxSize: () => outbox.size,
-    sendMessage(m: SendArgs) { outbox.set(m.clientMsgId, m); if (ws.isOpen()) sendFrame(m) },
+    sendMessage(m: SendArgs) { outbox.set(m.clientMsgId, m); persistOutbox(); if (ws.isOpen()) sendFrame(m) },
     markRead(chatId: number, upToSeq: number) { if (ws.isOpen()) ws.send('read', { chat_id: chatId, up_to_seq: upToSeq }) },
     sendTyping(chatId: number, action: 'typing' | 'voice' | 'video' = 'typing') { if (ws.isOpen()) ws.send('typing', { chat_id: chatId, action }) },
     subscribeChannel(chatId: number) { if (ws.isOpen()) ws.send('subscribe_channel', { chat_id: chatId }) },

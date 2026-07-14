@@ -1,7 +1,9 @@
 import type { MessageEntity } from './core/models'
 
 export type ChatType = 'private' | 'group' | 'channel' | 'bot' | 'saved'
-export type MsgStatus = 'sent' | 'read'
+// sending → часики до message_ack; error → красный значок (send отвергнут/упал),
+// как tweb sendingStatus.ts (sending / check / checks / sendingerror).
+export type MsgStatus = 'sending' | 'sent' | 'read' | 'error'
 
 export interface MediaItem {
   gradient: string

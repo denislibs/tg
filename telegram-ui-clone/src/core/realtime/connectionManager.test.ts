@@ -71,4 +71,32 @@ describe('ConnectionManager', () => {
     ws.fireOpen()
     expect(ws.frames.filter(f => f.t === 'send_message').length).toBe(1)
   })
+
+  it('persists the outbox on send/ack and resends restored entries on connect', async () => {
+    const ws = fakeWs()
+    const saved: unknown[][] = []
+    const store = {
+      load: () => Promise.resolve([{ chatId: 2, text: 'restored', clientMsgId: 'old1' }]),
+      save: (list: unknown[]) => { saved.push(list) },
+    }
+    const cm = newConnectionManager({
+      ws: ws.client as never, getToken: () => 'tok',
+      onReady: () => {}, onState: () => {}, onFrame: () => {},
+      outboxStore: store as never,
+    })
+    cm.start(); ws.fireOpen()
+    // drain the restore→resend microtask chain (load.then/catch/finally + resend.then)
+    for (let i = 0; i < 8; i++) await Promise.resolve()
+    // the restored entry was resent after the async load
+    expect(ws.frames.filter(f => f.t === 'send_message').length).toBe(1)
+    expect(cm.outboxSize()).toBe(1)
+    // a fresh send persists the whole outbox (restored + new)
+    cm.sendMessage({ chatId: 1, text: 'hi', clientMsgId: 'c1' })
+    expect(saved[saved.length - 1]).toHaveLength(2)
+    // acks shrink the persisted outbox
+    ws.recv('message_ack', { client_msg_id: 'old1' })
+    ws.recv('message_ack', { client_msg_id: 'c1' })
+    expect(saved[saved.length - 1]).toHaveLength(0)
+    expect(cm.outboxSize()).toBe(0)
+  })
 })
