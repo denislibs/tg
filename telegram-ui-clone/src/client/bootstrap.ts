@@ -14,6 +14,7 @@ import type { SearchResult } from '../core/managers/channelsManager'
 import type { Peer } from '../core/managers/peersManager'
 import type { StoryGroup } from '../core/managers/storiesManager'
 import type { Contact, AddContactInput } from '../core/managers/contactsManager'
+import type { Session } from '../core/managers/sessionsManager'
 
 export interface Managers {
   health: { check(): Promise<HealthStatus> }
@@ -110,6 +111,11 @@ export interface Managers {
     add(input: AddContactInput): Promise<Contact>
     list(): Promise<Contact[]>
     del(contactId: number): Promise<void>
+  }
+  sessions: {
+    list(): Promise<Session[]>
+    terminate(id: number): Promise<void>
+    terminateOthers(): Promise<number>
   }
 }
 

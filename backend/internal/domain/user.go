@@ -80,6 +80,8 @@ type Device struct {
 	Platform   string
 	TokenHash  string
 	LastActive time.Time
+	IP         string // sign-in IP (best effort)
+	Location   string // human place from GeoIP, when available
 }
 
 // Session is a resolved auth context (cached): who, on which device.

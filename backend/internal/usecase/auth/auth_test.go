@@ -105,8 +105,8 @@ func newFakeDeviceRepo(users *fakeUserRepo) *fakeDeviceRepo {
 	return &fakeDeviceRepo{byHash: map[string]domain.Device{}, byID: map[int64]domain.Device{}, users: users, nextID: 1}
 }
 
-func (r *fakeDeviceRepo) Create(_ context.Context, userID int64, name, platform, tokenHash string) (domain.Device, error) {
-	d := domain.Device{ID: r.nextID, UserID: userID, Name: name, Platform: platform, TokenHash: tokenHash, LastActive: time.Now()}
+func (r *fakeDeviceRepo) Create(_ context.Context, userID int64, name, platform, tokenHash, ip, location string) (domain.Device, error) {
+	d := domain.Device{ID: r.nextID, UserID: userID, Name: name, Platform: platform, TokenHash: tokenHash, LastActive: time.Now(), IP: ip, Location: location}
 	r.nextID++
 	r.byHash[tokenHash] = d
 	r.byID[d.ID] = d
@@ -147,6 +147,18 @@ func (r *fakeDeviceRepo) Delete(_ context.Context, userID, deviceID int64) (stri
 	delete(r.byID, deviceID)
 	delete(r.byHash, d.TokenHash)
 	return d.TokenHash, true, nil
+}
+
+func (r *fakeDeviceRepo) DeleteOthers(_ context.Context, userID, keepDeviceID int64) ([]domain.Device, error) {
+	var removed []domain.Device
+	for id, d := range r.byID {
+		if d.UserID == userID && id != keepDeviceID {
+			removed = append(removed, d)
+			delete(r.byID, id)
+			delete(r.byHash, d.TokenHash)
+		}
+	}
+	return removed, nil
 }
 
 // fakeCodeRepo stores codes with expiry.

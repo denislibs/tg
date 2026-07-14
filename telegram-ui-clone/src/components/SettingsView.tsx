@@ -36,7 +36,7 @@ const settingsItems: { icon: ReactNode; label: string; value?: string }[] = [
   { icon: <TgIcon name="folder" size={24} />, label: 'Chat Folders' },
   { icon: <TgIcon name="smile" size={24} />, label: 'Stickers and Emoji' },
   { icon: <TgIcon name="videocamera" size={24} />, label: 'Speakers and Camera' },
-  { icon: <TgIcon name="devices" size={24} />, label: 'Devices', value: '3' },
+  { icon: <TgIcon name="devices" size={24} />, label: 'Devices' },
   { icon: <TgIcon name="language" size={24} />, label: 'Language', value: 'English' },
   { icon: <TgIcon name="keyboard" size={24} />, label: 'Keyboard Shortcuts' },
 ]

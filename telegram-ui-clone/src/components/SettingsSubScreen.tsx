@@ -203,22 +203,6 @@ const SCREENS: Record<string, SSection[]> = {
       rows: [{ label: 'Accept Calls', type: 'toggle', on: true }],
     },
   ],
-  Devices: [
-    {
-      caption: 'This device',
-      footer: 'Control the apps and devices that are currently logged into your account.',
-      rows: [{ label: 'Telegram Web · Chrome, macOS', type: 'value', value: 'online' }],
-    },
-    {
-      caption: 'Active sessions',
-      rows: [
-        { label: 'Telegram iOS · iPhone 15', type: 'value', value: '2 hours ago' },
-        { label: 'Telegram Desktop · Windows', type: 'value', value: 'Jun 18' },
-        { label: 'Telegram Android · Pixel 8', type: 'value', value: 'Jun 12' },
-        { label: 'Terminate All Other Sessions', type: 'button', danger: true },
-      ],
-    },
-  ],
   Language: [
     {
       caption: 'Translate',
@@ -249,7 +233,8 @@ const SCREENS: Record<string, SSection[]> = {
 }
 
 export function hasSubScreen(title: string) {
-  return title in SCREENS
+  // Devices — реальный экран сессий (не из мок-SCREENS)
+  return title in SCREENS || title === 'Devices'
 }
 
 // Strings that are not English UI text and must not be translated.
@@ -292,6 +277,8 @@ export default function SettingsSubScreen({ title, onBack }: { title: string; on
   if (title === 'Language') return <LanguageSettings onBack={onBack} />
   // General Settings is a fully functional screen (text size, wallpaper, theme, time)
   if (title === 'General Settings') return <GeneralSettings onBack={onBack} />
+  // Devices — реальные сессии с бэка (список/завершение), без мок-прослойки
+  if (title === 'Devices') return <ActiveSessions onBack={onBack} />
 
   return (
     <SettingsScreen title={title} onBack={onBack} zIndex={50}>

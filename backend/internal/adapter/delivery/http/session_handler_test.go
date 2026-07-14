@@ -71,3 +71,40 @@ func TestSessions_RevokeOther(t *testing.T) {
 		t.Fatalf("expected B revoked (401), got %d", rec.Code)
 	}
 }
+
+func TestSessions_RevokeOthers(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	// Three sessions of the same account.
+	tokenA, _ := signUp(t, h, pool, "+79990000012")
+	tokenB, _ := signUp(t, h, pool, "+79990000012")
+	tokenC, _ := signUp(t, h, pool, "+79990000012")
+
+	// A terminates all other sessions.
+	rec := authedReq(t, h, http.MethodDelete, "/sessions/others", tokenA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("revoke others: %d %s", rec.Code, rec.Body.String())
+	}
+	var res struct {
+		Revoked int `json:"revoked"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &res)
+	if res.Revoked != 2 {
+		t.Fatalf("revoked = %d, want 2", res.Revoked)
+	}
+	// B and C are dead, A still works and is the only session left.
+	for _, tok := range []string{tokenB, tokenC} {
+		if rec := authedReq(t, h, http.MethodGet, "/me", tok, nil); rec.Code != http.StatusUnauthorized {
+			t.Fatalf("expected revoked (401), got %d", rec.Code)
+		}
+	}
+	rec = authedReq(t, h, http.MethodGet, "/sessions", tokenA, nil)
+	var listed struct {
+		Sessions []struct {
+			Current bool `json:"current"`
+		} `json:"sessions"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &listed)
+	if len(listed.Sessions) != 1 || !listed.Sessions[0].Current {
+		t.Fatalf("sessions after revoke-others = %+v", listed.Sessions)
+	}
+}

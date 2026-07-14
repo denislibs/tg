@@ -23,9 +23,26 @@ func (h *SessionHandler) List(w http.ResponseWriter, r *http.Request) {
 		out = append(out, map[string]any{
 			"id": d.ID, "name": d.Name, "platform": d.Platform,
 			"last_active": d.LastActive, "current": d.ID == current,
+			"ip": d.IP, "location": d.Location,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"sessions": out})
+}
+
+// RevokeOthers terminates every session except the current one.
+func (h *SessionHandler) RevokeOthers(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	current, ok := DeviceIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "no session")
+		return
+	}
+	n, err := h.svc.RevokeOtherSessions(r.Context(), user.ID, current)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not revoke sessions")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "revoked": n})
 }
 
 func (h *SessionHandler) Revoke(w http.ResponseWriter, r *http.Request) {

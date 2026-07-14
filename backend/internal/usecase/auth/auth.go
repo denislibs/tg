@@ -137,11 +137,24 @@ func (i *Interactor) SignIn(ctx context.Context, rawPhone, suppliedCode, deviceN
 	if err != nil {
 		return SignInResult{}, err
 	}
-	if _, err := i.devices.Create(ctx, user.ID, deviceName, platform, hash); err != nil {
+	// Session row keeps the sign-in metadata for the Active Sessions screen:
+	// a human name from the parsed User-Agent (fallback: the client-sent one),
+	// plus IP and GeoIP location when available.
+	ci := clientInfoFromContext(ctx)
+	if ci.Location == "" && i.geo != nil && ci.IP != "" {
+		ci.Location = i.geo.Locate(ci.IP)
+	}
+	name := deviceName
+	if ci.Browser != "" && ci.OS != "" {
+		name = ci.Browser + " · " + ci.OS
+	} else if ci.Browser != "" {
+		name = ci.Browser
+	}
+	if _, err := i.devices.Create(ctx, user.ID, name, platform, hash, ci.IP, ci.Location); err != nil {
 		return SignInResult{}, err
 	}
 	_ = i.codes.DeleteCode(ctx, phone)
-	i.notifyLogin(user.ID, clientInfoFromContext(ctx))
+	i.notifyLogin(user.ID, ci)
 	return SignInResult{Token: token, User: user}, nil
 }
 
@@ -237,7 +250,7 @@ func (i *Interactor) ConfirmQRLogin(ctx context.Context, token string, user doma
 	if err != nil {
 		return err
 	}
-	if _, err := i.devices.Create(ctx, user.ID, "QR login", rec.Platform, sessionHash); err != nil {
+	if _, err := i.devices.Create(ctx, user.ID, "QR login", rec.Platform, sessionHash, "", ""); err != nil {
 		return err
 	}
 	i.notifyLogin(user.ID, ClientInfo{Device: "QR-код", OS: rec.Platform})
@@ -263,4 +276,23 @@ func (i *Interactor) RevokeSession(ctx context.Context, userID, deviceID int64) 
 		_ = i.revoker.NotifyRevoked(ctx, deviceID)
 	}
 	return true, nil
+}
+
+// RevokeOtherSessions terminates every session of the user except the current
+// one ("Terminate All Other Sessions"): rows are deleted, cached sessions
+// evicted and each device's sockets closed. Returns how many were revoked.
+func (i *Interactor) RevokeOtherSessions(ctx context.Context, userID, currentDeviceID int64) (int, error) {
+	removed, err := i.devices.DeleteOthers(ctx, userID, currentDeviceID)
+	if err != nil {
+		return 0, err
+	}
+	for _, d := range removed {
+		if i.cache != nil {
+			_ = i.cache.DelSession(ctx, d.TokenHash)
+		}
+		if i.revoker != nil {
+			_ = i.revoker.NotifyRevoked(ctx, d.ID)
+		}
+	}
+	return len(removed), nil
 }

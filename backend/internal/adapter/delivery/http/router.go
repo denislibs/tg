@@ -132,6 +132,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 
 		sh := NewSessionHandler(authUC)
 		pr.Get("/sessions", sh.List)
+		pr.Delete("/sessions/others", sh.RevokeOthers)
 		pr.Delete("/sessions/{deviceID}", sh.Revoke)
 		pr.Post("/auth/logout", sh.Logout)
 		pr.Post("/auth/qr/confirm", authH.QRConfirm)

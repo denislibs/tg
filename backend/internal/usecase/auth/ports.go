@@ -18,10 +18,13 @@ type UserRepo interface {
 }
 
 type DeviceRepo interface {
-	Create(ctx context.Context, userID int64, name, platform, tokenHash string) (domain.Device, error)
+	Create(ctx context.Context, userID int64, name, platform, tokenHash, ip, location string) (domain.Device, error)
 	SessionByTokenHash(ctx context.Context, tokenHash string) (domain.User, int64, error)
 	ListByUser(ctx context.Context, userID int64) ([]domain.Device, error)
 	Delete(ctx context.Context, userID, deviceID int64) (tokenHash string, found bool, err error)
+	// DeleteOthers removes every device of the user except keepDeviceID and
+	// returns the removed rows (ids + token hashes, for cache/WS eviction).
+	DeleteOthers(ctx context.Context, userID, keepDeviceID int64) ([]domain.Device, error)
 }
 
 // CodeRepo uses *Code-suffixed method names so a single adapter struct can also

@@ -138,14 +138,15 @@ func (r *AuthRepo) SetAvatar(ctx context.Context, id int64, url string) (domain.
 
 // --- DeviceRepo ---
 
-// Create inserts a device row holding the token hash.
-func (r *AuthRepo) Create(ctx context.Context, userID int64, name, platform, tokenHash string) (domain.Device, error) {
+// Create inserts a device row holding the token hash + sign-in metadata.
+func (r *AuthRepo) Create(ctx context.Context, userID int64, name, platform, tokenHash, ip, location string) (domain.Device, error) {
 	var d domain.Device
 	err := r.pool.QueryRow(ctx,
-		`INSERT INTO devices (user_id, name, platform, token_hash)
-		 VALUES ($1,$2,$3,$4)
-		 RETURNING id, user_id, name, platform, token_hash`,
-		userID, name, platform, tokenHash).Scan(&d.ID, &d.UserID, &d.Name, &d.Platform, &d.TokenHash)
+		`INSERT INTO devices (user_id, name, platform, token_hash, ip, location)
+		 VALUES ($1,$2,$3,$4,$5,$6)
+		 RETURNING id, user_id, name, platform, token_hash, ip, location`,
+		userID, name, platform, tokenHash, ip, location).
+		Scan(&d.ID, &d.UserID, &d.Name, &d.Platform, &d.TokenHash, &d.IP, &d.Location)
 	return d, err
 }
 
@@ -173,7 +174,7 @@ func (r *AuthRepo) SessionByTokenHash(ctx context.Context, tokenHash string) (do
 // ListByUser returns a user's devices, most recently active first.
 func (r *AuthRepo) ListByUser(ctx context.Context, userID int64) ([]domain.Device, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, user_id, name, platform, last_active FROM devices
+		`SELECT id, user_id, name, platform, last_active, ip, location FROM devices
 		 WHERE user_id=$1 ORDER BY last_active DESC`, userID)
 	if err != nil {
 		return nil, err
@@ -182,7 +183,28 @@ func (r *AuthRepo) ListByUser(ctx context.Context, userID int64) ([]domain.Devic
 	var out []domain.Device
 	for rows.Next() {
 		var d domain.Device
-		if err := rows.Scan(&d.ID, &d.UserID, &d.Name, &d.Platform, &d.LastActive); err != nil {
+		if err := rows.Scan(&d.ID, &d.UserID, &d.Name, &d.Platform, &d.LastActive, &d.IP, &d.Location); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// DeleteOthers removes every device of the user except keepDeviceID, returning
+// the removed rows so the caller can evict session caches and close sockets.
+func (r *AuthRepo) DeleteOthers(ctx context.Context, userID, keepDeviceID int64) ([]domain.Device, error) {
+	rows, err := r.pool.Query(ctx,
+		`DELETE FROM devices WHERE user_id=$1 AND id<>$2 RETURNING id, token_hash`,
+		userID, keepDeviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Device
+	for rows.Next() {
+		var d domain.Device
+		if err := rows.Scan(&d.ID, &d.TokenHash); err != nil {
 			return nil, err
 		}
 		out = append(out, d)

@@ -17,6 +17,7 @@ import { newPeersManager } from './managers/peersManager'
 import { newPresenceManager } from './managers/presenceManager'
 import { newStoriesManager } from './managers/storiesManager'
 import { newContactsManager } from './managers/contactsManager'
+import { newSessionsManager } from './managers/sessionsManager'
 import { newConnectionManager } from './realtime/connectionManager'
 import { newSyncEngine } from './realtime/syncEngine'
 import { RT } from './realtime/events'
@@ -37,6 +38,7 @@ const peers = newPeersManager({ rest })
 const presence = newPresenceManager({ rest })
 const stories = newStoriesManager({ rest })
 const contacts = newContactsManager({ rest })
+const sessions = newSessionsManager({ rest })
 
 // every connected tab's port — events broadcast to all
 const ports: SuperMessagePort[] = []
@@ -111,6 +113,7 @@ function bind(ep: Endpoint) {
     presence: presence as unknown as Record<string, (...a: unknown[]) => unknown>,
     stories: stories as unknown as Record<string, (...a: unknown[]) => unknown>,
     contacts: contacts as unknown as Record<string, (...a: unknown[]) => unknown>,
+    sessions: sessions as unknown as Record<string, (...a: unknown[]) => unknown>,
   })
 }
 

@@ -54,7 +54,7 @@ func TestAuthRepo_UserAndDeviceAndToken(t *testing.T) {
 		t.Fatalf("upsert created duplicate user: %d != %d", u1.ID, u2.ID)
 	}
 
-	_, err = repo.Create(ctx, u1.ID, "web", "browser", "hash-abc")
+	_, err = repo.Create(ctx, u1.ID, "web", "browser", "hash-abc", "", "")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -76,8 +76,8 @@ func TestAuthRepo_SessionListDelete(t *testing.T) {
 	ctx := context.Background()
 
 	u, _ := repo.UpsertByPhone(ctx, "+790")
-	d1, _ := repo.Create(ctx, u.ID, "web", "browser", "hash-1")
-	_, _ = repo.Create(ctx, u.ID, "phone", "ios", "hash-2")
+	d1, _ := repo.Create(ctx, u.ID, "web", "browser", "hash-1", "1.2.3.4", "Almaty, Kazakhstan")
+	_, _ = repo.Create(ctx, u.ID, "phone", "ios", "hash-2", "", "")
 
 	// SessionByTokenHash resolves user + device.
 	gotUser, gotDevice, err := repo.SessionByTokenHash(ctx, "hash-1")
