@@ -60,12 +60,8 @@ export function Section({
   const t = useT()
   return (
     <div className={s.section}>
-      {caption && (
-        <Text size={14} weight={600} color="var(--tg-accent)" className={s.caption}>
-          {t(caption)}
-        </Text>
-      )}
-      <SidebarSection noMargin>{children}</SidebarSection>
+      {/* Заголовок — ВНУТРИ карточки (tweb .sidebar-left-section-name) */}
+      <SidebarSection noMargin title={caption ? t(caption) : undefined}>{children}</SidebarSection>
       {footer && (
         <Text size={13.5} color="var(--tg-textSecondary)" className={s.footer}>
           {t(footer)}

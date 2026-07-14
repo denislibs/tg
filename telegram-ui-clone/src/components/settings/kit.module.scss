@@ -22,12 +22,9 @@
   padding-bottom: 24px;
 }
 
-// секция: caption над карточкой + карточка (SidebarSection) + footer под ней
+// секция: карточка (SidebarSection, заголовок внутри) + footer под ней
 .section {
   margin-bottom: 12px;
-}
-.caption {
-  padding: 0 24px 4px;
 }
 .footer {
   padding: 6px 24px 0;

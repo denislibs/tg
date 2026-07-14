@@ -12,6 +12,7 @@ import PowerSaving from './settings/PowerSaving'
 import Passkeys from './settings/Passkeys'
 import LanguageSettings from './settings/LanguageSettings'
 import GeneralSettings from './settings/GeneralSettings'
+import SpeakersCamera from './settings/SpeakersCamera'
 
 // Rows that open a dedicated sub-screen instead of being a plain value.
 const PRIVACY_RULES = new Set([
@@ -190,19 +191,6 @@ const SCREENS: Record<string, SSection[]> = {
       ],
     },
   ],
-  'Speakers and Camera': [
-    {
-      caption: 'Output',
-      rows: [{ label: 'Output Device', type: 'value', value: 'Default' }],
-    },
-    {
-      caption: 'Input',
-      rows: [{ label: 'Input Device', type: 'value', value: 'Default' }],
-    },
-    {
-      rows: [{ label: 'Accept Calls', type: 'toggle', on: true }],
-    },
-  ],
   Language: [
     {
       caption: 'Translate',
@@ -233,8 +221,8 @@ const SCREENS: Record<string, SSection[]> = {
 }
 
 export function hasSubScreen(title: string) {
-  // Devices — реальный экран сессий (не из мок-SCREENS)
-  return title in SCREENS || title === 'Devices'
+  // Devices и Speakers and Camera — реальные экраны (не из мок-SCREENS)
+  return title in SCREENS || title === 'Devices' || title === 'Speakers and Camera'
 }
 
 // Strings that are not English UI text and must not be translated.
@@ -279,6 +267,8 @@ export default function SettingsSubScreen({ title, onBack }: { title: string; on
   if (title === 'General Settings') return <GeneralSettings onBack={onBack} />
   // Devices — реальные сессии с бэка (список/завершение), без мок-прослойки
   if (title === 'Devices') return <ActiveSessions onBack={onBack} />
+  // Speakers and Camera — реальные устройства (enumerateDevices/getUserMedia)
+  if (title === 'Speakers and Camera') return <SpeakersCamera onBack={onBack} />
 
   return (
     <SettingsScreen title={title} onBack={onBack} zIndex={50}>

@@ -17,6 +17,12 @@ export interface Settings {
   timeFormat: TimeFormat
   wallpaper: Wallpaper
   wallpaperBlur: boolean
+  // Устройства для звонков (Настройки → Динамики и камера); '' = системное
+  // по умолчанию. deviceId из enumerateDevices, читаются при старте звонка.
+  speakerId: string
+  micId: string
+  cameraId: string
+  acceptCalls: boolean
 }
 
 const DEFAULTS: Settings = {
@@ -25,6 +31,10 @@ const DEFAULTS: Settings = {
   timeFormat: '24h',
   wallpaper: { kind: 'default' },
   wallpaperBlur: false,
+  speakerId: '',
+  micId: '',
+  cameraId: '',
+  acceptCalls: true,
 }
 
 const KEY = 'tg-settings'
@@ -62,6 +72,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       timeFormat: s.timeFormat,
       wallpaper: s.wallpaper,
       wallpaperBlur: s.wallpaperBlur,
+      speakerId: s.speakerId,
+      micId: s.micId,
+      cameraId: s.cameraId,
+      acceptCalls: s.acceptCalls,
     }
     try {
       localStorage.setItem(KEY, JSON.stringify(toSave))

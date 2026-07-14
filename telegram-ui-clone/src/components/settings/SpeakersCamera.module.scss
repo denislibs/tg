@@ -1,0 +1,111 @@
+// «Динамики и камера» — уровень микрофона, превью камеры, модалка выбора устройства.
+
+// полоска уровня микрофона (ширина заполнения пишется в DOM по rAF)
+.levelTrack {
+  margin: 4px 24px 14px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--tg-hover);
+  overflow: hidden;
+}
+.levelFill {
+  width: 0%;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--tg-accent);
+}
+
+// превью камеры (зеркальное, как локальное видео в tweb)
+.preview {
+  margin: 4px 16px 12px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #000;
+}
+.video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+// ── модалка выбора устройства ──
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(0, 0, 0, 0.45);
+}
+.dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 91;
+  width: min(420px, calc(100vw - 32px));
+  border-radius: 24px;
+  background: var(--tg-sidebarBg);
+  padding: 12px 16px 16px;
+  box-shadow: var(--tg-menuShadow);
+}
+.dialogHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0 8px;
+}
+.options {
+  border-radius: 16px;
+  background: var(--tg-sectionBackdrop);
+  padding: 6px 0;
+  margin-bottom: 14px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.option {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  cursor: pointer;
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+    }
+  }
+}
+// радио-кружок (внешнее кольцо + внутренняя точка при выборе)
+.radio {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--tg-textFaint);
+  flex-shrink: 0;
+  position: relative;
+
+  &[data-on] {
+    border-color: var(--tg-accent);
+
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 4px;
+      border-radius: 50%;
+      background: var(--tg-accent);
+    }
+  }
+}
+.saveBtn {
+  text-align: center;
+  padding: 12px 0;
+  border-radius: 24px;
+  background: var(--tg-accentGradient);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
