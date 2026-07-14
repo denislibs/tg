@@ -7,6 +7,8 @@ import s from './Menu.module.scss'
 interface MenuProps {
   open: boolean
   onClose: () => void
+  /** called after the close animation finishes (unmount the owner here) */
+  onExitComplete?: () => void
   /** position + transform-origin (anchor a corner at the click point) */
   style?: CSSProperties
   /** extra panel styling (width, radius override, …) */
@@ -18,7 +20,7 @@ interface MenuProps {
 // (scale .8 + fade, like tweb .btn-menu) so every dropdown/context menu behaves
 // identically. The caller positions it via `style` (top/left or right/bottom +
 // transform-origin) so the panel grows from the anchor (e.g. the click corner).
-export default function Menu({ open, onClose, style, className, children }: MenuProps) {
+export default function Menu({ open, onClose, onExitComplete, style, className, children }: MenuProps) {
   return createPortal(
     <>
       {open && (
@@ -31,7 +33,7 @@ export default function Menu({ open, onClose, style, className, children }: Menu
           }}
         />
       )}
-      <AnimatePresence>
+      <AnimatePresence onExitComplete={onExitComplete}>
         {open && (
           <motion.div
             className={classNames(s.panel, className ?? '')}

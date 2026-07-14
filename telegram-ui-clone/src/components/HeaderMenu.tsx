@@ -26,10 +26,14 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
   const { start: startCall } = useCall()
   const setSearchOpen = useSearchStore((s) => s.setOpen)
   const [autoOpen, setAutoOpen] = useState(false)
+  // Меню закрывается с exit-анимацией ui-kit Menu: сначала open=false, владелец
+  // размонтирует нас в onExitComplete (иначе выход обрубается мгновенным unmount).
+  const [open, setOpen] = useState(true)
+  const close = () => { setAutoOpen(false); setOpen(false) }
   const muted = !!chat.muted
   const owned = !!chat.owned
   const handleMute = onToggleMute
-    ? () => { onToggleMute(); onClose() }
+    ? () => { onToggleMute(); close() }
     : undefined
   const muteItem: Item = muted
     ? { icon: <TgIcon name="unmute" size={20} />, label: 'Unmute', onClick: handleMute }
@@ -41,7 +45,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
   const numericChatId = Number(chat.id)
   const searchItems: Item[] =
     narrow && Number.isFinite(numericChatId) && String(numericChatId) === chat.id
-      ? [{ icon: <TgIcon name="search" size={20} />, label: 'Search', onClick: () => { setSearchOpen(numericChatId, true); onClose() } }]
+      ? [{ icon: <TgIcon name="search" size={20} />, label: 'Search', onClick: () => { setSearchOpen(numericChatId, true); close() } }]
       : []
 
   let items: Item[]
@@ -55,14 +59,14 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
       muteItem,
       ...(!isService
         ? [
-            { icon: <TgIcon name="phone" size={20} />, label: 'Call', onClick: () => { startCall(false); onClose() } },
-            { icon: <TgIcon name="videocamera" size={20} />, label: 'Video Call', onClick: () => { startCall(true); onClose() } },
+            { icon: <TgIcon name="phone" size={20} />, label: 'Call', onClick: () => { startCall(false); close() } },
+            { icon: <TgIcon name="videocamera" size={20} />, label: 'Video Call', onClick: () => { startCall(true); close() } },
           ]
         : []),
-      { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); onClose() } : undefined },
+      { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
       ...(!isService
         ? [
-            { icon: <TgIcon name="adduser" size={20} />, label: 'Add to contacts', onClick: onAddContact ? () => { onAddContact(); onClose() } : undefined },
+            { icon: <TgIcon name="adduser" size={20} />, label: 'Add to contacts', onClick: onAddContact ? () => { onAddContact(); close() } : undefined },
             { icon: <TgIcon name="gift" size={20} />, label: 'Send a Gift' },
             { icon: <TgIcon name="restrict" size={20} />, label: 'Block user' },
             { icon: <TgIcon name="deleteuser" size={20} />, label: 'Disable Sharing' },
@@ -76,9 +80,9 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
       ...searchItems,
       muteItem,
       ...(onAddMember
-        ? [{ icon: <TgIcon name="adduser" size={20} />, label: 'Add member', onClick: () => { onAddMember(); onClose() } }]
+        ? [{ icon: <TgIcon name="adduser" size={20} />, label: 'Add member', onClick: () => { onAddMember(); close() } }]
         : []),
-      { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); onClose() } : undefined },
+      { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
       { icon: <TgIcon name="gift" size={20} />, label: 'Send a Gift' },
       { icon: <TgIcon name="delete" size={20} />, label: owned ? 'Delete Group' : 'Leave Group', danger: true },
     ]
@@ -89,7 +93,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
       ...searchItems,
       muteItem,
       { icon: <TgIcon name="livestream" size={20} />, label: 'Live Stream' },
-      { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); onClose() } : undefined },
+      { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
       { icon: <TgIcon name="gift" size={20} />, label: 'Send a Gift' },
       { icon: <TgIcon name="boost" size={20} />, label: 'Boost Channel' },
       { icon: <TgIcon name="delete" size={20} />, label: 'Delete Channel', danger: true },
@@ -100,7 +104,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
       ...searchItems,
       muteItem,
       { icon: <TgIcon name="message" size={20} />, label: 'View discussion' },
-      { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); onClose() } : undefined },
+      { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
       { icon: <TgIcon name="gift" size={20} />, label: 'Send a Gift' },
       { icon: <TgIcon name="boost" size={20} />, label: 'Boost Channel' },
       { icon: <TgIcon name="delete" size={20} />, label: 'Leave Channel', danger: true },
@@ -113,8 +117,8 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
     <>
       {/* Auto-delete submenu (to the left of the main menu) */}
       <Menu
-        open={autoOpen}
-        onClose={onClose}
+        open={autoOpen && open}
+        onClose={close}
         style={{ top: anchor.top, right: anchor.right + 256, transformOrigin: 'top right' }}
       >
         {autoItems.map((a) => (
@@ -124,15 +128,16 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
               a === 'Other' ? <TgIcon name="tools" size={20} /> : a === 'Never' ? <TgIcon name="auto_delete_circle_off" size={20} /> : <TgIcon name="timer" size={20} />
             }
             label={t(a)}
-            onClick={onClose}
+            onClick={close}
           />
         ))}
       </Menu>
 
       {/* Main menu */}
       <Menu
-        open
-        onClose={onClose}
+        open={open}
+        onClose={close}
+        onExitComplete={onClose}
         style={{ top: anchor.top, right: anchor.right, width: 244, transformOrigin: 'top right' }}
       >
         {items.map((it) => (
@@ -142,7 +147,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
             label={t(it.label)}
             danger={it.danger}
             right={it.submenu ? <TgIcon name="next" size={20} /> : undefined}
-            onClick={() => (it.submenu ? setAutoOpen((o) => !o) : it.onClick ? it.onClick() : onClose())}
+            onClick={() => (it.submenu ? setAutoOpen((o) => !o) : it.onClick ? it.onClick() : close())}
           />
         ))}
       </Menu>

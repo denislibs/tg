@@ -54,7 +54,10 @@ import useMediaQuery from '../shared/lib/useMediaQuery'
 // tweb: fade = 3.5rem + page-chats-padding, контент-паддинг ленты =
 // chat-input-height + page-chats-padding; page-chats-padding = 16px desktop /
 // 8px handheld — см. _chat.scss:447,1104 и updateColumnWidths.ts.
-const fadeTop = (narrow: boolean) => (narrow ? 68 : 76) // clear the floating header
+const padTop = (narrow: boolean) => (narrow ? 68 : 76) // real clearance under the header
+// Верхний фейд глубже клиренса: приглушение начинается заранее, ещё до того как
+// сообщение уйдёт под хедер (как в tweb — верх ленты приглушён уже в статике).
+const fadeTop = (narrow: boolean) => (narrow ? 100 : 108)
 const fadeBottom = (narrow: boolean) => (narrow ? 64 : 72) // mask only
 const padBottom = (narrow: boolean) => (narrow ? 56 : 64) // real feed padding
 
@@ -413,7 +416,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               // fade messages in once the first page has loaded (tweb-like)
               opacity: feedLoading ? 0 : 1,
               // clear the floating header/composer
-              paddingTop: `${fadeTop(narrow) + playerOffset}px`,
+              paddingTop: `${padTop(narrow) + playerOffset}px`,
               paddingBottom: `${padBottom(narrow)}px`,
             }}
           >
