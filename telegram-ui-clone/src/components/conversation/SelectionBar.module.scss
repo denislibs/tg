@@ -12,14 +12,13 @@
   align-items: center;
   gap: 4px;
   padding: 0 8px;
-  height: 56px;
+  height: var(--chat-plate-height);
   border-radius: 24px;
   background: var(--tg-bubble);
   box-shadow: var(--tg-plateShadow);
 
-  // мобилка: плейт 48px высотой, в 8px от низа и краёв (как остальные плейты)
+  // мобилка: плейт в 8px от низа и краёв (как остальные плейты)
   @media (max-width: 900px) {
-    height: var(--chat-plate-height);
     bottom: 8px;
     left: 8px;
     right: 8px;
