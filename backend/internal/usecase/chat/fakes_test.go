@@ -299,8 +299,23 @@ func (r fakeMsgs) Insert(_ context.Context, m domain.Message) (domain.Message, e
 	defer r.s.mu.Unlock()
 	r.s.nextMsgID++
 	m.ID = r.s.nextMsgID
+	if m.CreatedAt.IsZero() {
+		m.CreatedAt = time.Now() // как БД: DEFAULT now() (нужно для slowmode)
+	}
 	r.s.messages[m.ChatID] = append(r.s.messages[m.ChatID], m)
 	return m, nil
+}
+
+func (r fakeMsgs) LastMessageAt(_ context.Context, chatID, senderID int64) (time.Time, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	msgs := r.s.messages[chatID]
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].SenderID == senderID && !msgs[i].Deleted {
+			return msgs[i].CreatedAt, nil
+		}
+	}
+	return time.Time{}, domain.ErrNotFound
 }
 
 func (r fakeMsgs) FindByClientMsgID(_ context.Context, chatID, senderID int64, clientMsgID string) (domain.Message, error) {

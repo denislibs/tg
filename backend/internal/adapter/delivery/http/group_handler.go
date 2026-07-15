@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -122,6 +123,198 @@ func (h *GroupHandler) SetPhoto(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+var usernameRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{4,31}$`)
+
+// SetType switches private/public (PUT /chats/{chatID}/type).
+func (h *GroupHandler) SetType(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	var b struct {
+		IsPublic bool   `json:"is_public"`
+		Username string `json:"username"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if b.IsPublic && !usernameRe.MatchString(b.Username) {
+		writeError(w, http.StatusBadRequest, "invalid username")
+		return
+	}
+	if err := h.uc.SetChatType(r.Context(), chatID, user.ID, b.IsPublic, b.Username); err != nil {
+		if errors.Is(err, domain.ErrConflict) {
+			writeError(w, http.StatusConflict, "username taken")
+			return
+		}
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// SetPermissions stores default member permissions + slowmode (PUT /chats/{chatID}/permissions).
+func (h *GroupHandler) SetPermissions(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Permissions     int `json:"permissions"`
+		SlowmodeSeconds int `json:"slowmode_seconds"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := h.uc.SetChatPermissions(r.Context(), chatID, user.ID, domain.MemberPerms(b.Permissions), b.SlowmodeSeconds); err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// SetReactions stores the reaction policy (PUT /chats/{chatID}/reactions).
+func (h *GroupHandler) SetReactions(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Mode   string   `json:"mode"`
+		Emojis []string `json:"emojis"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := h.uc.SetChatReactions(r.Context(), chatID, user.ID, b.Mode, b.Emojis); err != nil {
+		if errors.Is(err, domain.ErrBadReaction) {
+			writeError(w, http.StatusBadRequest, "invalid reactions")
+			return
+		}
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// SetHistory toggles chat history visibility for new members (PUT /chats/{chatID}/history).
+func (h *GroupHandler) SetHistory(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Visible bool `json:"visible"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := h.uc.SetChatHistoryForNew(r.Context(), chatID, user.ID, b.Visible); err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// ListBans returns the removed-users list (GET /chats/{chatID}/bans).
+func (h *GroupHandler) ListBans(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	bans, err := h.uc.ListBanned(r.Context(), chatID, user.ID)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	out := make([]map[string]any, 0, len(bans))
+	for _, b := range bans {
+		out = append(out, map[string]any{"user_id": b.UserID, "banned_by": b.BannedBy})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"bans": out})
+}
+
+// Ban kicks a user and adds them to the removed-users list (POST /chats/{chatID}/bans).
+func (h *GroupHandler) Ban(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	var b struct {
+		UserID int64 `json:"user_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || b.UserID == 0 {
+		writeError(w, http.StatusBadRequest, "user_id required")
+		return
+	}
+	if err := h.uc.BanMember(r.Context(), chatID, user.ID, b.UserID); err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// Unban removes a user from the removed-users list (DELETE /chats/{chatID}/bans/{userID}).
+func (h *GroupHandler) Unban(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	uid, ok := pathInt(w, r, "userID")
+	if !ok {
+		return
+	}
+	if err := h.uc.UnbanMember(r.Context(), chatID, user.ID, uid); err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// RevokeInvite revokes an invite link (DELETE /chats/{chatID}/invite_links/{token}).
+func (h *GroupHandler) RevokeInvite(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	token := chi.URLParam(r, "token")
+	if token == "" {
+		writeError(w, http.StatusBadRequest, "token required")
+		return
+	}
+	if err := h.uc.RevokeInvite(r.Context(), chatID, user.ID, token); err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// DeleteGroup deletes the group for everyone (DELETE /chats/{chatID}; creator only).
+func (h *GroupHandler) DeleteGroup(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	if err := h.uc.DeleteGroup(r.Context(), chatID, user.ID); err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 func (h *GroupHandler) PromoteAdmin(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	chatID, ok := pathInt(w, r, "chatID")
@@ -216,7 +409,10 @@ func (h *GroupHandler) Card(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id": c.ID, "type": c.Type, "title": c.Title, "username": c.Username, "about": c.About,
 		"photo_media_id": c.PhotoMediaID, "creator_id": c.CreatorID, "member_count": c.MemberCount,
-		"is_public": c.IsPublic, "my_role": c.MyRole, "my_rights": int(c.MyRights), "muted": c.Muted,
+		"default_permissions": int(c.Settings.DefaultPerms), "slowmode_seconds": c.Settings.SlowmodeSeconds,
+		"reactions_mode": c.Settings.ReactionsMode, "reactions_allowed": c.Settings.ReactionsAllowed,
+		"history_for_new": c.Settings.HistoryForNew,
+		"is_public":       c.IsPublic, "my_role": c.MyRole, "my_rights": int(c.MyRights), "muted": c.Muted,
 		"discussion_chat_id": c.DiscussionChatID,
 	})
 }

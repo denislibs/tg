@@ -9,6 +9,7 @@ import TgIcon from './TgIcon'
 import Avatar from '../shared/ui/Avatar'
 import { useAvatarSrc } from './useAvatarSrc'
 import EditView from './EditView'
+import GroupEditFlow from './group/GroupEditFlow'
 import { Section, Row } from './settings/kit'
 import classNames from '../shared/lib/classNames'
 import type { Chat, OpenPeer } from '../data'
@@ -356,7 +357,9 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onAddMember }
 
         {/* Edit screen overlay */}
         <AnimatePresence>
-          {editing && <EditView chat={chat} onBack={() => setEditing(false)} />}
+          {editing && (isGroup && isRealChat
+            ? <GroupEditFlow chatId={Number(chat.id)} chat={chat} onClose={() => setEditing(false)} />
+            : <EditView chat={chat} onBack={() => setEditing(false)} />)}
         </AnimatePresence>
 
         {/* Admin-rights editor overlay (slide-in sub-view, mirrors tweb userPermissions) */}

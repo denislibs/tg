@@ -76,6 +76,7 @@ describe('GroupsManager', () => {
       id: 5, type: 'group', title: 'T', username: 'u', about: 'a',
       memberCount: 12, isPublic: true, myRole: 'admin', myRights: 7, muted: false,
       discussionChatId: 88,
+      defaultPermissions: 31, slowmodeSeconds: 0, reactionsMode: 'all', reactionsAllowed: [], historyForNew: true,
     })
   })
 

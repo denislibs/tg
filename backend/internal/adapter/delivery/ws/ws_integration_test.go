@@ -11,10 +11,10 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gorilla/websocket"
+	"github.com/messenger-denis/backend/internal/adapter/delivery/ws"
 	rtredis "github.com/messenger-denis/backend/internal/adapter/realtime/redis"
 	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
 	"github.com/messenger-denis/backend/internal/store/postgres"
-	"github.com/messenger-denis/backend/internal/adapter/delivery/ws"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 	usecasepresence "github.com/messenger-denis/backend/internal/usecase/presence"
@@ -82,11 +82,11 @@ func newWSEnv(t *testing.T) *wsEnv {
 	_, deviceA, _ := authUC.Authenticate(ctx, ra.Token)
 
 	return &wsEnv{
-		url:     "ws" + strings.TrimPrefix(srv.URL, "http"),
-		tokenA:  ra.Token, tokenB: rb.Token,
-		userA:   ra.User.ID, deviceA: deviceA, chatID: chatID,
-		ctx:     ctx, authUC: authUC, chatSvc: chatSvc,
-		srv:     srv, hub: hub, mr: mr, rdb: rdb,
+		url:    "ws" + strings.TrimPrefix(srv.URL, "http"),
+		tokenA: ra.Token, tokenB: rb.Token,
+		userA: ra.User.ID, deviceA: deviceA, chatID: chatID,
+		ctx: ctx, authUC: authUC, chatSvc: chatSvc,
+		srv: srv, hub: hub, mr: mr, rdb: rdb,
 	}
 }
 

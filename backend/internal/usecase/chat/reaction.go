@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"unicode/utf8"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -28,6 +29,20 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 	}
 	if !ok {
 		return domain.ErrNotFound
+	}
+	// Политика реакций чата: none — запрещены, some — только из списка (снятие
+	// своей реакции разрешено всегда, чтобы можно было убрать устаревшую).
+	if add && i.groups != nil {
+		if s, e := i.groups.Settings(ctx, chatID); e == nil {
+			switch s.ReactionsMode {
+			case "none":
+				return domain.ErrForbidden
+			case "some":
+				if !slices.Contains(s.ReactionsAllowed, emoji) {
+					return domain.ErrBadReaction
+				}
+			}
+		}
 	}
 
 	// Build the payload once so the pts log and the live frame can never diverge.

@@ -100,8 +100,19 @@ func (i *Interactor) CreateGroup(ctx context.Context, creatorID int64, title, ab
 }
 
 func (i *Interactor) AddMember(ctx context.Context, chatID, actorID, userID int64) error {
-	if err := i.requireRight(ctx, chatID, actorID, domain.RightInviteUsers); err != nil {
+	// Обычному участнику добавление разрешает дефолтное право группы, админу —
+	// RightInviteUsers (tweb invite_users).
+	if err := i.requirePermOrRight(ctx, chatID, actorID, domain.PermAddMembers, domain.RightInviteUsers); err != nil {
 		return err
+	}
+	if banned, err := i.groups.IsBanned(ctx, chatID, userID); err == nil && banned {
+		// Забаненного возвращает только админ с BAN_USERS (авторазбан, как в Telegram).
+		if err := i.requireRight(ctx, chatID, actorID, domain.RightBanUsers); err != nil {
+			return domain.ErrForbidden
+		}
+		if err := i.groups.Unban(ctx, chatID, userID); err != nil {
+			return err
+		}
 	}
 	if err := i.groups.AddMember(ctx, chatID, userID, domain.RoleMember, 0); err != nil {
 		return err
@@ -170,10 +181,19 @@ func (i *Interactor) DemoteAdmin(ctx context.Context, chatID, actorID, userID in
 }
 
 func (i *Interactor) EditInfo(ctx context.Context, chatID, actorID int64, title, about, username string) error {
-	if err := i.requireRight(ctx, chatID, actorID, domain.RightChangeInfo); err != nil {
+	if err := i.requirePermOrRight(ctx, chatID, actorID, domain.PermChangeInfo, domain.RightChangeInfo); err != nil {
 		return err
 	}
-	return i.groups.EditInfo(ctx, chatID, title, about, username)
+	old, _ := i.groups.Card(ctx, chatID, actorID)
+	if err := i.groups.EditInfo(ctx, chatID, title, about, username); err != nil {
+		return err
+	}
+	// Смена названия — сервисное сообщение (tweb messageActionChatEditTitle); его
+	// fan-out заодно обновляет диалог у всех участников live.
+	if old.Title != "" && old.Title != title {
+		i.postGroupService(ctx, chatID, actorID, serviceText("edit_title", i.userCard(ctx, actorID), nil))
+	}
+	return nil
 }
 
 // SetChatPhoto points the chat's photo at an uploaded media object (needs
@@ -181,7 +201,7 @@ func (i *Interactor) EditInfo(ctx context.Context, chatID, actorID int64, title,
 // posts the "updated the group photo" service message (tweb editPhoto →
 // messageActionChatEditPhoto).
 func (i *Interactor) SetChatPhoto(ctx context.Context, chatID, actorID, mediaID int64) error {
-	if err := i.requireRight(ctx, chatID, actorID, domain.RightChangeInfo); err != nil {
+	if err := i.requirePermOrRight(ctx, chatID, actorID, domain.PermChangeInfo, domain.RightChangeInfo); err != nil {
 		return err
 	}
 	ownerID, err := i.mediaAccess.OwnerID(ctx, mediaID)
@@ -252,6 +272,9 @@ func (i *Interactor) JoinByToken(ctx context.Context, token string, userID int64
 	link, err := i.invites.GetByToken(ctx, token)
 	if err != nil {
 		return false, err
+	}
+	if banned, e := i.groups.IsBanned(ctx, link.ChatID, userID); e == nil && banned {
+		return false, domain.ErrForbidden // из чёрного списка по ссылке не возвращаются
 	}
 	if link.RequiresApproval {
 		if e := i.joinReqs.Create(ctx, link.ChatID, userID, token); e != nil {

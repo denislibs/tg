@@ -39,6 +39,7 @@ const maxEntities = 500
 //   - text_link with a disallowed URL scheme (javascript:, data:, …) — XSS;
 //   - entities with a non-positive length or negative offset — malformed;
 //   - anything beyond maxEntities — render-time DoS.
+//
 // The client also sanitizes at render time; this is defense-in-depth so a
 // hand-crafted payload can't be stored and later served to a client that forgets to.
 func sanitizeEntities(es []domain.MessageEntity) []domain.MessageEntity {

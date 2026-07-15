@@ -1,0 +1,167 @@
+// GroupEditFlow — экраны редактирования группы. Цвета — токены --tg-*.
+
+// карточка аватар+имя+описание
+.infoCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 4px 4px;
+}
+
+.avatarWrap {
+  position: relative;
+  cursor: pointer;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+// затемнение с камерой поверх аватара (tweb avatar-edit)
+.avatarOverlay {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.field {
+  width: 100%;
+}
+
+// уточка-плейсхолдер + подпись (tweb .sticker-container + .caption)
+.duck {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 24px 8px;
+  text-align: center;
+}
+
+.duckCaption {
+  max-width: 320px;
+}
+
+// карточка со ссылкой (клик — копировать)
+.linkBox {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--tg-hover);
+  cursor: pointer;
+  margin: 4px 0 8px;
+}
+
+// поле username с префиксом t.me/
+.usernameWrap {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--tg-hover);
+  border-radius: 10px;
+}
+
+.usernameInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 16px;
+  font-family: inherit;
+  color: var(--tg-textPrimary);
+}
+
+.usernameError {
+  padding: 6px 4px 0;
+}
+
+// строка эмодзи-реакции
+.emojiRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 48px;
+  padding: 0 8px;
+  border-radius: 10px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--tg-hover);
+  }
+}
+
+.emoji {
+  font-size: 24px;
+  line-height: 1;
+}
+
+// медленный режим: подписи над слайдером
+.slowmode {
+  padding: 6px 4px 10px;
+}
+
+.slowLabels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+  color: var(--tg-textSecondary);
+  margin-bottom: 8px;
+
+  .slowActive {
+    color: var(--tg-accent);
+    font-weight: 600;
+  }
+}
+
+// строка участника
+.memberRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 4px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--tg-hover);
+  }
+}
+
+.memberBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.search {
+  padding: 4px 12px 8px;
+}
+
+.bansCaption {
+  padding: 4px 24px 8px;
+}
+
+// угловая кнопка добавления (tweb btn-corner)
+.fab {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--tg-accentGradient);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  cursor: pointer;
+  z-index: 5;
+}

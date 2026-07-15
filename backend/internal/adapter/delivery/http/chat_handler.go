@@ -115,6 +115,14 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "message too long")
 		return
 	}
+	if errors.Is(err, domain.ErrForbidden) {
+		writeError(w, http.StatusForbidden, "not allowed")
+		return
+	}
+	if errors.Is(err, domain.ErrSlowmode) {
+		writeError(w, http.StatusTooManyRequests, "slowmode")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "send failed")
 		return

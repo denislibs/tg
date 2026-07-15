@@ -32,10 +32,19 @@ func TestGroupFlow_HTTP(t *testing.T) {
 		t.Fatalf("creator add member: %d %s", rec.Code, rec.Body.String())
 	}
 
-	// B (a non-admin member) cannot add C → 403.
+	// Дефолтные разрешения (как в Telegram) позволяют участнику добавлять людей;
+	// после выключения «Добавления участников» админом — 403.
+	rec = authedReq(t, h, http.MethodPut, "/chats/"+cid+"/permissions", tokenA, map[string]int{"permissions": 31 &^ 4, "slowmode_seconds": 0})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("set permissions: %d %s", rec.Code, rec.Body.String())
+	}
 	rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/members", tokenB, map[string]int64{"user_id": idC})
 	if rec.Code != http.StatusForbidden {
-		t.Fatalf("non-admin add member: want 403, got %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("member add without perm: want 403, got %d %s", rec.Code, rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodPut, "/chats/"+cid+"/permissions", tokenA, map[string]int{"permissions": 31, "slowmode_seconds": 0})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("restore permissions: %d %s", rec.Code, rec.Body.String())
 	}
 
 	// GET card for A: title, creator role, member_count = 2 (A + B).

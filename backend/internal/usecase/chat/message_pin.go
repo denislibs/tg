@@ -9,7 +9,8 @@ import (
 )
 
 // SetPin pins or unpins a message in a chat and fans out a pin_message update to
-// all members (so everyone's pinned bar updates live). Any member may pin.
+// all members (so everyone's pinned bar updates live). Gated by the group's
+// default PIN permission for plain members / RightPinMessages for admins.
 func (i *Interactor) SetPin(ctx context.Context, chatID, msgID, userID int64, pin bool) error {
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
 	if err != nil {
@@ -17,6 +18,11 @@ func (i *Interactor) SetPin(ctx context.Context, chatID, msgID, userID int64, pi
 	}
 	if !ok {
 		return domain.ErrNotFound
+	}
+	if i.groups != nil {
+		if err := i.requirePermOrRight(ctx, chatID, userID, domain.PermPinMessages, domain.RightPinMessages); err != nil {
+			return err
+		}
 	}
 	cur, err := i.msgs.GetByID(ctx, msgID)
 	if err != nil {

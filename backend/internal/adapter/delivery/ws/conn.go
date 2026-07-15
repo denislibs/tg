@@ -115,6 +115,10 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			reason := "failed"
 			if errors.Is(err, domain.ErrTooLong) {
 				reason = "too_long"
+			} else if errors.Is(err, domain.ErrSlowmode) {
+				reason = "slowmode"
+			} else if errors.Is(err, domain.ErrForbidden) {
+				reason = "forbidden"
 			}
 			nack, _ := json.Marshal(map[string]any{
 				"t": "message_error",

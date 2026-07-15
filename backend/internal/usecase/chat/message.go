@@ -42,6 +42,14 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		}
 	}
 
+	// Групповые дефолтные разрешения + slowmode (сервисные сообщения генерирует
+	// сам сервер — их не ограничиваем).
+	if in.Type != "service" {
+		if err := i.checkSendAllowed(ctx, in); err != nil {
+			return domain.Message{}, err
+		}
+	}
+
 	// Sender's short name rides along in the new_message payload so clients can
 	// prefix group chat-list previews ("Имя: …") without an extra lookup.
 	senderName := i.userCard(ctx, in.SenderID).ShortName()

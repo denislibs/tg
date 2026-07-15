@@ -84,6 +84,9 @@ type ChatCard struct {
 	MyRights         Rights
 	Muted            bool
 	DiscussionChatID int64
+	// Group-wide settings (edit screens): default member permissions, slowmode,
+	// reaction policy, history visibility for new members.
+	Settings ChatSettings
 }
 
 // InviteLink is a join token for a chat.
@@ -106,6 +109,12 @@ type JoinRequest struct {
 }
 
 // UserCard is a minimal public user record (batch lookups, sender names).
+// BannedUser is one row of a chat's removed-users list.
+type BannedUser struct {
+	UserID   int64
+	BannedBy int64
+}
+
 type UserCard struct {
 	ID          int64
 	Username    string

@@ -6,6 +6,74 @@ type Dict = Record<string, string>
 // entries (t() falls back to the key). Other languages map English -> translation.
 
 const ru: Dict = {
+  // ── Редактирование группы (tweb editChat) ──
+  'You can provide an optional description for your group.': 'Можете указать дополнительное описание для группы.',
+  'Group Type': 'Тип группы',
+  Private: 'Частная',
+  Public: 'Публичная',
+  'Private Group': 'Частная группа',
+  'Public Group': 'Публичная группа',
+  'Private groups can only be joined if you were invited or have an invite link.':
+    'В частные группы можно вступить только по приглашению или пригласительной ссылке.',
+  'Public groups can be found in search, chat history is available to everyone and anyone can join.':
+    'Публичные группы можно найти через поиск, история чата доступна всем, и присоединиться может любой пользователь.',
+  'People can share this link with others and find your group using Telegram search.':
+    'Люди могут делиться этой ссылкой и находить вашу группу через поиск Telegram.',
+  'People can join your group by following this link. You can revoke the link any time.':
+    'По этой ссылке можно вступить в вашу группу. Вы можете сбросить ссылку в любой момент.',
+  'This link is already taken.': 'Эта ссылка уже занята.',
+  'Invalid link.': 'Недопустимая ссылка.',
+  'Invite Links': 'Пригласительные ссылки',
+  'Invite Link': 'Ссылка-приглашение',
+  'Copy Link': 'Копировать ссылку',
+  'Revoke Link': 'Сбросить ссылку',
+  'Create a New Link': 'Создать ссылку',
+  'Additional Links': 'Дополнительные ссылки',
+  'You can create additional invite links and revoke them at any time.':
+    'Вы можете создать дополнительные ссылки и отозвать их в любой момент.',
+  'Link copied to clipboard.': 'Ссылка скопирована',
+  'Anyone who has Telegram installed will be able to join your group by following this link.':
+    'Любой пользователь Telegram сможет вступить в вашу группу, перейдя по этой ссылке.',
+  Reactions: 'Реакции',
+  'Available reactions': 'Доступные реакции',
+  'All reactions': 'Все реакции',
+  'Some reactions': 'Только выбранные',
+  'No reactions': 'Без реакций',
+  'Only allow these reactions': 'Разрешить только эти реакции',
+  'Members of this group can use any emoji as reactions to messages.':
+    'Участники группы могут использовать любые эмодзи в качестве реакций на сообщения.',
+  'You can select emoji that will allow members of this group to react to messages.':
+    'Выберите эмодзи, которыми участники группы смогут реагировать на сообщения.',
+  'Members of this group cannot react to messages.': 'Участники группы не могут реагировать на сообщения.',
+  Permissions: 'Разрешения',
+  'What can members of this group do?': 'Возможности участников:',
+  'Send Messages': 'Отправка сообщений',
+  'Send Media': 'Отправка медиа',
+  'Pin Messages': 'Закрепление сообщений',
+  'Change Chat Info': 'Изменение профиля группы',
+  'Slow Mode': 'Медленный режим',
+  'Choose how often members of the group are able to send messages.':
+    'Выберите, как часто каждый участник сможет писать в группу.',
+  'Add Admin': 'Добавить администратора',
+  'Admin Rights': 'Права администратора',
+  'What can this admin do?': 'Что может делать этот администратор?',
+  'Dismiss Admin': 'Снять права',
+  Owner: 'Владелец',
+  Admin: 'Администратор',
+  Member: 'Участник',
+  'Removed Users': 'Чёрный список',
+  'Users removed by group admins cannot rejoin via invite links.':
+    'Пользователи, которых исключили администраторы группы, не смогут присоединиться снова с помощью ссылки.',
+  Unban: 'Разблокировать',
+  'Remove from group': 'Удалить из группы',
+  'Ban and remove from group': 'Заблокировать и удалить из группы',
+  'Chat history for new members': 'История чата для новых участников',
+  'New members will see earlier messages when this is on.':
+    'Если включено, новые участники увидят предыдущие сообщения чата.',
+  'Delete and Leave Group': 'Удалить и покинуть группу',
+  None: 'Нет',
+  'Approve new members': 'По заявке',
+
   'Photo or Video': 'Фото или видео',
   Document: 'Файл',
   Poll: 'Опрос',
@@ -261,10 +329,6 @@ const ru: Dict = {
   'last seen recently': 'был(а) недавно',
   owner: 'владелец',
   'Channel Type': 'Тип канала',
-  'Group Type': 'Тип группы',
-  Private: 'Частный',
-  'Invite Links': 'Пригласительные ссылки',
-  Reactions: 'Реакции',
   'Direct Messages': 'Личные сообщения',
   Discussion: 'Обсуждение',
   Add: 'Добавить',
@@ -352,7 +416,7 @@ const ru: Dict = {
   "Nobody": "Никто",
   "Always allow": "Всегда разрешать",
   "Never allow": "Никогда не разрешать",
-  "Add Users": "Добавить пользователей",
+  'Add Users': 'Добавление участников',
   "Auto-Download Media": "Автозагрузка медиа",
   "When using mobile data": "При использовании мобильных данных",
   "When connected to Wi-Fi": "При подключении к Wi-Fi",

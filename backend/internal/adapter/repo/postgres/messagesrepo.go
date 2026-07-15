@@ -73,7 +73,7 @@ func (r *MessagesRepo) GetAround(ctx context.Context, chatID, userID, centerSeq 
 	}
 	half := limit / 2
 	q := querier(ctx, r.pool)
-	const excl = ` AND deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id=messages.id AND h.user_id=$4)`
+	const excl = ` AND deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id=messages.id AND h.user_id=$4) AND ((SELECT history_for_new FROM chats WHERE id=$1) OR messages.created_at >= COALESCE((SELECT cm.joined_at FROM chat_members cm WHERE cm.chat_id=$1 AND cm.user_id=$4 AND cm.role='member'), 'epoch'::timestamptz))`
 	scan := func(rows pgx.Rows, err error) ([]domain.Message, error) {
 		if err != nil {
 			return nil, err
@@ -329,7 +329,9 @@ func (r *MessagesRepo) GetHistory(ctx context.Context, chatID, userID, offsetSeq
 	q := querier(ctx, r.pool)
 	// Skip deleted (never shown) and rows this user hid for themselves. Placeholder
 	// differs per query shape.
-	const exclN = ` AND deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id=messages.id AND h.user_id=$%d)`
+	// exclN also enforces hidden history (chats.history_for_new=false): a plain
+	// member sees only messages sent after they joined; admins/creator see all.
+	const exclN = ` AND deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id=messages.id AND h.user_id=$%d) AND ((SELECT history_for_new FROM chats WHERE id=$1) OR messages.created_at >= COALESCE((SELECT cm.joined_at FROM chat_members cm WHERE cm.chat_id=$1 AND cm.user_id=$%[1]d AND cm.role='member'), 'epoch'::timestamptz))`
 	var rows pgx.Rows
 	var err error
 	switch {
@@ -359,6 +361,19 @@ func (r *MessagesRepo) GetHistory(ctx context.Context, chatID, userID, offsetSeq
 		out = append(out, m)
 	}
 	return out, rows.Err()
+}
+
+// LastMessageAt is the newest non-deleted message time by senderID in chatID
+// (slowmode check); domain.ErrNotFound when they haven't posted yet.
+func (r *MessagesRepo) LastMessageAt(ctx context.Context, chatID, senderID int64) (time.Time, error) {
+	var at time.Time
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT created_at FROM messages WHERE chat_id=$1 AND sender_id=$2 AND deleted_at IS NULL
+		 ORDER BY seq DESC LIMIT 1`, chatID, senderID).Scan(&at)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return time.Time{}, domain.ErrNotFound
+	}
+	return at, err
 }
 
 // ListThread returns messages belonging to a thread (thread_root_id) in a chat,

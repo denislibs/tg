@@ -26,6 +26,31 @@ const (
 	RoleSubscriber = "subscriber" // channel subscriber (read-only)
 )
 
+// MemberPerms is the chat-wide default-permissions bitmask for ordinary members
+// (chats.default_permissions) — the inverse of Telegram's banned rights: what a
+// plain member may do. Admins/creator are gated by Rights instead.
+type MemberPerms int
+
+const (
+	PermSendMessages MemberPerms = 1 << 0
+	PermSendMedia    MemberPerms = 1 << 1
+	PermAddMembers   MemberPerms = 1 << 2
+	PermPinMessages  MemberPerms = 1 << 3
+	PermChangeInfo   MemberPerms = 1 << 4
+
+	AllMemberPerms MemberPerms = PermSendMessages | PermSendMedia | PermAddMembers |
+		PermPinMessages | PermChangeInfo
+)
+
+// ChatSettings are the group-wide settings edited on the "Изменить" screen.
+type ChatSettings struct {
+	DefaultPerms     MemberPerms
+	SlowmodeSeconds  int
+	ReactionsMode    string // 'all' | 'some' | 'none'
+	ReactionsAllowed []string
+	HistoryForNew    bool
+}
+
 // HasRight reports whether a (role, rights) pair grants r. Creator → always true.
 func HasRight(role string, rights Rights, r Rights) bool {
 	if role == RoleCreator {

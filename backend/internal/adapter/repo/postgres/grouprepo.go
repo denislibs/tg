@@ -2,9 +2,11 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -109,22 +111,134 @@ func (r *GroupRepo) SetPhoto(ctx context.Context, chatID, mediaID int64) error {
 	return err
 }
 
+func (r *GroupRepo) Settings(ctx context.Context, chatID int64) (domain.ChatSettings, error) {
+	var s domain.ChatSettings
+	var perms int
+	var allowed []byte
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT default_permissions, slowmode_seconds, reactions_mode, reactions_allowed, history_for_new
+		 FROM chats WHERE id=$1`, chatID).
+		Scan(&perms, &s.SlowmodeSeconds, &s.ReactionsMode, &allowed, &s.HistoryForNew)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ChatSettings{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return domain.ChatSettings{}, err
+	}
+	s.DefaultPerms = domain.MemberPerms(perms)
+	if len(allowed) > 0 {
+		_ = json.Unmarshal(allowed, &s.ReactionsAllowed)
+	}
+	return s, nil
+}
+
+// SetType switches private/public. Public requires a username (unique across
+// chats); switching to private clears it. domain.ErrConflict on a taken name.
+func (r *GroupRepo) SetType(ctx context.Context, chatID int64, isPublic bool, username string) error {
+	var u any
+	if isPublic && username != "" {
+		u = username
+	}
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE chats SET is_public=$2, username=$3 WHERE id=$1`, chatID, isPublic, u)
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique_violation
+		return domain.ErrConflict
+	}
+	return err
+}
+
+func (r *GroupRepo) SetPermissions(ctx context.Context, chatID int64, perms domain.MemberPerms, slowmodeSeconds int) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE chats SET default_permissions=$2, slowmode_seconds=$3 WHERE id=$1`,
+		chatID, int(perms), slowmodeSeconds)
+	return err
+}
+
+func (r *GroupRepo) SetReactions(ctx context.Context, chatID int64, mode string, allowed []string) error {
+	var list any
+	if len(allowed) > 0 {
+		b, err := json.Marshal(allowed)
+		if err != nil {
+			return err
+		}
+		list = string(b) // jsonb через string, не []byte (см. CLAUDE.md)
+	}
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE chats SET reactions_mode=$2, reactions_allowed=$3 WHERE id=$1`, chatID, mode, list)
+	return err
+}
+
+func (r *GroupRepo) SetHistoryForNew(ctx context.Context, chatID int64, visible bool) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE chats SET history_for_new=$2 WHERE id=$1`, chatID, visible)
+	return err
+}
+
+func (r *GroupRepo) Ban(ctx context.Context, chatID, userID, bannedBy int64) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`INSERT INTO chat_bans (chat_id, user_id, banned_by) VALUES ($1,$2,$3)
+		 ON CONFLICT (chat_id, user_id) DO NOTHING`, chatID, userID, bannedBy)
+	return err
+}
+
+func (r *GroupRepo) Unban(ctx context.Context, chatID, userID int64) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`DELETE FROM chat_bans WHERE chat_id=$1 AND user_id=$2`, chatID, userID)
+	return err
+}
+
+func (r *GroupRepo) IsBanned(ctx context.Context, chatID, userID int64) (bool, error) {
+	var banned bool
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM chat_bans WHERE chat_id=$1 AND user_id=$2)`, chatID, userID).Scan(&banned)
+	return banned, err
+}
+
+func (r *GroupRepo) ListBans(ctx context.Context, chatID int64) ([]domain.BannedUser, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT user_id, COALESCE(banned_by,0) FROM chat_bans WHERE chat_id=$1 ORDER BY created_at DESC`, chatID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []domain.BannedUser{}
+	for rows.Next() {
+		var b domain.BannedUser
+		if err := rows.Scan(&b.UserID, &b.BannedBy); err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
+}
+
+func (r *GroupRepo) DeleteChat(ctx context.Context, chatID int64) error {
+	_, err := querier(ctx, r.pool).Exec(ctx, `DELETE FROM chats WHERE id=$1`, chatID)
+	return err
+}
+
 func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.ChatCard, error) {
 	q := querier(ctx, r.pool)
 	var c domain.ChatCard
 	var rights *int
 	var role *string
 	var muted *bool
+	var perms int
+	var allowed []byte
 	err := q.QueryRow(ctx,
 		`SELECT c.id, c.type, c.title, COALESCE(c.username,''), c.about, c.photo_media_id,
 		        COALESCE(c.creator_id,0), c.member_count, c.is_public,
 		        COALESCE(c.discussion_chat_id,0),
+		        c.default_permissions, c.slowmode_seconds, c.reactions_mode, c.reactions_allowed, c.history_for_new,
 		        m.role, m.rights, m.muted
 		   FROM chats c
 		   LEFT JOIN chat_members m ON m.chat_id=c.id AND m.user_id=$2
 		  WHERE c.id=$1`,
 		chatID, viewerID).Scan(&c.ID, &c.Type, &c.Title, &c.Username, &c.About, &c.PhotoMediaID,
-		&c.CreatorID, &c.MemberCount, &c.IsPublic, &c.DiscussionChatID, &role, &rights, &muted)
+		&c.CreatorID, &c.MemberCount, &c.IsPublic, &c.DiscussionChatID,
+		&perms, &c.Settings.SlowmodeSeconds, &c.Settings.ReactionsMode, &allowed, &c.Settings.HistoryForNew,
+		&role, &rights, &muted)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.ChatCard{}, domain.ErrNotFound
 	}
@@ -139,6 +253,10 @@ func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.Ch
 	}
 	if muted != nil {
 		c.Muted = *muted
+	}
+	c.Settings.DefaultPerms = domain.MemberPerms(perms)
+	if len(allowed) > 0 {
+		_ = json.Unmarshal(allowed, &c.Settings.ReactionsAllowed)
 	}
 	return c, nil
 }

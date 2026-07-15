@@ -48,6 +48,17 @@ type GroupRepo interface {
 	ListMembers(ctx context.Context, chatID int64, offset, limit int) ([]domain.Member, error)
 	SetDiscussion(ctx context.Context, channelID, groupID int64) error
 	GetDiscussion(ctx context.Context, channelID int64) (int64, error) // 0 = none
+	// Group edit-screen settings + removed-users list.
+	Settings(ctx context.Context, chatID int64) (domain.ChatSettings, error)
+	SetType(ctx context.Context, chatID int64, isPublic bool, username string) error // domain.ErrConflict on taken username
+	SetPermissions(ctx context.Context, chatID int64, perms domain.MemberPerms, slowmodeSeconds int) error
+	SetReactions(ctx context.Context, chatID int64, mode string, allowed []string) error
+	SetHistoryForNew(ctx context.Context, chatID int64, visible bool) error
+	Ban(ctx context.Context, chatID, userID, bannedBy int64) error
+	Unban(ctx context.Context, chatID, userID int64) error
+	IsBanned(ctx context.Context, chatID, userID int64) (bool, error)
+	ListBans(ctx context.Context, chatID int64) ([]domain.BannedUser, error)
+	DeleteChat(ctx context.Context, chatID int64) error // каскадом members/messages
 }
 
 type InviteRepo interface {
@@ -74,6 +85,9 @@ type MessageRepo interface {
 	MediaHistory(ctx context.Context, chatID int64, filter string, offset, limit int) ([]domain.Message, int, error)
 	GetAround(ctx context.Context, chatID, userID, centerSeq int64, limit int) ([]domain.Message, bool, bool, error)
 	GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int) ([]domain.Message, error)
+	// LastMessageAt is the newest non-deleted message time by senderID in the chat
+	// (slowmode); domain.ErrNotFound when they haven't posted yet.
+	LastMessageAt(ctx context.Context, chatID, senderID int64) (time.Time, error)
 	UpdateText(ctx context.Context, msgID int64, text string, entities []domain.MessageEntity) (domain.Message, error)
 	SoftDelete(ctx context.Context, msgID int64) error
 	HideForUser(ctx context.Context, userID, msgID int64) error

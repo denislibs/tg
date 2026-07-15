@@ -78,6 +78,17 @@ export interface Managers {
     createGroup(args: { title: string; about?: string; username?: string; isPublic?: boolean; memberIds?: number[] }): Promise<number>
     addMember(chatId: number, userId: number): Promise<void>
     setPhoto(chatId: number, mediaId: number): Promise<void>
+    editInfo(chatId: number, args: { title: string; about?: string; username?: string }): Promise<void>
+    setType(chatId: number, isPublic: boolean, username: string): Promise<void>
+    setPermissions(chatId: number, permissions: number, slowmodeSeconds: number): Promise<void>
+    setReactions(chatId: number, mode: 'all' | 'some' | 'none', emojis: string[]): Promise<void>
+    setHistory(chatId: number, visible: boolean): Promise<void>
+    listBans(chatId: number): Promise<{ userId: number; bannedBy: number }[]>
+    ban(chatId: number, userId: number): Promise<void>
+    unban(chatId: number, userId: number): Promise<void>
+    removeMember(chatId: number, userId: number): Promise<void>
+    revokeInvite(chatId: number, token: string): Promise<void>
+    deleteGroup(chatId: number): Promise<void>
     setMute(chatId: number, muted: boolean): Promise<void>
     card(chatId: number): Promise<GroupCard>
     members(chatId: number): Promise<{ userId: number; role: string; online: boolean }[]>

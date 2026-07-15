@@ -19,8 +19,9 @@ type fakeGroupRepo struct {
 	cards      map[int64]domain.ChatCard         // chatID -> card (title/about/etc)
 	members    map[int64]map[int64]domain.Member // chatID -> userID -> member
 	users      map[int64]domain.UserCard
-	discussion map[int64]int64 // channelID -> discussion groupID
-	onCreate   func(id int64)  // optional hook fired after a chat is created
+	discussion map[int64]int64          // channelID -> discussion groupID
+	bans       map[int64]map[int64]bool // chatID -> userID -> banned
+	onCreate   func(id int64)           // optional hook fired after a chat is created
 }
 
 func newFakeGroupRepo() *fakeGroupRepo {
@@ -29,7 +30,112 @@ func newFakeGroupRepo() *fakeGroupRepo {
 		members:    map[int64]map[int64]domain.Member{},
 		users:      map[int64]domain.UserCard{},
 		discussion: map[int64]int64{},
+		bans:       map[int64]map[int64]bool{},
 	}
+}
+
+func (r *fakeGroupRepo) Settings(_ context.Context, chatID int64) (domain.ChatSettings, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c, ok := r.cards[chatID]
+	if !ok {
+		return domain.ChatSettings{}, domain.ErrNotFound
+	}
+	return c.Settings, nil
+}
+
+func (r *fakeGroupRepo) SetType(_ context.Context, chatID int64, isPublic bool, username string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for id, c := range r.cards {
+		if id != chatID && isPublic && c.Username == username {
+			return domain.ErrConflict
+		}
+	}
+	c, ok := r.cards[chatID]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	c.IsPublic = isPublic
+	if isPublic {
+		c.Username = username
+	} else {
+		c.Username = ""
+	}
+	r.cards[chatID] = c
+	return nil
+}
+
+func (r *fakeGroupRepo) SetPermissions(_ context.Context, chatID int64, perms domain.MemberPerms, slow int) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c := r.cards[chatID]
+	c.Settings.DefaultPerms = perms
+	c.Settings.SlowmodeSeconds = slow
+	r.cards[chatID] = c
+	return nil
+}
+
+func (r *fakeGroupRepo) SetReactions(_ context.Context, chatID int64, mode string, allowed []string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c := r.cards[chatID]
+	c.Settings.ReactionsMode = mode
+	c.Settings.ReactionsAllowed = allowed
+	r.cards[chatID] = c
+	return nil
+}
+
+func (r *fakeGroupRepo) SetHistoryForNew(_ context.Context, chatID int64, visible bool) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c := r.cards[chatID]
+	c.Settings.HistoryForNew = visible
+	r.cards[chatID] = c
+	return nil
+}
+
+func (r *fakeGroupRepo) Ban(_ context.Context, chatID, userID, _ int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.bans[chatID] == nil {
+		r.bans[chatID] = map[int64]bool{}
+	}
+	r.bans[chatID][userID] = true
+	return nil
+}
+
+func (r *fakeGroupRepo) Unban(_ context.Context, chatID, userID int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.bans[chatID], userID)
+	return nil
+}
+
+func (r *fakeGroupRepo) IsBanned(_ context.Context, chatID, userID int64) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.bans[chatID][userID], nil
+}
+
+func (r *fakeGroupRepo) ListBans(_ context.Context, chatID int64) ([]domain.BannedUser, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := []domain.BannedUser{}
+	for uid := range r.bans[chatID] {
+		out = append(out, domain.BannedUser{UserID: uid})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].UserID < out[j].UserID })
+	return out, nil
+}
+
+func (r *fakeGroupRepo) DeleteChat(_ context.Context, chatID int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.cards, chatID)
+	delete(r.members, chatID)
+	delete(r.bans, chatID)
+	return nil
 }
 
 func (r *fakeGroupRepo) SetDiscussion(_ context.Context, channelID, groupID int64) error {
@@ -53,6 +159,7 @@ func (r *fakeGroupRepo) CreateMultiMember(_ context.Context, typ, title, about, 
 	r.cards[id] = domain.ChatCard{
 		ID: id, Type: typ, Title: title, About: about, Username: username,
 		IsPublic: isPublic, CreatorID: creatorID,
+		Settings: domain.ChatSettings{DefaultPerms: domain.AllMemberPerms, ReactionsMode: "all", HistoryForNew: true},
 	}
 	r.members[id] = map[int64]domain.Member{}
 	if r.onCreate != nil {
@@ -479,8 +586,19 @@ func TestGroupLifecycle_ServiceMessagesAndChatRemoved(t *testing.T) {
 	if err := in.SetChatPhoto(ctx, id, 7, 56); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("foreign media: err = %v; want ErrNotFound", err)
 	}
+	// Участник с дефолтным CHANGE_INFO проходит проверку права, но чужое медиа → not found.
+	if err := in.SetChatPhoto(ctx, id, 10, 55); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("member with foreign media: err = %v; want ErrNotFound", err)
+	}
+	// После выключения «Изменение профиля группы» — forbidden.
+	if err := in.SetChatPermissions(ctx, id, 7, domain.AllMemberPerms&^domain.PermChangeInfo, 0); err != nil {
+		t.Fatalf("SetChatPermissions: %v", err)
+	}
 	if err := in.SetChatPhoto(ctx, id, 10, 55); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("member without CHANGE_INFO: err = %v; want ErrForbidden", err)
+	}
+	if err := in.SetChatPermissions(ctx, id, 7, domain.AllMemberPerms, 0); err != nil {
+		t.Fatalf("restore perms: %v", err)
 	}
 
 	// Выход: leave-сообщение уходит до удаления (вышедший его получает),
@@ -516,16 +634,22 @@ func TestGroupLifecycle_ServiceMessagesAndChatRemoved(t *testing.T) {
 	}
 }
 
-func TestAddMember_RequiresInviteRight(t *testing.T) {
+func TestAddMember_DefaultPermissionGates(t *testing.T) {
 	i, fg, _ := newGroupTestInteractor(t)
 	id, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
 	_ = fg.AddMember(context.Background(), id, 8, domain.RoleMember, 0) // plain member
-	// member 8 (no INVITE_USERS) tries to add 9 → forbidden
-	if err := i.AddMember(context.Background(), id, 8, 9); !errors.Is(err, domain.ErrForbidden) {
+	// По умолчанию (как в Telegram) обычный участник может добавлять людей.
+	if err := i.AddMember(context.Background(), id, 8, 9); err != nil {
+		t.Fatalf("member add with default perms: %v", err)
+	}
+	// Админ выключает «Добавление участников» → участнику запрещено, создателю можно.
+	if err := i.SetChatPermissions(context.Background(), id, 7, domain.AllMemberPerms&^domain.PermAddMembers, 0); err != nil {
+		t.Fatalf("SetChatPermissions: %v", err)
+	}
+	if err := i.AddMember(context.Background(), id, 8, 10); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("want ErrForbidden, got %v", err)
 	}
-	// creator 7 can add 9
-	if err := i.AddMember(context.Background(), id, 7, 9); err != nil {
+	if err := i.AddMember(context.Background(), id, 7, 10); err != nil {
 		t.Fatalf("creator add: %v", err)
 	}
 }
@@ -620,5 +744,125 @@ func TestApproveJoinRequest(t *testing.T) {
 	// Request cleared.
 	if reqs, _ := fjr.List(context.Background(), id); len(reqs) != 0 {
 		t.Fatalf("want request gone after approval, got %+v", reqs)
+	}
+}
+
+// Групповые настройки: slowmode тормозит обычного участника (но не ретрай и не
+// админа), режим реакций «none/some», бан не пускает по ссылке и при добавлении
+// обычным участником, DeleteGroup шлёт chat_removed всем и убивает чат.
+func TestGroupSettings_Enforcement(t *testing.T) {
+	fg := newFakeGroupRepo()
+	s := newStore()
+	fg.onCreate = func(id int64) {
+		s.mu.Lock()
+		s.chatType[id] = "group"
+		s.mu.Unlock()
+	}
+	fi := newFakeInviteRepo()
+	in := New(fakeTx{}, groupChats{fg}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, fg, fi, nil, nil, newFakeJoinRequestRepo())
+	pub := &fakePublisher{}
+	in.SetPublisher(pub)
+	ctx := context.Background()
+	fg.users[7] = domain.UserCard{ID: 7, DisplayName: "Алиса"}
+	fg.users[8] = domain.UserCard{ID: 8, DisplayName: "Боб"}
+
+	id, err := in.CreateGroup(ctx, 7, "Team", "", "", false, []int64{8})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Slowmode 60с: первое сообщение участника проходит, второе — ErrSlowmode,
+	// ретрай первого (тот же client_msg_id) — нет; создателю можно всегда.
+	if err := in.SetChatPermissions(ctx, id, 7, domain.AllMemberPerms, 60); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := in.Send(ctx, SendInput{ChatID: id, SenderID: 8, Text: "раз", ClientMsgID: "s1"}); err != nil {
+		t.Fatalf("first send: %v", err)
+	}
+	if _, err := in.Send(ctx, SendInput{ChatID: id, SenderID: 8, Text: "два", ClientMsgID: "s2"}); !errors.Is(err, domain.ErrSlowmode) {
+		t.Fatalf("second send: err = %v; want ErrSlowmode", err)
+	}
+	if _, err := in.Send(ctx, SendInput{ChatID: id, SenderID: 8, Text: "раз", ClientMsgID: "s1"}); err != nil {
+		t.Fatalf("retry of accepted send: %v", err)
+	}
+	if _, err := in.Send(ctx, SendInput{ChatID: id, SenderID: 7, Text: "админу можно", ClientMsgID: "s3"}); err != nil {
+		t.Fatalf("creator send under slowmode: %v", err)
+	}
+	if err := in.SetChatPermissions(ctx, id, 7, domain.AllMemberPerms, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	// Запрет отправки сообщений участникам.
+	if err := in.SetChatPermissions(ctx, id, 7, domain.AllMemberPerms&^domain.PermSendMessages, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := in.Send(ctx, SendInput{ChatID: id, SenderID: 8, Text: "нельзя", ClientMsgID: "s4"}); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("send without perm: err = %v; want ErrForbidden", err)
+	}
+	if err := in.SetChatPermissions(ctx, id, 7, domain.AllMemberPerms, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	// Реакции: none — запрещены; some — только из списка.
+	msg, _ := in.Send(ctx, SendInput{ChatID: id, SenderID: 7, Text: "реагируй", ClientMsgID: "s5"})
+	if err := in.SetChatReactions(ctx, id, 7, "none", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := in.React(ctx, id, msg.ID, 8, "👍", true); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("react in none mode: err = %v; want ErrForbidden", err)
+	}
+	if err := in.SetChatReactions(ctx, id, 7, "some", []string{"❤"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := in.React(ctx, id, msg.ID, 8, "👍", true); !errors.Is(err, domain.ErrBadReaction) {
+		t.Fatalf("react not in list: err = %v; want ErrBadReaction", err)
+	}
+	if err := in.React(ctx, id, msg.ID, 8, "❤", true); err != nil {
+		t.Fatalf("allowed react: %v", err)
+	}
+
+	// Бан: кикнут + не вернётся по ссылке и через добавление участником; разбан лечит.
+	link, _ := in.CreateInvite(ctx, id, 7, nil, false)
+	if err := in.BanMember(ctx, id, 7, 8); err != nil {
+		t.Fatalf("BanMember: %v", err)
+	}
+	if _, err := fg.GetMember(ctx, id, 8); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatal("banned user still a member")
+	}
+	if bans, _ := in.ListBanned(ctx, id, 7); len(bans) != 1 || bans[0].UserID != 8 {
+		t.Fatalf("bans = %+v; want [8]", bans)
+	}
+	if _, err := in.JoinByToken(ctx, link.Token, 8); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("banned join by link: err = %v; want ErrForbidden", err)
+	}
+	if err := in.UnbanMember(ctx, id, 7, 8); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := in.JoinByToken(ctx, link.Token, 8); err != nil {
+		t.Fatalf("join after unban: %v", err)
+	}
+
+	// Тип группы: публичная с занятым username → conflict.
+	if err := in.SetChatType(ctx, id, 7, true, "team"); err != nil {
+		t.Fatal(err)
+	}
+	id2, _ := in.CreateGroup(ctx, 7, "Other", "", "", false, nil)
+	if err := in.SetChatType(ctx, id2, 7, true, "team"); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("taken username: err = %v; want ErrConflict", err)
+	}
+
+	// DeleteGroup: только создатель; все получают chat_removed, чат исчезает.
+	if err := in.DeleteGroup(ctx, id, 8); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("member delete: err = %v; want ErrForbidden", err)
+	}
+	pub.reset()
+	if err := in.DeleteGroup(ctx, id, 7); err != nil {
+		t.Fatalf("DeleteGroup: %v", err)
+	}
+	if pub.countFor(7) == 0 || pub.countFor(8) == 0 {
+		t.Fatalf("chat_removed frames: 7=%d 8=%d; want >0 both", pub.countFor(7), pub.countFor(8))
+	}
+	if _, err := fg.Card(ctx, id, 7); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatal("chat still exists after DeleteGroup")
 	}
 }
