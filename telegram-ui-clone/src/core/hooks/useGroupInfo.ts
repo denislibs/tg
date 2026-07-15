@@ -44,9 +44,9 @@ interface JoinRequest {
 }
 
 export function roleLabel(role: string, isChannel: boolean): string {
-  if (role === 'creator') return 'Создатель'
-  if (role === 'admin') return 'Админ'
-  return isChannel ? 'Подписчик' : 'Участник'
+  if (role === 'creator') return 'владелец'
+  if (role === 'admin') return 'админ'
+  return isChannel ? 'подписчик' : ''
 }
 
 export interface GroupInfo {
@@ -60,10 +60,6 @@ export interface GroupInfo {
   discussionChatId: number
   enablingDiscussion: boolean
   inviteLinks: InviteLink[]
-  requireApproval: boolean
-  setRequireApproval: React.Dispatch<React.SetStateAction<boolean>>
-  creatingInvite: boolean
-  copiedToken: string | null
   joinRequests: JoinRequest[]
   editMember: RealMember | null
   setEditMember: React.Dispatch<React.SetStateAction<RealMember | null>>
@@ -72,8 +68,6 @@ export interface GroupInfo {
   saveRights: (userId: number, bitmask: number) => Promise<void>
   removeRights: (userId: number) => Promise<void>
   enableDiscussion: () => Promise<void>
-  createInvite: () => Promise<void>
-  copyInvite: (token: string) => Promise<void>
 }
 
 export function useGroupInfo(chat: Chat): GroupInfo {
@@ -96,9 +90,6 @@ export function useGroupInfo(chat: Chat): GroupInfo {
   const [enablingDiscussion, setEnablingDiscussion] = useState(false)
 
   const [inviteLinks, setInviteLinks] = useState<InviteLink[]>([])
-  const [requireApproval, setRequireApproval] = useState(false)
-  const [creatingInvite, setCreatingInvite] = useState(false)
-  const [copiedToken, setCopiedToken] = useState<string | null>(null)
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([])
 
   useEffect(() => {
@@ -123,7 +114,13 @@ export function useGroupInfo(chat: Chat): GroupInfo {
       const inviteOk = isCreator || (c.myRights & INVITE_USERS) !== 0
       setCanInvite(inviteOk)
       if (inviteOk) {
-        void managers.groups.listInvites(numericId).then((links) => {
+        void managers.groups.listInvites(numericId).then(async (links) => {
+          // primary-ссылка существует всегда (tweb chatFull.exported_invite):
+          // у старых групп без ссылок создаём её лениво
+          if (links.length === 0) {
+            const l = await managers.groups.createInvite(numericId).catch(() => null)
+            if (l) links = [{ token: l.token, uses: 0, url: l.url, requiresApproval: l.requiresApproval }]
+          }
           if (alive) setInviteLinks(links)
         })
         void managers.groups.listJoinRequests(numericId).then(async (ids) => {
@@ -216,28 +213,6 @@ export function useGroupInfo(chat: Chat): GroupInfo {
     }
   }
 
-  async function createInvite() {
-    if (creatingInvite) return
-    setCreatingInvite(true)
-    try {
-      const link = await managers.groups.createInvite(numericId, { requiresApproval: requireApproval })
-      setInviteLinks((prev) => [{ token: link.token, uses: 0, url: link.url, requiresApproval: link.requiresApproval }, ...prev])
-    } finally {
-      setCreatingInvite(false)
-    }
-  }
-
-  async function copyInvite(token: string) {
-    const fullUrl = `${location.origin}/join/${token}`
-    try {
-      await navigator.clipboard.writeText(fullUrl)
-    } catch {
-      // clipboard may be unavailable (insecure context); still show feedback
-    }
-    setCopiedToken(token)
-    setTimeout(() => setCopiedToken((t) => (t === token ? null : t)), 1500)
-  }
-
   return {
     isRealChat,
     isChannel,
@@ -249,10 +224,6 @@ export function useGroupInfo(chat: Chat): GroupInfo {
     discussionChatId,
     enablingDiscussion,
     inviteLinks,
-    requireApproval,
-    setRequireApproval,
-    creatingInvite,
-    copiedToken,
     joinRequests,
     editMember,
     setEditMember,
@@ -261,7 +232,5 @@ export function useGroupInfo(chat: Chat): GroupInfo {
     saveRights,
     removeRights,
     enableDiscussion,
-    createInvite,
-    copyInvite,
   }
 }

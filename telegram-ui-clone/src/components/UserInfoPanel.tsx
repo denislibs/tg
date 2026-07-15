@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import TgSwitch from './TgSwitch'
 import { Tabs } from '../shared/ui/Tabs'
+import Popup from '../shared/ui/Popup'
+import QRCodeStyling from 'qr-code-styling'
 import { AnimatePresence, motion } from 'framer-motion'
 import { EASE, DUR, slideInRight } from '../motion'
 import TgIcon from './TgIcon'
@@ -30,10 +32,19 @@ import s from './UserInfoPanel.module.scss'
 import useMediaQuery from '../shared/lib/useMediaQuery'
 
 
+// «N участник(а/ов)» — склонение для подзаголовка профиля группы
+function membersLabel(n: number, isChannel: boolean): string {
+  if (isChannel) return `${n} подписчиков`
+  const m10 = n % 10, m100 = n % 100
+  const word = m10 === 1 && m100 !== 11 ? 'участник' : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? 'участника' : 'участников'
+  return `${n} ${word}`
+}
+
 export default function UserInfoPanel({ chat, onClose, onOpenPeer, onAddMember }: { chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void; onAddMember?: () => void }) {
   const t = useT()
   const narrow = useMediaQuery('(max-width:900px)')
-  const [tab, setTab] = useState('Media')
+  // группы открываются на табе «Участники» (как в Telegram), остальные — на «Медиа»
+  const [tab, setTab] = useState(chat.type === 'group' ? 'Members' : 'Media')
   const [editing, setEditing] = useState(false)
   const [notif, setNotif] = useState(true)
   const headerAvatarSrc = useAvatarSrc(chat.avatarUrl)
@@ -49,10 +60,6 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onAddMember }
     discussionChatId,
     enablingDiscussion,
     inviteLinks,
-    requireApproval,
-    setRequireApproval,
-    creatingInvite,
-    copiedToken,
     joinRequests,
     editMember,
     setEditMember,
@@ -61,11 +68,25 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onAddMember }
     saveRights,
     removeRights,
     enableDiscussion,
-    createInvite,
-    copyInvite,
   } = useGroupInfo(chat)
 
   const title = isChannel ? 'Channel Info' : isGroup ? 'Group Info' : 'User Info'
+
+  // Ссылка группы в инфо-карточке: публичный username, иначе первая инвайт-ссылка.
+  const inviteUrl = chat.username
+    ? `${location.origin}/@${chat.username}`
+    : inviteLinks[0]
+      ? `${location.origin}/join/${inviteLinks[0].token}`
+      : null
+  const inviteShort = inviteUrl?.replace(/^https?:\/\//, '') ?? ''
+  const [panelLinkCopied, setPanelLinkCopied] = useState(false)
+  const [qrOpen, setQrOpen] = useState(false)
+  const copyPanelLink = () => {
+    if (!inviteUrl) return
+    void navigator.clipboard.writeText(inviteUrl)
+    setPanelLinkCopied(true)
+    setTimeout(() => setPanelLinkCopied(false), 1500)
+  }
 
   const linkText = chat.links?.length ? chat.links : null
 
@@ -123,7 +144,9 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onAddMember }
             <Text size={21} weight={600} color="var(--tg-textPrimary)" style={{ marginTop: '8px', textAlign: 'center', paddingLeft: '16px', paddingRight: '16px' }}>
               {chat.name}
             </Text>
-            <Text size={14} color="var(--tg-textSecondary)">{chat.status}</Text>
+            <Text size={14} color="var(--tg-textSecondary)">
+              {isRealChat && (isGroup || isChannel) && realMembers ? membersLabel(realMembers.length, isChannel) : chat.status}
+            </Text>
           </div>
 
           {/* Info card — те же секции, что в настройках (settings/kit Section+Row) */}
@@ -147,12 +170,25 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onAddMember }
                 </div>
               </div>
             ) : isGroup ? (
-              <Row
-                icon={<TgIcon name="link" size={24} />}
-                label={`t.me/+${chat.id}9yJiODEy`}
-                sublabel={t('Link')}
-                translate={false}
-              />
+              inviteUrl && (
+                <div className={s.linkRow} onClick={() => copyPanelLink()}>
+                  <TgIcon name="link" size={24} color="var(--tg-textSecondary)" />
+                  <div className={s.grow}>
+                    <Text size={16} color="var(--tg-textPrimary)" style={{ wordBreak: 'break-all' }}>{inviteShort}</Text>
+                    <Text size={13.5} color={panelLinkCopied ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'}>
+                      {panelLinkCopied ? t('Link copied to clipboard.') : t('Link')}
+                    </Text>
+                  </div>
+                  <IconButton
+                    size="small"
+                    color="var(--tg-textSecondary)"
+                    onClick={(e) => { e.stopPropagation(); setQrOpen(true) }}
+                    aria-label="QR"
+                  >
+                    <TgIcon name="qr" size={22} />
+                  </IconButton>
+                </div>
+              )
             ) : (
               <>
                 {/* Порядок строк — как в tweb peerProfile MainSection: Phone → Username → Bio.
@@ -177,10 +213,6 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onAddMember }
                 />
               </>
             )}
-          </Section>
-
-          {/* Уведомления — отдельная карточка (как Night Mode в настройках) */}
-          <Section>
             <Row
               icon={<TgIcon name="unmute" size={24} />}
               label="Notifications"
@@ -214,89 +246,6 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onAddMember }
                     </motion.div>
                   </div>
                 )}
-              </div>
-            </div>
-          )}
-
-          {/* Real group/channel: members/subscribers list (loaded from groups.members) */}
-          {isRealChat && realMembers && (
-            <div className={s.section}>
-              <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionTitle}>
-                {isChannel ? 'Подписчики' : 'Участники'}
-              </Text>
-              <div className={s.cardPlain}>
-                {realMembers.map((mem) => {
-                  const openChat = () =>
-                    onOpenPeer?.({ id: mem.userId, displayName: mem.displayName, username: mem.username, avatarUrl: mem.avatarUrl })
-                  return (
-                    <div key={mem.userId} className={s.memberRow}>
-                      {/* avatar + name → open a private chat with this member */}
-                      <div onClick={openChat} className={s.memberTap}>
-                        <Avatar background="var(--tg-accent)" text={mem.displayName[0]?.toUpperCase()} src={mem.avatarUrl} size="md" />
-                        <div className={s.grow}>
-                          <Text noWrap size={16} color="var(--tg-textPrimary)">{mem.displayName}</Text>
-                          <Text size={13.5} color={mem.online ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'}>
-                            {mem.online ? t('online') : t('last seen recently')}
-                          </Text>
-                        </div>
-                      </div>
-                      {/* role label → admin rights editor (creator/admins only) */}
-                      <span
-                        onClick={canManageAdmins ? () => setEditMember(mem) : undefined}
-                        className={classNames(s.roleLabel, canManageAdmins ? s.roleClickable : '')}
-                      >
-                        {roleLabel(mem.role, isChannel)}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Real group/channel: invite links (admins with INVITE_USERS / creator) */}
-          {isRealChat && canInvite && (
-            <div className={s.section}>
-              <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionTitle}>
-                Пригласительные ссылки
-              </Text>
-              <div className={s.cardPlain}>
-                <div className={s.inviteRow}>
-                  <Text size={16} color="var(--tg-textPrimary)" style={{ flex: 1 }}>Запрашивать одобрение</Text>
-                  <TgSwitch checked={requireApproval} onClick={() => setRequireApproval((v) => !v)} />
-                </div>
-                {inviteLinks.map((link) => {
-                  const fullUrl = `${location.origin}/join/${link.token}`
-                  return (
-                    <div key={link.token} className={s.inviteRow}>
-                      <TgIcon name="link" size={24} color="var(--tg-textSecondary)" style={{ flexShrink: 0 }} />
-                      <div className={s.grow}>
-                        <Text size={15} color="var(--tg-link)" style={{ wordBreak: 'break-all' }}>{fullUrl}</Text>
-                        {copiedToken === link.token ? (
-                          <Text size={12.5} color="var(--tg-accent)">Скопировано</Text>
-                        ) : (
-                          link.requiresApproval && (
-                            <Text size={12.5} color="var(--tg-textSecondary)">по заявке</Text>
-                          )
-                        )}
-                      </div>
-                      <IconButton onClick={() => copyInvite(link.token)} color={copiedToken === link.token ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'} style={{ flexShrink: 0 }}>
-                        <TgIcon name="copy" size={20} />
-                      </IconButton>
-                    </div>
-                  )
-                })}
-                <div className={s.actionWrap}>
-                  <motion.div
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => void createInvite()}
-                    className={s.actionBtn}
-                    style={{ opacity: creatingInvite ? 0.6 : 1 }}
-                  >
-                    <TgIcon name="adduser" size={22} />
-                    Создать ссылку
-                  </motion.div>
-                </div>
               </div>
             </div>
           )}
@@ -340,7 +289,19 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onAddMember }
               Контент пока моковый — реального API истории по типам ещё нет. */}
           {/* isRealChat из useGroupInfo — только группы/каналы; для шаред-медиа
               реальность чата определяем по numeric id (private тоже подходит) */}
-          <SharedMedia tab={tab} onTab={setTab} chatId={sharedMediaChatId(chat.id)} />
+          <SharedMedia
+            tab={tab}
+            onTab={setTab}
+            chatId={sharedMediaChatId(chat.id)}
+            members={isRealChat && (isGroup || isChannel) ? realMembers ?? [] : undefined}
+            isChannel={isChannel}
+            canManageAdmins={canManageAdmins}
+            onOpenPeer={onOpenPeer}
+            onEditMember={setEditMember}
+          />
+
+          {/* QR-код ссылки (иконка в инфо-карточке) */}
+          {inviteUrl && <QrPopup open={qrOpen} url={inviteUrl} onClose={() => setQrOpen(false)} />}
         </div>
 
         {/* Group add-member FAB (tweb btnAddMembers) */}
@@ -408,7 +369,41 @@ const extOf = (name?: string) => (name?.includes('.') ? name.slice(name.lastInde
 const firstUrl = (text: string) => text.match(/https?:\/\/[^\s]+/)?.[0] ?? ''
 const hostOf = (url: string) => { try { return new URL(url).hostname } catch { return url } }
 
-function SharedMedia({ tab, onTab, chatId }: { tab: string; onTab: (v: string) => void; chatId: number | null }) {
+// Попап с QR-кодом ссылки (qr-code-styling — тот же, что на QR-логине)
+function QrPopup({ open, url, onClose }: { open: boolean; url: string; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open || !ref.current) return
+    ref.current.innerHTML = ''
+    const qr = new QRCodeStyling({
+      width: 260, height: 260, data: url, type: 'svg',
+      dotsOptions: { color: '#000', type: 'rounded' },
+      cornersSquareOptions: { type: 'extra-rounded' },
+      backgroundOptions: { color: 'transparent' },
+    })
+    qr.append(ref.current)
+  }, [open, url])
+  return (
+    <Popup open={open} title="QR" width={320} onClose={onClose}>
+      <div ref={ref} style={{ display: 'flex', justifyContent: 'center', padding: '8px 0 4px', background: '#fff', borderRadius: 12 }} />
+      <Text size={13.5} color="var(--tg-textSecondary)" style={{ textAlign: 'center', display: 'block', paddingTop: 10, wordBreak: 'break-all' }}>
+        {url}
+      </Text>
+    </Popup>
+  )
+}
+
+function SharedMedia({ tab, onTab, chatId, members, isChannel, canManageAdmins, onOpenPeer, onEditMember }: {
+  tab: string
+  onTab: (v: string) => void
+  chatId: number | null
+  /** участники для первого таба (только реальные группы/каналы) */
+  members?: RealMember[]
+  isChannel?: boolean
+  canManageAdmins?: boolean
+  onOpenPeer?: (peer: OpenPeer) => void
+  onEditMember?: (m: RealMember) => void
+}) {
   const t = useT()
   const [lang] = useLang()
   const managers = useManagers()
@@ -429,7 +424,7 @@ function SharedMedia({ tab, onTab, chatId }: { tab: string; onTab: (v: string) =
   useEffect(() => { setByFilter({}) }, [winLen])
 
   useEffect(() => {
-    if (chatId == null || byFilter[filter]) return
+    if (chatId == null || !filter || byFilter[filter]) return
     void managers.messages
       .mediaHistory(chatId, filter)
       .then((r) => setByFilter((d) => ({ ...d, [filter]: r.messages })))
@@ -493,7 +488,7 @@ function SharedMedia({ tab, onTab, chatId }: { tab: string; onTab: (v: string) =
       <div className={s.tabsWrap}>
         <Tabs value={tab} onChange={(v) => onTab(v as string)}>
           <Tabs.List framed>
-            {SHARED_TABS.map((name) => (
+            {(members ? ['Members', ...SHARED_TABS] : [...SHARED_TABS]).map((name) => (
               <Tabs.Tab key={name} value={name}>
                 {t(name)}
               </Tabs.Tab>
@@ -501,6 +496,33 @@ function SharedMedia({ tab, onTab, chatId }: { tab: string; onTab: (v: string) =
           </Tabs.List>
         </Tabs>
       </div>
+
+      {tab === 'Members' && members && (
+        <div className={s.cardPlain} style={{ margin: '0 12px' }}>
+          {members.map((mem) => (
+            <div key={mem.userId} className={s.memberRow}>
+              <div
+                onClick={() => onOpenPeer?.({ id: mem.userId, displayName: mem.displayName, username: mem.username, avatarUrl: mem.avatarUrl })}
+                className={s.memberTap}
+              >
+                <Avatar background="var(--tg-accent)" text={mem.displayName[0]?.toUpperCase()} src={mem.avatarUrl} size="md" />
+                <div className={s.grow}>
+                  <Text noWrap size={16} color="var(--tg-textPrimary)">{mem.displayName}</Text>
+                  <Text size={13.5} color="var(--tg-textSecondary)">
+                    {mem.online ? t('online') : t('last seen recently')}
+                  </Text>
+                </div>
+              </div>
+              <span
+                onClick={canManageAdmins ? () => onEditMember?.(mem) : undefined}
+                className={classNames(s.roleLabel, canManageAdmins ? s.roleClickable : '')}
+              >
+                {roleLabel(mem.role, !!isChannel)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {msgs != null && msgs.length === 0 && empty}
 

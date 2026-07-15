@@ -352,3 +352,17 @@
   color: #ff595a;
   cursor: pointer;
 }
+
+// строка ссылки группы в инфо-карточке (иконка + ссылка/подпись + QR справа)
+.linkRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px;
+  border-radius: 10px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--tg-hover);
+  }
+}

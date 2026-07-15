@@ -95,6 +95,10 @@ func (i *Interactor) CreateGroup(ctx context.Context, creatorID int64, title, ab
 	if err != nil {
 		return 0, err
 	}
+	// Primary-инвайт существует у группы с рождения (tweb exported_invite).
+	if i.invites != nil {
+		_, _ = i.invites.Create(ctx, chatID, creatorID, tokenGen(), nil, false)
+	}
 	i.postGroupService(ctx, chatID, creatorID, serviceText("group_create", i.userCard(ctx, creatorID), nil))
 	return chatID, nil
 }

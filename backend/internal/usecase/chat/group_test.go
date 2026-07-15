@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -469,7 +470,8 @@ func newGroupTestInteractor(t *testing.T) (*Interactor, *fakeGroupRepo, *fakeJoi
 	fi := newFakeInviteRepo()
 	fjr := newFakeJoinRequestRepo()
 	prev := tokenGen
-	tokenGen = func() string { return "test-token" }
+	n := 0
+	tokenGen = func() string { n++; return fmt.Sprintf("test-token-%d", n) }
 	t.Cleanup(func() { tokenGen = prev })
 	in := New(fakeTx{}, groupChats{fg}, nil, nil, nil, nil, fg, fi, nil, nil, fjr)
 	return in, fg, fjr
