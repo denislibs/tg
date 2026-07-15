@@ -68,6 +68,7 @@ export interface GroupInfo {
   saveRights: (userId: number, bitmask: number) => Promise<void>
   removeRights: (userId: number) => Promise<void>
   enableDiscussion: () => Promise<void>
+  refreshMembers: () => Promise<void>
 }
 
 export function useGroupInfo(chat: Chat): GroupInfo {
@@ -232,5 +233,6 @@ export function useGroupInfo(chat: Chat): GroupInfo {
     saveRights,
     removeRights,
     enableDiscussion,
+    refreshMembers,
   }
 }

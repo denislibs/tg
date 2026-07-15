@@ -12,6 +12,7 @@ import Avatar from '../shared/ui/Avatar'
 import { useAvatarSrc } from './useAvatarSrc'
 import EditView from './EditView'
 import GroupEditFlow from './group/GroupEditFlow'
+import AddMembersScreen from './group/AddMembersScreen'
 import { Section, Row } from './settings/kit'
 import classNames from '../shared/lib/classNames'
 import type { Chat, OpenPeer } from '../data'
@@ -40,12 +41,13 @@ function membersLabel(n: number, isChannel: boolean): string {
   return `${n} ${word}`
 }
 
-export default function UserInfoPanel({ chat, onClose, onOpenPeer, onAddMember }: { chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void; onAddMember?: () => void }) {
+export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers }: { chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void; canAddMembers?: boolean }) {
   const t = useT()
   const narrow = useMediaQuery('(max-width:900px)')
   // группы открываются на табе «Участники» (как в Telegram), остальные — на «Медиа»
   const [tab, setTab] = useState(chat.type === 'group' ? 'Members' : 'Media')
   const [editing, setEditing] = useState(false)
+  const [addingMembers, setAddingMembers] = useState(false)
   const [notif, setNotif] = useState(true)
   const headerAvatarSrc = useAvatarSrc(chat.avatarUrl)
 
@@ -68,6 +70,7 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onAddMember }
     saveRights,
     removeRights,
     enableDiscussion,
+    refreshMembers,
   } = useGroupInfo(chat)
 
   const title = isChannel ? 'Channel Info' : isGroup ? 'Group Info' : 'User Info'
@@ -305,12 +308,12 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onAddMember }
         </div>
 
         {/* Group add-member FAB (tweb btnAddMembers) */}
-        {isGroup && onAddMember && (
+        {isGroup && canAddMembers && isRealChat && (
           <motion.div
             whileHover={{ scale: 1.06 }}
             whileTap={{ scale: 0.92 }}
             className={s.fab}
-            onClick={onAddMember}
+            onClick={() => setAddingMembers(true)}
           >
             <TgIcon name="adduser" />
           </motion.div>
@@ -321,6 +324,17 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onAddMember }
           {editing && (isGroup && isRealChat
             ? <GroupEditFlow chatId={Number(chat.id)} chat={chat} onClose={() => setEditing(false)} />
             : <EditView chat={chat} onBack={() => setEditing(false)} />)}
+          {addingMembers && isRealChat && (
+            <AddMembersScreen
+              chatId={Number(chat.id)}
+              existingIds={(realMembers ?? []).map((m) => m.userId)}
+              onClose={() => setAddingMembers(false)}
+              onAdded={() => {
+                setAddingMembers(false)
+                void refreshMembers()
+              }}
+            />
+          )}
         </AnimatePresence>
 
         {/* Admin-rights editor overlay (slide-in sub-view, mirrors tweb userPermissions) */}

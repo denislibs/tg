@@ -165,3 +165,11 @@
   cursor: pointer;
   z-index: 5;
 }
+
+// карточка-список (кандидаты в «Добавить участников») — surface как cardPlain панели
+.cardList {
+  margin: 0 12px;
+  padding: 6px;
+  border-radius: 16px;
+  background: var(--tg-sidebarBg);
+}

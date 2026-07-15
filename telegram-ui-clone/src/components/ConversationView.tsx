@@ -38,10 +38,10 @@ import PinnedBar from './conversation/PinnedBar'
 import ScrollDownFab from './conversation/ScrollDownFab'
 import SelectionBar from './conversation/SelectionBar'
 import MessageContextMenu from './conversation/MessageContextMenu'
-import { useChatsStore, loadChats } from '../stores/chatsStore'
+import { useChatsStore } from '../stores/chatsStore'
 import { type MessageEntity } from '../core/models'
 import { useSearchStore } from '../stores/searchStore'
-import { DeleteMessageDialog, ForwardPicker, ViewersPopup, AddMemberDialog } from './messages/ChatDialogs'
+import { DeleteMessageDialog, ForwardPicker, ViewersPopup } from './messages/ChatDialogs'
 import SendMediaPopup from './messages/SendMediaPopup'
 import MediaLightbox from './messages/MediaLightbox'
 import classNames from '../shared/lib/classNames'
@@ -147,7 +147,6 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // in searchStore) to hide the pinned bar + adjust the sticky-date offset.
   const searchOpen = useSearchStore((s) => s.byChat[numericChatId]?.open ?? false)
   const [headerMenu, setHeaderMenu] = useState<{ top: number; right: number } | null>(null)
-  const [addMemberOpen, setAddMemberOpen] = useState(false)
   const [addContactOpen, setAddContactOpen] = useState(false)
   const [attachAnchor, setAttachAnchor] = useState<{ left: number; bottom: number } | null>(null)
   // Scroll state machine (refs + bottom-pin intent + history pagination + scroll-restore
@@ -282,22 +281,8 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     void managers.groups.setMute(numericChatId, next).catch(() => setDialogMuted(numericChatId, !next))
   }
 
-  // Add-member (real group chats only): candidate contacts are the user's existing
-  // private-chat peers. Picking one adds them to this group, then reloads dialogs.
+  // Добавление участников: полноценный под-экран живёт в UserInfoPanel
   const canAddMember = isRealChat && isGroup
-  const dialogs = useChatsStore((s) => s.dialogs)
-  const contactPeers = useMemo(
-    () =>
-      dialogs
-        .filter((d) => d.type === 'private' && d.peer)
-        .map((d) => d.peer!)
-        .filter((p, i, arr) => arr.findIndex((q) => q.id === p.id) === i),
-    [dialogs],
-  )
-  const addMember = (userId: number) => {
-    setAddMemberOpen(false)
-    void managers.groups.addMember(numericChatId, userId).then(() => loadChats(managers))
-  }
 
   // Header subtitle for real group/channel chats: derive a member/online (or
   // subscriber) count from the card + live online count. Private and draft chats
@@ -520,7 +505,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
             chat={chat}
             onClose={() => setInfoOpen(false)}
             onOpenPeer={onOpenPeer}
-            onAddMember={canAddMember ? () => setAddMemberOpen(true) : undefined}
+            canAddMembers={canAddMember}
           />
         )}
       </AnimatePresence>
@@ -537,15 +522,10 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           anchor={headerMenu}
           onClose={() => setHeaderMenu(null)}
           onToggleMute={isRealChat ? toggleMute : undefined}
-          onAddMember={canAddMember ? () => setAddMemberOpen(true) : undefined}
+          onAddMember={canAddMember ? () => setInfoOpen(true) : undefined}
           onSelectMessages={startSelectMode}
           onAddContact={chat.type === 'private' && chat.peerId != null ? () => setAddContactOpen(true) : undefined}
         />
-      )}
-
-      {/* Add-member picker (real group chats): a simple selectable list of contacts */}
-      {addMemberOpen && (
-        <AddMemberDialog contacts={contactPeers} onAdd={addMember} onClose={() => setAddMemberOpen(false)} />
       )}
 
       {/* Attach menu */}
