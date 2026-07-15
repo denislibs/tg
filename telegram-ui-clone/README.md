@@ -10,7 +10,7 @@
 ## Стек
 
 - **React 18** + **TypeScript** (strict)
-- **Vite 6** — сборка и dev-сервер
+- **Vite 6** — сборка (watch-режим вместо dev-сервера)
 - **MUI 6** (`@mui/material`, emotion) — компоненты и стили (`sx`)
 - **Zustand 5** — глобальное состояние (чаты, истории, звонки, аудио)
 - **framer-motion** — анимации
@@ -21,14 +21,14 @@
 
 ```bash
 npm install
-npm run dev      # dev-сервер :5173 (проксирует /api и /ws на бэкенд :38080)
+npm run dev      # vite build --watch → ../client-build; раздаёт nginx стенда (:38080)
 npm run build    # tsc -b + vite build → dist/
 npm test         # vitest
 ```
 
-`vite.config.ts`: dev-сервер проксирует `/api` → `http://localhost:38080` и `/ws` → `ws://localhost:38080`
-(бэкенд за nginx). Прод-сборка для раздачи nginx делается в корне:
-`npx vite build --base=/ --outDir ../client-build`.
+Dev-сервера нет: `npm run dev` пересобирает бандл в `../client-build` при каждом изменении,
+а nginx стенда монтирует эту папку — после ребилда достаточно обновить страницу
+на http://localhost:38080. Разовая прод-сборка та же: `npx vite build --base=/ --outDir ../client-build`.
 
 ## Структура
 

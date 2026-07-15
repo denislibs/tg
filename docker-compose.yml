@@ -98,7 +98,7 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/certs:/etc/nginx/certs:ro
-      # Vite build output (run `npm run build:watch` in telegram-ui-clone first).
+      # Vite build output (run `npm run dev` (watch) or a one-off build in telegram-ui-clone first).
       - ./client-build:/usr/share/nginx/html:ro
     ports: ["8080:80", "8443:443"]
     depends_on: [backend]

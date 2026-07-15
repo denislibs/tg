@@ -6,10 +6,10 @@ React/TS-клиент (Telegram Web K remake). Общие мандаты — в 
 ## Команды
 
 ```bash
-npm run dev    # :5173, проксирует /api и /ws на бэкенд :38080
+npm run dev    # watch-сборка в ../client-build (dev-сервера нет; раздаёт nginx :38080)
 npm test       # vitest
 npm run build  # tsc -b + vite build (типы должны проходить)
-# прод-сборка для nginx (из этой папки):
+# разовая прод-сборка для nginx (из этой папки):
 npx vite build --base=/ --outDir ../client-build
 ```
 

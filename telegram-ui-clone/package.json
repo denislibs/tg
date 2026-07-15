@@ -4,10 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite build --watch --base=/ --outDir ../client-build --emptyOutDir",
     "build": "tsc -b && vite build",
-    "build:watch": "vite build --watch --base=/ --outDir ../client-build --emptyOutDir",
-    "preview": "vite preview",
     "test": "vitest run"
   },
   "dependencies": {

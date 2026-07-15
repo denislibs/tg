@@ -84,12 +84,12 @@ cd backend && go run ./cmd/server
 go test ./...                  # интеграционные тесты на testcontainers (нужен Docker)
 ```
 
-**Фронтенд** (dev-сервер с hot-reload, проксирует `/api` и `/ws` на бэкенд):
+**Фронтенд** (dev-сервера нет — watch-сборка в `client-build/`, раздаёт nginx стенда):
 
 ```bash
 cd telegram-ui-clone
 npm install
-npm run dev      # http://localhost:5173
+npm run dev      # vite build --watch → ../client-build (открывать http://localhost:38080)
 npm test         # vitest
 ```
 
