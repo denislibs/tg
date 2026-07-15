@@ -149,7 +149,7 @@ export default function NewGroupFlow({ onClose, onCreate }: Props) {
                 {filtered.map((c) => (
                   <div key={c.id} className={s.row} onClick={() => toggle(c.id)}>
                     <div className={s.rowCheck}>
-                      <Checkbox checked={selected.includes(c.id)} size={20} />
+                      <Checkbox checked={selected.includes(c.id)} shape="square" size={20} />
                     </div>
                     {renderAvatar(c, 'md')}
                     <div className={s.rowBody}>

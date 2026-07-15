@@ -9,7 +9,7 @@
 .ring {
   position: absolute;
   inset: 0;
-  border-radius: 50%;
+  border-radius: var(--cb-radius, 50%);
   border: 1.5px solid var(--cb-ring, var(--tg-textFaint));
   box-sizing: border-box;
 }
@@ -17,7 +17,7 @@
 .fill {
   position: absolute;
   inset: 0;
-  border-radius: 50%;
+  border-radius: var(--cb-radius, 50%);
   background: var(--cb-accent, var(--tg-accent));
 }
 

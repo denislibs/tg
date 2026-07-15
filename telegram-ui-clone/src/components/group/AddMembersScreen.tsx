@@ -1,7 +1,8 @@
 // AddMembersScreen — под-экран «Добавить участников» (tweb AppAddMembersTab):
-// поиск, кандидаты с чекбоксами и статусом, угловая кнопка-галочка добавляет
-// выбранных. Кандидаты — контакты ∪ пиры приватных диалогов, минус уже участники.
-import { useMemo, useState } from 'react'
+// поиск (локально + глобально по людям), кандидаты с квадратными чекбоксами и
+// статусом; уже состоящие в группе видны с проставленным неактивным чекбоксом.
+// Угловая кнопка-галочка добавляет выбранных.
+import { useEffect, useMemo, useState } from 'react'
 import { SettingsScreen } from '../settings/kit'
 import InputSearch from '../../shared/ui/InputSearch'
 import Avatar from '../../shared/ui/Avatar'
@@ -37,17 +38,42 @@ export default function AddMembersScreen({
   const [q, setQ] = useState('')
   const [selected, setSelected] = useState<number[]>([])
   const [saving, setSaving] = useState(false)
+  const existing = useMemo(() => new Set(existingIds), [existingIds])
+
+  // Глобальный поиск людей по имени/username (как в Telegram): результаты
+  // подмешиваются к контактам при вводе запроса.
+  const [found, setFound] = useState<{ id: number; name: string; avatarUrl?: string }[]>([])
+  useEffect(() => {
+    const query = q.trim()
+    if (query.length < 2) {
+      setFound([])
+      return
+    }
+    let alive = true
+    const tm = setTimeout(() => {
+      void managers.channels.search(query).then((r) => {
+        if (alive) setFound(r.users.map((u) => ({ id: u.id, name: u.displayName || u.username, avatarUrl: u.avatarUrl || undefined })))
+      }).catch(() => {})
+    }, 250)
+    return () => {
+      alive = false
+      clearTimeout(tm)
+    }
+  }, [q, managers])
 
   const list = useMemo(() => {
-    const taken = new Set(existingIds)
     const query = q.trim().toLowerCase()
-    return candidates
-      .filter((c) => !taken.has(c.id))
-      .filter((c) => !query || c.name.toLowerCase().includes(query))
-  }, [candidates, existingIds, q])
+    const base = candidates.filter((c) => !query || c.name.toLowerCase().includes(query))
+    const seen = new Set(base.map((c) => c.id))
+    const extra = found.filter((u) => !seen.has(u.id))
+    // уже участники — видны с проставленным неактивным чекбоксом (как в Telegram)
+    return [...base, ...extra]
+  }, [candidates, q, found])
 
-  const toggle = (id: number) =>
+  const toggle = (id: number) => {
+    if (existing.has(id)) return
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  }
 
   const confirm = async () => {
     if (!selected.length || saving) return
@@ -74,9 +100,10 @@ export default function AddMembersScreen({
         )}
         {list.map((c) => {
           const p = presence[c.id]
+          const isMember = existing.has(c.id)
           return (
-            <div key={c.id} className={s.memberRow} onClick={() => toggle(c.id)}>
-              <Checkbox checked={selected.includes(c.id)} size={20} />
+            <div key={c.id} className={s.memberRow} onClick={() => toggle(c.id)} style={isMember ? { cursor: 'default' } : undefined}>
+              <Checkbox checked={isMember || selected.includes(c.id)} disabled={isMember} shape="square" size={20} />
               <Avatar size="md" background={gradientFor(c.id)} src={c.avatarUrl} text={c.name.charAt(0).toUpperCase() || '?'} />
               <div className={s.memberBody}>
                 <Text noWrap size={15.5} weight={600} color="var(--tg-textPrimary)">{c.name}</Text>

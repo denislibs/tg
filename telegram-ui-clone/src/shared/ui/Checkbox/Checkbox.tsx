@@ -14,10 +14,18 @@ export interface CheckboxProps {
   /** цвет кольца (по умолчанию --tg-textFaint) */
   ring?: string
   size?: number
+  /** square — квадрат со скруглением (tweb .checkbox-field, add members) */
+  shape?: 'round' | 'square'
+  /** нельзя переключить (уже участник) — приглушён */
+  disabled?: boolean
 }
 
-export default function Checkbox({ checked, accent = 'var(--tg-accent)', ring = 'var(--tg-textFaint)', size = 18 }: CheckboxProps) {
-  const style = { width: size, height: size, '--cb-accent': accent, '--cb-ring': ring } as CSSProperties
+export default function Checkbox({ checked, accent = 'var(--tg-accent)', ring = 'var(--tg-textFaint)', size = 18, shape = 'round', disabled = false }: CheckboxProps) {
+  const style = {
+    width: size, height: size, '--cb-accent': accent, '--cb-ring': ring,
+    '--cb-radius': shape === 'square' ? '31%' : '50%',
+    opacity: disabled ? 0.45 : 1,
+  } as CSSProperties
   return (
     <div className={s.root} style={style}>
       <div className={s.ring} />
