@@ -67,26 +67,6 @@
 }
 
 // tweb .chatlist-overlay: position:absolute; top:0; inset-inline:0; z-index:2.
-.overlay {
-  position: absolute;
-  top: 0;
-  inset-inline: 0;
-  z-index: 2;
-}
-
-// tweb .folders-tabs-gradient-container: position:absolute; inset:0; z-index:-1
-// (gradient height:100%; surface→transparent — гасит уплывающие строки).
-.gradientContainer {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-}
-
-.gradient {
-  height: 100%;
-  background: linear-gradient(180deg, var(--tg-sidebarBg), transparent 100%);
-}
-
 // tweb .sidebar-search — оверлей поиска поверх списка
 .searchOverlay {
   position: absolute;

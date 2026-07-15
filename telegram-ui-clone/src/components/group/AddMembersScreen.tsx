@@ -105,8 +105,8 @@ export default function AddMembersScreen({
               <Checkbox checked={isMember || selected.includes(c.id)} disabled={isMember} shape="square" size={20} />
               <UserAvatar id={c.id} name={c.name} avatarUrl={c.avatarUrl} online={p?.online} />
               <div className={s.memberBody}>
-                <Text noWrap size={15.5} weight={600} color="var(--tg-textPrimary)">{c.name}</Text>
-                <Text noWrap size={13.5} color={p?.online ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'}>
+                <Text noWrap size={16} color="var(--tg-textPrimary)">{c.name}</Text>
+                <Text noWrap size={14} color="var(--tg-textSecondary)">
                   {p?.online ? t('online') : lastSeenLabel(p?.lastSeen ?? 0, lang)}
                 </Text>
               </div>

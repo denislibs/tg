@@ -19,6 +19,7 @@ import { useManagers } from '../core/hooks/useManagers'
 import type { SearchResult } from '../core/managers/channelsManager'
 import InputSearch from '../shared/ui/InputSearch'
 import FolderTabs, { type FolderKey } from './FolderTabs'
+import { TabsBar } from '../shared/ui/Tabs'
 import { useT } from '../i18n'
 
 interface Props {
@@ -85,12 +86,8 @@ export default function Sidebar({
     [chats],
   )
 
-  // direction for the folder-switch slide (right tab -> slide from right, etc.)
-  const FOLDER_ORDER: FolderKey[] = ['all', 'private', 'groups', 'channels']
-  const dirRef = useRef(0)
   const changeFolder = (k: FolderKey) => {
     if (k === folder) return
-    dirRef.current = FOLDER_ORDER.indexOf(k) > FOLDER_ORDER.indexOf(folder) ? 1 : -1
     setFolder(k)
     const el = listScrollRef.current
     if (el) el.scrollTop = 0
@@ -148,18 +145,14 @@ export default function Sidebar({
           onSelect={onSelect}
           loaded={loaded}
           folder={folder}
-          dir={dirRef.current}
         />
 
         {/* tweb .chatlist-overlay: градиент (за табами, гасит уплывающие строки в
             surface) + табы папок. Список прокручивается под ними. */}
         {!searching && (
-          <div className={s.overlay}>
-            <div className={s.gradientContainer}>
-              <div className={s.gradient} />
-            </div>
+          <TabsBar mode="overlay">
             <FolderTabs value={folder} onChange={changeFolder} counts={folderUnread} />
-          </div>
+          </TabsBar>
         )}
 
         {/* tweb .sidebar-search — оверлей поиска (conditional: размонтируется мгновенно) */}

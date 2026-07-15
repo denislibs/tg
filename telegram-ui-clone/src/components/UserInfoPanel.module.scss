@@ -37,10 +37,11 @@
   padding: 12px;
 }
 
-// скроллируемое тело
+// скроллируемое тело (overflow-x: hidden — под слайд табов ±100%)
 .body {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding-bottom: 24px;
 }
 
@@ -91,19 +92,26 @@
   margin: 8px 12px 0;
 }
 
-// сетка «Медиа»
+// сетка «Медиа» (tweb .search-super-content-media-grid: на всю ширину,
+// gap 1px, радиус 24px на контейнере, overflow hidden)
 .mediaGrid {
-  margin: 8px 12px 0;
+  margin: 8px 0 0;
+  width: 100%;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 3px;
+  grid-auto-rows: 1fr;
+  gap: 1px;
+  border-radius: 24px;
+  overflow: hidden;
 }
 
+// tweb .grid-item: квадрат, cursor pointer
 .mediaTile {
   position: relative;
   aspect-ratio: 1 / 1;
   overflow: hidden;
   background: var(--tg-hover);
+  cursor: pointer;
 }
 
 .tileImg {
@@ -216,25 +224,17 @@
   }
 }
 
-// ряд участника/подписчика
+// ряд участника/подписчика (tweb .row + chatlist-chat-abitbigger: 56px,
+// аватар 42, радиус 16, hover на всю строку)
 .memberRow {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 6px 12px;
-  margin: 0 4px;
-  border-radius: 12px;
-}
-
-// кликабельная часть (аватар + имя)
-.memberTap {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: 1;
-  min-width: 0;
+  gap: 18px;
+  min-height: 56px;
+  padding: 7px 16px 7px 12px;
+  margin: 0 8px;
+  border-radius: 16px;
   cursor: pointer;
-  border-radius: 12px;
 
   @media (hover: hover) {
     &:hover {
@@ -243,9 +243,29 @@
   }
 }
 
-// метка роли (кликабельна у админов)
+// линия заголовка: имя слева, роль справа (tweb row-title-row: 16/22)
+.memberTitleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: 22px;
+
+  > div {
+    line-height: 22px;
+  }
+
+  // статус под заголовком (tweb row-subtitle: 14/18)
+  + div {
+    line-height: 18px;
+  }
+}
+
+// метка роли (tweb row-title-right-secondary: 12px на линии заголовка)
 .roleLabel {
-  font-size: 13.5px;
+  flex: 0 0 auto;
+  font-size: 12px;
+  line-height: 16px;
   color: var(--tg-textSecondary);
   border-radius: 8px;
 }

@@ -1,0 +1,31 @@
+// TabsBar — позиционирование плашки табов + градиент под ней.
+
+.bar {
+  z-index: 2;
+}
+
+// оверлей над списком (tweb .folders-tabs: absolute поверх chatlist)
+.overlay {
+  position: absolute;
+  top: 0;
+  inset-inline: 0;
+}
+
+// липнет к верху скролл-контейнера (tweb .search-super-tabs-scrollable)
+.sticky {
+  position: sticky;
+  top: 0;
+}
+
+// tweb .folders-tabs-gradient-container: absolute; inset: 0; z-index: -1
+.gradientContainer {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+}
+
+// surface → transparent (гасит уплывающие строки под табами)
+.gradient {
+  height: 100%;
+  background: linear-gradient(180deg, var(--tabsbar-from, var(--tg-sidebarBg)), transparent 100%);
+}

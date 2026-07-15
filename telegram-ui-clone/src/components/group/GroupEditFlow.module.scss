@@ -121,24 +121,36 @@
   }
 }
 
-// строка участника
+// строка участника (tweb .row + chatlist-chat-abitbigger: 56px, аватар 42,
+// радиус 16, hover на всю строку)
 .memberRow {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 18px;
   min-height: 56px;
-  padding: 4px 8px;
-  border-radius: 10px;
+  padding: 7px 16px 7px 12px;
+  border-radius: 16px;
   cursor: pointer;
 
-  &:hover {
-    background: var(--tg-hover);
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+    }
   }
 }
 
 .memberBody {
   flex: 1;
   min-width: 0;
+
+  // tweb: заголовок 16/22, статус 14/18
+  > div {
+    line-height: 22px;
+  }
+
+  > div + div {
+    line-height: 18px;
+  }
 }
 
 .search {

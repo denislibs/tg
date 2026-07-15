@@ -3,7 +3,7 @@ import { useT } from '../i18n'
 
 export type FolderKey = 'all' | 'private' | 'groups' | 'channels'
 
-const ORDER: FolderKey[] = ['all', 'private', 'groups', 'channels']
+export const FOLDER_ORDER: FolderKey[] = ['all', 'private', 'groups', 'channels']
 
 // Sidebar folder filter, rendered with the shared <Tabs> strip (tweb 1:1).
 // The chat-list content slide stays in Sidebar (already ±100%).
@@ -25,7 +25,7 @@ export default function FolderTabs({
     { key: 'channels', label: t('Channels') },
   ]
   return (
-    <Tabs value={value} onChange={(v) => onChange(v as FolderKey)} order={ORDER}>
+    <Tabs value={value} onChange={(v) => onChange(v as FolderKey)} order={FOLDER_ORDER}>
       <Tabs.List framed>
         {tabs.map(({ key, label }) => (
           <Tabs.Tab key={key} value={key} badge={counts?.[key]}>

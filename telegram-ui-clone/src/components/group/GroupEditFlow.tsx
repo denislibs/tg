@@ -425,8 +425,8 @@ function AdminsScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
           <div key={m.userId} className={s.memberRow} onClick={() => g.canManageAdmins && m.role !== 'creator' && setEditing(m)}>
             <UserAvatar id={m.userId} name={m.name} avatarUrl={m.avatarUrl} />
             <div className={s.memberBody}>
-              <Text noWrap size={15.5} weight={600} color="var(--tg-textPrimary)">{m.name}</Text>
-              <Text noWrap size={13.5} color="var(--tg-textSecondary)">
+              <Text noWrap size={16} color="var(--tg-textPrimary)">{m.name}</Text>
+              <Text noWrap size={14} color="var(--tg-textSecondary)">
                 {t(m.role === 'creator' ? 'Owner' : 'Admin')}
               </Text>
             </div>
@@ -487,7 +487,7 @@ function AdminRightsScreen({
         <div className={s.memberRow}>
           <UserAvatar id={member.userId} name={member.name} avatarUrl={member.avatarUrl} />
           <div className={s.memberBody}>
-            <Text noWrap size={15.5} weight={600} color="var(--tg-textPrimary)">{member.name}</Text>
+            <Text noWrap size={16} color="var(--tg-textPrimary)">{member.name}</Text>
           </div>
         </div>
       </Section>
@@ -538,8 +538,8 @@ function MembersScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
           <div key={m.userId} className={s.memberRow}>
             <UserAvatar id={m.userId} name={m.name} avatarUrl={m.avatarUrl} />
             <div className={s.memberBody}>
-              <Text noWrap size={15.5} weight={600} color="var(--tg-textPrimary)">{m.name}</Text>
-              <Text noWrap size={13.5} color="var(--tg-textSecondary)">
+              <Text noWrap size={16} color="var(--tg-textPrimary)">{m.name}</Text>
+              <Text noWrap size={14} color="var(--tg-textSecondary)">
                 {t(m.role === 'creator' ? 'Owner' : m.role === 'admin' ? 'Admin' : 'Member')}
               </Text>
             </div>
@@ -606,7 +606,7 @@ function RemovedUsersScreen({ g, onBack }: { g: GroupEdit; onBack: () => void })
             <div key={b.userId} className={s.memberRow}>
               <UserAvatar id={b.userId} name={b.name} avatarUrl={b.avatarUrl} />
               <div className={s.memberBody}>
-                <Text noWrap size={15.5} weight={600} color="var(--tg-textPrimary)">{b.name}</Text>
+                <Text noWrap size={16} color="var(--tg-textPrimary)">{b.name}</Text>
               </div>
               <IconButton size="small" color="var(--tg-accent)" onClick={() => void g.unban(b.userId)} title={t('Unban')}>
                 <TgIcon name="close" size={20} />
@@ -665,7 +665,7 @@ function MemberPicker({
           <div key={m.userId} className={s.memberRow} onClick={() => onPick(m)}>
             <UserAvatar id={m.userId} name={m.name} avatarUrl={m.avatarUrl} />
             <div className={s.memberBody}>
-              <Text noWrap size={15.5} weight={600} color="var(--tg-textPrimary)">{m.name}</Text>
+              <Text noWrap size={16} color="var(--tg-textPrimary)">{m.name}</Text>
             </div>
           </div>
         ))}

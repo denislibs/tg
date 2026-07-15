@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import TgSwitch from './TgSwitch'
-import { Tabs } from '../shared/ui/Tabs'
+import { Tabs, TabSlide, TabsBar } from '../shared/ui/Tabs'
 import Popup from '../shared/ui/Popup'
 import QRCodeStyling from 'qr-code-styling'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -497,43 +497,51 @@ function SharedMedia({ tab, onTab, chatId, members, isChannel, canManageAdmins, 
     </Text>
   )
 
+  const tabOrder = members ? ['Members', ...SHARED_TABS] : [...SHARED_TABS]
   return (
     <>
-      {/* Тот же framed-таб-ряд, что и у папок в списке чатов (FolderTabs) */}
-      <div className={s.tabsWrap}>
-        <Tabs value={tab} onChange={(v) => onTab(v as string)}>
-          <Tabs.List framed>
-            {(members ? ['Members', ...SHARED_TABS] : [...SHARED_TABS]).map((name) => (
-              <Tabs.Tab key={name} value={name}>
-                {t(name)}
-              </Tabs.Tab>
-            ))}
-          </Tabs.List>
-        </Tabs>
-      </div>
+      {/* Тот же framed-таб-ряд, что и у папок в списке чатов; липнет к верху
+          скролла панели (tweb .search-super-tabs-scrollable: sticky) */}
+      <TabsBar mode="sticky" from="var(--tg-sectionBackdrop)">
+        <div className={s.tabsWrap}>
+          <Tabs value={tab} onChange={(v) => onTab(v as string)}>
+            <Tabs.List framed>
+              {tabOrder.map((name) => (
+                <Tabs.Tab key={name} value={name}>
+                  {t(name)}
+                </Tabs.Tab>
+              ))}
+            </Tabs.List>
+          </Tabs>
+        </div>
+      </TabsBar>
 
+      {/* контент табов скользит ±100% (tweb TransitionSlider 'tabs') */}
+      <TabSlide tab={tab} order={tabOrder}>
       {tab === 'Members' && members && (
         <div className={s.cardPlain} style={{ margin: '0 12px' }}>
           {members.map((mem) => (
-            <div key={mem.userId} className={s.memberRow}>
-              <div
-                onClick={() => onOpenPeer?.({ id: mem.userId, displayName: mem.displayName, username: mem.username, avatarUrl: mem.avatarUrl })}
-                className={s.memberTap}
-              >
-                <UserAvatar id={mem.userId} name={mem.displayName} avatarUrl={mem.avatarUrl} online={mem.online} />
-                <div className={s.grow}>
+            <div
+              key={mem.userId}
+              className={s.memberRow}
+              onClick={() => onOpenPeer?.({ id: mem.userId, displayName: mem.displayName, username: mem.username, avatarUrl: mem.avatarUrl })}
+            >
+              <UserAvatar id={mem.userId} name={mem.displayName} avatarUrl={mem.avatarUrl} online={mem.online} />
+              <div className={s.grow}>
+                {/* роль — на линии заголовка (tweb row-title-right-secondary) */}
+                <div className={s.memberTitleRow}>
                   <Text noWrap size={16} color="var(--tg-textPrimary)">{mem.displayName}</Text>
-                  <Text size={13.5} color="var(--tg-textSecondary)">
-                    {mem.online ? t('online') : t('last seen recently')}
-                  </Text>
+                  <span
+                    onClick={canManageAdmins ? (e) => { e.stopPropagation(); onEditMember?.(mem) } : undefined}
+                    className={classNames(s.roleLabel, canManageAdmins ? s.roleClickable : '')}
+                  >
+                    {roleLabel(mem.role, !!isChannel)}
+                  </span>
                 </div>
+                <Text size={14} color="var(--tg-textSecondary)">
+                  {mem.online ? t('online') : t('last seen recently')}
+                </Text>
               </div>
-              <span
-                onClick={canManageAdmins ? () => onEditMember?.(mem) : undefined}
-                className={classNames(s.roleLabel, canManageAdmins ? s.roleClickable : '')}
-              >
-                {roleLabel(mem.role, !!isChannel)}
-              </span>
             </div>
           ))}
         </div>
@@ -544,12 +552,7 @@ function SharedMedia({ tab, onTab, chatId, members, isChannel, canManageAdmins, 
       {tab === 'Media' && msgs != null && msgs.length > 0 && (
         <div className={s.mediaGrid}>
           {msgs.map((m, i) => (
-            <div
-              key={m.id}
-              className={s.mediaTile}
-              onClick={(e) => openMedia(i, e)}
-              style={{ borderRadius: i === 0 ? '8px 0 0 0' : i === 2 ? '0 8px 0 0' : 0, cursor: 'pointer' }}
-            >
+            <div key={m.id} className={s.mediaTile} onClick={(e) => openMedia(i, e)}>
               {m.mediaId != null && <img className={s.tileImg} src={mediaThumbUrl(m.mediaId)} alt="" loading="lazy" />}
               {m.type === 'video' && <span className={s.tileDuration}>{fmtDur(m.mediaDuration)}</span>}
             </div>
@@ -608,17 +611,6 @@ function SharedMedia({ tab, onTab, chatId, members, isChannel, canManageAdmins, 
         </div>
       )}
 
-      {lightbox && (
-        <MediaLightbox
-          items={lightbox.items}
-          index={lightbox.index}
-          originRect={lightbox.originRect}
-          originSrc={lightbox.originSrc}
-          onClosingStart={() => { lightbox.originEl.style.visibility = '' }}
-          onClose={() => { lightbox.originEl.style.visibility = ''; setLightbox(null) }}
-        />
-      )}
-
       {tab === 'Voice' && msgs != null && msgs.length > 0 && (
         <div className={s.mediaList}>
           {msgs.map((m) => (
@@ -633,6 +625,19 @@ function SharedMedia({ tab, onTab, chatId, members, isChannel, canManageAdmins, 
             </div>
           ))}
         </div>
+      )}
+      </TabSlide>
+
+      {/* вне TabSlide: transform слайда ломал бы position:fixed лайтбокса */}
+      {lightbox && (
+        <MediaLightbox
+          items={lightbox.items}
+          index={lightbox.index}
+          originRect={lightbox.originRect}
+          originSrc={lightbox.originSrc}
+          onClosingStart={() => { lightbox.originEl.style.visibility = '' }}
+          onClose={() => { lightbox.originEl.style.visibility = ''; setLightbox(null) }}
+        />
       )}
     </>
   )

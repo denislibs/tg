@@ -6,7 +6,7 @@ import s from './Avatar.module.scss'
 export const AVATAR_SIZE = {
   xs: 32, // compact menus / inline lists
   sm: 40, // search results, small rows
-  md: 44, // member / contact rows
+  md: 42, // member / contact rows (tweb 'abitbigger')
   lg: 48, // settings / info rows
   dialog: 54, // chat-list row (default)
   profile: 120, // profile / info header
