@@ -59,7 +59,7 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 	for _, d := range dialogs {
 		row := map[string]any{
 			"chat_id": d.ChatID, "type": d.Type,
-			"title": d.Title, "username": d.Username,
+			"title": d.Title, "username": d.Username, "photo_url": d.PhotoURL,
 			"last_read_seq": d.LastReadSeq, "peer_read_seq": d.PeerReadSeq, "unread": d.UnreadCount, "muted": d.Muted,
 		}
 		if d.HasLast {

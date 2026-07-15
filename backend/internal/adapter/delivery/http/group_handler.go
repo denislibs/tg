@@ -100,6 +100,28 @@ func (h *GroupHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// SetPhoto points the chat's photo at an uploaded media object (PUT
+// /chats/{chatID}/photo). Access to the bytes is enforced by the media GET.
+func (h *GroupHandler) SetPhoto(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	var b struct {
+		MediaID int64 `json:"media_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || b.MediaID <= 0 {
+		writeError(w, http.StatusBadRequest, "media_id required")
+		return
+	}
+	if err := h.uc.SetChatPhoto(r.Context(), chatID, user.ID, b.MediaID); err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 func (h *GroupHandler) PromoteAdmin(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	chatID, ok := pathInt(w, r, "chatID")

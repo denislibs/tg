@@ -155,6 +155,18 @@ func (r *fakeGroupRepo) EditInfo(_ context.Context, chatID int64, title, about, 
 	return nil
 }
 
+func (r *fakeGroupRepo) SetPhoto(_ context.Context, chatID, mediaID int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c, ok := r.cards[chatID]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	c.PhotoMediaID = &mediaID
+	r.cards[chatID] = c
+	return nil
+}
+
 func (r *fakeGroupRepo) ListMembers(_ context.Context, chatID int64, offset, limit int) ([]domain.Member, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -411,7 +423,7 @@ func TestGroupLifecycle_ServiceMessagesAndChatRemoved(t *testing.T) {
 		s.chatType[id] = "group"
 		s.mu.Unlock()
 	}
-	in := New(fakeTx{}, groupChats{fg}, fakeMsgs{s}, fakeUpdates{s}, nil, nil, fg, newFakeInviteRepo(), nil, nil, newFakeJoinRequestRepo())
+	in := New(fakeTx{}, groupChats{fg}, fakeMsgs{s}, fakeUpdates{s}, nil, fakeMedia{s}, fg, newFakeInviteRepo(), nil, nil, newFakeJoinRequestRepo())
 	pub := &fakePublisher{}
 	in.SetPublisher(pub)
 	ctx := context.Background()
@@ -449,6 +461,26 @@ func TestGroupLifecycle_ServiceMessagesAndChatRemoved(t *testing.T) {
 	if msgs := s.messages[id]; !strings.Contains(msgs[len(msgs)-1].Text, `"action":"add_user"`) ||
 		!strings.Contains(msgs[len(msgs)-1].Text, "Дарья") {
 		t.Fatalf("add_user service msg: %s", msgs[len(msgs)-1].Text)
+	}
+
+	// Фото группы: владелец медиа с CHANGE_INFO ставит фото + сервисное edit_photo;
+	// чужое медиа → not found; обычный участник без права → forbidden.
+	s.seedMedia(55, 7)
+	if err := in.SetChatPhoto(ctx, id, 7, 55); err != nil {
+		t.Fatalf("SetChatPhoto: %v", err)
+	}
+	if card, _ := in.ChatCard(ctx, id, 7); card.PhotoMediaID == nil || *card.PhotoMediaID != 55 {
+		t.Fatalf("photo_media_id = %v; want 55", card.PhotoMediaID)
+	}
+	if msgs := s.messages[id]; !strings.Contains(msgs[len(msgs)-1].Text, `"action":"edit_photo"`) {
+		t.Fatalf("edit_photo service msg: %s", msgs[len(msgs)-1].Text)
+	}
+	s.seedMedia(56, 10)
+	if err := in.SetChatPhoto(ctx, id, 7, 56); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("foreign media: err = %v; want ErrNotFound", err)
+	}
+	if err := in.SetChatPhoto(ctx, id, 10, 55); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("member without CHANGE_INFO: err = %v; want ErrForbidden", err)
 	}
 
 	// Выход: leave-сообщение уходит до удаления (вышедший его получает),

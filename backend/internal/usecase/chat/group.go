@@ -176,6 +176,28 @@ func (i *Interactor) EditInfo(ctx context.Context, chatID, actorID int64, title,
 	return i.groups.EditInfo(ctx, chatID, title, about, username)
 }
 
+// SetChatPhoto points the chat's photo at an uploaded media object (needs
+// CHANGE_INFO; the media must belong to the actor, mirroring Send's check) and
+// posts the "updated the group photo" service message (tweb editPhoto →
+// messageActionChatEditPhoto).
+func (i *Interactor) SetChatPhoto(ctx context.Context, chatID, actorID, mediaID int64) error {
+	if err := i.requireRight(ctx, chatID, actorID, domain.RightChangeInfo); err != nil {
+		return err
+	}
+	ownerID, err := i.mediaAccess.OwnerID(ctx, mediaID)
+	if err != nil {
+		return err // ErrNotFound for absent media
+	}
+	if ownerID != actorID {
+		return domain.ErrNotFound
+	}
+	if err := i.groups.SetPhoto(ctx, chatID, mediaID); err != nil {
+		return err
+	}
+	i.postGroupService(ctx, chatID, actorID, serviceText("edit_photo", i.userCard(ctx, actorID), nil))
+	return nil
+}
+
 func (i *Interactor) SetMute(ctx context.Context, chatID, userID int64, muted bool) error {
 	return i.groups.SetMuted(ctx, chatID, userID, muted)
 }

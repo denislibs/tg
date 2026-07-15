@@ -76,6 +76,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/chats/{chatID}/card", gh.Card)
 		pr.Get("/chats/{chatID}/members", gh.ListMembers)
 		pr.Patch("/chats/{chatID}", gh.EditInfo)
+		pr.Put("/chats/{chatID}/photo", gh.SetPhoto)
 		pr.Post("/chats/{chatID}/members", gh.AddMember)
 		pr.Delete("/chats/{chatID}/members/{userID}", gh.RemoveMember)
 		pr.Post("/chats/{chatID}/admins", gh.PromoteAdmin)

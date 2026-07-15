@@ -89,7 +89,7 @@ export function dialogToChat(d: Dialog, meId?: number | null): Chat {
         : gradientFor(d.chatId),
     avatarText: name.charAt(0).toUpperCase() || '?',
     avatarEmoji: isSaved ? 'saved' : isService ? 'tg-logo' : undefined,
-    avatarUrl: isSaved || isService ? undefined : d.peer?.avatarUrl || undefined,
+    avatarUrl: isSaved || isService ? undefined : d.peer?.avatarUrl || d.photoUrl || undefined,
     peerId: d.peer?.id,
     verified: d.peer?.verified || undefined,
     date: fmtWhen(lm?.at),

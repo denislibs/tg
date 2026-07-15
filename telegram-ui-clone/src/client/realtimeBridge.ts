@@ -39,7 +39,9 @@ export function startRealtime(): void {
     const evt = m as NewMessageEvt
     // Сообщение в неизвестный чат = меня только что добавили в новый чат (первое
     // сообщение / сервисное «создал группу») → подтянуть список диалогов.
-    if (!useChatsStore.getState().dialogs.some((d) => d.chatId === evt.chat_id)) {
+    // Сервисное сообщение в известный чат — признак смены метаданных группы
+    // (фото/название) → тоже рефетч (дебаунс внутри).
+    if (!useChatsStore.getState().dialogs.some((d) => d.chatId === evt.chat_id) || evt.type === 'service') {
       scheduleChatsReload(managers)
     }
     store.applyNewMessage(evt) // dialog-list preview (chatsStore)

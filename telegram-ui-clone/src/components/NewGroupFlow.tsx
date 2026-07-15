@@ -1,8 +1,8 @@
 // NewGroupFlow — создание группы, порт tweb createNewGroupTab: сначала
 // «Добавить участников» (AppAddMembersTab: чипы выбранных в поиске, список
 // контактов с чекбоксами, угловая кнопка-стрелка), затем «Новая группа»
-// (AppNewGroupTab: аватар + имя + секция «N участников»).
-import { useMemo, useState } from 'react'
+// (AppNewGroupTab: аватар (AvatarEdit → кроппер) + имя + секция «N участников»).
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Text from '../shared/ui/Text'
 import IconButton from '../shared/ui/IconButton'
 import Input from '../shared/ui/Input'
@@ -10,6 +10,7 @@ import Avatar from '../shared/ui/Avatar'
 import Checkbox from '../shared/ui/Checkbox'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
+import AvatarCropper from './settings/AvatarCropper'
 import { useT, useLang } from '../i18n'
 import { useManagers } from '../core/hooks/useManagers'
 import { useGroupCandidates, type GroupCandidate } from '../core/hooks/useGroupCandidates'
@@ -18,9 +19,15 @@ import { gradientFor } from '../core/dialogToChat'
 import { lastSeenLabel } from '../core/presence'
 import s from './NewGroupFlow.module.scss'
 
+export interface GroupPhoto {
+  blob: Blob
+  width: number
+  height: number
+}
+
 interface Props {
   onClose: () => void
-  onCreate: (name: string, memberIds: number[]) => void
+  onCreate: (name: string, memberIds: number[], photo: GroupPhoto | null) => void
 }
 
 export default function NewGroupFlow({ onClose, onCreate }: Props) {
@@ -34,6 +41,12 @@ export default function NewGroupFlow({ onClose, onCreate }: Props) {
   const [name, setName] = useState('')
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<number[]>([])
+  // фото группы: файл → кроппер → blob-превью на кнопке; грузится после создания
+  const [cropFile, setCropFile] = useState<File | null>(null)
+  const [photo, setPhoto] = useState<GroupPhoto | null>(null)
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => () => { if (photoUrl) URL.revokeObjectURL(photoUrl) }, [photoUrl])
 
   const byId = useMemo(() => new Map(candidates.map((c) => [c.id, c])), [candidates])
   const filtered = useMemo(() => {
@@ -46,7 +59,7 @@ export default function NewGroupFlow({ onClose, onCreate }: Props) {
 
   const next = () => {
     if (step === 'members') setStep('name')
-    else if (name.trim()) onCreate(name.trim(), selected)
+    else if (name.trim()) onCreate(name.trim(), selected, photo)
   }
   const back = () => (step === 'members' ? onClose() : setStep('members'))
   const canNext = step === 'members' || name.trim().length > 0
@@ -165,9 +178,25 @@ export default function NewGroupFlow({ onClose, onCreate }: Props) {
             >
               <div className={s.card}>
                 <div className={s.avatarWrap}>
-                  <motion.div className={s.avatarBtn} whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
-                    <TgIcon name="cameraadd" size={44} />
+                  <motion.div
+                    className={s.avatarBtn}
+                    whileHover={{ scale: 1.04 }}
+                    whileTap={{ scale: 0.96 }}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {photoUrl ? <img className={s.avatarPreview} src={photoUrl} alt="" /> : <TgIcon name="cameraadd" size={44} />}
                   </motion.div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    onChange={(e) => {
+                      const f = e.target.files?.[0]
+                      if (f) setCropFile(f)
+                      e.target.value = ''
+                    }}
+                  />
                 </div>
                 <Input
                   autoFocus
@@ -217,6 +246,21 @@ export default function NewGroupFlow({ onClose, onCreate }: Props) {
       >
         <TgIcon name="arrow_next" />
       </motion.div>
+
+      {cropFile && (
+        <AvatarCropper
+          file={cropFile}
+          onCancel={() => setCropFile(null)}
+          onConfirm={(blob, width, height) => {
+            setCropFile(null)
+            setPhoto({ blob, width, height })
+            setPhotoUrl((prev) => {
+              if (prev) URL.revokeObjectURL(prev)
+              return URL.createObjectURL(blob)
+            })
+          }}
+        />
+      )}
     </motion.div>
   )
 }

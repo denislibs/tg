@@ -77,6 +77,7 @@ export interface Managers {
   groups: {
     createGroup(args: { title: string; about?: string; username?: string; isPublic?: boolean; memberIds?: number[] }): Promise<number>
     addMember(chatId: number, userId: number): Promise<void>
+    setPhoto(chatId: number, mediaId: number): Promise<void>
     setMute(chatId: number, muted: boolean): Promise<void>
     card(chatId: number): Promise<GroupCard>
     members(chatId: number): Promise<{ userId: number; role: string; online: boolean }[]>

@@ -54,6 +54,9 @@ type Dialog struct {
 	// LastSenderName is the last message sender's short name (first name, else
 	// display name) — for the "Имя: …" preview prefix in group chats.
 	LastSenderName string
+	// PhotoURL is the group/channel photo content path ("" when unset; private
+	// chats carry the peer's avatar in Peer instead).
+	PhotoURL string
 	// Peer is the other member of a private chat (nil for non-private chats).
 	Peer *DialogPeer
 }

@@ -25,6 +25,7 @@ export interface RawDialog {
   muted?: boolean
   title?: string
   username?: string
+  photo_url?: string
   peer?: { id: number; display_name: string; avatar_url: string; verified?: boolean }
   last_message?: { seq: number; text: string; sender_id: number; at: string; media_id?: number; type?: string; forwarded?: boolean; sender_name?: string }
 }
@@ -39,6 +40,8 @@ export interface Dialog {
   muted: boolean
   title?: string
   username?: string
+  /** фото группы/канала (content-путь /media/N/content; у private — peer.avatarUrl) */
+  photoUrl?: string
   peer?: { id: number; displayName: string; avatarUrl: string; verified?: boolean }
   lastMessage?: { seq: number; text: string; senderId: number; at: string; mediaId?: number; mediaType?: string; forwarded?: boolean; senderName?: string }
 }
@@ -130,6 +133,7 @@ export function mapDialog(r: RawDialog): Dialog {
     muted: !!r.muted,
     title: r.title,
     username: r.username,
+    photoUrl: r.photo_url || undefined,
     peer: r.peer
       ? { id: r.peer.id, displayName: r.peer.display_name, avatarUrl: r.peer.avatar_url, verified: r.peer.verified }
       : undefined,

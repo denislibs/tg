@@ -7,7 +7,7 @@ export interface GroupCard {
   discussionChatId: number
 }
 
-export function newGroupsManager({ rest }: { rest: Pick<RestClient, 'post' | 'get' | 'del'> }) {
+export function newGroupsManager({ rest }: { rest: Pick<RestClient, 'post' | 'get' | 'put' | 'del'> }) {
   return {
     async createGroup(args: { title: string; about?: string; username?: string; isPublic?: boolean; memberIds?: number[] }): Promise<number> {
       const r = await rest.post<{ chat_id: number }>('/groups', {
@@ -18,6 +18,9 @@ export function newGroupsManager({ rest }: { rest: Pick<RestClient, 'post' | 'ge
     },
     async addMember(chatId: number, userId: number): Promise<void> {
       await rest.post(`/chats/${chatId}/members`, { user_id: userId })
+    },
+    async setPhoto(chatId: number, mediaId: number): Promise<void> {
+      await rest.put(`/chats/${chatId}/photo`, { media_id: mediaId })
     },
     async setMute(chatId: number, muted: boolean): Promise<void> {
       await rest.post(`/chats/${chatId}/mute`, { muted })

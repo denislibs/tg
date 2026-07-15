@@ -103,6 +103,12 @@ func (r *GroupRepo) EditInfo(ctx context.Context, chatID int64, title, about, us
 	return err
 }
 
+func (r *GroupRepo) SetPhoto(ctx context.Context, chatID, mediaID int64) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE chats SET photo_media_id=$2 WHERE id=$1`, chatID, mediaID)
+	return err
+}
+
 func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.ChatCard, error) {
 	q := querier(ctx, r.pool)
 	var c domain.ChatCard

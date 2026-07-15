@@ -25,7 +25,7 @@ interface Props {
   chats: Chat[]
   selectedId: string
   onSelect: (id: string) => void
-  onCreateGroup: (name: string, memberIds: number[]) => void
+  onCreateGroup: (name: string, memberIds: number[], photo: import('./NewGroupFlow').GroupPhoto | null) => void
   onCreateChannel: (name: string, description: string) => void
   onToggleMode: (coords?: { x: number; y: number }) => void
   onLogout?: () => void
@@ -208,8 +208,8 @@ export default function Sidebar({
         {newGroupOpen && (
           <NewGroupFlow
             onClose={() => setNewGroupOpen(false)}
-            onCreate={(name, memberIds) => {
-              onCreateGroup(name, memberIds)
+            onCreate={(name, memberIds, photo) => {
+              onCreateGroup(name, memberIds, photo)
               setNewGroupOpen(false)
             }}
           />

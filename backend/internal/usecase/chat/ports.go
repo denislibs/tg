@@ -43,6 +43,7 @@ type GroupRepo interface {
 	SetMuted(ctx context.Context, chatID, userID int64, muted bool) error
 	Card(ctx context.Context, chatID, viewerID int64) (domain.ChatCard, error) // domain.ErrNotFound if no chat
 	EditInfo(ctx context.Context, chatID int64, title, about, username string) error
+	SetPhoto(ctx context.Context, chatID, mediaID int64) error
 	UsersByIDs(ctx context.Context, ids []int64) ([]domain.UserCard, error)
 	ListMembers(ctx context.Context, chatID int64, offset, limit int) ([]domain.Member, error)
 	SetDiscussion(ctx context.Context, channelID, groupID int64) error

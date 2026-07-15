@@ -8,6 +8,7 @@ import classNames from './shared/lib/classNames'
 import { resolvePreset, PRESET_MODE, type ThemeChoice } from './theme'
 import { useSettings } from './settings'
 import Sidebar from './components/Sidebar'
+import type { GroupPhoto } from './components/NewGroupFlow'
 import ConversationView from './components/ConversationView'
 import ChatBackground from './components/ChatBackground'
 import CallOverlay from './components/call/CallOverlay'
@@ -129,8 +130,14 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     return next
   }, [dialogs, meId])
 
-  const createGroup = async (name: string, memberIds: number[]) => {
+  const createGroup = async (name: string, memberIds: number[], photo: GroupPhoto | null) => {
     const chatId = await managers.groups.createGroup({ title: name || 'New Group', memberIds })
+    // Фото — после создания, как tweb (createChat → editPhoto): upload → set.
+    if (photo) {
+      const bytes = await photo.blob.arrayBuffer()
+      const mediaId = await managers.media.upload({ bytes, mime: 'image/jpeg', size: photo.blob.size, width: photo.width, height: photo.height })
+      await managers.groups.setPhoto(chatId, mediaId)
+    }
     await loadChats(managers)
     setSelectedId(String(chatId))
   }
@@ -196,8 +203,8 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
       chats={chatList}
       selectedId={selectedId ?? ''}
       onSelect={selectChat}
-      onCreateGroup={(name, memberIds) => {
-        void createGroup(name, memberIds)
+      onCreateGroup={(name, memberIds, photo) => {
+        void createGroup(name, memberIds, photo)
       }}
       onCreateChannel={(name, description) => {
         void createChannel(name, description)
