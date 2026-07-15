@@ -21,9 +21,9 @@ import { useManagers } from '../../core/hooks/useManagers'
 import { useGroupEdit, PERMS, SLOWMODE_STEPS, slowmodeLabel, type EditMember, type GroupEdit } from '../../core/hooks/useGroupEdit'
 import { RIGHTS } from '../../core/hooks/useGroupInfo'
 import { useGroupCandidates } from '../../core/hooks/useGroupCandidates'
+import UserAvatar from '../UserAvatar'
 import { useAvatarSrc } from '../useAvatarSrc'
 import { gradientFor } from '../../core/dialogToChat'
-import { peerColor } from '../peerColor'
 import type { Chat } from '../../data'
 import s from './GroupEditFlow.module.scss'
 
@@ -402,12 +402,6 @@ function PermissionsScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) 
   )
 }
 
-// ── строка участника с аватаром ──────────────────────────────────────────────
-function MemberAvatar({ m, size = 'md' }: { m: { userId: number; name: string; avatarUrl?: string }; size?: 'sm' | 'md' }) {
-  const src = useAvatarSrc(m.avatarUrl)
-  return <Avatar size={size} background={peerColor(m.name)} src={src} text={m.name.charAt(0).toUpperCase()} />
-}
-
 // ── Администраторы (tweb chatAdministrators + userPermissions/EditAdmin) ─────
 function AdminsScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
   const t = useT()
@@ -429,7 +423,7 @@ function AdminsScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
         )}
         {list.map((m) => (
           <div key={m.userId} className={s.memberRow} onClick={() => g.canManageAdmins && m.role !== 'creator' && setEditing(m)}>
-            <MemberAvatar m={m} />
+            <UserAvatar id={m.userId} name={m.name} avatarUrl={m.avatarUrl} />
             <div className={s.memberBody}>
               <Text noWrap size={15.5} weight={600} color="var(--tg-textPrimary)">{m.name}</Text>
               <Text noWrap size={13.5} color="var(--tg-textSecondary)">
@@ -491,7 +485,7 @@ function AdminRightsScreen({
     >
       <Section>
         <div className={s.memberRow}>
-          <MemberAvatar m={member} />
+          <UserAvatar id={member.userId} name={member.name} avatarUrl={member.avatarUrl} />
           <div className={s.memberBody}>
             <Text noWrap size={15.5} weight={600} color="var(--tg-textPrimary)">{member.name}</Text>
           </div>
@@ -542,7 +536,7 @@ function MembersScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
         <Row icon={<TgIcon name="adduser" size={22} color="var(--tg-accent)" />} label="Add Members" accent onClick={() => setPicking(true)} />
         {list.map((m) => (
           <div key={m.userId} className={s.memberRow}>
-            <MemberAvatar m={m} />
+            <UserAvatar id={m.userId} name={m.name} avatarUrl={m.avatarUrl} />
             <div className={s.memberBody}>
               <Text noWrap size={15.5} weight={600} color="var(--tg-textPrimary)">{m.name}</Text>
               <Text noWrap size={13.5} color="var(--tg-textSecondary)">
@@ -610,7 +604,7 @@ function RemovedUsersScreen({ g, onBack }: { g: GroupEdit; onBack: () => void })
         <Section>
           {list.map((b) => (
             <div key={b.userId} className={s.memberRow}>
-              <MemberAvatar m={b} />
+              <UserAvatar id={b.userId} name={b.name} avatarUrl={b.avatarUrl} />
               <div className={s.memberBody}>
                 <Text noWrap size={15.5} weight={600} color="var(--tg-textPrimary)">{b.name}</Text>
               </div>
@@ -669,7 +663,7 @@ function MemberPicker({
         )}
         {list.map((m) => (
           <div key={m.userId} className={s.memberRow} onClick={() => onPick(m)}>
-            <MemberAvatar m={m} />
+            <UserAvatar id={m.userId} name={m.name} avatarUrl={m.avatarUrl} />
             <div className={s.memberBody}>
               <Text noWrap size={15.5} weight={600} color="var(--tg-textPrimary)">{m.name}</Text>
             </div>

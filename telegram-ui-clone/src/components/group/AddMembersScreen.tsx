@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { SettingsScreen } from '../settings/kit'
 import InputSearch from '../../shared/ui/InputSearch'
-import Avatar from '../../shared/ui/Avatar'
+import UserAvatar from '../UserAvatar'
 import Checkbox from '../../shared/ui/Checkbox'
 import Spinner from '../../shared/ui/Spinner'
 import Text from '../../shared/ui/Text'
@@ -14,7 +14,6 @@ import { useT, useLang } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useGroupCandidates } from '../../core/hooks/useGroupCandidates'
 import { useChatsStore, loadChats } from '../../stores/chatsStore'
-import { gradientFor } from '../../core/dialogToChat'
 import { lastSeenLabel } from '../../core/presence'
 import s from './GroupEditFlow.module.scss'
 
@@ -104,7 +103,7 @@ export default function AddMembersScreen({
           return (
             <div key={c.id} className={s.memberRow} onClick={() => toggle(c.id)} style={isMember ? { cursor: 'default' } : undefined}>
               <Checkbox checked={isMember || selected.includes(c.id)} disabled={isMember} shape="square" size={20} />
-              <Avatar size="md" background={gradientFor(c.id)} src={c.avatarUrl} text={c.name.charAt(0).toUpperCase() || '?'} />
+              <UserAvatar id={c.id} name={c.name} avatarUrl={c.avatarUrl} online={p?.online} />
               <div className={s.memberBody}>
                 <Text noWrap size={15.5} weight={600} color="var(--tg-textPrimary)">{c.name}</Text>
                 <Text noWrap size={13.5} color={p?.online ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'}>

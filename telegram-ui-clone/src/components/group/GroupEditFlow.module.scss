@@ -143,6 +143,12 @@
 
 .search {
   padding: 4px 12px 8px;
+
+  // белая пилюля с тенью секции (как инфо-карточки панели)
+  input {
+    background: var(--tg-sidebarBg);
+    box-shadow: var(--section-box-shadow);
+  }
 }
 
 .bansCaption {

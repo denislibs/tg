@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Text from '../shared/ui/Text'
 import IconButton from '../shared/ui/IconButton'
 import Input from '../shared/ui/Input'
-import Avatar from '../shared/ui/Avatar'
+import UserAvatar from './UserAvatar'
 import Checkbox from '../shared/ui/Checkbox'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
@@ -15,7 +15,6 @@ import { useT, useLang } from '../i18n'
 import { useManagers } from '../core/hooks/useManagers'
 import { useGroupCandidates, type GroupCandidate } from '../core/hooks/useGroupCandidates'
 import { useChatsStore } from '../stores/chatsStore'
-import { gradientFor } from '../core/dialogToChat'
 import { lastSeenLabel } from '../core/presence'
 import s from './NewGroupFlow.module.scss'
 
@@ -69,7 +68,7 @@ export default function NewGroupFlow({ onClose, onCreate }: Props) {
     return p?.online ? t('online') : lastSeenLabel(p?.lastSeen ?? 0, lang)
   }
   const renderAvatar = (c: GroupCandidate, size: 'md' | number) => (
-    <Avatar size={size} background={gradientFor(c.id)} src={c.avatarUrl} text={c.name.charAt(0).toUpperCase() || '?'} />
+    <UserAvatar id={c.id} name={c.name} avatarUrl={c.avatarUrl} size={size} />
   )
 
   return (

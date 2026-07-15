@@ -10,6 +10,7 @@ import { EASE, DUR, slideInRight } from '../motion'
 import TgIcon from './TgIcon'
 import Avatar from '../shared/ui/Avatar'
 import { useAvatarSrc } from './useAvatarSrc'
+import UserAvatar from './UserAvatar'
 import EditView from './EditView'
 import GroupEditFlow from './group/GroupEditFlow'
 import AddMembersScreen from './group/AddMembersScreen'
@@ -519,7 +520,7 @@ function SharedMedia({ tab, onTab, chatId, members, isChannel, canManageAdmins, 
                 onClick={() => onOpenPeer?.({ id: mem.userId, displayName: mem.displayName, username: mem.username, avatarUrl: mem.avatarUrl })}
                 className={s.memberTap}
               >
-                <Avatar background="var(--tg-accent)" text={mem.displayName[0]?.toUpperCase()} src={mem.avatarUrl} size="md" />
+                <UserAvatar id={mem.userId} name={mem.displayName} avatarUrl={mem.avatarUrl} online={mem.online} />
                 <div className={s.grow}>
                   <Text noWrap size={16} color="var(--tg-textPrimary)">{mem.displayName}</Text>
                   <Text size={13.5} color="var(--tg-textSecondary)">
