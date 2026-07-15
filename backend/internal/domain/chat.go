@@ -115,6 +115,18 @@ type BannedUser struct {
 	BannedBy int64
 }
 
+// SavedDialog is one grouped row of Saved Messages («Избранное» → таб «Чаты»):
+// all saved messages attributed to one source peer (tweb saved dialogs).
+// Kind 'self' («Мои заметки») groups the user's own non-forwarded notes.
+type SavedDialog struct {
+	Kind     string // 'self' | 'user' | 'chat'
+	PeerID   int64  // user/chat id; 0 for 'self'
+	Title    string // resolved peer title ('' for 'self' — client names it)
+	PhotoURL string
+	Count    int
+	Last     Message
+}
+
 type UserCard struct {
 	ID          int64
 	Username    string

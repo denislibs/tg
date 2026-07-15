@@ -114,6 +114,19 @@ func (i *Interactor) GetOrCreateSaved(ctx context.Context, userID int64) (int64,
 	return chatID, err
 }
 
+// SavedDialogs is the grouped «Чаты»-tab of Saved Messages: saved messages
+// clustered by forward origin. Empty when the saved chat doesn't exist yet.
+func (i *Interactor) SavedDialogs(ctx context.Context, userID int64) ([]domain.SavedDialog, error) {
+	chatID, err := i.chats.FindSaved(ctx, userID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return []domain.SavedDialog{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return i.msgs.SavedDialogs(ctx, chatID, userID)
+}
+
 // PostServiceMessage delivers a message from the official service account
 // (domain.ServiceUserID) into its private chat with toUserID, creating that chat on
 // first use. Reuses the normal Send pipeline (seq, updates, realtime, push).

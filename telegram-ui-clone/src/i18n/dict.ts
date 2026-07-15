@@ -250,6 +250,7 @@ const ru: Dict = {
   Search: 'Поиск',
   'Add Account': 'Добавить аккаунт',
   'Saved Messages': 'Избранное',
+  'My Notes': 'Мои заметки',
   'My Stories': 'Мои истории',
   Contacts: 'Контакты',
   Wallet: 'Кошелёк',

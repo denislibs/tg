@@ -376,6 +376,71 @@ func (r *MessagesRepo) LastMessageAt(ctx context.Context, chatID, senderID int64
 	return at, err
 }
 
+// SavedDialogs groups the saved-messages chat by forward origin («Избранное» →
+// таб «Чаты», tweb saved dialogs): origin group/channel → that chat, origin
+// private → that user, own non-forwarded notes (или пересланное от себя) → 'self'.
+// One row per group: the newest message + total count, newest group first.
+func (r *MessagesRepo) SavedDialogs(ctx context.Context, chatID, userID int64) ([]domain.SavedDialog, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx, `
+		WITH src AS (
+			SELECT m.id, m.seq, m.type, m.text, m.media_id, m.created_at,
+				CASE
+					WHEN m.fwd_from_chat_id IS NULL THEN 'self'
+					WHEN fc.type IN ('group','channel') THEN 'chat'
+					WHEN COALESCE(m.fwd_from_user_id, $2) = $2 THEN 'self'
+					ELSE 'user'
+				END AS kind,
+				CASE
+					WHEN m.fwd_from_chat_id IS NULL THEN 0
+					WHEN fc.type IN ('group','channel') THEN m.fwd_from_chat_id
+					WHEN COALESCE(m.fwd_from_user_id, $2) = $2 THEN 0
+					ELSE m.fwd_from_user_id
+				END AS peer_id
+			FROM messages m
+			LEFT JOIN chats fc ON fc.id = m.fwd_from_chat_id
+			WHERE m.chat_id = $1 AND m.deleted_at IS NULL
+				AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id = m.id AND h.user_id = $2)
+		),
+		grouped AS (
+			SELECT DISTINCT ON (kind, peer_id)
+				kind, peer_id, id, type, text, media_id, created_at,
+				count(*) OVER (PARTITION BY kind, peer_id) AS cnt
+			FROM src ORDER BY kind, peer_id, seq DESC
+		)
+		SELECT g.kind, g.peer_id, g.id, g.type, g.text, g.media_id, g.created_at, g.cnt,
+			CASE WHEN g.kind='chat' THEN c.title
+			     WHEN g.kind='user' THEN COALESCE(NULLIF(u.first_name,''), u.display_name)
+			     ELSE '' END,
+			CASE WHEN g.kind='chat' THEN COALESCE('/media/'||c.photo_media_id||'/content','')
+			     WHEN g.kind='user' THEN u.avatar_url
+			     ELSE '' END
+		FROM grouped g
+		LEFT JOIN chats c ON g.kind='chat' AND c.id = g.peer_id
+		LEFT JOIN users u ON g.kind='user' AND u.id = g.peer_id
+		ORDER BY g.created_at DESC`, chatID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []domain.SavedDialog{}
+	for rows.Next() {
+		var d domain.SavedDialog
+		var title, photo *string
+		if err := rows.Scan(&d.Kind, &d.PeerID, &d.Last.ID, &d.Last.Type, &d.Last.Text,
+			&d.Last.MediaID, &d.Last.CreatedAt, &d.Count, &title, &photo); err != nil {
+			return nil, err
+		}
+		if title != nil {
+			d.Title = *title
+		}
+		if photo != nil {
+			d.PhotoURL = *photo
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
 // ListThread returns messages belonging to a thread (thread_root_id) in a chat,
 // ascending by seq, excluding deleted messages.
 func (r *MessagesRepo) ListThread(ctx context.Context, chatID, threadRootID int64, offset, limit int) ([]domain.Message, error) {

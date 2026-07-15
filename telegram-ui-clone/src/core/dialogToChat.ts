@@ -23,7 +23,7 @@ export function gradientFor(id: number): string {
 export const SERVICE_USER_ID = 777000
 const SERVICE_GRADIENT = 'linear-gradient(135deg,#54a9eb,#2a82d6)'
 
-function fmtWhen(iso?: string): string {
+export function fmtWhen(iso?: string): string {
   if (!iso) return ''
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return ''
@@ -35,7 +35,7 @@ function fmtWhen(iso?: string): string {
 }
 
 // A human label for a media message with no caption (tweb shows these in grey).
-function mediaLabel(type?: string): string {
+export function mediaLabel(type?: string): string {
   switch (type) {
     case 'photo': return 'Фото'
     case 'video': return 'Видео'

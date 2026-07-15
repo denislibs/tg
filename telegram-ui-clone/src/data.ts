@@ -79,6 +79,8 @@ export interface OpenPeer {
   displayName: string
   username?: string | null
   avatarUrl?: string
+  /** открыть существующий чат по id (группа/канал-источник в «Избранном») */
+  chatId?: number
 }
 
 export interface Chat {

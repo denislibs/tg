@@ -553,6 +553,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           index={lightbox.index}
           originRect={lightbox.originRect}
           originSrc={lightbox.originSrc}
+          originEl={lightbox.originEl}
           onClosingStart={() => { lightbox.originEl.style.visibility = '' }}
           onClose={closeLightbox}
         />

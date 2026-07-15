@@ -161,6 +161,10 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   // Reuses an existing private dialog if there is one; otherwise opens a draft
   // that only becomes a real sidebar chat once the first message is sent.
   const openPeer = (peer: OpenPeer) => {
+    if (peer.chatId != null) {
+      selectChat(String(peer.chatId))
+      return
+    }
     if (meId != null && peer.id === meId) return // skip self for now
     const existing = dialogs.find((d) => d.type === 'private' && d.peer?.id === peer.id)
     if (existing) {

@@ -23,7 +23,45 @@ export function newChatsManager({ rest }: ChatsDeps) {
       const r = await rest.post<{ chat_id: number }>('/saved', {})
       return r.chat_id
     },
+
+    // «Избранное» → таб «Чаты»: сохранённые сообщения, сгруппированные по
+    // источнику пересылки (tweb saved dialogs); 'self' — «Мои заметки».
+    async savedDialogs(): Promise<SavedDialog[]> {
+      const r = await rest.get<{ dialogs: RawSavedDialog[] }>('/saved/dialogs')
+      return (r.dialogs ?? []).map((d) => ({
+        kind: d.kind,
+        peerId: d.peer_id,
+        title: d.title,
+        photoUrl: d.photo_url || undefined,
+        count: d.count,
+        last: {
+          type: d.last_message.type,
+          text: d.last_message.text,
+          mediaId: d.last_message.media_id || undefined,
+          at: d.last_message.at,
+        },
+      }))
+    },
   }
+}
+
+interface RawSavedDialog {
+  kind: 'self' | 'user' | 'chat'
+  peer_id: number
+  title: string
+  photo_url: string
+  count: number
+  last_message: { type: string; text: string; media_id: number; at: string }
+}
+
+// One grouped row of Saved Messages (source peer + its newest saved message).
+export interface SavedDialog {
+  kind: 'self' | 'user' | 'chat'
+  peerId: number
+  title: string
+  photoUrl?: string
+  count: number
+  last: { type: string; text: string; mediaId?: number; at: string }
 }
 
 export type ChatsManager = ReturnType<typeof newChatsManager>

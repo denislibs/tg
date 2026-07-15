@@ -53,6 +53,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		ch := NewChatHandler(chatUC)
 		pr.Post("/chats", ch.CreatePrivate)
 		pr.Post("/saved", ch.Saved)
+		pr.Get("/saved/dialogs", ch.SavedDialogs)
 		pr.Get("/chats", ch.ListDialogs)
 		pr.Post("/chats/{chatID}/messages", ch.Send)
 		pr.Patch("/chats/{chatID}/messages/{msgID}", ch.EditMessage)

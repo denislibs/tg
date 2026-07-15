@@ -8,6 +8,7 @@ import type { Message, MessageEntity } from '../core/models'
 import type { HistoryArgs, HistoryResult, SendArgs } from '../core/managers/messagesManager'
 import type { ConnState, PresenceEvt } from '../core/realtime/events'
 import type { UploadArgs, MediaMeta } from '../core/managers/mediaManager'
+import type { SavedDialog } from '../core/managers/chatsManager'
 import type { PushSub } from '../core/managers/pushManager'
 import type { GroupCard } from '../core/managers/groupsManager'
 import type { SearchResult } from '../core/managers/channelsManager'
@@ -38,6 +39,7 @@ export interface Managers {
     listDialogs(): Promise<Dialog[]>
     createPrivate(userId: number): Promise<number>
     saved(): Promise<number>
+    savedDialogs(): Promise<SavedDialog[]>
   }
   messages: {
     getHistory(args: HistoryArgs): Promise<HistoryResult>

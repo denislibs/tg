@@ -88,6 +88,9 @@ type MessageRepo interface {
 	// LastMessageAt is the newest non-deleted message time by senderID in the chat
 	// (slowmode); domain.ErrNotFound when they haven't posted yet.
 	LastMessageAt(ctx context.Context, chatID, senderID int64) (time.Time, error)
+	// SavedDialogs groups the saved-messages chat by forward origin
+	// («Избранное» → таб «Чаты»), newest group first.
+	SavedDialogs(ctx context.Context, chatID, userID int64) ([]domain.SavedDialog, error)
 	UpdateText(ctx context.Context, msgID int64, text string, entities []domain.MessageEntity) (domain.Message, error)
 	SoftDelete(ctx context.Context, msgID int64) error
 	HideForUser(ctx context.Context, userID, msgID int64) error

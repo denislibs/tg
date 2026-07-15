@@ -11,6 +11,8 @@ import TgIcon from './TgIcon'
 import Avatar from '../shared/ui/Avatar'
 import { useAvatarSrc } from './useAvatarSrc'
 import UserAvatar from './UserAvatar'
+import { fmtWhen, mediaLabel } from '../core/dialogToChat'
+import type { SavedDialog } from '../core/managers/chatsManager'
 import EditView from './EditView'
 import GroupEditFlow from './group/GroupEditFlow'
 import AddMembersScreen from './group/AddMembersScreen'
@@ -42,11 +44,27 @@ function membersLabel(n: number, isChannel: boolean): string {
   return `${n} ${word}`
 }
 
+// «N чат(а/ов)» — подзаголовок «Избранного» (число сохранённых диалогов)
+function chatsLabel(n: number): string {
+  const m10 = n % 10, m100 = n % 100
+  const word = m10 === 1 && m100 !== 11 ? 'чат' : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? 'чата' : 'чатов'
+  return `${n} ${word}`
+}
+
 export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers }: { chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void; canAddMembers?: boolean }) {
   const t = useT()
   const narrow = useMediaQuery('(max-width:900px)')
-  // группы открываются на табе «Участники» (как в Telegram), остальные — на «Медиа»
-  const [tab, setTab] = useState(chat.type === 'group' ? 'Members' : 'Media')
+  const managers = useManagers()
+  const isSaved = chat.type === 'saved'
+  // группы — таб «Участники», избранное — «Чаты» (tweb savedDialogs first), остальные — «Медиа»
+  const [tab, setTab] = useState(chat.type === 'group' ? 'Members' : isSaved ? 'Chats' : 'Media')
+
+  // «Избранное»: сохранённые диалоги (группировка по источнику пересылки)
+  const [savedDialogs, setSavedDialogs] = useState<SavedDialog[] | null>(null)
+  useEffect(() => {
+    if (!isSaved) return
+    void managers.chats.savedDialogs().then(setSavedDialogs).catch(() => setSavedDialogs([]))
+  }, [isSaved, managers])
   const [editing, setEditing] = useState(false)
   const [addingMembers, setAddingMembers] = useState(false)
   const [notif, setNotif] = useState(true)
@@ -74,7 +92,7 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
     refreshMembers,
   } = useGroupInfo(chat)
 
-  const title = isChannel ? 'Channel Info' : isGroup ? 'Group Info' : 'User Info'
+  const title = isSaved ? 'Saved Messages' : isChannel ? 'Channel Info' : isGroup ? 'Group Info' : 'User Info'
 
   // Ссылка группы в инфо-карточке: публичный username, иначе первая инвайт-ссылка.
   const inviteUrl = chat.username
@@ -149,11 +167,17 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
               {chat.name}
             </Text>
             <Text size={14} color="var(--tg-textSecondary)">
-              {isRealChat && (isGroup || isChannel) && realMembers ? membersLabel(realMembers.length, isChannel) : chat.status}
+              {isSaved
+                ? chatsLabel(savedDialogs?.length ?? 0)
+                : isRealChat && (isGroup || isChannel) && realMembers
+                  ? membersLabel(realMembers.length, isChannel)
+                  : chat.status}
             </Text>
           </div>
 
-          {/* Info card — те же секции, что в настройках (settings/kit Section+Row) */}
+          {/* Info card — те же секции, что в настройках (settings/kit Section+Row).
+              В «Избранном» её нет вовсе (tweb: свой профиль без phone/username/bio). */}
+          {!isSaved && (
           <Section>
             {isChannel ? (
               <div className={s.channelRow}>
@@ -225,6 +249,7 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
               onClick={() => setNotif((v) => !v)}
             />
           </Section>
+          )}
 
           {/* Channel discussions: admin (creator/CHANGE_INFO) toggle / enabled state */}
           {isRealChat && isChannel && canManageDiscussion && (
@@ -298,6 +323,7 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
             onTab={setTab}
             chatId={sharedMediaChatId(chat.id)}
             members={isRealChat && (isGroup || isChannel) ? realMembers ?? [] : undefined}
+            savedDialogs={isSaved ? savedDialogs ?? [] : undefined}
             isChannel={isChannel}
             canManageAdmins={canManageAdmins}
             onOpenPeer={onOpenPeer}
@@ -408,12 +434,14 @@ function QrPopup({ open, url, onClose }: { open: boolean; url: string; onClose: 
   )
 }
 
-function SharedMedia({ tab, onTab, chatId, members, isChannel, canManageAdmins, onOpenPeer, onEditMember }: {
+function SharedMedia({ tab, onTab, chatId, members, savedDialogs, isChannel, canManageAdmins, onOpenPeer, onEditMember }: {
   tab: string
   onTab: (v: string) => void
   chatId: number | null
   /** участники для первого таба (только реальные группы/каналы) */
   members?: RealMember[]
+  /** «Избранное»: сохранённые диалоги для первого таба «Чаты» */
+  savedDialogs?: SavedDialog[]
   isChannel?: boolean
   canManageAdmins?: boolean
   onOpenPeer?: (peer: OpenPeer) => void
@@ -497,7 +525,11 @@ function SharedMedia({ tab, onTab, chatId, members, isChannel, canManageAdmins, 
     </Text>
   )
 
-  const tabOrder = members ? ['Members', ...SHARED_TABS] : [...SHARED_TABS]
+  const tabOrder = savedDialogs
+    ? ['Chats', ...SHARED_TABS]
+    : members
+      ? ['Members', ...SHARED_TABS]
+      : [...SHARED_TABS]
   return (
     <>
       {/* Тот же framed-таб-ряд, что и у папок в списке чатов; липнет к верху
@@ -518,6 +550,44 @@ function SharedMedia({ tab, onTab, chatId, members, isChannel, canManageAdmins, 
 
       {/* контент табов скользит ±100% (tweb TransitionSlider 'tabs') */}
       <TabSlide tab={tab} order={tabOrder}>
+      {/* «Избранное» → «Чаты»: сохранённые диалоги по источнику пересылки */}
+      {tab === 'Chats' && savedDialogs && (
+        <div className={s.cardPlain} style={{ margin: '0 12px' }}>
+          {savedDialogs.length === 0 && empty}
+          {savedDialogs.map((d) => {
+            const isSelf = d.kind === 'self'
+            const title = isSelf ? t('My Notes') : d.title
+            return (
+              <div
+                key={`${d.kind}:${d.peerId}`}
+                className={s.memberRow}
+                onClick={() => {
+                  if (isSelf || !onOpenPeer) return
+                  if (d.kind === 'user') onOpenPeer({ id: d.peerId, displayName: d.title, avatarUrl: d.photoUrl })
+                  else onOpenPeer({ id: 0, displayName: d.title, chatId: d.peerId })
+                }}
+                style={isSelf ? { cursor: 'default' } : undefined}
+              >
+                {isSelf ? (
+                  <Avatar size="md" background="var(--tg-accentGradient)" emoji="saved" />
+                ) : (
+                  <UserAvatar id={d.peerId} name={title} avatarUrl={d.photoUrl} />
+                )}
+                <div className={s.grow}>
+                  <div className={s.memberTitleRow}>
+                    <Text noWrap size={16} color="var(--tg-textPrimary)">{title}</Text>
+                    <span className={s.roleLabel}>{fmtWhen(d.last.at)}</span>
+                  </div>
+                  <Text noWrap size={14} color="var(--tg-textSecondary)">
+                    {d.last.text || mediaLabel(d.last.type)}
+                  </Text>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
       {tab === 'Members' && members && (
         <div className={s.cardPlain} style={{ margin: '0 12px' }}>
           {members.map((mem) => (
@@ -635,6 +705,7 @@ function SharedMedia({ tab, onTab, chatId, members, isChannel, canManageAdmins, 
           index={lightbox.index}
           originRect={lightbox.originRect}
           originSrc={lightbox.originSrc}
+          originEl={lightbox.originEl}
           onClosingStart={() => { lightbox.originEl.style.visibility = '' }}
           onClose={() => { lightbox.originEl.style.visibility = ''; setLightbox(null) }}
         />

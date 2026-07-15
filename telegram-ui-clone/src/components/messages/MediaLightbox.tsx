@@ -33,11 +33,15 @@ function fit(natW: number, natH: number, maxW: number, maxH: number) {
   return { width: Math.round(natW * r), height: Math.round(natH * r) }
 }
 
-export default function MediaLightbox({ items, index, originRect, originSrc, onClose, onClosingStart }: {
+export default function MediaLightbox({ items, index, originRect, originSrc, originEl, onClose, onClosingStart }: {
   items: LightboxItem[]
   index: number
   originRect: Rect
   originSrc?: string
+  // The source thumbnail element: re-measured at close time so the clone shrinks
+  // into the thumbnail's CURRENT rect (the feed/panel may have scrolled since
+  // opening — a stale rect made the close land off-target and look cut off).
+  originEl?: HTMLElement
   onClose: () => void
   // Called the instant the close animation starts — the parent reveals the source
   // thumbnail again here so there's never a hidden-thumbnail "empty bubble" gap
@@ -92,11 +96,25 @@ export default function MediaLightbox({ items, index, originRect, originSrc, onC
     setImgSrc('')
     setIdx((i) => (i + dir + items.length) % items.length)
   }
+  // Close-shrink target: fresh thumbnail rect measured at close time (null →
+  // plain fade: paged item or the thumbnail scrolled out of the viewport).
+  const [closeTo, setCloseTo] = useState<Rect | null>(null)
   const close = () => {
+    if (closing) return
     setZoom(1); setRot(0)
+    // Only the first-opened item can fly back, and only into a thumbnail that is
+    // still on screen — otherwise tweb-style fade-out.
+    let target: Rect | null = null
+    if (flyFrom) {
+      const r = originEl?.isConnected ? originEl.getBoundingClientRect() : null
+      const visible = r && r.bottom > 0 && r.top < window.innerHeight && r.right > 0 && r.left < window.innerWidth
+      target = visible ? { top: r.top, left: r.left, width: r.width, height: r.height } : null
+    }
+    setCloseTo(target)
     onClosingStart?.() // reveal the source thumbnail now (no empty-bubble gap)
     setClosing(true)
-    window.setTimeout(onClose, OPEN_MS * 1000 + 30)
+    // Safety net: unmount even if the animation callback never fires.
+    window.setTimeout(onClose, OPEN_MS * 1000 + 300)
   }
 
   useEffect(() => {
@@ -189,12 +207,20 @@ export default function MediaLightbox({ items, index, originRect, originSrc, onC
         onWheel={onWheel}
         onDoubleClick={() => setZoom((z) => (z > 1 ? 1 : 2.5))}
         initial={{ opacity: flyFrom ? 1 : 0, scale: flip.scale, x: flip.x, y: flip.y }}
-        animate={closing && flyFrom
-          ? { opacity: 1, scale: flip.scale, x: flip.x, y: flip.y }
+        animate={closing && closeTo
+          ? {
+              opacity: 1,
+              scale: closeTo.width / final.width,
+              x: (closeTo.left + closeTo.width / 2) - (finalLeft + final.width / 2),
+              y: (closeTo.top + closeTo.height / 2) - (finalTop + final.height / 2),
+            }
           : closing
             ? { opacity: 0, scale: 0.96, x: 0, y: 0 }
             : { opacity: 1, scale: 1, x: 0, y: 0 }}
         transition={{ duration: OPEN_MS, ease: OPEN_EASE }}
+        // Unmount exactly when the shrink lands (a fixed timer used to cut the
+        // animation short when heavy full-res repaints dropped frames).
+        onAnimationComplete={() => { if (closing) onClose() }}
         style={{ position: 'fixed', left: finalLeft, top: finalTop, width: final.width, height: final.height, transformOrigin: 'center center', borderRadius: 8, overflow: 'hidden', cursor: zoom > 1 ? 'grab' : 'zoom-in' }}
       >
         <motion.div

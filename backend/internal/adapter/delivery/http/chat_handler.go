@@ -49,6 +49,33 @@ func (h *ChatHandler) Saved(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"chat_id": id})
 }
 
+// SavedDialogs returns the grouped «Чаты»-tab rows of the caller's Saved Messages.
+func (h *ChatHandler) SavedDialogs(w http.ResponseWriter, r *http.Request) {
+	list, err := h.svc.SavedDialogs(r.Context(), h.meID(r))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not list saved dialogs")
+		return
+	}
+	out := make([]map[string]any, 0, len(list))
+	for _, d := range list {
+		out = append(out, map[string]any{
+			"kind": d.Kind, "peer_id": d.PeerID, "title": d.Title, "photo_url": d.PhotoURL,
+			"count": d.Count,
+			"last_message": map[string]any{
+				"type": d.Last.Type, "text": d.Last.Text,
+				"media_id": func() int64 {
+					if d.Last.MediaID != nil {
+						return *d.Last.MediaID
+					}
+					return 0
+				}(),
+				"at": d.Last.CreatedAt,
+			},
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"dialogs": out})
+}
+
 func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 	dialogs, err := h.svc.ListDialogs(r.Context(), h.meID(r))
 	if err != nil {
