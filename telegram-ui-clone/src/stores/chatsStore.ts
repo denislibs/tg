@@ -24,6 +24,7 @@ interface ChatsState {
   upsertDialog: (d: Dialog) => void
   setActiveChat: (id: number | null) => void
   setDialogMuted: (chatId: number, muted: boolean) => void
+  removeDialog: (chatId: number) => void
   applyNewMessage: (m: NewMessageEvt) => void
   applyRead: (r: ReadEvt) => void
   setPresence: (p: PresenceEvt) => void
@@ -59,6 +60,12 @@ export const useChatsStore = create<ChatsState>((set) => ({
       next[idx] = { ...next[idx], muted }
       return { dialogs: next }
     }),
+  // Меня удалили из группы / вышел сам (chat_removed) — диалог исчезает из списка.
+  removeDialog: (chatId) =>
+    set((s) => ({
+      dialogs: s.dialogs.filter((d) => d.chatId !== chatId),
+      activeChatId: s.activeChatId === chatId ? null : s.activeChatId,
+    })),
   setPresence: (p) => set((s) => ({ presence: { ...s.presence, [p.user_id]: { online: p.online, lastSeen: p.last_seen } } })),
   setTyping: (chatId, userId, action, at) =>
     set((s) => ({
@@ -89,6 +96,7 @@ export const useChatsStore = create<ChatsState>((set) => ({
           at: m.created_at,
           mediaId: m.media_id ?? undefined,
           mediaType: m.type || undefined,
+          senderName: m.sender_name || undefined,
           // forward arrow in the sidebar preview live (not only on a full reload)
           forwarded: m.fwd_from_user_id != null || m.fwd_from_chat_id != null || undefined,
         },

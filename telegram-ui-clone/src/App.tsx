@@ -129,8 +129,8 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     return next
   }, [dialogs, meId])
 
-  const createGroup = async (name: string) => {
-    const chatId = await managers.groups.createGroup({ title: name || 'New Group' })
+  const createGroup = async (name: string, memberIds: number[]) => {
+    const chatId = await managers.groups.createGroup({ title: name || 'New Group', memberIds })
     await loadChats(managers)
     setSelectedId(String(chatId))
   }
@@ -196,8 +196,8 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
       chats={chatList}
       selectedId={selectedId ?? ''}
       onSelect={selectChat}
-      onCreateGroup={(name) => {
-        void createGroup(name)
+      onCreateGroup={(name, memberIds) => {
+        void createGroup(name, memberIds)
       }}
       onCreateChannel={(name, description) => {
         void createChannel(name, description)

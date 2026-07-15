@@ -1,5 +1,6 @@
 import type { CallLog, ConvMsg } from '../data'
 import type { Message } from './models'
+import { serviceMsgText } from './serviceMsg'
 
 // Format an ISO timestamp as local 24h "HH:MM"; returns '' on an invalid date.
 // The renderer's formatTime renders this as-is in 24h mode and converts to AM/PM
@@ -52,7 +53,7 @@ export function messageToConvMsg(
     clientId: m.clientId,
     type: convType,
     out,
-    text: m.text,
+    text: convType === 'service' ? serviceMsgText(m.text) : m.text,
     entities: m.entities,
     time: hhmm(m.createdAt),
     // sending → до message_ack (оптимистичный id < 0); error → send отвергнут;

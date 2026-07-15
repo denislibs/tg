@@ -1,6 +1,7 @@
 // src/core/dialogToChat.ts
 import type { Chat } from '../data'
 import type { Dialog } from './models'
+import { serviceMsgText } from './serviceMsg'
 
 export const GRADIENTS = [
   'linear-gradient(135deg,#42e695,#3bb2b8)',
@@ -59,13 +60,22 @@ export function dialogToChat(d: Dialog, meId?: number | null): Chat {
   // channel. ✓✓ once the peer's read horizon (peerReadSeq) reaches its seq.
   const lastMine = lm != null && meId != null && lm.senderId === meId && d.type !== 'channel'
   // Preview text = caption, or a grey type label for caption-less media; prefix
-  // "Вы: " for my own last message (tweb-style).
-  // У лога звонка text — служебный JSON, в превью всегда идёт лейбл.
-  let preview = lm ? (lm.mediaType === 'call' ? mediaLabel('call') : lm.text || mediaLabel(lm.mediaType)) : ''
+  // "Вы: " for my own last message (tweb-style), the sender's first name for
+  // someone else's message in a group. Service pills show their text without
+  // any prefix. У лога звонка text — служебный JSON, в превью всегда идёт лейбл.
+  const isServiceMsg = lm?.mediaType === 'service'
+  let preview = lm
+    ? isServiceMsg
+      ? serviceMsgText(lm.text)
+      : lm.mediaType === 'call' ? mediaLabel('call') : lm.text || mediaLabel(lm.mediaType)
+    : ''
   // Forwarded last message: a forward arrow stands in front (no "Вы:" prefix, like
   // Telegram) — the arrow itself signals it wasn't authored here.
   const forwarded = !!lm?.forwarded
-  if (lastMine && preview && !forwarded) preview = `Вы: ${preview}`
+  if (preview && !forwarded && !isServiceMsg) {
+    if (lastMine) preview = `Вы: ${preview}`
+    else if (d.type === 'group' && lm?.senderName) preview = `${lm.senderName}: ${preview}`
+  }
   return {
     id: String(d.chatId),
     name,

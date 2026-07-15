@@ -35,6 +35,7 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 		}
 	}
 
+	senderName := i.userCard(ctx, in.SenderID).ShortName()
 	var created []domain.Message
 	var members []int64
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
@@ -83,6 +84,7 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 			if e != nil {
 				return e
 			}
+			msg.SenderName = senderName
 			payload, e := json.Marshal(messageUpdatePayload(msg))
 			if e != nil {
 				return e

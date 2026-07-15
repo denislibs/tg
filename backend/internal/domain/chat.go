@@ -27,11 +27,11 @@ type DialogPeer struct {
 
 // Dialog is a chat-list read model: a chat + the viewer's read state + last message.
 type Dialog struct {
-	ChatID       int64
-	Type         string
-	Title        string
-	Username     string
-	LastReadSeq  int64
+	ChatID      int64
+	Type        string
+	Title       string
+	Username    string
+	LastReadSeq int64
 	// PeerReadSeq is the OTHER side's read horizon (read_outbox): the peer's
 	// last_read_seq for a private chat, the MIN across other members for a group
 	// (read-by-all), 0 for channels. Used for outgoing sent/read ticks
@@ -46,11 +46,14 @@ type Dialog struct {
 	LastAt       time.Time
 	// LastMediaID/LastType describe the last message's media for the sidebar
 	// preview thumbnail + type label (0/"" when it's a plain text message).
-	LastMediaID  int64
-	LastType     string
+	LastMediaID int64
+	LastType    string
 	// LastForwarded is true when the last message was forwarded (shows a forward
 	// arrow before the chat-list preview, like Telegram).
 	LastForwarded bool
+	// LastSenderName is the last message sender's short name (first name, else
+	// display name) — for the "Имя: …" preview prefix in group chats.
+	LastSenderName string
 	// Peer is the other member of a private chat (nil for non-private chats).
 	Peer *DialogPeer
 }
@@ -104,7 +107,17 @@ type UserCard struct {
 	ID          int64
 	Username    string
 	DisplayName string
+	FirstName   string
 	AvatarURL   string
+}
+
+// ShortName is the name Telegram uses in compact contexts (chat-list preview
+// prefix, typing label): the first name when set, else the full display name.
+func (u UserCard) ShortName() string {
+	if u.FirstName != "" {
+		return u.FirstName
+	}
+	return u.DisplayName
 }
 
 // ChannelUpdate is one entry in a channel's per-channel updates log

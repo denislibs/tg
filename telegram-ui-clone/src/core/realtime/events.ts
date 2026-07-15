@@ -15,18 +15,21 @@ export const RT = {
   ack: 'rt:ack',
   messageError: 'rt:message_error',
   call: 'rt:call',
+  chatRemoved: 'rt:chat_removed',
   state: 'rt:state',
 } as const
 
 export type ConnState = 'connecting' | 'ready' | 'reconnecting' | 'offline'
 
-export interface NewMessageEvt { chat_id: number; msg_id: number; seq: number; sender_id: number; type: string; text: string; entities?: MessageEntity[] | null; media_id: number | null; created_at: string; thread_root_id?: number | null; reply_to_id?: number | null; fwd_from_user_id?: number | null; fwd_from_chat_id?: number | null; fwd_from_msg_id?: number | null; fwd_date?: string | null; media_unread?: boolean }
+export interface NewMessageEvt { chat_id: number; msg_id: number; seq: number; sender_id: number; type: string; text: string; entities?: MessageEntity[] | null; media_id: number | null; created_at: string; thread_root_id?: number | null; reply_to_id?: number | null; fwd_from_user_id?: number | null; fwd_from_chat_id?: number | null; fwd_from_msg_id?: number | null; fwd_date?: string | null; media_unread?: boolean; sender_name?: string }
 export interface EditMessageEvt { chat_id: number; msg_id: number; seq: number; text: string; entities?: MessageEntity[] | null; edited_at: string }
 export interface DeleteMessageEvt { chat_id: number; msg_id: number; seq: number; for_me: boolean }
 export interface PinMessageEvt { chat_id: number; msg_id: number; pinned: boolean }
 export interface ReadEvt { chat_id: number; user_id: number; up_to_seq: number }
 // Голосовое/кружок прослушано получателем → у сообщения гаснет точка media_unread.
 export interface MediaReadEvt { chat_id: number; msg_id: number }
+// Меня удалили из группы / я вышел — диалог убирается из списка.
+export interface ChatRemovedEvt { chat_id: number; removed: true }
 export type TypingAction = 'typing' | 'voice' | 'video'
 export interface TypingEvt { chat_id: number; user_id: number; action?: TypingAction }
 export interface PresenceEvt { user_id: number; online: boolean; last_seen: number }

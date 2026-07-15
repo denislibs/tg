@@ -75,7 +75,7 @@ export interface Managers {
     subscribe(sub: PushSub): Promise<{ ok: boolean }>
   }
   groups: {
-    createGroup(args: { title: string; about?: string; username?: string; isPublic?: boolean }): Promise<number>
+    createGroup(args: { title: string; about?: string; username?: string; isPublic?: boolean; memberIds?: number[] }): Promise<number>
     addMember(chatId: number, userId: number): Promise<void>
     setMute(chatId: number, muted: boolean): Promise<void>
     card(chatId: number): Promise<GroupCard>

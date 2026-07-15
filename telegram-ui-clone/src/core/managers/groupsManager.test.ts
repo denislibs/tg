@@ -34,14 +34,14 @@ describe('GroupsManager', () => {
     expect(id).toBe(42)
     expect(posts).toHaveLength(1)
     expect(posts[0].path).toBe('/groups')
-    expect(posts[0].body).toEqual({ title: 'My Group', about: 'hi', username: 'mg', is_public: true })
+    expect(posts[0].body).toEqual({ title: 'My Group', about: 'hi', username: 'mg', is_public: true, member_ids: [] })
   })
 
   it('createGroup defaults about/username/is_public', async () => {
     const { rest, posts } = fakeRest({ postReturn: { chat_id: 7 } })
     const mgr = newGroupsManager({ rest })
     await mgr.createGroup({ title: 'Solo' })
-    expect(posts[0].body).toEqual({ title: 'Solo', about: '', username: '', is_public: false })
+    expect(posts[0].body).toEqual({ title: 'Solo', about: '', username: '', is_public: false, member_ids: [] })
   })
 
   it('setMute POSTs /chats/{id}/mute with muted flag', async () => {

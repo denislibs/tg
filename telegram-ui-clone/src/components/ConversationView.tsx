@@ -515,7 +515,14 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
 
       {/* Info panel (private / group / channel) */}
       <AnimatePresence>
-        {infoOpen && <UserInfoPanel chat={chat} onClose={() => setInfoOpen(false)} onOpenPeer={onOpenPeer} />}
+        {infoOpen && (
+          <UserInfoPanel
+            chat={chat}
+            onClose={() => setInfoOpen(false)}
+            onOpenPeer={onOpenPeer}
+            onAddMember={canAddMember ? () => setAddMemberOpen(true) : undefined}
+          />
+        )}
       </AnimatePresence>
 
       {/* Add-contact screen (private chats) */}

@@ -42,6 +42,10 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		}
 	}
 
+	// Sender's short name rides along in the new_message payload so clients can
+	// prefix group chat-list previews ("Имя: …") without an extra lookup.
+	senderName := i.userCard(ctx, in.SenderID).ShortName()
+
 	var msg domain.Message
 	var recipients []int64 // non-nil only when a NEW message was inserted
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
@@ -71,6 +75,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		if e != nil {
 			return e
 		}
+		msg.SenderName = senderName
 		members, e := i.chats.MemberIDs(ctx, in.ChatID)
 		if e != nil {
 			return e

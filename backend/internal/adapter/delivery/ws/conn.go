@@ -103,6 +103,9 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		if json.Unmarshal(f.D, &d) != nil {
 			return
 		}
+		if d.Type == "service" { // server-only type (group action pills)
+			return
+		}
 		msg, err := c.svc.Send(ctx, usecasechat.SendInput{
 			ChatID: d.ChatID, SenderID: c.userID, Type: d.Type, Text: d.Text, Entities: d.Entities,
 			ReplyToID: d.ReplyToID, ClientMsgID: d.ClientMsgID, MediaID: d.MediaID,

@@ -29,7 +29,7 @@ import s from './UserInfoPanel.module.scss'
 import useMediaQuery from '../shared/lib/useMediaQuery'
 
 
-export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void }) {
+export default function UserInfoPanel({ chat, onClose, onOpenPeer, onAddMember }: { chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void; onAddMember?: () => void }) {
   const t = useT()
   const narrow = useMediaQuery('(max-width:900px)')
   const [tab, setTab] = useState('Media')
@@ -342,12 +342,13 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer }: { chat: Cha
           <SharedMedia tab={tab} onTab={setTab} chatId={sharedMediaChatId(chat.id)} />
         </div>
 
-        {/* Group add-member FAB */}
-        {isGroup && (
+        {/* Group add-member FAB (tweb btnAddMembers) */}
+        {isGroup && onAddMember && (
           <motion.div
             whileHover={{ scale: 1.06 }}
             whileTap={{ scale: 0.92 }}
             className={s.fab}
+            onClick={onAddMember}
           >
             <TgIcon name="adduser" />
           </motion.div>

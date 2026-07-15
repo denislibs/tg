@@ -55,6 +55,7 @@ function dispatchOther(u: unknown) {
   else if ('edited_at' in o) broadcast(RT.editMessage, o)
   else if ('for_me' in o) broadcast(RT.deleteMessage, o)
   else if ('pinned' in o) broadcast(RT.pinMessage, o)
+  else if ('removed' in o) broadcast(RT.chatRemoved, o)
   // media_read несёт только {chat_id, msg_id} — распознаётся последним, по остатку
   else if ('msg_id' in o) broadcast(RT.mediaRead, o)
 }
@@ -85,6 +86,7 @@ const conn = newConnectionManager({
     else if (type === 'pin_message') broadcast(RT.pinMessage, payload)
     else if (type === 'read') broadcast(RT.read, payload)
     else if (type === 'media_read') broadcast(RT.mediaRead, payload)
+    else if (type === 'chat_removed') broadcast(RT.chatRemoved, payload)
     else if (type === 'typing') broadcast(RT.typing, payload)
     else if (type === 'presence') broadcast(RT.presence, payload)
     else if (type === 'reaction') broadcast(RT.reaction, payload)

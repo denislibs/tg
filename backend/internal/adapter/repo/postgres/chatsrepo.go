@@ -170,13 +170,14 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		          WHEN c.type = 'group'   THEN (SELECT MIN(om.last_read_seq) FROM chat_members om WHERE om.chat_id = c.id AND om.user_id <> $1)
 		          ELSE 0
 		        END, 0) AS peer_read_seq,
-		        lm.seq, lm.text, lm.sender_id, lm.created_at, COALESCE(lm.media_id,0), lm.type, lm.forwarded,
+		        lm.seq, lm.text, lm.sender_id, lm.created_at, COALESCE(lm.media_id,0), lm.type, lm.forwarded, lm.sender_name,
 		        peer.id, peer.display_name, peer.avatar_url, peer.is_verified
 		 FROM chat_members m
 		 JOIN chats c ON c.id = m.chat_id
 		 LEFT JOIN LATERAL (
 		   SELECT seq, text, sender_id, created_at, media_id, type,
-		          (fwd_from_user_id IS NOT NULL OR fwd_from_chat_id IS NOT NULL) AS forwarded
+		          (fwd_from_user_id IS NOT NULL OR fwd_from_chat_id IS NOT NULL) AS forwarded,
+		          (SELECT COALESCE(NULLIF(u.first_name,''), u.display_name) FROM users u WHERE u.id = messages.sender_id) AS sender_name
 		   FROM messages
 		   WHERE chat_id = c.id AND deleted_at IS NULL
 		   ORDER BY seq DESC LIMIT 1
@@ -206,12 +207,13 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		var mediaID *int64
 		var msgType *string
 		var forwarded *bool
+		var senderName *string
 		var peerID *int64
 		var peerName *string
 		var peerAvatar *string
 		var peerVerified *bool
 		if err := rows.Scan(&d.ChatID, &d.Type, &d.Title, &d.Username, &d.LastReadSeq, &d.UnreadCount, &d.Muted, &d.PeerReadSeq,
-			&seq, &text, &senderID, &at, &mediaID, &msgType, &forwarded,
+			&seq, &text, &senderID, &at, &mediaID, &msgType, &forwarded, &senderName,
 			&peerID, &peerName, &peerAvatar, &peerVerified); err != nil {
 			return nil, err
 		}
@@ -229,6 +231,9 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 			}
 			if msgType != nil {
 				d.LastType = *msgType
+			}
+			if senderName != nil {
+				d.LastSenderName = *senderName
 			}
 		}
 		if peerID != nil {

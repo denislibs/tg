@@ -26,7 +26,7 @@ export interface RawDialog {
   title?: string
   username?: string
   peer?: { id: number; display_name: string; avatar_url: string; verified?: boolean }
-  last_message?: { seq: number; text: string; sender_id: number; at: string; media_id?: number; type?: string; forwarded?: boolean }
+  last_message?: { seq: number; text: string; sender_id: number; at: string; media_id?: number; type?: string; forwarded?: boolean; sender_name?: string }
 }
 
 export interface Dialog {
@@ -40,7 +40,7 @@ export interface Dialog {
   title?: string
   username?: string
   peer?: { id: number; displayName: string; avatarUrl: string; verified?: boolean }
-  lastMessage?: { seq: number; text: string; senderId: number; at: string; mediaId?: number; mediaType?: string; forwarded?: boolean }
+  lastMessage?: { seq: number; text: string; senderId: number; at: string; mediaId?: number; mediaType?: string; forwarded?: boolean; senderName?: string }
 }
 
 export interface RawMessage {
@@ -142,6 +142,7 @@ export function mapDialog(r: RawDialog): Dialog {
           mediaId: r.last_message.media_id && r.last_message.media_id > 0 ? r.last_message.media_id : undefined,
           mediaType: r.last_message.type || undefined,
           forwarded: r.last_message.forwarded || undefined,
+          senderName: r.last_message.sender_name || undefined,
         }
       : undefined,
   }

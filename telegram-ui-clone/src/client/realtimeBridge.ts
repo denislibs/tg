@@ -6,7 +6,7 @@ import { usePinsStore } from '../stores/pinsStore'
 import { useDiscussionStore, threadKey } from '../stores/discussionStore'
 import { mapMessage } from '../core/models'
 import { uiEvents } from '../core/hooks/uiEvents'
-import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt } from '../core/realtime/events'
+import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt } from '../core/realtime/events'
 import { playMessageSent, playIncoming } from '../core/audio/sounds'
 import * as callEngine from '../core/calls/callEngine'
 
@@ -17,6 +17,17 @@ let started = false
 const TYPING_TTL = 6000
 const typingTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
+// Debounced dialog-list refetch for messages arriving into unknown chats (a burst
+// of frames after being added to a group must not spawn N parallel reloads).
+let chatsReloadTimer: ReturnType<typeof setTimeout> | null = null
+function scheduleChatsReload(managers: Parameters<typeof loadChats>[0]): void {
+  if (chatsReloadTimer) return
+  chatsReloadTimer = setTimeout(() => {
+    chatsReloadTimer = null
+    void loadChats(managers)
+  }, 300)
+}
+
 // Subscribe to worker realtime events exactly once per page.
 export function startRealtime(): void {
   if (started) return
@@ -26,6 +37,11 @@ export function startRealtime(): void {
 
   smp.on(RT.newMessage, (m) => {
     const evt = m as NewMessageEvt
+    // Сообщение в неизвестный чат = меня только что добавили в новый чат (первое
+    // сообщение / сервисное «создал группу») → подтянуть список диалогов.
+    if (!useChatsStore.getState().dialogs.some((d) => d.chatId === evt.chat_id)) {
+      scheduleChatsReload(managers)
+    }
     store.applyNewMessage(evt) // dialog-list preview (chatsStore)
     // Append to the chat's message window (single source of truth). Resolve the
     // reply preview from the already-loaded window so a reply shows its quote
@@ -54,6 +70,9 @@ export function startRealtime(): void {
   smp.on(RT.mediaRead, (raw) => {
     const e = raw as MediaReadEvt
     useMessagesStore.getState().applyMediaRead(e.chat_id, e.msg_id)
+  })
+  smp.on(RT.chatRemoved, (raw) => {
+    useChatsStore.getState().removeDialog((raw as ChatRemovedEvt).chat_id)
   })
   smp.on(RT.presence, (p) => { store.setPresence(p as PresenceEvt); uiEvents.emit(RT.presence, p) })
   smp.on(RT.typing, (raw) => {

@@ -66,6 +66,7 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 			row["last_message"] = map[string]any{
 				"seq": d.LastSeq, "text": d.LastText, "sender_id": d.LastSenderID, "at": d.LastAt,
 				"media_id": d.LastMediaID, "type": d.LastType, "forwarded": d.LastForwarded,
+				"sender_name": d.LastSenderName,
 			}
 		}
 		if d.Peer != nil {
@@ -96,6 +97,10 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 	var body sendBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if body.Type == "service" { // server-only type (group action pills)
+		writeError(w, http.StatusBadRequest, "invalid type")
 		return
 	}
 	msg, err := h.svc.Send(r.Context(), usecasechat.SendInput{

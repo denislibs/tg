@@ -45,16 +45,17 @@ func (h *GroupHandler) mapErr(w http.ResponseWriter, err error) {
 func (h *GroupHandler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	var b struct {
-		Title    string `json:"title"`
-		About    string `json:"about"`
-		Username string `json:"username"`
-		IsPublic bool   `json:"is_public"`
+		Title     string  `json:"title"`
+		About     string  `json:"about"`
+		Username  string  `json:"username"`
+		IsPublic  bool    `json:"is_public"`
+		MemberIDs []int64 `json:"member_ids"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || strings.TrimSpace(b.Title) == "" {
 		writeError(w, http.StatusBadRequest, "title required")
 		return
 	}
-	id, err := h.uc.CreateGroup(r.Context(), user.ID, b.Title, b.About, b.Username, b.IsPublic)
+	id, err := h.uc.CreateGroup(r.Context(), user.ID, b.Title, b.About, b.Username, b.IsPublic, b.MemberIDs)
 	if err != nil {
 		h.mapErr(w, err)
 		return

@@ -9,9 +9,10 @@ export interface GroupCard {
 
 export function newGroupsManager({ rest }: { rest: Pick<RestClient, 'post' | 'get' | 'del'> }) {
   return {
-    async createGroup(args: { title: string; about?: string; username?: string; isPublic?: boolean }): Promise<number> {
+    async createGroup(args: { title: string; about?: string; username?: string; isPublic?: boolean; memberIds?: number[] }): Promise<number> {
       const r = await rest.post<{ chat_id: number }>('/groups', {
         title: args.title, about: args.about ?? '', username: args.username ?? '', is_public: args.isPublic ?? false,
+        member_ids: args.memberIds ?? [],
       })
       return r.chat_id
     },
