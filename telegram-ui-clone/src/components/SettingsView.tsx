@@ -190,11 +190,12 @@ export default function SettingsView({
       {/* Telegram Premium modal */}
       <PremiumModal open={premiumOpen} onClose={() => setPremiumOpen(false)} />
 
-      {/* «QR-код» профиля (tweb myQrCode: t.me/username или t.me/+phone) */}
+      {/* «QR-код» профиля (tweb myQrCode) — кодирует нашу публичную страницу
+          /@username (аналог t.me/username) */}
       <QrModal
         open={qrOpen}
         onClose={() => setQrOpen(false)}
-        url={me?.username ? `https://t.me/${me.username}` : `https://t.me/+${(me?.phone ?? '').replace(/\D/g, '')}`}
+        url={me?.username ? `${location.origin}/@${me.username}` : location.origin}
         label={me?.username ? `@${me.username}` : name}
         avatar={{ src: avatarSrc, background: avatarBg, text: avatarText }}
       />

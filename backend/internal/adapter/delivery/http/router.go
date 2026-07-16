@@ -13,7 +13,7 @@ import (
 	usecasenotify "github.com/messenger-denis/backend/internal/usecase/notify"
 )
 
-func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler, notifyUC *usecasenotify.Interactor, foldersUC *usecasefolders.Interactor) http.Handler {
+func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler, notifyUC *usecasenotify.Interactor, foldersUC *usecasefolders.Interactor, pubH *PublicHandler) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -40,6 +40,12 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 	// elements can't set an Authorization header, so it authenticates via ?token=.
 	if mediaH != nil {
 		r.Get("/media/{mediaID}/content", mediaH.GetContent)
+	}
+
+	// Публичная страница-превью @username (аналог t.me) — без авторизации.
+	if pubH != nil {
+		r.Get("/@{username}", pubH.Page)
+		r.Get("/@{username}/photo", pubH.Photo)
 	}
 
 	r.Group(func(pr chi.Router) {

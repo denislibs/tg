@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Messenger: {{if eq .Kind "user"}}@{{.Username}}{{else}}{{.Title}}{{end}}</title>
+<meta property="og:title" content="{{.Title}}">
+<meta property="og:site_name" content="Messenger">
+<meta property="og:description" content="{{.About}}">
+{{if .HasPhoto}}<meta property="og:image" content="/@{{.Username}}/photo">{{end}}
+<style>
+/* Порт t.me (telegram.org/css/telegram.css): значения 1:1 */
+:root {
+  --text-color: #000;
+  --second-text-color: #7d7f81;
+  --accent-btn-color: #2481cc;
+  --accent-color-hover: #1c93e3;
+  --box-bg: #fff;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --text-color: #fff; --accent-btn-color: #1c93e3; --box-bg: #1e1e1e; }
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: Roboto, 'Helvetica Neue', system-ui, sans-serif;
+  color: var(--text-color);
+  min-height: 100vh;
+}
+/* tgme_background: дефолтные обои (data-colors dbddbb,6ba587,d5d88d,88b884) */
+.bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(150deg, #dbddbb, #6ba587, #d5d88d, #88b884);
+}
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: #fff;
+  font-weight: bold;
+  font-size: 20px;
+  text-shadow: 0 1px 2px rgba(0,0,0,.15);
+}
+.brand svg { display: block; }
+/* tgme_head_right_btn */
+.head_btn {
+  display: inline-block;
+  font-size: 14px;
+  line-height: 17px;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: #fff;
+  background: var(--accent-btn-color);
+  padding: 9px 16px;
+  border-radius: 17px;
+  text-decoration: none;
+}
+/* tgme_body_wrap / tgme_page */
+.body_wrap { padding: 70px 16px 40px; }
+.page {
+  position: relative;
+  margin: 16px auto;
+  padding: 32px 0;
+  max-width: 400px;
+  background: var(--box-bg);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border-radius: 16px;
+  text-align: center;
+}
+/* tgme_page_photo(_image): 122px круг */
+.photo { padding-bottom: 16px; }
+.photo img, .photo .initials {
+  width: 122px;
+  height: 122px;
+  border-radius: 61px;
+  object-fit: cover;
+}
+.photo .initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 48px;
+  font-weight: 500;
+  background: {{.AvatarGradient}};
+}
+/* tgme_page_title 26/32 bold */
+.title {
+  font-size: 26px;
+  line-height: 32px;
+  font-weight: bold;
+  max-width: 340px;
+  padding: 0 10px;
+  margin: 0 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.verified { color: #1c93e3; font-style: normal; font-size: 20px; }
+/* tgme_page_extra 15/18 */
+.extra {
+  font-size: 15px;
+  line-height: 18px;
+  padding: 6px 16px 0;
+  color: var(--second-text-color);
+}
+/* tgme_page_description 16/25, clamp 5 */
+.description {
+  font-size: 16px;
+  line-height: 25px;
+  margin: 10px 16px 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+}
+.action { padding: 20px 16px 0; }
+/* tgme_action_button_new + shine */
+.action a {
+  font-size: 14px;
+  line-height: 17px;
+  font-weight: bold;
+  color: #fff;
+  background-color: var(--accent-btn-color);
+  border-radius: 22px;
+  overflow: hidden;
+  display: inline-block;
+  padding: 13px 24px;
+  height: 42px;
+  text-transform: uppercase;
+  text-decoration: none;
+  background-image: linear-gradient(270deg, rgba(100, 181, 239, 0) 48.44%, #64b5ef 75.52%, rgba(100, 181, 239, 0) 100%);
+  background-repeat: no-repeat;
+  animation: bg-move linear 5s infinite;
+}
+.action a:hover { background-color: var(--accent-color-hover); }
+@keyframes bg-move {
+  0%   { background-position: -500px 0; }
+  100% { background-position: 1000px 0; }
+}
+/* tgme_page_additional */
+.additional {
+  font-size: 16px;
+  line-height: 25px;
+  margin: 20px 16px 0;
+  color: var(--second-text-color);
+}
+</style>
+</head>
+<body>
+<div class="bg"></div>
+<div class="head">
+  <a class="brand" href="/">
+    <svg height="34" width="34" viewBox="0 0 34 34" xmlns="http://www.w3.org/2000/svg"><circle cx="17" cy="17" fill="var(--accent-btn-color)" r="17"/><path d="m7.06510669 16.9258959c5.22739451-2.1065178 8.71314291-3.4952633 10.45724521-4.1662364 4.9797665-1.9157646 6.0145193-2.2485535 6.6889567-2.2595423.1483363-.0024169.480005.0315855.6948461.192827.1814076.1361492.23132.3200675.2552048.4491519.0238847.1290844.0536269.4231419.0299841.65291-.2698553 2.6225356-1.4375148 8.986738-2.0315537 11.9240228-.2513602 1.2428753-.7499132 1.5088847-1.2290685 1.5496672-1.0413153.0886298-1.8284257-.4857912-2.8369905-1.0972863-1.5782048-.9568691-2.5327083-1.3984317-4.0646293-2.3321592-1.7703998-1.0790837-.212559-1.583655.7963867-2.5529189.2640459-.2536609 4.7753906-4.3097041 4.755976-4.431706-.0070494-.0442984-.1409018-.481649-.2457499-.5678447-.104848-.0861957-.2595946-.0567202-.3712641-.033278-.1582881.0332286-2.6794907 1.5745492-7.5636077 4.6239616-.715635.4545193-1.3638349.6759763-1.9445998.6643712-.64024672-.0127938-1.87182452-.334829-2.78737602-.6100966-1.12296117-.3376271-1.53748501-.4966332-1.45976769-1.0700283.04048-.2986597.32581586-.610598.8560076-.935815z" fill="#fff"/></svg>
+    Messenger
+  </a>
+  <a class="head_btn" href="/">Открыть Web</a>
+</div>
+<div class="body_wrap">
+  <div class="page">
+    <div class="photo">
+      {{if .HasPhoto}}<img src="/@{{.Username}}/photo" alt="">{{else}}<div class="initials">{{.Initial}}</div>{{end}}
+    </div>
+    <div class="title"><span>{{.Title}}</span>{{if .Verified}} <i class="verified">✔</i>{{end}}</div>
+    <div class="extra">{{.Extra}}</div>
+    {{if .About}}<div class="description">{{.About}}</div>{{end}}
+    <div class="action"><a href="/?domain={{.Username}}">{{.ButtonText}}</a></div>
+    <div class="additional">
+      Если у вас открыт <strong>Messenger Web</strong>,<br>вы можете сразу открыть <strong>{{.Title}}</strong>.
+    </div>
+  </div>
+</div>
+</body>
+</html>

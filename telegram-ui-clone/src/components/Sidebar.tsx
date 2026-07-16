@@ -43,6 +43,8 @@ interface Props {
   onLogout?: () => void
   onOpenPeer?: (peer: OpenPeer) => void
   fullWidth?: boolean
+  /** префилл поиска (deep-open с публичной страницы /?domain=username) */
+  initialQuery?: string
 }
 
 export default function Sidebar({
@@ -55,12 +57,13 @@ export default function Sidebar({
   onLogout,
   onOpenPeer,
   fullWidth = false,
+  initialQuery,
 }: Props) {
   const managers = useManagers()
   const t = useT()
   const loaded = useChatsStore((st) => st.loaded)
-  const [query, setQuery] = useState('')
-  const [searching, setSearching] = useState(false)
+  const [query, setQuery] = useState(initialQuery ?? '')
+  const [searching, setSearching] = useState(!!initialQuery)
   const [showSettings, setShowSettings] = useState(false)
   const [showContacts, setShowContacts] = useState(false)
   const [premiumOpen, setPremiumOpen] = useState(false)

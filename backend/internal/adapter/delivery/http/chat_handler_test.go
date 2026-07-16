@@ -47,7 +47,7 @@ func authedReq(t *testing.T, h http.Handler, method, path, token string, body an
 
 func newMessagingRouter(t *testing.T) (http.Handler, *pgxpool.Pool) {
 	pool := postgres.NewTestDB(t)
-	return NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil), pool
+	return NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil), pool
 }
 
 func TestChatFlow_HTTP(t *testing.T) {

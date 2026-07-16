@@ -223,9 +223,17 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     void loadChats(managers)
   }
 
+  // /?domain=username с публичной страницы /@username: префилл поиска
+  const [deepDomain] = useState(() => {
+    const d = new URLSearchParams(location.search).get('domain')
+    if (d) window.history.replaceState({}, '', '/')
+    return d ?? undefined
+  })
+
   const renderSidebar = (fullWidth = false) => (
     <Sidebar
       chats={chatList}
+      initialQuery={deepDomain}
       selectedId={selectedId ?? ''}
       onSelect={selectChat}
       onCreateGroup={(name, memberIds, photo) => {
