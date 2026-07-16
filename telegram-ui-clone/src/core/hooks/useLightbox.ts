@@ -44,6 +44,8 @@ export function useLightbox({ win, isRealChat, meId, meName, peers, chatName, la
         type: m.type,
         sender: m.senderId === meId ? (meName || 'Вы') : (peers.get(m.senderId)?.displayName || chatName),
         date: friendlyMsgTime(m.createdAt, lang),
+        width: m.mediaWidth,
+        height: m.mediaHeight,
       }))
     const index = Math.max(0, items.findIndex((it) => it.mediaId === mediaId))
     const r = el.getBoundingClientRect()

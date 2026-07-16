@@ -1,14 +1,18 @@
 // src/components/messages/MediaLightbox.tsx
-// Full-screen media viewer for real-chat photos/videos. The open/close transition
-// is an explicit FLIP: the media scales+translates from the clicked thumbnail's
-// rect to the centred fullscreen box and back, so the photo literally grows out
-// of (and shrinks back into) the bubble — ported from tweb's
-// appMediaViewerBase.setMoverToTarget. (framer's cross-tree `layoutId` doesn't
-// project reliably from inside the deep feed, so the FLIP is done by hand.)
-//
-// On top of the FLIP: zoom (wheel / +- / double-click), rotate (R), drag-to-pan
-// when zoomed, a toolbar, and ←/→ paging across every photo/video in the chat.
-import { useEffect, useMemo, useState } from 'react'
+// Full-screen media viewer for real-chat photos/videos. The open/close morph is a
+// port of tweb's appMediaViewerBase.setMoverToTarget:
+//  - «мовер» (fixed, transform-origin: top left) едет и масштабируется
+//    НЕ-униформно (scale3d(sx, sy)) между rect миниатюры и центральным боксом —
+//    чистый CSS-переход transform 200ms ease на компоновщике (не JS-анимация,
+//    поэтому не роняет кадры при тяжёлых перерисовках);
+//  - внутри — «аспектер» с контр-скейлом (scale3d(1/sx, 1/sy)) и cover-картинкой:
+//    морф кропа — квадратная плитка галереи раскрывается в полный кадр бесшовно;
+//  - радиус миниатюры анимируется (на закрытии ставится на полпути, как в tweb);
+//  - весь хром (фон, панель, стрелки) гаснет opacity 200ms ease-in-out;
+//  - unmount ровно через delay (tweb resolve по setTimeout(delay)).
+// На закрытии rect миниатюры замеряется заново; если она ушла из вьюпорта —
+// tweb-поведение: движения нет, только fade.
+import { useLayoutEffect, useEffect, useMemo, useRef, useState } from 'react'
 import Text from '../../shared/ui/Text'
 import IconButton from '../../shared/ui/IconButton'
 import classNames from '../../shared/lib/classNames'
@@ -20,11 +24,18 @@ import { useManagers } from '../../core/hooks/useManagers'
 import type { MediaMeta } from '../../core/managers/mediaManager'
 import s from './MediaLightbox.module.scss'
 
-export interface LightboxItem { mediaId: number; type?: string; sender?: string; date?: string }
+export interface LightboxItem {
+  mediaId: number
+  type?: string
+  sender?: string
+  date?: string
+  /** натуральные размеры медиа (из сообщения) — центральный бокс стабилен с 1-го кадра */
+  width?: number
+  height?: number
+}
 interface Rect { top: number; left: number; width: number; height: number }
 
-const OPEN_MS = 0.26 // grow/shrink duration
-const OPEN_EASE = [0.32, 0.72, 0, 1] as const // snappy ease-out, tweb-ish
+const OPEN_MS = 200 // tweb OPEN_TRANSITION_TIME
 const ZOOM_SPRING = { type: 'spring' as const, stiffness: 260, damping: 30, mass: 0.9 }
 
 function fit(natW: number, natH: number, maxW: number, maxH: number) {
@@ -33,14 +44,26 @@ function fit(natW: number, natH: number, maxW: number, maxH: number) {
   return { width: Math.round(natW * r), height: Math.round(natH * r) }
 }
 
+// Радиусы углов миниатюры [tl, tr, br, bl] — mover масштабируется не-униформно,
+// поэтому радиус компенсируется эллиптически (x/sx, y/sy), как в tweb.
+function cornerRadii(el?: HTMLElement): number[] {
+  if (!el) return [0, 0, 0, 0]
+  const cs = getComputedStyle(el)
+  return [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius]
+    .map((v) => parseFloat(v) || 0)
+}
+const ellipticalRadius = (radii: number[], sx: number, sy: number) =>
+  `${radii.map((r) => `${r / sx}px`).join(' ')} / ${radii.map((r) => `${r / sy}px`).join(' ')}`
+
+const doubleRaf = () => new Promise<void>((res) => requestAnimationFrame(() => requestAnimationFrame(() => res())))
+
 export default function MediaLightbox({ items, index, originRect, originSrc, originEl, onClose, onClosingStart }: {
   items: LightboxItem[]
   index: number
   originRect: Rect
   originSrc?: string
-  // The source thumbnail element: re-measured at close time so the clone shrinks
-  // into the thumbnail's CURRENT rect (the feed/panel may have scrolled since
-  // opening — a stale rect made the close land off-target and look cut off).
+  // Исходная миниатюра: rect замеряется заново в момент закрытия (лента могла
+  // проскроллиться) — mover летит в АКТУАЛЬНОЕ место, не в устаревшее.
   originEl?: HTMLElement
   onClose: () => void
   // Called the instant the close animation starts — the parent reveals the source
@@ -52,7 +75,7 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
   const [idx, setIdx] = useState(index)
   const [meta, setMeta] = useState<MediaMeta | null>(null)
   const [url, setUrl] = useState('')
-  // Shown image: starts as the clicked thumbnail (already cached, so the FLIP
+  // Shown image: starts as the clicked thumbnail (already cached, so the morph
   // grows a VISIBLE picture) and swaps to full-res once decoded.
   const [imgSrc, setImgSrc] = useState(originSrc ?? '')
   const [closing, setClosing] = useState(false)
@@ -61,6 +84,11 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
   // The FLIP origin applies only to the first-opened item; paging clears it (no
   // thumbnail to fly from/to → plain crossfade).
   const [flyFrom, setFlyFrom] = useState<Rect | null>(originRect)
+
+  const moverRef = useRef<HTMLDivElement>(null)
+  const aspecterRef = useRef<HTMLDivElement>(null)
+  const closingRef = useRef(false)
+  const radiiRef = useRef<number[]>([0, 0, 0, 0])
 
   const item = items[idx]
   const isVideo = item?.type === 'video' || !!meta?.mime.startsWith('video/')
@@ -83,12 +111,88 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
       const pre = new Image()
       // Defer the full-res swap past the grow so its repaint can't drop frames
       // mid-animation; paged items (no flyFrom) swap as soon as decoded.
-      const delay = flyFrom ? OPEN_MS * 1000 + 40 : 0
+      const delay = flyFrom ? OPEN_MS + 40 : 0
       pre.onload = () => { if (alive) window.setTimeout(() => { if (alive) setImgSrc(u) }, delay) }
       pre.src = u
     })
     return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item.mediaId, item.type, managers])
+
+  const vw = window.innerWidth, vh = window.innerHeight
+  // Центральный бокс: по натуральным размерам медиа (как tweb) — они приходят в
+  // сообщении; фолбэк — аспект миниатюры, затем meta.
+  const dims = item?.width && item?.height
+    ? { w: item.width, h: item.height }
+    : meta?.width
+      ? { w: meta.width, h: meta.height }
+      : { w: originRect.width, h: originRect.height }
+  const final = useMemo(
+    () => fit(dims.w, dims.h, vw * 0.92, vh * 0.84),
+    [dims.w, dims.h, vw, vh],
+  )
+  const finalLeft = (vw - final.width) / 2
+  const finalTop = (vh - final.height) / 2
+
+  const restTransform = `translate3d(${finalLeft}px,${finalTop}px,0) scale3d(1,1,1)`
+
+  // Snap-обновление мовера без анимации (первичная установка, пейджинг, ресайз).
+  const snapToRest = () => {
+    const m = moverRef.current, a = aspecterRef.current
+    if (!m || !a) return
+    m.classList.remove(s.animated)
+    m.style.transform = restTransform
+    m.style.borderRadius = ''
+    m.style.opacity = ''
+    a.style.cssText = ''
+    void m.offsetLeft
+    m.classList.add(s.animated)
+  }
+
+  const openedRef = useRef(false)
+  useLayoutEffect(() => {
+    const m = moverRef.current, a = aspecterRef.current
+    if (!m || !a) return
+    if (openedRef.current || !flyFrom) {
+      snapToRest()
+      return
+    }
+    // ── открытие: из rect миниатюры в центр (tweb setMoverToTarget, не closing) ──
+    openedRef.current = true
+    radiiRef.current = cornerRadii(originEl)
+    const or = flyFrom
+    const sx = or.width / final.width
+    const sy = or.height / final.height
+    m.classList.remove(s.animated)
+    m.style.transform = `translate3d(${or.left}px,${or.top}px,0) scale3d(${sx},${sy},1)`
+    m.style.borderRadius = ellipticalRadius(radiiRef.current, sx, sy)
+    // аспектер: кроп миниатюры, контр-скейл до полного бокса
+    a.style.width = `${or.width}px`
+    a.style.height = `${or.height}px`
+    a.style.transform = `scale3d(${final.width / or.width},${final.height / or.height},1)`
+    void m.offsetLeft // reflow — зафиксировать стартовое состояние без перехода
+    m.classList.add(s.animated)
+    void doubleRaf().then(() => {
+      if (closingRef.current) return
+      m.style.transform = restTransform
+      m.style.borderRadius = '0px'
+      // tweb setFullAspect: та же высота, ширина по аспекту медиа — морф кропа
+      const prop = final.width / final.height
+      const w = or.height * prop
+      a.style.width = `${w}px`
+      a.style.height = `${or.height}px`
+      a.style.transform = `scale3d(${final.width / w},${final.height / or.height},1)`
+      // после перехода аспектер отдыхает на 100% (tweb чистит cssText по delay)
+      window.setTimeout(() => {
+        if (closingRef.current) return
+        m.classList.remove(s.animated)
+        a.style.cssText = ''
+        void m.offsetLeft
+        m.classList.add(s.animated)
+      }, OPEN_MS)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [final.width, final.height, finalLeft, finalTop, idx])
 
   const stepZoom = (d: number) => setZoom((z) => Math.min(4, Math.max(1, +(z + d).toFixed(2))))
   const nav = (dir: number) => {
@@ -96,25 +200,44 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
     setImgSrc('')
     setIdx((i) => (i + dir + items.length) % items.length)
   }
-  // Close-shrink target: fresh thumbnail rect measured at close time (null →
-  // plain fade: paged item or the thumbnail scrolled out of the viewport).
-  const [closeTo, setCloseTo] = useState<Rect | null>(null)
+
   const close = () => {
-    if (closing) return
+    if (closingRef.current) return
+    closingRef.current = true
     setZoom(1); setRot(0)
-    // Only the first-opened item can fly back, and only into a thumbnail that is
-    // still on screen — otherwise tweb-style fade-out.
-    let target: Rect | null = null
-    if (flyFrom) {
-      const r = originEl?.isConnected ? originEl.getBoundingClientRect() : null
-      const visible = r && r.bottom > 0 && r.top < window.innerHeight && r.right > 0 && r.left < window.innerWidth
-      target = visible ? { top: r.top, left: r.left, width: r.width, height: r.height } : null
-    }
-    setCloseTo(target)
     onClosingStart?.() // reveal the source thumbnail now (no empty-bubble gap)
-    setClosing(true)
-    // Safety net: unmount even if the animation callback never fires.
-    window.setTimeout(onClose, OPEN_MS * 1000 + 300)
+    setClosing(true) // хром (фон/панель/стрелки) гаснет CSS-переходом
+    const m = moverRef.current, a = aspecterRef.current
+    // Летим в миниатюру ТЕКУЩЕГО элемента (tweb перевешивает target при листании:
+    // для первого — исходный originEl, для пролистанных — ищем его <img> в DOM),
+    // и только если она всё ещё во вьюпорте — иначе tweb-поведение: только fade.
+    let target: Rect | null = null
+    let targetEl: HTMLElement | undefined
+    const el = flyFrom
+      ? originEl
+      : (document.querySelector(`img[src*="/media/${item.mediaId}/"]`) as HTMLElement | null) ?? undefined
+    if (el?.isConnected) {
+      const r = el.getBoundingClientRect()
+      const visible = r.width > 0 && r.bottom > 0 && r.top < vh && r.right > 0 && r.left < vw
+      if (visible) {
+        target = { top: r.top, left: r.left, width: r.width, height: r.height }
+        targetEl = el
+      }
+    }
+    if (m && a && target) {
+      const radii = cornerRadii(targetEl)
+      const sx = target.width / final.width
+      const sy = target.height / final.height
+      m.style.transform = `translate3d(${target.left}px,${target.top}px,0) scale3d(${sx},${sy},1)`
+      a.style.width = `${target.width}px`
+      a.style.height = `${target.height}px`
+      a.style.transform = `scale3d(${final.width / target.width},${final.height / target.height},1)`
+      // tweb ставит радиус на полпути анимации
+      window.setTimeout(() => { m.style.borderRadius = ellipticalRadius(radii, sx, sy) }, OPEN_MS / 2)
+    } else if (m) {
+      m.style.opacity = '0'
+    }
+    window.setTimeout(onClose, OPEN_MS) // tweb резолвит ровно по delay
   }
 
   useEffect(() => {
@@ -131,28 +254,6 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx, items.length])
 
-  const vw = window.innerWidth, vh = window.innerHeight
-  // Centred final box: for the just-opened item derive from the thumbnail's aspect
-  // (known immediately) so the box is stable from frame one; paged items size from
-  // meta.
-  const final = useMemo(
-    () => flyFrom
-      ? fit(originRect.width, originRect.height, vw * 0.92, vh * 0.84)
-      : fit(meta?.width ?? 0, meta?.height ?? 0, vw * 0.92, vh * 0.84),
-    [flyFrom, originRect, meta, vw, vh],
-  )
-  const finalLeft = (vw - final.width) / 2
-  const finalTop = (vh - final.height) / 2
-
-  // FLIP transform from the thumbnail rect to the centred final rect.
-  const flip = flyFrom
-    ? {
-        scale: flyFrom.width / final.width,
-        x: (flyFrom.left + flyFrom.width / 2) - (finalLeft + final.width / 2),
-        y: (flyFrom.top + flyFrom.height / 2) - (finalTop + final.height / 2),
-      }
-    : { scale: 0.96, x: 0, y: 0 }
-
   const onWheel = (e: React.WheelEvent) => { e.preventDefault(); stepZoom(e.deltaY < 0 ? 0.3 : -0.3) }
   const c = zoom * 140
   const multi = items.length > 1
@@ -164,19 +265,12 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
   }
 
   return (
-    <div className={s.root} onClick={close}>
-      {/* backdrop — ONLY this fades; the photo clone stays opaque from frame 0 so
-          it fully covers the (hidden) source thumbnail during the grow/shrink (no
-          empty-bubble flash). */}
-      <motion.div
-        className={s.backdrop}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: closing ? 0 : 1 }}
-        transition={{ duration: OPEN_MS }}
-      />
+    <div className={classNames(s.root, closing ? s.closing : '')} onClick={close}>
+      {/* backdrop + хром гаснут вместе (tweb toggleWholeActive(false)) */}
+      <div className={classNames(s.backdrop, s.chrome)} />
 
       {/* top bar: sender + date (left, like Telegram) · toolbar (right) */}
-      <div className={s.topBar} onClick={(e) => e.stopPropagation()}>
+      <div className={classNames(s.topBar, s.chrome)} onClick={(e) => e.stopPropagation()}>
         {item?.sender && <Avatar background={peerColor(item.sender)} size={36} text={item.sender.charAt(0)} />}
         <div className={s.info}>
           {item?.sender && <Text noWrap size={15} weight={600}>{item.sender}</Text>}
@@ -195,64 +289,54 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
       {/* prev / next */}
       {multi && (
         <>
-          <IconButton className={classNames(s.nav, s.navLeft)} onClick={(e) => { e.stopPropagation(); nav(-1) }} title="Назад (←)" color="#fff"><TgIcon name="previous" size={30} /></IconButton>
-          <IconButton className={classNames(s.nav, s.navRight)} onClick={(e) => { e.stopPropagation(); nav(1) }} title="Вперёд (→)" color="#fff"><TgIcon name="next" size={30} /></IconButton>
+          <IconButton className={classNames(s.nav, s.navLeft, s.chrome)} onClick={(e) => { e.stopPropagation(); nav(-1) }} title="Назад (←)" color="#fff"><TgIcon name="previous" size={30} /></IconButton>
+          <IconButton className={classNames(s.nav, s.navRight, s.chrome)} onClick={(e) => { e.stopPropagation(); nav(1) }} title="Вперёд (→)" color="#fff"><TgIcon name="next" size={30} /></IconButton>
         </>
       )}
 
-      {/* media: outer = FLIP grow/shrink; inner = zoom/rotate/drag */}
-      <motion.div
+      {/* mover (tweb .media-viewer-mover): морф позиции/масштаба; внутри аспектер
+          (морф кропа), внутри — слой зума/поворота */}
+      <div
+        ref={moverRef}
         key={item.mediaId}
+        className={classNames(s.mover, s.animated)}
         onClick={(e) => e.stopPropagation()}
         onWheel={onWheel}
         onDoubleClick={() => setZoom((z) => (z > 1 ? 1 : 2.5))}
-        initial={{ opacity: flyFrom ? 1 : 0, scale: flip.scale, x: flip.x, y: flip.y }}
-        animate={closing && closeTo
-          ? {
-              opacity: 1,
-              scale: closeTo.width / final.width,
-              x: (closeTo.left + closeTo.width / 2) - (finalLeft + final.width / 2),
-              y: (closeTo.top + closeTo.height / 2) - (finalTop + final.height / 2),
-            }
-          : closing
-            ? { opacity: 0, scale: 0.96, x: 0, y: 0 }
-            : { opacity: 1, scale: 1, x: 0, y: 0 }}
-        transition={{ duration: OPEN_MS, ease: OPEN_EASE }}
-        // Unmount exactly when the shrink lands (a fixed timer used to cut the
-        // animation short when heavy full-res repaints dropped frames).
-        onAnimationComplete={() => { if (closing) onClose() }}
-        style={{ position: 'fixed', left: finalLeft, top: finalTop, width: final.width, height: final.height, transformOrigin: 'center center', borderRadius: 8, overflow: 'hidden', cursor: zoom > 1 ? 'grab' : 'zoom-in' }}
+        style={{ width: final.width, height: final.height, cursor: zoom > 1 ? 'grab' : 'zoom-in' }}
       >
-        <motion.div
-          drag={zoom > 1}
-          dragConstraints={{ left: -c, right: c, top: -c, bottom: c }}
-          dragElastic={0.12}
-          dragMomentum={false}
-          whileDrag={{ cursor: 'grabbing' }}
-          animate={{ scale: zoom, rotate: rot }}
-          transition={ZOOM_SPRING}
-          style={{ width: '100%', height: '100%', display: 'flex' }}
-        >
-          {isVideo && url ? (
-            <video src={url} controls autoPlay style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-          ) : (
-            <AnimatePresence mode="wait">
-              {imgSrc && (
-                <motion.img
-                  key={imgSrc}
-                  src={imgSrc}
-                  alt=""
-                  draggable={false}
-                  initial={{ opacity: flyFrom ? 1 : 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.15 }}
-                  style={{ width: '100%', height: '100%', objectFit: 'contain', userSelect: 'none', pointerEvents: 'none' }}
-                />
-              )}
-            </AnimatePresence>
-          )}
-        </motion.div>
-      </motion.div>
+        <div ref={aspecterRef} className={s.aspecter}>
+          <motion.div
+            drag={zoom > 1}
+            dragConstraints={{ left: -c, right: c, top: -c, bottom: c }}
+            dragElastic={0.12}
+            dragMomentum={false}
+            whileDrag={{ cursor: 'grabbing' }}
+            animate={{ scale: zoom, rotate: rot }}
+            transition={ZOOM_SPRING}
+            className={s.zoomLayer}
+          >
+            {isVideo && url ? (
+              <video src={url} controls autoPlay className={s.media} />
+            ) : (
+              <AnimatePresence mode="wait">
+                {imgSrc && (
+                  <motion.img
+                    key={imgSrc}
+                    src={imgSrc}
+                    alt=""
+                    draggable={false}
+                    initial={{ opacity: flyFrom ? 1 : 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.15 }}
+                    className={s.media}
+                  />
+                )}
+              </AnimatePresence>
+            )}
+          </motion.div>
+        </div>
+      </div>
     </div>
   )
 }

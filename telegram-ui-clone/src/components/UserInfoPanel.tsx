@@ -508,7 +508,7 @@ function SharedMedia({ tab, onTab, chatId, members, savedDialogs, isChannel, can
   } | null>(null)
   const openMedia = (index: number, e: React.MouseEvent<HTMLDivElement>) => {
     const list = (msgs ?? []).filter((m) => m.mediaId != null)
-    const items: LightboxItem[] = list.map((m) => ({ mediaId: m.mediaId as number, type: m.type, date: when(m) }))
+    const items: LightboxItem[] = list.map((m) => ({ mediaId: m.mediaId as number, type: m.type, date: when(m), width: m.mediaWidth, height: m.mediaHeight }))
     const el = e.currentTarget
     const r = el.getBoundingClientRect()
     const img = el.querySelector('img')
