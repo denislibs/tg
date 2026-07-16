@@ -1,0 +1,64 @@
+// «Папки с чатами» — caption, кнопка «Новая папка» (tweb btn-control),
+// строки рекомендованных с кнопкой «Добавить», радио расположения.
+.caption {
+  display: block;
+  text-align: center;
+  padding: 12px 24px 4px;
+}
+
+.createWrap {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0 16px;
+}
+
+// tweb .btn-primary.btn-control: accent-пилюля с плюсом
+.createBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  cursor: pointer;
+  padding: 10px 22px;
+  border-radius: 24px;
+  background: var(--tg-accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.suggestedRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+}
+.suggestedBody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.addBtn {
+  border: none;
+  cursor: pointer;
+  padding: 7px 16px;
+  border-radius: 18px;
+  background: var(--tg-accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.radioRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  cursor: pointer;
+}

@@ -1,0 +1,40 @@
+// FolderEditor — caption под анимацией + поле имени (tweb editFolder)
+.caption {
+  display: block;
+  text-align: center;
+  padding: 12px 24px 16px;
+  white-space: pre-line;
+}
+
+.nameWrap {
+  padding: 8px 16px;
+}
+
+// tweb InputField: рамка с закруглением, фокус — accent
+.nameInput {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  border: 1px solid var(--tg-borderColor, rgba(0, 0, 0, 0.14));
+  border-radius: 10px;
+  background: transparent;
+  color: var(--tg-textPrimary);
+  font-size: 16px;
+  outline: none;
+  transition: border-color 0.15s;
+
+  &:focus {
+    border-color: var(--tg-accent);
+    border-width: 2px;
+    padding: 13px 15px;
+  }
+
+  &::placeholder {
+    color: var(--tg-textFaint);
+  }
+}
+
+.error {
+  display: block;
+  padding: 4px 16px 8px;
+}

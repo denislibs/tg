@@ -110,7 +110,18 @@ function List({ children, framed }: { children: ReactNode; framed?: boolean }) {
   return <div className={s.scrollable}>{row}</div>
 }
 
-function Tab({ value, children, badge }: { value: TabValue; children: ReactNode; badge?: number }) {
+function Tab({
+  value,
+  children,
+  badge,
+  onContextMenu,
+}: {
+  value: TabValue
+  children: ReactNode
+  badge?: number
+  /** правый клик по табу (tweb: контекстное меню папки) */
+  onContextMenu?: (e: React.MouseEvent) => void
+}) {
   const { value: active, select, items, bgs } = useTabs()
   const isActive = active === value
   return (
@@ -120,6 +131,7 @@ function Tab({ value, children, badge }: { value: TabValue; children: ReactNode;
         else items.current.delete(value)
       }}
       onClick={() => select(value)}
+      onContextMenu={onContextMenu}
       className={classNames(s.item, isActive ? s.active : '')}
     >
       <span className={s.span}>

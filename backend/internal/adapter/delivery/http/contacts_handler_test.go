@@ -18,7 +18,7 @@ func newContactsUC(pool *pgxpool.Pool) *usecasecontacts.Interactor {
 
 func TestContactsEndpoints_HTTP(t *testing.T) {
 	pool := postgres.NewTestDB(t)
-	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, newContactsUC(pool), NewICEHandler("", "test"), nil)
+	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, newContactsUC(pool), NewICEHandler("", "test"), nil, nil)
 
 	tokenA, _ := signInToken(t, h, "+79990000001")
 	_, idB := signInToken(t, h, "+79990000002")

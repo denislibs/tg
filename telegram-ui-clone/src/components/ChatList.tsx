@@ -9,7 +9,6 @@ import { TabSlide } from '../shared/ui/Tabs'
 import ChatListItem from './ChatListItem'
 import DialogSkeleton from './DialogSkeleton'
 import type { Chat } from '../data'
-import { FOLDER_ORDER, type FolderKey } from './FolderTabs'
 import s from './ChatList.module.scss'
 
 export interface ChatListProps {
@@ -17,16 +16,19 @@ export interface ChatListProps {
   selectedId: string
   onSelect: (id: string) => void
   loaded: boolean
-  folder: FolderKey
+  folder: number // id выбранной папки (0 = «Все чаты»)
+  folderOrder: readonly number[] // порядок табов для направления слайда
+  /** над списком есть оверлей горизонтальных табов → верхний отступ */
+  tabsShown: boolean
 }
 
 const ChatList = forwardRef<HTMLDivElement, ChatListProps>(function ChatList(
-  { chats, selectedId, onSelect, loaded, folder },
+  { chats, selectedId, onSelect, loaded, folder, folderOrder, tabsShown },
   ref,
 ) {
   return (
     <div ref={ref} className={s.scroll}>
-      <TabSlide tab={folder} order={FOLDER_ORDER} className={s.slide}>
+      <TabSlide tab={folder} order={folderOrder} className={tabsShown ? `${s.slide} ${s.withTabs}` : s.slide}>
         {loaded ? (
           chats.map((chat, i) => (
             <ChatListItem

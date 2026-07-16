@@ -11,6 +11,7 @@ import type { UploadArgs, MediaMeta } from '../core/managers/mediaManager'
 import type { SavedDialog } from '../core/managers/chatsManager'
 import type { PushSub } from '../core/managers/pushManager'
 import type { NotifySettings, NotifyPatch } from '../core/managers/notifyManager'
+import type { Folder, FolderInput } from '../core/managers/foldersManager'
 import type { GroupCard } from '../core/managers/groupsManager'
 import type { SearchResult } from '../core/managers/channelsManager'
 import type { Peer } from '../core/managers/peersManager'
@@ -80,6 +81,12 @@ export interface Managers {
   notify: {
     settings(): Promise<NotifySettings>
     update(patch: NotifyPatch): Promise<NotifySettings>
+  }
+  folders: {
+    list(): Promise<Folder[]>
+    create(f: FolderInput): Promise<Folder>
+    update(id: number, f: FolderInput): Promise<Folder>
+    del(id: number): Promise<void>
   }
   groups: {
     createGroup(args: { title: string; about?: string; username?: string; isPublic?: boolean; memberIds?: number[] }): Promise<number>

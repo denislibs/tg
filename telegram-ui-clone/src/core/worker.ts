@@ -12,6 +12,7 @@ import { newMessagesManager } from './managers/messagesManager'
 import { newMediaManager } from './managers/mediaManager'
 import { newPushManager } from './managers/pushManager'
 import { newNotifyManager } from './managers/notifyManager'
+import { newFoldersManager } from './managers/foldersManager'
 import { newGroupsManager } from './managers/groupsManager'
 import { newChannelsManager } from './managers/channelsManager'
 import { newPeersManager } from './managers/peersManager'
@@ -35,6 +36,7 @@ const messages = newMessagesManager({ rest })
 const media = newMediaManager({ rest })
 const push = newPushManager({ rest })
 const notify = newNotifyManager({ rest })
+const folders = newFoldersManager({ rest })
 const groups = newGroupsManager({ rest })
 const channels = newChannelsManager({ rest })
 const peers = newPeersManager({ rest })
@@ -120,6 +122,7 @@ function bind(ep: Endpoint) {
     media: media as unknown as Record<string, (...a: unknown[]) => unknown>,
     push: push as unknown as Record<string, (...a: unknown[]) => unknown>,
     notify: notify as unknown as Record<string, (...a: unknown[]) => unknown>,
+    folders: folders as unknown as Record<string, (...a: unknown[]) => unknown>,
     groups: groups as unknown as Record<string, (...a: unknown[]) => unknown>,
     channels: channels as unknown as Record<string, (...a: unknown[]) => unknown>,
     peers: peers as unknown as Record<string, (...a: unknown[]) => unknown>,

@@ -44,17 +44,23 @@ const settingsItems: { icon: ReactNode; label: string; value?: string }[] = [
 export default function SettingsView({
   onBack,
   onToggleMode,
+  chats,
+  initialSub,
 }: {
   onBack: () => void
   onToggleMode: (coords?: { x: number; y: number }) => void
+  /** список чатов — нужен экранам папок (счётчики, выбор чатов) */
+  chats?: import('../data').Chat[]
+  /** сразу открыть под-экран (deep-open из контекстного меню папок) */
+  initialSub?: string
 }) {
   const t = useT()
   const [lang] = useLang()
   const currentLangName = LANGS.find((l) => l.code === lang)?.name ?? 'English'
   const { themeChoice } = useSettings()
   const isDark = PRESET_MODE[resolvePreset(themeChoice)] === 'dark'
-  const [active, setActive] = useState('Notifications and Sounds')
-  const [sub, setSub] = useState<string | null>(null)
+  const [active, setActive] = useState(initialSub ?? 'Notifications and Sounds')
+  const [sub, setSub] = useState<string | null>(initialSub ?? null)
   const [editProfile, setEditProfile] = useState(false)
   const [premiumOpen, setPremiumOpen] = useState(false)
   const me = useChatsStore((s) => s.me)
@@ -171,7 +177,7 @@ export default function SettingsView({
 
       {/* Sub-screen overlay */}
       <AnimatePresence>
-        {sub && <SettingsSubScreen title={sub} onBack={() => setSub(null)} />}
+        {sub && <SettingsSubScreen title={sub} onBack={() => setSub(null)} chats={chats} />}
       </AnimatePresence>
 
       {/* Edit profile overlay */}

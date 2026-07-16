@@ -20,6 +20,7 @@ import (
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 	usecasecontacts "github.com/messenger-denis/backend/internal/usecase/contacts"
+	usecasefolders "github.com/messenger-denis/backend/internal/usecase/folders"
 	usecasemedia "github.com/messenger-denis/backend/internal/usecase/media"
 	usecasenotify "github.com/messenger-denis/backend/internal/usecase/notify"
 	usecasepresence "github.com/messenger-denis/backend/internal/usecase/presence"
@@ -104,10 +105,11 @@ func registerServer(p serverParams) {
 
 	storyHandler := httptransport.NewStoryHandler(p.StoryUC)
 	notifyUC := usecasenotify.New(pgadapter.NewNotifyRepo(p.Pool))
+	foldersUC := usecasefolders.New(pgadapter.NewFoldersRepo(p.Pool))
 
 	srv := &http.Server{
 		Addr:              p.Cfg.HTTPAddr,
-		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC),
+		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC, foldersUC),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}

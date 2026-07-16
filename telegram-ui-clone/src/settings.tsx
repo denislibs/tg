@@ -34,6 +34,9 @@ export interface Settings {
   notifySound: boolean
   notifyVolume: number // 0..1
   sentMessageSound: boolean
+  // Папки слева от чатов (tweb settings.tabsInSidebar): true — вертикальный
+  // folders-sidebar, false — горизонтальные табы над списком.
+  tabsInSidebar: boolean
 }
 
 const DEFAULTS: Settings = {
@@ -54,6 +57,7 @@ const DEFAULTS: Settings = {
   notifySound: true,
   notifyVolume: 0.5,
   sentMessageSound: true,
+  tabsInSidebar: false,
 }
 
 const KEY = 'tg-settings'
@@ -101,6 +105,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       notifySound: s.notifySound,
       notifyVolume: s.notifyVolume,
       sentMessageSound: s.sentMessageSound,
+      tabsInSidebar: s.tabsInSidebar,
     }
     try {
       localStorage.setItem(KEY, JSON.stringify(toSave))

@@ -9,10 +9,11 @@ import (
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 	usecasecontacts "github.com/messenger-denis/backend/internal/usecase/contacts"
+	usecasefolders "github.com/messenger-denis/backend/internal/usecase/folders"
 	usecasenotify "github.com/messenger-denis/backend/internal/usecase/notify"
 )
 
-func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler, notifyUC *usecasenotify.Interactor) http.Handler {
+func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler, notifyUC *usecasenotify.Interactor, foldersUC *usecasefolders.Interactor) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -54,6 +55,14 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		nh := NewNotifyHandler(notifyUC)
 		pr.Get("/me/notify_settings", nh.Get)
 		pr.Put("/me/notify_settings", nh.Update)
+
+		if foldersUC != nil {
+			fh := NewFoldersHandler(foldersUC)
+			pr.Get("/me/folders", fh.List)
+			pr.Post("/me/folders", fh.Create)
+			pr.Put("/me/folders/{folderID}", fh.Update)
+			pr.Delete("/me/folders/{folderID}", fh.Delete)
+		}
 
 		ch := NewChatHandler(chatUC)
 		pr.Post("/chats", ch.CreatePrivate)

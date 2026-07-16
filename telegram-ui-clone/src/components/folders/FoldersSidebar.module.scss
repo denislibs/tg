@@ -1,0 +1,90 @@
+// Порт tweb _foldersSidebar.scss: колонка 72px в поле страницы слева от
+// списка чатов, css-переменные 1:1.
+.root {
+  --folders-sidebar-item-color: rgba(255, 255, 255, 0.5);
+  --folders-sidebar-item-selected-color: rgba(255, 255, 255, 1);
+  --folders-sidebar-background: rgba(0, 0, 0, 0.2);
+  --folders-sidebar-background-hover: rgba(255, 255, 255, 0.08);
+  position: fixed;
+  top: var(--page-chats-padding);
+  bottom: var(--page-chats-padding);
+  left: var(--page-chats-padding);
+  width: 72px; // tweb --folders-sidebar-width
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--main-column-border-radius);
+  background: var(--folders-sidebar-background);
+  color: var(--folders-sidebar-item-color);
+  z-index: 1;
+}
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+// tweb .folders-sidebar__folder-item
+.item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px; // .375rem
+  padding: 12px 0; // .75rem 0
+  min-height: 56px; // 3.5rem
+  font-size: 10px;
+  line-height: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+
+  &:hover {
+    background: var(--folders-sidebar-background-hover);
+  }
+}
+
+.selected {
+  color: var(--folders-sidebar-item-selected-color);
+}
+
+.menuButton {
+  flex: none;
+}
+
+.name {
+  max-width: 64px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.emoji {
+  font-size: 26px;
+  line-height: 30px;
+}
+
+// tweb badge: абсолютно, белый с полупрозрачным текстом
+.badge {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border-radius: 9px;
+  background: #fff;
+  color: rgba(0, 0, 0, 0.5);
+  font-size: 11px;
+  line-height: 18px;
+  font-weight: 700;
+  text-align: center;
+}

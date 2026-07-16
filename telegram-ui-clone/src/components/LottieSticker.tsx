@@ -7,6 +7,8 @@ import lottie, { type AnimationItem } from 'lottie-web'
 const ASSETS: Record<string, () => Promise<{ default: unknown }>> = {
   UtyanLinks: () => import('../assets/tgs/UtyanLinks.json'),
   UtyanSearch: () => import('../assets/tgs/UtyanSearch.json'),
+  Folders_1: () => import('../assets/tgs/Folders_1.json'),
+  Folders_2: () => import('../assets/tgs/Folders_2.json'),
 }
 
 export type LottieAssetName = keyof typeof ASSETS

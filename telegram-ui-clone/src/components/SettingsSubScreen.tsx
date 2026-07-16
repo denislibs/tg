@@ -14,6 +14,8 @@ import LanguageSettings from './settings/LanguageSettings'
 import GeneralSettings from './settings/GeneralSettings'
 import SpeakersCamera from './settings/SpeakersCamera'
 import NotificationsSettings from './settings/NotificationsSettings'
+import ChatFoldersSettings from './folders/ChatFoldersSettings'
+import type { Chat } from '../data'
 
 // Rows that open a dedicated sub-screen instead of being a plain value.
 const PRIVACY_RULES = new Set([
@@ -128,17 +130,6 @@ const SCREENS: Record<string, SSection[]> = {
       ],
     },
   ],
-  'Chat Folders': [
-    {
-      footer: 'Create folders for different groups of chats and quickly switch between them.',
-      rows: [
-        { label: 'Create New Folder', type: 'button' },
-        { label: 'All Chats', type: 'value', value: '40 chats' },
-        { label: 'Personal', type: 'value', value: '12 chats' },
-        { label: 'Work', type: 'value', value: '8 chats' },
-      ],
-    },
-  ],
   'Stickers and Emoji': [
     {
       rows: [
@@ -180,8 +171,15 @@ const SCREENS: Record<string, SSection[]> = {
 }
 
 export function hasSubScreen(title: string) {
-  // Devices, Speakers and Camera, Notifications and Sounds — реальные экраны (не из мок-SCREENS)
-  return title in SCREENS || title === 'Devices' || title === 'Speakers and Camera' || title === 'Notifications and Sounds'
+  // Devices, Speakers and Camera, Notifications and Sounds, Chat Folders —
+  // реальные экраны (не из мок-SCREENS)
+  return (
+    title in SCREENS ||
+    title === 'Devices' ||
+    title === 'Speakers and Camera' ||
+    title === 'Notifications and Sounds' ||
+    title === 'Chat Folders'
+  )
 }
 
 // Strings that are not English UI text and must not be translated.
@@ -195,7 +193,7 @@ const NATIVE_LANGUAGE_NAMES = new Set([
 ])
 const KEYBOARD_SHORTCUTS = new Set(['⌘ K', '⌘ ⇧ G', '⌘ ↓', '⌘ ↑', '⌘ ,'])
 
-export default function SettingsSubScreen({ title, onBack }: { title: string; onBack: () => void }) {
+export default function SettingsSubScreen({ title, onBack, chats }: { title: string; onBack: () => void; chats?: Chat[] }) {
   const t = useT()
   const [lang, setLang] = useLang()
   const sections = SCREENS[title] ?? []
@@ -230,6 +228,8 @@ export default function SettingsSubScreen({ title, onBack }: { title: string; on
   if (title === 'Speakers and Camera') return <SpeakersCamera onBack={onBack} />
   // Notifications and Sounds — реальные настройки уведомлений (tweb-структура)
   if (title === 'Notifications and Sounds') return <NotificationsSettings onBack={onBack} />
+  // Chat Folders — реальные папки чатов (tweb chatFolders)
+  if (title === 'Chat Folders') return <ChatFoldersSettings onBack={onBack} chats={chats} />
 
   return (
     <SettingsScreen title={title} onBack={onBack} zIndex={50}>

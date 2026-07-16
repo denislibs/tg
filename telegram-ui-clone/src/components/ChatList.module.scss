@@ -23,9 +23,13 @@
   }
 }
 
-// верхний отступ = высота .chatlist-overlay (табы), нижний — клиренс compose-FAB
+// нижний отступ — клиренс compose-FAB; верхний появляется только когда над
+// списком есть оверлей табов папок (.withTabs, высота .chatlist-overlay)
 .slide {
-  padding-top: 64px;
   padding-bottom: 84px;
   width: 100%;
+}
+
+.withTabs {
+  padding-top: 64px;
 }
