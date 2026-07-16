@@ -15,6 +15,8 @@ import Text from '../shared/ui/Text'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import EmojiPicker from './EmojiPicker'
+import EmojiHelper from './EmojiHelper'
+import { searchEmojisByWord } from './emoji/emojiData'
 import MarkupTooltip from './MarkupTooltip'
 import { serialize, apply as applyMarkup, entitiesToFragment, parseMarkdown } from '../core/markdown'
 import type { EntityType, MessageEntity } from '../core/models'
@@ -201,6 +203,7 @@ function Composer({
     // Over the limit is fine — the parent splits into multiple messages
     // (tweb splitStringByLength). The counter shows how many it'll be.
     onSend(text, entities.length ? entities : undefined)
+    setEmojiSug(null)
     clearEditor()
     // Keep focus in the input after sending (tweb focusInput = focus + caret at
     // the end) — clearEditor drops the selection which blurs the contenteditable.
@@ -292,6 +295,32 @@ function Composer({
   }
 
   const onEditorKeyDown = (e: React.KeyboardEvent) => {
+    // Эмодзи-хелпер перехватывает навигацию (tweb attachListNavigation):
+    // Escape закрывает; стрелки двигают (и «будят» навигацию для слова);
+    // Enter/Tab выбирают только когда навигация активна.
+    if (emojiSug) {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setEmojiSug(null)
+        return
+      }
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+        e.preventDefault()
+        const dir = e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 1
+        setEmojiSug((sug) =>
+          sug && {
+            ...sug,
+            idx: sug.idx < 0 ? 0 : (sug.idx + dir + sug.list.length) % sug.list.length,
+          },
+        )
+        return
+      }
+      if (emojiSug.idx >= 0 && (e.key === 'Enter' || e.key === 'Tab')) {
+        e.preventDefault()
+        pickEmojiSuggestion(emojiSug.list[emojiSug.idx])
+        return
+      }
+    }
     // Enter always sends; Shift+Enter adds a line (incl. inside a code block, so
     // multi-line blocks are typed with Shift+Enter — Enter never traps the draft).
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -315,8 +344,80 @@ function Composer({
     autosize()
   }
 
+  // ── Эмодзи-автокомплит (tweb emojiHelper): подсказки по слову у каретки ──
+  // idx = -1 — навигация «спит» до первой стрелки (tweb waitForKey для слова);
+  // для ':query' активируется сразу.
+  const [emojiSug, setEmojiSug] = useState<{ list: string[]; wordLen: number; idx: number } | null>(null)
+
+  // слово перед кареткой (в пределах одной текстовой ноды)
+  const caretWord = (): { word: string; node: Text; end: number } | null => {
+    const root = editorRef.current
+    const sel = window.getSelection()
+    if (!root || !sel || !sel.rangeCount || !sel.isCollapsed) return null
+    const range = sel.getRangeAt(0)
+    const node = range.startContainer
+    if (node.nodeType !== Node.TEXT_NODE || !root.contains(node)) return null
+    const text = (node.textContent ?? '').slice(0, range.startOffset)
+    const m = text.match(/(?:^|\s)(\S+)$/)
+    if (!m) return null
+    return { word: m[1], node: node as Text, end: range.startOffset }
+  }
+
+  // tweb checkAutocomplete: эмодзи-ветка — ':query' или обычное слово без :@/
+  const checkEmojiAutocomplete = () => {
+    const cw = caretWord()
+    if (!cw) {
+      setEmojiSug(null)
+      return
+    }
+    const colon = cw.word.startsWith(':')
+    const query = colon ? cw.word.slice(1) : cw.word
+    if ((!colon && /[:@/]/.test(cw.word)) || query.length < 2) {
+      setEmojiSug(null)
+      return
+    }
+    const list = searchEmojisByWord(query)
+    if (!list.length) {
+      setEmojiSug(null)
+      return
+    }
+    setEmojiSug((prev) => ({
+      list,
+      wordLen: cw.word.length,
+      // не сбрасывать активную позицию, если пользователь уже навигировал
+      idx: colon ? Math.max(0, prev?.idx ?? 0) : (prev?.idx ?? -1),
+    }))
+  }
+
+  // выбор подсказки: заменить набранное слово эмодзи (tweb insertAtCaret с replaceText)
+  const pickEmojiSuggestion = (em: string) => {
+    const cw = caretWord()
+    const root = editorRef.current
+    if (cw && root) {
+      const start = Math.max(0, cw.end - (emojiSug?.wordLen ?? cw.word.length))
+      const r = document.createRange()
+      r.setStart(cw.node, start)
+      r.setEnd(cw.node, cw.end)
+      const sel = window.getSelection()
+      sel?.removeAllRanges()
+      sel?.addRange(r)
+      document.execCommand('insertText', false, em)
+      syncEmpty()
+      autosize()
+    }
+    setEmojiSug(null)
+  }
+
   return (
     <>
+      {/* composerBox — relative-якорь плашки эмодзи-подсказок над инпутом */}
+      <div className={s.composerBox}>
+      {/* Плашка эмодзи-автокомплита (tweb emoji-helper) */}
+      <AnimatePresence>
+        {emojiSug && !rec.recording && (
+          <EmojiHelper emojis={emojiSug.list} activeIdx={emojiSug.idx} onPick={pickEmojiSuggestion} />
+        )}
+      </AnimatePresence>
       {/* Composer container: reply section + input row in ONE box */}
       <div className={s.container}>
         {/* Animated reply bar (inside the container) */}
@@ -443,7 +544,7 @@ function Composer({
                   aria-multiline
                   // No live markdown conversion in the input (tweb keeps typed markers
                   // raw; they're parsed on send). Only the toolbar/shortcuts format live.
-                  onInput={() => { syncEmpty(); autosize(); onTyping() }}
+                  onInput={() => { syncEmpty(); autosize(); onTyping(); checkEmojiAutocomplete() }}
                   onKeyDown={onEditorKeyDown}
                   onPaste={onPaste}
                   onDrop={onDrop}
@@ -516,6 +617,7 @@ function Composer({
             </AnimatePresence>
           </motion.div>
         </div>
+      </div>
       </div>
 
       {/* Floating formatting bar over a text selection (tweb MarkupTooltip) */}

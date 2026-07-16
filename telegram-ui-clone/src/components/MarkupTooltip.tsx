@@ -5,7 +5,7 @@
 // portal so it isn't clipped by the composer's overflow.
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import classNames from '../shared/lib/classNames'
 import { activeTypes } from '../core/markdown'
@@ -70,7 +70,13 @@ export default function MarkupTooltip({
       setActive(activeTypes(root))
     }
     document.addEventListener('selectionchange', refresh)
-    return () => document.removeEventListener('selectionchange', refresh)
+    // tweb: ресайз окна прячет панель (координаты выделения устаревают)
+    const hide = () => setPos(null)
+    window.addEventListener('resize', hide)
+    return () => {
+      document.removeEventListener('selectionchange', refresh)
+      window.removeEventListener('resize', hide)
+    }
   }, [editorRef])
 
   const click = (type: EntityType) => {
@@ -104,21 +110,24 @@ export default function MarkupTooltip({
   if (!pos) return null
 
   return createPortal(
-    <AnimatePresence>
+    // Позиционирование — на holder (translate центрирует и поднимает панель
+    // НАД выделением, tweb: top = selection.top − высота − 8). Framer-motion —
+    // только внутри (opacity/scale), чтобы его transform не затирал сдвиг.
+    <div
+      className={s.holder}
+      style={{
+        left: pos.x,
+        top: pos.y,
+        transform: pos.below ? 'translate(-50%, 0)' : 'translate(-50%, -100%)',
+      }}
+      // keep the selection alive: never let the bar steal focus
+      onMouseDown={(e) => e.preventDefault()}
+    >
       <motion.div
-        key="markup-tooltip"
         className={s.bar}
-        initial={{ opacity: 0, y: 6, scale: 0.94 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 6, scale: 0.94 }}
+        initial={{ opacity: 0, scale: 0.94 }}
+        animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.14 }}
-        // keep the selection alive: never let the bar steal focus
-        onMouseDown={(e) => e.preventDefault()}
-        style={{
-          left: pos.x,
-          top: pos.y,
-          transform: pos.below ? 'translate(-50%, 0)' : 'translate(-50%, -100%)',
-        }}
       >
         {linkMode ? (
           <div className={s.linkRow}>
@@ -153,7 +162,7 @@ export default function MarkupTooltip({
           })
         )}
       </motion.div>
-    </AnimatePresence>,
+    </div>,
     document.body,
   )
 }

@@ -2,9 +2,15 @@
 // (left/top/transform) задаётся inline в TSX — зависит от выделения.
 @use '../styles/foundation' as *;
 
-.bar {
+// Позиционирующая обёртка: transform (центрирование + подъём над выделением)
+// живёт здесь, ОТДЕЛЬНО от framer-motion внутри — иначе анимационный transform
+// мотиона затирает inline-сдвиг и панель наезжает на строку композера.
+.holder {
   position: fixed;
   z-index: 1400;
+}
+
+.bar {
   display: flex;
   align-items: center;
   height: 44px;

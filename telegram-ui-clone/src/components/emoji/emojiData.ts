@@ -94,31 +94,77 @@ export const QUICK_CHIPS: { e: string; q: string }[] = [
   { e: '🔥', q: 'fire' },
 ]
 
-// Search keywords for common emoji (type-ahead). Not exhaustive — covers the
-// frequently searched ones; emoji without an entry are matched by category.
+// Search keywords for common emoji (type-ahead + автокомплит-хелпер).
+// en + ru (в tweb ключевые слова приходят с сервера per-язык; у нас — локально).
+// Not exhaustive — covers the frequently searched ones.
 export const NAMES: Record<string, string> = {
-  '😀': 'grin smile happy', '😂': 'joy laugh tears lol', '🤣': 'rofl laugh',
-  '😊': 'blush smile happy', '😍': 'love heart eyes', '🥰': 'love hearts',
-  '😘': 'kiss love', '😎': 'cool sunglasses', '🤩': 'star struck wow',
-  '🥳': 'party celebrate birthday', '😭': 'cry sob sad', '😢': 'cry sad tear',
-  '😡': 'angry mad rage', '😠': 'angry mad', '🤔': 'thinking hmm',
-  '😴': 'sleep tired zzz', '😱': 'scream shock fear', '🥺': 'pleading puppy please',
-  '🙄': 'eye roll', '😏': 'smirk', '🤗': 'hug', '🤫': 'shush quiet',
-  '🤥': 'lie liar', '😷': 'mask sick', '🤮': 'vomit sick', '🤢': 'nausea sick',
-  '👍': 'thumbs up like yes ok', '👎': 'thumbs down dislike no', '👏': 'clap applause',
-  '🙏': 'pray thanks please', '🤝': 'handshake deal', '💪': 'muscle strong flex',
-  '✌️': 'peace victory', '🤞': 'fingers crossed luck', '👌': 'ok perfect',
-  '👋': 'wave hello hi bye', '🔥': 'fire lit hot', '✨': 'sparkles shiny',
-  '⭐': 'star', '🌟': 'star glow', '💯': 'hundred perfect', '🎉': 'party tada celebrate',
-  '🎂': 'cake birthday', '❤️': 'heart love red', '💔': 'broken heart',
-  '🐶': 'dog puppy', '🐱': 'cat kitten', '🦊': 'fox', '🐻': 'bear', '🐼': 'panda',
-  '🦁': 'lion', '🐸': 'frog', '🦄': 'unicorn', '🐝': 'bee', '🦋': 'butterfly',
-  '🌹': 'rose flower', '🌸': 'blossom flower', '🌈': 'rainbow', '☀️': 'sun sunny',
-  '🍕': 'pizza', '🍔': 'burger', '🍟': 'fries', '🍣': 'sushi', '🍺': 'beer',
-  '☕': 'coffee', '🍷': 'wine', '🍎': 'apple', '🍌': 'banana', '🍓': 'strawberry',
-  '⚽': 'soccer football', '🏀': 'basketball', '🎮': 'game controller gaming',
-  '🎸': 'guitar music', '🎧': 'headphones music', '🏆': 'trophy win',
-  '🚗': 'car', '✈️': 'plane flight travel', '🚀': 'rocket launch', '🏠': 'house home',
-  '💡': 'idea bulb light', '💰': 'money bag', '💎': 'diamond gem', '📱': 'phone mobile',
-  '💻': 'laptop computer', '🎁': 'gift present', '🔑': 'key', '🔒': 'lock',
+  '😀': 'grin smile happy улыбка радость', '😂': 'joy laugh tears lol смех ржака лол слезы',
+  '🤣': 'rofl laugh угар ржу', '🙂': 'smile slight улыбка',
+  '😊': 'blush smile happy улыбка смущение', '😉': 'wink подмигивание хитрый',
+  '😅': 'sweat smile нервный фух', '😍': 'love heart eyes любовь влюблен глаза',
+  '🥰': 'love hearts любовь мило', '😘': 'kiss love поцелуй чмок',
+  '😎': 'cool sunglasses круто очки', '🤩': 'star struck wow вау восторг',
+  '🥳': 'party celebrate birthday праздник др туса', '😭': 'cry sob sad плачу рыдаю грусть',
+  '😢': 'cry sad tear слеза грустно', '😡': 'angry mad rage злой бешенство',
+  '😠': 'angry mad злюсь сердит', '🤔': 'thinking hmm думаю хм',
+  '😴': 'sleep tired zzz сон спать устал', '😱': 'scream shock fear шок ужас страх',
+  '🥺': 'pleading puppy please умоляю пожалуйста', '🙄': 'eye roll закатил глаза',
+  '😏': 'smirk ухмылка', '🤗': 'hug обнимаю обнимашки', '🤫': 'shush quiet тихо тсс',
+  '🤪': 'crazy zany дурак сумасшедший', '😇': 'angel halo ангел святой',
+  '🤥': 'lie liar врун ложь', '😷': 'mask sick маска болею', '🤒': 'sick fever болею температура',
+  '🤮': 'vomit sick тошнит фу', '🤢': 'nausea sick тошнота фу', '😮': 'wow open mouth ого вау',
+  '😲': 'astonished shocked удивление ошарашен', '😯': 'hushed surprised удивлен ох',
+  '👍': 'thumbs up like yes ok да класс лайк хорошо', '👎': 'thumbs down dislike no нет плохо дизлайк',
+  '👏': 'clap applause аплодисменты браво', '🙏': 'pray thanks please спасибо прошу молюсь',
+  '🤝': 'handshake deal рукопожатие договор', '💪': 'muscle strong flex сила качок мощь',
+  '✌️': 'peace victory мир виктори', '🤞': 'fingers crossed luck удача скрестил',
+  '👌': 'ok perfect ок окей отлично', '👋': 'wave hello hi bye привет пока хай',
+  '👉': 'point you ты туда указывает', '👈': 'point back тебя сюда',
+  '🖕': 'middle finger фак палец', '🔥': 'fire lit hot огонь жара горит',
+  '✨': 'sparkles shiny блеск искры', '⭐': 'star звезда', '🌟': 'star glow звезда сияет',
+  '💯': 'hundred perfect сто топ', '🎉': 'party tada celebrate праздник ура поздравляю',
+  '🎂': 'cake birthday торт др день рождения', '❤️': 'heart love red сердце любовь люблю',
+  '💔': 'broken heart разбитое сердце боль', '🎃': 'pumpkin halloween тыква хэллоуин',
+  '🐶': 'dog puppy собака пес щенок', '🐱': 'cat kitten кот кошка котик',
+  '🦊': 'fox лиса', '🐻': 'bear медведь мишка', '🐼': 'panda панда',
+  '🦁': 'lion лев', '🐸': 'frog лягушка жаба', '🦄': 'unicorn единорог',
+  '🐝': 'bee пчела', '🦋': 'butterfly бабочка',
+  '🌹': 'rose flower роза цветок', '🌸': 'blossom flower сакура цветок',
+  '🌈': 'rainbow радуга', '☀️': 'sun sunny солнце тепло', '❄️': 'snow cold снег холод зима',
+  '🌚': 'moon луна', '🍕': 'pizza пицца', '🍔': 'burger бургер', '🍟': 'fries картошка фри',
+  '🍣': 'sushi суши', '🍺': 'beer пиво', '☕': 'coffee кофе', '🍷': 'wine вино',
+  '🍎': 'apple яблоко', '🍌': 'banana банан', '🍓': 'strawberry клубника',
+  '⚽': 'soccer football футбол мяч', '🏀': 'basketball баскетбол',
+  '🎮': 'game controller gaming игра геймпад', '🎸': 'guitar music гитара',
+  '🎧': 'headphones music наушники музыка', '🏆': 'trophy win кубок победа',
+  '🚗': 'car машина тачка', '✈️': 'plane flight travel самолет полет',
+  '🚀': 'rocket launch ракета запуск', '🏠': 'house home дом',
+  '💡': 'idea bulb light идея лампочка', '💰': 'money bag деньги бабки',
+  '💎': 'diamond gem алмаз бриллиант', '📱': 'phone mobile телефон',
+  '💻': 'laptop computer ноутбук комп', '🎁': 'gift present подарок',
+  '🔑': 'key ключ', '🔒': 'lock замок', '🎄': 'christmas tree елка новый год',
+  '💀': 'skull dead череп умер', '🤡': 'clown клоун', '👀': 'eyes глаза смотрю',
+}
+
+// Поиск эмодзи по слову — порт tweb appEmojiManager.searchEmojis:
+// префиксное совпадение целых ключевых слов, минимум 2 символа, лимит 40.
+let kwIndex: [string, string][] | null = null // [keyword, emoji]
+export function searchEmojisByWord(query: string, limit = 40): string[] {
+  const q = query.toLowerCase().replace(/_/g, ' ').trim()
+  if (q.length < 2) return []
+  if (!kwIndex) {
+    kwIndex = []
+    for (const [emoji, kws] of Object.entries(NAMES)) {
+      for (const kw of kws.split(' ')) kwIndex.push([kw, emoji])
+    }
+  }
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const [kw, emoji] of kwIndex) {
+    if (!kw.startsWith(q) || seen.has(emoji)) continue
+    seen.add(emoji)
+    out.push(emoji)
+    if (out.length >= limit) break
+  }
+  return out
 }
