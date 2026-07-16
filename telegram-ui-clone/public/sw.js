@@ -6,7 +6,8 @@ self.addEventListener('push', (event) => {
   let d = {}
   try { d = event.data ? event.data.json() : {} } catch (_e) { d = {} }
   const title = (d.sender && d.sender.name) || 'New message'
-  const body = d.text || ''
+  // Пустой text = Message Preview выключен на бэке — показываем generic-текст
+  const body = d.text || 'New message'
   const chatId = d.chat_id
   event.waitUntil(
     self.registration.showNotification(title, {

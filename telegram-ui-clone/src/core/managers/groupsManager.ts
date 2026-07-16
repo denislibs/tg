@@ -28,8 +28,10 @@ export function newGroupsManager({ rest }: { rest: Pick<RestClient, 'post' | 'ge
     async setPhoto(chatId: number, mediaId: number): Promise<void> {
       await rest.put(`/chats/${chatId}/photo`, { media_id: mediaId })
     },
-    async setMute(chatId: number, muted: boolean): Promise<void> {
-      await rest.post(`/chats/${chatId}/mute`, { muted })
+    // until — unix-секунды окончания временного mute (tweb «For 1 Hour…»);
+    // muted=true без until — навсегда.
+    async setMute(chatId: number, muted: boolean, until?: number): Promise<void> {
+      await rest.post(`/chats/${chatId}/mute`, { muted, until: until ?? null })
     },
     async card(chatId: number): Promise<GroupCard> {
       const c = await rest.get<{

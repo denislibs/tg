@@ -7,7 +7,9 @@ import { useDiscussionStore, threadKey } from '../stores/discussionStore'
 import { mapMessage } from '../core/models'
 import { uiEvents } from '../core/hooks/uiEvents'
 import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt } from '../core/realtime/events'
-import { playMessageSent, playIncoming } from '../core/audio/sounds'
+import { playMessageSent } from '../core/audio/sounds'
+import { notifyIncomingMessage } from './uiNotifications'
+import { useSettingsStore } from '../settings'
 import * as callEngine from '../core/calls/callEngine'
 
 let started = false
@@ -61,12 +63,9 @@ export function startRealtime(): void {
       })
     }
     uiEvents.emit(RT.newMessage, m)
-    // Incoming-notification sound, gated like tweb: someone else's message that
-    // isn't in the currently-open chat and isn't from a muted dialog.
-    const s = useChatsStore.getState()
-    const incoming = evt.sender_id !== s.meId
-    const muted = s.dialogs.find((d) => d.chatId === evt.chat_id)?.muted
-    if (incoming && s.activeChatId !== evt.chat_id && !muted) playIncoming()
+    // Звук + браузерное уведомление, гейтинг как в tweb: per-chat mute →
+    // глобальные настройки типа чата → клиентские настройки (см. uiNotifications).
+    notifyIncomingMessage(evt)
   })
   smp.on(RT.read, (r) => { store.applyRead(r as ReadEvt); uiEvents.emit(RT.read, r) })
   smp.on(RT.mediaRead, (raw) => {
@@ -113,8 +112,9 @@ export function startRealtime(): void {
   smp.on(RT.ack, (raw) => {
     const a = raw as AckEvt
     useMessagesStore.getState().reconcileAckByClient(a.client_msg_id, { msgId: a.msg_id, seq: a.seq, createdAt: a.created_at })
-    // Server confirmed one of our sends → the "pak" (tweb's message_sent).
-    playMessageSent()
+    // Server confirmed one of our sends → the "pak" (tweb's message_sent),
+    // если не выключен в настройках (Sound Effects → Message Sent).
+    if (useSettingsStore.getState().sentMessageSound) playMessageSent()
   })
   smp.on(RT.messageError, (raw) => {
     useMessagesStore.getState().failOptimisticByClient((raw as MessageErrorEvt).client_msg_id)

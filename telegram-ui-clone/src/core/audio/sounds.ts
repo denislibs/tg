@@ -36,9 +36,10 @@ export function playMessageSent(): void {
 }
 
 // Incoming message that warrants a notification (caller decides the gating:
-// not our own message, not the focused chat, not muted).
-export function playIncoming(): void {
-  get().playWithThrottle({ name: 'notification', volume: 0.5 }, 300)
+// not our own message, not the focused chat, not muted). Volume comes from the
+// notification settings (tweb notifications.volume).
+export function playIncoming(volume = 0.5): void {
+  get().playWithThrottle({ name: 'notification', volume }, 300)
 }
 
 // Generic escape hatch for call/voip tones.

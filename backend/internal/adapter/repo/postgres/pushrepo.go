@@ -11,16 +11,16 @@ import (
 	usecasepush "github.com/messenger-denis/backend/internal/usecase/push"
 )
 
-// PushRepo implements the push usecase's SubRepo, MuteChecker, and Enricher
+// PushRepo implements the push usecase's SubRepo, NotifyChecker, and Enricher
 // ports — all are push-support queries over the same postgres tables.
 type PushRepo struct{ pool *pgxpool.Pool }
 
 func NewPushRepo(pool *pgxpool.Pool) *PushRepo { return &PushRepo{pool: pool} }
 
 var (
-	_ usecasepush.SubRepo     = (*PushRepo)(nil)
-	_ usecasepush.MuteChecker = (*PushRepo)(nil)
-	_ usecasepush.Enricher    = (*PushRepo)(nil)
+	_ usecasepush.SubRepo       = (*PushRepo)(nil)
+	_ usecasepush.NotifyChecker = (*PushRepo)(nil)
+	_ usecasepush.Enricher      = (*PushRepo)(nil)
 )
 
 // Add upserts a subscription for a device (keyed by endpoint). On conflict the
@@ -61,16 +61,42 @@ func (r *PushRepo) DeleteByEndpoint(ctx context.Context, endpoint string) error 
 	return err
 }
 
-// IsMuted reports whether the user has muted the chat. Not a member → false.
-func (r *PushRepo) IsMuted(ctx context.Context, chatID, userID int64) (bool, error) {
-	var muted bool
+// ShouldNotify — гейт пуша одним запросом: per-chat mute (muted / muted_until)
+// приоритетнее, глобальные настройки по типу чата (notify_settings) — fallback;
+// у не сохранявших настройки действуют дефолты. Не участник → не пушим.
+func (r *PushRepo) ShouldNotify(ctx context.Context, chatID, userID int64) (bool, bool, error) {
+	var chatMuted bool
+	var chatType string
+	var pm, pp, gm, gp, cm, cp *bool
 	err := querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT muted FROM chat_members WHERE chat_id=$1 AND user_id=$2`,
-		chatID, userID).Scan(&muted)
+		`SELECT (m.muted OR (m.muted_until IS NOT NULL AND m.muted_until > now())), c.type,
+		        ns.private_muted, ns.private_preview, ns.groups_muted, ns.groups_preview,
+		        ns.channels_muted, ns.channels_preview
+		 FROM chat_members m
+		 JOIN chats c ON c.id = m.chat_id
+		 LEFT JOIN notify_settings ns ON ns.user_id = m.user_id
+		 WHERE m.chat_id=$1 AND m.user_id=$2`,
+		chatID, userID).Scan(&chatMuted, &chatType, &pm, &pp, &gm, &gp, &cm, &cp)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil // not a member → not muted
+		return false, false, nil // not a member → no push
 	}
-	return muted, err
+	if err != nil {
+		return false, false, err
+	}
+	if chatMuted {
+		return false, false, nil
+	}
+	ns := domain.DefaultNotifySettings()
+	if pm != nil { // строка notify_settings существует
+		ns.Private = domain.NotifyTypeSettings{Muted: *pm, Preview: *pp}
+		ns.Groups = domain.NotifyTypeSettings{Muted: *gm, Preview: *gp}
+		ns.Channels = domain.NotifyTypeSettings{Muted: *cm, Preview: *cp}
+	}
+	t := ns.ForChatType(chatType)
+	if t.Muted {
+		return false, false, nil
+	}
+	return true, t.Preview, nil
 }
 
 // SenderName returns the user's display name (empty if unknown).

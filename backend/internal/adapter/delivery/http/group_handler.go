@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/messenger-denis/backend/internal/domain"
@@ -382,13 +383,19 @@ func (h *GroupHandler) SetMute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var b struct {
-		Muted bool `json:"muted"`
+		Muted bool   `json:"muted"`
+		Until *int64 `json:"until"` // unix-секунды; nil при muted=true — навсегда
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	if err := h.uc.SetMute(r.Context(), chatID, user.ID, b.Muted); err != nil {
+	var until *time.Time
+	if b.Until != nil {
+		t := time.Unix(*b.Until, 0)
+		until = &t
+	}
+	if err := h.uc.SetMute(r.Context(), chatID, user.ID, b.Muted, until); err != nil {
 		h.mapErr(w, err)
 		return
 	}

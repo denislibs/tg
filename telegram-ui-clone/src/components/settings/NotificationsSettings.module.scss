@@ -1,0 +1,13 @@
+// «Notifications and Sounds»: блок громкости (как Message Text Size в General)
+.volume {
+  padding: 8px 16px 12px;
+}
+.volumeTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.slider {
+  margin-top: 4px;
+  width: 100%;
+}

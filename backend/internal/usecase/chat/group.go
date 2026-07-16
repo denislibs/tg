@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -222,8 +223,14 @@ func (i *Interactor) SetChatPhoto(ctx context.Context, chatID, actorID, mediaID 
 	return nil
 }
 
-func (i *Interactor) SetMute(ctx context.Context, chatID, userID int64, muted bool) error {
-	return i.groups.SetMuted(ctx, chatID, userID, muted)
+// SetMute: muted=true без until — навсегда (tweb «Forever»), с until —
+// временный mute («For 1 Hour…»); muted=false снимает и то и другое.
+func (i *Interactor) SetMute(ctx context.Context, chatID, userID int64, muted bool, until *time.Time) error {
+	if !muted {
+		until = nil
+	}
+	forever := muted && until == nil
+	return i.groups.SetMuted(ctx, chatID, userID, forever, until)
 }
 
 func (i *Interactor) ChatCard(ctx context.Context, chatID, viewerID int64) (domain.ChatCard, error) {

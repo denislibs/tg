@@ -67,8 +67,19 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
   }, [isSaved, managers])
   const [editing, setEditing] = useState(false)
   const [addingMembers, setAddingMembers] = useState(false)
-  const [notif, setNotif] = useState(true)
   const headerAvatarSrc = useAvatarSrc(chat.avatarUrl)
+
+  // Тумблер Notifications = per-chat mute (tweb PeerProfile: checked = !muted,
+  // переключение — togglePeerMute напрямую, без попапа длительности)
+  const numericChatId = Number(chat.id)
+  const setDialogMuted = useChatsStore((st) => st.setDialogMuted)
+  const dialogMuted = useChatsStore((st) => st.dialogs.find((d) => d.chatId === numericChatId)?.muted)
+  const muted = dialogMuted ?? !!chat.muted
+  const toggleNotifications = () => {
+    const next = !muted
+    setDialogMuted(numericChatId, next) // оптимистично
+    void managers.groups.setMute(numericChatId, next).catch(() => setDialogMuted(numericChatId, !next))
+  }
 
   const {
     isRealChat,
@@ -245,8 +256,8 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
               icon={<TgIcon name="unmute" size={24} />}
               label="Notifications"
               toggle
-              checked={notif}
-              onClick={() => setNotif((v) => !v)}
+              checked={!muted}
+              onClick={toggleNotifications}
             />
           </Section>
           )}

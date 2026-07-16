@@ -9,9 +9,10 @@ import (
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 	usecasecontacts "github.com/messenger-denis/backend/internal/usecase/contacts"
+	usecasenotify "github.com/messenger-denis/backend/internal/usecase/notify"
 )
 
-func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler) http.Handler {
+func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler, notifyUC *usecasenotify.Interactor) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -49,6 +50,10 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Put("/me/username", ph.SetUsername)
 		pr.Get("/username/available", ph.CheckUsername)
 		pr.Put("/me/avatar", ph.SetAvatar)
+
+		nh := NewNotifyHandler(notifyUC)
+		pr.Get("/me/notify_settings", nh.Get)
+		pr.Put("/me/notify_settings", nh.Update)
 
 		ch := NewChatHandler(chatUC)
 		pr.Post("/chats", ch.CreatePrivate)

@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 	storepostgres "github.com/messenger-denis/backend/internal/store/postgres"
@@ -47,12 +48,31 @@ func TestGroupRepo_CreateAndMembership(t *testing.T) {
 		t.Fatalf("promote: %+v", m2)
 	}
 
-	if err := r.SetMuted(ctx, chatID, u2, true); err != nil {
+	if err := r.SetMuted(ctx, chatID, u2, true, nil); err != nil {
 		t.Fatal(err)
 	}
 	m3, _ := r.GetMember(ctx, chatID, u2)
 	if !m3.Muted {
 		t.Fatal("mute not set")
+	}
+
+	// Временный mute: muted=false + muted_until в будущем → эффективно muted;
+	// muted_until в прошлом → нет.
+	future := time.Now().Add(time.Hour)
+	if err := r.SetMuted(ctx, chatID, u2, false, &future); err != nil {
+		t.Fatal(err)
+	}
+	m4, _ := r.GetMember(ctx, chatID, u2)
+	if !m4.Muted {
+		t.Fatal("temporary mute not effective")
+	}
+	past := time.Now().Add(-time.Hour)
+	if err := r.SetMuted(ctx, chatID, u2, false, &past); err != nil {
+		t.Fatal(err)
+	}
+	m5, _ := r.GetMember(ctx, chatID, u2)
+	if m5.Muted {
+		t.Fatal("expired mute still effective")
 	}
 
 	if err := r.RemoveMember(ctx, chatID, u2); err != nil {

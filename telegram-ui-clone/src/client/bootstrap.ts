@@ -10,6 +10,7 @@ import type { ConnState, PresenceEvt } from '../core/realtime/events'
 import type { UploadArgs, MediaMeta } from '../core/managers/mediaManager'
 import type { SavedDialog } from '../core/managers/chatsManager'
 import type { PushSub } from '../core/managers/pushManager'
+import type { NotifySettings, NotifyPatch } from '../core/managers/notifyManager'
 import type { GroupCard } from '../core/managers/groupsManager'
 import type { SearchResult } from '../core/managers/channelsManager'
 import type { Peer } from '../core/managers/peersManager'
@@ -76,6 +77,10 @@ export interface Managers {
     vapidKey(): Promise<string>
     subscribe(sub: PushSub): Promise<{ ok: boolean }>
   }
+  notify: {
+    settings(): Promise<NotifySettings>
+    update(patch: NotifyPatch): Promise<NotifySettings>
+  }
   groups: {
     createGroup(args: { title: string; about?: string; username?: string; isPublic?: boolean; memberIds?: number[] }): Promise<number>
     addMember(chatId: number, userId: number): Promise<void>
@@ -91,7 +96,7 @@ export interface Managers {
     removeMember(chatId: number, userId: number): Promise<void>
     revokeInvite(chatId: number, token: string): Promise<void>
     deleteGroup(chatId: number): Promise<void>
-    setMute(chatId: number, muted: boolean): Promise<void>
+    setMute(chatId: number, muted: boolean, until?: number): Promise<void>
     card(chatId: number): Promise<GroupCard>
     members(chatId: number): Promise<{ userId: number; role: string; online: boolean }[]>
     promoteAdmin(chatId: number, userId: number, rights: number): Promise<void>

@@ -12,7 +12,7 @@ import (
 
 func TestWorker_SendsPrunes410AndAcks(t *testing.T) {
 	q := &fakeQueue{}
-	_ = q.Enqueue(context.Background(), Job{RecipientID: 7, ChatID: 3, MsgID: 100, Seq: 5, SenderID: 9, Text: "hi"})
+	_ = q.Enqueue(context.Background(), Job{RecipientID: 7, ChatID: 3, MsgID: 100, Seq: 5, SenderID: 9, Text: "hi", Preview: true})
 
 	subs := &fakeSubs{byUser: map[int64][]domain.PushSubscription{
 		7: {

@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	httptransport "github.com/messenger-denis/backend/internal/adapter/delivery/http"
+	"github.com/messenger-denis/backend/internal/adapter/delivery/ws"
 	"github.com/messenger-denis/backend/internal/adapter/geoip"
 	"github.com/messenger-denis/backend/internal/adapter/media/ffmpeg"
 	webpushadapter "github.com/messenger-denis/backend/internal/adapter/push/webpush"
@@ -15,12 +17,11 @@ import (
 	rtredis "github.com/messenger-denis/backend/internal/adapter/realtime/redis"
 	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
 	"github.com/messenger-denis/backend/internal/config"
-	httptransport "github.com/messenger-denis/backend/internal/adapter/delivery/http"
-	"github.com/messenger-denis/backend/internal/adapter/delivery/ws"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 	usecasecontacts "github.com/messenger-denis/backend/internal/usecase/contacts"
 	usecasemedia "github.com/messenger-denis/backend/internal/usecase/media"
+	usecasenotify "github.com/messenger-denis/backend/internal/usecase/notify"
 	usecasepresence "github.com/messenger-denis/backend/internal/usecase/presence"
 	usecasepush "github.com/messenger-denis/backend/internal/usecase/push"
 	storyusecase "github.com/messenger-denis/backend/internal/usecase/story"
@@ -31,12 +32,12 @@ import (
 type serverParams struct {
 	fx.In
 
-	LC      fx.Lifecycle
-	Cfg     *config.Config
-	Ctx     context.Context
-	Pool    *pgxpool.Pool
-	Redis   RedisResult
-	Minio   MinioResult
+	LC         fx.Lifecycle
+	Cfg        *config.Config
+	Ctx        context.Context
+	Pool       *pgxpool.Pool
+	Redis      RedisResult
+	Minio      MinioResult
 	AuthUC     *usecaseauth.Interactor
 	ChatUC     *usecasechat.Interactor
 	StoryUC    *storyusecase.Service
@@ -102,10 +103,11 @@ func registerServer(p serverParams) {
 	}
 
 	storyHandler := httptransport.NewStoryHandler(p.StoryUC)
+	notifyUC := usecasenotify.New(pgadapter.NewNotifyRepo(p.Pool))
 
 	srv := &http.Server{
 		Addr:              p.Cfg.HTTPAddr,
-		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret)),
+		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}

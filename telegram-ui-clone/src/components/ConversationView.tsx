@@ -7,6 +7,7 @@ import UserInfoPanel from './UserInfoPanel'
 import AddContactView from './AddContactView'
 import DiscussionView from './DiscussionView'
 import HeaderMenu from './HeaderMenu'
+import MutePopup from './MutePopup'
 import AttachMenu from './AttachMenu'
 import { CallProvider } from './call/CallProvider'
 import { startOutgoing } from '../core/calls/callEngine'
@@ -274,11 +275,19 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // above. chatsStore.applyRead advances it on every live rt:read, so no local
   // listener is needed here.)
 
+  // Mute как в tweb: включение mute из меню — через попап длительности
+  // (PopupMute), снятие — сразу. null — попап ещё не монтировали.
+  const [muteOpen, setMuteOpen] = useState<boolean | null>(null)
+  const applyMute = (next: boolean, seconds?: number | null) => {
+    if (!isRealChat) return
+    setDialogMuted(numericChatId, next) // optimistic
+    const until = next && seconds ? Math.floor(Date.now() / 1000) + seconds : undefined
+    void managers.groups.setMute(numericChatId, next, until).catch(() => setDialogMuted(numericChatId, !next))
+  }
   const toggleMute = () => {
     if (!isRealChat) return
-    const next = !muted
-    setDialogMuted(numericChatId, next) // optimistic
-    void managers.groups.setMute(numericChatId, next).catch(() => setDialogMuted(numericChatId, !next))
+    if (muted) applyMute(false)
+    else setMuteOpen(true)
   }
 
   // Добавление участников: полноценный под-экран живёт в UserInfoPanel
@@ -487,9 +496,10 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
         ) : (
           <div className={classNames(s.footer, s.footerMuted)}>
             {scrollDownFab}
-            <motion.div whileTap={{ scale: 0.995 }} className={s.muteBtn}>
-              <TgIcon name="volume_off" size={20} color="var(--tg-textSecondary)" />
-              <Text weight={600} size={15.5}>{t('Mute')}</Text>
+            {/* Нижняя кнопка канала (tweb ChatInput) переключает mute напрямую, без попапа */}
+            <motion.div whileTap={{ scale: 0.995 }} className={s.muteBtn} onClick={() => isRealChat && applyMute(!muted)}>
+              <TgIcon name={muted ? 'unmute' : 'volume_off'} size={20} color="var(--tg-textSecondary)" />
+              <Text weight={600} size={15.5}>{t(muted ? 'Unmute' : 'Mute')}</Text>
             </motion.div>
             <div className={s.giftBtn}>
               <TgIcon name="gift" color="var(--tg-textSecondary)" />
@@ -514,6 +524,16 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       <AnimatePresence>
         {addContactOpen && <AddContactView chat={chat} onClose={() => setAddContactOpen(false)} />}
       </AnimatePresence>
+
+      {/* Попап длительности mute (tweb PopupMute) */}
+      {muteOpen != null && (
+        <MutePopup
+          open={muteOpen}
+          onClose={() => setMuteOpen(false)}
+          onExitComplete={() => setMuteOpen(null)}
+          onMute={(seconds) => applyMute(true, seconds)}
+        />
+      )}
 
       {/* Header "⋮" menu */}
       {headerMenu && (

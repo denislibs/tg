@@ -25,6 +25,15 @@ export interface Settings {
   acceptCalls: boolean
   // Тип записи кнопкой в композере (tweb recordingMediaType): голос или кружок
   recordingMediaType: 'voice' | 'round'
+  // Уведомления (tweb appSettings.notifications; дефолты из SETTINGS_INIT):
+  // desktop — показывать браузерные уведомления; push — offline-уведомления
+  // (web push); sound + volume — звук уведомления; sentMessageSound — звук
+  // отправленного сообщения.
+  notifyDesktop: boolean
+  notifyPush: boolean
+  notifySound: boolean
+  notifyVolume: number // 0..1
+  sentMessageSound: boolean
 }
 
 const DEFAULTS: Settings = {
@@ -38,6 +47,13 @@ const DEFAULTS: Settings = {
   cameraId: '',
   acceptCalls: true,
   recordingMediaType: 'voice',
+  notifyDesktop: true,
+  notifyPush: true,
+  // tweb стартует с sound: false; у нас звук входящего был всегда включён —
+  // сохраняем поведение, дефолт true.
+  notifySound: true,
+  notifyVolume: 0.5,
+  sentMessageSound: true,
 }
 
 const KEY = 'tg-settings'
@@ -80,6 +96,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       cameraId: s.cameraId,
       acceptCalls: s.acceptCalls,
       recordingMediaType: s.recordingMediaType,
+      notifyDesktop: s.notifyDesktop,
+      notifyPush: s.notifyPush,
+      notifySound: s.notifySound,
+      notifyVolume: s.notifyVolume,
+      sentMessageSound: s.sentMessageSound,
     }
     try {
       localStorage.setItem(KEY, JSON.stringify(toSave))

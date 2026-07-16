@@ -50,7 +50,14 @@ describe('GroupsManager', () => {
     await mgr.setMute(9, true)
     expect(posts).toHaveLength(1)
     expect(posts[0].path).toBe('/chats/9/mute')
-    expect(posts[0].body).toEqual({ muted: true })
+    expect(posts[0].body).toEqual({ muted: true, until: null })
+  })
+
+  it('setMute передаёт until для временного mute', async () => {
+    const { rest, posts } = fakeRest({})
+    const mgr = newGroupsManager({ rest })
+    await mgr.setMute(9, true, 1700000000)
+    expect(posts[0].body).toEqual({ muted: true, until: 1700000000 })
   })
 
   it('addMember POSTs /chats/{id}/members with user_id', async () => {

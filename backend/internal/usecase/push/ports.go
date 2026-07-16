@@ -17,6 +17,7 @@ type Job struct {
 	Seq         int64  `json:"seq"`
 	SenderID    int64  `json:"sender_id"`
 	Text        string `json:"text"`
+	Preview     bool   `json:"preview"` // Message Preview: включать ли текст в пуш
 }
 
 // QueuedJob is a Job plus its queue id (for ack).
@@ -46,8 +47,12 @@ type OnlineChecker interface {
 	IsOnline(ctx context.Context, userID int64) (bool, error)
 }
 
-type MuteChecker interface {
-	IsMuted(ctx context.Context, chatID, userID int64) (bool, error) // also false if not a member
+type NotifyChecker interface {
+	// ShouldNotify — гейт пуша: per-chat mute (навсегда или до muted_until)
+	// имеет приоритет; иначе глобальные настройки по типу чата
+	// (notify_settings). preview — включать ли текст сообщения.
+	// Не участник чата → notify=false.
+	ShouldNotify(ctx context.Context, chatID, userID int64) (notify, preview bool, err error)
 }
 
 type Enricher interface {

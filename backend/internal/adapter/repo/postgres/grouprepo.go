@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -70,7 +71,9 @@ func (r *GroupRepo) GetMember(ctx context.Context, chatID, userID int64) (domain
 	var m domain.Member
 	var rights int
 	err := q.QueryRow(ctx,
-		`SELECT chat_id, user_id, role, rights, muted FROM chat_members WHERE chat_id=$1 AND user_id=$2`,
+		`SELECT chat_id, user_id, role, rights,
+		        (muted OR (muted_until IS NOT NULL AND muted_until > now()))
+		   FROM chat_members WHERE chat_id=$1 AND user_id=$2`,
 		chatID, userID).Scan(&m.ChatID, &m.UserID, &m.Role, &rights, &m.Muted)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Member{}, domain.ErrNotFound
@@ -89,9 +92,10 @@ func (r *GroupRepo) SetRole(ctx context.Context, chatID, userID int64, role stri
 	return err
 }
 
-func (r *GroupRepo) SetMuted(ctx context.Context, chatID, userID int64, muted bool) error {
+func (r *GroupRepo) SetMuted(ctx context.Context, chatID, userID int64, muted bool, until *time.Time) error {
 	_, err := querier(ctx, r.pool).Exec(ctx,
-		`UPDATE chat_members SET muted=$3 WHERE chat_id=$1 AND user_id=$2`, chatID, userID, muted)
+		`UPDATE chat_members SET muted=$3, muted_until=$4 WHERE chat_id=$1 AND user_id=$2`,
+		chatID, userID, muted, until)
 	return err
 }
 
@@ -231,7 +235,7 @@ func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.Ch
 		        COALESCE(c.creator_id,0), c.member_count, c.is_public,
 		        COALESCE(c.discussion_chat_id,0),
 		        c.default_permissions, c.slowmode_seconds, c.reactions_mode, c.reactions_allowed, c.history_for_new,
-		        m.role, m.rights, m.muted
+		        m.role, m.rights, (m.muted OR (m.muted_until IS NOT NULL AND m.muted_until > now()))
 		   FROM chats c
 		   LEFT JOIN chat_members m ON m.chat_id=c.id AND m.user_id=$2
 		  WHERE c.id=$1`,
@@ -269,7 +273,9 @@ func (r *GroupRepo) ListMembers(ctx context.Context, chatID int64, offset, limit
 		offset = 0
 	}
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT chat_id, user_id, role, rights, muted FROM chat_members
+		`SELECT chat_id, user_id, role, rights,
+		        (muted OR (muted_until IS NOT NULL AND muted_until > now()))
+		   FROM chat_members
 		  WHERE chat_id=$1 ORDER BY role DESC, user_id LIMIT $2 OFFSET $3`,
 		chatID, limit, offset)
 	if err != nil {

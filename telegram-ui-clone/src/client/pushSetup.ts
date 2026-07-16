@@ -28,7 +28,10 @@ export async function setupPush(): Promise<void> {
     if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return
     const reg = await navigator.serviceWorker.ready
     const perm = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission
-    if (perm !== 'granted') return
+    if (perm !== 'granted') {
+      done = false // разрешение могут выдать позже (экран настроек) — не блокировать retry
+      return
+    }
     const { managers } = startClient()
     const vapid = await managers.push.vapidKey()
     if (!vapid) return
@@ -39,5 +42,23 @@ export async function setupPush(): Promise<void> {
     await managers.push.subscribe({ endpoint: sub.endpoint, p256dh: keyB64(sub, 'p256dh'), auth: keyB64(sub, 'auth') })
   } catch {
     done = false // allow a later retry (e.g. permission granted afterwards)
+  }
+}
+
+// «Show offline notifications» (tweb onPushConditionsChange): off — снимаем
+// браузерную push-подписку (серверу некуда слать), on — подписываемся заново.
+export async function setPushEnabled(enabled: boolean): Promise<void> {
+  if (enabled) {
+    done = false
+    return setupPush()
+  }
+  try {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
+    const reg = await navigator.serviceWorker.ready
+    const sub = await reg.pushManager.getSubscription()
+    if (sub) await sub.unsubscribe()
+    done = false
+  } catch {
+    /* best-effort */
   }
 }

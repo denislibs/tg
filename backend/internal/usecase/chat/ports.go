@@ -40,7 +40,9 @@ type GroupRepo interface {
 	RemoveMember(ctx context.Context, chatID, userID int64) error
 	GetMember(ctx context.Context, chatID, userID int64) (domain.Member, error) // domain.ErrNotFound if not a member
 	SetRole(ctx context.Context, chatID, userID int64, role string, rights domain.Rights) error
-	SetMuted(ctx context.Context, chatID, userID int64, muted bool) error
+	// SetMuted: muted — «навсегда»; until — временный mute (эффективный mute
+	// вычисляется как muted OR muted_until > now()).
+	SetMuted(ctx context.Context, chatID, userID int64, muted bool, until *time.Time) error
 	Card(ctx context.Context, chatID, viewerID int64) (domain.ChatCard, error) // domain.ErrNotFound if no chat
 	EditInfo(ctx context.Context, chatID int64, title, about, username string) error
 	SetPhoto(ctx context.Context, chatID, mediaID int64) error

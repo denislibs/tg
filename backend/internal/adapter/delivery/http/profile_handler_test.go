@@ -52,7 +52,7 @@ func signInToken(t *testing.T, h http.Handler, phone string) (string, int64) {
 
 func TestProfileEndpoints_HTTP(t *testing.T) {
 	pool := postgres.NewTestDB(t)
-	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"))
+	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil)
 	token, _ := signInToken(t, h, "+79990000001")
 
 	// PATCH /me — set names, bio, birthday, phone visibility.

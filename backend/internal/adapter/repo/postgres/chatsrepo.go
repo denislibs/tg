@@ -166,7 +166,8 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 	rows, err := q.Query(ctx,
 		`SELECT c.id, c.type, c.title, COALESCE(c.username,''),
 		        COALESCE('/media/' || c.photo_media_id || '/content', ''),
-		        m.last_read_seq, m.unread_count, m.muted,
+		        m.last_read_seq, m.unread_count,
+		        (m.muted OR (m.muted_until IS NOT NULL AND m.muted_until > now())),
 		        COALESCE(CASE
 		          WHEN c.type = 'private' THEN (SELECT om.last_read_seq FROM chat_members om WHERE om.chat_id = c.id AND om.user_id <> $1 LIMIT 1)
 		          WHEN c.type = 'group'   THEN (SELECT MIN(om.last_read_seq) FROM chat_members om WHERE om.chat_id = c.id AND om.user_id <> $1)

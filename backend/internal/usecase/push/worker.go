@@ -67,12 +67,18 @@ func (w *Worker) handle(ctx context.Context, job Job) bool {
 }
 
 // buildPayload enriches the job with sender name + unread badge for the client.
+// С выключенным Message Preview текст в пуш не попадает (tweb: nopreview —
+// клиент покажет generic-текст).
 func (w *Worker) buildPayload(ctx context.Context, job Job) map[string]any {
 	senderName, _ := w.enrich.SenderName(ctx, job.SenderID)
 	badge, _ := w.enrich.UnreadBadge(ctx, job.RecipientID)
+	text := job.Text
+	if !job.Preview {
+		text = ""
+	}
 	return map[string]any{
 		"chat_id": job.ChatID, "msg_id": job.MsgID, "seq": job.Seq,
 		"sender": map[string]any{"name": senderName},
-		"text":   job.Text, "badge": badge,
+		"text":   text, "badge": badge,
 	}
 }

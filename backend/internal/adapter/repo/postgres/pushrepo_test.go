@@ -55,7 +55,7 @@ func TestPushRepo_SubscriptionLifecycle(t *testing.T) {
 	}
 }
 
-func TestPushRepo_IsMuted(t *testing.T) {
+func TestPushRepo_ShouldNotify(t *testing.T) {
 	pool := storepostgres.NewTestDB(t)
 	repo := NewPushRepo(pool)
 	ctx := context.Background()
@@ -70,26 +70,56 @@ func TestPushRepo_IsMuted(t *testing.T) {
 		t.Fatalf("seed chat: %v", err)
 	}
 
-	// Not a member → false, no error.
-	if muted, err := repo.IsMuted(ctx, chatID, userID); err != nil || muted {
-		t.Fatalf("IsMuted(non-member) = %v, %v; want false,nil", muted, err)
+	check := func(label string, wantNotify, wantPreview bool) {
+		t.Helper()
+		notify, preview, err := repo.ShouldNotify(ctx, chatID, userID)
+		if err != nil || notify != wantNotify || preview != wantPreview {
+			t.Fatalf("%s: ShouldNotify = %v,%v,%v; want %v,%v,nil", label, notify, preview, err, wantNotify, wantPreview)
+		}
 	}
+
+	// Not a member → no push.
+	check("non-member", false, false)
 
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO chat_members (chat_id, user_id, muted) VALUES ($1,$2,false)`, chatID, userID); err != nil {
 		t.Fatalf("seed member: %v", err)
 	}
-	if muted, err := repo.IsMuted(ctx, chatID, userID); err != nil || muted {
-		t.Fatalf("IsMuted(unmuted) = %v, %v; want false,nil", muted, err)
-	}
+	// Member without saved settings → defaults: push with preview.
+	check("defaults", true, true)
 
+	// Per-chat mute «навсегда».
 	if _, err := pool.Exec(ctx,
 		`UPDATE chat_members SET muted=true WHERE chat_id=$1 AND user_id=$2`, chatID, userID); err != nil {
 		t.Fatalf("update muted: %v", err)
 	}
-	if muted, err := repo.IsMuted(ctx, chatID, userID); err != nil || !muted {
-		t.Fatalf("IsMuted(muted) = %v, %v; want true,nil", muted, err)
+	check("muted forever", false, false)
+
+	// Временный mute в будущем / истёкший.
+	if _, err := pool.Exec(ctx,
+		`UPDATE chat_members SET muted=false, muted_until=now()+interval '1 hour' WHERE chat_id=$1 AND user_id=$2`, chatID, userID); err != nil {
+		t.Fatalf("update muted_until: %v", err)
 	}
+	check("muted until future", false, false)
+	if _, err := pool.Exec(ctx,
+		`UPDATE chat_members SET muted_until=now()-interval '1 hour' WHERE chat_id=$1 AND user_id=$2`, chatID, userID); err != nil {
+		t.Fatalf("expire muted_until: %v", err)
+	}
+	check("mute expired", true, true)
+
+	// Глобальные настройки: группы замьючены.
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO notify_settings (user_id, groups_muted) VALUES ($1, true)`, userID); err != nil {
+		t.Fatalf("seed notify_settings: %v", err)
+	}
+	check("groups muted globally", false, false)
+
+	// Группы включены, но без превью.
+	if _, err := pool.Exec(ctx,
+		`UPDATE notify_settings SET groups_muted=false, groups_preview=false WHERE user_id=$1`, userID); err != nil {
+		t.Fatalf("update notify_settings: %v", err)
+	}
+	check("groups no preview", true, false)
 }
 
 func TestPushRepo_Enricher(t *testing.T) {

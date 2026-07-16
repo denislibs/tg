@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -222,7 +223,7 @@ func (r *fakeGroupRepo) SetRole(_ context.Context, chatID, userID int64, role st
 	return nil
 }
 
-func (r *fakeGroupRepo) SetMuted(_ context.Context, chatID, userID int64, muted bool) error {
+func (r *fakeGroupRepo) SetMuted(_ context.Context, chatID, userID int64, muted bool, _ *time.Time) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	m, ok := r.members[chatID][userID]

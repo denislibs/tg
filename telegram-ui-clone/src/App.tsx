@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import Text from './shared/ui/Text'
 import classNames from './shared/lib/classNames'
 import { resolvePreset, PRESET_MODE, type ThemeChoice } from './theme'
-import { useSettings } from './settings'
+import { useSettings, useSettingsStore } from './settings'
 import Sidebar from './components/Sidebar'
 import type { GroupPhoto } from './components/NewGroupFlow'
 import ConversationView from './components/ConversationView'
@@ -21,6 +21,7 @@ import { loadStories } from './stores/storiesStore'
 import { dialogToChat, gradientFor } from './core/dialogToChat'
 import { startRealtime } from './client/realtimeBridge'
 import { setupPush } from './client/pushSetup'
+import { loadNotifySettings, useNotifyStore, notifyTypeForChat } from './stores/notifyStore'
 import s from './App.module.scss'
 import useMediaQuery from './shared/lib/useMediaQuery'
 
@@ -51,9 +52,11 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   useEffect(() => {
     void loadChats(managers).then(() => loadPresence(managers))
     void loadStories(managers)
+    void loadNotifySettings(managers)
     void primeMediaToken() // cache the media token so media bubbles build URLs sync
     startRealtime()
-    void setupPush()
+    // offline-уведомления (web push) подписываем только если не выключены в настройках
+    if (useSettingsStore.getState().notifyPush) void setupPush()
   }, [managers])
 
   // /join/:token deep link — authed only, runs once. Joins or sends a request,
@@ -109,6 +112,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   }
 
   const meId = useChatsStore((s) => s.meId)
+  const notifySettings = useNotifyStore((s) => s.settings)
   // Per-dialog Chat cache: return the SAME Chat object reference when its mapped
   // value is unchanged (compared by JSON), so a dialogs update (e.g. markRead
   // clearing one unread) only produces a new object for the row that changed —
@@ -118,7 +122,10 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     const cache = chatCacheRef.current
     const seen = new Set<number>()
     const next = dialogs.map((d) => {
-      const chat = dialogToChat(d, meId)
+      let chat = dialogToChat(d, meId)
+      // Глобально выключенный тип чатов показывается как muted (tweb
+      // isPeerLocalMuted с respectType): иконка + серый badge у всех таких чатов.
+      if (!chat.muted && notifySettings[notifyTypeForChat(d.type)].muted) chat = { ...chat, muted: true }
       seen.add(d.chatId)
       const json = JSON.stringify(chat)
       const hit = cache.get(d.chatId)
@@ -128,7 +135,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     })
     for (const k of cache.keys()) if (!seen.has(k)) cache.delete(k)
     return next
-  }, [dialogs, meId])
+  }, [dialogs, meId, notifySettings])
 
   const createGroup = async (name: string, memberIds: number[], photo: GroupPhoto | null) => {
     const chatId = await managers.groups.createGroup({ title: name || 'New Group', memberIds })
@@ -155,6 +162,18 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     setSelectedId(id)
     setDraftPeer(null)
   }, [])
+
+  // Клик по браузерному уведомлению: sw.js фокусирует вкладку и шлёт
+  // {type:'open-chat', chatId} — открываем этот чат.
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return
+    const onMsg = (e: MessageEvent) => {
+      const d = e.data as { type?: string; chatId?: number } | null
+      if (d && d.type === 'open-chat' && d.chatId != null) selectChat(String(d.chatId))
+    }
+    navigator.serviceWorker.addEventListener('message', onMsg)
+    return () => navigator.serviceWorker.removeEventListener('message', onMsg)
+  }, [selectChat])
   const backToList = narrow ? () => setSelectedId(null) : undefined
 
   // Open a conversation with a user (member row, group sender, search result).

@@ -61,13 +61,14 @@ func (o *fakeOnline) IsOnline(_ context.Context, userID int64) (bool, error) {
 	return o.online[userID], o.err
 }
 
-type fakeMute struct {
-	muted map[int64]bool
-	err   error
+type fakeNotify struct {
+	muted     map[int64]bool
+	noPreview map[int64]bool
+	err       error
 }
 
-func (m *fakeMute) IsMuted(_ context.Context, _, userID int64) (bool, error) {
-	return m.muted[userID], m.err
+func (m *fakeNotify) ShouldNotify(_ context.Context, _, userID int64) (bool, bool, error) {
+	return !m.muted[userID], !m.noPreview[userID], m.err
 }
 
 type fakeSubs struct {
@@ -130,7 +131,7 @@ func (e *fakeEnricher) UnreadBadge(_ context.Context, userID int64) (int, error)
 
 func TestNotifier_EnqueuesWhenOfflineAndUnmuted(t *testing.T) {
 	q := &fakeQueue{}
-	n := NewNotifier(&fakeOnline{online: map[int64]bool{}}, &fakeMute{muted: map[int64]bool{}}, q)
+	n := NewNotifier(&fakeOnline{online: map[int64]bool{}}, &fakeNotify{muted: map[int64]bool{}}, q)
 
 	n.NotifyNewMessage(context.Background(), 7, 3, 100, 5, 9, "hi")
 
@@ -138,15 +139,29 @@ func TestNotifier_EnqueuesWhenOfflineAndUnmuted(t *testing.T) {
 		t.Fatalf("expected 1 enqueued job, got %d", len(q.jobs))
 	}
 	got := q.jobs[0].Job
-	want := Job{RecipientID: 7, ChatID: 3, MsgID: 100, Seq: 5, SenderID: 9, Text: "hi"}
+	want := Job{RecipientID: 7, ChatID: 3, MsgID: 100, Seq: 5, SenderID: 9, Text: "hi", Preview: true}
 	if got != want {
 		t.Fatalf("enqueued job = %+v, want %+v", got, want)
 	}
 }
 
+func TestNotifier_PreviewOffPropagatesToJob(t *testing.T) {
+	q := &fakeQueue{}
+	n := NewNotifier(&fakeOnline{online: map[int64]bool{}}, &fakeNotify{noPreview: map[int64]bool{7: true}}, q)
+
+	n.NotifyNewMessage(context.Background(), 7, 3, 100, 5, 9, "hi")
+
+	if len(q.jobs) != 1 {
+		t.Fatalf("expected 1 enqueued job, got %d", len(q.jobs))
+	}
+	if q.jobs[0].Job.Preview {
+		t.Fatalf("expected Preview=false in job")
+	}
+}
+
 func TestNotifier_SkipsWhenOnline(t *testing.T) {
 	q := &fakeQueue{}
-	n := NewNotifier(&fakeOnline{online: map[int64]bool{7: true}}, &fakeMute{}, q)
+	n := NewNotifier(&fakeOnline{online: map[int64]bool{7: true}}, &fakeNotify{}, q)
 
 	n.NotifyNewMessage(context.Background(), 7, 3, 100, 5, 9, "hi")
 
@@ -157,7 +172,7 @@ func TestNotifier_SkipsWhenOnline(t *testing.T) {
 
 func TestNotifier_SkipsWhenMuted(t *testing.T) {
 	q := &fakeQueue{}
-	n := NewNotifier(&fakeOnline{online: map[int64]bool{}}, &fakeMute{muted: map[int64]bool{7: true}}, q)
+	n := NewNotifier(&fakeOnline{online: map[int64]bool{}}, &fakeNotify{muted: map[int64]bool{7: true}}, q)
 
 	n.NotifyNewMessage(context.Background(), 7, 3, 100, 5, 9, "hi")
 
@@ -168,7 +183,7 @@ func TestNotifier_SkipsWhenMuted(t *testing.T) {
 
 func TestNotifier_SkipsOnMuteCheckError(t *testing.T) {
 	q := &fakeQueue{}
-	n := NewNotifier(&fakeOnline{online: map[int64]bool{}}, &fakeMute{err: errors.New("db down")}, q)
+	n := NewNotifier(&fakeOnline{online: map[int64]bool{}}, &fakeNotify{err: errors.New("db down")}, q)
 
 	n.NotifyNewMessage(context.Background(), 7, 3, 100, 5, 9, "hi")
 

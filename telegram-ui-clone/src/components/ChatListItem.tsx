@@ -14,6 +14,7 @@ import VerifiedBadge from './VerifiedBadge'
 import type { Chat } from '../data'
 import { useT } from '../i18n'
 import { useTimeFormatter } from '../settings'
+import MutePopup from './MutePopup'
 import s from './ChatListItem.module.scss'
 
 interface Props {
@@ -41,11 +42,23 @@ function SidebarThumb({ id }: { id: number }) {
 function ChatListItem({ chat, selected, onSelect }: Props) {
   const onClick = () => onSelect(chat.id)
   const t = useT()
+  const managers = useManagers()
   const avatarSrc = useAvatarSrc(chat.avatarUrl)
   const typingLabel = useTypingLabel(Number(chat.id), chat.type === 'group')
   const presence = useChatsStore((s) => (chat.peerId != null ? s.presence[chat.peerId] : undefined))
+  const setDialogMuted = useChatsStore((s) => s.setDialogMuted)
   const fmtTime = useTimeFormatter()
   const { onPointerDown, ripple } = useRipple()
+
+  // Mute/Unmute (tweb dialogsContextMenu): Mute открывает попап длительности,
+  // Unmute снимает сразу. null — попап ни разу не открывали (не монтируем).
+  const [muteOpen, setMuteOpen] = useState<boolean | null>(null)
+  const applyMute = (muted: boolean, seconds?: number | null) => {
+    const chatId = Number(chat.id)
+    setDialogMuted(chatId, muted) // оптимистично
+    const until = muted && seconds ? Math.floor(Date.now() / 1000) + seconds : undefined
+    void managers.groups.setMute(chatId, muted, until).catch(() => setDialogMuted(chatId, !muted))
+  }
 
   // Anchor a corner of the menu AT the click point and grow toward free space
   // (right/bottom edges flip via right/bottom CSS so it stays exactly at the cursor).
@@ -64,7 +77,7 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
   }
   const destructive =
     chat.type === 'channel' ? 'Leave Channel' : chat.type === 'group' ? 'Delete Group' : 'Delete Chat'
-  const menuItems: { icon: ReactNode; label: string; danger?: boolean }[] = [
+  const menuItems: { icon: ReactNode; label: string; danger?: boolean; onClick?: () => void }[] = [
     { icon: <TgIcon name="newtab" size={20} />, label: 'Open in new tab' },
     { icon: <TgIcon name="eye" size={20} />, label: 'Preview' },
     { icon: <TgIcon name="messageunread" size={20} />, label: 'Mark as unread' },
@@ -72,6 +85,7 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
     {
       icon: <TgIcon name={chat.muted ? 'unmute' : 'mute'} size={20} />,
       label: chat.muted ? 'Unmute' : 'Mute',
+      onClick: () => (chat.muted ? applyMute(false) : setMuteOpen(true)),
     },
     { icon: <TgIcon name="archive" size={20} />, label: 'Archive' },
     { icon: <TgIcon name="delete" size={20} />, label: destructive, danger: true },
@@ -159,10 +173,22 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
             icon={it.icon}
             label={t(it.label)}
             danger={it.danger}
-            onClick={() => setMenuPos(null)}
+            onClick={() => {
+              setMenuPos(null)
+              it.onClick?.()
+            }}
           />
         ))}
       </Menu>
+
+      {muteOpen != null && (
+        <MutePopup
+          open={muteOpen}
+          onClose={() => setMuteOpen(false)}
+          onExitComplete={() => setMuteOpen(null)}
+          onMute={(seconds) => applyMute(true, seconds)}
+        />
+      )}
     </>
   )
 }

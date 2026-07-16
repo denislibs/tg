@@ -13,6 +13,7 @@ import Passkeys from './settings/Passkeys'
 import LanguageSettings from './settings/LanguageSettings'
 import GeneralSettings from './settings/GeneralSettings'
 import SpeakersCamera from './settings/SpeakersCamera'
+import NotificationsSettings from './settings/NotificationsSettings'
 
 // Rows that open a dedicated sub-screen instead of being a plain value.
 const PRIVACY_RULES = new Set([
@@ -70,48 +71,6 @@ interface SSection {
 
 // Structure mirrors tweb's settings tabs (content is mock)
 const SCREENS: Record<string, SSection[]> = {
-  'Notifications and Sounds': [
-    {
-      caption: 'Web',
-      rows: [
-        { label: 'Show Notifications', type: 'toggle', on: true },
-        { label: 'Offline Notifications', type: 'toggle', on: true },
-        { label: 'Notify All Accounts', type: 'toggle', on: false },
-      ],
-    },
-    {
-      caption: 'Sound',
-      rows: [
-        { label: 'Sound Enabled', type: 'toggle', on: true },
-        { label: 'Sent Message Sound', type: 'toggle', on: true },
-      ],
-    },
-    {
-      caption: 'Private Chats',
-      rows: [
-        { label: 'Notifications', type: 'toggle', on: true },
-        { label: 'Message Preview', type: 'toggle', on: true },
-      ],
-    },
-    {
-      caption: 'Groups',
-      rows: [
-        { label: 'Notifications', type: 'toggle', on: true },
-        { label: 'Message Preview', type: 'toggle', on: true },
-      ],
-    },
-    {
-      caption: 'Channels',
-      rows: [
-        { label: 'Notifications', type: 'toggle', on: true },
-        { label: 'Message Preview', type: 'toggle', on: true },
-      ],
-    },
-    {
-      caption: 'Other',
-      rows: [{ label: 'Contacts joined Telegram', type: 'toggle', on: true }],
-    },
-  ],
   'Data and Storage': [
     {
       caption: 'Automatic media download',
@@ -221,8 +180,8 @@ const SCREENS: Record<string, SSection[]> = {
 }
 
 export function hasSubScreen(title: string) {
-  // Devices и Speakers and Camera — реальные экраны (не из мок-SCREENS)
-  return title in SCREENS || title === 'Devices' || title === 'Speakers and Camera'
+  // Devices, Speakers and Camera, Notifications and Sounds — реальные экраны (не из мок-SCREENS)
+  return title in SCREENS || title === 'Devices' || title === 'Speakers and Camera' || title === 'Notifications and Sounds'
 }
 
 // Strings that are not English UI text and must not be translated.
@@ -269,6 +228,8 @@ export default function SettingsSubScreen({ title, onBack }: { title: string; on
   if (title === 'Devices') return <ActiveSessions onBack={onBack} />
   // Speakers and Camera — реальные устройства (enumerateDevices/getUserMedia)
   if (title === 'Speakers and Camera') return <SpeakersCamera onBack={onBack} />
+  // Notifications and Sounds — реальные настройки уведомлений (tweb-структура)
+  if (title === 'Notifications and Sounds') return <NotificationsSettings onBack={onBack} />
 
   return (
     <SettingsScreen title={title} onBack={onBack} zIndex={50}>
