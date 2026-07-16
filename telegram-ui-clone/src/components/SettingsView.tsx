@@ -7,6 +7,7 @@ import { slideInRight } from '../motion'
 import SettingsSubScreen, { hasSubScreen } from './SettingsSubScreen'
 import EditProfile from './settings/EditProfile'
 import PremiumModal from './PremiumModal'
+import QrModal from './QrModal'
 import TgIcon from './TgIcon'
 import TgSwitch from './TgSwitch'
 import Avatar from '../shared/ui/Avatar'
@@ -63,6 +64,7 @@ export default function SettingsView({
   const [sub, setSub] = useState<string | null>(initialSub ?? null)
   const [editProfile, setEditProfile] = useState(false)
   const [premiumOpen, setPremiumOpen] = useState(false)
+  const [qrOpen, setQrOpen] = useState(false)
   const me = useChatsStore((s) => s.me)
   const name = me?.displayName || formatPhone(me?.phone) || ''
   const avatarText = (me?.displayName || me?.phone || '?').trim().charAt(0).toUpperCase()
@@ -85,7 +87,7 @@ export default function SettingsView({
         <Text size={19} weight={600} color="var(--tg-textPrimary)" className={s.headerTitle}>
           {t('Settings')}
         </Text>
-        <IconButton color="var(--tg-textSecondary)">
+        <IconButton onClick={() => setQrOpen(true)} color="var(--tg-textSecondary)">
           <TgIcon name="qr" />
         </IconButton>
         <IconButton onClick={() => setEditProfile(true)} color="var(--tg-textSecondary)">
@@ -187,6 +189,15 @@ export default function SettingsView({
 
       {/* Telegram Premium modal */}
       <PremiumModal open={premiumOpen} onClose={() => setPremiumOpen(false)} />
+
+      {/* «QR-код» профиля (tweb myQrCode: t.me/username или t.me/+phone) */}
+      <QrModal
+        open={qrOpen}
+        onClose={() => setQrOpen(false)}
+        url={me?.username ? `https://t.me/${me.username}` : `https://t.me/+${(me?.phone ?? '').replace(/\D/g, '')}`}
+        label={me?.username ? `@${me.username}` : name}
+        avatar={{ src: avatarSrc, background: avatarBg, text: avatarText }}
+      />
     </motion.div>
   )
 }

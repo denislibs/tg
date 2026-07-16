@@ -1,0 +1,240 @@
+// «QR-код» — порт tweb myQrCode.module.scss + геометрия iOS ChatQrCodeScreen:
+// модалка 376px r20, верх — обои темы, карта 300×330 r42 (всегда белая),
+// аватар 100 с белым кольцом нависает на 70%, панель/карусель/кнопка снизу.
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.modal {
+  --qr-panel-bg: #fff;
+  --qr-panel-text: #000;
+  --qr-panel-secondary: #707579;
+  position: relative;
+  width: min(376px, calc(100vw - 32px)); // tweb --popup-width: 23.5rem
+  border-radius: 20px; // tweb --popup-border-radius 1.25rem
+  overflow: hidden;
+  background: var(--qr-panel-bg);
+  display: flex;
+  flex-direction: column;
+}
+
+// луна: тёмный вариант панели (tweb перекрашивает попап virtual-темой)
+.night {
+  --qr-panel-bg: #212121;
+  --qr-panel-text: #fff;
+  --qr-panel-secondary: #aaaaaa;
+}
+
+// ── верхняя секция с обоями ──
+.top {
+  position: relative;
+  height: 460px;
+  flex: none;
+}
+
+.pattern {
+  position: absolute;
+  inset: 0;
+  background-size: 480px auto;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+// аватар 100 + белое кольцо 4 (tweb AVATAR_RING), нависает над картой на 70%
+.avatarWrap {
+  position: absolute;
+  top: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  padding: 4px;
+  border-radius: 50%;
+  background: #fff;
+  display: flex;
+}
+
+// карта 300×330 r42 — всегда белая, без тени (iOS)
+.card {
+  position: absolute;
+  top: 110px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 300px;
+  height: 330px;
+  border-radius: 42px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.qr {
+  margin-top: 50px;
+  width: 220px;
+  height: 220px;
+}
+
+// @USERNAME — жирный, UPPERCASE, залит градиентом чернил (background-clip)
+.username {
+  margin-top: 14px;
+  max-width: 260px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 700;
+  font-size: 24px; // iOS-бакеты 24/22/16
+  letter-spacing: 0.3px;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+
+  &[data-len='mid'] {
+    font-size: 22px;
+  }
+  &[data-len='long'] {
+    font-size: 16px;
+  }
+}
+
+// ── панель ──
+.header {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px 4px;
+  gap: 4px;
+}
+
+.title {
+  flex: 1;
+  text-align: center;
+}
+
+// ── карусель тем (tweb .themes-container 6.5rem, тайл 4.5rem) ──
+.themes {
+  display: flex;
+  height: 104px;
+  padding: 0 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  align-items: center;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.tile {
+  position: relative;
+  flex: none;
+  width: 72px;
+  height: 92px;
+  margin: 0 4px;
+  border-radius: 12px;
+  cursor: pointer;
+
+  // активная обводка (tweb .theme-container.active:before)
+  &::before {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border: 2px solid var(--tg-accent);
+    border-radius: 15px;
+    opacity: 0;
+    transform: scale(0.9);
+    transition: transform 0.15s ease, opacity 0.15s ease;
+    pointer-events: none;
+  }
+}
+
+.tileActive::before {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.tileBg {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.tilePattern {
+  position: absolute;
+  inset: 0;
+  background-size: 200px auto;
+  opacity: 0.4;
+}
+
+// мини-пузыри (tweb .theme-bubble is-in / is-out)
+.bubbleIn,
+.bubbleOut {
+  position: absolute;
+  height: 16px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+}
+.bubbleIn {
+  top: 8px;
+  right: 8px;
+  width: 34px;
+}
+.bubbleOut {
+  top: 28px;
+  left: 8px;
+  width: 26px;
+}
+
+.tileEmoji {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  translate: -50% 0;
+  font-size: 24px; // tweb 1.75rem
+  line-height: 1;
+  display: inline-block;
+  transition: transform 0.25s ease;
+  transform-origin: center;
+}
+
+// ── кнопка Copy (tweb FooterButton) ──
+.footer {
+  padding: 8px 16px 16px;
+}
+
+.copyBtn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  cursor: pointer;
+  padding: 13px 0;
+  border-radius: 26px;
+  background: var(--tg-accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.toast {
+  position: absolute;
+  bottom: 84px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  font-size: 13.5px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  white-space: nowrap;
+  z-index: 3;
+}

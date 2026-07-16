@@ -1,10 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import TgSwitch from './TgSwitch'
 import { Tabs, TabSlide, TabsBar } from '../shared/ui/Tabs'
-import Popup from '../shared/ui/Popup'
-import QRCodeStyling from 'qr-code-styling'
+import QrModal from './QrModal'
 import { AnimatePresence, motion } from 'framer-motion'
 import { EASE, DUR, slideInRight } from '../motion'
 import TgIcon from './TgIcon'
@@ -341,8 +340,16 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
             onEditMember={setEditMember}
           />
 
-          {/* QR-код ссылки (иконка в инфо-карточке) */}
-          {inviteUrl && <QrPopup open={qrOpen} url={inviteUrl} onClose={() => setQrOpen(false)} />}
+          {/* QR-код ссылки (иконка в инфо-карточке) — tweb-модалка с темами */}
+          {inviteUrl && (
+            <QrModal
+              open={qrOpen}
+              onClose={() => setQrOpen(false)}
+              url={inviteUrl}
+              label={chat.name}
+              avatar={{ src: headerAvatarSrc, background: chat.avatar, text: chat.avatarText }}
+            />
+          )}
         </div>
 
         {/* Group add-member FAB (tweb btnAddMembers) */}
@@ -420,30 +427,6 @@ const EXT_COLORS: Record<string, string> = {
 const extOf = (name?: string) => (name?.includes('.') ? name.slice(name.lastIndexOf('.') + 1).toLowerCase() : '')
 const firstUrl = (text: string) => text.match(/https?:\/\/[^\s]+/)?.[0] ?? ''
 const hostOf = (url: string) => { try { return new URL(url).hostname } catch { return url } }
-
-// Попап с QR-кодом ссылки (qr-code-styling — тот же, что на QR-логине)
-function QrPopup({ open, url, onClose }: { open: boolean; url: string; onClose: () => void }) {
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!open || !ref.current) return
-    ref.current.innerHTML = ''
-    const qr = new QRCodeStyling({
-      width: 260, height: 260, data: url, type: 'svg',
-      dotsOptions: { color: '#000', type: 'rounded' },
-      cornersSquareOptions: { type: 'extra-rounded' },
-      backgroundOptions: { color: 'transparent' },
-    })
-    qr.append(ref.current)
-  }, [open, url])
-  return (
-    <Popup open={open} title="QR" width={320} onClose={onClose}>
-      <div ref={ref} style={{ display: 'flex', justifyContent: 'center', padding: '8px 0 4px', background: '#fff', borderRadius: 12 }} />
-      <Text size={13.5} color="var(--tg-textSecondary)" style={{ textAlign: 'center', display: 'block', paddingTop: 10, wordBreak: 'break-all' }}>
-        {url}
-      </Text>
-    </Popup>
-  )
-}
 
 function SharedMedia({ tab, onTab, chatId, members, savedDialogs, isChannel, canManageAdmins, onOpenPeer, onEditMember }: {
   tab: string
