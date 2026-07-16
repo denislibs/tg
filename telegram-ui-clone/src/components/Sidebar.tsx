@@ -173,21 +173,25 @@ export default function Sidebar({
           }}
         />
       )}
-      {/* tweb .sidebar-header.main-search-sidebar-header */}
+      {/* tweb .sidebar-header.main-search-sidebar-header. При включённой
+          вертикальной колонке папок бургер живёт в ней (tweb is-first
+          menu-button) — в шапке остаётся только стрелка «назад» при поиске. */}
       <div className={s.header}>
-        <SidebarMenuButton
-          searching={searching}
-          onBack={closeSearch}
-          onOpenSettings={() => setShowSettings(true)}
-          onOpenContacts={() => setShowContacts(true)}
-          onOpenSaved={async () => {
-            const id = await managers.chats.saved()
-            await loadChats(managers)
-            onSelect(String(id))
-          }}
-          onOpenPremium={() => setPremiumOpen(true)}
-          onLogout={onLogout}
-        />
+        {(!foldersSidebarShown || searching) && (
+          <SidebarMenuButton
+            searching={searching}
+            onBack={closeSearch}
+            onOpenSettings={() => setShowSettings(true)}
+            onOpenContacts={() => setShowContacts(true)}
+            onOpenSaved={async () => {
+              const id = await managers.chats.saved()
+              await loadChats(managers)
+              onSelect(String(id))
+            }}
+            onOpenPremium={() => setPremiumOpen(true)}
+            onLogout={onLogout}
+          />
+        )}
         <div className={s.search}>
           <InputSearch
             ref={inputRef}
