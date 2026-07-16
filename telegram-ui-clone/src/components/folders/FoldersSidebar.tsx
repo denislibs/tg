@@ -86,6 +86,8 @@ export default function FoldersSidebar({
 
   return (
     <div className={s.root}>
+      {/* tweb folders-sidebar__background: тинт + блюр обоев под колонкой */}
+      <div className={s.background} />
       {/* tweb folders-sidebar__menu-button.is-first — бургер главного меню */}
       <div className={classNames(s.item, s.menuButton)} onClick={() => setMenuOpen(true)}>
         <TgIcon name="menu" size={24} />

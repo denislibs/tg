@@ -13,9 +13,21 @@
   display: flex;
   flex-direction: column;
   border-radius: var(--main-column-border-radius);
-  background: var(--folders-sidebar-background);
   color: var(--folders-sidebar-item-color);
   z-index: 1;
+}
+
+// tweb .folders-sidebar__background (ветка --no-gradient): тинт-подложка +
+// backdrop-filter blur(40px) — колонка размывает обои страницы под собой.
+.background {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  background-color: var(--folders-sidebar-background);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  z-index: -1;
 }
 
 .scroll {
