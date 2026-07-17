@@ -97,6 +97,9 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 
 		ch := NewChatHandler(chatUC)
 		pr.Post("/chats", ch.CreatePrivate)
+		pr.Get("/me/auto_delete", ch.MyAutoDelete)
+		pr.Put("/me/auto_delete", ch.SetMyAutoDelete)
+		pr.Put("/chats/{chatID}/auto_delete", ch.SetChatAutoDelete)
 		pr.Post("/saved", ch.Saved)
 		pr.Get("/saved/dialogs", ch.SavedDialogs)
 		pr.Get("/chats", ch.ListDialogs)

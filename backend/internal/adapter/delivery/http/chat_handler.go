@@ -88,6 +88,7 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 			"chat_id": d.ChatID, "type": d.Type,
 			"title": d.Title, "username": d.Username, "photo_url": d.PhotoURL,
 			"last_read_seq": d.LastReadSeq, "peer_read_seq": d.PeerReadSeq, "unread": d.UnreadCount, "muted": d.Muted,
+			"auto_delete_period": d.AutoDeletePeriod,
 		}
 		if d.HasLast {
 			row["last_message"] = map[string]any{
@@ -607,4 +608,59 @@ func queryInt(r *http.Request, key string, def int64) int64 {
 		}
 	}
 	return def
+}
+
+// MyAutoDelete — GET /me/auto_delete: глобальный период автоудаления (сек).
+func (h *ChatHandler) MyAutoDelete(w http.ResponseWriter, r *http.Request) {
+	period, err := h.svc.MyAutoDelete(r.Context(), h.meID(r))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"period": period})
+}
+
+// SetMyAutoDelete — PUT /me/auto_delete {period}: применяется к новым чатам.
+func (h *ChatHandler) SetMyAutoDelete(w http.ResponseWriter, r *http.Request) {
+	var b struct {
+		Period int `json:"period"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	if err := h.svc.SetMyAutoDelete(r.Context(), h.meID(r), b.Period); err != nil {
+		writeError(w, http.StatusBadRequest, "bad period")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"period": b.Period})
+}
+
+// SetChatAutoDelete — PUT /chats/{chatID}/auto_delete {period}.
+func (h *ChatHandler) SetChatAutoDelete(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Period int `json:"period"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	err := h.svc.SetChatAutoDelete(r.Context(), chatID, h.meID(r), b.Period)
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusForbidden, "not a member of this chat")
+		return
+	}
+	if errors.Is(err, domain.ErrForbidden) {
+		writeError(w, http.StatusForbidden, "not allowed")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"period": b.Period})
 }

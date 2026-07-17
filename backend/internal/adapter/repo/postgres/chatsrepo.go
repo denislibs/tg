@@ -83,8 +83,12 @@ func (r *ChatsRepo) CreatePrivate(ctx context.Context, a, b int64) (int64, error
 		return 0, err
 	}
 	var chatID int64
+	// Новый приватный чат наследует глобальный период автоудаления инициатора
+	// (Telegram default history TTL применяется к новым чатам).
 	if err := q.QueryRow(ctx,
-		`INSERT INTO chats (type) VALUES ('private') RETURNING id`).Scan(&chatID); err != nil {
+		`INSERT INTO chats (type, auto_delete_period)
+		 VALUES ('private', (SELECT auto_delete_period FROM users WHERE id=$1))
+		 RETURNING id`, a).Scan(&chatID); err != nil {
 		return 0, err
 	}
 	if _, err := q.Exec(ctx,
@@ -174,7 +178,8 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		          ELSE 0
 		        END, 0) AS peer_read_seq,
 		        lm.seq, lm.text, lm.sender_id, lm.created_at, COALESCE(lm.media_id,0), lm.type, lm.forwarded, lm.sender_name,
-		        peer.id, peer.display_name, peer.avatar_url, peer.is_verified
+		        peer.id, peer.display_name, peer.avatar_url, peer.is_verified,
+		        c.auto_delete_period
 		 FROM chat_members m
 		 JOIN chats c ON c.id = m.chat_id
 		 LEFT JOIN LATERAL (
@@ -217,7 +222,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		var peerVerified *bool
 		if err := rows.Scan(&d.ChatID, &d.Type, &d.Title, &d.Username, &d.PhotoURL, &d.LastReadSeq, &d.UnreadCount, &d.Muted, &d.PeerReadSeq,
 			&seq, &text, &senderID, &at, &mediaID, &msgType, &forwarded, &senderName,
-			&peerID, &peerName, &peerAvatar, &peerVerified); err != nil {
+			&peerID, &peerName, &peerAvatar, &peerVerified, &d.AutoDeletePeriod); err != nil {
 			return nil, err
 		}
 		if forwarded != nil {
@@ -346,4 +351,26 @@ func (r *ChatsRepo) Viewers(ctx context.Context, chatID, seq, excludeUser int64)
 		out = append(out, id)
 	}
 	return out, rows.Err()
+}
+
+// SetAutoDelete задаёт период автоудаления чата (0 — выключить).
+func (r *ChatsRepo) SetAutoDelete(ctx context.Context, chatID int64, seconds int) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE chats SET auto_delete_period=$2 WHERE id=$1`, chatID, seconds)
+	return err
+}
+
+// UserAutoDelete — глобальный период автоудаления пользователя (для новых чатов).
+func (r *ChatsRepo) UserAutoDelete(ctx context.Context, userID int64) (int, error) {
+	var p int
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT auto_delete_period FROM users WHERE id=$1`, userID).Scan(&p)
+	return p, err
+}
+
+// SetUserAutoDelete сохраняет глобальный период автоудаления пользователя.
+func (r *ChatsRepo) SetUserAutoDelete(ctx context.Context, userID int64, seconds int) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE users SET auto_delete_period=$2 WHERE id=$1`, userID, seconds)
+	return err
 }

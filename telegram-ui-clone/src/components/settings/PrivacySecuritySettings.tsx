@@ -11,6 +11,7 @@ import ActiveSessions from './ActiveSessions'
 import TwoStepVerification from './TwoStepVerification'
 import Passkeys from './Passkeys'
 import PrivacyRule, { RULE_META } from './PrivacyRule'
+import AutoDeleteMessages, { autoDeleteLabel } from './AutoDeleteMessages'
 import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import { usePrivacyStore } from '../../stores/privacyStore'
@@ -53,14 +54,18 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
   const blockedTotal = usePrivacyStore((s) => s.blockedTotal)
   const [sub, setSub] = useState<string | null>(null)
 
-  // Состояние облачного пароля для сабтайтла On/Off (перечитывается при
-  // возврате из под-экрана 2FA).
+  // Сабтайтлы On/Off и период автоудаления (перечитываются при возврате
+  // из под-экранов).
   const [pwEnabled, setPwEnabled] = useState<boolean | null>(null)
+  const [autoDelete, setAutoDelete] = useState<number | null>(null)
   useEffect(() => {
     if (sub !== null) return
     let alive = true
     void managers.auth.passwordState().then((st) => {
       if (alive) setPwEnabled(st.enabled)
+    }).catch(() => {})
+    void managers.privacy.autoDelete().then((p) => {
+      if (alive) setAutoDelete(p)
     }).catch(() => {})
     return () => { alive = false }
   }, [sub, managers])
@@ -78,6 +83,8 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
         return <TwoStepVerification onBack={back} />
       case 'Passkeys':
         return <Passkeys onBack={back} />
+      case 'Auto-Delete Messages':
+        return <AutoDeleteMessages onBack={back} />
     }
     return null
   }
@@ -93,6 +100,13 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
           value={blockedValue}
           chevron
           onClick={() => setSub('Blocked Users')}
+        />
+        <Row
+          icon={<TgIcon name="auto_delete_circle_clock" size={24} />}
+          label="Auto-Delete Messages"
+          value={autoDelete == null ? undefined : autoDeleteLabel(autoDelete, t)}
+          chevron
+          onClick={() => setSub('Auto-Delete Messages')}
         />
         <Row
           icon={<TgIcon name="lock" size={24} />}

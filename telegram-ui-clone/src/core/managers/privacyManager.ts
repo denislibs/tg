@@ -100,6 +100,16 @@ export function newPrivacyManager({ rest }: { rest: Pick<RestClient, 'get' | 'pu
     async unblock(userId: number): Promise<void> {
       await rest.del(`/me/blocked/${userId}`)
     },
+    // Автоудаление сообщений: глобальный период (новые чаты) и период чата.
+    async autoDelete(): Promise<number> {
+      return (await rest.get<{ period: number }>('/me/auto_delete')).period
+    },
+    async setAutoDelete(period: number): Promise<void> {
+      await rest.put('/me/auto_delete', { period })
+    },
+    async setChatAutoDelete(chatId: number, period: number): Promise<void> {
+      await rest.put(`/chats/${chatId}/auto_delete`, { period })
+    },
     async profile(userId: number): Promise<UserProfile> {
       const res = await rest.get<{
         id: number

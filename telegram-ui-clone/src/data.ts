@@ -95,6 +95,7 @@ export interface Chat {
   preview: string
   verified?: boolean
   muted?: boolean
+  autoDeletePeriod?: number // период автоудаления сообщений (сек, 0/undefined — выкл)
   selected?: boolean
   unread?: number
   sent?: boolean // last message is mine (show a tick in the list)

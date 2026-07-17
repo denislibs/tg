@@ -59,6 +59,8 @@ type Dialog struct {
 	PhotoURL string
 	// Peer is the other member of a private chat (nil for non-private chats).
 	Peer *DialogPeer
+	// AutoDeletePeriod — период автоудаления сообщений чата в секундах (0 — выкл).
+	AutoDeletePeriod int
 }
 
 // Member is a full membership row (role + admin rights + mute).

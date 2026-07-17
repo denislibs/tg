@@ -581,6 +581,15 @@ const ru: Dict = {
   'Return to Settings': 'Вернуться в настройки',
   'Something went wrong. Try again.': 'Что-то пошло не так. Попробуйте ещё раз.',
   'On': 'Вкл.',
+  // Auto-Delete Messages
+  'Self-destruct timer': 'Удаление по таймеру',
+  'If enabled, all new messages in chats you start will be automatically deleted for everyone at some point after they have been sent. Auto-delete in your previously created chats is enabled separately.':
+    'Включите, чтобы все новые сообщения в Ваших чатах, созданных после изменения настройки, автоматически удалялись для всех участников спустя выбранное время. Автоудаление в ранее созданных чатах включается отдельно.',
+  'Set other time': 'Выбрать другой срок',
+  '1 year': '1 год',
+  'days': 'дней',
+  'weeks': 'нед.',
+  'months': 'месяцев',
 }
 
 const uk: Dict = {
@@ -1025,6 +1034,15 @@ const uk: Dict = {
   'Return to Settings': 'Повернутися до налаштувань',
   'Something went wrong. Try again.': 'Щось пішло не так. Спробуйте ще раз.',
   'On': 'Увімк.',
+  // Auto-Delete Messages
+  'Self-destruct timer': 'Видалення за таймером',
+  'If enabled, all new messages in chats you start will be automatically deleted for everyone at some point after they have been sent. Auto-delete in your previously created chats is enabled separately.':
+    'Увімкніть, щоб усі нові повідомлення у Ваших чатах, створених після зміни налаштування, автоматично видалялися для всіх учасників через обраний час. Автовидалення в раніше створених чатах вмикається окремо.',
+  'Set other time': 'Обрати інший строк',
+  '1 year': '1 рік',
+  'days': 'днів',
+  'weeks': 'тиж.',
+  'months': 'місяців',
 }
 
 const es: Dict = {
@@ -1467,6 +1485,15 @@ const es: Dict = {
   'Return to Settings': 'Volver a ajustes',
   'Something went wrong. Try again.': 'Algo salió mal. Inténtalo de nuevo.',
   'On': 'Activado',
+  // Auto-Delete Messages
+  'Self-destruct timer': 'Temporizador de autodestrucción',
+  'If enabled, all new messages in chats you start will be automatically deleted for everyone at some point after they have been sent. Auto-delete in your previously created chats is enabled separately.':
+    'Si lo activas, todos los mensajes nuevos en los chats que inicies se eliminarán automáticamente para todos pasado el tiempo elegido. La autoeliminación en tus chats creados anteriormente se activa por separado.',
+  'Set other time': 'Elegir otro plazo',
+  '1 year': '1 año',
+  'days': 'días',
+  'weeks': 'semanas',
+  'months': 'meses',
 }
 
 const de: Dict = {
@@ -1911,6 +1938,15 @@ const de: Dict = {
   'Return to Settings': 'Zurück zu den Einstellungen',
   'Something went wrong. Try again.': 'Etwas ist schiefgelaufen. Versuche es erneut.',
   'On': 'An',
+  // Auto-Delete Messages
+  'Self-destruct timer': 'Selbstzerstörungs-Timer',
+  'If enabled, all new messages in chats you start will be automatically deleted for everyone at some point after they have been sent. Auto-delete in your previously created chats is enabled separately.':
+    'Wenn aktiviert, werden alle neuen Nachrichten in Chats, die du beginnst, nach der gewählten Zeit automatisch für alle gelöscht. Das automatische Löschen in deinen zuvor erstellten Chats wird separat aktiviert.',
+  'Set other time': 'Andere Zeit festlegen',
+  '1 year': '1 Jahr',
+  'days': 'Tage',
+  'weeks': 'Wochen',
+  'months': 'Monate',
 }
 
 const fr: Dict = {
@@ -2355,6 +2391,15 @@ const fr: Dict = {
   'Return to Settings': 'Retour aux réglages',
   'Something went wrong. Try again.': 'Une erreur est survenue. Réessayez.',
   'On': 'Activé',
+  // Auto-Delete Messages
+  'Self-destruct timer': "Minuteur d'autodestruction",
+  'If enabled, all new messages in chats you start will be automatically deleted for everyone at some point after they have been sent. Auto-delete in your previously created chats is enabled separately.':
+    "Si activé, tous les nouveaux messages dans les discussions que vous commencez seront automatiquement supprimés pour tout le monde après le délai choisi. La suppression automatique dans vos discussions créées auparavant s'active séparément.",
+  'Set other time': 'Choisir un autre délai',
+  '1 year': '1 an',
+  'days': 'jours',
+  'weeks': 'semaines',
+  'months': 'mois',
 }
 
 export const dicts: Record<Lang, Dict> = { en: {}, ru, uk, es, de, fr }

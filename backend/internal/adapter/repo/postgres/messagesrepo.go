@@ -278,8 +278,11 @@ func (r *MessagesRepo) ViewCounts(ctx context.Context, ids []int64) (map[int64]i
 func (r *MessagesRepo) Insert(ctx context.Context, m domain.Message) (domain.Message, error) {
 	q := querier(ctx, r.pool)
 	return scanOneMessage(q.QueryRow(ctx,
-		`INSERT INTO messages (chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, thread_root_id, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, media_unread)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+		`INSERT INTO messages (chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, thread_root_id, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, media_unread, auto_delete_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
+		         (SELECT CASE WHEN auto_delete_period > 0
+		                 THEN now() + make_interval(secs => auto_delete_period) END
+		            FROM chats WHERE id=$1))
 		 RETURNING `+messageCols,
 		m.ChatID, m.Seq, m.SenderID, m.Type, m.Text, m.ReplyToID, m.ClientMsgID, m.MediaID, m.ThreadRootID,
 		m.FwdFromUserID, m.FwdFromChatID, m.FwdFromMsgID, m.FwdDate, m.FwdFromName, entitiesParam(m.Entities), m.MediaUnread))
@@ -542,4 +545,26 @@ func scanOneMessage(row pgx.Row) (domain.Message, error) {
 		return domain.Message{}, domain.ErrNotFound
 	}
 	return m, err
+}
+
+// ExpiredMessages возвращает просроченные автоудалением сообщения (id, chat, seq)
+// для фонового воркера.
+func (r *MessagesRepo) ExpiredMessages(ctx context.Context, limit int) ([]domain.Message, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT id, chat_id, seq FROM messages
+		  WHERE auto_delete_at IS NOT NULL AND auto_delete_at <= now() AND deleted_at IS NULL
+		  ORDER BY auto_delete_at LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Message
+	for rows.Next() {
+		var m domain.Message
+		if err := rows.Scan(&m.ID, &m.ChatID, &m.Seq); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
 }

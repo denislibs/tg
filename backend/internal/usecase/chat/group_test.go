@@ -445,6 +445,9 @@ func (c groupChats) MemberIDs(_ context.Context, chatID int64) ([]int64, error) 
 }
 func (c groupChats) ListDialogs(context.Context, int64) ([]domain.Dialog, error) { return nil, nil }
 func (c groupChats) ChatPartners(context.Context, int64) ([]int64, error)        { return nil, nil }
+func (c groupChats) SetAutoDelete(context.Context, int64, int) error             { return nil }
+func (c groupChats) UserAutoDelete(context.Context, int64) (int, error)          { return 0, nil }
+func (c groupChats) SetUserAutoDelete(context.Context, int64, int) error         { return nil }
 func (c groupChats) IncUnread(context.Context, int64, int64) error               { return nil }
 func (c groupChats) CurrentReadSeq(context.Context, int64, int64) (int64, error) { return 0, nil }
 func (c groupChats) SetRead(context.Context, int64, int64, int64, int) error     { return nil }

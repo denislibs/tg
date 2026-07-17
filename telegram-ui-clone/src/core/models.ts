@@ -17,6 +17,7 @@ export interface MessageEntity {
 }
 
 export interface RawDialog {
+  auto_delete_period?: number
   chat_id: number
   type: ChatKind
   last_read_seq: number
@@ -38,6 +39,8 @@ export interface Dialog {
   peerReadSeq: number
   unread: number
   muted: boolean
+  // период автоудаления сообщений чата в секундах (0/undefined — выключено)
+  autoDeletePeriod?: number
   title?: string
   username?: string
   /** фото группы/канала (content-путь /media/N/content; у private — peer.avatarUrl) */
@@ -131,6 +134,7 @@ export function mapDialog(r: RawDialog): Dialog {
     peerReadSeq: r.peer_read_seq ?? 0,
     unread: r.unread,
     muted: !!r.muted,
+    autoDeletePeriod: r.auto_delete_period ?? 0,
     title: r.title,
     username: r.username,
     photoUrl: r.photo_url || undefined,

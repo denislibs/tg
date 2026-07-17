@@ -113,6 +113,27 @@ func registerServer(p serverParams) {
 		memberPresence = presenceMgr
 	}
 
+	// Фоновая чистка сообщений с истёкшим автоудалением (delete_message для всех).
+	p.LC.Append(fx.Hook{OnStart: func(context.Context) error {
+		go func() {
+			t := time.NewTicker(15 * time.Second)
+			defer t.Stop()
+			for {
+				select {
+				case <-p.Ctx.Done():
+					return
+				case <-t.C:
+					if n, err := p.ChatUC.PurgeExpiredMessages(p.Ctx); err != nil {
+						log.Printf("auto-delete purge: %v", err)
+					} else if n > 0 {
+						log.Printf("auto-delete: purged %d message(s)", n)
+					}
+				}
+			}
+		}()
+		return nil
+	}})
+
 	storyHandler := httptransport.NewStoryHandler(p.StoryUC)
 	notifyUC := usecasenotify.New(pgadapter.NewNotifyRepo(p.Pool))
 	foldersUC := usecasefolders.New(pgadapter.NewFoldersRepo(p.Pool))

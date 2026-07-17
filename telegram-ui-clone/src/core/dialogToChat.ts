@@ -96,6 +96,7 @@ export function dialogToChat(d: Dialog, meId?: number | null): Chat {
     preview,
     type: d.type,
     muted: d.muted || undefined,
+    autoDeletePeriod: d.autoDeletePeriod || undefined,
     unread: d.unread > 0 ? d.unread : undefined,
     sent: lastMine || undefined,
     read: lastMine && lm!.seq <= d.peerReadSeq ? true : undefined,

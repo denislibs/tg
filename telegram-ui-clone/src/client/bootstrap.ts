@@ -156,6 +156,9 @@ export interface Managers {
     block(userId: number): Promise<void>
     unblock(userId: number): Promise<void>
     profile(userId: number): Promise<UserProfile>
+    autoDelete(): Promise<number>
+    setAutoDelete(period: number): Promise<void>
+    setChatAutoDelete(chatId: number, period: number): Promise<void>
   }
   sessions: {
     list(): Promise<Session[]>

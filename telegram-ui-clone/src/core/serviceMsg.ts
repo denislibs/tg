@@ -7,6 +7,7 @@ interface ServiceAction {
   action: string
   actor?: string
   user?: string
+  ttl?: number
 }
 
 // Тексты — как в официальном ru-паке Telegram (ActionCreateGroup/ActionAddUser/…).
@@ -27,6 +28,24 @@ export function serviceMsgText(raw: string): string {
     case 'leave': return `${actor} покинул(а) группу`
     case 'edit_photo': return `${actor} обновил(а) фото группы`
     case 'edit_title': return `${actor} изменил(а) название группы`
+    case 'set_ttl':
+      return a.ttl
+        ? `${actor} включил(а) автоудаление сообщений через ${ttlLabel(a.ttl)}`
+        : `${actor} отключил(а) автоудаление сообщений`
     default: return raw
   }
+}
+
+// «1 день / 1 неделю / 1 месяц / N дней» — для пилюли set_ttl.
+export function ttlLabel(seconds: number): string {
+  const d = Math.round(seconds / 86400)
+  if (d >= 28 && d <= 31) return '1 месяц'
+  if (d === 7) return '1 неделю'
+  if (d === 1) return '1 день'
+  if (d >= 1) {
+    const m10 = d % 10, m100 = d % 100
+    const word = m10 === 1 && m100 !== 11 ? 'день' : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? 'дня' : 'дней'
+    return `${d} ${word}`
+  }
+  return `${seconds} сек`
 }

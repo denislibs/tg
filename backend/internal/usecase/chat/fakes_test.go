@@ -41,6 +41,10 @@ type store struct {
 	pins       map[int64][]int64                   // chatID -> pinned msgIDs (newest first)
 	viewed     map[int64]map[int64]bool            // msgID -> userID -> viewed (channel view dedup)
 
+	// автоудаление: период чата / глобальный период пользователя
+	autoDelete     map[int64]int
+	userAutoDelete map[int64]int
+
 	// per-user update log
 	pts     map[int64]int64
 	date    map[int64]int64
@@ -835,3 +839,26 @@ func newInteractor() (*Interactor, *store) {
 	in := New(fakeTx{}, fakeChats{s}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, nil, nil, nil, nil, nil)
 	return in, s
 }
+
+// Автоудаление: держим период в store, чтобы юнит-тесты могли его проверять.
+func (r fakeChats) SetAutoDelete(_ context.Context, chatID int64, seconds int) error {
+	if r.s.autoDelete == nil {
+		r.s.autoDelete = map[int64]int{}
+	}
+	r.s.autoDelete[chatID] = seconds
+	return nil
+}
+
+func (r fakeChats) UserAutoDelete(_ context.Context, userID int64) (int, error) {
+	return r.s.userAutoDelete[userID], nil
+}
+
+func (r fakeChats) SetUserAutoDelete(_ context.Context, userID int64, seconds int) error {
+	if r.s.userAutoDelete == nil {
+		r.s.userAutoDelete = map[int64]int{}
+	}
+	r.s.userAutoDelete[userID] = seconds
+	return nil
+}
+
+func (r fakeMsgs) ExpiredMessages(context.Context, int) ([]domain.Message, error) { return nil, nil }

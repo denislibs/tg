@@ -28,6 +28,10 @@ type ChatRepo interface {
 	IncUnread(ctx context.Context, chatID, userID int64) error
 	CurrentReadSeq(ctx context.Context, chatID, userID int64) (int64, error)
 	SetRead(ctx context.Context, chatID, userID, seq int64, unread int) error
+	// Автоудаление: период чата, глобальный период пользователя (для новых чатов).
+	SetAutoDelete(ctx context.Context, chatID int64, seconds int) error
+	UserAutoDelete(ctx context.Context, userID int64) (int, error)
+	SetUserAutoDelete(ctx context.Context, userID int64, seconds int) error
 	PinMessage(ctx context.Context, chatID, msgID, byUser int64) error
 	UnpinMessage(ctx context.Context, chatID, msgID int64) error
 	ListPins(ctx context.Context, chatID int64) ([]domain.Message, error)
@@ -109,6 +113,8 @@ type MessageRepo interface {
 	// ClearMediaUnread drops a message's media_unread flag; reports whether the
 	// row actually changed.
 	ClearMediaUnread(ctx context.Context, msgID int64) (bool, error)
+	// ExpiredMessages — просроченные автоудалением (id/chat/seq) для воркера.
+	ExpiredMessages(ctx context.Context, limit int) ([]domain.Message, error)
 }
 
 type UpdateRepo interface {
