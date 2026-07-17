@@ -16,6 +16,8 @@ import { calcImageInBox } from '../../core/dom/calcImageInBox'
 import { fmtDur } from '../../core/hooks/useVoiceRecorder'
 import { useAudioStore } from '../../stores/audioStore'
 import { mediaContentUrl, mediaThumbUrl, hasMediaToken, primeMediaToken, useMediaTokenVersion } from '../../core/mediaUrl'
+import { useUploadsStore } from '../../stores/uploadsStore'
+import RadialProgress from '../RadialProgress'
 import type { MsgStatus } from '../../data'
 import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import s from './RealMediaBubble.module.scss'
@@ -38,7 +40,8 @@ function Ticks({ status, color }: { status?: MsgStatus; color: string }) {
 }
 
 interface Props {
-  mediaId: number
+  /** отсутствует, пока идёт аплоад оптимистичного сообщения (есть localUrl) */
+  mediaId?: number
   type?: string
   // History read model — the bubble renders entirely from these (no meta request).
   width?: number
@@ -56,17 +59,22 @@ interface Props {
   onOpen?: (mediaId: number, el: HTMLElement) => void
   // Автозагрузка для чата (tweb autoDownloadSize): 0 = грузить только по клику
   autoDownload?: ChatAutoDownload
+  // Мгновенное превью исходящего медиа + кольцо прогресса аплоада
+  localUrl?: string
+  clientId?: string
   radius?: string
 }
 
 export default function RealMediaBubble({
   mediaId, type, width, height, mime, blur, hasThumb, duration, size, fileName,
-  out, time, status, tickColor, onOpen, autoDownload, radius,
+  out, time, status, tickColor, onOpen, autoDownload, localUrl, clientId, radius,
 }: Props) {
   useMediaTokenVersion() // re-render when the media token is (re)primed → fresh URLs
   const tokenReady = hasMediaToken()
   // Автозагрузка выключена → грузим только после клика (tweb noAutoDownload)
   const [forced, setForced] = useState(false)
+  // Кольцо прогресса аплоада (tweb ProgressivePreloader) — пока запись жива
+  const uploadProgress = useUploadsStore((s) => (clientId ? s.byId[clientId] : undefined))
   // Image fade-in: blur/shimmer placeholder → image fades in once decoded. We read
   // the browser's REAL cache state (img.complete) before paint instead of tracking
   // a "loaded" flag ourselves: a cached <img> (e.g. a bubble remounted on chat
@@ -103,19 +111,22 @@ export default function RealMediaBubble({
     // Гейт автозагрузки (tweb useAutoDownloadSettings → wrapPhoto autoDownloadSize):
     // GIF и видео идут по настройке «Видео», остальное — «Фото». При 0 показываем
     // blur-превью с кнопкой загрузки; клик грузит, следующий клик открывает.
-    const blocked = !forced && !!autoDownload
+    // Локальное превью исходящего (localUrl) гейту не подлежит.
+    const blocked = !forced && !localUrl && !!autoDownload
       && (isVideo || isGif ? autoDownload.video === 0 : autoDownload.photo === 0)
     // Synchronous src (no RPC). GIFs show the animated content; others prefer the
     // smaller server thumbnail, falling back to the original.
-    const displaySrc = !tokenReady || blocked
-      ? ''
-      : isGif
-        ? mediaContentUrl(mediaId)
-        : hasThumb ? mediaThumbUrl(mediaId) : mediaContentUrl(mediaId)
+    const displaySrc = localUrl
+      ? localUrl
+      : !tokenReady || blocked || mediaId == null
+        ? ''
+        : isGif
+          ? mediaContentUrl(mediaId)
+          : hasThumb ? mediaThumbUrl(mediaId) : mediaContentUrl(mediaId)
     return (
       <div
         className={s.media}
-        onClick={(e) => (blocked ? setForced(true) : onOpen?.(mediaId, e.currentTarget))}
+        onClick={(e) => (blocked ? setForced(true) : mediaId != null ? onOpen?.(mediaId, e.currentTarget) : undefined)}
         style={{ width: box.width, height: box.height, borderRadius: radius, backgroundImage: lqip }}
       >
         {/* Shimmer over the blur preview while the image loads. It sits BEHIND the
@@ -133,6 +144,11 @@ export default function RealMediaBubble({
             <div className={s.playDisc}>
               <TgIcon name="download" size={30} color="#fff" />
             </div>
+          </div>
+        )}
+        {uploadProgress != null && (
+          <div className={s.play}>
+            <RadialProgress progress={uploadProgress} />
           </div>
         )}
         {isGif && (
@@ -180,7 +196,8 @@ export default function RealMediaBubble({
   const rawExt = name.includes('.') ? (name.split('.').pop() || '').split(' ')[0].toLowerCase() : ''
   const ext = (rawExt || 'file').slice(0, 6)
   const sub = size ? fmtSize(size) : ''
-  const href = tokenReady ? mediaContentUrl(mediaId) : undefined
+  // Пока идёт аплоад (mediaId ещё нет) — ссылка неактивна, на иконке кольцо.
+  const href = tokenReady && mediaId != null ? mediaContentUrl(mediaId) : undefined
   return (
     <a
       className={classNames(s.fileRow, s.doc, s.docRow)}
@@ -190,10 +207,18 @@ export default function RealMediaBubble({
       style={{ '--doc-color': DOC_EXT_COLORS[ext] ?? 'var(--tg-accent)' } as React.CSSProperties}
     >
       <div className={s.docIco}>
-        <span className={s.docExt}>{ext}</span>
-        <span className={s.docDl}>
-          <TgIcon name="download" size={26} color="#fff" />
-        </span>
+        {uploadProgress != null ? (
+          <span className={s.docProgress}>
+            <RadialProgress progress={uploadProgress} size={44} />
+          </span>
+        ) : (
+          <>
+            <span className={s.docExt}>{ext}</span>
+            <span className={s.docDl}>
+              <TgIcon name="download" size={26} color="#fff" />
+            </span>
+          </>
+        )}
       </div>
       <div className={s.fileBody}>
         <Text noWrap size={16} weight={700} color="var(--m-primary)">{name}</Text>
@@ -218,7 +243,7 @@ const DOC_EXT_COLORS: Record<string, string> = {
 // this file is the active track the row flips to pause + a seekable progress bar
 // (tweb). Otherwise it shows duration • size.
 function AudioRow({ mediaId, name, duration, size, primary, secondary, time }: {
-  mediaId: number
+  mediaId?: number
   name: string
   duration?: number
   size?: number
@@ -226,10 +251,12 @@ function AudioRow({ mediaId, name, duration, size, primary, secondary, time }: {
   secondary: string
   time: ReactNode
 }) {
-  const isCurrent = useAudioStore((s) => s.track?.mediaId === mediaId)
-  const playing = useAudioStore((s) => s.playing && s.track?.mediaId === mediaId)
-  const curTime = useAudioStore((s) => (s.track?.mediaId === mediaId ? s.currentTime : 0))
-  const curDur = useAudioStore((s) => (s.track?.mediaId === mediaId ? s.duration : 0))
+  // mediaId ещё нет во время аплоада — трек не считается текущим (иначе
+  // undefined===undefined совпало бы с «нет активного трека»).
+  const isCurrent = useAudioStore((s) => mediaId != null && s.track?.mediaId === mediaId)
+  const playing = useAudioStore((s) => s.playing && mediaId != null && s.track?.mediaId === mediaId)
+  const curTime = useAudioStore((s) => (mediaId != null && s.track?.mediaId === mediaId ? s.currentTime : 0))
+  const curDur = useAudioStore((s) => (mediaId != null && s.track?.mediaId === mediaId ? s.duration : 0))
   const seekFraction = useAudioStore((s) => s.seekFraction)
   const toggle = useAudioStore((s) => s.toggle)
   const playQueue = useAudioStore((s) => s.playQueue)
@@ -238,6 +265,7 @@ function AudioRow({ mediaId, name, duration, size, primary, secondary, time }: {
   const sub = [duration ? fmtDur(duration) : '', sizeStr].filter(Boolean).join(' • ')
 
   const onPlay = () => {
+    if (mediaId == null) return // ещё грузится
     if (isCurrent) toggle()
     else playQueue([{ mediaId, title: name, subtitle: sizeStr }], 0)
   }

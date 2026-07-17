@@ -215,9 +215,10 @@ function MessageRow({
               ) : null}
             </div>
           </div>
-        ) : m.mediaId ? (
+        ) : m.mediaId != null || m.localUrl ? (
           // Outer (relative, NOT clipped) carries the tail; the inner clips the media
           // to the rounded corners. The tailed corner is squared off (like other bubbles).
+          // localUrl без mediaId = исходящее фото/видео в процессе аплоада.
           <div className={s.media}>
             {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
             <div
@@ -241,6 +242,8 @@ function MessageRow({
                 tickColor="var(--b-tick)"
                 onOpen={feedFns.openLightbox}
                 autoDownload={autoDownload}
+                localUrl={m.localUrl}
+                clientId={m.clientId}
                 radius={(m.type === 'photo' || m.type === 'video') ? (m.text ? '14px 14px 0 0' : '14px') : undefined}
               />
               {m.text ? (

@@ -109,7 +109,8 @@ function ChatFeed({
   // Альбомы (Telegram grouped_id): подряд идущие фото/видео одного отправителя
   // с одинаковым groupedId рендерятся ОДНИМ грид-баблом. Пре-пасс собирает
   // прогоны: startIdx → индексы; не-стартовые индексы пропускаются в цикле.
-  const isAlbumMedia = (x: ConvMsg) => !!x.groupedId && x.mediaId != null && (x.type === 'photo' || x.type === 'video')
+  // Альбом группируется и во время аплоада (mediaId ещё нет — есть localUrl).
+  const isAlbumMedia = (x: ConvMsg) => !!x.groupedId && (x.mediaId != null || !!x.localUrl) && (x.type === 'photo' || x.type === 'video')
   const albumRuns = new Map<number, number[]>()
   const inAlbumTail = new Set<number>()
   for (let i = 0; i < msgs.length; ) {

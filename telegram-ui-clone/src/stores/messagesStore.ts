@@ -7,6 +7,16 @@
 import { create } from 'zustand'
 import type { Message, MessageEntity } from '../core/models'
 
+// Локальные данные файла для мгновенного оптимистичного медиабабла.
+export interface OptimisticMedia {
+  localUrl?: string
+  width?: number
+  height?: number
+  mime?: string
+  size?: number
+  name?: string
+}
+
 export interface ChatWindow {
   msgs: Message[]
   reachedTop: boolean
@@ -57,7 +67,9 @@ interface MessagesState {
   prepend: (chatId: number, msgs: Message[], reachedTop: boolean) => void
   append: (chatId: number, msgs: Message[], reachedBottom: boolean) => void
   appendLocal: (chatId: number, m: Message) => void
-  appendOptimistic: (chatId: number, text: string, meId: number, clientMsgId: string, mediaId?: number, type?: string, entities?: MessageEntity[], groupedId?: string) => void
+  appendOptimistic: (chatId: number, text: string, meId: number, clientMsgId: string, mediaId?: number, type?: string, entities?: MessageEntity[], groupedId?: string, media?: OptimisticMedia) => void
+  /** Аплоад завершён — проставить оптимистичному сообщению серверный media_id. */
+  setOptimisticMedia: (chatId: number, clientMsgId: string, mediaId: number) => void
   reconcileAck: (chatId: number, clientMsgId: string, ack: { msgId: number; seq: number; createdAt: string }) => void
   failOptimistic: (chatId: number, clientMsgId: string) => void
   /** Reconcile/fail by clientMsgId alone (ack/error frames carry no chat_id). */
@@ -115,7 +127,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   appendLocal: (chatId, m) =>
     set((s) => patch(s, chatId, (w) => ({ msgs: dedupAsc([...w.msgs, m]) }))),
 
-  appendOptimistic: (chatId, text, meId, clientMsgId, mediaId, type = 'text', entities, groupedId) =>
+  appendOptimistic: (chatId, text, meId, clientMsgId, mediaId, type = 'text', entities, groupedId, media) =>
     set((s) =>
       patch(s, chatId, (w) => {
         const maxSeq = w.msgs.length ? w.msgs[w.msgs.length - 1].seq : 0
@@ -126,12 +138,23 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           id: -Date.now(), chatId, seq: tentativeSeq, senderId: meId, type, text, entities,
           replyToId: null, mediaId: mediaId ?? null, createdAt: new Date().toISOString(),
           threadRootId: null, groupedId: groupedId ?? null, clientId: clientMsgId,
+          // локальное превью + размеры файла: бабл появляется сразу, до аплоада
+          localUrl: media?.localUrl,
+          mediaWidth: media?.width, mediaHeight: media?.height,
+          mediaMime: media?.mime, mediaSize: media?.size, mediaName: media?.name,
           // сервер ставит media_unread на voice/roundVideo — отразить сразу в
           // оптимистичном бабле, чтобы точка не «моргала» после ack
           mediaUnread: type === 'voice' || type === 'roundVideo' || undefined,
         }
         return { msgs: dedupAsc([...w.msgs, tmp]) }
       }),
+    ),
+
+  setOptimisticMedia: (chatId, clientMsgId, mediaId) =>
+    set((s) =>
+      patch(s, chatId, (w) => ({
+        msgs: w.msgs.map((m) => (m.clientId === clientMsgId ? { ...m, mediaId } : m)),
+      })),
     ),
 
   reconcileAck: (chatId, clientMsgId, ack) =>
@@ -186,9 +209,11 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         // id/seq but no clientId, and dedupAsc (keyed by seq) would replace the
         // optimistic entry — flipping its React key (clientId → m-<id>) and
         // remounting the bubble mid-appear. Carry the optimistic clientId over so
-        // the key stays stable and the appear animation isn't cut short.
+        // the key stays stable and the appear animation isn't cut short. Also keep
+        // the local blob preview (localUrl) so an uploaded photo doesn't re-fetch
+        // from the server (tweb reuses the local object URL).
         const optimistic = w.msgs.find((x) => x.clientId && x.seq === m.seq)
-        const merged = optimistic ? { ...m, clientId: optimistic.clientId } : m
+        const merged = optimistic ? { ...m, clientId: optimistic.clientId, localUrl: optimistic.localUrl } : m
         return { msgs: dedupAsc([...w.msgs, merged]) }
       })
     }),

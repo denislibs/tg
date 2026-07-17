@@ -1,0 +1,25 @@
+// tweb .preloader-container/.preloader-circular
+.disc {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.spin {
+  width: 100%;
+  height: 100%;
+  animation: rp-rotate 2s linear infinite;
+}
+
+.path {
+  stroke: #fff;
+  transition: stroke-dasharray 0.2s ease-in-out;
+}
+
+@keyframes rp-rotate {
+  100% {
+    transform: rotate(360deg);
+  }
+}

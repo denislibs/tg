@@ -96,6 +96,9 @@ export interface Message {
   threadRootId: number | null
   /** идентификатор медиагруппы (Telegram grouped_id); null — не в альбоме */
   groupedId?: string | null
+  /** object-URL локального файла для мгновенного превью исходящего медиа
+   * (пока идёт аплоад и до перезагрузки окна истории) */
+  localUrl?: string
   /** Stable client-side id for an optimistic message; preserved across the ack
    * (when `id`/`seq` are rewritten to server values) so the React key never
    * changes and the bubble isn't remounted mid-animation. */

@@ -5,8 +5,10 @@ import { useMemo, useState } from 'react'
 import Text from '../../shared/ui/Text'
 import TgIcon from '../TgIcon'
 import Checkbox from '../../shared/ui/Checkbox'
+import RadialProgress from '../RadialProgress'
 import { Layouter } from '../../core/dom/groupedLayout'
 import { mediaContentUrl, mediaThumbUrl, hasMediaToken, useMediaTokenVersion } from '../../core/mediaUrl'
+import { useUploadsStore } from '../../stores/uploadsStore'
 import { fmtDur } from '../../core/hooks/useVoiceRecorder'
 import type { ConvMsg, MsgStatus } from '../../data'
 import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
@@ -46,6 +48,8 @@ export default function AlbumGrid({
   const tokenReady = hasMediaToken()
   const [forced, setForced] = useState(false)
   const selected = useMemo(() => new Set((selectedKey ?? '').split(',').filter(Boolean).map(Number)), [selectedKey])
+  // Прогресс аплоада по элементам альбома (кольцо на каждом, пока грузится)
+  const uploads = useUploadsStore((s) => s.byId)
 
   const layout = useMemo(() => {
     const sizes = items.map((m) => ({
@@ -64,11 +68,14 @@ export default function AlbumGrid({
       {items.map((m, i) => {
         const g = layout[i].geometry
         const isVideo = m.type === 'video'
-        const blocked = !forced && !!autoDownload && (isVideo ? autoDownload.video === 0 : autoDownload.photo === 0)
+        const uploadProgress = m.clientId ? uploads[m.clientId] : undefined
+        const blocked = !forced && !m.localUrl && !!autoDownload && (isVideo ? autoDownload.video === 0 : autoDownload.photo === 0)
         const lqip = m.mediaBlur ? `url("data:image/jpeg;base64,${m.mediaBlur}")` : undefined
-        const src = !tokenReady || blocked || m.mediaId == null
-          ? ''
-          : m.mediaHasThumb ? mediaThumbUrl(m.mediaId) : mediaContentUrl(m.mediaId)
+        const src = m.localUrl
+          ? m.localUrl
+          : !tokenReady || blocked || m.mediaId == null
+            ? ''
+            : m.mediaHasThumb ? mediaThumbUrl(m.mediaId) : mediaContentUrl(m.mediaId)
         const isSel = m.id != null && selected.has(m.id)
         return (
           <div
@@ -95,7 +102,11 @@ export default function AlbumGrid({
                 <Checkbox checked={isSel} ring="#fff" size={24} />
               </div>
             )}
-            {(isVideo || blocked) && (
+            {uploadProgress != null ? (
+              <div className={s.play}>
+                <RadialProgress progress={uploadProgress} size={44} />
+              </div>
+            ) : (isVideo || blocked) && (
               <div className={s.play}>
                 <div className={s.playDisc}>
                   <TgIcon name={blocked ? 'download' : 'play'} size={26} color="#fff" />

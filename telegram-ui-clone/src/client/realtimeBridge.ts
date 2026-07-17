@@ -6,6 +6,7 @@ import { usePinsStore } from '../stores/pinsStore'
 import { useDiscussionStore, threadKey } from '../stores/discussionStore'
 import { mapMessage, mapDraft } from '../core/models'
 import { useDraftsStore } from '../stores/draftsStore'
+import { useUploadsStore } from '../stores/uploadsStore'
 import { uiEvents } from '../core/hooks/uiEvents'
 import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt, type DraftUpdateEvt } from '../core/realtime/events'
 import { playMessageSent } from '../core/audio/sounds'
@@ -131,6 +132,11 @@ export function startRealtime(): void {
   // 1:1 call signaling → движок звонка (стейт живёт в callStore)
   smp.on(RT.call, (raw) => { callEngine.handleFrame(raw as CallFrameEvt) })
   smp.on('rt:resync', () => { void loadChats(managers) })
+  // Прогресс отгрузки медиа (кольцо на оптимистичном бабле)
+  smp.on('media:upload_progress', (raw) => {
+    const e = raw as { id: string; loaded: number; total: number }
+    if (e.total > 0) useUploadsStore.getState().setProgress(e.id, e.loaded / e.total)
+  })
 
   void managers.realtime.start()
 }

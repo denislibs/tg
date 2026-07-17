@@ -78,6 +78,7 @@ export function messageToConvMsg(
     mediaSize: m.mediaSize,
     mediaName: m.mediaName,
     groupedId: m.groupedId ?? undefined,
+    localUrl: m.localUrl,
     sender: !out && opts?.senderName ? opts.senderName : undefined,
     senderId: !out ? m.senderId : undefined,
     edited: m.editedAt != null,

@@ -11,7 +11,7 @@
 // so the store's loading flag isn't visible yet).
 import { useCallback, useEffect, useRef } from 'react'
 import type { Message, MessageEntity } from '../models'
-import { useMessagesStore, EMPTY_WINDOW } from '../../stores/messagesStore'
+import { useMessagesStore, EMPTY_WINDOW, type OptimisticMedia } from '../../stores/messagesStore'
 import { useManagers } from './useManagers'
 
 export interface MessageWindow {
@@ -27,7 +27,7 @@ export interface MessageWindow {
   loadOlder: () => Promise<void>
   loadNewer: () => Promise<void>
   appendLocal: (m: Message) => void
-  appendOptimistic: (text: string, meId: number, clientMsgId: string, mediaId?: number, type?: string, entities?: MessageEntity[], groupedId?: string) => void
+  appendOptimistic: (text: string, meId: number, clientMsgId: string, mediaId?: number, type?: string, entities?: MessageEntity[], groupedId?: string, media?: OptimisticMedia) => void
   reconcileAck: (clientMsgId: string, ack: { msgId: number; seq: number; createdAt: string }) => void
   /** Server rejected the send (e.g. too long) — drop the optimistic bubble. */
   failOptimistic: (clientMsgId: string) => void
@@ -129,8 +129,8 @@ export function useMessageWindow(chatId: number, limit = 40): MessageWindow {
   const appendLocal = useCallback((m: Message) => appendLocalAction(chatId, m), [chatId, appendLocalAction])
 
   const appendOptimistic = useCallback(
-    (text: string, meId: number, clientMsgId: string, mediaId?: number, type = 'text', entities?: MessageEntity[], groupedId?: string) =>
-      appendOptimisticAction(chatId, text, meId, clientMsgId, mediaId, type, entities, groupedId),
+    (text: string, meId: number, clientMsgId: string, mediaId?: number, type = 'text', entities?: MessageEntity[], groupedId?: string, media?: OptimisticMedia) =>
+      appendOptimisticAction(chatId, text, meId, clientMsgId, mediaId, type, entities, groupedId, media),
     [chatId, appendOptimisticAction],
   )
 

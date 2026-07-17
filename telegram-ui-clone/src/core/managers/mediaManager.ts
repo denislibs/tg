@@ -1,6 +1,6 @@
 import type { RestClient } from '../net/restClient'
 
-export interface UploadArgs { bytes: ArrayBuffer; mime: string; size: number; width?: number; height?: number; duration?: number; fileName?: string }
+export interface UploadArgs { bytes: ArrayBuffer; mime: string; size: number; width?: number; height?: number; duration?: number; fileName?: string; progressId?: string }
 export interface MediaMeta { id: number; mime: string; size: number; width: number; height: number; duration: number; blurPreview: string; fileName: string; hasThumb: boolean }
 
 interface RestLike {
@@ -11,7 +11,12 @@ interface RestLike {
   mediaUrl: RestClient['mediaUrl']
 }
 
-export function newMediaManager({ rest }: { rest: RestLike }) {
+export function newMediaManager({ rest, onUploadProgress }: {
+  rest: RestLike
+  // Прогресс отгрузки байтов (tweb ProgressivePreloader) — воркер транслирует
+  // его вкладкам событием media:upload_progress.
+  onUploadProgress?: (id: string, loaded: number, total: number) => void
+}) {
   const metaCache = new Map<number, MediaMeta>()
   // Cached short-lived media token (refreshed ~1 min before expiry). It only
   // authorizes media reads, so it's safe to put in URLs (unlike the session token).
@@ -30,7 +35,10 @@ export function newMediaManager({ rest }: { rest: RestLike }) {
         mime: a.mime, size: a.size, width: a.width ?? 0, height: a.height ?? 0, duration: a.duration ?? 0,
         file_name: a.fileName ?? '',
       })
-      await rest.putBytes(`/media/${r.media_id}/content`, a.bytes, a.mime)
+      const progress = a.progressId && onUploadProgress
+        ? (loaded: number, total: number) => onUploadProgress(a.progressId!, loaded, total)
+        : undefined
+      await rest.putBytes(`/media/${r.media_id}/content`, a.bytes, a.mime, progress)
       return r.media_id
     },
     async meta(id: number): Promise<MediaMeta> {

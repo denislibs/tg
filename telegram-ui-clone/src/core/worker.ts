@@ -35,7 +35,12 @@ const auth = newAuthManager({ rest, store: tokens })
 const profile = newProfileManager({ rest })
 const chats = newChatsManager({ rest })
 const messages = newMessagesManager({ rest })
-const media = newMediaManager({ rest })
+// broadcast объявлен ниже — замыкание дергает его лениво (к моменту первого
+// аплоада порты уже подняты)
+const media = newMediaManager({
+  rest,
+  onUploadProgress: (id, loaded, total) => broadcast('media:upload_progress', { id, loaded, total }),
+})
 const push = newPushManager({ rest })
 const notify = newNotifyManager({ rest })
 const folders = newFoldersManager({ rest })

@@ -17,6 +17,8 @@ import type { MessageEntity } from '../models'
 import type { Chat } from '../../data'
 import type { MessageWindow } from './useMessageWindow'
 import type { Managers } from '../../client/bootstrap'
+import { useMessagesStore } from '../../stores/messagesStore'
+import { useUploadsStore } from '../../stores/uploadsStore'
 
 // Max characters per message (matches the backend's maxMessageRunes / Telegram 4096).
 // Longer drafts are split into several messages on send.
@@ -126,11 +128,34 @@ export function useChatSend({
       : mime.startsWith('video/') ? 'video'
       : mime.startsWith('audio/') ? 'audio'
       : 'document'
-    const bytes = await file.arrayBuffer()
     const { width, height } = type === 'photo' ? await readImageSize(file) : { width: 0, height: 0 }
-    const mediaId = await managers.media.upload({ bytes, mime, size: file.size, width, height, fileName: file.name })
     const clientMsgId = `c-${chat.id}-${performance.now()}-${Math.random().toString(36).slice(2)}`
+    // Фото/видео как медиа: бабл появляется СРАЗУ с локальным превью и кольцом
+    // прогресса (tweb is_outgoing + ProgressivePreloader); отправка по WS —
+    // после завершения аплоада. Документы/аудио грузятся до появления бабла.
+    const isVisual = (type === 'photo' || type === 'video') && !asFile
     atBottomRef.current = true; userScrolledUpRef.current = false
+    if (isVisual) {
+      const localUrl = URL.createObjectURL(file)
+      win.appendOptimistic(caption, meId ?? -1, clientMsgId, undefined, type, undefined, groupedId, {
+        localUrl, width, height, mime, size: file.size, name: file.name,
+      })
+      useUploadsStore.getState().setProgress(clientMsgId, 0)
+      try {
+        const bytes = await file.arrayBuffer()
+        const mediaId = await managers.media.upload({ bytes, mime, size: file.size, width, height, fileName: file.name, progressId: clientMsgId })
+        useMessagesStore.getState().setOptimisticMedia(numericChatId, clientMsgId, mediaId)
+        void managers.realtime.sendMessage({ chatId: numericChatId, text: caption, clientMsgId, mediaId, type, groupedId })
+      } catch {
+        useMessagesStore.getState().failOptimisticByClient(clientMsgId)
+      } finally {
+        useUploadsStore.getState().clear(clientMsgId)
+      }
+      return
+    }
+    // Документ/аудио: аплоад, затем оптимистичный бабл (прежнее поведение).
+    const bytes = await file.arrayBuffer()
+    const mediaId = await managers.media.upload({ bytes, mime, size: file.size, width, height, fileName: file.name })
     win.appendOptimistic(caption, meId ?? -1, clientMsgId, mediaId, type, undefined, groupedId)
     void managers.realtime.sendMessage({ chatId: numericChatId, text: caption, clientMsgId, mediaId, type, groupedId })
   }

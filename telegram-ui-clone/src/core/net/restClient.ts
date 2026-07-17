@@ -33,12 +33,36 @@ export class RestClient {
     return this.request<R>('DELETE', path, body)
   }
 
-  async putBytes(path: string, body: ArrayBuffer, contentType: string): Promise<void> {
-    const headers: Record<string, string> = { 'Content-Type': contentType }
-    const tok = this.getToken()
-    if (tok) headers.Authorization = `Bearer ${tok}`
-    const res = await fetch(this.base + path, { method: 'PUT', headers, body })
-    if (!res.ok) throw new HttpError(res.status, `HTTP ${res.status}`)
+  async putBytes(path: string, body: ArrayBuffer, contentType: string, onProgress?: (loaded: number, total: number) => void): Promise<void> {
+    // XHR вместо fetch: у fetch нет событий прогресса ОТПРАВКИ, а спиннер
+    // загрузки медиа (tweb ProgressivePreloader) живёт на xhr.upload.onprogress.
+    // Если XHR в этом контексте недоступен — тихий фолбэк на fetch (без прогресса).
+    if (typeof XMLHttpRequest === 'undefined') {
+      const headers: Record<string, string> = { 'Content-Type': contentType }
+      const tok = this.getToken()
+      if (tok) headers.Authorization = `Bearer ${tok}`
+      const res = await fetch(this.base + path, { method: 'PUT', headers, body })
+      if (!res.ok) throw new HttpError(res.status, `HTTP ${res.status}`)
+      return
+    }
+    await new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open('PUT', this.base + path)
+      xhr.setRequestHeader('Content-Type', contentType)
+      const tok = this.getToken()
+      if (tok) xhr.setRequestHeader('Authorization', `Bearer ${tok}`)
+      if (onProgress) {
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) onProgress(e.loaded, e.total)
+        }
+      }
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve()
+        else reject(new HttpError(xhr.status, `HTTP ${xhr.status}`))
+      }
+      xhr.onerror = () => reject(new HttpError(0, 'network error'))
+      xhr.send(body)
+    })
   }
 
   // Build a same-origin, token-carrying URL for browser media elements (img/video).
