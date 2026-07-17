@@ -114,18 +114,67 @@
 .circleBtn {
   cursor: pointer;
 }
-.dl {
+
+// документ tweb .document: «страница» 54×54 с расширением и загнутым уголком
+.docRow {
+  text-decoration: none;
+  cursor: pointer;
+}
+.docIco {
+  width: 54px;
+  height: 54px;
+  flex-shrink: 0;
+  position: relative;
+  border-radius: 6px; // tweb $border-radius .375rem
+  background: var(--doc-color);
+  text-align: center;
+  line-height: 1;
+
+  // загнутый уголок (tweb .document-ico:after): border-трюк, верх/право —
+  // цвета фона бабла, лево/низ — затемнение
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    border-style: solid;
+    border-width: 9px; // --size 1.125rem / 2
+    border-left-color: rgba(0, 0, 0, 0.25);
+    border-bottom-color: rgba(0, 0, 0, 0.25);
+    border-top-color: var(--b-bg);
+    border-right-color: var(--b-bg);
+    border-bottom-left-radius: 4px;
+    transition: border-width 0.2s ease-in-out;
+  }
+}
+.docExt {
+  display: block;
+  padding: 25px 4px 0; // tweb 1.5625rem .25rem 0
+  color: #fff;
+  font-size: 18px; // tweb 1.125rem
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: opacity 0.2s ease-in-out;
+}
+.docDl {
   position: absolute;
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   opacity: 0;
-  transition: opacity 0.15s;
-  background: rgba(0, 0, 0, 0.25);
-  border-radius: 50%;
+  transition: opacity 0.2s ease-in-out;
 }
-.circle:hover .dl {
+// hover (файл ещё не скачан): уголок разворачивается, расширение сменяется стрелкой
+.docRow:hover .docIco::after {
+  border-width: 0;
+}
+.docRow:hover .docExt {
+  opacity: 0;
+}
+.docRow:hover .docDl {
   opacity: 1;
 }
 .fileBody {

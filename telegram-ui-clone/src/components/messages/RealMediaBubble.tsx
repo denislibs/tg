@@ -174,28 +174,43 @@ export default function RealMediaBubble({
     )
   }
 
-  // ---- Document / file ----
+  // ---- Document / file (tweb .document: цветная «страница» с загнутым
+  // уголком и расширением; pdf/zip/apk — фирменные цвета, остальное акцент) ----
   const name = fileName || `media-${mediaId}`
-  const ext = (name.split('.').pop() || '').slice(0, 4).toUpperCase()
+  const rawExt = name.includes('.') ? (name.split('.').pop() || '').split(' ')[0].toLowerCase() : ''
+  const ext = (rawExt || 'file').slice(0, 6)
   const sub = size ? fmtSize(size) : ''
   const href = tokenReady ? mediaContentUrl(mediaId) : undefined
   return (
-    <div className={classNames(s.fileRow, s.doc)} data-out={out || undefined}>
-      <a className={s.circle} href={href} download={name}>
-        {ext ? <Text size={11} weight={700}>{ext}</Text> : <TgIcon name="document" />}
-        <div className={s.dl}>
-          <TgIcon name="download" size={22} />
-        </div>
-      </a>
+    <a
+      className={classNames(s.fileRow, s.doc, s.docRow)}
+      href={href}
+      download={name}
+      data-out={out || undefined}
+      style={{ '--doc-color': DOC_EXT_COLORS[ext] ?? 'var(--tg-accent)' } as React.CSSProperties}
+    >
+      <div className={s.docIco}>
+        <span className={s.docExt}>{ext}</span>
+        <span className={s.docDl}>
+          <TgIcon name="download" size={26} color="#fff" />
+        </span>
+      </div>
       <div className={s.fileBody}>
-        <Text noWrap size={14.5} weight={600} color="var(--m-primary)">{name}</Text>
+        <Text noWrap size={16} weight={700} color="var(--m-primary)">{name}</Text>
         <div className={s.fileSub}>
-          <Text size={12.5} color="var(--m-secondary)">{sub}</Text>
+          <Text size={14} color="var(--m-secondary)">{sub}</Text>
           {timeCluster}
         </div>
       </div>
-    </div>
+    </a>
   )
+}
+
+// Цвета расширений (tweb _document.scss .ext-*)
+const DOC_EXT_COLORS: Record<string, string> = {
+  pdf: '#DF3F40',
+  zip: '#FB8C00',
+  apk: '#43A047',
 }
 
 // Music row: plays through the GLOBAL audio player (same as voice messages), so a
