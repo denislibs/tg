@@ -226,3 +226,53 @@ func (r *AuthRepo) Delete(ctx context.Context, userID, deviceID int64) (tokenHas
 	}
 	return tokenHash, true, nil
 }
+
+// --- Облачный пароль (2FA): usecase/auth.PasswordRepo ---
+
+// Password возвращает bcrypt-хеш (nil = не установлен), подсказку и почту.
+func (r *AuthRepo) Password(ctx context.Context, userID int64) (*string, string, string, error) {
+	var hash *string
+	var hint, email string
+	err := r.pool.QueryRow(ctx,
+		`SELECT password_hash, password_hint, recovery_email FROM users WHERE id=$1`, userID).
+		Scan(&hash, &hint, &email)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, "", "", domain.ErrNotFound
+	}
+	return hash, hint, email, err
+}
+
+// SetPassword пишет хеш/подсказку/почту (hash=nil выключает пароль целиком).
+func (r *AuthRepo) SetPassword(ctx context.Context, userID int64, hash *string, hint, email string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE users SET password_hash=$2, password_hint=$3, recovery_email=$4 WHERE id=$1`,
+		userID, hash, hint, email)
+	return err
+}
+
+// SavePasswordToken сохраняет одноразовый токен шага пароля (вход с 2FA).
+func (r *AuthRepo) SavePasswordToken(ctx context.Context, tokenHash string, userID int64, expires time.Time) error {
+	_, err := r.pool.Exec(ctx,
+		`INSERT INTO password_login_tokens (token_hash, user_id, expires_at) VALUES ($1,$2,$3)
+		 ON CONFLICT (token_hash) DO UPDATE SET user_id=$2, expires_at=$3`,
+		tokenHash, userID, expires)
+	return err
+}
+
+// PasswordTokenUser возвращает владельца живого токена (истёкшие не считаются).
+func (r *AuthRepo) PasswordTokenUser(ctx context.Context, tokenHash string) (int64, error) {
+	var userID int64
+	err := r.pool.QueryRow(ctx,
+		`SELECT user_id FROM password_login_tokens WHERE token_hash=$1 AND expires_at > now()`,
+		tokenHash).Scan(&userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, domain.ErrNotFound
+	}
+	return userID, err
+}
+
+// DeletePasswordToken сжигает токен после успешного входа.
+func (r *AuthRepo) DeletePasswordToken(ctx context.Context, tokenHash string) error {
+	_, err := r.pool.Exec(ctx, `DELETE FROM password_login_tokens WHERE token_hash=$1`, tokenHash)
+	return err
+}

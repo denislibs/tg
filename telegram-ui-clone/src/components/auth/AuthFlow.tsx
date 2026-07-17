@@ -8,11 +8,12 @@ import { EASE, DUR } from '../../motion'
 import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import QrCode from './QrCode'
+import PasswordMonkey from '../PasswordMonkey'
 import s from './AuthFlow.module.scss'
 
 const MotionIconButton = motion.create(IconButton)
 
-type Step = 'phone' | 'qr' | 'code'
+type Step = 'phone' | 'qr' | 'code' | 'password'
 
 interface Country {
   name: string
@@ -91,6 +92,23 @@ export default function AuthFlow({ onComplete }: { onComplete: () => void }) {
   const codeRefs = useRef<(HTMLInputElement | null)[]>([])
   const codeStr = code.join('')
 
+  // password step (облачный пароль, 2FA): одноразовый токен из sign_in
+  const [pwToken, setPwToken] = useState('')
+  const [pwHint, setPwHint] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPw, setShowPw] = useState(false)
+
+  const submitPassword = async () => {
+    if (busy || !password) return
+    setError(''); setBusy(true)
+    try {
+      await managers.auth.checkPassword(pwToken, password, 'web', 'browser')
+      onComplete()
+    } catch {
+      setError(t('Invalid password'))
+    } finally { setBusy(false) }
+  }
+
   // qr step — generate + auto-rotate (30s) + poll (2s) for confirmation
   const [qrUrl, setQrUrl] = useState('')
   const [qrError, setQrError] = useState(false)
@@ -146,7 +164,16 @@ export default function AuthFlow({ onComplete }: { onComplete: () => void }) {
     if (busy) return
     setError(''); setBusy(true)
     try {
-      await managers.auth.signIn(fullPhone, value, 'web', 'browser')
+      const res = await managers.auth.signIn(fullPhone, value, 'web', 'browser')
+      // Включён облачный пароль — второй шаг входа (SESSION_PASSWORD_NEEDED)
+      if (res.passwordNeeded) {
+        setPwToken(res.passwordToken)
+        setPwHint(res.hint)
+        setPassword('')
+        setShowPw(false)
+        go('password', 1)
+        return
+      }
       onComplete()
     } catch {
       setError(t('Invalid code'))
@@ -365,7 +392,48 @@ export default function AuthFlow({ onComplete }: { onComplete: () => void }) {
     </>
   )
 
-  const content = step === 'phone' ? phoneStep : step === 'qr' ? qrStep : codeStep
+  // Шаг облачного пароля (tweb pages/pagePassword: монки + поле с «глазком»)
+  const passwordStep = (
+    <>
+      <PasswordMonkey peeking={showPw} />
+      <Text size={22} weight={600} color="var(--tg-textPrimary)" style={{ textAlign: 'center', marginTop: '8px' }}>
+        {t('Enter Your Password')}
+      </Text>
+      <Text
+        size={15} color="var(--tg-textSecondary)"
+        style={{ textAlign: 'center', marginTop: '8px', marginBottom: '24px', lineHeight: 1.5 }}
+      >
+        {t('Your account is protected with an additional password.')}
+      </Text>
+
+      <div className={s.fieldWrap}>
+        <input
+          autoFocus
+          className={s.phoneInput}
+          type={showPw ? 'text' : 'password'}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') void submitPassword() }}
+          placeholder={pwHint ? `${t('Password')} (${pwHint})` : t('Password')}
+        />
+        <IconButton size="small" color="var(--tg-textFaint)" onClick={() => setShowPw((v) => !v)} aria-label="toggle password">
+          <TgIcon name={showPw ? 'eye2' : 'eye1'} size={22} />
+        </IconButton>
+      </div>
+
+      {error && <Text size={13} color="#e53935" style={{ textAlign: 'center', marginTop: '12px' }}>{error}</Text>}
+
+      <div
+        className={classNames(s.accentBtn, password ? '' : s.accentBtnDisabled)}
+        onClick={() => void submitPassword()}
+      >
+        {t('Next')}
+      </div>
+    </>
+  )
+
+  const content =
+    step === 'phone' ? phoneStep : step === 'qr' ? qrStep : step === 'password' ? passwordStep : codeStep
 
   return (
     <div className={s.overlay}>

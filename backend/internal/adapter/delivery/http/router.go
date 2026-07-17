@@ -29,6 +29,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 	authH := NewAuthHandler(authUC)
 	r.Post("/auth/request_code", authH.RequestCode)
 	r.Post("/auth/sign_in", authH.SignIn)
+	r.Post("/auth/check_password", authH.CheckPassword)
 	r.Post("/auth/qr/new", authH.QRNew)
 	r.Get("/auth/qr/{token}", authH.QRStatus)
 
@@ -69,6 +70,12 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		nh := NewNotifyHandler(notifyUC)
 		pr.Get("/me/notify_settings", nh.Get)
 		pr.Put("/me/notify_settings", nh.Update)
+
+		pwh := NewPasswordHandler(authUC)
+		pr.Get("/me/password", pwh.State)
+		pr.Post("/me/password", pwh.Set)
+		pr.Post("/me/password/verify", pwh.Verify)
+		pr.Delete("/me/password", pwh.Remove)
 
 		if privacyUC != nil {
 			pvh := NewPrivacyHandler(privacyUC)

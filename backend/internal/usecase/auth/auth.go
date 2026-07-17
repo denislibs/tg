@@ -19,6 +19,7 @@ type Interactor struct {
 	users   UserRepo
 	devices DeviceRepo
 	codes   CodeRepo
+	pw      PasswordRepo
 	devCode string
 	logf    func(string, ...any)
 	cache   SessionCache       // optional
@@ -90,8 +91,8 @@ func buildLoginText(ci ClientInfo) string {
 	return b.String()
 }
 
-func New(users UserRepo, devices DeviceRepo, codes CodeRepo, devCode string, logf func(string, ...any)) *Interactor {
-	return &Interactor{users: users, devices: devices, codes: codes, devCode: devCode, logf: logf}
+func New(users UserRepo, devices DeviceRepo, codes CodeRepo, pw PasswordRepo, devCode string, logf func(string, ...any)) *Interactor {
+	return &Interactor{users: users, devices: devices, codes: codes, pw: pw, devCode: devCode, logf: logf}
 }
 
 func (i *Interactor) SetCache(c SessionCache)                    { i.cache = c }
@@ -115,6 +116,11 @@ func (i *Interactor) RequestCode(ctx context.Context, rawPhone string) error {
 type SignInResult struct {
 	Token string
 	User  domain.User
+	// Облачный пароль включён: вместо сессии выдан одноразовый PasswordToken —
+	// клиент завершает вход через CheckPassword (Telegram SESSION_PASSWORD_NEEDED).
+	PasswordNeeded bool
+	PasswordToken  string
+	Hint           string
 }
 
 func (i *Interactor) SignIn(ctx context.Context, rawPhone, suppliedCode, deviceName, platform string) (SignInResult, error) {
@@ -133,6 +139,32 @@ func (i *Interactor) SignIn(ctx context.Context, rawPhone, suppliedCode, deviceN
 	if err != nil {
 		return SignInResult{}, err
 	}
+	// Второй фактор: при включённом облачном пароле сессия не выдаётся — только
+	// короткий токен для шага «введите пароль».
+	if i.pw != nil {
+		if pwHash, hint, _, err := i.pw.Password(ctx, user.ID); err == nil && pwHash != nil {
+			pwToken, pwTokenHash, err := domain.GenerateToken()
+			if err != nil {
+				return SignInResult{}, err
+			}
+			if err := i.pw.SavePasswordToken(ctx, pwTokenHash, user.ID, time.Now().Add(passwordTokenTTL)); err != nil {
+				return SignInResult{}, err
+			}
+			_ = i.codes.DeleteCode(ctx, phone)
+			return SignInResult{PasswordNeeded: true, PasswordToken: pwToken, Hint: hint}, nil
+		}
+	}
+	res, err := i.mintSession(ctx, user, deviceName, platform)
+	if err != nil {
+		return SignInResult{}, err
+	}
+	_ = i.codes.DeleteCode(ctx, phone)
+	return res, nil
+}
+
+// mintSession выдаёт новую сессию (строка devices + токен) и шлёт login-alert.
+// Общий хвост SignIn и CheckPassword.
+func (i *Interactor) mintSession(ctx context.Context, user domain.User, deviceName, platform string) (SignInResult, error) {
 	token, hash, err := domain.GenerateToken()
 	if err != nil {
 		return SignInResult{}, err
@@ -153,7 +185,6 @@ func (i *Interactor) SignIn(ctx context.Context, rawPhone, suppliedCode, deviceN
 	if _, err := i.devices.Create(ctx, user.ID, name, platform, hash, ci.IP, ci.Location); err != nil {
 		return SignInResult{}, err
 	}
-	_ = i.codes.DeleteCode(ctx, phone)
 	i.notifyLogin(user.ID, ci)
 	return SignInResult{Token: token, User: user}, nil
 }

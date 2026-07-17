@@ -18,6 +18,7 @@ import type { Peer } from '../core/managers/peersManager'
 import type { StoryGroup } from '../core/managers/storiesManager'
 import type { Contact, AddContactInput } from '../core/managers/contactsManager'
 import type { PrivacyRule, BlockedUser, UserProfile } from '../core/managers/privacyManager'
+import type { SignInOutcome, PasswordState } from '../core/managers/authManager'
 import type { Session } from '../core/managers/sessionsManager'
 import type { IceConfig } from '../core/managers/callsManager'
 
@@ -25,7 +26,12 @@ export interface Managers {
   health: { check(): Promise<HealthStatus> }
   auth: {
     requestCode(phone: string): Promise<void>
-    signIn(phone: string, code: string, device: string, platform: string): Promise<{ user: User }>
+    signIn(phone: string, code: string, device: string, platform: string): Promise<SignInOutcome>
+    checkPassword(passwordToken: string, password: string, device: string, platform: string): Promise<{ user: User }>
+    passwordState(): Promise<PasswordState>
+    setPassword(args: { currentPassword?: string; newPassword: string; hint: string; email: string }): Promise<void>
+    removePassword(currentPassword: string): Promise<void>
+    verifyPassword(password: string): Promise<void>
     me(): Promise<User | null>
     logout(): Promise<void>
     qrNew(platform: string): Promise<{ token: string; url: string; expiresAt: string }>

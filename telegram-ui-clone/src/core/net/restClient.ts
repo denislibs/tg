@@ -29,8 +29,8 @@ export class RestClient {
     return this.request<R>('PATCH', path, body)
   }
 
-  async del<R>(path: string): Promise<R> {
-    return this.request<R>('DELETE', path)
+  async del<R>(path: string, body?: unknown): Promise<R> {
+    return this.request<R>('DELETE', path, body)
   }
 
   async putBytes(path: string, body: ArrayBuffer, contentType: string): Promise<void> {

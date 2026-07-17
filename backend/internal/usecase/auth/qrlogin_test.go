@@ -29,7 +29,7 @@ func (s *fakeQRStoreTTL) Delete(_ context.Context, h string) error { delete(s.m,
 func TestQRLogin_NewStatusConfirmFlow(t *testing.T) {
 	users := newFakeUserRepo()
 	devices := newFakeDeviceRepo(users)
-	i := New(users, devices, nil, "12345", func(string, ...any) {})
+	i := New(users, devices, nil, nil, "12345", func(string, ...any) {})
 
 	ctx := context.Background()
 	// No QRStore configured → unavailable.

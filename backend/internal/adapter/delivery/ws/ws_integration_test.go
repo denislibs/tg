@@ -52,7 +52,7 @@ func newWSEnv(t *testing.T) *wsEnv {
 	ctx := context.Background()
 
 	repo := pgadapter.NewAuthRepo(pool)
-	authUC := usecaseauth.New(repo, repo, repo, "12345", func(string, ...any) {})
+	authUC := usecaseauth.New(repo, repo, repo, repo, "12345", func(string, ...any) {})
 	chatSvc := usecasechat.New(
 		pgadapter.NewTxManager(pool),
 		pgadapter.NewChatsRepo(pool),

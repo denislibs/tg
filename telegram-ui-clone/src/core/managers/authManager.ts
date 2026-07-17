@@ -47,6 +47,17 @@ export function mapUser(r: RawUser): User {
   }
 }
 
+// Итог первого шага входа: либо сессия, либо запрос облачного пароля.
+export type SignInOutcome =
+  | { user: User; passwordNeeded?: undefined }
+  | { passwordNeeded: true; passwordToken: string; hint: string; user?: undefined }
+
+export interface PasswordState {
+  enabled: boolean
+  hint: string
+  email: string // маскированный (de•••@gmail.com)
+}
+
 interface TokenStoreLike {
   get(): string | null
   set(token: string): Promise<void>
@@ -65,10 +76,49 @@ export function newAuthManager({ rest, store }: AuthDeps) {
       await rest.post('/auth/request_code', { phone })
     },
 
-    async signIn(phone: string, code: string, device: string, platform: string): Promise<{ user: User }> {
-      const res = await rest.post<{ token: string; user: RawUser }>('/auth/sign_in', { phone, code, device, platform })
+    // При включённом облачном пароле сервер вместо сессии выдаёт одноразовый
+    // password_token — вход завершается шагом checkPassword (Telegram
+    // SESSION_PASSWORD_NEEDED).
+    async signIn(phone: string, code: string, device: string, platform: string): Promise<SignInOutcome> {
+      const res = await rest.post<{
+        token?: string
+        user?: RawUser
+        password_needed?: boolean
+        password_token?: string
+        hint?: string
+      }>('/auth/sign_in', { phone, code, device, platform })
+      if (res.password_needed && res.password_token) {
+        return { passwordNeeded: true, passwordToken: res.password_token, hint: res.hint ?? '' }
+      }
+      await store.set(res.token!)
+      return { user: mapUser(res.user!) }
+    },
+
+    async checkPassword(passwordToken: string, password: string, device: string, platform: string): Promise<{ user: User }> {
+      const res = await rest.post<{ token: string; user: RawUser }>('/auth/check_password', {
+        password_token: passwordToken, password, device, platform,
+      })
       await store.set(res.token)
       return { user: mapUser(res.user) }
+    },
+
+    // Облачный пароль (экран Two-Step Verification).
+    async passwordState(): Promise<PasswordState> {
+      return rest.get<PasswordState>('/me/password')
+    },
+    async setPassword(args: { currentPassword?: string; newPassword: string; hint: string; email: string }): Promise<void> {
+      await rest.post('/me/password', {
+        current_password: args.currentPassword ?? '',
+        new_password: args.newPassword,
+        hint: args.hint,
+        email: args.email,
+      })
+    },
+    async removePassword(currentPassword: string): Promise<void> {
+      await rest.del('/me/password', { current_password: currentPassword })
+    },
+    async verifyPassword(password: string): Promise<void> {
+      await rest.post('/me/password/verify', { password })
     },
 
     async qrNew(platform: string): Promise<{ token: string; url: string; expiresAt: string }> {

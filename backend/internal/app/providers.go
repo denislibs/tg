@@ -89,7 +89,7 @@ func provideMinio(cfg *config.Config, ctx context.Context) MinioResult {
 func provideAuthRepo(pool *pgxpool.Pool) *pgadapter.AuthRepo { return pgadapter.NewAuthRepo(pool) }
 
 func provideAuthUsecase(cfg *config.Config, repo *pgadapter.AuthRepo) *usecaseauth.Interactor {
-	return usecaseauth.New(repo, repo, repo, cfg.DevOTPCode, log.Printf)
+	return usecaseauth.New(repo, repo, repo, repo, cfg.DevOTPCode, log.Printf)
 }
 
 func provideTxManager(pool *pgxpool.Pool) *pgadapter.TxManager { return pgadapter.NewTxManager(pool) }

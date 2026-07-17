@@ -43,7 +43,7 @@ describe('AuthManager', () => {
     const auth = newAuthManager(d)
     await auth.requestCode('+7 700')
     const r = await auth.signIn('+7 700', '12345', 'web', 'browser')
-    expect(r.user.id).toBe(1)
+    expect(r.user?.id).toBe(1)
     expect(token()).toBe('TOK')
     await expect(auth.me()).resolves.toMatchObject({ id: 1 })
   })

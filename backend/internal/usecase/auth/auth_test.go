@@ -228,11 +228,62 @@ func (r *fakeRevoker) NotifyRevoked(_ context.Context, deviceID int64) error {
 	return nil
 }
 
+// fakePasswordRepo — облачный пароль (2FA) в памяти.
+type fakePasswordRepo struct {
+	hash   map[int64]*string
+	hint   map[int64]string
+	email  map[int64]string
+	tokens map[string]struct {
+		userID  int64
+		expires time.Time
+	}
+}
+
+func newFakePasswordRepo() *fakePasswordRepo {
+	return &fakePasswordRepo{
+		hash: map[int64]*string{}, hint: map[int64]string{}, email: map[int64]string{},
+		tokens: map[string]struct {
+			userID  int64
+			expires time.Time
+		}{},
+	}
+}
+
+func (r *fakePasswordRepo) Password(_ context.Context, userID int64) (*string, string, string, error) {
+	return r.hash[userID], r.hint[userID], r.email[userID], nil
+}
+
+func (r *fakePasswordRepo) SetPassword(_ context.Context, userID int64, hash *string, hint, email string) error {
+	r.hash[userID], r.hint[userID], r.email[userID] = hash, hint, email
+	return nil
+}
+
+func (r *fakePasswordRepo) SavePasswordToken(_ context.Context, tokenHash string, userID int64, expires time.Time) error {
+	r.tokens[tokenHash] = struct {
+		userID  int64
+		expires time.Time
+	}{userID, expires}
+	return nil
+}
+
+func (r *fakePasswordRepo) PasswordTokenUser(_ context.Context, tokenHash string) (int64, error) {
+	e, ok := r.tokens[tokenHash]
+	if !ok || time.Now().After(e.expires) {
+		return 0, domain.ErrNotFound
+	}
+	return e.userID, nil
+}
+
+func (r *fakePasswordRepo) DeletePasswordToken(_ context.Context, tokenHash string) error {
+	delete(r.tokens, tokenHash)
+	return nil
+}
+
 func newInteractor() (*Interactor, *fakeUserRepo, *fakeDeviceRepo, *fakeCodeRepo) {
 	users := newFakeUserRepo()
 	devices := newFakeDeviceRepo(users)
 	codes := newFakeCodeRepo()
-	i := New(users, devices, codes, "12345", func(string, ...any) {})
+	i := New(users, devices, codes, newFakePasswordRepo(), "12345", func(string, ...any) {})
 	return i, users, devices, codes
 }
 

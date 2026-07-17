@@ -110,6 +110,50 @@ func (h *AuthHandler) SignIn(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "sign in failed")
 		return
 	}
+	// Включён облачный пароль — сессии нет, клиент идёт на шаг
+	// POST /auth/check_password с одноразовым password_token.
+	if res.PasswordNeeded {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"password_needed": true,
+			"password_token":  res.PasswordToken,
+			"hint":            res.Hint,
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"token": res.Token,
+		"user":  userJSON(res.User),
+	})
+}
+
+type checkPasswordBody struct {
+	PasswordToken string `json:"password_token"`
+	Password      string `json:"password"`
+	Device        string `json:"device"`
+	Platform      string `json:"platform"`
+}
+
+// CheckPassword — второй шаг входа при включённом облачном пароле.
+func (h *AuthHandler) CheckPassword(w http.ResponseWriter, r *http.Request) {
+	var body checkPasswordBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	ctx := usecaseauth.WithClientInfo(r.Context(), clientInfoFromRequest(r))
+	res, err := h.svc.CheckPassword(ctx, body.PasswordToken, body.Password, body.Device, body.Platform)
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusUnauthorized, "password_token_expired")
+		return
+	}
+	if errors.Is(err, domain.ErrBadPassword) {
+		writeError(w, http.StatusUnauthorized, "invalid password")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "check password failed")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"token": res.Token,
 		"user":  userJSON(res.User),

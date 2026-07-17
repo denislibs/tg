@@ -35,6 +35,17 @@ type CodeRepo interface {
 	DeleteCode(ctx context.Context, phone string) error
 }
 
+// PasswordRepo хранит облачный пароль (2FA) и одноразовые токены шага пароля.
+type PasswordRepo interface {
+	// Password возвращает bcrypt-хеш (nil = пароль не установлен), подсказку и
+	// почту восстановления.
+	Password(ctx context.Context, userID int64) (hash *string, hint, email string, err error)
+	SetPassword(ctx context.Context, userID int64, hash *string, hint, email string) error
+	SavePasswordToken(ctx context.Context, tokenHash string, userID int64, expires time.Time) error
+	PasswordTokenUser(ctx context.Context, tokenHash string) (int64, error) // domain.ErrNotFound если нет/истёк
+	DeletePasswordToken(ctx context.Context, tokenHash string) error
+}
+
 type SessionCache interface {
 	GetSession(ctx context.Context, tokenHash string) (*domain.Session, error) // (nil,nil) on miss
 	SetSession(ctx context.Context, tokenHash string, s domain.Session, ttl time.Duration) error

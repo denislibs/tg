@@ -22,7 +22,7 @@ import (
 // all three repo ports) for use in delivery tests.
 func newAuthUC(pool *pgxpool.Pool) *usecaseauth.Interactor {
 	r := pgadapter.NewAuthRepo(pool)
-	return usecaseauth.New(r, r, r, "12345", func(string, ...any) {})
+	return usecaseauth.New(r, r, r, r, "12345", func(string, ...any) {})
 }
 
 // newChatUC builds the chat usecase from the postgres adapters for delivery tests.

@@ -2,7 +2,7 @@
 // privacyAndSecurity): секция безопасности (чёрный список, автоудаление,
 // код-пароль, облачный пароль, ключи доступа, сеансы) + секция privacy-правил
 // с живыми значениями и счётчиками исключений.
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import TgIcon from '../TgIcon'
 import { SettingsScreen, Section, Row } from './kit'
@@ -12,6 +12,7 @@ import TwoStepVerification from './TwoStepVerification'
 import Passkeys from './Passkeys'
 import PrivacyRule, { RULE_META } from './PrivacyRule'
 import { useT } from '../../i18n'
+import { useManagers } from '../../core/hooks/useManagers'
 import { usePrivacyStore } from '../../stores/privacyStore'
 import type { PrivacyRule as Rule } from '../../core/managers/privacyManager'
 
@@ -47,9 +48,22 @@ const RULE_ROWS = [
 
 export default function PrivacySecuritySettings({ onBack }: { onBack: () => void }) {
   const t = useT()
+  const managers = useManagers()
   const rules = usePrivacyStore((s) => s.rules)
   const blockedTotal = usePrivacyStore((s) => s.blockedTotal)
   const [sub, setSub] = useState<string | null>(null)
+
+  // Состояние облачного пароля для сабтайтла On/Off (перечитывается при
+  // возврате из под-экрана 2FA).
+  const [pwEnabled, setPwEnabled] = useState<boolean | null>(null)
+  useEffect(() => {
+    if (sub !== null) return
+    let alive = true
+    void managers.auth.passwordState().then((st) => {
+      if (alive) setPwEnabled(st.enabled)
+    }).catch(() => {})
+    return () => { alive = false }
+  }, [sub, managers])
 
   const renderSub = (): ReactNode => {
     if (!sub) return null
@@ -83,7 +97,7 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
         <Row
           icon={<TgIcon name="lock" size={24} />}
           label="Two-Step Verification"
-          value={t('Off')}
+          value={pwEnabled == null ? undefined : t(pwEnabled ? 'On' : 'Off')}
           chevron
           onClick={() => setSub('Two-Step Verification')}
         />
