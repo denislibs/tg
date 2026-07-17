@@ -3,7 +3,6 @@ import { AnimatePresence } from 'framer-motion'
 import { useT, useLang, LANGS } from '../i18n'
 import { SettingsScreen, Section, Row } from './settings/kit'
 import ActiveSessions from './settings/ActiveSessions'
-import AutoDownload from './settings/AutoDownload'
 import QuickReaction from './settings/QuickReaction'
 import PowerSaving from './settings/PowerSaving'
 import LanguageSettings from './settings/LanguageSettings'
@@ -12,18 +11,17 @@ import SpeakersCamera from './settings/SpeakersCamera'
 import NotificationsSettings from './settings/NotificationsSettings'
 import ChatFoldersSettings from './folders/ChatFoldersSettings'
 import PrivacySecuritySettings from './settings/PrivacySecuritySettings'
+import DataStorageSettings from './settings/DataStorageSettings'
 import type { Chat } from '../data'
 
 // Rows that open a dedicated sub-screen instead of being a plain value.
-const NAV = new Set<string>(['Power Saving', 'Quick Reaction', 'Auto-Download Media'])
+const NAV = new Set<string>(['Power Saving', 'Quick Reaction'])
 function renderDedicated(label: string, onBack: () => void): ReactNode {
   switch (label) {
     case 'Power Saving':
       return <PowerSaving onBack={onBack} />
     case 'Quick Reaction':
       return <QuickReaction onBack={onBack} />
-    case 'Auto-Download Media':
-      return <AutoDownload onBack={onBack} />
   }
   return null
 }
@@ -44,21 +42,6 @@ interface SSection {
 
 // Structure mirrors tweb's settings tabs (content is mock)
 const SCREENS: Record<string, SSection[]> = {
-  'Data and Storage': [
-    {
-      caption: 'Automatic media download',
-      rows: [{ label: 'Auto-Download Media', type: 'value', value: 'On' }],
-    },
-    {
-      caption: 'Storage',
-      footer: 'Telegram never deletes your messages — they are stored in the cloud.',
-      rows: [
-        { label: 'Cached files', type: 'value', value: '212 MB' },
-        { label: 'Cache time limit', type: 'value', value: '1 week' },
-        { label: 'Clear cache', type: 'button', danger: true },
-      ],
-    },
-  ],
   'General Settings': [
     {
       caption: 'Settings',
@@ -126,7 +109,8 @@ export function hasSubScreen(title: string) {
     title === 'Speakers and Camera' ||
     title === 'Notifications and Sounds' ||
     title === 'Chat Folders' ||
-    title === 'Privacy and Security'
+    title === 'Privacy and Security' ||
+    title === 'Data and Storage'
   )
 }
 
@@ -180,6 +164,8 @@ export default function SettingsSubScreen({ title, onBack, chats }: { title: str
   if (title === 'Chat Folders') return <ChatFoldersSettings onBack={onBack} chats={chats} />
   // Privacy and Security — реальный раздел конфиденциальности (tweb privacyAndSecurity)
   if (title === 'Privacy and Security') return <PrivacySecuritySettings onBack={onBack} />
+  // Data and Storage — реальные «Данные и память» (tweb dataAndStorage)
+  if (title === 'Data and Storage') return <DataStorageSettings onBack={onBack} />
 
   return (
     <SettingsScreen title={title} onBack={onBack} zIndex={50}>

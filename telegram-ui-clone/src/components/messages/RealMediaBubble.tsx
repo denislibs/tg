@@ -17,6 +17,7 @@ import { fmtDur } from '../../core/hooks/useVoiceRecorder'
 import { useAudioStore } from '../../stores/audioStore'
 import { mediaContentUrl, mediaThumbUrl, hasMediaToken, primeMediaToken, useMediaTokenVersion } from '../../core/mediaUrl'
 import type { MsgStatus } from '../../data'
+import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import s from './RealMediaBubble.module.scss'
 
 // Display box (tweb mediaSizes.regular): photos/videos fit within, aspect kept.
@@ -53,15 +54,19 @@ interface Props {
   status?: MsgStatus
   tickColor: string
   onOpen?: (mediaId: number, el: HTMLElement) => void
+  // Автозагрузка для чата (tweb autoDownloadSize): 0 = грузить только по клику
+  autoDownload?: ChatAutoDownload
   radius?: string
 }
 
 export default function RealMediaBubble({
   mediaId, type, width, height, mime, blur, hasThumb, duration, size, fileName,
-  out, time, status, tickColor, onOpen, radius,
+  out, time, status, tickColor, onOpen, autoDownload, radius,
 }: Props) {
   useMediaTokenVersion() // re-render when the media token is (re)primed → fresh URLs
   const tokenReady = hasMediaToken()
+  // Автозагрузка выключена → грузим только после клика (tweb noAutoDownload)
+  const [forced, setForced] = useState(false)
   // Image fade-in: blur/shimmer placeholder → image fades in once decoded. We read
   // the browser's REAL cache state (img.complete) before paint instead of tracking
   // a "loaded" flag ourselves: a cached <img> (e.g. a bubble remounted on chat
@@ -72,6 +77,7 @@ export default function RealMediaBubble({
   useLayoutEffect(() => {
     const img = imgRef.current
     setImgLoaded(!!(img && img.complete && img.naturalWidth > 0))
+    setForced(false)
   }, [mediaId])
 
   // An audio file (mp3 etc.) renders as a music player even when sent "as a file"
@@ -94,9 +100,14 @@ export default function RealMediaBubble({
     const box = calcImageInBox(width || 0, height || 0, BOX_W, BOX_H)
     const lqip = blur ? `url("data:image/jpeg;base64,${blur}")` : undefined
     const isGif = mime === 'image/gif'
+    // Гейт автозагрузки (tweb useAutoDownloadSettings → wrapPhoto autoDownloadSize):
+    // GIF и видео идут по настройке «Видео», остальное — «Фото». При 0 показываем
+    // blur-превью с кнопкой загрузки; клик грузит, следующий клик открывает.
+    const blocked = !forced && !!autoDownload
+      && (isVideo || isGif ? autoDownload.video === 0 : autoDownload.photo === 0)
     // Synchronous src (no RPC). GIFs show the animated content; others prefer the
     // smaller server thumbnail, falling back to the original.
-    const displaySrc = !tokenReady
+    const displaySrc = !tokenReady || blocked
       ? ''
       : isGif
         ? mediaContentUrl(mediaId)
@@ -104,25 +115,32 @@ export default function RealMediaBubble({
     return (
       <div
         className={s.media}
-        onClick={(e) => onOpen?.(mediaId, e.currentTarget)}
+        onClick={(e) => (blocked ? setForced(true) : onOpen?.(mediaId, e.currentTarget))}
         style={{ width: box.width, height: box.height, borderRadius: radius, backgroundImage: lqip }}
       >
         {/* Shimmer over the blur preview while the image loads. It sits BEHIND the
             <img> (earlier in DOM, both absolute) so it never covers the picture;
             the image itself is never opacity-gated, so a browser-cached image (e.g.
             a bubble remounted on chat switch) paints instantly with no flash. */}
-        {!imgLoaded && (
+        {!imgLoaded && !blocked && (
           <div className={s.shimmerWrap}>
             <div className={s.shimmer} />
           </div>
         )}
         {displaySrc ? <img ref={imgRef} className={s.img} src={displaySrc} alt="" decoding="async" onLoad={() => setImgLoaded(true)} onError={() => { void primeMediaToken(true) }} /> : null}
+        {blocked && (
+          <div className={s.play}>
+            <div className={s.playDisc}>
+              <TgIcon name="download" size={30} color="#fff" />
+            </div>
+          </div>
+        )}
         {isGif && (
           <div className={s.badgeTL}>
             <Text size={11} weight={700} color="#fff" style={{ letterSpacing: '0.04em' }}>GIF</Text>
           </div>
         )}
-        {isVideo && (
+        {isVideo && !blocked && (
           <div className={s.play}>
             <div className={s.playDisc}>
               <TgIcon name="play" size={34} color="#fff" />

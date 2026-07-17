@@ -34,6 +34,7 @@ import { useChannelExtras } from '../core/hooks/useChannelExtras'
 import { useFeedReveal } from '../core/hooks/useFeedReveal'
 import Composer from './Composer'
 import ChatFeed from './messages/ChatFeed'
+import { useChatAutoDownload } from '../core/hooks/useChatAutoDownload'
 import ChatHeader from './conversation/ChatHeader'
 import PinnedBar from './conversation/PinnedBar'
 import ScrollDownFab from './conversation/ScrollDownFab'
@@ -93,6 +94,8 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const narrow = useMediaQuery('(max-width:900px)')
   const isChannel = chat.type === 'channel'
   const isGroup = chat.type === 'group'
+  // Автозагрузка медиа для этого чата (tweb chat.autoDownload)
+  const autoDownload = useChatAutoDownload(chat.type, chat.peerId)
 
   const numericChatId = Number(chat.id)
   const isRealChat = Number.isFinite(numericChatId) && String(numericChatId) === chat.id
@@ -439,6 +442,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               <ChatFeed
                 msgs={msgs}
                 winMsgs={win.msgs}
+                autoDownload={autoDownload}
                 isRealChat={isRealChat}
                 isGroup={isGroup}
                 discussionsEnabled={discussionsEnabled}

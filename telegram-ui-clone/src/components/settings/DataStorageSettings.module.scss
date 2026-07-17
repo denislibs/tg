@@ -1,0 +1,102 @@
+// «Данные и память» — локальные ряды секции хранения, range-селекторы
+// (tweb .range-setting-selector) и confirm-диалог.
+
+// ряд «Кэшированные файлы 120.1 МБ [Удалить]»
+.quotaRow {
+  display: flex;
+  align-items: center;
+  padding: 7px 16px;
+  min-height: 56px;
+}
+
+.quotaIcon {
+  width: 40px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  color: var(--tg-textSecondary);
+}
+
+.quotaBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.clearBtn {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+    }
+  }
+}
+
+// tweb .range-setting-selector: имя слева, значение справа, слайдер снизу
+.range {
+  padding: 9px 16px 12px;
+}
+
+.rangeDetails {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.rangeSlider {
+  width: 100%;
+}
+
+// ряды с чекбоксом слева блокируются при выключенной автозагрузке (tweb .is-disabled)
+.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+// confirm-диалог (по образцу DeleteMessageDialog)
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.confirmCard {
+  width: min(360px, calc(100vw - 32px));
+  border-radius: 16px;
+  background: var(--tg-sidebarBg);
+  padding: 20px 24px 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+}
+
+.confirmActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 16px;
+}
+
+.confirmAction {
+  padding: 8px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 600;
+  color: var(--tg-accent);
+  text-transform: uppercase;
+  font-size: 14px;
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+    }
+  }
+}

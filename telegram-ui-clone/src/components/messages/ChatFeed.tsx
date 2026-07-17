@@ -12,6 +12,7 @@ import { peerColor } from '../peerColor'
 import { useLang } from '../../i18n'
 import { startOfDayMs, dayLabel } from '../../core/dayLabel'
 import MessageRow, { type FeedFns } from './MessageRow'
+import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import type { ConvMsg } from '../../data'
 import type { Message } from '../../core/models'
 import s from './ChatFeed.module.scss'
@@ -30,13 +31,15 @@ export interface ChatFeedProps {
   // top offset for the sticky date pill (header + player plate + pinned bar)
   dateStickyTop: number
   feedFns: FeedFns
+  // Автозагрузка медиа для этого чата (tweb chat.autoDownload)
+  autoDownload?: ChatAutoDownload
   onOpenDiscussion: (postId: number, text?: string) => void
 }
 
 function ChatFeed({
   msgs, winMsgs, isRealChat, isGroup, discussionsEnabled, commentCounts,
   highlightSeq, selecting, selected, ladderActive, dateStickyTop,
-  feedFns, onOpenDiscussion,
+  feedFns, autoDownload, onOpenDiscussion,
 }: ChatFeedProps) {
   const [lang] = useLang()
 
@@ -165,6 +168,7 @@ function ChatFeed({
         ladderActive={ladderActive}
         ladderDelay={ladderDelay}
         feedFns={feedFns}
+        autoDownload={autoDownload}
         footer={footer}
       />
     )

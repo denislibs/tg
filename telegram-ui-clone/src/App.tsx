@@ -15,6 +15,7 @@ import CallOverlay from './components/call/CallOverlay'
 import PasscodeLockScreen from './components/PasscodeLockScreen'
 import { useLockStore } from './stores/lockStore'
 import { lockOnStartIfEnabled } from './core/passcode'
+import { syncCacheSettingsToSW } from './core/mediaCache'
 import AuthFlow from './components/auth/AuthFlow'
 import { useT } from './i18n'
 import type { Chat, OpenPeer } from './data'
@@ -62,6 +63,9 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     void loadPrivacy(managers)
     lockOnStartIfEnabled()
     void primeMediaToken() // cache the media token so media bubbles build URLs sync
+    // SW чистит медиакэш по TTL/лимиту при получении настроек (tweb clearOldCache)
+    const { cacheTTL, cacheSize } = useSettingsStore.getState()
+    syncCacheSettingsToSW(cacheTTL, cacheSize)
     startRealtime()
     // offline-уведомления (web push) подписываем только если не выключены в настройках
     if (useSettingsStore.getState().notifyPush) void setupPush()

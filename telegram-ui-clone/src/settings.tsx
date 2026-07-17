@@ -41,7 +41,28 @@ export interface Settings {
   // (0 — выключен). Хеш и соль лежат в IndexedDB (core/passcode.ts).
   passcodeEnabled: boolean
   passcodeAutoLockMins: number
+  // Автозагрузка медиа (tweb autoDownload/autoDownloadNew): общий выключатель,
+  // по типам чатов для фото/видео/файлов, лимит размера файла (байты).
+  autoDownloadEnabled: boolean
+  autoDownloadPhoto: AutoDownloadPeerTypes
+  autoDownloadVideo: AutoDownloadPeerTypes
+  autoDownloadFile: AutoDownloadPeerTypes
+  autoDownloadFileSizeMax: number
+  // Медиакэш (tweb cacheTTL/cacheSize): очищать старше N секунд; лимит размера
+  // в байтах (0 = Авто, без лимита).
+  cacheTTL: number
+  cacheSize: number
 }
+
+// Галочки автозагрузки по типам чатов (tweb AutoDownloadPeerTypeSettings).
+export interface AutoDownloadPeerTypes {
+  contacts: boolean
+  private: boolean
+  groups: boolean
+  channels: boolean
+}
+
+const AUTO_DOWNLOAD_ALL: AutoDownloadPeerTypes = { contacts: true, private: true, groups: true, channels: true }
 
 const DEFAULTS: Settings = {
   themeChoice: 'system',
@@ -64,6 +85,13 @@ const DEFAULTS: Settings = {
   tabsInSidebar: false,
   passcodeEnabled: false,
   passcodeAutoLockMins: 0,
+  autoDownloadEnabled: true,
+  autoDownloadPhoto: { ...AUTO_DOWNLOAD_ALL },
+  autoDownloadVideo: { ...AUTO_DOWNLOAD_ALL },
+  autoDownloadFile: { ...AUTO_DOWNLOAD_ALL },
+  autoDownloadFileSizeMax: 3145728, // 3 МБ (tweb autoDownloadNew.file_size_max)
+  cacheTTL: 86400 * 7, // неделя (tweb SETTINGS_INIT.cacheTTL)
+  cacheSize: 0, // Авто (tweb SETTINGS_INIT.cacheSize)
 }
 
 const KEY = 'tg-settings'
@@ -114,6 +142,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       tabsInSidebar: s.tabsInSidebar,
       passcodeEnabled: s.passcodeEnabled,
       passcodeAutoLockMins: s.passcodeAutoLockMins,
+      autoDownloadEnabled: s.autoDownloadEnabled,
+      autoDownloadPhoto: s.autoDownloadPhoto,
+      autoDownloadVideo: s.autoDownloadVideo,
+      autoDownloadFile: s.autoDownloadFile,
+      autoDownloadFileSizeMax: s.autoDownloadFileSizeMax,
+      cacheTTL: s.cacheTTL,
+      cacheSize: s.cacheSize,
     }
     try {
       localStorage.setItem(KEY, JSON.stringify(toSave))

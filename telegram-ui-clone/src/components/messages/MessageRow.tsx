@@ -39,6 +39,7 @@ import { fmtViews } from '../../core/fmtViews'
 import { useT } from '../../i18n'
 import { useSettings, useTimeFormatter } from '../../settings'
 import type { ConvMsg } from '../../data'
+import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import s from './MessageRow.module.scss'
 
 // Радиус media/voice-бабла: скруглён везде, кроме хвостового угла последнего в группе.
@@ -87,6 +88,8 @@ export interface MessageRowProps {
   ladderActive: boolean
   ladderDelay: number
   feedFns: FeedFns
+  // Автозагрузка медиа для этого чата (tweb chat.autoDownload); 0 = по клику.
+  autoDownload?: ChatAutoDownload
   // Optional slot rendered at the bottom of the bubble (channel post replies-footer).
   footer?: ReactNode
 }
@@ -94,7 +97,7 @@ export interface MessageRowProps {
 function MessageRow({
   m, seq, out, firstInGroup, lastInGroup,
   selecting, isSelected, isHighlighted, ladderActive, ladderDelay,
-  feedFns, footer,
+  feedFns, autoDownload, footer,
 }: MessageRowProps) {
   const { textSize } = useSettings()
   const t = useT()
@@ -196,6 +199,7 @@ function MessageRow({
                 status={m.status}
                 tickColor="var(--b-tick)"
                 onOpen={feedFns.openLightbox}
+                autoDownload={autoDownload}
                 radius={(m.type === 'photo' || m.type === 'video') ? (m.text ? '14px 14px 0 0' : '14px') : undefined}
               />
               {m.text ? (
