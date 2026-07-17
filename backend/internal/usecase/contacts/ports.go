@@ -15,3 +15,9 @@ type ContactsRepo interface {
 	List(ctx context.Context, ownerID int64) ([]domain.Contact, error)
 	Delete(ctx context.Context, ownerID, userID int64) (found bool, err error)
 }
+
+// PrivacyChecker решает батчем, видит ли viewer аспект key владельцев
+// (usecase/privacy). Опционален: без него телефоны контактов не фильтруются.
+type PrivacyChecker interface {
+	VisibleMap(ctx context.Context, viewerID int64, ownerIDs []int64, key domain.PrivacyKey) (map[int64]bool, error)
+}

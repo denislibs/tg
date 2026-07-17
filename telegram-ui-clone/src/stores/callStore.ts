@@ -6,7 +6,9 @@
 import { create } from 'zustand'
 
 export type CallPhase = 'outgoing' | 'incoming' | 'connecting' | 'active' | 'ended'
-export type CallEndReason = 'hangup' | 'declined' | 'busy' | 'missed' | 'failed'
+// 'privacy' — получатель запретил звонки настройками конфиденциальности
+// (сервер сразу отвечает call_decline reason=privacy, адресат ничего не видит)
+export type CallEndReason = 'hangup' | 'declined' | 'busy' | 'missed' | 'failed' | 'privacy'
 
 export interface CallPeer {
   id: number

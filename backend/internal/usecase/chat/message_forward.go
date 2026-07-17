@@ -36,6 +36,24 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 	}
 
 	senderName := i.userCard(ctx, in.SenderID).ShortName()
+	// Правило автора «кто может ссылаться на мой аккаунт при пересылке»:
+	// при запрете вместо ссылки (fwd_from_user_id) сохраняется только имя
+	// текстом (fwd_from_name), как tweb fwd_from.from_name. Кэш на автора.
+	linkAllowed := map[int64]bool{}
+	canLink := func(authorID int64) bool {
+		if i.privacy == nil {
+			return true
+		}
+		if ok, cached := linkAllowed[authorID]; cached {
+			return ok
+		}
+		ok, err := i.privacy.Check(ctx, authorID, in.SenderID, domain.PrivacyForwards)
+		if err != nil {
+			ok = true // best-effort: при сбое проверки атрибуцию не прячем
+		}
+		linkAllowed[authorID] = ok
+		return ok
+	}
 	var created []domain.Message
 	var members []int64
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
@@ -71,6 +89,16 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 			if fwdDate == nil {
 				fwdDate = &src.CreatedAt
 			}
+			// Уже скрытая атрибуция едет дальше как имя; иначе правило forwards
+			// автора решает — ссылка или только имя.
+			fwdName := src.FwdFromName
+			if fwdName == nil && !canLink(*fwdUser) {
+				name := i.userCard(ctx, *fwdUser).ShortName()
+				fwdName = &name
+			}
+			if fwdName != nil {
+				fwdUser, fwdChat, fwdMsg = nil, nil, nil
+			}
 
 			seq, e := i.msgs.NextSeq(ctx, in.ToChatID)
 			if e != nil {
@@ -80,6 +108,7 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 				ChatID: in.ToChatID, Seq: seq, SenderID: in.SenderID,
 				Type: src.Type, Text: src.Text, Entities: src.Entities, MediaID: src.MediaID,
 				FwdFromUserID: fwdUser, FwdFromChatID: fwdChat, FwdFromMsgID: fwdMsg, FwdDate: fwdDate,
+				FwdFromName: fwdName,
 			})
 			if e != nil {
 				return e

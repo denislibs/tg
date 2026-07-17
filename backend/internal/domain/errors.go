@@ -10,4 +10,7 @@ var (
 	ErrConflict    = errors.New("conflict") // e.g. username already taken
 	ErrTooLong     = errors.New("too long") // message text / payload exceeds the allowed size
 	ErrSlowmode    = errors.New("slowmode") // медленный режим: подождите перед следующим сообщением
+	// ErrPrivacy: действие запрещено настройками конфиденциальности получателя
+	// (кто может писать/звонить/приглашать) или блокировкой (чёрный список).
+	ErrPrivacy = errors.New("privacy restricted")
 )

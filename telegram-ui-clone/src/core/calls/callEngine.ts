@@ -99,7 +99,7 @@ function logCallMessage(reason: CallEndReason) {
   const mapped: 'ok' | 'missed' | 'busy' | 'cancelled' =
     duration != null ? 'ok'
     : reason === 'missed' ? 'missed'
-    : reason === 'busy' ? 'busy'
+    : reason === 'busy' || reason === 'privacy' ? 'busy'
     : 'cancelled'
   const text = JSON.stringify({ video: call.video, reason: mapped, duration })
   const clientMsgId = crypto.randomUUID()
@@ -116,7 +116,7 @@ function finish(reason: CallEndReason) {
   const call = store().call
   if (!call || call.phase === 'ended') return
   logCallMessage(reason)
-  playSound(reason === 'busy' || reason === 'declined' ? 'call_busy' : 'call_end')
+  playSound(reason === 'busy' || reason === 'declined' || reason === 'privacy' ? 'call_busy' : 'call_end')
   store().patch({ phase: 'ended', endReason: reason, localStream: null, remoteStream: null })
   setTimeout(() => {
     const cur = store().call
@@ -470,7 +470,7 @@ export function handleFrame(evt: CallFrameEvt) {
       break
     case 'call_decline':
       clearRingTimer()
-      finish(d.reason === 'busy' ? 'busy' : 'declined')
+      finish(d.reason === 'busy' ? 'busy' : d.reason === 'privacy' ? 'privacy' : 'declined')
       break
     case 'call_end':
       finish('hangup')

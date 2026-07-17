@@ -162,6 +162,14 @@ type EventPublisher interface {
 	PublishToUser(ctx context.Context, userID int64, frame []byte) error
 }
 
+// PrivacyChecker решает вопросы конфиденциальности (usecase/privacy): может ли
+// viewer писать/звонить/приглашать owner'а, видит ли его фото. Опционален —
+// без него ограничения не применяются.
+type PrivacyChecker interface {
+	Check(ctx context.Context, ownerID, viewerID int64, key domain.PrivacyKey) (bool, error)
+	VisibleMap(ctx context.Context, viewerID int64, ownerIDs []int64, key domain.PrivacyKey) (map[int64]bool, error)
+}
+
 type ChannelPublisher interface {
 	PublishToChannel(ctx context.Context, channelID int64, frame []byte) error
 }

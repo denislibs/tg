@@ -35,6 +35,9 @@ type Message struct {
 	FwdFromChatID *int64
 	FwdFromMsgID  *int64
 	FwdDate       *time.Time
+	// FwdFromName — скрытая атрибуция пересылки (privacy forwards): вместо
+	// ссылки на аккаунт хранится только имя автора текстом (tweb fwd_from.from_name).
+	FwdFromName *string
 	// ReplyTo is a lightweight preview of the replied-to message, populated by
 	// the history read model (not stored). Nil when this isn't a reply.
 	ReplyTo *ReplyPreview

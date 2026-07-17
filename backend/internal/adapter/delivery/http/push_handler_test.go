@@ -12,7 +12,7 @@ import (
 func TestPush_SubscribeAndVAPID_HTTP(t *testing.T) {
 	pool := postgres.NewTestDB(t)
 	pushH := NewPushHandler(pgadapter.NewPushRepo(pool), "TEST_PUBLIC_KEY")
-	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, pushH, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil)
+	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, pushH, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil)
 
 	token, _ := signUp(t, h, pool, "+79990000050")
 

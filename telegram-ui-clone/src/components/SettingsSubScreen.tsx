@@ -3,50 +3,21 @@ import { AnimatePresence } from 'framer-motion'
 import { useT, useLang, LANGS } from '../i18n'
 import { SettingsScreen, Section, Row } from './settings/kit'
 import ActiveSessions from './settings/ActiveSessions'
-import BlockedUsers from './settings/BlockedUsers'
-import TwoStepVerification from './settings/TwoStepVerification'
-import PrivacyRule from './settings/PrivacyRule'
 import AutoDownload from './settings/AutoDownload'
 import QuickReaction from './settings/QuickReaction'
 import PowerSaving from './settings/PowerSaving'
-import Passkeys from './settings/Passkeys'
 import LanguageSettings from './settings/LanguageSettings'
 import GeneralSettings from './settings/GeneralSettings'
 import SpeakersCamera from './settings/SpeakersCamera'
 import NotificationsSettings from './settings/NotificationsSettings'
 import ChatFoldersSettings from './folders/ChatFoldersSettings'
+import PrivacySecuritySettings from './settings/PrivacySecuritySettings'
 import type { Chat } from '../data'
 
 // Rows that open a dedicated sub-screen instead of being a plain value.
-const PRIVACY_RULES = new Set([
-  'Phone Number',
-  'Last Seen & Online',
-  'Profile Photo',
-  'Calls',
-  'Forwarded Messages',
-  'Groups & Channels',
-])
-const NAV = new Set<string>([
-  ...PRIVACY_RULES,
-  'Active Sessions',
-  'Blocked Users',
-  'Two-Step Verification',
-  'Passkeys',
-  'Power Saving',
-  'Quick Reaction',
-  'Auto-Download Media',
-])
+const NAV = new Set<string>(['Power Saving', 'Quick Reaction', 'Auto-Download Media'])
 function renderDedicated(label: string, onBack: () => void): ReactNode {
-  if (PRIVACY_RULES.has(label)) return <PrivacyRule title={label} onBack={onBack} />
   switch (label) {
-    case 'Active Sessions':
-      return <ActiveSessions onBack={onBack} />
-    case 'Blocked Users':
-      return <BlockedUsers onBack={onBack} />
-    case 'Two-Step Verification':
-      return <TwoStepVerification onBack={onBack} />
-    case 'Passkeys':
-      return <Passkeys onBack={onBack} />
     case 'Power Saving':
       return <PowerSaving onBack={onBack} />
     case 'Quick Reaction':
@@ -85,30 +56,6 @@ const SCREENS: Record<string, SSection[]> = {
         { label: 'Cached files', type: 'value', value: '212 MB' },
         { label: 'Cache time limit', type: 'value', value: '1 week' },
         { label: 'Clear cache', type: 'button', danger: true },
-      ],
-    },
-  ],
-  'Privacy and Security': [
-    {
-      caption: 'Security',
-      rows: [
-        { label: 'Blocked Users', type: 'value', value: '3' },
-        { label: 'Active Sessions', type: 'value', value: '4' },
-        { label: 'Auto-Delete Messages', type: 'value', value: 'Off' },
-        { label: 'Passcode Lock', type: 'value', value: 'Off' },
-        { label: 'Two-Step Verification', type: 'value', value: 'Off' },
-        { label: 'Passkeys', type: 'value', value: '2' },
-      ],
-    },
-    {
-      caption: 'Privacy',
-      rows: [
-        { label: 'Phone Number', type: 'value', value: 'My Contacts' },
-        { label: 'Last Seen & Online', type: 'value', value: 'Everybody' },
-        { label: 'Profile Photo', type: 'value', value: 'Everybody' },
-        { label: 'Calls', type: 'value', value: 'Everybody' },
-        { label: 'Forwarded Messages', type: 'value', value: 'Everybody' },
-        { label: 'Groups & Channels', type: 'value', value: 'Everybody' },
       ],
     },
   ],
@@ -178,7 +125,8 @@ export function hasSubScreen(title: string) {
     title === 'Devices' ||
     title === 'Speakers and Camera' ||
     title === 'Notifications and Sounds' ||
-    title === 'Chat Folders'
+    title === 'Chat Folders' ||
+    title === 'Privacy and Security'
   )
 }
 
@@ -230,6 +178,8 @@ export default function SettingsSubScreen({ title, onBack, chats }: { title: str
   if (title === 'Notifications and Sounds') return <NotificationsSettings onBack={onBack} />
   // Chat Folders — реальные папки чатов (tweb chatFolders)
   if (title === 'Chat Folders') return <ChatFoldersSettings onBack={onBack} chats={chats} />
+  // Privacy and Security — реальный раздел конфиденциальности (tweb privacyAndSecurity)
+  if (title === 'Privacy and Security') return <PrivacySecuritySettings onBack={onBack} />
 
   return (
     <SettingsScreen title={title} onBack={onBack} zIndex={50}>

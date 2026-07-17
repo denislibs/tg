@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+
+	"github.com/messenger-denis/backend/internal/domain"
 )
 
 // Publisher delivers a frame to a user's realtime channel (satisfied by the
@@ -16,6 +18,12 @@ type Publisher interface {
 
 // PartnersFunc returns the user ids that should see a user's presence.
 type PartnersFunc func(ctx context.Context, userID int64) ([]int64, error)
+
+// PrivacyChecker отвечает, видит ли viewer аспект key владельца ownerID
+// (usecase/privacy). Для presence используется ключ last_seen.
+type PrivacyChecker interface {
+	Check(ctx context.Context, ownerID, viewerID int64, key domain.PrivacyKey) (bool, error)
+}
 
 // PresenceStore abstracts the online/last-seen storage (Redis in prod).
 type PresenceStore interface {
@@ -31,11 +39,17 @@ type Manager struct {
 	pub      Publisher
 	partners PartnersFunc
 	ttl      time.Duration
+	privacy  PrivacyChecker
 }
 
 func NewManager(store PresenceStore, pub Publisher, partners PartnersFunc, ttl time.Duration) *Manager {
 	return &Manager{store: store, pub: pub, partners: partners, ttl: ttl}
 }
+
+// SetPrivacy подключает правило «кто видит время моего захода» (optional):
+// партнёрам вне правила уходит presence с online=false/last_seen=0
+// (клиент показывает «был(а) недавно», как Telegram).
+func (m *Manager) SetPrivacy(p PrivacyChecker) { m.privacy = p }
 
 // Online marks a user online. It fans out a presence(online) frame only on the
 // transition from offline → online (SET NX), so multiple devices/replicas don't
@@ -94,8 +108,23 @@ func (m *Manager) fanout(ctx context.Context, userID int64, online bool, lastSee
 		"t": "presence",
 		"d": map[string]any{"user_id": userID, "online": online, "last_seen": lastSeen},
 	})
+	// Партнёрам, которым правило last_seen не разрешает видеть статус, уходит
+	// «пустой» кадр — иначе их клиент оставил бы устаревший «online».
+	var hidden []byte
 	for _, p := range partners {
-		_ = m.pub.PublishToUser(ctx, p, frame)
+		f := frame
+		if m.privacy != nil {
+			if ok, err := m.privacy.Check(ctx, userID, p, domain.PrivacyLastSeen); err == nil && !ok {
+				if hidden == nil {
+					hidden, _ = json.Marshal(map[string]any{
+						"t": "presence",
+						"d": map[string]any{"user_id": userID, "online": false, "last_seen": int64(0)},
+					})
+				}
+				f = hidden
+			}
+		}
+		_ = m.pub.PublishToUser(ctx, p, f)
 	}
 	return nil
 }

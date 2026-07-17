@@ -33,6 +33,8 @@ import type { Message } from '../core/models'
 import MediaLightbox, { type LightboxItem } from './messages/MediaLightbox'
 import s from './UserInfoPanel.module.scss'
 import useMediaQuery from '../shared/lib/useMediaQuery'
+import { usePrivacyStore } from '../stores/privacyStore'
+import type { UserProfile } from '../core/managers/privacyManager'
 
 
 // «N участник(а/ов)» — склонение для подзаголовка профиля группы
@@ -67,6 +69,32 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
   const [editing, setEditing] = useState(false)
   const [addingMembers, setAddingMembers] = useState(false)
   const headerAvatarSrc = useAvatarSrc(chat.avatarUrl)
+
+  // Чужой профиль с применённой конфиденциальностью (GET /users/{id}):
+  // телефон/bio/день рождения приходят пустыми, если скрыты правилами.
+  const [profile, setProfile] = useState<UserProfile | null>(null)
+  const peerId = chat.peerId
+  useEffect(() => {
+    if (isSaved || peerId == null) return
+    let alive = true
+    void managers.privacy.profile(peerId).then((p) => {
+      if (alive) setProfile(p)
+    }).catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [isSaved, peerId, managers])
+
+  const toggleBlock = () => {
+    if (!profile || peerId == null) return
+    const next = !profile.isBlocked
+    setProfile({ ...profile, isBlocked: next }) // оптимистично
+    const op = next ? managers.privacy.block(peerId) : managers.privacy.unblock(peerId)
+    void op
+      .then(() => managers.privacy.blocked(0, 1))
+      .then((r) => usePrivacyStore.getState().setBlockedTotal(r.total))
+      .catch(() => setProfile(profile))
+  }
 
   // Тумблер Notifications = per-chat mute (tweb PeerProfile: checked = !muted,
   // переключение — togglePeerMute напрямую, без попапа длительности)
@@ -229,26 +257,41 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
               )
             ) : (
               <>
-                {/* Порядок строк — как в tweb peerProfile MainSection: Phone → Username → Bio.
-                    Телефон и bio — моки, пока бэк их не отдаёт. */}
-                <Row
-                  icon={<TgIcon name="phone" size={24} />}
-                  label="+7 999 000 11 22"
-                  sublabel={t('Phone')}
-                  translate={false}
-                />
-                <Row
-                  icon={<TgIcon name="mention" size={24} />}
-                  label={chat.username ?? chat.name.toLowerCase()}
-                  sublabel={t('Username')}
-                  translate={false}
-                />
-                <Row
-                  icon={<TgIcon name="info" size={24} />}
-                  label={chat.description ?? 'Люблю музыку, книги и путешествия'}
-                  sublabel={t('Bio')}
-                  translate={false}
-                />
+                {/* Порядок строк — как в tweb peerProfile MainSection: Phone →
+                    Username → Bio → Birthday. Данные — GET /users/{id} с уже
+                    применённой конфиденциальностью: скрытое сюда не приходит. */}
+                {profile?.phone && (
+                  <Row
+                    icon={<TgIcon name="phone" size={24} />}
+                    label={profile.phone}
+                    sublabel={t('Phone')}
+                    translate={false}
+                  />
+                )}
+                {(profile?.username ?? chat.username) && (
+                  <Row
+                    icon={<TgIcon name="mention" size={24} />}
+                    label={`@${profile?.username ?? chat.username}`}
+                    sublabel={t('Username')}
+                    translate={false}
+                  />
+                )}
+                {profile?.bio && (
+                  <Row
+                    icon={<TgIcon name="info" size={24} />}
+                    label={profile.bio}
+                    sublabel={t('Bio')}
+                    translate={false}
+                  />
+                )}
+                {profile?.birthday && (
+                  <Row
+                    icon={<TgIcon name="gift" size={24} />}
+                    label={profile.birthday}
+                    sublabel={t('Birthday')}
+                    translate={false}
+                  />
+                )}
               </>
             )}
             <Row
@@ -259,6 +302,19 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
               onClick={toggleNotifications}
             />
           </Section>
+          )}
+
+          {/* Чёрный список: блокировка/разблокировка собеседника (tweb Block user) */}
+          {!isSaved && !isGroup && !isChannel && profile && (
+            <Section>
+              <Row
+                icon={<TgIcon name={profile.isBlocked ? 'lockoff' : 'restrict'} size={24} />}
+                label={profile.isBlocked ? 'Unblock user' : 'Block user'}
+                danger={!profile.isBlocked}
+                accent={profile.isBlocked}
+                onClick={toggleBlock}
+              />
+            </Section>
           )}
 
           {/* Channel discussions: admin (creator/CHANGE_INFO) toggle / enabled state */}

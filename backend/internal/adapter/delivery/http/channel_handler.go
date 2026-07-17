@@ -11,9 +11,14 @@ import (
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 )
 
-type ChannelHandler struct{ uc *usecasechat.Interactor }
+type ChannelHandler struct {
+	uc      *usecasechat.Interactor
+	privacy PrivacyQuery
+}
 
-func NewChannelHandler(uc *usecasechat.Interactor) *ChannelHandler { return &ChannelHandler{uc: uc} }
+func NewChannelHandler(uc *usecasechat.Interactor, privacy PrivacyQuery) *ChannelHandler {
+	return &ChannelHandler{uc: uc, privacy: privacy}
+}
 
 func (h *ChannelHandler) mapErr(w http.ResponseWriter, err error) {
 	switch {
@@ -236,10 +241,26 @@ func (h *ChannelHandler) Search(w http.ResponseWriter, r *http.Request) {
 			"id": c.ID, "type": c.Type, "title": c.Title, "username": c.Username, "member_count": c.MemberCount,
 		})
 	}
+	// Аватар в выдаче поиска — по правилу profile_photo владельца.
+	viewer, _ := UserFromContext(r.Context())
+	photoOK := map[int64]bool{}
+	if h.privacy != nil && len(users) > 0 {
+		ids := make([]int64, 0, len(users))
+		for _, u := range users {
+			ids = append(ids, u.ID)
+		}
+		if v, err := h.privacy.VisibleMap(r.Context(), viewer.ID, ids, domain.PrivacyProfilePhoto); err == nil {
+			photoOK = v
+		}
+	}
 	uo := make([]map[string]any, 0, len(users))
 	for _, u := range users {
+		avatar := u.AvatarURL
+		if h.privacy != nil && !photoOK[u.ID] && u.ID != viewer.ID {
+			avatar = ""
+		}
 		uo = append(uo, map[string]any{
-			"id": u.ID, "username": u.Username, "display_name": u.DisplayName, "avatar_url": u.AvatarURL,
+			"id": u.ID, "username": u.Username, "display_name": u.DisplayName, "avatar_url": avatar,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"chats": co, "users": uo})

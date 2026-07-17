@@ -110,6 +110,17 @@ func (i *Interactor) AddMember(ctx context.Context, chatID, actorID, userID int6
 	if err := i.requirePermOrRight(ctx, chatID, actorID, domain.PermAddMembers, domain.RightInviteUsers); err != nil {
 		return err
 	}
+	// Настройка приглашаемого «кто может приглашать меня в группы» + чёрный
+	// список (tweb USER_PRIVACY_RESTRICTED).
+	if i.privacy != nil {
+		ok, err := i.privacy.Check(ctx, userID, actorID, domain.PrivacyChatInvite)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return domain.ErrPrivacy
+		}
+	}
 	if banned, err := i.groups.IsBanned(ctx, chatID, userID); err == nil && banned {
 		// Забаненного возвращает только админ с BAN_USERS (авторазбан, как в Telegram).
 		if err := i.requireRight(ctx, chatID, actorID, domain.RightBanUsers); err != nil {

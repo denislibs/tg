@@ -119,6 +119,8 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 				reason = "slowmode"
 			} else if errors.Is(err, domain.ErrForbidden) {
 				reason = "forbidden"
+			} else if errors.Is(err, domain.ErrPrivacy) {
+				reason = "privacy"
 			}
 			nack, _ := json.Marshal(map[string]any{
 				"t": "message_error",

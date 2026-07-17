@@ -17,6 +17,7 @@ import type { SearchResult } from '../core/managers/channelsManager'
 import type { Peer } from '../core/managers/peersManager'
 import type { StoryGroup } from '../core/managers/storiesManager'
 import type { Contact, AddContactInput } from '../core/managers/contactsManager'
+import type { PrivacyRule, BlockedUser, UserProfile } from '../core/managers/privacyManager'
 import type { Session } from '../core/managers/sessionsManager'
 import type { IceConfig } from '../core/managers/callsManager'
 
@@ -141,6 +142,14 @@ export interface Managers {
     add(input: AddContactInput): Promise<Contact>
     list(): Promise<Contact[]>
     del(contactId: number): Promise<void>
+  }
+  privacy: {
+    rules(): Promise<PrivacyRule[]>
+    setRule(rule: PrivacyRule): Promise<PrivacyRule>
+    blocked(offset?: number, limit?: number): Promise<{ users: BlockedUser[]; total: number }>
+    block(userId: number): Promise<void>
+    unblock(userId: number): Promise<void>
+    profile(userId: number): Promise<UserProfile>
   }
   sessions: {
     list(): Promise<Session[]>

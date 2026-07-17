@@ -24,6 +24,7 @@ import (
 	usecasemedia "github.com/messenger-denis/backend/internal/usecase/media"
 	usecasenotify "github.com/messenger-denis/backend/internal/usecase/notify"
 	usecasepresence "github.com/messenger-denis/backend/internal/usecase/presence"
+	usecaseprivacy "github.com/messenger-denis/backend/internal/usecase/privacy"
 	usecasepublic "github.com/messenger-denis/backend/internal/usecase/public"
 	usecasepush "github.com/messenger-denis/backend/internal/usecase/push"
 	storyusecase "github.com/messenger-denis/backend/internal/usecase/story"
@@ -58,6 +59,12 @@ func registerServer(p serverParams) {
 		p.AuthUC.SetGeoResolver(p.GeoIP)
 	}
 
+	// Конфиденциальность: правила «кто видит/может» + чёрный список. Гейтит
+	// отправку/звонки/приглашения в чате, телефоны контактов и last seen.
+	privacyUC := usecaseprivacy.New(pgadapter.NewPrivacyRepo(p.Pool))
+	p.ChatUC.SetPrivacy(privacyUC)
+	p.ContactsUC.SetPrivacy(privacyUC)
+
 	var wsHandler http.Handler
 	var presenceMgr *usecasepresence.Manager
 	if p.Redis.OK {
@@ -68,6 +75,7 @@ func registerServer(p serverParams) {
 		p.ChatUC.SetChannelPublisher(publisher)
 		p.AuthUC.SetRevocationNotifier(publisher)
 		presenceMgr = usecasepresence.NewManager(rtredis.NewPresenceStore(p.Redis.Client), publisher, p.ChatUC.ChatPartners, 35*time.Second)
+		presenceMgr.SetPrivacy(privacyUC)
 		hub := ws.NewHub(p.Ctx, p.Redis.Client)
 		p.LC.Append(fx.Hook{OnStop: func(context.Context) error { return hub.Close() }})
 		wsHandler = ws.NewHandler(hub, p.AuthUC, p.ChatUC, presenceMgr)
@@ -113,7 +121,7 @@ func registerServer(p serverParams) {
 
 	srv := &http.Server{
 		Addr:              p.Cfg.HTTPAddr,
-		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC, foldersUC, pubH),
+		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC, foldersUC, pubH, privacyUC),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}

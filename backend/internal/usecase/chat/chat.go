@@ -25,6 +25,7 @@ type Interactor struct {
 	publisher   EventPublisher
 	chPub       ChannelPublisher
 	notifier    PushNotifier
+	privacy     PrivacyChecker
 }
 
 // New constructs the chat interactor from its ports.
@@ -55,6 +56,9 @@ func (i *Interactor) SetChannelPublisher(p ChannelPublisher) { i.chPub = p }
 
 // SetNotifier attaches a push notifier (optional).
 func (i *Interactor) SetNotifier(n PushNotifier) { i.notifier = n }
+
+// SetPrivacy подключает проверки конфиденциальности (optional).
+func (i *Interactor) SetPrivacy(p PrivacyChecker) { i.privacy = p }
 
 // nowMillis is the server clock used for update dates.
 func nowMillis() int64 { return time.Now().UnixMilli() }
@@ -144,9 +148,32 @@ func (i *Interactor) PostServiceMessage(ctx context.Context, toUserID int64, tex
 
 // NotifyNewLogin posts a security notification to the user's service chat (satisfies
 // auth.ServiceNotifier). Called best-effort after a new device signs in.
-// ListDialogs returns the user's chat list.
+// ListDialogs returns the user's chat list. Аватар пира скрывается, когда его
+// privacy-правило profile_photo не разрешает показ этому пользователю.
 func (i *Interactor) ListDialogs(ctx context.Context, userID int64) ([]domain.Dialog, error) {
-	return i.chats.ListDialogs(ctx, userID)
+	dialogs, err := i.chats.ListDialogs(ctx, userID)
+	if err != nil || i.privacy == nil {
+		return dialogs, err
+	}
+	peerIDs := make([]int64, 0, len(dialogs))
+	for _, d := range dialogs {
+		if d.Peer != nil {
+			peerIDs = append(peerIDs, d.Peer.ID)
+		}
+	}
+	if len(peerIDs) == 0 {
+		return dialogs, nil
+	}
+	vis, err := i.privacy.VisibleMap(ctx, userID, peerIDs, domain.PrivacyProfilePhoto)
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range dialogs {
+		if d.Peer != nil && !vis[d.Peer.ID] {
+			d.Peer.AvatarURL = ""
+		}
+	}
+	return dialogs, nil
 }
 
 // ChatPartners returns the user ids that share a chat with userID.

@@ -64,6 +64,7 @@ export default function CallScreen() {
   const endLabel: Record<string, string> = {
     hangup: t('Call ended'), declined: t('Declined'), busy: t('Busy'),
     missed: t('No answer'), failed: t('Failed'),
+    privacy: t("This user doesn't accept calls"),
   }
   const status =
     call.phase === 'incoming' ? (call.video ? t('Incoming video call') : t('Incoming call'))

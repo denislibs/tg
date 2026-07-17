@@ -24,7 +24,7 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 		"media_id": m.MediaID, "created_at": m.CreatedAt,
 		"reply_to_id":      m.ReplyToID,
 		"fwd_from_user_id": m.FwdFromUserID, "fwd_from_chat_id": m.FwdFromChatID,
-		"fwd_from_msg_id": m.FwdFromMsgID, "fwd_date": m.FwdDate,
+		"fwd_from_msg_id": m.FwdFromMsgID, "fwd_date": m.FwdDate, "fwd_from_name": m.FwdFromName,
 		"media_unread": m.MediaUnread, "sender_name": m.SenderName,
 	}
 }

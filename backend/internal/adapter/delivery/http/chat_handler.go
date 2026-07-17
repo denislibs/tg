@@ -150,6 +150,10 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusTooManyRequests, "slowmode")
 		return
 	}
+	if errors.Is(err, domain.ErrPrivacy) {
+		writeError(w, http.StatusForbidden, "privacy")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "send failed")
 		return
@@ -540,7 +544,7 @@ func messageJSON(m domain.Message) map[string]any {
 		"created_at": m.CreatedAt, "deleted": m.Deleted,
 		"edited_at":        m.EditedAt,
 		"fwd_from_user_id": m.FwdFromUserID, "fwd_from_chat_id": m.FwdFromChatID,
-		"fwd_from_msg_id": m.FwdFromMsgID, "fwd_date": m.FwdDate,
+		"fwd_from_msg_id": m.FwdFromMsgID, "fwd_date": m.FwdDate, "fwd_from_name": m.FwdFromName,
 		"views": m.Views, "media_unread": m.MediaUnread,
 	}
 	if len(m.Entities) > 0 {

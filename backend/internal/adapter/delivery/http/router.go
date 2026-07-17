@@ -11,12 +11,20 @@ import (
 	usecasecontacts "github.com/messenger-denis/backend/internal/usecase/contacts"
 	usecasefolders "github.com/messenger-denis/backend/internal/usecase/folders"
 	usecasenotify "github.com/messenger-denis/backend/internal/usecase/notify"
+	usecaseprivacy "github.com/messenger-denis/backend/internal/usecase/privacy"
 )
 
-func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler, notifyUC *usecasenotify.Interactor, foldersUC *usecasefolders.Interactor, pubH *PublicHandler) http.Handler {
+func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler, notifyUC *usecasenotify.Interactor, foldersUC *usecasefolders.Interactor, pubH *PublicHandler, privacyUC *usecaseprivacy.Interactor) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+
+	// Privacy как read-model-шов для хендлеров (аватар/онлайн с учётом правил);
+	// typed-nil не заворачиваем в интерфейс, чтобы nil-проверки работали.
+	var privacyQ PrivacyQuery
+	if privacyUC != nil {
+		privacyQ = privacyUC
+	}
 
 	authH := NewAuthHandler(authUC)
 	r.Post("/auth/request_code", authH.RequestCode)
@@ -62,6 +70,16 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/me/notify_settings", nh.Get)
 		pr.Put("/me/notify_settings", nh.Update)
 
+		if privacyUC != nil {
+			pvh := NewPrivacyHandler(privacyUC)
+			pr.Get("/me/privacy", pvh.Rules)
+			pr.Put("/me/privacy/{key}", pvh.SetRule)
+			pr.Get("/me/blocked", pvh.Blocked)
+			pr.Post("/me/blocked", pvh.Block)
+			pr.Delete("/me/blocked/{userID}", pvh.Unblock)
+			pr.Get("/users/{userID}", pvh.Profile)
+		}
+
 		if foldersUC != nil {
 			fh := NewFoldersHandler(foldersUC)
 			pr.Get("/me/folders", fh.List)
@@ -92,7 +110,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Delete("/chats/{chatID}/messages/{msgID}/reactions/{emoji}", ch.RemoveReaction)
 		pr.Get("/chats/{chatID}/messages/{msgID}/reactions", ch.ListReactions)
 
-		gh := NewGroupHandler(chatUC, memberPresence)
+		gh := NewGroupHandler(chatUC, memberPresence, privacyQ)
 		pr.Post("/groups", gh.CreateGroup)
 		pr.Get("/chats/{chatID}/card", gh.Card)
 		pr.Get("/chats/{chatID}/members", gh.ListMembers)
@@ -120,10 +138,10 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Post("/chats/{chatID}/join_requests/{userID}/decline", gh.DeclineJoinRequest)
 		pr.Get("/users", gh.Users)
 
-		presenceH := NewPresenceHandler(memberPresence)
+		presenceH := NewPresenceHandler(memberPresence, privacyQ)
 		pr.Get("/presence", presenceH.Get)
 
-		chh := NewChannelHandler(chatUC)
+		chh := NewChannelHandler(chatUC, privacyQ)
 		pr.Post("/channels", chh.Create)
 		pr.Post("/channels/{chatID}/messages", chh.Post)
 		pr.Get("/channels/{chatID}/difference", chh.Difference)

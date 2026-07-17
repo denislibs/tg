@@ -48,6 +48,11 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		if err := i.checkSendAllowed(ctx, in); err != nil {
 			return domain.Message{}, err
 		}
+		// Приватный чат: настройки получателя «кто может отправлять мне
+		// сообщения / голосовые» + чёрный список.
+		if err := i.checkPrivateSendPrivacy(ctx, in); err != nil {
+			return domain.Message{}, err
+		}
 	}
 
 	// Sender's short name rides along in the new_message payload so clients can
@@ -252,14 +257,70 @@ func (i *Interactor) ReadMedia(ctx context.Context, chatID, userID, msgID int64)
 	return nil
 }
 
+// checkPrivateSendPrivacy применяет к отправке в приватный чат правила
+// получателя «кто может отправлять мне сообщения/голосовые» и чёрный список
+// (заблокированный отправитель получает message_error reason=privacy).
+func (i *Interactor) checkPrivateSendPrivacy(ctx context.Context, in SendInput) error {
+	if i.privacy == nil {
+		return nil
+	}
+	typ, err := i.chats.ChatType(ctx, in.ChatID)
+	if err != nil {
+		return err
+	}
+	if typ != "private" {
+		return nil
+	}
+	members, err := i.chats.MemberIDs(ctx, in.ChatID)
+	if err != nil {
+		return err
+	}
+	var peer int64
+	for _, id := range members {
+		if id != in.SenderID {
+			peer = id
+		}
+	}
+	if peer == 0 { // «Избранное»/self — ограничений нет
+		return nil
+	}
+	keys := []domain.PrivacyKey{domain.PrivacyMessages}
+	if in.Type == "voice" || in.Type == "roundVideo" {
+		keys = append(keys, domain.PrivacyVoices)
+	}
+	for _, key := range keys {
+		ok, err := i.privacy.Check(ctx, peer, in.SenderID, key)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return domain.ErrPrivacy
+		}
+	}
+	return nil
+}
+
 // RelayCall forwards a 1:1 call signaling frame (call_request / call_accept /
 // call_decline / call_end / call_signal) to every device of the callee. The
 // server only relays — media is DTLS-encrypted peer-to-peer, so payloads stay
 // opaque. The sender id is stamped server-side so it can't be spoofed.
 // Ephemeral like Typing: no DB write, no-op without a publisher.
+// call_request дополнительно гейтится правилом «кто может мне звонить» +
+// чёрным списком: запрещённый вызов сразу отвечает инициатору call_decline
+// reason=privacy (адресат ничего не видит, как в Telegram).
 func (i *Interactor) RelayCall(ctx context.Context, frameType string, fromUserID, toUserID int64, data map[string]any) error {
 	if i.publisher == nil || toUserID == 0 || toUserID == fromUserID {
 		return nil
+	}
+	if frameType == "call_request" && i.privacy != nil {
+		ok, err := i.privacy.Check(ctx, toUserID, fromUserID, domain.PrivacyCalls)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			decline := frame("call_decline", map[string]any{"from_user_id": toUserID, "reason": "privacy"})
+			return i.publisher.PublishToUser(ctx, fromUserID, decline)
+		}
 	}
 	if data == nil {
 		data = map[string]any{}

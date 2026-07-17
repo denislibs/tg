@@ -27,16 +27,19 @@ type PresenceQuery interface {
 type GroupHandler struct {
 	uc       *usecasechat.Interactor
 	presence PresenceQuery
+	privacy  PrivacyQuery
 }
 
-func NewGroupHandler(uc *usecasechat.Interactor, presence PresenceQuery) *GroupHandler {
-	return &GroupHandler{uc: uc, presence: presence}
+func NewGroupHandler(uc *usecasechat.Interactor, presence PresenceQuery, privacy PrivacyQuery) *GroupHandler {
+	return &GroupHandler{uc: uc, presence: presence, privacy: privacy}
 }
 
 func (h *GroupHandler) mapErr(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, domain.ErrForbidden):
 		writeError(w, http.StatusForbidden, "forbidden")
+	case errors.Is(err, domain.ErrPrivacy):
+		writeError(w, http.StatusForbidden, "privacy")
 	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not found")
 	default:
@@ -442,10 +445,23 @@ func (h *GroupHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
+	// Онлайн показывается только тем, кому участник разрешил видеть last seen
+	// (иначе — «был(а) недавно» на клиенте).
+	viewer, _ := UserFromContext(r.Context())
+	seen := map[int64]bool{}
+	if h.privacy != nil {
+		ids := make([]int64, 0, len(members))
+		for _, m := range members {
+			ids = append(ids, m.UserID)
+		}
+		if v, err := h.privacy.VisibleMap(r.Context(), viewer.ID, ids, domain.PrivacyLastSeen); err == nil {
+			seen = v
+		}
+	}
 	out := make([]map[string]any, 0, len(members))
 	for _, m := range members {
 		online := false
-		if h.presence != nil {
+		if h.presence != nil && (h.privacy == nil || seen[m.UserID] || m.UserID == viewer.ID) {
 			online, _ = h.presence.IsOnline(r.Context(), m.UserID)
 		}
 		out = append(out, map[string]any{"user_id": m.UserID, "role": m.Role, "online": online})
@@ -469,9 +485,21 @@ func (h *GroupHandler) Users(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
+	// Аватар скрывается по правилу profile_photo владельца.
+	viewer, _ := UserFromContext(r.Context())
+	photoOK := map[int64]bool{}
+	if h.privacy != nil && len(ids) > 0 {
+		if v, err := h.privacy.VisibleMap(r.Context(), viewer.ID, ids, domain.PrivacyProfilePhoto); err == nil {
+			photoOK = v
+		}
+	}
 	out := make([]map[string]any, 0, len(cards))
 	for _, c := range cards {
-		out = append(out, map[string]any{"id": c.ID, "username": c.Username, "display_name": c.DisplayName, "avatar_url": c.AvatarURL})
+		avatar := c.AvatarURL
+		if h.privacy != nil && !photoOK[c.ID] && c.ID != viewer.ID {
+			avatar = ""
+		}
+		out = append(out, map[string]any{"id": c.ID, "username": c.Username, "display_name": c.DisplayName, "avatar_url": avatar})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"users": out})
 }

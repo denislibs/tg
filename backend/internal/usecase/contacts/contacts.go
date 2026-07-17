@@ -16,9 +16,15 @@ var ErrNameRequired = errors.New("first name is required")
 var ErrSelfContact = errors.New("cannot add yourself as a contact")
 
 // Interactor is the contacts application service.
-type Interactor struct{ repo ContactsRepo }
+type Interactor struct {
+	repo    ContactsRepo
+	privacy PrivacyChecker
+}
 
 func New(repo ContactsRepo) *Interactor { return &Interactor{repo: repo} }
+
+// SetPrivacy подключает фильтр видимости телефонов (optional).
+func (i *Interactor) SetPrivacy(p PrivacyChecker) { i.privacy = p }
 
 // AddInput is the payload for saving (or editing) a contact.
 type AddInput struct {
@@ -50,9 +56,27 @@ func (i *Interactor) Add(ctx context.Context, ownerID int64, in AddInput) (domai
 	})
 }
 
-// List returns ownerID's address book, ordered by saved name.
+// List returns ownerID's address book, ordered by saved name. Телефон контакта
+// скрывается, когда его правило «кто видит мой номер» не разрешает показ.
 func (i *Interactor) List(ctx context.Context, ownerID int64) ([]domain.Contact, error) {
-	return i.repo.List(ctx, ownerID)
+	list, err := i.repo.List(ctx, ownerID)
+	if err != nil || i.privacy == nil || len(list) == 0 {
+		return list, err
+	}
+	ids := make([]int64, 0, len(list))
+	for _, c := range list {
+		ids = append(ids, c.UserID)
+	}
+	vis, err := i.privacy.VisibleMap(ctx, ownerID, ids, domain.PrivacyPhoneNumber)
+	if err != nil {
+		return nil, err
+	}
+	for idx := range list {
+		if !vis[list[idx].UserID] {
+			list[idx].Phone = ""
+		}
+	}
+	return list, nil
 }
 
 // Delete removes a contact from ownerID's address book; found is false when there

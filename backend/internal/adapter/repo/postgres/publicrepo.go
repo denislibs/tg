@@ -27,11 +27,19 @@ var avatarMediaRe = regexp.MustCompile(`/media/(\d+)/content`)
 func (r *PublicRepo) Resolve(ctx context.Context, username string) (domain.PublicProfile, error) {
 	q := querier(ctx, r.pool)
 
+	// Публичная страница анонимна: bio и фото показываются только при
+	// privacy-правиле everybody (отсутствие строки = дефолт everybody).
 	var p domain.PublicProfile
 	var avatarURL string
 	err := q.QueryRow(ctx,
-		`SELECT COALESCE(NULLIF(display_name,''), first_name), COALESCE(bio,''), avatar_url, is_verified
-		   FROM users WHERE username = $1 AND NOT is_service`, username).
+		`SELECT COALESCE(NULLIF(u.display_name,''), u.first_name),
+		        CASE WHEN COALESCE(pra.value,'everybody')='everybody' THEN COALESCE(u.bio,'') ELSE '' END,
+		        CASE WHEN COALESCE(prp.value,'everybody')='everybody' THEN u.avatar_url ELSE '' END,
+		        u.is_verified
+		   FROM users u
+		   LEFT JOIN privacy_rules pra ON pra.user_id = u.id AND pra.key = 'about'
+		   LEFT JOIN privacy_rules prp ON prp.user_id = u.id AND prp.key = 'profile_photo'
+		  WHERE u.username = $1 AND NOT u.is_service`, username).
 		Scan(&p.Title, &p.About, &avatarURL, &p.Verified)
 	if err == nil {
 		p.Kind = "user"
