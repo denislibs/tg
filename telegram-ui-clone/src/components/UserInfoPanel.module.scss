@@ -43,6 +43,19 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding-bottom: 24px;
+
+  // тонкий скроллбар (как в ленте / ChatList / tweb)
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 3px;
+    transition: background 0.2s;
+  }
+  &:hover::-webkit-scrollbar-thumb {
+    background: var(--tg-textFaint);
+  }
 }
 
 // аватар + имя

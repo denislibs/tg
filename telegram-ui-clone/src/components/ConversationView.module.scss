@@ -75,6 +75,20 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+
+  // тонкий скроллбар (tweb .scrollable / как в ChatList): 6px, трек прозрачный,
+  // thumb проявляется только при наведении — без толстого нативного бара
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 3px;
+    transition: background 0.2s;
+  }
+  &:hover::-webkit-scrollbar-thumb {
+    background: var(--tg-textFaint);
+  }
 }
 
 // контент ленты (opacity/paddings по загрузке/playerOffset — инлайном).
