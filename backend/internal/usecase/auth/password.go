@@ -97,6 +97,16 @@ func (i *Interactor) RemovePassword(ctx context.Context, userID int64, current s
 	return i.pw.SetPassword(ctx, userID, nil, "", "")
 }
 
+// MintPasskeySession выдаёт сессию после успешной WebAuthn-аутентификации
+// (вход по ключу доступа — второй фактор не спрашивается, как в Telegram).
+func (i *Interactor) MintPasskeySession(ctx context.Context, userID int64, deviceName, platform string) (SignInResult, error) {
+	user, err := i.users.GetByID(ctx, userID)
+	if err != nil {
+		return SignInResult{}, err
+	}
+	return i.mintSession(ctx, user, deviceName, platform)
+}
+
 // CheckPassword — второй шаг входа: одноразовый password_token из SignIn +
 // облачный пароль → полноценная сессия. Токен сгорает только при успехе,
 // чтобы опечатка не заставляла проходить OTP заново.

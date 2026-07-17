@@ -491,7 +491,7 @@ const ru: Dict = {
   "Passkeys & Login Email": "Passkeys и email для входа",
   "Passkeys": "Passkeys",
   "Passkeys let you sign in without a password using your device.": "Passkeys позволяют входить без пароля с помощью устройства.",
-  "Add a Passkey": "Добавить passkey",
+  "Add a Passkey": "Создать ключ доступа",
   "Login Email": "Email для входа",
   "This email is used to log in if you lose access to your number.": "Этот email используется для входа, если вы потеряете доступ к номеру.",
   "Email": "Email",
@@ -623,6 +623,16 @@ const ru: Dict = {
   'Are you sure you want to log out? You will need to sign in again.':
     'Вы уверены, что хотите выйти? Придётся авторизоваться заново.',
   'Lock the app': 'Заблокировать приложение',
+  // Passkeys
+  'Passkeys let you sign in without a password, using your fingerprint, face or device PIN.':
+    'Ключи доступа позволяют входить без пароля — по отпечатку пальца, лицу или ПИН-коду устройства.',
+  'Could not create a passkey.': 'Не удалось создать ключ доступа.',
+  'Passkeys are not supported in this browser.': 'Ключи доступа не поддерживаются в этом браузере.',
+  Passkey: 'Ключ доступа',
+  'Last used': 'Использован',
+  Created: 'Создан',
+  'Log in with a Passkey': 'Войти по ключу доступа',
+  'Passkey sign-in failed': 'Не удалось войти по ключу доступа',
 }
 
 const uk: Dict = {
@@ -975,7 +985,7 @@ const uk: Dict = {
   "Passkeys & Login Email": "Passkeys та email для входу",
   "Passkeys": "Passkeys",
   "Passkeys let you sign in without a password using your device.": "Passkeys дають змогу входити без пароля за допомогою пристрою.",
-  "Add a Passkey": "Додати passkey",
+  "Add a Passkey": "Створити ключ доступу",
   "Login Email": "Email для входу",
   "This email is used to log in if you lose access to your number.": "Цей email використовується для входу, якщо ви втратите доступ до номера.",
   "Email": "Email",
@@ -1109,6 +1119,16 @@ const uk: Dict = {
   'Are you sure you want to log out? You will need to sign in again.':
     'Ви впевнені, що хочете вийти? Доведеться авторизуватися знову.',
   'Lock the app': 'Заблокувати застосунок',
+  // Passkeys
+  'Passkeys let you sign in without a password, using your fingerprint, face or device PIN.':
+    'Ключі доступу дозволяють входити без пароля — за відбитком пальця, обличчям або PIN-кодом пристрою.',
+  'Could not create a passkey.': 'Не вдалося створити ключ доступу.',
+  'Passkeys are not supported in this browser.': 'Ключі доступу не підтримуються в цьому браузері.',
+  Passkey: 'Ключ доступу',
+  'Last used': 'Використано',
+  Created: 'Створено',
+  'Log in with a Passkey': 'Увійти за ключем доступу',
+  'Passkey sign-in failed': 'Не вдалося увійти за ключем доступу',
 }
 
 const es: Dict = {
@@ -1459,7 +1479,7 @@ const es: Dict = {
   "Passkeys & Login Email": "Passkeys y correo de inicio de sesión",
   "Passkeys": "Passkeys",
   "Passkeys let you sign in without a password using your device.": "Las passkeys te permiten iniciar sesión sin contraseña usando tu dispositivo.",
-  "Add a Passkey": "Añadir una passkey",
+  "Add a Passkey": "Crear una llave de acceso",
   "Login Email": "Correo de inicio de sesión",
   "This email is used to log in if you lose access to your number.": "Este correo se usa para iniciar sesión si pierdes el acceso a tu número.",
   "Email": "Correo",
@@ -1593,6 +1613,16 @@ const es: Dict = {
   'Are you sure you want to log out? You will need to sign in again.':
     '¿Seguro que quieres cerrar sesión? Tendrás que iniciarla de nuevo.',
   'Lock the app': 'Bloquear la aplicación',
+  // Passkeys
+  'Passkeys let you sign in without a password, using your fingerprint, face or device PIN.':
+    'Las llaves de acceso te permiten iniciar sesión sin contraseña, con tu huella, tu rostro o el PIN del dispositivo.',
+  'Could not create a passkey.': 'No se pudo crear la llave de acceso.',
+  'Passkeys are not supported in this browser.': 'Las llaves de acceso no son compatibles con este navegador.',
+  Passkey: 'Llave de acceso',
+  'Last used': 'Último uso',
+  Created: 'Creada',
+  'Log in with a Passkey': 'Iniciar sesión con una llave de acceso',
+  'Passkey sign-in failed': 'No se pudo iniciar sesión con la llave de acceso',
 }
 
 const de: Dict = {
@@ -1945,7 +1975,7 @@ const de: Dict = {
   "Passkeys & Login Email": "Passkeys & Login-E-Mail",
   "Passkeys": "Passkeys",
   "Passkeys let you sign in without a password using your device.": "Mit Passkeys kannst du dich ohne Passwort über dein Gerät anmelden.",
-  "Add a Passkey": "Passkey hinzufügen",
+  "Add a Passkey": "Passkey erstellen",
   "Login Email": "Login-E-Mail",
   "This email is used to log in if you lose access to your number.": "Diese E-Mail wird zum Anmelden verwendet, falls du den Zugriff auf deine Nummer verlierst.",
   "Email": "E-Mail",
@@ -2079,6 +2109,16 @@ const de: Dict = {
   'Are you sure you want to log out? You will need to sign in again.':
     'Möchtest du dich wirklich abmelden? Du musst dich erneut anmelden.',
   'Lock the app': 'App sperren',
+  // Passkeys
+  'Passkeys let you sign in without a password, using your fingerprint, face or device PIN.':
+    'Mit Passkeys meldest du dich ohne Passwort an – per Fingerabdruck, Gesicht oder Geräte-PIN.',
+  'Could not create a passkey.': 'Passkey konnte nicht erstellt werden.',
+  'Passkeys are not supported in this browser.': 'Passkeys werden in diesem Browser nicht unterstützt.',
+  Passkey: 'Passkey',
+  'Last used': 'Zuletzt verwendet',
+  Created: 'Erstellt',
+  'Log in with a Passkey': 'Mit Passkey anmelden',
+  'Passkey sign-in failed': 'Anmeldung mit Passkey fehlgeschlagen',
 }
 
 const fr: Dict = {
@@ -2431,7 +2471,7 @@ const fr: Dict = {
   "Passkeys & Login Email": "Passkeys et e-mail de connexion",
   "Passkeys": "Passkeys",
   "Passkeys let you sign in without a password using your device.": "Les passkeys vous permettent de vous connecter sans mot de passe avec votre appareil.",
-  "Add a Passkey": "Ajouter une passkey",
+  "Add a Passkey": "Créer une clé d'accès",
   "Login Email": "E-mail de connexion",
   "This email is used to log in if you lose access to your number.": "Cet e-mail sert à se connecter si vous perdez l'accès à votre numéro.",
   "Email": "E-mail",
@@ -2565,6 +2605,16 @@ const fr: Dict = {
   'Are you sure you want to log out? You will need to sign in again.':
     'Voulez-vous vraiment vous déconnecter ? Vous devrez vous reconnecter.',
   'Lock the app': "Verrouiller l'application",
+  // Passkeys
+  'Passkeys let you sign in without a password, using your fingerprint, face or device PIN.':
+    "Les clés d'accès vous permettent de vous connecter sans mot de passe, avec votre empreinte, votre visage ou le code PIN de l'appareil.",
+  'Could not create a passkey.': "Impossible de créer une clé d'accès.",
+  'Passkeys are not supported in this browser.': "Les clés d'accès ne sont pas prises en charge dans ce navigateur.",
+  Passkey: "Clé d'accès",
+  'Last used': 'Dernière utilisation',
+  Created: 'Créée',
+  'Log in with a Passkey': "Se connecter avec une clé d'accès",
+  'Passkey sign-in failed': "Échec de la connexion par clé d'accès",
 }
 
 export const dicts: Record<Lang, Dict> = { en: {}, ru, uk, es, de, fr }

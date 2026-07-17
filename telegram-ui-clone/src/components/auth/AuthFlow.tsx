@@ -9,6 +9,7 @@ import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import QrCode from './QrCode'
 import PasswordMonkey from '../PasswordMonkey'
+import { isWebAuthnSupported, getPasskeyAssertion } from '../../core/webauthnBrowser'
 import s from './AuthFlow.module.scss'
 
 const MotionIconButton = motion.create(IconButton)
@@ -97,6 +98,20 @@ export default function AuthFlow({ onComplete }: { onComplete: () => void }) {
   const [pwHint, setPwHint] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
+
+  // Вход по ключу доступа (WebAuthn discoverable credential): без телефона.
+  const passkeyLogin = async () => {
+    if (busy) return
+    setError(''); setBusy(true)
+    try {
+      const { session, options } = await managers.auth.passkeyLoginBegin()
+      const assertion = await getPasskeyAssertion(options)
+      await managers.auth.passkeyLoginFinish(session, assertion, 'web', 'browser')
+      onComplete()
+    } catch {
+      setError(t('Passkey sign-in failed'))
+    } finally { setBusy(false) }
+  }
 
   const submitPassword = async () => {
     if (busy || !password) return
@@ -305,6 +320,11 @@ export default function AuthFlow({ onComplete }: { onComplete: () => void }) {
       <div onClick={() => go('qr', 1)} className={s.linkBtn}>
         {t('Log in by QR Code')}
       </div>
+      {isWebAuthnSupported() && (
+        <div onClick={() => void passkeyLogin()} className={s.linkBtn}>
+          {t('Log in with a Passkey')}
+        </div>
+      )}
     </>
   )
 

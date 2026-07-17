@@ -23,6 +23,7 @@ import (
 	usecasefolders "github.com/messenger-denis/backend/internal/usecase/folders"
 	usecasemedia "github.com/messenger-denis/backend/internal/usecase/media"
 	usecasenotify "github.com/messenger-denis/backend/internal/usecase/notify"
+	usecasepasskeys "github.com/messenger-denis/backend/internal/usecase/passkeys"
 	usecasepresence "github.com/messenger-denis/backend/internal/usecase/presence"
 	usecaseprivacy "github.com/messenger-denis/backend/internal/usecase/privacy"
 	usecasepublic "github.com/messenger-denis/backend/internal/usecase/public"
@@ -140,9 +141,20 @@ func registerServer(p serverParams) {
 	// Публичная страница-превью @username (аналог t.me)
 	pubH := httptransport.NewPublicHandler(usecasepublic.New(pgadapter.NewPublicRepo(p.Pool)), mediaUC)
 
+	// Ключи доступа (WebAuthn): опциональны — при кривом RP-конфиге фича
+	// отключается, приложение работает дальше.
+	passkeysUC := usecasepasskeys.New(pgadapter.NewPasskeysRepo(p.Pool))
+	passkeyH, err := httptransport.NewPasskeyHandler(p.Cfg.WebAuthnRPID, p.Cfg.WebAuthnOrigins, passkeysUC, p.AuthUC)
+	if err != nil {
+		log.Printf("passkeys disabled (webauthn config): %v", err)
+		passkeyH = nil
+	} else {
+		log.Printf("passkeys enabled (rp id %q)", p.Cfg.WebAuthnRPID)
+	}
+
 	srv := &http.Server{
 		Addr:              p.Cfg.HTTPAddr,
-		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC, foldersUC, pubH, privacyUC),
+		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC, foldersUC, pubH, privacyUC, passkeyH),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}

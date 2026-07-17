@@ -58,6 +58,25 @@ export interface PasswordState {
   email: string // маскированный (de•••@gmail.com)
 }
 
+// Ключ доступа в списке настроек.
+export interface PasskeyInfo {
+  id: number
+  name: string
+  createdAt: string
+  lastUsedAt: string | null
+}
+
+interface RawPasskey {
+  id: number
+  name: string
+  created_at: string
+  last_used_at: string | null
+}
+
+const mapPasskey = (r: RawPasskey): PasskeyInfo => ({
+  id: r.id, name: r.name, createdAt: r.created_at, lastUsedAt: r.last_used_at,
+})
+
 interface TokenStoreLike {
   get(): string | null
   set(token: string): Promise<void>
@@ -119,6 +138,33 @@ export function newAuthManager({ rest, store }: AuthDeps) {
     },
     async verifyPassword(password: string): Promise<void> {
       await rest.post('/me/password/verify', { password })
+    },
+
+    // Ключи доступа (WebAuthn). REST-часть живёт здесь (воркер);
+    // navigator.credentials вызывается в UI-потоке (core/webauthnBrowser.ts).
+    async passkeysList(): Promise<PasskeyInfo[]> {
+      const r = await rest.get<{ passkeys: RawPasskey[] }>('/me/passkeys')
+      return (r.passkeys ?? []).map(mapPasskey)
+    },
+    async passkeyRegisterBegin(): Promise<{ session: string; options: unknown }> {
+      return rest.post('/me/passkeys/begin', {})
+    },
+    async passkeyRegisterFinish(session: string, attestation: unknown): Promise<PasskeyInfo> {
+      return mapPasskey(await rest.post<RawPasskey>(`/me/passkeys/finish?session=${encodeURIComponent(session)}`, attestation))
+    },
+    async passkeyDelete(id: number): Promise<void> {
+      await rest.del(`/me/passkeys/${id}`)
+    },
+    async passkeyLoginBegin(): Promise<{ session: string; options: unknown }> {
+      return rest.post('/auth/passkey/begin', {})
+    },
+    async passkeyLoginFinish(session: string, assertion: unknown, device: string, platform: string): Promise<{ user: User }> {
+      const res = await rest.post<{ token: string; user: RawUser }>(
+        `/auth/passkey/finish?session=${encodeURIComponent(session)}&device=${encodeURIComponent(device)}&platform=${encodeURIComponent(platform)}`,
+        assertion,
+      )
+      await store.set(res.token)
+      return { user: mapUser(res.user) }
     },
 
     async qrNew(platform: string): Promise<{ token: string; url: string; expiresAt: string }> {

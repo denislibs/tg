@@ -14,7 +14,7 @@ import (
 	usecaseprivacy "github.com/messenger-denis/backend/internal/usecase/privacy"
 )
 
-func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler, notifyUC *usecasenotify.Interactor, foldersUC *usecasefolders.Interactor, pubH *PublicHandler, privacyUC *usecaseprivacy.Interactor) http.Handler {
+func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler, notifyUC *usecasenotify.Interactor, foldersUC *usecasefolders.Interactor, pubH *PublicHandler, privacyUC *usecaseprivacy.Interactor, passkeyH *PasskeyHandler) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -30,6 +30,10 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 	r.Post("/auth/request_code", authH.RequestCode)
 	r.Post("/auth/sign_in", authH.SignIn)
 	r.Post("/auth/check_password", authH.CheckPassword)
+	if passkeyH != nil {
+		r.Post("/auth/passkey/begin", passkeyH.BeginLogin)
+		r.Post("/auth/passkey/finish", passkeyH.FinishLogin)
+	}
 	r.Post("/auth/qr/new", authH.QRNew)
 	r.Get("/auth/qr/{token}", authH.QRStatus)
 
@@ -70,6 +74,13 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		nh := NewNotifyHandler(notifyUC)
 		pr.Get("/me/notify_settings", nh.Get)
 		pr.Put("/me/notify_settings", nh.Update)
+
+		if passkeyH != nil {
+			pr.Get("/me/passkeys", passkeyH.List)
+			pr.Post("/me/passkeys/begin", passkeyH.BeginRegistration)
+			pr.Post("/me/passkeys/finish", passkeyH.FinishRegistration)
+			pr.Delete("/me/passkeys/{passkeyID}", passkeyH.Delete)
+		}
 
 		pwh := NewPasswordHandler(authUC)
 		pr.Get("/me/password", pwh.State)

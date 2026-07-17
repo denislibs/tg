@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 type Config struct {
@@ -33,6 +34,11 @@ type Config struct {
 	// coturn's static-auth-secret.
 	TurnHost   string
 	TurnSecret string
+
+	// WebAuthn (ключи доступа): RP ID — стабильный домен (localhost в dev),
+	// Origins — допустимые origin'ы браузера (через запятую).
+	WebAuthnRPID    string
+	WebAuthnOrigins []string
 }
 
 func Load() (*Config, error) {
@@ -58,6 +64,9 @@ func Load() (*Config, error) {
 	c.GeoIPDBPath = os.Getenv("GEOIP_DB_PATH")
 	c.TurnHost = os.Getenv("TURN_HOST")
 	c.TurnSecret = getenv("TURN_SECRET", "dev-turn-secret-change-me")
+	c.WebAuthnRPID = getenv("WEBAUTHN_RP_ID", "localhost")
+	c.WebAuthnOrigins = strings.Split(getenv("WEBAUTHN_ORIGINS",
+		"https://localhost:38443,http://localhost:38080,http://localhost:5173,http://localhost:8080"), ",")
 	return c, nil
 }
 

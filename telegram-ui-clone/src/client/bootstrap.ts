@@ -18,7 +18,7 @@ import type { Peer } from '../core/managers/peersManager'
 import type { StoryGroup } from '../core/managers/storiesManager'
 import type { Contact, AddContactInput } from '../core/managers/contactsManager'
 import type { PrivacyRule, BlockedUser, UserProfile } from '../core/managers/privacyManager'
-import type { SignInOutcome, PasswordState } from '../core/managers/authManager'
+import type { SignInOutcome, PasswordState, PasskeyInfo } from '../core/managers/authManager'
 import type { Session } from '../core/managers/sessionsManager'
 import type { IceConfig } from '../core/managers/callsManager'
 
@@ -32,6 +32,12 @@ export interface Managers {
     setPassword(args: { currentPassword?: string; newPassword: string; hint: string; email: string }): Promise<void>
     removePassword(currentPassword: string): Promise<void>
     verifyPassword(password: string): Promise<void>
+    passkeysList(): Promise<PasskeyInfo[]>
+    passkeyRegisterBegin(): Promise<{ session: string; options: unknown }>
+    passkeyRegisterFinish(session: string, attestation: unknown): Promise<PasskeyInfo>
+    passkeyDelete(id: number): Promise<void>
+    passkeyLoginBegin(): Promise<{ session: string; options: unknown }>
+    passkeyLoginFinish(session: string, assertion: unknown, device: string, platform: string): Promise<{ user: User }>
     me(): Promise<User | null>
     logout(): Promise<void>
     qrNew(platform: string): Promise<{ token: string; url: string; expiresAt: string }>
