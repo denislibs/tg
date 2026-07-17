@@ -17,6 +17,7 @@ import { mediaThumbUrl, hasMediaToken, useMediaTokenVersion } from '../../core/m
 import TgIcon from '../TgIcon'
 import { BubbleAppear } from '../animations/bubbleAnimations'
 import RealMediaBubble from './RealMediaBubble'
+import AlbumGrid from './AlbumGrid'
 import VoiceMessage from './VoiceMessage'
 import Checkbox from '../../shared/ui/Checkbox'
 import {
@@ -90,6 +91,9 @@ export interface MessageRowProps {
   feedFns: FeedFns
   // Автозагрузка медиа для этого чата (tweb chat.autoDownload); 0 = по клику.
   autoDownload?: ChatAutoDownload
+  // csv id выбранных элементов альбома (стабильная строка — memo не ломается
+  // у остальных рядов; только для m.type === 'album')
+  albumSelectedKey?: string
   // Optional slot rendered at the bottom of the bubble (channel post replies-footer).
   footer?: ReactNode
 }
@@ -97,7 +101,7 @@ export interface MessageRowProps {
 function MessageRow({
   m, seq, out, firstInGroup, lastInGroup,
   selecting, isSelected, isHighlighted, ladderActive, ladderDelay,
-  feedFns, autoDownload, footer,
+  feedFns, autoDownload, albumSelectedKey, footer,
 }: MessageRowProps) {
   const { textSize } = useSettings()
   const t = useT()
@@ -122,7 +126,7 @@ function MessageRow({
       onContextMenu={selecting ? undefined : (e: MouseEvent) => feedFns.openMsgMenu(e, m)}
       // Обычный клик по error-баблу открывает то же меню (Переотправить/Удалить).
       onClick={
-        selecting && m.id != null
+        selecting && m.id != null && m.type !== 'album' // альбом тогглится по-элементно
           ? () => feedFns.toggleSelect(m.id!)
           : m.status === 'error'
             ? (e: MouseEvent) => feedFns.openMsgMenu(e, m)
@@ -148,7 +152,7 @@ function MessageRow({
           transition={{ duration: 0.2 }}
         />
       )}
-      {selecting && m.id != null && (
+      {selecting && m.id != null && m.type !== 'album' && (
         <div className={s.check}>
           <Checkbox checked={isSelected} />
         </div>
@@ -173,6 +177,43 @@ function MessageRow({
               tickColor="var(--b-tick)"
               onPlay={() => feedFns.playVoice(m.mediaId as number)}
             />
+          </div>
+        ) : m.type === 'album' && m.albumItems ? (
+          // Альбом (медиагруппа): грид из элементов, подпись — под гридом.
+          <div className={s.media}>
+            {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
+            <div
+              className={classNames(s.mediaInner, s.framed)}
+              style={{ borderRadius: mediaRadius(out, lastInGroup) }}
+            >
+              <AlbumGrid
+                items={m.albumItems}
+                selecting={selecting}
+                selectedKey={albumSelectedKey}
+                time={m.text ? undefined : m.time}
+                status={m.status}
+                out={out}
+                onToggle={feedFns.toggleSelect}
+                onOpen={feedFns.openLightbox}
+                autoDownload={autoDownload}
+                radius={m.text ? '14px 14px 0 0' : '14px'}
+              />
+              {m.text ? (
+                <div className={s.mediaCaption}>
+                  <span className={s.mediaText}>
+                    <RichText text={m.text} entities={m.entities} linkColor="var(--b-link)" />
+                  </span>
+                  {m.time && (
+                    <span className={s.mediaTime}>
+                      <span className={s.mediaTimeText} style={{ color: out ? 'var(--tg-bubbleOutAccent)' : 'var(--tg-textFaint)' }}>
+                        {m.time}
+                      </span>
+                      {out && <Ticks status={m.status} color="var(--b-tick)" />}
+                    </span>
+                  )}
+                </div>
+              ) : null}
+            </div>
           </div>
         ) : m.mediaId ? (
           // Outer (relative, NOT clipped) carries the tail; the inner clips the media

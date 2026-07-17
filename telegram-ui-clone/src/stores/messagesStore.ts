@@ -57,7 +57,7 @@ interface MessagesState {
   prepend: (chatId: number, msgs: Message[], reachedTop: boolean) => void
   append: (chatId: number, msgs: Message[], reachedBottom: boolean) => void
   appendLocal: (chatId: number, m: Message) => void
-  appendOptimistic: (chatId: number, text: string, meId: number, clientMsgId: string, mediaId?: number, type?: string, entities?: MessageEntity[]) => void
+  appendOptimistic: (chatId: number, text: string, meId: number, clientMsgId: string, mediaId?: number, type?: string, entities?: MessageEntity[], groupedId?: string) => void
   reconcileAck: (chatId: number, clientMsgId: string, ack: { msgId: number; seq: number; createdAt: string }) => void
   failOptimistic: (chatId: number, clientMsgId: string) => void
   /** Reconcile/fail by clientMsgId alone (ack/error frames carry no chat_id). */
@@ -115,7 +115,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   appendLocal: (chatId, m) =>
     set((s) => patch(s, chatId, (w) => ({ msgs: dedupAsc([...w.msgs, m]) }))),
 
-  appendOptimistic: (chatId, text, meId, clientMsgId, mediaId, type = 'text', entities) =>
+  appendOptimistic: (chatId, text, meId, clientMsgId, mediaId, type = 'text', entities, groupedId) =>
     set((s) =>
       patch(s, chatId, (w) => {
         const maxSeq = w.msgs.length ? w.msgs[w.msgs.length - 1].seq : 0
@@ -125,7 +125,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         const tmp: Message = {
           id: -Date.now(), chatId, seq: tentativeSeq, senderId: meId, type, text, entities,
           replyToId: null, mediaId: mediaId ?? null, createdAt: new Date().toISOString(),
-          threadRootId: null, clientId: clientMsgId,
+          threadRootId: null, groupedId: groupedId ?? null, clientId: clientMsgId,
           // сервер ставит media_unread на voice/roundVideo — отразить сразу в
           // оптимистичном бабле, чтобы точка не «моргала» после ack
           mediaUnread: type === 'voice' || type === 'roundVideo' || undefined,

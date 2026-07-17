@@ -115,6 +115,7 @@ type sendBody struct {
 	ReplyToID   *int64                 `json:"reply_to_id"`
 	ClientMsgID string                 `json:"client_msg_id"`
 	MediaID     *int64                 `json:"media_id"`
+	GroupedID   string                 `json:"grouped_id"`
 }
 
 func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
@@ -133,7 +134,7 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 	}
 	msg, err := h.svc.Send(r.Context(), usecasechat.SendInput{
 		ChatID: chatID, SenderID: h.meID(r), Type: body.Type, Text: body.Text, Entities: body.Entities,
-		ReplyToID: body.ReplyToID, ClientMsgID: body.ClientMsgID, MediaID: body.MediaID,
+		ReplyToID: body.ReplyToID, ClientMsgID: body.ClientMsgID, MediaID: body.MediaID, GroupedID: body.GroupedID,
 	})
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
@@ -546,7 +547,7 @@ func messageJSON(m domain.Message) map[string]any {
 		"edited_at":        m.EditedAt,
 		"fwd_from_user_id": m.FwdFromUserID, "fwd_from_chat_id": m.FwdFromChatID,
 		"fwd_from_msg_id": m.FwdFromMsgID, "fwd_date": m.FwdDate, "fwd_from_name": m.FwdFromName,
-		"views": m.Views, "media_unread": m.MediaUnread,
+		"views": m.Views, "media_unread": m.MediaUnread, "grouped_id": m.GroupedID,
 	}
 	if len(m.Entities) > 0 {
 		j["entities"] = m.Entities

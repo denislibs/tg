@@ -27,7 +27,10 @@ type Message struct {
 	MediaID      *int64
 	ClientMsgID  *string
 	ThreadRootID *int64
-	CreatedAt    time.Time
+	// GroupedID — идентификатор медиагруппы (Telegram grouped_id): сообщения
+	// одного альбома несут общий id, клиент рендерит их одним грид-баблом.
+	GroupedID *string
+	CreatedAt time.Time
 	Deleted      bool
 	EditedAt     *time.Time
 	// Forward attribution (set when the message was forwarded from elsewhere).

@@ -54,7 +54,10 @@ export function useMessageActions({
   // resolve the index here, at click time, against the current msgs.
   const openMsgMenu = useEvent((e: React.MouseEvent, m: ConvMsg) => {
     e.preventDefault()
-    const idx = msgs.indexOf(m)
+    // Сводный ConvMsg альбома синтезируется в ChatFeed и в msgs отсутствует —
+    // ищем по id (меню действует на первый элемент группы).
+    let idx = msgs.indexOf(m)
+    if (idx < 0 && m.id != null) idx = msgs.findIndex((x) => x.id === m.id)
     if (idx < 0) return
     // Anchor a corner of the menu at the click point and grow from there (tweb):
     // flip to the left/upward when near the right/bottom edge so it stays on-screen.

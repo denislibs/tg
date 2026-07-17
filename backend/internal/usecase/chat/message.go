@@ -78,10 +78,14 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		if in.ClientMsgID != "" {
 			cmid = &in.ClientMsgID
 		}
+		var groupedID *string
+		if in.GroupedID != "" && len(in.GroupedID) <= 32 {
+			groupedID = &in.GroupedID
+		}
 		msg, e = i.msgs.Insert(ctx, domain.Message{
 			ChatID: in.ChatID, Seq: seq, SenderID: in.SenderID,
 			Type: in.Type, Text: in.Text, Entities: in.Entities, ReplyToID: in.ReplyToID, ClientMsgID: cmid,
-			MediaID: in.MediaID, ThreadRootID: in.ThreadRootID,
+			MediaID: in.MediaID, ThreadRootID: in.ThreadRootID, GroupedID: groupedID,
 			// Voice/round content starts "unlistened" (Telegram media_unread).
 			MediaUnread: in.Type == "voice" || in.Type == "roundVideo",
 		})

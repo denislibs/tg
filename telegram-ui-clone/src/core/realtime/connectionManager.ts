@@ -3,7 +3,7 @@ import type { WsClient } from '../net/wsClient'
 import type { ConnState } from './events'
 import type { MessageEntity } from '../models'
 
-export interface SendArgs { chatId: number; text: string; entities?: MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; mediaId?: number | null; type?: string }
+export interface SendArgs { chatId: number; text: string; entities?: MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; mediaId?: number | null; type?: string; groupedId?: string }
 
 export interface CMDeps {
   ws: WsClient
@@ -96,7 +96,7 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, 
   }
 
   function sendFrame(m: SendArgs) {
-    ws.send('send_message', { chat_id: m.chatId, type: m.type ?? 'text', text: m.text, entities: m.entities ?? null, client_msg_id: m.clientMsgId, reply_to_id: m.replyToId ?? null, media_id: m.mediaId ?? null })
+    ws.send('send_message', { chat_id: m.chatId, type: m.type ?? 'text', text: m.text, entities: m.entities ?? null, client_msg_id: m.clientMsgId, reply_to_id: m.replyToId ?? null, media_id: m.mediaId ?? null, grouped_id: m.groupedId ?? '' })
   }
 
   return {

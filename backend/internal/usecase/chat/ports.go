@@ -202,6 +202,7 @@ type SendInput struct {
 	ClientMsgID      string
 	MediaID          *int64
 	ThreadRootID     *int64
+	GroupedID        string // альбом (Telegram grouped_id); "" — не в группе
 }
 
 type HistoryResult struct {

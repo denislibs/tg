@@ -106,7 +106,49 @@ function ChatFeed({
     return false
   }
 
+  // Альбомы (Telegram grouped_id): подряд идущие фото/видео одного отправителя
+  // с одинаковым groupedId рендерятся ОДНИМ грид-баблом. Пре-пасс собирает
+  // прогоны: startIdx → индексы; не-стартовые индексы пропускаются в цикле.
+  const isAlbumMedia = (x: ConvMsg) => !!x.groupedId && x.mediaId != null && (x.type === 'photo' || x.type === 'video')
+  const albumRuns = new Map<number, number[]>()
+  const inAlbumTail = new Set<number>()
+  for (let i = 0; i < msgs.length; ) {
+    const m = msgs[i]
+    if (!isAlbumMedia(m)) { i++; continue }
+    const run = [i]
+    let j = i + 1
+    while (j < msgs.length && isAlbumMedia(msgs[j]) && msgs[j].groupedId === m.groupedId && !!msgs[j].out === !!m.out) {
+      run.push(j); j++
+    }
+    if (run.length > 1) {
+      albumRuns.set(i, run)
+      for (const idx of run.slice(1)) inAlbumTail.add(idx)
+    }
+    i = j
+  }
+  // Сводный ConvMsg альбома: подпись — первое сообщение с текстом, время/статус
+  // — последнего элемента (id первого — для data-mid/меню).
+  const albumMsgOf = (run: number[]): ConvMsg => {
+    const items = run.map((idx) => msgs[idx])
+    const first = items[0]
+    const last = items[items.length - 1]
+    const captioned = items.find((x) => x.text)
+    return {
+      ...first,
+      type: 'album',
+      albumItems: items,
+      text: captioned?.text ?? '',
+      entities: captioned?.entities,
+      time: last.time,
+      status: items.some((x) => x.status === 'sending') ? 'sending' : last.status,
+      mediaId: undefined,
+    }
+  }
+
   msgs.forEach((m, i) => {
+    if (inAlbumTail.has(i)) return // элемент альбома — отрисован в сводном бабле
+    const albumRun = albumRuns.get(i)
+    if (albumRun) m = albumMsgOf(albumRun)
     // Stable React key: prefer the optimistic clientId (survives the ack that
     // rewrites id/seq), else the backend message id, else the index (last resort).
     const k = m.clientId ?? (m.id != null ? `m-${m.id}` : `i-${i}`)
@@ -139,8 +181,10 @@ function ChatFeed({
     }
 
     const out = !!m.out
+    // Для альбома «конец группы» считается от последнего элемента прогона.
+    const endIdx = albumRun ? albumRun[albumRun.length - 1] : i
     const firstInGroup = groupBreak(i - 1, i)
-    const lastInGroup = groupBreak(i, i + 1)
+    const lastInGroup = groupBreak(endIdx, endIdx + 1)
     // Open-chat ladder: only the first loaded batch animates (cascade from the
     // bottom up, capped). Live appends mount with ladderActive=false → plain insert.
     const ladderDelay = ladderActive ? Math.min(msgs.length - 1 - i, 12) * 0.03 : 0
@@ -169,6 +213,11 @@ function ChatFeed({
         ladderDelay={ladderDelay}
         feedFns={feedFns}
         autoDownload={autoDownload}
+        albumSelectedKey={
+          albumRun
+            ? albumRun.map((idx) => msgs[idx].id).filter((id) => id != null && selected.has(id)).join(',')
+            : undefined
+        }
         footer={footer}
       />
     )

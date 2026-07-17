@@ -27,7 +27,7 @@ export interface MessageWindow {
   loadOlder: () => Promise<void>
   loadNewer: () => Promise<void>
   appendLocal: (m: Message) => void
-  appendOptimistic: (text: string, meId: number, clientMsgId: string, mediaId?: number, type?: string, entities?: MessageEntity[]) => void
+  appendOptimistic: (text: string, meId: number, clientMsgId: string, mediaId?: number, type?: string, entities?: MessageEntity[], groupedId?: string) => void
   reconcileAck: (clientMsgId: string, ack: { msgId: number; seq: number; createdAt: string }) => void
   /** Server rejected the send (e.g. too long) — drop the optimistic bubble. */
   failOptimistic: (clientMsgId: string) => void
@@ -129,8 +129,8 @@ export function useMessageWindow(chatId: number, limit = 40): MessageWindow {
   const appendLocal = useCallback((m: Message) => appendLocalAction(chatId, m), [chatId, appendLocalAction])
 
   const appendOptimistic = useCallback(
-    (text: string, meId: number, clientMsgId: string, mediaId?: number, type = 'text', entities?: MessageEntity[]) =>
-      appendOptimisticAction(chatId, text, meId, clientMsgId, mediaId, type, entities),
+    (text: string, meId: number, clientMsgId: string, mediaId?: number, type = 'text', entities?: MessageEntity[], groupedId?: string) =>
+      appendOptimisticAction(chatId, text, meId, clientMsgId, mediaId, type, entities, groupedId),
     [chatId, appendOptimisticAction],
   )
 

@@ -38,7 +38,7 @@ describe('mapMessage', () => {
     expect(mapMessage(raw)).toEqual({
       id: 10, chatId: 1, seq: 5, senderId: 1, type: 'text', text: 'hello',
       replyToId: null, mediaId: null, createdAt: '2026-06-24T10:01:00Z', threadRootId: null,
-      editedAt: null, deleted: false,
+      groupedId: null, editedAt: null, deleted: false,
       fwdFromUserId: null, fwdFromChatId: null, fwdFromMsgId: null, fwdDate: null,
       replyTo: null,
     })

@@ -1,0 +1,79 @@
+// Грид альбома (tweb prepareAlbum): контейнер фиксированного размера,
+// элементы позиционируются в % от раскладки Layouter.
+.grid {
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.item {
+  position: absolute;
+  overflow: hidden;
+  background-size: cover;
+  background-position: center;
+}
+
+.img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+// кружок выбора на элементе (tweb grouped-item checkbox) — правый верхний угол
+.check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+}
+
+// затемнение выбранного элемента (tweb .is-selected media)
+.selectedDim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 1;
+}
+
+.play {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.playDisc {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.durBadge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  padding: 1px 6px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.timeBadge {
+  position: absolute;
+  right: 6px;
+  bottom: 5px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 2;
+}

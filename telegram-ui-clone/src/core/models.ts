@@ -61,6 +61,7 @@ export interface RawMessage {
   media_id: number | null
   created_at: string
   thread_root_id?: number | null
+  grouped_id?: string | null
   edited_at?: string | null
   deleted?: boolean
   fwd_from_user_id?: number | null
@@ -93,6 +94,8 @@ export interface Message {
   mediaId: number | null
   createdAt: string
   threadRootId: number | null
+  /** идентификатор медиагруппы (Telegram grouped_id); null — не в альбоме */
+  groupedId?: string | null
   /** Stable client-side id for an optimistic message; preserved across the ack
    * (when `id`/`seq` are rewritten to server values) so the React key never
    * changes and the bubble isn't remounted mid-animation. */
@@ -189,6 +192,7 @@ export function mapMessage(r: RawMessage): Message {
     mediaId: r.media_id,
     createdAt: r.created_at,
     threadRootId: r.thread_root_id ?? null,
+    groupedId: r.grouped_id ?? null,
     editedAt: r.edited_at ?? null,
     deleted: r.deleted ?? false,
     fwdFromUserId: r.fwd_from_user_id ?? null,

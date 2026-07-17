@@ -117,7 +117,7 @@ export function useChatSend({
   // asFile=true sends without "media" treatment (a photo/video becomes a
   // downloadable document). Otherwise the type is inferred from the mime.
   // caption (optional) is attached as the message text.
-  const onPickFile = async (file: File, asFile = false, caption = '') => {
+  const onPickFile = async (file: File, asFile = false, caption = '', groupedId?: string) => {
     if (!isRealChat) return
     const mime = file.type || 'application/octet-stream'
     const type = asFile
@@ -131,8 +131,8 @@ export function useChatSend({
     const mediaId = await managers.media.upload({ bytes, mime, size: file.size, width, height, fileName: file.name })
     const clientMsgId = `c-${chat.id}-${performance.now()}-${Math.random().toString(36).slice(2)}`
     atBottomRef.current = true; userScrolledUpRef.current = false
-    win.appendOptimistic(caption, meId ?? -1, clientMsgId, mediaId, type)
-    void managers.realtime.sendMessage({ chatId: numericChatId, text: caption, clientMsgId, mediaId, type })
+    win.appendOptimistic(caption, meId ?? -1, clientMsgId, mediaId, type, undefined, groupedId)
+    void managers.realtime.sendMessage({ chatId: numericChatId, text: caption, clientMsgId, mediaId, type, groupedId })
   }
 
   // Picked files awaiting the compose popup (caption + as-media/as-file choice).
@@ -141,9 +141,14 @@ export function useChatSend({
     const pm = pendingMedia
     setPendingMedia(null)
     if (!pm) return
-    // The caption goes on the first item only (albums come in Phase 3).
+    // Несколько фото/видео «как медиа» → один альбом (Telegram grouped_id):
+    // общий id на все сообщения группы, подпись — на первом (tweb).
+    const asAlbum = !asFile
+      && pm.files.length > 1
+      && pm.files.every((f) => f.type.startsWith('image/') || f.type.startsWith('video/'))
+    const groupedId = asAlbum ? `g${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}` : undefined
     for (let i = 0; i < pm.files.length; i++) {
-      await onPickFile(pm.files[i], asFile, i === 0 ? caption : '')
+      await onPickFile(pm.files[i], asFile, i === 0 ? caption : '', groupedId)
     }
   }
 

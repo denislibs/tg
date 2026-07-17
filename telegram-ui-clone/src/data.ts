@@ -55,6 +55,8 @@ export interface ConvMsg {
   mediaName?: string
   media?: MediaItem // single photo/video placeholder
   album?: MediaItem[] // album grid (2–10)
+  groupedId?: string // медиагруппа (Telegram grouped_id) — подряд идущие с одним id рендерятся одним грид-баблом
+  albumItems?: ConvMsg[] // собранные элементы альбома (только у сводного ConvMsg type 'album')
   videoDuration?: string // overlay on video / round video
   // document
   document?: { name: string; size: string; ext: string; color: string }
