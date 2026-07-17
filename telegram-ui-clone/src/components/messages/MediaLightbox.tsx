@@ -13,6 +13,7 @@
 // На закрытии rect миниатюры замеряется заново; если она ушла из вьюпорта —
 // tweb-поведение: движения нет, только fade.
 import { useLayoutEffect, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import Text from '../../shared/ui/Text'
 import IconButton from '../../shared/ui/IconButton'
 import classNames from '../../shared/lib/classNames'
@@ -264,7 +265,10 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
     document.body.appendChild(a); a.click(); a.remove()
   }
 
-  return (
+  // Портал в body: ConversationView живёт под framer-motion-предком с transform,
+  // а он создаёт containing block для position:fixed — без портала лайтбокс
+  // привязывался бы к колонке чата (съезжал вправо, сайдбар просвечивал).
+  return createPortal(
     <div className={classNames(s.root, closing ? s.closing : '')} onClick={close}>
       {/* backdrop + хром гаснут вместе (tweb toggleWholeActive(false)) */}
       <div className={classNames(s.backdrop, s.chrome)} />
@@ -337,6 +341,7 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
           </motion.div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
