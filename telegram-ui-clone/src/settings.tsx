@@ -37,6 +37,10 @@ export interface Settings {
   // Папки слева от чатов (tweb settings.tabsInSidebar): true — вертикальный
   // folders-sidebar, false — горизонтальные табы над списком.
   tabsInSidebar: boolean
+  // Код-пароль (tweb settings.passcode): включён ли; автолок в минутах
+  // (0 — выключен). Хеш и соль лежат в IndexedDB (core/passcode.ts).
+  passcodeEnabled: boolean
+  passcodeAutoLockMins: number
 }
 
 const DEFAULTS: Settings = {
@@ -58,6 +62,8 @@ const DEFAULTS: Settings = {
   notifyVolume: 0.5,
   sentMessageSound: true,
   tabsInSidebar: false,
+  passcodeEnabled: false,
+  passcodeAutoLockMins: 0,
 }
 
 const KEY = 'tg-settings'
@@ -106,6 +112,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       notifyVolume: s.notifyVolume,
       sentMessageSound: s.sentMessageSound,
       tabsInSidebar: s.tabsInSidebar,
+      passcodeEnabled: s.passcodeEnabled,
+      passcodeAutoLockMins: s.passcodeAutoLockMins,
     }
     try {
       localStorage.setItem(KEY, JSON.stringify(toSave))

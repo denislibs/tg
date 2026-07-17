@@ -11,12 +11,14 @@ import type { Chat, OpenPeer } from '../data'
 import ChatList from './ChatList'
 import FolderEditor from './folders/FolderEditor'
 import FoldersSidebar from './folders/FoldersSidebar'
-import { useSettings } from '../settings'
+import { useSettings, useSettingsStore } from '../settings'
 import useMediaQuery from '../shared/lib/useMediaQuery'
 import Menu, { MenuItem } from '../shared/ui/Menu'
 import Popup from '../shared/ui/Popup'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
+import IconButton from '../shared/ui/IconButton'
+import { useLockStore } from '../stores/lockStore'
 import SidebarMenuButton from './SidebarMenuButton'
 import ComposeFab from './ComposeFab'
 import PremiumModal from './PremiumModal'
@@ -81,6 +83,7 @@ export default function Sidebar({
   // deep-open настроек на подэкран (контекстное меню «Настроить папки»)
   const [settingsSub, setSettingsSub] = useState<string | null>(null)
   // контекстное меню таба + удаление/редактирование папки
+  const passcodeEnabled = useSettingsStore((st) => st.passcodeEnabled)
   const [tabMenu, setTabMenu] = useState<{ id: number; pos: CSSProperties } | null>(null)
   const [deletingFolder, setDeletingFolder] = useState<Folder | null>(null)
   const [editingFolder, setEditingFolder] = useState<Folder | null>(null)
@@ -206,6 +209,18 @@ export default function Sidebar({
             focused={searching}
           />
         </div>
+        {/* Замок над списком чатов при включённом код-пароле (tweb
+            sidebar-lock-button): клик блокирует приложение. */}
+        {passcodeEnabled && !searching && (
+          <IconButton
+            onClick={() => useLockStore.getState().lock()}
+            color="var(--tg-textSecondary)"
+            aria-label={t('Lock the app')}
+            title={t('Lock the app')}
+          >
+            <TgIcon name="lock" size={24} />
+          </IconButton>
+        )}
       </div>
 
       {/* tweb #chatlist-container — список всегда смонтирован; поиск перекрывает его */}

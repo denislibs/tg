@@ -12,6 +12,8 @@ import TwoStepVerification from './TwoStepVerification'
 import Passkeys from './Passkeys'
 import PrivacyRule, { RULE_META } from './PrivacyRule'
 import AutoDeleteMessages, { autoDeleteLabel } from './AutoDeleteMessages'
+import PasscodeLock from './PasscodeLock'
+import { useSettingsStore } from '../../settings'
 import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import { usePrivacyStore } from '../../stores/privacyStore'
@@ -85,11 +87,14 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
         return <Passkeys onBack={back} />
       case 'Auto-Delete Messages':
         return <AutoDeleteMessages onBack={back} />
+      case 'Passcode Lock':
+        return <PasscodeLock onBack={back} />
     }
     return null
   }
 
   const blockedValue = blockedTotal > 0 ? `${blockedTotal}` : t('None')
+  const passcodeEnabled = useSettingsStore((st) => st.passcodeEnabled)
 
   return (
     <SettingsScreen title="Privacy and Security" onBack={onBack} zIndex={50}>
@@ -107,6 +112,13 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
           value={autoDelete == null ? undefined : autoDeleteLabel(autoDelete, t)}
           chevron
           onClick={() => setSub('Auto-Delete Messages')}
+        />
+        <Row
+          icon={<TgIcon name="key" size={24} />}
+          label="Passcode Lock"
+          value={t(passcodeEnabled ? 'On' : 'Off')}
+          chevron
+          onClick={() => setSub('Passcode Lock')}
         />
         <Row
           icon={<TgIcon name="lock" size={24} />}

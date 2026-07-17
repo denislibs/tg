@@ -12,6 +12,9 @@ import type { GroupPhoto } from './components/NewGroupFlow'
 import ConversationView from './components/ConversationView'
 import ChatBackground from './components/ChatBackground'
 import CallOverlay from './components/call/CallOverlay'
+import PasscodeLockScreen from './components/PasscodeLockScreen'
+import { useLockStore } from './stores/lockStore'
+import { lockOnStartIfEnabled } from './core/passcode'
 import AuthFlow from './components/auth/AuthFlow'
 import { useT } from './i18n'
 import type { Chat, OpenPeer } from './data'
@@ -57,6 +60,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     void loadNotifySettings(managers)
     void loadFolders(managers)
     void loadPrivacy(managers)
+    lockOnStartIfEnabled()
     void primeMediaToken() // cache the media token so media bubbles build URLs sync
     startRealtime()
     // offline-уведомления (web push) подписываем только если не выключены в настройках
@@ -117,6 +121,26 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 
   const meId = useChatsStore((s) => s.meId)
   const notifySettings = useNotifyStore((s) => s.settings)
+  const locked = useLockStore((s) => s.locked)
+
+  // Автоблокировка по бездействию (tweb settings.passcode.autoLockTimeoutMins):
+  // активность пользователя перевзводит таймер.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const arm = () => {
+      if (timer) clearTimeout(timer)
+      const { passcodeEnabled, passcodeAutoLockMins } = useSettingsStore.getState()
+      if (!passcodeEnabled || !passcodeAutoLockMins) return
+      timer = setTimeout(() => useLockStore.getState().lock(), passcodeAutoLockMins * 60_000)
+    }
+    const events: (keyof WindowEventMap)[] = ['mousemove', 'keydown', 'pointerdown']
+    events.forEach((e) => window.addEventListener(e, arm))
+    arm()
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, arm))
+      if (timer) clearTimeout(timer)
+    }
+  }, [])
   // Per-dialog Chat cache: return the SAME Chat object reference when its mapped
   // value is unchanged (compared by JSON), so a dialogs update (e.g. markRead
   // clearing one unread) only produces a new object for the row that changed —
@@ -358,6 +382,9 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 
       {/* Глобальный экран звонка (входящие показываются из любого места) */}
       <CallOverlay />
+
+      {/* Блокировка код-паролем поверх всего (tweb passcodeLockScreen) */}
+      {locked && <PasscodeLockScreen />}
     </div>
   )
 }

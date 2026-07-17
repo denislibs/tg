@@ -590,6 +590,39 @@ const ru: Dict = {
   'days': 'дней',
   'weeks': 'нед.',
   'months': 'месяцев',
+  // Passcode Lock
+  Passcode: 'Код-пароль',
+  'When a passcode is set, a lock icon appears above your chat list. Tap it to lock the app.':
+    'После установки кода-пароля над списком чатов появится значок замка для блокировки и разблокировки приложения.',
+  'Turn Passcode On': 'Включить код-пароль',
+  'Turn Passcode Off': 'Отключить код-пароль',
+  'Turn Off': 'Отключить',
+  'Are you sure you want to turn the passcode off?': 'Вы уверены, что хотите отключить код-пароль?',
+  "Note: if you forget your passcode, you'll need to log out and log in again.":
+    'Важно: если Вы забудете код-пароль, нужно будет выйти и заново авторизоваться.',
+  'Enter a passcode': 'Введите код-пароль',
+  'Enter a new passcode': 'Введите новый код-пароль',
+  'Enter your passcode': 'Введите код-пароль',
+  'Re-enter your passcode': 'Повторите код-пароль',
+  "Passcodes don't match, try again": 'Коды-пароли не совпадают, попробуйте ещё раз',
+  'Set Passcode': 'Задать код-пароль',
+  'Change Passcode': 'Изменить код-пароль',
+  'Passcode has been set.': 'Код-пароль установлен.',
+  'Your passcode has been changed.': 'Код-пароль изменён.',
+  'Passcode has been disabled.': 'Код-пароль отключён.',
+  'Auto-lock': 'Автоблокировка',
+  'Automatically lock the app if you are away for some time.':
+    'Автоматически блокировать приложение, если Вы отсутствуете некоторое время.',
+  min: 'мин',
+  'Wrong passcode': 'Неверный код-пароль',
+  'Too many attempts, please try again later': 'Слишком много попыток, попробуйте позже',
+  Proceed: 'Продолжить',
+  'If you forgot your passcode, you need to log out and log in again.':
+    'Если Вы забыли код-пароль, нужно выйти и заново авторизоваться.',
+  'Log Out': 'Выйти',
+  'Are you sure you want to log out? You will need to sign in again.':
+    'Вы уверены, что хотите выйти? Придётся авторизоваться заново.',
+  'Lock the app': 'Заблокировать приложение',
 }
 
 const uk: Dict = {
@@ -1043,6 +1076,39 @@ const uk: Dict = {
   'days': 'днів',
   'weeks': 'тиж.',
   'months': 'місяців',
+  // Passcode Lock
+  Passcode: 'Код-пароль',
+  'When a passcode is set, a lock icon appears above your chat list. Tap it to lock the app.':
+    "Після встановлення коду-пароля над списком чатів з'явиться значок замка для блокування та розблокування застосунку.",
+  'Turn Passcode On': 'Увімкнути код-пароль',
+  'Turn Passcode Off': 'Вимкнути код-пароль',
+  'Turn Off': 'Вимкнути',
+  'Are you sure you want to turn the passcode off?': 'Ви впевнені, що хочете вимкнути код-пароль?',
+  "Note: if you forget your passcode, you'll need to log out and log in again.":
+    'Важливо: якщо Ви забудете код-пароль, потрібно буде вийти та знову авторизуватися.',
+  'Enter a passcode': 'Введіть код-пароль',
+  'Enter a new passcode': 'Введіть новий код-пароль',
+  'Enter your passcode': 'Введіть код-пароль',
+  'Re-enter your passcode': 'Повторіть код-пароль',
+  "Passcodes don't match, try again": 'Коди-паролі не збігаються, спробуйте ще раз',
+  'Set Passcode': 'Задати код-пароль',
+  'Change Passcode': 'Змінити код-пароль',
+  'Passcode has been set.': 'Код-пароль встановлено.',
+  'Your passcode has been changed.': 'Код-пароль змінено.',
+  'Passcode has been disabled.': 'Код-пароль вимкнено.',
+  'Auto-lock': 'Автоблокування',
+  'Automatically lock the app if you are away for some time.':
+    'Автоматично блокувати застосунок, якщо Ви відсутні певний час.',
+  min: 'хв',
+  'Wrong passcode': 'Невірний код-пароль',
+  'Too many attempts, please try again later': 'Забагато спроб, спробуйте пізніше',
+  Proceed: 'Продовжити',
+  'If you forgot your passcode, you need to log out and log in again.':
+    'Якщо Ви забули код-пароль, потрібно вийти та знову авторизуватися.',
+  'Log Out': 'Вийти',
+  'Are you sure you want to log out? You will need to sign in again.':
+    'Ви впевнені, що хочете вийти? Доведеться авторизуватися знову.',
+  'Lock the app': 'Заблокувати застосунок',
 }
 
 const es: Dict = {
@@ -1494,6 +1560,39 @@ const es: Dict = {
   'days': 'días',
   'weeks': 'semanas',
   'months': 'meses',
+  // Passcode Lock
+  Passcode: 'Código de acceso',
+  'When a passcode is set, a lock icon appears above your chat list. Tap it to lock the app.':
+    'Cuando se establece un código de acceso, aparece un icono de candado sobre la lista de chats. Tócalo para bloquear la aplicación.',
+  'Turn Passcode On': 'Activar código de acceso',
+  'Turn Passcode Off': 'Desactivar código de acceso',
+  'Turn Off': 'Desactivar',
+  'Are you sure you want to turn the passcode off?': '¿Seguro que quieres desactivar el código de acceso?',
+  "Note: if you forget your passcode, you'll need to log out and log in again.":
+    'Nota: si olvidas tu código de acceso, tendrás que cerrar sesión e iniciarla de nuevo.',
+  'Enter a passcode': 'Introduce un código de acceso',
+  'Enter a new passcode': 'Introduce un nuevo código de acceso',
+  'Enter your passcode': 'Introduce tu código de acceso',
+  'Re-enter your passcode': 'Vuelve a introducir tu código de acceso',
+  "Passcodes don't match, try again": 'Los códigos no coinciden, inténtalo de nuevo',
+  'Set Passcode': 'Establecer código',
+  'Change Passcode': 'Cambiar código',
+  'Passcode has been set.': 'El código de acceso ha sido establecido.',
+  'Your passcode has been changed.': 'Tu código de acceso ha sido cambiado.',
+  'Passcode has been disabled.': 'El código de acceso ha sido desactivado.',
+  'Auto-lock': 'Bloqueo automático',
+  'Automatically lock the app if you are away for some time.':
+    'Bloquear automáticamente la aplicación si te ausentas durante un tiempo.',
+  min: 'min',
+  'Wrong passcode': 'Código incorrecto',
+  'Too many attempts, please try again later': 'Demasiados intentos, inténtalo más tarde',
+  Proceed: 'Continuar',
+  'If you forgot your passcode, you need to log out and log in again.':
+    'Si olvidaste tu código de acceso, debes cerrar sesión e iniciarla de nuevo.',
+  'Log Out': 'Cerrar sesión',
+  'Are you sure you want to log out? You will need to sign in again.':
+    '¿Seguro que quieres cerrar sesión? Tendrás que iniciarla de nuevo.',
+  'Lock the app': 'Bloquear la aplicación',
 }
 
 const de: Dict = {
@@ -1947,6 +2046,39 @@ const de: Dict = {
   'days': 'Tage',
   'weeks': 'Wochen',
   'months': 'Monate',
+  // Passcode Lock
+  Passcode: 'Code',
+  'When a passcode is set, a lock icon appears above your chat list. Tap it to lock the app.':
+    'Wenn ein Code festgelegt ist, erscheint ein Schloss-Symbol über deiner Chatliste. Tippe darauf, um die App zu sperren.',
+  'Turn Passcode On': 'Code aktivieren',
+  'Turn Passcode Off': 'Code deaktivieren',
+  'Turn Off': 'Deaktivieren',
+  'Are you sure you want to turn the passcode off?': 'Möchtest du den Code wirklich deaktivieren?',
+  "Note: if you forget your passcode, you'll need to log out and log in again.":
+    'Hinweis: Wenn du deinen Code vergisst, musst du dich ab- und wieder anmelden.',
+  'Enter a passcode': 'Code eingeben',
+  'Enter a new passcode': 'Neuen Code eingeben',
+  'Enter your passcode': 'Gib deinen Code ein',
+  'Re-enter your passcode': 'Code erneut eingeben',
+  "Passcodes don't match, try again": 'Codes stimmen nicht überein, versuche es erneut',
+  'Set Passcode': 'Code festlegen',
+  'Change Passcode': 'Code ändern',
+  'Passcode has been set.': 'Der Code wurde festgelegt.',
+  'Your passcode has been changed.': 'Dein Code wurde geändert.',
+  'Passcode has been disabled.': 'Der Code wurde deaktiviert.',
+  'Auto-lock': 'Automatische Sperre',
+  'Automatically lock the app if you are away for some time.':
+    'Die App automatisch sperren, wenn du einige Zeit abwesend bist.',
+  min: 'Min.',
+  'Wrong passcode': 'Falscher Code',
+  'Too many attempts, please try again later': 'Zu viele Versuche, bitte versuche es später erneut',
+  Proceed: 'Fortfahren',
+  'If you forgot your passcode, you need to log out and log in again.':
+    'Wenn du deinen Code vergessen hast, musst du dich ab- und wieder anmelden.',
+  'Log Out': 'Abmelden',
+  'Are you sure you want to log out? You will need to sign in again.':
+    'Möchtest du dich wirklich abmelden? Du musst dich erneut anmelden.',
+  'Lock the app': 'App sperren',
 }
 
 const fr: Dict = {
@@ -2400,6 +2532,39 @@ const fr: Dict = {
   'days': 'jours',
   'weeks': 'semaines',
   'months': 'mois',
+  // Passcode Lock
+  Passcode: "Code d'accès",
+  'When a passcode is set, a lock icon appears above your chat list. Tap it to lock the app.':
+    "Lorsqu'un code d'accès est défini, une icône de cadenas apparaît au-dessus de votre liste de discussions. Appuyez dessus pour verrouiller l'application.",
+  'Turn Passcode On': "Activer le code d'accès",
+  'Turn Passcode Off': "Désactiver le code d'accès",
+  'Turn Off': 'Désactiver',
+  'Are you sure you want to turn the passcode off?': "Voulez-vous vraiment désactiver le code d'accès ?",
+  "Note: if you forget your passcode, you'll need to log out and log in again.":
+    "Remarque : si vous oubliez votre code d'accès, vous devrez vous déconnecter puis vous reconnecter.",
+  'Enter a passcode': "Saisissez un code d'accès",
+  'Enter a new passcode': "Saisissez un nouveau code d'accès",
+  'Enter your passcode': "Saisissez votre code d'accès",
+  'Re-enter your passcode': "Saisissez à nouveau votre code d'accès",
+  "Passcodes don't match, try again": 'Les codes ne correspondent pas, réessayez',
+  'Set Passcode': "Définir le code d'accès",
+  'Change Passcode': "Modifier le code d'accès",
+  'Passcode has been set.': "Le code d'accès a été défini.",
+  'Your passcode has been changed.': "Votre code d'accès a été modifié.",
+  'Passcode has been disabled.': "Le code d'accès a été désactivé.",
+  'Auto-lock': 'Verrouillage automatique',
+  'Automatically lock the app if you are away for some time.':
+    "Verrouiller automatiquement l'application si vous êtes absent pendant un certain temps.",
+  min: 'min',
+  'Wrong passcode': "Code d'accès incorrect",
+  'Too many attempts, please try again later': 'Trop de tentatives, veuillez réessayer plus tard',
+  Proceed: 'Continuer',
+  'If you forgot your passcode, you need to log out and log in again.':
+    "Si vous avez oublié votre code d'accès, vous devez vous déconnecter puis vous reconnecter.",
+  'Log Out': 'Se déconnecter',
+  'Are you sure you want to log out? You will need to sign in again.':
+    'Voulez-vous vraiment vous déconnecter ? Vous devrez vous reconnecter.',
+  'Lock the app': "Verrouiller l'application",
 }
 
 export const dicts: Record<Lang, Dict> = { en: {}, ru, uk, es, de, fr }

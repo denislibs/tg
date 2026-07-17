@@ -1,0 +1,48 @@
+// Полноэкранный оверлей блокировки (tweb _passcodeLockScreen.scss): фон
+// приложения, карточка по центру.
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--tg-bg);
+}
+
+.card {
+  width: min(360px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border: 2px solid var(--tg-accent);
+  border-radius: 12px;
+  padding: 4px 6px 4px 14px;
+  background: var(--tg-bgSecondary, transparent);
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 16px;
+  color: var(--tg-textPrimary);
+  padding: 10px 0;
+}
+
+.btn {
+  margin-top: 2px;
+}
+
+.logout {
+  color: var(--tg-accent);
+  cursor: pointer;
+}
