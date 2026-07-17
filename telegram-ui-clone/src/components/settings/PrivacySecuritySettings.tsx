@@ -10,6 +10,7 @@ import BlockedUsers from './BlockedUsers'
 import ActiveSessions from './ActiveSessions'
 import TwoStepVerification from './TwoStepVerification'
 import Passkeys from './Passkeys'
+import PasskeyIntroPopup from './PasskeyIntroPopup'
 import PrivacyRule, { RULE_META } from './PrivacyRule'
 import AutoDeleteMessages, { autoDeleteLabel } from './AutoDeleteMessages'
 import PasscodeLock from './PasscodeLock'
@@ -60,6 +61,8 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
   // из под-экранов).
   const [pwEnabled, setPwEnabled] = useState<boolean | null>(null)
   const [autoDelete, setAutoDelete] = useState<number | null>(null)
+  const [passkeysCount, setPasskeysCount] = useState(0)
+  const [passkeyIntro, setPasskeyIntro] = useState(false)
   useEffect(() => {
     if (sub !== null) return
     let alive = true
@@ -68,6 +71,9 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
     }).catch(() => {})
     void managers.privacy.autoDelete().then((p) => {
       if (alive) setAutoDelete(p)
+    }).catch(() => {})
+    void managers.auth.passkeysList().then((l) => {
+      if (alive) setPasskeysCount(l.length)
     }).catch(() => {})
     return () => { alive = false }
   }, [sub, managers])
@@ -127,11 +133,12 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
           chevron
           onClick={() => setSub('Two-Step Verification')}
         />
+        {/* Как в tweb: без ключей клик открывает интро-попап, с ключами — список */}
         <Row
           icon={<TgIcon name="faceid" size={24} />}
           label="Passkeys"
           chevron
-          onClick={() => setSub('Passkeys')}
+          onClick={() => (passkeysCount > 0 ? setSub('Passkeys') : setPasskeyIntro(true))}
         />
         <Row
           icon={<TgIcon name="activesessions" size={24} />}
@@ -153,6 +160,15 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
       </Section>
 
       <AnimatePresence>{renderSub()}</AnimatePresence>
+      <PasskeyIntroPopup
+        open={passkeyIntro}
+        onClose={() => setPasskeyIntro(false)}
+        onCreated={() => {
+          setPasskeyIntro(false)
+          setPasskeysCount(1)
+          setSub('Passkeys')
+        }}
+      />
     </SettingsScreen>
   )
 }

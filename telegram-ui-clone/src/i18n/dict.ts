@@ -631,6 +631,20 @@ const ru: Dict = {
   Created: 'Создан',
   'Log in with a Passkey': 'Войти по ключу доступа',
   'Passkey sign-in failed': 'Не удалось войти по ключу доступа',
+  // Попап «Защита Вашего аккаунта» (tweb Passkey.*)
+  'Protect your account': 'Защита Вашего аккаунта',
+  'Log in safely and keep your account secure.': 'Безопасный вход и защита данных',
+  'Create a Passkey': 'Добавление ключа доступа',
+  'Make a passkey to log in easily and safely.':
+    'Вы можете создать ключ доступа для быстрого и безопасного входа в аккаунт.',
+  'Log in with Face ID': 'Вход по биометрии',
+  'Use Face ID, Touch ID, or your passcode to log in.':
+    'Ключ позволяет использовать для входа лицо, отпечаток пальца или ПИН-код устройства.',
+  'Store Passkey Securely': 'Безопасное хранение ключа',
+  'Your passkey is safely kept in your iCloud Keychain.':
+    'Ключ доступа хранится в выбранном Вами облачном сервисе, где он надёжно защищён.',
+  'Create Passkey': 'Создать ключ доступа',
+  Unsupported: 'Не поддерживается',
 }
 
 const uk: Dict = {
@@ -1123,6 +1137,20 @@ const uk: Dict = {
   Passkey: 'Ключ доступу',
   'Last used': 'Використано',
   Created: 'Створено',
+  // Попап «Захист Вашого акаунта» (tweb Passkey.*)
+  'Protect your account': 'Захист Вашого акаунта',
+  'Log in safely and keep your account secure.': 'Безпечний вхід і захист даних',
+  'Create a Passkey': 'Додавання ключа доступу',
+  'Make a passkey to log in easily and safely.':
+    'Ви можете створити ключ доступу для швидкого та безпечного входу в акаунт.',
+  'Log in with Face ID': 'Вхід за біометрією',
+  'Use Face ID, Touch ID, or your passcode to log in.':
+    'Ключ дозволяє використовувати для входу обличчя, відбиток пальця або PIN-код пристрою.',
+  'Store Passkey Securely': 'Безпечне зберігання ключа',
+  'Your passkey is safely kept in your iCloud Keychain.':
+    'Ключ доступу зберігається в обраному Вами хмарному сервісі, де він надійно захищений.',
+  'Create Passkey': 'Створити ключ доступу',
+  Unsupported: 'Не підтримується',
   'Log in with a Passkey': 'Увійти за ключем доступу',
   'Passkey sign-in failed': 'Не вдалося увійти за ключем доступу',
 }
@@ -1615,6 +1643,20 @@ const es: Dict = {
   Passkey: 'Llave de acceso',
   'Last used': 'Último uso',
   Created: 'Creada',
+  // Попап «Защита аккаунта» (tweb Passkey.*)
+  'Protect your account': 'Proteja su cuenta',
+  'Log in safely and keep your account secure.': 'Inicio de sesión seguro y protección de datos',
+  'Create a Passkey': 'Añadir una llave de acceso',
+  'Make a passkey to log in easily and safely.':
+    'Puede crear una llave de acceso para iniciar sesión de forma rápida y segura.',
+  'Log in with Face ID': 'Inicio de sesión con biometría',
+  'Use Face ID, Touch ID, or your passcode to log in.':
+    'La llave permite iniciar sesión con el rostro, la huella dactilar o el PIN del dispositivo.',
+  'Store Passkey Securely': 'Almacenamiento seguro de la llave',
+  'Your passkey is safely kept in your iCloud Keychain.':
+    'La llave de acceso se guarda en el servicio en la nube que usted elija, donde está protegida de forma fiable.',
+  'Create Passkey': 'Crear llave de acceso',
+  Unsupported: 'No compatible',
   'Log in with a Passkey': 'Iniciar sesión con una llave de acceso',
   'Passkey sign-in failed': 'No se pudo iniciar sesión con la llave de acceso',
 }
@@ -2109,6 +2151,20 @@ const de: Dict = {
   Passkey: 'Passkey',
   'Last used': 'Zuletzt verwendet',
   Created: 'Erstellt',
+  // Попап «Schützen Sie Ihr Konto» (tweb Passkey.*)
+  'Protect your account': 'Schützen Sie Ihr Konto',
+  'Log in safely and keep your account secure.': 'Sichere Anmeldung und Datenschutz',
+  'Create a Passkey': 'Passkey hinzufügen',
+  'Make a passkey to log in easily and safely.':
+    'Sie können einen Passkey erstellen, um sich schnell und sicher anzumelden.',
+  'Log in with Face ID': 'Anmeldung per Biometrie',
+  'Use Face ID, Touch ID, or your passcode to log in.':
+    'Der Passkey ermöglicht die Anmeldung per Gesicht, Fingerabdruck oder Geräte-PIN.',
+  'Store Passkey Securely': 'Sichere Aufbewahrung des Passkeys',
+  'Your passkey is safely kept in your iCloud Keychain.':
+    'Der Passkey wird in dem von Ihnen gewählten Cloud-Dienst sicher aufbewahrt.',
+  'Create Passkey': 'Passkey erstellen',
+  Unsupported: 'Nicht unterstützt',
   'Log in with a Passkey': 'Mit Passkey anmelden',
   'Passkey sign-in failed': 'Anmeldung mit Passkey fehlgeschlagen',
 }
@@ -2603,6 +2659,20 @@ const fr: Dict = {
   Passkey: "Clé d'accès",
   'Last used': 'Dernière utilisation',
   Created: 'Créée',
+  // Попап «Protégez votre compte» (tweb Passkey.*)
+  'Protect your account': 'Protégez votre compte',
+  'Log in safely and keep your account secure.': 'Connexion sécurisée et protection des données',
+  'Create a Passkey': "Ajout d'une clé d'accès",
+  'Make a passkey to log in easily and safely.':
+    "Vous pouvez créer une clé d'accès pour vous connecter rapidement et en toute sécurité.",
+  'Log in with Face ID': 'Connexion par biométrie',
+  'Use Face ID, Touch ID, or your passcode to log in.':
+    "La clé permet de se connecter avec le visage, l'empreinte digitale ou le code PIN de l'appareil.",
+  'Store Passkey Securely': 'Stockage sécurisé de la clé',
+  'Your passkey is safely kept in your iCloud Keychain.':
+    "La clé d'accès est conservée dans le service cloud de votre choix, où elle est protégée de manière fiable.",
+  'Create Passkey': "Créer une clé d'accès",
+  Unsupported: 'Non pris en charge',
   'Log in with a Passkey': "Se connecter avec une clé d'accès",
   'Passkey sign-in failed': "Échec de la connexion par clé d'accès",
 }

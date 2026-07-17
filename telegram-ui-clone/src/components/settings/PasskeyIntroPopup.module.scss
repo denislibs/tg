@@ -1,0 +1,123 @@
+// Попап «Защита Вашего аккаунта» (tweb featureDetails.module.scss +
+// _popup.scss: ширина 26.25rem, радиус 2.5rem, паддинг 1rem, футер-кнопки 48px).
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+}
+
+.dialog {
+  position: relative;
+  width: min(26.25rem, 100%);
+  max-height: 92vh;
+  border-radius: 2.5rem;
+  background: var(--tg-sidebarBg);
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+.close {
+  position: absolute;
+  top: 0.625rem;
+  inset-inline-start: 0.625rem;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--tg-textSecondary);
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+    }
+  }
+}
+
+// mediaHeader: стикер 120, заголовок 24 bold, подзаголовок 16
+.sticker {
+  margin: 0.125rem auto 0.5rem;
+}
+
+.title {
+  text-align: center;
+  margin-bottom: 0.25rem;
+}
+
+.subtitle {
+  text-align: center;
+  margin-top: 0.125rem;
+}
+
+// featureDetails .row: паддинг слева 3.75rem, иконка на 1.5rem
+.row {
+  position: relative;
+  padding-inline-start: 3.75rem;
+  padding-inline-end: 1rem;
+  margin-top: 0.75rem;
+}
+
+.rowIcon {
+  position: absolute;
+  top: 1rem;
+  inset-inline-start: 1.5rem;
+  color: var(--tg-accent);
+}
+
+// футер: паддинг-топ 1.625rem, кнопки-пилюли 48px (popup-footer-abitlarger)
+.footer {
+  padding-top: 1.625rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.button {
+  height: 48px;
+  line-height: 48px;
+  border-radius: 24px;
+  padding: 0 1.0625rem;
+  text-align: center;
+  text-transform: uppercase;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  background: var(--tg-accent);
+  color: #fff;
+
+  @media (hover: hover) {
+    &:hover {
+      filter: brightness(1.06);
+    }
+  }
+
+  &.secondary {
+    background: transparent;
+    color: var(--tg-accent);
+
+    @media (hover: hover) {
+      &:hover {
+        filter: none;
+        background: var(--tg-hover);
+      }
+    }
+  }
+
+  &.disabled {
+    opacity: 0.6;
+    pointer-events: none;
+  }
+}
+
+.error {
+  text-align: center;
+  margin-top: 0.75rem;
+}

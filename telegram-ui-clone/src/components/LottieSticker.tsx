@@ -11,6 +11,7 @@ const ASSETS: Record<string, () => Promise<{ default: unknown }>> = {
   Folders_2: () => import('../assets/tgs/Folders_2.json'),
   UtyanPasscode: () => import('../assets/tgs/UtyanPasscode.json'),
   UtyanDisappear: () => import('../assets/tgs/UtyanDisappear.json'),
+  Key: () => import('../assets/tgs/key.json'),
 }
 
 export type LottieAssetName = keyof typeof ASSETS
