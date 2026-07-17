@@ -664,3 +664,83 @@ func (h *ChatHandler) SetChatAutoDelete(w http.ResponseWriter, r *http.Request) 
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"period": b.Period})
 }
+
+// draftJSON — wire-представление черновика.
+func draftJSON(d domain.Draft) map[string]any {
+	return map[string]any{
+		"chat_id": d.ChatID, "text": d.Text, "entities": d.Entities,
+		"reply_to_id": d.ReplyToID, "updated_at": d.UpdatedAt,
+	}
+}
+
+// MyDrafts — GET /drafts: все облачные черновики пользователя.
+func (h *ChatHandler) MyDrafts(w http.ResponseWriter, r *http.Request) {
+	drafts, err := h.svc.MyDrafts(r.Context(), h.meID(r))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal")
+		return
+	}
+	out := make([]map[string]any, 0, len(drafts))
+	for _, d := range drafts {
+		out = append(out, draftJSON(d))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"drafts": out})
+}
+
+// SaveDraft — PUT /chats/{chatID}/draft {text, entities, reply_to_id}.
+// Пустой текст без reply_to_id удаляет черновик (Telegram draftMessageEmpty).
+func (h *ChatHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Text      string                 `json:"text"`
+		Entities  []domain.MessageEntity `json:"entities"`
+		ReplyToID *int64                 `json:"reply_to_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	d, err := h.svc.SaveDraft(r.Context(), h.meID(r), chatID, b.Text, b.Entities, b.ReplyToID)
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusForbidden, "not a member of this chat")
+		return
+	}
+	if errors.Is(err, domain.ErrTooLong) {
+		writeError(w, http.StatusBadRequest, "too long")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal")
+		return
+	}
+	if d == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"draft": nil})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"draft": draftJSON(*d)})
+}
+
+// DeleteDraft — DELETE /chats/{chatID}/draft.
+func (h *ChatHandler) DeleteDraft(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	if err := h.svc.DeleteDraft(r.Context(), h.meID(r), chatID); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// ClearAllDrafts — DELETE /drafts («Удалить все черновики»).
+func (h *ChatHandler) ClearAllDrafts(w http.ResponseWriter, r *http.Request) {
+	if err := h.svc.ClearAllDrafts(r.Context(), h.meID(r)); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}

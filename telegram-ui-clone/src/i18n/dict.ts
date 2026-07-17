@@ -619,6 +619,11 @@ const ru: Dict = {
   'Last used': 'Использован',
   Created: 'Создан',
   'Log in with a Passkey': 'Войти по ключу доступа',
+  // Черновики (tweb Draft/PrivacyDeleteCloudDrafts)
+  Draft: 'Черновик',
+  'Delete All Cloud Drafts': 'Удалить все черновики',
+  'Delete cloud drafts': 'Удаление черновиков',
+  'Are you sure you want to delete all cloud drafts?': 'Удалить все облачные черновики?',
   // Данные и память (tweb dataAndStorage/storageQuota)
   'Automatic media download': 'Автозагрузка медиа',
   'Auto-Download Media': 'Загружать автоматически',
@@ -1174,6 +1179,11 @@ const uk: Dict = {
   'Create Passkey': 'Створити ключ доступу',
   Unsupported: 'Не підтримується',
   'Log in with a Passkey': 'Увійти за ключем доступу',
+  // Чернетки (tweb Draft/PrivacyDeleteCloudDrafts)
+  Draft: 'Чернетка',
+  'Delete All Cloud Drafts': 'Видалити всі чернетки',
+  'Delete cloud drafts': 'Видалення чернеток',
+  'Are you sure you want to delete all cloud drafts?': 'Видалити всі хмарні чернетки?',
   // Дані та пам'ять (tweb dataAndStorage/storageQuota)
   'Automatic media download': 'Автозавантаження медіа',
   'Auto-Download Media': 'Завантажувати автоматично',
@@ -1713,6 +1723,11 @@ const es: Dict = {
   'Create Passkey': 'Crear llave de acceso',
   Unsupported: 'No compatible',
   'Log in with a Passkey': 'Iniciar sesión con una llave de acceso',
+  // Borradores (tweb Draft/PrivacyDeleteCloudDrafts)
+  Draft: 'Borrador',
+  'Delete All Cloud Drafts': 'Eliminar todos los borradores',
+  'Delete cloud drafts': 'Eliminar borradores',
+  'Are you sure you want to delete all cloud drafts?': '¿Eliminar todos los borradores en la nube?',
   // Datos y almacenamiento (tweb dataAndStorage/storageQuota)
   'Automatic media download': 'Descarga automática de multimedia',
   'Auto-Download Media': 'Descargar automáticamente',
@@ -2254,6 +2269,11 @@ const de: Dict = {
   'Create Passkey': 'Passkey erstellen',
   Unsupported: 'Nicht unterstützt',
   'Log in with a Passkey': 'Mit Passkey anmelden',
+  // Entwürfe (tweb Draft/PrivacyDeleteCloudDrafts)
+  Draft: 'Entwurf',
+  'Delete All Cloud Drafts': 'Alle Cloud-Entwürfe löschen',
+  'Delete cloud drafts': 'Cloud-Entwürfe löschen',
+  'Are you sure you want to delete all cloud drafts?': 'Alle Cloud-Entwürfe wirklich löschen?',
   // Daten und Speicher (tweb dataAndStorage/storageQuota)
   'Automatic media download': 'Automatischer Mediendownload',
   'Auto-Download Media': 'Automatisch herunterladen',
@@ -2795,6 +2815,11 @@ const fr: Dict = {
   'Create Passkey': "Créer une clé d'accès",
   Unsupported: 'Non pris en charge',
   'Log in with a Passkey': "Se connecter avec une clé d'accès",
+  // Brouillons (tweb Draft/PrivacyDeleteCloudDrafts)
+  Draft: 'Brouillon',
+  'Delete All Cloud Drafts': 'Supprimer tous les brouillons',
+  'Delete cloud drafts': 'Supprimer les brouillons',
+  'Are you sure you want to delete all cloud drafts?': 'Supprimer tous les brouillons dans le cloud ?',
   // Données et stockage (tweb dataAndStorage/storageQuota)
   'Automatic media download': 'Téléchargement automatique des médias',
   'Auto-Download Media': 'Télécharger automatiquement',

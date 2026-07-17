@@ -145,6 +145,12 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
                 <TypingIndicator kind={typingLabel.kind} color="var(--cl-accent)" />
                 {typingLabel.label}
               </Text>
+            ) : chat.draftPreview ? (
+              /* Облачный черновик: красный «Черновик: » + текст (tweb .danger) */
+              <Text noWrap size={16} color="var(--cl-subtitle)" style={{ flex: 1 }}>
+                <span style={{ color: '#ff595a' }}>{t('Draft')}: </span>
+                {chat.draftPreview}
+              </Text>
             ) : (
               <>
                 {chat.forwarded && (

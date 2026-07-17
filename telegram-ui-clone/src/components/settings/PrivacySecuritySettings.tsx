@@ -14,6 +14,8 @@ import PasskeyIntroPopup from './PasskeyIntroPopup'
 import PrivacyRule, { RULE_META } from './PrivacyRule'
 import AutoDeleteMessages, { autoDeleteLabel } from './AutoDeleteMessages'
 import PasscodeLock from './PasscodeLock'
+import ConfirmDialog from './ConfirmDialog'
+import { useDraftsStore } from '../../stores/draftsStore'
 import { useSettingsStore } from '../../settings'
 import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
@@ -63,6 +65,7 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
   const [autoDelete, setAutoDelete] = useState<number | null>(null)
   const [passkeysCount, setPasskeysCount] = useState(0)
   const [passkeyIntro, setPasskeyIntro] = useState(false)
+  const [clearDrafts, setClearDrafts] = useState(false)
   useEffect(() => {
     if (sub !== null) return
     let alive = true
@@ -158,6 +161,28 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
           />
         ))}
       </Section>
+
+      {/* Облачные черновики (tweb PrivacyDeleteCloudDrafts + confirm-попап) */}
+      <Section caption="Chats">
+        <Row
+          icon={<TgIcon name="delete" size={24} />}
+          label="Delete All Cloud Drafts"
+          accent
+          onClick={() => setClearDrafts(true)}
+        />
+      </Section>
+      {clearDrafts && (
+        <ConfirmDialog
+          title={t('Delete cloud drafts')}
+          text={t('Are you sure you want to delete all cloud drafts?')}
+          action={t('Delete')}
+          danger
+          onConfirm={() => {
+            void managers.drafts.clearAll().then(() => useDraftsStore.getState().clearAll()).catch(() => {})
+          }}
+          onClose={() => setClearDrafts(false)}
+        />
+      )}
 
       <AnimatePresence>{renderSub()}</AnimatePresence>
       <PasskeyIntroPopup

@@ -26,6 +26,7 @@ type Interactor struct {
 	chPub       ChannelPublisher
 	notifier    PushNotifier
 	privacy     PrivacyChecker
+	drafts      DraftRepo
 }
 
 // New constructs the chat interactor from its ports.
@@ -59,6 +60,9 @@ func (i *Interactor) SetNotifier(n PushNotifier) { i.notifier = n }
 
 // SetPrivacy подключает проверки конфиденциальности (optional).
 func (i *Interactor) SetPrivacy(p PrivacyChecker) { i.privacy = p }
+
+// SetDrafts подключает хранилище облачных черновиков (optional).
+func (i *Interactor) SetDrafts(d DraftRepo) { i.drafts = d }
 
 // nowMillis is the server clock used for update dates.
 func nowMillis() int64 { return time.Now().UnixMilli() }

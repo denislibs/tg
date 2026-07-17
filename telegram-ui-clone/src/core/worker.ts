@@ -20,6 +20,7 @@ import { newPresenceManager } from './managers/presenceManager'
 import { newStoriesManager } from './managers/storiesManager'
 import { newContactsManager } from './managers/contactsManager'
 import { newPrivacyManager } from './managers/privacyManager'
+import { newDraftsManager } from './managers/draftsManager'
 import { newSessionsManager } from './managers/sessionsManager'
 import { newCallsManager } from './managers/callsManager'
 import { newConnectionManager } from './realtime/connectionManager'
@@ -45,6 +46,7 @@ const presence = newPresenceManager({ rest })
 const stories = newStoriesManager({ rest })
 const contacts = newContactsManager({ rest })
 const privacy = newPrivacyManager({ rest })
+const drafts = newDraftsManager({ rest })
 const sessions = newSessionsManager({ rest })
 const calls = newCallsManager({ rest })
 
@@ -96,6 +98,7 @@ const conn = newConnectionManager({
     else if (type === 'typing') broadcast(RT.typing, payload)
     else if (type === 'presence') broadcast(RT.presence, payload)
     else if (type === 'reaction') broadcast(RT.reaction, payload)
+    else if (type === 'draft_update') broadcast(RT.draftUpdate, payload)
     else if (type.startsWith('call_')) broadcast(RT.call, { t: type, d: payload })
   },
 })
@@ -132,6 +135,7 @@ function bind(ep: Endpoint) {
     stories: stories as unknown as Record<string, (...a: unknown[]) => unknown>,
     contacts: contacts as unknown as Record<string, (...a: unknown[]) => unknown>,
     privacy: privacy as unknown as Record<string, (...a: unknown[]) => unknown>,
+    drafts: drafts as unknown as Record<string, (...a: unknown[]) => unknown>,
     sessions: sessions as unknown as Record<string, (...a: unknown[]) => unknown>,
     calls: calls as unknown as Record<string, (...a: unknown[]) => unknown>,
   })

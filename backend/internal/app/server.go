@@ -66,6 +66,9 @@ func registerServer(p serverParams) {
 	p.ChatUC.SetPrivacy(privacyUC)
 	p.ContactsUC.SetPrivacy(privacyUC)
 
+	// Облачные черновики: хранение per (чат, пользователь) + синк draft_update.
+	p.ChatUC.SetDrafts(pgadapter.NewDraftsRepo(p.Pool))
+
 	var wsHandler http.Handler
 	var presenceMgr *usecasepresence.Manager
 	if p.Redis.OK {

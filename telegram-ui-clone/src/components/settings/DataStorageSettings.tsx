@@ -3,8 +3,7 @@
 // под-экранами, сброс с confirm) + секция «Расчётный объём хранения»
 // (подсчёт кэша по типам, очистка, слайдеры TTL/лимита).
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence } from 'framer-motion'
 import Text from '../../shared/ui/Text'
 import Checkbox from '../../shared/ui/Checkbox'
 import Slider from '../../shared/ui/Slider'
@@ -14,7 +13,7 @@ import { SettingsScreen, Section, Row } from './kit'
 import { useSettingsStore, type AutoDownloadPeerTypes, type Settings } from '../../settings'
 import { collectCachedFilesSizes, clearCachedFiles, syncCacheSettingsToSW, formatBytes, type CachedFilesSizes } from '../../core/mediaCache'
 import { useT } from '../../i18n'
-import { EASE } from '../../motion'
+import ConfirmDialog from './ConfirmDialog'
 import s from './DataStorageSettings.module.scss'
 
 type MediaType = 'photo' | 'video' | 'file'
@@ -72,36 +71,6 @@ function nearestIdx(value: number, values: number[]): number {
     if (values[i] <= value) found = i
   }
   return found
-}
-
-// Confirm-диалог (tweb confirmationPopup): заголовок, текст, Отмена/действие.
-function ConfirmDialog({ title, text, action, onConfirm, onClose }: {
-  title: string
-  text: string
-  action: string
-  onConfirm: () => void
-  onClose: () => void
-}) {
-  const t = useT()
-  return createPortal(
-    <div className={s.overlay} onClick={onClose}>
-      <motion.div
-        className={s.confirmCard}
-        onClick={(e: React.MouseEvent) => e.stopPropagation()}
-        initial={{ opacity: 0, scale: 0.92 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.2, ease: EASE }}
-      >
-        <Text size={17} weight={600} color="var(--tg-textPrimary)" style={{ marginBottom: 8 }}>{title}</Text>
-        <Text size={14.5} color="var(--tg-textSecondary)">{text}</Text>
-        <div className={s.confirmActions}>
-          <div className={s.confirmAction} onClick={onClose}>{t('Cancel')}</div>
-          <div className={s.confirmAction} onClick={() => { onConfirm(); onClose() }}>{action}</div>
-        </div>
-      </motion.div>
-    </div>,
-    document.body,
-  )
 }
 
 // Сабтайтл ряда Фото/Видео/Файлы (tweb setAutoDownloadSubtitle):

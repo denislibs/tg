@@ -27,6 +27,7 @@ import { startRealtime } from './client/realtimeBridge'
 import { setupPush } from './client/pushSetup'
 import { loadNotifySettings, useNotifyStore, notifyTypeForChat } from './stores/notifyStore'
 import { loadPrivacy } from './stores/privacyStore'
+import { loadDrafts, useDraftsStore } from './stores/draftsStore'
 import { loadFolders } from './stores/foldersStore'
 import s from './App.module.scss'
 import useMediaQuery from './shared/lib/useMediaQuery'
@@ -61,6 +62,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     void loadNotifySettings(managers)
     void loadFolders(managers)
     void loadPrivacy(managers)
+    void loadDrafts(managers)
     lockOnStartIfEnabled()
     void primeMediaToken() // cache the media token so media bubbles build URLs sync
     // SW чистит медиакэш по TTL/лимиту при получении настроек (tweb clearOldCache)
@@ -150,11 +152,12 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   // clearing one unread) only produces a new object for the row that changed —
   // letting memo(ChatListItem) bail on every other row.
   const chatCacheRef = useRef<Map<number, { json: string; chat: Chat }>>(new Map())
+  const draftsByChat = useDraftsStore((s) => s.byChat)
   const chatList = useMemo<Chat[]>(() => {
     const cache = chatCacheRef.current
     const seen = new Set<number>()
     const next = dialogs.map((d) => {
-      let chat = dialogToChat(d, meId)
+      let chat = dialogToChat(d, meId, draftsByChat[d.chatId])
       // Глобально выключенный тип чатов показывается как muted (tweb
       // isPeerLocalMuted с respectType): иконка + серый badge у всех таких чатов.
       if (!chat.muted && notifySettings[notifyTypeForChat(d.type)].muted) chat = { ...chat, muted: true }
@@ -167,7 +170,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     })
     for (const k of cache.keys()) if (!seen.has(k)) cache.delete(k)
     return next
-  }, [dialogs, meId, notifySettings])
+  }, [dialogs, meId, notifySettings, draftsByChat])
 
   const createGroup = async (name: string, memberIds: number[], photo: GroupPhoto | null) => {
     const chatId = await managers.groups.createGroup({ title: name || 'New Group', memberIds })

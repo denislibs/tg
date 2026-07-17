@@ -4,9 +4,10 @@ import { loadChats, useChatsStore } from '../stores/chatsStore'
 import { useMessagesStore } from '../stores/messagesStore'
 import { usePinsStore } from '../stores/pinsStore'
 import { useDiscussionStore, threadKey } from '../stores/discussionStore'
-import { mapMessage } from '../core/models'
+import { mapMessage, mapDraft } from '../core/models'
+import { useDraftsStore } from '../stores/draftsStore'
 import { uiEvents } from '../core/hooks/uiEvents'
-import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt } from '../core/realtime/events'
+import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt, type DraftUpdateEvt } from '../core/realtime/events'
 import { playMessageSent } from '../core/audio/sounds'
 import { notifyIncomingMessage } from './uiNotifications'
 import { useSettingsStore } from '../settings'
@@ -74,6 +75,14 @@ export function startRealtime(): void {
   })
   smp.on(RT.chatRemoved, (raw) => {
     useChatsStore.getState().removeDialog((raw as ChatRemovedEvt).chat_id)
+  })
+  // Черновик изменён на другом устройстве/вкладке (или снят отправкой/очисткой)
+  smp.on(RT.draftUpdate, (raw) => {
+    const e = raw as DraftUpdateEvt
+    const st = useDraftsStore.getState()
+    if (e.draft) st.setDraft(mapDraft(e.draft))
+    else st.removeDraft(e.chat_id)
+    uiEvents.emit(RT.draftUpdate, e)
   })
   smp.on(RT.presence, (p) => { store.setPresence(p as PresenceEvt); uiEvents.emit(RT.presence, p) })
   smp.on(RT.typing, (raw) => {

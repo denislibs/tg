@@ -125,6 +125,10 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 				i.notifier.NotifyNewMessage(ctx, uid, msg.ChatID, msg.ID, msg.Seq, msg.SenderID, msg.Text)
 			}
 		}
+		// Отправка сообщения снимает черновик чата (Telegram-семантика).
+		if in.Type != "service" {
+			i.clearDraftAfterSend(ctx, in.SenderID, in.ChatID)
+		}
 	}
 	return msg, nil
 }

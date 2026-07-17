@@ -59,6 +59,11 @@ interface Props {
   onOpenAttach: (rect: DOMRect) => void
   // Files pasted/dropped into the input (images, etc.) — routed to the attach flow.
   onPasteFiles?: (files: File[]) => void
+  // Облачный черновик: текст для восстановления при маунте (композер
+  // пересоздаётся per-chat через key) + колбэк на каждое изменение текста
+  // (родитель дебаунсит сейв — tweb saveDraftDebounced).
+  initialDraft?: string
+  onDraftChange?: (text: string) => void
 }
 
 // URL schemes safe to keep on a pasted link (others are dropped — see RichText).
@@ -93,6 +98,7 @@ function placeCaretEnd(el: HTMLElement) {
 
 function Composer({
   reply, editing, rec, onSend, onTyping, onCancelReply, onCancelEdit, onOpenAttach, onPasteFiles,
+  initialDraft, onDraftChange,
 }: Props) {
   const t = useT()
   const [emptyDraft, setEmptyDraft] = useState(true)
@@ -162,6 +168,19 @@ function Composer({
     if (reply) editorRef.current?.focus()
   }, [reply])
 
+  // Восстановление облачного черновика при маунте (tweb setDraft: только в
+  // пустой инпут; редактирование имеет приоритет).
+  useEffect(() => {
+    const ed = editorRef.current
+    if (initialDraft && ed && !ed.textContent && !editing) {
+      ed.textContent = initialDraft
+      syncEmpty()
+      autosize()
+      placeCaretEnd(ed)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Autofocus on mount (remounts per chat via the parent's key).
   useEffect(() => {
     const id = window.setTimeout(() => editorRef.current?.focus(), 0)
@@ -205,6 +224,7 @@ function Composer({
     onSend(text, entities.length ? entities : undefined)
     setEmojiSug(null)
     clearEditor()
+    onDraftChange?.('') // отправка снимает черновик (бэк тоже чистит свой)
     // Keep focus in the input after sending (tweb focusInput = focus + caret at
     // the end) — clearEditor drops the selection which blurs the contenteditable.
     const ed = editorRef.current
@@ -544,7 +564,7 @@ function Composer({
                   aria-multiline
                   // No live markdown conversion in the input (tweb keeps typed markers
                   // raw; they're parsed on send). Only the toolbar/shortcuts format live.
-                  onInput={() => { syncEmpty(); autosize(); onTyping(); checkEmojiAutocomplete() }}
+                  onInput={() => { syncEmpty(); autosize(); onTyping(); checkEmojiAutocomplete(); onDraftChange?.(editorRef.current?.textContent ?? '') }}
                   onKeyDown={onEditorKeyDown}
                   onPaste={onPaste}
                   onDrop={onDrop}

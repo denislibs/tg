@@ -1,0 +1,42 @@
+// Confirm-диалог настроек (по образцу DeleteMessageDialog)
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card {
+  width: min(360px, calc(100vw - 32px));
+  border-radius: 16px;
+  background: var(--tg-sidebarBg);
+  padding: 20px 24px 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 16px;
+}
+
+.action {
+  padding: 8px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 600;
+  color: var(--tg-accent);
+  text-transform: uppercase;
+  font-size: 14px;
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+    }
+  }
+}

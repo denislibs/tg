@@ -3,7 +3,7 @@ import { createManagers } from '../rpc/managersProxy'
 import type { HealthStatus } from '../core/managers/healthManager'
 import type { User } from '../core/managers/authManager'
 import type { ProfileUpdate, SetUsernameResult } from '../core/managers/profileManager'
-import type { Dialog } from '../core/models'
+import type { Dialog, Draft } from '../core/models'
 import type { Message, MessageEntity } from '../core/models'
 import type { HistoryArgs, HistoryResult, SendArgs } from '../core/managers/messagesManager'
 import type { ConnState, PresenceEvt } from '../core/realtime/events'
@@ -165,6 +165,12 @@ export interface Managers {
     autoDelete(): Promise<number>
     setAutoDelete(period: number): Promise<void>
     setChatAutoDelete(chatId: number, period: number): Promise<void>
+  }
+  drafts: {
+    list(): Promise<Draft[]>
+    save(chatId: number, text: string, replyToId?: number | null): Promise<Draft | null>
+    delete(chatId: number): Promise<void>
+    clearAll(): Promise<void>
   }
   sessions: {
     list(): Promise<Session[]>

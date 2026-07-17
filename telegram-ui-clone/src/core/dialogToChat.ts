@@ -1,6 +1,6 @@
 // src/core/dialogToChat.ts
 import type { Chat } from '../data'
-import type { Dialog } from './models'
+import type { Dialog, Draft } from './models'
 import { serviceMsgText } from './serviceMsg'
 
 export const GRADIENTS = [
@@ -49,7 +49,7 @@ export function mediaLabel(type?: string): string {
   }
 }
 
-export function dialogToChat(d: Dialog, meId?: number | null): Chat {
+export function dialogToChat(d: Dialog, meId?: number | null, draft?: Draft): Chat {
   const isSaved = d.type === 'saved'
   const isService = d.peer?.id === SERVICE_USER_ID
   const name = isSaved
@@ -76,6 +76,9 @@ export function dialogToChat(d: Dialog, meId?: number | null): Chat {
     if (lastMine) preview = `Вы: ${preview}`
     else if (d.type === 'group' && lm?.senderName) preview = `${lm.senderName}: ${preview}`
   }
+  // Черновик заменяет превью последнего сообщения (tweb getLastMessageForDialog:
+  // красный «Черновик: » + текст; тики/стрелка пересылки не показываются).
+  const hasDraft = !!draft?.text.trim()
   return {
     id: String(d.chatId),
     name,
@@ -92,15 +95,16 @@ export function dialogToChat(d: Dialog, meId?: number | null): Chat {
     avatarUrl: isSaved || isService ? undefined : d.peer?.avatarUrl || d.photoUrl || undefined,
     peerId: d.peer?.id,
     verified: d.peer?.verified || undefined,
-    date: fmtWhen(lm?.at),
+    date: hasDraft && (!lm?.at || draft!.updatedAt > lm.at) ? fmtWhen(draft!.updatedAt) : fmtWhen(lm?.at),
     preview,
+    draftPreview: hasDraft ? draft!.text : undefined,
     type: d.type,
     muted: d.muted || undefined,
     autoDeletePeriod: d.autoDeletePeriod || undefined,
     unread: d.unread > 0 ? d.unread : undefined,
-    sent: lastMine || undefined,
-    read: lastMine && lm!.seq <= d.peerReadSeq ? true : undefined,
-    previewMediaId: lm?.mediaType === 'photo' && lm.mediaId ? lm.mediaId : undefined,
-    forwarded: forwarded || undefined,
+    sent: (lastMine && !hasDraft) || undefined,
+    read: lastMine && !hasDraft && lm!.seq <= d.peerReadSeq ? true : undefined,
+    previewMediaId: !hasDraft && lm?.mediaType === 'photo' && lm.mediaId ? lm.mediaId : undefined,
+    forwarded: (forwarded && !hasDraft) || undefined,
   }
 }

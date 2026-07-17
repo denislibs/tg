@@ -126,6 +126,26 @@ export interface Message {
   mediaUnread?: boolean
 }
 
+// Облачный черновик (backend drafts): текст инпута с сырыми markdown-маркерами.
+export interface RawDraft {
+  chat_id: number
+  text: string
+  entities?: MessageEntity[] | null
+  reply_to_id?: number | null
+  updated_at: string
+}
+
+export interface Draft {
+  chatId: number
+  text: string
+  replyToId: number | null
+  updatedAt: string
+}
+
+export function mapDraft(r: RawDraft): Draft {
+  return { chatId: r.chat_id, text: r.text, replyToId: r.reply_to_id ?? null, updatedAt: r.updated_at }
+}
+
 export function mapDialog(r: RawDialog): Dialog {
   return {
     chatId: r.chat_id,

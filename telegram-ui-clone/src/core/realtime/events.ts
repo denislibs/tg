@@ -16,6 +16,7 @@ export const RT = {
   messageError: 'rt:message_error',
   call: 'rt:call',
   chatRemoved: 'rt:chat_removed',
+  draftUpdate: 'rt:draft_update',
   state: 'rt:state',
 } as const
 
@@ -30,6 +31,8 @@ export interface ReadEvt { chat_id: number; user_id: number; up_to_seq: number }
 export interface MediaReadEvt { chat_id: number; msg_id: number }
 // Меня удалили из группы / я вышел — диалог убирается из списка.
 export interface ChatRemovedEvt { chat_id: number; removed: true }
+// Черновик изменён на другом устройстве/вкладке (draft null — удалён).
+export interface DraftUpdateEvt { chat_id: number; draft: import('../models').RawDraft | null }
 export type TypingAction = 'typing' | 'voice' | 'video'
 export interface TypingEvt { chat_id: number; user_id: number; action?: TypingAction }
 export interface PresenceEvt { user_id: number; online: boolean; last_seen: number }

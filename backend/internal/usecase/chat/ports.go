@@ -168,6 +168,14 @@ type EventPublisher interface {
 	PublishToUser(ctx context.Context, userID int64, frame []byte) error
 }
 
+// DraftRepo хранит облачные черновики (по одному на пару чат+пользователь).
+type DraftRepo interface {
+	Upsert(ctx context.Context, userID int64, d domain.Draft) (domain.Draft, error)
+	Delete(ctx context.Context, chatID, userID int64) (bool, error) // false — черновика не было
+	ListByUser(ctx context.Context, userID int64) ([]domain.Draft, error)
+	DeleteAllByUser(ctx context.Context, userID int64) ([]int64, error) // chat_id удалённых
+}
+
 // PrivacyChecker решает вопросы конфиденциальности (usecase/privacy): может ли
 // viewer писать/звонить/приглашать owner'а, видит ли его фото. Опционален —
 // без него ограничения не применяются.

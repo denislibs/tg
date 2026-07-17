@@ -102,6 +102,7 @@ export interface Chat {
   read?: boolean // ...and the peer has read it (✓✓ instead of ✓)
   previewMediaId?: number // last message is a photo → small thumbnail before the preview
   forwarded?: boolean // last message was forwarded → show a forward arrow before the preview
+  draftPreview?: string // облачный черновик → красный «Черновик: » вместо последнего сообщения
   type: ChatType
   owned?: boolean
   status?: string // header subtitle: "last seen recently" / "12 345 members" / "4 566 subscribers"
