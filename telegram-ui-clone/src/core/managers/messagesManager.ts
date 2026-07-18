@@ -1,6 +1,6 @@
 // src/core/managers/messagesManager.ts
 import type { RestClient } from '../net/restClient'
-import { mapMessage, mapPoll, type Message, type MessageEntity, type Poll, type RawMessage, type RawPoll } from '../models'
+import { mapMessage, mapPoll, mapScheduled, type Message, type MessageEntity, type Poll, type RawMessage, type RawPoll, type RawScheduled, type Scheduled } from '../models'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
 
 export interface HistoryArgs {
@@ -242,6 +242,27 @@ export function newMessagesManager({ rest }: MessagesDeps) {
     },
     async closePoll(pollId: number): Promise<void> {
       await rest.post(`/polls/${pollId}/close`, {})
+    },
+
+    // ── Запланированные сообщения (Telegram scheduled) ──
+    async scheduleMessage(chatId: number, p: { text: string; entities?: MessageEntity[]; sendAt: number; replyToId?: number }): Promise<Scheduled> {
+      const r = await rest.post<RawScheduled>(`/chats/${chatId}/scheduled`, {
+        type: 'text', text: p.text, entities: p.entities ?? null,
+        reply_to_id: p.replyToId ?? null, send_at: p.sendAt,
+      })
+      return mapScheduled(r)
+    },
+    async listScheduled(chatId: number): Promise<Scheduled[]> {
+      const r = await rest.get<{ scheduled: RawScheduled[] }>(`/chats/${chatId}/scheduled`)
+      return (r.scheduled ?? []).map(mapScheduled)
+    },
+    async deleteScheduled(chatId: number, id: number): Promise<void> {
+      await rest.del(`/chats/${chatId}/scheduled/${id}`)
+    },
+    // Отправить запланированное немедленно; возвращает созданное сообщение.
+    async sendScheduledNow(chatId: number, id: number): Promise<Message> {
+      const r = await rest.post<RawMessage>(`/chats/${chatId}/scheduled/${id}/send_now`, {})
+      return mapMessage(r)
     },
 
     async viewers(chatId: number, msgId: number): Promise<number[]> {

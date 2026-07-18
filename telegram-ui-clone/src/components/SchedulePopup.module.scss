@@ -1,0 +1,22 @@
+// Пикер даты/времени планирования
+.body {
+  display: flex;
+  gap: 12px;
+  padding: 4px 16px 12px;
+}
+
+.field {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--tg-hover);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 15px;
+  color: var(--tg-textPrimary);
+  background: transparent;
+  outline: none;
+
+  &:focus {
+    border-color: var(--tg-accent);
+  }
+}

@@ -38,6 +38,7 @@ import { useChatAutoDownload } from '../core/hooks/useChatAutoDownload'
 import { useComposerDraft } from '../core/hooks/useComposerDraft'
 import { useMentionPeers } from '../core/hooks/useMentionPeers'
 import CreatePollPopup from './CreatePollPopup'
+import ScheduledView from './ScheduledView'
 import { useMessagesStore } from '../stores/messagesStore'
 import ChatHeader from './conversation/ChatHeader'
 import PinnedBar from './conversation/PinnedBar'
@@ -162,6 +163,24 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const [addContactOpen, setAddContactOpen] = useState(false)
   const [attachAnchor, setAttachAnchor] = useState<{ left: number; bottom: number } | null>(null)
   const [createPollOpen, setCreatePollOpen] = useState(false)
+  // Запланированные сообщения: счётчик (календарик в композере) + оверлей списка
+  const [scheduledCount, setScheduledCount] = useState(0)
+  const [scheduledOpen, setScheduledOpen] = useState(false)
+  useEffect(() => {
+    setScheduledCount(0)
+    setScheduledOpen(false)
+    if (!isRealChat) return
+    void managers.messages.listScheduled(numericChatId).then((l) => setScheduledCount(l.length)).catch(() => undefined)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [numericChatId, isRealChat])
+  const onComposerSchedule = useEvent((text: string, entities: MessageEntity[] | undefined, sendAtUnix: number) => {
+    void managers.messages
+      .scheduleMessage(numericChatId, { text, entities, sendAt: sendAtUnix })
+      .then(() => {
+        setScheduledCount((c) => c + 1)
+        setScheduledOpen(true) // tweb: после планирования открывает scheduled-вид
+      })
+  })
   // Scroll state machine (refs + bottom-pin intent + history pagination + scroll-restore
   // + jump-to-message + scroll-to-bottom + read-marker) — extracted view-model hook.
   // Owns atBottomRef/userScrolledUpRef (passed into useChatSend so a send pins to bottom).
@@ -515,6 +534,9 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               initialDraft={initialDraft}
               onDraftChange={isRealChat ? onDraftChange : undefined}
               mentions={isGroup && mentionPeers.length > 0 ? mentionPeers : undefined}
+              onSchedule={isRealChat ? onComposerSchedule : undefined}
+              scheduledCount={scheduledCount}
+              onOpenScheduled={() => setScheduledOpen(true)}
             />
           </div>
         ) : (
@@ -580,6 +602,15 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           onPhotoVideo={isRealChat ? () => { setAttachAnchor(null); openPicker('image/*,video/*', false) } : undefined}
           onFile={isRealChat ? () => { setAttachAnchor(null); openPicker('*/*', true) } : undefined}
           onPoll={isRealChat && (chat.type === 'group' || chat.type === 'channel') ? () => { setAttachAnchor(null); setCreatePollOpen(true) } : undefined}
+        />
+      )}
+
+      {/* «Запланированные сообщения» (tweb ChatType.Scheduled) */}
+      {scheduledOpen && isRealChat && (
+        <ScheduledView
+          chatId={numericChatId}
+          onClose={() => setScheduledOpen(false)}
+          onChanged={setScheduledCount}
         />
       )}
 

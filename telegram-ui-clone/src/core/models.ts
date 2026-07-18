@@ -188,6 +188,33 @@ export function mapPoll(r: RawPoll): Poll {
   }
 }
 
+// Запланированное сообщение (backend scheduled_messages): очередь до send_at.
+export interface RawScheduled {
+  id: number
+  chat_id: number
+  sender_id: number
+  type: string
+  text: string
+  entities?: MessageEntity[] | null
+  reply_to_id?: number | null
+  media_id?: number | null
+  send_at: string
+  created_at: string
+}
+
+export interface Scheduled {
+  id: number
+  chatId: number
+  type: string
+  text: string
+  entities?: MessageEntity[]
+  sendAt: string
+}
+
+export function mapScheduled(r: RawScheduled): Scheduled {
+  return { id: r.id, chatId: r.chat_id, type: r.type, text: r.text, entities: r.entities ?? undefined, sendAt: r.send_at }
+}
+
 // Облачный черновик (backend drafts): текст инпута с сырыми markdown-маркерами.
 export interface RawDraft {
   chat_id: number

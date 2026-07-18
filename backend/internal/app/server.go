@@ -72,6 +72,9 @@ func registerServer(p serverParams) {
 	// Опросы: хранение + голоса, live-агрегаты фреймом poll_update.
 	p.ChatUC.SetPolls(pgadapter.NewPollsRepo(p.Pool))
 
+	// Запланированные сообщения: очередь + фоновая отправка (тикер ниже).
+	p.ChatUC.SetScheduled(pgadapter.NewScheduledRepo(p.Pool))
+
 	var wsHandler http.Handler
 	var presenceMgr *usecasepresence.Manager
 	if p.Redis.OK {
@@ -134,6 +137,11 @@ func registerServer(p serverParams) {
 						log.Printf("auto-delete purge: %v", err)
 					} else if n > 0 {
 						log.Printf("auto-delete: purged %d message(s)", n)
+					}
+					if n, err := p.ChatUC.DispatchDueScheduled(p.Ctx); err != nil {
+						log.Printf("scheduled dispatch: %v", err)
+					} else if n > 0 {
+						log.Printf("scheduled: sent %d message(s)", n)
 					}
 				}
 			}

@@ -216,6 +216,16 @@ type SendInput struct {
 	PollID           *int64 // опрос (messages.poll_id) — только из SendPoll
 }
 
+// ScheduledRepo хранит очередь запланированных сообщений.
+type ScheduledRepo interface {
+	Create(ctx context.Context, m domain.ScheduledMessage) (domain.ScheduledMessage, error)
+	ListByChat(ctx context.Context, chatID, senderID int64) ([]domain.ScheduledMessage, error)
+	CountByUser(ctx context.Context, senderID int64) (int, error)
+	ByID(ctx context.Context, id int64) (domain.ScheduledMessage, error)
+	Delete(ctx context.Context, id int64) error
+	Due(ctx context.Context, now time.Time, limit int) ([]domain.ScheduledMessage, error)
+}
+
 // PollRepo хранит опросы и голоса.
 type PollRepo interface {
 	Create(ctx context.Context, p domain.Poll) (domain.Poll, error)

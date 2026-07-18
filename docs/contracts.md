@@ -393,6 +393,26 @@ Stop the poll (author of the poll message or chat admin/creator). Voting stops,
 a quiz reveals its answer. Fans out `poll_update`.
 - 200: `{ "ok": true }` · 403 not allowed
 
+### POST /chats/{chatID}/scheduled  · auth
+Schedule a message (Telegram scheduled messages): it sits in a per-user queue
+and enters the chat history only at `send_at` (a background worker dispatches
+due entries through the normal Send fan-out every ~15s). Text or media
+required; `send_at` must be in the future; at most 100 pending per user.
+- Request: `{ "type": "text", "text": "hi", "entities": null, "reply_to_id": null, "media_id": null, "send_at": 1784350000 }`
+- 200: the scheduled entry `{id, chat_id, sender_id, type, text, entities?, reply_to_id, media_id, send_at, created_at}`
+- 400 invalid (empty/past/limit) · 403 not a member
+
+### GET /chats/{chatID}/scheduled  · auth
+The caller's OWN scheduled messages in the chat, soonest first.
+- 200: `{ "scheduled": [ … ] }`
+
+### DELETE /chats/{chatID}/scheduled/{schedID}  · auth
+Remove own scheduled message. 403 when not the author.
+
+### POST /chats/{chatID}/scheduled/{schedID}/send_now  · auth
+Send own scheduled message immediately (tweb Send Now). Returns the created
+Message; the queue entry is removed.
+
 ### GET /search?q=  · auth
 Global directory search: public chats (channels/public groups) by `@username` or
 title prefix, plus users by `username`/`display_name` prefix. Private chats are

@@ -28,6 +28,7 @@ type Interactor struct {
 	privacy     PrivacyChecker
 	drafts      DraftRepo
 	polls       PollRepo
+	scheduled   ScheduledRepo
 }
 
 // New constructs the chat interactor from its ports.
@@ -67,6 +68,9 @@ func (i *Interactor) SetDrafts(d DraftRepo) { i.drafts = d }
 
 // SetPolls подключает хранилище опросов (optional; без него опросы → 404).
 func (i *Interactor) SetPolls(p PollRepo) { i.polls = p }
+
+// SetScheduled подключает очередь запланированных сообщений (optional).
+func (i *Interactor) SetScheduled(s ScheduledRepo) { i.scheduled = s }
 
 // nowMillis is the server clock used for update dates.
 func nowMillis() int64 { return time.Now().UnixMilli() }

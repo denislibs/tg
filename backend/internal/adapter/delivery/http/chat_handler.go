@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/messenger-denis/backend/internal/domain"
@@ -558,6 +559,116 @@ func (h *ChatHandler) ClosePoll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// scheduledJSON — представление запланированного сообщения.
+func scheduledJSON(m domain.ScheduledMessage) map[string]any {
+	j := map[string]any{
+		"id": m.ID, "chat_id": m.ChatID, "sender_id": m.SenderID,
+		"type": m.Type, "text": m.Text, "reply_to_id": m.ReplyToID,
+		"media_id": m.MediaID, "send_at": m.SendAt, "created_at": m.CreatedAt,
+	}
+	if len(m.Entities) > 0 {
+		j["entities"] = m.Entities
+	}
+	return j
+}
+
+// ScheduleMessage — POST /chats/{chatID}/scheduled: запланировать отправку.
+func (h *ChatHandler) ScheduleMessage(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Type     string                 `json:"type"`
+		Text     string                 `json:"text"`
+		Entities []domain.MessageEntity `json:"entities"`
+		ReplyTo  *int64                 `json:"reply_to_id"`
+		MediaID  *int64                 `json:"media_id"`
+		SendAt   int64                  `json:"send_at"` // unix-секунды
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	m, err := h.svc.ScheduleMessage(r.Context(), usecasechat.SendInput{
+		ChatID: chatID, SenderID: h.meID(r), Type: b.Type, Text: b.Text,
+		Entities: b.Entities, ReplyToID: b.ReplyTo, MediaID: b.MediaID,
+	}, time.Unix(b.SendAt, 0))
+	if errors.Is(err, domain.ErrTooLong) {
+		writeError(w, http.StatusBadRequest, "invalid scheduled message")
+		return
+	}
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusForbidden, "not a member of this chat")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not schedule")
+		return
+	}
+	writeJSON(w, http.StatusOK, scheduledJSON(m))
+}
+
+// ListScheduled — GET /chats/{chatID}/scheduled: свои запланированные.
+func (h *ChatHandler) ListScheduled(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	list, err := h.svc.ListScheduled(r.Context(), chatID, h.meID(r))
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusForbidden, "not a member of this chat")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not list scheduled")
+		return
+	}
+	out := make([]map[string]any, 0, len(list))
+	for _, m := range list {
+		out = append(out, scheduledJSON(m))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"scheduled": out})
+}
+
+// DeleteScheduled — DELETE /chats/{chatID}/scheduled/{schedID}.
+func (h *ChatHandler) DeleteScheduled(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathInt(w, r, "schedID")
+	if !ok {
+		return
+	}
+	if err := h.svc.DeleteScheduled(r.Context(), id, h.meID(r)); err != nil {
+		h.mapScheduledErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// SendScheduledNow — POST /chats/{chatID}/scheduled/{schedID}/send_now.
+func (h *ChatHandler) SendScheduledNow(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathInt(w, r, "schedID")
+	if !ok {
+		return
+	}
+	m, err := h.svc.SendScheduledNow(r.Context(), id, h.meID(r))
+	if err != nil {
+		h.mapScheduledErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, messageJSON(m))
+}
+
+func (h *ChatHandler) mapScheduledErr(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		writeError(w, http.StatusNotFound, "not found")
+	case errors.Is(err, domain.ErrForbidden):
+		writeError(w, http.StatusForbidden, "not allowed")
+	default:
+		writeError(w, http.StatusInternalServerError, "scheduled operation failed")
+	}
 }
 
 func (h *ChatHandler) Sync(w http.ResponseWriter, r *http.Request) {

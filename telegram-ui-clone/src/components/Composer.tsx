@@ -27,6 +27,7 @@ import { EASE, DUR } from '../motion'
 import { useT } from '../i18n'
 import { useSettingsStore } from '../settings'
 import Menu, { MenuItem } from '../shared/ui/Menu'
+import SchedulePopup from './SchedulePopup'
 import { createPortal } from 'react-dom'
 import {DiscardVoiceDialog} from "./messages/ChatDialogs.tsx";
 import s from './Composer.module.scss'
@@ -68,6 +69,11 @@ interface Props {
   onDraftChange?: (text: string) => void
   // Кандидаты @упоминаний (участники группы без себя) — включает mentions-хелпер.
   mentions?: Peer[]
+  // Запланированные сообщения: ПКМ по Send → «Запланировать сообщение».
+  onSchedule?: (text: string, entities: MessageEntity[] | undefined, sendAtUnix: number) => void
+  // Есть запланированные → кнопка-календарик (tweb btnScheduled) открывает список.
+  scheduledCount?: number
+  onOpenScheduled?: () => void
 }
 
 // URL schemes safe to keep on a pasted link (others are dropped — see RichText).
@@ -102,7 +108,7 @@ function placeCaretEnd(el: HTMLElement) {
 
 function Composer({
   reply, editing, rec, onSend, onTyping, onCancelReply, onCancelEdit, onOpenAttach, onPasteFiles,
-  initialDraft, onDraftChange, mentions,
+  initialDraft, onDraftChange, mentions, onSchedule, scheduledCount, onOpenScheduled,
 }: Props) {
   const t = useT()
   const [emptyDraft, setEmptyDraft] = useState(true)
@@ -211,6 +217,21 @@ function Composer({
     // selection is gone after clearing — tell the markup tooltip to hide
     window.getSelection()?.removeAllRanges()
     document.dispatchEvent(new Event('selectionchange'))
+  }
+
+  // ── Планирование (tweb SendMenu → scheduleSending) ──
+  const [sendMenuOpen, setSendMenuOpen] = useState(false)
+  const [scheduleOpen, setScheduleOpen] = useState(false)
+  const submitScheduled = (sendAtUnix: number) => {
+    const root = editorRef.current
+    if (!root || !onSchedule) return
+    const raw = serialize(root)
+    const { text, entities } = parseMarkdown(raw.text, raw.entities)
+    if (!text) return
+    onSchedule(text, entities.length ? entities : undefined, sendAtUnix)
+    clearEditor()
+    onDraftChange?.('')
+    setScheduleOpen(false)
   }
 
   const submit = () => {
@@ -629,6 +650,12 @@ function Composer({
               >
                 <TgIcon name="attach" />
               </IconButton>
+              {/* Календарик при наличии запланированных (tweb btnScheduled) */}
+              {(scheduledCount ?? 0) > 0 && onOpenScheduled && (
+                <IconButton onClick={onOpenScheduled} color="var(--tg-accent)" style={{ width: 40, height: 40 }}>
+                  <TgIcon name="scheduled" />
+                </IconButton>
+              )}
               {/* contenteditable input + placeholder overlay. minHeight matches the
                   40px buttons and centers a single line with them; multi-line grows
                   upward (the row is flex-end, so buttons stay pinned to the bottom). */}
@@ -705,6 +732,11 @@ function Composer({
             onMouseLeave={() => { window.clearTimeout(longPressTimer.current); longPressed.current = false }}
             onContextMenu={(e) => {
               e.preventDefault()
+              // ПКМ/long-press по Send с текстом — меню планирования (tweb SendMenu)
+              if (hasText && onSchedule) {
+                setSendMenuOpen(true)
+                return
+              }
               if (!hasText && !rec.recording) openRecMenu(e.currentTarget as HTMLElement)
             }}
             whileTap={{ scale: 0.92 }}
@@ -726,6 +758,20 @@ function Composer({
         </div>
       </div>
       </div>
+
+      {/* Меню планирования по ПКМ на Send (tweb SendMenu) */}
+      <Menu
+        open={sendMenuOpen}
+        onClose={() => setSendMenuOpen(false)}
+        style={{ right: 24, bottom: 72, transformOrigin: 'bottom right' }}
+      >
+        <MenuItem
+          icon={<TgIcon name="schedule" size={20} />}
+          label={t('Schedule Message')}
+          onClick={() => { setSendMenuOpen(false); setScheduleOpen(true) }}
+        />
+      </Menu>
+      {scheduleOpen && <SchedulePopup onPick={submitScheduled} onClose={() => setScheduleOpen(false)} />}
 
       {/* Floating formatting bar over a text selection (tweb MarkupTooltip) */}
       <MarkupTooltip editorRef={editorRef} onApply={applyFmt} />

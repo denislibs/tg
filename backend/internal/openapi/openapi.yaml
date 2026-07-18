@@ -545,6 +545,58 @@ paths:
         "200": { description: the created message (includes poll view), content: { application/json: { schema: { $ref: "#/components/schemas/Message" } } } }
         "400": { description: invalid poll, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
+  /chats/{chatID}/scheduled:
+    post:
+      tags: [messages]
+      summary: Schedule a message (dispatched into history at send_at by a worker)
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [send_at]
+              properties:
+                type: { type: string, default: text }
+                text: { type: string }
+                entities: { type: array, items: { $ref: "#/components/schemas/MessageEntity" }, nullable: true }
+                reply_to_id: { type: integer, format: int64, nullable: true }
+                media_id: { type: integer, format: int64, nullable: true }
+                send_at: { type: integer, format: int64, description: unix seconds, must be in the future }
+      responses:
+        "200": { description: the scheduled entry, content: { application/json: { schema: { type: object } } } }
+        "400": { description: invalid (empty/past/limit), content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    get:
+      tags: [messages]
+      summary: The caller's own scheduled messages in the chat (soonest first)
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        "200": { description: scheduled entries, content: { application/json: { schema: { type: object } } } }
+
+  /chats/{chatID}/scheduled/{schedID}:
+    delete:
+      tags: [messages]
+      summary: Remove own scheduled message
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+        - { name: schedID, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
+        "403": { description: not the author, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /chats/{chatID}/scheduled/{schedID}/send_now:
+    post:
+      tags: [messages]
+      summary: Send own scheduled message immediately
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+        - { name: schedID, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        "200": { description: the created message, content: { application/json: { schema: { $ref: "#/components/schemas/Message" } } } }
+
   /polls/{pollID}/vote:
     post:
       tags: [messages]
