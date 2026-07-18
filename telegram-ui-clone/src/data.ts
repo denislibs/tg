@@ -102,6 +102,7 @@ export interface Chat {
   muted?: boolean
   pinned?: boolean // закреплён вверху списка
   archived?: boolean // убран в «Архив»
+  isForum?: boolean // темы (форум-группа): вместо ленты — список топиков
   autoDeletePeriod?: number // период автоудаления сообщений (сек, 0/undefined — выкл)
   selected?: boolean
   unread?: number

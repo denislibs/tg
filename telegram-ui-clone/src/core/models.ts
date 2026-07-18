@@ -28,6 +28,7 @@ export interface RawDialog {
   muted?: boolean
   pinned?: boolean
   archived?: boolean
+  is_forum?: boolean
   title?: string
   username?: string
   photo_url?: string
@@ -46,6 +47,8 @@ export interface Dialog {
   /** закреплён вверху списка / убран в «Архив» (пер-юзерные флаги, tweb) */
   pinned: boolean
   archived: boolean
+  /** в группе включены темы — клиент рендерит список топиков */
+  isForum?: boolean
   // период автоудаления сообщений чата в секундах (0/undefined — выключено)
   autoDeletePeriod?: number
   title?: string
@@ -245,6 +248,7 @@ export function mapDialog(r: RawDialog): Dialog {
     muted: !!r.muted,
     pinned: !!r.pinned,
     archived: !!r.archived,
+    isForum: r.is_forum || undefined,
     autoDeletePeriod: r.auto_delete_period ?? 0,
     title: r.title,
     username: r.username,

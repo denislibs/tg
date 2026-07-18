@@ -43,7 +43,9 @@ type Dialog struct {
 	// (пер-юзерные флаги членства, tweb pinned dialogs + folder_id=1).
 	Pinned   bool
 	Archived bool
-	HasLast  bool
+	// IsForum — в группе включены темы (клиент рендерит список топиков).
+	IsForum bool
+	HasLast bool
 	LastSeq      int64
 	LastText     string
 	LastSenderID int64

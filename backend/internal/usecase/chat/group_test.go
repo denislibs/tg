@@ -25,6 +25,7 @@ type fakeGroupRepo struct {
 	bans       map[int64]map[int64]bool // chatID -> userID -> banned
 	pinned     map[int64]map[int64]bool // userID -> chatID -> pinned
 	archived   map[int64]map[int64]bool // userID -> chatID -> archived
+	forum      map[int64]bool           // chatID -> темы включены
 	onCreate   func(id int64)           // optional hook fired after a chat is created
 }
 
@@ -234,6 +235,16 @@ func (r *fakeGroupRepo) SetMuted(_ context.Context, chatID, userID int64, muted 
 	}
 	m.Muted = muted
 	r.members[chatID][userID] = m
+	return nil
+}
+
+func (r *fakeGroupRepo) SetForum(_ context.Context, chatID int64, enabled bool) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.forum == nil {
+		r.forum = map[int64]bool{}
+	}
+	r.forum[chatID] = enabled
 	return nil
 }
 

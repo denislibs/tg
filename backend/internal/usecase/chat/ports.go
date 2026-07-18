@@ -52,6 +52,8 @@ type GroupRepo interface {
 	SetPinned(ctx context.Context, chatID, userID int64, pinned bool) error
 	CountPinned(ctx context.Context, userID int64) (int, error)
 	SetArchived(ctx context.Context, chatID, userID int64, archived bool) error
+	// SetForum включает темы у группы (chats.is_forum).
+	SetForum(ctx context.Context, chatID int64, enabled bool) error
 	Card(ctx context.Context, chatID, viewerID int64) (domain.ChatCard, error) // domain.ErrNotFound if no chat
 	EditInfo(ctx context.Context, chatID int64, title, about, username string) error
 	SetPhoto(ctx context.Context, chatID, mediaID int64) error
@@ -214,6 +216,14 @@ type SendInput struct {
 	ThreadRootID     *int64
 	GroupedID        string // альбом (Telegram grouped_id); "" — не в группе
 	PollID           *int64 // опрос (messages.poll_id) — только из SendPoll
+}
+
+// TopicRepo хранит темы форум-групп.
+type TopicRepo interface {
+	Create(ctx context.Context, t domain.ForumTopic) (domain.ForumTopic, error)
+	ByID(ctx context.Context, id int64) (domain.ForumTopic, error)
+	SetClosed(ctx context.Context, id int64, closed bool) error
+	ListByChat(ctx context.Context, chatID int64) ([]domain.TopicRow, error)
 }
 
 // ScheduledRepo хранит очередь запланированных сообщений.

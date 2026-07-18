@@ -29,6 +29,7 @@ type Interactor struct {
 	drafts      DraftRepo
 	polls       PollRepo
 	scheduled   ScheduledRepo
+	topics      TopicRepo
 }
 
 // New constructs the chat interactor from its ports.
@@ -71,6 +72,9 @@ func (i *Interactor) SetPolls(p PollRepo) { i.polls = p }
 
 // SetScheduled подключает очередь запланированных сообщений (optional).
 func (i *Interactor) SetScheduled(s ScheduledRepo) { i.scheduled = s }
+
+// SetTopics подключает хранилище форум-топиков (optional).
+func (i *Interactor) SetTopics(t TopicRepo) { i.topics = t }
 
 // nowMillis is the server clock used for update dates.
 func nowMillis() int64 { return time.Now().UnixMilli() }

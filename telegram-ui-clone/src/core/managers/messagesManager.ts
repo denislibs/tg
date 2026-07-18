@@ -25,6 +25,8 @@ export interface SendArgs {
   clientMsgId: string
   replyToId?: number | null
   mediaId?: number | null
+  /** сообщение в тред (форум-топик): id корневого сообщения темы */
+  threadRootId?: number | null
 }
 
 export interface MessagesDeps { rest: RestClient }
@@ -128,6 +130,7 @@ export function newMessagesManager({ rest }: MessagesDeps) {
         client_msg_id: args.clientMsgId,
         reply_to_id: args.replyToId ?? null,
         media_id: args.mediaId ?? null,
+        thread_root_id: args.threadRootId ?? null,
       })
       const m = mapMessage(created)
       put(args.chatId, [m])
@@ -242,6 +245,12 @@ export function newMessagesManager({ rest }: MessagesDeps) {
     },
     async closePoll(pollId: number): Promise<void> {
       await rest.post(`/polls/${pollId}/close`, {})
+    },
+
+    // Сообщения треда (форум-топика) по возрастанию + total.
+    async threadMessages(chatId: number, rootId: number, offset = 0, limit = 50): Promise<{ messages: Message[]; count: number }> {
+      const r = await rest.get<{ messages: RawMessage[]; count: number }>(`/chats/${chatId}/threads/${rootId}`, { offset, limit })
+      return { messages: (r.messages ?? []).map(mapMessage), count: r.count }
     },
 
     // ── Запланированные сообщения (Telegram scheduled) ──

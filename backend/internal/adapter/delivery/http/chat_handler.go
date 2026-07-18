@@ -89,7 +89,7 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 			"chat_id": d.ChatID, "type": d.Type,
 			"title": d.Title, "username": d.Username, "photo_url": d.PhotoURL,
 			"last_read_seq": d.LastReadSeq, "peer_read_seq": d.PeerReadSeq, "unread": d.UnreadCount, "muted": d.Muted,
-			"pinned": d.Pinned, "archived": d.Archived,
+			"pinned": d.Pinned, "archived": d.Archived, "is_forum": d.IsForum,
 			"auto_delete_period": d.AutoDeletePeriod,
 		}
 		if d.HasLast {
@@ -118,6 +118,8 @@ type sendBody struct {
 	ClientMsgID string                 `json:"client_msg_id"`
 	MediaID     *int64                 `json:"media_id"`
 	GroupedID   string                 `json:"grouped_id"`
+	// сообщение в тред (форум-топик): id корневого сообщения топика
+	ThreadRootID *int64 `json:"thread_root_id"`
 }
 
 func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
@@ -137,6 +139,7 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 	msg, err := h.svc.Send(r.Context(), usecasechat.SendInput{
 		ChatID: chatID, SenderID: h.meID(r), Type: body.Type, Text: body.Text, Entities: body.Entities,
 		ReplyToID: body.ReplyToID, ClientMsgID: body.ClientMsgID, MediaID: body.MediaID, GroupedID: body.GroupedID,
+		ThreadRootID: body.ThreadRootID,
 	})
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
@@ -669,6 +672,126 @@ func (h *ChatHandler) mapScheduledErr(w http.ResponseWriter, err error) {
 	default:
 		writeError(w, http.StatusInternalServerError, "scheduled operation failed")
 	}
+}
+
+// ── Форум-топики ──
+
+// SetForum — POST /chats/{chatID}/forum {enabled}: включить темы (CHANGE_INFO).
+func (h *ChatHandler) SetForum(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	if err := h.svc.SetForum(r.Context(), chatID, h.meID(r), b.Enabled); err != nil {
+		h.mapScheduledErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func topicJSON(row domain.TopicRow) map[string]any {
+	return map[string]any{
+		"id": row.Topic.ID, "chat_id": row.Topic.ChatID, "root_msg_id": row.Topic.RootMsgID,
+		"title": row.Topic.Title, "icon_color": row.Topic.IconColor, "closed": row.Topic.Closed,
+		"created_by": row.Topic.CreatedBy, "created_at": row.Topic.CreatedAt,
+		"msg_count": row.MsgCount, "last_text": row.LastText, "last_type": row.LastType,
+		"last_sender_name": row.LastSenderName, "last_at": row.LastAt,
+	}
+}
+
+// CreateTopic — POST /chats/{chatID}/topics {title, icon_color}.
+func (h *ChatHandler) CreateTopic(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Title     string `json:"title"`
+		IconColor int    `json:"icon_color"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	t, err := h.svc.CreateTopic(r.Context(), chatID, h.meID(r), b.Title, b.IconColor)
+	if errors.Is(err, domain.ErrTooLong) {
+		writeError(w, http.StatusBadRequest, "invalid title")
+		return
+	}
+	if err != nil {
+		h.mapScheduledErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, topicJSON(domain.TopicRow{Topic: t}))
+}
+
+// ListTopics — GET /chats/{chatID}/topics.
+func (h *ChatHandler) ListTopics(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	rowsT, err := h.svc.ListTopics(r.Context(), chatID, h.meID(r))
+	if err != nil {
+		h.mapScheduledErr(w, err)
+		return
+	}
+	out := make([]map[string]any, 0, len(rowsT))
+	for _, t := range rowsT {
+		out = append(out, topicJSON(t))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"topics": out})
+}
+
+// CloseTopic — POST /chats/{chatID}/topics/{topicID}/close {closed}.
+func (h *ChatHandler) CloseTopic(w http.ResponseWriter, r *http.Request) {
+	topicID, ok := pathInt(w, r, "topicID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Closed bool `json:"closed"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	if err := h.svc.CloseTopic(r.Context(), topicID, h.meID(r), b.Closed); err != nil {
+		h.mapScheduledErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// ThreadMessages — GET /chats/{chatID}/threads/{rootID}: сообщения треда.
+func (h *ChatHandler) ThreadMessages(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	rootID, ok := pathInt(w, r, "rootID")
+	if !ok {
+		return
+	}
+	offset := int(queryInt(r, "offset", 0))
+	limit := int(queryInt(r, "limit", 50))
+	msgs, count, err := h.svc.ListThreadMessages(r.Context(), chatID, rootID, h.meID(r), offset, limit)
+	if err != nil {
+		h.mapScheduledErr(w, err)
+		return
+	}
+	out := make([]map[string]any, 0, len(msgs))
+	for _, m := range msgs {
+		out = append(out, messageJSON(m))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": count})
 }
 
 func (h *ChatHandler) Sync(w http.ResponseWriter, r *http.Request) {

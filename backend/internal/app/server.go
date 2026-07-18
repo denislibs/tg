@@ -75,6 +75,9 @@ func registerServer(p serverParams) {
 	// Запланированные сообщения: очередь + фоновая отправка (тикер ниже).
 	p.ChatUC.SetScheduled(pgadapter.NewScheduledRepo(p.Pool))
 
+	// Форум-топики: темы групп поверх тредов (thread_root_id).
+	p.ChatUC.SetTopics(pgadapter.NewTopicsRepo(p.Pool))
+
 	var wsHandler http.Handler
 	var presenceMgr *usecasepresence.Manager
 	if p.Redis.OK {

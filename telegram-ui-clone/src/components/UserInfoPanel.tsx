@@ -21,7 +21,7 @@ import type { Chat, OpenPeer } from '../data'
 import { useT } from '../i18n'
 import { useGroupInfo, RIGHTS, roleLabel, type RealMember } from '../core/hooks/useGroupInfo'
 import { useMessagesStore } from '../stores/messagesStore'
-import { useChatsStore } from '../stores/chatsStore'
+import { useChatsStore, loadChats } from '../stores/chatsStore'
 import { useAudioStore, type AudioTrack } from '../stores/audioStore'
 import { markMediaPlayed } from '../core/mediaRead'
 import PlayPauseGlyph from './PlayPauseGlyph'
@@ -316,6 +316,28 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
                 onClick={toggleBlock}
               />
             </Section>
+          )}
+
+          {/* Темы (tweb editChat Topics toggle): группа → форум-топики */}
+          {isRealChat && chat.type === 'group' && canManageDiscussion && (
+            <div className={s.section}>
+              <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionTitle}>
+                {t('Topics')}
+              </Text>
+              <div className={s.cardPlain}>
+                <div
+                  className={s.enabledRow}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => {
+                    const next = !chat.isForum
+                    void managers.groups.setForum(Number(chat.id), next).then(() => loadChats(managers))
+                  }}
+                >
+                  <Text size={16} color="var(--tg-textPrimary)" style={{ flex: 1 }}>{t('Topics')}</Text>
+                  <TgSwitch checked={!!chat.isForum} />
+                </div>
+              </div>
+            </div>
           )}
 
           {/* Channel discussions: admin (creator/CHANGE_INFO) toggle / enabled state */}

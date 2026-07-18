@@ -393,6 +393,27 @@ Stop the poll (author of the poll message or chat admin/creator). Voting stops,
 a quiz reveals its answer. Fans out `poll_update`.
 - 200: `{ "ok": true }` · 403 not allowed
 
+### POST /chats/{chatID}/forum  · auth
+Enable/disable forum topics on a group (needs CHANGE_INFO). `{ "enabled": true }` → `{ "ok": true }`.
+Dialogs expose `is_forum`; a forum chat renders a topic list instead of the feed.
+
+### POST /chats/{chatID}/topics  · auth
+Create a topic (any member): a service root message + a `forum_topics` row.
+Topic messages are thread messages (`thread_root_id` = the topic's `root_msg_id`)
+sent through the normal POST /chats/{id}/messages.
+- Request: `{ "title": "Ideas", "icon_color": 2 }` (title ≤128; color = index into the tweb TOPIC_COLORS palette)
+- 200: `{ id, chat_id, root_msg_id, title, icon_color, closed, created_by, created_at, … }`
+
+### GET /chats/{chatID}/topics  · auth
+Topics with their thread's last message (`last_text/last_type/last_sender_name/last_at`)
+and `msg_count`, freshest first. → `{ "topics": [ … ] }`
+
+### POST /chats/{chatID}/topics/{topicID}/close  · auth
+Close/reopen a topic (topic author or chat admin). `{ "closed": true }` → `{ "ok": true }`.
+
+### GET /chats/{chatID}/threads/{rootID}  · auth
+Messages of a thread (forum topic) ascending: `?offset&limit` → `{ "messages": [...], "count": N }`.
+
 ### POST /chats/{chatID}/scheduled  · auth
 Schedule a message (Telegram scheduled messages): it sits in a per-user queue
 and enters the chat history only at `send_at` (a background worker dispatches

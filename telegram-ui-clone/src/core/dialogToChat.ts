@@ -103,6 +103,7 @@ export function dialogToChat(d: Dialog, meId?: number | null, draft?: Draft): Ch
     muted: d.muted || undefined,
     pinned: d.pinned || undefined,
     archived: d.archived || undefined,
+    isForum: d.isForum || undefined,
     autoDeletePeriod: d.autoDeletePeriod || undefined,
     unread: d.unread > 0 ? d.unread : undefined,
     sent: (lastMine && !hasDraft) || undefined,

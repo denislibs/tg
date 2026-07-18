@@ -73,6 +73,7 @@ export interface Managers {
     listScheduled(chatId: number): Promise<Scheduled[]>
     deleteScheduled(chatId: number, id: number): Promise<void>
     sendScheduledNow(chatId: number, id: number): Promise<Message>
+    threadMessages(chatId: number, rootId: number, offset?: number, limit?: number): Promise<{ messages: Message[]; count: number }>
     votePoll(pollId: number, options: number[]): Promise<Poll>
     closePoll(pollId: number): Promise<void>
     mediaHistory(chatId: number, filter: 'media' | 'files' | 'links' | 'music' | 'voice', offset?: number, limit?: number): Promise<{ messages: Message[]; count: number }>
@@ -127,6 +128,10 @@ export interface Managers {
     setMute(chatId: number, muted: boolean, until?: number): Promise<void>
     setPin(chatId: number, pinned: boolean): Promise<void>
     setArchive(chatId: number, archived: boolean): Promise<void>
+    setForum(chatId: number, enabled: boolean): Promise<void>
+    createTopic(chatId: number, title: string, iconColor: number): Promise<{ id: number; rootMsgId: number }>
+    listTopics(chatId: number): Promise<import('../core/managers/groupsManager').TopicRow[]>
+    closeTopic(chatId: number, topicId: number, closed: boolean): Promise<void>
     card(chatId: number): Promise<GroupCard>
     members(chatId: number): Promise<{ userId: number; role: string; online: boolean }[]>
     promoteAdmin(chatId: number, userId: number, rights: number): Promise<void>

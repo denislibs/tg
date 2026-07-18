@@ -39,6 +39,7 @@ import { useComposerDraft } from '../core/hooks/useComposerDraft'
 import { useMentionPeers } from '../core/hooks/useMentionPeers'
 import CreatePollPopup from './CreatePollPopup'
 import ScheduledView from './ScheduledView'
+import ForumView from './ForumView'
 import { useMessagesStore } from '../stores/messagesStore'
 import ChatHeader from './conversation/ChatHeader'
 import PinnedBar from './conversation/PinnedBar'
@@ -396,6 +397,17 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
             post={discussion.post}
             onBack={closeDiscussion}
           />
+        </div>
+      </div>
+    )
+  }
+
+  // Форум-группа (tweb ForumTab): вместо ленты — список тем + тред темы.
+  if (isRealChat && chat.isForum) {
+    return (
+      <div className={s.root}>
+        <div className={classNames(s.column, narrow ? s.columnNarrow : '')}>
+          <ForumView chatId={numericChatId} chatName={chat.name} />
         </div>
       </div>
     )

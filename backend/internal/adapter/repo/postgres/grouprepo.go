@@ -118,6 +118,12 @@ func (r *GroupRepo) CountPinned(ctx context.Context, userID int64) (int, error) 
 	return n, err
 }
 
+// SetForum включает/выключает темы у группы (chats.is_forum).
+func (r *GroupRepo) SetForum(ctx context.Context, chatID int64, enabled bool) error {
+	_, err := querier(ctx, r.pool).Exec(ctx, `UPDATE chats SET is_forum=$2 WHERE id=$1`, chatID, enabled)
+	return err
+}
+
 // SetArchived убирает диалог в архив / возвращает из него; пин при переносе
 // сбрасывается (в tweb наборы пинов у папок раздельные).
 func (r *GroupRepo) SetArchived(ctx context.Context, chatID, userID int64, archived bool) error {
