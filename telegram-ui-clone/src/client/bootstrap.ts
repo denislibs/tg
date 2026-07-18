@@ -4,7 +4,7 @@ import type { HealthStatus } from '../core/managers/healthManager'
 import type { User } from '../core/managers/authManager'
 import type { ProfileUpdate, SetUsernameResult } from '../core/managers/profileManager'
 import type { Dialog, Draft } from '../core/models'
-import type { Message, MessageEntity } from '../core/models'
+import type { Message, MessageEntity, Poll } from '../core/models'
 import type { HistoryArgs, HistoryResult, SendArgs } from '../core/managers/messagesManager'
 import type { ConnState, PresenceEvt } from '../core/realtime/events'
 import type { UploadArgs, MediaMeta } from '../core/managers/mediaManager'
@@ -68,6 +68,9 @@ export interface Managers {
     viewers(chatId: number, msgId: number): Promise<number[]>
     searchMessages(chatId: number, q: string, offset?: number, limit?: number): Promise<{ messages: Message[]; count: number }>
     searchGlobal(q: string, filter?: '' | 'media' | 'files' | 'links' | 'music' | 'voice', offset?: number, limit?: number): Promise<{ messages: Message[]; count: number }>
+    sendPoll(chatId: number, p: { question: string; options: string[]; anonymous: boolean; multiple: boolean; quiz: boolean; correctOption?: number; clientMsgId?: string }): Promise<Message>
+    votePoll(pollId: number, options: number[]): Promise<Poll>
+    closePoll(pollId: number): Promise<void>
     mediaHistory(chatId: number, filter: 'media' | 'files' | 'links' | 'music' | 'voice', offset?: number, limit?: number): Promise<{ messages: Message[]; count: number }>
     getAround(chatId: number, centerSeq: number, limit?: number): Promise<{ messages: Message[]; reachedTop: boolean; reachedBottom: boolean }>
   }

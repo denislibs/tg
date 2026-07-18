@@ -45,6 +45,7 @@ export function messageToConvMsg(
     m.type === 'voice' ? 'voice'
     : m.type === 'roundVideo' ? 'roundVideo'
     : m.type === 'call' ? 'call'
+    : m.type === 'poll' ? 'poll'
     : m.type === 'service' ? 'service'
     : m.type === 'photo' || m.type === 'video' || m.type === 'document' || m.type === 'audio' ? m.type
     : 'text'
@@ -68,6 +69,7 @@ export function messageToConvMsg(
             : 'sent'
       : undefined,
     call: m.type === 'call' ? parseCallLog(m.text) : undefined,
+    poll: m.poll,
     mediaId: m.mediaId ?? undefined,
     mediaWidth: m.mediaWidth,
     mediaHeight: m.mediaHeight,

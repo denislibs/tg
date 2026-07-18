@@ -85,7 +85,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		msg, e = i.msgs.Insert(ctx, domain.Message{
 			ChatID: in.ChatID, Seq: seq, SenderID: in.SenderID,
 			Type: in.Type, Text: in.Text, Entities: in.Entities, ReplyToID: in.ReplyToID, ClientMsgID: cmid,
-			MediaID: in.MediaID, ThreadRootID: in.ThreadRootID, GroupedID: groupedID,
+			MediaID: in.MediaID, ThreadRootID: in.ThreadRootID, GroupedID: groupedID, PollID: in.PollID,
 			// Voice/round content starts "unlistened" (Telegram media_unread).
 			MediaUnread: in.Type == "voice" || in.Type == "roundVideo",
 		})
@@ -93,6 +93,13 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			return e
 		}
 		msg.SenderName = senderName
+		// Сообщение-опрос несёт своё представление прямо в new_message-фрейме
+		// (свежий опрос без голосов одинаков для всех получателей).
+		if msg.PollID != nil && i.polls != nil {
+			if info, e2 := i.pollInfoFor(ctx, *msg.PollID, 0); e2 == nil {
+				msg.Poll = &info
+			}
+		}
 		members, e := i.chats.MemberIDs(ctx, in.ChatID)
 		if e != nil {
 			return e

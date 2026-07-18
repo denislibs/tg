@@ -17,6 +17,7 @@ import { mediaThumbUrl, hasMediaToken, useMediaTokenVersion } from '../../core/m
 import TgIcon from '../TgIcon'
 import { BubbleAppear } from '../animations/bubbleAnimations'
 import RealMediaBubble from './RealMediaBubble'
+import PollBubble from './PollBubble'
 import AlbumGrid from './AlbumGrid'
 import VoiceMessage from './VoiceMessage'
 import Checkbox from '../../shared/ui/Checkbox'
@@ -316,6 +317,22 @@ function MessageRow({
             lastInGroup={lastInGroup}
             onClick={selecting ? undefined : () => feedFns.recall(!!m.call?.video)}
           />
+        ) : m.type === 'poll' && m.poll ? (
+          <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
+            {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
+            {!out && m.sender && firstInGroup && (
+              <Text size={14} weight={600} color={m.senderColor ?? peerColor(m.sender)}>
+                {m.sender}
+              </Text>
+            )}
+            <PollBubble poll={m.poll} out={out} />
+            <div className={s.textLine} style={{ justifyContent: 'flex-end' }}>
+              <span className={s.meta}>
+                <span className={s.metaTime}>{fmtTime(m.time)}</span>
+                <Ticks status={m.status} color="var(--b-tick)" />
+              </span>
+            </div>
+          </div>
         ) : (
           <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
             {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}

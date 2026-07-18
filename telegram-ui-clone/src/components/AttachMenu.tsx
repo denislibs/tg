@@ -7,11 +7,13 @@ export default function AttachMenu({
   onClose,
   onPhotoVideo,
   onFile,
+  onPoll,
 }: {
   anchor: { left: number; bottom: number }
   onClose: () => void
   onPhotoVideo?: () => void
   onFile?: () => void
+  onPoll?: () => void
 }) {
   const t = useT()
 
@@ -23,7 +25,7 @@ export default function AttachMenu({
     >
       <MenuItem icon={<TgIcon name="image" size={20} />} label={t('Photo or Video')} onClick={onPhotoVideo ?? onClose} />
       <MenuItem icon={<TgIcon name="document" size={20} />} label={t('Document')} onClick={onFile ?? onClose} />
-      <MenuItem icon={<TgIcon name="poll" size={20} />} label={t('Poll')} onClick={onClose} />
+      {onPoll && <MenuItem icon={<TgIcon name="poll" size={20} />} label={t('Poll')} onClick={onPoll} />}
     </Menu>
   )
 }

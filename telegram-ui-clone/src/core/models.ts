@@ -76,6 +76,8 @@ export interface RawMessage {
   fwd_from_msg_id?: number | null
   fwd_date?: string | null
   reply_to?: { msg_id: number; seq: number; sender_id: number; text: string; entities?: MessageEntity[] | null; type: string; media_id?: number } | null
+  poll_id?: number | null
+  poll?: RawPoll | null
   media_w?: number
   media_h?: number
   media_mime?: string
@@ -137,6 +139,53 @@ export interface Message {
   views?: number
   /** голосовое/кружок ещё не прослушано получателем (Telegram media_unread) */
   mediaUnread?: boolean
+  /** опрос сообщения типа 'poll' (представление для зрителя) */
+  poll?: Poll
+}
+
+// Опрос (backend PollInfo): вопрос + варианты + агрегаты для зрителя.
+export interface RawPoll {
+  id: number
+  question: string
+  options: string[]
+  anonymous: boolean
+  multiple: boolean
+  quiz: boolean
+  closed: boolean
+  correct_option?: number | null
+  counts: number[]
+  total_voters: number
+  my_votes: number[]
+}
+
+export interface Poll {
+  id: number
+  question: string
+  options: string[]
+  anonymous: boolean
+  multiple: boolean
+  quiz: boolean
+  closed: boolean
+  correctOption?: number
+  counts: number[]
+  totalVoters: number
+  myVotes: number[]
+}
+
+export function mapPoll(r: RawPoll): Poll {
+  return {
+    id: r.id,
+    question: r.question,
+    options: r.options ?? [],
+    anonymous: r.anonymous,
+    multiple: r.multiple,
+    quiz: r.quiz,
+    closed: r.closed,
+    correctOption: r.correct_option ?? undefined,
+    counts: r.counts ?? [],
+    totalVoters: r.total_voters ?? 0,
+    myVotes: r.my_votes ?? [],
+  }
 }
 
 // Облачный черновик (backend drafts): текст инпута с сырыми markdown-маркерами.
@@ -205,6 +254,7 @@ export function mapMessage(r: RawMessage): Message {
     createdAt: r.created_at,
     threadRootId: r.thread_root_id ?? null,
     groupedId: r.grouped_id ?? null,
+    poll: r.poll ? mapPoll(r.poll) : undefined,
     editedAt: r.edited_at ?? null,
     deleted: r.deleted ?? false,
     fwdFromUserId: r.fwd_from_user_id ?? null,

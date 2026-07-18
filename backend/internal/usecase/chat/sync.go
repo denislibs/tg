@@ -29,6 +29,7 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 	if e := i.hydrateMedia(ctx, msgs); e != nil {
 		return HistoryResult{}, e
 	}
+	_ = i.hydratePolls(ctx, userID, msgs)
 	count, err := i.msgs.CountMessages(ctx, chatID)
 	if err != nil {
 		return HistoryResult{}, err
@@ -148,6 +149,7 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 	if e := i.hydrateMedia(ctx, msgs); e != nil {
 		return AroundResult{}, e
 	}
+	_ = i.hydratePolls(ctx, userID, msgs)
 	count, err := i.msgs.CountMessages(ctx, chatID)
 	if err != nil {
 		return AroundResult{}, err
@@ -199,6 +201,7 @@ func (i *Interactor) SearchMessages(ctx context.Context, chatID, userID int64, q
 	if e := i.hydrateMedia(ctx, msgs); e != nil {
 		return HistoryResult{}, e
 	}
+	_ = i.hydratePolls(ctx, userID, msgs)
 	return HistoryResult{Messages: msgs, Count: count}, nil
 }
 
@@ -222,6 +225,7 @@ func (i *Interactor) GlobalSearchMessages(ctx context.Context, userID int64, q, 
 	if e := i.hydrateMedia(ctx, msgs); e != nil {
 		return HistoryResult{}, e
 	}
+	_ = i.hydratePolls(ctx, userID, msgs)
 	return HistoryResult{Messages: msgs, Count: count}, nil
 }
 

@@ -469,6 +469,97 @@ func (h *ChatHandler) GlobalSearchMessages(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": res.Count})
 }
 
+// SendPoll — POST /chats/{chatID}/polls: отправить опрос (сообщение типа 'poll').
+func (h *ChatHandler) SendPoll(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Question      string   `json:"question"`
+		Options       []string `json:"options"`
+		Anonymous     bool     `json:"anonymous"`
+		Multiple      bool     `json:"multiple"`
+		Quiz          bool     `json:"quiz"`
+		CorrectOption *int     `json:"correct_option"`
+		ClientMsgID   string   `json:"client_msg_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	m, err := h.svc.SendPoll(r.Context(), usecasechat.SendPollInput{
+		ChatID: chatID, SenderID: h.meID(r),
+		Question: b.Question, Options: b.Options,
+		Anonymous: b.Anonymous, Multiple: b.Multiple, Quiz: b.Quiz, CorrectOption: b.CorrectOption,
+		ClientMsgID: b.ClientMsgID,
+	})
+	if errors.Is(err, domain.ErrTooLong) {
+		writeError(w, http.StatusBadRequest, "invalid poll")
+		return
+	}
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusForbidden, "not a member of this chat")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not send poll")
+		return
+	}
+	writeJSON(w, http.StatusOK, messageJSON(m))
+}
+
+// VotePoll — POST /polls/{pollID}/vote {options:[0,2]}: голос (пустой список — отзыв).
+func (h *ChatHandler) VotePoll(w http.ResponseWriter, r *http.Request) {
+	pollID, ok := pathInt(w, r, "pollID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Options []int `json:"options"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	info, err := h.svc.VotePoll(r.Context(), pollID, h.meID(r), b.Options)
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "poll not found")
+		return
+	}
+	if errors.Is(err, domain.ErrForbidden) {
+		writeError(w, http.StatusBadRequest, "invalid vote")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not vote")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"poll": info})
+}
+
+// ClosePoll — POST /polls/{pollID}/close: остановить опрос (автор/админ).
+func (h *ChatHandler) ClosePoll(w http.ResponseWriter, r *http.Request) {
+	pollID, ok := pathInt(w, r, "pollID")
+	if !ok {
+		return
+	}
+	err := h.svc.ClosePoll(r.Context(), pollID, h.meID(r))
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "poll not found")
+		return
+	}
+	if errors.Is(err, domain.ErrForbidden) {
+		writeError(w, http.StatusForbidden, "not allowed")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not close poll")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 func (h *ChatHandler) Sync(w http.ResponseWriter, r *http.Request) {
 	sincePts := queryInt(r, "pts", 0)
 	d, err := h.svc.GetDifference(r.Context(), h.meID(r), sincePts)
@@ -571,6 +662,12 @@ func messageJSON(m domain.Message) map[string]any {
 	}
 	if len(m.Entities) > 0 {
 		j["entities"] = m.Entities
+	}
+	if m.PollID != nil {
+		j["poll_id"] = *m.PollID
+	}
+	if m.Poll != nil {
+		j["poll"] = m.Poll
 	}
 	if m.ReplyTo != nil {
 		rt := map[string]any{

@@ -37,6 +37,8 @@ import ChatFeed from './messages/ChatFeed'
 import { useChatAutoDownload } from '../core/hooks/useChatAutoDownload'
 import { useComposerDraft } from '../core/hooks/useComposerDraft'
 import { useMentionPeers } from '../core/hooks/useMentionPeers'
+import CreatePollPopup from './CreatePollPopup'
+import { useMessagesStore } from '../stores/messagesStore'
 import ChatHeader from './conversation/ChatHeader'
 import PinnedBar from './conversation/PinnedBar'
 import ScrollDownFab from './conversation/ScrollDownFab'
@@ -159,6 +161,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const [headerMenu, setHeaderMenu] = useState<{ top: number; right: number } | null>(null)
   const [addContactOpen, setAddContactOpen] = useState(false)
   const [attachAnchor, setAttachAnchor] = useState<{ left: number; bottom: number } | null>(null)
+  const [createPollOpen, setCreatePollOpen] = useState(false)
   // Scroll state machine (refs + bottom-pin intent + history pagination + scroll-restore
   // + jump-to-message + scroll-to-bottom + read-marker) — extracted view-model hook.
   // Owns atBottomRef/userScrolledUpRef (passed into useChatSend so a send pins to bottom).
@@ -576,6 +579,20 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           onClose={() => setAttachAnchor(null)}
           onPhotoVideo={isRealChat ? () => { setAttachAnchor(null); openPicker('image/*,video/*', false) } : undefined}
           onFile={isRealChat ? () => { setAttachAnchor(null); openPicker('*/*', true) } : undefined}
+          onPoll={isRealChat && (chat.type === 'group' || chat.type === 'channel') ? () => { setAttachAnchor(null); setCreatePollOpen(true) } : undefined}
+        />
+      )}
+
+      {/* «Новый опрос» (tweb popupCreatePoll) */}
+      {createPollOpen && (
+        <CreatePollPopup
+          onClose={() => setCreatePollOpen(false)}
+          onCreate={(p) => {
+            setCreatePollOpen(false)
+            void managers.messages
+              .sendPoll(numericChatId, { ...p, clientMsgId: crypto.randomUUID() })
+              .then((msg) => useMessagesStore.getState().applyIncoming(numericChatId, msg))
+          }}
         />
       )}
 

@@ -69,6 +69,9 @@ func registerServer(p serverParams) {
 	// Облачные черновики: хранение per (чат, пользователь) + синк draft_update.
 	p.ChatUC.SetDrafts(pgadapter.NewDraftsRepo(p.Pool))
 
+	// Опросы: хранение + голоса, live-агрегаты фреймом poll_update.
+	p.ChatUC.SetPolls(pgadapter.NewPollsRepo(p.Pool))
+
 	var wsHandler http.Handler
 	var presenceMgr *usecasepresence.Manager
 	if p.Redis.OK {

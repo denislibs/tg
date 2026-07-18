@@ -223,6 +223,32 @@ export function useMessageActions({
     ...(isRealChat && menuRawMsg()?.mediaId != null
       ? [{ icon: <TgIcon name="download" size={20} />, label: 'Download', onClick: downloadMsg }]
       : []),
+    // Опрос: «Отменить голос» (не викторина, не закрыт, голосовал) и
+    // «Остановить опрос» (своё сообщение, не закрыт) — tweb contextMenu
+    ...(() => {
+      const raw = menuRawMsg()
+      const poll = raw?.poll
+      if (!isRealChat || !poll) return []
+      const items: MsgMenuItem[] = []
+      if (!poll.closed && !poll.quiz && poll.myVotes.length > 0) {
+        items.push({
+          icon: <TgIcon name="checkretract" size={20} />,
+          label: 'Retract Vote',
+          onClick: () => {
+            void managers.messages.votePoll(poll.id, [])
+              .then((p) => useMessagesStore.getState().setPoll(numericChatId, p))
+          },
+        })
+      }
+      if (!poll.closed && raw!.senderId === meId) {
+        items.push({
+          icon: <TgIcon name="stop" size={20} />,
+          label: 'Stop Poll',
+          onClick: () => { void managers.messages.closePoll(poll.id) },
+        })
+      }
+      return items
+    })(),
     ...(isRealChat ? [{ icon: <TgIcon name="reply" size={20} style={{ transform: 'scaleX(-1)' }} />, label: 'Forward', onClick: openForward }] : []),
     ...(isRealChat ? [{ icon: <TgIcon name="checkround" size={20} />, label: 'Select', onClick: startSelect }] : []),
     ...(isRealChat && (msgs[msgMenu?.idx ?? -1]?.out ?? false)

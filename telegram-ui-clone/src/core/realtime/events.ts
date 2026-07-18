@@ -19,6 +19,7 @@ export const RT = {
   draftUpdate: 'rt:draft_update',
   dialogPin: 'rt:dialog_pin',
   dialogArchive: 'rt:dialog_archive',
+  pollUpdate: 'rt:poll_update',
   state: 'rt:state',
 } as const
 

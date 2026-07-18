@@ -5,7 +5,7 @@
 // and (b) the window survives a ConversationView unmount. `useMessageWindow`
 // is a thin selector/actions wrapper over this store and keeps the same shape.
 import { create } from 'zustand'
-import type { Message, MessageEntity } from '../core/models'
+import type { Message, MessageEntity, Poll } from '../core/models'
 
 // Локальные данные файла для мгновенного оптимистичного медиабабла.
 export interface OptimisticMedia {
@@ -86,6 +86,10 @@ interface MessagesState {
   applyMediaRead: (chatId: number, msgId: number) => void
   /** Patch channel-post view counts from a per-open view_counts fetch. */
   patchViews: (chatId: number, views: Map<number, number>) => void
+  /** Live-агрегаты опроса (poll_update): свой выбор (myVotes) сохраняем локальный. */
+  applyPollUpdate: (chatId: number, poll: Poll) => void
+  /** Полная замена опроса сообщения (ответ на свой голос — с myVotes). */
+  setPoll: (chatId: number, poll: Poll) => void
 }
 
 // Update a single chat's window immutably.
@@ -217,6 +221,24 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         return { msgs: dedupAsc([...w.msgs, merged]) }
       })
     }),
+
+  applyPollUpdate: (chatId, poll) =>
+    set((s) =>
+      s.byChat[chatId]
+        ? patch(s, chatId, (w) => ({
+            msgs: w.msgs.map((m) =>
+              m.poll?.id === poll.id ? { ...m, poll: { ...poll, myVotes: m.poll.myVotes } } : m,
+            ),
+          }))
+        : {}),
+
+  setPoll: (chatId, poll) =>
+    set((s) =>
+      s.byChat[chatId]
+        ? patch(s, chatId, (w) => ({
+            msgs: w.msgs.map((m) => (m.poll?.id === poll.id ? { ...m, poll } : m)),
+          }))
+        : {}),
 
   applyEdit: (chatId, msgId, text, editedAt, entities) =>
     set((s) => (s.byChat[chatId] ? patch(s, chatId, (w) => ({ msgs: w.msgs.map((m) => (m.id === msgId ? { ...m, text, editedAt, entities } : m)) })) : {})),

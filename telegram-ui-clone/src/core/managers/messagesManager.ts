@@ -1,6 +1,6 @@
 // src/core/managers/messagesManager.ts
 import type { RestClient } from '../net/restClient'
-import { mapMessage, type Message, type MessageEntity, type RawMessage } from '../models'
+import { mapMessage, mapPoll, type Message, type MessageEntity, type Poll, type RawMessage, type RawPoll } from '../models'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
 
 export interface HistoryArgs {
@@ -224,6 +224,24 @@ export function newMessagesManager({ rest }: MessagesDeps) {
     async searchGlobal(q: string, filter: '' | 'media' | 'files' | 'links' | 'music' | 'voice' = '', offset = 0, limit = 20): Promise<{ messages: Message[]; count: number }> {
       const r = await rest.get<{ messages: RawMessage[]; count: number }>('/search/messages', { q, filter, offset, limit })
       return { messages: (r.messages ?? []).map(mapMessage), count: r.count }
+    },
+
+    // ── Опросы (Telegram Poll) ──
+    async sendPoll(chatId: number, p: { question: string; options: string[]; anonymous: boolean; multiple: boolean; quiz: boolean; correctOption?: number; clientMsgId?: string }): Promise<Message> {
+      const r = await rest.post<RawMessage>(`/chats/${chatId}/polls`, {
+        question: p.question, options: p.options, anonymous: p.anonymous,
+        multiple: p.multiple, quiz: p.quiz, correct_option: p.correctOption ?? null,
+        client_msg_id: p.clientMsgId ?? '',
+      })
+      return mapMessage(r)
+    },
+    // Голос (пустой список — отзыв); возвращает обновлённый опрос для зрителя.
+    async votePoll(pollId: number, options: number[]): Promise<Poll> {
+      const r = await rest.post<{ poll: RawPoll }>(`/polls/${pollId}/vote`, { options })
+      return mapPoll(r.poll)
+    },
+    async closePoll(pollId: number): Promise<void> {
+      await rest.post(`/polls/${pollId}/close`, {})
     },
 
     async viewers(chatId: number, msgId: number): Promise<number[]> {

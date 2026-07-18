@@ -1,0 +1,71 @@
+// «Новый опрос» (tweb popupCreatePoll): секции вопрос/варианты/настройки.
+.body {
+  padding: 0 16px 8px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.label {
+  display: block;
+  margin: 12px 0 6px;
+}
+
+.question,
+.option {
+  width: 100%;
+  box-sizing: border-box;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 15.5px;
+  color: var(--tg-textPrimary);
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--tg-hover);
+
+  &:focus {
+    border-bottom-color: var(--tg-accent);
+  }
+
+  &::placeholder {
+    color: var(--tg-textFaint);
+  }
+}
+
+.optionRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+// радио «правильный ответ» в викторине
+.radio {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--tg-textFaint);
+  box-sizing: border-box;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.radioOn {
+  border-color: var(--tg-accent);
+  background: radial-gradient(circle, var(--tg-accent) 0 45%, transparent 50%);
+}
+
+.switches {
+  margin-top: 12px;
+}
+
+.switchRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 4px;
+  cursor: pointer;
+}
+
+.disabled {
+  opacity: 0.5;
+  cursor: default;
+}

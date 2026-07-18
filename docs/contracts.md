@@ -369,6 +369,30 @@ owner's devices over WS.
 - Request: `{ "archived": true }`
 - 200: `{ "ok": true }`
 
+### POST /chats/{chatID}/polls  · auth
+Send a poll (a message of type `poll`). Question ≤255 chars, 2..10 non-empty
+options ≤100 chars each. `quiz` forces single-choice and requires
+`correct_option` (index). The `new_message` WS frame carries the poll view.
+- Request: `{ "question": "?", "options": ["a","b"], "anonymous": true, "multiple": false, "quiz": false, "correct_option": null, "client_msg_id": "" }`
+- 200: the created Message (includes `poll_id` + `poll`)
+- 400 invalid poll · 403 not a member
+
+### POST /polls/{pollID}/vote  · auth
+Replace the caller's vote. Empty `options` retracts (not for quizzes; quiz
+answers are final). Fans out `poll_update` `{chat_id, poll}` (aggregates, no
+`my_votes`) to all chat members over WS.
+- Request: `{ "options": [1] }`
+- 200: `{ "poll": PollInfo }` — the viewer's poll view: `{id, question, options,
+  anonymous, multiple, quiz, closed, correct_option?, counts, total_voters,
+  my_votes}`. `correct_option` is revealed only when the quiz is closed or the
+  viewer has answered.
+- 400 invalid vote (closed / bad indexes / quiz re-vote) · 404 unknown poll
+
+### POST /polls/{pollID}/close  · auth
+Stop the poll (author of the poll message or chat admin/creator). Voting stops,
+a quiz reveals its answer. Fans out `poll_update`.
+- 200: `{ "ok": true }` · 403 not allowed
+
 ### GET /search?q=  · auth
 Global directory search: public chats (channels/public groups) by `@username` or
 title prefix, plus users by `username`/`display_name` prefix. Private chats are

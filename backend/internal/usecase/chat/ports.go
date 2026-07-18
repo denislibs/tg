@@ -92,6 +92,8 @@ type MessageRepo interface {
 	FindByClientMsgID(ctx context.Context, chatID, senderID int64, clientMsgID string) (domain.Message, error)
 	GetByID(ctx context.Context, msgID int64) (domain.Message, error)
 	GetByIDs(ctx context.Context, ids []int64) ([]domain.Message, error)
+	// ByPollID — сообщения, ссылающиеся на опрос (обычно одно).
+	ByPollID(ctx context.Context, pollID int64) ([]domain.Message, error)
 	SearchMessages(ctx context.Context, chatID int64, q string, offset, limit int) ([]domain.Message, int, error)
 	// GlobalSearchMessages searches across every chat userID is a member of;
 	// filter narrows by shared-media kind ("" = any type).
@@ -211,6 +213,19 @@ type SendInput struct {
 	MediaID          *int64
 	ThreadRootID     *int64
 	GroupedID        string // альбом (Telegram grouped_id); "" — не в группе
+	PollID           *int64 // опрос (messages.poll_id) — только из SendPoll
+}
+
+// PollRepo хранит опросы и голоса.
+type PollRepo interface {
+	Create(ctx context.Context, p domain.Poll) (domain.Poll, error)
+	ByID(ctx context.Context, id int64) (domain.Poll, error)
+	// SetVotes заменяет голос пользователя целиком (пустой список = отзыв).
+	SetVotes(ctx context.Context, pollID, userID int64, optionIdxs []int) error
+	HasVoted(ctx context.Context, pollID, userID int64) (bool, error)
+	Close(ctx context.Context, pollID int64) error
+	// Info — представление опроса для зрителя (агрегаты + его выбор).
+	Info(ctx context.Context, pollID, viewerID int64) (domain.PollInfo, error)
 }
 
 type HistoryResult struct {

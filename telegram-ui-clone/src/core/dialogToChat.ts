@@ -45,6 +45,7 @@ export function mediaLabel(type?: string): string {
     case 'document': return 'Файл'
     case 'sticker': return 'Стикер'
     case 'call': return 'Звонок'
+    case 'poll': return '📊 Опрос'
     default: return ''
   }
 }

@@ -31,6 +31,10 @@ type Message struct {
 	// GroupedID — идентификатор медиагруппы (Telegram grouped_id): сообщения
 	// одного альбома несут общий id, клиент рендерит их одним грид-баблом.
 	GroupedID *string
+	// PollID — опрос сообщения типа 'poll' (messages.poll_id); Poll — его
+	// развёрнутое представление для зрителя, наполняется read-моделью истории.
+	PollID *int64
+	Poll   *PollInfo
 	CreatedAt time.Time
 	Deleted      bool
 	EditedAt     *time.Time

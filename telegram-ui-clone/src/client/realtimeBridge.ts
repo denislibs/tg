@@ -4,7 +4,7 @@ import { loadChats, useChatsStore } from '../stores/chatsStore'
 import { useMessagesStore } from '../stores/messagesStore'
 import { usePinsStore } from '../stores/pinsStore'
 import { useDiscussionStore, threadKey } from '../stores/discussionStore'
-import { mapMessage, mapDraft } from '../core/models'
+import { mapMessage, mapDraft, mapPoll, type RawPoll } from '../core/models'
 import { useDraftsStore } from '../stores/draftsStore'
 import { useUploadsStore } from '../stores/uploadsStore'
 import { uiEvents } from '../core/hooks/uiEvents'
@@ -84,6 +84,11 @@ export function startRealtime(): void {
     if (e.draft) st.setDraft(mapDraft(e.draft))
     else st.removeDraft(e.chat_id)
     uiEvents.emit(RT.draftUpdate, e)
+  })
+  // Live-агрегаты опроса (poll_update): голос/закрытие в любом чате
+  smp.on(RT.pollUpdate, (raw) => {
+    const e = raw as { chat_id: number; poll: RawPoll }
+    useMessagesStore.getState().applyPollUpdate(e.chat_id, mapPoll(e.poll))
   })
   // Пин/архив диалога с другого устройства/вкладки (dialog_pin / dialog_archive)
   smp.on(RT.dialogPin, (raw) => {

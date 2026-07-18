@@ -27,6 +27,8 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 		"fwd_from_msg_id": m.FwdFromMsgID, "fwd_date": m.FwdDate, "fwd_from_name": m.FwdFromName,
 		"media_unread": m.MediaUnread, "sender_name": m.SenderName,
 		"grouped_id": m.GroupedID,
+		"poll_id":    m.PollID,
+		"poll":       m.Poll,
 	}
 }
 

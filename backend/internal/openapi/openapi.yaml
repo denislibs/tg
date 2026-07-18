@@ -520,6 +520,60 @@ paths:
       responses:
         "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
 
+  /chats/{chatID}/polls:
+    post:
+      tags: [messages]
+      summary: Send a poll (message of type 'poll')
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question, options]
+              properties:
+                question: { type: string, maxLength: 255 }
+                options: { type: array, items: { type: string, maxLength: 100 }, minItems: 2, maxItems: 10 }
+                anonymous: { type: boolean, default: true }
+                multiple: { type: boolean, default: false }
+                quiz: { type: boolean, default: false, description: forces single-choice; requires correct_option }
+                correct_option: { type: integer, nullable: true }
+                client_msg_id: { type: string }
+      responses:
+        "200": { description: the created message (includes poll view), content: { application/json: { schema: { $ref: "#/components/schemas/Message" } } } }
+        "400": { description: invalid poll, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /polls/{pollID}/vote:
+    post:
+      tags: [messages]
+      summary: Replace the caller's vote (empty options = retract; quiz answers are final)
+      parameters:
+        - { name: pollID, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [options]
+              properties:
+                options: { type: array, items: { type: integer } }
+      responses:
+        "200": { description: "viewer's updated poll view", content: { application/json: { schema: { type: object } } } }
+        "400": { description: invalid vote (closed / bad indexes / quiz re-vote), content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /polls/{pollID}/close:
+    post:
+      tags: [messages]
+      summary: Stop the poll (poll author or chat admin)
+      parameters:
+        - { name: pollID, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
+        "403": { description: not allowed, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
   /chats/{chatID}/pin:
     post:
       tags: [groups]
