@@ -118,6 +118,8 @@ export interface Managers {
     revokeInvite(chatId: number, token: string): Promise<void>
     deleteGroup(chatId: number): Promise<void>
     setMute(chatId: number, muted: boolean, until?: number): Promise<void>
+    setPin(chatId: number, pinned: boolean): Promise<void>
+    setArchive(chatId: number, archived: boolean): Promise<void>
     card(chatId: number): Promise<GroupCard>
     members(chatId: number): Promise<{ userId: number; role: string; online: boolean }[]>
     promoteAdmin(chatId: number, userId: number, rights: number): Promise<void>

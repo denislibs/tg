@@ -24,6 +24,8 @@ export interface RawDialog {
   peer_read_seq?: number
   unread: number
   muted?: boolean
+  pinned?: boolean
+  archived?: boolean
   title?: string
   username?: string
   photo_url?: string
@@ -39,6 +41,9 @@ export interface Dialog {
   peerReadSeq: number
   unread: number
   muted: boolean
+  /** закреплён вверху списка / убран в «Архив» (пер-юзерные флаги, tweb) */
+  pinned: boolean
+  archived: boolean
   // период автоудаления сообщений чата в секундах (0/undefined — выключено)
   autoDeletePeriod?: number
   title?: string
@@ -160,6 +165,8 @@ export function mapDialog(r: RawDialog): Dialog {
     peerReadSeq: r.peer_read_seq ?? 0,
     unread: r.unread,
     muted: !!r.muted,
+    pinned: !!r.pinned,
+    archived: !!r.archived,
     autoDeletePeriod: r.auto_delete_period ?? 0,
     title: r.title,
     username: r.username,

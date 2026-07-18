@@ -354,6 +354,21 @@ posts with no comments and `{}` when discussions are not enabled.
 - Query: `ids` — CSV of post message ids, e.g. `?ids=55,56,57`.
 - 200: `{ "counts": { "55": 1, "56": 0 } }` (JSON object keys are post id strings)
 
+### POST /chats/{chatID}/pin  · auth
+Pin/unpin the dialog at the top of the chat list (per-user). At most **5**
+pinned dialogs in the main list (archive not counted) — exceeding returns 400
+`pin limit reached`. Pinning order: newest pin first. Fans out `dialog_pin`
+`{chat_id, pinned}` to the owner's devices over WS.
+- Request: `{ "pinned": true }`
+- 200: `{ "ok": true }`
+
+### POST /chats/{chatID}/archive  · auth
+Move the dialog to/from the archive (per-user, tweb folder_id 0↔1). Archiving
+clears the dialog's pin. Fans out `dialog_archive` `{chat_id, archived}` to the
+owner's devices over WS.
+- Request: `{ "archived": true }`
+- 200: `{ "ok": true }`
+
 ### GET /search?q=  · auth
 Global directory search: public chats (channels/public groups) by `@username` or
 title prefix, plus users by `username`/`display_name` prefix. Private chats are

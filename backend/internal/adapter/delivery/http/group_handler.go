@@ -405,6 +405,52 @@ func (h *GroupHandler) SetMute(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// SetPin — POST /chats/{chatID}/pin {pinned}: закрепить/открепить диалог.
+func (h *GroupHandler) SetPin(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Pinned bool `json:"pinned"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	if err := h.uc.PinDialog(r.Context(), chatID, user.ID, b.Pinned); err != nil {
+		if errors.Is(err, domain.ErrPinLimit) {
+			writeError(w, http.StatusBadRequest, "pin limit reached")
+			return
+		}
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// SetArchive — POST /chats/{chatID}/archive {archived}: в архив / из архива.
+func (h *GroupHandler) SetArchive(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Archived bool `json:"archived"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	if err := h.uc.ArchiveDialog(r.Context(), chatID, user.ID, b.Archived); err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 func (h *GroupHandler) Card(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	chatID, ok := pathInt(w, r, "chatID")

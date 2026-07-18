@@ -154,6 +154,8 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Post("/chats/{chatID}/admins", gh.PromoteAdmin)
 		pr.Delete("/chats/{chatID}/admins/{userID}", gh.DemoteAdmin)
 		pr.Post("/chats/{chatID}/mute", gh.SetMute)
+		pr.Post("/chats/{chatID}/pin", gh.SetPin)
+		pr.Post("/chats/{chatID}/archive", gh.SetArchive)
 		pr.Post("/chats/{chatID}/invite_links", gh.CreateInvite)
 		pr.Get("/chats/{chatID}/invite_links", gh.ListInvites)
 		pr.Delete("/chats/{chatID}/invite_links/{token}", gh.RevokeInvite)

@@ -24,6 +24,8 @@ interface ChatsState {
   upsertDialog: (d: Dialog) => void
   setActiveChat: (id: number | null) => void
   setDialogMuted: (chatId: number, muted: boolean) => void
+  setDialogPinned: (chatId: number, pinned: boolean) => void
+  setDialogArchived: (chatId: number, archived: boolean) => void
   removeDialog: (chatId: number) => void
   applyNewMessage: (m: NewMessageEvt) => void
   applyRead: (r: ReadEvt) => void
@@ -58,6 +60,34 @@ export const useChatsStore = create<ChatsState>((set) => ({
       if (idx === -1) return {}
       const next = s.dialogs.slice()
       next[idx] = { ...next[idx], muted }
+      return { dialogs: next }
+    }),
+  // Закрепить/открепить: пин ставит диалог первым (свежий пин — выше, tweb),
+  // анпин возвращает на место по дате последнего сообщения среди незакреплённых.
+  setDialogPinned: (chatId, pinned) =>
+    set((s) => {
+      const idx = s.dialogs.findIndex((d) => d.chatId === chatId)
+      if (idx === -1) return {}
+      const d = { ...s.dialogs[idx], pinned }
+      const rest = s.dialogs.filter((_, i) => i !== idx)
+      if (pinned) return { dialogs: [d, ...rest] }
+      const at = d.lastMessage?.at ?? ''
+      let insert = rest.length
+      for (let i = 0; i < rest.length; i++) {
+        if (!rest[i].pinned && (rest[i].lastMessage?.at ?? '') <= at) {
+          insert = i
+          break
+        }
+      }
+      return { dialogs: [...rest.slice(0, insert), d, ...rest.slice(insert)] }
+    }),
+  // В архив / из архива; пин при переносе сбрасывается (как на бэке).
+  setDialogArchived: (chatId, archived) =>
+    set((s) => {
+      const idx = s.dialogs.findIndex((d) => d.chatId === chatId)
+      if (idx === -1) return {}
+      const next = s.dialogs.slice()
+      next[idx] = { ...next[idx], archived, pinned: false }
       return { dialogs: next }
     }),
   // Меня удалили из группы / вышел сам (chat_removed) — диалог исчезает из списка.
@@ -111,7 +141,21 @@ export const useChatsStore = create<ChatsState>((set) => ({
         delete next[m.sender_id]
         typing = { ...typing, [m.chat_id]: next }
       }
-      return { dialogs: [updated, ...rest], typing }
+      // Закреплённые не двигаются: свой пин-порядок держит их сверху; обычный
+      // диалог с новым сообщением встаёт сразу после блока закреплённых.
+      if (updated.pinned) {
+        const inPlace = s.dialogs.slice()
+        inPlace[idx] = updated
+        return { dialogs: inPlace, typing }
+      }
+      let firstUnpinned = rest.length
+      for (let i = 0; i < rest.length; i++) {
+        if (!rest[i].pinned) {
+          firstUnpinned = i
+          break
+        }
+      }
+      return { dialogs: [...rest.slice(0, firstUnpinned), updated, ...rest.slice(firstUnpinned)], typing }
     }),
   applyRead: (r) =>
     set((s) => {

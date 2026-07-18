@@ -9,6 +9,7 @@ import { useManagers } from '../core/hooks/useManagers'
 import { useAvatarSrc } from './useAvatarSrc'
 import { useChatsStore } from '../stores/chatsStore'
 import { useTypingLabel } from '../core/hooks/useTypingLabel'
+import { uiEvents } from '../core/hooks/uiEvents'
 import TypingIndicator from './conversation/TypingIndicator'
 import VerifiedBadge from './VerifiedBadge'
 import type { Chat } from '../data'
@@ -47,6 +48,8 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
   const typingLabel = useTypingLabel(Number(chat.id), chat.type === 'group')
   const presence = useChatsStore((s) => (chat.peerId != null ? s.presence[chat.peerId] : undefined))
   const setDialogMuted = useChatsStore((s) => s.setDialogMuted)
+  const setDialogPinned = useChatsStore((s) => s.setDialogPinned)
+  const setDialogArchived = useChatsStore((s) => s.setDialogArchived)
   const fmtTime = useTimeFormatter()
   const { onPointerDown, ripple } = useRipple()
 
@@ -75,19 +78,47 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
     else pos.top = e.clientY
     setMenuPos(pos)
   }
+  // Pin/Unpin (tweb ChatList.Context.Pin): оптимистично + откат; лимит 5 → тост.
+  const applyPin = (pinned: boolean) => {
+    const chatId = Number(chat.id)
+    setDialogPinned(chatId, pinned)
+    void managers.groups.setPin(chatId, pinned).catch((e: unknown) => {
+      setDialogPinned(chatId, !pinned)
+      if (String(e).includes('pin limit')) {
+        uiEvents.emit('ui:toast', t("Sorry, you can't pin any more chats to the top."))
+      }
+    })
+  }
+  // Archive/Unarchive (tweb editPeerFolders folder_id 0↔1)
+  const applyArchive = (archived: boolean) => {
+    const chatId = Number(chat.id)
+    setDialogArchived(chatId, archived)
+    void managers.groups.setArchive(chatId, archived).catch(() => setDialogArchived(chatId, !archived))
+  }
   const destructive =
     chat.type === 'channel' ? 'Leave Channel' : chat.type === 'group' ? 'Delete Group' : 'Delete Chat'
   const menuItems: { icon: ReactNode; label: string; danger?: boolean; onClick?: () => void }[] = [
     { icon: <TgIcon name="newtab" size={20} />, label: 'Open in new tab' },
     { icon: <TgIcon name="eye" size={20} />, label: 'Preview' },
     { icon: <TgIcon name="messageunread" size={20} />, label: 'Mark as unread' },
-    { icon: <TgIcon name="pin" size={20} />, label: 'Pin' },
+    {
+      icon: <TgIcon name={chat.pinned ? 'unpin' : 'pin'} size={20} />,
+      label: chat.pinned ? 'Unpin' : 'Pin',
+      onClick: () => applyPin(!chat.pinned),
+    },
     {
       icon: <TgIcon name={chat.muted ? 'unmute' : 'mute'} size={20} />,
       label: chat.muted ? 'Unmute' : 'Mute',
       onClick: () => (chat.muted ? applyMute(false) : setMuteOpen(true)),
     },
-    { icon: <TgIcon name="archive" size={20} />, label: 'Archive' },
+    // «Избранное» не архивируется (tweb: verify peerId !== myId)
+    ...(chat.type !== 'saved'
+      ? [{
+          icon: <TgIcon name={chat.archived ? 'unarchive' : 'archive'} size={20} />,
+          label: chat.archived ? 'Unarchive' : 'Archive',
+          onClick: () => applyArchive(!chat.archived),
+        }]
+      : []),
     { icon: <TgIcon name="delete" size={20} />, label: destructive, danger: true },
   ]
 
@@ -167,7 +198,12 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
                 </Text>
               </>
             )}
-            {chat.unread != null && <Badge muted={chat.muted}>{chat.unread}</Badge>}
+            {chat.unread != null ? (
+              <Badge muted={chat.muted}>{chat.unread}</Badge>
+            ) : chat.pinned ? (
+              /* tweb dialog-subtitle-badge-pinned: иконка пина вместо бейджа у прочитанного */
+              <TgIcon name="chatspinned" size={19} color="var(--cl-muted)" style={{ flexShrink: 0 }} />
+            ) : null}
           </div>
         </div>
       </div>

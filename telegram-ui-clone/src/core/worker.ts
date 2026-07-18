@@ -104,6 +104,8 @@ const conn = newConnectionManager({
     else if (type === 'presence') broadcast(RT.presence, payload)
     else if (type === 'reaction') broadcast(RT.reaction, payload)
     else if (type === 'draft_update') broadcast(RT.draftUpdate, payload)
+    else if (type === 'dialog_pin') broadcast(RT.dialogPin, payload)
+    else if (type === 'dialog_archive') broadcast(RT.dialogArchive, payload)
     else if (type.startsWith('call_')) broadcast(RT.call, { t: type, d: payload })
   },
 })

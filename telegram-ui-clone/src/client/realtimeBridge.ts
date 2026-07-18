@@ -85,6 +85,15 @@ export function startRealtime(): void {
     else st.removeDraft(e.chat_id)
     uiEvents.emit(RT.draftUpdate, e)
   })
+  // Пин/архив диалога с другого устройства/вкладки (dialog_pin / dialog_archive)
+  smp.on(RT.dialogPin, (raw) => {
+    const e = raw as { chat_id: number; pinned: boolean }
+    useChatsStore.getState().setDialogPinned(e.chat_id, e.pinned)
+  })
+  smp.on(RT.dialogArchive, (raw) => {
+    const e = raw as { chat_id: number; archived: boolean }
+    useChatsStore.getState().setDialogArchived(e.chat_id, e.archived)
+  })
   smp.on(RT.presence, (p) => { store.setPresence(p as PresenceEvt); uiEvents.emit(RT.presence, p) })
   smp.on(RT.typing, (raw) => {
     const t = raw as TypingEvt

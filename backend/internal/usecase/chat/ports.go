@@ -47,6 +47,11 @@ type GroupRepo interface {
 	// SetMuted: muted — «навсегда»; until — временный mute (эффективный mute
 	// вычисляется как muted OR muted_until > now()).
 	SetMuted(ctx context.Context, chatID, userID int64, muted bool, until *time.Time) error
+	// SetPinned/SetArchived — пер-юзерные флаги диалога (закрепление/архив);
+	// CountPinned — пины основного списка (для лимита, архив не считается).
+	SetPinned(ctx context.Context, chatID, userID int64, pinned bool) error
+	CountPinned(ctx context.Context, userID int64) (int, error)
+	SetArchived(ctx context.Context, chatID, userID int64, archived bool) error
 	Card(ctx context.Context, chatID, viewerID int64) (domain.ChatCard, error) // domain.ErrNotFound if no chat
 	EditInfo(ctx context.Context, chatID int64, title, about, username string) error
 	SetPhoto(ctx context.Context, chatID, mediaID int64) error

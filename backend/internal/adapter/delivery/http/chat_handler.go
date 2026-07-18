@@ -88,6 +88,7 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 			"chat_id": d.ChatID, "type": d.Type,
 			"title": d.Title, "username": d.Username, "photo_url": d.PhotoURL,
 			"last_read_seq": d.LastReadSeq, "peer_read_seq": d.PeerReadSeq, "unread": d.UnreadCount, "muted": d.Muted,
+			"pinned": d.Pinned, "archived": d.Archived,
 			"auto_delete_period": d.AutoDeletePeriod,
 		}
 		if d.HasLast {

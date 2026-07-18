@@ -99,6 +99,34 @@ func (r *GroupRepo) SetMuted(ctx context.Context, chatID, userID int64, muted bo
 	return err
 }
 
+// SetPinned закрепляет/открепляет диалог для пользователя. pinned_at = момент
+// закрепления: свежий пин встаёт первым в списке.
+func (r *GroupRepo) SetPinned(ctx context.Context, chatID, userID int64, pinned bool) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE chat_members SET pinned_at = CASE WHEN $3 THEN now() ELSE NULL END
+		 WHERE chat_id=$1 AND user_id=$2`, chatID, userID, pinned)
+	return err
+}
+
+// CountPinned — сколько диалогов пользователь закрепил в основном списке
+// (архив не считается: у него свой набор пинов, как папки tweb).
+func (r *GroupRepo) CountPinned(ctx context.Context, userID int64) (int, error) {
+	var n int
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT count(*) FROM chat_members WHERE user_id=$1 AND pinned_at IS NOT NULL AND NOT archived`,
+		userID).Scan(&n)
+	return n, err
+}
+
+// SetArchived убирает диалог в архив / возвращает из него; пин при переносе
+// сбрасывается (в tweb наборы пинов у папок раздельные).
+func (r *GroupRepo) SetArchived(ctx context.Context, chatID, userID int64, archived bool) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE chat_members SET archived=$3, pinned_at=NULL WHERE chat_id=$1 AND user_id=$2`,
+		chatID, userID, archived)
+	return err
+}
+
 func (r *GroupRepo) EditInfo(ctx context.Context, chatID int64, title, about, username string) error {
 	var u any
 	if username != "" {

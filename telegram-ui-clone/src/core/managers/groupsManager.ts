@@ -33,6 +33,14 @@ export function newGroupsManager({ rest }: { rest: Pick<RestClient, 'post' | 'ge
     async setMute(chatId: number, muted: boolean, until?: number): Promise<void> {
       await rest.post(`/chats/${chatId}/mute`, { muted, until: until ?? null })
     },
+    // Закрепить/открепить диалог вверху списка (лимит 5 — бэк вернёт 400).
+    async setPin(chatId: number, pinned: boolean): Promise<void> {
+      await rest.post(`/chats/${chatId}/pin`, { pinned })
+    },
+    // Убрать диалог в архив / вернуть из архива.
+    async setArchive(chatId: number, archived: boolean): Promise<void> {
+      await rest.post(`/chats/${chatId}/archive`, { archived })
+    },
     async card(chatId: number): Promise<GroupCard> {
       const c = await rest.get<{
         id: number; type: string; title: string; username: string; about: string

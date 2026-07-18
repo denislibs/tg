@@ -23,6 +23,8 @@ type fakeGroupRepo struct {
 	users      map[int64]domain.UserCard
 	discussion map[int64]int64          // channelID -> discussion groupID
 	bans       map[int64]map[int64]bool // chatID -> userID -> banned
+	pinned     map[int64]map[int64]bool // userID -> chatID -> pinned
+	archived   map[int64]map[int64]bool // userID -> chatID -> archived
 	onCreate   func(id int64)           // optional hook fired after a chat is created
 }
 
@@ -232,6 +234,43 @@ func (r *fakeGroupRepo) SetMuted(_ context.Context, chatID, userID int64, muted 
 	}
 	m.Muted = muted
 	r.members[chatID][userID] = m
+	return nil
+}
+
+func (r *fakeGroupRepo) SetPinned(_ context.Context, chatID, userID int64, pinned bool) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.pinned == nil {
+		r.pinned = map[int64]map[int64]bool{}
+	}
+	if r.pinned[userID] == nil {
+		r.pinned[userID] = map[int64]bool{}
+	}
+	if pinned {
+		r.pinned[userID][chatID] = true
+	} else {
+		delete(r.pinned[userID], chatID)
+	}
+	return nil
+}
+
+func (r *fakeGroupRepo) CountPinned(_ context.Context, userID int64) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.pinned[userID]), nil
+}
+
+func (r *fakeGroupRepo) SetArchived(_ context.Context, chatID, userID int64, archived bool) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.archived == nil {
+		r.archived = map[int64]map[int64]bool{}
+	}
+	if r.archived[userID] == nil {
+		r.archived[userID] = map[int64]bool{}
+	}
+	r.archived[userID][chatID] = archived
+	delete(r.pinned[userID], chatID)
 	return nil
 }
 

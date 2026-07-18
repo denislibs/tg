@@ -7,6 +7,7 @@
 import { forwardRef, memo } from 'react'
 import { TabSlide } from '../shared/ui/Tabs'
 import ChatListItem from './ChatListItem'
+import ArchiveRow from './ArchiveRow'
 import DialogSkeleton from './DialogSkeleton'
 import type { Chat } from '../data'
 import s from './ChatList.module.scss'
@@ -20,15 +21,21 @@ export interface ChatListProps {
   folderOrder: readonly number[] // порядок табов для направления слайда
   /** над списком есть оверлей горизонтальных табов → верхний отступ */
   tabsShown: boolean
+  /** архивные чаты (только в папке «Все») → псевдо-закреплённый ряд «Архив» сверху */
+  archived?: Chat[]
+  onOpenArchive?: () => void
 }
 
 const ChatList = forwardRef<HTMLDivElement, ChatListProps>(function ChatList(
-  { chats, selectedId, onSelect, loaded, folder, folderOrder, tabsShown },
+  { chats, selectedId, onSelect, loaded, folder, folderOrder, tabsShown, archived, onOpenArchive },
   ref,
 ) {
   return (
     <div ref={ref} className={s.scroll}>
       <TabSlide tab={folder} order={folderOrder} className={tabsShown ? `${s.slide} ${s.withTabs}` : s.slide}>
+        {loaded && archived != null && archived.length > 0 && onOpenArchive && (
+          <ArchiveRow chats={archived} onOpen={onOpenArchive} />
+        )}
         {loaded ? (
           chats.map((chat, i) => (
             <ChatListItem

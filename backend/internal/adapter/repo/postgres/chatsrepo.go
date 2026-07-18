@@ -172,6 +172,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		        COALESCE('/media/' || c.photo_media_id || '/content', ''),
 		        m.last_read_seq, m.unread_count,
 		        (m.muted OR (m.muted_until IS NOT NULL AND m.muted_until > now())),
+		        m.pinned_at IS NOT NULL, m.archived,
 		        COALESCE(CASE
 		          WHEN c.type = 'private' THEN (SELECT om.last_read_seq FROM chat_members om WHERE om.chat_id = c.id AND om.user_id <> $1 LIMIT 1)
 		          WHEN c.type = 'group'   THEN (SELECT MIN(om.last_read_seq) FROM chat_members om WHERE om.chat_id = c.id AND om.user_id <> $1)
@@ -200,7 +201,8 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		   -- Скрываем служебные группы обсуждения канала: доступ к ним только через
 		   -- «Комментарии» (тред), в списке диалогов они не нужны.
 		   AND c.id NOT IN (SELECT discussion_chat_id FROM chats WHERE discussion_chat_id IS NOT NULL)
-		 ORDER BY lm.created_at DESC NULLS LAST`, userID)
+		 -- закреплённые сверху (свежий пин — первым), затем по дате последнего сообщения
+		 ORDER BY m.pinned_at DESC NULLS LAST, lm.created_at DESC NULLS LAST`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -220,7 +222,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		var peerName *string
 		var peerAvatar *string
 		var peerVerified *bool
-		if err := rows.Scan(&d.ChatID, &d.Type, &d.Title, &d.Username, &d.PhotoURL, &d.LastReadSeq, &d.UnreadCount, &d.Muted, &d.PeerReadSeq,
+		if err := rows.Scan(&d.ChatID, &d.Type, &d.Title, &d.Username, &d.PhotoURL, &d.LastReadSeq, &d.UnreadCount, &d.Muted, &d.Pinned, &d.Archived, &d.PeerReadSeq,
 			&seq, &text, &senderID, &at, &mediaID, &msgType, &forwarded, &senderName,
 			&peerID, &peerName, &peerAvatar, &peerVerified, &d.AutoDeletePeriod); err != nil {
 			return nil, err

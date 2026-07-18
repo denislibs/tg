@@ -9,6 +9,7 @@ import { matchesFolder } from '../core/folderFilter'
 import type { Folder } from '../core/managers/foldersManager'
 import type { Chat, OpenPeer } from '../data'
 import ChatList from './ChatList'
+import ChatListItem from './ChatListItem'
 import FolderEditor from './folders/FolderEditor'
 import FoldersSidebar from './folders/FoldersSidebar'
 import { useSettings, useSettingsStore } from '../settings'
@@ -91,22 +92,28 @@ export default function Sidebar({
   const activeFolder = folders.find((f) => f.id === folderId)
   const tabOrder = useMemo(() => [ALL_FOLDER_ID, ...folders.map((f) => f.id)], [folders])
 
+  // Архив (tweb folder_id=1): архивные чаты уходят из основного списка в
+  // псевдо-закреплённый ряд «Архив»; клик открывает отдельный слайд-список.
+  const [archiveOpen, setArchiveOpen] = useState(false)
+  const visibleChats = useMemo(() => chats.filter((c) => !c.archived), [chats])
+  const archivedChats = useMemo(() => chats.filter((c) => !!c.archived), [chats])
+
   // Memoized so <ChatList> / <FolderTabs> get stable props — a sidebar re-render
   // for overlay toggles won't produce new arrays and bust their memo.
   const filtered = useMemo(
-    () => (activeFolder ? chats.filter((c) => matchesFolder(c, activeFolder, contactIds)) : chats),
-    [chats, activeFolder, contactIds],
+    () => (activeFolder ? visibleChats.filter((c) => matchesFolder(c, activeFolder, contactIds)) : visibleChats),
+    [visibleChats, activeFolder, contactIds],
   )
 
   // Badge таба = число непрочитанных чатов папки (tweb folders-tabs Badge);
   // у «Все» — только незамьюченные (tweb unreadUnmutedCount).
   const folderUnread: Record<number, number> = useMemo(() => {
     const counts: Record<number, number> = {
-      [ALL_FOLDER_ID]: chats.filter((c) => c.unread && !c.muted).length,
+      [ALL_FOLDER_ID]: visibleChats.filter((c) => c.unread && !c.muted).length,
     }
-    for (const f of folders) counts[f.id] = chats.filter((c) => c.unread && matchesFolder(c, f, contactIds)).length
+    for (const f of folders) counts[f.id] = visibleChats.filter((c) => c.unread && matchesFolder(c, f, contactIds)).length
     return counts
-  }, [chats, folders, contactIds])
+  }, [visibleChats, folders, contactIds])
 
   const changeFolder = (id: number) => {
     if (id === folderId) return
@@ -234,7 +241,46 @@ export default function Sidebar({
           folder={folderId}
           folderOrder={tabOrder}
           tabsShown={folders.length > 0 && !foldersSidebarShown}
+          archived={folderId === ALL_FOLDER_ID ? archivedChats : undefined}
+          onOpenArchive={() => setArchiveOpen(true)}
         />
+
+        {/* Список архива (tweb AppArchivedTab — отдельный слайд-таб) */}
+        <AnimatePresence>
+          {archiveOpen && (
+            <motion.div
+              className={s.archiveOverlay}
+              initial={{ x: 80, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: 80, opacity: 0 }}
+              transition={{ duration: 0.22, ease: EASE }}
+            >
+              <div className={s.archiveHeader}>
+                <IconButton onClick={() => setArchiveOpen(false)} color="var(--tg-textSecondary)" aria-label={t('Back')}>
+                  <TgIcon name="back" size={24} />
+                </IconButton>
+                <Text size={18} weight={600} color="var(--tg-textPrimary)">
+                  {t('Archived Chats')}
+                </Text>
+              </div>
+              <div className={s.archiveList}>
+                {archivedChats.map((chat) => (
+                  <ChatListItem
+                    key={chat.id}
+                    chat={chat}
+                    selected={chat.id === selectedId}
+                    onSelect={onSelect}
+                  />
+                ))}
+                {archivedChats.length === 0 && (
+                  <div style={{ padding: '3rem 1rem', textAlign: 'center' }}>
+                    <Text size={15} color="var(--tg-textSecondary)">{t('No archived chats')}</Text>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* tweb .chatlist-overlay: градиент (за табами, гасит уплывающие строки в
             surface) + табы папок. Список прокручивается под ними. Табы видны

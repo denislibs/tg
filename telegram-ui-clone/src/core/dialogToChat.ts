@@ -100,6 +100,8 @@ export function dialogToChat(d: Dialog, meId?: number | null, draft?: Draft): Ch
     draftPreview: hasDraft ? draft!.text : undefined,
     type: d.type,
     muted: d.muted || undefined,
+    pinned: d.pinned || undefined,
+    archived: d.archived || undefined,
     autoDeletePeriod: d.autoDeletePeriod || undefined,
     unread: d.unread > 0 ? d.unread : undefined,
     sent: (lastMine && !hasDraft) || undefined,

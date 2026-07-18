@@ -520,6 +520,41 @@ paths:
       responses:
         "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
 
+  /chats/{chatID}/pin:
+    post:
+      tags: [groups]
+      summary: Pin/unpin the dialog at the top of the chat list (per-user, max 5)
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pinned]
+              properties: { pinned: { type: boolean } }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
+        "400": { description: pin limit reached, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /chats/{chatID}/archive:
+    post:
+      tags: [groups]
+      summary: Move the dialog to/from the archive (per-user; clears its pin)
+      parameters:
+        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [archived]
+              properties: { archived: { type: boolean } }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
+
   /chats/{chatID}/invite_links:
     post:
       tags: [groups]

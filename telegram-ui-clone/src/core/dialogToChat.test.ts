@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest'
 import { dialogToChat, GRADIENTS } from './dialogToChat'
 import type { Dialog } from './models'
 
-const base: Dialog = { chatId: 1, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false }
+const base: Dialog = { chatId: 1, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false, pinned: false, archived: false }
 
 describe('dialogToChat', () => {
   it('uses peer display name + initial for private chats', () => {

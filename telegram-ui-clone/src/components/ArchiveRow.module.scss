@@ -1,0 +1,39 @@
+// Ряд «Архив» (tweb archive-dialog: row chatlist-chat + градиентный аватар)
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.55rem;
+  margin: 0 0.5rem;
+  border-radius: 12px;
+  cursor: pointer;
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+    }
+  }
+}
+
+// tweb ArchiveAvatar: круг с linear-gradient(#5CAFFA, #408ACF) и archive_filled
+.avatar {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: linear-gradient(#5caffa, #408acf);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.body {
+  flex: 1;
+  min-width: 0;
+}
+
+.subtitleRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}

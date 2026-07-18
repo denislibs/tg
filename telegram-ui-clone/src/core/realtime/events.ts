@@ -17,6 +17,8 @@ export const RT = {
   call: 'rt:call',
   chatRemoved: 'rt:chat_removed',
   draftUpdate: 'rt:draft_update',
+  dialogPin: 'rt:dialog_pin',
+  dialogArchive: 'rt:dialog_archive',
   state: 'rt:state',
 } as const
 

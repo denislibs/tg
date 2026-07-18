@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useManagers } from './core/hooks/useManagers'
+import { uiEvents } from './core/hooks/uiEvents'
 import { useConnectionStore, pingBackend } from './stores/connectionStore'
 import { AnimatePresence, motion } from 'framer-motion'
 import Text from './shared/ui/Text'
@@ -55,6 +56,9 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     if (joinToastTimer.current) clearTimeout(joinToastTimer.current)
     joinToastTimer.current = setTimeout(() => setJoinToast(null), 4000)
   }
+
+  // Глобальный тост (ui:toast) — например, лимит закреплённых чатов
+  useEffect(() => uiEvents.on('ui:toast', (p) => showJoinToast(String(p))), [])
 
   useEffect(() => {
     void loadChats(managers).then(() => loadPresence(managers))
