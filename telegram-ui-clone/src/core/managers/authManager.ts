@@ -1,4 +1,5 @@
 import { HttpError, type RestClient } from '../net/restClient'
+import { listAccounts, upsertAccount, removeAccount, tokenOf, toPublic, type PublicAccount } from '../auth/accounts'
 
 export interface Birthday { day: number; month: number; year?: number }
 
@@ -90,6 +91,17 @@ export interface AuthDeps {
 }
 
 export function newAuthManager({ rest, store }: AuthDeps) {
+  // Активный вход завершён: сохранить токен + занести аккаунт в реестр (мультиаккаунт).
+  const persist = async (token: string, u: User) => {
+    await store.set(token)
+    await upsertAccount({
+      token,
+      id: u.id,
+      name: u.displayName || [u.firstName, u.lastName].filter(Boolean).join(' ') || u.username || u.phone,
+      avatarUrl: u.avatarUrl,
+      phone: u.phone,
+    })
+  }
   return {
     async requestCode(phone: string): Promise<void> {
       await rest.post('/auth/request_code', { phone })
@@ -109,16 +121,18 @@ export function newAuthManager({ rest, store }: AuthDeps) {
       if (res.password_needed && res.password_token) {
         return { passwordNeeded: true, passwordToken: res.password_token, hint: res.hint ?? '' }
       }
-      await store.set(res.token!)
-      return { user: mapUser(res.user!) }
+      const u = mapUser(res.user!)
+      await persist(res.token!, u)
+      return { user: u }
     },
 
     async checkPassword(passwordToken: string, password: string, device: string, platform: string): Promise<{ user: User }> {
       const res = await rest.post<{ token: string; user: RawUser }>('/auth/check_password', {
         password_token: passwordToken, password, device, platform,
       })
-      await store.set(res.token)
-      return { user: mapUser(res.user) }
+      const u = mapUser(res.user)
+      await persist(res.token, u)
+      return { user: u }
     },
 
     // Облачный пароль (экран Two-Step Verification).
@@ -163,8 +177,9 @@ export function newAuthManager({ rest, store }: AuthDeps) {
         `/auth/passkey/finish?session=${encodeURIComponent(session)}&device=${encodeURIComponent(device)}&platform=${encodeURIComponent(platform)}`,
         assertion,
       )
-      await store.set(res.token)
-      return { user: mapUser(res.user) }
+      const u = mapUser(res.user)
+      await persist(res.token, u)
+      return { user: u }
     },
 
     async qrNew(platform: string): Promise<{ token: string; url: string; expiresAt: string }> {
@@ -174,8 +189,8 @@ export function newAuthManager({ rest, store }: AuthDeps) {
 
     async qrStatus(token: string): Promise<{ status: 'pending' | 'confirmed' | 'expired'; user?: User }> {
       const r = await rest.get<{ status: 'pending' | 'confirmed' | 'expired'; session_token?: string; user?: RawUser }>(`/auth/qr/${token}`)
-      if (r.status === 'confirmed' && r.session_token) {
-        await store.set(r.session_token)
+      if (r.status === 'confirmed' && r.session_token && r.user) {
+        await persist(r.session_token, mapUser(r.user))
       }
       return { status: r.status, user: r.user ? mapUser(r.user) : undefined }
     },
@@ -198,10 +213,38 @@ export function newAuthManager({ rest, store }: AuthDeps) {
       }
     },
 
-    async logout(): Promise<void> {
+    async logout(): Promise<{ switched: boolean }> {
       if (store.get()) {
         try { await rest.post('/auth/logout', {}) } catch { /* ignore */ }
       }
+      // убрать активный аккаунт из реестра (по совпадению токена); если остались
+      // другие — переключиться на первый, иначе разлогиниться полностью.
+      const active = store.get()
+      const all = await listAccounts()
+      const activeAcc = all.find((a) => a.token === active)
+      const remaining = activeAcc ? await removeAccount(activeAcc.id) : all
+      if (remaining.length > 0) {
+        await store.set(remaining[0].token)
+        return { switched: true }
+      }
+      await store.clear()
+      return { switched: false }
+    },
+
+    // ── Мультиаккаунт ──
+    async listAccounts(): Promise<PublicAccount[]> {
+      return (await listAccounts()).map(toPublic)
+    },
+    // Сделать аккаунт активным (page затем перезагружает страницу).
+    async switchAccount(id: number): Promise<boolean> {
+      const tok = await tokenOf(id)
+      if (!tok) return false
+      await store.set(tok)
+      return true
+    },
+    // «Добавить аккаунт»: текущий остаётся в реестре, активный токен снимается —
+    // после reload покажется экран входа; новый вход добавит ещё один аккаунт.
+    async addAccount(): Promise<void> {
       await store.clear()
     },
   }

@@ -1,9 +1,12 @@
+import { useEffect, useState } from 'react'
 import TgIcon from './TgIcon'
 import Avatar from '../shared/ui/Avatar'
 import Menu, { MenuItem } from '../shared/ui/Menu'
 import { useAvatarSrc } from './useAvatarSrc'
 import { useChatsStore } from '../stores/chatsStore'
+import { useManagers } from '../core/hooks/useManagers'
 import { gradientFor } from '../core/dialogToChat'
+import type { PublicAccount } from '../core/auth/accounts'
 import { useT } from '../i18n'
 
 interface Props {
@@ -16,6 +19,12 @@ interface Props {
   onLogout?: () => void
 }
 
+// Аватар аккаунта в списке (резолвит avatarUrl через media-токен воркера).
+function AccountAvatar({ account }: { account: PublicAccount }) {
+  const src = useAvatarSrc(account.avatarUrl)
+  return <Avatar background={gradientFor(account.id)} text={account.name.charAt(0).toUpperCase()} src={src} size={26} />
+}
+
 export default function MainMenu({
   open,
   onClose,
@@ -26,12 +35,30 @@ export default function MainMenu({
   onLogout,
 }: Props) {
   const t = useT()
+  const managers = useManagers()
   const me = useChatsStore((s) => s.me)
   const meAvatar = useAvatarSrc(me?.avatarUrl)
   const meName = me?.displayName?.trim() || [me?.firstName, me?.lastName].filter(Boolean).join(' ').trim() || me?.username || 'Аккаунт'
   const divider = (
     <div style={{ height: '1px', background: 'var(--tg-divider)', margin: '6px 0' }} />
   )
+
+  // Мультиаккаунт: реестр аккаунтов (кроме активного) + лимит 4.
+  const [accounts, setAccounts] = useState<PublicAccount[]>([])
+  useEffect(() => {
+    if (!open) return
+    void managers.auth.listAccounts().then(setAccounts)
+  }, [open, managers])
+  const others = accounts.filter((a) => a.id !== me?.id)
+  // Переключение аккаунта = смена активного токена в воркере + перезагрузка.
+  const switchTo = (id: number) => {
+    void managers.auth.switchAccount(id).then((ok) => { if (ok) location.reload() })
+  }
+  // «Добавить аккаунт»: снять активный токен (текущий остаётся в реестре) →
+  // reload покажет экран входа; после входа новый аккаунт добавится.
+  const addAccount = () => {
+    void managers.auth.addAccount().then(() => location.reload())
+  }
 
   return (
     <Menu
@@ -49,7 +76,22 @@ export default function MainMenu({
         label={meName}
         onClick={onClose}
       />
-      <MenuItem icon={<TgIcon name="add" size={20} />} label={t('Add Account')} onClick={onClose} />
+      {/* Другие аккаунты (мультиаккаунт) — клик переключает */}
+      {others.map((a) => (
+        <MenuItem
+          key={a.id}
+          icon={
+            <span style={{ padding: 2, display: 'flex' }}>
+              <AccountAvatar account={a} />
+            </span>
+          }
+          label={a.name}
+          onClick={() => switchTo(a.id)}
+        />
+      ))}
+      {accounts.length < 4 && (
+        <MenuItem icon={<TgIcon name="add" size={20} />} label={t('Add Account')} onClick={addAccount} />
+      )}
       {divider}
       <MenuItem icon={<TgIcon name="savedmessages" size={20} />} label={t('Saved Messages')} onClick={onOpenSaved ?? onClose} />
       <MenuItem icon={<TgIcon name="radiooff" size={20} />} label={t('My Stories')} onClick={onClose} />

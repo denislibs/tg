@@ -428,8 +428,11 @@ function ThemedApp() {
 
   const login = () => setAuthed(true)
   const logout = () => {
-    void managers.auth.logout()
-    setAuthed(false)
+    void managers.auth.logout().then((r) => {
+      // остался другой аккаунт (мультиаккаунт) → перезагрузка под ним; иначе экран входа
+      if (r.switched) location.reload()
+      else setAuthed(false)
+    })
   }
 
   // The header toggle flips between a light and a dark theme. It picks the

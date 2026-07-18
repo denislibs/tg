@@ -39,7 +39,10 @@ export interface Managers {
     passkeyLoginBegin(): Promise<{ session: string; options: unknown }>
     passkeyLoginFinish(session: string, assertion: unknown, device: string, platform: string): Promise<{ user: User }>
     me(): Promise<User | null>
-    logout(): Promise<void>
+    logout(): Promise<{ switched: boolean }>
+    listAccounts(): Promise<import('../core/auth/accounts').PublicAccount[]>
+    switchAccount(id: number): Promise<boolean>
+    addAccount(): Promise<void>
     qrNew(platform: string): Promise<{ token: string; url: string; expiresAt: string }>
     qrStatus(token: string): Promise<{ status: 'pending' | 'confirmed' | 'expired'; user?: User }>
     qrConfirm(token: string): Promise<void>
