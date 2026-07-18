@@ -86,6 +86,7 @@ func registerServer(p serverParams) {
 		publisher := rtredis.NewRedisPublisher(p.Redis.Client)
 		p.ChatUC.SetPublisher(publisher)
 		p.ChatUC.SetChannelPublisher(publisher)
+		p.ChatUC.SetGroupCalls(redisGroupCalls(p.Redis))
 		p.AuthUC.SetRevocationNotifier(publisher)
 		presenceMgr = usecasepresence.NewManager(rtredis.NewPresenceStore(p.Redis.Client), publisher, p.ChatUC.ChatPartners, 35*time.Second)
 		presenceMgr.SetPrivacy(privacyUC)
@@ -201,4 +202,9 @@ func redisSessionCache(r RedisResult) usecaseauth.SessionCache {
 // redisQRStore is a tiny helper so server.go doesn't import redisstore twice.
 func redisQRStore(r RedisResult) usecaseauth.QRStore {
 	return newQRStore(r.Client)
+}
+
+// redisGroupCalls — стор участников групповых звонков.
+func redisGroupCalls(r RedisResult) usecasechat.GroupCallStore {
+	return newGroupCallStore(r.Client)
 }

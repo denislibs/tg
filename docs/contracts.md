@@ -393,6 +393,20 @@ Stop the poll (author of the poll message or chat admin/creator). Voting stops,
 a quiz reveals its answer. Fans out `poll_update`.
 - 200: `{ "ok": true }` · 403 not allowed
 
+### GET /chats/{chatID}/group_call  · auth
+Participants of the chat's active group call/video chat (empty when none).
+→ `{ "participants": [3,4] }`. Used to show the «Video Chat … Join» banner and,
+on join, to know whom to send WebRTC offers to (mesh).
+
+**WS frames (group calls, server is a dumb relay + participant set):**
+- `group_call_join {chat_id}` / `group_call_leave {chat_id}` (client→server): join/leave;
+  the server updates the Redis participant set and fans out `group_call_update`
+  `{chat_id, user_id, action:"joined"|"left", participants:[…]}` to all chat members.
+  A dropped socket auto-leaves.
+- `group_call_signal {chat_id, to_user_id, sdp?|candidate?|media_state?}` (client→server):
+  addressed relay of WebRTC SDP/ICE/mute+video state; re-addressed to `to_user_id`
+  with `from_user_id` stamped in.
+
 ### POST /chats/{chatID}/forum  · auth
 Enable/disable forum topics on a group (needs CHANGE_INFO). `{ "enabled": true }` → `{ "ok": true }`.
 Dialogs expose `is_forum`; a forum chat renders a topic list instead of the feed.

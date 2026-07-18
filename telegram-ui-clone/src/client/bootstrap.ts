@@ -74,6 +74,7 @@ export interface Managers {
     deleteScheduled(chatId: number, id: number): Promise<void>
     sendScheduledNow(chatId: number, id: number): Promise<Message>
     threadMessages(chatId: number, rootId: number, offset?: number, limit?: number): Promise<{ messages: Message[]; count: number }>
+    groupCallParticipants(chatId: number): Promise<number[]>
     votePoll(pollId: number, options: number[]): Promise<Poll>
     closePoll(pollId: number): Promise<void>
     mediaHistory(chatId: number, filter: 'media' | 'files' | 'links' | 'music' | 'voice', offset?: number, limit?: number): Promise<{ messages: Message[]; count: number }>

@@ -218,6 +218,13 @@ type SendInput struct {
 	PollID           *int64 // опрос (messages.poll_id) — только из SendPoll
 }
 
+// GroupCallStore хранит участников активных групповых звонков (эфемерно, Redis).
+type GroupCallStore interface {
+	Join(ctx context.Context, chatID, userID int64) error
+	Leave(ctx context.Context, chatID, userID int64) error
+	Participants(ctx context.Context, chatID int64) ([]int64, error)
+}
+
 // TopicRepo хранит темы форум-групп.
 type TopicRepo interface {
 	Create(ctx context.Context, t domain.ForumTopic) (domain.ForumTopic, error)

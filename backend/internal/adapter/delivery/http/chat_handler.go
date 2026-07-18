@@ -794,6 +794,23 @@ func (h *ChatHandler) ThreadMessages(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": count})
 }
 
+// GroupCallParticipants — GET /chats/{chatID}/group_call: кто сейчас в видеочате.
+func (h *ChatHandler) GroupCallParticipants(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	ids, err := h.svc.GroupCallParticipants(r.Context(), chatID, h.meID(r))
+	if err != nil {
+		h.mapScheduledErr(w, err)
+		return
+	}
+	if ids == nil {
+		ids = []int64{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"participants": ids})
+}
+
 func (h *ChatHandler) Sync(w http.ResponseWriter, r *http.Request) {
 	sincePts := queryInt(r, "pts", 0)
 	d, err := h.svc.GetDifference(r.Context(), h.meID(r), sincePts)

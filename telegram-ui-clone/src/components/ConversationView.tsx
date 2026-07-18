@@ -40,6 +40,10 @@ import { useMentionPeers } from '../core/hooks/useMentionPeers'
 import CreatePollPopup from './CreatePollPopup'
 import ScheduledView from './ScheduledView'
 import ForumView from './ForumView'
+import { useGroupCallStore } from '../stores/groupCallStore'
+import { joinGroupCall } from '../core/calls/groupCallEngine'
+
+const EMPTY_IDS: number[] = []
 import { useMessagesStore } from '../stores/messagesStore'
 import ChatHeader from './conversation/ChatHeader'
 import PinnedBar from './conversation/PinnedBar'
@@ -174,6 +178,17 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     void managers.messages.listScheduled(numericChatId).then((l) => setScheduledCount(l.length)).catch(() => undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [numericChatId, isRealChat])
+  // Идущий видеочат этого чата (для баннера Join): снимок при открытии + live
+  const groupCallActive = useGroupCallStore((st) => st.activeByChat[numericChatId] ?? EMPTY_IDS)
+  const myGroupCallChat = useGroupCallStore((st) => st.chatId)
+  useEffect(() => {
+    if (!isRealChat || chat.type === 'private' || chat.type === 'saved') return
+    void managers.messages.groupCallParticipants(numericChatId)
+      .then((ids) => useGroupCallStore.getState().setActive(numericChatId, ids))
+      .catch(() => undefined)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [numericChatId, isRealChat])
+
   const onComposerSchedule = useEvent((text: string, entities: MessageEntity[] | undefined, sendAtUnix: number) => {
     void managers.messages
       .scheduleMessage(numericChatId, { text, entities, sendAt: sendAtUnix })
@@ -615,6 +630,17 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           onFile={isRealChat ? () => { setAttachAnchor(null); openPicker('*/*', true) } : undefined}
           onPoll={isRealChat && (chat.type === 'group' || chat.type === 'channel') ? () => { setAttachAnchor(null); setCreatePollOpen(true) } : undefined}
         />
+      )}
+
+      {/* Баннер идущего видеочата (tweb topbar-call): Join, пока сам не в звонке */}
+      {isRealChat && groupCallActive.length > 0 && myGroupCallChat !== numericChatId && (
+        <div className={s.groupCallBanner} onClick={() => void joinGroupCall(numericChatId)}>
+          <TgIcon name="videochat" size={18} color="#fff" />
+          <Text size={14} weight={600} color="#fff" style={{ flex: 1 }}>
+            {t('Video Chat')} · {groupCallActive.length} {t('participants')}
+          </Text>
+          <Text size={14} weight={700} color="#fff">{t('Join')}</Text>
+        </div>
       )}
 
       {/* «Запланированные сообщения» (tweb ChatType.Scheduled) */}

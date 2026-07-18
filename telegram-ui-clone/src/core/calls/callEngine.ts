@@ -28,7 +28,7 @@ const FALLBACK_ICE: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
 
 // ICE-конфиг с бэка (STUN + эфемерные TURN-креды), кэш до истечения TTL.
 let cachedIce: { servers: RTCIceServer[]; until: number } | null = null
-async function iceServers(): Promise<RTCIceServer[]> {
+export async function iceServers(): Promise<RTCIceServer[]> {
   if (cachedIce && Date.now() < cachedIce.until) return cachedIce.servers
   try {
     const cfg = await managers().calls.iceConfig()

@@ -14,6 +14,25 @@
 }
 
 // колонка чата
+// Баннер идущего видеочата (tweb topbar-call: зелёный градиент, клик = Join)
+.groupCallBanner {
+  position: absolute;
+  top: 62px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 280px;
+  max-width: 90%;
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, #52ce5d, #00b1c0);
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+}
+
 .column {
   flex: 1;
   min-width: 0;

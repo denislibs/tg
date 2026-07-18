@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import TgIcon from './TgIcon'
+import { joinGroupCall } from '../core/calls/groupCallEngine'
 import Menu, { MenuItem } from '../shared/ui/Menu'
 import { useCall } from './call/CallProvider'
 import { SERVICE_USER_ID } from '../core/dialogToChat'
@@ -79,6 +80,12 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
     ]
   } else if (chat.type === 'group') {
     items = [
+      // Видеочат (tweb PeerInfo.Action.VoiceChat, иконка videochat)
+      {
+        icon: <TgIcon name="videochat" size={20} />,
+        label: 'Video Chat',
+        onClick: () => { void joinGroupCall(Number(chat.id)); close() },
+      },
       { icon: <TgIcon name="timer" size={20} />, label: 'Auto-delete', submenu: true },
       ...searchItems,
       muteItem,

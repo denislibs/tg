@@ -36,6 +36,9 @@ type Conn struct {
 	userID   int64
 	deviceID int64
 	send     chan []byte
+	// активный групповой звонок этого соединения (0 — нет): при обрыве
+	// сокета участника автоматически выводим из звонка.
+	groupCallChat int64
 }
 
 func newConn(ws *websocket.Conn, hub *Hub, svc *usecasechat.Interactor, presence Presence, userID, deviceID int64) *Conn {
@@ -66,6 +69,9 @@ func (c *Conn) run(ctx context.Context) {
 	// it may already be cancelled, which would silently skip the Redis
 	// unsubscribe and the offline fan-out (last_seen / presence(offline)).
 	cleanupCtx := context.Background()
+	if c.groupCallChat != 0 {
+		_ = c.svc.LeaveGroupCall(cleanupCtx, c.groupCallChat, c.userID)
+	}
 	lastUser := c.hub.Unregister(cleanupCtx, c.userID, c.deviceID, c)
 	if c.presence != nil && lastUser {
 		_ = c.presence.Offline(cleanupCtx, c.userID)
@@ -176,6 +182,38 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		to, _ := d["to_user_id"].(float64)
 		delete(d, "to_user_id")
 		_ = c.svc.RelayCall(ctx, f.T, c.userID, int64(to), d)
+	// Групповой звонок: join/leave меняют список участников (+фан-аут
+	// group_call_update членам чата), signal — адресное реле SDP/ICE.
+	case "group_call_join":
+		var d struct {
+			ChatID int64 `json:"chat_id"`
+		}
+		if json.Unmarshal(f.D, &d) != nil || d.ChatID == 0 {
+			return
+		}
+		if _, err := c.svc.JoinGroupCall(ctx, d.ChatID, c.userID); err == nil {
+			c.groupCallChat = d.ChatID
+		}
+	case "group_call_leave":
+		var d struct {
+			ChatID int64 `json:"chat_id"`
+		}
+		if json.Unmarshal(f.D, &d) != nil || d.ChatID == 0 {
+			return
+		}
+		_ = c.svc.LeaveGroupCall(ctx, d.ChatID, c.userID)
+		if c.groupCallChat == d.ChatID {
+			c.groupCallChat = 0
+		}
+	case "group_call_signal":
+		var d map[string]any
+		if json.Unmarshal(f.D, &d) != nil {
+			return
+		}
+		to, _ := d["to_user_id"].(float64)
+		chatID, _ := d["chat_id"].(float64)
+		delete(d, "to_user_id")
+		_ = c.svc.RelayGroupCallSignal(ctx, c.userID, int64(chatID), int64(to), d)
 	}
 }
 

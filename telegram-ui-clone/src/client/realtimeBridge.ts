@@ -13,6 +13,7 @@ import { playMessageSent } from '../core/audio/sounds'
 import { notifyIncomingMessage } from './uiNotifications'
 import { useSettingsStore } from '../settings'
 import * as callEngine from '../core/calls/callEngine'
+import { handleGroupCallFrame, type GroupCallFrame } from '../core/calls/groupCallEngine'
 
 let started = false
 
@@ -145,6 +146,7 @@ export function startRealtime(): void {
   })
   // 1:1 call signaling → движок звонка (стейт живёт в callStore)
   smp.on(RT.call, (raw) => { callEngine.handleFrame(raw as CallFrameEvt) })
+  smp.on(RT.groupCall, (raw) => { handleGroupCallFrame(raw as GroupCallFrame) })
   smp.on('rt:resync', () => { void loadChats(managers) })
   // Прогресс отгрузки медиа (кольцо на оптимистичном бабле)
   smp.on('media:upload_progress', (raw) => {

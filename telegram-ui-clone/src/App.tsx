@@ -2,6 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { flushSync } from 'react-dom'
 import { useManagers } from './core/hooks/useManagers'
 import { uiEvents } from './core/hooks/uiEvents'
+import GroupCallScreen from './components/GroupCallScreen'
+import { useGroupCallStore } from './stores/groupCallStore'
 import { useConnectionStore, pingBackend } from './stores/connectionStore'
 import { AnimatePresence, motion } from 'framer-motion'
 import Text from './shared/ui/Text'
@@ -50,6 +52,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   const [joinToast, setJoinToast] = useState<string | null>(null)
   const joinToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [qrConfirmToken, setQrConfirmToken] = useState<string | null>(null)
+  const groupCallChatId = useGroupCallStore((s) => s.chatId)
 
   const showJoinToast = (text: string) => {
     setJoinToast(text)
@@ -304,6 +307,12 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 
       {/* Transient /join deep-link banner */}
       <AnimatePresence>
+        {/* Групповой звонок — глобальное окно (живёт поверх любого чата) */}
+        {groupCallChatId != null && (
+          <GroupCallScreen
+            chatName={chatList.find((c) => c.id === String(groupCallChatId))?.name ?? ''}
+          />
+        )}
         {joinToast && (
           <motion.div
             initial={{ opacity: 0, y: -12 }}

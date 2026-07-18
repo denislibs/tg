@@ -274,6 +274,12 @@ export function newMessagesManager({ rest }: MessagesDeps) {
       return mapMessage(r)
     },
 
+    // Кто сейчас в видеочате группы (для баннера Join).
+    async groupCallParticipants(chatId: number): Promise<number[]> {
+      const r = await rest.get<{ participants: number[] }>(`/chats/${chatId}/group_call`)
+      return r.participants ?? []
+    },
+
     async viewers(chatId: number, msgId: number): Promise<number[]> {
       const r = await rest.get<{ user_ids: number[] }>(`/chats/${chatId}/messages/${msgId}/viewers`)
       return r.user_ids ?? []

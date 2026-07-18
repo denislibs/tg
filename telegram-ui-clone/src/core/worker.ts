@@ -107,6 +107,7 @@ const conn = newConnectionManager({
     else if (type === 'dialog_pin') broadcast(RT.dialogPin, payload)
     else if (type === 'dialog_archive') broadcast(RT.dialogArchive, payload)
     else if (type === 'poll_update') broadcast(RT.pollUpdate, payload)
+    else if (type.startsWith('group_call_')) broadcast(RT.groupCall, { t: type, d: payload })
     else if (type.startsWith('call_')) broadcast(RT.call, { t: type, d: payload })
   },
 })
