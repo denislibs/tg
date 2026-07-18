@@ -561,7 +561,7 @@ paths:
               properties:
                 type: { type: string, default: text }
                 text: { type: string }
-                entities: { type: array, items: { $ref: "#/components/schemas/MessageEntity" }, nullable: true }
+                entities: { type: array, items: { type: object }, nullable: true, description: rich-text entities (см. contracts.md) }
                 reply_to_id: { type: integer, format: int64, nullable: true }
                 media_id: { type: integer, format: int64, nullable: true }
                 send_at: { type: integer, format: int64, description: unix seconds, must be in the future }
