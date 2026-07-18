@@ -16,6 +16,8 @@ import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import EmojiPicker from './EmojiPicker'
 import EmojiHelper from './EmojiHelper'
+import MentionsHelper from './MentionsHelper'
+import type { Peer } from '../core/managers/peersManager'
 import { searchEmojisByWord } from './emoji/emojiData'
 import MarkupTooltip from './MarkupTooltip'
 import { serialize, apply as applyMarkup, entitiesToFragment, parseMarkdown } from '../core/markdown'
@@ -64,6 +66,8 @@ interface Props {
   // (родитель дебаунсит сейв — tweb saveDraftDebounced).
   initialDraft?: string
   onDraftChange?: (text: string) => void
+  // Кандидаты @упоминаний (участники группы без себя) — включает mentions-хелпер.
+  mentions?: Peer[]
 }
 
 // URL schemes safe to keep on a pasted link (others are dropped — see RichText).
@@ -98,7 +102,7 @@ function placeCaretEnd(el: HTMLElement) {
 
 function Composer({
   reply, editing, rec, onSend, onTyping, onCancelReply, onCancelEdit, onOpenAttach, onPasteFiles,
-  initialDraft, onDraftChange,
+  initialDraft, onDraftChange, mentions,
 }: Props) {
   const t = useT()
   const [emptyDraft, setEmptyDraft] = useState(true)
@@ -315,6 +319,26 @@ function Composer({
   }
 
   const onEditorKeyDown = (e: React.KeyboardEvent) => {
+    // Mentions-хелпер (tweb attachListNavigation тип 'y'): стрелки вверх/вниз,
+    // Enter/Tab выбирают, Escape закрывает.
+    if (mentionSug) {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setMentionSug(null)
+        return
+      }
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault()
+        const dir = e.key === 'ArrowUp' ? -1 : 1
+        setMentionSug((sug) => sug && { ...sug, idx: (sug.idx + dir + sug.list.length) % sug.list.length })
+        return
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        pickMention(mentionSug.list[mentionSug.idx])
+        return
+      }
+    }
     // Эмодзи-хелпер перехватывает навигацию (tweb attachListNavigation):
     // Escape закрывает; стрелки двигают (и «будят» навигацию для слова);
     // Enter/Tab выбирают только когда навигация активна.
@@ -409,6 +433,66 @@ function Composer({
     }))
   }
 
+  // ── @упоминания (tweb mentionsHelper): участники группы по слову '@query' ──
+  const [mentionSug, setMentionSug] = useState<{ list: Peer[]; wordLen: number; idx: number } | null>(null)
+
+  const checkMentionAutocomplete = () => {
+    if (!mentions || mentions.length === 0) return
+    const cw = caretWord()
+    if (!cw || !cw.word.startsWith('@')) {
+      setMentionSug(null)
+      return
+    }
+    const q = cw.word.slice(1).toLowerCase()
+    const list = mentions
+      .filter((p) => {
+        if (!q) return true
+        if (p.username.toLowerCase().startsWith(q)) return true
+        return p.displayName.toLowerCase().split(/\s+/).some((w) => w.startsWith(q))
+      })
+      .slice(0, 20)
+    if (!list.length) {
+      setMentionSug(null)
+      return
+    }
+    setMentionSug((prev) => ({
+      list,
+      wordLen: cw.word.length,
+      idx: Math.min(Math.max(0, prev?.idx ?? 0), list.length - 1),
+    }))
+  }
+
+  // Выбор участника: с username — текст «@username » (распарсится как mention);
+  // без username — <a data-mention-id> → text_mention entity (tweb mentionUser).
+  const pickMention = (p: Peer) => {
+    const cw = caretWord()
+    const root = editorRef.current
+    if (cw && root) {
+      const start = Math.max(0, cw.end - (mentionSug?.wordLen ?? cw.word.length))
+      const r = document.createRange()
+      r.setStart(cw.node, start)
+      r.setEnd(cw.node, cw.end)
+      const sel = window.getSelection()
+      sel?.removeAllRanges()
+      sel?.addRange(r)
+      if (p.username) {
+        document.execCommand('insertText', false, `@${p.username} `)
+      } else {
+        const frag = document.createDocumentFragment()
+        const a = document.createElement('a')
+        a.className = 'md-mention'
+        a.dataset.mentionId = String(p.id)
+        a.textContent = p.displayName || `#${p.id}`
+        frag.appendChild(a)
+        frag.appendChild(document.createTextNode(' '))
+        insertFragment(frag)
+      }
+      syncEmpty()
+      autosize()
+    }
+    setMentionSug(null)
+  }
+
   // выбор подсказки: заменить набранное слово эмодзи (tweb insertAtCaret с replaceText)
   const pickEmojiSuggestion = (em: string) => {
     const cw = caretWord()
@@ -434,7 +518,10 @@ function Composer({
       <div className={s.composerBox}>
       {/* Плашка эмодзи-автокомплита (tweb emoji-helper) */}
       <AnimatePresence>
-        {emojiSug && !rec.recording && (
+        {mentionSug && !rec.recording && (
+          <MentionsHelper peers={mentionSug.list} activeIdx={mentionSug.idx} onPick={pickMention} />
+        )}
+        {emojiSug && !mentionSug && !rec.recording && (
           <EmojiHelper emojis={emojiSug.list} activeIdx={emojiSug.idx} onPick={pickEmojiSuggestion} />
         )}
       </AnimatePresence>
@@ -564,7 +651,7 @@ function Composer({
                   aria-multiline
                   // No live markdown conversion in the input (tweb keeps typed markers
                   // raw; they're parsed on send). Only the toolbar/shortcuts format live.
-                  onInput={() => { syncEmpty(); autosize(); onTyping(); checkEmojiAutocomplete(); onDraftChange?.(editorRef.current?.textContent ?? '') }}
+                  onInput={() => { syncEmpty(); autosize(); onTyping(); checkMentionAutocomplete(); checkEmojiAutocomplete(); onDraftChange?.(editorRef.current?.textContent ?? '') }}
                   onKeyDown={onEditorKeyDown}
                   onPaste={onPaste}
                   onDrop={onDrop}

@@ -179,6 +179,16 @@ function renderInline(text: string, entities: MessageEntity[], linkColor: string
         const isLink = !!href
         const isQuote = seg.types.has('blockquote')
 
+        // custom mention юзера без username (tweb messageEntityMentionName):
+        // акцентный текст, как @mention-автолинк
+        if (seg.types.has('text_mention')) {
+          return (
+            <span key={key} style={{ color: linkColor, ...segStyle(seg.types) }}>
+              {seg.text}
+            </span>
+          )
+        }
+
         let content: ReactNode = isLink ? (
           <a
             href={href}

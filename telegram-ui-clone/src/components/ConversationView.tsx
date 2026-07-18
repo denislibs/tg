@@ -36,6 +36,7 @@ import Composer from './Composer'
 import ChatFeed from './messages/ChatFeed'
 import { useChatAutoDownload } from '../core/hooks/useChatAutoDownload'
 import { useComposerDraft } from '../core/hooks/useComposerDraft'
+import { useMentionPeers } from '../core/hooks/useMentionPeers'
 import ChatHeader from './conversation/ChatHeader'
 import PinnedBar from './conversation/PinnedBar'
 import ScrollDownFab from './conversation/ScrollDownFab'
@@ -102,6 +103,8 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const isRealChat = Number.isFinite(numericChatId) && String(numericChatId) === chat.id
   // Облачный черновик: восстановление в композер + сейв с дебаунсом
   const { initialDraft, onDraftChange } = useComposerDraft(isRealChat ? numericChatId : null)
+  // Кандидаты @упоминаний — участники группы (tweb mentionsHelper)
+  const mentionPeers = useMentionPeers(isRealChat ? numericChatId : null, isRealChat && isGroup)
 
   const draftPeerId = chat.id.startsWith('draft:') ? Number(chat.id.slice('draft:'.length)) : null
   const meId = useChatsStore((s) => s.meId)
@@ -508,6 +511,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               onPasteFiles={isRealChat ? onComposerPasteFiles : undefined}
               initialDraft={initialDraft}
               onDraftChange={isRealChat ? onDraftChange : undefined}
+              mentions={isGroup && mentionPeers.length > 0 ? mentionPeers : undefined}
             />
           </div>
         ) : (

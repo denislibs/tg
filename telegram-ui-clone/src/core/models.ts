@@ -7,13 +7,15 @@ export type ChatKind = 'private' | 'group' | 'channel' | 'saved'
 // for 'text_link'. The set mirrors what the composer can produce.
 export type EntityType =
   | 'bold' | 'italic' | 'underline' | 'strikethrough'
-  | 'code' | 'pre' | 'spoiler' | 'blockquote' | 'text_link'
+  | 'code' | 'pre' | 'spoiler' | 'blockquote' | 'text_link' | 'text_mention'
 export interface MessageEntity {
   type: EntityType
   offset: number
   length: number
   url?: string
   language?: string
+  /** target user for 'text_mention' (упоминание юзера без username) */
+  user_id?: number
 }
 
 export interface RawDialog {

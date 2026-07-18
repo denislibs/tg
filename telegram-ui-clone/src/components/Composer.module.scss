@@ -153,6 +153,11 @@
     background: color-mix(in srgb, var(--tg-textPrimary) 18%, transparent);
     border-radius: 4px;
   }
+  // custom mention юзера без username (text_mention) — акцент, как ссылка
+  :global(.md-mention) {
+    color: var(--tg-accent);
+    cursor: text;
+  }
   :global(.md-quote) {
     display: inline-block;
     border-left: 3px solid var(--tg-accent);

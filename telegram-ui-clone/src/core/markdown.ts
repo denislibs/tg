@@ -21,7 +21,7 @@ const CLS: Record<string, EntityType> = {
   'md-quote': 'blockquote',
 }
 
-interface Active { type: EntityType; url?: string; language?: string }
+interface Active { type: EntityType; url?: string; language?: string; user_id?: number }
 
 // Which formats does this element contribute? Detects both tag-based markup
 // (<b>, <i>, <a>…, produced by execCommand without styleWithCSS) and style-based
@@ -43,7 +43,12 @@ function detect(el: HTMLElement): Active[] {
     out.push({ type: 'code' })
   }
   if (tag === 'BLOCKQUOTE') out.push({ type: 'blockquote' })
-  if (tag === 'A') out.push({ type: 'text_link', url: (el as HTMLAnchorElement).getAttribute('href') || undefined })
+  if (tag === 'A' && el.dataset.mentionId) {
+    // custom mention юзера без username (tweb A.follow / messageEntityMentionName)
+    out.push({ type: 'text_mention', user_id: Number(el.dataset.mentionId) || undefined })
+  } else if (tag === 'A') {
+    out.push({ type: 'text_link', url: (el as HTMLAnchorElement).getAttribute('href') || undefined })
+  }
   for (const cls of el.classList) {
     const t = CLS[cls]
     if (t && !out.some((a) => a.type === t)) out.push({ type: t })
@@ -80,11 +85,11 @@ export function serialize(root: HTMLElement): { text: string; entities: MessageE
 
   // Coalesce contiguous same-type (same url) runs into entities.
   const entities: MessageEntity[] = []
-  const open = new Map<string, { type: EntityType; url?: string; language?: string; start: number }>()
-  const keyOf = (a: Active) => `${a.type}|${a.url ?? ''}|${a.language ?? ''}`
+  const open = new Map<string, { type: EntityType; url?: string; language?: string; user_id?: number; start: number }>()
+  const keyOf = (a: Active) => `${a.type}|${a.url ?? ''}|${a.language ?? ''}|${a.user_id ?? ''}`
   const close = (k: string, end: number) => {
     const s = open.get(k)
-    if (s && end > s.start) entities.push({ type: s.type, offset: s.start, length: end - s.start, url: s.url, language: s.language })
+    if (s && end > s.start) entities.push({ type: s.type, offset: s.start, length: end - s.start, url: s.url, language: s.language, user_id: s.user_id })
     open.delete(k)
   }
   let text = ''
@@ -92,7 +97,7 @@ export function serialize(root: HTMLElement): { text: string; entities: MessageE
   for (const run of runs) {
     const keys = new Set(run.active.map(keyOf))
     for (const k of [...open.keys()]) if (!keys.has(k)) close(k, offset)
-    for (const a of run.active) { const k = keyOf(a); if (!open.has(k)) open.set(k, { type: a.type, url: a.url, language: a.language, start: offset }) }
+    for (const a of run.active) { const k = keyOf(a); if (!open.has(k)) open.set(k, { type: a.type, url: a.url, language: a.language, user_id: a.user_id, start: offset }) }
     text += run.text
     offset += run.text.length
   }
@@ -255,7 +260,7 @@ export function activeTypes(root: HTMLElement): Set<EntityType> {
 
 // --- entities → DOM (for editing an existing formatted message) -------------
 
-interface Seg { text: string; types: EntityType[]; url?: string; language?: string }
+interface Seg { text: string; types: EntityType[]; url?: string; language?: string; userId?: number }
 
 // Split text into non-overlapping segments at every entity boundary.
 function segmentize(text: string, entities: MessageEntity[]): Seg[] {
@@ -273,20 +278,28 @@ function segmentize(text: string, entities: MessageEntity[]): Seg[] {
     const types: EntityType[] = []
     let url: string | undefined
     let language: string | undefined
+    let userId: number | undefined
     for (const e of entities) {
       if (e.offset <= s && e.offset + e.length >= en) {
         types.push(e.type)
         if (e.type === 'text_link') url = e.url
         if (e.type === 'pre') language = e.language
+        if (e.type === 'text_mention') userId = e.user_id
       }
     }
-    segs.push({ text: text.slice(s, en), types, url, language })
+    segs.push({ text: text.slice(s, en), types, url, language, userId })
   }
   return segs
 }
 
-function elementFor(type: EntityType, url?: string, language?: string): HTMLElement {
+function elementFor(type: EntityType, url?: string, language?: string, userId?: number): HTMLElement {
   switch (type) {
+    case 'text_mention': {
+      const a = document.createElement('a')
+      a.className = 'md-mention'
+      if (userId != null) a.dataset.mentionId = String(userId)
+      return a
+    }
     case 'bold': return document.createElement('b')
     case 'italic': return document.createElement('i')
     case 'underline': return document.createElement('u')
@@ -328,7 +341,7 @@ export function entitiesToFragment(text: string, entities?: MessageEntity[]): Do
     let outer: HTMLElement | null = null
     let inner: HTMLElement | null = null
     for (const ty of seg.types) {
-      const el = elementFor(ty, seg.url, seg.language)
+      const el = elementFor(ty, seg.url, seg.language, seg.userId)
       if (!outer) outer = el
       else inner!.appendChild(el)
       inner = el
