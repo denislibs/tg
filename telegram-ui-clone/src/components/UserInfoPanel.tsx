@@ -28,7 +28,8 @@ import PlayPauseGlyph from './PlayPauseGlyph'
 import { useManagers } from '../core/hooks/useManagers'
 import { useLang } from '../i18n'
 import { friendlyMsgTime } from '../core/friendlyTime'
-import { mediaThumbUrl } from '../core/mediaUrl'
+import { EXT_COLORS, extOf, firstUrl, fmtDur, fmtSize, hostOf } from '../core/sharedMediaFmt'
+import { mediaContentUrl, mediaThumbUrl } from '../core/mediaUrl'
 import type { Message } from '../core/models'
 import MediaLightbox, { type LightboxItem } from './messages/MediaLightbox'
 import s from './UserInfoPanel.module.scss'
@@ -469,20 +470,6 @@ const TAB_FILTER: Record<string, 'media' | 'files' | 'links' | 'music' | 'voice'
   Media: 'media', Files: 'files', Links: 'links', Music: 'music', Voice: 'voice',
 }
 
-const fmtDur = (sec?: number) => sec == null ? '' : `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`
-function fmtSize(b?: number): string {
-  if (b == null) return ''
-  if (b >= 1 << 20) return `${(b / (1 << 20)).toFixed(1)} МБ`
-  if (b >= 1 << 10) return `${Math.max(1, Math.round(b / (1 << 10)))} КБ`
-  return `${b} Б`
-}
-const EXT_COLORS: Record<string, string> = {
-  pdf: '#e5322e', doc: '#4285f4', docx: '#4285f4', xls: '#00a884', xlsx: '#00a884',
-  zip: '#8774e1', rar: '#8774e1', png: '#f2994a', jpg: '#f2994a', jpeg: '#f2994a', mp4: '#642bc6',
-}
-const extOf = (name?: string) => (name?.includes('.') ? name.slice(name.lastIndexOf('.') + 1).toLowerCase() : '')
-const firstUrl = (text: string) => text.match(/https?:\/\/[^\s]+/)?.[0] ?? ''
-const hostOf = (url: string) => { try { return new URL(url).hostname } catch { return url } }
 
 function SharedMedia({ tab, onTab, chatId, members, savedDialogs, isChannel, canManageAdmins, onOpenPeer, onEditMember }: {
   tab: string
@@ -673,7 +660,22 @@ function SharedMedia({ tab, onTab, chatId, members, savedDialogs, isChannel, can
         <div className={s.mediaGrid}>
           {msgs.map((m, i) => (
             <div key={m.id} className={s.mediaTile} onClick={(e) => openMedia(i, e)}>
-              {m.mediaId != null && <img className={s.tileImg} src={mediaThumbUrl(m.mediaId)} alt="" loading="lazy" />}
+              {m.mediaId != null && (
+                <img
+                  className={s.tileImg}
+                  src={mediaThumbUrl(m.mediaId)}
+                  alt=""
+                  loading="lazy"
+                  onError={(e) => {
+                    // превью ещё не сгенерировано → полный контент
+                    const img = e.currentTarget
+                    if (m.mediaId != null && !img.dataset.fb) {
+                      img.dataset.fb = '1'
+                      img.src = mediaContentUrl(m.mediaId)
+                    }
+                  }}
+                />
+              )}
               {m.type === 'video' && <span className={s.tileDuration}>{fmtDur(m.mediaDuration)}</span>}
             </div>
           ))}

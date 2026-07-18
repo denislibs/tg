@@ -77,6 +77,75 @@
   gap: 0.25rem;
 }
 
+// сетка «Медиа» (tweb .search-super-content-media-grid, как в панели инфо)
+.mediaGrid {
+  margin: 0.5rem 1rem 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-auto-rows: 1fr;
+  gap: 1px;
+  border-radius: 24px;
+  overflow: hidden;
+}
+
+.mediaTile {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  background: var(--tg-hover);
+  cursor: pointer;
+}
+
+.tileImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.tileDuration {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+// квадрат-иконка файла/ссылки
+.rowSquare {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+// круглая кнопка play (музыка/голосовые)
+.rowPlay {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--tg-accentGradient);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rowGlyph {
+  display: inline-flex;
+  color: #fff;
+}
+
 // подсветка совпадения в тексте
 .hl {
   color: var(--tg-accent);

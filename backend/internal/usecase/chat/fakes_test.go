@@ -418,6 +418,61 @@ func (r fakeMsgs) MediaHistory(_ context.Context, chatID int64, filter string, o
 	return out, total, nil
 }
 
+func (r fakeMsgs) GlobalSearchMessages(_ context.Context, userID int64, q, filter string, offset, limit int) ([]domain.Message, int, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var hits []domain.Message
+	for chatID, all := range r.s.messages {
+		if r.s.members[chatID][userID] == nil {
+			continue
+		}
+		for _, m := range all {
+			if m.Deleted {
+				continue
+			}
+			if q != "" && !strings.Contains(strings.ToLower(m.Text), strings.ToLower(q)) {
+				continue
+			}
+			switch filter {
+			case "":
+			case "media":
+				if m.Type != "photo" && m.Type != "video" {
+					continue
+				}
+			case "files":
+				if m.Type != "document" {
+					continue
+				}
+			case "music":
+				if m.Type != "audio" {
+					continue
+				}
+			case "voice":
+				if m.Type != "voice" && m.Type != "roundVideo" {
+					continue
+				}
+			case "links":
+				if m.Type != "text" || !strings.Contains(m.Text, "http") {
+					continue
+				}
+			default:
+				continue
+			}
+			hits = append(hits, m)
+		}
+	}
+	sort.Slice(hits, func(a, b int) bool { return hits[a].ID > hits[b].ID })
+	count := len(hits)
+	if offset > len(hits) {
+		offset = len(hits)
+	}
+	hits = hits[offset:]
+	if len(hits) > limit {
+		hits = hits[:limit]
+	}
+	return hits, count, nil
+}
+
 func (r fakeMsgs) SearchMessages(_ context.Context, chatID int64, q string, offset, limit int) ([]domain.Message, int, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()

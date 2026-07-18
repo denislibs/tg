@@ -235,6 +235,14 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const toggleSelectE = useEvent(toggleSelect)
   const openMsgMenuE = useEvent(openMsgMenu)
   const jumpToSeqE = useEvent(jumpToSeq)
+  // Сайдбар-поиск открыл чат «вокруг сообщения» → прыгаем к найденному seq
+  const pendingJump = useSearchStore((s) => s.pendingJump)
+  useEffect(() => {
+    if (pendingJump && pendingJump.chatId === numericChatId) {
+      useSearchStore.getState().clearPendingJump()
+      jumpToSeqE(pendingJump.seq)
+    }
+  }, [pendingJump, numericChatId, jumpToSeqE])
   const openLightboxE = useEvent(openLightbox)
   const roundPlayingE = useEvent(attachRound)
   // Перезвон по клику на бабл звонка (tweb: клик по messageMediaCall → startCall)

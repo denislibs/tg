@@ -1,57 +1,48 @@
+// SearchView — глобальный поиск в сайдбаре (tweb AppSearchSuper).
+// Таб «Чаты»: секции «Чаты» (свои диалоги) → «Глобальный поиск» (публичная
+// директория) → «Сообщения» (полнотекст по всем чатам); пустой запрос —
+// «Недавние». Табы Медиа/Ссылки/Файлы/Музыка/Голосовые — глобальный
+// searchGlobal с фильтром типа (tweb inputMessagesFilter*).
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import Text from '../shared/ui/Text'
-import TgIcon from './TgIcon'
 import Avatar from '../shared/ui/Avatar'
 import SidebarSection from '../shared/ui/SidebarSection'
 import { useAvatarSrc } from './useAvatarSrc'
 import VerifiedBadge from './VerifiedBadge'
+import PlayPauseGlyph from './PlayPauseGlyph'
+import ConfirmDialog from './settings/ConfirmDialog'
 import type { Chat, OpenPeer } from '../data'
 import type { SearchResult } from '../core/managers/channelsManager'
-import { useT } from '../i18n'
+import type { Message } from '../core/models'
+import { useManagers } from '../core/hooks/useManagers'
+import { useSearchStore } from '../stores/searchStore'
+import { useChatsStore } from '../stores/chatsStore'
+import { useAudioStore, type AudioTrack } from '../stores/audioStore'
+import { markMediaPlayed } from '../core/mediaRead'
+import { mediaContentUrl, mediaThumbUrl } from '../core/mediaUrl'
+import { friendlyMsgTime } from '../core/friendlyTime'
+import { gradientFor, mediaLabel } from '../core/dialogToChat'
+import { EXT_COLORS, extOf, firstUrl, fmtDur, fmtSize, hostOf } from '../core/sharedMediaFmt'
+import { useLang, useT } from '../i18n'
 import { Tabs } from '../shared/ui/Tabs'
 import s from './SearchView.module.scss'
 
-const TABS = ['Chats', 'Channels', 'Apps', 'Posts', 'Media', 'Links', 'Files', 'Music']
+const TABS = ['Chats', 'Channels', 'Media', 'Links', 'Files', 'Music', 'Voice'] as const
+const TAB_FILTER: Partial<Record<number, 'media' | 'links' | 'files' | 'music' | 'voice'>> = {
+  2: 'media', 3: 'links', 4: 'files', 5: 'music', 6: 'voice',
+}
+const PAGE = 30
 
-// ── mock result data ────────────────────────────────────────────────
-// Avatar gradient palette (mirrors dialogToChat) — used for real search rows.
-const GRADIENTS = [
-  'linear-gradient(135deg,#42e695,#3bb2b8)',
-  'linear-gradient(135deg,#f7971e,#ffd200)',
-  'linear-gradient(135deg,#6a11cb,#2575fc)',
-  'linear-gradient(135deg,#ff5f6d,#ffc371)',
-  'linear-gradient(135deg,#5b86e5,#36d1dc)',
-  'linear-gradient(135deg,#f857a6,#ff5858)',
-  'linear-gradient(135deg,#9a7ff0,#6f8df5)',
-  'linear-gradient(135deg,#11998e,#38ef7d)',
-]
-const avatarBg = (id: number) => GRADIENTS[Math.abs(id) % GRADIENTS.length]
-const channelsList = [
-  { name: 'Привет, не хочешь сход…', sub: '58 918 subscribers', bg: 'linear-gradient(135deg,#f7d44c,#e8b321)', t: 'П' },
-  { name: 'Привет, Москва!', sub: '77 875 subscribers', bg: '#ffffff', t: 'M', tc: '#e0322a' },
-  { name: 'Привет, Аутлет!', sub: '45 657 subscribers', bg: 'linear-gradient(135deg,#1f2a1f,#0a0a0a)', t: '%', tc: '#5cc85e', verified: true },
-  { name: 'полина и ее мандёж', sub: '50 747 subscribers', bg: 'linear-gradient(135deg,#8a8a8a,#444)', t: 'п' },
-  { name: 'Privet-Rostov.ru — ново…', sub: '179 874 subscribers', bg: 'linear-gradient(135deg,#3a4fd6,#d6324f)', t: 'P', verified: true },
-  { name: 'RAGNAROCK PRIVET', sub: '218 527 subscribers', bg: 'linear-gradient(135deg,#2a2a2a,#000)', t: '✦' },
-  { name: 'Привет, Москва+', sub: '42 826 subscribers', bg: '#ffffff', t: 'M', tc: '#3a6fd6' },
-]
-const popularApps = [
-  { name: 'DUCK × MY × DUCK', sub: '1 011 819 users', bg: 'linear-gradient(135deg,#1a1a1a,#000)', t: '🦆', verified: true },
-  { name: 'Boinkers', sub: '569 418 users', bg: 'linear-gradient(135deg,#f7c948,#e8a020)', t: '🤖', verified: true },
-  { name: 'Gorilla Case', sub: '402 680 users', bg: 'linear-gradient(135deg,#3a6fd6,#1a3a8a)', t: '🦍' },
-  { name: 'VIRUS GAME BOT', sub: '211 059 users', bg: 'linear-gradient(135deg,#5cc85e,#2a8a2c)', t: '🦠' },
-  { name: 'Тюряга', sub: '84 009 users', bg: 'linear-gradient(135deg,#8a7a6a,#4a3a2a)', t: '😠' },
-  { name: 'BitQuest', sub: '78 254 users', bg: 'linear-gradient(135deg,#1a2a3a,#0a1520)', t: '🎮' },
-  { name: 'ChatGPT 5 | Gemini 3 | Na…', sub: '2 930 484 users', bg: 'linear-gradient(135deg,#ff5fa2,#7b6cf0)', t: '✨' },
-  { name: 'Frog Case', sub: '283 601 users', bg: 'linear-gradient(135deg,#7bdc4c,#3a9a2c)', t: '🐸' },
-  { name: 'Rolls', sub: '98 013 users', bg: 'linear-gradient(135deg,#1a1a1a,#000)', t: '🎧' },
-  { name: 'Spin the Bottle 🍾', sub: '94 683 users', bg: 'linear-gradient(135deg,#c98a3a,#8a5a1a)', t: '🍾' },
-]
-const links = [
-  { name: 'citadélle', date: 'Feb 14', t: 'C', bg: 'linear-gradient(135deg,#9a7ff0,#6f8df5)', body: '«лучше уже не будет» — мой первый обзор не на секс-игрушку, а на бренд', link: 'https://t.me/krierr_f22/2544', from: 'Секспедиция' },
-  { name: 'pinkypunk.ru', date: '03/23/2023', t: 'P', bg: 'linear-gradient(135deg,#9a7ff0,#6f8df5)', body: 'Ну.. привет. Мы родом из недр Тик-Тока, и до последнего не хотели появляться в ТГ.', link: 'https://pinkypunk.ru/?utm_source=telegram', from: 'Секспедиция' },
-]
+// ── недавние запросы (tweb recentSearch: peerId[], cap 20, в состоянии клиента) ──
+const RECENT_KEY = 'recentSearch'
+const loadRecent = (): string[] => {
+  try { return JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]') as string[] } catch { return [] }
+}
+const pushRecent = (id: string) => {
+  const next = [id, ...loadRecent().filter((x) => x !== id)].slice(0, 20)
+  localStorage.setItem(RECENT_KEY, JSON.stringify(next))
+}
 
 interface Props {
   query: string
@@ -64,7 +55,7 @@ interface Props {
 
 const EMPTY_RESULT: SearchResult = { chats: [], users: [] }
 
-// highlight occurrences of the query inside text
+// подсветка вхождения запроса (tweb messageEntityHighlight → .text-highlight)
 function Highlighted({ text, q }: { text: string; q: string }) {
   if (!q.trim()) return <>{text}</>
   const idx = text.toLowerCase().indexOf(q.toLowerCase())
@@ -80,14 +71,24 @@ function Highlighted({ text, q }: { text: string; q: string }) {
 
 export default function SearchView({ query, chats, onSelect, searchReal, onJoin, onOpenPeer }: Props) {
   const t = useT()
+  const [lang] = useLang()
+  const managers = useManagers()
   const [tab, setTab] = useState(0)
   const dirRef = useRef(0)
   const [results, setResults] = useState<SearchResult>(EMPTY_RESULT)
+  // сообщения: таб «Чаты» (filter='') и медиа-табы (filter по типу)
+  const [msgs, setMsgs] = useState<Message[] | null>(null)
+  const [msgCount, setMsgCount] = useState(0)
+  const loadingMore = useRef(false)
+  const [recentIds, setRecentIds] = useState<string[]>(loadRecent)
+  const [confirmClear, setConfirmClear] = useState(false)
 
-  // Real global search, debounced ~250ms. Empty query clears the global sections.
+  const q = query.trim()
+  const filter: '' | 'media' | 'links' | 'files' | 'music' | 'voice' = TAB_FILTER[tab] ?? ''
+
+  // Директория (публичные чаты + юзеры) — таб «Чаты»/«Каналы», дебаунс 250мс.
   useEffect(() => {
-    if (!searchReal) return
-    const q = query.trim()
+    if (!searchReal || tab > 1) return
     if (!q) {
       setResults(EMPTY_RESULT)
       return
@@ -102,20 +103,83 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
       alive = false
       window.clearTimeout(id)
     }
-  }, [query, searchReal])
+  }, [q, searchReal, tab])
 
-  // Map an existing-dialog id for fast "already joined?" lookups.
-  const dialogIds = new Set(chats.map((c) => c.id))
-  // A search-result chat that matches an open dialog → open it; otherwise join by @username.
+  // Сообщения: таб «Чаты» ищет по тексту (нужен q); медиа-табы листают тип,
+  // q дополнительно сужает. Дебаунс 250мс, смена таба/запроса сбрасывает список.
+  useEffect(() => {
+    const need = tab === 0 ? q !== '' : filter !== ''
+    setMsgs(null)
+    setMsgCount(0)
+    if (!need) return
+    let alive = true
+    const id = window.setTimeout(() => {
+      managers.messages.searchGlobal(q, filter, 0, PAGE)
+        .then((r) => { if (alive) { setMsgs(r.messages); setMsgCount(r.count) } })
+        .catch(() => { if (alive) { setMsgs([]); setMsgCount(0) } })
+    }, 250)
+    return () => {
+      alive = false
+      window.clearTimeout(id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, tab, filter])
+
+  // Подгрузка следующей страницы у нижнего края скролла
+  const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget
+    if (el.scrollHeight - el.scrollTop - el.clientHeight > 600) return
+    if (loadingMore.current || msgs == null || msgs.length >= msgCount) return
+    loadingMore.current = true
+    managers.messages.searchGlobal(q, filter, msgs.length, PAGE)
+      .then((r) => setMsgs((cur) => [...(cur ?? []), ...r.messages]))
+      .catch(() => undefined)
+      .finally(() => { loadingMore.current = false })
+  }
+
+  const byId = new Map(chats.map((c) => [c.id, c]))
+  const openDialog = (id: string) => {
+    pushRecent(id)
+    setRecentIds(loadRecent())
+    onSelect(id)
+  }
+  // Результат-чат из директории: свой диалог → открыть; чужой → вступить по @username.
   const onResultChat = (id: number, username: string) => {
     const sid = String(id)
-    if (dialogIds.has(sid)) onSelect(sid)
+    if (byId.has(sid)) openDialog(sid)
     else if (username && onJoin) onJoin(username)
   }
-  // A user result: open a conversation (existing dialog reused, else a draft) —
-  // the shell decides; no chat is created until a message is sent.
   const onResultUser = (u: { id: number; displayName: string; username: string; avatarUrl: string }) => {
     onOpenPeer?.({ id: u.id, displayName: u.displayName || u.username || `#${u.id}`, username: u.username, avatarUrl: u.avatarUrl })
+  }
+  // Клик по сообщению: открыть чат и прыгнуть к seq (pendingJump потребляет ConversationView)
+  const openMessage = (m: Message) => {
+    useSearchStore.getState().setPendingJump(m.chatId, m.seq)
+    openDialog(String(m.chatId))
+  }
+
+  // Музыка/голосовые: очередь глобального плеера из строк таба (как в панели инфо)
+  const meId = useChatsStore((st) => st.meId)
+  const playQueue = useAudioStore((st) => st.playQueue)
+  const togglePlay = useAudioStore((st) => st.toggle)
+  const curMediaId = useAudioStore((st) => st.track?.mediaId)
+  const audioPlaying = useAudioStore((st) => st.playing)
+  const playRow = (m: Message, title: string) => {
+    if (m.mediaId == null) return
+    if (m.mediaId === curMediaId) {
+      togglePlay()
+      return
+    }
+    const list = (msgs ?? []).filter((x) => x.mediaId != null)
+    const tracks: AudioTrack[] = list.map((x) => ({
+      mediaId: x.mediaId as number,
+      title: x.type === 'audio' ? x.mediaName || t('Audio') : title,
+      subtitle: friendlyMsgTime(x.createdAt, lang),
+      chatId: x.chatId,
+      msgId: x.id,
+    }))
+    playQueue(tracks, list.indexOf(m))
+    if (m.senderId !== meId && m.mediaUnread) markMediaPlayed(m.chatId, m.id)
   }
 
   const goTab = (i: number) => {
@@ -123,14 +187,51 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
     setTab(i)
   }
 
-  const messages = chats
-    .filter((c) => c.type !== 'saved')
-    .slice(0, 7)
-    .map((c) => ({ id: c.id, name: c.name, avatar: c.avatar, t: c.avatarText, e: c.avatarEmoji, date: c.date, text: 'Привет' }))
+  // Локальные совпадения по своим диалогам (tweb: contacts + local dialogs)
+  const localMatches = q
+    ? chats.filter((c) => c.type !== 'saved' && c.name.toLowerCase().includes(q.toLowerCase())).slice(0, 10)
+    : []
+  const myChannels = chats.filter((c) => c.type === 'channel')
+  const recentChats = recentIds.map((id) => byId.get(id)).filter((c): c is Chat => !!c)
+
+  const clearRecent = () => {
+    localStorage.removeItem(RECENT_KEY)
+    setRecentIds([])
+  }
+
+  // Ряд сообщения: аватар/имя чата + дата + сниппет с подсветкой (tweb setLastMessageN)
+  const MsgRow = ({ m }: { m: Message }) => {
+    const chat = byId.get(String(m.chatId))
+    const snippet = m.text || m.mediaName || mediaLabel(m.type)
+    return (
+      <div className={s.row} onClick={() => openMessage(m)}>
+        <Avatar
+          background={chat?.avatar ?? gradientFor(m.chatId)}
+          src={chat?.avatarUrl}
+          text={chat?.avatarText ?? (chat?.name ?? '?').charAt(0).toUpperCase()}
+          emoji={chat?.avatarEmoji}
+          size="lg"
+        />
+        <div className={s.body}>
+          <div className={s.top}>
+            <Text noWrap size={16} weight={600} color="var(--tg-textPrimary)" className={s.titleFlex}>
+              {chat?.name ?? `#${m.chatId}`}
+            </Text>
+            <Text size={13} color="var(--tg-textFaint)">{friendlyMsgTime(m.createdAt, lang)}</Text>
+          </div>
+          <Text noWrap size={15} color="var(--tg-textSecondary)">
+            <Highlighted text={snippet} q={q} />
+          </Text>
+        </div>
+      </div>
+    )
+  }
+
+  const emptyState = <Empty text={q ? t('No results') : t('Nothing interesting here yet…')} />
 
   return (
     <div className={s.root}>
-      {/* Tabs strip (shared <Tabs> — tweb 1:1), выровнен по краям секций */}
+      {/* Полоса табов (общий <Tabs> — tweb 1:1), выровнена по краям секций */}
       <div className={s.tabsWrap}>
         <Tabs value={tab} onChange={(v) => goTab(v as number)} order={TABS.map((_, i) => i)}>
           <Tabs.List framed>
@@ -143,12 +244,13 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
         </Tabs>
       </div>
 
-      {/* Animated content */}
+      {/* Анимированный контент */}
       <div className={s.content}>
         <AnimatePresence mode="wait" custom={dirRef.current} initial={false}>
           <motion.div
             key={tab}
             className={s.scroll}
+            onScroll={onScroll}
             custom={dirRef.current}
             variants={{
               enter: (d: number) => ({ x: d >= 0 ? 80 : -80, opacity: 0 }),
@@ -161,28 +263,43 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
           >
             <div className={s.pad}>
-              {tab === 0 && (
+              {tab === 0 && !q && (
+                recentChats.length > 0 ? (
+                  <SidebarSection title={t('Recent')} action={t('Clear')} onActionClick={() => setConfirmClear(true)}>
+                    {recentChats.map((c) => (
+                      <ChatRow key={c.id} chat={c} onClick={() => openDialog(c.id)} />
+                    ))}
+                  </SidebarSection>
+                ) : (
+                  emptyState
+                )
+              )}
+
+              {tab === 0 && q && (
                 <>
-                  {query.trim() && results.chats.length > 0 && (
-                    <SidebarSection title={t('Channels and groups')}>
-                      {results.chats.map((c) => (
-                        <ResultRow
-                          key={`c-${c.id}`}
-                          bg={avatarBg(c.id)}
-                          t={(c.title || '?').charAt(0).toUpperCase()}
-                          title={c.title}
-                          subtitle={`@${c.username}, ${c.memberCount} ${t('subscribers')}`}
-                          onClick={() => onResultChat(c.id, c.username)}
-                        />
+                  {localMatches.length > 0 && (
+                    <SidebarSection title={t('Chats')}>
+                      {localMatches.map((c) => (
+                        <ChatRow key={c.id} chat={c} q={q} onClick={() => openDialog(c.id)} />
                       ))}
                     </SidebarSection>
                   )}
-                  {query.trim() && results.users.length > 0 && (
+                  {(results.chats.length > 0 || results.users.length > 0) && (
                     <SidebarSection title={t('Global search')}>
+                      {results.chats.map((c) => (
+                        <ResultRow
+                          key={`c-${c.id}`}
+                          bg={gradientFor(c.id)}
+                          t={(c.title || '?').charAt(0).toUpperCase()}
+                          title={c.title}
+                          subtitle={`@${c.username}, ${c.memberCount} ${t(c.type === 'channel' ? 'subscribers' : 'members')}`}
+                          onClick={() => onResultChat(c.id, c.username)}
+                        />
+                      ))}
                       {results.users.map((u) => (
                         <ResultRow
                           key={`u-${u.id}`}
-                          bg={avatarBg(u.id)}
+                          bg={gradientFor(u.id)}
                           src={u.avatarUrl}
                           t={(u.displayName || u.username || '?').charAt(0).toUpperCase()}
                           title={u.displayName || u.username}
@@ -192,86 +309,195 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                       ))}
                     </SidebarSection>
                   )}
-                  <SidebarSection title={t('Messages')} action={t('All Chats')}>
-                    {messages.map((m) => (
-                      <div key={m.id} className={s.row} onClick={() => onSelect(m.id)}>
-                        <Avatar background={m.avatar} text={m.t} emoji={m.e} size="lg" />
-                        <div className={s.body}>
-                          <div className={s.top}>
-                            <Text noWrap size={16} weight={600} color="var(--tg-textPrimary)" className={s.titleFlex}>{m.name}</Text>
-                            <Text size={13} color="var(--tg-textFaint)">{m.date}</Text>
+                  {msgs != null && msgs.length > 0 && (
+                    <SidebarSection title={t('Messages')}>
+                      {msgs.map((m) => <MsgRow key={m.id} m={m} />)}
+                    </SidebarSection>
+                  )}
+                  {msgs != null && msgs.length === 0 && localMatches.length === 0
+                    && results.chats.length === 0 && results.users.length === 0 && emptyState}
+                </>
+              )}
+
+              {tab === 1 && (
+                q ? (
+                  results.chats.filter((c) => c.type === 'channel').length > 0 ? (
+                    <SidebarSection>
+                      {results.chats.filter((c) => c.type === 'channel').map((c) => (
+                        <ResultRow
+                          key={c.id}
+                          bg={gradientFor(c.id)}
+                          t={(c.title || '?').charAt(0).toUpperCase()}
+                          title={c.title}
+                          subtitle={`${c.memberCount} ${t('subscribers')}`}
+                          onClick={() => onResultChat(c.id, c.username)}
+                        />
+                      ))}
+                    </SidebarSection>
+                  ) : (
+                    emptyState
+                  )
+                ) : myChannels.length > 0 ? (
+                  <SidebarSection title={t('My Channels')}>
+                    {myChannels.map((c) => (
+                      <ChatRow key={c.id} chat={c} onClick={() => openDialog(c.id)} />
+                    ))}
+                  </SidebarSection>
+                ) : (
+                  emptyState
+                )
+              )}
+
+              {/* Медиа — грид 3×N (tweb search-super-content-media) */}
+              {tab === 2 && msgs != null && (
+                msgs.length > 0 ? (
+                  <div className={s.mediaGrid}>
+                    {msgs.map((m) => (
+                      <div key={m.id} className={s.mediaTile} onClick={() => openMessage(m)}>
+                        {m.mediaId != null && (
+                          <img
+                            className={s.tileImg}
+                            src={mediaThumbUrl(m.mediaId)}
+                            alt=""
+                            loading="lazy"
+                            onError={(e) => {
+                              // превью ещё не сгенерировано → полный контент
+                              const img = e.currentTarget
+                              if (m.mediaId != null && !img.dataset.fb) {
+                                img.dataset.fb = '1'
+                                img.src = mediaContentUrl(m.mediaId)
+                              }
+                            }}
+                          />
+                        )}
+                        {m.type === 'video' && <span className={s.tileDuration}>{fmtDur(m.mediaDuration)}</span>}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  emptyState
+                )
+              )}
+
+              {/* Ссылки */}
+              {tab === 3 && msgs != null && (
+                msgs.length > 0 ? (
+                  <SidebarSection>
+                    {msgs.map((m) => {
+                      const url = firstUrl(m.text)
+                      return (
+                        <div key={m.id} className={s.row} onClick={() => window.open(url, '_blank', 'noopener')}>
+                          <div className={s.rowSquare} style={{ background: 'var(--tg-accentGradient)' }}>
+                            {hostOf(url).charAt(0).toUpperCase()}
                           </div>
-                          <Text noWrap size={15} color="var(--tg-textPrimary)">
-                            <Highlighted text={m.text} q={query} />
+                          <div className={s.body}>
+                            <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{hostOf(url)}</Text>
+                            <Text noWrap size={13.5} color="var(--tg-link)">{url}</Text>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </SidebarSection>
+                ) : (
+                  emptyState
+                )
+              )}
+
+              {/* Файлы */}
+              {tab === 4 && msgs != null && (
+                msgs.length > 0 ? (
+                  <SidebarSection>
+                    {msgs.map((m) => (
+                      <div key={m.id} className={s.row} onClick={() => openMessage(m)}>
+                        <div className={s.rowSquare} style={{ background: EXT_COLORS[extOf(m.mediaName)] ?? 'var(--tg-accent)' }}>
+                          {extOf(m.mediaName).toUpperCase().slice(0, 4) || 'FILE'}
+                        </div>
+                        <div className={s.body}>
+                          <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">
+                            <Highlighted text={m.mediaName || t('Document')} q={q} />
+                          </Text>
+                          <Text size={13.5} color="var(--tg-textSecondary)">
+                            {[fmtSize(m.mediaSize), friendlyMsgTime(m.createdAt, lang)].filter(Boolean).join(' · ')}
                           </Text>
                         </div>
                       </div>
                     ))}
                   </SidebarSection>
-                </>
+                ) : (
+                  emptyState
+                )
               )}
 
-              {tab === 1 && (
-                <SidebarSection>
-                  {channelsList.map((c) => (
-                    <ResultRow key={c.name} bg={c.bg} t={c.t} tc={c.tc} title={c.name} subtitle={c.sub} verified={c.verified} />
-                  ))}
-                </SidebarSection>
-              )}
-
-              {tab === 2 && (
-                <>
-                  <SidebarSection title={t('Apps you use')}>
-                    <ResultRow bg="linear-gradient(135deg,#2a2a2a,#000)" t="👁" title="Telescope" subtitle="1 554 419 users" />
-                  </SidebarSection>
-                  <SidebarSection title={t('Popular Apps')}>
-                    {popularApps.map((a) => (
-                      <ResultRow key={a.name} bg={a.bg} t={a.t} title={a.name} subtitle={a.sub} verified={a.verified} />
-                    ))}
-                  </SidebarSection>
-                </>
-              )}
-
-              {tab === 3 && <Empty text={t('Nothing interesting here yet…')} />}
-
-              {tab === 4 && (
-                <SidebarSection>
-                  {messages.slice(0, 2).map((m) => (
-                    <MediaRow key={m.id} m={m} query={query} onSelect={onSelect} />
-                  ))}
-                </SidebarSection>
-              )}
-
-              {tab === 5 && (
-                <SidebarSection>
-                  {links.map((l) => (
-                    <div key={l.name} className={s.rowStatic}>
-                      <Avatar background={l.bg} text={l.t} size="md" />
-                      <div className={s.body}>
-                        <div className={s.top}>
-                          <Text noWrap size={16} weight={600} color="var(--tg-textPrimary)" className={s.titleFlex}>{l.name}</Text>
-                          <Text size={13} color="var(--tg-textFaint)">{l.date}</Text>
+              {/* Музыка / Голосовые */}
+              {(tab === 5 || tab === 6) && msgs != null && (
+                msgs.length > 0 ? (
+                  <SidebarSection>
+                    {msgs.map((m) => {
+                      const title = tab === 5
+                        ? m.mediaName || t('Audio')
+                        : m.type === 'roundVideo' ? t('Video message') : t('Voice message')
+                      return (
+                        <div key={m.id} className={s.row} onClick={() => playRow(m, title)}>
+                          <div className={s.rowPlay}>
+                            <PlayPauseGlyph playing={audioPlaying && m.mediaId === curMediaId} size={22} className={s.rowGlyph} />
+                          </div>
+                          <div className={s.body}>
+                            <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">
+                              <Highlighted text={title} q={q} />
+                            </Text>
+                            <Text size={13.5} color="var(--tg-textSecondary)">
+                              {[fmtDur(m.mediaDuration), friendlyMsgTime(m.createdAt, lang)].filter(Boolean).join(' · ')}
+                            </Text>
+                          </div>
                         </div>
-                        <Text size={14.5} color="var(--tg-textSecondary)" style={{ marginTop: '2px' }}>{l.body}</Text>
-                        <Text noWrap size={14.5} color="var(--tg-link)" style={{ marginTop: '2px' }}>{l.link}</Text>
-                        <Text size={13.5} color="var(--tg-textFaint)" style={{ marginTop: '2px' }}>{l.from}</Text>
-                      </div>
-                    </div>
-                  ))}
-                </SidebarSection>
+                      )
+                    })}
+                  </SidebarSection>
+                ) : (
+                  emptyState
+                )
               )}
-
-              {tab === 6 && <Empty text={t('Nothing interesting here yet…')} />}
-              {tab === 7 && <Empty text={t('Nothing interesting here yet…')} />}
             </div>
           </motion.div>
         </AnimatePresence>
       </div>
+
+      {confirmClear && (
+        <ConfirmDialog
+          title={t('Clear')}
+          text={t('Are you sure you want to clear your search history?')}
+          action={t('Clear')}
+          danger
+          onConfirm={clearRecent}
+          onClose={() => setConfirmClear(false)}
+        />
+      )}
     </div>
   )
 }
 
 // ── helpers ─────────────────────────────────────────────────────────
+// Ряд своего диалога (недавние / локальные совпадения / мои каналы)
+function ChatRow({ chat, q, onClick }: { chat: Chat; q?: string; onClick: () => void }) {
+  const avatarSrc = useAvatarSrc(chat.avatarUrl)
+  return (
+    <div className={s.row} onClick={onClick}>
+      <Avatar background={chat.avatar} src={avatarSrc} text={chat.avatarText} emoji={chat.avatarEmoji} size="lg" />
+      <div className={s.body}>
+        <div className={s.top}>
+          <Text noWrap size={16} weight={600} color="var(--tg-textPrimary)">
+            {q ? <Highlighted text={chat.name} q={q} /> : chat.name}
+          </Text>
+          {chat.verified && <VerifiedBadge size={16} color="var(--tg-accent)" />}
+        </div>
+        <Text noWrap size={14.5} color="var(--tg-textSecondary)">
+          {chat.status || (chat.username ? `@${chat.username}` : '')}
+        </Text>
+      </div>
+    </div>
+  )
+}
+
 function ResultRow({ bg, src, t, tc, title, subtitle, verified, onClick }: {
   bg: string
   src?: string
@@ -292,30 +518,6 @@ function ResultRow({ bg, src, t, tc, title, subtitle, verified, onClick }: {
           {verified && <VerifiedBadge size={16} color="var(--tg-accent)" />}
         </div>
         <Text noWrap size={14.5} color="var(--tg-textSecondary)">{subtitle}</Text>
-      </div>
-    </div>
-  )
-}
-
-function MediaRow({ m, query, onSelect }: {
-  m: { id: string; name: string; avatar: string; t?: string; e?: string; date: string; text: string }
-  query: string
-  onSelect: (id: string) => void
-}) {
-  return (
-    <div className={s.row} onClick={() => onSelect(m.id)}>
-      <Avatar background={m.avatar} text={m.t} emoji={m.e} size="lg" />
-      <div className={s.body}>
-        <div className={s.top}>
-          <Text noWrap size={16} weight={600} color="var(--tg-textPrimary)" className={s.titleFlex}>{m.name}</Text>
-          <Text size={13} color="var(--tg-textFaint)">{m.date}</Text>
-        </div>
-        <div className={s.mediaLine}>
-          <TgIcon name="play" size={18} color="var(--tg-textSecondary)" />
-          <Text noWrap size={15} color="var(--tg-textPrimary)">
-            <Highlighted text={m.text} q={query} />
-          </Text>
-        </div>
       </div>
     </div>
   )

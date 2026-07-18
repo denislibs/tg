@@ -219,6 +219,13 @@ export function newMessagesManager({ rest }: MessagesDeps) {
       return { messages: (r.messages ?? []).map(mapMessage), count: r.count }
     },
 
+    // Глобальный поиск по сообщениям всех чатов (сайдбар-поиск): q — текст,
+    // filter сужает по типу шаред-медиа ('' — любой тип, q обязателен).
+    async searchGlobal(q: string, filter: '' | 'media' | 'files' | 'links' | 'music' | 'voice' = '', offset = 0, limit = 20): Promise<{ messages: Message[]; count: number }> {
+      const r = await rest.get<{ messages: RawMessage[]; count: number }>('/search/messages', { q, filter, offset, limit })
+      return { messages: (r.messages ?? []).map(mapMessage), count: r.count }
+    },
+
     async viewers(chatId: number, msgId: number): Promise<number[]> {
       const r = await rest.get<{ user_ids: number[] }>(`/chats/${chatId}/messages/${msgId}/viewers`)
       return r.user_ids ?? []

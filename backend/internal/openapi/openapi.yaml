@@ -795,6 +795,28 @@ paths:
       responses:
         "200": { description: matching public chats and users, content: { application/json: { schema: { $ref: "#/components/schemas/SearchResult" } } } }
 
+  /search/messages:
+    get:
+      tags: [search]
+      summary: Global message search across every chat the caller is a member of
+      parameters:
+        - { name: q, in: query, schema: { type: string }, description: "substring matched against text/file name; optional when filter set" }
+        - { name: filter, in: query, schema: { type: string, enum: ["", media, links, files, music, voice] }, description: "shared-media kind; empty = any type" }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
+        - { name: limit, in: query, schema: { type: integer, default: 20, maximum: 50 } }
+      responses:
+        "200":
+          description: matching messages (newest first) + total count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages:
+                    type: array
+                    items: { $ref: "#/components/schemas/Message" }
+                  count: { type: integer }
+
   /chats/{chatID}/messages:
     post:
       tags: [messages]

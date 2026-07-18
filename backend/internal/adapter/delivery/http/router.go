@@ -177,6 +177,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/channels/{chatID}/comment_counts", chh.CommentCounts)
 		pr.Get("/channels/{chatID}/view_counts", chh.ViewCounts)
 		pr.Get("/search", chh.Search)
+		pr.Get("/search/messages", ch.GlobalSearchMessages)
 
 		if mediaH != nil {
 			pr.Get("/media/token", mediaH.MediaToken)

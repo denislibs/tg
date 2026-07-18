@@ -12,16 +12,23 @@ interface ChatSearch {
 
 interface SearchState {
   byChat: Record<number, ChatSearch>
+  /** результат сайдбар-поиска ждёт открытия чата → ConversationView прыгает к seq */
+  pendingJump: { chatId: number; seq: number } | null
   setOpen: (chatId: number, open: boolean) => void
   setQuery: (chatId: number, query: string) => void
   reset: (chatId: number) => void
+  setPendingJump: (chatId: number, seq: number) => void
+  clearPendingJump: () => void
 }
 
 const EMPTY: ChatSearch = { open: false, query: '' }
 
 export const useSearchStore = create<SearchState>((set) => ({
   byChat: {},
+  pendingJump: null,
   setOpen: (chatId, open) => set((s) => ({ byChat: { ...s.byChat, [chatId]: { ...(s.byChat[chatId] ?? EMPTY), open } } })),
   setQuery: (chatId, query) => set((s) => ({ byChat: { ...s.byChat, [chatId]: { ...(s.byChat[chatId] ?? EMPTY), query } } })),
   reset: (chatId) => set((s) => ({ byChat: { ...s.byChat, [chatId]: EMPTY } })),
+  setPendingJump: (chatId, seq) => set({ pendingJump: { chatId, seq } }),
+  clearPendingJump: () => set({ pendingJump: null }),
 }))

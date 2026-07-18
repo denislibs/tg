@@ -161,6 +161,62 @@ func (r *MessagesRepo) SearchMessages(ctx context.Context, chatID int64, q strin
 	return out, count, rows.Err()
 }
 
+// GlobalSearchMessages searches messages across every chat the user is a member
+// of (tweb global search: «Сообщения» section + Media/Links/Files/Music/Voice
+// tabs). q matches text or attached file name (case-insensitive substring);
+// filter narrows by shared-media kind (same kinds as MediaHistory, "" = any
+// type). Visibility mirrors GetHistory: deleted, per-user hides and hidden
+// pre-join history are excluded. Newest first + total count.
+func (r *MessagesRepo) GlobalSearchMessages(ctx context.Context, userID int64, q, filter string, offset, limit int) ([]domain.Message, int, error) {
+	qq := querier(ctx, r.pool)
+	where := ` FROM messages m
+		JOIN chat_members cm ON cm.chat_id = m.chat_id AND cm.user_id = $1
+		LEFT JOIN media md ON md.id = m.media_id
+		WHERE m.deleted_at IS NULL
+		  AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id = m.id AND h.user_id = $1)
+		  AND ((SELECT c.history_for_new FROM chats c WHERE c.id = m.chat_id)
+		       OR cm.role <> 'member' OR m.created_at >= cm.joined_at)`
+	switch filter {
+	case "":
+	case "media":
+		where += ` AND m.type IN ('photo','video')`
+	case "files":
+		where += ` AND m.type = 'document'`
+	case "music":
+		where += ` AND m.type = 'audio'`
+	case "voice":
+		where += ` AND m.type IN ('voice','roundVideo')`
+	case "links":
+		where += ` AND m.type = 'text' AND m.text ~* 'https?://'`
+	default:
+		return nil, 0, nil
+	}
+	args := []any{userID}
+	if q != "" {
+		where += ` AND (m.text ILIKE $2 OR md.file_name ILIKE $2)`
+		args = append(args, "%"+q+"%")
+	}
+	var count int
+	if err := qq.QueryRow(ctx, `SELECT count(*)`+where, args...).Scan(&count); err != nil {
+		return nil, 0, err
+	}
+	lim := fmt.Sprintf(` ORDER BY m.id DESC LIMIT $%d OFFSET $%d`, len(args)+1, len(args)+2)
+	rows, err := qq.Query(ctx, `SELECT `+messageColsPrefixed("m")+where+lim, append(args, limit, offset)...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var out []domain.Message
+	for rows.Next() {
+		m, e := scanMessage(rows)
+		if e != nil {
+			return nil, 0, e
+		}
+		out = append(out, m)
+	}
+	return out, count, rows.Err()
+}
+
 // MediaHistory returns a chat's messages of one shared-media kind (the
 // profile's Media/Files/Links/Music/Voice tabs — tweb inputMessagesFilter*),
 // newest first. "links" is text messages containing a URL; the rest filter by

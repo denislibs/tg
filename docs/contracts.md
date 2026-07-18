@@ -367,6 +367,17 @@ never returned. Both lists are capped at 20 and ordered (chats by `member_count`
 }
 ```
 
+### GET /search/messages?q=&filter=  · auth
+Global message search across every chat the caller is a member of (sidebar
+search: «Сообщения» section + Media/Links/Files/Music/Voice tabs). Matches
+message text or attached file name (case-insensitive substring). Visibility
+mirrors history: deleted messages, per-user hides and hidden pre-join history
+are excluded. Newest first.
+- Query: `q` — substring (optional when `filter` set); `filter` — one of
+  `media|links|files|music|voice` (empty = any type; empty `q` AND empty
+  `filter` yields empty results); `offset` (default 0); `limit` (default 20, max 50).
+- 200: `{ "messages": [ Message… ], "count": 123 }` (`count` = total matches)
+
 ---
 
 ## Messages & history

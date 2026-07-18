@@ -202,6 +202,29 @@ func (i *Interactor) SearchMessages(ctx context.Context, chatID, userID int64, q
 	return HistoryResult{Messages: msgs, Count: count}, nil
 }
 
+// GlobalSearchMessages searches messages across every chat the user belongs to
+// (tweb global search). filter ∈ {"", media, files, links, music, voice}; with
+// an empty q AND empty filter there is nothing to search — returns empty.
+func (i *Interactor) GlobalSearchMessages(ctx context.Context, userID int64, q, filter string, offset, limit int) (HistoryResult, error) {
+	if q == "" && filter == "" {
+		return HistoryResult{}, nil
+	}
+	if limit <= 0 || limit > 50 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	msgs, count, err := i.msgs.GlobalSearchMessages(ctx, userID, q, filter, offset, limit)
+	if err != nil {
+		return HistoryResult{}, err
+	}
+	if e := i.hydrateMedia(ctx, msgs); e != nil {
+		return HistoryResult{}, e
+	}
+	return HistoryResult{Messages: msgs, Count: count}, nil
+}
+
 // GetDifference returns updates with pts>sincePts, split by kind. If the client is
 // too far behind, TooLong is set so it can do a full resync (snapshot via ListDialogs).
 func (i *Interactor) GetDifference(ctx context.Context, userID, sincePts int64) (Difference, error) {

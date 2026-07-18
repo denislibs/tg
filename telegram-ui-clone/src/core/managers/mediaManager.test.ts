@@ -7,7 +7,7 @@ function fakeRest() {
     get: vi.fn(async (p: string) =>
       p === '/media/token'
         ? { token: 'mtok', expires_at: new Date(Date.now() + 900_000).toISOString() }
-        : { id: 42, mime: 'image/png', size: 3, width: 10, height: 8, duration: 0, blur_preview: '' },
+        : { id: 42, mime: 'image/png', size: 3, width: 10, height: 8, duration: 0, blur_preview: '', has_thumb: true },
     ),
     putBytes: vi.fn(async () => {}),
     contentUrl: (p: string) => '/api' + p + '?token=tok',
