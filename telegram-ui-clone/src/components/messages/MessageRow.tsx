@@ -8,7 +8,7 @@
 //
 // Стили — MessageRow.module.scss; палитра исходящих/входящих через CSS-переменные
 // на .row ([data-out]); геометрия с рантайм-флагами (радиусы, textSize) — инлайн.
-import { memo, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
+import { memo, useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import Text from '../../shared/ui/Text'
 import classNames from '../../shared/lib/classNames'
@@ -100,18 +100,40 @@ function MessageReactions({ reactions, onToggle }: {
   reactions: NonNullable<ConvMsg['reactions']>
   onToggle: (emoji: string) => void
 }) {
+  // Отличаем чипы из первичного рендера (история — без анимации, tweb
+  // isConnected=false → duration 0) от добавленных кликом (с анимацией).
+  const liveRef = useRef(false)
+  useEffect(() => { liveRef.current = true }, [])
   return (
     <div className={s.reactions}>
       {reactions.map((r) => (
-        <div
-          key={r.emoji}
-          className={classNames(s.reactionChip, r.mine ? s.reactionChosen : '')}
-          onClick={(e) => { e.stopPropagation(); onToggle(r.emoji) }}
-        >
-          <span className={s.reactionEmoji}>{r.emoji}</span>
-          <span className={s.reactionCount}>{r.count}</span>
-        </div>
+        <ReactionChip key={r.emoji} r={r} live={liveRef.current} onToggle={onToggle} />
       ))}
+    </div>
+  )
+}
+
+// Один чип. Свежедобавленная «моя» реакция монтируется без is-chosen и получает
+// класс кадром позже — CSS-transition подложки играет как tweb SetTransition(300).
+function ReactionChip({ r, live, onToggle }: {
+  r: { emoji: string; count: number; mine: boolean }
+  live: boolean
+  onToggle: (emoji: string) => void
+}) {
+  const [defer, setDefer] = useState(live && r.mine)
+  useEffect(() => {
+    if (!defer) return
+    const raf = requestAnimationFrame(() => setDefer(false))
+    return () => cancelAnimationFrame(raf)
+  }, [defer])
+  const chosen = r.mine && !defer
+  return (
+    <div
+      className={classNames(s.reactionChip, chosen ? s.reactionChosen : '')}
+      onClick={(e) => { e.stopPropagation(); onToggle(r.emoji) }}
+    >
+      <span className={s.reactionEmoji}><Emoji e={r.emoji} size={22} /></span>
+      <span className={s.reactionCount}>{r.count}</span>
     </div>
   )
 }

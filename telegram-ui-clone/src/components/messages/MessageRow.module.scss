@@ -310,7 +310,11 @@
 }
 
 // Один чип: пилюля 30px (reaction-size 22 + additional 8), radius = высоте.
+// «Моя» подложка — псевдоэлемент ::before (tweb .reaction-block:before):
+// transform scale(0→1) + opacity за .3s cubic-bezier(.4,0,.2,1); при снятии —
+// обратный transition. Hover — цветная подсветка opacity .08 ($hover-alpha).
 .reactionChip {
+  position: relative;
   display: inline-flex;
   align-items: center;
   height: 30px;
@@ -322,30 +326,67 @@
   color: var(--r-fg);
   cursor: pointer;
   user-select: none;
-  transition: background-color 0.2s ease, color 0.2s ease;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: var(--r-chosen-bg);
+    transform: scale(0);
+    opacity: 0;
+    transition:
+      transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+      opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: var(--r-chosen-bg);
+    opacity: 0;
+    pointer-events: none;
+  }
+  &:hover::after {
+    opacity: 0.08;
+  }
 
   &:last-child {
     margin-right: 0;
   }
 }
 
+// Вход/выход «моей» реакции — transition подложки (tweb SetTransition 300ms);
+// свежедобавленный чип монтируется без класса и получает его кадром позже
+// (см. ReactionChip), чтобы транзишн отработал и на новых чипах.
 .reactionChosen {
-  background: var(--r-chosen-bg);
   color: var(--r-chosen-fg);
+
+  &::before {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 .reactionEmoji {
-  font-size: 16px;
-  line-height: 1;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
 }
 
-// Счётчик: 15px bold, tabular (tweb .reaction-counter)
+// Счётчик: 15px bold, tabular (tweb .reaction-counter); цвет — плавно с подложкой
 .reactionCount {
+  position: relative;
+  z-index: 1;
   font-size: 15px;
   font-weight: 700;
   line-height: 18px;
   margin: 0 1px 0 6px;
   font-variant-numeric: tabular-nums;
+  transition: color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 // Внутри медиабабла (mediaInner без паддингов) — своя подложка-строка.

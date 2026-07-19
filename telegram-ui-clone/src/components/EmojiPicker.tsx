@@ -36,9 +36,12 @@ function loadRecent(): string[] {
 export default function EmojiPicker({
   onPick,
   onClose,
+  className,
 }: {
   onPick: (emoji: string) => void
   onClose: () => void
+  /** переопределение позиционирования (по умолчанию — абсолютно над композером) */
+  className?: string
 }) {
   const t = useT()
   const [query, setQuery] = useState('')
@@ -115,7 +118,7 @@ export default function EmojiPicker({
 
   return (
     <motion.div
-      className={s.root}
+      className={classNames(s.root, className ?? '')}
       initial={{ opacity: 0, scale: 0.85 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.85 }}
