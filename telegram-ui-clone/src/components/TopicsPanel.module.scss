@@ -100,3 +100,20 @@
   &:focus { border-bottom-color: var(--tg-accent); }
   &::placeholder { color: var(--tg-textFaint); }
 }
+
+// строка поиска по темам (в шапке вместо названия, tweb ForumTab search)
+.searchInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 16px;
+  color: var(--tg-textPrimary);
+  font-family: inherit;
+
+  &::placeholder {
+    color: var(--tg-textFaint);
+    opacity: 1;
+  }
+}

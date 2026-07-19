@@ -213,14 +213,15 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 
   // Клик по теме в панели топиков: тред в колонке чата, форум подсвечен в списке.
   const openTopicThread = useCallback((chatId: number, topic: TopicRow) => {
-    setOpenThread({ chatId, thread: { rootMsgId: topic.rootMsgId, title: topic.title, iconColor: topic.iconColor, closed: topic.closed, kind: 'topic' } })
+    const group = useChatsStore.getState().dialogs.find((d) => d.chatId === chatId)
+    setOpenThread({ chatId, thread: { rootMsgId: topic.rootMsgId, title: topic.title, subtitle: group?.title, iconColor: topic.iconColor, closed: topic.closed, topicId: topic.id, kind: 'topic' } })
     setSelectedId(String(chatId))
     setDraftPeer(null)
   }, [])
 
   // Клик по «N комментариев» под постом канала (из ConversationView канала).
-  const openCommentsThread = useCallback((args: { chatId: number; rootMsgId: number; title: string }) => {
-    setOpenThread({ chatId: args.chatId, thread: { rootMsgId: args.rootMsgId, title: args.title, kind: 'comments' } })
+  const openCommentsThread = useCallback((args: { chatId: number; rootMsgId: number; title: string; subtitle?: string }) => {
+    setOpenThread({ chatId: args.chatId, thread: { rootMsgId: args.rootMsgId, title: args.title, subtitle: args.subtitle, kind: 'comments' } })
   }, [])
 
   // Закрытие треда: топик — пустая колонка (панель топиков осталась слева),

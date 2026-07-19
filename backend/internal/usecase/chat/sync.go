@@ -22,6 +22,12 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 	if err != nil {
 		return HistoryResult{}, err
 	}
+	// Верх треда достигнут (короткая страница при чтении от新ейших/старее) —
+	// подшиваем корневой пост канала первым сообщением (tweb: пост форварднут
+	// в discussion-группу и открывает тред).
+	if threadRoot != nil && len(msgs) < limit && addOffset >= 0 {
+		msgs = i.prependForeignThreadRoot(ctx, chatID, *threadRoot, msgs)
+	}
 	if e := i.hydrateReplies(ctx, msgs); e != nil {
 		return HistoryResult{}, e
 	}
@@ -40,6 +46,23 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 		return HistoryResult{}, err
 	}
 	return HistoryResult{Messages: msgs, Count: count}, nil
+}
+
+// prependForeignThreadRoot: корень треда комментариев — пост КАНАЛА (другой
+// чат); в окно треда он подшивается синтетическим seq=0, чтобы встать первым
+// (у форум-топиков корень в том же чате и попадает в выборку сам). Best-effort.
+func (i *Interactor) prependForeignThreadRoot(ctx context.Context, chatID, threadRoot int64, msgs []domain.Message) []domain.Message {
+	for _, m := range msgs {
+		if m.ID == threadRoot {
+			return msgs // корень уже в окне (тред форум-топика)
+		}
+	}
+	root, err := i.msgs.GetByID(ctx, threadRoot)
+	if err != nil || root.Deleted || root.ChatID == chatID {
+		return msgs
+	}
+	root.Seq = 0
+	return append([]domain.Message{root}, msgs...)
 }
 
 // checkHistoryAccess: член чата — всегда; не-член — только тред в discussion-
@@ -184,6 +207,9 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 	msgs, top, bottom, err := i.msgs.GetAround(ctx, chatID, userID, centerSeq, limit, threadRoot)
 	if err != nil {
 		return AroundResult{}, err
+	}
+	if threadRoot != nil && top {
+		msgs = i.prependForeignThreadRoot(ctx, chatID, *threadRoot, msgs)
 	}
 	if e := i.hydrateReplies(ctx, msgs); e != nil {
 		return AroundResult{}, e

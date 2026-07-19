@@ -48,6 +48,8 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
   const managers = useManagers()
   const [topics, setTopics] = useState<TopicRow[] | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+  // Поиск по темам (tweb: кнопка search в шапке форум-таба); null — закрыт.
+  const [query, setQuery] = useState<string | null>(null)
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; right: number } | null>(null)
   // «Новая тема» — создатель или право «Изменение инфо» (tweb manage_topics)
   const [canManage, setCanManage] = useState(false)
@@ -67,15 +69,32 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
   return (
     <div className={s.root}>
       <div className={s.header}>
-        <IconButton onClick={onClose} color="var(--tg-textSecondary)" aria-label={t('Back')}>
-          <TgIcon name="back" size={24} />
+        <IconButton onClick={onClose} color="var(--tg-textSecondary)" aria-label={t('Close')}>
+          <TgIcon name="close" size={24} />
         </IconButton>
-        <div className={s.headerBody}>
-          <Text noWrap size={16.5} weight={600} color="var(--tg-textPrimary)">{chatName}</Text>
-          <Text size={13} color="var(--tg-textSecondary)">
-            {topics ? `${topics.length} ${t('topics')}` : t('Topics')}
-          </Text>
-        </div>
+        {query === null ? (
+          <div className={s.headerBody}>
+            <Text noWrap size={16.5} weight={600} color="var(--tg-textPrimary)">{chatName}</Text>
+            <Text size={13} color="var(--tg-textSecondary)">
+              {topics ? `${topics.length} ${t('topics')}` : t('Topics')}
+            </Text>
+          </div>
+        ) : (
+          <input
+            className={s.searchInput}
+            autoFocus
+            value={query}
+            placeholder={t('Search')}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        )}
+        <IconButton
+          onClick={() => setQuery((q) => (q === null ? '' : null))}
+          color="var(--tg-textFaint)"
+          aria-label={t('Search')}
+        >
+          <TgIcon name={query === null ? 'search' : 'close'} size={24} />
+        </IconButton>
         <IconButton
           onClick={(e) => {
             const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
@@ -113,7 +132,9 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
             {t('No topics')}
           </Text>
         )}
-        {(topics ?? []).map((topic) => (
+        {(topics ?? [])
+          .filter((topic) => !query || topic.title.toLowerCase().includes(query.trim().toLowerCase()))
+          .map((topic) => (
           <div
             key={topic.id}
             className={classNames(s.row, topic.rootMsgId === activeRootMsgId ? s.rowActive : '')}

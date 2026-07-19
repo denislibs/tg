@@ -93,9 +93,11 @@ const conn = newConnectionManager({
   onFrame: (type, payload) => {
     if (type === 'message_ack') broadcast(RT.ack, payload)
     else if (type === 'message_error') broadcast(RT.messageError, payload)
-    else if (type === 'new_message') broadcast(RT.newMessage, payload)
-    else if (type === 'edit_message') broadcast(RT.editMessage, payload)
-    else if (type === 'delete_message') broadcast(RT.deleteMessage, payload)
+    // Кэш истории живёт в этом воркере — live-кадры отражаем в нём ДО broadcast,
+    // иначе переоткрытие чата/треда отдаёт из кэша срез без свежих сообщений.
+    else if (type === 'new_message') { messages.cacheLive(payload as never); broadcast(RT.newMessage, payload) }
+    else if (type === 'edit_message') { messages.cacheEdit(payload as never); broadcast(RT.editMessage, payload) }
+    else if (type === 'delete_message') { messages.cacheDelete(payload as never); broadcast(RT.deleteMessage, payload) }
     else if (type === 'pin_message') broadcast(RT.pinMessage, payload)
     else if (type === 'read') broadcast(RT.read, payload)
     else if (type === 'media_read') broadcast(RT.mediaRead, payload)

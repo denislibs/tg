@@ -45,6 +45,7 @@ import { joinGroupCall } from '../core/calls/groupCallEngine'
 const EMPTY_IDS: number[] = []
 import { useMessagesStore } from '../stores/messagesStore'
 import ChatHeader from './conversation/ChatHeader'
+import Menu, { MenuItem } from '../shared/ui/Menu'
 import IconButton from '../shared/ui/IconButton'
 import { TopicIcon } from './TopicsPanel'
 import PinnedBar from './conversation/PinnedBar'
@@ -91,8 +92,12 @@ const feedMask = (fadeT: number, fadeB: number) => `linear-gradient(to bottom, $
 export interface ThreadInfo {
   rootMsgId: number
   title: string
+  /** подпись под названием (имя группы/канала) */
+  subtitle?: string
   iconColor?: number
   closed?: boolean
+  /** id темы (для «Закрыть тему» из меню треда) */
+  topicId?: number
   kind: 'topic' | 'comments'
 }
 
@@ -107,7 +112,7 @@ interface Props {
   /** закрыть тред (кнопка «назад» в тред-шапке) */
   onCloseThread?: () => void
   /** открыть тред комментариев поста канала (клик по CommentsBar) */
-  onOpenThread?: (args: { chatId: number; rootMsgId: number; title: string }) => void
+  onOpenThread?: (args: { chatId: number; rootMsgId: number; title: string; subtitle?: string }) => void
 }
 
 export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreated, thread, onCloseThread, onOpenThread }: Props) {
@@ -178,6 +183,18 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     win, isRealChat, meId, meName: me?.displayName, peers, chatName: chat.name, numericChatId, lang,
   })
   const [infoOpen, setInfoOpen] = useState(false)
+  // ⋮-меню тред-шапки (tweb topbar в треде) + право «Закрыть тему»
+  const [threadMenu, setThreadMenu] = useState<{ top: number; right: number } | null>(null)
+  const [canManageTopic, setCanManageTopic] = useState(false)
+  useEffect(() => {
+    if (!thread || thread.kind !== 'topic' || !isRealChat) return
+    let alive = true
+    void managers.groups.card(numericChatId).then((c) => {
+      if (alive) setCanManageTopic(c.myRole === 'creator' || (c.myRights & 64) !== 0)
+    }).catch(() => {})
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [thread?.kind, numericChatId, isRealChat])
   // Pinned messages in this chat (newest pin first) — drives the pinned bar.
   const pins = usePinnedBar(numericChatId, isRealChat, managers)
   // Search is owned by ChatHeader now; here we only read whether it's open (single-sourced
@@ -313,7 +330,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // Клик по «N комментариев» под постом канала — тред комментариев в этой же
   // колонке (tweb: setPeer(discussion group, threadId=postId)).
   const openDiscussionThread = useEvent((postId: number) => {
-    if (discussionChatId > 0) onOpenThread?.({ chatId: discussionChatId, rootMsgId: postId, title: t('Comments') })
+    if (discussionChatId > 0) onOpenThread?.({ chatId: discussionChatId, rootMsgId: postId, title: t('Comments'), subtitle: chat.name })
   })
 
   // Stable handler identities for the memoized feed: the feed closes over
@@ -479,9 +496,18 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
             )}
             <div className={s.threadHeaderBody}>
               <Text noWrap weight={600} size={15.5} color="var(--tg-textPrimary)">{thread.title}</Text>
-              <Text noWrap size={12.5} color="var(--tg-textSecondary)">{chat.name}</Text>
+              <Text noWrap size={12.5} color="var(--tg-textSecondary)">{thread.subtitle ?? chat.name}</Text>
             </div>
             {thread.closed && <TgIcon name="lock" size={18} color="var(--tg-textFaint)" />}
+            <IconButton
+              onClick={(e) => {
+                const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                setThreadMenu({ top: r.bottom + 6, right: window.innerWidth - r.right })
+              }}
+              color="var(--tg-textFaint)"
+            >
+              <TgIcon name="more" />
+            </IconButton>
           </div>
         </div>
         ) : (
@@ -661,6 +687,36 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           onExitComplete={() => setMuteOpen(null)}
           onMute={(seconds) => applyMute(true, seconds)}
         />
+      )}
+
+      {/* ⋮-меню тред-шапки (tweb topbar в треде): Select / Mute / Закрыть тему */}
+      {thread && (
+        <Menu
+          open={threadMenu != null}
+          onClose={() => setThreadMenu(null)}
+          style={threadMenu ? { top: threadMenu.top, right: threadMenu.right, transformOrigin: 'top right' } : undefined}
+        >
+          <MenuItem
+            icon={<TgIcon name="checkround" size={20} />}
+            label={t('Select Messages')}
+            onClick={() => { setThreadMenu(null); setSelectionMode(true) }}
+          />
+          <MenuItem
+            icon={<TgIcon name={muted ? 'unmute' : 'mute'} size={20} />}
+            label={t(muted ? 'Unmute' : 'Mute')}
+            onClick={() => { setThreadMenu(null); applyMute(!muted) }}
+          />
+          {thread.kind === 'topic' && thread.topicId != null && canManageTopic && (
+            <MenuItem
+              icon={<TgIcon name="lock" size={20} />}
+              label={t(thread.closed ? 'Reopen Topic' : 'Close Topic')}
+              onClick={() => {
+                setThreadMenu(null)
+                void managers.groups.closeTopic(numericChatId, thread.topicId!, !thread.closed).then(() => onCloseThread?.())
+              }}
+            />
+          )}
+        </Menu>
       )}
 
       {/* Header "⋮" menu */}

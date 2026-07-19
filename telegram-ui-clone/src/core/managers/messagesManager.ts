@@ -1,6 +1,7 @@
 // src/core/managers/messagesManager.ts
 import type { RestClient } from '../net/restClient'
 import { mapMessage, mapPoll, mapScheduled, type Message, type MessageEntity, type Poll, type RawMessage, type RawPoll, type RawScheduled, type Scheduled } from '../models'
+import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt } from '../realtime/events'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
 
 export interface HistoryArgs {
@@ -303,6 +304,56 @@ export function newMessagesManager({ rest }: MessagesDeps) {
     async viewers(chatId: number, msgId: number): Promise<number[]> {
       const r = await rest.get<{ user_ids: number[] }>(`/chats/${chatId}/messages/${msgId}/viewers`)
       return r.user_ids ?? []
+    },
+
+    // Live-фрейм new_message → кэш истории (в чат-ключ и, для тред-сообщения,
+    // в ключ треда). Без этого переоткрытие чата/треда попадало в устаревший
+    // кэш-срез без свежих сообщений (свои комментарии «пропадали» до F5).
+    cacheLive(evt: NewMessageEvt): void {
+      const m = mapMessage({
+        id: evt.msg_id, chat_id: evt.chat_id, seq: evt.seq, sender_id: evt.sender_id,
+        type: evt.type, text: evt.text, entities: evt.entities ?? null,
+        reply_to_id: evt.reply_to_id ?? null, media_id: evt.media_id ?? null,
+        created_at: evt.created_at, thread_root_id: evt.thread_root_id ?? null,
+        grouped_id: evt.grouped_id ?? null, media_unread: evt.media_unread,
+        geo: evt.geo ?? null, contact: evt.contact ?? null,
+      })
+      const keys = m.threadRootId ? [hkey(m.chatId), hkey(m.chatId, m.threadRootId)] : [hkey(m.chatId)]
+      for (const key of keys) {
+        // Только в срез, уже державший низ истории — иначе позиция неизвестна.
+        const sa = slices.get(key)
+        if (!sa || !sa.first.isEnd(SliceEnd.Bottom)) continue
+        put(key, [m])
+        if (!sa.findSlice(m.seq)) sa.unshift(m.seq)
+      }
+    },
+
+    // Live-правка/удаление от любого участника → кэш всех окон этого чата.
+    cacheEdit(evt: EditMessageEvt): void {
+      for (const key of keysOf(evt.chat_id)) {
+        const c = cache.get(key)
+        if (!c) continue
+        for (const [seq, m] of c) {
+          if (m.id === evt.msg_id) {
+            c.set(seq, { ...m, text: evt.text, entities: evt.entities ?? undefined, editedAt: evt.edited_at })
+            break
+          }
+        }
+      }
+    },
+
+    cacheDelete(evt: DeleteMessageEvt): void {
+      for (const key of keysOf(evt.chat_id)) {
+        const c = cache.get(key)
+        if (!c) continue
+        for (const [seq, m] of c) {
+          if (m.id === evt.msg_id) {
+            c.delete(seq)
+            slices.get(key)?.delete(seq)
+            break
+          }
+        }
+      }
     },
 
     // Реакции: поставить/снять свою (агрегаты приходят realtime-фреймом reaction).
