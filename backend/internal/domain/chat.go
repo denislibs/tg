@@ -141,6 +141,7 @@ type UserCard struct {
 	DisplayName string
 	FirstName   string
 	AvatarURL   string
+	Phone       string
 }
 
 // ShortName is the name Telegram uses in compact contexts (chat-list preview

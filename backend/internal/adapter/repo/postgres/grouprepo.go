@@ -350,7 +350,7 @@ func (r *GroupRepo) UsersByIDs(ctx context.Context, ids []int64) ([]domain.UserC
 		return []domain.UserCard{}, nil
 	}
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT id, COALESCE(username,''), display_name, COALESCE(first_name,''), COALESCE(avatar_url,'') FROM users WHERE id = ANY($1)`, ids)
+		`SELECT id, COALESCE(username,''), display_name, COALESCE(first_name,''), COALESCE(avatar_url,''), phone FROM users WHERE id = ANY($1)`, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -358,7 +358,7 @@ func (r *GroupRepo) UsersByIDs(ctx context.Context, ids []int64) ([]domain.UserC
 	var out []domain.UserCard
 	for rows.Next() {
 		var u domain.UserCard
-		if err := rows.Scan(&u.ID, &u.Username, &u.DisplayName, &u.FirstName, &u.AvatarURL); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.DisplayName, &u.FirstName, &u.AvatarURL, &u.Phone); err != nil {
 			return nil, err
 		}
 		out = append(out, u)

@@ -485,6 +485,12 @@ Send a message. Also delivered live over WS (`new_message`) to all members.
 ```
   - `type` defaults to `text`. `client_msg_id` (optional) makes the send idempotent.
   - `media_id` (optional) must reference media **owned by the sender**.
+  - `type: "geo"`: обязательны `geo_lat`/`geo_lng` (валидный диапазон координат);
+    в DTO сообщения возвращается `geo: { lat, lng }`.
+  - `type: "contact"`: обязателен `contact_user_id` (существующий аккаунт); сервер
+    сам гидрирует снимок имени/телефона — в DTO приходит
+    `contact: { user_id, name, phone }`. Те же поля принимает WS `send_message`
+    и несёт фрейм `new_message`.
 - 200 (the created or deduplicated message):
 ```json
 { "id": 10, "chat_id": 1, "seq": 5, "sender_id": 1, "type": "text", "text": "hello",

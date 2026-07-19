@@ -108,6 +108,55 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
   )
 }
 
+// Пикер контакта для attach-меню: список собеседников приватных чатов;
+// выбор — отправить сообщение-контакт (та же карточка, что и ForwardPicker).
+export function ContactPicker({ dialogs, onPick, onClose }: {
+  dialogs: Dialog[]
+  onPick: (userId: number, name: string) => void
+  onClose: () => void
+}) {
+  const t = useT()
+  const [q, setQ] = useState('')
+  const [open, setOpen] = useState(true)
+  const picked = useRef<{ userId: number; name: string } | null>(null)
+  const pick = (userId: number, name: string) => { picked.current = { userId, name }; setOpen(false) }
+  const query = q.trim().toLowerCase()
+  const rows = dialogs
+    .filter((d) => d.type === 'private' && d.peer)
+    .map((d) => ({ userId: d.peer!.id, name: d.peer!.displayName || `#${d.peer!.id}` }))
+    .filter((r) => !query || r.name.toLowerCase().includes(query))
+  return (
+    <Popup
+      open={open}
+      title={t('Contact')}
+      onClose={() => setOpen(false)}
+      onExitComplete={() => { const p = picked.current; if (p) onPick(p.userId, p.name); else onClose() }}
+      width={440}
+    >
+      <div className={s.pickerSearch}>
+        <TgIcon name="search" size={20} color="var(--tg-textFaint)" />
+        <input
+          className={s.pickerSearchInput}
+          autoFocus
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder={t('Search')}
+        />
+      </div>
+      <div className={s.pickerList}>
+        {rows.map((r) => (
+          <div key={r.userId} className={s.listRow} onClick={() => pick(r.userId, r.name)}>
+            <Avatar background={peerColor(r.name)} text={r.name[0] ?? '?'} size="md" />
+            <div className={s.pickerBody}>
+              <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{r.name}</Text>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Popup>
+  )
+}
+
 // "Seen by" popup anchored at (x, y).
 export function ViewersPopup({ x, y, names, onClose }: {
   x: number

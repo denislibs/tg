@@ -95,6 +95,26 @@ export function useChatSend({
     void managers.realtime.sendMessage({ chatId: numericChatId, text, entities, clientMsgId, replyToId: replyTo })
   }
 
+  // Гео-точка из attach-меню: оптимистичный бабл сразу (координаты локальные),
+  // на бэк — WS-полями geo_lat/geo_lng (type 'geo').
+  const sendGeo = (lat: number, lng: number) => {
+    const clientMsgId = mkClientMsgId()
+    atBottomRef.current = true; userScrolledUpRef.current = false
+    win.appendOptimistic('', meId ?? -1, clientMsgId, undefined, 'geo', undefined, undefined, undefined, { geo: { lat, lng } })
+    void managers.realtime.sendMessage({ chatId: numericChatId, text: '', clientMsgId, type: 'geo', geo: { lat, lng } })
+    window.dispatchEvent(new Event('tg-send'))
+  }
+
+  // Контакт: в оптимистичный бабл идёт локальный снимок имени (телефон сервер
+  // гидрирует по аккаунту — приедет с echo-фреймом new_message).
+  const sendContact = (userId: number, name: string) => {
+    const clientMsgId = mkClientMsgId()
+    atBottomRef.current = true; userScrolledUpRef.current = false
+    win.appendOptimistic('', meId ?? -1, clientMsgId, undefined, 'contact', undefined, undefined, undefined, { contact: { userId, name, phone: '' } })
+    void managers.realtime.sendMessage({ chatId: numericChatId, text: '', clientMsgId, type: 'contact', contactUserId: userId })
+    window.dispatchEvent(new Event('tg-send'))
+  }
+
   const fileInputRef = useRef<HTMLInputElement>(null)
   // Set by the attach menu before opening the picker: send the chosen files as
   // raw documents (true) or with media treatment (false). The accept filter is
@@ -247,5 +267,6 @@ export function useChatSend({
     onComposerTyping,
     pendingMedia, setPendingMedia, sendPendingMedia,
     openPicker, fileInputRef, pickAsFileRef,
+    sendGeo, sendContact,
   }
 }

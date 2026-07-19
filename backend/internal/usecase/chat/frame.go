@@ -17,7 +17,7 @@ func frame(t string, d any) []byte {
 }
 
 func messageUpdatePayload(m domain.Message) map[string]any {
-	return map[string]any{
+	p := map[string]any{
 		"chat_id": m.ChatID, "msg_id": m.ID, "seq": m.Seq,
 		"sender_id": m.SenderID, "type": m.Type, "text": m.Text,
 		"entities": m.Entities,
@@ -30,6 +30,25 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 		"poll_id":    m.PollID,
 		"poll":       m.Poll,
 	}
+	if m.GeoLat != nil && m.GeoLng != nil {
+		p["geo"] = map[string]any{"lat": *m.GeoLat, "lng": *m.GeoLng}
+	}
+	if m.ContactUserID != nil {
+		p["contact"] = contactJSON(m)
+	}
+	return p
+}
+
+// contactJSON — представление контакта сообщения (снимок имени/телефона).
+func contactJSON(m domain.Message) map[string]any {
+	c := map[string]any{"user_id": *m.ContactUserID}
+	if m.ContactName != nil {
+		c["name"] = *m.ContactName
+	}
+	if m.ContactPhone != nil {
+		c["phone"] = *m.ContactPhone
+	}
+	return c
 }
 
 // editUpdatePayload is the body of an "edit_message" update/frame.

@@ -67,7 +67,7 @@ interface MessagesState {
   prepend: (chatId: number, msgs: Message[], reachedTop: boolean) => void
   append: (chatId: number, msgs: Message[], reachedBottom: boolean) => void
   appendLocal: (chatId: number, m: Message) => void
-  appendOptimistic: (chatId: number, text: string, meId: number, clientMsgId: string, mediaId?: number, type?: string, entities?: MessageEntity[], groupedId?: string, media?: OptimisticMedia) => void
+  appendOptimistic: (chatId: number, text: string, meId: number, clientMsgId: string, mediaId?: number, type?: string, entities?: MessageEntity[], groupedId?: string, media?: OptimisticMedia, extra?: { geo?: { lat: number; lng: number }; contact?: { userId: number; name: string; phone: string } }) => void
   /** Аплоад завершён — проставить оптимистичному сообщению серверный media_id. */
   setOptimisticMedia: (chatId: number, clientMsgId: string, mediaId: number) => void
   reconcileAck: (chatId: number, clientMsgId: string, ack: { msgId: number; seq: number; createdAt: string }) => void
@@ -155,7 +155,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   appendLocal: (chatId, m) =>
     set((s) => patch(s, chatId, (w) => ({ msgs: dedupAsc([...w.msgs, m]) }))),
 
-  appendOptimistic: (chatId, text, meId, clientMsgId, mediaId, type = 'text', entities, groupedId, media) =>
+  appendOptimistic: (chatId, text, meId, clientMsgId, mediaId, type = 'text', entities, groupedId, media, extra) =>
     set((s) =>
       patch(s, chatId, (w) => {
         const maxSeq = w.msgs.length ? w.msgs[w.msgs.length - 1].seq : 0
@@ -173,6 +173,9 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           // сервер ставит media_unread на voice/roundVideo — отразить сразу в
           // оптимистичном бабле, чтобы точка не «моргала» после ack
           mediaUnread: type === 'voice' || type === 'roundVideo' || undefined,
+          // гео/контакт: бабл рисуется сразу из локальных данных, до ack
+          geo: extra?.geo,
+          contact: extra?.contact,
         }
         return { msgs: dedupAsc([...w.msgs, tmp]) }
       }),

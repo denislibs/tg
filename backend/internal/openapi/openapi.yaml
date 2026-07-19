@@ -60,6 +60,19 @@ components:
           type: array
           description: aggregated reactions for the viewer (omitted when none)
           items: { $ref: "#/components/schemas/ReactionCount" }
+        geo:
+          type: object
+          description: geo point of a 'geo' message (omitted otherwise)
+          properties:
+            lat: { type: number, format: double }
+            lng: { type: number, format: double }
+        contact:
+          type: object
+          description: shared contact of a 'contact' message (name/phone snapshot)
+          properties:
+            user_id: { type: integer, format: int64 }
+            name: { type: string }
+            phone: { type: string }
     Dialog:
       type: object
       properties:

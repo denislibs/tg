@@ -120,6 +120,10 @@ type sendBody struct {
 	GroupedID   string                 `json:"grouped_id"`
 	// сообщение в тред (форум-топик): id корневого сообщения топика
 	ThreadRootID *int64 `json:"thread_root_id"`
+	// гео-точка (type 'geo') / контакт (type 'contact')
+	GeoLat        *float64 `json:"geo_lat"`
+	GeoLng        *float64 `json:"geo_lng"`
+	ContactUserID *int64   `json:"contact_user_id"`
 }
 
 func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
@@ -140,6 +144,7 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		ChatID: chatID, SenderID: h.meID(r), Type: body.Type, Text: body.Text, Entities: body.Entities,
 		ReplyToID: body.ReplyToID, ClientMsgID: body.ClientMsgID, MediaID: body.MediaID, GroupedID: body.GroupedID,
 		ThreadRootID: body.ThreadRootID,
+		GeoLat:       body.GeoLat, GeoLng: body.GeoLng, ContactUserID: body.ContactUserID,
 	})
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
@@ -916,6 +921,19 @@ func messageJSON(m domain.Message) map[string]any {
 	}
 	if len(m.Reactions) > 0 {
 		j["reactions"] = m.Reactions
+	}
+	if m.GeoLat != nil && m.GeoLng != nil {
+		j["geo"] = map[string]any{"lat": *m.GeoLat, "lng": *m.GeoLng}
+	}
+	if m.ContactUserID != nil {
+		c := map[string]any{"user_id": *m.ContactUserID}
+		if m.ContactName != nil {
+			c["name"] = *m.ContactName
+		}
+		if m.ContactPhone != nil {
+			c["phone"] = *m.ContactPhone
+		}
+		j["contact"] = c
 	}
 	if m.PollID != nil {
 		j["poll_id"] = *m.PollID

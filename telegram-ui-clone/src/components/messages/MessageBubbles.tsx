@@ -1,5 +1,7 @@
 import Text from '../../shared/ui/Text'
 import classNames from '../../shared/lib/classNames'
+import Avatar from '../../shared/ui/Avatar'
+import { peerColor } from '../peerColor'
 import TgIcon from '../TgIcon'
 import { useRef, useState } from 'react'
 import { useT } from '../../i18n'
@@ -363,6 +365,94 @@ export function RoundVideoRealBubble({ m, onPlayed, onSoundPlay }: { m: ConvMsg;
           <Text size={12} color="#fff">{fmtTime(m.time)}</Text>
           {m.out && <Ticks status={m.status} color="#fff" />}
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ── гео-бабл (tweb wrapGeo: .geo-container 277×195, ссылка на Google Maps) ──
+// Статичная карта собирается из OSM-тайлов (в tweb карту отдаёт MTProto webfile,
+// вне Telegram он недоступен); пин по центру, тап — makeGoogleMapsUrl 1:1.
+const GEO_W = 277
+const GEO_H = 195
+const GEO_ZOOM = 15
+
+export function GeoBubble({ m, out, lastInGroup, radius }: {
+  m: ConvMsg
+  out: boolean
+  lastInGroup: boolean
+  radius: string
+}) {
+  const fmtTime = useTimeFormatter()
+  const { lat, lng } = m.geo!
+  const T = 256
+  const n = 2 ** GEO_ZOOM
+  const latR = (lat * Math.PI) / 180
+  const px = ((lng + 180) / 360) * n * T - GEO_W / 2
+  const py = ((1 - Math.log(Math.tan(latR) + 1 / Math.cos(latR)) / Math.PI) / 2) * n * T - GEO_H / 2
+  const tiles: { tx: number; ty: number; left: number; top: number }[] = []
+  for (let tx = Math.floor(px / T); tx * T < px + GEO_W; tx++) {
+    for (let ty = Math.floor(py / T); ty * T < py + GEO_H; ty++) {
+      tiles.push({ tx, ty, left: tx * T - px, top: ty * T - py })
+    }
+  }
+  return (
+    <div className={s.geoWrap}>
+      {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
+      <a
+        className={s.geoContainer}
+        style={{ borderRadius: radius }}
+        href={`https://maps.google.com/maps?q=${lat},${lng}`}
+        target="_blank"
+        rel="noreferrer"
+      >
+        {tiles.map((t) => (
+          <img
+            key={`${t.tx}:${t.ty}`}
+            className={s.geoTile}
+            src={`https://tile.openstreetmap.org/${GEO_ZOOM}/${t.tx}/${t.ty}.png`}
+            style={{ left: t.left, top: t.top }}
+            alt=""
+            loading="lazy"
+          />
+        ))}
+        <span className={s.geoPin}>
+          <TgIcon name="location" size={38} color="#e53935" />
+        </span>
+        <span className={s.geoMeta}>
+          <Text size={12.5} color="#fff">{fmtTime(m.time)}</Text>
+          {m.out && <Ticks status={m.status} color="#fff" />}
+        </span>
+      </a>
+    </div>
+  )
+}
+
+// ── бабл контакта (tweb .bubble.contact-message: аватар 54 + имя + телефон) ──
+export function ContactBubble({ m, out, firstInGroup, lastInGroup, onOpen }: {
+  m: ConvMsg
+  out: boolean
+  firstInGroup: boolean
+  lastInGroup: boolean
+  /** клик по контакту — открыть чат/профиль (tweb contactDiv.dataset.peerId) */
+  onOpen?: () => void
+}) {
+  const fmtTime = useTimeFormatter()
+  const c = m.contact!
+  const initials = (c.name || '?').split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()
+  return (
+    <div className={s.contactBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
+      {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
+      <div className={s.contactRow} onClick={onOpen} style={{ cursor: onOpen ? 'pointer' : 'default' }}>
+        <Avatar background={peerColor(c.name || String(c.userId))} text={initials} size={54} />
+        <div className={s.contactDetails}>
+          <Text size={16} weight={700} color="var(--b-text)" noWrap>{c.name || `#${c.userId}`}</Text>
+          <Text size={14} color="var(--b-secondary)" noWrap>{c.phone ? `+${c.phone.replace(/^\+/, '')}` : ''}</Text>
+        </div>
+      </div>
+      <div className={s.contactMeta}>
+        <Text size={12} color="var(--b-time)">{fmtTime(m.time)}</Text>
+        {m.out && <Ticks status={m.status} color="var(--b-tick)" />}
       </div>
     </div>
   )

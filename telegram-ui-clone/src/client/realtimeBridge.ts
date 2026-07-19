@@ -57,7 +57,7 @@ export function startRealtime(): void {
     const ms = useMessagesStore.getState()
     const rt = evt.reply_to_id != null ? ms.byChat[evt.chat_id]?.msgs.find((x) => x.id === evt.reply_to_id) : undefined
     const replyTo = rt ? { msg_id: rt.id, seq: rt.seq, sender_id: rt.senderId, text: rt.text, type: rt.type } : null
-    ms.applyIncoming(evt.chat_id, mapMessage({ id: evt.msg_id, chat_id: evt.chat_id, seq: evt.seq, sender_id: evt.sender_id, type: evt.type, text: evt.text, entities: evt.entities ?? null, reply_to_id: evt.reply_to_id ?? null, media_id: evt.media_id, created_at: evt.created_at, fwd_from_user_id: evt.fwd_from_user_id ?? null, fwd_from_chat_id: evt.fwd_from_chat_id ?? null, fwd_from_msg_id: evt.fwd_from_msg_id ?? null, fwd_date: evt.fwd_date ?? null, reply_to: replyTo, media_unread: evt.media_unread, grouped_id: evt.grouped_id ?? null }))
+    ms.applyIncoming(evt.chat_id, mapMessage({ id: evt.msg_id, chat_id: evt.chat_id, seq: evt.seq, sender_id: evt.sender_id, type: evt.type, text: evt.text, entities: evt.entities ?? null, reply_to_id: evt.reply_to_id ?? null, media_id: evt.media_id, created_at: evt.created_at, fwd_from_user_id: evt.fwd_from_user_id ?? null, fwd_from_chat_id: evt.fwd_from_chat_id ?? null, fwd_from_msg_id: evt.fwd_from_msg_id ?? null, fwd_date: evt.fwd_date ?? null, reply_to: replyTo, media_unread: evt.media_unread, grouped_id: evt.grouped_id ?? null, geo: evt.geo ?? null, contact: evt.contact ?? null }))
     // Discussion-thread comment: route into the discussion store (no-op unless
     // that thread is currently open). The View reads its slice via a selector.
     if (evt.thread_root_id != null) {

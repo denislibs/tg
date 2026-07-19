@@ -54,7 +54,7 @@ import MessageContextMenu from './conversation/MessageContextMenu'
 import { useChatsStore } from '../stores/chatsStore'
 import { type MessageEntity } from '../core/models'
 import { useSearchStore } from '../stores/searchStore'
-import { DeleteMessageDialog, ForwardPicker, ViewersPopup } from './messages/ChatDialogs'
+import { ContactPicker, DeleteMessageDialog, ForwardPicker, ViewersPopup } from './messages/ChatDialogs'
 import SendMediaPopup from './messages/SendMediaPopup'
 import MediaLightbox from './messages/MediaLightbox'
 import classNames from '../shared/lib/classNames'
@@ -169,6 +169,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const [addContactOpen, setAddContactOpen] = useState(false)
   const [attachAnchor, setAttachAnchor] = useState<{ left: number; bottom: number } | null>(null)
   const [createPollOpen, setCreatePollOpen] = useState(false)
+  const [contactPickerOpen, setContactPickerOpen] = useState(false)
   // Запланированные сообщения: счётчик (календарик в композере) + оверлей списка
   const [scheduledCount, setScheduledCount] = useState(0)
   const [scheduledOpen, setScheduledOpen] = useState(false)
@@ -254,6 +255,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     onComposerTyping,
     pendingMedia, setPendingMedia, sendPendingMedia,
     openPicker, fileInputRef, pickAsFileRef,
+    sendGeo, sendContact,
   } = useChatSend({
     chat, numericChatId, isRealChat, isChannel, draftPeerId, canType,
     meId, win, managers, atBottomRef, userScrolledUpRef,
@@ -658,6 +660,25 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           onPhotoVideo={isRealChat ? () => { setAttachAnchor(null); openPicker('image/*,video/*', false) } : undefined}
           onFile={isRealChat ? () => { setAttachAnchor(null); openPicker('*/*', true) } : undefined}
           onPoll={isRealChat && (chat.type === 'group' || chat.type === 'channel') ? () => { setAttachAnchor(null); setCreatePollOpen(true) } : undefined}
+          onLocation={isRealChat ? () => {
+            setAttachAnchor(null)
+            // Геопозиция берётся у браузера; молча игнорируем отказ (как отмену).
+            navigator.geolocation?.getCurrentPosition(
+              (pos) => sendGeo(pos.coords.latitude, pos.coords.longitude),
+              () => {},
+              { enableHighAccuracy: true, timeout: 10000 },
+            )
+          } : undefined}
+          onContact={isRealChat ? () => { setAttachAnchor(null); setContactPickerOpen(true) } : undefined}
+        />
+      )}
+
+      {/* Пикер контакта (attach-меню → Контакт) */}
+      {contactPickerOpen && (
+        <ContactPicker
+          dialogs={allDialogs}
+          onPick={(userId, name) => { setContactPickerOpen(false); sendContact(userId, name) }}
+          onClose={() => setContactPickerOpen(false)}
         />
       )}
 

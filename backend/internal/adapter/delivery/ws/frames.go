@@ -21,6 +21,10 @@ type sendMessageData struct {
 	ClientMsgID string                 `json:"client_msg_id"`
 	MediaID     *int64                 `json:"media_id"`
 	GroupedID   string                 `json:"grouped_id"`
+	// Гео-точка (type 'geo') / контакт (type 'contact').
+	GeoLat        *float64 `json:"geo_lat"`
+	GeoLng        *float64 `json:"geo_lng"`
+	ContactUserID *int64   `json:"contact_user_id"`
 }
 
 type readData struct {

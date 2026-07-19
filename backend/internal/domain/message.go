@@ -67,6 +67,14 @@ type Message struct {
 	// message whose content hasn't been played by the recipient yet. Set on
 	// send, cleared by ReadMedia.
 	MediaUnread bool
+	// Гео-точка сообщения типа 'geo' (nil у остальных типов).
+	GeoLat *float64
+	GeoLng *float64
+	// Контакт сообщения типа 'contact': снимок имени/телефона на момент отправки
+	// плюс ссылка на аккаунт (по ней клиент открывает чат/аватар).
+	ContactUserID *int64
+	ContactName   *string
+	ContactPhone  *string
 	// Reactions — агрегаты реакций (emoji, count, mine) для зрителя, наполняется
 	// read-моделью истории (не хранится на строке сообщения). Nil — реакций нет.
 	Reactions []ReactionCount

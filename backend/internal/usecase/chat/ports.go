@@ -219,6 +219,11 @@ type SendInput struct {
 	ThreadRootID     *int64
 	GroupedID        string // альбом (Telegram grouped_id); "" — не в группе
 	PollID           *int64 // опрос (messages.poll_id) — только из SendPoll
+	// Гео-точка (type 'geo'): обе координаты обязательны, в валидном диапазоне.
+	GeoLat *float64
+	GeoLng *float64
+	// Контакт (type 'contact'): имя/телефон гидрируются сервером по аккаунту.
+	ContactUserID *int64
 }
 
 // GroupCallStore хранит участников активных групповых звонков (эфемерно, Redis).

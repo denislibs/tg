@@ -46,6 +46,8 @@ export function mediaLabel(type?: string): string {
     case 'sticker': return 'Стикер'
     case 'call': return 'Звонок'
     case 'poll': return '📊 Опрос'
+    case 'geo': return '📍 Геолокация'
+    case 'contact': return '👤 Контакт'
     default: return ''
   }
 }

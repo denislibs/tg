@@ -33,6 +33,8 @@ import {
   WebPagePreview,
   CallBubble,
   RoundVideoRealBubble,
+  GeoBubble,
+  ContactBubble,
 } from './MessageBubbles'
 import RichText, { emojiOnlyCount } from '../RichText'
 import Emoji from '../emoji/Emoji'
@@ -358,6 +360,16 @@ function MessageRow({
           <AudioBubble m={m} out={out} firstInGroup={firstInGroup} lastInGroup={lastInGroup} />
         ) : m.type === 'roundVideo' ? (
           <RoundVideoBubble m={m} out={out} firstInGroup={firstInGroup} lastInGroup={lastInGroup} />
+        ) : m.type === 'geo' && m.geo ? (
+          <GeoBubble m={m} out={out} lastInGroup={lastInGroup} radius={mediaRadius(out, lastInGroup)} />
+        ) : m.type === 'contact' && m.contact ? (
+          <ContactBubble
+            m={m}
+            out={out}
+            firstInGroup={firstInGroup}
+            lastInGroup={lastInGroup}
+            onOpen={selecting ? undefined : () => feedFns.openSender(m.contact!.userId, m.contact!.name)}
+          />
         ) : m.type === 'call' ? (
           <CallBubble
             m={m}

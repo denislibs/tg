@@ -22,6 +22,8 @@ function replyMediaLabel(type?: string): string {
     case 'audio': return 'Аудио'
     case 'document': return 'Файл'
     case 'sticker': return 'Стикер'
+    case 'geo': return 'Геолокация'
+    case 'contact': return 'Контакт'
     default: return ''
   }
 }
@@ -46,6 +48,8 @@ export function messageToConvMsg(
     : m.type === 'roundVideo' ? 'roundVideo'
     : m.type === 'call' ? 'call'
     : m.type === 'poll' ? 'poll'
+    : m.type === 'geo' ? 'geo'
+    : m.type === 'contact' ? 'contact'
     : m.type === 'service' ? 'service'
     : m.type === 'photo' || m.type === 'video' || m.type === 'document' || m.type === 'audio' ? m.type
     : 'text'
@@ -71,6 +75,8 @@ export function messageToConvMsg(
     call: m.type === 'call' ? parseCallLog(m.text) : undefined,
     poll: m.poll,
     reactions: m.reactions,
+    geo: m.geo,
+    contact: m.contact,
     mediaId: m.mediaId ?? undefined,
     mediaWidth: m.mediaWidth,
     mediaHeight: m.mediaHeight,

@@ -27,6 +27,8 @@ export interface ConvMsg {
     | 'roundVideo'
     | 'call'
     | 'poll'
+    | 'geo'
+    | 'contact'
   out?: boolean
   sender?: string
   senderId?: number // backend user id of the sender (real group chats) — for "open chat"
@@ -39,6 +41,8 @@ export interface ConvMsg {
   edited?: boolean // shows the "изменено" marker before the time
   views?: number // channel-post view count ("9.2K 👁"); undefined for non-posts
   reactions?: { emoji: string; count: number; mine: boolean }[] // чипы реакций под сообщением
+  geo?: { lat: number; lng: number } // гео-точка (type 'geo')
+  contact?: { userId: number; name: string; phone: string } // контакт (type 'contact')
   mediaUnread?: boolean // голосовое/кружок не прослушано получателем (точка у обеих сторон)
   deleted?: boolean
   forwardFrom?: { name: string; color?: string } // "Переслано от X"

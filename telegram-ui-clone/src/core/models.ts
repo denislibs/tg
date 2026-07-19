@@ -92,6 +92,8 @@ export interface RawMessage {
   views?: number
   media_unread?: boolean
   reactions?: { emoji: string; count: number; mine?: boolean }[] | null
+  geo?: { lat: number; lng: number } | null
+  contact?: { user_id: number; name?: string; phone?: string } | null
 }
 
 // Агрегат одной реакции на сообщении (emoji + счётчик + «моя»), tweb ReactionCount.
@@ -154,6 +156,10 @@ export interface Message {
   poll?: Poll
   /** агрегаты реакций под сообщением (undefined/пусто — реакций нет) */
   reactions?: ReactionCount[]
+  /** гео-точка сообщения типа 'geo' */
+  geo?: { lat: number; lng: number }
+  /** контакт сообщения типа 'contact' (снимок имени/телефона + аккаунт) */
+  contact?: { userId: number; name: string; phone: string }
 }
 
 // Опрос (backend PollInfo): вопрос + варианты + агрегаты для зрителя.
@@ -317,6 +323,10 @@ export function mapMessage(r: RawMessage): Message {
     mediaUnread: r.media_unread,
     reactions: r.reactions?.length
       ? r.reactions.map((x) => ({ emoji: x.emoji, count: x.count, mine: !!x.mine }))
+      : undefined,
+    geo: r.geo ? { lat: r.geo.lat, lng: r.geo.lng } : undefined,
+    contact: r.contact
+      ? { userId: r.contact.user_id, name: r.contact.name ?? '', phone: r.contact.phone ?? '' }
       : undefined,
   }
 }

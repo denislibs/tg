@@ -42,6 +42,31 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		}
 	}
 
+	// Гео/контакт: координаты в валидном диапазоне; контакт гидрируется по
+	// аккаунту (снимок имени/телефона хранится на сообщении, как в Telegram).
+	var contactName, contactPhone *string
+	if in.Type == "geo" {
+		if in.GeoLat == nil || in.GeoLng == nil ||
+			*in.GeoLat < -90 || *in.GeoLat > 90 || *in.GeoLng < -180 || *in.GeoLng > 180 {
+			return domain.Message{}, domain.ErrForbidden
+		}
+	} else {
+		in.GeoLat, in.GeoLng = nil, nil
+	}
+	if in.Type == "contact" {
+		if in.ContactUserID == nil {
+			return domain.Message{}, domain.ErrForbidden
+		}
+		c := i.userCard(ctx, *in.ContactUserID)
+		if c.DisplayName == "" && c.Phone == "" {
+			return domain.Message{}, domain.ErrNotFound // такого аккаунта нет
+		}
+		name, phone := c.DisplayName, c.Phone
+		contactName, contactPhone = &name, &phone
+	} else {
+		in.ContactUserID = nil
+	}
+
 	// Групповые дефолтные разрешения + slowmode (сервисные сообщения генерирует
 	// сам сервер — их не ограничиваем).
 	if in.Type != "service" {
@@ -86,6 +111,8 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			ChatID: in.ChatID, Seq: seq, SenderID: in.SenderID,
 			Type: in.Type, Text: in.Text, Entities: in.Entities, ReplyToID: in.ReplyToID, ClientMsgID: cmid,
 			MediaID: in.MediaID, ThreadRootID: in.ThreadRootID, GroupedID: groupedID, PollID: in.PollID,
+			GeoLat: in.GeoLat, GeoLng: in.GeoLng,
+			ContactUserID: in.ContactUserID, ContactName: contactName, ContactPhone: contactPhone,
 			// Voice/round content starts "unlistened" (Telegram media_unread).
 			MediaUnread: in.Type == "voice" || in.Type == "roundVideo",
 		})
