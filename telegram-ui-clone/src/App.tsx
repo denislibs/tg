@@ -546,7 +546,7 @@ function ThemedApp() {
   return authed === null ? null : authed ? (
     <Shell onToggleMode={toggleMode} onLogout={logout} />
   ) : (
-    <AuthFlow onComplete={login} />
+    <AuthFlow onComplete={login} onToggleMode={toggleMode} />
   )
 }
 

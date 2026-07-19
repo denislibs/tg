@@ -11,6 +11,8 @@ import QrCode from './QrCode'
 import PasswordMonkey from '../PasswordMonkey'
 import { isWebAuthnSupported, getPasskeyAssertion } from '../../core/webauthnBrowser'
 import { ANIMATE_AUTH_KEY, ANIMATE_MAIN_KEY, PREV_ACCOUNT_KEY, playAuthHostEnter, playAuthHostExit } from '../../core/accountTransition'
+import ChatBackground from '../ChatBackground'
+import type { ToggleMode } from '../../App'
 import s from './AuthFlow.module.scss'
 
 const MotionIconButton = motion.create(IconButton)
@@ -67,7 +69,7 @@ function TgPlane({ size = 56 }: { size?: number }) {
   )
 }
 
-export default function AuthFlow({ onComplete }: { onComplete: () => void }) {
+export default function AuthFlow({ onComplete, onToggleMode }: { onComplete: () => void; onToggleMode?: ToggleMode }) {
   const t = useT()
 
   const managers = useManagers()
@@ -483,8 +485,13 @@ export default function AuthFlow({ onComplete }: { onComplete: () => void }) {
 
   return (
     <div ref={overlayRef} className={s.overlay}>
-      {/* Стрелка «назад»: на внутренних шагах — к вводу телефона; на первом шаге
-          при добавлении аккаунта — возврат к прежнему аккаунту (tweb back). */}
+      {/* Обои — те же анимированные градиент+doodle, что и в чате (tweb: фон
+          приложения виден и на экране входа) */}
+      <ChatBackground />
+
+      {/* Кнопки-кружки в углах (tweb .closeButton / .themeButton): слева —
+          «назад» (внутренний шаг → телефон; первый шаг при добавлении аккаунта
+          → возврат к прежнему), справа — переключатель темы (всегда). */}
       <AnimatePresence>
         {(step !== 'phone' || prevAccount != null) && (
           <MotionIconButton
@@ -492,13 +499,23 @@ export default function AuthFlow({ onComplete }: { onComplete: () => void }) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => (step !== 'phone' ? go('phone', -1) : void backToAccount())}
-            color="var(--tg-textSecondary)"
-            className={s.back}
+            color="#fff"
+            className={classNames(s.cornerBtn, s.cornerBtnLeft)}
           >
             <TgIcon name="back" />
           </MotionIconButton>
         )}
       </AnimatePresence>
+      {onToggleMode && (
+        <IconButton
+          onClick={(e) => onToggleMode({ x: e.clientX, y: e.clientY })}
+          color="#fff"
+          className={classNames(s.cornerBtn, s.cornerBtnRight)}
+          aria-label={t('Dark Mode')}
+        >
+          <TgIcon name="darkmode" />
+        </IconButton>
+      )}
 
       <div className={s.card}>
         <AnimatePresence mode="wait" initial={false}>

@@ -1,11 +1,11 @@
 // Экран авторизации: телефон / QR / код. Порт с MUI sx на SCSS-модуль.
 
-// Полноэкранная подложка по центру.
+// Полноэкранная подложка по центру. Фон рисует <ChatBackground> (обои),
+// поэтому подложка прозрачная.
 .overlay {
   position: fixed;
   inset: 0;
   z-index: 5000;
-  background: var(--tg-appBg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -13,17 +13,43 @@
   padding: 16px;
 }
 
-// Стрелка «назад» — фикс в левом верхнем углу.
-.back {
+// Кнопки-кружки в углах (tweb .closeButton/.themeButton: fixed, top 24px,
+// 2.5rem, полупрозрачная светлая заливка поверх обоев, белая иконка).
+.cornerBtn {
   position: fixed;
   top: 20px;
+  z-index: 100;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.32);
+  }
+}
+.cornerBtnLeft {
   left: 20px;
 }
+.cornerBtnRight {
+  right: 20px;
+}
 
-// Колонка формы.
+// Белая карточка формы по центру поверх обоев (tweb .card: surface,
+// border-radius 2rem, padding).
 .card {
+  position: relative;
+  z-index: 1;
   width: 100%;
-  max-width: 360px;
+  max-width: 384px;
+  background: var(--tg-sidebarBg);
+  border-radius: 32px;
+  padding: 40px 36px;
+  box-shadow: 0 8px 40px -12px rgba(0, 0, 0, 0.25);
 }
 
 // Логотип-кружок с самолётиком.
