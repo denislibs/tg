@@ -153,6 +153,22 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const managers = useManagers()
   const threadRootId = thread?.rootMsgId
   const win = useMessageWindow(isRealChat ? numericChatId : -1, 40, threadRootId)
+  // Тред комментариев: после корневого поста канала (подшит бэком с seq=0)
+  // вставляем клиентскую сервис-плашку «Обсуждение началось» (tweb
+  // generateThreadServiceStartMessage — messageActionDiscussionStarted).
+  const winV = useMemo(() => {
+    if (!thread) return win
+    const idx = win.msgs.findIndex((m) => m.seq === 0 && m.chatId !== numericChatId)
+    if (idx < 0) return win
+    const svc = {
+      id: -900, chatId: numericChatId, seq: 0.5, senderId: 0, type: 'service',
+      text: t('Discussion started'), replyToId: null, mediaId: null,
+      createdAt: win.msgs[idx].createdAt, threadRootId: null, clientId: 'discussion-start',
+    } as (typeof win.msgs)[number]
+    const msgs = [...win.msgs]
+    msgs.splice(idx + 1, 0, svc)
+    return { ...win, msgs }
+  }, [win, thread, numericChatId, t])
 
   // Register the active chat so chatsStore suppresses unread bumps while it's open.
   const setActiveChat = useChatsStore((s) => s.setActiveChat)
@@ -167,7 +183,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     useChatInfoCard({ isRealChat: isRealChat && !thread, isChannel, numericChatId, managers })
   // Message read-model: window Message[] → ConvMsg[] (sender/forward/reply names +
   // stable-ref cache) plus the resolved peers map (reused below for voice/lightbox).
-  const { msgs, peers } = useConvMessages({ numericChatId, isRealChat, isGroup, win, meId })
+  const { msgs, peers } = useConvMessages({ numericChatId, isRealChat, isGroup, win: winV, meId, foreignRootName: thread?.kind === 'comments' ? thread.subtitle : undefined })
   // Open a private chat with a group message's sender (avatar/name click).
   const openSender = (senderId: number, fallbackName: string) => {
     const p = peers.get(senderId)
@@ -306,7 +322,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     forwardIds, doForward, closeForward, openForwardFor,
     viewers, closeViewers,
   } = useMessageActions({
-    chat, numericChatId, isRealChat, win, msgs, meId, pins, managers, accent: accentColor,
+    chat, numericChatId, isRealChat, win: winV, msgs, meId, pins, managers, accent: accentColor,
     setReply, setEditing, setSelectionMode, setSelected, clearSelection, onChatCreated,
   })
 
@@ -319,7 +335,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
 
   // Full-screen media viewer (collect loaded photos/videos, zoom from the thumb).
   const { lightbox, openLightbox, closeLightbox } = useLightbox({
-    win, isRealChat, meId, meName: me?.displayName, peers, chatName: chat.name, lang,
+    win: winV, isRealChat, meId, meName: me?.displayName, peers, chatName: chat.name, lang,
   })
 
   // Channel-only wiring: live subscribe + catch-up, pts persistence, the open
@@ -494,7 +510,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
             ) : (
               <TgIcon name="comments" size={26} color="var(--tg-accent)" />
             )}
-            <div className={s.threadHeaderBody}>
+            <div className={s.threadHeaderBody} onClick={() => setInfoOpen(true)} style={{ cursor: 'pointer' }}>
               <Text noWrap weight={600} size={15.5} color="var(--tg-textPrimary)">{thread.title}</Text>
               <Text noWrap size={12.5} color="var(--tg-textSecondary)">{thread.subtitle ?? chat.name}</Text>
             </div>
@@ -576,7 +592,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
             {!feedLoading && (
               <ChatFeed
                 msgs={msgs}
-                winMsgs={win.msgs}
+                winMsgs={winV.msgs}
                 autoDownload={autoDownload}
                 isRealChat={isRealChat}
                 isGroup={isGroup}

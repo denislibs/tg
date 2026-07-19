@@ -19,9 +19,13 @@ interface UseConvMessagesArgs {
   isGroup: boolean
   win: MessageWindow
   meId: number | null
+  /** имя канала для корневого поста треда комментариев (сообщение из ДРУГОГО
+   * чата, подшитое бэком с seq=0): рендерится входящим от имени канала (tweb —
+   * автофорвард поста, from_id = канал, isOut=false) */
+  foreignRootName?: string
 }
 
-export function useConvMessages({ numericChatId, isRealChat, isGroup, win, meId }: UseConvMessagesArgs): {
+export function useConvMessages({ numericChatId, isRealChat, isGroup, win, meId, foreignRootName }: UseConvMessagesArgs): {
   msgs: ConvMsg[]
   peers: Map<number, Peer>
 } {
@@ -62,12 +66,17 @@ export function useConvMessages({ numericChatId, isRealChat, isGroup, win, meId 
     const cache = convCacheRef.current
     const seen = new Set<string | number>()
     const next = win.msgs.map((m) => {
-      const conv = messageToConvMsg(m, meId, {
+      let conv = messageToConvMsg(m, meId, {
         senderName: resolveSenders ? peers.get(m.senderId)?.displayName : undefined,
         readUpToSeq: peerReadSeq,
         forwardFromName: m.fwdFromUserId != null ? peers.get(m.fwdFromUserId)?.displayName : undefined,
         replyToName: m.replyTo ? peers.get(m.replyTo.senderId)?.displayName : undefined,
       })
+      // Корневой пост канала в треде комментариев: всегда входящий, от имени
+      // канала (даже если автор поста — я), без тиков.
+      if (m.seq === 0 && m.chatId !== numericChatId) {
+        conv = { ...conv, out: false, status: undefined, sender: foreignRootName || conv.sender, senderId: undefined }
+      }
       const key = m.clientId ?? m.id ?? m.seq
       seen.add(key)
       const json = JSON.stringify(conv)
@@ -78,7 +87,7 @@ export function useConvMessages({ numericChatId, isRealChat, isGroup, win, meId 
     })
     for (const key of cache.keys()) if (!seen.has(key)) cache.delete(key)
     return next
-  }, [isRealChat, win.msgs, meId, resolveSenders, peers, peerReadSeq])
+  }, [isRealChat, win.msgs, meId, resolveSenders, peers, peerReadSeq, foreignRootName, numericChatId])
 
   return { msgs, peers }
 }
