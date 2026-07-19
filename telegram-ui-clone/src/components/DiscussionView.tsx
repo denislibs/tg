@@ -181,6 +181,7 @@ export default function DiscussionView({
             discussionsEnabled={false}
             commentCounts={EMPTY_COUNTS}
             highlightSeq={null}
+            unreadDividerSeq={null}
             selecting={false}
             selected={EMPTY_SELECTED}
             ladderActive={false}

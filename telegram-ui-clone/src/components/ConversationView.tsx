@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Text from '../shared/ui/Text'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
@@ -201,10 +201,32 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // Scroll state machine (refs + bottom-pin intent + history pagination + scroll-restore
   // + jump-to-message + scroll-to-bottom + read-marker) — extracted view-model hook.
   // Owns atBottomRef/userScrolledUpRef (passed into useChatSend so a send pins to bottom).
+  // Плашка «Непрочитанные сообщения» (tweb is-first-unread): горизонт чтения
+  // снимается ОДИН раз на маунте (markRead на открытии тут же сдвигает
+  // lastReadSeq в сторе), первый входящий с seq выше горизонта фиксируется и
+  // больше не пересчитывается (tweb attachedUnreadBubble) — live-сообщения и
+  // прочтение плашку не двигают. Компонент ремаунтится на смену чата (key).
+  const openReadRef = useRef<{ lastReadSeq: number; unread: number } | null>(null)
+  if (openReadRef.current === null) {
+    const d = useChatsStore.getState().dialogs.find((x) => x.chatId === numericChatId)
+    openReadRef.current = { lastReadSeq: d?.lastReadSeq ?? 0, unread: d?.unread ?? 0 }
+  }
+  const unreadDividerRef = useRef<number | null>(null)
+  if (unreadDividerRef.current === null && isRealChat && meId != null && openReadRef.current.unread > 0) {
+    const horizon = openReadRef.current.lastReadSeq
+    const first = win.msgs.find((m) => m.seq > horizon && m.senderId !== meId)
+    if (first) unreadDividerRef.current = first.seq
+  }
+  const unreadDividerSeq = unreadDividerRef.current
+
+  // Верхний отступ sticky-плашек (хедер + плейт плеера + пин-бар): его же
+  // использует скролл к плашке непрочитанных, чтобы она не пряталась под хедером.
+  const dateStickyTop = playerOffset + (pins.length > 0 && !searchOpen ? 122 : 66) - (narrow ? 8 : 0)
+
   const {
     scrollRef, contentRef, atBottomRef, userScrolledUpRef,
     highlightSeq, showScrollDown, unreadBelow, jumpToSeq, onScrollDownClick,
-  } = useChatScroll({ numericChatId, isRealChat, win, managers, playerOffset })
+  } = useChatScroll({ numericChatId, isRealChat, win, managers, playerOffset, unreadDividerSeq, unreadStickyTop: dateStickyTop })
   // Multi-select state + press-and-drag selection (extracted view-model hook).
   const { selected, setSelected, setSelectionMode, selecting, toggleSelect, clearSelection, dragSelect } =
     useChatSelection(scrollRef)
@@ -384,7 +406,6 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
 
   // Sticky date-pill offset: below the floating header, plus the player plate
   // and the pinned-message bar when shown. На мобилке хедер на 8px выше (top 8 vs 16).
-  const dateStickyTop = playerOffset + (pins.length > 0 && !searchOpen ? 122 : 66) - (narrow ? 8 : 0)
 
   // Stable handlers for the extracted header/pinned bars so their memo holds
   // across the parent's transient re-renders.
@@ -517,6 +538,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
                 discussionsEnabled={discussionsEnabled}
                 commentCounts={commentCounts}
                 highlightSeq={highlightSeq}
+                unreadDividerSeq={unreadDividerSeq}
                 selecting={selecting}
                 selected={selected}
                 ladderActive={ladderActive}

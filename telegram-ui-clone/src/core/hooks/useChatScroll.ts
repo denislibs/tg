@@ -32,9 +32,15 @@ interface UseChatScrollArgs {
   win: MessageWindow
   managers: ScrollManagers
   playerOffset: number
+  /** seq первого непрочитанного входящего (плашка «Непрочитанные сообщения»);
+   * null — открывать чат обычным пином к низу */
+  unreadDividerSeq: number | null
+  /** высота sticky-зоны над лентой (хедер + плеер + пин-бар) — плашка
+   * непрочитанных позиционируется сразу под ней */
+  unreadStickyTop: number
 }
 
-export function useChatScroll({ numericChatId, isRealChat, win, managers, playerOffset }: UseChatScrollArgs) {
+export function useChatScroll({ numericChatId, isRealChat, win, managers, playerOffset, unreadDividerSeq, unreadStickyTop }: UseChatScrollArgs) {
   const [showScrollDown, setShowScrollDown] = useState(false)
   // Count of new messages that arrived below the viewport while scrolled up
   // (shown as a badge on the scroll-to-bottom button, like tweb).
@@ -225,6 +231,44 @@ export function useChatScroll({ numericChatId, isRealChat, win, managers, player
     if (pendingRestore.current != null) correctScroll()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [win.msgs])
+
+  // Открытие чата с непрочитанными: позиционируем плашку «Непрочитанные
+  // сообщения» у верха вьюпорта (tweb followingUnread → scrollToBubble 'start')
+  // вместо пина к низу. rAF-ретрай, потому что лента появляется позже коммита
+  // окна (useFeedReveal показывает спиннер); после лесенки открытия позицию
+  // дожимаем ещё раз — высоты доезжают. Один раз за открытие.
+  const unreadScrolled = useRef(false)
+  useEffect(() => {
+    if (unreadScrolled.current || unreadDividerSeq == null) return
+    let raf = 0
+    const t0 = performance.now()
+    // Плашка уплыла (лесенка/медиа доложили высоту) — вернуть к верху вьюпорта.
+    const offset = unreadStickyTop + 8
+    const reassert = (target: HTMLElement) => {
+      const sc = scrollRef.current
+      if (!sc || !document.contains(target)) return
+      const d = target.getBoundingClientRect().top - sc.getBoundingClientRect().top - offset
+      if (Math.abs(d) > 24) sc.scrollTop += d
+    }
+    const tryPosition = () => {
+      if (unreadScrolled.current) return
+      const sc = scrollRef.current
+      const target = sc?.querySelector('[data-unread-divider]') as HTMLElement | null
+      if (sc && target) {
+        unreadScrolled.current = true
+        atBottomRef.current = false
+        userScrolledUpRef.current = true // плашка выше низа — якорь к низу снят
+        sc.scrollTop += target.getBoundingClientRect().top - sc.getBoundingClientRect().top - offset
+        window.setTimeout(() => reassert(target), 350)
+        window.setTimeout(() => reassert(target), 900)
+        return
+      }
+      if (performance.now() - t0 < 3000) raf = requestAnimationFrame(tryPosition)
+    }
+    tryPosition()
+    return () => cancelAnimationFrame(raf)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unreadDividerSeq])
 
   // After a jump-to-message window loads, scroll to the target + flash it.
   useLayoutEffect(() => {

@@ -9,7 +9,7 @@ import { memo, type ReactNode } from 'react'
 import Avatar from '../../shared/ui/Avatar'
 import CommentsBar from '../CommentsBar'
 import { peerColor } from '../peerColor'
-import { useLang } from '../../i18n'
+import { useLang, useT } from '../../i18n'
 import { startOfDayMs, dayLabel } from '../../core/dayLabel'
 import MessageRow, { type FeedFns } from './MessageRow'
 import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
@@ -25,6 +25,9 @@ export interface ChatFeedProps {
   discussionsEnabled: boolean
   commentCounts: Map<number, number>
   highlightSeq: number | null
+  /** seq первого непрочитанного входящего — перед ним рисуется плашка
+   * «Непрочитанные сообщения» (tweb is-first-unread); null — плашки нет */
+  unreadDividerSeq: number | null
   selecting: boolean
   selected: Set<number>
   ladderActive: boolean
@@ -38,10 +41,11 @@ export interface ChatFeedProps {
 
 function ChatFeed({
   msgs, winMsgs, isRealChat, isGroup, discussionsEnabled, commentCounts,
-  highlightSeq, selecting, selected, ladderActive, dateStickyTop,
+  highlightSeq, unreadDividerSeq, selecting, selected, ladderActive, dateStickyTop,
   feedFns, autoDownload, onOpenDiscussion,
 }: ChatFeedProps) {
   const [lang] = useLang()
+  const t = useT()
 
   // Group consecutive incoming messages from one sender so a single sticky avatar
   // can ride the scroll alongside the whole run (tweb). Per-day sections: each
@@ -164,6 +168,16 @@ function ChatFeed({
         const dayKey = `day-${startOfDayMs(winMsgs[i].createdAt)}`
         startSection(dayKey, dayPill(dayKey, dayLabel(winMsgs[i].createdAt, lang)))
       }
+    }
+    // Плашка «Непрочитанные сообщения» перед первым непрочитанным входящим
+    // (tweb .is-first-unread::before — полоса на всю ширину, primary на surface).
+    if (isRealChat && unreadDividerSeq != null && winMsgs[i]?.seq === unreadDividerSeq) {
+      flushGroup()
+      body().push(
+        <div key="unread-divider" className={s.unreadDivider} data-unread-divider>
+          {t('Unread Messages')}
+        </div>,
+      )
     }
     if (m.type === 'date') {
       flushGroup()
