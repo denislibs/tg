@@ -23,7 +23,7 @@ import Avatar from '../../shared/ui/Avatar'
 import { peerColor } from '../peerColor'
 import { useManagers } from '../../core/hooks/useManagers'
 import type { MediaMeta } from '../../core/managers/mediaManager'
-import { enterPip, pipSupported } from '../../core/pip'
+import { enterPip, pipSupported, usePortalContainer } from '../../core/pip'
 import s from './MediaLightbox.module.scss'
 
 export interface LightboxItem {
@@ -76,6 +76,7 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
   onClosingStart?: () => void
 }) {
   const managers = useManagers()
+  const portalContainer = usePortalContainer()
   const [idx, setIdx] = useState(index)
   const [meta, setMeta] = useState<MediaMeta | null>(null)
   const [url, setUrl] = useState('')
@@ -375,6 +376,6 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
         </div>
       </div>
     </div>,
-    document.body,
+    portalContainer,
   )
 }

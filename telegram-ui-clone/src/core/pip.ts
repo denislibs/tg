@@ -10,7 +10,15 @@ import { create } from 'zustand'
 // PiP-окно узкое (~420px), но useMediaQuery слушает matchMedia ОСНОВНОГО окна и
 // не переключается — поэтому в PiP приложение принудительно в мобильном layout
 // (одна колонка). Компоненты читают usePipStore и подмешивают narrow.
-export const usePipStore = create<{ active: boolean }>(() => ({ active: false }))
+// win — окно Document PiP (когда активно): порталы (меню/модалки) должны
+// рендериться в его document.body, иначе всплывают в основной вкладке.
+export const usePipStore = create<{ active: boolean; win: Window | null }>(() => ({ active: false, win: null }))
+
+// Контейнер для createPortal: body PiP-окна, пока оно открыто, иначе основной.
+export function usePortalContainer(): HTMLElement {
+  const win = usePipStore((st) => st.win)
+  return win?.document.body ?? document.body
+}
 
 interface DocumentPiP {
   requestWindow: (opts?: { width?: number; height?: number }) => Promise<Window>
@@ -52,7 +60,7 @@ export async function enterAppPip(labels: { title: string; hint: string; back: s
     return false
   }
   appPipActive = true
-  usePipStore.setState({ active: true })
+  usePipStore.setState({ active: true, win: pip })
 
   // Перенести стили (link/style) в окно PiP.
   for (const node of document.head.querySelectorAll('style, link[rel="stylesheet"]')) {
@@ -91,7 +99,7 @@ export async function enterAppPip(labels: { title: string; hint: string; back: s
   const restore = () => {
     if (!appPipActive) return
     appPipActive = false
-    usePipStore.setState({ active: false })
+    usePipStore.setState({ active: false, win: null })
     stub.replaceWith(root)
   }
   pip.addEventListener('pagehide', restore)

@@ -813,10 +813,10 @@ function SharedMedia({ tab, onTab, chatId, members, savedDialogs, gifts, onOpenG
     </Text>
   )
 
-  // Порядок табов: Участники/Чаты → Подарки → медиа-табы БЕЗ пустых (tweb:
-  // показываются только непустые). Пока totals не загружены — медиа-табы
-  // держим, чтобы не мигало; после загрузки скрываем те, где total === 0.
-  const mediaTabs = SHARED_TABS.filter((name) => totals[TAB_FILTER[name]] !== 0)
+  // Порядок табов: Участники/Чаты → Подарки → непустые медиа-табы (tweb:
+  // показываются только непустые). Медиа-таб появляется, лишь когда его total
+  // загрузился и > 0 — иначе таб-бар мигал бы пустыми на открытии.
+  const mediaTabs = SHARED_TABS.filter((name) => (totals[TAB_FILTER[name]] ?? 0) > 0)
   const tabOrder = [
     ...(savedDialogs ? ['Chats'] : members ? ['Members'] : []),
     ...(gifts && gifts.length > 0 ? ['Gifts'] : []),

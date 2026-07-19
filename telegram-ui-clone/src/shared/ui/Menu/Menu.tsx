@@ -2,6 +2,7 @@ import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { CSSProperties, ReactNode } from 'react'
 import classNames from '../../lib/classNames'
+import { usePortalContainer } from '../../../core/pip'
 import s from './Menu.module.scss'
 
 interface MenuProps {
@@ -23,6 +24,7 @@ interface MenuProps {
 // identically. The caller positions it via `style` (top/left or right/bottom +
 // transform-origin) so the panel grows from the anchor (e.g. the click corner).
 export default function Menu({ open, onClose, onExitComplete, style, className, zIndex, children }: MenuProps) {
+  const container = usePortalContainer()
   return createPortal(
     <>
       {open && (
@@ -51,6 +53,6 @@ export default function Menu({ open, onClose, onExitComplete, style, className, 
         )}
       </AnimatePresence>
     </>,
-    document.body,
+    container,
   )
 }

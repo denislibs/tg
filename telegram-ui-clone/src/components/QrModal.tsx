@@ -18,6 +18,7 @@ import { resolvePreset, PRESET_MODE } from '../theme'
 import { WALLPAPER_PRESETS } from '../wallpapers'
 import patternUrl from '../assets/pattern.svg'
 import logoUrl from '../assets/logo_padded.svg'
+import { usePortalContainer } from '../core/pip'
 import s from './QrModal.module.scss'
 
 const EASE: [number, number, number, number] = [0.4, 0, 0.2, 1]
@@ -78,6 +79,7 @@ export interface QrModalProps {
 
 export default function QrModal({ open, onClose, url, label, avatar }: QrModalProps) {
   const t = useT()
+  const portalContainer = usePortalContainer()
   const { themeChoice } = useSettings()
   const [themeIdx, setThemeIdx] = useState(0)
   // tweb: дефолт луны — текущая яркость темы приложения
@@ -256,7 +258,7 @@ export default function QrModal({ open, onClose, url, label, avatar }: QrModalPr
         </motion.div>
       )}
     </AnimatePresence>,
-    document.body,
+    portalContainer,
   )
 }
 

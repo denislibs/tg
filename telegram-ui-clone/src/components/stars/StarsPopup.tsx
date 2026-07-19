@@ -8,6 +8,7 @@ import Text from '../../shared/ui/Text'
 import TgIcon from '../TgIcon'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useStarsStore } from '../../stores/starsStore'
+import { usePortalContainer } from '../../core/pip'
 import { useT } from '../../i18n'
 import StarIcon from './StarIcon'
 import s from './stars.module.scss'
@@ -20,6 +21,7 @@ export default function StarsPopup({ open, onClose }: { open: boolean; onClose: 
   const managers = useManagers()
   const balance = useStarsStore((st) => st.balance)
   const [busy, setBusy] = useState(false)
+  const portalContainer = usePortalContainer()
 
   const topUp = async (amount: number) => {
     if (busy) return
@@ -88,6 +90,6 @@ export default function StarsPopup({ open, onClose }: { open: boolean; onClose: 
         </motion.div>
       )}
     </AnimatePresence>,
-    document.body,
+    portalContainer,
   )
 }

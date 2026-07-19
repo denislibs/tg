@@ -8,6 +8,7 @@ import Text from '../../shared/ui/Text'
 import TgIcon from '../TgIcon'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useStarsStore } from '../../stores/starsStore'
+import { usePortalContainer } from '../../core/pip'
 import { useT } from '../../i18n'
 import type { GiftInfo } from '../../core/managers/starsManager'
 import StarIcon from './StarIcon'
@@ -27,6 +28,7 @@ export default function GiftInfoPopup({
   const managers = useManagers()
   const [busy, setBusy] = useState(false)
   const [hidden, setHidden] = useState(gift.hidden)
+  const portalContainer = usePortalContainer()
 
   const toggleHidden = async () => {
     if (busy) return
@@ -110,6 +112,6 @@ export default function GiftInfoPopup({
         </motion.div>
       </motion.div>
     </AnimatePresence>,
-    document.body,
+    portalContainer,
   )
 }

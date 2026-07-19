@@ -11,6 +11,7 @@ import TgSwitch from '../TgSwitch'
 import TgIcon from '../TgIcon'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useStarsStore } from '../../stores/starsStore'
+import { usePortalContainer } from '../../core/pip'
 import { useT } from '../../i18n'
 import type { StarGift } from '../../core/managers/starsManager'
 import StarIcon from './StarIcon'
@@ -37,6 +38,7 @@ export default function SendGiftPopup({
   const [anonymous, setAnonymous] = useState(false)
   const [busy, setBusy] = useState(false)
   const [topupOpen, setTopupOpen] = useState(false)
+  const portalContainer = usePortalContainer()
 
   useEffect(() => {
     if (!open) return
@@ -153,6 +155,6 @@ export default function SendGiftPopup({
 
       <StarsPopup open={topupOpen} onClose={() => setTopupOpen(false)} />
     </>,
-    document.body,
+    portalContainer,
   )
 }

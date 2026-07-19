@@ -15,6 +15,7 @@ import Emoji from '../emoji/Emoji'
 import EmojiPicker from '../EmojiPicker'
 import TgIcon from '../TgIcon'
 import { useT } from '../../i18n'
+import { usePortalContainer } from '../../core/pip'
 import classNames from '../../shared/lib/classNames'
 import s from './MessageContextMenu.module.scss'
 
@@ -42,6 +43,7 @@ export interface MessageContextMenuProps {
 
 function MessageContextMenu({ menu, items, onClose, onExited, onReaction }: MessageContextMenuProps) {
   const t = useT()
+  const portalContainer = usePortalContainer()
   // Шеврон «ещё» разворачивает полный пикер эмодзи на месте меню (tweb EmojiTab).
   const [expanded, setExpanded] = useState(false)
   // The "Viewers" action needs the click coordinates; capture the last pointer
@@ -78,7 +80,7 @@ function MessageContextMenu({ menu, items, onClose, onExited, onReaction }: Mess
           </AnimatePresence>
         </div>
       </>,
-      document.body,
+      portalContainer,
     )
   }
 
