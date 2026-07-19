@@ -1,0 +1,102 @@
+// Панель топиков форума в левом сайдбаре (tweb .topics-container поверх
+// списка чатов): шапка «назад + группа + N тем + меню», ряды 64px без аватара
+// (tweb topic-dialogs-override: min-height 4rem), иконка темы в строке названия.
+.root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--tg-sidebarBg);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  flex: 0 0 auto;
+}
+
+.headerBody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 8px 8px;
+
+  &::-webkit-scrollbar { width: 6px; }
+  &::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; transition: background 0.2s; }
+  &:hover::-webkit-scrollbar-thumb { background: var(--tg-textFaint); }
+}
+
+// ряд темы (tweb SortedDialogList itemSize 64, noAvatar — иконка в заголовке)
+.row {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  min-height: 64px; // tweb .topic-dialogs-override .chatlist-chat { min-height: 4rem }
+  padding: 6px 10px 6px 12px; // tweb padding-inline-start: .75rem
+  border-radius: 12px;
+  cursor: pointer;
+
+  @media (hover: hover) {
+    &:hover { background: var(--tg-hover); }
+  }
+}
+
+.rowActive {
+  background: var(--tg-accent);
+
+  // подсветка активной темы: текст/иконки — белым (как выбранный диалог)
+  :global(.tgico), span {
+    color: #fff !important;
+  }
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preview {
+  padding-left: 28px; // текст под названием, иконка (20) + gap (8) — как tweb
+}
+
+// иконка темы (tweb topicAvatar #topic-icon, --size 1.25rem)
+.topicIcon {
+  border-radius: 30% 30% 30% 8%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+}
+
+.createBody {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 16px 16px;
+}
+
+.titleInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 16px;
+  color: var(--tg-textPrimary);
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--tg-hover);
+
+  &:focus { border-bottom-color: var(--tg-accent); }
+  &::placeholder { color: var(--tg-textFaint); }
+}

@@ -40,7 +40,6 @@ import { useComposerDraft } from '../core/hooks/useComposerDraft'
 import { useMentionPeers } from '../core/hooks/useMentionPeers'
 import CreatePollPopup from './CreatePollPopup'
 import ScheduledView from './ScheduledView'
-import ForumView from './ForumView'
 import { useGroupCallStore } from '../stores/groupCallStore'
 import { joinGroupCall } from '../core/calls/groupCallEngine'
 
@@ -446,16 +445,9 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     )
   }
 
-  // Форум-группа (tweb ForumTab): вместо ленты — список тем + тред темы.
-  if (isRealChat && chat.isForum) {
-    return (
-      <div className={s.root}>
-        <div className={classNames(s.column, narrow ? s.columnNarrow : '')}>
-          <ForumView chatId={numericChatId} chatName={chat.name} />
-        </div>
-      </div>
-    )
-  }
+  // Форум-группы здесь НЕ перехватываются: как в tweb, клик по форуму открывает
+  // панель топиков в ЛЕВОМ сайдбаре (Sidebar → TopicsPanel), тред топика —
+  // TopicView в колонке чата, а «Показать как сообщения» ведёт сюда — в обычный чат.
 
   return (
     <CallProvider chat={chat}>

@@ -29,6 +29,8 @@ import NewGroupFlow from './NewGroupFlow'
 import NewChannelFlow from './NewChannelFlow'
 import NewPrivateChat from './NewPrivateChat'
 import SearchView from './SearchView'
+import TopicsPanel from './TopicsPanel'
+import type { TopicRow } from '../core/managers/groupsManager'
 import { useManagers } from '../core/hooks/useManagers'
 import type { SearchResult } from '../core/managers/channelsManager'
 import InputSearch from '../shared/ui/InputSearch'
@@ -40,6 +42,10 @@ interface Props {
   chats: Chat[]
   selectedId: string
   onSelect: (id: string) => void
+  /** клик по теме в панели топиков форума — открыть тред в колонке чата */
+  onOpenTopic: (chatId: number, topic: TopicRow) => void
+  /** тема, открытая в колонке чата (подсветка ряда в панели топиков) */
+  activeTopicId: number | null
   onCreateGroup: (name: string, memberIds: number[], photo: import('./NewGroupFlow').GroupPhoto | null) => void
   onCreateChannel: (name: string, description: string) => void
   onToggleMode: (coords?: { x: number; y: number }) => void
@@ -54,6 +60,8 @@ export default function Sidebar({
   chats,
   selectedId,
   onSelect,
+  onOpenTopic,
+  activeTopicId,
   onCreateGroup,
   onCreateChannel,
   onToggleMode,
@@ -95,6 +103,19 @@ export default function Sidebar({
   // Архив (tweb folder_id=1): архивные чаты уходят из основного списка в
   // псевдо-закреплённый ряд «Архив»; клик открывает отдельный слайд-список.
   const [archiveOpen, setArchiveOpen] = useState(false)
+
+  // Форум-группа (tweb toggleForumTabByPeerId): клик по ней открывает панель
+  // топиков СЛЕВА поверх списка чатов — правая колонка не трогается. «Показать
+  // как сообщения» открывает чат обычным видом (onSelect напрямую).
+  const [forumChat, setForumChat] = useState<Chat | null>(null)
+  const handleSelect = (id: string) => {
+    const c = chats.find((x) => x.id === id)
+    if (c?.isForum) {
+      setForumChat(c)
+      return
+    }
+    onSelect(id)
+  }
   const visibleChats = useMemo(() => chats.filter((c) => !c.archived), [chats])
   const archivedChats = useMemo(() => chats.filter((c) => !!c.archived), [chats])
 
@@ -236,7 +257,7 @@ export default function Sidebar({
           ref={listScrollRef}
           chats={filtered}
           selectedId={selectedId}
-          onSelect={onSelect}
+          onSelect={handleSelect}
           loaded={loaded}
           folder={folderId}
           folderOrder={tabOrder}
@@ -269,7 +290,7 @@ export default function Sidebar({
                     key={chat.id}
                     chat={chat}
                     selected={chat.id === selectedId}
-                    onSelect={onSelect}
+                    onSelect={handleSelect}
                   />
                 ))}
                 {archivedChats.length === 0 && (
@@ -278,6 +299,31 @@ export default function Sidebar({
                   </div>
                 )}
               </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Панель топиков форума (tweb .topics-container — слайд поверх списка) */}
+        <AnimatePresence>
+          {forumChat && (
+            <motion.div
+              className={s.archiveOverlay}
+              initial={{ x: 80, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: 80, opacity: 0 }}
+              transition={{ duration: 0.22, ease: EASE }}
+            >
+              <TopicsPanel
+                chatId={Number(forumChat.id)}
+                chatName={forumChat.name}
+                activeTopicId={activeTopicId}
+                onClose={() => setForumChat(null)}
+                onOpenTopic={(topic) => onOpenTopic(Number(forumChat.id), topic)}
+                onViewAsMessages={() => {
+                  setForumChat(null)
+                  onSelect(forumChat.id)
+                }}
+              />
             </motion.div>
           )}
         </AnimatePresence>
@@ -307,7 +353,7 @@ export default function Sidebar({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               transition={{ duration: 0.22, ease: EASE }}
             >
-              <SearchView query={query} chats={chats} onSelect={onSelect} searchReal={searchReal} onJoin={onJoin} onOpenPeer={onOpenPeer} />
+              <SearchView query={query} chats={chats} onSelect={handleSelect} searchReal={searchReal} onJoin={onJoin} onOpenPeer={onOpenPeer} />
             </motion.div>
           </div>
         )}

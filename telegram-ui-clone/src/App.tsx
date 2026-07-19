@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useManagers } from './core/hooks/useManagers'
+import TopicView from './components/TopicView'
+import type { TopicRow } from './core/managers/groupsManager'
 import { uiEvents } from './core/hooks/uiEvents'
 import GroupCallScreen from './components/GroupCallScreen'
 import { useGroupCallStore } from './stores/groupCallStore'
@@ -46,6 +48,9 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   const t = useT()
   const dialogs = useChatsStore((s) => s.dialogs)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Открытый тред форум-топика (tweb setPeer({peerId, threadId})): рендерится в
+  // колонке чата вместо ConversationView; выбор обычного чата его закрывает.
+  const [openTopic, setOpenTopic] = useState<{ chatId: number; topic: TopicRow } | null>(null)
   // A peer we've opened a conversation with but who has no dialog yet: shown as a
   // draft chat. No sidebar entry is created until the first message is sent.
   const [draftPeer, setDraftPeer] = useState<OpenPeer | null>(null)
@@ -203,6 +208,14 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   const selectChat = useCallback((id: string) => {
     setSelectedId(id)
     setDraftPeer(null)
+    setOpenTopic(null)
+  }, [])
+
+  // Клик по теме в панели топиков: тред в колонке чата, форум подсвечен в списке.
+  const openTopicThread = useCallback((chatId: number, topic: TopicRow) => {
+    setOpenTopic({ chatId, topic })
+    setSelectedId(String(chatId))
+    setDraftPeer(null)
   }, [])
 
   // Клик по браузерному уведомлению: sw.js фокусирует вкладку и шлёт
@@ -276,6 +289,8 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
       initialQuery={deepDomain}
       selectedId={selectedId ?? ''}
       onSelect={selectChat}
+      onOpenTopic={openTopicThread}
+      activeTopicId={openTopic?.topic.id ?? null}
       onCreateGroup={(name, memberIds, photo) => {
         void createGroup(name, memberIds, photo)
       }}
@@ -290,7 +305,15 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   )
 
   const chatArea =
-    selected ? (
+    openTopic ? (
+      <TopicView
+        key={`topic-${openTopic.chatId}-${openTopic.topic.id}`}
+        chatId={openTopic.chatId}
+        topic={openTopic.topic}
+        groupName={chatList.find((c) => c.id === String(openTopic.chatId))?.name ?? ''}
+        onBack={() => setOpenTopic(null)}
+      />
+    ) : selected ? (
       <ConversationView key={selectedId} chat={selected} onBack={backToList} onOpenPeer={openPeer} onChatCreated={onChatCreated} />
     ) : (
       <div className={s.empty}>
