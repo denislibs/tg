@@ -29,9 +29,8 @@
   position: relative;
 }
 
-// шапка: закрыть + заголовок + (ред.). Absolute поверх контента — над фото
-// прозрачная (tweb .profile-container:not(.header-filled) .sidebar-header:
-// background transparent, position absolute, z-index 3, transition .1s)
+// шапка: закрыть + заголовок + (ред.). Absolute поверх скролла — при скролле
+// до табов заливается (tweb sidebar-header: position absolute, z-index 3).
 .header {
   position: absolute;
   top: 0;
@@ -42,13 +41,14 @@
   align-items: center;
   gap: 12px;
   padding: 0 12px;
-  background: transparent;
+  background: var(--tg-sectionBackdrop);
   transition: background-color 0.1s ease-in-out;
 }
 
-// заливка при скролле до табов (tweb .header-filled: var(--surface-color))
+// при скролле до табов шапка отделяется тенью снизу (tweb .header-filled:
+// box-shadow section-box-shadow) — фон тот же, что у панели
 .headerFilled {
-  background-color: var(--tg-sectionBackdrop);
+  box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.16);
 }
 
 // стопка заголовков шапки: «Информация» ↔ «имя + счётчик» (tweb TransitionSlider)
@@ -95,7 +95,7 @@
   padding-top: 56px;
 }
 
-// аватар + имя (вариант без фото — tweb needSimpleAvatar)
+// аватар + имя по центру (tweb collapsed / avatar-120: круглый аватар, имя, статус)
 .avatarBlock {
   display: flex;
   flex-direction: column;
@@ -105,9 +105,9 @@
   padding-bottom: 20px;
 }
 
-// --- большая аватарка профиля (tweb _profile.scss .profile-avatars-*) ---
+// --- развёрнутое большое фото (tweb unfold / .profile-avatars-container) ---
 
-// квадрат на всю ширину панели (padding-bottom 100%, min-height 276px)
+// квадрат на всю ширину панели (tweb padding-bottom 100%, min-height 276px)
 .profileAvatars {
   position: relative;
   width: 100%;
@@ -116,7 +116,9 @@
   min-height: 276px;
   cursor: pointer;
   z-index: 1;
-  margin-bottom: 12px; // tweb .profile-content-delimiter (--section-padding-bottom)
+  margin-bottom: 12px;
+  overflow: hidden;
+  transform-origin: 50% 24%; // морф-разворот из круглого аватара (центр-верх)
 }
 
 .profilePhoto {
@@ -138,7 +140,7 @@
   pointer-events: none;
 }
 
-// верхний градиент под прозрачной шапкой (tweb -gradient-top: scaleY(-1))
+// верхний градиент под шапкой (tweb -gradient-top: scaleY(-1))
 .avatarsGradientTop {
   top: 0;
   bottom: auto;
@@ -148,8 +150,8 @@
 // имя+статус поверх фото, слева внизу (tweb .profile-avatars-info)
 .avatarsInfo {
   position: absolute;
-  inset-inline: 16px; // 1rem
-  bottom: 7px; // .4375rem
+  inset-inline: 16px;
+  bottom: 7px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -157,7 +159,6 @@
   pointer-events: none;
 }
 
-// tweb .profile-name: 20/24 bold
 .profileName {
   max-width: 100%;
   overflow: hidden;
@@ -168,8 +169,6 @@
   font-weight: 700;
 }
 
-// tweb .profile-subtitle: 14px, line-height 24, opacity .7 (need-white
-// --secondary-opacity-max)
 .profileSubtitle {
   max-width: 100%;
   overflow: hidden;
@@ -212,10 +211,11 @@
 
 // --- шаред-медиа (табы Медиа/Файлы/Ссылки/Музыка/Голосовые) ---
 
-// блок табов+контента не ниже вьюпорта тела панели — табы всегда доезжают
-// до шапки при скролле (tweb _searchSuper.scss: min-height var(--super-height))
+// блок табов+контента ростом с тело панели — при скролле табы всегда доезжают
+// до шапки, даже когда контента мало (tweb _searchSuper.scss: min-height
+// var(--super-height))
 .sharedWrap {
-  min-height: calc(100% - 56px);
+  min-height: 100%;
 }
 
 // обёртка framed-таб-ряда (выравнивание с карточками секций)

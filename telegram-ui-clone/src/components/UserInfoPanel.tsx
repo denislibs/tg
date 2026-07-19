@@ -140,16 +140,22 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
 
   const title = isSaved ? 'Saved Messages' : isChannel ? 'Channel Info' : isGroup ? 'Group Info' : 'User Info'
 
-  // ── tweb-шапка профиля: фото на всю ширину, шапка прозрачная поверх него;
-  // при скролле до табов шаред-медиа — заливка и «имя + счётчик таба»
-  // (tweb sharedMedia.tsx setIsSharedMedia / peerProfileAvatars) ──
-  const hasPhoto = !!headerAvatarSrc && !isSaved
+  // ── аватар (tweb peerProfileAvatars): по дефолту свёрнут в круг (collapsed);
+  // клик разворачивает в большое фото на всю ширину (unfold), скролл вниз
+  // сворачивает обратно ──
+  const [expanded, setExpanded] = useState(false)
+
+  // ── скролл-поведение шапки: при скролле до табов шаред-медиа шапка
+  // заливается и показывает «имя + счётчик активного таба» (tweb sharedMedia.tsx
+  // setIsSharedMedia / TransitionSlider) ──
   const [filled, setFilled] = useState(false)
   const bodyRef = useRef<HTMLDivElement>(null)
   const tabsBarRef = useRef<HTMLDivElement>(null)
   const onBodyScroll = () => {
     const body = bodyRef.current, bar = tabsBarRef.current
     if (!body || !bar) return
+    // скролл вниз сворачивает развёрнутое фото обратно в круг (tweb collapse)
+    if (body.scrollTop > 4) setExpanded(false)
     // порог tweb: верх таб-плашки доехал до низа шапки (top <= OFFSET)
     const top = bar.getBoundingClientRect().top - body.getBoundingClientRect().top
     setFilled(top <= HEADER_H + 1)
@@ -171,20 +177,18 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
       ? membersLabel(realMembers.length, isChannel)
       : chat.status
 
-  // просмотрщик фото профиля (tweb openAvatarViewer: клик по центру аватарки)
-  const avatarImgRef = useRef<HTMLImageElement>(null)
+  // просмотрщик фото профиля (tweb: клик по аватарке открывает фото)
+  const avatarWrapRef = useRef<HTMLDivElement>(null)
   const [avatarView, setAvatarView] = useState<{
     originRect: { top: number; left: number; width: number; height: number }
     originEl: HTMLElement
   } | null>(null)
   const openAvatarViewer = () => {
-    const el = avatarImgRef.current
-    if (!el) return
+    const el = avatarWrapRef.current
+    if (!el || !headerAvatarSrc) return
     const r = el.getBoundingClientRect()
     setAvatarView({ originRect: { top: r.top, left: r.left, width: r.width, height: r.height }, originEl: el })
   }
-
-  const overPhoto = hasPhoto && !filled
 
   // Ссылка группы в инфо-карточке: публичный username, иначе первая инвайт-ссылка.
   const inviteUrl = chat.username
@@ -240,8 +244,11 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
             иконками (tweb .profile-container:not(.header-filled) .sidebar-header
             + .need-white); у табов — заливка, X→назад, «имя + счётчик таба»
             слайд-фейдом (tweb setIsSharedMedia + TransitionSlider slide-fade). */}
+        {/* Шапка панели (tweb sidebar-header): X/карандаш; при скролле до табов
+            заливается и показывает «имя + счётчик активного таба» слайд-фейдом,
+            X→стрелка назад (tweb setIsSharedMedia + TransitionSlider). */}
         <div className={classNames(s.header, filled ? s.headerFilled : '')}>
-          <IconButton onClick={filled ? scrollBackToProfile : onClose} color={overPhoto ? '#fff' : 'var(--tg-textSecondary)'}>
+          <IconButton onClick={filled ? scrollBackToProfile : onClose} color="var(--tg-textSecondary)">
             <TgIcon name={filled ? 'back' : 'close'} />
           </IconButton>
           <div className={s.headerTitles}>
@@ -267,43 +274,66 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
                   exit={{ y: -14, opacity: 0 }}
                   transition={{ duration: 0.2, ease: EASE }}
                 >
-                  <Text noWrap size={19} weight={600} color={overPhoto ? '#fff' : 'var(--tg-textPrimary)'}>{t(title)}</Text>
+                  <Text noWrap size={19} weight={600} color="var(--tg-textPrimary)">{t(title)}</Text>
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
           {(isGroup || isChannel) && (
-            <IconButton onClick={() => setEditing(true)} color={overPhoto ? '#fff' : 'var(--tg-textSecondary)'}>
+            <IconButton onClick={() => setEditing(true)} color="var(--tg-textSecondary)">
               <TgIcon name="edit" />
             </IconButton>
           )}
         </div>
 
-        <div ref={bodyRef} className={classNames(s.body, hasPhoto ? '' : s.bodyPad)} onScroll={onBodyScroll}>
-          {hasPhoto ? (
-            /* tweb profile-avatars-container: фото-квадрат на всю ширину, нижний/
-               верхний градиенты, имя+статус белым слева внизу; клик — просмотрщик */
-            <div className={s.profileAvatars} onClick={openAvatarViewer}>
-              <img ref={avatarImgRef} className={s.profilePhoto} src={headerAvatarSrc} alt="" draggable={false} />
-              <div className={s.avatarsGradient} />
-              <div className={classNames(s.avatarsGradient, s.avatarsGradientTop)} />
-              <div className={s.avatarsInfo}>
-                <div className={s.profileName}>{chat.name}</div>
-                <div className={s.profileSubtitle}>{subtitleText}</div>
-              </div>
-            </div>
-          ) : (
-            /* без фото — центрированный аватар (tweb needSimpleAvatar: avatar-120) */
-            <div className={s.avatarBlock}>
-              <Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={headerAvatarSrc} size="profile" />
-              <Text size={21} weight={600} color="var(--tg-textPrimary)" style={{ marginTop: '8px', textAlign: 'center', paddingLeft: '16px', paddingRight: '16px' }}>
-                {chat.name}
-              </Text>
-              <Text size={14} color="var(--tg-textSecondary)">
-                {subtitleText}
-              </Text>
-            </div>
-          )}
+        <div ref={bodyRef} className={classNames(s.body, s.bodyPad)} onScroll={onBodyScroll}>
+          {/* Аватар: свёрнут в круг по центру (tweb collapsed) → клик разворачивает
+              в большое фото на всю ширину (unfold) → клик по нему открывает
+              просмотрщик; скролл сворачивает обратно (onBodyScroll). */}
+          <AnimatePresence mode="wait" initial={false}>
+            {expanded && headerAvatarSrc ? (
+              <motion.div
+                key="big"
+                ref={avatarWrapRef}
+                className={s.profileAvatars}
+                onClick={openAvatarViewer}
+                initial={{ opacity: 0, scale: 0.35 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.35 }}
+                transition={{ duration: 0.24, ease: EASE }}
+              >
+                <img className={s.profilePhoto} src={headerAvatarSrc} alt="" draggable={false} />
+                <div className={s.avatarsGradient} />
+                <div className={classNames(s.avatarsGradient, s.avatarsGradientTop)} />
+                <div className={s.avatarsInfo}>
+                  <div className={s.profileName}>{chat.name}</div>
+                  <div className={s.profileSubtitle}>{subtitleText}</div>
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="small"
+                className={s.avatarBlock}
+                initial={{ opacity: 0, scale: 1.1 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 1.1 }}
+                transition={{ duration: 0.18, ease: EASE }}
+              >
+                <div
+                  onClick={() => { if (headerAvatarSrc) setExpanded(true) }}
+                  style={{ cursor: headerAvatarSrc ? 'pointer' : 'default', borderRadius: '50%' }}
+                >
+                  <Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={headerAvatarSrc} size="profile" />
+                </div>
+                <Text size={21} weight={600} color="var(--tg-textPrimary)" style={{ marginTop: '8px', textAlign: 'center', paddingLeft: '16px', paddingRight: '16px' }}>
+                  {chat.name}
+                </Text>
+                <Text size={14} color="var(--tg-textSecondary)">
+                  {subtitleText}
+                </Text>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Info card — те же секции, что в настройках (settings/kit Section+Row).
               В «Избранном» её нет вовсе (tweb: свой профиль без phone/username/bio). */}
@@ -499,7 +529,7 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
             onOpenPeer={onOpenPeer}
             onEditMember={setEditMember}
             navRef={tabsBarRef}
-            stickyTop={HEADER_H}
+            stickyTop={0}
             onCount={(name, n) => setTabCounts((c) => (c[name] === n ? c : { ...c, [name]: n }))}
           />
           </div>
