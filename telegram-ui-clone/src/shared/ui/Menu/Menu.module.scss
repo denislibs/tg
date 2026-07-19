@@ -10,11 +10,6 @@
   z-index: 2000;
 }
 
-// inline-вариант: позиционирует владелец (flex-колонка), не viewport
-.inline {
-  position: static;
-}
-
 .panel {
   position: fixed;
   z-index: 2001;
@@ -25,4 +20,10 @@
   backdrop-filter: blur(50px);
   -webkit-backdrop-filter: blur(50px);
   box-shadow: var(--tg-menuShadow);
+
+  // inline-вариант: позиционирует владелец (flex-колонка), не viewport
+  &.inline {
+    position: static;
+    z-index: auto;
+  }
 }

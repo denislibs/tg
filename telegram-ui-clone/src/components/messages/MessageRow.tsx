@@ -96,8 +96,11 @@ export interface FeedFns {
 
 // Чипы реакций под сообщением (tweb ReactionsElement, layout Block): пилюля 30px
 // с эмодзи + счётчиком; «моя» реакция — сплошной акцентный фон (is-chosen).
-function MessageReactions({ reactions, onToggle }: {
+function MessageReactions({ reactions, rowLive, onToggle }: {
   reactions: NonNullable<ConvMsg['reactions']>
+  /** ряд уже был смонтирован, когда появились реакции (live-добавление) —
+   * анимируем и первый чип сообщения, не только добавленные позже */
+  rowLive: boolean
   onToggle: (emoji: string) => void
 }) {
   // Отличаем чипы из первичного рендера (история — без анимации, tweb
@@ -107,7 +110,7 @@ function MessageReactions({ reactions, onToggle }: {
   return (
     <div className={s.reactions}>
       {reactions.map((r) => (
-        <ReactionChip key={r.emoji} r={r} live={liveRef.current} onToggle={onToggle} />
+        <ReactionChip key={r.emoji} r={r} live={rowLive || liveRef.current} onToggle={onToggle} />
       ))}
     </div>
   )
@@ -176,9 +179,12 @@ function MessageRow({
 
   // Реакции: внутри бабла у text/poll/media/album; у остальных типов (voice,
   // sticker, document, …) — плавающей строкой под баблом (tweb reactions-out).
+  // rowLive: реакции появились у УЖЕ смонтированного ряда → анимируем вход.
+  const rowLiveRef = useRef(false)
+  useEffect(() => { rowLiveRef.current = true }, [])
   const chips =
     m.reactions?.length && m.id != null && !selecting ? (
-      <MessageReactions reactions={m.reactions} onToggle={(emoji) => feedFns.toggleReaction(m.id!, emoji)} />
+      <MessageReactions reactions={m.reactions} rowLive={rowLiveRef.current} onToggle={(emoji) => feedFns.toggleReaction(m.id!, emoji)} />
     ) : null
   const chipsInline =
     ((m.type === 'text' && !bigEmoji) || m.type === 'poll' || m.type === 'album'
@@ -268,7 +274,7 @@ function MessageRow({
                 onToggle={feedFns.toggleSelect}
                 onOpen={feedFns.openLightbox}
                 autoDownload={autoDownload}
-                radius={m.text ? '14px 14px 0 0' : '14px'}
+                radius={m.text || chips ? '14px 14px 0 0' : '14px'}
               />
               {m.text ? (
                 <div className={s.mediaCaption}>
@@ -317,7 +323,7 @@ function MessageRow({
                 autoDownload={autoDownload}
                 localUrl={m.localUrl}
                 clientId={m.clientId}
-                radius={(m.type === 'photo' || m.type === 'video') ? (m.text ? '14px 14px 0 0' : '14px') : undefined}
+                radius={(m.type === 'photo' || m.type === 'video') ? (m.text || chips ? '14px 14px 0 0' : '14px') : undefined}
               />
               {m.text ? (
                 <div className={s.mediaCaption}>
