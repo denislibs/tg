@@ -10,7 +10,7 @@ import type { PublicAccount } from '../core/auth/accounts'
 import { ANIMATE_AUTH_KEY, PREV_ACCOUNT_KEY, playChatlistExit, playMainScreenExit } from '../core/accountTransition'
 import { useSettings } from '../settings'
 import { usePwaStore } from '../core/pwa'
-import { triggerPip, pipSupported } from '../core/pip'
+import { enterAppPip, pipSupported } from '../core/pip'
 import { uiEvents } from '../core/hooks/uiEvents'
 import type { ToggleMode } from '../App'
 import { useT } from '../i18n'
@@ -110,7 +110,12 @@ export default function MainMenu({
       icon: 'pip',
       label: 'Picture in Picture',
       onClick: () => {
-        void triggerPip().then((ok) => { if (!ok) uiEvents.emit('ui:toast', t('Open a video to use Picture-in-Picture.')) })
+        const labels = {
+          title: t('Telegram is open in Picture-in-Picture mode'),
+          hint: t('To return to the tab, click the button here or the icon in the floating window.'),
+          back: t('Back to Tab'),
+        }
+        void enterAppPip(labels).then((ok) => { if (!ok) uiEvents.emit('ui:toast', t('Picture-in-Picture is not supported in this browser.')) })
         close()
       },
       show: pipSupported(),
