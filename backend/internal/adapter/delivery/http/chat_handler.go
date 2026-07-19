@@ -914,6 +914,9 @@ func messageJSON(m domain.Message) map[string]any {
 	if len(m.Entities) > 0 {
 		j["entities"] = m.Entities
 	}
+	if len(m.Reactions) > 0 {
+		j["reactions"] = m.Reactions
+	}
 	if m.PollID != nil {
 		j["poll_id"] = *m.PollID
 	}

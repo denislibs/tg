@@ -5,7 +5,7 @@
 // and (b) the window survives a ConversationView unmount. `useMessageWindow`
 // is a thin selector/actions wrapper over this store and keeps the same shape.
 import { create } from 'zustand'
-import type { Message, MessageEntity, Poll } from '../core/models'
+import type { Message, MessageEntity, Poll, ReactionCount } from '../core/models'
 
 // Локальные данные файла для мгновенного оптимистичного медиабабла.
 export interface OptimisticMedia {
@@ -90,6 +90,30 @@ interface MessagesState {
   applyPollUpdate: (chatId: number, poll: Poll) => void
   /** Полная замена опроса сообщения (ответ на свой голос — с myVotes). */
   setPoll: (chatId: number, poll: Poll) => void
+  /** Дельта реакции (rt:reaction / оптимистичный клик): count±1 по emoji.
+   * Идемпотентно для своих действий — серверное эхо собственного add/remove
+   * (mine=true) поверх уже применённого оптимистичного апдейта — no-op. */
+  applyReaction: (chatId: number, msgId: number, emoji: string, action: 'add' | 'remove', mine: boolean) => void
+}
+
+// Apply one reaction delta to a message's aggregate list (pure helper).
+function reactionDelta(list: ReactionCount[] | undefined, emoji: string, action: 'add' | 'remove', mine: boolean): ReactionCount[] | undefined | null {
+  const cur = list ? [...list] : []
+  const i = cur.findIndex((r) => r.emoji === emoji)
+  if (action === 'add') {
+    if (i < 0) cur.push({ emoji, count: 1, mine })
+    else {
+      if (mine && cur[i].mine) return null // эхо своей уже применённой реакции
+      cur[i] = { emoji, count: cur[i].count + 1, mine: cur[i].mine || mine }
+    }
+  } else {
+    if (i < 0) return null
+    if (mine && !cur[i].mine) return null // эхо своего уже применённого снятия
+    const next = { emoji, count: cur[i].count - 1, mine: cur[i].mine && !mine }
+    if (next.count <= 0) cur.splice(i, 1)
+    else cur[i] = next
+  }
+  return cur.length ? cur : undefined
 }
 
 // Update a single chat's window immutably.
@@ -239,6 +263,18 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
             msgs: w.msgs.map((m) => (m.poll?.id === poll.id ? { ...m, poll } : m)),
           }))
         : {}),
+
+  applyReaction: (chatId, msgId, emoji, action, mine) =>
+    set((s) => {
+      if (!s.byChat[chatId]) return {}
+      return patch(s, chatId, (w) => ({
+        msgs: w.msgs.map((m) => {
+          if (m.id !== msgId) return m
+          const next = reactionDelta(m.reactions, emoji, action, mine)
+          return next === null ? m : { ...m, reactions: next }
+        }),
+      }))
+    }),
 
   applyEdit: (chatId, msgId, text, editedAt, entities) =>
     set((s) => (s.byChat[chatId] ? patch(s, chatId, (w) => ({ msgs: w.msgs.map((m) => (m.id === msgId ? { ...m, text, editedAt, entities } : m)) })) : {})),

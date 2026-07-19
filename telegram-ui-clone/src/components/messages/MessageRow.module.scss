@@ -23,6 +23,13 @@
     --row-mb: #{$bubble-margin-big}; // tweb $bubble-margin-big
   }
 
+  // Реакции (tweb _reaction.scss): фон невыбранного чипа — полупрозрачный акцент
+  // (--message-highlighting-color), выбранного — сплошной (--message-primary-color).
+  --r-bg: color-mix(in srgb, var(--tg-accent) 10%, transparent);
+  --r-fg: var(--tg-accent);
+  --r-chosen-bg: var(--tg-accent);
+  --r-chosen-fg: #fff;
+
   &[data-out] {
     transform-origin: bottom right;
     --b-bg: var(--tg-bubbleOut);
@@ -30,6 +37,10 @@
     --b-link: var(--tg-bubbleOutAccent);
     --b-time: color-mix(in srgb, var(--tg-bubbleOutText) 70%, transparent);
     --b-secondary: color-mix(in srgb, var(--tg-bubbleOutText) 85%, transparent);
+    --r-bg: color-mix(in srgb, var(--tg-bubbleOutAccent) 12%, transparent);
+    --r-fg: var(--tg-bubbleOutAccent);
+    --r-chosen-bg: var(--tg-bubbleOutAccent);
+    --r-chosen-fg: var(--tg-bubbleOut);
   }
 
   &[data-selecting] {
@@ -288,4 +299,75 @@
 // 1px framed border so the footer reaches the edges.
 .footerMedia {
   margin: 0 -1px -1px;
+}
+
+// ── реакции (tweb _reaction.scss / _reactions.scss, layout Block) ──
+// Контейнер чипов: flex-wrap; в баблe идёт после текста/времени.
+.reactions {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 3px; // tweb: -margin-vertical/2 при margin-top 6px у чипов
+}
+
+// Один чип: пилюля 30px (reaction-size 22 + additional 8), radius = высоте.
+.reactionChip {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  border-radius: 30px;
+  padding: 0 8px;
+  margin-top: 6px;
+  margin-right: 6px;
+  background: var(--r-bg);
+  color: var(--r-fg);
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.2s ease, color 0.2s ease;
+
+  &:last-child {
+    margin-right: 0;
+  }
+}
+
+.reactionChosen {
+  background: var(--r-chosen-bg);
+  color: var(--r-chosen-fg);
+}
+
+.reactionEmoji {
+  font-size: 16px;
+  line-height: 1;
+}
+
+// Счётчик: 15px bold, tabular (tweb .reaction-counter)
+.reactionCount {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 18px;
+  margin: 0 1px 0 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+// Внутри медиабабла (mediaInner без паддингов) — своя подложка-строка.
+.reactionsPad {
+  padding: 0 8px 8px;
+}
+
+// Колонка «бабл + плавающие реакции» для типов без текстового контейнера
+// (стикер/кружок/голосовое/звонок) — tweb reactions-out под баблом.
+.zoneCol {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+
+  .row[data-out] & {
+    align-items: flex-end;
+  }
+}
+
+// Плавающая строка чипов: над обоями, фон чипов тот же (tweb).
+.reactionsOut {
+  margin-top: 2px;
 }

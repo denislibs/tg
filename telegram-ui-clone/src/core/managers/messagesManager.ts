@@ -284,6 +284,15 @@ export function newMessagesManager({ rest }: MessagesDeps) {
       const r = await rest.get<{ user_ids: number[] }>(`/chats/${chatId}/messages/${msgId}/viewers`)
       return r.user_ids ?? []
     },
+
+    // Реакции: поставить/снять свою (агрегаты приходят realtime-фреймом reaction).
+    async react(chatId: number, msgId: number, emoji: string): Promise<void> {
+      await rest.post(`/chats/${chatId}/messages/${msgId}/reactions`, { emoji })
+    },
+
+    async unreact(chatId: number, msgId: number, emoji: string): Promise<void> {
+      await rest.del(`/chats/${chatId}/messages/${msgId}/reactions/${encodeURIComponent(emoji)}`)
+    },
   }
 }
 

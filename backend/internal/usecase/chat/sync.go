@@ -30,11 +30,35 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 		return HistoryResult{}, e
 	}
 	_ = i.hydratePolls(ctx, userID, msgs)
+	_ = i.hydrateReactions(ctx, userID, msgs)
 	count, err := i.msgs.CountMessages(ctx, chatID)
 	if err != nil {
 		return HistoryResult{}, err
 	}
 	return HistoryResult{Messages: msgs, Count: count}, nil
+}
+
+// hydrateReactions fills Reactions (emoji aggregates + the viewer's mine flag) on
+// a window of messages with one batch query. Best-effort: reactions are cosmetic,
+// a failure must not break history.
+func (i *Interactor) hydrateReactions(ctx context.Context, viewerID int64, msgs []domain.Message) error {
+	ids := make([]int64, 0, len(msgs))
+	for _, m := range msgs {
+		if !m.Deleted {
+			ids = append(ids, m.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	byMsg, err := i.reactions.ReactionsFor(ctx, ids, viewerID)
+	if err != nil {
+		return err
+	}
+	for idx := range msgs {
+		msgs[idx].Reactions = byMsg[msgs[idx].ID]
+	}
+	return nil
 }
 
 // hydrateReplies fills ReplyTo on each message that replies to another, batch-
@@ -150,6 +174,7 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 		return AroundResult{}, e
 	}
 	_ = i.hydratePolls(ctx, userID, msgs)
+	_ = i.hydrateReactions(ctx, userID, msgs)
 	count, err := i.msgs.CountMessages(ctx, chatID)
 	if err != nil {
 		return AroundResult{}, err

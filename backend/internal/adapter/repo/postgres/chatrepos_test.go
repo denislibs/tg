@@ -453,21 +453,31 @@ func TestReactionsRepo_AddRemoveAggregate(t *testing.T) {
 	_ = reacts.Add(ctx, m.ID, b, "❤️")
 	_ = reacts.Add(ctx, m.ID, a, "🔥") // duplicate no-op
 
-	counts, err := reacts.ReactionsFor(ctx, m.ID)
+	byMsg, err := reacts.ReactionsFor(ctx, []int64{m.ID}, a)
 	if err != nil {
 		t.Fatalf("ReactionsFor: %v", err)
 	}
+	counts := byMsg[m.ID]
 	if len(counts) != 2 || counts[0].Emoji != "🔥" || counts[0].Count != 2 {
 		t.Fatalf("counts = %+v; want 🔥:2 first", counts)
+	}
+	// mine: a поставил только 🔥 — ❤️ (только b) не должен быть mine.
+	for _, c := range counts {
+		if c.Emoji == "🔥" && !c.Mine {
+			t.Fatalf("🔥 mine = false for viewer a; want true")
+		}
+		if c.Emoji == "❤️" && c.Mine {
+			t.Fatalf("❤️ mine = true for viewer a; want false")
+		}
 	}
 
 	if err := reacts.Remove(ctx, m.ID, a, "🔥"); err != nil {
 		t.Fatalf("remove: %v", err)
 	}
-	counts, _ = reacts.ReactionsFor(ctx, m.ID)
-	for _, c := range counts {
-		if c.Emoji == "🔥" && c.Count != 1 {
-			t.Fatalf("🔥 count = %d after remove; want 1", c.Count)
+	byMsg, _ = reacts.ReactionsFor(ctx, []int64{m.ID}, a)
+	for _, c := range byMsg[m.ID] {
+		if c.Emoji == "🔥" && (c.Count != 1 || c.Mine) {
+			t.Fatalf("🔥 = %+v after remove; want count 1, mine false", c)
 		}
 	}
 }

@@ -151,7 +151,10 @@ type SearchRepo interface {
 type ReactionRepo interface {
 	Add(ctx context.Context, messageID, userID int64, emoji string) error
 	Remove(ctx context.Context, messageID, userID int64, emoji string) error
-	ReactionsFor(ctx context.Context, messageID int64) ([]domain.ReactionCount, error)
+	// ReactionsFor batch-loads aggregated reaction counts for messages (history
+	// read model). Mine is set when viewerID reacted with that emoji. Messages
+	// without reactions are simply absent from the map.
+	ReactionsFor(ctx context.Context, messageIDs []int64, viewerID int64) (map[int64][]domain.ReactionCount, error)
 }
 
 type MediaAccessRepo interface {

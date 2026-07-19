@@ -44,6 +44,18 @@ import type { ConvMsg } from '../../data'
 import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import s from './MessageRow.module.scss'
 
+// Обёртка контента .zone: без плавающих реакций — прозрачна; с ними — колонка
+// «бабл + строка чипов под ним» (tweb reactions-out у стикеров/кружков/голосовых).
+function ZoneBody({ chipsOutside, children }: { chipsOutside: ReactNode; children: ReactNode }) {
+  if (!chipsOutside) return <>{children}</>
+  return (
+    <div className={s.zoneCol}>
+      {children}
+      <div className={s.reactionsOut}>{chipsOutside}</div>
+    </div>
+  )
+}
+
 // Радиус media/voice-бабла: скруглён везде, кроме хвостового угла последнего в группе.
 function mediaRadius(out: boolean, lastInGroup: boolean): string {
   const B = BUBBLE_R_BIG
@@ -76,6 +88,30 @@ export interface FeedFns {
   mediaPlayed: (msgId: number) => void
   /** кружок заиграл со звуком → его <video> становится треком глобального плеера */
   roundPlaying: (msgId: number, el: HTMLMediaElement) => void
+  /** клик по чипу реакции — поставить/снять свою (tweb sendReaction) */
+  toggleReaction: (msgId: number, emoji: string) => void
+}
+
+// Чипы реакций под сообщением (tweb ReactionsElement, layout Block): пилюля 30px
+// с эмодзи + счётчиком; «моя» реакция — сплошной акцентный фон (is-chosen).
+function MessageReactions({ reactions, onToggle }: {
+  reactions: NonNullable<ConvMsg['reactions']>
+  onToggle: (emoji: string) => void
+}) {
+  return (
+    <div className={s.reactions}>
+      {reactions.map((r) => (
+        <div
+          key={r.emoji}
+          className={classNames(s.reactionChip, r.mine ? s.reactionChosen : '')}
+          onClick={(e) => { e.stopPropagation(); onToggle(r.emoji) }}
+        >
+          <span className={s.reactionEmoji}>{r.emoji}</span>
+          <span className={s.reactionCount}>{r.count}</span>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 export interface MessageRowProps {
@@ -113,6 +149,16 @@ function MessageRow({
   // awkwardly to the right of the block.
   const hasBlock = m.entities?.some((e) => e.type === 'pre' || e.type === 'blockquote') ?? false
   const rowStyle = { '--msg-text-size': `${textSize}px` } as CSSProperties
+
+  // Реакции: внутри бабла у text/poll/media/album; у остальных типов (voice,
+  // sticker, document, …) — плавающей строкой под баблом (tweb reactions-out).
+  const chips =
+    m.reactions?.length && m.id != null && !selecting ? (
+      <MessageReactions reactions={m.reactions} onToggle={(emoji) => feedFns.toggleReaction(m.id!, emoji)} />
+    ) : null
+  const chipsInline =
+    ((m.type === 'text' && !bigEmoji) || m.type === 'poll' || m.type === 'album'
+      || ((m.mediaId != null || !!m.localUrl) && m.type !== 'roundVideo' && m.type !== 'voice'))
 
   return (
     <BubbleAppear
@@ -160,6 +206,7 @@ function MessageRow({
       )}
 
       <div className={s.zone}>
+        <ZoneBody chipsOutside={chipsInline ? null : chips}>
         {m.mediaId && m.type === 'roundVideo' ? (
           <RoundVideoRealBubble
             m={m}
@@ -214,6 +261,7 @@ function MessageRow({
                   )}
                 </div>
               ) : null}
+              {chips && <div className={s.reactionsPad}>{chips}</div>}
             </div>
           </div>
         ) : m.mediaId != null || m.localUrl ? (
@@ -264,6 +312,7 @@ function MessageRow({
                   )}
                 </div>
               ) : null}
+              {chips && <div className={s.reactionsPad}>{chips}</div>}
               {footer && <div className={s.footerMedia}>{footer}</div>}
             </div>
           </div>
@@ -332,6 +381,7 @@ function MessageRow({
                 <Ticks status={m.status} color="var(--b-tick)" />
               </span>
             </div>
+            {chips}
           </div>
         ) : (
           <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
@@ -387,9 +437,11 @@ function MessageRow({
             {m.webPage && (
               <WebPagePreview wp={m.webPage} out={out} linkColor="var(--b-link)" />
             )}
+            {chips}
             {footer && <div className={s.footerText}>{footer}</div>}
           </div>
         )}
+        </ZoneBody>
       </div>
     </BubbleAppear>
   )

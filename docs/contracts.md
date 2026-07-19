@@ -521,8 +521,12 @@ backwards (a stale lower `up_to_seq` is a no-op).
 - 200: `{ "ok": true }` · 400 invalid · 404 not found
 
 ### GET /chats/{chatID}/messages/{msgID}/reactions  · auth
-- 200: `{ "reactions": [ { "emoji": "🔥", "count": 2 }, { "emoji": "❤️", "count": 1 } ] }` (most popular first)
+- 200: `{ "reactions": [ { "emoji": "🔥", "count": 2, "mine": true }, { "emoji": "❤️", "count": 1 } ] }` (most popular first; `mine` — зритель тоже поставил эту реакцию, omitted when false)
 - 404: `{ "error": "message not found" }`
+
+Message DTO истории (`GET /chats/{chatID}/messages`, `/messages/around`) несёт те же
+агрегаты полем `reactions` (omitted, когда реакций нет) — клиент рендерит чипы без
+отдельного GET. Live-обновления приходят дельтами кадром `reaction` (см. WS).
 
 ---
 

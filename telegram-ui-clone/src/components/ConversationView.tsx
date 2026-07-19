@@ -242,6 +242,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // download/viewers) and the delete-confirm / forward-picker / viewers-popup state.
   const {
     msgMenu, openMsgMenu, closeMsgMenu, msgMenuItems,
+    toggleReaction, reactToMenuMsg,
     delIds, doDelete, closeDelete, openDeleteFor,
     forwardIds, doForward, closeForward, openForwardFor,
     viewers, closeViewers,
@@ -311,8 +312,9 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       recall: recallE,
       mediaPlayed: mediaPlayedE,
       roundPlaying: roundPlayingE,
+      toggleReaction,
     }),
-    [openSenderE, playVoiceE, toggleSelectE, openMsgMenuE, jumpToSeqE, openLightboxE, recallE, mediaPlayedE, roundPlayingE],
+    [openSenderE, playVoiceE, toggleSelectE, openMsgMenuE, jumpToSeqE, openLightboxE, recallE, mediaPlayedE, roundPlayingE, toggleReaction],
   )
 
   // (Ack reconcile + send-rejection run in realtimeBridge → messagesStore; live
@@ -703,7 +705,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
 
       {/* Message context menu — reactions strip + actions */}
       {msgMenu && (
-        <MessageContextMenu menu={msgMenu} items={msgMenuItems} onClose={closeMsgMenu} />
+        <MessageContextMenu menu={msgMenu} items={msgMenuItems} onClose={closeMsgMenu} onReaction={isRealChat ? reactToMenuMsg : undefined} />
       )}
 
       {/* "Seen by" popup */}

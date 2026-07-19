@@ -56,6 +56,10 @@ components:
         thread_root_id: { type: integer, format: int64, nullable: true, description: "channel post id this comment threads under; null for normal messages" }
         created_at: { type: string, format: date-time }
         deleted: { type: boolean }
+        reactions:
+          type: array
+          description: aggregated reactions for the viewer (omitted when none)
+          items: { $ref: "#/components/schemas/ReactionCount" }
     Dialog:
       type: object
       properties:
@@ -102,6 +106,7 @@ components:
       properties:
         emoji: { type: string }
         count: { type: integer }
+        mine: { type: boolean, description: the viewer reacted with this emoji (omitted when false) }
     Session:
       type: object
       properties:

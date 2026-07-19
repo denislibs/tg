@@ -25,6 +25,7 @@ const FEED_FNS: FeedFns = {
   recall: NOOP,
   mediaPlayed: NOOP,
   roundPlaying: NOOP,
+  toggleReaction: NOOP,
 }
 const EMPTY_COUNTS = new Map<number, number>()
 const EMPTY_SELECTED = new Set<number>()

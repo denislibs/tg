@@ -798,26 +798,36 @@ func (r fakeReactions) Remove(_ context.Context, messageID, userID int64, emoji 
 	return nil
 }
 
-func (r fakeReactions) ReactionsFor(_ context.Context, messageID int64) ([]domain.ReactionCount, error) {
+func (r fakeReactions) ReactionsFor(_ context.Context, messageIDs []int64, viewerID int64) (map[int64][]domain.ReactionCount, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
-	counts := map[string]int{}
-	for _, emojis := range r.s.reactions[messageID] {
-		for e := range emojis {
-			counts[e]++
+	res := map[int64][]domain.ReactionCount{}
+	for _, messageID := range messageIDs {
+		counts := map[string]int{}
+		mine := map[string]bool{}
+		for userID, emojis := range r.s.reactions[messageID] {
+			for e := range emojis {
+				counts[e]++
+				if userID == viewerID {
+					mine[e] = true
+				}
+			}
+		}
+		var out []domain.ReactionCount
+		for e, c := range counts {
+			out = append(out, domain.ReactionCount{Emoji: e, Count: c, Mine: mine[e]})
+		}
+		sort.Slice(out, func(i, j int) bool {
+			if out[i].Count != out[j].Count {
+				return out[i].Count > out[j].Count
+			}
+			return out[i].Emoji < out[j].Emoji
+		})
+		if len(out) > 0 {
+			res[messageID] = out
 		}
 	}
-	var out []domain.ReactionCount
-	for e, c := range counts {
-		out = append(out, domain.ReactionCount{Emoji: e, Count: c})
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Count != out[j].Count {
-			return out[i].Count > out[j].Count
-		}
-		return out[i].Emoji < out[j].Emoji
-	})
-	return out, nil
+	return res, nil
 }
 
 // ---- MediaAccessRepo ----

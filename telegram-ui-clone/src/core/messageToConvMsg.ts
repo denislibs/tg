@@ -70,6 +70,7 @@ export function messageToConvMsg(
       : undefined,
     call: m.type === 'call' ? parseCallLog(m.text) : undefined,
     poll: m.poll,
+    reactions: m.reactions,
     mediaId: m.mediaId ?? undefined,
     mediaWidth: m.mediaWidth,
     mediaHeight: m.mediaHeight,

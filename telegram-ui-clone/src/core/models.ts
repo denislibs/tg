@@ -91,6 +91,14 @@ export interface RawMessage {
   media_name?: string
   views?: number
   media_unread?: boolean
+  reactions?: { emoji: string; count: number; mine?: boolean }[] | null
+}
+
+// Агрегат одной реакции на сообщении (emoji + счётчик + «моя»), tweb ReactionCount.
+export interface ReactionCount {
+  emoji: string
+  count: number
+  mine: boolean
 }
 
 export interface Message {
@@ -144,6 +152,8 @@ export interface Message {
   mediaUnread?: boolean
   /** опрос сообщения типа 'poll' (представление для зрителя) */
   poll?: Poll
+  /** агрегаты реакций под сообщением (undefined/пусто — реакций нет) */
+  reactions?: ReactionCount[]
 }
 
 // Опрос (backend PollInfo): вопрос + варианты + агрегаты для зрителя.
@@ -305,5 +315,8 @@ export function mapMessage(r: RawMessage): Message {
     mediaName: r.media_name,
     views: r.views,
     mediaUnread: r.media_unread,
+    reactions: r.reactions?.length
+      ? r.reactions.map((x) => ({ emoji: x.emoji, count: x.count, mine: !!x.mine }))
+      : undefined,
   }
 }

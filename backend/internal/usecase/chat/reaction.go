@@ -108,7 +108,11 @@ func (i *Interactor) ReactionsOf(ctx context.Context, chatID, messageID, userID 
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
-	return i.reactions.ReactionsFor(ctx, messageID)
+	byMsg, err := i.reactions.ReactionsFor(ctx, []int64{messageID}, userID)
+	if err != nil {
+		return nil, err
+	}
+	return byMsg[messageID], nil
 }
 
 // CanAccessMedia reports whether userID may download a media object: either they

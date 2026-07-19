@@ -8,7 +8,7 @@ import { mapMessage, mapDraft, mapPoll, type RawPoll } from '../core/models'
 import { useDraftsStore } from '../stores/draftsStore'
 import { useUploadsStore } from '../stores/uploadsStore'
 import { uiEvents } from '../core/hooks/uiEvents'
-import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt, type DraftUpdateEvt } from '../core/realtime/events'
+import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt, type DraftUpdateEvt, type ReactionEvt } from '../core/realtime/events'
 import { playMessageSent } from '../core/audio/sounds'
 import { notifyIncomingMessage } from './uiNotifications'
 import { useSettingsStore } from '../settings'
@@ -132,7 +132,13 @@ export function startRealtime(): void {
     const e = raw as PinMessageEvt
     void managers.messages.listPins(e.chat_id).then((p) => usePinsStore.getState().setPins(e.chat_id, p))
   })
-  smp.on(RT.reaction, (r) => uiEvents.emit(RT.reaction, r))
+  // Дельта реакции → окно сообщений. Эхо собственного действия (mine) поверх
+  // оптимистичного апдейта гасится в applyReaction (идемпотентно).
+  smp.on(RT.reaction, (raw) => {
+    const e = raw as ReactionEvt
+    const meId = useChatsStore.getState().meId
+    useMessagesStore.getState().applyReaction(e.chat_id, e.msg_id, e.emoji, e.action, e.user_id === meId)
+  })
   // Ack/error carry only client_msg_id → reconcile by clientMsgId (store maps it to the chat).
   smp.on(RT.ack, (raw) => {
     const a = raw as AckEvt

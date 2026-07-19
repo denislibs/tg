@@ -27,9 +27,11 @@ export interface MessageContextMenuProps {
   menu: { x: number; y: number; originX: 'left' | 'right'; originY: 'top' | 'bottom' }
   items: MsgMenuItem[]
   onClose: () => void
+  /** клик по эмодзи в полоске реакций (undefined — мок-чат, полоска декоративна) */
+  onReaction?: (emoji: string) => void
 }
 
-function MessageContextMenu({ menu, items, onClose }: MessageContextMenuProps) {
+function MessageContextMenu({ menu, items, onClose, onReaction }: MessageContextMenuProps) {
   const t = useT()
   // The "Viewers" action needs the click coordinates; capture the last pointer
   // event on a wrapper so MenuItem's (event-less) onClick can still forward it.
@@ -71,7 +73,7 @@ function MessageContextMenu({ menu, items, onClose }: MessageContextMenuProps) {
         {/* Reactions pill — always on top */}
         <div className={classNames(s.reactions, s.surface)}>
           {REACTIONS.map((r) => (
-            <div key={r} className={s.reaction} onClick={onClose}>
+            <div key={r} className={s.reaction} onClick={() => (onReaction ? onReaction(r) : onClose())}>
               {r}
             </div>
           ))}

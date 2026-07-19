@@ -182,6 +182,36 @@ export function useMessageActions({
     setViewers({ x: Math.min(x, window.innerWidth - 240), y: Math.min(y, window.innerHeight - 320), names })
   }
 
+  // Тоггл реакции (клик по чипу / полоске эмодзи в меню). Оптимистично правим
+  // агрегаты в сторе (applyReaction идемпотентен к серверному эху), REST — следом.
+  // Как в tweb для non-premium: одна своя реакция — новая снимает предыдущую.
+  const toggleReaction = useEvent((msgId: number, emoji: string) => {
+    if (!isRealChat) return
+    const raw = win.msgs.find((m) => m.id === msgId)
+    if (!raw || raw.id < 0) return // оптимистичный бабл ещё без серверного id
+    const store = useMessagesStore.getState()
+    if (raw.reactions?.find((r) => r.emoji === emoji)?.mine) {
+      store.applyReaction(numericChatId, msgId, emoji, 'remove', true)
+      void managers.messages.unreact(numericChatId, msgId, emoji)
+      return
+    }
+    for (const r of raw.reactions ?? []) {
+      if (r.mine) {
+        store.applyReaction(numericChatId, msgId, r.emoji, 'remove', true)
+        void managers.messages.unreact(numericChatId, msgId, r.emoji)
+      }
+    }
+    store.applyReaction(numericChatId, msgId, emoji, 'add', true)
+    void managers.messages.react(numericChatId, msgId, emoji)
+  })
+
+  // Полоска эмодзи над контекстным меню: реакция на сообщение меню.
+  const reactToMenuMsg = (emoji: string) => {
+    const raw = menuRawMsg()
+    setMsgMenu(null)
+    if (raw?.id != null) toggleReaction(raw.id, emoji)
+  }
+
   // Неотправленное сообщение (message_error): вместо обычного меню — только
   // «Переотправить» / «Удалить» (tweb: контекст-меню error-бабла).
   const resendFailed = () => {
@@ -261,6 +291,7 @@ export function useMessageActions({
 
   return {
     msgMenu, openMsgMenu, closeMsgMenu: () => setMsgMenu(null), msgMenuItems,
+    toggleReaction, reactToMenuMsg,
     delIds, doDelete, closeDelete: () => setDelIds(null), openDeleteFor, canRevokeAll,
     forwardIds, doForward, closeForward: () => setForwardIds(null), openForwardFor,
     viewers, closeViewers: () => setViewers(null),

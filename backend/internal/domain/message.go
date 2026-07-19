@@ -67,6 +67,9 @@ type Message struct {
 	// message whose content hasn't been played by the recipient yet. Set on
 	// send, cleared by ReadMedia.
 	MediaUnread bool
+	// Reactions — агрегаты реакций (emoji, count, mine) для зрителя, наполняется
+	// read-моделью истории (не хранится на строке сообщения). Nil — реакций нет.
+	Reactions []ReactionCount
 	// SenderName is the sender's short name (first name, else display name),
 	// populated on send for the new_message payload (not stored) — the client
 	// prefixes group chat-list previews with it, tweb-style.

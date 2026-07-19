@@ -82,6 +82,8 @@ export interface Managers {
     closePoll(pollId: number): Promise<void>
     mediaHistory(chatId: number, filter: 'media' | 'files' | 'links' | 'music' | 'voice', offset?: number, limit?: number): Promise<{ messages: Message[]; count: number }>
     getAround(chatId: number, centerSeq: number, limit?: number): Promise<{ messages: Message[]; reachedTop: boolean; reachedBottom: boolean }>
+    react(chatId: number, msgId: number, emoji: string): Promise<void>
+    unreact(chatId: number, msgId: number, emoji: string): Promise<void>
   }
   realtime: {
     start(): Promise<{ state: ConnState }>

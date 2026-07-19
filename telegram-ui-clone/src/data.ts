@@ -38,6 +38,7 @@ export interface ConvMsg {
   status?: MsgStatus
   edited?: boolean // shows the "изменено" marker before the time
   views?: number // channel-post view count ("9.2K 👁"); undefined for non-posts
+  reactions?: { emoji: string; count: number; mine: boolean }[] // чипы реакций под сообщением
   mediaUnread?: boolean // голосовое/кружок не прослушано получателем (точка у обеих сторон)
   deleted?: boolean
   forwardFrom?: { name: string; color?: string } // "Переслано от X"
