@@ -193,6 +193,14 @@
   color: #fff;
 }
 
+// обратный отсчёт медленного режима на кнопке (tweb slowmode)
+.slowmodeTimer {
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+}
+
 // ── запись видео-кружка: живое круглое превью по центру чата (tweb 360px) ──
 .roundPreviewWrap {
   position: fixed;

@@ -25,6 +25,7 @@ import { useChatSelection } from '../core/hooks/useChatSelection'
 import { useChatInfoCard } from '../core/hooks/useChatInfoCard'
 import { usePinnedBar } from '../core/hooks/usePinnedBar'
 import { useChatSend } from '../core/hooks/useChatSend'
+import { useSlowmode } from '../core/hooks/useSlowmode'
 import { useChatScroll } from '../core/hooks/useChatScroll'
 import { useConvMessages } from '../core/hooks/useConvMessages'
 import { useVoiceQueue } from '../core/hooks/useVoiceQueue'
@@ -390,7 +391,10 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const onUnpin = useEvent((id: number) => { void managers.messages.unpin(numericChatId, id) })
   // Stable composer callbacks so the memoized <Composer> doesn't re-render on
   // unrelated parent renders (e.g. the scroll handler toggling showScrollDown).
-  const onComposerSend = useEvent((text: string, entities?: MessageEntity[]) => send(text, entities))
+  // Медленный режим: обычный участник группы блокируется на N сек после отправки
+  const slowmodeExempt = !isGroup || card?.myRole === 'creator' || card?.myRole === 'admin'
+  const { left: slowmodeLeft, markSent: slowmodeMarkSent } = useSlowmode(card?.slowmodeSeconds ?? 0, slowmodeExempt)
+  const onComposerSend = useEvent((text: string, entities?: MessageEntity[]) => { send(text, entities); slowmodeMarkSent() })
   const onComposerCancelReply = useEvent(() => setReply(null))
   const onComposerCancelEdit = useEvent(() => setEditing(null))
   const onComposerOpenAttach = useEvent((r: DOMRect) => setAttachAnchor({ left: r.left, bottom: window.innerHeight - r.top + 8 }))
@@ -564,6 +568,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               onSchedule={isRealChat ? onComposerSchedule : undefined}
               scheduledCount={scheduledCount}
               onOpenScheduled={() => setScheduledOpen(true)}
+              slowmodeLeft={slowmodeLeft}
             />
           </div>
         ) : (
@@ -670,7 +675,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           files={pendingMedia.files}
           initialAsFile={pendingMedia.asFile}
           onClose={() => setPendingMedia(null)}
-          onSend={(caption, asFile) => { void sendPendingMedia(caption, asFile) }}
+          onSend={(caption, asFile) => { void sendPendingMedia(caption, asFile); slowmodeMarkSent() }}
         />
       )}
 

@@ -74,6 +74,9 @@ interface Props {
   // Есть запланированные → кнопка-календарик (tweb btnScheduled) открывает список.
   scheduledCount?: number
   onOpenScheduled?: () => void
+  // Медленный режим: секунд до следующей отправки (0/undefined — нет); >0
+  // блокирует отправку и показывает обратный отсчёт на кнопке (tweb slowmode).
+  slowmodeLeft?: number
 }
 
 // URL schemes safe to keep on a pasted link (others are dropped — see RichText).
@@ -108,8 +111,10 @@ function placeCaretEnd(el: HTMLElement) {
 
 function Composer({
   reply, editing, rec, onSend, onTyping, onCancelReply, onCancelEdit, onOpenAttach, onPasteFiles,
-  initialDraft, onDraftChange, mentions, onSchedule, scheduledCount, onOpenScheduled,
+  initialDraft, onDraftChange, mentions, onSchedule, scheduledCount, onOpenScheduled, slowmodeLeft,
 }: Props) {
+  const slowmodeBlocked = (slowmodeLeft ?? 0) > 0
+  const slowmodeText = (slowmodeLeft ?? 0) >= 60 ? `${Math.ceil((slowmodeLeft ?? 0) / 60)}м` : String(slowmodeLeft ?? 0)
   const t = useT()
   const [emptyDraft, setEmptyDraft] = useState(true)
   const [emojiOpen, setEmojiOpen] = useState(false)
@@ -235,6 +240,7 @@ function Composer({
   }
 
   const submit = () => {
+    if (slowmodeBlocked) return // медленный режим: отправка заблокирована до конца отсчёта
     const root = editorRef.current
     if (!root) return
     const raw = serialize(root)
@@ -744,14 +750,16 @@ function Composer({
           >
             <AnimatePresence mode="wait" initial={false}>
               <motion.span
-                key={hasText || rec.recording ? 'send' : 'mic'}
+                key={slowmodeBlocked ? 'slow' : hasText || rec.recording ? 'send' : 'mic'}
                 initial={{ scale: 0.5, opacity: 0.8 }}
                 animate={{ scale: [0.5, 1.1, 1], opacity: 1 }}
                 exit={{ scale: 0.5, opacity: 0 }}
                 transition={{ duration: 0.4, ease: 'easeInOut' }}
                 style={{ display: 'inline-flex' }}
               >
-                {hasText || rec.recording ? <TgIcon name="send" /> : <TgIcon name={recordingMediaType === 'round' ? 'recordround' : 'microphone_filled'} />}
+                {slowmodeBlocked
+                  ? <span className={s.slowmodeTimer}>{slowmodeText}</span>
+                  : hasText || rec.recording ? <TgIcon name="send" /> : <TgIcon name={recordingMediaType === 'round' ? 'recordround' : 'microphone_filled'} />}
               </motion.span>
             </AnimatePresence>
           </motion.div>
