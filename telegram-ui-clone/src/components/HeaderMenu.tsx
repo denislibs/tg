@@ -23,9 +23,11 @@ interface Props {
   onAddMember?: () => void
   onSelectMessages?: () => void
   onAddContact?: () => void
+  /** удалить чат / покинуть группу-канал (владелец удаляет для всех) */
+  onDeleteChat?: () => void
 }
 
-export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddMember, onSelectMessages, onAddContact }: Props) {
+export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddMember, onSelectMessages, onAddContact, onDeleteChat }: Props) {
   const t = useT()
   const managers = useManagers()
   const { start: startCall } = useCall()
@@ -99,7 +101,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
             { icon: <TgIcon name="deleteuser" size={20} />, label: 'Disable Sharing' },
           ]
         : []),
-      { icon: <TgIcon name="delete" size={20} />, label: 'Delete Chat', danger: true },
+      { icon: <TgIcon name="delete" size={20} />, label: 'Delete Chat', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
     ]
   } else if (chat.type === 'group') {
     items = [
@@ -117,7 +119,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
         : []),
       { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
       { icon: <TgIcon name="gift" size={20} />, label: 'Send a Gift' },
-      { icon: <TgIcon name="delete" size={20} />, label: owned ? 'Delete Group' : 'Leave Group', danger: true },
+      { icon: <TgIcon name="delete" size={20} />, label: owned ? 'Delete Group' : 'Leave Group', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
     ]
   } else if (owned) {
     // owned channel
@@ -129,7 +131,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
       { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
       { icon: <TgIcon name="gift" size={20} />, label: 'Send a Gift' },
       { icon: <TgIcon name="boost" size={20} />, label: 'Boost Channel' },
-      { icon: <TgIcon name="delete" size={20} />, label: 'Delete Channel', danger: true },
+      { icon: <TgIcon name="delete" size={20} />, label: 'Delete Channel', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
     ]
   } else {
     // channel you don't own
@@ -140,7 +142,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
       { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
       { icon: <TgIcon name="gift" size={20} />, label: 'Send a Gift' },
       { icon: <TgIcon name="boost" size={20} />, label: 'Boost Channel' },
-      { icon: <TgIcon name="delete" size={20} />, label: 'Leave Channel', danger: true },
+      { icon: <TgIcon name="delete" size={20} />, label: 'Leave Channel', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
     ]
   }
 

@@ -6,6 +6,7 @@ import { useAvatarSrc } from './useAvatarSrc'
 import UserInfoPanel from './UserInfoPanel'
 import AddContactView from './AddContactView'
 import HeaderMenu from './HeaderMenu'
+import ConfirmDialog from './settings/ConfirmDialog'
 import MutePopup from './MutePopup'
 import AttachMenu from './AttachMenu'
 import { CallProvider } from './call/CallProvider'
@@ -217,6 +218,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // in searchStore) to hide the pinned bar + adjust the sticky-date offset.
   const searchOpen = useSearchStore((s) => s.byChat[numericChatId]?.open ?? false)
   const [headerMenu, setHeaderMenu] = useState<{ top: number; right: number } | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [addContactOpen, setAddContactOpen] = useState(false)
   const [attachAnchor, setAttachAnchor] = useState<{ left: number; bottom: number } | null>(null)
   const [createPollOpen, setCreatePollOpen] = useState(false)
@@ -284,6 +286,28 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     useChatSelection(scrollRef)
   // Enter selection mode from the header menu with nothing selected yet.
   const startSelectMode = () => { setSelectionMode(true); setHeaderMenu(null) }
+
+  // Удаление чата / выход. Владелец группы/канала удаляет для всех (DELETE
+  // /chats/{id}); иначе — выхожу сам (DELETE members/me), приватный чат так же
+  // покидается. chat_removed по WS уберёт чат из списка; закрываем колонку.
+  const owned = !!chat.owned
+  const doDeleteChat = () => {
+    if (!isRealChat || meId == null) return
+    const op = owned && (isGroup || isChannel)
+      ? managers.groups.deleteGroup(numericChatId)
+      : managers.groups.removeMember(numericChatId, meId)
+    void op.catch(() => {})
+    onBack?.()
+  }
+  const deleteLabels = (() => {
+    if (chat.type === 'private') return { title: 'Delete Chat', text: 'This chat will be deleted from your chat list.', action: 'Delete' }
+    if (isChannel) return owned
+      ? { title: 'Delete Channel', text: 'The channel will be deleted for all subscribers.', action: 'Delete' }
+      : { title: 'Leave Channel', text: 'Are you sure you want to leave this channel?', action: 'Leave' }
+    return owned
+      ? { title: 'Delete Group', text: 'The group will be deleted for all members.', action: 'Delete' }
+      : { title: 'Leave Group', text: 'Are you sure you want to leave this group?', action: 'Leave' }
+  })()
 
   // (Scroll state machine — pagination, scroll-restore, pin-to-bottom, jump-to-message,
   // read-marker — lives in useChatScroll; see the hook call above.)
@@ -745,6 +769,18 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           onAddMember={canAddMember ? () => setInfoOpen(true) : undefined}
           onSelectMessages={startSelectMode}
           onAddContact={chat.type === 'private' && chat.peerId != null ? () => setAddContactOpen(true) : undefined}
+          onDeleteChat={isRealChat ? () => setConfirmDelete(true) : undefined}
+        />
+      )}
+
+      {confirmDelete && (
+        <ConfirmDialog
+          title={t(deleteLabels.title)}
+          text={t(deleteLabels.text)}
+          action={t(deleteLabels.action)}
+          danger
+          onConfirm={doDeleteChat}
+          onClose={() => setConfirmDelete(false)}
         />
       )}
 
