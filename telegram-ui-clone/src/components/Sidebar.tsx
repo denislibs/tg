@@ -182,6 +182,7 @@ export default function Sidebar({
 
   return (
     <div
+      id="chatlist-column"
       className={classNames(s.root, fullWidth ? s.fullWidth : '')}
       style={foldersSidebarShown ? ({ '--folders-sidebar-offset': '80px' } as CSSProperties) : undefined}
     >

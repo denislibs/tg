@@ -155,3 +155,35 @@ body.rt-no-select * {
 .token.regex, .token.important, .token.variable { color: #c98a3f; }
 .token.important, .token.bold { font-weight: 600; }
 .token.italic { font-style: italic; }
+
+/* Переходы смены аккаунта / появления мессенджера — 1:1 из tweb
+   (src/scss/partials/pages/_pages.scss .main-screen-* и .chatlist-*):
+   exit чата перед «Добавить аккаунт», enter после входа/возврата,
+   уход списка чатов при переключении аккаунта из меню. */
+.main-screen-enter {
+  transition: 0.2s;
+  transform: scale(1.75);
+  opacity: 0;
+}
+.main-screen-entering {
+  transform: scale(1);
+  opacity: 1;
+}
+.main-screen-exit {
+  transition: 0.2s, transform 0.2s ease-in;
+  transform: scale(1);
+  opacity: 1;
+}
+.main-screen-exiting {
+  transform: scale(1.75);
+  opacity: 0;
+}
+.chatlist-exit {
+  transition: 0.2s;
+  transform: translateY(0) scale(1);
+  opacity: 1;
+}
+.chatlist-exiting {
+  opacity: 0;
+  transform: translateY(18px) scale(1.01);
+}

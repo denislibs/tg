@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import Text from '../../shared/ui/Text'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
@@ -10,6 +10,7 @@ import { useManagers } from '../../core/hooks/useManagers'
 import QrCode from './QrCode'
 import PasswordMonkey from '../PasswordMonkey'
 import { isWebAuthnSupported, getPasskeyAssertion } from '../../core/webauthnBrowser'
+import { ANIMATE_AUTH_KEY, ANIMATE_MAIN_KEY, PREV_ACCOUNT_KEY, playAuthHostEnter, playAuthHostExit } from '../../core/accountTransition'
 import s from './AuthFlow.module.scss'
 
 const MotionIconButton = motion.create(IconButton)
@@ -78,6 +79,31 @@ export default function AuthFlow({ onComplete }: { onComplete: () => void }) {
   const go = (next: Step, d: number) => {
     setDir(d)
     setStep(next)
+  }
+
+  // Добавление аккаунта из меню (tweb AuthCardsHost): экран входа въезжает
+  // справа (hostEnter), а на первом шаге появляется стрелка возврата к
+  // прежнему аккаунту (tweb showBackButton при getCurrentAccount()!==1).
+  const overlayRef = useRef<HTMLDivElement>(null)
+  const [prevAccount] = useState<number | null>(() => {
+    const v = localStorage.getItem(PREV_ACCOUNT_KEY)
+    return v ? Number(v) : null
+  })
+  useLayoutEffect(() => {
+    if (localStorage.getItem(ANIMATE_AUTH_KEY)) {
+      localStorage.removeItem(ANIMATE_AUTH_KEY)
+      playAuthHostEnter(overlayRef.current)
+    }
+  }, [])
+  // Возврат к прежнему аккаунту: hostExit → смена активного токена → reload,
+  // после которого мессенджер въезжает scale-enter (флаг ANIMATE_MAIN).
+  const backToAccount = async () => {
+    if (prevAccount == null) return
+    localStorage.setItem(ANIMATE_MAIN_KEY, '1')
+    localStorage.removeItem(PREV_ACCOUNT_KEY)
+    await playAuthHostExit(overlayRef.current)
+    await managers.auth.switchAccount(prevAccount)
+    location.reload()
   }
 
   // phone step
@@ -456,15 +482,16 @@ export default function AuthFlow({ onComplete }: { onComplete: () => void }) {
     step === 'phone' ? phoneStep : step === 'qr' ? qrStep : step === 'password' ? passwordStep : codeStep
 
   return (
-    <div className={s.overlay}>
-      {/* back arrow (not on first step) */}
+    <div ref={overlayRef} className={s.overlay}>
+      {/* Стрелка «назад»: на внутренних шагах — к вводу телефона; на первом шаге
+          при добавлении аккаунта — возврат к прежнему аккаунту (tweb back). */}
       <AnimatePresence>
-        {step !== 'phone' && (
+        {(step !== 'phone' || prevAccount != null) && (
           <MotionIconButton
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={() => go('phone', -1)}
+            onClick={() => (step !== 'phone' ? go('phone', -1) : void backToAccount())}
             color="var(--tg-textSecondary)"
             className={s.back}
           >

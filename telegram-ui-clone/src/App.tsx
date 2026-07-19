@@ -34,6 +34,7 @@ import { loadNotifySettings, useNotifyStore, notifyTypeForChat } from './stores/
 import { loadPrivacy } from './stores/privacyStore'
 import { loadDrafts, useDraftsStore } from './stores/draftsStore'
 import { loadFolders } from './stores/foldersStore'
+import { ANIMATE_MAIN_KEY, PREV_ACCOUNT_KEY, playMainScreenEnter } from './core/accountTransition'
 import s from './App.module.scss'
 import useMediaQuery from './shared/lib/useMediaQuery'
 
@@ -58,6 +59,20 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   const joinToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [qrConfirmToken, setQrConfirmToken] = useState<string | null>(null)
   const groupCallChatId = useGroupCallStore((s) => s.chatId)
+
+  // Появление мессенджера (tweb src/index.ts / #main-columns fade-in). При
+  // возврате к прежнему аккаунту / после смены — scale-enter (флаг ANIMATE_MAIN,
+  // tweb main-screen-enter); при обычном показе — короткий fade появления окна.
+  useLayoutEffect(() => {
+    const el = document.getElementById('app-shell')
+    if (!el) return
+    if (localStorage.getItem(ANIMATE_MAIN_KEY)) {
+      localStorage.removeItem(ANIMATE_MAIN_KEY)
+      void playMainScreenEnter(el)
+    } else {
+      el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'cubic-bezier(.4,0,.2,1)' })
+    }
+  }, [])
 
   const showJoinToast = (text: string) => {
     setJoinToast(text)
@@ -355,7 +370,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     )
 
   return (
-    <div className={s.root}>
+    <div id="app-shell" className={s.root}>
       {/* Animated 4-point gradient wallpaper + doodle pattern (tweb-style) */}
       <ChatBackground />
 
@@ -480,7 +495,11 @@ function ThemedApp() {
     managers.auth.me().then((u) => setAuthed(!!u)).catch(() => setAuthed(false))
   }, [managers])
 
-  const login = () => setAuthed(true)
+  const login = () => {
+    // новый аккаунт вошёл — «предыдущий аккаунт» для кнопки возврата больше не нужен
+    localStorage.removeItem(PREV_ACCOUNT_KEY)
+    setAuthed(true)
+  }
   const logout = () => {
     void managers.auth.logout().then((r) => {
       // остался другой аккаунт (мультиаккаунт) → перезагрузка под ним; иначе экран входа

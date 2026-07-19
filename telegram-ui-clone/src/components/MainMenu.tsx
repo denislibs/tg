@@ -7,6 +7,7 @@ import { useChatsStore } from '../stores/chatsStore'
 import { useManagers } from '../core/hooks/useManagers'
 import { gradientFor } from '../core/dialogToChat'
 import type { PublicAccount } from '../core/auth/accounts'
+import { ANIMATE_AUTH_KEY, PREV_ACCOUNT_KEY, playChatlistExit, playMainScreenExit } from '../core/accountTransition'
 import { useT } from '../i18n'
 
 interface Props {
@@ -51,13 +52,25 @@ export default function MainMenu({
   }, [open, managers])
   const others = accounts.filter((a) => a.id !== me?.id)
   // Переключение аккаунта = смена активного токена в воркере + перезагрузка.
-  const switchTo = (id: number) => {
-    void managers.auth.switchAccount(id).then((ok) => { if (ok) location.reload() })
+  // Перед reload список чатов уезжает (tweb меню аккаунтов: chatlist-exit).
+  const switchTo = async (id: number) => {
+    onClose()
+    const ok = await managers.auth.switchAccount(id)
+    if (!ok) return
+    await playChatlistExit(document.getElementById('chatlist-column'))
+    location.reload()
   }
-  // «Добавить аккаунт»: снять активный токен (текущий остаётся в реестре) →
-  // reload покажет экран входа; после входа новый аккаунт добавится.
-  const addAccount = () => {
-    void managers.auth.addAccount().then(() => location.reload())
+  // «Добавить аккаунт» (tweb sidebarLeft.addAccount): текущий остаётся в
+  // реестре; чат уезжает main-screen-exit, флаги «prev account» и «анимировать
+  // auth» переживают reload — экран входа въедет hostEnter, из него есть
+  // стрелка возврата к прежнему аккаунту.
+  const addAccount = async () => {
+    onClose()
+    if (me?.id != null) localStorage.setItem(PREV_ACCOUNT_KEY, String(me.id))
+    localStorage.setItem(ANIMATE_AUTH_KEY, '1')
+    await playMainScreenExit(document.getElementById('app-shell'))
+    await managers.auth.addAccount()
+    location.reload()
   }
 
   return (
@@ -86,11 +99,11 @@ export default function MainMenu({
             </span>
           }
           label={a.name}
-          onClick={() => switchTo(a.id)}
+          onClick={() => void switchTo(a.id)}
         />
       ))}
       {accounts.length < 4 && (
-        <MenuItem icon={<TgIcon name="add" size={20} />} label={t('Add Account')} onClick={addAccount} />
+        <MenuItem icon={<TgIcon name="add" size={20} />} label={t('Add Account')} onClick={() => void addAccount()} />
       )}
       {divider}
       <MenuItem icon={<TgIcon name="savedmessages" size={20} />} label={t('Saved Messages')} onClick={onOpenSaved ?? onClose} />
