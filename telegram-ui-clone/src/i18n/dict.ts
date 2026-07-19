@@ -165,6 +165,7 @@ const ru: Dict = {
   'Report Bug': 'Сообщить об ошибке',
   'Install App': 'Установить приложение',
   'Picture in Picture': 'Картинка в картинке',
+  'Open a video to use Picture-in-Picture.': 'Откройте видео, чтобы включить «Картинка в картинке».',
   'Web Notifications': 'Веб-уведомления',
   'Show notifications': 'Показывать уведомления',
   'Show offline notifications': 'Показывать офлайн-уведомления',

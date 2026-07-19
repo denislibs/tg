@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import TgIcon from './TgIcon'
 import Avatar from '../shared/ui/Avatar'
 import Menu, { MenuItem } from '../shared/ui/Menu'
@@ -11,6 +11,7 @@ import { ANIMATE_AUTH_KEY, PREV_ACCOUNT_KEY, playChatlistExit, playMainScreenExi
 import { useSettings } from '../settings'
 import { usePwaStore } from '../core/pwa'
 import { triggerPip, pipSupported } from '../core/pip'
+import { uiEvents } from '../core/hooks/uiEvents'
 import type { ToggleMode } from '../App'
 import { useT } from '../i18n'
 
@@ -46,6 +47,14 @@ export default function MainMenu({
   const { reduceMotion, update } = useSettings()
   const canInstall = usePwaStore((st) => st.canInstall)
   const [moreOpen, setMoreOpen] = useState(false)
+  // Подменю «Ещё» якорится к своему пункту (не фикс-координаты).
+  const moreItemRef = useRef<HTMLDivElement>(null)
+  const [moreAnchor, setMoreAnchor] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
+  const toggleMore = () => {
+    const r = moreItemRef.current?.getBoundingClientRect()
+    if (r) setMoreAnchor({ top: r.top, left: r.right + 4 })
+    setMoreOpen((o) => !o)
+  }
   const me = useChatsStore((s) => s.me)
   const meAvatar = useAvatarSrc(me?.avatarUrl)
   const meName = me?.displayName?.trim() || [me?.firstName, me?.lastName].filter(Boolean).join(' ').trim() || me?.username || 'Аккаунт'
@@ -97,7 +106,15 @@ export default function MainMenu({
     { icon: 'help', label: 'Telegram Features', onClick: () => openUrl('https://telegram.org/tour') },
     { icon: 'bug', label: 'Report Bug', onClick: () => openUrl('https://bugs.telegram.org/?tag_ids=40&sort=time') },
     { icon: 'add', label: 'Install App', onClick: () => { void usePwaStore.getState().install(); close() }, show: canInstall },
-    { icon: 'pip', label: 'Picture in Picture', onClick: () => { void triggerPip(); close() }, show: pipSupported() },
+    {
+      icon: 'pip',
+      label: 'Picture in Picture',
+      onClick: () => {
+        void triggerPip().then((ok) => { if (!ok) uiEvents.emit('ui:toast', t('Open a video to use Picture-in-Picture.')) })
+        close()
+      },
+      show: pipSupported(),
+    },
   ]
 
   return (
@@ -146,12 +163,14 @@ export default function MainMenu({
       />
       {divider}
       <MenuItem icon={<TgIcon name="settings" size={20} />} label={t('Settings')} onClick={onOpenSettings} />
-      <MenuItem
-        icon={<TgIcon name="more" size={20} />}
-        label={t('More')}
-        right={<TgIcon name="next" size={20} color="var(--tg-textFaint)" />}
-        onClick={() => setMoreOpen((o) => !o)}
-      />
+      <div ref={moreItemRef}>
+        <MenuItem
+          icon={<TgIcon name="more" size={20} />}
+          label={t('More')}
+          right={<TgIcon name="next" size={20} color="var(--tg-textFaint)" />}
+          onClick={toggleMore}
+        />
+      </div>
       {onLogout && (
         <>
           {divider}
@@ -164,7 +183,7 @@ export default function MainMenu({
     <Menu
       open={moreOpen && open}
       onClose={close}
-      style={{ top: 300, left: 252, transformOrigin: 'top left' }}
+      style={{ top: moreAnchor.top, left: moreAnchor.left, transformOrigin: 'top left' }}
     >
       {moreItems
         .filter((it) => it.show !== false)
