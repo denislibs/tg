@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useManagers } from './core/hooks/useManagers'
-import TopicView from './components/TopicView'
+import type { ThreadInfo } from './components/ConversationView'
 import type { TopicRow } from './core/managers/groupsManager'
 import { uiEvents } from './core/hooks/uiEvents'
 import GroupCallScreen from './components/GroupCallScreen'
@@ -48,9 +48,9 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   const t = useT()
   const dialogs = useChatsStore((s) => s.dialogs)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  // Открытый тред форум-топика (tweb setPeer({peerId, threadId})): рендерится в
-  // колонке чата вместо ConversationView; выбор обычного чата его закрывает.
-  const [openTopic, setOpenTopic] = useState<{ chatId: number; topic: TopicRow } | null>(null)
+  // Открытый тред (tweb setPeer({peerId, threadId})): форум-топик или комментарии
+  // поста канала — ConversationView в thread-режиме; выбор чата тред закрывает.
+  const [openThread, setOpenThread] = useState<{ chatId: number; thread: ThreadInfo } | null>(null)
   // A peer we've opened a conversation with but who has no dialog yet: shown as a
   // draft chat. No sidebar entry is created until the first message is sent.
   const [draftPeer, setDraftPeer] = useState<OpenPeer | null>(null)
@@ -208,14 +208,28 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   const selectChat = useCallback((id: string) => {
     setSelectedId(id)
     setDraftPeer(null)
-    setOpenTopic(null)
+    setOpenThread(null)
   }, [])
 
   // Клик по теме в панели топиков: тред в колонке чата, форум подсвечен в списке.
   const openTopicThread = useCallback((chatId: number, topic: TopicRow) => {
-    setOpenTopic({ chatId, topic })
+    setOpenThread({ chatId, thread: { rootMsgId: topic.rootMsgId, title: topic.title, iconColor: topic.iconColor, closed: topic.closed, kind: 'topic' } })
     setSelectedId(String(chatId))
     setDraftPeer(null)
+  }, [])
+
+  // Клик по «N комментариев» под постом канала (из ConversationView канала).
+  const openCommentsThread = useCallback((args: { chatId: number; rootMsgId: number; title: string }) => {
+    setOpenThread({ chatId: args.chatId, thread: { rootMsgId: args.rootMsgId, title: args.title, kind: 'comments' } })
+  }, [])
+
+  // Закрытие треда: топик — пустая колонка (панель топиков осталась слева),
+  // комментарии — назад к каналу (selectedId не трогали).
+  const closeThread = useCallback(() => {
+    setOpenThread((cur) => {
+      if (cur?.thread.kind === 'topic') setSelectedId(null)
+      return null
+    })
   }, [])
 
   // Клик по браузерному уведомлению: sw.js фокусирует вкладку и шлёт
@@ -290,7 +304,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
       selectedId={selectedId ?? ''}
       onSelect={selectChat}
       onOpenTopic={openTopicThread}
-      activeTopicId={openTopic?.topic.id ?? null}
+      activeTopicId={openThread?.thread.kind === 'topic' ? openThread.thread.rootMsgId : null}
       onCreateGroup={(name, memberIds, photo) => {
         void createGroup(name, memberIds, photo)
       }}
@@ -304,17 +318,33 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     />
   )
 
+  // Чат треда: диалог из списка, а для комментариев (discussion-группа, где мы
+  // можем не состоять) — синтетический Chat.
+  const threadChat: Chat | null = openThread
+    ? chatList.find((c) => c.id === String(openThread.chatId)) ?? {
+        id: String(openThread.chatId),
+        name: openThread.thread.title,
+        avatar: gradientFor(openThread.chatId),
+        avatarText: '#',
+        date: '',
+        preview: '',
+        type: 'group',
+      }
+    : null
+
   const chatArea =
-    openTopic ? (
-      <TopicView
-        key={`topic-${openTopic.chatId}-${openTopic.topic.id}`}
-        chatId={openTopic.chatId}
-        topic={openTopic.topic}
-        groupName={chatList.find((c) => c.id === String(openTopic.chatId))?.name ?? ''}
-        onBack={() => setOpenTopic(null)}
+    openThread && threadChat ? (
+      <ConversationView
+        key={`thread-${openThread.chatId}-${openThread.thread.rootMsgId}`}
+        chat={threadChat}
+        thread={openThread.thread}
+        onCloseThread={closeThread}
+        onBack={backToList}
+        onOpenPeer={openPeer}
+        onChatCreated={onChatCreated}
       />
     ) : selected ? (
-      <ConversationView key={selectedId} chat={selected} onBack={backToList} onOpenPeer={openPeer} onChatCreated={onChatCreated} />
+      <ConversationView key={selectedId} chat={selected} onBack={backToList} onOpenPeer={openPeer} onChatCreated={onChatCreated} onOpenThread={openCommentsThread} />
     ) : (
       <div className={s.empty}>
         <div className={s.emptyPill}>

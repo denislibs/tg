@@ -23,7 +23,19 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		return domain.Message{}, err
 	}
 	if !ok {
-		return domain.Message{}, domain.ErrNotFound
+		// Комментарий в discussion-группе канала: подписчик пишет без вступления —
+		// авто-джойн, как PostComment (tweb: sendMessage в тред вступает в группу).
+		joined := false
+		if in.ThreadRootID != nil && i.groups != nil {
+			if disc, e := i.groups.IsDiscussionGroup(ctx, in.ChatID); e == nil && disc {
+				if e := i.groups.AddMember(ctx, in.ChatID, in.SenderID, domain.RoleMember, 0); e == nil {
+					joined = true
+				}
+			}
+		}
+		if !joined {
+			return domain.Message{}, domain.ErrNotFound
+		}
 	}
 	if in.Type == "" {
 		in.Type = "text"

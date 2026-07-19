@@ -350,7 +350,7 @@ func (r fakeMsgs) GetByID(_ context.Context, msgID int64) (domain.Message, error
 	return domain.Message{}, domain.ErrNotFound
 }
 
-func (r fakeMsgs) GetAround(_ context.Context, chatID, userID, centerSeq int64, limit int) ([]domain.Message, bool, bool, error) {
+func (r fakeMsgs) GetAround(_ context.Context, chatID, userID, centerSeq int64, limit int, _ *int64) ([]domain.Message, bool, bool, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	if limit <= 0 {
@@ -574,7 +574,7 @@ func (r fakeMsgs) HideForUser(_ context.Context, userID, msgID int64) error {
 	return nil
 }
 
-func (r fakeMsgs) GetHistory(_ context.Context, chatID, userID, offsetSeq int64, addOffset, limit int) ([]domain.Message, error) {
+func (r fakeMsgs) GetHistory(_ context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, _ *int64) ([]domain.Message, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	all := r.s.messages[chatID]

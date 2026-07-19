@@ -44,7 +44,7 @@ interface Props {
   onSelect: (id: string) => void
   /** клик по теме в панели топиков форума — открыть тред в колонке чата */
   onOpenTopic: (chatId: number, topic: TopicRow) => void
-  /** тема, открытая в колонке чата (подсветка ряда в панели топиков) */
+  /** rootMsgId темы, открытой в колонке чата (подсветка ряда в панели топиков) */
   activeTopicId: number | null
   onCreateGroup: (name: string, memberIds: number[], photo: import('./NewGroupFlow').GroupPhoto | null) => void
   onCreateChannel: (name: string, description: string) => void
@@ -316,7 +316,7 @@ export default function Sidebar({
               <TopicsPanel
                 chatId={Number(forumChat.id)}
                 chatName={forumChat.name}
-                activeTopicId={activeTopicId}
+                activeRootMsgId={activeTopicId}
                 onClose={() => setForumChat(null)}
                 onOpenTopic={(topic) => onOpenTopic(Number(forumChat.id), topic)}
                 onViewAsMessages={() => {

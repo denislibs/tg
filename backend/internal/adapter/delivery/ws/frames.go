@@ -25,6 +25,8 @@ type sendMessageData struct {
 	GeoLat        *float64 `json:"geo_lat"`
 	GeoLng        *float64 `json:"geo_lng"`
 	ContactUserID *int64   `json:"contact_user_id"`
+	// Сообщение в тред (форум-топик / комментарии): id корневого сообщения.
+	ThreadRootID *int64 `json:"thread_root_id"`
 }
 
 type readData struct {

@@ -179,9 +179,14 @@ func (h *ChatHandler) History(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	limit := int(queryInt(r, "limit", 40))
+	// Тред (форум-топик / комментарии): ?thread_root=<msgID> ограничивает окно.
+	var threadRoot *int64
+	if tr := queryInt(r, "thread_root", 0); tr > 0 {
+		threadRoot = &tr
+	}
 	// Jump-to-message: ?around=<seq> returns a window centered on that message.
 	if around := queryInt(r, "around", 0); around > 0 {
-		a, err := h.svc.GetHistoryAround(r.Context(), chatID, h.meID(r), around, limit)
+		a, err := h.svc.GetHistoryAround(r.Context(), chatID, h.meID(r), around, limit, threadRoot)
 		if errors.Is(err, domain.ErrNotFound) {
 			writeError(w, http.StatusForbidden, "not a member of this chat")
 			return
@@ -199,7 +204,7 @@ func (h *ChatHandler) History(w http.ResponseWriter, r *http.Request) {
 	}
 	offsetSeq := queryInt(r, "offset_id", 0)
 	addOffset := int(queryInt(r, "add_offset", 0))
-	res, err := h.svc.GetHistory(r.Context(), chatID, h.meID(r), offsetSeq, addOffset, limit)
+	res, err := h.svc.GetHistory(r.Context(), chatID, h.meID(r), offsetSeq, addOffset, limit, threadRoot)
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
 		return

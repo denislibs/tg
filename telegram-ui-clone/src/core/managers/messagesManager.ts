@@ -8,6 +8,8 @@ export interface HistoryArgs {
   offsetSeq?: number // reference seq; 0 = newest
   addOffset?: number // >0 older (inclusive), <=0 newer
   limit?: number
+  /** окно треда (форум-топик / комментарии): id корневого сообщения */
+  threadRoot?: number
 }
 
 export interface HistoryResult {
@@ -32,29 +34,39 @@ export interface SendArgs {
 export interface MessagesDeps { rest: RestClient }
 
 export function newMessagesManager({ rest }: MessagesDeps) {
-  const slices = new Map<number, SlicedArray<number>>()
-  const cache = new Map<number, Map<number, Message>>()
+  // Кэш истории ключуется чатом ИЛИ тредом чата ("chatId" / "chatId:root") —
+  // окно топика/комментариев живёт отдельным срезом (tweb: history по threadId).
+  const slices = new Map<string, SlicedArray<number>>()
+  const cache = new Map<string, Map<number, Message>>()
+  const hkey = (chatId: number, threadRoot?: number | null): string =>
+    threadRoot ? `${chatId}:${threadRoot}` : String(chatId)
+  // Все ключи чата (основное окно + его треды) — для инвалидации по chatId.
+  const keysOf = (chatId: number): string[] =>
+    [...new Set([...slices.keys(), ...cache.keys()])].filter(
+      (k) => k === String(chatId) || k.startsWith(`${chatId}:`),
+    )
 
-  const sliceFor = (chatId: number): SlicedArray<number> => {
-    let sa = slices.get(chatId)
-    if (!sa) { sa = new SlicedArray<number>(); slices.set(chatId, sa) }
+  const sliceFor = (key: string): SlicedArray<number> => {
+    let sa = slices.get(key)
+    if (!sa) { sa = new SlicedArray<number>(); slices.set(key, sa) }
     return sa
   }
-  const cacheFor = (chatId: number): Map<number, Message> => {
-    let c = cache.get(chatId)
-    if (!c) { c = new Map(); cache.set(chatId, c) }
+  const cacheFor = (key: string): Map<number, Message> => {
+    let c = cache.get(key)
+    if (!c) { c = new Map(); cache.set(key, c) }
     return c
   }
-  const put = (chatId: number, msgs: Message[]) => {
-    const c = cacheFor(chatId)
+  const put = (key: string, msgs: Message[]) => {
+    const c = cacheFor(key)
     for (const m of msgs) c.set(m.seq, m)
   }
 
   return {
     async getHistory(args: HistoryArgs): Promise<HistoryResult> {
-      const { chatId, offsetSeq = 0, addOffset = 0, limit = 40 } = args
-      const sa = sliceFor(chatId)
-      const c = cacheFor(chatId)
+      const { chatId, offsetSeq = 0, addOffset = 0, limit = 40, threadRoot } = args
+      const key = hkey(chatId, threadRoot)
+      const sa = sliceFor(key)
+      const c = cacheFor(key)
 
       // --- cache check (mirrors tweb appMessagesManager.getHistory) ---
       const have = sa.sliceMe(offsetSeq, addOffset, limit)
@@ -87,10 +99,10 @@ export function newMessagesManager({ rest }: MessagesDeps) {
       // --- network fetch ---
       const r = await rest.get<{ messages: RawMessage[]; count: number }>(
         `/chats/${chatId}/history`,
-        { offset_id: offsetSeq, add_offset: addOffset, limit },
+        { offset_id: offsetSeq, add_offset: addOffset, limit, ...(threadRoot ? { thread_root: threadRoot } : {}) },
       )
       const fetched = (r.messages ?? []).map(mapMessage)
-      put(chatId, fetched)
+      put(key, fetched)
 
       // normalize to descending seqs for the SlicedArray
       const seqsDesc = fetched.map((m) => m.seq).sort((a, b) => b - a)
@@ -133,10 +145,13 @@ export function newMessagesManager({ rest }: MessagesDeps) {
         thread_root_id: args.threadRootId ?? null,
       })
       const m = mapMessage(created)
-      put(args.chatId, [m])
-      const sa = sliceFor(args.chatId)
-      // a sent message is the newest — push to the bottom end if we hold it
-      if (sa.first.isEnd(SliceEnd.Bottom) && !sa.findSlice(m.seq)) sa.unshift(m.seq)
+      // Кладём и в основное окно чата, и в окно треда (если это тред-сообщение).
+      for (const key of m.threadRootId ? [hkey(args.chatId), hkey(args.chatId, m.threadRootId)] : [hkey(args.chatId)]) {
+        put(key, [m])
+        const sa = sliceFor(key)
+        // a sent message is the newest — push to the bottom end if we hold it
+        if (sa.first.isEnd(SliceEnd.Bottom) && !sa.findSlice(m.seq)) sa.unshift(m.seq)
+      }
       return m
     },
 
@@ -145,7 +160,8 @@ export function newMessagesManager({ rest }: MessagesDeps) {
     async editMessage(chatId: number, msgId: number, text: string, entities?: MessageEntity[]): Promise<Message> {
       const updated = await rest.patch<RawMessage>(`/chats/${chatId}/messages/${msgId}`, { text, entities: entities ?? null })
       const m = mapMessage(updated)
-      put(chatId, [m])
+      for (const key of keysOf(chatId)) if (cache.get(key)?.has(m.seq)) put(key, [m])
+      put(hkey(chatId, m.threadRootId), [m])
       return m
     },
 
@@ -154,12 +170,15 @@ export function newMessagesManager({ rest }: MessagesDeps) {
     // later cache hit would resurrect it.
     async deleteMessage(chatId: number, msgId: number, revoke: boolean): Promise<{ ok: boolean }> {
       const r = await rest.del<{ ok: boolean }>(`/chats/${chatId}/messages/${msgId}?revoke=${revoke ? 'true' : 'false'}`)
-      const c = cacheFor(chatId)
-      for (const [seq, m] of c) {
-        if (m.id === msgId) {
-          c.delete(seq)
-          sliceFor(chatId).delete(seq)
-          break
+      // Вычистить из основного окна и всех тред-окон этого чата.
+      for (const key of keysOf(chatId)) {
+        const c = cacheFor(key)
+        for (const [seq, m] of c) {
+          if (m.id === msgId) {
+            c.delete(seq)
+            sliceFor(key).delete(seq)
+            break
+          }
         }
       }
       return r
@@ -172,7 +191,7 @@ export function newMessagesManager({ rest }: MessagesDeps) {
         msg_ids: msgIds,
       })
       const msgs = (r.messages ?? []).map(mapMessage)
-      put(toChatId, msgs)
+      put(hkey(toChatId), msgs)
       return msgs
     },
 
@@ -191,14 +210,15 @@ export function newMessagesManager({ rest }: MessagesDeps) {
 
     // Jump-to-message: load a window centered on centerSeq and RESET this chat's
     // slice/cache to it (so loadOlder/loadNewer continue from the jumped spot).
-    async getAround(chatId: number, centerSeq: number, limit = 40): Promise<{ messages: Message[]; reachedTop: boolean; reachedBottom: boolean }> {
+    async getAround(chatId: number, centerSeq: number, limit = 40, threadRoot?: number): Promise<{ messages: Message[]; reachedTop: boolean; reachedBottom: boolean }> {
       const r = await rest.get<{ messages: RawMessage[]; reached_top: boolean; reached_bottom: boolean }>(
-        `/chats/${chatId}/history`, { around: centerSeq, limit },
+        `/chats/${chatId}/history`, { around: centerSeq, limit, ...(threadRoot ? { thread_root: threadRoot } : {}) },
       )
       const asc = (r.messages ?? []).map(mapMessage)
+      const key = hkey(chatId, threadRoot)
       const sa = new SlicedArray<number>()
-      slices.set(chatId, sa)
-      const c = cacheFor(chatId)
+      slices.set(key, sa)
+      const c = cacheFor(key)
       for (const m of asc) c.set(m.seq, m)
       const seqsDesc = asc.map((m) => m.seq).sort((a, b) => b - a)
       const inserted = seqsDesc.length ? sa.insertSlice(seqsDesc) : sa.first

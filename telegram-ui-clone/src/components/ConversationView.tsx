@@ -5,7 +5,6 @@ import TgIcon from './TgIcon'
 import { useAvatarSrc } from './useAvatarSrc'
 import UserInfoPanel from './UserInfoPanel'
 import AddContactView from './AddContactView'
-import DiscussionView from './DiscussionView'
 import HeaderMenu from './HeaderMenu'
 import MutePopup from './MutePopup'
 import AttachMenu from './AttachMenu'
@@ -46,6 +45,8 @@ import { joinGroupCall } from '../core/calls/groupCallEngine'
 const EMPTY_IDS: number[] = []
 import { useMessagesStore } from '../stores/messagesStore'
 import ChatHeader from './conversation/ChatHeader'
+import IconButton from '../shared/ui/IconButton'
+import { TopicIcon } from './TopicsPanel'
 import PinnedBar from './conversation/PinnedBar'
 import ScrollDownFab from './conversation/ScrollDownFab'
 import SelectionBar from './conversation/SelectionBar'
@@ -85,14 +86,31 @@ const feedMask = (fadeT: number, fadeB: number) => `linear-gradient(to bottom, $
 
 // Telegram's per-peer color palette (used to tint reply previews by their author)
 
+// Тред в колонке чата (tweb setPeer({peerId, threadId})): форум-топик или
+// комментарии поста канала. rootMsgId — корневое сообщение треда.
+export interface ThreadInfo {
+  rootMsgId: number
+  title: string
+  iconColor?: number
+  closed?: boolean
+  kind: 'topic' | 'comments'
+}
+
 interface Props {
   chat: Chat
   onBack?: () => void
   onOpenPeer?: (peer: OpenPeer) => void
   onChatCreated?: (chatId: number) => void
+  /** режим треда (tweb setPeer({peerId, threadId})): окно/отправка ограничены
+   * тредом, вместо ChatHeader — плашка темы, пины/анрид-плашка/звонки скрыты */
+  thread?: ThreadInfo
+  /** закрыть тред (кнопка «назад» в тред-шапке) */
+  onCloseThread?: () => void
+  /** открыть тред комментариев поста канала (клик по CommentsBar) */
+  onOpenThread?: (args: { chatId: number; rootMsgId: number; title: string }) => void
 }
 
-export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreated }: Props) {
+export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreated, thread, onCloseThread, onOpenThread }: Props) {
   const t = useT()
   const headerAvatarSrc = useAvatarSrc(chat.avatarUrl)
   const [lang] = useLang()
@@ -110,7 +128,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const numericChatId = Number(chat.id)
   const isRealChat = Number.isFinite(numericChatId) && String(numericChatId) === chat.id
   // Облачный черновик: восстановление в композер + сейв с дебаунсом
-  const { initialDraft, onDraftChange } = useComposerDraft(isRealChat ? numericChatId : null)
+  const { initialDraft, onDraftChange } = useComposerDraft(isRealChat && !thread ? numericChatId : null)
   // Кандидаты @упоминаний — участники группы (tweb mentionsHelper)
   const mentionPeers = useMentionPeers(isRealChat ? numericChatId : null, isRealChat && isGroup)
 
@@ -128,7 +146,8 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   )
   const muted = dialogMuted ?? !!chat.muted
   const managers = useManagers()
-  const win = useMessageWindow(isRealChat ? numericChatId : -1, 40)
+  const threadRootId = thread?.rootMsgId
+  const win = useMessageWindow(isRealChat ? numericChatId : -1, 40, threadRootId)
 
   // Register the active chat so chatsStore suppresses unread bumps while it's open.
   const setActiveChat = useChatsStore((s) => s.setActiveChat)
@@ -140,7 +159,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // Real group/channel header card (type/counts/rights) + member presence seeding +
   // post/type permission + discussion wiring + live online count — view-model hook.
   const { card, canType, discussionChatId, discussionsEnabled, onlineCount } =
-    useChatInfoCard({ isRealChat, isChannel, numericChatId, managers })
+    useChatInfoCard({ isRealChat: isRealChat && !thread, isChannel, numericChatId, managers })
   // Message read-model: window Message[] → ConvMsg[] (sender/forward/reply names +
   // stable-ref cache) plus the resolved peers map (reused below for voice/lightbox).
   const { msgs, peers } = useConvMessages({ numericChatId, isRealChat, isGroup, win, meId })
@@ -212,7 +231,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     openReadRef.current = { lastReadSeq: d?.lastReadSeq ?? 0, unread: d?.unread ?? 0 }
   }
   const unreadDividerRef = useRef<number | null>(null)
-  if (unreadDividerRef.current === null && isRealChat && meId != null && openReadRef.current.unread > 0) {
+  if (unreadDividerRef.current === null && isRealChat && !thread && meId != null && openReadRef.current.unread > 0) {
     const horizon = openReadRef.current.lastReadSeq
     const first = win.msgs.find((m) => m.seq > horizon && m.senderId !== meId)
     if (first) unreadDividerRef.current = first.seq
@@ -257,7 +276,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     sendGeo, sendContact,
   } = useChatSend({
     chat, numericChatId, isRealChat, isChannel, draftPeerId, canType,
-    meId, win, managers, atBottomRef, userScrolledUpRef,
+    meId, win, managers, threadRootId, atBottomRef, userScrolledUpRef,
     onChatCreated,
   })
 
@@ -288,8 +307,13 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
 
   // Channel-only wiring: live subscribe + catch-up, pts persistence, the open
   // discussion-thread overlay, and per-post comment counts.
-  const { commentCounts, discussion, openDiscussion, closeDiscussion } = useChannelExtras({
+  const { commentCounts } = useChannelExtras({
     isRealChat, isChannel, numericChatId, win, managers, discussionsEnabled,
+  })
+  // Клик по «N комментариев» под постом канала — тред комментариев в этой же
+  // колонке (tweb: setPeer(discussion group, threadId=postId)).
+  const openDiscussionThread = useEvent((postId: number) => {
+    if (discussionChatId > 0) onOpenThread?.({ chatId: discussionChatId, rootMsgId: postId, title: t('Comments') })
   })
 
   // Stable handler identities for the memoized feed: the feed closes over
@@ -426,28 +450,9 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // the attach button (lets the user add a caption + choose media/file).
   const onComposerPasteFiles = useEvent((files: File[]) => setPendingMedia({ files, asFile: false }))
 
-  // Channel post discussion thread: render it IN PLACE OF the channel column (not as
-  // an overlay) so the channel feed isn't mounted underneath and can't bleed through
-  // the thread's transparent (wallpaper-showing) background.
-  if (discussion && discussionsEnabled) {
-    return (
-      <div className={s.root}>
-        <div className={classNames(s.column, narrow ? s.columnNarrow : '')}>
-          <DiscussionView
-            channelId={numericChatId}
-            postId={discussion.postId}
-            discussionChatId={discussionChatId}
-            post={discussion.post}
-            onBack={closeDiscussion}
-          />
-        </div>
-      </div>
-    )
-  }
-
   // Форум-группы здесь НЕ перехватываются: как в tweb, клик по форуму открывает
-  // панель топиков в ЛЕВОМ сайдбаре (Sidebar → TopicsPanel), тред топика —
-  // TopicView в колонке чата, а «Показать как сообщения» ведёт сюда — в обычный чат.
+  // панель топиков в ЛЕВОМ сайдбаре (Sidebar → TopicsPanel); тред топика — этот же
+  // компонент в thread-режиме, а «Показать как сообщения» — обычный чат.
 
   return (
     <CallProvider chat={chat}>
@@ -461,6 +466,25 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           </div>
         </div>
 
+        {thread ? (
+        <div className={s.threadHeaderBar} style={{ top: (narrow ? 8 : 16) + playerOffset }}>
+          <div className={s.threadHeaderCard}>
+            <IconButton onClick={onCloseThread} color="var(--tg-textSecondary)" style={{ marginLeft: '-4px' }}>
+              <TgIcon name="back" />
+            </IconButton>
+            {thread.kind === 'topic' ? (
+              <TopicIcon color={thread.iconColor ?? 0} title={thread.title} size={30} />
+            ) : (
+              <TgIcon name="comments" size={26} color="var(--tg-accent)" />
+            )}
+            <div className={s.threadHeaderBody}>
+              <Text noWrap weight={600} size={15.5} color="var(--tg-textPrimary)">{thread.title}</Text>
+              <Text noWrap size={12.5} color="var(--tg-textSecondary)">{chat.name}</Text>
+            </div>
+            {thread.closed && <TgIcon name="lock" size={18} color="var(--tg-textFaint)" />}
+          </div>
+        </div>
+        ) : (
         <ChatHeader
           chat={chat}
           avatarSrc={headerAvatarSrc}
@@ -476,14 +500,15 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           onToggleInfo={onToggleInfo}
           onOpenMenu={onOpenHeaderMenu}
         />
+        )}
 
-        <PinnedBar
+        {!thread && <PinnedBar
           pins={pins}
           searchOpen={searchOpen}
           playerOffset={playerOffset}
           onJump={jumpToSeqE}
           onUnpin={onUnpin}
-        />
+        />}
 
         {/* First-load spinner — only after the grace delay (skipped on cache hits) */}
         <AnimatePresence>
@@ -538,7 +563,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
                 ladderActive={ladderActive}
                 dateStickyTop={dateStickyTop}
                 feedFns={feedFns}
-                onOpenDiscussion={openDiscussion}
+                onOpenDiscussion={openDiscussionThread}
               />
             )}
 
@@ -553,6 +578,13 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
             onForward={() => openForwardFor([...selected])}
             onDelete={() => openDeleteFor([...selected])}
           />
+        ) : thread?.closed ? (
+          <div className={classNames(s.footer, s.footerCompose)}>
+            <div className={s.threadClosedBar}>
+              <TgIcon name="lock" size={16} color="var(--tg-textSecondary)" />
+              <Text size={14.5} color="var(--tg-textSecondary)">{t('Topic is closed')}</Text>
+            </div>
+          </div>
         ) : canType ? (
           <div className={classNames(s.footer, s.footerCompose)}>
             {scrollDownFab}
@@ -674,7 +706,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       )}
 
       {/* Баннер идущего видеочата (tweb topbar-call): Join, пока сам не в звонке */}
-      {isRealChat && groupCallActive.length > 0 && myGroupCallChat !== numericChatId && (
+      {isRealChat && !thread && groupCallActive.length > 0 && myGroupCallChat !== numericChatId && (
         <div className={s.groupCallBanner} onClick={() => void joinGroupCall(numericChatId)}>
           <TgIcon name="videochat" size={18} color="#fff" />
           <Text size={14} weight={600} color="#fff" style={{ flex: 1 }}>

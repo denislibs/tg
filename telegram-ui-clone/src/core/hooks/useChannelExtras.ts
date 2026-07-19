@@ -1,10 +1,10 @@
 // src/core/hooks/useChannelExtras.ts
 //
 // Channel-only wiring for the conversation: live subscription + catch-up (tweb's
-// getChannelDifference on open), persisting the current max seq as pts, the open
-// discussion-thread overlay, and per-post comment counts. No-ops for non-channels.
+// getChannelDifference on open), persisting the current max seq as pts, and
+// per-post comment counts. No-ops for non-channels. (Сам тред комментариев —
+// обычный ConversationView в thread-режиме; открытие — через App.openThread.)
 import { useEffect, useState } from 'react'
-import { useEvent } from './useEvent'
 import { useMessagesStore } from '../../stores/messagesStore'
 import type { Managers } from '../../client/bootstrap'
 import type { MessageWindow } from './useMessageWindow'
@@ -20,12 +20,8 @@ interface UseChannelExtrasArgs {
 
 export function useChannelExtras({ isRealChat, isChannel, numericChatId, win, managers, discussionsEnabled }: UseChannelExtrasArgs): {
   commentCounts: Map<number, number>
-  discussion: { postId: number; post: { text?: string } } | null
-  openDiscussion: (postId: number, text?: string) => void
-  closeDiscussion: () => void
 } {
   const [commentCounts, setCommentCounts] = useState<Map<number, number>>(new Map())
-  const [discussion, setDiscussion] = useState<{ postId: number; post: { text?: string } } | null>(null)
 
   // Channel live + catch-up (mirrors tweb's getChannelDifference on open): subscribe
   // to the channel topic so live posts arrive via rt:new_message (existing path), and
@@ -85,9 +81,5 @@ export function useChannelExtras({ isRealChat, isChannel, numericChatId, win, ma
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRealChat, isChannel, numericChatId, win.msgs.length, managers])
 
-  // Stable handler for the memoized feed to open a channel post's discussion.
-  const openDiscussion = useEvent((postId: number, text?: string) => setDiscussion({ postId, post: { text } }))
-  const closeDiscussion = useEvent(() => setDiscussion(null))
-
-  return { commentCounts, discussion, openDiscussion, closeDiscussion }
+  return { commentCounts }
 }

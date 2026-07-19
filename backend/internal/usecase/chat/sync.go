@@ -8,18 +8,17 @@ import (
 )
 
 // GetHistory returns a window of messages plus the chat's total count.
-func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int) (HistoryResult, error) {
-	ok, err := i.chats.IsMember(ctx, chatID, userID)
-	if err != nil {
+// threadRoot != nil ограничивает окно тредом (форум-топик / комментарии поста);
+// тред discussion-группы читается и не-членом (как ListComments — комментарии
+// канала доступны подписчикам без вступления в группу).
+func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRoot *int64) (HistoryResult, error) {
+	if err := i.checkHistoryAccess(ctx, chatID, userID, threadRoot); err != nil {
 		return HistoryResult{}, err
-	}
-	if !ok {
-		return HistoryResult{}, domain.ErrNotFound
 	}
 	if limit <= 0 || limit > 100 {
 		limit = 40
 	}
-	msgs, err := i.msgs.GetHistory(ctx, chatID, userID, offsetSeq, addOffset, limit)
+	msgs, err := i.msgs.GetHistory(ctx, chatID, userID, offsetSeq, addOffset, limit, threadRoot)
 	if err != nil {
 		return HistoryResult{}, err
 	}
@@ -31,11 +30,34 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 	}
 	_ = i.hydratePolls(ctx, userID, msgs)
 	_ = i.hydrateReactions(ctx, userID, msgs)
-	count, err := i.msgs.CountMessages(ctx, chatID)
+	var count int
+	if threadRoot != nil {
+		count, err = i.msgs.CountThread(ctx, chatID, *threadRoot)
+	} else {
+		count, err = i.msgs.CountMessages(ctx, chatID)
+	}
 	if err != nil {
 		return HistoryResult{}, err
 	}
 	return HistoryResult{Messages: msgs, Count: count}, nil
+}
+
+// checkHistoryAccess: член чата — всегда; не-член — только тред в discussion-
+// группе канала (комментарии читаются без вступления, tweb).
+func (i *Interactor) checkHistoryAccess(ctx context.Context, chatID, userID int64, threadRoot *int64) error {
+	ok, err := i.chats.IsMember(ctx, chatID, userID)
+	if err != nil {
+		return err
+	}
+	if ok {
+		return nil
+	}
+	if threadRoot != nil && i.groups != nil {
+		if disc, e := i.groups.IsDiscussionGroup(ctx, chatID); e == nil && disc {
+			return nil
+		}
+	}
+	return domain.ErrNotFound
 }
 
 // hydrateReactions fills Reactions (emoji aggregates + the viewer's mine flag) on
@@ -152,18 +174,14 @@ type AroundResult struct {
 
 // GetHistoryAround returns a window centered on centerSeq (for jump-to-message),
 // with reply previews hydrated.
-func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, centerSeq int64, limit int) (AroundResult, error) {
-	ok, err := i.chats.IsMember(ctx, chatID, userID)
-	if err != nil {
+func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, centerSeq int64, limit int, threadRoot *int64) (AroundResult, error) {
+	if err := i.checkHistoryAccess(ctx, chatID, userID, threadRoot); err != nil {
 		return AroundResult{}, err
-	}
-	if !ok {
-		return AroundResult{}, domain.ErrNotFound
 	}
 	if limit <= 0 || limit > 100 {
 		limit = 40
 	}
-	msgs, top, bottom, err := i.msgs.GetAround(ctx, chatID, userID, centerSeq, limit)
+	msgs, top, bottom, err := i.msgs.GetAround(ctx, chatID, userID, centerSeq, limit, threadRoot)
 	if err != nil {
 		return AroundResult{}, err
 	}
@@ -175,7 +193,12 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 	}
 	_ = i.hydratePolls(ctx, userID, msgs)
 	_ = i.hydrateReactions(ctx, userID, msgs)
-	count, err := i.msgs.CountMessages(ctx, chatID)
+	var count int
+	if threadRoot != nil {
+		count, err = i.msgs.CountThread(ctx, chatID, *threadRoot)
+	} else {
+		count, err = i.msgs.CountMessages(ctx, chatID)
+	}
 	if err != nil {
 		return AroundResult{}, err
 	}

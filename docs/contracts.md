@@ -502,6 +502,11 @@ Send a message. Also delivered live over WS (`new_message`) to all members.
 Paginated window, like Telegram `messages.getHistory`.
 - Query: `offset_id` (reference `seq`; `0`/absent = newest), `add_offset`
   (`>0` → older than offset, `<=0` → newer than offset), `limit` (default 40, max 100).
+- `thread_root=<msgID>` (optional) ограничивает окно тредом (форум-топик /
+  комментарии): сообщения с этим `thread_root_id` плюс само корневое сообщение.
+  Работает и с `around`. Тред discussion-группы канала читается и НЕ-членом
+  (комментарии доступны без вступления, как `GET /channels/... /comments`);
+  отправка в такой тред (`thread_root_id` в send) авто-вступает в группу.
 - 200: `{ "messages": [ <Message>, … ], "count": 5 }`  (messages newest-first when paging from the end)
 - 403: `{ "error": "not a member of this chat" }`
 
@@ -691,7 +696,7 @@ Every frame is JSON: `{ "t": "<type>", "d": { … } }`.
 ### Client → server
 | `t` | `d` | Effect |
 |-----|-----|--------|
-| `send_message` | `{ chat_id, type?, text?, reply_to_id?, client_msg_id, media_id? }` | Same as `POST /chats/{id}/messages`; replies with `message_ack` and fans out `new_message`. |
+| `send_message` | `{ chat_id, type?, text?, reply_to_id?, client_msg_id, media_id?, thread_root_id? }` | Same as `POST /chats/{id}/messages`; replies with `message_ack` and fans out `new_message` (несёт `thread_root_id` — клиент кладёт сообщение и в окно чата, и в окно треда). |
 | `read` | `{ chat_id, up_to_seq }` | Same as `POST /chats/{id}/read`; fans out `read`. |
 | `typing` | `{ chat_id }` | Ephemeral; fans out `typing` to other members (no persistence). |
 | `subscribe_channel` | `{ chat_id }` | Subscribe this connection to a channel's live posts. The Hub lazily joins the Redis `channel:{chat_id}` topic on the first local subscriber; subsequent posts arrive as `new_message`. |

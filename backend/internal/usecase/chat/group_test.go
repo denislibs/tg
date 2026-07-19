@@ -156,6 +156,17 @@ func (r *fakeGroupRepo) GetDiscussion(_ context.Context, channelID int64) (int64
 	return r.discussion[channelID], nil
 }
 
+func (r *fakeGroupRepo) IsDiscussionGroup(_ context.Context, chatID int64) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, gid := range r.discussion {
+		if gid == chatID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (r *fakeGroupRepo) CreateMultiMember(_ context.Context, typ, title, about, username string, isPublic bool, creatorID int64) (int64, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

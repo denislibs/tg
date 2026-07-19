@@ -35,11 +35,11 @@ export function TopicIcon({ color, title, size = 26 }: { color: number; title: s
 
 const CHANGE_INFO = 64
 
-export default function TopicsPanel({ chatId, chatName, activeTopicId, onClose, onOpenTopic, onViewAsMessages }: {
+export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose, onOpenTopic, onViewAsMessages }: {
   chatId: number
   chatName: string
-  /** тема, открытая сейчас в колонке чата — её ряд подсвечен */
-  activeTopicId: number | null
+  /** rootMsgId темы, открытой в колонке чата — её ряд подсвечен */
+  activeRootMsgId: number | null
   onClose: () => void
   onOpenTopic: (topic: TopicRow) => void
   onViewAsMessages: () => void
@@ -116,7 +116,7 @@ export default function TopicsPanel({ chatId, chatName, activeTopicId, onClose, 
         {(topics ?? []).map((topic) => (
           <div
             key={topic.id}
-            className={classNames(s.row, topic.id === activeTopicId ? s.rowActive : '')}
+            className={classNames(s.row, topic.rootMsgId === activeRootMsgId ? s.rowActive : '')}
             onClick={() => onOpenTopic(topic)}
           >
             <div className={s.titleRow}>

@@ -14,13 +14,13 @@ function msg(id: number): Message {
 }
 
 function reactionsOf(id: number) {
-  return useMessagesStore.getState().byChat[CHAT].msgs.find((m) => m.id === id)?.reactions
+  return useMessagesStore.getState().byKey[String(CHAT)].msgs.find((m) => m.id === id)?.reactions
 }
 
 describe('messagesStore.applyReaction', () => {
   beforeEach(() => {
-    useMessagesStore.setState({ byChat: {} })
-    useMessagesStore.getState().setWindow(CHAT, { msgs: [msg(10)], reachedTop: true, reachedBottom: true })
+    useMessagesStore.setState({ byKey: {} })
+    useMessagesStore.getState().setWindow(String(CHAT), { msgs: [msg(10)], reachedTop: true, reachedBottom: true })
   })
 
   it('добавляет новый чип и инкрементит существующий', () => {
@@ -61,7 +61,7 @@ describe('messagesStore.applyReaction', () => {
     const st = useMessagesStore.getState()
     st.applyReaction(999, 10, '🔥', 'add', false)
     st.applyReaction(CHAT, 555, '🔥', 'add', false)
-    expect(useMessagesStore.getState().byChat[999]).toBeUndefined()
+    expect(useMessagesStore.getState().byKey[String(999)]).toBeUndefined()
     expect(reactionsOf(10)).toBeUndefined()
   })
 })

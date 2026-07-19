@@ -61,6 +61,9 @@ type GroupRepo interface {
 	ListMembers(ctx context.Context, chatID int64, offset, limit int) ([]domain.Member, error)
 	SetDiscussion(ctx context.Context, channelID, groupID int64) error
 	GetDiscussion(ctx context.Context, channelID int64) (int64, error) // 0 = none
+	// IsDiscussionGroup — chatID является discussion-группой какого-то канала
+	// (тред комментариев там читается и без членства, как ListComments).
+	IsDiscussionGroup(ctx context.Context, chatID int64) (bool, error)
 	// Group edit-screen settings + removed-users list.
 	Settings(ctx context.Context, chatID int64) (domain.ChatSettings, error)
 	SetType(ctx context.Context, chatID int64, isPublic bool, username string) error // domain.ErrConflict on taken username
@@ -101,8 +104,10 @@ type MessageRepo interface {
 	// filter narrows by shared-media kind ("" = any type).
 	GlobalSearchMessages(ctx context.Context, userID int64, q, filter string, offset, limit int) ([]domain.Message, int, error)
 	MediaHistory(ctx context.Context, chatID int64, filter string, offset, limit int) ([]domain.Message, int, error)
-	GetAround(ctx context.Context, chatID, userID, centerSeq int64, limit int) ([]domain.Message, bool, bool, error)
-	GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int) ([]domain.Message, error)
+	// threadRootID != nil ограничивает окно тредом (топик/комментарии): сообщения
+	// с этим thread_root_id + само корневое сообщение.
+	GetAround(ctx context.Context, chatID, userID, centerSeq int64, limit int, threadRootID *int64) ([]domain.Message, bool, bool, error)
+	GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRootID *int64) ([]domain.Message, error)
 	// LastMessageAt is the newest non-deleted message time by senderID in the chat
 	// (slowmode); domain.ErrNotFound when they haven't posted yet.
 	LastMessageAt(ctx context.Context, chatID, senderID int64) (time.Time, error)

@@ -26,9 +26,10 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 		"fwd_from_user_id": m.FwdFromUserID, "fwd_from_chat_id": m.FwdFromChatID,
 		"fwd_from_msg_id": m.FwdFromMsgID, "fwd_date": m.FwdDate, "fwd_from_name": m.FwdFromName,
 		"media_unread": m.MediaUnread, "sender_name": m.SenderName,
-		"grouped_id": m.GroupedID,
-		"poll_id":    m.PollID,
-		"poll":       m.Poll,
+		"grouped_id":     m.GroupedID,
+		"thread_root_id": m.ThreadRootID,
+		"poll_id":        m.PollID,
+		"poll":           m.Poll,
 	}
 	if m.GeoLat != nil && m.GeoLng != nil {
 		p["geo"] = map[string]any{"lat": *m.GeoLat, "lng": *m.GeoLng}

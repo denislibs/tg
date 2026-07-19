@@ -11,7 +11,7 @@
 // so the store's loading flag isn't visible yet).
 import { useCallback, useEffect, useRef } from 'react'
 import type { Message, MessageEntity } from '../models'
-import { useMessagesStore, EMPTY_WINDOW, type OptimisticMedia } from '../../stores/messagesStore'
+import { useMessagesStore, EMPTY_WINDOW, winKey, type OptimisticMedia } from '../../stores/messagesStore'
 import { useManagers } from './useManagers'
 
 export interface MessageWindow {
@@ -44,8 +44,10 @@ export interface MessageWindow {
   applyDelete: (msgId: number, forMe: boolean) => void
 }
 
-export function useMessageWindow(chatId: number, limit = 40): MessageWindow {
-  const win = useMessagesStore((s) => s.byChat[chatId]) ?? EMPTY_WINDOW
+export function useMessageWindow(chatId: number, limit = 40, threadRootId?: number): MessageWindow {
+  // Окно треда (форум-топик/комментарии) живёт под своим ключом (tweb threadId).
+  const key = winKey(chatId, threadRootId)
+  const win = useMessagesStore((s) => s.byKey[key]) ?? EMPTY_WINDOW
   const managers = useManagers()
 
   // Store actions — stable references, pulled via selectors (never getState()).
@@ -63,8 +65,8 @@ export function useMessageWindow(chatId: number, limit = 40): MessageWindow {
   const applyEditAction = useMessagesStore((s) => s.applyEdit)
   const applyDeleteAction = useMessagesStore((s) => s.applyDelete)
 
-  // guards against overlapping loads / stale chat responses
-  const reqChat = useRef(chatId)
+  // guards against overlapping loads / stale chat/thread responses
+  const reqChat = useRef(key)
   // Latest committed window, mirrored from the selector so the paging callbacks can
   // read current msgs/flags without subscribing-in-deps or getState().
   const winRef = useRef(win)
@@ -74,18 +76,18 @@ export function useMessageWindow(chatId: number, limit = 40): MessageWindow {
   const loadingNewerRef = useRef(false)
 
   useEffect(() => {
-    reqChat.current = chatId
+    reqChat.current = key
     loadingOlderRef.current = false
     loadingNewerRef.current = false
-    beginLoad(chatId)
+    beginLoad(key)
     let cancelled = false;
     (async () => {
-      const r = await managers.messages.getHistory({ chatId, offsetSeq: 0, addOffset: 0, limit })
-      if (cancelled || reqChat.current !== chatId) return
-      setWindow(chatId, { msgs: r.messages, reachedTop: r.reachedTop, reachedBottom: r.reachedBottom, cached: r.cached })
+      const r = await managers.messages.getHistory({ chatId, offsetSeq: 0, addOffset: 0, limit, threadRoot: threadRootId })
+      if (cancelled || reqChat.current !== key) return
+      setWindow(key, { msgs: r.messages, reachedTop: r.reachedTop, reachedBottom: r.reachedBottom, cached: r.cached })
     })()
     return () => { cancelled = true }
-  }, [chatId, managers, limit, beginLoad, setWindow])
+  }, [chatId, key, threadRootId, managers, limit, beginLoad, setWindow])
 
   const loadOlder = useCallback(async () => {
     const w = winRef.current
@@ -93,16 +95,16 @@ export function useMessageWindow(chatId: number, limit = 40): MessageWindow {
     const oldest = w.msgs[0]
     if (!oldest) return
     loadingOlderRef.current = true
-    setLoadingOlder(chatId, true)
+    setLoadingOlder(key, true)
     try {
-      const r = await managers.messages.getHistory({ chatId, offsetSeq: oldest.seq, addOffset: 1, limit })
-      if (reqChat.current !== chatId) return
-      prepend(chatId, r.messages, r.reachedTop)
+      const r = await managers.messages.getHistory({ chatId, offsetSeq: oldest.seq, addOffset: 1, limit, threadRoot: threadRootId })
+      if (reqChat.current !== key) return
+      prepend(key, r.messages, r.reachedTop)
     } finally {
       loadingOlderRef.current = false
-      setLoadingOlder(chatId, false)
+      setLoadingOlder(key, false)
     }
-  }, [chatId, managers, limit, setLoadingOlder, prepend])
+  }, [chatId, key, threadRootId, managers, limit, setLoadingOlder, prepend])
 
   const loadNewer = useCallback(async () => {
     const w = winRef.current
@@ -110,37 +112,38 @@ export function useMessageWindow(chatId: number, limit = 40): MessageWindow {
     const newest = w.msgs[w.msgs.length - 1]
     if (!newest) return
     loadingNewerRef.current = true
-    setLoadingNewer(chatId, true)
+    setLoadingNewer(key, true)
     try {
       // addOffset = -limit means "load `limit` messages NEWER than newest.seq"
       // (tweb semantics). Passing 0 made the cache's sliceMe walk the OLDER
       // direction in the descending slice and report a false hit (the already-loaded
       // window), so newer pages never fetched after a jump-to-message. The backend
       // only checks the sign (<=0 ⇒ newer), so the network result is unchanged.
-      const r = await managers.messages.getHistory({ chatId, offsetSeq: newest.seq, addOffset: -limit, limit })
-      if (reqChat.current !== chatId) return
-      append(chatId, r.messages, r.reachedBottom)
+      const r = await managers.messages.getHistory({ chatId, offsetSeq: newest.seq, addOffset: -limit, limit, threadRoot: threadRootId })
+      if (reqChat.current !== key) return
+      append(key, r.messages, r.reachedBottom)
     } finally {
       loadingNewerRef.current = false
-      setLoadingNewer(chatId, false)
+      setLoadingNewer(key, false)
     }
-  }, [chatId, managers, limit, setLoadingNewer, append])
+  }, [chatId, key, threadRootId, managers, limit, setLoadingNewer, append])
 
-  const appendLocal = useCallback((m: Message) => appendLocalAction(chatId, m), [chatId, appendLocalAction])
+  const appendLocal = useCallback((m: Message) => appendLocalAction(key, m), [key, appendLocalAction])
 
   const appendOptimistic = useCallback(
     (text: string, meId: number, clientMsgId: string, mediaId?: number, type = 'text', entities?: MessageEntity[], groupedId?: string, media?: OptimisticMedia, extra?: { geo?: { lat: number; lng: number }; contact?: { userId: number; name: string; phone: string } }) =>
-      appendOptimisticAction(chatId, text, meId, clientMsgId, mediaId, type, entities, groupedId, media, extra),
-    [chatId, appendOptimisticAction],
+      appendOptimisticAction(key, text, meId, clientMsgId, mediaId, type, entities, groupedId, media,
+        { ...extra, threadRootId }),
+    [key, threadRootId, appendOptimisticAction],
   )
 
   const reconcileAck = useCallback(
     (clientMsgId: string, ack: { msgId: number; seq: number; createdAt: string }) =>
-      reconcileAckAction(chatId, clientMsgId, ack),
-    [chatId, reconcileAckAction],
+      reconcileAckAction(key, clientMsgId, ack),
+    [key, reconcileAckAction],
   )
 
-  const failOptimistic = useCallback((clientMsgId: string) => failOptimisticAction(chatId, clientMsgId), [chatId, failOptimisticAction])
+  const failOptimistic = useCallback((clientMsgId: string) => failOptimisticAction(key, clientMsgId), [key, failOptimisticAction])
 
   const applyIncoming = useCallback((m: Message) => applyIncomingAction(chatId, m), [chatId, applyIncomingAction])
 
@@ -154,18 +157,18 @@ export function useMessageWindow(chatId: number, limit = 40): MessageWindow {
 
   const jumpTo = useCallback(async (centerSeq: number) => {
     if (!managers.messages.getAround) return
-    const r = await managers.messages.getAround(chatId, centerSeq, limit)
-    if (reqChat.current !== chatId) return
-    setWindow(chatId, { msgs: r.messages, reachedTop: r.reachedTop, reachedBottom: r.reachedBottom })
-  }, [chatId, managers, limit, setWindow])
+    const r = await managers.messages.getAround(chatId, centerSeq, limit, threadRootId)
+    if (reqChat.current !== key) return
+    setWindow(key, { msgs: r.messages, reachedTop: r.reachedTop, reachedBottom: r.reachedBottom })
+  }, [chatId, key, threadRootId, managers, limit, setWindow])
 
   // Escape hatch after a jump: re-fetch the newest page and replace the window
   // with it (mirrors tweb's setMessageId() with no target — go to dialog.top).
   const reloadNewest = useCallback(async () => {
-    const r = await managers.messages.getHistory({ chatId, offsetSeq: 0, addOffset: 0, limit })
-    if (reqChat.current !== chatId) return
-    setWindow(chatId, { msgs: r.messages, reachedTop: r.reachedTop, reachedBottom: r.reachedBottom })
-  }, [chatId, managers, limit, setWindow])
+    const r = await managers.messages.getHistory({ chatId, offsetSeq: 0, addOffset: 0, limit, threadRoot: threadRootId })
+    if (reqChat.current !== key) return
+    setWindow(key, { msgs: r.messages, reachedTop: r.reachedTop, reachedBottom: r.reachedBottom })
+  }, [chatId, key, threadRootId, managers, limit, setWindow])
 
   return {
     msgs: win.msgs,

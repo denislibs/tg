@@ -17,7 +17,7 @@ import type { MessageEntity } from '../models'
 import type { Chat } from '../../data'
 import type { MessageWindow } from './useMessageWindow'
 import type { Managers } from '../../client/bootstrap'
-import { useMessagesStore } from '../../stores/messagesStore'
+import { useMessagesStore , winKey } from '../../stores/messagesStore'
 import { useUploadsStore } from '../../stores/uploadsStore'
 
 // Max characters per message (matches the backend's maxMessageRunes / Telegram 4096).
@@ -37,6 +37,8 @@ interface UseChatSendArgs {
   meId: number | null
   win: MessageWindow
   managers: Managers
+  /** тред (форум-топик/комментарии): отправка идёт с thread_root_id */
+  threadRootId?: number
   // Scroll intent (owned elsewhere): sending pins to the bottom.
   atBottomRef: MutableRefObject<boolean>
   userScrolledUpRef: MutableRefObject<boolean>
@@ -53,6 +55,7 @@ export function useChatSend({
   meId,
   win,
   managers,
+  threadRootId,
   atBottomRef,
   userScrolledUpRef,
   onChatCreated,
@@ -80,7 +83,7 @@ export function useChatSend({
       if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
       atBottomRef.current = true; userScrolledUpRef.current = false
       if (isRealChat) win.appendOptimistic('', meId ?? -1, clientMsgId, mediaId, type)
-      void managers.realtime.sendMessage({ chatId: cid, text: '', clientMsgId, mediaId, type })
+      void managers.realtime.sendMessage({ chatId: cid, text: '', clientMsgId, mediaId, type, threadRootId })
       window.dispatchEvent(new Event('tg-send'))
       if (draftPeerId != null) onChatCreated?.(cid)
     },
@@ -92,7 +95,7 @@ export function useChatSend({
     const clientMsgId = mkClientMsgId()
     atBottomRef.current = true; userScrolledUpRef.current = false // sending pins to bottom
     win.appendOptimistic(text, meId ?? -1, clientMsgId, undefined, 'text', entities)
-    void managers.realtime.sendMessage({ chatId: numericChatId, text, entities, clientMsgId, replyToId: replyTo })
+    void managers.realtime.sendMessage({ chatId: numericChatId, text, entities, clientMsgId, replyToId: replyTo, threadRootId })
   }
 
   // Гео-точка из attach-меню: оптимистичный бабл сразу (координаты локальные),
@@ -101,7 +104,7 @@ export function useChatSend({
     const clientMsgId = mkClientMsgId()
     atBottomRef.current = true; userScrolledUpRef.current = false
     win.appendOptimistic('', meId ?? -1, clientMsgId, undefined, 'geo', undefined, undefined, undefined, { geo: { lat, lng } })
-    void managers.realtime.sendMessage({ chatId: numericChatId, text: '', clientMsgId, type: 'geo', geo: { lat, lng } })
+    void managers.realtime.sendMessage({ chatId: numericChatId, text: '', clientMsgId, type: 'geo', geo: { lat, lng }, threadRootId })
     window.dispatchEvent(new Event('tg-send'))
   }
 
@@ -111,7 +114,7 @@ export function useChatSend({
     const clientMsgId = mkClientMsgId()
     atBottomRef.current = true; userScrolledUpRef.current = false
     win.appendOptimistic('', meId ?? -1, clientMsgId, undefined, 'contact', undefined, undefined, undefined, { contact: { userId, name, phone: '' } })
-    void managers.realtime.sendMessage({ chatId: numericChatId, text: '', clientMsgId, type: 'contact', contactUserId: userId })
+    void managers.realtime.sendMessage({ chatId: numericChatId, text: '', clientMsgId, type: 'contact', contactUserId: userId, threadRootId })
     window.dispatchEvent(new Event('tg-send'))
   }
 
@@ -164,8 +167,8 @@ export function useChatSend({
       try {
         const bytes = await file.arrayBuffer()
         const mediaId = await managers.media.upload({ bytes, mime, size: file.size, width, height, fileName: file.name, progressId: clientMsgId })
-        useMessagesStore.getState().setOptimisticMedia(numericChatId, clientMsgId, mediaId)
-        void managers.realtime.sendMessage({ chatId: numericChatId, text: caption, clientMsgId, mediaId, type, groupedId })
+        useMessagesStore.getState().setOptimisticMedia(winKey(numericChatId, threadRootId), clientMsgId, mediaId)
+        void managers.realtime.sendMessage({ chatId: numericChatId, text: caption, clientMsgId, mediaId, type, groupedId, threadRootId })
       } catch {
         useMessagesStore.getState().failOptimisticByClient(clientMsgId)
       } finally {
@@ -177,7 +180,7 @@ export function useChatSend({
     const bytes = await file.arrayBuffer()
     const mediaId = await managers.media.upload({ bytes, mime, size: file.size, width, height, fileName: file.name })
     win.appendOptimistic(caption, meId ?? -1, clientMsgId, mediaId, type, undefined, groupedId)
-    void managers.realtime.sendMessage({ chatId: numericChatId, text: caption, clientMsgId, mediaId, type, groupedId })
+    void managers.realtime.sendMessage({ chatId: numericChatId, text: caption, clientMsgId, mediaId, type, groupedId, threadRootId })
   }
 
   // Picked files awaiting the compose popup (caption + as-media/as-file choice).

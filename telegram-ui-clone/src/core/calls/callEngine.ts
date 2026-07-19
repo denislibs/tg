@@ -104,7 +104,7 @@ function logCallMessage(reason: CallEndReason) {
   const text = JSON.stringify({ video: call.video, reason: mapped, duration })
   const clientMsgId = crypto.randomUUID()
   const meId = useChatsStore.getState().meId
-  if (meId != null) useMessagesStore.getState().appendOptimistic(call.chatId, text, meId, clientMsgId, undefined, 'call')
+  if (meId != null) useMessagesStore.getState().appendOptimistic(String(call.chatId), text, meId, clientMsgId, undefined, 'call')
   void managers().realtime.sendMessage({ chatId: call.chatId, text, clientMsgId, type: 'call' })
 }
 

@@ -67,13 +67,13 @@ func (r *MessagesRepo) GetByID(ctx context.Context, msgID int64) (domain.Message
 // GetAround returns a window of messages centered on centerSeq (older + the
 // message + newer), ascending, excluding deleted/self-hidden, plus whether the
 // real top/bottom of history was reached. Used for jump-to-message.
-func (r *MessagesRepo) GetAround(ctx context.Context, chatID, userID, centerSeq int64, limit int) ([]domain.Message, bool, bool, error) {
+func (r *MessagesRepo) GetAround(ctx context.Context, chatID, userID, centerSeq int64, limit int, threadRootID *int64) ([]domain.Message, bool, bool, error) {
 	if limit <= 0 {
 		limit = 40
 	}
 	half := limit / 2
 	q := querier(ctx, r.pool)
-	const excl = ` AND deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id=messages.id AND h.user_id=$4) AND ((SELECT history_for_new FROM chats WHERE id=$1) OR messages.created_at >= COALESCE((SELECT cm.joined_at FROM chat_members cm WHERE cm.chat_id=$1 AND cm.user_id=$4 AND cm.role='member'), 'epoch'::timestamptz))`
+	const excl = ` AND deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id=messages.id AND h.user_id=$4) AND ((SELECT history_for_new FROM chats WHERE id=$1) OR messages.created_at >= COALESCE((SELECT cm.joined_at FROM chat_members cm WHERE cm.chat_id=$1 AND cm.user_id=$4 AND cm.role='member'), 'epoch'::timestamptz)) AND ($5::bigint IS NULL OR thread_root_id=$5 OR id=$5)`
 	scan := func(rows pgx.Rows, err error) ([]domain.Message, error) {
 		if err != nil {
 			return nil, err
@@ -97,13 +97,13 @@ func (r *MessagesRepo) GetAround(ctx context.Context, chatID, userID, centerSeq 
 	// keeps the focused message centered but still returns a full page).
 	older, err := scan(q.Query(ctx,
 		`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq<=$2`+excl+` ORDER BY seq DESC LIMIT $3`,
-		chatID, centerSeq, limit, userID))
+		chatID, centerSeq, limit, userID, threadRootID))
 	if err != nil {
 		return nil, false, false, err
 	}
 	newer, err := scan(q.Query(ctx,
 		`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq>$2`+excl+` ORDER BY seq ASC LIMIT $3`,
-		chatID, centerSeq, limit, userID))
+		chatID, centerSeq, limit, userID, threadRootID))
 	if err != nil {
 		return nil, false, false, err
 	}
@@ -404,28 +404,31 @@ func (r *MessagesRepo) HideForUser(ctx context.Context, userID, msgID int64) err
 // the user hid for themselves. addOffset>0 fetches older messages (seq <
 // offsetSeq); addOffset<=0 fetches newer (seq > offsetSeq); offsetSeq==0 means
 // "from the newest".
-func (r *MessagesRepo) GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int) ([]domain.Message, error) {
+// threadRootID != nil ограничивает окно тредом (форум-топик / комментарии):
+// сообщения с этим thread_root_id плюс само корневое сообщение.
+func (r *MessagesRepo) GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRootID *int64) ([]domain.Message, error) {
 	q := querier(ctx, r.pool)
 	// Skip deleted (never shown) and rows this user hid for themselves. Placeholder
 	// differs per query shape.
 	// exclN also enforces hidden history (chats.history_for_new=false): a plain
 	// member sees only messages sent after they joined; admins/creator see all.
 	const exclN = ` AND deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id=messages.id AND h.user_id=$%d) AND ((SELECT history_for_new FROM chats WHERE id=$1) OR messages.created_at >= COALESCE((SELECT cm.joined_at FROM chat_members cm WHERE cm.chat_id=$1 AND cm.user_id=$%[1]d AND cm.role='member'), 'epoch'::timestamptz))`
+	const thrN = ` AND ($%d::bigint IS NULL OR thread_root_id=$%[1]d OR id=$%[1]d)`
 	var rows pgx.Rows
 	var err error
 	switch {
 	case offsetSeq == 0:
 		rows, err = q.Query(ctx,
-			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1`+fmt.Sprintf(exclN, 3)+` ORDER BY seq DESC LIMIT $2`,
-			chatID, limit, userID)
+			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1`+fmt.Sprintf(exclN, 3)+fmt.Sprintf(thrN, 4)+` ORDER BY seq DESC LIMIT $2`,
+			chatID, limit, userID, threadRootID)
 	case addOffset <= 0: // newer than offset
 		rows, err = q.Query(ctx,
-			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq>$2`+fmt.Sprintf(exclN, 4)+` ORDER BY seq ASC LIMIT $3`,
-			chatID, offsetSeq, limit, userID)
+			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq>$2`+fmt.Sprintf(exclN, 4)+fmt.Sprintf(thrN, 5)+` ORDER BY seq ASC LIMIT $3`,
+			chatID, offsetSeq, limit, userID, threadRootID)
 	default: // older, inclusive of offset
 		rows, err = q.Query(ctx,
-			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq<=$2`+fmt.Sprintf(exclN, 4)+` ORDER BY seq DESC LIMIT $3`,
-			chatID, offsetSeq, limit, userID)
+			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq<=$2`+fmt.Sprintf(exclN, 4)+fmt.Sprintf(thrN, 5)+` ORDER BY seq DESC LIMIT $3`,
+			chatID, offsetSeq, limit, userID, threadRootID)
 	}
 	if err != nil {
 		return nil, err

@@ -11,7 +11,7 @@ import type { ReactNode } from 'react'
 import TgIcon from '../../components/TgIcon'
 import { peerColor } from '../../components/peerColor'
 import { useEvent } from './useEvent'
-import { useMessagesStore } from '../../stores/messagesStore'
+import { useMessagesStore, winKey } from '../../stores/messagesStore'
 import type { Chat, ConvMsg } from '../../data'
 import type { Managers } from '../../client/bootstrap'
 import type { MessageWindow } from './useMessageWindow'
@@ -225,17 +225,17 @@ export function useMessageActions({
     const raw = menuRawMsg()
     closeMsgMenu()
     if (!raw?.failed || !raw.clientId) return
-    useMessagesStore.getState().retryOptimistic(numericChatId, raw.clientId)
+    useMessagesStore.getState().retryOptimistic(winKey(numericChatId, raw.threadRootId), raw.clientId)
     void managers.realtime.sendMessage({
       chatId: numericChatId, text: raw.text, entities: raw.entities,
       clientMsgId: raw.clientId, replyToId: raw.replyToId, mediaId: raw.mediaId,
-      type: raw.type !== 'text' ? raw.type : undefined,
+      type: raw.type !== 'text' ? raw.type : undefined, threadRootId: raw.threadRootId,
     })
   }
   const removeFailed = () => {
     const raw = menuRawMsg()
     closeMsgMenu()
-    if (raw?.clientId) useMessagesStore.getState().removeOptimistic(numericChatId, raw.clientId)
+    if (raw?.clientId) useMessagesStore.getState().removeOptimistic(winKey(numericChatId, raw.threadRootId), raw.clientId)
   }
   const failedMenuItems: MsgMenuItem[] = [
     { icon: <TgIcon name="send" size={20} />, label: 'Resend', onClick: resendFailed },

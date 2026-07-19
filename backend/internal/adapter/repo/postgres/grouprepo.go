@@ -345,6 +345,14 @@ func (r *GroupRepo) GetDiscussion(ctx context.Context, channelID int64) (int64, 
 	return id, err
 }
 
+// IsDiscussionGroup reports whether chatID is some channel's discussion group.
+func (r *GroupRepo) IsDiscussionGroup(ctx context.Context, chatID int64) (bool, error) {
+	var ok bool
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM chats WHERE discussion_chat_id=$1)`, chatID).Scan(&ok)
+	return ok, err
+}
+
 func (r *GroupRepo) UsersByIDs(ctx context.Context, ids []int64) ([]domain.UserCard, error) {
 	if len(ids) == 0 {
 		return []domain.UserCard{}, nil

@@ -9,8 +9,8 @@ const raw = (id: number, views = 0): RawMessage => ({
 
 describe('messagesStore.patchViews', () => {
   beforeEach(() => {
-    useMessagesStore.setState({ byChat: {} })
-    useMessagesStore.getState().setWindow(5, {
+    useMessagesStore.setState({ byKey: {} })
+    useMessagesStore.getState().setWindow(String(5), {
       msgs: [mapMessage(raw(1)), mapMessage(raw(2)), mapMessage(raw(3))],
       reachedTop: true, reachedBottom: true,
     })
@@ -18,16 +18,16 @@ describe('messagesStore.patchViews', () => {
 
   it('patches view counts onto the matching messages', () => {
     useMessagesStore.getState().patchViews(5, new Map([[1, 9200], [3, 5]]))
-    const msgs = useMessagesStore.getState().byChat[5].msgs
+    const msgs = useMessagesStore.getState().byKey[String(5)].msgs
     expect(msgs.find((m) => m.id === 1)?.views).toBe(9200)
     expect(msgs.find((m) => m.id === 2)?.views).toBe(0)
     expect(msgs.find((m) => m.id === 3)?.views).toBe(5)
   })
 
   it('keeps references stable for unchanged rows (memoized bubbles do not re-render)', () => {
-    const before = useMessagesStore.getState().byChat[5].msgs
+    const before = useMessagesStore.getState().byKey[String(5)].msgs
     useMessagesStore.getState().patchViews(5, new Map([[1, 42]]))
-    const after = useMessagesStore.getState().byChat[5].msgs
+    const after = useMessagesStore.getState().byKey[String(5)].msgs
     expect(after[0]).not.toBe(before[0]) // id 1 changed → new ref
     expect(after[1]).toBe(before[1]) // id 2 unchanged → same ref
     expect(after[2]).toBe(before[2]) // id 3 unchanged → same ref
@@ -35,15 +35,15 @@ describe('messagesStore.patchViews', () => {
 
   it('is a no-op when nothing changed (no counts differ)', () => {
     useMessagesStore.getState().patchViews(5, new Map([[1, 9200]]))
-    const arr1 = useMessagesStore.getState().byChat[5].msgs
+    const arr1 = useMessagesStore.getState().byKey[String(5)].msgs
     // same value again → array identity preserved
     useMessagesStore.getState().patchViews(5, new Map([[1, 9200]]))
-    const arr2 = useMessagesStore.getState().byChat[5].msgs
+    const arr2 = useMessagesStore.getState().byKey[String(5)].msgs
     expect(arr2).toBe(arr1)
   })
 
   it('ignores chats with no loaded window', () => {
     useMessagesStore.getState().patchViews(999, new Map([[1, 1]]))
-    expect(useMessagesStore.getState().byChat[999]).toBeUndefined()
+    expect(useMessagesStore.getState().byKey[String(999)]).toBeUndefined()
   })
 })

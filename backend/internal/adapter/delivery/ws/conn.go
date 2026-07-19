@@ -116,6 +116,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			ChatID: d.ChatID, SenderID: c.userID, Type: d.Type, Text: d.Text, Entities: d.Entities,
 			ReplyToID: d.ReplyToID, ClientMsgID: d.ClientMsgID, MediaID: d.MediaID, GroupedID: d.GroupedID,
 			GeoLat: d.GeoLat, GeoLng: d.GeoLng, ContactUserID: d.ContactUserID,
+			ThreadRootID: d.ThreadRootID,
 		})
 		if err != nil {
 			// NACK the sender so the client stops retrying and can clear the bubble.

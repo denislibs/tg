@@ -523,7 +523,7 @@ function SharedMedia({ tab, onTab, chatId, members, savedDialogs, isChannel, can
 
   // Live: новое сообщение в открытом чате инвалидирует кэш табов — активный
   // таб перезагрузится и свежая отправка (голосовое/фото/…) появится сразу.
-  const winLen = useMessagesStore((st) => (chatId != null ? st.byChat[chatId]?.msgs.length ?? 0 : 0))
+  const winLen = useMessagesStore((st) => (chatId != null ? st.byKey[String(chatId)]?.msgs.length ?? 0 : 0))
   useEffect(() => { setByFilter({}) }, [winLen])
 
   useEffect(() => {
