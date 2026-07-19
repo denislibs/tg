@@ -117,6 +117,7 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
     canManageAdmins,
     canInvite,
     canManageDiscussion,
+    canManageTopics,
     discussionChatId,
     enablingDiscussion,
     inviteLinks,
@@ -319,7 +320,7 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
           )}
 
           {/* Темы (tweb editChat Topics toggle): группа → форум-топики */}
-          {isRealChat && chat.type === 'group' && canManageDiscussion && (
+          {isRealChat && chat.type === 'group' && canManageTopics && (
             <div className={s.section}>
               <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionTitle}>
                 {t('Topics')}

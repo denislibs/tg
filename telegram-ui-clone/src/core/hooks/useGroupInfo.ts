@@ -57,6 +57,8 @@ export interface GroupInfo {
   canManageAdmins: boolean
   canInvite: boolean
   canManageDiscussion: boolean
+  // управление темами (форум) — создатель/CHANGE_INFO группы
+  canManageTopics: boolean
   discussionChatId: number
   enablingDiscussion: boolean
   inviteLinks: InviteLink[]
@@ -87,6 +89,7 @@ export function useGroupInfo(chat: Chat): GroupInfo {
   const [editMember, setEditMember] = useState<RealMember | null>(null)
   // Channel discussions: admin gate (creator or CHANGE_INFO) + enabled state.
   const [canManageDiscussion, setCanManageDiscussion] = useState(false)
+  const [canManageTopics, setCanManageTopics] = useState(false)
   const [discussionChatId, setDiscussionChatId] = useState(0)
   const [enablingDiscussion, setEnablingDiscussion] = useState(false)
 
@@ -101,6 +104,7 @@ export function useGroupInfo(chat: Chat): GroupInfo {
       setInviteLinks([])
       setJoinRequests([])
       setCanManageDiscussion(false)
+      setCanManageTopics(false)
       setDiscussionChatId(0)
       return
     }
@@ -111,6 +115,7 @@ export function useGroupInfo(chat: Chat): GroupInfo {
       const isCreator = c.myRole === 'creator'
       setCanManageAdmins(isCreator || (c.myRights & MANAGE_ADMINS) !== 0)
       setCanManageDiscussion(isChannel && (isCreator || (c.myRights & CHANGE_INFO) !== 0))
+      setCanManageTopics(isGroup && (isCreator || (c.myRights & CHANGE_INFO) !== 0))
       setDiscussionChatId(c.discussionChatId ?? 0)
       const inviteOk = isCreator || (c.myRights & INVITE_USERS) !== 0
       setCanInvite(inviteOk)
@@ -159,7 +164,7 @@ export function useGroupInfo(chat: Chat): GroupInfo {
     return () => {
       alive = false
     }
-  }, [isRealChat, numericId, managers, isChannel])
+  }, [isRealChat, numericId, managers, isChannel, isGroup])
 
   // Refresh the members section/count (used after approving a join request).
   async function refreshMembers() {
@@ -222,6 +227,7 @@ export function useGroupInfo(chat: Chat): GroupInfo {
     canManageAdmins,
     canInvite,
     canManageDiscussion,
+    canManageTopics,
     discussionChatId,
     enablingDiscussion,
     inviteLinks,
