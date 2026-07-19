@@ -1,9 +1,16 @@
+import { create } from 'zustand'
+
 // Картинка в картинке.
 // 1) Видеоплеер просмотрщика уходит в PiP через video.requestPictureInPicture
 //    (кнопка в лайтбоксе) — enterPip.
 // 2) Пункт меню «Картинка в картинке» выносит ВСЁ приложение в плавающее окно
 //    поверх всех окон через Document Picture-in-Picture (как web.telegram.org):
 //    #root переезжает в pip-окно, во вкладке — заглушка с кнопкой возврата.
+
+// PiP-окно узкое (~420px), но useMediaQuery слушает matchMedia ОСНОВНОГО окна и
+// не переключается — поэтому в PiP приложение принудительно в мобильном layout
+// (одна колонка). Компоненты читают usePipStore и подмешивают narrow.
+export const usePipStore = create<{ active: boolean }>(() => ({ active: false }))
 
 interface DocumentPiP {
   requestWindow: (opts?: { width?: number; height?: number }) => Promise<Window>
@@ -45,6 +52,7 @@ export async function enterAppPip(labels: { title: string; hint: string; back: s
     return false
   }
   appPipActive = true
+  usePipStore.setState({ active: true })
 
   // Перенести стили (link/style) в окно PiP.
   for (const node of document.head.querySelectorAll('style, link[rel="stylesheet"]')) {
@@ -83,6 +91,7 @@ export async function enterAppPip(labels: { title: string; hint: string; back: s
   const restore = () => {
     if (!appPipActive) return
     appPipActive = false
+    usePipStore.setState({ active: false })
     stub.replaceWith(root)
   }
   pip.addEventListener('pagehide', restore)

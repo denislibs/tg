@@ -35,6 +35,7 @@ import { loadPrivacy } from './stores/privacyStore'
 import { loadDrafts, useDraftsStore } from './stores/draftsStore'
 import { loadFolders } from './stores/foldersStore'
 import { loadStars } from './stores/starsStore'
+import { usePipStore } from './core/pip'
 import { ANIMATE_MAIN_KEY, PREV_ACCOUNT_KEY, playMainScreenEnter } from './core/accountTransition'
 import s from './App.module.scss'
 import useMediaQuery from './shared/lib/useMediaQuery'
@@ -221,7 +222,10 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 
   // Responsive: below 900px columns overlap fullscreen (tweb handheld) — the
   // list fills the screen, opening a chat replaces it, back returns to the list.
-  const narrow = useMediaQuery('(max-width:900px)')
+  // PiP-окно узкое — форсируем мобильный (одноколоночный) layout, т.к.
+  // useMediaQuery слушает основное окно и сам не переключится.
+  const pipActive = usePipStore((st) => st.active)
+  const narrow = useMediaQuery('(max-width:900px)') || pipActive
   const selectChat = useCallback((id: string) => {
     setSelectedId(id)
     setDraftPeer(null)

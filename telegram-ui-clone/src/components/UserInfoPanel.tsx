@@ -63,6 +63,7 @@ function countLabel(tab: string, n: number, isChannel: boolean): string {
   switch (tab) {
     case 'Members': return membersLabel(n, isChannel)
     case 'Chats': return chatsLabel(n)
+    case 'Gifts': return plural(n, 'подарок', 'подарка', 'подарков')
     case 'Media': return plural(n, 'медиафайл', 'медиафайла', 'медиафайлов')
     case 'Files': return plural(n, 'файл', 'файла', 'файлов')
     case 'Links': return plural(n, 'ссылка', 'ссылки', 'ссылок')
@@ -472,25 +473,6 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
             </Section>
           )}
 
-          {/* Подарки в профиле (tweb Gifts tab): сетка полученных подарков */}
-          {isUser && gifts.length > 0 && (
-            <div className={s.section}>
-              <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionTitle}>
-                {t('Gifts')}
-              </Text>
-              <div className={s.giftsProfileGrid}>
-                {gifts.map((g) => (
-                  <div key={g.id} className={s.giftTile} onClick={() => setSelectedGift(g)}>
-                    <span className={s.giftTileEmoji}>{g.gift.emoji}</span>
-                    <span className={s.giftTilePrice}>
-                      <StarIcon size={12} />
-                      {g.gift.priceStars}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* Темы (tweb editChat Topics toggle): группа → форум-топики */}
           {isRealChat && chat.type === 'group' && canManageTopics && (
@@ -590,6 +572,8 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
             chatId={sharedMediaChatId(chat.id)}
             members={isRealChat && (isGroup || isChannel) ? realMembers ?? [] : undefined}
             savedDialogs={isSaved ? savedDialogs ?? [] : undefined}
+            gifts={isUser ? gifts : undefined}
+            onOpenGift={setSelectedGift}
             isChannel={isChannel}
             canManageAdmins={canManageAdmins}
             onOpenPeer={onOpenPeer}
@@ -706,7 +690,7 @@ const TAB_FILTER: Record<string, 'media' | 'files' | 'links' | 'music' | 'voice'
 }
 
 
-function SharedMedia({ tab, onTab, chatId, members, savedDialogs, isChannel, canManageAdmins, onOpenPeer, onEditMember, navRef, stickyTop, onCount }: {
+function SharedMedia({ tab, onTab, chatId, members, savedDialogs, gifts, onOpenGift, isChannel, canManageAdmins, onOpenPeer, onEditMember, navRef, stickyTop, onCount }: {
   tab: string
   onTab: (v: string) => void
   chatId: number | null
@@ -714,6 +698,9 @@ function SharedMedia({ tab, onTab, chatId, members, savedDialogs, isChannel, can
   members?: RealMember[]
   /** «Избранное»: сохранённые диалоги для первого таба «Чаты» */
   savedDialogs?: SavedDialog[]
+  /** подарки профиля пользователя (таб «Подарки») */
+  gifts?: GiftInfo[]
+  onOpenGift?: (g: GiftInfo) => void
   isChannel?: boolean
   canManageAdmins?: boolean
   onOpenPeer?: (peer: OpenPeer) => void
@@ -738,6 +725,25 @@ function SharedMedia({ tab, onTab, chatId, members, savedDialogs, isChannel, can
   // кэш по фильтру: загружаем таб один раз за открытие панели
   const [byFilter, setByFilter] = useState<Partial<Record<string, Message[]>>>({})
   const filter = TAB_FILTER[tab]
+
+  // Total-счётчики всех медиа-фильтров (tweb searchSuper counts): грузим один
+  // лёгкий запрос на фильтр при открытии, чтобы скрывать пустые табы.
+  const [totals, setTotals] = useState<Partial<Record<string, number>>>({})
+  useEffect(() => {
+    if (chatId == null) { setTotals({}); return }
+    let alive = true
+    void Promise.all(
+      SHARED_TABS.map((name) =>
+        managers.messages.mediaHistory(chatId, TAB_FILTER[name], 0, 1)
+          .then((r) => [TAB_FILTER[name], r.count] as const)
+          .catch(() => [TAB_FILTER[name], 0] as const),
+      ),
+    ).then((pairs) => { if (alive) setTotals(Object.fromEntries(pairs)) })
+    return () => { alive = false }
+  }, [chatId, managers])
+
+  // Счётчик подарков для залитой шапки (у медиа-табов он приходит из mediaHistory).
+  useEffect(() => { if (gifts) onCount?.('Gifts', gifts.length) }, [gifts, onCount])
 
   // Live: новое сообщение в открытом чате инвалидирует кэш табов — активный
   // таб перезагрузится и свежая отправка (голосовое/фото/…) появится сразу.
@@ -807,11 +813,25 @@ function SharedMedia({ tab, onTab, chatId, members, savedDialogs, isChannel, can
     </Text>
   )
 
-  const tabOrder = savedDialogs
-    ? ['Chats', ...SHARED_TABS]
-    : members
-      ? ['Members', ...SHARED_TABS]
-      : [...SHARED_TABS]
+  // Порядок табов: Участники/Чаты → Подарки → медиа-табы БЕЗ пустых (tweb:
+  // показываются только непустые). Пока totals не загружены — медиа-табы
+  // держим, чтобы не мигало; после загрузки скрываем те, где total === 0.
+  const mediaTabs = SHARED_TABS.filter((name) => totals[TAB_FILTER[name]] !== 0)
+  const tabOrder = [
+    ...(savedDialogs ? ['Chats'] : members ? ['Members'] : []),
+    ...(gifts && gifts.length > 0 ? ['Gifts'] : []),
+    ...mediaTabs,
+  ]
+
+  // Если активный таб пропал из набора (пустой/скрыт) — переключиться на первый.
+  useEffect(() => {
+    if (tabOrder.length > 0 && !tabOrder.includes(tab)) onTab(tabOrder[0])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabOrder.join(), tab])
+
+  // Нечего показывать (пустой профиль без медиа/подарков/участников) — без табов.
+  if (tabOrder.length === 0) return null
+
   return (
     <>
       {/* Тот же framed-таб-ряд, что и у папок в списке чатов; липнет под
@@ -899,7 +919,22 @@ function SharedMedia({ tab, onTab, chatId, members, savedDialogs, isChannel, can
         </div>
       )}
 
-      {msgs != null && msgs.length === 0 && empty}
+      {/* Подарки профиля (tweb Gifts tab): сетка полученных подарков */}
+      {tab === 'Gifts' && gifts && (
+        <div className={s.giftsProfileGrid} style={{ padding: '4px 12px' }}>
+          {gifts.map((g) => (
+            <div key={g.id} className={s.giftTile} onClick={() => onOpenGift?.(g)}>
+              <span className={s.giftTileEmoji}>{g.gift.emoji}</span>
+              <span className={s.giftTilePrice}>
+                <StarIcon size={12} />
+                {g.gift.priceStars}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {msgs != null && msgs.length === 0 && tab !== 'Gifts' && empty}
 
       {tab === 'Media' && msgs != null && msgs.length > 0 && (
         <div className={s.mediaGrid}>
