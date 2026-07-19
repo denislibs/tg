@@ -17,7 +17,9 @@ import type { Managers } from '../../client/bootstrap'
 import type { MessageWindow } from './useMessageWindow'
 import type { ReplyState, EditState } from './useChatSend'
 
-type MsgMenu = { x: number; y: number; idx: number; originX: 'left' | 'right'; originY: 'top' | 'bottom' }
+// closing — меню играет exit-анимацию ui-kit Menu; из стейта убирается только
+// по onExitComplete (destroyMsgMenu), иначе размонтирование срезало бы анимацию.
+type MsgMenu = { x: number; y: number; idx: number; originX: 'left' | 'right'; originY: 'top' | 'bottom'; closing?: boolean }
 type DelState = { ids: number[]; canRevoke: boolean }
 type ViewersState = { x: number; y: number; names: string[] }
 export type MsgMenuItem = { icon: ReactNode; label: string; danger?: boolean; onClick?: (e: React.MouseEvent) => void }
@@ -67,6 +69,11 @@ export function useMessageActions({
     setMsgMenu({ x: e.clientX, y: e.clientY, idx, originX: openLeft ? 'right' : 'left', originY: openUp ? 'bottom' : 'top' })
   })
 
+  // Закрытие в два шага: closing=true запускает exit-анимацию ui-kit Menu,
+  // окончательное снятие стейта — по onExitComplete (destroyMsgMenu).
+  const closeMsgMenu = () => setMsgMenu((m) => (m ? { ...m, closing: true } : m))
+  const destroyMsgMenu = () => setMsgMenu(null)
+
   // The selected message's raw window entry (real id/seq) for actions.
   const menuRawMsg = () => (msgMenu && isRealChat ? win.msgs[msgMenu.idx] : undefined)
 
@@ -79,7 +86,7 @@ export function useMessageActions({
       setEditing(null)
       // Composer focuses itself when `reply` becomes set.
     }
-    setMsgMenu(null)
+    closeMsgMenu()
   }
 
   const startEdit = () => {
@@ -90,13 +97,13 @@ export function useMessageActions({
       setReply(null)
       // Composer prefills its draft + focuses when `editing` becomes set.
     }
-    setMsgMenu(null)
+    closeMsgMenu()
   }
 
   const copyMsg = () => {
     const m = msgMenu && msgs[msgMenu.idx]
     if (m?.text) void navigator.clipboard?.writeText(m.text).catch(() => {})
-    setMsgMenu(null)
+    closeMsgMenu()
   }
 
   // "Delete for everyone" is offered when every target is the author's own or the
@@ -106,7 +113,7 @@ export function useMessageActions({
   const openDelete = () => {
     const raw = menuRawMsg()
     if (raw?.id != null) setDelIds({ ids: [raw.id], canRevoke: canRevokeAll([raw.id]) })
-    setMsgMenu(null)
+    closeMsgMenu()
   }
   // Open the delete-confirm for an arbitrary id set (the selection bar's bulk delete).
   const openDeleteFor = (ids: number[]) => setDelIds({ ids, canRevoke: canRevokeAll(ids) })
@@ -123,7 +130,7 @@ export function useMessageActions({
   const openForward = () => {
     const raw = menuRawMsg()
     if (raw?.id != null) setForwardIds([raw.id])
-    setMsgMenu(null)
+    closeMsgMenu()
   }
   // Open the forward picker for an arbitrary id set (the selection bar's bulk forward).
   const openForwardFor = (ids: number[]) => setForwardIds(ids)
@@ -140,7 +147,7 @@ export function useMessageActions({
     const raw = menuRawMsg()
     setSelectionMode(true)
     if (raw?.id != null) setSelected(new Set([raw.id]))
-    setMsgMenu(null)
+    closeMsgMenu()
   }
 
   const togglePin = () => {
@@ -149,14 +156,14 @@ export function useMessageActions({
       const pinned = pins.some((p) => p.id === raw.id)
       void (pinned ? managers.messages.unpin(numericChatId, raw.id) : managers.messages.pin(numericChatId, raw.id))
     }
-    setMsgMenu(null)
+    closeMsgMenu()
   }
 
   // Download the original media bytes (the context-menu "Загрузить" action). The
   // content endpoint is same-origin, so the <a download> forces a save.
   const downloadMsg = async () => {
     const raw = menuRawMsg()
-    setMsgMenu(null)
+    closeMsgMenu()
     if (raw?.mediaId == null) return
     const [meta, url] = await Promise.all([
       managers.media.meta(raw.mediaId),
@@ -173,7 +180,7 @@ export function useMessageActions({
   const showViewers = async (e: React.MouseEvent) => {
     const raw = menuRawMsg()
     const x = e.clientX, y = e.clientY
-    setMsgMenu(null)
+    closeMsgMenu()
     if (raw?.id == null || !isRealChat) return
     const ids = await managers.messages.viewers(numericChatId, raw.id)
     const users = ids.length ? await managers.peers.getUsers(ids) : []
@@ -208,7 +215,7 @@ export function useMessageActions({
   // Полоска эмодзи над контекстным меню: реакция на сообщение меню.
   const reactToMenuMsg = (emoji: string) => {
     const raw = menuRawMsg()
-    setMsgMenu(null)
+    closeMsgMenu()
     if (raw?.id != null) toggleReaction(raw.id, emoji)
   }
 
@@ -216,7 +223,7 @@ export function useMessageActions({
   // «Переотправить» / «Удалить» (tweb: контекст-меню error-бабла).
   const resendFailed = () => {
     const raw = menuRawMsg()
-    setMsgMenu(null)
+    closeMsgMenu()
     if (!raw?.failed || !raw.clientId) return
     useMessagesStore.getState().retryOptimistic(numericChatId, raw.clientId)
     void managers.realtime.sendMessage({
@@ -227,7 +234,7 @@ export function useMessageActions({
   }
   const removeFailed = () => {
     const raw = menuRawMsg()
-    setMsgMenu(null)
+    closeMsgMenu()
     if (raw?.clientId) useMessagesStore.getState().removeOptimistic(numericChatId, raw.clientId)
   }
   const failedMenuItems: MsgMenuItem[] = [
@@ -290,7 +297,7 @@ export function useMessageActions({
   const msgMenuItems: MsgMenuItem[] = menuRawMsg()?.failed ? failedMenuItems : regularMenuItems
 
   return {
-    msgMenu, openMsgMenu, closeMsgMenu: () => setMsgMenu(null), msgMenuItems,
+    msgMenu, openMsgMenu, closeMsgMenu, destroyMsgMenu, msgMenuItems,
     toggleReaction, reactToMenuMsg,
     delIds, doDelete, closeDelete: () => setDelIds(null), openDeleteFor, canRevokeAll,
     forwardIds, doForward, closeForward: () => setForwardIds(null), openForwardFor,

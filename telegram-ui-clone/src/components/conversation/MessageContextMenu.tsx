@@ -9,6 +9,7 @@
 // недоступны — замена: scale-подскок на hover.
 import { memo, useRef, useState, type ReactNode, type MouseEvent, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
+import { AnimatePresence } from 'framer-motion'
 import Menu, { MenuItem } from '../../shared/ui/Menu'
 import Emoji from '../emoji/Emoji'
 import EmojiPicker from '../EmojiPicker'
@@ -30,14 +31,16 @@ export interface MsgMenuItem {
 }
 
 export interface MessageContextMenuProps {
-  menu: { x: number; y: number; originX: 'left' | 'right'; originY: 'top' | 'bottom' }
+  menu: { x: number; y: number; originX: 'left' | 'right'; originY: 'top' | 'bottom'; closing?: boolean }
   items: MsgMenuItem[]
   onClose: () => void
+  /** exit-анимация доиграла — владелец окончательно размонтирует меню */
+  onExited: () => void
   /** клик по эмодзи в полоске/пикере реакций (undefined — мок-чат, полоски нет) */
   onReaction?: (emoji: string) => void
 }
 
-function MessageContextMenu({ menu, items, onClose, onReaction }: MessageContextMenuProps) {
+function MessageContextMenu({ menu, items, onClose, onExited, onReaction }: MessageContextMenuProps) {
   const t = useT()
   // Шеврон «ещё» разворачивает полный пикер эмодзи на месте меню (tweb EmojiTab).
   const [expanded, setExpanded] = useState(false)
@@ -56,16 +59,23 @@ function MessageContextMenu({ menu, items, onClose, onReaction }: MessageContext
   const barBelow = menu.originY === 'top' && menu.y < BAR_OFFSET + 8
 
   if (expanded && onReaction) {
-    // Полный пикер эмодзи на месте меню (tweb onMoreClick → EmojiTab).
+    // Полный пикер эмодзи на месте меню (tweb onMoreClick → EmojiTab);
+    // exit-анимация пикера — при closing, окончательный анмаунт по onExited.
     return createPortal(
       <>
-        <div
-          onClick={onClose}
-          onContextMenu={(e) => { e.preventDefault(); onClose() }}
-          style={{ position: 'fixed', inset: 0, zIndex: 2000 }}
-        />
+        {!menu.closing && (
+          <div
+            onClick={onClose}
+            onContextMenu={(e) => { e.preventDefault(); onClose() }}
+            style={{ position: 'fixed', inset: 0, zIndex: 2000 }}
+          />
+        )}
         <div style={{ position: 'fixed', ...xPos, ...yPos, zIndex: 2001 }}>
-          <EmojiPicker className={s.pickerInMenu} onPick={(e) => onReaction(e)} onClose={onClose} />
+          <AnimatePresence onExitComplete={onExited}>
+            {!menu.closing && (
+              <EmojiPicker className={s.pickerInMenu} onPick={(e) => onReaction(e)} onClose={onClose} />
+            )}
+          </AnimatePresence>
         </div>
       </>,
       document.body,
@@ -74,8 +84,9 @@ function MessageContextMenu({ menu, items, onClose, onReaction }: MessageContext
 
   return (
     <Menu
-      open
+      open={!menu.closing}
       onClose={onClose}
+      onExitComplete={onExited}
       style={{ ...xPos, ...yPos, transformOrigin: `${menu.originY} ${menu.originX}` }}
     >
       {onReaction && (

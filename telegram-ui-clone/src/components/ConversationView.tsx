@@ -265,7 +265,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // Message context menu + its actions (reply/edit/copy/pin/delete/forward/select/
   // download/viewers) and the delete-confirm / forward-picker / viewers-popup state.
   const {
-    msgMenu, openMsgMenu, closeMsgMenu, msgMenuItems,
+    msgMenu, openMsgMenu, closeMsgMenu, destroyMsgMenu, msgMenuItems,
     toggleReaction, reactToMenuMsg,
     delIds, doDelete, closeDelete, openDeleteFor,
     forwardIds, doForward, closeForward, openForwardFor,
@@ -657,11 +657,10 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
         <AttachMenu
           anchor={attachAnchor}
           onClose={() => setAttachAnchor(null)}
-          onPhotoVideo={isRealChat ? () => { setAttachAnchor(null); openPicker('image/*,video/*', false) } : undefined}
-          onFile={isRealChat ? () => { setAttachAnchor(null); openPicker('*/*', true) } : undefined}
-          onPoll={isRealChat && (chat.type === 'group' || chat.type === 'channel') ? () => { setAttachAnchor(null); setCreatePollOpen(true) } : undefined}
+          onPhotoVideo={isRealChat ? () => openPicker('image/*,video/*', false) : undefined}
+          onFile={isRealChat ? () => openPicker('*/*', true) : undefined}
+          onPoll={isRealChat && (chat.type === 'group' || chat.type === 'channel') ? () => setCreatePollOpen(true) : undefined}
           onLocation={isRealChat ? () => {
-            setAttachAnchor(null)
             // Геопозиция берётся у браузера; молча игнорируем отказ (как отмену).
             navigator.geolocation?.getCurrentPosition(
               (pos) => sendGeo(pos.coords.latitude, pos.coords.longitude),
@@ -669,7 +668,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               { enableHighAccuracy: true, timeout: 10000 },
             )
           } : undefined}
-          onContact={isRealChat ? () => { setAttachAnchor(null); setContactPickerOpen(true) } : undefined}
+          onContact={isRealChat ? () => setContactPickerOpen(true) : undefined}
         />
       )}
 
@@ -748,7 +747,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
 
       {/* Message context menu — reactions strip + actions */}
       {msgMenu && (
-        <MessageContextMenu menu={msgMenu} items={msgMenuItems} onClose={closeMsgMenu} onReaction={isRealChat ? reactToMenuMsg : undefined} />
+        <MessageContextMenu menu={msgMenu} items={msgMenuItems} onClose={closeMsgMenu} onExited={destroyMsgMenu} onReaction={isRealChat ? reactToMenuMsg : undefined} />
       )}
 
       {/* "Seen by" popup */}
