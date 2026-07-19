@@ -62,6 +62,7 @@ export interface MainMenuHandlers {
   onOpenSaved: () => void
   onOpenPremium: () => void
   onLogout?: () => void
+  onToggleMode?: (coords?: { x: number; y: number }) => void
 }
 
 export default function FoldersSidebar({
@@ -143,6 +144,7 @@ export default function FoldersSidebar({
           menu.onOpenPremium()
         }}
         onLogout={menu.onLogout}
+        onToggleMode={menu.onToggleMode}
       />
     </div>
   )

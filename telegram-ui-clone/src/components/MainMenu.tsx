@@ -8,6 +8,10 @@ import { useManagers } from '../core/hooks/useManagers'
 import { gradientFor } from '../core/dialogToChat'
 import type { PublicAccount } from '../core/auth/accounts'
 import { ANIMATE_AUTH_KEY, PREV_ACCOUNT_KEY, playChatlistExit, playMainScreenExit } from '../core/accountTransition'
+import { useSettings } from '../settings'
+import { usePwaStore } from '../core/pwa'
+import { triggerPip, pipSupported } from '../core/pip'
+import type { ToggleMode } from '../App'
 import { useT } from '../i18n'
 
 interface Props {
@@ -18,6 +22,7 @@ interface Props {
   onOpenSaved?: () => void
   onOpenPremium?: () => void
   onLogout?: () => void
+  onToggleMode?: ToggleMode
 }
 
 // Аватар аккаунта в списке (резолвит avatarUrl через media-токен воркера).
@@ -34,9 +39,13 @@ export default function MainMenu({
   onOpenSaved,
   onOpenPremium,
   onLogout,
+  onToggleMode,
 }: Props) {
   const t = useT()
   const managers = useManagers()
+  const { reduceMotion, update } = useSettings()
+  const canInstall = usePwaStore((st) => st.canInstall)
+  const [moreOpen, setMoreOpen] = useState(false)
   const me = useChatsStore((s) => s.me)
   const meAvatar = useAvatarSrc(me?.avatarUrl)
   const meName = me?.displayName?.trim() || [me?.firstName, me?.lastName].filter(Boolean).join(' ').trim() || me?.username || 'Аккаунт'
@@ -73,10 +82,29 @@ export default function MainMenu({
     location.reload()
   }
 
+  const close = () => { setMoreOpen(false); onClose() }
+  const openUrl = (url: string) => { window.open(url, '_blank', 'noopener'); close() }
+
+  // Пункты подменю «Ещё» (tweb createMoreSubmenu). «Версию A» опускаем —
+  // у нас одна версия, переключение вело бы на сторонний сайт.
+  const moreItems: { icon: string; label: string; onClick: () => void; show?: boolean }[] = [
+    { icon: 'darkmode', label: 'Dark Mode', onClick: () => { onToggleMode?.(); close() } },
+    {
+      icon: 'animations',
+      label: reduceMotion ? 'Enable Animations' : 'Disable Animations',
+      onClick: () => { update({ reduceMotion: !reduceMotion }); close() },
+    },
+    { icon: 'help', label: 'Telegram Features', onClick: () => openUrl('https://telegram.org/tour') },
+    { icon: 'bug', label: 'Report Bug', onClick: () => openUrl('https://bugs.telegram.org/?tag_ids=40&sort=time') },
+    { icon: 'add', label: 'Install App', onClick: () => { void usePwaStore.getState().install(); close() }, show: canInstall },
+    { icon: 'pip', label: 'Picture in Picture', onClick: () => { void triggerPip(); close() }, show: pipSupported() },
+  ]
+
   return (
+    <>
     <Menu
       open={open}
-      onClose={onClose}
+      onClose={close}
       style={{ top: 68, left: 22, transformOrigin: 'top left' }}
     >
       {/* Account row — same height as items, small ringed avatar in the icon slot (tweb) */}
@@ -122,7 +150,7 @@ export default function MainMenu({
         icon={<TgIcon name="more" size={20} />}
         label={t('More')}
         right={<TgIcon name="next" size={20} color="var(--tg-textFaint)" />}
-        onClick={onClose}
+        onClick={() => setMoreOpen((o) => !o)}
       />
       {onLogout && (
         <>
@@ -131,5 +159,19 @@ export default function MainMenu({
         </>
       )}
     </Menu>
+
+    {/* Подменю «Ещё» (tweb createMoreSubmenu) — правее основного меню */}
+    <Menu
+      open={moreOpen && open}
+      onClose={close}
+      style={{ top: 300, left: 252, transformOrigin: 'top left' }}
+    >
+      {moreItems
+        .filter((it) => it.show !== false)
+        .map((it) => (
+          <MenuItem key={it.label} icon={<TgIcon name={it.icon as never} size={20} />} label={t(it.label)} onClick={it.onClick} />
+        ))}
+    </Menu>
+    </>
   )
 }

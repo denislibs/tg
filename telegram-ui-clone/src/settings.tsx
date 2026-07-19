@@ -52,6 +52,9 @@ export interface Settings {
   // в байтах (0 = Авто, без лимита).
   cacheTTL: number
   cacheSize: number
+  // Без анимаций (tweb liteMode.animations): выключает интерфейсные анимации
+  // (framer MotionConfig reducedMotion + css-гейт).
+  reduceMotion: boolean
 }
 
 // Галочки автозагрузки по типам чатов (tweb AutoDownloadPeerTypeSettings).
@@ -92,6 +95,7 @@ const DEFAULTS: Settings = {
   autoDownloadFileSizeMax: 3145728, // 3 МБ (tweb autoDownloadNew.file_size_max)
   cacheTTL: 86400 * 7, // неделя (tweb SETTINGS_INIT.cacheTTL)
   cacheSize: 0, // Авто (tweb SETTINGS_INIT.cacheSize)
+  reduceMotion: false,
 }
 
 const KEY = 'tg-settings'
@@ -149,6 +153,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       autoDownloadFileSizeMax: s.autoDownloadFileSizeMax,
       cacheTTL: s.cacheTTL,
       cacheSize: s.cacheSize,
+      reduceMotion: s.reduceMotion,
     }
     try {
       localStorage.setItem(KEY, JSON.stringify(toSave))

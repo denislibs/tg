@@ -7,7 +7,7 @@ import { uiEvents } from './core/hooks/uiEvents'
 import GroupCallScreen from './components/GroupCallScreen'
 import { useGroupCallStore } from './stores/groupCallStore'
 import { useConnectionStore, pingBackend } from './stores/connectionStore'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, motion, MotionConfig } from 'framer-motion'
 import Text from './shared/ui/Text'
 import classNames from './shared/lib/classNames'
 import { resolvePreset, PRESET_MODE, type ThemeChoice } from './theme'
@@ -555,12 +555,17 @@ function ThemedApp() {
 export default function App() {
   const managers = useManagers()
   const backendOk = useConnectionStore((s) => s.backendOk)
+  // «Без анимаций» (меню «Ещё»): framer-анимации выключаются глобально.
+  const reduceMotion = useSettingsStore((st) => st.reduceMotion)
   useEffect(() => {
     void pingBackend(managers)
   }, [managers])
+  useLayoutEffect(() => {
+    document.documentElement.toggleAttribute('data-reduce-motion', reduceMotion)
+  }, [reduceMotion])
 
   return (
-    <>
+    <MotionConfig reducedMotion={reduceMotion ? 'always' : 'never'}>
       <ThemedApp />
       <div
         className={s.apiBadge}
@@ -568,6 +573,6 @@ export default function App() {
       >
         api: {backendOk == null ? '…' : backendOk ? 'ok' : 'down'}
       </div>
-    </>
+    </MotionConfig>
   )
 }

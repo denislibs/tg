@@ -158,6 +158,13 @@ const ru: Dict = {
   'Convert to': 'Обменять на',
   'View Gift': 'Посмотреть подарок',
   'Gift Sent': 'Подарок отправлен',
+  // Меню «Ещё»
+  'Dark Mode': 'Тёмный режим',
+  'Disable Animations': 'Без анимации',
+  'Telegram Features': 'Возможности Telegram',
+  'Report Bug': 'Сообщить об ошибке',
+  'Install App': 'Установить приложение',
+  'Picture in Picture': 'Картинка в картинке',
   'Web Notifications': 'Веб-уведомления',
   'Show notifications': 'Показывать уведомления',
   'Show offline notifications': 'Показывать офлайн-уведомления',

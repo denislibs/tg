@@ -23,6 +23,7 @@ import Avatar from '../../shared/ui/Avatar'
 import { peerColor } from '../peerColor'
 import { useManagers } from '../../core/hooks/useManagers'
 import type { MediaMeta } from '../../core/managers/mediaManager'
+import { enterPip, pipSupported } from '../../core/pip'
 import s from './MediaLightbox.module.scss'
 
 export interface LightboxItem {
@@ -92,6 +93,7 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
 
   const moverRef = useRef<HTMLDivElement>(null)
   const aspecterRef = useRef<HTMLDivElement>(null)
+  const videoElRef = useRef<HTMLVideoElement>(null)
   const closingRef = useRef(false)
   const radiiRef = useRef<number[]>([0, 0, 0, 0])
 
@@ -311,6 +313,9 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
           </Text>
         </div>
         <div className={s.toolbar}>
+          {isVideo && pipSupported() && (
+            <IconButton title="Картинка в картинке" onClick={() => { if (videoElRef.current) void enterPip(videoElRef.current) }} color="#fff"><TgIcon name="pip" /></IconButton>
+          )}
           <IconButton title="Повернуть (R)" onClick={() => setRot((r) => r - 90)} color="#fff"><TgIcon name="rotate_left" /></IconButton>
           <IconButton title="Увеличить (+)" onClick={() => stepZoom(0.5)} color="#fff"><TgIcon name="zoomin" /></IconButton>
           <IconButton title="Скачать" onClick={download} color="#fff"><TgIcon name="download" /></IconButton>
@@ -349,7 +354,7 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
             className={s.zoomLayer}
           >
             {isVideo && url ? (
-              <video src={url} controls autoPlay className={s.media} />
+              <video ref={videoElRef} src={url} controls autoPlay className={s.media} />
             ) : (
               <AnimatePresence mode="wait">
                 {imgSrc && (

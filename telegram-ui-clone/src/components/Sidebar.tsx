@@ -205,6 +205,7 @@ export default function Sidebar({
             },
             onOpenPremium: () => setPremiumOpen(true),
             onLogout,
+            onToggleMode,
           }}
         />
       )}
@@ -225,6 +226,7 @@ export default function Sidebar({
             }}
             onOpenPremium={() => setPremiumOpen(true)}
             onLogout={onLogout}
+            onToggleMode={onToggleMode}
           />
         )}
         <div className={s.search}>
