@@ -27,6 +27,7 @@ import { markMediaPlayed } from '../core/mediaRead'
 import PlayPauseGlyph from './PlayPauseGlyph'
 import { useManagers } from '../core/hooks/useManagers'
 import { useLang } from '../i18n'
+import { lastSeenLabel } from '../core/presence'
 import { friendlyMsgTime } from '../core/friendlyTime'
 import { EXT_COLORS, extOf, firstUrl, fmtDur, fmtSize, hostOf } from '../core/sharedMediaFmt'
 import { mediaContentUrl, mediaThumbUrl } from '../core/mediaUrl'
@@ -171,11 +172,25 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
       ? savedDialogs?.length
       : tabCounts[tab]
 
+  // Онлайн-статус приватного собеседника — из presence-стора (как в топбаре
+  // ChatHeader), а не из статичного chat.status: «в сети» / «был(а) …».
+  const [lang] = useLang()
+  const peerPresence = useChatsStore((st) => (peerId != null ? st.presence[peerId] : undefined))
+  const presenceLabel =
+    !isSaved && !isGroup && !isChannel
+      ? peerPresence
+        ? peerPresence.online
+          ? t('online')
+          : lastSeenLabel(peerPresence.lastSeen, lang)
+        : chat.status
+      : null
+  const statusOnline = !!peerPresence?.online
+
   const subtitleText = isSaved
     ? chatsLabel(savedDialogs?.length ?? 0)
     : isRealChat && (isGroup || isChannel) && realMembers
       ? membersLabel(realMembers.length, isChannel)
-      : chat.status
+      : presenceLabel ?? chat.status
 
   // просмотрщик фото профиля (tweb: клик по аватарке открывает фото)
   const avatarWrapRef = useRef<HTMLDivElement>(null)
@@ -297,9 +312,9 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
                 ref={avatarWrapRef}
                 className={s.profileAvatars}
                 onClick={openAvatarViewer}
-                initial={{ opacity: 0, scale: 0.35 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.35 }}
+                initial={{ scale: 0.35 }}
+                animate={{ scale: 1 }}
+                exit={{ scale: 0.35 }}
                 transition={{ duration: 0.24, ease: EASE }}
               >
                 <img className={s.profilePhoto} src={headerAvatarSrc} alt="" draggable={false} />
@@ -314,10 +329,10 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
               <motion.div
                 key="small"
                 className={s.avatarBlock}
-                initial={{ opacity: 0, scale: 1.1 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 1.1 }}
-                transition={{ duration: 0.18, ease: EASE }}
+                initial={{ scale: 1.15 }}
+                animate={{ scale: 1 }}
+                exit={{ scale: 1.15 }}
+                transition={{ duration: 0.2, ease: EASE }}
               >
                 <div
                   onClick={() => { if (headerAvatarSrc) setExpanded(true) }}
@@ -328,7 +343,7 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
                 <Text size={21} weight={600} color="var(--tg-textPrimary)" style={{ marginTop: '8px', textAlign: 'center', paddingLeft: '16px', paddingRight: '16px' }}>
                   {chat.name}
                 </Text>
-                <Text size={14} color="var(--tg-textSecondary)">
+                <Text size={14} color={statusOnline ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'}>
                   {subtitleText}
                 </Text>
               </motion.div>
