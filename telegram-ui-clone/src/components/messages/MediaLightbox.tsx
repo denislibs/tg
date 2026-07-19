@@ -26,7 +26,9 @@ import type { MediaMeta } from '../../core/managers/mediaManager'
 import s from './MediaLightbox.module.scss'
 
 export interface LightboxItem {
-  mediaId: number
+  mediaId?: number
+  /** прямой URL картинки без mediaId (фото профиля — tweb openAvatarViewer) */
+  src?: string
   type?: string
   sender?: string
   date?: string
@@ -85,6 +87,8 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
   // The FLIP origin applies only to the first-opened item; paging clears it (no
   // thumbnail to fly from/to → plain crossfade).
   const [flyFrom, setFlyFrom] = useState<Rect | null>(originRect)
+  // натуральные размеры direct-src картинки (аватарки) — меты у неё нет
+  const [natSize, setNatSize] = useState<{ w: number; h: number } | null>(null)
 
   const moverRef = useRef<HTMLDivElement>(null)
   const aspecterRef = useRef<HTMLDivElement>(null)
@@ -98,14 +102,29 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
 
   useEffect(() => {
     let alive = true
-    setMeta(null); setUrl('')
+    setMeta(null); setUrl(''); setNatSize(null)
+    if (item.mediaId == null) {
+      const src = item.src
+      if (!src) return
+      const pre = new Image()
+      pre.onload = () => {
+        if (!alive) return
+        setNatSize({ w: pre.naturalWidth, h: pre.naturalHeight })
+        setUrl(src)
+        const delay = flyFrom ? OPEN_MS + 40 : 0
+        window.setTimeout(() => { if (alive) setImgSrc(src) }, delay)
+      }
+      pre.src = src
+      return () => { alive = false }
+    }
+    const mediaId = item.mediaId
     const video = item.type === 'video'
-    void managers.media.meta(item.mediaId).then((m) => {
+    void managers.media.meta(mediaId).then((m) => {
       if (!alive) return
       setMeta(m)
-      if (m.hasThumb) void managers.media.thumbUrl(item.mediaId).then((u) => { if (alive) setImgSrc((s) => s || u) })
+      if (m.hasThumb) void managers.media.thumbUrl(mediaId).then((u) => { if (alive) setImgSrc((s) => s || u) })
     })
-    void managers.media.contentUrl(item.mediaId).then((u) => {
+    void managers.media.contentUrl(mediaId).then((u) => {
       if (!alive) return
       setUrl(u)
       if (video) return
@@ -118,7 +137,7 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
     })
     return () => { alive = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item.mediaId, item.type, managers])
+  }, [item.mediaId, item.src, item.type, managers])
 
   const vw = window.innerWidth, vh = window.innerHeight
   // Центральный бокс: по натуральным размерам медиа (как tweb) — они приходят в
@@ -127,7 +146,9 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
     ? { w: item.width, h: item.height }
     : meta?.width
       ? { w: meta.width, h: meta.height }
-      : { w: originRect.width, h: originRect.height }
+      : natSize
+        ? { w: natSize.w, h: natSize.h }
+        : { w: originRect.width, h: originRect.height }
   const final = useMemo(
     () => fit(dims.w, dims.h, vw * 0.92, vh * 0.84),
     [dims.w, dims.h, vw, vh],
@@ -216,7 +237,9 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
     let targetEl: HTMLElement | undefined
     const el = flyFrom
       ? originEl
-      : (document.querySelector(`img[src*="/media/${item.mediaId}/"]`) as HTMLElement | null) ?? undefined
+      : item.mediaId != null
+        ? (document.querySelector(`img[src*="/media/${item.mediaId}/"]`) as HTMLElement | null) ?? undefined
+        : undefined
     if (el?.isConnected) {
       const r = el.getBoundingClientRect()
       const visible = r.width > 0 && r.bottom > 0 && r.top < vh && r.right > 0 && r.left < vw
@@ -259,9 +282,14 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
   const c = zoom * 140
   const multi = items.length > 1
   const download = async () => {
-    const m = await managers.media.meta(item.mediaId)
     const a = document.createElement('a')
-    a.href = url; a.download = m.fileName || `media-${item.mediaId}`
+    if (item.mediaId != null) {
+      const m = await managers.media.meta(item.mediaId)
+      a.download = m.fileName || `media-${item.mediaId}`
+    } else {
+      a.download = 'photo.jpg'
+    }
+    a.href = url
     document.body.appendChild(a); a.click(); a.remove()
   }
 
@@ -302,7 +330,7 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
           (морф кропа), внутри — слой зума/поворота */}
       <div
         ref={moverRef}
-        key={item.mediaId}
+        key={item.mediaId ?? item.src}
         className={classNames(s.mover, s.animated)}
         onClick={(e) => e.stopPropagation()}
         onWheel={onWheel}

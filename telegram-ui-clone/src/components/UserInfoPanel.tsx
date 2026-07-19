@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import TgSwitch from './TgSwitch'
@@ -34,24 +34,41 @@ import type { Message } from '../core/models'
 import MediaLightbox, { type LightboxItem } from './messages/MediaLightbox'
 import s from './UserInfoPanel.module.scss'
 import useMediaQuery from '../shared/lib/useMediaQuery'
-import { usePrivacyStore } from '../stores/privacyStore'
 import type { UserProfile } from '../core/managers/privacyManager'
 
+// склонение «N единиц» (счётчики подзаголовков)
+function plural(n: number, one: string, few: string, many: string): string {
+  const m10 = n % 10, m100 = n % 100
+  const word = m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many
+  return `${n} ${word}`
+}
 
 // «N участник(а/ов)» — склонение для подзаголовка профиля группы
 function membersLabel(n: number, isChannel: boolean): string {
   if (isChannel) return `${n} подписчиков`
-  const m10 = n % 10, m100 = n % 100
-  const word = m10 === 1 && m100 !== 11 ? 'участник' : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? 'участника' : 'участников'
-  return `${n} ${word}`
+  return plural(n, 'участник', 'участника', 'участников')
 }
 
 // «N чат(а/ов)» — подзаголовок «Избранного» (число сохранённых диалогов)
-function chatsLabel(n: number): string {
-  const m10 = n % 10, m100 = n % 100
-  const word = m10 === 1 && m100 !== 11 ? 'чат' : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? 'чата' : 'чатов'
-  return `${n} ${word}`
+const chatsLabel = (n: number) => plural(n, 'чат', 'чата', 'чатов')
+
+// подпись счётчика активного таба в залитой шапке (tweb sharedMedia.tsx:
+// пары type→LangPackKey — Members/MediaFiles/Files/Links/MusicFiles/Voice)
+function countLabel(tab: string, n: number, isChannel: boolean): string {
+  switch (tab) {
+    case 'Members': return membersLabel(n, isChannel)
+    case 'Chats': return chatsLabel(n)
+    case 'Media': return plural(n, 'медиафайл', 'медиафайла', 'медиафайлов')
+    case 'Files': return plural(n, 'файл', 'файла', 'файлов')
+    case 'Links': return plural(n, 'ссылка', 'ссылки', 'ссылок')
+    case 'Music': return plural(n, 'аудиофайл', 'аудиофайла', 'аудиофайлов')
+    case 'Voice': return plural(n, 'голосовое сообщение', 'голосовых сообщения', 'голосовых сообщений')
+    default: return String(n)
+  }
 }
+
+// высота шапки панели — sticky-отступ табов и порог header-filled (tweb 3.5rem)
+const HEADER_H = 56
 
 export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers }: { chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void; canAddMembers?: boolean }) {
   const t = useT()
@@ -85,17 +102,6 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
       alive = false
     }
   }, [isSaved, peerId, managers])
-
-  const toggleBlock = () => {
-    if (!profile || peerId == null) return
-    const next = !profile.isBlocked
-    setProfile({ ...profile, isBlocked: next }) // оптимистично
-    const op = next ? managers.privacy.block(peerId) : managers.privacy.unblock(peerId)
-    void op
-      .then(() => managers.privacy.blocked(0, 1))
-      .then((r) => usePrivacyStore.getState().setBlockedTotal(r.total))
-      .catch(() => setProfile(profile))
-  }
 
   // Тумблер Notifications = per-chat mute (tweb PeerProfile: checked = !muted,
   // переключение — togglePeerMute напрямую, без попапа длительности)
@@ -133,6 +139,52 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
   } = useGroupInfo(chat)
 
   const title = isSaved ? 'Saved Messages' : isChannel ? 'Channel Info' : isGroup ? 'Group Info' : 'User Info'
+
+  // ── tweb-шапка профиля: фото на всю ширину, шапка прозрачная поверх него;
+  // при скролле до табов шаред-медиа — заливка и «имя + счётчик таба»
+  // (tweb sharedMedia.tsx setIsSharedMedia / peerProfileAvatars) ──
+  const hasPhoto = !!headerAvatarSrc && !isSaved
+  const [filled, setFilled] = useState(false)
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const tabsBarRef = useRef<HTMLDivElement>(null)
+  const onBodyScroll = () => {
+    const body = bodyRef.current, bar = tabsBarRef.current
+    if (!body || !bar) return
+    // порог tweb: верх таб-плашки доехал до низа шапки (top <= OFFSET)
+    const top = bar.getBoundingClientRect().top - body.getBoundingClientRect().top
+    setFilled(top <= HEADER_H + 1)
+  }
+  // клик по «назад» в залитой шапке — к началу профиля (tweb closeBtn: scrollIntoView profile-content)
+  const scrollBackToProfile = () => bodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+
+  // счётчики табов шаред-медиа для подзаголовка залитой шапки (tweb onLengthChange)
+  const [tabCounts, setTabCounts] = useState<Record<string, number>>({})
+  const activeCount = tab === 'Members'
+    ? realMembers?.length
+    : tab === 'Chats'
+      ? savedDialogs?.length
+      : tabCounts[tab]
+
+  const subtitleText = isSaved
+    ? chatsLabel(savedDialogs?.length ?? 0)
+    : isRealChat && (isGroup || isChannel) && realMembers
+      ? membersLabel(realMembers.length, isChannel)
+      : chat.status
+
+  // просмотрщик фото профиля (tweb openAvatarViewer: клик по центру аватарки)
+  const avatarImgRef = useRef<HTMLImageElement>(null)
+  const [avatarView, setAvatarView] = useState<{
+    originRect: { top: number; left: number; width: number; height: number }
+    originEl: HTMLElement
+  } | null>(null)
+  const openAvatarViewer = () => {
+    const el = avatarImgRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    setAvatarView({ originRect: { top: r.top, left: r.left, width: r.width, height: r.height }, originEl: el })
+  }
+
+  const overPhoto = hasPhoto && !filled
 
   // Ссылка группы в инфо-карточке: публичный username, иначе первая инвайт-ссылка.
   const inviteUrl = chat.username
@@ -184,36 +236,74 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
           : {})}
         className={classNames(s.panel, narrow ? s.panelNarrow : s.panelWide)}
       >
-        {/* Header */}
-        <div className={s.header}>
-          <IconButton onClick={onClose} color="var(--tg-textSecondary)">
-            <TgIcon name="close" />
+        {/* Шапка: absolute поверх контента. Над фото — прозрачная с белыми
+            иконками (tweb .profile-container:not(.header-filled) .sidebar-header
+            + .need-white); у табов — заливка, X→назад, «имя + счётчик таба»
+            слайд-фейдом (tweb setIsSharedMedia + TransitionSlider slide-fade). */}
+        <div className={classNames(s.header, filled ? s.headerFilled : '')}>
+          <IconButton onClick={filled ? scrollBackToProfile : onClose} color={overPhoto ? '#fff' : 'var(--tg-textSecondary)'}>
+            <TgIcon name={filled ? 'back' : 'close'} />
           </IconButton>
-          <Text size={19} weight={600} color="var(--tg-textPrimary)" style={{ flex: 1 }}>
-            {t(title)}
-          </Text>
+          <div className={s.headerTitles}>
+            <AnimatePresence initial={false}>
+              {filled && activeCount != null ? (
+                <motion.div
+                  key="peer"
+                  className={s.headerTitleItem}
+                  initial={{ y: 14, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  exit={{ y: 14, opacity: 0 }}
+                  transition={{ duration: 0.2, ease: EASE }}
+                >
+                  <Text noWrap size={16} weight={600} color="var(--tg-textPrimary)">{isSaved ? t('Saved Messages') : chat.name}</Text>
+                  <Text noWrap size={13} color="var(--tg-textSecondary)">{countLabel(tab, activeCount, isChannel)}</Text>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="title"
+                  className={s.headerTitleItem}
+                  initial={{ y: -14, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  exit={{ y: -14, opacity: 0 }}
+                  transition={{ duration: 0.2, ease: EASE }}
+                >
+                  <Text noWrap size={19} weight={600} color={overPhoto ? '#fff' : 'var(--tg-textPrimary)'}>{t(title)}</Text>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
           {(isGroup || isChannel) && (
-            <IconButton onClick={() => setEditing(true)} color="var(--tg-textSecondary)">
+            <IconButton onClick={() => setEditing(true)} color={overPhoto ? '#fff' : 'var(--tg-textSecondary)'}>
               <TgIcon name="edit" />
             </IconButton>
           )}
         </div>
 
-        <div className={s.body}>
-          {/* Avatar + name */}
-          <div className={s.avatarBlock}>
-            <Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={headerAvatarSrc} size="profile" />
-            <Text size={21} weight={600} color="var(--tg-textPrimary)" style={{ marginTop: '8px', textAlign: 'center', paddingLeft: '16px', paddingRight: '16px' }}>
-              {chat.name}
-            </Text>
-            <Text size={14} color="var(--tg-textSecondary)">
-              {isSaved
-                ? chatsLabel(savedDialogs?.length ?? 0)
-                : isRealChat && (isGroup || isChannel) && realMembers
-                  ? membersLabel(realMembers.length, isChannel)
-                  : chat.status}
-            </Text>
-          </div>
+        <div ref={bodyRef} className={classNames(s.body, hasPhoto ? '' : s.bodyPad)} onScroll={onBodyScroll}>
+          {hasPhoto ? (
+            /* tweb profile-avatars-container: фото-квадрат на всю ширину, нижний/
+               верхний градиенты, имя+статус белым слева внизу; клик — просмотрщик */
+            <div className={s.profileAvatars} onClick={openAvatarViewer}>
+              <img ref={avatarImgRef} className={s.profilePhoto} src={headerAvatarSrc} alt="" draggable={false} />
+              <div className={s.avatarsGradient} />
+              <div className={classNames(s.avatarsGradient, s.avatarsGradientTop)} />
+              <div className={s.avatarsInfo}>
+                <div className={s.profileName}>{chat.name}</div>
+                <div className={s.profileSubtitle}>{subtitleText}</div>
+              </div>
+            </div>
+          ) : (
+            /* без фото — центрированный аватар (tweb needSimpleAvatar: avatar-120) */
+            <div className={s.avatarBlock}>
+              <Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={headerAvatarSrc} size="profile" />
+              <Text size={21} weight={600} color="var(--tg-textPrimary)" style={{ marginTop: '8px', textAlign: 'center', paddingLeft: '16px', paddingRight: '16px' }}>
+                {chat.name}
+              </Text>
+              <Text size={14} color="var(--tg-textSecondary)">
+                {subtitleText}
+              </Text>
+            </div>
+          )}
 
           {/* Info card — те же секции, что в настройках (settings/kit Section+Row).
               В «Избранном» её нет вовсе (tweb: свой профиль без phone/username/bio). */}
@@ -306,19 +396,6 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
           </Section>
           )}
 
-          {/* Чёрный список: блокировка/разблокировка собеседника (tweb Block user) */}
-          {!isSaved && !isGroup && !isChannel && profile && (
-            <Section>
-              <Row
-                icon={<TgIcon name={profile.isBlocked ? 'lockoff' : 'restrict'} size={24} />}
-                label={profile.isBlocked ? 'Unblock user' : 'Block user'}
-                danger={!profile.isBlocked}
-                accent={profile.isBlocked}
-                onClick={toggleBlock}
-              />
-            </Section>
-          )}
-
           {/* Темы (tweb editChat Topics toggle): группа → форум-топики */}
           {isRealChat && chat.type === 'group' && canManageTopics && (
             <div className={s.section}>
@@ -408,6 +485,9 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
               Контент пока моковый — реального API истории по типам ещё нет. */}
           {/* isRealChat из useGroupInfo — только группы/каналы; для шаред-медиа
               реальность чата определяем по numeric id (private тоже подходит) */}
+          {/* блок не ниже вьюпорта панели — табы всегда доезжают до шапки
+              (tweb _searchSuper.scss: min-height var(--super-height)) */}
+          <div className={s.sharedWrap}>
           <SharedMedia
             tab={tab}
             onTab={setTab}
@@ -418,7 +498,23 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
             canManageAdmins={canManageAdmins}
             onOpenPeer={onOpenPeer}
             onEditMember={setEditMember}
+            navRef={tabsBarRef}
+            stickyTop={HEADER_H}
+            onCount={(name, n) => setTabCounts((c) => (c[name] === n ? c : { ...c, [name]: n }))}
           />
+          </div>
+
+          {/* просмотрщик фото профиля (tweb openAvatarViewer) */}
+          {avatarView && headerAvatarSrc && (
+            <MediaLightbox
+              items={[{ src: headerAvatarSrc }]}
+              index={0}
+              originRect={avatarView.originRect}
+              originSrc={headerAvatarSrc}
+              originEl={avatarView.originEl}
+              onClose={() => setAvatarView(null)}
+            />
+          )}
 
           {/* QR-код ссылки (иконка в инфо-карточке) — tweb-модалка с темами */}
           {inviteUrl && (
@@ -494,7 +590,7 @@ const TAB_FILTER: Record<string, 'media' | 'files' | 'links' | 'music' | 'voice'
 }
 
 
-function SharedMedia({ tab, onTab, chatId, members, savedDialogs, isChannel, canManageAdmins, onOpenPeer, onEditMember }: {
+function SharedMedia({ tab, onTab, chatId, members, savedDialogs, isChannel, canManageAdmins, onOpenPeer, onEditMember, navRef, stickyTop, onCount }: {
   tab: string
   onTab: (v: string) => void
   chatId: number | null
@@ -506,6 +602,12 @@ function SharedMedia({ tab, onTab, chatId, members, savedDialogs, isChannel, can
   canManageAdmins?: boolean
   onOpenPeer?: (peer: OpenPeer) => void
   onEditMember?: (m: RealMember) => void
+  /** реф таб-плашки — родитель меряет её позицию при скролле (header-filled) */
+  navRef?: React.Ref<HTMLDivElement>
+  /** sticky-отступ табов под absolute-шапкой панели */
+  stickyTop?: number
+  /** счётчик загруженного таба — подзаголовок залитой шапки (tweb onLengthChange) */
+  onCount?: (tab: string, n: number) => void
 }) {
   const t = useT()
   const [lang] = useLang()
@@ -528,9 +630,13 @@ function SharedMedia({ tab, onTab, chatId, members, savedDialogs, isChannel, can
 
   useEffect(() => {
     if (chatId == null || !filter || byFilter[filter]) return
+    const forTab = tab
     void managers.messages
       .mediaHistory(chatId, filter)
-      .then((r) => setByFilter((d) => ({ ...d, [filter]: r.messages })))
+      .then((r) => {
+        setByFilter((d) => ({ ...d, [filter]: r.messages }))
+        onCount?.(forTab, r.messages.length)
+      })
       .catch(() => setByFilter((d) => ({ ...d, [filter]: [] })))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId, filter])
@@ -592,9 +698,9 @@ function SharedMedia({ tab, onTab, chatId, members, savedDialogs, isChannel, can
       : [...SHARED_TABS]
   return (
     <>
-      {/* Тот же framed-таб-ряд, что и у папок в списке чатов; липнет к верху
-          скролла панели (tweb .search-super-tabs-scrollable: sticky) */}
-      <TabsBar mode="sticky" from="var(--tg-sectionBackdrop)">
+      {/* Тот же framed-таб-ряд, что и у папок в списке чатов; липнет под
+          absolute-шапку панели (tweb .search-super-tabs-scrollable: sticky) */}
+      <TabsBar mode="sticky" from="var(--tg-sectionBackdrop)" top={stickyTop} barRef={navRef}>
         <div className={s.tabsWrap}>
           <Tabs value={tab} onChange={(v) => onTab(v as string)}>
             <Tabs.List framed>

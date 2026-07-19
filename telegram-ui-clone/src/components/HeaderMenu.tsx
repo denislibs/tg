@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import TgIcon from './TgIcon'
 import { joinGroupCall } from '../core/calls/groupCallEngine'
@@ -11,6 +11,7 @@ import type { Chat } from '../data'
 import { useT } from '../i18n'
 import { useManagers } from '../core/hooks/useManagers'
 import { loadChats } from '../stores/chatsStore'
+import { usePrivacyStore } from '../stores/privacyStore'
 
 type Item = { icon: ReactNode; label: string; danger?: boolean; submenu?: boolean; onClick?: () => void }
 
@@ -52,6 +53,26 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
       ? [{ icon: <TgIcon name="search" size={20} />, label: 'Search', onClick: () => { setSearchOpen(numericChatId, true); close() } }]
       : []
 
+  // Блокировка собеседника живёт в ⋮-меню чата, как в tweb (topbar.ts:
+  // icon lock 'BlockUser' / lockoff 'Unblock'); в профиле её нет.
+  const peerId = chat.peerId
+  const canBlock = chat.type === 'private' && peerId != null && peerId !== SERVICE_USER_ID
+  const [blocked, setBlocked] = useState(false)
+  useEffect(() => {
+    if (!canBlock || peerId == null) return
+    let alive = true
+    void managers.privacy.profile(peerId).then((p) => { if (alive) setBlocked(p.isBlocked) }).catch(() => {})
+    return () => { alive = false }
+  }, [canBlock, peerId, managers])
+  const toggleBlock = () => {
+    if (peerId == null) return
+    void (blocked ? managers.privacy.unblock(peerId) : managers.privacy.block(peerId))
+      .then(() => managers.privacy.blocked(0, 1))
+      .then((r) => usePrivacyStore.getState().setBlockedTotal(r.total))
+      .catch(() => {})
+    close()
+  }
+
   let items: Item[]
   if (chat.type === 'private') {
     // Сервисному аккаунту «Telegram» нельзя позвонить, заблокировать его или
@@ -72,7 +93,9 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
         ? [
             { icon: <TgIcon name="adduser" size={20} />, label: 'Add to contacts', onClick: onAddContact ? () => { onAddContact(); close() } : undefined },
             { icon: <TgIcon name="gift" size={20} />, label: 'Send a Gift' },
-            { icon: <TgIcon name="restrict" size={20} />, label: 'Block user' },
+            blocked
+              ? { icon: <TgIcon name="lockoff" size={20} />, label: 'Unblock user', onClick: toggleBlock }
+              : { icon: <TgIcon name="lock" size={20} />, label: 'Block user', onClick: toggleBlock },
             { icon: <TgIcon name="deleteuser" size={20} />, label: 'Disable Sharing' },
           ]
         : []),
