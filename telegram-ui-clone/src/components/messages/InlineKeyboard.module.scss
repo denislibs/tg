@@ -1,8 +1,9 @@
-// Inline-клавиатура под баблом (tweb .reply-markup): ряды кнопок во всю ширину.
+// Inline-клавиатура под баблом (tweb .reply-markup): ряды кнопок во всю ширину,
+// полупрозрачный акцентный фон, белый жирный текст по центру, url-стрелка в углу.
 .keyboard {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 4px; // tweb $bubble-margin
   margin-top: 4px;
   width: 100%;
 }
@@ -11,26 +12,33 @@
   gap: 4px;
 }
 .btn {
+  position: relative;
   flex: 1;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 5px;
-  min-height: 34px;
-  padding: 6px 10px;
+  justify-content: center; // tweb: текст по центру
+  min-height: 40px; // tweb 2.5rem
+  padding: 9px 8px; // tweb .5625rem
   border: none;
-  border-radius: 10px;
-  background: var(--tg-bubbleIn, rgba(255, 255, 255, 0.14));
-  color: var(--tg-accent);
+  border-radius: 6px; // tweb .375rem
+  overflow: hidden;
+  background: color-mix(in srgb, var(--tg-accent) 40%, transparent); // tweb --message-highlighting-color
+  color: #fff; // tweb: белый текст
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600; // tweb font-weight-bold
   cursor: pointer;
-  transition: filter 0.12s ease, background 0.12s ease;
+  transition: background 0.12s ease;
 
-  &:hover { filter: brightness(1.08); }
-  &:active { transform: scale(0.98); }
+  &:hover { background: color-mix(in srgb, var(--tg-accent) 62%, transparent); }
+  &:active { filter: brightness(0.95); }
 }
+// url-кнопка: стрелка в правом верхнем углу (tweb .reply-markup-button-icon,
+// is-link → rotate -45deg)
 .ext {
+  position: absolute;
+  top: 3px;
+  right: 4px;
   font-size: 11px;
-  opacity: 0.7;
+  line-height: 1;
+  opacity: 0.85;
 }
