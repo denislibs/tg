@@ -22,6 +22,7 @@ import type { SignInOutcome, PasswordState, PasskeyInfo } from '../core/managers
 import type { Session } from '../core/managers/sessionsManager'
 import type { IceConfig } from '../core/managers/callsManager'
 import type { StarGift, GiftInfo } from '../core/managers/starsManager'
+import type { BotCommand, CallbackAnswer } from '../core/managers/botsManager'
 
 export interface Managers {
   health: { check(): Promise<HealthStatus> }
@@ -210,6 +211,10 @@ export interface Managers {
     profileGifts(userId: number): Promise<GiftInfo[]>
     convert(giftId: number): Promise<number>
     setHidden(giftId: number, hidden: boolean): Promise<void>
+  }
+  bots: {
+    commands(botId: number): Promise<BotCommand[]>
+    callback(botId: number, chatId: number, data: string): Promise<CallbackAnswer>
   }
 }
 

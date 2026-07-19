@@ -19,6 +19,7 @@ import { BubbleAppear } from '../animations/bubbleAnimations'
 import RealMediaBubble from './RealMediaBubble'
 import PollBubble from './PollBubble'
 import GiftBubble from './GiftBubble'
+import InlineKeyboard from './InlineKeyboard'
 import AlbumGrid from './AlbumGrid'
 import VoiceMessage from './VoiceMessage'
 import Checkbox from '../../shared/ui/Checkbox'
@@ -484,6 +485,9 @@ function MessageRow({
               <WebPagePreview wp={m.webPage} out={out} linkColor="var(--b-link)" />
             )}
             {chips}
+            {m.replyMarkup?.inline && m.chatId != null && m.senderId != null && (
+              <InlineKeyboard rows={m.replyMarkup.inline} chatId={m.chatId} botId={m.senderId} />
+            )}
             {footer && <div className={s.footerText}>{footer}</div>}
           </div>
         )}

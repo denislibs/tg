@@ -32,6 +32,7 @@ type Interactor struct {
 	topics      TopicRepo
 	groupCalls  GroupCallStore
 	stars       StarsRepo
+	bots        BotRepo
 }
 
 // New constructs the chat interactor from its ports.
@@ -83,6 +84,9 @@ func (i *Interactor) SetGroupCalls(s GroupCallStore) { i.groupCalls = s }
 
 // SetStars подключает хранилище звёзд/подарков (optional; без него → 404).
 func (i *Interactor) SetStars(s StarsRepo) { i.stars = s }
+
+// SetBots подключает данные ботов (optional; без него авто-ответы отключены).
+func (i *Interactor) SetBots(b BotRepo) { i.bots = b }
 
 // nowMillis is the server clock used for update dates.
 func nowMillis() int64 { return time.Now().UnixMilli() }

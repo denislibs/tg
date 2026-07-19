@@ -28,6 +28,7 @@ type Repo interface {
 
 	GetUser(ctx context.Context, id int64) (domain.User, error)
 	IsVerified(ctx context.Context, id int64) (bool, error)
+	IsBot(ctx context.Context, id int64) (bool, error)
 }
 
 type Interactor struct{ repo Repo }
@@ -156,6 +157,7 @@ func (i *Interactor) Profile(ctx context.Context, viewerID, targetID int64) (dom
 		FirstName: u.FirstName, LastName: u.LastName, DisplayName: u.DisplayName,
 	}
 	p.Verified, _ = i.repo.IsVerified(ctx, targetID)
+	p.IsBot, _ = i.repo.IsBot(ctx, targetID)
 	p.IsBlocked, _ = i.repo.IsBlocked(ctx, viewerID, targetID)
 
 	check := func(key domain.PrivacyKey) bool {

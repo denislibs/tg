@@ -123,7 +123,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			ChatID: in.ChatID, Seq: seq, SenderID: in.SenderID,
 			Type: in.Type, Text: in.Text, Entities: in.Entities, ReplyToID: in.ReplyToID, ClientMsgID: cmid,
 			MediaID: in.MediaID, ThreadRootID: in.ThreadRootID, GroupedID: groupedID, PollID: in.PollID,
-			GiftID: in.GiftID,
+			GiftID: in.GiftID, ReplyMarkup: in.ReplyMarkup,
 			GeoLat: in.GeoLat, GeoLng: in.GeoLng,
 			ContactUserID: in.ContactUserID, ContactName: contactName, ContactPhone: contactPhone,
 			// Voice/round content starts "unlistened" (Telegram media_unread).
@@ -180,6 +180,10 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		if in.Type != "service" {
 			i.clearDraftAfterSend(ctx, in.SenderID, in.ChatID)
 		}
+	}
+	// Авто-ответ бота: обычное текстовое сообщение в приватный чат с ботом.
+	if in.Type == "text" && in.Text != "" {
+		i.maybeBotReply(ctx, in.ChatID, in.SenderID, in.Text)
 	}
 	return msg, nil
 }

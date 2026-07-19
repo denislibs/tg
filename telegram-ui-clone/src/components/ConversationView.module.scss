@@ -156,6 +156,38 @@
   align-items: flex-end;
 }
 
+// reply-клавиатура бота над композером (tweb replyKeyboardMarkup)
+.replyKeyboard {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+}
+.replyKeyboardRow {
+  display: flex;
+  gap: 4px;
+}
+.replyKeyboardBtn {
+  flex: 1;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 10px;
+  background: var(--tg-sidebarBg);
+  color: var(--tg-textPrimary);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+
+  &:hover { background: var(--tg-hover); }
+  &:active { transform: scale(0.99); }
+}
+
 .footerMuted {
   align-items: center;
   padding: 0;

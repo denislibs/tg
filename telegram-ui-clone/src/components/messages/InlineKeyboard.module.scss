@@ -1,0 +1,36 @@
+// Inline-клавиатура под баблом (tweb .reply-markup): ряды кнопок во всю ширину.
+.keyboard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+  width: 100%;
+}
+.row {
+  display: flex;
+  gap: 4px;
+}
+.btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 10px;
+  background: var(--tg-bubbleIn, rgba(255, 255, 255, 0.14));
+  color: var(--tg-accent);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: filter 0.12s ease, background 0.12s ease;
+
+  &:hover { filter: brightness(1.08); }
+  &:active { transform: scale(0.98); }
+}
+.ext {
+  font-size: 11px;
+  opacity: 0.7;
+}

@@ -480,6 +480,25 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const headerStatus = realSubtitle ?? presenceLabel ?? (chat.status ? t(chat.status) : '')
   const headerOnline = !!peerPresence?.online || chat.status === 'online'
 
+  // Бот-собеседник (для кнопки «Начать» и reply-клавиатуры) — по профилю.
+  const [isBotChat, setIsBotChat] = useState(false)
+  useEffect(() => {
+    if (chat.type !== 'private' || chat.peerId == null) { setIsBotChat(false); return }
+    let alive = true
+    void managers.privacy.profile(chat.peerId).then((p) => { if (alive) setIsBotChat(!!p.isBot) }).catch(() => {})
+    return () => { alive = false }
+  }, [chat.type, chat.peerId, managers])
+  // reply-клавиатура: последнее сообщение бота с непустым keyboard (пустой = скрыть).
+  const replyKeyboard = useMemo(() => {
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const k = msgs[i].replyMarkup?.keyboard
+      if (k) return k.length > 0 ? k : null
+    }
+    return null
+  }, [msgs])
+  // Бот без истории → кнопка «Начать» вместо композера (шлёт /start).
+  const botStart = isBotChat && isRealChat && msgs.length === 0
+
   // Floating "scroll to bottom" button (tweb .bubbles-go-down), shown above the composer.
   // onScrollDownClick (reload-newest + pin, or smooth scroll) lives in useChatScroll.
   const scrollDownFab = (
@@ -651,9 +670,29 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               <Text size={14.5} color="var(--tg-textSecondary)">{t('Topic is closed')}</Text>
             </div>
           </div>
+        ) : botStart ? (
+          <div className={classNames(s.footer, s.footerMuted)}>
+            {scrollDownFab}
+            <motion.div whileTap={{ scale: 0.99 }} className={s.muteBtn} onClick={() => onComposerSend('/start')}>
+              <Text weight={600} size={15.5} color="var(--tg-accent)">{t('Start')}</Text>
+            </motion.div>
+          </div>
         ) : canType ? (
           <div className={classNames(s.footer, s.footerCompose)}>
             {scrollDownFab}
+            {replyKeyboard && (
+              <div className={s.replyKeyboard}>
+                {replyKeyboard.map((row, ri) => (
+                  <div key={ri} className={s.replyKeyboardRow}>
+                    {row.map((label, bi) => (
+                      <button key={bi} type="button" className={s.replyKeyboardBtn} onClick={() => onComposerSend(label)}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
             {/* Hidden file picker — triggered by the attach menu (openPicker). */}
             <input
               ref={fileInputRef}

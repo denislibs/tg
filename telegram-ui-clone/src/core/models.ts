@@ -1,5 +1,6 @@
 // src/core/models.ts
 import { mapGiftInfo, type RawGiftInfo, type GiftInfo } from './managers/starsManager'
+import { mapReplyMarkup, type ReplyMarkup } from './managers/botsManager'
 
 export type ChatKind = 'private' | 'group' | 'channel' | 'saved'
 
@@ -98,6 +99,7 @@ export interface RawMessage {
   contact?: { user_id: number; name?: string; phone?: string } | null
   gift_id?: number | null
   gift?: RawGiftInfo | null
+  reply_markup?: { inline?: { text: string; callback?: string; url?: string; webapp?: string }[][]; keyboard?: string[][]; resize?: boolean; one_time?: boolean } | null
 }
 
 // Агрегат одной реакции на сообщении (emoji + счётчик + «моя»), tweb ReactionCount.
@@ -166,6 +168,8 @@ export interface Message {
   contact?: { userId: number; name: string; phone: string }
   /** подарок сообщения типа 'gift' (представление для зрителя) */
   gift?: GiftInfo
+  /** клавиатура сообщения (inline/reply) — у сообщений бота */
+  replyMarkup?: ReplyMarkup
 }
 
 // Опрос (backend PollInfo): вопрос + варианты + агрегаты для зрителя.
@@ -335,5 +339,6 @@ export function mapMessage(r: RawMessage): Message {
       ? { userId: r.contact.user_id, name: r.contact.name ?? '', phone: r.contact.phone ?? '' }
       : undefined,
     gift: r.gift ? mapGiftInfo(r.gift) : undefined,
+    replyMarkup: r.reply_markup ? mapReplyMarkup(r.reply_markup) : undefined,
   }
 }

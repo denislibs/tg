@@ -82,6 +82,8 @@ type Message struct {
 	// его развёрнутое представление, наполняется read-моделью истории.
 	GiftID *int64
 	Gift   *GiftInfo
+	// ReplyMarkup — клавиатура сообщения (inline/reply), обычно у сообщений бота.
+	ReplyMarkup *ReplyMarkup
 	// SenderName is the sender's short name (first name, else display name),
 	// populated on send for the new_message payload (not stored) — the client
 	// prefixes group chat-list previews with it, tweb-style.

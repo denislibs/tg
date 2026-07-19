@@ -224,3 +224,13 @@ func (r *PrivacyRepo) IsVerified(ctx context.Context, id int64) (bool, error) {
 	}
 	return v, err
 }
+
+func (r *PrivacyRepo) IsBot(ctx context.Context, id int64) (bool, error) {
+	var v bool
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT is_bot FROM users WHERE id=$1`, id).Scan(&v)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return v, err
+}

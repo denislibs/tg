@@ -56,6 +56,7 @@ export function messageToConvMsg(
     : 'text'
   return {
     id: m.id,
+    chatId: m.chatId,
     clientId: m.clientId,
     type: convType,
     out,
@@ -76,6 +77,7 @@ export function messageToConvMsg(
     call: m.type === 'call' ? parseCallLog(m.text) : undefined,
     poll: m.poll,
     gift: m.gift,
+    replyMarkup: m.replyMarkup,
     reactions: m.reactions,
     geo: m.geo,
     contact: m.contact,

@@ -116,6 +116,7 @@ type UserProfile struct {
 	Birthday       *string // "DD.MM" или "DD.MM.YYYY"; nil когда скрыт/не задан
 	AvatarURL      string
 	Verified       bool
+	IsBot          bool
 	IsBlocked      bool
 	CallsAvailable bool
 	CanMessage     bool

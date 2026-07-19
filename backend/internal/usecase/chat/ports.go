@@ -231,6 +231,8 @@ type SendInput struct {
 	ContactUserID *int64
 	// Подарок (type 'gift'): ссылка на выданный подарок — только из SendGift.
 	GiftID *int64
+	// Клавиатура сообщения (inline/reply) — у ответов бота.
+	ReplyMarkup *domain.ReplyMarkup
 }
 
 // GroupCallStore хранит участников активных групповых звонков (эфемерно, Redis).
@@ -295,6 +297,12 @@ type StarsRepo interface {
 	// Convert обменивает подарок на звёзды владельцу: помечает converted и
 	// возвращает число возвращённых звёзд. Повтор/чужой → domain.ErrForbidden.
 	Convert(ctx context.Context, savedID, ownerID int64) (int64, error)
+}
+
+// BotRepo — данные ботов: флаг is_bot и список команд.
+type BotRepo interface {
+	IsBot(ctx context.Context, userID int64) (bool, error)
+	Commands(ctx context.Context, botID int64) ([]domain.BotCommand, error)
 }
 
 type HistoryResult struct {

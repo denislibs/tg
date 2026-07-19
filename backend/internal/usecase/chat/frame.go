@@ -33,6 +33,9 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 		"gift_id":        m.GiftID,
 		"gift":           m.Gift,
 	}
+	if m.ReplyMarkup != nil {
+		p["reply_markup"] = m.ReplyMarkup
+	}
 	if m.GeoLat != nil && m.GeoLng != nil {
 		p["geo"] = map[string]any{"lat": *m.GeoLat, "lng": *m.GeoLng}
 	}

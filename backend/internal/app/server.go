@@ -82,6 +82,9 @@ func registerServer(p serverParams) {
 	// фреймом balance_update, подарок — сообщением типа 'gift'.
 	p.ChatUC.SetStars(pgadapter.NewStarsRepo(p.Pool))
 
+	// Боты: флаг is_bot + команды; демо-бот авто-отвечает в приватном чате.
+	p.ChatUC.SetBots(pgadapter.NewBotRepo(p.Pool))
+
 	var wsHandler http.Handler
 	var presenceMgr *usecasepresence.Manager
 	if p.Redis.OK {

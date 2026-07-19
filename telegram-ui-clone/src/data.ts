@@ -12,6 +12,7 @@ export interface MediaItem {
 
 export interface ConvMsg {
   id?: number // stable backend message id (real chats) — used as the React key
+  chatId?: number // backend chat id — for bot-callback (inline keyboard)
   clientId?: string // optimistic client id; a stable key that survives the ack
   type:
     | 'date'
@@ -67,6 +68,7 @@ export interface ConvMsg {
   albumItems?: ConvMsg[] // собранные элементы альбома (только у сводного ConvMsg type 'album')
   poll?: import('./core/models').Poll // опрос (type 'poll')
   gift?: import('./core/managers/starsManager').GiftInfo // подарок (type 'gift')
+  replyMarkup?: import('./core/managers/botsManager').ReplyMarkup // inline-клавиатура сообщения бота
   videoDuration?: string // overlay on video / round video
   // document
   document?: { name: string; size: string; ext: string; color: string }
