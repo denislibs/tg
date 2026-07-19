@@ -5,7 +5,11 @@
 // высота 2.5rem, radius = высоте, фон/blur как у .btn-menu,
 // drop-shadow(0 .125rem .5rem rgba(0,0,0,.24)); ячейка 36×28 (28px эмодзи +
 // 4px по бокам), шеврон «ещё» 32×32 прозрачный.
+// Абсолют внутри панели ui-kit Menu: над ней с зазором 8px
+// (tweb --menu-offset: -(высота+.5rem)); left/right по стороне якоря — инлайн.
 .reactionsBar {
+  position: absolute;
+  top: -48px; // -(2.5rem + 0.5rem)
   display: flex;
   align-items: center;
   height: 2.5rem;
@@ -15,6 +19,12 @@
   backdrop-filter: blur(50px);
   -webkit-backdrop-filter: blur(50px);
   filter: drop-shadow(0 0.125rem 0.5rem rgba(0, 0, 0, 0.24));
+}
+
+// меню у верха экрана: полоске нет места сверху — показываем под панелью
+.below {
+  top: auto;
+  bottom: -48px;
 }
 
 .reaction {

@@ -20,10 +20,4 @@
   backdrop-filter: blur(50px);
   -webkit-backdrop-filter: blur(50px);
   box-shadow: var(--tg-menuShadow);
-
-  // inline-вариант: позиционирует владелец (flex-колонка), не viewport
-  &.inline {
-    position: static;
-    z-index: auto;
-  }
 }
