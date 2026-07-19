@@ -36,6 +36,10 @@ import MediaLightbox, { type LightboxItem } from './messages/MediaLightbox'
 import s from './UserInfoPanel.module.scss'
 import useMediaQuery from '../shared/lib/useMediaQuery'
 import type { UserProfile } from '../core/managers/privacyManager'
+import type { GiftInfo } from '../core/managers/starsManager'
+import StarIcon from './stars/StarIcon'
+import SendGiftPopup from './stars/SendGiftPopup'
+import GiftInfoPopup from './stars/GiftInfoPopup'
 
 // склонение «N единиц» (счётчики подзаголовков)
 function plural(n: number, one: string, few: string, many: string): string {
@@ -204,6 +208,21 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
     const r = el.getBoundingClientRect()
     setAvatarView({ originRect: { top: r.top, left: r.left, width: r.width, height: r.height }, originEl: el })
   }
+
+  // Подарки в профиле (tweb Gifts tab) — только для пользователя (private).
+  const meId = useChatsStore((st) => st.meId)
+  const isUser = !isSaved && !isGroup && !isChannel && peerId != null
+  const [giftPopupOpen, setGiftPopupOpen] = useState(false)
+  const [gifts, setGifts] = useState<GiftInfo[]>([])
+  const [selectedGift, setSelectedGift] = useState<GiftInfo | null>(null)
+  const loadGifts = () => {
+    if (!isUser || peerId == null) return
+    void managers.stars.profileGifts(peerId).then(setGifts).catch(() => setGifts([]))
+  }
+  useEffect(() => {
+    loadGifts()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isUser, peerId])
 
   // Ссылка группы в инфо-карточке: публичный username, иначе первая инвайт-ссылка.
   const inviteUrl = chat.username
@@ -441,6 +460,38 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
           </Section>
           )}
 
+          {/* Подарить подарок (tweb btnSendGift) — чужому пользователю */}
+          {isUser && peerId !== meId && (
+            <Section>
+              <Row
+                icon={<TgIcon name="gift" size={24} />}
+                label="Send a Gift"
+                accent
+                onClick={() => setGiftPopupOpen(true)}
+              />
+            </Section>
+          )}
+
+          {/* Подарки в профиле (tweb Gifts tab): сетка полученных подарков */}
+          {isUser && gifts.length > 0 && (
+            <div className={s.section}>
+              <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionTitle}>
+                {t('Gifts')}
+              </Text>
+              <div className={s.giftsProfileGrid}>
+                {gifts.map((g) => (
+                  <div key={g.id} className={s.giftTile} onClick={() => setSelectedGift(g)}>
+                    <span className={s.giftTileEmoji}>{g.gift.emoji}</span>
+                    <span className={s.giftTilePrice}>
+                      <StarIcon size={12} />
+                      {g.gift.priceStars}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Темы (tweb editChat Topics toggle): группа → форум-топики */}
           {isRealChat && chat.type === 'group' && canManageTopics && (
             <div className={s.section}>
@@ -558,6 +609,26 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
               originSrc={headerAvatarSrc}
               originEl={avatarView.originEl}
               onClose={() => setAvatarView(null)}
+            />
+          )}
+
+          {/* Подарить подарок / инфо полученного подарка (tweb PopupSendGift /
+              PopupStarGiftInfo) */}
+          {isUser && peerId != null && (
+            <SendGiftPopup
+              open={giftPopupOpen}
+              onClose={() => setGiftPopupOpen(false)}
+              toUserId={peerId}
+              toName={chat.name}
+              onSent={loadGifts}
+            />
+          )}
+          {selectedGift && (
+            <GiftInfoPopup
+              gift={selectedGift}
+              isOwner={peerId === meId}
+              onClose={() => setSelectedGift(null)}
+              onChanged={loadGifts}
             />
           )}
 

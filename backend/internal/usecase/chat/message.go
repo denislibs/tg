@@ -123,6 +123,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			ChatID: in.ChatID, Seq: seq, SenderID: in.SenderID,
 			Type: in.Type, Text: in.Text, Entities: in.Entities, ReplyToID: in.ReplyToID, ClientMsgID: cmid,
 			MediaID: in.MediaID, ThreadRootID: in.ThreadRootID, GroupedID: groupedID, PollID: in.PollID,
+			GiftID: in.GiftID,
 			GeoLat: in.GeoLat, GeoLng: in.GeoLng,
 			ContactUserID: in.ContactUserID, ContactName: contactName, ContactPhone: contactPhone,
 			// Voice/round content starts "unlistened" (Telegram media_unread).

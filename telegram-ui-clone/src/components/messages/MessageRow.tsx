@@ -18,6 +18,7 @@ import TgIcon from '../TgIcon'
 import { BubbleAppear } from '../animations/bubbleAnimations'
 import RealMediaBubble from './RealMediaBubble'
 import PollBubble from './PollBubble'
+import GiftBubble from './GiftBubble'
 import AlbumGrid from './AlbumGrid'
 import VoiceMessage from './VoiceMessage'
 import Checkbox from '../../shared/ui/Checkbox'
@@ -406,6 +407,11 @@ function MessageRow({
             lastInGroup={lastInGroup}
             onClick={selecting ? undefined : () => feedFns.recall(!!m.call?.video)}
           />
+        ) : m.type === 'gift' && m.gift ? (
+          <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
+            {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
+            <GiftBubble gift={m.gift} out={out} />
+          </div>
         ) : m.type === 'poll' && m.poll ? (
           <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
             {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}

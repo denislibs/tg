@@ -50,6 +50,7 @@ export function messageToConvMsg(
     : m.type === 'poll' ? 'poll'
     : m.type === 'geo' ? 'geo'
     : m.type === 'contact' ? 'contact'
+    : m.type === 'gift' ? 'gift'
     : m.type === 'service' ? 'service'
     : m.type === 'photo' || m.type === 'video' || m.type === 'document' || m.type === 'audio' ? m.type
     : 'text'
@@ -74,6 +75,7 @@ export function messageToConvMsg(
       : undefined,
     call: m.type === 'call' ? parseCallLog(m.text) : undefined,
     poll: m.poll,
+    gift: m.gift,
     reactions: m.reactions,
     geo: m.geo,
     contact: m.contact,

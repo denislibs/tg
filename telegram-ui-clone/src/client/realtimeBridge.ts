@@ -3,6 +3,7 @@ import { startClient } from './bootstrap'
 import { loadChats, useChatsStore } from '../stores/chatsStore'
 import { useMessagesStore } from '../stores/messagesStore'
 import { usePinsStore } from '../stores/pinsStore'
+import { useStarsStore } from '../stores/starsStore'
 import { mapMessage, mapDraft, mapPoll, type RawPoll } from '../core/models'
 import { useDraftsStore } from '../stores/draftsStore'
 import { useUploadsStore } from '../stores/uploadsStore'
@@ -56,7 +57,7 @@ export function startRealtime(): void {
     const ms = useMessagesStore.getState()
     const rt = evt.reply_to_id != null ? ms.byKey[String(evt.chat_id)]?.msgs.find((x) => x.id === evt.reply_to_id) : undefined
     const replyTo = rt ? { msg_id: rt.id, seq: rt.seq, sender_id: rt.senderId, text: rt.text, type: rt.type } : null
-    ms.applyIncoming(evt.chat_id, mapMessage({ id: evt.msg_id, chat_id: evt.chat_id, seq: evt.seq, sender_id: evt.sender_id, type: evt.type, text: evt.text, entities: evt.entities ?? null, reply_to_id: evt.reply_to_id ?? null, media_id: evt.media_id, created_at: evt.created_at, fwd_from_user_id: evt.fwd_from_user_id ?? null, fwd_from_chat_id: evt.fwd_from_chat_id ?? null, fwd_from_msg_id: evt.fwd_from_msg_id ?? null, fwd_date: evt.fwd_date ?? null, reply_to: replyTo, media_unread: evt.media_unread, grouped_id: evt.grouped_id ?? null, geo: evt.geo ?? null, contact: evt.contact ?? null, thread_root_id: evt.thread_root_id ?? null }))
+    ms.applyIncoming(evt.chat_id, mapMessage({ id: evt.msg_id, chat_id: evt.chat_id, seq: evt.seq, sender_id: evt.sender_id, type: evt.type, text: evt.text, entities: evt.entities ?? null, reply_to_id: evt.reply_to_id ?? null, media_id: evt.media_id, created_at: evt.created_at, fwd_from_user_id: evt.fwd_from_user_id ?? null, fwd_from_chat_id: evt.fwd_from_chat_id ?? null, fwd_from_msg_id: evt.fwd_from_msg_id ?? null, fwd_date: evt.fwd_date ?? null, reply_to: replyTo, media_unread: evt.media_unread, grouped_id: evt.grouped_id ?? null, geo: evt.geo ?? null, contact: evt.contact ?? null, gift: evt.gift ?? null, thread_root_id: evt.thread_root_id ?? null }))
     uiEvents.emit(RT.newMessage, m)
     // Звук + браузерное уведомление, гейтинг как в tweb: per-chat mute →
     // глобальные настройки типа чата → клиентские настройки (см. uiNotifications).
@@ -145,6 +146,11 @@ export function startRealtime(): void {
   // 1:1 call signaling → движок звонка (стейт живёт в callStore)
   smp.on(RT.call, (raw) => { callEngine.handleFrame(raw as CallFrameEvt) })
   smp.on(RT.groupCall, (raw) => { handleGroupCallFrame(raw as GroupCallFrame) })
+  // Новый баланс звёзд (после пополнения/подарка/конвертации) — в starsStore.
+  smp.on(RT.balanceUpdate, (raw) => {
+    const b = (raw as { balance: number }).balance
+    if (typeof b === 'number') useStarsStore.getState().setBalance(b)
+  })
   smp.on('rt:resync', () => { void loadChats(managers) })
   // Прогресс отгрузки медиа (кольцо на оптимистичном бабле)
   smp.on('media:upload_progress', (raw) => {

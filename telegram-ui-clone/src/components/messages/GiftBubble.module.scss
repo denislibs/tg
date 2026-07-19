@@ -1,0 +1,39 @@
+// Карточка подарка в чате (по мотивам tweb StarGift service bubble).
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 200px;
+  max-width: 240px;
+  padding: 16px 18px 12px;
+  cursor: pointer;
+}
+
+.emoji {
+  font-size: 84px;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.price {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 12px;
+  border-radius: 12px;
+  background: rgba(247, 160, 46, 0.15);
+  font-size: 14px;
+  font-weight: 700;
+  color: #f7a02e;
+}
+
+.viewBtn {
+  margin-top: 8px;
+  padding: 7px 20px;
+  border-radius: 16px;
+  background: var(--tg-accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+}

@@ -78,6 +78,10 @@ func registerServer(p serverParams) {
 	// Форум-топики: темы групп поверх тредов (thread_root_id).
 	p.ChatUC.SetTopics(pgadapter.NewTopicsRepo(p.Pool))
 
+	// Звёзды и подарки: баланс + каталог + выданные подарки, live-баланс
+	// фреймом balance_update, подарок — сообщением типа 'gift'.
+	p.ChatUC.SetStars(pgadapter.NewStarsRepo(p.Pool))
+
 	var wsHandler http.Handler
 	var presenceMgr *usecasepresence.Manager
 	if p.Redis.OK {

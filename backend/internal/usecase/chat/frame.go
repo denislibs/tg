@@ -30,6 +30,8 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 		"thread_root_id": m.ThreadRootID,
 		"poll_id":        m.PollID,
 		"poll":           m.Poll,
+		"gift_id":        m.GiftID,
+		"gift":           m.Gift,
 	}
 	if m.GeoLat != nil && m.GeoLng != nil {
 		p["geo"] = map[string]any{"lat": *m.GeoLat, "lng": *m.GeoLng}

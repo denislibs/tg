@@ -20,6 +20,7 @@ import { newPresenceManager } from './managers/presenceManager'
 import { newStoriesManager } from './managers/storiesManager'
 import { newContactsManager } from './managers/contactsManager'
 import { newPrivacyManager } from './managers/privacyManager'
+import { newStarsManager } from './managers/starsManager'
 import { newDraftsManager } from './managers/draftsManager'
 import { newSessionsManager } from './managers/sessionsManager'
 import { newCallsManager } from './managers/callsManager'
@@ -54,6 +55,7 @@ const privacy = newPrivacyManager({ rest })
 const drafts = newDraftsManager({ rest })
 const sessions = newSessionsManager({ rest })
 const calls = newCallsManager({ rest })
+const stars = newStarsManager({ rest })
 
 // every connected tab's port — events broadcast to all
 const ports: SuperMessagePort[] = []
@@ -109,6 +111,7 @@ const conn = newConnectionManager({
     else if (type === 'dialog_pin') broadcast(RT.dialogPin, payload)
     else if (type === 'dialog_archive') broadcast(RT.dialogArchive, payload)
     else if (type === 'poll_update') broadcast(RT.pollUpdate, payload)
+    else if (type === 'balance_update') broadcast(RT.balanceUpdate, payload)
     else if (type.startsWith('group_call_')) broadcast(RT.groupCall, { t: type, d: payload })
     else if (type.startsWith('call_')) broadcast(RT.call, { t: type, d: payload })
   },
@@ -149,6 +152,7 @@ function bind(ep: Endpoint) {
     drafts: drafts as unknown as Record<string, (...a: unknown[]) => unknown>,
     sessions: sessions as unknown as Record<string, (...a: unknown[]) => unknown>,
     calls: calls as unknown as Record<string, (...a: unknown[]) => unknown>,
+    stars: stars as unknown as Record<string, (...a: unknown[]) => unknown>,
   })
 }
 

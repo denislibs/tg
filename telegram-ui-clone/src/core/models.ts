@@ -1,4 +1,6 @@
 // src/core/models.ts
+import { mapGiftInfo, type RawGiftInfo, type GiftInfo } from './managers/starsManager'
+
 export type ChatKind = 'private' | 'group' | 'channel' | 'saved'
 
 // A rich-text formatting span over a message's text (Telegram MessageEntity model).
@@ -94,6 +96,8 @@ export interface RawMessage {
   reactions?: { emoji: string; count: number; mine?: boolean }[] | null
   geo?: { lat: number; lng: number } | null
   contact?: { user_id: number; name?: string; phone?: string } | null
+  gift_id?: number | null
+  gift?: RawGiftInfo | null
 }
 
 // Агрегат одной реакции на сообщении (emoji + счётчик + «моя»), tweb ReactionCount.
@@ -160,6 +164,8 @@ export interface Message {
   geo?: { lat: number; lng: number }
   /** контакт сообщения типа 'contact' (снимок имени/телефона + аккаунт) */
   contact?: { userId: number; name: string; phone: string }
+  /** подарок сообщения типа 'gift' (представление для зрителя) */
+  gift?: GiftInfo
 }
 
 // Опрос (backend PollInfo): вопрос + варианты + агрегаты для зрителя.
@@ -328,5 +334,6 @@ export function mapMessage(r: RawMessage): Message {
     contact: r.contact
       ? { userId: r.contact.user_id, name: r.contact.name ?? '', phone: r.contact.phone ?? '' }
       : undefined,
+    gift: r.gift ? mapGiftInfo(r.gift) : undefined,
   }
 }

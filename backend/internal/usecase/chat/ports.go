@@ -229,6 +229,8 @@ type SendInput struct {
 	GeoLng *float64
 	// Контакт (type 'contact'): имя/телефон гидрируются сервером по аккаунту.
 	ContactUserID *int64
+	// Подарок (type 'gift'): ссылка на выданный подарок — только из SendGift.
+	GiftID *int64
 }
 
 // GroupCallStore хранит участников активных групповых звонков (эфемерно, Redis).
@@ -266,6 +268,33 @@ type PollRepo interface {
 	Close(ctx context.Context, pollID int64) error
 	// Info — представление опроса для зрителя (агрегаты + его выбор).
 	Info(ctx context.Context, pollID, viewerID int64) (domain.PollInfo, error)
+}
+
+// StarsRepo — баланс звёзд и каталог/выдача подарков.
+type StarsRepo interface {
+	// Balance — текущий баланс звёзд (0, если строки ещё нет).
+	Balance(ctx context.Context, userID int64) (int64, error)
+	// AddBalance атомарно меняет баланс на delta (может быть отрицательной);
+	// возвращает новый баланс. При недостатке средств — domain.ErrForbidden.
+	AddBalance(ctx context.Context, userID, delta int64) (int64, error)
+	// Catalog — доступные для покупки подарки (без распроданных сверху).
+	Catalog(ctx context.Context) ([]domain.StarGift, error)
+	// GiftByID — позиция каталога по id.
+	GiftByID(ctx context.Context, giftID int64) (domain.StarGift, error)
+	// DecRemains уменьшает остаток ограниченного подарка (no-op у безлимитных).
+	DecRemains(ctx context.Context, giftID int64) error
+	// SaveGift выдаёт подарок получателю, возвращает id записи saved_star_gifts.
+	SaveGift(ctx context.Context, ownerID int64, fromID *int64, giftID int64, message string, anonymous bool) (int64, error)
+	// GiftInfo — выданный подарок для зрителя (с раскрытием отправителя).
+	GiftInfo(ctx context.Context, savedID, viewerID int64) (domain.GiftInfo, error)
+	// ProfileGifts — подарки в профиле пользователя (не скрытые, не обменянные;
+	// владелец видит скрытые тоже).
+	ProfileGifts(ctx context.Context, ownerID, viewerID int64) ([]domain.GiftInfo, error)
+	// SetHidden показывает/скрывает подарок в профиле (только владелец).
+	SetHidden(ctx context.Context, savedID, ownerID int64, hidden bool) error
+	// Convert обменивает подарок на звёзды владельцу: помечает converted и
+	// возвращает число возвращённых звёзд. Повтор/чужой → domain.ErrForbidden.
+	Convert(ctx context.Context, savedID, ownerID int64) (int64, error)
 }
 
 type HistoryResult struct {

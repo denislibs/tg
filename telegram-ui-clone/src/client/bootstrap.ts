@@ -21,6 +21,7 @@ import type { PrivacyRule, BlockedUser, UserProfile } from '../core/managers/pri
 import type { SignInOutcome, PasswordState, PasskeyInfo } from '../core/managers/authManager'
 import type { Session } from '../core/managers/sessionsManager'
 import type { IceConfig } from '../core/managers/callsManager'
+import type { StarGift, GiftInfo } from '../core/managers/starsManager'
 
 export interface Managers {
   health: { check(): Promise<HealthStatus> }
@@ -200,6 +201,15 @@ export interface Managers {
   }
   calls: {
     iceConfig(): Promise<IceConfig>
+  }
+  stars: {
+    balance(): Promise<number>
+    topUp(amount: number): Promise<number>
+    catalog(): Promise<StarGift[]>
+    send(toUserId: number, giftId: number, message: string, anonymous: boolean): Promise<{ balance: number }>
+    profileGifts(userId: number): Promise<GiftInfo[]>
+    convert(giftId: number): Promise<number>
+    setHidden(giftId: number, hidden: boolean): Promise<void>
   }
 }
 

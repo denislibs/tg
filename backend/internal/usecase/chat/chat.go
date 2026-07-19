@@ -31,6 +31,7 @@ type Interactor struct {
 	scheduled   ScheduledRepo
 	topics      TopicRepo
 	groupCalls  GroupCallStore
+	stars       StarsRepo
 }
 
 // New constructs the chat interactor from its ports.
@@ -79,6 +80,9 @@ func (i *Interactor) SetTopics(t TopicRepo) { i.topics = t }
 
 // SetGroupCalls подключает стор участников групповых звонков (optional, Redis).
 func (i *Interactor) SetGroupCalls(s GroupCallStore) { i.groupCalls = s }
+
+// SetStars подключает хранилище звёзд/подарков (optional; без него → 404).
+func (i *Interactor) SetStars(s StarsRepo) { i.stars = s }
 
 // nowMillis is the server clock used for update dates.
 func nowMillis() int64 { return time.Now().UnixMilli() }

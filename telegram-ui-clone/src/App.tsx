@@ -34,6 +34,7 @@ import { loadNotifySettings, useNotifyStore, notifyTypeForChat } from './stores/
 import { loadPrivacy } from './stores/privacyStore'
 import { loadDrafts, useDraftsStore } from './stores/draftsStore'
 import { loadFolders } from './stores/foldersStore'
+import { loadStars } from './stores/starsStore'
 import { ANIMATE_MAIN_KEY, PREV_ACCOUNT_KEY, playMainScreenEnter } from './core/accountTransition'
 import s from './App.module.scss'
 import useMediaQuery from './shared/lib/useMediaQuery'
@@ -90,6 +91,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     void loadFolders(managers)
     void loadPrivacy(managers)
     void loadDrafts(managers)
+    void loadStars(managers)
     lockOnStartIfEnabled()
     void primeMediaToken() // cache the media token so media bubbles build URLs sync
     // SW чистит медиакэш по TTL/лимиту при получении настроек (tweb clearOldCache)

@@ -35,6 +35,7 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 		return HistoryResult{}, e
 	}
 	_ = i.hydratePolls(ctx, userID, msgs)
+	i.hydrateGifts(ctx, userID, msgs)
 	_ = i.hydrateReactions(ctx, userID, msgs)
 	var count int
 	if threadRoot != nil {
@@ -218,6 +219,7 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 		return AroundResult{}, e
 	}
 	_ = i.hydratePolls(ctx, userID, msgs)
+	i.hydrateGifts(ctx, userID, msgs)
 	_ = i.hydrateReactions(ctx, userID, msgs)
 	var count int
 	if threadRoot != nil {
@@ -276,6 +278,7 @@ func (i *Interactor) SearchMessages(ctx context.Context, chatID, userID int64, q
 		return HistoryResult{}, e
 	}
 	_ = i.hydratePolls(ctx, userID, msgs)
+	i.hydrateGifts(ctx, userID, msgs)
 	return HistoryResult{Messages: msgs, Count: count}, nil
 }
 
@@ -300,6 +303,7 @@ func (i *Interactor) GlobalSearchMessages(ctx context.Context, userID int64, q, 
 		return HistoryResult{}, e
 	}
 	_ = i.hydratePolls(ctx, userID, msgs)
+	i.hydrateGifts(ctx, userID, msgs)
 	return HistoryResult{Messages: msgs, Count: count}, nil
 }
 

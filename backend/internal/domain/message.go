@@ -78,6 +78,10 @@ type Message struct {
 	// Reactions — агрегаты реакций (emoji, count, mine) для зрителя, наполняется
 	// read-моделью истории (не хранится на строке сообщения). Nil — реакций нет.
 	Reactions []ReactionCount
+	// GiftID — выданный подарок сообщения типа 'gift' (messages.gift_id); Gift —
+	// его развёрнутое представление, наполняется read-моделью истории.
+	GiftID *int64
+	Gift   *GiftInfo
 	// SenderName is the sender's short name (first name, else display name),
 	// populated on send for the new_message payload (not stored) — the client
 	// prefixes group chat-list previews with it, tweb-style.
