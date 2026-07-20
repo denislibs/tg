@@ -10,12 +10,14 @@ import (
 
 // fakeUserRepo upserts users by phone, assigning sequential ids.
 type fakeUserRepo struct {
-	byPhone map[string]domain.User
-	nextID  int64
+	byPhone     map[string]domain.User
+	nextID      int64
+	photos      map[int64][]domain.ProfilePhoto // by userID, newest last
+	nextPhotoID int64
 }
 
 func newFakeUserRepo() *fakeUserRepo {
-	return &fakeUserRepo{byPhone: map[string]domain.User{}, nextID: 1}
+	return &fakeUserRepo{byPhone: map[string]domain.User{}, nextID: 1, photos: map[int64][]domain.ProfilePhoto{}, nextPhotoID: 1}
 }
 
 func (r *fakeUserRepo) UpsertByPhone(_ context.Context, phone string) (domain.User, error) {
@@ -90,6 +92,55 @@ func (r *fakeUserRepo) SetAvatar(_ context.Context, id int64, url string) (domai
 	u.AvatarURL = url
 	r.byPhone[phone] = u
 	return u, nil
+}
+
+func (r *fakeUserRepo) AddProfilePhoto(_ context.Context, userID int64, url, videoURL string) (domain.ProfilePhoto, error) {
+	phone, u, ok := r.find(userID)
+	if !ok {
+		return domain.ProfilePhoto{}, domain.ErrNotFound
+	}
+	p := domain.ProfilePhoto{ID: r.nextPhotoID, UserID: userID, URL: url, VideoURL: videoURL, CreatedAt: time.Now()}
+	r.nextPhotoID++
+	r.photos[userID] = append(r.photos[userID], p)
+	u.AvatarURL = url
+	r.byPhone[phone] = u
+	return p, nil
+}
+
+func (r *fakeUserRepo) ListProfilePhotos(_ context.Context, userID int64) ([]domain.ProfilePhoto, error) {
+	src := r.photos[userID]
+	out := make([]domain.ProfilePhoto, 0, len(src))
+	for i := len(src) - 1; i >= 0; i-- { // newest first
+		out = append(out, src[i])
+	}
+	return out, nil
+}
+
+func (r *fakeUserRepo) DeleteProfilePhoto(_ context.Context, userID, photoID int64) (string, error) {
+	phone, u, ok := r.find(userID)
+	if !ok {
+		return "", domain.ErrNotFound
+	}
+	list := r.photos[userID]
+	var deleted *domain.ProfilePhoto
+	kept := list[:0:0]
+	for _, p := range list {
+		if p.ID == photoID {
+			pp := p
+			deleted = &pp
+			continue
+		}
+		kept = append(kept, p)
+	}
+	r.photos[userID] = kept
+	if deleted != nil && u.AvatarURL == deleted.URL {
+		u.AvatarURL = ""
+		if len(kept) > 0 {
+			u.AvatarURL = kept[len(kept)-1].URL
+		}
+		r.byPhone[phone] = u
+	}
+	return u.AvatarURL, nil
 }
 
 // fakeDeviceRepo stores devices keyed by token hash and id.

@@ -24,6 +24,17 @@ type User struct {
 	PhoneVisibility string
 }
 
+// ProfilePhoto is one entry of a user's profile-photo gallery (Telegram
+// getUserPhotos). The newest photo is the user's current avatar, denormalized
+// into User.AvatarURL. VideoURL is an optional video-avatar variant.
+type ProfilePhoto struct {
+	ID        int64
+	UserID    int64
+	URL       string
+	VideoURL  string
+	CreatedAt time.Time
+}
+
 // ServiceUserID is the reserved id of the official "Telegram" service account
 // that delivers system notifications (login alerts, etc.). Seeded by migration.
 const ServiceUserID int64 = 777000

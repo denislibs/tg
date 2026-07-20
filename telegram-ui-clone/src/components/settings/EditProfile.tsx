@@ -101,8 +101,10 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
     try {
       const bytes = await blob.arrayBuffer()
       const mediaId = await managers.media.upload({ bytes, mime: 'image/jpeg', size: blob.size, width, height })
-      const updated = await managers.profile.setAvatar(mediaId)
-      setMe(updated)
+      // Add to the profile-photo gallery; the backend promotes it to the current
+      // avatar, so we reflect the new avatar_url in the store optimistically.
+      const photo = await managers.profile.addPhoto(mediaId)
+      if (me) setMe({ ...me, avatarUrl: photo.url })
     } finally {
       setUploading(false)
     }

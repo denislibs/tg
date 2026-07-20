@@ -70,6 +70,66 @@ func TestAuthRepo_UserAndDeviceAndToken(t *testing.T) {
 	}
 }
 
+func TestAuthRepo_ProfilePhotoGallery(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewAuthRepo(pool)
+	ctx := context.Background()
+
+	u, _ := repo.UpsertByPhone(ctx, "+7100")
+
+	// Adding photos promotes each to the current avatar and lists newest-first.
+	p1, err := repo.AddProfilePhoto(ctx, u.ID, "/media/1/content", "")
+	if err != nil || p1.ID == 0 {
+		t.Fatalf("AddProfilePhoto p1: %v", err)
+	}
+	p2, err := repo.AddProfilePhoto(ctx, u.ID, "/media/2/content", "/media/22/content")
+	if err != nil {
+		t.Fatalf("AddProfilePhoto p2: %v", err)
+	}
+	got, _ := repo.GetByID(ctx, u.ID)
+	if got.AvatarURL != "/media/2/content" {
+		t.Fatalf("avatar_url after add = %q, want /media/2/content", got.AvatarURL)
+	}
+	list, err := repo.ListProfilePhotos(ctx, u.ID)
+	if err != nil || len(list) != 2 {
+		t.Fatalf("ListProfilePhotos = %v (len %d), %v", list, len(list), err)
+	}
+	if list[0].ID != p2.ID || list[1].ID != p1.ID {
+		t.Fatalf("expected newest-first order, got %d then %d", list[0].ID, list[1].ID)
+	}
+	if list[0].VideoURL != "/media/22/content" {
+		t.Fatalf("video_url = %q, want /media/22/content", list[0].VideoURL)
+	}
+
+	// Deleting the current avatar (p2) falls back to the next most-recent (p1).
+	newURL, err := repo.DeleteProfilePhoto(ctx, u.ID, p2.ID)
+	if err != nil || newURL != "/media/1/content" {
+		t.Fatalf("DeleteProfilePhoto(current) newURL = %q, %v", newURL, err)
+	}
+	got, _ = repo.GetByID(ctx, u.ID)
+	if got.AvatarURL != "/media/1/content" {
+		t.Fatalf("avatar_url after delete = %q, want /media/1/content", got.AvatarURL)
+	}
+
+	// Deleting the last photo clears the avatar.
+	newURL, err = repo.DeleteProfilePhoto(ctx, u.ID, p1.ID)
+	if err != nil || newURL != "" {
+		t.Fatalf("DeleteProfilePhoto(last) newURL = %q, %v", newURL, err)
+	}
+
+	// Deleting another user's / unknown photo is a no-op returning the unchanged avatar.
+	other, _ := repo.UpsertByPhone(ctx, "+7101")
+	op, _ := repo.AddProfilePhoto(ctx, other.ID, "/media/9/content", "")
+	newURL, err = repo.DeleteProfilePhoto(ctx, u.ID, op.ID)
+	if err != nil || newURL != "" {
+		t.Fatalf("DeleteProfilePhoto(other) newURL = %q, %v (should be no-op)", newURL, err)
+	}
+	otherList, _ := repo.ListProfilePhotos(ctx, other.ID)
+	if len(otherList) != 1 {
+		t.Fatalf("other user's photo should survive, got %d", len(otherList))
+	}
+}
+
 func TestAuthRepo_SessionListDelete(t *testing.T) {
 	pool := storepostgres.NewTestDB(t)
 	repo := NewAuthRepo(pool)

@@ -223,12 +223,25 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onChatCreated
     originRect: { top: number; left: number; width: number; height: number }
     originEl: HTMLElement
   } | null>(null)
+  // Профиль-галерея (tweb getUserPhotos): при открытии просмотрщика тянем все
+  // фото пользователя и листаем их каруселью. Пусто/ошибка → одиночный аватар.
+  const [avatarPhotos, setAvatarPhotos] = useState<LightboxItem[] | null>(null)
   const openAvatarViewer = () => {
     const el = avatarWrapRef.current
     if (!el || !headerAvatarSrc) return
     const r = el.getBoundingClientRect()
     setAvatarView({ originRect: { top: r.top, left: r.left, width: r.width, height: r.height }, originEl: el })
+    setAvatarPhotos(null)
+    if (peerId == null || isSaved) return
+    void managers.profile.listPhotos(peerId).then(async (photos) => {
+      const items = await Promise.all(photos.map(async (p): Promise<LightboxItem> => {
+        const m = p.url.match(/\/media\/(\d+)\/content/)
+        return { src: m ? await managers.media.contentUrl(Number(m[1])) : p.url }
+      }))
+      if (items.length) setAvatarPhotos(items)
+    }).catch(() => {})
   }
+  const closeAvatarViewer = () => { setAvatarView(null); setAvatarPhotos(null) }
 
   // Подарки в профиле (tweb Gifts tab) — только для пользователя (private).
   const meId = useChatsStore((st) => st.meId)
@@ -667,12 +680,12 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onChatCreated
           {/* просмотрщик фото профиля (tweb openAvatarViewer) */}
           {avatarView && headerAvatarSrc && (
             <MediaLightbox
-              items={[{ src: headerAvatarSrc }]}
+              items={avatarPhotos ?? [{ src: headerAvatarSrc }]}
               index={0}
               originRect={avatarView.originRect}
               originSrc={headerAvatarSrc}
               originEl={avatarView.originEl}
-              onClose={() => setAvatarView(null)}
+              onClose={closeAvatarViewer}
             />
           )}
 

@@ -52,7 +52,44 @@ export function newProfileManager({ rest }: ProfileDeps) {
     async setAvatar(mediaId: number): Promise<User> {
       return mapUser(await rest.put<RawUser>('/me/avatar', { media_id: mediaId }))
     },
+
+    // addPhoto adds a photo to the current user's gallery and promotes it to the
+    // current avatar (Telegram: every new avatar is also a gallery photo).
+    async addPhoto(mediaId: number, videoMediaId?: number): Promise<ProfilePhoto> {
+      const body: Record<string, unknown> = { media_id: mediaId }
+      if (videoMediaId) body.video_media_id = videoMediaId
+      return mapProfilePhoto(await rest.post<RawProfilePhoto>('/me/photos', body))
+    },
+
+    // listPhotos returns a user's profile-photo gallery, newest first.
+    async listPhotos(userId: number): Promise<ProfilePhoto[]> {
+      const res = await rest.get<{ photos: RawProfilePhoto[] }>(`/users/${userId}/photos`)
+      return (res.photos ?? []).map(mapProfilePhoto)
+    },
+
+    async deletePhoto(photoId: number): Promise<void> {
+      await rest.del(`/me/photos/${photoId}`)
+    },
   }
+}
+
+// A single profile-photo gallery entry (Telegram getUserPhotos).
+export interface ProfilePhoto {
+  id: number
+  url: string
+  videoUrl?: string
+  createdAt: string
+}
+
+interface RawProfilePhoto {
+  id: number
+  url: string
+  video_url: string | null
+  created_at: string
+}
+
+function mapProfilePhoto(p: RawProfilePhoto): ProfilePhoto {
+  return { id: p.id, url: p.url, videoUrl: p.video_url ?? undefined, createdAt: p.created_at }
 }
 
 export type ProfileManager = ReturnType<typeof newProfileManager>

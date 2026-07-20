@@ -136,6 +136,118 @@ func (r *AuthRepo) SetAvatar(ctx context.Context, id int64, url string) (domain.
 		`UPDATE users SET avatar_url=$2 WHERE id=$1 RETURNING `+userCols, id, url))
 }
 
+// --- Profile-photo gallery (Telegram getUserPhotos) ---
+
+// AddProfilePhoto inserts a gallery photo and promotes it to the user's current
+// avatar (users.avatar_url) in one transaction, so the denormalized avatar and
+// the gallery never diverge.
+func (r *AuthRepo) AddProfilePhoto(ctx context.Context, userID int64, url, videoURL string) (domain.ProfilePhoto, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return domain.ProfilePhoto{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	var video *string
+	if videoURL != "" {
+		video = &videoURL
+	}
+	p := domain.ProfilePhoto{UserID: userID, URL: url, VideoURL: videoURL}
+	if err := tx.QueryRow(ctx,
+		`INSERT INTO profile_photos (user_id, url, video_url) VALUES ($1,$2,$3)
+		 RETURNING id, created_at`, userID, url, video).Scan(&p.ID, &p.CreatedAt); err != nil {
+		return domain.ProfilePhoto{}, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE users SET avatar_url=$2 WHERE id=$1`, userID, url); err != nil {
+		return domain.ProfilePhoto{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.ProfilePhoto{}, err
+	}
+	return p, nil
+}
+
+// ListProfilePhotos returns a user's gallery, newest first.
+func (r *AuthRepo) ListProfilePhotos(ctx context.Context, userID int64) ([]domain.ProfilePhoto, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, user_id, url, video_url, created_at FROM profile_photos
+		 WHERE user_id=$1 ORDER BY created_at DESC, id DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.ProfilePhoto
+	for rows.Next() {
+		var p domain.ProfilePhoto
+		var video *string
+		if err := rows.Scan(&p.ID, &p.UserID, &p.URL, &video, &p.CreatedAt); err != nil {
+			return nil, err
+		}
+		if video != nil {
+			p.VideoURL = *video
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// DeleteProfilePhoto removes a photo owned by userID. If the deleted photo was
+// the current avatar, avatar_url is recomputed to the next most-recent photo (or
+// "") — all in one transaction. Returns the resulting avatar_url. Deleting an
+// unknown/other-user photo is a no-op that returns the unchanged avatar_url.
+func (r *AuthRepo) DeleteProfilePhoto(ctx context.Context, userID, photoID int64) (string, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback(ctx)
+
+	var deletedURL string
+	err = tx.QueryRow(ctx,
+		`DELETE FROM profile_photos WHERE id=$1 AND user_id=$2 RETURNING url`,
+		photoID, userID).Scan(&deletedURL)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Nothing deleted; report the current avatar unchanged.
+		var cur string
+		if err := tx.QueryRow(ctx, `SELECT avatar_url FROM users WHERE id=$1`, userID).Scan(&cur); err != nil {
+			return "", err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return "", err
+		}
+		return cur, nil
+	}
+	if err != nil {
+		return "", err
+	}
+
+	var cur string
+	if err := tx.QueryRow(ctx, `SELECT avatar_url FROM users WHERE id=$1`, userID).Scan(&cur); err != nil {
+		return "", err
+	}
+	newURL := cur
+	if cur == deletedURL {
+		// Fall back to the next most-recent remaining photo (or clear it).
+		newURL = ""
+		var next string
+		err := tx.QueryRow(ctx,
+			`SELECT url FROM profile_photos WHERE user_id=$1 ORDER BY created_at DESC, id DESC LIMIT 1`,
+			userID).Scan(&next)
+		if err == nil {
+			newURL = next
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			return "", err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE users SET avatar_url=$2 WHERE id=$1`, userID, newURL); err != nil {
+			return "", err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", err
+	}
+	return newURL, nil
+}
+
 // --- DeviceRepo ---
 
 // Create inserts a device row holding the token hash + sign-in metadata.

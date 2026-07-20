@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/messenger-denis/backend/internal/domain"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 )
@@ -218,9 +220,15 @@ type avatarBody struct {
 	MediaID int64 `json:"media_id"`
 }
 
+// mediaContentURL is the canonical stored path for an uploaded media object. The
+// media GET endpoint enforces access when the bytes are actually served.
+func mediaContentURL(mediaID int64) string {
+	return fmt.Sprintf("/media/%d/content", mediaID)
+}
+
 // SetAvatar points the user's avatar at an uploaded media object (PUT /me/avatar).
-// The stored URL is the /media/{id}/content path; the media GET endpoint enforces
-// access when the bytes are actually served.
+// It also appends the photo to the gallery (the usecase keeps avatar_url and the
+// gallery consistent), so old clients on this route stay in sync with the gallery.
 func (h *ProfileHandler) SetAvatar(w http.ResponseWriter, r *http.Request) {
 	u, ok := UserFromContext(r.Context())
 	if !ok {
@@ -232,11 +240,99 @@ func (h *ProfileHandler) SetAvatar(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	url := fmt.Sprintf("/media/%d/content", body.MediaID)
-	user, err := h.uc.SetAvatar(r.Context(), u.ID, url)
+	user, err := h.uc.SetAvatar(r.Context(), u.ID, mediaContentURL(body.MediaID))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "set avatar failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, userJSON(user))
+}
+
+// profilePhotoJSON is the wire shape for one gallery photo.
+func profilePhotoJSON(p domain.ProfilePhoto) map[string]any {
+	var video any
+	if p.VideoURL != "" {
+		video = p.VideoURL
+	}
+	return map[string]any{
+		"id":         p.ID,
+		"url":        p.URL,
+		"video_url":  video, // null when absent
+		"created_at": p.CreatedAt.Format(time.RFC3339),
+	}
+}
+
+type addPhotoBody struct {
+	MediaID      int64 `json:"media_id"`
+	VideoMediaID int64 `json:"video_media_id"`
+}
+
+// AddPhoto adds a photo to the current user's gallery and promotes it to the
+// current avatar (POST /me/photos). Body: {media_id, video_media_id?}.
+func (h *ProfileHandler) AddPhoto(w http.ResponseWriter, r *http.Request) {
+	u, ok := UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "no user")
+		return
+	}
+	var body addPhotoBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.MediaID <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	var videoURL string
+	if body.VideoMediaID > 0 {
+		videoURL = mediaContentURL(body.VideoMediaID)
+	}
+	photo, err := h.uc.AddProfilePhoto(r.Context(), u.ID, mediaContentURL(body.MediaID), videoURL)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "add photo failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, profilePhotoJSON(photo))
+}
+
+// ListPhotos returns a user's profile-photo gallery, newest first
+// (GET /users/{userID}/photos). MVP: no per-photo privacy filtering yet — the
+// media GET endpoint still enforces access when bytes are served.
+func (h *ProfileHandler) ListPhotos(w http.ResponseWriter, r *http.Request) {
+	if _, ok := UserFromContext(r.Context()); !ok {
+		writeError(w, http.StatusUnauthorized, "no user")
+		return
+	}
+	userID, err := strconv.ParseInt(chi.URLParam(r, "userID"), 10, 64)
+	if err != nil || userID <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+	photos, err := h.uc.ListProfilePhotos(r.Context(), userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "list photos failed")
+		return
+	}
+	out := make([]map[string]any, 0, len(photos))
+	for _, p := range photos {
+		out = append(out, profilePhotoJSON(p))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"photos": out})
+}
+
+// DeletePhoto removes a photo from the current user's gallery
+// (DELETE /me/photos/{photoID}).
+func (h *ProfileHandler) DeletePhoto(w http.ResponseWriter, r *http.Request) {
+	u, ok := UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "no user")
+		return
+	}
+	photoID, err := strconv.ParseInt(chi.URLParam(r, "photoID"), 10, 64)
+	if err != nil || photoID <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid photo id")
+		return
+	}
+	if err := h.uc.DeleteProfilePhoto(r.Context(), u.ID, photoID); err != nil {
+		writeError(w, http.StatusInternalServerError, "delete photo failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
