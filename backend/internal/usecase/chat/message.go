@@ -62,8 +62,18 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			*in.GeoLat < -90 || *in.GeoLat > 90 || *in.GeoLng < -180 || *in.GeoLng > 180 {
 			return domain.Message{}, domain.ErrForbidden
 		}
+		// Live location: период трансляции в разумных пределах (Telegram: 15 мин…8 ч).
+		if in.GeoLivePeriod != nil {
+			if *in.GeoLivePeriod < 60 || *in.GeoLivePeriod > 8*3600 {
+				return domain.Message{}, domain.ErrForbidden
+			}
+		}
+		if in.GeoHeading != nil && (*in.GeoHeading < 0 || *in.GeoHeading > 359) {
+			in.GeoHeading = nil
+		}
 	} else {
 		in.GeoLat, in.GeoLng = nil, nil
+		in.GeoTitle, in.GeoAddress, in.GeoLivePeriod, in.GeoHeading = nil, nil, nil, nil
 	}
 	if in.Type == "contact" {
 		if in.ContactUserID == nil {
@@ -77,6 +87,14 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		contactName, contactPhone = &name, &phone
 	} else {
 		in.ContactUserID = nil
+	}
+
+	if in.Type == "encrypted" {
+		if len(in.EncBody) == 0 {
+			return domain.Message{}, domain.ErrInvalid
+		}
+		// Плейнтекст в секретном чате не хранится: сервер держит только шифр-блоб.
+		in.Text, in.Entities = "", nil
 	}
 
 	// Групповые дефолтные разрешения + slowmode (сервисные сообщения генерирует
@@ -125,7 +143,10 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			MediaID: in.MediaID, ThreadRootID: in.ThreadRootID, GroupedID: groupedID, PollID: in.PollID,
 			GiftID: in.GiftID, ReplyMarkup: in.ReplyMarkup,
 			GeoLat: in.GeoLat, GeoLng: in.GeoLng,
+			GeoTitle: in.GeoTitle, GeoAddress: in.GeoAddress,
+			GeoLivePeriod: in.GeoLivePeriod, GeoHeading: in.GeoHeading,
 			ContactUserID: in.ContactUserID, ContactName: contactName, ContactPhone: contactPhone,
+			EncBody: in.EncBody, TTLSeconds: in.TTLSeconds,
 			// Voice/round content starts "unlistened" (Telegram media_unread).
 			MediaUnread: in.Type == "voice" || in.Type == "roundVideo",
 		})
@@ -216,6 +237,11 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 			return e
 		}
 		if e := i.chats.SetRead(ctx, chatID, userID, effective, unread); e != nil {
+			return e
+		}
+		// Self-destruct: запускаем таймер для секретных сообщений, которые
+		// читатель только что получил (no-op для чатов без ttl).
+		if e := i.msgs.SetDestructOnRead(ctx, chatID, userID, effective); e != nil {
 			return e
 		}
 		m, e := i.chats.MemberIDs(ctx, chatID)

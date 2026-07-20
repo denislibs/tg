@@ -18,6 +18,7 @@ import type { Chat } from '../../data'
 import type { MessageWindow } from './useMessageWindow'
 import type { Managers } from '../../client/bootstrap'
 import { useMessagesStore , winKey } from '../../stores/messagesStore'
+import { useLiveShareStore } from '../../stores/liveShareStore'
 import { useUploadsStore } from '../../stores/uploadsStore'
 
 // Max characters per message (matches the backend's maxMessageRunes / Telegram 4096).
@@ -34,6 +35,8 @@ interface UseChatSendArgs {
   isChannel: boolean
   draftPeerId: number | null
   canType: boolean
+  /** Секретный чат ещё не установлен (handshake не завершён) → отправка запрещена. */
+  secretLocked?: boolean
   meId: number | null
   win: MessageWindow
   managers: Managers
@@ -52,6 +55,7 @@ export function useChatSend({
   isChannel,
   draftPeerId,
   canType,
+  secretLocked = false,
   meId,
   win,
   managers,
@@ -91,20 +95,40 @@ export function useChatSend({
 
   const replyToId = reply?.msgId ?? null
   const mkClientMsgId = (k = 0) => `c-${chat.id}-${performance.now()}-${k}-${Math.random().toString(36).slice(2)}`
-  const sendReal = (text: string, entities?: MessageEntity[], replyTo: number | null = replyToId) => {
+  const sendReal = (text: string, entities?: MessageEntity[], replyTo: number | null = replyToId, ttlSeconds: number | null = null) => {
     const clientMsgId = mkClientMsgId()
     atBottomRef.current = true; userScrolledUpRef.current = false // sending pins to bottom
+    if (chat.type === 'secret') {
+      // Секретный чат: оптимистичный бабл с ПЛЕЙНТЕКСТОМ (тем же путём, что обычная
+      // отправка — reconcile по clientMsgId работает как всегда), затем E2E-шифрование
+      // и отправка type:'encrypted' по WS. Реальный бабл приедет расшифрованным echo
+      // new_message с тем же clientMsgId. reply/thread здесь пока не поддержаны.
+      win.appendOptimistic(text, meId ?? -1, clientMsgId, undefined, 'text', entities, undefined, undefined, { secret: true })
+      void managers.secret.sendText({ chatId: numericChatId, text, entities, clientMsgId, ttlSeconds })
+      return
+    }
     win.appendOptimistic(text, meId ?? -1, clientMsgId, undefined, 'text', entities)
     void managers.realtime.sendMessage({ chatId: numericChatId, text, entities, clientMsgId, replyToId: replyTo, threadRootId })
   }
 
   // Гео-точка из attach-меню: оптимистичный бабл сразу (координаты локальные),
   // на бэк — WS-полями geo_lat/geo_lng (type 'geo').
-  const sendGeo = (lat: number, lng: number) => {
-    const clientMsgId = mkClientMsgId()
+  const sendGeo = (lat: number, lng: number, opts?: { title?: string; address?: string; livePeriod?: number; heading?: number }) => {
     atBottomRef.current = true; userScrolledUpRef.current = false
-    win.appendOptimistic('', meId ?? -1, clientMsgId, undefined, 'geo', undefined, undefined, undefined, { geo: { lat, lng } })
-    void managers.realtime.sendMessage({ chatId: numericChatId, text: '', clientMsgId, type: 'geo', geo: { lat, lng }, threadRootId })
+    // Live location: шлём по REST (нужен msgId для последующих обновлений) и
+    // запускаем трансляцию; бабл появится WS-эхом. Обычная точка/venue — как было,
+    // оптимистичным WS-путём.
+    if (opts?.livePeriod) {
+      void managers.messages.sendGeoLive(numericChatId, lat, lng, opts.livePeriod, opts.heading).then((m) => {
+        useLiveShareStore.getState().start(managers, numericChatId, m.id, Date.now() + opts.livePeriod! * 1000)
+      })
+      window.dispatchEvent(new Event('tg-send'))
+      return
+    }
+    const clientMsgId = mkClientMsgId()
+    const geo = { lat, lng, ...opts }
+    win.appendOptimistic('', meId ?? -1, clientMsgId, undefined, 'geo', undefined, undefined, undefined, { geo })
+    void managers.realtime.sendMessage({ chatId: numericChatId, text: '', clientMsgId, type: 'geo', geo, threadRootId })
     window.dispatchEvent(new Event('tg-send'))
   }
 
@@ -143,7 +167,7 @@ export function useChatSend({
   // downloadable document). Otherwise the type is inferred from the mime.
   // caption (optional) is attached as the message text.
   const onPickFile = async (file: File, asFile = false, caption = '', groupedId?: string) => {
-    if (!isRealChat) return
+    if (!isRealChat || secretLocked) return
     const mime = file.type || 'application/octet-stream'
     const type = asFile
       ? 'document'
@@ -158,6 +182,26 @@ export function useChatSend({
     // после завершения аплоада. Документы/аудио грузятся до появления бабла.
     const isVisual = (type === 'photo' || type === 'video') && !asFile
     atBottomRef.current = true; userScrolledUpRef.current = false
+    // Секретный чат (E2E): шифруем байты своим ключом файла, грузим ciphertext как
+    // непрозрачный blob, key/iv кладём в зашифрованный payload (secret.sendMedia).
+    // Отправитель видит локальное превью (localUrl) сразу для фото/видео; реальный
+    // бабл приедет расшифрованным echo new_message с тем же clientMsgId. Документы —
+    // без оптимистичного бабла (приезжают echo). reply/thread здесь не поддержаны.
+    if (chat.type === 'secret') {
+      const bytes = await file.arrayBuffer()
+      if (isVisual) {
+        const localUrl = URL.createObjectURL(file)
+        win.appendOptimistic(caption, meId ?? -1, clientMsgId, undefined, type, undefined, undefined,
+          { localUrl, width, height, mime, size: file.size, name: file.name }, { secret: true })
+      }
+      try {
+        await managers.secret.sendMedia({ chatId: numericChatId, bytes, name: file.name, mime, size: file.size, mediaType: type, ttlSeconds: null, clientMsgId })
+      } catch {
+        if (isVisual) useMessagesStore.getState().failOptimisticByClient(clientMsgId)
+      }
+      window.dispatchEvent(new Event('tg-send'))
+      return
+    }
     if (isVisual) {
       const localUrl = URL.createObjectURL(file)
       win.appendOptimistic(caption, meId ?? -1, clientMsgId, undefined, type, undefined, groupedId, {
@@ -202,8 +246,8 @@ export function useChatSend({
 
   // Called by the Composer with the trimmed draft text (the Composer owns the
   // text state + clears itself afterwards); we route by chat kind / edit / reply.
-  const send = (text: string, entities?: MessageEntity[]) => {
-    if (!text || !canType) return
+  const send = (text: string, entities?: MessageEntity[], ttlSeconds?: number | null) => {
+    if (!text || !canType || secretLocked) return
     // Edit mode: PATCH the existing message instead of sending a new one.
     if (editing && isRealChat) {
       const { msgId } = editing
@@ -248,7 +292,7 @@ export function useChatSend({
     setReply(null)
     window.dispatchEvent(new Event('tg-send'))
     // reply attaches to the first message only (Telegram behaviour)
-    parts.forEach((p, k) => sendReal(p.text, entOf(p), k === 0 ? replyToId : null))
+    parts.forEach((p, k) => sendReal(p.text, entOf(p), k === 0 ? replyToId : null, ttlSeconds ?? null))
   }
 
   // Throttled outgoing typing frame (real chats); called by the Composer on each

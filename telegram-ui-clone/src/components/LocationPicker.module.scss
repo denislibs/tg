@@ -1,0 +1,76 @@
+.mapWrap {
+  position: relative;
+  width: 100%;
+  height: 300px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.map {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+// Пин закреплён в центре карты (кончик — в геометрическом центре).
+.pin {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -100%);
+  z-index: 500;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+}
+
+.locate {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 500;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: var(--tg-sectionBackdrop, #fff);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 12px;
+}
+
+.field {
+  width: 100%;
+  margin-bottom: 6px;
+}
+
+.sendRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 6px;
+  border-radius: 10px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--tg-hover, rgba(0, 0, 0, 0.04));
+  }
+}
+
+.liveList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.liveHint {
+  padding: 6px 6px 2px;
+}

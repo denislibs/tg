@@ -1,6 +1,6 @@
-import type { MessageEntity } from './core/models'
+import type { MessageEntity, GeoData } from './core/models'
 
-export type ChatType = 'private' | 'group' | 'channel' | 'bot' | 'saved'
+export type ChatType = 'private' | 'group' | 'channel' | 'bot' | 'saved' | 'secret'
 // sending → часики до message_ack; error → красный значок (send отвергнут/упал),
 // как tweb sendingStatus.ts (sending / check / checks / sendingerror).
 export type MsgStatus = 'sending' | 'sent' | 'read' | 'error'
@@ -39,11 +39,12 @@ export interface ConvMsg {
   entities?: MessageEntity[] // rich-text formatting spans over `text`
   emoji?: string
   time?: string
+  createdAt?: string // абсолютное время создания (ISO) — для live-локации/отсчётов
   status?: MsgStatus
   edited?: boolean // shows the "изменено" marker before the time
   views?: number // channel-post view count ("9.2K 👁"); undefined for non-posts
   reactions?: { emoji: string; count: number; mine: boolean }[] // чипы реакций под сообщением
-  geo?: { lat: number; lng: number } // гео-точка (type 'geo')
+  geo?: GeoData // гео-точка (type 'geo') + venue/live location
   contact?: { userId: number; name: string; phone: string } // контакт (type 'contact')
   mediaUnread?: boolean // голосовое/кружок не прослушано получателем (точка у обеих сторон)
   deleted?: boolean
@@ -78,6 +79,13 @@ export interface ConvMsg {
   webPage?: { siteName: string; title: string; description?: string; gradient?: string; emoji?: string }
   /** лог 1:1 звонка (tweb messageActionPhoneCall): исход + длительность */
   call?: CallLog
+  /** секретное сообщение (E2E) — включает таймер самоуничтожения в бабле */
+  secret?: boolean
+  /** E2E-медиа секретного чата — рендерится через SecretMediaBubble (fetch+decrypt) */
+  secretMedia?: import('./core/models').SecretMedia
+  /** self-destruct: TTL после прочтения (сек) + абсолютный дедлайн (ISO) */
+  ttlSeconds?: number | null
+  destructAt?: string | null
 }
 
 export interface CallLog {

@@ -4,15 +4,16 @@ import { loadChats, useChatsStore } from '../stores/chatsStore'
 import { useMessagesStore } from '../stores/messagesStore'
 import { usePinsStore } from '../stores/pinsStore'
 import { useStarsStore } from '../stores/starsStore'
-import { mapMessage, mapDraft, mapPoll, type RawPoll } from '../core/models'
+import { mapMessage, mapDraft, mapPoll, mapGeo, type RawPoll } from '../core/models'
 import { useDraftsStore } from '../stores/draftsStore'
 import { useUploadsStore } from '../stores/uploadsStore'
 import { uiEvents } from '../core/hooks/uiEvents'
 import { mapReplyMarkup } from '../core/managers/botsManager'
-import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt, type DraftUpdateEvt, type ReactionEvt, type BotCallbackAnswerEvt } from '../core/realtime/events'
+import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt, type DraftUpdateEvt, type ReactionEvt, type BotCallbackAnswerEvt, type GeoLiveUpdateEvt } from '../core/realtime/events'
 import { playMessageSent } from '../core/audio/sounds'
 import { notifyIncomingMessage } from './uiNotifications'
 import { useSettingsStore } from '../settings'
+import { useSecretChatStore } from '../stores/secretChatStore'
 import * as callEngine from '../core/calls/callEngine'
 import { handleGroupCallFrame, type GroupCallFrame } from '../core/calls/groupCallEngine'
 
@@ -58,7 +59,11 @@ export function startRealtime(): void {
     const ms = useMessagesStore.getState()
     const rt = evt.reply_to_id != null ? ms.byKey[String(evt.chat_id)]?.msgs.find((x) => x.id === evt.reply_to_id) : undefined
     const replyTo = rt ? { msg_id: rt.id, seq: rt.seq, sender_id: rt.senderId, text: rt.text, type: rt.type } : null
-    ms.applyIncoming(evt.chat_id, mapMessage({ id: evt.msg_id, chat_id: evt.chat_id, seq: evt.seq, sender_id: evt.sender_id, type: evt.type, text: evt.text, entities: evt.entities ?? null, reply_to_id: evt.reply_to_id ?? null, media_id: evt.media_id, created_at: evt.created_at, fwd_from_user_id: evt.fwd_from_user_id ?? null, fwd_from_chat_id: evt.fwd_from_chat_id ?? null, fwd_from_msg_id: evt.fwd_from_msg_id ?? null, fwd_date: evt.fwd_date ?? null, reply_to: replyTo, media_unread: evt.media_unread, grouped_id: evt.grouped_id ?? null, geo: evt.geo ?? null, contact: evt.contact ?? null, gift: evt.gift ?? null, reply_markup: evt.reply_markup ?? null, thread_root_id: evt.thread_root_id ?? null }))
+    const incoming = mapMessage({ id: evt.msg_id, chat_id: evt.chat_id, seq: evt.seq, sender_id: evt.sender_id, type: evt.type, text: evt.text, entities: evt.entities ?? null, reply_to_id: evt.reply_to_id ?? null, media_id: evt.media_id, created_at: evt.created_at, fwd_from_user_id: evt.fwd_from_user_id ?? null, fwd_from_chat_id: evt.fwd_from_chat_id ?? null, fwd_from_msg_id: evt.fwd_from_msg_id ?? null, fwd_date: evt.fwd_date ?? null, reply_to: replyTo, media_unread: evt.media_unread, grouped_id: evt.grouped_id ?? null, geo: evt.geo ?? null, contact: evt.contact ?? null, gift: evt.gift ?? null, reply_markup: evt.reply_markup ?? null, thread_root_id: evt.thread_root_id ?? null })
+    // E2E-медиа секретного чата: воркер расшифровал enc_body и положил key/iv/mime
+    // в secret_media (не проводное поле → инжектим после mapMessage). secret тоже.
+    if (evt.secret_media) { incoming.secretMedia = evt.secret_media; incoming.secret = true }
+    ms.applyIncoming(evt.chat_id, incoming)
     uiEvents.emit(RT.newMessage, m)
     // Звук + браузерное уведомление, гейтинг как в tweb: per-chat mute →
     // глобальные настройки типа чата → клиентские настройки (см. uiNotifications).
@@ -121,6 +126,10 @@ export function startRealtime(): void {
     const e = raw as DeleteMessageEvt
     useMessagesStore.getState().applyDelete(e.chat_id, e.msg_id)
   })
+  smp.on(RT.geoLiveUpdate, (raw) => {
+    const e = raw as GeoLiveUpdateEvt
+    useMessagesStore.getState().applyGeoLive(e.chat_id, e.msg_id, mapGeo(e.geo))
+  })
   // Pin/unpin: refetch the chat's pins and write them to the store (the only
   // socket subscription for pins — usePinnedBar just reads the store).
   smp.on(RT.pinMessage, (raw) => {
@@ -157,6 +166,25 @@ export function startRealtime(): void {
   smp.on(RT.botCallbackAnswer, (raw) => {
     const a = raw as BotCallbackAnswerEvt
     if (a.text) uiEvents.emit('ui:toast', a.text)
+  })
+  // Секретный чат: handshake-события из воркера → secretChatStore.
+  smp.on(RT.secretRequest, (raw) => {
+    const r = raw as { chat_id: number; initiator_id: number; responder_id: number }
+    const meId = useChatsStore.getState().meId
+    // Роль решает статус: получатель видит входящий запрос ('requested' → бар с
+    // «Принять/Отклонить»), инициатор ждёт ('awaiting'). Живьём сервер шлёт кадр
+    // только получателю; при reload оба состояния восстанавливает secret.sync().
+    if (meId === r.responder_id) useSecretChatStore.getState().setStatus(r.chat_id, 'requested')
+    else if (meId === r.initiator_id) useSecretChatStore.getState().setStatus(r.chat_id, 'awaiting')
+  })
+  smp.on(RT.secretAccept, (raw) => {
+    const r = raw as { chat_id: number; state?: string; fingerprint?: string[] }
+    useSecretChatStore.getState().setStatus(r.chat_id, 'established')
+    if (r.fingerprint) useSecretChatStore.getState().setFingerprint(r.chat_id, r.fingerprint)
+  })
+  smp.on(RT.secretReject, (raw) => {
+    const r = raw as { chat_id: number }
+    useSecretChatStore.getState().setStatus(r.chat_id, 'rejected')
   })
   smp.on('rt:resync', () => { void loadChats(managers) })
   // Прогресс отгрузки медиа (кольцо на оптимистичном бабле)

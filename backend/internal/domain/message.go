@@ -33,11 +33,11 @@ type Message struct {
 	GroupedID *string
 	// PollID — опрос сообщения типа 'poll' (messages.poll_id); Poll — его
 	// развёрнутое представление для зрителя, наполняется read-моделью истории.
-	PollID *int64
-	Poll   *PollInfo
+	PollID    *int64
+	Poll      *PollInfo
 	CreatedAt time.Time
-	Deleted      bool
-	EditedAt     *time.Time
+	Deleted   bool
+	EditedAt  *time.Time
 	// Forward attribution (set when the message was forwarded from elsewhere).
 	FwdFromUserID *int64
 	FwdFromChatID *int64
@@ -70,6 +70,15 @@ type Message struct {
 	// Гео-точка сообщения типа 'geo' (nil у остальных типов).
 	GeoLat *float64
 	GeoLng *float64
+	// Расширение гео (jsonb geo_meta). Venue: название/адрес места. Live location:
+	// GeoLivePeriod (сек трансляции; nil — обычная точка), GeoHeading (0..359),
+	// GeoLiveStopped (остановлена досрочно). Время последнего обновления live —
+	// EditedAt (бампится при каждом обновлении координат).
+	GeoTitle       *string
+	GeoAddress     *string
+	GeoLivePeriod  *int
+	GeoHeading     *int
+	GeoLiveStopped bool
 	// Контакт сообщения типа 'contact': снимок имени/телефона на момент отправки
 	// плюс ссылка на аккаунт (по ней клиент открывает чат/аватар).
 	ContactUserID *int64
@@ -84,6 +93,13 @@ type Message struct {
 	Gift   *GiftInfo
 	// ReplyMarkup — клавиатура сообщения (inline/reply), обычно у сообщений бота.
 	ReplyMarkup *ReplyMarkup
+	// E2E-шифртекст сообщения типа 'encrypted' (iv||ciphertext). Text/Entities
+	// у таких сообщений пустые — сервер хранит блоб непрозрачно.
+	EncBody []byte
+	// Self-destruct: TTLSeconds задаёт отправитель; DestructAt сервер ставит при
+	// прочтении получателем (now + ttl), затем reaper сносит блоб.
+	TTLSeconds *int
+	DestructAt *time.Time
 	// SenderName is the sender's short name (first name, else display name),
 	// populated on send for the new_message payload (not stored) — the client
 	// prefixes group chat-list previews with it, tweb-style.

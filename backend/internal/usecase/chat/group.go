@@ -244,6 +244,12 @@ func (i *Interactor) SetMute(ctx context.Context, chatID, userID int64, muted bo
 	return i.groups.SetMuted(ctx, chatID, userID, forever, until)
 }
 
+// SetChatNotify обновляет per-chat уведомления (показ превью, звук). nil-поля не
+// меняются (sound валидируется до 'default'|'none' в хендлере).
+func (i *Interactor) SetChatNotify(ctx context.Context, chatID, userID int64, preview *bool, sound *string) error {
+	return i.groups.SetNotify(ctx, chatID, userID, preview, sound)
+}
+
 func (i *Interactor) ChatCard(ctx context.Context, chatID, viewerID int64) (domain.ChatCard, error) {
 	return i.groups.Card(ctx, chatID, viewerID)
 }

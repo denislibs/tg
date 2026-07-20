@@ -10,7 +10,7 @@
 // с chat_id применяются ко ВСЕМ окнам этого чата (applyToChat), новое сообщение
 // с thread_root_id попадает и в основное окно, и в окно своего треда.
 import { create } from 'zustand'
-import type { Message, MessageEntity, Poll, ReactionCount } from '../core/models'
+import type { Message, MessageEntity, Poll, ReactionCount, GeoData } from '../core/models'
 import type { ReplyMarkup } from '../core/managers/botsManager'
 
 // Ключ окна: основное окно чата или тред (форум-топик / комментарии).
@@ -77,7 +77,7 @@ interface MessagesState {
   prepend: (key: string, msgs: Message[], reachedTop: boolean) => void
   append: (key: string, msgs: Message[], reachedBottom: boolean) => void
   appendLocal: (key: string, m: Message) => void
-  appendOptimistic: (key: string, text: string, meId: number, clientMsgId: string, mediaId?: number, type?: string, entities?: MessageEntity[], groupedId?: string, media?: OptimisticMedia, extra?: { geo?: { lat: number; lng: number }; contact?: { userId: number; name: string; phone: string }; threadRootId?: number }) => void
+  appendOptimistic: (key: string, text: string, meId: number, clientMsgId: string, mediaId?: number, type?: string, entities?: MessageEntity[], groupedId?: string, media?: OptimisticMedia, extra?: { geo?: { lat: number; lng: number }; contact?: { userId: number; name: string; phone: string }; threadRootId?: number; secret?: boolean }) => void
   /** Аплоад завершён — проставить оптимистичному сообщению серверный media_id. */
   setOptimisticMedia: (key: string, clientMsgId: string, mediaId: number) => void
   reconcileAck: (key: string, clientMsgId: string, ack: { msgId: number; seq: number; createdAt: string }) => void
@@ -92,6 +92,7 @@ interface MessagesState {
   /** Новое сообщение чата: в основное окно + в окно своего треда (если открыто). */
   applyIncoming: (chatId: number, m: Message) => void
   applyEdit: (chatId: number, msgId: number, text: string, editedAt: string, entities?: MessageEntity[], replyMarkup?: ReplyMarkup | null) => void
+  applyGeoLive: (chatId: number, msgId: number, geo: GeoData) => void
   applyDelete: (chatId: number, msgId: number) => void
   /** Голосовое/кружок прослушано → точка media_unread гаснет (обе стороны). */
   applyMediaRead: (chatId: number, msgId: number) => void
@@ -207,6 +208,8 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           // гео/контакт: бабл рисуется сразу из локальных данных, до ack
           geo: extra?.geo,
           contact: extra?.contact,
+          // секретный чат: плейнтекст локально, бабл сразу помечается secret
+          secret: extra?.secret,
         }
         return { msgs: dedupAsc([...w.msgs, tmp]) }
       }),
@@ -281,7 +284,10 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         // the local blob preview (localUrl) so an uploaded photo doesn't re-fetch
         // from the server (tweb reuses the local object URL).
         const optimistic = w.msgs.find((x) => x.clientId && x.seq === m.seq)
-        const merged = optimistic ? { ...m, clientId: optimistic.clientId, localUrl: optimistic.localUrl } : m
+        // secret: echo new_message несёт расшифрованный text, но флаг secret на нём
+        // не выставлен — сохраняем его из оптимистичного бабла, чтобы после ack
+        // сообщение осталось секретным.
+        const merged = optimistic ? { ...m, clientId: optimistic.clientId, localUrl: optimistic.localUrl, secret: m.secret ?? optimistic.secret } : m
         out = patch(cur as MessagesState, key, () => ({ msgs: dedupAsc([...w.msgs, merged]) }))
         cur = { ...cur, ...out }
       }
@@ -313,6 +319,14 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
                 ? { ...m, text, editedAt, entities, ...(replyMarkup !== undefined ? { replyMarkup: replyMarkup ?? undefined } : {}) }
                 : m,
             )
+          : null,
+      )),
+
+  applyGeoLive: (chatId, msgId, geo) =>
+    set((s) =>
+      patchChat(s, chatId, (w) =>
+        w.msgs.some((m) => m.id === msgId)
+          ? w.msgs.map((m) => (m.id === msgId ? { ...m, geo } : m))
           : null,
       )),
 

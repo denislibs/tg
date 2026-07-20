@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -49,7 +50,13 @@ type store struct {
 	pts     map[int64]int64
 	date    map[int64]int64
 	updates map[int64][]domain.Update // userID -> updates (pts asc)
+
+	// self-destruct: аргументы каждого вызова SetDestructOnRead (для проверки,
+	// что MarkRead запускает таймер).
+	destructCalls []destructCall
 }
+
+type destructCall struct{ ChatID, ReaderID, ReadSeq int64 }
 
 func newStore() *store {
 	return &store{
@@ -97,6 +104,17 @@ func (r fakeChats) CreatePrivate(_ context.Context, a, b int64) (int64, error) {
 	r.s.nextChatID++
 	cid := r.s.nextChatID
 	r.s.chatType[cid] = "private"
+	r.s.chatSeq[cid] = 0
+	r.s.members[cid] = map[int64]*member{a: {}, b: {}}
+	return cid, nil
+}
+
+func (r fakeChats) CreateSecret(_ context.Context, a, b int64) (int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	r.s.nextChatID++
+	cid := r.s.nextChatID
+	r.s.chatType[cid] = "secret"
 	r.s.chatSeq[cid] = 0
 	r.s.members[cid] = map[int64]*member{a: {}, b: {}}
 	return cid, nil
@@ -562,6 +580,24 @@ func (r fakeMsgs) UpdateReplyMarkup(_ context.Context, msgID int64, markup *doma
 	return domain.Message{}, domain.ErrNotFound
 }
 
+func (r fakeMsgs) UpdateGeoLive(_ context.Context, msgID int64, lat, lng float64, heading *int, stopped bool) (domain.Message, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	now := time.Now()
+	for chatID, msgs := range r.s.messages {
+		for idx, m := range msgs {
+			if m.ID == msgID {
+				m.GeoLat, m.GeoLng = &lat, &lng
+				m.GeoHeading, m.GeoLiveStopped = heading, stopped
+				m.EditedAt = &now
+				r.s.messages[chatID][idx] = m
+				return m, nil
+			}
+		}
+	}
+	return domain.Message{}, domain.ErrNotFound
+}
+
 func (r fakeMsgs) SoftDelete(_ context.Context, msgID int64) error {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
@@ -576,6 +612,13 @@ func (r fakeMsgs) SoftDelete(_ context.Context, msgID int64) error {
 		}
 	}
 	return domain.ErrNotFound
+}
+
+func (r fakeMsgs) SetDestructOnRead(_ context.Context, chatID, readerID, readSeq int64) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	r.s.destructCalls = append(r.s.destructCalls, destructCall{chatID, readerID, readSeq})
+	return nil
 }
 
 func (r fakeMsgs) HideForUser(_ context.Context, userID, msgID int64) error {
@@ -934,6 +977,66 @@ func newInteractor() (*Interactor, *store) {
 	s := newStore()
 	in := New(fakeTx{}, fakeChats{s}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, nil, nil, nil, nil, nil)
 	return in, s
+}
+
+// fakeSecretRepo — in-memory SecretRepo (одна запись на chatID).
+type fakeSecretRepo struct {
+	mu  sync.Mutex
+	rec map[int64]domain.SecretChat
+}
+
+func (f *fakeSecretRepo) Create(_ context.Context, sc domain.SecretChat) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.rec == nil {
+		f.rec = map[int64]domain.SecretChat{}
+	}
+	f.rec[sc.ChatID] = sc
+	return nil
+}
+
+func (f *fakeSecretRepo) Accept(_ context.Context, chatID int64, responderPub []byte) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	sc, ok := f.rec[chatID]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	sc.ResponderPub = responderPub
+	sc.State = domain.SecretAccepted
+	f.rec[chatID] = sc
+	return nil
+}
+
+func (f *fakeSecretRepo) SetState(_ context.Context, chatID int64, state string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	sc, ok := f.rec[chatID]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	sc.State = state
+	f.rec[chatID] = sc
+	return nil
+}
+
+func (f *fakeSecretRepo) Get(_ context.Context, chatID int64) (domain.SecretChat, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	sc, ok := f.rec[chatID]
+	if !ok {
+		return domain.SecretChat{}, domain.ErrNotFound
+	}
+	return sc, nil
+}
+
+// newSecretTestInteractor wires the interactor with an in-memory SecretRepo.
+func newSecretTestInteractor(t *testing.T) (*Interactor, *fakeSecretRepo) {
+	s := newStore()
+	fs := &fakeSecretRepo{}
+	in := New(fakeTx{}, fakeChats{s}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, nil, nil, nil, nil, nil)
+	in.SetSecret(fs)
+	return in, fs
 }
 
 // Автоудаление: держим период в store, чтобы юнит-тесты могли его проверять.

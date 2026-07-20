@@ -12,6 +12,7 @@ import TgIcon from '../../components/TgIcon'
 import { peerColor } from '../../components/peerColor'
 import { useEvent } from './useEvent'
 import { useMessagesStore, winKey } from '../../stores/messagesStore'
+import { useSettingsStore } from '../../settings'
 import type { Chat, ConvMsg } from '../../data'
 import type { Managers } from '../../client/bootstrap'
 import type { MessageWindow } from './useMessageWindow'
@@ -50,6 +51,11 @@ export function useMessageActions({
   const [delIds, setDelIds] = useState<DelState | null>(null)
   const [forwardIds, setForwardIds] = useState<number[] | null>(null)
   const [viewers, setViewers] = useState<ViewersState | null>(null)
+  const [translateText, setTranslateText] = useState<string | null>(null)
+  const showTranslate = useSettingsStore((st) => st.showTranslateButton)
+  // Секретный чат: скрываем forward/copy/quote (поведение Telegram) — остаётся
+  // обычный reply, удаление и реакции.
+  const isSecret = chat.type === 'secret'
 
   // Takes the message itself (not its index) so MessageRow needs no `index` prop —
   // that prop shifts on every loadOlder prepend and would re-render every row. We
@@ -103,6 +109,12 @@ export function useMessageActions({
   const copyMsg = () => {
     const m = msgMenu && msgs[msgMenu.idx]
     if (m?.text) void navigator.clipboard?.writeText(m.text).catch(() => {})
+    closeMsgMenu()
+  }
+
+  const startTranslate = () => {
+    const m = msgMenu && msgs[msgMenu.idx]
+    if (m?.text) setTranslateText(m.text)
     closeMsgMenu()
   }
 
@@ -248,8 +260,10 @@ export function useMessageActions({
     ...(isRealChat && (msgs[msgMenu?.idx ?? -1]?.out ?? false)
       ? [{ icon: <TgIcon name="edit" size={20} />, label: 'Edit', onClick: startEdit }]
       : []),
-    { icon: <TgIcon name="copy" size={20} />, label: 'Copy', onClick: copyMsg },
-    { icon: <TgIcon name="language" size={20} />, label: 'Translate' },
+    ...(!isSecret ? [{ icon: <TgIcon name="copy" size={20} />, label: 'Copy', onClick: copyMsg }] : []),
+    ...(showTranslate && (msgs[msgMenu?.idx ?? -1]?.text)
+      ? [{ icon: <TgIcon name="language" size={20} />, label: 'Translate', onClick: startTranslate }]
+      : []),
     ...(isRealChat
       ? [{
           icon: <TgIcon name="pin" size={20} />,
@@ -286,7 +300,7 @@ export function useMessageActions({
       }
       return items
     })(),
-    ...(isRealChat ? [{ icon: <TgIcon name="reply" size={20} style={{ transform: 'scaleX(-1)' }} />, label: 'Forward', onClick: openForward }] : []),
+    ...(isRealChat && !isSecret ? [{ icon: <TgIcon name="reply" size={20} style={{ transform: 'scaleX(-1)' }} />, label: 'Forward', onClick: openForward }] : []),
     ...(isRealChat ? [{ icon: <TgIcon name="checkround" size={20} />, label: 'Select', onClick: startSelect }] : []),
     ...(isRealChat && (msgs[msgMenu?.idx ?? -1]?.out ?? false)
       ? [{ icon: <TgIcon name="checks" size={20} />, label: 'Viewers', onClick: showViewers }]
@@ -302,5 +316,6 @@ export function useMessageActions({
     delIds, doDelete, closeDelete: () => setDelIds(null), openDeleteFor, canRevokeAll,
     forwardIds, doForward, closeForward: () => setForwardIds(null), openForwardFor,
     viewers, closeViewers: () => setViewers(null),
+    translateText, closeTranslate: () => setTranslateText(null),
   }
 }

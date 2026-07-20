@@ -99,6 +99,18 @@ func (r *GroupRepo) SetMuted(ctx context.Context, chatID, userID int64, muted bo
 	return err
 }
 
+// SetNotify обновляет per-chat настройки уведомлений; nil-поля не меняются
+// (COALESCE), так что можно править превью и звук по отдельности.
+func (r *GroupRepo) SetNotify(ctx context.Context, chatID, userID int64, preview *bool, sound *string) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE chat_members
+		    SET notify_preview = COALESCE($3, notify_preview),
+		        notify_sound   = COALESCE($4, notify_sound)
+		  WHERE chat_id=$1 AND user_id=$2`,
+		chatID, userID, preview, sound)
+	return err
+}
+
 // SetPinned закрепляет/открепляет диалог для пользователя. pinned_at = момент
 // закрепления: свежий пин встаёт первым в списке.
 func (r *GroupRepo) SetPinned(ctx context.Context, chatID, userID int64, pinned bool) error {

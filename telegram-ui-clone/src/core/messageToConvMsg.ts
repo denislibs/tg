@@ -43,6 +43,10 @@ export function messageToConvMsg(
   // Voice messages get their own bubble; service events render as a centered
   // pill (no sender/ticks); other media render via the generic media bubble
   // (keyed off mediaId), so everything else maps to 'text'.
+  // Секретное медиа приходит с проводным type:'encrypted' — вид ('photo'|'video'|
+  // 'document'|'audio') лежит в расшифрованном secretMedia.mediaType. Он и решает
+  // ветку рендера (SecretMediaBubble рисуется вместо RealMediaBubble по m.secretMedia).
+  const secretType = m.secretMedia?.mediaType
   const convType =
     m.type === 'voice' ? 'voice'
     : m.type === 'roundVideo' ? 'roundVideo'
@@ -52,6 +56,7 @@ export function messageToConvMsg(
     : m.type === 'contact' ? 'contact'
     : m.type === 'gift' ? 'gift'
     : m.type === 'service' ? 'service'
+    : secretType === 'photo' || secretType === 'video' || secretType === 'document' || secretType === 'audio' ? secretType
     : m.type === 'photo' || m.type === 'video' || m.type === 'document' || m.type === 'audio' ? m.type
     : 'text'
   return {
@@ -63,6 +68,7 @@ export function messageToConvMsg(
     text: convType === 'service' ? serviceMsgText(m.text) : m.text,
     entities: m.entities,
     time: hhmm(m.createdAt),
+    createdAt: m.createdAt,
     // sending → до message_ack (оптимистичный id < 0); error → send отвергнут;
     // после ack id становится серверным и статус сам «дорастает» до sent/read.
     status: out
@@ -99,6 +105,12 @@ export function messageToConvMsg(
     mediaUnread: m.mediaUnread || undefined,
     deleted: m.deleted ?? false,
     forwardFrom: m.fwdFromUserId != null ? { name: opts?.forwardFromName ?? 'Неизвестно' } : undefined,
+    // Секретное сообщение: флаг + таймер самоуничтожения (destructAt ставит сервер
+    // после прочтения получателем; ttlSeconds — «взведённый» TTL до этого).
+    secret: m.secret || undefined,
+    secretMedia: m.secretMedia,
+    ttlSeconds: m.ttlSeconds ?? undefined,
+    destructAt: m.destructAt ?? undefined,
     reply: m.replyTo
       ? {
           name: m.replyTo.senderId === meId ? 'Вы' : opts?.replyToName ?? 'Сообщение',

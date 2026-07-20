@@ -1,7 +1,7 @@
 // src/core/managers/messagesManager.ts
 import type { RestClient } from '../net/restClient'
-import { mapMessage, mapPoll, mapScheduled, type Message, type MessageEntity, type Poll, type RawMessage, type RawPoll, type RawScheduled, type Scheduled } from '../models'
-import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt } from '../realtime/events'
+import { mapMessage, mapPoll, mapScheduled, mapGeo, type Message, type MessageEntity, type Poll, type RawMessage, type RawPoll, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
+import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt } from '../realtime/events'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
 
 export interface HistoryArgs {
@@ -32,9 +32,26 @@ export interface SendArgs {
   threadRootId?: number | null
 }
 
-export interface MessagesDeps { rest: RestClient }
+export interface MessagesDeps {
+  rest: RestClient
+  /** Расшифровка ciphertext секретного чата (ключи живут в secretManager воркера). */
+  decryptSecret?: (chatId: number, encBody: string) => Promise<{ text: string; entities?: unknown[]; media?: SecretMedia } | null>
+}
 
-export function newMessagesManager({ rest }: MessagesDeps) {
+export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
+  // История секретного чата приходит с REST как encBody+пустой text — расшифровываем
+  // страницу до отдачи в UI. Без ключа text остаётся пустым, но secret:true проставлен
+  // (UI покажет плейсхолдер). Живые сообщения дешифруются в worker.ts.
+  async function decryptPage(list: Message[]): Promise<Message[]> {
+    if (!decryptSecret) return list
+    return Promise.all(list.map(async (m) => {
+      if (!m.encBody) return m
+      const dec = await decryptSecret(m.chatId, m.encBody)
+      return dec
+        ? { ...m, text: dec.text, entities: (dec.entities as Message['entities']) ?? m.entities, secret: true, secretMedia: dec.media ?? m.secretMedia }
+        : { ...m, secret: true }
+    }))
+  }
   // Кэш истории ключуется чатом ИЛИ тредом чата ("chatId" / "chatId:root") —
   // окно топика/комментариев живёт отдельным срезом (tweb: history по threadId).
   const slices = new Map<string, SlicedArray<number>>()
@@ -102,7 +119,7 @@ export function newMessagesManager({ rest }: MessagesDeps) {
         `/chats/${chatId}/history`,
         { offset_id: offsetSeq, add_offset: addOffset, limit, ...(threadRoot ? { thread_root: threadRoot } : {}) },
       )
-      const fetched = (r.messages ?? []).map(mapMessage)
+      const fetched = await decryptPage((r.messages ?? []).map(mapMessage))
       put(key, fetched)
 
       // normalize to descending seqs for the SlicedArray
@@ -206,7 +223,7 @@ export function newMessagesManager({ rest }: MessagesDeps) {
 
     async listPins(chatId: number): Promise<Message[]> {
       const r = await rest.get<{ messages: RawMessage[] }>(`/chats/${chatId}/pins`)
-      return (r.messages ?? []).map(mapMessage)
+      return decryptPage((r.messages ?? []).map(mapMessage))
     },
 
     // Jump-to-message: load a window centered on centerSeq and RESET this chat's
@@ -215,7 +232,7 @@ export function newMessagesManager({ rest }: MessagesDeps) {
       const r = await rest.get<{ messages: RawMessage[]; reached_top: boolean; reached_bottom: boolean }>(
         `/chats/${chatId}/history`, { around: centerSeq, limit, ...(threadRoot ? { thread_root: threadRoot } : {}) },
       )
-      const asc = (r.messages ?? []).map(mapMessage)
+      const asc = await decryptPage((r.messages ?? []).map(mapMessage))
       const key = hkey(chatId, threadRoot)
       const sa = new SlicedArray<number>()
       slices.set(key, sa)
@@ -271,7 +288,7 @@ export function newMessagesManager({ rest }: MessagesDeps) {
     // Сообщения треда (форум-топика) по возрастанию + total.
     async threadMessages(chatId: number, rootId: number, offset = 0, limit = 50): Promise<{ messages: Message[]; count: number }> {
       const r = await rest.get<{ messages: RawMessage[]; count: number }>(`/chats/${chatId}/threads/${rootId}`, { offset, limit })
-      return { messages: (r.messages ?? []).map(mapMessage), count: r.count }
+      return { messages: await decryptPage((r.messages ?? []).map(mapMessage)), count: r.count }
     },
 
     // ── Запланированные сообщения (Telegram scheduled) ──
@@ -318,6 +335,10 @@ export function newMessagesManager({ rest }: MessagesDeps) {
         grouped_id: evt.grouped_id ?? null, media_unread: evt.media_unread,
         geo: evt.geo ?? null, contact: evt.contact ?? null,
       })
+      // E2E-медиа секретного чата: воркер уже расшифровал enc_body и положил
+      // secret_media на фрейм (не проводное поле) — переносим в кэш-модель, чтобы
+      // переоткрытие чата из кэша тоже отдавало расшифровываемое медиа.
+      if (evt.secret_media) { m.secretMedia = evt.secret_media; m.secret = true }
       const keys = m.threadRootId ? [hkey(m.chatId), hkey(m.chatId, m.threadRootId)] : [hkey(m.chatId)]
       for (const key of keys) {
         // Только в срез, уже державший низ истории — иначе позиция неизвестна.
@@ -336,6 +357,21 @@ export function newMessagesManager({ rest }: MessagesDeps) {
         for (const [seq, m] of c) {
           if (m.id === evt.msg_id) {
             c.set(seq, { ...m, text: evt.text, entities: evt.entities ?? undefined, editedAt: evt.edited_at })
+            break
+          }
+        }
+      }
+    },
+
+    // Live-обновление координат гео-трансляции → кэш всех окон чата.
+    cacheGeoLive(evt: GeoLiveUpdateEvt): void {
+      const geo = mapGeo(evt.geo)
+      for (const key of keysOf(evt.chat_id)) {
+        const c = cache.get(key)
+        if (!c) continue
+        for (const [seq, m] of c) {
+          if (m.id === evt.msg_id) {
+            c.set(seq, { ...m, geo })
             break
           }
         }
@@ -363,6 +399,36 @@ export function newMessagesManager({ rest }: MessagesDeps) {
 
     async unreact(chatId: number, msgId: number, emoji: string): Promise<void> {
       await rest.del(`/chats/${chatId}/messages/${msgId}/reactions/${encodeURIComponent(emoji)}`)
+    },
+
+    // Live location: отправить начальную точку трансляции по REST (нужен msgId,
+    // чтобы затем слать обновления). Бабл появится WS-эхом new_message.
+    async sendGeoLive(chatId: number, lat: number, lng: number, livePeriod: number, heading?: number): Promise<Message> {
+      const created = await rest.post<RawMessage>(`/chats/${chatId}/messages`, {
+        type: 'geo', text: '', geo_lat: lat, geo_lng: lng,
+        geo_live_period: livePeriod, geo_heading: heading ?? null, client_msg_id: '',
+      })
+      const m = mapMessage(created)
+      put(hkey(chatId), [m])
+      const sa = sliceFor(hkey(chatId))
+      if (sa.first.isEnd(SliceEnd.Bottom) && !sa.findSlice(m.seq)) sa.unshift(m.seq)
+      return m
+    },
+
+    // Live location: обновить координаты (или остановить трансляцию stopped=true).
+    async updateGeoLive(chatId: number, msgId: number, lat: number, lng: number, opts?: { heading?: number; stopped?: boolean }): Promise<Message> {
+      const r = await rest.post<RawMessage>(`/chats/${chatId}/messages/${msgId}/geo_live`, {
+        lat, lng, heading: opts?.heading ?? null, stopped: opts?.stopped ?? false,
+      })
+      const m = mapMessage(r)
+      for (const key of keysOf(chatId)) if (cache.get(key)?.has(m.seq)) put(key, [m])
+      return m
+    },
+
+    // Перевод произвольного текста на toLang (ISO-код). source — определённый
+    // сервером исходный язык. 503 при отключённом провайдере (пробрасывается).
+    async translate(text: string, toLang: string): Promise<{ text: string; source: string }> {
+      return rest.post<{ text: string; source: string }>('/translate', { text, to_lang: toLang })
     },
   }
 }

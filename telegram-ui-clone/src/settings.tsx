@@ -55,6 +55,10 @@ export interface Settings {
   // Без анимаций (tweb liteMode.animations): выключает интерфейсные анимации
   // (framer MotionConfig reducedMotion + css-гейт).
   reduceMotion: boolean
+  // Перевод сообщений (tweb translations): показывать ли пункт «Перевести» в
+  // контекстном меню; translateTo — целевой язык (ISO-код), '' = язык интерфейса.
+  showTranslateButton: boolean
+  translateTo: string
 }
 
 // Галочки автозагрузки по типам чатов (tweb AutoDownloadPeerTypeSettings).
@@ -96,6 +100,8 @@ const DEFAULTS: Settings = {
   cacheTTL: 86400 * 7, // неделя (tweb SETTINGS_INIT.cacheTTL)
   cacheSize: 0, // Авто (tweb SETTINGS_INIT.cacheSize)
   reduceMotion: false,
+  showTranslateButton: true,
+  translateTo: '',
 }
 
 const KEY = 'tg-settings'
@@ -154,6 +160,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       cacheTTL: s.cacheTTL,
       cacheSize: s.cacheSize,
       reduceMotion: s.reduceMotion,
+      showTranslateButton: s.showTranslateButton,
+      translateTo: s.translateTo,
     }
     try {
       localStorage.setItem(KEY, JSON.stringify(toSave))

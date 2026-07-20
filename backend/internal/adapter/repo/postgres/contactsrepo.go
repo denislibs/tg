@@ -73,6 +73,20 @@ func (r *ContactsRepo) List(ctx context.Context, ownerID int64) ([]domain.Contac
 	return out, rows.Err()
 }
 
+// ResolveByPhone finds a registered user by normalized phone; domain.ErrNotFound
+// when the number isn't registered.
+func (r *ContactsRepo) ResolveByPhone(ctx context.Context, phone string) (int64, error) {
+	var id int64
+	err := r.pool.QueryRow(ctx, `SELECT id FROM users WHERE phone=$1`, phone).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, domain.ErrNotFound
+	}
+	if err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
 func (r *ContactsRepo) Delete(ctx context.Context, ownerID, userID int64) (bool, error) {
 	tag, err := r.pool.Exec(ctx, `DELETE FROM contacts WHERE owner_id=$1 AND user_id=$2`, ownerID, userID)
 	if err != nil {

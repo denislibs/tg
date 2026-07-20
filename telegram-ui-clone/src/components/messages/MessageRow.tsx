@@ -17,6 +17,7 @@ import { mediaThumbUrl, hasMediaToken, useMediaTokenVersion } from '../../core/m
 import TgIcon from '../TgIcon'
 import { BubbleAppear } from '../animations/bubbleAnimations'
 import RealMediaBubble from './RealMediaBubble'
+import SecretMediaBubble from './SecretMediaBubble'
 import PollBubble from './PollBubble'
 import GiftBubble from './GiftBubble'
 import InlineKeyboard from './InlineKeyboard'
@@ -37,6 +38,7 @@ import {
   RoundVideoRealBubble,
   GeoBubble,
   ContactBubble,
+  SecretTimer,
 } from './MessageBubbles'
 import RichText, { emojiOnlyCount } from '../RichText'
 import Emoji from '../emoji/Emoji'
@@ -306,27 +308,41 @@ function MessageRow({
               className={classNames(s.mediaInner, m.type === 'photo' || m.type === 'video' ? s.framed : '')}
               style={{ borderRadius: mediaRadius(out, lastInGroup) }}
             >
-              <RealMediaBubble
-                mediaId={m.mediaId}
-                type={m.type}
-                width={m.mediaWidth}
-                height={m.mediaHeight}
-                mime={m.mediaMime}
-                blur={m.mediaBlur}
-                hasThumb={m.mediaHasThumb}
-                duration={m.mediaDuration}
-                size={m.mediaSize}
-                fileName={m.mediaName}
-                out={out}
-                time={m.text ? undefined : m.time}
-                status={m.status}
-                tickColor="var(--b-tick)"
-                onOpen={feedFns.openLightbox}
-                autoDownload={autoDownload}
-                localUrl={m.localUrl}
-                clientId={m.clientId}
-                radius={(m.type === 'photo' || m.type === 'video') ? (m.text || chips ? '14px 14px 0 0' : '14px') : undefined}
-              />
+              {m.secretMedia ? (
+                // Секретное медиа (E2E): fetch ciphertext → decrypt → blob-objectURL.
+                // Прямой src=mediaContentUrl не годится — сервер хранит только шифртекст.
+                <SecretMediaBubble
+                  secretMedia={m.secretMedia}
+                  out={out}
+                  time={m.text ? undefined : m.time}
+                  status={m.status}
+                  tickColor="var(--b-tick)"
+                  localUrl={m.localUrl}
+                  radius={(m.type === 'photo' || m.type === 'video') ? (m.text || chips ? '14px 14px 0 0' : '14px') : undefined}
+                />
+              ) : (
+                <RealMediaBubble
+                  mediaId={m.mediaId}
+                  type={m.type}
+                  width={m.mediaWidth}
+                  height={m.mediaHeight}
+                  mime={m.mediaMime}
+                  blur={m.mediaBlur}
+                  hasThumb={m.mediaHasThumb}
+                  duration={m.mediaDuration}
+                  size={m.mediaSize}
+                  fileName={m.mediaName}
+                  out={out}
+                  time={m.text ? undefined : m.time}
+                  status={m.status}
+                  tickColor="var(--b-tick)"
+                  onOpen={feedFns.openLightbox}
+                  autoDownload={autoDownload}
+                  localUrl={m.localUrl}
+                  clientId={m.clientId}
+                  radius={(m.type === 'photo' || m.type === 'video') ? (m.text || chips ? '14px 14px 0 0' : '14px') : undefined}
+                />
+              )}
               {m.text ? (
                 <div className={s.mediaCaption}>
                   <span className={s.mediaText}>
@@ -480,6 +496,7 @@ function MessageRow({
               </span>
               <span className={classNames(s.meta, hasBlock ? s.block : '')}>
                 {m.views ? <ViewsMeta views={m.views} className={s.metaViews} /> : null}
+                {m.secret && <SecretTimer destructAt={m.destructAt} ttlSeconds={m.ttlSeconds} color="var(--b-time)" />}
                 <span className={s.metaTime}>{m.edited ? `${t('edited')} ` : ''}{fmtTime(m.time)}</span>
                 <Ticks status={m.status} color="var(--b-tick)" />
               </span>

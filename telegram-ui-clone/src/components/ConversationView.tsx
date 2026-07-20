@@ -55,11 +55,14 @@ import ScrollDownFab from './conversation/ScrollDownFab'
 import SelectionBar from './conversation/SelectionBar'
 import MessageContextMenu from './conversation/MessageContextMenu'
 import { useChatsStore } from '../stores/chatsStore'
+import { useSecretChatStore } from '../stores/secretChatStore'
 import { type MessageEntity } from '../core/models'
 import type { InlineResult } from '../core/managers/botsManager'
 import { openWebApp } from '../core/webapp'
 import { useSearchStore } from '../stores/searchStore'
 import { ContactPicker, DeleteMessageDialog, ForwardPicker, ViewersPopup } from './messages/ChatDialogs'
+import TranslatePopup from './messages/TranslatePopup'
+import LocationPicker from './LocationPicker'
 import SendMediaPopup from './messages/SendMediaPopup'
 import MediaLightbox from './messages/MediaLightbox'
 import classNames from '../shared/lib/classNames'
@@ -131,6 +134,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const narrow = useMediaQuery('(max-width:900px)')
   const isChannel = chat.type === 'channel'
   const isGroup = chat.type === 'group'
+  const isSecret = chat.type === 'secret'
   // Автозагрузка медиа для этого чата (tweb chat.autoDownload)
   const autoDownload = useChatAutoDownload(chat.type, chat.peerId)
 
@@ -155,6 +159,40 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   )
   const muted = dialogMuted ?? !!chat.muted
   const managers = useManagers()
+
+  // Секретный чат: наблюдаемый статус E2E-handshake (secretChatStore ← realtimeBridge).
+  // При открытии чата восстанавливаем состояние с сервера (reload-safe): secret.sync
+  // либо доводит ключ инициатора, либо возвращает 'requested'/'awaiting'/'rejected'.
+  const secretStatus = useSecretChatStore((st) => st.byChat[numericChatId]?.status)
+  useEffect(() => {
+    if (!isSecret || !isRealChat) return
+    void managers.secret.sync(numericChatId, useChatsStore.getState().meId ?? -1)
+  }, [isSecret, isRealChat, numericChatId, managers])
+  // Пока handshake не завершён — отправка запрещена (иначе sendText/sendMedia падают
+  // с «key missing»), а вместо композера показываем бар accept/await/rejected.
+  const secretLocked = isSecret && secretStatus !== 'established'
+  const [secretBusy, setSecretBusy] = useState(false)
+  const onSecretAccept = useEvent(async () => {
+    if (secretBusy) return
+    setSecretBusy(true)
+    try {
+      const res = await managers.secret.accept(numericChatId)
+      useSecretChatStore.getState().setStatus(numericChatId, 'established')
+      useSecretChatStore.getState().setFingerprint(numericChatId, res.fingerprint)
+    } finally {
+      setSecretBusy(false)
+    }
+  })
+  const onSecretReject = useEvent(async () => {
+    if (secretBusy) return
+    setSecretBusy(true)
+    try {
+      await managers.secret.reject(numericChatId)
+      useSecretChatStore.getState().setStatus(numericChatId, 'rejected')
+    } finally {
+      setSecretBusy(false)
+    }
+  })
   const threadRootId = thread?.rootMsgId
   const win = useMessageWindow(isRealChat ? numericChatId : -1, 40, threadRootId)
   // Тред комментариев: после корневого поста канала (подшит бэком с seq=0)
@@ -226,6 +264,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const [attachAnchor, setAttachAnchor] = useState<{ left: number; bottom: number } | null>(null)
   const [createPollOpen, setCreatePollOpen] = useState(false)
   const [contactPickerOpen, setContactPickerOpen] = useState(false)
+  const [locationPickerOpen, setLocationPickerOpen] = useState(false)
   // Запланированные сообщения: счётчик (календарик в композере) + оверлей списка
   const [scheduledCount, setScheduledCount] = useState(0)
   const [scheduledOpen, setScheduledOpen] = useState(false)
@@ -335,7 +374,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     openPicker, fileInputRef, pickAsFileRef,
     sendGeo, sendContact,
   } = useChatSend({
-    chat, numericChatId, isRealChat, isChannel, draftPeerId, canType,
+    chat, numericChatId, isRealChat, isChannel, draftPeerId, canType, secretLocked,
     meId, win, managers, threadRootId, atBottomRef, userScrolledUpRef,
     onChatCreated,
   })
@@ -348,6 +387,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     delIds, doDelete, closeDelete, openDeleteFor,
     forwardIds, doForward, closeForward, openForwardFor,
     viewers, closeViewers,
+    translateText, closeTranslate,
   } = useMessageActions({
     chat, numericChatId, isRealChat, win: winV, msgs, meId, pins, managers, accent: accentColor,
     setReply, setEditing, setSelectionMode, setSelected, clearSelection, onChatCreated,
@@ -532,7 +572,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // Медленный режим: обычный участник группы блокируется на N сек после отправки
   const slowmodeExempt = !isGroup || card?.myRole === 'creator' || card?.myRole === 'admin'
   const { left: slowmodeLeft, markSent: slowmodeMarkSent } = useSlowmode(card?.slowmodeSeconds ?? 0, slowmodeExempt)
-  const onComposerSend = useEvent((text: string, entities?: MessageEntity[]) => { send(text, entities); slowmodeMarkSent() })
+  const onComposerSend = useEvent((text: string, entities?: MessageEntity[], ttlSeconds?: number | null) => { send(text, entities, ttlSeconds); slowmodeMarkSent() })
   // Inline-режим: резолв «@username» → id бота (кэш), затем выдача бэком (он сам
   // проверит is_bot). Выбор результата шлёт его текст обычным сообщением.
   const inlineBotCache = useRef<Map<string, number | null>>(new Map())
@@ -712,6 +752,47 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               <Text weight={600} size={15.5} color="var(--tg-accent)">{t('Start')}</Text>
             </motion.div>
           </div>
+        ) : secretLocked ? (
+          // Секретный чат до завершения handshake: бар вместо композера (гейтинг
+          // отправки — сам факт, что <Composer> тут не рендерится + secretLocked в useChatSend).
+          <div className={classNames(s.footer, s.footerCompose)}>
+            {scrollDownFab}
+            <div className={s.secretBar}>
+              {secretStatus === 'requested' ? (
+                <>
+                  <Text size={14.5} style={{ textAlign: 'center' }} color="var(--tg-textSecondary)">
+                    {t('Пользователь приглашает вас в секретный чат')}
+                  </Text>
+                  <div className={s.secretBarBtns}>
+                    <motion.button
+                      type="button"
+                      whileTap={{ scale: 0.98 }}
+                      className={classNames(s.secretBtn, s.secretBtnPrimary)}
+                      disabled={secretBusy}
+                      onClick={onSecretAccept}
+                    >
+                      <Text weight={600} size={15} color="#fff">{t('Принять')}</Text>
+                    </motion.button>
+                    <motion.button
+                      type="button"
+                      whileTap={{ scale: 0.98 }}
+                      className={s.secretBtn}
+                      disabled={secretBusy}
+                      onClick={onSecretReject}
+                    >
+                      <Text weight={600} size={15} color="var(--tg-textSecondary)">{t('Отклонить')}</Text>
+                    </motion.button>
+                  </div>
+                </>
+              ) : (
+                <Text size={14.5} style={{ textAlign: 'center' }} color="var(--tg-textSecondary)">
+                  {secretStatus === 'rejected'
+                    ? t('Секретный чат отклонён')
+                    : t('Ожидание, пока собеседник примет секретный чат…')}
+                </Text>
+              )}
+            </div>
+          </div>
         ) : canType ? (
           <div className={classNames(s.footer, s.footerCompose)}>
             {scrollDownFab}
@@ -762,6 +843,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               scheduledCount={scheduledCount}
               onOpenScheduled={() => setScheduledOpen(true)}
               slowmodeLeft={slowmodeLeft}
+              secret={chat.type === 'secret'}
             />
           </div>
         ) : (
@@ -786,6 +868,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
             chat={chat}
             onClose={() => setInfoOpen(false)}
             onOpenPeer={onOpenPeer}
+            onChatCreated={onChatCreated}
             canAddMembers={canAddMember}
           />
         )}
@@ -869,17 +952,17 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           onPhotoVideo={isRealChat ? () => openPicker('image/*,video/*', false) : undefined}
           onFile={isRealChat ? () => openPicker('*/*', true) : undefined}
           onPoll={isRealChat && (chat.type === 'group' || chat.type === 'channel') ? () => setCreatePollOpen(true) : undefined}
-          onLocation={isRealChat ? () => {
-            // Геопозиция берётся у браузера; молча игнорируем отказ (как отмену).
-            navigator.geolocation?.getCurrentPosition(
-              (pos) => sendGeo(pos.coords.latitude, pos.coords.longitude),
-              () => {},
-              { enableHighAccuracy: true, timeout: 10000 },
-            )
-          } : undefined}
+          onLocation={isRealChat ? () => setLocationPickerOpen(true) : undefined}
           onContact={isRealChat ? () => setContactPickerOpen(true) : undefined}
         />
       )}
+
+      {/* Пикер геолокации (attach-меню → Локация): карта + venue + live */}
+      <LocationPicker
+        open={locationPickerOpen}
+        onClose={() => setLocationPickerOpen(false)}
+        onSend={(lat, lng, opts) => sendGeo(lat, lng, opts)}
+      />
 
       {/* Пикер контакта (attach-меню → Контакт) */}
       {contactPickerOpen && (
@@ -978,6 +1061,14 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           onClose={closeDelete}
         />
       )}
+
+      {/* Перевод сообщения (контекстное меню → Translate) */}
+      <TranslatePopup
+        open={translateText != null}
+        text={translateText ?? ''}
+        managers={managers}
+        onClose={closeTranslate}
+      />
     </div>
     </CallProvider>
   )

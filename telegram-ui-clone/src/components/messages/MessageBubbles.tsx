@@ -3,8 +3,10 @@ import classNames from '../../shared/lib/classNames'
 import Avatar from '../../shared/ui/Avatar'
 import { peerColor } from '../peerColor'
 import TgIcon from '../TgIcon'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useT } from '../../i18n'
+import { useManagers } from '../../core/hooks/useManagers'
+import { useLiveShareStore } from '../../stores/liveShareStore'
 import { mediaContentUrl } from '../../core/mediaUrl'
 import type { ConvMsg, MsgStatus } from '../../data'
 import { useTimeFormatter } from '../../settings'
@@ -15,6 +17,52 @@ export function Ticks({ status, color }: { status?: MsgStatus; color: string }) 
   if (status === 'sending') return <TgIcon name="sending" size={16} color={color} />
   if (status === 'error') return <TgIcon name="sendingerror" size={16} color="#ff595a" />
   return <TgIcon name={status === 'read' ? 'checks' : 'check'} size={16} color={color} />
+}
+
+// Остаток TTL в короткой форме: «5с» / «1м» / «1ч» / «1д» / «1нед» (как в tweb).
+function fmtTtlRemain(s: number): string {
+  if (s < 60) return `${s}с`
+  if (s < 3600) return `${Math.ceil(s / 60)}м`
+  if (s < 86400) return `${Math.ceil(s / 3600)}ч`
+  if (s < 604800) return `${Math.ceil(s / 86400)}д`
+  return `${Math.ceil(s / 604800)}нед`
+}
+
+// Таймер самоуничтожения секретного сообщения (tweb secret-chat self-destruct).
+// Пока получатель не прочитал — destructAt не задан: показываем «взведённый» глиф
+// с исходным TTL. После прочтения сервер ставит destructAt — тикаем обратный отсчёт
+// (тот же приём, что у GeoBubble: useState(now) + setInterval(1000) + cleanup).
+// Дошли до нуля — прячем локально (сервер всё равно пришлёт delete_message).
+export function SecretTimer({ destructAt, ttlSeconds, color }: {
+  destructAt?: string | null
+  ttlSeconds?: number | null
+  color: string
+}) {
+  const running = destructAt != null
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!running) return
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [running])
+
+  if (running) {
+    const remainSec = Math.floor((Date.parse(destructAt!) - now) / 1000)
+    if (remainSec <= 0) return null // ноль — прячем (delete_message приедет следом)
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+        <TgIcon name="fire" size={14} color={color} />
+        <Text size={12} color={color} style={{ fontVariantNumeric: 'tabular-nums' }}>
+          {fmtTtlRemain(remainSec)}
+        </Text>
+      </span>
+    )
+  }
+  // Ещё не запущен: TTL «взведён», но отсчёт не начался — статичный глиф.
+  if (ttlSeconds && ttlSeconds > 0) {
+    return <TgIcon name="timer" size={14} color={color} />
+  }
+  return null
 }
 
 // Радиусы бабла — из tweb (_chatVariables.scss).
@@ -384,7 +432,28 @@ export function GeoBubble({ m, out, lastInGroup, radius }: {
   radius: string
 }) {
   const fmtTime = useTimeFormatter()
-  const { lat, lng } = m.geo!
+  const managers = useManagers()
+  const geo = m.geo!
+  const { lat, lng } = geo
+  const isVenue = !!geo.title
+  const isLive = geo.livePeriod != null && geo.livePeriod > 0
+
+  // Тикающие «сейчас» — только для live-локации (отсчёт + «обновлено N назад»).
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!isLive) return
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [isLive])
+
+  const startMs = m.createdAt ? Date.parse(m.createdAt) : Date.now()
+  const expiry = startMs + (geo.livePeriod ?? 0) * 1000
+  const expired = isLive && (geo.liveStopped || now >= expiry)
+  const activeShare = useLiveShareStore((st) => (m.chatId != null ? st.active[m.chatId] : undefined))
+  const sharingByMe = out && isLive && !expired && activeShare?.msgId === m.id
+  const remainMin = Math.max(0, Math.round((expiry - now) / 60000))
+  const updatedAgoMin = geo.editedAt ? Math.max(0, Math.floor((now - Date.parse(geo.editedAt)) / 60000)) : 0
+
   const T = 256
   const n = 2 ** GEO_ZOOM
   const latR = (lat * Math.PI) / 180
@@ -401,7 +470,7 @@ export function GeoBubble({ m, out, lastInGroup, radius }: {
       {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
       <a
         className={s.geoContainer}
-        style={{ borderRadius: radius }}
+        style={{ borderRadius: (isVenue || isLive) ? `${radius.split(' ')[0]} ${radius.split(' ')[0]} 0 0` : radius }}
         href={`https://maps.google.com/maps?q=${lat},${lng}`}
         target="_blank"
         rel="noreferrer"
@@ -416,14 +485,47 @@ export function GeoBubble({ m, out, lastInGroup, radius }: {
             loading="lazy"
           />
         ))}
-        <span className={s.geoPin}>
-          <TgIcon name="location" size={38} color="#e53935" />
+        <span className={s.geoPin} style={isLive && geo.heading != null ? { transform: `translate(-50%, -86%) rotate(${geo.heading}deg)` } : undefined}>
+          <TgIcon name={isLive ? 'livelocation' : 'location'} size={38} color={expired ? '#9e9e9e' : '#e53935'} />
         </span>
+        {isLive && !expired && <span className={s.geoLiveBadge}>LIVE</span>}
         <span className={s.geoMeta}>
           <Text size={12.5} color="#fff">{fmtTime(m.time)}</Text>
           {m.out && <Ticks status={m.status} color="#fff" />}
         </span>
       </a>
+
+      {isVenue && !isLive && (
+        <div className={s.geoFooter}>
+          <Text size={15} weight={600} color="var(--b-primary)" noWrap>{geo.title}</Text>
+          {geo.address && <Text size={13.5} color="var(--b-secondary)" noWrap>{geo.address}</Text>}
+        </div>
+      )}
+
+      {isLive && (
+        <div className={s.geoFooter}>
+          {expired ? (
+            <Text size={13.5} color="var(--b-secondary)">Трансляция окончена</Text>
+          ) : (
+            <>
+              <div className={s.geoLiveRow}>
+                <Text size={15} weight={600} color="var(--b-primary)">Трансляция геопозиции</Text>
+                {sharingByMe && (
+                  <span
+                    className={s.geoStop}
+                    onClick={(e) => { e.preventDefault(); if (m.chatId != null) useLiveShareStore.getState().stop(managers, m.chatId) }}
+                  >
+                    Остановить
+                  </span>
+                )}
+              </div>
+              <Text size={13} color="var(--b-secondary)">
+                {(updatedAgoMin <= 0 ? 'обновлено только что' : `обновлено ${updatedAgoMin} мин назад`) + ` · осталось ~${remainMin} мин`}
+              </Text>
+            </>
+          )}
+        </div>
+      )}
     </div>
   )
 }

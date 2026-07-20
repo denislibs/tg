@@ -37,6 +37,21 @@ services:
       retries: 10
 
 
+  # Перевод сообщений — self-hosted LibreTranslate. Backend ходит на него по
+  # http://libretranslate:5000 (TRANSLATE_URL). LT_LOAD_ONLY ограничивает набор
+  # моделей (быстрее старт). Порт наружу не публикуем (обращается только backend).
+  libretranslate:
+    image: libretranslate/libretranslate:latest
+    environment:
+      LT_LOAD_ONLY: "en,ru,es,de,fr,it,uk"
+      LT_UPDATE_MODELS: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/languages')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    volumes: ["ltmodels:/home/libretranslate/.local"]
+
   # TURN-релей для звонков через интернет (за NAT). Клиенты получают адрес и
   # эфемерные креды через GET /calls/ice (схема coturn use-auth-secret).
   # TURN_HOST у backend должен указывать на адрес, ДОСТУПНЫЙ клиентам
@@ -72,6 +87,8 @@ services:
       MINIO_ACCESS_KEY: "minioadmin"
       MINIO_SECRET_KEY: "minioadmin"
       MINIO_BUCKET: "media"
+      # Перевод сообщений через self-hosted LibreTranslate.
+      TRANSLATE_URL: "http://libretranslate:5000"
       # Web Push: set real VAPID keys to enable push (npx web-push generate-vapid-keys)
       # VAPID_PUBLIC_KEY: ""
       # VAPID_PRIVATE_KEY: ""
@@ -106,3 +123,4 @@ services:
 volumes:
   pgdata:
   miniodata:
+  ltmodels:

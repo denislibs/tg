@@ -1,0 +1,76 @@
+// Одна карточка с двумя секциями (оригинал / перевод) и разделителем — как в
+// мобильном Telegram (popups/translate.tsx).
+.card {
+  border-radius: 14px;
+  background: var(--tg-secondaryBg, rgba(128, 128, 128, 0.1));
+  overflow: hidden;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px;
+}
+
+.body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.35;
+}
+
+.divider {
+  height: 1px;
+  background: var(--tg-borderColor, rgba(128, 128, 128, 0.22));
+}
+
+.targetRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+// Пилюля целевого языка (акцентный фон); поверх — прозрачный <select> для выбора.
+.pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--tg-accent) 22%, transparent);
+  color: var(--tg-accent);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pillSelect {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  appearance: none;
+  border: none;
+}
+
+.copyBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+
+  &:disabled { opacity: 0.4; cursor: default; }
+  &:not(:disabled):hover { background: var(--tg-hover, rgba(128, 128, 128, 0.12)); }
+}
+
+.loading {
+  display: flex;
+  padding: 10px 0;
+}

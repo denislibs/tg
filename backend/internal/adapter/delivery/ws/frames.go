@@ -24,9 +24,16 @@ type sendMessageData struct {
 	// Гео-точка (type 'geo') / контакт (type 'contact').
 	GeoLat        *float64 `json:"geo_lat"`
 	GeoLng        *float64 `json:"geo_lng"`
+	GeoTitle      *string  `json:"geo_title"`
+	GeoAddress    *string  `json:"geo_address"`
+	GeoLivePeriod *int     `json:"geo_live_period"`
+	GeoHeading    *int     `json:"geo_heading"`
 	ContactUserID *int64   `json:"contact_user_id"`
 	// Сообщение в тред (форум-топик / комментарии): id корневого сообщения.
 	ThreadRootID *int64 `json:"thread_root_id"`
+	// E2E (type 'encrypted'): base64 iv||ciphertext + опциональный self-destruct TTL.
+	EncBody    string `json:"enc_body"` // base64 iv||ciphertext
+	TTLSeconds *int   `json:"ttl_seconds"`
 }
 
 type readData struct {

@@ -35,6 +35,8 @@ type Interactor struct {
 	bots        BotRepo
 	botAPI      BotAPIRepo
 	botMedia    BotMediaStore
+	translator  Translator
+	secret      SecretRepo
 	botHub      *botPendingHub
 }
 
@@ -98,6 +100,12 @@ func (i *Interactor) SetBotAPI(b BotAPIRepo) { i.botAPI = b }
 // SetBotMedia подключает хранилище медиа ботов (sendPhoto/Document/Video).
 // Без него медиа-методы Bot API вернут ошибку (текст продолжает работать).
 func (i *Interactor) SetBotMedia(m BotMediaStore) { i.botMedia = m }
+
+// SetTranslator подключает провайдер перевода (optional; без него перевод → 503).
+func (i *Interactor) SetTranslator(t Translator) { i.translator = t }
+
+// SetSecret подключает хранилище handshake секретных чатов (optional; без него → 503).
+func (i *Interactor) SetSecret(s SecretRepo) { i.secret = s }
 
 // nowMillis is the server clock used for update dates.
 func nowMillis() int64 { return time.Now().UnixMilli() }

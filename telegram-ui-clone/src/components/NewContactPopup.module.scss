@@ -1,0 +1,14 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 8px 2px 4px;
+}
+
+.field {
+  width: 100%;
+}
+
+.error {
+  margin-top: -6px;
+}

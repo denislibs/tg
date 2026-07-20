@@ -1,6 +1,7 @@
 package http
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"log"
@@ -38,6 +39,180 @@ func (h *ChatHandler) CreatePrivate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"chat_id": id})
+}
+
+type secretCreateBody struct {
+	PeerID int64  `json:"peer_id"`
+	Pub    string `json:"pub"` // base64 публичного ECDH-ключа инициатора
+}
+
+func (h *ChatHandler) CreateSecretChat(w http.ResponseWriter, r *http.Request) {
+	var body secretCreateBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.PeerID == 0 || body.Pub == "" {
+		writeError(w, http.StatusBadRequest, "peer_id and pub are required")
+		return
+	}
+	pub, err := base64.StdEncoding.DecodeString(body.Pub)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid pub")
+		return
+	}
+	sc, err := h.svc.CreateSecretChat(r.Context(), h.meID(r), body.PeerID, pub)
+	if h.writeSecretErr(w, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"chat_id": sc.ChatID, "state": sc.State})
+}
+
+type secretAcceptBody struct {
+	Pub string `json:"pub"` // base64 публичного ECDH-ключа получателя
+}
+
+func (h *ChatHandler) AcceptSecretChat(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	var body secretAcceptBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Pub == "" {
+		writeError(w, http.StatusBadRequest, "pub is required")
+		return
+	}
+	pub, err := base64.StdEncoding.DecodeString(body.Pub)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid pub")
+		return
+	}
+	sc, err := h.svc.AcceptSecretChat(r.Context(), chatID, h.meID(r), pub)
+	if h.writeSecretErr(w, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"chat_id": sc.ChatID, "state": sc.State})
+}
+
+func (h *ChatHandler) RejectSecretChat(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	if err := h.svc.RejectSecretChat(r.Context(), chatID, h.meID(r)); h.writeSecretErr(w, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// writeSecretErr maps handshake errors to HTTP; returns true if it wrote a response.
+// GetSecretChat отдаёт состояние handshake участнику (state + публичные ключи),
+// чтобы UI восстановил рукопожатие после перезагрузки (accept/complete).
+func (h *ChatHandler) GetSecretChat(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	sc, err := h.svc.GetSecretChat(r.Context(), chatID, h.meID(r))
+	if h.writeSecretErr(w, err) {
+		return
+	}
+	resp := map[string]any{
+		"chat_id":      sc.ChatID,
+		"initiator_id": sc.InitiatorID,
+		"responder_id": sc.ResponderID,
+		"state":        sc.State,
+	}
+	if len(sc.InitiatorPub) > 0 {
+		resp["initiator_pub"] = base64.StdEncoding.EncodeToString(sc.InitiatorPub)
+	}
+	if len(sc.ResponderPub) > 0 {
+		resp["responder_pub"] = base64.StdEncoding.EncodeToString(sc.ResponderPub)
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (h *ChatHandler) writeSecretErr(w http.ResponseWriter, err error) bool {
+	switch {
+	case err == nil:
+		return false
+	case errors.Is(err, domain.ErrUnavailable):
+		writeError(w, http.StatusServiceUnavailable, "secret chats not available")
+	case errors.Is(err, domain.ErrInvalid):
+		writeError(w, http.StatusBadRequest, "invalid request")
+	case errors.Is(err, domain.ErrForbidden):
+		writeError(w, http.StatusForbidden, "not allowed")
+	case errors.Is(err, domain.ErrNotFound):
+		writeError(w, http.StatusNotFound, "secret chat not found")
+	default:
+		writeError(w, http.StatusInternalServerError, "handshake failed")
+	}
+	return true
+}
+
+type translateBody struct {
+	Text   string `json:"text"`
+	ToLang string `json:"to_lang"`
+}
+
+// Translate переводит произвольный текст (сообщение/фрагмент) на to_lang через
+// сконфигурированный провайдер (LibreTranslate). 503, если перевод отключён.
+func (h *ChatHandler) Translate(w http.ResponseWriter, r *http.Request) {
+	var body translateBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	res, err := h.svc.TranslateText(r.Context(), body.Text, body.ToLang)
+	switch {
+	case errors.Is(err, domain.ErrUnavailable):
+		writeError(w, http.StatusServiceUnavailable, "translation not available")
+		return
+	case errors.Is(err, domain.ErrNotFound):
+		writeError(w, http.StatusBadRequest, "text and to_lang are required")
+		return
+	case errors.Is(err, domain.ErrTooLong):
+		writeError(w, http.StatusBadRequest, "text too long")
+		return
+	case err != nil:
+		writeError(w, http.StatusBadGateway, "translation failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"text": res.Text, "source": res.Source})
+}
+
+type geoLiveBody struct {
+	Lat     float64 `json:"lat"`
+	Lng     float64 `json:"lng"`
+	Heading *int    `json:"heading"`
+	Stopped bool    `json:"stopped"`
+}
+
+// UpdateGeoLive — POST /chats/{chatID}/messages/{msgID}/geo_live: автор обновляет
+// координаты своей live-локации (watchPosition) или останавливает трансляцию.
+func (h *ChatHandler) UpdateGeoLive(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	msgID, ok := pathInt(w, r, "msgID")
+	if !ok {
+		return
+	}
+	var body geoLiveBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	msg, err := h.svc.UpdateLiveLocation(r.Context(), chatID, msgID, h.meID(r), body.Lat, body.Lng, body.Heading, body.Stopped)
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		writeError(w, http.StatusNotFound, "not a live location")
+		return
+	case errors.Is(err, domain.ErrForbidden):
+		writeError(w, http.StatusForbidden, "not allowed")
+		return
+	case err != nil:
+		writeError(w, http.StatusInternalServerError, "update failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, messageJSON(msg))
 }
 
 // Saved returns (creating on first access) the caller's "Saved Messages" chat.
@@ -90,6 +265,7 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 			"title": d.Title, "username": d.Username, "photo_url": d.PhotoURL,
 			"last_read_seq": d.LastReadSeq, "peer_read_seq": d.PeerReadSeq, "unread": d.UnreadCount, "muted": d.Muted,
 			"pinned": d.Pinned, "archived": d.Archived, "is_forum": d.IsForum,
+			"notify_preview": d.NotifyPreview, "notify_sound": d.NotifySound,
 			"auto_delete_period": d.AutoDeletePeriod,
 		}
 		if d.HasLast {
@@ -123,6 +299,10 @@ type sendBody struct {
 	// гео-точка (type 'geo') / контакт (type 'contact')
 	GeoLat        *float64 `json:"geo_lat"`
 	GeoLng        *float64 `json:"geo_lng"`
+	GeoTitle      *string  `json:"geo_title"`
+	GeoAddress    *string  `json:"geo_address"`
+	GeoLivePeriod *int     `json:"geo_live_period"`
+	GeoHeading    *int     `json:"geo_heading"`
 	ContactUserID *int64   `json:"contact_user_id"`
 }
 
@@ -145,6 +325,8 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		ReplyToID: body.ReplyToID, ClientMsgID: body.ClientMsgID, MediaID: body.MediaID, GroupedID: body.GroupedID,
 		ThreadRootID: body.ThreadRootID,
 		GeoLat:       body.GeoLat, GeoLng: body.GeoLng, ContactUserID: body.ContactUserID,
+		GeoTitle: body.GeoTitle, GeoAddress: body.GeoAddress,
+		GeoLivePeriod: body.GeoLivePeriod, GeoHeading: body.GeoHeading,
 	})
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
@@ -928,7 +1110,24 @@ func messageJSON(m domain.Message) map[string]any {
 		j["reactions"] = m.Reactions
 	}
 	if m.GeoLat != nil && m.GeoLng != nil {
-		j["geo"] = map[string]any{"lat": *m.GeoLat, "lng": *m.GeoLng}
+		g := map[string]any{"lat": *m.GeoLat, "lng": *m.GeoLng}
+		if m.GeoTitle != nil {
+			g["title"] = *m.GeoTitle
+		}
+		if m.GeoAddress != nil {
+			g["address"] = *m.GeoAddress
+		}
+		if m.GeoLivePeriod != nil {
+			g["live_period"] = *m.GeoLivePeriod
+			g["live_stopped"] = m.GeoLiveStopped
+			if m.GeoHeading != nil {
+				g["heading"] = *m.GeoHeading
+			}
+			if m.EditedAt != nil {
+				g["edited_at"] = *m.EditedAt
+			}
+		}
+		j["geo"] = g
 	}
 	if m.ContactUserID != nil {
 		c := map[string]any{"user_id": *m.ContactUserID}
@@ -939,6 +1138,11 @@ func messageJSON(m domain.Message) map[string]any {
 			c["phone"] = *m.ContactPhone
 		}
 		j["contact"] = c
+	}
+	if m.EncBody != nil {
+		j["enc_body"] = base64.StdEncoding.EncodeToString(m.EncBody)
+		j["ttl_seconds"] = m.TTLSeconds
+		j["destruct_at"] = m.DestructAt
 	}
 	if m.PollID != nil {
 		j["poll_id"] = *m.PollID

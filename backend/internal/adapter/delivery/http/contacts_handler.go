@@ -38,13 +38,15 @@ func contactJSON(c domain.Contact) map[string]any {
 
 type addContactBody struct {
 	ContactID  int64  `json:"contact_id"`
+	Phone      string `json:"phone"` // добавление по номеру (когда contact_id == 0)
 	FirstName  string `json:"first_name"`
 	LastName   string `json:"last_name"`
 	Note       string `json:"note"`
 	SharePhone bool   `json:"share_phone"`
 }
 
-// Add saves (or edits) a contact: POST /contacts.
+// Add saves (or edits) a contact: POST /contacts. Принимает либо contact_id
+// (существующий пользователь), либо phone (резолв номера, как tweb importContact).
 func (h *ContactsHandler) Add(w http.ResponseWriter, r *http.Request) {
 	u, ok := UserFromContext(r.Context())
 	if !ok {
@@ -56,22 +58,44 @@ func (h *ContactsHandler) Add(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	c, err := h.uc.Add(r.Context(), u.ID, usecasecontacts.AddInput{
-		UserID:     body.ContactID,
-		FirstName:  body.FirstName,
-		LastName:   body.LastName,
-		Note:       body.Note,
-		SharePhone: body.SharePhone,
-	})
+
+	var (
+		c   domain.Contact
+		err error
+	)
+	if body.ContactID == 0 && body.Phone != "" {
+		c, err = h.uc.AddByPhone(r.Context(), u.ID, usecasecontacts.AddByPhoneInput{
+			Phone:      body.Phone,
+			FirstName:  body.FirstName,
+			LastName:   body.LastName,
+			Note:       body.Note,
+			SharePhone: body.SharePhone,
+		})
+	} else {
+		c, err = h.uc.Add(r.Context(), u.ID, usecasecontacts.AddInput{
+			UserID:     body.ContactID,
+			FirstName:  body.FirstName,
+			LastName:   body.LastName,
+			Note:       body.Note,
+			SharePhone: body.SharePhone,
+		})
+	}
 	switch {
 	case errors.Is(err, usecasecontacts.ErrNameRequired):
 		writeError(w, http.StatusBadRequest, "first_name_required")
 		return
+	case errors.Is(err, usecasecontacts.ErrPhoneRequired):
+		writeError(w, http.StatusBadRequest, "phone_required")
+		return
 	case errors.Is(err, usecasecontacts.ErrSelfContact):
 		writeError(w, http.StatusBadRequest, "cannot_add_self")
 		return
+	case errors.Is(err, domain.ErrPrivacy):
+		writeError(w, http.StatusForbidden, "add_by_phone_restricted")
+		return
 	case errors.Is(err, domain.ErrNotFound):
-		writeError(w, http.StatusNotFound, "user not found")
+		// contact_id → пользователь не найден; phone → номер не зарегистрирован.
+		writeError(w, http.StatusNotFound, "user_not_found")
 		return
 	case err != nil:
 		writeError(w, http.StatusInternalServerError, "add contact failed")

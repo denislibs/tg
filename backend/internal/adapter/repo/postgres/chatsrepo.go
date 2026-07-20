@@ -99,6 +99,24 @@ func (r *ChatsRepo) CreatePrivate(ctx context.Context, a, b int64) (int64, error
 	return chatID, nil
 }
 
+// CreateSecret creates a secret chat (type 'secret') between two users. Unlike
+// CreatePrivate there is no dedup/FindPrivate — multiple secret chats per pair
+// are allowed — and no auto_delete_period (secret chats manage TTL per-message).
+func (r *ChatsRepo) CreateSecret(ctx context.Context, a, b int64) (int64, error) {
+	q := querier(ctx, r.pool)
+	var chatID int64
+	if err := q.QueryRow(ctx,
+		`INSERT INTO chats (type) VALUES ('secret') RETURNING id`).Scan(&chatID); err != nil {
+		return 0, err
+	}
+	if _, err := q.Exec(ctx,
+		`INSERT INTO chat_members (chat_id, user_id) VALUES ($1,$2),($1,$3)`,
+		chatID, a, b); err != nil {
+		return 0, err
+	}
+	return chatID, nil
+}
+
 // MemberIDs returns the user ids of a chat's members.
 func (r *ChatsRepo) MemberIDs(ctx context.Context, chatID int64) ([]int64, error) {
 	q := querier(ctx, r.pool)
@@ -173,6 +191,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		        m.last_read_seq, m.unread_count,
 		        (m.muted OR (m.muted_until IS NOT NULL AND m.muted_until > now())),
 		        m.pinned_at IS NOT NULL, m.archived, c.is_forum,
+		        COALESCE(m.notify_preview, true), COALESCE(m.notify_sound, 'default'),
 		        COALESCE(CASE
 		          WHEN c.type = 'private' THEN (SELECT om.last_read_seq FROM chat_members om WHERE om.chat_id = c.id AND om.user_id <> $1 LIMIT 1)
 		          WHEN c.type = 'group'   THEN (SELECT MIN(om.last_read_seq) FROM chat_members om WHERE om.chat_id = c.id AND om.user_id <> $1)
@@ -222,7 +241,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		var peerName *string
 		var peerAvatar *string
 		var peerVerified *bool
-		if err := rows.Scan(&d.ChatID, &d.Type, &d.Title, &d.Username, &d.PhotoURL, &d.LastReadSeq, &d.UnreadCount, &d.Muted, &d.Pinned, &d.Archived, &d.IsForum, &d.PeerReadSeq,
+		if err := rows.Scan(&d.ChatID, &d.Type, &d.Title, &d.Username, &d.PhotoURL, &d.LastReadSeq, &d.UnreadCount, &d.Muted, &d.Pinned, &d.Archived, &d.IsForum, &d.NotifyPreview, &d.NotifySound, &d.PeerReadSeq,
 			&seq, &text, &senderID, &at, &mediaID, &msgType, &forwarded, &senderName,
 			&peerID, &peerName, &peerAvatar, &peerVerified, &d.AutoDeletePeriod); err != nil {
 			return nil, err

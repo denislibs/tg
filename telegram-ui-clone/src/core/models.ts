@@ -21,6 +21,42 @@ export interface MessageEntity {
   user_id?: number
 }
 
+// GeoData — гео-точка сообщения. venue: title/address; live location: livePeriod
+// (сек, present → трансляция), heading, liveStopped, editedAt (время последнего
+// обновления координат — для «обновлено N мин назад»).
+export interface GeoData {
+  lat: number
+  lng: number
+  title?: string
+  address?: string
+  livePeriod?: number
+  heading?: number
+  liveStopped?: boolean
+  editedAt?: string
+}
+
+// RawGeo — гео на проводе (snake_case), как отдаёт бэк.
+export interface RawGeo {
+  lat: number
+  lng: number
+  title?: string
+  address?: string
+  live_period?: number
+  heading?: number
+  live_stopped?: boolean
+  edited_at?: string
+}
+
+// mapGeo нормализует проводной гео-объект в GeoData (camelCase).
+export function mapGeo(g: RawGeo): GeoData {
+  return {
+    lat: g.lat, lng: g.lng,
+    title: g.title, address: g.address,
+    livePeriod: g.live_period, heading: g.heading,
+    liveStopped: g.live_stopped, editedAt: g.edited_at,
+  }
+}
+
 export interface RawDialog {
   auto_delete_period?: number
   chat_id: number
@@ -32,6 +68,8 @@ export interface RawDialog {
   pinned?: boolean
   archived?: boolean
   is_forum?: boolean
+  notify_preview?: boolean
+  notify_sound?: string
   title?: string
   username?: string
   photo_url?: string
@@ -52,6 +90,9 @@ export interface Dialog {
   archived: boolean
   /** в группе включены темы — клиент рендерит список топиков */
   isForum?: boolean
+  /** per-chat уведомления: показывать превью текста / звук ('default'|'none') */
+  notifyPreview?: boolean
+  notifySound?: string
   // период автоудаления сообщений чата в секундах (0/undefined — выключено)
   autoDeletePeriod?: number
   title?: string
@@ -95,11 +136,14 @@ export interface RawMessage {
   views?: number
   media_unread?: boolean
   reactions?: { emoji: string; count: number; mine?: boolean }[] | null
-  geo?: { lat: number; lng: number } | null
+  geo?: RawGeo | null
   contact?: { user_id: number; name?: string; phone?: string } | null
   gift_id?: number | null
   gift?: RawGiftInfo | null
   reply_markup?: { inline?: { text: string; callback?: string; url?: string; webapp?: string }[][]; keyboard?: string[][]; resize?: boolean; one_time?: boolean } | null
+  enc_body?: string | null
+  ttl_seconds?: number | null
+  destruct_at?: string | null
 }
 
 // Агрегат одной реакции на сообщении (emoji + счётчик + «моя»), tweb ReactionCount.
@@ -107,6 +151,21 @@ export interface ReactionCount {
   emoji: string
   count: number
   mine: boolean
+}
+
+// E2E-медиа секретного чата. Файл шифруется своим AES-ключом; ciphertext лежит на
+// сервере как непрозрачный blob (media_id), а keyB64/ivB64 приезжают ВНУТРИ
+// зашифрованного payload сообщения. Заполняется только клиентской расшифровкой —
+// сервер никогда не отдаёт эти поля (см. RawMessage: их там нет).
+export interface SecretMedia {
+  mediaId: number
+  keyB64: string
+  ivB64: string
+  name: string
+  mime: string
+  size: number
+  /** вид медиа приложения ('photo'|'video'|'document') — как у обычной отправки */
+  mediaType: string
 }
 
 export interface Message {
@@ -162,14 +221,24 @@ export interface Message {
   poll?: Poll
   /** агрегаты реакций под сообщением (undefined/пусто — реакций нет) */
   reactions?: ReactionCount[]
-  /** гео-точка сообщения типа 'geo' */
-  geo?: { lat: number; lng: number }
+  /** гео-точка сообщения типа 'geo' (+ venue/live location) */
+  geo?: GeoData
   /** контакт сообщения типа 'contact' (снимок имени/телефона + аккаунт) */
   contact?: { userId: number; name: string; phone: string }
   /** подарок сообщения типа 'gift' (представление для зрителя) */
   gift?: GiftInfo
   /** клавиатура сообщения (inline/reply) — у сообщений бота */
   replyMarkup?: ReplyMarkup
+  /** E2E-шифртекст (base64 iv||ciphertext) сообщения типа 'encrypted'; расшифровка на клиенте */
+  encBody?: string | null
+  /** self-destruct: срок жизни после прочтения (сек) и абсолютный дедлайн (ISO) */
+  ttlSeconds?: number | null
+  destructAt?: string | null
+  /** true — сообщение из секретного чата (после дешифровки text/entities заполнены локально) */
+  secret?: boolean
+  /** E2E-медиа секретного чата (расшифровывается на просмотре из mediaId+key+iv).
+   * Инжектится клиентской расшифровкой (worker/bridge/history) — НЕ проводное поле. */
+  secretMedia?: SecretMedia
 }
 
 // Опрос (backend PollInfo): вопрос + варианты + агрегаты для зрителя.
@@ -275,6 +344,8 @@ export function mapDialog(r: RawDialog): Dialog {
     pinned: !!r.pinned,
     archived: !!r.archived,
     isForum: r.is_forum || undefined,
+    notifyPreview: r.notify_preview ?? true,
+    notifySound: r.notify_sound ?? 'default',
     autoDeletePeriod: r.auto_delete_period ?? 0,
     title: r.title,
     username: r.username,
@@ -334,11 +405,14 @@ export function mapMessage(r: RawMessage): Message {
     reactions: r.reactions?.length
       ? r.reactions.map((x) => ({ emoji: x.emoji, count: x.count, mine: !!x.mine }))
       : undefined,
-    geo: r.geo ? { lat: r.geo.lat, lng: r.geo.lng } : undefined,
+    geo: r.geo ? mapGeo(r.geo) : undefined,
     contact: r.contact
       ? { userId: r.contact.user_id, name: r.contact.name ?? '', phone: r.contact.phone ?? '' }
       : undefined,
     gift: r.gift ? mapGiftInfo(r.gift) : undefined,
     replyMarkup: r.reply_markup ? mapReplyMarkup(r.reply_markup) : undefined,
+    encBody: r.enc_body ?? undefined,
+    ttlSeconds: r.ttl_seconds ?? undefined,
+    destructAt: r.destruct_at ?? undefined,
   }
 }

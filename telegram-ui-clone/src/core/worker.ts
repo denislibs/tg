@@ -27,6 +27,7 @@ import { newSessionsManager } from './managers/sessionsManager'
 import { newCallsManager } from './managers/callsManager'
 import { newConnectionManager } from './realtime/connectionManager'
 import { newSyncEngine } from './realtime/syncEngine'
+import { createSecretManager } from './managers/secretManager'
 import { RT } from './realtime/events'
 import { idbGet, idbSet } from './store/idbKv'
 
@@ -36,7 +37,9 @@ const rest = new RestClient('/api', () => tokens.get())
 const auth = newAuthManager({ rest, store: tokens })
 const profile = newProfileManager({ rest })
 const chats = newChatsManager({ rest })
-const messages = newMessagesManager({ rest })
+// decryptSecret дергает secret лениво — стрелка вызывается только на fetch истории
+// (после инициализации модуля), поэтому forward-ссылка на объявленный ниже secret безопасна.
+const messages = newMessagesManager({ rest, decryptSecret: (chatId, encBody) => secret.decryptMessage(chatId, encBody) })
 // broadcast объявлен ниже — замыкание дергает его лениво (к моменту первого
 // аплоада порты уже подняты)
 const media = newMediaManager({
@@ -99,7 +102,17 @@ const conn = newConnectionManager({
     else if (type === 'message_error') broadcast(RT.messageError, payload)
     // Кэш истории живёт в этом воркере — live-кадры отражаем в нём ДО broadcast,
     // иначе переоткрытие чата/треда отдаёт из кэша срез без свежих сообщений.
-    else if (type === 'new_message') { messages.cacheLive(payload as never); broadcast(RT.newMessage, payload) }
+    else if (type === 'new_message') {
+      const p = payload as { chat_id?: number; enc_body?: string; text?: string; entities?: unknown; secret_media?: unknown }
+      if (p.enc_body && p.chat_id) {
+        void secret.decryptMessage(p.chat_id, p.enc_body).then((dec) => {
+          if (dec) { p.text = dec.text; p.entities = dec.entities; if (dec.media) p.secret_media = dec.media }
+          messages.cacheLive(payload as never); broadcast(RT.newMessage, payload)
+        })
+      } else {
+        messages.cacheLive(payload as never); broadcast(RT.newMessage, payload)
+      }
+    }
     else if (type === 'edit_message') { messages.cacheEdit(payload as never); broadcast(RT.editMessage, payload) }
     else if (type === 'delete_message') { messages.cacheDelete(payload as never); broadcast(RT.deleteMessage, payload) }
     else if (type === 'pin_message') broadcast(RT.pinMessage, payload)
@@ -115,14 +128,32 @@ const conn = newConnectionManager({
     else if (type === 'poll_update') broadcast(RT.pollUpdate, payload)
     else if (type === 'balance_update') broadcast(RT.balanceUpdate, payload)
     else if (type === 'bot_callback_answer') broadcast(RT.botCallbackAnswer, payload)
+    else if (type === 'geo_live_update') { messages.cacheGeoLive(payload as never); broadcast(RT.geoLiveUpdate, payload) }
+    else if (type === 'secret_chat_request') {
+      const p = payload as { chat_id?: number; initiator_pub?: string }
+      if (p.chat_id && p.initiator_pub) secret.stashRequest(p.chat_id, p.initiator_pub)
+      broadcast(RT.secretRequest, payload)
+    }
+    else if (type === 'secret_chat_accept') {
+      const p = payload as { chat_id?: number; responder_pub?: string }
+      if (p.chat_id && p.responder_pub) void secret.complete(p.chat_id, p.responder_pub)
+    }
+    else if (type === 'secret_chat_reject') broadcast(RT.secretReject, payload)
     else if (type.startsWith('group_call_')) broadcast(RT.groupCall, { t: type, d: payload })
     else if (type.startsWith('call_')) broadcast(RT.call, { t: type, d: payload })
   },
 })
 
+// Секретные чаты живут в воркере: WebCrypto + keyStore + rest + conn + broadcast.
+// upload проксирует в media-менеджер: ciphertext-блоб грузится как обычное медиа.
+const secret = createSecretManager({
+  rest, conn, broadcast,
+  upload: (bytes, mime, size, fileName) => media.upload({ bytes, mime, size, fileName }),
+})
+
 const realtime = {
   async start() { await tokens.load(); conn.start(); return { state: conn.state() } },
-  async sendMessage(args: { chatId: number; text: string; entities?: import('./models').MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; mediaId?: number | null; type?: string; groupedId?: string }) { conn.sendMessage(args); return { ok: true } },
+  async sendMessage(args: { chatId: number; text: string; entities?: import('./models').MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; mediaId?: number | null; type?: string; groupedId?: string; encBody?: string; ttlSeconds?: number | null }) { conn.sendMessage(args); return { ok: true } },
   async markRead(args: { chatId: number; upToSeq: number }) { conn.markRead(args.chatId, args.upToSeq); return { ok: true } },
   async markMediaRead(args: { chatId: number; msgId: number }) { conn.markMediaRead(args.chatId, args.msgId); return { ok: true } },
   async sendTyping(args: { chatId: number; action?: 'typing' | 'voice' | 'video' }) { conn.sendTyping(args.chatId, args.action ?? 'typing'); return { ok: true } },
@@ -157,6 +188,7 @@ function bind(ep: Endpoint) {
     calls: calls as unknown as Record<string, (...a: unknown[]) => unknown>,
     stars: stars as unknown as Record<string, (...a: unknown[]) => unknown>,
     bots: bots as unknown as Record<string, (...a: unknown[]) => unknown>,
+    secret: secret as unknown as Record<string, (...a: unknown[]) => unknown>,
   })
 }
 

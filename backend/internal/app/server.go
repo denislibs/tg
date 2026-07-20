@@ -17,6 +17,7 @@ import (
 	queueredis "github.com/messenger-denis/backend/internal/adapter/queue/redis"
 	rtredis "github.com/messenger-denis/backend/internal/adapter/realtime/redis"
 	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
+	"github.com/messenger-denis/backend/internal/adapter/translate/libretranslate"
 	"github.com/messenger-denis/backend/internal/config"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
@@ -79,6 +80,9 @@ func registerServer(p serverParams) {
 	// Форум-топики: темы групп поверх тредов (thread_root_id).
 	p.ChatUC.SetTopics(pgadapter.NewTopicsRepo(p.Pool))
 
+	// Секретные чаты (E2E): handshake хранит только публичные ключи + статус.
+	p.ChatUC.SetSecret(pgadapter.NewSecretRepo(p.Pool))
+
 	// Звёзды и подарки: баланс + каталог + выданные подарки, live-баланс
 	// фреймом balance_update, подарок — сообщением типа 'gift'.
 	p.ChatUC.SetStars(pgadapter.NewStarsRepo(p.Pool))
@@ -89,6 +93,14 @@ func registerServer(p serverParams) {
 	// Bot API: боты-сервисы с токенами (getUpdates/webhook, sendMessage, …) и
 	// @BotFather (создание/управление ботами, mini-app).
 	p.ChatUC.SetBotAPI(pgadapter.NewBotAPIRepo(p.Pool))
+
+	// Перевод сообщений: LibreTranslate-совместимый сервис (опционально).
+	if p.Cfg.TranslateURL != "" {
+		p.ChatUC.SetTranslator(libretranslate.New(p.Cfg.TranslateURL, p.Cfg.TranslateAPIKey))
+		log.Printf("message translation enabled (%s)", p.Cfg.TranslateURL)
+	} else {
+		log.Printf("message translation disabled (set TRANSLATE_URL to enable)")
+	}
 
 	var wsHandler http.Handler
 	var presenceMgr *usecasepresence.Manager

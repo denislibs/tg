@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"encoding/base64"
 	"encoding/json"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -37,12 +38,48 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 		p["reply_markup"] = m.ReplyMarkup
 	}
 	if m.GeoLat != nil && m.GeoLng != nil {
-		p["geo"] = map[string]any{"lat": *m.GeoLat, "lng": *m.GeoLng}
+		p["geo"] = geoJSON(m)
 	}
 	if m.ContactUserID != nil {
 		p["contact"] = contactJSON(m)
 	}
+	if m.EncBody != nil {
+		p["enc_body"] = base64.StdEncoding.EncodeToString(m.EncBody)
+		p["ttl_seconds"] = m.TTLSeconds
+		p["destruct_at"] = m.DestructAt
+	}
 	return p
+}
+
+// geoJSON — представление гео-сообщения: точка + опционально venue (title/address)
+// и live location (live_period/heading/stopped + edited_at = время обновления).
+func geoJSON(m domain.Message) map[string]any {
+	g := map[string]any{"lat": *m.GeoLat, "lng": *m.GeoLng}
+	if m.GeoTitle != nil {
+		g["title"] = *m.GeoTitle
+	}
+	if m.GeoAddress != nil {
+		g["address"] = *m.GeoAddress
+	}
+	if m.GeoLivePeriod != nil {
+		g["live_period"] = *m.GeoLivePeriod
+		g["live_stopped"] = m.GeoLiveStopped
+		if m.GeoHeading != nil {
+			g["heading"] = *m.GeoHeading
+		}
+		if m.EditedAt != nil {
+			g["edited_at"] = *m.EditedAt
+		}
+	}
+	return g
+}
+
+// geoLiveUpdatePayload — тело фрейма geo_live_update (обновление координат
+// трансляции): клиент правит гео открытого бабла без перезагрузки истории.
+func geoLiveUpdatePayload(m domain.Message) map[string]any {
+	return map[string]any{
+		"chat_id": m.ChatID, "msg_id": m.ID, "seq": m.Seq, "geo": geoJSON(m),
+	}
 }
 
 // contactJSON — представление контакта сообщения (снимок имени/телефона).

@@ -18,6 +18,7 @@ type TxManager interface {
 type ChatRepo interface {
 	FindPrivate(ctx context.Context, a, b int64) (int64, error) // domain.ErrNotFound if none
 	CreatePrivate(ctx context.Context, a, b int64) (int64, error)
+	CreateSecret(ctx context.Context, a, b int64) (int64, error)
 	FindSaved(ctx context.Context, userID int64) (int64, error) // domain.ErrNotFound if none
 	CreateSaved(ctx context.Context, userID int64) (int64, error)
 	MemberIDs(ctx context.Context, chatID int64) ([]int64, error)
@@ -47,6 +48,8 @@ type GroupRepo interface {
 	// SetMuted: muted — «навсегда»; until — временный mute (эффективный mute
 	// вычисляется как muted OR muted_until > now()).
 	SetMuted(ctx context.Context, chatID, userID int64, muted bool, until *time.Time) error
+	// SetNotify обновляет per-chat уведомления (превью/звук); nil-поля не меняются.
+	SetNotify(ctx context.Context, chatID, userID int64, preview *bool, sound *string) error
 	// SetPinned/SetArchived — пер-юзерные флаги диалога (закрепление/архив);
 	// CountPinned — пины основного списка (для лимита, архив не считается).
 	SetPinned(ctx context.Context, chatID, userID int64, pinned bool) error
@@ -116,7 +119,13 @@ type MessageRepo interface {
 	SavedDialogs(ctx context.Context, chatID, userID int64) ([]domain.SavedDialog, error)
 	UpdateText(ctx context.Context, msgID int64, text string, entities []domain.MessageEntity) (domain.Message, error)
 	UpdateReplyMarkup(ctx context.Context, msgID int64, markup *domain.ReplyMarkup) (domain.Message, error)
+	// UpdateGeoLive обновляет координаты live-локации (+heading/stopped), бампит edited_at.
+	UpdateGeoLive(ctx context.Context, msgID int64, lat, lng float64, heading *int, stopped bool) (domain.Message, error)
 	SoftDelete(ctx context.Context, msgID int64) error
+	// SetDestructOnRead ставит destruct_at=now()+ttl для секретных сообщений,
+	// полученных читателем (sender_id<>readerID) до readSeq; no-op для чатов
+	// без ttl. Идемпотентно.
+	SetDestructOnRead(ctx context.Context, chatID, readerID, readSeq int64) error
 	HideForUser(ctx context.Context, userID, msgID int64) error
 	ListThread(ctx context.Context, chatID, threadRootID int64, offset, limit int) ([]domain.Message, error)
 	CountThread(ctx context.Context, chatID, threadRootID int64) (int, error)
@@ -189,6 +198,14 @@ type EventPublisher interface {
 	PublishToUser(ctx context.Context, userID int64, frame []byte) error
 }
 
+// SecretRepo хранит handshake секретных чатов (только публичные ключи + статус).
+type SecretRepo interface {
+	Create(ctx context.Context, sc domain.SecretChat) error
+	Accept(ctx context.Context, chatID int64, responderPub []byte) error
+	SetState(ctx context.Context, chatID int64, state string) error
+	Get(ctx context.Context, chatID int64) (domain.SecretChat, error)
+}
+
 // DraftRepo хранит облачные черновики (по одному на пару чат+пользователь).
 type DraftRepo interface {
 	Upsert(ctx context.Context, userID int64, d domain.Draft) (domain.Draft, error)
@@ -228,12 +245,22 @@ type SendInput struct {
 	// Гео-точка (type 'geo'): обе координаты обязательны, в валидном диапазоне.
 	GeoLat *float64
 	GeoLng *float64
+	// Расширение гео: venue (title/address) и live location (live_period сек,
+	// heading 0..359). Пусто → обычная геометка.
+	GeoTitle      *string
+	GeoAddress    *string
+	GeoLivePeriod *int
+	GeoHeading    *int
 	// Контакт (type 'contact'): имя/телефон гидрируются сервером по аккаунту.
 	ContactUserID *int64
 	// Подарок (type 'gift'): ссылка на выданный подарок — только из SendGift.
 	GiftID *int64
 	// Клавиатура сообщения (inline/reply) — у ответов бота.
 	ReplyMarkup *domain.ReplyMarkup
+	// E2E-шифртекст (type 'encrypted'): iv||ciphertext. Text/Entities пустые.
+	EncBody []byte
+	// Self-destruct TTL (сек) для секретного сообщения; nil — без самоуничтожения.
+	TTLSeconds *int
 }
 
 // GroupCallStore хранит участников активных групповых звонков (эфемерно, Redis).
@@ -343,6 +370,13 @@ type BotAPIRepo interface {
 	WizardClear(ctx context.Context, userID int64) error
 	// UserBrief — username/имя пользователя для поля from в апдейтах.
 	UserBrief(ctx context.Context, id int64) (username, firstName string, err error)
+}
+
+// Translator переводит текст на целевой язык (source определяется провайдером
+// автоматически). Реализуется адаптером к LibreTranslate-совместимому сервису.
+// Опционален — без него перевод сообщений отключён.
+type Translator interface {
+	Translate(ctx context.Context, text, toLang string) (translated, detectedSource string, err error)
 }
 
 // BotMediaStore сохраняет медиа, загруженное ботом (sendPhoto/Document/Video):

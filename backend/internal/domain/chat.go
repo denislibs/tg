@@ -4,7 +4,7 @@ import "time"
 
 type Chat struct {
 	ID      int64
-	Type    string // private | group | channel | saved
+	Type    string // private | group | channel | saved | secret
 	LastSeq int64
 }
 
@@ -36,20 +36,27 @@ type Dialog struct {
 	// last_read_seq for a private chat, the MIN across other members for a group
 	// (read-by-all), 0 for channels. Used for outgoing sent/read ticks
 	// (message seq <= PeerReadSeq ⇒ delivered+read ✓✓).
-	PeerReadSeq  int64
-	UnreadCount  int
-	Muted        bool
+	PeerReadSeq int64
+	UnreadCount int
+	Muted       bool
 	// Pinned — диалог закреплён вверху списка; Archived — убран в «Архив»
 	// (пер-юзерные флаги членства, tweb pinned dialogs + folder_id=1).
 	Pinned   bool
 	Archived bool
 	// IsForum — в группе включены темы (клиент рендерит список топиков).
 	IsForum bool
-	HasLast bool
-	LastSeq      int64
-	LastText     string
-	LastSenderID int64
-	LastAt       time.Time
+	// NotifyPreview — показывать текст сообщения в уведомлении для этого чата
+	// (per-chat override; по умолчанию true). NotifySound — 'default'|'none'
+	// (per-chat: 'none' — беззвучное уведомление без полного mute). Резолвятся из
+	// chat_members.notify_preview/notify_sound (NULL → дефолт), как tweb
+	// getPeerLocalSettings (per-peer поле поверх типа).
+	NotifyPreview bool
+	NotifySound   string
+	HasLast       bool
+	LastSeq       int64
+	LastText      string
+	LastSenderID  int64
+	LastAt        time.Time
 	// LastMediaID/LastType describe the last message's media for the sidebar
 	// preview thumbnail + type label (0/"" when it's a plain text message).
 	LastMediaID int64

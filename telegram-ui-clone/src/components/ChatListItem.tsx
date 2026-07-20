@@ -144,7 +144,11 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
 
         <div className={s.body}>
           <div className={s.titleRow}>
-            <Text noWrap weight={500} size={16} color="var(--cl-title)" style={{ flex: 1 }}>
+            {/* секретный чат: замок + зелёное имя (tweb .is-secret) */}
+            {chat.type === 'secret' && (
+              <TgIcon name="lock" size={16} color="var(--tg-green)" style={{ flexShrink: 0, marginRight: 3 }} />
+            )}
+            <Text noWrap weight={500} size={16} color={chat.type === 'secret' ? 'var(--tg-green)' : 'var(--cl-title)'} style={{ flex: 1 }}>
               {chat.name}
             </Text>
             {chat.verified && (

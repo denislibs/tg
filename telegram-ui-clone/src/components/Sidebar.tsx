@@ -54,6 +54,8 @@ interface Props {
   fullWidth?: boolean
   /** префилл поиска (deep-open с публичной страницы /?domain=username) */
   initialQuery?: string
+  /** открыть только что созданный чат (после добавления контакта по номеру) */
+  onChatCreated?: (chatId: number) => void
 }
 
 export default function Sidebar({
@@ -69,6 +71,7 @@ export default function Sidebar({
   onOpenPeer,
   fullWidth = false,
   initialQuery,
+  onChatCreated,
 }: Props) {
   const managers = useManagers()
   const t = useT()
@@ -453,6 +456,10 @@ export default function Sidebar({
               onSelect(id)
             }}
             onBack={() => setShowContacts(false)}
+            onOpenChat={(chatId) => {
+              setShowContacts(false)
+              onChatCreated?.(chatId)
+            }}
           />
         )}
       </AnimatePresence>

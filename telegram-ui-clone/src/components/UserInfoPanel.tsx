@@ -22,6 +22,7 @@ import { useT } from '../i18n'
 import { useGroupInfo, RIGHTS, roleLabel, type RealMember } from '../core/hooks/useGroupInfo'
 import { useMessagesStore } from '../stores/messagesStore'
 import { useChatsStore, loadChats } from '../stores/chatsStore'
+import { useSecretChatStore } from '../stores/secretChatStore'
 import { useAudioStore, type AudioTrack } from '../stores/audioStore'
 import { markMediaPlayed } from '../core/mediaRead'
 import PlayPauseGlyph from './PlayPauseGlyph'
@@ -40,6 +41,7 @@ import type { GiftInfo } from '../core/managers/starsManager'
 import StarIcon from './stars/StarIcon'
 import SendGiftPopup from './stars/SendGiftPopup'
 import GiftInfoPopup from './stars/GiftInfoPopup'
+import KeyVerificationPopup from './secret/KeyVerificationPopup'
 
 // склонение «N единиц» (счётчики подзаголовков)
 function plural(n: number, one: string, few: string, many: string): string {
@@ -76,7 +78,7 @@ function countLabel(tab: string, n: number, isChannel: boolean): string {
 // высота шапки панели — sticky-отступ табов и порог header-filled (tweb 3.5rem)
 const HEADER_H = 56
 
-export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers }: { chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void; canAddMembers?: boolean }) {
+export default function UserInfoPanel({ chat, onClose, onOpenPeer, onChatCreated, canAddMembers }: { chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void; onChatCreated?: (chatId: number) => void; canAddMembers?: boolean }) {
   const t = useT()
   const narrow = useMediaQuery('(max-width:900px)')
   const managers = useManagers()
@@ -119,6 +121,24 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
     const next = !muted
     setDialogMuted(numericChatId, next) // оптимистично
     void managers.groups.setMute(numericChatId, next).catch(() => setDialogMuted(numericChatId, !next))
+  }
+
+  // per-chat уведомления (tweb PeerNotifySettings): превью текста + звук.
+  const setDialogNotify = useChatsStore((st) => st.setDialogNotify)
+  const notifyDialog = useChatsStore((st) => st.dialogs.find((d) => d.chatId === numericChatId))
+  const notifyPreview = notifyDialog?.notifyPreview ?? true
+  const notifySoundOn = (notifyDialog?.notifySound ?? 'default') !== 'none'
+  const toggleNotifyPreview = () => {
+    const next = !notifyPreview
+    setDialogNotify(numericChatId, { notifyPreview: next })
+    void managers.groups.setNotify(numericChatId, { preview: next })
+      .catch(() => setDialogNotify(numericChatId, { notifyPreview: !next }))
+  }
+  const toggleNotifySound = () => {
+    const next = notifySoundOn ? 'none' : 'default'
+    setDialogNotify(numericChatId, { notifySound: next })
+    void managers.groups.setNotify(numericChatId, { sound: next })
+      .catch(() => setDialogNotify(numericChatId, { notifySound: notifySoundOn ? 'default' : 'none' }))
   }
 
   const {
@@ -213,6 +233,25 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
   // Подарки в профиле (tweb Gifts tab) — только для пользователя (private).
   const meId = useChatsStore((st) => st.meId)
   const isUser = !isSaved && !isGroup && !isChannel && peerId != null
+
+  // Начать секретный чат (tweb btnStartSecretChat): E2E-handshake через
+  // managers.secret.start, затем открыть созданный чат в статусе «ожидание».
+  const [startingSecret, setStartingSecret] = useState(false)
+  const canStartSecret = isUser && peerId !== meId && chat.type === 'private'
+  const startSecretChat = async () => {
+    if (startingSecret || peerId == null) return
+    setStartingSecret(true)
+    try {
+      const { chatId } = await managers.secret.start(peerId)
+      useSecretChatStore.getState().setStatus(chatId, 'awaiting')
+      onChatCreated?.(chatId)
+    } catch {
+      setStartingSecret(false)
+    }
+  }
+  // «Ключ шифрования» (tweb chatEncryptionKey) — только для секретного чата.
+  const isSecret = chat.type === 'secret'
+  const [keyPopupOpen, setKeyPopupOpen] = useState<boolean | null>(null)
   const [giftPopupOpen, setGiftPopupOpen] = useState(false)
   const [gifts, setGifts] = useState<GiftInfo[]>([])
   const [selectedGift, setSelectedGift] = useState<GiftInfo | null>(null)
@@ -458,6 +497,24 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
               checked={!muted}
               onClick={toggleNotifications}
             />
+            {!muted && (
+              <>
+                <Row
+                  icon={<TgIcon name="message" size={24} />}
+                  label="Message Preview"
+                  toggle
+                  checked={notifyPreview}
+                  onClick={toggleNotifyPreview}
+                />
+                <Row
+                  icon={<TgIcon name={notifySoundOn ? 'volume_up' : 'nosound'} size={24} />}
+                  label="Notification Sound"
+                  toggle
+                  checked={notifySoundOn}
+                  onClick={toggleNotifySound}
+                />
+              </>
+            )}
           </Section>
           )}
 
@@ -469,6 +526,29 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
                 label="Send a Gift"
                 accent
                 onClick={() => setGiftPopupOpen(true)}
+              />
+            </Section>
+          )}
+
+          {/* Начать секретный чат (tweb btnStartSecretChat) — E2E-чат с собеседником */}
+          {canStartSecret && (
+            <Section>
+              <Row
+                icon={<TgIcon name="lock" size={24} />}
+                label="Start Secret Chat"
+                accent
+                onClick={() => { void startSecretChat() }}
+              />
+            </Section>
+          )}
+
+          {/* Ключ шифрования (tweb chatEncryptionKey) — emoji-fingerprint секретного чата */}
+          {isSecret && (
+            <Section>
+              <Row
+                icon={<TgIcon name="key" size={24} />}
+                label="Encryption Key"
+                onClick={() => setKeyPopupOpen(true)}
               />
             </Section>
           )}
@@ -613,6 +693,16 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
               isOwner={peerId === meId}
               onClose={() => setSelectedGift(null)}
               onChanged={loadGifts}
+            />
+          )}
+
+          {/* Ключ шифрования секретного чата (tweb chatEncryptionKey) */}
+          {isSecret && keyPopupOpen != null && (
+            <KeyVerificationPopup
+              open={keyPopupOpen}
+              onClose={() => setKeyPopupOpen(false)}
+              onExitComplete={() => setKeyPopupOpen(null)}
+              chatId={numericChatId}
             />
           )}
 
