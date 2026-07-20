@@ -13,6 +13,7 @@ import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemov
 import { playMessageSent } from '../core/audio/sounds'
 import { notifyIncomingMessage } from './uiNotifications'
 import { useSettingsStore } from '../settings'
+import { useSecretChatStore } from '../stores/secretChatStore'
 import * as callEngine from '../core/calls/callEngine'
 import { handleGroupCallFrame, type GroupCallFrame } from '../core/calls/groupCallEngine'
 
@@ -161,6 +162,22 @@ export function startRealtime(): void {
   smp.on(RT.botCallbackAnswer, (raw) => {
     const a = raw as BotCallbackAnswerEvt
     if (a.text) uiEvents.emit('ui:toast', a.text)
+  })
+  // Секретный чат: handshake-события из воркера → secretChatStore.
+  smp.on(RT.secretRequest, (raw) => {
+    const r = raw as { chat_id: number; initiator_id: number; responder_id: number }
+    const meId = useChatsStore.getState().meId
+    // Только получатель видит входящий запрос; инициатор остаётся 'awaiting'.
+    if (meId === r.responder_id) useSecretChatStore.getState().setStatus(r.chat_id, 'requested')
+  })
+  smp.on(RT.secretAccept, (raw) => {
+    const r = raw as { chat_id: number; state?: string; fingerprint?: string[] }
+    useSecretChatStore.getState().setStatus(r.chat_id, 'established')
+    if (r.fingerprint) useSecretChatStore.getState().setFingerprint(r.chat_id, r.fingerprint)
+  })
+  smp.on(RT.secretReject, (raw) => {
+    const r = raw as { chat_id: number }
+    useSecretChatStore.getState().setStatus(r.chat_id, 'rejected')
   })
   smp.on('rt:resync', () => { void loadChats(managers) })
   // Прогресс отгрузки медиа (кольцо на оптимистичном бабле)

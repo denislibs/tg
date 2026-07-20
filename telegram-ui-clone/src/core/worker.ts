@@ -100,7 +100,17 @@ const conn = newConnectionManager({
     else if (type === 'message_error') broadcast(RT.messageError, payload)
     // Кэш истории живёт в этом воркере — live-кадры отражаем в нём ДО broadcast,
     // иначе переоткрытие чата/треда отдаёт из кэша срез без свежих сообщений.
-    else if (type === 'new_message') { messages.cacheLive(payload as never); broadcast(RT.newMessage, payload) }
+    else if (type === 'new_message') {
+      const p = payload as { chat_id?: number; enc_body?: string; text?: string; entities?: unknown }
+      if (p.enc_body && p.chat_id) {
+        void secret.decryptMessage(p.chat_id, p.enc_body).then((dec) => {
+          if (dec) { p.text = dec.text; p.entities = dec.entities }
+          messages.cacheLive(payload as never); broadcast(RT.newMessage, payload)
+        })
+      } else {
+        messages.cacheLive(payload as never); broadcast(RT.newMessage, payload)
+      }
+    }
     else if (type === 'edit_message') { messages.cacheEdit(payload as never); broadcast(RT.editMessage, payload) }
     else if (type === 'delete_message') { messages.cacheDelete(payload as never); broadcast(RT.deleteMessage, payload) }
     else if (type === 'pin_message') broadcast(RT.pinMessage, payload)
@@ -117,8 +127,15 @@ const conn = newConnectionManager({
     else if (type === 'balance_update') broadcast(RT.balanceUpdate, payload)
     else if (type === 'bot_callback_answer') broadcast(RT.botCallbackAnswer, payload)
     else if (type === 'geo_live_update') { messages.cacheGeoLive(payload as never); broadcast(RT.geoLiveUpdate, payload) }
-    else if (type === 'secret_chat_request') broadcast(RT.secretRequest, payload)
-    else if (type === 'secret_chat_accept') broadcast(RT.secretAccept, payload)
+    else if (type === 'secret_chat_request') {
+      const p = payload as { chat_id?: number; initiator_pub?: string }
+      if (p.chat_id && p.initiator_pub) secret.stashRequest(p.chat_id, p.initiator_pub)
+      broadcast(RT.secretRequest, payload)
+    }
+    else if (type === 'secret_chat_accept') {
+      const p = payload as { chat_id?: number; responder_pub?: string }
+      if (p.chat_id && p.responder_pub) void secret.complete(p.chat_id, p.responder_pub)
+    }
     else if (type === 'secret_chat_reject') broadcast(RT.secretReject, payload)
     else if (type.startsWith('group_call_')) broadcast(RT.groupCall, { t: type, d: payload })
     else if (type.startsWith('call_')) broadcast(RT.call, { t: type, d: payload })
