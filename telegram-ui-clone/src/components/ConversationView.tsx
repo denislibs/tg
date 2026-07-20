@@ -35,6 +35,7 @@ import { useChannelExtras } from '../core/hooks/useChannelExtras'
 import { useFeedReveal } from '../core/hooks/useFeedReveal'
 import Composer from './Composer'
 import ChatFeed from './messages/ChatFeed'
+import EmptyChatGreeting from './messages/EmptyChatGreeting'
 import { useChatAutoDownload } from '../core/hooks/useChatAutoDownload'
 import { useComposerDraft } from '../core/hooks/useComposerDraft'
 import { useMentionPeers } from '../core/hooks/useMentionPeers'
@@ -55,6 +56,7 @@ import SelectionBar from './conversation/SelectionBar'
 import MessageContextMenu from './conversation/MessageContextMenu'
 import { useChatsStore } from '../stores/chatsStore'
 import { type MessageEntity } from '../core/models'
+import type { InlineResult } from '../core/managers/botsManager'
 import { useSearchStore } from '../stores/searchStore'
 import { ContactPicker, DeleteMessageDialog, ForwardPicker, ViewersPopup } from './messages/ChatDialogs'
 import SendMediaPopup from './messages/SendMediaPopup'
@@ -498,6 +500,8 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   }, [msgs])
   // Бот без истории → кнопка «Начать» вместо композера (шлёт /start).
   const botStart = isBotChat && isRealChat && msgs.length === 0
+  // Пустой приватный чат (не бот, не группа) → плейсхолдер-приветствие (tweb).
+  const emptyGreeting = isRealChat && msgs.length === 0 && chat.type === 'private' && !isBotChat
 
   // Floating "scroll to bottom" button (tweb .bubbles-go-down), shown above the composer.
   // onScrollDownClick (reload-newest + pin, or smooth scroll) lives in useChatScroll.
@@ -519,6 +523,24 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const slowmodeExempt = !isGroup || card?.myRole === 'creator' || card?.myRole === 'admin'
   const { left: slowmodeLeft, markSent: slowmodeMarkSent } = useSlowmode(card?.slowmodeSeconds ?? 0, slowmodeExempt)
   const onComposerSend = useEvent((text: string, entities?: MessageEntity[]) => { send(text, entities); slowmodeMarkSent() })
+  // Inline-режим: резолв «@username» → id бота (кэш), затем выдача бэком (он сам
+  // проверит is_bot). Выбор результата шлёт его текст обычным сообщением.
+  const inlineBotCache = useRef<Map<string, number | null>>(new Map())
+  const onComposerInlineQuery = useEvent(async (username: string, query: string): Promise<InlineResult[] | null> => {
+    const uname = username.toLowerCase()
+    let botId = inlineBotCache.current.get(uname)
+    if (botId === undefined) {
+      try {
+        const res = await managers.channels.search(uname)
+        const u = res.users.find((x) => x.username.toLowerCase() === uname)
+        botId = u ? u.id : null
+      } catch { botId = null }
+      inlineBotCache.current.set(uname, botId)
+    }
+    if (botId == null) return null
+    try { return await managers.bots.inline(botId, query) } catch { return null }
+  })
+  const onComposerPickInline = useEvent((r: InlineResult) => { send(r.messageText); slowmodeMarkSent() })
   const onComposerCancelReply = useEvent(() => setReply(null))
   const onComposerCancelEdit = useEvent(() => setEditing(null))
   const onComposerOpenAttach = useEvent((r: DOMRect) => setAttachAnchor({ left: r.left, bottom: window.innerHeight - r.top + 8 }))
@@ -653,6 +675,9 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
             )}
 
           </div>
+          {!feedLoading && emptyGreeting && (
+            <EmptyChatGreeting onGreet={() => onComposerSend('👋')} />
+          )}
         </div>
 
         {/* Footer */}
@@ -720,6 +745,8 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               initialDraft={initialDraft}
               onDraftChange={isRealChat ? onDraftChange : undefined}
               mentions={isGroup && mentionPeers.length > 0 ? mentionPeers : undefined}
+              onInlineQuery={isRealChat ? onComposerInlineQuery : undefined}
+              onPickInline={onComposerPickInline}
               onSchedule={isRealChat ? onComposerSchedule : undefined}
               scheduledCount={scheduledCount}
               onOpenScheduled={() => setScheduledOpen(true)}

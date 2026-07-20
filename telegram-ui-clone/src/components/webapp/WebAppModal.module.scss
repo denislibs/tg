@@ -1,0 +1,115 @@
+// Модалка mini-app (tweb popup-web-app): затемнение + панель с шапкой,
+// iframe на всю площадь и футер с MainButton.
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+.panel {
+  display: flex;
+  flex-direction: column;
+  width: 420px;
+  max-width: 100vw;
+  height: 90vh;
+  max-height: 800px;
+  background: var(--tg-appBg);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.4);
+
+  @media (max-width: 480px) {
+    width: 100vw;
+    height: 100dvh;
+    max-height: none;
+    border-radius: 0;
+  }
+}
+// шапка (web-app-header): название бота + кнопки back/close/⋮
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 54px;
+  padding: 0 8px;
+  flex-shrink: 0;
+  background: var(--tg-sidebarBg);
+  border-bottom: 1px solid var(--tg-divider, rgba(0, 0, 0, 0.08));
+}
+.title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+.hbtn {
+  width: 40px;
+  height: 40px;
+  border: none;
+  background: transparent;
+  color: var(--tg-textPrimary);
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+
+  &:hover { background: var(--tg-hover, rgba(0, 0, 0, 0.06)); }
+}
+// тело: iframe + лоадер
+.body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: var(--tg-appBg);
+}
+.frame {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+.loader {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--tg-textSecondary);
+  font-size: 14px;
+}
+// футер с MainButton (web-app-footer)
+.footer {
+  flex-shrink: 0;
+  padding: 8px;
+  background: var(--tg-appBg);
+}
+.mainBtn {
+  width: 100%;
+  min-height: 48px;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+
+  &:disabled { opacity: 0.6; cursor: default; }
+}
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: waSpin 0.7s linear infinite;
+}
+@keyframes waSpin { to { transform: rotate(360deg); } }

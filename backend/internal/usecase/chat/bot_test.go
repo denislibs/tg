@@ -96,6 +96,41 @@ func TestBotCallback(t *testing.T) {
 	}
 }
 
+func TestBotInlineQuery(t *testing.T) {
+	in, _, _ := botInteractor(t)
+	ctx := context.Background()
+	// пустой запрос → примеры
+	empty, err := in.InlineQuery(ctx, 42, "")
+	if err != nil || len(empty) == 0 {
+		t.Fatalf("empty inline query = %d results, %v", len(empty), err)
+	}
+	// запрос → трансформации текста, первый результат = эхо запроса
+	res, err := in.InlineQuery(ctx, 42, "pizza")
+	if err != nil || len(res) == 0 {
+		t.Fatalf("inline query = %d results, %v", len(res), err)
+	}
+	if res[0].MessageText != "pizza" {
+		t.Fatalf("first inline result should echo query, got %q", res[0].MessageText)
+	}
+	// не бот → not found
+	if _, err := in.InlineQuery(ctx, 1, "x"); err != domain.ErrNotFound {
+		t.Fatalf("inline query to non-bot should be not-found, got %v", err)
+	}
+}
+
+func TestBotWebAppCommand(t *testing.T) {
+	in, s, chatID := botInteractor(t)
+	_, _ = in.Send(context.Background(), SendInput{ChatID: chatID, SenderID: 1, Type: "text", Text: "/app"})
+	msgs := s.messages[chatID]
+	reply := msgs[len(msgs)-1]
+	if reply.ReplyMarkup == nil || len(reply.ReplyMarkup.Inline) == 0 {
+		t.Fatalf("/app must reply with inline keyboard, got %+v", reply.ReplyMarkup)
+	}
+	if reply.ReplyMarkup.Inline[0][0].WebApp == "" {
+		t.Fatalf("/app button must carry a webapp url, got %+v", reply.ReplyMarkup.Inline[0][0])
+	}
+}
+
 func TestBotKeyboardCommand(t *testing.T) {
 	in, s, chatID := botInteractor(t)
 	_, _ = in.Send(context.Background(), SendInput{ChatID: chatID, SenderID: 1, Type: "text", Text: "/keyboard"})

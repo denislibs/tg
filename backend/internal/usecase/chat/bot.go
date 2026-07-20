@@ -85,6 +85,40 @@ func (i *Interactor) BotCallback(ctx context.Context, chatID, userID, botID int6
 	}
 }
 
+// InlineQuery — выдача inline-режима (@bot query). Проверяет, что botID — бот,
+// затем зашитый сценарий демо-бота (реального движка ботов нет).
+func (i *Interactor) InlineQuery(ctx context.Context, botID int64, query string) ([]domain.InlineResult, error) {
+	if i.bots == nil {
+		return nil, domain.ErrNotFound
+	}
+	isBot, err := i.bots.IsBot(ctx, botID)
+	if err != nil || !isBot {
+		return nil, domain.ErrNotFound
+	}
+	return demoBotInline(query), nil
+}
+
+// demoBotInline — inline-выдача демо-бота. Пустой запрос → примеры; иначе
+// несколько трансформаций введённого текста (эхо/капс/жирный) как «результаты».
+func demoBotInline(query string) []domain.InlineResult {
+	q := strings.TrimSpace(query)
+	if q == "" {
+		return []domain.InlineResult{
+			{ID: "hello", Emoji: "👋", Title: "Поздороваться", Description: "Отправить приветствие", MessageText: "Привет! 👋"},
+			{ID: "dice", Emoji: "🎲", Title: "Бросить кубик", Description: "Случайное настроение", MessageText: "🎲"},
+			{ID: "about", Emoji: "🤖", Title: "О демо-боте", Description: "Что это за бот", MessageText: "Это демо-бот мессенджера — показывает inline-режим и mini-apps."},
+		}
+	}
+	return []domain.InlineResult{
+		{ID: "echo", Emoji: "✏️", Title: q, Description: "Отправить как есть", MessageText: q},
+		{ID: "upper", Emoji: "🔠", Title: strings.ToUpper(q), Description: "ЗАГЛАВНЫМИ БУКВАМИ", MessageText: strings.ToUpper(q)},
+		{ID: "hearts", Emoji: "❤️", Title: "❤️ " + q + " ❤️", Description: "С сердечками", MessageText: "❤️ " + q + " ❤️"},
+	}
+}
+
+// webAppURL — адрес демо mini-app (статика фронта, раздаётся тем же nginx).
+const webAppURL = "/webapp-demo.html"
+
 // demoBotReply — сценарий демо-бота: текст ответа + клавиатура.
 func demoBotReply(text string) (string, *domain.ReplyMarkup) {
 	switch strings.TrimSpace(strings.ToLower(text)) {
@@ -92,11 +126,18 @@ func demoBotReply(text string) (string, *domain.ReplyMarkup) {
 		return "Привет! Я демо-бот 🤖. Вот что я умею:", &domain.ReplyMarkup{
 			Inline: [][]domain.InlineButton{
 				{{Text: "Показать alert", Callback: "alert"}, {Text: "Сайт Telegram", URL: "https://telegram.org"}},
+				{{Text: "🚀 Открыть mini-app", WebApp: webAppURL}},
 				{{Text: "Ещё сообщение", Callback: "more"}},
 			},
 		}
+	case "/app":
+		return "Нажмите кнопку, чтобы открыть mini-app 👇", &domain.ReplyMarkup{
+			Inline: [][]domain.InlineButton{{{Text: "🚀 Открыть mini-app", WebApp: webAppURL}}},
+		}
+	case "/inline":
+		return "Inline-режим: в любом чате напишите «@demobot запрос» и выберите результат из списка — он отправится в чат.", nil
 	case "/help":
-		return "Команды:\n/start — запустить\n/buttons — inline-кнопки\n/keyboard — клавиатура\n/hide — скрыть клавиатуру", nil
+		return "Команды:\n/start — запустить\n/buttons — inline-кнопки\n/keyboard — клавиатура\n/hide — скрыть клавиатуру\n/app — открыть mini-app\n/inline — про inline-режим", nil
 	case "/buttons":
 		return "Выберите кнопку:", &domain.ReplyMarkup{
 			Inline: [][]domain.InlineButton{

@@ -17,6 +17,8 @@ import TgIcon from './TgIcon'
 import EmojiPicker from './EmojiPicker'
 import EmojiHelper from './EmojiHelper'
 import MentionsHelper from './MentionsHelper'
+import InlineResultsHelper from './InlineResultsHelper'
+import type { InlineResult } from '../core/managers/botsManager'
 import type { Peer } from '../core/managers/peersManager'
 import { searchEmojisByWord } from './emoji/emojiData'
 import MarkupTooltip from './MarkupTooltip'
@@ -69,6 +71,10 @@ interface Props {
   onDraftChange?: (text: string) => void
   // Кандидаты @упоминаний (участники группы без себя) — включает mentions-хелпер.
   mentions?: Peer[]
+  // Inline-режим: резолв «@bot query» → результаты (null — не бот/пусто) и
+  // отправка выбранного результата (tweb InlineHelper + sendInlineResult).
+  onInlineQuery?: (username: string, query: string) => Promise<InlineResult[] | null>
+  onPickInline?: (r: InlineResult) => void
   // Запланированные сообщения: ПКМ по Send → «Запланировать сообщение».
   onSchedule?: (text: string, entities: MessageEntity[] | undefined, sendAtUnix: number) => void
   // Есть запланированные → кнопка-календарик (tweb btnScheduled) открывает список.
@@ -111,7 +117,7 @@ function placeCaretEnd(el: HTMLElement) {
 
 function Composer({
   reply, editing, rec, onSend, onTyping, onCancelReply, onCancelEdit, onOpenAttach, onPasteFiles,
-  initialDraft, onDraftChange, mentions, onSchedule, scheduledCount, onOpenScheduled, slowmodeLeft,
+  initialDraft, onDraftChange, mentions, onInlineQuery, onPickInline, onSchedule, scheduledCount, onOpenScheduled, slowmodeLeft,
 }: Props) {
   const slowmodeBlocked = (slowmodeLeft ?? 0) > 0
   const slowmodeText = (slowmodeLeft ?? 0) >= 60 ? `${Math.ceil((slowmodeLeft ?? 0) / 60)}м` : String(slowmodeLeft ?? 0)
@@ -254,6 +260,7 @@ function Composer({
     // (tweb splitStringByLength). The counter shows how many it'll be.
     onSend(text, entities.length ? entities : undefined)
     setEmojiSug(null)
+    setInlineSug(null)
     clearEditor()
     onDraftChange?.('') // отправка снимает черновик (бэк тоже чистит свой)
     // Keep focus in the input after sending (tweb focusInput = focus + caret at
@@ -346,6 +353,21 @@ function Composer({
   }
 
   const onEditorKeyDown = (e: React.KeyboardEvent) => {
+    // Inline-хелпер (tweb InlineHelper list-навигация): стрелки/Enter/Tab/Escape.
+    if (inlineSug) {
+      if (e.key === 'Escape') { e.preventDefault(); setInlineSug(null); return }
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault()
+        const dir = e.key === 'ArrowUp' ? -1 : 1
+        setInlineSug((sug) => sug && { ...sug, idx: (sug.idx + dir + sug.list.length) % sug.list.length })
+        return
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        pickInline(inlineSug.list[inlineSug.idx])
+        return
+      }
+    }
     // Mentions-хелпер (tweb attachListNavigation тип 'y'): стрелки вверх/вниз,
     // Enter/Tab выбирают, Escape закрывает.
     if (mentionSug) {
@@ -460,6 +482,42 @@ function Composer({
     }))
   }
 
+  // ── Inline-режим (tweb InlineHelper): весь инпут начинается с «@bot query» ──
+  const [inlineSug, setInlineSug] = useState<{ list: InlineResult[]; idx: number } | null>(null)
+  const inlineTimer = useRef<number | undefined>(undefined)
+  const inlineReq = useRef(0) // токен запроса — гасим гонки
+
+  // tweb checkInlineAutocomplete: строка вида «@username » (username 3–32) + запрос.
+  const checkInlineAutocomplete = () => {
+    if (!onInlineQuery) return
+    const text = editorRef.current?.textContent ?? ''
+    const m = text.match(/^@([a-zA-Z\d_]{3,32})\s([\s\S]*)$/)
+    if (!m) {
+      setInlineSug(null)
+      window.clearTimeout(inlineTimer.current)
+      return
+    }
+    const username = m[1]
+    const query = m[2]
+    const req = ++inlineReq.current
+    window.clearTimeout(inlineTimer.current)
+    // debounce 200мс (tweb debounce)
+    inlineTimer.current = window.setTimeout(() => {
+      void onInlineQuery(username, query).then((list) => {
+        if (req !== inlineReq.current) return // устарел
+        setInlineSug(list && list.length ? { list, idx: 0 } : null)
+      })
+    }, 200)
+  }
+  const pickInline = (r: InlineResult) => {
+    onPickInline?.(r)
+    setInlineSug(null)
+    clearEditor()
+    onDraftChange?.('')
+    const ed = editorRef.current
+    if (ed) { ed.focus(); placeCaretEnd(ed) }
+  }
+
   // ── @упоминания (tweb mentionsHelper): участники группы по слову '@query' ──
   const [mentionSug, setMentionSug] = useState<{ list: Peer[]; wordLen: number; idx: number } | null>(null)
 
@@ -545,10 +603,13 @@ function Composer({
       <div className={s.composerBox}>
       {/* Плашка эмодзи-автокомплита (tweb emoji-helper) */}
       <AnimatePresence>
-        {mentionSug && !rec.recording && (
+        {inlineSug && !rec.recording && (
+          <InlineResultsHelper results={inlineSug.list} activeIdx={inlineSug.idx} onPick={pickInline} />
+        )}
+        {mentionSug && !inlineSug && !rec.recording && (
           <MentionsHelper peers={mentionSug.list} activeIdx={mentionSug.idx} onPick={pickMention} />
         )}
-        {emojiSug && !mentionSug && !rec.recording && (
+        {emojiSug && !mentionSug && !inlineSug && !rec.recording && (
           <EmojiHelper emojis={emojiSug.list} activeIdx={emojiSug.idx} onPick={pickEmojiSuggestion} />
         )}
       </AnimatePresence>
@@ -684,7 +745,7 @@ function Composer({
                   aria-multiline
                   // No live markdown conversion in the input (tweb keeps typed markers
                   // raw; they're parsed on send). Only the toolbar/shortcuts format live.
-                  onInput={() => { syncEmpty(); autosize(); onTyping(); checkMentionAutocomplete(); checkEmojiAutocomplete(); onDraftChange?.(editorRef.current?.textContent ?? '') }}
+                  onInput={() => { syncEmpty(); autosize(); onTyping(); checkInlineAutocomplete(); checkMentionAutocomplete(); checkEmojiAutocomplete(); onDraftChange?.(editorRef.current?.textContent ?? '') }}
                   onKeyDown={onEditorKeyDown}
                   onPaste={onPaste}
                   onDrop={onDrop}

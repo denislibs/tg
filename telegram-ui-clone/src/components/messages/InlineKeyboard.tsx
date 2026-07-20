@@ -7,6 +7,7 @@ import { useManagers } from '../../core/hooks/useManagers'
 import { uiEvents } from '../../core/hooks/uiEvents'
 import ConfirmDialog from '../settings/ConfirmDialog'
 import classNames from '../../shared/lib/classNames'
+import { openWebApp } from '../../core/webapp'
 import { useT } from '../../i18n'
 import s from './InlineKeyboard.module.scss'
 
@@ -18,7 +19,7 @@ export default function InlineKeyboard({ rows, chatId, botId }: { rows: InlineBu
 
   const onClick = async (b: InlineButton) => {
     if (b.url) { window.open(b.url, '_blank', 'noopener'); return }
-    if (b.webapp) { window.open(b.webapp, '_blank', 'noopener'); return }
+    if (b.webapp) { openWebApp({ url: b.webapp, botName: b.text }); return }
     if (b.callback == null || busy) return
     setBusy(true)
     try {

@@ -35,3 +35,14 @@ type BotCallbackAnswer struct {
 	Text  string `json:"text,omitempty"`
 	Alert bool   `json:"alert,omitempty"`
 }
+
+// InlineResult — элемент выдачи inline-режима (@bot query → список; Telegram
+// botInlineResult). MVP: тип article — заголовок/описание/эмодзи-иконка; выбор
+// отправляет в чат MessageText как обычное сообщение.
+type InlineResult struct {
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	Emoji       string `json:"emoji,omitempty"` // иконка-заглушка вместо thumb
+	MessageText string `json:"message_text"`    // что отправится в чат
+}

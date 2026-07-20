@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Demo Mini App</title>
+<style>
+  :root {
+    --bg: #ffffff; --text: #000000; --hint: #999999; --link: #2481cc;
+    --button: #2481cc; --button-text: #ffffff; --secondary-bg: #f0f0f0; --section-bg: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text);
+    padding: 20px; display: flex; flex-direction: column; gap: 16px;
+  }
+  h1 { font-size: 22px; margin: 0; }
+  p.hint { color: var(--hint); font-size: 14px; margin: 0; line-height: 1.5; }
+  .card { background: var(--section-bg); border: 1px solid rgba(128,128,128,.18); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  label { font-size: 13px; color: var(--hint); }
+  input { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(128,128,128,.3); background: var(--secondary-bg); color: var(--text); font-size: 15px; }
+  button.action { padding: 11px 14px; border: none; border-radius: 8px; background: var(--secondary-bg); color: var(--text); font-size: 15px; font-weight: 500; cursor: pointer; text-align: left; }
+  button.action:hover { filter: brightness(0.96); }
+  a { color: var(--link); }
+  .swatches { display: flex; gap: 6px; flex-wrap: wrap; }
+  .swatch { width: 28px; height: 28px; border-radius: 6px; border: 1px solid rgba(128,128,128,.3); }
+  .view { display: flex; flex-direction: column; gap: 16px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+  <div id="main" class="view">
+    <h1>🚀 Demo Mini App</h1>
+    <p class="hint">Пример Telegram Mini App: тема, MainButton, отправка данных боту, попап, ссылки, вибрация и BackButton — всё через мост <code>window.Telegram.WebApp</code>.</p>
+
+    <div class="card">
+      <label>Имя (уйдёт боту через sendData)</label>
+      <input id="name" type="text" placeholder="Введите имя…" />
+      <div class="swatches" id="swatches"></div>
+    </div>
+
+    <div class="card">
+      <button class="action" id="btn-link">🔗 Открыть telegram.org</button>
+      <button class="action" id="btn-popup">💬 Показать попап</button>
+      <button class="action" id="btn-haptic">📳 Вибрация</button>
+      <button class="action" id="btn-section">📂 Открыть раздел (BackButton)</button>
+      <button class="action" id="btn-close">✖️ Закрыть mini-app</button>
+    </div>
+  </div>
+
+  <div id="section" class="view hidden">
+    <h1>📂 Раздел</h1>
+    <p class="hint">Это второй экран. Кнопка «Назад» в шапке mini-app вернёт на главный — попробуйте.</p>
+  </div>
+
+<script>
+(function () {
+  // ── Мост: обмен строками JSON {eventType, eventData} с хостом (tweb-протокол) ──
+  function post(eventType, eventData) {
+    window.parent.postMessage(JSON.stringify({ eventType: eventType, eventData: eventData }), '*');
+  }
+
+  var mainClick = null, backClick = null, popupCb = null;
+
+  function applyTheme(tp) {
+    if (!tp) return;
+    var r = document.documentElement.style;
+    if (tp.bg_color) r.setProperty('--bg', tp.bg_color);
+    if (tp.text_color) r.setProperty('--text', tp.text_color);
+    if (tp.hint_color) r.setProperty('--hint', tp.hint_color);
+    if (tp.link_color) r.setProperty('--link', tp.link_color);
+    if (tp.button_color) r.setProperty('--button', tp.button_color);
+    if (tp.button_text_color) r.setProperty('--button-text', tp.button_text_color);
+    if (tp.secondary_bg_color) r.setProperty('--secondary-bg', tp.secondary_bg_color);
+    if (tp.section_bg_color) r.setProperty('--section-bg', tp.section_bg_color);
+    WebApp.themeParams = tp;
+    renderSwatches();
+  }
+
+  window.addEventListener('message', function (e) {
+    var msg; try { msg = JSON.parse(e.data); } catch (err) { return; }
+    switch (msg.eventType) {
+      case 'theme_changed': applyTheme(msg.eventData && msg.eventData.theme_params); break;
+      case 'main_button_pressed': if (mainClick) mainClick(); break;
+      case 'back_button_pressed': if (backClick) backClick(); break;
+      case 'popup_closed': if (popupCb) { var cb = popupCb; popupCb = null; cb(msg.eventData && msg.eventData.button_id); } break;
+    }
+  });
+
+  // ── window.Telegram.WebApp (минимальный, но рабочий) ──
+  var WebApp = {
+    version: '7.0',
+    platform: 'web',
+    themeParams: {},
+    MainButton: {
+      _s: { is_visible: false, is_active: true, text: '', color: '', text_color: '', is_progress_visible: false },
+      setText: function (t) { this._s.text = t; this._sync(); return this; },
+      show: function () { this._s.is_visible = true; this._sync(); return this; },
+      hide: function () { this._s.is_visible = false; this._sync(); return this; },
+      enable: function () { this._s.is_active = true; this._sync(); return this; },
+      disable: function () { this._s.is_active = false; this._sync(); return this; },
+      showProgress: function () { this._s.is_progress_visible = true; this._sync(); return this; },
+      hideProgress: function () { this._s.is_progress_visible = false; this._sync(); return this; },
+      setParams: function (p) { Object.assign(this._s, p); this._sync(); return this; },
+      onClick: function (cb) { mainClick = cb; return this; },
+      _sync: function () {
+        var s = this._s, tp = WebApp.themeParams;
+        post('web_app_setup_main_button', {
+          is_visible: s.is_visible, is_active: s.is_active, text: s.text,
+          color: s.color || tp.button_color || '#2481cc',
+          text_color: s.text_color || tp.button_text_color || '#ffffff',
+          is_progress_visible: s.is_progress_visible
+        });
+      }
+    },
+    BackButton: {
+      show: function () { post('web_app_setup_back_button', { is_visible: true }); return this; },
+      hide: function () { post('web_app_setup_back_button', { is_visible: false }); return this; },
+      onClick: function (cb) { backClick = cb; return this; }
+    },
+    HapticFeedback: {
+      impactOccurred: function () { post('web_app_trigger_haptic_feedback', { type: 'impact', impact_style: 'medium' }); return this; }
+    },
+    ready: function () { post('web_app_ready'); },
+    expand: function () { post('web_app_expand'); },
+    close: function () { post('web_app_close'); },
+    sendData: function (data) { post('web_app_data_send', { data: data }); },
+    openLink: function (url) { post('web_app_open_link', { url: url }); },
+    enableClosingConfirmation: function () { post('web_app_setup_closing_behavior', { need_confirmation: true }); },
+    disableClosingConfirmation: function () { post('web_app_setup_closing_behavior', { need_confirmation: false }); },
+    showPopup: function (params, cb) { popupCb = cb || null; post('web_app_open_popup', params); }
+  };
+  window.Telegram = { WebApp: WebApp };
+
+  // ── Демо-UI ──
+  function renderSwatches() {
+    var tp = WebApp.themeParams, box = document.getElementById('swatches');
+    box.replaceChildren();
+    ['bg_color', 'text_color', 'button_color', 'link_color', 'secondary_bg_color'].forEach(function (k) {
+      if (!tp[k]) return;
+      var d = document.createElement('div');
+      d.className = 'swatch'; d.style.background = tp[k]; d.title = k + ': ' + tp[k];
+      box.appendChild(d);
+    });
+  }
+
+  var nameInput = document.getElementById('name');
+  function syncMain() {
+    var v = nameInput.value.trim();
+    if (v) { WebApp.MainButton.setText('Отправить «' + v + '»').show().enable(); }
+    else { WebApp.MainButton.hide(); }
+  }
+  nameInput.addEventListener('input', syncMain);
+  WebApp.MainButton.onClick(function () {
+    WebApp.sendData(JSON.stringify({ name: nameInput.value.trim() }));
+  });
+
+  document.getElementById('btn-link').onclick = function () { WebApp.openLink('https://telegram.org'); };
+  document.getElementById('btn-haptic').onclick = function () { WebApp.HapticFeedback.impactOccurred(); };
+  document.getElementById('btn-close').onclick = function () { WebApp.close(); };
+  document.getElementById('btn-popup').onclick = function () {
+    WebApp.showPopup(
+      { title: 'Привет из mini-app', message: 'Это нативный попап, вызванный из mini-app.', buttons: [{ id: 'ok', type: 'ok' }, { id: 'cancel', type: 'cancel' }] },
+      function (id) { if (id === 'ok') WebApp.HapticFeedback.impactOccurred(); }
+    );
+  };
+  document.getElementById('btn-section').onclick = function () {
+    document.getElementById('main').classList.add('hidden');
+    document.getElementById('section').classList.remove('hidden');
+    WebApp.BackButton.show();
+  };
+  WebApp.BackButton.onClick(function () {
+    document.getElementById('section').classList.add('hidden');
+    document.getElementById('main').classList.remove('hidden');
+    WebApp.BackButton.hide();
+  });
+
+  // Готовы: сообщаем хосту и запрашиваем тему.
+  post('iframe_ready');
+  WebApp.ready();
+  post('web_app_request_theme');
+})();
+</script>
+</body>
+</html>

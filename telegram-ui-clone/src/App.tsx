@@ -17,6 +17,7 @@ import type { GroupPhoto } from './components/NewGroupFlow'
 import ConversationView from './components/ConversationView'
 import ChatBackground from './components/ChatBackground'
 import CallOverlay from './components/call/CallOverlay'
+import WebAppModal from './components/webapp/WebAppModal'
 import PasscodeLockScreen from './components/PasscodeLockScreen'
 import { useLockStore } from './stores/lockStore'
 import { lockOnStartIfEnabled } from './core/passcode'
@@ -477,6 +478,9 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 
       {/* Глобальный экран звонка (входящие показываются из любого места) */}
       <CallOverlay />
+
+      {/* Mini-app бота (iframe + мост window.Telegram.WebApp) */}
+      <WebAppModal />
 
       {/* Блокировка код-паролем поверх всего (tweb passcodeLockScreen) */}
       {locked && <PasscodeLockScreen />}

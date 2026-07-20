@@ -151,6 +151,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Post("/gifts/{giftID}/hidden", ch.SetGiftHidden)
 		// Боты
 		pr.Get("/bots/{botID}/commands", ch.BotCommands)
+		pr.Get("/bots/{botID}/inline", ch.BotInline)
 		pr.Post("/bots/{botID}/callback", ch.BotCallback)
 		pr.Get("/chats/{chatID}/media", ch.MediaHistory)
 		pr.Post("/chats/{chatID}/read", ch.Read)

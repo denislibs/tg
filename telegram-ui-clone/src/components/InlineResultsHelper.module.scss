@@ -1,0 +1,87 @@
+// Порт tweb .autocomplete-helper.inline-helper (list-режим): плашка над инпутом,
+// scrollable max-height 232px, ряды 4rem с превью-квадратом 48px слева.
+.helper {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  inset-inline-start: 0;
+  width: 100%;
+  max-width: 24rem;
+  box-sizing: border-box;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow:
+    0 2px 2px 0 rgba(0, 0, 0, 0.14),
+    0 3px 1px -2px rgba(0, 0, 0, 0.12),
+    0 1px 5px 0 rgba(0, 0, 0, 0.2);
+  z-index: 3;
+
+  :global(html[data-theme='night']) &,
+  :global(html[data-theme='dark']) & {
+    background: #212121;
+  }
+}
+.scroll {
+  max-height: 232px;
+  overflow-y: auto;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar { display: none; }
+}
+// tweb .inline-helper-result: 4rem, превью абсолютом слева, отступ padding-left 4rem
+.row {
+  position: relative;
+  min-height: 4rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 12px 8px 4rem;
+  cursor: pointer;
+
+  // разделитель (tweb .inline-helper-separator) — под текстом, с отступом превью
+  &:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    left: 4rem;
+    right: 0;
+    bottom: 0;
+    height: 1px;
+    background: var(--tg-divider, rgba(0, 0, 0, 0.08));
+  }
+
+  @media (hover: hover) {
+    &:hover { background: var(--tg-hover); }
+  }
+}
+.active { background: var(--tg-hover); }
+// превью 48px (tweb .inline-helper-result-preview) — эмодзи по центру
+.preview {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  background: var(--tg-secondaryBg, rgba(128, 128, 128, 0.12));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+}
+.title {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--tg-textPrimary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.desc {
+  font-size: 13px;
+  color: var(--tg-textSecondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

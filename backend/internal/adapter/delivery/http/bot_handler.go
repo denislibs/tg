@@ -31,6 +31,27 @@ func (h *ChatHandler) BotCommands(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"commands": cmds})
 }
 
+// BotInline — GET /bots/{botID}/inline?q=...: выдача inline-режима (@bot query).
+func (h *ChatHandler) BotInline(w http.ResponseWriter, r *http.Request) {
+	botID, ok := pathInt(w, r, "botID")
+	if !ok {
+		return
+	}
+	results, err := h.svc.InlineQuery(r.Context(), botID, r.URL.Query().Get("q"))
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not a bot")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "inline failed")
+		return
+	}
+	if results == nil {
+		results = []domain.InlineResult{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"results": results})
+}
+
 // BotCallback — POST /bots/{botID}/callback {chat_id, data}: нажатие
 // callback-кнопки; возвращает всплывающий ответ (toast/alert).
 func (h *ChatHandler) BotCallback(w http.ResponseWriter, r *http.Request) {
