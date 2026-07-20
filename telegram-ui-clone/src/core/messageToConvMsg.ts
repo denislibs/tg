@@ -100,6 +100,11 @@ export function messageToConvMsg(
     mediaUnread: m.mediaUnread || undefined,
     deleted: m.deleted ?? false,
     forwardFrom: m.fwdFromUserId != null ? { name: opts?.forwardFromName ?? 'Неизвестно' } : undefined,
+    // Секретное сообщение: флаг + таймер самоуничтожения (destructAt ставит сервер
+    // после прочтения получателем; ttlSeconds — «взведённый» TTL до этого).
+    secret: m.secret || undefined,
+    ttlSeconds: m.ttlSeconds ?? undefined,
+    destructAt: m.destructAt ?? undefined,
     reply: m.replyTo
       ? {
           name: m.replyTo.senderId === meId ? 'Вы' : opts?.replyToName ?? 'Сообщение',

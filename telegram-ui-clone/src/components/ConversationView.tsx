@@ -536,7 +536,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // Медленный режим: обычный участник группы блокируется на N сек после отправки
   const slowmodeExempt = !isGroup || card?.myRole === 'creator' || card?.myRole === 'admin'
   const { left: slowmodeLeft, markSent: slowmodeMarkSent } = useSlowmode(card?.slowmodeSeconds ?? 0, slowmodeExempt)
-  const onComposerSend = useEvent((text: string, entities?: MessageEntity[]) => { send(text, entities); slowmodeMarkSent() })
+  const onComposerSend = useEvent((text: string, entities?: MessageEntity[], ttlSeconds?: number | null) => { send(text, entities, ttlSeconds); slowmodeMarkSent() })
   // Inline-режим: резолв «@username» → id бота (кэш), затем выдача бэком (он сам
   // проверит is_bot). Выбор результата шлёт его текст обычным сообщением.
   const inlineBotCache = useRef<Map<string, number | null>>(new Map())
@@ -766,6 +766,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               scheduledCount={scheduledCount}
               onOpenScheduled={() => setScheduledOpen(true)}
               slowmodeLeft={slowmodeLeft}
+              secret={chat.type === 'secret'}
             />
           </div>
         ) : (

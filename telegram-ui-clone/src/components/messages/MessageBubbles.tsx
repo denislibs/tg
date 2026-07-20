@@ -19,6 +19,52 @@ export function Ticks({ status, color }: { status?: MsgStatus; color: string }) 
   return <TgIcon name={status === 'read' ? 'checks' : 'check'} size={16} color={color} />
 }
 
+// Остаток TTL в короткой форме: «5с» / «1м» / «1ч» / «1д» / «1нед» (как в tweb).
+function fmtTtlRemain(s: number): string {
+  if (s < 60) return `${s}с`
+  if (s < 3600) return `${Math.ceil(s / 60)}м`
+  if (s < 86400) return `${Math.ceil(s / 3600)}ч`
+  if (s < 604800) return `${Math.ceil(s / 86400)}д`
+  return `${Math.ceil(s / 604800)}нед`
+}
+
+// Таймер самоуничтожения секретного сообщения (tweb secret-chat self-destruct).
+// Пока получатель не прочитал — destructAt не задан: показываем «взведённый» глиф
+// с исходным TTL. После прочтения сервер ставит destructAt — тикаем обратный отсчёт
+// (тот же приём, что у GeoBubble: useState(now) + setInterval(1000) + cleanup).
+// Дошли до нуля — прячем локально (сервер всё равно пришлёт delete_message).
+export function SecretTimer({ destructAt, ttlSeconds, color }: {
+  destructAt?: string | null
+  ttlSeconds?: number | null
+  color: string
+}) {
+  const running = destructAt != null
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!running) return
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [running])
+
+  if (running) {
+    const remainSec = Math.floor((Date.parse(destructAt!) - now) / 1000)
+    if (remainSec <= 0) return null // ноль — прячем (delete_message приедет следом)
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+        <TgIcon name="fire" size={14} color={color} />
+        <Text size={12} color={color} style={{ fontVariantNumeric: 'tabular-nums' }}>
+          {fmtTtlRemain(remainSec)}
+        </Text>
+      </span>
+    )
+  }
+  // Ещё не запущен: TTL «взведён», но отсчёт не начался — статичный глиф.
+  if (ttlSeconds && ttlSeconds > 0) {
+    return <TgIcon name="timer" size={14} color={color} />
+  }
+  return null
+}
+
 // Радиусы бабла — из tweb (_chatVariables.scss).
 export const BUBBLE_R_BIG = 15 // $bubble-border-radius-big
 export const BUBBLE_R_MED = 5 // $bubble-border-radius-medium

@@ -55,7 +55,8 @@ interface Props {
   rec: VoiceRecorder
   // Send the trimmed draft text + its formatting entities. The parent decides
   // reply/edit/draft/channel routing; the composer just clears its draft afterwards.
-  onSend: (text: string, entities?: MessageEntity[]) => void
+  // ttlSeconds — self-destruct TTL for secret chats (null/undefined — off).
+  onSend: (text: string, entities?: MessageEntity[], ttlSeconds?: number | null) => void
   // Fired on every keystroke (parent throttles the outgoing `typing` frame).
   onTyping: () => void
   onCancelReply: () => void
@@ -85,7 +86,25 @@ interface Props {
   // Медленный режим: секунд до следующей отправки (0/undefined — нет); >0
   // блокирует отправку и показывает обратный отсчёт на кнопке (tweb slowmode).
   slowmodeLeft?: number
+  // Секретный чат: показывает кнопку выбора таймера самоуничтожения (tweb secret
+  // chat self-destruct). Выбранный TTL уходит третьим аргументом onSend.
+  secret?: boolean
 }
+
+// Таймер самоуничтожения для секретных чатов (tweb ttl options). null — «Выкл».
+const TTL_OPTIONS: { label: string; secs: number | null }[] = [
+  { label: 'Off', secs: null },
+  { label: '5с', secs: 5 },
+  { label: '10с', secs: 10 },
+  { label: '30с', secs: 30 },
+  { label: '1м', secs: 60 },
+  { label: '1ч', secs: 3600 },
+  { label: '1д', secs: 86400 },
+  { label: '1нед', secs: 604800 },
+]
+// Короткая подпись выбранного TTL для кнопки-часов.
+const ttlShort = (s: number): string =>
+  s < 60 ? `${s}с` : s < 3600 ? `${s / 60}м` : s < 86400 ? `${s / 3600}ч` : s < 604800 ? `${s / 86400}д` : `${s / 604800}нед`
 
 // URL schemes safe to keep on a pasted link (others are dropped — see RichText).
 const SAFE_SCHEMES = new Set(['http', 'https', 'mailto', 'tel', 'tg'])
@@ -119,7 +138,7 @@ function placeCaretEnd(el: HTMLElement) {
 
 function Composer({
   reply, editing, rec, onSend, onTyping, onCancelReply, onCancelEdit, onOpenAttach, onPasteFiles,
-  initialDraft, onDraftChange, mentions, onInlineQuery, onPickInline, botMenuButton, onSchedule, scheduledCount, onOpenScheduled, slowmodeLeft,
+  initialDraft, onDraftChange, mentions, onInlineQuery, onPickInline, botMenuButton, onSchedule, scheduledCount, onOpenScheduled, slowmodeLeft, secret,
 }: Props) {
   const slowmodeBlocked = (slowmodeLeft ?? 0) > 0
   const slowmodeText = (slowmodeLeft ?? 0) >= 60 ? `${Math.ceil((slowmodeLeft ?? 0) / 60)}м` : String(slowmodeLeft ?? 0)
@@ -137,6 +156,9 @@ function Composer({
   const recordingMediaType = useSettingsStore((st) => st.recordingMediaType)
   const updateSettings = useSettingsStore((st) => st.update)
   const [recMenu, setRecMenu] = useState<{ right: number; bottom: number } | null>(null)
+  // Секретный TTL самоуничтожения (сек; null — выкл) + якорь его меню.
+  const [secretTtl, setSecretTtl] = useState<number | null>(null)
+  const [ttlMenu, setTtlMenu] = useState<{ left: number; bottom: number } | null>(null)
   const longPressTimer = useRef<number | undefined>(undefined)
   const longPressed = useRef(false)
   const openRecMenu = (el: HTMLElement) => {
@@ -260,7 +282,7 @@ function Composer({
     if (!text) return
     // Over the limit is fine — the parent splits into multiple messages
     // (tweb splitStringByLength). The counter shows how many it'll be.
-    onSend(text, entities.length ? entities : undefined)
+    onSend(text, entities.length ? entities : undefined, secret ? secretTtl : undefined)
     setEmojiSug(null)
     setInlineSug(null)
     clearEditor()
@@ -726,6 +748,31 @@ function Composer({
               >
                 <TgIcon name="attach" />
               </IconButton>
+              {/* Таймер самоуничтожения — только в секретном чате (tweb secret ttl).
+                  Тинт accent + короткая подпись, когда таймер включён. */}
+              {secret && (
+                <IconButton
+                  onClick={(e) => {
+                    const r = e.currentTarget.getBoundingClientRect()
+                    setTtlMenu({ left: r.left, bottom: window.innerHeight - r.top + 8 })
+                  }}
+                  color={secretTtl != null ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'}
+                  style={{ width: 40, height: 40, position: 'relative' }}
+                >
+                  <TgIcon name="timer" />
+                  {secretTtl != null && (
+                    <span
+                      style={{
+                        position: 'absolute', bottom: 1, right: 0,
+                        fontSize: 9, fontWeight: 700, lineHeight: 1,
+                        color: 'var(--tg-accent)', pointerEvents: 'none',
+                      }}
+                    >
+                      {ttlShort(secretTtl)}
+                    </span>
+                  )}
+                </IconButton>
+              )}
               {/* Календарик при наличии запланированных (tweb btnScheduled) */}
               {(scheduledCount ?? 0) > 0 && onOpenScheduled && (
                 <IconButton onClick={onOpenScheduled} color="var(--tg-accent)" style={{ width: 40, height: 40 }}>
@@ -862,6 +909,25 @@ function Composer({
           />
         )}
       </AnimatePresence>
+
+        {/* Меню таймера самоуничтожения секретного чата (tweb self-destruct ttl) */}
+        {ttlMenu && (
+          <Menu
+            open
+            onClose={() => setTtlMenu(null)}
+            style={{ left: ttlMenu.left, bottom: ttlMenu.bottom, transformOrigin: 'bottom left' }}
+          >
+            {TTL_OPTIONS.map((o) => (
+              <MenuItem
+                key={o.label}
+                icon={<TgIcon name="timer" size={20} />}
+                label={o.secs == null ? t('Off') : o.label}
+                right={secretTtl === o.secs ? <TgIcon name="check" size={18} color="var(--tg-accent)" /> : undefined}
+                onClick={() => { setSecretTtl(o.secs); setTtlMenu(null) }}
+              />
+            ))}
+          </Menu>
+        )}
 
         {/* Выбор типа записи: голос / видео-кружок (tweb recording mode menu) */}
         {recMenu && (

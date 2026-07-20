@@ -37,6 +37,7 @@ import {
   RoundVideoRealBubble,
   GeoBubble,
   ContactBubble,
+  SecretTimer,
 } from './MessageBubbles'
 import RichText, { emojiOnlyCount } from '../RichText'
 import Emoji from '../emoji/Emoji'
@@ -480,6 +481,7 @@ function MessageRow({
               </span>
               <span className={classNames(s.meta, hasBlock ? s.block : '')}>
                 {m.views ? <ViewsMeta views={m.views} className={s.metaViews} /> : null}
+                {m.secret && <SecretTimer destructAt={m.destructAt} ttlSeconds={m.ttlSeconds} color="var(--b-time)" />}
                 <span className={s.metaTime}>{m.edited ? `${t('edited')} ` : ''}{fmtTime(m.time)}</span>
                 <Ticks status={m.status} color="var(--b-tick)" />
               </span>

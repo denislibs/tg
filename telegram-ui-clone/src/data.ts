@@ -79,6 +79,11 @@ export interface ConvMsg {
   webPage?: { siteName: string; title: string; description?: string; gradient?: string; emoji?: string }
   /** лог 1:1 звонка (tweb messageActionPhoneCall): исход + длительность */
   call?: CallLog
+  /** секретное сообщение (E2E) — включает таймер самоуничтожения в бабле */
+  secret?: boolean
+  /** self-destruct: TTL после прочтения (сек) + абсолютный дедлайн (ISO) */
+  ttlSeconds?: number | null
+  destructAt?: string | null
 }
 
 export interface CallLog {
