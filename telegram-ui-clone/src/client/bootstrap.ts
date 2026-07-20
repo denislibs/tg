@@ -92,13 +92,19 @@ export interface Managers {
   }
   realtime: {
     start(): Promise<{ state: ConnState }>
-    sendMessage(args: { chatId: number; text: string; entities?: MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; mediaId?: number | null; type?: string; groupedId?: string; geo?: { lat: number; lng: number; title?: string; address?: string; livePeriod?: number; heading?: number }; contactUserId?: number; threadRootId?: number | null }): Promise<{ ok: boolean }>
+    sendMessage(args: { chatId: number; text: string; entities?: MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; mediaId?: number | null; type?: string; groupedId?: string; geo?: { lat: number; lng: number; title?: string; address?: string; livePeriod?: number; heading?: number }; contactUserId?: number; threadRootId?: number | null; encBody?: string; ttlSeconds?: number | null }): Promise<{ ok: boolean }>
     markRead(args: { chatId: number; upToSeq: number }): Promise<{ ok: boolean }>
     markMediaRead(args: { chatId: number; msgId: number }): Promise<{ ok: boolean }>
     sendTyping(args: { chatId: number; action?: 'typing' | 'voice' | 'video' }): Promise<{ ok: boolean }>
     sendCallFrame(args: { type: string; data: Record<string, unknown> }): Promise<{ ok: boolean }>
     subscribeChannel(args: { chatId: number }): Promise<{ ok: boolean }>
     unsubscribeChannel(args: { chatId: number }): Promise<{ ok: boolean }>
+  }
+  secret: {
+    start(peerId: number): Promise<{ chatId: number }>
+    accept(chatId: number): Promise<{ fingerprint: string[] }>
+    reject(chatId: number): Promise<void>
+    sendText(args: { chatId: number; text: string; entities?: unknown[]; ttlSeconds?: number | null; clientMsgId: string }): Promise<{ ok: boolean }>
   }
   media: {
     upload(a: UploadArgs): Promise<number>

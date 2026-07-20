@@ -53,6 +53,10 @@ function b64decode(s: string): Uint8Array {
   return out
 }
 
+// Публичные ре-экспорты для кодирования/декодирования публичных ключей в base64.
+export const b64FromBytes = b64encode
+export const b64ToBytes = b64decode
+
 // Блоб = iv(12) || ciphertext, в base64. IV случайный на каждое сообщение.
 export async function encryptPayload(key: CryptoKey, payload: unknown): Promise<string> {
   const iv = crypto.getRandomValues(new Uint8Array(12))
