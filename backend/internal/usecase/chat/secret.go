@@ -70,6 +70,23 @@ func (i *Interactor) RejectSecretChat(ctx context.Context, chatID, userID int64)
 	return nil
 }
 
+// GetSecretChat возвращает состояние handshake участнику чата (для восстановления
+// после перезагрузки: получатель узнаёт, что чат в 'requested' и берёт initiator_pub
+// для accept; инициатор — что уже 'accepted' и берёт responder_pub для complete).
+func (i *Interactor) GetSecretChat(ctx context.Context, chatID, userID int64) (domain.SecretChat, error) {
+	if i.secret == nil {
+		return domain.SecretChat{}, domain.ErrUnavailable
+	}
+	sc, err := i.secret.Get(ctx, chatID)
+	if err != nil {
+		return domain.SecretChat{}, err
+	}
+	if sc.InitiatorID != userID && sc.ResponderID != userID {
+		return domain.SecretChat{}, domain.ErrForbidden
+	}
+	return sc, nil
+}
+
 // publishSecretFrame рассылает кадр рукопожатия t обоим участникам секретного
 // чата через event-publisher; no-op при nil publisher.
 func (i *Interactor) publishSecretFrame(ctx context.Context, sc domain.SecretChat, t string) {

@@ -102,6 +102,32 @@ func (h *ChatHandler) RejectSecretChat(w http.ResponseWriter, r *http.Request) {
 }
 
 // writeSecretErr maps handshake errors to HTTP; returns true if it wrote a response.
+// GetSecretChat отдаёт состояние handshake участнику (state + публичные ключи),
+// чтобы UI восстановил рукопожатие после перезагрузки (accept/complete).
+func (h *ChatHandler) GetSecretChat(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	sc, err := h.svc.GetSecretChat(r.Context(), chatID, h.meID(r))
+	if h.writeSecretErr(w, err) {
+		return
+	}
+	resp := map[string]any{
+		"chat_id":      sc.ChatID,
+		"initiator_id": sc.InitiatorID,
+		"responder_id": sc.ResponderID,
+		"state":        sc.State,
+	}
+	if len(sc.InitiatorPub) > 0 {
+		resp["initiator_pub"] = base64.StdEncoding.EncodeToString(sc.InitiatorPub)
+	}
+	if len(sc.ResponderPub) > 0 {
+		resp["responder_pub"] = base64.StdEncoding.EncodeToString(sc.ResponderPub)
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
 func (h *ChatHandler) writeSecretErr(w http.ResponseWriter, err error) bool {
 	switch {
 	case err == nil:
