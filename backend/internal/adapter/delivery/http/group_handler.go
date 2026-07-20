@@ -405,6 +405,34 @@ func (h *GroupHandler) SetMute(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// SetNotify — PUT /chats/{chatID}/notify_settings: per-chat превью/звук.
+// Тело: { preview *bool, sound *string ('default'|'none') } — переданные поля
+// применяются, отсутствующие не меняются.
+func (h *GroupHandler) SetNotify(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Preview *bool   `json:"preview"`
+		Sound   *string `json:"sound"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	if b.Sound != nil && *b.Sound != "default" && *b.Sound != "none" {
+		writeError(w, http.StatusBadRequest, "invalid sound")
+		return
+	}
+	if err := h.uc.SetChatNotify(r.Context(), chatID, user.ID, b.Preview, b.Sound); err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 // SetPin — POST /chats/{chatID}/pin {pinned}: закрепить/открепить диалог.
 func (h *GroupHandler) SetPin(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())

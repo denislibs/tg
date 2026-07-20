@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import Text from '../../shared/ui/Text'
-import { useLang, LANGS, type Lang } from '../../i18n'
+import { useLang, type Lang } from '../../i18n'
+import { useSettings } from '../../settings'
 import { SettingsScreen, Section, Row } from './kit'
 import s from './LanguageSettings.module.scss'
 
@@ -57,20 +58,15 @@ function Radio({ on }: { on: boolean }) {
 export default function LanguageSettings({ onBack }: { onBack: () => void }) {
   const [lang, setLang] = useLang()
   const [sel, setSel] = useState<string>(lang) // selection key: lang code or 'x:<en>'
-  const [showBtn, setShowBtn] = useState(true)
+  const { showTranslateButton, update } = useSettings()
 
-  const currentNative = LANGS.find((l) => l.code === lang)?.name ?? 'English'
   const keyOf = (it: LangItem) => it.code ?? `x:${it.en}`
 
   return (
     <SettingsScreen title="Language" onBack={onBack}>
       {/* message translation */}
-      <Section caption="Message Translation" footer="Watch real-time chat translations with a Telegram Premium subscription.">
-        <Row label="Show Translate Button" toggle checked={showBtn} onClick={() => setShowBtn((v) => !v)} />
-        <div className={s.disabled}>
-          <Row label="Translate Entire Chats" toggle checked={false} />
-        </div>
-        <Row label="Do Not Translate" value={currentNative} onClick={() => {}} />
+      <Section caption="Message Translation" footer="Show a Translate button in the message menu to translate messages into your language.">
+        <Row label="Show Translate Button" toggle checked={showTranslateButton} onClick={() => update({ showTranslateButton: !showTranslateButton })} />
       </Section>
 
       {/* language list */}

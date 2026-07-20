@@ -358,6 +358,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
       onToggleMode={onToggleMode}
       onLogout={onLogout}
       onOpenPeer={openPeer}
+      onChatCreated={onChatCreated}
       fullWidth={fullWidth}
     />
   )

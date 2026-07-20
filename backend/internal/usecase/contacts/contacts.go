@@ -15,6 +15,9 @@ var ErrNameRequired = errors.New("first name is required")
 // ErrSelfContact is returned when a user tries to add themselves.
 var ErrSelfContact = errors.New("cannot add yourself as a contact")
 
+// ErrPhoneRequired — при добавлении по номеру не передан телефон.
+var ErrPhoneRequired = errors.New("phone is required")
+
 // Interactor is the contacts application service.
 type Interactor struct {
 	repo    ContactsRepo
@@ -49,6 +52,56 @@ func (i *Interactor) Add(ctx context.Context, ownerID int64, in AddInput) (domai
 	return i.repo.Add(ctx, domain.Contact{
 		OwnerID:    ownerID,
 		UserID:     in.UserID,
+		FirstName:  first,
+		LastName:   strings.TrimSpace(in.LastName),
+		Note:       strings.TrimSpace(in.Note),
+		SharePhone: in.SharePhone,
+	})
+}
+
+// AddByPhoneInput — добавление контакта по номеру телефона (как tweb
+// importContact): сервер резолвит номер в пользователя.
+type AddByPhoneInput struct {
+	Phone      string
+	FirstName  string
+	LastName   string
+	Note       string
+	SharePhone bool
+}
+
+// AddByPhone резолвит номер в зарегистрированного пользователя и сохраняет его в
+// адресную книгу ownerID. domain.ErrNotFound — номер не зарегистрирован (как
+// tweb NO_USER); domain.ErrPrivacy — цель запрещает добавление по номеру
+// (правило added_by_phone). first_name обязателен.
+func (i *Interactor) AddByPhone(ctx context.Context, ownerID int64, in AddByPhoneInput) (domain.Contact, error) {
+	phone := domain.NormalizePhone(in.Phone)
+	if phone == "" {
+		return domain.Contact{}, ErrPhoneRequired
+	}
+	first := strings.TrimSpace(in.FirstName)
+	if first == "" {
+		return domain.Contact{}, ErrNameRequired
+	}
+	userID, err := i.repo.ResolveByPhone(ctx, phone)
+	if err != nil {
+		return domain.Contact{}, err // domain.ErrNotFound → «номер не зарегистрирован»
+	}
+	if userID == ownerID {
+		return domain.Contact{}, ErrSelfContact
+	}
+	// Enforcement added_by_phone: цель может ограничить, кто добавляет её по номеру.
+	if i.privacy != nil {
+		ok, err := i.privacy.Check(ctx, userID, ownerID, domain.PrivacyAddedByPhone)
+		if err != nil {
+			return domain.Contact{}, err
+		}
+		if !ok {
+			return domain.Contact{}, domain.ErrPrivacy
+		}
+	}
+	return i.repo.Add(ctx, domain.Contact{
+		OwnerID:    ownerID,
+		UserID:     userID,
 		FirstName:  first,
 		LastName:   strings.TrimSpace(in.LastName),
 		Note:       strings.TrimSpace(in.Note),

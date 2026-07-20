@@ -1,4 +1,4 @@
-import type { MessageEntity } from './core/models'
+import type { MessageEntity, GeoData } from './core/models'
 
 export type ChatType = 'private' | 'group' | 'channel' | 'bot' | 'saved'
 // sending → часики до message_ack; error → красный значок (send отвергнут/упал),
@@ -39,11 +39,12 @@ export interface ConvMsg {
   entities?: MessageEntity[] // rich-text formatting spans over `text`
   emoji?: string
   time?: string
+  createdAt?: string // абсолютное время создания (ISO) — для live-локации/отсчётов
   status?: MsgStatus
   edited?: boolean // shows the "изменено" marker before the time
   views?: number // channel-post view count ("9.2K 👁"); undefined for non-posts
   reactions?: { emoji: string; count: number; mine: boolean }[] // чипы реакций под сообщением
-  geo?: { lat: number; lng: number } // гео-точка (type 'geo')
+  geo?: GeoData // гео-точка (type 'geo') + venue/live location
   contact?: { userId: number; name: string; phone: string } // контакт (type 'contact')
   mediaUnread?: boolean // голосовое/кружок не прослушано получателем (точка у обеих сторон)
   deleted?: boolean

@@ -7,19 +7,24 @@ import { slideInRight } from '../motion'
 import Avatar from '../shared/ui/Avatar'
 import { useT } from '../i18n'
 import type { Chat } from '../data'
+import NewContactPopup from './NewContactPopup'
 import s from './ContactsView.module.scss'
 
 export default function ContactsView({
   chats,
   onSelect,
   onBack,
+  onOpenChat,
 }: {
   chats: Chat[]
   onSelect: (id: string) => void
   onBack: () => void
+  /** открыть (только что созданный) приватный чат по id — после добавления контакта */
+  onOpenChat?: (chatId: number) => void
 }) {
   const t = useT()
   const [query, setQuery] = useState('')
+  const [newOpen, setNewOpen] = useState(false)
 
   const contacts = useMemo(
     () =>
@@ -64,7 +69,7 @@ export default function ContactsView({
         <Text size={19} weight={600} color="var(--tg-textPrimary)" className={s.title}>
           {t('Contacts')}
         </Text>
-        <IconButton color="var(--tg-textSecondary)">
+        <IconButton color="var(--tg-textSecondary)" onClick={() => setNewOpen(true)}>
           <TgIcon name="adduser" />
         </IconButton>
       </div>
@@ -116,6 +121,12 @@ export default function ContactsView({
           </div>
         ))}
       </div>
+
+      <NewContactPopup
+        open={newOpen}
+        onClose={() => setNewOpen(false)}
+        onCreated={(chatId) => { setNewOpen(false); onOpenChat?.(chatId) }}
+      />
     </motion.div>
   )
 }

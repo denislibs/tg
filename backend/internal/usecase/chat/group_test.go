@@ -249,6 +249,10 @@ func (r *fakeGroupRepo) SetMuted(_ context.Context, chatID, userID int64, muted 
 	return nil
 }
 
+func (r *fakeGroupRepo) SetNotify(_ context.Context, _, _ int64, _ *bool, _ *string) error {
+	return nil
+}
+
 func (r *fakeGroupRepo) SetForum(_ context.Context, chatID int64, enabled bool) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

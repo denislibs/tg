@@ -121,6 +121,24 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
     void managers.groups.setMute(numericChatId, next).catch(() => setDialogMuted(numericChatId, !next))
   }
 
+  // per-chat уведомления (tweb PeerNotifySettings): превью текста + звук.
+  const setDialogNotify = useChatsStore((st) => st.setDialogNotify)
+  const notifyDialog = useChatsStore((st) => st.dialogs.find((d) => d.chatId === numericChatId))
+  const notifyPreview = notifyDialog?.notifyPreview ?? true
+  const notifySoundOn = (notifyDialog?.notifySound ?? 'default') !== 'none'
+  const toggleNotifyPreview = () => {
+    const next = !notifyPreview
+    setDialogNotify(numericChatId, { notifyPreview: next })
+    void managers.groups.setNotify(numericChatId, { preview: next })
+      .catch(() => setDialogNotify(numericChatId, { notifyPreview: !next }))
+  }
+  const toggleNotifySound = () => {
+    const next = notifySoundOn ? 'none' : 'default'
+    setDialogNotify(numericChatId, { notifySound: next })
+    void managers.groups.setNotify(numericChatId, { sound: next })
+      .catch(() => setDialogNotify(numericChatId, { notifySound: notifySoundOn ? 'default' : 'none' }))
+  }
+
   const {
     isRealChat,
     isChannel,
@@ -458,6 +476,24 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
               checked={!muted}
               onClick={toggleNotifications}
             />
+            {!muted && (
+              <>
+                <Row
+                  icon={<TgIcon name="message" size={24} />}
+                  label="Message Preview"
+                  toggle
+                  checked={notifyPreview}
+                  onClick={toggleNotifyPreview}
+                />
+                <Row
+                  icon={<TgIcon name={notifySoundOn ? 'volume_up' : 'nosound'} size={24} />}
+                  label="Notification Sound"
+                  toggle
+                  checked={notifySoundOn}
+                  onClick={toggleNotifySound}
+                />
+              </>
+            )}
           </Section>
           )}
 

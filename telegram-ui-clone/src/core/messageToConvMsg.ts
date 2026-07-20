@@ -63,6 +63,7 @@ export function messageToConvMsg(
     text: convType === 'service' ? serviceMsgText(m.text) : m.text,
     entities: m.entities,
     time: hhmm(m.createdAt),
+    createdAt: m.createdAt,
     // sending → до message_ack (оптимистичный id < 0); error → send отвергнут;
     // после ack id становится серверным и статус сам «дорастает» до sent/read.
     status: out

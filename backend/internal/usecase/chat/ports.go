@@ -47,6 +47,8 @@ type GroupRepo interface {
 	// SetMuted: muted — «навсегда»; until — временный mute (эффективный mute
 	// вычисляется как muted OR muted_until > now()).
 	SetMuted(ctx context.Context, chatID, userID int64, muted bool, until *time.Time) error
+	// SetNotify обновляет per-chat уведомления (превью/звук); nil-поля не меняются.
+	SetNotify(ctx context.Context, chatID, userID int64, preview *bool, sound *string) error
 	// SetPinned/SetArchived — пер-юзерные флаги диалога (закрепление/архив);
 	// CountPinned — пины основного списка (для лимита, архив не считается).
 	SetPinned(ctx context.Context, chatID, userID int64, pinned bool) error
@@ -116,6 +118,8 @@ type MessageRepo interface {
 	SavedDialogs(ctx context.Context, chatID, userID int64) ([]domain.SavedDialog, error)
 	UpdateText(ctx context.Context, msgID int64, text string, entities []domain.MessageEntity) (domain.Message, error)
 	UpdateReplyMarkup(ctx context.Context, msgID int64, markup *domain.ReplyMarkup) (domain.Message, error)
+	// UpdateGeoLive обновляет координаты live-локации (+heading/stopped), бампит edited_at.
+	UpdateGeoLive(ctx context.Context, msgID int64, lat, lng float64, heading *int, stopped bool) (domain.Message, error)
 	SoftDelete(ctx context.Context, msgID int64) error
 	HideForUser(ctx context.Context, userID, msgID int64) error
 	ListThread(ctx context.Context, chatID, threadRootID int64, offset, limit int) ([]domain.Message, error)
@@ -228,6 +232,12 @@ type SendInput struct {
 	// Гео-точка (type 'geo'): обе координаты обязательны, в валидном диапазоне.
 	GeoLat *float64
 	GeoLng *float64
+	// Расширение гео: venue (title/address) и live location (live_period сек,
+	// heading 0..359). Пусто → обычная геометка.
+	GeoTitle      *string
+	GeoAddress    *string
+	GeoLivePeriod *int
+	GeoHeading    *int
 	// Контакт (type 'contact'): имя/телефон гидрируются сервером по аккаунту.
 	ContactUserID *int64
 	// Подарок (type 'gift'): ссылка на выданный подарок — только из SendGift.
@@ -343,6 +353,13 @@ type BotAPIRepo interface {
 	WizardClear(ctx context.Context, userID int64) error
 	// UserBrief — username/имя пользователя для поля from в апдейтах.
 	UserBrief(ctx context.Context, id int64) (username, firstName string, err error)
+}
+
+// Translator переводит текст на целевой язык (source определяется провайдером
+// автоматически). Реализуется адаптером к LibreTranslate-совместимому сервису.
+// Опционален — без него перевод сообщений отключён.
+type Translator interface {
+	Translate(ctx context.Context, text, toLang string) (translated, detectedSource string, err error)
 }
 
 // BotMediaStore сохраняет медиа, загруженное ботом (sendPhoto/Document/Video):

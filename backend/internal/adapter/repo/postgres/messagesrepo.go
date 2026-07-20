@@ -24,7 +24,7 @@ func NewMessagesRepo(pool *pgxpool.Pool) *MessagesRepo { return &MessagesRepo{po
 
 // The full ordered column list every message SELECT/RETURNING uses, so the scan
 // order in scanMessage stays in sync across all queries.
-const messageCols = `id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id, edited_at, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, views, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup`
+const messageCols = `id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id, edited_at, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, views, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta`
 
 // messageColsPrefixed returns messageCols with each column qualified by a table
 // alias (for JOINs where bare column names like chat_id would be ambiguous).
@@ -353,15 +353,15 @@ func (r *MessagesRepo) ViewCounts(ctx context.Context, ids []int64) (map[int64]i
 func (r *MessagesRepo) Insert(ctx context.Context, m domain.Message) (domain.Message, error) {
 	q := querier(ctx, r.pool)
 	return scanOneMessage(q.QueryRow(ctx,
-		`INSERT INTO messages (chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, thread_root_id, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, auto_delete_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,
+		`INSERT INTO messages (chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, thread_root_id, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, auto_delete_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,
 		         (SELECT CASE WHEN auto_delete_period > 0
 		                 THEN now() + make_interval(secs => auto_delete_period) END
 		            FROM chats WHERE id=$1))
 		 RETURNING `+messageCols,
 		m.ChatID, m.Seq, m.SenderID, m.Type, m.Text, m.ReplyToID, m.ClientMsgID, m.MediaID, m.ThreadRootID,
 		m.FwdFromUserID, m.FwdFromChatID, m.FwdFromMsgID, m.FwdDate, m.FwdFromName, entitiesParam(m.Entities), m.MediaUnread, m.GroupedID, m.PollID,
-		m.GeoLat, m.GeoLng, m.ContactUserID, m.ContactName, m.ContactPhone, m.GiftID, replyMarkupParam(m.ReplyMarkup)))
+		m.GeoLat, m.GeoLng, m.ContactUserID, m.ContactName, m.ContactPhone, m.GiftID, replyMarkupParam(m.ReplyMarkup), geoMetaParam(m)))
 }
 
 // ClearMediaUnread drops the media_unread flag; reports whether the row
@@ -391,6 +391,21 @@ func (r *MessagesRepo) UpdateReplyMarkup(ctx context.Context, msgID int64, marku
 	return scanOneMessage(q.QueryRow(ctx,
 		`UPDATE messages SET reply_markup=$2, edited_at=now() WHERE id=$1 RETURNING `+messageCols,
 		msgID, replyMarkupParam(markup)))
+}
+
+// UpdateGeoLive обновляет координаты live-локации (+ heading/stopped в geo_meta),
+// бампит edited_at (время последнего обновления). Остальные поля geo_meta
+// (title/address/live_period) сохраняются jsonb-слиянием.
+func (r *MessagesRepo) UpdateGeoLive(ctx context.Context, msgID int64, lat, lng float64, heading *int, stopped bool) (domain.Message, error) {
+	q := querier(ctx, r.pool)
+	return scanOneMessage(q.QueryRow(ctx,
+		`UPDATE messages
+		    SET geo_lat=$2, geo_lng=$3, edited_at=now(),
+		        geo_meta = COALESCE(geo_meta,'{}'::jsonb)
+		                   || jsonb_strip_nulls(jsonb_build_object('heading',$4::int,'stopped',$5::bool))
+		  WHERE id=$1
+		 RETURNING `+messageCols,
+		msgID, lat, lng, heading, stopped))
 }
 
 // SoftDelete marks a message deleted for everyone (deleted_at=now()).
@@ -625,15 +640,40 @@ func replyMarkupParam(rm *domain.ReplyMarkup) any {
 	return string(b)
 }
 
+// geoMeta — jsonb-представление расширения гео (venue + live location).
+type geoMeta struct {
+	Title      *string `json:"title,omitempty"`
+	Address    *string `json:"address,omitempty"`
+	LivePeriod *int    `json:"live_period,omitempty"`
+	Heading    *int    `json:"heading,omitempty"`
+	Stopped    bool    `json:"stopped,omitempty"`
+}
+
+// geoMetaParam кодирует venue/live-поля в jsonb (nil, если ничего нет).
+func geoMetaParam(m domain.Message) any {
+	if m.GeoTitle == nil && m.GeoAddress == nil && m.GeoLivePeriod == nil && m.GeoHeading == nil && !m.GeoLiveStopped {
+		return nil
+	}
+	b, err := json.Marshal(geoMeta{
+		Title: m.GeoTitle, Address: m.GeoAddress, LivePeriod: m.GeoLivePeriod,
+		Heading: m.GeoHeading, Stopped: m.GeoLiveStopped,
+	})
+	if err != nil {
+		return nil
+	}
+	return string(b)
+}
+
 func scanMessage(s scanner) (domain.Message, error) {
 	var m domain.Message
 	var deletedAt *time.Time
 	var entitiesRaw []byte
 	var markupRaw []byte
+	var geoMetaRaw []byte
 	err := s.Scan(&m.ID, &m.ChatID, &m.Seq, &m.SenderID, &m.Type, &m.Text,
 		&m.ReplyToID, &m.ClientMsgID, &m.MediaID, &m.CreatedAt, &deletedAt, &m.ThreadRootID,
 		&m.EditedAt, &m.FwdFromUserID, &m.FwdFromChatID, &m.FwdFromMsgID, &m.FwdDate, &m.FwdFromName, &entitiesRaw, &m.Views, &m.MediaUnread, &m.GroupedID, &m.PollID,
-		&m.GeoLat, &m.GeoLng, &m.ContactUserID, &m.ContactName, &m.ContactPhone, &m.GiftID, &markupRaw)
+		&m.GeoLat, &m.GeoLng, &m.ContactUserID, &m.ContactName, &m.ContactPhone, &m.GiftID, &markupRaw, &geoMetaRaw)
 	m.Deleted = deletedAt != nil
 	if err == nil && len(entitiesRaw) > 0 && string(entitiesRaw) != "null" {
 		_ = json.Unmarshal(entitiesRaw, &m.Entities)
@@ -642,6 +682,13 @@ func scanMessage(s scanner) (domain.Message, error) {
 		var rm domain.ReplyMarkup
 		if json.Unmarshal(markupRaw, &rm) == nil {
 			m.ReplyMarkup = &rm
+		}
+	}
+	if err == nil && len(geoMetaRaw) > 0 && string(geoMetaRaw) != "null" {
+		var gm geoMeta
+		if json.Unmarshal(geoMetaRaw, &gm) == nil {
+			m.GeoTitle, m.GeoAddress = gm.Title, gm.Address
+			m.GeoLivePeriod, m.GeoHeading, m.GeoLiveStopped = gm.LivePeriod, gm.Heading, gm.Stopped
 		}
 	}
 	return m, err

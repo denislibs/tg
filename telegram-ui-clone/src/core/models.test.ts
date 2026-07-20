@@ -12,6 +12,7 @@ describe('mapDialog', () => {
     const d = mapDialog(raw)
     expect(d).toEqual({
       chatId: 1, type: 'private', lastReadSeq: 4, peerReadSeq: 3, unread: 2, muted: false, pinned: false, archived: false,
+      notifyPreview: true, notifySound: 'default',
       autoDeletePeriod: 0, title: undefined, username: undefined, photoUrl: undefined,
       peer: { id: 2, displayName: 'Bob', avatarUrl: '', verified: undefined },
       lastMessage: {

@@ -60,6 +60,8 @@ import type { InlineResult } from '../core/managers/botsManager'
 import { openWebApp } from '../core/webapp'
 import { useSearchStore } from '../stores/searchStore'
 import { ContactPicker, DeleteMessageDialog, ForwardPicker, ViewersPopup } from './messages/ChatDialogs'
+import TranslatePopup from './messages/TranslatePopup'
+import LocationPicker from './LocationPicker'
 import SendMediaPopup from './messages/SendMediaPopup'
 import MediaLightbox from './messages/MediaLightbox'
 import classNames from '../shared/lib/classNames'
@@ -226,6 +228,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const [attachAnchor, setAttachAnchor] = useState<{ left: number; bottom: number } | null>(null)
   const [createPollOpen, setCreatePollOpen] = useState(false)
   const [contactPickerOpen, setContactPickerOpen] = useState(false)
+  const [locationPickerOpen, setLocationPickerOpen] = useState(false)
   // Запланированные сообщения: счётчик (календарик в композере) + оверлей списка
   const [scheduledCount, setScheduledCount] = useState(0)
   const [scheduledOpen, setScheduledOpen] = useState(false)
@@ -348,6 +351,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     delIds, doDelete, closeDelete, openDeleteFor,
     forwardIds, doForward, closeForward, openForwardFor,
     viewers, closeViewers,
+    translateText, closeTranslate,
   } = useMessageActions({
     chat, numericChatId, isRealChat, win: winV, msgs, meId, pins, managers, accent: accentColor,
     setReply, setEditing, setSelectionMode, setSelected, clearSelection, onChatCreated,
@@ -869,17 +873,17 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           onPhotoVideo={isRealChat ? () => openPicker('image/*,video/*', false) : undefined}
           onFile={isRealChat ? () => openPicker('*/*', true) : undefined}
           onPoll={isRealChat && (chat.type === 'group' || chat.type === 'channel') ? () => setCreatePollOpen(true) : undefined}
-          onLocation={isRealChat ? () => {
-            // Геопозиция берётся у браузера; молча игнорируем отказ (как отмену).
-            navigator.geolocation?.getCurrentPosition(
-              (pos) => sendGeo(pos.coords.latitude, pos.coords.longitude),
-              () => {},
-              { enableHighAccuracy: true, timeout: 10000 },
-            )
-          } : undefined}
+          onLocation={isRealChat ? () => setLocationPickerOpen(true) : undefined}
           onContact={isRealChat ? () => setContactPickerOpen(true) : undefined}
         />
       )}
+
+      {/* Пикер геолокации (attach-меню → Локация): карта + venue + live */}
+      <LocationPicker
+        open={locationPickerOpen}
+        onClose={() => setLocationPickerOpen(false)}
+        onSend={(lat, lng, opts) => sendGeo(lat, lng, opts)}
+      />
 
       {/* Пикер контакта (attach-меню → Контакт) */}
       {contactPickerOpen && (
@@ -978,6 +982,14 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           onClose={closeDelete}
         />
       )}
+
+      {/* Перевод сообщения (контекстное меню → Translate) */}
+      <TranslatePopup
+        open={translateText != null}
+        text={translateText ?? ''}
+        managers={managers}
+        onClose={closeTranslate}
+      />
     </div>
     </CallProvider>
   )

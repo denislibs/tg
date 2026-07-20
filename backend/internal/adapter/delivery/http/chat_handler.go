@@ -40,6 +40,75 @@ func (h *ChatHandler) CreatePrivate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"chat_id": id})
 }
 
+type translateBody struct {
+	Text   string `json:"text"`
+	ToLang string `json:"to_lang"`
+}
+
+// Translate переводит произвольный текст (сообщение/фрагмент) на to_lang через
+// сконфигурированный провайдер (LibreTranslate). 503, если перевод отключён.
+func (h *ChatHandler) Translate(w http.ResponseWriter, r *http.Request) {
+	var body translateBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	res, err := h.svc.TranslateText(r.Context(), body.Text, body.ToLang)
+	switch {
+	case errors.Is(err, domain.ErrUnavailable):
+		writeError(w, http.StatusServiceUnavailable, "translation not available")
+		return
+	case errors.Is(err, domain.ErrNotFound):
+		writeError(w, http.StatusBadRequest, "text and to_lang are required")
+		return
+	case errors.Is(err, domain.ErrTooLong):
+		writeError(w, http.StatusBadRequest, "text too long")
+		return
+	case err != nil:
+		writeError(w, http.StatusBadGateway, "translation failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"text": res.Text, "source": res.Source})
+}
+
+type geoLiveBody struct {
+	Lat     float64 `json:"lat"`
+	Lng     float64 `json:"lng"`
+	Heading *int    `json:"heading"`
+	Stopped bool    `json:"stopped"`
+}
+
+// UpdateGeoLive — POST /chats/{chatID}/messages/{msgID}/geo_live: автор обновляет
+// координаты своей live-локации (watchPosition) или останавливает трансляцию.
+func (h *ChatHandler) UpdateGeoLive(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	msgID, ok := pathInt(w, r, "msgID")
+	if !ok {
+		return
+	}
+	var body geoLiveBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	msg, err := h.svc.UpdateLiveLocation(r.Context(), chatID, msgID, h.meID(r), body.Lat, body.Lng, body.Heading, body.Stopped)
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		writeError(w, http.StatusNotFound, "not a live location")
+		return
+	case errors.Is(err, domain.ErrForbidden):
+		writeError(w, http.StatusForbidden, "not allowed")
+		return
+	case err != nil:
+		writeError(w, http.StatusInternalServerError, "update failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, messageJSON(msg))
+}
+
 // Saved returns (creating on first access) the caller's "Saved Messages" chat.
 func (h *ChatHandler) Saved(w http.ResponseWriter, r *http.Request) {
 	id, err := h.svc.GetOrCreateSaved(r.Context(), h.meID(r))
@@ -90,6 +159,7 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 			"title": d.Title, "username": d.Username, "photo_url": d.PhotoURL,
 			"last_read_seq": d.LastReadSeq, "peer_read_seq": d.PeerReadSeq, "unread": d.UnreadCount, "muted": d.Muted,
 			"pinned": d.Pinned, "archived": d.Archived, "is_forum": d.IsForum,
+			"notify_preview": d.NotifyPreview, "notify_sound": d.NotifySound,
 			"auto_delete_period": d.AutoDeletePeriod,
 		}
 		if d.HasLast {
@@ -123,6 +193,10 @@ type sendBody struct {
 	// гео-точка (type 'geo') / контакт (type 'contact')
 	GeoLat        *float64 `json:"geo_lat"`
 	GeoLng        *float64 `json:"geo_lng"`
+	GeoTitle      *string  `json:"geo_title"`
+	GeoAddress    *string  `json:"geo_address"`
+	GeoLivePeriod *int     `json:"geo_live_period"`
+	GeoHeading    *int     `json:"geo_heading"`
 	ContactUserID *int64   `json:"contact_user_id"`
 }
 
@@ -145,6 +219,8 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		ReplyToID: body.ReplyToID, ClientMsgID: body.ClientMsgID, MediaID: body.MediaID, GroupedID: body.GroupedID,
 		ThreadRootID: body.ThreadRootID,
 		GeoLat:       body.GeoLat, GeoLng: body.GeoLng, ContactUserID: body.ContactUserID,
+		GeoTitle: body.GeoTitle, GeoAddress: body.GeoAddress,
+		GeoLivePeriod: body.GeoLivePeriod, GeoHeading: body.GeoHeading,
 	})
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
@@ -928,7 +1004,24 @@ func messageJSON(m domain.Message) map[string]any {
 		j["reactions"] = m.Reactions
 	}
 	if m.GeoLat != nil && m.GeoLng != nil {
-		j["geo"] = map[string]any{"lat": *m.GeoLat, "lng": *m.GeoLng}
+		g := map[string]any{"lat": *m.GeoLat, "lng": *m.GeoLng}
+		if m.GeoTitle != nil {
+			g["title"] = *m.GeoTitle
+		}
+		if m.GeoAddress != nil {
+			g["address"] = *m.GeoAddress
+		}
+		if m.GeoLivePeriod != nil {
+			g["live_period"] = *m.GeoLivePeriod
+			g["live_stopped"] = m.GeoLiveStopped
+			if m.GeoHeading != nil {
+				g["heading"] = *m.GeoHeading
+			}
+			if m.EditedAt != nil {
+				g["edited_at"] = *m.EditedAt
+			}
+		}
+		j["geo"] = g
 	}
 	if m.ContactUserID != nil {
 		c := map[string]any{"user_id": *m.ContactUserID}

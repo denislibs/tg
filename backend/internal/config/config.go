@@ -39,6 +39,12 @@ type Config struct {
 	// Origins — допустимые origin'ы браузера (через запятую).
 	WebAuthnRPID    string
 	WebAuthnOrigins []string
+
+	// TranslateURL — базовый URL LibreTranslate-совместимого сервиса перевода
+	// (POST /translate). Пусто → перевод сообщений отключён (эндпоинт → 503).
+	TranslateURL string
+	// TranslateAPIKey — необязательный api_key для инстансов, требующих его.
+	TranslateAPIKey string
 }
 
 func Load() (*Config, error) {
@@ -67,6 +73,8 @@ func Load() (*Config, error) {
 	c.WebAuthnRPID = getenv("WEBAUTHN_RP_ID", "localhost")
 	c.WebAuthnOrigins = strings.Split(getenv("WEBAUTHN_ORIGINS",
 		"https://localhost:38443,http://localhost:38080,http://localhost:5173,http://localhost:8080"), ",")
+	c.TranslateURL = os.Getenv("TRANSLATE_URL")
+	c.TranslateAPIKey = os.Getenv("TRANSLATE_API_KEY")
 	return c, nil
 }
 

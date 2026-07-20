@@ -43,7 +43,10 @@ const mapContact = (c: RawContact): Contact => ({
 })
 
 export interface AddContactInput {
-  contactId: number
+  /** id существующего пользователя (0/пусто → добавление по номеру) */
+  contactId?: number
+  /** номер телефона (используется, когда contactId не задан) — как tweb importContact */
+  phone?: string
   firstName: string
   lastName?: string
   note?: string
@@ -59,7 +62,8 @@ export function newContactsManager({ rest }: ContactsDeps) {
     async add(input: AddContactInput): Promise<Contact> {
       return mapContact(
         await rest.post<RawContact>('/contacts', {
-          contact_id: input.contactId,
+          contact_id: input.contactId ?? 0,
+          phone: input.phone ?? '',
           first_name: input.firstName,
           last_name: input.lastName ?? '',
           note: input.note ?? '',

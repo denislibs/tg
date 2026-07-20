@@ -4,12 +4,12 @@ import { loadChats, useChatsStore } from '../stores/chatsStore'
 import { useMessagesStore } from '../stores/messagesStore'
 import { usePinsStore } from '../stores/pinsStore'
 import { useStarsStore } from '../stores/starsStore'
-import { mapMessage, mapDraft, mapPoll, type RawPoll } from '../core/models'
+import { mapMessage, mapDraft, mapPoll, mapGeo, type RawPoll } from '../core/models'
 import { useDraftsStore } from '../stores/draftsStore'
 import { useUploadsStore } from '../stores/uploadsStore'
 import { uiEvents } from '../core/hooks/uiEvents'
 import { mapReplyMarkup } from '../core/managers/botsManager'
-import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt, type DraftUpdateEvt, type ReactionEvt, type BotCallbackAnswerEvt } from '../core/realtime/events'
+import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt, type DraftUpdateEvt, type ReactionEvt, type BotCallbackAnswerEvt, type GeoLiveUpdateEvt } from '../core/realtime/events'
 import { playMessageSent } from '../core/audio/sounds'
 import { notifyIncomingMessage } from './uiNotifications'
 import { useSettingsStore } from '../settings'
@@ -120,6 +120,10 @@ export function startRealtime(): void {
   smp.on(RT.deleteMessage, (raw) => {
     const e = raw as DeleteMessageEvt
     useMessagesStore.getState().applyDelete(e.chat_id, e.msg_id)
+  })
+  smp.on(RT.geoLiveUpdate, (raw) => {
+    const e = raw as GeoLiveUpdateEvt
+    useMessagesStore.getState().applyGeoLive(e.chat_id, e.msg_id, mapGeo(e.geo))
   })
   // Pin/unpin: refetch the chat's pins and write them to the store (the only
   // socket subscription for pins — usePinnedBar just reads the store).

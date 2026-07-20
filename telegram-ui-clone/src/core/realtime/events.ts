@@ -1,5 +1,5 @@
 // src/core/realtime/events.ts
-import type { MessageEntity } from '../models'
+import type { MessageEntity, RawGeo } from '../models'
 // Worker -> UI event names (over SuperMessagePort.emit). Live frames AND /sync
 // catch-up both surface through these, so the UI handles them uniformly.
 export const RT = {
@@ -23,13 +23,16 @@ export const RT = {
   balanceUpdate: 'rt:balance_update',
   groupCall: 'rt:group_call',
   botCallbackAnswer: 'rt:bot_callback_answer',
+  geoLiveUpdate: 'rt:geo_live_update',
   state: 'rt:state',
 } as const
 
 export type ConnState = 'connecting' | 'ready' | 'reconnecting' | 'offline'
 
-export interface NewMessageEvt { chat_id: number; msg_id: number; seq: number; sender_id: number; type: string; text: string; entities?: MessageEntity[] | null; media_id: number | null; created_at: string; thread_root_id?: number | null; reply_to_id?: number | null; fwd_from_user_id?: number | null; fwd_from_chat_id?: number | null; fwd_from_msg_id?: number | null; fwd_date?: string | null; media_unread?: boolean; sender_name?: string; grouped_id?: string | null; geo?: { lat: number; lng: number } | null; contact?: { user_id: number; name?: string; phone?: string } | null; gift?: import('../models').RawMessage['gift']; reply_markup?: import('../models').RawMessage['reply_markup'] }
+export interface NewMessageEvt { chat_id: number; msg_id: number; seq: number; sender_id: number; type: string; text: string; entities?: MessageEntity[] | null; media_id: number | null; created_at: string; thread_root_id?: number | null; reply_to_id?: number | null; fwd_from_user_id?: number | null; fwd_from_chat_id?: number | null; fwd_from_msg_id?: number | null; fwd_date?: string | null; media_unread?: boolean; sender_name?: string; grouped_id?: string | null; geo?: RawGeo | null; contact?: { user_id: number; name?: string; phone?: string } | null; gift?: import('../models').RawMessage['gift']; reply_markup?: import('../models').RawMessage['reply_markup'] }
 export interface EditMessageEvt { chat_id: number; msg_id: number; seq: number; text: string; entities?: MessageEntity[] | null; edited_at: string; reply_markup?: import('../models').RawMessage['reply_markup'] }
+// Live-обновление координат гео-трансляции (geo_live_update).
+export interface GeoLiveUpdateEvt { chat_id: number; msg_id: number; seq: number; geo: RawGeo }
 // Ответ бота на callback уже после таймаута синхронного ожидания — тост по WS.
 export interface BotCallbackAnswerEvt { text: string; alert: boolean }
 export interface DeleteMessageEvt { chat_id: number; msg_id: number; seq: number; for_me: boolean }

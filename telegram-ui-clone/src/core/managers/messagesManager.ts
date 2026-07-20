@@ -1,7 +1,7 @@
 // src/core/managers/messagesManager.ts
 import type { RestClient } from '../net/restClient'
-import { mapMessage, mapPoll, mapScheduled, type Message, type MessageEntity, type Poll, type RawMessage, type RawPoll, type RawScheduled, type Scheduled } from '../models'
-import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt } from '../realtime/events'
+import { mapMessage, mapPoll, mapScheduled, mapGeo, type Message, type MessageEntity, type Poll, type RawMessage, type RawPoll, type RawScheduled, type Scheduled } from '../models'
+import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt } from '../realtime/events'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
 
 export interface HistoryArgs {
@@ -342,6 +342,21 @@ export function newMessagesManager({ rest }: MessagesDeps) {
       }
     },
 
+    // Live-обновление координат гео-трансляции → кэш всех окон чата.
+    cacheGeoLive(evt: GeoLiveUpdateEvt): void {
+      const geo = mapGeo(evt.geo)
+      for (const key of keysOf(evt.chat_id)) {
+        const c = cache.get(key)
+        if (!c) continue
+        for (const [seq, m] of c) {
+          if (m.id === evt.msg_id) {
+            c.set(seq, { ...m, geo })
+            break
+          }
+        }
+      }
+    },
+
     cacheDelete(evt: DeleteMessageEvt): void {
       for (const key of keysOf(evt.chat_id)) {
         const c = cache.get(key)
@@ -363,6 +378,36 @@ export function newMessagesManager({ rest }: MessagesDeps) {
 
     async unreact(chatId: number, msgId: number, emoji: string): Promise<void> {
       await rest.del(`/chats/${chatId}/messages/${msgId}/reactions/${encodeURIComponent(emoji)}`)
+    },
+
+    // Live location: отправить начальную точку трансляции по REST (нужен msgId,
+    // чтобы затем слать обновления). Бабл появится WS-эхом new_message.
+    async sendGeoLive(chatId: number, lat: number, lng: number, livePeriod: number, heading?: number): Promise<Message> {
+      const created = await rest.post<RawMessage>(`/chats/${chatId}/messages`, {
+        type: 'geo', text: '', geo_lat: lat, geo_lng: lng,
+        geo_live_period: livePeriod, geo_heading: heading ?? null, client_msg_id: '',
+      })
+      const m = mapMessage(created)
+      put(hkey(chatId), [m])
+      const sa = sliceFor(hkey(chatId))
+      if (sa.first.isEnd(SliceEnd.Bottom) && !sa.findSlice(m.seq)) sa.unshift(m.seq)
+      return m
+    },
+
+    // Live location: обновить координаты (или остановить трансляцию stopped=true).
+    async updateGeoLive(chatId: number, msgId: number, lat: number, lng: number, opts?: { heading?: number; stopped?: boolean }): Promise<Message> {
+      const r = await rest.post<RawMessage>(`/chats/${chatId}/messages/${msgId}/geo_live`, {
+        lat, lng, heading: opts?.heading ?? null, stopped: opts?.stopped ?? false,
+      })
+      const m = mapMessage(r)
+      for (const key of keysOf(chatId)) if (cache.get(key)?.has(m.seq)) put(key, [m])
+      return m
+    },
+
+    // Перевод произвольного текста на toLang (ISO-код). source — определённый
+    // сервером исходный язык. 503 при отключённом провайдере (пробрасывается).
+    async translate(text: string, toLang: string): Promise<{ text: string; source: string }> {
+      return rest.post<{ text: string; source: string }>('/translate', { text, to_lang: toLang })
     },
   }
 }

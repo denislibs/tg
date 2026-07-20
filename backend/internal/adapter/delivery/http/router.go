@@ -130,12 +130,14 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Patch("/chats/{chatID}/messages/{msgID}", ch.EditMessage)
 		pr.Delete("/chats/{chatID}/messages/{msgID}", ch.DeleteMessage)
 		pr.Post("/chats/{chatID}/forward", ch.Forward)
+		pr.Post("/chats/{chatID}/messages/{msgID}/geo_live", ch.UpdateGeoLive)
 		pr.Post("/chats/{chatID}/messages/{msgID}/pin", ch.Pin)
 		pr.Delete("/chats/{chatID}/messages/{msgID}/pin", ch.Unpin)
 		pr.Get("/chats/{chatID}/pins", ch.ListPins)
 		pr.Get("/chats/{chatID}/messages/{msgID}/viewers", ch.Viewers)
 		pr.Get("/chats/{chatID}/history", ch.History)
 		pr.Get("/chats/{chatID}/search", ch.SearchMessages)
+		pr.Post("/translate", ch.Translate)
 		pr.Post("/chats/{chatID}/polls", ch.SendPoll)
 		pr.Get("/chats/{chatID}/group_call", ch.GroupCallParticipants)
 		pr.Post("/chats/{chatID}/forum", ch.SetForum)
@@ -162,9 +164,9 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/bots/{botID}/inline", ch.BotInline)
 		pr.Get("/bots/{botID}/menu_button", ch.BotMenuButton)
 		pr.Post("/bots/{botID}/callback", ch.BotCallback)
-		pr.Post("/bots/{botID}/start", ch.BotStart)             // deep link t.me/bot?start=
-		pr.Post("/bots/{botID}/webapp_data", ch.BotWebAppData)  // sendData из mini-app
-		pr.Post("/bots/{botID}/cloud/get", ch.BotCloudGet)      // CloudStorage
+		pr.Post("/bots/{botID}/start", ch.BotStart)            // deep link t.me/bot?start=
+		pr.Post("/bots/{botID}/webapp_data", ch.BotWebAppData) // sendData из mini-app
+		pr.Post("/bots/{botID}/cloud/get", ch.BotCloudGet)     // CloudStorage
 		pr.Post("/bots/{botID}/cloud/set", ch.BotCloudSet)
 		pr.Post("/bots/{botID}/cloud/remove", ch.BotCloudRemove)
 		pr.Get("/bots/{botID}/cloud/keys", ch.BotCloudKeys)
@@ -194,6 +196,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Post("/chats/{chatID}/admins", gh.PromoteAdmin)
 		pr.Delete("/chats/{chatID}/admins/{userID}", gh.DemoteAdmin)
 		pr.Post("/chats/{chatID}/mute", gh.SetMute)
+		pr.Put("/chats/{chatID}/notify_settings", gh.SetNotify)
 		pr.Post("/chats/{chatID}/pin", gh.SetPin)
 		pr.Post("/chats/{chatID}/archive", gh.SetArchive)
 		pr.Post("/chats/{chatID}/invite_links", gh.CreateInvite)

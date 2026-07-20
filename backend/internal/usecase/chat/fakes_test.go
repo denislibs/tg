@@ -562,6 +562,24 @@ func (r fakeMsgs) UpdateReplyMarkup(_ context.Context, msgID int64, markup *doma
 	return domain.Message{}, domain.ErrNotFound
 }
 
+func (r fakeMsgs) UpdateGeoLive(_ context.Context, msgID int64, lat, lng float64, heading *int, stopped bool) (domain.Message, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	now := time.Now()
+	for chatID, msgs := range r.s.messages {
+		for idx, m := range msgs {
+			if m.ID == msgID {
+				m.GeoLat, m.GeoLng = &lat, &lng
+				m.GeoHeading, m.GeoLiveStopped = heading, stopped
+				m.EditedAt = &now
+				r.s.messages[chatID][idx] = m
+				return m, nil
+			}
+		}
+	}
+	return domain.Message{}, domain.ErrNotFound
+}
+
 func (r fakeMsgs) SoftDelete(_ context.Context, msgID int64) error {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()

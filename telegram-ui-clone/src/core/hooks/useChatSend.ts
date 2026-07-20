@@ -18,6 +18,7 @@ import type { Chat } from '../../data'
 import type { MessageWindow } from './useMessageWindow'
 import type { Managers } from '../../client/bootstrap'
 import { useMessagesStore , winKey } from '../../stores/messagesStore'
+import { useLiveShareStore } from '../../stores/liveShareStore'
 import { useUploadsStore } from '../../stores/uploadsStore'
 
 // Max characters per message (matches the backend's maxMessageRunes / Telegram 4096).
@@ -100,11 +101,22 @@ export function useChatSend({
 
   // Гео-точка из attach-меню: оптимистичный бабл сразу (координаты локальные),
   // на бэк — WS-полями geo_lat/geo_lng (type 'geo').
-  const sendGeo = (lat: number, lng: number) => {
-    const clientMsgId = mkClientMsgId()
+  const sendGeo = (lat: number, lng: number, opts?: { title?: string; address?: string; livePeriod?: number; heading?: number }) => {
     atBottomRef.current = true; userScrolledUpRef.current = false
-    win.appendOptimistic('', meId ?? -1, clientMsgId, undefined, 'geo', undefined, undefined, undefined, { geo: { lat, lng } })
-    void managers.realtime.sendMessage({ chatId: numericChatId, text: '', clientMsgId, type: 'geo', geo: { lat, lng }, threadRootId })
+    // Live location: шлём по REST (нужен msgId для последующих обновлений) и
+    // запускаем трансляцию; бабл появится WS-эхом. Обычная точка/venue — как было,
+    // оптимистичным WS-путём.
+    if (opts?.livePeriod) {
+      void managers.messages.sendGeoLive(numericChatId, lat, lng, opts.livePeriod, opts.heading).then((m) => {
+        useLiveShareStore.getState().start(managers, numericChatId, m.id, Date.now() + opts.livePeriod! * 1000)
+      })
+      window.dispatchEvent(new Event('tg-send'))
+      return
+    }
+    const clientMsgId = mkClientMsgId()
+    const geo = { lat, lng, ...opts }
+    win.appendOptimistic('', meId ?? -1, clientMsgId, undefined, 'geo', undefined, undefined, undefined, { geo })
+    void managers.realtime.sendMessage({ chatId: numericChatId, text: '', clientMsgId, type: 'geo', geo, threadRootId })
     window.dispatchEvent(new Event('tg-send'))
   }
 

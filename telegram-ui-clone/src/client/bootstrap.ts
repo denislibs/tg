@@ -86,10 +86,13 @@ export interface Managers {
     getAround(chatId: number, centerSeq: number, limit?: number, threadRoot?: number): Promise<{ messages: Message[]; reachedTop: boolean; reachedBottom: boolean }>
     react(chatId: number, msgId: number, emoji: string): Promise<void>
     unreact(chatId: number, msgId: number, emoji: string): Promise<void>
+    translate(text: string, toLang: string): Promise<{ text: string; source: string }>
+    sendGeoLive(chatId: number, lat: number, lng: number, livePeriod: number, heading?: number): Promise<Message>
+    updateGeoLive(chatId: number, msgId: number, lat: number, lng: number, opts?: { heading?: number; stopped?: boolean }): Promise<Message>
   }
   realtime: {
     start(): Promise<{ state: ConnState }>
-    sendMessage(args: { chatId: number; text: string; entities?: MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; mediaId?: number | null; type?: string; groupedId?: string; geo?: { lat: number; lng: number }; contactUserId?: number; threadRootId?: number | null }): Promise<{ ok: boolean }>
+    sendMessage(args: { chatId: number; text: string; entities?: MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; mediaId?: number | null; type?: string; groupedId?: string; geo?: { lat: number; lng: number; title?: string; address?: string; livePeriod?: number; heading?: number }; contactUserId?: number; threadRootId?: number | null }): Promise<{ ok: boolean }>
     markRead(args: { chatId: number; upToSeq: number }): Promise<{ ok: boolean }>
     markMediaRead(args: { chatId: number; msgId: number }): Promise<{ ok: boolean }>
     sendTyping(args: { chatId: number; action?: 'typing' | 'voice' | 'video' }): Promise<{ ok: boolean }>
@@ -134,6 +137,7 @@ export interface Managers {
     revokeInvite(chatId: number, token: string): Promise<void>
     deleteGroup(chatId: number): Promise<void>
     setMute(chatId: number, muted: boolean, until?: number): Promise<void>
+    setNotify(chatId: number, patch: { preview?: boolean; sound?: 'default' | 'none' }): Promise<void>
     setPin(chatId: number, pinned: boolean): Promise<void>
     setArchive(chatId: number, archived: boolean): Promise<void>
     setForum(chatId: number, enabled: boolean): Promise<void>
