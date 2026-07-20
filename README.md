@@ -97,6 +97,7 @@ npm test         # vitest
 
 - [`docs/contracts.md`](docs/contracts.md) — контракты API.
 - [`backend/internal/openapi`](backend/internal/openapi) — OpenAPI-спека + Swagger UI (`GET /swagger`).
+- [`docs/bots/`](docs/bots/README.md) — **боты и mini-apps**: создание, Bot API, интеграция.
 - [`docs/ui-kit-migration.md`](docs/ui-kit-migration.md) — заметки по UI-kit.
 
 ## Технологии
