@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { generateKeyPair, exportPublicKey, deriveSecret } from './crypto'
+import { generateKeyPair, exportPublicKey, deriveSecret, encryptPayload, decryptPayload } from './crypto'
 
 describe('secret/crypto ECDH', () => {
   it('обе стороны выводят одинаковый ключ и fingerprint', async () => {
@@ -28,5 +28,16 @@ describe('secret/crypto ECDH', () => {
     const sc = await deriveSecret(c.privateKey, await exportPublicKey(a.publicKey))
 
     expect(Array.from(sc.fingerprint)).not.toEqual(Array.from(sa.fingerprint))
+  })
+
+  it('encryptPayload → decryptPayload round-trip', async () => {
+    const a = await generateKeyPair(); const b = await generateKeyPair()
+    const sa = await deriveSecret(a.privateKey, await exportPublicKey(b.publicKey))
+    const sb = await deriveSecret(b.privateKey, await exportPublicKey(a.publicKey))
+    const payload = { text: 'привет 🔒', entities: [{ type: 'bold', offset: 0, length: 6 }] }
+    const blob = await encryptPayload(sa.key, payload)
+    expect(typeof blob).toBe('string') // base64
+    const out = await decryptPayload<typeof payload>(sb.key, blob)
+    expect(out).toEqual(payload)
   })
 })

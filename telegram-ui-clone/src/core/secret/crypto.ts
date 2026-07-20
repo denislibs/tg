@@ -40,3 +40,33 @@ export async function deriveSecret(priv: CryptoKey, peerPubRaw: Uint8Array): Pro
   bits.fill(0)
   return { key, fingerprint }
 }
+
+function b64encode(bytes: Uint8Array): string {
+  let s = ''
+  for (const b of bytes) s += String.fromCharCode(b)
+  return btoa(s)
+}
+function b64decode(s: string): Uint8Array {
+  const bin = atob(s)
+  const out = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
+  return out
+}
+
+// Блоб = iv(12) || ciphertext, в base64. IV случайный на каждое сообщение.
+export async function encryptPayload(key: CryptoKey, payload: unknown): Promise<string> {
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const data = new TextEncoder().encode(JSON.stringify(payload))
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, data))
+  const blob = new Uint8Array(iv.length + ct.length)
+  blob.set(iv, 0); blob.set(ct, iv.length)
+  return b64encode(blob)
+}
+
+export async function decryptPayload<T>(key: CryptoKey, blob: string): Promise<T> {
+  const raw = b64decode(blob)
+  const iv = raw.subarray(0, 12) as BufferSource
+  const ct = raw.subarray(12) as BufferSource
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct)
+  return JSON.parse(new TextDecoder().decode(pt)) as T
+}
