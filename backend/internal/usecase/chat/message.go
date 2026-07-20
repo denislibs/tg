@@ -89,6 +89,14 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		in.ContactUserID = nil
 	}
 
+	if in.Type == "encrypted" {
+		if len(in.EncBody) == 0 {
+			return domain.Message{}, domain.ErrInvalid
+		}
+		// Плейнтекст в секретном чате не хранится: сервер держит только шифр-блоб.
+		in.Text, in.Entities = "", nil
+	}
+
 	// Групповые дефолтные разрешения + slowmode (сервисные сообщения генерирует
 	// сам сервер — их не ограничиваем).
 	if in.Type != "service" {
@@ -138,6 +146,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			GeoTitle: in.GeoTitle, GeoAddress: in.GeoAddress,
 			GeoLivePeriod: in.GeoLivePeriod, GeoHeading: in.GeoHeading,
 			ContactUserID: in.ContactUserID, ContactName: contactName, ContactPhone: contactPhone,
+			EncBody: in.EncBody, TTLSeconds: in.TTLSeconds,
 			// Voice/round content starts "unlistened" (Telegram media_unread).
 			MediaUnread: in.Type == "voice" || in.Type == "roundVideo",
 		})

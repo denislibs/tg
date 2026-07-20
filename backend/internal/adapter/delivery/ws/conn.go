@@ -2,6 +2,7 @@ package ws
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"time"
@@ -112,6 +113,12 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		if d.Type == "service" { // server-only type (group action pills)
 			return
 		}
+		var encBody []byte
+		if d.EncBody != "" {
+			if b, e := base64.StdEncoding.DecodeString(d.EncBody); e == nil {
+				encBody = b
+			}
+		}
 		msg, err := c.svc.Send(ctx, usecasechat.SendInput{
 			ChatID: d.ChatID, SenderID: c.userID, Type: d.Type, Text: d.Text, Entities: d.Entities,
 			ReplyToID: d.ReplyToID, ClientMsgID: d.ClientMsgID, MediaID: d.MediaID, GroupedID: d.GroupedID,
@@ -119,6 +126,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			GeoTitle: d.GeoTitle, GeoAddress: d.GeoAddress,
 			GeoLivePeriod: d.GeoLivePeriod, GeoHeading: d.GeoHeading,
 			ThreadRootID: d.ThreadRootID,
+			EncBody:      encBody, TTLSeconds: d.TTLSeconds,
 		})
 		if err != nil {
 			// NACK the sender so the client stops retrying and can clear the bubble.

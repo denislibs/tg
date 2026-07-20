@@ -1,6 +1,7 @@
 package http
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"log"
@@ -1032,6 +1033,11 @@ func messageJSON(m domain.Message) map[string]any {
 			c["phone"] = *m.ContactPhone
 		}
 		j["contact"] = c
+	}
+	if m.EncBody != nil {
+		j["enc_body"] = base64.StdEncoding.EncodeToString(m.EncBody)
+		j["ttl_seconds"] = m.TTLSeconds
+		j["destruct_at"] = m.DestructAt
 	}
 	if m.PollID != nil {
 		j["poll_id"] = *m.PollID

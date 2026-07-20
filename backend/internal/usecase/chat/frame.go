@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"encoding/base64"
 	"encoding/json"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -41,6 +42,11 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 	}
 	if m.ContactUserID != nil {
 		p["contact"] = contactJSON(m)
+	}
+	if m.EncBody != nil {
+		p["enc_body"] = base64.StdEncoding.EncodeToString(m.EncBody)
+		p["ttl_seconds"] = m.TTLSeconds
+		p["destruct_at"] = m.DestructAt
 	}
 	return p
 }

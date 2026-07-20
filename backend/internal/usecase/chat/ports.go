@@ -253,6 +253,10 @@ type SendInput struct {
 	GiftID *int64
 	// Клавиатура сообщения (inline/reply) — у ответов бота.
 	ReplyMarkup *domain.ReplyMarkup
+	// E2E-шифртекст (type 'encrypted'): iv||ciphertext. Text/Entities пустые.
+	EncBody []byte
+	// Self-destruct TTL (сек) для секретного сообщения; nil — без самоуничтожения.
+	TTLSeconds *int
 }
 
 // GroupCallStore хранит участников активных групповых звонков (эфемерно, Redis).
