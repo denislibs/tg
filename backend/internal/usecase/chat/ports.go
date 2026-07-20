@@ -305,6 +305,35 @@ type BotRepo interface {
 	Commands(ctx context.Context, botID int64) ([]domain.BotCommand, error)
 }
 
+// BotAPIRepo — хранилище Bot API: учётки/токены ботов, очередь апдейтов,
+// mini-app'ы и состояние мастера BotFather.
+type BotAPIRepo interface {
+	// CreateBot заводит пользователя-бота (is_bot) и его учётку с токеном.
+	CreateBot(ctx context.Context, ownerID int64, name, username string) (domain.BotAccount, error)
+	BotByToken(ctx context.Context, token string) (domain.BotAccount, error)
+	BotByID(ctx context.Context, botID int64) (domain.BotAccount, error)
+	BotsByOwner(ctx context.Context, ownerID int64) ([]domain.BotAccount, error)
+	UsernameTaken(ctx context.Context, username string) (bool, error)
+	SetWebhook(ctx context.Context, botID int64, url string) error
+	SetMenuButton(ctx context.Context, botID int64, text, url string) error
+	RegenToken(ctx context.Context, botID int64) (string, error)
+	SetCommands(ctx context.Context, botID int64, cmds []domain.BotCommand) error
+	// EnqueueUpdate кладёт апдейт в очередь бота, возвращает его update_id.
+	EnqueueUpdate(ctx context.Context, botID int64, payload []byte) (int64, error)
+	// PullUpdates подтверждает предыдущую пачку (offset) и возвращает новые.
+	PullUpdates(ctx context.Context, botID, offset int64, limit int) ([]domain.BotUpdate, error)
+	// mini-app'ы
+	CreateApp(ctx context.Context, app domain.BotApp) error
+	AppByShortName(ctx context.Context, botID int64, shortName string) (domain.BotApp, error)
+	AppsByBot(ctx context.Context, botID int64) ([]domain.BotApp, error)
+	// мастер BotFather
+	WizardGet(ctx context.Context, userID int64) (domain.BotWizard, error)
+	WizardSet(ctx context.Context, w domain.BotWizard) error
+	WizardClear(ctx context.Context, userID int64) error
+	// UserBrief — username/имя пользователя для поля from в апдейтах.
+	UserBrief(ctx context.Context, id int64) (username, firstName string, err error)
+}
+
 type HistoryResult struct {
 	Messages []domain.Message
 	Count    int

@@ -61,6 +61,11 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		r.Get("/@{username}/photo", pubH.Photo)
 	}
 
+	// Bot API (Telegram-подобный): /bot/{token}/{method}. Аутентификация по
+	// токену в пути, поэтому вне Bearer-группы. Принимает GET и POST.
+	botAPIH := NewBotAPIHandler(chatUC)
+	r.HandleFunc("/bot/{token}/{method}", botAPIH.Handle)
+
 	r.Group(func(pr chi.Router) {
 		pr.Use(AuthMiddleware(authUC))
 
@@ -152,6 +157,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		// Боты
 		pr.Get("/bots/{botID}/commands", ch.BotCommands)
 		pr.Get("/bots/{botID}/inline", ch.BotInline)
+		pr.Get("/bots/{botID}/menu_button", ch.BotMenuButton)
 		pr.Post("/bots/{botID}/callback", ch.BotCallback)
 		pr.Get("/chats/{chatID}/media", ch.MediaHistory)
 		pr.Post("/chats/{chatID}/read", ch.Read)

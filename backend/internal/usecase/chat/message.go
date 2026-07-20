@@ -183,7 +183,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	}
 	// Авто-ответ бота: обычное текстовое сообщение в приватный чат с ботом.
 	if in.Type == "text" && in.Text != "" {
-		i.maybeBotReply(ctx, in.ChatID, in.SenderID, in.Text)
+		i.maybeBotReply(ctx, in.ChatID, in.SenderID, msg.ID, in.Text)
 	}
 	return msg, nil
 }

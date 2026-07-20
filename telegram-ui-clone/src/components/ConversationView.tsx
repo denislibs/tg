@@ -57,6 +57,7 @@ import MessageContextMenu from './conversation/MessageContextMenu'
 import { useChatsStore } from '../stores/chatsStore'
 import { type MessageEntity } from '../core/models'
 import type { InlineResult } from '../core/managers/botsManager'
+import { openWebApp } from '../core/webapp'
 import { useSearchStore } from '../stores/searchStore'
 import { ContactPicker, DeleteMessageDialog, ForwardPicker, ViewersPopup } from './messages/ChatDialogs'
 import SendMediaPopup from './messages/SendMediaPopup'
@@ -482,12 +483,21 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const headerStatus = realSubtitle ?? presenceLabel ?? (chat.status ? t(chat.status) : '')
   const headerOnline = !!peerPresence?.online || chat.status === 'online'
 
-  // Бот-собеседник (для кнопки «Начать» и reply-клавиатуры) — по профилю.
+  // Бот-собеседник (для кнопки «Начать», reply-клавиатуры и кнопки-меню) — по профилю.
   const [isBotChat, setIsBotChat] = useState(false)
+  const [botMenu, setBotMenu] = useState<{ text: string; url: string } | null>(null)
   useEffect(() => {
-    if (chat.type !== 'private' || chat.peerId == null) { setIsBotChat(false); return }
+    if (chat.type !== 'private' || chat.peerId == null) { setIsBotChat(false); setBotMenu(null); return }
     let alive = true
-    void managers.privacy.profile(chat.peerId).then((p) => { if (alive) setIsBotChat(!!p.isBot) }).catch(() => {})
+    const peerId = chat.peerId
+    setBotMenu(null)
+    void managers.privacy.profile(peerId).then((p) => {
+      if (!alive) return
+      setIsBotChat(!!p.isBot)
+      if (p.isBot) {
+        void managers.bots.menuButton(peerId).then((mb) => { if (alive && mb.text && mb.url) setBotMenu(mb) }).catch(() => {})
+      }
+    }).catch(() => {})
     return () => { alive = false }
   }, [chat.type, chat.peerId, managers])
   // reply-клавиатура: последнее сообщение бота с непустым keyboard (пустой = скрыть).
@@ -747,6 +757,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               mentions={isGroup && mentionPeers.length > 0 ? mentionPeers : undefined}
               onInlineQuery={isRealChat ? onComposerInlineQuery : undefined}
               onPickInline={onComposerPickInline}
+              botMenuButton={botMenu ? { text: botMenu.text, onClick: () => openWebApp({ url: botMenu.url, botName: chat.name }) } : undefined}
               onSchedule={isRealChat ? onComposerSchedule : undefined}
               scheduledCount={scheduledCount}
               onOpenScheduled={() => setScheduledOpen(true)}

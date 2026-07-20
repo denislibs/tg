@@ -33,6 +33,8 @@ type Interactor struct {
 	groupCalls  GroupCallStore
 	stars       StarsRepo
 	bots        BotRepo
+	botAPI      BotAPIRepo
+	botHub      *botPendingHub
 }
 
 // New constructs the chat interactor from its ports.
@@ -87,6 +89,10 @@ func (i *Interactor) SetStars(s StarsRepo) { i.stars = s }
 
 // SetBots подключает данные ботов (optional; без него авто-ответы отключены).
 func (i *Interactor) SetBots(b BotRepo) { i.bots = b }
+
+// SetBotAPI подключает хранилище Bot API (учётки/токены/апдейты/mini-app).
+// Без него боты-сервисы и BotFather отключены (демо-бот продолжает работать).
+func (i *Interactor) SetBotAPI(b BotAPIRepo) { i.botAPI = b }
 
 // nowMillis is the server clock used for update dates.
 func nowMillis() int64 { return time.Now().UnixMilli() }

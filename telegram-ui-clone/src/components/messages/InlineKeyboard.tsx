@@ -11,7 +11,7 @@ import { openWebApp } from '../../core/webapp'
 import { useT } from '../../i18n'
 import s from './InlineKeyboard.module.scss'
 
-export default function InlineKeyboard({ rows, chatId, botId }: { rows: InlineButton[][]; chatId: number; botId: number }) {
+export default function InlineKeyboard({ rows, chatId, botId, msgId }: { rows: InlineButton[][]; chatId: number; botId: number; msgId?: number }) {
   const t = useT()
   const managers = useManagers()
   const [alert, setAlert] = useState<string | null>(null)
@@ -23,7 +23,7 @@ export default function InlineKeyboard({ rows, chatId, botId }: { rows: InlineBu
     if (b.callback == null || busy) return
     setBusy(true)
     try {
-      const ans = await managers.bots.callback(botId, chatId, b.callback)
+      const ans = await managers.bots.callback(botId, chatId, b.callback, msgId)
       if (ans.text) {
         if (ans.alert) setAlert(ans.text)
         else uiEvents.emit('ui:toast', ans.text)

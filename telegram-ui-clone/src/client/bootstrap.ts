@@ -214,8 +214,9 @@ export interface Managers {
   }
   bots: {
     commands(botId: number): Promise<BotCommand[]>
-    callback(botId: number, chatId: number, data: string): Promise<CallbackAnswer>
+    callback(botId: number, chatId: number, data: string, messageId?: number): Promise<CallbackAnswer>
     inline(botId: number, query: string): Promise<InlineResult[]>
+    menuButton(botId: number): Promise<{ text: string; url: string }>
   }
 }
 

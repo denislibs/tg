@@ -77,21 +77,21 @@ func TestBotCallback(t *testing.T) {
 	in, _, chatID := botInteractor(t)
 	ctx := context.Background()
 	// alert
-	ans, err := in.BotCallback(ctx, chatID, 1, 42, "alert")
+	ans, err := in.BotCallback(ctx, chatID, 1, 42, 0, "alert")
 	if err != nil || !ans.Alert || ans.Text == "" {
 		t.Fatalf("alert callback = %+v, %v", ans, err)
 	}
 	// echo → toast без alert
-	ans2, _ := in.BotCallback(ctx, chatID, 1, 42, "echo")
+	ans2, _ := in.BotCallback(ctx, chatID, 1, 42, 0, "echo")
 	if ans2.Alert || ans2.Text == "" {
 		t.Fatalf("echo callback should be toast: %+v", ans2)
 	}
 	// не член чата
-	if _, err := in.BotCallback(ctx, chatID, 999, 42, "alert"); err != domain.ErrForbidden {
+	if _, err := in.BotCallback(ctx, chatID, 999, 42, 0, "alert"); err != domain.ErrForbidden {
 		t.Fatalf("non-member callback should be forbidden, got %v", err)
 	}
 	// не бот
-	if _, err := in.BotCallback(ctx, chatID, 1, 1, "alert"); err != domain.ErrNotFound {
+	if _, err := in.BotCallback(ctx, chatID, 1, 1, 0, "alert"); err != domain.ErrNotFound {
 		t.Fatalf("callback to non-bot should be not-found, got %v", err)
 	}
 }
@@ -100,12 +100,12 @@ func TestBotInlineQuery(t *testing.T) {
 	in, _, _ := botInteractor(t)
 	ctx := context.Background()
 	// пустой запрос → примеры
-	empty, err := in.InlineQuery(ctx, 42, "")
+	empty, err := in.InlineQuery(ctx, 1, 42, "")
 	if err != nil || len(empty) == 0 {
 		t.Fatalf("empty inline query = %d results, %v", len(empty), err)
 	}
 	// запрос → трансформации текста, первый результат = эхо запроса
-	res, err := in.InlineQuery(ctx, 42, "pizza")
+	res, err := in.InlineQuery(ctx, 1, 42, "pizza")
 	if err != nil || len(res) == 0 {
 		t.Fatalf("inline query = %d results, %v", len(res), err)
 	}
@@ -113,7 +113,7 @@ func TestBotInlineQuery(t *testing.T) {
 		t.Fatalf("first inline result should echo query, got %q", res[0].MessageText)
 	}
 	// не бот → not found
-	if _, err := in.InlineQuery(ctx, 1, "x"); err != domain.ErrNotFound {
+	if _, err := in.InlineQuery(ctx, 1, 1, "x"); err != domain.ErrNotFound {
 		t.Fatalf("inline query to non-bot should be not-found, got %v", err)
 	}
 }

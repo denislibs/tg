@@ -244,3 +244,27 @@
     flex: 1;
   }
 }
+
+// Кнопка-меню mini-app бота (tweb bot menu button): пилюля слева от инпута,
+// акцентный полупрозрачный фон, иконка + текст.
+.menuBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 14px;
+  margin-right: 2px;
+  border: none;
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--tg-accent) 16%, transparent);
+  color: var(--tg-accent);
+  font-size: 15px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s ease;
+
+  &:hover { background: color-mix(in srgb, var(--tg-accent) 24%, transparent); }
+  &:active { transform: scale(0.97); }
+}

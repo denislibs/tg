@@ -85,6 +85,10 @@ func registerServer(p serverParams) {
 	// Боты: флаг is_bot + команды; демо-бот авто-отвечает в приватном чате.
 	p.ChatUC.SetBots(pgadapter.NewBotRepo(p.Pool))
 
+	// Bot API: боты-сервисы с токенами (getUpdates/webhook, sendMessage, …) и
+	// @BotFather (создание/управление ботами, mini-app).
+	p.ChatUC.SetBotAPI(pgadapter.NewBotAPIRepo(p.Pool))
+
 	var wsHandler http.Handler
 	var presenceMgr *usecasepresence.Manager
 	if p.Redis.OK {

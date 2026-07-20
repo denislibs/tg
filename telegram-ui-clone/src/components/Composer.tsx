@@ -75,6 +75,8 @@ interface Props {
   // отправка выбранного результата (tweb InlineHelper + sendInlineResult).
   onInlineQuery?: (username: string, query: string) => Promise<InlineResult[] | null>
   onPickInline?: (r: InlineResult) => void
+  // Кнопка-меню mini-app бота (tweb bot menu button) — слева от инпута.
+  botMenuButton?: { text: string; onClick: () => void }
   // Запланированные сообщения: ПКМ по Send → «Запланировать сообщение».
   onSchedule?: (text: string, entities: MessageEntity[] | undefined, sendAtUnix: number) => void
   // Есть запланированные → кнопка-календарик (tweb btnScheduled) открывает список.
@@ -117,7 +119,7 @@ function placeCaretEnd(el: HTMLElement) {
 
 function Composer({
   reply, editing, rec, onSend, onTyping, onCancelReply, onCancelEdit, onOpenAttach, onPasteFiles,
-  initialDraft, onDraftChange, mentions, onInlineQuery, onPickInline, onSchedule, scheduledCount, onOpenScheduled, slowmodeLeft,
+  initialDraft, onDraftChange, mentions, onInlineQuery, onPickInline, botMenuButton, onSchedule, scheduledCount, onOpenScheduled, slowmodeLeft,
 }: Props) {
   const slowmodeBlocked = (slowmodeLeft ?? 0) > 0
   const slowmodeText = (slowmodeLeft ?? 0) >= 60 ? `${Math.ceil((slowmodeLeft ?? 0) / 60)}м` : String(slowmodeLeft ?? 0)
@@ -710,6 +712,13 @@ function Composer({
             </>
           ) : (
             <>
+              {/* Кнопка-меню mini-app бота (tweb bot menu button) — пилюля слева */}
+              {botMenuButton && (
+                <button type="button" className={s.menuBtn} onMouseDown={(e) => e.preventDefault()} onClick={botMenuButton.onClick}>
+                  <TgIcon name="bots" size={20} />
+                  <span>{botMenuButton.text}</span>
+                </button>
+              )}
               <IconButton
                 onClick={(e) => onOpenAttach(e.currentTarget.getBoundingClientRect())}
                 color="var(--tg-textSecondary)"

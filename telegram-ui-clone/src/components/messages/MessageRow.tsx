@@ -491,7 +491,7 @@ function MessageRow({
             {footer && <div className={s.footerText}>{footer}</div>}
           </div>
           {m.replyMarkup?.inline && m.chatId != null && m.senderId != null && (
-            <InlineKeyboard rows={m.replyMarkup.inline} chatId={m.chatId} botId={m.senderId} />
+            <InlineKeyboard rows={m.replyMarkup.inline} chatId={m.chatId} botId={m.senderId} msgId={m.id} />
           )}
           </div>
         )}

@@ -57,8 +57,12 @@ export function newBotsManager({ rest }: { rest: Pick<RestClient, 'get' | 'post'
       return r.commands ?? []
     },
     // Нажатие callback-кнопки: возвращает всплывающий ответ (toast/alert).
-    async callback(botId: number, chatId: number, data: string): Promise<CallbackAnswer> {
-      return rest.post<CallbackAnswer>(`/bots/${botId}/callback`, { chat_id: chatId, data })
+    async callback(botId: number, chatId: number, data: string, messageId?: number): Promise<CallbackAnswer> {
+      return rest.post<CallbackAnswer>(`/bots/${botId}/callback`, { chat_id: chatId, message_id: messageId ?? 0, data })
+    },
+    // Кнопка-меню mini-app бота (пусто — не задана).
+    async menuButton(botId: number): Promise<{ text: string; url: string }> {
+      return rest.get<{ text: string; url: string }>(`/bots/${botId}/menu_button`)
     },
     // Inline-режим: результаты по запросу «@bot query».
     async inline(botId: number, query: string): Promise<InlineResult[]> {

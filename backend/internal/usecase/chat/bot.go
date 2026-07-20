@@ -13,14 +13,27 @@ import (
 // ответы на нажатия callback-кнопок, список команд. Всё остальное (несколько
 // ботов, MTProto) отсутствует — это демонстрация механики inline/reply-клавиатур.
 
-// maybeBotReply: если сообщение ушло в приватный чат боту — бот отвечает.
-func (i *Interactor) maybeBotReply(ctx context.Context, chatID, senderID int64, text string) {
+// maybeBotReply: сообщение ушло в приватный чат боту — маршрутизируем.
+//   - бот с учёткой Bot API → апдейт в очередь (+ webhook), отвечает внешний сервис;
+//   - @BotFather → внутренний диалоговый мастер;
+//   - иначе (демо-бот) → зашитый авто-ответ.
+func (i *Interactor) maybeBotReply(ctx context.Context, chatID, senderID, msgID int64, text string) {
 	if i.bots == nil {
 		return
 	}
 	botID, ok := i.privateBotPeer(ctx, chatID, senderID)
 	if !ok {
 		return
+	}
+	if i.botAPI != nil {
+		if bot, err := i.botAPI.BotByID(ctx, botID); err == nil {
+			i.dispatchMessageUpdate(ctx, bot, chatID, senderID, msgID, text)
+			return
+		}
+		if botID == domain.BotFatherID {
+			i.botFatherReply(ctx, chatID, senderID, text)
+			return
+		}
 	}
 	reply, markup := demoBotReply(text)
 	if reply == "" {
@@ -59,7 +72,7 @@ func (i *Interactor) BotCommands(ctx context.Context, botID int64) ([]domain.Bot
 
 // BotCallback обрабатывает нажатие callback-кнопки: возвращает всплывающий
 // ответ (toast/alert) и, для некоторых кнопок, шлёт новое сообщение бота.
-func (i *Interactor) BotCallback(ctx context.Context, chatID, userID, botID int64, data string) (domain.BotCallbackAnswer, error) {
+func (i *Interactor) BotCallback(ctx context.Context, chatID, userID, botID, msgID int64, data string) (domain.BotCallbackAnswer, error) {
 	if i.bots == nil {
 		return domain.BotCallbackAnswer{}, domain.ErrNotFound
 	}
@@ -70,6 +83,12 @@ func (i *Interactor) BotCallback(ctx context.Context, chatID, userID, botID int6
 	isBot, err := i.bots.IsBot(ctx, botID)
 	if err != nil || !isBot {
 		return domain.BotCallbackAnswer{}, domain.ErrNotFound
+	}
+	// Реальный бот-сервис → callback уходит апдейтом, ждём answerCallbackQuery.
+	if i.botAPI != nil {
+		if bot, err := i.botAPI.BotByID(ctx, botID); err == nil {
+			return i.botCallbackViaAPI(ctx, bot, chatID, userID, msgID, data), nil
+		}
 	}
 	switch data {
 	case "alert":
@@ -87,13 +106,19 @@ func (i *Interactor) BotCallback(ctx context.Context, chatID, userID, botID int6
 
 // InlineQuery — выдача inline-режима (@bot query). Проверяет, что botID — бот,
 // затем зашитый сценарий демо-бота (реального движка ботов нет).
-func (i *Interactor) InlineQuery(ctx context.Context, botID int64, query string) ([]domain.InlineResult, error) {
+func (i *Interactor) InlineQuery(ctx context.Context, viewerID, botID int64, query string) ([]domain.InlineResult, error) {
 	if i.bots == nil {
 		return nil, domain.ErrNotFound
 	}
 	isBot, err := i.bots.IsBot(ctx, botID)
 	if err != nil || !isBot {
 		return nil, domain.ErrNotFound
+	}
+	// Реальный бот-сервис → inline-запрос уходит апдейтом, ждём answerInlineQuery.
+	if i.botAPI != nil {
+		if bot, err := i.botAPI.BotByID(ctx, botID); err == nil {
+			return i.botInlineViaAPI(ctx, bot, viewerID, query), nil
+		}
 	}
 	return demoBotInline(query), nil
 }
