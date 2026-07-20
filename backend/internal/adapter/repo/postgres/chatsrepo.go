@@ -99,6 +99,24 @@ func (r *ChatsRepo) CreatePrivate(ctx context.Context, a, b int64) (int64, error
 	return chatID, nil
 }
 
+// CreateSecret creates a secret chat (type 'secret') between two users. Unlike
+// CreatePrivate there is no dedup/FindPrivate — multiple secret chats per pair
+// are allowed — and no auto_delete_period (secret chats manage TTL per-message).
+func (r *ChatsRepo) CreateSecret(ctx context.Context, a, b int64) (int64, error) {
+	q := querier(ctx, r.pool)
+	var chatID int64
+	if err := q.QueryRow(ctx,
+		`INSERT INTO chats (type) VALUES ('secret') RETURNING id`).Scan(&chatID); err != nil {
+		return 0, err
+	}
+	if _, err := q.Exec(ctx,
+		`INSERT INTO chat_members (chat_id, user_id) VALUES ($1,$2),($1,$3)`,
+		chatID, a, b); err != nil {
+		return 0, err
+	}
+	return chatID, nil
+}
+
 // MemberIDs returns the user ids of a chat's members.
 func (r *ChatsRepo) MemberIDs(ctx context.Context, chatID int64) ([]int64, error) {
 	q := querier(ctx, r.pool)

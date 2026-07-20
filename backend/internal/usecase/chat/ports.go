@@ -18,6 +18,7 @@ type TxManager interface {
 type ChatRepo interface {
 	FindPrivate(ctx context.Context, a, b int64) (int64, error) // domain.ErrNotFound if none
 	CreatePrivate(ctx context.Context, a, b int64) (int64, error)
+	CreateSecret(ctx context.Context, a, b int64) (int64, error)
 	FindSaved(ctx context.Context, userID int64) (int64, error) // domain.ErrNotFound if none
 	CreateSaved(ctx context.Context, userID int64) (int64, error)
 	MemberIDs(ctx context.Context, chatID int64) ([]int64, error)
@@ -191,6 +192,14 @@ type MediaDims struct {
 
 type EventPublisher interface {
 	PublishToUser(ctx context.Context, userID int64, frame []byte) error
+}
+
+// SecretRepo хранит handshake секретных чатов (только публичные ключи + статус).
+type SecretRepo interface {
+	Create(ctx context.Context, sc domain.SecretChat) error
+	Accept(ctx context.Context, chatID int64, responderPub []byte) error
+	SetState(ctx context.Context, chatID int64, state string) error
+	Get(ctx context.Context, chatID int64) (domain.SecretChat, error)
 }
 
 // DraftRepo хранит облачные черновики (по одному на пару чат+пользователь).

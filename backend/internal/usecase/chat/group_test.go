@@ -497,6 +497,7 @@ func (c groupChats) FindPrivate(context.Context, int64, int64) (int64, error) {
 	return 0, domain.ErrNotFound
 }
 func (c groupChats) CreatePrivate(context.Context, int64, int64) (int64, error) { return 0, nil }
+func (c groupChats) CreateSecret(context.Context, int64, int64) (int64, error)  { return 0, nil }
 func (c groupChats) FindSaved(context.Context, int64) (int64, error)            { return 0, domain.ErrNotFound }
 func (c groupChats) CreateSaved(context.Context, int64) (int64, error)          { return 0, nil }
 func (c groupChats) MemberIDs(_ context.Context, chatID int64) ([]int64, error) {

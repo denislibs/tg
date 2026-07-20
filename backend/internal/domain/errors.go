@@ -17,4 +17,5 @@ var (
 	// ErrUnavailable: опциональная фича выключена (нет провайдера) — например,
 	// перевод сообщений без настроенного TRANSLATE_URL.
 	ErrUnavailable = errors.New("unavailable")
+	ErrInvalid     = errors.New("invalid") // некорректные аргументы запроса (400)
 )
