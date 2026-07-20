@@ -578,6 +578,15 @@ func (h *GroupHandler) Users(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"users": out})
 }
 
+// isoOrNil renders a nullable timestamp as an ISO-8601 string, or nil in JSON
+// when unset (e.g. an invite link with no expiry).
+func isoOrNil(t *time.Time) any {
+	if t == nil {
+		return nil
+	}
+	return t.UTC().Format(time.RFC3339)
+}
+
 func (h *GroupHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	chatID, ok := pathInt(w, r, "chatID")
@@ -587,14 +596,21 @@ func (h *GroupHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 	var b struct {
 		UsageLimit       *int `json:"usage_limit"`
 		RequiresApproval bool `json:"requires_approval"`
+		// ExpireSeconds — TTL ссылки от текущего момента; 0/отсутствует — бессрочная.
+		ExpireSeconds int `json:"expire_seconds"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&b)
-	link, err := h.uc.CreateInvite(r.Context(), chatID, user.ID, b.UsageLimit, b.RequiresApproval)
+	var expiresAt *time.Time
+	if b.ExpireSeconds > 0 {
+		t := time.Now().Add(time.Duration(b.ExpireSeconds) * time.Second)
+		expiresAt = &t
+	}
+	link, err := h.uc.CreateInvite(r.Context(), chatID, user.ID, b.UsageLimit, b.RequiresApproval, expiresAt)
 	if err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"token": link.Token, "url": "/join/" + link.Token, "requires_approval": link.RequiresApproval})
+	writeJSON(w, http.StatusOK, map[string]any{"token": link.Token, "url": "/join/" + link.Token, "requires_approval": link.RequiresApproval, "expires_at": isoOrNil(link.ExpiresAt)})
 }
 
 func (h *GroupHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
@@ -610,7 +626,7 @@ func (h *GroupHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]map[string]any, 0, len(links))
 	for _, l := range links {
-		out = append(out, map[string]any{"token": l.Token, "uses": l.Uses, "url": "/join/" + l.Token, "requires_approval": l.RequiresApproval})
+		out = append(out, map[string]any{"token": l.Token, "uses": l.Uses, "url": "/join/" + l.Token, "requires_approval": l.RequiresApproval, "expires_at": isoOrNil(l.ExpiresAt)})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"invite_links": out})
 }

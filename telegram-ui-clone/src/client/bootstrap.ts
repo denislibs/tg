@@ -164,8 +164,8 @@ export interface Managers {
     members(chatId: number): Promise<{ userId: number; role: string; online: boolean }[]>
     promoteAdmin(chatId: number, userId: number, rights: number): Promise<void>
     demoteAdmin(chatId: number, userId: number): Promise<void>
-    createInvite(chatId: number, opts?: { usageLimit?: number; requiresApproval?: boolean }): Promise<{ token: string; url: string; requiresApproval: boolean }>
-    listInvites(chatId: number): Promise<{ token: string; uses: number; url: string; requiresApproval: boolean }[]>
+    createInvite(chatId: number, opts?: { usageLimit?: number; requiresApproval?: boolean; expireSeconds?: number }): Promise<{ token: string; url: string; requiresApproval: boolean; expiresAt?: string }>
+    listInvites(chatId: number): Promise<{ token: string; uses: number; url: string; requiresApproval: boolean; expiresAt?: string }[]>
     joinByToken(token: string): Promise<{ status: 'requested' | 'joined' }>
     listJoinRequests(chatId: number): Promise<number[]>
     approveRequest(chatId: number, userId: number): Promise<void>

@@ -261,10 +261,29 @@ function ChatTypeScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
   )
 }
 
+// Варианты срока действия ссылки (tweb «Limit by Period»): undefined — бессрочная.
+const EXPIRE_OPTIONS: { label: string; seconds: number | undefined }[] = [
+  { label: 'Never', seconds: undefined },
+  { label: '1 hour', seconds: 3600 },
+  { label: '1 day', seconds: 86400 },
+  { label: '1 week', seconds: 604800 },
+]
+
+// expiryLabel описывает срок действия ссылки: «истекла» для прошедшей даты,
+// «истекает <дата>» для будущей, пусто — бессрочная.
+function expiryLabel(t: (k: string) => string, expiresAt?: string): string | undefined {
+  if (!expiresAt) return undefined
+  const ts = Date.parse(expiresAt)
+  if (Number.isNaN(ts)) return undefined
+  if (ts <= Date.now()) return t('Expired')
+  return `${t('Expires')} ${new Date(ts).toLocaleDateString()}`
+}
+
 // ── Пригласительные ссылки (tweb chatInviteLinks, уточка UtyanLinks) ─────────
 function InviteLinksScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
   const t = useT()
   const [copied, setCopied] = useState<string | null>(null)
+  const [expireSeconds, setExpireSeconds] = useState<number | undefined>(undefined)
   const copy = (token: string, url: string) => {
     void navigator.clipboard.writeText(url)
     setCopied(token)
@@ -299,21 +318,35 @@ function InviteLinksScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) 
             />
           </>
         ) : (
-          <Row icon={<TgIcon name="plus" size={22} color="var(--tg-accent)" />} label="Create a New Link" accent onClick={() => void g.createInvite()} />
+          <Row icon={<TgIcon name="plus" size={22} color="var(--tg-accent)" />} label="Create a New Link" accent onClick={() => void g.createInvite(expireSeconds)} />
         )}
+        {primary && expiryLabel(t, primary.expiresAt) && (
+          <Text size={13} color="var(--tg-textFaint)" style={{ padding: '4px 16px' }}>{expiryLabel(t, primary.expiresAt)}</Text>
+        )}
+      </Section>
+
+      <Section caption="Limit by Period" footer="You can make the link expire after a certain time.">
+        {EXPIRE_OPTIONS.map((o) => (
+          <Row
+            key={o.label}
+            label={o.label}
+            selected={expireSeconds === o.seconds}
+            onClick={() => setExpireSeconds(o.seconds)}
+          />
+        ))}
       </Section>
 
       <Section
         caption="Additional Links"
         footer="You can create additional invite links and revoke them at any time."
       >
-        <Row icon={<TgIcon name="plus" size={22} color="var(--tg-accent)" />} label="Create a New Link" accent onClick={() => void g.createInvite()} />
+        <Row icon={<TgIcon name="plus" size={22} color="var(--tg-accent)" />} label="Create a New Link" accent onClick={() => void g.createInvite(expireSeconds)} />
         {extra.map((l) => (
           <EntryRow
             key={l.token}
             left={<TgIcon name="link" size={22} color="var(--tg-textFaint)" />}
             title={l.url.replace(/^https?:\/\//, '')}
-            sub={copied === l.token ? t('Link copied to clipboard.') : l.requiresApproval ? t('Approve new members') : undefined}
+            sub={copied === l.token ? t('Link copied to clipboard.') : expiryLabel(t, l.expiresAt) ?? (l.requiresApproval ? t('Approve new members') : undefined)}
             onRemove={() => void g.revokeInvite(l.token)}
           />
         ))}

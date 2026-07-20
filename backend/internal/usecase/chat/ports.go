@@ -81,7 +81,7 @@ type GroupRepo interface {
 }
 
 type InviteRepo interface {
-	Create(ctx context.Context, chatID, createdBy int64, token string, usageLimit *int, requiresApproval bool) (domain.InviteLink, error)
+	Create(ctx context.Context, chatID, createdBy int64, token string, usageLimit *int, requiresApproval bool, expiresAt *time.Time) (domain.InviteLink, error)
 	GetByToken(ctx context.Context, token string) (domain.InviteLink, error) // domain.ErrNotFound
 	List(ctx context.Context, chatID int64) ([]domain.InviteLink, error)
 	IncUses(ctx context.Context, id int64) error

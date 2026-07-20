@@ -156,13 +156,13 @@ export function newGroupsManager({ rest }: { rest: Pick<RestClient, 'post' | 'ge
     async demoteAdmin(chatId: number, userId: number): Promise<void> {
       await rest.del(`/chats/${chatId}/admins/${userId}`)
     },
-    async createInvite(chatId: number, opts?: { usageLimit?: number; requiresApproval?: boolean }): Promise<{ token: string; url: string; requiresApproval: boolean }> {
-      const r = await rest.post<{ token: string; url: string; requires_approval: boolean }>(`/chats/${chatId}/invite_links`, { usage_limit: opts?.usageLimit ?? null, requires_approval: opts?.requiresApproval ?? false })
-      return { token: r.token, url: r.url, requiresApproval: r.requires_approval }
+    async createInvite(chatId: number, opts?: { usageLimit?: number; requiresApproval?: boolean; expireSeconds?: number }): Promise<{ token: string; url: string; requiresApproval: boolean; expiresAt?: string }> {
+      const r = await rest.post<{ token: string; url: string; requires_approval: boolean; expires_at: string | null }>(`/chats/${chatId}/invite_links`, { usage_limit: opts?.usageLimit ?? null, requires_approval: opts?.requiresApproval ?? false, expire_seconds: opts?.expireSeconds ?? 0 })
+      return { token: r.token, url: r.url, requiresApproval: r.requires_approval, expiresAt: r.expires_at ?? undefined }
     },
-    async listInvites(chatId: number): Promise<{ token: string; uses: number; url: string; requiresApproval: boolean }[]> {
-      const r = await rest.get<{ invite_links: { token: string; uses: number; url: string; requires_approval: boolean }[] }>(`/chats/${chatId}/invite_links`)
-      return (r.invite_links ?? []).map((l) => ({ token: l.token, uses: l.uses, url: l.url, requiresApproval: l.requires_approval }))
+    async listInvites(chatId: number): Promise<{ token: string; uses: number; url: string; requiresApproval: boolean; expiresAt?: string }[]> {
+      const r = await rest.get<{ invite_links: { token: string; uses: number; url: string; requires_approval: boolean; expires_at: string | null }[] }>(`/chats/${chatId}/invite_links`)
+      return (r.invite_links ?? []).map((l) => ({ token: l.token, uses: l.uses, url: l.url, requiresApproval: l.requires_approval, expiresAt: l.expires_at ?? undefined }))
     },
     async joinByToken(token: string): Promise<{ status: 'requested' | 'joined' }> {
       return rest.post<{ status: 'requested' | 'joined' }>(`/join/${token}`, {})

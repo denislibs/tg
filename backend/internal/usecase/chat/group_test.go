@@ -390,11 +390,11 @@ func newFakeInviteRepo() *fakeInviteRepo {
 	return &fakeInviteRepo{links: map[int64]domain.InviteLink{}}
 }
 
-func (r *fakeInviteRepo) Create(_ context.Context, chatID, createdBy int64, token string, usageLimit *int, requiresApproval bool) (domain.InviteLink, error) {
+func (r *fakeInviteRepo) Create(_ context.Context, chatID, createdBy int64, token string, usageLimit *int, requiresApproval bool, expiresAt *time.Time) (domain.InviteLink, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.nextID++
-	l := domain.InviteLink{ID: r.nextID, ChatID: chatID, Token: token, CreatedBy: createdBy, UsageLimit: usageLimit, RequiresApproval: requiresApproval}
+	l := domain.InviteLink{ID: r.nextID, ChatID: chatID, Token: token, CreatedBy: createdBy, UsageLimit: usageLimit, RequiresApproval: requiresApproval, ExpiresAt: expiresAt}
 	r.links[l.ID] = l
 	return l, nil
 }
@@ -745,7 +745,7 @@ func TestPromoteAdmin_RequiresManageAdmins(t *testing.T) {
 func TestJoinByToken_NoApproval(t *testing.T) {
 	i, fg, fjr := newGroupTestInteractor(t)
 	id, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
-	link, _ := i.CreateInvite(context.Background(), id, 7, nil, false)
+	link, _ := i.CreateInvite(context.Background(), id, 7, nil, false, nil)
 
 	requested, err := i.JoinByToken(context.Background(), link.Token, 9)
 	if err != nil {
@@ -765,7 +765,7 @@ func TestJoinByToken_NoApproval(t *testing.T) {
 func TestJoinByToken_RequiresApproval(t *testing.T) {
 	i, fg, fjr := newGroupTestInteractor(t)
 	id, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
-	link, _ := i.CreateInvite(context.Background(), id, 7, nil, true)
+	link, _ := i.CreateInvite(context.Background(), id, 7, nil, true, nil)
 
 	requested, err := i.JoinByToken(context.Background(), link.Token, 9)
 	if err != nil {
@@ -801,7 +801,7 @@ func TestListJoinRequests_NonAdminForbidden(t *testing.T) {
 func TestApproveJoinRequest(t *testing.T) {
 	i, fg, fjr := newGroupTestInteractor(t)
 	id, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
-	link, _ := i.CreateInvite(context.Background(), id, 7, nil, true)
+	link, _ := i.CreateInvite(context.Background(), id, 7, nil, true, nil)
 	if _, err := i.JoinByToken(context.Background(), link.Token, 9); err != nil {
 		t.Fatal(err)
 	}
@@ -894,7 +894,7 @@ func TestGroupSettings_Enforcement(t *testing.T) {
 	}
 
 	// Бан: кикнут + не вернётся по ссылке и через добавление участником; разбан лечит.
-	link, _ := in.CreateInvite(ctx, id, 7, nil, false)
+	link, _ := in.CreateInvite(ctx, id, 7, nil, false, nil)
 	if err := in.BanMember(ctx, id, 7, 8); err != nil {
 		t.Fatalf("BanMember: %v", err)
 	}

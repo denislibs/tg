@@ -114,6 +114,8 @@ type InviteLink struct {
 	Uses             int
 	Revoked          bool
 	RequiresApproval bool
+	// ExpiresAt — срок действия ссылки; nil — бессрочная.
+	ExpiresAt *time.Time
 }
 
 // JoinRequest is a pending request to join a chat via an approval-required link.

@@ -48,8 +48,8 @@ interface Managers {
     setPermissions(chatId: number, permissions: number, slowmodeSeconds: number): Promise<void>
     setReactions(chatId: number, mode: 'all' | 'some' | 'none', emojis: string[]): Promise<void>
     setHistory(chatId: number, visible: boolean): Promise<void>
-    listInvites(chatId: number): Promise<{ token: string; uses: number; url: string; requiresApproval: boolean }[]>
-    createInvite(chatId: number, opts?: { requiresApproval?: boolean }): Promise<{ token: string; url: string; requiresApproval: boolean }>
+    listInvites(chatId: number): Promise<{ token: string; uses: number; url: string; requiresApproval: boolean; expiresAt?: string }[]>
+    createInvite(chatId: number, opts?: { requiresApproval?: boolean; expireSeconds?: number }): Promise<{ token: string; url: string; requiresApproval: boolean; expiresAt?: string }>
     revokeInvite(chatId: number, token: string): Promise<void>
     listBans(chatId: number): Promise<{ userId: number; bannedBy: number }[]>
     ban(chatId: number, userId: number): Promise<void>
@@ -71,7 +71,7 @@ export interface GroupEdit {
   card: GroupCard | null
   members: EditMember[]
   admins: EditMember[]
-  invites: { token: string; url: string; requiresApproval: boolean }[]
+  invites: { token: string; url: string; requiresApproval: boolean; expiresAt?: string }[]
   bans: BannedRow[]
   canBan: boolean
   canManageAdmins: boolean
@@ -83,7 +83,7 @@ export interface GroupEdit {
   savePermissions: (permissions: number, slowmodeSeconds: number) => Promise<void>
   saveReactions: (mode: 'all' | 'some' | 'none', emojis: string[]) => Promise<void>
   saveHistory: (visible: boolean) => Promise<void>
-  createInvite: () => Promise<void>
+  createInvite: (expireSeconds?: number) => Promise<void>
   revokeInvite: (token: string) => Promise<void>
   kick: (userId: number) => Promise<void>
   ban: (userId: number) => Promise<void>
@@ -100,7 +100,7 @@ const BAN_USERS = 8
 export function useGroupEdit(chatId: number, managers: Managers): GroupEdit {
   const [card, setCard] = useState<GroupCard | null>(null)
   const [members, setMembers] = useState<EditMember[]>([])
-  const [invites, setInvites] = useState<{ token: string; url: string; requiresApproval: boolean }[]>([])
+  const [invites, setInvites] = useState<{ token: string; url: string; requiresApproval: boolean; expiresAt?: string }[]>([])
   const [bans, setBans] = useState<BannedRow[]>([])
   const [tick, setTick] = useState(0)
   const reload = useCallback(() => setTick((x) => x + 1), [])
@@ -131,7 +131,7 @@ export function useGroupEdit(chatId: number, managers: Managers): GroupEdit {
         const canInvite = c.myRole === 'creator' || c.myRole === 'admin'
         if (canInvite) {
           const inv = await managers.groups.listInvites(chatId)
-          if (alive) setInvites(inv.map((l) => ({ token: l.token, url: l.url, requiresApproval: l.requiresApproval })))
+          if (alive) setInvites(inv.map((l) => ({ token: l.token, url: l.url, requiresApproval: l.requiresApproval, expiresAt: l.expiresAt })))
           const bs = await managers.groups.listBans(chatId).catch(() => [])
           const banUsers = await managers.peers.getUsers(bs.map((b) => b.userId))
           const banById = new Map(banUsers.map((u) => [u.id, u]))
@@ -192,8 +192,8 @@ export function useGroupEdit(chatId: number, managers: Managers): GroupEdit {
       await managers.groups.setHistory(chatId, visible)
       reload()
     },
-    createInvite: async () => {
-      await managers.groups.createInvite(chatId)
+    createInvite: async (expireSeconds?: number) => {
+      await managers.groups.createInvite(chatId, { expireSeconds })
       reload()
     },
     revokeInvite: async (token) => {
