@@ -181,7 +181,7 @@ func registerServer(p serverParams) {
 
 	storyHandler := httptransport.NewStoryHandler(p.StoryUC)
 	notifyUC := usecasenotify.New(pgadapter.NewNotifyRepo(p.Pool))
-	foldersUC := usecasefolders.New(pgadapter.NewFoldersRepo(p.Pool))
+	foldersUC := usecasefolders.New(pgadapter.NewFoldersRepo(p.Pool), pgadapter.NewFolderChatAccess(p.Pool), pgadapter.NewTxManager(p.Pool))
 	// Публичная страница-превью @username (аналог t.me)
 	pubH := httptransport.NewPublicHandler(usecasepublic.New(pgadapter.NewPublicRepo(p.Pool)), mediaUC)
 

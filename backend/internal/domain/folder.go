@@ -1,6 +1,9 @@
 package domain
 
-import "unicode/utf8"
+import (
+	"time"
+	"unicode/utf8"
+)
 
 // MaxFolderNameLength — лимит имени папки (tweb MAX_FOLDER_NAME_LENGTH).
 const MaxFolderNameLength = 12
@@ -36,4 +39,25 @@ func (f Folder) HasIncludes() bool {
 // ValidFolderTitle — непустое имя не длиннее MaxFolderNameLength рун.
 func ValidFolderTitle(title string) bool {
 	return title != "" && utf8.RuneCountInString(title) <= MaxFolderNameLength
+}
+
+// FolderInvite — ссылка-приглашение в папку (Telegram chatlist invite): владелец
+// папки шарит набор своих групп/каналов; по slug другой юзер вступает в них и
+// получает копию папки. ChatIDs — расшаренные чаты (только группы/каналы).
+type FolderInvite struct {
+	ID        int64
+	Slug      string
+	FolderID  int64
+	OwnerID   int64
+	Title     string
+	ChatIDs   []int64
+	CreatedAt time.Time
+}
+
+// FolderInviteChat — превью расшаренного чата для экрана вступления по ссылке.
+type FolderInviteChat struct {
+	ID          int64
+	Title       string
+	Type        string // 'group'|'channel'
+	MemberCount int
 }

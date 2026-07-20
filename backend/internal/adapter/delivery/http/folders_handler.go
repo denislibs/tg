@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/messenger-denis/backend/internal/domain"
 	usecasefolders "github.com/messenger-denis/backend/internal/usecase/folders"
 )
@@ -63,7 +65,8 @@ func (h *FoldersHandler) mapErr(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, "not found")
 	case errors.Is(err, usecasefolders.ErrBadTitle),
 		errors.Is(err, usecasefolders.ErrNoIncludes),
-		errors.Is(err, usecasefolders.ErrTooMany):
+		errors.Is(err, usecasefolders.ErrTooMany),
+		errors.Is(err, usecasefolders.ErrNoShareable):
 		writeError(w, http.StatusBadRequest, err.Error())
 	default:
 		writeError(w, http.StatusInternalServerError, "internal")
@@ -125,6 +128,100 @@ func (h *FoldersHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.uc.Delete(r.Context(), user.ID, folderID); err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// --- Ссылки-приглашения в папку (chatlist invites) ---
+
+func inviteJSON(inv domain.FolderInvite) map[string]any {
+	ids := inv.ChatIDs
+	if ids == nil {
+		ids = []int64{}
+	}
+	return map[string]any{
+		"slug": inv.Slug, "url": "/addlist/" + inv.Slug,
+		"title": inv.Title, "chat_ids": ids,
+	}
+}
+
+// CreateInvite: POST /me/folders/{folderID}/invites {title?} → {slug, url}.
+func (h *FoldersHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	folderID, ok := pathInt(w, r, "folderID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Title string `json:"title"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&b)
+	inv, err := h.uc.CreateInvite(r.Context(), user.ID, folderID, b.Title)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, inviteJSON(inv))
+}
+
+// ListInvites: GET /me/folders/{folderID}/invites → {invites:[...]}.
+func (h *FoldersHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	folderID, ok := pathInt(w, r, "folderID")
+	if !ok {
+		return
+	}
+	list, err := h.uc.ListInvites(r.Context(), user.ID, folderID)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	out := make([]map[string]any, 0, len(list))
+	for _, inv := range list {
+		out = append(out, inviteJSON(inv))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"invites": out})
+}
+
+// RevokeInvite: DELETE /me/folder_invites/{slug}.
+func (h *FoldersHandler) RevokeInvite(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	slug := chi.URLParam(r, "slug")
+	if err := h.uc.RevokeInvite(r.Context(), user.ID, slug); err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// PreviewInvite: GET /folder_invites/{slug} → {title, chats:[{id,title,type,members}]}.
+func (h *FoldersHandler) PreviewInvite(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	title, chats, err := h.uc.PreviewInvite(r.Context(), slug)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	out := make([]map[string]any, 0, len(chats))
+	for _, c := range chats {
+		out = append(out, map[string]any{
+			"id": c.ID, "title": c.Title, "type": c.Type, "members": c.MemberCount,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"title": title, "chats": out})
+}
+
+// JoinInvite: POST /folder_invites/{slug}/join {chat_ids:[...]}.
+func (h *FoldersHandler) JoinInvite(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	slug := chi.URLParam(r, "slug")
+	var b struct {
+		ChatIDs []int64 `json:"chat_ids"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&b)
+	if err := h.uc.JoinInvite(r.Context(), user.ID, slug, b.ChatIDs); err != nil {
 		h.mapErr(w, err)
 		return
 	}

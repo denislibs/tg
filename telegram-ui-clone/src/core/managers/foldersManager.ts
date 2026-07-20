@@ -60,6 +60,42 @@ const toRaw = (f: FolderInput) => ({
   exclude_chats: f.excludeChats,
 })
 
+// Ссылка-приглашение в папку (Telegram chatlist invite): по slug другой юзер
+// вступает в расшаренные группы/каналы и получает копию папки.
+export interface FolderInvite {
+  slug: string
+  url: string // относительный путь '/addlist/<slug>' — обрабатывает SPA
+  title: string
+  chatIds: number[]
+}
+
+interface RawFolderInvite {
+  slug: string
+  url: string
+  title: string
+  chat_ids: number[]
+}
+
+const mapInvite = (r: RawFolderInvite): FolderInvite => ({
+  slug: r.slug,
+  url: r.url,
+  title: r.title,
+  chatIds: r.chat_ids ?? [],
+})
+
+// Карточка расшаренного чата на экране вступления по ссылке.
+export interface FolderInvitePreviewChat {
+  id: number
+  title: string
+  type: string // 'group' | 'channel'
+  members: number
+}
+
+export interface FolderInvitePreview {
+  title: string
+  chats: FolderInvitePreviewChat[]
+}
+
 export function newFoldersManager({ rest }: { rest: Pick<RestClient, 'get' | 'post' | 'put' | 'del'> }) {
   return {
     async list(): Promise<Folder[]> {
@@ -74,6 +110,25 @@ export function newFoldersManager({ rest }: { rest: Pick<RestClient, 'get' | 'po
     },
     async del(id: number): Promise<void> {
       await rest.del(`/me/folders/${id}`)
+    },
+
+    // --- Ссылки-приглашения в папку ---
+    async createInvite(folderId: number, title?: string): Promise<FolderInvite> {
+      return mapInvite(await rest.post<RawFolderInvite>(`/me/folders/${folderId}/invites`, { title: title ?? '' }))
+    },
+    async listInvites(folderId: number): Promise<FolderInvite[]> {
+      const r = await rest.get<{ invites: RawFolderInvite[] }>(`/me/folders/${folderId}/invites`)
+      return (r.invites ?? []).map(mapInvite)
+    },
+    async revokeInvite(slug: string): Promise<void> {
+      await rest.del(`/me/folder_invites/${slug}`)
+    },
+    async previewInvite(slug: string): Promise<FolderInvitePreview> {
+      const r = await rest.get<{ title: string; chats: FolderInvitePreviewChat[] }>(`/folder_invites/${slug}`)
+      return { title: r.title, chats: r.chats ?? [] }
+    },
+    async joinInvite(slug: string, chatIds: number[]): Promise<void> {
+      await rest.post(`/folder_invites/${slug}/join`, { chat_ids: chatIds })
     },
   }
 }
