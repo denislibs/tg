@@ -11,6 +11,7 @@ import TgIcon from '../TgIcon'
 import { EASE } from '../../motion'
 import { useT } from '../../i18n'
 import Avatar from '../../shared/ui/Avatar'
+import Checkbox from '../../shared/ui/Checkbox'
 import Popup from '../../shared/ui/Popup'
 import { peerColor } from '../peerColor'
 import type { Dialog } from '../../core/models'
@@ -53,10 +54,12 @@ export function DeleteMessageDialog({ canRevoke, onDeleteForEveryone, onDeleteFo
   )
 }
 
-// Forward target picker: pick a dialog to forward the selected messages into.
+// Forward target picker: multi-select dialogs to forward the selected messages
+// into. Rows toggle a checkbox; the accent «Переслать (N)» button forwards to all
+// selected chats at once (tweb popup-forward allows multiple targets).
 export function ForwardPicker({ dialogs, onPick, onClose }: {
   dialogs: Dialog[]
-  onPick: (chatId: number) => void
+  onPick: (chatIds: number[]) => void
   onClose: () => void
 }) {
   const t = useT()
@@ -64,8 +67,16 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
   // exit-анимация: закрытие/выбор сначала гасят open; колбэк владельцу (который
   // размонтирует пикер) — только из onExitComplete, когда карточка уехала.
   const [open, setOpen] = useState(true)
-  const picked = useRef<number | null>(null)
-  const pick = (chatId: number) => { picked.current = chatId; setOpen(false) }
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  // Подтверждённый выбор фиксируем в ref: onExitComplete отработает уже после
+  // того, как selected сбросится размонтированием, поэтому берём снимок здесь.
+  const confirmed = useRef<number[] | null>(null)
+  const toggle = (chatId: number) => setSelected((prev) => {
+    const next = new Set(prev)
+    if (next.has(chatId)) next.delete(chatId); else next.add(chatId)
+    return next
+  })
+  const confirm = () => { if (selected.size) { confirmed.current = [...selected]; setOpen(false) } }
   const query = q.trim().toLowerCase()
   const rows = dialogs
     .map((d) => ({
@@ -79,7 +90,8 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
       open={open}
       title={t('Send')}
       onClose={() => setOpen(false)}
-      onExitComplete={() => { if (picked.current != null) onPick(picked.current); else onClose() }}
+      onExitComplete={() => { if (confirmed.current) onPick(confirmed.current); else onClose() }}
+      action={selected.size ? { label: `${t('Forward')} (${selected.size})`, onClick: confirm } : undefined}
       width={440}
     >
       {/* поиск (tweb popup-forward: серое поле сверху) */}
@@ -95,7 +107,8 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
       </div>
       <div className={s.pickerList}>
         {rows.map((r) => (
-          <div key={r.chatId} className={s.listRow} onClick={() => pick(r.chatId)}>
+          <div key={r.chatId} className={s.listRow} onClick={() => toggle(r.chatId)}>
+            <Checkbox checked={selected.has(r.chatId)} size={22} />
             <Avatar background={peerColor(r.title)} text={r.title[0] ?? '?'} size="md" />
             <div className={s.pickerBody}>
               <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{r.title}</Text>

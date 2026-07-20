@@ -146,12 +146,25 @@ export function useMessageActions({
   }
   // Open the forward picker for an arbitrary id set (the selection bar's bulk forward).
   const openForwardFor = (ids: number[]) => setForwardIds(ids)
-  const doForward = (toChatId: number) => {
-    if (!forwardIds?.length || !isRealChat) return setForwardIds(null)
-    void managers.messages.forwardMessages(toChatId, numericChatId, forwardIds)
+  // Пересылаем выбранные сообщения во все выбранные чаты (по одному REST-запросу
+  // на чат — бэкенд принимает один toChatID). Последовательно и с изоляцией:
+  // падение одного адресата не должно рвать остальные. По завершении переключаемся
+  // на последний успешный чат (как открывает диалог Telegram после форварда).
+  const doForward = async (chatIds: number[]) => {
+    const ids = forwardIds
     setForwardIds(null)
+    if (!ids?.length || !isRealChat || !chatIds.length) return
+    let lastOk: number | null = null
+    for (const toChatId of chatIds) {
+      try {
+        await managers.messages.forwardMessages(toChatId, numericChatId, ids)
+        lastOk = toChatId
+      } catch (err) {
+        console.error('forward failed', { toChatId }, err)
+      }
+    }
     clearSelection()
-    onChatCreated?.(toChatId) // switch to the target chat (Telegram behavior)
+    if (lastOk != null) onChatCreated?.(lastOk)
   }
 
   // Enter selection mode from the context menu, pre-selecting that message.
