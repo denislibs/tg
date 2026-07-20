@@ -31,6 +31,20 @@ func TestSecretHandshake(t *testing.T) {
 	if _, err := in.AcceptSecretChat(ctx, sc.ChatID, 999, []byte("x")); err == nil {
 		t.Fatal("expected error for non-responder accept")
 	}
+
+	// Изолированная проверка гарда получателя: свежий requested-чат, чужой пытается принять.
+	// Состояние ещё requested, поэтому срабатывает именно гард sc.ResponderID != userID.
+	fresh, err := in.CreateSecretChat(ctx, 10, 20, []byte("pubA"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fresh.State != domain.SecretRequested {
+		t.Fatalf("fresh state=%s", fresh.State)
+	}
+	if _, err := in.AcceptSecretChat(ctx, fresh.ChatID, 999, []byte("pubX")); err != domain.ErrForbidden {
+		t.Fatalf("non-responder accept on requested chat: expected ErrForbidden, got %v", err)
+	}
+
 	// self-chat запрещён
 	if _, err := in.CreateSecretChat(ctx, 5, 5, []byte("p")); err != domain.ErrInvalid {
 		t.Fatalf("expected ErrInvalid, got %v", err)
