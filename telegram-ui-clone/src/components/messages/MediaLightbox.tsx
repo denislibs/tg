@@ -30,6 +30,8 @@ export interface LightboxItem {
   mediaId?: number
   /** прямой URL картинки без mediaId (фото профиля — tweb openAvatarViewer) */
   src?: string
+  /** видео-вариант фото профиля (tweb photo_video): играем muted-loop, poster = src */
+  videoUrl?: string
   type?: string
   sender?: string
   date?: string
@@ -99,7 +101,9 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
   const radiiRef = useRef<number[]>([0, 0, 0, 0])
 
   const item = items[idx]
-  const isVideo = item?.type === 'video' || !!meta?.mime.startsWith('video/')
+  // Видео-аватар (tweb photo_video): direct-src элемент с videoUrl — poster = src.
+  const isAvatarVideo = !!item?.videoUrl
+  const isVideo = isAvatarVideo || item?.type === 'video' || !!meta?.mime.startsWith('video/')
 
   useEffect(() => { setZoom(1); setRot(0) }, [idx])
 
@@ -113,6 +117,12 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
       pre.onload = () => {
         if (!alive) return
         setNatSize({ w: pre.naturalWidth, h: pre.naturalHeight })
+        // Видео-аватар: still (src) — это poster/морф, а в <video> течёт videoUrl.
+        if (item.videoUrl) {
+          setUrl(item.videoUrl)
+          setImgSrc(src)
+          return
+        }
         setUrl(src)
         const delay = flyFrom ? OPEN_MS + 40 : 0
         window.setTimeout(() => { if (alive) setImgSrc(src) }, delay)
@@ -140,7 +150,7 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
     })
     return () => { alive = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item.mediaId, item.src, item.type, managers])
+  }, [item.mediaId, item.src, item.videoUrl, item.type, managers])
 
   const vw = window.innerWidth, vh = window.innerHeight
   // Центральный бокс: по натуральным размерам медиа (как tweb) — они приходят в
@@ -355,7 +365,19 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
             className={s.zoomLayer}
           >
             {isVideo && url ? (
-              <video ref={videoElRef} src={url} controls autoPlay className={s.media} />
+              // Видео-аватар — muted-loop autoplay без контролов (tweb photo_video),
+              // still-кадр как poster; обычное видео чата — с нативными контролами.
+              <video
+                ref={videoElRef}
+                src={url}
+                poster={isAvatarVideo ? imgSrc || item.src : undefined}
+                controls={!isAvatarVideo}
+                autoPlay
+                muted={isAvatarVideo}
+                loop={isAvatarVideo}
+                playsInline
+                className={s.media}
+              />
             ) : (
               <AnimatePresence mode="wait">
                 {imgSrc && (

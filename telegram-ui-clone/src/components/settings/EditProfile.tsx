@@ -52,6 +52,7 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
   const [unameState, setUnameState] = useState<UnameState>('idle')
   const [cropFile, setCropFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [avatarError, setAvatarError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const avatarSrc = useAvatarSrc(me?.avatarUrl)
@@ -110,6 +111,55 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
     }
   }
 
+  // Видео-аватар (tweb photo_video): захватываем poster-кадр из видео на canvas,
+  // грузим оба медиа (poster → media_id, видео → video_media_id) и addPhoto.
+  // Заголовок/список чатов остаются на still-постере — playback только в
+  // просмотрщике (осознанный лимит MVP).
+  const onVideoPick = async (file: File) => {
+    setAvatarError(null)
+    setUploading(true)
+    const objectUrl = URL.createObjectURL(file)
+    try {
+      const video = document.createElement('video')
+      video.muted = true
+      video.playsInline = true
+      video.preload = 'auto'
+      video.src = objectUrl
+      // Дождаться метаданных, перемотать на кадр (0s часто чёрный) и дождаться seek.
+      await new Promise<void>((resolve, reject) => {
+        video.onloadedmetadata = () => {
+          video.currentTime = Math.min(0.1, (video.duration || 0.2) / 2)
+        }
+        video.onseeked = () => resolve()
+        video.onerror = () => reject(new Error('video load failed'))
+      })
+      const w = video.videoWidth
+      const h = video.videoHeight
+      const duration = Number.isFinite(video.duration) ? video.duration : 0
+      if (!w || !h) throw new Error('no video dimensions')
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      const ctx = canvas.getContext('2d')
+      if (!ctx) throw new Error('no canvas context')
+      ctx.drawImage(video, 0, 0, w, h)
+      const posterBlob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/jpeg', 0.9))
+      if (!posterBlob) throw new Error('poster capture failed')
+
+      const posterBytes = await posterBlob.arrayBuffer()
+      const posterId = await managers.media.upload({ bytes: posterBytes, mime: 'image/jpeg', size: posterBlob.size, width: w, height: h })
+      const videoBytes = await file.arrayBuffer()
+      const videoId = await managers.media.upload({ bytes: videoBytes, mime: file.type, size: file.size, width: w, height: h, duration })
+      const photo = await managers.profile.addPhoto(posterId, videoId)
+      if (me) setMe({ ...me, avatarUrl: photo.url })
+    } catch {
+      setAvatarError(t('Could not process this video.'))
+    } finally {
+      URL.revokeObjectURL(objectUrl)
+      setUploading(false)
+    }
+  }
+
   const onDone = async () => {
     if (saving || !first.trim()) return
     setSaving(true)
@@ -162,14 +212,23 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept="image/*,video/*"
           hidden
           onChange={(e) => {
             const f = e.target.files?.[0]
-            if (f) setCropFile(f)
+            // Видео → отдельный поток (poster-кадр + двойная загрузка); фото → кроппер.
+            if (f) {
+              if (f.type.startsWith('video/')) void onVideoPick(f)
+              else setCropFile(f)
+            }
             e.target.value = '' // allow re-picking the same file
           }}
         />
+        {avatarError && (
+          <Text size={14} color="#ff595a" style={{ marginTop: '8px', textAlign: 'center' }}>
+            {avatarError}
+          </Text>
+        )}
       </div>
 
       {/* name / last / bio + birthday */}

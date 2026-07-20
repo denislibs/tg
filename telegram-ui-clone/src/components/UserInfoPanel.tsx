@@ -236,7 +236,16 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onChatCreated
     void managers.profile.listPhotos(peerId).then(async (photos) => {
       const items = await Promise.all(photos.map(async (p): Promise<LightboxItem> => {
         const m = p.url.match(/\/media\/(\d+)\/content/)
-        return { src: m ? await managers.media.contentUrl(Number(m[1])) : p.url }
+        const src = m ? await managers.media.contentUrl(Number(m[1])) : p.url
+        // Видео-аватар (tweb photo_video): резолвим video_url в токен-URL так же,
+        // как still. Заголовок/список чатов остаются на still — это осознанный
+        // лимит MVP (playback только в просмотрщике).
+        if (p.videoUrl) {
+          const vm = p.videoUrl.match(/\/media\/(\d+)\/content/)
+          const videoUrl = vm ? await managers.media.contentUrl(Number(vm[1])) : p.videoUrl
+          return { src, videoUrl, type: 'video' }
+        }
+        return { src }
       }))
       if (items.length) setAvatarPhotos(items)
     }).catch(() => {})
