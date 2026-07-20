@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"encoding/base64"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -69,14 +70,25 @@ func (i *Interactor) RejectSecretChat(ctx context.Context, chatID, userID int64)
 	return nil
 }
 
-// publishSecretFrame — no-op при nil publisher; тело (рассылка кадра обоим
-// участникам) добавляется в следующей задаче (Task 11).
+// publishSecretFrame рассылает кадр рукопожатия t обоим участникам секретного
+// чата через event-publisher; no-op при nil publisher.
 func (i *Interactor) publishSecretFrame(ctx context.Context, sc domain.SecretChat, t string) {
 	if i.publisher == nil {
 		return
 	}
-	// TODO(Task 11): рассылка кадра t обоим участникам через i.publisher.
-	_ = ctx
-	_ = sc
-	_ = t
+	payload := map[string]any{
+		"chat_id":      sc.ChatID,
+		"initiator_id": sc.InitiatorID,
+		"responder_id": sc.ResponderID,
+		"state":        sc.State,
+	}
+	if len(sc.InitiatorPub) > 0 {
+		payload["initiator_pub"] = base64.StdEncoding.EncodeToString(sc.InitiatorPub)
+	}
+	if len(sc.ResponderPub) > 0 {
+		payload["responder_pub"] = base64.StdEncoding.EncodeToString(sc.ResponderPub)
+	}
+	f := frame(t, payload)
+	_ = i.publisher.PublishToUser(ctx, sc.InitiatorID, f)
+	_ = i.publisher.PublishToUser(ctx, sc.ResponderID, f)
 }

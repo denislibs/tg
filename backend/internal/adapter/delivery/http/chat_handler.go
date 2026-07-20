@@ -41,6 +41,85 @@ func (h *ChatHandler) CreatePrivate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"chat_id": id})
 }
 
+type secretCreateBody struct {
+	PeerID int64  `json:"peer_id"`
+	Pub    string `json:"pub"` // base64 публичного ECDH-ключа инициатора
+}
+
+func (h *ChatHandler) CreateSecretChat(w http.ResponseWriter, r *http.Request) {
+	var body secretCreateBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.PeerID == 0 || body.Pub == "" {
+		writeError(w, http.StatusBadRequest, "peer_id and pub are required")
+		return
+	}
+	pub, err := base64.StdEncoding.DecodeString(body.Pub)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid pub")
+		return
+	}
+	sc, err := h.svc.CreateSecretChat(r.Context(), h.meID(r), body.PeerID, pub)
+	if h.writeSecretErr(w, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"chat_id": sc.ChatID, "state": sc.State})
+}
+
+type secretAcceptBody struct {
+	Pub string `json:"pub"` // base64 публичного ECDH-ключа получателя
+}
+
+func (h *ChatHandler) AcceptSecretChat(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	var body secretAcceptBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Pub == "" {
+		writeError(w, http.StatusBadRequest, "pub is required")
+		return
+	}
+	pub, err := base64.StdEncoding.DecodeString(body.Pub)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid pub")
+		return
+	}
+	sc, err := h.svc.AcceptSecretChat(r.Context(), chatID, h.meID(r), pub)
+	if h.writeSecretErr(w, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"chat_id": sc.ChatID, "state": sc.State})
+}
+
+func (h *ChatHandler) RejectSecretChat(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	if err := h.svc.RejectSecretChat(r.Context(), chatID, h.meID(r)); h.writeSecretErr(w, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// writeSecretErr maps handshake errors to HTTP; returns true if it wrote a response.
+func (h *ChatHandler) writeSecretErr(w http.ResponseWriter, err error) bool {
+	switch {
+	case err == nil:
+		return false
+	case errors.Is(err, domain.ErrUnavailable):
+		writeError(w, http.StatusServiceUnavailable, "secret chats not available")
+	case errors.Is(err, domain.ErrInvalid):
+		writeError(w, http.StatusBadRequest, "invalid request")
+	case errors.Is(err, domain.ErrForbidden):
+		writeError(w, http.StatusForbidden, "not allowed")
+	case errors.Is(err, domain.ErrNotFound):
+		writeError(w, http.StatusNotFound, "secret chat not found")
+	default:
+		writeError(w, http.StatusInternalServerError, "handshake failed")
+	}
+	return true
+}
+
 type translateBody struct {
 	Text   string `json:"text"`
 	ToLang string `json:"to_lang"`
