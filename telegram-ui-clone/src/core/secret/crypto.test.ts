@@ -18,4 +18,15 @@ describe('secret/crypto ECDH', () => {
     const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, sb.key, ct)
     expect(new TextDecoder().decode(pt)).toBe('hi')
   })
+
+  it('несвязанная пара даёт другой fingerprint (защита от вырожденной константы)', async () => {
+    const a = await generateKeyPair()
+    const b = await generateKeyPair()
+    const c = await generateKeyPair()
+
+    const sa = await deriveSecret(a.privateKey, await exportPublicKey(b.publicKey))
+    const sc = await deriveSecret(c.privateKey, await exportPublicKey(a.publicKey))
+
+    expect(Array.from(sc.fingerprint)).not.toEqual(Array.from(sa.fingerprint))
+  })
 })

@@ -8,7 +8,7 @@ export interface DerivedSecret {
 }
 
 export async function generateKeyPair(): Promise<CryptoKeyPair> {
-  return crypto.subtle.generateKey(ECDH, false, ['deriveBits', 'deriveKey']) as Promise<CryptoKeyPair>
+  return crypto.subtle.generateKey(ECDH, false, ['deriveBits', 'deriveKey'])
 }
 
 export async function exportPublicKey(pub: CryptoKey): Promise<Uint8Array> {
@@ -23,11 +23,12 @@ export async function deriveSecret(priv: CryptoKey, peerPubRaw: Uint8Array): Pro
   const peerPub = await importPublicKey(peerPubRaw)
   const bits = new Uint8Array(await crypto.subtle.deriveBits({ name: 'ECDH', public: peerPub }, priv, 256))
   const fingerprint = new Uint8Array(await crypto.subtle.digest('SHA-256', bits))
-  const hkdfKey = await crypto.subtle.importKey('raw', bits as BufferSource, 'HKDF', false, ['deriveKey'])
+  const hkdfKey = await crypto.subtle.importKey('raw', bits, 'HKDF', false, ['deriveKey'])
   const key = await crypto.subtle.deriveKey(
     {
       name: 'HKDF',
       hash: 'SHA-256',
+      // пустая соль намеренно: ECDH-секрет уже высокоэнтропийный, RFC 5869 трактует отсутствие соли как нули, доменное разделение даёт info
       salt: new Uint8Array(0),
       info: new TextEncoder().encode('secret-chat-v1'),
     },
