@@ -179,6 +179,26 @@ export function useChatSend({
     // после завершения аплоада. Документы/аудио грузятся до появления бабла.
     const isVisual = (type === 'photo' || type === 'video') && !asFile
     atBottomRef.current = true; userScrolledUpRef.current = false
+    // Секретный чат (E2E): шифруем байты своим ключом файла, грузим ciphertext как
+    // непрозрачный blob, key/iv кладём в зашифрованный payload (secret.sendMedia).
+    // Отправитель видит локальное превью (localUrl) сразу для фото/видео; реальный
+    // бабл приедет расшифрованным echo new_message с тем же clientMsgId. Документы —
+    // без оптимистичного бабла (приезжают echo). reply/thread здесь не поддержаны.
+    if (chat.type === 'secret') {
+      const bytes = await file.arrayBuffer()
+      if (isVisual) {
+        const localUrl = URL.createObjectURL(file)
+        win.appendOptimistic(caption, meId ?? -1, clientMsgId, undefined, type, undefined, undefined,
+          { localUrl, width, height, mime, size: file.size, name: file.name }, { secret: true })
+      }
+      try {
+        await managers.secret.sendMedia({ chatId: numericChatId, bytes, name: file.name, mime, size: file.size, mediaType: type, ttlSeconds: null, clientMsgId })
+      } catch {
+        if (isVisual) useMessagesStore.getState().failOptimisticByClient(clientMsgId)
+      }
+      window.dispatchEvent(new Event('tg-send'))
+      return
+    }
     if (isVisual) {
       const localUrl = URL.createObjectURL(file)
       win.appendOptimistic(caption, meId ?? -1, clientMsgId, undefined, type, undefined, groupedId, {

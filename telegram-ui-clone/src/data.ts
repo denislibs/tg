@@ -81,6 +81,8 @@ export interface ConvMsg {
   call?: CallLog
   /** секретное сообщение (E2E) — включает таймер самоуничтожения в бабле */
   secret?: boolean
+  /** E2E-медиа секретного чата — рендерится через SecretMediaBubble (fetch+decrypt) */
+  secretMedia?: import('./core/models').SecretMedia
   /** self-destruct: TTL после прочтения (сек) + абсолютный дедлайн (ISO) */
   ttlSeconds?: number | null
   destructAt?: string | null

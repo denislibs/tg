@@ -153,6 +153,21 @@ export interface ReactionCount {
   mine: boolean
 }
 
+// E2E-медиа секретного чата. Файл шифруется своим AES-ключом; ciphertext лежит на
+// сервере как непрозрачный blob (media_id), а keyB64/ivB64 приезжают ВНУТРИ
+// зашифрованного payload сообщения. Заполняется только клиентской расшифровкой —
+// сервер никогда не отдаёт эти поля (см. RawMessage: их там нет).
+export interface SecretMedia {
+  mediaId: number
+  keyB64: string
+  ivB64: string
+  name: string
+  mime: string
+  size: number
+  /** вид медиа приложения ('photo'|'video'|'document') — как у обычной отправки */
+  mediaType: string
+}
+
 export interface Message {
   id: number
   chatId: number
@@ -221,6 +236,9 @@ export interface Message {
   destructAt?: string | null
   /** true — сообщение из секретного чата (после дешифровки text/entities заполнены локально) */
   secret?: boolean
+  /** E2E-медиа секретного чата (расшифровывается на просмотре из mediaId+key+iv).
+   * Инжектится клиентской расшифровкой (worker/bridge/history) — НЕ проводное поле. */
+  secretMedia?: SecretMedia
 }
 
 // Опрос (backend PollInfo): вопрос + варианты + агрегаты для зрителя.

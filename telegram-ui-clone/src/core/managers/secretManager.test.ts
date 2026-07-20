@@ -15,6 +15,7 @@ function makeDeps() {
   const restCalls: RestCall[] = []
   const sends: Parameters<SecretDeps['conn']['sendMessage']>[0][] = []
   const events: { event: string; payload: unknown }[] = []
+  const uploads: { bytes: ArrayBuffer; mime: string; size: number; fileName?: string }[] = []
   const deps: SecretDeps = {
     rest: {
       post: async <T,>(url: string, body: unknown): Promise<T> => {
@@ -25,8 +26,9 @@ function makeDeps() {
     },
     conn: { sendMessage: (args) => { sends.push(args) } },
     broadcast: (event, payload) => { events.push({ event, payload }) },
+    upload: async (bytes, mime, size, fileName) => { uploads.push({ bytes, mime, size, fileName }); return 42 },
   }
-  return { deps, restCalls, sends, events }
+  return { deps, restCalls, sends, events, uploads }
 }
 
 describe('secretManager', () => {
@@ -87,6 +89,37 @@ describe('secretManager', () => {
 
     const decrypted = await mgr.decryptMessage(1, sends[0].encBody!)
     expect(decrypted).toEqual(payload)
+  })
+
+  it('sendMedia: грузит ciphertext-блоб, шлёт type:encrypted с media_id; decrypt восстанавливает media', async () => {
+    const { deps, sends, uploads } = makeDeps()
+    const mgr = createSecretManager(deps)
+    const initiatorKp = await generateKeyPair()
+    const initiatorPub = b64FromBytes(await exportPublicKey(initiatorKp.publicKey))
+    mgr.stashRequest(1, initiatorPub)
+    await mgr.accept(1)
+
+    const bytes = new TextEncoder().encode('файл-байты').buffer
+    const res = await mgr.sendMedia({ chatId: 1, bytes, name: 'pic.jpg', mime: 'image/jpeg', size: 10, mediaType: 'photo', clientMsgId: 'cm2', ttlSeconds: null })
+    expect(res.ok).toBe(true)
+    // ciphertext ушёл как непрозрачный blob (не image/jpeg), а не plaintext
+    expect(uploads).toHaveLength(1)
+    expect(uploads[0].mime).toBe('application/octet-stream')
+    expect(uploads[0].bytes.byteLength).toBeGreaterThan(0)
+    // сообщение type:encrypted с media_id (blob) и пустым text
+    expect(sends).toHaveLength(1)
+    expect(sends[0].type).toBe('encrypted')
+    expect(sends[0].text).toBe('')
+    expect(sends[0].mediaId).toBe(42)
+    // payload несёт media с key/iv и метаданными, но не сам файл
+    const dec = await mgr.decryptMessage(1, sends[0].encBody!)
+    expect(dec?.media).toBeDefined()
+    expect(dec?.media?.mediaId).toBe(42)
+    expect(dec?.media?.mediaType).toBe('photo')
+    expect(dec?.media?.name).toBe('pic.jpg')
+    expect(dec?.media?.mime).toBe('image/jpeg')
+    expect(typeof dec?.media?.keyB64).toBe('string')
+    expect(typeof dec?.media?.ivB64).toBe('string')
   })
 
   it('sendText без ключа чата бросает ошибку', async () => {

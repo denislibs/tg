@@ -103,10 +103,10 @@ const conn = newConnectionManager({
     // Кэш истории живёт в этом воркере — live-кадры отражаем в нём ДО broadcast,
     // иначе переоткрытие чата/треда отдаёт из кэша срез без свежих сообщений.
     else if (type === 'new_message') {
-      const p = payload as { chat_id?: number; enc_body?: string; text?: string; entities?: unknown }
+      const p = payload as { chat_id?: number; enc_body?: string; text?: string; entities?: unknown; secret_media?: unknown }
       if (p.enc_body && p.chat_id) {
         void secret.decryptMessage(p.chat_id, p.enc_body).then((dec) => {
-          if (dec) { p.text = dec.text; p.entities = dec.entities }
+          if (dec) { p.text = dec.text; p.entities = dec.entities; if (dec.media) p.secret_media = dec.media }
           messages.cacheLive(payload as never); broadcast(RT.newMessage, payload)
         })
       } else {
@@ -145,7 +145,11 @@ const conn = newConnectionManager({
 })
 
 // Секретные чаты живут в воркере: WebCrypto + keyStore + rest + conn + broadcast.
-const secret = createSecretManager({ rest, conn, broadcast })
+// upload проксирует в media-менеджер: ciphertext-блоб грузится как обычное медиа.
+const secret = createSecretManager({
+  rest, conn, broadcast,
+  upload: (bytes, mime, size, fileName) => media.upload({ bytes, mime, size, fileName }),
+})
 
 const realtime = {
   async start() { await tokens.load(); conn.start(); return { state: conn.state() } },

@@ -1,6 +1,6 @@
 // src/core/managers/messagesManager.ts
 import type { RestClient } from '../net/restClient'
-import { mapMessage, mapPoll, mapScheduled, mapGeo, type Message, type MessageEntity, type Poll, type RawMessage, type RawPoll, type RawScheduled, type Scheduled } from '../models'
+import { mapMessage, mapPoll, mapScheduled, mapGeo, type Message, type MessageEntity, type Poll, type RawMessage, type RawPoll, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
 import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt } from '../realtime/events'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
 
@@ -35,7 +35,7 @@ export interface SendArgs {
 export interface MessagesDeps {
   rest: RestClient
   /** Расшифровка ciphertext секретного чата (ключи живут в secretManager воркера). */
-  decryptSecret?: (chatId: number, encBody: string) => Promise<{ text: string; entities?: unknown[] } | null>
+  decryptSecret?: (chatId: number, encBody: string) => Promise<{ text: string; entities?: unknown[]; media?: SecretMedia } | null>
 }
 
 export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
@@ -48,7 +48,7 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
       if (!m.encBody) return m
       const dec = await decryptSecret(m.chatId, m.encBody)
       return dec
-        ? { ...m, text: dec.text, entities: (dec.entities as Message['entities']) ?? m.entities, secret: true }
+        ? { ...m, text: dec.text, entities: (dec.entities as Message['entities']) ?? m.entities, secret: true, secretMedia: dec.media ?? m.secretMedia }
         : { ...m, secret: true }
     }))
   }
@@ -335,6 +335,10 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
         grouped_id: evt.grouped_id ?? null, media_unread: evt.media_unread,
         geo: evt.geo ?? null, contact: evt.contact ?? null,
       })
+      // E2E-медиа секретного чата: воркер уже расшифровал enc_body и положил
+      // secret_media на фрейм (не проводное поле) — переносим в кэш-модель, чтобы
+      // переоткрытие чата из кэша тоже отдавало расшифровываемое медиа.
+      if (evt.secret_media) { m.secretMedia = evt.secret_media; m.secret = true }
       const keys = m.threadRootId ? [hkey(m.chatId), hkey(m.chatId, m.threadRootId)] : [hkey(m.chatId)]
       for (const key of keys) {
         // Только в срез, уже державший низ истории — иначе позиция неизвестна.

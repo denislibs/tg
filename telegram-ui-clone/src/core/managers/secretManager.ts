@@ -2,16 +2,22 @@
 // Ключи и приватный ключ инициатора — device-local в IndexedDB (keyStore),
 // на сервер уходят только публичные ключи. Живёт в SharedWorker: имеет доступ
 // к rest, conn (WS) и broadcast (→ main-thread realtimeBridge → secretChatStore).
-import { generateKeyPair, exportPublicKey, deriveSecret, encryptPayload, decryptPayload, b64FromBytes, b64ToBytes } from '../secret/crypto'
+import { generateKeyPair, exportPublicKey, deriveSecret, encryptPayload, decryptPayload, encryptMedia, b64FromBytes, b64ToBytes } from '../secret/crypto'
 import { fingerprintEmoji } from '../secret/fingerprint'
 import { saveKey, loadKey, savePending, loadPending, clearPending } from '../secret/keyStore'
 import { RT } from '../realtime/events'
+import type { SecretMedia } from '../models'
 
 export interface SecretDeps {
   rest: { post: <T>(url: string, body: unknown) => Promise<T> }
-  conn: { sendMessage: (args: { chatId: number; text: string; clientMsgId: string; type?: string; encBody?: string; ttlSeconds?: number | null }) => void }
+  conn: { sendMessage: (args: { chatId: number; text: string; clientMsgId: string; type?: string; encBody?: string; mediaId?: number; ttlSeconds?: number | null }) => void }
   broadcast: (event: string, payload: unknown) => void
+  /** Аплоад непрозрачного ciphertext-блоба (media.upload воркера) → media_id. */
+  upload: (bytes: ArrayBuffer, mime: string, size: number, fileName?: string) => Promise<number>
 }
+
+// Расшифрованный payload секретного сообщения: текст+сущности и/или медиа.
+interface DecryptedPayload { text?: string; entities?: unknown[]; media?: SecretMedia }
 
 export function createSecretManager(deps: SecretDeps) {
   // initiatorPub полученных запросов (по chatId), чтобы accept не тащил ключ с main-thread.
@@ -72,12 +78,27 @@ export function createSecretManager(deps: SecretDeps) {
       return { ok: true }
     },
 
-    // Дешифрует enc_body сообщения → {text, entities}. Воркер зовёт до кэша/broadcast.
-    async decryptMessage(chatId: number, encBody: string): Promise<{ text: string; entities: unknown[] } | null> {
+    // Шифрует файл (свой AES-ключ на файл), грузит ciphertext как непрозрачный blob,
+    // а key+iv+метаданные кладёт в зашифрованный payload сообщения (type:'encrypted').
+    // media_id указывает на blob; расшифровка — на просмотре у получателя.
+    async sendMedia(args: { chatId: number; bytes: ArrayBuffer; name: string; mime: string; size: number; mediaType: string; ttlSeconds?: number | null; clientMsgId: string }): Promise<{ ok: boolean }> {
+      const stored = await loadKey(args.chatId)
+      if (!stored) throw new Error('secret: chat key missing')
+      const { cipher, keyB64, ivB64 } = await encryptMedia(new Uint8Array(args.bytes))
+      const mediaId = await deps.upload(cipher, 'application/octet-stream', cipher.byteLength, args.name)
+      const encBody = await encryptPayload(stored.key, { media: { mediaId, keyB64, ivB64, name: args.name, mime: args.mime, size: args.size, mediaType: args.mediaType } })
+      deps.conn.sendMessage({ chatId: args.chatId, text: '', clientMsgId: args.clientMsgId, type: 'encrypted', encBody, mediaId, ttlSeconds: args.ttlSeconds ?? null })
+      return { ok: true }
+    },
+
+    // Дешифрует enc_body сообщения → {text, entities} и/или {media}. Воркер и
+    // history-путь зовут до кэша/broadcast. media присутствует у медиа-сообщений.
+    async decryptMessage(chatId: number, encBody: string): Promise<{ text: string; entities: unknown[]; media?: SecretMedia } | null> {
       const stored = await loadKey(chatId)
       if (!stored) return null
       try {
-        return await decryptPayload<{ text: string; entities: unknown[] }>(stored.key, encBody)
+        const p = await decryptPayload<DecryptedPayload>(stored.key, encBody)
+        return { text: p.text ?? '', entities: p.entities ?? [], media: p.media }
       } catch {
         return null
       }
