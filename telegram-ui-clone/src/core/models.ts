@@ -134,6 +134,7 @@ export interface RawMessage {
   media_size?: number
   media_name?: string
   views?: number
+  forwards?: number
   media_unread?: boolean
   reactions?: { emoji: string; count: number; mine?: boolean }[] | null
   geo?: RawGeo | null
@@ -215,6 +216,8 @@ export interface Message {
   mediaName?: string
   /** deduplicated viewer count for a channel post (undefined = not a channel post) */
   views?: number
+  /** number of times a channel post was forwarded (Telegram message.forwards) */
+  forwards?: number
   /** голосовое/кружок ещё не прослушано получателем (Telegram media_unread) */
   mediaUnread?: boolean
   /** опрос сообщения типа 'poll' (представление для зрителя) */
@@ -401,6 +404,7 @@ export function mapMessage(r: RawMessage): Message {
     mediaSize: r.media_size,
     mediaName: r.media_name,
     views: r.views,
+    forwards: r.forwards,
     mediaUnread: r.media_unread,
     reactions: r.reactions?.length
       ? r.reactions.map((x) => ({ emoji: x.emoji, count: x.count, mine: !!x.mine }))

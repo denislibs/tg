@@ -71,7 +71,31 @@ func (i *Interactor) SetUsername(ctx context.Context, id int64, raw string) (dom
 	return i.users.SetUsername(ctx, id, &n)
 }
 
-// SetAvatar stores the avatar URL (a /media/{id}/content path) for the user.
+// SetAvatar stores the avatar URL (a /media/{id}/content path) for the user and
+// appends it to the profile-photo gallery so the two stay consistent (Telegram
+// keeps every avatar as a gallery photo). Returns the fresh user.
 func (i *Interactor) SetAvatar(ctx context.Context, id int64, url string) (domain.User, error) {
-	return i.users.SetAvatar(ctx, id, url)
+	if _, err := i.users.AddProfilePhoto(ctx, id, url, ""); err != nil {
+		return domain.User{}, err
+	}
+	return i.users.GetByID(ctx, id)
+}
+
+// AddProfilePhoto adds a photo to the user's gallery and promotes it to the
+// current avatar. url/videoURL are already-converted /media/{id}/content paths
+// (the delivery layer does the media_id→url conversion, as SetAvatar does).
+func (i *Interactor) AddProfilePhoto(ctx context.Context, userID int64, url, videoURL string) (domain.ProfilePhoto, error) {
+	return i.users.AddProfilePhoto(ctx, userID, url, videoURL)
+}
+
+// ListProfilePhotos returns a user's profile-photo gallery, newest first.
+func (i *Interactor) ListProfilePhotos(ctx context.Context, userID int64) ([]domain.ProfilePhoto, error) {
+	return i.users.ListProfilePhotos(ctx, userID)
+}
+
+// DeleteProfilePhoto removes a gallery photo; when it was the current avatar the
+// repo falls avatar_url back to the next most-recent photo (or "").
+func (i *Interactor) DeleteProfilePhoto(ctx context.Context, userID, photoID int64) error {
+	_, err := i.users.DeleteProfilePhoto(ctx, userID, photoID)
+	return err
 }

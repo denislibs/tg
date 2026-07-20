@@ -35,6 +35,7 @@ import { loadNotifySettings, useNotifyStore, notifyTypeForChat } from './stores/
 import { loadPrivacy } from './stores/privacyStore'
 import { loadDrafts, useDraftsStore } from './stores/draftsStore'
 import { loadFolders } from './stores/foldersStore'
+import FolderInvitePopup from './components/folders/FolderInvitePopup'
 import { loadStars } from './stores/starsStore'
 import { usePipStore } from './core/pip'
 import { ANIMATE_MAIN_KEY, PREV_ACCOUNT_KEY, playMainScreenEnter } from './core/accountTransition'
@@ -61,6 +62,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   const [joinToast, setJoinToast] = useState<string | null>(null)
   const joinToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [qrConfirmToken, setQrConfirmToken] = useState<string | null>(null)
+  const [addlistSlug, setAddlistSlug] = useState<string | null>(null)
   const groupCallChatId = useGroupCallStore((s) => s.chatId)
 
   // Появление мессенджера (tweb src/index.ts / #main-columns fade-in). При
@@ -137,6 +139,14 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     const m = location.pathname.match(/^\/qr\/([\w-]+)$/)
     if (!m) return
     setQrConfirmToken(m[1])
+  }, [])
+
+  // /addlist/:slug deep link — authed only (tweb sharedFolderInvite). Opens a
+  // popup to preview & join the shared folder's chats; path cleared on close.
+  useEffect(() => {
+    const m = location.pathname.match(/^\/addlist\/([\w-]+)$/)
+    if (!m) return
+    setAddlistSlug(m[1])
   }, [])
 
   const confirmQr = async () => {
@@ -452,6 +462,21 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
             </div>
           </motion.div>
         </>
+      )}
+
+      {/* /addlist/:slug — вступление по ссылке-приглашению в папку */}
+      {addlistSlug && (
+        <FolderInvitePopup
+          slug={addlistSlug}
+          onClose={() => {
+            setAddlistSlug(null)
+            window.history.replaceState({}, '', '/')
+          }}
+          onJoined={(folderTitle) => {
+            void loadChats(managers).then(() => loadFolders(managers))
+            showJoinToast(`${t('Folder added')}: ${folderTitle}`)
+          }}
+        />
       )}
 
       {/* Wide: sidebar inline + chat (or empty state) */}

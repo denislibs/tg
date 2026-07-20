@@ -78,6 +78,9 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Put("/me/username", ph.SetUsername)
 		pr.Get("/username/available", ph.CheckUsername)
 		pr.Put("/me/avatar", ph.SetAvatar)
+		pr.Post("/me/photos", ph.AddPhoto)
+		pr.Delete("/me/photos/{photoID}", ph.DeletePhoto)
+		pr.Get("/users/{userID}/photos", ph.ListPhotos)
 
 		nh := NewNotifyHandler(notifyUC)
 		pr.Get("/me/notify_settings", nh.Get)
@@ -112,6 +115,12 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 			pr.Post("/me/folders", fh.Create)
 			pr.Put("/me/folders/{folderID}", fh.Update)
 			pr.Delete("/me/folders/{folderID}", fh.Delete)
+			// Ссылки-приглашения в папку (chatlist invites)
+			pr.Post("/me/folders/{folderID}/invites", fh.CreateInvite)
+			pr.Get("/me/folders/{folderID}/invites", fh.ListInvites)
+			pr.Delete("/me/folder_invites/{slug}", fh.RevokeInvite)
+			pr.Get("/folder_invites/{slug}", fh.PreviewInvite)
+			pr.Post("/folder_invites/{slug}/join", fh.JoinInvite)
 		}
 
 		ch := NewChatHandler(chatUC)

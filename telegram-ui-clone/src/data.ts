@@ -43,6 +43,7 @@ export interface ConvMsg {
   status?: MsgStatus
   edited?: boolean // shows the "изменено" marker before the time
   views?: number // channel-post view count ("9.2K 👁"); undefined for non-posts
+  forwards?: number // channel-post forward count (Telegram message.forwards); undefined for non-posts
   reactions?: { emoji: string; count: number; mine: boolean }[] // чипы реакций под сообщением
   geo?: GeoData // гео-точка (type 'geo') + venue/live location
   contact?: { userId: number; name: string; phone: string } // контакт (type 'contact')

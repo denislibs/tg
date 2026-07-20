@@ -1,7 +1,7 @@
 // Редактор папки — порт tweb editFolder.tsx: анимация Folders_2 (86×86),
 // caption, имя папки, «Включённые чаты» (Добавить чаты + типы), «Исключённые
 // чаты» (Убрать чаты + Без звука/Прочитанные), галка-подтверждение в хедере.
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import IconButton from '../../shared/ui/IconButton'
 import Avatar from '../../shared/ui/Avatar'
 import Text from '../../shared/ui/Text'
@@ -11,7 +11,7 @@ import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useAvatarSrc } from '../useAvatarSrc'
 import { useFoldersStore } from '../../stores/foldersStore'
-import type { Folder, FolderInput } from '../../core/managers/foldersManager'
+import type { Folder, FolderInput, FolderInvite } from '../../core/managers/foldersManager'
 import type { Chat } from '../../data'
 import { SettingsScreen, Section, Row } from '../settings/kit'
 import FolderChatsPicker, { type PickerFlags } from './FolderChatsPicker'
@@ -60,6 +60,93 @@ function SelectedPreview({ flagKeys, chatIds, chats }: { flagKeys: string[]; cha
         <Row icon={<TgIcon name="down" size={24} color="var(--tg-accent)" />} label={`${t('Show more')} (${hidden})`} translate={false} accent onClick={() => setExpanded(true)} />
       )}
     </>
+  )
+}
+
+// Секция «Поделиться папкой» (tweb sharedFolderInvite / addlist): создаёт
+// ссылку-приглашение, шарящую публичные группы/каналы папки. Показывается только
+// для сохранённой папки, в которой есть чем поделиться.
+function FolderShareSection({ folderId }: { folderId: number }) {
+  const t = useT()
+  const managers = useManagers()
+  const [invite, setInvite] = useState<FolderInvite | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    managers.folders
+      .listInvites(folderId)
+      .then((list) => {
+        if (alive) setInvite(list[0] ?? null)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [managers, folderId])
+
+  const create = () => {
+    setBusy(true)
+    setError('')
+    managers.folders
+      .createInvite(folderId)
+      .then((inv) => setInvite(inv))
+      .catch(() => setError(t('This folder has no chats to share.')))
+      .finally(() => setBusy(false))
+  }
+
+  const revoke = () => {
+    if (!invite) return
+    const slug = invite.slug
+    setInvite(null)
+    void managers.folders.revokeInvite(slug).catch(() => {})
+  }
+
+  const copy = () => {
+    if (!invite) return
+    void navigator.clipboard.writeText(invite.url)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  return (
+    <Section
+      caption="Share Folder"
+      footer="Create an invite link so others can join the group chats in this folder."
+    >
+      {invite ? (
+        <>
+          <div className={s.linkBox} onClick={copy}>
+            <Text size={15.5} color="var(--tg-link)" style={{ wordBreak: 'break-all' }}>
+              {invite.url}
+            </Text>
+            <Text size={13} color={copied ? 'var(--tg-accent)' : 'var(--tg-textFaint)'}>
+              {copied ? t('Link copied to clipboard.') : t('Copy Link')}
+            </Text>
+          </div>
+          <Row
+            icon={<TgIcon name="delete" size={22} color="#ff595a" />}
+            label="Revoke Link"
+            danger
+            onClick={revoke}
+          />
+        </>
+      ) : (
+        <Row
+          icon={<TgIcon name="link" size={22} color="var(--tg-accent)" />}
+          label="Share Folder"
+          accent
+          onClick={busy ? undefined : create}
+        />
+      )}
+      {error && (
+        <Text size={13.5} color="#ff595a" className={s.error}>
+          {error}
+        </Text>
+      )}
+    </Section>
   )
 }
 
@@ -189,6 +276,8 @@ export default function FolderEditor({
         />
         <SelectedPreview flagKeys={excludeFlagKeys} chatIds={excludeChats} chats={chats} />
       </Section>
+
+      {folder && <FolderShareSection folderId={folder.id} />}
 
       {picker && (
         <FolderChatsPicker

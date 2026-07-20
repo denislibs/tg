@@ -72,6 +72,9 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 			if src.ChatID != in.FromChatID || src.Deleted {
 				return domain.ErrNotFound
 			}
+			// Пересылка увеличивает счётчик пересылок исходного поста (Telegram
+			// message.forwards) — best-effort, как views: сбой счётчика не рвёт форвард.
+			_ = i.msgs.IncrementForwards(ctx, srcID)
 			// Preserve the true origin across forward-of-forward.
 			fwdUser := src.FwdFromUserID
 			if fwdUser == nil {

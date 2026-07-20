@@ -38,3 +38,15 @@
   display: block;
   padding: 4px 16px 8px;
 }
+
+// Ссылка-приглашение в папку (tweb sharedFolderInvite): кликабельный бокс копирования
+.linkBox {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--tg-hover);
+  cursor: pointer;
+  margin: 4px 0 8px;
+}

@@ -15,6 +15,15 @@ type UserRepo interface {
 	UsernameAvailable(ctx context.Context, username string, excludeID int64) (bool, error)
 	SetUsername(ctx context.Context, id int64, username *string) (domain.User, error) // domain.ErrConflict if taken
 	SetAvatar(ctx context.Context, id int64, url string) (domain.User, error)
+	// AddProfilePhoto inserts a gallery photo and, in the same transaction,
+	// promotes it to the user's current avatar (users.avatar_url).
+	AddProfilePhoto(ctx context.Context, userID int64, url, videoURL string) (domain.ProfilePhoto, error)
+	// ListProfilePhotos returns the user's gallery, newest first.
+	ListProfilePhotos(ctx context.Context, userID int64) ([]domain.ProfilePhoto, error)
+	// DeleteProfilePhoto removes a photo owned by userID; if it was the current
+	// avatar, avatar_url falls back to the next most-recent photo (or ""). It
+	// returns the resulting avatar_url.
+	DeleteProfilePhoto(ctx context.Context, userID, photoID int64) (newAvatarURL string, err error)
 }
 
 type DeviceRepo interface {

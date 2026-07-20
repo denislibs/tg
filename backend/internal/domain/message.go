@@ -63,6 +63,9 @@ type Message struct {
 	// Views is the deduplicated viewer count for a channel post (0 for
 	// group/private messages, which don't track views).
 	Views int64
+	// Forwards is the number of times a channel post was forwarded (Telegram
+	// message.forwards); incremented on each forward, shown under the post like Views.
+	Forwards int64
 	// MediaUnread mirrors Telegram's pFlags.media_unread: a voice/round-video
 	// message whose content hasn't been played by the recipient yet. Set on
 	// send, cleared by ReadMedia.
