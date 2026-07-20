@@ -9,11 +9,16 @@ export interface WebAppState {
   open: boolean
   url: string
   botName: string
+  botId: number // 0 — mini-app без привязки к боту (CloudStorage/sendData отключены)
+  queryId: string // web_app_query_id для answerWebAppQuery (inline-webapp)
 }
-export const useWebAppStore = create<WebAppState>(() => ({ open: false, url: '', botName: '' }))
+export const useWebAppStore = create<WebAppState>(() => ({ open: false, url: '', botName: '', botId: 0, queryId: '' }))
 
-export function openWebApp(a: { url: string; botName?: string }): void {
-  useWebAppStore.setState({ open: true, url: a.url, botName: a.botName ?? 'Web App' })
+export function openWebApp(a: { url: string; botName?: string; botId?: number; queryId?: string }): void {
+  useWebAppStore.setState({
+    open: true, url: a.url, botName: a.botName ?? 'Web App',
+    botId: a.botId ?? 0, queryId: a.queryId ?? '',
+  })
 }
 export function closeWebApp(): void {
   useWebAppStore.setState({ open: false })

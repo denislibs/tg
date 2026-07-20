@@ -67,6 +67,19 @@ URL) и даёт прямую ссылку вида `t.me/<bot>/<app>`.
 | `HapticFeedback.impactOccurred()` | Вибрация |
 | `MainButton` | Главная кнопка снизу |
 | `BackButton` | Кнопка «назад» в шапке |
+| `CloudStorage` | Ключ-значение на пару бот+пользователь (см. ниже) |
+| `showScanQrPopup(p, cb)` / `closeScanQrPopup()` | Сканер QR (камера + BarcodeDetector) |
+| `requestContact(cb)` | Запрос телефона у пользователя (подтверждение) |
+| `openInvoice(url, cb)` | Оплата (в текущей версии — подтверждение, статус paid/cancelled) |
+
+**CloudStorage:** `.setItem(key, value, cb)`, `.getItem(key, cb)`, `.getKeys(cb)`,
+`.removeItem(key, cb)`. Хранится на сервере per (бот, пользователь); лимиты как в
+Telegram (ключ ≤128, значение ≤4096, до 1024 ключей). Под капотом — Telegram
+`web_app_invoke_custom_method` (`saveStorageValue`/`getStorageValues`/…).
+
+**Сенсоры:** `Accelerometer` / `Gyroscope` / `DeviceOrientation` проброшены на
+DeviceMotion/DeviceOrientation браузера (работают на устройстве с датчиками; на
+десктопе события не приходят). `requestWriteAccess` — подтверждение записи.
 
 **MainButton:** `.setText(t)`, `.show()`, `.hide()`, `.enable()`, `.disable()`,
 `.showProgress()`, `.hideProgress()`, `.onClick(cb)`, `.setParams({...})`.
@@ -137,8 +150,8 @@ URL) и даёт прямую ссылку вида `t.me/<bot>/<app>`.
 ```
 
 Когда пользователь нажмёт главную кнопку, `sendData` пришлёт строку — приложение
-покажет тост и закроет mini-app. (Полноценно `sendData` доходит до бота-владельца
-в связке с `answerWebAppQuery`; в текущей версии это UI-уведомление.)
+покажет тост, **доставит данные боту-владельцу** апдейтом `web_app_data` (см.
+[Bot API](bot-api.md)) и закроет mini-app.
 
 ## События (справочно)
 
@@ -157,6 +170,10 @@ URL) и даёт прямую ссылку вида `t.me/<bot>/<app>`.
   положить в `telegram-ui-clone/public/` — раздаётся тем же nginx, тогда URL
   относительный, например `/my-app.html`).
 - Реальный `telegram-web-app.js` с telegram.org **не** загружается — используйте
-  свой shim (шаблон выше / `public/webapp-demo.html`).
-- Поддержано подмножество API (таблица выше). Датчики, биометрия, облачное
-  хранилище, инвойсы и т.п. не реализованы.
+  свой shim (шаблон выше / `public/webapp-demo.html`, где есть готовые
+  CloudStorage/QR/sendData/контакт/инвойс).
+- **QR-сканер** работает через нативный `BarcodeDetector` (Chromium); где его нет —
+  сканер сообщает о неподдержке.
+- **Биометрия** на вебе недоступна: `BiometryManager` отвечает по протоколу
+  `available:false` (как в Telegram Web). Платежи (`openInvoice`) — упрощённые
+  (подтверждение + статус), без реального платёжного провайдера.

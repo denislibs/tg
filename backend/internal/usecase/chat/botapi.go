@@ -18,17 +18,29 @@ import (
 // sendMessage/answerCallbackQuery/answerInlineQuery. callback/inline —
 // синхронный запрос от клиента, который ждёт ответа бота через pending-хаб.
 
-const botAnswerTimeout = 6 * time.Second
+const (
+	botAnswerTimeout = 6 * time.Second
+	// botLateWindow — сколько ещё ждём ответа бота после таймаута синхронного
+	// ожидания, чтобы доставить toast по WS (async-callback).
+	botLateWindow = 60 * time.Second
+)
 
 // botPendingHub — незавершённые callback/inline запросы, ждущие ответа бота.
+// late хранит, кому доставить toast по WS, если бот ответил уже после таймаута
+// синхронного ожидания (отложенная обработка — «async»-callback).
 type botPendingHub struct {
-	mu  sync.Mutex
-	cb  map[string]chan domain.BotCallbackAnswer
-	inl map[string]chan []domain.InlineResult
+	mu   sync.Mutex
+	cb   map[string]chan domain.BotCallbackAnswer
+	inl  map[string]chan []domain.InlineResult
+	late map[string]int64 // callback id → userID для поздней WS-доставки
 }
 
 func newBotHub() *botPendingHub {
-	return &botPendingHub{cb: map[string]chan domain.BotCallbackAnswer{}, inl: map[string]chan []domain.InlineResult{}}
+	return &botPendingHub{
+		cb:   map[string]chan domain.BotCallbackAnswer{},
+		inl:  map[string]chan []domain.InlineResult{},
+		late: map[string]int64{},
+	}
 }
 
 func randID() string {
@@ -113,8 +125,17 @@ func (i *Interactor) botCallbackViaAPI(ctx context.Context, bot domain.BotAccoun
 	h := i.hub()
 	h.mu.Lock()
 	h.cb[id] = ch
+	h.late[id] = fromID
 	h.mu.Unlock()
 	defer func() { h.mu.Lock(); delete(h.cb, id); h.mu.Unlock() }()
+	// late-запись живёт дольше окна ожидания — чтобы поздний answerCallbackQuery
+	// доставился всплывающим тостом по WS (отложенная обработка).
+	go func() {
+		time.Sleep(botLateWindow)
+		h.mu.Lock()
+		delete(h.late, id)
+		h.mu.Unlock()
+	}()
 
 	msg := map[string]any{"chat": map[string]any{"id": chatID, "type": "private"}}
 	if msgID > 0 {
@@ -160,17 +181,26 @@ func (i *Interactor) botInlineViaAPI(ctx context.Context, bot domain.BotAccount,
 	}
 }
 
-// BotAnswerCallback — ответ бота на callback: доставляем ждущему клиенту.
-func (i *Interactor) BotAnswerCallback(_ context.Context, id, text string, alert bool) {
+// BotAnswerCallback — ответ бота на callback. В пределах окна синхронного
+// ожидания доставляем ждущему клиенту; если тот уже отвалился по таймауту —
+// шлём всплывающий toast по WS (отложенная обработка).
+func (i *Interactor) BotAnswerCallback(ctx context.Context, id, text string, alert bool) {
 	h := i.hub()
 	h.mu.Lock()
 	ch := h.cb[id]
+	userID := h.late[id]
 	h.mu.Unlock()
 	if ch != nil {
 		select {
 		case ch <- domain.BotCallbackAnswer{Text: text, Alert: alert}:
+			return
 		default:
 		}
+	}
+	// Клиент уже не ждёт синхронно → доставляем toast по WS (если знаем адресата).
+	if userID != 0 && text != "" && i.publisher != nil {
+		f := frame("bot_callback_answer", map[string]any{"text": text, "alert": alert})
+		_ = i.publisher.PublishToUser(ctx, userID, f)
 	}
 }
 
@@ -245,9 +275,14 @@ func (i *Interactor) BotSetWebhook(ctx context.Context, bot domain.BotAccount, u
 	return i.botAPI.SetWebhook(ctx, bot.BotID, url)
 }
 
-// BotSetCommands задаёт список команд бота.
-func (i *Interactor) BotSetCommands(ctx context.Context, bot domain.BotAccount, cmds []domain.BotCommand) error {
-	return i.botAPI.SetCommands(ctx, bot.BotID, cmds)
+// BotSetCommands задаёт список команд бота для скоупа/языка.
+func (i *Interactor) BotSetCommands(ctx context.Context, bot domain.BotAccount, scope, lang string, cmds []domain.BotCommand) error {
+	return i.botAPI.SetCommands(ctx, bot.BotID, scope, lang, cmds)
+}
+
+// BotGetCommands читает команды бота для скоупа/языка (getMyCommands).
+func (i *Interactor) BotGetCommands(ctx context.Context, bot domain.BotAccount, scope, lang string) ([]domain.BotCommand, error) {
+	return i.botAPI.CommandsScoped(ctx, bot.BotID, scope, lang)
 }
 
 // BotSetMenuButton задаёт кнопку-меню mini-app бота.

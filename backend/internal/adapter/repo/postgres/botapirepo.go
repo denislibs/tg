@@ -50,12 +50,14 @@ func (r *BotAPIRepo) CreateBot(ctx context.Context, ownerID int64, name, usernam
 }
 
 const botSelect = `SELECT a.bot_id, a.owner_id, a.token, a.webhook_url, a.menu_button_text, a.menu_button_url,
+	a.description, a.about_text, a.inline_enabled, a.inline_placeholder,
 	COALESCE(u.username, ''), u.display_name
 	FROM bot_accounts a JOIN users u ON u.id = a.bot_id `
 
 func scanBot(row pgx.Row) (domain.BotAccount, error) {
 	var b domain.BotAccount
-	err := row.Scan(&b.BotID, &b.OwnerID, &b.Token, &b.WebhookURL, &b.MenuButtonText, &b.MenuButtonURL, &b.Username, &b.Name)
+	err := row.Scan(&b.BotID, &b.OwnerID, &b.Token, &b.WebhookURL, &b.MenuButtonText, &b.MenuButtonURL,
+		&b.Description, &b.About, &b.InlineEnabled, &b.InlinePlaceholder, &b.Username, &b.Name)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.BotAccount{}, domain.ErrNotFound
 	}
@@ -107,19 +109,168 @@ func (r *BotAPIRepo) RegenToken(ctx context.Context, botID int64) (string, error
 	return token, err
 }
 
-func (r *BotAPIRepo) SetCommands(ctx context.Context, botID int64, cmds []domain.BotCommand) error {
+func (r *BotAPIRepo) SetCommands(ctx context.Context, botID int64, scope, lang string, cmds []domain.BotCommand) error {
+	if scope == "" {
+		scope = "default"
+	}
 	q := querier(ctx, r.pool)
-	if _, err := q.Exec(ctx, `DELETE FROM bot_commands WHERE bot_id = $1`, botID); err != nil {
+	if _, err := q.Exec(ctx, `DELETE FROM bot_commands WHERE bot_id = $1 AND scope = $2 AND language_code = $3`, botID, scope, lang); err != nil {
 		return err
 	}
 	for i, c := range cmds {
 		if _, err := q.Exec(ctx,
-			`INSERT INTO bot_commands (bot_id, command, description, sort) VALUES ($1, $2, $3, $4)`,
-			botID, c.Command, c.Description, i); err != nil {
+			`INSERT INTO bot_commands (bot_id, command, description, sort, scope, language_code) VALUES ($1, $2, $3, $4, $5, $6)`,
+			botID, c.Command, c.Description, i, scope, lang); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// CommandsScoped читает команды бота для скоупа/языка с фолбэком: сначала точный
+// (scope, lang), затем (scope, ""), затем (default, "").
+func (r *BotAPIRepo) CommandsScoped(ctx context.Context, botID int64, scope, lang string) ([]domain.BotCommand, error) {
+	if scope == "" {
+		scope = "default"
+	}
+	q := querier(ctx, r.pool)
+	tries := [][2]string{{scope, lang}, {scope, ""}, {"default", ""}}
+	seen := map[[2]string]bool{}
+	for _, t := range tries {
+		if seen[t] {
+			continue
+		}
+		seen[t] = true
+		rows, err := q.Query(ctx,
+			`SELECT command, description FROM bot_commands WHERE bot_id = $1 AND scope = $2 AND language_code = $3 ORDER BY sort`,
+			botID, t[0], t[1])
+		if err != nil {
+			return nil, err
+		}
+		var out []domain.BotCommand
+		for rows.Next() {
+			var c domain.BotCommand
+			if err := rows.Scan(&c.Command, &c.Description); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			out = append(out, c)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		if len(out) > 0 {
+			return out, nil
+		}
+	}
+	return nil, nil
+}
+
+// SetProfile задаёт описание/about бота (/setdescription, /setabouttext).
+func (r *BotAPIRepo) SetProfile(ctx context.Context, botID int64, description, about *string) error {
+	q := querier(ctx, r.pool)
+	if description != nil {
+		if _, err := q.Exec(ctx, `UPDATE bot_accounts SET description = $2 WHERE bot_id = $1`, botID, *description); err != nil {
+			return err
+		}
+	}
+	if about != nil {
+		if _, err := q.Exec(ctx, `UPDATE bot_accounts SET about_text = $2 WHERE bot_id = $1`, botID, *about); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// SetInline включает/выключает inline-режим бота и задаёт плейсхолдер.
+func (r *BotAPIRepo) SetInline(ctx context.Context, botID int64, enabled bool, placeholder string) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE bot_accounts SET inline_enabled = $2, inline_placeholder = $3 WHERE bot_id = $1`, botID, enabled, placeholder)
+	return err
+}
+
+// SetAvatar задаёт аватар бота (users.avatar_url = /media/<id>/content).
+func (r *BotAPIRepo) SetAvatar(ctx context.Context, botID, mediaID int64) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE users SET avatar_url = '/media/' || $2 || '/content' WHERE id = $1`, botID, mediaID)
+	return err
+}
+
+// ── CloudStorage mini-app (ключ-значение на пару бот+пользователь) ──
+
+const cloudMaxKeys = 1024
+
+func (r *BotAPIRepo) CloudGet(ctx context.Context, botID, userID int64, keys []string) (map[string]string, error) {
+	out := map[string]string{}
+	if len(keys) == 0 {
+		return out, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT key, value FROM bot_cloud_storage WHERE bot_id = $1 AND user_id = $2 AND key = ANY($3)`,
+		botID, userID, keys)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var k, v string
+		if err := rows.Scan(&k, &v); err != nil {
+			return nil, err
+		}
+		out[k] = v
+	}
+	return out, rows.Err()
+}
+
+func (r *BotAPIRepo) CloudSet(ctx context.Context, botID, userID int64, key, value string) error {
+	q := querier(ctx, r.pool)
+	var n int
+	if err := q.QueryRow(ctx, `SELECT count(*) FROM bot_cloud_storage WHERE bot_id = $1 AND user_id = $2`, botID, userID).Scan(&n); err != nil {
+		return err
+	}
+	if n >= cloudMaxKeys {
+		// не разрастаться сверх лимита, если это новый ключ
+		var exists bool
+		if err := q.QueryRow(ctx, `SELECT exists(SELECT 1 FROM bot_cloud_storage WHERE bot_id=$1 AND user_id=$2 AND key=$3)`, botID, userID, key).Scan(&exists); err != nil {
+			return err
+		}
+		if !exists {
+			return domain.ErrTooLong
+		}
+	}
+	_, err := q.Exec(ctx,
+		`INSERT INTO bot_cloud_storage (bot_id, user_id, key, value, updated_at) VALUES ($1,$2,$3,$4, now())
+		 ON CONFLICT (bot_id, user_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+		botID, userID, key, value)
+	return err
+}
+
+func (r *BotAPIRepo) CloudRemove(ctx context.Context, botID, userID int64, keys []string) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`DELETE FROM bot_cloud_storage WHERE bot_id = $1 AND user_id = $2 AND key = ANY($3)`, botID, userID, keys)
+	return err
+}
+
+func (r *BotAPIRepo) CloudKeys(ctx context.Context, botID, userID int64) ([]string, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT key FROM bot_cloud_storage WHERE bot_id = $1 AND user_id = $2 ORDER BY key`, botID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return nil, err
+		}
+		out = append(out, k)
+	}
+	return out, rows.Err()
 }
 
 func (r *BotAPIRepo) EnqueueUpdate(ctx context.Context, botID int64, payload []byte) (int64, error) {

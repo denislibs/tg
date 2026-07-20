@@ -313,12 +313,33 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     void loadChats(managers)
   }
 
-  // /?domain=username с публичной страницы /@username: префилл поиска
-  const [deepDomain] = useState(() => {
-    const d = new URLSearchParams(location.search).get('domain')
-    if (d) window.history.replaceState({}, '', '/')
-    return d ?? undefined
+  // /?domain=username с публичной страницы /@username: префилл поиска.
+  // /?domain=<bot>&start=<payload> — deep link бота: открыть чат и послать /start.
+  const [deep] = useState(() => {
+    const sp = new URLSearchParams(location.search)
+    const domain = sp.get('domain') ?? undefined
+    const start = sp.get('start')
+    if (domain) window.history.replaceState({}, '', '/')
+    return { domain, start }
   })
+  const deepDomain = deep.domain
+  // Deep link ?start=: резолвим @username → бот, шлём /start payload, открываем чат.
+  useEffect(() => {
+    if (!deep.domain || deep.start === null) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await managers.channels.search(deep.domain!)
+        const u = res.users.find((x) => x.username.toLowerCase() === deep.domain!.toLowerCase())
+        if (!u || cancelled) return
+        const { chat_id } = await managers.bots.start(u.id, deep.start ?? '')
+        if (cancelled) return
+        selectChat(String(chat_id))
+        void loadChats(managers)
+      } catch { /* ignore bad deep link */ }
+    })()
+    return () => { cancelled = true }
+  }, [deep, managers, selectChat])
 
   const renderSidebar = (fullWidth = false) => (
     <Sidebar

@@ -15,6 +15,13 @@ type BotAccount struct {
 	WebhookURL     string
 	MenuButtonText string
 	MenuButtonURL  string
+	// Профиль бота: Description — экран пустого чата (/setdescription),
+	// About — профиль (/setabouttext).
+	Description string
+	About       string
+	// Inline-режим (/setinline): включён и плейсхолдер поля ввода.
+	InlineEnabled     bool
+	InlinePlaceholder string
 	// Гидрируется join'ом с users (для getMe / списков).
 	Username string
 	Name     string

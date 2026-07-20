@@ -42,9 +42,19 @@
     </div>
 
     <div class="card">
+      <label>CloudStorage (сохраняется на сервере для этой пары бот+вы)</label>
+      <input id="cloud" type="text" placeholder="Заметка…" />
+      <button class="action" id="btn-cloud-save">💾 Сохранить в CloudStorage</button>
+      <button class="action" id="btn-cloud-load">📥 Загрузить из CloudStorage</button>
+    </div>
+
+    <div class="card">
       <button class="action" id="btn-link">🔗 Открыть telegram.org</button>
       <button class="action" id="btn-popup">💬 Показать попап</button>
       <button class="action" id="btn-haptic">📳 Вибрация</button>
+      <button class="action" id="btn-qr">📷 Сканировать QR</button>
+      <button class="action" id="btn-contact">📞 Запросить телефон</button>
+      <button class="action" id="btn-invoice">💳 Открыть инвойс</button>
       <button class="action" id="btn-section">📂 Открыть раздел (BackButton)</button>
       <button class="action" id="btn-close">✖️ Закрыть mini-app</button>
     </div>
@@ -62,7 +72,17 @@
     window.parent.postMessage(JSON.stringify({ eventType: eventType, eventData: eventData }), '*');
   }
 
-  var mainClick = null, backClick = null, popupCb = null;
+  var mainClick = null, backClick = null, popupCb = null, qrCb = null, contactCb = null, invoiceCb = null;
+  var customCbs = {}, customReqSeq = 0;
+
+  // invoke_custom_method → Promise (для CloudStorage).
+  function invokeCustom(method, params) {
+    return new Promise(function (resolve, reject) {
+      var reqId = 'r' + (++customReqSeq);
+      customCbs[reqId] = { resolve: resolve, reject: reject };
+      post('web_app_invoke_custom_method', { req_id: reqId, method: method, params: params || {} });
+    });
+  }
 
   function applyTheme(tp) {
     if (!tp) return;
@@ -86,6 +106,15 @@
       case 'main_button_pressed': if (mainClick) mainClick(); break;
       case 'back_button_pressed': if (backClick) backClick(); break;
       case 'popup_closed': if (popupCb) { var cb = popupCb; popupCb = null; cb(msg.eventData && msg.eventData.button_id); } break;
+      case 'custom_method_invoked': {
+        var d = msg.eventData || {}, h = customCbs[d.req_id];
+        if (h) { delete customCbs[d.req_id]; d.error ? h.reject(new Error(d.error)) : h.resolve(d.result); }
+        break;
+      }
+      case 'qr_text_received': if (qrCb) { var q = qrCb; qrCb = null; q(msg.eventData && msg.eventData.data); } break;
+      case 'scan_qr_popup_closed': qrCb = null; break;
+      case 'phone_requested': if (contactCb) { var c = contactCb; contactCb = null; c(msg.eventData && msg.eventData.status); } break;
+      case 'invoice_closed': if (invoiceCb) { var iv = invoiceCb; invoiceCb = null; iv(msg.eventData && msg.eventData.status); } break;
     }
   });
 
@@ -130,7 +159,17 @@
     openLink: function (url) { post('web_app_open_link', { url: url }); },
     enableClosingConfirmation: function () { post('web_app_setup_closing_behavior', { need_confirmation: true }); },
     disableClosingConfirmation: function () { post('web_app_setup_closing_behavior', { need_confirmation: false }); },
-    showPopup: function (params, cb) { popupCb = cb || null; post('web_app_open_popup', params); }
+    showPopup: function (params, cb) { popupCb = cb || null; post('web_app_open_popup', params); },
+    showScanQrPopup: function (params, cb) { qrCb = cb || null; post('web_app_open_scan_qr_popup', params || {}); },
+    closeScanQrPopup: function () { qrCb = null; post('web_app_close_scan_qr_popup'); },
+    requestContact: function (cb) { contactCb = cb || null; post('web_app_request_phone'); },
+    openInvoice: function (url, cb) { invoiceCb = cb || null; post('web_app_open_invoice', { slug: url }); },
+    CloudStorage: {
+      setItem: function (key, value, cb) { invokeCustom('saveStorageValue', { key: key, value: value }).then(function () { cb && cb(null, true); }, function (e) { cb && cb(e); }); },
+      getItem: function (key, cb) { invokeCustom('getStorageValues', { keys: [key] }).then(function (r) { cb && cb(null, (r || {})[key] || ''); }, function (e) { cb && cb(e); }); },
+      getKeys: function (cb) { invokeCustom('getStorageKeys', {}).then(function (r) { cb && cb(null, r || []); }, function (e) { cb && cb(e); }); },
+      removeItem: function (key, cb) { invokeCustom('deleteStorageValues', { keys: [key] }).then(function () { cb && cb(null, true); }, function (e) { cb && cb(e); }); }
+    }
   };
   window.Telegram = { WebApp: WebApp };
 
@@ -157,6 +196,30 @@
     WebApp.sendData(JSON.stringify({ name: nameInput.value.trim() }));
   });
 
+  var cloudInput = document.getElementById('cloud');
+  document.getElementById('btn-cloud-save').onclick = function () {
+    WebApp.CloudStorage.setItem('note', cloudInput.value, function (err) {
+      WebApp.showPopup({ message: err ? 'Ошибка: ' + err.message : 'Сохранено в CloudStorage ✅', buttons: [{ type: 'ok' }] });
+    });
+  };
+  document.getElementById('btn-cloud-load').onclick = function () {
+    WebApp.CloudStorage.getItem('note', function (err, val) {
+      if (err) { WebApp.showPopup({ message: 'Ошибка: ' + err.message, buttons: [{ type: 'ok' }] }); return; }
+      cloudInput.value = val || '';
+      WebApp.showPopup({ message: val ? 'Загружено: «' + val + '»' : 'Пусто', buttons: [{ type: 'ok' }] });
+    });
+  };
+  document.getElementById('btn-qr').onclick = function () {
+    WebApp.showScanQrPopup({ text: 'Наведите на QR-код' }, function (data) {
+      WebApp.showPopup({ message: 'QR: ' + data, buttons: [{ type: 'ok' }] });
+    });
+  };
+  document.getElementById('btn-contact').onclick = function () {
+    WebApp.requestContact(function (status) { WebApp.showPopup({ message: 'Телефон: ' + status, buttons: [{ type: 'ok' }] }); });
+  };
+  document.getElementById('btn-invoice').onclick = function () {
+    WebApp.openInvoice('demo-slug', function (status) { WebApp.showPopup({ message: 'Оплата: ' + status, buttons: [{ type: 'ok' }] }); });
+  };
   document.getElementById('btn-link').onclick = function () { WebApp.openLink('https://telegram.org'); };
   document.getElementById('btn-haptic').onclick = function () { WebApp.HapticFeedback.impactOccurred(); };
   document.getElementById('btn-close').onclick = function () { WebApp.close(); };

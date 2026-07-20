@@ -10,6 +10,21 @@ type BotCommand struct {
 	Description string `json:"description"`
 }
 
+// BotCommandScope — область видимости списка команд (Telegram BotCommandScope).
+// Пустой Type == "default".
+type BotCommandScope struct {
+	Type   string // ""|default|all_private_chats|all_group_chats|all_chat_administrators
+	ChatID int64  // для chat-scope (не используется в текущем подмножестве)
+}
+
+// Norm нормализует пустой тип к «default».
+func (s BotCommandScope) Norm() string {
+	if s.Type == "" {
+		return "default"
+	}
+	return s.Type
+}
+
 // InlineButton — кнопка inline-клавиатуры (под сообщением). Ровно один из
 // Callback/URL/WebApp задан. Callback шлётся боту, URL открывает ссылку,
 // WebApp открывает mini-app.

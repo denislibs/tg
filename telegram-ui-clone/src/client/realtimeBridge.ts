@@ -8,7 +8,8 @@ import { mapMessage, mapDraft, mapPoll, type RawPoll } from '../core/models'
 import { useDraftsStore } from '../stores/draftsStore'
 import { useUploadsStore } from '../stores/uploadsStore'
 import { uiEvents } from '../core/hooks/uiEvents'
-import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt, type DraftUpdateEvt, type ReactionEvt } from '../core/realtime/events'
+import { mapReplyMarkup } from '../core/managers/botsManager'
+import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt, type DraftUpdateEvt, type ReactionEvt, type BotCallbackAnswerEvt } from '../core/realtime/events'
 import { playMessageSent } from '../core/audio/sounds'
 import { notifyIncomingMessage } from './uiNotifications'
 import { useSettingsStore } from '../settings'
@@ -113,7 +114,8 @@ export function startRealtime(): void {
   // Edit/delete carry chat_id → apply straight to that chat's message window.
   smp.on(RT.editMessage, (raw) => {
     const e = raw as EditMessageEvt
-    useMessagesStore.getState().applyEdit(e.chat_id, e.msg_id, e.text, e.edited_at, e.entities ?? undefined)
+    const markup = e.reply_markup ? mapReplyMarkup(e.reply_markup) : null
+    useMessagesStore.getState().applyEdit(e.chat_id, e.msg_id, e.text, e.edited_at, e.entities ?? undefined, markup)
   })
   smp.on(RT.deleteMessage, (raw) => {
     const e = raw as DeleteMessageEvt
@@ -150,6 +152,11 @@ export function startRealtime(): void {
   smp.on(RT.balanceUpdate, (raw) => {
     const b = (raw as { balance: number }).balance
     if (typeof b === 'number') useStarsStore.getState().setBalance(b)
+  })
+  // Поздний ответ бота на callback (после таймаута синхронного ожидания) — тост.
+  smp.on(RT.botCallbackAnswer, (raw) => {
+    const a = raw as BotCallbackAnswerEvt
+    if (a.text) uiEvents.emit('ui:toast', a.text)
   })
   smp.on('rt:resync', () => { void loadChats(managers) })
   // Прогресс отгрузки медиа (кольцо на оптимистичном бабле)

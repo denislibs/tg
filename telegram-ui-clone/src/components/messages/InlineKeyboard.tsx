@@ -19,7 +19,7 @@ export default function InlineKeyboard({ rows, chatId, botId, msgId }: { rows: I
 
   const onClick = async (b: InlineButton) => {
     if (b.url) { window.open(b.url, '_blank', 'noopener'); return }
-    if (b.webapp) { openWebApp({ url: b.webapp, botName: b.text }); return }
+    if (b.webapp) { openWebApp({ url: b.webapp, botName: b.text, botId }); return }
     if (b.callback == null || busy) return
     setBusy(true)
     try {

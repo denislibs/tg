@@ -384,6 +384,15 @@ func (r *MessagesRepo) UpdateText(ctx context.Context, msgID int64, text string,
 		msgID, text, entitiesParam(entities)))
 }
 
+// UpdateReplyMarkup replaces a message's inline/reply keyboard (edited_at=now());
+// returns the updated row. Used by the Bot API editMessageReplyMarkup.
+func (r *MessagesRepo) UpdateReplyMarkup(ctx context.Context, msgID int64, markup *domain.ReplyMarkup) (domain.Message, error) {
+	q := querier(ctx, r.pool)
+	return scanOneMessage(q.QueryRow(ctx,
+		`UPDATE messages SET reply_markup=$2, edited_at=now() WHERE id=$1 RETURNING `+messageCols,
+		msgID, replyMarkupParam(markup)))
+}
+
 // SoftDelete marks a message deleted for everyone (deleted_at=now()).
 func (r *MessagesRepo) SoftDelete(ctx context.Context, msgID int64) error {
 	q := querier(ctx, r.pool)

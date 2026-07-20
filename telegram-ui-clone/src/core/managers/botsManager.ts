@@ -64,12 +64,38 @@ export function newBotsManager({ rest }: { rest: Pick<RestClient, 'get' | 'post'
     async menuButton(botId: number): Promise<{ text: string; url: string }> {
       return rest.get<{ text: string; url: string }>(`/bots/${botId}/menu_button`)
     },
-    // Inline-режим: результаты по запросу «@bot query».
-    async inline(botId: number, query: string): Promise<InlineResult[]> {
-      const r = await rest.get<{ results: RawInlineResult[] }>(`/bots/${botId}/inline?q=${encodeURIComponent(query)}`)
-      return (r.results ?? []).map((x) => ({
-        id: x.id, title: x.title, description: x.description, emoji: x.emoji, messageText: x.message_text,
-      }))
+    // Inline-режим: результаты + плейсхолдер поля ввода.
+    async inline(botId: number, query: string): Promise<{ results: InlineResult[]; placeholder: string }> {
+      const r = await rest.get<{ results: RawInlineResult[]; placeholder?: string }>(`/bots/${botId}/inline?q=${encodeURIComponent(query)}`)
+      return {
+        results: (r.results ?? []).map((x) => ({
+          id: x.id, title: x.title, description: x.description, emoji: x.emoji, messageText: x.message_text,
+        })),
+        placeholder: r.placeholder ?? '',
+      }
+    },
+    // Deep link t.me/<bot>?start=<payload>: открыть чат и послать /start.
+    async start(botId: number, payload: string): Promise<{ chat_id: number }> {
+      return rest.post<{ chat_id: number }>(`/bots/${botId}/start`, { payload })
+    },
+    // sendData из mini-app → боту-владельцу (web_app_data).
+    async sendWebAppData(botId: number, data: string, buttonText: string): Promise<void> {
+      await rest.post(`/bots/${botId}/webapp_data`, { data, button_text: buttonText })
+    },
+    // CloudStorage mini-app (ключ-значение на пару бот+пользователь).
+    async cloudGet(botId: number, keys: string[]): Promise<Record<string, string>> {
+      const r = await rest.post<{ values: Record<string, string> }>(`/bots/${botId}/cloud/get`, { keys })
+      return r.values ?? {}
+    },
+    async cloudSet(botId: number, key: string, value: string): Promise<void> {
+      await rest.post(`/bots/${botId}/cloud/set`, { key, value })
+    },
+    async cloudRemove(botId: number, keys: string[]): Promise<void> {
+      await rest.post(`/bots/${botId}/cloud/remove`, { keys })
+    },
+    async cloudKeys(botId: number): Promise<string[]> {
+      const r = await rest.get<{ keys: string[] }>(`/bots/${botId}/cloud/keys`)
+      return r.keys ?? []
     },
   }
 }

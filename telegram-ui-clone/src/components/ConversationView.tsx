@@ -548,7 +548,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       inlineBotCache.current.set(uname, botId)
     }
     if (botId == null) return null
-    try { return await managers.bots.inline(botId, query) } catch { return null }
+    try { return (await managers.bots.inline(botId, query)).results } catch { return null }
   })
   const onComposerPickInline = useEvent((r: InlineResult) => { send(r.messageText); slowmodeMarkSent() })
   const onComposerCancelReply = useEvent(() => setReply(null))

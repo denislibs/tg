@@ -49,7 +49,10 @@ func (h *ChatHandler) BotInline(w http.ResponseWriter, r *http.Request) {
 	if results == nil {
 		results = []domain.InlineResult{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"results": results})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"results":     results,
+		"placeholder": h.svc.BotInlinePlaceholder(r.Context(), botID),
+	})
 }
 
 // BotMenuButton — GET /bots/{botID}/menu_button: кнопка-меню mini-app бота.
@@ -92,4 +95,123 @@ func (h *ChatHandler) BotCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"text": ans.Text, "alert": ans.Alert})
+}
+
+// BotStart — POST /bots/{botID}/start {payload}: deep link t.me/<bot>?start=<payload>.
+// Открывает приватный чат и шлёт «/start [payload]» от лица пользователя.
+func (h *ChatHandler) BotStart(w http.ResponseWriter, r *http.Request) {
+	botID, ok := pathInt(w, r, "botID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Payload string `json:"payload"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&b)
+	chatID, err := h.svc.BotStart(r.Context(), h.meID(r), botID, b.Payload)
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not a bot")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "start failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"chat_id": chatID})
+}
+
+// BotWebAppData — POST /bots/{botID}/webapp_data {data, button_text}: sendData
+// из mini-app доставляется боту-владельцу апдейтом web_app_data.
+func (h *ChatHandler) BotWebAppData(w http.ResponseWriter, r *http.Request) {
+	botID, ok := pathInt(w, r, "botID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Data       string `json:"data"`
+		ButtonText string `json:"button_text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	if err := h.svc.BotWebAppData(r.Context(), h.meID(r), botID, b.Data, b.ButtonText); err != nil {
+		writeError(w, http.StatusInternalServerError, "webapp_data failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// BotCloudGet — POST /bots/{botID}/cloud/get {keys}: чтение CloudStorage mini-app.
+func (h *ChatHandler) BotCloudGet(w http.ResponseWriter, r *http.Request) {
+	botID, ok := pathInt(w, r, "botID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Keys []string `json:"keys"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&b)
+	vals, err := h.svc.BotCloudGet(r.Context(), botID, h.meID(r), b.Keys)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "cloud get failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"values": vals})
+}
+
+// BotCloudSet — POST /bots/{botID}/cloud/set {key, value}.
+func (h *ChatHandler) BotCloudSet(w http.ResponseWriter, r *http.Request) {
+	botID, ok := pathInt(w, r, "botID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Key   string `json:"key"`
+		Value string `json:"value"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	if err := h.svc.BotCloudSet(r.Context(), botID, h.meID(r), b.Key, b.Value); err != nil {
+		if errors.Is(err, domain.ErrForbidden) || errors.Is(err, domain.ErrTooLong) {
+			writeError(w, http.StatusBadRequest, "invalid key/value or quota exceeded")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "cloud set failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// BotCloudRemove — POST /bots/{botID}/cloud/remove {keys}.
+func (h *ChatHandler) BotCloudRemove(w http.ResponseWriter, r *http.Request) {
+	botID, ok := pathInt(w, r, "botID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Keys []string `json:"keys"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&b)
+	if err := h.svc.BotCloudRemove(r.Context(), botID, h.meID(r), b.Keys); err != nil {
+		writeError(w, http.StatusInternalServerError, "cloud remove failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// BotCloudKeys — GET /bots/{botID}/cloud/keys.
+func (h *ChatHandler) BotCloudKeys(w http.ResponseWriter, r *http.Request) {
+	botID, ok := pathInt(w, r, "botID")
+	if !ok {
+		return
+	}
+	keys, err := h.svc.BotCloudKeys(r.Context(), botID, h.meID(r))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "cloud keys failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"keys": keys})
 }

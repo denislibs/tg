@@ -20,6 +20,7 @@ type fakeBotAPI struct {
 	wizard   map[int64]domain.BotWizard
 	updates  map[int64][]domain.BotUpdate
 	upSeq    int64
+	cloud    map[string]string
 }
 
 func newFakeBotAPI() *fakeBotAPI {
@@ -84,9 +85,59 @@ func (f *fakeBotAPI) RegenToken(_ context.Context, id int64) (string, error) {
 	f.bots[id] = b
 	return b.Token, nil
 }
-func (f *fakeBotAPI) SetCommands(_ context.Context, id int64, cmds []domain.BotCommand) error {
+func (f *fakeBotAPI) SetCommands(_ context.Context, id int64, _, _ string, cmds []domain.BotCommand) error {
 	f.commands[id] = cmds
 	return nil
+}
+func (f *fakeBotAPI) CommandsScoped(_ context.Context, id int64, _, _ string) ([]domain.BotCommand, error) {
+	return f.commands[id], nil
+}
+func (f *fakeBotAPI) SetProfile(_ context.Context, id int64, description, about *string) error {
+	b := f.bots[id]
+	if description != nil {
+		b.Description = *description
+	}
+	if about != nil {
+		b.About = *about
+	}
+	f.bots[id] = b
+	return nil
+}
+func (f *fakeBotAPI) SetInline(_ context.Context, id int64, enabled bool, placeholder string) error {
+	b := f.bots[id]
+	b.InlineEnabled, b.InlinePlaceholder = enabled, placeholder
+	f.bots[id] = b
+	return nil
+}
+func (f *fakeBotAPI) SetAvatar(_ context.Context, _, _ int64) error { return nil }
+func (f *fakeBotAPI) CloudGet(_ context.Context, _, _ int64, keys []string) (map[string]string, error) {
+	out := map[string]string{}
+	for _, k := range keys {
+		if v, ok := f.cloud[k]; ok {
+			out[k] = v
+		}
+	}
+	return out, nil
+}
+func (f *fakeBotAPI) CloudSet(_ context.Context, _, _ int64, key, value string) error {
+	if f.cloud == nil {
+		f.cloud = map[string]string{}
+	}
+	f.cloud[key] = value
+	return nil
+}
+func (f *fakeBotAPI) CloudRemove(_ context.Context, _, _ int64, keys []string) error {
+	for _, k := range keys {
+		delete(f.cloud, k)
+	}
+	return nil
+}
+func (f *fakeBotAPI) CloudKeys(_ context.Context, _, _ int64) ([]string, error) {
+	out := []string{}
+	for k := range f.cloud {
+		out = append(out, k)
+	}
+	return out, nil
 }
 func (f *fakeBotAPI) EnqueueUpdate(_ context.Context, botID int64, payload []byte) (int64, error) {
 	f.upSeq++

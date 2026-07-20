@@ -11,6 +11,7 @@
 // с thread_root_id попадает и в основное окно, и в окно своего треда.
 import { create } from 'zustand'
 import type { Message, MessageEntity, Poll, ReactionCount } from '../core/models'
+import type { ReplyMarkup } from '../core/managers/botsManager'
 
 // Ключ окна: основное окно чата или тред (форум-топик / комментарии).
 export const winKey = (chatId: number, threadRootId?: number | null): string =>
@@ -90,7 +91,7 @@ interface MessagesState {
   removeOptimistic: (key: string, clientMsgId: string) => void
   /** Новое сообщение чата: в основное окно + в окно своего треда (если открыто). */
   applyIncoming: (chatId: number, m: Message) => void
-  applyEdit: (chatId: number, msgId: number, text: string, editedAt: string, entities?: MessageEntity[]) => void
+  applyEdit: (chatId: number, msgId: number, text: string, editedAt: string, entities?: MessageEntity[], replyMarkup?: ReplyMarkup | null) => void
   applyDelete: (chatId: number, msgId: number) => void
   /** Голосовое/кружок прослушано → точка media_unread гаснет (обе стороны). */
   applyMediaRead: (chatId: number, msgId: number) => void
@@ -303,11 +304,15 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           : null,
       )),
 
-  applyEdit: (chatId, msgId, text, editedAt, entities) =>
+  applyEdit: (chatId, msgId, text, editedAt, entities, replyMarkup) =>
     set((s) =>
       patchChat(s, chatId, (w) =>
         w.msgs.some((m) => m.id === msgId)
-          ? w.msgs.map((m) => (m.id === msgId ? { ...m, text, editedAt, entities } : m))
+          ? w.msgs.map((m) =>
+              m.id === msgId
+                ? { ...m, text, editedAt, entities, ...(replyMarkup !== undefined ? { replyMarkup: replyMarkup ?? undefined } : {}) }
+                : m,
+            )
           : null,
       )),
 

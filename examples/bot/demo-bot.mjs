@@ -46,7 +46,21 @@ async function onMessage(m) {
     return
   }
   if (text === '/help') {
-    await api('sendMessage', { chat_id: m.chat.id, text: 'Команды: /start — приветствие, /help — помощь. Ещё умею inline: наберите «@<username> запрос».' })
+    await api('sendMessage', { chat_id: m.chat.id, text: 'Команды: /start, /photo — фото, /help. Ещё: inline «@<username> запрос», mini-app с CloudStorage и sendData.' })
+    return
+  }
+  if (text === '/photo' || text.startsWith('/start ')) {
+    // sendPhoto по URL (сервер сам скачает и положит в хранилище).
+    await api('sendPhoto', {
+      chat_id: m.chat.id,
+      photo: 'https://picsum.photos/600/400',
+      caption: text.startsWith('/start ') ? `Deep-link payload: ${text.slice(7)}` : 'Случайная картинка 🖼️',
+    })
+    return
+  }
+  // web_app_data: данные из mini-app (sendData) дошли до бота.
+  if (m.web_app_data) {
+    await api('sendMessage', { chat_id: m.chat.id, text: `Из mini-app получено: «${m.web_app_data.data}»` })
     return
   }
   // эхо
@@ -58,7 +72,18 @@ async function onMessage(m) {
 }
 
 async function onCallback(cq) {
-  const map = { like: { text: 'Спасибо за лайк! ❤️', show_alert: true }, again: { text: 'Готово 🙂' } }
+  // Демонстрируем editMessageText: по «like» правим само сообщение (в т.ч. клавиатуру).
+  if (cq.data === 'like' && cq.message) {
+    await api('editMessageText', {
+      chat_id: cq.message.chat.id,
+      message_id: cq.message.message_id,
+      text: 'Вам понравилось ❤️ (сообщение отредактировано ботом)',
+      reply_markup: { inline_keyboard: [[{ text: '↩️ Вернуть', callback_data: 'again' }]] },
+    })
+    await api('answerCallbackQuery', { callback_query_id: cq.id, text: 'Спасибо за лайк! ❤️', show_alert: true })
+    return
+  }
+  const map = { again: { text: 'Готово 🙂' } }
   const a = map[cq.data] || { text: cq.data }
   await api('answerCallbackQuery', { callback_query_id: cq.id, text: a.text, show_alert: !!a.show_alert })
 }

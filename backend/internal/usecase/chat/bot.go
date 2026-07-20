@@ -115,8 +115,12 @@ func (i *Interactor) InlineQuery(ctx context.Context, viewerID, botID int64, que
 		return nil, domain.ErrNotFound
 	}
 	// Реальный бот-сервис → inline-запрос уходит апдейтом, ждём answerInlineQuery.
+	// Inline должен быть включён (/setinline), иначе — пустая выдача (как в TG).
 	if i.botAPI != nil {
 		if bot, err := i.botAPI.BotByID(ctx, botID); err == nil {
+			if !bot.InlineEnabled {
+				return []domain.InlineResult{}, nil
+			}
 			return i.botInlineViaAPI(ctx, bot, viewerID, query), nil
 		}
 	}

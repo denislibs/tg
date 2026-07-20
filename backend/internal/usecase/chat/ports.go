@@ -115,6 +115,7 @@ type MessageRepo interface {
 	// («Избранное» → таб «Чаты»), newest group first.
 	SavedDialogs(ctx context.Context, chatID, userID int64) ([]domain.SavedDialog, error)
 	UpdateText(ctx context.Context, msgID int64, text string, entities []domain.MessageEntity) (domain.Message, error)
+	UpdateReplyMarkup(ctx context.Context, msgID int64, markup *domain.ReplyMarkup) (domain.Message, error)
 	SoftDelete(ctx context.Context, msgID int64) error
 	HideForUser(ctx context.Context, userID, msgID int64) error
 	ListThread(ctx context.Context, chatID, threadRootID int64, offset, limit int) ([]domain.Message, error)
@@ -317,7 +318,17 @@ type BotAPIRepo interface {
 	SetWebhook(ctx context.Context, botID int64, url string) error
 	SetMenuButton(ctx context.Context, botID int64, text, url string) error
 	RegenToken(ctx context.Context, botID int64) (string, error)
-	SetCommands(ctx context.Context, botID int64, cmds []domain.BotCommand) error
+	SetCommands(ctx context.Context, botID int64, scope, lang string, cmds []domain.BotCommand) error
+	CommandsScoped(ctx context.Context, botID int64, scope, lang string) ([]domain.BotCommand, error)
+	// профиль и inline-настройки
+	SetProfile(ctx context.Context, botID int64, description, about *string) error
+	SetInline(ctx context.Context, botID int64, enabled bool, placeholder string) error
+	SetAvatar(ctx context.Context, botID, mediaID int64) error
+	// CloudStorage mini-app (ключ-значение на пару бот+пользователь)
+	CloudGet(ctx context.Context, botID, userID int64, keys []string) (map[string]string, error)
+	CloudSet(ctx context.Context, botID, userID int64, key, value string) error
+	CloudRemove(ctx context.Context, botID, userID int64, keys []string) error
+	CloudKeys(ctx context.Context, botID, userID int64) ([]string, error)
 	// EnqueueUpdate кладёт апдейт в очередь бота, возвращает его update_id.
 	EnqueueUpdate(ctx context.Context, botID int64, payload []byte) (int64, error)
 	// PullUpdates подтверждает предыдущую пачку (offset) и возвращает новые.
@@ -332,6 +343,13 @@ type BotAPIRepo interface {
 	WizardClear(ctx context.Context, userID int64) error
 	// UserBrief — username/имя пользователя для поля from в апдейтах.
 	UserBrief(ctx context.Context, id int64) (username, firstName string, err error)
+}
+
+// BotMediaStore сохраняет медиа, загруженное ботом (sendPhoto/Document/Video):
+// пишет объект в хранилище от имени бота-владельца и возвращает media_id.
+// Опционален — без него медиа-методы Bot API отключены.
+type BotMediaStore interface {
+	Store(ctx context.Context, ownerID int64, mime, fileName string, data []byte) (int64, error)
 }
 
 type HistoryResult struct {

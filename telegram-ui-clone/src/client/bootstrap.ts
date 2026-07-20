@@ -215,8 +215,14 @@ export interface Managers {
   bots: {
     commands(botId: number): Promise<BotCommand[]>
     callback(botId: number, chatId: number, data: string, messageId?: number): Promise<CallbackAnswer>
-    inline(botId: number, query: string): Promise<InlineResult[]>
+    inline(botId: number, query: string): Promise<{ results: InlineResult[]; placeholder: string }>
     menuButton(botId: number): Promise<{ text: string; url: string }>
+    start(botId: number, payload: string): Promise<{ chat_id: number }>
+    sendWebAppData(botId: number, data: string, buttonText: string): Promise<void>
+    cloudGet(botId: number, keys: string[]): Promise<Record<string, string>>
+    cloudSet(botId: number, key: string, value: string): Promise<void>
+    cloudRemove(botId: number, keys: string[]): Promise<void>
+    cloudKeys(botId: number): Promise<string[]>
   }
 }
 

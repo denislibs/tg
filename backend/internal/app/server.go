@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/messenger-denis/backend/internal/adapter/botmedia"
 	httptransport "github.com/messenger-denis/backend/internal/adapter/delivery/http"
 	"github.com/messenger-denis/backend/internal/adapter/delivery/ws"
 	"github.com/messenger-denis/backend/internal/adapter/geoip"
@@ -127,6 +128,8 @@ func registerServer(p serverParams) {
 	if p.Minio.OK {
 		mediaUC = usecasemedia.New(pgadapter.NewMediaRepo(p.Pool), p.Minio.Client, ffmpeg.New())
 		mediaHandler = httptransport.NewMediaHandler(mediaUC, p.ChatUC, p.AuthUC, p.Cfg.MediaURLSecret)
+		// Bot API sendPhoto/Document/Video: боты кладут медиа через media usecase.
+		p.ChatUC.SetBotMedia(botmedia.New(mediaUC))
 		log.Printf("media enabled (minio bucket %q)", p.Cfg.MinioBucket)
 	}
 
@@ -183,7 +186,7 @@ func registerServer(p serverParams) {
 
 	srv := &http.Server{
 		Addr:              p.Cfg.HTTPAddr,
-		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC, foldersUC, pubH, privacyUC, passkeyH),
+		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, mediaUC, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC, foldersUC, pubH, privacyUC, passkeyH),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}

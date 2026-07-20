@@ -15,6 +15,8 @@ Telegram-подобный HTTP-интерфейс для ботов-сервис
 - Метод вызывается **GET или POST**. Параметры — в JSON-теле (`Content-Type:
   application/json`) или в query-строке.
 - Аутентификация — по токену в пути. Заголовок `Authorization` не нужен.
+- **Rate limit:** ~30 запросов/с на бота (burst 60); превышение → `429`. Перебор
+  токенов по IP тоже троттлится.
 
 > Путь — `/bot/<token>/<method>` (со слэшем после `bot`), в отличие от слитного
 > `/bot<token>/` у оригинального Telegram.
@@ -80,9 +82,21 @@ Telegram-подобный HTTP-интерфейс для ботов-сервис
 }
 ```
 
+### message с web_app_data — данные из mini-app (sendData)
+
+Когда mini-app вызывает `WebApp.sendData(...)`, приложение доставляет данные
+боту-владельцу отдельным `message`-апдейтом с полем `web_app_data`:
+
+```json
+{ "update_id": 45, "message": { "from": {…}, "chat": { "id": 91, "type": "private" },
+  "web_app_data": { "data": "строка-от-mini-app", "button_text": "Открыть" } } }
+```
+
 > **Важно:** на `callback_query` и `inline_query` нужно ответить
 > (`answerCallbackQuery` / `answerInlineQuery`) в течение **~6 секунд** — клиент
-> ждёт ответа синхронно. Не ответите — пользователь увидит пустой результат.
+> ждёт ответа синхронно. Если ответить позже — `answerCallbackQuery` всё равно
+> доставится пользователю всплывающим тостом по WebSocket (отложенная обработка),
+> а `answerInlineQuery` после таймаута уже проигнорируется.
 
 ## Получение апдейтов
 
@@ -188,10 +202,62 @@ POST /bot/<token>/answerInlineQuery
 ```
 Выбор результата отправит `input_message_content.message_text` в чат.
 
-### setMyCommands
+### editMessageText / editMessageReplyMarkup / deleteMessage
+Бот правит и удаляет **свои** сообщения (обновление прилетает live).
+```
+POST /bot/<token>/editMessageText
+{ "chat_id": 91, "message_id": 1316, "text": "новый текст", "reply_markup": { … } }
+
+POST /bot/<token>/editMessageReplyMarkup
+{ "chat_id": 91, "message_id": 1316, "reply_markup": { "inline_keyboard": [ … ] } }
+
+POST /bot/<token>/deleteMessage
+{ "chat_id": 91, "message_id": 1316 }
+```
+
+### sendPhoto / sendDocument / sendVideo
+Файл задаётся URL (сервер скачает и положит в хранилище) **или** числовым
+`file_id` (переиспользование ранее загруженного ботом медиа).
+```
+POST /bot/<token>/sendPhoto
+{ "chat_id": 91, "photo": "https://…/pic.jpg", "caption": "подпись", "reply_markup": { … } }
+→ result: { "message_id": 1317, "chat": {…}, "photo": { "file_id": 151 } }
+```
+`sendDocument` принимает `document` (+необязательное `file_name`), `sendVideo` — `video`.
+
+### getFile
+Путь для скачивания медиа бота. Скачивание — `GET <API_BASE>/file/bot/<token>/<file_path>`.
+```
+GET /bot/<token>/getFile?file_id=151
+→ result: { "file_id": 151, "file_path": "151" }
+```
+
+### getChat / getChatMember
+```
+GET /bot/<token>/getChat?chat_id=91
+→ result: { "id": 91, "type": "private", "first_name": "Денис", "username": "denis228" }
+
+GET /bot/<token>/getChatMember?chat_id=91&user_id=4
+→ result: { "user": {…}, "status": "member" }
+```
+
+### setMyDescription / setMyShortDescription
+Описание бота (экран пустого чата) и короткое «О боте» (профиль).
+```
+POST /bot/<token>/setMyDescription        { "description": "Что умеет бот" }
+POST /bot/<token>/setMyShortDescription   { "short_description": "Коротко о боте" }
+```
+
+### setMyCommands / getMyCommands
+Поддержан `scope` (`default` | `all_private_chats` | `all_group_chats` |
+`all_chat_administrators`) и `language_code`.
 ```
 POST /bot/<token>/setMyCommands
-{ "commands": [ { "command": "start", "description": "запустить" } ] }
+{ "scope": { "type": "all_private_chats" }, "language_code": "ru",
+  "commands": [ { "command": "start", "description": "запустить" } ] }
+
+GET /bot/<token>/getMyCommands?…
+→ result: [ { "command": "start", "description": "запустить" } ]
 ```
 
 ### setChatMenuButton
@@ -285,7 +351,8 @@ main()
 
 ## Не реализовано
 
-Пока вне подмножества (в оригинальном Telegram есть): медиа-методы
-(`sendPhoto`/`sendDocument`/…), `editMessageText`/`deleteMessage`, платежи и
-инвойсы, `getChat*`, опросы через Bot API. Callback/inline рассчитаны на
-синхронный ответ (таймаут ~6с), а не на отложенную обработку.
+Пока вне подмножества (в оригинальном Telegram есть): платежи/инвойсы через Bot
+API, опросы через Bot API, `sendMediaGroup`/альбомы, аудио/голосовые методы,
+`forwardMessage`/`copyMessage`, `banChatMember`/управление правами, стикеры.
+`answerWebAppQuery` принимается (ack), но сквозная доставка результата idёт через
+`web_app_data` (sendData). Inline-запрос по-прежнему требует ответа за ~6с.

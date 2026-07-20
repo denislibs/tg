@@ -53,7 +53,9 @@ func (i *Interactor) bfCommand(ctx context.Context, chatID, ownerID int64, cmd, 
 		i.bfSend(ctx, chatID, "Я помогу создавать и настраивать ботов.\n\n"+
 			"/newbot — создать бота\n/mybots — мои боты и токены\n/token — показать токен\n"+
 			"/revoke — пересоздать токен\n/setcommands — задать команды\n/newapp — создать mini-app\n"+
-			"/setmenubutton — кнопка-меню mini-app\n/cancel — отменить", nil)
+			"/setmenubutton — кнопка-меню mini-app\n/setdescription — описание бота\n"+
+			"/setabouttext — текст «О боте»\n/setuserpic — аватар бота\n/setinline — inline-режим\n"+
+			"/cancel — отменить", nil)
 	case "/cancel":
 		_ = i.botAPI.WizardClear(ctx, ownerID)
 		i.bfSend(ctx, chatID, "Отменено.", nil)
@@ -72,6 +74,14 @@ func (i *Interactor) bfCommand(ctx context.Context, chatID, ownerID int64, cmd, 
 		i.bfStartWhich(ctx, chatID, ownerID, "newapp", arg)
 	case "/setmenubutton":
 		i.bfStartWhich(ctx, chatID, ownerID, "setmenubutton", arg)
+	case "/setdescription":
+		i.bfStartWhich(ctx, chatID, ownerID, "setdescription", arg)
+	case "/setabouttext":
+		i.bfStartWhich(ctx, chatID, ownerID, "setabouttext", arg)
+	case "/setuserpic":
+		i.bfStartWhich(ctx, chatID, ownerID, "setuserpic", arg)
+	case "/setinline":
+		i.bfStartWhich(ctx, chatID, ownerID, "setinline", arg)
 	default:
 		i.bfSend(ctx, chatID, "Неизвестная команда. /help — список.", nil)
 	}
@@ -132,6 +142,18 @@ func (i *Interactor) bfAfterWhich(ctx context.Context, chatID, ownerID int64, fl
 	case "setmenubutton":
 		i.bfSetWizard(ctx, ownerID, "setmenubutton", "text", map[string]string{"bot": fmt.Sprint(bot.BotID)})
 		i.bfSend(ctx, chatID, "Пришлите текст кнопки-меню (например «Открыть»).", nil)
+	case "setdescription":
+		i.bfSetWizard(ctx, ownerID, "setdescription", "input", map[string]string{"bot": fmt.Sprint(bot.BotID)})
+		i.bfSend(ctx, chatID, "Пришлите описание бота — оно видно на экране пустого чата (до 512 символов).", nil)
+	case "setabouttext":
+		i.bfSetWizard(ctx, ownerID, "setabouttext", "input", map[string]string{"bot": fmt.Sprint(bot.BotID)})
+		i.bfSend(ctx, chatID, "Пришлите текст «О боте» — он виден в профиле бота (до 120 символов).", nil)
+	case "setuserpic":
+		i.bfSetWizard(ctx, ownerID, "setuserpic", "input", map[string]string{"bot": fmt.Sprint(bot.BotID)})
+		i.bfSend(ctx, chatID, "Пришлите URL картинки-аватара (https://…, image/*).", nil)
+	case "setinline":
+		i.bfSetWizard(ctx, ownerID, "setinline", "input", map[string]string{"bot": fmt.Sprint(bot.BotID)})
+		i.bfSend(ctx, chatID, "Включаю inline-режим. Пришлите плейсхолдер поля ввода (например «Поиск…») или «-», чтобы выключить inline.", nil)
 	}
 }
 
@@ -166,6 +188,51 @@ func (i *Interactor) bfStep(ctx context.Context, chatID, ownerID int64, w domain
 		i.bfStepNewApp(ctx, chatID, ownerID, w.Step, data, text)
 	case "setmenubutton":
 		i.bfStepMenuButton(ctx, chatID, ownerID, w.Step, data, text)
+	case "setdescription", "setabouttext", "setuserpic", "setinline":
+		i.bfStepProfile(ctx, chatID, ownerID, w.Flow, data, text)
+	}
+}
+
+// bfStepProfile — один ввод для профиль/inline-флоу (описание/about/аватар/inline).
+func (i *Interactor) bfStepProfile(ctx context.Context, chatID, ownerID int64, flow string, data map[string]string, text string) {
+	botID := parseInt64(data["bot"])
+	bot, err := i.botAPI.BotByID(ctx, botID)
+	_ = i.botAPI.WizardClear(ctx, ownerID)
+	if err != nil {
+		i.bfSend(ctx, chatID, "Не удалось найти бота.", nil)
+		return
+	}
+	text = strings.TrimSpace(text)
+	switch flow {
+	case "setdescription":
+		if err := i.BotSetProfile(ctx, bot, &text, nil); err != nil {
+			i.bfSend(ctx, chatID, "Не удалось сохранить описание.", nil)
+			return
+		}
+		i.bfSend(ctx, chatID, "Готово! Описание бота обновлено.", nil)
+	case "setabouttext":
+		if err := i.BotSetProfile(ctx, bot, nil, &text); err != nil {
+			i.bfSend(ctx, chatID, "Не удалось сохранить текст «О боте».", nil)
+			return
+		}
+		i.bfSend(ctx, chatID, "Готово! Текст «О боте» обновлён.", nil)
+	case "setuserpic":
+		if err := i.BotSetPhotoURL(ctx, bot, text); err != nil {
+			i.bfSend(ctx, chatID, "Не удалось задать аватар — проверьте, что это прямой URL на картинку (https, image/*).", nil)
+			return
+		}
+		i.bfSend(ctx, chatID, "Готово! Аватар бота обновлён.", nil)
+	case "setinline":
+		if text == "-" || text == "" {
+			_ = i.BotSetInline(ctx, bot, false, "")
+			i.bfSend(ctx, chatID, "Inline-режим выключен.", nil)
+			return
+		}
+		if err := i.BotSetInline(ctx, bot, true, text); err != nil {
+			i.bfSend(ctx, chatID, "Не удалось включить inline-режим.", nil)
+			return
+		}
+		i.bfSend(ctx, chatID, "Готово! Inline-режим включён. В любом чате: «@"+bot.Username+" запрос».", nil)
 	}
 }
 
@@ -226,7 +293,7 @@ func (i *Interactor) bfStepSetCommands(ctx context.Context, chatID, ownerID int6
 		i.bfSend(ctx, chatID, "Не разобрал ни одной команды. Формат: «command - описание».", nil)
 		return
 	}
-	if err := i.botAPI.SetCommands(ctx, botID, cmds); err != nil {
+	if err := i.botAPI.SetCommands(ctx, botID, "default", "", cmds); err != nil {
 		i.bfSend(ctx, chatID, "Не удалось сохранить команды.", nil)
 		return
 	}

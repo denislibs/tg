@@ -57,12 +57,15 @@ func contactJSON(m domain.Message) map[string]any {
 	return c
 }
 
-// editUpdatePayload is the body of an "edit_message" update/frame.
+// editUpdatePayload is the body of an "edit_message" update/frame. reply_markup
+// rides along so a bot editing a message's keyboard updates the bubble live.
 func editUpdatePayload(m domain.Message) map[string]any {
-	return map[string]any{
+	p := map[string]any{
 		"chat_id": m.ChatID, "msg_id": m.ID, "seq": m.Seq,
 		"text": m.Text, "entities": m.Entities, "edited_at": m.EditedAt,
 	}
+	p["reply_markup"] = m.ReplyMarkup // may be null → keyboard removed
+	return p
 }
 
 // deleteUpdatePayload is the body of a "delete_message" update/frame. `forMe`

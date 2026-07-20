@@ -10,11 +10,12 @@ import (
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 	usecasecontacts "github.com/messenger-denis/backend/internal/usecase/contacts"
 	usecasefolders "github.com/messenger-denis/backend/internal/usecase/folders"
+	usecasemedia "github.com/messenger-denis/backend/internal/usecase/media"
 	usecasenotify "github.com/messenger-denis/backend/internal/usecase/notify"
 	usecaseprivacy "github.com/messenger-denis/backend/internal/usecase/privacy"
 )
 
-func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler, notifyUC *usecasenotify.Interactor, foldersUC *usecasefolders.Interactor, pubH *PublicHandler, privacyUC *usecaseprivacy.Interactor, passkeyH *PasskeyHandler) http.Handler {
+func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, mediaUC *usecasemedia.Interactor, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler, notifyUC *usecasenotify.Interactor, foldersUC *usecasefolders.Interactor, pubH *PublicHandler, privacyUC *usecaseprivacy.Interactor, passkeyH *PasskeyHandler) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -63,8 +64,10 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 
 	// Bot API (Telegram-подобный): /bot/{token}/{method}. Аутентификация по
 	// токену в пути, поэтому вне Bearer-группы. Принимает GET и POST.
-	botAPIH := NewBotAPIHandler(chatUC)
+	botAPIH := NewBotAPIHandler(chatUC, mediaUC)
 	r.HandleFunc("/bot/{token}/{method}", botAPIH.Handle)
+	// Скачивание файлов бота (getFile → download); аутентификация по токену.
+	r.Get("/file/bot/{token}/{fileID}", botAPIH.File)
 
 	r.Group(func(pr chi.Router) {
 		pr.Use(AuthMiddleware(authUC))
@@ -159,6 +162,12 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/bots/{botID}/inline", ch.BotInline)
 		pr.Get("/bots/{botID}/menu_button", ch.BotMenuButton)
 		pr.Post("/bots/{botID}/callback", ch.BotCallback)
+		pr.Post("/bots/{botID}/start", ch.BotStart)             // deep link t.me/bot?start=
+		pr.Post("/bots/{botID}/webapp_data", ch.BotWebAppData)  // sendData из mini-app
+		pr.Post("/bots/{botID}/cloud/get", ch.BotCloudGet)      // CloudStorage
+		pr.Post("/bots/{botID}/cloud/set", ch.BotCloudSet)
+		pr.Post("/bots/{botID}/cloud/remove", ch.BotCloudRemove)
+		pr.Get("/bots/{botID}/cloud/keys", ch.BotCloudKeys)
 		pr.Get("/chats/{chatID}/media", ch.MediaHistory)
 		pr.Post("/chats/{chatID}/read", ch.Read)
 		pr.Get("/sync", ch.Sync)
