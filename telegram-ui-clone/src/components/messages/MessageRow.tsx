@@ -431,6 +431,9 @@ function MessageRow({
             {chips}
           </div>
         ) : (
+          // tweb .bubble-content-wrapper: цветной бабл + reply-markup сиблингами;
+          // кнопки лежат ВНЕ бабла (под ним), бабл растягивается на их ширину.
+          <div className={s.bubbleWrap}>
           <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
             {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
             {!out && m.sender && firstInGroup && (
@@ -485,10 +488,11 @@ function MessageRow({
               <WebPagePreview wp={m.webPage} out={out} linkColor="var(--b-link)" />
             )}
             {chips}
-            {m.replyMarkup?.inline && m.chatId != null && m.senderId != null && (
-              <InlineKeyboard rows={m.replyMarkup.inline} chatId={m.chatId} botId={m.senderId} />
-            )}
             {footer && <div className={s.footerText}>{footer}</div>}
+          </div>
+          {m.replyMarkup?.inline && m.chatId != null && m.senderId != null && (
+            <InlineKeyboard rows={m.replyMarkup.inline} chatId={m.chatId} botId={m.senderId} />
+          )}
           </div>
         )}
         </ZoneBody>

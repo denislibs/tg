@@ -3,13 +3,13 @@
 .keyboard {
   display: flex;
   flex-direction: column;
-  gap: 4px; // tweb $bubble-margin
-  margin-top: 4px;
+  gap: 2px; // tweb $bubble-margin .125rem
+  margin-top: 2px; // tweb .reply-markup margin-top .0625rem + ряд margin-top
   width: 100%;
 }
 .row {
   display: flex;
-  gap: 4px;
+  gap: 2px; // tweb $bubble-margin
 }
 .btn {
   position: relative;
@@ -32,6 +32,9 @@
   &:hover { background: color-mix(in srgb, var(--tg-accent) 62%, transparent); }
   &:active { filter: brightness(0.95); }
 }
+// нижние внешние углы крайних кнопок последнего ряда — большой радиус (tweb 24px)
+.first { border-end-start-radius: 24px; }
+.last { border-end-end-radius: 24px; }
 // url-кнопка: стрелка в правом верхнем углу (tweb .reply-markup-button-icon,
 // is-link → rotate -45deg)
 .ext {
