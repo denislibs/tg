@@ -937,7 +937,9 @@ func (h *ChatHandler) SetForum(w http.ResponseWriter, r *http.Request) {
 func topicJSON(row domain.TopicRow) map[string]any {
 	return map[string]any{
 		"id": row.Topic.ID, "chat_id": row.Topic.ChatID, "root_msg_id": row.Topic.RootMsgID,
-		"title": row.Topic.Title, "icon_color": row.Topic.IconColor, "closed": row.Topic.Closed,
+		"title": row.Topic.Title, "icon_color": row.Topic.IconColor, "icon_emoji": row.Topic.IconEmoji,
+		"closed": row.Topic.Closed, "hidden": row.Topic.Hidden, "pinned": row.Topic.Pinned,
+		"pos": row.Topic.Pos, "is_general": row.Topic.IsGeneral,
 		"created_by": row.Topic.CreatedBy, "created_at": row.Topic.CreatedAt,
 		"msg_count": row.MsgCount, "last_text": row.LastText, "last_type": row.LastType,
 		"last_sender_name": row.LastSenderName, "last_at": row.LastAt,
@@ -953,12 +955,13 @@ func (h *ChatHandler) CreateTopic(w http.ResponseWriter, r *http.Request) {
 	var b struct {
 		Title     string `json:"title"`
 		IconColor int    `json:"icon_color"`
+		IconEmoji string `json:"icon_emoji"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	t, err := h.svc.CreateTopic(r.Context(), chatID, h.meID(r), b.Title, b.IconColor)
+	t, err := h.svc.CreateTopic(r.Context(), chatID, h.meID(r), b.Title, b.IconEmoji, b.IconColor)
 	if errors.Is(err, domain.ErrTooLong) {
 		writeError(w, http.StatusBadRequest, "invalid title")
 		return
@@ -1002,6 +1005,72 @@ func (h *ChatHandler) CloseTopic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.svc.CloseTopic(r.Context(), topicID, h.meID(r), b.Closed); err != nil {
+		h.mapScheduledErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// EditTopic — PATCH /chats/{chatID}/topics/{topicID} {title, icon_emoji, icon_color}.
+func (h *ChatHandler) EditTopic(w http.ResponseWriter, r *http.Request) {
+	topicID, ok := pathInt(w, r, "topicID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Title     string `json:"title"`
+		IconEmoji string `json:"icon_emoji"`
+		IconColor int    `json:"icon_color"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	if err := h.svc.EditTopic(r.Context(), topicID, h.meID(r), b.Title, b.IconEmoji, b.IconColor); err != nil {
+		if errors.Is(err, domain.ErrTooLong) {
+			writeError(w, http.StatusBadRequest, "invalid title")
+			return
+		}
+		h.mapScheduledErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// HideTopic — POST /chats/{chatID}/topics/{topicID}/hide {hidden}.
+func (h *ChatHandler) HideTopic(w http.ResponseWriter, r *http.Request) {
+	topicID, ok := pathInt(w, r, "topicID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Hidden bool `json:"hidden"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	if err := h.svc.SetTopicHidden(r.Context(), topicID, h.meID(r), b.Hidden); err != nil {
+		h.mapScheduledErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// PinTopic — POST /chats/{chatID}/topics/{topicID}/pin {pinned}.
+func (h *ChatHandler) PinTopic(w http.ResponseWriter, r *http.Request) {
+	topicID, ok := pathInt(w, r, "topicID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Pinned bool `json:"pinned"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	if err := h.svc.SetTopicPinned(r.Context(), topicID, h.meID(r), b.Pinned); err != nil {
 		h.mapScheduledErr(w, err)
 		return
 	}

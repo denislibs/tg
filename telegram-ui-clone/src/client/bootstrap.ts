@@ -158,9 +158,12 @@ export interface Managers {
     setPin(chatId: number, pinned: boolean): Promise<void>
     setArchive(chatId: number, archived: boolean): Promise<void>
     setForum(chatId: number, enabled: boolean): Promise<void>
-    createTopic(chatId: number, title: string, iconColor: number): Promise<{ id: number; rootMsgId: number }>
+    createTopic(chatId: number, title: string, iconColor: number, iconEmoji?: string): Promise<{ id: number; rootMsgId: number }>
     listTopics(chatId: number): Promise<import('../core/managers/groupsManager').TopicRow[]>
     closeTopic(chatId: number, topicId: number, closed: boolean): Promise<void>
+    editTopic(chatId: number, topicId: number, title: string, iconColor: number, iconEmoji?: string): Promise<void>
+    setTopicHidden(chatId: number, topicId: number, hidden: boolean): Promise<void>
+    setTopicPinned(chatId: number, topicId: number, pinned: boolean): Promise<void>
     card(chatId: number): Promise<GroupCard>
     members(chatId: number): Promise<{ userId: number; role: string; online: boolean }[]>
     promoteAdmin(chatId: number, userId: number, rights: number): Promise<void>
