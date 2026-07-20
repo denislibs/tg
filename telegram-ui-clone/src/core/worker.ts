@@ -37,7 +37,9 @@ const rest = new RestClient('/api', () => tokens.get())
 const auth = newAuthManager({ rest, store: tokens })
 const profile = newProfileManager({ rest })
 const chats = newChatsManager({ rest })
-const messages = newMessagesManager({ rest })
+// decryptSecret дергает secret лениво — стрелка вызывается только на fetch истории
+// (после инициализации модуля), поэтому forward-ссылка на объявленный ниже secret безопасна.
+const messages = newMessagesManager({ rest, decryptSecret: (chatId, encBody) => secret.decryptMessage(chatId, encBody) })
 // broadcast объявлен ниже — замыкание дергает его лениво (к моменту первого
 // аплоада порты уже подняты)
 const media = newMediaManager({

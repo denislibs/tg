@@ -32,9 +32,26 @@ export interface SendArgs {
   threadRootId?: number | null
 }
 
-export interface MessagesDeps { rest: RestClient }
+export interface MessagesDeps {
+  rest: RestClient
+  /** Расшифровка ciphertext секретного чата (ключи живут в secretManager воркера). */
+  decryptSecret?: (chatId: number, encBody: string) => Promise<{ text: string; entities?: unknown[] } | null>
+}
 
-export function newMessagesManager({ rest }: MessagesDeps) {
+export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
+  // История секретного чата приходит с REST как encBody+пустой text — расшифровываем
+  // страницу до отдачи в UI. Без ключа text остаётся пустым, но secret:true проставлен
+  // (UI покажет плейсхолдер). Живые сообщения дешифруются в worker.ts.
+  async function decryptPage(list: Message[]): Promise<Message[]> {
+    if (!decryptSecret) return list
+    return Promise.all(list.map(async (m) => {
+      if (!m.encBody) return m
+      const dec = await decryptSecret(m.chatId, m.encBody)
+      return dec
+        ? { ...m, text: dec.text, entities: (dec.entities as Message['entities']) ?? m.entities, secret: true }
+        : { ...m, secret: true }
+    }))
+  }
   // Кэш истории ключуется чатом ИЛИ тредом чата ("chatId" / "chatId:root") —
   // окно топика/комментариев живёт отдельным срезом (tweb: history по threadId).
   const slices = new Map<string, SlicedArray<number>>()
@@ -102,7 +119,7 @@ export function newMessagesManager({ rest }: MessagesDeps) {
         `/chats/${chatId}/history`,
         { offset_id: offsetSeq, add_offset: addOffset, limit, ...(threadRoot ? { thread_root: threadRoot } : {}) },
       )
-      const fetched = (r.messages ?? []).map(mapMessage)
+      const fetched = await decryptPage((r.messages ?? []).map(mapMessage))
       put(key, fetched)
 
       // normalize to descending seqs for the SlicedArray
@@ -206,7 +223,7 @@ export function newMessagesManager({ rest }: MessagesDeps) {
 
     async listPins(chatId: number): Promise<Message[]> {
       const r = await rest.get<{ messages: RawMessage[] }>(`/chats/${chatId}/pins`)
-      return (r.messages ?? []).map(mapMessage)
+      return decryptPage((r.messages ?? []).map(mapMessage))
     },
 
     // Jump-to-message: load a window centered on centerSeq and RESET this chat's
@@ -215,7 +232,7 @@ export function newMessagesManager({ rest }: MessagesDeps) {
       const r = await rest.get<{ messages: RawMessage[]; reached_top: boolean; reached_bottom: boolean }>(
         `/chats/${chatId}/history`, { around: centerSeq, limit, ...(threadRoot ? { thread_root: threadRoot } : {}) },
       )
-      const asc = (r.messages ?? []).map(mapMessage)
+      const asc = await decryptPage((r.messages ?? []).map(mapMessage))
       const key = hkey(chatId, threadRoot)
       const sa = new SlicedArray<number>()
       slices.set(key, sa)
@@ -271,7 +288,7 @@ export function newMessagesManager({ rest }: MessagesDeps) {
     // Сообщения треда (форум-топика) по возрастанию + total.
     async threadMessages(chatId: number, rootId: number, offset = 0, limit = 50): Promise<{ messages: Message[]; count: number }> {
       const r = await rest.get<{ messages: RawMessage[]; count: number }>(`/chats/${chatId}/threads/${rootId}`, { offset, limit })
-      return { messages: (r.messages ?? []).map(mapMessage), count: r.count }
+      return { messages: await decryptPage((r.messages ?? []).map(mapMessage)), count: r.count }
     },
 
     // ── Запланированные сообщения (Telegram scheduled) ──
