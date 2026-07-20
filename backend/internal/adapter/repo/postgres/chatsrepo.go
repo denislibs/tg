@@ -198,7 +198,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		          ELSE 0
 		        END, 0) AS peer_read_seq,
 		        lm.seq, lm.text, lm.sender_id, lm.created_at, COALESCE(lm.media_id,0), lm.type, lm.forwarded, lm.sender_name,
-		        peer.id, peer.display_name, peer.avatar_url, peer.is_verified,
+		        peer.id, peer.display_name, peer.avatar_url, peer.is_verified, peer.is_premium, peer.emoji_status,
 		        c.auto_delete_period
 		 FROM chat_members m
 		 JOIN chats c ON c.id = m.chat_id
@@ -211,7 +211,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		   ORDER BY seq DESC LIMIT 1
 		 ) lm ON true
 		 LEFT JOIN LATERAL (
-		   SELECT u.id, u.display_name, u.avatar_url, u.is_verified
+		   SELECT u.id, u.display_name, u.avatar_url, u.is_verified, u.is_premium, u.emoji_status
 		   FROM chat_members om JOIN users u ON u.id = om.user_id
 		   WHERE om.chat_id = c.id AND om.user_id <> $1
 		   LIMIT 1
@@ -241,9 +241,11 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		var peerName *string
 		var peerAvatar *string
 		var peerVerified *bool
+		var peerPremium *bool
+		var peerEmojiStatus *string
 		if err := rows.Scan(&d.ChatID, &d.Type, &d.Title, &d.Username, &d.PhotoURL, &d.LastReadSeq, &d.UnreadCount, &d.UnreadMentionsCount, &d.Muted, &d.Pinned, &d.Archived, &d.IsForum, &d.NotifyPreview, &d.NotifySound, &d.PeerReadSeq,
 			&seq, &text, &senderID, &at, &mediaID, &msgType, &forwarded, &senderName,
-			&peerID, &peerName, &peerAvatar, &peerVerified, &d.AutoDeletePeriod); err != nil {
+			&peerID, &peerName, &peerAvatar, &peerVerified, &peerPremium, &peerEmojiStatus, &d.AutoDeletePeriod); err != nil {
 			return nil, err
 		}
 		if forwarded != nil {
@@ -275,6 +277,12 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 			}
 			if peerVerified != nil {
 				p.Verified = *peerVerified
+			}
+			if peerPremium != nil {
+				p.Premium = *peerPremium
+			}
+			if peerEmojiStatus != nil {
+				p.EmojiStatus = *peerEmojiStatus
 			}
 			d.Peer = &p
 		}

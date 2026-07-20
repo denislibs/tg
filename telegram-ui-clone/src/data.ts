@@ -117,6 +117,8 @@ export interface Chat {
   date: string
   preview: string
   verified?: boolean
+  premium?: boolean // Telegram Premium subscriber → gold star badge next to the name
+  emojiStatus?: string // unicode emoji shown after the name (undefined when unset)
   muted?: boolean
   pinned?: boolean // закреплён вверху списка
   archived?: boolean // убран в «Архив»

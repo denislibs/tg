@@ -74,7 +74,7 @@ export interface RawDialog {
   title?: string
   username?: string
   photo_url?: string
-  peer?: { id: number; display_name: string; avatar_url: string; verified?: boolean }
+  peer?: { id: number; display_name: string; avatar_url: string; verified?: boolean; premium?: boolean; emoji_status?: string }
   last_message?: { seq: number; text: string; sender_id: number; at: string; media_id?: number; type?: string; forwarded?: boolean; sender_name?: string }
 }
 
@@ -102,7 +102,7 @@ export interface Dialog {
   username?: string
   /** фото группы/канала (content-путь /media/N/content; у private — peer.avatarUrl) */
   photoUrl?: string
-  peer?: { id: number; displayName: string; avatarUrl: string; verified?: boolean }
+  peer?: { id: number; displayName: string; avatarUrl: string; verified?: boolean; premium?: boolean; emojiStatus?: string }
   lastMessage?: { seq: number; text: string; senderId: number; at: string; mediaId?: number; mediaType?: string; forwarded?: boolean; senderName?: string }
 }
 
@@ -358,7 +358,7 @@ export function mapDialog(r: RawDialog): Dialog {
     username: r.username,
     photoUrl: r.photo_url || undefined,
     peer: r.peer
-      ? { id: r.peer.id, displayName: r.peer.display_name, avatarUrl: r.peer.avatar_url, verified: r.peer.verified }
+      ? { id: r.peer.id, displayName: r.peer.display_name, avatarUrl: r.peer.avatar_url, verified: r.peer.verified, premium: r.peer.premium, emojiStatus: r.peer.emoji_status }
       : undefined,
     lastMessage: r.last_message
       ? {

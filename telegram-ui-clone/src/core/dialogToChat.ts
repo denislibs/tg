@@ -98,6 +98,8 @@ export function dialogToChat(d: Dialog, meId?: number | null, draft?: Draft): Ch
     avatarUrl: isSaved || isService ? undefined : d.peer?.avatarUrl || d.photoUrl || undefined,
     peerId: d.peer?.id,
     verified: d.peer?.verified || undefined,
+    premium: d.peer?.premium || undefined,
+    emojiStatus: d.peer?.emojiStatus || undefined,
     date: hasDraft && (!lm?.at || draft!.updatedAt > lm.at) ? fmtWhen(draft!.updatedAt) : fmtWhen(lm?.at),
     preview,
     draftPreview: hasDraft ? draft!.text : undefined,

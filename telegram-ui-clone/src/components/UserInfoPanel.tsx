@@ -10,6 +10,9 @@ import TgIcon from './TgIcon'
 import Avatar from '../shared/ui/Avatar'
 import { useAvatarSrc } from './useAvatarSrc'
 import UserAvatar from './UserAvatar'
+import VerifiedBadge from './VerifiedBadge'
+import PremiumBadge from './PremiumBadge'
+import EmojiStatus from './EmojiStatus'
 import { fmtWhen, mediaLabel } from '../core/dialogToChat'
 import type { SavedDialog } from '../core/managers/chatsManager'
 import EditView from './EditView'
@@ -421,9 +424,14 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onChatCreated
                 >
                   <Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={headerAvatarSrc} size="profile" />
                 </div>
-                <Text size={21} weight={600} color="var(--tg-textPrimary)" style={{ marginTop: '8px', textAlign: 'center', paddingLeft: '16px', paddingRight: '16px' }}>
-                  {chat.name}
-                </Text>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginTop: '8px', paddingLeft: '16px', paddingRight: '16px' }}>
+                  <Text size={21} weight={600} color="var(--tg-textPrimary)" style={{ textAlign: 'center' }}>
+                    {chat.name}
+                  </Text>
+                  {profile?.verified && <VerifiedBadge size={22} />}
+                  {profile?.premium && <PremiumBadge size={22} />}
+                  {profile?.emojiStatus && <EmojiStatus emoji={profile.emojiStatus} size={22} />}
+                </div>
                 <Text size={14} color={statusOnline ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'}>
                   {subtitleText}
                 </Text>

@@ -25,7 +25,9 @@ type DialogPeer struct {
 	ID          int64
 	DisplayName string
 	AvatarURL   string
-	Verified    bool // official/service account (blue check)
+	Verified    bool   // official/service account (blue check)
+	Premium     bool   // Telegram Premium subscriber (gold star badge)
+	EmojiStatus string // unicode emoji shown after the name ("" when unset)
 }
 
 // Dialog is a chat-list read model: a chat + the viewer's read state + last message.

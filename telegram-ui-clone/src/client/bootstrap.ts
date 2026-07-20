@@ -54,6 +54,8 @@ export interface Managers {
     checkUsername(username: string): Promise<{ available: boolean; reason?: string }>
     setUsername(username: string): Promise<SetUsernameResult>
     setAvatar(mediaId: number): Promise<User>
+    setEmojiStatus(emoji: string): Promise<User>
+    activatePremium(): Promise<User>
     addPhoto(mediaId: number, videoMediaId?: number): Promise<import('../core/managers/profileManager').ProfilePhoto>
     listPhotos(userId: number): Promise<import('../core/managers/profileManager').ProfilePhoto[]>
     deletePhoto(photoId: number): Promise<void>

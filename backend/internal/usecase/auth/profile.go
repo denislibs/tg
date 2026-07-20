@@ -48,6 +48,23 @@ func (i *Interactor) UpdateProfile(ctx context.Context, id int64, in ProfileInpu
 	return i.users.UpdateProfile(ctx, id, first, strings.TrimSpace(in.LastName), in.Bio, in.Birthday, pv)
 }
 
+// SetEmojiStatus validates and persists the user's emoji status. An empty string
+// clears it; otherwise it must be a short unicode emoji (≤ MaxEmojiStatusRunes
+// runes), not free text.
+func (i *Interactor) SetEmojiStatus(ctx context.Context, id int64, emoji string) (domain.User, error) {
+	emoji = strings.TrimSpace(emoji)
+	if utf8.RuneCountInString(emoji) > domain.MaxEmojiStatusRunes {
+		return domain.User{}, errors.New("emoji status too long")
+	}
+	return i.users.SetEmojiStatus(ctx, id, emoji)
+}
+
+// ActivatePremium flips the user's Telegram Premium flag on. This is a clone: the
+// "purchase" is faked, there's no billing — activating simply grants the badge.
+func (i *Interactor) ActivatePremium(ctx context.Context, id int64) (domain.User, error) {
+	return i.users.SetPremium(ctx, id, true)
+}
+
 // CheckUsername validates the format and reports whether the username is free
 // for the given user (its own current username counts as available).
 func (i *Interactor) CheckUsername(ctx context.Context, raw string, forUserID int64) (bool, error) {

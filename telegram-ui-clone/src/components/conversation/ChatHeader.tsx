@@ -11,6 +11,8 @@ import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon, { type IconName } from '../TgIcon'
 import Avatar from '../../shared/ui/Avatar'
 import VerifiedBadge from '../VerifiedBadge'
+import PremiumBadge from '../PremiumBadge'
+import EmojiStatus from '../EmojiStatus'
 import TypingIndicator from './TypingIndicator'
 import { useCall } from '../call/CallProvider'
 import { useManagers } from '../../core/hooks/useManagers'
@@ -314,6 +316,8 @@ function ChatHeader({
                   {chat.name}
                 </Text>
                 {chat.verified && <VerifiedBadge size={18} />}
+                {chat.premium && <PremiumBadge size={18} />}
+                {chat.emojiStatus && <EmojiStatus emoji={chat.emojiStatus} size={18} />}
               </div>
               <Text noWrap size={13.5} color={typingActive || online ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'} style={{ lineHeight: 1.2 }}>
                 {typingActive && <TypingIndicator kind={typingKind} color="var(--tg-accent)" />}

@@ -279,7 +279,7 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 		if d.Peer != nil {
 			row["peer"] = map[string]any{
 				"id": d.Peer.ID, "display_name": d.Peer.DisplayName, "avatar_url": d.Peer.AvatarURL,
-				"verified": d.Peer.Verified,
+				"verified": d.Peer.Verified, "premium": d.Peer.Premium, "emoji_status": d.Peer.EmojiStatus,
 			}
 		}
 		out = append(out, row)

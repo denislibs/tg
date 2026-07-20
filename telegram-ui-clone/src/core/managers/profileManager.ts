@@ -53,6 +53,16 @@ export function newProfileManager({ rest }: ProfileDeps) {
       return mapUser(await rest.put<RawUser>('/me/avatar', { media_id: mediaId }))
     },
 
+    // setEmojiStatus sets (or clears with '') the current user's emoji status.
+    async setEmojiStatus(emoji: string): Promise<User> {
+      return mapUser(await rest.put<RawUser>('/me/emoji_status', { emoji }))
+    },
+
+    // activatePremium flips the Telegram Premium flag on (fake purchase — clone).
+    async activatePremium(): Promise<User> {
+      return mapUser(await rest.post<RawUser>('/me/premium', {}))
+    },
+
     // addPhoto adds a photo to the current user's gallery and promotes it to the
     // current avatar (Telegram: every new avatar is also a gallery photo).
     async addPhoto(mediaId: number, videoMediaId?: number): Promise<ProfilePhoto> {
