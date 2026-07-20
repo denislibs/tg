@@ -141,6 +141,9 @@ export interface RawMessage {
   gift_id?: number | null
   gift?: RawGiftInfo | null
   reply_markup?: { inline?: { text: string; callback?: string; url?: string; webapp?: string }[][]; keyboard?: string[][]; resize?: boolean; one_time?: boolean } | null
+  enc_body?: string | null
+  ttl_seconds?: number | null
+  destruct_at?: string | null
 }
 
 // Агрегат одной реакции на сообщении (emoji + счётчик + «моя»), tweb ReactionCount.
@@ -211,6 +214,13 @@ export interface Message {
   gift?: GiftInfo
   /** клавиатура сообщения (inline/reply) — у сообщений бота */
   replyMarkup?: ReplyMarkup
+  /** E2E-шифртекст (base64 iv||ciphertext) сообщения типа 'encrypted'; расшифровка на клиенте */
+  encBody?: string | null
+  /** self-destruct: срок жизни после прочтения (сек) и абсолютный дедлайн (ISO) */
+  ttlSeconds?: number | null
+  destructAt?: string | null
+  /** true — сообщение из секретного чата (после дешифровки text/entities заполнены локально) */
+  secret?: boolean
 }
 
 // Опрос (backend PollInfo): вопрос + варианты + агрегаты для зрителя.
@@ -383,5 +393,8 @@ export function mapMessage(r: RawMessage): Message {
       : undefined,
     gift: r.gift ? mapGiftInfo(r.gift) : undefined,
     replyMarkup: r.reply_markup ? mapReplyMarkup(r.reply_markup) : undefined,
+    encBody: r.enc_body ?? undefined,
+    ttlSeconds: r.ttl_seconds ?? undefined,
+    destructAt: r.destruct_at ?? undefined,
   }
 }
