@@ -264,6 +264,9 @@ type SendInput struct {
 	EncBody []byte
 	// Self-destruct TTL (сек) для секретного сообщения; nil — без самоуничтожения.
 	TTLSeconds *int
+	// Тихая отправка (Telegram disable_notification): подавляет push/звук у получателя.
+	// Не хранится на сообщении (MVP) — влияет только на нотификатор, не на realtime-доставку.
+	Silent bool
 }
 
 // GroupCallStore хранит участников активных групповых звонков (эфемерно, Redis).

@@ -127,6 +127,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			GeoLivePeriod: d.GeoLivePeriod, GeoHeading: d.GeoHeading,
 			ThreadRootID: d.ThreadRootID,
 			EncBody:      encBody, TTLSeconds: d.TTLSeconds,
+			Silent: d.Silent,
 		})
 		if err != nil {
 			// NACK the sender so the client stops retrying and can clear the bubble.

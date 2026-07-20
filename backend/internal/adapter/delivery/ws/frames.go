@@ -34,6 +34,8 @@ type sendMessageData struct {
 	// E2E (type 'encrypted'): base64 iv||ciphertext + опциональный self-destruct TTL.
 	EncBody    string `json:"enc_body"` // base64 iv||ciphertext
 	TTLSeconds *int   `json:"ttl_seconds"`
+	// Тихая отправка (Telegram disable_notification): без push/звука у получателя.
+	Silent bool `json:"silent"`
 }
 
 type readData struct {

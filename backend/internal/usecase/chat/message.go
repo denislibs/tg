@@ -193,7 +193,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			if i.publisher != nil {
 				_ = i.publisher.PublishToUser(ctx, uid, f)
 			}
-			if i.notifier != nil && uid != in.SenderID {
+			if i.notifier != nil && uid != in.SenderID && !in.Silent {
 				i.notifier.NotifyNewMessage(ctx, uid, msg.ChatID, msg.ID, msg.Seq, msg.SenderID, msg.Text)
 			}
 		}

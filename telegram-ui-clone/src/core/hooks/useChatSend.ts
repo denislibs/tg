@@ -95,7 +95,7 @@ export function useChatSend({
 
   const replyToId = reply?.msgId ?? null
   const mkClientMsgId = (k = 0) => `c-${chat.id}-${performance.now()}-${k}-${Math.random().toString(36).slice(2)}`
-  const sendReal = (text: string, entities?: MessageEntity[], replyTo: number | null = replyToId, ttlSeconds: number | null = null) => {
+  const sendReal = (text: string, entities?: MessageEntity[], replyTo: number | null = replyToId, ttlSeconds: number | null = null, silent = false) => {
     const clientMsgId = mkClientMsgId()
     atBottomRef.current = true; userScrolledUpRef.current = false // sending pins to bottom
     if (chat.type === 'secret') {
@@ -108,7 +108,7 @@ export function useChatSend({
       return
     }
     win.appendOptimistic(text, meId ?? -1, clientMsgId, undefined, 'text', entities)
-    void managers.realtime.sendMessage({ chatId: numericChatId, text, entities, clientMsgId, replyToId: replyTo, threadRootId })
+    void managers.realtime.sendMessage({ chatId: numericChatId, text, entities, clientMsgId, replyToId: replyTo, threadRootId, silent })
   }
 
   // Гео-точка из attach-меню: оптимистичный бабл сразу (координаты локальные),
@@ -246,7 +246,7 @@ export function useChatSend({
 
   // Called by the Composer with the trimmed draft text (the Composer owns the
   // text state + clears itself afterwards); we route by chat kind / edit / reply.
-  const send = (text: string, entities?: MessageEntity[], ttlSeconds?: number | null) => {
+  const send = (text: string, entities?: MessageEntity[], ttlSeconds?: number | null, silent = false) => {
     if (!text || !canType || secretLocked) return
     // Edit mode: PATCH the existing message instead of sending a new one.
     if (editing && isRealChat) {
@@ -292,7 +292,7 @@ export function useChatSend({
     setReply(null)
     window.dispatchEvent(new Event('tg-send'))
     // reply attaches to the first message only (Telegram behaviour)
-    parts.forEach((p, k) => sendReal(p.text, entOf(p), k === 0 ? replyToId : null, ttlSeconds ?? null))
+    parts.forEach((p, k) => sendReal(p.text, entOf(p), k === 0 ? replyToId : null, ttlSeconds ?? null, silent))
   }
 
   // Throttled outgoing typing frame (real chats); called by the Composer on each
