@@ -79,6 +79,17 @@ function ViewsMeta({ views, className }: { views: number; className: string }) {
   )
 }
 
+// The forward-count span (count + forward icon) shown in a channel post's meta
+// line, alongside the view count (tweb message.forwards / shares tooltip).
+function ForwardsMeta({ forwards, className }: { forwards: number; className: string }) {
+  return (
+    <span className={className}>
+      <TgIcon name="forward" size={15} color="var(--b-time)" />
+      {fmtViews(forwards)}
+    </span>
+  )
+}
+
 // Stable handler bundle the feed/rows close over (identities never change — see
 // ConversationView's useEvent wrappers), so passing it through doesn't bust memo.
 export interface FeedFns {
@@ -352,6 +363,7 @@ function MessageRow({
                     <span className={s.mediaTime}>
                       {/* truthy как в tweb (messageRender.ts): views=0 приходит для не-канальных сообщений */}
                       {m.views ? <ViewsMeta views={m.views} className={s.metaViews} /> : null}
+                      {m.forwards ? <ForwardsMeta forwards={m.forwards} className={s.metaViews} /> : null}
                       <span className={s.mediaTimeText} style={{ color: out ? 'var(--tg-bubbleOutAccent)' : 'var(--tg-textFaint)' }}>
                         {m.time}
                       </span>
@@ -496,6 +508,7 @@ function MessageRow({
               </span>
               <span className={classNames(s.meta, hasBlock ? s.block : '')}>
                 {m.views ? <ViewsMeta views={m.views} className={s.metaViews} /> : null}
+                {m.forwards ? <ForwardsMeta forwards={m.forwards} className={s.metaViews} /> : null}
                 {m.secret && <SecretTimer destructAt={m.destructAt} ttlSeconds={m.ttlSeconds} color="var(--b-time)" />}
                 <span className={s.metaTime}>{m.edited ? `${t('edited')} ` : ''}{fmtTime(m.time)}</span>
                 <Ticks status={m.status} color="var(--b-tick)" />

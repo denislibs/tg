@@ -102,6 +102,7 @@ export function messageToConvMsg(
     senderId: !out ? m.senderId : undefined,
     edited: m.editedAt != null,
     views: m.views,
+    forwards: m.forwards,
     mediaUnread: m.mediaUnread || undefined,
     deleted: m.deleted ?? false,
     forwardFrom: m.fwdFromUserId != null ? { name: opts?.forwardFromName ?? 'Неизвестно' } : undefined,

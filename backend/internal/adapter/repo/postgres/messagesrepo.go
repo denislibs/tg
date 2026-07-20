@@ -24,7 +24,7 @@ func NewMessagesRepo(pool *pgxpool.Pool) *MessagesRepo { return &MessagesRepo{po
 
 // The full ordered column list every message SELECT/RETURNING uses, so the scan
 // order in scanMessage stays in sync across all queries.
-const messageCols = `id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id, edited_at, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, views, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, enc_body, ttl_seconds, destruct_at`
+const messageCols = `id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id, edited_at, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, views, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, enc_body, ttl_seconds, destruct_at, forwards`
 
 // messageColsPrefixed returns messageCols with each column qualified by a table
 // alias (for JOINs where bare column names like chat_id would be ambiguous).
@@ -347,6 +347,13 @@ func (r *MessagesRepo) ViewCounts(ctx context.Context, ids []int64) (map[int64]i
 		out[id] = views
 	}
 	return out, rows.Err()
+}
+
+// IncrementForwards bumps a post's forward counter (Telegram message.forwards)
+// by one; called on each forward of the source message.
+func (r *MessagesRepo) IncrementForwards(ctx context.Context, msgID int64) error {
+	_, err := querier(ctx, r.pool).Exec(ctx, `UPDATE messages SET forwards = forwards + 1 WHERE id=$1`, msgID)
+	return err
 }
 
 // Insert writes a new message row (incl. forward attribution when set).
@@ -688,7 +695,7 @@ func scanMessage(s scanner) (domain.Message, error) {
 		&m.ReplyToID, &m.ClientMsgID, &m.MediaID, &m.CreatedAt, &deletedAt, &m.ThreadRootID,
 		&m.EditedAt, &m.FwdFromUserID, &m.FwdFromChatID, &m.FwdFromMsgID, &m.FwdDate, &m.FwdFromName, &entitiesRaw, &m.Views, &m.MediaUnread, &m.GroupedID, &m.PollID,
 		&m.GeoLat, &m.GeoLng, &m.ContactUserID, &m.ContactName, &m.ContactPhone, &m.GiftID, &markupRaw, &geoMetaRaw,
-		&m.EncBody, &m.TTLSeconds, &m.DestructAt)
+		&m.EncBody, &m.TTLSeconds, &m.DestructAt, &m.Forwards)
 	m.Deleted = deletedAt != nil
 	if err == nil && len(entitiesRaw) > 0 && string(entitiesRaw) != "null" {
 		_ = json.Unmarshal(entitiesRaw, &m.Entities)

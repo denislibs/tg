@@ -782,6 +782,20 @@ func (r fakeMsgs) ViewCounts(_ context.Context, ids []int64) (map[int64]int64, e
 	return out, nil
 }
 
+func (r fakeMsgs) IncrementForwards(_ context.Context, msgID int64) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	for chatID, msgs := range r.s.messages {
+		for idx, m := range msgs {
+			if m.ID == msgID {
+				r.s.messages[chatID][idx].Forwards++
+				return nil
+			}
+		}
+	}
+	return nil
+}
+
 func (r fakeMsgs) MessageChatID(_ context.Context, messageID int64) (int64, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()

@@ -137,6 +137,9 @@ type MessageRepo interface {
 	RegisterChannelViews(ctx context.Context, chatID, userID, upToSeq int64) error
 	// ViewCounts returns current view counts for the given message ids.
 	ViewCounts(ctx context.Context, ids []int64) (map[int64]int64, error)
+	// IncrementForwards bumps a post's forward counter (Telegram message.forwards)
+	// by one; called on each forward of the source message.
+	IncrementForwards(ctx context.Context, msgID int64) error
 	// ClearMediaUnread drops a message's media_unread flag; reports whether the
 	// row actually changed.
 	ClearMediaUnread(ctx context.Context, msgID int64) (bool, error)

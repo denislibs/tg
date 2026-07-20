@@ -1101,7 +1101,7 @@ func messageJSON(m domain.Message) map[string]any {
 		"edited_at":        m.EditedAt,
 		"fwd_from_user_id": m.FwdFromUserID, "fwd_from_chat_id": m.FwdFromChatID,
 		"fwd_from_msg_id": m.FwdFromMsgID, "fwd_date": m.FwdDate, "fwd_from_name": m.FwdFromName,
-		"views": m.Views, "media_unread": m.MediaUnread, "grouped_id": m.GroupedID,
+		"views": m.Views, "forwards": m.Forwards, "media_unread": m.MediaUnread, "grouped_id": m.GroupedID,
 	}
 	if len(m.Entities) > 0 {
 		j["entities"] = m.Entities
