@@ -285,6 +285,32 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 	return nil
 }
 
+// ClearHistory очищает историю чата у себя (Telegram deleteHistory just_clear):
+// поднимает персональный горизонт участника до текущего максимума seq чата —
+// сообщения с seq<=горизонта больше не отдаются в истории этому пользователю и
+// не удаляются у других. Заодно обнуляет непрочитанное. Не член → ErrNotFound.
+func (i *Interactor) ClearHistory(ctx context.Context, chatID, userID int64) error {
+	ok, err := i.chats.IsMember(ctx, chatID, userID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return domain.ErrNotFound
+	}
+	return i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		maxSeq, e := i.chats.MaxSeq(ctx, chatID)
+		if e != nil {
+			return e
+		}
+		if e := i.chats.SetClearedSeq(ctx, chatID, userID, maxSeq); e != nil {
+			return e
+		}
+		// Всё «до горизонта» считается прочитанным: read-маркер и непрочитанное
+		// сдвигаются к максимуму (иначе бейдж застынет на скрытых сообщениях).
+		return i.chats.SetRead(ctx, chatID, userID, maxSeq, 0)
+	})
+}
+
 // ReadMedia clears a voice/round message's media_unread flag when its recipient
 // plays it (tweb messages.readMessageContents) and fans out a media_read frame
 // to every member — the sender's "unlistened" dot goes out live. Idempotent:

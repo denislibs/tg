@@ -23,6 +23,7 @@ func (fakeTx) WithinTx(ctx context.Context, fn func(ctx context.Context) error) 
 
 type member struct {
 	lastReadSeq int64
+	clearedSeq  int64
 	unread      int
 	muted       bool
 }
@@ -237,6 +238,30 @@ func (r fakeChats) SetRead(_ context.Context, chatID, userID, seq int64, unread 
 	return nil
 }
 
+func (r fakeChats) MaxSeq(_ context.Context, chatID int64) (int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	return r.s.chatSeq[chatID], nil
+}
+
+func (r fakeChats) ClearedSeq(_ context.Context, chatID, userID int64) (int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	if m := r.s.members[chatID][userID]; m != nil {
+		return m.clearedSeq, nil
+	}
+	return 0, nil
+}
+
+func (r fakeChats) SetClearedSeq(_ context.Context, chatID, userID, seq int64) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	if m := r.s.members[chatID][userID]; m != nil {
+		m.clearedSeq = seq
+	}
+	return nil
+}
+
 func (r fakeChats) ChatType(_ context.Context, chatID int64) (string, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
@@ -368,7 +393,7 @@ func (r fakeMsgs) GetByID(_ context.Context, msgID int64) (domain.Message, error
 	return domain.Message{}, domain.ErrNotFound
 }
 
-func (r fakeMsgs) GetAround(_ context.Context, chatID, userID, centerSeq int64, limit int, _ *int64) ([]domain.Message, bool, bool, error) {
+func (r fakeMsgs) GetAround(_ context.Context, chatID, userID, centerSeq int64, limit int, _ *int64, clearedSeq int64) ([]domain.Message, bool, bool, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	if limit <= 0 {
@@ -378,7 +403,7 @@ func (r fakeMsgs) GetAround(_ context.Context, chatID, userID, centerSeq int64, 
 	all := r.s.messages[chatID]
 	var older, newer []domain.Message
 	for _, m := range all {
-		if m.Deleted {
+		if m.Deleted || m.Seq <= clearedSeq {
 			continue
 		}
 		if m.Seq <= centerSeq {
@@ -634,13 +659,16 @@ func (r fakeMsgs) HideForUser(_ context.Context, userID, msgID int64) error {
 	return nil
 }
 
-func (r fakeMsgs) GetHistory(_ context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, _ *int64) ([]domain.Message, error) {
+func (r fakeMsgs) GetHistory(_ context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, _ *int64, clearedSeq int64) ([]domain.Message, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	all := r.s.messages[chatID]
 	isHidden := func(m domain.Message) bool {
 		if m.Deleted {
 			return true // deleted messages are never returned
+		}
+		if m.Seq <= clearedSeq {
+			return true // «очищено» у себя: за персональным горизонтом
 		}
 		return r.s.hidden != nil && r.s.hidden[userID] != nil && r.s.hidden[userID][m.ID]
 	}

@@ -207,7 +207,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		          (fwd_from_user_id IS NOT NULL OR fwd_from_chat_id IS NOT NULL) AS forwarded,
 		          (SELECT COALESCE(NULLIF(u.first_name,''), u.display_name) FROM users u WHERE u.id = messages.sender_id) AS sender_name
 		   FROM messages
-		   WHERE chat_id = c.id AND deleted_at IS NULL
+		   WHERE chat_id = c.id AND deleted_at IS NULL AND seq > m.cleared_max_seq
 		   ORDER BY seq DESC LIMIT 1
 		 ) lm ON true
 		 LEFT JOIN LATERAL (
@@ -311,6 +311,42 @@ func (r *ChatsRepo) SetRead(ctx context.Context, chatID, userID, seq int64, unre
 	_, err := q.Exec(ctx,
 		`UPDATE chat_members SET last_read_seq=$3, unread_count=$4
 		 WHERE chat_id=$1 AND user_id=$2`, chatID, userID, seq, unread)
+	return err
+}
+
+// MaxSeq returns the chat's current maximum sequence (chats.last_seq), i.e. the
+// horizon «Очистить историю» clamps to; domain.ErrNotFound if the chat is gone.
+func (r *ChatsRepo) MaxSeq(ctx context.Context, chatID int64) (int64, error) {
+	q := querier(ctx, r.pool)
+	var seq int64
+	err := q.QueryRow(ctx, `SELECT last_seq FROM chats WHERE id=$1`, chatID).Scan(&seq)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, domain.ErrNotFound
+	}
+	return seq, err
+}
+
+// ClearedSeq returns a member's «очищенный» horizon (cleared_max_seq); 0 when
+// there is no such member row (nothing cleared).
+func (r *ChatsRepo) ClearedSeq(ctx context.Context, chatID, userID int64) (int64, error) {
+	q := querier(ctx, r.pool)
+	var seq int64
+	err := q.QueryRow(ctx,
+		`SELECT cleared_max_seq FROM chat_members WHERE chat_id=$1 AND user_id=$2`,
+		chatID, userID).Scan(&seq)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	return seq, err
+}
+
+// SetClearedSeq raises a member's cleared horizon: messages with seq<=seq are
+// hidden from that member's history reads (non-destructive «clear for me»).
+func (r *ChatsRepo) SetClearedSeq(ctx context.Context, chatID, userID, seq int64) error {
+	q := querier(ctx, r.pool)
+	_, err := q.Exec(ctx,
+		`UPDATE chat_members SET cleared_max_seq=$3 WHERE chat_id=$1 AND user_id=$2`,
+		chatID, userID, seq)
 	return err
 }
 

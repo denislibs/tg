@@ -429,6 +429,26 @@ func (h *ChatHandler) Read(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// ClearHistory clears the caller's copy of the chat history (POST
+// /chats/{chatID}/clear; Telegram «Очистить историю» — у себя): messages stay
+// for everyone else, only this user's window is emptied.
+func (h *ChatHandler) ClearHistory(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	err := h.svc.ClearHistory(r.Context(), chatID, h.meID(r))
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusForbidden, "not a member of this chat")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "clear failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 type editBody struct {
 	Text     string                 `json:"text"`
 	Entities []domain.MessageEntity `json:"entities"`

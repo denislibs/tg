@@ -517,6 +517,9 @@ func (c groupChats) SetUserAutoDelete(context.Context, int64, int) error        
 func (c groupChats) IncUnread(context.Context, int64, int64) error               { return nil }
 func (c groupChats) CurrentReadSeq(context.Context, int64, int64) (int64, error) { return 0, nil }
 func (c groupChats) SetRead(context.Context, int64, int64, int64, int) error     { return nil }
+func (c groupChats) MaxSeq(context.Context, int64) (int64, error)                { return 0, nil }
+func (c groupChats) ClearedSeq(context.Context, int64, int64) (int64, error)     { return 0, nil }
+func (c groupChats) SetClearedSeq(context.Context, int64, int64, int64) error    { return nil }
 func (c groupChats) ChatType(context.Context, int64) (string, error)             { return "group", nil }
 func (c groupChats) PinMessage(context.Context, int64, int64, int64) error       { return nil }
 func (c groupChats) UnpinMessage(context.Context, int64, int64) error            { return nil }

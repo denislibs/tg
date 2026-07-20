@@ -54,7 +54,7 @@ import PinnedBar from './conversation/PinnedBar'
 import ScrollDownFab from './conversation/ScrollDownFab'
 import SelectionBar from './conversation/SelectionBar'
 import MessageContextMenu from './conversation/MessageContextMenu'
-import { useChatsStore } from '../stores/chatsStore'
+import { useChatsStore, loadChats } from '../stores/chatsStore'
 import { useSecretChatStore } from '../stores/secretChatStore'
 import { type MessageEntity } from '../core/models'
 import type { InlineResult } from '../core/managers/botsManager'
@@ -260,6 +260,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const searchOpen = useSearchStore((s) => s.byChat[numericChatId]?.open ?? false)
   const [headerMenu, setHeaderMenu] = useState<{ top: number; right: number } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmClear, setConfirmClear] = useState(false)
   const [addContactOpen, setAddContactOpen] = useState(false)
   const [attachAnchor, setAttachAnchor] = useState<{ left: number; bottom: number } | null>(null)
   const [createPollOpen, setCreatePollOpen] = useState(false)
@@ -340,6 +341,15 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       : managers.groups.removeMember(numericChatId, meId)
     void op.catch(() => {})
     onBack?.()
+  }
+  // «Очистить историю» у себя: сервер поднимает персональный горизонт, затем
+  // перезагружаем окно (станет пустым) и список диалогов (превью очистится).
+  const doClearHistory = () => {
+    if (!isRealChat) return
+    void managers.chats.clearHistory(numericChatId)
+      .then(() => win.reloadNewest())
+      .then(() => loadChats(managers))
+      .catch(() => {})
   }
   const deleteLabels = (() => {
     if (chat.type === 'private') return { title: 'Delete Chat', text: 'This chat will be deleted from your chat list.', action: 'Delete' }
@@ -930,6 +940,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           onSelectMessages={startSelectMode}
           onAddContact={chat.type === 'private' && chat.peerId != null ? () => setAddContactOpen(true) : undefined}
           onDeleteChat={isRealChat ? () => setConfirmDelete(true) : undefined}
+          onClearHistory={isRealChat && chat.type !== 'channel' ? () => setConfirmClear(true) : undefined}
         />
       )}
 
@@ -941,6 +952,17 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           danger
           onConfirm={doDeleteChat}
           onClose={() => setConfirmDelete(false)}
+        />
+      )}
+
+      {confirmClear && (
+        <ConfirmDialog
+          title={t('Clear History')}
+          text={t('Are you sure you want to clear history?')}
+          action={t('Clear')}
+          danger
+          onConfirm={doClearHistory}
+          onClose={() => setConfirmClear(false)}
         />
       )}
 

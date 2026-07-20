@@ -29,6 +29,11 @@ type ChatRepo interface {
 	IncUnread(ctx context.Context, chatID, userID int64) error
 	CurrentReadSeq(ctx context.Context, chatID, userID int64) (int64, error)
 	SetRead(ctx context.Context, chatID, userID, seq int64, unread int) error
+	// «Очистить историю» у себя: MaxSeq — текущий максимум seq чата (горизонт);
+	// ClearedSeq/SetClearedSeq — персональный горизонт участника (cleared_max_seq).
+	MaxSeq(ctx context.Context, chatID int64) (int64, error)
+	ClearedSeq(ctx context.Context, chatID, userID int64) (int64, error)
+	SetClearedSeq(ctx context.Context, chatID, userID, seq int64) error
 	// Автоудаление: период чата, глобальный период пользователя (для новых чатов).
 	SetAutoDelete(ctx context.Context, chatID int64, seconds int) error
 	UserAutoDelete(ctx context.Context, userID int64) (int, error)
@@ -109,8 +114,10 @@ type MessageRepo interface {
 	MediaHistory(ctx context.Context, chatID int64, filter string, offset, limit int) ([]domain.Message, int, error)
 	// threadRootID != nil ограничивает окно тредом (топик/комментарии): сообщения
 	// с этим thread_root_id + само корневое сообщение.
-	GetAround(ctx context.Context, chatID, userID, centerSeq int64, limit int, threadRootID *int64) ([]domain.Message, bool, bool, error)
-	GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRootID *int64) ([]domain.Message, error)
+	// clearedSeq — персональный горизонт «очистки истории»: сообщения с
+	// seq<=clearedSeq скрыты для этого читателя (0 — ничего не очищено).
+	GetAround(ctx context.Context, chatID, userID, centerSeq int64, limit int, threadRootID *int64, clearedSeq int64) ([]domain.Message, bool, bool, error)
+	GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRootID *int64, clearedSeq int64) ([]domain.Message, error)
 	// LastMessageAt is the newest non-deleted message time by senderID in the chat
 	// (slowmode); domain.ErrNotFound when they haven't posted yet.
 	LastMessageAt(ctx context.Context, chatID, senderID int64) (time.Time, error)

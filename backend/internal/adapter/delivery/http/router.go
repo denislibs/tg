@@ -185,6 +185,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/bots/{botID}/cloud/keys", ch.BotCloudKeys)
 		pr.Get("/chats/{chatID}/media", ch.MediaHistory)
 		pr.Post("/chats/{chatID}/read", ch.Read)
+		pr.Post("/chats/{chatID}/clear", ch.ClearHistory)
 		pr.Get("/sync", ch.Sync)
 		pr.Post("/chats/{chatID}/messages/{msgID}/reactions", ch.AddReaction)
 		pr.Delete("/chats/{chatID}/messages/{msgID}/reactions/{emoji}", ch.RemoveReaction)

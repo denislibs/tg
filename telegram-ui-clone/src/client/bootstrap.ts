@@ -63,6 +63,7 @@ export interface Managers {
     createPrivate(userId: number): Promise<number>
     saved(): Promise<number>
     savedDialogs(): Promise<SavedDialog[]>
+    clearHistory(chatId: number): Promise<void>
   }
   messages: {
     getHistory(args: HistoryArgs): Promise<HistoryResult>

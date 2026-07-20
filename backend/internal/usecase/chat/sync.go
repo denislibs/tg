@@ -18,7 +18,11 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 	if limit <= 0 || limit > 100 {
 		limit = 40
 	}
-	msgs, err := i.msgs.GetHistory(ctx, chatID, userID, offsetSeq, addOffset, limit, threadRoot)
+	cleared, err := i.chats.ClearedSeq(ctx, chatID, userID)
+	if err != nil {
+		return HistoryResult{}, err
+	}
+	msgs, err := i.msgs.GetHistory(ctx, chatID, userID, offsetSeq, addOffset, limit, threadRoot, cleared)
 	if err != nil {
 		return HistoryResult{}, err
 	}
@@ -205,7 +209,11 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 	if limit <= 0 || limit > 100 {
 		limit = 40
 	}
-	msgs, top, bottom, err := i.msgs.GetAround(ctx, chatID, userID, centerSeq, limit, threadRoot)
+	cleared, err := i.chats.ClearedSeq(ctx, chatID, userID)
+	if err != nil {
+		return AroundResult{}, err
+	}
+	msgs, top, bottom, err := i.msgs.GetAround(ctx, chatID, userID, centerSeq, limit, threadRoot, cleared)
 	if err != nil {
 		return AroundResult{}, err
 	}

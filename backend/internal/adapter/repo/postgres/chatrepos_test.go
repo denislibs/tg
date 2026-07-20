@@ -276,17 +276,17 @@ func TestMessagesRepo_SeqAndInsertAndHistory(t *testing.T) {
 		t.Fatalf("CountMessages = %d, want 3", n)
 	}
 
-	hist, err := msgs.GetHistory(ctx, chatID, a, 0, 0, 10, nil)
+	hist, err := msgs.GetHistory(ctx, chatID, a, 0, 0, 10, nil, 0)
 	if err != nil || len(hist) != 3 || hist[0].Seq != 3 {
 		t.Fatalf("history from end: %+v err=%v", hist, err)
 	}
 
-	older, _ := msgs.GetHistory(ctx, chatID, a, 3, 1, 2, nil)
+	older, _ := msgs.GetHistory(ctx, chatID, a, 3, 1, 2, nil, 0)
 	if len(older) != 2 || older[0].Seq != 3 || older[1].Seq != 2 {
 		t.Fatalf("older window: %+v", older)
 	}
 
-	newer, _ := msgs.GetHistory(ctx, chatID, a, 1, -1, 10, nil)
+	newer, _ := msgs.GetHistory(ctx, chatID, a, 1, -1, 10, nil, 0)
 	if len(newer) != 2 || newer[0].Seq != 2 {
 		t.Fatalf("newer window: %+v", newer)
 	}
@@ -389,7 +389,7 @@ func TestMessagesRepo_Thread(t *testing.T) {
 	}
 
 	// GetHistory still scans correctly and the normal message has nil thread root.
-	hist, err := msgs.GetHistory(ctx, chatID, a, 0, 0, 10, nil)
+	hist, err := msgs.GetHistory(ctx, chatID, a, 0, 0, 10, nil, 0)
 	if err != nil || len(hist) != 3 {
 		t.Fatalf("GetHistory = %+v, %v; want 3", hist, err)
 	}

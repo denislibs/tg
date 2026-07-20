@@ -130,10 +130,13 @@ func (c groupMembershipChats) IncUnread(context.Context, int64, int64) error    
 func (c groupMembershipChats) CurrentReadSeq(context.Context, int64, int64) (int64, error) {
 	return 0, nil
 }
-func (c groupMembershipChats) SetRead(context.Context, int64, int64, int64, int) error { return nil }
-func (c groupMembershipChats) ChatType(context.Context, int64) (string, error)         { return "group", nil }
-func (c groupMembershipChats) PinMessage(context.Context, int64, int64, int64) error   { return nil }
-func (c groupMembershipChats) UnpinMessage(context.Context, int64, int64) error        { return nil }
+func (c groupMembershipChats) SetRead(context.Context, int64, int64, int64, int) error  { return nil }
+func (c groupMembershipChats) MaxSeq(context.Context, int64) (int64, error)             { return 0, nil }
+func (c groupMembershipChats) ClearedSeq(context.Context, int64, int64) (int64, error)  { return 0, nil }
+func (c groupMembershipChats) SetClearedSeq(context.Context, int64, int64, int64) error { return nil }
+func (c groupMembershipChats) ChatType(context.Context, int64) (string, error)          { return "group", nil }
+func (c groupMembershipChats) PinMessage(context.Context, int64, int64, int64) error    { return nil }
+func (c groupMembershipChats) UnpinMessage(context.Context, int64, int64) error         { return nil }
 func (c groupMembershipChats) ListPins(context.Context, int64) ([]domain.Message, error) {
 	return nil, nil
 }

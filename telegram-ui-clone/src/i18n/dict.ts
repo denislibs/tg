@@ -393,6 +393,8 @@ const ru: Dict = {
   'Block user': 'Заблокировать',
   'Disable Sharing': 'Отключить доступ',
   'Delete Chat': 'Удалить чат',
+  'Clear History': 'Очистить историю',
+  'Are you sure you want to clear history?': 'Вы уверены, что хотите очистить историю?',
   'Delete Group': 'Удалить группу',
   'Leave Group': 'Покинуть группу',
   'Live Stream': 'Прямой эфир',
@@ -753,7 +755,7 @@ const ru: Dict = {
   'Note that cache required for the app to function properly will not be cleared.':
     'Обратите внимание: кэш, необходимый для работы приложения, очищен не будет.',
   'Cached files': 'Кэшированные файлы',
-  Clear: 'Удалить',
+  Clear: 'Очистить',
   Images: 'Фотографии',
   'Video files': 'Видео',
   'Stickers and emojis': 'Стикеры и эмодзи',
