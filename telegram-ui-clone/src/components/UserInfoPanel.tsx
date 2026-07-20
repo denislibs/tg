@@ -41,6 +41,7 @@ import type { GiftInfo } from '../core/managers/starsManager'
 import StarIcon from './stars/StarIcon'
 import SendGiftPopup from './stars/SendGiftPopup'
 import GiftInfoPopup from './stars/GiftInfoPopup'
+import KeyVerificationPopup from './secret/KeyVerificationPopup'
 
 // склонение «N единиц» (счётчики подзаголовков)
 function plural(n: number, one: string, few: string, many: string): string {
@@ -248,6 +249,9 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onChatCreated
       setStartingSecret(false)
     }
   }
+  // «Ключ шифрования» (tweb chatEncryptionKey) — только для секретного чата.
+  const isSecret = chat.type === 'secret'
+  const [keyPopupOpen, setKeyPopupOpen] = useState<boolean | null>(null)
   const [giftPopupOpen, setGiftPopupOpen] = useState(false)
   const [gifts, setGifts] = useState<GiftInfo[]>([])
   const [selectedGift, setSelectedGift] = useState<GiftInfo | null>(null)
@@ -538,6 +542,17 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onChatCreated
             </Section>
           )}
 
+          {/* Ключ шифрования (tweb chatEncryptionKey) — emoji-fingerprint секретного чата */}
+          {isSecret && (
+            <Section>
+              <Row
+                icon={<TgIcon name="key" size={24} />}
+                label="Encryption Key"
+                onClick={() => setKeyPopupOpen(true)}
+              />
+            </Section>
+          )}
+
 
           {/* Темы (tweb editChat Topics toggle): группа → форум-топики */}
           {isRealChat && chat.type === 'group' && canManageTopics && (
@@ -678,6 +693,16 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onChatCreated
               isOwner={peerId === meId}
               onClose={() => setSelectedGift(null)}
               onChanged={loadGifts}
+            />
+          )}
+
+          {/* Ключ шифрования секретного чата (tweb chatEncryptionKey) */}
+          {isSecret && keyPopupOpen != null && (
+            <KeyVerificationPopup
+              open={keyPopupOpen}
+              onClose={() => setKeyPopupOpen(false)}
+              onExitComplete={() => setKeyPopupOpen(null)}
+              chatId={numericChatId}
             />
           )}
 

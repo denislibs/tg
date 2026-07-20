@@ -140,6 +140,10 @@ const ru: Dict = {
   'Telegram Premium': 'Telegram Premium',
   'Send a Gift': 'Отправить подарок',
   'Start Secret Chat': 'Начать секретный чат',
+  'Encryption Key': 'Ключ шифрования',
+  "Compare these emoji with the ones your contact sees on their device. If they match, the chat is end-to-end encrypted.":
+    'Сравните эти эмодзи с теми, что видит собеседник на своём устройстве. Если они совпадают — переписка защищена end-to-end.',
+  'The encryption key has not been agreed yet.': 'Ключ ещё не согласован.',
   // Stars / Gifts
   'Telegram Stars': 'Telegram Stars',
   'Your balance': 'Ваш баланс',
