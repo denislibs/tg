@@ -70,3 +70,19 @@ export async function decryptPayload<T>(key: CryptoKey, blob: string): Promise<T
   const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct)
   return JSON.parse(new TextDecoder().decode(pt)) as T
 }
+
+// У каждого файла свой случайный AES-ключ (extractable — чтобы положить его
+// в зашифрованный payload сообщения). Ключ+IV сами шифруются ключом чата,
+// поэтому extractable здесь безопасно.
+export async function encryptMedia(bytes: Uint8Array): Promise<{ cipher: ArrayBuffer; keyB64: string; ivB64: string }> {
+  const key = (await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt'])) as CryptoKey
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, bytes as BufferSource)
+  const rawKey = new Uint8Array(await crypto.subtle.exportKey('raw', key))
+  return { cipher, keyB64: b64encode(rawKey), ivB64: b64encode(iv) }
+}
+
+export async function decryptMedia(cipher: ArrayBuffer, keyB64: string, ivB64: string): Promise<ArrayBuffer> {
+  const key = await crypto.subtle.importKey('raw', b64decode(keyB64) as BufferSource, { name: 'AES-GCM' }, false, ['decrypt'])
+  return crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64decode(ivB64) as BufferSource }, key, cipher)
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { generateKeyPair, exportPublicKey, deriveSecret, encryptPayload, decryptPayload } from './crypto'
+import { generateKeyPair, exportPublicKey, deriveSecret, encryptPayload, decryptPayload, encryptMedia, decryptMedia } from './crypto'
 
 describe('secret/crypto ECDH', () => {
   it('обе стороны выводят одинаковый ключ и fingerprint', async () => {
@@ -39,5 +39,13 @@ describe('secret/crypto ECDH', () => {
     expect(typeof blob).toBe('string') // base64
     const out = await decryptPayload<typeof payload>(sb.key, blob)
     expect(out).toEqual(payload)
+  })
+
+  it('encryptMedia → decryptMedia round-trip с per-file ключом', async () => {
+    const bytes = crypto.getRandomValues(new Uint8Array(4096))
+    const { cipher, keyB64, ivB64 } = await encryptMedia(bytes)
+    expect(cipher.byteLength).toBeGreaterThan(0)
+    const out = await decryptMedia(cipher, keyB64, ivB64)
+    expect(Array.from(new Uint8Array(out))).toEqual(Array.from(bytes))
   })
 })
