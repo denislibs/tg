@@ -50,7 +50,13 @@ type store struct {
 	pts     map[int64]int64
 	date    map[int64]int64
 	updates map[int64][]domain.Update // userID -> updates (pts asc)
+
+	// self-destruct: аргументы каждого вызова SetDestructOnRead (для проверки,
+	// что MarkRead запускает таймер).
+	destructCalls []destructCall
 }
+
+type destructCall struct{ ChatID, ReaderID, ReadSeq int64 }
 
 func newStore() *store {
 	return &store{
@@ -606,6 +612,13 @@ func (r fakeMsgs) SoftDelete(_ context.Context, msgID int64) error {
 		}
 	}
 	return domain.ErrNotFound
+}
+
+func (r fakeMsgs) SetDestructOnRead(_ context.Context, chatID, readerID, readSeq int64) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	r.s.destructCalls = append(r.s.destructCalls, destructCall{chatID, readerID, readSeq})
+	return nil
 }
 
 func (r fakeMsgs) HideForUser(_ context.Context, userID, msgID int64) error {

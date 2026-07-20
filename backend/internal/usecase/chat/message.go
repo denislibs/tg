@@ -239,6 +239,11 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 		if e := i.chats.SetRead(ctx, chatID, userID, effective, unread); e != nil {
 			return e
 		}
+		// Self-destruct: запускаем таймер для секретных сообщений, которые
+		// читатель только что получил (no-op для чатов без ttl).
+		if e := i.msgs.SetDestructOnRead(ctx, chatID, userID, effective); e != nil {
+			return e
+		}
 		m, e := i.chats.MemberIDs(ctx, chatID)
 		if e != nil {
 			return e

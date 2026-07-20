@@ -157,6 +157,27 @@ func TestMarkRead(t *testing.T) {
 	}
 }
 
+// MarkRead запускает self-destruct-таймер для полученных секретных сообщений
+// (Interactor вызывает MessageRepo.SetDestructOnRead с эффективным read-seq).
+func TestMarkRead_ArmsSelfDestruct(t *testing.T) {
+	in, s := newInteractor()
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "1"})
+	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "2"})
+
+	if err := in.MarkRead(ctx, chatID, b, 2); err != nil {
+		t.Fatalf("MarkRead: %v", err)
+	}
+	if len(s.destructCalls) != 1 {
+		t.Fatalf("SetDestructOnRead calls = %d, want 1", len(s.destructCalls))
+	}
+	if c := s.destructCalls[0]; c.ChatID != chatID || c.ReaderID != b || c.ReadSeq != 2 {
+		t.Fatalf("SetDestructOnRead args = %+v, want {chat:%d reader:%d seq:2}", c, chatID, b)
+	}
+}
+
 func TestMarkRead_OutOfOrderDoesNotRegress(t *testing.T) {
 	in, _ := newInteractor()
 	ctx := context.Background()

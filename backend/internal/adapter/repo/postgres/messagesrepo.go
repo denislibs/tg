@@ -408,10 +408,24 @@ func (r *MessagesRepo) UpdateGeoLive(ctx context.Context, msgID int64, lat, lng 
 		msgID, lat, lng, heading, stopped))
 }
 
-// SoftDelete marks a message deleted for everyone (deleted_at=now()).
+// SoftDelete marks a message deleted for everyone (deleted_at=now()) и стирает
+// шифртекст секретных сообщений (enc_body).
 func (r *MessagesRepo) SoftDelete(ctx context.Context, msgID int64) error {
 	q := querier(ctx, r.pool)
-	_, err := q.Exec(ctx, `UPDATE messages SET deleted_at=now(), text='' WHERE id=$1`, msgID)
+	_, err := q.Exec(ctx, `UPDATE messages SET deleted_at=now(), text='', enc_body=NULL WHERE id=$1`, msgID)
+	return err
+}
+
+// SetDestructOnRead ставит destruct_at = now()+ttl для секретных сообщений,
+// которые читатель ПОЛУЧИЛ (sender_id <> readerID) до readSeq включительно и у
+// которых задан ttl и таймер ещё не запущен. Идемпотентно; для не-секретных
+// чатов no-op (там ttl_seconds всегда NULL).
+func (r *MessagesRepo) SetDestructOnRead(ctx context.Context, chatID, readerID, readSeq int64) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE messages SET destruct_at = now() + make_interval(secs => ttl_seconds)
+		  WHERE chat_id=$1 AND seq<=$2 AND sender_id<>$3
+		    AND ttl_seconds IS NOT NULL AND destruct_at IS NULL AND deleted_at IS NULL`,
+		chatID, readSeq, readerID)
 	return err
 }
 
@@ -708,8 +722,11 @@ func scanOneMessage(row pgx.Row) (domain.Message, error) {
 func (r *MessagesRepo) ExpiredMessages(ctx context.Context, limit int) ([]domain.Message, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT id, chat_id, seq FROM messages
-		  WHERE auto_delete_at IS NOT NULL AND auto_delete_at <= now() AND deleted_at IS NULL
-		  ORDER BY auto_delete_at LIMIT $1`, limit)
+		  WHERE deleted_at IS NULL AND (
+		        (auto_delete_at IS NOT NULL AND auto_delete_at <= now())
+		     OR (destruct_at IS NOT NULL AND destruct_at <= now())
+		  )
+		  ORDER BY id LIMIT $1`, limit)
 	if err != nil {
 		return nil, err
 	}

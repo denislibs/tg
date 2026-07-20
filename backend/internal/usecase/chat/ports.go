@@ -122,6 +122,10 @@ type MessageRepo interface {
 	// UpdateGeoLive обновляет координаты live-локации (+heading/stopped), бампит edited_at.
 	UpdateGeoLive(ctx context.Context, msgID int64, lat, lng float64, heading *int, stopped bool) (domain.Message, error)
 	SoftDelete(ctx context.Context, msgID int64) error
+	// SetDestructOnRead ставит destruct_at=now()+ttl для секретных сообщений,
+	// полученных читателем (sender_id<>readerID) до readSeq; no-op для чатов
+	// без ttl. Идемпотентно.
+	SetDestructOnRead(ctx context.Context, chatID, readerID, readSeq int64) error
 	HideForUser(ctx context.Context, userID, msgID int64) error
 	ListThread(ctx context.Context, chatID, threadRootID int64, offset, limit int) ([]domain.Message, error)
 	CountThread(ctx context.Context, chatID, threadRootID int64) (int, error)
