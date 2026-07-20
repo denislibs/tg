@@ -6,7 +6,7 @@
 // list (gated by chat kind and the target message). The View renders the menu /
 // dialogs from the returned state and wires the feed's context-menu open to
 // `openMsgMenu`.
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import TgIcon from '../../components/TgIcon'
 import { peerColor } from '../../components/peerColor'
@@ -48,6 +48,10 @@ export function useMessageActions({
   setReply, setEditing, setSelectionMode, setSelected, clearSelection, onChatCreated,
 }: UseMessageActionsArgs) {
   const [msgMenu, setMsgMenu] = useState<MsgMenu | null>(null)
+  // Ответ с цитатой: текст, выделенный внутри сообщения на момент открытия меню
+  // (right-click сохраняет выделение), плюс его offset (UTF-16) в тексте сообщения.
+  // Используется startReply; сбрасывается, если выделения не было.
+  const pendingQuoteRef = useRef<{ text: string; offset: number } | null>(null)
   const [delIds, setDelIds] = useState<DelState | null>(null)
   const [forwardIds, setForwardIds] = useState<number[] | null>(null)
   const [viewers, setViewers] = useState<ViewersState | null>(null)
@@ -67,6 +71,15 @@ export function useMessageActions({
     let idx = msgs.indexOf(m)
     if (idx < 0 && m.id != null) idx = msgs.findIndex((x) => x.id === m.id)
     if (idx < 0) return
+    // Захватываем выделенный фрагмент этого сообщения для «ответа с цитатой»
+    // (best-effort: текст выделения + его offset как indexOf в тексте сообщения).
+    pendingQuoteRef.current = null
+    const sel = window.getSelection()
+    if (sel && !sel.isCollapsed && m.text) {
+      const s = sel.toString().trim()
+      const at = s ? m.text.indexOf(s) : -1
+      if (s && at >= 0 && s !== m.text) pendingQuoteRef.current = { text: s, offset: at }
+    }
     // Anchor a corner of the menu at the click point and grow from there (tweb):
     // flip to the left/upward when near the right/bottom edge so it stays on-screen.
     const MW = 256, MH = 440
@@ -88,7 +101,7 @@ export function useMessageActions({
     if (m && m.type !== 'date') {
       const name = m.out ? 'Дн' : m.sender ?? chat.name
       const color = m.out ? accent : m.senderColor ?? peerColor(name)
-      setReply({ msgId: menuRawMsg()?.id, name, text: m.text ?? m.emoji ?? '', color })
+      setReply({ msgId: menuRawMsg()?.id, name, text: m.text ?? m.emoji ?? '', color, quote: pendingQuoteRef.current ?? undefined })
       setEditing(null)
       // Composer focuses itself when `reply` becomes set.
     }

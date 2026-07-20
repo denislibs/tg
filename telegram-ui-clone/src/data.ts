@@ -50,7 +50,7 @@ export interface ConvMsg {
   mediaUnread?: boolean // голосовое/кружок не прослушано получателем (точка у обеих сторон)
   deleted?: boolean
   forwardFrom?: { name: string; color?: string } // "Переслано от X"
-  reply?: { name: string; text: string; entities?: MessageEntity[]; color?: string; seq?: number; mediaId?: number; mediaType?: string }
+  reply?: { name: string; text: string; entities?: MessageEntity[]; color?: string; seq?: number; mediaId?: number; mediaType?: string; quote?: boolean }
   duration?: string // voice message length, e.g. "0:14"
   waveform?: number[] // voice waveform bar heights (0..1)
   // media (history read model — render the bubble fully, no per-media meta request)

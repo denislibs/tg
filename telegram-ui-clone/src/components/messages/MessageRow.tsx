@@ -495,6 +495,9 @@ function MessageRow({
                 <div className={s.replyBody}>
                   <Text noWrap size={13.5} weight={600} color={out ? 'var(--tg-bubbleOutAccent)' : m.reply.color ?? 'var(--tg-accent)'}>
                     {m.reply.name}
+                    {m.reply.quote && (
+                      <TgIcon name="quote_outline" size={13} style={{ verticalAlign: '-1px', marginLeft: 4, opacity: 0.75 }} />
+                    )}
                   </Text>
                   <Text noWrap size={13.5} color="var(--b-secondary)" style={{ maxWidth: 240 }}>
                     <RichText text={m.reply.text} entities={m.reply.entities} linkColor="var(--b-link)" />

@@ -150,7 +150,13 @@ func (i *Interactor) hydrateReplies(ctx context.Context, msgs []domain.Message) 
 			text = string([]rune(text)[:120])
 			entities = nil
 		}
-		msgs[idx].ReplyTo = &domain.ReplyPreview{MsgID: t.ID, Seq: t.Seq, SenderID: t.SenderID, Text: text, Entities: entities, Type: t.Type, MediaID: t.MediaID}
+		// Reply quote: цитата хранится на ОТВЕЧАЮЩЕМ сообщении (msgs[idx]) —
+		// показываем выделенный фрагмент вместо превью всего оригинала.
+		quote := ""
+		if msgs[idx].ReplyQuoteText != nil {
+			quote = *msgs[idx].ReplyQuoteText
+		}
+		msgs[idx].ReplyTo = &domain.ReplyPreview{MsgID: t.ID, Seq: t.Seq, SenderID: t.SenderID, Text: text, Entities: entities, Type: t.Type, MediaID: t.MediaID, QuoteText: quote}
 	}
 	return nil
 }

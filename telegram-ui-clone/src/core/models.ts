@@ -122,7 +122,7 @@ export interface RawMessage {
   fwd_from_chat_id?: number | null
   fwd_from_msg_id?: number | null
   fwd_date?: string | null
-  reply_to?: { msg_id: number; seq: number; sender_id: number; text: string; entities?: MessageEntity[] | null; type: string; media_id?: number } | null
+  reply_to?: { msg_id: number; seq: number; sender_id: number; text: string; entities?: MessageEntity[] | null; type: string; media_id?: number; quote_text?: string } | null
   poll_id?: number | null
   poll?: RawPoll | null
   media_w?: number
@@ -202,7 +202,7 @@ export interface Message {
   fwdFromMsgId?: number | null
   fwdDate?: string | null
   /** Lightweight preview of the replied-to message (history read model). */
-  replyTo?: { msgId: number; seq: number; senderId: number; text: string; entities?: MessageEntity[]; type: string; mediaId?: number } | null
+  replyTo?: { msgId: number; seq: number; senderId: number; text: string; entities?: MessageEntity[]; type: string; mediaId?: number; quoteText?: string } | null
   /** Media metadata (history read model) — lets the bubble render fully from the
    * message (exact box, blur placeholder, poster, mime, …) with no per-media
    * meta request. */
@@ -393,7 +393,7 @@ export function mapMessage(r: RawMessage): Message {
     fwdFromMsgId: r.fwd_from_msg_id ?? null,
     fwdDate: r.fwd_date ?? null,
     replyTo: r.reply_to
-      ? { msgId: r.reply_to.msg_id, seq: r.reply_to.seq, senderId: r.reply_to.sender_id, text: r.reply_to.text, entities: r.reply_to.entities ?? undefined, type: r.reply_to.type, mediaId: r.reply_to.media_id && r.reply_to.media_id > 0 ? r.reply_to.media_id : undefined }
+      ? { msgId: r.reply_to.msg_id, seq: r.reply_to.seq, senderId: r.reply_to.sender_id, text: r.reply_to.text, entities: r.reply_to.entities ?? undefined, type: r.reply_to.type, mediaId: r.reply_to.media_id && r.reply_to.media_id > 0 ? r.reply_to.media_id : undefined, quoteText: r.reply_to.quote_text || undefined }
       : null,
     mediaWidth: r.media_w,
     mediaHeight: r.media_h,

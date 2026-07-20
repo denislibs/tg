@@ -46,7 +46,7 @@ const SHORTCUTS: Record<string, EntityType> = {
   KeyS: 'strikethrough', KeyM: 'code', KeyP: 'spoiler',
 }
 
-export interface ReplyState { msgId?: number; name: string; text: string; color: string }
+export interface ReplyState { msgId?: number; name: string; text: string; color: string; quote?: { text: string; offset: number } }
 export interface EditState { msgId: number; text: string; entities?: MessageEntity[] }
 
 interface Props {
@@ -657,7 +657,12 @@ function Composer({
                     {t('Reply to')} {reply.name}
                   </Text>
                   <Text noWrap size={14} color="var(--tg-textSecondary)">
-                    {reply.text}
+                    {reply.quote ? (
+                      <>
+                        <TgIcon name="quote_outline" size={13} style={{ verticalAlign: '-1px', marginRight: 3, opacity: 0.7 }} />
+                        {reply.quote.text}
+                      </>
+                    ) : reply.text}
                   </Text>
                 </div>
                 <IconButton size="small" onClick={onCancelReply} color="var(--tg-textFaint)">

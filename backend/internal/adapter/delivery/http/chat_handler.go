@@ -287,13 +287,16 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 }
 
 type sendBody struct {
-	Type        string                 `json:"type"`
-	Text        string                 `json:"text"`
-	Entities    []domain.MessageEntity `json:"entities"`
-	ReplyToID   *int64                 `json:"reply_to_id"`
-	ClientMsgID string                 `json:"client_msg_id"`
-	MediaID     *int64                 `json:"media_id"`
-	GroupedID   string                 `json:"grouped_id"`
+	Type      string                 `json:"type"`
+	Text      string                 `json:"text"`
+	Entities  []domain.MessageEntity `json:"entities"`
+	ReplyToID *int64                 `json:"reply_to_id"`
+	// ответ с цитатой фрагмента (Telegram reply quote): текст + offset (UTF-16)
+	ReplyQuoteText   *string `json:"reply_quote_text"`
+	ReplyQuoteOffset *int    `json:"reply_quote_offset"`
+	ClientMsgID      string  `json:"client_msg_id"`
+	MediaID          *int64  `json:"media_id"`
+	GroupedID        string  `json:"grouped_id"`
 	// сообщение в тред (форум-топик): id корневого сообщения топика
 	ThreadRootID *int64 `json:"thread_root_id"`
 	// гео-точка (type 'geo') / контакт (type 'contact')
@@ -322,7 +325,8 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 	}
 	msg, err := h.svc.Send(r.Context(), usecasechat.SendInput{
 		ChatID: chatID, SenderID: h.meID(r), Type: body.Type, Text: body.Text, Entities: body.Entities,
-		ReplyToID: body.ReplyToID, ClientMsgID: body.ClientMsgID, MediaID: body.MediaID, GroupedID: body.GroupedID,
+		ReplyToID: body.ReplyToID, ReplyQuoteText: body.ReplyQuoteText, ReplyQuoteOffset: body.ReplyQuoteOffset,
+		ClientMsgID: body.ClientMsgID, MediaID: body.MediaID, GroupedID: body.GroupedID,
 		ThreadRootID: body.ThreadRootID,
 		GeoLat:       body.GeoLat, GeoLng: body.GeoLng, ContactUserID: body.ContactUserID,
 		GeoTitle: body.GeoTitle, GeoAddress: body.GeoAddress,
@@ -1189,6 +1193,9 @@ func messageJSON(m domain.Message) map[string]any {
 		}
 		if m.ReplyTo.MediaID != nil {
 			rt["media_id"] = *m.ReplyTo.MediaID
+		}
+		if m.ReplyTo.QuoteText != "" {
+			rt["quote_text"] = m.ReplyTo.QuoteText
 		}
 		j["reply_to"] = rt
 	}

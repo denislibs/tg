@@ -247,6 +247,10 @@ type SendInput struct {
 	Type, Text       string
 	Entities         []domain.MessageEntity
 	ReplyToID        *int64
+	// Ответ с цитатой фрагмента (Telegram reply quote): выделенный кусок текста
+	// оригинала + его offset (UTF-16). Применяется только при ReplyToID != nil.
+	ReplyQuoteText   *string
+	ReplyQuoteOffset *int
 	ClientMsgID      string
 	MediaID          *int64
 	ThreadRootID     *int64

@@ -153,7 +153,7 @@ const secret = createSecretManager({
 
 const realtime = {
   async start() { await tokens.load(); conn.start(); return { state: conn.state() } },
-  async sendMessage(args: { chatId: number; text: string; entities?: import('./models').MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; mediaId?: number | null; type?: string; groupedId?: string; encBody?: string; ttlSeconds?: number | null; silent?: boolean }) { conn.sendMessage(args); return { ok: true } },
+  async sendMessage(args: { chatId: number; text: string; entities?: import('./models').MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; replyQuoteText?: string | null; replyQuoteOffset?: number | null; mediaId?: number | null; type?: string; groupedId?: string; encBody?: string; ttlSeconds?: number | null; silent?: boolean }) { conn.sendMessage(args); return { ok: true } },
   async markRead(args: { chatId: number; upToSeq: number }) { conn.markRead(args.chatId, args.upToSeq); return { ok: true } },
   async markMediaRead(args: { chatId: number; msgId: number }) { conn.markMediaRead(args.chatId, args.msgId); return { ok: true } },
   async sendTyping(args: { chatId: number; action?: 'typing' | 'voice' | 'video' }) { conn.sendTyping(args.chatId, args.action ?? 'typing'); return { ok: true } },

@@ -14,6 +14,10 @@ import (
 // bounding storage, bandwidth, and client render cost.
 const maxMessageRunes = 4096
 
+// maxReplyQuoteRunes caps the length of a reply's quoted fragment (Telegram reply
+// quote), bounding storage/render cost independently of the full message limit.
+const maxReplyQuoteRunes = 1024
+
 // Send inserts a message, appends a new_message update to every member (bumping
 // unread for non-senders), and — after commit — publishes a live new_message
 // frame to each member. Idempotent on ClientMsgID (duplicates publish nothing).
@@ -44,6 +48,20 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		return domain.Message{}, domain.ErrTooLong
 	}
 	in.Entities = sanitizeEntities(in.Entities)
+	// Reply quote: осмыслен только при ответе; обрезаем длину, пустой — сбрасываем.
+	if in.ReplyToID == nil {
+		in.ReplyQuoteText, in.ReplyQuoteOffset = nil, nil
+	} else if in.ReplyQuoteText != nil {
+		q := *in.ReplyQuoteText
+		if utf8.RuneCountInString(q) > maxReplyQuoteRunes {
+			q = string([]rune(q)[:maxReplyQuoteRunes])
+		}
+		if q == "" {
+			in.ReplyQuoteText, in.ReplyQuoteOffset = nil, nil
+		} else {
+			in.ReplyQuoteText = &q
+		}
+	}
 	if in.MediaID != nil {
 		ownerID, err := i.mediaAccess.OwnerID(ctx, *in.MediaID)
 		if errors.Is(err, domain.ErrNotFound) || (err == nil && ownerID != in.SenderID) {
@@ -140,6 +158,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		msg, e = i.msgs.Insert(ctx, domain.Message{
 			ChatID: in.ChatID, Seq: seq, SenderID: in.SenderID,
 			Type: in.Type, Text: in.Text, Entities: in.Entities, ReplyToID: in.ReplyToID, ClientMsgID: cmid,
+			ReplyQuoteText: in.ReplyQuoteText, ReplyQuoteOffset: in.ReplyQuoteOffset,
 			MediaID: in.MediaID, ThreadRootID: in.ThreadRootID, GroupedID: groupedID, PollID: in.PollID,
 			GiftID: in.GiftID, ReplyMarkup: in.ReplyMarkup,
 			GeoLat: in.GeoLat, GeoLng: in.GeoLng,

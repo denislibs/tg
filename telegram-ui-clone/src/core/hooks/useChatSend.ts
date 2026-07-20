@@ -25,7 +25,9 @@ import { useUploadsStore } from '../../stores/uploadsStore'
 // Longer drafts are split into several messages on send.
 const MAX_MESSAGE_LEN = 4096
 
-export type ReplyState = { msgId?: number; name: string; text: string; color: string } | null
+// quote — ответ с цитатой выделенного фрагмента (Telegram reply quote): текст
+// куска оригинала + его offset (UTF-16) в плоском тексте отвечаемого сообщения.
+export type ReplyState = { msgId?: number; name: string; text: string; color: string; quote?: { text: string; offset: number } } | null
 export type EditState = { msgId: number; text: string; entities?: MessageEntity[] } | null
 
 interface UseChatSendArgs {
@@ -107,8 +109,10 @@ export function useChatSend({
       void managers.secret.sendText({ chatId: numericChatId, text, entities, clientMsgId, ttlSeconds })
       return
     }
+    // reply quote прикреплён к первому сообщению (там же, где и сам reply).
+    const quote = replyTo != null ? reply?.quote : undefined
     win.appendOptimistic(text, meId ?? -1, clientMsgId, undefined, 'text', entities)
-    void managers.realtime.sendMessage({ chatId: numericChatId, text, entities, clientMsgId, replyToId: replyTo, threadRootId, silent })
+    void managers.realtime.sendMessage({ chatId: numericChatId, text, entities, clientMsgId, replyToId: replyTo, replyQuoteText: quote?.text ?? null, replyQuoteOffset: quote?.offset ?? null, threadRootId, silent })
   }
 
   // Гео-точка из attach-меню: оптимистичный бабл сразу (координаты локальные),

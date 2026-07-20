@@ -3,7 +3,7 @@ import type { WsClient } from '../net/wsClient'
 import type { ConnState } from './events'
 import type { MessageEntity } from '../models'
 
-export interface SendArgs { chatId: number; text: string; entities?: MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; mediaId?: number | null; type?: string; groupedId?: string; geo?: { lat: number; lng: number; title?: string; address?: string; livePeriod?: number; heading?: number }; contactUserId?: number; threadRootId?: number | null; encBody?: string; ttlSeconds?: number | null; silent?: boolean }
+export interface SendArgs { chatId: number; text: string; entities?: MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; replyQuoteText?: string | null; replyQuoteOffset?: number | null; mediaId?: number | null; type?: string; groupedId?: string; geo?: { lat: number; lng: number; title?: string; address?: string; livePeriod?: number; heading?: number }; contactUserId?: number; threadRootId?: number | null; encBody?: string; ttlSeconds?: number | null; silent?: boolean }
 
 export interface CMDeps {
   ws: WsClient
@@ -96,7 +96,7 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, 
   }
 
   function sendFrame(m: SendArgs) {
-    ws.send('send_message', { chat_id: m.chatId, type: m.type ?? 'text', text: m.text, entities: m.entities ?? null, client_msg_id: m.clientMsgId, reply_to_id: m.replyToId ?? null, media_id: m.mediaId ?? null, grouped_id: m.groupedId ?? '', geo_lat: m.geo?.lat ?? null, geo_lng: m.geo?.lng ?? null, geo_title: m.geo?.title ?? null, geo_address: m.geo?.address ?? null, geo_live_period: m.geo?.livePeriod ?? null, geo_heading: m.geo?.heading ?? null, contact_user_id: m.contactUserId ?? null, thread_root_id: m.threadRootId ?? null, enc_body: m.encBody ?? null, ttl_seconds: m.ttlSeconds ?? null, silent: m.silent ?? false })
+    ws.send('send_message', { chat_id: m.chatId, type: m.type ?? 'text', text: m.text, entities: m.entities ?? null, client_msg_id: m.clientMsgId, reply_to_id: m.replyToId ?? null, reply_quote_text: m.replyQuoteText ?? null, reply_quote_offset: m.replyQuoteOffset ?? null, media_id: m.mediaId ?? null, grouped_id: m.groupedId ?? '', geo_lat: m.geo?.lat ?? null, geo_lng: m.geo?.lng ?? null, geo_title: m.geo?.title ?? null, geo_address: m.geo?.address ?? null, geo_live_period: m.geo?.livePeriod ?? null, geo_heading: m.geo?.heading ?? null, contact_user_id: m.contactUserId ?? null, thread_root_id: m.threadRootId ?? null, enc_body: m.encBody ?? null, ttl_seconds: m.ttlSeconds ?? null, silent: m.silent ?? false })
   }
 
   return {
