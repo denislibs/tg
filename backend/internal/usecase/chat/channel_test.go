@@ -130,7 +130,16 @@ func (c groupMembershipChats) IncUnread(context.Context, int64, int64) error    
 func (c groupMembershipChats) CurrentReadSeq(context.Context, int64, int64) (int64, error) {
 	return 0, nil
 }
-func (c groupMembershipChats) SetRead(context.Context, int64, int64, int64, int) error  { return nil }
+func (c groupMembershipChats) SetRead(context.Context, int64, int64, int64, int) error { return nil }
+func (c groupMembershipChats) AddMention(context.Context, int64, int64, int64, int64) error {
+	return nil
+}
+func (c groupMembershipChats) ClearMentions(context.Context, int64, int64, int64) (int, error) {
+	return 0, nil
+}
+func (c groupMembershipChats) NextMention(context.Context, int64, int64, int64) (int64, int64, error) {
+	return 0, 0, domain.ErrNotFound
+}
 func (c groupMembershipChats) MaxSeq(context.Context, int64) (int64, error)             { return 0, nil }
 func (c groupMembershipChats) ClearedSeq(context.Context, int64, int64) (int64, error)  { return 0, nil }
 func (c groupMembershipChats) SetClearedSeq(context.Context, int64, int64, int64) error { return nil }

@@ -124,6 +124,7 @@ export interface Chat {
   autoDeletePeriod?: number // период автоудаления сообщений (сек, 0/undefined — выкл)
   selected?: boolean
   unread?: number
+  unreadMentions?: number // непрочитанные упоминания → отдельный бейдж «@»
   sent?: boolean // last message is mine (show a tick in the list)
   read?: boolean // ...and the peer has read it (✓✓ instead of ✓)
   previewMediaId?: number // last message is a photo → small thumbnail before the preview

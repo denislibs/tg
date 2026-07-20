@@ -148,6 +148,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Delete("/chats/{chatID}/messages/{msgID}/pin", ch.Unpin)
 		pr.Get("/chats/{chatID}/pins", ch.ListPins)
 		pr.Get("/chats/{chatID}/messages/{msgID}/viewers", ch.Viewers)
+		pr.Get("/chats/{chatID}/mentions/next", ch.NextMention)
 		pr.Get("/chats/{chatID}/history", ch.History)
 		pr.Get("/chats/{chatID}/search", ch.SearchMessages)
 		pr.Post("/translate", ch.Translate)

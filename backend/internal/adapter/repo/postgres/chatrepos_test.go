@@ -250,6 +250,62 @@ func TestChatsRepo_ReadState(t *testing.T) {
 	}
 }
 
+func TestChatsRepo_UnreadMentions(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewChatsRepo(pool)
+	msgs := NewMessagesRepo(pool)
+	ctx := context.Background()
+	a := seedUser(t, pool, "+790")
+	b := seedUser(t, pool, "+791")
+	chatID := createPrivate(t, pool, a, b)
+
+	// Two messages from a, both mentioning b.
+	var mids, seqs [2]int64
+	for i := 0; i < 2; i++ {
+		seq, _ := msgs.NextSeq(ctx, chatID)
+		m, _ := msgs.Insert(ctx, domain.Message{ChatID: chatID, Seq: seq, SenderID: a, Type: "text", Text: "@b"})
+		mids[i], seqs[i] = m.ID, seq
+		if err := repo.AddMention(ctx, chatID, m.ID, seq, b); err != nil {
+			t.Fatalf("AddMention: %v", err)
+		}
+	}
+	// Idempotent: re-adding the first mention must not double-count.
+	if err := repo.AddMention(ctx, chatID, mids[0], seqs[0], b); err != nil {
+		t.Fatalf("AddMention (dup): %v", err)
+	}
+
+	d, _ := repo.ListDialogs(ctx, b)
+	if d[0].UnreadMentionsCount != 2 {
+		t.Fatalf("unread mentions = %d, want 2", d[0].UnreadMentionsCount)
+	}
+
+	seq, msgID, err := repo.NextMention(ctx, chatID, b, 0)
+	if err != nil || seq != seqs[0] || msgID != mids[0] {
+		t.Fatalf("NextMention = seq %d msg %d err %v; want seq %d msg %d", seq, msgID, err, seqs[0], mids[0])
+	}
+
+	// Read up to the first mention → one left, next is the second.
+	rem, err := repo.ClearMentions(ctx, chatID, b, seqs[0])
+	if err != nil || rem != 1 {
+		t.Fatalf("ClearMentions = %d, %v; want 1", rem, err)
+	}
+	d, _ = repo.ListDialogs(ctx, b)
+	if d[0].UnreadMentionsCount != 1 {
+		t.Fatalf("unread mentions after partial read = %d, want 1", d[0].UnreadMentionsCount)
+	}
+	if seq, _, _ := repo.NextMention(ctx, chatID, b, seqs[0]); seq != seqs[1] {
+		t.Fatalf("NextMention after read = %d, want %d", seq, seqs[1])
+	}
+
+	// Read the rest → cleared, no next mention.
+	if rem, _ := repo.ClearMentions(ctx, chatID, b, seqs[1]); rem != 0 {
+		t.Fatalf("ClearMentions rest = %d, want 0", rem)
+	}
+	if _, _, err := repo.NextMention(ctx, chatID, b, 0); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("NextMention when none: want ErrNotFound, got %v", err)
+	}
+}
+
 func TestMessagesRepo_SeqAndInsertAndHistory(t *testing.T) {
 	pool := storepostgres.NewTestDB(t)
 	msgs := NewMessagesRepo(pool)

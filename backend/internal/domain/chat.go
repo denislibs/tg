@@ -13,7 +13,10 @@ type ChatMember struct {
 	Role           string
 	LastReadSeq    int64
 	UnreadCount    int
-	Muted          bool
+	// UnreadMentionsCount — число непрочитанных сообщений, где участник упомянут
+	// (Telegram unread_mentions_count); отдельный бейдж «@» поверх обычного unread.
+	UnreadMentionsCount int
+	Muted               bool
 }
 
 // DialogPeer is the other participant of a private chat, used to render a
@@ -38,7 +41,10 @@ type Dialog struct {
 	// (message seq <= PeerReadSeq ⇒ delivered+read ✓✓).
 	PeerReadSeq int64
 	UnreadCount int
-	Muted       bool
+	// UnreadMentionsCount — непрочитанные упоминания зрителя в этом чате
+	// (Telegram unread_mentions_count); клиент рисует отдельный бейдж «@».
+	UnreadMentionsCount int
+	Muted               bool
 	// Pinned — диалог закреплён вверху списка; Archived — убран в «Архив»
 	// (пер-юзерные флаги членства, tweb pinned dialogs + folder_id=1).
 	Pinned   bool

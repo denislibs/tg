@@ -29,6 +29,14 @@ type ChatRepo interface {
 	IncUnread(ctx context.Context, chatID, userID int64) error
 	CurrentReadSeq(ctx context.Context, chatID, userID int64) (int64, error)
 	SetRead(ctx context.Context, chatID, userID, seq int64, unread int) error
+	// Непрочитанные упоминания (Telegram unread_mentions_count). AddMention
+	// отмечает сообщение (chat/msg/seq), где упомянут userID, и бампит его
+	// счётчик. ClearMentions снимает упоминания с seq<=uptoSeq (прочитано) и
+	// возвращает оставшееся число. NextMention — seq/msgID ближайшего
+	// непрочитанного упоминания с seq>afterSeq (domain.ErrNotFound, если нет).
+	AddMention(ctx context.Context, chatID, msgID, seq, userID int64) error
+	ClearMentions(ctx context.Context, chatID, userID, uptoSeq int64) (remaining int, err error)
+	NextMention(ctx context.Context, chatID, userID, afterSeq int64) (seq, msgID int64, err error)
 	// «Очистить историю» у себя: MaxSeq — текущий максимум seq чата (горизонт);
 	// ClearedSeq/SetClearedSeq — персональный горизонт участника (cleared_max_seq).
 	MaxSeq(ctx context.Context, chatID int64) (int64, error)

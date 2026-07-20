@@ -25,7 +25,13 @@ type member struct {
 	lastReadSeq int64
 	clearedSeq  int64
 	unread      int
+	mentions    int
 	muted       bool
+}
+
+// mentionRow mirrors a message_mentions row in the fake store.
+type mentionRow struct {
+	chatID, msgID, seq, userID int64
 }
 
 type store struct {
@@ -42,6 +48,7 @@ type store struct {
 	hidden     map[int64]map[int64]bool            // userID -> msgID -> hidden ("delete for me")
 	pins       map[int64][]int64                   // chatID -> pinned msgIDs (newest first)
 	viewed     map[int64]map[int64]bool            // msgID -> userID -> viewed (channel view dedup)
+	mentions   []mentionRow                        // message_mentions rows
 
 	// автоудаление: период чата / глобальный период пользователя
 	autoDelete     map[int64]int
@@ -169,11 +176,12 @@ func (r fakeChats) ListDialogs(_ context.Context, userID int64) ([]domain.Dialog
 			continue
 		}
 		d := domain.Dialog{
-			ChatID:      cid,
-			Type:        r.s.chatType[cid],
-			LastReadSeq: mem.lastReadSeq,
-			UnreadCount: mem.unread,
-			Muted:       mem.muted,
+			ChatID:              cid,
+			Type:                r.s.chatType[cid],
+			LastReadSeq:         mem.lastReadSeq,
+			UnreadCount:         mem.unread,
+			UnreadMentionsCount: mem.mentions,
+			Muted:               mem.muted,
 		}
 		msgs := r.s.messages[cid]
 		if len(msgs) > 0 {
@@ -236,6 +244,61 @@ func (r fakeChats) SetRead(_ context.Context, chatID, userID, seq int64, unread 
 		m.unread = unread
 	}
 	return nil
+}
+
+func (r fakeChats) AddMention(_ context.Context, chatID, msgID, seq, userID int64) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	for _, m := range r.s.mentions { // idempotent on (msgID, userID)
+		if m.msgID == msgID && m.userID == userID {
+			return nil
+		}
+	}
+	r.s.mentions = append(r.s.mentions, mentionRow{chatID, msgID, seq, userID})
+	if m := r.s.members[chatID][userID]; m != nil {
+		m.mentions++
+	}
+	return nil
+}
+
+func (r fakeChats) ClearMentions(_ context.Context, chatID, userID, uptoSeq int64) (int, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	kept := r.s.mentions[:0]
+	remaining := 0
+	for _, m := range r.s.mentions {
+		if m.chatID == chatID && m.userID == userID {
+			if m.seq <= uptoSeq {
+				continue // read → drop
+			}
+			remaining++
+		}
+		kept = append(kept, m)
+	}
+	r.s.mentions = kept
+	if m := r.s.members[chatID][userID]; m != nil {
+		m.mentions = remaining
+	}
+	return remaining, nil
+}
+
+func (r fakeChats) NextMention(_ context.Context, chatID, userID, afterSeq int64) (int64, int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var best *mentionRow
+	for i := range r.s.mentions {
+		m := r.s.mentions[i]
+		if m.chatID != chatID || m.userID != userID || m.seq <= afterSeq {
+			continue
+		}
+		if best == nil || m.seq < best.seq {
+			best = &r.s.mentions[i]
+		}
+	}
+	if best == nil {
+		return 0, 0, domain.ErrNotFound
+	}
+	return best.seq, best.msgID, nil
 }
 
 func (r fakeChats) MaxSeq(_ context.Context, chatID int64) (int64, error) {

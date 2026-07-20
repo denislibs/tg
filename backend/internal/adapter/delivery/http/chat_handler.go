@@ -263,7 +263,8 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 		row := map[string]any{
 			"chat_id": d.ChatID, "type": d.Type,
 			"title": d.Title, "username": d.Username, "photo_url": d.PhotoURL,
-			"last_read_seq": d.LastReadSeq, "peer_read_seq": d.PeerReadSeq, "unread": d.UnreadCount, "muted": d.Muted,
+			"last_read_seq": d.LastReadSeq, "peer_read_seq": d.PeerReadSeq, "unread": d.UnreadCount,
+			"unread_mentions_count": d.UnreadMentionsCount, "muted": d.Muted,
 			"pinned": d.Pinned, "archived": d.Archived, "is_forum": d.IsForum,
 			"notify_preview": d.NotifyPreview, "notify_sound": d.NotifySound,
 			"auto_delete_period": d.AutoDeletePeriod,
@@ -618,6 +619,27 @@ func (h *ChatHandler) Viewers(w http.ResponseWriter, r *http.Request) {
 		ids = []int64{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"user_ids": ids})
+}
+
+// NextMention serves «jump to next @»: GET /chats/{chatID}/mentions/next?after_seq=
+// returns the seq/msg_id of the caller's earliest unread mention past after_seq
+// (404 when there's none). Powers the floating mention button in the open chat.
+func (h *ChatHandler) NextMention(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	afterSeq := queryInt(r, "after_seq", 0)
+	seq, msgID, err := h.svc.NextMention(r.Context(), chatID, h.meID(r), afterSeq)
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "no unread mention")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load mention")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"seq": seq, "msg_id": msgID})
 }
 
 // MediaHistory serves the profile's shared-media tabs:

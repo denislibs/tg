@@ -18,6 +18,23 @@ const maxMessageRunes = 4096
 // quote), bounding storage/render cost independently of the full message limit.
 const maxReplyQuoteRunes = 1024
 
+// mentionedUserIDs collects the distinct target users of a message's
+// "text_mention" entities (Telegram's mention-of-a-user-without-username, which
+// carries the user id inline). Plain "@username" mentions aren't resolved here —
+// they don't carry a user id — so they don't feed the unread-mentions counter.
+func mentionedUserIDs(entities []domain.MessageEntity) map[int64]bool {
+	var out map[int64]bool
+	for _, e := range entities {
+		if e.Type == "text_mention" && e.UserID != 0 {
+			if out == nil {
+				out = map[int64]bool{}
+			}
+			out[e.UserID] = true
+		}
+	}
+	return out
+}
+
 // Send inserts a message, appends a new_message update to every member (bumping
 // unread for non-senders), and — after commit — publishes a live new_message
 // frame to each member. Idempotent on ClientMsgID (duplicates publish nothing).
@@ -185,6 +202,10 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			return e
 		}
 		slices.Sort(members)
+		// Упоминания: пользователи, явно указанные в тексте (text_mention несёт
+		// user_id). @username-упоминания сервер не резолвит — их user_id нет в
+		// entity (клиентский mention), поэтому в счётчик они не попадают.
+		mentioned := mentionedUserIDs(msg.Entities)
 		payload, e := json.Marshal(messageUpdatePayload(msg))
 		if e != nil {
 			return e
@@ -197,6 +218,12 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			if uid != in.SenderID {
 				if e := i.chats.IncUnread(ctx, in.ChatID, uid); e != nil {
 					return e
+				}
+				// Отмечаем упоминание только для реального участника (кроме автора).
+				if mentioned[uid] {
+					if e := i.chats.AddMention(ctx, in.ChatID, msg.ID, msg.Seq, uid); e != nil {
+						return e
+					}
 				}
 			}
 		}
@@ -258,6 +285,11 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 		if e := i.chats.SetRead(ctx, chatID, userID, effective, unread); e != nil {
 			return e
 		}
+		// Прочитанное до effective снимает непрочитанные упоминания с seq<=effective
+		// и пересчитывает счётчик «@» (Telegram readMentions).
+		if _, e := i.chats.ClearMentions(ctx, chatID, userID, effective); e != nil {
+			return e
+		}
 		// Self-destruct: запускаем таймер для секретных сообщений, которые
 		// читатель только что получил (no-op для чатов без ttl).
 		if e := i.msgs.SetDestructOnRead(ctx, chatID, userID, effective); e != nil {
@@ -304,6 +336,20 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 	return nil
 }
 
+// NextMention returns the seq/message id of the caller's earliest unread mention
+// past afterSeq (Telegram getUnreadMentions / «jump to next @»). Not a member →
+// domain.ErrNotFound; also domain.ErrNotFound when there is no such mention.
+func (i *Interactor) NextMention(ctx context.Context, chatID, userID, afterSeq int64) (seq, msgID int64, err error) {
+	ok, err := i.chats.IsMember(ctx, chatID, userID)
+	if err != nil {
+		return 0, 0, err
+	}
+	if !ok {
+		return 0, 0, domain.ErrNotFound
+	}
+	return i.chats.NextMention(ctx, chatID, userID, afterSeq)
+}
+
 // ClearHistory очищает историю чата у себя (Telegram deleteHistory just_clear):
 // поднимает персональный горизонт участника до текущего максимума seq чата —
 // сообщения с seq<=горизонта больше не отдаются в истории этому пользователю и
@@ -326,7 +372,12 @@ func (i *Interactor) ClearHistory(ctx context.Context, chatID, userID int64) err
 		}
 		// Всё «до горизонта» считается прочитанным: read-маркер и непрочитанное
 		// сдвигаются к максимуму (иначе бейдж застынет на скрытых сообщениях).
-		return i.chats.SetRead(ctx, chatID, userID, maxSeq, 0)
+		if e := i.chats.SetRead(ctx, chatID, userID, maxSeq, 0); e != nil {
+			return e
+		}
+		// ...включая непрочитанные упоминания — иначе «@»-бейдж застынет.
+		_, e = i.chats.ClearMentions(ctx, chatID, userID, maxSeq)
+		return e
 	})
 }
 
