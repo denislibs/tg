@@ -93,6 +93,13 @@ type Message struct {
 	Gift   *GiftInfo
 	// ReplyMarkup — клавиатура сообщения (inline/reply), обычно у сообщений бота.
 	ReplyMarkup *ReplyMarkup
+	// E2E-шифртекст сообщения типа 'encrypted' (iv||ciphertext). Text/Entities
+	// у таких сообщений пустые — сервер хранит блоб непрозрачно.
+	EncBody []byte
+	// Self-destruct: TTLSeconds задаёт отправитель; DestructAt сервер ставит при
+	// прочтении получателем (now + ttl), затем reaper сносит блоб.
+	TTLSeconds *int
+	DestructAt *time.Time
 	// SenderName is the sender's short name (first name, else display name),
 	// populated on send for the new_message payload (not stored) — the client
 	// prefixes group chat-list previews with it, tweb-style.

@@ -4,7 +4,7 @@ import "time"
 
 type Chat struct {
 	ID      int64
-	Type    string // private | group | channel | saved
+	Type    string // private | group | channel | saved | secret
 	LastSeq int64
 }
 
