@@ -95,6 +95,15 @@ export function useChatSend({
   const sendReal = (text: string, entities?: MessageEntity[], replyTo: number | null = replyToId) => {
     const clientMsgId = mkClientMsgId()
     atBottomRef.current = true; userScrolledUpRef.current = false // sending pins to bottom
+    if (chat.type === 'secret') {
+      // Секретный чат: оптимистичный бабл с ПЛЕЙНТЕКСТОМ (тем же путём, что обычная
+      // отправка — reconcile по clientMsgId работает как всегда), затем E2E-шифрование
+      // и отправка type:'encrypted' по WS. Реальный бабл приедет расшифрованным echo
+      // new_message с тем же clientMsgId. reply/thread здесь пока не поддержаны.
+      win.appendOptimistic(text, meId ?? -1, clientMsgId, undefined, 'text', entities, undefined, undefined, { secret: true })
+      void managers.secret.sendText({ chatId: numericChatId, text, entities, clientMsgId, ttlSeconds: null })
+      return
+    }
     win.appendOptimistic(text, meId ?? -1, clientMsgId, undefined, 'text', entities)
     void managers.realtime.sendMessage({ chatId: numericChatId, text, entities, clientMsgId, replyToId: replyTo, threadRootId })
   }

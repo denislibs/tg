@@ -53,6 +53,9 @@ export function useMessageActions({
   const [viewers, setViewers] = useState<ViewersState | null>(null)
   const [translateText, setTranslateText] = useState<string | null>(null)
   const showTranslate = useSettingsStore((st) => st.showTranslateButton)
+  // Секретный чат: скрываем forward/copy/quote (поведение Telegram) — остаётся
+  // обычный reply, удаление и реакции.
+  const isSecret = chat.type === 'secret'
 
   // Takes the message itself (not its index) so MessageRow needs no `index` prop —
   // that prop shifts on every loadOlder prepend and would re-render every row. We
@@ -257,7 +260,7 @@ export function useMessageActions({
     ...(isRealChat && (msgs[msgMenu?.idx ?? -1]?.out ?? false)
       ? [{ icon: <TgIcon name="edit" size={20} />, label: 'Edit', onClick: startEdit }]
       : []),
-    { icon: <TgIcon name="copy" size={20} />, label: 'Copy', onClick: copyMsg },
+    ...(!isSecret ? [{ icon: <TgIcon name="copy" size={20} />, label: 'Copy', onClick: copyMsg }] : []),
     ...(showTranslate && (msgs[msgMenu?.idx ?? -1]?.text)
       ? [{ icon: <TgIcon name="language" size={20} />, label: 'Translate', onClick: startTranslate }]
       : []),
@@ -297,7 +300,7 @@ export function useMessageActions({
       }
       return items
     })(),
-    ...(isRealChat ? [{ icon: <TgIcon name="reply" size={20} style={{ transform: 'scaleX(-1)' }} />, label: 'Forward', onClick: openForward }] : []),
+    ...(isRealChat && !isSecret ? [{ icon: <TgIcon name="reply" size={20} style={{ transform: 'scaleX(-1)' }} />, label: 'Forward', onClick: openForward }] : []),
     ...(isRealChat ? [{ icon: <TgIcon name="checkround" size={20} />, label: 'Select', onClick: startSelect }] : []),
     ...(isRealChat && (msgs[msgMenu?.idx ?? -1]?.out ?? false)
       ? [{ icon: <TgIcon name="checks" size={20} />, label: 'Viewers', onClick: showViewers }]

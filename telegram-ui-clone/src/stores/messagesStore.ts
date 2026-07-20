@@ -77,7 +77,7 @@ interface MessagesState {
   prepend: (key: string, msgs: Message[], reachedTop: boolean) => void
   append: (key: string, msgs: Message[], reachedBottom: boolean) => void
   appendLocal: (key: string, m: Message) => void
-  appendOptimistic: (key: string, text: string, meId: number, clientMsgId: string, mediaId?: number, type?: string, entities?: MessageEntity[], groupedId?: string, media?: OptimisticMedia, extra?: { geo?: { lat: number; lng: number }; contact?: { userId: number; name: string; phone: string }; threadRootId?: number }) => void
+  appendOptimistic: (key: string, text: string, meId: number, clientMsgId: string, mediaId?: number, type?: string, entities?: MessageEntity[], groupedId?: string, media?: OptimisticMedia, extra?: { geo?: { lat: number; lng: number }; contact?: { userId: number; name: string; phone: string }; threadRootId?: number; secret?: boolean }) => void
   /** Аплоад завершён — проставить оптимистичному сообщению серверный media_id. */
   setOptimisticMedia: (key: string, clientMsgId: string, mediaId: number) => void
   reconcileAck: (key: string, clientMsgId: string, ack: { msgId: number; seq: number; createdAt: string }) => void
@@ -208,6 +208,8 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           // гео/контакт: бабл рисуется сразу из локальных данных, до ack
           geo: extra?.geo,
           contact: extra?.contact,
+          // секретный чат: плейнтекст локально, бабл сразу помечается secret
+          secret: extra?.secret,
         }
         return { msgs: dedupAsc([...w.msgs, tmp]) }
       }),
@@ -282,7 +284,10 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         // the local blob preview (localUrl) so an uploaded photo doesn't re-fetch
         // from the server (tweb reuses the local object URL).
         const optimistic = w.msgs.find((x) => x.clientId && x.seq === m.seq)
-        const merged = optimistic ? { ...m, clientId: optimistic.clientId, localUrl: optimistic.localUrl } : m
+        // secret: echo new_message несёт расшифрованный text, но флаг secret на нём
+        // не выставлен — сохраняем его из оптимистичного бабла, чтобы после ack
+        // сообщение осталось секретным.
+        const merged = optimistic ? { ...m, clientId: optimistic.clientId, localUrl: optimistic.localUrl, secret: m.secret ?? optimistic.secret } : m
         out = patch(cur as MessagesState, key, () => ({ msgs: dedupAsc([...w.msgs, merged]) }))
         cur = { ...cur, ...out }
       }
