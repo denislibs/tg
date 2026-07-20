@@ -35,6 +35,8 @@ interface UseChatSendArgs {
   isChannel: boolean
   draftPeerId: number | null
   canType: boolean
+  /** Секретный чат ещё не установлен (handshake не завершён) → отправка запрещена. */
+  secretLocked?: boolean
   meId: number | null
   win: MessageWindow
   managers: Managers
@@ -53,6 +55,7 @@ export function useChatSend({
   isChannel,
   draftPeerId,
   canType,
+  secretLocked = false,
   meId,
   win,
   managers,
@@ -164,7 +167,7 @@ export function useChatSend({
   // downloadable document). Otherwise the type is inferred from the mime.
   // caption (optional) is attached as the message text.
   const onPickFile = async (file: File, asFile = false, caption = '', groupedId?: string) => {
-    if (!isRealChat) return
+    if (!isRealChat || secretLocked) return
     const mime = file.type || 'application/octet-stream'
     const type = asFile
       ? 'document'
@@ -244,7 +247,7 @@ export function useChatSend({
   // Called by the Composer with the trimmed draft text (the Composer owns the
   // text state + clears itself afterwards); we route by chat kind / edit / reply.
   const send = (text: string, entities?: MessageEntity[], ttlSeconds?: number | null) => {
-    if (!text || !canType) return
+    if (!text || !canType || secretLocked) return
     // Edit mode: PATCH the existing message instead of sending a new one.
     if (editing && isRealChat) {
       const { msgId } = editing

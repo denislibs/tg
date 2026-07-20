@@ -10,14 +10,24 @@ import { RT } from '../realtime/events'
 beforeEach(() => { indexedDB = new IDBFactory() })
 
 interface RestCall { url: string; body: unknown }
+// Настраиваемый ответ GET /secret_chats/{id} для sync-тестов.
+type Handshake = { chat_id: number; initiator_id: number; responder_id: number; state: string; initiator_pub?: string; responder_pub?: string }
 
 function makeDeps() {
   const restCalls: RestCall[] = []
+  const getCalls: string[] = []
   const sends: Parameters<SecretDeps['conn']['sendMessage']>[0][] = []
   const events: { event: string; payload: unknown }[] = []
   const uploads: { bytes: ArrayBuffer; mime: string; size: number; fileName?: string }[] = []
+  // Тест выставляет handshake (или бросает) перед вызовом sync.
+  const getState = { handshake: null as Handshake | null, err: null as Error | null }
   const deps: SecretDeps = {
     rest: {
+      get: async <T,>(url: string): Promise<T> => {
+        getCalls.push(url)
+        if (getState.err) throw getState.err
+        return getState.handshake as unknown as T
+      },
       post: async <T,>(url: string, body: unknown): Promise<T> => {
         restCalls.push({ url, body })
         if (url === '/secret_chats') return { chat_id: 1, state: 'requested' } as unknown as T
@@ -28,7 +38,7 @@ function makeDeps() {
     broadcast: (event, payload) => { events.push({ event, payload }) },
     upload: async (bytes, mime, size, fileName) => { uploads.push({ bytes, mime, size, fileName }); return 42 },
   }
-  return { deps, restCalls, sends, events, uploads }
+  return { deps, restCalls, getCalls, sends, events, uploads, getState }
 }
 
 describe('secretManager', () => {
@@ -157,5 +167,79 @@ describe('secretManager', () => {
     expect(p.chat_id).toBe(1)
     expect(p.state).toBe('established')
     expect(p.fingerprint).toHaveLength(12)
+  })
+
+  it('sync (responder, requested): перезапоминает pub инициатора и бродкастит secretRequest', async () => {
+    const { deps, events, getState } = makeDeps()
+    const mgr = createSecretManager(deps)
+    const initiatorKp = await generateKeyPair()
+    const initiatorPub = b64FromBytes(await exportPublicKey(initiatorKp.publicKey))
+    getState.handshake = { chat_id: 1, initiator_id: 2, responder_id: 3, state: 'requested', initiator_pub: initiatorPub }
+    await mgr.sync(1, 3) // meId = responder
+    expect(events).toHaveLength(1)
+    expect(events[0].event).toBe(RT.secretRequest)
+    // pub перезапомнен → accept работает без stashRequest
+    const { fingerprint } = await mgr.accept(1)
+    expect(fingerprint).toHaveLength(12)
+  })
+
+  it('sync (initiator, requested): бродкастит secretRequest (bridge смапит в awaiting), pub не трогает', async () => {
+    const { deps, events, getState } = makeDeps()
+    const mgr = createSecretManager(deps)
+    getState.handshake = { chat_id: 1, initiator_id: 2, responder_id: 3, state: 'requested', initiator_pub: 'x' }
+    await mgr.sync(1, 2) // meId = initiator
+    expect(events).toHaveLength(1)
+    expect(events[0].event).toBe(RT.secretRequest)
+    const p = events[0].payload as { initiator_id: number; responder_id: number }
+    expect(p.initiator_id).toBe(2)
+    expect(p.responder_id).toBe(3)
+  })
+
+  it('sync (initiator, accepted, ключа нет): доводит ключ из responder_pub и бродкастит established', async () => {
+    const { deps, events, getState } = makeDeps()
+    const mgr = createSecretManager(deps)
+    await mgr.start(3) // savePending(1) — инициатор
+    const responderKp = await generateKeyPair()
+    const responderPub = b64FromBytes(await exportPublicKey(responderKp.publicKey))
+    getState.handshake = { chat_id: 1, initiator_id: 2, responder_id: 3, state: 'accepted', responder_pub: responderPub }
+    await mgr.sync(1, 2)
+    expect(await loadPending(1)).toBeNull() // ключ доведён, pending очищен
+    const accept = events.find((e) => e.event === RT.secretAccept)!
+    expect(accept).toBeDefined()
+    const p = accept.payload as { state: string; fingerprint: string[] }
+    expect(p.state).toBe('established')
+    expect(p.fingerprint).toHaveLength(12)
+  })
+
+  it('sync (accepted, ключ уже есть): бродкастит established из локального ключа', async () => {
+    const { deps, events, getState } = makeDeps()
+    const mgr = createSecretManager(deps)
+    // получатель уже вывел ключ на accept
+    const initiatorKp = await generateKeyPair()
+    const initiatorPub = b64FromBytes(await exportPublicKey(initiatorKp.publicKey))
+    mgr.stashRequest(1, initiatorPub)
+    await mgr.accept(1)
+    getState.handshake = { chat_id: 1, initiator_id: 2, responder_id: 3, state: 'accepted', responder_pub: 'z' }
+    await mgr.sync(1, 3) // meId = responder (ключ есть)
+    const accept = events.find((e) => e.event === RT.secretAccept)!
+    expect(accept).toBeDefined()
+    expect((accept.payload as { state: string }).state).toBe('established')
+  })
+
+  it('sync (rejected): бродкастит secretReject', async () => {
+    const { deps, events, getState } = makeDeps()
+    const mgr = createSecretManager(deps)
+    getState.handshake = { chat_id: 1, initiator_id: 2, responder_id: 3, state: 'rejected' }
+    await mgr.sync(1, 3)
+    expect(events).toHaveLength(1)
+    expect(events[0].event).toBe(RT.secretReject)
+  })
+
+  it('sync: ошибка GET (404/нет доступа) не бросается и ничего не бродкастит', async () => {
+    const { deps, events, getState } = makeDeps()
+    const mgr = createSecretManager(deps)
+    getState.err = new Error('403 forbidden')
+    await expect(mgr.sync(1, 3)).resolves.toBeUndefined()
+    expect(events).toHaveLength(0)
   })
 })

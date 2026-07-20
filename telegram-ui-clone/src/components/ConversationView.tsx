@@ -55,6 +55,7 @@ import ScrollDownFab from './conversation/ScrollDownFab'
 import SelectionBar from './conversation/SelectionBar'
 import MessageContextMenu from './conversation/MessageContextMenu'
 import { useChatsStore } from '../stores/chatsStore'
+import { useSecretChatStore } from '../stores/secretChatStore'
 import { type MessageEntity } from '../core/models'
 import type { InlineResult } from '../core/managers/botsManager'
 import { openWebApp } from '../core/webapp'
@@ -133,6 +134,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const narrow = useMediaQuery('(max-width:900px)')
   const isChannel = chat.type === 'channel'
   const isGroup = chat.type === 'group'
+  const isSecret = chat.type === 'secret'
   // Автозагрузка медиа для этого чата (tweb chat.autoDownload)
   const autoDownload = useChatAutoDownload(chat.type, chat.peerId)
 
@@ -157,6 +159,40 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   )
   const muted = dialogMuted ?? !!chat.muted
   const managers = useManagers()
+
+  // Секретный чат: наблюдаемый статус E2E-handshake (secretChatStore ← realtimeBridge).
+  // При открытии чата восстанавливаем состояние с сервера (reload-safe): secret.sync
+  // либо доводит ключ инициатора, либо возвращает 'requested'/'awaiting'/'rejected'.
+  const secretStatus = useSecretChatStore((st) => st.byChat[numericChatId]?.status)
+  useEffect(() => {
+    if (!isSecret || !isRealChat) return
+    void managers.secret.sync(numericChatId, useChatsStore.getState().meId ?? -1)
+  }, [isSecret, isRealChat, numericChatId, managers])
+  // Пока handshake не завершён — отправка запрещена (иначе sendText/sendMedia падают
+  // с «key missing»), а вместо композера показываем бар accept/await/rejected.
+  const secretLocked = isSecret && secretStatus !== 'established'
+  const [secretBusy, setSecretBusy] = useState(false)
+  const onSecretAccept = useEvent(async () => {
+    if (secretBusy) return
+    setSecretBusy(true)
+    try {
+      const res = await managers.secret.accept(numericChatId)
+      useSecretChatStore.getState().setStatus(numericChatId, 'established')
+      useSecretChatStore.getState().setFingerprint(numericChatId, res.fingerprint)
+    } finally {
+      setSecretBusy(false)
+    }
+  })
+  const onSecretReject = useEvent(async () => {
+    if (secretBusy) return
+    setSecretBusy(true)
+    try {
+      await managers.secret.reject(numericChatId)
+      useSecretChatStore.getState().setStatus(numericChatId, 'rejected')
+    } finally {
+      setSecretBusy(false)
+    }
+  })
   const threadRootId = thread?.rootMsgId
   const win = useMessageWindow(isRealChat ? numericChatId : -1, 40, threadRootId)
   // Тред комментариев: после корневого поста канала (подшит бэком с seq=0)
@@ -338,7 +374,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     openPicker, fileInputRef, pickAsFileRef,
     sendGeo, sendContact,
   } = useChatSend({
-    chat, numericChatId, isRealChat, isChannel, draftPeerId, canType,
+    chat, numericChatId, isRealChat, isChannel, draftPeerId, canType, secretLocked,
     meId, win, managers, threadRootId, atBottomRef, userScrolledUpRef,
     onChatCreated,
   })
@@ -715,6 +751,47 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
             <motion.div whileTap={{ scale: 0.99 }} className={s.muteBtn} onClick={() => onComposerSend('/start')}>
               <Text weight={600} size={15.5} color="var(--tg-accent)">{t('Start')}</Text>
             </motion.div>
+          </div>
+        ) : secretLocked ? (
+          // Секретный чат до завершения handshake: бар вместо композера (гейтинг
+          // отправки — сам факт, что <Composer> тут не рендерится + secretLocked в useChatSend).
+          <div className={classNames(s.footer, s.footerCompose)}>
+            {scrollDownFab}
+            <div className={s.secretBar}>
+              {secretStatus === 'requested' ? (
+                <>
+                  <Text size={14.5} style={{ textAlign: 'center' }} color="var(--tg-textSecondary)">
+                    {t('Пользователь приглашает вас в секретный чат')}
+                  </Text>
+                  <div className={s.secretBarBtns}>
+                    <motion.button
+                      type="button"
+                      whileTap={{ scale: 0.98 }}
+                      className={classNames(s.secretBtn, s.secretBtnPrimary)}
+                      disabled={secretBusy}
+                      onClick={onSecretAccept}
+                    >
+                      <Text weight={600} size={15} color="#fff">{t('Принять')}</Text>
+                    </motion.button>
+                    <motion.button
+                      type="button"
+                      whileTap={{ scale: 0.98 }}
+                      className={s.secretBtn}
+                      disabled={secretBusy}
+                      onClick={onSecretReject}
+                    >
+                      <Text weight={600} size={15} color="var(--tg-textSecondary)">{t('Отклонить')}</Text>
+                    </motion.button>
+                  </div>
+                </>
+              ) : (
+                <Text size={14.5} style={{ textAlign: 'center' }} color="var(--tg-textSecondary)">
+                  {secretStatus === 'rejected'
+                    ? t('Секретный чат отклонён')
+                    : t('Ожидание, пока собеседник примет секретный чат…')}
+                </Text>
+              )}
+            </div>
           </div>
         ) : canType ? (
           <div className={classNames(s.footer, s.footerCompose)}>

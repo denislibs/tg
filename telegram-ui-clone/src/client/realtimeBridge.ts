@@ -171,8 +171,11 @@ export function startRealtime(): void {
   smp.on(RT.secretRequest, (raw) => {
     const r = raw as { chat_id: number; initiator_id: number; responder_id: number }
     const meId = useChatsStore.getState().meId
-    // Только получатель видит входящий запрос; инициатор остаётся 'awaiting'.
+    // Роль решает статус: получатель видит входящий запрос ('requested' → бар с
+    // «Принять/Отклонить»), инициатор ждёт ('awaiting'). Живьём сервер шлёт кадр
+    // только получателю; при reload оба состояния восстанавливает secret.sync().
     if (meId === r.responder_id) useSecretChatStore.getState().setStatus(r.chat_id, 'requested')
+    else if (meId === r.initiator_id) useSecretChatStore.getState().setStatus(r.chat_id, 'awaiting')
   })
   smp.on(RT.secretAccept, (raw) => {
     const r = raw as { chat_id: number; state?: string; fingerprint?: string[] }

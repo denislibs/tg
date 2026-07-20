@@ -9,7 +9,7 @@ import { RT } from '../realtime/events'
 import type { SecretMedia } from '../models'
 
 export interface SecretDeps {
-  rest: { post: <T>(url: string, body: unknown) => Promise<T> }
+  rest: { get: <T>(url: string) => Promise<T>; post: <T>(url: string, body: unknown) => Promise<T> }
   conn: { sendMessage: (args: { chatId: number; text: string; clientMsgId: string; type?: string; encBody?: string; mediaId?: number; ttlSeconds?: number | null }) => void }
   broadcast: (event: string, payload: unknown) => void
   /** Аплоад непрозрачного ciphertext-блоба (media.upload воркера) → media_id. */
@@ -27,6 +27,16 @@ export function createSecretManager(deps: SecretDeps) {
     const secret = await deriveSecret(priv, b64ToBytes(peerPubB64))
     await saveKey(chatId, { key: secret.key, fingerprint: secret.fingerprint })
     return fingerprintEmoji(secret.fingerprint)
+  }
+
+  // Инициатор доводит ключ, приняв кадр secret_chat_accept (responder_pub).
+  // Вынесено из return-объекта, чтобы sync() мог переиспользовать при восстановлении.
+  async function complete(chatId: number, responderPubB64: string): Promise<void> {
+    const priv = await loadPending(chatId)
+    if (!priv) return // не инициатор или уже завершено
+    const fingerprint = await establish(chatId, priv, responderPubB64)
+    await clearPending(chatId)
+    deps.broadcast(RT.secretAccept, { chat_id: chatId, state: 'established', fingerprint })
   }
 
   return {
@@ -57,16 +67,52 @@ export function createSecretManager(deps: SecretDeps) {
     },
 
     // Инициатор доводит ключ, приняв кадр secret_chat_accept (responder_pub).
-    async complete(chatId: number, responderPubB64: string): Promise<void> {
-      const priv = await loadPending(chatId)
-      if (!priv) return // не инициатор или уже завершено
-      const fingerprint = await establish(chatId, priv, responderPubB64)
-      await clearPending(chatId)
-      deps.broadcast(RT.secretAccept, { chat_id: chatId, state: 'established', fingerprint })
-    },
+    complete,
 
     async reject(chatId: number): Promise<void> {
       await deps.rest.post(`/secret_chats/${chatId}/reject`, {})
+    },
+
+    // Восстановление handshake после перезагрузки/первого открытия чата: тянем
+    // серверное состояние и синхронизируем локальный ключ + secretChatStore.
+    // Ключи device-local (IndexedDB) переживают reload; in-memory incomingPub — нет,
+    // поэтому pub инициатора перезапоминаем здесь. Ошибки (404/нет доступа/сеть)
+    // глотаем — это не должно всплыть в UI.
+    async sync(chatId: number, meId: number): Promise<void> {
+      try {
+        const hs = await deps.rest.get<{
+          chat_id: number
+          initiator_id: number
+          responder_id: number
+          state: 'requested' | 'accepted' | 'rejected' | 'discarded'
+          initiator_pub?: string
+          responder_pub?: string
+        }>(`/secret_chats/${chatId}`)
+        if (hs.state === 'accepted') {
+          const stored = await loadKey(chatId)
+          if (meId === hs.initiator_id && !stored && hs.responder_pub) {
+            // Инициатор перезагрузился до завершения ключа → доводим из responder_pub
+            // (complete сам броадкастит established+fingerprint).
+            await complete(chatId, hs.responder_pub)
+          } else if (stored) {
+            // Ключ уже есть (в т.ч. получатель, выведший его на accept) → показать established.
+            deps.broadcast(RT.secretAccept, { chat_id: chatId, state: 'established', fingerprint: fingerprintEmoji(stored.fingerprint) })
+          }
+        } else if (hs.state === 'requested') {
+          if (meId === hs.responder_id && hs.initiator_pub) {
+            incomingPub.set(chatId, hs.initiator_pub)
+            deps.broadcast(RT.secretRequest, { chat_id: chatId, initiator_id: hs.initiator_id, responder_id: hs.responder_id })
+          } else if (meId === hs.initiator_id) {
+            // Инициатор ждёт: bridge смапит RT.secretRequest по роли в 'awaiting'.
+            deps.broadcast(RT.secretRequest, { chat_id: chatId, initiator_id: hs.initiator_id, responder_id: hs.responder_id })
+          }
+        } else if (hs.state === 'rejected') {
+          deps.broadcast(RT.secretReject, { chat_id: chatId })
+        }
+        // 'discarded' — no-op.
+      } catch {
+        // 404 / нет доступа / сеть — no-op, не бросаем в UI.
+      }
     },
 
     // Шифрует текст ключом чата и отправляет как type:'encrypted' по WS.
