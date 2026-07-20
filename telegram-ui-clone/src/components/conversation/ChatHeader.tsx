@@ -306,7 +306,11 @@ function ChatHeader({
             />
             <div className={s.peerBody}>
               <div className={s.peerTitle}>
-                <Text noWrap weight={500} size={16} color="var(--tg-textPrimary)" style={{ lineHeight: 1.2 }}>
+                {/* секретный чат: замок + зелёное имя (tweb .is-secret) */}
+                {chat.type === 'secret' && (
+                  <TgIcon name="lock" size={16} color="var(--tg-green)" style={{ flexShrink: 0 }} />
+                )}
+                <Text noWrap weight={500} size={16} color={chat.type === 'secret' ? 'var(--tg-green)' : 'var(--tg-textPrimary)'} style={{ lineHeight: 1.2 }}>
                   {chat.name}
                 </Text>
                 {chat.verified && <VerifiedBadge size={18} />}

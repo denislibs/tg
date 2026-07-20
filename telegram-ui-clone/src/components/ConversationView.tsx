@@ -790,6 +790,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
             chat={chat}
             onClose={() => setInfoOpen(false)}
             onOpenPeer={onOpenPeer}
+            onChatCreated={onChatCreated}
             canAddMembers={canAddMember}
           />
         )}

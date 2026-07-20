@@ -139,6 +139,7 @@ const ru: Dict = {
   'Keyboard Shortcuts': 'Горячие клавиши',
   'Telegram Premium': 'Telegram Premium',
   'Send a Gift': 'Отправить подарок',
+  'Start Secret Chat': 'Начать секретный чат',
   // Stars / Gifts
   'Telegram Stars': 'Telegram Stars',
   'Your balance': 'Ваш баланс',

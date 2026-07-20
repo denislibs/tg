@@ -63,6 +63,8 @@
   // shimmer-скелетон списка диалогов
   --tg-skelBase: #e6e6ea;
   --tg-skelHi: #f2f2f5;
+  // акцент секретного чата (замок + имя) — зелёный tweb --green-color
+  --tg-green: #4dcd5e;
 }
 
 // "Day" — brighter light theme, teal/blue accent; rest inherits classic (:root).
@@ -121,6 +123,7 @@
   --tg-switchOff: #707579;
   --tg-skelBase: #2a2a2a;
   --tg-skelHi: #3a3a3a;
+  --tg-green: #61d36b;
 }
 
 // "Dark" — neutral near-black (vs Night's purple), blue accent; deltas over night.

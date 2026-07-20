@@ -22,6 +22,7 @@ import { useT } from '../i18n'
 import { useGroupInfo, RIGHTS, roleLabel, type RealMember } from '../core/hooks/useGroupInfo'
 import { useMessagesStore } from '../stores/messagesStore'
 import { useChatsStore, loadChats } from '../stores/chatsStore'
+import { useSecretChatStore } from '../stores/secretChatStore'
 import { useAudioStore, type AudioTrack } from '../stores/audioStore'
 import { markMediaPlayed } from '../core/mediaRead'
 import PlayPauseGlyph from './PlayPauseGlyph'
@@ -76,7 +77,7 @@ function countLabel(tab: string, n: number, isChannel: boolean): string {
 // высота шапки панели — sticky-отступ табов и порог header-filled (tweb 3.5rem)
 const HEADER_H = 56
 
-export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers }: { chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void; canAddMembers?: boolean }) {
+export default function UserInfoPanel({ chat, onClose, onOpenPeer, onChatCreated, canAddMembers }: { chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void; onChatCreated?: (chatId: number) => void; canAddMembers?: boolean }) {
   const t = useT()
   const narrow = useMediaQuery('(max-width:900px)')
   const managers = useManagers()
@@ -231,6 +232,22 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
   // Подарки в профиле (tweb Gifts tab) — только для пользователя (private).
   const meId = useChatsStore((st) => st.meId)
   const isUser = !isSaved && !isGroup && !isChannel && peerId != null
+
+  // Начать секретный чат (tweb btnStartSecretChat): E2E-handshake через
+  // managers.secret.start, затем открыть созданный чат в статусе «ожидание».
+  const [startingSecret, setStartingSecret] = useState(false)
+  const canStartSecret = isUser && peerId !== meId && chat.type === 'private'
+  const startSecretChat = async () => {
+    if (startingSecret || peerId == null) return
+    setStartingSecret(true)
+    try {
+      const { chatId } = await managers.secret.start(peerId)
+      useSecretChatStore.getState().setStatus(chatId, 'awaiting')
+      onChatCreated?.(chatId)
+    } catch {
+      setStartingSecret(false)
+    }
+  }
   const [giftPopupOpen, setGiftPopupOpen] = useState(false)
   const [gifts, setGifts] = useState<GiftInfo[]>([])
   const [selectedGift, setSelectedGift] = useState<GiftInfo | null>(null)
@@ -505,6 +522,18 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
                 label="Send a Gift"
                 accent
                 onClick={() => setGiftPopupOpen(true)}
+              />
+            </Section>
+          )}
+
+          {/* Начать секретный чат (tweb btnStartSecretChat) — E2E-чат с собеседником */}
+          {canStartSecret && (
+            <Section>
+              <Row
+                icon={<TgIcon name="lock" size={24} />}
+                label="Start Secret Chat"
+                accent
+                onClick={() => { void startSecretChat() }}
               />
             </Section>
           )}
