@@ -24,6 +24,9 @@ export const RT = {
   groupCall: 'rt:group_call',
   botCallbackAnswer: 'rt:bot_callback_answer',
   geoLiveUpdate: 'rt:geo_live_update',
+  secretRequest: 'rt:secret_chat_request',
+  secretAccept: 'rt:secret_chat_accept',
+  secretReject: 'rt:secret_chat_reject',
   state: 'rt:state',
 } as const
 
@@ -35,6 +38,16 @@ export interface EditMessageEvt { chat_id: number; msg_id: number; seq: number; 
 export interface GeoLiveUpdateEvt { chat_id: number; msg_id: number; seq: number; geo: RawGeo }
 // Ответ бота на callback уже после таймаута синхронного ожидания — тост по WS.
 export interface BotCallbackAnswerEvt { text: string; alert: boolean }
+// Рукопожатие секретного чата (request/accept/reject) — realtimeBridge
+// маппит snake_case-кадр в этот camelCase-вид; воркер бродкастит сырой payload.
+export interface SecretHandshakeEvt {
+  chatId: number
+  initiatorId: number
+  responderId: number
+  initiatorPub?: string // base64 (в request)
+  responderPub?: string // base64 (в accept)
+  state: string
+}
 export interface DeleteMessageEvt { chat_id: number; msg_id: number; seq: number; for_me: boolean }
 export interface PinMessageEvt { chat_id: number; msg_id: number; pinned: boolean }
 export interface ReadEvt { chat_id: number; user_id: number; up_to_seq: number }

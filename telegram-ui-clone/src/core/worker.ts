@@ -116,6 +116,9 @@ const conn = newConnectionManager({
     else if (type === 'balance_update') broadcast(RT.balanceUpdate, payload)
     else if (type === 'bot_callback_answer') broadcast(RT.botCallbackAnswer, payload)
     else if (type === 'geo_live_update') { messages.cacheGeoLive(payload as never); broadcast(RT.geoLiveUpdate, payload) }
+    else if (type === 'secret_chat_request') broadcast(RT.secretRequest, payload)
+    else if (type === 'secret_chat_accept') broadcast(RT.secretAccept, payload)
+    else if (type === 'secret_chat_reject') broadcast(RT.secretReject, payload)
     else if (type.startsWith('group_call_')) broadcast(RT.groupCall, { t: type, d: payload })
     else if (type.startsWith('call_')) broadcast(RT.call, { t: type, d: payload })
   },

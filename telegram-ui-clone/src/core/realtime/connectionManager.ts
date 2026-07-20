@@ -3,7 +3,7 @@ import type { WsClient } from '../net/wsClient'
 import type { ConnState } from './events'
 import type { MessageEntity } from '../models'
 
-export interface SendArgs { chatId: number; text: string; entities?: MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; mediaId?: number | null; type?: string; groupedId?: string; geo?: { lat: number; lng: number; title?: string; address?: string; livePeriod?: number; heading?: number }; contactUserId?: number; threadRootId?: number | null }
+export interface SendArgs { chatId: number; text: string; entities?: MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; mediaId?: number | null; type?: string; groupedId?: string; geo?: { lat: number; lng: number; title?: string; address?: string; livePeriod?: number; heading?: number }; contactUserId?: number; threadRootId?: number | null; encBody?: string; ttlSeconds?: number | null }
 
 export interface CMDeps {
   ws: WsClient
@@ -20,7 +20,7 @@ export interface CMDeps {
 const HEARTBEAT_MS = 20_000
 const PONG_GRACE = 2 // missed pongs before force-reconnect
 const MAX_BACKOFF = 30_000
-const FRAME_TYPES = ['new_message', 'edit_message', 'delete_message', 'pin_message', 'read', 'media_read', 'chat_removed', 'typing', 'presence', 'reaction', 'draft_update', 'dialog_pin', 'dialog_archive', 'poll_update', 'message_ack', 'message_error', 'pong', 'call_request', 'call_accept', 'call_decline', 'call_end', 'call_signal', 'group_call_update', 'group_call_signal']
+const FRAME_TYPES = ['new_message', 'edit_message', 'delete_message', 'pin_message', 'read', 'media_read', 'chat_removed', 'typing', 'presence', 'reaction', 'draft_update', 'dialog_pin', 'dialog_archive', 'poll_update', 'message_ack', 'message_error', 'pong', 'call_request', 'call_accept', 'call_decline', 'call_end', 'call_signal', 'group_call_update', 'group_call_signal', 'secret_chat_request', 'secret_chat_accept', 'secret_chat_reject']
 
 export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, outboxStore }: CMDeps) {
   const outbox = new Map<string, SendArgs>()
@@ -96,7 +96,7 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, 
   }
 
   function sendFrame(m: SendArgs) {
-    ws.send('send_message', { chat_id: m.chatId, type: m.type ?? 'text', text: m.text, entities: m.entities ?? null, client_msg_id: m.clientMsgId, reply_to_id: m.replyToId ?? null, media_id: m.mediaId ?? null, grouped_id: m.groupedId ?? '', geo_lat: m.geo?.lat ?? null, geo_lng: m.geo?.lng ?? null, geo_title: m.geo?.title ?? null, geo_address: m.geo?.address ?? null, geo_live_period: m.geo?.livePeriod ?? null, geo_heading: m.geo?.heading ?? null, contact_user_id: m.contactUserId ?? null, thread_root_id: m.threadRootId ?? null })
+    ws.send('send_message', { chat_id: m.chatId, type: m.type ?? 'text', text: m.text, entities: m.entities ?? null, client_msg_id: m.clientMsgId, reply_to_id: m.replyToId ?? null, media_id: m.mediaId ?? null, grouped_id: m.groupedId ?? '', geo_lat: m.geo?.lat ?? null, geo_lng: m.geo?.lng ?? null, geo_title: m.geo?.title ?? null, geo_address: m.geo?.address ?? null, geo_live_period: m.geo?.livePeriod ?? null, geo_heading: m.geo?.heading ?? null, contact_user_id: m.contactUserId ?? null, thread_root_id: m.threadRootId ?? null, enc_body: m.encBody ?? null, ttl_seconds: m.ttlSeconds ?? null })
   }
 
   return {
