@@ -36,6 +36,7 @@ import { loadPrivacy } from './stores/privacyStore'
 import { loadDrafts, useDraftsStore } from './stores/draftsStore'
 import { loadFolders } from './stores/foldersStore'
 import FolderInvitePopup from './components/folders/FolderInvitePopup'
+import ReportPopup from './components/ReportPopup'
 import { loadStars } from './stores/starsStore'
 import { usePipStore } from './core/pip'
 import { ANIMATE_MAIN_KEY, PREV_ACCOUNT_KEY, playMainScreenEnter } from './core/accountTransition'
@@ -528,6 +529,10 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 
       {/* Mini-app бота (iframe + мост window.Telegram.WebApp) */}
       <WebAppModal />
+
+      {/* Жалобы (tweb reportMessages): один глобальный попап, открывается из
+          контекстного меню сообщения и из ⋮-меню чата через reportStore */}
+      <ReportPopup />
 
       {/* Блокировка код-паролем поверх всего (tweb passcodeLockScreen) */}
       {locked && <PasscodeLockScreen />}

@@ -12,6 +12,7 @@ import { useT } from '../i18n'
 import { useManagers } from '../core/hooks/useManagers'
 import { loadChats } from '../stores/chatsStore'
 import { usePrivacyStore } from '../stores/privacyStore'
+import { useReportStore } from '../stores/reportStore'
 
 type Item = { icon: ReactNode; label: string; danger?: boolean; submenu?: boolean; onClick?: () => void }
 
@@ -84,6 +85,18 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
     ? { icon: <TgIcon name="delete" size={20} />, label: 'Clear History', danger: true, onClick: () => { onClearHistory(); close() } }
     : null
 
+  // «Пожаловаться» на чат целиком (tweb reportPeer): открывает глобальный
+  // ReportPopup через reportStore без id сообщения.
+  const reportItem: Item = {
+    icon: <TgIcon name="hand" size={20} />,
+    label: 'Report',
+    danger: true,
+    onClick: () => {
+      if (Number.isFinite(numericChatId)) useReportStore.getState().open({ chatId: numericChatId })
+      close()
+    },
+  }
+
   let items: Item[]
   if (chat.type === 'private') {
     // Сервисному аккаунту «Telegram» нельзя позвонить, заблокировать его или
@@ -111,6 +124,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
           ]
         : []),
       ...(clearItem ? [clearItem] : []),
+      ...(!isService ? [reportItem] : []),
       { icon: <TgIcon name="delete" size={20} />, label: 'Delete Chat', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
     ]
   } else if (chat.type === 'group') {
@@ -130,6 +144,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
       { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
       { icon: <TgIcon name="gift" size={20} />, label: 'Send a Gift' },
       ...(clearItem ? [clearItem] : []),
+      reportItem,
       { icon: <TgIcon name="delete" size={20} />, label: owned ? 'Delete Group' : 'Leave Group', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
     ]
   } else if (owned) {
@@ -153,6 +168,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
       { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
       { icon: <TgIcon name="gift" size={20} />, label: 'Send a Gift' },
       { icon: <TgIcon name="boost" size={20} />, label: 'Boost Channel' },
+      reportItem,
       { icon: <TgIcon name="delete" size={20} />, label: 'Leave Channel', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
     ]
   }

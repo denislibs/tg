@@ -12,6 +12,7 @@ import TgIcon from '../../components/TgIcon'
 import { peerColor } from '../../components/peerColor'
 import { useEvent } from './useEvent'
 import { useMessagesStore, winKey } from '../../stores/messagesStore'
+import { useReportStore } from '../../stores/reportStore'
 import { useSettingsStore } from '../../settings'
 import type { Chat, ConvMsg } from '../../data'
 import type { Managers } from '../../client/bootstrap'
@@ -153,6 +154,14 @@ export function useMessageActions({
     }
     setDelIds(null)
     clearSelection()
+  }
+
+  // «Пожаловаться» на сообщение (tweb reportMessages): открывает глобальный
+  // ReportPopup через reportStore (цель — чат + id сообщения).
+  const openReport = () => {
+    const raw = menuRawMsg()
+    closeMsgMenu()
+    if (raw?.id != null && isRealChat) useReportStore.getState().open({ chatId: numericChatId, msgId: raw.id })
   }
 
   const openForward = () => {
@@ -340,6 +349,10 @@ export function useMessageActions({
     ...(isRealChat ? [{ icon: <TgIcon name="checkround" size={20} />, label: 'Select', onClick: startSelect }] : []),
     ...(isRealChat && (msgs[msgMenu?.idx ?? -1]?.out ?? false)
       ? [{ icon: <TgIcon name="checks" size={20} />, label: 'Viewers', onClick: showViewers }]
+      : []),
+    // «Пожаловаться» — на чужие сообщения в реальном чате (своё не жалуют).
+    ...(isRealChat && !(msgs[msgMenu?.idx ?? -1]?.out ?? false)
+      ? [{ icon: <TgIcon name="hand" size={20} />, label: 'Report', danger: true, onClick: openReport }]
       : []),
     ...(isRealChat ? [{ icon: <TgIcon name="delete" size={20} />, label: 'Delete', danger: true, onClick: openDelete }] : []),
   ]
