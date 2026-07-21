@@ -89,9 +89,21 @@ $open-duration: 0.2s; // tweb --open-duration
   pointer-events: none;
 }
 
-// у видео остаются нативные контролы — события нужны
+// видео принимает клик (play/pause), картинка — нет
 video.media {
   pointer-events: auto;
+}
+
+// фуллскрин мовера: гасим морф-transform, растягиваем на весь экран, видео —
+// contain (в обычном режиме бокс уже по аспекту, поэтому cover=contain)
+.mover:fullscreen {
+  transform: none !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background: #000;
+}
+.mover:fullscreen video.media {
+  object-fit: contain;
 }
 
 .topBar {

@@ -59,6 +59,9 @@ export interface Settings {
   // контекстном меню; translateTo — целевой язык (ISO-код), '' = язык интерфейса.
   showTranslateButton: boolean
   translateTo: string
+  // Скорость воспроизведения видео в медиа-вьюере (tweb appMediaPlaybackController
+  // .playbackRate): восстанавливается при открытии следующего видео. Дефолт 1.
+  videoRate: number
 }
 
 // Галочки автозагрузки по типам чатов (tweb AutoDownloadPeerTypeSettings).
@@ -102,6 +105,7 @@ const DEFAULTS: Settings = {
   reduceMotion: false,
   showTranslateButton: true,
   translateTo: '',
+  videoRate: 1,
 }
 
 const KEY = 'tg-settings'
@@ -162,6 +166,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       reduceMotion: s.reduceMotion,
       showTranslateButton: s.showTranslateButton,
       translateTo: s.translateTo,
+      videoRate: s.videoRate,
     }
     try {
       localStorage.setItem(KEY, JSON.stringify(toSave))

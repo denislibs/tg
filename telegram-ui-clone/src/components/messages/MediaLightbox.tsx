@@ -24,6 +24,8 @@ import { peerColor } from '../peerColor'
 import { useManagers } from '../../core/hooks/useManagers'
 import type { MediaMeta } from '../../core/managers/mediaManager'
 import { enterPip, pipSupported, usePortalContainer } from '../../core/pip'
+import { useSettingsStore } from '../../settings'
+import VideoControls from './VideoControls'
 import s from './MediaLightbox.module.scss'
 
 export interface LightboxItem {
@@ -79,6 +81,8 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
 }) {
   const managers = useManagers()
   const portalContainer = usePortalContainer()
+  const videoRate = useSettingsStore((st) => st.videoRate)
+  const updateSettings = useSettingsStore((st) => st.update)
   const [idx, setIdx] = useState(index)
   const [meta, setMeta] = useState<MediaMeta | null>(null)
   const [url, setUrl] = useState('')
@@ -104,8 +108,16 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
   // Видео-аватар (tweb photo_video): direct-src элемент с videoUrl — poster = src.
   const isAvatarVideo = !!item?.videoUrl
   const isVideo = isAvatarVideo || item?.type === 'video' || !!meta?.mime.startsWith('video/')
+  // Обычное видео чата (не видео-аватар) — с кастомными контролами и скоростью.
+  const isChatVideo = isVideo && !isAvatarVideo
 
   useEffect(() => { setZoom(1); setRot(0) }, [idx])
+
+  // Восстанавливаем сохранённую скорость на каждом новом видео (tweb
+  // appMediaPlaybackController.playbackRate персистится между открытиями).
+  useEffect(() => {
+    if (isChatVideo && videoElRef.current) videoElRef.current.playbackRate = videoRate
+  }, [isChatVideo, url, videoRate])
 
   useEffect(() => {
     let alive = true
@@ -279,17 +291,31 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // не перехватываем клавиши, когда фокус в поле ввода (напр. слайдер громкости)
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      const v = videoElRef.current
       if (e.key === 'Escape') close()
-      else if (e.key === 'ArrowRight') nav(1)
-      else if (e.key === 'ArrowLeft') nav(-1)
-      else if (e.key === '+' || e.key === '=') stepZoom(0.4)
+      else if (e.key === ' ' && isChatVideo && v) {
+        // Space — play/pause видео (tweb KeyCode.Space togglePlay)
+        e.preventDefault()
+        if (v.paused) void v.play().catch(() => {})
+        else v.pause()
+      } else if (e.key === 'ArrowRight') {
+        // на видео стрелки перематывают ±5с (tweb seek), иначе листают медиа
+        if (isChatVideo && v) v.currentTime = Math.min(v.duration || 0, v.currentTime + 5)
+        else nav(1)
+      } else if (e.key === 'ArrowLeft') {
+        if (isChatVideo && v) v.currentTime = Math.max(0, v.currentTime - 5)
+        else nav(-1)
+      } else if (e.key === '+' || e.key === '=') stepZoom(0.4)
       else if (e.key === '-') stepZoom(-0.4)
       else if (e.key.toLowerCase() === 'r' || e.key.toLowerCase() === 'к') setRot((r) => r - 90)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idx, items.length])
+  }, [idx, items.length, isChatVideo])
 
   const onWheel = (e: React.WheelEvent) => { e.preventDefault(); stepZoom(e.deltaY < 0 ? 0.3 : -0.3) }
   const c = zoom * 140
@@ -350,8 +376,9 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
         className={classNames(s.mover, s.animated)}
         onClick={(e) => e.stopPropagation()}
         onWheel={onWheel}
-        onDoubleClick={() => setZoom((z) => (z > 1 ? 1 : 2.5))}
-        style={{ width: final.width, height: final.height, cursor: zoom > 1 ? 'grab' : 'zoom-in' }}
+        // для видео двойной клик не зумит — одиночный клик играет/паузит (tweb)
+        onDoubleClick={isChatVideo ? undefined : () => setZoom((z) => (z > 1 ? 1 : 2.5))}
+        style={{ width: final.width, height: final.height, cursor: zoom > 1 ? 'grab' : isChatVideo ? 'default' : 'zoom-in' }}
       >
         <div ref={aspecterRef} className={s.aspecter}>
           <motion.div
@@ -366,16 +393,22 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
           >
             {isVideo && url ? (
               // Видео-аватар — muted-loop autoplay без контролов (tweb photo_video),
-              // still-кадр как poster; обычное видео чата — с нативными контролами.
+              // still-кадр как poster; обычное видео чата — с кастомными контролами
+              // (VideoControls ниже), клик по видео играет/паузит.
               <video
                 ref={videoElRef}
                 src={url}
                 poster={isAvatarVideo ? imgSrc || item.src : undefined}
-                controls={!isAvatarVideo}
                 autoPlay
                 muted={isAvatarVideo}
                 loop={isAvatarVideo}
                 playsInline
+                onLoadedMetadata={isChatVideo ? (e) => { e.currentTarget.playbackRate = videoRate } : undefined}
+                onClick={isChatVideo && zoom === 1 ? (e) => {
+                  const v = e.currentTarget
+                  if (v.paused) void v.play().catch(() => {})
+                  else v.pause()
+                } : undefined}
                 className={s.media}
               />
             ) : (
@@ -396,6 +429,16 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
             )}
           </motion.div>
         </div>
+        {/* кастомная панель управления видео (tweb VideoPlayer controls) —
+            сиблинг аспектера внутри мовера: не зумится, уходит в фуллскрин вместе */}
+        {isChatVideo && url && !closing && (
+          <VideoControls
+            videoRef={videoElRef}
+            fullscreenRef={moverRef}
+            rate={videoRate}
+            onRateChange={(r) => updateSettings({ videoRate: r })}
+          />
+        )}
       </div>
     </div>,
     portalContainer,
