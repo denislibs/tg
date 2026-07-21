@@ -22,7 +22,15 @@ type User struct {
 	// PhoneVisibility controls who may see the phone number: one of
 	// PhoneVisibilityNobody / Contacts / Everybody.
 	PhoneVisibility string
+	// IsPremium marks a Telegram Premium subscriber (gold star badge next to the
+	// name). EmojiStatus is a unicode emoji shown after the name ("" when unset).
+	IsPremium   bool
+	EmojiStatus string
 }
+
+// MaxEmojiStatusRunes bounds a stored emoji status. It's a short unicode string
+// (a single emoji, possibly with ZWJ/skin-tone modifiers), not free text.
+const MaxEmojiStatusRunes = 16
 
 // ProfilePhoto is one entry of a user's profile-photo gallery (Telegram
 // getUserPhotos). The newest photo is the user's current avatar, denormalized

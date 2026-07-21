@@ -30,7 +30,10 @@ func (s *Interactor) CreateUpload(ctx context.Context, in UploadInput) (domain.M
 	if in.Size <= 0 {
 		return domain.Media{}, "", ErrBadSize
 	}
-	if in.Size > maxSize {
+	// The chunked/resumable path (assembled server-side) lifts the cap well above
+	// the single-PUT limit; the legacy PutContent path stays capped at maxSize by
+	// its own MaxBytesReader.
+	if in.Size > maxChunkedSize {
 		return domain.Media{}, "", ErrTooLarge
 	}
 	objectKey := fmt.Sprintf("%d/%s", in.OwnerID, randomKey())
@@ -77,6 +80,108 @@ func (s *Interactor) PutContent(ctx context.Context, id, ownerID int64, r io.Rea
 	// Derive dims/duration + a thumbnail in the background so the upload returns
 	// immediately; the row is updated when processing finishes.
 	if s.processor != nil {
+		go s.process(m)
+	}
+	return nil
+}
+
+// SavePart stores one chunk of a resumable upload as a MinIO multipart part.
+// Only the owner may upload. The multipart upload is started lazily on the first
+// part (concurrent first parts converge via SetUploadID). Re-uploading a part is
+// idempotent. partIndex is 1-based (maps directly to the S3 part number).
+func (s *Interactor) SavePart(ctx context.Context, id, ownerID int64, partIndex, total int, r io.Reader, size int64) error {
+	if partIndex < 1 || partIndex > maxParts {
+		return ErrBadPart
+	}
+	m, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if m.OwnerID != ownerID {
+		return ErrForbidden
+	}
+	uploadID := m.UploadID
+	if uploadID == "" {
+		newID, err := s.storage.StartMultipart(ctx, m.ObjectKey, m.Mime)
+		if err != nil {
+			return err
+		}
+		uploadID, err = s.repo.SetUploadID(ctx, id, newID)
+		if err != nil {
+			return err
+		}
+		if uploadID != newID {
+			// Lost the race to another concurrent first part — abort our stray
+			// multipart and use the winning one.
+			_ = s.storage.AbortMultipart(ctx, m.ObjectKey, newID)
+		}
+	}
+	if total > 0 {
+		_ = s.repo.SetUploadTotal(ctx, id, total)
+	}
+	etag, err := s.storage.PutPart(ctx, m.ObjectKey, uploadID, partIndex, r, size)
+	if err != nil {
+		return err
+	}
+	return s.repo.SavePart(ctx, id, partIndex, etag, size)
+}
+
+// ReceivedParts reports which part indices are already stored (for resume) plus
+// the declared total. Only the owner may query.
+func (s *Interactor) ReceivedParts(ctx context.Context, id, ownerID int64) ([]int, int, error) {
+	m, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, 0, err
+	}
+	if m.OwnerID != ownerID {
+		return nil, 0, ErrForbidden
+	}
+	idx, err := s.repo.ReceivedParts(ctx, id)
+	if err != nil {
+		return nil, 0, err
+	}
+	return idx, m.UploadTotal, nil
+}
+
+// FinalizeUpload completes the multipart upload (assembling the parts into the
+// final object), records the actual metadata, and kicks off background
+// processing — mirroring PutContent's tail. Only the owner may finalize.
+func (s *Interactor) FinalizeUpload(ctx context.Context, id, ownerID int64, in FinalizeInput) error {
+	m, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if m.OwnerID != ownerID {
+		return ErrForbidden
+	}
+	if m.UploadID == "" {
+		return ErrNoUpload
+	}
+	parts, err := s.repo.PartsForComplete(ctx, id)
+	if err != nil {
+		return err
+	}
+	if len(parts) == 0 {
+		return ErrNoUpload
+	}
+	if in.Total > 0 && len(parts) != in.Total {
+		return ErrMissingParts
+	}
+	// Parts must be a contiguous 1..N run — a gap means a chunk never arrived.
+	for i, p := range parts {
+		if p.PartNumber != i+1 {
+			return ErrMissingParts
+		}
+	}
+	if err := s.storage.CompleteMultipart(ctx, m.ObjectKey, m.UploadID, parts); err != nil {
+		return err
+	}
+	if err := s.repo.UpdateFinalized(ctx, id, in.Size, in.Width, in.Height, in.Duration, in.FileName, in.Mime); err != nil {
+		return err
+	}
+	_ = s.repo.ClearUpload(ctx, id)
+	if s.processor != nil {
+		m.Size, m.Width, m.Height, m.Duration = in.Size, in.Width, in.Height, in.Duration
 		go s.process(m)
 	}
 	return nil

@@ -15,6 +15,10 @@ type UserRepo interface {
 	UsernameAvailable(ctx context.Context, username string, excludeID int64) (bool, error)
 	SetUsername(ctx context.Context, id int64, username *string) (domain.User, error) // domain.ErrConflict if taken
 	SetAvatar(ctx context.Context, id int64, url string) (domain.User, error)
+	// SetEmojiStatus writes the user's emoji status ("" clears it).
+	SetEmojiStatus(ctx context.Context, id int64, emoji string) (domain.User, error)
+	// SetPremium flips the Telegram Premium flag.
+	SetPremium(ctx context.Context, id int64, premium bool) (domain.User, error)
 	// AddProfilePhoto inserts a gallery photo and, in the same transaction,
 	// promotes it to the user's current avatar (users.avatar_url).
 	AddProfilePhoto(ctx context.Context, userID int64, url, videoURL string) (domain.ProfilePhoto, error)

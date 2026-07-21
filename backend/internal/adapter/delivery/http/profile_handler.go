@@ -36,6 +36,8 @@ func userJSON(u domain.User) map[string]any {
 		"birthday":         birthdayJSON(u.Birthday),
 		"avatar_url":       u.AvatarURL,
 		"phone_visibility": u.PhoneVisibility,
+		"premium":          u.IsPremium,
+		"emoji_status":     u.EmojiStatus,
 	}
 }
 
@@ -243,6 +245,47 @@ func (h *ProfileHandler) SetAvatar(w http.ResponseWriter, r *http.Request) {
 	user, err := h.uc.SetAvatar(r.Context(), u.ID, mediaContentURL(body.MediaID))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "set avatar failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, userJSON(user))
+}
+
+type emojiStatusBody struct {
+	Emoji string `json:"emoji"`
+}
+
+// SetEmojiStatus sets or clears the current user's emoji status
+// (PUT /me/emoji_status). Empty emoji clears it.
+func (h *ProfileHandler) SetEmojiStatus(w http.ResponseWriter, r *http.Request) {
+	u, ok := UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "no user")
+		return
+	}
+	var body emojiStatusBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	user, err := h.uc.SetEmojiStatus(r.Context(), u.ID, body.Emoji)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, userJSON(user))
+}
+
+// ActivatePremium turns on the current user's Telegram Premium flag
+// (POST /me/premium). A clone: the purchase is faked, this just grants the badge.
+func (h *ProfileHandler) ActivatePremium(w http.ResponseWriter, r *http.Request) {
+	u, ok := UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "no user")
+		return
+	}
+	user, err := h.uc.ActivatePremium(r.Context(), u.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "activate premium failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, userJSON(user))

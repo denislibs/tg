@@ -68,6 +68,38 @@ func (c *Client) PutObject(ctx context.Context, objectKey string, r io.Reader, s
 	return err
 }
 
+// core exposes the lower-level multipart primitives over the same connection.
+func (c *Client) core() minio.Core { return minio.Core{Client: c.mc} }
+
+// StartMultipart initiates a server-side multipart upload for objectKey.
+func (c *Client) StartMultipart(ctx context.Context, objectKey, contentType string) (string, error) {
+	return c.core().NewMultipartUpload(ctx, c.bucket, objectKey, minio.PutObjectOptions{ContentType: contentType})
+}
+
+// PutPart uploads one part (1-based partNumber) and returns its ETag.
+func (c *Client) PutPart(ctx context.Context, objectKey, uploadID string, partNumber int, r io.Reader, size int64) (string, error) {
+	part, err := c.core().PutObjectPart(ctx, c.bucket, objectKey, uploadID, partNumber, r, size, minio.PutObjectPartOptions{})
+	if err != nil {
+		return "", err
+	}
+	return part.ETag, nil
+}
+
+// CompleteMultipart assembles the uploaded parts into the final object at objectKey.
+func (c *Client) CompleteMultipart(ctx context.Context, objectKey, uploadID string, parts []usecasemedia.UploadedPart) error {
+	cps := make([]minio.CompletePart, len(parts))
+	for i, p := range parts {
+		cps[i] = minio.CompletePart{PartNumber: p.PartNumber, ETag: p.ETag}
+	}
+	_, err := c.core().CompleteMultipartUpload(ctx, c.bucket, objectKey, uploadID, cps, minio.PutObjectOptions{})
+	return err
+}
+
+// AbortMultipart discards an in-flight multipart upload and its parts.
+func (c *Client) AbortMultipart(ctx context.Context, objectKey, uploadID string) error {
+	return c.core().AbortMultipartUpload(ctx, c.bucket, objectKey, uploadID)
+}
+
 // GetObject opens objectKey for streaming reads (the returned reader is Range/Seek
 // capable) and returns its size/content-type via a Stat round-trip.
 func (c *Client) GetObject(ctx context.Context, objectKey string) (io.ReadSeekCloser, usecasemedia.ObjectInfo, error) {

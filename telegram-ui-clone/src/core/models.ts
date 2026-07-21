@@ -64,6 +64,7 @@ export interface RawDialog {
   last_read_seq: number
   peer_read_seq?: number
   unread: number
+  unread_mentions_count?: number
   muted?: boolean
   pinned?: boolean
   archived?: boolean
@@ -73,7 +74,7 @@ export interface RawDialog {
   title?: string
   username?: string
   photo_url?: string
-  peer?: { id: number; display_name: string; avatar_url: string; verified?: boolean }
+  peer?: { id: number; display_name: string; avatar_url: string; verified?: boolean; premium?: boolean; emoji_status?: string }
   last_message?: { seq: number; text: string; sender_id: number; at: string; media_id?: number; type?: string; forwarded?: boolean; sender_name?: string }
 }
 
@@ -84,6 +85,8 @@ export interface Dialog {
   /** the OTHER side's read horizon (read_outbox) — outgoing seq <= this ⇒ ✓✓ */
   peerReadSeq: number
   unread: number
+  /** непрочитанные упоминания зрителя (Telegram unread_mentions_count) — бейдж «@» */
+  unreadMentions?: number
   muted: boolean
   /** закреплён вверху списка / убран в «Архив» (пер-юзерные флаги, tweb) */
   pinned: boolean
@@ -99,7 +102,7 @@ export interface Dialog {
   username?: string
   /** фото группы/канала (content-путь /media/N/content; у private — peer.avatarUrl) */
   photoUrl?: string
-  peer?: { id: number; displayName: string; avatarUrl: string; verified?: boolean }
+  peer?: { id: number; displayName: string; avatarUrl: string; verified?: boolean; premium?: boolean; emojiStatus?: string }
   lastMessage?: { seq: number; text: string; senderId: number; at: string; mediaId?: number; mediaType?: string; forwarded?: boolean; senderName?: string }
 }
 
@@ -122,7 +125,7 @@ export interface RawMessage {
   fwd_from_chat_id?: number | null
   fwd_from_msg_id?: number | null
   fwd_date?: string | null
-  reply_to?: { msg_id: number; seq: number; sender_id: number; text: string; entities?: MessageEntity[] | null; type: string; media_id?: number } | null
+  reply_to?: { msg_id: number; seq: number; sender_id: number; text: string; entities?: MessageEntity[] | null; type: string; media_id?: number; quote_text?: string } | null
   poll_id?: number | null
   poll?: RawPoll | null
   media_w?: number
@@ -202,7 +205,7 @@ export interface Message {
   fwdFromMsgId?: number | null
   fwdDate?: string | null
   /** Lightweight preview of the replied-to message (history read model). */
-  replyTo?: { msgId: number; seq: number; senderId: number; text: string; entities?: MessageEntity[]; type: string; mediaId?: number } | null
+  replyTo?: { msgId: number; seq: number; senderId: number; text: string; entities?: MessageEntity[]; type: string; mediaId?: number; quoteText?: string } | null
   /** Media metadata (history read model) — lets the bubble render fully from the
    * message (exact box, blur placeholder, poster, mime, …) with no per-media
    * meta request. */
@@ -343,6 +346,7 @@ export function mapDialog(r: RawDialog): Dialog {
     lastReadSeq: r.last_read_seq,
     peerReadSeq: r.peer_read_seq ?? 0,
     unread: r.unread,
+    unreadMentions: r.unread_mentions_count || undefined,
     muted: !!r.muted,
     pinned: !!r.pinned,
     archived: !!r.archived,
@@ -354,7 +358,7 @@ export function mapDialog(r: RawDialog): Dialog {
     username: r.username,
     photoUrl: r.photo_url || undefined,
     peer: r.peer
-      ? { id: r.peer.id, displayName: r.peer.display_name, avatarUrl: r.peer.avatar_url, verified: r.peer.verified }
+      ? { id: r.peer.id, displayName: r.peer.display_name, avatarUrl: r.peer.avatar_url, verified: r.peer.verified, premium: r.peer.premium, emojiStatus: r.peer.emoji_status }
       : undefined,
     lastMessage: r.last_message
       ? {
@@ -393,7 +397,7 @@ export function mapMessage(r: RawMessage): Message {
     fwdFromMsgId: r.fwd_from_msg_id ?? null,
     fwdDate: r.fwd_date ?? null,
     replyTo: r.reply_to
-      ? { msgId: r.reply_to.msg_id, seq: r.reply_to.seq, senderId: r.reply_to.sender_id, text: r.reply_to.text, entities: r.reply_to.entities ?? undefined, type: r.reply_to.type, mediaId: r.reply_to.media_id && r.reply_to.media_id > 0 ? r.reply_to.media_id : undefined }
+      ? { msgId: r.reply_to.msg_id, seq: r.reply_to.seq, senderId: r.reply_to.sender_id, text: r.reply_to.text, entities: r.reply_to.entities ?? undefined, type: r.reply_to.type, mediaId: r.reply_to.media_id && r.reply_to.media_id > 0 ? r.reply_to.media_id : undefined, quoteText: r.reply_to.quote_text || undefined }
       : null,
     mediaWidth: r.media_w,
     mediaHeight: r.media_h,

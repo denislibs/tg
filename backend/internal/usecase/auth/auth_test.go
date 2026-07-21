@@ -94,6 +94,26 @@ func (r *fakeUserRepo) SetAvatar(_ context.Context, id int64, url string) (domai
 	return u, nil
 }
 
+func (r *fakeUserRepo) SetEmojiStatus(_ context.Context, id int64, emoji string) (domain.User, error) {
+	phone, u, ok := r.find(id)
+	if !ok {
+		return domain.User{}, domain.ErrNotFound
+	}
+	u.EmojiStatus = emoji
+	r.byPhone[phone] = u
+	return u, nil
+}
+
+func (r *fakeUserRepo) SetPremium(_ context.Context, id int64, premium bool) (domain.User, error) {
+	phone, u, ok := r.find(id)
+	if !ok {
+		return domain.User{}, domain.ErrNotFound
+	}
+	u.IsPremium = premium
+	r.byPhone[phone] = u
+	return u, nil
+}
+
 func (r *fakeUserRepo) AddProfilePhoto(_ context.Context, userID int64, url, videoURL string) (domain.ProfilePhoto, error) {
 	phone, u, ok := r.find(userID)
 	if !ok {

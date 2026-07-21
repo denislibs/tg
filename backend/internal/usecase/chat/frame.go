@@ -62,6 +62,12 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 	if m.MediaName != "" {
 		p["media_name"] = m.MediaName
 	}
+	// Reply quote: цитата хранится на самом сообщении — превью реплая на клиенте
+	// собирается из уже загруженного окна, так что фрагмент едет отдельным полем.
+	if m.ReplyQuoteText != nil {
+		p["reply_quote_text"] = *m.ReplyQuoteText
+		p["reply_quote_offset"] = m.ReplyQuoteOffset
+	}
 	if m.GeoLat != nil && m.GeoLng != nil {
 		p["geo"] = geoJSON(m)
 	}

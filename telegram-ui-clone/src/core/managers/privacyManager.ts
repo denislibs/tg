@@ -44,6 +44,8 @@ export interface UserProfile {
   avatarUrl: string
   phone: string
   verified: boolean
+  premium: boolean
+  emojiStatus: string
   isBot: boolean
   isBlocked: boolean
   callsAvailable: boolean
@@ -123,6 +125,8 @@ export function newPrivacyManager({ rest }: { rest: Pick<RestClient, 'get' | 'pu
         avatar_url: string
         phone: string
         verified: boolean
+        premium?: boolean
+        emoji_status?: string
         is_bot?: boolean
         is_blocked: boolean
         calls_available: boolean
@@ -140,6 +144,8 @@ export function newPrivacyManager({ rest }: { rest: Pick<RestClient, 'get' | 'pu
         avatarUrl: res.avatar_url,
         phone: res.phone,
         verified: res.verified,
+        premium: !!res.premium,
+        emojiStatus: res.emoji_status ?? '',
         isBot: !!res.is_bot,
         isBlocked: res.is_blocked,
         callsAvailable: res.calls_available,

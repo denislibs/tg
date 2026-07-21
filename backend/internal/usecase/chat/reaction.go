@@ -115,6 +115,26 @@ func (i *Interactor) ReactionsOf(ctx context.Context, chatID, messageID, userID 
 	return byMsg[messageID], nil
 }
 
+// ReactionUsers returns who reacted to a message (with which emoji) for the
+// who-reacted popup. The caller must be a member of the message's chat.
+func (i *Interactor) ReactionUsers(ctx context.Context, chatID, messageID, userID int64) ([]domain.ReactionUser, error) {
+	msgChat, err := i.msgs.MessageChatID(ctx, messageID)
+	if err != nil {
+		return nil, err
+	}
+	if msgChat != chatID {
+		return nil, domain.ErrNotFound
+	}
+	ok, err := i.chats.IsMember(ctx, chatID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	return i.reactions.ReactionUsers(ctx, messageID)
+}
+
 // CanAccessMedia reports whether userID may download a media object: either they
 // own it, or they are a member of a chat that has a message referencing it.
 func (i *Interactor) CanAccessMedia(ctx context.Context, userID, mediaID int64) (bool, error) {

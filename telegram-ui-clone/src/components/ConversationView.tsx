@@ -55,13 +55,13 @@ import PinnedBar from './conversation/PinnedBar'
 import ScrollDownFab from './conversation/ScrollDownFab'
 import SelectionBar from './conversation/SelectionBar'
 import MessageContextMenu from './conversation/MessageContextMenu'
-import { useChatsStore } from '../stores/chatsStore'
+import { useChatsStore, loadChats } from '../stores/chatsStore'
 import { useSecretChatStore } from '../stores/secretChatStore'
 import { type MessageEntity } from '../core/models'
 import type { InlineResult } from '../core/managers/botsManager'
 import { openWebApp } from '../core/webapp'
 import { useSearchStore } from '../stores/searchStore'
-import { ContactPicker, DeleteMessageDialog, ForwardPicker, ViewersPopup } from './messages/ChatDialogs'
+import { ContactPicker, DeleteMessageDialog, ForwardPicker, ViewersPopup, ReactedUsersPopup } from './messages/ChatDialogs'
 import TranslatePopup from './messages/TranslatePopup'
 import LocationPicker from './LocationPicker'
 import SendMediaPopup from './messages/SendMediaPopup'
@@ -261,6 +261,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const searchOpen = useSearchStore((s) => s.byChat[numericChatId]?.open ?? false)
   const [headerMenu, setHeaderMenu] = useState<{ top: number; right: number } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmClear, setConfirmClear] = useState(false)
   const [addContactOpen, setAddContactOpen] = useState(false)
   const [attachAnchor, setAttachAnchor] = useState<{ left: number; bottom: number } | null>(null)
   const [createPollOpen, setCreatePollOpen] = useState(false)
@@ -342,6 +343,15 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     void op.catch(() => {})
     onBack?.()
   }
+  // «Очистить историю» у себя: сервер поднимает персональный горизонт, затем
+  // перезагружаем окно (станет пустым) и список диалогов (превью очистится).
+  const doClearHistory = () => {
+    if (!isRealChat) return
+    void managers.chats.clearHistory(numericChatId)
+      .then(() => win.reloadNewest())
+      .then(() => loadChats(managers))
+      .catch(() => {})
+  }
   const deleteLabels = (() => {
     if (chat.type === 'private') return { title: 'Delete Chat', text: 'This chat will be deleted from your chat list.', action: 'Delete' }
     if (isChannel) return owned
@@ -384,10 +394,11 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // download/viewers) and the delete-confirm / forward-picker / viewers-popup state.
   const {
     msgMenu, openMsgMenu, closeMsgMenu, destroyMsgMenu, msgMenuItems,
-    toggleReaction, reactToMenuMsg,
+    toggleReaction, reactToMenuMsg, showReactedUsers,
     delIds, doDelete, closeDelete, openDeleteFor,
     forwardIds, doForward, closeForward, openForwardFor,
     viewers, closeViewers,
+    reacted, closeReacted,
     translateText, closeTranslate,
   } = useMessageActions({
     chat, numericChatId, isRealChat, win: winV, msgs, meId, pins, managers, accent: accentColor,
@@ -468,9 +479,10 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       mediaPlayed: mediaPlayedE,
       roundPlaying: roundPlayingE,
       toggleReaction,
+      showReactedUsers,
       cancelUpload: cancelUploadE,
     }),
-    [openSenderE, playVoiceE, toggleSelectE, openMsgMenuE, jumpToSeqE, openLightboxE, recallE, mediaPlayedE, roundPlayingE, toggleReaction, cancelUploadE],
+    [openSenderE, playVoiceE, toggleSelectE, openMsgMenuE, jumpToSeqE, openLightboxE, recallE, mediaPlayedE, roundPlayingE, toggleReaction, showReactedUsers, cancelUploadE],
   )
 
   // (Ack reconcile + send-rejection run in realtimeBridge → messagesStore; live
@@ -939,6 +951,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           onSelectMessages={startSelectMode}
           onAddContact={chat.type === 'private' && chat.peerId != null ? () => setAddContactOpen(true) : undefined}
           onDeleteChat={isRealChat ? () => setConfirmDelete(true) : undefined}
+          onClearHistory={isRealChat && chat.type !== 'channel' ? () => setConfirmClear(true) : undefined}
         />
       )}
 
@@ -950,6 +963,17 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           danger
           onConfirm={doDeleteChat}
           onClose={() => setConfirmDelete(false)}
+        />
+      )}
+
+      {confirmClear && (
+        <ConfirmDialog
+          title={t('Clear History')}
+          text={t('Are you sure you want to clear history?')}
+          action={t('Clear')}
+          danger
+          onConfirm={doClearHistory}
+          onClose={() => setConfirmClear(false)}
         />
       )}
 
@@ -1054,6 +1078,11 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       {/* "Seen by" popup */}
       {viewers && (
         <ViewersPopup x={viewers.x} y={viewers.y} names={viewers.names} onClose={closeViewers} />
+      )}
+
+      {/* Кто отреагировал (long-press/правый клик по чипу реакции) */}
+      {reacted && (
+        <ReactedUsersPopup x={reacted.x} y={reacted.y} rows={reacted.rows} onClose={closeReacted} />
       )}
 
       {/* Forward target picker */}

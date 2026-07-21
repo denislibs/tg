@@ -223,6 +223,52 @@ func TestGetHistory_Window(t *testing.T) {
 	}
 }
 
+// ClearHistory прячет всю историю у вызвавшего (персональный горизонт), но
+// оставляет её у собеседника; непрочитанное обнуляется. Не член → ErrNotFound.
+func TestClearHistory(t *testing.T) {
+	in, _ := newInteractor()
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	for i := 0; i < 3; i++ {
+		_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "m"})
+	}
+
+	if err := in.ClearHistory(ctx, chatID, b); err != nil {
+		t.Fatalf("ClearHistory: %v", err)
+	}
+
+	// b больше не видит истории и не имеет непрочитанного.
+	res, err := in.GetHistory(ctx, chatID, b, 0, 0, 10, nil)
+	if err != nil {
+		t.Fatalf("GetHistory b: %v", err)
+	}
+	if len(res.Messages) != 0 {
+		t.Fatalf("b history after clear = %d msgs, want 0", len(res.Messages))
+	}
+	if d, _ := in.ListDialogs(ctx, b); d[0].UnreadCount != 0 {
+		t.Fatalf("b unread after clear = %d, want 0", d[0].UnreadCount)
+	}
+
+	// a (другая сторона) историю сохраняет — это «очистка у себя».
+	resA, _ := in.GetHistory(ctx, chatID, a, 0, 0, 10, nil)
+	if len(resA.Messages) != 3 {
+		t.Fatalf("a history after b's clear = %d msgs, want 3", len(resA.Messages))
+	}
+
+	// Новое сообщение после очистки снова видно у b (seq за горизонтом).
+	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "after"})
+	resB2, _ := in.GetHistory(ctx, chatID, b, 0, 0, 10, nil)
+	if len(resB2.Messages) != 1 {
+		t.Fatalf("b history after new msg = %d, want 1", len(resB2.Messages))
+	}
+
+	// Не член → ErrNotFound.
+	if err := in.ClearHistory(ctx, chatID, 999); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("ClearHistory non-member = %v, want ErrNotFound", err)
+	}
+}
+
 func TestGetDifference(t *testing.T) {
 	in, _ := newInteractor()
 	ctx := context.Background()

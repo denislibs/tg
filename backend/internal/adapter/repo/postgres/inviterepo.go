@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -24,21 +25,21 @@ func NewInviteRepo(pool *pgxpool.Pool) *InviteRepo { return &InviteRepo{pool: po
 
 func scanLink(row pgx.Row) (domain.InviteLink, error) {
 	var l domain.InviteLink
-	err := row.Scan(&l.ID, &l.ChatID, &l.Token, &l.CreatedBy, &l.UsageLimit, &l.Uses, &l.Revoked, &l.RequiresApproval)
+	err := row.Scan(&l.ID, &l.ChatID, &l.Token, &l.CreatedBy, &l.UsageLimit, &l.Uses, &l.Revoked, &l.RequiresApproval, &l.ExpiresAt)
 	return l, err
 }
 
-func (r *InviteRepo) Create(ctx context.Context, chatID, createdBy int64, token string, usageLimit *int, requiresApproval bool) (domain.InviteLink, error) {
+func (r *InviteRepo) Create(ctx context.Context, chatID, createdBy int64, token string, usageLimit *int, requiresApproval bool, expiresAt *time.Time) (domain.InviteLink, error) {
 	l, err := scanLink(querier(ctx, r.pool).QueryRow(ctx,
-		`INSERT INTO invite_links (chat_id, created_by, token, usage_limit, requires_approval)
-		 VALUES ($1,$2,$3,$4,$5) RETURNING id, chat_id, token, created_by, usage_limit, uses, revoked, requires_approval`,
-		chatID, createdBy, token, usageLimit, requiresApproval))
+		`INSERT INTO invite_links (chat_id, created_by, token, usage_limit, requires_approval, expires_at)
+		 VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, chat_id, token, created_by, usage_limit, uses, revoked, requires_approval, expires_at`,
+		chatID, createdBy, token, usageLimit, requiresApproval, expiresAt))
 	return l, err
 }
 
 func (r *InviteRepo) GetByToken(ctx context.Context, token string) (domain.InviteLink, error) {
 	l, err := scanLink(querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT id, chat_id, token, created_by, usage_limit, uses, revoked, requires_approval
+		`SELECT id, chat_id, token, created_by, usage_limit, uses, revoked, requires_approval, expires_at
 		   FROM invite_links WHERE token=$1 AND revoked=false`, token))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.InviteLink{}, domain.ErrNotFound
@@ -48,7 +49,7 @@ func (r *InviteRepo) GetByToken(ctx context.Context, token string) (domain.Invit
 
 func (r *InviteRepo) List(ctx context.Context, chatID int64) ([]domain.InviteLink, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT id, chat_id, token, created_by, usage_limit, uses, revoked, requires_approval
+		`SELECT id, chat_id, token, created_by, usage_limit, uses, revoked, requires_approval, expires_at
 		   FROM invite_links WHERE chat_id=$1 AND revoked=false ORDER BY id DESC`, chatID)
 	if err != nil {
 		return nil, err

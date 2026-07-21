@@ -25,9 +25,11 @@ interface Props {
   onAddContact?: () => void
   /** удалить чат / покинуть группу-канал (владелец удаляет для всех) */
   onDeleteChat?: () => void
+  /** очистить историю у себя (Telegram deleteHistory just_clear) */
+  onClearHistory?: () => void
 }
 
-export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddMember, onSelectMessages, onAddContact, onDeleteChat }: Props) {
+export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddMember, onSelectMessages, onAddContact, onDeleteChat, onClearHistory }: Props) {
   const t = useT()
   const managers = useManagers()
   const { start: startCall } = useCall()
@@ -75,6 +77,13 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
     close()
   }
 
+  // «Очистить историю» у себя (tweb PeerInfo.Action.ClearHistory): приватные чаты
+  // и группы, где ты участник. Глиф broom в наш tgico-набор не портирован — берём
+  // корзину delete, как остальные деструктивные действия.
+  const clearItem: Item | null = onClearHistory
+    ? { icon: <TgIcon name="delete" size={20} />, label: 'Clear History', danger: true, onClick: () => { onClearHistory(); close() } }
+    : null
+
   let items: Item[]
   if (chat.type === 'private') {
     // Сервисному аккаунту «Telegram» нельзя позвонить, заблокировать его или
@@ -101,6 +110,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
             { icon: <TgIcon name="deleteuser" size={20} />, label: 'Disable Sharing' },
           ]
         : []),
+      ...(clearItem ? [clearItem] : []),
       { icon: <TgIcon name="delete" size={20} />, label: 'Delete Chat', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
     ]
   } else if (chat.type === 'group') {
@@ -119,6 +129,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
         : []),
       { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
       { icon: <TgIcon name="gift" size={20} />, label: 'Send a Gift' },
+      ...(clearItem ? [clearItem] : []),
       { icon: <TgIcon name="delete" size={20} />, label: owned ? 'Delete Group' : 'Leave Group', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
     ]
   } else if (owned) {

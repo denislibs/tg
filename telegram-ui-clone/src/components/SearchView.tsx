@@ -10,6 +10,8 @@ import Avatar from '../shared/ui/Avatar'
 import SidebarSection from '../shared/ui/SidebarSection'
 import { useAvatarSrc } from './useAvatarSrc'
 import VerifiedBadge from './VerifiedBadge'
+import PremiumBadge from './PremiumBadge'
+import EmojiStatus from './EmojiStatus'
 import PlayPauseGlyph from './PlayPauseGlyph'
 import ConfirmDialog from './settings/ConfirmDialog'
 import type { Chat, OpenPeer } from '../data'
@@ -489,6 +491,8 @@ function ChatRow({ chat, q, onClick }: { chat: Chat; q?: string; onClick: () => 
             {q ? <Highlighted text={chat.name} q={q} /> : chat.name}
           </Text>
           {chat.verified && <VerifiedBadge size={16} color="var(--tg-accent)" />}
+          {chat.premium && <PremiumBadge size={16} />}
+          {chat.emojiStatus && <EmojiStatus emoji={chat.emojiStatus} size={16} />}
         </div>
         <Text noWrap size={14.5} color="var(--tg-textSecondary)">
           {chat.status || (chat.username ? `@${chat.username}` : '')}
