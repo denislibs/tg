@@ -331,12 +331,19 @@ export interface RawDraft {
 export interface Draft {
   chatId: number
   text: string
+  entities?: MessageEntity[]
   replyToId: number | null
   updatedAt: string
 }
 
 export function mapDraft(r: RawDraft): Draft {
-  return { chatId: r.chat_id, text: r.text, replyToId: r.reply_to_id ?? null, updatedAt: r.updated_at }
+  return {
+    chatId: r.chat_id,
+    text: r.text,
+    entities: r.entities?.length ? r.entities : undefined,
+    replyToId: r.reply_to_id ?? null,
+    updatedAt: r.updated_at,
+  }
 }
 
 export function mapDialog(r: RawDialog): Dialog {

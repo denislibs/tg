@@ -1,6 +1,6 @@
 // src/core/models.test.ts
 import { describe, it, expect } from 'vitest'
-import { mapDialog, mapMessage, type RawDialog, type RawMessage } from './models'
+import { mapDialog, mapDraft, mapMessage, type RawDialog, type RawMessage } from './models'
 
 describe('mapDialog', () => {
   it('maps a private dialog with peer + last_message', () => {
@@ -59,5 +59,33 @@ describe('mapMessage', () => {
       reply_to_id: null, media_id: null, created_at: '2026-06-24T10:01:00Z',
     }
     expect(mapMessage(raw).threadRootId).toBeNull()
+  })
+})
+
+describe('mapDraft', () => {
+  it('maps entities and reply_to_id (draft_update frame / GET /drafts)', () => {
+    const d = mapDraft({
+      chat_id: 3, text: '**жирный**',
+      entities: [{ type: 'bold', offset: 0, length: 6 }],
+      reply_to_id: 42, updated_at: '2026-07-21T10:00:00Z',
+    })
+    expect(d).toEqual({
+      chatId: 3, text: '**жирный**',
+      entities: [{ type: 'bold', offset: 0, length: 6 }],
+      replyToId: 42, updatedAt: '2026-07-21T10:00:00Z',
+    })
+  })
+
+  it('defaults absent/null entities and reply_to_id', () => {
+    const d = mapDraft({ chat_id: 3, text: 'x', entities: null, reply_to_id: null, updated_at: 't' })
+    expect(d.entities).toBeUndefined()
+    expect(d.replyToId).toBeNull()
+    const d2 = mapDraft({ chat_id: 3, text: 'x', updated_at: 't' })
+    expect(d2.entities).toBeUndefined()
+    expect(d2.replyToId).toBeNull()
+  })
+
+  it('drops an empty entities array', () => {
+    expect(mapDraft({ chat_id: 1, text: 'x', entities: [], updated_at: 't' }).entities).toBeUndefined()
   })
 })

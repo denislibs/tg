@@ -148,3 +148,69 @@ func TestDrafts_SaveListClearAndSendClears(t *testing.T) {
 		t.Fatalf("expected 2 null updates: %+v", got)
 	}
 }
+
+// Черновик несёт rich-text entities (санитизация как у сообщений) и reply_to_id
+// (мягкая валидация: сообщение должно существовать в этом же чате, иначе NULL).
+func TestDrafts_EntitiesAndReply(t *testing.T) {
+	in, _ := newInteractor()
+	drafts := newFakeDrafts()
+	pub := &fakePublisher{}
+	in.SetDrafts(drafts)
+	in.SetPublisher(pub)
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	otherChat, _ := in.CreatePrivateChat(ctx, a, 3)
+	msg, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: b, Text: "target", ClientMsgID: "t1"})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	foreign, _ := in.Send(ctx, SendInput{ChatID: otherChat, SenderID: a, Text: "foreign", ClientMsgID: "t2"})
+
+	// Entities: опасный text_link и отрицательный offset выкидываются, валидное — остаётся.
+	ents := []domain.MessageEntity{
+		{Type: "bold", Offset: 0, Length: 4},
+		{Type: "text_link", Offset: 0, Length: 4, URL: "javascript:alert(1)"},
+		{Type: "italic", Offset: -1, Length: 2},
+	}
+	d, err := in.SaveDraft(ctx, a, chatID, "жирный", ents, &msg.ID)
+	if err != nil || d == nil {
+		t.Fatalf("SaveDraft: %v %+v", err, d)
+	}
+	if len(d.Entities) != 1 || d.Entities[0].Type != "bold" {
+		t.Fatalf("entities must be sanitized: %+v", d.Entities)
+	}
+	if d.ReplyToID == nil || *d.ReplyToID != msg.ID {
+		t.Fatalf("valid reply must be kept: %+v", d.ReplyToID)
+	}
+
+	// Отдача: MyDrafts возвращает entities и reply_to_id как сохранили.
+	list, _ := in.MyDrafts(ctx, a)
+	if len(list) != 1 || len(list[0].Entities) != 1 || list[0].ReplyToID == nil || *list[0].ReplyToID != msg.ID {
+		t.Fatalf("MyDrafts must carry entities+reply: %+v", list)
+	}
+
+	// draft_update-кадр несёт entities и reply_to_id.
+	frames := draftFramesFor(pub, a)
+	last, _ := frames[len(frames)-1]["draft"].(map[string]any)
+	if last == nil || last["reply_to_id"] == nil || last["entities"] == nil {
+		t.Fatalf("draft_update must carry entities+reply_to_id: %+v", last)
+	}
+
+	// Reply на сообщение из другого чата → NULL (черновик сохраняется).
+	if d, err = in.SaveDraft(ctx, a, chatID, "x", nil, &foreign.ID); err != nil || d == nil || d.ReplyToID != nil {
+		t.Fatalf("foreign reply must be nulled: %v %+v", err, d)
+	}
+	// Reply на несуществующее сообщение → NULL.
+	missing := int64(999999)
+	if d, err = in.SaveDraft(ctx, a, chatID, "y", nil, &missing); err != nil || d == nil || d.ReplyToID != nil {
+		t.Fatalf("missing reply must be nulled: %v %+v", err, d)
+	}
+	// Пустой текст + невалидный reply → это удаление черновика.
+	if d, err = in.SaveDraft(ctx, a, chatID, "", nil, &missing); err != nil || d != nil {
+		t.Fatalf("empty text with invalid reply must delete: %v %+v", err, d)
+	}
+	if list, _ := in.MyDrafts(ctx, a); len(list) != 0 {
+		t.Fatalf("draft must be gone: %+v", list)
+	}
+}

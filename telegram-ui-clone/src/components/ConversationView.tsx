@@ -38,6 +38,8 @@ import Composer from './Composer'
 import ChatFeed from './messages/ChatFeed'
 import EmptyChatGreeting from './messages/EmptyChatGreeting'
 import { useChatAutoDownload } from '../core/hooks/useChatAutoDownload'
+import { useDraftsStore } from '../stores/draftsStore'
+import { draftReplyState } from '../core/draftReply'
 import { useComposerDraft } from '../core/hooks/useComposerDraft'
 import { useMentionPeers } from '../core/hooks/useMentionPeers'
 import CreatePollPopup from './CreatePollPopup'
@@ -142,8 +144,6 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
 
   const numericChatId = Number(chat.id)
   const isRealChat = Number.isFinite(numericChatId) && String(numericChatId) === chat.id
-  // Облачный черновик: восстановление в композер + сейв с дебаунсом
-  const { initialDraft, onDraftChange } = useComposerDraft(isRealChat && !thread ? numericChatId : null)
   // Кандидаты @упоминаний — участники группы (tweb mentionsHelper)
   const mentionPeers = useMentionPeers(isRealChat ? numericChatId : null, isRealChat && isGroup)
 
@@ -390,6 +390,21 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     meId, win, managers, threadRootId, atBottomRef, userScrolledUpRef,
     onChatCreated,
   })
+
+  // Облачный черновик: восстановление в композер + сейв с дебаунсом; вместе с
+  // текстом сохраняется reply_to_id текущего reply-стейта (tweb draft).
+  const { initialDraft, onDraftChange } = useComposerDraft(isRealChat && !thread ? numericChatId : null, reply?.msgId ?? null)
+  // Восстановление reply-бара из черновика (draft.reply_to_id): один раз после
+  // загрузки окна; сообщение ищем в окне, вне окна — скип (getById у бэка нет).
+  const draftReplyToId = useDraftsStore((s) => (isRealChat && !thread ? s.byChat[numericChatId]?.replyToId ?? null : null))
+  const replyRestoredRef = useRef(false)
+  useEffect(() => {
+    if (replyRestoredRef.current || draftReplyToId == null || msgs.length === 0) return
+    replyRestoredRef.current = true
+    if (reply) return
+    const rs = draftReplyState(msgs, draftReplyToId, chat.name, accentColor)
+    if (rs) setReply(rs)
+  }, [draftReplyToId, msgs, reply, chat.name, accentColor, setReply])
 
   // Message context menu + its actions (reply/edit/copy/pin/delete/forward/select/
   // download/viewers) and the delete-confirm / forward-picker / viewers-popup state.

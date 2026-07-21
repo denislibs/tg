@@ -9,7 +9,7 @@
 import { useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import TgIcon from '../../components/TgIcon'
-import { peerColor } from '../../components/peerColor'
+import { convMsgReplyState } from '../draftReply'
 import { useEvent } from './useEvent'
 import { useMessagesStore, winKey } from '../../stores/messagesStore'
 import { useSettingsStore } from '../../settings'
@@ -105,10 +105,9 @@ export function useMessageActions({
 
   const startReply = () => {
     const m = msgMenu && msgs[msgMenu.idx]
-    if (m && m.type !== 'date') {
-      const name = m.out ? 'Дн' : m.sender ?? chat.name
-      const color = m.out ? accent : m.senderColor ?? peerColor(name)
-      setReply({ msgId: menuRawMsg()?.id, name, text: m.text ?? m.emoji ?? '', color, quote: pendingQuoteRef.current ?? undefined })
+    const rs = m ? convMsgReplyState(m, menuRawMsg()?.id, chat.name, accent) : null
+    if (rs) {
+      setReply({ ...rs, quote: pendingQuoteRef.current ?? undefined })
       setEditing(null)
       // Composer focuses itself when `reply` becomes set.
     }

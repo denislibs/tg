@@ -223,7 +223,7 @@ export interface Managers {
   }
   drafts: {
     list(): Promise<Draft[]>
-    save(chatId: number, text: string, replyToId?: number | null): Promise<Draft | null>
+    save(chatId: number, text: string, replyToId?: number | null, entities?: MessageEntity[]): Promise<Draft | null>
     delete(chatId: number): Promise<void>
     clearAll(): Promise<void>
   }
