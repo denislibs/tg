@@ -16,6 +16,10 @@ export interface User {
   birthday: Birthday | null
   avatarUrl: string
   phoneVisibility: PhoneVisibility
+  /** Telegram Premium subscriber → gold star badge next to the name */
+  premium: boolean
+  /** unicode emoji shown after the name ('' when unset) */
+  emojiStatus: string
 }
 
 // The backend wire shape (snake_case). username/birthday are null when unset.
@@ -30,6 +34,8 @@ export interface RawUser {
   birthday?: Birthday | null
   avatar_url?: string
   phone_visibility?: string
+  premium?: boolean
+  emoji_status?: string
 }
 
 // mapUser normalizes the backend wire shape into the camelCase client model.
@@ -45,6 +51,8 @@ export function mapUser(r: RawUser): User {
     birthday: r.birthday ?? null,
     avatarUrl: r.avatar_url ?? '',
     phoneVisibility: (r.phone_visibility as PhoneVisibility) || 'contacts',
+    premium: !!r.premium,
+    emojiStatus: r.emoji_status ?? '',
   }
 }
 

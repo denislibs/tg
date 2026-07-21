@@ -115,13 +115,17 @@ export function messageToConvMsg(
     reply: m.replyTo
       ? {
           name: m.replyTo.senderId === meId ? 'Вы' : opts?.replyToName ?? 'Сообщение',
-          // Replied media with no caption → a type label ("Фотография"/"Видео"/…);
-          // with a caption → the caption text (a thumbnail is shown alongside).
-          text: m.replyTo.text || replyMediaLabel(m.replyTo.type),
-          entities: m.replyTo.text ? m.replyTo.entities : undefined,
+          // Ответ с цитатой (reply quote): показываем выделенный фрагмент вместо
+          // превью всего сообщения. Иначе — обычная логика:
+          // медиа без подписи → метка типа, с подписью → текст подписи.
+          text: m.replyTo.quoteText || m.replyTo.text || replyMediaLabel(m.replyTo.type),
+          // entity-оффсеты заданы по полному тексту оригинала, для цитаты они не
+          // совпадают → форматирование фрагмента опускаем.
+          entities: m.replyTo.quoteText ? undefined : (m.replyTo.text ? m.replyTo.entities : undefined),
           seq: m.replyTo.seq,
           mediaId: m.replyTo.mediaId,
           mediaType: m.replyTo.type,
+          quote: m.replyTo.quoteText ? true : undefined,
         }
       : undefined,
   }

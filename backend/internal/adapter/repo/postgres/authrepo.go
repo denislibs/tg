@@ -17,13 +17,14 @@ import (
 
 // userCols is the canonical user column list / scan order, shared by every
 // query that returns a full domain.User.
-const userCols = `id, phone, username, first_name, last_name, display_name, bio, birthday, avatar_url, phone_visibility`
+const userCols = `id, phone, username, first_name, last_name, display_name, bio, birthday, avatar_url, phone_visibility, is_premium, emoji_status`
 
 // scanUser scans a row selected with userCols into a domain.User.
 func scanUser(row pgx.Row) (domain.User, error) {
 	var u domain.User
 	err := row.Scan(&u.ID, &u.Phone, &u.Username, &u.FirstName, &u.LastName,
-		&u.DisplayName, &u.Bio, &u.Birthday, &u.AvatarURL, &u.PhoneVisibility)
+		&u.DisplayName, &u.Bio, &u.Birthday, &u.AvatarURL, &u.PhoneVisibility,
+		&u.IsPremium, &u.EmojiStatus)
 	return u, err
 }
 
@@ -134,6 +135,18 @@ func (r *AuthRepo) SetUsername(ctx context.Context, id int64, username *string) 
 func (r *AuthRepo) SetAvatar(ctx context.Context, id int64, url string) (domain.User, error) {
 	return scanUser(r.pool.QueryRow(ctx,
 		`UPDATE users SET avatar_url=$2 WHERE id=$1 RETURNING `+userCols, id, url))
+}
+
+// SetEmojiStatus writes the user's emoji status ("" clears it) and returns the user.
+func (r *AuthRepo) SetEmojiStatus(ctx context.Context, id int64, emoji string) (domain.User, error) {
+	return scanUser(r.pool.QueryRow(ctx,
+		`UPDATE users SET emoji_status=$2 WHERE id=$1 RETURNING `+userCols, id, emoji))
+}
+
+// SetPremium flips the Telegram Premium flag and returns the fresh user.
+func (r *AuthRepo) SetPremium(ctx context.Context, id int64, premium bool) (domain.User, error) {
+	return scanUser(r.pool.QueryRow(ctx,
+		`UPDATE users SET is_premium=$2 WHERE id=$1 RETURNING `+userCols, id, premium))
 }
 
 // --- Profile-photo gallery (Telegram getUserPhotos) ---
@@ -269,10 +282,10 @@ func (r *AuthRepo) SessionByTokenHash(ctx context.Context, tokenHash string) (do
 	var deviceID int64
 	err := r.pool.QueryRow(ctx,
 		`SELECT u.id, u.phone, u.username, u.first_name, u.last_name, u.display_name,
-		        u.bio, u.birthday, u.avatar_url, u.phone_visibility, d.id
+		        u.bio, u.birthday, u.avatar_url, u.phone_visibility, u.is_premium, u.emoji_status, d.id
 		 FROM users u JOIN devices d ON d.user_id=u.id WHERE d.token_hash=$1`,
 		tokenHash).Scan(&u.ID, &u.Phone, &u.Username, &u.FirstName, &u.LastName, &u.DisplayName,
-		&u.Bio, &u.Birthday, &u.AvatarURL, &u.PhoneVisibility, &deviceID)
+		&u.Bio, &u.Birthday, &u.AvatarURL, &u.PhoneVisibility, &u.IsPremium, &u.EmojiStatus, &deviceID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.User{}, 0, domain.ErrNotFound
 	}

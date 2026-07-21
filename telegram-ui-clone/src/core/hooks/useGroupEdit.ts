@@ -39,6 +39,16 @@ export interface BannedRow {
   avatarUrl?: string
 }
 
+// Строка гранулярного ограничения (Telegram ChatBannedRights): битовая маска
+// ЗАПРЕЩённых прав + срок (undefined — бессрочно).
+export interface RestrictedRow {
+  userId: number
+  name: string
+  avatarUrl?: string
+  deniedRights: number
+  untilDate?: string
+}
+
 interface Managers {
   groups: {
     card(chatId: number): Promise<GroupCard>
@@ -48,12 +58,15 @@ interface Managers {
     setPermissions(chatId: number, permissions: number, slowmodeSeconds: number): Promise<void>
     setReactions(chatId: number, mode: 'all' | 'some' | 'none', emojis: string[]): Promise<void>
     setHistory(chatId: number, visible: boolean): Promise<void>
-    listInvites(chatId: number): Promise<{ token: string; uses: number; url: string; requiresApproval: boolean }[]>
-    createInvite(chatId: number, opts?: { requiresApproval?: boolean }): Promise<{ token: string; url: string; requiresApproval: boolean }>
+    listInvites(chatId: number): Promise<{ token: string; uses: number; url: string; requiresApproval: boolean; expiresAt?: string }[]>
+    createInvite(chatId: number, opts?: { requiresApproval?: boolean; expireSeconds?: number }): Promise<{ token: string; url: string; requiresApproval: boolean; expiresAt?: string }>
     revokeInvite(chatId: number, token: string): Promise<void>
     listBans(chatId: number): Promise<{ userId: number; bannedBy: number }[]>
     ban(chatId: number, userId: number): Promise<void>
     unban(chatId: number, userId: number): Promise<void>
+    listRestrictions(chatId: number): Promise<{ userId: number; deniedRights: number; untilDate?: string; restrictedBy: number }[]>
+    restrictMember(chatId: number, userId: number, deniedRights: number, untilSeconds?: number): Promise<void>
+    unrestrictMember(chatId: number, userId: number): Promise<void>
     removeMember(chatId: number, userId: number): Promise<void>
     addMember(chatId: number, userId: number): Promise<void>
     promoteAdmin(chatId: number, userId: number, rights: number): Promise<void>
@@ -71,8 +84,9 @@ export interface GroupEdit {
   card: GroupCard | null
   members: EditMember[]
   admins: EditMember[]
-  invites: { token: string; url: string; requiresApproval: boolean }[]
+  invites: { token: string; url: string; requiresApproval: boolean; expiresAt?: string }[]
   bans: BannedRow[]
+  restricted: RestrictedRow[]
   canBan: boolean
   canManageAdmins: boolean
   isCreator: boolean
@@ -83,11 +97,13 @@ export interface GroupEdit {
   savePermissions: (permissions: number, slowmodeSeconds: number) => Promise<void>
   saveReactions: (mode: 'all' | 'some' | 'none', emojis: string[]) => Promise<void>
   saveHistory: (visible: boolean) => Promise<void>
-  createInvite: () => Promise<void>
+  createInvite: (expireSeconds?: number) => Promise<void>
   revokeInvite: (token: string) => Promise<void>
   kick: (userId: number) => Promise<void>
   ban: (userId: number) => Promise<void>
   unban: (userId: number) => Promise<void>
+  restrict: (userId: number, deniedRights: number, untilSeconds?: number) => Promise<void>
+  unrestrict: (userId: number) => Promise<void>
   addMember: (userId: number) => Promise<void>
   promote: (userId: number, rights: number) => Promise<void>
   demote: (userId: number) => Promise<void>
@@ -100,8 +116,9 @@ const BAN_USERS = 8
 export function useGroupEdit(chatId: number, managers: Managers): GroupEdit {
   const [card, setCard] = useState<GroupCard | null>(null)
   const [members, setMembers] = useState<EditMember[]>([])
-  const [invites, setInvites] = useState<{ token: string; url: string; requiresApproval: boolean }[]>([])
+  const [invites, setInvites] = useState<{ token: string; url: string; requiresApproval: boolean; expiresAt?: string }[]>([])
   const [bans, setBans] = useState<BannedRow[]>([])
+  const [restricted, setRestricted] = useState<RestrictedRow[]>([])
   const [tick, setTick] = useState(0)
   const reload = useCallback(() => setTick((x) => x + 1), [])
 
@@ -131,7 +148,7 @@ export function useGroupEdit(chatId: number, managers: Managers): GroupEdit {
         const canInvite = c.myRole === 'creator' || c.myRole === 'admin'
         if (canInvite) {
           const inv = await managers.groups.listInvites(chatId)
-          if (alive) setInvites(inv.map((l) => ({ token: l.token, url: l.url, requiresApproval: l.requiresApproval })))
+          if (alive) setInvites(inv.map((l) => ({ token: l.token, url: l.url, requiresApproval: l.requiresApproval, expiresAt: l.expiresAt })))
           const bs = await managers.groups.listBans(chatId).catch(() => [])
           const banUsers = await managers.peers.getUsers(bs.map((b) => b.userId))
           const banById = new Map(banUsers.map((u) => [u.id, u]))
@@ -140,6 +157,18 @@ export function useGroupEdit(chatId: number, managers: Managers): GroupEdit {
               userId: b.userId,
               name: banById.get(b.userId)?.displayName || `User ${b.userId}`,
               avatarUrl: banById.get(b.userId)?.avatarUrl || undefined,
+            })))
+          }
+          const rs = await managers.groups.listRestrictions(chatId).catch(() => [])
+          const resUsers = await managers.peers.getUsers(rs.map((r) => r.userId))
+          const resById = new Map(resUsers.map((u) => [u.id, u]))
+          if (alive) {
+            setRestricted(rs.map((r) => ({
+              userId: r.userId,
+              name: resById.get(r.userId)?.displayName || `User ${r.userId}`,
+              avatarUrl: resById.get(r.userId)?.avatarUrl || undefined,
+              deniedRights: r.deniedRights,
+              untilDate: r.untilDate,
             })))
           }
         }
@@ -157,7 +186,7 @@ export function useGroupEdit(chatId: number, managers: Managers): GroupEdit {
   const refreshDialogs = () => loadChats(managers)
 
   return {
-    card, members, admins, invites, bans, canBan, canManageAdmins, isCreator, reload,
+    card, members, admins, invites, bans, restricted, canBan, canManageAdmins, isCreator, reload,
     saveInfo: async (title, about) => {
       await managers.groups.editInfo(chatId, { title, about, username: card?.username ?? '' })
       reload()
@@ -192,8 +221,8 @@ export function useGroupEdit(chatId: number, managers: Managers): GroupEdit {
       await managers.groups.setHistory(chatId, visible)
       reload()
     },
-    createInvite: async () => {
-      await managers.groups.createInvite(chatId)
+    createInvite: async (expireSeconds?: number) => {
+      await managers.groups.createInvite(chatId, { expireSeconds })
       reload()
     },
     revokeInvite: async (token) => {
@@ -210,6 +239,14 @@ export function useGroupEdit(chatId: number, managers: Managers): GroupEdit {
     },
     unban: async (userId) => {
       await managers.groups.unban(chatId, userId)
+      reload()
+    },
+    restrict: async (userId, deniedRights, untilSeconds) => {
+      await managers.groups.restrictMember(chatId, userId, deniedRights, untilSeconds)
+      reload()
+    },
+    unrestrict: async (userId) => {
+      await managers.groups.unrestrictMember(chatId, userId)
       reload()
     },
     addMember: async (userId) => {

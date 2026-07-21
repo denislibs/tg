@@ -13,7 +13,10 @@ type ChatMember struct {
 	Role           string
 	LastReadSeq    int64
 	UnreadCount    int
-	Muted          bool
+	// UnreadMentionsCount — число непрочитанных сообщений, где участник упомянут
+	// (Telegram unread_mentions_count); отдельный бейдж «@» поверх обычного unread.
+	UnreadMentionsCount int
+	Muted               bool
 }
 
 // DialogPeer is the other participant of a private chat, used to render a
@@ -22,7 +25,9 @@ type DialogPeer struct {
 	ID          int64
 	DisplayName string
 	AvatarURL   string
-	Verified    bool // official/service account (blue check)
+	Verified    bool   // official/service account (blue check)
+	Premium     bool   // Telegram Premium subscriber (gold star badge)
+	EmojiStatus string // unicode emoji shown after the name ("" when unset)
 }
 
 // Dialog is a chat-list read model: a chat + the viewer's read state + last message.
@@ -38,7 +43,10 @@ type Dialog struct {
 	// (message seq <= PeerReadSeq ⇒ delivered+read ✓✓).
 	PeerReadSeq int64
 	UnreadCount int
-	Muted       bool
+	// UnreadMentionsCount — непрочитанные упоминания зрителя в этом чате
+	// (Telegram unread_mentions_count); клиент рисует отдельный бейдж «@».
+	UnreadMentionsCount int
+	Muted               bool
 	// Pinned — диалог закреплён вверху списка; Archived — убран в «Архив»
 	// (пер-юзерные флаги членства, tweb pinned dialogs + folder_id=1).
 	Pinned   bool
@@ -114,6 +122,8 @@ type InviteLink struct {
 	Uses             int
 	Revoked          bool
 	RequiresApproval bool
+	// ExpiresAt — срок действия ссылки; nil — бессрочная.
+	ExpiresAt *time.Time
 }
 
 // JoinRequest is a pending request to join a chat via an approval-required link.
@@ -128,6 +138,24 @@ type JoinRequest struct {
 type BannedUser struct {
 	UserID   int64
 	BannedBy int64
+}
+
+// MemberRestriction is a per-user granular restriction (Telegram
+// ChatBannedRights): DeniedRights is a MemberPerms bitmask of what this member
+// is NOT allowed to do, until UntilDate (nil — indefinitely). Distinct from a
+// full ban (chat_bans / removal); the member stays in the chat but is limited.
+type MemberRestriction struct {
+	ChatID       int64
+	UserID       int64
+	DeniedRights MemberPerms
+	UntilDate    *time.Time
+	RestrictedBy int64
+}
+
+// Active reports whether the restriction is currently in effect at time now
+// (an expired UntilDate means it no longer applies).
+func (r MemberRestriction) Active(now time.Time) bool {
+	return r.UntilDate == nil || r.UntilDate.After(now)
 }
 
 // SavedDialog is one grouped row of Saved Messages («Избранное» → таб «Чаты»):

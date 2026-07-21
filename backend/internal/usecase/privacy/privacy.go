@@ -155,6 +155,7 @@ func (i *Interactor) Profile(ctx context.Context, viewerID, targetID int64) (dom
 	p := domain.UserProfile{
 		ID: u.ID, Username: u.Username,
 		FirstName: u.FirstName, LastName: u.LastName, DisplayName: u.DisplayName,
+		Premium: u.IsPremium, EmojiStatus: u.EmojiStatus,
 	}
 	p.Verified, _ = i.repo.IsVerified(ctx, targetID)
 	p.IsBot, _ = i.repo.IsBot(ctx, targetID)

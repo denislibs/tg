@@ -116,6 +116,8 @@ type UserProfile struct {
 	Birthday       *string // "DD.MM" или "DD.MM.YYYY"; nil когда скрыт/не задан
 	AvatarURL      string
 	Verified       bool
+	Premium        bool   // Telegram Premium subscriber (gold star badge)
+	EmojiStatus    string // unicode emoji shown after the name ("" when unset)
 	IsBot          bool
 	IsBlocked      bool
 	CallsAvailable bool

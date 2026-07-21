@@ -286,6 +286,77 @@ func (h *GroupHandler) Unban(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// ListRestrictions returns the chat's granularly-restricted members
+// (GET /chats/{chatID}/restrictions).
+func (h *GroupHandler) ListRestrictions(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	list, err := h.uc.ListRestricted(r.Context(), chatID, user.ID)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	out := make([]map[string]any, 0, len(list))
+	for _, res := range list {
+		row := map[string]any{
+			"user_id":       res.UserID,
+			"denied_rights": int(res.DeniedRights),
+			"restricted_by": res.RestrictedBy,
+			"until_date":    nil,
+		}
+		if res.UntilDate != nil {
+			row["until_date"] = res.UntilDate.UTC().Format(time.RFC3339)
+		}
+		out = append(out, row)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"restrictions": out})
+}
+
+// Restrict applies a granular per-user restriction (POST /chats/{chatID}/restrictions).
+func (h *GroupHandler) Restrict(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	var b struct {
+		UserID       int64 `json:"user_id"`
+		DeniedRights int   `json:"denied_rights"`
+		UntilSeconds int   `json:"until_seconds"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || b.UserID == 0 {
+		writeError(w, http.StatusBadRequest, "user_id required")
+		return
+	}
+	if err := h.uc.RestrictMember(r.Context(), chatID, user.ID, b.UserID, domain.MemberPerms(b.DeniedRights), b.UntilSeconds); err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// Unrestrict lifts a member's granular restriction
+// (DELETE /chats/{chatID}/restrictions/{userID}).
+func (h *GroupHandler) Unrestrict(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	uid, ok := pathInt(w, r, "userID")
+	if !ok {
+		return
+	}
+	if err := h.uc.UnrestrictMember(r.Context(), chatID, user.ID, uid); err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 // RevokeInvite revokes an invite link (DELETE /chats/{chatID}/invite_links/{token}).
 func (h *GroupHandler) RevokeInvite(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
@@ -578,6 +649,15 @@ func (h *GroupHandler) Users(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"users": out})
 }
 
+// isoOrNil renders a nullable timestamp as an ISO-8601 string, or nil in JSON
+// when unset (e.g. an invite link with no expiry).
+func isoOrNil(t *time.Time) any {
+	if t == nil {
+		return nil
+	}
+	return t.UTC().Format(time.RFC3339)
+}
+
 func (h *GroupHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	chatID, ok := pathInt(w, r, "chatID")
@@ -587,14 +667,21 @@ func (h *GroupHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 	var b struct {
 		UsageLimit       *int `json:"usage_limit"`
 		RequiresApproval bool `json:"requires_approval"`
+		// ExpireSeconds — TTL ссылки от текущего момента; 0/отсутствует — бессрочная.
+		ExpireSeconds int `json:"expire_seconds"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&b)
-	link, err := h.uc.CreateInvite(r.Context(), chatID, user.ID, b.UsageLimit, b.RequiresApproval)
+	var expiresAt *time.Time
+	if b.ExpireSeconds > 0 {
+		t := time.Now().Add(time.Duration(b.ExpireSeconds) * time.Second)
+		expiresAt = &t
+	}
+	link, err := h.uc.CreateInvite(r.Context(), chatID, user.ID, b.UsageLimit, b.RequiresApproval, expiresAt)
 	if err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"token": link.Token, "url": "/join/" + link.Token, "requires_approval": link.RequiresApproval})
+	writeJSON(w, http.StatusOK, map[string]any{"token": link.Token, "url": "/join/" + link.Token, "requires_approval": link.RequiresApproval, "expires_at": isoOrNil(link.ExpiresAt)})
 }
 
 func (h *GroupHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
@@ -610,7 +697,7 @@ func (h *GroupHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]map[string]any, 0, len(links))
 	for _, l := range links {
-		out = append(out, map[string]any{"token": l.Token, "uses": l.Uses, "url": "/join/" + l.Token, "requires_approval": l.RequiresApproval})
+		out = append(out, map[string]any{"token": l.Token, "uses": l.Uses, "url": "/join/" + l.Token, "requires_approval": l.RequiresApproval, "expires_at": isoOrNil(l.ExpiresAt)})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"invite_links": out})
 }

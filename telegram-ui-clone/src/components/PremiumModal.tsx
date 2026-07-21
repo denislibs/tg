@@ -6,6 +6,8 @@ import TgIcon from './TgIcon'
 import type { ReactNode } from 'react'
 import classNames from '../shared/lib/classNames'
 import { useT } from '../i18n'
+import { useManagers } from '../core/hooks/useManagers'
+import { useChatsStore } from '../stores/chatsStore'
 import s from './PremiumModal.module.scss'
 
 // tweb's premium feature colour ramp (orange -> green), sampled across the list.
@@ -54,8 +56,25 @@ function PremiumStar() {
 
 export default function PremiumModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useT()
+  const managers = useManagers()
+  const setMe = useChatsStore((st) => st.setMe)
   const [plan, setPlan] = useState<string>('24m')
+  const [subscribing, setSubscribing] = useState(false)
   const selected = PLANS.find((p) => p.id === plan) ?? PLANS[0]
+
+  // Fake purchase (clone): flip the Premium flag, refresh `me` so the star badge
+  // appears, then close.
+  const subscribe = async () => {
+    if (subscribing) return
+    setSubscribing(true)
+    try {
+      const user = await managers.profile.activatePremium()
+      setMe(user)
+    } finally {
+      setSubscribing(false)
+      onClose()
+    }
+  }
 
   return createPortal(
     <AnimatePresence>
@@ -160,7 +179,8 @@ export default function PremiumModal({ open, onClose }: { open: boolean; onClose
                 className={s.cta}
                 whileHover={{ scale: 1.015 }}
                 whileTap={{ scale: 0.985 }}
-                onClick={onClose}
+                onClick={() => void subscribe()}
+                style={{ opacity: subscribing ? 0.7 : 1, pointerEvents: subscribing ? 'none' : 'auto' }}
               >
                 {t('Subscribe for')} {selected.perMonth} ₽ {t('per month')}
               </motion.div>

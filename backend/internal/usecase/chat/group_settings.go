@@ -68,6 +68,21 @@ func (i *Interactor) checkSendAllowed(ctx context.Context, in SendInput) error {
 	if in.MediaID != nil && s.DefaultPerms&domain.PermSendMedia == 0 {
 		return domain.ErrForbidden
 	}
+	// Пер-юзерное ограничение (Telegram ChatBannedRights) поверх дефолта чата:
+	// запрет SendMessages блокирует любую отправку, запрет SendMedia — только
+	// медиа. Истёкшее ограничение игнорируется (best-effort удаляем).
+	if res, ok, e := i.groups.GetRestriction(ctx, in.ChatID, in.SenderID); e == nil && ok {
+		if res.Active(time.Now()) {
+			if res.DeniedRights.Denies(domain.PermSendMessages) {
+				return domain.ErrForbidden
+			}
+			if in.MediaID != nil && res.DeniedRights.Denies(domain.PermSendMedia) {
+				return domain.ErrForbidden
+			}
+		} else {
+			_ = i.groups.DeleteRestriction(ctx, in.ChatID, in.SenderID)
+		}
+	}
 	if s.SlowmodeSeconds > 0 {
 		if in.ClientMsgID != "" {
 			if _, e := i.msgs.FindByClientMsgID(ctx, in.ChatID, in.SenderID, in.ClientMsgID); e == nil {
@@ -179,6 +194,73 @@ func (i *Interactor) ListBanned(ctx context.Context, chatID, actorID int64) ([]d
 		return nil, err
 	}
 	return i.groups.ListBans(ctx, chatID)
+}
+
+// RestrictMember applies a granular per-user restriction (Telegram editBanned /
+// ChatBannedRights): deniedRights is a MemberPerms bitmask of what the target
+// may NOT do, in effect until now+untilSeconds (untilSeconds<=0 — forever). The
+// member stays in the chat (unlike a ban). Gated by the ban/restrict admin
+// right; the creator can't be restricted. Announced as a `restrict` service msg.
+func (i *Interactor) RestrictMember(ctx context.Context, chatID, actorID, targetID int64, deniedRights domain.MemberPerms, untilSeconds int) error {
+	if err := i.requireRight(ctx, chatID, actorID, domain.RightBanUsers); err != nil {
+		return err
+	}
+	if targetID == actorID {
+		return domain.ErrForbidden
+	}
+	if m, err := i.groups.GetMember(ctx, chatID, targetID); err == nil {
+		if m.Role == domain.RoleCreator || m.Role == domain.RoleAdmin {
+			return domain.ErrForbidden // админов/создателя ограничить нельзя
+		}
+	}
+	deniedRights &= domain.AllMemberPerms
+	var until *time.Time
+	if untilSeconds > 0 {
+		t := time.Now().Add(time.Duration(untilSeconds) * time.Second)
+		until = &t
+	}
+	if err := i.groups.SetRestriction(ctx, domain.MemberRestriction{
+		ChatID: chatID, UserID: targetID, DeniedRights: deniedRights,
+		UntilDate: until, RestrictedBy: actorID,
+	}); err != nil {
+		return err
+	}
+	actor := i.userCard(ctx, actorID)
+	target := i.userCard(ctx, targetID)
+	text, _ := json.Marshal(map[string]any{
+		"action": "restrict", "actor_id": actor.ID, "actor": actor.DisplayName,
+		"user_id": target.ID, "user": target.DisplayName, "denied_rights": int(deniedRights),
+	})
+	i.postGroupService(ctx, chatID, actorID, string(text))
+	return nil
+}
+
+// UnrestrictMember lifts a member's granular restriction.
+func (i *Interactor) UnrestrictMember(ctx context.Context, chatID, actorID, targetID int64) error {
+	if err := i.requireRight(ctx, chatID, actorID, domain.RightBanUsers); err != nil {
+		return err
+	}
+	return i.groups.DeleteRestriction(ctx, chatID, targetID)
+}
+
+// ListRestricted returns the chat's granularly-restricted members (admins with
+// BAN_USERS only). Expired restrictions are filtered out.
+func (i *Interactor) ListRestricted(ctx context.Context, chatID, actorID int64) ([]domain.MemberRestriction, error) {
+	if err := i.requireRight(ctx, chatID, actorID, domain.RightBanUsers); err != nil {
+		return nil, err
+	}
+	all, err := i.groups.ListRestrictions(ctx, chatID)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	out := make([]domain.MemberRestriction, 0, len(all))
+	for _, r := range all {
+		if r.Active(now) {
+			out = append(out, r)
+		}
+	}
+	return out, nil
 }
 
 // DeleteGroup deletes the whole group for everyone (creator only, tweb

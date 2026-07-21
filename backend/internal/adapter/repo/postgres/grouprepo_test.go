@@ -123,3 +123,64 @@ func TestGroupRepo_CreateAndMembership(t *testing.T) {
 		t.Fatalf("linked channel DiscussionChatID = %d, want %d", cc2.DiscussionChatID, grpID)
 	}
 }
+
+func TestGroupRepo_Restrictions(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+	admin := seedUser(t, pool, "+7101")
+	target := seedUser(t, pool, "+7102")
+	r := NewGroupRepo(pool)
+
+	chatID, err := r.CreateMultiMember(ctx, "group", "G", "", "", false, admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// No restriction yet.
+	if _, ok, err := r.GetRestriction(ctx, chatID, target); err != nil || ok {
+		t.Fatalf("unexpected restriction: ok=%v err=%v", ok, err)
+	}
+
+	until := time.Now().Add(time.Hour)
+	res := domain.MemberRestriction{
+		ChatID: chatID, UserID: target,
+		DeniedRights: domain.PermSendMedia | domain.PermPinMessages,
+		UntilDate:    &until, RestrictedBy: admin,
+	}
+	if err := r.SetRestriction(ctx, res); err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err := r.GetRestriction(ctx, chatID, target)
+	if err != nil || !ok {
+		t.Fatalf("get after set: ok=%v err=%v", ok, err)
+	}
+	if got.DeniedRights != res.DeniedRights || got.UntilDate == nil || got.RestrictedBy != admin {
+		t.Fatalf("restriction roundtrip: %+v", got)
+	}
+	if !got.Active(time.Now()) {
+		t.Fatal("restriction should be active")
+	}
+
+	// UPSERT: change denied rights + make indefinite.
+	res.DeniedRights = domain.PermSendMessages
+	res.UntilDate = nil
+	if err := r.SetRestriction(ctx, res); err != nil {
+		t.Fatal(err)
+	}
+	got2, _, _ := r.GetRestriction(ctx, chatID, target)
+	if got2.DeniedRights != domain.PermSendMessages || got2.UntilDate != nil {
+		t.Fatalf("upsert: %+v", got2)
+	}
+
+	list, err := r.ListRestrictions(ctx, chatID)
+	if err != nil || len(list) != 1 || list[0].UserID != target {
+		t.Fatalf("list: %v %+v", err, list)
+	}
+
+	if err := r.DeleteRestriction(ctx, chatID, target); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := r.GetRestriction(ctx, chatID, target); ok {
+		t.Fatal("restriction should be gone")
+	}
+}

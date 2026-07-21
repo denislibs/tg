@@ -119,18 +119,25 @@ describe('GroupsManager', () => {
   it('createInvite POSTs /chats/{id}/invite_links and maps requires_approval', async () => {
     const { rest, posts } = fakeRest({ postReturn: { token: 'abc', url: 'http://x/join/abc', requires_approval: true } })
     const mgr = newGroupsManager({ rest })
-    const r = await mgr.createInvite(5, { usageLimit: 10, requiresApproval: true })
+    const r = await mgr.createInvite(5, { usageLimit: 10, requiresApproval: true, expireSeconds: 3600 })
     expect(posts).toHaveLength(1)
     expect(posts[0].path).toBe('/chats/5/invite_links')
-    expect(posts[0].body).toEqual({ usage_limit: 10, requires_approval: true })
+    expect(posts[0].body).toEqual({ usage_limit: 10, requires_approval: true, expire_seconds: 3600 })
     expect(r).toEqual({ token: 'abc', url: 'http://x/join/abc', requiresApproval: true })
   })
 
-  it('createInvite defaults usage_limit=null and requires_approval=false', async () => {
+  it('createInvite defaults usage_limit=null, requires_approval=false, expire_seconds=0', async () => {
     const { rest, posts } = fakeRest({ postReturn: { token: 't', url: 'u', requires_approval: false } })
     const mgr = newGroupsManager({ rest })
     await mgr.createInvite(5)
-    expect(posts[0].body).toEqual({ usage_limit: null, requires_approval: false })
+    expect(posts[0].body).toEqual({ usage_limit: null, requires_approval: false, expire_seconds: 0 })
+  })
+
+  it('createInvite maps expires_at from the response', async () => {
+    const { rest } = fakeRest({ postReturn: { token: 'abc', url: 'u', requires_approval: false, expires_at: '2026-08-01T00:00:00Z' } })
+    const mgr = newGroupsManager({ rest })
+    const r = await mgr.createInvite(5, { expireSeconds: 3600 })
+    expect(r.expiresAt).toBe('2026-08-01T00:00:00Z')
   })
 
   it('listInvites GETs /chats/{id}/invite_links and maps requires_approval', async () => {

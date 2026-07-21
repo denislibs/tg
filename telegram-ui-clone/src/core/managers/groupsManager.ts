@@ -20,7 +20,12 @@ export interface TopicRow {
   rootMsgId: number
   title: string
   iconColor: number
+  iconEmoji: string
   closed: boolean
+  hidden: boolean
+  pinned: boolean
+  pos: number
+  isGeneral: boolean
   createdBy: number
   msgCount: number
   lastText: string
@@ -31,13 +36,16 @@ export interface TopicRow {
 
 interface RawTopic {
   id: number; chat_id: number; root_msg_id: number; title: string; icon_color: number
-  closed: boolean; created_by: number; msg_count: number
+  icon_emoji?: string | null; closed: boolean; hidden?: boolean; pinned?: boolean; pos?: number
+  is_general?: boolean; created_by: number; msg_count: number
   last_text?: string | null; last_type?: string | null; last_sender_name?: string | null; last_at?: string | null
 }
 
 const mapTopic = (r: RawTopic): TopicRow => ({
   id: r.id, chatId: r.chat_id, rootMsgId: r.root_msg_id, title: r.title, iconColor: r.icon_color,
-  closed: r.closed, createdBy: r.created_by, msgCount: r.msg_count ?? 0,
+  iconEmoji: r.icon_emoji ?? '', closed: r.closed, hidden: r.hidden ?? false, pinned: r.pinned ?? false,
+  pos: r.pos ?? 0, isGeneral: r.is_general ?? false,
+  createdBy: r.created_by, msgCount: r.msg_count ?? 0,
   lastText: r.last_text ?? '', lastType: r.last_type ?? '', lastSenderName: r.last_sender_name ?? '',
   lastAt: r.last_at ?? undefined,
 })
@@ -73,8 +81,8 @@ export function newGroupsManager({ rest }: { rest: Pick<RestClient, 'post' | 'ge
     async setForum(chatId: number, enabled: boolean): Promise<void> {
       await rest.post(`/chats/${chatId}/forum`, { enabled })
     },
-    async createTopic(chatId: number, title: string, iconColor: number): Promise<{ id: number; rootMsgId: number }> {
-      const r = await rest.post<{ id: number; root_msg_id: number }>(`/chats/${chatId}/topics`, { title, icon_color: iconColor })
+    async createTopic(chatId: number, title: string, iconColor: number, iconEmoji = ''): Promise<{ id: number; rootMsgId: number }> {
+      const r = await rest.post<{ id: number; root_msg_id: number }>(`/chats/${chatId}/topics`, { title, icon_color: iconColor, icon_emoji: iconEmoji })
       return { id: r.id, rootMsgId: r.root_msg_id }
     },
     async listTopics(chatId: number): Promise<TopicRow[]> {
@@ -83,6 +91,15 @@ export function newGroupsManager({ rest }: { rest: Pick<RestClient, 'post' | 'ge
     },
     async closeTopic(chatId: number, topicId: number, closed: boolean): Promise<void> {
       await rest.post(`/chats/${chatId}/topics/${topicId}/close`, { closed })
+    },
+    async editTopic(chatId: number, topicId: number, title: string, iconColor: number, iconEmoji = ''): Promise<void> {
+      await rest.patch(`/chats/${chatId}/topics/${topicId}`, { title, icon_color: iconColor, icon_emoji: iconEmoji })
+    },
+    async setTopicHidden(chatId: number, topicId: number, hidden: boolean): Promise<void> {
+      await rest.post(`/chats/${chatId}/topics/${topicId}/hide`, { hidden })
+    },
+    async setTopicPinned(chatId: number, topicId: number, pinned: boolean): Promise<void> {
+      await rest.post(`/chats/${chatId}/topics/${topicId}/pin`, { pinned })
     },
 
     // Закрепить/открепить диалог вверху списка (лимит 5 — бэк вернёт 400).
@@ -137,6 +154,19 @@ export function newGroupsManager({ rest }: { rest: Pick<RestClient, 'post' | 'ge
     async unban(chatId: number, userId: number): Promise<void> {
       await rest.del(`/chats/${chatId}/bans/${userId}`)
     },
+    // Гранулярные ограничения участника (Telegram editBanned / ChatBannedRights):
+    // deniedRights — битовая маска запрещённых прав (PERMS), untilSeconds — срок
+    // (0/undefined — бессрочно).
+    async listRestrictions(chatId: number): Promise<{ userId: number; deniedRights: number; untilDate?: string; restrictedBy: number }[]> {
+      const r = await rest.get<{ restrictions: { user_id: number; denied_rights: number; until_date: string | null; restricted_by: number }[] }>(`/chats/${chatId}/restrictions`)
+      return (r.restrictions ?? []).map((x) => ({ userId: x.user_id, deniedRights: x.denied_rights, untilDate: x.until_date ?? undefined, restrictedBy: x.restricted_by }))
+    },
+    async restrictMember(chatId: number, userId: number, deniedRights: number, untilSeconds?: number): Promise<void> {
+      await rest.post(`/chats/${chatId}/restrictions`, { user_id: userId, denied_rights: deniedRights, until_seconds: untilSeconds ?? 0 })
+    },
+    async unrestrictMember(chatId: number, userId: number): Promise<void> {
+      await rest.del(`/chats/${chatId}/restrictions/${userId}`)
+    },
     async removeMember(chatId: number, userId: number): Promise<void> {
       await rest.del(`/chats/${chatId}/members/${userId}`)
     },
@@ -156,13 +186,13 @@ export function newGroupsManager({ rest }: { rest: Pick<RestClient, 'post' | 'ge
     async demoteAdmin(chatId: number, userId: number): Promise<void> {
       await rest.del(`/chats/${chatId}/admins/${userId}`)
     },
-    async createInvite(chatId: number, opts?: { usageLimit?: number; requiresApproval?: boolean }): Promise<{ token: string; url: string; requiresApproval: boolean }> {
-      const r = await rest.post<{ token: string; url: string; requires_approval: boolean }>(`/chats/${chatId}/invite_links`, { usage_limit: opts?.usageLimit ?? null, requires_approval: opts?.requiresApproval ?? false })
-      return { token: r.token, url: r.url, requiresApproval: r.requires_approval }
+    async createInvite(chatId: number, opts?: { usageLimit?: number; requiresApproval?: boolean; expireSeconds?: number }): Promise<{ token: string; url: string; requiresApproval: boolean; expiresAt?: string }> {
+      const r = await rest.post<{ token: string; url: string; requires_approval: boolean; expires_at: string | null }>(`/chats/${chatId}/invite_links`, { usage_limit: opts?.usageLimit ?? null, requires_approval: opts?.requiresApproval ?? false, expire_seconds: opts?.expireSeconds ?? 0 })
+      return { token: r.token, url: r.url, requiresApproval: r.requires_approval, expiresAt: r.expires_at ?? undefined }
     },
-    async listInvites(chatId: number): Promise<{ token: string; uses: number; url: string; requiresApproval: boolean }[]> {
-      const r = await rest.get<{ invite_links: { token: string; uses: number; url: string; requires_approval: boolean }[] }>(`/chats/${chatId}/invite_links`)
-      return (r.invite_links ?? []).map((l) => ({ token: l.token, uses: l.uses, url: l.url, requiresApproval: l.requires_approval }))
+    async listInvites(chatId: number): Promise<{ token: string; uses: number; url: string; requiresApproval: boolean; expiresAt?: string }[]> {
+      const r = await rest.get<{ invite_links: { token: string; uses: number; url: string; requires_approval: boolean; expires_at: string | null }[] }>(`/chats/${chatId}/invite_links`)
+      return (r.invite_links ?? []).map((l) => ({ token: l.token, uses: l.uses, url: l.url, requiresApproval: l.requires_approval, expiresAt: l.expires_at ?? undefined }))
     },
     async joinByToken(token: string): Promise<{ status: 'requested' | 'joined' }> {
       return rest.post<{ status: 'requested' | 'joined' }>(`/join/${token}`, {})

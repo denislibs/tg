@@ -7,6 +7,7 @@ import { slideInRight } from '../motion'
 import SettingsSubScreen, { hasSubScreen } from './SettingsSubScreen'
 import EditProfile from './settings/EditProfile'
 import PremiumModal from './PremiumModal'
+import EmojiStatusPicker from './EmojiStatusPicker'
 import QrModal from './QrModal'
 import TgIcon from './TgIcon'
 import TgSwitch from './TgSwitch'
@@ -64,6 +65,7 @@ export default function SettingsView({
   const [sub, setSub] = useState<string | null>(initialSub ?? null)
   const [editProfile, setEditProfile] = useState(false)
   const [premiumOpen, setPremiumOpen] = useState(false)
+  const [emojiStatusOpen, setEmojiStatusOpen] = useState(false)
   const [qrOpen, setQrOpen] = useState(false)
   const me = useChatsStore((s) => s.me)
   const name = me?.displayName || formatPhone(me?.phone) || ''
@@ -166,8 +168,17 @@ export default function SettingsView({
         <Section>
           <Row
             icon={<TgIcon name="star_filled" size={24} color="var(--tg-accent)" />}
-            label="Telegram Premium"
+            label={me?.premium ? 'Telegram Premium (active)' : 'Telegram Premium'}
             onClick={() => setPremiumOpen(true)}
+          />
+          <Row
+            icon={
+              me?.emojiStatus
+                ? <span style={{ fontSize: 22, lineHeight: 1 }}>{me.emojiStatus}</span>
+                : <TgIcon name="smile" size={24} color="var(--tg-textSecondary)" />
+            }
+            label="Set Emoji Status"
+            onClick={() => setEmojiStatusOpen(true)}
           />
           <Row
             icon={<TgIcon name="gift" size={24} color="var(--tg-textSecondary)" />}
@@ -189,6 +200,9 @@ export default function SettingsView({
 
       {/* Telegram Premium modal */}
       <PremiumModal open={premiumOpen} onClose={() => setPremiumOpen(false)} />
+
+      {/* Emoji-status picker (own status) */}
+      <EmojiStatusPicker open={emojiStatusOpen} onClose={() => setEmojiStatusOpen(false)} />
 
       {/* «QR-код» профиля (tweb myQrCode) — кодирует нашу публичную страницу
           /@username (аналог t.me/username) */}

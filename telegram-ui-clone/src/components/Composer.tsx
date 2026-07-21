@@ -46,7 +46,7 @@ const SHORTCUTS: Record<string, EntityType> = {
   KeyS: 'strikethrough', KeyM: 'code', KeyP: 'spoiler',
 }
 
-export interface ReplyState { msgId?: number; name: string; text: string; color: string }
+export interface ReplyState { msgId?: number; name: string; text: string; color: string; quote?: { text: string; offset: number } }
 export interface EditState { msgId: number; text: string; entities?: MessageEntity[] }
 
 interface Props {
@@ -56,7 +56,8 @@ interface Props {
   // Send the trimmed draft text + its formatting entities. The parent decides
   // reply/edit/draft/channel routing; the composer just clears its draft afterwards.
   // ttlSeconds — self-destruct TTL for secret chats (null/undefined — off).
-  onSend: (text: string, entities?: MessageEntity[], ttlSeconds?: number | null) => void
+  // silent — тихая отправка (Telegram disable_notification): без push/звука у получателя.
+  onSend: (text: string, entities?: MessageEntity[], ttlSeconds?: number | null, silent?: boolean) => void
   // Fired on every keystroke (parent throttles the outgoing `typing` frame).
   onTyping: () => void
   onCancelReply: () => void
@@ -269,7 +270,7 @@ function Composer({
     setScheduleOpen(false)
   }
 
-  const submit = () => {
+  const submit = (silent = false) => {
     if (slowmodeBlocked) return // медленный режим: отправка заблокирована до конца отсчёта
     const root = editorRef.current
     if (!root) return
@@ -282,7 +283,7 @@ function Composer({
     if (!text) return
     // Over the limit is fine — the parent splits into multiple messages
     // (tweb splitStringByLength). The counter shows how many it'll be.
-    onSend(text, entities.length ? entities : undefined, secret ? secretTtl : undefined)
+    onSend(text, entities.length ? entities : undefined, secret ? secretTtl : undefined, silent)
     setEmojiSug(null)
     setInlineSug(null)
     clearEditor()
@@ -656,7 +657,12 @@ function Composer({
                     {t('Reply to')} {reply.name}
                   </Text>
                   <Text noWrap size={14} color="var(--tg-textSecondary)">
-                    {reply.text}
+                    {reply.quote ? (
+                      <>
+                        <TgIcon name="quote_outline" size={13} style={{ verticalAlign: '-1px', marginRight: 3, opacity: 0.7 }} />
+                        {reply.quote.text}
+                      </>
+                    ) : reply.text}
                   </Text>
                 </div>
                 <IconButton size="small" onClick={onCancelReply} color="var(--tg-textFaint)">
@@ -855,8 +861,9 @@ function Composer({
             onMouseLeave={() => { window.clearTimeout(longPressTimer.current); longPressed.current = false }}
             onContextMenu={(e) => {
               e.preventDefault()
-              // ПКМ/long-press по Send с текстом — меню планирования (tweb SendMenu)
-              if (hasText && onSchedule) {
+              // ПКМ/long-press по Send с текстом — меню отправки (tweb SendMenu):
+              // «Без звука» + «Запланировать».
+              if (hasText) {
                 setSendMenuOpen(true)
                 return
               }
@@ -890,11 +897,19 @@ function Composer({
         onClose={() => setSendMenuOpen(false)}
         style={{ right: 24, bottom: 72, transformOrigin: 'bottom right' }}
       >
+        {/* Тихая отправка (tweb SendMenu «Send Without Sound») — per-send: шлём сразу */}
         <MenuItem
-          icon={<TgIcon name="schedule" size={20} />}
-          label={t('Schedule Message')}
-          onClick={() => { setSendMenuOpen(false); setScheduleOpen(true) }}
+          icon={<TgIcon name="nosound" size={20} />}
+          label={t('Send Without Sound')}
+          onClick={() => { setSendMenuOpen(false); submit(true) }}
         />
+        {onSchedule && (
+          <MenuItem
+            icon={<TgIcon name="schedule" size={20} />}
+            label={t('Schedule Message')}
+            onClick={() => { setSendMenuOpen(false); setScheduleOpen(true) }}
+          />
+        )}
       </Menu>
       {scheduleOpen && <SchedulePopup onPick={submitScheduled} onClose={() => setScheduleOpen(false)} />}
 

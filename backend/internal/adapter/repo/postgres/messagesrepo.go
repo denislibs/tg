@@ -24,7 +24,7 @@ func NewMessagesRepo(pool *pgxpool.Pool) *MessagesRepo { return &MessagesRepo{po
 
 // The full ordered column list every message SELECT/RETURNING uses, so the scan
 // order in scanMessage stays in sync across all queries.
-const messageCols = `id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id, edited_at, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, views, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, enc_body, ttl_seconds, destruct_at, forwards`
+const messageCols = `id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id, edited_at, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, views, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, enc_body, ttl_seconds, destruct_at, forwards, reply_quote_text, reply_quote_offset`
 
 // messageColsPrefixed returns messageCols with each column qualified by a table
 // alias (for JOINs where bare column names like chat_id would be ambiguous).
@@ -67,13 +67,15 @@ func (r *MessagesRepo) GetByID(ctx context.Context, msgID int64) (domain.Message
 // GetAround returns a window of messages centered on centerSeq (older + the
 // message + newer), ascending, excluding deleted/self-hidden, plus whether the
 // real top/bottom of history was reached. Used for jump-to-message.
-func (r *MessagesRepo) GetAround(ctx context.Context, chatID, userID, centerSeq int64, limit int, threadRootID *int64) ([]domain.Message, bool, bool, error) {
+// clearedSeq — персональный горизонт «очистки истории»: сообщения с seq<=clearedSeq
+// скрыты для этого читателя (0 — ничего не очищено).
+func (r *MessagesRepo) GetAround(ctx context.Context, chatID, userID, centerSeq int64, limit int, threadRootID *int64, clearedSeq int64) ([]domain.Message, bool, bool, error) {
 	if limit <= 0 {
 		limit = 40
 	}
 	half := limit / 2
 	q := querier(ctx, r.pool)
-	const excl = ` AND deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id=messages.id AND h.user_id=$4) AND ((SELECT history_for_new FROM chats WHERE id=$1) OR messages.created_at >= COALESCE((SELECT cm.joined_at FROM chat_members cm WHERE cm.chat_id=$1 AND cm.user_id=$4 AND cm.role='member'), 'epoch'::timestamptz)) AND ($5::bigint IS NULL OR thread_root_id=$5 OR id=$5)`
+	const excl = ` AND deleted_at IS NULL AND messages.seq>$6 AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id=messages.id AND h.user_id=$4) AND ((SELECT history_for_new FROM chats WHERE id=$1) OR messages.created_at >= COALESCE((SELECT cm.joined_at FROM chat_members cm WHERE cm.chat_id=$1 AND cm.user_id=$4 AND cm.role='member'), 'epoch'::timestamptz)) AND ($5::bigint IS NULL OR thread_root_id=$5 OR id=$5)`
 	scan := func(rows pgx.Rows, err error) ([]domain.Message, error) {
 		if err != nil {
 			return nil, err
@@ -97,13 +99,13 @@ func (r *MessagesRepo) GetAround(ctx context.Context, chatID, userID, centerSeq 
 	// keeps the focused message centered but still returns a full page).
 	older, err := scan(q.Query(ctx,
 		`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq<=$2`+excl+` ORDER BY seq DESC LIMIT $3`,
-		chatID, centerSeq, limit, userID, threadRootID))
+		chatID, centerSeq, limit, userID, threadRootID, clearedSeq))
 	if err != nil {
 		return nil, false, false, err
 	}
 	newer, err := scan(q.Query(ctx,
 		`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq>$2`+excl+` ORDER BY seq ASC LIMIT $3`,
-		chatID, centerSeq, limit, userID, threadRootID))
+		chatID, centerSeq, limit, userID, threadRootID, clearedSeq))
 	if err != nil {
 		return nil, false, false, err
 	}
@@ -360,15 +362,15 @@ func (r *MessagesRepo) IncrementForwards(ctx context.Context, msgID int64) error
 func (r *MessagesRepo) Insert(ctx context.Context, m domain.Message) (domain.Message, error) {
 	q := querier(ctx, r.pool)
 	return scanOneMessage(q.QueryRow(ctx,
-		`INSERT INTO messages (chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, thread_root_id, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, enc_body, ttl_seconds, destruct_at, auto_delete_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,
+		`INSERT INTO messages (chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, thread_root_id, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, enc_body, ttl_seconds, destruct_at, reply_quote_text, reply_quote_offset, auto_delete_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,
 		         (SELECT CASE WHEN auto_delete_period > 0
 		                 THEN now() + make_interval(secs => auto_delete_period) END
 		            FROM chats WHERE id=$1))
 		 RETURNING `+messageCols,
 		m.ChatID, m.Seq, m.SenderID, m.Type, m.Text, m.ReplyToID, m.ClientMsgID, m.MediaID, m.ThreadRootID,
 		m.FwdFromUserID, m.FwdFromChatID, m.FwdFromMsgID, m.FwdDate, m.FwdFromName, entitiesParam(m.Entities), m.MediaUnread, m.GroupedID, m.PollID,
-		m.GeoLat, m.GeoLng, m.ContactUserID, m.ContactName, m.ContactPhone, m.GiftID, replyMarkupParam(m.ReplyMarkup), geoMetaParam(m), m.EncBody, m.TTLSeconds, m.DestructAt))
+		m.GeoLat, m.GeoLng, m.ContactUserID, m.ContactName, m.ContactPhone, m.GiftID, replyMarkupParam(m.ReplyMarkup), geoMetaParam(m), m.EncBody, m.TTLSeconds, m.DestructAt, m.ReplyQuoteText, m.ReplyQuoteOffset))
 }
 
 // ClearMediaUnread drops the media_unread flag; reports whether the row
@@ -451,29 +453,32 @@ func (r *MessagesRepo) HideForUser(ctx context.Context, userID, msgID int64) err
 // "from the newest".
 // threadRootID != nil ограничивает окно тредом (форум-топик / комментарии):
 // сообщения с этим thread_root_id плюс само корневое сообщение.
-func (r *MessagesRepo) GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRootID *int64) ([]domain.Message, error) {
+// clearedSeq — персональный горизонт «очистки истории»: сообщения с seq<=clearedSeq
+// скрыты для этого читателя (0 — ничего не очищено).
+func (r *MessagesRepo) GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRootID *int64, clearedSeq int64) ([]domain.Message, error) {
 	q := querier(ctx, r.pool)
 	// Skip deleted (never shown) and rows this user hid for themselves. Placeholder
 	// differs per query shape.
 	// exclN also enforces hidden history (chats.history_for_new=false): a plain
 	// member sees only messages sent after they joined; admins/creator see all.
-	const exclN = ` AND deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id=messages.id AND h.user_id=$%d) AND ((SELECT history_for_new FROM chats WHERE id=$1) OR messages.created_at >= COALESCE((SELECT cm.joined_at FROM chat_members cm WHERE cm.chat_id=$1 AND cm.user_id=$%[1]d AND cm.role='member'), 'epoch'::timestamptz))`
+	// The %[2]d placeholder is the per-member cleared horizon (seq>clearedSeq).
+	const exclN = ` AND deleted_at IS NULL AND seq>$%[2]d AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id=messages.id AND h.user_id=$%[1]d) AND ((SELECT history_for_new FROM chats WHERE id=$1) OR messages.created_at >= COALESCE((SELECT cm.joined_at FROM chat_members cm WHERE cm.chat_id=$1 AND cm.user_id=$%[1]d AND cm.role='member'), 'epoch'::timestamptz))`
 	const thrN = ` AND ($%d::bigint IS NULL OR thread_root_id=$%[1]d OR id=$%[1]d)`
 	var rows pgx.Rows
 	var err error
 	switch {
 	case offsetSeq == 0:
 		rows, err = q.Query(ctx,
-			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1`+fmt.Sprintf(exclN, 3)+fmt.Sprintf(thrN, 4)+` ORDER BY seq DESC LIMIT $2`,
-			chatID, limit, userID, threadRootID)
+			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1`+fmt.Sprintf(exclN, 3, 5)+fmt.Sprintf(thrN, 4)+` ORDER BY seq DESC LIMIT $2`,
+			chatID, limit, userID, threadRootID, clearedSeq)
 	case addOffset <= 0: // newer than offset
 		rows, err = q.Query(ctx,
-			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq>$2`+fmt.Sprintf(exclN, 4)+fmt.Sprintf(thrN, 5)+` ORDER BY seq ASC LIMIT $3`,
-			chatID, offsetSeq, limit, userID, threadRootID)
+			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq>$2`+fmt.Sprintf(exclN, 4, 6)+fmt.Sprintf(thrN, 5)+` ORDER BY seq ASC LIMIT $3`,
+			chatID, offsetSeq, limit, userID, threadRootID, clearedSeq)
 	default: // older, inclusive of offset
 		rows, err = q.Query(ctx,
-			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq<=$2`+fmt.Sprintf(exclN, 4)+fmt.Sprintf(thrN, 5)+` ORDER BY seq DESC LIMIT $3`,
-			chatID, offsetSeq, limit, userID, threadRootID)
+			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq<=$2`+fmt.Sprintf(exclN, 4, 6)+fmt.Sprintf(thrN, 5)+` ORDER BY seq DESC LIMIT $3`,
+			chatID, offsetSeq, limit, userID, threadRootID, clearedSeq)
 	}
 	if err != nil {
 		return nil, err
@@ -695,7 +700,7 @@ func scanMessage(s scanner) (domain.Message, error) {
 		&m.ReplyToID, &m.ClientMsgID, &m.MediaID, &m.CreatedAt, &deletedAt, &m.ThreadRootID,
 		&m.EditedAt, &m.FwdFromUserID, &m.FwdFromChatID, &m.FwdFromMsgID, &m.FwdDate, &m.FwdFromName, &entitiesRaw, &m.Views, &m.MediaUnread, &m.GroupedID, &m.PollID,
 		&m.GeoLat, &m.GeoLng, &m.ContactUserID, &m.ContactName, &m.ContactPhone, &m.GiftID, &markupRaw, &geoMetaRaw,
-		&m.EncBody, &m.TTLSeconds, &m.DestructAt, &m.Forwards)
+		&m.EncBody, &m.TTLSeconds, &m.DestructAt, &m.Forwards, &m.ReplyQuoteText, &m.ReplyQuoteOffset)
 	m.Deleted = deletedAt != nil
 	if err == nil && len(entitiesRaw) > 0 && string(entitiesRaw) != "null" {
 		_ = json.Unmarshal(entitiesRaw, &m.Entities)

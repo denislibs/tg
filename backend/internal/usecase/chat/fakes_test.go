@@ -23,8 +23,15 @@ func (fakeTx) WithinTx(ctx context.Context, fn func(ctx context.Context) error) 
 
 type member struct {
 	lastReadSeq int64
+	clearedSeq  int64
 	unread      int
+	mentions    int
 	muted       bool
+}
+
+// mentionRow mirrors a message_mentions row in the fake store.
+type mentionRow struct {
+	chatID, msgID, seq, userID int64
 }
 
 type store struct {
@@ -41,6 +48,7 @@ type store struct {
 	hidden     map[int64]map[int64]bool            // userID -> msgID -> hidden ("delete for me")
 	pins       map[int64][]int64                   // chatID -> pinned msgIDs (newest first)
 	viewed     map[int64]map[int64]bool            // msgID -> userID -> viewed (channel view dedup)
+	mentions   []mentionRow                        // message_mentions rows
 
 	// автоудаление: период чата / глобальный период пользователя
 	autoDelete     map[int64]int
@@ -168,11 +176,12 @@ func (r fakeChats) ListDialogs(_ context.Context, userID int64) ([]domain.Dialog
 			continue
 		}
 		d := domain.Dialog{
-			ChatID:      cid,
-			Type:        r.s.chatType[cid],
-			LastReadSeq: mem.lastReadSeq,
-			UnreadCount: mem.unread,
-			Muted:       mem.muted,
+			ChatID:              cid,
+			Type:                r.s.chatType[cid],
+			LastReadSeq:         mem.lastReadSeq,
+			UnreadCount:         mem.unread,
+			UnreadMentionsCount: mem.mentions,
+			Muted:               mem.muted,
 		}
 		msgs := r.s.messages[cid]
 		if len(msgs) > 0 {
@@ -233,6 +242,85 @@ func (r fakeChats) SetRead(_ context.Context, chatID, userID, seq int64, unread 
 	if m := r.s.members[chatID][userID]; m != nil {
 		m.lastReadSeq = seq
 		m.unread = unread
+	}
+	return nil
+}
+
+func (r fakeChats) AddMention(_ context.Context, chatID, msgID, seq, userID int64) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	for _, m := range r.s.mentions { // idempotent on (msgID, userID)
+		if m.msgID == msgID && m.userID == userID {
+			return nil
+		}
+	}
+	r.s.mentions = append(r.s.mentions, mentionRow{chatID, msgID, seq, userID})
+	if m := r.s.members[chatID][userID]; m != nil {
+		m.mentions++
+	}
+	return nil
+}
+
+func (r fakeChats) ClearMentions(_ context.Context, chatID, userID, uptoSeq int64) (int, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	kept := r.s.mentions[:0]
+	remaining := 0
+	for _, m := range r.s.mentions {
+		if m.chatID == chatID && m.userID == userID {
+			if m.seq <= uptoSeq {
+				continue // read → drop
+			}
+			remaining++
+		}
+		kept = append(kept, m)
+	}
+	r.s.mentions = kept
+	if m := r.s.members[chatID][userID]; m != nil {
+		m.mentions = remaining
+	}
+	return remaining, nil
+}
+
+func (r fakeChats) NextMention(_ context.Context, chatID, userID, afterSeq int64) (int64, int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var best *mentionRow
+	for i := range r.s.mentions {
+		m := r.s.mentions[i]
+		if m.chatID != chatID || m.userID != userID || m.seq <= afterSeq {
+			continue
+		}
+		if best == nil || m.seq < best.seq {
+			best = &r.s.mentions[i]
+		}
+	}
+	if best == nil {
+		return 0, 0, domain.ErrNotFound
+	}
+	return best.seq, best.msgID, nil
+}
+
+func (r fakeChats) MaxSeq(_ context.Context, chatID int64) (int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	return r.s.chatSeq[chatID], nil
+}
+
+func (r fakeChats) ClearedSeq(_ context.Context, chatID, userID int64) (int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	if m := r.s.members[chatID][userID]; m != nil {
+		return m.clearedSeq, nil
+	}
+	return 0, nil
+}
+
+func (r fakeChats) SetClearedSeq(_ context.Context, chatID, userID, seq int64) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	if m := r.s.members[chatID][userID]; m != nil {
+		m.clearedSeq = seq
 	}
 	return nil
 }
@@ -368,7 +456,7 @@ func (r fakeMsgs) GetByID(_ context.Context, msgID int64) (domain.Message, error
 	return domain.Message{}, domain.ErrNotFound
 }
 
-func (r fakeMsgs) GetAround(_ context.Context, chatID, userID, centerSeq int64, limit int, _ *int64) ([]domain.Message, bool, bool, error) {
+func (r fakeMsgs) GetAround(_ context.Context, chatID, userID, centerSeq int64, limit int, _ *int64, clearedSeq int64) ([]domain.Message, bool, bool, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	if limit <= 0 {
@@ -378,7 +466,7 @@ func (r fakeMsgs) GetAround(_ context.Context, chatID, userID, centerSeq int64, 
 	all := r.s.messages[chatID]
 	var older, newer []domain.Message
 	for _, m := range all {
-		if m.Deleted {
+		if m.Deleted || m.Seq <= clearedSeq {
 			continue
 		}
 		if m.Seq <= centerSeq {
@@ -634,13 +722,16 @@ func (r fakeMsgs) HideForUser(_ context.Context, userID, msgID int64) error {
 	return nil
 }
 
-func (r fakeMsgs) GetHistory(_ context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, _ *int64) ([]domain.Message, error) {
+func (r fakeMsgs) GetHistory(_ context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, _ *int64, clearedSeq int64) ([]domain.Message, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	all := r.s.messages[chatID]
 	isHidden := func(m domain.Message) bool {
 		if m.Deleted {
 			return true // deleted messages are never returned
+		}
+		if m.Seq <= clearedSeq {
+			return true // «очищено» у себя: за персональным горизонтом
 		}
 		return r.s.hidden != nil && r.s.hidden[userID] != nil && r.s.hidden[userID][m.ID]
 	}
@@ -902,6 +993,24 @@ func (r fakeReactions) ReactionsFor(_ context.Context, messageIDs []int64, viewe
 		}
 	}
 	return res, nil
+}
+
+func (r fakeReactions) ReactionUsers(_ context.Context, messageID int64) ([]domain.ReactionUser, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var out []domain.ReactionUser
+	for userID, emojis := range r.s.reactions[messageID] {
+		for e := range emojis {
+			out = append(out, domain.ReactionUser{User: domain.UserCard{ID: userID}, Emoji: e})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].User.ID != out[j].User.ID {
+			return out[i].User.ID < out[j].User.ID
+		}
+		return out[i].Emoji < out[j].Emoji
+	})
+	return out, nil
 }
 
 // ---- MediaAccessRepo ----

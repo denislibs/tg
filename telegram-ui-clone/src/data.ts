@@ -50,7 +50,7 @@ export interface ConvMsg {
   mediaUnread?: boolean // голосовое/кружок не прослушано получателем (точка у обеих сторон)
   deleted?: boolean
   forwardFrom?: { name: string; color?: string } // "Переслано от X"
-  reply?: { name: string; text: string; entities?: MessageEntity[]; color?: string; seq?: number; mediaId?: number; mediaType?: string }
+  reply?: { name: string; text: string; entities?: MessageEntity[]; color?: string; seq?: number; mediaId?: number; mediaType?: string; quote?: boolean }
   duration?: string // voice message length, e.g. "0:14"
   waveform?: number[] // voice waveform bar heights (0..1)
   // media (history read model — render the bubble fully, no per-media meta request)
@@ -117,6 +117,8 @@ export interface Chat {
   date: string
   preview: string
   verified?: boolean
+  premium?: boolean // Telegram Premium subscriber → gold star badge next to the name
+  emojiStatus?: string // unicode emoji shown after the name (undefined when unset)
   muted?: boolean
   pinned?: boolean // закреплён вверху списка
   archived?: boolean // убран в «Архив»
@@ -124,6 +126,7 @@ export interface Chat {
   autoDeletePeriod?: number // период автоудаления сообщений (сек, 0/undefined — выкл)
   selected?: boolean
   unread?: number
+  unreadMentions?: number // непрочитанные упоминания → отдельный бейдж «@»
   sent?: boolean // last message is mine (show a tick in the list)
   read?: boolean // ...and the peer has read it (✓✓ instead of ✓)
   previewMediaId?: number // last message is a photo → small thumbnail before the preview
