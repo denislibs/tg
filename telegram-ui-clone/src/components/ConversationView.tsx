@@ -55,6 +55,7 @@ import Menu, { MenuItem } from '../shared/ui/Menu'
 import IconButton from '../shared/ui/IconButton'
 import { TopicIcon } from './TopicsPanel'
 import PinnedBar from './conversation/PinnedBar'
+import PinnedMessagesScreen from './conversation/PinnedMessagesScreen'
 import ScrollDownFab from './conversation/ScrollDownFab'
 import SelectionBar from './conversation/SelectionBar'
 import MessageContextMenu from './conversation/MessageContextMenu'
@@ -255,8 +256,11 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     return () => { alive = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [thread?.kind, numericChatId, isRealChat])
-  // Pinned messages in this chat (newest pin first) — drives the pinned bar.
-  const pins = usePinnedBar(numericChatId, isRealChat, managers)
+  // Pinned messages in this chat (newest pin first) + индекс перелистывания
+  // плашки (tweb pinnedMessage) — drives the pinned bar.
+  const { pins, index: pinIndex, follow: followPin } = usePinnedBar(numericChatId, isRealChat, managers)
+  // Экран «Закреплённые сообщения» (tweb topbar.openPinned)
+  const [pinnedOpen, setPinnedOpen] = useState(false)
   // Search is owned by ChatHeader now; here we only read whether it's open (single-sourced
   // in searchStore) to hide the pinned bar + adjust the sticky-date offset.
   const searchOpen = useSearchStore((s) => s.byChat[numericChatId]?.open ?? false)
@@ -604,6 +608,17 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const onToggleInfo = useEvent(() => setInfoOpen((o) => !o))
   const onOpenHeaderMenu = useEvent((r: DOMRect) => setHeaderMenu({ top: r.bottom + 6, right: window.innerWidth - r.right }))
   const onUnpin = useEvent((id: number) => { void managers.messages.unpin(numericChatId, id) })
+  // Клик по пин-плашке (tweb followPinnedMessage): прыжок к показанному пину,
+  // бар перелистывается на следующий (более старый, циклически).
+  const onPinFollow = useEvent(() => {
+    const m = followPin()
+    if (m) jumpToSeqE(m.seq)
+  })
+  const onOpenPinList = useEvent(() => setPinnedOpen(true))
+  // Право «Открепить все» (tweb canPinMessage): приватный/личный чат — всегда;
+  // группа/канал — создатель или админ с RightPinMessages (1<<5).
+  const canUnpinAll = chat.type === 'private' || chat.type === 'saved' ||
+    card?.myRole === 'creator' || ((card?.myRights ?? 0) & 32) !== 0
   // Stable composer callbacks so the memoized <Composer> doesn't re-render on
   // unrelated parent renders (e.g. the scroll handler toggling showScrollDown).
   // Медленный режим: обычный участник группы блокируется на N сек после отправки
@@ -706,10 +721,12 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
 
         {!thread && <PinnedBar
           pins={pins}
+          index={pinIndex}
           searchOpen={searchOpen}
           playerOffset={playerOffset}
-          onJump={jumpToSeqE}
+          onFollow={onPinFollow}
           onUnpin={onUnpin}
+          onOpenList={onOpenPinList}
         />}
 
         {/* First-load spinner — only after the grace delay (skipped on cache hits) */}
@@ -1042,6 +1059,20 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           </Text>
           <Text size={14} weight={700} color="#fff">{t('Join')}</Text>
         </div>
+      )}
+
+      {/* «Закреплённые сообщения» (tweb ChatType.Pinned): открепление последнего
+          пина убирает pins → оверлей сам закрывается (tweb закрывает pinned-таб) */}
+      {pinnedOpen && isRealChat && pins.length > 0 && (
+        <PinnedMessagesScreen
+          chatId={numericChatId}
+          pins={pins}
+          meId={meId}
+          meName={me?.displayName}
+          canUnpinAll={canUnpinAll}
+          onJump={(seq) => { setPinnedOpen(false); jumpToSeqE(seq) }}
+          onClose={() => setPinnedOpen(false)}
+        />
       )}
 
       {/* «Запланированные сообщения» (tweb ChatType.Scheduled) */}

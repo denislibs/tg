@@ -12,8 +12,9 @@ function hhmm(iso: string): string {
 }
 
 // Human label for a replied-to media message that has no caption (Telegram shows
-// these in the quote line, e.g. "Фотография").
-function replyMediaLabel(type?: string): string {
+// these in the quote line, e.g. "Фотография"). Экспорт: тот же лейбл использует
+// пин-бар и экран закреплённых для медиа без подписи.
+export function replyMediaLabel(type?: string): string {
   switch (type) {
     case 'photo': return 'Фотография'
     case 'video': return 'Видео'
