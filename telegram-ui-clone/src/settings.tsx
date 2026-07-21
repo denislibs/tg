@@ -59,6 +59,8 @@ export interface Settings {
   // контекстном меню; translateTo — целевой язык (ISO-код), '' = язык интерфейса.
   showTranslateButton: boolean
   translateTo: string
+  // Зацикливать анимированные стикеры в чате (tweb settings.stickers.loop).
+  loopStickers: boolean
 }
 
 // Галочки автозагрузки по типам чатов (tweb AutoDownloadPeerTypeSettings).
@@ -102,6 +104,7 @@ const DEFAULTS: Settings = {
   reduceMotion: false,
   showTranslateButton: true,
   translateTo: '',
+  loopStickers: true, // tweb stickers.loop default true
 }
 
 const KEY = 'tg-settings'
@@ -162,6 +165,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       reduceMotion: s.reduceMotion,
       showTranslateButton: s.showTranslateButton,
       translateTo: s.translateTo,
+      loopStickers: s.loopStickers,
     }
     try {
       localStorage.setItem(KEY, JSON.stringify(toSave))

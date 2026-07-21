@@ -133,6 +133,11 @@
 }
 
 // ── sticker / big emoji ──
+// стикер с бэка (tweb .bubble.is-sticker): без фона бабла, бейдж времени поверх
+.stickerReal {
+  position: relative;
+  display: inline-block;
+}
 .sticker {
   position: relative;
   display: inline-block;

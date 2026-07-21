@@ -55,6 +55,7 @@ export function messageToConvMsg(
     : m.type === 'geo' ? 'geo'
     : m.type === 'contact' ? 'contact'
     : m.type === 'gift' ? 'gift'
+    : m.type === 'sticker' ? 'sticker'
     : m.type === 'service' ? 'service'
     : secretType === 'photo' || secretType === 'video' || secretType === 'document' || secretType === 'audio' ? secretType
     : m.type === 'photo' || m.type === 'video' || m.type === 'document' || m.type === 'audio' ? m.type

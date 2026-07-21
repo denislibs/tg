@@ -12,6 +12,7 @@ import NotificationsSettings from './settings/NotificationsSettings'
 import ChatFoldersSettings from './folders/ChatFoldersSettings'
 import PrivacySecuritySettings from './settings/PrivacySecuritySettings'
 import DataStorageSettings from './settings/DataStorageSettings'
+import StickersSettings from './settings/StickersSettings'
 import type { Chat } from '../data'
 
 // Rows that open a dedicated sub-screen instead of being a plain value.
@@ -60,17 +61,6 @@ const SCREENS: Record<string, SSection[]> = {
       ],
     },
   ],
-  'Stickers and Emoji': [
-    {
-      rows: [
-        { label: 'Suggest Stickers by Emoji', type: 'value', value: 'All' },
-        { label: 'Loop Animated Stickers', type: 'toggle', on: true },
-        { label: 'Suggest Emoji', type: 'toggle', on: true },
-        { label: 'Big Emoji', type: 'toggle', on: true },
-        { label: 'Dynamic Pack Order', type: 'toggle', on: true },
-      ],
-    },
-  ],
   Language: [
     {
       caption: 'Translate',
@@ -110,7 +100,8 @@ export function hasSubScreen(title: string) {
     title === 'Notifications and Sounds' ||
     title === 'Chat Folders' ||
     title === 'Privacy and Security' ||
-    title === 'Data and Storage'
+    title === 'Data and Storage' ||
+    title === 'Stickers and Emoji'
   )
 }
 
@@ -166,6 +157,8 @@ export default function SettingsSubScreen({ title, onBack, chats }: { title: str
   if (title === 'Privacy and Security') return <PrivacySecuritySettings onBack={onBack} />
   // Data and Storage — реальные «Данные и память» (tweb dataAndStorage)
   if (title === 'Data and Storage') return <DataStorageSettings onBack={onBack} />
+  // Stickers and Emoji — реальные стикеры (наборы, зацикливание, поиск)
+  if (title === 'Stickers and Emoji') return <StickersSettings onBack={onBack} />
 
   return (
     <SettingsScreen title={title} onBack={onBack} zIndex={50}>

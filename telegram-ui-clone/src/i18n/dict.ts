@@ -795,6 +795,16 @@ const ru: Dict = {
     'Ключ доступа хранится в выбранном Вами облачном сервисе, где он надёжно защищён.',
   'Create Passkey': 'Создать ключ доступа',
   Unsupported: 'Не поддерживается',
+  // Стикеры (вкладка пикера, саджесты, настройки)
+  Favorites: 'Избранное',
+  'No stickers found': 'Стикеры не найдены',
+  'Add to Favorites': 'В избранное',
+  'Remove from Favorites': 'Убрать из избранного',
+  'My Sticker Sets': 'Мои наборы стикеров',
+  'Add Sticker Sets': 'Добавить наборы',
+  'Search sticker sets': 'Поиск наборов стикеров',
+  stickers: 'стикеров',
+  'No sticker sets installed': 'Нет установленных наборов',
 }
 
 const uk: Dict = {

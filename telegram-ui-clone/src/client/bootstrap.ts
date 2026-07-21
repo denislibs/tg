@@ -23,6 +23,7 @@ import type { Session } from '../core/managers/sessionsManager'
 import type { IceConfig } from '../core/managers/callsManager'
 import type { StarGift, GiftInfo } from '../core/managers/starsManager'
 import type { BotCommand, CallbackAnswer, InlineResult } from '../core/managers/botsManager'
+import type { StickerSet, Sticker } from '../core/managers/stickersManager'
 
 export interface Managers {
   health: { check(): Promise<HealthStatus> }
@@ -254,6 +255,19 @@ export interface Managers {
     cloudSet(botId: number, key: string, value: string): Promise<void>
     cloudRemove(botId: number, keys: string[]): Promise<void>
     cloudKeys(botId: number): Promise<string[]>
+  }
+  stickers: {
+    mySets(): Promise<StickerSet[]>
+    setBySlug(slug: string): Promise<{ set: StickerSet; stickers: Sticker[] }>
+    searchSets(q: string): Promise<StickerSet[]>
+    install(setId: number): Promise<void>
+    uninstall(setId: number): Promise<void>
+    recent(): Promise<Sticker[]>
+    faved(): Promise<Sticker[]>
+    fave(stickerId: number): Promise<void>
+    unfave(stickerId: number): Promise<void>
+    use(stickerId: number): Promise<void>
+    searchByEmoji(emoji: string): Promise<Sticker[]>
   }
 }
 

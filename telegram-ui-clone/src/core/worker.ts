@@ -21,6 +21,7 @@ import { newStoriesManager } from './managers/storiesManager'
 import { newContactsManager } from './managers/contactsManager'
 import { newPrivacyManager } from './managers/privacyManager'
 import { newStarsManager } from './managers/starsManager'
+import { newStickersManager } from './managers/stickersManager'
 import { newBotsManager } from './managers/botsManager'
 import { newDraftsManager } from './managers/draftsManager'
 import { newSessionsManager } from './managers/sessionsManager'
@@ -61,6 +62,7 @@ const sessions = newSessionsManager({ rest })
 const calls = newCallsManager({ rest })
 const stars = newStarsManager({ rest })
 const bots = newBotsManager({ rest })
+const stickers = newStickersManager({ rest })
 
 // every connected tab's port — events broadcast to all
 const ports: SuperMessagePort[] = []
@@ -188,6 +190,7 @@ function bind(ep: Endpoint) {
     calls: calls as unknown as Record<string, (...a: unknown[]) => unknown>,
     stars: stars as unknown as Record<string, (...a: unknown[]) => unknown>,
     bots: bots as unknown as Record<string, (...a: unknown[]) => unknown>,
+    stickers: stickers as unknown as Record<string, (...a: unknown[]) => unknown>,
     secret: secret as unknown as Record<string, (...a: unknown[]) => unknown>,
   })
 }

@@ -7,7 +7,8 @@
 //    чтобы скролл не прыгал (tweb setCategoryItemsHeight);
 //  - меню категорий сверху со скролл-подсветкой, поиск со сдвигом панели вверх
 //    (tweb .is-searching / emoticons-will-move-*), полоска emoji-групп справа от поиска;
-//  - нижние табы: search / emoji / backspace (стикеров и GIF у нас нет).
+//  - нижние табы: search / emoji / stickers / backspace (tweb .emoji-tabs); обе
+//    вкладки живут в DOM (переключение display), состояние/скролл сохраняются.
 import {
   memo,
   useCallback,
@@ -19,6 +20,8 @@ import {
 } from 'react'
 import TgIcon, { type IconName } from '../TgIcon'
 import Emoji, { EMOJI_CDN_BASE, emojiCodepoints } from './Emoji'
+import StickersTab from './StickersTab'
+import type { Sticker } from '../../core/managers/stickersManager'
 import { CATEGORIES, DEFAULT_FREQUENT, QUICK_CHIPS, searchEmojisByWord } from './emojiData'
 import { useT } from '../../i18n'
 import classNames from '../../shared/lib/classNames'
@@ -207,6 +210,7 @@ const EmojiCategory = memo(function EmojiCategory({
 export default function EmojiDropdown({
   open,
   onPick,
+  onPickSticker,
   onClose,
   onDelete,
   onExitComplete,
@@ -215,6 +219,8 @@ export default function EmojiDropdown({
 }: {
   open: boolean
   onPick: (emoji: string) => void
+  /** включает вкладку стикеров (композер); выбор закрывает дропдаун (tweb) */
+  onPickSticker?: (st: Sticker) => void
   onClose: () => void
   /** показать кнопку backspace в нижних табах (композер) */
   onDelete?: () => void
@@ -240,6 +246,11 @@ export default function EmojiDropdown({
   const [query, setQuery] = useState('')
   const [group, setGroup] = useState<{ e: string; q: string } | null>(null)
   const [focused, setFocused] = useState(false)
+  // Вкладки нижней панели (tweb tabs-container): обе в DOM, переключение display;
+  // вкладка стикеров монтируется лениво при первом открытии.
+  const [tab, setTab] = useState<'emoji' | 'stickers'>('emoji')
+  const [stickersMounted, setStickersMounted] = useState(false)
+  if (tab === 'stickers' && !stickersMounted) setStickersMounted(true)
 
   // Открытие/закрытие 1:1 tweb DropdownHover.toggle: display='' → форс-reflow →
   // класс active (transition играет); закрытие: снять active → через 200 мс display:none.
@@ -387,7 +398,10 @@ export default function EmojiDropdown({
     >
       <div className={s.emojiContainer}>
         <div className={s.tabsContainer}>
-          <div className={classNames(s.emoticonsContainer, searching ? s.isSearching : '')}>
+          <div
+            className={classNames(s.emoticonsContainer, searching ? s.isSearching : '')}
+            style={tab === 'emoji' ? undefined : { display: 'none' }}
+          >
             {/* menu-wrapper: лента иконок категорий */}
             <div className={classNames(s.menuWrapper, s.willMoveUp)}>
               <nav ref={menuRef} className={s.emoticonsMenu}>
@@ -468,21 +482,48 @@ export default function EmojiDropdown({
               </div>
             </div>
           </div>
+          {/* вкладка стикеров: keep-mounted после первого открытия (tweb tabs) */}
+          {stickersMounted && onPickSticker && (
+            <div style={tab === 'stickers' ? { height: '100%' } : { display: 'none' }}>
+              <StickersTab
+                active={open && tab === 'stickers'}
+                onPick={(st) => {
+                  onPickSticker(st)
+                  onClose()
+                }}
+              />
+            </div>
+          )}
         </div>
       </div>
 
-      {/* нижние табы: search / emoji / delete (tweb .emoji-tabs) */}
+      {/* нижние табы: search / emoji / stickers / delete (tweb .emoji-tabs) */}
       <div className={s.emojiTabs}>
+        {tab === 'emoji' && (
+          <button
+            type="button"
+            className={classNames(s.tabBtn, s.tabSearch)}
+            onClick={() => inputRef.current?.focus()}
+          >
+            <TgIcon name="search" size={24} />
+          </button>
+        )}
         <button
           type="button"
-          className={classNames(s.tabBtn, s.tabSearch)}
-          onClick={() => inputRef.current?.focus()}
+          className={classNames(s.tabBtn, tab === 'emoji' ? s.active : '')}
+          onClick={() => setTab('emoji')}
         >
-          <TgIcon name="search" size={24} />
-        </button>
-        <button type="button" className={classNames(s.tabBtn, s.active)}>
           <TgIcon name="smile" size={24} />
         </button>
+        {onPickSticker && (
+          <button
+            type="button"
+            className={classNames(s.tabBtn, tab === 'stickers' ? s.active : '')}
+            onClick={() => setTab('stickers')}
+          >
+            <TgIcon name="stickers_face" size={24} />
+          </button>
+        )}
         {onDelete && (
           <button
             type="button"

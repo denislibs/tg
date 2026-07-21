@@ -42,6 +42,7 @@ import {
 } from './MessageBubbles'
 import RichText, { emojiOnlyCount } from '../RichText'
 import Emoji from '../emoji/Emoji'
+import StickerMedia from '../StickerMedia'
 import { peerColor } from '../peerColor'
 import { fmtViews } from '../../core/fmtViews'
 import { useT } from '../../i18n'
@@ -211,7 +212,7 @@ function MessageRow({
     ) : null
   const chipsInline =
     ((m.type === 'text' && !bigEmoji) || m.type === 'poll' || m.type === 'album'
-      || ((m.mediaId != null || !!m.localUrl) && m.type !== 'roundVideo' && m.type !== 'voice'))
+      || ((m.mediaId != null || !!m.localUrl) && m.type !== 'roundVideo' && m.type !== 'voice' && m.type !== 'sticker'))
 
   return (
     <BubbleAppear
@@ -317,6 +318,13 @@ function MessageRow({
               {chips && <div className={s.reactionsPad}>{chips}</div>}
             </div>
           </div>
+        ) : m.type === 'sticker' && m.mediaId != null ? (
+          // Стикер (tweb .bubble.is-sticker + wrappers/sticker.ts): без фона
+          // бабла и хвостика; бокс аспект-фитится в 200×200 (mediaSizes
+          // staticSticker/animatedSticker desktop), lottie играет с loop из
+          // настроек; время+тики бейджем поверх нижнего угла, реакции — снаружи
+          // (reactions-out), reply/имя в группе не рисуются (как voice/round).
+          <StickerRealBubble m={m} fmtTime={fmtTime} />
         ) : m.mediaId != null || m.localUrl || (m.clientId != null && m.mediaName != null) ? (
           // Outer (relative, NOT clipped) carries the tail; the inner clips the media
           // to the rounded corners. The tailed corner is squared off (like other bubbles).
@@ -387,16 +395,16 @@ function MessageRow({
               {footer && <div className={s.footerMedia}>{footer}</div>}
             </div>
           </div>
-        ) : m.type === 'sticker' || bigEmoji ? (
+        ) : bigEmoji ? (
           <div className={s.sticker}>
             <div
               className={s.stickerGlyph}
               style={{
-                fontSize: bigEmoji ? (bigEmoji === 1 ? 56 : bigEmoji === 2 ? 46 : 38) : 64,
-                padding: bigEmoji ? '2px 0' : 0,
+                fontSize: bigEmoji === 1 ? 56 : bigEmoji === 2 ? 46 : 38,
+                padding: '2px 0',
               }}
             >
-              {m.type === 'sticker' ? <Emoji e={m.emoji ?? ''} size={104} /> : m.text}
+              {m.text}
             </div>
             <div className={s.stickerMeta}>
               <Text size={12.5} color="#fff">{fmtTime(m.time)}</Text>
@@ -542,6 +550,31 @@ function MessageRow({
         </ZoneBody>
       </div>
     </BubbleAppear>
+  )
+}
+
+// Стикер с бэка (m.type 'sticker' + mediaId): бокс аспект-фитится в 200×200
+// (tweb mediaSizes desktop static/animatedSticker), lottie-json играет через
+// lottie-web c loop из настройки «Зацикливать анимации», webp/png — <img>
+// (различает StickerMedia). Бейдж времени — тот же, что у big-emoji.
+const STICKER_BOX = 200
+function StickerRealBubble({ m, fmtTime }: { m: ConvMsg; fmtTime: (hhmm?: string) => string | undefined }) {
+  const loopStickers = useSettings().loopStickers
+  let w = STICKER_BOX
+  let h = STICKER_BOX
+  if (m.mediaWidth && m.mediaHeight) {
+    const k = Math.min(STICKER_BOX / m.mediaWidth, STICKER_BOX / m.mediaHeight)
+    w = Math.round(m.mediaWidth * k)
+    h = Math.round(m.mediaHeight * k)
+  }
+  return (
+    <div className={s.stickerReal}>
+      <StickerMedia mediaId={m.mediaId!} width={w} height={h} autoplay loop={loopStickers} />
+      <div className={s.stickerMeta}>
+        <Text size={12.5} color="#fff">{fmtTime(m.time)}</Text>
+        <Ticks status={m.status} color="var(--b-tick)" />
+      </div>
+    </div>
   )
 }
 

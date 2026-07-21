@@ -343,6 +343,47 @@ $active-fg: color-mix(in srgb, var(--tg-textPrimary) 80%, transparent); // rgba(
   line-height: 1;
 }
 
+// ── Вкладка стикеров ─────────────────────────────────────────────────────────
+// скролл вкладки стикеров: без сдвига под поиск (у вкладки нет своего поиска),
+// высота — вся область контента
+.stickersScrollable {
+  position: relative;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+// .super-stickers (base.scss) + метрики из _emojiDropdown.scss:
+// ячейка 72px (--esg-sticker-size desktop), gap .25rem, padding 0 .1875rem
+.superStickers {
+  --esg-sticker-size: 4.5rem;
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, var(--esg-sticker-size));
+  justify-content: space-between;
+  gap: 0.25rem;
+  padding: 0 0.1875rem;
+}
+
+// .super-sticker: hover-подложка со скруглением $border-radius-medium
+.superSticker {
+  width: var(--esg-sticker-size);
+  height: var(--esg-sticker-size);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: $border-radius-medium;
+  cursor: pointer;
+  user-select: none;
+
+  &:hover {
+    background-color: var(--tg-hover);
+  }
+  &:active {
+    background-color: color-mix(in srgb, var(--tg-textPrimary) 10%, transparent);
+  }
+}
+
 // .emoticons-not-found
 .notFound {
   position: absolute;

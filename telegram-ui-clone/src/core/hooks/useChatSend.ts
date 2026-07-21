@@ -135,6 +135,24 @@ export function useChatSend({
     window.dispatchEvent(new Event('tg-send'))
   }
 
+  // Стикер (пикер/саджесты): оптимистичный бабл type 'sticker' с mediaId, по WS —
+  // обычный send_message {type:'sticker', mediaId}; POST /use ведёт recent на бэке.
+  // В черновике сначала создаётся приватный чат (как voice/файлы).
+  const sendSticker = (st: { id: number; mediaId: number; emoji: string }) => {
+    if (!canType || secretLocked || chat.type === 'secret') return
+    const clientMsgId = mkClientMsgId()
+    atBottomRef.current = true; userScrolledUpRef.current = false
+    void (async () => {
+      let cid = numericChatId
+      if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
+      if (isRealChat) win.appendOptimistic('', meId ?? -1, clientMsgId, st.mediaId, 'sticker')
+      void managers.realtime.sendMessage({ chatId: cid, text: '', clientMsgId, mediaId: st.mediaId, type: 'sticker', threadRootId })
+      void managers.stickers.use(st.id).catch(() => {})
+      window.dispatchEvent(new Event('tg-send'))
+      if (draftPeerId != null) onChatCreated?.(cid)
+    })()
+  }
+
   // Контакт: в оптимистичный бабл идёт локальный снимок имени (телефон сервер
   // гидрирует по аккаунту — приедет с echo-фреймом new_message).
   const sendContact = (userId: number, name: string) => {
@@ -341,6 +359,6 @@ export function useChatSend({
     onComposerTyping,
     pendingMedia, setPendingMedia, sendPendingMedia,
     openPicker, fileInputRef, pickAsFileRef,
-    sendGeo, sendContact,
+    sendGeo, sendContact, sendSticker,
   }
 }

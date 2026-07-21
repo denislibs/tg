@@ -383,7 +383,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     onComposerTyping,
     pendingMedia, setPendingMedia, sendPendingMedia,
     openPicker, fileInputRef, pickAsFileRef,
-    sendGeo, sendContact,
+    sendGeo, sendContact, sendSticker,
   } = useChatSend({
     chat, numericChatId, isRealChat, isChannel, draftPeerId, canType, secretLocked,
     meId, win, managers, threadRootId, atBottomRef, userScrolledUpRef,
@@ -612,6 +612,9 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     try { return (await managers.bots.inline(botId, query)).results } catch { return null }
   })
   const onComposerPickInline = useEvent((r: InlineResult) => { send(r.messageText); slowmodeMarkSent() })
+  // Стикер из пикера/саджестов; каналы постят через REST (стикеры не шлём),
+  // секретные чаты — E2E-путь без обычного медиа.
+  const onComposerPickSticker = useEvent((st: { id: number; mediaId: number; emoji: string }) => { sendSticker(st); slowmodeMarkSent() })
   const onComposerCancelReply = useEvent(() => setReply(null))
   const onComposerCancelEdit = useEvent(() => setEditing(null))
   const onComposerOpenAttach = useEvent((r: DOMRect) => setAttachAnchor({ left: r.left, bottom: window.innerHeight - r.top + 8 }))
@@ -850,6 +853,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               rec={rec}
               onSend={onComposerSend}
               onTyping={onComposerTyping}
+              onPickSticker={canType && !isChannel && chat.type !== 'secret' ? onComposerPickSticker : undefined}
               onCancelReply={onComposerCancelReply}
               onCancelEdit={onComposerCancelEdit}
               onOpenAttach={onComposerOpenAttach}

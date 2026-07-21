@@ -16,6 +16,8 @@ import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import EmojiDropdown, { useDropdownHover } from './emoji/EmojiDropdown'
 import EmojiHelper from './EmojiHelper'
+import StickersHelper, { stickerSuggestEmoji } from './StickersHelper'
+import type { Sticker } from '../core/managers/stickersManager'
 import MentionsHelper from './MentionsHelper'
 import InlineResultsHelper from './InlineResultsHelper'
 import type { InlineResult } from '../core/managers/botsManager'
@@ -60,6 +62,9 @@ interface Props {
   onSend: (text: string, entities?: MessageEntity[], ttlSeconds?: number | null, silent?: boolean) => void
   // Fired on every keystroke (parent throttles the outgoing `typing` frame).
   onTyping: () => void
+  // Отправка стикера (пикер/саджесты) — включает вкладку стикеров в дропдауне
+  // и панель саджестов по одиночному эмодзи (tweb StickersHelper).
+  onPickSticker?: (st: Sticker) => void
   onCancelReply: () => void
   onCancelEdit: () => void
   // Open the attach menu anchored to the paperclip button.
@@ -138,7 +143,7 @@ function placeCaretEnd(el: HTMLElement) {
 }
 
 function Composer({
-  reply, editing, rec, onSend, onTyping, onCancelReply, onCancelEdit, onOpenAttach, onPasteFiles,
+  reply, editing, rec, onSend, onTyping, onPickSticker, onCancelReply, onCancelEdit, onOpenAttach, onPasteFiles,
   initialDraft, onDraftChange, mentions, onInlineQuery, onPickInline, botMenuButton, onSchedule, scheduledCount, onOpenScheduled, slowmodeLeft, secret,
 }: Props) {
   const slowmodeBlocked = (slowmodeLeft ?? 0) > 0
@@ -256,6 +261,7 @@ function Composer({
     }
     setEmptyDraft(true)
     setLen(0)
+    setStickerEmoji(null) // пустой инпут — саджесты стикеров гаснут
     // selection is gone after clearing — tell the markup tooltip to hide
     window.getSelection()?.removeAllRanges()
     document.dispatchEvent(new Event('selectionchange'))
@@ -476,6 +482,21 @@ function Composer({
     autosize()
   }
 
+  // ── Стикеры-саджесты (tweb stickersHelper): в инпуте ровно один эмодзи ──
+  const [stickerEmoji, setStickerEmoji] = useState<string | null>(null)
+  const checkStickerSuggest = () => {
+    if (!onPickSticker) return
+    setStickerEmoji(stickerSuggestEmoji(editorRef.current?.textContent ?? ''))
+  }
+  const pickStickerSuggestion = (st: Sticker) => {
+    onPickSticker?.(st)
+    setStickerEmoji(null)
+    clearEditor()
+    onDraftChange?.('')
+    const ed = editorRef.current
+    if (ed) { ed.focus(); placeCaretEnd(ed) }
+  }
+
   // ── Эмодзи-автокомплит (tweb emojiHelper): подсказки по слову у каретки ──
   // idx = -1 — навигация «спит» до первой стрелки (tweb waitForKey для слова);
   // для ':query' активируется сразу.
@@ -648,8 +669,11 @@ function Composer({
         {mentionSug && !inlineSug && !rec.recording && (
           <MentionsHelper peers={mentionSug.list} activeIdx={mentionSug.idx} onPick={pickMention} />
         )}
-        {emojiSug && !mentionSug && !inlineSug && !rec.recording && (
+        {emojiSug && !mentionSug && !inlineSug && !stickerEmoji && !rec.recording && (
           <EmojiHelper emojis={emojiSug.list} activeIdx={emojiSug.idx} onPick={pickEmojiSuggestion} />
+        )}
+        {onPickSticker && stickerEmoji && !mentionSug && !inlineSug && !rec.recording && (
+          <StickersHelper key={stickerEmoji} emoji={stickerEmoji} onPick={pickStickerSuggestion} />
         )}
       </AnimatePresence>
       {/* Composer container: reply section + input row in ONE box */}
@@ -821,7 +845,7 @@ function Composer({
                   aria-multiline
                   // No live markdown conversion in the input (tweb keeps typed markers
                   // raw; they're parsed on send). Only the toolbar/shortcuts format live.
-                  onInput={() => { syncEmpty(); autosize(); onTyping(); checkInlineAutocomplete(); checkMentionAutocomplete(); checkEmojiAutocomplete(); onDraftChange?.(editorRef.current?.textContent ?? '') }}
+                  onInput={() => { syncEmpty(); autosize(); onTyping(); checkInlineAutocomplete(); checkMentionAutocomplete(); checkEmojiAutocomplete(); checkStickerSuggest(); onDraftChange?.(editorRef.current?.textContent ?? '') }}
                   onKeyDown={onEditorKeyDown}
                   onPaste={onPaste}
                   onDrop={onDrop}
@@ -936,6 +960,7 @@ function Composer({
           <EmojiDropdown
             open={emojiDd.open}
             onPick={insertEmoji}
+            onPickSticker={onPickSticker}
             onDelete={deleteBeforeCaret}
             onClose={emojiDd.close}
             panelProps={emojiDd.panelProps}
