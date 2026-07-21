@@ -851,6 +851,18 @@ const ru: Dict = {
   Monospace: 'Моноширинный',
   Spoiler: 'Спойлер',
   'Cancel Recording': 'Отменить запись',
+  'Change Number': 'Изменить номер',
+  'Please confirm your country code and enter your new phone number.':
+    'Подтвердите код страны и введите новый номер телефона.',
+  'This number is already connected to a Telegram account.':
+    'Этот номер уже привязан к аккаунту Telegram.',
+  'Invalid phone number.': 'Неверный номер телефона.',
+  'Delete My Account': 'Удалить мой аккаунт',
+  'Delete Account': 'Удаление аккаунта',
+  'Are you sure you want to delete your account? This action cannot be undone.':
+    'Вы уверены, что хотите удалить аккаунт? Это действие необратимо.',
+  'This will delete your account and all your data. Your messages will remain but appear as sent by a «Deleted Account».':
+    'Аккаунт и все данные будут удалены. Сообщения останутся, но будут отображаться как отправленные «Удалённым аккаунтом».',
 }
 
 const uk: Dict = {
@@ -1477,6 +1489,18 @@ const uk: Dict = {
   Monospace: 'Моноширинний',
   Spoiler: 'Спойлер',
   'Cancel Recording': 'Скасувати запис',
+  'Change Number': 'Змінити номер',
+  'Please confirm your country code and enter your new phone number.':
+    'Підтвердьте код країни та введіть новий номер телефону.',
+  'This number is already connected to a Telegram account.':
+    'Цей номер уже прив’язаний до акаунту Telegram.',
+  'Invalid phone number.': 'Неправильний номер телефону.',
+  'Delete My Account': 'Видалити мій акаунт',
+  'Delete Account': 'Видалення акаунту',
+  'Are you sure you want to delete your account? This action cannot be undone.':
+    'Ви впевнені, що хочете видалити акаунт? Цю дію не можна скасувати.',
+  'This will delete your account and all your data. Your messages will remain but appear as sent by a «Deleted Account».':
+    'Акаунт і всі дані буде видалено. Повідомлення залишаться, але відображатимуться як надіслані «Видаленим акаунтом».',
 }
 
 const es: Dict = {
@@ -2101,6 +2125,18 @@ const es: Dict = {
   Monospace: 'Monoespaciado',
   Spoiler: 'Spoiler',
   'Cancel Recording': 'Cancelar grabación',
+  'Change Number': 'Cambiar número',
+  'Please confirm your country code and enter your new phone number.':
+    'Confirma el código de país e introduce tu nuevo número de teléfono.',
+  'This number is already connected to a Telegram account.':
+    'Este número ya está vinculado a una cuenta de Telegram.',
+  'Invalid phone number.': 'Número de teléfono no válido.',
+  'Delete My Account': 'Eliminar mi cuenta',
+  'Delete Account': 'Eliminar cuenta',
+  'Are you sure you want to delete your account? This action cannot be undone.':
+    '¿Seguro que quieres eliminar tu cuenta? Esta acción no se puede deshacer.',
+  'This will delete your account and all your data. Your messages will remain but appear as sent by a «Deleted Account».':
+    'Esto eliminará tu cuenta y todos tus datos. Tus mensajes permanecerán, pero aparecerán como enviados por una «Cuenta eliminada».',
 }
 
 const de: Dict = {
@@ -2727,6 +2763,18 @@ const de: Dict = {
   Monospace: 'Monospace',
   Spoiler: 'Spoiler',
   'Cancel Recording': 'Aufnahme abbrechen',
+  'Change Number': 'Nummer ändern',
+  'Please confirm your country code and enter your new phone number.':
+    'Bestätige die Ländervorwahl und gib deine neue Telefonnummer ein.',
+  'This number is already connected to a Telegram account.':
+    'Diese Nummer ist bereits mit einem Telegram-Konto verknüpft.',
+  'Invalid phone number.': 'Ungültige Telefonnummer.',
+  'Delete My Account': 'Mein Konto löschen',
+  'Delete Account': 'Konto löschen',
+  'Are you sure you want to delete your account? This action cannot be undone.':
+    'Möchtest du dein Konto wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.',
+  'This will delete your account and all your data. Your messages will remain but appear as sent by a «Deleted Account».':
+    'Dadurch werden dein Konto und alle deine Daten gelöscht. Deine Nachrichten bleiben erhalten, erscheinen aber als von einem „gelöschten Konto“ gesendet.',
 }
 
 const fr: Dict = {
@@ -3353,6 +3401,18 @@ const fr: Dict = {
   Monospace: 'Monospace',
   Spoiler: 'Spoiler',
   'Cancel Recording': 'Annuler l’enregistrement',
+  'Change Number': 'Changer de numéro',
+  'Please confirm your country code and enter your new phone number.':
+    'Confirmez l’indicatif du pays et saisissez votre nouveau numéro de téléphone.',
+  'This number is already connected to a Telegram account.':
+    'Ce numéro est déjà associé à un compte Telegram.',
+  'Invalid phone number.': 'Numéro de téléphone invalide.',
+  'Delete My Account': 'Supprimer mon compte',
+  'Delete Account': 'Suppression du compte',
+  'Are you sure you want to delete your account? This action cannot be undone.':
+    'Voulez-vous vraiment supprimer votre compte ? Cette action est irréversible.',
+  'This will delete your account and all your data. Your messages will remain but appear as sent by a «Deleted Account».':
+    'Cela supprimera votre compte et toutes vos données. Vos messages resteront mais apparaîtront comme envoyés par un « compte supprimé ».',
 }
 
 export const dicts: Record<Lang, Dict> = { en: {}, ru, uk, es, de, fr }

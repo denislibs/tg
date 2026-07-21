@@ -42,6 +42,9 @@ export interface Managers {
     passkeyDelete(id: number): Promise<void>
     passkeyLoginBegin(): Promise<{ session: string; options: unknown }>
     passkeyLoginFinish(session: string, assertion: unknown, device: string, platform: string): Promise<{ user: User }>
+    changePhone(newPhone: string): Promise<import('../core/managers/authManager').ChangePhoneResult>
+    confirmChangePhone(newPhone: string, code: string): Promise<import('../core/managers/authManager').ConfirmChangePhoneResult>
+    deleteAccount(): Promise<{ switched: boolean }>
     me(): Promise<User | null>
     logout(): Promise<{ switched: boolean }>
     listAccounts(): Promise<import('../core/auth/accounts').PublicAccount[]>
