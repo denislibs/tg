@@ -31,6 +31,7 @@ import { loadStories } from './stores/storiesStore'
 import { dialogToChat, gradientFor } from './core/dialogToChat'
 import { startRealtime } from './client/realtimeBridge'
 import { setupPush } from './client/pushSetup'
+import { initAppBadge } from './client/appBadge'
 import { initHotkeys } from './core/hotkeys'
 import { loadNotifySettings, useNotifyStore, notifyTypeForChat } from './stores/notifyStore'
 import { loadPrivacy } from './stores/privacyStore'
@@ -103,6 +104,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     const { cacheTTL, cacheSize } = useSettingsStore.getState()
     syncCacheSettingsToSW(cacheTTL, cacheSize)
     startRealtime()
+    initAppBadge() // счётчик непрочитанных: title/favicon/PWA-бейдж
     // offline-уведомления (web push) подписываем только если не выключены в настройках
     if (useSettingsStore.getState().notifyPush) void setupPush()
   }, [managers])
