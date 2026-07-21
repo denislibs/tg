@@ -81,11 +81,24 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	}
 	if in.MediaID != nil {
 		ownerID, err := i.mediaAccess.OwnerID(ctx, *in.MediaID)
-		if errors.Is(err, domain.ErrNotFound) || (err == nil && ownerID != in.SenderID) {
-			return domain.Message{}, domain.ErrNotFound // media absent or not owned by sender
-		}
-		if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrNotFound):
+			return domain.Message{}, domain.ErrNotFound // media absent
+		case err != nil:
 			return domain.Message{}, err // propagate real DB errors (don't mask as 403)
+		case ownerID != in.SenderID:
+			// Стикер шлётся чужим media: наборы публичны, поэтому достаточно,
+			// чтобы media принадлежало какому-либо стикеру.
+			if in.Type == "sticker" && i.stickers != nil {
+				ok, e := i.stickers.IsStickerMedia(ctx, *in.MediaID)
+				if e != nil {
+					return domain.Message{}, e
+				}
+				if ok {
+					break
+				}
+			}
+			return domain.Message{}, domain.ErrNotFound // not owned by sender
 		}
 	}
 

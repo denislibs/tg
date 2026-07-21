@@ -226,6 +226,13 @@ type EventPublisher interface {
 	PublishToUser(ctx context.Context, userID int64, frame []byte) error
 }
 
+// StickerAccess отвечает, принадлежит ли media какому-либо стикеру: наборы
+// публичны, поэтому такое media можно отправлять (type 'sticker') и читать не
+// владельцу. Опционален — без него действует старое правило «только своё media».
+type StickerAccess interface {
+	IsStickerMedia(ctx context.Context, mediaID int64) (bool, error)
+}
+
 // SecretRepo хранит handshake секретных чатов (только публичные ключи + статус).
 type SecretRepo interface {
 	Create(ctx context.Context, sc domain.SecretChat) error

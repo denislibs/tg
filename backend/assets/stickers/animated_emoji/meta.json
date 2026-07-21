@@ -1,0 +1,12 @@
+{
+  "title": "Animated Emoji",
+  "kind": "emoji",
+  "stickers": [
+    { "file": "heart.json", "emoji": "❤️" },
+    { "file": "joy.json", "emoji": "😂" },
+    { "file": "thumbsup.json", "emoji": "👍" },
+    { "file": "party.json", "emoji": "🎉" },
+    { "file": "cry.json", "emoji": "😢" },
+    { "file": "fire.json", "emoji": "🔥" }
+  ]
+}

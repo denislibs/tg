@@ -37,6 +37,7 @@ type Interactor struct {
 	botMedia    BotMediaStore
 	translator  Translator
 	secret      SecretRepo
+	stickers    StickerAccess
 	botHub      *botPendingHub
 }
 
@@ -106,6 +107,10 @@ func (i *Interactor) SetTranslator(t Translator) { i.translator = t }
 
 // SetSecret подключает хранилище handshake секретных чатов (optional; без него → 503).
 func (i *Interactor) SetSecret(s SecretRepo) { i.secret = s }
+
+// SetStickerAccess подключает проверку стикер-медиа (optional; без неё стикеры
+// нельзя слать чужим media и читать не-владельцу).
+func (i *Interactor) SetStickerAccess(s StickerAccess) { i.stickers = s }
 
 // nowMillis is the server clock used for update dates.
 func nowMillis() int64 { return time.Now().UnixMilli() }

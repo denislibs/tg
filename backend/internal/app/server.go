@@ -12,6 +12,7 @@ import (
 	httptransport "github.com/messenger-denis/backend/internal/adapter/delivery/http"
 	"github.com/messenger-denis/backend/internal/adapter/delivery/ws"
 	"github.com/messenger-denis/backend/internal/adapter/geoip"
+	"github.com/messenger-denis/backend/internal/adapter/gifsearch"
 	"github.com/messenger-denis/backend/internal/adapter/media/ffmpeg"
 	webpushadapter "github.com/messenger-denis/backend/internal/adapter/push/webpush"
 	queueredis "github.com/messenger-denis/backend/internal/adapter/queue/redis"
@@ -30,6 +31,7 @@ import (
 	usecaseprivacy "github.com/messenger-denis/backend/internal/usecase/privacy"
 	usecasepublic "github.com/messenger-denis/backend/internal/usecase/public"
 	usecasepush "github.com/messenger-denis/backend/internal/usecase/push"
+	usecasestickers "github.com/messenger-denis/backend/internal/usecase/stickers"
 	storyusecase "github.com/messenger-denis/backend/internal/usecase/story"
 	"go.uber.org/fx"
 )
@@ -82,6 +84,19 @@ func registerServer(p serverParams) {
 
 	// Секретные чаты (E2E): handshake хранит только публичные ключи + статус.
 	p.ChatUC.SetSecret(pgadapter.NewSecretRepo(p.Pool))
+
+	// Стикеры и GIF: наборы/установка/recent/faved + сохранённые GIF; media
+	// стикера публично (шлётся и читается не-владельцем).
+	stickersRepo := pgadapter.NewStickersRepo(p.Pool)
+	stickersUC := usecasestickers.New(stickersRepo)
+	p.ChatUC.SetStickerAccess(stickersRepo)
+	if p.Cfg.TenorAPIKey != "" {
+		stickersUC.SetGifSearch(gifsearch.NewTenor(p.Cfg.TenorAPIKey))
+		log.Printf("gif search enabled (tenor)")
+	} else {
+		log.Printf("gif search disabled (set TENOR_API_KEY to enable)")
+	}
+	stickersH := httptransport.NewStickersHandler(stickersUC)
 
 	// Звёзды и подарки: баланс + каталог + выданные подарки, live-баланс
 	// фреймом balance_update, подарок — сообщением типа 'gift'.
@@ -198,7 +213,7 @@ func registerServer(p serverParams) {
 
 	srv := &http.Server{
 		Addr:              p.Cfg.HTTPAddr,
-		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, mediaUC, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC, foldersUC, pubH, privacyUC, passkeyH),
+		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, mediaUC, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC, foldersUC, pubH, privacyUC, passkeyH, stickersH),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}

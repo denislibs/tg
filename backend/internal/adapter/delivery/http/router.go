@@ -15,7 +15,7 @@ import (
 	usecaseprivacy "github.com/messenger-denis/backend/internal/usecase/privacy"
 )
 
-func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, mediaUC *usecasemedia.Interactor, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler, notifyUC *usecasenotify.Interactor, foldersUC *usecasefolders.Interactor, pubH *PublicHandler, privacyUC *usecaseprivacy.Interactor, passkeyH *PasskeyHandler) http.Handler {
+func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, mediaUC *usecasemedia.Interactor, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler, notifyUC *usecasenotify.Interactor, foldersUC *usecasefolders.Interactor, pubH *PublicHandler, privacyUC *usecaseprivacy.Interactor, passkeyH *PasskeyHandler, stickersH *StickersHandler) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -197,6 +197,27 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Delete("/chats/{chatID}/messages/{msgID}/reactions/{emoji}", ch.RemoveReaction)
 		pr.Get("/chats/{chatID}/messages/{msgID}/reactions", ch.ListReactions)
 		pr.Get("/chats/{chatID}/messages/{msgID}/reactions/users", ch.ReactionUsers)
+
+		// Стикеры и GIF
+		if stickersH != nil {
+			pr.Get("/sticker-sets", stickersH.MySets)
+			pr.Post("/sticker-sets", stickersH.CreateSet)
+			pr.Get("/sticker-sets/search", stickersH.SearchSets)
+			pr.Get("/sticker-sets/{slug}", stickersH.SetBySlug)
+			pr.Post("/sticker-sets/{id}/install", stickersH.Install)
+			pr.Delete("/sticker-sets/{id}/install", stickersH.Uninstall)
+			pr.Post("/sticker-sets/{id}/stickers", stickersH.AddSticker)
+			pr.Get("/stickers/recent", stickersH.Recent)
+			pr.Get("/stickers/faved", stickersH.Faved)
+			pr.Get("/stickers/search", stickersH.SearchByEmoji)
+			pr.Post("/stickers/{id}/fave", stickersH.Fave)
+			pr.Delete("/stickers/{id}/fave", stickersH.Unfave)
+			pr.Post("/stickers/{id}/use", stickersH.Use)
+			pr.Get("/gifs/saved", stickersH.SavedGifs)
+			pr.Post("/gifs/saved", stickersH.SaveGif)
+			pr.Delete("/gifs/saved/{mediaID}", stickersH.DeleteGif)
+			pr.Get("/gifs/search", stickersH.SearchGifs)
+		}
 
 		gh := NewGroupHandler(chatUC, memberPresence, privacyQ)
 		pr.Post("/groups", gh.CreateGroup)

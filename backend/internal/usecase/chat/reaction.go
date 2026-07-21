@@ -137,6 +137,15 @@ func (i *Interactor) ReactionUsers(ctx context.Context, chatID, messageID, userI
 
 // CanAccessMedia reports whether userID may download a media object: either they
 // own it, or they are a member of a chat that has a message referencing it.
+// Медиа стикеров читается всеми: наборы публичны, и стикер из неустановленного
+// набора должен отрисоваться у любого получателя.
 func (i *Interactor) CanAccessMedia(ctx context.Context, userID, mediaID int64) (bool, error) {
-	return i.mediaAccess.CanAccess(ctx, userID, mediaID)
+	ok, err := i.mediaAccess.CanAccess(ctx, userID, mediaID)
+	if err != nil || ok {
+		return ok, err
+	}
+	if i.stickers != nil {
+		return i.stickers.IsStickerMedia(ctx, mediaID)
+	}
+	return false, nil
 }
