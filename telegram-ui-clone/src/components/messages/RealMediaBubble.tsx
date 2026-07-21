@@ -7,7 +7,7 @@
 // built SYNCHRONOUSLY on the main thread (see core/mediaUrl). So a media bubble
 // does ZERO per-image requests on mount — no meta/contentUrl RPC round-trips —
 // which is what used to make the feed jitter while scrolling.
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import Text from '../../shared/ui/Text'
 import classNames from '../../shared/lib/classNames'
@@ -62,12 +62,14 @@ interface Props {
   // Мгновенное превью исходящего медиа + кольцо прогресса аплоада
   localUrl?: string
   clientId?: string
+  /** крестик на кольце: отменить аплоад (tweb ProgressivePreloader cancel) */
+  onCancelUpload?: (clientId: string) => void
   radius?: string
 }
 
 export default function RealMediaBubble({
   mediaId, type, width, height, mime, blur, hasThumb, duration, size, fileName,
-  out, time, status, tickColor, onOpen, autoDownload, localUrl, clientId, radius,
+  out, time, status, tickColor, onOpen, autoDownload, localUrl, clientId, onCancelUpload, radius,
 }: Props) {
   useMediaTokenVersion() // re-render when the media token is (re)primed → fresh URLs
   const tokenReady = hasMediaToken()
@@ -75,6 +77,7 @@ export default function RealMediaBubble({
   const [forced, setForced] = useState(false)
   // Кольцо прогресса аплоада (tweb ProgressivePreloader) — пока запись жива
   const uploadProgress = useUploadsStore((s) => (clientId ? s.byId[clientId] : undefined))
+  const cancelUpload = clientId && onCancelUpload ? () => onCancelUpload(clientId) : undefined
   // Image fade-in: blur/shimmer placeholder → image fades in once decoded. We read
   // the browser's REAL cache state (img.complete) before paint instead of tracking
   // a "loaded" flag ourselves: a cached <img> (e.g. a bubble remounted on chat
@@ -148,7 +151,13 @@ export default function RealMediaBubble({
         )}
         {uploadProgress != null && (
           <div className={s.play}>
-            <RadialProgress progress={uploadProgress} />
+            <div
+              className={s.cancelRing}
+              onClick={(e) => { e.stopPropagation(); cancelUpload?.() }}
+            >
+              <RadialProgress progress={uploadProgress} />
+              {cancelUpload && <TgIcon name="close" size={24} color="#fff" className={s.cancelX} />}
+            </div>
           </div>
         )}
         {isGif && (
@@ -186,6 +195,8 @@ export default function RealMediaBubble({
         time={timeCluster}
         primary={out ? '#fff' : 'var(--tg-textPrimary)'}
         secondary={out ? 'rgba(255,255,255,0.7)' : 'var(--tg-textSecondary)'}
+        uploadProgress={uploadProgress}
+        onCancelUpload={cancelUpload}
       />
     )
   }
@@ -193,23 +204,96 @@ export default function RealMediaBubble({
   // ---- Document / file (tweb .document: цветная «страница» с загнутым
   // уголком и расширением; pdf/zip/apk — фирменные цвета, остальное акцент) ----
   const name = fileName || `media-${mediaId}`
-  const rawExt = name.includes('.') ? (name.split('.').pop() || '').split(' ')[0].toLowerCase() : ''
-  const ext = (rawExt || 'file').slice(0, 6)
-  const sub = size ? fmtSize(size) : ''
   // Пока идёт аплоад (mediaId ещё нет) — ссылка неактивна, на иконке кольцо.
   const href = tokenReady && mediaId != null ? mediaContentUrl(mediaId) : undefined
+  return (
+    <DocRow
+      name={name} size={size} mime={mime} href={href} out={out}
+      uploadProgress={uploadProgress} onCancelUpload={cancelUpload}
+      timeCluster={timeCluster}
+    />
+  )
+}
+
+// ---- Строка документа с управляемым скачиванием (tweb ProgressivePreloader):
+// клик → fetch с чтением потока и кольцом «скачано / всего» на иконке; клик по
+// кольцу — отмена. По завершении файл сохраняется как обычная загрузка.
+function DocRow({ name, size, mime, href, out, uploadProgress, onCancelUpload, timeCluster }: {
+  name: string
+  size?: number
+  mime?: string
+  href?: string
+  out: boolean
+  uploadProgress?: number
+  onCancelUpload?: () => void
+  timeCluster: ReactNode
+}) {
+  const rawExt = name.includes('.') ? (name.split('.').pop() || '').split(' ')[0].toLowerCase() : ''
+  const ext = (rawExt || 'file').slice(0, 6)
+  const [dl, setDl] = useState<{ loaded: number; total: number } | null>(null)
+  const dlAbort = useRef<AbortController | null>(null)
+  useEffect(() => () => dlAbort.current?.abort(), [])
+
+  const startDownload = async (e: React.MouseEvent) => {
+    e.preventDefault()
+    if (uploadProgress != null) { onCancelUpload?.(); return }
+    if (!href) return
+    if (dl) { dlAbort.current?.abort(); return } // повторный клик = отмена
+    const ac = new AbortController()
+    dlAbort.current = ac
+    setDl({ loaded: 0, total: size ?? 0 })
+    try {
+      const res = await fetch(href, { signal: ac.signal })
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
+      const total = Number(res.headers.get('content-length')) || size || 0
+      const reader = res.body.getReader()
+      const chunks: BlobPart[] = []
+      let loaded = 0
+      let lastPaint = 0
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        chunks.push(value)
+        loaded += value.byteLength
+        const now = performance.now()
+        if (now - lastPaint > 100) { lastPaint = now; setDl({ loaded, total }) }
+      }
+      const url = URL.createObjectURL(new Blob(chunks, { type: mime || 'application/octet-stream' }))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = name
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    } catch {
+      // отмена или сеть — просто вернуть иконку
+    } finally {
+      setDl(null)
+      dlAbort.current = null
+    }
+  }
+
+  // Кольцо: аплоад у отправителя ИЛИ активное скачивание у получателя.
+  const ring = uploadProgress ?? (dl ? (dl.total > 0 ? dl.loaded / dl.total : 0) : undefined)
+  // Подстрока: «передано / всего» пока идёт аплоад/скачивание, иначе размер.
+  const sub = uploadProgress != null && size
+    ? `${fmtSize(Math.round(uploadProgress * size))} / ${fmtSize(size)}`
+    : dl && dl.total > 0
+      ? `${fmtSize(dl.loaded)} / ${fmtSize(dl.total)}`
+      : size ? fmtSize(size) : ''
   return (
     <a
       className={classNames(s.fileRow, s.doc, s.docRow)}
       href={href}
       download={name}
+      onClick={startDownload}
       data-out={out || undefined}
       style={{ '--doc-color': DOC_EXT_COLORS[ext] ?? 'var(--tg-accent)' } as React.CSSProperties}
     >
       <div className={s.docIco}>
-        {uploadProgress != null ? (
+        {ring != null ? (
           <span className={s.docProgress}>
-            <RadialProgress progress={uploadProgress} size={44} />
+            <RadialProgress progress={ring} size={44} />
+            <TgIcon name="close" size={20} color="#fff" className={s.cancelX} />
           </span>
         ) : (
           <>
@@ -242,7 +326,7 @@ const DOC_EXT_COLORS: Record<string, string> = {
 // track shows in the now-playing plate and only one thing plays at a time. While
 // this file is the active track the row flips to pause + a seekable progress bar
 // (tweb). Otherwise it shows duration • size.
-function AudioRow({ mediaId, name, duration, size, primary, secondary, time }: {
+function AudioRow({ mediaId, name, duration, size, primary, secondary, time, uploadProgress, onCancelUpload }: {
   mediaId?: number
   name: string
   duration?: number
@@ -250,6 +334,8 @@ function AudioRow({ mediaId, name, duration, size, primary, secondary, time }: {
   primary: string
   secondary: string
   time: ReactNode
+  uploadProgress?: number
+  onCancelUpload?: () => void
 }) {
   // mediaId ещё нет во время аплоада — трек не считается текущим (иначе
   // undefined===undefined совпало бы с «нет активного трека»).
@@ -262,7 +348,10 @@ function AudioRow({ mediaId, name, duration, size, primary, secondary, time }: {
   const playQueue = useAudioStore((s) => s.playQueue)
 
   const sizeStr = size ? fmtSize(size) : ''
-  const sub = [duration ? fmtDur(duration) : '', sizeStr].filter(Boolean).join(' • ')
+  // Пока грузится — «отдано / всего», после — длительность • размер.
+  const sub = uploadProgress != null && size
+    ? `${fmtSize(Math.round(uploadProgress * size))} / ${fmtSize(size)}`
+    : [duration ? fmtDur(duration) : '', sizeStr].filter(Boolean).join(' • ')
 
   const onPlay = () => {
     if (mediaId == null) return // ещё грузится
@@ -277,9 +366,16 @@ function AudioRow({ mediaId, name, duration, size, primary, secondary, time }: {
 
   return (
     <div className={classNames(s.fileRow, s.audio)}>
-      <div className={classNames(s.circle, s.circleBtn)} onClick={onPlay}>
-        {playing ? <TgIcon name="pause" size={28} /> : <TgIcon name="play" size={28} />}
-      </div>
+      {uploadProgress != null ? (
+        <div className={classNames(s.circle, s.circleBtn, s.cancelRing)} onClick={onCancelUpload}>
+          <RadialProgress progress={uploadProgress} size={44} />
+          {onCancelUpload && <TgIcon name="close" size={20} color="#fff" className={s.cancelX} />}
+        </div>
+      ) : (
+        <div className={classNames(s.circle, s.circleBtn)} onClick={onPlay}>
+          {playing ? <TgIcon name="pause" size={28} /> : <TgIcon name="play" size={28} />}
+        </div>
+      )}
       <div className={s.fileBody}>
         <Text noWrap size={14.5} weight={600} color={primary}>{name}</Text>
         {isCurrent ? (

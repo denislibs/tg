@@ -18,6 +18,9 @@ export function newMediaManager({ rest, onUploadProgress }: {
   onUploadProgress?: (id: string, loaded: number, total: number) => void
 }) {
   const metaCache = new Map<number, MediaMeta>()
+  // Активные аплоады по progressId (=clientMsgId) — для отмены с бабла (tweb
+  // ProgressivePreloader cancel): abort рвёт PUT, upload() кидает 'aborted'.
+  const uploadAborts = new Map<string, AbortController>()
   // Cached short-lived media token (refreshed ~1 min before expiry). It only
   // authorizes media reads, so it's safe to put in URLs (unlike the session token).
   let mediaToken = ''
@@ -38,8 +41,18 @@ export function newMediaManager({ rest, onUploadProgress }: {
       const progress = a.progressId && onUploadProgress
         ? (loaded: number, total: number) => onUploadProgress(a.progressId!, loaded, total)
         : undefined
-      await rest.putBytes(`/media/${r.media_id}/content`, a.bytes, a.mime, progress)
+      const ac = a.progressId ? new AbortController() : undefined
+      if (ac && a.progressId) uploadAborts.set(a.progressId, ac)
+      try {
+        await rest.putBytes(`/media/${r.media_id}/content`, a.bytes, a.mime, progress, ac?.signal)
+      } finally {
+        if (a.progressId) uploadAborts.delete(a.progressId)
+      }
       return r.media_id
+    },
+    // Отмена активного аплоада по progressId (clientMsgId оптимистичного бабла).
+    async cancelUpload(progressId: string): Promise<void> {
+      uploadAborts.get(progressId)?.abort()
     },
     async meta(id: number): Promise<MediaMeta> {
       const hit = metaCache.get(id)

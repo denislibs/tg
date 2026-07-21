@@ -6,7 +6,7 @@ import type { ProfileUpdate, SetUsernameResult } from '../core/managers/profileM
 import type { Dialog, Draft } from '../core/models'
 import type { Message, MessageEntity, Poll, Scheduled } from '../core/models'
 import type { HistoryArgs, HistoryResult, SendArgs } from '../core/managers/messagesManager'
-import type { ConnState, PresenceEvt } from '../core/realtime/events'
+import type { ConnState, PresenceEvt, TypingAction } from '../core/realtime/events'
 import type { UploadArgs, MediaMeta } from '../core/managers/mediaManager'
 import type { SavedDialog } from '../core/managers/chatsManager'
 import type { PushSub } from '../core/managers/pushManager'
@@ -98,7 +98,7 @@ export interface Managers {
     sendMessage(args: { chatId: number; text: string; entities?: MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; mediaId?: number | null; type?: string; groupedId?: string; geo?: { lat: number; lng: number; title?: string; address?: string; livePeriod?: number; heading?: number }; contactUserId?: number; threadRootId?: number | null; encBody?: string; ttlSeconds?: number | null }): Promise<{ ok: boolean }>
     markRead(args: { chatId: number; upToSeq: number }): Promise<{ ok: boolean }>
     markMediaRead(args: { chatId: number; msgId: number }): Promise<{ ok: boolean }>
-    sendTyping(args: { chatId: number; action?: 'typing' | 'voice' | 'video' }): Promise<{ ok: boolean }>
+    sendTyping(args: { chatId: number; action?: TypingAction }): Promise<{ ok: boolean }>
     sendCallFrame(args: { type: string; data: Record<string, unknown> }): Promise<{ ok: boolean }>
     subscribeChannel(args: { chatId: number }): Promise<{ ok: boolean }>
     unsubscribeChannel(args: { chatId: number }): Promise<{ ok: boolean }>
@@ -113,6 +113,7 @@ export interface Managers {
   }
   media: {
     upload(a: UploadArgs): Promise<number>
+    cancelUpload(progressId: string): Promise<void>
     meta(id: number): Promise<MediaMeta>
     contentUrl(id: number): Promise<string>
     thumbUrl(id: number): Promise<string>

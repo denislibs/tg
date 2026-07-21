@@ -33,7 +33,7 @@ export class RestClient {
     return this.request<R>('DELETE', path, body)
   }
 
-  async putBytes(path: string, body: ArrayBuffer, contentType: string, onProgress?: (loaded: number, total: number) => void): Promise<void> {
+  async putBytes(path: string, body: ArrayBuffer, contentType: string, onProgress?: (loaded: number, total: number) => void, signal?: AbortSignal): Promise<void> {
     // XHR вместо fetch: у fetch нет событий прогресса ОТПРАВКИ, а спиннер
     // загрузки медиа (tweb ProgressivePreloader) живёт на xhr.upload.onprogress.
     // Если XHR в этом контексте недоступен — тихий фолбэк на fetch (без прогресса).
@@ -41,7 +41,7 @@ export class RestClient {
       const headers: Record<string, string> = { 'Content-Type': contentType }
       const tok = this.getToken()
       if (tok) headers.Authorization = `Bearer ${tok}`
-      const res = await fetch(this.base + path, { method: 'PUT', headers, body })
+      const res = await fetch(this.base + path, { method: 'PUT', headers, body, signal })
       if (!res.ok) throw new HttpError(res.status, `HTTP ${res.status}`)
       return
     }
@@ -56,6 +56,9 @@ export class RestClient {
           if (e.lengthComputable) onProgress(e.loaded, e.total)
         }
       }
+      // Отмена аплоада (tweb ProgressivePreloader cancel): signal → xhr.abort()
+      if (signal) signal.addEventListener('abort', () => xhr.abort(), { once: true })
+      xhr.onabort = () => reject(new HttpError(0, 'aborted'))
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) resolve()
         else reject(new HttpError(xhr.status, `HTTP ${xhr.status}`))

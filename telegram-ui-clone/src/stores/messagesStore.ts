@@ -89,6 +89,8 @@ interface MessagesState {
   retryOptimistic: (key: string, clientMsgId: string) => void
   /** Drop a failed optimistic bubble entirely (user chose «delete»). */
   removeOptimistic: (key: string, clientMsgId: string) => void
+  /** То же по одному clientMsgId (отмена аплоада с бабла — окно ищем сами). */
+  removeOptimisticByClient: (clientMsgId: string) => void
   /** Новое сообщение чата: в основное окно + в окно своего треда (если открыто). */
   applyIncoming: (chatId: number, m: Message) => void
   applyEdit: (chatId: number, msgId: number, text: string, editedAt: string, entities?: MessageEntity[], replyMarkup?: ReplyMarkup | null) => void
@@ -263,6 +265,11 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   failOptimisticByClient: (clientMsgId) => {
     const key = clientToWin.get(clientMsgId)
     if (key !== undefined) get().failOptimistic(key, clientMsgId)
+  },
+
+  removeOptimisticByClient: (clientMsgId) => {
+    const key = clientToWin.get(clientMsgId)
+    if (key !== undefined) get().removeOptimistic(key, clientMsgId)
   },
 
   applyIncoming: (chatId, m) =>

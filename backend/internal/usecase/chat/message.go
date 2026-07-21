@@ -161,6 +161,14 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 				msg.Poll = &info
 			}
 		}
+		// Медиа-мета в live-кадр (имя/размер/mime/размеры) — как в history read
+		// model, чтобы файл у получателя не рисовался заглушкой до перезагрузки.
+		if msg.MediaID != nil {
+			one := []domain.Message{msg}
+			if e := i.hydrateMedia(ctx, one); e == nil {
+				msg = one[0]
+			}
+		}
 		members, e := i.chats.MemberIDs(ctx, in.ChatID)
 		if e != nil {
 			return e
@@ -421,8 +429,8 @@ func (i *Interactor) Typing(ctx context.Context, chatID, userID int64, action st
 		return nil
 	}
 	switch action {
-	case "voice", "video":
-		// keep
+	case "voice", "video", "upload_file", "upload_photo", "upload_video", "upload_audio":
+		// keep (upload_* — «отправляет файл/фото/…» на время аплоада, tweb sendMessageUpload*Action)
 	default:
 		action = "typing"
 	}

@@ -37,6 +37,31 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 	if m.ReplyMarkup != nil {
 		p["reply_markup"] = m.ReplyMarkup
 	}
+	// Медиа-мета live-кадра — те же ключи, что history read model (chat_handler):
+	// иначе получатель (и echo отправителя) рисует файл заглушкой «media-N» без
+	// имени/размера до перезагрузки истории.
+	if m.MediaWidth > 0 && m.MediaHeight > 0 {
+		p["media_w"] = m.MediaWidth
+		p["media_h"] = m.MediaHeight
+	}
+	if m.MediaMime != "" {
+		p["media_mime"] = m.MediaMime
+	}
+	if len(m.MediaBlur) > 0 {
+		p["media_blur"] = m.MediaBlur
+	}
+	if m.MediaHasThumb {
+		p["media_has_thumb"] = true
+	}
+	if m.MediaDuration > 0 {
+		p["media_duration"] = m.MediaDuration
+	}
+	if m.MediaSize > 0 {
+		p["media_size"] = m.MediaSize
+	}
+	if m.MediaName != "" {
+		p["media_name"] = m.MediaName
+	}
 	if m.GeoLat != nil && m.GeoLng != nil {
 		p["geo"] = geoJSON(m)
 	}
