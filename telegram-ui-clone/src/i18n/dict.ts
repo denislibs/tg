@@ -833,6 +833,21 @@ const ru: Dict = {
   'Text size': 'Размер текста',
   'Discard changes': 'Отменить изменения',
   'Are you sure you want to discard the changes?': 'Вы уверены, что хотите отменить внесённые изменения?',
+
+  // ── Горячие клавиши (настройки) ──
+  Formatting: 'Форматирование',
+  Recording: 'Запись',
+  'Close Chat': 'Закрыть чат',
+  'Mute Chat': 'Выключить уведомления чата',
+  'Send Message': 'Отправить сообщение',
+  'New Line': 'Новая строка',
+  Bold: 'Жирный',
+  Italic: 'Курсив',
+  Underline: 'Подчёркнутый',
+  Strikethrough: 'Зачёркнутый',
+  Monospace: 'Моноширинный',
+  Spoiler: 'Спойлер',
+  'Cancel Recording': 'Отменить запись',
 }
 
 const uk: Dict = {
@@ -1444,6 +1459,21 @@ const uk: Dict = {
   '4 months': '4 місяці', '5 months': '5 місяців', '6 months': '6 місяців',
   '1 year': '1 рік',
   'Passkey sign-in failed': 'Не вдалося увійти за ключем доступу',
+
+  // ── Гарячі клавіші (налаштування) ──
+  Formatting: 'Форматування',
+  Recording: 'Запис',
+  'Close Chat': 'Закрити чат',
+  'Mute Chat': 'Вимкнути сповіщення чату',
+  'Send Message': 'Надіслати повідомлення',
+  'New Line': 'Новий рядок',
+  Bold: 'Жирний',
+  Italic: 'Курсив',
+  Underline: 'Підкреслений',
+  Strikethrough: 'Закреслений',
+  Monospace: 'Моноширинний',
+  Spoiler: 'Спойлер',
+  'Cancel Recording': 'Скасувати запис',
 }
 
 const es: Dict = {
@@ -2053,6 +2083,21 @@ const es: Dict = {
   '4 months': '4 meses', '5 months': '5 meses', '6 months': '6 meses',
   '1 year': '1 año',
   'Passkey sign-in failed': 'No se pudo iniciar sesión con la llave de acceso',
+
+  // ── Atajos de teclado (ajustes) ──
+  Formatting: 'Formato',
+  Recording: 'Grabación',
+  'Close Chat': 'Cerrar chat',
+  'Mute Chat': 'Silenciar chat',
+  'Send Message': 'Enviar mensaje',
+  'New Line': 'Nueva línea',
+  Bold: 'Negrita',
+  Italic: 'Cursiva',
+  Underline: 'Subrayado',
+  Strikethrough: 'Tachado',
+  Monospace: 'Monoespaciado',
+  Spoiler: 'Spoiler',
+  'Cancel Recording': 'Cancelar grabación',
 }
 
 const de: Dict = {
@@ -2664,6 +2709,21 @@ const de: Dict = {
   '4 months': '4 Monate', '5 months': '5 Monate', '6 months': '6 Monate',
   '1 year': '1 Jahr',
   'Passkey sign-in failed': 'Anmeldung mit Passkey fehlgeschlagen',
+
+  // ── Tastenkürzel (Einstellungen) ──
+  Formatting: 'Formatierung',
+  Recording: 'Aufnahme',
+  'Close Chat': 'Chat schließen',
+  'Mute Chat': 'Chat stummschalten',
+  'Send Message': 'Nachricht senden',
+  'New Line': 'Neue Zeile',
+  Bold: 'Fett',
+  Italic: 'Kursiv',
+  Underline: 'Unterstrichen',
+  Strikethrough: 'Durchgestrichen',
+  Monospace: 'Monospace',
+  Spoiler: 'Spoiler',
+  'Cancel Recording': 'Aufnahme abbrechen',
 }
 
 const fr: Dict = {
@@ -3275,6 +3335,21 @@ const fr: Dict = {
   '4 months': '4 mois', '5 months': '5 mois', '6 months': '6 mois',
   '1 year': '1 an',
   'Passkey sign-in failed': "Échec de la connexion par clé d'accès",
+
+  // ── Raccourcis clavier (réglages) ──
+  Formatting: 'Mise en forme',
+  Recording: 'Enregistrement',
+  'Close Chat': 'Fermer la discussion',
+  'Mute Chat': 'Discussion en sourdine',
+  'Send Message': 'Envoyer le message',
+  'New Line': 'Nouvelle ligne',
+  Bold: 'Gras',
+  Italic: 'Italique',
+  Underline: 'Souligné',
+  Strikethrough: 'Barré',
+  Monospace: 'Monospace',
+  Spoiler: 'Spoiler',
+  'Cancel Recording': 'Annuler l’enregistrement',
 }
 
 export const dicts: Record<Lang, Dict> = { en: {}, ru, uk, es, de, fr }
