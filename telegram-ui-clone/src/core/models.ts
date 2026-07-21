@@ -66,6 +66,7 @@ export interface RawDialog {
   peer_read_seq?: number
   unread: number
   unread_mentions_count?: number
+  unread_reactions?: number
   muted?: boolean
   pinned?: boolean
   archived?: boolean
@@ -88,6 +89,8 @@ export interface Dialog {
   unread: number
   /** непрочитанные упоминания зрителя (Telegram unread_mentions_count) — бейдж «@» */
   unreadMentions?: number
+  /** непрочитанные реакции на сообщения зрителя (Telegram unread_reactions_count) — бейдж-сердце */
+  unreadReactions?: number
   muted: boolean
   /** закреплён вверху списка / убран в «Архив» (пер-юзерные флаги, tweb) */
   pinned: boolean
@@ -391,6 +394,7 @@ export function mapDialog(r: RawDialog): Dialog {
     peerReadSeq: r.peer_read_seq ?? 0,
     unread: r.unread,
     unreadMentions: r.unread_mentions_count || undefined,
+    unreadReactions: r.unread_reactions || undefined,
     muted: !!r.muted,
     pinned: !!r.pinned,
     archived: !!r.archived,

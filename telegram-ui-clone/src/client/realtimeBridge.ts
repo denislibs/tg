@@ -156,6 +156,11 @@ export function startRealtime(): void {
     const e = raw as ReactionEvt
     const meId = useChatsStore.getState().meId
     useMessagesStore.getState().applyReaction(e.chat_id, e.msg_id, e.emoji, e.action, e.user_id === meId)
+    // Кто-то поставил реакцию на МОЁ сообщение → бейдж непрочитанных реакций
+    // диалога (Telegram unread_reactions_count). Сброс — на прочтении чата (applyRead).
+    if (e.action === 'add' && e.author_id === meId && e.user_id !== meId) {
+      useChatsStore.getState().bumpUnreadReactions(e.chat_id)
+    }
   })
   // Ack/error carry only client_msg_id → reconcile by clientMsgId (store maps it to the chat).
   smp.on(RT.ack, (raw) => {

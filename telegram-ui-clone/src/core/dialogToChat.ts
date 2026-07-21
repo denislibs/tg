@@ -111,6 +111,7 @@ export function dialogToChat(d: Dialog, meId?: number | null, draft?: Draft): Ch
     autoDeletePeriod: d.autoDeletePeriod || undefined,
     unread: d.unread > 0 ? d.unread : undefined,
     unreadMentions: d.unreadMentions && d.unreadMentions > 0 ? d.unreadMentions : undefined,
+    unreadReactions: d.unreadReactions && d.unreadReactions > 0 ? d.unreadReactions : undefined,
     sent: (lastMine && !hasDraft) || undefined,
     read: lastMine && !hasDraft && lm!.seq <= d.peerReadSeq ? true : undefined,
     previewMediaId: !hasDraft && lm?.mediaType === 'photo' && lm.mediaId ? lm.mediaId : undefined,

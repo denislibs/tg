@@ -16,11 +16,11 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 	if emoji == "" || len(emoji) > maxEmojiLen || !utf8.ValidString(emoji) {
 		return domain.ErrBadReaction
 	}
-	msgChat, err := i.msgs.MessageChatID(ctx, messageID)
+	msg, err := i.msgs.GetByID(ctx, messageID)
 	if err != nil {
 		return err // domain.ErrNotFound if the message is gone
 	}
-	if msgChat != chatID {
+	if msg.ChatID != chatID {
 		return domain.ErrNotFound
 	}
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
@@ -50,13 +50,20 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 	if add {
 		action = "add"
 	}
-	p := reactionPayload(chatID, messageID, userID, emoji, action)
+	p := reactionPayload(chatID, messageID, userID, msg.SenderID, emoji, action)
 
 	var members []int64
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if add {
 			if e := i.reactions.Add(ctx, messageID, userID, emoji); e != nil {
 				return e
+			}
+			// Реакция на ЧУЖОЕ сообщение бампит счётчик непрочитанных реакций его
+			// автора (Telegram unread_reactions_count) — свои реакции не считаются.
+			if userID != msg.SenderID {
+				if e := i.chats.IncUnreadReactions(ctx, chatID, msg.SenderID); e != nil {
+					return e
+				}
 			}
 		} else {
 			if e := i.reactions.Remove(ctx, messageID, userID, emoji); e != nil {

@@ -30,6 +30,8 @@ interface ChatsState {
   removeDialog: (chatId: number) => void
   applyNewMessage: (m: NewMessageEvt) => void
   applyRead: (r: ReadEvt) => void
+  /** кто-то отреагировал на моё сообщение → бампим бейдж непрочитанных реакций диалога */
+  bumpUnreadReactions: (chatId: number) => void
   setPresence: (p: PresenceEvt) => void
   setTyping: (chatId: number, userId: number, action: TypingAction, at: number) => void
   clearTyping: (chatId: number, userId: number) => void
@@ -172,12 +174,20 @@ export const useChatsStore = create<ChatsState>((set) => ({
       if (idx === -1) return {}
       const next = s.dialogs.slice()
       if (r.user_id === s.meId) {
-        // my own read (also echoed to my other tabs) → clear unread (+ mentions) + advance my horizon
-        next[idx] = { ...next[idx], unread: 0, unreadMentions: 0, lastReadSeq: Math.max(next[idx].lastReadSeq, r.up_to_seq) }
+        // my own read (also echoed to my other tabs) → clear unread (+ mentions/reactions) + advance my horizon
+        next[idx] = { ...next[idx], unread: 0, unreadMentions: 0, unreadReactions: 0, lastReadSeq: Math.max(next[idx].lastReadSeq, r.up_to_seq) }
       } else {
         // the OTHER side read my messages → advance the peer horizon (out ticks → ✓✓)
         next[idx] = { ...next[idx], peerReadSeq: Math.max(next[idx].peerReadSeq, r.up_to_seq) }
       }
+      return { dialogs: next }
+    }),
+  bumpUnreadReactions: (chatId) =>
+    set((s) => {
+      const idx = s.dialogs.findIndex((d) => d.chatId === chatId)
+      if (idx === -1) return {}
+      const next = s.dialogs.slice()
+      next[idx] = { ...next[idx], unreadReactions: (next[idx].unreadReactions ?? 0) + 1 }
       return { dialogs: next }
     }),
 }))

@@ -147,9 +147,9 @@ func deleteUpdatePayload(chatID, msgID, seq int64, forMe bool) map[string]any {
 	}
 }
 
-func reactionPayload(chatID, messageID, userID int64, emoji, action string) map[string]any {
+func reactionPayload(chatID, messageID, userID, authorID int64, emoji, action string) map[string]any {
 	return map[string]any{
 		"chat_id": chatID, "msg_id": messageID, "user_id": userID,
-		"emoji": emoji, "action": action,
+		"author_id": authorID, "emoji": emoji, "action": action,
 	}
 }

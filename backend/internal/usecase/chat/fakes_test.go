@@ -26,6 +26,7 @@ type member struct {
 	clearedSeq  int64
 	unread      int
 	mentions    int
+	reactions   int
 	muted       bool
 }
 
@@ -176,12 +177,13 @@ func (r fakeChats) ListDialogs(_ context.Context, userID int64) ([]domain.Dialog
 			continue
 		}
 		d := domain.Dialog{
-			ChatID:              cid,
-			Type:                r.s.chatType[cid],
-			LastReadSeq:         mem.lastReadSeq,
-			UnreadCount:         mem.unread,
-			UnreadMentionsCount: mem.mentions,
-			Muted:               mem.muted,
+			ChatID:               cid,
+			Type:                 r.s.chatType[cid],
+			LastReadSeq:          mem.lastReadSeq,
+			UnreadCount:          mem.unread,
+			UnreadMentionsCount:  mem.mentions,
+			UnreadReactionsCount: mem.reactions,
+			Muted:                mem.muted,
 		}
 		msgs := r.s.messages[cid]
 		if len(msgs) > 0 {
@@ -223,6 +225,24 @@ func (r fakeChats) IncUnread(_ context.Context, chatID, userID int64) error {
 	defer r.s.mu.Unlock()
 	if m := r.s.members[chatID][userID]; m != nil {
 		m.unread++
+	}
+	return nil
+}
+
+func (r fakeChats) IncUnreadReactions(_ context.Context, chatID, userID int64) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	if m := r.s.members[chatID][userID]; m != nil {
+		m.reactions++
+	}
+	return nil
+}
+
+func (r fakeChats) ClearUnreadReactions(_ context.Context, chatID, userID int64) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	if m := r.s.members[chatID][userID]; m != nil {
+		m.reactions = 0
 	}
 	return nil
 }

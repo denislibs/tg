@@ -339,6 +339,11 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 		if _, e := i.chats.ClearMentions(ctx, chatID, userID, effective); e != nil {
 			return e
 		}
+		// Открытие чата гасит и бейдж непрочитанных реакций (Telegram
+		// readReactions): счётчик простой, сбрасываем в ноль при прочтении.
+		if e := i.chats.ClearUnreadReactions(ctx, chatID, userID); e != nil {
+			return e
+		}
 		// Self-destruct: запускаем таймер для секретных сообщений, которые
 		// читатель только что получил (no-op для чатов без ttl).
 		if e := i.msgs.SetDestructOnRead(ctx, chatID, userID, effective); e != nil {
@@ -428,6 +433,21 @@ func (i *Interactor) ClearHistory(ctx context.Context, chatID, userID int64) err
 		_, e = i.chats.ClearMentions(ctx, chatID, userID, maxSeq)
 		return e
 	})
+}
+
+// ReadReactions explicitly clears the caller's unread-reactions badge for a chat
+// (Telegram readReactions — POST /chats/{chatID}/reactions/read), without
+// touching the read horizon. MarkRead clears it too; this is the "read only the
+// reactions" path. Not a member → domain.ErrNotFound.
+func (i *Interactor) ReadReactions(ctx context.Context, chatID, userID int64) error {
+	ok, err := i.chats.IsMember(ctx, chatID, userID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return domain.ErrNotFound
+	}
+	return i.chats.ClearUnreadReactions(ctx, chatID, userID)
 }
 
 // ReadMedia clears a voice/round message's media_unread flag when its recipient
