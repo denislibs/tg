@@ -37,6 +37,8 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
   prev: () => void
   openViewers: () => void
   bg: string
+  paused: boolean
+  togglePause: () => void
 } {
   const managers = useManagers()
   const groups = useStoriesStore((s) => s.groups)
@@ -52,10 +54,13 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
   const [isVideo, setIsVideo] = useState(false)
   const [showViewers, setShowViewers] = useState(false)
   const [viewers, setViewers] = useState<Viewer[] | null>(null)
+  // Пауза авто-прогресса (Space) — таймер сегмента замирает, видео встаёт.
+  const [paused, setPaused] = useState(false)
 
   const story = stories[current]
 
   const next = () => {
+    setPaused(false)
     if (current >= stories.length - 1) onClose()
     else {
       setCurrent((c) => c + 1)
@@ -63,19 +68,25 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
     }
   }
   const prev = () => {
+    setPaused(false)
     setCurrent((c) => Math.max(0, c - 1))
     setShowViewers(false)
   }
+  const togglePause = () => setPaused((p) => !p)
 
-  // Esc-to-close (unchanged from the mock).
+  // Клавиатура сториз (tweb): Esc/↓ — закрыть, →/← — навигация, Space — пауза.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // preventDefault — сигнал глобальному Esc-фолбэку (core/hotkeys), что Esc обработан
-      if (e.key === 'Escape') { e.preventDefault(); onClose() }
+      if (e.key === 'Escape' || e.key === 'ArrowDown') { e.preventDefault(); onClose(); return }
+      if (e.key === 'ArrowRight') { e.preventDefault(); next(); return }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); return }
+      if (e.key === ' ') { e.preventDefault(); togglePause() }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onClose, current, stories.length])
 
   // Empty / out-of-range group → nothing to show.
   useEffect(() => {
@@ -130,5 +141,7 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
     prev,
     openViewers,
     bg,
+    paused,
+    togglePause,
   }
 }

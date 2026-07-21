@@ -17,12 +17,18 @@ export function pushEsc(handler: EscHandler): () => void {
 }
 
 export interface HotkeyHandlers {
-  /** Ctrl/Cmd+K — фокус в поиск по чатам. */
+  /** Ctrl/Cmd+F — фокус в поиск по чатам (в tweb — глобальный поиск). */
   focusSearch?: () => void
   /** Esc при пустом стеке — «закрыть открытый чат» (App сам решает, есть ли что закрывать). */
   escFallback?: () => void
   /** Ctrl/Cmd+Shift+M — mute/unmute текущего чата (опционально). */
   muteChat?: () => void
+  /** Ctrl/Cmd+0 — открыть «Избранное» (Saved Messages). */
+  openSaved?: () => void
+  /** Alt+↓ — следующий чат в списке диалогов (циклически). */
+  nextChat?: () => void
+  /** Alt+↑ — предыдущий чат в списке диалогов (циклически). */
+  prevChat?: () => void
 }
 
 let current: HotkeyHandlers | null = null
@@ -57,6 +63,18 @@ function onKeyDown(e: KeyboardEvent): void {
     return
   }
 
+  // Alt+↑/↓ — предыдущий/следующий чат (tweb Alt+Up/Down). Только чистый Alt
+  // (без ctrl/meta/shift); в поле ввода не трогаем — там Option+стрелка = переход
+  // по словам. Проверяем до общего mod-гейта ниже, т.к. здесь ctrl/meta НЕТ.
+  if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+    if (isTextTarget(e.target)) return
+    const cb = e.key === 'ArrowUp' ? h.prevChat : h.nextChat
+    if (!cb) return
+    e.preventDefault()
+    cb()
+    return
+  }
+
   if (!(e.ctrlKey || e.metaKey) || e.altKey) return
 
   // Ctrl/Cmd+Shift+M — mute текущего чата
@@ -66,11 +84,21 @@ function onKeyDown(e: KeyboardEvent): void {
     h.muteChat()
     return
   }
-  // Ctrl/Cmd+K — фокус в поиск
-  if (!e.shiftKey && e.code === 'KeyK') {
-    if (isTextTarget(e.target) || !h.focusSearch) return
+  if (e.shiftKey) return
+
+  // Ctrl/Cmd+F — фокус в поиск (перебиваем браузерный find; разрешено и из
+  // инпута — как в Telegram).
+  if (e.code === 'KeyF') {
+    if (!h.focusSearch) return
     e.preventDefault()
     h.focusSearch()
+    return
+  }
+  // Ctrl/Cmd+0 — «Избранное» (Saved Messages); разрешено и из инпута.
+  if (e.code === 'Digit0') {
+    if (!h.openSaved) return
+    e.preventDefault()
+    h.openSaved()
   }
 }
 

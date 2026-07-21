@@ -25,6 +25,7 @@ import {
   composeScene, flipOrientH, measureTextBlock, orientedSize, rebuildDrawLayer, rotateOrientCW, srcSize,
   type Orient, type SrcImage, type Stroke, type TextBlock, type TextStyle,
 } from './sceneRender'
+import { applyRedo, applyUndo, type HistoryItem, type RedoItem } from './editorHistory'
 import s from './MediaEditor.module.scss'
 
 // Палитра tweb mediaEditor (colorPickerSwatches).
@@ -50,12 +51,8 @@ const ASPECT_LABELS: Record<AspectPreset, string> = {
   free: 'Free', original: 'Original', '1:1': 'Square', '4:3': '4:3', '16:9': '16:9',
 }
 
-// В undo-стеке только штрихи и добавление/удаление текста; Enhance/Crop
-// параметрические — сбрасываются кнопкой (как договорено с tweb-референсом).
-type HistoryItem =
-  | { type: 'stroke' }
-  | { type: 'text-add'; id: number }
-  | { type: 'text-remove'; block: TextBlock }
+// Undo/redo — чистые редьюсеры в editorHistory (в стеке только штрихи и
+// добавление/удаление текста; Enhance/Crop параметрические — сброс кнопкой).
 
 // Метаданные открытого input-оверлея текста (сам текст живёт в input).
 interface EditingText {
@@ -104,6 +101,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
   const [strokes, setStrokes] = useState<Stroke[]>([])
   const [texts, setTexts] = useState<TextBlock[]>([])
   const [history, setHistory] = useState<HistoryItem[]>([])
+  const [redoStack, setRedoStack] = useState<RedoItem[]>([])
   const [brushColor, setBrushColor] = useState(SWATCHES[1])
   const [brushSize, setBrushSize] = useState(12)
   const [textColor, setTextColor] = useState(SWATCHES[0])
@@ -222,13 +220,14 @@ export default function MediaEditor({ file, onDone, onCancel }: {
       if (value) {
         next = [...texts, { id: ed.id, x: ed.x, y: ed.y, text: value, color: ed.color, size: ed.sizeSrc, style: ed.style }]
         setHistory((h) => pushHistory(h, { type: 'text-add', id: ed.id }))
+        setRedoStack([]) // новое действие обнуляет ветку повтора
       }
     } else if (value) {
       next = texts.map((b) => (b.id === ed.id ? { ...b, text: value } : b))
     } else {
       const block = texts.find((b) => b.id === ed.id)
       next = texts.filter((b) => b.id !== ed.id)
-      if (block) setHistory((h) => pushHistory(h, { type: 'text-remove', block }))
+      if (block) { setHistory((h) => pushHistory(h, { type: 'text-remove', block })); setRedoStack([]) }
     }
     setTexts(next)
     return next
@@ -249,15 +248,16 @@ export default function MediaEditor({ file, onDone, onCancel }: {
     return null
   }
 
-  // ── Undo ──
-  const undo = () => {
-    const item = history[history.length - 1]
-    if (!item) return
-    setHistory(history.slice(0, -1))
-    if (item.type === 'stroke') setStrokes(strokes.slice(0, -1))
-    else if (item.type === 'text-add') setTexts(texts.filter((b) => b.id !== item.id))
-    else setTexts([...texts, item.block])
+  // ── Undo / Redo ── (логика — чистые редьюсеры editorHistory)
+  const applyHistory = (fn: typeof applyUndo) => {
+    const next = fn({ history, redoStack, strokes, texts })
+    setHistory(next.history)
+    setRedoStack(next.redoStack)
+    setStrokes(next.strokes)
+    setTexts(next.texts)
   }
+  const undo = () => applyHistory(applyUndo)
+  const redo = () => applyHistory(applyRedo)
 
   // ── Закрытие ──
   const dirty = !!img && !!os && !!crop && (
@@ -273,11 +273,20 @@ export default function MediaEditor({ file, onDone, onCancel }: {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      e.stopPropagation()
-      if (editingRef.current) cancelEditing()
-      else if (!confirmOpen) requestClose()
-      else setConfirmOpen(false)
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        if (editingRef.current) cancelEditing()
+        else if (!confirmOpen) requestClose()
+        else setConfirmOpen(false)
+        return
+      }
+      // Ctrl/Cmd+Z — undo, Ctrl/Cmd+Shift+Z или Ctrl/Cmd+Y — redo. Редактор —
+      // верхний слой: гасим событие (stopPropagation), чтобы оно не ушло глубже.
+      // В открытом текстовом инпуте не перехватываем (там правит браузер).
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !editingRef.current) {
+        if (e.code === 'KeyZ' && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); undo(); return }
+        if ((e.code === 'KeyZ' && e.shiftKey) || e.code === 'KeyY') { e.preventDefault(); e.stopPropagation(); redo() }
+      }
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
@@ -371,6 +380,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
       strokeRef.current = null
       setStrokes((prev) => [...prev, st])
       setHistory((h) => pushHistory(h, { type: 'stroke' }))
+      setRedoStack([]) // новый штрих обнуляет ветку повтора
     }
     const d = textDragRef.current
     if (d) {
@@ -550,6 +560,9 @@ export default function MediaEditor({ file, onDone, onCancel }: {
           <Text size={17} weight={600} color="#fff" style={{ flex: 1 }}>{t('Edit')}</Text>
           <IconButton size="small" color="#fff" disabled={!history.length} className={s.undoBtn} onClick={undo}>
             <TgIcon name="undo" />
+          </IconButton>
+          <IconButton size="small" color="#fff" disabled={!redoStack.length} className={s.undoBtn} onClick={redo}>
+            <TgIcon name="redo" />
           </IconButton>
         </div>
 

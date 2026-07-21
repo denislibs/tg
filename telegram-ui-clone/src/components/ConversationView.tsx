@@ -39,7 +39,7 @@ import ChatFeed from './messages/ChatFeed'
 import EmptyChatGreeting from './messages/EmptyChatGreeting'
 import { useChatAutoDownload } from '../core/hooks/useChatAutoDownload'
 import { useDraftsStore } from '../stores/draftsStore'
-import { draftReplyState } from '../core/draftReply'
+import { draftReplyState, convMsgReplyState } from '../core/draftReply'
 import { useComposerDraft } from '../core/hooks/useComposerDraft'
 import { useMentionPeers } from '../core/hooks/useMentionPeers'
 import CreatePollPopup from './CreatePollPopup'
@@ -657,6 +657,48 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // Files pasted/dropped into the composer → open the same media-preview popup as
   // the attach button (lets the user add a caption + choose media/file).
   const onComposerPasteFiles = useEvent((files: File[]) => setPendingMedia({ files, asFile: false }))
+  // ↑ на пустом инпуте — правка своего последнего сообщения (tweb editLastMessage):
+  // ищем с конца окна первое своё редактируемое сообщение и ставим editing тем же
+  // путём, что «Изменить» из меню (setEditing).
+  const onComposerEditLast = useEvent(() => {
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i]
+      if (!m.out || m.deleted || m.type === 'date' || m.type === 'service') continue
+      const raw = winV.msgs[i]
+      if (raw?.id == null) continue
+      setEditing({ msgId: raw.id, text: m.text ?? '', entities: raw.entities })
+      setReply(null)
+      return
+    }
+  })
+  // Ctrl/Cmd+↑ — ответ на последнее подходящее сообщение окна (tweb): с конца
+  // ищем первое несервисное/неудалённое сообщение и ставим reply как из меню.
+  const onComposerReplyPrev = useEvent(() => {
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i]
+      if (m.deleted || m.type === 'date' || m.type === 'service') continue
+      const rs = convMsgReplyState(m, winV.msgs[i]?.id, chat.name, accentColor)
+      if (rs) { setReply(rs); setEditing(null); return }
+    }
+  })
+  // Ctrl/Cmd+PageUp / PageDown — к началу / концу истории (tweb). PageUp скроллит
+  // к верху загруженного окна (старые подгрузит штатный scroll-листенер); PageDown
+  // переиспользует «вниз» (reloadNewest + пин к низу). Активно при открытом чате.
+  useEffect(() => {
+    if (!isRealChat) return
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return
+      if (e.key === 'PageUp') {
+        e.preventDefault()
+        scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+      } else if (e.key === 'PageDown') {
+        e.preventDefault()
+        onScrollDownClick()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [isRealChat, scrollRef, onScrollDownClick])
 
   // Форум-группы здесь НЕ перехватываются: как в tweb, клик по форуму открывает
   // панель топиков в ЛЕВОМ сайдбаре (Sidebar → TopicsPanel); тред топика — этот же
@@ -909,6 +951,8 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               slowmodeLeft={slowmodeLeft}
               secret={chat.type === 'secret'}
               chargeStars={composerChargeStars}
+              onEditLast={onComposerEditLast}
+              onReplyPrev={onComposerReplyPrev}
             />
           </div>
         ) : (

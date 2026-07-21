@@ -67,6 +67,19 @@
   background: #fff;
 }
 
+// Активный сегмент: бегущее заполнение за 5с. CSS-анимация (не framer), чтобы
+// пауза (Space) замораживала прогресс через animation-play-state.
+.segmentActive {
+  height: 100%;
+  background: #fff;
+  animation: storyFill 5s linear forwards;
+}
+
+@keyframes storyFill {
+  from { width: 0%; }
+  to { width: 100%; }
+}
+
 // Шапка (аватар + имя + закрыть)
 .header {
   position: absolute;

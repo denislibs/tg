@@ -84,15 +84,16 @@ describe('pushEsc (LIFO-стек)', () => {
 })
 
 describe('гейт текстовых полей', () => {
-  it('Ctrl+K из инпута не срабатывает, со страницы — срабатывает', () => {
+  it('Ctrl+F поиск: срабатывает и со страницы, и из инпута (Telegram)', () => {
     const focusSearch = vi.fn()
     deactivate = initHotkeys({ focusSearch })
     const input = document.createElement('input')
     document.body.appendChild(input)
-    press('k', { code: 'KeyK', ctrlKey: true }, input)
-    expect(focusSearch).not.toHaveBeenCalled()
-    press('k', { code: 'KeyK', ctrlKey: true }, document.body)
+    // В отличие от буквенных хоткеев, поиск разрешён из инпута (как в tweb).
+    press('f', { code: 'KeyF', ctrlKey: true }, input)
     expect(focusSearch).toHaveBeenCalledTimes(1)
+    press('f', { code: 'KeyF', ctrlKey: true }, document.body)
+    expect(focusSearch).toHaveBeenCalledTimes(2)
   })
 
   it('Ctrl+Shift+M из textarea не срабатывает, со страницы — срабатывает', () => {
@@ -117,11 +118,46 @@ describe('гейт текстовых полей', () => {
     off()
   })
 
-  it('Ctrl+K без Ctrl или с Alt — не срабатывает', () => {
+  it('Ctrl+F без mod или с Alt — не срабатывает', () => {
     const focusSearch = vi.fn()
     deactivate = initHotkeys({ focusSearch })
-    press('k', { code: 'KeyK' }, document.body)
-    press('k', { code: 'KeyK', ctrlKey: true, altKey: true }, document.body)
+    press('f', { code: 'KeyF' }, document.body)
+    press('f', { code: 'KeyF', ctrlKey: true, altKey: true }, document.body)
     expect(focusSearch).not.toHaveBeenCalled()
+  })
+})
+
+describe('избранное и навигация по чатам', () => {
+  it('Cmd/Ctrl+0 → openSaved, в т.ч. из инпута', () => {
+    const openSaved = vi.fn()
+    deactivate = initHotkeys({ openSaved })
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    press('0', { code: 'Digit0', metaKey: true }, input)
+    expect(openSaved).toHaveBeenCalledTimes(1)
+    press('0', { code: 'Digit0', ctrlKey: true }, document.body)
+    expect(openSaved).toHaveBeenCalledTimes(2)
+  })
+
+  it('Alt+↓ / Alt+↑ → nextChat / prevChat со страницы', () => {
+    const nextChat = vi.fn()
+    const prevChat = vi.fn()
+    deactivate = initHotkeys({ nextChat, prevChat })
+    press('ArrowDown', { altKey: true }, document.body)
+    press('ArrowUp', { altKey: true }, document.body)
+    expect(nextChat).toHaveBeenCalledTimes(1)
+    expect(prevChat).toHaveBeenCalledTimes(1)
+  })
+
+  it('Alt+стрелки в инпуте не переключают чат (там навигация по словам)', () => {
+    const nextChat = vi.fn()
+    const prevChat = vi.fn()
+    deactivate = initHotkeys({ nextChat, prevChat })
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    press('ArrowDown', { altKey: true }, input)
+    press('ArrowUp', { altKey: true }, input)
+    expect(nextChat).not.toHaveBeenCalled()
+    expect(prevChat).not.toHaveBeenCalled()
   })
 })

@@ -297,14 +297,38 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     st.setDialogMuted(chatId, next) // оптимистично, как ChatListItem
     void managers.groups.setMute(chatId, next).catch(() => st.setDialogMuted(chatId, !next))
   }, [managers])
+  // Ctrl/Cmd+0 — «Избранное»: тот же путь, что бургер-меню сайдбара
+  // (managers.chats.saved → перезагрузка списка → выбор).
+  const openSaved = useCallback(() => {
+    void (async () => {
+      const id = await managers.chats.saved()
+      await loadChats(managers)
+      selectChat(String(id))
+    })()
+  }, [managers, selectChat])
+  // Alt+↑/↓ — циклическая навигация по списку диалогов. Черновики (draft:) в
+  // список не входят, поэтому индексируемся по chatId реальных диалогов.
+  const cycleChat = useCallback((dir: 1 | -1) => {
+    const list = useChatsStore.getState().dialogs
+    if (!list.length) return
+    const cur = selectedIdRef.current
+    const idx = list.findIndex((d) => String(d.chatId) === cur)
+    const nextIdx = idx < 0 ? (dir === 1 ? 0 : list.length - 1) : (idx + dir + list.length) % list.length
+    selectChat(String(list[nextIdx].chatId))
+  }, [selectChat])
+  const nextChat = useCallback(() => cycleChat(1), [cycleChat])
+  const prevChat = useCallback(() => cycleChat(-1), [cycleChat])
   useEffect(
     () =>
       initHotkeys({
         focusSearch: () => window.dispatchEvent(new Event('tg-focus-search')),
         escFallback: escCloseChat,
         muteChat: muteCurrentChat,
+        openSaved,
+        nextChat,
+        prevChat,
       }),
-    [escCloseChat, muteCurrentChat],
+    [escCloseChat, muteCurrentChat, openSaved, nextChat, prevChat],
   )
 
   // Клик по браузерному уведомлению: sw.js фокусирует вкладку и шлёт

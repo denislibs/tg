@@ -103,6 +103,11 @@ interface Props {
   // Платные сообщения (Telegram paid messages): плата за сообщение в звёздах для
   // не-админа (0/undefined — бесплатно). >0 показывает плашку над инпутом.
   chargeStars?: number
+  // ↑ при пустом инпуте (без активных хелперов) — редактировать своё последнее
+  // сообщение (tweb ↑ = editLastMessage). Родитель ищет сообщение и ставит editing.
+  onEditLast?: () => void
+  // Ctrl/Cmd+↑ — ответить на последнее подходящее сообщение окна (tweb).
+  onReplyPrev?: () => void
 }
 
 // Выбор эффекта сообщения в send-меню: эмодзи → вид canvas-эффекта.
@@ -163,6 +168,7 @@ function placeCaretEnd(el: HTMLElement) {
 function Composer({
   reply, editing, rec, onSend, onTyping, onPickSticker, onPickGif, onCancelReply, onCancelEdit, onOpenAttach, onPasteFiles,
   initialDraft, onDraftChange, mentions, onInlineQuery, onPickInline, botMenuButton, onSchedule, scheduledCount, onOpenScheduled, slowmodeLeft, secret, chargeStars,
+  onEditLast, onReplyPrev,
 }: Props) {
   const slowmodeBlocked = (slowmodeLeft ?? 0) > 0
   const slowmodeText = (slowmodeLeft ?? 0) >= 60 ? `${Math.ceil((slowmodeLeft ?? 0) / 60)}м` : String(slowmodeLeft ?? 0)
@@ -473,6 +479,17 @@ function Composer({
         return
       }
     }
+    // Стрелка вверх (хелперы уже отработали и вышли выше, если были активны):
+    // Ctrl/Cmd+↑ — ответ на предыдущее; чистая ↑ на пустом инпуте — правка своего
+    // последнего сообщения (tweb). Модификаторы Shift/Alt не трогаем.
+    if (e.key === 'ArrowUp' && !e.shiftKey && !e.altKey) {
+      if (e.ctrlKey || e.metaKey) {
+        if (onReplyPrev) { e.preventDefault(); onReplyPrev() }
+        return
+      }
+      if (emptyDraft && onEditLast) { e.preventDefault(); onEditLast() }
+      return
+    }
     // Enter always sends; Shift+Enter adds a line (incl. inside a code block, so
     // multi-line blocks are typed with Shift+Enter — Enter never traps the draft).
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -481,6 +498,19 @@ function Composer({
       return
     }
     if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+      // Ctrl/Cmd+K — ссылка на выделенный текст (tweb createLink). text_link
+      // требует URL: спрашиваем через prompt — в композере нет отдельного
+      // link-инпута, доступного из keydown (MarkupTooltip держит своё состояние).
+      if (e.code === 'KeyK') {
+        e.preventDefault()
+        const sel = window.getSelection()
+        const root = editorRef.current
+        if (sel && sel.rangeCount && !sel.isCollapsed && root && root.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+          const url = window.prompt(t('Enter URL'))?.trim()
+          if (url) applyFmt('text_link', /^https?:\/\//i.test(url) ? url : `https://${url}`)
+        }
+        return
+      }
       const fmt = SHORTCUTS[e.code]
       if (fmt) { e.preventDefault(); applyFmt(fmt) }
     }
