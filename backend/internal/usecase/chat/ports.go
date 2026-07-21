@@ -90,6 +90,13 @@ type GroupRepo interface {
 	Unban(ctx context.Context, chatID, userID int64) error
 	IsBanned(ctx context.Context, chatID, userID int64) (bool, error)
 	ListBans(ctx context.Context, chatID int64) ([]domain.BannedUser, error)
+	// Per-user granular restrictions (Telegram editBanned / ChatBannedRights).
+	// GetRestriction returns the raw row (bool=exists); expiry is decided by the
+	// caller via domain.MemberRestriction.Active.
+	SetRestriction(ctx context.Context, res domain.MemberRestriction) error
+	GetRestriction(ctx context.Context, chatID, userID int64) (domain.MemberRestriction, bool, error)
+	ListRestrictions(ctx context.Context, chatID int64) ([]domain.MemberRestriction, error)
+	DeleteRestriction(ctx context.Context, chatID, userID int64) error
 	DeleteChat(ctx context.Context, chatID int64) error // каскадом members/messages
 }
 

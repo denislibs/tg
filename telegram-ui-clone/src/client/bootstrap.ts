@@ -152,6 +152,9 @@ export interface Managers {
     listBans(chatId: number): Promise<{ userId: number; bannedBy: number }[]>
     ban(chatId: number, userId: number): Promise<void>
     unban(chatId: number, userId: number): Promise<void>
+    listRestrictions(chatId: number): Promise<{ userId: number; deniedRights: number; untilDate?: string; restrictedBy: number }[]>
+    restrictMember(chatId: number, userId: number, deniedRights: number, untilSeconds?: number): Promise<void>
+    unrestrictMember(chatId: number, userId: number): Promise<void>
     removeMember(chatId: number, userId: number): Promise<void>
     revokeInvite(chatId: number, token: string): Promise<void>
     deleteGroup(chatId: number): Promise<void>

@@ -154,6 +154,19 @@ export function newGroupsManager({ rest }: { rest: Pick<RestClient, 'post' | 'ge
     async unban(chatId: number, userId: number): Promise<void> {
       await rest.del(`/chats/${chatId}/bans/${userId}`)
     },
+    // Гранулярные ограничения участника (Telegram editBanned / ChatBannedRights):
+    // deniedRights — битовая маска запрещённых прав (PERMS), untilSeconds — срок
+    // (0/undefined — бессрочно).
+    async listRestrictions(chatId: number): Promise<{ userId: number; deniedRights: number; untilDate?: string; restrictedBy: number }[]> {
+      const r = await rest.get<{ restrictions: { user_id: number; denied_rights: number; until_date: string | null; restricted_by: number }[] }>(`/chats/${chatId}/restrictions`)
+      return (r.restrictions ?? []).map((x) => ({ userId: x.user_id, deniedRights: x.denied_rights, untilDate: x.until_date ?? undefined, restrictedBy: x.restricted_by }))
+    },
+    async restrictMember(chatId: number, userId: number, deniedRights: number, untilSeconds?: number): Promise<void> {
+      await rest.post(`/chats/${chatId}/restrictions`, { user_id: userId, denied_rights: deniedRights, until_seconds: untilSeconds ?? 0 })
+    },
+    async unrestrictMember(chatId: number, userId: number): Promise<void> {
+      await rest.del(`/chats/${chatId}/restrictions/${userId}`)
+    },
     async removeMember(chatId: number, userId: number): Promise<void> {
       await rest.del(`/chats/${chatId}/members/${userId}`)
     },

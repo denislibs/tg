@@ -140,6 +140,24 @@ type BannedUser struct {
 	BannedBy int64
 }
 
+// MemberRestriction is a per-user granular restriction (Telegram
+// ChatBannedRights): DeniedRights is a MemberPerms bitmask of what this member
+// is NOT allowed to do, until UntilDate (nil — indefinitely). Distinct from a
+// full ban (chat_bans / removal); the member stays in the chat but is limited.
+type MemberRestriction struct {
+	ChatID       int64
+	UserID       int64
+	DeniedRights MemberPerms
+	UntilDate    *time.Time
+	RestrictedBy int64
+}
+
+// Active reports whether the restriction is currently in effect at time now
+// (an expired UntilDate means it no longer applies).
+func (r MemberRestriction) Active(now time.Time) bool {
+	return r.UntilDate == nil || r.UntilDate.After(now)
+}
+
 // SavedDialog is one grouped row of Saved Messages («Избранное» → таб «Чаты»):
 // all saved messages attributed to one source peer (tweb saved dialogs).
 // Kind 'self' («Мои заметки») groups the user's own non-forwarded notes.

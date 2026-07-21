@@ -39,6 +39,16 @@ export interface BannedRow {
   avatarUrl?: string
 }
 
+// Строка гранулярного ограничения (Telegram ChatBannedRights): битовая маска
+// ЗАПРЕЩённых прав + срок (undefined — бессрочно).
+export interface RestrictedRow {
+  userId: number
+  name: string
+  avatarUrl?: string
+  deniedRights: number
+  untilDate?: string
+}
+
 interface Managers {
   groups: {
     card(chatId: number): Promise<GroupCard>
@@ -54,6 +64,9 @@ interface Managers {
     listBans(chatId: number): Promise<{ userId: number; bannedBy: number }[]>
     ban(chatId: number, userId: number): Promise<void>
     unban(chatId: number, userId: number): Promise<void>
+    listRestrictions(chatId: number): Promise<{ userId: number; deniedRights: number; untilDate?: string; restrictedBy: number }[]>
+    restrictMember(chatId: number, userId: number, deniedRights: number, untilSeconds?: number): Promise<void>
+    unrestrictMember(chatId: number, userId: number): Promise<void>
     removeMember(chatId: number, userId: number): Promise<void>
     addMember(chatId: number, userId: number): Promise<void>
     promoteAdmin(chatId: number, userId: number, rights: number): Promise<void>
@@ -73,6 +86,7 @@ export interface GroupEdit {
   admins: EditMember[]
   invites: { token: string; url: string; requiresApproval: boolean; expiresAt?: string }[]
   bans: BannedRow[]
+  restricted: RestrictedRow[]
   canBan: boolean
   canManageAdmins: boolean
   isCreator: boolean
@@ -88,6 +102,8 @@ export interface GroupEdit {
   kick: (userId: number) => Promise<void>
   ban: (userId: number) => Promise<void>
   unban: (userId: number) => Promise<void>
+  restrict: (userId: number, deniedRights: number, untilSeconds?: number) => Promise<void>
+  unrestrict: (userId: number) => Promise<void>
   addMember: (userId: number) => Promise<void>
   promote: (userId: number, rights: number) => Promise<void>
   demote: (userId: number) => Promise<void>
@@ -102,6 +118,7 @@ export function useGroupEdit(chatId: number, managers: Managers): GroupEdit {
   const [members, setMembers] = useState<EditMember[]>([])
   const [invites, setInvites] = useState<{ token: string; url: string; requiresApproval: boolean; expiresAt?: string }[]>([])
   const [bans, setBans] = useState<BannedRow[]>([])
+  const [restricted, setRestricted] = useState<RestrictedRow[]>([])
   const [tick, setTick] = useState(0)
   const reload = useCallback(() => setTick((x) => x + 1), [])
 
@@ -142,6 +159,18 @@ export function useGroupEdit(chatId: number, managers: Managers): GroupEdit {
               avatarUrl: banById.get(b.userId)?.avatarUrl || undefined,
             })))
           }
+          const rs = await managers.groups.listRestrictions(chatId).catch(() => [])
+          const resUsers = await managers.peers.getUsers(rs.map((r) => r.userId))
+          const resById = new Map(resUsers.map((u) => [u.id, u]))
+          if (alive) {
+            setRestricted(rs.map((r) => ({
+              userId: r.userId,
+              name: resById.get(r.userId)?.displayName || `User ${r.userId}`,
+              avatarUrl: resById.get(r.userId)?.avatarUrl || undefined,
+              deniedRights: r.deniedRights,
+              untilDate: r.untilDate,
+            })))
+          }
         }
       } catch {
         // карточка недоступна (нас удалили и т.п.) — экран просто останется пустым
@@ -157,7 +186,7 @@ export function useGroupEdit(chatId: number, managers: Managers): GroupEdit {
   const refreshDialogs = () => loadChats(managers)
 
   return {
-    card, members, admins, invites, bans, canBan, canManageAdmins, isCreator, reload,
+    card, members, admins, invites, bans, restricted, canBan, canManageAdmins, isCreator, reload,
     saveInfo: async (title, about) => {
       await managers.groups.editInfo(chatId, { title, about, username: card?.username ?? '' })
       reload()
@@ -210,6 +239,14 @@ export function useGroupEdit(chatId: number, managers: Managers): GroupEdit {
     },
     unban: async (userId) => {
       await managers.groups.unban(chatId, userId)
+      reload()
+    },
+    restrict: async (userId, deniedRights, untilSeconds) => {
+      await managers.groups.restrictMember(chatId, userId, deniedRights, untilSeconds)
+      reload()
+    },
+    unrestrict: async (userId) => {
+      await managers.groups.unrestrictMember(chatId, userId)
       reload()
     },
     addMember: async (userId) => {

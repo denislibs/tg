@@ -38,6 +38,7 @@ type Sub =
   | 'admins'
   | 'members'
   | 'banned'
+  | 'restricted'
 
 export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: number; chat: Chat; onClose: () => void }) {
   const t = useT()
@@ -129,6 +130,9 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
         <Row icon={<TgIcon name="admin" size={22} />} label="Administrators" value={String(g.admins.length)} chevron onClick={() => setSub('admins')} />
         <Row icon={<TgIcon name="newgroup" size={22} />} label="Members" value={String(card?.memberCount ?? g.members.length)} chevron onClick={() => setSub('members')} />
         {g.canBan && (
+          <Row icon={<TgIcon name="permissions" size={22} />} label="Restricted Users" value={g.restricted.length ? String(g.restricted.length) : t('None')} chevron onClick={() => setSub('restricted')} />
+        )}
+        {g.canBan && (
           <Row icon={<TgIcon name="deleteuser" size={22} />} label="Removed Users" value={g.bans.length ? String(g.bans.length) : t('None')} chevron onClick={() => setSub('banned')} />
         )}
       </Section>
@@ -174,6 +178,7 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
         {sub === 'admins' && <AdminsScreen g={g} onBack={() => setSub(null)} />}
         {sub === 'members' && <MembersScreen g={g} onBack={() => setSub(null)} />}
         {sub === 'banned' && <RemovedUsersScreen g={g} onBack={() => setSub(null)} />}
+        {sub === 'restricted' && <RestrictedUsersScreen g={g} onBack={() => setSub(null)} />}
       </AnimatePresence>
     </SettingsScreen>
   )
@@ -552,6 +557,7 @@ function MembersScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
   const candidates = useGroupCandidates(managers)
   const [q, setQ] = useState('')
   const [picking, setPicking] = useState(false)
+  const [restricting, setRestricting] = useState<EditMember | null>(null)
   const list = useMemo(
     () => g.members.filter((m) => m.name.toLowerCase().includes(q.trim().toLowerCase())),
     [g.members, q],
@@ -578,6 +584,11 @@ function MembersScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
             </div>
             {g.canBan && m.role !== 'creator' && (
               <>
+                {m.role !== 'admin' && (
+                  <IconButton size="small" color="var(--tg-textFaint)" onClick={() => setRestricting(m)} title={t('Restrict')}>
+                    <TgIcon name="permissions" size={20} />
+                  </IconButton>
+                )}
                 <IconButton size="small" color="var(--tg-textFaint)" onClick={() => void g.kick(m.userId)} title={t('Remove from group')}>
                   <TgIcon name="close" size={20} />
                 </IconButton>
@@ -599,6 +610,16 @@ function MembersScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
             onPick={(m) => {
               setPicking(false)
               void g.addMember(m.userId)
+            }}
+          />
+        )}
+        {restricting && (
+          <MemberRestrictScreen
+            member={restricting}
+            initialDenied={g.restricted.find((r) => r.userId === restricting.userId)?.deniedRights ?? 0}
+            onBack={() => setRestricting(null)}
+            onSave={(denied, untilSeconds) => {
+              void g.restrict(restricting.userId, denied, untilSeconds).then(() => setRestricting(null))
             }}
           />
         )}
@@ -668,6 +689,112 @@ function RemovedUsersScreen({ g, onBack }: { g: GroupEdit; onBack: () => void })
           />
         )}
       </AnimatePresence>
+    </SettingsScreen>
+  )
+}
+
+// Сроки ограничения (tweb userPermissions «Duration»): undefined — бессрочно.
+const RESTRICT_DURATIONS: { label: string; seconds: number | undefined }[] = [
+  { label: 'Forever', seconds: undefined },
+  { label: '1 hour', seconds: 3600 },
+  { label: '1 day', seconds: 86400 },
+  { label: '1 week', seconds: 604800 },
+]
+
+// экран гранулярных ограничений участника (tweb userPermissions «What can this
+// member do?»): тумблеры — РАЗРЕШённые действия; запрет = снятый тумблер.
+function MemberRestrictScreen({
+  member, initialDenied, onBack, onSave,
+}: {
+  member: EditMember
+  initialDenied: number
+  onBack: () => void
+  onSave: (deniedRights: number, untilSeconds?: number) => void
+}) {
+  // allowed = биты, которые участнику РАЗРЕШены (инверсия denied в пределах ALL_PERMS)
+  const [allowed, setAllowed] = useState((31 & ~initialDenied) >>> 0)
+  const [durIdx, setDurIdx] = useState(0)
+
+  return (
+    <SettingsScreen
+      title="Restrict Member"
+      onBack={onBack}
+      zIndex={80}
+      headerRight={
+        <IconButton onClick={() => onSave((31 & ~allowed) >>> 0, RESTRICT_DURATIONS[durIdx].seconds)} color="var(--tg-accent)">
+          <TgIcon name="check" />
+        </IconButton>
+      }
+    >
+      <Section>
+        <div className={s.memberRow}>
+          <UserAvatar id={member.userId} name={member.name} avatarUrl={member.avatarUrl} />
+          <div className={s.memberBody}>
+            <Text noWrap size={16} color="var(--tg-textPrimary)">{member.name}</Text>
+          </div>
+        </div>
+      </Section>
+      <Section caption="What can this member do?">
+        {PERMS.map((p) => (
+          <Row
+            key={p.bit}
+            label={p.label}
+            translate={false}
+            toggle
+            checked={(allowed & p.bit) !== 0}
+            onClick={() => setAllowed((a) => (a ^ p.bit) >>> 0)}
+          />
+        ))}
+      </Section>
+      <Section caption="Duration">
+        {RESTRICT_DURATIONS.map((d, i) => (
+          <Row key={d.label} label={d.label} selected={i === durIdx} onClick={() => setDurIdx(i)} />
+        ))}
+      </Section>
+    </SettingsScreen>
+  )
+}
+
+// ── Ограниченные участники (tweb список restricted, кнопка «снять ограничение») ──
+function RestrictedUsersScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
+  const t = useT()
+  const [q, setQ] = useState('')
+  const list = useMemo(
+    () => g.restricted.filter((r) => r.name.toLowerCase().includes(q.trim().toLowerCase())),
+    [g.restricted, q],
+  )
+  const deniedLabels = (denied: number): string => {
+    const off = PERMS.filter((p) => (denied & p.bit) !== 0).map((p) => t(p.label))
+    return off.length ? off.join(', ') : t('None')
+  }
+
+  return (
+    <SettingsScreen title="Restricted Users" onBack={onBack} zIndex={70}>
+      <div className={s.search}><InputSearch value={q} onChange={setQ} placeholder={t('Search')} /></div>
+      <Text size={13.5} color="var(--tg-textSecondary)" className={s.bansCaption}>
+        {t('These members have limited rights in this group.')}
+      </Text>
+      {list.length === 0 ? (
+        <div className={s.duck}>
+          <LottieSticker name="UtyanSearch" size={120} />
+          <Text size={17} weight={600} color="var(--tg-textPrimary)">{t('No Results')}</Text>
+        </div>
+      ) : (
+        <Section>
+          {list.map((r) => (
+            <div key={r.userId} className={s.memberRow}>
+              <UserAvatar id={r.userId} name={r.name} avatarUrl={r.avatarUrl} />
+              <div className={s.memberBody}>
+                <Text noWrap size={16} color="var(--tg-textPrimary)">{r.name}</Text>
+                <Text noWrap size={14} color="var(--tg-textSecondary)">{t('Restricted')}: {deniedLabels(r.deniedRights)}</Text>
+              </div>
+              <IconButton size="small" color="var(--tg-accent)" onClick={() => void g.unrestrict(r.userId)} title={t('Unban')}>
+                <TgIcon name="close" size={20} />
+              </IconButton>
+            </div>
+          ))}
+        </Section>
+      )}
     </SettingsScreen>
   )
 }
