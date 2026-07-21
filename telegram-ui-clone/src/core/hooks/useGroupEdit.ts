@@ -58,6 +58,7 @@ interface Managers {
     setPermissions(chatId: number, permissions: number, slowmodeSeconds: number): Promise<void>
     setReactions(chatId: number, mode: 'all' | 'some' | 'none', emojis: string[]): Promise<void>
     setHistory(chatId: number, visible: boolean): Promise<void>
+    setChargeStars(chatId: number, chargeStars: number): Promise<void>
     listInvites(chatId: number): Promise<{ token: string; uses: number; url: string; requiresApproval: boolean; expiresAt?: string }[]>
     createInvite(chatId: number, opts?: { requiresApproval?: boolean; expireSeconds?: number }): Promise<{ token: string; url: string; requiresApproval: boolean; expiresAt?: string }>
     revokeInvite(chatId: number, token: string): Promise<void>
@@ -97,6 +98,7 @@ export interface GroupEdit {
   savePermissions: (permissions: number, slowmodeSeconds: number) => Promise<void>
   saveReactions: (mode: 'all' | 'some' | 'none', emojis: string[]) => Promise<void>
   saveHistory: (visible: boolean) => Promise<void>
+  saveChargeStars: (chargeStars: number) => Promise<void>
   createInvite: (expireSeconds?: number) => Promise<void>
   revokeInvite: (token: string) => Promise<void>
   kick: (userId: number) => Promise<void>
@@ -219,6 +221,10 @@ export function useGroupEdit(chatId: number, managers: Managers): GroupEdit {
     },
     saveHistory: async (visible) => {
       await managers.groups.setHistory(chatId, visible)
+      reload()
+    },
+    saveChargeStars: async (chargeStars) => {
+      await managers.groups.setChargeStars(chatId, chargeStars)
       reload()
     },
     createInvite: async (expireSeconds?: number) => {

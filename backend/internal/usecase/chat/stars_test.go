@@ -204,6 +204,64 @@ func TestConvertGift(t *testing.T) {
 	}
 }
 
+func TestPaidMessages_ChargeCreditAndOwnerFree(t *testing.T) {
+	fg := newFakeGroupRepo()
+	s := newStore()
+	// fakeMsgs.NextSeq знает только чаты из store — регистрируем созданные группы.
+	fg.onCreate = func(id int64) {
+		s.mu.Lock()
+		s.chatType[id] = "group"
+		s.mu.Unlock()
+	}
+	in := New(fakeTx{}, groupChats{fg}, fakeMsgs{s}, fakeUpdates{s}, nil, fakeMedia{s}, fg, newFakeInviteRepo(), nil, nil, newFakeJoinRequestRepo())
+	fs := newFakeStars()
+	in.SetStars(fs)
+	in.SetPublisher(&fakePublisher{})
+	ctx := context.Background()
+	fg.users[1] = domain.UserCard{ID: 1, DisplayName: "Owner", FirstName: "Owner"}
+	fg.users[2] = domain.UserCard{ID: 2, DisplayName: "Member", FirstName: "Member"}
+
+	// Владелец = 1, участник = 2.
+	cid, err := in.CreateGroup(ctx, 1, "Paid", "", "", false, []int64{2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Плату (5 звёзд) ставит только владелец; участник — ErrForbidden.
+	if err := in.SetChatChargeStars(ctx, cid, 1, 5); err != nil {
+		t.Fatalf("owner SetChatChargeStars: %v", err)
+	}
+	if err := in.SetChatChargeStars(ctx, cid, 2, 10); err != domain.ErrForbidden {
+		t.Fatalf("non-owner set charge = %v; want ErrForbidden", err)
+	}
+
+	// Нехватка звёзд → ErrPaidRequired.
+	if _, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Type: "text", Text: "hi", ClientMsgID: "c1"}); err != domain.ErrPaidRequired {
+		t.Fatalf("send without stars = %v; want ErrPaidRequired", err)
+	}
+
+	// Пополняем участнику и шлём: -5 у отправителя, +5 владельцу.
+	if _, err := in.TopUpStars(ctx, 2, 20); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Type: "text", Text: "hi", ClientMsgID: "c2"}); err != nil {
+		t.Fatalf("paid send: %v", err)
+	}
+	if bal, _ := fs.Balance(ctx, 2); bal != 15 {
+		t.Fatalf("sender balance = %d; want 15", bal)
+	}
+	if bal, _ := fs.Balance(ctx, 1); bal != 5 {
+		t.Fatalf("owner balance = %d; want 5", bal)
+	}
+
+	// Владелец пишет бесплатно — баланс не меняется.
+	if _, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 1, Type: "text", Text: "yo", ClientMsgID: "c3"}); err != nil {
+		t.Fatalf("owner send: %v", err)
+	}
+	if bal, _ := fs.Balance(ctx, 1); bal != 5 {
+		t.Fatalf("owner must not pay; balance = %d; want 5", bal)
+	}
+}
+
 func TestGiftAnonymity(t *testing.T) {
 	in, _, _ := newStarsInteractor()
 	ctx := context.Background()

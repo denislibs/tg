@@ -18,4 +18,7 @@ var (
 	// перевод сообщений без настроенного TRANSLATE_URL.
 	ErrUnavailable = errors.New("unavailable")
 	ErrInvalid     = errors.New("invalid") // некорректные аргументы запроса (400)
+	// ErrPaidRequired: сообщение в платную группу отвергнуто из-за нехватки звёзд
+	// (Telegram paid messages) — клиент показывает «Недостаточно звёзд».
+	ErrPaidRequired = errors.New("paid required")
 )

@@ -181,6 +181,7 @@
 
 // mic / send — 48×40 скруглённая пилюля (1:1 с TG .btn-send)
 .sendBtn {
+  position: relative;
   width: 48px;
   height: 40px;
   flex-shrink: 0;
@@ -191,6 +192,58 @@
   align-items: center;
   justify-content: center;
   color: #fff;
+}
+
+// маленький эмодзи-бейдж выбранного эффекта сообщения на кнопке отправки
+.effectBadge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  font-size: 13px;
+  line-height: 1;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
+}
+
+// ряд выбора эффекта сообщения в send-меню
+.effectRow {
+  display: flex;
+  gap: 4px;
+  padding: 6px 10px 4px;
+  justify-content: space-between;
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    cursor: pointer;
+    font-size: 20px;
+    line-height: 1;
+    transition: background 0.12s ease, transform 0.12s ease;
+
+    &:hover {
+      background: var(--tg-hover);
+    }
+  }
+}
+
+.effectPicked {
+  background: color-mix(in srgb, var(--tg-accent) 22%, transparent) !important;
+  transform: scale(1.05);
+}
+
+// плашка платного сообщения над инпутом (Telegram paid messages)
+.paidBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--tg-divider, rgba(0, 0, 0, 0.08));
 }
 
 // обратный отсчёт медленного режима на кнопке (tweb slowmode)

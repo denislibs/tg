@@ -87,6 +87,8 @@ export interface ConvMsg {
   /** self-destruct: TTL после прочтения (сек) + абсолютный дедлайн (ISO) */
   ttlSeconds?: number | null
   destructAt?: string | null
+  /** вид полноэкранного эффекта сообщения (наш аналог Telegram message effects) */
+  effect?: import('./core/effects/emojiEffects').EmojiEffectKind
 }
 
 export interface CallLog {

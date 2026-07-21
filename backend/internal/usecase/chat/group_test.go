@@ -102,6 +102,25 @@ func (r *fakeGroupRepo) SetHistoryForNew(_ context.Context, chatID int64, visibl
 	return nil
 }
 
+func (r *fakeGroupRepo) SetChargeStars(_ context.Context, chatID int64, stars int) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c := r.cards[chatID]
+	c.Settings.ChargeStars = stars
+	r.cards[chatID] = c
+	return nil
+}
+
+func (r *fakeGroupRepo) CreatorID(_ context.Context, chatID int64) (int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c, ok := r.cards[chatID]
+	if !ok {
+		return 0, domain.ErrNotFound
+	}
+	return c.CreatorID, nil
+}
+
 func (r *fakeGroupRepo) Ban(_ context.Context, chatID, userID, _ int64) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

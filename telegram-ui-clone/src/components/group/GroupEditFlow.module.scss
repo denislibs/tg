@@ -108,6 +108,31 @@
   padding: 6px 4px 10px;
 }
 
+// строка «Плата за сообщение» (Telegram paid messages)
+.chargeRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  gap: 12px;
+}
+
+.chargeInput {
+  width: 96px;
+  padding: 6px 10px;
+  border: 1px solid var(--tg-divider, rgba(0, 0, 0, 0.12));
+  border-radius: 8px;
+  background: var(--tg-bg, transparent);
+  color: var(--tg-textPrimary);
+  font-size: 15px;
+  text-align: right;
+  outline: none;
+
+  &:focus {
+    border-color: var(--tg-accent);
+  }
+}
+
 .slowLabels {
   display: flex;
   justify-content: space-between;

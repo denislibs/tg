@@ -38,7 +38,9 @@ export interface NewMessageEvt { chat_id: number; msg_id: number; seq: number; s
   // рисуется полноценно сразу, без ожидания перезагрузки истории.
   media_w?: number; media_h?: number; media_mime?: string; media_blur?: string; media_has_thumb?: boolean; media_duration?: number; media_size?: number; media_name?: string;
   /** E2E-медиа секретного чата — инжектится воркером после расшифровки enc_body (не проводное поле сервера) */
-  secret_media?: import('../models').SecretMedia }
+  secret_media?: import('../models').SecretMedia;
+  /** вид эффекта сообщения (наш аналог Telegram message effects) */
+  effect?: string | null }
 export interface EditMessageEvt { chat_id: number; msg_id: number; seq: number; text: string; entities?: MessageEntity[] | null; edited_at: string; reply_markup?: import('../models').RawMessage['reply_markup'] }
 // Live-обновление координат гео-трансляции (geo_live_update).
 export interface GeoLiveUpdateEvt { chat_id: number; msg_id: number; seq: number; geo: RawGeo }

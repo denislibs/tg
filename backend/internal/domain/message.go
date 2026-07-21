@@ -126,6 +126,10 @@ type Message struct {
 	// populated on send for the new_message payload (not stored) — the client
 	// prefixes group chat-list previews with it, tweb-style.
 	SenderName string
+	// Effect — вид полноэкранного canvas-эффекта сообщения (наш аналог Telegram
+	// message effects): fireworks|confetti|hearts|thumbs|poop|cake, "" — нет.
+	// Санитизируется на отправке (whitelist); только у text/media-сообщений.
+	Effect string
 }
 
 // ReplyPreview is the quoted snippet shown above a reply bubble.

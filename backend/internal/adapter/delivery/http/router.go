@@ -230,6 +230,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Put("/chats/{chatID}/permissions", gh.SetPermissions)
 		pr.Put("/chats/{chatID}/reactions", gh.SetReactions)
 		pr.Put("/chats/{chatID}/history", gh.SetHistory)
+		pr.Put("/chats/{chatID}/charge_stars", gh.SetChargeStars)
 		pr.Get("/chats/{chatID}/bans", gh.ListBans)
 		pr.Post("/chats/{chatID}/bans", gh.Ban)
 		pr.Delete("/chats/{chatID}/bans/{userID}", gh.Unban)

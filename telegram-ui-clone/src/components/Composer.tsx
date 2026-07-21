@@ -26,6 +26,7 @@ import type { Peer } from '../core/managers/peersManager'
 import { searchEmojisByWord } from './emoji/emojiData'
 import MarkupTooltip from './MarkupTooltip'
 import { serialize, apply as applyMarkup, entitiesToFragment, parseMarkdown } from '../core/markdown'
+import { playEmojiEffect, type EmojiEffectKind } from '../core/effects/emojiEffects'
 import type { EntityType, MessageEntity } from '../core/models'
 import { fmtDur, REC_WAVE_BARS, type VoiceRecorder } from '../core/hooks/useVoiceRecorder'
 import { EASE, DUR } from '../motion'
@@ -60,7 +61,8 @@ interface Props {
   // reply/edit/draft/channel routing; the composer just clears its draft afterwards.
   // ttlSeconds — self-destruct TTL for secret chats (null/undefined — off).
   // silent — тихая отправка (Telegram disable_notification): без push/звука у получателя.
-  onSend: (text: string, entities?: MessageEntity[], ttlSeconds?: number | null, silent?: boolean) => void
+  // effect — выбранный эффект сообщения (наш аналог Telegram message effects).
+  onSend: (text: string, entities?: MessageEntity[], ttlSeconds?: number | null, silent?: boolean, effect?: EmojiEffectKind | null) => void
   // Fired on every keystroke (parent throttles the outgoing `typing` frame).
   onTyping: () => void
   // Отправка стикера (пикер/саджесты) — включает вкладку стикеров в дропдауне
@@ -98,7 +100,20 @@ interface Props {
   // Секретный чат: показывает кнопку выбора таймера самоуничтожения (tweb secret
   // chat self-destruct). Выбранный TTL уходит третьим аргументом onSend.
   secret?: boolean
+  // Платные сообщения (Telegram paid messages): плата за сообщение в звёздах для
+  // не-админа (0/undefined — бесплатно). >0 показывает плашку над инпутом.
+  chargeStars?: number
 }
+
+// Выбор эффекта сообщения в send-меню: эмодзи → вид canvas-эффекта.
+const EFFECT_CHOICES: { emoji: string; kind: EmojiEffectKind }[] = [
+  { emoji: '🎉', kind: 'confetti' },
+  { emoji: '🎆', kind: 'fireworks' },
+  { emoji: '❤️', kind: 'hearts' },
+  { emoji: '👍', kind: 'thumbs' },
+  { emoji: '💩', kind: 'poop' },
+  { emoji: '🎂', kind: 'cake' },
+]
 
 // Таймер самоуничтожения для секретных чатов (tweb ttl options). null — «Выкл».
 const TTL_OPTIONS: { label: string; secs: number | null }[] = [
@@ -147,7 +162,7 @@ function placeCaretEnd(el: HTMLElement) {
 
 function Composer({
   reply, editing, rec, onSend, onTyping, onPickSticker, onPickGif, onCancelReply, onCancelEdit, onOpenAttach, onPasteFiles,
-  initialDraft, onDraftChange, mentions, onInlineQuery, onPickInline, botMenuButton, onSchedule, scheduledCount, onOpenScheduled, slowmodeLeft, secret,
+  initialDraft, onDraftChange, mentions, onInlineQuery, onPickInline, botMenuButton, onSchedule, scheduledCount, onOpenScheduled, slowmodeLeft, secret, chargeStars,
 }: Props) {
   const slowmodeBlocked = (slowmodeLeft ?? 0) > 0
   const slowmodeText = (slowmodeLeft ?? 0) >= 60 ? `${Math.ceil((slowmodeLeft ?? 0) / 60)}м` : String(slowmodeLeft ?? 0)
@@ -270,6 +285,9 @@ function Composer({
     document.dispatchEvent(new Event('selectionchange'))
   }
 
+  // Выбранный эффект сообщения (send-меню); сбрасывается после отправки.
+  const [selectedEffect, setSelectedEffect] = useState<EmojiEffectKind | null>(null)
+
   // ── Планирование (tweb SendMenu → scheduleSending) ──
   const [sendMenuOpen, setSendMenuOpen] = useState(false)
   const [scheduleOpen, setScheduleOpen] = useState(false)
@@ -298,7 +316,8 @@ function Composer({
     if (!text) return
     // Over the limit is fine — the parent splits into multiple messages
     // (tweb splitStringByLength). The counter shows how many it'll be.
-    onSend(text, entities.length ? entities : undefined, secret ? secretTtl : undefined, silent)
+    onSend(text, entities.length ? entities : undefined, secret ? secretTtl : undefined, silent, selectedEffect)
+    setSelectedEffect(null) // эффект одноразовый — сбрасываем после отправки
     setEmojiSug(null)
     setInlineSug(null)
     clearEditor()
@@ -681,6 +700,14 @@ function Composer({
       </AnimatePresence>
       {/* Composer container: reply section + input row in ONE box */}
       <div className={s.container}>
+        {/* Платные сообщения (Telegram paid messages): плашка о стоимости для не-админа. */}
+        {(chargeStars ?? 0) > 0 && (
+          <div className={s.paidBar}>
+            <Text size={13.5} color="var(--tg-textSecondary)">
+              {t('Each message costs')} {chargeStars} ⭐
+            </Text>
+          </div>
+        )}
         {/* Animated reply bar (inside the container) */}
         <AnimatePresence initial={false}>
           {reply && (
@@ -928,6 +955,12 @@ function Composer({
                   : hasText || rec.recording ? <TgIcon name="send" /> : <TgIcon name={recordingMediaType === 'round' ? 'recordround' : 'microphone_filled'} />}
               </motion.span>
             </AnimatePresence>
+            {/* Выбран эффект сообщения — маленький эмодзи-бейдж на кнопке отправки. */}
+            {selectedEffect && hasText && (
+              <span className={s.effectBadge} aria-hidden>
+                {EFFECT_CHOICES.find((c) => c.kind === selectedEffect)?.emoji}
+              </span>
+            )}
           </motion.div>
         </div>
       </div>
@@ -952,6 +985,26 @@ function Composer({
             onClick={() => { setSendMenuOpen(false); setScheduleOpen(true) }}
           />
         )}
+        {/* Эффект сообщения (наш аналог Telegram message effects): ряд эмодзи —
+            выбор ставит эффект для следующей отправки + короткое превью. */}
+        <div className={s.effectRow} role="group" aria-label={t('Message effect')}>
+          {EFFECT_CHOICES.map((c) => (
+            <button
+              key={c.kind}
+              type="button"
+              className={selectedEffect === c.kind ? s.effectPicked : undefined}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                const next = selectedEffect === c.kind ? null : c.kind
+                setSelectedEffect(next)
+                if (next) playEmojiEffect(next)
+                setSendMenuOpen(false)
+              }}
+            >
+              {c.emoji}
+            </button>
+          ))}
+        </div>
       </Menu>
       {scheduleOpen && <SchedulePopup onPick={submitScheduled} onClose={() => setScheduleOpen(false)} />}
 

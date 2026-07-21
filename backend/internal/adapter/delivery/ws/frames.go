@@ -40,6 +40,8 @@ type sendMessageData struct {
 	TTLSeconds *int   `json:"ttl_seconds"`
 	// Тихая отправка (Telegram disable_notification): без push/звука у получателя.
 	Silent bool `json:"silent"`
+	// Effect — вид эффекта сообщения (наш аналог Telegram message effects).
+	Effect string `json:"effect"`
 }
 
 type readData struct {

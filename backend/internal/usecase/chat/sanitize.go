@@ -13,6 +13,26 @@ var safeLinkSchemes = map[string]bool{
 	"http": true, "https": true, "mailto": true, "tel": true, "tg": true,
 }
 
+// messageEffects — whitelist видов эффектов сообщения (наш аналог Telegram
+// message effects). Значение вне списка отбрасывается (эффект не сохраняется).
+var messageEffects = map[string]bool{
+	"fireworks": true, "confetti": true, "hearts": true,
+	"thumbs": true, "poop": true, "cake": true,
+}
+
+// sanitizeEffect возвращает эффект, только если он из whitelist и тип сообщения
+// поддерживает эффект (text или медиа); иначе "" (без эффекта).
+func sanitizeEffect(effect, msgType string) string {
+	if effect == "" || !messageEffects[effect] {
+		return ""
+	}
+	switch msgType {
+	case "service", "encrypted", "gift", "poll", "call":
+		return ""
+	}
+	return effect
+}
+
 // safeLinkURL reports whether a link URL is safe to store/relay. Scheme-less
 // (relative) URLs are allowed; URLs with an explicit scheme must be allow-listed.
 func safeLinkURL(u string) bool {

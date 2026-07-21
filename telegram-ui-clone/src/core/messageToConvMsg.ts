@@ -83,6 +83,7 @@ export function messageToConvMsg(
       : undefined,
     call: m.type === 'call' ? parseCallLog(m.text) : undefined,
     webPage: m.webPage,
+    effect: m.effect,
     poll: m.poll,
     gift: m.gift,
     replyMarkup: m.replyMarkup,

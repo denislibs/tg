@@ -1,6 +1,7 @@
 // src/core/models.ts
 import { mapGiftInfo, type RawGiftInfo, type GiftInfo } from './managers/starsManager'
 import { mapReplyMarkup, type ReplyMarkup } from './managers/botsManager'
+import type { EmojiEffectKind } from './effects/emojiEffects'
 
 export type ChatKind = 'private' | 'group' | 'channel' | 'saved'
 
@@ -178,6 +179,8 @@ export interface RawMessage {
   ttl_seconds?: number | null
   destruct_at?: string | null
   web_page?: RawWebPage | null
+  /** вид эффекта сообщения (наш аналог Telegram message effects) */
+  effect?: string | null
 }
 
 // Агрегат одной реакции на сообщении (emoji + счётчик + «моя»), tweb ReactionCount.
@@ -277,6 +280,8 @@ export interface Message {
   secretMedia?: SecretMedia
   /** серверное превью первой ссылки текстового сообщения (Telegram webPage) */
   webPage?: WebPageData
+  /** вид полноэкранного эффекта сообщения (наш аналог Telegram message effects) */
+  effect?: EmojiEffectKind
 }
 
 // Опрос (backend PollInfo): вопрос + варианты + агрегаты для зрителя.
@@ -414,6 +419,13 @@ export function mapDialog(r: RawDialog): Dialog {
   }
 }
 
+// Валидные виды эффектов сообщения (бэк уже санитизирует по whitelist; здесь —
+// страховка типобезопасности при маппинге проводного значения в union-тип).
+const EFFECT_KINDS = new Set<EmojiEffectKind>(['fireworks', 'confetti', 'hearts', 'thumbs', 'poop', 'cake'])
+export function mapEffect(e?: string | null): EmojiEffectKind | undefined {
+  return e && EFFECT_KINDS.has(e as EmojiEffectKind) ? (e as EmojiEffectKind) : undefined
+}
+
 export function mapMessage(r: RawMessage): Message {
   return {
     id: r.id,
@@ -462,5 +474,6 @@ export function mapMessage(r: RawMessage): Message {
     ttlSeconds: r.ttl_seconds ?? undefined,
     destructAt: r.destruct_at ?? undefined,
     webPage: r.web_page ? mapWebPage(r.web_page) : undefined,
+    effect: mapEffect(r.effect),
   }
 }

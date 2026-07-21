@@ -145,6 +145,10 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		in.Text, in.Entities = "", nil
 	}
 
+	// Эффект сообщения (наш аналог Telegram message effects): whitelist + только
+	// у text/медиа-сообщений (service/encrypted/gift/… эффект не несут).
+	in.Effect = sanitizeEffect(in.Effect, in.Type)
+
 	// Групповые дефолтные разрешения + slowmode (сервисные сообщения генерирует
 	// сам сервер — их не ограничиваем).
 	if in.Type != "service" {
@@ -164,6 +168,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 
 	var msg domain.Message
 	var recipients []int64 // non-nil only when a NEW message was inserted
+	var charge paidCharge  // платная группа: списание/начисление (публикуем после коммита)
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if in.ClientMsgID != "" {
 			if existing, e := i.msgs.FindByClientMsgID(ctx, in.ChatID, in.SenderID, in.ClientMsgID); e == nil {
@@ -173,6 +178,13 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 				return e
 			}
 		}
+		// Платные сообщения (Telegram paid messages): списываем звёзды ПЕРЕД
+		// вставкой, в той же транзакции (нехватка → ErrPaidRequired откатывает всё).
+		c, e := i.chargePaidMessage(ctx, in)
+		if e != nil {
+			return e
+		}
+		charge = c
 		seq, e := i.msgs.NextSeq(ctx, in.ChatID)
 		if e != nil {
 			return e
@@ -195,7 +207,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			GeoTitle: in.GeoTitle, GeoAddress: in.GeoAddress,
 			GeoLivePeriod: in.GeoLivePeriod, GeoHeading: in.GeoHeading,
 			ContactUserID: in.ContactUserID, ContactName: contactName, ContactPhone: contactPhone,
-			EncBody: in.EncBody, TTLSeconds: in.TTLSeconds,
+			EncBody: in.EncBody, TTLSeconds: in.TTLSeconds, Effect: in.Effect,
 			// Voice/round content starts "unlistened" (Telegram media_unread).
 			MediaUnread: in.Type == "voice" || in.Type == "roundVideo",
 		})
@@ -253,6 +265,13 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	})
 	if err != nil {
 		return domain.Message{}, err
+	}
+	// Платная отправка прошла: рассылаем обеим сторонам новый баланс звёзд.
+	if charge.applied {
+		i.publishBalance(ctx, in.SenderID, charge.senderBal)
+		if charge.creatorID != 0 {
+			i.publishBalance(ctx, charge.creatorID, charge.creatorBal)
+		}
 	}
 	if recipients != nil {
 		f := frame("new_message", messageUpdatePayload(msg))

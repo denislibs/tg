@@ -44,7 +44,7 @@ import RichText, { emojiOnlyCount } from '../RichText'
 import Emoji from '../emoji/Emoji'
 import StickerMedia from '../StickerMedia'
 import { useAnimatedEmoji } from '../../core/hooks/useAnimatedEmoji'
-import { effectForEmoji, playEmojiEffect } from '../../core/effects/emojiEffects'
+import { effectForEmoji, playEmojiEffect, type EmojiEffectKind } from '../../core/effects/emojiEffects'
 import { peerColor } from '../peerColor'
 import { fmtViews } from '../../core/fmtViews'
 import { useT } from '../../i18n'
@@ -90,6 +90,33 @@ function ForwardsMeta({ forwards, className }: { forwards: number; className: st
       <TgIcon name="forward" size={15} color="var(--b-time)" />
       {fmtViews(forwards)}
     </span>
+  )
+}
+
+// Эмодзи-глиф вида эффекта (наш аналог Telegram message effects) — для кнопки
+// повторного проигрывания у бабла.
+const EFFECT_EMOJI: Record<EmojiEffectKind, string> = {
+  fireworks: '🎆', confetti: '🎉', hearts: '❤️', thumbs: '👍', poop: '💩', cake: '🎂',
+}
+
+// Кнопка повтора эффекта сообщения: клик запускает полноэкранный canvas-эффект
+// из центра кнопки (tweb: тап по сообщению с эффектом переигрывает его).
+function EffectReplayButton({ kind }: { kind: EmojiEffectKind }) {
+  const ref = useRef<HTMLButtonElement>(null)
+  return (
+    <button
+      ref={ref}
+      type="button"
+      className={s.effectReplay}
+      onClick={(e) => {
+        e.stopPropagation()
+        const r = ref.current?.getBoundingClientRect()
+        playEmojiEffect(kind, r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : undefined)
+      }}
+      aria-label="Replay message effect"
+    >
+      {EFFECT_EMOJI[kind]}
+    </button>
   )
 }
 
@@ -382,6 +409,7 @@ function MessageRow({
                   </span>
                   {m.time && (
                     <span className={s.mediaTime}>
+                      {m.effect && <EffectReplayButton kind={m.effect} />}
                       {/* truthy как в tweb (messageRender.ts): views=0 приходит для не-канальных сообщений */}
                       {m.views ? <ViewsMeta views={m.views} className={s.metaViews} /> : null}
                       {m.forwards ? <ForwardsMeta forwards={m.forwards} className={s.metaViews} /> : null}
@@ -517,6 +545,7 @@ function MessageRow({
                 <RichText text={m.text ?? ''} entities={m.entities} linkColor="var(--b-link)" />
               </span>
               <span className={classNames(s.meta, hasBlock ? s.block : '')}>
+                {m.effect && <EffectReplayButton kind={m.effect} />}
                 {m.views ? <ViewsMeta views={m.views} className={s.metaViews} /> : null}
                 {m.forwards ? <ForwardsMeta forwards={m.forwards} className={s.metaViews} /> : null}
                 {m.secret && <SecretTimer destructAt={m.destructAt} ttlSeconds={m.ttlSeconds} color="var(--b-time)" />}

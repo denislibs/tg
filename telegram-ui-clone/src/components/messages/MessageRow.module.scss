@@ -294,6 +294,25 @@
   white-space: nowrap;
   color: var(--b-time);
 }
+// Кнопка повтора эффекта сообщения (наш аналог Telegram message effects).
+.effectReplay {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin-right: 3px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  transform: translateY(-1px);
+  transition: transform 0.12s ease;
+
+  &:hover {
+    transform: translateY(-1px) scale(1.15);
+  }
+}
 // Channel-post view count + eye icon (tweb .post-views), shown before the time.
 .metaViews {
   display: inline-flex;

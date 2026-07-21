@@ -567,9 +567,31 @@ func (h *GroupHandler) Card(w http.ResponseWriter, r *http.Request) {
 		"default_permissions": int(c.Settings.DefaultPerms), "slowmode_seconds": c.Settings.SlowmodeSeconds,
 		"reactions_mode": c.Settings.ReactionsMode, "reactions_allowed": c.Settings.ReactionsAllowed,
 		"history_for_new": c.Settings.HistoryForNew,
+		"charge_stars":    c.Settings.ChargeStars,
 		"is_public":       c.IsPublic, "my_role": c.MyRole, "my_rights": int(c.MyRights), "muted": c.Muted,
 		"discussion_chat_id": c.DiscussionChatID,
 	})
+}
+
+// SetChargeStars sets the paid-message price in stars (PUT /chats/{chatID}/charge_stars).
+func (h *GroupHandler) SetChargeStars(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	var b struct {
+		ChargeStars int `json:"charge_stars"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := h.uc.SetChatChargeStars(r.Context(), chatID, user.ID, b.ChargeStars); err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 func (h *GroupHandler) ListMembers(w http.ResponseWriter, r *http.Request) {

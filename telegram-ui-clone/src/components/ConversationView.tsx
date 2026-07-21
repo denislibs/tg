@@ -609,7 +609,10 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // Медленный режим: обычный участник группы блокируется на N сек после отправки
   const slowmodeExempt = !isGroup || card?.myRole === 'creator' || card?.myRole === 'admin'
   const { left: slowmodeLeft, markSent: slowmodeMarkSent } = useSlowmode(card?.slowmodeSeconds ?? 0, slowmodeExempt)
-  const onComposerSend = useEvent((text: string, entities?: MessageEntity[], ttlSeconds?: number | null) => { send(text, entities, ttlSeconds); slowmodeMarkSent() })
+  // Платные сообщения (Telegram paid messages): плашка в композере только для
+  // не-админа платной группы (владелец/админ пишут бесплатно).
+  const composerChargeStars = isGroup && card && card.myRole !== 'creator' && card.myRole !== 'admin' ? (card.chargeStars ?? 0) : 0
+  const onComposerSend = useEvent((text: string, entities?: MessageEntity[], ttlSeconds?: number | null, silent?: boolean, effect?: import('../core/effects/emojiEffects').EmojiEffectKind | null) => { send(text, entities, ttlSeconds, silent ?? false, effect ?? null); slowmodeMarkSent() })
   // Inline-режим: резолв «@username» → id бота (кэш), затем выдача бэком (он сам
   // проверит is_bot). Выбор результата шлёт его текст обычным сообщением.
   const inlineBotCache = useRef<Map<string, number | null>>(new Map())
@@ -888,6 +891,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               onOpenScheduled={() => setScheduledOpen(true)}
               slowmodeLeft={slowmodeLeft}
               secret={chat.type === 'secret'}
+              chargeStars={composerChargeStars}
             />
           </div>
         ) : (

@@ -160,6 +160,25 @@ func (i *Interactor) SetChatHistoryForNew(ctx context.Context, chatID, actorID i
 	return i.groups.SetHistoryForNew(ctx, chatID, visible)
 }
 
+// SetChatChargeStars задаёт плату за одно сообщение в звёздах (Telegram paid
+// messages); 0 — выключить. Менять может только владелец группы (creator).
+func (i *Interactor) SetChatChargeStars(ctx context.Context, chatID, actorID int64, stars int) error {
+	if i.groups == nil {
+		return domain.ErrNotFound
+	}
+	m, err := i.groups.GetMember(ctx, chatID, actorID)
+	if err != nil || m.Role != domain.RoleCreator {
+		return domain.ErrForbidden
+	}
+	if stars < 0 {
+		stars = 0
+	}
+	if stars > 10000 {
+		stars = 10000
+	}
+	return i.groups.SetChargeStars(ctx, chatID, stars)
+}
+
 // BanMember kicks userID (if a member) and puts them on the removed-users list
 // so invite links / re-adding by plain members won't let them back.
 func (i *Interactor) BanMember(ctx context.Context, chatID, actorID, userID int64) error {

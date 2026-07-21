@@ -1310,6 +1310,9 @@ func messageJSON(m domain.Message) map[string]any {
 	if m.WebPage != nil {
 		j["web_page"] = m.WebPage
 	}
+	if m.Effect != "" {
+		j["effect"] = m.Effect
+	}
 	if m.ReplyTo != nil {
 		rt := map[string]any{
 			"msg_id": m.ReplyTo.MsgID, "seq": m.ReplyTo.Seq, "sender_id": m.ReplyTo.SenderID,

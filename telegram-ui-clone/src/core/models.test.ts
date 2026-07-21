@@ -61,6 +61,20 @@ describe('mapMessage', () => {
     expect(mapMessage(raw).threadRootId).toBeNull()
   })
 
+  it('maps a valid effect and drops unknown/empty effects', () => {
+    const mk = (effect: string | null | undefined): RawMessage => ({
+      id: 20, chat_id: 1, seq: 6, sender_id: 1, type: 'text', text: 'party',
+      reply_to_id: null, media_id: null, created_at: '2026-06-24T10:01:00Z', effect,
+    })
+    expect(mapMessage(mk('confetti')).effect).toBe('confetti')
+    expect(mapMessage(mk('fireworks')).effect).toBe('fireworks')
+    // вне whitelist / пусто → undefined
+    expect(mapMessage(mk('boom')).effect).toBeUndefined()
+    expect(mapMessage(mk('')).effect).toBeUndefined()
+    expect(mapMessage(mk(null)).effect).toBeUndefined()
+    expect(mapMessage(mk(undefined)).effect).toBeUndefined()
+  })
+
   it('maps web_page (server link preview) to webPage', () => {
     const raw: RawMessage = {
       id: 13, chat_id: 1, seq: 3, sender_id: 1, type: 'text', text: 'https://example.com',

@@ -37,6 +37,9 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 	if m.ReplyMarkup != nil {
 		p["reply_markup"] = m.ReplyMarkup
 	}
+	if m.Effect != "" {
+		p["effect"] = m.Effect
+	}
 	// Медиа-мета live-кадра — те же ключи, что history read model (chat_handler):
 	// иначе получатель (и echo отправителя) рисует файл заглушкой «media-N» без
 	// имени/размера до перезагрузки истории.

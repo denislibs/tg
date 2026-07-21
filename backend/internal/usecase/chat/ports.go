@@ -86,6 +86,10 @@ type GroupRepo interface {
 	SetPermissions(ctx context.Context, chatID int64, perms domain.MemberPerms, slowmodeSeconds int) error
 	SetReactions(ctx context.Context, chatID int64, mode string, allowed []string) error
 	SetHistoryForNew(ctx context.Context, chatID int64, visible bool) error
+	// SetChargeStars задаёт плату за сообщение в звёздах (Telegram paid messages); 0 — выкл.
+	SetChargeStars(ctx context.Context, chatID int64, stars int) error
+	// CreatorID — владелец группы (для начисления платы за сообщения); 0, если нет.
+	CreatorID(ctx context.Context, chatID int64) (int64, error)
 	Ban(ctx context.Context, chatID, userID, bannedBy int64) error
 	Unban(ctx context.Context, chatID, userID int64) error
 	IsBanned(ctx context.Context, chatID, userID int64) (bool, error)
@@ -312,6 +316,9 @@ type SendInput struct {
 	// Тихая отправка (Telegram disable_notification): подавляет push/звук у получателя.
 	// Не хранится на сообщении (MVP) — влияет только на нотификатор, не на realtime-доставку.
 	Silent bool
+	// Effect — вид полноэкранного эффекта сообщения (наш аналог Telegram message
+	// effects); санитизируется по whitelist. "" — без эффекта.
+	Effect string
 }
 
 // GroupCallStore хранит участников активных групповых звонков (эфемерно, Redis).
