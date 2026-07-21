@@ -28,6 +28,12 @@ describe('mapDialog', () => {
     expect(d.lastMessage).toBeUndefined()
     expect(d.muted).toBe(false)
   })
+
+  it('maps unread_reactions → unreadReactions (undefined when 0/absent)', () => {
+    expect(mapDialog({ chat_id: 1, type: 'private', last_read_seq: 0, unread: 0, unread_reactions: 3 }).unreadReactions).toBe(3)
+    expect(mapDialog({ chat_id: 1, type: 'private', last_read_seq: 0, unread: 0, unread_reactions: 0 }).unreadReactions).toBeUndefined()
+    expect(mapDialog({ chat_id: 1, type: 'private', last_read_seq: 0, unread: 0 }).unreadReactions).toBeUndefined()
+  })
 })
 
 describe('mapMessage', () => {

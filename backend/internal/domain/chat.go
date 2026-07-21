@@ -46,7 +46,10 @@ type Dialog struct {
 	// UnreadMentionsCount — непрочитанные упоминания зрителя в этом чате
 	// (Telegram unread_mentions_count); клиент рисует отдельный бейдж «@».
 	UnreadMentionsCount int
-	Muted               bool
+	// UnreadReactionsCount — непрочитанные реакции на сообщения зрителя в этом
+	// чате (Telegram unread_reactions_count); клиент рисует отдельный бейдж-сердце.
+	UnreadReactionsCount int
+	Muted                bool
 	// Pinned — диалог закреплён вверху списка; Archived — убран в «Архив»
 	// (пер-юзерные флаги членства, tweb pinned dialogs + folder_id=1).
 	Pinned   bool

@@ -37,6 +37,11 @@ type ChatRepo interface {
 	AddMention(ctx context.Context, chatID, msgID, seq, userID int64) error
 	ClearMentions(ctx context.Context, chatID, userID, uptoSeq int64) (remaining int, err error)
 	NextMention(ctx context.Context, chatID, userID, afterSeq int64) (seq, msgID int64, err error)
+	// Непрочитанные реакции (Telegram unread_reactions_count). IncUnreadReactions
+	// бампит счётчик автора сообщения, когда на него реагирует кто-то другой;
+	// ClearUnreadReactions обнуляет счётчик (автор прочитал чат / реакции).
+	IncUnreadReactions(ctx context.Context, chatID, userID int64) error
+	ClearUnreadReactions(ctx context.Context, chatID, userID int64) error
 	// «Очистить историю» у себя: MaxSeq — текущий максимум seq чата (горизонт);
 	// ClearedSeq/SetClearedSeq — персональный горизонт участника (cleared_max_seq).
 	MaxSeq(ctx context.Context, chatID int64) (int64, error)

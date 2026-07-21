@@ -51,6 +51,12 @@ describe('dialogToChat', () => {
     expect(dialogToChat(base).unread).toBeUndefined()
   })
 
+  it('passes unreadReactions through only when > 0', () => {
+    expect(dialogToChat({ ...base, unreadReactions: 2 }).unreadReactions).toBe(2)
+    expect(dialogToChat({ ...base, unreadReactions: 0 }).unreadReactions).toBeUndefined()
+    expect(dialogToChat(base).unreadReactions).toBeUndefined()
+  })
+
   it('picks a stable gradient from the chat id', () => {
     const a = dialogToChat({ ...base, chatId: 5 })
     const b = dialogToChat({ ...base, chatId: 5 })

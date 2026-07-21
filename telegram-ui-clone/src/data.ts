@@ -127,6 +127,7 @@ export interface Chat {
   selected?: boolean
   unread?: number
   unreadMentions?: number // непрочитанные упоминания → отдельный бейдж «@»
+  unreadReactions?: number // непрочитанные реакции → отдельный бейдж-сердце
   sent?: boolean // last message is mine (show a tick in the list)
   read?: boolean // ...and the peer has read it (✓✓ instead of ✓)
   previewMediaId?: number // last message is a photo → small thumbnail before the preview

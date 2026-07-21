@@ -66,7 +66,7 @@ export interface DraftUpdateEvt { chat_id: number; draft: import('../models').Ra
 export type TypingAction = 'typing' | 'voice' | 'video' | 'upload_file' | 'upload_photo' | 'upload_video' | 'upload_audio'
 export interface TypingEvt { chat_id: number; user_id: number; action?: TypingAction }
 export interface PresenceEvt { user_id: number; online: boolean; last_seen: number }
-export interface ReactionEvt { chat_id: number; msg_id: number; user_id: number; emoji: string; action: 'add' | 'remove' }
+export interface ReactionEvt { chat_id: number; msg_id: number; user_id: number; author_id?: number; emoji: string; action: 'add' | 'remove' }
 export interface AckEvt { client_msg_id: string; msg_id: number; seq: number; created_at: string }
 // Server rejected a send (e.g. text too long). The client drops it from the outbox
 // (no infinite retry) and removes the optimistic bubble.
