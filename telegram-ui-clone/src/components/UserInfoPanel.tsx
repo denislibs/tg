@@ -37,6 +37,7 @@ import { EXT_COLORS, extOf, firstUrl, fmtDur, fmtSize, hostOf } from '../core/sh
 import { mediaContentUrl, mediaThumbUrl } from '../core/mediaUrl'
 import type { Message } from '../core/models'
 import MediaLightbox, { type LightboxItem } from './messages/MediaLightbox'
+import { clampIndex, pickZone, stepIndex, indexAfterSwipe } from '../core/photoPager'
 import s from './UserInfoPanel.module.scss'
 import useMediaQuery from '../shared/lib/useMediaQuery'
 import type { UserProfile } from '../core/managers/privacyManager'
@@ -220,40 +221,113 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onChatCreated
       ? membersLabel(realMembers.length, isChannel)
       : presenceLabel ?? chat.status
 
-  // просмотрщик фото профиля (tweb: клик по аватарке открывает фото)
+  // ── галерея фото профиля в шапке (tweb peerProfileAvatars) ──
+  // Список фото тянем СРАЗУ при разворачивании шапки (а не при клике в
+  // просмотрщик): нужен для сегментной полоски-пейджера и перелистывания
+  // прямо в шапке. Пусто/ошибка → одиночный текущий аватар.
   const avatarWrapRef = useRef<HTMLDivElement>(null)
-  const [avatarView, setAvatarView] = useState<{
-    originRect: { top: number; left: number; width: number; height: number }
-    originEl: HTMLElement
-  } | null>(null)
-  // Профиль-галерея (tweb getUserPhotos): при открытии просмотрщика тянем все
-  // фото пользователя и листаем их каруселью. Пусто/ошибка → одиночный аватар.
-  const [avatarPhotos, setAvatarPhotos] = useState<LightboxItem[] | null>(null)
-  const openAvatarViewer = () => {
-    const el = avatarWrapRef.current
-    if (!el || !headerAvatarSrc) return
-    const r = el.getBoundingClientRect()
-    setAvatarView({ originRect: { top: r.top, left: r.left, width: r.width, height: r.height }, originEl: el })
-    setAvatarPhotos(null)
-    if (peerId == null || isSaved) return
-    void managers.profile.listPhotos(peerId).then(async (photos) => {
-      const items = await Promise.all(photos.map(async (p): Promise<LightboxItem> => {
+  type HeaderPhoto = { src: string; isVideo: boolean; videoSrc?: string }
+  const [photos, setPhotos] = useState<HeaderPhoto[] | null>(null)
+  const [photoIndex, setPhotoIndex] = useState(0)
+  // Смена собеседника — сбрасываем кэш галереи и позицию.
+  useEffect(() => { setPhotos(null); setPhotoIndex(0) }, [peerId])
+  // Сворачивание шапки возвращает к первому фото (tweb setCollapsed → go first).
+  useEffect(() => { if (!expanded) setPhotoIndex(0) }, [expanded])
+
+  useEffect(() => {
+    if (!expanded || peerId == null || isSaved || photos !== null) return
+    let alive = true
+    void managers.profile.listPhotos(peerId).then(async (list) => {
+      const items = await Promise.all(list.map(async (p): Promise<HeaderPhoto> => {
         const m = p.url.match(/\/media\/(\d+)\/content/)
         const src = m ? await managers.media.contentUrl(Number(m[1])) : p.url
         // Видео-аватар (tweb photo_video): резолвим video_url в токен-URL так же,
-        // как still. Заголовок/список чатов остаются на still — это осознанный
-        // лимит MVP (playback только в просмотрщике).
+        // как still. Список чатов/сжатая шапка остаются на still — playback
+        // только в развёрнутой шапке-пейджере и просмотрщике.
         if (p.videoUrl) {
           const vm = p.videoUrl.match(/\/media\/(\d+)\/content/)
-          const videoUrl = vm ? await managers.media.contentUrl(Number(vm[1])) : p.videoUrl
-          return { src, videoUrl, type: 'video' }
+          const videoSrc = vm ? await managers.media.contentUrl(Number(vm[1])) : p.videoUrl
+          return { src, isVideo: true, videoSrc }
         }
-        return { src }
+        return { src, isVideo: false }
       }))
-      if (items.length) setAvatarPhotos(items)
-    }).catch(() => {})
+      if (!alive) return
+      setPhotos(items.length ? items : headerAvatarSrc ? [{ src: headerAvatarSrc, isVideo: false }] : [])
+    }).catch(() => {
+      if (alive && headerAvatarSrc) setPhotos([{ src: headerAvatarSrc, isVideo: false }])
+    })
+    return () => { alive = false }
+  }, [expanded, peerId, isSaved, photos, managers, headerAvatarSrc])
+
+  // Отображаемый список: загруженная галерея либо одиночный текущий аватар.
+  const headerPhotos: HeaderPhoto[] = photos ?? (headerAvatarSrc ? [{ src: headerAvatarSrc, isVideo: false }] : [])
+  const photoCount = headerPhotos.length
+  const curIndex = clampIndex(photoIndex, photoCount)
+  const curPhoto = headerPhotos[curIndex]
+
+  // просмотрщик фото профиля (tweb: клик по центру фото открывает полноэкранно)
+  const [avatarView, setAvatarView] = useState<{
+    originRect: { top: number; left: number; width: number; height: number }
+    originEl: HTMLElement
+    index: number
+  } | null>(null)
+  const avatarItems: LightboxItem[] = headerPhotos.map((p) =>
+    p.isVideo ? { src: p.src, videoUrl: p.videoSrc, type: 'video' } : { src: p.src },
+  )
+  const openAvatarViewer = (startIndex: number) => {
+    const el = avatarWrapRef.current
+    if (!el || !headerAvatarSrc) return
+    const r = el.getBoundingClientRect()
+    setAvatarView({
+      originRect: { top: r.top, left: r.left, width: r.width, height: r.height },
+      originEl: el,
+      index: clampIndex(startIndex, photoCount),
+    })
   }
-  const closeAvatarViewer = () => { setAvatarView(null); setAvatarPhotos(null) }
+  const closeAvatarViewer = () => setAvatarView(null)
+
+  // ── перелистывание в шапке: тап по краевым третям / свайп (tweb tap-zones +
+  // SwipeHandler). Свайп ведём live-переводом дорожки, на отпускании — решаем. ──
+  const canPage = photoCount >= 2
+  const dragRef = useRef<{ startX: number; startY: number; moved: boolean; width: number } | null>(null)
+  const suppressClickRef = useRef(false)
+  const [dragDx, setDragDx] = useState(0)
+  const [dragging, setDragging] = useState(false)
+  const onAvatarsPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!canPage || e.button !== 0) return
+    dragRef.current = { startX: e.clientX, startY: e.clientY, moved: false, width: e.currentTarget.getBoundingClientRect().width }
+  }
+  const onAvatarsPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current
+    if (!d) return
+    const dx = e.clientX - d.startX
+    const dy = e.clientY - d.startY
+    if (!d.moved) {
+      if (Math.abs(dx) < 6) return
+      if (Math.abs(dy) > Math.abs(dx)) { dragRef.current = null; return } // вертикаль — не свайп
+      d.moved = true
+      setDragging(true)
+      e.currentTarget.setPointerCapture(e.pointerId)
+    }
+    setDragDx(dx)
+  }
+  const onAvatarsPointerUp = () => {
+    const d = dragRef.current
+    dragRef.current = null
+    if (!d?.moved) return
+    setPhotoIndex((i) => indexAfterSwipe(clampIndex(i, photoCount), photoCount, dragDx, d.width))
+    setDragging(false)
+    setDragDx(0)
+    suppressClickRef.current = true // подавить клик-открытие после свайпа
+  }
+  const onAvatarsClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (suppressClickRef.current) { suppressClickRef.current = false; return }
+    const r = e.currentTarget.getBoundingClientRect()
+    const zone = pickZone(e.clientX - r.left, r.width, canPage)
+    if (zone === 'prev') setPhotoIndex((i) => stepIndex(clampIndex(i, photoCount), photoCount, 'prev'))
+    else if (zone === 'next') setPhotoIndex((i) => stepIndex(clampIndex(i, photoCount), photoCount, 'next'))
+    else openAvatarViewer(curIndex)
+  }
 
   // Подарки в профиле (tweb Gifts tab) — только для пользователя (private).
   const meId = useChatsStore((st) => st.meId)
@@ -307,6 +381,9 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onChatCreated
 
   const linkText = chat.links?.length ? chat.links : null
 
+  // Шапка прозрачная (белые иконки) над развёрнутым фото до заливки скроллом.
+  const overPhoto = expanded && !filled && !!headerAvatarSrc
+
   return (
     <motion.div
       // Узкий режим: обёртка статична — анимацию (заезд справа) играет сама панель.
@@ -346,8 +423,11 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onChatCreated
         {/* Шапка панели (tweb sidebar-header): X/карандаш; при скролле до табов
             заливается и показывает «имя + счётчик активного таба» слайд-фейдом,
             X→стрелка назад (tweb setIsSharedMedia + TransitionSlider). */}
-        <div className={classNames(s.header, filled ? s.headerFilled : '')}>
-          <IconButton onClick={filled ? scrollBackToProfile : onClose} color="var(--tg-textSecondary)">
+        {/* overPhoto: развёрнутое фото под шапкой и ещё не залито скроллом —
+            шапка прозрачная, иконки/текст белые поверх верхнего градиента
+            (tweb .need-white). Скролл → filled: сплошной фон, обычные цвета. */}
+        <div className={classNames(s.header, filled ? s.headerFilled : '', overPhoto ? s.headerWhite : '')}>
+          <IconButton onClick={filled ? scrollBackToProfile : onClose} color={overPhoto ? '#fff' : 'var(--tg-textSecondary)'}>
             <TgIcon name={filled ? 'back' : 'close'} />
           </IconButton>
           <div className={s.headerTitles}>
@@ -373,19 +453,21 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onChatCreated
                   exit={{ y: -14, opacity: 0 }}
                   transition={{ duration: 0.2, ease: EASE }}
                 >
-                  <Text noWrap size={19} weight={600} color="var(--tg-textPrimary)">{t(title)}</Text>
+                  <Text noWrap size={19} weight={600} color={overPhoto ? '#fff' : 'var(--tg-textPrimary)'}>{t(title)}</Text>
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
           {(isGroup || isChannel) && (
-            <IconButton onClick={() => setEditing(true)} color="var(--tg-textSecondary)">
+            <IconButton onClick={() => setEditing(true)} color={overPhoto ? '#fff' : 'var(--tg-textSecondary)'}>
               <TgIcon name="edit" />
             </IconButton>
           )}
         </div>
 
-        <div ref={bodyRef} className={classNames(s.body, s.bodyPad)} onScroll={onBodyScroll}>
+        {/* Развёрнутое фото уходит под прозрачную шапку (top:0, без верхнего
+            отступа); свёрнутый круглый аватар — с отступом под шапку. */}
+        <div ref={bodyRef} className={classNames(s.body, expanded && headerAvatarSrc ? '' : s.bodyPad)} onScroll={onBodyScroll}>
           {/* Аватар: свёрнут в круг по центру (tweb collapsed) → клик разворачивает
               в большое фото на всю ширину (unfold) → клик по нему открывает
               просмотрщик; скролл сворачивает обратно (onBodyScroll). */}
@@ -395,13 +477,44 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onChatCreated
                 key="big"
                 ref={avatarWrapRef}
                 className={s.profileAvatars}
-                onClick={openAvatarViewer}
+                onClick={onAvatarsClick}
+                onPointerDown={onAvatarsPointerDown}
+                onPointerMove={onAvatarsPointerMove}
+                onPointerUp={onAvatarsPointerUp}
+                onPointerCancel={onAvatarsPointerUp}
                 initial={{ scale: 0.35 }}
                 animate={{ scale: 1 }}
                 exit={{ scale: 0.35 }}
                 transition={{ duration: 0.24, ease: EASE }}
               >
-                <img className={s.profilePhoto} src={headerAvatarSrc} alt="" draggable={false} />
+                {/* дорожка фото: перевод по индексу + live-смещение при свайпе
+                    (tweb .profile-avatars translate). Видео играем только у
+                    активного слайда, остальные — still-постер. */}
+                <div
+                  className={s.avatarsTrack}
+                  style={{
+                    transform: `translateX(calc(${-curIndex * 100}% + ${dragDx}px))`,
+                    transition: dragging ? 'none' : undefined,
+                  }}
+                >
+                  {headerPhotos.map((p, i) => (
+                    <div key={i} className={s.avatarsSlide}>
+                      {p.isVideo && p.videoSrc && i === curIndex ? (
+                        <video className={s.profilePhoto} src={p.videoSrc} poster={p.src} autoPlay muted loop playsInline />
+                      ) : (
+                        <img className={s.profilePhoto} src={p.src} alt="" draggable={false} />
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {/* сегментная полоска-пейджер (tweb .profile-avatars-tabs) — только N≥2 */}
+                {canPage && (
+                  <div className={s.avatarsTabs}>
+                    {headerPhotos.map((_, i) => (
+                      <div key={i} className={classNames(s.avatarsTab, i === curIndex ? s.avatarsTabActive : '')} />
+                    ))}
+                  </div>
+                )}
                 <div className={s.avatarsGradient} />
                 <div className={classNames(s.avatarsGradient, s.avatarsGradientTop)} />
                 <div className={s.avatarsInfo}>
@@ -694,13 +807,14 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onChatCreated
           />
           </div>
 
-          {/* просмотрщик фото профиля (tweb openAvatarViewer) */}
+          {/* просмотрщик фото профиля (tweb openAvatarViewer) — стартует с
+              текущего фото шапки-пейджера (avatarView.index) */}
           {avatarView && headerAvatarSrc && (
             <MediaLightbox
-              items={avatarPhotos ?? [{ src: headerAvatarSrc }]}
-              index={0}
+              items={avatarItems.length ? avatarItems : [{ src: headerAvatarSrc }]}
+              index={avatarView.index}
               originRect={avatarView.originRect}
-              originSrc={headerAvatarSrc}
+              originSrc={curPhoto?.src ?? headerAvatarSrc}
               originEl={avatarView.originEl}
               onClose={closeAvatarViewer}
             />
