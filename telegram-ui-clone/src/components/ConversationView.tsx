@@ -60,7 +60,7 @@ import { type MessageEntity } from '../core/models'
 import type { InlineResult } from '../core/managers/botsManager'
 import { openWebApp } from '../core/webapp'
 import { useSearchStore } from '../stores/searchStore'
-import { ContactPicker, DeleteMessageDialog, ForwardPicker, ViewersPopup } from './messages/ChatDialogs'
+import { ContactPicker, DeleteMessageDialog, ForwardPicker, ViewersPopup, ReactedUsersPopup } from './messages/ChatDialogs'
 import TranslatePopup from './messages/TranslatePopup'
 import LocationPicker from './LocationPicker'
 import SendMediaPopup from './messages/SendMediaPopup'
@@ -393,10 +393,11 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // download/viewers) and the delete-confirm / forward-picker / viewers-popup state.
   const {
     msgMenu, openMsgMenu, closeMsgMenu, destroyMsgMenu, msgMenuItems,
-    toggleReaction, reactToMenuMsg,
+    toggleReaction, reactToMenuMsg, showReactedUsers,
     delIds, doDelete, closeDelete, openDeleteFor,
     forwardIds, doForward, closeForward, openForwardFor,
     viewers, closeViewers,
+    reacted, closeReacted,
     translateText, closeTranslate,
   } = useMessageActions({
     chat, numericChatId, isRealChat, win: winV, msgs, meId, pins, managers, accent: accentColor,
@@ -470,8 +471,9 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       mediaPlayed: mediaPlayedE,
       roundPlaying: roundPlayingE,
       toggleReaction,
+      showReactedUsers,
     }),
-    [openSenderE, playVoiceE, toggleSelectE, openMsgMenuE, jumpToSeqE, openLightboxE, recallE, mediaPlayedE, roundPlayingE, toggleReaction],
+    [openSenderE, playVoiceE, toggleSelectE, openMsgMenuE, jumpToSeqE, openLightboxE, recallE, mediaPlayedE, roundPlayingE, toggleReaction, showReactedUsers],
   )
 
   // (Ack reconcile + send-rejection run in realtimeBridge → messagesStore; live
@@ -1067,6 +1069,11 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       {/* "Seen by" popup */}
       {viewers && (
         <ViewersPopup x={viewers.x} y={viewers.y} names={viewers.names} onClose={closeViewers} />
+      )}
+
+      {/* Кто отреагировал (long-press/правый клик по чипу реакции) */}
+      {reacted && (
+        <ReactedUsersPopup x={reacted.x} y={reacted.y} rows={reacted.rows} onClose={closeReacted} />
       )}
 
       {/* Forward target picker */}

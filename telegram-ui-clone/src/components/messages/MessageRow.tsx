@@ -107,16 +107,19 @@ export interface FeedFns {
   roundPlaying: (msgId: number, el: HTMLMediaElement) => void
   /** клик по чипу реакции — поставить/снять свою (tweb sendReaction) */
   toggleReaction: (msgId: number, emoji: string) => void
+  /** long-press / правый клик по чипу — показать, кто отреагировал */
+  showReactedUsers: (msgId: number, x: number, y: number) => void
 }
 
 // Чипы реакций под сообщением (tweb ReactionsElement, layout Block): пилюля 30px
 // с эмодзи + счётчиком; «моя» реакция — сплошной акцентный фон (is-chosen).
-function MessageReactions({ reactions, rowLive, onToggle }: {
+function MessageReactions({ reactions, rowLive, onToggle, onShow }: {
   reactions: NonNullable<ConvMsg['reactions']>
   /** ряд уже был смонтирован, когда появились реакции (live-добавление) —
    * анимируем и первый чип сообщения, не только добавленные позже */
   rowLive: boolean
   onToggle: (emoji: string) => void
+  onShow: (x: number, y: number) => void
 }) {
   // Отличаем чипы из первичного рендера (история — без анимации, tweb
   // isConnected=false → duration 0) от добавленных кликом (с анимацией).
@@ -125,7 +128,7 @@ function MessageReactions({ reactions, rowLive, onToggle }: {
   return (
     <div className={s.reactions}>
       {reactions.map((r) => (
-        <ReactionChip key={r.emoji} r={r} live={rowLive || liveRef.current} onToggle={onToggle} />
+        <ReactionChip key={r.emoji} r={r} live={rowLive || liveRef.current} onToggle={onToggle} onShow={onShow} />
       ))}
     </div>
   )
@@ -133,10 +136,12 @@ function MessageReactions({ reactions, rowLive, onToggle }: {
 
 // Один чип. Свежедобавленная «моя» реакция монтируется без is-chosen и получает
 // класс кадром позже — CSS-transition подложки играет как tweb SetTransition(300).
-function ReactionChip({ r, live, onToggle }: {
+// Тап — тоггл своей реакции; long-press / правый клик — попап «кто отреагировал».
+function ReactionChip({ r, live, onToggle, onShow }: {
   r: { emoji: string; count: number; mine: boolean }
   live: boolean
   onToggle: (emoji: string) => void
+  onShow: (x: number, y: number) => void
 }) {
   const [defer, setDefer] = useState(live && r.mine)
   useEffect(() => {
@@ -149,6 +154,7 @@ function ReactionChip({ r, live, onToggle }: {
     <div
       className={classNames(s.reactionChip, chosen ? s.reactionChosen : '')}
       onClick={(e) => { e.stopPropagation(); onToggle(r.emoji) }}
+      onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onShow(e.clientX, e.clientY) }}
     >
       <span className={s.reactionEmoji}><Emoji e={r.emoji} size={22} /></span>
       <span className={s.reactionCount}>{r.count}</span>
@@ -199,7 +205,7 @@ function MessageRow({
   useEffect(() => { rowLiveRef.current = true }, [])
   const chips =
     m.reactions?.length && m.id != null && !selecting ? (
-      <MessageReactions reactions={m.reactions} rowLive={rowLiveRef.current} onToggle={(emoji) => feedFns.toggleReaction(m.id!, emoji)} />
+      <MessageReactions reactions={m.reactions} rowLive={rowLiveRef.current} onToggle={(emoji) => feedFns.toggleReaction(m.id!, emoji)} onShow={(x, y) => feedFns.showReactedUsers(m.id!, x, y)} />
     ) : null
   const chipsInline =
     ((m.type === 'text' && !bigEmoji) || m.type === 'poll' || m.type === 'album'

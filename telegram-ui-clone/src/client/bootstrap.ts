@@ -5,7 +5,7 @@ import type { User } from '../core/managers/authManager'
 import type { ProfileUpdate, SetUsernameResult } from '../core/managers/profileManager'
 import type { Dialog, Draft } from '../core/models'
 import type { Message, MessageEntity, Poll, Scheduled } from '../core/models'
-import type { HistoryArgs, HistoryResult, SendArgs } from '../core/managers/messagesManager'
+import type { HistoryArgs, HistoryResult, SendArgs, ReactionUser } from '../core/managers/messagesManager'
 import type { ConnState, PresenceEvt } from '../core/realtime/events'
 import type { UploadArgs, MediaMeta } from '../core/managers/mediaManager'
 import type { SavedDialog } from '../core/managers/chatsManager'
@@ -77,6 +77,7 @@ export interface Managers {
     unpin(chatId: number, msgId: number): Promise<{ ok: boolean }>
     listPins(chatId: number): Promise<Message[]>
     viewers(chatId: number, msgId: number): Promise<number[]>
+    reactionUsers(chatId: number, msgId: number): Promise<ReactionUser[]>
     searchMessages(chatId: number, q: string, offset?: number, limit?: number): Promise<{ messages: Message[]; count: number }>
     searchGlobal(q: string, filter?: '' | 'media' | 'files' | 'links' | 'music' | 'voice', offset?: number, limit?: number): Promise<{ messages: Message[]; count: number }>
     sendPoll(chatId: number, p: { question: string; options: string[]; anonymous: boolean; multiple: boolean; quiz: boolean; correctOption?: number; clientMsgId?: string }): Promise<Message>

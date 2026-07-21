@@ -1207,6 +1207,39 @@ func (h *ChatHandler) ListReactions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"reactions": counts})
 }
 
+// ReactionUsers — GET /chats/{chatID}/messages/{msgID}/reactions/users: кто
+// отреагировал и каким эмодзи (для попапа who-reacted).
+func (h *ChatHandler) ReactionUsers(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	msgID, ok := pathInt(w, r, "msgID")
+	if !ok {
+		return
+	}
+	users, err := h.svc.ReactionUsers(r.Context(), chatID, msgID, h.meID(r))
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "message not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load reactions")
+		return
+	}
+	out := make([]map[string]any, 0, len(users))
+	for _, ru := range users {
+		out = append(out, map[string]any{
+			"user_id":    ru.User.ID,
+			"name":       ru.User.DisplayName,
+			"username":   ru.User.Username,
+			"avatar_url": ru.User.AvatarURL,
+			"emoji":      ru.Emoji,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"users": out})
+}
+
 func messageJSON(m domain.Message) map[string]any {
 	j := map[string]any{
 		"id": m.ID, "chat_id": m.ChatID, "seq": m.Seq, "sender_id": m.SenderID,

@@ -995,6 +995,24 @@ func (r fakeReactions) ReactionsFor(_ context.Context, messageIDs []int64, viewe
 	return res, nil
 }
 
+func (r fakeReactions) ReactionUsers(_ context.Context, messageID int64) ([]domain.ReactionUser, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var out []domain.ReactionUser
+	for userID, emojis := range r.s.reactions[messageID] {
+		for e := range emojis {
+			out = append(out, domain.ReactionUser{User: domain.UserCard{ID: userID}, Emoji: e})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].User.ID != out[j].User.ID {
+			return out[i].User.ID < out[j].User.ID
+		}
+		return out[i].Emoji < out[j].Emoji
+	})
+	return out, nil
+}
+
 // ---- MediaAccessRepo ----
 
 type fakeMedia struct{ s *store }

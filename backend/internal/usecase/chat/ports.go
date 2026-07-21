@@ -195,6 +195,9 @@ type ReactionRepo interface {
 	// read model). Mine is set when viewerID reacted with that emoji. Messages
 	// without reactions are simply absent from the map.
 	ReactionsFor(ctx context.Context, messageIDs []int64, viewerID int64) (map[int64][]domain.ReactionCount, error)
+	// ReactionUsers lists who reacted to a message (with which emoji), oldest first,
+	// hydrated with the user card for display — for the who-reacted popup.
+	ReactionUsers(ctx context.Context, messageID int64) ([]domain.ReactionUser, error)
 }
 
 type MediaAccessRepo interface {

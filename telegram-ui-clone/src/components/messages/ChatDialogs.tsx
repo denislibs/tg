@@ -202,6 +202,39 @@ export function ViewersPopup({ x, y, names, onClose }: {
     document.body,
   )
 }
+// Кто отреагировал: как ViewersPopup, но в каждой строке — эмодзи реакции справа.
+export function ReactedUsersPopup({ x, y, rows, onClose }: {
+  x: number
+  y: number
+  rows: { name: string; avatarUrl: string; emoji: string }[]
+  onClose: () => void
+}) {
+  const t = useT()
+  return createPortal(
+    <div className={s.overlayBare} onClick={onClose}>
+      <motion.div
+        className={classNames(s.card, s.viewers)}
+        onClick={(e) => e.stopPropagation()}
+        initial={{ opacity: 0, scale: 0.92 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.18, ease: EASE_STD }}
+        style={{ top: y, left: x }}
+      >
+        <Text size={13} color="var(--tg-textFaint)" className={s.viewersTitle}>
+          {rows.length ? t('Reactions') : t('No reactions yet')}
+        </Text>
+        {rows.map((r, i) => (
+          <div key={i} className={s.viewersRow}>
+            <Avatar background={peerColor(r.name)} text={r.name[0] ?? '?'} src={r.avatarUrl || undefined} size={28} />
+            <Text noWrap size={14.5} color="var(--tg-textPrimary)" style={{ flex: 1 }}>{r.name}</Text>
+            <span style={{ fontSize: 18 }}>{r.emoji}</span>
+          </div>
+        ))}
+      </motion.div>
+    </div>,
+    document.body,
+  )
+}
 export function DiscardVoiceDialog({ onCancel, onDiscard }: { onCancel: () => void; onDiscard: () => void }) {
   const t = useT()
   return (

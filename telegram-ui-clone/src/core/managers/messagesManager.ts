@@ -32,6 +32,23 @@ export interface SendArgs {
   threadRootId?: number | null
 }
 
+/** Кто отреагировал (для попапа who-reacted). */
+export interface ReactionUser {
+  userId: number
+  name: string
+  username: string
+  avatarUrl: string
+  emoji: string
+}
+
+interface RawReactionUser {
+  user_id: number
+  name: string
+  username: string
+  avatar_url: string
+  emoji: string
+}
+
 export interface MessagesDeps {
   rest: RestClient
   /** Расшифровка ciphertext секретного чата (ключи живут в secretManager воркера). */
@@ -321,6 +338,18 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
     async viewers(chatId: number, msgId: number): Promise<number[]> {
       const r = await rest.get<{ user_ids: number[] }>(`/chats/${chatId}/messages/${msgId}/viewers`)
       return r.user_ids ?? []
+    },
+
+    // Кто отреагировал и каким эмодзи (попап who-reacted).
+    async reactionUsers(chatId: number, msgId: number): Promise<ReactionUser[]> {
+      const r = await rest.get<{ users: RawReactionUser[] }>(`/chats/${chatId}/messages/${msgId}/reactions/users`)
+      return (r.users ?? []).map((u) => ({
+        userId: u.user_id,
+        name: u.name,
+        username: u.username,
+        avatarUrl: u.avatar_url,
+        emoji: u.emoji,
+      }))
     },
 
     // Live-фрейм new_message → кэш истории (в чат-ключ и, для тред-сообщения,

@@ -196,6 +196,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Post("/chats/{chatID}/messages/{msgID}/reactions", ch.AddReaction)
 		pr.Delete("/chats/{chatID}/messages/{msgID}/reactions/{emoji}", ch.RemoveReaction)
 		pr.Get("/chats/{chatID}/messages/{msgID}/reactions", ch.ListReactions)
+		pr.Get("/chats/{chatID}/messages/{msgID}/reactions/users", ch.ReactionUsers)
 
 		gh := NewGroupHandler(chatUC, memberPresence, privacyQ)
 		pr.Post("/groups", gh.CreateGroup)
