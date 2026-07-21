@@ -16,6 +16,7 @@ import (
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 	usecasecontacts "github.com/messenger-denis/backend/internal/usecase/contacts"
+	usecaseiv "github.com/messenger-denis/backend/internal/usecase/iv"
 	storyusecase "github.com/messenger-denis/backend/internal/usecase/story"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/fx"
@@ -187,4 +188,8 @@ func newQRStore(client *redis.Client) usecaseauth.QRStore {
 
 func newGroupCallStore(client *redis.Client) usecasechat.GroupCallStore {
 	return cacheredis.NewGroupCallStore(client)
+}
+
+func newIVCache(client *redis.Client) usecaseiv.Cache {
+	return cacheredis.NewIVCache(client)
 }

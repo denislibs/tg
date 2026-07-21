@@ -13,6 +13,7 @@ import (
 	"github.com/messenger-denis/backend/internal/adapter/delivery/ws"
 	"github.com/messenger-denis/backend/internal/adapter/geoip"
 	"github.com/messenger-denis/backend/internal/adapter/gifsearch"
+	ivadapter "github.com/messenger-denis/backend/internal/adapter/iv"
 	"github.com/messenger-denis/backend/internal/adapter/media/ffmpeg"
 	webpushadapter "github.com/messenger-denis/backend/internal/adapter/push/webpush"
 	queueredis "github.com/messenger-denis/backend/internal/adapter/queue/redis"
@@ -24,6 +25,7 @@ import (
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 	usecasecontacts "github.com/messenger-denis/backend/internal/usecase/contacts"
 	usecasefolders "github.com/messenger-denis/backend/internal/usecase/folders"
+	usecaseiv "github.com/messenger-denis/backend/internal/usecase/iv"
 	usecasemedia "github.com/messenger-denis/backend/internal/usecase/media"
 	usecasenotify "github.com/messenger-denis/backend/internal/usecase/notify"
 	usecasepasskeys "github.com/messenger-denis/backend/internal/usecase/passkeys"
@@ -194,6 +196,14 @@ func registerServer(p serverParams) {
 		return nil
 	}})
 
+	// Instant View: reader-mode парсер статей; Redis-кэш на час (без Redis —
+	// мягкая деградация: каждая загрузка парсится заново).
+	var ivCache usecaseiv.Cache
+	if p.Redis.OK {
+		ivCache = newIVCache(p.Redis.Client)
+	}
+	ivHandler := httptransport.NewIVHandler(usecaseiv.New(ivadapter.New(), ivCache))
+
 	storyHandler := httptransport.NewStoryHandler(p.StoryUC)
 	notifyUC := usecasenotify.New(pgadapter.NewNotifyRepo(p.Pool))
 	foldersUC := usecasefolders.New(pgadapter.NewFoldersRepo(p.Pool), pgadapter.NewFolderChatAccess(p.Pool), pgadapter.NewTxManager(p.Pool))
@@ -213,7 +223,7 @@ func registerServer(p serverParams) {
 
 	srv := &http.Server{
 		Addr:              p.Cfg.HTTPAddr,
-		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, mediaUC, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC, foldersUC, pubH, privacyUC, passkeyH, stickersH),
+		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, mediaUC, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC, foldersUC, pubH, privacyUC, passkeyH, stickersH, ivHandler),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
