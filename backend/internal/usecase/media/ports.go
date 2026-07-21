@@ -14,14 +14,23 @@ import (
 // ErrTooLarge is returned when the declared size exceeds the limit.
 // ErrBadSize is returned for a non-positive declared size.
 var (
-	ErrTooLarge  = errors.New("file too large")
-	ErrBadSize   = errors.New("invalid size")
-	ErrForbidden = errors.New("forbidden")
+	ErrTooLarge     = errors.New("file too large")
+	ErrBadSize      = errors.New("invalid size")
+	ErrForbidden    = errors.New("forbidden")
+	ErrBadPart      = errors.New("invalid part index")
+	ErrNoUpload     = errors.New("no chunked upload in progress")
+	ErrMissingParts = errors.New("missing or non-contiguous parts")
 )
 
 const (
-	maxSize    = 100 << 20 // 100 MiB
-	presignTTL = 15 * time.Minute
+	// maxSize caps the legacy single-PUT path (PutContent). maxChunkedSize caps the
+	// chunked/resumable path (assembled server-side via MinIO multipart), which is
+	// raised well above the single-PUT limit. The per-part byte cap is enforced at
+	// the HTTP layer (maxPartUpload).
+	maxSize        = 100 << 20 // 100 MiB
+	maxChunkedSize = 2 << 30   // 2 GiB
+	maxParts       = 10000     // S3/MinIO multipart hard limit
+	presignTTL     = 15 * time.Minute
 )
 
 // MediaRepo persists and loads media metadata.
@@ -30,6 +39,29 @@ type MediaRepo interface {
 	GetByID(ctx context.Context, id int64) (domain.Media, error) // domain.ErrNotFound if absent
 	// UpdateProcessed records ffprobe dims/duration and the thumbnail key.
 	UpdateProcessed(ctx context.Context, id int64, width, height, duration int, thumbKey string) error
+
+	// SetUploadID sets the multipart upload id iff it is currently unset, and
+	// returns the effective (winning) id — so concurrent first parts converge on a
+	// single multipart upload.
+	SetUploadID(ctx context.Context, id int64, uploadID string) (string, error)
+	// SetUploadTotal records the declared part count (for the resume query).
+	SetUploadTotal(ctx context.Context, id int64, total int) error
+	// SavePart upserts a received part's stored ETag and size (idempotent re-upload).
+	SavePart(ctx context.Context, mediaID int64, partIndex int, etag string, size int64) error
+	// ReceivedParts lists the received part indices, ascending.
+	ReceivedParts(ctx context.Context, mediaID int64) ([]int, error)
+	// PartsForComplete lists received parts (index+ETag), ascending, for completion.
+	PartsForComplete(ctx context.Context, mediaID int64) ([]UploadedPart, error)
+	// UpdateFinalized records the actual size/dims/name after assembly.
+	UpdateFinalized(ctx context.Context, id int64, size int64, width, height, duration int, fileName, mime string) error
+	// ClearUpload removes all part rows and resets the multipart bookkeeping.
+	ClearUpload(ctx context.Context, id int64) error
+}
+
+// UploadedPart identifies a stored multipart part for completion.
+type UploadedPart struct {
+	PartNumber int
+	ETag       string
 }
 
 // ProcessResult is what the media processor extracts/produces from an original.
@@ -59,6 +91,14 @@ type ObjectStorage interface {
 	PresignedGet(ctx context.Context, objectKey string, expiry time.Duration) (string, error)
 	PutObject(ctx context.Context, objectKey string, r io.Reader, size int64, contentType string) error
 	GetObject(ctx context.Context, objectKey string) (io.ReadSeekCloser, ObjectInfo, error)
+
+	// Server-side multipart upload (chunked/resumable path). Parts are assembled by
+	// the storage on CompleteMultipart into a normal object at objectKey — so the
+	// existing GetObject download path serves it unchanged.
+	StartMultipart(ctx context.Context, objectKey, contentType string) (uploadID string, err error)
+	PutPart(ctx context.Context, objectKey, uploadID string, partNumber int, r io.Reader, size int64) (etag string, err error)
+	CompleteMultipart(ctx context.Context, objectKey, uploadID string, parts []UploadedPart) error
+	AbortMultipart(ctx context.Context, objectKey, uploadID string) error
 }
 
 // UploadInput describes a media object the client is about to upload.
@@ -71,4 +111,17 @@ type UploadInput struct {
 	Duration    int
 	BlurPreview []byte
 	FileName    string
+}
+
+// FinalizeInput carries the final metadata the client reports once every chunk of
+// a resumable upload has been received. Total is the expected part count (used to
+// verify completeness).
+type FinalizeInput struct {
+	Mime     string
+	Size     int64
+	Total    int
+	Width    int
+	Height   int
+	Duration int
+	FileName string
 }

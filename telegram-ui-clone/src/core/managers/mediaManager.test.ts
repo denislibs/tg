@@ -25,6 +25,32 @@ describe('MediaManager', () => {
     expect((rest as never as { putBytes: ReturnType<typeof vi.fn> }).putBytes).toHaveBeenCalledWith('/media/42/content', expect.anything(), 'image/png', undefined)
   })
 
+  it('large file with a blob uses the chunked path: parts + finalize', async () => {
+    const rest = fakeRest()
+    const asFns = rest as never as {
+      get: ReturnType<typeof vi.fn>
+      putBytes: ReturnType<typeof vi.fn>
+      post: ReturnType<typeof vi.fn>
+    }
+    // GET .../parts must report which parts landed (none yet).
+    asFns.get.mockImplementation(async (p: string) =>
+      p.endsWith('/parts') ? { received: [], total: 0 } : { media_id: 42 },
+    )
+    const mgr = newMediaManager({ rest })
+    const size = 20 * 1024 * 1024 // 20 MiB → 3 parts (8+8+4) at CHUNK_SIZE=8 MiB
+    const blob = new Blob([new Uint8Array(size)], { type: 'video/mp4' })
+    const id = await mgr.upload({ blob, mime: 'video/mp4', size, fileName: 'big.mp4' })
+    expect(id).toBe(42)
+    // Three part PUTs, each to /media/42/parts/{n}?total=3.
+    const partCalls = asFns.putBytes.mock.calls.filter((c) => String(c[0]).includes('/parts/'))
+    expect(partCalls).toHaveLength(3)
+    for (const c of partCalls) expect(String(c[0])).toMatch(/\/media\/42\/parts\/[123]\?total=3/)
+    // Finalize posted with the total part count.
+    const finalize = asFns.post.mock.calls.find((c) => String(c[0]).endsWith('/finalize'))
+    expect(finalize).toBeTruthy()
+    expect((finalize![1] as { total: number }).total).toBe(3)
+  })
+
   it('meta maps + caches (one GET for two calls)', async () => {
     const rest = fakeRest()
     const mgr = newMediaManager({ rest })

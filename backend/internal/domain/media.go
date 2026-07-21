@@ -17,6 +17,11 @@ type Media struct {
 	FileName string
 	// ThumbKey is the object key of a server-generated thumbnail/poster (jpeg),
 	// empty until processing completes (or for non-visual media).
-	ThumbKey  string
-	CreatedAt time.Time
+	ThumbKey string
+	// UploadID is the in-flight MinIO multipart upload id for a chunked/resumable
+	// upload (empty when none is in progress or after finalize). UploadTotal is the
+	// declared number of parts, surfaced by the resume query.
+	UploadID    string
+	UploadTotal int
+	CreatedAt   time.Time
 }

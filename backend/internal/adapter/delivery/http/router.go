@@ -253,6 +253,10 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 			pr.Post("/media/upload", mediaH.CreateUpload)
 			pr.Get("/media/{mediaID}", mediaH.Get)
 			pr.Put("/media/{mediaID}/content", mediaH.PutContent)
+			// Chunked/resumable upload of large files.
+			pr.Put("/media/{mediaID}/parts/{index}", mediaH.PutPart)
+			pr.Get("/media/{mediaID}/parts", mediaH.UploadParts)
+			pr.Post("/media/{mediaID}/finalize", mediaH.FinalizeUpload)
 		}
 
 		if pushH != nil {

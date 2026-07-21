@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"sort"
 	"testing"
 	"time"
 
@@ -16,7 +18,8 @@ type fakeRepo struct {
 	nextID int64
 	// m, when set, is returned by GetByID for any id (single-row convenience for
 	// content tests).
-	m domain.Media
+	m     domain.Media
+	parts map[int64]map[int]partRow
 }
 
 func newFakeRepo() *fakeRepo { return &fakeRepo{rows: map[int64]domain.Media{}} }
@@ -48,7 +51,93 @@ func (r *fakeRepo) UpdateProcessed(_ context.Context, _ int64, _, _, _ int, _ st
 	return nil
 }
 
-type fakeStorage struct{ blobs map[string][]byte }
+func (r *fakeRepo) get(id int64) domain.Media {
+	if m, ok := r.rows[id]; ok {
+		return m
+	}
+	return r.m
+}
+func (r *fakeRepo) put(id int64, m domain.Media) {
+	if r.rows != nil {
+		if _, ok := r.rows[id]; ok {
+			r.rows[id] = m
+			return
+		}
+	}
+	r.m = m
+}
+
+func (r *fakeRepo) SetUploadID(_ context.Context, id int64, uploadID string) (string, error) {
+	m := r.get(id)
+	if m.UploadID == "" {
+		m.UploadID = uploadID
+		r.put(id, m)
+	}
+	return m.UploadID, nil
+}
+func (r *fakeRepo) SetUploadTotal(_ context.Context, id int64, total int) error {
+	m := r.get(id)
+	m.UploadTotal = total
+	r.put(id, m)
+	return nil
+}
+
+type partRow struct {
+	etag string
+	size int64
+}
+
+func (r *fakeRepo) SavePart(_ context.Context, mediaID int64, partIndex int, etag string, size int64) error {
+	if r.parts == nil {
+		r.parts = map[int64]map[int]partRow{}
+	}
+	if r.parts[mediaID] == nil {
+		r.parts[mediaID] = map[int]partRow{}
+	}
+	r.parts[mediaID][partIndex] = partRow{etag: etag, size: size}
+	return nil
+}
+func (r *fakeRepo) ReceivedParts(_ context.Context, mediaID int64) ([]int, error) {
+	var idx []int
+	for i := range r.parts[mediaID] {
+		idx = append(idx, i)
+	}
+	sort.Ints(idx)
+	return idx, nil
+}
+func (r *fakeRepo) PartsForComplete(_ context.Context, mediaID int64) ([]UploadedPart, error) {
+	idx, _ := r.ReceivedParts(nil, mediaID)
+	out := make([]UploadedPart, 0, len(idx))
+	for _, i := range idx {
+		out = append(out, UploadedPart{PartNumber: i, ETag: r.parts[mediaID][i].etag})
+	}
+	return out, nil
+}
+func (r *fakeRepo) UpdateFinalized(_ context.Context, id int64, size int64, width, height, duration int, fileName, mime string) error {
+	m := r.get(id)
+	if size > 0 {
+		m.Size = size
+	}
+	if mime != "" {
+		m.Mime = mime
+	}
+	r.put(id, m)
+	return nil
+}
+func (r *fakeRepo) ClearUpload(_ context.Context, id int64) error {
+	m := r.get(id)
+	m.UploadID, m.UploadTotal = "", 0
+	r.put(id, m)
+	delete(r.parts, id)
+	return nil
+}
+
+type fakeStorage struct {
+	blobs   map[string][]byte
+	parts   map[string]map[int][]byte // uploadID -> partNumber -> bytes
+	nextUp  int
+	aborted map[string]bool
+}
 
 func newFakeStorage() *fakeStorage { return &fakeStorage{blobs: map[string][]byte{}} }
 
@@ -73,6 +162,43 @@ func (f *fakeStorage) GetObject(_ context.Context, key string) (io.ReadSeekClose
 		return nil, ObjectInfo{}, domain.ErrNotFound
 	}
 	return nopSeekCloser{bytes.NewReader(b)}, ObjectInfo{Size: int64(len(b)), ContentType: "application/octet-stream"}, nil
+}
+func (f *fakeStorage) StartMultipart(_ context.Context, _, _ string) (string, error) {
+	if f.parts == nil {
+		f.parts = map[string]map[int][]byte{}
+	}
+	f.nextUp++
+	up := fmt.Sprintf("up-%d", f.nextUp)
+	f.parts[up] = map[int][]byte{}
+	return up, nil
+}
+func (f *fakeStorage) PutPart(_ context.Context, _, uploadID string, partNumber int, r io.Reader, _ int64) (string, error) {
+	b, _ := io.ReadAll(r)
+	if f.parts[uploadID] == nil {
+		f.parts[uploadID] = map[int][]byte{}
+	}
+	f.parts[uploadID][partNumber] = b
+	return fmt.Sprintf("etag-%s-%d", uploadID, partNumber), nil
+}
+func (f *fakeStorage) CompleteMultipart(_ context.Context, objectKey, uploadID string, parts []UploadedPart) error {
+	var buf bytes.Buffer
+	for _, p := range parts {
+		buf.Write(f.parts[uploadID][p.PartNumber])
+	}
+	if f.blobs == nil {
+		f.blobs = map[string][]byte{}
+	}
+	f.blobs[objectKey] = buf.Bytes()
+	delete(f.parts, uploadID)
+	return nil
+}
+func (f *fakeStorage) AbortMultipart(_ context.Context, _, uploadID string) error {
+	if f.aborted == nil {
+		f.aborted = map[string]bool{}
+	}
+	f.aborted[uploadID] = true
+	delete(f.parts, uploadID)
+	return nil
 }
 
 type nopSeekCloser struct{ *bytes.Reader }
@@ -113,7 +239,7 @@ func TestInteractor_GetMediaNotFound(t *testing.T) {
 func TestInteractor_RejectsBadSize(t *testing.T) {
 	s := New(newFakeRepo(), newFakeStorage(), nil)
 	ctx := context.Background()
-	if _, _, err := s.CreateUpload(ctx, UploadInput{OwnerID: 1, Size: maxSize + 1}); err != ErrTooLarge {
+	if _, _, err := s.CreateUpload(ctx, UploadInput{OwnerID: 1, Size: maxChunkedSize + 1}); err != ErrTooLarge {
 		t.Fatalf("expected ErrTooLarge, got %v", err)
 	}
 	if _, _, err := s.CreateUpload(ctx, UploadInput{OwnerID: 1, Size: 0}); err != ErrBadSize {
@@ -130,6 +256,62 @@ func TestPutContent_OwnerOnly(t *testing.T) {
 	}
 	if err := s.PutContent(context.Background(), 1, 99, bytes.NewReader([]byte("12345")), 5); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("non-owner = %v, want ErrForbidden", err)
+	}
+}
+
+func TestChunkedUpload_Roundtrip(t *testing.T) {
+	repo := newFakeRepo()
+	st := newFakeStorage()
+	s := New(repo, st, nil)
+	ctx := context.Background()
+
+	m, _, err := s.CreateUpload(ctx, UploadInput{OwnerID: 7, Mime: "video/mp4", Size: 9})
+	if err != nil {
+		t.Fatalf("CreateUpload: %v", err)
+	}
+
+	// Three parts, uploaded out of order; re-upload part 2 (idempotent).
+	if err := s.SavePart(ctx, m.ID, 7, 2, 3, bytes.NewReader([]byte("def")), 3); err != nil {
+		t.Fatalf("part 2: %v", err)
+	}
+	if err := s.SavePart(ctx, m.ID, 7, 1, 3, bytes.NewReader([]byte("abc")), 3); err != nil {
+		t.Fatalf("part 1: %v", err)
+	}
+	if err := s.SavePart(ctx, m.ID, 7, 2, 3, bytes.NewReader([]byte("def")), 3); err != nil {
+		t.Fatalf("part 2 re-upload: %v", err)
+	}
+
+	// Non-owner cannot add a part.
+	if err := s.SavePart(ctx, m.ID, 99, 3, 3, bytes.NewReader([]byte("ghi")), 3); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("non-owner part = %v, want ErrForbidden", err)
+	}
+
+	// Resume: parts 1,2 received; finalize before part 3 must fail (missing part).
+	got, total, err := s.ReceivedParts(ctx, m.ID, 7)
+	if err != nil || total != 3 || len(got) != 2 || got[0] != 1 || got[1] != 2 {
+		t.Fatalf("ReceivedParts = %v total=%d err=%v", got, total, err)
+	}
+	if err := s.FinalizeUpload(ctx, m.ID, 7, FinalizeInput{Size: 9, Total: 3}); !errors.Is(err, ErrMissingParts) {
+		t.Fatalf("finalize with gap = %v, want ErrMissingParts", err)
+	}
+
+	// Send the last part, then finalize.
+	if err := s.SavePart(ctx, m.ID, 7, 3, 3, bytes.NewReader([]byte("ghi")), 3); err != nil {
+		t.Fatalf("part 3: %v", err)
+	}
+	if err := s.FinalizeUpload(ctx, m.ID, 7, FinalizeInput{Size: 9, Total: 3}); err != nil {
+		t.Fatalf("finalize: %v", err)
+	}
+
+	// The assembled object downloads exactly like a single-PUT upload.
+	rc, _, _, err := s.GetContent(ctx, m.ID)
+	if err != nil {
+		t.Fatalf("GetContent: %v", err)
+	}
+	defer rc.Close()
+	b, _ := io.ReadAll(rc)
+	if string(b) != "abcdefghi" {
+		t.Fatalf("assembled = %q, want abcdefghi", b)
 	}
 }
 

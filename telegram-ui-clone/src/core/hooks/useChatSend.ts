@@ -82,8 +82,7 @@ export function useChatSend({
       const { secs, blob, mime, mode } = r
       if (!blob) return
       const type = mode === 'round' ? 'roundVideo' : 'voice' // кружок → круглое видеосообщение
-      const bytes = await blob.arrayBuffer()
-      const mediaId = await managers.media.upload({ bytes, mime, size: blob.size, duration: secs })
+      const mediaId = await managers.media.upload({ blob, mime, size: blob.size, duration: secs })
       const clientMsgId = `c-${chat.id}-${performance.now()}-${Math.random().toString(36).slice(2)}`
       let cid = numericChatId
       if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
@@ -213,8 +212,7 @@ export function useChatSend({
       })
       useUploadsStore.getState().setProgress(clientMsgId, 0)
       try {
-        const bytes = await file.arrayBuffer()
-        const mediaId = await managers.media.upload({ bytes, mime, size: file.size, width, height, fileName: file.name, progressId: clientMsgId })
+        const mediaId = await managers.media.upload({ blob: file, mime, size: file.size, width, height, fileName: file.name, progressId: clientMsgId })
         useMessagesStore.getState().setOptimisticMedia(winKey(numericChatId, threadRootId), clientMsgId, mediaId)
         void managers.realtime.sendMessage({ chatId: numericChatId, text: caption, clientMsgId, mediaId, type, groupedId, threadRootId })
       } catch {
@@ -225,8 +223,7 @@ export function useChatSend({
       return
     }
     // Документ/аудио: аплоад, затем оптимистичный бабл (прежнее поведение).
-    const bytes = await file.arrayBuffer()
-    const mediaId = await managers.media.upload({ bytes, mime, size: file.size, width, height, fileName: file.name })
+    const mediaId = await managers.media.upload({ blob: file, mime, size: file.size, width, height, fileName: file.name })
     win.appendOptimistic(caption, meId ?? -1, clientMsgId, mediaId, type, undefined, groupedId)
     void managers.realtime.sendMessage({ chatId: numericChatId, text: caption, clientMsgId, mediaId, type, groupedId, threadRootId })
   }
