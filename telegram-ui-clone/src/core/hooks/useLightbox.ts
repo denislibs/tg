@@ -37,7 +37,7 @@ export function useLightbox({ win, isRealChat, meId, meName, peers, chatName, la
 
   const openLightbox = (mediaId: number, el: HTMLElement) => {
     if (!isRealChat) return
-    const items: LightboxItem[] = win.msgs
+    let items: LightboxItem[] = win.msgs
       .filter((m) => m.mediaId != null && (m.type === 'photo' || m.type === 'video'))
       .map((m) => ({
         mediaId: m.mediaId as number,
@@ -47,7 +47,21 @@ export function useLightbox({ win, isRealChat, meId, meName, peers, chatName, la
         width: m.mediaWidth,
         height: m.mediaHeight,
       }))
-    const index = Math.max(0, items.findIndex((it) => it.mediaId === mediaId))
+    let index = items.findIndex((it) => it.mediaId === mediaId)
+    if (index < 0) {
+      // Медиа не в ленте фото/видео (сервисное сообщение смены фото группы —
+      // type 'service'): открываем одиночный просмотр именно этого фото.
+      const src = win.msgs.find((m) => m.mediaId === mediaId)
+      items = [{
+        mediaId,
+        type: 'photo',
+        sender: src && src.senderId === meId ? (meName || 'Вы') : (peers.get(src?.senderId ?? -1)?.displayName || chatName),
+        date: friendlyMsgTime(src?.createdAt ?? '', lang),
+        width: src?.mediaWidth,
+        height: src?.mediaHeight,
+      }]
+      index = 0
+    }
     const r = el.getBoundingClientRect()
     const img = el.querySelector('img')
     // Hide the source thumbnail while the viewer is open so only the growing

@@ -26,6 +26,7 @@ export function serviceMsgText(raw: string): string {
     case 'add_user': return `${actor} добавил(а) ${user}`
     case 'kick_user': return `${actor} удалил(а) ${user}`
     case 'leave': return `${actor} покинул(а) группу`
+    case 'joined_by_link': return `${actor} присоединился(ась) к группе по ссылке-приглашению`
     case 'edit_photo': return `${actor} обновил(а) фото группы`
     case 'edit_title': return `${actor} изменил(а) название группы`
     case 'set_ttl':

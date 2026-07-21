@@ -717,8 +717,12 @@ func TestGroupLifecycle_ServiceMessagesAndChatRemoved(t *testing.T) {
 	if card, _ := in.ChatCard(ctx, id, 7); card.PhotoMediaID == nil || *card.PhotoMediaID != 55 {
 		t.Fatalf("photo_media_id = %v; want 55", card.PhotoMediaID)
 	}
+	// edit_photo несёт media_id нового фото (tweb messageActionChatEditPhoto) —
+	// клиент рисует круглую миниатюру под пилюлей.
 	if msgs := s.messages[id]; !strings.Contains(msgs[len(msgs)-1].Text, `"action":"edit_photo"`) {
 		t.Fatalf("edit_photo service msg: %s", msgs[len(msgs)-1].Text)
+	} else if last := msgs[len(msgs)-1]; last.MediaID == nil || *last.MediaID != 55 {
+		t.Fatalf("edit_photo media_id = %v; want 55", last.MediaID)
 	}
 	s.seedMedia(56, 10)
 	if err := in.SetChatPhoto(ctx, id, 7, 56); !errors.Is(err, domain.ErrNotFound) {
@@ -825,6 +829,52 @@ func TestJoinByToken_NoApproval(t *testing.T) {
 	}
 	if reqs, _ := fjr.List(context.Background(), id); len(reqs) != 0 {
 		t.Fatalf("want no pending requests, got %+v", reqs)
+	}
+}
+
+// Вступление по инвайт-ссылке (не добавление админом) публикует сервисное
+// сообщение joined_by_link с именем вступившего (tweb ActionInviteUser).
+func TestJoinByToken_PostsJoinedByLinkService(t *testing.T) {
+	fg := newFakeGroupRepo()
+	s := newStore()
+	fg.onCreate = func(id int64) {
+		s.mu.Lock()
+		s.chatType[id] = "group"
+		s.mu.Unlock()
+	}
+	prev := tokenGen
+	tokenGen = func() string { return "jbl-token" }
+	t.Cleanup(func() { tokenGen = prev })
+	fi := newFakeInviteRepo()
+	in := New(fakeTx{}, groupChats{fg}, fakeMsgs{s}, fakeUpdates{s}, nil, fakeMedia{s}, fg, fi, nil, nil, newFakeJoinRequestRepo())
+	ctx := context.Background()
+	fg.users[7] = domain.UserCard{ID: 7, DisplayName: "Алиса"}
+	fg.users[9] = domain.UserCard{ID: 9, DisplayName: "Чарли Ли"}
+
+	id, err := in.CreateGroup(ctx, 7, "Team", "", "", false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	link, err := in.CreateInvite(ctx, id, 7, nil, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := len(s.messages[id])
+	if _, err := in.JoinByToken(ctx, link.Token, 9); err != nil {
+		t.Fatal(err)
+	}
+	msgs := s.messages[id]
+	if len(msgs) != before+1 {
+		t.Fatalf("service messages after join = %d; want %d", len(msgs), before+1)
+	}
+	last := msgs[len(msgs)-1]
+	if last.Type != "service" ||
+		!strings.Contains(last.Text, `"action":"joined_by_link"`) ||
+		!strings.Contains(last.Text, "Чарли Ли") {
+		t.Fatalf("joined_by_link service msg: %+v", last)
+	}
+	if last.SenderID != 9 {
+		t.Fatalf("joined_by_link sender = %d; want 9 (the joiner)", last.SenderID)
 	}
 }
 
