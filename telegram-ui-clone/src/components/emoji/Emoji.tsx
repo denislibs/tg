@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 
 // Render an emoji as an Apple-set image (like tweb's `<img class="emoji">`),
 // falling back to the native glyph if the image can't be found.
@@ -9,9 +9,9 @@ import { useState } from 'react'
 // VS16 (FE0F) and some drop it, so we try the full sequence first, then the
 // FE0F-stripped one, then give up and show the native glyph.
 
-const BASE = 'https://cdn.jsdelivr.net/npm/emoji-datasource-apple/img/apple/64/'
+export const EMOJI_CDN_BASE = 'https://cdn.jsdelivr.net/npm/emoji-datasource-apple/img/apple/64/'
 
-function codepoints(emoji: string, stripVS = false): string {
+export function emojiCodepoints(emoji: string, stripVS = false): string {
   const cps: number[] = []
   for (const ch of emoji) {
     const cp = ch.codePointAt(0)!
@@ -21,7 +21,7 @@ function codepoints(emoji: string, stripVS = false): string {
   return cps.map((c) => c.toString(16)).join('-')
 }
 
-export default function Emoji({ e, size = 24 }: { e: string; size?: number }) {
+function Emoji({ e, size = 24 }: { e: string; size?: number }) {
   const [attempt, setAttempt] = useState(0)
 
   if (attempt >= 2) {
@@ -30,10 +30,10 @@ export default function Emoji({ e, size = 24 }: { e: string; size?: number }) {
     )
   }
 
-  const file = codepoints(e, attempt === 1)
+  const file = emojiCodepoints(e, attempt === 1)
   return (
     <img
-      src={`${BASE}${file}.png`}
+      src={`${EMOJI_CDN_BASE}${file}.png`}
       alt={e}
       width={size}
       height={size}
@@ -44,3 +44,5 @@ export default function Emoji({ e, size = 24 }: { e: string; size?: number }) {
     />
   )
 }
+
+export default memo(Emoji)

@@ -4,15 +4,14 @@
 //
 // Полоска — порт tweb: таблетка 40px (radius 40, фон/blur как у btn-menu,
 // drop-shadow 0 2px 8px .24), ячейки 36×28 с эмодзи 28px, шеврон 32×32
-// разворачивает полный EmojiPicker (tweb onMoreClick → EmojiTab). Lottie
+// разворачивает полный EmojiDropdown (tweb onMoreClick → EmojiTab). Lottie
 // appear/select-анимации реакций приходят с MTProto-сервера и вне Telegram
 // недоступны — замена: scale-подскок на hover.
 import { memo, useRef, useState, type ReactNode, type MouseEvent, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { AnimatePresence } from 'framer-motion'
 import Menu, { MenuItem } from '../../shared/ui/Menu'
 import Emoji from '../emoji/Emoji'
-import EmojiPicker from '../EmojiPicker'
+import EmojiDropdown from '../emoji/EmojiDropdown'
 import TgIcon from '../TgIcon'
 import { useT } from '../../i18n'
 import { usePortalContainer } from '../../core/pip'
@@ -73,11 +72,13 @@ function MessageContextMenu({ menu, items, onClose, onExited, onReaction }: Mess
           />
         )}
         <div style={{ position: 'fixed', ...xPos, ...yPos, zIndex: 2001 }}>
-          <AnimatePresence onExitComplete={onExited}>
-            {!menu.closing && (
-              <EmojiPicker className={s.pickerInMenu} onPick={(e) => onReaction(e)} onClose={onClose} />
-            )}
-          </AnimatePresence>
+          <EmojiDropdown
+            open={!menu.closing}
+            className={s.pickerInMenu}
+            onPick={(e) => onReaction(e)}
+            onClose={onClose}
+            onExitComplete={onExited}
+          />
         </div>
       </>,
       portalContainer,

@@ -1,5 +1,5 @@
 // Emoji dataset for the picker. Categories mirror tweb's order. `NAMES` adds
-// search keywords for common emoji; SKIN holds base emoji that accept skin tones.
+// search keywords for common emoji.
 
 export interface EmojiCategory {
   key: string
@@ -32,17 +32,17 @@ export const CATEGORIES: EmojiCategory[] = [
     ],
   },
   {
-    key: 'activity',
-    label: 'Activity',
-    emojis: [
-      '⚽','🏀','🏈','⚾','🥎','🎾','🏐','🏉','🥏','🎱','🪀','🏓','🏸','🏒','🏑','🥍','🏏','🪃','🥅','⛳','🪁','🏹','🎣','🤿','🥊','🥋','🎽','🛹','🛼','🛷','⛸️','🥌','🎿','⛷️','🏂','🪂','🏋️','🤼','🤸','⛹️','🤺','🤾','🏌️','🏇','🧘','🏄','🏊','🤽','🚣','🧗','🚵','🚴','🏆','🥇','🥈','🥉','🏅','🎖️','🏵️','🎗️','🎫','🎟️','🎪','🤹','🎭','🩰','🎨','🎬','🎤','🎧','🎼','🎹','🥁','🪘','🎷','🎺','🪗','🎸','🪕','🎻','🎲','♟️','🎯','🎳','🎮','🎰','🧩',
-    ],
-  },
-  {
     key: 'travel',
     label: 'Travel & Places',
     emojis: [
       '🚗','🚕','🚙','🚌','🚎','🏎️','🚓','🚑','🚒','🚐','🛻','🚚','🚛','🚜','🦯','🦽','🦼','🛴','🚲','🛵','🏍️','🛺','🚨','🚔','🚍','🚘','🚖','🚡','🚠','🚟','🚃','🚋','🚞','🚝','🚄','🚅','🚈','🚂','🚆','🚇','🚊','🚉','✈️','🛫','🛬','🛩️','💺','🛰️','🚀','🛸','🚁','🛶','⛵','🚤','🛥️','🛳️','⛴️','🚢','⚓','⛽','🚧','🚦','🚥','🗺️','🗿','🗽','🗼','🏰','🏯','🏟️','🎡','🎢','🎠','⛲','⛱️','🏖️','🏝️','🏜️','🌋','⛰️','🏔️','🗻','🏕️','⛺','🏠','🏡','🏘️','🏚️','🏗️','🏭','🏢','🏬','🏣','🏤','🏥','🏦','🏨','🏪','🏫','🏩','💒','🏛️','⛪','🕌','🕍','🛕','🕋','⛩️','🌁','🌃','🏙️','🌄','🌅','🌆','🌇','🌉','♨️','🎇','🎆','🌌',
+    ],
+  },
+  {
+    key: 'activity',
+    label: 'Activity',
+    emojis: [
+      '⚽','🏀','🏈','⚾','🥎','🎾','🏐','🏉','🥏','🎱','🪀','🏓','🏸','🏒','🏑','🥍','🏏','🪃','🥅','⛳','🪁','🏹','🎣','🤿','🥊','🥋','🎽','🛹','🛼','🛷','⛸️','🥌','🎿','⛷️','🏂','🪂','🏋️','🤼','🤸','⛹️','🤺','🤾','🏌️','🏇','🧘','🏄','🏊','🤽','🚣','🧗','🚵','🚴','🏆','🥇','🥈','🥉','🏅','🎖️','🏵️','🎗️','🎫','🎟️','🎪','🤹','🎭','🩰','🎨','🎬','🎤','🎧','🎼','🎹','🥁','🪘','🎷','🎺','🪗','🎸','🪕','🎻','🎲','♟️','🎯','🎳','🎮','🎰','🧩',
     ],
   },
   {
@@ -67,13 +67,6 @@ export const CATEGORIES: EmojiCategory[] = [
     ],
   },
 ]
-
-// Base emoji that accept skin-tone modifiers.
-export const SKIN = new Set<string>([
-  '👋','🤚','🖐️','✋','🖖','👌','🤌','🤏','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','👍','👎','✊','👊','🤛','🤜','👏','🙌','👐','🤲','🤝','🙏','✍️','💅','🤳','💪','👂','🦻','👃','👶','🧒','👦','👧','🧑','👨','🧔','👩','🧓','👴','👵','🙍','🙎','🙅','🙆','💁','🙋','🧏','🙇','🤦','🤷','👮','🕵️','💂','👷','🤴','👸','👳','👲','🧕','🤵','👰','🤰','🤱','👼','🎅','🤶','🦸','🦹','🧙','🧚','🧛','🧜','🧝','💆','💇','🚶','🧍','🧎','🏃','💃','🕺','🧖','🧗','🏄','🚣','🏊','🏋️','🚴','🚵','🤸','🤽','🤾','🤹','🧘','🛀','🛌',
-])
-
-export const TONES = ['', '🏻', '🏼', '🏽', '🏾', '🏿']
 
 // Seed for the "Frequently Used" section shown before the user picks anything
 // (Telegram pre-fills it). Mirrors the common set tweb shows.
@@ -149,9 +142,9 @@ export const NAMES: Record<string, string> = {
 // Поиск эмодзи по слову — порт tweb appEmojiManager.searchEmojis:
 // префиксное совпадение целых ключевых слов, минимум 2 символа, лимит 40.
 let kwIndex: [string, string][] | null = null // [keyword, emoji]
-export function searchEmojisByWord(query: string, limit = 40): string[] {
+export function searchEmojisByWord(query: string, limit = 40, minChars = 2): string[] {
   const q = query.toLowerCase().replace(/_/g, ' ').trim()
-  if (q.length < 2) return []
+  if (q.length < minChars) return []
   if (!kwIndex) {
     kwIndex = []
     for (const [emoji, kws] of Object.entries(NAMES)) {

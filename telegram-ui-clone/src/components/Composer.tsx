@@ -14,7 +14,7 @@ import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
-import EmojiPicker from './EmojiPicker'
+import EmojiDropdown, { useDropdownHover } from './emoji/EmojiDropdown'
 import EmojiHelper from './EmojiHelper'
 import MentionsHelper from './MentionsHelper'
 import InlineResultsHelper from './InlineResultsHelper'
@@ -144,7 +144,13 @@ function Composer({
   const slowmodeText = (slowmodeLeft ?? 0) >= 60 ? `${Math.ceil((slowmodeLeft ?? 0) / 60)}м` : String(slowmodeLeft ?? 0)
   const t = useT()
   const [emptyDraft, setEmptyDraft] = useState(true)
-  const [emojiOpen, setEmojiOpen] = useState(false)
+  // Эмодзи-дропдаун: открытие по hover/клику (tweb DropdownHover); клики по
+  // инпуту не закрывают его (tweb ignoreOutClickClassName: input-message-input).
+  const emojiDd = useDropdownHover((target) => editorRef.current?.contains(target) ?? false)
+  // Ленивый первый маунт: до первого открытия панель не в DOM, после — живёт
+  // скрытой (display:none), сохраняя скролл/состояние (как tweb).
+  const [emojiMounted, setEmojiMounted] = useState(false)
+  if (emojiDd.open && !emojiMounted) setEmojiMounted(true)
   // Live code-point length of the draft, for the over-limit guard/counter.
   const [len, setLen] = useState(0)
   // While recording, Esc opens a "discard voice message?" confirm (tweb-style).
@@ -455,8 +461,16 @@ function Composer({
     const root = editorRef.current
     if (!root) return
     root.focus()
-    if (em === '\b') document.execCommand('delete')
-    else document.execCommand('insertText', false, em)
+    document.execCommand('insertText', false, em)
+    syncEmpty()
+    autosize()
+  }
+  // Кнопка backspace в нижних табах дропдауна (tweb emoji-tabs-delete).
+  const deleteBeforeCaret = () => {
+    const root = editorRef.current
+    if (!root) return
+    root.focus()
+    document.execCommand('delete')
     syncEmpty()
     autosize()
   }
@@ -820,13 +834,14 @@ function Composer({
                   {msgCount > 1 ? `${msgCount} 💬` : MAX_LEN - len}
                 </Text>
               )}
-              <IconButton
-                onClick={() => setEmojiOpen((o) => !o)}
-                color={emojiOpen ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'}
-                style={{ width: 40, height: 40 }}
-              >
-                <TgIcon name="smile" />
-              </IconButton>
+              <span ref={emojiDd.buttonRef} {...emojiDd.buttonProps} style={{ display: 'inline-flex' }}>
+                <IconButton
+                  color={emojiDd.open ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'}
+                  style={{ width: 40, height: 40 }}
+                >
+                  <TgIcon name="smile" />
+                </IconButton>
+              </span>
             </>
           )}
           {/* Mic / Send — 48×40 rounded pill inside the bar (1:1 with TG .btn-send) */}
@@ -901,14 +916,17 @@ function Composer({
       {/* Floating formatting bar over a text selection (tweb MarkupTooltip) */}
       <MarkupTooltip editorRef={editorRef} onApply={applyFmt} />
 
-      <AnimatePresence>
-        {emojiOpen && (
-          <EmojiPicker
+      {emojiMounted && (
+        <div ref={emojiDd.panelRef} style={{ display: 'contents' }}>
+          <EmojiDropdown
+            open={emojiDd.open}
             onPick={insertEmoji}
-            onClose={() => setEmojiOpen(false)}
+            onDelete={deleteBeforeCaret}
+            onClose={emojiDd.close}
+            panelProps={emojiDd.panelProps}
           />
-        )}
-      </AnimatePresence>
+        </div>
+      )}
 
         {/* Меню таймера самоуничтожения секретного чата (tweb self-destruct ttl) */}
         {ttlMenu && (
