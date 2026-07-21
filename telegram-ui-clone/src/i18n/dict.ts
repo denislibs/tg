@@ -795,6 +795,23 @@ const ru: Dict = {
     'Ключ доступа хранится в выбранном Вами облачном сервисе, где он надёжно защищён.',
   'Create Passkey': 'Создать ключ доступа',
   Unsupported: 'Не поддерживается',
+  // ── Медиа-редактор перед отправкой (tweb mediaEditor) ──
+  Enhance: 'Улучшение',
+  Brightness: 'Яркость',
+  Contrast: 'Контраст',
+  Saturation: 'Насыщенность',
+  Warmth: 'Тепло',
+  Crop: 'Обрезка',
+  Draw: 'Рисование',
+  'Aspect ratio': 'Соотношение сторон',
+  Free: 'Свободно', // Original уже есть выше
+  Square: 'Квадрат',
+  Rotate: 'Повернуть',
+  Flip: 'Отразить',
+  'Brush size': 'Размер кисти',
+  'Text size': 'Размер текста',
+  'Discard changes': 'Отменить изменения',
+  'Are you sure you want to discard the changes?': 'Вы уверены, что хотите отменить внесённые изменения?',
 }
 
 const uk: Dict = {
