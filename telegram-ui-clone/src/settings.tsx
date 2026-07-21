@@ -61,6 +61,9 @@ export interface Settings {
   translateTo: string
   // Зацикливать анимированные стикеры в чате (tweb settings.stickers.loop).
   loopStickers: boolean
+  // Скорость воспроизведения видео в медиа-вьюере (tweb appMediaPlaybackController
+  // .playbackRate): восстанавливается при открытии следующего видео. Дефолт 1.
+  videoRate: number
 }
 
 // Галочки автозагрузки по типам чатов (tweb AutoDownloadPeerTypeSettings).
@@ -105,6 +108,7 @@ const DEFAULTS: Settings = {
   showTranslateButton: true,
   translateTo: '',
   loopStickers: true, // tweb stickers.loop default true
+  videoRate: 1,
 }
 
 const KEY = 'tg-settings'
@@ -166,6 +170,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       showTranslateButton: s.showTranslateButton,
       translateTo: s.translateTo,
       loopStickers: s.loopStickers,
+      videoRate: s.videoRate,
     }
     try {
       localStorage.setItem(KEY, JSON.stringify(toSave))
