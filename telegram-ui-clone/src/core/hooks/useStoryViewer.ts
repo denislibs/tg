@@ -70,7 +70,8 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
   // Esc-to-close (unchanged from the mock).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      // preventDefault — сигнал глобальному Esc-фолбэку (core/hotkeys), что Esc обработан
+      if (e.key === 'Escape') { e.preventDefault(); onClose() }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)

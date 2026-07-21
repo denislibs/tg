@@ -24,6 +24,7 @@ import { peerColor } from '../peerColor'
 import { useManagers } from '../../core/hooks/useManagers'
 import type { MediaMeta } from '../../core/managers/mediaManager'
 import { enterPip, pipSupported, usePortalContainer } from '../../core/pip'
+import { pushEsc } from '../../core/hotkeys'
 import s from './MediaLightbox.module.scss'
 
 export interface LightboxItem {
@@ -278,16 +279,21 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
   }
 
   useEffect(() => {
+    // Esc — через глобальный Esc-стек (core/hotkeys): лайтбокс закрывается
+    // верхним в LIFO-порядке, фолбэк «закрыть чат» не срабатывает.
+    const unregisterEsc = pushEsc(close)
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') close()
-      else if (e.key === 'ArrowRight') nav(1)
+      if (e.key === 'ArrowRight') nav(1)
       else if (e.key === 'ArrowLeft') nav(-1)
       else if (e.key === '+' || e.key === '=') stepZoom(0.4)
       else if (e.key === '-') stepZoom(-0.4)
       else if (e.key.toLowerCase() === 'r' || e.key.toLowerCase() === 'к') setRot((r) => r - 90)
     }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      unregisterEsc()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx, items.length])
 

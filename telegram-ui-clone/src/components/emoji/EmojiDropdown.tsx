@@ -22,6 +22,7 @@ import Emoji, { EMOJI_CDN_BASE, emojiCodepoints } from './Emoji'
 import { CATEGORIES, DEFAULT_FREQUENT, QUICK_CHIPS, searchEmojisByWord } from './emojiData'
 import { useT } from '../../i18n'
 import classNames from '../../shared/lib/classNames'
+import { pushEsc } from '../../core/hotkeys'
 import s from './EmojiDropdown.module.scss'
 
 // tweb DropdownHover: TOGGLE_TIMEOUT = 200 (hover open/close), ANIMATION_DURATION = 200
@@ -264,11 +265,11 @@ export default function EmojiDropdown({
   }, [open])
   useEffect(() => () => window.clearTimeout(hideTimer.current), [])
 
+  // Esc — через глобальный Esc-стек (core/hotkeys): дропдаун закрывается
+  // верхним, событие не доходит до фолбэка «закрыть чат».
   useEffect(() => {
     if (!open) return
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    return pushEsc(onClose)
   }, [open, onClose])
 
   // Recent: LIFO, лимит 32 (tweb modifyRecentEmoji), сид POPULAR_EMOJI.

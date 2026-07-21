@@ -56,7 +56,8 @@ export default function CallScreen() {
   }, [speakerId, call.remoteStream])
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && hangup()
+    // preventDefault — сигнал глобальному Esc-фолбэку (core/hotkeys), что Esc обработан
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); hangup() } }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
