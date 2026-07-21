@@ -77,7 +77,7 @@ export interface ConvMsg {
   // audio / music
   audio?: { title: string; artist: string; duration: string }
   // link preview attached to a text message
-  webPage?: { siteName: string; title: string; description?: string; gradient?: string; emoji?: string }
+  webPage?: { siteName: string; title: string; description?: string; gradient?: string; emoji?: string; url?: string }
   /** лог 1:1 звонка (tweb messageActionPhoneCall): исход + длительность */
   call?: CallLog
   /** секретное сообщение (E2E) — включает таймер самоуничтожения в бабле */

@@ -15,7 +15,7 @@ import (
 	usecaseprivacy "github.com/messenger-denis/backend/internal/usecase/privacy"
 )
 
-func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, mediaUC *usecasemedia.Interactor, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler, notifyUC *usecasenotify.Interactor, foldersUC *usecasefolders.Interactor, pubH *PublicHandler, privacyUC *usecaseprivacy.Interactor, passkeyH *PasskeyHandler) http.Handler {
+func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, mediaUC *usecasemedia.Interactor, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler, notifyUC *usecasenotify.Interactor, foldersUC *usecasefolders.Interactor, pubH *PublicHandler, privacyUC *usecaseprivacy.Interactor, passkeyH *PasskeyHandler, ivH *IVHandler) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -281,6 +281,11 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 
 		// ICE-конфиг для звонков (STUN + эфемерные TURN-креды)
 		pr.Get("/calls/ice", iceH.Get)
+
+		// Instant View: reader-mode статья по ссылке из сообщения
+		if ivH != nil {
+			pr.Get("/iv", ivH.Article)
+		}
 
 		sh := NewSessionHandler(authUC)
 		pr.Get("/sessions", sh.List)

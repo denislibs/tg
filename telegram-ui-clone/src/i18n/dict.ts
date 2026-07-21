@@ -6,6 +6,9 @@ type Dict = Record<string, string>
 // entries (t() falls back to the key). Other languages map English -> translation.
 
 const ru: Dict = {
+  // ── Instant View ──
+  'Instant View': 'Мгновенный просмотр',
+  'Open in browser': 'Открыть в браузере',
   // ── Редактирование группы (tweb editChat) ──
   'You can provide an optional description for your group.': 'Можете указать дополнительное описание для группы.',
   'Group Type': 'Тип группы',
@@ -798,6 +801,9 @@ const ru: Dict = {
 }
 
 const uk: Dict = {
+  // ── Instant View ──
+  'Instant View': 'Миттєвий перегляд',
+  'Open in browser': 'Відкрити в браузері',
   'Message Text Size': 'Розмір тексту повідомлень',
   'Color Theme': 'Кольорова тема',
   Classic: 'Класична',
@@ -1406,6 +1412,9 @@ const uk: Dict = {
 }
 
 const es: Dict = {
+  // ── Instant View ──
+  'Instant View': 'Vista rápida',
+  'Open in browser': 'Abrir en el navegador',
   'Message Text Size': 'Tamaño del texto',
   'Color Theme': 'Tema de color',
   Classic: 'Clásico',
@@ -2012,6 +2021,9 @@ const es: Dict = {
 }
 
 const de: Dict = {
+  // ── Instant View ──
+  'Instant View': 'Sofortansicht',
+  'Open in browser': 'Im Browser öffnen',
   'Message Text Size': 'Nachrichtentextgröße',
   'Color Theme': 'Farbthema',
   Classic: 'Klassisch',
@@ -2620,6 +2632,9 @@ const de: Dict = {
 }
 
 const fr: Dict = {
+  // ── Instant View ──
+  'Instant View': 'Vue instantanée',
+  'Open in browser': 'Ouvrir dans le navigateur',
   'Message Text Size': 'Taille du texte',
   'Color Theme': 'Thème de couleur',
   Classic: 'Classique',

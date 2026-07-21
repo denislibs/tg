@@ -23,6 +23,7 @@ import type { Session } from '../core/managers/sessionsManager'
 import type { IceConfig } from '../core/managers/callsManager'
 import type { StarGift, GiftInfo } from '../core/managers/starsManager'
 import type { BotCommand, CallbackAnswer, InlineResult } from '../core/managers/botsManager'
+import type { IVArticle } from '../core/managers/ivManager'
 
 export interface Managers {
   health: { check(): Promise<HealthStatus> }
@@ -254,6 +255,9 @@ export interface Managers {
     cloudSet(botId: number, key: string, value: string): Promise<void>
     cloudRemove(botId: number, keys: string[]): Promise<void>
     cloudKeys(botId: number): Promise<string[]>
+  }
+  iv: {
+    article(url: string): Promise<IVArticle>
   }
 }
 
