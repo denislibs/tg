@@ -180,6 +180,14 @@ export function useChatSend({
       : 'document'
     const { width, height } = type === 'photo' ? await readImageSize(file) : { width: 0, height: 0 }
     const clientMsgId = `c-${chat.id}-${performance.now()}-${Math.random().toString(36).slice(2)}`
+    // «Отправляет файл/фото/видео/аудио» у собеседника на время аплоада
+    // (tweb sendMessageUpload*Action): пинг сразу и каждые 3с (TTL приёмника 6с).
+    const uploadAction = type === 'photo' ? 'upload_photo' as const
+      : type === 'video' ? 'upload_video' as const
+      : type === 'audio' ? 'upload_audio' as const
+      : 'upload_file' as const
+    const pingUpload = () => { if (isRealChat && chat.type !== 'secret') void managers.realtime.sendTyping({ chatId: numericChatId, action: uploadAction }) }
+    const startUploadTyping = () => { pingUpload(); return window.setInterval(pingUpload, 3000) }
     // Фото/видео как медиа: бабл появляется СРАЗУ с локальным превью и кольцом
     // прогресса (tweb is_outgoing + ProgressivePreloader); отправка по WS —
     // после завершения аплоада. Документы/аудио грузятся до появления бабла.
@@ -211,6 +219,7 @@ export function useChatSend({
         localUrl, width, height, mime, size: file.size, name: file.name,
       })
       useUploadsStore.getState().setProgress(clientMsgId, 0)
+      const typingTimer = startUploadTyping()
       try {
         const mediaId = await managers.media.upload({ blob: file, mime, size: file.size, width, height, fileName: file.name, progressId: clientMsgId })
         useMessagesStore.getState().setOptimisticMedia(winKey(numericChatId, threadRootId), clientMsgId, mediaId)
@@ -218,14 +227,31 @@ export function useChatSend({
       } catch {
         useMessagesStore.getState().failOptimisticByClient(clientMsgId)
       } finally {
+        window.clearInterval(typingTimer)
         useUploadsStore.getState().clear(clientMsgId)
       }
       return
     }
-    // Документ/аудио: аплоад, затем оптимистичный бабл (прежнее поведение).
-    const mediaId = await managers.media.upload({ blob: file, mime, size: file.size, width, height, fileName: file.name })
-    win.appendOptimistic(caption, meId ?? -1, clientMsgId, mediaId, type, undefined, groupedId)
-    void managers.realtime.sendMessage({ chatId: numericChatId, text: caption, clientMsgId, mediaId, type, groupedId, threadRootId })
+    // Документ/аудио: бабл появляется СРАЗУ с метой файла (имя/размер/mime) и
+    // кольцом прогресса аплоада с отменой (tweb ProgressivePreloader) — раньше
+    // бабл ждал конца аплоада, и было непонятно, грузится ли файл вообще.
+    // Большие файлы идут чанковым/резюмируемым путём (blob → uploadChunked).
+    win.appendOptimistic(caption, meId ?? -1, clientMsgId, undefined, type, undefined, groupedId, {
+      mime, size: file.size, name: file.name,
+    })
+    useUploadsStore.getState().setProgress(clientMsgId, 0)
+    const typingTimer = startUploadTyping()
+    try {
+      const mediaId = await managers.media.upload({ blob: file, mime, size: file.size, width, height, fileName: file.name, progressId: clientMsgId })
+      useMessagesStore.getState().setOptimisticMedia(winKey(numericChatId, threadRootId), clientMsgId, mediaId)
+      void managers.realtime.sendMessage({ chatId: numericChatId, text: caption, clientMsgId, mediaId, type, groupedId, threadRootId })
+    } catch {
+      // Отменённый аплоад бабл уже удалил (removeOptimisticByClient) — fail будет no-op.
+      useMessagesStore.getState().failOptimisticByClient(clientMsgId)
+    } finally {
+      window.clearInterval(typingTimer)
+      useUploadsStore.getState().clear(clientMsgId)
+    }
   }
 
   // Picked files awaiting the compose popup (caption + as-media/as-file choice).

@@ -109,6 +109,8 @@ export interface FeedFns {
   toggleReaction: (msgId: number, emoji: string) => void
   /** long-press / правый клик по чипу — показать, кто отреагировал */
   showReactedUsers: (msgId: number, x: number, y: number) => void
+  /** крестик на кольце прогресса — отменить аплоад и убрать оптимистичный бабл */
+  cancelUpload: (clientId: string) => void
 }
 
 // Чипы реакций под сообщением (tweb ReactionsElement, layout Block): пилюля 30px
@@ -315,10 +317,12 @@ function MessageRow({
               {chips && <div className={s.reactionsPad}>{chips}</div>}
             </div>
           </div>
-        ) : m.mediaId != null || m.localUrl ? (
+        ) : m.mediaId != null || m.localUrl || (m.clientId != null && m.mediaName != null) ? (
           // Outer (relative, NOT clipped) carries the tail; the inner clips the media
           // to the rounded corners. The tailed corner is squared off (like other bubbles).
-          // localUrl без mediaId = исходящее фото/видео в процессе аплоада.
+          // localUrl без mediaId = исходящее фото/видео в процессе аплоада;
+          // clientId+mediaName без mediaId = исходящий документ/аудио в процессе
+          // аплоада (кольцо прогресса + отмена рисует RealMediaBubble).
           <div className={s.media}>
             {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
             <div
@@ -357,6 +361,7 @@ function MessageRow({
                   autoDownload={autoDownload}
                   localUrl={m.localUrl}
                   clientId={m.clientId}
+                  onCancelUpload={feedFns.cancelUpload}
                   radius={(m.type === 'photo' || m.type === 'video') ? (m.text || chips ? '14px 14px 0 0' : '14px') : undefined}
                 />
               )}

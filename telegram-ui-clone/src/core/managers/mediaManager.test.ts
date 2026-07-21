@@ -22,7 +22,8 @@ describe('MediaManager', () => {
     const id = await mgr.upload({ bytes: new Uint8Array([1, 2, 3]).buffer, mime: 'image/png', size: 3, width: 10, height: 8 })
     expect(id).toBe(42)
     expect((rest as never as { post: ReturnType<typeof vi.fn> }).post).toHaveBeenCalled()
-    expect((rest as never as { putBytes: ReturnType<typeof vi.fn> }).putBytes).toHaveBeenCalledWith('/media/42/content', expect.anything(), 'image/png', undefined)
+    // без progressId нет ни колбэка прогресса, ни abort-сигнала
+    expect((rest as never as { putBytes: ReturnType<typeof vi.fn> }).putBytes).toHaveBeenCalledWith('/media/42/content', expect.anything(), 'image/png', undefined, undefined)
   })
 
   it('large file with a blob uses the chunked path: parts + finalize', async () => {

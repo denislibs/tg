@@ -117,6 +117,14 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 				return e
 			}
 			msg.SenderName = senderName
+			// Медиа-мета в live-кадр — как в Send (иначе файл у получателя
+			// заглушкой «media-N» до перезагрузки истории).
+			if msg.MediaID != nil {
+				one := []domain.Message{msg}
+				if e := i.hydrateMedia(ctx, one); e == nil {
+					msg = one[0]
+				}
+			}
 			payload, e := json.Marshal(messageUpdatePayload(msg))
 			if e != nil {
 				return e

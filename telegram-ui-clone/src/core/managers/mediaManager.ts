@@ -31,6 +31,9 @@ export function newMediaManager({ rest, onUploadProgress }: {
   onUploadProgress?: (id: string, loaded: number, total: number) => void
 }) {
   const metaCache = new Map<number, MediaMeta>()
+  // Активные аплоады по progressId (=clientMsgId) — для отмены с бабла (tweb
+  // ProgressivePreloader cancel): abort рвёт PUT, upload() кидает 'aborted'.
+  const uploadAborts = new Map<string, AbortController>()
   // Cached short-lived media token (refreshed ~1 min before expiry). It only
   // authorizes media reads, so it's safe to put in URLs (unlike the session token).
   let mediaToken = ''
@@ -52,6 +55,7 @@ export function newMediaManager({ rest, onUploadProgress }: {
     blob: Blob,
     a: UploadArgs,
     progress?: (loaded: number, total: number) => void,
+    signal?: AbortSignal,
   ): Promise<void> {
     const total = Math.max(1, Math.ceil(blob.size / CHUNK_SIZE))
     const loaded = new Array<number>(total).fill(0) // bytes acked per part (index-1)
@@ -68,12 +72,13 @@ export function newMediaManager({ rest, onUploadProgress }: {
           await rest.putBytes(`/media/${mediaId}/parts/${index}?total=${total}`, buf, a.mime, (l) => {
             loaded[index - 1] = l
             report()
-          })
+          }, signal)
           loaded[index - 1] = end - start
           report()
           return
         } catch (e) {
-          if (attempt >= PART_ATTEMPTS) throw e
+          // Отмена пользователем — не ретраить, пробрасываем сразу.
+          if (signal?.aborted || attempt >= PART_ATTEMPTS) throw e
         }
       }
     }
@@ -101,7 +106,7 @@ export function newMediaManager({ rest, onUploadProgress }: {
         await Promise.all(Array.from({ length: Math.min(PART_CONCURRENCY, queue.length) }, worker))
         break // all missing parts uploaded — done
       } catch (e) {
-        if (round === RESUME_ROUNDS - 1) throw e
+        if (signal?.aborted || round === RESUME_ROUNDS - 1) throw e
         // else: retry the round — re-query received and re-send what's still missing.
       }
     }
@@ -121,14 +126,26 @@ export function newMediaManager({ rest, onUploadProgress }: {
       const progress = a.progressId && onUploadProgress
         ? (loaded: number, total: number) => onUploadProgress(a.progressId!, loaded, total)
         : undefined
-      // Large files with a Blob → chunked/resumable path; everything else → single PUT.
-      if (a.blob && a.size > CHUNK_THRESHOLD) {
-        await uploadChunked(r.media_id, a.blob, a, progress)
-      } else {
-        const bytes = a.bytes ?? await a.blob!.arrayBuffer()
-        await rest.putBytes(`/media/${r.media_id}/content`, bytes, a.mime, progress)
+      // Отмена с бабла (tweb ProgressivePreloader cancel): abort рвёт PUT/части,
+      // upload() кидает 'aborted'. Регистрируется по progressId (=clientMsgId).
+      const ac = a.progressId ? new AbortController() : undefined
+      if (ac && a.progressId) uploadAborts.set(a.progressId, ac)
+      try {
+        // Large files with a Blob → chunked/resumable path; everything else → single PUT.
+        if (a.blob && a.size > CHUNK_THRESHOLD) {
+          await uploadChunked(r.media_id, a.blob, a, progress, ac?.signal)
+        } else {
+          const bytes = a.bytes ?? await a.blob!.arrayBuffer()
+          await rest.putBytes(`/media/${r.media_id}/content`, bytes, a.mime, progress, ac?.signal)
+        }
+      } finally {
+        if (a.progressId) uploadAborts.delete(a.progressId)
       }
       return r.media_id
+    },
+    // Отмена активного аплоада по progressId (clientMsgId оптимистичного бабла).
+    async cancelUpload(progressId: string): Promise<void> {
+      uploadAborts.get(progressId)?.abort()
     },
     async meta(id: number): Promise<MediaMeta> {
       const hit = metaCache.get(id)

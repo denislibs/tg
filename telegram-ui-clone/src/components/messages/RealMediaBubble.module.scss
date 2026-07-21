@@ -174,6 +174,22 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  cursor: pointer; // рендерится только во время аплоада — клик отменяет
+}
+
+// Кольцо прогресса с крестиком-отменой (tweb ProgressivePreloader: preloader +
+// .preloader-close). Крестик поверх кольца, клик отменяет аплоад.
+.cancelRing {
+  position: relative;
+  pointer-events: all;
+  cursor: pointer;
+}
+.cancelX {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
 }
 // hover (файл ещё не скачан): уголок разворачивается, расширение сменяется стрелкой
 .docRow:hover .docIco::after {

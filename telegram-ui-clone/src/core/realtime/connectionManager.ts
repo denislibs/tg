@@ -1,6 +1,6 @@
 // src/core/realtime/connectionManager.ts
 import type { WsClient } from '../net/wsClient'
-import type { ConnState } from './events'
+import type { ConnState, TypingAction } from './events'
 import type { MessageEntity } from '../models'
 
 export interface SendArgs { chatId: number; text: string; entities?: MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; replyQuoteText?: string | null; replyQuoteOffset?: number | null; mediaId?: number | null; type?: string; groupedId?: string; geo?: { lat: number; lng: number; title?: string; address?: string; livePeriod?: number; heading?: number }; contactUserId?: number; threadRootId?: number | null; encBody?: string; ttlSeconds?: number | null; silent?: boolean }
@@ -108,7 +108,7 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, 
     markRead(chatId: number, upToSeq: number) { if (ws.isOpen()) ws.send('read', { chat_id: chatId, up_to_seq: upToSeq }) },
     // «Прослушано/просмотрено» для голосового/кружка (tweb readMessageContents).
     markMediaRead(chatId: number, msgId: number) { if (ws.isOpen()) ws.send('read_media', { chat_id: chatId, msg_id: msgId }) },
-    sendTyping(chatId: number, action: 'typing' | 'voice' | 'video' = 'typing') { if (ws.isOpen()) ws.send('typing', { chat_id: chatId, action }) },
+    sendTyping(chatId: number, action: TypingAction = 'typing') { if (ws.isOpen()) ws.send('typing', { chat_id: chatId, action }) },
     // Call signaling is ephemeral (no outbox): a frame lost while offline is
     // meaningless seconds later — WebRTC re-negotiates on its own timers.
     sendCallFrame(type: string, data: Record<string, unknown>) { if (ws.isOpen()) ws.send(type, data) },

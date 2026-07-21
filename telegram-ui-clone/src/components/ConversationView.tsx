@@ -46,6 +46,7 @@ import { joinGroupCall } from '../core/calls/groupCallEngine'
 
 const EMPTY_IDS: number[] = []
 import { useMessagesStore } from '../stores/messagesStore'
+import { useUploadsStore } from '../stores/uploadsStore'
 import ChatHeader from './conversation/ChatHeader'
 import Menu, { MenuItem } from '../shared/ui/Menu'
 import IconButton from '../shared/ui/IconButton'
@@ -459,6 +460,13 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const mediaPlayedE = useEvent((msgId: number) => {
     if (isRealChat) markMediaPlayed(numericChatId, msgId)
   })
+  // Отмена аплоада с бабла (tweb ProgressivePreloader cancel): убрать бабл сразу,
+  // затем оборвать PUT в воркере (upload() кинет 'aborted' — fail будет no-op).
+  const cancelUploadE = useEvent((clientId: string) => {
+    useUploadsStore.getState().clear(clientId)
+    useMessagesStore.getState().removeOptimisticByClient(clientId)
+    void managers.media.cancelUpload(clientId)
+  })
   const feedFns = useMemo(
     () => ({
       openSender: openSenderE,
@@ -472,8 +480,9 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       roundPlaying: roundPlayingE,
       toggleReaction,
       showReactedUsers,
+      cancelUpload: cancelUploadE,
     }),
-    [openSenderE, playVoiceE, toggleSelectE, openMsgMenuE, jumpToSeqE, openLightboxE, recallE, mediaPlayedE, roundPlayingE, toggleReaction, showReactedUsers],
+    [openSenderE, playVoiceE, toggleSelectE, openMsgMenuE, jumpToSeqE, openLightboxE, recallE, mediaPlayedE, roundPlayingE, toggleReaction, showReactedUsers, cancelUploadE],
   )
 
   // (Ack reconcile + send-rejection run in realtimeBridge → messagesStore; live

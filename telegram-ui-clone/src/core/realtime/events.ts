@@ -33,6 +33,9 @@ export const RT = {
 export type ConnState = 'connecting' | 'ready' | 'reconnecting' | 'offline'
 
 export interface NewMessageEvt { chat_id: number; msg_id: number; seq: number; sender_id: number; type: string; text: string; entities?: MessageEntity[] | null; media_id: number | null; created_at: string; thread_root_id?: number | null; reply_to_id?: number | null; reply_quote_text?: string; reply_quote_offset?: number | null; fwd_from_user_id?: number | null; fwd_from_chat_id?: number | null; fwd_from_msg_id?: number | null; fwd_date?: string | null; media_unread?: boolean; sender_name?: string; grouped_id?: string | null; geo?: RawGeo | null; contact?: { user_id: number; name?: string; phone?: string } | null; gift?: import('../models').RawMessage['gift']; reply_markup?: import('../models').RawMessage['reply_markup'];
+  // Медиа-мета live-кадра (те же ключи, что history read model) — файл/фото
+  // рисуется полноценно сразу, без ожидания перезагрузки истории.
+  media_w?: number; media_h?: number; media_mime?: string; media_blur?: string; media_has_thumb?: boolean; media_duration?: number; media_size?: number; media_name?: string;
   /** E2E-медиа секретного чата — инжектится воркером после расшифровки enc_body (не проводное поле сервера) */
   secret_media?: import('../models').SecretMedia }
 export interface EditMessageEvt { chat_id: number; msg_id: number; seq: number; text: string; entities?: MessageEntity[] | null; edited_at: string; reply_markup?: import('../models').RawMessage['reply_markup'] }
@@ -59,7 +62,8 @@ export interface MediaReadEvt { chat_id: number; msg_id: number }
 export interface ChatRemovedEvt { chat_id: number; removed: true }
 // Черновик изменён на другом устройстве/вкладке (draft null — удалён).
 export interface DraftUpdateEvt { chat_id: number; draft: import('../models').RawDraft | null }
-export type TypingAction = 'typing' | 'voice' | 'video'
+// upload_* — на время аплоада медиа (tweb sendMessageUpload*Action: «отправляет файл/фото/…»)
+export type TypingAction = 'typing' | 'voice' | 'video' | 'upload_file' | 'upload_photo' | 'upload_video' | 'upload_audio'
 export interface TypingEvt { chat_id: number; user_id: number; action?: TypingAction }
 export interface PresenceEvt { user_id: number; online: boolean; last_seen: number }
 export interface ReactionEvt { chat_id: number; msg_id: number; user_id: number; emoji: string; action: 'add' | 'remove' }
