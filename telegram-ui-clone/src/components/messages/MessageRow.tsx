@@ -43,6 +43,8 @@ import {
 import RichText, { emojiOnlyCount } from '../RichText'
 import Emoji from '../emoji/Emoji'
 import StickerMedia from '../StickerMedia'
+import { useAnimatedEmoji } from '../../core/hooks/useAnimatedEmoji'
+import { effectForEmoji, playEmojiEffect } from '../../core/effects/emojiEffects'
 import { peerColor } from '../peerColor'
 import { fmtViews } from '../../core/fmtViews'
 import { useT } from '../../i18n'
@@ -396,21 +398,7 @@ function MessageRow({
             </div>
           </div>
         ) : bigEmoji ? (
-          <div className={s.sticker}>
-            <div
-              className={s.stickerGlyph}
-              style={{
-                fontSize: bigEmoji === 1 ? 56 : bigEmoji === 2 ? 46 : 38,
-                padding: '2px 0',
-              }}
-            >
-              {m.text}
-            </div>
-            <div className={s.stickerMeta}>
-              <Text size={12.5} color="#fff">{fmtTime(m.time)}</Text>
-              <Ticks status={m.status} color="var(--b-tick)" />
-            </div>
-          </div>
+          <BigEmojiBubble m={m} count={bigEmoji} selecting={selecting} fmtTime={fmtTime} />
         ) : m.type === 'voice' ? (
           <div className={s.voice} style={{ borderRadius: mediaRadius(out, lastInGroup) }}>
             {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
@@ -550,6 +538,58 @@ function MessageRow({
         </ZoneBody>
       </div>
     </BubbleAppear>
+  )
+}
+
+// Big emoji (tweb bubbles.ts bigEmojis): сообщение из 1–3 эмодзи без текста —
+// крупный глиф без фона бабла. РОВНО один эмодзи, у которого есть лотти в
+// сид-наборе animated_emoji, рендерится анимированным стикером (tweb
+// getAnimatedEmojiSticker → wrapSticker): autoplay ОДИН раз (не loop), replay по
+// клику. Клик по эффект-эмодзи (❤️/🎉/👍/…) — и по анимированному, и по
+// шрифтовому — запускает полноэкранный canvas-эффект из центра бабла.
+const ANIMATED_EMOJI_SIZE = 160
+function BigEmojiBubble({ m, count, selecting, fmtTime }: {
+  m: ConvMsg
+  count: number
+  selecting: boolean
+  fmtTime: (hhmm?: string) => string | undefined
+}) {
+  const emoji = count === 1 ? (m.text ?? '').trim() : null
+  const animated = useAnimatedEmoji(emoji)
+  const [replayToken, setReplayToken] = useState(0)
+  const boxRef = useRef<HTMLDivElement>(null)
+  const effect = emoji ? effectForEmoji(emoji) : null
+  // В selecting клик занят выбором, у error-бабла — меню переотправки.
+  const clickable = !selecting && m.status !== 'error' && (effect != null || animated != null)
+  const onClick = clickable
+    ? () => {
+        if (effect) {
+          const r = boxRef.current?.getBoundingClientRect()
+          playEmojiEffect(effect, r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : undefined)
+        }
+        if (animated) setReplayToken((t) => t + 1)
+      }
+    : undefined
+  return (
+    <div ref={boxRef} className={s.sticker} onClick={onClick} style={clickable ? { cursor: 'pointer' } : undefined}>
+      {animated ? (
+        <StickerMedia mediaId={animated.mediaId} width={ANIMATED_EMOJI_SIZE} height={ANIMATED_EMOJI_SIZE} autoplay replayToken={replayToken} />
+      ) : (
+        <div
+          className={s.stickerGlyph}
+          style={{
+            fontSize: count === 1 ? 56 : count === 2 ? 46 : 38,
+            padding: '2px 0',
+          }}
+        >
+          {m.text}
+        </div>
+      )}
+      <div className={s.stickerMeta}>
+        <Text size={12.5} color="#fff">{fmtTime(m.time)}</Text>
+        <Ticks status={m.status} color="var(--b-tick)" />
+      </div>
+    </div>
   )
 }
 

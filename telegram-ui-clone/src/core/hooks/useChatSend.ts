@@ -13,6 +13,7 @@ import type { MutableRefObject } from 'react'
 import { useEvent } from './useEvent'
 import { useVoiceRecorder } from './useVoiceRecorder'
 import { splitRich } from '../markdown'
+import { playEmojiEffect, sendEffectForText } from '../effects/emojiEffects'
 import type { MessageEntity } from '../models'
 import type { GifItem } from '../gifs'
 import type { Chat } from '../../data'
@@ -100,6 +101,10 @@ export function useChatSend({
   const sendReal = (text: string, entities?: MessageEntity[], replyTo: number | null = replyToId, ttlSeconds: number | null = null, silent = false) => {
     const clientMsgId = mkClientMsgId()
     atBottomRef.current = true; userScrolledUpRef.current = false // sending pins to bottom
+    // Ровно один эффект-эмодзи (❤️/🎉/👍/…) → полноэкранный canvas-эффект сразу
+    // после отправки; у получателя эффект играет только по клику на бабл.
+    const fx = sendEffectForText(text)
+    if (fx) playEmojiEffect(fx)
     if (chat.type === 'secret') {
       // Секретный чат: оптимистичный бабл с ПЛЕЙНТЕКСТОМ (тем же путём, что обычная
       // отправка — reconcile по clientMsgId работает как всегда), затем E2E-шифрование

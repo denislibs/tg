@@ -43,6 +43,7 @@ const StickerMedia = memo(function StickerMedia({
   loop = false,
   autoplay = false,
   playOnHover = false,
+  replayToken = 0,
 }: {
   mediaId: number
   width: number
@@ -53,6 +54,8 @@ const StickerMedia = memo(function StickerMedia({
   autoplay?: boolean
   /** пикер/саджесты: play() на mouseenter, stop() на mouseleave */
   playOnHover?: boolean
+  /** big-emoji: инкремент проигрывает lottie заново с первого кадра (replay по клику) */
+  replayToken?: number
 }) {
   const boxRef = useRef<HTMLDivElement>(null)
   const animRef = useRef<AnimationItem | null>(null)
@@ -83,6 +86,16 @@ const StickerMedia = memo(function StickerMedia({
       animRef.current = null
     }
   }, [content, loop, autoplay])
+
+  // Replay по клику big-emoji (tweb: клик по анимированному эмодзи проигрывает
+  // его заново): сброс на первый кадр + play при каждом инкременте токена.
+  useEffect(() => {
+    if (!replayToken) return
+    const anim = animRef.current
+    if (!anim) return
+    anim.goToAndStop(0, true)
+    anim.play()
+  }, [replayToken])
 
   const hoverProps = playOnHover
     ? {
