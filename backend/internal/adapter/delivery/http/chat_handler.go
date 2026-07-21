@@ -1307,6 +1307,9 @@ func messageJSON(m domain.Message) map[string]any {
 	if m.ReplyMarkup != nil {
 		j["reply_markup"] = m.ReplyMarkup
 	}
+	if m.WebPage != nil {
+		j["web_page"] = m.WebPage
+	}
 	if m.ReplyTo != nil {
 		rt := map[string]any{
 			"msg_id": m.ReplyTo.MsgID, "seq": m.ReplyTo.Seq, "sender_id": m.ReplyTo.SenderID,

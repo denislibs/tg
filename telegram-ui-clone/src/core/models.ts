@@ -106,6 +106,35 @@ export interface Dialog {
   lastMessage?: { seq: number; text: string; senderId: number; at: string; mediaId?: number; mediaType?: string; forwarded?: boolean; senderName?: string }
 }
 
+// Серверное превью ссылки (Telegram webPage): снимок og-тегов первой ссылки
+// текстового сообщения. Приходит с историей (web_page) или догоняющим
+// realtime-кадром web_page_update (превью строится после отправки).
+export interface RawWebPage {
+  url?: string
+  site_name?: string
+  title?: string
+  description?: string
+  image_url?: string
+}
+
+export interface WebPageData {
+  url?: string
+  siteName: string
+  title: string
+  description?: string
+  imageUrl?: string
+}
+
+export function mapWebPage(w: RawWebPage): WebPageData {
+  return {
+    url: w.url || undefined,
+    siteName: w.site_name ?? '',
+    title: w.title ?? '',
+    description: w.description || undefined,
+    imageUrl: w.image_url || undefined,
+  }
+}
+
 export interface RawMessage {
   id: number
   chat_id: number
@@ -148,6 +177,7 @@ export interface RawMessage {
   enc_body?: string | null
   ttl_seconds?: number | null
   destruct_at?: string | null
+  web_page?: RawWebPage | null
 }
 
 // Агрегат одной реакции на сообщении (emoji + счётчик + «моя»), tweb ReactionCount.
@@ -245,6 +275,8 @@ export interface Message {
   /** E2E-медиа секретного чата (расшифровывается на просмотре из mediaId+key+iv).
    * Инжектится клиентской расшифровкой (worker/bridge/history) — НЕ проводное поле. */
   secretMedia?: SecretMedia
+  /** серверное превью первой ссылки текстового сообщения (Telegram webPage) */
+  webPage?: WebPageData
 }
 
 // Опрос (backend PollInfo): вопрос + варианты + агрегаты для зрителя.
@@ -429,5 +461,6 @@ export function mapMessage(r: RawMessage): Message {
     encBody: r.enc_body ?? undefined,
     ttlSeconds: r.ttl_seconds ?? undefined,
     destructAt: r.destruct_at ?? undefined,
+    webPage: r.web_page ? mapWebPage(r.web_page) : undefined,
   }
 }

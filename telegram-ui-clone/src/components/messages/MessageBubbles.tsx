@@ -257,6 +257,9 @@ export function WebPagePreview({
   }
   return (
     <div className={s.webpage} data-out={out || undefined} style={{ borderLeft: `3px solid ${accent}` }}>
+      {wp.imageUrl && (
+        <img className={s.webPhoto} src={wp.imageUrl} alt="" loading="lazy" draggable={false} referrerPolicy="no-referrer" />
+      )}
       <Text size={14} weight={600} color={accent}>
         {wp.siteName}
       </Text>

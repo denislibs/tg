@@ -16,6 +16,17 @@ type MessageEntity struct {
 	UserID int64  `json:"user_id,omitempty"`  // target for text_mention (упоминание юзера без username)
 }
 
+// WebPagePreview — серверный снимок превью ссылки (Telegram webPage):
+// og-теги первой http/https-ссылки текстового сообщения. Хранится на
+// сообщении как jsonb (сообщение несёт снимок, кэш не нужен).
+type WebPagePreview struct {
+	URL         string `json:"url"`
+	SiteName    string `json:"site_name,omitempty"`
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
+	ImageURL    string `json:"image_url,omitempty"`
+}
+
 type Message struct {
 	ID           int64
 	ChatID       int64
@@ -108,6 +119,9 @@ type Message struct {
 	// прочтении получателем (now + ttl), затем reaper сносит блоб.
 	TTLSeconds *int
 	DestructAt *time.Time
+	// WebPage — серверное превью первой ссылки текстового сообщения (jsonb
+	// web_page). Заполняется асинхронно после отправки; nil — превью нет.
+	WebPage *WebPagePreview
 	// SenderName is the sender's short name (first name, else display name),
 	// populated on send for the new_message payload (not stored) — the client
 	// prefixes group chat-list previews with it, tweb-style.

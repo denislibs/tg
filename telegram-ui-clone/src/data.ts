@@ -76,8 +76,8 @@ export interface ConvMsg {
   document?: { name: string; size: string; ext: string; color: string }
   // audio / music
   audio?: { title: string; artist: string; duration: string }
-  // link preview attached to a text message
-  webPage?: { siteName: string; title: string; description?: string; gradient?: string; emoji?: string; url?: string }
+  // link preview attached to a text message (imageUrl — серверное og:image; gradient/emoji — легаси моков)
+  webPage?: { siteName: string; title: string; description?: string; gradient?: string; emoji?: string; url?: string; imageUrl?: string }
   /** лог 1:1 звонка (tweb messageActionPhoneCall): исход + длительность */
   call?: CallLog
   /** секретное сообщение (E2E) — включает таймер самоуничтожения в бабле */

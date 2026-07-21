@@ -14,6 +14,7 @@ import (
 	"github.com/messenger-denis/backend/internal/adapter/geoip"
 	"github.com/messenger-denis/backend/internal/adapter/gifsearch"
 	ivadapter "github.com/messenger-denis/backend/internal/adapter/iv"
+	"github.com/messenger-denis/backend/internal/adapter/linkpreview"
 	"github.com/messenger-denis/backend/internal/adapter/media/ffmpeg"
 	webpushadapter "github.com/messenger-denis/backend/internal/adapter/push/webpush"
 	queueredis "github.com/messenger-denis/backend/internal/adapter/queue/redis"
@@ -110,6 +111,10 @@ func registerServer(p serverParams) {
 	// Bot API: боты-сервисы с токенами (getUpdates/webhook, sendMessage, …) и
 	// @BotFather (создание/управление ботами, mini-app).
 	p.ChatUC.SetBotAPI(pgadapter.NewBotAPIRepo(p.Pool))
+
+	// Серверные превью ссылок: og-теги первой http/https-ссылки текстового
+	// сообщения, асинхронно после отправки (кадр web_page_update).
+	p.ChatUC.SetLinkPreviewer(linkpreview.New())
 
 	// Перевод сообщений: LibreTranslate-совместимый сервис (опционально).
 	if p.Cfg.TranslateURL != "" {

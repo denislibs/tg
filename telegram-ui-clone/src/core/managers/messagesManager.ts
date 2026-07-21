@@ -1,7 +1,7 @@
 // src/core/managers/messagesManager.ts
 import type { RestClient } from '../net/restClient'
-import { mapMessage, mapPoll, mapScheduled, mapGeo, type Message, type MessageEntity, type Poll, type RawMessage, type RawPoll, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
-import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt } from '../realtime/events'
+import { mapMessage, mapPoll, mapScheduled, mapGeo, mapWebPage, type Message, type MessageEntity, type Poll, type RawMessage, type RawPoll, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
+import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt } from '../realtime/events'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
 
 export interface HistoryArgs {
@@ -401,6 +401,21 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
         for (const [seq, m] of c) {
           if (m.id === evt.msg_id) {
             c.set(seq, { ...m, geo })
+            break
+          }
+        }
+      }
+    },
+
+    // Догоняющее серверное превью ссылки → кэш всех окон чата.
+    cacheWebPage(evt: WebPageUpdateEvt): void {
+      const webPage = mapWebPage(evt.web_page)
+      for (const key of keysOf(evt.chat_id)) {
+        const c = cache.get(key)
+        if (!c) continue
+        for (const [seq, m] of c) {
+          if (m.id === evt.msg_id) {
+            c.set(seq, { ...m, webPage })
             break
           }
         }

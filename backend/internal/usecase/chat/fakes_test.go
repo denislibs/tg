@@ -416,6 +416,20 @@ func (r fakeMsgs) Insert(_ context.Context, m domain.Message) (domain.Message, e
 	return m, nil
 }
 
+func (r fakeMsgs) SetWebPage(_ context.Context, msgID int64, wp *domain.WebPagePreview) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	for cid, msgs := range r.s.messages {
+		for idx, m := range msgs {
+			if m.ID == msgID && !m.Deleted {
+				r.s.messages[cid][idx].WebPage = wp
+				return nil
+			}
+		}
+	}
+	return nil
+}
+
 func (r fakeMsgs) LastMessageAt(_ context.Context, chatID, senderID int64) (time.Time, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()

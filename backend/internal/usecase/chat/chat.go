@@ -38,6 +38,7 @@ type Interactor struct {
 	translator  Translator
 	secret      SecretRepo
 	stickers    StickerAccess
+	preview     LinkPreviewer
 	botHub      *botPendingHub
 }
 
@@ -111,6 +112,10 @@ func (i *Interactor) SetSecret(s SecretRepo) { i.secret = s }
 // SetStickerAccess подключает проверку стикер-медиа (optional; без неё стикеры
 // нельзя слать чужим media и читать не-владельцу).
 func (i *Interactor) SetStickerAccess(s StickerAccess) { i.stickers = s }
+
+// SetLinkPreviewer подключает построитель превью ссылок (optional; без него
+// карточек web page под сообщениями нет).
+func (i *Interactor) SetLinkPreviewer(p LinkPreviewer) { i.preview = p }
 
 // nowMillis is the server clock used for update dates.
 func nowMillis() int64 { return time.Now().UnixMilli() }

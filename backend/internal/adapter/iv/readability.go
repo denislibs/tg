@@ -32,10 +32,16 @@ type Client struct{ http *http.Client }
 
 var _ usecaseiv.Fetcher = (*Client)(nil)
 
-// New строит клиент с SSRF-гардом в DialContext: хост резолвится, КАЖДЫЙ
-// адрес проверяется, соединение идёт на конкретный проверенный IP. Гард
-// срабатывает и на редиректах (каждый новый хост дозванивается заново).
+// New строит клиент с SSRF-гардом (см. NewSafeHTTPClient).
 func New() *Client {
+	return &Client{http: NewSafeHTTPClient(fetchTimeout)}
+}
+
+// NewSafeHTTPClient — общий HTTP-клиент с анти-SSRF гардом в DialContext: хост
+// резолвится, КАЖДЫЙ адрес проверяется, соединение идёт на конкретный
+// проверенный IP. Гард срабатывает и на редиректах (каждый новый хост
+// дозванивается заново). Используется Instant View и превью ссылок.
+func NewSafeHTTPClient(timeout time.Duration) *http.Client {
 	dialer := &net.Dialer{Timeout: 5 * time.Second}
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -54,8 +60,8 @@ func New() *Client {
 		},
 		TLSHandshakeTimeout: 5 * time.Second,
 	}
-	return &Client{http: &http.Client{
-		Timeout:   fetchTimeout,
+	return &http.Client{
+		Timeout:   timeout,
 		Transport: transport,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 5 {
@@ -66,7 +72,7 @@ func New() *Client {
 			}
 			return nil
 		},
-	}}
+	}
 }
 
 // Fetch загружает страницу и извлекает reader-mode статью.

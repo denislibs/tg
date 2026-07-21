@@ -169,6 +169,17 @@
   }
 }
 
+// серверная og:image превью — картинка сверху карточки
+.webPhoto {
+  display: block;
+  width: 100%;
+  max-height: 180px;
+  margin-top: 2px;
+  margin-bottom: 2px;
+  object-fit: cover;
+  border-radius: 10px;
+}
+
 .webImg {
   margin-top: 4px;
   height: 160px;

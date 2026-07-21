@@ -24,6 +24,7 @@ export const RT = {
   groupCall: 'rt:group_call',
   botCallbackAnswer: 'rt:bot_callback_answer',
   geoLiveUpdate: 'rt:geo_live_update',
+  webPageUpdate: 'rt:web_page_update',
   secretRequest: 'rt:secret_chat_request',
   secretAccept: 'rt:secret_chat_accept',
   secretReject: 'rt:secret_chat_reject',
@@ -41,6 +42,9 @@ export interface NewMessageEvt { chat_id: number; msg_id: number; seq: number; s
 export interface EditMessageEvt { chat_id: number; msg_id: number; seq: number; text: string; entities?: MessageEntity[] | null; edited_at: string; reply_markup?: import('../models').RawMessage['reply_markup'] }
 // Live-обновление координат гео-трансляции (geo_live_update).
 export interface GeoLiveUpdateEvt { chat_id: number; msg_id: number; seq: number; geo: RawGeo }
+// Догоняющее серверное превью ссылки (web_page_update): строится после
+// отправки, кадр патчит уже отрисованное сообщение карточкой web page.
+export interface WebPageUpdateEvt { chat_id: number; msg_id: number; seq: number; web_page: import('../models').RawWebPage }
 // Ответ бота на callback уже после таймаута синхронного ожидания — тост по WS.
 export interface BotCallbackAnswerEvt { text: string; alert: boolean }
 // Рукопожатие секретного чата (request/accept/reject) — realtimeBridge

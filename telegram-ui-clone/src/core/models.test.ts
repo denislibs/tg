@@ -60,6 +60,29 @@ describe('mapMessage', () => {
     }
     expect(mapMessage(raw).threadRootId).toBeNull()
   })
+
+  it('maps web_page (server link preview) to webPage', () => {
+    const raw: RawMessage = {
+      id: 13, chat_id: 1, seq: 3, sender_id: 1, type: 'text', text: 'https://example.com',
+      reply_to_id: null, media_id: null, created_at: '2026-06-24T10:01:00Z',
+      web_page: { url: 'https://example.com', site_name: 'Example', title: 'Заголовок', description: 'Описание', image_url: 'https://example.com/og.png' },
+    }
+    expect(mapMessage(raw).webPage).toEqual({
+      url: 'https://example.com', siteName: 'Example', title: 'Заголовок',
+      description: 'Описание', imageUrl: 'https://example.com/og.png',
+    })
+  })
+
+  it('drops empty web_page fields and defaults webPage to undefined', () => {
+    const base = {
+      id: 14, chat_id: 1, seq: 4, sender_id: 1, type: 'text', text: 'x',
+      reply_to_id: null, media_id: null, created_at: '2026-06-24T10:01:00Z',
+    }
+    expect(mapMessage({ ...base }).webPage).toBeUndefined()
+    expect(mapMessage({ ...base, web_page: null }).webPage).toBeUndefined()
+    const wp = mapMessage({ ...base, web_page: { title: 't' } }).webPage
+    expect(wp).toEqual({ url: undefined, siteName: '', title: 't', description: undefined, imageUrl: undefined })
+  })
 })
 
 describe('mapDraft', () => {

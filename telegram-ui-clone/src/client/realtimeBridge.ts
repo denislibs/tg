@@ -4,12 +4,12 @@ import { loadChats, useChatsStore } from '../stores/chatsStore'
 import { useMessagesStore } from '../stores/messagesStore'
 import { usePinsStore } from '../stores/pinsStore'
 import { useStarsStore } from '../stores/starsStore'
-import { mapMessage, mapDraft, mapPoll, mapGeo, type RawPoll } from '../core/models'
+import { mapMessage, mapDraft, mapPoll, mapGeo, mapWebPage, type RawPoll } from '../core/models'
 import { useDraftsStore } from '../stores/draftsStore'
 import { useUploadsStore } from '../stores/uploadsStore'
 import { uiEvents } from '../core/hooks/uiEvents'
 import { mapReplyMarkup } from '../core/managers/botsManager'
-import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt, type DraftUpdateEvt, type ReactionEvt, type BotCallbackAnswerEvt, type GeoLiveUpdateEvt } from '../core/realtime/events'
+import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt, type DraftUpdateEvt, type ReactionEvt, type BotCallbackAnswerEvt, type GeoLiveUpdateEvt, type WebPageUpdateEvt } from '../core/realtime/events'
 import { playMessageSent } from '../core/audio/sounds'
 import { notifyIncomingMessage } from './uiNotifications'
 import { useSettingsStore } from '../settings'
@@ -129,6 +129,12 @@ export function startRealtime(): void {
   smp.on(RT.geoLiveUpdate, (raw) => {
     const e = raw as GeoLiveUpdateEvt
     useMessagesStore.getState().applyGeoLive(e.chat_id, e.msg_id, mapGeo(e.geo))
+  })
+  // Догоняющее серверное превью ссылки: карточка web page добирается к уже
+  // отрисованному сообщению (сервер строит её после коммита отправки).
+  smp.on(RT.webPageUpdate, (raw) => {
+    const e = raw as WebPageUpdateEvt
+    useMessagesStore.getState().applyWebPage(e.chat_id, e.msg_id, mapWebPage(e.web_page))
   })
   // Pin/unpin: refetch the chat's pins and write them to the store (the only
   // socket subscription for pins — usePinnedBar just reads the store).

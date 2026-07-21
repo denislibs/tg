@@ -167,6 +167,15 @@ type MessageRepo interface {
 	ClearMediaUnread(ctx context.Context, msgID int64) (bool, error)
 	// ExpiredMessages — просроченные автоудалением (id/chat/seq) для воркера.
 	ExpiredMessages(ctx context.Context, limit int) ([]domain.Message, error)
+	// SetWebPage пишет серверное превью ссылки (messages.web_page) отдельным
+	// UPDATE после коммита отправки (Insert превью не несёт — оно догоняющее).
+	SetWebPage(ctx context.Context, msgID int64, wp *domain.WebPagePreview) error
+}
+
+// LinkPreviewer строит превью ссылки (og-теги страницы) для карточки web page
+// под текстовым сообщением. Опционален — без него превью отключены.
+type LinkPreviewer interface {
+	Preview(ctx context.Context, url string) (*domain.WebPagePreview, error)
 }
 
 type UpdateRepo interface {

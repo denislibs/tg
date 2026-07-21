@@ -269,6 +269,15 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			i.clearDraftAfterSend(ctx, in.SenderID, in.ChatID)
 		}
 	}
+	// Серверное превью ссылки (Telegram-семантика: превью строит сервер и
+	// рассылает всем): для нового текстового сообщения с http/https-ссылкой —
+	// асинхронно после коммита, кадром web_page_update (сервисные/секретные
+	// сообщения исключены: service не text, secret отсекается по типу чата).
+	if recipients != nil && i.preview != nil && in.Type == "text" {
+		if u := firstURL(msg.Text, msg.Entities); u != "" {
+			go i.attachWebPreview(msg, u, recipients)
+		}
+	}
 	// Авто-ответ бота: обычное текстовое сообщение в приватный чат с ботом.
 	if in.Type == "text" && in.Text != "" {
 		i.maybeBotReply(ctx, in.ChatID, in.SenderID, msg.ID, in.Text)
