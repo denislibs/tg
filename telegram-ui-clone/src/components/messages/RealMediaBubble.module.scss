@@ -87,8 +87,11 @@
   padding: 8px 10px;
 
   &[data-out] {
-    --m-primary: #fff;
-    --m-secondary: rgba(255, 255, 255, 0.7);
+    // Имя/подпись файла — тем же адаптивным цветом текста исходящего бабла
+    // (--tg-bubbleOutText: тёмный на светлой теме, белый на тёмной), а не
+    // хардкод #fff — иначе на светло-лавандовом out-бабле имя washed out.
+    --m-primary: var(--tg-bubbleOutText);
+    --m-secondary: color-mix(in srgb, var(--tg-bubbleOutText) 70%, transparent);
     --m-circle: rgba(255, 255, 255, 0.22);
   }
 }
