@@ -384,6 +384,42 @@ $active-fg: color-mix(in srgb, var(--tg-textPrimary) 80%, transparent); // rgba(
   }
 }
 
+// ── Вкладка GIF ──────────────────────────────────────────────────────────────
+// tweb .gifs-masonry в _emojiDropdown.scss: margin .25rem .1875rem .1875rem,
+// border-radius medium, overflow hidden. Кладка упрощена против tweb GifsMasonry:
+// ряды фиксированной высоты 117px, ширина ячейки по аспекту, flex-wrap, gap 2px;
+// flex-grow = ширине докладывает ряд до полной ширины. ::after — гигантский
+// filler, чтобы последний неполный ряд не растягивало на всю ширину.
+.gifsMasonry {
+  margin: 0.25rem 0.1875rem 0.1875rem;
+  border-radius: $border-radius-medium;
+  overflow: hidden;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+
+  &::after {
+    content: '';
+    flex-grow: 1000000;
+  }
+}
+
+.gifCell {
+  position: relative;
+  height: 117px;
+  background-color: $active-bg; // серый плейсхолдер до монтирования <video>
+  cursor: pointer;
+  overflow: hidden;
+
+  video,
+  img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+}
+
 // .emoticons-not-found
 .notFound {
   position: absolute;

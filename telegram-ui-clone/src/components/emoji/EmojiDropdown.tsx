@@ -21,7 +21,9 @@ import {
 import TgIcon, { type IconName } from '../TgIcon'
 import Emoji, { EMOJI_CDN_BASE, emojiCodepoints } from './Emoji'
 import StickersTab from './StickersTab'
+import GifsTab from './GifsTab'
 import type { Sticker } from '../../core/managers/stickersManager'
+import type { GifItem } from '../../core/gifs'
 import { CATEGORIES, DEFAULT_FREQUENT, QUICK_CHIPS, searchEmojisByWord } from './emojiData'
 import { useT } from '../../i18n'
 import classNames from '../../shared/lib/classNames'
@@ -211,6 +213,7 @@ export default function EmojiDropdown({
   open,
   onPick,
   onPickSticker,
+  onPickGif,
   onClose,
   onDelete,
   onExitComplete,
@@ -221,6 +224,8 @@ export default function EmojiDropdown({
   onPick: (emoji: string) => void
   /** включает вкладку стикеров (композер); выбор закрывает дропдаун (tweb) */
   onPickSticker?: (st: Sticker) => void
+  /** включает вкладку GIF (композер, не реакции); выбор закрывает дропдаун */
+  onPickGif?: (g: GifItem) => void
   onClose: () => void
   /** показать кнопку backspace в нижних табах (композер) */
   onDelete?: () => void
@@ -246,11 +251,13 @@ export default function EmojiDropdown({
   const [query, setQuery] = useState('')
   const [group, setGroup] = useState<{ e: string; q: string } | null>(null)
   const [focused, setFocused] = useState(false)
-  // Вкладки нижней панели (tweb tabs-container): обе в DOM, переключение display;
-  // вкладка стикеров монтируется лениво при первом открытии.
-  const [tab, setTab] = useState<'emoji' | 'stickers'>('emoji')
+  // Вкладки нижней панели (tweb tabs-container): все в DOM, переключение display;
+  // вкладки стикеров/GIF монтируются лениво при первом открытии.
+  const [tab, setTab] = useState<'emoji' | 'stickers' | 'gifs'>('emoji')
   const [stickersMounted, setStickersMounted] = useState(false)
   if (tab === 'stickers' && !stickersMounted) setStickersMounted(true)
+  const [gifsMounted, setGifsMounted] = useState(false)
+  if (tab === 'gifs' && !gifsMounted) setGifsMounted(true)
 
   // Открытие/закрытие 1:1 tweb DropdownHover.toggle: display='' → форс-reflow →
   // класс active (transition играет); закрытие: снять active → через 200 мс display:none.
@@ -494,6 +501,18 @@ export default function EmojiDropdown({
               />
             </div>
           )}
+          {/* вкладка GIF: keep-mounted после первого открытия (tweb tabs) */}
+          {gifsMounted && onPickGif && (
+            <div style={tab === 'gifs' ? { height: '100%' } : { display: 'none' }}>
+              <GifsTab
+                active={open && tab === 'gifs'}
+                onPick={(g) => {
+                  onPickGif(g)
+                  onClose()
+                }}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -522,6 +541,15 @@ export default function EmojiDropdown({
             onClick={() => setTab('stickers')}
           >
             <TgIcon name="stickers_face" size={24} />
+          </button>
+        )}
+        {onPickGif && (
+          <button
+            type="button"
+            className={classNames(s.tabBtn, tab === 'gifs' ? s.active : '')}
+            onClick={() => setTab('gifs')}
+          >
+            <TgIcon name="gifs" size={24} />
           </button>
         )}
         {onDelete && (

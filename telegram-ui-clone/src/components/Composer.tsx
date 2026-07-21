@@ -18,6 +18,7 @@ import EmojiDropdown, { useDropdownHover } from './emoji/EmojiDropdown'
 import EmojiHelper from './EmojiHelper'
 import StickersHelper, { stickerSuggestEmoji } from './StickersHelper'
 import type { Sticker } from '../core/managers/stickersManager'
+import type { GifItem } from '../core/gifs'
 import MentionsHelper from './MentionsHelper'
 import InlineResultsHelper from './InlineResultsHelper'
 import type { InlineResult } from '../core/managers/botsManager'
@@ -65,6 +66,8 @@ interface Props {
   // Отправка стикера (пикер/саджесты) — включает вкладку стикеров в дропдауне
   // и панель саджестов по одиночному эмодзи (tweb StickersHelper).
   onPickSticker?: (st: Sticker) => void
+  // Отправка GIF из пикера — включает вкладку GIF в дропдауне (композер, не реакции).
+  onPickGif?: (g: GifItem) => void
   onCancelReply: () => void
   onCancelEdit: () => void
   // Open the attach menu anchored to the paperclip button.
@@ -143,7 +146,7 @@ function placeCaretEnd(el: HTMLElement) {
 }
 
 function Composer({
-  reply, editing, rec, onSend, onTyping, onPickSticker, onCancelReply, onCancelEdit, onOpenAttach, onPasteFiles,
+  reply, editing, rec, onSend, onTyping, onPickSticker, onPickGif, onCancelReply, onCancelEdit, onOpenAttach, onPasteFiles,
   initialDraft, onDraftChange, mentions, onInlineQuery, onPickInline, botMenuButton, onSchedule, scheduledCount, onOpenScheduled, slowmodeLeft, secret,
 }: Props) {
   const slowmodeBlocked = (slowmodeLeft ?? 0) > 0
@@ -961,6 +964,7 @@ function Composer({
             open={emojiDd.open}
             onPick={insertEmoji}
             onPickSticker={onPickSticker}
+            onPickGif={onPickGif}
             onDelete={deleteBeforeCaret}
             onClose={emojiDd.close}
             panelProps={emojiDd.panelProps}

@@ -805,6 +805,14 @@ const ru: Dict = {
   'Search sticker sets': 'Поиск наборов стикеров',
   stickers: 'стикеров',
   'No sticker sets installed': 'Нет установленных наборов',
+  // GIF (вкладка пикера, контекстные меню)
+  'Search GIFs': 'Поиск GIF',
+  'Saved GIFs': 'Сохранённые GIF',
+  Trending: 'Популярные',
+  'No GIFs found': 'GIF не найдены',
+  'Delete GIF': 'Удалить GIF',
+  'Save GIF': 'Сохранить GIF',
+  'GIF saved to your GIFs.': 'GIF добавлен в сохранённые',
 }
 
 const uk: Dict = {

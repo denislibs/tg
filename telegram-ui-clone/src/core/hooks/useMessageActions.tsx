@@ -13,6 +13,9 @@ import { peerColor } from '../../components/peerColor'
 import { useEvent } from './useEvent'
 import { useMessagesStore, winKey } from '../../stores/messagesStore'
 import { useSettingsStore } from '../../settings'
+import { uiEvents } from './uiEvents'
+import { isGifLike } from '../gifs'
+import { useT } from '../../i18n'
 import type { Chat, ConvMsg } from '../../data'
 import type { Managers } from '../../client/bootstrap'
 import type { MessageWindow } from './useMessageWindow'
@@ -49,6 +52,7 @@ export function useMessageActions({
   chat, numericChatId, isRealChat, win, msgs, meId, pins, managers, accent,
   setReply, setEditing, setSelectionMode, setSelected, clearSelection, onChatCreated,
 }: UseMessageActionsArgs) {
+  const t = useT()
   const [msgMenu, setMsgMenu] = useState<MsgMenu | null>(null)
   // Ответ с цитатой: текст, выделенный внутри сообщения на момент открытия меню
   // (right-click сохраняет выделение), плюс его offset (UTF-16) в тексте сообщения.
@@ -218,6 +222,17 @@ export function useMessageActions({
     a.remove()
   }
 
+  // «Сохранить GIF» для гифоподобных видео-сообщений (критерий core/gifs.isGifLike):
+  // POST /gifs/saved — гиф появляется во вкладке GIF пикера (лимит 200 LIFO на бэке).
+  const saveGifFromMsg = () => {
+    const raw = menuRawMsg()
+    closeMsgMenu()
+    if (raw?.mediaId == null) return
+    void managers.stickers.saveGif(raw.mediaId)
+      .then(() => uiEvents.emit('ui:toast', t('GIF saved to your GIFs.')))
+      .catch(() => {})
+  }
+
   const showViewers = async (e: React.MouseEvent) => {
     const raw = menuRawMsg()
     const x = e.clientX, y = e.clientY
@@ -307,6 +322,13 @@ export function useMessageActions({
           onClick: togglePin,
         }]
       : []),
+    ...(() => {
+      const raw = menuRawMsg()
+      return isRealChat && raw?.mediaId != null
+        && isGifLike({ mime: raw.mediaMime, fileName: raw.mediaName, duration: raw.mediaDuration })
+        ? [{ icon: <TgIcon name="gifs" size={20} />, label: 'Save GIF', onClick: saveGifFromMsg }]
+        : []
+    })(),
     ...(isRealChat && menuRawMsg()?.mediaId != null
       ? [{ icon: <TgIcon name="download" size={20} />, label: 'Download', onClick: downloadMsg }]
       : []),

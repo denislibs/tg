@@ -21,6 +21,7 @@ import { useManagers } from '../core/hooks/useManagers'
 import { useMessageWindow } from '../core/hooks/useMessageWindow'
 import { useEvent } from '../core/hooks/useEvent'
 import { markMediaPlayed } from '../core/mediaRead'
+import type { GifItem } from '../core/gifs'
 import { useChatSelection } from '../core/hooks/useChatSelection'
 import { useChatInfoCard } from '../core/hooks/useChatInfoCard'
 import { usePinnedBar } from '../core/hooks/usePinnedBar'
@@ -383,7 +384,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     onComposerTyping,
     pendingMedia, setPendingMedia, sendPendingMedia,
     openPicker, fileInputRef, pickAsFileRef,
-    sendGeo, sendContact, sendSticker,
+    sendGeo, sendContact, sendSticker, sendGif,
   } = useChatSend({
     chat, numericChatId, isRealChat, isChannel, draftPeerId, canType, secretLocked,
     meId, win, managers, threadRootId, atBottomRef, userScrolledUpRef,
@@ -615,6 +616,8 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // Стикер из пикера/саджестов; каналы постят через REST (стикеры не шлём),
   // секретные чаты — E2E-путь без обычного медиа.
   const onComposerPickSticker = useEvent((st: { id: number; mediaId: number; emoji: string }) => { sendSticker(st); slowmodeMarkSent() })
+  // GIF из вкладки пикера — те же ограничения, что у стикеров (не канал, не секретный).
+  const onComposerPickGif = useEvent((g: GifItem) => { sendGif(g); slowmodeMarkSent() })
   const onComposerCancelReply = useEvent(() => setReply(null))
   const onComposerCancelEdit = useEvent(() => setEditing(null))
   const onComposerOpenAttach = useEvent((r: DOMRect) => setAttachAnchor({ left: r.left, bottom: window.innerHeight - r.top + 8 }))
@@ -854,6 +857,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               onSend={onComposerSend}
               onTyping={onComposerTyping}
               onPickSticker={canType && !isChannel && chat.type !== 'secret' ? onComposerPickSticker : undefined}
+              onPickGif={canType && !isChannel && chat.type !== 'secret' ? onComposerPickGif : undefined}
               onCancelReply={onComposerCancelReply}
               onCancelEdit={onComposerCancelEdit}
               onOpenAttach={onComposerOpenAttach}

@@ -23,7 +23,7 @@ import type { Session } from '../core/managers/sessionsManager'
 import type { IceConfig } from '../core/managers/callsManager'
 import type { StarGift, GiftInfo } from '../core/managers/starsManager'
 import type { BotCommand, CallbackAnswer, InlineResult } from '../core/managers/botsManager'
-import type { StickerSet, Sticker } from '../core/managers/stickersManager'
+import type { StickerSet, Sticker, SavedGif, GifPage } from '../core/managers/stickersManager'
 
 export interface Managers {
   health: { check(): Promise<HealthStatus> }
@@ -268,6 +268,10 @@ export interface Managers {
     unfave(stickerId: number): Promise<void>
     use(stickerId: number): Promise<void>
     searchByEmoji(emoji: string): Promise<Sticker[]>
+    savedGifs(): Promise<SavedGif[]>
+    saveGif(mediaId: number): Promise<void>
+    deleteGif(mediaId: number): Promise<void>
+    searchGifs(q: string, pos?: string): Promise<GifPage>
   }
 }
 

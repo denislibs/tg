@@ -14,6 +14,7 @@ import { useEvent } from './useEvent'
 import { useVoiceRecorder } from './useVoiceRecorder'
 import { splitRich } from '../markdown'
 import type { MessageEntity } from '../models'
+import type { GifItem } from '../gifs'
 import type { Chat } from '../../data'
 import type { MessageWindow } from './useMessageWindow'
 import type { Managers } from '../../client/bootstrap'
@@ -150,6 +151,61 @@ export function useChatSend({
       void managers.stickers.use(st.id).catch(() => {})
       window.dispatchEvent(new Event('tg-send'))
       if (draftPeerId != null) onChatCreated?.(cid)
+    })()
+  }
+
+  // GIF из вкладки пикера. Сохранённый (media наше) — оптимистичный бабл type
+  // 'video' с mediaId сразу + send_message, как стикер. Tenor — скачиваем mp4 в
+  // блоб (main-thread, как file picker), оптимистичный бабл с localUrl и кольцом
+  // прогресса (паттерн isVisual из onPickFile), аплоад → send_message type
+  // 'video'; отправленный Tenor-гиф автосохраняется в /gifs/saved (Telegram:
+  // «отправил → появился в сохранённых»).
+  const sendGif = (g: GifItem) => {
+    if (!canType || secretLocked || chat.type === 'secret') return
+    const clientMsgId = mkClientMsgId()
+    atBottomRef.current = true; userScrolledUpRef.current = false
+    if (g.mediaId != null) {
+      const mediaId = g.mediaId
+      void (async () => {
+        let cid = numericChatId
+        if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
+        if (isRealChat) {
+          win.appendOptimistic('', meId ?? -1, clientMsgId, mediaId, 'video', undefined, undefined, {
+            width: g.width, height: g.height, mime: g.mime, size: g.size, name: g.fileName,
+          })
+        }
+        void managers.realtime.sendMessage({ chatId: cid, text: '', clientMsgId, mediaId, type: 'video', threadRootId })
+        window.dispatchEvent(new Event('tg-send'))
+        if (draftPeerId != null) onChatCreated?.(cid)
+      })()
+      return
+    }
+    if (!g.mp4Url || !isRealChat) return
+    void (async () => {
+      let blob: Blob
+      try {
+        const res = await fetch(g.mp4Url!)
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        blob = await res.blob()
+      } catch {
+        return // CDN не отдал mp4 — отправлять нечего
+      }
+      const localUrl = URL.createObjectURL(blob)
+      win.appendOptimistic('', meId ?? -1, clientMsgId, undefined, 'video', undefined, undefined, {
+        localUrl, width: g.width, height: g.height, mime: 'video/mp4', size: blob.size, name: 'tenor.mp4',
+      })
+      useUploadsStore.getState().setProgress(clientMsgId, 0)
+      window.dispatchEvent(new Event('tg-send'))
+      try {
+        const mediaId = await managers.media.upload({ blob, mime: 'video/mp4', size: blob.size, width: g.width, height: g.height, fileName: 'tenor.mp4', progressId: clientMsgId })
+        useMessagesStore.getState().setOptimisticMedia(winKey(numericChatId, threadRootId), clientMsgId, mediaId)
+        void managers.realtime.sendMessage({ chatId: numericChatId, text: '', clientMsgId, mediaId, type: 'video', threadRootId })
+        void managers.stickers.saveGif(mediaId).catch(() => {})
+      } catch {
+        useMessagesStore.getState().failOptimisticByClient(clientMsgId)
+      } finally {
+        useUploadsStore.getState().clear(clientMsgId)
+      }
     })()
   }
 
@@ -359,6 +415,6 @@ export function useChatSend({
     onComposerTyping,
     pendingMedia, setPendingMedia, sendPendingMedia,
     openPicker, fileInputRef, pickAsFileRef,
-    sendGeo, sendContact, sendSticker,
+    sendGeo, sendContact, sendSticker, sendGif,
   }
 }

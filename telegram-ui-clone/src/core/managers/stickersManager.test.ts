@@ -84,4 +84,46 @@ describe('StickersManager', () => {
       { method: 'DELETE', path: '/sticker-sets/3/install' },
     ])
   })
+
+  // ── GIF ──
+
+  it('savedGifs maps media_id -> mediaId and tolerates an empty payload', async () => {
+    const { rest, calls } = fakeRest({ gifs: [{ media_id: 42 }, { media_id: 7 }] })
+    const mgr = newStickersManager({ rest })
+    expect(await mgr.savedGifs()).toEqual([{ mediaId: 42 }, { mediaId: 7 }])
+    expect(calls[0]).toEqual({ method: 'GET', path: '/gifs/saved', query: undefined })
+    const { rest: emptyRest } = fakeRest({})
+    expect(await newStickersManager({ rest: emptyRest }).savedGifs()).toEqual([])
+  })
+
+  it('saveGif/deleteGif hit POST /gifs/saved and DELETE /gifs/saved/:id', async () => {
+    const { rest, calls } = fakeRest()
+    const mgr = newStickersManager({ rest })
+    await mgr.saveGif(42)
+    await mgr.deleteGif(42)
+    expect(calls).toEqual([
+      { method: 'POST', path: '/gifs/saved', body: { media_id: 42 } },
+      { method: 'DELETE', path: '/gifs/saved/42' },
+    ])
+  })
+
+  it('searchGifs maps the Tenor page snake->camel and passes q/pos', async () => {
+    const { rest, calls } = fakeRest({
+      gifs: [{ id: 'abc', mp4_url: 'https://t/a.mp4', gif_url: 'https://t/a.gif', preview_url: 'https://t/a.png', width: 200, height: 100 }],
+      next: 'cursor1',
+    })
+    const mgr = newStickersManager({ rest })
+    const page = await mgr.searchGifs('cats', 'pos0')
+    expect(calls[0]).toEqual({ method: 'GET', path: '/gifs/search', query: { q: 'cats', pos: 'pos0' } })
+    expect(page).toEqual({
+      gifs: [{ id: 'abc', mp4Url: 'https://t/a.mp4', gifUrl: 'https://t/a.gif', previewUrl: 'https://t/a.png', width: 200, height: 100 }],
+      next: 'cursor1',
+    })
+  })
+
+  it('searchGifs without a Tenor key returns an empty page (gifs missing/next empty)', async () => {
+    const { rest } = fakeRest({ gifs: [], next: '' })
+    const mgr = newStickersManager({ rest })
+    expect(await mgr.searchGifs('')).toEqual({ gifs: [], next: '' })
+  })
 })
