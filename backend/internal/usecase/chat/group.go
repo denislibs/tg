@@ -98,7 +98,7 @@ func (i *Interactor) CreateGroup(ctx context.Context, creatorID int64, title, ab
 	}
 	// Primary-инвайт существует у группы с рождения (tweb exported_invite).
 	if i.invites != nil {
-		_, _ = i.invites.Create(ctx, chatID, creatorID, tokenGen(), nil, false)
+		_, _ = i.invites.Create(ctx, chatID, creatorID, tokenGen(), nil, false, nil)
 	}
 	i.postGroupService(ctx, chatID, creatorID, serviceText("group_create", i.userCard(ctx, creatorID), nil))
 	return chatID, nil
@@ -275,11 +275,11 @@ func (i *Interactor) ListMembers(ctx context.Context, chatID, viewerID int64, of
 	return i.groups.ListMembers(ctx, chatID, offset, limit)
 }
 
-func (i *Interactor) CreateInvite(ctx context.Context, chatID, actorID int64, usageLimit *int, requiresApproval bool) (domain.InviteLink, error) {
+func (i *Interactor) CreateInvite(ctx context.Context, chatID, actorID int64, usageLimit *int, requiresApproval bool, expiresAt *time.Time) (domain.InviteLink, error) {
 	if err := i.requireRight(ctx, chatID, actorID, domain.RightInviteUsers); err != nil {
 		return domain.InviteLink{}, err
 	}
-	return i.invites.Create(ctx, chatID, actorID, tokenGen(), usageLimit, requiresApproval)
+	return i.invites.Create(ctx, chatID, actorID, tokenGen(), usageLimit, requiresApproval, expiresAt)
 }
 
 func (i *Interactor) ListInvites(ctx context.Context, chatID, actorID int64) ([]domain.InviteLink, error) {
@@ -304,6 +304,10 @@ func (i *Interactor) JoinByToken(ctx context.Context, token string, userID int64
 	link, err := i.invites.GetByToken(ctx, token)
 	if err != nil {
 		return false, err
+	}
+	// Просроченная ссылка недействительна (tweb: expired invite → нельзя войти).
+	if link.ExpiresAt != nil && link.ExpiresAt.Before(time.Now()) {
+		return false, domain.ErrForbidden
 	}
 	if banned, e := i.groups.IsBanned(ctx, link.ChatID, userID); e == nil && banned {
 		return false, domain.ErrForbidden // из чёрного списка по ссылке не возвращаются

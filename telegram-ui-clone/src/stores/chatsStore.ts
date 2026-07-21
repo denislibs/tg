@@ -172,8 +172,8 @@ export const useChatsStore = create<ChatsState>((set) => ({
       if (idx === -1) return {}
       const next = s.dialogs.slice()
       if (r.user_id === s.meId) {
-        // my own read (also echoed to my other tabs) → clear unread + advance my horizon
-        next[idx] = { ...next[idx], unread: 0, lastReadSeq: Math.max(next[idx].lastReadSeq, r.up_to_seq) }
+        // my own read (also echoed to my other tabs) → clear unread (+ mentions) + advance my horizon
+        next[idx] = { ...next[idx], unread: 0, unreadMentions: 0, lastReadSeq: Math.max(next[idx].lastReadSeq, r.up_to_seq) }
       } else {
         // the OTHER side read my messages → advance the peer horizon (out ticks → ✓✓)
         next[idx] = { ...next[idx], peerReadSeq: Math.max(next[idx].peerReadSeq, r.up_to_seq) }

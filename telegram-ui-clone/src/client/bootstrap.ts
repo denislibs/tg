@@ -5,7 +5,7 @@ import type { User } from '../core/managers/authManager'
 import type { ProfileUpdate, SetUsernameResult } from '../core/managers/profileManager'
 import type { Dialog, Draft } from '../core/models'
 import type { Message, MessageEntity, Poll, Scheduled } from '../core/models'
-import type { HistoryArgs, HistoryResult, SendArgs } from '../core/managers/messagesManager'
+import type { HistoryArgs, HistoryResult, SendArgs, ReactionUser } from '../core/managers/messagesManager'
 import type { ConnState, PresenceEvt } from '../core/realtime/events'
 import type { UploadArgs, MediaMeta } from '../core/managers/mediaManager'
 import type { SavedDialog } from '../core/managers/chatsManager'
@@ -54,6 +54,8 @@ export interface Managers {
     checkUsername(username: string): Promise<{ available: boolean; reason?: string }>
     setUsername(username: string): Promise<SetUsernameResult>
     setAvatar(mediaId: number): Promise<User>
+    setEmojiStatus(emoji: string): Promise<User>
+    activatePremium(): Promise<User>
     addPhoto(mediaId: number, videoMediaId?: number): Promise<import('../core/managers/profileManager').ProfilePhoto>
     listPhotos(userId: number): Promise<import('../core/managers/profileManager').ProfilePhoto[]>
     deletePhoto(photoId: number): Promise<void>
@@ -63,6 +65,7 @@ export interface Managers {
     createPrivate(userId: number): Promise<number>
     saved(): Promise<number>
     savedDialogs(): Promise<SavedDialog[]>
+    clearHistory(chatId: number): Promise<void>
   }
   messages: {
     getHistory(args: HistoryArgs): Promise<HistoryResult>
@@ -74,6 +77,7 @@ export interface Managers {
     unpin(chatId: number, msgId: number): Promise<{ ok: boolean }>
     listPins(chatId: number): Promise<Message[]>
     viewers(chatId: number, msgId: number): Promise<number[]>
+    reactionUsers(chatId: number, msgId: number): Promise<ReactionUser[]>
     searchMessages(chatId: number, q: string, offset?: number, limit?: number): Promise<{ messages: Message[]; count: number }>
     searchGlobal(q: string, filter?: '' | 'media' | 'files' | 'links' | 'music' | 'voice', offset?: number, limit?: number): Promise<{ messages: Message[]; count: number }>
     sendPoll(chatId: number, p: { question: string; options: string[]; anonymous: boolean; multiple: boolean; quiz: boolean; correctOption?: number; clientMsgId?: string }): Promise<Message>
@@ -95,7 +99,7 @@ export interface Managers {
   }
   realtime: {
     start(): Promise<{ state: ConnState }>
-    sendMessage(args: { chatId: number; text: string; entities?: MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; mediaId?: number | null; type?: string; groupedId?: string; geo?: { lat: number; lng: number; title?: string; address?: string; livePeriod?: number; heading?: number }; contactUserId?: number; threadRootId?: number | null; encBody?: string; ttlSeconds?: number | null }): Promise<{ ok: boolean }>
+    sendMessage(args: { chatId: number; text: string; entities?: MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; replyQuoteText?: string | null; replyQuoteOffset?: number | null; mediaId?: number | null; type?: string; groupedId?: string; geo?: { lat: number; lng: number; title?: string; address?: string; livePeriod?: number; heading?: number }; contactUserId?: number; threadRootId?: number | null; encBody?: string; ttlSeconds?: number | null; silent?: boolean }): Promise<{ ok: boolean }>
     markRead(args: { chatId: number; upToSeq: number }): Promise<{ ok: boolean }>
     markMediaRead(args: { chatId: number; msgId: number }): Promise<{ ok: boolean }>
     sendTyping(args: { chatId: number; action?: 'typing' | 'voice' | 'video' }): Promise<{ ok: boolean }>
@@ -149,6 +153,9 @@ export interface Managers {
     listBans(chatId: number): Promise<{ userId: number; bannedBy: number }[]>
     ban(chatId: number, userId: number): Promise<void>
     unban(chatId: number, userId: number): Promise<void>
+    listRestrictions(chatId: number): Promise<{ userId: number; deniedRights: number; untilDate?: string; restrictedBy: number }[]>
+    restrictMember(chatId: number, userId: number, deniedRights: number, untilSeconds?: number): Promise<void>
+    unrestrictMember(chatId: number, userId: number): Promise<void>
     removeMember(chatId: number, userId: number): Promise<void>
     revokeInvite(chatId: number, token: string): Promise<void>
     deleteGroup(chatId: number): Promise<void>
@@ -157,15 +164,18 @@ export interface Managers {
     setPin(chatId: number, pinned: boolean): Promise<void>
     setArchive(chatId: number, archived: boolean): Promise<void>
     setForum(chatId: number, enabled: boolean): Promise<void>
-    createTopic(chatId: number, title: string, iconColor: number): Promise<{ id: number; rootMsgId: number }>
+    createTopic(chatId: number, title: string, iconColor: number, iconEmoji?: string): Promise<{ id: number; rootMsgId: number }>
     listTopics(chatId: number): Promise<import('../core/managers/groupsManager').TopicRow[]>
     closeTopic(chatId: number, topicId: number, closed: boolean): Promise<void>
+    editTopic(chatId: number, topicId: number, title: string, iconColor: number, iconEmoji?: string): Promise<void>
+    setTopicHidden(chatId: number, topicId: number, hidden: boolean): Promise<void>
+    setTopicPinned(chatId: number, topicId: number, pinned: boolean): Promise<void>
     card(chatId: number): Promise<GroupCard>
     members(chatId: number): Promise<{ userId: number; role: string; online: boolean }[]>
     promoteAdmin(chatId: number, userId: number, rights: number): Promise<void>
     demoteAdmin(chatId: number, userId: number): Promise<void>
-    createInvite(chatId: number, opts?: { usageLimit?: number; requiresApproval?: boolean }): Promise<{ token: string; url: string; requiresApproval: boolean }>
-    listInvites(chatId: number): Promise<{ token: string; uses: number; url: string; requiresApproval: boolean }[]>
+    createInvite(chatId: number, opts?: { usageLimit?: number; requiresApproval?: boolean; expireSeconds?: number }): Promise<{ token: string; url: string; requiresApproval: boolean; expiresAt?: string }>
+    listInvites(chatId: number): Promise<{ token: string; uses: number; url: string; requiresApproval: boolean; expiresAt?: string }[]>
     joinByToken(token: string): Promise<{ status: 'requested' | 'joined' }>
     listJoinRequests(chatId: number): Promise<number[]>
     approveRequest(chatId: number, userId: number): Promise<void>

@@ -20,8 +20,22 @@ import s from './TopicsPanel.module.scss'
 // tweb TOPIC_COLORS (constants.ts)
 export const TOPIC_COLORS = ['#6FB9F0', '#FFD67E', '#CB86DB', '#8EEE98', '#FF93B2', '#FB6F5F']
 
-// Иконка темы (tweb topicAvatar: градиентный значок-вымпел с аббревиатурой)
-export function TopicIcon({ color, title, size = 26 }: { color: number; title: string; size?: number }) {
+// Короткий набор unicode-emoji для иконки темы (custom-emoji инфраструктуры нет).
+const TOPIC_EMOJI = ['💬', '📌', '🔥', '⭐', '✅', '💡', '🎉', '❤️', '🚀', '📷', '🎵', '⚽', '🍕', '🐱', '🌟', '🔔']
+
+// Иконка темы (tweb topicAvatar: значок-вымпел). С emoji — показываем emoji,
+// иначе градиентный значок с первой буквой названия.
+export function TopicIcon({ color, emoji, title, size = 26 }: { color: number; emoji?: string; title: string; size?: number }) {
+  if (emoji) {
+    return (
+      <div
+        className={s.topicIcon}
+        style={{ width: size, height: size, background: 'transparent', fontSize: size * 0.82, lineHeight: 1 }}
+      >
+        {emoji}
+      </div>
+    )
+  }
   const c = TOPIC_COLORS[Math.abs(color) % TOPIC_COLORS.length]
   return (
     <div
@@ -48,9 +62,13 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
   const managers = useManagers()
   const [topics, setTopics] = useState<TopicRow[] | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+  const [editing, setEditing] = useState<TopicRow | null>(null)
   // Поиск по темам (tweb: кнопка search в шапке форум-таба); null — закрыт.
   const [query, setQuery] = useState<string | null>(null)
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; right: number } | null>(null)
+  // контекстное меню ряда темы (правый клик / long-press, tweb)
+  const [rowMenu, setRowMenu] = useState<{ topic: TopicRow; top: number; left: number } | null>(null)
+  const [showHidden, setShowHidden] = useState(false)
   // «Новая тема» — создатель или право «Изменение инфо» (tweb manage_topics)
   const [canManage, setCanManage] = useState(false)
 
@@ -65,6 +83,43 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
     }).catch(() => setCanManage(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId])
+
+  const all = (topics ?? []).filter((topic) => !query || topic.title.toLowerCase().includes(query.trim().toLowerCase()))
+  const visible = all.filter((topic) => !topic.hidden)
+  const hidden = all.filter((topic) => topic.hidden)
+
+  const openRowMenu = (e: React.MouseEvent, topic: TopicRow) => {
+    if (!canManage) return
+    e.preventDefault()
+    setRowMenu({ topic, top: e.clientY, left: e.clientX })
+  }
+
+  const renderRow = (topic: TopicRow, dimmed = false) => (
+    <div
+      key={topic.id}
+      className={classNames(s.row, topic.rootMsgId === activeRootMsgId ? s.rowActive : '', dimmed ? s.rowDimmed : '')}
+      onClick={() => onOpenTopic(topic)}
+      onContextMenu={(e) => openRowMenu(e, topic)}
+    >
+      <div className={s.titleRow}>
+        {topic.isGeneral ? (
+          <TopicIcon color={0} title="#" size={20} />
+        ) : (
+          <TopicIcon color={topic.iconColor} emoji={topic.iconEmoji} title={topic.title} size={20} />
+        )}
+        <Text noWrap size={15.5} weight={600} color="var(--tg-textPrimary)" style={{ flex: 1 }}>
+          {topic.isGeneral ? t('General') : topic.title}
+        </Text>
+        {topic.pinned && <TgIcon name="pin" size={14} color="var(--tg-textFaint)" />}
+        {topic.closed && <TgIcon name="lock" size={14} color="var(--tg-textFaint)" />}
+        <Text size={12} color="var(--tg-textFaint)">{fmtWhen(topic.lastAt)}</Text>
+      </div>
+      <Text noWrap size={14.5} color="var(--tg-textSecondary)" className={s.preview}>
+        {topic.lastSenderName ? `${topic.lastSenderName}: ` : ''}
+        {topic.lastText || mediaLabel(topic.lastType)}
+      </Text>
+    </div>
+  )
 
   return (
     <div className={s.root}>
@@ -126,42 +181,82 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
         />
       </Menu>
 
+      {/* контекстное меню ряда темы (tweb topic actions) */}
+      <Menu
+        open={rowMenu != null}
+        onClose={() => setRowMenu(null)}
+        style={rowMenu ? { top: rowMenu.top, left: rowMenu.left, transformOrigin: 'top left' } : undefined}
+      >
+        {rowMenu && [
+          <MenuItem
+            key="edit"
+            icon={<TgIcon name="edit" size={20} />}
+            label={t('Edit Topic')}
+            onClick={() => { const tp = rowMenu.topic; setRowMenu(null); setEditing(tp) }}
+          />,
+          ...(!rowMenu.topic.isGeneral ? [
+            <MenuItem
+              key="pin"
+              icon={<TgIcon name={rowMenu.topic.pinned ? 'unpin' : 'pin'} size={20} />}
+              label={rowMenu.topic.pinned ? t('Unpin') : t('Pin')}
+              onClick={() => { const tp = rowMenu.topic; setRowMenu(null); void managers.groups.setTopicPinned(chatId, tp.id, !tp.pinned).then(reload) }}
+            />,
+          ] : []),
+          <MenuItem
+            key="hide"
+            icon={<TgIcon name={rowMenu.topic.hidden ? 'eye' : 'hide'} size={20} />}
+            label={rowMenu.topic.hidden ? t('Unhide') : t('Hide')}
+            onClick={() => { const tp = rowMenu.topic; setRowMenu(null); void managers.groups.setTopicHidden(chatId, tp.id, !tp.hidden).then(reload) }}
+          />,
+          ...(!rowMenu.topic.isGeneral ? [
+            <MenuItem
+              key="close"
+              icon={<TgIcon name={rowMenu.topic.closed ? 'message' : 'lock'} size={20} />}
+              label={rowMenu.topic.closed ? t('Reopen Topic') : t('Close Topic')}
+              onClick={() => { const tp = rowMenu.topic; setRowMenu(null); void managers.groups.closeTopic(chatId, tp.id, !tp.closed).then(reload) }}
+            />,
+          ] : []),
+        ]}
+      </Menu>
+
       <div className={s.list}>
-        {topics != null && topics.length === 0 && (
+        {topics != null && all.length === 0 && (
           <Text size={14.5} color="var(--tg-textSecondary)" style={{ padding: '3rem 1rem', textAlign: 'center', display: 'block' }}>
             {t('No topics')}
           </Text>
         )}
-        {(topics ?? [])
-          .filter((topic) => !query || topic.title.toLowerCase().includes(query.trim().toLowerCase()))
-          .map((topic) => (
-          <div
-            key={topic.id}
-            className={classNames(s.row, topic.rootMsgId === activeRootMsgId ? s.rowActive : '')}
-            onClick={() => onOpenTopic(topic)}
-          >
-            <div className={s.titleRow}>
-              <TopicIcon color={topic.iconColor} title={topic.title} size={20} />
-              <Text noWrap size={15.5} weight={600} color="var(--tg-textPrimary)" style={{ flex: 1 }}>
-                {topic.title}
+        {visible.map((topic) => renderRow(topic))}
+
+        {hidden.length > 0 && (
+          <>
+            <div className={s.hiddenHeader} onClick={() => setShowHidden((v) => !v)}>
+              <TgIcon name={showHidden ? 'down' : 'next'} size={16} color="var(--tg-textFaint)" />
+              <Text size={13} weight={600} color="var(--tg-textSecondary)">
+                {t('Hidden Topics')} ({hidden.length})
               </Text>
-              {topic.closed && <TgIcon name="lock" size={14} color="var(--tg-textFaint)" />}
-              <Text size={12} color="var(--tg-textFaint)">{fmtWhen(topic.lastAt)}</Text>
             </div>
-            <Text noWrap size={14.5} color="var(--tg-textSecondary)" className={s.preview}>
-              {topic.lastSenderName ? `${topic.lastSenderName}: ` : ''}
-              {topic.lastText || mediaLabel(topic.lastType)}
-            </Text>
-          </div>
-        ))}
+            {showHidden && hidden.map((topic) => renderRow(topic, true))}
+          </>
+        )}
       </div>
 
       {createOpen && (
-        <CreateTopicPopup
+        <TopicFormPopup
           onClose={() => setCreateOpen(false)}
-          onCreate={(title, color) => {
+          onSubmit={(title, color, emoji) => {
             setCreateOpen(false)
-            void managers.groups.createTopic(chatId, title, color).then(reload)
+            void managers.groups.createTopic(chatId, title, color, emoji).then(reload)
+          }}
+        />
+      )}
+      {editing && (
+        <TopicFormPopup
+          initial={editing}
+          onClose={() => setEditing(null)}
+          onSubmit={(title, color, emoji) => {
+            const tp = editing
+            setEditing(null)
+            void managers.groups.editTopic(chatId, tp.id, title, color, emoji).then(reload)
           }}
         />
       )}
@@ -169,25 +264,37 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
   )
 }
 
-// «Новая тема» (tweb editTopic: имя + клик по значку циклит цвет)
-function CreateTopicPopup({ onCreate, onClose }: {
-  onCreate: (title: string, color: number) => void
+// Форма темы (создание/редактирование, tweb editTopic): имя + emoji/цвет значка.
+// Клик по большому значку циклит цвет (когда emoji не выбран). У General
+// (initial.isGeneral) правится только имя — значок системный.
+function TopicFormPopup({ initial, onSubmit, onClose }: {
+  initial?: TopicRow
+  onSubmit: (title: string, color: number, emoji: string) => void
   onClose: () => void
 }) {
   const t = useT()
-  const [title, setTitle] = useState('')
-  const [color, setColor] = useState(0)
+  const [title, setTitle] = useState(initial?.title ?? '')
+  const [color, setColor] = useState(initial?.iconColor ?? 0)
+  const [emoji, setEmoji] = useState(initial?.iconEmoji ?? '')
+  const isGeneral = initial?.isGeneral ?? false
   return (
     <Popup
       open
-      title={t('New Topic')}
+      title={initial ? t('Edit Topic') : t('New Topic')}
       onClose={onClose}
       width={360}
-      action={{ label: t('Create'), onClick: () => title.trim() && onCreate(title.trim(), color) }}
+      action={{ label: initial ? t('Save') : t('Create'), onClick: () => title.trim() && onSubmit(title.trim(), color, emoji) }}
     >
       <div className={s.createBody}>
-        <div onClick={() => setColor((c) => (c + 1) % TOPIC_COLORS.length)} style={{ cursor: 'pointer' }}>
-          <TopicIcon color={color} title={title || '#'} size={56} />
+        <div
+          onClick={() => !isGeneral && !emoji && setColor((c) => (c + 1) % TOPIC_COLORS.length)}
+          style={{ cursor: isGeneral || emoji ? 'default' : 'pointer' }}
+        >
+          {isGeneral ? (
+            <TopicIcon color={0} title="#" size={56} />
+          ) : (
+            <TopicIcon color={color} emoji={emoji} title={title || '#'} size={56} />
+          )}
         </div>
         <input
           className={s.titleInput}
@@ -198,6 +305,28 @@ function CreateTopicPopup({ onCreate, onClose }: {
           autoFocus
         />
       </div>
+      {!isGeneral && (
+        <div className={s.emojiGrid}>
+          <button
+            type="button"
+            className={classNames(s.emojiCell, !emoji ? s.emojiCellActive : '')}
+            onClick={() => setEmoji('')}
+            title={t('Close')}
+          >
+            <TgIcon name="colorize" size={20} />
+          </button>
+          {TOPIC_EMOJI.map((e) => (
+            <button
+              type="button"
+              key={e}
+              className={classNames(s.emojiCell, emoji === e ? s.emojiCellActive : '')}
+              onClick={() => setEmoji(e)}
+            >
+              {e}
+            </button>
+          ))}
+        </div>
+      )}
     </Popup>
   )
 }

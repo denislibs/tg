@@ -25,7 +25,9 @@ import { useUploadsStore } from '../../stores/uploadsStore'
 // Longer drafts are split into several messages on send.
 const MAX_MESSAGE_LEN = 4096
 
-export type ReplyState = { msgId?: number; name: string; text: string; color: string } | null
+// quote — ответ с цитатой выделенного фрагмента (Telegram reply quote): текст
+// куска оригинала + его offset (UTF-16) в плоском тексте отвечаемого сообщения.
+export type ReplyState = { msgId?: number; name: string; text: string; color: string; quote?: { text: string; offset: number } } | null
 export type EditState = { msgId: number; text: string; entities?: MessageEntity[] } | null
 
 interface UseChatSendArgs {
@@ -80,8 +82,7 @@ export function useChatSend({
       const { secs, blob, mime, mode } = r
       if (!blob) return
       const type = mode === 'round' ? 'roundVideo' : 'voice' // кружок → круглое видеосообщение
-      const bytes = await blob.arrayBuffer()
-      const mediaId = await managers.media.upload({ bytes, mime, size: blob.size, duration: secs })
+      const mediaId = await managers.media.upload({ blob, mime, size: blob.size, duration: secs })
       const clientMsgId = `c-${chat.id}-${performance.now()}-${Math.random().toString(36).slice(2)}`
       let cid = numericChatId
       if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
@@ -95,7 +96,7 @@ export function useChatSend({
 
   const replyToId = reply?.msgId ?? null
   const mkClientMsgId = (k = 0) => `c-${chat.id}-${performance.now()}-${k}-${Math.random().toString(36).slice(2)}`
-  const sendReal = (text: string, entities?: MessageEntity[], replyTo: number | null = replyToId, ttlSeconds: number | null = null) => {
+  const sendReal = (text: string, entities?: MessageEntity[], replyTo: number | null = replyToId, ttlSeconds: number | null = null, silent = false) => {
     const clientMsgId = mkClientMsgId()
     atBottomRef.current = true; userScrolledUpRef.current = false // sending pins to bottom
     if (chat.type === 'secret') {
@@ -107,8 +108,10 @@ export function useChatSend({
       void managers.secret.sendText({ chatId: numericChatId, text, entities, clientMsgId, ttlSeconds })
       return
     }
+    // reply quote прикреплён к первому сообщению (там же, где и сам reply).
+    const quote = replyTo != null ? reply?.quote : undefined
     win.appendOptimistic(text, meId ?? -1, clientMsgId, undefined, 'text', entities)
-    void managers.realtime.sendMessage({ chatId: numericChatId, text, entities, clientMsgId, replyToId: replyTo, threadRootId })
+    void managers.realtime.sendMessage({ chatId: numericChatId, text, entities, clientMsgId, replyToId: replyTo, replyQuoteText: quote?.text ?? null, replyQuoteOffset: quote?.offset ?? null, threadRootId, silent })
   }
 
   // Гео-точка из attach-меню: оптимистичный бабл сразу (координаты локальные),
@@ -209,8 +212,7 @@ export function useChatSend({
       })
       useUploadsStore.getState().setProgress(clientMsgId, 0)
       try {
-        const bytes = await file.arrayBuffer()
-        const mediaId = await managers.media.upload({ bytes, mime, size: file.size, width, height, fileName: file.name, progressId: clientMsgId })
+        const mediaId = await managers.media.upload({ blob: file, mime, size: file.size, width, height, fileName: file.name, progressId: clientMsgId })
         useMessagesStore.getState().setOptimisticMedia(winKey(numericChatId, threadRootId), clientMsgId, mediaId)
         void managers.realtime.sendMessage({ chatId: numericChatId, text: caption, clientMsgId, mediaId, type, groupedId, threadRootId })
       } catch {
@@ -221,8 +223,7 @@ export function useChatSend({
       return
     }
     // Документ/аудио: аплоад, затем оптимистичный бабл (прежнее поведение).
-    const bytes = await file.arrayBuffer()
-    const mediaId = await managers.media.upload({ bytes, mime, size: file.size, width, height, fileName: file.name })
+    const mediaId = await managers.media.upload({ blob: file, mime, size: file.size, width, height, fileName: file.name })
     win.appendOptimistic(caption, meId ?? -1, clientMsgId, mediaId, type, undefined, groupedId)
     void managers.realtime.sendMessage({ chatId: numericChatId, text: caption, clientMsgId, mediaId, type, groupedId, threadRootId })
   }
@@ -246,7 +247,7 @@ export function useChatSend({
 
   // Called by the Composer with the trimmed draft text (the Composer owns the
   // text state + clears itself afterwards); we route by chat kind / edit / reply.
-  const send = (text: string, entities?: MessageEntity[], ttlSeconds?: number | null) => {
+  const send = (text: string, entities?: MessageEntity[], ttlSeconds?: number | null, silent = false) => {
     if (!text || !canType || secretLocked) return
     // Edit mode: PATCH the existing message instead of sending a new one.
     if (editing && isRealChat) {
@@ -292,7 +293,7 @@ export function useChatSend({
     setReply(null)
     window.dispatchEvent(new Event('tg-send'))
     // reply attaches to the first message only (Telegram behaviour)
-    parts.forEach((p, k) => sendReal(p.text, entOf(p), k === 0 ? replyToId : null, ttlSeconds ?? null))
+    parts.forEach((p, k) => sendReal(p.text, entOf(p), k === 0 ? replyToId : null, ttlSeconds ?? null, silent))
   }
 
   // Throttled outgoing typing frame (real chats); called by the Composer on each

@@ -6,7 +6,7 @@
 // list (gated by chat kind and the target message). The View renders the menu /
 // dialogs from the returned state and wires the feed's context-menu open to
 // `openMsgMenu`.
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import TgIcon from '../../components/TgIcon'
 import { peerColor } from '../../components/peerColor'
@@ -23,6 +23,8 @@ import type { ReplyState, EditState } from './useChatSend'
 type MsgMenu = { x: number; y: number; idx: number; originX: 'left' | 'right'; originY: 'top' | 'bottom'; closing?: boolean }
 type DelState = { ids: number[]; canRevoke: boolean }
 type ViewersState = { x: number; y: number; names: string[] }
+type ReactedRow = { name: string; avatarUrl: string; emoji: string }
+type ReactedState = { x: number; y: number; rows: ReactedRow[] }
 export type MsgMenuItem = { icon: ReactNode; label: string; danger?: boolean; onClick?: (e: React.MouseEvent) => void }
 
 interface UseMessageActionsArgs {
@@ -48,9 +50,14 @@ export function useMessageActions({
   setReply, setEditing, setSelectionMode, setSelected, clearSelection, onChatCreated,
 }: UseMessageActionsArgs) {
   const [msgMenu, setMsgMenu] = useState<MsgMenu | null>(null)
+  // Ответ с цитатой: текст, выделенный внутри сообщения на момент открытия меню
+  // (right-click сохраняет выделение), плюс его offset (UTF-16) в тексте сообщения.
+  // Используется startReply; сбрасывается, если выделения не было.
+  const pendingQuoteRef = useRef<{ text: string; offset: number } | null>(null)
   const [delIds, setDelIds] = useState<DelState | null>(null)
   const [forwardIds, setForwardIds] = useState<number[] | null>(null)
   const [viewers, setViewers] = useState<ViewersState | null>(null)
+  const [reacted, setReacted] = useState<ReactedState | null>(null)
   const [translateText, setTranslateText] = useState<string | null>(null)
   const showTranslate = useSettingsStore((st) => st.showTranslateButton)
   // Секретный чат: скрываем forward/copy/quote (поведение Telegram) — остаётся
@@ -67,6 +74,15 @@ export function useMessageActions({
     let idx = msgs.indexOf(m)
     if (idx < 0 && m.id != null) idx = msgs.findIndex((x) => x.id === m.id)
     if (idx < 0) return
+    // Захватываем выделенный фрагмент этого сообщения для «ответа с цитатой»
+    // (best-effort: текст выделения + его offset как indexOf в тексте сообщения).
+    pendingQuoteRef.current = null
+    const sel = window.getSelection()
+    if (sel && !sel.isCollapsed && m.text) {
+      const s = sel.toString().trim()
+      const at = s ? m.text.indexOf(s) : -1
+      if (s && at >= 0 && s !== m.text) pendingQuoteRef.current = { text: s, offset: at }
+    }
     // Anchor a corner of the menu at the click point and grow from there (tweb):
     // flip to the left/upward when near the right/bottom edge so it stays on-screen.
     const MW = 256, MH = 440
@@ -88,7 +104,7 @@ export function useMessageActions({
     if (m && m.type !== 'date') {
       const name = m.out ? 'Дн' : m.sender ?? chat.name
       const color = m.out ? accent : m.senderColor ?? peerColor(name)
-      setReply({ msgId: menuRawMsg()?.id, name, text: m.text ?? m.emoji ?? '', color })
+      setReply({ msgId: menuRawMsg()?.id, name, text: m.text ?? m.emoji ?? '', color, quote: pendingQuoteRef.current ?? undefined })
       setEditing(null)
       // Composer focuses itself when `reply` becomes set.
     }
@@ -146,12 +162,25 @@ export function useMessageActions({
   }
   // Open the forward picker for an arbitrary id set (the selection bar's bulk forward).
   const openForwardFor = (ids: number[]) => setForwardIds(ids)
-  const doForward = (toChatId: number) => {
-    if (!forwardIds?.length || !isRealChat) return setForwardIds(null)
-    void managers.messages.forwardMessages(toChatId, numericChatId, forwardIds)
+  // Пересылаем выбранные сообщения во все выбранные чаты (по одному REST-запросу
+  // на чат — бэкенд принимает один toChatID). Последовательно и с изоляцией:
+  // падение одного адресата не должно рвать остальные. По завершении переключаемся
+  // на последний успешный чат (как открывает диалог Telegram после форварда).
+  const doForward = async (chatIds: number[]) => {
+    const ids = forwardIds
     setForwardIds(null)
+    if (!ids?.length || !isRealChat || !chatIds.length) return
+    let lastOk: number | null = null
+    for (const toChatId of chatIds) {
+      try {
+        await managers.messages.forwardMessages(toChatId, numericChatId, ids)
+        lastOk = toChatId
+      } catch (err) {
+        console.error('forward failed', { toChatId }, err)
+      }
+    }
     clearSelection()
-    onChatCreated?.(toChatId) // switch to the target chat (Telegram behavior)
+    if (lastOk != null) onChatCreated?.(lastOk)
   }
 
   // Enter selection mode from the context menu, pre-selecting that message.
@@ -203,25 +232,32 @@ export function useMessageActions({
 
   // Тоггл реакции (клик по чипу / полоске эмодзи в меню). Оптимистично правим
   // агрегаты в сторе (applyReaction идемпотентен к серверному эху), REST — следом.
-  // Как в tweb для non-premium: одна своя реакция — новая снимает предыдущую.
+  // Несколько разных реакций на одно сообщение разрешены (как premium tweb):
+  // тап по эмодзи снимает/ставит ТОЛЬКО его, остальные не трогаем.
   const toggleReaction = useEvent((msgId: number, emoji: string) => {
     if (!isRealChat) return
     const raw = win.msgs.find((m) => m.id === msgId)
     if (!raw || raw.id < 0) return // оптимистичный бабл ещё без серверного id
     const store = useMessagesStore.getState()
-    if (raw.reactions?.find((r) => r.emoji === emoji)?.mine) {
+    const mine = raw.reactions?.find((r) => r.emoji === emoji)?.mine
+    if (mine) {
       store.applyReaction(numericChatId, msgId, emoji, 'remove', true)
       void managers.messages.unreact(numericChatId, msgId, emoji)
-      return
+    } else {
+      store.applyReaction(numericChatId, msgId, emoji, 'add', true)
+      void managers.messages.react(numericChatId, msgId, emoji)
     }
-    for (const r of raw.reactions ?? []) {
-      if (r.mine) {
-        store.applyReaction(numericChatId, msgId, r.emoji, 'remove', true)
-        void managers.messages.unreact(numericChatId, msgId, r.emoji)
-      }
-    }
-    store.applyReaction(numericChatId, msgId, emoji, 'add', true)
-    void managers.messages.react(numericChatId, msgId, emoji)
+  })
+
+  // Кто отреагировал (long-press / правый клик по чипу реакции): попап со списком
+  // «аватар + имя + его эмодзи». Тап по чипу остаётся тогглом своей реакции.
+  const showReactedUsers = useEvent(async (msgId: number, x: number, y: number) => {
+    if (!isRealChat) return
+    const raw = win.msgs.find((m) => m.id === msgId)
+    if (!raw || raw.id < 0) return
+    const users = await managers.messages.reactionUsers(numericChatId, msgId)
+    const rows = users.map((u) => ({ name: u.name, avatarUrl: u.avatarUrl, emoji: u.emoji }))
+    setReacted({ x: Math.min(x, window.innerWidth - 240), y: Math.min(y, window.innerHeight - 320), rows })
   })
 
   // Полоска эмодзи над контекстным меню: реакция на сообщение меню.
@@ -312,10 +348,11 @@ export function useMessageActions({
 
   return {
     msgMenu, openMsgMenu, closeMsgMenu, destroyMsgMenu, msgMenuItems,
-    toggleReaction, reactToMenuMsg,
+    toggleReaction, reactToMenuMsg, showReactedUsers,
     delIds, doDelete, closeDelete: () => setDelIds(null), openDeleteFor, canRevokeAll,
     forwardIds, doForward, closeForward: () => setForwardIds(null), openForwardFor,
     viewers, closeViewers: () => setViewers(null),
+    reacted, closeReacted: () => setReacted(null),
     translateText, closeTranslate: () => setTranslateText(null),
   }
 }

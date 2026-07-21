@@ -45,6 +45,17 @@ func (f *fakeStorage) GetObject(_ context.Context, key string) (io.ReadSeekClose
 	}
 	return nopSeekCloser{bytes.NewReader(b)}, usecasemedia.ObjectInfo{Size: int64(len(b)), ContentType: "application/octet-stream"}, nil
 }
+func (*fakeStorage) StartMultipart(_ context.Context, _, _ string) (string, error) {
+	return "up-1", nil
+}
+func (*fakeStorage) PutPart(_ context.Context, _, _ string, n int, r io.Reader, _ int64) (string, error) {
+	_, _ = io.Copy(io.Discard, r)
+	return "etag-" + itoa(int64(n)), nil
+}
+func (*fakeStorage) CompleteMultipart(_ context.Context, _, _ string, _ []usecasemedia.UploadedPart) error {
+	return nil
+}
+func (*fakeStorage) AbortMultipart(_ context.Context, _, _ string) error { return nil }
 
 type nopSeekCloser struct{ *bytes.Reader }
 
@@ -65,6 +76,27 @@ func (f *fakeMediaRepo) GetByID(_ context.Context, id int64) (domain.Media, erro
 func (f *fakeMediaRepo) UpdateProcessed(_ context.Context, _ int64, _, _, _ int, _ string) error {
 	return nil
 }
+func (f *fakeMediaRepo) SetUploadID(_ context.Context, _ int64, uploadID string) (string, error) {
+	if f.m.UploadID == "" {
+		f.m.UploadID = uploadID
+	}
+	return f.m.UploadID, nil
+}
+func (f *fakeMediaRepo) SetUploadTotal(_ context.Context, _ int64, total int) error {
+	f.m.UploadTotal = total
+	return nil
+}
+func (f *fakeMediaRepo) SavePart(_ context.Context, _ int64, _ int, _ string, _ int64) error {
+	return nil
+}
+func (f *fakeMediaRepo) ReceivedParts(_ context.Context, _ int64) ([]int, error) { return nil, nil }
+func (f *fakeMediaRepo) PartsForComplete(_ context.Context, _ int64) ([]usecasemedia.UploadedPart, error) {
+	return nil, nil
+}
+func (f *fakeMediaRepo) UpdateFinalized(_ context.Context, _ int64, _ int64, _, _, _ int, _, _ string) error {
+	return nil
+}
+func (f *fakeMediaRepo) ClearUpload(_ context.Context, _ int64) error { return nil }
 
 // fakeAccess answers CanAccessMedia with a fixed verdict.
 type fakeAccess struct{ allow bool }

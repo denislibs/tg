@@ -24,6 +24,12 @@ export function newChatsManager({ rest }: ChatsDeps) {
       return r.chat_id
     },
 
+    // «Очистить историю» у себя (Telegram deleteHistory just_clear): сообщения
+    // скрываются только для меня, у остальных участников остаются.
+    async clearHistory(chatId: number): Promise<void> {
+      await rest.post(`/chats/${chatId}/clear`, {})
+    },
+
     // «Избранное» → таб «Чаты»: сохранённые сообщения, сгруппированные по
     // источнику пересылки (tweb saved dialogs); 'self' — «Мои заметки».
     async savedDialogs(): Promise<SavedDialog[]> {

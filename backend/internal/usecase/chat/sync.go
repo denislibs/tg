@@ -18,7 +18,11 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 	if limit <= 0 || limit > 100 {
 		limit = 40
 	}
-	msgs, err := i.msgs.GetHistory(ctx, chatID, userID, offsetSeq, addOffset, limit, threadRoot)
+	cleared, err := i.chats.ClearedSeq(ctx, chatID, userID)
+	if err != nil {
+		return HistoryResult{}, err
+	}
+	msgs, err := i.msgs.GetHistory(ctx, chatID, userID, offsetSeq, addOffset, limit, threadRoot, cleared)
 	if err != nil {
 		return HistoryResult{}, err
 	}
@@ -146,7 +150,13 @@ func (i *Interactor) hydrateReplies(ctx context.Context, msgs []domain.Message) 
 			text = string([]rune(text)[:120])
 			entities = nil
 		}
-		msgs[idx].ReplyTo = &domain.ReplyPreview{MsgID: t.ID, Seq: t.Seq, SenderID: t.SenderID, Text: text, Entities: entities, Type: t.Type, MediaID: t.MediaID}
+		// Reply quote: цитата хранится на ОТВЕЧАЮЩЕМ сообщении (msgs[idx]) —
+		// показываем выделенный фрагмент вместо превью всего оригинала.
+		quote := ""
+		if msgs[idx].ReplyQuoteText != nil {
+			quote = *msgs[idx].ReplyQuoteText
+		}
+		msgs[idx].ReplyTo = &domain.ReplyPreview{MsgID: t.ID, Seq: t.Seq, SenderID: t.SenderID, Text: text, Entities: entities, Type: t.Type, MediaID: t.MediaID, QuoteText: quote}
 	}
 	return nil
 }
@@ -205,7 +215,11 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 	if limit <= 0 || limit > 100 {
 		limit = 40
 	}
-	msgs, top, bottom, err := i.msgs.GetAround(ctx, chatID, userID, centerSeq, limit, threadRoot)
+	cleared, err := i.chats.ClearedSeq(ctx, chatID, userID)
+	if err != nil {
+		return AroundResult{}, err
+	}
+	msgs, top, bottom, err := i.msgs.GetAround(ctx, chatID, userID, centerSeq, limit, threadRoot, cleared)
 	if err != nil {
 		return AroundResult{}, err
 	}

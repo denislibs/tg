@@ -42,6 +42,10 @@ const (
 		PermPinMessages | PermChangeInfo
 )
 
+// Denies reports whether the bitmask (used as a set of DENIED rights, Telegram
+// ChatBannedRights) forbids perm.
+func (d MemberPerms) Denies(perm MemberPerms) bool { return d&perm == perm }
+
 // ChatSettings are the group-wide settings edited on the "Изменить" screen.
 type ChatSettings struct {
 	DefaultPerms     MemberPerms

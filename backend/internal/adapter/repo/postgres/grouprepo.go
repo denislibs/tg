@@ -263,6 +263,66 @@ func (r *GroupRepo) ListBans(ctx context.Context, chatID int64) ([]domain.Banned
 	return out, rows.Err()
 }
 
+// SetRestriction upserts a per-user granular restriction (Telegram editBanned).
+func (r *GroupRepo) SetRestriction(ctx context.Context, res domain.MemberRestriction) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`INSERT INTO chat_restrictions (chat_id, user_id, denied_rights, until_date, restricted_by)
+		 VALUES ($1,$2,$3,$4,$5)
+		 ON CONFLICT (chat_id, user_id)
+		 DO UPDATE SET denied_rights=EXCLUDED.denied_rights,
+		               until_date=EXCLUDED.until_date,
+		               restricted_by=EXCLUDED.restricted_by,
+		               created_at=now()`,
+		res.ChatID, res.UserID, int(res.DeniedRights), res.UntilDate, res.RestrictedBy)
+	return err
+}
+
+// GetRestriction returns the raw restriction row (bool=exists); expiry is left
+// to the caller via domain.MemberRestriction.Active.
+func (r *GroupRepo) GetRestriction(ctx context.Context, chatID, userID int64) (domain.MemberRestriction, bool, error) {
+	var res domain.MemberRestriction
+	var denied int
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT chat_id, user_id, denied_rights, until_date, restricted_by
+		   FROM chat_restrictions WHERE chat_id=$1 AND user_id=$2`,
+		chatID, userID).Scan(&res.ChatID, &res.UserID, &denied, &res.UntilDate, &res.RestrictedBy)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.MemberRestriction{}, false, nil
+	}
+	if err != nil {
+		return domain.MemberRestriction{}, false, err
+	}
+	res.DeniedRights = domain.MemberPerms(denied)
+	return res, true, nil
+}
+
+func (r *GroupRepo) ListRestrictions(ctx context.Context, chatID int64) ([]domain.MemberRestriction, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT chat_id, user_id, denied_rights, until_date, restricted_by
+		   FROM chat_restrictions WHERE chat_id=$1 ORDER BY created_at DESC`, chatID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []domain.MemberRestriction{}
+	for rows.Next() {
+		var res domain.MemberRestriction
+		var denied int
+		if err := rows.Scan(&res.ChatID, &res.UserID, &denied, &res.UntilDate, &res.RestrictedBy); err != nil {
+			return nil, err
+		}
+		res.DeniedRights = domain.MemberPerms(denied)
+		out = append(out, res)
+	}
+	return out, rows.Err()
+}
+
+func (r *GroupRepo) DeleteRestriction(ctx context.Context, chatID, userID int64) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`DELETE FROM chat_restrictions WHERE chat_id=$1 AND user_id=$2`, chatID, userID)
+	return err
+}
+
 func (r *GroupRepo) DeleteChat(ctx context.Context, chatID int64) error {
 	_, err := querier(ctx, r.pool).Exec(ctx, `DELETE FROM chats WHERE id=$1`, chatID)
 	return err

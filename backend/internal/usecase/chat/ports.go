@@ -29,6 +29,19 @@ type ChatRepo interface {
 	IncUnread(ctx context.Context, chatID, userID int64) error
 	CurrentReadSeq(ctx context.Context, chatID, userID int64) (int64, error)
 	SetRead(ctx context.Context, chatID, userID, seq int64, unread int) error
+	// Непрочитанные упоминания (Telegram unread_mentions_count). AddMention
+	// отмечает сообщение (chat/msg/seq), где упомянут userID, и бампит его
+	// счётчик. ClearMentions снимает упоминания с seq<=uptoSeq (прочитано) и
+	// возвращает оставшееся число. NextMention — seq/msgID ближайшего
+	// непрочитанного упоминания с seq>afterSeq (domain.ErrNotFound, если нет).
+	AddMention(ctx context.Context, chatID, msgID, seq, userID int64) error
+	ClearMentions(ctx context.Context, chatID, userID, uptoSeq int64) (remaining int, err error)
+	NextMention(ctx context.Context, chatID, userID, afterSeq int64) (seq, msgID int64, err error)
+	// «Очистить историю» у себя: MaxSeq — текущий максимум seq чата (горизонт);
+	// ClearedSeq/SetClearedSeq — персональный горизонт участника (cleared_max_seq).
+	MaxSeq(ctx context.Context, chatID int64) (int64, error)
+	ClearedSeq(ctx context.Context, chatID, userID int64) (int64, error)
+	SetClearedSeq(ctx context.Context, chatID, userID, seq int64) error
 	// Автоудаление: период чата, глобальный период пользователя (для новых чатов).
 	SetAutoDelete(ctx context.Context, chatID int64, seconds int) error
 	UserAutoDelete(ctx context.Context, userID int64) (int, error)
@@ -77,11 +90,18 @@ type GroupRepo interface {
 	Unban(ctx context.Context, chatID, userID int64) error
 	IsBanned(ctx context.Context, chatID, userID int64) (bool, error)
 	ListBans(ctx context.Context, chatID int64) ([]domain.BannedUser, error)
+	// Per-user granular restrictions (Telegram editBanned / ChatBannedRights).
+	// GetRestriction returns the raw row (bool=exists); expiry is decided by the
+	// caller via domain.MemberRestriction.Active.
+	SetRestriction(ctx context.Context, res domain.MemberRestriction) error
+	GetRestriction(ctx context.Context, chatID, userID int64) (domain.MemberRestriction, bool, error)
+	ListRestrictions(ctx context.Context, chatID int64) ([]domain.MemberRestriction, error)
+	DeleteRestriction(ctx context.Context, chatID, userID int64) error
 	DeleteChat(ctx context.Context, chatID int64) error // каскадом members/messages
 }
 
 type InviteRepo interface {
-	Create(ctx context.Context, chatID, createdBy int64, token string, usageLimit *int, requiresApproval bool) (domain.InviteLink, error)
+	Create(ctx context.Context, chatID, createdBy int64, token string, usageLimit *int, requiresApproval bool, expiresAt *time.Time) (domain.InviteLink, error)
 	GetByToken(ctx context.Context, token string) (domain.InviteLink, error) // domain.ErrNotFound
 	List(ctx context.Context, chatID int64) ([]domain.InviteLink, error)
 	IncUses(ctx context.Context, id int64) error
@@ -109,8 +129,10 @@ type MessageRepo interface {
 	MediaHistory(ctx context.Context, chatID int64, filter string, offset, limit int) ([]domain.Message, int, error)
 	// threadRootID != nil ограничивает окно тредом (топик/комментарии): сообщения
 	// с этим thread_root_id + само корневое сообщение.
-	GetAround(ctx context.Context, chatID, userID, centerSeq int64, limit int, threadRootID *int64) ([]domain.Message, bool, bool, error)
-	GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRootID *int64) ([]domain.Message, error)
+	// clearedSeq — персональный горизонт «очистки истории»: сообщения с
+	// seq<=clearedSeq скрыты для этого читателя (0 — ничего не очищено).
+	GetAround(ctx context.Context, chatID, userID, centerSeq int64, limit int, threadRootID *int64, clearedSeq int64) ([]domain.Message, bool, bool, error)
+	GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRootID *int64, clearedSeq int64) ([]domain.Message, error)
 	// LastMessageAt is the newest non-deleted message time by senderID in the chat
 	// (slowmode); domain.ErrNotFound when they haven't posted yet.
 	LastMessageAt(ctx context.Context, chatID, senderID int64) (time.Time, error)
@@ -173,6 +195,9 @@ type ReactionRepo interface {
 	// read model). Mine is set when viewerID reacted with that emoji. Messages
 	// without reactions are simply absent from the map.
 	ReactionsFor(ctx context.Context, messageIDs []int64, viewerID int64) (map[int64][]domain.ReactionCount, error)
+	// ReactionUsers lists who reacted to a message (with which emoji), oldest first,
+	// hydrated with the user card for display — for the who-reacted popup.
+	ReactionUsers(ctx context.Context, messageID int64) ([]domain.ReactionUser, error)
 }
 
 type MediaAccessRepo interface {
@@ -240,6 +265,10 @@ type SendInput struct {
 	Type, Text       string
 	Entities         []domain.MessageEntity
 	ReplyToID        *int64
+	// Ответ с цитатой фрагмента (Telegram reply quote): выделенный кусок текста
+	// оригинала + его offset (UTF-16). Применяется только при ReplyToID != nil.
+	ReplyQuoteText   *string
+	ReplyQuoteOffset *int
 	ClientMsgID      string
 	MediaID          *int64
 	ThreadRootID     *int64
@@ -264,6 +293,9 @@ type SendInput struct {
 	EncBody []byte
 	// Self-destruct TTL (сек) для секретного сообщения; nil — без самоуничтожения.
 	TTLSeconds *int
+	// Тихая отправка (Telegram disable_notification): подавляет push/звук у получателя.
+	// Не хранится на сообщении (MVP) — влияет только на нотификатор, не на realtime-доставку.
+	Silent bool
 }
 
 // GroupCallStore хранит участников активных групповых звонков (эфемерно, Redis).
@@ -278,6 +310,10 @@ type TopicRepo interface {
 	Create(ctx context.Context, t domain.ForumTopic) (domain.ForumTopic, error)
 	ByID(ctx context.Context, id int64) (domain.ForumTopic, error)
 	SetClosed(ctx context.Context, id int64, closed bool) error
+	EditTopic(ctx context.Context, id int64, title, iconEmoji string, iconColor int) error
+	SetHidden(ctx context.Context, id int64, hidden bool) error
+	SetPinned(ctx context.Context, id int64, pinned bool) error
+	EnsureGeneralTopic(ctx context.Context, chatID, createdBy int64) (domain.ForumTopic, error)
 	ListByChat(ctx context.Context, chatID int64) ([]domain.TopicRow, error)
 }
 

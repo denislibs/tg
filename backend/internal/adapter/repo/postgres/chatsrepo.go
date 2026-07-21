@@ -188,7 +188,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 	rows, err := q.Query(ctx,
 		`SELECT c.id, c.type, c.title, COALESCE(c.username,''),
 		        COALESCE('/media/' || c.photo_media_id || '/content', ''),
-		        m.last_read_seq, m.unread_count,
+		        m.last_read_seq, m.unread_count, m.unread_mentions_count,
 		        (m.muted OR (m.muted_until IS NOT NULL AND m.muted_until > now())),
 		        m.pinned_at IS NOT NULL, m.archived, c.is_forum,
 		        COALESCE(m.notify_preview, true), COALESCE(m.notify_sound, 'default'),
@@ -198,7 +198,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		          ELSE 0
 		        END, 0) AS peer_read_seq,
 		        lm.seq, lm.text, lm.sender_id, lm.created_at, COALESCE(lm.media_id,0), lm.type, lm.forwarded, lm.sender_name,
-		        peer.id, peer.display_name, peer.avatar_url, peer.is_verified,
+		        peer.id, peer.display_name, peer.avatar_url, peer.is_verified, peer.is_premium, peer.emoji_status,
 		        c.auto_delete_period
 		 FROM chat_members m
 		 JOIN chats c ON c.id = m.chat_id
@@ -207,11 +207,11 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		          (fwd_from_user_id IS NOT NULL OR fwd_from_chat_id IS NOT NULL) AS forwarded,
 		          (SELECT COALESCE(NULLIF(u.first_name,''), u.display_name) FROM users u WHERE u.id = messages.sender_id) AS sender_name
 		   FROM messages
-		   WHERE chat_id = c.id AND deleted_at IS NULL
+		   WHERE chat_id = c.id AND deleted_at IS NULL AND seq > m.cleared_max_seq
 		   ORDER BY seq DESC LIMIT 1
 		 ) lm ON true
 		 LEFT JOIN LATERAL (
-		   SELECT u.id, u.display_name, u.avatar_url, u.is_verified
+		   SELECT u.id, u.display_name, u.avatar_url, u.is_verified, u.is_premium, u.emoji_status
 		   FROM chat_members om JOIN users u ON u.id = om.user_id
 		   WHERE om.chat_id = c.id AND om.user_id <> $1
 		   LIMIT 1
@@ -241,9 +241,11 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		var peerName *string
 		var peerAvatar *string
 		var peerVerified *bool
-		if err := rows.Scan(&d.ChatID, &d.Type, &d.Title, &d.Username, &d.PhotoURL, &d.LastReadSeq, &d.UnreadCount, &d.Muted, &d.Pinned, &d.Archived, &d.IsForum, &d.NotifyPreview, &d.NotifySound, &d.PeerReadSeq,
+		var peerPremium *bool
+		var peerEmojiStatus *string
+		if err := rows.Scan(&d.ChatID, &d.Type, &d.Title, &d.Username, &d.PhotoURL, &d.LastReadSeq, &d.UnreadCount, &d.UnreadMentionsCount, &d.Muted, &d.Pinned, &d.Archived, &d.IsForum, &d.NotifyPreview, &d.NotifySound, &d.PeerReadSeq,
 			&seq, &text, &senderID, &at, &mediaID, &msgType, &forwarded, &senderName,
-			&peerID, &peerName, &peerAvatar, &peerVerified, &d.AutoDeletePeriod); err != nil {
+			&peerID, &peerName, &peerAvatar, &peerVerified, &peerPremium, &peerEmojiStatus, &d.AutoDeletePeriod); err != nil {
 			return nil, err
 		}
 		if forwarded != nil {
@@ -275,6 +277,12 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 			}
 			if peerVerified != nil {
 				p.Verified = *peerVerified
+			}
+			if peerPremium != nil {
+				p.Premium = *peerPremium
+			}
+			if peerEmojiStatus != nil {
+				p.EmojiStatus = *peerEmojiStatus
 			}
 			d.Peer = &p
 		}
@@ -311,6 +319,99 @@ func (r *ChatsRepo) SetRead(ctx context.Context, chatID, userID, seq int64, unre
 	_, err := q.Exec(ctx,
 		`UPDATE chat_members SET last_read_seq=$3, unread_count=$4
 		 WHERE chat_id=$1 AND user_id=$2`, chatID, userID, seq, unread)
+	return err
+}
+
+// AddMention records that userID is mentioned in a message (chat/msg/seq) and
+// bumps their unread-mentions counter. Idempotent on (message_id, user_id): a
+// re-send with the same message never double-counts.
+func (r *ChatsRepo) AddMention(ctx context.Context, chatID, msgID, seq, userID int64) error {
+	q := querier(ctx, r.pool)
+	tag, err := q.Exec(ctx,
+		`INSERT INTO message_mentions (chat_id, message_id, seq, user_id)
+		 VALUES ($1,$2,$3,$4) ON CONFLICT (message_id, user_id) DO NOTHING`,
+		chatID, msgID, seq, userID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return nil // already recorded — don't double-bump the counter
+	}
+	_, err = q.Exec(ctx,
+		`UPDATE chat_members SET unread_mentions_count = unread_mentions_count + 1
+		 WHERE chat_id=$1 AND user_id=$2`, chatID, userID)
+	return err
+}
+
+// ClearMentions drops the member's mentions with seq<=uptoSeq (they've been read)
+// and re-syncs unread_mentions_count to the remaining rows, which it returns.
+func (r *ChatsRepo) ClearMentions(ctx context.Context, chatID, userID, uptoSeq int64) (int, error) {
+	q := querier(ctx, r.pool)
+	if _, err := q.Exec(ctx,
+		`DELETE FROM message_mentions WHERE chat_id=$1 AND user_id=$2 AND seq<=$3`,
+		chatID, userID, uptoSeq); err != nil {
+		return 0, err
+	}
+	var remaining int
+	if err := q.QueryRow(ctx,
+		`SELECT count(*) FROM message_mentions WHERE chat_id=$1 AND user_id=$2`,
+		chatID, userID).Scan(&remaining); err != nil {
+		return 0, err
+	}
+	_, err := q.Exec(ctx,
+		`UPDATE chat_members SET unread_mentions_count=$3 WHERE chat_id=$1 AND user_id=$2`,
+		chatID, userID, remaining)
+	return remaining, err
+}
+
+// NextMention returns the seq/message id of the member's earliest unread mention
+// past afterSeq; domain.ErrNotFound when there is none.
+func (r *ChatsRepo) NextMention(ctx context.Context, chatID, userID, afterSeq int64) (int64, int64, error) {
+	q := querier(ctx, r.pool)
+	var seq, msgID int64
+	err := q.QueryRow(ctx,
+		`SELECT seq, message_id FROM message_mentions
+		 WHERE chat_id=$1 AND user_id=$2 AND seq>$3
+		 ORDER BY seq ASC LIMIT 1`, chatID, userID, afterSeq).Scan(&seq, &msgID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, 0, domain.ErrNotFound
+	}
+	return seq, msgID, err
+}
+
+// MaxSeq returns the chat's current maximum sequence (chats.last_seq), i.e. the
+// horizon «Очистить историю» clamps to; domain.ErrNotFound if the chat is gone.
+func (r *ChatsRepo) MaxSeq(ctx context.Context, chatID int64) (int64, error) {
+	q := querier(ctx, r.pool)
+	var seq int64
+	err := q.QueryRow(ctx, `SELECT last_seq FROM chats WHERE id=$1`, chatID).Scan(&seq)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, domain.ErrNotFound
+	}
+	return seq, err
+}
+
+// ClearedSeq returns a member's «очищенный» horizon (cleared_max_seq); 0 when
+// there is no such member row (nothing cleared).
+func (r *ChatsRepo) ClearedSeq(ctx context.Context, chatID, userID int64) (int64, error) {
+	q := querier(ctx, r.pool)
+	var seq int64
+	err := q.QueryRow(ctx,
+		`SELECT cleared_max_seq FROM chat_members WHERE chat_id=$1 AND user_id=$2`,
+		chatID, userID).Scan(&seq)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	return seq, err
+}
+
+// SetClearedSeq raises a member's cleared horizon: messages with seq<=seq are
+// hidden from that member's history reads (non-destructive «clear for me»).
+func (r *ChatsRepo) SetClearedSeq(ctx context.Context, chatID, userID, seq int64) error {
+	q := querier(ctx, r.pool)
+	_, err := q.Exec(ctx,
+		`UPDATE chat_members SET cleared_max_seq=$3 WHERE chat_id=$1 AND user_id=$2`,
+		chatID, userID, seq)
 	return err
 }
 

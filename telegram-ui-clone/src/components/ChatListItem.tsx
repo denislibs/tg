@@ -12,6 +12,8 @@ import { useTypingLabel } from '../core/hooks/useTypingLabel'
 import { uiEvents } from '../core/hooks/uiEvents'
 import TypingIndicator from './conversation/TypingIndicator'
 import VerifiedBadge from './VerifiedBadge'
+import PremiumBadge from './PremiumBadge'
+import EmojiStatus from './EmojiStatus'
 import type { Chat } from '../data'
 import { useT } from '../i18n'
 import { useTimeFormatter } from '../settings'
@@ -154,6 +156,8 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
             {chat.verified && (
               <VerifiedBadge size={20} color="var(--cl-accent)" checkColor="var(--cl-check)" />
             )}
+            {chat.premium && <PremiumBadge size={18} />}
+            {chat.emojiStatus && <EmojiStatus emoji={chat.emojiStatus} size={18} />}
             {chat.muted && <TgIcon name="muted" size={17} color="var(--cl-muted)" />}
             {/* tweb places the sent/read tick in the title row, just left of the time */}
             {chat.sent && (
@@ -202,6 +206,9 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
                 </Text>
               </>
             )}
+            {/* Непрочитанные упоминания: отдельный круглый бейдж «@» слева от
+                счётчика непрочитанных (tweb .dialog-subtitle-badge.mention). */}
+            {chat.unreadMentions ? <Badge muted={chat.muted}>@</Badge> : null}
             {chat.unread != null ? (
               <Badge muted={chat.muted}>{chat.unread}</Badge>
             ) : chat.pinned ? (

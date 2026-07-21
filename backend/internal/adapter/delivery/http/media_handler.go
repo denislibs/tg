@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -142,6 +143,117 @@ func (h *MediaHandler) PutContent(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "upload failed")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+const maxPartUpload = 10 << 20 // 10 MiB per chunk, mirrors usecase maxPartSize
+
+// PutPart receives one chunk of a resumable upload. index is 1-based; ?total= is
+// the declared part count. Re-uploading a part is idempotent.
+func (h *MediaHandler) PutPart(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	id, ok := pathInt(w, r, "mediaID")
+	if !ok {
+		return
+	}
+	index, ok := pathInt(w, r, "index")
+	if !ok {
+		return
+	}
+	total, _ := strconv.Atoi(r.URL.Query().Get("total"))
+	body := http.MaxBytesReader(w, r.Body, maxPartUpload)
+	defer body.Close()
+	err := h.svc.SavePart(r.Context(), id, user.ID, int(index), total, body, r.ContentLength)
+	if errors.Is(err, usecasemedia.ErrBadPart) {
+		writeError(w, http.StatusBadRequest, "invalid part index")
+		return
+	}
+	if errors.Is(err, usecasemedia.ErrForbidden) {
+		writeError(w, http.StatusForbidden, "not your media")
+		return
+	}
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "media not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "part upload failed")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// UploadParts reports which parts are already stored, so the client can resume by
+// re-sending only the missing chunks.
+func (h *MediaHandler) UploadParts(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	id, ok := pathInt(w, r, "mediaID")
+	if !ok {
+		return
+	}
+	received, total, err := h.svc.ReceivedParts(r.Context(), id, user.ID)
+	if errors.Is(err, usecasemedia.ErrForbidden) {
+		writeError(w, http.StatusForbidden, "not your media")
+		return
+	}
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "media not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load parts")
+		return
+	}
+	if received == nil {
+		received = []int{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"received": received, "total": total})
+}
+
+type finalizeBody struct {
+	Mime     string `json:"mime"`
+	Size     int64  `json:"size"`
+	Total    int    `json:"total"`
+	Width    int    `json:"width"`
+	Height   int    `json:"height"`
+	Duration int    `json:"duration"`
+	FileName string `json:"file_name"`
+}
+
+// FinalizeUpload assembles the received parts into the final object and records
+// the actual metadata. After this the object downloads exactly like a single-PUT
+// upload.
+func (h *MediaHandler) FinalizeUpload(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	id, ok := pathInt(w, r, "mediaID")
+	if !ok {
+		return
+	}
+	var body finalizeBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	err := h.svc.FinalizeUpload(r.Context(), id, user.ID, usecasemedia.FinalizeInput{
+		Mime: body.Mime, Size: body.Size, Total: body.Total,
+		Width: body.Width, Height: body.Height, Duration: body.Duration, FileName: body.FileName,
+	})
+	if errors.Is(err, usecasemedia.ErrForbidden) {
+		writeError(w, http.StatusForbidden, "not your media")
+		return
+	}
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "media not found")
+		return
+	}
+	if errors.Is(err, usecasemedia.ErrNoUpload) || errors.Is(err, usecasemedia.ErrMissingParts) {
+		writeError(w, http.StatusBadRequest, "upload incomplete")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "finalize failed")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

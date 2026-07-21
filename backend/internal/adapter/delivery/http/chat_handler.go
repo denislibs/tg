@@ -263,7 +263,8 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 		row := map[string]any{
 			"chat_id": d.ChatID, "type": d.Type,
 			"title": d.Title, "username": d.Username, "photo_url": d.PhotoURL,
-			"last_read_seq": d.LastReadSeq, "peer_read_seq": d.PeerReadSeq, "unread": d.UnreadCount, "muted": d.Muted,
+			"last_read_seq": d.LastReadSeq, "peer_read_seq": d.PeerReadSeq, "unread": d.UnreadCount,
+			"unread_mentions_count": d.UnreadMentionsCount, "muted": d.Muted,
 			"pinned": d.Pinned, "archived": d.Archived, "is_forum": d.IsForum,
 			"notify_preview": d.NotifyPreview, "notify_sound": d.NotifySound,
 			"auto_delete_period": d.AutoDeletePeriod,
@@ -278,7 +279,7 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 		if d.Peer != nil {
 			row["peer"] = map[string]any{
 				"id": d.Peer.ID, "display_name": d.Peer.DisplayName, "avatar_url": d.Peer.AvatarURL,
-				"verified": d.Peer.Verified,
+				"verified": d.Peer.Verified, "premium": d.Peer.Premium, "emoji_status": d.Peer.EmojiStatus,
 			}
 		}
 		out = append(out, row)
@@ -287,13 +288,16 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 }
 
 type sendBody struct {
-	Type        string                 `json:"type"`
-	Text        string                 `json:"text"`
-	Entities    []domain.MessageEntity `json:"entities"`
-	ReplyToID   *int64                 `json:"reply_to_id"`
-	ClientMsgID string                 `json:"client_msg_id"`
-	MediaID     *int64                 `json:"media_id"`
-	GroupedID   string                 `json:"grouped_id"`
+	Type      string                 `json:"type"`
+	Text      string                 `json:"text"`
+	Entities  []domain.MessageEntity `json:"entities"`
+	ReplyToID *int64                 `json:"reply_to_id"`
+	// ответ с цитатой фрагмента (Telegram reply quote): текст + offset (UTF-16)
+	ReplyQuoteText   *string `json:"reply_quote_text"`
+	ReplyQuoteOffset *int    `json:"reply_quote_offset"`
+	ClientMsgID      string  `json:"client_msg_id"`
+	MediaID          *int64  `json:"media_id"`
+	GroupedID        string  `json:"grouped_id"`
 	// сообщение в тред (форум-топик): id корневого сообщения топика
 	ThreadRootID *int64 `json:"thread_root_id"`
 	// гео-точка (type 'geo') / контакт (type 'contact')
@@ -322,7 +326,8 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 	}
 	msg, err := h.svc.Send(r.Context(), usecasechat.SendInput{
 		ChatID: chatID, SenderID: h.meID(r), Type: body.Type, Text: body.Text, Entities: body.Entities,
-		ReplyToID: body.ReplyToID, ClientMsgID: body.ClientMsgID, MediaID: body.MediaID, GroupedID: body.GroupedID,
+		ReplyToID: body.ReplyToID, ReplyQuoteText: body.ReplyQuoteText, ReplyQuoteOffset: body.ReplyQuoteOffset,
+		ClientMsgID: body.ClientMsgID, MediaID: body.MediaID, GroupedID: body.GroupedID,
 		ThreadRootID: body.ThreadRootID,
 		GeoLat:       body.GeoLat, GeoLng: body.GeoLng, ContactUserID: body.ContactUserID,
 		GeoTitle: body.GeoTitle, GeoAddress: body.GeoAddress,
@@ -424,6 +429,26 @@ func (h *ChatHandler) Read(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "read failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// ClearHistory clears the caller's copy of the chat history (POST
+// /chats/{chatID}/clear; Telegram «Очистить историю» — у себя): messages stay
+// for everyone else, only this user's window is emptied.
+func (h *ChatHandler) ClearHistory(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	err := h.svc.ClearHistory(r.Context(), chatID, h.meID(r))
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusForbidden, "not a member of this chat")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "clear failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -594,6 +619,27 @@ func (h *ChatHandler) Viewers(w http.ResponseWriter, r *http.Request) {
 		ids = []int64{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"user_ids": ids})
+}
+
+// NextMention serves «jump to next @»: GET /chats/{chatID}/mentions/next?after_seq=
+// returns the seq/msg_id of the caller's earliest unread mention past after_seq
+// (404 when there's none). Powers the floating mention button in the open chat.
+func (h *ChatHandler) NextMention(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	afterSeq := queryInt(r, "after_seq", 0)
+	seq, msgID, err := h.svc.NextMention(r.Context(), chatID, h.meID(r), afterSeq)
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "no unread mention")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load mention")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"seq": seq, "msg_id": msgID})
 }
 
 // MediaHistory serves the profile's shared-media tabs:
@@ -891,7 +937,9 @@ func (h *ChatHandler) SetForum(w http.ResponseWriter, r *http.Request) {
 func topicJSON(row domain.TopicRow) map[string]any {
 	return map[string]any{
 		"id": row.Topic.ID, "chat_id": row.Topic.ChatID, "root_msg_id": row.Topic.RootMsgID,
-		"title": row.Topic.Title, "icon_color": row.Topic.IconColor, "closed": row.Topic.Closed,
+		"title": row.Topic.Title, "icon_color": row.Topic.IconColor, "icon_emoji": row.Topic.IconEmoji,
+		"closed": row.Topic.Closed, "hidden": row.Topic.Hidden, "pinned": row.Topic.Pinned,
+		"pos": row.Topic.Pos, "is_general": row.Topic.IsGeneral,
 		"created_by": row.Topic.CreatedBy, "created_at": row.Topic.CreatedAt,
 		"msg_count": row.MsgCount, "last_text": row.LastText, "last_type": row.LastType,
 		"last_sender_name": row.LastSenderName, "last_at": row.LastAt,
@@ -907,12 +955,13 @@ func (h *ChatHandler) CreateTopic(w http.ResponseWriter, r *http.Request) {
 	var b struct {
 		Title     string `json:"title"`
 		IconColor int    `json:"icon_color"`
+		IconEmoji string `json:"icon_emoji"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	t, err := h.svc.CreateTopic(r.Context(), chatID, h.meID(r), b.Title, b.IconColor)
+	t, err := h.svc.CreateTopic(r.Context(), chatID, h.meID(r), b.Title, b.IconEmoji, b.IconColor)
 	if errors.Is(err, domain.ErrTooLong) {
 		writeError(w, http.StatusBadRequest, "invalid title")
 		return
@@ -956,6 +1005,72 @@ func (h *ChatHandler) CloseTopic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.svc.CloseTopic(r.Context(), topicID, h.meID(r), b.Closed); err != nil {
+		h.mapScheduledErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// EditTopic — PATCH /chats/{chatID}/topics/{topicID} {title, icon_emoji, icon_color}.
+func (h *ChatHandler) EditTopic(w http.ResponseWriter, r *http.Request) {
+	topicID, ok := pathInt(w, r, "topicID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Title     string `json:"title"`
+		IconEmoji string `json:"icon_emoji"`
+		IconColor int    `json:"icon_color"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	if err := h.svc.EditTopic(r.Context(), topicID, h.meID(r), b.Title, b.IconEmoji, b.IconColor); err != nil {
+		if errors.Is(err, domain.ErrTooLong) {
+			writeError(w, http.StatusBadRequest, "invalid title")
+			return
+		}
+		h.mapScheduledErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// HideTopic — POST /chats/{chatID}/topics/{topicID}/hide {hidden}.
+func (h *ChatHandler) HideTopic(w http.ResponseWriter, r *http.Request) {
+	topicID, ok := pathInt(w, r, "topicID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Hidden bool `json:"hidden"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	if err := h.svc.SetTopicHidden(r.Context(), topicID, h.meID(r), b.Hidden); err != nil {
+		h.mapScheduledErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// PinTopic — POST /chats/{chatID}/topics/{topicID}/pin {pinned}.
+func (h *ChatHandler) PinTopic(w http.ResponseWriter, r *http.Request) {
+	topicID, ok := pathInt(w, r, "topicID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Pinned bool `json:"pinned"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	if err := h.svc.SetTopicPinned(r.Context(), topicID, h.meID(r), b.Pinned); err != nil {
 		h.mapScheduledErr(w, err)
 		return
 	}
@@ -1092,6 +1207,39 @@ func (h *ChatHandler) ListReactions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"reactions": counts})
 }
 
+// ReactionUsers — GET /chats/{chatID}/messages/{msgID}/reactions/users: кто
+// отреагировал и каким эмодзи (для попапа who-reacted).
+func (h *ChatHandler) ReactionUsers(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	msgID, ok := pathInt(w, r, "msgID")
+	if !ok {
+		return
+	}
+	users, err := h.svc.ReactionUsers(r.Context(), chatID, msgID, h.meID(r))
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "message not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load reactions")
+		return
+	}
+	out := make([]map[string]any, 0, len(users))
+	for _, ru := range users {
+		out = append(out, map[string]any{
+			"user_id":    ru.User.ID,
+			"name":       ru.User.DisplayName,
+			"username":   ru.User.Username,
+			"avatar_url": ru.User.AvatarURL,
+			"emoji":      ru.Emoji,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"users": out})
+}
+
 func messageJSON(m domain.Message) map[string]any {
 	j := map[string]any{
 		"id": m.ID, "chat_id": m.ChatID, "seq": m.Seq, "sender_id": m.SenderID,
@@ -1169,6 +1317,9 @@ func messageJSON(m domain.Message) map[string]any {
 		}
 		if m.ReplyTo.MediaID != nil {
 			rt["media_id"] = *m.ReplyTo.MediaID
+		}
+		if m.ReplyTo.QuoteText != "" {
+			rt["quote_text"] = m.ReplyTo.QuoteText
 		}
 		j["reply_to"] = rt
 	}

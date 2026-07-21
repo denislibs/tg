@@ -205,10 +205,12 @@ func (r *PrivacyRepo) GetUser(ctx context.Context, id int64) (domain.User, error
 	var u domain.User
 	err := querier(ctx, r.pool).QueryRow(ctx,
 		`SELECT id, phone, username, COALESCE(first_name,''), COALESCE(last_name,''),
-		        display_name, COALESCE(bio,''), birthday, COALESCE(avatar_url,''), phone_visibility
+		        display_name, COALESCE(bio,''), birthday, COALESCE(avatar_url,''), phone_visibility,
+		        is_premium, COALESCE(emoji_status,'')
 		   FROM users WHERE id=$1`, id).
 		Scan(&u.ID, &u.Phone, &u.Username, &u.FirstName, &u.LastName,
-			&u.DisplayName, &u.Bio, &u.Birthday, &u.AvatarURL, &u.PhoneVisibility)
+			&u.DisplayName, &u.Bio, &u.Birthday, &u.AvatarURL, &u.PhoneVisibility,
+			&u.IsPremium, &u.EmojiStatus)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.User{}, domain.ErrNotFound
 	}

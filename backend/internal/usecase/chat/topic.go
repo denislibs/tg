@@ -23,11 +23,20 @@ func (i *Interactor) SetForum(ctx context.Context, chatID, actorID int64, enable
 	if err := i.requireRight(ctx, chatID, actorID, domain.RightChangeInfo); err != nil {
 		return err
 	}
-	return i.groups.SetForum(ctx, chatID, enabled)
+	if err := i.groups.SetForum(ctx, chatID, enabled); err != nil {
+		return err
+	}
+	if enabled {
+		// При включении тем гарантируем системную тему «General» (как в tweb).
+		if _, err := i.topics.EnsureGeneralTopic(ctx, chatID, actorID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // CreateTopic создаёт тему: сервисное сообщение-корень + строка forum_topics.
-func (i *Interactor) CreateTopic(ctx context.Context, chatID, userID int64, title string, iconColor int) (domain.ForumTopic, error) {
+func (i *Interactor) CreateTopic(ctx context.Context, chatID, userID int64, title, iconEmoji string, iconColor int) (domain.ForumTopic, error) {
 	if i.topics == nil {
 		return domain.ForumTopic{}, domain.ErrNotFound
 	}
@@ -53,9 +62,21 @@ func (i *Interactor) CreateTopic(ctx context.Context, chatID, userID int64, titl
 	if iconColor < 0 {
 		iconColor = 0
 	}
+	iconEmoji = sanitizeTopicEmoji(iconEmoji)
 	return i.topics.Create(ctx, domain.ForumTopic{
-		ChatID: chatID, RootMsgID: root.ID, Title: title, IconColor: iconColor, CreatedBy: userID,
+		ChatID: chatID, RootMsgID: root.ID, Title: title, IconColor: iconColor,
+		IconEmoji: iconEmoji, CreatedBy: userID,
 	})
+}
+
+// sanitizeTopicEmoji ограничивает иконку темы коротким unicode-emoji (без custom-emoji
+// инфраструктуры): режем по рунам, чтобы не хранить произвольный текст.
+func sanitizeTopicEmoji(s string) string {
+	s = strings.TrimSpace(s)
+	if utf8.RuneCountInString(s) > 8 {
+		return ""
+	}
+	return s
 }
 
 // ListTopics — темы чата (участникам), свежие сверху.
@@ -73,7 +94,19 @@ func (i *Interactor) ListTopics(ctx context.Context, chatID, userID int64) ([]do
 	return i.topics.ListByChat(ctx, chatID)
 }
 
-// CloseTopic закрывает/открывает тему (создатель темы или админ).
+// topicManagerOK — создатель темы или админ/создатель чата (mirror tweb manage_topics).
+func (i *Interactor) topicManagerOK(ctx context.Context, t domain.ForumTopic, userID int64) bool {
+	if t.CreatedBy == userID {
+		return true
+	}
+	if i.groups == nil {
+		return false
+	}
+	member, e := i.groups.GetMember(ctx, t.ChatID, userID)
+	return e == nil && (member.Role == "creator" || member.Role == "admin")
+}
+
+// CloseTopic закрывает/открывает тему (создатель темы или админ). General закрыть нельзя.
 func (i *Interactor) CloseTopic(ctx context.Context, topicID, userID int64, closed bool) error {
 	if i.topics == nil {
 		return domain.ErrNotFound
@@ -82,13 +115,73 @@ func (i *Interactor) CloseTopic(ctx context.Context, topicID, userID int64, clos
 	if err != nil {
 		return err
 	}
-	if t.CreatedBy != userID {
-		member, e := i.groups.GetMember(ctx, t.ChatID, userID)
-		if e != nil || (member.Role != "creator" && member.Role != "admin") {
-			return domain.ErrForbidden
-		}
+	if t.IsGeneral {
+		return domain.ErrForbidden
+	}
+	if !i.topicManagerOK(ctx, t, userID) {
+		return domain.ErrForbidden
 	}
 	return i.topics.SetClosed(ctx, topicID, closed)
+}
+
+// EditTopic меняет заголовок/emoji/цвет темы (создатель темы или админ).
+// У General можно менять только заголовок (в Telegram — админом).
+func (i *Interactor) EditTopic(ctx context.Context, topicID, userID int64, title, iconEmoji string, iconColor int) error {
+	if i.topics == nil {
+		return domain.ErrNotFound
+	}
+	t, err := i.topics.ByID(ctx, topicID)
+	if err != nil {
+		return err
+	}
+	if !i.topicManagerOK(ctx, t, userID) {
+		return domain.ErrForbidden
+	}
+	title = strings.TrimSpace(title)
+	if title == "" || utf8.RuneCountInString(title) > maxTopicTitle {
+		return domain.ErrTooLong
+	}
+	if t.IsGeneral {
+		// General сохраняет системную иконку — правим только заголовок.
+		return i.topics.EditTopic(ctx, topicID, title, t.IconEmoji, t.IconColor)
+	}
+	if iconColor < 0 {
+		iconColor = 0
+	}
+	return i.topics.EditTopic(ctx, topicID, title, sanitizeTopicEmoji(iconEmoji), iconColor)
+}
+
+// SetTopicHidden сворачивает/разворачивает тему (право CHANGE_INFO). Разрешено и для General.
+func (i *Interactor) SetTopicHidden(ctx context.Context, topicID, userID int64, hidden bool) error {
+	if i.topics == nil {
+		return domain.ErrNotFound
+	}
+	t, err := i.topics.ByID(ctx, topicID)
+	if err != nil {
+		return err
+	}
+	if err := i.requireRight(ctx, t.ChatID, userID, domain.RightChangeInfo); err != nil {
+		return err
+	}
+	return i.topics.SetHidden(ctx, topicID, hidden)
+}
+
+// SetTopicPinned закрепляет/открепляет тему (право CHANGE_INFO). General и так всегда первая.
+func (i *Interactor) SetTopicPinned(ctx context.Context, topicID, userID int64, pinned bool) error {
+	if i.topics == nil {
+		return domain.ErrNotFound
+	}
+	t, err := i.topics.ByID(ctx, topicID)
+	if err != nil {
+		return err
+	}
+	if t.IsGeneral {
+		return domain.ErrForbidden
+	}
+	if err := i.requireRight(ctx, t.ChatID, userID, domain.RightChangeInfo); err != nil {
+		return err
+	}
+	return i.topics.SetPinned(ctx, topicID, pinned)
 }
 
 // ListThreadMessages — сообщения треда (форум-топика) по возрастанию.

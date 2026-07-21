@@ -16,26 +16,28 @@ import (
 // ---- in-memory fake repos for the groups usecase ----
 
 type fakeGroupRepo struct {
-	mu         sync.Mutex
-	nextID     int64
-	cards      map[int64]domain.ChatCard         // chatID -> card (title/about/etc)
-	members    map[int64]map[int64]domain.Member // chatID -> userID -> member
-	users      map[int64]domain.UserCard
-	discussion map[int64]int64          // channelID -> discussion groupID
-	bans       map[int64]map[int64]bool // chatID -> userID -> banned
-	pinned     map[int64]map[int64]bool // userID -> chatID -> pinned
-	archived   map[int64]map[int64]bool // userID -> chatID -> archived
-	forum      map[int64]bool           // chatID -> темы включены
-	onCreate   func(id int64)           // optional hook fired after a chat is created
+	mu           sync.Mutex
+	nextID       int64
+	cards        map[int64]domain.ChatCard         // chatID -> card (title/about/etc)
+	members      map[int64]map[int64]domain.Member // chatID -> userID -> member
+	users        map[int64]domain.UserCard
+	discussion   map[int64]int64                              // channelID -> discussion groupID
+	bans         map[int64]map[int64]bool                     // chatID -> userID -> banned
+	restrictions map[int64]map[int64]domain.MemberRestriction // chatID -> userID -> restriction
+	pinned       map[int64]map[int64]bool                     // userID -> chatID -> pinned
+	archived     map[int64]map[int64]bool                     // userID -> chatID -> archived
+	forum        map[int64]bool                               // chatID -> темы включены
+	onCreate     func(id int64)                               // optional hook fired after a chat is created
 }
 
 func newFakeGroupRepo() *fakeGroupRepo {
 	return &fakeGroupRepo{
-		cards:      map[int64]domain.ChatCard{},
-		members:    map[int64]map[int64]domain.Member{},
-		users:      map[int64]domain.UserCard{},
-		discussion: map[int64]int64{},
-		bans:       map[int64]map[int64]bool{},
+		cards:        map[int64]domain.ChatCard{},
+		members:      map[int64]map[int64]domain.Member{},
+		users:        map[int64]domain.UserCard{},
+		discussion:   map[int64]int64{},
+		bans:         map[int64]map[int64]bool{},
+		restrictions: map[int64]map[int64]domain.MemberRestriction{},
 	}
 }
 
@@ -132,6 +134,41 @@ func (r *fakeGroupRepo) ListBans(_ context.Context, chatID int64) ([]domain.Bann
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].UserID < out[j].UserID })
 	return out, nil
+}
+
+func (r *fakeGroupRepo) SetRestriction(_ context.Context, res domain.MemberRestriction) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.restrictions[res.ChatID] == nil {
+		r.restrictions[res.ChatID] = map[int64]domain.MemberRestriction{}
+	}
+	r.restrictions[res.ChatID][res.UserID] = res
+	return nil
+}
+
+func (r *fakeGroupRepo) GetRestriction(_ context.Context, chatID, userID int64) (domain.MemberRestriction, bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	res, ok := r.restrictions[chatID][userID]
+	return res, ok, nil
+}
+
+func (r *fakeGroupRepo) ListRestrictions(_ context.Context, chatID int64) ([]domain.MemberRestriction, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := []domain.MemberRestriction{}
+	for _, res := range r.restrictions[chatID] {
+		out = append(out, res)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].UserID < out[j].UserID })
+	return out, nil
+}
+
+func (r *fakeGroupRepo) DeleteRestriction(_ context.Context, chatID, userID int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.restrictions[chatID], userID)
+	return nil
 }
 
 func (r *fakeGroupRepo) DeleteChat(_ context.Context, chatID int64) error {
@@ -390,11 +427,11 @@ func newFakeInviteRepo() *fakeInviteRepo {
 	return &fakeInviteRepo{links: map[int64]domain.InviteLink{}}
 }
 
-func (r *fakeInviteRepo) Create(_ context.Context, chatID, createdBy int64, token string, usageLimit *int, requiresApproval bool) (domain.InviteLink, error) {
+func (r *fakeInviteRepo) Create(_ context.Context, chatID, createdBy int64, token string, usageLimit *int, requiresApproval bool, expiresAt *time.Time) (domain.InviteLink, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.nextID++
-	l := domain.InviteLink{ID: r.nextID, ChatID: chatID, Token: token, CreatedBy: createdBy, UsageLimit: usageLimit, RequiresApproval: requiresApproval}
+	l := domain.InviteLink{ID: r.nextID, ChatID: chatID, Token: token, CreatedBy: createdBy, UsageLimit: usageLimit, RequiresApproval: requiresApproval, ExpiresAt: expiresAt}
 	r.links[l.ID] = l
 	return l, nil
 }
@@ -509,18 +546,28 @@ func (c groupChats) MemberIDs(_ context.Context, chatID int64) ([]int64, error) 
 	}
 	return ids, nil
 }
-func (c groupChats) ListDialogs(context.Context, int64) ([]domain.Dialog, error) { return nil, nil }
-func (c groupChats) ChatPartners(context.Context, int64) ([]int64, error)        { return nil, nil }
-func (c groupChats) SetAutoDelete(context.Context, int64, int) error             { return nil }
-func (c groupChats) UserAutoDelete(context.Context, int64) (int, error)          { return 0, nil }
-func (c groupChats) SetUserAutoDelete(context.Context, int64, int) error         { return nil }
-func (c groupChats) IncUnread(context.Context, int64, int64) error               { return nil }
-func (c groupChats) CurrentReadSeq(context.Context, int64, int64) (int64, error) { return 0, nil }
-func (c groupChats) SetRead(context.Context, int64, int64, int64, int) error     { return nil }
-func (c groupChats) ChatType(context.Context, int64) (string, error)             { return "group", nil }
-func (c groupChats) PinMessage(context.Context, int64, int64, int64) error       { return nil }
-func (c groupChats) UnpinMessage(context.Context, int64, int64) error            { return nil }
-func (c groupChats) ListPins(context.Context, int64) ([]domain.Message, error)   { return nil, nil }
+func (c groupChats) ListDialogs(context.Context, int64) ([]domain.Dialog, error)  { return nil, nil }
+func (c groupChats) ChatPartners(context.Context, int64) ([]int64, error)         { return nil, nil }
+func (c groupChats) SetAutoDelete(context.Context, int64, int) error              { return nil }
+func (c groupChats) UserAutoDelete(context.Context, int64) (int, error)           { return 0, nil }
+func (c groupChats) SetUserAutoDelete(context.Context, int64, int) error          { return nil }
+func (c groupChats) IncUnread(context.Context, int64, int64) error                { return nil }
+func (c groupChats) CurrentReadSeq(context.Context, int64, int64) (int64, error)  { return 0, nil }
+func (c groupChats) SetRead(context.Context, int64, int64, int64, int) error      { return nil }
+func (c groupChats) AddMention(context.Context, int64, int64, int64, int64) error { return nil }
+func (c groupChats) ClearMentions(context.Context, int64, int64, int64) (int, error) {
+	return 0, nil
+}
+func (c groupChats) NextMention(context.Context, int64, int64, int64) (int64, int64, error) {
+	return 0, 0, domain.ErrNotFound
+}
+func (c groupChats) MaxSeq(context.Context, int64) (int64, error)              { return 0, nil }
+func (c groupChats) ClearedSeq(context.Context, int64, int64) (int64, error)   { return 0, nil }
+func (c groupChats) SetClearedSeq(context.Context, int64, int64, int64) error  { return nil }
+func (c groupChats) ChatType(context.Context, int64) (string, error)           { return "group", nil }
+func (c groupChats) PinMessage(context.Context, int64, int64, int64) error     { return nil }
+func (c groupChats) UnpinMessage(context.Context, int64, int64) error          { return nil }
+func (c groupChats) ListPins(context.Context, int64) ([]domain.Message, error) { return nil, nil }
 func (c groupChats) Viewers(context.Context, int64, int64, int64) ([]int64, error) {
 	return nil, nil
 }
@@ -745,7 +792,7 @@ func TestPromoteAdmin_RequiresManageAdmins(t *testing.T) {
 func TestJoinByToken_NoApproval(t *testing.T) {
 	i, fg, fjr := newGroupTestInteractor(t)
 	id, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
-	link, _ := i.CreateInvite(context.Background(), id, 7, nil, false)
+	link, _ := i.CreateInvite(context.Background(), id, 7, nil, false, nil)
 
 	requested, err := i.JoinByToken(context.Background(), link.Token, 9)
 	if err != nil {
@@ -765,7 +812,7 @@ func TestJoinByToken_NoApproval(t *testing.T) {
 func TestJoinByToken_RequiresApproval(t *testing.T) {
 	i, fg, fjr := newGroupTestInteractor(t)
 	id, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
-	link, _ := i.CreateInvite(context.Background(), id, 7, nil, true)
+	link, _ := i.CreateInvite(context.Background(), id, 7, nil, true, nil)
 
 	requested, err := i.JoinByToken(context.Background(), link.Token, 9)
 	if err != nil {
@@ -801,7 +848,7 @@ func TestListJoinRequests_NonAdminForbidden(t *testing.T) {
 func TestApproveJoinRequest(t *testing.T) {
 	i, fg, fjr := newGroupTestInteractor(t)
 	id, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
-	link, _ := i.CreateInvite(context.Background(), id, 7, nil, true)
+	link, _ := i.CreateInvite(context.Background(), id, 7, nil, true, nil)
 	if _, err := i.JoinByToken(context.Background(), link.Token, 9); err != nil {
 		t.Fatal(err)
 	}
@@ -894,7 +941,7 @@ func TestGroupSettings_Enforcement(t *testing.T) {
 	}
 
 	// Бан: кикнут + не вернётся по ссылке и через добавление участником; разбан лечит.
-	link, _ := in.CreateInvite(ctx, id, 7, nil, false)
+	link, _ := in.CreateInvite(ctx, id, 7, nil, false, nil)
 	if err := in.BanMember(ctx, id, 7, 8); err != nil {
 		t.Fatalf("BanMember: %v", err)
 	}
@@ -936,5 +983,85 @@ func TestGroupSettings_Enforcement(t *testing.T) {
 	}
 	if _, err := fg.Card(ctx, id, 7); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatal("chat still exists after DeleteGroup")
+	}
+}
+
+// TestMemberRestrictions covers granular per-user restrictions (Telegram
+// editBanned): a restricted member is blocked at Send per denied bit, admins/
+// creator can't be restricted, ListRestricted filters expired rows, and unrestrict
+// lifts it.
+func TestMemberRestrictions(t *testing.T) {
+	fg := newFakeGroupRepo()
+	s := newStore()
+	fg.onCreate = func(id int64) {
+		s.mu.Lock()
+		s.chatType[id] = "group"
+		s.mu.Unlock()
+	}
+	fi := newFakeInviteRepo()
+	in := New(fakeTx{}, groupChats{fg}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, fg, fi, nil, nil, newFakeJoinRequestRepo())
+	ctx := context.Background()
+	fg.users[7] = domain.UserCard{ID: 7, DisplayName: "Алиса"}
+	fg.users[8] = domain.UserCard{ID: 8, DisplayName: "Боб"}
+
+	id, err := in.CreateGroup(ctx, 7, "Team", "", "", false, []int64{8})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Non-admin cannot restrict.
+	if err := in.RestrictMember(ctx, id, 8, 7, domain.PermSendMessages, 0); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("non-admin restrict: err = %v; want ErrForbidden", err)
+	}
+	// Creator can't be restricted.
+	if err := in.RestrictMember(ctx, id, 7, 7, domain.PermSendMessages, 0); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("self restrict: err = %v; want ErrForbidden", err)
+	}
+
+	// Deny only media: text passes, media is blocked.
+	if err := in.RestrictMember(ctx, id, 7, 8, domain.PermSendMedia, 0); err != nil {
+		t.Fatalf("RestrictMember media: %v", err)
+	}
+	if _, err := in.Send(ctx, SendInput{ChatID: id, SenderID: 8, Text: "текст можно", ClientMsgID: "r1"}); err != nil {
+		t.Fatalf("text under media-restriction: %v", err)
+	}
+	const mediaID int64 = 500
+	s.seedMedia(mediaID, 8)
+	if _, err := in.Send(ctx, SendInput{ChatID: id, SenderID: 8, Type: "photo", MediaID: ptr(mediaID), ClientMsgID: "r2"}); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("media under media-restriction: err = %v; want ErrForbidden", err)
+	}
+
+	// Deny messages entirely: even text is blocked.
+	if err := in.RestrictMember(ctx, id, 7, 8, domain.PermSendMessages, 0); err != nil {
+		t.Fatalf("RestrictMember messages: %v", err)
+	}
+	if _, err := in.Send(ctx, SendInput{ChatID: id, SenderID: 8, Text: "нельзя", ClientMsgID: "r3"}); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("text under full restriction: err = %v; want ErrForbidden", err)
+	}
+
+	// Listed for admins.
+	if list, err := in.ListRestricted(ctx, id, 7); err != nil || len(list) != 1 || list[0].UserID != 8 {
+		t.Fatalf("ListRestricted = %+v (err %v); want [8]", list, err)
+	}
+
+	// Unrestrict lifts it.
+	if err := in.UnrestrictMember(ctx, id, 7, 8); err != nil {
+		t.Fatalf("UnrestrictMember: %v", err)
+	}
+	if _, err := in.Send(ctx, SendInput{ChatID: id, SenderID: 8, Text: "снова можно", ClientMsgID: "r4"}); err != nil {
+		t.Fatalf("send after unrestrict: %v", err)
+	}
+	if list, _ := in.ListRestricted(ctx, id, 7); len(list) != 0 {
+		t.Fatalf("ListRestricted after unrestrict = %+v; want empty", list)
+	}
+
+	// Expired restriction is ignored (past until_date) and lazily cleaned.
+	past := time.Now().Add(-time.Hour)
+	_ = fg.SetRestriction(ctx, domain.MemberRestriction{ChatID: id, UserID: 8, DeniedRights: domain.PermSendMessages, UntilDate: &past, RestrictedBy: 7})
+	if _, err := in.Send(ctx, SendInput{ChatID: id, SenderID: 8, Text: "истекло", ClientMsgID: "r5"}); err != nil {
+		t.Fatalf("send under expired restriction: %v", err)
+	}
+	if list, _ := in.ListRestricted(ctx, id, 7); len(list) != 0 {
+		t.Fatalf("expired restriction listed: %+v", list)
 	}
 }
