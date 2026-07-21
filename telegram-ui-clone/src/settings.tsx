@@ -1,15 +1,13 @@
 import { useCallback } from 'react'
 import { create } from 'zustand'
 import type { ThemeChoice } from './theme'
+import type { Wallpaper } from './wallpapers'
 
 export type TimeFormat = '12h' | '24h'
 
-// What the chat wallpaper currently shows.
-export type Wallpaper =
-  | { kind: 'default' }
-  | { kind: 'preset'; colors: string[] }
-  | { kind: 'color'; color: string }
-  | { kind: 'image'; src: string }
+// What the chat wallpaper currently shows (тип живёт в ./wallpapers вместе с
+// чистой логикой выбора активного фона).
+export type { Wallpaper }
 
 export interface Settings {
   themeChoice: ThemeChoice
@@ -17,6 +15,11 @@ export interface Settings {
   timeFormat: TimeFormat
   wallpaper: Wallpaper
   wallpaperBlur: boolean
+  // Свои обои чата, загруженные фото (tweb background upload): media_id
+  // выбранного изображения. Приоритет над пресетом/цветом (wallpaper) — пока
+  // задан, фон рисуется этим фото. customWallpaperBlur — размытие поверх (toggle).
+  customWallpaperMediaId?: number
+  customWallpaperBlur?: boolean
   // Устройства для звонков (Настройки → Динамики и камера); '' = системное
   // по умолчанию. deviceId из enumerateDevices, читаются при старте звонка.
   speakerId: string
@@ -82,6 +85,8 @@ const DEFAULTS: Settings = {
   timeFormat: '24h',
   wallpaper: { kind: 'default' },
   wallpaperBlur: false,
+  customWallpaperMediaId: undefined,
+  customWallpaperBlur: false,
   speakerId: '',
   micId: '',
   cameraId: '',
@@ -146,6 +151,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       timeFormat: s.timeFormat,
       wallpaper: s.wallpaper,
       wallpaperBlur: s.wallpaperBlur,
+      customWallpaperMediaId: s.customWallpaperMediaId,
+      customWallpaperBlur: s.customWallpaperBlur,
       speakerId: s.speakerId,
       micId: s.micId,
       cameraId: s.cameraId,

@@ -22,6 +22,7 @@ import type { SignInOutcome, PasswordState, PasskeyInfo } from '../core/managers
 import type { Session } from '../core/managers/sessionsManager'
 import type { IceConfig } from '../core/managers/callsManager'
 import type { StarGift, GiftInfo } from '../core/managers/starsManager'
+import type { ReportArgs } from '../core/managers/reportManager'
 import type { BotCommand, CallbackAnswer, InlineResult } from '../core/managers/botsManager'
 import type { StickerSet, Sticker, SavedGif, GifPage } from '../core/managers/stickersManager'
 import type { IVArticle } from '../core/managers/ivManager'
@@ -248,6 +249,9 @@ export interface Managers {
     profileGifts(userId: number): Promise<GiftInfo[]>
     convert(giftId: number): Promise<number>
     setHidden(giftId: number, hidden: boolean): Promise<void>
+  }
+  report: {
+    report(a: ReportArgs): Promise<void>
   }
   bots: {
     commands(botId: number): Promise<BotCommand[]>
