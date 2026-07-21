@@ -9,6 +9,7 @@ import Popup from '../../shared/ui/Popup'
 import Menu, { MenuItem } from '../../shared/ui/Menu'
 import { motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
+import MediaEditor from '../mediaEditor/MediaEditor'
 import { useT } from '../../i18n'
 import s from './SendMediaPopup.module.scss'
 
@@ -49,9 +50,16 @@ export default function SendMediaPopup({
   const [open, setOpen] = useState(true)
   const sending = useRef(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  // Медиа-редактор поверх попапа: индекс редактируемого изображения. После
+  // «Готово» File заменяется ПО МЕСТУ в массиве files — его же читает владелец
+  // (useChatSend.sendPendingMedia), поэтому правка видна при отправке без
+  // дополнительного канала наверх; rev форсирует пересоздание превью-URL.
+  const [editIdx, setEditIdx] = useState<number | null>(null)
+  const [rev, setRev] = useState(0)
 
-  // Object URLs for previews; revoked on unmount.
-  const urls = useMemo(() => files.map((f) => (isMediaFile(f) ? URL.createObjectURL(f) : '')), [files])
+  // Object URLs for previews; revoked when files change / on unmount.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const urls = useMemo(() => files.map((f) => (isMediaFile(f) ? URL.createObjectURL(f) : '')), [files, rev])
   useEffect(() => () => urls.forEach((u) => u && URL.revokeObjectURL(u)), [urls])
   useEffect(() => { inputRef.current?.focus() }, [])
 
@@ -129,7 +137,14 @@ export default function SendMediaPopup({
       <div className={s.previews} data-media={showAsMedia || undefined}>
         {files.map((f, i) => {
           if (showAsMedia && f.type.startsWith('image/')) {
-            return <img key={i} className={`${s.preview} ${s.previewImg}`} src={urls[i]} alt="" />
+            return (
+              <div key={`${i}-${rev}`} className={s.previewWrap}>
+                <img className={`${s.preview} ${s.previewImg}`} src={urls[i]} alt="" />
+                <IconButton size="small" color="#fff" className={s.editBtn} onClick={() => setEditIdx(i)}>
+                  <TgIcon name="edit" size={20} />
+                </IconButton>
+              </div>
+            )
           }
           if (showAsMedia && f.type.startsWith('video/')) {
             return <video key={i} className={s.preview} src={urls[i]} controls />
@@ -147,6 +162,20 @@ export default function SendMediaPopup({
           )
         })}
       </div>
+
+      {editIdx != null && files[editIdx] && (
+        <MediaEditor
+          file={files[editIdx]}
+          onCancel={() => setEditIdx(null)}
+          onDone={(blob) => {
+            const old = files[editIdx]
+            const name = /\.\w+$/.test(old.name) ? old.name.replace(/\.\w+$/, '.jpg') : `${old.name}.jpg`
+            files[editIdx] = new File([blob], name, { type: 'image/jpeg' })
+            setRev((r) => r + 1)
+            setEditIdx(null)
+          }}
+        />
+      )}
     </Popup>
   )
 }
