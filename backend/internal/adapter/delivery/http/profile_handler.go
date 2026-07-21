@@ -165,6 +165,94 @@ func (h *ProfileHandler) Update(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, userJSON(user))
 }
 
+type changePhoneBody struct {
+	NewPhone string `json:"new_phone"`
+}
+
+// ChangePhone starts a phone-number change (POST /me/change-phone): it validates
+// the new number, ensures it is free, and sends a verification code to it. The
+// change is applied only after ConfirmChangePhone.
+func (h *ProfileHandler) ChangePhone(w http.ResponseWriter, r *http.Request) {
+	u, ok := UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "no user")
+		return
+	}
+	var body changePhoneBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	err := h.uc.ChangePhone(r.Context(), u.ID, body.NewPhone)
+	if errors.Is(err, domain.ErrInvalid) {
+		writeError(w, http.StatusBadRequest, "invalid phone")
+		return
+	}
+	if errors.Is(err, domain.ErrConflict) {
+		writeError(w, http.StatusConflict, "phone_taken")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "change phone failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+type confirmChangePhoneBody struct {
+	NewPhone string `json:"new_phone"`
+	Code     string `json:"code"`
+}
+
+// ConfirmChangePhone verifies the code sent to the new number and applies the
+// change (POST /me/change-phone/confirm). Returns the fresh user on success.
+func (h *ProfileHandler) ConfirmChangePhone(w http.ResponseWriter, r *http.Request) {
+	u, ok := UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "no user")
+		return
+	}
+	var body confirmChangePhoneBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	user, err := h.uc.ConfirmChangePhone(r.Context(), u.ID, body.NewPhone, body.Code)
+	if errors.Is(err, domain.ErrInvalid) {
+		writeError(w, http.StatusBadRequest, "invalid phone")
+		return
+	}
+	if errors.Is(err, domain.ErrInvalidCode) {
+		writeError(w, http.StatusUnauthorized, "invalid code")
+		return
+	}
+	if errors.Is(err, domain.ErrConflict) {
+		writeError(w, http.StatusConflict, "phone_taken")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "confirm change phone failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, userJSON(user))
+}
+
+// DeleteAccount soft-deletes (anonymizes) the current user's account and revokes
+// every session (DELETE /me). The client should drop its token and return to the
+// login screen, as with a normal logout.
+func (h *ProfileHandler) DeleteAccount(w http.ResponseWriter, r *http.Request) {
+	u, ok := UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "no user")
+		return
+	}
+	if err := h.uc.DeleteAccount(r.Context(), u.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "delete account failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 type usernameBody struct {
 	Username string `json:"username"`
 }

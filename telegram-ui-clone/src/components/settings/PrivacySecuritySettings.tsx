@@ -66,6 +66,7 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
   const [passkeysCount, setPasskeysCount] = useState(0)
   const [passkeyIntro, setPasskeyIntro] = useState(false)
   const [clearDrafts, setClearDrafts] = useState(false)
+  const [deleteAccount, setDeleteAccount] = useState(false)
   useEffect(() => {
     if (sub !== null) return
     let alive = true
@@ -181,6 +182,30 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
             void managers.drafts.clearAll().then(() => useDraftsStore.getState().clearAll()).catch(() => {})
           }}
           onClose={() => setClearDrafts(false)}
+        />
+      )}
+
+      {/* Удаление аккаунта (tweb: красная зона внизу privacyAndSecurity) */}
+      <Section footer="This will delete your account and all your data. Your messages will remain but appear as sent by a «Deleted Account».">
+        <Row
+          icon={<TgIcon name="delete" size={24} />}
+          label="Delete My Account"
+          danger
+          onClick={() => setDeleteAccount(true)}
+        />
+      </Section>
+      {deleteAccount && (
+        <ConfirmDialog
+          title={t('Delete Account')}
+          text={t('Are you sure you want to delete your account? This action cannot be undone.')}
+          action={t('Delete')}
+          danger
+          onConfirm={() => {
+            // сервер отзывает все сессии; после перезагрузки me()→null → экран входа
+            // (или переключение на оставшийся аккаунт, как при logout).
+            void managers.auth.deleteAccount().finally(() => location.reload())
+          }}
+          onClose={() => setDeleteAccount(false)}
         />
       )}
 

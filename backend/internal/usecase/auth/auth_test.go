@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
@@ -82,6 +83,42 @@ func (r *fakeUserRepo) SetUsername(_ context.Context, id int64, username *string
 	u.Username = username
 	r.byPhone[phone] = u
 	return u, nil
+}
+
+func (r *fakeUserRepo) PhoneInUse(_ context.Context, phone string, excludeID int64) (bool, error) {
+	u, ok := r.byPhone[phone]
+	return ok && u.ID != excludeID, nil
+}
+
+func (r *fakeUserRepo) UpdatePhone(_ context.Context, id int64, phone string) (domain.User, error) {
+	if other, ok := r.byPhone[phone]; ok && other.ID != id {
+		return domain.User{}, domain.ErrConflict
+	}
+	oldPhone, u, ok := r.find(id)
+	if !ok {
+		return domain.User{}, domain.ErrNotFound
+	}
+	delete(r.byPhone, oldPhone)
+	u.Phone = phone
+	r.byPhone[phone] = u
+	return u, nil
+}
+
+func (r *fakeUserRepo) SoftDelete(_ context.Context, id int64) error {
+	oldPhone, u, ok := r.find(id)
+	if !ok {
+		return domain.ErrNotFound
+	}
+	delete(r.byPhone, oldPhone)
+	u.Phone = ""
+	u.Username = nil
+	u.FirstName, u.LastName = "Deleted", "Account"
+	u.DisplayName = "Deleted Account"
+	u.Bio, u.AvatarURL, u.EmojiStatus = "", "", ""
+	// Re-key under a unique sentinel so multiple deleted users can coexist
+	// (the real store keys on id; the fake keys on phone).
+	r.byPhone["deleted:"+strconv.FormatInt(id, 10)] = u
+	return nil
 }
 
 func (r *fakeUserRepo) SetAvatar(_ context.Context, id int64, url string) (domain.User, error) {
@@ -224,6 +261,18 @@ func (r *fakeDeviceRepo) DeleteOthers(_ context.Context, userID, keepDeviceID in
 	var removed []domain.Device
 	for id, d := range r.byID {
 		if d.UserID == userID && id != keepDeviceID {
+			removed = append(removed, d)
+			delete(r.byID, id)
+			delete(r.byHash, d.TokenHash)
+		}
+	}
+	return removed, nil
+}
+
+func (r *fakeDeviceRepo) DeleteAll(_ context.Context, userID int64) ([]domain.Device, error) {
+	var removed []domain.Device
+	for id, d := range r.byID {
+		if d.UserID == userID {
 			removed = append(removed, d)
 			delete(r.byID, id)
 			delete(r.byHash, d.TokenHash)
@@ -482,5 +531,126 @@ func TestListSessions(t *testing.T) {
 	}
 	if len(sessions) != 2 {
 		t.Fatalf("expected 2 sessions, got %d", len(sessions))
+	}
+}
+
+func TestChangePhone(t *testing.T) {
+	ctx := context.Background()
+	i, users, _, codes := newInteractor()
+
+	_ = i.RequestCode(ctx, "+79990000010")
+	res, _ := i.SignIn(ctx, "+79990000010", "12345", "web", "browser")
+
+	// Start the change: a code is queued for the new number.
+	if err := i.ChangePhone(ctx, res.User.ID, "+7 (999) 000-00-20"); err != nil {
+		t.Fatalf("ChangePhone: %v", err)
+	}
+	if _, err := codes.GetCode(ctx, "+79990000020"); err != nil {
+		t.Fatalf("code not queued for new phone: %v", err)
+	}
+
+	user, err := i.ConfirmChangePhone(ctx, res.User.ID, "+79990000020", "12345")
+	if err != nil {
+		t.Fatalf("ConfirmChangePhone: %v", err)
+	}
+	if user.Phone != "+79990000020" {
+		t.Fatalf("phone not updated: %q", user.Phone)
+	}
+	if _, ok := users.byPhone["+79990000020"]; !ok {
+		t.Fatalf("store not updated to new phone")
+	}
+	if _, ok := users.byPhone["+79990000010"]; ok {
+		t.Fatalf("old phone still present")
+	}
+	// Code is consumed after a successful confirm.
+	if _, err := codes.GetCode(ctx, "+79990000020"); err != domain.ErrNotFound {
+		t.Fatalf("expected code consumed, got %v", err)
+	}
+}
+
+func TestChangePhoneTaken(t *testing.T) {
+	ctx := context.Background()
+	i, _, _, _ := newInteractor()
+
+	// Occupy the target number with another account.
+	_ = i.RequestCode(ctx, "+79990000030")
+	_, _ = i.SignIn(ctx, "+79990000030", "12345", "web", "browser")
+
+	_ = i.RequestCode(ctx, "+79990000031")
+	me, _ := i.SignIn(ctx, "+79990000031", "12345", "web", "browser")
+
+	if err := i.ChangePhone(ctx, me.User.ID, "+79990000030"); err != domain.ErrConflict {
+		t.Fatalf("expected ErrConflict, got %v", err)
+	}
+}
+
+func TestConfirmChangePhoneWrongCode(t *testing.T) {
+	ctx := context.Background()
+	i, _, _, _ := newInteractor()
+
+	_ = i.RequestCode(ctx, "+79990000040")
+	me, _ := i.SignIn(ctx, "+79990000040", "12345", "web", "browser")
+
+	if err := i.ChangePhone(ctx, me.User.ID, "+79990000041"); err != nil {
+		t.Fatalf("ChangePhone: %v", err)
+	}
+	if _, err := i.ConfirmChangePhone(ctx, me.User.ID, "+79990000041", "00000"); err != domain.ErrInvalidCode {
+		t.Fatalf("expected ErrInvalidCode, got %v", err)
+	}
+}
+
+func TestConfirmChangePhoneNoCode(t *testing.T) {
+	ctx := context.Background()
+	i, _, _, _ := newInteractor()
+
+	_ = i.RequestCode(ctx, "+79990000050")
+	me, _ := i.SignIn(ctx, "+79990000050", "12345", "web", "browser")
+
+	// No ChangePhone call ⇒ no code queued for the target number.
+	if _, err := i.ConfirmChangePhone(ctx, me.User.ID, "+79990000051", "12345"); err != domain.ErrInvalidCode {
+		t.Fatalf("expected ErrInvalidCode, got %v", err)
+	}
+}
+
+func TestDeleteAccount(t *testing.T) {
+	ctx := context.Background()
+	i, users, _, _ := newInteractor()
+	cache := newFakeCache()
+	rev := &fakeRevoker{}
+	i.SetCache(cache)
+	i.SetRevocationNotifier(rev)
+
+	_ = i.RequestCode(ctx, "+79990000060")
+	res, _ := i.SignIn(ctx, "+79990000060", "12345", "web", "browser")
+	_, deviceID, _ := i.Authenticate(ctx, res.Token) // populates cache
+
+	if err := i.DeleteAccount(ctx, res.User.ID); err != nil {
+		t.Fatalf("DeleteAccount: %v", err)
+	}
+
+	// Personal fields anonymized.
+	u, err := users.GetByID(ctx, res.User.ID)
+	if err != nil {
+		t.Fatalf("GetByID after delete: %v", err)
+	}
+	if u.Phone != "" || u.Username != nil || u.DisplayName != "Deleted Account" ||
+		u.FirstName != "Deleted" || u.LastName != "Account" || u.AvatarURL != "" {
+		t.Fatalf("account not anonymized: %+v", u)
+	}
+
+	// Every session revoked: token no longer authenticates, cache evicted,
+	// revocation fired for the device.
+	if _, _, err := i.Authenticate(ctx, res.Token); err != domain.ErrNotFound {
+		t.Fatalf("expected ErrNotFound after delete, got %v", err)
+	}
+	if len(cache.m) != 0 {
+		t.Fatalf("cache not evicted: %d entries", len(cache.m))
+	}
+	if len(rev.revoked) != 1 || rev.revoked[0] != deviceID {
+		t.Fatalf("notifier got %v; want [%d]", rev.revoked, deviceID)
+	}
+	sessions, _ := i.ListSessions(ctx, res.User.ID)
+	if len(sessions) != 0 {
+		t.Fatalf("expected 0 sessions after delete, got %d", len(sessions))
 	}
 }
