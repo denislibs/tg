@@ -26,6 +26,7 @@ import InlineKeyboard from './InlineKeyboard'
 import AlbumGrid from './AlbumGrid'
 import VoiceMessage from './VoiceMessage'
 import Checkbox from '../../shared/ui/Checkbox'
+import StarIcon from '../stars/StarIcon'
 import {
   Ticks,
   BubbleTail,
@@ -141,6 +142,8 @@ export interface FeedFns {
   toggleReaction: (msgId: number, emoji: string) => void
   /** long-press / правый клик по чипу — показать, кто отреагировал */
   showReactedUsers: (msgId: number, x: number, y: number) => void
+  /** клик по чипу ⭐-реакции — открыть попап платной реакции (tweb PopupStarReaction) */
+  openStarReaction: (msgId: number) => void
   /** крестик на кольце прогресса — отменить аплоад и убрать оптимистичный бабл */
   cancelUpload: (clientId: string) => void
   /** разблокировать платное медиа за звёзды (Telegram paid media) */
@@ -149,13 +152,16 @@ export interface FeedFns {
 
 // Чипы реакций под сообщением (tweb ReactionsElement, layout Block): пилюля 30px
 // с эмодзи + счётчиком; «моя» реакция — сплошной акцентный фон (is-chosen).
-function MessageReactions({ reactions, rowLive, onToggle, onShow }: {
+function MessageReactions({ reactions, star, rowLive, onToggle, onShow, onStar }: {
   reactions: NonNullable<ConvMsg['reactions']>
+  /** платная ⭐-реакция сообщения (total>0) — отдельный чип-звезда перед эмодзи */
+  star?: { total: number; mine: number }
   /** ряд уже был смонтирован, когда появились реакции (live-добавление) —
    * анимируем и первый чип сообщения, не только добавленные позже */
   rowLive: boolean
   onToggle: (emoji: string) => void
   onShow: (x: number, y: number) => void
+  onStar: () => void
 }) {
   // Отличаем чипы из первичного рендера (история — без анимации, tweb
   // isConnected=false → duration 0) от добавленных кликом (с анимацией).
@@ -163,9 +169,24 @@ function MessageReactions({ reactions, rowLive, onToggle, onShow }: {
   useEffect(() => { liveRef.current = true }, [])
   return (
     <div className={s.reactions}>
+      {star && <StarReactionChip total={star.total} mine={star.mine} onClick={onStar} />}
       {reactions.map((r) => (
         <ReactionChip key={r.emoji} r={r} live={rowLive || liveRef.current} onToggle={onToggle} onShow={onShow} />
       ))}
+    </div>
+  )
+}
+
+// Чип платной ⭐-реакции (tweb .reaction.is-paid): звезда + суммарное число звёзд;
+// подсвечен, если зритель вносил вклад (mine>0). Клик — попап выбора количества.
+function StarReactionChip({ total, mine, onClick }: { total: number; mine: number; onClick: () => void }) {
+  return (
+    <div
+      className={classNames(s.reactionChip, s.starChip, mine > 0 ? s.reactionChosen : '')}
+      onClick={(e) => { e.stopPropagation(); onClick() }}
+    >
+      <span className={s.reactionEmoji}><StarIcon size={18} /></span>
+      <span className={s.reactionCount}>{total}</span>
     </div>
   )
 }
@@ -239,9 +260,17 @@ function MessageRow({
   // rowLive: реакции появились у УЖЕ смонтированного ряда → анимируем вход.
   const rowLiveRef = useRef(false)
   useEffect(() => { rowLiveRef.current = true }, [])
+  const hasStar = !!m.starReaction && m.starReaction.total > 0
   const chips =
-    m.reactions?.length && m.id != null && !selecting ? (
-      <MessageReactions reactions={m.reactions} rowLive={rowLiveRef.current} onToggle={(emoji) => feedFns.toggleReaction(m.id!, emoji)} onShow={(x, y) => feedFns.showReactedUsers(m.id!, x, y)} />
+    (m.reactions?.length || hasStar) && m.id != null && !selecting ? (
+      <MessageReactions
+        reactions={m.reactions ?? []}
+        star={hasStar ? m.starReaction : undefined}
+        rowLive={rowLiveRef.current}
+        onToggle={(emoji) => feedFns.toggleReaction(m.id!, emoji)}
+        onShow={(x, y) => feedFns.showReactedUsers(m.id!, x, y)}
+        onStar={() => feedFns.openStarReaction(m.id!)}
+      />
     ) : null
   const chipsInline =
     ((m.type === 'text' && !bigEmoji) || m.type === 'poll' || m.type === 'checklist' || m.type === 'album'

@@ -71,6 +71,8 @@ export function useMessageActions({
   const [forwardIds, setForwardIds] = useState<number[] | null>(null)
   const [viewers, setViewers] = useState<ViewersState | null>(null)
   const [reacted, setReacted] = useState<ReactedState | null>(null)
+  // Платная ⭐-реакция: открытый попап выбора количества звёзд (msgId цели).
+  const [starReact, setStarReact] = useState<{ msgId: number } | null>(null)
   const [translateText, setTranslateText] = useState<string | null>(null)
   const showTranslate = useSettingsStore((st) => st.showTranslateButton)
   // Секретный чат: скрываем forward/copy/quote (поведение Telegram) — остаётся
@@ -306,6 +308,18 @@ export function useMessageActions({
     setReacted({ x: Math.min(x, window.innerWidth - 240), y: Math.min(y, window.innerHeight - 320), rows })
   })
 
+  // Платная ⭐-реакция: открыть попап выбора количества (клик по чипу звезды в
+  // полоске реакций / пункт меню). Реальный чат + серверный id обязательны.
+  const openStarReaction = useEvent((msgId: number) => {
+    if (!isRealChat || msgId < 0) return
+    setStarReact({ msgId })
+  })
+  const openStarReactionFromMenu = () => {
+    const raw = menuRawMsg()
+    closeMsgMenu()
+    if (raw?.id != null) setStarReact({ msgId: raw.id })
+  }
+
   // Полоска эмодзи над контекстным меню: реакция на сообщение меню.
   const reactToMenuMsg = (emoji: string) => {
     const raw = menuRawMsg()
@@ -389,6 +403,7 @@ export function useMessageActions({
       }
       return items
     })(),
+    ...(isRealChat ? [{ icon: <TgIcon name="star" size={20} />, label: 'React with Stars', onClick: openStarReactionFromMenu }] : []),
     ...(isRealChat && !isSecret ? [{ icon: <TgIcon name="reply" size={20} style={{ transform: 'scaleX(-1)' }} />, label: 'Forward', onClick: openForward }] : []),
     ...(isRealChat ? [{ icon: <TgIcon name="checkround" size={20} />, label: 'Select', onClick: startSelect }] : []),
     // Исходящее сообщение: в приватном чате — «Прочитано в HH:MM» (read-date,
@@ -418,6 +433,7 @@ export function useMessageActions({
   return {
     msgMenu, openMsgMenu, closeMsgMenu, destroyMsgMenu, msgMenuItems,
     toggleReaction, reactToMenuMsg, showReactedUsers,
+    openStarReaction, starReact, closeStarReaction: () => setStarReact(null),
     delIds, doDelete, closeDelete: () => setDelIds(null), openDeleteFor, canRevokeAll,
     forwardIds, doForward, closeForward: () => setForwardIds(null), openForwardFor,
     viewers, closeViewers: () => setViewers(null),

@@ -245,5 +245,6 @@ func (i *Interactor) ListThreadMessages(ctx context.Context, chatID, rootID, use
 	i.hydrateGifts(ctx, userID, msgs)
 	i.hydrateGiveaways(ctx, userID, msgs)
 	i.hydratePaidMedia(ctx, userID, msgs)
+	i.hydrateStarReactions(ctx, userID, msgs)
 	return msgs, count, nil
 }

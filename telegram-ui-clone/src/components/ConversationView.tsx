@@ -70,6 +70,7 @@ import PinnedMessagesScreen from './conversation/PinnedMessagesScreen'
 import ScrollDownFab from './conversation/ScrollDownFab'
 import SelectionBar from './conversation/SelectionBar'
 import MessageContextMenu from './conversation/MessageContextMenu'
+import StarReactionPopup from './stars/StarReactionPopup'
 import { useChatsStore, loadChats } from '../stores/chatsStore'
 import { useSecretChatStore } from '../stores/secretChatStore'
 import { type MessageEntity } from '../core/models'
@@ -450,6 +451,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const {
     msgMenu, openMsgMenu, closeMsgMenu, destroyMsgMenu, msgMenuItems,
     toggleReaction, reactToMenuMsg, showReactedUsers,
+    openStarReaction, starReact, closeStarReaction,
     delIds, doDelete, closeDelete, openDeleteFor,
     forwardIds, doForward, closeForward, openForwardFor,
     viewers, closeViewers,
@@ -545,10 +547,11 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       roundPlaying: roundPlayingE,
       toggleReaction,
       showReactedUsers,
+      openStarReaction,
       cancelUpload: cancelUploadE,
       unlockPaid: unlockPaidE,
     }),
-    [openSenderE, playVoiceE, toggleSelectE, openMsgMenuE, jumpToSeqE, openLightboxE, recallE, mediaPlayedE, roundPlayingE, toggleReaction, showReactedUsers, cancelUploadE, unlockPaidE],
+    [openSenderE, playVoiceE, toggleSelectE, openMsgMenuE, jumpToSeqE, openLightboxE, recallE, mediaPlayedE, roundPlayingE, toggleReaction, showReactedUsers, openStarReaction, cancelUploadE, unlockPaidE],
   )
 
   // (Ack reconcile + send-rejection run in realtimeBridge → messagesStore; live
@@ -1292,6 +1295,11 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       {/* Кто отреагировал (long-press/правый клик по чипу реакции) */}
       {reacted && (
         <ReactedUsersPopup x={reacted.x} y={reacted.y} rows={reacted.rows} onClose={closeReacted} />
+      )}
+
+      {/* Платная ⭐-реакция: попап выбора количества звёзд (tweb PopupStarReaction) */}
+      {starReact && isRealChat && (
+        <StarReactionPopup open chatId={numericChatId} msgId={starReact.msgId} onClose={closeStarReaction} />
       )}
 
       {/* Forward target picker */}

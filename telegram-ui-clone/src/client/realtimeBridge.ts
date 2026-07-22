@@ -10,7 +10,7 @@ import { useDraftsStore } from '../stores/draftsStore'
 import { useUploadsStore } from '../stores/uploadsStore'
 import { uiEvents } from '../core/hooks/uiEvents'
 import { mapReplyMarkup } from '../core/managers/botsManager'
-import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt, type DraftUpdateEvt, type ReactionEvt, type BotCallbackAnswerEvt, type GeoLiveUpdateEvt, type WebPageUpdateEvt, type ChatThemeUpdateEvt } from '../core/realtime/events'
+import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type GeoLiveUpdateEvt, type WebPageUpdateEvt, type ChatThemeUpdateEvt } from '../core/realtime/events'
 import { playMessageSent } from '../core/audio/sounds'
 import { playEmojiEffect } from '../core/effects/emojiEffects'
 import { notifyIncomingMessage } from './uiNotifications'
@@ -183,6 +183,13 @@ export function startRealtime(): void {
     if (e.action === 'add' && e.author_id === meId && e.user_id !== meId) {
       useChatsStore.getState().bumpUnreadReactions(e.chat_id)
     }
+  })
+  // Платная ⭐-реакция → окно сообщений: новый агрегат total; личный вклад mine
+  // обновляем только у самого отправителя (эхо своего действия), иначе не трогаем.
+  smp.on(RT.starReaction, (raw) => {
+    const e = raw as StarReactionEvt
+    const meId = useChatsStore.getState().meId
+    useMessagesStore.getState().applyStarReaction(e.chat_id, e.msg_id, e.total, e.sender_id === meId ? e.mine : undefined)
   })
   // Ack/error carry only client_msg_id → reconcile by clientMsgId (store maps it to the chat).
   smp.on(RT.ack, (raw) => {

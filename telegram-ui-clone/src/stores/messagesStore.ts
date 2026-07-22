@@ -120,6 +120,9 @@ interface MessagesState {
    * Идемпотентно для своих действий — серверное эхо собственного add/remove
    * (mine=true) поверх уже применённого оптимистичного апдейта — no-op. */
   applyReaction: (chatId: number, msgId: number, emoji: string, action: 'add' | 'remove', mine: boolean) => void
+  /** Платная ⭐-реакция: новый агрегат звёзд (total). mine задан только когда это
+   * действие самого зрителя (оптимистично / эхо своего апдейта) — иначе не трогаем. */
+  applyStarReaction: (chatId: number, msgId: number, total: number, mine?: number) => void
 }
 
 // Update a single window immutably.
@@ -446,5 +449,16 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           return { ...m, reactions: next }
         })
         return changed ? msgs : null
+      })),
+
+  applyStarReaction: (chatId, msgId, total, mine) =>
+    set((s) =>
+      patchChat(s, chatId, (w) => {
+        if (!w.msgs.some((m) => m.id === msgId)) return null
+        return w.msgs.map((m) => {
+          if (m.id !== msgId) return m
+          const nextMine = mine !== undefined ? mine : (m.starReaction?.mine ?? 0)
+          return { ...m, starReaction: { total, mine: nextMine } }
+        })
       })),
 }))

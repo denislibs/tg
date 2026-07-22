@@ -1,0 +1,113 @@
+// Попап платной ⭐-реакции (tweb popup-star-reaction).
+.balance {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--tg-textPrimary);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 4px 8px;
+}
+
+.count {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 34px;
+  font-weight: 700;
+  color: var(--tg-textPrimary);
+  margin-bottom: 12px;
+}
+
+.slider {
+  width: 100%;
+  margin: 4px 0 14px;
+}
+
+// tweb star gradient для трека слайдера.
+.slider {
+  --sl-color: #f7a02e;
+}
+
+.subtitle {
+  text-align: center;
+  line-height: 1.35;
+}
+
+.senders {
+  width: 100%;
+  margin-top: 22px;
+}
+
+.sendersTitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+
+  .line {
+    flex: 1;
+    height: 0.5px;
+    background: var(--tg-borderColor, rgba(0, 0, 0, 0.12));
+  }
+}
+
+.sendersList {
+  display: flex;
+  justify-content: center;
+  gap: 28px;
+}
+
+.sender {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 72px;
+}
+
+.senderAvatar {
+  position: relative;
+  margin-bottom: 10px;
+}
+
+.senderAmount {
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 7px;
+  border-radius: 12px;
+  background: linear-gradient(to bottom, #ffaa00, #ffcd3a);
+  border: 2px solid var(--tg-bg, #fff);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.senderName {
+  max-width: 100%;
+  text-align: center;
+}
+
+.anon {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.sendLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

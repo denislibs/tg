@@ -1448,6 +1448,94 @@ func (h *ChatHandler) ReactionUsers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"users": out})
 }
 
+// SendStarReaction — POST /chats/{chatID}/messages/{msgID}/star_reaction
+// {count, anonymous}: платная ⭐-реакция. Списывает звёзды у отправителя,
+// начисляет автору, накопительно фиксирует вклад; отдаёт новый агрегат,
+// топ-отправителей и новый баланс.
+func (h *ChatHandler) SendStarReaction(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	msgID, ok := pathInt(w, r, "msgID")
+	if !ok {
+		return
+	}
+	var body struct {
+		Count     int64 `json:"count"`
+		Anonymous bool  `json:"anonymous"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	agg, top, bal, err := h.svc.SendStarReaction(r.Context(), chatID, msgID, h.meID(r), body.Count, body.Anonymous)
+	if errors.Is(err, domain.ErrPaidRequired) {
+		writeError(w, http.StatusPaymentRequired, "not enough stars")
+		return
+	}
+	if errors.Is(err, domain.ErrBadReaction) {
+		writeError(w, http.StatusBadRequest, "invalid star count")
+		return
+	}
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "message not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "star reaction failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"star_reaction": map[string]any{"total": agg.Total, "mine": agg.Mine},
+		"top":           starSendersJSON(top),
+		"balance":       bal,
+	})
+}
+
+// GetStarReaction — GET /chats/{chatID}/messages/{msgID}/star_reaction: агрегат
+// звёзд сообщения (total + мой вклад) и топ-отправители.
+func (h *ChatHandler) GetStarReaction(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	msgID, ok := pathInt(w, r, "msgID")
+	if !ok {
+		return
+	}
+	agg, top, err := h.svc.StarReactionOf(r.Context(), chatID, msgID, h.meID(r))
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "message not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load star reaction")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"star_reaction": map[string]any{"total": agg.Total, "mine": agg.Mine},
+		"top":           starSendersJSON(top),
+	})
+}
+
+// starSendersJSON сериализует топ-отправителей звёзд. Анонимные приходят с
+// пустой карточкой (usecase затёр личность) — клиент рисует их как «Anonymous».
+func starSendersJSON(top []domain.StarReactionSender) []map[string]any {
+	out := make([]map[string]any, 0, len(top))
+	for _, s := range top {
+		out = append(out, map[string]any{
+			"user_id":    s.User.ID,
+			"name":       s.User.DisplayName,
+			"username":   s.User.Username,
+			"avatar_url": s.User.AvatarURL,
+			"stars":      s.Stars,
+			"anonymous":  s.Anonymous,
+		})
+	}
+	return out
+}
+
 func messageJSON(m domain.Message) map[string]any {
 	j := map[string]any{
 		"id": m.ID, "chat_id": m.ChatID, "seq": m.Seq, "sender_id": m.SenderID,
@@ -1464,6 +1552,9 @@ func messageJSON(m domain.Message) map[string]any {
 	}
 	if len(m.Reactions) > 0 {
 		j["reactions"] = m.Reactions
+	}
+	if m.StarReactionTotal > 0 {
+		j["star_reaction"] = map[string]any{"total": m.StarReactionTotal, "mine": m.StarReactionMine}
 	}
 	if m.GeoLat != nil && m.GeoLng != nil {
 		g := map[string]any{"lat": *m.GeoLat, "lng": *m.GeoLng}
