@@ -56,6 +56,17 @@
   :global(.tgico), span {
     color: #fff !important;
   }
+
+  // бейдж непрочитанных на активной строке — белый фон, акцентный текст (tweb .active .badge)
+  .badge {
+    background-color: #fff !important;
+    color: var(--tg-accent) !important;
+  }
+}
+
+// бейдж непрочитанных/упоминаний ряда темы (маркерный класс для подсветки active)
+.badge {
+  flex-shrink: 0;
 }
 
 // скрытая тема (свёрнутый раздел «Hidden Topics») — приглушённая
@@ -79,7 +90,11 @@
   gap: 8px;
 }
 
-.preview {
+// строка превью с бейджами справа (mention/unread/pinned), как dialog-subtitle
+.subtitleRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding-left: 28px; // текст под названием, иконка (20) + gap (8) — как tweb
 }
 

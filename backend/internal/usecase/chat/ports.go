@@ -342,7 +342,13 @@ type TopicRepo interface {
 	SetHidden(ctx context.Context, id int64, hidden bool) error
 	SetPinned(ctx context.Context, id int64, pinned bool) error
 	EnsureGeneralTopic(ctx context.Context, chatID, createdBy int64) (domain.ForumTopic, error)
-	ListByChat(ctx context.Context, chatID int64) ([]domain.TopicRow, error)
+	// ListByChat — темы чата с per-topic состоянием для зрителя userID
+	// (unread/mentions/mute/last_out считаются относительно него).
+	ListByChat(ctx context.Context, chatID, userID int64) ([]domain.TopicRow, error)
+	// SetTopicRead поднимает last_read_seq темы до max(old, upToSeq) (UPSERT).
+	SetTopicRead(ctx context.Context, chatID, rootMsgID, userID, upToSeq int64) error
+	// SetTopicMuted включает/выключает mute темы (UPSERT).
+	SetTopicMuted(ctx context.Context, chatID, rootMsgID, userID int64, muted bool) error
 }
 
 // ScheduledRepo хранит очередь запланированных сообщений.

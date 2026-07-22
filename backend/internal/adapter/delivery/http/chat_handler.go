@@ -963,6 +963,9 @@ func topicJSON(row domain.TopicRow) map[string]any {
 		"created_by": row.Topic.CreatedBy, "created_at": row.Topic.CreatedAt,
 		"msg_count": row.MsgCount, "last_text": row.LastText, "last_type": row.LastType,
 		"last_sender_name": row.LastSenderName, "last_at": row.LastAt,
+		// per-topic dialog-состояние (как обычный ряд диалога)
+		"unread": row.UnreadCount, "unread_mentions": row.UnreadMentions,
+		"muted": row.Muted, "last_out": row.LastOut, "last_seq": row.LastMsgSeq,
 	}
 }
 
@@ -1091,6 +1094,58 @@ func (h *ChatHandler) PinTopic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.svc.SetTopicPinned(r.Context(), topicID, h.meID(r), b.Pinned); err != nil {
+		h.mapScheduledErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// ReadTopic — POST /chats/{chatID}/topics/{topicID}/read {up_to_seq}.
+// Помечает тему прочитанной до up_to_seq (Telegram readDiscussion c threadId).
+// В слоте {topicID} передаётся root_msg_id темы (ключ состояния — пара chat+root).
+func (h *ChatHandler) ReadTopic(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	rootMsgID, ok := pathInt(w, r, "topicID")
+	if !ok {
+		return
+	}
+	var b struct {
+		UpToSeq int64 `json:"up_to_seq"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	if err := h.svc.MarkTopicRead(r.Context(), chatID, rootMsgID, h.meID(r), b.UpToSeq); err != nil {
+		h.mapScheduledErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// MuteTopic — POST /chats/{chatID}/topics/{topicID}/mute {muted}.
+// Включает/выключает уведомления темы для пользователя.
+// В слоте {topicID} передаётся root_msg_id темы (ключ состояния — пара chat+root).
+func (h *ChatHandler) MuteTopic(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	rootMsgID, ok := pathInt(w, r, "topicID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Muted bool `json:"muted"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	if err := h.svc.SetTopicMuted(r.Context(), chatID, rootMsgID, h.meID(r), b.Muted); err != nil {
 		h.mapScheduledErr(w, err)
 		return
 	}

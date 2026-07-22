@@ -178,6 +178,8 @@ export interface Managers {
     editTopic(chatId: number, topicId: number, title: string, iconColor: number, iconEmoji?: string): Promise<void>
     setTopicHidden(chatId: number, topicId: number, hidden: boolean): Promise<void>
     setTopicPinned(chatId: number, topicId: number, pinned: boolean): Promise<void>
+    readTopic(chatId: number, rootMsgId: number, upToSeq: number): Promise<void>
+    setTopicMuted(chatId: number, rootMsgId: number, muted: boolean): Promise<void>
     card(chatId: number): Promise<GroupCard>
     members(chatId: number): Promise<{ userId: number; role: string; online: boolean }[]>
     promoteAdmin(chatId: number, userId: number, rights: number): Promise<void>

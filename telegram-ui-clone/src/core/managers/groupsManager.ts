@@ -34,6 +34,16 @@ export interface TopicRow {
   lastType: string
   lastSenderName: string
   lastAt?: string
+  /** непрочитанные сообщения темы (чужие, как у диалога) */
+  unread: number
+  /** непрочитанные упоминания зрителя в теме */
+  unreadMentions: number
+  /** тема заглушена этим пользователем */
+  muted: boolean
+  /** последнее сообщение темы отправлено мной (для галочек) */
+  lastOut: boolean
+  /** seq последнего сообщения темы (для пометки «прочитано») */
+  lastMsgSeq: number
 }
 
 interface RawTopic {
@@ -41,6 +51,7 @@ interface RawTopic {
   icon_emoji?: string | null; closed: boolean; hidden?: boolean; pinned?: boolean; pos?: number
   is_general?: boolean; created_by: number; msg_count: number
   last_text?: string | null; last_type?: string | null; last_sender_name?: string | null; last_at?: string | null
+  unread?: number; unread_mentions?: number; muted?: boolean; last_out?: boolean; last_seq?: number
 }
 
 const mapTopic = (r: RawTopic): TopicRow => ({
@@ -50,6 +61,8 @@ const mapTopic = (r: RawTopic): TopicRow => ({
   createdBy: r.created_by, msgCount: r.msg_count ?? 0,
   lastText: r.last_text ?? '', lastType: r.last_type ?? '', lastSenderName: r.last_sender_name ?? '',
   lastAt: r.last_at ?? undefined,
+  unread: r.unread ?? 0, unreadMentions: r.unread_mentions ?? 0, muted: r.muted ?? false,
+  lastOut: r.last_out ?? false, lastMsgSeq: r.last_seq ?? 0,
 })
 
 export function newGroupsManager({ rest }: { rest: Pick<RestClient, 'post' | 'get' | 'put' | 'patch' | 'del'> }) {
@@ -102,6 +115,15 @@ export function newGroupsManager({ rest }: { rest: Pick<RestClient, 'post' | 'ge
     },
     async setTopicPinned(chatId: number, topicId: number, pinned: boolean): Promise<void> {
       await rest.post(`/chats/${chatId}/topics/${topicId}/pin`, { pinned })
+    },
+    // Пометить тему прочитанной до upToSeq (Telegram readDiscussion с threadId).
+    // Адресуется по rootMsgId (пара chat+root — ключ состояния темы на бэке).
+    async readTopic(chatId: number, rootMsgId: number, upToSeq: number): Promise<void> {
+      await rest.post(`/chats/${chatId}/topics/${rootMsgId}/read`, { up_to_seq: upToSeq })
+    },
+    // Вкл/выкл уведомления темы для пользователя (адресуется по rootMsgId).
+    async setTopicMuted(chatId: number, rootMsgId: number, muted: boolean): Promise<void> {
+      await rest.post(`/chats/${chatId}/topics/${rootMsgId}/mute`, { muted })
     },
 
     // Закрепить/открепить диалог вверху списка (лимит 5 — бэк вернёт 400).
