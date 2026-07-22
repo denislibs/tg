@@ -194,7 +194,7 @@ export default function Sidebar({
   return (
     <div
       id="chatlist-column"
-      className={classNames(s.root, fullWidth ? s.fullWidth : '')}
+      className={classNames(s.root, fullWidth ? s.fullWidth : '', forumChat ? s.hasForum : '')}
       style={foldersSidebarShown ? ({ '--folders-sidebar-offset': '80px' } as CSSProperties) : undefined}
     >
       {/* tweb #folders-sidebar — вертикальная колонка папок в поле страницы */}
@@ -278,6 +278,7 @@ export default function Sidebar({
           tabsShown={folders.length > 0 && !foldersSidebarShown}
           archived={folderId === ALL_FOLDER_ID ? archivedChats : undefined}
           onOpenArchive={() => setArchiveOpen(true)}
+          collapsed={!!forumChat}
         />
 
         {/* Список архива (tweb AppArchivedTab — отдельный слайд-таб) */}
@@ -317,31 +318,6 @@ export default function Sidebar({
           )}
         </AnimatePresence>
 
-        {/* Панель топиков форума (tweb .topics-container — слайд поверх списка) */}
-        <AnimatePresence>
-          {forumChat && (
-            <motion.div
-              className={s.archiveOverlay}
-              initial={{ x: 80, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: 80, opacity: 0 }}
-              transition={{ duration: 0.22, ease: EASE }}
-            >
-              <TopicsPanel
-                chatId={Number(forumChat.id)}
-                chatName={forumChat.name}
-                activeRootMsgId={activeTopicId}
-                onClose={() => setForumChat(null)}
-                onOpenTopic={(topic) => onOpenTopic(Number(forumChat.id), topic)}
-                onViewAsMessages={() => {
-                  setForumChat(null)
-                  onSelect(forumChat.id)
-                }}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
-
         {/* tweb .chatlist-overlay: градиент (за табами, гасит уплывающие строки в
             surface) + табы папок. Список прокручивается под ними. Табы видны
             только когда есть пользовательские папки (tweb onFiltersLengthChange)
@@ -373,9 +349,36 @@ export default function Sidebar({
         )}
       </div>
 
-      {/* Compose FAB (hidden while searching) — owns its own open state */}
+      {/* Панель форум-тем (tweb .topics-container.is-floating): при открытом форуме
+          список чатов слева схлопывается в колонку аватаров (80px), а панель тем
+          выезжает справа на всю высоту сайдбара шириной calc(100% - 80px). */}
+      <AnimatePresence>
+        {forumChat && (
+          <motion.div
+            className={s.forumPanel}
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={{ duration: 0.22, ease: EASE }}
+          >
+            <TopicsPanel
+              chatId={Number(forumChat.id)}
+              chatName={forumChat.name}
+              activeRootMsgId={activeTopicId}
+              onClose={() => setForumChat(null)}
+              onOpenTopic={(topic) => onOpenTopic(Number(forumChat.id), topic)}
+              onViewAsMessages={() => {
+                setForumChat(null)
+                onSelect(forumChat.id)
+              }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Compose FAB (hidden while searching / при открытой панели форум-тем) */}
       <ComposeFab
-        searching={searching}
+        searching={searching || !!forumChat}
         onNewGroup={() => setNewGroupOpen(true)}
         onNewPrivate={() => setNewPrivateOpen(true)}
         onNewChannel={() => setNewChannelOpen(true)}

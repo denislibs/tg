@@ -59,6 +59,48 @@
   }
 }
 
+// Свёрнутый ряд (tweb .is-collapsed .chatlist-chat): аватар прижат к inset 13px,
+// текст скрыт, без бокового margin и радиуса — колонка аватаров при открытом форуме.
+.rowCollapsed {
+  margin: 0;
+  padding: 0.4375rem 0 0.4375rem 13px;
+  border-radius: 0;
+  gap: 0;
+
+  .body {
+    display: none;
+  }
+}
+
+// Бейдж непрочитанного в углу аватара свёрнутого ряда (как в Telegram): аватар
+// 54px при inset-start 13px → правый край 67px. Якорим ПРАВЫЙ край бейджа на
+// ~69px (растёт влево при многозначном счётчике), низ — к низу аватара; halo под
+// цвет фона отделяет от аватара. Онлайн-точку в свёрнутом режиме не рисуем.
+.cornerBadge {
+  position: absolute;
+  right: calc(100% - 69px);
+  bottom: 4px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background-color: var(--tg-badge, var(--tg-accent));
+  color: #fff;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1;
+  box-shadow: 0 0 0 2px var(--tg-sidebarBg);
+  pointer-events: none;
+}
+
+.cornerBadgeMuted {
+  background-color: var(--tg-textFaint);
+}
+
 .body {
   min-width: 0;
   flex: 1;

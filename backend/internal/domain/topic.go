@@ -20,7 +20,8 @@ type ForumTopic struct {
 	CreatedAt time.Time
 }
 
-// TopicRow — строка списка тем: тема + последнее сообщение + счётчик.
+// TopicRow — строка списка тем: тема + последнее сообщение + счётчики,
+// как обычный dialog-ряд (Telegram forumTopic несёт unread/mute/read-state).
 type TopicRow struct {
 	Topic          ForumTopic
 	MsgCount       int
@@ -28,4 +29,14 @@ type TopicRow struct {
 	LastType       string
 	LastSenderName string
 	LastAt         *time.Time
+	// UnreadCount — непрочитанные сообщения темы (чужие, seq > last_read_seq).
+	UnreadCount int
+	// UnreadMentions — непрочитанные упоминания зрителя в этой теме.
+	UnreadMentions int
+	// Muted — тема заглушена этим пользователем (topic_user_state.muted).
+	Muted bool
+	// LastOut — последнее сообщение темы отправлено этим пользователем (для галочек).
+	LastOut bool
+	// LastMsgSeq — seq последнего сообщения темы (для пометки «прочитано»).
+	LastMsgSeq int64
 }

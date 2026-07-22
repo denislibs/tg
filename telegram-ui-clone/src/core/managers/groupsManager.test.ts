@@ -185,4 +185,49 @@ describe('GroupsManager', () => {
     expect(posts[0].path).toBe('/chats/5/join_requests/11/decline')
     expect(posts[0].body).toEqual({})
   })
+
+  it('listTopics maps per-topic dialog-состояние (unread/muted/last_out/last_seq)', async () => {
+    const { rest, gets } = fakeRest({
+      getReturn: {
+        topics: [{
+          id: 1, chat_id: 5, root_msg_id: 10, title: 'T', icon_color: 2,
+          closed: false, created_by: 7, msg_count: 4,
+          unread: 3, unread_mentions: 1, muted: true, last_out: true, last_seq: 42,
+        }],
+      },
+    })
+    const mgr = newGroupsManager({ rest })
+    const topics = await mgr.listTopics(5)
+    expect(gets[0]).toBe('/chats/5/topics')
+    expect(topics[0]).toMatchObject({
+      id: 1, chatId: 5, rootMsgId: 10, unread: 3, unreadMentions: 1, muted: true, lastOut: true, lastMsgSeq: 42,
+    })
+  })
+
+  it('listTopics defaults new fields to 0/false when absent', async () => {
+    const { rest } = fakeRest({
+      getReturn: { topics: [{ id: 1, chat_id: 5, root_msg_id: 0, title: 'G', icon_color: 0, closed: false, created_by: 7, msg_count: 0 }] },
+    })
+    const mgr = newGroupsManager({ rest })
+    const topics = await mgr.listTopics(5)
+    expect(topics[0]).toMatchObject({ unread: 0, unreadMentions: 0, muted: false, lastOut: false, lastMsgSeq: 0 })
+  })
+
+  it('readTopic POSTs /chats/{id}/topics/{rootMsgId}/read with up_to_seq', async () => {
+    const { rest, posts } = fakeRest({})
+    const mgr = newGroupsManager({ rest })
+    await mgr.readTopic(5, 10, 42)
+    expect(posts).toHaveLength(1)
+    expect(posts[0].path).toBe('/chats/5/topics/10/read')
+    expect(posts[0].body).toEqual({ up_to_seq: 42 })
+  })
+
+  it('setTopicMuted POSTs /chats/{id}/topics/{rootMsgId}/mute with muted flag', async () => {
+    const { rest, posts } = fakeRest({})
+    const mgr = newGroupsManager({ rest })
+    await mgr.setTopicMuted(5, 10, true)
+    expect(posts).toHaveLength(1)
+    expect(posts[0].path).toBe('/chats/5/topics/10/mute')
+    expect(posts[0].body).toEqual({ muted: true })
+  })
 })

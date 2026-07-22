@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
+import Badge from '../shared/ui/Badge'
 import IconButton from '../shared/ui/IconButton'
 import Popup from '../shared/ui/Popup'
 import Menu, { MenuItem } from '../shared/ui/Menu'
@@ -94,32 +95,68 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
     setRowMenu({ topic, top: e.clientY, left: e.clientX })
   }
 
-  const renderRow = (topic: TopicRow, dimmed = false) => (
-    <div
-      key={topic.id}
-      className={classNames(s.row, topic.rootMsgId === activeRootMsgId ? s.rowActive : '', dimmed ? s.rowDimmed : '')}
-      onClick={() => onOpenTopic(topic)}
-      onContextMenu={(e) => openRowMenu(e, topic)}
-    >
-      <div className={s.titleRow}>
-        {topic.isGeneral ? (
-          <TopicIcon color={0} title="#" size={20} />
-        ) : (
-          <TopicIcon color={topic.iconColor} emoji={topic.iconEmoji} title={topic.title} size={20} />
-        )}
-        <Text noWrap size={15.5} weight={600} color="var(--tg-textPrimary)" style={{ flex: 1 }}>
-          {topic.isGeneral ? t('General') : topic.title}
-        </Text>
-        {topic.pinned && <TgIcon name="pin" size={14} color="var(--tg-textFaint)" />}
-        {topic.closed && <TgIcon name="lock" size={14} color="var(--tg-textFaint)" />}
-        <Text size={12} color="var(--tg-textFaint)">{fmtWhen(topic.lastAt)}</Text>
+  // Клик по теме: открыть тред + оптимистично пометить прочитанной (обнулить
+  // unread этого ряда локально; реальные данные подтянутся при следующем reload).
+  const handleOpenTopic = (topic: TopicRow) => {
+    if (topic.unread > 0 || topic.unreadMentions > 0) {
+      setTopics((cur) => (cur ?? []).map((tp) => (tp.id === topic.id ? { ...tp, unread: 0, unreadMentions: 0 } : tp)))
+      void managers.groups.readTopic(chatId, topic.rootMsgId, topic.lastMsgSeq).catch(() => {})
+    }
+    onOpenTopic(topic)
+  }
+
+  // Ряд темы «как диалог» (tweb DialogElement без аватара): иконка темы в
+  // заголовке, галочки/замок/mute справа, бейджи mention/unread/pinned в превью.
+  // В активном (открытом) ряду фон акцентный — весь текст/иконки светлые (Text
+  // рендерит div, поэтому цвета задаём через active, а не CSS-селектором span).
+  const renderRow = (topic: TopicRow, dimmed = false) => {
+    const active = topic.rootMsgId === activeRootMsgId
+    const titleColor = active ? '#fff' : 'var(--tg-textPrimary)'
+    const subColor = active ? 'rgba(255,255,255,0.9)' : 'var(--tg-textSecondary)'
+    const metaColor = active ? 'rgba(255,255,255,0.85)' : 'var(--tg-textFaint)'
+    return (
+      <div
+        key={topic.id}
+        className={classNames(s.row, active ? s.rowActive : '', dimmed ? s.rowDimmed : '')}
+        onClick={() => handleOpenTopic(topic)}
+        onContextMenu={(e) => openRowMenu(e, topic)}
+      >
+        <div className={s.titleRow}>
+          {topic.isGeneral ? (
+            <TopicIcon color={0} title="#" size={20} />
+          ) : (
+            <TopicIcon color={topic.iconColor} emoji={topic.iconEmoji} title={topic.title} size={20} />
+          )}
+          <Text noWrap size={16} weight={500} color={titleColor} style={{ flex: 1 }}>
+            {topic.isGeneral ? t('General') : topic.title}
+          </Text>
+          {/* muted тема — иконка nosound серым (tweb .is-muted .dialog-title .tgico-nosound) */}
+          {topic.muted && <TgIcon name="muted" size={17} color={metaColor} style={{ flexShrink: 0 }} />}
+          {/* закрытая тема — замок; иначе исходящее последнее — галочки «доставлено»
+              (read-tracking исходящих в тредах нет, поэтому всегда ✓✓). */}
+          {topic.closed ? (
+            <TgIcon name="lock" size={16} color={metaColor} style={{ flexShrink: 0 }} />
+          ) : topic.lastOut ? (
+            <TgIcon name="checks" size={18} color={active ? '#fff' : 'var(--tg-accent)'} style={{ flexShrink: 0 }} />
+          ) : null}
+          <Text size={12} color={metaColor} style={{ flexShrink: 0 }}>{fmtWhen(topic.lastAt)}</Text>
+        </div>
+        <div className={s.subtitleRow}>
+          <Text noWrap size={16} color={subColor} style={{ flex: 1 }}>
+            {topic.lastSenderName ? `${topic.lastSenderName}: ` : ''}
+            {topic.lastText || mediaLabel(topic.lastType)}
+          </Text>
+          {/* Порядок бейджей как в tweb: mention → unread; pinned вместо счётчика у прочитанной. */}
+          {topic.unreadMentions > 0 && <Badge muted={topic.muted} className={s.badge}>@</Badge>}
+          {topic.unread > 0 ? (
+            <Badge muted={topic.muted} className={s.badge}>{topic.unread}</Badge>
+          ) : topic.pinned ? (
+            <TgIcon name="chatspinned" size={19} color={metaColor} style={{ flexShrink: 0 }} />
+          ) : null}
+        </div>
       </div>
-      <Text noWrap size={14.5} color="var(--tg-textSecondary)" className={s.preview}>
-        {topic.lastSenderName ? `${topic.lastSenderName}: ` : ''}
-        {topic.lastText || mediaLabel(topic.lastType)}
-      </Text>
-    </div>
-  )
+    )
+  }
 
   return (
     <div className={s.root}>
@@ -202,6 +239,13 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
               onClick={() => { const tp = rowMenu.topic; setRowMenu(null); void managers.groups.setTopicPinned(chatId, tp.id, !tp.pinned).then(reload) }}
             />,
           ] : []),
+          // Уведомления темы (mute/unmute) — как в диалоге; адресуется по rootMsgId.
+          <MenuItem
+            key="mute"
+            icon={<TgIcon name={rowMenu.topic.muted ? 'unmute' : 'mute'} size={20} />}
+            label={rowMenu.topic.muted ? t('Unmute') : t('Mute')}
+            onClick={() => { const tp = rowMenu.topic; setRowMenu(null); void managers.groups.setTopicMuted(chatId, tp.rootMsgId, !tp.muted).then(reload) }}
+          />,
           <MenuItem
             key="hide"
             icon={<TgIcon name={rowMenu.topic.hidden ? 'eye' : 'hide'} size={20} />}

@@ -27,6 +27,9 @@ interface Props {
   // a sidebar re-render (scroll-fold, overlay toggle) doesn't re-render every row.
   onSelect: (id: string) => void
   index?: number
+  // Свёрнутый ряд (tweb .is-collapsed .chatlist-chat): только аватар, текст скрыт
+  // — узкая колонка аватаров рядом с открытой панелью форум-тем.
+  collapsed?: boolean
 }
 
 // Small rounded thumbnail of the last message's photo, shown before the preview
@@ -42,7 +45,7 @@ function SidebarThumb({ id }: { id: number }) {
   return <div className={s.thumb} style={{ backgroundImage: url ? `url(${url})` : undefined }} />
 }
 
-function ChatListItem({ chat, selected, onSelect }: Props) {
+function ChatListItem({ chat, selected, onSelect, collapsed }: Props) {
   const onClick = () => onSelect(chat.id)
   const t = useT()
   const managers = useManagers()
@@ -127,7 +130,7 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
   return (
     <>
       <div
-        className={s.row}
+        className={collapsed ? `${s.row} ${s.rowCollapsed}` : s.row}
         data-selected={selected || undefined}
         onClick={onClick}
         onPointerDown={onPointerDown}
@@ -140,7 +143,9 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
           emoji={chat.avatarEmoji}
           src={avatarSrc}
           size="dialog"
-          online={chat.online || presence?.online}
+          // В свёрнутой колонке (форум открыт) онлайн-точку не рисуем — нижний
+          // правый угол занимает бейдж непрочитанного (как в Telegram).
+          online={collapsed ? false : chat.online || presence?.online}
           ringColor="var(--cl-ring)"
         />
 
@@ -224,6 +229,14 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
             ) : null}
           </div>
         </div>
+
+        {/* Свёрнутый ряд (форум открыт): компактный бейдж непрочитанного в нижнем
+            правом углу аватара, как в Telegram (текст ряда скрыт). */}
+        {collapsed && (chat.unread != null || chat.unreadMentions) ? (
+          <span className={chat.muted ? `${s.cornerBadge} ${s.cornerBadgeMuted}` : s.cornerBadge}>
+            {chat.unread != null ? chat.unread : '@'}
+          </span>
+        ) : null}
       </div>
 
       <Menu open={!!menuPos} onClose={() => setMenuPos(null)} style={menuPos ?? undefined}>

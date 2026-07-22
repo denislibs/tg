@@ -52,10 +52,24 @@
 .rowActive {
   background: var(--tg-accent);
 
-  // подсветка активной темы: текст/иконки — белым (как выбранный диалог)
-  :global(.tgico), span {
-    color: #fff !important;
+  // Ховер активного ряда НЕ сбрасывает фон на серый (иначе белый текст на сером
+  // не виден) — остаётся акцентным, чуть темнее для отклика (tweb .active:hover).
+  @media (hover: hover) {
+    &:hover { background: color-mix(in srgb, var(--tg-accent) 90%, #000); }
   }
+
+  // Цвета текста/иконок активного ряда задаются через prop active в renderRow
+  // (Text рендерит div — CSS-селектор span сюда не попадает). Здесь только бейдж:
+  // на акцентном фоне — белый фон, акцентный текст (tweb .active .badge).
+  .badge {
+    background-color: #fff !important;
+    color: var(--tg-accent) !important;
+  }
+}
+
+// бейдж непрочитанных/упоминаний ряда темы (маркерный класс для подсветки active)
+.badge {
+  flex-shrink: 0;
 }
 
 // скрытая тема (свёрнутый раздел «Hidden Topics») — приглушённая
@@ -79,7 +93,11 @@
   gap: 8px;
 }
 
-.preview {
+// строка превью с бейджами справа (mention/unread/pinned), как dialog-subtitle
+.subtitleRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding-left: 28px; // текст под названием, иконка (20) + gap (8) — как tweb
 }
 

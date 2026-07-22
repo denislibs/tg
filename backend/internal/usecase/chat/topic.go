@@ -91,7 +91,40 @@ func (i *Interactor) ListTopics(ctx context.Context, chatID, userID int64) ([]do
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
-	return i.topics.ListByChat(ctx, chatID)
+	return i.topics.ListByChat(ctx, chatID, userID)
+}
+
+// MarkTopicRead помечает тему прочитанной до upToSeq (Telegram readDiscussion
+// с threadId): поднимает персональный last_read_seq темы. Вызывается фронтом
+// при открытии треда темы.
+func (i *Interactor) MarkTopicRead(ctx context.Context, chatID, rootMsgID, userID, upToSeq int64) error {
+	if i.topics == nil {
+		return domain.ErrNotFound
+	}
+	ok, err := i.chats.IsMember(ctx, chatID, userID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return domain.ErrNotFound
+	}
+	return i.topics.SetTopicRead(ctx, chatID, rootMsgID, userID, upToSeq)
+}
+
+// SetTopicMuted включает/выключает уведомления темы для пользователя
+// (Telegram updateNotifySettings на forumTopic).
+func (i *Interactor) SetTopicMuted(ctx context.Context, chatID, rootMsgID, userID int64, muted bool) error {
+	if i.topics == nil {
+		return domain.ErrNotFound
+	}
+	ok, err := i.chats.IsMember(ctx, chatID, userID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return domain.ErrNotFound
+	}
+	return i.topics.SetTopicMuted(ctx, chatID, rootMsgID, userID, muted)
 }
 
 // topicManagerOK — создатель темы или админ/создатель чата (mirror tweb manage_topics).

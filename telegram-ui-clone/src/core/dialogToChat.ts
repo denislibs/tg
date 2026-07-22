@@ -3,15 +3,17 @@ import type { Chat } from '../data'
 import type { Dialog, Draft } from './models'
 import { serviceMsgText } from './serviceMsg'
 
+// Палитра аватаров 1:1 с tweb (base.scss @include avatar-color): вертикальный
+// градиент top→bottom, 7 цветов, индекс = abs(id) % 7 (getPeerColorIndexById).
+// Порядок tweb: red, orange, violet, green, cyan, blue, pink.
 export const GRADIENTS = [
-  'linear-gradient(135deg,#42e695,#3bb2b8)',
-  'linear-gradient(135deg,#f7971e,#ffd200)',
-  'linear-gradient(135deg,#6a11cb,#2575fc)',
-  'linear-gradient(135deg,#ff5f6d,#ffc371)',
-  'linear-gradient(135deg,#5b86e5,#36d1dc)',
-  'linear-gradient(135deg,#f857a6,#ff5858)',
-  'linear-gradient(135deg,#9a7ff0,#6f8df5)',
-  'linear-gradient(135deg,#11998e,#38ef7d)',
+  'linear-gradient(#FF845E,#D45246)', // red
+  'linear-gradient(#FEBB5B,#F68136)', // orange
+  'linear-gradient(#B694F9,#6C61DF)', // violet
+  'linear-gradient(#9AD164,#46BA43)', // green
+  'linear-gradient(#53EDD6,#28C9B7)', // cyan
+  'linear-gradient(#5CAFFA,#408ACF)', // blue
+  'linear-gradient(#FF8AAC,#D95574)', // pink
 ]
 
 export function gradientFor(id: number): string {
@@ -21,7 +23,8 @@ export function gradientFor(id: number): string {
 // Reserved id of the official "Telegram" service account (mirrors the backend's
 // domain.ServiceUserID). Rendered with the Telegram-plane avatar, not initials.
 export const SERVICE_USER_ID = 777000
-const SERVICE_GRADIENT = 'linear-gradient(135deg,#54a9eb,#2a82d6)'
+// Telegram-сервис: фирменный голубой градиент плашки (tweb telegram blue).
+const SERVICE_GRADIENT = 'linear-gradient(#72D5FD,#2A9EF1)'
 
 export function fmtWhen(iso?: string): string {
   if (!iso) return ''
@@ -89,7 +92,7 @@ export function dialogToChat(d: Dialog, meId?: number | null, draft?: Draft): Ch
     // blue gradient + the Telegram-plane logo. Otherwise the peer's photo or a
     // per-id gradient with initials.
     avatar: isSaved
-      ? 'linear-gradient(135deg,#4f9bff,#2575fc)'
+      ? 'linear-gradient(#69BFFA,#3D9DE0)' // tweb Saved Messages blue
       : isService
         ? SERVICE_GRADIENT
         : gradientFor(d.chatId),

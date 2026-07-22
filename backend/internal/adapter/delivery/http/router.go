@@ -167,6 +167,11 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Patch("/chats/{chatID}/topics/{topicID}", ch.EditTopic)
 		pr.Post("/chats/{chatID}/topics/{topicID}/hide", ch.HideTopic)
 		pr.Post("/chats/{chatID}/topics/{topicID}/pin", ch.PinTopic)
+		// read/mute адресуют тему по root_msg_id (пара chat+root — ключ состояния);
+		// имя chi-параметра {topicID} общее с close/hide/pin, чтобы дерево роутов не
+		// конфликтовало — значение в этом слоте для read/mute передаётся root_msg_id.
+		pr.Post("/chats/{chatID}/topics/{topicID}/read", ch.ReadTopic)
+		pr.Post("/chats/{chatID}/topics/{topicID}/mute", ch.MuteTopic)
 		pr.Get("/chats/{chatID}/threads/{rootID}", ch.ThreadMessages)
 		pr.Post("/chats/{chatID}/scheduled", ch.ScheduleMessage)
 		pr.Get("/chats/{chatID}/scheduled", ch.ListScheduled)
