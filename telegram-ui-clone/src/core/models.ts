@@ -164,6 +164,8 @@ export interface RawMessage {
   reply_to?: { msg_id: number; seq: number; sender_id: number; text: string; entities?: MessageEntity[] | null; type: string; media_id?: number; quote_text?: string } | null
   poll_id?: number | null
   poll?: RawPoll | null
+  checklist_id?: number | null
+  checklist?: RawChecklist | null
   giveaway_id?: number | null
   giveaway?: RawGiveaway | null
   media_w?: number
@@ -269,6 +271,8 @@ export interface Message {
   mediaUnread?: boolean
   /** опрос сообщения типа 'poll' (представление для зрителя) */
   poll?: Poll
+  /** чек-лист сообщения типа 'checklist' (представление для зрителя) */
+  checklist?: Checklist
   /** розыгрыш сообщения типа 'giveaway' (представление для зрителя) */
   giveaway?: Giveaway
   /** агрегаты реакций под сообщением (undefined/пусто — реакций нет) */
@@ -343,6 +347,45 @@ export function mapPoll(r: RawPoll): Poll {
     counts: r.counts ?? [],
     totalVoters: r.total_voters ?? 0,
     myVotes: r.my_votes ?? [],
+  }
+}
+
+// Чек-лист (backend ChecklistInfo): заголовок + пункты с отметками «выполнено».
+export interface RawChecklistItem {
+  id: number
+  text: string
+  marked_by: number[] // user id, отметившие пункт выполненным
+}
+
+export interface RawChecklist {
+  id: number
+  title: string
+  items: RawChecklistItem[]
+  others_can_add: boolean
+  others_can_mark: boolean
+}
+
+export interface ChecklistItem {
+  id: number
+  text: string
+  markedBy: number[]
+}
+
+export interface Checklist {
+  id: number
+  title: string
+  items: ChecklistItem[]
+  othersCanAdd: boolean
+  othersCanMark: boolean
+}
+
+export function mapChecklist(r: RawChecklist): Checklist {
+  return {
+    id: r.id,
+    title: r.title,
+    items: (r.items ?? []).map((it) => ({ id: it.id, text: it.text, markedBy: it.marked_by ?? [] })),
+    othersCanAdd: !!r.others_can_add,
+    othersCanMark: !!r.others_can_mark,
   }
 }
 
@@ -549,6 +592,7 @@ export function mapMessage(r: RawMessage): Message {
     threadRootId: r.thread_root_id ?? null,
     groupedId: r.grouped_id ?? null,
     poll: r.poll ? mapPoll(r.poll) : undefined,
+    checklist: r.checklist ? mapChecklist(r.checklist) : undefined,
     giveaway: r.giveaway ? mapGiveaway(r.giveaway) : undefined,
     editedAt: r.edited_at ?? null,
     deleted: r.deleted ?? false,

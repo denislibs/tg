@@ -185,6 +185,10 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Post("/chats/{chatID}/scheduled/{schedID}/send_now", ch.SendScheduledNow)
 		pr.Post("/polls/{pollID}/vote", ch.VotePoll)
 		pr.Post("/polls/{pollID}/close", ch.ClosePoll)
+		// Чек-листы (Telegram todo list)
+		pr.Post("/chats/{chatID}/checklists", ch.SendChecklist)
+		pr.Post("/checklists/{id}/items", ch.AddChecklistItems)
+		pr.Post("/checklists/{id}/items/{itemID}/toggle", ch.ToggleChecklistItem)
 		// Бусты каналов + розыгрыши
 		pr.Get("/channels/{chatID}/boosts", ch.ChannelBoosts)
 		pr.Post("/channels/{chatID}/boost", ch.BoostChannel)

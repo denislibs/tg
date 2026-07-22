@@ -10,7 +10,7 @@
 // с chat_id применяются ко ВСЕМ окнам этого чата (applyToChat), новое сообщение
 // с thread_root_id попадает и в основное окно, и в окно своего треда.
 import { create } from 'zustand'
-import type { Message, MessageEntity, Poll, Giveaway, ReactionCount, GeoData, WebPageData } from '../core/models'
+import type { Message, MessageEntity, Poll, Checklist, Giveaway, ReactionCount, GeoData, WebPageData } from '../core/models'
 import type { ReplyMarkup } from '../core/managers/botsManager'
 
 // Ключ окна: основное окно чата или тред (форум-топик / комментарии).
@@ -109,6 +109,9 @@ interface MessagesState {
   applyPollUpdate: (chatId: number, poll: Poll) => void
   /** Полная замена опроса сообщения (ответ на свой голос — с myVotes). */
   setPoll: (chatId: number, poll: Poll) => void
+  /** Обновление чек-листа (checklist_update / ответ на toggle/add): отметки
+   * глобальны (видно, кто отметил) — локального состояния нет, полная замена. */
+  applyChecklistUpdate: (chatId: number, checklist: Checklist) => void
   /** Live-статус розыгрыша (giveaway_update): своё участие сохраняем локально. */
   applyGiveawayUpdate: (chatId: number, giveaway: Giveaway) => void
   /** Полная замена розыгрыша (ответ на своё участие — с participating/iWon). */
@@ -323,6 +326,14 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       patchChat(s, chatId, (w) =>
         w.msgs.some((m) => m.poll?.id === poll.id)
           ? w.msgs.map((m) => (m.poll?.id === poll.id ? { ...m, poll } : m))
+          : null,
+      )),
+
+  applyChecklistUpdate: (chatId, checklist) =>
+    set((s) =>
+      patchChat(s, chatId, (w) =>
+        w.msgs.some((m) => m.checklist?.id === checklist.id)
+          ? w.msgs.map((m) => (m.checklist?.id === checklist.id ? { ...m, checklist } : m))
           : null,
       )),
 

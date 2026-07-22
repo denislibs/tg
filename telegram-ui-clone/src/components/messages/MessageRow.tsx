@@ -19,6 +19,7 @@ import { BubbleAppear } from '../animations/bubbleAnimations'
 import RealMediaBubble from './RealMediaBubble'
 import SecretMediaBubble from './SecretMediaBubble'
 import PollBubble from './PollBubble'
+import ChecklistBubble from './ChecklistBubble'
 import GiftBubble from './GiftBubble'
 import GiveawayBubble from './GiveawayBubble'
 import InlineKeyboard from './InlineKeyboard'
@@ -243,7 +244,7 @@ function MessageRow({
       <MessageReactions reactions={m.reactions} rowLive={rowLiveRef.current} onToggle={(emoji) => feedFns.toggleReaction(m.id!, emoji)} onShow={(x, y) => feedFns.showReactedUsers(m.id!, x, y)} />
     ) : null
   const chipsInline =
-    ((m.type === 'text' && !bigEmoji) || m.type === 'poll' || m.type === 'album'
+    ((m.type === 'text' && !bigEmoji) || m.type === 'poll' || m.type === 'checklist' || m.type === 'album'
       || ((m.mediaId != null || !!m.localUrl) && m.type !== 'roundVideo' && m.type !== 'voice' && m.type !== 'sticker'))
 
   return (
@@ -495,6 +496,23 @@ function MessageRow({
               </Text>
             )}
             <PollBubble poll={m.poll} out={out} />
+            <div className={s.textLine} style={{ justifyContent: 'flex-end' }}>
+              <span className={s.meta}>
+                <span className={s.metaTime}>{fmtTime(m.time)}</span>
+                <Ticks status={m.status} color="var(--b-tick)" />
+              </span>
+            </div>
+            {chips}
+          </div>
+        ) : m.type === 'checklist' && m.checklist ? (
+          <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
+            {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
+            {!out && m.sender && firstInGroup && (
+              <Text size={14} weight={600} color={m.senderColor ?? peerColor(m.sender)}>
+                {m.sender}
+              </Text>
+            )}
+            <ChecklistBubble checklist={m.checklist} out={out} />
             <div className={s.textLine} style={{ justifyContent: 'flex-end' }}>
               <span className={s.meta}>
                 <span className={s.metaTime}>{fmtTime(m.time)}</span>

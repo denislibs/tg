@@ -241,6 +241,7 @@ func (i *Interactor) ListThreadMessages(ctx context.Context, chatID, rootID, use
 		return nil, 0, e
 	}
 	_ = i.hydratePolls(ctx, userID, msgs)
+	i.hydrateChecklists(ctx, msgs)
 	i.hydrateGifts(ctx, userID, msgs)
 	i.hydrateGiveaways(ctx, userID, msgs)
 	i.hydratePaidMedia(ctx, userID, msgs)

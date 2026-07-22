@@ -1,6 +1,6 @@
 // src/core/managers/messagesManager.ts
 import type { RestClient } from '../net/restClient'
-import { mapMessage, mapPoll, mapScheduled, mapGeo, mapWebPage, type Message, type MessageEntity, type Poll, type RawMessage, type RawPoll, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
+import { mapMessage, mapPoll, mapChecklist, mapScheduled, mapGeo, mapWebPage, type Message, type MessageEntity, type Poll, type Checklist, type RawMessage, type RawPoll, type RawChecklist, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
 import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt } from '../realtime/events'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
 
@@ -300,6 +300,26 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
     },
     async closePoll(pollId: number): Promise<void> {
       await rest.post(`/polls/${pollId}/close`, {})
+    },
+
+    // ── Чек-листы (Telegram todo list) ──
+    async sendChecklist(chatId: number, c: { title: string; items: string[]; othersCanAdd: boolean; othersCanMark: boolean; clientMsgId?: string }): Promise<Message> {
+      const r = await rest.post<RawMessage>(`/chats/${chatId}/checklists`, {
+        title: c.title, items: c.items,
+        others_can_add: c.othersCanAdd, others_can_mark: c.othersCanMark,
+        client_msg_id: c.clientMsgId ?? '',
+      })
+      return mapMessage(r)
+    },
+    // Отметить/снять отметку «выполнено» на пункте; возвращает обновлённый чек-лист.
+    async toggleChecklistItem(checklistId: number, itemId: number): Promise<Checklist> {
+      const r = await rest.post<{ checklist: RawChecklist }>(`/checklists/${checklistId}/items/${itemId}/toggle`, {})
+      return mapChecklist(r.checklist)
+    },
+    // Добавить пункты; возвращает обновлённый чек-лист.
+    async addChecklistItems(checklistId: number, items: string[]): Promise<Checklist> {
+      const r = await rest.post<{ checklist: RawChecklist }>(`/checklists/${checklistId}/items`, { items })
+      return mapChecklist(r.checklist)
     },
 
     // Сообщения треда (форум-топика) по возрастанию + total.

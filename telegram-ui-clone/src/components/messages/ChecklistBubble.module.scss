@@ -1,0 +1,118 @@
+// Порт tweb chat/bubbles/checklist.module.scss (усечённый под наш набор):
+// заголовок + список пунктов с чекбоксами, прогресс, добавление пункта.
+.checklist {
+  min-width: 240px;
+  max-width: 320px;
+  padding: 2px 0;
+}
+
+.title {
+  font-weight: 600;
+  font-size: 15.5px;
+  color: var(--b-text);
+  word-break: break-word;
+}
+
+.items {
+  margin-top: 6px;
+}
+
+.item {
+  display: flex;
+  gap: 10px;
+  padding: 7px 2px;
+  border-radius: 8px;
+  align-items: flex-start;
+}
+
+.clickable {
+  cursor: pointer;
+
+  @media (hover: hover) {
+    &:hover {
+      background: rgba(0, 0, 0, 0.05);
+    }
+  }
+}
+
+.check {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  border: 2px solid var(--b-time);
+  box-sizing: border-box;
+  flex-shrink: 0;
+  margin-top: 1px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.checked {
+  background: var(--tg-accent);
+  border-color: var(--tg-accent);
+}
+
+.body {
+  flex: 1;
+  min-width: 0;
+}
+
+.textDone {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+.markedBy {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 3px;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 2px 2px;
+}
+
+.addBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  border-radius: 12px;
+  padding: 2px 6px;
+
+  @media (hover: hover) {
+    &:hover {
+      background: rgba(0, 0, 0, 0.05);
+    }
+  }
+}
+
+.addRow {
+  padding: 4px 2px 2px;
+}
+
+.addInput {
+  width: 100%;
+  box-sizing: border-box;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 15px;
+  color: var(--b-text);
+  padding: 6px 2px;
+  border-bottom: 1px solid var(--tg-hover);
+
+  &:focus {
+    border-bottom-color: var(--tg-accent);
+  }
+
+  &::placeholder {
+    color: var(--b-time);
+  }
+}
