@@ -141,6 +141,8 @@ export interface FeedFns {
   showReactedUsers: (msgId: number, x: number, y: number) => void
   /** крестик на кольце прогресса — отменить аплоад и убрать оптимистичный бабл */
   cancelUpload: (clientId: string) => void
+  /** разблокировать платное медиа за звёзды (Telegram paid media) */
+  unlockPaid: (msgId: number) => Promise<void>
 }
 
 // Чипы реакций под сообщением (tweb ReactionsElement, layout Block): пилюля 30px
@@ -354,7 +356,7 @@ function MessageRow({
           // настроек; время+тики бейджем поверх нижнего угла, реакции — снаружи
           // (reactions-out), reply/имя в группе не рисуются (как voice/round).
           <StickerRealBubble m={m} fmtTime={fmtTime} />
-        ) : m.mediaId != null || m.localUrl || (m.clientId != null && m.mediaName != null) ? (
+        ) : m.mediaId != null || m.localUrl || (m.clientId != null && m.mediaName != null) || m.paidMedia?.locked ? (
           // Outer (relative, NOT clipped) carries the tail; the inner clips the media
           // to the rounded corners. The tailed corner is squared off (like other bubbles).
           // localUrl без mediaId = исходящее фото/видео в процессе аплоада;
@@ -400,6 +402,8 @@ function MessageRow({
                   clientId={m.clientId}
                   onCancelUpload={feedFns.cancelUpload}
                   radius={(m.type === 'photo' || m.type === 'video') ? (m.text || chips ? '14px 14px 0 0' : '14px') : undefined}
+                  paidMedia={m.paidMedia}
+                  onUnlockPaid={m.paidMedia?.locked && m.id != null ? () => feedFns.unlockPaid(m.id as number) : undefined}
                 />
               )}
               {m.text ? (

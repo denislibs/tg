@@ -129,6 +129,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			ThreadRootID: d.ThreadRootID,
 			EncBody:      encBody, TTLSeconds: d.TTLSeconds,
 			Silent: d.Silent, Effect: d.Effect,
+			PaidMediaPrice: d.PaidMediaPrice,
 		})
 		if err != nil {
 			// NACK the sender so the client stops retrying and can clear the bubble.

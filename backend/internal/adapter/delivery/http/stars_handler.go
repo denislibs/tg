@@ -49,6 +49,29 @@ func (h *ChatHandler) TopUpStars(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"balance": bal})
 }
 
+// UnlockPaidMedia — POST /messages/{msgID}/unlock: разблокировать платное медиа
+// за звёзды. Списывает цену у покупателя, начисляет автору, отдаёт медиа.
+func (h *ChatHandler) UnlockPaidMedia(w http.ResponseWriter, r *http.Request) {
+	msgID, ok := pathInt(w, r, "msgID")
+	if !ok {
+		return
+	}
+	msg, bal, err := h.svc.UnlockPaidMedia(r.Context(), msgID, h.meID(r))
+	if errors.Is(err, domain.ErrPaidRequired) {
+		writeError(w, http.StatusPaymentRequired, "not enough stars")
+		return
+	}
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "paid media not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not unlock")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"message": messageJSON(msg), "balance": bal})
+}
+
 // GiftCatalog — GET /gifts/catalog: доступные подарки.
 func (h *ChatHandler) GiftCatalog(w http.ResponseWriter, r *http.Request) {
 	gifts, err := h.svc.GiftCatalog(r.Context())

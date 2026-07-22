@@ -308,6 +308,9 @@ type sendBody struct {
 	GeoLivePeriod *int     `json:"geo_live_period"`
 	GeoHeading    *int     `json:"geo_heading"`
 	ContactUserID *int64   `json:"contact_user_id"`
+	// Платное медиа (Telegram paid media): цена доступа в звёздах. nil/<=0 — обычное
+	// медиа; применяется только к фото/видео с прикреплённым media_id.
+	PaidMediaPrice *int64 `json:"paid_media_price"`
 }
 
 func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
@@ -332,6 +335,7 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		GeoLat:       body.GeoLat, GeoLng: body.GeoLng, ContactUserID: body.ContactUserID,
 		GeoTitle: body.GeoTitle, GeoAddress: body.GeoAddress,
 		GeoLivePeriod: body.GeoLivePeriod, GeoHeading: body.GeoHeading,
+		PaidMediaPrice: body.PaidMediaPrice,
 	})
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
@@ -1428,6 +1432,9 @@ func messageJSON(m domain.Message) map[string]any {
 	}
 	if m.MediaName != "" {
 		j["media_name"] = m.MediaName
+	}
+	if m.PaidMediaPrice != nil {
+		j["paid_media"] = map[string]any{"price": *m.PaidMediaPrice, "locked": m.PaidMediaLocked}
 	}
 	return j
 }

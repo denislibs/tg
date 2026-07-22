@@ -133,6 +133,9 @@ const conn = newConnectionManager({
     else if (type === 'dialog_archive') broadcast(RT.dialogArchive, payload)
     else if (type === 'poll_update') broadcast(RT.pollUpdate, payload)
     else if (type === 'balance_update') broadcast(RT.balanceUpdate, payload)
+    // Платное медиа разблокировано покупателем: раскрываем баббл (полное медиа)
+    // на всех его вкладках; правим кэш истории воркера тем же payload.
+    else if (type === 'paid_media_unlock') { messages.cachePaidUnlock(payload as never); broadcast(RT.paidMediaUnlock, payload) }
     else if (type === 'bot_callback_answer') broadcast(RT.botCallbackAnswer, payload)
     else if (type === 'geo_live_update') { messages.cacheGeoLive(payload as never); broadcast(RT.geoLiveUpdate, payload) }
     else if (type === 'web_page_update') { messages.cacheWebPage(payload as never); broadcast(RT.webPageUpdate, payload) }
@@ -160,7 +163,7 @@ const secret = createSecretManager({
 
 const realtime = {
   async start() { await tokens.load(); conn.start(); return { state: conn.state() } },
-  async sendMessage(args: { chatId: number; text: string; entities?: import('./models').MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; replyQuoteText?: string | null; replyQuoteOffset?: number | null; mediaId?: number | null; type?: string; groupedId?: string; encBody?: string; ttlSeconds?: number | null; silent?: boolean }) { conn.sendMessage(args); return { ok: true } },
+  async sendMessage(args: { chatId: number; text: string; entities?: import('./models').MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; replyQuoteText?: string | null; replyQuoteOffset?: number | null; mediaId?: number | null; type?: string; groupedId?: string; encBody?: string; ttlSeconds?: number | null; silent?: boolean; effect?: string | null; paidMediaPrice?: number | null }) { conn.sendMessage(args); return { ok: true } },
   async markRead(args: { chatId: number; upToSeq: number }) { conn.markRead(args.chatId, args.upToSeq); return { ok: true } },
   async markMediaRead(args: { chatId: number; msgId: number }) { conn.markMediaRead(args.chatId, args.msgId); return { ok: true } },
   async sendTyping(args: { chatId: number; action?: TypingAction }) { conn.sendTyping(args.chatId, args.action ?? 'typing'); return { ok: true } },

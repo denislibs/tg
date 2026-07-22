@@ -100,6 +100,7 @@ export function messageToConvMsg(
     mediaDuration: m.mediaDuration,
     mediaSize: m.mediaSize,
     mediaName: m.mediaName,
+    paidMedia: m.paidMedia,
     groupedId: m.groupedId ?? undefined,
     localUrl: m.localUrl,
     sender: !out && opts?.senderName ? opts.senderName : undefined,

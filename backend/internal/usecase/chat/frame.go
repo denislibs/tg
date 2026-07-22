@@ -65,6 +65,9 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 	if m.MediaName != "" {
 		p["media_name"] = m.MediaName
 	}
+	if m.PaidMediaPrice != nil {
+		p["paid_media"] = map[string]any{"price": *m.PaidMediaPrice, "locked": m.PaidMediaLocked}
+	}
 	// Reply quote: цитата хранится на самом сообщении — превью реплая на клиенте
 	// собирается из уже загруженного окна, так что фрагмент едет отдельным полем.
 	if m.ReplyQuoteText != nil {

@@ -6,6 +6,16 @@ type Dict = Record<string, string>
 // entries (t() falls back to the key). Other languages map English -> translation.
 
 const ru: Dict = {
+  // ── Paid media (медиа за Stars) ──
+  'Make paid': 'Сделать платным',
+  'Paid media': 'Платное медиа',
+  'Set a price in Stars — recipients unlock the media by paying you.':
+    'Задайте цену в звёздах — получатели разблокируют медиа, заплатив вам.',
+  'Price in Stars': 'Цена в звёздах',
+  'Unlock for': 'Разблокировать за',
+  'Unlocking…': 'Разблокируем…',
+  'Not enough Stars to unlock': 'Недостаточно звёзд для разблокировки',
+  Paid: 'Платно',
   // ── Instant View ──
   'Instant View': 'Мгновенный просмотр',
   'Open in browser': 'Открыть в браузере',

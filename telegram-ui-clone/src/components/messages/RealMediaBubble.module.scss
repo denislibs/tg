@@ -25,6 +25,43 @@
   height: 100%;
   object-fit: cover;
 }
+/* Платное медиа до оплаты: размытый плейсхолдер (blur как фон .media) + тёмный
+   слой и кнопка разблокировки по центру. */
+.paidLocked {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(12px);
+  }
+}
+.paidUnlockBtn {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  border: none;
+  border-radius: 20px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:disabled {
+    opacity: 0.7;
+    cursor: default;
+  }
+}
 .shimmerWrap {
   position: absolute;
   inset: 0;

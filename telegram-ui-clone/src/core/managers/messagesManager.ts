@@ -363,6 +363,10 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
         created_at: evt.created_at, thread_root_id: evt.thread_root_id ?? null,
         grouped_id: evt.grouped_id ?? null, media_unread: evt.media_unread,
         geo: evt.geo ?? null, contact: evt.contact ?? null,
+        media_w: evt.media_w, media_h: evt.media_h, media_mime: evt.media_mime,
+        media_blur: evt.media_blur, media_has_thumb: evt.media_has_thumb,
+        media_duration: evt.media_duration, media_size: evt.media_size, media_name: evt.media_name,
+        paid_media: evt.paid_media ?? null,
       })
       // E2E-медиа секретного чата: воркер уже расшифровал enc_body и положил
       // secret_media на фрейм (не проводное поле) — переносим в кэш-модель, чтобы
@@ -416,6 +420,29 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
         for (const [seq, m] of c) {
           if (m.id === evt.msg_id) {
             c.set(seq, { ...m, webPage })
+            break
+          }
+        }
+      }
+    },
+
+    // Платное медиа разблокировано: раскрываем баббл в кэше всех окон чата —
+    // возвращаем ссылку на контент + метаданные и снимаем флаг locked.
+    cachePaidUnlock(evt: NewMessageEvt): void {
+      for (const key of keysOf(evt.chat_id)) {
+        const c = cache.get(key)
+        if (!c) continue
+        for (const [seq, m] of c) {
+          if (m.id === evt.msg_id) {
+            c.set(seq, {
+              ...m,
+              mediaId: evt.media_id ?? null,
+              mediaWidth: evt.media_w, mediaHeight: evt.media_h,
+              mediaMime: evt.media_mime, mediaBlur: evt.media_blur,
+              mediaHasThumb: evt.media_has_thumb, mediaDuration: evt.media_duration,
+              mediaSize: evt.media_size, mediaName: evt.media_name,
+              paidMedia: evt.paid_media ? { price: evt.paid_media.price, locked: evt.paid_media.locked } : undefined,
+            })
             break
           }
         }

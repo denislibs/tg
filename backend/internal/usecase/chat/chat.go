@@ -32,6 +32,7 @@ type Interactor struct {
 	topics      TopicRepo
 	groupCalls  GroupCallStore
 	stars       StarsRepo
+	paidMedia   PaidMediaRepo
 	bots        BotRepo
 	botAPI      BotAPIRepo
 	botMedia    BotMediaStore
@@ -91,6 +92,10 @@ func (i *Interactor) SetGroupCalls(s GroupCallStore) { i.groupCalls = s }
 
 // SetStars подключает хранилище звёзд/подарков (optional; без него → 404).
 func (i *Interactor) SetStars(s StarsRepo) { i.stars = s }
+
+// SetPaidMedia подключает хранилище платного медиа (optional; без него платное
+// медиа отключено — цена не сохраняется, unlock → 404).
+func (i *Interactor) SetPaidMedia(p PaidMediaRepo) { i.paidMedia = p }
 
 // SetBots подключает данные ботов (optional; без него авто-ответы отключены).
 func (i *Interactor) SetBots(b BotRepo) { i.bots = b }
