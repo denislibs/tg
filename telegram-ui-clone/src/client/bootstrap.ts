@@ -4,7 +4,8 @@ import type { HealthStatus } from '../core/managers/healthManager'
 import type { User } from '../core/managers/authManager'
 import type { ProfileUpdate, SetUsernameResult } from '../core/managers/profileManager'
 import type { Dialog, Draft } from '../core/models'
-import type { Message, MessageEntity, Poll, Scheduled } from '../core/models'
+import type { Message, MessageEntity, Poll, Scheduled, BoostStatus, Giveaway } from '../core/models'
+import type { CreateGiveawayArgs } from '../core/managers/boostsManager'
 import type { HistoryArgs, HistoryResult, SendArgs, ReactionUser } from '../core/managers/messagesManager'
 import type { ConnState, PresenceEvt, TypingAction } from '../core/realtime/events'
 import type { UploadArgs, MediaMeta } from '../core/managers/mediaManager'
@@ -263,6 +264,13 @@ export interface Managers {
     profileGifts(userId: number): Promise<GiftInfo[]>
     convert(giftId: number): Promise<number>
     setHidden(giftId: number, hidden: boolean): Promise<void>
+  }
+  boosts: {
+    status(chatId: number): Promise<BoostStatus>
+    boost(chatId: number): Promise<BoostStatus>
+    createGiveaway(chatId: number, a: CreateGiveawayArgs): Promise<Message>
+    participateGiveaway(id: number): Promise<Giveaway>
+    getGiveaway(id: number): Promise<Giveaway>
   }
   report: {
     report(a: ReportArgs): Promise<void>

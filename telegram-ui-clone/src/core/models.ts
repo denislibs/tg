@@ -164,6 +164,8 @@ export interface RawMessage {
   reply_to?: { msg_id: number; seq: number; sender_id: number; text: string; entities?: MessageEntity[] | null; type: string; media_id?: number; quote_text?: string } | null
   poll_id?: number | null
   poll?: RawPoll | null
+  giveaway_id?: number | null
+  giveaway?: RawGiveaway | null
   media_w?: number
   media_h?: number
   media_mime?: string
@@ -264,6 +266,8 @@ export interface Message {
   mediaUnread?: boolean
   /** опрос сообщения типа 'poll' (представление для зрителя) */
   poll?: Poll
+  /** розыгрыш сообщения типа 'giveaway' (представление для зрителя) */
+  giveaway?: Giveaway
   /** агрегаты реакций под сообщением (undefined/пусто — реакций нет) */
   reactions?: ReactionCount[]
   /** гео-точка сообщения типа 'geo' (+ venue/live location) */
@@ -333,6 +337,95 @@ export function mapPoll(r: RawPoll): Poll {
     totalVoters: r.total_voters ?? 0,
     myVotes: r.my_votes ?? [],
   }
+}
+
+// Розыгрыш (backend GiveawayInfo): приз + победители + участие зрителя.
+export interface RawGiveaway {
+  id: number
+  chat_id: number
+  prize_kind: 'premium' | 'stars'
+  months: number
+  stars: number
+  winners_count: number
+  until_date: number // unix millis
+  status: 'active' | 'finished'
+  participants: number
+  participating: boolean
+  winner_ids?: number[] | null
+  i_won: boolean
+}
+
+export interface Giveaway {
+  id: number
+  chatId: number
+  prizeKind: 'premium' | 'stars'
+  months: number
+  stars: number
+  winnersCount: number
+  untilDate: number
+  status: 'active' | 'finished'
+  participants: number
+  participating: boolean
+  winnerIds: number[]
+  iWon: boolean
+}
+
+export function mapGiveaway(r: RawGiveaway): Giveaway {
+  return {
+    id: r.id,
+    chatId: r.chat_id,
+    prizeKind: r.prize_kind,
+    months: r.months ?? 0,
+    stars: r.stars ?? 0,
+    winnersCount: r.winners_count ?? 0,
+    untilDate: r.until_date ?? 0,
+    status: r.status,
+    participants: r.participants ?? 0,
+    participating: !!r.participating,
+    winnerIds: r.winner_ids ?? [],
+    iWon: !!r.i_won,
+  }
+}
+
+// Состояние бустов канала (backend BoostStatus).
+export interface RawBoostStatus {
+  level: number
+  boosts_count: number
+  current_level_boosts: number
+  next_level_boosts: number
+  boosted_by_me: boolean
+  slots: number
+}
+
+export interface BoostStatus {
+  level: number
+  boostsCount: number
+  currentLevelBoosts: number
+  nextLevelBoosts: number
+  boostedByMe: boolean
+  slots: number
+}
+
+export function mapBoostStatus(r: RawBoostStatus): BoostStatus {
+  return {
+    level: r.level ?? 0,
+    boostsCount: r.boosts_count ?? 0,
+    currentLevelBoosts: r.current_level_boosts ?? 0,
+    nextLevelBoosts: r.next_level_boosts ?? 0,
+    boostedByMe: !!r.boosted_by_me,
+    slots: r.slots ?? 0,
+  }
+}
+
+// boostProgress — доля заполнения полосы текущего уровня [0..1] и сколько бустов
+// осталось до следующего уровня (порог tweb: (boosts-current)/(next-current)).
+export function boostProgress(s: Pick<BoostStatus, 'boostsCount' | 'currentLevelBoosts' | 'nextLevelBoosts'>): {
+  progress: number
+  need: number
+} {
+  const span = s.nextLevelBoosts - s.currentLevelBoosts
+  const progress = span > 0 ? Math.min(Math.max((s.boostsCount - s.currentLevelBoosts) / span, 0), 1) : 1
+  return { progress, need: Math.max(s.nextLevelBoosts - s.boostsCount, 0) }
 }
 
 // Запланированное сообщение (backend scheduled_messages): очередь до send_at.
@@ -449,6 +542,7 @@ export function mapMessage(r: RawMessage): Message {
     threadRootId: r.thread_root_id ?? null,
     groupedId: r.grouped_id ?? null,
     poll: r.poll ? mapPoll(r.poll) : undefined,
+    giveaway: r.giveaway ? mapGiveaway(r.giveaway) : undefined,
     editedAt: r.edited_at ?? null,
     deleted: r.deleted ?? false,
     fwdFromUserId: r.fwd_from_user_id ?? null,

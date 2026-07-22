@@ -19,3 +19,4 @@ slice3-real-chat-verified.png
 
 # MaxMind GeoLite2 DB (licensed, not redistributable)
 backend/data/geoip/*.mmdb
+.claude/worktrees/

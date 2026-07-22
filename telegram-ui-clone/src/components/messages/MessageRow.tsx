@@ -20,6 +20,7 @@ import RealMediaBubble from './RealMediaBubble'
 import SecretMediaBubble from './SecretMediaBubble'
 import PollBubble from './PollBubble'
 import GiftBubble from './GiftBubble'
+import GiveawayBubble from './GiveawayBubble'
 import InlineKeyboard from './InlineKeyboard'
 import AlbumGrid from './AlbumGrid'
 import VoiceMessage from './VoiceMessage'
@@ -475,6 +476,11 @@ function MessageRow({
           <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
             {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
             <GiftBubble gift={m.gift} out={out} />
+          </div>
+        ) : m.type === 'giveaway' && m.giveaway ? (
+          <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
+            {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
+            <GiveawayBubble giveaway={m.giveaway} />
           </div>
         ) : m.type === 'poll' && m.poll ? (
           <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>

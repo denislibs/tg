@@ -1373,6 +1373,12 @@ func messageJSON(m domain.Message) map[string]any {
 	if m.Poll != nil {
 		j["poll"] = m.Poll
 	}
+	if m.GiveawayID != nil {
+		j["giveaway_id"] = *m.GiveawayID
+	}
+	if m.Giveaway != nil {
+		j["giveaway"] = m.Giveaway
+	}
 	if m.GiftID != nil {
 		j["gift_id"] = *m.GiftID
 	}

@@ -30,9 +30,13 @@ interface Props {
   onClearHistory?: () => void
   /** открыть пикер темы оформления чата (messages.setChatTheme) */
   onChangeTheme?: () => void
+  /** открыть попап буста канала */
+  onBoost?: () => void
+  /** открыть попап создания розыгрыша (владелец канала) */
+  onCreateGiveaway?: () => void
 }
 
-export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddMember, onSelectMessages, onAddContact, onDeleteChat, onClearHistory, onChangeTheme }: Props) {
+export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddMember, onSelectMessages, onAddContact, onDeleteChat, onClearHistory, onChangeTheme, onBoost, onCreateGiveaway }: Props) {
   const t = useT()
   const managers = useManagers()
   const { start: startCall } = useCall()
@@ -165,7 +169,8 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
       { icon: <TgIcon name="livestream" size={20} />, label: 'Live Stream' },
       { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
       { icon: <TgIcon name="gift" size={20} />, label: 'Send a Gift' },
-      { icon: <TgIcon name="boost" size={20} />, label: 'Boost Channel' },
+      { icon: <TgIcon name="boost" size={20} />, label: 'Boost Channel', onClick: onBoost ? () => { onBoost(); close() } : undefined },
+      { icon: <TgIcon name="gift_premium" size={20} />, label: 'Create Giveaway', onClick: onCreateGiveaway ? () => { onCreateGiveaway(); close() } : undefined },
       { icon: <TgIcon name="delete" size={20} />, label: 'Delete Channel', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
     ]
   } else {
@@ -176,7 +181,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
       { icon: <TgIcon name="message" size={20} />, label: 'View discussion' },
       { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
       { icon: <TgIcon name="gift" size={20} />, label: 'Send a Gift' },
-      { icon: <TgIcon name="boost" size={20} />, label: 'Boost Channel' },
+      { icon: <TgIcon name="boost" size={20} />, label: 'Boost Channel', onClick: onBoost ? () => { onBoost(); close() } : undefined },
       reportItem,
       { icon: <TgIcon name="delete" size={20} />, label: 'Leave Channel', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
     ]

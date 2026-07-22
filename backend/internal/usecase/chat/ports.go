@@ -300,6 +300,7 @@ type SendInput struct {
 	ThreadRootID     *int64
 	GroupedID        string // альбом (Telegram grouped_id); "" — не в группе
 	PollID           *int64 // опрос (messages.poll_id) — только из SendPoll
+	GiveawayID       *int64 // розыгрыш (messages.giveaway_id) — только из CreateGiveaway
 	// Гео-точка (type 'geo'): обе координаты обязательны, в валидном диапазоне.
 	GeoLat *float64
 	GeoLng *float64
@@ -399,6 +400,38 @@ type StarsRepo interface {
 	// Convert обменивает подарок на звёзды владельцу: помечает converted и
 	// возвращает число возвращённых звёзд. Повтор/чужой → domain.ErrForbidden.
 	Convert(ctx context.Context, savedID, ownerID int64) (int64, error)
+}
+
+// BoostRepo хранит бусты каналов (channel_boosts). Активны бусты с
+// expires_at > now().
+type BoostRepo interface {
+	// ActiveBoosts — сумма slots всех активных бустов канала.
+	ActiveBoosts(ctx context.Context, chatID int64) (int, error)
+	// UserActiveSlots — сколько слотов пользователь потратил (все каналы).
+	UserActiveSlots(ctx context.Context, userID int64) (int, error)
+	// Boost добавляет/обновляет буст пользователя на канал.
+	Boost(ctx context.Context, chatID, userID int64, slots int, expiresAt time.Time) error
+	// BoostedByMe — есть ли активный буст пользователя на этот канал.
+	BoostedByMe(ctx context.Context, chatID, userID int64) (bool, error)
+}
+
+// GiveawayRepo хранит розыгрыши и участников (giveaways / giveaway_participants).
+type GiveawayRepo interface {
+	Create(ctx context.Context, g domain.Giveaway) (domain.Giveaway, error)
+	ByID(ctx context.Context, id int64) (domain.Giveaway, error)
+	// Participate добавляет участника (идемпотентно).
+	Participate(ctx context.Context, giveawayID, userID int64) error
+	IsParticipant(ctx context.Context, giveawayID, userID int64) (bool, error)
+	ParticipantCount(ctx context.Context, id int64) (int, error)
+	ParticipantIDs(ctx context.Context, id int64) ([]int64, error)
+	// Finish помечает розыгрыш завершённым и сохраняет победителей.
+	Finish(ctx context.Context, id int64, winnerIDs []int64) error
+}
+
+// PremiumRepo читает/выдаёт premium-статус (для бустов и premium-приза).
+type PremiumRepo interface {
+	IsPremium(ctx context.Context, userID int64) (bool, error)
+	GrantPremium(ctx context.Context, userID int64) error
 }
 
 // BotRepo — данные ботов: флаг is_bot и список команд.

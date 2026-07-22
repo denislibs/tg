@@ -39,6 +39,9 @@ type Interactor struct {
 	secret      SecretRepo
 	stickers    StickerAccess
 	preview     LinkPreviewer
+	boosts      BoostRepo
+	giveaways   GiveawayRepo
+	premium     PremiumRepo
 	botHub      *botPendingHub
 }
 
@@ -116,6 +119,16 @@ func (i *Interactor) SetStickerAccess(s StickerAccess) { i.stickers = s }
 // SetLinkPreviewer подключает построитель превью ссылок (optional; без него
 // карточек web page под сообщениями нет).
 func (i *Interactor) SetLinkPreviewer(p LinkPreviewer) { i.preview = p }
+
+// SetBoosts подключает хранилище бустов каналов (optional; без него → 404).
+func (i *Interactor) SetBoosts(b BoostRepo) { i.boosts = b }
+
+// SetGiveaways подключает хранилище розыгрышей (optional; без него → 404).
+func (i *Interactor) SetGiveaways(g GiveawayRepo) { i.giveaways = g }
+
+// SetPremiumRepo подключает чтение/выдачу premium-статуса (для бустов и
+// premium-приза розыгрыша).
+func (i *Interactor) SetPremiumRepo(p PremiumRepo) { i.premium = p }
 
 // nowMillis is the server clock used for update dates.
 func nowMillis() int64 { return time.Now().UnixMilli() }

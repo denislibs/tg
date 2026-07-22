@@ -31,6 +31,7 @@ export interface ConvMsg {
     | 'geo'
     | 'contact'
     | 'gift'
+    | 'giveaway'
   out?: boolean
   sender?: string
   senderId?: number // backend user id of the sender (real group chats) — for "open chat"
@@ -69,6 +70,7 @@ export interface ConvMsg {
   localUrl?: string // object-URL локального файла — мгновенное превью исходящего медиа во время аплоада
   albumItems?: ConvMsg[] // собранные элементы альбома (только у сводного ConvMsg type 'album')
   poll?: import('./core/models').Poll // опрос (type 'poll')
+  giveaway?: import('./core/models').Giveaway // розыгрыш (type 'giveaway')
   gift?: import('./core/managers/starsManager').GiftInfo // подарок (type 'gift')
   replyMarkup?: import('./core/managers/botsManager').ReplyMarkup // inline-клавиатура сообщения бота
   videoDuration?: string // overlay on video / round video

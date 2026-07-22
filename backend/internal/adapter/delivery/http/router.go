@@ -184,6 +184,12 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Post("/chats/{chatID}/scheduled/{schedID}/send_now", ch.SendScheduledNow)
 		pr.Post("/polls/{pollID}/vote", ch.VotePoll)
 		pr.Post("/polls/{pollID}/close", ch.ClosePoll)
+		// Бусты каналов + розыгрыши
+		pr.Get("/channels/{chatID}/boosts", ch.ChannelBoosts)
+		pr.Post("/channels/{chatID}/boost", ch.BoostChannel)
+		pr.Post("/channels/{chatID}/giveaways", ch.CreateGiveaway)
+		pr.Post("/giveaways/{id}/participate", ch.ParticipateGiveaway)
+		pr.Get("/giveaways/{id}", ch.GetGiveaway)
 		// Stars + Star Gifts
 		pr.Get("/stars/balance", ch.StarsBalance)
 		pr.Post("/stars/topup", ch.TopUpStars)
