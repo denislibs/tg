@@ -14,6 +14,7 @@ export type PrivacyKey =
   | 'messages'
   | 'voice_messages'
   | 'birthday'
+  | 'read_time'
 
 export type PrivacyValue = 'everybody' | 'contacts' | 'nobody'
 

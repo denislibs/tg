@@ -12,7 +12,7 @@ export function defaultPrivacyValue(key: PrivacyKey): PrivacyValue {
 
 const KEYS: PrivacyKey[] = [
   'phone_number', 'added_by_phone', 'last_seen', 'profile_photo', 'about',
-  'calls', 'forwards', 'chat_invite', 'voice_messages', 'messages', 'birthday',
+  'calls', 'forwards', 'chat_invite', 'voice_messages', 'messages', 'birthday', 'read_time',
 ]
 
 function defaults(): Record<PrivacyKey, PrivacyRule> {

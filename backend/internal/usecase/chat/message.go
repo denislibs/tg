@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"time"
 	"unicode/utf8"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -429,6 +430,78 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 		_ = i.msgs.RegisterChannelViews(ctx, chatID, userID, effective)
 	}
 	return nil
+}
+
+// OutboxReadDate returns when the peer read the caller's outgoing message in a
+// private 1:1 chat (tweb messages.getOutboxReadDate → outboxReadDate.date).
+//
+// Only private chats, only the caller's own (outgoing) message, only once the
+// peer has actually read it (message seq within the peer's read horizon).
+// Reciprocity mirrors Telegram: the caller sees the peer's read time only if
+// both sides share their read time with each other (read_time privacy) — hide
+// yours and you stop seeing theirs → domain.ErrForbidden. Anything that simply
+// makes the read date unavailable (not private, not outgoing, not yet read, peer
+// never read anything) → domain.ErrNotFound, so the client just omits the row.
+func (i *Interactor) OutboxReadDate(ctx context.Context, chatID, msgID, viewerID int64) (time.Time, error) {
+	kind, err := i.chats.ChatType(ctx, chatID)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if kind != "private" {
+		return time.Time{}, domain.ErrNotFound
+	}
+	msg, err := i.msgs.GetByID(ctx, msgID)
+	if err != nil {
+		return time.Time{}, err
+	}
+	// Must be the caller's own message in this chat (outgoing).
+	if msg.ChatID != chatID || msg.SenderID != viewerID {
+		return time.Time{}, domain.ErrNotFound
+	}
+	members, err := i.chats.MemberIDs(ctx, chatID)
+	if err != nil {
+		return time.Time{}, err
+	}
+	var peerID int64
+	for _, uid := range members {
+		if uid != viewerID {
+			peerID = uid
+			break
+		}
+	}
+	if peerID == 0 {
+		return time.Time{}, domain.ErrNotFound
+	}
+	// The peer must have read this message (seq within their read horizon).
+	peerRead, err := i.chats.CurrentReadSeq(ctx, chatID, peerID)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if msg.Seq > peerRead {
+		return time.Time{}, domain.ErrNotFound
+	}
+	// Reciprocity: both sides must share their read time with each other.
+	if i.privacy != nil {
+		peerShares, err := i.privacy.Check(ctx, peerID, viewerID, domain.PrivacyReadTime)
+		if err != nil {
+			return time.Time{}, err
+		}
+		iShare, err := i.privacy.Check(ctx, viewerID, peerID, domain.PrivacyReadTime)
+		if err != nil {
+			return time.Time{}, err
+		}
+		if !peerShares || !iShare {
+			return time.Time{}, domain.ErrForbidden
+		}
+	}
+	at, ok, err := i.chats.LastReadAt(ctx, chatID, peerID)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if !ok {
+		return time.Time{}, domain.ErrNotFound
+	}
+	return at, nil
 }
 
 // NextMention returns the seq/message id of the caller's earliest unread mention

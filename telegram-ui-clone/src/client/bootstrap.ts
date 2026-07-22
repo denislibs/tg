@@ -82,6 +82,7 @@ export interface Managers {
     saved(): Promise<number>
     savedDialogs(): Promise<SavedDialog[]>
     clearHistory(chatId: number): Promise<void>
+    getReadDate(chatId: number, msgId: number): Promise<import('../core/managers/chatsManager').ReadDateResult>
   }
   messages: {
     getHistory(args: HistoryArgs): Promise<HistoryResult>
