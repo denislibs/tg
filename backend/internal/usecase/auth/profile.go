@@ -65,6 +65,52 @@ func (i *Interactor) ActivatePremium(ctx context.Context, id int64) (domain.User
 	return i.users.SetPremium(ctx, id, true)
 }
 
+// CheckoutPremium runs the mock card checkout for a plan: it validates the plan,
+// creates or extends the subscription (a still-active subscription is stacked so
+// the paid months add to whatever is left) and flips the Premium badge on. Card
+// details are validated on the client and ignored here — any well-formed card is
+// a "success". It returns the fresh user and the resulting subscription.
+func (i *Interactor) CheckoutPremium(ctx context.Context, id int64, planID string) (domain.User, domain.PremiumSubscription, error) {
+	plan, ok := domain.PremiumPlanByID(planID)
+	if !ok {
+		return domain.User{}, domain.PremiumSubscription{}, domain.ErrInvalid
+	}
+	now := time.Now().UTC()
+	// Stack onto remaining time when the current subscription is still active.
+	base := now
+	if cur, err := i.premium.GetPremiumSubscription(ctx, id); err == nil && cur.ExpiresAt.After(now) {
+		base = cur.ExpiresAt
+	}
+	sub, err := i.premium.UpsertPremiumSubscription(ctx, domain.PremiumSubscription{
+		UserID:     id,
+		Plan:       plan.ID,
+		PriceCents: plan.PriceCents,
+		StartedAt:  now,
+		ExpiresAt:  base.AddDate(0, plan.Months, 0),
+		AutoRenew:  true,
+	})
+	if err != nil {
+		return domain.User{}, domain.PremiumSubscription{}, err
+	}
+	user, err := i.users.SetPremium(ctx, id, true)
+	if err != nil {
+		return domain.User{}, domain.PremiumSubscription{}, err
+	}
+	return user, sub, nil
+}
+
+// PremiumSubscription returns the user's current subscription, or
+// domain.ErrNotFound when they never subscribed.
+func (i *Interactor) PremiumSubscription(ctx context.Context, id int64) (domain.PremiumSubscription, error) {
+	return i.premium.GetPremiumSubscription(ctx, id)
+}
+
+// CancelPremiumAutoRenew disables auto-renew: the subscription stays active until
+// its expiry, then lapses. Returns domain.ErrNotFound when there is none.
+func (i *Interactor) CancelPremiumAutoRenew(ctx context.Context, id int64) (domain.PremiumSubscription, error) {
+	return i.premium.SetPremiumAutoRenew(ctx, id, false)
+}
+
 // CheckUsername validates the format and reports whether the username is free
 // for the given user (its own current username counts as available).
 func (i *Interactor) CheckUsername(ctx context.Context, raw string, forUserID int64) (bool, error) {
