@@ -14,9 +14,10 @@ import (
 	usecasenotify "github.com/messenger-denis/backend/internal/usecase/notify"
 	usecaseprivacy "github.com/messenger-denis/backend/internal/usecase/privacy"
 	usecasereport "github.com/messenger-denis/backend/internal/usecase/report"
+	usecasestats "github.com/messenger-denis/backend/internal/usecase/stats"
 )
 
-func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, mediaUC *usecasemedia.Interactor, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler, notifyUC *usecasenotify.Interactor, foldersUC *usecasefolders.Interactor, pubH *PublicHandler, privacyUC *usecaseprivacy.Interactor, passkeyH *PasskeyHandler, stickersH *StickersHandler, ivH *IVHandler, reportUC *usecasereport.Interactor) http.Handler {
+func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, mediaUC *usecasemedia.Interactor, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler, notifyUC *usecasenotify.Interactor, foldersUC *usecasefolders.Interactor, pubH *PublicHandler, privacyUC *usecaseprivacy.Interactor, passkeyH *PasskeyHandler, stickersH *StickersHandler, ivH *IVHandler, reportUC *usecasereport.Interactor, statsUC *usecasestats.Interactor) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -277,6 +278,10 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/channels/{chatID}/posts/{postId}/comments", chh.ListComments)
 		pr.Get("/channels/{chatID}/comment_counts", chh.CommentCounts)
 		pr.Get("/channels/{chatID}/view_counts", chh.ViewCounts)
+		if statsUC != nil {
+			sth := NewStatsHandler(statsUC)
+			pr.Get("/channels/{chatID}/stats", sth.ChannelStats)
+		}
 		pr.Get("/search", chh.Search)
 		pr.Get("/search/messages", ch.GlobalSearchMessages)
 

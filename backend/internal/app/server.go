@@ -35,6 +35,7 @@ import (
 	usecasepublic "github.com/messenger-denis/backend/internal/usecase/public"
 	usecasepush "github.com/messenger-denis/backend/internal/usecase/push"
 	usecasereport "github.com/messenger-denis/backend/internal/usecase/report"
+	usecasestats "github.com/messenger-denis/backend/internal/usecase/stats"
 	usecasestickers "github.com/messenger-denis/backend/internal/usecase/stickers"
 	storyusecase "github.com/messenger-denis/backend/internal/usecase/story"
 	"go.uber.org/fx"
@@ -214,6 +215,9 @@ func registerServer(p serverParams) {
 	notifyUC := usecasenotify.New(pgadapter.NewNotifyRepo(p.Pool))
 	// Жалобы на чаты/сообщения (tweb reportMessages): складируем без модерации.
 	reportUC := usecasereport.New(pgadapter.NewReportRepo(p.Pool))
+	// Статистика каналов (tweb stats.getBroadcastStats): серии считаются на лету
+	// из реальных данных (messages / chat_members / message_views).
+	statsUC := usecasestats.New(pgadapter.NewStatsRepo(p.Pool))
 	foldersUC := usecasefolders.New(pgadapter.NewFoldersRepo(p.Pool), pgadapter.NewFolderChatAccess(p.Pool), pgadapter.NewTxManager(p.Pool))
 	// Публичная страница-превью @username (аналог t.me)
 	pubH := httptransport.NewPublicHandler(usecasepublic.New(pgadapter.NewPublicRepo(p.Pool)), mediaUC)
@@ -231,7 +235,7 @@ func registerServer(p serverParams) {
 
 	srv := &http.Server{
 		Addr:              p.Cfg.HTTPAddr,
-		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, mediaUC, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC, foldersUC, pubH, privacyUC, passkeyH, stickersH, ivHandler, reportUC),
+		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, mediaUC, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC, foldersUC, pubH, privacyUC, passkeyH, stickersH, ivHandler, reportUC, statsUC),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
