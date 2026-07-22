@@ -23,6 +23,7 @@ import { newPrivacyManager } from './managers/privacyManager'
 import { newStarsManager } from './managers/starsManager'
 import { newStickersManager } from './managers/stickersManager'
 import { newReportManager } from './managers/reportManager'
+import { newStatsManager } from './managers/statsManager'
 import { newBotsManager } from './managers/botsManager'
 import { newIVManager } from './managers/ivManager'
 import { newDraftsManager } from './managers/draftsManager'
@@ -64,6 +65,7 @@ const sessions = newSessionsManager({ rest })
 const calls = newCallsManager({ rest })
 const stars = newStarsManager({ rest })
 const report = newReportManager({ rest })
+const stats = newStatsManager({ rest })
 const bots = newBotsManager({ rest })
 const stickers = newStickersManager({ rest })
 const iv = newIVManager({ rest })
@@ -195,6 +197,7 @@ function bind(ep: Endpoint) {
     calls: calls as unknown as Record<string, (...a: unknown[]) => unknown>,
     stars: stars as unknown as Record<string, (...a: unknown[]) => unknown>,
     report: report as unknown as Record<string, (...a: unknown[]) => unknown>,
+    stats: stats as unknown as Record<string, (...a: unknown[]) => unknown>,
     bots: bots as unknown as Record<string, (...a: unknown[]) => unknown>,
     stickers: stickers as unknown as Record<string, (...a: unknown[]) => unknown>,
     iv: iv as unknown as Record<string, (...a: unknown[]) => unknown>,
