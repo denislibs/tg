@@ -143,7 +143,9 @@ function ChatListItem({ chat, selected, onSelect, collapsed }: Props) {
           emoji={chat.avatarEmoji}
           src={avatarSrc}
           size="dialog"
-          online={chat.online || presence?.online}
+          // В свёрнутой колонке (форум открыт) онлайн-точку не рисуем — нижний
+          // правый угол занимает бейдж непрочитанного (как в Telegram).
+          online={collapsed ? false : chat.online || presence?.online}
           ringColor="var(--cl-ring)"
         />
 
