@@ -237,6 +237,19 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 				msg = one[0]
 			}
 		}
+		// Платное медиа (Telegram paid media): цена в отдельной таблице, флаг едет
+		// на сообщении для рассылки. Только фото/видео с прикреплённым медиа.
+		if in.PaidMediaPrice != nil && *in.PaidMediaPrice > 0 && msg.MediaID != nil &&
+			isPaidMediaType(in.Type) && i.paidMedia != nil {
+			price := *in.PaidMediaPrice
+			if price > maxPaidMediaPrice {
+				price = maxPaidMediaPrice
+			}
+			if e := i.paidMedia.SetPrice(ctx, msg.ID, price); e != nil {
+				return e
+			}
+			msg.PaidMediaPrice = &price
+		}
 		members, e := i.chats.MemberIDs(ctx, in.ChatID)
 		if e != nil {
 			return e
@@ -250,9 +263,22 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		if e != nil {
 			return e
 		}
+		// Платное медиа: получателям (не автору) в персональный апдейт кладём
+		// заблокированный вариант — без ссылок на контент, только blur+цена.
+		var payloadLocked []byte
+		if msg.PaidMediaPrice != nil {
+			payloadLocked, e = json.Marshal(messageUpdatePayload(lockedPaidCopy(msg)))
+			if e != nil {
+				return e
+			}
+		}
 		date := nowMillis()
 		for _, uid := range members {
-			if _, e := i.updates.AppendUpdate(ctx, uid, 1, date, "new_message", payload); e != nil {
+			p := payload
+			if payloadLocked != nil && uid != in.SenderID {
+				p = payloadLocked
+			}
+			if _, e := i.updates.AppendUpdate(ctx, uid, 1, date, "new_message", p); e != nil {
 				return e
 			}
 			if uid != in.SenderID {
@@ -282,9 +308,17 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	}
 	if recipients != nil {
 		f := frame("new_message", messageUpdatePayload(msg))
+		var fLocked []byte
+		if msg.PaidMediaPrice != nil {
+			fLocked = frame("new_message", messageUpdatePayload(lockedPaidCopy(msg)))
+		}
 		for _, uid := range recipients {
+			ff := f
+			if fLocked != nil && uid != in.SenderID {
+				ff = fLocked
+			}
 			if i.publisher != nil {
-				_ = i.publisher.PublishToUser(ctx, uid, f)
+				_ = i.publisher.PublishToUser(ctx, uid, ff)
 			}
 			if i.notifier != nil && uid != in.SenderID && !in.Silent {
 				i.notifier.NotifyNewMessage(ctx, uid, msg.ChatID, msg.ID, msg.Seq, msg.SenderID, msg.Text)

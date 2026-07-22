@@ -24,6 +24,7 @@ export const RT = {
   boostUpdate: 'rt:boost_update',
   giveawayUpdate: 'rt:giveaway_update',
   balanceUpdate: 'rt:balance_update',
+  paidMediaUnlock: 'rt:paid_media_unlock',
   groupCall: 'rt:group_call',
   botCallbackAnswer: 'rt:bot_callback_answer',
   geoLiveUpdate: 'rt:geo_live_update',
@@ -43,7 +44,10 @@ export interface NewMessageEvt { chat_id: number; msg_id: number; seq: number; s
   /** E2E-медиа секретного чата — инжектится воркером после расшифровки enc_body (не проводное поле сервера) */
   secret_media?: import('../models').SecretMedia;
   /** вид эффекта сообщения (наш аналог Telegram message effects) */
-  effect?: string | null }
+  effect?: string | null;
+  /** платное медиа (Telegram paid media): цена в звёздах + заблокировано ли для
+   * получателя (у заблокированного кадра media_id отсутствует) */
+  paid_media?: { price: number; locked: boolean } | null }
 export interface EditMessageEvt { chat_id: number; msg_id: number; seq: number; text: string; entities?: MessageEntity[] | null; edited_at: string; reply_markup?: import('../models').RawMessage['reply_markup'] }
 // Live-обновление координат гео-трансляции (geo_live_update).
 export interface GeoLiveUpdateEvt { chat_id: number; msg_id: number; seq: number; geo: RawGeo }

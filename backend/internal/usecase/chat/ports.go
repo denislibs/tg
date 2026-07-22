@@ -326,6 +326,10 @@ type SendInput struct {
 	// Effect — вид полноэкранного эффекта сообщения (наш аналог Telegram message
 	// effects); санитизируется по whitelist. "" — без эффекта.
 	Effect string
+	// PaidMediaPrice — цена доступа к медиа в звёздах (Telegram paid media). nil/<=0
+	// — обычное медиа. Применяется только к фото/видео с прикреплённым MediaID:
+	// получатели видят медиа заблокированным до разблокировки за звёзды.
+	PaidMediaPrice *int64
 }
 
 // GroupCallStore хранит участников активных групповых звонков (эфемерно, Redis).
@@ -432,6 +436,20 @@ type GiveawayRepo interface {
 type PremiumRepo interface {
 	IsPremium(ctx context.Context, userID int64) (bool, error)
 	GrantPremium(ctx context.Context, userID int64) error
+}
+
+// PaidMediaRepo — цена платного медиа сообщения и разблокировки за Stars.
+type PaidMediaRepo interface {
+	// SetPrice помечает медиа сообщения платным с ценой price (звёзды).
+	SetPrice(ctx context.Context, messageID, price int64) error
+	// PricesByIDs — цены платного медиа для сообщений (без цены — отсутствуют).
+	PricesByIDs(ctx context.Context, ids []int64) (map[int64]int64, error)
+	// UnlockedByIDs — какие из сообщений пользователь уже разблокировал.
+	UnlockedByIDs(ctx context.Context, userID int64, ids []int64) (map[int64]bool, error)
+	// Unlock записывает разблокировку (message,user); true — если запись новая.
+	Unlock(ctx context.Context, messageID, userID int64) (bool, error)
+	// LockedMedia — закрыто ли медиа платным баром для пользователя (гейт байтов).
+	LockedMedia(ctx context.Context, userID, mediaID int64) (bool, error)
 }
 
 // BotRepo — данные ботов: флаг is_bot и список команд.

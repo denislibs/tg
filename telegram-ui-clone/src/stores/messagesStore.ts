@@ -97,6 +97,9 @@ interface MessagesState {
   applyGeoLive: (chatId: number, msgId: number, geo: GeoData) => void
   /** Догоняющее серверное превью ссылки (web_page_update) → карточка web page. */
   applyWebPage: (chatId: number, msgId: number, webPage: WebPageData) => void
+  /** Платное медиа разблокировано (paid_media_unlock) → раскрываем баббл: полное
+   * медиа + снятый флаг locked приезжают в готовом сообщении. */
+  applyPaidUnlock: (chatId: number, msg: Message) => void
   applyDelete: (chatId: number, msgId: number) => void
   /** Голосовое/кружок прослушано → точка media_unread гаснет (обе стороны). */
   applyMediaRead: (chatId: number, msgId: number) => void
@@ -368,6 +371,30 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       patchChat(s, chatId, (w) =>
         w.msgs.some((m) => m.id === msgId)
           ? w.msgs.map((m) => (m.id === msgId ? { ...m, webPage } : m))
+          : null,
+      )),
+
+  applyPaidUnlock: (chatId, msg) =>
+    set((s) =>
+      patchChat(s, chatId, (w) =>
+        w.msgs.some((m) => m.id === msg.id)
+          ? w.msgs.map((m) =>
+              m.id === msg.id
+                ? {
+                    ...m,
+                    mediaId: msg.mediaId,
+                    mediaWidth: msg.mediaWidth,
+                    mediaHeight: msg.mediaHeight,
+                    mediaMime: msg.mediaMime,
+                    mediaBlur: msg.mediaBlur,
+                    mediaHasThumb: msg.mediaHasThumb,
+                    mediaDuration: msg.mediaDuration,
+                    mediaSize: msg.mediaSize,
+                    mediaName: msg.mediaName,
+                    paidMedia: msg.paidMedia,
+                  }
+                : m,
+            )
           : null,
       )),
 

@@ -19,6 +19,8 @@ import { mediaContentUrl, mediaThumbUrl, hasMediaToken, primeMediaToken, useMedi
 import { isGifLike } from '../../core/gifs'
 import { useUploadsStore } from '../../stores/uploadsStore'
 import RadialProgress from '../RadialProgress'
+import StarIcon from '../stars/StarIcon'
+import { useT } from '../../i18n'
 import type { MsgStatus } from '../../data'
 import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import s from './RealMediaBubble.module.scss'
@@ -66,13 +68,26 @@ interface Props {
   /** крестик на кольце: отменить аплоад (tweb ProgressivePreloader cancel) */
   onCancelUpload?: (clientId: string) => void
   radius?: string
+  /** платное медиа (Telegram paid media): цена + заблокировано ли для зрителя */
+  paidMedia?: { price: number; locked: boolean }
+  /** разблокировать платное медиа за звёзды (списывает у покупателя) */
+  onUnlockPaid?: () => Promise<void>
 }
 
 export default function RealMediaBubble({
   mediaId, type, width, height, mime, blur, hasThumb, duration, size, fileName,
   out, time, status, tickColor, onOpen, autoDownload, localUrl, clientId, onCancelUpload, radius,
+  paidMedia, onUnlockPaid,
 }: Props) {
   useMediaTokenVersion() // re-render when the media token is (re)primed → fresh URLs
+  const t = useT()
+  // Платное медиа: пока идёт списание — блокируем повторный клик и крутим кольцо.
+  const [unlocking, setUnlocking] = useState(false)
+  const handleUnlock = () => {
+    if (unlocking || !onUnlockPaid) return
+    setUnlocking(true)
+    void onUnlockPaid().finally(() => setUnlocking(false))
+  }
   const tokenReady = hasMediaToken()
   // Автозагрузка выключена → грузим только после клика (tweb noAutoDownload)
   const [forced, setForced] = useState(false)
@@ -111,6 +126,25 @@ export default function RealMediaBubble({
   if (isImage || isVideo) {
     const box = calcImageInBox(width || 0, height || 0, BOX_W, BOX_H)
     const lqip = blur ? `url("data:image/jpeg;base64,${blur}")` : undefined
+    // Платное медиа, ещё не оплачено (Telegram paid media): вместо контента —
+    // размытый плейсхолдер (blur) с оверлеем «Разблокировать за N ⭐». media_id
+    // сервер не отдал, поэтому кроме blur/размеров у нас ничего нет.
+    if (paidMedia?.locked) {
+      return (
+        <div
+          className={classNames(s.media, s.paidLocked)}
+          style={{ width: box.width, height: box.height, borderRadius: radius, backgroundImage: lqip }}
+        >
+          <button className={s.paidUnlockBtn} onClick={handleUnlock} disabled={unlocking} type="button">
+            {unlocking ? (
+              <><RadialProgress progress={0} size={20} /><span>{t('Unlocking…')}</span></>
+            ) : (
+              <><span>{t('Unlock for')}</span><StarIcon size={16} /><span>{paidMedia.price}</span></>
+            )}
+          </button>
+        </div>
+      )
+    }
     const isGif = mime === 'image/gif'
     // «Гифоподобное» видео (tenor/giphy mp4 или image/gif): автоплей-цикл прямо
     // в бабле, бейдж GIF, без play-диска (tweb wrapVideo gif-путь). Клик — лайтбокс.

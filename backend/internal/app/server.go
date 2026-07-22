@@ -113,6 +113,10 @@ func registerServer(p serverParams) {
 	// фреймом balance_update, подарок — сообщением типа 'gift'.
 	p.ChatUC.SetStars(pgadapter.NewStarsRepo(p.Pool))
 
+	// Платное медиа (Telegram paid media): цена доступа в звёздах хранится в
+	// отдельной таблице, медиа отдаётся получателю только после разблокировки.
+	p.ChatUC.SetPaidMedia(pgadapter.NewPaidMediaRepo(p.Pool))
+
 	// Боты: флаг is_bot + команды; демо-бот авто-отвечает в приватном чате.
 	p.ChatUC.SetBots(pgadapter.NewBotRepo(p.Pool))
 

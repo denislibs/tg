@@ -249,7 +249,7 @@ export function useChatSend({
   // asFile=true sends without "media" treatment (a photo/video becomes a
   // downloadable document). Otherwise the type is inferred from the mime.
   // caption (optional) is attached as the message text.
-  const onPickFile = async (file: File, asFile = false, caption = '', groupedId?: string) => {
+  const onPickFile = async (file: File, asFile = false, caption = '', groupedId?: string, paidMediaPrice?: number | null) => {
     if (!isRealChat || secretLocked) return
     const mime = file.type || 'application/octet-stream'
     const type = asFile
@@ -303,7 +303,7 @@ export function useChatSend({
       try {
         const mediaId = await managers.media.upload({ blob: file, mime, size: file.size, width, height, fileName: file.name, progressId: clientMsgId })
         useMessagesStore.getState().setOptimisticMedia(winKey(numericChatId, threadRootId), clientMsgId, mediaId)
-        void managers.realtime.sendMessage({ chatId: numericChatId, text: caption, clientMsgId, mediaId, type, groupedId, threadRootId })
+        void managers.realtime.sendMessage({ chatId: numericChatId, text: caption, clientMsgId, mediaId, type, groupedId, threadRootId, paidMediaPrice: paidMediaPrice ?? undefined })
       } catch {
         useMessagesStore.getState().failOptimisticByClient(clientMsgId)
       } finally {
@@ -336,7 +336,7 @@ export function useChatSend({
 
   // Picked files awaiting the compose popup (caption + as-media/as-file choice).
   const [pendingMedia, setPendingMedia] = useState<{ files: File[]; asFile: boolean } | null>(null)
-  const sendPendingMedia = async (caption: string, asFile: boolean) => {
+  const sendPendingMedia = async (caption: string, asFile: boolean, paidMediaPrice?: number | null) => {
     const pm = pendingMedia
     setPendingMedia(null)
     if (!pm) return
@@ -346,8 +346,10 @@ export function useChatSend({
       && pm.files.length > 1
       && pm.files.every((f) => f.type.startsWith('image/') || f.type.startsWith('video/'))
     const groupedId = asAlbum ? `g${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}` : undefined
+    // Платное медиа — только для одиночного фото/видео «как медиа» (см. SendMediaPopup).
+    const price = !asFile && !asAlbum && pm.files.length === 1 ? paidMediaPrice ?? null : null
     for (let i = 0; i < pm.files.length; i++) {
-      await onPickFile(pm.files[i], asFile, i === 0 ? caption : '', groupedId)
+      await onPickFile(pm.files[i], asFile, i === 0 ? caption : '', groupedId, price)
     }
   }
 

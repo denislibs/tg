@@ -10,6 +10,7 @@ import Menu, { MenuItem } from '../../shared/ui/Menu'
 import { motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
 import MediaEditor from '../mediaEditor/MediaEditor'
+import StarIcon from '../stars/StarIcon'
 import { useT } from '../../i18n'
 import s from './SendMediaPopup.module.scss'
 
@@ -38,11 +39,14 @@ export default function SendMediaPopup({
   files: File[]
   initialAsFile: boolean
   onClose: () => void
-  onSend: (caption: string, asFile: boolean) => void
+  onSend: (caption: string, asFile: boolean, paidPrice?: number | null) => void
 }) {
   const t = useT()
   const [caption, setCaption] = useState('')
   const [asFile, setAsFile] = useState(initialAsFile)
+  // Платное медиа (Telegram paid media): цена в звёздах. null — обычное медиа.
+  // Доступно только для одиночного фото/видео «как медиа».
+  const [paidPrice, setPaidPrice] = useState<number | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null)
   // exit-анимация Popup: отправка/закрытие гасят open, onSend/onClose — из
@@ -65,6 +69,10 @@ export default function SendMediaPopup({
 
   const anyMedia = files.some(isMediaFile)
   const showAsMedia = !asFile && anyMedia
+  // Платное медиа поддержано только для одиночного фото/видео «как медиа»
+  // (бэкенд хранит цену на сообщение; альбомы/файлы — без цены).
+  const onlyPhotoVideo = files.length === 1 && files.every((f) => /^(image|video)\//.test(f.type))
+  const canPaid = showAsMedia && onlyPhotoVideo
   const allImages = files.every((f) => f.type.startsWith('image/'))
   const allVideos = files.every((f) => f.type.startsWith('video/'))
   const kind: 'photo' | 'video' | 'media' | 'file' = asFile || !anyMedia
@@ -80,7 +88,7 @@ export default function SendMediaPopup({
       title={title}
       width={420}
       onClose={() => setOpen(false)}
-      onExitComplete={() => { if (sending.current) onSend(caption.trim(), asFile); else onClose() }}
+      onExitComplete={() => { if (sending.current) onSend(caption.trim(), asFile, canPaid ? paidPrice : null); else onClose() }}
       headerRight={anyMedia ? (
         <>
           <IconButton
@@ -112,25 +120,49 @@ export default function SendMediaPopup({
                 icon={<TgIcon name="document" size={20} />}
                 label={t('Send as file')}
                 right={asFile ? <TgIcon name="check" size={18} color="var(--tg-accent)" /> : undefined}
-                onClick={() => { setAsFile(true); setMenuOpen(false) }}
+                onClick={() => { setAsFile(true); setPaidPrice(null); setMenuOpen(false) }}
               />
+              {canPaid && (
+                <MenuItem
+                  icon={<StarIcon size={20} />}
+                  label={t('Make paid')}
+                  right={paidPrice != null ? <TgIcon name="check" size={18} color="var(--tg-accent)" /> : undefined}
+                  onClick={() => { setPaidPrice((p) => (p == null ? 10 : null)); setMenuOpen(false) }}
+                />
+              )}
             </Menu>
           )}
         </>
       ) : undefined}
       footer={
-        <div className={s.footer}>
-          <input
-            ref={inputRef}
-            className={s.caption}
-            value={caption}
-            onChange={(e) => setCaption(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-            placeholder={t('Add a caption…')}
-          />
-          <motion.div className={s.send} whileTap={{ scale: 0.92 }} onClick={send}>
-            <TgIcon name="send" />
-          </motion.div>
+        <div className={s.footerCol}>
+          {canPaid && paidPrice != null && (
+            <div className={s.paidBar}>
+              <StarIcon size={18} />
+              <input
+                type="number"
+                min={1}
+                className={s.paidInput}
+                value={paidPrice}
+                onChange={(e) => setPaidPrice(Math.max(1, Math.floor(Number(e.target.value)) || 1))}
+                aria-label={t('Price in Stars')}
+              />
+              <Text size={13} color="var(--tg-textSecondary)">{t('Price in Stars')}</Text>
+            </div>
+          )}
+          <div className={s.footer}>
+            <input
+              ref={inputRef}
+              className={s.caption}
+              value={caption}
+              onChange={(e) => setCaption(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
+              placeholder={t('Add a caption…')}
+            />
+            <motion.div className={s.send} whileTap={{ scale: 0.92 }} onClick={send}>
+              <TgIcon name="send" />
+            </motion.div>
+          </div>
         </div>
       }
     >

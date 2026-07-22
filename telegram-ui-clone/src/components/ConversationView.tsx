@@ -26,6 +26,7 @@ import { lastSeenLabel } from '../core/presence'
 import { useManagers } from '../core/hooks/useManagers'
 import { useMessageWindow } from '../core/hooks/useMessageWindow'
 import { useEvent } from '../core/hooks/useEvent'
+import { uiEvents } from '../core/hooks/uiEvents'
 import { markMediaPlayed } from '../core/mediaRead'
 import type { GifItem } from '../core/gifs'
 import { useChatSelection } from '../core/hooks/useChatSelection'
@@ -517,6 +518,16 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     useMessagesStore.getState().removeOptimisticByClient(clientId)
     void managers.media.cancelUpload(clientId)
   })
+  // Разблокировать платное медиа за звёзды (Telegram paid media): списание +
+  // раскрытие бабла приезжают кадром paid_media_unlock (store), баланс —
+  // balance_update. Нехватка звёзд → тост.
+  const unlockPaidE = useEvent(async (msgId: number) => {
+    try {
+      await managers.stars.unlockPaidMedia(msgId)
+    } catch {
+      uiEvents.emit('ui:toast', t('Not enough Stars to unlock'))
+    }
+  })
   const feedFns = useMemo(
     () => ({
       openSender: openSenderE,
@@ -531,8 +542,9 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       toggleReaction,
       showReactedUsers,
       cancelUpload: cancelUploadE,
+      unlockPaid: unlockPaidE,
     }),
-    [openSenderE, playVoiceE, toggleSelectE, openMsgMenuE, jumpToSeqE, openLightboxE, recallE, mediaPlayedE, roundPlayingE, toggleReaction, showReactedUsers, cancelUploadE],
+    [openSenderE, playVoiceE, toggleSelectE, openMsgMenuE, jumpToSeqE, openLightboxE, recallE, mediaPlayedE, roundPlayingE, toggleReaction, showReactedUsers, cancelUploadE, unlockPaidE],
   )
 
   // (Ack reconcile + send-rejection run in realtimeBridge → messagesStore; live
@@ -1217,7 +1229,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           files={pendingMedia.files}
           initialAsFile={pendingMedia.asFile}
           onClose={() => setPendingMedia(null)}
-          onSend={(caption, asFile) => { void sendPendingMedia(caption, asFile); slowmodeMarkSent() }}
+          onSend={(caption, asFile, paidPrice) => { void sendPendingMedia(caption, asFile, paidPrice); slowmodeMarkSent() }}
         />
       )}
 

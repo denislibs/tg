@@ -64,6 +64,8 @@ export interface ConvMsg {
   mediaDuration?: number
   mediaSize?: number
   mediaName?: string
+  // платное медиа (Telegram paid media): цена в звёздах + заблокировано ли для зрителя
+  paidMedia?: { price: number; locked: boolean }
   media?: MediaItem // single photo/video placeholder
   album?: MediaItem[] // album grid (2–10)
   groupedId?: string // медиагруппа (Telegram grouped_id) — подряд идущие с одним id рендерятся одним грид-баблом

@@ -189,6 +189,9 @@ export interface RawMessage {
   web_page?: RawWebPage | null
   /** вид эффекта сообщения (наш аналог Telegram message effects) */
   effect?: string | null
+  /** платное медиа (Telegram paid media): цена в звёздах + заблокировано ли для
+   * зрителя. У заблокированного media_id отсутствует — только blur/размеры/цена. */
+  paid_media?: { price: number; locked: boolean } | null
 }
 
 // Агрегат одной реакции на сообщении (emoji + счётчик + «моя»), tweb ReactionCount.
@@ -292,6 +295,10 @@ export interface Message {
   webPage?: WebPageData
   /** вид полноэкранного эффекта сообщения (наш аналог Telegram message effects) */
   effect?: EmojiEffectKind
+  /** платное медиа (Telegram paid media): цена в звёздах + заблокировано ли для
+   * зрителя. Заблокированное — без mediaId (только blur/размеры), раскрывается
+   * после разблокировки за Stars. */
+  paidMedia?: { price: number; locked: boolean }
 }
 
 // Опрос (backend PollInfo): вопрос + варианты + агрегаты для зрителя.
@@ -577,5 +584,6 @@ export function mapMessage(r: RawMessage): Message {
     destructAt: r.destruct_at ?? undefined,
     webPage: r.web_page ? mapWebPage(r.web_page) : undefined,
     effect: mapEffect(r.effect),
+    paidMedia: r.paid_media ? { price: r.paid_media.price, locked: r.paid_media.locked } : undefined,
   }
 }

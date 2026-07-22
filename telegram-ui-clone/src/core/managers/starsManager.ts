@@ -1,4 +1,5 @@
 import type { RestClient } from '../net/restClient'
+import { mapMessage, type Message, type RawMessage } from '../models'
 
 // Telegram Stars + Star Gifts. Реального провайдера нет: пополнение (topUp) —
 // dev-операция. Подарок за звёзды приходит получателю сообщением типа 'gift'.
@@ -92,6 +93,12 @@ export function newStarsManager({ rest }: { rest: Pick<RestClient, 'get' | 'post
     },
     async setHidden(giftId: number, hidden: boolean): Promise<void> {
       await rest.post(`/gifts/${giftId}/hidden`, { hidden })
+    },
+    // Разблокировка платного медиа (Telegram paid media): списывает цену в звёздах,
+    // возвращает разблокированное сообщение (полное медиа) и новый баланс покупателя.
+    async unlockPaidMedia(msgId: number): Promise<{ message: Message; balance: number }> {
+      const r = await rest.post<{ message: RawMessage; balance: number }>(`/messages/${msgId}/unlock`, {})
+      return { message: mapMessage(r.message), balance: r.balance }
     },
   }
 }

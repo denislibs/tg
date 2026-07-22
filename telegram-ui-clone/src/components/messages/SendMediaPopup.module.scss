@@ -60,6 +60,27 @@
 }
 
 // подпись + отправка (прибитый низ карточки Popup)
+.footerCol {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+.paidBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+}
+.paidInput {
+  width: 80px;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--tg-textPrimary);
+  font-family: inherit;
+}
 .footer {
   flex: 0 0 auto;
   display: flex;

@@ -42,6 +42,8 @@ type sendMessageData struct {
 	Silent bool `json:"silent"`
 	// Effect — вид эффекта сообщения (наш аналог Telegram message effects).
 	Effect string `json:"effect"`
+	// PaidMediaPrice — цена платного медиа (Telegram paid media) в звёздах.
+	PaidMediaPrice *int64 `json:"paid_media_price"`
 }
 
 type readData struct {

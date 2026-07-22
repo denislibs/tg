@@ -193,6 +193,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		// Stars + Star Gifts
 		pr.Get("/stars/balance", ch.StarsBalance)
 		pr.Post("/stars/topup", ch.TopUpStars)
+		pr.Post("/messages/{msgID}/unlock", ch.UnlockPaidMedia)
 		pr.Get("/gifts/catalog", ch.GiftCatalog)
 		pr.Post("/gifts/send", ch.SendGift)
 		pr.Get("/users/{userID}/gifts", ch.ProfileGifts)
