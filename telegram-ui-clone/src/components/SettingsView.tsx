@@ -8,6 +8,8 @@ import SettingsSubScreen, { hasSubScreen } from './SettingsSubScreen'
 import EditProfile from './settings/EditProfile'
 import ChangePhone from './settings/ChangePhone'
 import PremiumModal from './PremiumModal'
+import PremiumManage from './PremiumManage'
+import PremiumBadge from './PremiumBadge'
 import EmojiStatusPicker from './EmojiStatusPicker'
 import QrModal from './QrModal'
 import TgIcon from './TgIcon'
@@ -67,6 +69,7 @@ export default function SettingsView({
   const [editProfile, setEditProfile] = useState(false)
   const [changePhone, setChangePhone] = useState(false)
   const [premiumOpen, setPremiumOpen] = useState(false)
+  const [premiumManageOpen, setPremiumManageOpen] = useState(false)
   const [emojiStatusOpen, setEmojiStatusOpen] = useState(false)
   const [qrOpen, setQrOpen] = useState(false)
   const me = useChatsStore((s) => s.me)
@@ -107,9 +110,12 @@ export default function SettingsView({
         {/* Avatar + name */}
         <div className={s.profile}>
           <Avatar background={avatarBg} src={avatarSrc} text={avatarText} size={130} />
-          <Text size={21} weight={600} color="var(--tg-textPrimary)" className={s.profileName}>
-            {name}
-          </Text>
+          <div className={s.profileName} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Text size={21} weight={600} color="var(--tg-textPrimary)">
+              {name}
+            </Text>
+            {me?.premium && <PremiumBadge size={20} />}
+          </div>
           <Text size={14} color="var(--tg-textSecondary)">{t('online')}</Text>
         </div>
 
@@ -171,8 +177,10 @@ export default function SettingsView({
         <Section>
           <Row
             icon={<TgIcon name="star_filled" size={24} color="var(--tg-accent)" />}
-            label={me?.premium ? 'Telegram Premium (active)' : 'Telegram Premium'}
-            onClick={() => setPremiumOpen(true)}
+            label="Telegram Premium"
+            sublabel={me?.premium ? t('Active — manage subscription') : t('Unlock exclusive features')}
+            chevron
+            onClick={() => (me?.premium ? setPremiumManageOpen(true) : setPremiumOpen(true))}
           />
           <Row
             icon={
@@ -206,8 +214,13 @@ export default function SettingsView({
         {changePhone && <ChangePhone onBack={() => setChangePhone(false)} />}
       </AnimatePresence>
 
-      {/* Telegram Premium modal */}
+      {/* Telegram Premium modal (features → checkout) */}
       <PremiumModal open={premiumOpen} onClose={() => setPremiumOpen(false)} />
+
+      {/* Manage active subscription (plan, expiry, cancel auto-renew) */}
+      <AnimatePresence>
+        {premiumManageOpen && <PremiumManage onBack={() => setPremiumManageOpen(false)} />}
+      </AnimatePresence>
 
       {/* Emoji-status picker (own status) */}
       <EmojiStatusPicker open={emojiStatusOpen} onClose={() => setEmojiStatusOpen(false)} />

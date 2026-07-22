@@ -1,0 +1,146 @@
+// Мок-чекаут Telegram Premium: оверлей + карточка + форма карты + CTA.
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1310; // над PremiumModal (1300)
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+}
+
+.dialog {
+  width: min(420px, 100%);
+  max-height: 92vh;
+  border-radius: 16px;
+  background: var(--tg-sidebarBg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.5);
+}
+
+.header {
+  position: relative;
+  padding: 16px 20px 8px;
+}
+.close {
+  position: absolute;
+  left: 14px;
+  top: 12px;
+  padding: 6px;
+  border-radius: 50%;
+  cursor: pointer;
+  color: var(--tg-textPrimary);
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+    }
+  }
+}
+.title {
+  text-align: center;
+}
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 20px 8px;
+}
+
+// сводка заказа
+.summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0 16px;
+}
+.summaryIcon {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #8d6bff, #a45ee6);
+}
+.summaryBody {
+  flex: 1;
+  min-width: 0;
+}
+
+// поля формы
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+  flex: 1;
+  min-width: 0;
+}
+.row {
+  display: flex;
+  gap: 12px;
+}
+.label {
+  font-size: 13px;
+  color: var(--tg-textSecondary);
+}
+.input {
+  height: 46px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--tg-borderColor, rgba(128, 128, 128, 0.35));
+  background: var(--tg-inputBg, transparent);
+  color: var(--tg-textPrimary);
+  font-size: 16px;
+  outline: none;
+  transition: border-color 0.15s;
+
+  &:focus {
+    border-color: var(--tg-accent);
+  }
+  &::placeholder {
+    color: var(--tg-textFaint);
+  }
+}
+.inputError {
+  border-color: var(--tg-danger, #e53935);
+}
+.error {
+  margin-top: 12px;
+  display: block;
+}
+
+// CTA
+.ctaWrap {
+  padding: 12px 20px 16px;
+  flex-shrink: 0;
+}
+.cta {
+  width: 100%;
+  height: 52px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(90deg, #6c7cf0 0%, #9c6cf0 50%, #e487c8 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+}
+.disclaimer {
+  text-align: center;
+  margin-top: 10px;
+  display: block;
+}
