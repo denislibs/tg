@@ -96,6 +96,66 @@ func (r *StatsRepo) PostsByDay(ctx context.Context, chatID int64) ([]domain.Stat
 		GROUP BY day ORDER BY day`, chatID)
 }
 
+func (r *StatsRepo) PostExists(ctx context.Context, chatID, msgID int64) (bool, error) {
+	var ok bool
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM messages WHERE id=$1 AND chat_id=$2 AND deleted_at IS NULL)`,
+		msgID, chatID).Scan(&ok)
+	return ok, err
+}
+
+func (r *StatsRepo) PostOverview(ctx context.Context, chatID, msgID int64) (int64, int64, error) {
+	var views, forwards int64
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT views, forwards FROM messages WHERE id=$1 AND chat_id=$2 AND deleted_at IS NULL`,
+		msgID, chatID).Scan(&views, &forwards)
+	return views, forwards, err
+}
+
+// PostReactions собирает разбивку реакций поста по эмодзи (reactions, count
+// пользователей на эмодзи), по убыванию количества.
+func (r *StatsRepo) PostReactions(ctx context.Context, msgID int64) ([]domain.ReactionCount, error) {
+	out := make([]domain.ReactionCount, 0)
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT emoji, count(*) FROM reactions WHERE message_id=$1
+		 GROUP BY emoji ORDER BY count(*) DESC, emoji`, msgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			emoji string
+			count int64 // count(*) — bigint; в domain хранится как int
+		)
+		if err := rows.Scan(&emoji, &count); err != nil {
+			return nil, err
+		}
+		out = append(out, domain.ReactionCount{Emoji: emoji, Count: int(count)})
+	}
+	return out, rows.Err()
+}
+
+func (r *StatsRepo) PostViewsByDay(ctx context.Context, msgID int64) ([]domain.StatPoint, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx, `
+		SELECT viewed_at::date AS day, count(*)
+		FROM message_views WHERE message_id=$1
+		GROUP BY day ORDER BY day`, msgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	points := make([]domain.StatPoint, 0)
+	for rows.Next() {
+		var p domain.StatPoint
+		if err := rows.Scan(&p.Day, &p.Value); err != nil {
+			return nil, err
+		}
+		points = append(points, p)
+	}
+	return points, rows.Err()
+}
+
 func (r *StatsRepo) TopPosts(ctx context.Context, chatID int64, limit int) ([]domain.TopPost, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx, `
 		SELECT id, seq, text, views, created_at

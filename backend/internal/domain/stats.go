@@ -36,3 +36,24 @@ type ChannelStats struct {
 	PostsByDay    []StatPoint // посты по дням
 	TopPosts      []TopPost   // топ-посты по просмотрам
 }
+
+// PostStats — статистика одного поста канала (аналог tweb stats.getMessageStats):
+// обзор (просмотры/пересылки/реакции), разбивка реакций по эмодзи и динамика
+// просмотров по дням. Всё считается на лету из реальных данных
+// (messages.views/forwards, message_views, reactions). Разбивка реакций
+// переиспользует ReactionCount.
+type PostStats struct {
+	Views          int64           // messages.views — канонический счётчик просмотров поста
+	Forwards       int64           // messages.forwards — сколько раз переслали
+	ReactionsTotal int64           // сумма всех реакций (эмодзи + star)
+	Reactions      []ReactionCount // разбивка реакций по эмодзи
+	ViewsByDay     []StatPoint     // просмотры по дням (message_views.viewed_at)
+}
+
+// StoryStats — статистика истории (аналог tweb stats.getStoryStats): просмотры и
+// их динамика по дням. Реакции/пересылки у историй в этой модели данных не
+// хранятся (нет таблицы story_reactions) — только просмотры (story_views).
+type StoryStats struct {
+	Views      int64       // всего просмотров (уникальные зрители story_views)
+	ViewsByDay []StatPoint // просмотры по дням (story_views.viewed_at)
+}

@@ -120,6 +120,34 @@ func (r *StoryRepo) Viewers(ctx context.Context, storyID int64) ([]domain.UserCa
 	return out, rows.Err()
 }
 
+// Stats считает статистику истории на лету из story_views: всего уникальных
+// зрителей и их разбивку по дням (viewed_at). Реакций/пересылок у историй нет.
+func (r *StoryRepo) Stats(ctx context.Context, storyID int64) (domain.StoryStats, error) {
+	var st domain.StoryStats
+	if err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT count(*) FROM story_views WHERE story_id=$1`, storyID,
+	).Scan(&st.Views); err != nil {
+		return domain.StoryStats{}, err
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx, `
+		SELECT viewed_at::date AS day, count(*)
+		FROM story_views WHERE story_id=$1
+		GROUP BY day ORDER BY day`, storyID)
+	if err != nil {
+		return domain.StoryStats{}, err
+	}
+	defer rows.Close()
+	st.ViewsByDay = make([]domain.StatPoint, 0)
+	for rows.Next() {
+		var p domain.StatPoint
+		if err := rows.Scan(&p.Day, &p.Value); err != nil {
+			return domain.StoryStats{}, err
+		}
+		st.ViewsByDay = append(st.ViewsByDay, p)
+	}
+	return st, rows.Err()
+}
+
 func (r *StoryRepo) GetAuthor(ctx context.Context, storyID int64) (int64, error) {
 	var author int64
 	err := querier(ctx, r.pool).QueryRow(ctx,

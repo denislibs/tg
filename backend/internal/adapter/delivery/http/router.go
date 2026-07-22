@@ -292,6 +292,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		if statsUC != nil {
 			sth := NewStatsHandler(statsUC)
 			pr.Get("/channels/{chatID}/stats", sth.ChannelStats)
+			pr.Get("/chats/{chatID}/messages/{msgID}/stats", sth.PostStats)
 		}
 		pr.Get("/search", chh.Search)
 		pr.Get("/search/messages", ch.GlobalSearchMessages)
@@ -317,6 +318,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 			pr.Get("/stories", storyH.Feed)
 			pr.Post("/stories/{storyID}/view", storyH.View)
 			pr.Get("/stories/{storyID}/viewers", storyH.Viewers)
+			pr.Get("/stories/{storyID}/stats", storyH.Stats)
 			pr.Delete("/stories/{storyID}", storyH.Delete)
 		}
 

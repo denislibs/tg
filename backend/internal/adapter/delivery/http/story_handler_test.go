@@ -121,6 +121,29 @@ func TestStories_Flow_HTTP(t *testing.T) {
 		t.Fatalf("expected 403 for non-author viewers, got %d %s", rec.Code, rec.Body.String())
 	}
 
+	// A (author) reads story stats: 1 view + a per-day views series.
+	rec = authedReq(t, h, http.MethodGet, "/stories/"+itoa(posted.ID)+"/stats", tokenA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("stats: %d %s", rec.Code, rec.Body.String())
+	}
+	var stats struct {
+		Views      int64 `json:"views"`
+		ViewsByDay []struct {
+			Date  string `json:"date"`
+			Value int64  `json:"value"`
+		} `json:"views_by_day"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &stats)
+	if stats.Views != 1 || len(stats.ViewsByDay) != 1 || stats.ViewsByDay[0].Value != 1 {
+		t.Fatalf("unexpected story stats: %s", rec.Body.String())
+	}
+
+	// B (non-author) is forbidden from story stats.
+	rec = authedReq(t, h, http.MethodGet, "/stories/"+itoa(posted.ID)+"/stats", tokenB, nil)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for non-author stats, got %d %s", rec.Code, rec.Body.String())
+	}
+
 	// A deletes the story; it disappears from B's feed.
 	rec = authedReq(t, h, http.MethodDelete, "/stories/"+itoa(posted.ID), tokenA, nil)
 	if rec.Code != http.StatusOK {
