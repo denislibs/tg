@@ -8,12 +8,13 @@ import "time"
 // on both ends. The backend stores/returns these opaquely (jsonb) — only the
 // client interprets the units. URL is set only for "text_link" spans.
 type MessageEntity struct {
-	Type   string `json:"type"`               // bold|italic|underline|strikethrough|code|pre|spoiler|blockquote|text_link|text_mention
-	Offset int    `json:"offset"`             // start, in UTF-16 code units
-	Length int    `json:"length"`             // span length, in UTF-16 code units
-	URL    string `json:"url,omitempty"`      // target for text_link
-	Lang   string `json:"language,omitempty"` // language hint for pre code blocks
-	UserID int64  `json:"user_id,omitempty"`  // target for text_mention (упоминание юзера без username)
+	Type   string `json:"type"`                  // bold|italic|underline|strikethrough|code|pre|spoiler|blockquote|text_link|text_mention|custom_emoji
+	Offset int    `json:"offset"`                // start, in UTF-16 code units
+	Length int    `json:"length"`                // span length, in UTF-16 code units
+	URL    string `json:"url,omitempty"`         // target for text_link
+	Lang   string `json:"language,omitempty"`    // language hint for pre code blocks
+	UserID int64  `json:"user_id,omitempty"`     // target for text_mention (упоминание юзера без username)
+	DocID  int64  `json:"document_id,omitempty"` // sticker document (media id) for custom_emoji (Telegram messageEntityCustomEmoji.document_id)
 }
 
 // WebPagePreview — серверный снимок превью ссылки (Telegram webPage):

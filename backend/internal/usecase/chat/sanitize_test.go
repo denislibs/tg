@@ -52,6 +52,21 @@ func TestSanitizeEntities_DropsUnsafeLinks(t *testing.T) {
 	}
 }
 
+func TestSanitizeEntities_CustomEmoji(t *testing.T) {
+	in := []domain.MessageEntity{
+		{Type: "custom_emoji", Offset: 0, Length: 2, DocID: 42}, // kept
+		{Type: "custom_emoji", Offset: 2, Length: 2, DocID: 0},  // dropped: no document
+		{Type: "custom_emoji", Offset: 4, Length: 2, DocID: -1}, // dropped: bad document
+	}
+	out := sanitizeEntities(in)
+	if len(out) != 1 {
+		t.Fatalf("want 1 custom_emoji kept, got %d: %+v", len(out), out)
+	}
+	if out[0].DocID != 42 {
+		t.Fatalf("kept entity lost its document_id: %+v", out[0])
+	}
+}
+
 func TestSafeLinkURL(t *testing.T) {
 	bad := []string{"javascript:alert(1)", "JavaScript:alert(1)", "  javascript:x", "data:text/html,x", "vbscript:x", "file:///etc/passwd", ""}
 	for _, u := range bad {

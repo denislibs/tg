@@ -57,6 +57,7 @@ const maxEntities = 500
 
 // sanitizeEntities drops formatting entities that are unsafe or abusive to persist:
 //   - text_link with a disallowed URL scheme (javascript:, data:, …) — XSS;
+//   - custom_emoji without a document_id — nothing to render, so meaningless;
 //   - entities with a non-positive length or negative offset — malformed;
 //   - anything beyond maxEntities — render-time DoS.
 //
@@ -72,6 +73,13 @@ func sanitizeEntities(es []domain.MessageEntity) []domain.MessageEntity {
 			continue
 		}
 		if e.Type == "text_link" && !safeLinkURL(e.URL) {
+			continue
+		}
+		// custom_emoji carries the sticker document (media id) that replaces the
+		// spanned fallback glyph; without it the entity renders nothing. The media
+		// content endpoint enforces its own access, so a bogus id just falls back
+		// to the glyph on the client — a positive id is all we validate here.
+		if e.Type == "custom_emoji" && e.DocID <= 0 {
 			continue
 		}
 		out = append(out, e)
