@@ -146,6 +146,8 @@ type MessageRepo interface {
 	GetByIDs(ctx context.Context, ids []int64) ([]domain.Message, error)
 	// ByPollID — сообщения, ссылающиеся на опрос (обычно одно).
 	ByPollID(ctx context.Context, pollID int64) ([]domain.Message, error)
+	// ByChecklistID — сообщения, ссылающиеся на чек-лист (обычно одно).
+	ByChecklistID(ctx context.Context, checklistID int64) ([]domain.Message, error)
 	SearchMessages(ctx context.Context, chatID int64, q string, offset, limit int) ([]domain.Message, int, error)
 	// GlobalSearchMessages searches across every chat userID is a member of;
 	// filter narrows by shared-media kind ("" = any type).
@@ -314,6 +316,7 @@ type SendInput struct {
 	ThreadRootID     *int64
 	GroupedID        string // альбом (Telegram grouped_id); "" — не в группе
 	PollID           *int64 // опрос (messages.poll_id) — только из SendPoll
+	ChecklistID      *int64 // чек-лист (messages.checklist_id) — только из SendChecklist
 	GiveawayID       *int64 // розыгрыш (messages.giveaway_id) — только из CreateGiveaway
 	// Гео-точка (type 'geo'): обе координаты обязательны, в валидном диапазоне.
 	GeoLat *float64
@@ -391,6 +394,18 @@ type PollRepo interface {
 	Close(ctx context.Context, pollID int64) error
 	// Info — представление опроса для зрителя (агрегаты + его выбор).
 	Info(ctx context.Context, pollID, viewerID int64) (domain.PollInfo, error)
+}
+
+// ChecklistRepo хранит чек-листы и отметки «выполнено».
+type ChecklistRepo interface {
+	Create(ctx context.Context, c domain.Checklist) (domain.Checklist, error)
+	ByID(ctx context.Context, id int64) (domain.Checklist, error)
+	// SetItems заменяет список пунктов целиком (при добавлении пунктов).
+	SetItems(ctx context.Context, checklistID int64, items []domain.ChecklistItem) error
+	// ToggleMark переключает отметку пользователя на пункте (true — отмечено).
+	ToggleMark(ctx context.Context, checklistID int64, itemID int, userID int64) (bool, error)
+	// Info — представление чек-листа (пункты + кто отметил каждый).
+	Info(ctx context.Context, checklistID int64) (domain.ChecklistInfo, error)
 }
 
 // StarsRepo — баланс звёзд и каталог/выдача подарков.

@@ -31,6 +31,8 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 		"thread_root_id": m.ThreadRootID,
 		"poll_id":        m.PollID,
 		"poll":           m.Poll,
+		"checklist_id":   m.ChecklistID,
+		"checklist":      m.Checklist,
 		"giveaway_id":    m.GiveawayID,
 		"giveaway":       m.Giveaway,
 		"gift_id":        m.GiftID,

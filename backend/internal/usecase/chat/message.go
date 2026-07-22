@@ -202,8 +202,9 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			Type: in.Type, Text: in.Text, Entities: in.Entities, ReplyToID: in.ReplyToID, ClientMsgID: cmid,
 			ReplyQuoteText: in.ReplyQuoteText, ReplyQuoteOffset: in.ReplyQuoteOffset,
 			MediaID: in.MediaID, ThreadRootID: in.ThreadRootID, GroupedID: groupedID, PollID: in.PollID,
-			GiveawayID: in.GiveawayID,
-			GiftID:     in.GiftID, ReplyMarkup: in.ReplyMarkup,
+			ChecklistID: in.ChecklistID,
+			GiveawayID:  in.GiveawayID,
+			GiftID:      in.GiftID, ReplyMarkup: in.ReplyMarkup,
 			GeoLat: in.GeoLat, GeoLng: in.GeoLng,
 			GeoTitle: in.GeoTitle, GeoAddress: in.GeoAddress,
 			GeoLivePeriod: in.GeoLivePeriod, GeoHeading: in.GeoHeading,
@@ -221,6 +222,13 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		if msg.PollID != nil && i.polls != nil {
 			if info, e2 := i.pollInfoFor(ctx, *msg.PollID, 0); e2 == nil {
 				msg.Poll = &info
+			}
+		}
+		// Сообщение-чеклист несёт своё представление прямо в new_message-фрейме
+		// (свежий чек-лист без отметок одинаков для всех получателей).
+		if msg.ChecklistID != nil && i.checklists != nil {
+			if info, e2 := i.checklists.Info(ctx, *msg.ChecklistID); e2 == nil {
+				msg.Checklist = &info
 			}
 		}
 		// Сообщение-розыгрыш несёт своё представление прямо в new_message-фрейме.

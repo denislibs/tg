@@ -46,6 +46,10 @@ type Message struct {
 	// развёрнутое представление для зрителя, наполняется read-моделью истории.
 	PollID *int64
 	Poll   *PollInfo
+	// ChecklistID — чек-лист сообщения типа 'checklist' (messages.checklist_id);
+	// Checklist — его развёрнутое представление, наполняется read-моделью истории.
+	ChecklistID *int64
+	Checklist   *ChecklistInfo
 	// GiveawayID — розыгрыш сообщения типа 'giveaway' (messages.giveaway_id);
 	// Giveaway — его представление для зрителя, наполняется read-моделью истории.
 	GiveawayID *int64

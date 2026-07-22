@@ -91,6 +91,9 @@ func registerServer(p serverParams) {
 	// Опросы: хранение + голоса, live-агрегаты фреймом poll_update.
 	p.ChatUC.SetPolls(pgadapter.NewPollsRepo(p.Pool))
 
+	// Чек-листы: хранение + отметки, live-обновления фреймом checklist_update.
+	p.ChatUC.SetChecklists(pgadapter.NewChecklistsRepo(p.Pool))
+
 	// Бусты каналов + розыгрыши: буст доступен premium, счётчик бустов и статус
 	// розыгрыша рассылаются фреймами boost_update / giveaway_update.
 	p.ChatUC.SetBoosts(pgadapter.NewBoostsRepo(p.Pool))

@@ -826,6 +826,106 @@ func (h *ChatHandler) ClosePoll(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// SendChecklist — POST /chats/{chatID}/checklists: отправить чек-лист
+// (сообщение типа 'checklist').
+func (h *ChatHandler) SendChecklist(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Title         string   `json:"title"`
+		Items         []string `json:"items"`
+		OthersCanAdd  bool     `json:"others_can_add"`
+		OthersCanMark bool     `json:"others_can_mark"`
+		ClientMsgID   string   `json:"client_msg_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	m, err := h.svc.SendChecklist(r.Context(), usecasechat.SendChecklistInput{
+		ChatID: chatID, SenderID: h.meID(r),
+		Title: b.Title, Items: b.Items,
+		OthersCanAdd: b.OthersCanAdd, OthersCanMark: b.OthersCanMark,
+		ClientMsgID: b.ClientMsgID,
+	})
+	if errors.Is(err, domain.ErrTooLong) {
+		writeError(w, http.StatusBadRequest, "invalid checklist")
+		return
+	}
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusForbidden, "not a member of this chat")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not send checklist")
+		return
+	}
+	writeJSON(w, http.StatusOK, messageJSON(m))
+}
+
+// ToggleChecklistItem — POST /checklists/{id}/items/{itemID}/toggle: отметить/
+// снять отметку «выполнено» на пункте (учитывает право others_can_mark).
+func (h *ChatHandler) ToggleChecklistItem(w http.ResponseWriter, r *http.Request) {
+	checklistID, ok := pathInt(w, r, "id")
+	if !ok {
+		return
+	}
+	itemID, ok := pathInt(w, r, "itemID")
+	if !ok {
+		return
+	}
+	info, err := h.svc.ToggleChecklistItem(r.Context(), checklistID, int(itemID), h.meID(r))
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "checklist not found")
+		return
+	}
+	if errors.Is(err, domain.ErrForbidden) {
+		writeError(w, http.StatusForbidden, "not allowed")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not toggle item")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"checklist": info})
+}
+
+// AddChecklistItems — POST /checklists/{id}/items {items:[...]}: добавить пункты
+// (учитывает право others_can_add).
+func (h *ChatHandler) AddChecklistItems(w http.ResponseWriter, r *http.Request) {
+	checklistID, ok := pathInt(w, r, "id")
+	if !ok {
+		return
+	}
+	var b struct {
+		Items []string `json:"items"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	info, err := h.svc.AddChecklistItems(r.Context(), checklistID, h.meID(r), b.Items)
+	if errors.Is(err, domain.ErrTooLong) {
+		writeError(w, http.StatusBadRequest, "invalid items")
+		return
+	}
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "checklist not found")
+		return
+	}
+	if errors.Is(err, domain.ErrForbidden) {
+		writeError(w, http.StatusForbidden, "not allowed")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not add items")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"checklist": info})
+}
+
 // scheduledJSON — представление запланированного сообщения.
 func scheduledJSON(m domain.ScheduledMessage) map[string]any {
 	j := map[string]any{
@@ -1376,6 +1476,12 @@ func messageJSON(m domain.Message) map[string]any {
 	}
 	if m.Poll != nil {
 		j["poll"] = m.Poll
+	}
+	if m.ChecklistID != nil {
+		j["checklist_id"] = *m.ChecklistID
+	}
+	if m.Checklist != nil {
+		j["checklist"] = m.Checklist
 	}
 	if m.GiveawayID != nil {
 		j["giveaway_id"] = *m.GiveawayID

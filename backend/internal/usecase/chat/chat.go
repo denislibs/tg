@@ -28,6 +28,7 @@ type Interactor struct {
 	privacy     PrivacyChecker
 	drafts      DraftRepo
 	polls       PollRepo
+	checklists  ChecklistRepo
 	scheduled   ScheduledRepo
 	topics      TopicRepo
 	groupCalls  GroupCallStore
@@ -85,6 +86,9 @@ func (i *Interactor) SetDrafts(d DraftRepo) { i.drafts = d }
 
 // SetPolls подключает хранилище опросов (optional; без него опросы → 404).
 func (i *Interactor) SetPolls(p PollRepo) { i.polls = p }
+
+// SetChecklists подключает хранилище чек-листов (optional; без него → 404).
+func (i *Interactor) SetChecklists(c ChecklistRepo) { i.checklists = c }
 
 // SetScheduled подключает очередь запланированных сообщений (optional).
 func (i *Interactor) SetScheduled(s ScheduledRepo) { i.scheduled = s }
