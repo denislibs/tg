@@ -1,0 +1,95 @@
+// Попап буста — по мотивам tweb popup-boost + LimitLine.
+.body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 20px 8px;
+}
+
+.bar {
+  position: relative;
+  width: 100%;
+  padding-top: 40px; // место под плавающую подсказку
+}
+
+.hint {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border-radius: 14px;
+  background: linear-gradient(84.4deg, #6c93ff -4.85%, #976fff 51.72%, #df69d1 110.7%);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 50%;
+    transform: translateX(-50%) rotate(45deg);
+    width: 8px;
+    height: 8px;
+    background: #976fff;
+  }
+}
+
+.track {
+  height: 24px;
+  width: 100%;
+  border-radius: 8px;
+  background: var(--tg-fill-secondary, rgba(128, 128, 128, 0.2));
+  overflow: hidden;
+}
+
+.fill {
+  height: 100%;
+  border-radius: 8px;
+  background: linear-gradient(84.4deg, #6c93ff -4.85%, #976fff 51.72%, #df69d1 110.7%);
+  transition: width 0.2s ease;
+}
+
+.levels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tg-textSecondary);
+}
+
+.desc {
+  text-align: center;
+}
+
+.boosted {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--tg-accent);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 11px 20px;
+  border: none;
+  border-radius: 12px;
+  background: var(--tg-accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+}

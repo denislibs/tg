@@ -4,7 +4,8 @@ import { loadChats, useChatsStore } from '../stores/chatsStore'
 import { useMessagesStore } from '../stores/messagesStore'
 import { usePinsStore } from '../stores/pinsStore'
 import { useStarsStore } from '../stores/starsStore'
-import { mapMessage, mapDraft, mapPoll, mapGeo, mapWebPage, type RawPoll } from '../core/models'
+import { mapMessage, mapDraft, mapPoll, mapGeo, mapWebPage, mapBoostStatus, mapGiveaway, type RawPoll, type RawBoostStatus, type RawGiveaway } from '../core/models'
+import { useBoostsStore } from '../stores/boostsStore'
 import { useDraftsStore } from '../stores/draftsStore'
 import { useUploadsStore } from '../stores/uploadsStore'
 import { uiEvents } from '../core/hooks/uiEvents'
@@ -97,6 +98,16 @@ export function startRealtime(): void {
   smp.on(RT.pollUpdate, (raw) => {
     const e = raw as { chat_id: number; poll: RawPoll }
     useMessagesStore.getState().applyPollUpdate(e.chat_id, mapPoll(e.poll))
+  })
+  // Счётчик/уровень бустов канала (boost_update).
+  smp.on(RT.boostUpdate, (raw) => {
+    const e = raw as { chat_id: number; status: RawBoostStatus }
+    useBoostsStore.getState().applyStatus(e.chat_id, mapBoostStatus(e.status))
+  })
+  // Live-статус розыгрыша (giveaway_update): число участников/завершение.
+  smp.on(RT.giveawayUpdate, (raw) => {
+    const e = raw as { chat_id: number; giveaway: RawGiveaway }
+    useMessagesStore.getState().applyGiveawayUpdate(e.chat_id, mapGiveaway(e.giveaway))
   })
   // Пин/архив диалога с другого устройства/вкладки (dialog_pin / dialog_archive)
   smp.on(RT.dialogPin, (raw) => {

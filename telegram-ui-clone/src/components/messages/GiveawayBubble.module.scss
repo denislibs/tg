@@ -1,0 +1,82 @@
+// Баббл розыгрыша (по мотивам tweb .bubble-giveaway).
+.giveaway {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  min-width: 240px;
+  max-width: 280px;
+  padding: 12px 16px 10px;
+}
+
+.sticker {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.trophy {
+  font-size: 96px;
+  line-height: 1;
+}
+
+.counter {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 2px 12px;
+  border-radius: 12px;
+  background: var(--tg-accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-align: center;
+}
+
+.rowTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--b-text);
+}
+
+.participating {
+  margin-top: 2px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--tg-accent);
+}
+
+.won {
+  margin-top: 2px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #f7a02e;
+}
+
+.btn {
+  margin-top: 6px;
+  width: 100%;
+  padding: 9px 20px;
+  border: none;
+  border-radius: 16px;
+  background: var(--tg-accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+}

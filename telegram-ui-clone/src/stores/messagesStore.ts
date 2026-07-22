@@ -10,7 +10,7 @@
 // с chat_id применяются ко ВСЕМ окнам этого чата (applyToChat), новое сообщение
 // с thread_root_id попадает и в основное окно, и в окно своего треда.
 import { create } from 'zustand'
-import type { Message, MessageEntity, Poll, ReactionCount, GeoData, WebPageData } from '../core/models'
+import type { Message, MessageEntity, Poll, Giveaway, ReactionCount, GeoData, WebPageData } from '../core/models'
 import type { ReplyMarkup } from '../core/managers/botsManager'
 
 // Ключ окна: основное окно чата или тред (форум-топик / комментарии).
@@ -106,6 +106,10 @@ interface MessagesState {
   applyPollUpdate: (chatId: number, poll: Poll) => void
   /** Полная замена опроса сообщения (ответ на свой голос — с myVotes). */
   setPoll: (chatId: number, poll: Poll) => void
+  /** Live-статус розыгрыша (giveaway_update): своё участие сохраняем локально. */
+  applyGiveawayUpdate: (chatId: number, giveaway: Giveaway) => void
+  /** Полная замена розыгрыша (ответ на своё участие — с participating/iWon). */
+  setGiveaway: (chatId: number, giveaway: Giveaway) => void
   /** Дельта реакции (rt:reaction / оптимистичный клик): count±1 по emoji.
    * Идемпотентно для своих действий — серверное эхо собственного add/remove
    * (mine=true) поверх уже применённого оптимистичного апдейта — no-op. */
@@ -316,6 +320,26 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       patchChat(s, chatId, (w) =>
         w.msgs.some((m) => m.poll?.id === poll.id)
           ? w.msgs.map((m) => (m.poll?.id === poll.id ? { ...m, poll } : m))
+          : null,
+      )),
+
+  applyGiveawayUpdate: (chatId, giveaway) =>
+    set((s) =>
+      patchChat(s, chatId, (w) =>
+        w.msgs.some((m) => m.giveaway?.id === giveaway.id)
+          ? w.msgs.map((m) =>
+              m.giveaway?.id === giveaway.id
+                ? { ...m, giveaway: { ...giveaway, participating: m.giveaway.participating, iWon: m.giveaway.iWon } }
+                : m,
+            )
+          : null,
+      )),
+
+  setGiveaway: (chatId, giveaway) =>
+    set((s) =>
+      patchChat(s, chatId, (w) =>
+        w.msgs.some((m) => m.giveaway?.id === giveaway.id)
+          ? w.msgs.map((m) => (m.giveaway?.id === giveaway.id ? { ...m, giveaway } : m))
           : null,
       )),
 

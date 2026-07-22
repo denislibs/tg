@@ -44,11 +44,15 @@ type Message struct {
 	GroupedID *string
 	// PollID — опрос сообщения типа 'poll' (messages.poll_id); Poll — его
 	// развёрнутое представление для зрителя, наполняется read-моделью истории.
-	PollID    *int64
-	Poll      *PollInfo
-	CreatedAt time.Time
-	Deleted   bool
-	EditedAt  *time.Time
+	PollID *int64
+	Poll   *PollInfo
+	// GiveawayID — розыгрыш сообщения типа 'giveaway' (messages.giveaway_id);
+	// Giveaway — его представление для зрителя, наполняется read-моделью истории.
+	GiveawayID *int64
+	Giveaway   *GiveawayInfo
+	CreatedAt  time.Time
+	Deleted    bool
+	EditedAt   *time.Time
 	// Forward attribution (set when the message was forwarded from elsewhere).
 	FwdFromUserID *int64
 	FwdFromChatID *int64

@@ -20,7 +20,7 @@ export interface CMDeps {
 const HEARTBEAT_MS = 20_000
 const PONG_GRACE = 2 // missed pongs before force-reconnect
 const MAX_BACKOFF = 30_000
-const FRAME_TYPES = ['new_message', 'edit_message', 'delete_message', 'pin_message', 'read', 'media_read', 'chat_removed', 'typing', 'presence', 'reaction', 'draft_update', 'dialog_pin', 'dialog_archive', 'poll_update', 'web_page_update', 'message_ack', 'message_error', 'pong', 'call_request', 'call_accept', 'call_decline', 'call_end', 'call_signal', 'group_call_update', 'group_call_signal', 'secret_chat_request', 'secret_chat_accept', 'secret_chat_reject']
+const FRAME_TYPES = ['new_message', 'edit_message', 'delete_message', 'pin_message', 'read', 'media_read', 'chat_removed', 'typing', 'presence', 'reaction', 'draft_update', 'dialog_pin', 'dialog_archive', 'poll_update', 'boost_update', 'giveaway_update', 'web_page_update', 'message_ack', 'message_error', 'pong', 'call_request', 'call_accept', 'call_decline', 'call_end', 'call_signal', 'group_call_update', 'group_call_signal', 'secret_chat_request', 'secret_chat_accept', 'secret_chat_reject']
 
 export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, outboxStore }: CMDeps) {
   const outbox = new Map<string, SendArgs>()

@@ -202,7 +202,8 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			Type: in.Type, Text: in.Text, Entities: in.Entities, ReplyToID: in.ReplyToID, ClientMsgID: cmid,
 			ReplyQuoteText: in.ReplyQuoteText, ReplyQuoteOffset: in.ReplyQuoteOffset,
 			MediaID: in.MediaID, ThreadRootID: in.ThreadRootID, GroupedID: groupedID, PollID: in.PollID,
-			GiftID: in.GiftID, ReplyMarkup: in.ReplyMarkup,
+			GiveawayID: in.GiveawayID,
+			GiftID:     in.GiftID, ReplyMarkup: in.ReplyMarkup,
 			GeoLat: in.GeoLat, GeoLng: in.GeoLng,
 			GeoTitle: in.GeoTitle, GeoAddress: in.GeoAddress,
 			GeoLivePeriod: in.GeoLivePeriod, GeoHeading: in.GeoHeading,
@@ -220,6 +221,12 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		if msg.PollID != nil && i.polls != nil {
 			if info, e2 := i.pollInfoFor(ctx, *msg.PollID, 0); e2 == nil {
 				msg.Poll = &info
+			}
+		}
+		// Сообщение-розыгрыш несёт своё представление прямо в new_message-фрейме.
+		if msg.GiveawayID != nil && i.giveaways != nil {
+			if info, e2 := i.giveawayInfoFor(ctx, *msg.GiveawayID, 0); e2 == nil {
+				msg.Giveaway = &info
 			}
 		}
 		// Медиа-мета в live-кадр (имя/размер/mime/размеры) — как в history read

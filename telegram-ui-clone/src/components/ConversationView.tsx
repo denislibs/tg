@@ -43,6 +43,8 @@ import { draftReplyState, convMsgReplyState } from '../core/draftReply'
 import { useComposerDraft } from '../core/hooks/useComposerDraft'
 import { useMentionPeers } from '../core/hooks/useMentionPeers'
 import CreatePollPopup from './CreatePollPopup'
+import BoostPopup from './BoostPopup'
+import CreateGiveawayPopup from './CreateGiveawayPopup'
 import ScheduledView from './ScheduledView'
 import { useGroupCallStore } from '../stores/groupCallStore'
 import { joinGroupCall } from '../core/calls/groupCallEngine'
@@ -270,6 +272,8 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const [addContactOpen, setAddContactOpen] = useState(false)
   const [attachAnchor, setAttachAnchor] = useState<{ left: number; bottom: number } | null>(null)
   const [createPollOpen, setCreatePollOpen] = useState(false)
+  const [boostOpen, setBoostOpen] = useState(false)
+  const [createGiveawayOpen, setCreateGiveawayOpen] = useState(false)
   const [contactPickerOpen, setContactPickerOpen] = useState(false)
   const [locationPickerOpen, setLocationPickerOpen] = useState(false)
   // Запланированные сообщения: счётчик (календарик в композере) + оверлей списка
@@ -619,6 +623,9 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // группа/канал — создатель или админ с RightPinMessages (1<<5).
   const canUnpinAll = chat.type === 'private' || chat.type === 'saved' ||
     card?.myRole === 'creator' || ((card?.myRights ?? 0) & 32) !== 0
+  // Создавать розыгрыш может владелец канала или админ с RightPostMessages (1<<0).
+  const canCreateGiveaway = isChannel && isRealChat &&
+    (card?.myRole === 'creator' || ((card?.myRights ?? 0) & 1) !== 0)
   // Stable composer callbacks so the memoized <Composer> doesn't re-render on
   // unrelated parent renders (e.g. the scroll handler toggling showScrollDown).
   // Медленный режим: обычный участник группы блокируется на N сек после отправки
@@ -1040,6 +1047,8 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           onAddContact={chat.type === 'private' && chat.peerId != null ? () => setAddContactOpen(true) : undefined}
           onDeleteChat={isRealChat ? () => setConfirmDelete(true) : undefined}
           onClearHistory={isRealChat && chat.type !== 'channel' ? () => setConfirmClear(true) : undefined}
+          onBoost={isChannel && isRealChat ? () => setBoostOpen(true) : undefined}
+          onCreateGiveaway={canCreateGiveaway ? () => setCreateGiveawayOpen(true) : undefined}
         />
       )}
 
@@ -1125,6 +1134,24 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           chatId={numericChatId}
           onClose={() => setScheduledOpen(false)}
           onChanged={setScheduledCount}
+        />
+      )}
+
+      {/* Буст канала (tweb popupBoost) */}
+      {boostOpen && isChannel && isRealChat && (
+        <BoostPopup chatId={numericChatId} onClose={() => setBoostOpen(false)} />
+      )}
+
+      {/* Создание розыгрыша (tweb popupBoostsViaGifts) */}
+      {createGiveawayOpen && (
+        <CreateGiveawayPopup
+          onClose={() => setCreateGiveawayOpen(false)}
+          onCreate={(a) => {
+            setCreateGiveawayOpen(false)
+            void managers.boosts
+              .createGiveaway(numericChatId, { ...a, clientMsgId: crypto.randomUUID() })
+              .then((msg) => useMessagesStore.getState().applyIncoming(numericChatId, msg))
+          }}
         />
       )}
 

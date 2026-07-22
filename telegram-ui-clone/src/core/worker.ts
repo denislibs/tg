@@ -21,6 +21,7 @@ import { newStoriesManager } from './managers/storiesManager'
 import { newContactsManager } from './managers/contactsManager'
 import { newPrivacyManager } from './managers/privacyManager'
 import { newStarsManager } from './managers/starsManager'
+import { newBoostsManager } from './managers/boostsManager'
 import { newStickersManager } from './managers/stickersManager'
 import { newReportManager } from './managers/reportManager'
 import { newBotsManager } from './managers/botsManager'
@@ -63,6 +64,7 @@ const drafts = newDraftsManager({ rest })
 const sessions = newSessionsManager({ rest })
 const calls = newCallsManager({ rest })
 const stars = newStarsManager({ rest })
+const boosts = newBoostsManager({ rest })
 const report = newReportManager({ rest })
 const bots = newBotsManager({ rest })
 const stickers = newStickersManager({ rest })
@@ -132,6 +134,8 @@ const conn = newConnectionManager({
     else if (type === 'dialog_pin') broadcast(RT.dialogPin, payload)
     else if (type === 'dialog_archive') broadcast(RT.dialogArchive, payload)
     else if (type === 'poll_update') broadcast(RT.pollUpdate, payload)
+    else if (type === 'boost_update') broadcast(RT.boostUpdate, payload)
+    else if (type === 'giveaway_update') broadcast(RT.giveawayUpdate, payload)
     else if (type === 'balance_update') broadcast(RT.balanceUpdate, payload)
     else if (type === 'bot_callback_answer') broadcast(RT.botCallbackAnswer, payload)
     else if (type === 'geo_live_update') { messages.cacheGeoLive(payload as never); broadcast(RT.geoLiveUpdate, payload) }
@@ -194,6 +198,7 @@ function bind(ep: Endpoint) {
     sessions: sessions as unknown as Record<string, (...a: unknown[]) => unknown>,
     calls: calls as unknown as Record<string, (...a: unknown[]) => unknown>,
     stars: stars as unknown as Record<string, (...a: unknown[]) => unknown>,
+    boosts: boosts as unknown as Record<string, (...a: unknown[]) => unknown>,
     report: report as unknown as Record<string, (...a: unknown[]) => unknown>,
     bots: bots as unknown as Record<string, (...a: unknown[]) => unknown>,
     stickers: stickers as unknown as Record<string, (...a: unknown[]) => unknown>,

@@ -80,6 +80,12 @@ func registerServer(p serverParams) {
 	// Опросы: хранение + голоса, live-агрегаты фреймом poll_update.
 	p.ChatUC.SetPolls(pgadapter.NewPollsRepo(p.Pool))
 
+	// Бусты каналов + розыгрыши: буст доступен premium, счётчик бустов и статус
+	// розыгрыша рассылаются фреймами boost_update / giveaway_update.
+	p.ChatUC.SetBoosts(pgadapter.NewBoostsRepo(p.Pool))
+	p.ChatUC.SetGiveaways(pgadapter.NewGiveawaysRepo(p.Pool))
+	p.ChatUC.SetPremiumRepo(pgadapter.NewPremiumRepo(p.Pool))
+
 	// Запланированные сообщения: очередь + фоновая отправка (тикер ниже).
 	p.ChatUC.SetScheduled(pgadapter.NewScheduledRepo(p.Pool))
 
