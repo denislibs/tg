@@ -35,6 +35,7 @@ import (
 	usecasepublic "github.com/messenger-denis/backend/internal/usecase/public"
 	usecasepush "github.com/messenger-denis/backend/internal/usecase/push"
 	usecasereport "github.com/messenger-denis/backend/internal/usecase/report"
+	usecasestats "github.com/messenger-denis/backend/internal/usecase/stats"
 	usecasestickers "github.com/messenger-denis/backend/internal/usecase/stickers"
 	storyusecase "github.com/messenger-denis/backend/internal/usecase/story"
 	"go.uber.org/fx"
@@ -74,11 +75,27 @@ func registerServer(p serverParams) {
 	p.ChatUC.SetPrivacy(privacyUC)
 	p.ContactsUC.SetPrivacy(privacyUC)
 
+	// Личное фото контактов: тот же postgres-адаптер, что и адресная книга,
+	// реализует CustomPhotoRepo. Владелец видит это фото вместо настоящего
+	// аватара контакта — в списке контактов (contacts.List) и диалогов
+	// (chat.ListDialogs). Принятие предложенного фото профиля кладёт его в
+	// галерею получателя через auth-usecase.
+	contactPhotos := pgadapter.NewContactsRepo(p.Pool)
+	p.ContactsUC.SetCustomPhotos(contactPhotos)
+	p.ChatUC.SetContactPhotos(contactPhotos)
+	p.ChatUC.SetProfilePhotos(p.AuthUC)
+
 	// Облачные черновики: хранение per (чат, пользователь) + синк draft_update.
 	p.ChatUC.SetDrafts(pgadapter.NewDraftsRepo(p.Pool))
 
 	// Опросы: хранение + голоса, live-агрегаты фреймом poll_update.
 	p.ChatUC.SetPolls(pgadapter.NewPollsRepo(p.Pool))
+
+	// Бусты каналов + розыгрыши: буст доступен premium, счётчик бустов и статус
+	// розыгрыша рассылаются фреймами boost_update / giveaway_update.
+	p.ChatUC.SetBoosts(pgadapter.NewBoostsRepo(p.Pool))
+	p.ChatUC.SetGiveaways(pgadapter.NewGiveawaysRepo(p.Pool))
+	p.ChatUC.SetPremiumRepo(pgadapter.NewPremiumRepo(p.Pool))
 
 	// Запланированные сообщения: очередь + фоновая отправка (тикер ниже).
 	p.ChatUC.SetScheduled(pgadapter.NewScheduledRepo(p.Pool))
@@ -105,6 +122,10 @@ func registerServer(p serverParams) {
 	// Звёзды и подарки: баланс + каталог + выданные подарки, live-баланс
 	// фреймом balance_update, подарок — сообщением типа 'gift'.
 	p.ChatUC.SetStars(pgadapter.NewStarsRepo(p.Pool))
+
+	// Платное медиа (Telegram paid media): цена доступа в звёздах хранится в
+	// отдельной таблице, медиа отдаётся получателю только после разблокировки.
+	p.ChatUC.SetPaidMedia(pgadapter.NewPaidMediaRepo(p.Pool))
 
 	// Боты: флаг is_bot + команды; демо-бот авто-отвечает в приватном чате.
 	p.ChatUC.SetBots(pgadapter.NewBotRepo(p.Pool))
@@ -214,6 +235,9 @@ func registerServer(p serverParams) {
 	notifyUC := usecasenotify.New(pgadapter.NewNotifyRepo(p.Pool))
 	// Жалобы на чаты/сообщения (tweb reportMessages): складируем без модерации.
 	reportUC := usecasereport.New(pgadapter.NewReportRepo(p.Pool))
+	// Статистика каналов (tweb stats.getBroadcastStats): серии считаются на лету
+	// из реальных данных (messages / chat_members / message_views).
+	statsUC := usecasestats.New(pgadapter.NewStatsRepo(p.Pool))
 	foldersUC := usecasefolders.New(pgadapter.NewFoldersRepo(p.Pool), pgadapter.NewFolderChatAccess(p.Pool), pgadapter.NewTxManager(p.Pool))
 	// Публичная страница-превью @username (аналог t.me)
 	pubH := httptransport.NewPublicHandler(usecasepublic.New(pgadapter.NewPublicRepo(p.Pool)), mediaUC)
@@ -231,7 +255,7 @@ func registerServer(p serverParams) {
 
 	srv := &http.Server{
 		Addr:              p.Cfg.HTTPAddr,
-		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, mediaUC, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC, foldersUC, pubH, privacyUC, passkeyH, stickersH, ivHandler, reportUC),
+		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, mediaUC, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC, foldersUC, pubH, privacyUC, passkeyH, stickersH, ivHandler, reportUC, statsUC),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}

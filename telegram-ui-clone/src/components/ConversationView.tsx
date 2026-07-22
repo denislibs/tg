@@ -1,11 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import Text from '../shared/ui/Text'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import { useAvatarSrc } from './useAvatarSrc'
 import UserInfoPanel from './UserInfoPanel'
 import AddContactView from './AddContactView'
+import EditContactView from './EditContactView'
 import HeaderMenu from './HeaderMenu'
+import ChatThemesPicker from './ChatThemesPicker'
+import { chatThemeVariant } from '../chatThemes'
+import patternUrl from '../assets/pattern.svg'
+import { PRESET_MODE, resolvePreset } from '../theme'
+import { useSettingsStore } from '../settings'
 import ConfirmDialog from './settings/ConfirmDialog'
 import MutePopup from './MutePopup'
 import AttachMenu from './AttachMenu'
@@ -20,6 +27,7 @@ import { lastSeenLabel } from '../core/presence'
 import { useManagers } from '../core/hooks/useManagers'
 import { useMessageWindow } from '../core/hooks/useMessageWindow'
 import { useEvent } from '../core/hooks/useEvent'
+import { uiEvents } from '../core/hooks/uiEvents'
 import { markMediaPlayed } from '../core/mediaRead'
 import type { GifItem } from '../core/gifs'
 import { useChatSelection } from '../core/hooks/useChatSelection'
@@ -43,6 +51,8 @@ import { draftReplyState, convMsgReplyState } from '../core/draftReply'
 import { useComposerDraft } from '../core/hooks/useComposerDraft'
 import { useMentionPeers } from '../core/hooks/useMentionPeers'
 import CreatePollPopup from './CreatePollPopup'
+import BoostPopup from './BoostPopup'
+import CreateGiveawayPopup from './CreateGiveawayPopup'
 import ScheduledView from './ScheduledView'
 import { useGroupCallStore } from '../stores/groupCallStore'
 import { joinGroupCall } from '../core/calls/groupCallEngine'
@@ -147,6 +157,25 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const isRealChat = Number.isFinite(numericChatId) && String(numericChatId) === chat.id
   // Кандидаты @упоминаний — участники группы (tweb mentionsHelper)
   const mentionPeers = useMentionPeers(isRealChat ? numericChatId : null, isRealChat && isGroup)
+
+  // Тема оформления чата (messages.setChatTheme): id читаем реактивно из стора
+  // диалогов (chat_theme_update его патчит), с фолбэком на пропс. Тема
+  // применяется ЛОКАЛЬНО к области этого чата — переопределяем --tg-accent и
+  // рисуем фон-градиент темы поверх глобальных обоев, не трогая глобальные токены.
+  const dialogThemeId = useChatsStore((st) => st.dialogs.find((d) => d.chatId === numericChatId)?.themeId)
+  const activeThemeId = dialogThemeId ?? chat.themeId
+  const themeChoice = useSettingsStore((st) => st.themeChoice)
+  const themeMode = PRESET_MODE[resolvePreset(themeChoice)]
+  const themeVariant = chatThemeVariant(activeThemeId, themeMode)
+  const themeStyle = themeVariant
+    ? ({
+        '--tg-accent': themeVariant.accent,
+        '--tg-accentGradient': `linear-gradient(135deg, ${themeVariant.accent}, ${themeVariant.accent})`,
+      } as CSSProperties)
+    : undefined
+  const themeBg = themeVariant
+    ? `linear-gradient(150deg, ${themeVariant.gradient[0]}, ${themeVariant.gradient[1]}, ${themeVariant.gradient[2]}, ${themeVariant.gradient[3]})`
+    : undefined
 
   const draftPeerId = chat.id.startsWith('draft:') ? Number(chat.id.slice('draft:'.length)) : null
   const meId = useChatsStore((s) => s.meId)
@@ -265,11 +294,15 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // in searchStore) to hide the pinned bar + adjust the sticky-date offset.
   const searchOpen = useSearchStore((s) => s.byChat[numericChatId]?.open ?? false)
   const [headerMenu, setHeaderMenu] = useState<{ top: number; right: number } | null>(null)
+  const [themePickerOpen, setThemePickerOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
   const [addContactOpen, setAddContactOpen] = useState(false)
+  const [editContactOpen, setEditContactOpen] = useState(false)
   const [attachAnchor, setAttachAnchor] = useState<{ left: number; bottom: number } | null>(null)
   const [createPollOpen, setCreatePollOpen] = useState(false)
+  const [boostOpen, setBoostOpen] = useState(false)
+  const [createGiveawayOpen, setCreateGiveawayOpen] = useState(false)
   const [contactPickerOpen, setContactPickerOpen] = useState(false)
   const [locationPickerOpen, setLocationPickerOpen] = useState(false)
   // Запланированные сообщения: счётчик (календарик в композере) + оверлей списка
@@ -487,6 +520,16 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     useMessagesStore.getState().removeOptimisticByClient(clientId)
     void managers.media.cancelUpload(clientId)
   })
+  // Разблокировать платное медиа за звёзды (Telegram paid media): списание +
+  // раскрытие бабла приезжают кадром paid_media_unlock (store), баланс —
+  // balance_update. Нехватка звёзд → тост.
+  const unlockPaidE = useEvent(async (msgId: number) => {
+    try {
+      await managers.stars.unlockPaidMedia(msgId)
+    } catch {
+      uiEvents.emit('ui:toast', t('Not enough Stars to unlock'))
+    }
+  })
   const feedFns = useMemo(
     () => ({
       openSender: openSenderE,
@@ -501,8 +544,9 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       toggleReaction,
       showReactedUsers,
       cancelUpload: cancelUploadE,
+      unlockPaid: unlockPaidE,
     }),
-    [openSenderE, playVoiceE, toggleSelectE, openMsgMenuE, jumpToSeqE, openLightboxE, recallE, mediaPlayedE, roundPlayingE, toggleReaction, showReactedUsers, cancelUploadE],
+    [openSenderE, playVoiceE, toggleSelectE, openMsgMenuE, jumpToSeqE, openLightboxE, recallE, mediaPlayedE, roundPlayingE, toggleReaction, showReactedUsers, cancelUploadE, unlockPaidE],
   )
 
   // (Ack reconcile + send-rejection run in realtimeBridge → messagesStore; live
@@ -619,6 +663,9 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // группа/канал — создатель или админ с RightPinMessages (1<<5).
   const canUnpinAll = chat.type === 'private' || chat.type === 'saved' ||
     card?.myRole === 'creator' || ((card?.myRights ?? 0) & 32) !== 0
+  // Создавать розыгрыш может владелец канала или админ с RightPostMessages (1<<0).
+  const canCreateGiveaway = isChannel && isRealChat &&
+    (card?.myRole === 'creator' || ((card?.myRights ?? 0) & 1) !== 0)
   // Stable composer callbacks so the memoized <Composer> doesn't re-render on
   // unrelated parent renders (e.g. the scroll handler toggling showScrollDown).
   // Медленный режим: обычный участник группы блокируется на N сек после отправки
@@ -706,8 +753,15 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
 
   return (
     <CallProvider chat={chat}>
-    <div className={s.root}>
+    <div className={s.root} style={themeStyle}>
       <div className={classNames(s.column, narrow ? s.columnNarrow : '')}>
+        {/* Тема чата: локальный фон-градиент поверх глобальных обоев (только в
+            этой колонке). Рисуется под лентой (z-index ниже .scroll). */}
+        {themeBg && (
+          <div className={s.themeBg} style={{ background: themeBg }} aria-hidden>
+            <div className={s.themeBgPattern} style={{ backgroundImage: `url("${patternUrl}")` }} />
+          </div>
+        )}
         {/* Global "now playing" plate — a floating pill above the header (tweb:
             the topbar slides down to make room). Matches the header geometry. */}
         <div className={classNames(s.nowPlaying, narrow ? s.nowPlayingNarrow : '')}>
@@ -979,6 +1033,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
             onOpenPeer={onOpenPeer}
             onChatCreated={onChatCreated}
             canAddMembers={canAddMember}
+            onEditContact={() => { setInfoOpen(false); setEditContactOpen(true) }}
           />
         )}
       </AnimatePresence>
@@ -986,6 +1041,11 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       {/* Add-contact screen (private chats) */}
       <AnimatePresence>
         {addContactOpen && <AddContactView chat={chat} onClose={() => setAddContactOpen(false)} />}
+      </AnimatePresence>
+
+      {/* Edit-contact screen (private chats): все редактируемые поля контакта */}
+      <AnimatePresence>
+        {editContactOpen && <EditContactView chat={chat} onClose={() => setEditContactOpen(false)} />}
       </AnimatePresence>
 
       {/* Попап длительности mute (tweb PopupMute) */}
@@ -1040,6 +1100,19 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           onAddContact={chat.type === 'private' && chat.peerId != null ? () => setAddContactOpen(true) : undefined}
           onDeleteChat={isRealChat ? () => setConfirmDelete(true) : undefined}
           onClearHistory={isRealChat && chat.type !== 'channel' ? () => setConfirmClear(true) : undefined}
+          onChangeTheme={isRealChat && (chat.type === 'private' || chat.type === 'group') ? () => setThemePickerOpen(true) : undefined}
+          onBoost={isChannel && isRealChat ? () => setBoostOpen(true) : undefined}
+          onCreateGiveaway={canCreateGiveaway ? () => setCreateGiveawayOpen(true) : undefined}
+        />
+      )}
+
+      {/* Пикер темы оформления чата (messages.setChatTheme) */}
+      {isRealChat && (
+        <ChatThemesPicker
+          open={themePickerOpen}
+          onClose={() => setThemePickerOpen(false)}
+          chatId={numericChatId}
+          currentThemeId={activeThemeId}
         />
       )}
 
@@ -1128,6 +1201,24 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
         />
       )}
 
+      {/* Буст канала (tweb popupBoost) */}
+      {boostOpen && isChannel && isRealChat && (
+        <BoostPopup chatId={numericChatId} onClose={() => setBoostOpen(false)} />
+      )}
+
+      {/* Создание розыгрыша (tweb popupBoostsViaGifts) */}
+      {createGiveawayOpen && (
+        <CreateGiveawayPopup
+          onClose={() => setCreateGiveawayOpen(false)}
+          onCreate={(a) => {
+            setCreateGiveawayOpen(false)
+            void managers.boosts
+              .createGiveaway(numericChatId, { ...a, clientMsgId: crypto.randomUUID() })
+              .then((msg) => useMessagesStore.getState().applyIncoming(numericChatId, msg))
+          }}
+        />
+      )}
+
       {/* «Новый опрос» (tweb popupCreatePoll) */}
       {createPollOpen && (
         <CreatePollPopup
@@ -1146,7 +1237,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           files={pendingMedia.files}
           initialAsFile={pendingMedia.asFile}
           onClose={() => setPendingMedia(null)}
-          onSend={(caption, asFile) => { void sendPendingMedia(caption, asFile); slowmodeMarkSent() }}
+          onSend={(caption, asFile, paidPrice) => { void sendPendingMedia(caption, asFile, paidPrice); slowmodeMarkSent() }}
         />
       )}
 

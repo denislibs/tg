@@ -190,6 +190,50 @@ func (r *AuthRepo) SetPremium(ctx context.Context, id int64, premium bool) (doma
 		`UPDATE users SET is_premium=$2 WHERE id=$1 RETURNING `+userCols, id, premium))
 }
 
+// --- Telegram Premium subscription (mock checkout) ---
+
+const premiumSubCols = `user_id, plan, price_cents, started_at, expires_at, auto_renew`
+
+func scanPremiumSub(row pgx.Row) (domain.PremiumSubscription, error) {
+	var s domain.PremiumSubscription
+	err := row.Scan(&s.UserID, &s.Plan, &s.PriceCents, &s.StartedAt, &s.ExpiresAt, &s.AutoRenew)
+	return s, err
+}
+
+// GetPremiumSubscription returns the user's subscription, or domain.ErrNotFound.
+func (r *AuthRepo) GetPremiumSubscription(ctx context.Context, userID int64) (domain.PremiumSubscription, error) {
+	s, err := scanPremiumSub(r.pool.QueryRow(ctx,
+		`SELECT `+premiumSubCols+` FROM premium_subscriptions WHERE user_id=$1`, userID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.PremiumSubscription{}, domain.ErrNotFound
+	}
+	return s, err
+}
+
+// UpsertPremiumSubscription creates or replaces the user's single subscription row.
+func (r *AuthRepo) UpsertPremiumSubscription(ctx context.Context, sub domain.PremiumSubscription) (domain.PremiumSubscription, error) {
+	return scanPremiumSub(r.pool.QueryRow(ctx,
+		`INSERT INTO premium_subscriptions (`+premiumSubCols+`)
+		 VALUES ($1, $2, $3, $4, $5, $6)
+		 ON CONFLICT (user_id) DO UPDATE
+		   SET plan=EXCLUDED.plan, price_cents=EXCLUDED.price_cents,
+		       started_at=EXCLUDED.started_at, expires_at=EXCLUDED.expires_at,
+		       auto_renew=EXCLUDED.auto_renew
+		 RETURNING `+premiumSubCols,
+		sub.UserID, sub.Plan, sub.PriceCents, sub.StartedAt, sub.ExpiresAt, sub.AutoRenew))
+}
+
+// SetPremiumAutoRenew toggles auto-renew, returning domain.ErrNotFound when absent.
+func (r *AuthRepo) SetPremiumAutoRenew(ctx context.Context, userID int64, autoRenew bool) (domain.PremiumSubscription, error) {
+	s, err := scanPremiumSub(r.pool.QueryRow(ctx,
+		`UPDATE premium_subscriptions SET auto_renew=$2 WHERE user_id=$1 RETURNING `+premiumSubCols,
+		userID, autoRenew))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.PremiumSubscription{}, domain.ErrNotFound
+	}
+	return s, err
+}
+
 // --- Profile-photo gallery (Telegram getUserPhotos) ---
 
 // AddProfilePhoto inserts a gallery photo and promotes it to the user's current

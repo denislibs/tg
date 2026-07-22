@@ -32,6 +32,7 @@ type Interactor struct {
 	topics      TopicRepo
 	groupCalls  GroupCallStore
 	stars       StarsRepo
+	paidMedia   PaidMediaRepo
 	bots        BotRepo
 	botAPI      BotAPIRepo
 	botMedia    BotMediaStore
@@ -39,6 +40,11 @@ type Interactor struct {
 	secret      SecretRepo
 	stickers    StickerAccess
 	preview     LinkPreviewer
+	boosts      BoostRepo
+	giveaways   GiveawayRepo
+	premium     PremiumRepo
+	contactPics ContactPhotoLookup
+	profilePics ProfilePhotoAdder
 	botHub      *botPendingHub
 }
 
@@ -92,6 +98,10 @@ func (i *Interactor) SetGroupCalls(s GroupCallStore) { i.groupCalls = s }
 // SetStars подключает хранилище звёзд/подарков (optional; без него → 404).
 func (i *Interactor) SetStars(s StarsRepo) { i.stars = s }
 
+// SetPaidMedia подключает хранилище платного медиа (optional; без него платное
+// медиа отключено — цена не сохраняется, unlock → 404).
+func (i *Interactor) SetPaidMedia(p PaidMediaRepo) { i.paidMedia = p }
+
 // SetBots подключает данные ботов (optional; без него авто-ответы отключены).
 func (i *Interactor) SetBots(b BotRepo) { i.bots = b }
 
@@ -116,6 +126,24 @@ func (i *Interactor) SetStickerAccess(s StickerAccess) { i.stickers = s }
 // SetLinkPreviewer подключает построитель превью ссылок (optional; без него
 // карточек web page под сообщениями нет).
 func (i *Interactor) SetLinkPreviewer(p LinkPreviewer) { i.preview = p }
+
+// SetBoosts подключает хранилище бустов каналов (optional; без него → 404).
+func (i *Interactor) SetBoosts(b BoostRepo) { i.boosts = b }
+
+// SetGiveaways подключает хранилище розыгрышей (optional; без него → 404).
+func (i *Interactor) SetGiveaways(g GiveawayRepo) { i.giveaways = g }
+
+// SetPremiumRepo подключает чтение/выдачу premium-статуса (для бустов и
+// premium-приза розыгрыша).
+func (i *Interactor) SetPremiumRepo(p PremiumRepo) { i.premium = p }
+
+// SetContactPhotos подключает справочник личных фото контактов (optional): в
+// списке диалогов аватар приватного пира подменяется личным фото владельца.
+func (i *Interactor) SetContactPhotos(p ContactPhotoLookup) { i.contactPics = p }
+
+// SetProfilePhotos подключает добавление фото в галерею пользователя (optional):
+// нужно для принятия предложенного фото профиля.
+func (i *Interactor) SetProfilePhotos(p ProfilePhotoAdder) { i.profilePics = p }
 
 // nowMillis is the server clock used for update dates.
 func nowMillis() int64 { return time.Now().UnixMilli() }
@@ -209,7 +237,7 @@ func (i *Interactor) PostServiceMessage(ctx context.Context, toUserID int64, tex
 // privacy-правило profile_photo не разрешает показ этому пользователю.
 func (i *Interactor) ListDialogs(ctx context.Context, userID int64) ([]domain.Dialog, error) {
 	dialogs, err := i.chats.ListDialogs(ctx, userID)
-	if err != nil || i.privacy == nil {
+	if err != nil {
 		return dialogs, err
 	}
 	peerIDs := make([]int64, 0, len(dialogs))
@@ -221,13 +249,31 @@ func (i *Interactor) ListDialogs(ctx context.Context, userID int64) ([]domain.Di
 	if len(peerIDs) == 0 {
 		return dialogs, nil
 	}
-	vis, err := i.privacy.VisibleMap(ctx, userID, peerIDs, domain.PrivacyProfilePhoto)
-	if err != nil {
-		return nil, err
+	if i.privacy != nil {
+		vis, err := i.privacy.VisibleMap(ctx, userID, peerIDs, domain.PrivacyProfilePhoto)
+		if err != nil {
+			return nil, err
+		}
+		for _, d := range dialogs {
+			if d.Peer != nil && !vis[d.Peer.ID] {
+				d.Peer.AvatarURL = ""
+			}
+		}
 	}
-	for _, d := range dialogs {
-		if d.Peer != nil && !vis[d.Peer.ID] {
-			d.Peer.AvatarURL = ""
+	// Личное фото контакта: подменяем аватар приватного пира тем, что владелец
+	// задал сам (приоритет над настоящим avatar_url; поверх privacy-фильтра).
+	if i.contactPics != nil {
+		custom, err := i.contactPics.CustomPhotoMap(ctx, userID, peerIDs)
+		if err != nil {
+			return nil, err
+		}
+		for _, d := range dialogs {
+			if d.Peer == nil {
+				continue
+			}
+			if url, ok := custom[d.Peer.ID]; ok {
+				d.Peer.AvatarURL = url
+			}
 		}
 	}
 	return dialogs, nil

@@ -14,7 +14,10 @@ import (
 // ContactsRepo is a postgres-backed adapter implementing the contacts usecase ports.
 type ContactsRepo struct{ pool *pgxpool.Pool }
 
-var _ usecasecontacts.ContactsRepo = (*ContactsRepo)(nil)
+var (
+	_ usecasecontacts.ContactsRepo    = (*ContactsRepo)(nil)
+	_ usecasecontacts.CustomPhotoRepo = (*ContactsRepo)(nil)
+)
 
 func NewContactsRepo(pool *pgxpool.Pool) *ContactsRepo { return &ContactsRepo{pool: pool} }
 
@@ -93,4 +96,49 @@ func (r *ContactsRepo) Delete(ctx context.Context, ownerID, userID int64) (bool,
 		return false, err
 	}
 	return tag.RowsAffected() > 0, nil
+}
+
+// SetCustomPhoto upserts the owner's personal photo for a contact.
+func (r *ContactsRepo) SetCustomPhoto(ctx context.Context, ownerID, contactUserID int64, url string) error {
+	_, err := r.pool.Exec(ctx,
+		`INSERT INTO contact_custom_photo (owner_id, contact_user_id, url)
+		 VALUES ($1,$2,$3)
+		 ON CONFLICT (owner_id, contact_user_id) DO UPDATE SET url=$3, created_at=now()`,
+		ownerID, contactUserID, url)
+	if isForeignKeyViolation(err) {
+		return domain.ErrNotFound
+	}
+	return err
+}
+
+// ClearCustomPhoto removes the owner's personal photo for a contact (idempotent).
+func (r *ContactsRepo) ClearCustomPhoto(ctx context.Context, ownerID, contactUserID int64) error {
+	_, err := r.pool.Exec(ctx,
+		`DELETE FROM contact_custom_photo WHERE owner_id=$1 AND contact_user_id=$2`, ownerID, contactUserID)
+	return err
+}
+
+// CustomPhotoMap returns the owner's personal photos for the given contacts,
+// keyed by contact user id (absent when there is no personal photo).
+func (r *ContactsRepo) CustomPhotoMap(ctx context.Context, ownerID int64, contactIDs []int64) (map[int64]string, error) {
+	out := make(map[int64]string)
+	if len(contactIDs) == 0 {
+		return out, nil
+	}
+	rows, err := r.pool.Query(ctx,
+		`SELECT contact_user_id, url FROM contact_custom_photo WHERE owner_id=$1 AND contact_user_id = ANY($2)`,
+		ownerID, contactIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var url string
+		if err := rows.Scan(&id, &url); err != nil {
+			return nil, err
+		}
+		out[id] = url
+	}
+	return out, rows.Err()
 }

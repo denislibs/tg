@@ -20,6 +20,7 @@ import RealMediaBubble from './RealMediaBubble'
 import SecretMediaBubble from './SecretMediaBubble'
 import PollBubble from './PollBubble'
 import GiftBubble from './GiftBubble'
+import GiveawayBubble from './GiveawayBubble'
 import InlineKeyboard from './InlineKeyboard'
 import AlbumGrid from './AlbumGrid'
 import VoiceMessage from './VoiceMessage'
@@ -141,6 +142,8 @@ export interface FeedFns {
   showReactedUsers: (msgId: number, x: number, y: number) => void
   /** крестик на кольце прогресса — отменить аплоад и убрать оптимистичный бабл */
   cancelUpload: (clientId: string) => void
+  /** разблокировать платное медиа за звёзды (Telegram paid media) */
+  unlockPaid: (msgId: number) => Promise<void>
 }
 
 // Чипы реакций под сообщением (tweb ReactionsElement, layout Block): пилюля 30px
@@ -354,7 +357,7 @@ function MessageRow({
           // настроек; время+тики бейджем поверх нижнего угла, реакции — снаружи
           // (reactions-out), reply/имя в группе не рисуются (как voice/round).
           <StickerRealBubble m={m} fmtTime={fmtTime} />
-        ) : m.mediaId != null || m.localUrl || (m.clientId != null && m.mediaName != null) ? (
+        ) : m.mediaId != null || m.localUrl || (m.clientId != null && m.mediaName != null) || m.paidMedia?.locked ? (
           // Outer (relative, NOT clipped) carries the tail; the inner clips the media
           // to the rounded corners. The tailed corner is squared off (like other bubbles).
           // localUrl без mediaId = исходящее фото/видео в процессе аплоада;
@@ -400,6 +403,8 @@ function MessageRow({
                   clientId={m.clientId}
                   onCancelUpload={feedFns.cancelUpload}
                   radius={(m.type === 'photo' || m.type === 'video') ? (m.text || chips ? '14px 14px 0 0' : '14px') : undefined}
+                  paidMedia={m.paidMedia}
+                  onUnlockPaid={m.paidMedia?.locked && m.id != null ? () => feedFns.unlockPaid(m.id as number) : undefined}
                 />
               )}
               {m.text ? (
@@ -475,6 +480,11 @@ function MessageRow({
           <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
             {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
             <GiftBubble gift={m.gift} out={out} />
+          </div>
+        ) : m.type === 'giveaway' && m.giveaway ? (
+          <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
+            {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
+            <GiveawayBubble giveaway={m.giveaway} />
           </div>
         ) : m.type === 'poll' && m.poll ? (
           <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>

@@ -3,31 +3,31 @@ import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
-import type { ReactNode } from 'react'
+import type { IconName } from './TgIcon'
+import PremiumCheckout from './PremiumCheckout'
 import classNames from '../shared/lib/classNames'
 import { useT } from '../i18n'
-import { useManagers } from '../core/hooks/useManagers'
-import { useChatsStore } from '../stores/chatsStore'
+import { PREMIUM_PLANS, planById, formatUsd, perMonthCents, discountPct, type PremiumPlanId } from '../core/premium/plans'
 import s from './PremiumModal.module.scss'
 
-// tweb's premium feature colour ramp (orange -> green), sampled across the list.
-const FEATURES: { icon: ReactNode; title: string; subtitle: string; color: string }[] = [
-  { icon: <TgIcon name="stories" size={24} />, title: 'Stories', subtitle: 'Posting without limits, priority order, stealth mode, saved view history and more.', color: '#ef6922' },
-  { icon: <TgIcon name="document" size={24} />, title: 'Unlimited Cloud Storage', subtitle: 'Upload files of any size, with unlimited cloud storage.', color: '#e74e33' },
-  { icon: <TgIcon name="statistics" size={24} />, title: 'Doubled Limits', subtitle: 'Up to 1000 channels, 20 folders, 10 pinned chats and 20 public links.', color: '#db374b' },
-  { icon: <TgIcon name="microphone" size={24} />, title: 'Voice-to-Text', subtitle: 'Convert voice messages into text.', color: '#bc4395' },
-  { icon: <TgIcon name="premium_speed" size={24} />, title: 'Faster Downloads', subtitle: 'Download media and files at the maximum speed.', color: '#9b4fed' },
-  { icon: <TgIcon name="restrict" size={24} />, title: 'No Ads', subtitle: 'Get rid of ads in public channels.', color: '#676bff' },
-  { icon: <TgIcon name="reactions_filled" size={24} />, title: 'Unique Reactions', subtitle: 'React with a vastly expanded set of emoji.', color: '#4492ff' },
-  { icon: <TgIcon name="smile" size={24} />, title: 'Premium Stickers', subtitle: 'Unlock exclusive animated stickers.', color: '#41a6a5' },
-  { icon: <TgIcon name="message" size={24} />, title: 'Chat Management', subtitle: 'Change default chat folder, archive and mute new chats.', color: '#3dbd4a' },
+// Feature list ported from tweb's premium/featuresConfig.ts, using its icon set
+// and the orange→green colour ramp (PREMIUM_FEATURES_COLORS) sampled across it.
+const FEATURES: { icon: IconName; title: string; subtitle: string; color: string }[] = [
+  { icon: 'stories', title: 'Stories', subtitle: 'Posting without limits, priority order, stealth mode, saved view history and more.', color: '#ef6922' },
+  { icon: 'premium_limits', title: 'Doubled Limits', subtitle: 'Up to 1000 channels, 20 folders, 10 pinned chats and 20 public links.', color: '#e95a2c' },
+  { icon: 'premium_filesize', title: 'Larger Uploads', subtitle: 'Upload files of up to 4 GB each.', color: '#e74e33' },
+  { icon: 'premium_speed', title: 'Faster Downloads', subtitle: 'Download media and files at the maximum speed.', color: '#db374b' },
+  { icon: 'premium_transcription', title: 'Voice-to-Text', subtitle: 'Convert voice messages into text.', color: '#cb3e6d' },
+  { icon: 'premium_translate', title: 'Real-Time Translation', subtitle: 'Translate entire chats into your language.', color: '#bc4395' },
+  { icon: 'premium_noads', title: 'No Ads', subtitle: 'Get rid of ads in public channels.', color: '#ab4ac4' },
+  { icon: 'premium_reactions', title: 'Unique Reactions', subtitle: 'React with a vastly expanded set of emoji.', color: '#9b4fed' },
+  { icon: 'premium_stickers', title: 'Premium Stickers', subtitle: 'Unlock exclusive animated stickers.', color: '#8958ff' },
+  { icon: 'premium_emoji', title: 'Custom Emoji', subtitle: 'Use unique animated emoji anywhere in chats.', color: '#676bff' },
+  { icon: 'premium_avatars', title: 'Animated Profile Pictures', subtitle: 'Upload a looping video as your profile picture.', color: '#4492ff' },
+  { icon: 'premium_status', title: 'Emoji Status', subtitle: 'Show a unique animated status next to your name.', color: '#41a6a5' },
+  { icon: 'premium_badge', title: 'Premium Badge', subtitle: 'Show a premium badge next to your name.', color: '#3eb26d' },
+  { icon: 'premium_management', title: 'Chat Management', subtitle: 'Change default chat folder, archive and mute new chats.', color: '#3dbd4a' },
 ]
-
-const PLANS = [
-  { id: '24m', label: '24 Months', discount: '-58%', perMonth: '124,58', total: '2 990,00' },
-  { id: '12m', label: 'Annual', discount: '-45%', perMonth: '165,83', total: '1 990,00' },
-  { id: '1m', label: 'Monthly', discount: null, perMonth: '299,00', total: '299,00' },
-] as const
 
 // Telegram-style gradient premium star.
 function PremiumStar() {
@@ -56,25 +56,9 @@ function PremiumStar() {
 
 export default function PremiumModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useT()
-  const managers = useManagers()
-  const setMe = useChatsStore((st) => st.setMe)
-  const [plan, setPlan] = useState<string>('24m')
-  const [subscribing, setSubscribing] = useState(false)
-  const selected = PLANS.find((p) => p.id === plan) ?? PLANS[0]
-
-  // Fake purchase (clone): flip the Premium flag, refresh `me` so the star badge
-  // appears, then close.
-  const subscribe = async () => {
-    if (subscribing) return
-    setSubscribing(true)
-    try {
-      const user = await managers.profile.activatePremium()
-      setMe(user)
-    } finally {
-      setSubscribing(false)
-      onClose()
-    }
-  }
+  const [plan, setPlan] = useState<PremiumPlanId>('12m')
+  const [checkoutOpen, setCheckoutOpen] = useState(false)
+  const selected = planById(plan)
 
   return createPortal(
     <AnimatePresence>
@@ -113,8 +97,9 @@ export default function PremiumModal({ open, onClose }: { open: boolean; onClose
 
               {/* plans */}
               <div className={s.plans}>
-                {PLANS.map((p) => {
+                {PREMIUM_PLANS.map((p) => {
                   const active = p.id === plan
+                  const discount = discountPct(p)
                   return (
                     <div
                       key={p.id}
@@ -134,19 +119,17 @@ export default function PremiumModal({ open, onClose }: { open: boolean; onClose
                       </div>
                       <div className={s.planBody}>
                         <Text size={17} weight={500} color="var(--tg-textPrimary)">
-                          {t(p.label)}
+                          {t(p.labelKey)}
                         </Text>
                         <div className={s.planMeta}>
-                          {p.discount && <span className={s.discount}>{p.discount}</span>}
-                          {p.discount && (
-                            <Text size={15} color="var(--tg-textSecondary)">
-                              {p.perMonth} ₽ {t('per month')}
-                            </Text>
-                          )}
+                          {discount > 0 && <span className={s.discount}>{`-${discount}%`}</span>}
+                          <Text size={15} color="var(--tg-textSecondary)">
+                            {formatUsd(perMonthCents(p))} {t('per month')}
+                          </Text>
                         </div>
                       </div>
                       <Text size={16} color="var(--tg-textPrimary)" className={s.planTotal}>
-                        {p.total} ₽
+                        {formatUsd(p.priceCents)}
                       </Text>
                     </div>
                   )
@@ -158,7 +141,7 @@ export default function PremiumModal({ open, onClose }: { open: boolean; onClose
                 {FEATURES.map((f) => (
                   <div key={f.title} className={s.feature}>
                     <div className={s.featureIcon} style={{ background: f.color }}>
-                      {f.icon}
+                      <TgIcon name={f.icon} size={24} />
                     </div>
                     <div className={s.featureBody}>
                       <Text size={16} weight={500} color="var(--tg-textPrimary)">
@@ -179,13 +162,20 @@ export default function PremiumModal({ open, onClose }: { open: boolean; onClose
                 className={s.cta}
                 whileHover={{ scale: 1.015 }}
                 whileTap={{ scale: 0.985 }}
-                onClick={() => void subscribe()}
-                style={{ opacity: subscribing ? 0.7 : 1, pointerEvents: subscribing ? 'none' : 'auto' }}
+                onClick={() => setCheckoutOpen(true)}
               >
-                {t('Subscribe for')} {selected.perMonth} ₽ {t('per month')}
+                {t('Subscribe for')} {formatUsd(perMonthCents(selected))} {t('per month')}
               </motion.div>
             </div>
           </motion.div>
+
+          {/* Мок-чекаут (оплата картой) для выбранного плана */}
+          <PremiumCheckout
+            plan={selected}
+            open={checkoutOpen}
+            onClose={() => setCheckoutOpen(false)}
+            onSuccess={onClose}
+          />
         </motion.div>
       )}
     </AnimatePresence>,

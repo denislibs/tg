@@ -148,8 +148,22 @@ func (i *Interactor) ReactionUsers(ctx context.Context, chatID, messageID, userI
 // набора должен отрисоваться у любого получателя.
 func (i *Interactor) CanAccessMedia(ctx context.Context, userID, mediaID int64) (bool, error) {
 	ok, err := i.mediaAccess.CanAccess(ctx, userID, mediaID)
-	if err != nil || ok {
-		return ok, err
+	if err != nil {
+		return false, err
+	}
+	if ok {
+		// Платное медиа: даже член чата не качает байты, пока не оплатил (автор —
+		// исключение, проверяется по sender_id внутри LockedMedia).
+		if i.paidMedia != nil {
+			locked, e := i.paidMedia.LockedMedia(ctx, userID, mediaID)
+			if e != nil {
+				return false, e
+			}
+			if locked {
+				return false, nil
+			}
+		}
+		return true, nil
 	}
 	if i.stickers != nil {
 		return i.stickers.IsStickerMedia(ctx, mediaID)

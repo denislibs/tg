@@ -27,6 +27,7 @@ type Interactor struct {
 	qr      QRStore            // optional
 	svc     ServiceNotifier    // optional
 	geo     GeoResolver        // optional
+	premium PremiumRepo        // optional
 }
 
 // GeoResolver turns an IP into a human place ("Москва, Россия"). Backed by a
@@ -100,6 +101,7 @@ func (i *Interactor) SetServiceNotifier(n ServiceNotifier)       { i.svc = n }
 func (i *Interactor) SetGeoResolver(g GeoResolver)               { i.geo = g }
 func (i *Interactor) SetRevocationNotifier(n RevocationNotifier) { i.revoker = n }
 func (i *Interactor) SetQRStore(q QRStore)                       { i.qr = q }
+func (i *Interactor) SetPremiumRepo(p PremiumRepo)               { i.premium = p }
 
 func (i *Interactor) RequestCode(ctx context.Context, rawPhone string) error {
 	phone := domain.NormalizePhone(rawPhone)

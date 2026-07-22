@@ -1197,6 +1197,8 @@ func newSecretTestInteractor(t *testing.T) (*Interactor, *fakeSecretRepo) {
 }
 
 // Автоудаление: держим период в store, чтобы юнит-тесты могли его проверять.
+func (r fakeChats) SetChatTheme(_ context.Context, _ int64, _ string, _ int64) error { return nil }
+
 func (r fakeChats) SetAutoDelete(_ context.Context, chatID int64, seconds int) error {
 	if r.s.autoDelete == nil {
 		r.s.autoDelete = map[int64]int{}

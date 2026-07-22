@@ -59,6 +59,9 @@ export interface GroupInfo {
   canManageDiscussion: boolean
   // управление темами (форум) — создатель/CHANGE_INFO группы
   canManageTopics: boolean
+  // доступ к статистике (tweb chatFull.can_view_stats) — создатель/админ канала
+  // или супергруппы
+  canViewStats: boolean
   discussionChatId: number
   enablingDiscussion: boolean
   inviteLinks: InviteLink[]
@@ -90,6 +93,7 @@ export function useGroupInfo(chat: Chat): GroupInfo {
   // Channel discussions: admin gate (creator or CHANGE_INFO) + enabled state.
   const [canManageDiscussion, setCanManageDiscussion] = useState(false)
   const [canManageTopics, setCanManageTopics] = useState(false)
+  const [canViewStats, setCanViewStats] = useState(false)
   const [discussionChatId, setDiscussionChatId] = useState(0)
   const [enablingDiscussion, setEnablingDiscussion] = useState(false)
 
@@ -105,6 +109,7 @@ export function useGroupInfo(chat: Chat): GroupInfo {
       setJoinRequests([])
       setCanManageDiscussion(false)
       setCanManageTopics(false)
+      setCanViewStats(false)
       setDiscussionChatId(0)
       return
     }
@@ -113,6 +118,8 @@ export function useGroupInfo(chat: Chat): GroupInfo {
     void managers.groups.card(numericId).then((c) => {
       if (!alive) return
       const isCreator = c.myRole === 'creator'
+      // Статистику видят создатель и админы (супер)группы/канала (can_view_stats).
+      setCanViewStats((isChannel || isGroup) && (isCreator || c.myRole === 'admin'))
       setCanManageAdmins(isCreator || (c.myRights & MANAGE_ADMINS) !== 0)
       setCanManageDiscussion(isChannel && (isCreator || (c.myRights & CHANGE_INFO) !== 0))
       setCanManageTopics(isGroup && (isCreator || (c.myRights & CHANGE_INFO) !== 0))
@@ -228,6 +235,7 @@ export function useGroupInfo(chat: Chat): GroupInfo {
     canInvite,
     canManageDiscussion,
     canManageTopics,
+    canViewStats,
     discussionChatId,
     enablingDiscussion,
     inviteLinks,

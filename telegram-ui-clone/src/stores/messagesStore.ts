@@ -10,7 +10,7 @@
 // с chat_id применяются ко ВСЕМ окнам этого чата (applyToChat), новое сообщение
 // с thread_root_id попадает и в основное окно, и в окно своего треда.
 import { create } from 'zustand'
-import type { Message, MessageEntity, Poll, ReactionCount, GeoData, WebPageData } from '../core/models'
+import type { Message, MessageEntity, Poll, Giveaway, ReactionCount, GeoData, WebPageData } from '../core/models'
 import type { ReplyMarkup } from '../core/managers/botsManager'
 
 // Ключ окна: основное окно чата или тред (форум-топик / комментарии).
@@ -97,6 +97,9 @@ interface MessagesState {
   applyGeoLive: (chatId: number, msgId: number, geo: GeoData) => void
   /** Догоняющее серверное превью ссылки (web_page_update) → карточка web page. */
   applyWebPage: (chatId: number, msgId: number, webPage: WebPageData) => void
+  /** Платное медиа разблокировано (paid_media_unlock) → раскрываем баббл: полное
+   * медиа + снятый флаг locked приезжают в готовом сообщении. */
+  applyPaidUnlock: (chatId: number, msg: Message) => void
   applyDelete: (chatId: number, msgId: number) => void
   /** Голосовое/кружок прослушано → точка media_unread гаснет (обе стороны). */
   applyMediaRead: (chatId: number, msgId: number) => void
@@ -106,6 +109,10 @@ interface MessagesState {
   applyPollUpdate: (chatId: number, poll: Poll) => void
   /** Полная замена опроса сообщения (ответ на свой голос — с myVotes). */
   setPoll: (chatId: number, poll: Poll) => void
+  /** Live-статус розыгрыша (giveaway_update): своё участие сохраняем локально. */
+  applyGiveawayUpdate: (chatId: number, giveaway: Giveaway) => void
+  /** Полная замена розыгрыша (ответ на своё участие — с participating/iWon). */
+  setGiveaway: (chatId: number, giveaway: Giveaway) => void
   /** Дельта реакции (rt:reaction / оптимистичный клик): count±1 по emoji.
    * Идемпотентно для своих действий — серверное эхо собственного add/remove
    * (mine=true) поверх уже применённого оптимистичного апдейта — no-op. */
@@ -319,6 +326,26 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           : null,
       )),
 
+  applyGiveawayUpdate: (chatId, giveaway) =>
+    set((s) =>
+      patchChat(s, chatId, (w) =>
+        w.msgs.some((m) => m.giveaway?.id === giveaway.id)
+          ? w.msgs.map((m) =>
+              m.giveaway?.id === giveaway.id
+                ? { ...m, giveaway: { ...giveaway, participating: m.giveaway.participating, iWon: m.giveaway.iWon } }
+                : m,
+            )
+          : null,
+      )),
+
+  setGiveaway: (chatId, giveaway) =>
+    set((s) =>
+      patchChat(s, chatId, (w) =>
+        w.msgs.some((m) => m.giveaway?.id === giveaway.id)
+          ? w.msgs.map((m) => (m.giveaway?.id === giveaway.id ? { ...m, giveaway } : m))
+          : null,
+      )),
+
   applyEdit: (chatId, msgId, text, editedAt, entities, replyMarkup) =>
     set((s) =>
       patchChat(s, chatId, (w) =>
@@ -344,6 +371,30 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       patchChat(s, chatId, (w) =>
         w.msgs.some((m) => m.id === msgId)
           ? w.msgs.map((m) => (m.id === msgId ? { ...m, webPage } : m))
+          : null,
+      )),
+
+  applyPaidUnlock: (chatId, msg) =>
+    set((s) =>
+      patchChat(s, chatId, (w) =>
+        w.msgs.some((m) => m.id === msg.id)
+          ? w.msgs.map((m) =>
+              m.id === msg.id
+                ? {
+                    ...m,
+                    mediaId: msg.mediaId,
+                    mediaWidth: msg.mediaWidth,
+                    mediaHeight: msg.mediaHeight,
+                    mediaMime: msg.mediaMime,
+                    mediaBlur: msg.mediaBlur,
+                    mediaHasThumb: msg.mediaHasThumb,
+                    mediaDuration: msg.mediaDuration,
+                    mediaSize: msg.mediaSize,
+                    mediaName: msg.mediaName,
+                    paidMedia: msg.paidMedia,
+                  }
+                : m,
+            )
           : null,
       )),
 

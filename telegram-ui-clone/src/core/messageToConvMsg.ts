@@ -53,6 +53,7 @@ export function messageToConvMsg(
     : m.type === 'roundVideo' ? 'roundVideo'
     : m.type === 'call' ? 'call'
     : m.type === 'poll' ? 'poll'
+    : m.type === 'giveaway' ? 'giveaway'
     : m.type === 'geo' ? 'geo'
     : m.type === 'contact' ? 'contact'
     : m.type === 'gift' ? 'gift'
@@ -61,13 +62,25 @@ export function messageToConvMsg(
     : secretType === 'photo' || secretType === 'video' || secretType === 'document' || secretType === 'audio' ? secretType
     : m.type === 'photo' || m.type === 'video' || m.type === 'document' || m.type === 'audio' ? m.type
     : 'text'
+  // Предложение фото профиля (service-сообщение suggest_photo): распарсиваем
+  // action, чтобы показать у получателя кнопку «Установить фото».
+  let photoSuggestion: { accepted: boolean } | undefined
+  if (convType === 'service' && m.text.startsWith('{')) {
+    try {
+      const a = JSON.parse(m.text) as { action?: string; accepted?: boolean }
+      if (a.action === 'suggest_photo') photoSuggestion = { accepted: !!a.accepted }
+    } catch {
+      /* не suggest_photo — обычная сервисная пилюля */
+    }
+  }
   return {
     id: m.id,
     chatId: m.chatId,
     clientId: m.clientId,
     type: convType,
     out,
-    text: convType === 'service' ? serviceMsgText(m.text) : m.text,
+    text: convType === 'service' ? serviceMsgText(m.text, out) : m.text,
+    photoSuggestion,
     entities: m.entities,
     time: hhmm(m.createdAt),
     createdAt: m.createdAt,
@@ -86,6 +99,7 @@ export function messageToConvMsg(
     webPage: m.webPage,
     effect: m.effect,
     poll: m.poll,
+    giveaway: m.giveaway,
     gift: m.gift,
     replyMarkup: m.replyMarkup,
     reactions: m.reactions,
@@ -100,6 +114,7 @@ export function messageToConvMsg(
     mediaDuration: m.mediaDuration,
     mediaSize: m.mediaSize,
     mediaName: m.mediaName,
+    paidMedia: m.paidMedia,
     groupedId: m.groupedId ?? undefined,
     localUrl: m.localUrl,
     sender: !out && opts?.senderName ? opts.senderName : undefined,

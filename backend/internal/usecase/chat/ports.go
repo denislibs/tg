@@ -15,6 +15,20 @@ type TxManager interface {
 	WithinTx(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
+// ContactPhotoLookup reads the viewer's personal photos for contacts so the
+// dialog list can show them in place of the peer's real avatar (Telegram
+// personal_photo). Implemented by the contacts repo. Optional.
+type ContactPhotoLookup interface {
+	CustomPhotoMap(ctx context.Context, ownerID int64, contactIDs []int64) (map[int64]string, error)
+}
+
+// ProfilePhotoAdder appends a photo to a user's profile gallery and promotes it
+// to the current avatar (implemented by the auth usecase). Used when a user
+// accepts a suggested profile photo. Optional.
+type ProfilePhotoAdder interface {
+	AddProfilePhoto(ctx context.Context, userID int64, url, videoURL string) (domain.ProfilePhoto, error)
+}
+
 type ChatRepo interface {
 	FindPrivate(ctx context.Context, a, b int64) (int64, error) // domain.ErrNotFound if none
 	CreatePrivate(ctx context.Context, a, b int64) (int64, error)
@@ -49,6 +63,7 @@ type ChatRepo interface {
 	SetClearedSeq(ctx context.Context, chatID, userID, seq int64) error
 	// Автоудаление: период чата, глобальный период пользователя (для новых чатов).
 	SetAutoDelete(ctx context.Context, chatID int64, seconds int) error
+	SetChatTheme(ctx context.Context, chatID int64, themeID string, setBy int64) error
 	UserAutoDelete(ctx context.Context, userID int64) (int, error)
 	SetUserAutoDelete(ctx context.Context, userID int64, seconds int) error
 	PinMessage(ctx context.Context, chatID, msgID, byUser int64) error
@@ -299,6 +314,7 @@ type SendInput struct {
 	ThreadRootID     *int64
 	GroupedID        string // альбом (Telegram grouped_id); "" — не в группе
 	PollID           *int64 // опрос (messages.poll_id) — только из SendPoll
+	GiveawayID       *int64 // розыгрыш (messages.giveaway_id) — только из CreateGiveaway
 	// Гео-точка (type 'geo'): обе координаты обязательны, в валидном диапазоне.
 	GeoLat *float64
 	GeoLng *float64
@@ -324,6 +340,10 @@ type SendInput struct {
 	// Effect — вид полноэкранного эффекта сообщения (наш аналог Telegram message
 	// effects); санитизируется по whitelist. "" — без эффекта.
 	Effect string
+	// PaidMediaPrice — цена доступа к медиа в звёздах (Telegram paid media). nil/<=0
+	// — обычное медиа. Применяется только к фото/видео с прикреплённым MediaID:
+	// получатели видят медиа заблокированным до разблокировки за звёзды.
+	PaidMediaPrice *int64
 }
 
 // GroupCallStore хранит участников активных групповых звонков (эфемерно, Redis).
@@ -398,6 +418,52 @@ type StarsRepo interface {
 	// Convert обменивает подарок на звёзды владельцу: помечает converted и
 	// возвращает число возвращённых звёзд. Повтор/чужой → domain.ErrForbidden.
 	Convert(ctx context.Context, savedID, ownerID int64) (int64, error)
+}
+
+// BoostRepo хранит бусты каналов (channel_boosts). Активны бусты с
+// expires_at > now().
+type BoostRepo interface {
+	// ActiveBoosts — сумма slots всех активных бустов канала.
+	ActiveBoosts(ctx context.Context, chatID int64) (int, error)
+	// UserActiveSlots — сколько слотов пользователь потратил (все каналы).
+	UserActiveSlots(ctx context.Context, userID int64) (int, error)
+	// Boost добавляет/обновляет буст пользователя на канал.
+	Boost(ctx context.Context, chatID, userID int64, slots int, expiresAt time.Time) error
+	// BoostedByMe — есть ли активный буст пользователя на этот канал.
+	BoostedByMe(ctx context.Context, chatID, userID int64) (bool, error)
+}
+
+// GiveawayRepo хранит розыгрыши и участников (giveaways / giveaway_participants).
+type GiveawayRepo interface {
+	Create(ctx context.Context, g domain.Giveaway) (domain.Giveaway, error)
+	ByID(ctx context.Context, id int64) (domain.Giveaway, error)
+	// Participate добавляет участника (идемпотентно).
+	Participate(ctx context.Context, giveawayID, userID int64) error
+	IsParticipant(ctx context.Context, giveawayID, userID int64) (bool, error)
+	ParticipantCount(ctx context.Context, id int64) (int, error)
+	ParticipantIDs(ctx context.Context, id int64) ([]int64, error)
+	// Finish помечает розыгрыш завершённым и сохраняет победителей.
+	Finish(ctx context.Context, id int64, winnerIDs []int64) error
+}
+
+// PremiumRepo читает/выдаёт premium-статус (для бустов и premium-приза).
+type PremiumRepo interface {
+	IsPremium(ctx context.Context, userID int64) (bool, error)
+	GrantPremium(ctx context.Context, userID int64) error
+}
+
+// PaidMediaRepo — цена платного медиа сообщения и разблокировки за Stars.
+type PaidMediaRepo interface {
+	// SetPrice помечает медиа сообщения платным с ценой price (звёзды).
+	SetPrice(ctx context.Context, messageID, price int64) error
+	// PricesByIDs — цены платного медиа для сообщений (без цены — отсутствуют).
+	PricesByIDs(ctx context.Context, ids []int64) (map[int64]int64, error)
+	// UnlockedByIDs — какие из сообщений пользователь уже разблокировал.
+	UnlockedByIDs(ctx context.Context, userID int64, ids []int64) (map[int64]bool, error)
+	// Unlock записывает разблокировку (message,user); true — если запись новая.
+	Unlock(ctx context.Context, messageID, userID int64) (bool, error)
+	// LockedMedia — закрыто ли медиа платным баром для пользователя (гейт байтов).
+	LockedMedia(ctx context.Context, userID, mediaID int64) (bool, error)
 }
 
 // BotRepo — данные ботов: флаг is_bot и список команд.

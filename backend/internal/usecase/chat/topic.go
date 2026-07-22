@@ -242,5 +242,7 @@ func (i *Interactor) ListThreadMessages(ctx context.Context, chatID, rootID, use
 	}
 	_ = i.hydratePolls(ctx, userID, msgs)
 	i.hydrateGifts(ctx, userID, msgs)
+	i.hydrateGiveaways(ctx, userID, msgs)
+	i.hydratePaidMedia(ctx, userID, msgs)
 	return msgs, count, nil
 }

@@ -7,6 +7,7 @@ import { newHealthManager } from './managers/healthManager'
 import { TokenStore } from './auth/tokenStore'
 import { newAuthManager } from './managers/authManager'
 import { newProfileManager } from './managers/profileManager'
+import { newPremiumManager } from './managers/premiumManager'
 import { newChatsManager } from './managers/chatsManager'
 import { newMessagesManager } from './managers/messagesManager'
 import { newMediaManager } from './managers/mediaManager'
@@ -21,11 +22,14 @@ import { newStoriesManager } from './managers/storiesManager'
 import { newContactsManager } from './managers/contactsManager'
 import { newPrivacyManager } from './managers/privacyManager'
 import { newStarsManager } from './managers/starsManager'
+import { newBoostsManager } from './managers/boostsManager'
 import { newStickersManager } from './managers/stickersManager'
 import { newReportManager } from './managers/reportManager'
+import { newStatsManager } from './managers/statsManager'
 import { newBotsManager } from './managers/botsManager'
 import { newIVManager } from './managers/ivManager'
 import { newDraftsManager } from './managers/draftsManager'
+import { newChatThemesManager } from './managers/chatThemesManager'
 import { newSessionsManager } from './managers/sessionsManager'
 import { newCallsManager } from './managers/callsManager'
 import { newConnectionManager } from './realtime/connectionManager'
@@ -39,6 +43,7 @@ void tokens.load()
 const rest = new RestClient('/api', () => tokens.get())
 const auth = newAuthManager({ rest, store: tokens })
 const profile = newProfileManager({ rest })
+const premium = newPremiumManager({ rest })
 const chats = newChatsManager({ rest })
 // decryptSecret дергает secret лениво — стрелка вызывается только на fetch истории
 // (после инициализации модуля), поэтому forward-ссылка на объявленный ниже secret безопасна.
@@ -60,10 +65,13 @@ const stories = newStoriesManager({ rest })
 const contacts = newContactsManager({ rest })
 const privacy = newPrivacyManager({ rest })
 const drafts = newDraftsManager({ rest })
+const chatThemes = newChatThemesManager({ rest })
 const sessions = newSessionsManager({ rest })
 const calls = newCallsManager({ rest })
 const stars = newStarsManager({ rest })
+const boosts = newBoostsManager({ rest })
 const report = newReportManager({ rest })
+const stats = newStatsManager({ rest })
 const bots = newBotsManager({ rest })
 const stickers = newStickersManager({ rest })
 const iv = newIVManager({ rest })
@@ -129,10 +137,16 @@ const conn = newConnectionManager({
     else if (type === 'presence') broadcast(RT.presence, payload)
     else if (type === 'reaction') broadcast(RT.reaction, payload)
     else if (type === 'draft_update') broadcast(RT.draftUpdate, payload)
+    else if (type === 'chat_theme_update') broadcast(RT.chatThemeUpdate, payload)
     else if (type === 'dialog_pin') broadcast(RT.dialogPin, payload)
     else if (type === 'dialog_archive') broadcast(RT.dialogArchive, payload)
     else if (type === 'poll_update') broadcast(RT.pollUpdate, payload)
+    else if (type === 'boost_update') broadcast(RT.boostUpdate, payload)
+    else if (type === 'giveaway_update') broadcast(RT.giveawayUpdate, payload)
     else if (type === 'balance_update') broadcast(RT.balanceUpdate, payload)
+    // Платное медиа разблокировано покупателем: раскрываем баббл (полное медиа)
+    // на всех его вкладках; правим кэш истории воркера тем же payload.
+    else if (type === 'paid_media_unlock') { messages.cachePaidUnlock(payload as never); broadcast(RT.paidMediaUnlock, payload) }
     else if (type === 'bot_callback_answer') broadcast(RT.botCallbackAnswer, payload)
     else if (type === 'geo_live_update') { messages.cacheGeoLive(payload as never); broadcast(RT.geoLiveUpdate, payload) }
     else if (type === 'web_page_update') { messages.cacheWebPage(payload as never); broadcast(RT.webPageUpdate, payload) }
@@ -160,7 +174,7 @@ const secret = createSecretManager({
 
 const realtime = {
   async start() { await tokens.load(); conn.start(); return { state: conn.state() } },
-  async sendMessage(args: { chatId: number; text: string; entities?: import('./models').MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; replyQuoteText?: string | null; replyQuoteOffset?: number | null; mediaId?: number | null; type?: string; groupedId?: string; encBody?: string; ttlSeconds?: number | null; silent?: boolean }) { conn.sendMessage(args); return { ok: true } },
+  async sendMessage(args: { chatId: number; text: string; entities?: import('./models').MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; replyQuoteText?: string | null; replyQuoteOffset?: number | null; mediaId?: number | null; type?: string; groupedId?: string; encBody?: string; ttlSeconds?: number | null; silent?: boolean; effect?: string | null; paidMediaPrice?: number | null }) { conn.sendMessage(args); return { ok: true } },
   async markRead(args: { chatId: number; upToSeq: number }) { conn.markRead(args.chatId, args.upToSeq); return { ok: true } },
   async markMediaRead(args: { chatId: number; msgId: number }) { conn.markMediaRead(args.chatId, args.msgId); return { ok: true } },
   async sendTyping(args: { chatId: number; action?: TypingAction }) { conn.sendTyping(args.chatId, args.action ?? 'typing'); return { ok: true } },
@@ -176,6 +190,7 @@ function bind(ep: Endpoint) {
     health: newHealthManager(rest),
     auth: auth as unknown as Record<string, (...a: unknown[]) => unknown>,
     profile: profile as unknown as Record<string, (...a: unknown[]) => unknown>,
+    premium: premium as unknown as Record<string, (...a: unknown[]) => unknown>,
     chats: chats as unknown as Record<string, (...a: unknown[]) => unknown>,
     messages: messages as unknown as Record<string, (...a: unknown[]) => unknown>,
     realtime: realtime as unknown as Record<string, (...a: unknown[]) => unknown>,
@@ -191,10 +206,13 @@ function bind(ep: Endpoint) {
     contacts: contacts as unknown as Record<string, (...a: unknown[]) => unknown>,
     privacy: privacy as unknown as Record<string, (...a: unknown[]) => unknown>,
     drafts: drafts as unknown as Record<string, (...a: unknown[]) => unknown>,
+    chatThemes: chatThemes as unknown as Record<string, (...a: unknown[]) => unknown>,
     sessions: sessions as unknown as Record<string, (...a: unknown[]) => unknown>,
     calls: calls as unknown as Record<string, (...a: unknown[]) => unknown>,
     stars: stars as unknown as Record<string, (...a: unknown[]) => unknown>,
+    boosts: boosts as unknown as Record<string, (...a: unknown[]) => unknown>,
     report: report as unknown as Record<string, (...a: unknown[]) => unknown>,
+    stats: stats as unknown as Record<string, (...a: unknown[]) => unknown>,
     bots: bots as unknown as Record<string, (...a: unknown[]) => unknown>,
     stickers: stickers as unknown as Record<string, (...a: unknown[]) => unknown>,
     iv: iv as unknown as Record<string, (...a: unknown[]) => unknown>,

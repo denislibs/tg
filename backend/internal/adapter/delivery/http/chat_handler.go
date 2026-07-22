@@ -267,7 +267,7 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 			"unread_mentions_count": d.UnreadMentionsCount, "unread_reactions": d.UnreadReactionsCount, "muted": d.Muted,
 			"pinned": d.Pinned, "archived": d.Archived, "is_forum": d.IsForum,
 			"notify_preview": d.NotifyPreview, "notify_sound": d.NotifySound,
-			"auto_delete_period": d.AutoDeletePeriod,
+			"auto_delete_period": d.AutoDeletePeriod, "theme_id": d.ThemeID,
 		}
 		if d.HasLast {
 			row["last_message"] = map[string]any{
@@ -308,6 +308,9 @@ type sendBody struct {
 	GeoLivePeriod *int     `json:"geo_live_period"`
 	GeoHeading    *int     `json:"geo_heading"`
 	ContactUserID *int64   `json:"contact_user_id"`
+	// Платное медиа (Telegram paid media): цена доступа в звёздах. nil/<=0 — обычное
+	// медиа; применяется только к фото/видео с прикреплённым media_id.
+	PaidMediaPrice *int64 `json:"paid_media_price"`
 }
 
 func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
@@ -332,6 +335,7 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		GeoLat:       body.GeoLat, GeoLng: body.GeoLng, ContactUserID: body.ContactUserID,
 		GeoTitle: body.GeoTitle, GeoAddress: body.GeoAddress,
 		GeoLivePeriod: body.GeoLivePeriod, GeoHeading: body.GeoHeading,
+		PaidMediaPrice: body.PaidMediaPrice,
 	})
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
@@ -1373,6 +1377,12 @@ func messageJSON(m domain.Message) map[string]any {
 	if m.Poll != nil {
 		j["poll"] = m.Poll
 	}
+	if m.GiveawayID != nil {
+		j["giveaway_id"] = *m.GiveawayID
+	}
+	if m.Giveaway != nil {
+		j["giveaway"] = m.Giveaway
+	}
 	if m.GiftID != nil {
 		j["gift_id"] = *m.GiftID
 	}
@@ -1428,6 +1438,9 @@ func messageJSON(m domain.Message) map[string]any {
 	}
 	if m.MediaName != "" {
 		j["media_name"] = m.MediaName
+	}
+	if m.PaidMediaPrice != nil {
+		j["paid_media"] = map[string]any{"price": *m.PaidMediaPrice, "locked": m.PaidMediaLocked}
 	}
 	return j
 }
@@ -1503,6 +1516,34 @@ func (h *ChatHandler) SetChatAutoDelete(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"period": b.Period})
+}
+
+// SetChatTheme — PUT /chats/{chatID}/theme {theme_id}. Пустой theme_id (или
+// отсутствие поля) — сброс темы к дефолту. Тема общая для чата (Telegram
+// messages.setChatTheme): смена рассылается обоим участникам фреймом
+// chat_theme_update.
+func (h *ChatHandler) SetChatTheme(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	var b struct {
+		ThemeID string `json:"theme_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	err := h.svc.SetChatTheme(r.Context(), chatID, h.meID(r), b.ThemeID)
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusForbidden, "not a member of this chat")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"theme_id": b.ThemeID})
 }
 
 // draftJSON — wire-представление черновика.

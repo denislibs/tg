@@ -14,9 +14,10 @@ import (
 	usecasenotify "github.com/messenger-denis/backend/internal/usecase/notify"
 	usecaseprivacy "github.com/messenger-denis/backend/internal/usecase/privacy"
 	usecasereport "github.com/messenger-denis/backend/internal/usecase/report"
+	usecasestats "github.com/messenger-denis/backend/internal/usecase/stats"
 )
 
-func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, mediaUC *usecasemedia.Interactor, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler, notifyUC *usecasenotify.Interactor, foldersUC *usecasefolders.Interactor, pubH *PublicHandler, privacyUC *usecaseprivacy.Interactor, passkeyH *PasskeyHandler, stickersH *StickersHandler, ivH *IVHandler, reportUC *usecasereport.Interactor) http.Handler {
+func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, mediaUC *usecasemedia.Interactor, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler, notifyUC *usecasenotify.Interactor, foldersUC *usecasefolders.Interactor, pubH *PublicHandler, privacyUC *usecaseprivacy.Interactor, passkeyH *PasskeyHandler, stickersH *StickersHandler, ivH *IVHandler, reportUC *usecasereport.Interactor, statsUC *usecasestats.Interactor) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -81,6 +82,9 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Put("/me/avatar", ph.SetAvatar)
 		pr.Put("/me/emoji_status", ph.SetEmojiStatus)
 		pr.Post("/me/premium", ph.ActivatePremium)
+		pr.Post("/me/premium/checkout", ph.Checkout)
+		pr.Get("/me/premium/subscription", ph.PremiumSubscription)
+		pr.Post("/me/premium/cancel", ph.CancelPremium)
 		pr.Post("/me/photos", ph.AddPhoto)
 		pr.Delete("/me/photos/{photoID}", ph.DeletePhoto)
 		pr.Get("/users/{userID}/photos", ph.ListPhotos)
@@ -138,6 +142,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/me/auto_delete", ch.MyAutoDelete)
 		pr.Put("/me/auto_delete", ch.SetMyAutoDelete)
 		pr.Put("/chats/{chatID}/auto_delete", ch.SetChatAutoDelete)
+		pr.Put("/chats/{chatID}/theme", ch.SetChatTheme)
 		pr.Get("/drafts", ch.MyDrafts)
 		pr.Delete("/drafts", ch.ClearAllDrafts)
 		pr.Put("/chats/{chatID}/draft", ch.SaveDraft)
@@ -179,9 +184,16 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Post("/chats/{chatID}/scheduled/{schedID}/send_now", ch.SendScheduledNow)
 		pr.Post("/polls/{pollID}/vote", ch.VotePoll)
 		pr.Post("/polls/{pollID}/close", ch.ClosePoll)
+		// Бусты каналов + розыгрыши
+		pr.Get("/channels/{chatID}/boosts", ch.ChannelBoosts)
+		pr.Post("/channels/{chatID}/boost", ch.BoostChannel)
+		pr.Post("/channels/{chatID}/giveaways", ch.CreateGiveaway)
+		pr.Post("/giveaways/{id}/participate", ch.ParticipateGiveaway)
+		pr.Get("/giveaways/{id}", ch.GetGiveaway)
 		// Stars + Star Gifts
 		pr.Get("/stars/balance", ch.StarsBalance)
 		pr.Post("/stars/topup", ch.TopUpStars)
+		pr.Post("/messages/{msgID}/unlock", ch.UnlockPaidMedia)
 		pr.Get("/gifts/catalog", ch.GiftCatalog)
 		pr.Post("/gifts/send", ch.SendGift)
 		pr.Get("/users/{userID}/gifts", ch.ProfileGifts)
@@ -277,6 +289,10 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/channels/{chatID}/posts/{postId}/comments", chh.ListComments)
 		pr.Get("/channels/{chatID}/comment_counts", chh.CommentCounts)
 		pr.Get("/channels/{chatID}/view_counts", chh.ViewCounts)
+		if statsUC != nil {
+			sth := NewStatsHandler(statsUC)
+			pr.Get("/channels/{chatID}/stats", sth.ChannelStats)
+		}
 		pr.Get("/search", chh.Search)
 		pr.Get("/search/messages", ch.GlobalSearchMessages)
 
@@ -314,6 +330,13 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 			pr.Post("/contacts", coh.Add)
 			pr.Get("/contacts", coh.List)
 			pr.Delete("/contacts/{userID}", coh.Delete)
+
+			// Личное фото контакта (только у владельца) + предложение фото профиля.
+			cph := NewContactPhotoHandler(contactsUC, chatUC)
+			pr.Put("/contacts/{userID}/photo", cph.SetCustomPhoto)
+			pr.Delete("/contacts/{userID}/photo", cph.ClearCustomPhoto)
+			pr.Post("/contacts/{userID}/suggest_photo", cph.SuggestPhoto)
+			pr.Post("/photo_suggestions/{id}/accept", cph.AcceptSuggestion)
 		}
 
 		// ICE-конфиг для звонков (STUN + эфемерные TURN-креды)

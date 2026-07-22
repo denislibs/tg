@@ -19,6 +19,17 @@ type ContactsRepo interface {
 	ResolveByPhone(ctx context.Context, phone string) (int64, error)
 }
 
+// CustomPhotoRepo хранит личные фото контактов (Telegram personal_photo): фото,
+// которое владелец видит вместо настоящего аватара конкретного контакта. Set —
+// upsert по паре (owner, contact); Clear — сброс к настоящему аватару; Map —
+// батч-выборка для наложения на список контактов. Опционален: без него личные
+// фото просто не поддерживаются.
+type CustomPhotoRepo interface {
+	SetCustomPhoto(ctx context.Context, ownerID, contactUserID int64, url string) error
+	ClearCustomPhoto(ctx context.Context, ownerID, contactUserID int64) error
+	CustomPhotoMap(ctx context.Context, ownerID int64, contactIDs []int64) (map[int64]string, error)
+}
+
 // PrivacyChecker решает вопросы конфиденциальности (usecase/privacy): батчем —
 // видимость аспекта key (телефоны в списке), точечно — может ли viewer добавить
 // owner по номеру. Опционален: без него фильтры/ограничения не применяются.

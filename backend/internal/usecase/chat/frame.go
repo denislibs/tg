@@ -31,6 +31,8 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 		"thread_root_id": m.ThreadRootID,
 		"poll_id":        m.PollID,
 		"poll":           m.Poll,
+		"giveaway_id":    m.GiveawayID,
+		"giveaway":       m.Giveaway,
 		"gift_id":        m.GiftID,
 		"gift":           m.Gift,
 	}
@@ -64,6 +66,9 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 	}
 	if m.MediaName != "" {
 		p["media_name"] = m.MediaName
+	}
+	if m.PaidMediaPrice != nil {
+		p["paid_media"] = map[string]any{"price": *m.PaidMediaPrice, "locked": m.PaidMediaLocked}
 	}
 	// Reply quote: цитата хранится на самом сообщении — превью реплая на клиенте
 	// собирается из уже загруженного окна, так что фрагмент едет отдельным полем.

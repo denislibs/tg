@@ -40,6 +40,19 @@ type UserRepo interface {
 	DeleteProfilePhoto(ctx context.Context, userID, photoID int64) (newAvatarURL string, err error)
 }
 
+// PremiumRepo persists Telegram Premium subscriptions (clone: mock checkout).
+type PremiumRepo interface {
+	// GetPremiumSubscription returns the user's subscription, or domain.ErrNotFound
+	// when they never subscribed.
+	GetPremiumSubscription(ctx context.Context, userID int64) (domain.PremiumSubscription, error)
+	// UpsertPremiumSubscription creates or replaces the user's subscription row
+	// (single row per user, keyed by user_id) and returns the stored value.
+	UpsertPremiumSubscription(ctx context.Context, sub domain.PremiumSubscription) (domain.PremiumSubscription, error)
+	// SetPremiumAutoRenew toggles auto-renew on the user's existing subscription,
+	// returning domain.ErrNotFound when there is none.
+	SetPremiumAutoRenew(ctx context.Context, userID int64, autoRenew bool) (domain.PremiumSubscription, error)
+}
+
 type DeviceRepo interface {
 	Create(ctx context.Context, userID int64, name, platform, tokenHash, ip, location string) (domain.Device, error)
 	SessionByTokenHash(ctx context.Context, tokenHash string) (domain.User, int64, error)

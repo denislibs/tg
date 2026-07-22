@@ -199,9 +199,10 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		        END, 0) AS peer_read_seq,
 		        lm.seq, lm.text, lm.sender_id, lm.created_at, COALESCE(lm.media_id,0), lm.type, lm.forwarded, lm.sender_name,
 		        peer.id, peer.display_name, peer.avatar_url, peer.is_verified, peer.is_premium, peer.emoji_status,
-		        c.auto_delete_period
+		        c.auto_delete_period, COALESCE(ct.theme_id, '')
 		 FROM chat_members m
 		 JOIN chats c ON c.id = m.chat_id
+		 LEFT JOIN chat_theme ct ON ct.chat_id = c.id
 		 LEFT JOIN LATERAL (
 		   SELECT seq, text, sender_id, created_at, media_id, type,
 		          (fwd_from_user_id IS NOT NULL OR fwd_from_chat_id IS NOT NULL) AS forwarded,
@@ -245,7 +246,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		var peerEmojiStatus *string
 		if err := rows.Scan(&d.ChatID, &d.Type, &d.Title, &d.Username, &d.PhotoURL, &d.LastReadSeq, &d.UnreadCount, &d.UnreadMentionsCount, &d.UnreadReactionsCount, &d.Muted, &d.Pinned, &d.Archived, &d.IsForum, &d.NotifyPreview, &d.NotifySound, &d.PeerReadSeq,
 			&seq, &text, &senderID, &at, &mediaID, &msgType, &forwarded, &senderName,
-			&peerID, &peerName, &peerAvatar, &peerVerified, &peerPremium, &peerEmojiStatus, &d.AutoDeletePeriod); err != nil {
+			&peerID, &peerName, &peerAvatar, &peerVerified, &peerPremium, &peerEmojiStatus, &d.AutoDeletePeriod, &d.ThemeID); err != nil {
 			return nil, err
 		}
 		if forwarded != nil {
@@ -499,6 +500,21 @@ func (r *ChatsRepo) Viewers(ctx context.Context, chatID, seq, excludeUser int64)
 func (r *ChatsRepo) SetAutoDelete(ctx context.Context, chatID int64, seconds int) error {
 	_, err := querier(ctx, r.pool).Exec(ctx,
 		`UPDATE chats SET auto_delete_period=$2 WHERE id=$1`, chatID, seconds)
+	return err
+}
+
+// SetChatTheme задаёт тему оформления чата (upsert); themeID="" — сброс (удаление).
+func (r *ChatsRepo) SetChatTheme(ctx context.Context, chatID int64, themeID string, setBy int64) error {
+	q := querier(ctx, r.pool)
+	if themeID == "" {
+		_, err := q.Exec(ctx, `DELETE FROM chat_theme WHERE chat_id=$1`, chatID)
+		return err
+	}
+	_, err := q.Exec(ctx,
+		`INSERT INTO chat_theme (chat_id, theme_id, set_by, updated_at)
+		 VALUES ($1, $2, $3, now())
+		 ON CONFLICT (chat_id) DO UPDATE SET theme_id=EXCLUDED.theme_id, set_by=EXCLUDED.set_by, updated_at=now()`,
+		chatID, themeID, setBy)
 	return err
 }
 

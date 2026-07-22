@@ -66,6 +66,25 @@
   user-select: none;
 }
 
+// Кнопка «Установить фото» под предложенным фото (tweb bubble-service-media-button)
+.serviceButton {
+  border: none;
+  cursor: pointer;
+  padding: 0.28125rem 0.875rem;
+  border-radius: 0.875rem;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 20px;
+  transition: opacity 0.15s;
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+}
+
 // входящая групповая серия со sticky-аватаром
 .group {
   position: relative;

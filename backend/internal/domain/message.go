@@ -44,11 +44,15 @@ type Message struct {
 	GroupedID *string
 	// PollID — опрос сообщения типа 'poll' (messages.poll_id); Poll — его
 	// развёрнутое представление для зрителя, наполняется read-моделью истории.
-	PollID    *int64
-	Poll      *PollInfo
-	CreatedAt time.Time
-	Deleted   bool
-	EditedAt  *time.Time
+	PollID *int64
+	Poll   *PollInfo
+	// GiveawayID — розыгрыш сообщения типа 'giveaway' (messages.giveaway_id);
+	// Giveaway — его представление для зрителя, наполняется read-моделью истории.
+	GiveawayID *int64
+	Giveaway   *GiveawayInfo
+	CreatedAt  time.Time
+	Deleted    bool
+	EditedAt   *time.Time
 	// Forward attribution (set when the message was forwarded from elsewhere).
 	FwdFromUserID *int64
 	FwdFromChatID *int64
@@ -130,6 +134,14 @@ type Message struct {
 	// message effects): fireworks|confetti|hearts|thumbs|poop|cake, "" — нет.
 	// Санитизируется на отправке (whitelist); только у text/media-сообщений.
 	Effect string
+	// Paid media (Telegram paid media — медиа, разблокируемое за Stars).
+	// PaidMediaPrice — цена доступа в звёздах (nil — медиа не платное). Хранится в
+	// отдельной таблице paid_media, наполняется read-моделью (не колонка messages).
+	// PaidMediaLocked — per-viewer: контент скрыт до оплаты. У скрытого сообщения
+	// read-модель обнуляет media_id/mime/имя, оставляя только размеры/blur/цену —
+	// байты медиа клиенту не отдаются до разблокировки.
+	PaidMediaPrice  *int64
+	PaidMediaLocked bool
 }
 
 // ReplyPreview is the quoted snippet shown above a reply bubble.

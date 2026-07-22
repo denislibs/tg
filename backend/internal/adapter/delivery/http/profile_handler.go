@@ -379,6 +379,93 @@ func (h *ProfileHandler) ActivatePremium(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, userJSON(user))
 }
 
+// subscriptionJSON is the wire shape for a Premium subscription.
+func subscriptionJSON(s domain.PremiumSubscription) map[string]any {
+	return map[string]any{
+		"plan":        s.Plan,
+		"price_cents": s.PriceCents,
+		"started_at":  s.StartedAt.UTC().Format(time.RFC3339),
+		"expires_at":  s.ExpiresAt.UTC().Format(time.RFC3339),
+		"auto_renew":  s.AutoRenew,
+	}
+}
+
+type checkoutBody struct {
+	Plan string `json:"plan"`
+	// Card is the mock payment detail. It is validated on the client and ignored
+	// by the server (clone: no real billing).
+	Card json.RawMessage `json:"card"`
+}
+
+// Checkout runs the mock card checkout (POST /me/premium/checkout): it validates
+// the plan, creates or extends the subscription, flips Premium on, and returns
+// the fresh user together with the subscription. Card data is ignored.
+func (h *ProfileHandler) Checkout(w http.ResponseWriter, r *http.Request) {
+	u, ok := UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "no user")
+		return
+	}
+	var body checkoutBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	user, sub, err := h.uc.CheckoutPremium(r.Context(), u.ID, body.Plan)
+	if errors.Is(err, domain.ErrInvalid) {
+		writeError(w, http.StatusBadRequest, "invalid plan")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "checkout failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"user":         userJSON(user),
+		"subscription": subscriptionJSON(sub),
+	})
+}
+
+// PremiumSubscription returns the current subscription (GET
+// /me/premium/subscription), or {"subscription": null} when there is none.
+func (h *ProfileHandler) PremiumSubscription(w http.ResponseWriter, r *http.Request) {
+	u, ok := UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "no user")
+		return
+	}
+	sub, err := h.uc.PremiumSubscription(r.Context(), u.ID)
+	if errors.Is(err, domain.ErrNotFound) {
+		writeJSON(w, http.StatusOK, map[string]any{"subscription": nil})
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "load subscription failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"subscription": subscriptionJSON(sub)})
+}
+
+// CancelPremium disables auto-renew (POST /me/premium/cancel): the subscription
+// stays active until it expires. Returns the updated subscription.
+func (h *ProfileHandler) CancelPremium(w http.ResponseWriter, r *http.Request) {
+	u, ok := UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "no user")
+		return
+	}
+	sub, err := h.uc.CancelPremiumAutoRenew(r.Context(), u.ID)
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "no subscription")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "cancel failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"subscription": subscriptionJSON(sub)})
+}
+
 // profilePhotoJSON is the wire shape for one gallery photo.
 func profilePhotoJSON(p domain.ProfilePhoto) map[string]any {
 	var video any

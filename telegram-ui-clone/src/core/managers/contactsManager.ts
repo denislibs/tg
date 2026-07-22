@@ -13,6 +13,8 @@ export interface Contact {
   avatarUrl: string
   phone: string
   displayName: string
+  /** у владельца задано личное фото этого контакта (avatarUrl уже подменён им) */
+  hasCustomPhoto: boolean
   createdAt: string
 }
 
@@ -26,6 +28,7 @@ interface RawContact {
   avatar_url: string
   phone: string
   display_name: string
+  has_custom_photo?: boolean
   created_at: string
 }
 
@@ -39,6 +42,7 @@ const mapContact = (c: RawContact): Contact => ({
   avatarUrl: c.avatar_url,
   phone: c.phone,
   displayName: c.display_name,
+  hasCustomPhoto: !!c.has_custom_photo,
   createdAt: c.created_at,
 })
 
@@ -79,6 +83,29 @@ export function newContactsManager({ rest }: ContactsDeps) {
 
     async del(contactId: number): Promise<void> {
       await rest.del(`/contacts/${contactId}`)
+    },
+
+    // Личное фото контакта (Telegram personal_photo, save=true): владелец видит
+    // это фото вместо настоящего аватара контакта. Возвращает url для оптимистичного
+    // обновления сторов.
+    async setPhoto(contactId: number, mediaId: number): Promise<{ url: string }> {
+      return rest.put<{ url: string }>(`/contacts/${contactId}/photo`, { media_id: mediaId })
+    },
+
+    // Сброс личного фото — снова показывается настоящий аватар контакта.
+    async clearPhoto(contactId: number): Promise<void> {
+      await rest.del(`/contacts/${contactId}/photo`)
+    },
+
+    // Предложить контакту новое фото профиля (Telegram suggest=true): создаёт
+    // сервисное сообщение с превью и кнопкой «Установить фото» у получателя.
+    async suggestPhoto(contactId: number, mediaId: number): Promise<void> {
+      await rest.post(`/contacts/${contactId}/suggest_photo`, { media_id: mediaId })
+    },
+
+    // Принять предложенное фото профиля: оно становится аватаром принявшего.
+    async acceptPhotoSuggestion(msgId: number): Promise<void> {
+      await rest.post(`/photo_suggestions/${msgId}/accept`, {})
     },
   }
 }

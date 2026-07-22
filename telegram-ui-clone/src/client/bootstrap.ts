@@ -4,7 +4,8 @@ import type { HealthStatus } from '../core/managers/healthManager'
 import type { User } from '../core/managers/authManager'
 import type { ProfileUpdate, SetUsernameResult } from '../core/managers/profileManager'
 import type { Dialog, Draft } from '../core/models'
-import type { Message, MessageEntity, Poll, Scheduled } from '../core/models'
+import type { Message, MessageEntity, Poll, Scheduled, BoostStatus, Giveaway } from '../core/models'
+import type { CreateGiveawayArgs } from '../core/managers/boostsManager'
 import type { HistoryArgs, HistoryResult, SendArgs, ReactionUser } from '../core/managers/messagesManager'
 import type { ConnState, PresenceEvt, TypingAction } from '../core/realtime/events'
 import type { UploadArgs, MediaMeta } from '../core/managers/mediaManager'
@@ -23,6 +24,7 @@ import type { Session } from '../core/managers/sessionsManager'
 import type { IceConfig } from '../core/managers/callsManager'
 import type { StarGift, GiftInfo } from '../core/managers/starsManager'
 import type { ReportArgs } from '../core/managers/reportManager'
+import type { ChannelStats } from '../core/managers/statsManager'
 import type { BotCommand, CallbackAnswer, InlineResult } from '../core/managers/botsManager'
 import type { StickerSet, Sticker, SavedGif, GifPage } from '../core/managers/stickersManager'
 import type { IVArticle } from '../core/managers/ivManager'
@@ -66,6 +68,14 @@ export interface Managers {
     listPhotos(userId: number): Promise<import('../core/managers/profileManager').ProfilePhoto[]>
     deletePhoto(photoId: number): Promise<void>
   }
+  premium: {
+    checkout(
+      plan: import('../core/premium/plans').PremiumPlanId,
+      card: import('../core/premium/card').CardInput,
+    ): Promise<{ user: User; subscription: import('../core/managers/premiumManager').PremiumSubscription }>
+    getSubscription(): Promise<import('../core/managers/premiumManager').PremiumSubscription | null>
+    cancelSubscription(): Promise<import('../core/managers/premiumManager').PremiumSubscription>
+  }
   chats: {
     listDialogs(): Promise<Dialog[]>
     createPrivate(userId: number): Promise<number>
@@ -105,7 +115,7 @@ export interface Managers {
   }
   realtime: {
     start(): Promise<{ state: ConnState }>
-    sendMessage(args: { chatId: number; text: string; entities?: MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; replyQuoteText?: string | null; replyQuoteOffset?: number | null; mediaId?: number | null; type?: string; groupedId?: string; geo?: { lat: number; lng: number; title?: string; address?: string; livePeriod?: number; heading?: number }; contactUserId?: number; threadRootId?: number | null; encBody?: string; ttlSeconds?: number | null; silent?: boolean; effect?: string | null }): Promise<{ ok: boolean }>
+    sendMessage(args: { chatId: number; text: string; entities?: MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; replyQuoteText?: string | null; replyQuoteOffset?: number | null; mediaId?: number | null; type?: string; groupedId?: string; geo?: { lat: number; lng: number; title?: string; address?: string; livePeriod?: number; heading?: number }; contactUserId?: number; threadRootId?: number | null; encBody?: string; ttlSeconds?: number | null; silent?: boolean; effect?: string | null; paidMediaPrice?: number | null }): Promise<{ ok: boolean }>
     markRead(args: { chatId: number; upToSeq: number }): Promise<{ ok: boolean }>
     markMediaRead(args: { chatId: number; msgId: number }): Promise<{ ok: boolean }>
     sendTyping(args: { chatId: number; action?: TypingAction }): Promise<{ ok: boolean }>
@@ -217,6 +227,10 @@ export interface Managers {
     add(input: AddContactInput): Promise<Contact>
     list(): Promise<Contact[]>
     del(contactId: number): Promise<void>
+    setPhoto(contactId: number, mediaId: number): Promise<{ url: string }>
+    clearPhoto(contactId: number): Promise<void>
+    suggestPhoto(contactId: number, mediaId: number): Promise<void>
+    acceptPhotoSuggestion(msgId: number): Promise<void>
   }
   privacy: {
     rules(): Promise<PrivacyRule[]>
@@ -228,6 +242,9 @@ export interface Managers {
     autoDelete(): Promise<number>
     setAutoDelete(period: number): Promise<void>
     setChatAutoDelete(chatId: number, period: number): Promise<void>
+  }
+  chatThemes: {
+    setChatTheme(chatId: number, themeId: string): Promise<void>
   }
   drafts: {
     list(): Promise<Draft[]>
@@ -251,9 +268,20 @@ export interface Managers {
     profileGifts(userId: number): Promise<GiftInfo[]>
     convert(giftId: number): Promise<number>
     setHidden(giftId: number, hidden: boolean): Promise<void>
+    unlockPaidMedia(msgId: number): Promise<{ message: Message; balance: number }>
+  }
+  boosts: {
+    status(chatId: number): Promise<BoostStatus>
+    boost(chatId: number): Promise<BoostStatus>
+    createGiveaway(chatId: number, a: CreateGiveawayArgs): Promise<Message>
+    participateGiveaway(id: number): Promise<Giveaway>
+    getGiveaway(id: number): Promise<Giveaway>
   }
   report: {
     report(a: ReportArgs): Promise<void>
+  }
+  stats: {
+    getChannelStats(chatId: number): Promise<ChannelStats>
   }
   bots: {
     commands(botId: number): Promise<BotCommand[]>

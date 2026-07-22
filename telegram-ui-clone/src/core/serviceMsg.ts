@@ -11,7 +11,8 @@ interface ServiceAction {
 }
 
 // Тексты — как в официальном ru-паке Telegram (ActionCreateGroup/ActionAddUser/…).
-export function serviceMsgText(raw: string): string {
+// out — сообщение отправлено текущим пользователем (для формулировок «Вы …»).
+export function serviceMsgText(raw: string, out?: boolean): string {
   if (!raw.startsWith('{')) return raw // локальные сервисные строки (уже готовый текст)
   let a: ServiceAction
   try {
@@ -22,6 +23,11 @@ export function serviceMsgText(raw: string): string {
   const actor = a.actor || 'Пользователь'
   const user = a.user || 'пользователя'
   switch (a.action) {
+    // Предложение фото профиля (tweb messageActionSuggestProfilePhoto).
+    case 'suggest_photo':
+      return out
+        ? `Вы предложили установить это фото профиля`
+        : `${actor} предлагает вам установить это фото профиля`
     case 'group_create': return `${actor} создал(а) группу`
     case 'add_user': return `${actor} добавил(а) ${user}`
     case 'kick_user': return `${actor} удалил(а) ${user}`

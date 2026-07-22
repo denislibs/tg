@@ -31,6 +31,7 @@ export interface ConvMsg {
     | 'geo'
     | 'contact'
     | 'gift'
+    | 'giveaway'
   out?: boolean
   sender?: string
   senderId?: number // backend user id of the sender (real group chats) — for "open chat"
@@ -50,6 +51,9 @@ export interface ConvMsg {
   mediaUnread?: boolean // голосовое/кружок не прослушано получателем (точка у обеих сторон)
   deleted?: boolean
   forwardFrom?: { name: string; color?: string } // "Переслано от X"
+  // Предложение фото профиля (service-сообщение suggest_photo): у получателя под
+  // превью — кнопка «Установить фото»; accepted скрывает её на всех устройствах.
+  photoSuggestion?: { accepted: boolean }
   reply?: { name: string; text: string; entities?: MessageEntity[]; color?: string; seq?: number; mediaId?: number; mediaType?: string; quote?: boolean }
   duration?: string // voice message length, e.g. "0:14"
   waveform?: number[] // voice waveform bar heights (0..1)
@@ -63,12 +67,15 @@ export interface ConvMsg {
   mediaDuration?: number
   mediaSize?: number
   mediaName?: string
+  // платное медиа (Telegram paid media): цена в звёздах + заблокировано ли для зрителя
+  paidMedia?: { price: number; locked: boolean }
   media?: MediaItem // single photo/video placeholder
   album?: MediaItem[] // album grid (2–10)
   groupedId?: string // медиагруппа (Telegram grouped_id) — подряд идущие с одним id рендерятся одним грид-баблом
   localUrl?: string // object-URL локального файла — мгновенное превью исходящего медиа во время аплоада
   albumItems?: ConvMsg[] // собранные элементы альбома (только у сводного ConvMsg type 'album')
   poll?: import('./core/models').Poll // опрос (type 'poll')
+  giveaway?: import('./core/models').Giveaway // розыгрыш (type 'giveaway')
   gift?: import('./core/managers/starsManager').GiftInfo // подарок (type 'gift')
   replyMarkup?: import('./core/managers/botsManager').ReplyMarkup // inline-клавиатура сообщения бота
   videoDuration?: string // overlay on video / round video
@@ -126,6 +133,7 @@ export interface Chat {
   archived?: boolean // убран в «Архив»
   isForum?: boolean // темы (форум-группа): вместо ленты — список топиков
   autoDeletePeriod?: number // период автоудаления сообщений (сек, 0/undefined — выкл)
+  themeId?: string // id темы оформления чата (chatThemes.ts); undefined — тема не задана
   selected?: boolean
   unread?: number
   unreadMentions?: number // непрочитанные упоминания → отдельный бейдж «@»
