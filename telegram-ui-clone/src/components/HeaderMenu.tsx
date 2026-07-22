@@ -34,9 +34,11 @@ interface Props {
   onBoost?: () => void
   /** открыть попап создания розыгрыша (владелец канала) */
   onCreateGiveaway?: () => void
+  /** открыть попап настроек RTMP-трансляции (владелец канала) */
+  onStartStream?: () => void
 }
 
-export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddMember, onSelectMessages, onAddContact, onDeleteChat, onClearHistory, onChangeTheme, onBoost, onCreateGiveaway }: Props) {
+export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddMember, onSelectMessages, onAddContact, onDeleteChat, onClearHistory, onChangeTheme, onBoost, onCreateGiveaway, onStartStream }: Props) {
   const t = useT()
   const managers = useManagers()
   const { start: startCall } = useCall()
@@ -166,7 +168,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
       { icon: <TgIcon name="timer" size={20} />, label: 'Auto-delete', submenu: true },
       ...searchItems,
       muteItem,
-      { icon: <TgIcon name="livestream" size={20} />, label: 'Live Stream' },
+      { icon: <TgIcon name="livestream" size={20} />, label: 'Live Stream', onClick: onStartStream ? () => { onStartStream(); close() } : undefined },
       { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
       { icon: <TgIcon name="gift" size={20} />, label: 'Send a Gift' },
       { icon: <TgIcon name="boost" size={20} />, label: 'Boost Channel', onClick: onBoost ? () => { onBoost(); close() } : undefined },

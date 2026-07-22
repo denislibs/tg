@@ -28,6 +28,7 @@ export const RT = {
   balanceUpdate: 'rt:balance_update',
   paidMediaUnlock: 'rt:paid_media_unlock',
   groupCall: 'rt:group_call',
+  livestream: 'rt:livestream',
   botCallbackAnswer: 'rt:bot_callback_answer',
   geoLiveUpdate: 'rt:geo_live_update',
   webPageUpdate: 'rt:web_page_update',

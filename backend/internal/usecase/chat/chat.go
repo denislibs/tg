@@ -32,6 +32,8 @@ type Interactor struct {
 	scheduled    ScheduledRepo
 	topics       TopicRepo
 	groupCalls   GroupCallStore
+	livestreams  LivestreamRepo
+	rtmpURL      string
 	stars        StarsRepo
 	paidMedia    PaidMediaRepo
 	starReaction StarReactionRepo
@@ -99,6 +101,13 @@ func (i *Interactor) SetTopics(t TopicRepo) { i.topics = t }
 
 // SetGroupCalls подключает стор участников групповых звонков (optional, Redis).
 func (i *Interactor) SetGroupCalls(s GroupCallStore) { i.groupCalls = s }
+
+// SetLivestreams подключает хранилище RTMP-трансляций (optional; без него → 404).
+// rtmpURL — базовый URL RTMP-сервера для OBS (админ вставляет его + stream key).
+func (i *Interactor) SetLivestreams(r LivestreamRepo, rtmpURL string) {
+	i.livestreams = r
+	i.rtmpURL = rtmpURL
+}
 
 // SetStars подключает хранилище звёзд/подарков (optional; без него → 404).
 func (i *Interactor) SetStars(s StarsRepo) { i.stars = s }

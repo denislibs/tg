@@ -1326,6 +1326,84 @@ func (h *ChatHandler) GroupCallParticipants(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, map[string]any{"participants": ids})
 }
 
+// ── RTMP-трансляции (Telegram livestream) ──
+
+// livestreamJSON сериализует состояние трансляции. Креды (rtmp_url/stream_key)
+// присутствуют, только если usecase их отдал (админ) — зрителю секрет не уходит.
+func livestreamJSON(st usecasechat.LivestreamState) map[string]any {
+	m := map[string]any{
+		"active": st.Active, "viewers": st.Viewers, "is_admin": st.IsAdmin,
+	}
+	if st.StartedAt != nil {
+		m["started_at"] = *st.StartedAt
+	}
+	if st.RTMPURL != "" {
+		m["rtmp_url"] = st.RTMPURL
+	}
+	if st.StreamKey != "" {
+		m["stream_key"] = st.StreamKey
+	}
+	return m
+}
+
+// StartLivestream — POST /chats/{chatID}/livestream/start: админ запускает эфир,
+// в ответе — креды для OBS (rtmp_url + stream_key).
+func (h *ChatHandler) StartLivestream(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	st, err := h.svc.StartLivestream(r.Context(), chatID, h.meID(r))
+	if err != nil {
+		h.mapScheduledErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, livestreamJSON(st))
+}
+
+// StopLivestream — POST /chats/{chatID}/livestream/stop: админ завершает эфир.
+func (h *ChatHandler) StopLivestream(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	if err := h.svc.StopLivestream(r.Context(), chatID, h.meID(r)); err != nil {
+		h.mapScheduledErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// LivestreamStatus — GET /chats/{chatID}/livestream: статус эфира для участника
+// (активна ли, число зрителей; креды — только админу).
+func (h *ChatHandler) LivestreamStatus(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	st, err := h.svc.LivestreamStatus(r.Context(), chatID, h.meID(r))
+	if err != nil {
+		h.mapScheduledErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, livestreamJSON(st))
+}
+
+// RevokeStreamKey — POST /chats/{chatID}/livestream/revoke_key: админ
+// перевыпускает stream key (в ответе — новые креды).
+func (h *ChatHandler) RevokeStreamKey(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	st, err := h.svc.RevokeStreamKey(r.Context(), chatID, h.meID(r))
+	if err != nil {
+		h.mapScheduledErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, livestreamJSON(st))
+}
+
 func (h *ChatHandler) Sync(w http.ResponseWriter, r *http.Request) {
 	sincePts := queryInt(r, "pts", 0)
 	d, err := h.svc.GetDifference(r.Context(), h.meID(r), sincePts)

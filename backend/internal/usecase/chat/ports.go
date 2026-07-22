@@ -373,6 +373,14 @@ type GroupCallStore interface {
 	Participants(ctx context.Context, chatID int64) ([]int64, error)
 }
 
+// LivestreamRepo персистит метаданные RTMP-трансляции чата (Telegram livestream):
+// stream key, флаг активности, время старта. Одна запись на чат. Число зрителей
+// сюда не пишется — это участники группового звонка (GroupCallStore).
+type LivestreamRepo interface {
+	Get(ctx context.Context, chatID int64) (domain.Livestream, error) // domain.ErrNotFound, если трансляции не заводили
+	Upsert(ctx context.Context, ls domain.Livestream) error
+}
+
 // TopicRepo хранит темы форум-групп.
 type TopicRepo interface {
 	Create(ctx context.Context, t domain.ForumTopic) (domain.ForumTopic, error)

@@ -57,6 +57,9 @@ import CreateGiveawayPopup from './CreateGiveawayPopup'
 import ScheduledView from './ScheduledView'
 import { useGroupCallStore } from '../stores/groupCallStore'
 import { joinGroupCall } from '../core/calls/groupCallEngine'
+import { useLivestreamStore } from '../stores/livestreamStore'
+import { watchLivestream } from '../core/calls/livestreamEngine'
+import StreamSettingsPopup from './StreamSettingsPopup'
 
 const EMPTY_IDS: number[] = []
 import { useMessagesStore } from '../stores/messagesStore'
@@ -307,6 +310,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const [createChecklistOpen, setCreateChecklistOpen] = useState(false)
   const [boostOpen, setBoostOpen] = useState(false)
   const [createGiveawayOpen, setCreateGiveawayOpen] = useState(false)
+  const [streamOpen, setStreamOpen] = useState(false)
   const [contactPickerOpen, setContactPickerOpen] = useState(false)
   const [locationPickerOpen, setLocationPickerOpen] = useState(false)
   // Запланированные сообщения: счётчик (календарик в композере) + оверлей списка
@@ -326,6 +330,17 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     if (!isRealChat || chat.type === 'private' || chat.type === 'saved') return
     void managers.messages.groupCallParticipants(numericChatId)
       .then((ids) => useGroupCallStore.getState().setActive(numericChatId, ids))
+      .catch(() => undefined)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [numericChatId, isRealChat])
+
+  // Идущая RTMP-трансляция этого чата (плашка LIVE): снимок при открытии + live
+  const livestreamActive = useLivestreamStore((st) => st.activeByChat[numericChatId] ?? false)
+  const myWatchingChat = useLivestreamStore((st) => st.watchingChatId)
+  useEffect(() => {
+    if (!isRealChat || chat.type === 'private' || chat.type === 'saved') return
+    void managers.livestream.status(numericChatId)
+      .then((st) => useLivestreamStore.getState().setActive(numericChatId, st.active))
       .catch(() => undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [numericChatId, isRealChat])
@@ -1113,6 +1128,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           onChangeTheme={isRealChat && (chat.type === 'private' || chat.type === 'group') ? () => setThemePickerOpen(true) : undefined}
           onBoost={isChannel && isRealChat ? () => setBoostOpen(true) : undefined}
           onCreateGiveaway={canCreateGiveaway ? () => setCreateGiveawayOpen(true) : undefined}
+          onStartStream={isChannel && isRealChat && owned ? () => setStreamOpen(true) : undefined}
         />
       )}
 
@@ -1189,6 +1205,17 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
         </div>
       )}
 
+      {/* Баннер идущей RTMP-трансляции (tweb topbarLive): смотреть, пока сам не смотришь */}
+      {isRealChat && !thread && livestreamActive && myWatchingChat !== numericChatId && (
+        <div className={s.groupCallBanner} onClick={() => watchLivestream(numericChatId)}>
+          <TgIcon name="livestream" size={18} color="#fff" />
+          <Text size={14} weight={600} color="#fff" style={{ flex: 1 }}>
+            {t('Live Stream')}
+          </Text>
+          <Text size={14} weight={700} color="#fff">{t('Join')}</Text>
+        </div>
+      )}
+
       {/* «Закреплённые сообщения» (tweb ChatType.Pinned): открепление последнего
           пина убирает pins → оверлей сам закрывается (tweb закрывает pinned-таб) */}
       {pinnedOpen && isRealChat && pins.length > 0 && (
@@ -1215,6 +1242,11 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       {/* Буст канала (tweb popupBoost) */}
       {boostOpen && isChannel && isRealChat && (
         <BoostPopup chatId={numericChatId} onClose={() => setBoostOpen(false)} />
+      )}
+
+      {/* Настройки RTMP-трансляции (tweb RtmpStartStreamPopup) — владелец канала */}
+      {streamOpen && isChannel && isRealChat && (
+        <StreamSettingsPopup chatId={numericChatId} active={livestreamActive} onClose={() => setStreamOpen(false)} />
       )}
 
       {/* Создание розыгрыша (tweb popupBoostsViaGifts) */}
