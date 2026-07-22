@@ -751,8 +751,8 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
 
   return (
     <CallProvider chat={chat}>
-    <div className={s.root}>
-      <div className={classNames(s.column, narrow ? s.columnNarrow : '')} style={themeStyle}>
+    <div className={s.root} style={themeStyle}>
+      <div className={classNames(s.column, narrow ? s.columnNarrow : '')}>
         {/* Тема чата: локальный фон-градиент поверх глобальных обоев (только в
             этой колонке). Рисуется под лентой (z-index ниже .scroll). */}
         {themeBg && (
