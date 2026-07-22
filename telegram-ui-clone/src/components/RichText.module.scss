@@ -20,13 +20,26 @@
   }
 }
 
-// inline custom emoji {e:😎}
+// inline animated custom emoji (tweb custom-emoji): 1.2em square box, glyph
+// fallback underneath the animated media, aligned to the text baseline
 .customEmoji {
+  position: relative;
   display: inline-block;
-  font-size: 1.3em;
   line-height: 1;
   vertical-align: -0.2em;
   margin: 0 1px;
+}
+.customEmojiGlyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  line-height: 1;
+}
+.customEmojiMedia {
+  position: absolute;
+  inset: 0;
 }
 
 // спойлер: блюр до раскрытия
