@@ -142,6 +142,12 @@ type Message struct {
 	// байты медиа клиенту не отдаются до разблокировки.
 	PaidMediaPrice  *int64
 	PaidMediaLocked bool
+	// Платная ⭐-реакция (Telegram paid/star reactions). StarReactionTotal —
+	// суммарное число звёзд на сообщении, StarReactionMine — вклад зрителя.
+	// Хранятся в отдельной таблице star_reactions, наполняются read-моделью
+	// (не колонки messages). Total==0 — платных реакций нет.
+	StarReactionTotal int64
+	StarReactionMine  int64
 }
 
 // ReplyPreview is the quoted snippet shown above a reply bubble.

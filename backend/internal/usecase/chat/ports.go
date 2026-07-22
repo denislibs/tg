@@ -233,6 +233,20 @@ type ReactionRepo interface {
 	ReactionUsers(ctx context.Context, messageID int64) ([]domain.ReactionUser, error)
 }
 
+// StarReactionRepo — платные ⭐-реакции сообщений (star_reactions). Вклад
+// пользователя накопительный (upsert), агрегат сообщения = SUM(stars).
+type StarReactionRepo interface {
+	// Add накопительно добавляет delta звёзд от userID к messageID (upsert) и
+	// обновляет флаг anonymous; возвращает новый суммарный вклад пользователя.
+	Add(ctx context.Context, messageID, userID, delta int64, anonymous bool) (int64, error)
+	// AggregatesFor батч-загружает агрегат звёзд по сообщениям (Total) + личный
+	// вклад зрителя (Mine). Сообщения без платных реакций отсутствуют в мапе.
+	AggregatesFor(ctx context.Context, messageIDs []int64, viewerID int64) (map[int64]domain.StarReactionAgg, error)
+	// TopSenders — крупнейшие отправители звёзд сообщения (по убыванию), с
+	// карточкой пользователя для отображения. Anonymous сохраняется во флаге.
+	TopSenders(ctx context.Context, messageID int64, limit int) ([]domain.StarReactionSender, error)
+}
+
 type MediaAccessRepo interface {
 	OwnerID(ctx context.Context, mediaID int64) (int64, error) // domain.ErrNotFound if absent
 	CanAccess(ctx context.Context, userID, mediaID int64) (bool, error)

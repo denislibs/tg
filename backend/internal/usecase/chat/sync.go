@@ -43,6 +43,7 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 	i.hydrateGiveaways(ctx, userID, msgs)
 	i.hydratePaidMedia(ctx, userID, msgs)
 	_ = i.hydrateReactions(ctx, userID, msgs)
+	i.hydrateStarReactions(ctx, userID, msgs)
 	var count int
 	if threadRoot != nil {
 		count, err = i.msgs.CountThread(ctx, chatID, *threadRoot)
@@ -239,6 +240,7 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 	i.hydrateGiveaways(ctx, userID, msgs)
 	i.hydratePaidMedia(ctx, userID, msgs)
 	_ = i.hydrateReactions(ctx, userID, msgs)
+	i.hydrateStarReactions(ctx, userID, msgs)
 	var count int
 	if threadRoot != nil {
 		count, err = i.msgs.CountThread(ctx, chatID, *threadRoot)

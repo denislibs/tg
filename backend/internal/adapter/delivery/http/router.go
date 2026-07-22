@@ -218,6 +218,8 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Delete("/chats/{chatID}/messages/{msgID}/reactions/{emoji}", ch.RemoveReaction)
 		pr.Get("/chats/{chatID}/messages/{msgID}/reactions", ch.ListReactions)
 		pr.Get("/chats/{chatID}/messages/{msgID}/reactions/users", ch.ReactionUsers)
+		pr.Post("/chats/{chatID}/messages/{msgID}/star_reaction", ch.SendStarReaction) // платная ⭐-реакция
+		pr.Get("/chats/{chatID}/messages/{msgID}/star_reaction", ch.GetStarReaction)
 		pr.Post("/chats/{chatID}/reactions/read", ch.ReadReactions) // T12: сброс бейджа непрочитанных реакций
 
 		// Стикеры и GIF

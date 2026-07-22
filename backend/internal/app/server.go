@@ -127,6 +127,10 @@ func registerServer(p serverParams) {
 	// отдельной таблице, медиа отдаётся получателю только после разблокировки.
 	p.ChatUC.SetPaidMedia(pgadapter.NewPaidMediaRepo(p.Pool))
 
+	// Платные ⭐-реакции (Telegram paid/star reactions): накопительный вклад в
+	// звёздах хранится отдельной таблицей, агрегат подмешивается read-моделью.
+	p.ChatUC.SetStarReactions(pgadapter.NewStarReactionsRepo(p.Pool))
+
 	// Боты: флаг is_bot + команды; демо-бот авто-отвечает в приватном чате.
 	p.ChatUC.SetBots(pgadapter.NewBotRepo(p.Pool))
 
