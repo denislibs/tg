@@ -16,6 +16,8 @@ const ru: Dict = {
   'Unlocking…': 'Разблокируем…',
   'Not enough Stars to unlock': 'Недостаточно звёзд для разблокировки',
   Paid: 'Платно',
+  // ── Предложенное фото профиля (tweb UserInfo.SetPhotoTitle) ──
+  'Set Photo': 'Установить фото',
   // ── Instant View ──
   'Instant View': 'Мгновенный просмотр',
   'Open in browser': 'Открыть в браузере',

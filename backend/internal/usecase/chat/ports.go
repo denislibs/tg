@@ -15,6 +15,20 @@ type TxManager interface {
 	WithinTx(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
+// ContactPhotoLookup reads the viewer's personal photos for contacts so the
+// dialog list can show them in place of the peer's real avatar (Telegram
+// personal_photo). Implemented by the contacts repo. Optional.
+type ContactPhotoLookup interface {
+	CustomPhotoMap(ctx context.Context, ownerID int64, contactIDs []int64) (map[int64]string, error)
+}
+
+// ProfilePhotoAdder appends a photo to a user's profile gallery and promotes it
+// to the current avatar (implemented by the auth usecase). Used when a user
+// accepts a suggested profile photo. Optional.
+type ProfilePhotoAdder interface {
+	AddProfilePhoto(ctx context.Context, userID int64, url, videoURL string) (domain.ProfilePhoto, error)
+}
+
 type ChatRepo interface {
 	FindPrivate(ctx context.Context, a, b int64) (int64, error) // domain.ErrNotFound if none
 	CreatePrivate(ctx context.Context, a, b int64) (int64, error)

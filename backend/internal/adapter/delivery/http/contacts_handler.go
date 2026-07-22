@@ -23,16 +23,17 @@ func contactJSON(c domain.Contact) map[string]any {
 		username = *c.Username
 	}
 	return map[string]any{
-		"user_id":      c.UserID,
-		"first_name":   c.FirstName,
-		"last_name":    c.LastName,
-		"note":         c.Note,
-		"share_phone":  c.SharePhone,
-		"username":     username,
-		"avatar_url":   c.AvatarURL,
-		"phone":        c.Phone,
-		"display_name": c.DisplayName,
-		"created_at":   c.CreatedAt,
+		"user_id":          c.UserID,
+		"first_name":       c.FirstName,
+		"last_name":        c.LastName,
+		"note":             c.Note,
+		"share_phone":      c.SharePhone,
+		"username":         username,
+		"avatar_url":       c.AvatarURL,
+		"phone":            c.Phone,
+		"display_name":     c.DisplayName,
+		"has_custom_photo": c.HasCustomPhoto,
+		"created_at":       c.CreatedAt,
 	}
 }
 

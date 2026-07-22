@@ -5,7 +5,8 @@
 // each bubble to the memoized <MessageRow>. Because MessageRow is memo'd and the
 // ConvMsg refs are stable, appending a message re-renders only the new row (plus
 // the previous-last row whose group tail flips), not the whole list.
-import { memo, useRef, type ReactNode } from 'react'
+import { memo, useRef, useState, type ReactNode } from 'react'
+import { useManagers } from '../../core/hooks/useManagers'
 import Avatar from '../../shared/ui/Avatar'
 import CommentsBar from '../CommentsBar'
 import { peerColor } from '../peerColor'
@@ -188,10 +189,14 @@ function ChatFeed({
 
     if (m.type === 'service') {
       flushGroup()
+      // Предложение фото профиля: получателю (не out, не принято) под превью —
+      // кнопка «Установить фото» (tweb bubble-service-media-button).
+      const canAccept = m.photoSuggestion != null && !m.out && !m.photoSuggestion.accepted && m.id != null
       body().push(
         <div key={k} className={s.service}>
           <div className={`${s.pill} ${s.serviceMsg}`}>{m.text}</div>
           {m.mediaId != null && <ServicePhoto mediaId={m.mediaId} onOpen={feedFns.openLightbox} />}
+          {canAccept && <AcceptSuggestButton msgId={m.id!} />}
         </div>,
       )
       return
@@ -283,6 +288,29 @@ function ServicePhoto({ mediaId, onOpen }: { mediaId: number; onOpen: FeedFns['o
     >
       <img src={mediaContentUrl(mediaId)} alt="" />
     </div>
+  )
+}
+
+// Кнопка «Установить фото» под предложенным фото профиля (tweb
+// bubble-service-media-button). Принятие ставит фото аватаром получателя; статус
+// прилетает через edit_message и прячет кнопку на всех устройствах.
+function AcceptSuggestButton({ msgId }: { msgId: number }) {
+  const t = useT()
+  const managers = useManagers()
+  const [busy, setBusy] = useState(false)
+  const accept = async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      await managers.contacts.acceptPhotoSuggestion(msgId)
+    } catch {
+      setBusy(false)
+    }
+  }
+  return (
+    <button className={s.serviceButton} onClick={accept} disabled={busy}>
+      {t('Set Photo')}
+    </button>
   )
 }
 

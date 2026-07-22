@@ -330,6 +330,13 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 			pr.Post("/contacts", coh.Add)
 			pr.Get("/contacts", coh.List)
 			pr.Delete("/contacts/{userID}", coh.Delete)
+
+			// Личное фото контакта (только у владельца) + предложение фото профиля.
+			cph := NewContactPhotoHandler(contactsUC, chatUC)
+			pr.Put("/contacts/{userID}/photo", cph.SetCustomPhoto)
+			pr.Delete("/contacts/{userID}/photo", cph.ClearCustomPhoto)
+			pr.Post("/contacts/{userID}/suggest_photo", cph.SuggestPhoto)
+			pr.Post("/photo_suggestions/{id}/accept", cph.AcceptSuggestion)
 		}
 
 		// ICE-конфиг для звонков (STUN + эфемерные TURN-креды)

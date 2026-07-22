@@ -21,4 +21,7 @@ type Contact struct {
 	AvatarURL   string
 	Phone       string
 	DisplayName string
+	// HasCustomPhoto — у владельца задано личное фото этого контакта (AvatarURL
+	// уже подменён им). Позволяет UI показать «Изменить»/«Сбросить» фото.
+	HasCustomPhoto bool
 }

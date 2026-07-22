@@ -83,7 +83,7 @@ function countLabel(tab: string, n: number, isChannel: boolean): string {
 // высота шапки панели — sticky-отступ табов и порог header-filled (tweb 3.5rem)
 const HEADER_H = 56
 
-export default function UserInfoPanel({ chat, onClose, onOpenPeer, onChatCreated, canAddMembers }: { chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void; onChatCreated?: (chatId: number) => void; canAddMembers?: boolean }) {
+export default function UserInfoPanel({ chat, onClose, onOpenPeer, onChatCreated, canAddMembers, onEditContact }: { chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void; onChatCreated?: (chatId: number) => void; canAddMembers?: boolean; onEditContact?: () => void }) {
   const t = useT()
   const narrow = useMediaQuery('(max-width:900px)')
   const managers = useManagers()
@@ -463,6 +463,13 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onChatCreated
           </div>
           {(isGroup || isChannel) && (
             <IconButton onClick={() => setEditing(true)} color={overPhoto ? '#fff' : 'var(--tg-textSecondary)'}>
+              <TgIcon name="edit" />
+            </IconButton>
+          )}
+          {/* Приватный чат: карандаш открывает экран «Изменить контакт»
+              (редактируемые поля живут там, инфо-панель — только просмотр). */}
+          {isUser && peerId !== meId && onEditContact && (
+            <IconButton onClick={onEditContact} color={overPhoto ? '#fff' : 'var(--tg-textSecondary)'}>
               <TgIcon name="edit" />
             </IconButton>
           )}
