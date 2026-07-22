@@ -16,7 +16,8 @@ type StarGift struct {
 
 // GiftInfo — выданный подарок (savedStarGift): экземпляр StarGift, полученный
 // пользователем. From — кто подарил (nil у анонимного/системного). Hidden —
-// скрыт из профиля, Converted — обменян на звёзды. Read-модель для зрителя.
+// скрыт из профиля, Converted — обменян на звёзды. Date — когда подарен
+// (RFC3339). Read-модель для зрителя.
 type GiftInfo struct {
 	ID           int64    `json:"id"`
 	Gift         StarGift `json:"gift"`
@@ -27,4 +28,5 @@ type GiftInfo struct {
 	Hidden       bool     `json:"hidden"`
 	Converted    bool     `json:"converted"`
 	ConvertStars int64    `json:"convert_stars"`
+	Date         string   `json:"date,omitempty"`
 }

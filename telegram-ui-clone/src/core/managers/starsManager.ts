@@ -25,6 +25,8 @@ export interface GiftInfo {
   hidden: boolean
   converted: boolean
   convertStars: number
+  /** когда подарен (ISO), '' если бэкенд не прислал */
+  date: string
 }
 
 interface RawGift {
@@ -47,6 +49,7 @@ export interface RawGiftInfo {
   hidden: boolean
   converted: boolean
   convert_stars: number
+  date?: string
 }
 
 const mapGift = (g: RawGift): StarGift => ({
@@ -59,6 +62,7 @@ export const mapGiftInfo = (g: RawGiftInfo): GiftInfo => ({
   fromId: g.from_id ?? null, fromName: g.from_name ?? '',
   message: g.message ?? '', anonymous: g.anonymous,
   hidden: g.hidden, converted: g.converted, convertStars: g.convert_stars,
+  date: g.date ?? '',
 })
 
 export function newStarsManager({ rest }: { rest: Pick<RestClient, 'get' | 'post'> }) {
