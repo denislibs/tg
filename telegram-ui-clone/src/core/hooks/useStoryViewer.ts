@@ -33,6 +33,9 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
   showViewers: boolean
   setShowViewers: (v: boolean) => void
   viewers: Viewer[] | null
+  showStats: boolean
+  openStats: () => void
+  closeStats: () => void
   next: () => void
   prev: () => void
   openViewers: () => void
@@ -54,6 +57,9 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
   const [isVideo, setIsVideo] = useState(false)
   const [showViewers, setShowViewers] = useState(false)
   const [viewers, setViewers] = useState<Viewer[] | null>(null)
+  // Оверлей «Статистика истории» (только своя история). Пока открыт — прогресс
+  // авто-перехода стоит на паузе, чтобы история не сменилась под панелью.
+  const [showStats, setShowStats] = useState(false)
   // Пауза авто-прогресса (Space) — таймер сегмента замирает, видео встаёт.
   const [paused, setPaused] = useState(false)
 
@@ -124,6 +130,16 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
     void managers.stories.viewers(story.id).then(setViewers)
   }
 
+  const openStats = () => {
+    if (!story) return
+    setPaused(true)
+    setShowStats(true)
+  }
+  const closeStats = () => {
+    setShowStats(false)
+    setPaused(false)
+  }
+
   const bg = group ? gradientFor(group.author.id) : ''
 
   return {
@@ -137,6 +153,9 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
     showViewers,
     setShowViewers,
     viewers,
+    showStats,
+    openStats,
+    closeStats,
     next,
     prev,
     openViewers,

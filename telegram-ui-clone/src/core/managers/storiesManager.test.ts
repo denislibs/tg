@@ -100,4 +100,18 @@ describe('StoriesManager', () => {
     await mgr.del(42)
     expect(calls[0]).toEqual({ method: 'DELETE', path: '/stories/42' })
   })
+
+  it('stats GETs /stories/:id/stats and maps snake->camel', async () => {
+    const { rest, calls } = fakeRest({ views: 12, views_by_day: [{ date: '2026-01-02', value: 12 }] })
+    const mgr = newStoriesManager({ rest })
+    const stats = await mgr.stats(42)
+    expect(calls[0]).toEqual({ method: 'GET', path: '/stories/42/stats' })
+    expect(stats).toEqual({ views: 12, viewsByDay: [{ date: '2026-01-02', value: 12 }] })
+  })
+
+  it('stats tolerates a missing series array', async () => {
+    const { rest } = fakeRest({ views: 0 })
+    const mgr = newStoriesManager({ rest })
+    expect(await mgr.stats(1)).toEqual({ views: 0, viewsByDay: [] })
+  })
 })

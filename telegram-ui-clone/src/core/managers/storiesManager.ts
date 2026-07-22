@@ -4,6 +4,12 @@ import type { RestClient } from '../net/restClient'
 export interface StoryItem { id: number; mediaId: number; caption: string; createdAt: string; viewed: boolean }
 export interface StoryGroup { author: { id: number; displayName: string; avatarUrl: string }; stories: StoryItem[] }
 
+// StatPoint — точка временного ряда: сутки (YYYY-MM-DD) + значение.
+export interface StoryStatPoint { date: string; value: number }
+// StoryStats — статистика истории (аналог tweb stats.getStoryStats): всего
+// просмотров + ряд просмотров по дням. Реакций/пересылок у историй нет.
+export interface StoryStats { views: number; viewsByDay: StoryStatPoint[] }
+
 export function newStoriesManager({ rest }: { rest: Pick<RestClient, 'get' | 'post' | 'del'> }) {
   return {
     async feed(): Promise<StoryGroup[]> {
@@ -26,6 +32,10 @@ export function newStoriesManager({ rest }: { rest: Pick<RestClient, 'get' | 'po
     async viewers(id: number): Promise<{ id: number; displayName: string; avatarUrl: string }[]> {
       const r = await rest.get<{ viewers: { id: number; display_name: string; avatar_url: string }[] }>(`/stories/${id}/viewers`)
       return (r.viewers ?? []).map((v) => ({ id: v.id, displayName: v.display_name, avatarUrl: v.avatar_url }))
+    },
+    async stats(id: number): Promise<StoryStats> {
+      const r = await rest.get<{ views: number; views_by_day: StoryStatPoint[] }>(`/stories/${id}/stats`)
+      return { views: r.views, viewsByDay: r.views_by_day ?? [] }
     },
     async del(id: number): Promise<void> { await rest.del(`/stories/${id}`) },
   }

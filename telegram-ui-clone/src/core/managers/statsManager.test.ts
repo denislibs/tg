@@ -39,3 +39,36 @@ describe('StatsManager.getChannelStats', () => {
     expect(s.topPosts).toEqual([])
   })
 })
+
+describe('StatsManager.getPostStats', () => {
+  it('GETs /chats/{id}/messages/{mid}/stats and maps snake_case to camelCase', async () => {
+    const get = vi.fn(async () => ({
+      views: 120,
+      forwards: 4,
+      reactions_total: 8,
+      reactions: [{ emoji: '❤️', count: 5 }, { emoji: '👍', count: 3 }],
+      views_by_day: [{ date: '2026-01-02', value: 50 }],
+    }))
+    const rest = { get } as unknown as Pick<RestClient, 'get'>
+    const mgr = newStatsManager({ rest })
+
+    const s = await mgr.getPostStats(42, 7)
+
+    expect(get).toHaveBeenCalledWith('/chats/42/messages/7/stats')
+    expect(s.views).toBe(120)
+    expect(s.forwards).toBe(4)
+    expect(s.reactionsTotal).toBe(8)
+    expect(s.reactions).toEqual([{ emoji: '❤️', count: 5 }, { emoji: '👍', count: 3 }])
+    expect(s.viewsByDay).toEqual([{ date: '2026-01-02', value: 50 }])
+  })
+
+  it('tolerates missing arrays', async () => {
+    const get = vi.fn(async () => ({ views: 0, forwards: 0, reactions_total: 0 }))
+    const rest = { get } as unknown as Pick<RestClient, 'get'>
+    const mgr = newStatsManager({ rest })
+
+    const s = await mgr.getPostStats(1, 2)
+    expect(s.reactions).toEqual([])
+    expect(s.viewsByDay).toEqual([])
+  })
+})

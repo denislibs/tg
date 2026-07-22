@@ -565,6 +565,11 @@ const ru: Dict = {
   'Member growth': 'Рост участников',
   'Views by day': 'Просмотры по дням',
   'Posts by day': 'Посты по дням',
+  // ── Статистика поста/истории (tweb messageStatistics / storyStatistics) ──
+  'Post statistics': 'Статистика поста',
+  'Story statistics': 'Статистика истории',
+  Views: 'Просмотры',
+  Forwards: 'Пересылки',
   'New Topic': 'Новая тема',
   'Create Topic': 'Создать тему',
   'Topic Name': 'Название темы',
