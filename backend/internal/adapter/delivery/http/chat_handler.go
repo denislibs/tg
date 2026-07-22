@@ -438,6 +438,35 @@ func (h *ChatHandler) Read(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// ReadDate — GET /chats/{chatID}/messages/{msgID}/read_date: когда получатель
+// прочитал исходящее сообщение в приватном чате (tweb getOutboxReadDate).
+// 403 YOUR_PRIVACY_RESTRICTED — read-time скрыт (взаимность); 404 — read-date
+// недоступна (не приватный/не исходящее/ещё не прочитано) → клиент прячет строку.
+func (h *ChatHandler) ReadDate(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	msgID, ok := pathInt(w, r, "msgID")
+	if !ok {
+		return
+	}
+	at, err := h.svc.OutboxReadDate(r.Context(), chatID, msgID, h.meID(r))
+	if errors.Is(err, domain.ErrForbidden) {
+		writeError(w, http.StatusForbidden, "YOUR_PRIVACY_RESTRICTED")
+		return
+	}
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "no read date")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "read date failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"read_at": at.UTC().Format(time.RFC3339)})
+}
+
 // ReadReactions clears the caller's unread-reactions badge for a chat
 // (POST /chats/{chatID}/reactions/read; Telegram readReactions) without moving
 // the read horizon.

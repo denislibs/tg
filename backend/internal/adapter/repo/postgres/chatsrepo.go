@@ -334,13 +334,38 @@ func (r *ChatsRepo) CurrentReadSeq(ctx context.Context, chatID, userID int64) (i
 	return cur, err
 }
 
-// SetRead sets a member's last_read_seq and unread_count.
+// SetRead sets a member's last_read_seq and unread_count. last_read_at is bumped
+// to now() only when the horizon actually advances (seq > old last_read_seq), so
+// the read-date reflects when the last message was read, not every chat re-open.
 func (r *ChatsRepo) SetRead(ctx context.Context, chatID, userID, seq int64, unread int) error {
 	q := querier(ctx, r.pool)
 	_, err := q.Exec(ctx,
-		`UPDATE chat_members SET last_read_seq=$3, unread_count=$4
-		 WHERE chat_id=$1 AND user_id=$2`, chatID, userID, seq, unread)
+		`UPDATE chat_members
+		    SET last_read_at = CASE WHEN $3 > last_read_seq THEN now() ELSE last_read_at END,
+		        last_read_seq = $3,
+		        unread_count = $4
+		  WHERE chat_id=$1 AND user_id=$2`, chatID, userID, seq, unread)
 	return err
+}
+
+// LastReadAt returns when userID last advanced their read horizon in the chat.
+// ok=false when last_read_at is NULL (member has never read anything).
+func (r *ChatsRepo) LastReadAt(ctx context.Context, chatID, userID int64) (time.Time, bool, error) {
+	q := querier(ctx, r.pool)
+	var at *time.Time
+	err := q.QueryRow(ctx,
+		`SELECT last_read_at FROM chat_members WHERE chat_id=$1 AND user_id=$2`,
+		chatID, userID).Scan(&at)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return time.Time{}, false, domain.ErrNotFound
+	}
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	if at == nil {
+		return time.Time{}, false, nil
+	}
+	return *at, true, nil
 }
 
 // AddMention records that userID is mentioned in a message (chat/msg/seq) and
