@@ -7,6 +7,7 @@ import { newHealthManager } from './managers/healthManager'
 import { TokenStore } from './auth/tokenStore'
 import { newAuthManager } from './managers/authManager'
 import { newProfileManager } from './managers/profileManager'
+import { newPremiumManager } from './managers/premiumManager'
 import { newChatsManager } from './managers/chatsManager'
 import { newMessagesManager } from './managers/messagesManager'
 import { newMediaManager } from './managers/mediaManager'
@@ -39,6 +40,7 @@ void tokens.load()
 const rest = new RestClient('/api', () => tokens.get())
 const auth = newAuthManager({ rest, store: tokens })
 const profile = newProfileManager({ rest })
+const premium = newPremiumManager({ rest })
 const chats = newChatsManager({ rest })
 // decryptSecret дергает secret лениво — стрелка вызывается только на fetch истории
 // (после инициализации модуля), поэтому forward-ссылка на объявленный ниже secret безопасна.
@@ -176,6 +178,7 @@ function bind(ep: Endpoint) {
     health: newHealthManager(rest),
     auth: auth as unknown as Record<string, (...a: unknown[]) => unknown>,
     profile: profile as unknown as Record<string, (...a: unknown[]) => unknown>,
+    premium: premium as unknown as Record<string, (...a: unknown[]) => unknown>,
     chats: chats as unknown as Record<string, (...a: unknown[]) => unknown>,
     messages: messages as unknown as Record<string, (...a: unknown[]) => unknown>,
     realtime: realtime as unknown as Record<string, (...a: unknown[]) => unknown>,

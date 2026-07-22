@@ -66,6 +66,14 @@ export interface Managers {
     listPhotos(userId: number): Promise<import('../core/managers/profileManager').ProfilePhoto[]>
     deletePhoto(photoId: number): Promise<void>
   }
+  premium: {
+    checkout(
+      plan: import('../core/premium/plans').PremiumPlanId,
+      card: import('../core/premium/card').CardInput,
+    ): Promise<{ user: User; subscription: import('../core/managers/premiumManager').PremiumSubscription }>
+    getSubscription(): Promise<import('../core/managers/premiumManager').PremiumSubscription | null>
+    cancelSubscription(): Promise<import('../core/managers/premiumManager').PremiumSubscription>
+  }
   chats: {
     listDialogs(): Promise<Dialog[]>
     createPrivate(userId: number): Promise<number>
