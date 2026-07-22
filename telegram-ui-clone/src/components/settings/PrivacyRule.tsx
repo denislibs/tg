@@ -76,6 +76,12 @@ export const RULE_META: Record<string, { key: PrivacyKey; title: string; caption
     caption: 'Choose who can see your birthday on your profile.',
     share: false,
   },
+  'Read Time': {
+    key: 'read_time',
+    title: 'Who can see when I read their messages?',
+    caption: "You won't see when people read your messages if you don't share when you read theirs. This setting does not affect group chats.",
+    share: true,
+  },
 }
 
 const OPTIONS: { label: string; value: PrivacyValue }[] = [

@@ -1,8 +1,15 @@
 // src/core/managers/chatsManager.ts
-import type { RestClient } from '../net/restClient'
+import { HttpError, type RestClient } from '../net/restClient'
 import { mapDialog, type Dialog, type RawDialog } from '../models'
 
 export interface ChatsDeps { rest: RestClient }
+
+// Результат read-date исходящего сообщения (tweb getOutboxReadDate):
+//  { readAt } — прочитано, время в ISO;
+//  { restricted: true } — read-time скрыт (взаимность) → 403;
+//  null — недоступно (не приватный/не исходящее/ещё не прочитано) → строку прячем.
+// Статус HTTP различаем здесь, в воркере: через RPC-границу он бы потерялся.
+export type ReadDateResult = { readAt: string } | { restricted: true } | null
 
 export function newChatsManager({ rest }: ChatsDeps) {
   return {
@@ -28,6 +35,18 @@ export function newChatsManager({ rest }: ChatsDeps) {
     // скрываются только для меня, у остальных участников остаются.
     async clearHistory(chatId: number): Promise<void> {
       await rest.post(`/chats/${chatId}/clear`, {})
+    },
+
+    // Когда получатель прочитал исходящее сообщение в приватном чате
+    // (tweb getOutboxReadDate). Ленивая подгрузка при открытии меню.
+    async getReadDate(chatId: number, msgId: number): Promise<ReadDateResult> {
+      try {
+        const r = await rest.get<{ read_at: string }>(`/chats/${chatId}/messages/${msgId}/read_date`)
+        return { readAt: r.read_at }
+      } catch (e) {
+        if (e instanceof HttpError && e.status === 403) return { restricted: true }
+        return null
+      }
     },
 
     // «Избранное» → таб «Чаты»: сохранённые сообщения, сгруппированные по
