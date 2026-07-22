@@ -166,6 +166,7 @@ func (i *Interactor) List(ctx context.Context, ownerID int64) ([]domain.Contact,
 		for idx := range list {
 			if url, ok := custom[list[idx].UserID]; ok {
 				list[idx].AvatarURL = url
+				list[idx].HasCustomPhoto = true
 			}
 		}
 	}
