@@ -52,6 +52,12 @@
 .rowActive {
   background: var(--tg-accent);
 
+  // Ховер активного ряда НЕ сбрасывает фон на серый (иначе белый текст на сером
+  // не виден) — остаётся акцентным, чуть темнее для отклика (tweb .active:hover).
+  @media (hover: hover) {
+    &:hover { background: color-mix(in srgb, var(--tg-accent) 90%, #000); }
+  }
+
   // Цвета текста/иконок активного ряда задаются через prop active в renderRow
   // (Text рендерит div — CSS-селектор span сюда не попадает). Здесь только бейдж:
   // на акцентном фоне — белый фон, акцентный текст (tweb .active .badge).
