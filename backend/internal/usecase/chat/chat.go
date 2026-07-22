@@ -39,6 +39,8 @@ type Interactor struct {
 	secret      SecretRepo
 	stickers    StickerAccess
 	preview     LinkPreviewer
+	contactPics ContactPhotoLookup
+	profilePics ProfilePhotoAdder
 	botHub      *botPendingHub
 }
 
@@ -116,6 +118,14 @@ func (i *Interactor) SetStickerAccess(s StickerAccess) { i.stickers = s }
 // SetLinkPreviewer подключает построитель превью ссылок (optional; без него
 // карточек web page под сообщениями нет).
 func (i *Interactor) SetLinkPreviewer(p LinkPreviewer) { i.preview = p }
+
+// SetContactPhotos подключает справочник личных фото контактов (optional): в
+// списке диалогов аватар приватного пира подменяется личным фото владельца.
+func (i *Interactor) SetContactPhotos(p ContactPhotoLookup) { i.contactPics = p }
+
+// SetProfilePhotos подключает добавление фото в галерею пользователя (optional):
+// нужно для принятия предложенного фото профиля.
+func (i *Interactor) SetProfilePhotos(p ProfilePhotoAdder) { i.profilePics = p }
 
 // nowMillis is the server clock used for update dates.
 func nowMillis() int64 { return time.Now().UnixMilli() }
@@ -209,7 +219,7 @@ func (i *Interactor) PostServiceMessage(ctx context.Context, toUserID int64, tex
 // privacy-правило profile_photo не разрешает показ этому пользователю.
 func (i *Interactor) ListDialogs(ctx context.Context, userID int64) ([]domain.Dialog, error) {
 	dialogs, err := i.chats.ListDialogs(ctx, userID)
-	if err != nil || i.privacy == nil {
+	if err != nil {
 		return dialogs, err
 	}
 	peerIDs := make([]int64, 0, len(dialogs))
@@ -221,13 +231,31 @@ func (i *Interactor) ListDialogs(ctx context.Context, userID int64) ([]domain.Di
 	if len(peerIDs) == 0 {
 		return dialogs, nil
 	}
-	vis, err := i.privacy.VisibleMap(ctx, userID, peerIDs, domain.PrivacyProfilePhoto)
-	if err != nil {
-		return nil, err
+	if i.privacy != nil {
+		vis, err := i.privacy.VisibleMap(ctx, userID, peerIDs, domain.PrivacyProfilePhoto)
+		if err != nil {
+			return nil, err
+		}
+		for _, d := range dialogs {
+			if d.Peer != nil && !vis[d.Peer.ID] {
+				d.Peer.AvatarURL = ""
+			}
+		}
 	}
-	for _, d := range dialogs {
-		if d.Peer != nil && !vis[d.Peer.ID] {
-			d.Peer.AvatarURL = ""
+	// Личное фото контакта: подменяем аватар приватного пира тем, что владелец
+	// задал сам (приоритет над настоящим avatar_url; поверх privacy-фильтра).
+	if i.contactPics != nil {
+		custom, err := i.contactPics.CustomPhotoMap(ctx, userID, peerIDs)
+		if err != nil {
+			return nil, err
+		}
+		for _, d := range dialogs {
+			if d.Peer == nil {
+				continue
+			}
+			if url, ok := custom[d.Peer.ID]; ok {
+				d.Peer.AvatarURL = url
+			}
 		}
 	}
 	return dialogs, nil

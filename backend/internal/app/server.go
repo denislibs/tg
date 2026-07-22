@@ -74,6 +74,16 @@ func registerServer(p serverParams) {
 	p.ChatUC.SetPrivacy(privacyUC)
 	p.ContactsUC.SetPrivacy(privacyUC)
 
+	// Личное фото контактов: тот же postgres-адаптер, что и адресная книга,
+	// реализует CustomPhotoRepo. Владелец видит это фото вместо настоящего
+	// аватара контакта — в списке контактов (contacts.List) и диалогов
+	// (chat.ListDialogs). Принятие предложенного фото профиля кладёт его в
+	// галерею получателя через auth-usecase.
+	contactPhotos := pgadapter.NewContactsRepo(p.Pool)
+	p.ContactsUC.SetCustomPhotos(contactPhotos)
+	p.ChatUC.SetContactPhotos(contactPhotos)
+	p.ChatUC.SetProfilePhotos(p.AuthUC)
+
 	// Облачные черновики: хранение per (чат, пользователь) + синк draft_update.
 	p.ChatUC.SetDrafts(pgadapter.NewDraftsRepo(p.Pool))
 

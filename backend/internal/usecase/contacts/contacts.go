@@ -22,12 +22,38 @@ var ErrPhoneRequired = errors.New("phone is required")
 type Interactor struct {
 	repo    ContactsRepo
 	privacy PrivacyChecker
+	photos  CustomPhotoRepo
 }
 
 func New(repo ContactsRepo) *Interactor { return &Interactor{repo: repo} }
 
 // SetPrivacy подключает фильтр видимости телефонов (optional).
 func (i *Interactor) SetPrivacy(p PrivacyChecker) { i.privacy = p }
+
+// SetCustomPhotos подключает хранилище личных фото контактов (optional).
+func (i *Interactor) SetCustomPhotos(p CustomPhotoRepo) { i.photos = p }
+
+// SetCustomPhoto задаёт личное фото контакта: url подменяет настоящий аватар
+// contactUserID в глазах ownerID (список диалогов/контактов/шапка чата). Требует
+// подключённого CustomPhotoRepo.
+func (i *Interactor) SetCustomPhoto(ctx context.Context, ownerID, contactUserID int64, url string) error {
+	if i.photos == nil {
+		return domain.ErrNotFound
+	}
+	if contactUserID == ownerID {
+		return ErrSelfContact
+	}
+	return i.photos.SetCustomPhoto(ctx, ownerID, contactUserID, url)
+}
+
+// ClearCustomPhoto сбрасывает личное фото контакта — владелец снова видит его
+// настоящий аватар.
+func (i *Interactor) ClearCustomPhoto(ctx context.Context, ownerID, contactUserID int64) error {
+	if i.photos == nil {
+		return domain.ErrNotFound
+	}
+	return i.photos.ClearCustomPhoto(ctx, ownerID, contactUserID)
+}
 
 // AddInput is the payload for saving (or editing) a contact.
 type AddInput struct {
@@ -113,20 +139,34 @@ func (i *Interactor) AddByPhone(ctx context.Context, ownerID int64, in AddByPhon
 // скрывается, когда его правило «кто видит мой номер» не разрешает показ.
 func (i *Interactor) List(ctx context.Context, ownerID int64) ([]domain.Contact, error) {
 	list, err := i.repo.List(ctx, ownerID)
-	if err != nil || i.privacy == nil || len(list) == 0 {
+	if err != nil || len(list) == 0 {
 		return list, err
 	}
 	ids := make([]int64, 0, len(list))
 	for _, c := range list {
 		ids = append(ids, c.UserID)
 	}
-	vis, err := i.privacy.VisibleMap(ctx, ownerID, ids, domain.PrivacyPhoneNumber)
-	if err != nil {
-		return nil, err
+	if i.privacy != nil {
+		vis, err := i.privacy.VisibleMap(ctx, ownerID, ids, domain.PrivacyPhoneNumber)
+		if err != nil {
+			return nil, err
+		}
+		for idx := range list {
+			if !vis[list[idx].UserID] {
+				list[idx].Phone = ""
+			}
+		}
 	}
-	for idx := range list {
-		if !vis[list[idx].UserID] {
-			list[idx].Phone = ""
+	// Личное фото: подменяем настоящий аватар контакта тем, что владелец задал сам.
+	if i.photos != nil {
+		custom, err := i.photos.CustomPhotoMap(ctx, ownerID, ids)
+		if err != nil {
+			return nil, err
+		}
+		for idx := range list {
+			if url, ok := custom[list[idx].UserID]; ok {
+				list[idx].AvatarURL = url
+			}
 		}
 	}
 	return list, nil
