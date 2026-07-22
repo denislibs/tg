@@ -24,7 +24,7 @@ func NewMessagesRepo(pool *pgxpool.Pool) *MessagesRepo { return &MessagesRepo{po
 
 // The full ordered column list every message SELECT/RETURNING uses, so the scan
 // order in scanMessage stays in sync across all queries.
-const messageCols = `id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id, edited_at, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, views, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, enc_body, ttl_seconds, destruct_at, forwards, reply_quote_text, reply_quote_offset`
+const messageCols = `id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id, edited_at, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, views, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, enc_body, ttl_seconds, destruct_at, forwards, reply_quote_text, reply_quote_offset, web_page, effect`
 
 // messageColsPrefixed returns messageCols with each column qualified by a table
 // alias (for JOINs where bare column names like chat_id would be ambiguous).
@@ -362,15 +362,31 @@ func (r *MessagesRepo) IncrementForwards(ctx context.Context, msgID int64) error
 func (r *MessagesRepo) Insert(ctx context.Context, m domain.Message) (domain.Message, error) {
 	q := querier(ctx, r.pool)
 	return scanOneMessage(q.QueryRow(ctx,
-		`INSERT INTO messages (chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, thread_root_id, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, enc_body, ttl_seconds, destruct_at, reply_quote_text, reply_quote_offset, auto_delete_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,
+		`INSERT INTO messages (chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, thread_root_id, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, enc_body, ttl_seconds, destruct_at, reply_quote_text, reply_quote_offset, effect, auto_delete_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,
 		         (SELECT CASE WHEN auto_delete_period > 0
 		                 THEN now() + make_interval(secs => auto_delete_period) END
 		            FROM chats WHERE id=$1))
 		 RETURNING `+messageCols,
 		m.ChatID, m.Seq, m.SenderID, m.Type, m.Text, m.ReplyToID, m.ClientMsgID, m.MediaID, m.ThreadRootID,
 		m.FwdFromUserID, m.FwdFromChatID, m.FwdFromMsgID, m.FwdDate, m.FwdFromName, entitiesParam(m.Entities), m.MediaUnread, m.GroupedID, m.PollID,
-		m.GeoLat, m.GeoLng, m.ContactUserID, m.ContactName, m.ContactPhone, m.GiftID, replyMarkupParam(m.ReplyMarkup), geoMetaParam(m), m.EncBody, m.TTLSeconds, m.DestructAt, m.ReplyQuoteText, m.ReplyQuoteOffset))
+		m.GeoLat, m.GeoLng, m.ContactUserID, m.ContactName, m.ContactPhone, m.GiftID, replyMarkupParam(m.ReplyMarkup), geoMetaParam(m), m.EncBody, m.TTLSeconds, m.DestructAt, m.ReplyQuoteText, m.ReplyQuoteOffset, effectParam(m.Effect)))
+}
+
+// SetWebPage пишет серверное превью ссылки (jsonb web_page) отдельным UPDATE
+// после коммита отправки; удалённое сообщение не трогаем.
+func (r *MessagesRepo) SetWebPage(ctx context.Context, msgID int64, wp *domain.WebPagePreview) error {
+	var param any // jsonb — строкой (см. entitiesParam); nil → NULL
+	if wp != nil {
+		b, err := json.Marshal(wp)
+		if err != nil {
+			return err
+		}
+		param = string(b)
+	}
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE messages SET web_page=$2 WHERE id=$1 AND deleted_at IS NULL`, msgID, param)
+	return err
 }
 
 // ClearMediaUnread drops the media_unread flag; reports whether the row
@@ -643,6 +659,14 @@ type scanner interface {
 // entitiesParam encodes message entities for the jsonb column: nil/empty → SQL
 // NULL, otherwise the JSON text passed as a string so pgx stores it as jsonb
 // (a []byte would be encoded as bytea).
+// effectParam кодирует вид эффекта сообщения в text-колонку (пусто → NULL).
+func effectParam(effect string) any {
+	if effect == "" {
+		return nil
+	}
+	return effect
+}
+
 func entitiesParam(es []domain.MessageEntity) any {
 	if len(es) == 0 {
 		return nil
@@ -696,12 +720,17 @@ func scanMessage(s scanner) (domain.Message, error) {
 	var entitiesRaw []byte
 	var markupRaw []byte
 	var geoMetaRaw []byte
+	var webPageRaw []byte
+	var effect *string
 	err := s.Scan(&m.ID, &m.ChatID, &m.Seq, &m.SenderID, &m.Type, &m.Text,
 		&m.ReplyToID, &m.ClientMsgID, &m.MediaID, &m.CreatedAt, &deletedAt, &m.ThreadRootID,
 		&m.EditedAt, &m.FwdFromUserID, &m.FwdFromChatID, &m.FwdFromMsgID, &m.FwdDate, &m.FwdFromName, &entitiesRaw, &m.Views, &m.MediaUnread, &m.GroupedID, &m.PollID,
 		&m.GeoLat, &m.GeoLng, &m.ContactUserID, &m.ContactName, &m.ContactPhone, &m.GiftID, &markupRaw, &geoMetaRaw,
-		&m.EncBody, &m.TTLSeconds, &m.DestructAt, &m.Forwards, &m.ReplyQuoteText, &m.ReplyQuoteOffset)
+		&m.EncBody, &m.TTLSeconds, &m.DestructAt, &m.Forwards, &m.ReplyQuoteText, &m.ReplyQuoteOffset, &webPageRaw, &effect)
 	m.Deleted = deletedAt != nil
+	if effect != nil {
+		m.Effect = *effect
+	}
 	if err == nil && len(entitiesRaw) > 0 && string(entitiesRaw) != "null" {
 		_ = json.Unmarshal(entitiesRaw, &m.Entities)
 	}
@@ -716,6 +745,12 @@ func scanMessage(s scanner) (domain.Message, error) {
 		if json.Unmarshal(geoMetaRaw, &gm) == nil {
 			m.GeoTitle, m.GeoAddress = gm.Title, gm.Address
 			m.GeoLivePeriod, m.GeoHeading, m.GeoLiveStopped = gm.LivePeriod, gm.Heading, gm.Stopped
+		}
+	}
+	if err == nil && len(webPageRaw) > 0 && string(webPageRaw) != "null" {
+		var wp domain.WebPagePreview
+		if json.Unmarshal(webPageRaw, &wp) == nil {
+			m.WebPage = &wp
 		}
 	}
 	return m, err

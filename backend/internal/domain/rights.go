@@ -53,6 +53,9 @@ type ChatSettings struct {
 	ReactionsMode    string // 'all' | 'some' | 'none'
 	ReactionsAllowed []string
 	HistoryForNew    bool
+	// ChargeStars — плата за одно сообщение в звёздах (Telegram paid messages):
+	// 0 — выключено. Списывается с не-админов при отправке, начисляется владельцу.
+	ChargeStars int
 }
 
 // HasRight reports whether a (role, rights) pair grants r. Creator → always true.

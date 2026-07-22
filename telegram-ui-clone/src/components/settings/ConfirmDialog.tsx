@@ -7,17 +7,19 @@ import { useT } from '../../i18n'
 import { EASE } from '../../motion'
 import s from './ConfirmDialog.module.scss'
 
-export default function ConfirmDialog({ title, text, action, danger, onConfirm, onClose }: {
+export default function ConfirmDialog({ title, text, action, danger, zIndex, onConfirm, onClose }: {
   title: string
   text: string
   action: string
   danger?: boolean
+  /** поверх полноэкранных оверлеев (медиа-редактор и т.п.); дефолт из scss */
+  zIndex?: number
   onConfirm: () => void
   onClose: () => void
 }) {
   const t = useT()
   return createPortal(
-    <div className={s.overlay} onClick={onClose}>
+    <div className={s.overlay} style={zIndex != null ? { zIndex } : undefined} onClick={onClose}>
       <motion.div
         className={s.card}
         onClick={(e: React.MouseEvent) => e.stopPropagation()}

@@ -1,0 +1,14 @@
+{
+  "title": "Утка Утя",
+  "kind": "sticker",
+  "stickers": [
+    { "file": "1.json", "emoji": "🔍" },
+    { "file": "2.json", "emoji": "🫥" },
+    { "file": "3.json", "emoji": "🔐" },
+    { "file": "4.json", "emoji": "🔗" },
+    { "file": "5.json", "emoji": "🔑" },
+    { "file": "6.json", "emoji": "🙈" },
+    { "file": "7.json", "emoji": "📁" },
+    { "file": "8.json", "emoji": "🗂" }
+  ]
+}

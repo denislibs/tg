@@ -13,7 +13,9 @@ import type { MutableRefObject } from 'react'
 import { useEvent } from './useEvent'
 import { useVoiceRecorder } from './useVoiceRecorder'
 import { splitRich } from '../markdown'
+import { playEmojiEffect, sendEffectForText, type EmojiEffectKind } from '../effects/emojiEffects'
 import type { MessageEntity } from '../models'
+import type { GifItem } from '../gifs'
 import type { Chat } from '../../data'
 import type { MessageWindow } from './useMessageWindow'
 import type { Managers } from '../../client/bootstrap'
@@ -96,9 +98,14 @@ export function useChatSend({
 
   const replyToId = reply?.msgId ?? null
   const mkClientMsgId = (k = 0) => `c-${chat.id}-${performance.now()}-${k}-${Math.random().toString(36).slice(2)}`
-  const sendReal = (text: string, entities?: MessageEntity[], replyTo: number | null = replyToId, ttlSeconds: number | null = null, silent = false) => {
+  const sendReal = (text: string, entities?: MessageEntity[], replyTo: number | null = replyToId, ttlSeconds: number | null = null, silent = false, effect: EmojiEffectKind | null = null) => {
     const clientMsgId = mkClientMsgId()
     atBottomRef.current = true; userScrolledUpRef.current = false // sending pins to bottom
+    // Ровно один эффект-эмодзи (❤️/🎉/👍/…) → полноэкранный canvas-эффект сразу
+    // после отправки; у получателя эффект играет только по клику на бабл.
+    // Явно выбранный эффект сообщения (из send-меню) имеет приоритет и едет полем.
+    const fx = effect ?? sendEffectForText(text)
+    if (fx) playEmojiEffect(fx)
     if (chat.type === 'secret') {
       // Секретный чат: оптимистичный бабл с ПЛЕЙНТЕКСТОМ (тем же путём, что обычная
       // отправка — reconcile по clientMsgId работает как всегда), затем E2E-шифрование
@@ -111,7 +118,7 @@ export function useChatSend({
     // reply quote прикреплён к первому сообщению (там же, где и сам reply).
     const quote = replyTo != null ? reply?.quote : undefined
     win.appendOptimistic(text, meId ?? -1, clientMsgId, undefined, 'text', entities)
-    void managers.realtime.sendMessage({ chatId: numericChatId, text, entities, clientMsgId, replyToId: replyTo, replyQuoteText: quote?.text ?? null, replyQuoteOffset: quote?.offset ?? null, threadRootId, silent })
+    void managers.realtime.sendMessage({ chatId: numericChatId, text, entities, clientMsgId, replyToId: replyTo, replyQuoteText: quote?.text ?? null, replyQuoteOffset: quote?.offset ?? null, threadRootId, silent, effect: effect ?? undefined })
   }
 
   // Гео-точка из attach-меню: оптимистичный бабл сразу (координаты локальные),
@@ -133,6 +140,79 @@ export function useChatSend({
     win.appendOptimistic('', meId ?? -1, clientMsgId, undefined, 'geo', undefined, undefined, undefined, { geo })
     void managers.realtime.sendMessage({ chatId: numericChatId, text: '', clientMsgId, type: 'geo', geo, threadRootId })
     window.dispatchEvent(new Event('tg-send'))
+  }
+
+  // Стикер (пикер/саджесты): оптимистичный бабл type 'sticker' с mediaId, по WS —
+  // обычный send_message {type:'sticker', mediaId}; POST /use ведёт recent на бэке.
+  // В черновике сначала создаётся приватный чат (как voice/файлы).
+  const sendSticker = (st: { id: number; mediaId: number; emoji: string }) => {
+    if (!canType || secretLocked || chat.type === 'secret') return
+    const clientMsgId = mkClientMsgId()
+    atBottomRef.current = true; userScrolledUpRef.current = false
+    void (async () => {
+      let cid = numericChatId
+      if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
+      if (isRealChat) win.appendOptimistic('', meId ?? -1, clientMsgId, st.mediaId, 'sticker')
+      void managers.realtime.sendMessage({ chatId: cid, text: '', clientMsgId, mediaId: st.mediaId, type: 'sticker', threadRootId })
+      void managers.stickers.use(st.id).catch(() => {})
+      window.dispatchEvent(new Event('tg-send'))
+      if (draftPeerId != null) onChatCreated?.(cid)
+    })()
+  }
+
+  // GIF из вкладки пикера. Сохранённый (media наше) — оптимистичный бабл type
+  // 'video' с mediaId сразу + send_message, как стикер. Tenor — скачиваем mp4 в
+  // блоб (main-thread, как file picker), оптимистичный бабл с localUrl и кольцом
+  // прогресса (паттерн isVisual из onPickFile), аплоад → send_message type
+  // 'video'; отправленный Tenor-гиф автосохраняется в /gifs/saved (Telegram:
+  // «отправил → появился в сохранённых»).
+  const sendGif = (g: GifItem) => {
+    if (!canType || secretLocked || chat.type === 'secret') return
+    const clientMsgId = mkClientMsgId()
+    atBottomRef.current = true; userScrolledUpRef.current = false
+    if (g.mediaId != null) {
+      const mediaId = g.mediaId
+      void (async () => {
+        let cid = numericChatId
+        if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
+        if (isRealChat) {
+          win.appendOptimistic('', meId ?? -1, clientMsgId, mediaId, 'video', undefined, undefined, {
+            width: g.width, height: g.height, mime: g.mime, size: g.size, name: g.fileName,
+          })
+        }
+        void managers.realtime.sendMessage({ chatId: cid, text: '', clientMsgId, mediaId, type: 'video', threadRootId })
+        window.dispatchEvent(new Event('tg-send'))
+        if (draftPeerId != null) onChatCreated?.(cid)
+      })()
+      return
+    }
+    if (!g.mp4Url || !isRealChat) return
+    void (async () => {
+      let blob: Blob
+      try {
+        const res = await fetch(g.mp4Url!)
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        blob = await res.blob()
+      } catch {
+        return // CDN не отдал mp4 — отправлять нечего
+      }
+      const localUrl = URL.createObjectURL(blob)
+      win.appendOptimistic('', meId ?? -1, clientMsgId, undefined, 'video', undefined, undefined, {
+        localUrl, width: g.width, height: g.height, mime: 'video/mp4', size: blob.size, name: 'tenor.mp4',
+      })
+      useUploadsStore.getState().setProgress(clientMsgId, 0)
+      window.dispatchEvent(new Event('tg-send'))
+      try {
+        const mediaId = await managers.media.upload({ blob, mime: 'video/mp4', size: blob.size, width: g.width, height: g.height, fileName: 'tenor.mp4', progressId: clientMsgId })
+        useMessagesStore.getState().setOptimisticMedia(winKey(numericChatId, threadRootId), clientMsgId, mediaId)
+        void managers.realtime.sendMessage({ chatId: numericChatId, text: '', clientMsgId, mediaId, type: 'video', threadRootId })
+        void managers.stickers.saveGif(mediaId).catch(() => {})
+      } catch {
+        useMessagesStore.getState().failOptimisticByClient(clientMsgId)
+      } finally {
+        useUploadsStore.getState().clear(clientMsgId)
+      }
+    })()
   }
 
   // Контакт: в оптимистичный бабл идёт локальный снимок имени (телефон сервер
@@ -273,7 +353,7 @@ export function useChatSend({
 
   // Called by the Composer with the trimmed draft text (the Composer owns the
   // text state + clears itself afterwards); we route by chat kind / edit / reply.
-  const send = (text: string, entities?: MessageEntity[], ttlSeconds?: number | null, silent = false) => {
+  const send = (text: string, entities?: MessageEntity[], ttlSeconds?: number | null, silent = false, effect: EmojiEffectKind | null = null) => {
     if (!text || !canType || secretLocked) return
     // Edit mode: PATCH the existing message instead of sending a new one.
     if (editing && isRealChat) {
@@ -318,8 +398,9 @@ export function useChatSend({
     // Plain real chat (private/group).
     setReply(null)
     window.dispatchEvent(new Event('tg-send'))
-    // reply attaches to the first message only (Telegram behaviour)
-    parts.forEach((p, k) => sendReal(p.text, entOf(p), k === 0 ? replyToId : null, ttlSeconds ?? null, silent))
+    // reply attaches to the first message only (Telegram behaviour); эффект тоже
+    // применяется только к первому сообщению разбитого драфта.
+    parts.forEach((p, k) => sendReal(p.text, entOf(p), k === 0 ? replyToId : null, ttlSeconds ?? null, silent, k === 0 ? effect : null))
   }
 
   // Throttled outgoing typing frame (real chats); called by the Composer on each
@@ -341,6 +422,6 @@ export function useChatSend({
     onComposerTyping,
     pendingMedia, setPendingMedia, sendPendingMedia,
     openPicker, fileInputRef, pickAsFileRef,
-    sendGeo, sendContact,
+    sendGeo, sendContact, sendSticker, sendGif,
   }
 }

@@ -16,6 +16,7 @@ import { calcImageInBox } from '../../core/dom/calcImageInBox'
 import { fmtDur } from '../../core/hooks/useVoiceRecorder'
 import { useAudioStore } from '../../stores/audioStore'
 import { mediaContentUrl, mediaThumbUrl, hasMediaToken, primeMediaToken, useMediaTokenVersion } from '../../core/mediaUrl'
+import { isGifLike } from '../../core/gifs'
 import { useUploadsStore } from '../../stores/uploadsStore'
 import RadialProgress from '../RadialProgress'
 import type { MsgStatus } from '../../data'
@@ -111,6 +112,10 @@ export default function RealMediaBubble({
     const box = calcImageInBox(width || 0, height || 0, BOX_W, BOX_H)
     const lqip = blur ? `url("data:image/jpeg;base64,${blur}")` : undefined
     const isGif = mime === 'image/gif'
+    // «Гифоподобное» видео (tenor/giphy mp4 или image/gif): автоплей-цикл прямо
+    // в бабле, бейдж GIF, без play-диска (tweb wrapVideo gif-путь). Клик — лайтбокс.
+    const gifLike = isGifLike({ mime, fileName, duration })
+    const gifVideo = gifLike && isVideo
     // Гейт автозагрузки (tweb useAutoDownloadSettings → wrapPhoto autoDownloadSize):
     // GIF и видео идут по настройке «Видео», остальное — «Фото». При 0 показываем
     // blur-превью с кнопкой загрузки; клик грузит, следующий клик открывает.
@@ -123,7 +128,7 @@ export default function RealMediaBubble({
       ? localUrl
       : !tokenReady || blocked || mediaId == null
         ? ''
-        : isGif
+        : isGif || gifVideo
           ? mediaContentUrl(mediaId)
           : hasThumb ? mediaThumbUrl(mediaId) : mediaContentUrl(mediaId)
     return (
@@ -141,7 +146,22 @@ export default function RealMediaBubble({
             <div className={s.shimmer} />
           </div>
         )}
-        {displaySrc ? <img ref={imgRef} className={s.img} src={displaySrc} alt="" decoding="async" onLoad={() => setImgLoaded(true)} onError={() => { void primeMediaToken(true) }} /> : null}
+        {displaySrc ? (
+          gifVideo ? (
+            <video
+              className={s.img}
+              src={displaySrc}
+              autoPlay
+              muted
+              loop
+              playsInline
+              onLoadedData={() => setImgLoaded(true)}
+              onError={() => { void primeMediaToken(true) }}
+            />
+          ) : (
+            <img ref={imgRef} className={s.img} src={displaySrc} alt="" decoding="async" onLoad={() => setImgLoaded(true)} onError={() => { void primeMediaToken(true) }} />
+          )
+        ) : null}
         {blocked && (
           <div className={s.play}>
             <div className={s.playDisc}>
@@ -160,19 +180,19 @@ export default function RealMediaBubble({
             </div>
           </div>
         )}
-        {isGif && (
+        {gifLike && (
           <div className={s.badgeTL}>
             <Text size={11} weight={700} color="#fff" style={{ letterSpacing: '0.04em' }}>GIF</Text>
           </div>
         )}
-        {isVideo && !blocked && (
+        {isVideo && !blocked && !gifVideo && (
           <div className={s.play}>
             <div className={s.playDisc}>
               <TgIcon name="play" size={34} color="#fff" />
             </div>
           </div>
         )}
-        {isVideo && !!duration && (
+        {isVideo && !gifVideo && !!duration && (
           <div className={s.badgeTL}>
             <Text size={12} color="#fff" style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtDur(duration)}</Text>
           </div>

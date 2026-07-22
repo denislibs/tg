@@ -16,6 +16,9 @@ import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import EmojiDropdown, { useDropdownHover } from './emoji/EmojiDropdown'
 import EmojiHelper from './EmojiHelper'
+import StickersHelper, { stickerSuggestEmoji } from './StickersHelper'
+import type { Sticker } from '../core/managers/stickersManager'
+import type { GifItem } from '../core/gifs'
 import MentionsHelper from './MentionsHelper'
 import InlineResultsHelper from './InlineResultsHelper'
 import type { InlineResult } from '../core/managers/botsManager'
@@ -23,6 +26,7 @@ import type { Peer } from '../core/managers/peersManager'
 import { searchEmojisByWord } from './emoji/emojiData'
 import MarkupTooltip from './MarkupTooltip'
 import { serialize, apply as applyMarkup, entitiesToFragment, parseMarkdown } from '../core/markdown'
+import { playEmojiEffect, type EmojiEffectKind } from '../core/effects/emojiEffects'
 import type { EntityType, MessageEntity } from '../core/models'
 import { fmtDur, REC_WAVE_BARS, type VoiceRecorder } from '../core/hooks/useVoiceRecorder'
 import { EASE, DUR } from '../motion'
@@ -57,9 +61,15 @@ interface Props {
   // reply/edit/draft/channel routing; the composer just clears its draft afterwards.
   // ttlSeconds — self-destruct TTL for secret chats (null/undefined — off).
   // silent — тихая отправка (Telegram disable_notification): без push/звука у получателя.
-  onSend: (text: string, entities?: MessageEntity[], ttlSeconds?: number | null, silent?: boolean) => void
+  // effect — выбранный эффект сообщения (наш аналог Telegram message effects).
+  onSend: (text: string, entities?: MessageEntity[], ttlSeconds?: number | null, silent?: boolean, effect?: EmojiEffectKind | null) => void
   // Fired on every keystroke (parent throttles the outgoing `typing` frame).
   onTyping: () => void
+  // Отправка стикера (пикер/саджесты) — включает вкладку стикеров в дропдауне
+  // и панель саджестов по одиночному эмодзи (tweb StickersHelper).
+  onPickSticker?: (st: Sticker) => void
+  // Отправка GIF из пикера — включает вкладку GIF в дропдауне (композер, не реакции).
+  onPickGif?: (g: GifItem) => void
   onCancelReply: () => void
   onCancelEdit: () => void
   // Open the attach menu anchored to the paperclip button.
@@ -90,7 +100,25 @@ interface Props {
   // Секретный чат: показывает кнопку выбора таймера самоуничтожения (tweb secret
   // chat self-destruct). Выбранный TTL уходит третьим аргументом onSend.
   secret?: boolean
+  // Платные сообщения (Telegram paid messages): плата за сообщение в звёздах для
+  // не-админа (0/undefined — бесплатно). >0 показывает плашку над инпутом.
+  chargeStars?: number
+  // ↑ при пустом инпуте (без активных хелперов) — редактировать своё последнее
+  // сообщение (tweb ↑ = editLastMessage). Родитель ищет сообщение и ставит editing.
+  onEditLast?: () => void
+  // Ctrl/Cmd+↑ — ответить на последнее подходящее сообщение окна (tweb).
+  onReplyPrev?: () => void
 }
+
+// Выбор эффекта сообщения в send-меню: эмодзи → вид canvas-эффекта.
+const EFFECT_CHOICES: { emoji: string; kind: EmojiEffectKind }[] = [
+  { emoji: '🎉', kind: 'confetti' },
+  { emoji: '🎆', kind: 'fireworks' },
+  { emoji: '❤️', kind: 'hearts' },
+  { emoji: '👍', kind: 'thumbs' },
+  { emoji: '💩', kind: 'poop' },
+  { emoji: '🎂', kind: 'cake' },
+]
 
 // Таймер самоуничтожения для секретных чатов (tweb ttl options). null — «Выкл».
 const TTL_OPTIONS: { label: string; secs: number | null }[] = [
@@ -138,8 +166,9 @@ function placeCaretEnd(el: HTMLElement) {
 }
 
 function Composer({
-  reply, editing, rec, onSend, onTyping, onCancelReply, onCancelEdit, onOpenAttach, onPasteFiles,
-  initialDraft, onDraftChange, mentions, onInlineQuery, onPickInline, botMenuButton, onSchedule, scheduledCount, onOpenScheduled, slowmodeLeft, secret,
+  reply, editing, rec, onSend, onTyping, onPickSticker, onPickGif, onCancelReply, onCancelEdit, onOpenAttach, onPasteFiles,
+  initialDraft, onDraftChange, mentions, onInlineQuery, onPickInline, botMenuButton, onSchedule, scheduledCount, onOpenScheduled, slowmodeLeft, secret, chargeStars,
+  onEditLast, onReplyPrev,
 }: Props) {
   const slowmodeBlocked = (slowmodeLeft ?? 0) > 0
   const slowmodeText = (slowmodeLeft ?? 0) >= 60 ? `${Math.ceil((slowmodeLeft ?? 0) / 60)}м` : String(slowmodeLeft ?? 0)
@@ -256,10 +285,14 @@ function Composer({
     }
     setEmptyDraft(true)
     setLen(0)
+    setStickerEmoji(null) // пустой инпут — саджесты стикеров гаснут
     // selection is gone after clearing — tell the markup tooltip to hide
     window.getSelection()?.removeAllRanges()
     document.dispatchEvent(new Event('selectionchange'))
   }
+
+  // Выбранный эффект сообщения (send-меню); сбрасывается после отправки.
+  const [selectedEffect, setSelectedEffect] = useState<EmojiEffectKind | null>(null)
 
   // ── Планирование (tweb SendMenu → scheduleSending) ──
   const [sendMenuOpen, setSendMenuOpen] = useState(false)
@@ -289,7 +322,8 @@ function Composer({
     if (!text) return
     // Over the limit is fine — the parent splits into multiple messages
     // (tweb splitStringByLength). The counter shows how many it'll be.
-    onSend(text, entities.length ? entities : undefined, secret ? secretTtl : undefined, silent)
+    onSend(text, entities.length ? entities : undefined, secret ? secretTtl : undefined, silent, selectedEffect)
+    setSelectedEffect(null) // эффект одноразовый — сбрасываем после отправки
     setEmojiSug(null)
     setInlineSug(null)
     clearEditor()
@@ -445,6 +479,17 @@ function Composer({
         return
       }
     }
+    // Стрелка вверх (хелперы уже отработали и вышли выше, если были активны):
+    // Ctrl/Cmd+↑ — ответ на предыдущее; чистая ↑ на пустом инпуте — правка своего
+    // последнего сообщения (tweb). Модификаторы Shift/Alt не трогаем.
+    if (e.key === 'ArrowUp' && !e.shiftKey && !e.altKey) {
+      if (e.ctrlKey || e.metaKey) {
+        if (onReplyPrev) { e.preventDefault(); onReplyPrev() }
+        return
+      }
+      if (emptyDraft && onEditLast) { e.preventDefault(); onEditLast() }
+      return
+    }
     // Enter always sends; Shift+Enter adds a line (incl. inside a code block, so
     // multi-line blocks are typed with Shift+Enter — Enter never traps the draft).
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -453,6 +498,19 @@ function Composer({
       return
     }
     if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+      // Ctrl/Cmd+K — ссылка на выделенный текст (tweb createLink). text_link
+      // требует URL: спрашиваем через prompt — в композере нет отдельного
+      // link-инпута, доступного из keydown (MarkupTooltip держит своё состояние).
+      if (e.code === 'KeyK') {
+        e.preventDefault()
+        const sel = window.getSelection()
+        const root = editorRef.current
+        if (sel && sel.rangeCount && !sel.isCollapsed && root && root.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+          const url = window.prompt(t('Enter URL'))?.trim()
+          if (url) applyFmt('text_link', /^https?:\/\//i.test(url) ? url : `https://${url}`)
+        }
+        return
+      }
       const fmt = SHORTCUTS[e.code]
       if (fmt) { e.preventDefault(); applyFmt(fmt) }
     }
@@ -474,6 +532,21 @@ function Composer({
     document.execCommand('delete')
     syncEmpty()
     autosize()
+  }
+
+  // ── Стикеры-саджесты (tweb stickersHelper): в инпуте ровно один эмодзи ──
+  const [stickerEmoji, setStickerEmoji] = useState<string | null>(null)
+  const checkStickerSuggest = () => {
+    if (!onPickSticker) return
+    setStickerEmoji(stickerSuggestEmoji(editorRef.current?.textContent ?? ''))
+  }
+  const pickStickerSuggestion = (st: Sticker) => {
+    onPickSticker?.(st)
+    setStickerEmoji(null)
+    clearEditor()
+    onDraftChange?.('')
+    const ed = editorRef.current
+    if (ed) { ed.focus(); placeCaretEnd(ed) }
   }
 
   // ── Эмодзи-автокомплит (tweb emojiHelper): подсказки по слову у каретки ──
@@ -648,12 +721,23 @@ function Composer({
         {mentionSug && !inlineSug && !rec.recording && (
           <MentionsHelper peers={mentionSug.list} activeIdx={mentionSug.idx} onPick={pickMention} />
         )}
-        {emojiSug && !mentionSug && !inlineSug && !rec.recording && (
+        {emojiSug && !mentionSug && !inlineSug && !stickerEmoji && !rec.recording && (
           <EmojiHelper emojis={emojiSug.list} activeIdx={emojiSug.idx} onPick={pickEmojiSuggestion} />
+        )}
+        {onPickSticker && stickerEmoji && !mentionSug && !inlineSug && !rec.recording && (
+          <StickersHelper key={stickerEmoji} emoji={stickerEmoji} onPick={pickStickerSuggestion} />
         )}
       </AnimatePresence>
       {/* Composer container: reply section + input row in ONE box */}
       <div className={s.container}>
+        {/* Платные сообщения (Telegram paid messages): плашка о стоимости для не-админа. */}
+        {(chargeStars ?? 0) > 0 && (
+          <div className={s.paidBar}>
+            <Text size={13.5} color="var(--tg-textSecondary)">
+              {t('Each message costs')} {chargeStars} ⭐
+            </Text>
+          </div>
+        )}
         {/* Animated reply bar (inside the container) */}
         <AnimatePresence initial={false}>
           {reply && (
@@ -821,7 +905,7 @@ function Composer({
                   aria-multiline
                   // No live markdown conversion in the input (tweb keeps typed markers
                   // raw; they're parsed on send). Only the toolbar/shortcuts format live.
-                  onInput={() => { syncEmpty(); autosize(); onTyping(); checkInlineAutocomplete(); checkMentionAutocomplete(); checkEmojiAutocomplete(); onDraftChange?.(editorRef.current?.textContent ?? '') }}
+                  onInput={() => { syncEmpty(); autosize(); onTyping(); checkInlineAutocomplete(); checkMentionAutocomplete(); checkEmojiAutocomplete(); checkStickerSuggest(); onDraftChange?.(editorRef.current?.textContent ?? '') }}
                   onKeyDown={onEditorKeyDown}
                   onPaste={onPaste}
                   onDrop={onDrop}
@@ -901,6 +985,12 @@ function Composer({
                   : hasText || rec.recording ? <TgIcon name="send" /> : <TgIcon name={recordingMediaType === 'round' ? 'recordround' : 'microphone_filled'} />}
               </motion.span>
             </AnimatePresence>
+            {/* Выбран эффект сообщения — маленький эмодзи-бейдж на кнопке отправки. */}
+            {selectedEffect && hasText && (
+              <span className={s.effectBadge} aria-hidden>
+                {EFFECT_CHOICES.find((c) => c.kind === selectedEffect)?.emoji}
+              </span>
+            )}
           </motion.div>
         </div>
       </div>
@@ -925,6 +1015,26 @@ function Composer({
             onClick={() => { setSendMenuOpen(false); setScheduleOpen(true) }}
           />
         )}
+        {/* Эффект сообщения (наш аналог Telegram message effects): ряд эмодзи —
+            выбор ставит эффект для следующей отправки + короткое превью. */}
+        <div className={s.effectRow} role="group" aria-label={t('Message effect')}>
+          {EFFECT_CHOICES.map((c) => (
+            <button
+              key={c.kind}
+              type="button"
+              className={selectedEffect === c.kind ? s.effectPicked : undefined}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                const next = selectedEffect === c.kind ? null : c.kind
+                setSelectedEffect(next)
+                if (next) playEmojiEffect(next)
+                setSendMenuOpen(false)
+              }}
+            >
+              {c.emoji}
+            </button>
+          ))}
+        </div>
       </Menu>
       {scheduleOpen && <SchedulePopup onPick={submitScheduled} onClose={() => setScheduleOpen(false)} />}
 
@@ -936,6 +1046,8 @@ function Composer({
           <EmojiDropdown
             open={emojiDd.open}
             onPick={insertEmoji}
+            onPickSticker={onPickSticker}
+            onPickGif={onPickGif}
             onDelete={deleteBeforeCaret}
             onClose={emojiDd.close}
             panelProps={emojiDd.panelProps}

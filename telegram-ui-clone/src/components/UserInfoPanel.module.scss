@@ -41,14 +41,23 @@
   align-items: center;
   gap: 12px;
   padding: 0 12px;
-  background: var(--tg-sectionBackdrop);
-  transition: background-color 0.1s ease-in-out;
+  // По умолчанию шапка прозрачная (tweb .sidebar-header без .header-filled):
+  // поверх фото — белые иконки, над телом панели фон панели тот же цвет.
+  background: transparent;
+  transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
 }
 
-// при скролле до табов шапка отделяется тенью снизу (tweb .header-filled:
-// box-shadow section-box-shadow) — фон тот же, что у панели
+// при скролле до табов шапка заливается фоном панели и отделяется тенью снизу
+// (tweb .header-filled: surface background + box-shadow section-box-shadow)
 .headerFilled {
+  background: var(--tg-sectionBackdrop);
   box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.16);
+}
+
+// над развёрнутым фото: иконки/заголовок белые + лёгкая тень для читаемости
+// поверх верхнего градиента (tweb .need-white)
+.headerWhite {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 // стопка заголовков шапки: «Информация» ↔ «имя + счётчик» (tweb TransitionSlider)
@@ -118,6 +127,25 @@
   margin-bottom: 12px;
   overflow: hidden;
   transform-origin: 50% 24%; // морф-разворот из круглого аватара (центр-верх)
+  touch-action: pan-y; // вертикальный скролл тела — браузеру, горизонт — свайп
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+// дорожка фото каруселью (tweb .profile-avatars): флекс-ряд, перевод по индексу
+.avatarsTrack {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-wrap: nowrap;
+  transition: transform 0.2s ease-in-out; // tweb .2s ease-in-out
+}
+
+// один слайд карусели = вся ширина шапки (tweb .profile-avatars-avatar)
+.avatarsSlide {
+  position: relative;
+  min-width: 100%;
+  height: 100%;
 }
 
 .profilePhoto {
@@ -126,6 +154,34 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+// сегментная полоска-пейджер сверху фото (tweb .profile-avatars-tabs):
+// тонкие чёрточки с зазором, поверх верхнего градиента
+.avatarsTabs {
+  position: absolute;
+  top: 8px; // tweb .5rem
+  left: 6px; // tweb .375rem
+  right: 6px;
+  height: 2px; // tweb .125rem
+  display: flex;
+  z-index: 2;
+  pointer-events: none;
+}
+
+// одна чёрточка (tweb .profile-avatars-tab): белая, полупрозрачная; активная ярче
+.avatarsTab {
+  flex: 1 1 auto;
+  height: 100%;
+  margin: 0 2px; // tweb .125rem
+  border-radius: 4px;
+  background-color: #fff;
+  opacity: 0.2; // tweb inactive
+  transition: opacity 0.2s ease-in-out;
+}
+
+.avatarsTabActive {
+  opacity: 0.6; // tweb .active
 }
 
 // нижний градиент под именем (tweb .profile-avatars-gradient)

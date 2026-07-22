@@ -1,5 +1,6 @@
 // PinnedBar — плашка закреплённого сообщения под шапкой. top задаётся инлайн
-// (динамический offset от плеера).
+// (динамический offset от плеера). Слева — индикатор-стек пинов (tweb
+// .pinned-message-border), стили сегментов ниже.
 .bar {
   position: absolute;
   transition: top 0.22s ease;
@@ -29,6 +30,78 @@
 .body {
   flex: 1;
   min-width: 0;
-  border-left: 2px solid var(--tg-accent);
-  padding-left: 8px;
+}
+
+// ── Индикатор-стек (tweb _chatPinned.scss .pinned-message-border*) ──────────
+.border {
+  position: relative;
+  height: 40px; // 2.5rem
+  width: 3px; // .1875rem
+  flex: 0 0 auto;
+}
+// единственный пин — сплошная полоска
+.borderOne {
+  position: relative;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 40px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--tg-accent);
+}
+// >4 пинов: трек скроллится внутри 40px окна, края фейдятся в цвет плашки
+.borderMasked {
+  overflow: hidden;
+
+  &::before,
+  &::after {
+    position: absolute;
+    left: 0;
+    right: 0;
+    content: ' ';
+    display: block;
+    z-index: 1;
+    height: 6px; // .375rem
+    opacity: 0;
+    transition: opacity 0.2s ease-in-out;
+  }
+  &::before {
+    top: 0;
+    background: linear-gradient(var(--tg-bubble), transparent);
+  }
+  &::after {
+    bottom: 0;
+    background: linear-gradient(transparent, var(--tg-bubble));
+  }
+}
+.borderMaskTop::before {
+  opacity: 1;
+}
+.borderMaskBottom::after {
+  opacity: 1;
+}
+// трек: сегменты вырезаны clipPath, подложка — accent с opacity .4
+.borderWrapper {
+  color: var(--tg-accent);
+  position: relative;
+  transition: transform 0.25s ease-in-out;
+
+  &::before {
+    position: absolute;
+    content: ' ';
+    inset: 0;
+    display: block;
+    background: var(--tg-accent);
+    opacity: 0.4;
+  }
+}
+// активный сегмент
+.borderMark {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 3px;
+  background: currentColor;
+  border-radius: 3px;
+  transition: transform 0.25s ease-in-out;
 }

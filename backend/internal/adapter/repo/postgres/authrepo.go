@@ -19,12 +19,18 @@ import (
 // query that returns a full domain.User.
 const userCols = `id, phone, username, first_name, last_name, display_name, bio, birthday, avatar_url, phone_visibility, is_premium, emoji_status`
 
-// scanUser scans a row selected with userCols into a domain.User.
+// scanUser scans a row selected with userCols into a domain.User. Phone is
+// nullable (freed on account deletion), so it is scanned via a pointer and left
+// empty for a soft-deleted "Deleted Account".
 func scanUser(row pgx.Row) (domain.User, error) {
 	var u domain.User
-	err := row.Scan(&u.ID, &u.Phone, &u.Username, &u.FirstName, &u.LastName,
+	var phone *string
+	err := row.Scan(&u.ID, &phone, &u.Username, &u.FirstName, &u.LastName,
 		&u.DisplayName, &u.Bio, &u.Birthday, &u.AvatarURL, &u.PhoneVisibility,
 		&u.IsPremium, &u.EmojiStatus)
+	if phone != nil {
+		u.Phone = *phone
+	}
 	return u, err
 }
 
@@ -129,6 +135,41 @@ func (r *AuthRepo) SetUsername(ctx context.Context, id int64, username *string) 
 		return domain.User{}, domain.ErrConflict
 	}
 	return u, err
+}
+
+// PhoneInUse reports whether phone already belongs to another (non-excluded)
+// account. Soft-deleted users hold a NULL phone and never match.
+func (r *AuthRepo) PhoneInUse(ctx context.Context, phone string, excludeID int64) (bool, error) {
+	var n int
+	err := r.pool.QueryRow(ctx,
+		`SELECT count(*) FROM users WHERE phone=$1 AND id<>$2`, phone, excludeID).Scan(&n)
+	return n > 0, err
+}
+
+// UpdatePhone changes the user's phone number, mapping a uniqueness collision to
+// domain.ErrConflict (the atomic re-check against a concurrent claim).
+func (r *AuthRepo) UpdatePhone(ctx context.Context, id int64, phone string) (domain.User, error) {
+	u, err := scanUser(r.pool.QueryRow(ctx,
+		`UPDATE users SET phone=$2 WHERE id=$1 RETURNING `+userCols, id, phone))
+	if isUniqueViolation(err) {
+		return domain.User{}, domain.ErrConflict
+	}
+	return u, err
+}
+
+// SoftDelete anonymizes the account: the phone is freed (NULL), the username is
+// cleared, personal fields are reset to the "Deleted Account" placeholder and
+// deleted_at is stamped. The cloud password (2FA) is also cleared. Message rows
+// are untouched.
+func (r *AuthRepo) SoftDelete(ctx context.Context, id int64) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE users SET phone=NULL, username=NULL,
+		        first_name='Deleted', last_name='Account', display_name='Deleted Account',
+		        bio='', avatar_url='', emoji_status='',
+		        password_hash=NULL, password_hint='', recovery_email='',
+		        deleted_at=now()
+		 WHERE id=$1`, id)
+	return err
 }
 
 // SetAvatar writes the avatar URL (a /media/{id}/content path) and returns the user.
@@ -279,18 +320,22 @@ func (r *AuthRepo) Create(ctx context.Context, userID int64, name, platform, tok
 // lazily touches last_active. Returns domain.ErrNotFound if unknown.
 func (r *AuthRepo) SessionByTokenHash(ctx context.Context, tokenHash string) (domain.User, int64, error) {
 	var u domain.User
+	var phone *string
 	var deviceID int64
 	err := r.pool.QueryRow(ctx,
 		`SELECT u.id, u.phone, u.username, u.first_name, u.last_name, u.display_name,
 		        u.bio, u.birthday, u.avatar_url, u.phone_visibility, u.is_premium, u.emoji_status, d.id
 		 FROM users u JOIN devices d ON d.user_id=u.id WHERE d.token_hash=$1`,
-		tokenHash).Scan(&u.ID, &u.Phone, &u.Username, &u.FirstName, &u.LastName, &u.DisplayName,
+		tokenHash).Scan(&u.ID, &phone, &u.Username, &u.FirstName, &u.LastName, &u.DisplayName,
 		&u.Bio, &u.Birthday, &u.AvatarURL, &u.PhoneVisibility, &u.IsPremium, &u.EmojiStatus, &deviceID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.User{}, 0, domain.ErrNotFound
 	}
 	if err != nil {
 		return domain.User{}, 0, err
+	}
+	if phone != nil {
+		u.Phone = *phone
 	}
 	_, _ = r.pool.Exec(ctx, `UPDATE devices SET last_active=now() WHERE id=$1`, deviceID)
 	return u, deviceID, nil
@@ -322,6 +367,26 @@ func (r *AuthRepo) DeleteOthers(ctx context.Context, userID, keepDeviceID int64)
 	rows, err := r.pool.Query(ctx,
 		`DELETE FROM devices WHERE user_id=$1 AND id<>$2 RETURNING id, token_hash`,
 		userID, keepDeviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Device
+	for rows.Next() {
+		var d domain.Device
+		if err := rows.Scan(&d.ID, &d.TokenHash); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// DeleteAll removes every device of the user, returning the removed rows so the
+// caller can evict session caches and close sockets (account deletion).
+func (r *AuthRepo) DeleteAll(ctx context.Context, userID int64) ([]domain.Device, error) {
+	rows, err := r.pool.Query(ctx,
+		`DELETE FROM devices WHERE user_id=$1 RETURNING id, token_hash`, userID)
 	if err != nil {
 		return nil, err
 	}

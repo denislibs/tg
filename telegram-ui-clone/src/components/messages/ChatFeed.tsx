@@ -5,12 +5,13 @@
 // each bubble to the memoized <MessageRow>. Because MessageRow is memo'd and the
 // ConvMsg refs are stable, appending a message re-renders only the new row (plus
 // the previous-last row whose group tail flips), not the whole list.
-import { memo, type ReactNode } from 'react'
+import { memo, useRef, type ReactNode } from 'react'
 import Avatar from '../../shared/ui/Avatar'
 import CommentsBar from '../CommentsBar'
 import { peerColor } from '../peerColor'
 import { useLang, useT } from '../../i18n'
 import { startOfDayMs, dayLabel } from '../../core/dayLabel'
+import { mediaContentUrl, hasMediaToken, useMediaTokenVersion } from '../../core/mediaUrl'
 import MessageRow, { type FeedFns } from './MessageRow'
 import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import type { ConvMsg } from '../../data'
@@ -190,6 +191,7 @@ function ChatFeed({
       body().push(
         <div key={k} className={s.service}>
           <div className={`${s.pill} ${s.serviceMsg}`}>{m.text}</div>
+          {m.mediaId != null && <ServicePhoto mediaId={m.mediaId} onOpen={feedFns.openLightbox} />}
         </div>,
       )
       return
@@ -262,6 +264,25 @@ function ChatFeed({
         </section>
       ))}
     </>
+  )
+}
+
+// Круглая миниатюра нового фото группы под сервисной пилюлей (tweb bubble
+// service .bubble-service-media-avatar-container: аватар-кружок, клик → просмотр).
+function ServicePhoto({ mediaId, onOpen }: { mediaId: number; onOpen: FeedFns['openLightbox'] }) {
+  useMediaTokenVersion()
+  const ref = useRef<HTMLDivElement>(null)
+  if (!hasMediaToken()) return null
+  return (
+    <div
+      ref={ref}
+      className={s.servicePhoto}
+      onClick={() => ref.current && onOpen(mediaId, ref.current)}
+      role="button"
+      tabIndex={0}
+    >
+      <img src={mediaContentUrl(mediaId)} alt="" />
+    </div>
   )
 }
 

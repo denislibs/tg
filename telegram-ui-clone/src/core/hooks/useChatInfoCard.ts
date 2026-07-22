@@ -14,6 +14,7 @@ interface Card {
   myRights: number
   discussionChatId: number
   slowmodeSeconds: number
+  chargeStars: number
 }
 
 interface InfoManagers {
@@ -55,7 +56,7 @@ export function useChatInfoCard(args: {
     let alive = true
     void managers.groups.card(numericChatId).then((c) => {
       if (!alive) return
-      setCard({ type: c.type, memberCount: c.memberCount, myRole: c.myRole, myRights: c.myRights, discussionChatId: c.discussionChatId, slowmodeSeconds: c.slowmodeSeconds })
+      setCard({ type: c.type, memberCount: c.memberCount, myRole: c.myRole, myRights: c.myRights, discussionChatId: c.discussionChatId, slowmodeSeconds: c.slowmodeSeconds, chargeStars: c.chargeStars })
       if (c.type === 'group') {
         void managers.groups.members(numericChatId).then((mem) => {
           if (!alive) return

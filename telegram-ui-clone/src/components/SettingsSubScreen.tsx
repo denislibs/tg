@@ -12,6 +12,8 @@ import NotificationsSettings from './settings/NotificationsSettings'
 import ChatFoldersSettings from './folders/ChatFoldersSettings'
 import PrivacySecuritySettings from './settings/PrivacySecuritySettings'
 import DataStorageSettings from './settings/DataStorageSettings'
+import StickersSettings from './settings/StickersSettings'
+import HotkeysSettings from './settings/HotkeysSettings'
 import type { Chat } from '../data'
 
 // Rows that open a dedicated sub-screen instead of being a plain value.
@@ -60,17 +62,6 @@ const SCREENS: Record<string, SSection[]> = {
       ],
     },
   ],
-  'Stickers and Emoji': [
-    {
-      rows: [
-        { label: 'Suggest Stickers by Emoji', type: 'value', value: 'All' },
-        { label: 'Loop Animated Stickers', type: 'toggle', on: true },
-        { label: 'Suggest Emoji', type: 'toggle', on: true },
-        { label: 'Big Emoji', type: 'toggle', on: true },
-        { label: 'Dynamic Pack Order', type: 'toggle', on: true },
-      ],
-    },
-  ],
   Language: [
     {
       caption: 'Translate',
@@ -87,17 +78,6 @@ const SCREENS: Record<string, SSection[]> = {
       ],
     },
   ],
-  'Keyboard Shortcuts': [
-    {
-      rows: [
-        { label: 'Search', type: 'value', value: '⌘ K' },
-        { label: 'New Group', type: 'value', value: '⌘ ⇧ G' },
-        { label: 'Next Chat', type: 'value', value: '⌘ ↓' },
-        { label: 'Previous Chat', type: 'value', value: '⌘ ↑' },
-        { label: 'Settings', type: 'value', value: '⌘ ,' },
-      ],
-    },
-  ],
 }
 
 export function hasSubScreen(title: string) {
@@ -110,7 +90,9 @@ export function hasSubScreen(title: string) {
     title === 'Notifications and Sounds' ||
     title === 'Chat Folders' ||
     title === 'Privacy and Security' ||
-    title === 'Data and Storage'
+    title === 'Data and Storage' ||
+    title === 'Stickers and Emoji' ||
+    title === 'Keyboard Shortcuts'
   )
 }
 
@@ -123,7 +105,6 @@ const NATIVE_LANGUAGE_NAMES = new Set([
   'Deutsch',
   'Français',
 ])
-const KEYBOARD_SHORTCUTS = new Set(['⌘ K', '⌘ ⇧ G', '⌘ ↓', '⌘ ↑', '⌘ ,'])
 
 export default function SettingsSubScreen({ title, onBack, chats }: { title: string; onBack: () => void; chats?: Chat[] }) {
   const t = useT()
@@ -166,6 +147,10 @@ export default function SettingsSubScreen({ title, onBack, chats }: { title: str
   if (title === 'Privacy and Security') return <PrivacySecuritySettings onBack={onBack} />
   // Data and Storage — реальные «Данные и память» (tweb dataAndStorage)
   if (title === 'Data and Storage') return <DataStorageSettings onBack={onBack} />
+  // Stickers and Emoji — реальные стикеры (наборы, зацикливание, поиск)
+  if (title === 'Stickers and Emoji') return <StickersSettings onBack={onBack} />
+  // Keyboard Shortcuts — статичная таблица хоткеев (tweb keyboardShortcuts)
+  if (title === 'Keyboard Shortcuts') return <HotkeysSettings onBack={onBack} />
 
   return (
     <SettingsScreen title={title} onBack={onBack} zIndex={50}>
@@ -199,11 +184,7 @@ export default function SettingsSubScreen({ title, onBack, chats }: { title: str
                 accent={r.type === 'button' && !r.danger}
                 toggle={r.type === 'toggle'}
                 checked={!!toggles[key]}
-                value={
-                  r.type === 'value'
-                    ? r.value && (KEYBOARD_SHORTCUTS.has(r.value) ? r.value : t(r.value))
-                    : undefined
-                }
+                value={r.type === 'value' ? r.value && t(r.value) : undefined}
                 chevron={isNav}
                 selected={!!selected}
               />

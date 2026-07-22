@@ -166,9 +166,9 @@ func (r *GroupRepo) Settings(ctx context.Context, chatID int64) (domain.ChatSett
 	var perms int
 	var allowed []byte
 	err := querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT default_permissions, slowmode_seconds, reactions_mode, reactions_allowed, history_for_new
+		`SELECT default_permissions, slowmode_seconds, reactions_mode, reactions_allowed, history_for_new, charge_stars
 		 FROM chats WHERE id=$1`, chatID).
-		Scan(&perms, &s.SlowmodeSeconds, &s.ReactionsMode, &allowed, &s.HistoryForNew)
+		Scan(&perms, &s.SlowmodeSeconds, &s.ReactionsMode, &allowed, &s.HistoryForNew, &s.ChargeStars)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.ChatSettings{}, domain.ErrNotFound
 	}
@@ -223,6 +223,22 @@ func (r *GroupRepo) SetHistoryForNew(ctx context.Context, chatID int64, visible 
 	_, err := querier(ctx, r.pool).Exec(ctx,
 		`UPDATE chats SET history_for_new=$2 WHERE id=$1`, chatID, visible)
 	return err
+}
+
+func (r *GroupRepo) SetChargeStars(ctx context.Context, chatID int64, stars int) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE chats SET charge_stars=$2 WHERE id=$1`, chatID, stars)
+	return err
+}
+
+func (r *GroupRepo) CreatorID(ctx context.Context, chatID int64) (int64, error) {
+	var id int64
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT COALESCE(creator_id,0) FROM chats WHERE id=$1`, chatID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, domain.ErrNotFound
+	}
+	return id, err
 }
 
 func (r *GroupRepo) Ban(ctx context.Context, chatID, userID, bannedBy int64) error {
@@ -340,14 +356,14 @@ func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.Ch
 		`SELECT c.id, c.type, c.title, COALESCE(c.username,''), c.about, c.photo_media_id,
 		        COALESCE(c.creator_id,0), c.member_count, c.is_public,
 		        COALESCE(c.discussion_chat_id,0),
-		        c.default_permissions, c.slowmode_seconds, c.reactions_mode, c.reactions_allowed, c.history_for_new,
+		        c.default_permissions, c.slowmode_seconds, c.reactions_mode, c.reactions_allowed, c.history_for_new, c.charge_stars,
 		        m.role, m.rights, (m.muted OR (m.muted_until IS NOT NULL AND m.muted_until > now()))
 		   FROM chats c
 		   LEFT JOIN chat_members m ON m.chat_id=c.id AND m.user_id=$2
 		  WHERE c.id=$1`,
 		chatID, viewerID).Scan(&c.ID, &c.Type, &c.Title, &c.Username, &c.About, &c.PhotoMediaID,
 		&c.CreatorID, &c.MemberCount, &c.IsPublic, &c.DiscussionChatID,
-		&perms, &c.Settings.SlowmodeSeconds, &c.Settings.ReactionsMode, &allowed, &c.Settings.HistoryForNew,
+		&perms, &c.Settings.SlowmodeSeconds, &c.Settings.ReactionsMode, &allowed, &c.Settings.HistoryForNew, &c.Settings.ChargeStars,
 		&role, &rights, &muted)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.ChatCard{}, domain.ErrNotFound

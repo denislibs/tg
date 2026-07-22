@@ -413,6 +413,16 @@ function PermissionsScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) 
     timer.current = setTimeout(() => void g.savePermissions(nextPerms, SLOWMODE_STEPS[nextIdx]), 400)
   }
 
+  // Платные сообщения (Telegram paid messages): плата в звёздах, меняет только владелец.
+  const [charge, setCharge] = useState(g.card?.chargeStars ?? 0)
+  const chargeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pushCharge = (next: number) => {
+    const v = Math.max(0, Math.min(10000, Math.round(next) || 0))
+    setCharge(v)
+    if (chargeTimer.current) clearTimeout(chargeTimer.current)
+    chargeTimer.current = setTimeout(() => void g.saveChargeStars(v), 500)
+  }
+
   return (
     <SettingsScreen title="Permissions" onBack={onBack} zIndex={70}>
       <Section caption="What can members of this group do?">
@@ -436,6 +446,22 @@ function PermissionsScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) 
           <Slider min={0} max={SLOWMODE_STEPS.length - 1} step={1} value={slowIdx} onChange={(v) => push(perms, v)} />
         </div>
       </Section>
+      {/* Платные сообщения (Telegram paid messages) — только владелец группы. */}
+      {g.isCreator && (
+        <Section caption="Paid messages" footer="Charge stars per message from non-admins. 0 disables paid messages.">
+          <div className={s.chargeRow}>
+            <Text size={15} color="var(--tg-textPrimary)">Stars per message</Text>
+            <input
+              type="number"
+              min={0}
+              max={10000}
+              value={charge}
+              onChange={(e) => pushCharge(Number(e.target.value))}
+              className={s.chargeInput}
+            />
+          </div>
+        </Section>
+      )}
     </SettingsScreen>
   )
 }

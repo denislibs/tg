@@ -24,6 +24,7 @@ export const RT = {
   groupCall: 'rt:group_call',
   botCallbackAnswer: 'rt:bot_callback_answer',
   geoLiveUpdate: 'rt:geo_live_update',
+  webPageUpdate: 'rt:web_page_update',
   secretRequest: 'rt:secret_chat_request',
   secretAccept: 'rt:secret_chat_accept',
   secretReject: 'rt:secret_chat_reject',
@@ -37,10 +38,15 @@ export interface NewMessageEvt { chat_id: number; msg_id: number; seq: number; s
   // рисуется полноценно сразу, без ожидания перезагрузки истории.
   media_w?: number; media_h?: number; media_mime?: string; media_blur?: string; media_has_thumb?: boolean; media_duration?: number; media_size?: number; media_name?: string;
   /** E2E-медиа секретного чата — инжектится воркером после расшифровки enc_body (не проводное поле сервера) */
-  secret_media?: import('../models').SecretMedia }
+  secret_media?: import('../models').SecretMedia;
+  /** вид эффекта сообщения (наш аналог Telegram message effects) */
+  effect?: string | null }
 export interface EditMessageEvt { chat_id: number; msg_id: number; seq: number; text: string; entities?: MessageEntity[] | null; edited_at: string; reply_markup?: import('../models').RawMessage['reply_markup'] }
 // Live-обновление координат гео-трансляции (geo_live_update).
 export interface GeoLiveUpdateEvt { chat_id: number; msg_id: number; seq: number; geo: RawGeo }
+// Догоняющее серверное превью ссылки (web_page_update): строится после
+// отправки, кадр патчит уже отрисованное сообщение карточкой web page.
+export interface WebPageUpdateEvt { chat_id: number; msg_id: number; seq: number; web_page: import('../models').RawWebPage }
 // Ответ бота на callback уже после таймаута синхронного ожидания — тост по WS.
 export interface BotCallbackAnswerEvt { text: string; alert: boolean }
 // Рукопожатие секретного чата (request/accept/reject) — realtimeBridge
@@ -66,7 +72,7 @@ export interface DraftUpdateEvt { chat_id: number; draft: import('../models').Ra
 export type TypingAction = 'typing' | 'voice' | 'video' | 'upload_file' | 'upload_photo' | 'upload_video' | 'upload_audio'
 export interface TypingEvt { chat_id: number; user_id: number; action?: TypingAction }
 export interface PresenceEvt { user_id: number; online: boolean; last_seen: number }
-export interface ReactionEvt { chat_id: number; msg_id: number; user_id: number; emoji: string; action: 'add' | 'remove' }
+export interface ReactionEvt { chat_id: number; msg_id: number; user_id: number; author_id?: number; emoji: string; action: 'add' | 'remove' }
 export interface AckEvt { client_msg_id: string; msg_id: number; seq: number; created_at: string }
 // Server rejected a send (e.g. text too long). The client drops it from the outbox
 // (no infinite retry) and removes the optimistic bubble.

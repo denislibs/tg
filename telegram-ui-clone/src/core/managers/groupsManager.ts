@@ -11,6 +11,8 @@ export interface GroupCard {
   reactionsMode: 'all' | 'some' | 'none'
   reactionsAllowed: string[]
   historyForNew: boolean
+  /** плата за сообщение в звёздах (Telegram paid messages); 0 — выключено */
+  chargeStars: number
 }
 
 // Тема форум-группы (строка списка: тема + последнее сообщение треда).
@@ -117,6 +119,7 @@ export function newGroupsManager({ rest }: { rest: Pick<RestClient, 'post' | 'ge
         discussion_chat_id?: number
         default_permissions?: number; slowmode_seconds?: number
         reactions_mode?: 'all' | 'some' | 'none'; reactions_allowed?: string[] | null; history_for_new?: boolean
+        charge_stars?: number
       }>(`/chats/${chatId}/card`)
       return {
         id: c.id, type: c.type, title: c.title, username: c.username, about: c.about,
@@ -127,6 +130,7 @@ export function newGroupsManager({ rest }: { rest: Pick<RestClient, 'post' | 'ge
         reactionsMode: c.reactions_mode ?? 'all',
         reactionsAllowed: c.reactions_allowed ?? [],
         historyForNew: c.history_for_new ?? true,
+        chargeStars: c.charge_stars ?? 0,
       }
     },
     async editInfo(chatId: number, args: { title: string; about?: string; username?: string }): Promise<void> {
@@ -143,6 +147,10 @@ export function newGroupsManager({ rest }: { rest: Pick<RestClient, 'post' | 'ge
     },
     async setHistory(chatId: number, visible: boolean): Promise<void> {
       await rest.put(`/chats/${chatId}/history`, { visible })
+    },
+    // Плата за сообщение в звёздах (Telegram paid messages); 0 — выключить.
+    async setChargeStars(chatId: number, chargeStars: number): Promise<void> {
+      await rest.put(`/chats/${chatId}/charge_stars`, { charge_stars: chargeStars })
     },
     async listBans(chatId: number): Promise<{ userId: number; bannedBy: number }[]> {
       const r = await rest.get<{ bans: { user_id: number; banned_by: number }[] }>(`/chats/${chatId}/bans`)

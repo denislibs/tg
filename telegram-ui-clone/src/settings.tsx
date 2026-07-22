@@ -1,15 +1,13 @@
 import { useCallback } from 'react'
 import { create } from 'zustand'
 import type { ThemeChoice } from './theme'
+import type { Wallpaper } from './wallpapers'
 
 export type TimeFormat = '12h' | '24h'
 
-// What the chat wallpaper currently shows.
-export type Wallpaper =
-  | { kind: 'default' }
-  | { kind: 'preset'; colors: string[] }
-  | { kind: 'color'; color: string }
-  | { kind: 'image'; src: string }
+// What the chat wallpaper currently shows (тип живёт в ./wallpapers вместе с
+// чистой логикой выбора активного фона).
+export type { Wallpaper }
 
 export interface Settings {
   themeChoice: ThemeChoice
@@ -17,6 +15,11 @@ export interface Settings {
   timeFormat: TimeFormat
   wallpaper: Wallpaper
   wallpaperBlur: boolean
+  // Свои обои чата, загруженные фото (tweb background upload): media_id
+  // выбранного изображения. Приоритет над пресетом/цветом (wallpaper) — пока
+  // задан, фон рисуется этим фото. customWallpaperBlur — размытие поверх (toggle).
+  customWallpaperMediaId?: number
+  customWallpaperBlur?: boolean
   // Устройства для звонков (Настройки → Динамики и камера); '' = системное
   // по умолчанию. deviceId из enumerateDevices, читаются при старте звонка.
   speakerId: string
@@ -59,6 +62,11 @@ export interface Settings {
   // контекстном меню; translateTo — целевой язык (ISO-код), '' = язык интерфейса.
   showTranslateButton: boolean
   translateTo: string
+  // Зацикливать анимированные стикеры в чате (tweb settings.stickers.loop).
+  loopStickers: boolean
+  // Скорость воспроизведения видео в медиа-вьюере (tweb appMediaPlaybackController
+  // .playbackRate): восстанавливается при открытии следующего видео. Дефолт 1.
+  videoRate: number
 }
 
 // Галочки автозагрузки по типам чатов (tweb AutoDownloadPeerTypeSettings).
@@ -77,6 +85,8 @@ const DEFAULTS: Settings = {
   timeFormat: '24h',
   wallpaper: { kind: 'default' },
   wallpaperBlur: false,
+  customWallpaperMediaId: undefined,
+  customWallpaperBlur: false,
   speakerId: '',
   micId: '',
   cameraId: '',
@@ -102,6 +112,8 @@ const DEFAULTS: Settings = {
   reduceMotion: false,
   showTranslateButton: true,
   translateTo: '',
+  loopStickers: true, // tweb stickers.loop default true
+  videoRate: 1,
 }
 
 const KEY = 'tg-settings'
@@ -139,6 +151,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       timeFormat: s.timeFormat,
       wallpaper: s.wallpaper,
       wallpaperBlur: s.wallpaperBlur,
+      customWallpaperMediaId: s.customWallpaperMediaId,
+      customWallpaperBlur: s.customWallpaperBlur,
       speakerId: s.speakerId,
       micId: s.micId,
       cameraId: s.cameraId,
@@ -162,6 +176,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       reduceMotion: s.reduceMotion,
       showTranslateButton: s.showTranslateButton,
       translateTo: s.translateTo,
+      loopStickers: s.loopStickers,
+      videoRate: s.videoRate,
     }
     try {
       localStorage.setItem(KEY, JSON.stringify(toSave))

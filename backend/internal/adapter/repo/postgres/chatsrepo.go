@@ -188,7 +188,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 	rows, err := q.Query(ctx,
 		`SELECT c.id, c.type, c.title, COALESCE(c.username,''),
 		        COALESCE('/media/' || c.photo_media_id || '/content', ''),
-		        m.last_read_seq, m.unread_count, m.unread_mentions_count,
+		        m.last_read_seq, m.unread_count, m.unread_mentions_count, m.unread_reactions,
 		        (m.muted OR (m.muted_until IS NOT NULL AND m.muted_until > now())),
 		        m.pinned_at IS NOT NULL, m.archived, c.is_forum,
 		        COALESCE(m.notify_preview, true), COALESCE(m.notify_sound, 'default'),
@@ -243,7 +243,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		var peerVerified *bool
 		var peerPremium *bool
 		var peerEmojiStatus *string
-		if err := rows.Scan(&d.ChatID, &d.Type, &d.Title, &d.Username, &d.PhotoURL, &d.LastReadSeq, &d.UnreadCount, &d.UnreadMentionsCount, &d.Muted, &d.Pinned, &d.Archived, &d.IsForum, &d.NotifyPreview, &d.NotifySound, &d.PeerReadSeq,
+		if err := rows.Scan(&d.ChatID, &d.Type, &d.Title, &d.Username, &d.PhotoURL, &d.LastReadSeq, &d.UnreadCount, &d.UnreadMentionsCount, &d.UnreadReactionsCount, &d.Muted, &d.Pinned, &d.Archived, &d.IsForum, &d.NotifyPreview, &d.NotifySound, &d.PeerReadSeq,
 			&seq, &text, &senderID, &at, &mediaID, &msgType, &forwarded, &senderName,
 			&peerID, &peerName, &peerAvatar, &peerVerified, &peerPremium, &peerEmojiStatus, &d.AutoDeletePeriod); err != nil {
 			return nil, err
@@ -296,6 +296,26 @@ func (r *ChatsRepo) IncUnread(ctx context.Context, chatID, userID int64) error {
 	q := querier(ctx, r.pool)
 	_, err := q.Exec(ctx,
 		`UPDATE chat_members SET unread_count = unread_count + 1 WHERE chat_id=$1 AND user_id=$2`,
+		chatID, userID)
+	return err
+}
+
+// IncUnreadReactions bumps a member's unread-reactions counter by one (someone
+// reacted to their message — Telegram unread_reactions_count).
+func (r *ChatsRepo) IncUnreadReactions(ctx context.Context, chatID, userID int64) error {
+	q := querier(ctx, r.pool)
+	_, err := q.Exec(ctx,
+		`UPDATE chat_members SET unread_reactions = unread_reactions + 1 WHERE chat_id=$1 AND user_id=$2`,
+		chatID, userID)
+	return err
+}
+
+// ClearUnreadReactions resets a member's unread-reactions counter to zero (they
+// read the chat / its reactions — Telegram readReactions).
+func (r *ChatsRepo) ClearUnreadReactions(ctx context.Context, chatID, userID int64) error {
+	q := querier(ctx, r.pool)
+	_, err := q.Exec(ctx,
+		`UPDATE chat_members SET unread_reactions = 0 WHERE chat_id=$1 AND user_id=$2`,
 		chatID, userID)
 	return err
 }

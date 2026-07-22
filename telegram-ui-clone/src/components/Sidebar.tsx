@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { EASE } from '../motion'
 import classNames from '../shared/lib/classNames'
@@ -175,6 +175,14 @@ export default function Sidebar({
     setQuery('')
     inputRef.current?.blur()
   }
+
+  // Ctrl/Cmd+K (core/hotkeys) шлёт 'tg-focus-search' — фокусируем поле поиска
+  // (onFocus сам переводит сайдбар в режим поиска).
+  useEffect(() => {
+    const onFocusSearch = () => inputRef.current?.focus()
+    window.addEventListener('tg-focus-search', onFocusSearch)
+    return () => window.removeEventListener('tg-focus-search', onFocusSearch)
+  }, [])
 
   const searchReal = (q: string): Promise<SearchResult> => managers.channels.search(q)
   const onJoin = async (username: string) => {

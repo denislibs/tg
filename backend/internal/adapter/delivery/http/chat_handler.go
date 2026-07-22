@@ -264,7 +264,7 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 			"chat_id": d.ChatID, "type": d.Type,
 			"title": d.Title, "username": d.Username, "photo_url": d.PhotoURL,
 			"last_read_seq": d.LastReadSeq, "peer_read_seq": d.PeerReadSeq, "unread": d.UnreadCount,
-			"unread_mentions_count": d.UnreadMentionsCount, "muted": d.Muted,
+			"unread_mentions_count": d.UnreadMentionsCount, "unread_reactions": d.UnreadReactionsCount, "muted": d.Muted,
 			"pinned": d.Pinned, "archived": d.Archived, "is_forum": d.IsForum,
 			"notify_preview": d.NotifyPreview, "notify_sound": d.NotifySound,
 			"auto_delete_period": d.AutoDeletePeriod,
@@ -429,6 +429,26 @@ func (h *ChatHandler) Read(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "read failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// ReadReactions clears the caller's unread-reactions badge for a chat
+// (POST /chats/{chatID}/reactions/read; Telegram readReactions) without moving
+// the read horizon.
+func (h *ChatHandler) ReadReactions(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	err := h.svc.ReadReactions(r.Context(), chatID, h.meID(r))
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusForbidden, "not a member of this chat")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "read reactions failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -1306,6 +1326,12 @@ func messageJSON(m domain.Message) map[string]any {
 	}
 	if m.ReplyMarkup != nil {
 		j["reply_markup"] = m.ReplyMarkup
+	}
+	if m.WebPage != nil {
+		j["web_page"] = m.WebPage
+	}
+	if m.Effect != "" {
+		j["effect"] = m.Effect
 	}
 	if m.ReplyTo != nil {
 		rt := map[string]any{

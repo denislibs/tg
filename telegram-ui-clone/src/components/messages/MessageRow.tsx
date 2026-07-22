@@ -42,6 +42,9 @@ import {
 } from './MessageBubbles'
 import RichText, { emojiOnlyCount } from '../RichText'
 import Emoji from '../emoji/Emoji'
+import StickerMedia from '../StickerMedia'
+import { useAnimatedEmoji } from '../../core/hooks/useAnimatedEmoji'
+import { effectForEmoji, playEmojiEffect, type EmojiEffectKind } from '../../core/effects/emojiEffects'
 import { peerColor } from '../peerColor'
 import { fmtViews } from '../../core/fmtViews'
 import { useT } from '../../i18n'
@@ -87,6 +90,33 @@ function ForwardsMeta({ forwards, className }: { forwards: number; className: st
       <TgIcon name="forward" size={15} color="var(--b-time)" />
       {fmtViews(forwards)}
     </span>
+  )
+}
+
+// Эмодзи-глиф вида эффекта (наш аналог Telegram message effects) — для кнопки
+// повторного проигрывания у бабла.
+const EFFECT_EMOJI: Record<EmojiEffectKind, string> = {
+  fireworks: '🎆', confetti: '🎉', hearts: '❤️', thumbs: '👍', poop: '💩', cake: '🎂',
+}
+
+// Кнопка повтора эффекта сообщения: клик запускает полноэкранный canvas-эффект
+// из центра кнопки (tweb: тап по сообщению с эффектом переигрывает его).
+function EffectReplayButton({ kind }: { kind: EmojiEffectKind }) {
+  const ref = useRef<HTMLButtonElement>(null)
+  return (
+    <button
+      ref={ref}
+      type="button"
+      className={s.effectReplay}
+      onClick={(e) => {
+        e.stopPropagation()
+        const r = ref.current?.getBoundingClientRect()
+        playEmojiEffect(kind, r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : undefined)
+      }}
+      aria-label="Replay message effect"
+    >
+      {EFFECT_EMOJI[kind]}
+    </button>
   )
 }
 
@@ -211,7 +241,7 @@ function MessageRow({
     ) : null
   const chipsInline =
     ((m.type === 'text' && !bigEmoji) || m.type === 'poll' || m.type === 'album'
-      || ((m.mediaId != null || !!m.localUrl) && m.type !== 'roundVideo' && m.type !== 'voice'))
+      || ((m.mediaId != null || !!m.localUrl) && m.type !== 'roundVideo' && m.type !== 'voice' && m.type !== 'sticker'))
 
   return (
     <BubbleAppear
@@ -317,6 +347,13 @@ function MessageRow({
               {chips && <div className={s.reactionsPad}>{chips}</div>}
             </div>
           </div>
+        ) : m.type === 'sticker' && m.mediaId != null ? (
+          // Стикер (tweb .bubble.is-sticker + wrappers/sticker.ts): без фона
+          // бабла и хвостика; бокс аспект-фитится в 200×200 (mediaSizes
+          // staticSticker/animatedSticker desktop), lottie играет с loop из
+          // настроек; время+тики бейджем поверх нижнего угла, реакции — снаружи
+          // (reactions-out), reply/имя в группе не рисуются (как voice/round).
+          <StickerRealBubble m={m} fmtTime={fmtTime} />
         ) : m.mediaId != null || m.localUrl || (m.clientId != null && m.mediaName != null) ? (
           // Outer (relative, NOT clipped) carries the tail; the inner clips the media
           // to the rounded corners. The tailed corner is squared off (like other bubbles).
@@ -372,6 +409,7 @@ function MessageRow({
                   </span>
                   {m.time && (
                     <span className={s.mediaTime}>
+                      {m.effect && <EffectReplayButton kind={m.effect} />}
                       {/* truthy как в tweb (messageRender.ts): views=0 приходит для не-канальных сообщений */}
                       {m.views ? <ViewsMeta views={m.views} className={s.metaViews} /> : null}
                       {m.forwards ? <ForwardsMeta forwards={m.forwards} className={s.metaViews} /> : null}
@@ -387,22 +425,8 @@ function MessageRow({
               {footer && <div className={s.footerMedia}>{footer}</div>}
             </div>
           </div>
-        ) : m.type === 'sticker' || bigEmoji ? (
-          <div className={s.sticker}>
-            <div
-              className={s.stickerGlyph}
-              style={{
-                fontSize: bigEmoji ? (bigEmoji === 1 ? 56 : bigEmoji === 2 ? 46 : 38) : 64,
-                padding: bigEmoji ? '2px 0' : 0,
-              }}
-            >
-              {m.type === 'sticker' ? <Emoji e={m.emoji ?? ''} size={104} /> : m.text}
-            </div>
-            <div className={s.stickerMeta}>
-              <Text size={12.5} color="#fff">{fmtTime(m.time)}</Text>
-              <Ticks status={m.status} color="var(--b-tick)" />
-            </div>
-          </div>
+        ) : bigEmoji ? (
+          <BigEmojiBubble m={m} count={bigEmoji} selecting={selecting} fmtTime={fmtTime} />
         ) : m.type === 'voice' ? (
           <div className={s.voice} style={{ borderRadius: mediaRadius(out, lastInGroup) }}>
             {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
@@ -521,6 +545,7 @@ function MessageRow({
                 <RichText text={m.text ?? ''} entities={m.entities} linkColor="var(--b-link)" />
               </span>
               <span className={classNames(s.meta, hasBlock ? s.block : '')}>
+                {m.effect && <EffectReplayButton kind={m.effect} />}
                 {m.views ? <ViewsMeta views={m.views} className={s.metaViews} /> : null}
                 {m.forwards ? <ForwardsMeta forwards={m.forwards} className={s.metaViews} /> : null}
                 {m.secret && <SecretTimer destructAt={m.destructAt} ttlSeconds={m.ttlSeconds} color="var(--b-time)" />}
@@ -542,6 +567,83 @@ function MessageRow({
         </ZoneBody>
       </div>
     </BubbleAppear>
+  )
+}
+
+// Big emoji (tweb bubbles.ts bigEmojis): сообщение из 1–3 эмодзи без текста —
+// крупный глиф без фона бабла. РОВНО один эмодзи, у которого есть лотти в
+// сид-наборе animated_emoji, рендерится анимированным стикером (tweb
+// getAnimatedEmojiSticker → wrapSticker): autoplay ОДИН раз (не loop), replay по
+// клику. Клик по эффект-эмодзи (❤️/🎉/👍/…) — и по анимированному, и по
+// шрифтовому — запускает полноэкранный canvas-эффект из центра бабла.
+const ANIMATED_EMOJI_SIZE = 160
+function BigEmojiBubble({ m, count, selecting, fmtTime }: {
+  m: ConvMsg
+  count: number
+  selecting: boolean
+  fmtTime: (hhmm?: string) => string | undefined
+}) {
+  const emoji = count === 1 ? (m.text ?? '').trim() : null
+  const animated = useAnimatedEmoji(emoji)
+  const [replayToken, setReplayToken] = useState(0)
+  const boxRef = useRef<HTMLDivElement>(null)
+  const effect = emoji ? effectForEmoji(emoji) : null
+  // В selecting клик занят выбором, у error-бабла — меню переотправки.
+  const clickable = !selecting && m.status !== 'error' && (effect != null || animated != null)
+  const onClick = clickable
+    ? () => {
+        if (effect) {
+          const r = boxRef.current?.getBoundingClientRect()
+          playEmojiEffect(effect, r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : undefined)
+        }
+        if (animated) setReplayToken((t) => t + 1)
+      }
+    : undefined
+  return (
+    <div ref={boxRef} className={s.sticker} onClick={onClick} style={clickable ? { cursor: 'pointer' } : undefined}>
+      {animated ? (
+        <StickerMedia mediaId={animated.mediaId} width={ANIMATED_EMOJI_SIZE} height={ANIMATED_EMOJI_SIZE} autoplay replayToken={replayToken} />
+      ) : (
+        <div
+          className={s.stickerGlyph}
+          style={{
+            fontSize: count === 1 ? 56 : count === 2 ? 46 : 38,
+            padding: '2px 0',
+          }}
+        >
+          {m.text}
+        </div>
+      )}
+      <div className={s.stickerMeta}>
+        <Text size={12.5} color="#fff">{fmtTime(m.time)}</Text>
+        <Ticks status={m.status} color="var(--b-tick)" />
+      </div>
+    </div>
+  )
+}
+
+// Стикер с бэка (m.type 'sticker' + mediaId): бокс аспект-фитится в 200×200
+// (tweb mediaSizes desktop static/animatedSticker), lottie-json играет через
+// lottie-web c loop из настройки «Зацикливать анимации», webp/png — <img>
+// (различает StickerMedia). Бейдж времени — тот же, что у big-emoji.
+const STICKER_BOX = 200
+function StickerRealBubble({ m, fmtTime }: { m: ConvMsg; fmtTime: (hhmm?: string) => string | undefined }) {
+  const loopStickers = useSettings().loopStickers
+  let w = STICKER_BOX
+  let h = STICKER_BOX
+  if (m.mediaWidth && m.mediaHeight) {
+    const k = Math.min(STICKER_BOX / m.mediaWidth, STICKER_BOX / m.mediaHeight)
+    w = Math.round(m.mediaWidth * k)
+    h = Math.round(m.mediaHeight * k)
+  }
+  return (
+    <div className={s.stickerReal}>
+      <StickerMedia mediaId={m.mediaId!} width={w} height={h} autoplay loop={loopStickers} />
+      <div className={s.stickerMeta}>
+        <Text size={12.5} color="#fff">{fmtTime(m.time)}</Text>
+        <Ticks status={m.status} color="var(--b-tick)" />
+      </div>
+    </div>
   )
 }
 

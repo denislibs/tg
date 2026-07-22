@@ -76,8 +76,8 @@ export interface ConvMsg {
   document?: { name: string; size: string; ext: string; color: string }
   // audio / music
   audio?: { title: string; artist: string; duration: string }
-  // link preview attached to a text message
-  webPage?: { siteName: string; title: string; description?: string; gradient?: string; emoji?: string }
+  // link preview attached to a text message (imageUrl — серверное og:image; gradient/emoji — легаси моков)
+  webPage?: { siteName: string; title: string; description?: string; gradient?: string; emoji?: string; url?: string; imageUrl?: string }
   /** лог 1:1 звонка (tweb messageActionPhoneCall): исход + длительность */
   call?: CallLog
   /** секретное сообщение (E2E) — включает таймер самоуничтожения в бабле */
@@ -87,6 +87,8 @@ export interface ConvMsg {
   /** self-destruct: TTL после прочтения (сек) + абсолютный дедлайн (ISO) */
   ttlSeconds?: number | null
   destructAt?: string | null
+  /** вид полноэкранного эффекта сообщения (наш аналог Telegram message effects) */
+  effect?: import('./core/effects/emojiEffects').EmojiEffectKind
 }
 
 export interface CallLog {
@@ -127,6 +129,7 @@ export interface Chat {
   selected?: boolean
   unread?: number
   unreadMentions?: number // непрочитанные упоминания → отдельный бейдж «@»
+  unreadReactions?: number // непрочитанные реакции → отдельный бейдж-сердце
   sent?: boolean // last message is mine (show a tick in the list)
   read?: boolean // ...and the peer has read it (✓✓ instead of ✓)
   previewMediaId?: number // last message is a photo → small thumbnail before the preview

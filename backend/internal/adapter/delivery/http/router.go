@@ -13,9 +13,10 @@ import (
 	usecasemedia "github.com/messenger-denis/backend/internal/usecase/media"
 	usecasenotify "github.com/messenger-denis/backend/internal/usecase/notify"
 	usecaseprivacy "github.com/messenger-denis/backend/internal/usecase/privacy"
+	usecasereport "github.com/messenger-denis/backend/internal/usecase/report"
 )
 
-func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, mediaUC *usecasemedia.Interactor, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler, notifyUC *usecasenotify.Interactor, foldersUC *usecasefolders.Interactor, pubH *PublicHandler, privacyUC *usecaseprivacy.Interactor, passkeyH *PasskeyHandler) http.Handler {
+func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, mediaUC *usecasemedia.Interactor, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler, notifyUC *usecasenotify.Interactor, foldersUC *usecasefolders.Interactor, pubH *PublicHandler, privacyUC *usecaseprivacy.Interactor, passkeyH *PasskeyHandler, stickersH *StickersHandler, ivH *IVHandler, reportUC *usecasereport.Interactor) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -83,6 +84,9 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Post("/me/photos", ph.AddPhoto)
 		pr.Delete("/me/photos/{photoID}", ph.DeletePhoto)
 		pr.Get("/users/{userID}/photos", ph.ListPhotos)
+		pr.Post("/me/change-phone", ph.ChangePhone)
+		pr.Post("/me/change-phone/confirm", ph.ConfirmChangePhone)
+		pr.Delete("/me", ph.DeleteAccount)
 
 		nh := NewNotifyHandler(notifyUC)
 		pr.Get("/me/notify_settings", nh.Get)
@@ -197,6 +201,28 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Delete("/chats/{chatID}/messages/{msgID}/reactions/{emoji}", ch.RemoveReaction)
 		pr.Get("/chats/{chatID}/messages/{msgID}/reactions", ch.ListReactions)
 		pr.Get("/chats/{chatID}/messages/{msgID}/reactions/users", ch.ReactionUsers)
+		pr.Post("/chats/{chatID}/reactions/read", ch.ReadReactions) // T12: сброс бейджа непрочитанных реакций
+
+		// Стикеры и GIF
+		if stickersH != nil {
+			pr.Get("/sticker-sets", stickersH.MySets)
+			pr.Post("/sticker-sets", stickersH.CreateSet)
+			pr.Get("/sticker-sets/search", stickersH.SearchSets)
+			pr.Get("/sticker-sets/{slug}", stickersH.SetBySlug)
+			pr.Post("/sticker-sets/{id}/install", stickersH.Install)
+			pr.Delete("/sticker-sets/{id}/install", stickersH.Uninstall)
+			pr.Post("/sticker-sets/{id}/stickers", stickersH.AddSticker)
+			pr.Get("/stickers/recent", stickersH.Recent)
+			pr.Get("/stickers/faved", stickersH.Faved)
+			pr.Get("/stickers/search", stickersH.SearchByEmoji)
+			pr.Post("/stickers/{id}/fave", stickersH.Fave)
+			pr.Delete("/stickers/{id}/fave", stickersH.Unfave)
+			pr.Post("/stickers/{id}/use", stickersH.Use)
+			pr.Get("/gifs/saved", stickersH.SavedGifs)
+			pr.Post("/gifs/saved", stickersH.SaveGif)
+			pr.Delete("/gifs/saved/{mediaID}", stickersH.DeleteGif)
+			pr.Get("/gifs/search", stickersH.SearchGifs)
+		}
 
 		gh := NewGroupHandler(chatUC, memberPresence, privacyQ)
 		pr.Post("/groups", gh.CreateGroup)
@@ -209,6 +235,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Put("/chats/{chatID}/permissions", gh.SetPermissions)
 		pr.Put("/chats/{chatID}/reactions", gh.SetReactions)
 		pr.Put("/chats/{chatID}/history", gh.SetHistory)
+		pr.Put("/chats/{chatID}/charge_stars", gh.SetChargeStars)
 		pr.Get("/chats/{chatID}/bans", gh.ListBans)
 		pr.Post("/chats/{chatID}/bans", gh.Ban)
 		pr.Delete("/chats/{chatID}/bans/{userID}", gh.Unban)
@@ -272,6 +299,11 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 			pr.Delete("/stories/{storyID}", storyH.Delete)
 		}
 
+		if reportUC != nil {
+			rph := NewReportHandler(reportUC)
+			pr.Post("/report", rph.Report)
+		}
+
 		if contactsUC != nil {
 			coh := NewContactsHandler(contactsUC)
 			pr.Post("/contacts", coh.Add)
@@ -281,6 +313,11 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 
 		// ICE-конфиг для звонков (STUN + эфемерные TURN-креды)
 		pr.Get("/calls/ice", iceH.Get)
+
+		// Instant View: reader-mode статья по ссылке из сообщения
+		if ivH != nil {
+			pr.Get("/iv", ivH.Article)
+		}
 
 		sh := NewSessionHandler(authUC)
 		pr.Get("/sessions", sh.List)

@@ -12,6 +12,9 @@ import (
 	httptransport "github.com/messenger-denis/backend/internal/adapter/delivery/http"
 	"github.com/messenger-denis/backend/internal/adapter/delivery/ws"
 	"github.com/messenger-denis/backend/internal/adapter/geoip"
+	"github.com/messenger-denis/backend/internal/adapter/gifsearch"
+	ivadapter "github.com/messenger-denis/backend/internal/adapter/iv"
+	"github.com/messenger-denis/backend/internal/adapter/linkpreview"
 	"github.com/messenger-denis/backend/internal/adapter/media/ffmpeg"
 	webpushadapter "github.com/messenger-denis/backend/internal/adapter/push/webpush"
 	queueredis "github.com/messenger-denis/backend/internal/adapter/queue/redis"
@@ -23,6 +26,7 @@ import (
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 	usecasecontacts "github.com/messenger-denis/backend/internal/usecase/contacts"
 	usecasefolders "github.com/messenger-denis/backend/internal/usecase/folders"
+	usecaseiv "github.com/messenger-denis/backend/internal/usecase/iv"
 	usecasemedia "github.com/messenger-denis/backend/internal/usecase/media"
 	usecasenotify "github.com/messenger-denis/backend/internal/usecase/notify"
 	usecasepasskeys "github.com/messenger-denis/backend/internal/usecase/passkeys"
@@ -30,6 +34,8 @@ import (
 	usecaseprivacy "github.com/messenger-denis/backend/internal/usecase/privacy"
 	usecasepublic "github.com/messenger-denis/backend/internal/usecase/public"
 	usecasepush "github.com/messenger-denis/backend/internal/usecase/push"
+	usecasereport "github.com/messenger-denis/backend/internal/usecase/report"
+	usecasestickers "github.com/messenger-denis/backend/internal/usecase/stickers"
 	storyusecase "github.com/messenger-denis/backend/internal/usecase/story"
 	"go.uber.org/fx"
 )
@@ -83,6 +89,19 @@ func registerServer(p serverParams) {
 	// Секретные чаты (E2E): handshake хранит только публичные ключи + статус.
 	p.ChatUC.SetSecret(pgadapter.NewSecretRepo(p.Pool))
 
+	// Стикеры и GIF: наборы/установка/recent/faved + сохранённые GIF; media
+	// стикера публично (шлётся и читается не-владельцем).
+	stickersRepo := pgadapter.NewStickersRepo(p.Pool)
+	stickersUC := usecasestickers.New(stickersRepo)
+	p.ChatUC.SetStickerAccess(stickersRepo)
+	if p.Cfg.TenorAPIKey != "" {
+		stickersUC.SetGifSearch(gifsearch.NewTenor(p.Cfg.TenorAPIKey))
+		log.Printf("gif search enabled (tenor)")
+	} else {
+		log.Printf("gif search disabled (set TENOR_API_KEY to enable)")
+	}
+	stickersH := httptransport.NewStickersHandler(stickersUC)
+
 	// Звёзды и подарки: баланс + каталог + выданные подарки, live-баланс
 	// фреймом balance_update, подарок — сообщением типа 'gift'.
 	p.ChatUC.SetStars(pgadapter.NewStarsRepo(p.Pool))
@@ -93,6 +112,10 @@ func registerServer(p serverParams) {
 	// Bot API: боты-сервисы с токенами (getUpdates/webhook, sendMessage, …) и
 	// @BotFather (создание/управление ботами, mini-app).
 	p.ChatUC.SetBotAPI(pgadapter.NewBotAPIRepo(p.Pool))
+
+	// Серверные превью ссылок: og-теги первой http/https-ссылки текстового
+	// сообщения, асинхронно после отправки (кадр web_page_update).
+	p.ChatUC.SetLinkPreviewer(linkpreview.New())
 
 	// Перевод сообщений: LibreTranslate-совместимый сервис (опционально).
 	if p.Cfg.TranslateURL != "" {
@@ -179,8 +202,18 @@ func registerServer(p serverParams) {
 		return nil
 	}})
 
+	// Instant View: reader-mode парсер статей; Redis-кэш на час (без Redis —
+	// мягкая деградация: каждая загрузка парсится заново).
+	var ivCache usecaseiv.Cache
+	if p.Redis.OK {
+		ivCache = newIVCache(p.Redis.Client)
+	}
+	ivHandler := httptransport.NewIVHandler(usecaseiv.New(ivadapter.New(), ivCache))
+
 	storyHandler := httptransport.NewStoryHandler(p.StoryUC)
 	notifyUC := usecasenotify.New(pgadapter.NewNotifyRepo(p.Pool))
+	// Жалобы на чаты/сообщения (tweb reportMessages): складируем без модерации.
+	reportUC := usecasereport.New(pgadapter.NewReportRepo(p.Pool))
 	foldersUC := usecasefolders.New(pgadapter.NewFoldersRepo(p.Pool), pgadapter.NewFolderChatAccess(p.Pool), pgadapter.NewTxManager(p.Pool))
 	// Публичная страница-превью @username (аналог t.me)
 	pubH := httptransport.NewPublicHandler(usecasepublic.New(pgadapter.NewPublicRepo(p.Pool)), mediaUC)
@@ -198,7 +231,7 @@ func registerServer(p serverParams) {
 
 	srv := &http.Server{
 		Addr:              p.Cfg.HTTPAddr,
-		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, mediaUC, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC, foldersUC, pubH, privacyUC, passkeyH),
+		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, mediaUC, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC, foldersUC, pubH, privacyUC, passkeyH, stickersH, ivHandler, reportUC),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}

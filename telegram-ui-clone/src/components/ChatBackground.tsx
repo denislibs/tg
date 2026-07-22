@@ -3,6 +3,8 @@ import { TWallpaper, type TWallpaperHandlers, type PatternOptions } from '@twall
 import '@twallpaper/react/css'
 import patternUrl from '../assets/pattern.svg'
 import { useSettings } from '../settings'
+import { activeBackground } from '../wallpapers'
+import { mediaContentUrl, useMediaTokenVersion } from '../core/mediaUrl'
 
 /**
  * Telegram-style animated wallpaper, powered by @twallpaper/react — the maintained
@@ -39,28 +41,42 @@ function readTheme() {
 }
 
 export default function ChatBackground() {
-  const { wallpaper, wallpaperBlur, themeChoice } = useSettings()
+  const { wallpaper, wallpaperBlur, themeChoice, customWallpaperMediaId, customWallpaperBlur } = useSettings()
   const ref = useRef<TWallpaperHandlers>(null)
   const painted = useRef(false)
+  // Свои обои читаются по media-токену (живёт в воркере) — перерисоваться, когда
+  // токен допримется/обновится, иначе url ушёл бы с пустым токеном → 401.
+  useMediaTokenVersion()
 
   const th = readTheme()
   const mode = th.mode
   // The gradient colours: an explicit preset, otherwise the theme default.
   const colors = wallpaper.kind === 'preset' ? wallpaper.colors : th.grad
 
-  // A solid colour or uploaded image replaces the animated gradient entirely.
+  // Приоритет: свои обои (загруженное фото) поверх пресета/цвета/дефолта.
+  const ab = activeBackground({ customWallpaperMediaId, customWallpaperBlur, wallpaper })
+
+  // A custom photo, solid colour or uploaded image replaces the animated gradient.
   const overlay =
-    wallpaper.kind === 'color'
-      ? { background: wallpaper.color }
-      : wallpaper.kind === 'image'
-        ? {
-            backgroundImage: `url(${wallpaper.src})`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            filter: wallpaperBlur ? 'blur(10px)' : undefined,
-            transform: wallpaperBlur ? 'scale(1.05)' : undefined,
-          }
-        : null
+    ab.kind === 'custom'
+      ? {
+          backgroundImage: `url(${mediaContentUrl(ab.mediaId)})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          filter: ab.blur ? 'blur(10px)' : undefined,
+          transform: ab.blur ? 'scale(1.05)' : undefined,
+        }
+      : wallpaper.kind === 'color'
+        ? { background: wallpaper.color }
+        : wallpaper.kind === 'image'
+          ? {
+              backgroundImage: `url(${wallpaper.src})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              filter: wallpaperBlur ? 'blur(10px)' : undefined,
+              transform: wallpaperBlur ? 'scale(1.05)' : undefined,
+            }
+          : null
 
   // Re-apply colours + pattern through the imperative handlers whenever the theme
   // or wallpaper changes (the wrapper itself never re-inits from a new `options` prop).

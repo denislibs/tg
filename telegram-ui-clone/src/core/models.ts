@@ -1,6 +1,7 @@
 // src/core/models.ts
 import { mapGiftInfo, type RawGiftInfo, type GiftInfo } from './managers/starsManager'
 import { mapReplyMarkup, type ReplyMarkup } from './managers/botsManager'
+import type { EmojiEffectKind } from './effects/emojiEffects'
 
 export type ChatKind = 'private' | 'group' | 'channel' | 'saved'
 
@@ -65,6 +66,7 @@ export interface RawDialog {
   peer_read_seq?: number
   unread: number
   unread_mentions_count?: number
+  unread_reactions?: number
   muted?: boolean
   pinned?: boolean
   archived?: boolean
@@ -87,6 +89,8 @@ export interface Dialog {
   unread: number
   /** непрочитанные упоминания зрителя (Telegram unread_mentions_count) — бейдж «@» */
   unreadMentions?: number
+  /** непрочитанные реакции на сообщения зрителя (Telegram unread_reactions_count) — бейдж-сердце */
+  unreadReactions?: number
   muted: boolean
   /** закреплён вверху списка / убран в «Архив» (пер-юзерные флаги, tweb) */
   pinned: boolean
@@ -104,6 +108,35 @@ export interface Dialog {
   photoUrl?: string
   peer?: { id: number; displayName: string; avatarUrl: string; verified?: boolean; premium?: boolean; emojiStatus?: string }
   lastMessage?: { seq: number; text: string; senderId: number; at: string; mediaId?: number; mediaType?: string; forwarded?: boolean; senderName?: string }
+}
+
+// Серверное превью ссылки (Telegram webPage): снимок og-тегов первой ссылки
+// текстового сообщения. Приходит с историей (web_page) или догоняющим
+// realtime-кадром web_page_update (превью строится после отправки).
+export interface RawWebPage {
+  url?: string
+  site_name?: string
+  title?: string
+  description?: string
+  image_url?: string
+}
+
+export interface WebPageData {
+  url?: string
+  siteName: string
+  title: string
+  description?: string
+  imageUrl?: string
+}
+
+export function mapWebPage(w: RawWebPage): WebPageData {
+  return {
+    url: w.url || undefined,
+    siteName: w.site_name ?? '',
+    title: w.title ?? '',
+    description: w.description || undefined,
+    imageUrl: w.image_url || undefined,
+  }
 }
 
 export interface RawMessage {
@@ -148,6 +181,9 @@ export interface RawMessage {
   enc_body?: string | null
   ttl_seconds?: number | null
   destruct_at?: string | null
+  web_page?: RawWebPage | null
+  /** вид эффекта сообщения (наш аналог Telegram message effects) */
+  effect?: string | null
 }
 
 // Агрегат одной реакции на сообщении (emoji + счётчик + «моя»), tweb ReactionCount.
@@ -245,6 +281,10 @@ export interface Message {
   /** E2E-медиа секретного чата (расшифровывается на просмотре из mediaId+key+iv).
    * Инжектится клиентской расшифровкой (worker/bridge/history) — НЕ проводное поле. */
   secretMedia?: SecretMedia
+  /** серверное превью первой ссылки текстового сообщения (Telegram webPage) */
+  webPage?: WebPageData
+  /** вид полноэкранного эффекта сообщения (наш аналог Telegram message effects) */
+  effect?: EmojiEffectKind
 }
 
 // Опрос (backend PollInfo): вопрос + варианты + агрегаты для зрителя.
@@ -331,12 +371,19 @@ export interface RawDraft {
 export interface Draft {
   chatId: number
   text: string
+  entities?: MessageEntity[]
   replyToId: number | null
   updatedAt: string
 }
 
 export function mapDraft(r: RawDraft): Draft {
-  return { chatId: r.chat_id, text: r.text, replyToId: r.reply_to_id ?? null, updatedAt: r.updated_at }
+  return {
+    chatId: r.chat_id,
+    text: r.text,
+    entities: r.entities?.length ? r.entities : undefined,
+    replyToId: r.reply_to_id ?? null,
+    updatedAt: r.updated_at,
+  }
 }
 
 export function mapDialog(r: RawDialog): Dialog {
@@ -347,6 +394,7 @@ export function mapDialog(r: RawDialog): Dialog {
     peerReadSeq: r.peer_read_seq ?? 0,
     unread: r.unread,
     unreadMentions: r.unread_mentions_count || undefined,
+    unreadReactions: r.unread_reactions || undefined,
     muted: !!r.muted,
     pinned: !!r.pinned,
     archived: !!r.archived,
@@ -373,6 +421,13 @@ export function mapDialog(r: RawDialog): Dialog {
         }
       : undefined,
   }
+}
+
+// Валидные виды эффектов сообщения (бэк уже санитизирует по whitelist; здесь —
+// страховка типобезопасности при маппинге проводного значения в union-тип).
+const EFFECT_KINDS = new Set<EmojiEffectKind>(['fireworks', 'confetti', 'hearts', 'thumbs', 'poop', 'cake'])
+export function mapEffect(e?: string | null): EmojiEffectKind | undefined {
+  return e && EFFECT_KINDS.has(e as EmojiEffectKind) ? (e as EmojiEffectKind) : undefined
 }
 
 export function mapMessage(r: RawMessage): Message {
@@ -422,5 +477,7 @@ export function mapMessage(r: RawMessage): Message {
     encBody: r.enc_body ?? undefined,
     ttlSeconds: r.ttl_seconds ?? undefined,
     destructAt: r.destruct_at ?? undefined,
+    webPage: r.web_page ? mapWebPage(r.web_page) : undefined,
+    effect: mapEffect(r.effect),
   }
 }

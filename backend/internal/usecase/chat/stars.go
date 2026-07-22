@@ -146,6 +146,65 @@ func (i *Interactor) hydrateGifts(ctx context.Context, viewerID int64, msgs []do
 	}
 }
 
+// paidCharge — результат списания за платное сообщение (Telegram paid messages):
+// новый баланс отправителя и владельца для рассылки после коммита транзакции.
+type paidCharge struct {
+	applied    bool
+	senderBal  int64
+	creatorID  int64
+	creatorBal int64
+}
+
+// chargePaidMessage списывает плату за сообщение в платной группе: charge_stars
+// звёзд с отправителя (не-админа), начисляет владельцу — атомарно внутри общей
+// транзакции Send (querier берёт tx из ctx). Владелец/админ и не-группы бесплатны;
+// нехватка средств → domain.ErrPaidRequired (откатывает всю отправку).
+func (i *Interactor) chargePaidMessage(ctx context.Context, in SendInput) (paidCharge, error) {
+	if i.groups == nil || i.stars == nil || in.Type == "service" {
+		return paidCharge{}, nil
+	}
+	typ, err := i.chats.ChatType(ctx, in.ChatID)
+	if err != nil {
+		return paidCharge{}, err
+	}
+	if typ != "group" {
+		return paidCharge{}, nil
+	}
+	s, err := i.groups.Settings(ctx, in.ChatID)
+	if err != nil || s.ChargeStars <= 0 {
+		return paidCharge{}, nil // нет настроек / плата выключена
+	}
+	// Владелец и админы пишут бесплатно (как и slowmode/permissions).
+	if m, e := i.groups.GetMember(ctx, in.ChatID, in.SenderID); e == nil {
+		if m.Role == domain.RoleCreator || m.Role == domain.RoleAdmin {
+			return paidCharge{}, nil
+		}
+	}
+	creator, err := i.groups.CreatorID(ctx, in.ChatID)
+	if err != nil {
+		return paidCharge{}, err
+	}
+	if creator == in.SenderID {
+		return paidCharge{}, nil // страховка: владелец не платит сам себе
+	}
+	senderBal, err := i.stars.AddBalance(ctx, in.SenderID, -int64(s.ChargeStars))
+	if err != nil {
+		if err == domain.ErrForbidden {
+			return paidCharge{}, domain.ErrPaidRequired
+		}
+		return paidCharge{}, err
+	}
+	c := paidCharge{applied: true, senderBal: senderBal, creatorID: creator}
+	if creator != 0 {
+		creatorBal, e := i.stars.AddBalance(ctx, creator, int64(s.ChargeStars))
+		if e != nil {
+			return paidCharge{}, e
+		}
+		c.creatorBal = creatorBal
+	}
+	return c, nil
+}
+
 // publishBalance рассылает пользователю его новый баланс звёзд (все вкладки).
 func (i *Interactor) publishBalance(ctx context.Context, userID, balance int64) {
 	if i.publisher == nil {

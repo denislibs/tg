@@ -37,6 +37,9 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 	if m.ReplyMarkup != nil {
 		p["reply_markup"] = m.ReplyMarkup
 	}
+	if m.Effect != "" {
+		p["effect"] = m.Effect
+	}
 	// Медиа-мета live-кадра — те же ключи, что history read model (chat_handler):
 	// иначе получатель (и echo отправителя) рисует файл заглушкой «media-N» без
 	// имени/размера до перезагрузки истории.
@@ -144,9 +147,9 @@ func deleteUpdatePayload(chatID, msgID, seq int64, forMe bool) map[string]any {
 	}
 }
 
-func reactionPayload(chatID, messageID, userID int64, emoji, action string) map[string]any {
+func reactionPayload(chatID, messageID, userID, authorID int64, emoji, action string) map[string]any {
 	return map[string]any{
 		"chat_id": chatID, "msg_id": messageID, "user_id": userID,
-		"emoji": emoji, "action": action,
+		"author_id": authorID, "emoji": emoji, "action": action,
 	}
 }

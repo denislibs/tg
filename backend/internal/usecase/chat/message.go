@@ -81,11 +81,24 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	}
 	if in.MediaID != nil {
 		ownerID, err := i.mediaAccess.OwnerID(ctx, *in.MediaID)
-		if errors.Is(err, domain.ErrNotFound) || (err == nil && ownerID != in.SenderID) {
-			return domain.Message{}, domain.ErrNotFound // media absent or not owned by sender
-		}
-		if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrNotFound):
+			return domain.Message{}, domain.ErrNotFound // media absent
+		case err != nil:
 			return domain.Message{}, err // propagate real DB errors (don't mask as 403)
+		case ownerID != in.SenderID:
+			// Стикер шлётся чужим media: наборы публичны, поэтому достаточно,
+			// чтобы media принадлежало какому-либо стикеру.
+			if in.Type == "sticker" && i.stickers != nil {
+				ok, e := i.stickers.IsStickerMedia(ctx, *in.MediaID)
+				if e != nil {
+					return domain.Message{}, e
+				}
+				if ok {
+					break
+				}
+			}
+			return domain.Message{}, domain.ErrNotFound // not owned by sender
 		}
 	}
 
@@ -132,6 +145,10 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		in.Text, in.Entities = "", nil
 	}
 
+	// Эффект сообщения (наш аналог Telegram message effects): whitelist + только
+	// у text/медиа-сообщений (service/encrypted/gift/… эффект не несут).
+	in.Effect = sanitizeEffect(in.Effect, in.Type)
+
 	// Групповые дефолтные разрешения + slowmode (сервисные сообщения генерирует
 	// сам сервер — их не ограничиваем).
 	if in.Type != "service" {
@@ -151,6 +168,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 
 	var msg domain.Message
 	var recipients []int64 // non-nil only when a NEW message was inserted
+	var charge paidCharge  // платная группа: списание/начисление (публикуем после коммита)
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if in.ClientMsgID != "" {
 			if existing, e := i.msgs.FindByClientMsgID(ctx, in.ChatID, in.SenderID, in.ClientMsgID); e == nil {
@@ -160,6 +178,13 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 				return e
 			}
 		}
+		// Платные сообщения (Telegram paid messages): списываем звёзды ПЕРЕД
+		// вставкой, в той же транзакции (нехватка → ErrPaidRequired откатывает всё).
+		c, e := i.chargePaidMessage(ctx, in)
+		if e != nil {
+			return e
+		}
+		charge = c
 		seq, e := i.msgs.NextSeq(ctx, in.ChatID)
 		if e != nil {
 			return e
@@ -182,7 +207,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			GeoTitle: in.GeoTitle, GeoAddress: in.GeoAddress,
 			GeoLivePeriod: in.GeoLivePeriod, GeoHeading: in.GeoHeading,
 			ContactUserID: in.ContactUserID, ContactName: contactName, ContactPhone: contactPhone,
-			EncBody: in.EncBody, TTLSeconds: in.TTLSeconds,
+			EncBody: in.EncBody, TTLSeconds: in.TTLSeconds, Effect: in.Effect,
 			// Voice/round content starts "unlistened" (Telegram media_unread).
 			MediaUnread: in.Type == "voice" || in.Type == "roundVideo",
 		})
@@ -241,6 +266,13 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	if err != nil {
 		return domain.Message{}, err
 	}
+	// Платная отправка прошла: рассылаем обеим сторонам новый баланс звёзд.
+	if charge.applied {
+		i.publishBalance(ctx, in.SenderID, charge.senderBal)
+		if charge.creatorID != 0 {
+			i.publishBalance(ctx, charge.creatorID, charge.creatorBal)
+		}
+	}
 	if recipients != nil {
 		f := frame("new_message", messageUpdatePayload(msg))
 		for _, uid := range recipients {
@@ -254,6 +286,15 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		// Отправка сообщения снимает черновик чата (Telegram-семантика).
 		if in.Type != "service" {
 			i.clearDraftAfterSend(ctx, in.SenderID, in.ChatID)
+		}
+	}
+	// Серверное превью ссылки (Telegram-семантика: превью строит сервер и
+	// рассылает всем): для нового текстового сообщения с http/https-ссылкой —
+	// асинхронно после коммита, кадром web_page_update (сервисные/секретные
+	// сообщения исключены: service не text, secret отсекается по типу чата).
+	if recipients != nil && i.preview != nil && in.Type == "text" {
+		if u := firstURL(msg.Text, msg.Entities); u != "" {
+			go i.attachWebPreview(msg, u, recipients)
 		}
 	}
 	// Авто-ответ бота: обычное текстовое сообщение в приватный чат с ботом.
@@ -296,6 +337,11 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 		// Прочитанное до effective снимает непрочитанные упоминания с seq<=effective
 		// и пересчитывает счётчик «@» (Telegram readMentions).
 		if _, e := i.chats.ClearMentions(ctx, chatID, userID, effective); e != nil {
+			return e
+		}
+		// Открытие чата гасит и бейдж непрочитанных реакций (Telegram
+		// readReactions): счётчик простой, сбрасываем в ноль при прочтении.
+		if e := i.chats.ClearUnreadReactions(ctx, chatID, userID); e != nil {
 			return e
 		}
 		// Self-destruct: запускаем таймер для секретных сообщений, которые
@@ -387,6 +433,21 @@ func (i *Interactor) ClearHistory(ctx context.Context, chatID, userID int64) err
 		_, e = i.chats.ClearMentions(ctx, chatID, userID, maxSeq)
 		return e
 	})
+}
+
+// ReadReactions explicitly clears the caller's unread-reactions badge for a chat
+// (Telegram readReactions — POST /chats/{chatID}/reactions/read), without
+// touching the read horizon. MarkRead clears it too; this is the "read only the
+// reactions" path. Not a member → domain.ErrNotFound.
+func (i *Interactor) ReadReactions(ctx context.Context, chatID, userID int64) error {
+	ok, err := i.chats.IsMember(ctx, chatID, userID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return domain.ErrNotFound
+	}
+	return i.chats.ClearUnreadReactions(ctx, chatID, userID)
 }
 
 // ReadMedia clears a voice/round message's media_unread flag when its recipient

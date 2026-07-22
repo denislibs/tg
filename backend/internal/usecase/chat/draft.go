@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"unicode/utf8"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -26,6 +27,19 @@ func (i *Interactor) SaveDraft(ctx context.Context, userID, chatID int64, text s
 	}
 	if utf8.RuneCountInString(text) > maxMessageRunes {
 		return nil, domain.ErrTooLong
+	}
+	// reply_to_id валидируется мягко: сообщение должно существовать в этом же
+	// чате, иначе просто NULL (черновик сохраняется без reply, не ошибка).
+	if replyToID != nil {
+		m, err := i.msgs.GetByID(ctx, *replyToID)
+		switch {
+		case errors.Is(err, domain.ErrNotFound):
+			replyToID = nil
+		case err != nil:
+			return nil, err
+		case m.ChatID != chatID:
+			replyToID = nil
+		}
 	}
 	if text == "" && replyToID == nil {
 		if err := i.deleteDraft(ctx, userID, chatID); err != nil {

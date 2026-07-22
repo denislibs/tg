@@ -56,6 +56,18 @@ func (i *Interactor) postGroupService(ctx context.Context, chatID, actorID int64
 	_, _ = i.Send(ctx, SendInput{ChatID: chatID, SenderID: actorID, Type: "service", Text: text})
 }
 
+// postGroupServiceMedia is postGroupService for actions that carry a photo
+// (tweb messageActionChatEditPhoto): the new group avatar rides on the service
+// message's media_id, so clients render a clickable round thumbnail under the
+// pill. The media must belong to the actor (Send re-checks ownership).
+func (i *Interactor) postGroupServiceMedia(ctx context.Context, chatID, actorID, mediaID int64, text string) {
+	if i.msgs == nil || i.updates == nil {
+		return // wired without a message pipeline (some unit-test setups)
+	}
+	mid := mediaID
+	_, _ = i.Send(ctx, SendInput{ChatID: chatID, SenderID: actorID, Type: "service", Text: text, MediaID: &mid})
+}
+
 // userCard looks up a user for service-message attribution (zero card on miss).
 func (i *Interactor) userCard(ctx context.Context, id int64) domain.UserCard {
 	if i.groups == nil {
@@ -230,7 +242,9 @@ func (i *Interactor) SetChatPhoto(ctx context.Context, chatID, actorID, mediaID 
 	if err := i.groups.SetPhoto(ctx, chatID, mediaID); err != nil {
 		return err
 	}
-	i.postGroupService(ctx, chatID, actorID, serviceText("edit_photo", i.userCard(ctx, actorID), nil))
+	// Фото едет медиа-полем сервисного сообщения (tweb messageActionChatEditPhoto
+	// несёт photo) — клиент рисует кликабельную круглую миниатюру под пилюлей.
+	i.postGroupServiceMedia(ctx, chatID, actorID, mediaID, serviceText("edit_photo", i.userCard(ctx, actorID), nil))
 	return nil
 }
 
@@ -324,7 +338,14 @@ func (i *Interactor) JoinByToken(ctx context.Context, token string, userID int64
 		}
 		return i.invites.IncUses(ctx, link.ID)
 	})
-	return false, err
+	if err != nil {
+		return false, err
+	}
+	// Вступление по инвайт-ссылке — отдельное сервисное сообщение (tweb
+	// messageActionChatJoinedByLink / ActionInviteUser «… по ссылке-приглашению»),
+	// а не add_user: добавил не админ, пользователь вошёл сам. Actor — вступивший.
+	i.postGroupService(ctx, link.ChatID, userID, serviceText("joined_by_link", i.userCard(ctx, userID), nil))
+	return false, nil
 }
 
 // ListJoinRequests returns the pending join requests for a chat. The actor must

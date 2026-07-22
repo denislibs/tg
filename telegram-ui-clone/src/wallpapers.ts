@@ -21,3 +21,31 @@ export const WALLPAPER_PRESETS: WallpaperPreset[] = [
 ]
 
 export const DEFAULT_WALLPAPER_ID = 'day'
+
+// Discriminated shape of the chat wallpaper. Kept here (не в settings.tsx) so the
+// pure selection logic below has no React/store deps and is trivially testable.
+export type Wallpaper =
+  | { kind: 'default' }
+  | { kind: 'preset'; colors: string[] }
+  | { kind: 'color'; color: string }
+  | { kind: 'image'; src: string }
+
+// Что реально рисует фон чата. Приоритет: свои обои (загруженное фото по
+// media_id) поверх пресета/цвета/дефолта. Пока задан customWallpaperMediaId —
+// фон рисуется этим фото (cover), с опциональным размытием.
+export type ActiveBackground =
+  | { kind: 'custom'; mediaId: number; blur: boolean }
+  | { kind: 'wallpaper'; wallpaper: Wallpaper }
+
+// Чистый выбор активного фона из настроек (custom vs пресет). Без побочных
+// эффектов — так покрыт тестом и переиспользуется рендером ChatBackground.
+export function activeBackground(s: {
+  customWallpaperMediaId?: number
+  customWallpaperBlur?: boolean
+  wallpaper: Wallpaper
+}): ActiveBackground {
+  if (s.customWallpaperMediaId != null) {
+    return { kind: 'custom', mediaId: s.customWallpaperMediaId, blur: !!s.customWallpaperBlur }
+  }
+  return { kind: 'wallpaper', wallpaper: s.wallpaper }
+}

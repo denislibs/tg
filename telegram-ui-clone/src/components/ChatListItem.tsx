@@ -209,6 +209,13 @@ function ChatListItem({ chat, selected, onSelect }: Props) {
             {/* Непрочитанные упоминания: отдельный круглый бейдж «@» слева от
                 счётчика непрочитанных (tweb .dialog-subtitle-badge.mention). */}
             {chat.unreadMentions ? <Badge muted={chat.muted}>@</Badge> : null}
+            {/* Непрочитанные реакции: круглый бейдж-сердце (tweb
+                .dialog-subtitle-badge.reaction, Icon('reactions_filled')). */}
+            {chat.unreadReactions ? (
+              <Badge muted={chat.muted}>
+                <TgIcon name="reactions_filled" size={16} color="#fff" />
+              </Badge>
+            ) : null}
             {chat.unread != null ? (
               <Badge muted={chat.muted}>{chat.unread}</Badge>
             ) : chat.pinned ? (

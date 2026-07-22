@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { slideInRight } from '../motion'
 import SettingsSubScreen, { hasSubScreen } from './SettingsSubScreen'
 import EditProfile from './settings/EditProfile'
+import ChangePhone from './settings/ChangePhone'
 import PremiumModal from './PremiumModal'
 import EmojiStatusPicker from './EmojiStatusPicker'
 import QrModal from './QrModal'
@@ -64,6 +65,7 @@ export default function SettingsView({
   const [active, setActive] = useState(initialSub ?? 'Notifications and Sounds')
   const [sub, setSub] = useState<string | null>(initialSub ?? null)
   const [editProfile, setEditProfile] = useState(false)
+  const [changePhone, setChangePhone] = useState(false)
   const [premiumOpen, setPremiumOpen] = useState(false)
   const [emojiStatusOpen, setEmojiStatusOpen] = useState(false)
   const [qrOpen, setQrOpen] = useState(false)
@@ -118,7 +120,8 @@ export default function SettingsView({
             label={formatPhone(me?.phone) || '—'}
             sublabel={t('Phone')}
             translate={false}
-            onClick={() => setEditProfile(true)}
+            chevron
+            onClick={() => setChangePhone(true)}
           />
           {me?.username && (
             <Row
@@ -196,6 +199,11 @@ export default function SettingsView({
       {/* Edit profile overlay */}
       <AnimatePresence>
         {editProfile && <EditProfile onBack={() => setEditProfile(false)} />}
+      </AnimatePresence>
+
+      {/* Change phone number overlay (tweb Change Number) */}
+      <AnimatePresence>
+        {changePhone && <ChangePhone onBack={() => setChangePhone(false)} />}
       </AnimatePresence>
 
       {/* Telegram Premium modal */}

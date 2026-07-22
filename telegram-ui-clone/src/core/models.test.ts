@@ -1,6 +1,6 @@
 // src/core/models.test.ts
 import { describe, it, expect } from 'vitest'
-import { mapDialog, mapMessage, type RawDialog, type RawMessage } from './models'
+import { mapDialog, mapDraft, mapMessage, type RawDialog, type RawMessage } from './models'
 
 describe('mapDialog', () => {
   it('maps a private dialog with peer + last_message', () => {
@@ -27,6 +27,12 @@ describe('mapDialog', () => {
     expect(d.peer).toBeUndefined()
     expect(d.lastMessage).toBeUndefined()
     expect(d.muted).toBe(false)
+  })
+
+  it('maps unread_reactions → unreadReactions (undefined when 0/absent)', () => {
+    expect(mapDialog({ chat_id: 1, type: 'private', last_read_seq: 0, unread: 0, unread_reactions: 3 }).unreadReactions).toBe(3)
+    expect(mapDialog({ chat_id: 1, type: 'private', last_read_seq: 0, unread: 0, unread_reactions: 0 }).unreadReactions).toBeUndefined()
+    expect(mapDialog({ chat_id: 1, type: 'private', last_read_seq: 0, unread: 0 }).unreadReactions).toBeUndefined()
   })
 })
 
@@ -59,5 +65,70 @@ describe('mapMessage', () => {
       reply_to_id: null, media_id: null, created_at: '2026-06-24T10:01:00Z',
     }
     expect(mapMessage(raw).threadRootId).toBeNull()
+  })
+
+  it('maps a valid effect and drops unknown/empty effects', () => {
+    const mk = (effect: string | null | undefined): RawMessage => ({
+      id: 20, chat_id: 1, seq: 6, sender_id: 1, type: 'text', text: 'party',
+      reply_to_id: null, media_id: null, created_at: '2026-06-24T10:01:00Z', effect,
+    })
+    expect(mapMessage(mk('confetti')).effect).toBe('confetti')
+    expect(mapMessage(mk('fireworks')).effect).toBe('fireworks')
+    // вне whitelist / пусто → undefined
+    expect(mapMessage(mk('boom')).effect).toBeUndefined()
+    expect(mapMessage(mk('')).effect).toBeUndefined()
+    expect(mapMessage(mk(null)).effect).toBeUndefined()
+    expect(mapMessage(mk(undefined)).effect).toBeUndefined()
+  })
+
+  it('maps web_page (server link preview) to webPage', () => {
+    const raw: RawMessage = {
+      id: 13, chat_id: 1, seq: 3, sender_id: 1, type: 'text', text: 'https://example.com',
+      reply_to_id: null, media_id: null, created_at: '2026-06-24T10:01:00Z',
+      web_page: { url: 'https://example.com', site_name: 'Example', title: 'Заголовок', description: 'Описание', image_url: 'https://example.com/og.png' },
+    }
+    expect(mapMessage(raw).webPage).toEqual({
+      url: 'https://example.com', siteName: 'Example', title: 'Заголовок',
+      description: 'Описание', imageUrl: 'https://example.com/og.png',
+    })
+  })
+
+  it('drops empty web_page fields and defaults webPage to undefined', () => {
+    const base = {
+      id: 14, chat_id: 1, seq: 4, sender_id: 1, type: 'text', text: 'x',
+      reply_to_id: null, media_id: null, created_at: '2026-06-24T10:01:00Z',
+    }
+    expect(mapMessage({ ...base }).webPage).toBeUndefined()
+    expect(mapMessage({ ...base, web_page: null }).webPage).toBeUndefined()
+    const wp = mapMessage({ ...base, web_page: { title: 't' } }).webPage
+    expect(wp).toEqual({ url: undefined, siteName: '', title: 't', description: undefined, imageUrl: undefined })
+  })
+})
+
+describe('mapDraft', () => {
+  it('maps entities and reply_to_id (draft_update frame / GET /drafts)', () => {
+    const d = mapDraft({
+      chat_id: 3, text: '**жирный**',
+      entities: [{ type: 'bold', offset: 0, length: 6 }],
+      reply_to_id: 42, updated_at: '2026-07-21T10:00:00Z',
+    })
+    expect(d).toEqual({
+      chatId: 3, text: '**жирный**',
+      entities: [{ type: 'bold', offset: 0, length: 6 }],
+      replyToId: 42, updatedAt: '2026-07-21T10:00:00Z',
+    })
+  })
+
+  it('defaults absent/null entities and reply_to_id', () => {
+    const d = mapDraft({ chat_id: 3, text: 'x', entities: null, reply_to_id: null, updated_at: 't' })
+    expect(d.entities).toBeUndefined()
+    expect(d.replyToId).toBeNull()
+    const d2 = mapDraft({ chat_id: 3, text: 'x', updated_at: 't' })
+    expect(d2.entities).toBeUndefined()
+    expect(d2.replyToId).toBeNull()
+  })
+
+  it('drops an empty entities array', () => {
+    expect(mapDraft({ chat_id: 1, text: 'x', entities: [], updated_at: 't' }).entities).toBeUndefined()
   })
 })

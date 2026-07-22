@@ -62,6 +62,16 @@ describe('messageToConvMsg', () => {
     expect(c.mediaId).toBe(42)
   })
 
+  it('keeps mediaId on a service message (edit_photo → round thumbnail)', () => {
+    const c = messageToConvMsg(
+      { ...base, type: 'service', text: '{"action":"edit_photo","actor":"Алиса"}', mediaId: 55 },
+      7,
+    )
+    expect(c.type).toBe('service')
+    expect(c.mediaId).toBe(55)
+    expect(c.text).toBe('Алиса обновил(а) фото группы')
+  })
+
   it('sets sender from opts.senderName on incoming messages', () => {
     const c = messageToConvMsg(base, 7, { senderName: 'Bob' })
     expect(c.out).toBe(false)

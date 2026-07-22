@@ -12,8 +12,9 @@ function hhmm(iso: string): string {
 }
 
 // Human label for a replied-to media message that has no caption (Telegram shows
-// these in the quote line, e.g. "Фотография").
-function replyMediaLabel(type?: string): string {
+// these in the quote line, e.g. "Фотография"). Экспорт: тот же лейбл использует
+// пин-бар и экран закреплённых для медиа без подписи.
+export function replyMediaLabel(type?: string): string {
   switch (type) {
     case 'photo': return 'Фотография'
     case 'video': return 'Видео'
@@ -55,6 +56,7 @@ export function messageToConvMsg(
     : m.type === 'geo' ? 'geo'
     : m.type === 'contact' ? 'contact'
     : m.type === 'gift' ? 'gift'
+    : m.type === 'sticker' ? 'sticker'
     : m.type === 'service' ? 'service'
     : secretType === 'photo' || secretType === 'video' || secretType === 'document' || secretType === 'audio' ? secretType
     : m.type === 'photo' || m.type === 'video' || m.type === 'document' || m.type === 'audio' ? m.type
@@ -81,6 +83,8 @@ export function messageToConvMsg(
             : 'sent'
       : undefined,
     call: m.type === 'call' ? parseCallLog(m.text) : undefined,
+    webPage: m.webPage,
+    effect: m.effect,
     poll: m.poll,
     gift: m.gift,
     replyMarkup: m.replyMarkup,

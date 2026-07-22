@@ -98,6 +98,19 @@ export interface AuthDeps {
   store: TokenStoreLike
 }
 
+// Discriminated outcomes so the 400/409 cases survive the SharedWorker RPC
+// boundary (where HttpError identity would be lost), mirroring SetUsernameResult.
+export type ChangePhoneResult =
+  | { ok: true }
+  | { taken: true }
+  | { invalid: true }
+
+export type ConfirmChangePhoneResult =
+  | { user: User }
+  | { invalidCode: true }
+  | { taken: true }
+  | { invalid: true }
+
 export function newAuthManager({ rest, store }: AuthDeps) {
   // Активный вход завершён: сохранить токен + занести аккаунт в реестр (мультиаккаунт).
   const persist = async (token: string, u: User) => {
@@ -219,6 +232,62 @@ export function newAuthManager({ rest, store }: AuthDeps) {
         }
         throw e
       }
+    },
+
+    // Смена номера, шаг 1: отправить код на новый номер (после проверки, что он
+    // не занят). Ошибки маппятся в дискриминированный результат (RPC-граница).
+    async changePhone(newPhone: string): Promise<ChangePhoneResult> {
+      try {
+        await rest.post('/me/change-phone', { new_phone: newPhone })
+        return { ok: true }
+      } catch (e) {
+        if (e instanceof HttpError && e.status === 409) return { taken: true }
+        if (e instanceof HttpError && e.status === 400) return { invalid: true }
+        throw e
+      }
+    },
+
+    // Смена номера, шаг 2: подтвердить кодом. При успехе номер обновлён — обновляем
+    // и активный аккаунт в реестре (телефон показывается в меню мультиаккаунта).
+    async confirmChangePhone(newPhone: string, code: string): Promise<ConfirmChangePhoneResult> {
+      try {
+        const u = mapUser(await rest.post<RawUser>('/me/change-phone/confirm', { new_phone: newPhone, code }))
+        const token = store.get()
+        if (token) {
+          await upsertAccount({
+            token,
+            id: u.id,
+            name: u.displayName || [u.firstName, u.lastName].filter(Boolean).join(' ') || u.username || u.phone,
+            avatarUrl: u.avatarUrl,
+            phone: u.phone,
+          })
+        }
+        return { user: u }
+      } catch (e) {
+        if (e instanceof HttpError && e.status === 401) return { invalidCode: true }
+        if (e instanceof HttpError && e.status === 409) return { taken: true }
+        if (e instanceof HttpError && e.status === 400) return { invalid: true }
+        throw e
+      }
+    },
+
+    // Удаление аккаунта: сервер анонимизирует профиль и отзывает все сессии.
+    // Локально ведём себя как logout — убираем аккаунт из реестра; если остались
+    // другие, переключаемся на первый (UI затем перезагружает страницу).
+    async deleteAccount(): Promise<{ switched: boolean }> {
+      if (store.get()) {
+        try { await rest.del('/me') } catch { /* сервер мог уже отозвать сессию */ }
+      }
+      const active = store.get()
+      const all = await listAccounts()
+      const activeAcc = all.find((a) => a.token === active)
+      const remaining = activeAcc ? await removeAccount(activeAcc.id) : all
+      if (remaining.length > 0) {
+        await store.set(remaining[0].token)
+        return { switched: true }
+      }
+      await store.clear()
+      return { switched: false }
     },
 
     async logout(): Promise<{ switched: boolean }> {

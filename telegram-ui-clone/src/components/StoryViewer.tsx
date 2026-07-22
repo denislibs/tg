@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom'
+import { useEffect, useRef } from 'react'
 import Text from '../shared/ui/Text'
 import IconButton from '../shared/ui/IconButton'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -34,7 +35,17 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
     prev,
     openViewers,
     bg,
+    paused,
   } = useStoryViewer({ groupIndex, onClose })
+
+  // Пауза (Space) синхронно останавливает воспроизведение видео сториз.
+  const videoRef = useRef<HTMLVideoElement>(null)
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v) return
+    if (paused) v.pause()
+    else void v.play().catch(() => {})
+  }, [paused, mediaUrl])
 
   if (!group || !story) return null
 
@@ -58,7 +69,7 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
           {/* Media */}
           {mediaUrl ? (
             isVideo ? (
-              <video className={s.media} src={mediaUrl} autoPlay muted playsInline />
+              <video ref={videoRef} className={s.media} src={mediaUrl} autoPlay muted playsInline />
             ) : (
               <img className={s.media} src={mediaUrl} alt="" />
             )
@@ -72,13 +83,13 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
               <div key={st.id} className={s.segment}>
                 {i < current && <div className={s.segmentFill} />}
                 {i === current && (
-                  <motion.div
+                  // CSS-анимация (не framer): нативно паузится через
+                  // animationPlayState, сохраняя прогресс; конец сегмента → next.
+                  <div
                     key={current}
-                    initial={{ width: '0%' }}
-                    animate={{ width: '100%' }}
-                    transition={{ duration: 5, ease: 'linear' }}
-                    onAnimationComplete={next}
-                    style={{ height: '100%', background: '#fff' }}
+                    className={s.segmentActive}
+                    style={{ animationPlayState: paused ? 'paused' : 'running' }}
+                    onAnimationEnd={next}
                   />
                 )}
               </div>

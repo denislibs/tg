@@ -87,4 +87,18 @@ describe('chatsStore', () => {
     useChatsStore.getState().applyRead({ chat_id: 2, user_id: 5, up_to_seq: 4 })
     expect(useChatsStore.getState().dialogs[0].peerReadSeq).toBe(9)
   })
+
+  it('bumpUnreadReactions increments the dialog reactions badge', () => {
+    useChatsStore.setState({ dialogs: [{ chatId: 2, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false, pinned: false, archived: false }], meId: 7 })
+    useChatsStore.getState().bumpUnreadReactions(2)
+    expect(useChatsStore.getState().dialogs[0].unreadReactions).toBe(1)
+    useChatsStore.getState().bumpUnreadReactions(2)
+    expect(useChatsStore.getState().dialogs[0].unreadReactions).toBe(2)
+  })
+
+  it('applyRead from me clears the reactions badge too', () => {
+    useChatsStore.setState({ dialogs: [{ chatId: 2, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 3, unreadReactions: 2, muted: false, pinned: false, archived: false }], meId: 7 })
+    useChatsStore.getState().applyRead({ chat_id: 2, user_id: 7, up_to_seq: 9 })
+    expect(useChatsStore.getState().dialogs[0].unreadReactions).toBe(0)
+  })
 })

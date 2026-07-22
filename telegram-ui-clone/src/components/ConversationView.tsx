@@ -21,6 +21,7 @@ import { useManagers } from '../core/hooks/useManagers'
 import { useMessageWindow } from '../core/hooks/useMessageWindow'
 import { useEvent } from '../core/hooks/useEvent'
 import { markMediaPlayed } from '../core/mediaRead'
+import type { GifItem } from '../core/gifs'
 import { useChatSelection } from '../core/hooks/useChatSelection'
 import { useChatInfoCard } from '../core/hooks/useChatInfoCard'
 import { usePinnedBar } from '../core/hooks/usePinnedBar'
@@ -37,6 +38,8 @@ import Composer from './Composer'
 import ChatFeed from './messages/ChatFeed'
 import EmptyChatGreeting from './messages/EmptyChatGreeting'
 import { useChatAutoDownload } from '../core/hooks/useChatAutoDownload'
+import { useDraftsStore } from '../stores/draftsStore'
+import { draftReplyState, convMsgReplyState } from '../core/draftReply'
 import { useComposerDraft } from '../core/hooks/useComposerDraft'
 import { useMentionPeers } from '../core/hooks/useMentionPeers'
 import CreatePollPopup from './CreatePollPopup'
@@ -52,6 +55,7 @@ import Menu, { MenuItem } from '../shared/ui/Menu'
 import IconButton from '../shared/ui/IconButton'
 import { TopicIcon } from './TopicsPanel'
 import PinnedBar from './conversation/PinnedBar'
+import PinnedMessagesScreen from './conversation/PinnedMessagesScreen'
 import ScrollDownFab from './conversation/ScrollDownFab'
 import SelectionBar from './conversation/SelectionBar'
 import MessageContextMenu from './conversation/MessageContextMenu'
@@ -141,8 +145,6 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
 
   const numericChatId = Number(chat.id)
   const isRealChat = Number.isFinite(numericChatId) && String(numericChatId) === chat.id
-  // Облачный черновик: восстановление в композер + сейв с дебаунсом
-  const { initialDraft, onDraftChange } = useComposerDraft(isRealChat && !thread ? numericChatId : null)
   // Кандидаты @упоминаний — участники группы (tweb mentionsHelper)
   const mentionPeers = useMentionPeers(isRealChat ? numericChatId : null, isRealChat && isGroup)
 
@@ -254,8 +256,11 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     return () => { alive = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [thread?.kind, numericChatId, isRealChat])
-  // Pinned messages in this chat (newest pin first) — drives the pinned bar.
-  const pins = usePinnedBar(numericChatId, isRealChat, managers)
+  // Pinned messages in this chat (newest pin first) + индекс перелистывания
+  // плашки (tweb pinnedMessage) — drives the pinned bar.
+  const { pins, index: pinIndex, follow: followPin } = usePinnedBar(numericChatId, isRealChat, managers)
+  // Экран «Закреплённые сообщения» (tweb topbar.openPinned)
+  const [pinnedOpen, setPinnedOpen] = useState(false)
   // Search is owned by ChatHeader now; here we only read whether it's open (single-sourced
   // in searchStore) to hide the pinned bar + adjust the sticky-date offset.
   const searchOpen = useSearchStore((s) => s.byChat[numericChatId]?.open ?? false)
@@ -383,12 +388,27 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     onComposerTyping,
     pendingMedia, setPendingMedia, sendPendingMedia,
     openPicker, fileInputRef, pickAsFileRef,
-    sendGeo, sendContact,
+    sendGeo, sendContact, sendSticker, sendGif,
   } = useChatSend({
     chat, numericChatId, isRealChat, isChannel, draftPeerId, canType, secretLocked,
     meId, win, managers, threadRootId, atBottomRef, userScrolledUpRef,
     onChatCreated,
   })
+
+  // Облачный черновик: восстановление в композер + сейв с дебаунсом; вместе с
+  // текстом сохраняется reply_to_id текущего reply-стейта (tweb draft).
+  const { initialDraft, onDraftChange } = useComposerDraft(isRealChat && !thread ? numericChatId : null, reply?.msgId ?? null)
+  // Восстановление reply-бара из черновика (draft.reply_to_id): один раз после
+  // загрузки окна; сообщение ищем в окне, вне окна — скип (getById у бэка нет).
+  const draftReplyToId = useDraftsStore((s) => (isRealChat && !thread ? s.byChat[numericChatId]?.replyToId ?? null : null))
+  const replyRestoredRef = useRef(false)
+  useEffect(() => {
+    if (replyRestoredRef.current || draftReplyToId == null || msgs.length === 0) return
+    replyRestoredRef.current = true
+    if (reply) return
+    const rs = draftReplyState(msgs, draftReplyToId, chat.name, accentColor)
+    if (rs) setReply(rs)
+  }, [draftReplyToId, msgs, reply, chat.name, accentColor, setReply])
 
   // Message context menu + its actions (reply/edit/copy/pin/delete/forward/select/
   // download/viewers) and the delete-confirm / forward-picker / viewers-popup state.
@@ -588,12 +608,26 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const onToggleInfo = useEvent(() => setInfoOpen((o) => !o))
   const onOpenHeaderMenu = useEvent((r: DOMRect) => setHeaderMenu({ top: r.bottom + 6, right: window.innerWidth - r.right }))
   const onUnpin = useEvent((id: number) => { void managers.messages.unpin(numericChatId, id) })
+  // Клик по пин-плашке (tweb followPinnedMessage): прыжок к показанному пину,
+  // бар перелистывается на следующий (более старый, циклически).
+  const onPinFollow = useEvent(() => {
+    const m = followPin()
+    if (m) jumpToSeqE(m.seq)
+  })
+  const onOpenPinList = useEvent(() => setPinnedOpen(true))
+  // Право «Открепить все» (tweb canPinMessage): приватный/личный чат — всегда;
+  // группа/канал — создатель или админ с RightPinMessages (1<<5).
+  const canUnpinAll = chat.type === 'private' || chat.type === 'saved' ||
+    card?.myRole === 'creator' || ((card?.myRights ?? 0) & 32) !== 0
   // Stable composer callbacks so the memoized <Composer> doesn't re-render on
   // unrelated parent renders (e.g. the scroll handler toggling showScrollDown).
   // Медленный режим: обычный участник группы блокируется на N сек после отправки
   const slowmodeExempt = !isGroup || card?.myRole === 'creator' || card?.myRole === 'admin'
   const { left: slowmodeLeft, markSent: slowmodeMarkSent } = useSlowmode(card?.slowmodeSeconds ?? 0, slowmodeExempt)
-  const onComposerSend = useEvent((text: string, entities?: MessageEntity[], ttlSeconds?: number | null) => { send(text, entities, ttlSeconds); slowmodeMarkSent() })
+  // Платные сообщения (Telegram paid messages): плашка в композере только для
+  // не-админа платной группы (владелец/админ пишут бесплатно).
+  const composerChargeStars = isGroup && card && card.myRole !== 'creator' && card.myRole !== 'admin' ? (card.chargeStars ?? 0) : 0
+  const onComposerSend = useEvent((text: string, entities?: MessageEntity[], ttlSeconds?: number | null, silent?: boolean, effect?: import('../core/effects/emojiEffects').EmojiEffectKind | null) => { send(text, entities, ttlSeconds, silent ?? false, effect ?? null); slowmodeMarkSent() })
   // Inline-режим: резолв «@username» → id бота (кэш), затем выдача бэком (он сам
   // проверит is_bot). Выбор результата шлёт его текст обычным сообщением.
   const inlineBotCache = useRef<Map<string, number | null>>(new Map())
@@ -612,12 +646,59 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     try { return (await managers.bots.inline(botId, query)).results } catch { return null }
   })
   const onComposerPickInline = useEvent((r: InlineResult) => { send(r.messageText); slowmodeMarkSent() })
+  // Стикер из пикера/саджестов; каналы постят через REST (стикеры не шлём),
+  // секретные чаты — E2E-путь без обычного медиа.
+  const onComposerPickSticker = useEvent((st: { id: number; mediaId: number; emoji: string }) => { sendSticker(st); slowmodeMarkSent() })
+  // GIF из вкладки пикера — те же ограничения, что у стикеров (не канал, не секретный).
+  const onComposerPickGif = useEvent((g: GifItem) => { sendGif(g); slowmodeMarkSent() })
   const onComposerCancelReply = useEvent(() => setReply(null))
   const onComposerCancelEdit = useEvent(() => setEditing(null))
   const onComposerOpenAttach = useEvent((r: DOMRect) => setAttachAnchor({ left: r.left, bottom: window.innerHeight - r.top + 8 }))
   // Files pasted/dropped into the composer → open the same media-preview popup as
   // the attach button (lets the user add a caption + choose media/file).
   const onComposerPasteFiles = useEvent((files: File[]) => setPendingMedia({ files, asFile: false }))
+  // ↑ на пустом инпуте — правка своего последнего сообщения (tweb editLastMessage):
+  // ищем с конца окна первое своё редактируемое сообщение и ставим editing тем же
+  // путём, что «Изменить» из меню (setEditing).
+  const onComposerEditLast = useEvent(() => {
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i]
+      if (!m.out || m.deleted || m.type === 'date' || m.type === 'service') continue
+      const raw = winV.msgs[i]
+      if (raw?.id == null) continue
+      setEditing({ msgId: raw.id, text: m.text ?? '', entities: raw.entities })
+      setReply(null)
+      return
+    }
+  })
+  // Ctrl/Cmd+↑ — ответ на последнее подходящее сообщение окна (tweb): с конца
+  // ищем первое несервисное/неудалённое сообщение и ставим reply как из меню.
+  const onComposerReplyPrev = useEvent(() => {
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i]
+      if (m.deleted || m.type === 'date' || m.type === 'service') continue
+      const rs = convMsgReplyState(m, winV.msgs[i]?.id, chat.name, accentColor)
+      if (rs) { setReply(rs); setEditing(null); return }
+    }
+  })
+  // Ctrl/Cmd+PageUp / PageDown — к началу / концу истории (tweb). PageUp скроллит
+  // к верху загруженного окна (старые подгрузит штатный scroll-листенер); PageDown
+  // переиспользует «вниз» (reloadNewest + пин к низу). Активно при открытом чате.
+  useEffect(() => {
+    if (!isRealChat) return
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return
+      if (e.key === 'PageUp') {
+        e.preventDefault()
+        scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+      } else if (e.key === 'PageDown') {
+        e.preventDefault()
+        onScrollDownClick()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [isRealChat, scrollRef, onScrollDownClick])
 
   // Форум-группы здесь НЕ перехватываются: как в tweb, клик по форуму открывает
   // панель топиков в ЛЕВОМ сайдбаре (Sidebar → TopicsPanel); тред топика — этот же
@@ -682,10 +763,12 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
 
         {!thread && <PinnedBar
           pins={pins}
+          index={pinIndex}
           searchOpen={searchOpen}
           playerOffset={playerOffset}
-          onJump={jumpToSeqE}
+          onFollow={onPinFollow}
           onUnpin={onUnpin}
+          onOpenList={onOpenPinList}
         />}
 
         {/* First-load spinner — only after the grace delay (skipped on cache hits) */}
@@ -850,6 +933,8 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               rec={rec}
               onSend={onComposerSend}
               onTyping={onComposerTyping}
+              onPickSticker={canType && !isChannel && chat.type !== 'secret' ? onComposerPickSticker : undefined}
+              onPickGif={canType && !isChannel && chat.type !== 'secret' ? onComposerPickGif : undefined}
               onCancelReply={onComposerCancelReply}
               onCancelEdit={onComposerCancelEdit}
               onOpenAttach={onComposerOpenAttach}
@@ -865,6 +950,9 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               onOpenScheduled={() => setScheduledOpen(true)}
               slowmodeLeft={slowmodeLeft}
               secret={chat.type === 'secret'}
+              chargeStars={composerChargeStars}
+              onEditLast={onComposerEditLast}
+              onReplyPrev={onComposerReplyPrev}
             />
           </div>
         ) : (
@@ -1015,6 +1103,20 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           </Text>
           <Text size={14} weight={700} color="#fff">{t('Join')}</Text>
         </div>
+      )}
+
+      {/* «Закреплённые сообщения» (tweb ChatType.Pinned): открепление последнего
+          пина убирает pins → оверлей сам закрывается (tweb закрывает pinned-таб) */}
+      {pinnedOpen && isRealChat && pins.length > 0 && (
+        <PinnedMessagesScreen
+          chatId={numericChatId}
+          pins={pins}
+          meId={meId}
+          meName={me?.displayName}
+          canUnpinAll={canUnpinAll}
+          onJump={(seq) => { setPinnedOpen(false); jumpToSeqE(seq) }}
+          onClose={() => setPinnedOpen(false)}
+        />
       )}
 
       {/* «Запланированные сообщения» (tweb ChatType.Scheduled) */}

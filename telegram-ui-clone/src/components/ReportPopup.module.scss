@@ -1,0 +1,27 @@
+.list {
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+
+  &:hover {
+    background-color: var(--tg-hover);
+  }
+
+  &[data-selected] {
+    background-color: var(--tg-hover);
+  }
+}
+
+.comment {
+  margin-top: 12px;
+}

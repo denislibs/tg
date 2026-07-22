@@ -31,11 +31,14 @@ import { loadStories } from './stores/storiesStore'
 import { dialogToChat, gradientFor } from './core/dialogToChat'
 import { startRealtime } from './client/realtimeBridge'
 import { setupPush } from './client/pushSetup'
+import { initAppBadge } from './client/appBadge'
+import { initHotkeys } from './core/hotkeys'
 import { loadNotifySettings, useNotifyStore, notifyTypeForChat } from './stores/notifyStore'
 import { loadPrivacy } from './stores/privacyStore'
 import { loadDrafts, useDraftsStore } from './stores/draftsStore'
 import { loadFolders } from './stores/foldersStore'
 import FolderInvitePopup from './components/folders/FolderInvitePopup'
+import ReportPopup from './components/ReportPopup'
 import { loadStars } from './stores/starsStore'
 import { usePipStore } from './core/pip'
 import { ANIMATE_MAIN_KEY, PREV_ACCOUNT_KEY, playMainScreenEnter } from './core/accountTransition'
@@ -102,6 +105,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     const { cacheTTL, cacheSize } = useSettingsStore.getState()
     syncCacheSettingsToSW(cacheTTL, cacheSize)
     startRealtime()
+    initAppBadge() // счётчик непрочитанных: title/favicon/PWA-бейдж
     // offline-уведомления (web push) подписываем только если не выключены в настройках
     if (useSettingsStore.getState().notifyPush) void setupPush()
   }, [managers])
@@ -264,6 +268,68 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
       return null
     })
   }, [])
+
+  // Глобальные хоткеи (tweb): Ctrl/Cmd+K — фокус в поиск (кастомное событие
+  // ловит InputSearch сайдбара), Esc при пустом стеке оверлеев — закрыть
+  // открытый чат/тред, Ctrl/Cmd+Shift+M — mute текущего чата.
+  const selectedIdRef = useRef(selectedId)
+  selectedIdRef.current = selectedId
+  const openThreadRef = useRef(openThread)
+  openThreadRef.current = openThread
+  const escCloseChat = useCallback(() => {
+    if (openThreadRef.current) {
+      closeThread() // тред закрывается первым (комментарии → назад к каналу)
+      return
+    }
+    if (selectedIdRef.current) {
+      setSelectedId(null)
+      setDraftPeer(null)
+    }
+  }, [closeThread])
+  const muteCurrentChat = useCallback(() => {
+    const id = selectedIdRef.current
+    if (!id || id.startsWith('draft:')) return
+    const chatId = Number(id)
+    const st = useChatsStore.getState()
+    const dlg = st.dialogs.find((d) => d.chatId === chatId)
+    if (!dlg) return
+    const next = !dlg.muted
+    st.setDialogMuted(chatId, next) // оптимистично, как ChatListItem
+    void managers.groups.setMute(chatId, next).catch(() => st.setDialogMuted(chatId, !next))
+  }, [managers])
+  // Ctrl/Cmd+0 — «Избранное»: тот же путь, что бургер-меню сайдбара
+  // (managers.chats.saved → перезагрузка списка → выбор).
+  const openSaved = useCallback(() => {
+    void (async () => {
+      const id = await managers.chats.saved()
+      await loadChats(managers)
+      selectChat(String(id))
+    })()
+  }, [managers, selectChat])
+  // Alt+↑/↓ — циклическая навигация по списку диалогов. Черновики (draft:) в
+  // список не входят, поэтому индексируемся по chatId реальных диалогов.
+  const cycleChat = useCallback((dir: 1 | -1) => {
+    const list = useChatsStore.getState().dialogs
+    if (!list.length) return
+    const cur = selectedIdRef.current
+    const idx = list.findIndex((d) => String(d.chatId) === cur)
+    const nextIdx = idx < 0 ? (dir === 1 ? 0 : list.length - 1) : (idx + dir + list.length) % list.length
+    selectChat(String(list[nextIdx].chatId))
+  }, [selectChat])
+  const nextChat = useCallback(() => cycleChat(1), [cycleChat])
+  const prevChat = useCallback(() => cycleChat(-1), [cycleChat])
+  useEffect(
+    () =>
+      initHotkeys({
+        focusSearch: () => window.dispatchEvent(new Event('tg-focus-search')),
+        escFallback: escCloseChat,
+        muteChat: muteCurrentChat,
+        openSaved,
+        nextChat,
+        prevChat,
+      }),
+    [escCloseChat, muteCurrentChat, openSaved, nextChat, prevChat],
+  )
 
   // Клик по браузерному уведомлению: sw.js фокусирует вкладку и шлёт
   // {type:'open-chat', chatId} — открываем этот чат.
@@ -528,6 +594,10 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 
       {/* Mini-app бота (iframe + мост window.Telegram.WebApp) */}
       <WebAppModal />
+
+      {/* Жалобы (tweb reportMessages): один глобальный попап, открывается из
+          контекстного меню сообщения и из ⋮-меню чата через reportStore */}
+      <ReportPopup />
 
       {/* Блокировка код-паролем поверх всего (tweb passcodeLockScreen) */}
       {locked && <PasscodeLockScreen />}

@@ -2,7 +2,7 @@
 // getAllDrafts/clearAllDrafts): REST-часть в воркере; пустой текст на save
 // удаляет черновик на бэке (draftMessageEmpty).
 import type { RestClient } from '../net/restClient'
-import { mapDraft, type Draft, type RawDraft } from '../models'
+import { mapDraft, type Draft, type MessageEntity, type RawDraft } from '../models'
 
 export function newDraftsManager({ rest }: { rest: RestClient }) {
   return {
@@ -11,9 +11,9 @@ export function newDraftsManager({ rest }: { rest: RestClient }) {
       return (r.drafts ?? []).map(mapDraft)
     },
 
-    async save(chatId: number, text: string, replyToId?: number | null): Promise<Draft | null> {
+    async save(chatId: number, text: string, replyToId?: number | null, entities?: MessageEntity[]): Promise<Draft | null> {
       const r = await rest.put<{ draft: RawDraft | null }>(`/chats/${chatId}/draft`, {
-        text, reply_to_id: replyToId ?? null,
+        text, entities: entities ?? null, reply_to_id: replyToId ?? null,
       })
       return r.draft ? mapDraft(r.draft) : null
     },

@@ -21,7 +21,10 @@ import { newStoriesManager } from './managers/storiesManager'
 import { newContactsManager } from './managers/contactsManager'
 import { newPrivacyManager } from './managers/privacyManager'
 import { newStarsManager } from './managers/starsManager'
+import { newStickersManager } from './managers/stickersManager'
+import { newReportManager } from './managers/reportManager'
 import { newBotsManager } from './managers/botsManager'
+import { newIVManager } from './managers/ivManager'
 import { newDraftsManager } from './managers/draftsManager'
 import { newSessionsManager } from './managers/sessionsManager'
 import { newCallsManager } from './managers/callsManager'
@@ -60,7 +63,10 @@ const drafts = newDraftsManager({ rest })
 const sessions = newSessionsManager({ rest })
 const calls = newCallsManager({ rest })
 const stars = newStarsManager({ rest })
+const report = newReportManager({ rest })
 const bots = newBotsManager({ rest })
+const stickers = newStickersManager({ rest })
+const iv = newIVManager({ rest })
 
 // every connected tab's port — events broadcast to all
 const ports: SuperMessagePort[] = []
@@ -129,6 +135,7 @@ const conn = newConnectionManager({
     else if (type === 'balance_update') broadcast(RT.balanceUpdate, payload)
     else if (type === 'bot_callback_answer') broadcast(RT.botCallbackAnswer, payload)
     else if (type === 'geo_live_update') { messages.cacheGeoLive(payload as never); broadcast(RT.geoLiveUpdate, payload) }
+    else if (type === 'web_page_update') { messages.cacheWebPage(payload as never); broadcast(RT.webPageUpdate, payload) }
     else if (type === 'secret_chat_request') {
       const p = payload as { chat_id?: number; initiator_pub?: string }
       if (p.chat_id && p.initiator_pub) secret.stashRequest(p.chat_id, p.initiator_pub)
@@ -187,7 +194,10 @@ function bind(ep: Endpoint) {
     sessions: sessions as unknown as Record<string, (...a: unknown[]) => unknown>,
     calls: calls as unknown as Record<string, (...a: unknown[]) => unknown>,
     stars: stars as unknown as Record<string, (...a: unknown[]) => unknown>,
+    report: report as unknown as Record<string, (...a: unknown[]) => unknown>,
     bots: bots as unknown as Record<string, (...a: unknown[]) => unknown>,
+    stickers: stickers as unknown as Record<string, (...a: unknown[]) => unknown>,
+    iv: iv as unknown as Record<string, (...a: unknown[]) => unknown>,
     secret: secret as unknown as Record<string, (...a: unknown[]) => unknown>,
   })
 }

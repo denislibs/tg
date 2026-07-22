@@ -5,6 +5,7 @@
 // is unchanged — the component drives reset/menu actions through the returned setters.
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { useDragSelect } from './useDragSelect'
+import { pushEsc } from '../hotkeys'
 
 export interface ChatSelection {
   /** Selected message ids. Non-empty ⇒ selection mode (see `selecting`). */
@@ -53,12 +54,11 @@ export function useChatSelection(scrollRef: RefObject<HTMLDivElement | null>): C
     suppressClickRef: dragSuppressClickRef,
   })
 
-  // Esc exits multi-select.
+  // Esc exits multi-select — через глобальный Esc-стек (core/hotkeys), LIFO
+  // поверх других оверлеев.
   useEffect(() => {
     if (!selecting) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); clearSelection() } }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    return pushEsc(clearSelection)
   }, [selecting, clearSelection])
 
   return {

@@ -45,6 +45,10 @@ type Config struct {
 	TranslateURL string
 	// TranslateAPIKey — необязательный api_key для инстансов, требующих его.
 	TranslateAPIKey string
+
+	// TenorAPIKey — ключ Tenor v2 для поиска GIF. Пусто → /gifs/search отдаёт
+	// пустую выдачу (фича мягко отключена).
+	TenorAPIKey string
 }
 
 func Load() (*Config, error) {
@@ -75,6 +79,7 @@ func Load() (*Config, error) {
 		"https://localhost:38443,http://localhost:38080,http://localhost:5173,http://localhost:8080"), ",")
 	c.TranslateURL = os.Getenv("TRANSLATE_URL")
 	c.TranslateAPIKey = os.Getenv("TRANSLATE_API_KEY")
+	c.TenorAPIKey = os.Getenv("TENOR_API_KEY")
 	return c, nil
 }
 

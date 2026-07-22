@@ -8,6 +8,9 @@ import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useLiveShareStore } from '../../stores/liveShareStore'
 import { mediaContentUrl } from '../../core/mediaUrl'
+import Spinner from '../../shared/ui/Spinner'
+import InstantView from '../InstantView'
+import type { IVArticle } from '../../core/managers/ivManager'
 import type { ConvMsg, MsgStatus } from '../../data'
 import { useTimeFormatter } from '../../settings'
 import s from './MessageBubbles.module.scss'
@@ -233,9 +236,30 @@ export function WebPagePreview({
   out: boolean
   linkColor: string
 }) {
+  const t = useT()
+  const managers = useManagers()
   const accent = out ? '#fff' : linkColor
+  const [ivLoading, setIvLoading] = useState(false)
+  const [ivArticle, setIvArticle] = useState<IVArticle | null>(null)
+  // Кнопка ленивая: серверного флага «есть IV» нет — показываем всегда при
+  // наличии ссылки; клик → лоадер → 422/ошибка → просто открыть в новой вкладке.
+  const openIV = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!wp.url || ivLoading) return
+    setIvLoading(true)
+    try {
+      setIvArticle(await managers.iv.article(wp.url))
+    } catch {
+      window.open(wp.url, '_blank', 'noopener')
+    } finally {
+      setIvLoading(false)
+    }
+  }
   return (
     <div className={s.webpage} data-out={out || undefined} style={{ borderLeft: `3px solid ${accent}` }}>
+      {wp.imageUrl && (
+        <img className={s.webPhoto} src={wp.imageUrl} alt="" loading="lazy" draggable={false} referrerPolicy="no-referrer" />
+      )}
       <Text size={14} weight={600} color={accent}>
         {wp.siteName}
       </Text>
@@ -251,6 +275,14 @@ export function WebPagePreview({
         <div className={s.webImg} style={{ background: wp.gradient }}>
           {wp.emoji && <Text size={56} style={{ zIndex: 1 }}>{wp.emoji}</Text>}
         </div>
+      )}
+      {wp.url && (
+        <button type="button" className={s.ivButton} style={{ color: accent }} onClick={openIV}>
+          {ivLoading ? <Spinner size={16} thickness={2} /> : <>⚡ {t('Instant View')}</>}
+        </button>
+      )}
+      {ivArticle && wp.url && (
+        <InstantView url={wp.url} article={ivArticle} onClose={() => setIvArticle(null)} />
       )}
     </div>
   )

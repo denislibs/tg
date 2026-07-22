@@ -6,6 +6,30 @@ import (
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
+func TestSanitizeEffect_Whitelist(t *testing.T) {
+	// Валидные виды у text-сообщения сохраняются.
+	for _, kind := range []string{"fireworks", "confetti", "hearts", "thumbs", "poop", "cake"} {
+		if got := sanitizeEffect(kind, "text"); got != kind {
+			t.Fatalf("sanitizeEffect(%q, text) = %q; want %q", kind, got, kind)
+		}
+	}
+	// Вне whitelist — отбрасывается.
+	for _, bad := range []string{"", "boom", "fireworks; DROP TABLE", "HEARTS"} {
+		if got := sanitizeEffect(bad, "text"); got != "" {
+			t.Fatalf("sanitizeEffect(%q) = %q; want empty", bad, got)
+		}
+	}
+	// Медиа несёт эффект, служебные/секретные/подарочные — нет.
+	if sanitizeEffect("cake", "photo") != "cake" {
+		t.Fatal("media message should keep a valid effect")
+	}
+	for _, typ := range []string{"service", "encrypted", "gift", "poll", "call"} {
+		if got := sanitizeEffect("fireworks", typ); got != "" {
+			t.Fatalf("type %q must not carry an effect, got %q", typ, got)
+		}
+	}
+}
+
 func TestSanitizeEntities_DropsUnsafeLinks(t *testing.T) {
 	in := []domain.MessageEntity{
 		{Type: "bold", Offset: 0, Length: 2},

@@ -37,6 +37,11 @@ type ChatRepo interface {
 	AddMention(ctx context.Context, chatID, msgID, seq, userID int64) error
 	ClearMentions(ctx context.Context, chatID, userID, uptoSeq int64) (remaining int, err error)
 	NextMention(ctx context.Context, chatID, userID, afterSeq int64) (seq, msgID int64, err error)
+	// Непрочитанные реакции (Telegram unread_reactions_count). IncUnreadReactions
+	// бампит счётчик автора сообщения, когда на него реагирует кто-то другой;
+	// ClearUnreadReactions обнуляет счётчик (автор прочитал чат / реакции).
+	IncUnreadReactions(ctx context.Context, chatID, userID int64) error
+	ClearUnreadReactions(ctx context.Context, chatID, userID int64) error
 	// «Очистить историю» у себя: MaxSeq — текущий максимум seq чата (горизонт);
 	// ClearedSeq/SetClearedSeq — персональный горизонт участника (cleared_max_seq).
 	MaxSeq(ctx context.Context, chatID int64) (int64, error)
@@ -86,6 +91,10 @@ type GroupRepo interface {
 	SetPermissions(ctx context.Context, chatID int64, perms domain.MemberPerms, slowmodeSeconds int) error
 	SetReactions(ctx context.Context, chatID int64, mode string, allowed []string) error
 	SetHistoryForNew(ctx context.Context, chatID int64, visible bool) error
+	// SetChargeStars задаёт плату за сообщение в звёздах (Telegram paid messages); 0 — выкл.
+	SetChargeStars(ctx context.Context, chatID int64, stars int) error
+	// CreatorID — владелец группы (для начисления платы за сообщения); 0, если нет.
+	CreatorID(ctx context.Context, chatID int64) (int64, error)
 	Ban(ctx context.Context, chatID, userID, bannedBy int64) error
 	Unban(ctx context.Context, chatID, userID int64) error
 	IsBanned(ctx context.Context, chatID, userID int64) (bool, error)
@@ -167,6 +176,15 @@ type MessageRepo interface {
 	ClearMediaUnread(ctx context.Context, msgID int64) (bool, error)
 	// ExpiredMessages — просроченные автоудалением (id/chat/seq) для воркера.
 	ExpiredMessages(ctx context.Context, limit int) ([]domain.Message, error)
+	// SetWebPage пишет серверное превью ссылки (messages.web_page) отдельным
+	// UPDATE после коммита отправки (Insert превью не несёт — оно догоняющее).
+	SetWebPage(ctx context.Context, msgID int64, wp *domain.WebPagePreview) error
+}
+
+// LinkPreviewer строит превью ссылки (og-теги страницы) для карточки web page
+// под текстовым сообщением. Опционален — без него превью отключены.
+type LinkPreviewer interface {
+	Preview(ctx context.Context, url string) (*domain.WebPagePreview, error)
 }
 
 type UpdateRepo interface {
@@ -224,6 +242,13 @@ type MediaDims struct {
 
 type EventPublisher interface {
 	PublishToUser(ctx context.Context, userID int64, frame []byte) error
+}
+
+// StickerAccess отвечает, принадлежит ли media какому-либо стикеру: наборы
+// публичны, поэтому такое media можно отправлять (type 'sticker') и читать не
+// владельцу. Опционален — без него действует старое правило «только своё media».
+type StickerAccess interface {
+	IsStickerMedia(ctx context.Context, mediaID int64) (bool, error)
 }
 
 // SecretRepo хранит handshake секретных чатов (только публичные ключи + статус).
@@ -296,6 +321,9 @@ type SendInput struct {
 	// Тихая отправка (Telegram disable_notification): подавляет push/звук у получателя.
 	// Не хранится на сообщении (MVP) — влияет только на нотификатор, не на realtime-доставку.
 	Silent bool
+	// Effect — вид полноэкранного эффекта сообщения (наш аналог Telegram message
+	// effects); санитизируется по whitelist. "" — без эффекта.
+	Effect string
 }
 
 // GroupCallStore хранит участников активных групповых звонков (эфемерно, Redis).

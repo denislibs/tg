@@ -34,11 +34,29 @@
   line-height: 20px; // service-text-size + 5
 }
 
-// service-сообщение по центру
+// service-сообщение по центру (при наличии фото — пилюля + кружок в столбик)
 .service {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
   margin: 4px 0;
+}
+
+// Круглая миниатюра нового фото группы (tweb service media avatar)
+.servicePhoto {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  overflow: hidden;
+  cursor: pointer;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
 }
 .serviceMsg {
   max-width: 80%;

@@ -9,10 +9,14 @@
 import { useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import TgIcon from '../../components/TgIcon'
-import { peerColor } from '../../components/peerColor'
+import { convMsgReplyState } from '../draftReply'
 import { useEvent } from './useEvent'
 import { useMessagesStore, winKey } from '../../stores/messagesStore'
+import { useReportStore } from '../../stores/reportStore'
 import { useSettingsStore } from '../../settings'
+import { uiEvents } from './uiEvents'
+import { isGifLike } from '../gifs'
+import { useT } from '../../i18n'
 import type { Chat, ConvMsg } from '../../data'
 import type { Managers } from '../../client/bootstrap'
 import type { MessageWindow } from './useMessageWindow'
@@ -49,6 +53,7 @@ export function useMessageActions({
   chat, numericChatId, isRealChat, win, msgs, meId, pins, managers, accent,
   setReply, setEditing, setSelectionMode, setSelected, clearSelection, onChatCreated,
 }: UseMessageActionsArgs) {
+  const t = useT()
   const [msgMenu, setMsgMenu] = useState<MsgMenu | null>(null)
   // Ответ с цитатой: текст, выделенный внутри сообщения на момент открытия меню
   // (right-click сохраняет выделение), плюс его offset (UTF-16) в тексте сообщения.
@@ -101,10 +106,9 @@ export function useMessageActions({
 
   const startReply = () => {
     const m = msgMenu && msgs[msgMenu.idx]
-    if (m && m.type !== 'date') {
-      const name = m.out ? 'Дн' : m.sender ?? chat.name
-      const color = m.out ? accent : m.senderColor ?? peerColor(name)
-      setReply({ msgId: menuRawMsg()?.id, name, text: m.text ?? m.emoji ?? '', color, quote: pendingQuoteRef.current ?? undefined })
+    const rs = m ? convMsgReplyState(m, menuRawMsg()?.id, chat.name, accent) : null
+    if (rs) {
+      setReply({ ...rs, quote: pendingQuoteRef.current ?? undefined })
       setEditing(null)
       // Composer focuses itself when `reply` becomes set.
     }
@@ -153,6 +157,14 @@ export function useMessageActions({
     }
     setDelIds(null)
     clearSelection()
+  }
+
+  // «Пожаловаться» на сообщение (tweb reportMessages): открывает глобальный
+  // ReportPopup через reportStore (цель — чат + id сообщения).
+  const openReport = () => {
+    const raw = menuRawMsg()
+    closeMsgMenu()
+    if (raw?.id != null && isRealChat) useReportStore.getState().open({ chatId: numericChatId, msgId: raw.id })
   }
 
   const openForward = () => {
@@ -216,6 +228,17 @@ export function useMessageActions({
     document.body.appendChild(a)
     a.click()
     a.remove()
+  }
+
+  // «Сохранить GIF» для гифоподобных видео-сообщений (критерий core/gifs.isGifLike):
+  // POST /gifs/saved — гиф появляется во вкладке GIF пикера (лимит 200 LIFO на бэке).
+  const saveGifFromMsg = () => {
+    const raw = menuRawMsg()
+    closeMsgMenu()
+    if (raw?.mediaId == null) return
+    void managers.stickers.saveGif(raw.mediaId)
+      .then(() => uiEvents.emit('ui:toast', t('GIF saved to your GIFs.')))
+      .catch(() => {})
   }
 
   const showViewers = async (e: React.MouseEvent) => {
@@ -307,6 +330,13 @@ export function useMessageActions({
           onClick: togglePin,
         }]
       : []),
+    ...(() => {
+      const raw = menuRawMsg()
+      return isRealChat && raw?.mediaId != null
+        && isGifLike({ mime: raw.mediaMime, fileName: raw.mediaName, duration: raw.mediaDuration })
+        ? [{ icon: <TgIcon name="gifs" size={20} />, label: 'Save GIF', onClick: saveGifFromMsg }]
+        : []
+    })(),
     ...(isRealChat && menuRawMsg()?.mediaId != null
       ? [{ icon: <TgIcon name="download" size={20} />, label: 'Download', onClick: downloadMsg }]
       : []),
@@ -340,6 +370,10 @@ export function useMessageActions({
     ...(isRealChat ? [{ icon: <TgIcon name="checkround" size={20} />, label: 'Select', onClick: startSelect }] : []),
     ...(isRealChat && (msgs[msgMenu?.idx ?? -1]?.out ?? false)
       ? [{ icon: <TgIcon name="checks" size={20} />, label: 'Viewers', onClick: showViewers }]
+      : []),
+    // «Пожаловаться» — на чужие сообщения в реальном чате (своё не жалуют).
+    ...(isRealChat && !(msgs[msgMenu?.idx ?? -1]?.out ?? false)
+      ? [{ icon: <TgIcon name="hand" size={20} />, label: 'Report', danger: true, onClick: openReport }]
       : []),
     ...(isRealChat ? [{ icon: <TgIcon name="delete" size={20} />, label: 'Delete', danger: true, onClick: openDelete }] : []),
   ]

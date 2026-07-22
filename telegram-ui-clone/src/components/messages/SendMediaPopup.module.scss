@@ -21,6 +21,19 @@
 .previewImg {
   object-fit: contain;
 }
+// обёртка превью-изображения с кнопкой «Редактировать» в углу
+.previewWrap {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  max-width: 100%;
+}
+.editBtn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.5) !important;
+}
 .fileRow {
   display: flex;
   align-items: center;

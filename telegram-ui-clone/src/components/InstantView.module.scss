@@ -1,0 +1,118 @@
+// Читалка Instant View: полноэкранный оверлей, колонка контента 720px.
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1400; // над чатом и меню, как остальные фуллскрины
+  display: flex;
+  flex-direction: column;
+  background: var(--tg-appBg);
+}
+
+.header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 56px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--tg-divider);
+  background: var(--tg-sidebarBg);
+}
+
+.domain {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.openLink {
+  flex: none;
+  color: var(--tg-accent);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  padding: 6px 10px;
+  border-radius: 8px;
+
+  &:hover {
+    background: var(--tg-hover);
+  }
+}
+
+.scroll {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.article {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+  color: var(--tg-textPrimary);
+  font-size: 16px;
+  line-height: 1.6;
+  overflow-wrap: break-word;
+}
+
+.title {
+  margin: 0 0 8px;
+  font-size: 28px;
+  line-height: 1.25;
+  font-weight: 700;
+}
+
+.byline {
+  margin-bottom: 20px;
+  color: var(--tg-textSecondary);
+  font-size: 14px;
+}
+
+.p {
+  margin: 0 0 16px;
+}
+
+.h2 {
+  margin: 24px 0 12px;
+  font-size: 21px;
+  line-height: 1.3;
+  font-weight: 700;
+}
+
+.quote {
+  margin: 0 0 16px;
+  padding: 2px 0 2px 14px;
+  border-left: 3px solid var(--tg-accent);
+  color: var(--tg-textSecondary);
+}
+
+.pre {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--tg-inputSearchBg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto 16px;
+  border-radius: 8px;
+}
+
+.list {
+  margin: 0 0 16px;
+  padding-left: 24px;
+
+  li {
+    margin-bottom: 6px;
+  }
+}

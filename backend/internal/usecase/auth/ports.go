@@ -14,6 +14,16 @@ type UserRepo interface {
 	UpdateProfile(ctx context.Context, id int64, first, last, bio string, birthday *time.Time, phoneVisibility string) (domain.User, error)
 	UsernameAvailable(ctx context.Context, username string, excludeID int64) (bool, error)
 	SetUsername(ctx context.Context, id int64, username *string) (domain.User, error) // domain.ErrConflict if taken
+	// PhoneInUse reports whether phone already belongs to another (non-excluded)
+	// account. Used before starting a phone-number change.
+	PhoneInUse(ctx context.Context, phone string, excludeID int64) (bool, error)
+	// UpdatePhone changes the user's phone number, returning domain.ErrConflict if
+	// the number was taken by someone else in the meantime (unique constraint).
+	UpdatePhone(ctx context.Context, id int64, phone string) (domain.User, error)
+	// SoftDelete anonymizes the account (Telegram "Delete my account"): the phone
+	// is freed, personal fields are cleared and deleted_at is stamped. Message
+	// history is preserved and shown as coming from a "Deleted Account".
+	SoftDelete(ctx context.Context, id int64) error
 	SetAvatar(ctx context.Context, id int64, url string) (domain.User, error)
 	// SetEmojiStatus writes the user's emoji status ("" clears it).
 	SetEmojiStatus(ctx context.Context, id int64, emoji string) (domain.User, error)
@@ -38,6 +48,10 @@ type DeviceRepo interface {
 	// DeleteOthers removes every device of the user except keepDeviceID and
 	// returns the removed rows (ids + token hashes, for cache/WS eviction).
 	DeleteOthers(ctx context.Context, userID, keepDeviceID int64) ([]domain.Device, error)
+	// DeleteAll removes every device of the user and returns the removed rows
+	// (ids + token hashes), so the caller can evict caches and close sockets. Used
+	// on account deletion to revoke all sessions at once.
+	DeleteAll(ctx context.Context, userID int64) ([]domain.Device, error)
 }
 
 // CodeRepo uses *Code-suffixed method names so a single adapter struct can also
