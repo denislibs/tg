@@ -16,7 +16,7 @@ import type { Folder, FolderInput, FolderInvite, FolderInvitePreview } from '../
 import type { GroupCard } from '../core/managers/groupsManager'
 import type { SearchResult } from '../core/managers/channelsManager'
 import type { Peer } from '../core/managers/peersManager'
-import type { StoryGroup } from '../core/managers/storiesManager'
+import type { StoryGroup, StoryStats } from '../core/managers/storiesManager'
 import type { Contact, AddContactInput } from '../core/managers/contactsManager'
 import type { PrivacyRule, BlockedUser, UserProfile } from '../core/managers/privacyManager'
 import type { SignInOutcome, PasswordState, PasskeyInfo } from '../core/managers/authManager'
@@ -24,7 +24,7 @@ import type { Session } from '../core/managers/sessionsManager'
 import type { IceConfig } from '../core/managers/callsManager'
 import type { StarGift, GiftInfo } from '../core/managers/starsManager'
 import type { ReportArgs } from '../core/managers/reportManager'
-import type { ChannelStats } from '../core/managers/statsManager'
+import type { ChannelStats, PostStats } from '../core/managers/statsManager'
 import type { BotCommand, CallbackAnswer, InlineResult } from '../core/managers/botsManager'
 import type { StickerSet, Sticker, SavedGif, GifPage } from '../core/managers/stickersManager'
 import type { IVArticle } from '../core/managers/ivManager'
@@ -227,6 +227,7 @@ export interface Managers {
     post(args: { mediaId: number; caption?: string; privacy?: 'everyone' | 'contacts' | 'selected'; allowIds?: number[] }): Promise<number>
     view(id: number): Promise<void>
     viewers(id: number): Promise<{ id: number; displayName: string; avatarUrl: string }[]>
+    stats(id: number): Promise<StoryStats>
     del(id: number): Promise<void>
   }
   contacts: {
@@ -288,6 +289,7 @@ export interface Managers {
   }
   stats: {
     getChannelStats(chatId: number): Promise<ChannelStats>
+    getPostStats(chatId: number, msgId: number): Promise<PostStats>
   }
   bots: {
     commands(botId: number): Promise<BotCommand[]>

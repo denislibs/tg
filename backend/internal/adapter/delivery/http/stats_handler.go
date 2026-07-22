@@ -60,6 +60,47 @@ func (h *StatsHandler) ChannelStats(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// PostStats — GET /chats/{chatID}/messages/{msgID}/stats. Статистика одного
+// поста канала/супергруппы (tweb stats.getMessageStats). Доступ только у
+// создателя/админа (иначе 403); нет поста — 404.
+func (h *StatsHandler) PostStats(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	msgID, ok := pathInt(w, r, "msgID")
+	if !ok {
+		return
+	}
+	st, err := h.uc.PostStats(r.Context(), chatID, msgID, user.ID)
+	switch {
+	case err == nil:
+	case err == domain.ErrForbidden:
+		writeError(w, http.StatusForbidden, "forbidden")
+		return
+	case err == domain.ErrNotFound:
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	default:
+		writeError(w, http.StatusInternalServerError, "server error")
+		return
+	}
+
+	reactions := make([]map[string]any, 0, len(st.Reactions))
+	for _, rc := range st.Reactions {
+		reactions = append(reactions, map[string]any{"emoji": rc.Emoji, "count": rc.Count})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"views":           st.Views,
+		"forwards":        st.Forwards,
+		"reactions_total": st.ReactionsTotal,
+		"reactions":       reactions,
+		"views_by_day":    seriesJSON(st.ViewsByDay),
+	})
+}
+
 // seriesJSON сериализует ряд точек в [{date, value}], даты — YYYY-MM-DD.
 func seriesJSON(points []domain.StatPoint) []map[string]any {
 	out := make([]map[string]any, 0, len(points))

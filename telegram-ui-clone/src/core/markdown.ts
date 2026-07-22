@@ -21,7 +21,11 @@ const CLS: Record<string, EntityType> = {
   'md-quote': 'blockquote',
 }
 
-interface Active { type: EntityType; url?: string; language?: string; user_id?: number }
+interface Active { type: EntityType; url?: string; language?: string; user_id?: number; document_id?: number; ce?: number }
+
+// Unique nonce per custom-emoji element so two identical adjacent custom emoji
+// (same document_id) never coalesce into one entity — each stays its own span.
+let ceSeq = 0
 
 // Which formats does this element contribute? Detects both tag-based markup
 // (<b>, <i>, <a>…, produced by execCommand without styleWithCSS) and style-based
@@ -43,6 +47,12 @@ function detect(el: HTMLElement): Active[] {
     out.push({ type: 'code' })
   }
   if (tag === 'BLOCKQUOTE') out.push({ type: 'blockquote' })
+  if (el.classList.contains('md-custom-emoji') && el.dataset.docId) {
+    // inline custom emoji (tweb messageEntityCustomEmoji): the element's text is the
+    // fallback glyph; data-doc-id carries the sticker-document (media) id. A fresh
+    // nonce keeps each element a distinct entity even when repeated back-to-back.
+    out.push({ type: 'custom_emoji', document_id: Number(el.dataset.docId) || undefined, ce: ++ceSeq })
+  }
   if (tag === 'A' && el.dataset.mentionId) {
     // custom mention юзера без username (tweb A.follow / messageEntityMentionName)
     out.push({ type: 'text_mention', user_id: Number(el.dataset.mentionId) || undefined })
@@ -85,11 +95,11 @@ export function serialize(root: HTMLElement): { text: string; entities: MessageE
 
   // Coalesce contiguous same-type (same url) runs into entities.
   const entities: MessageEntity[] = []
-  const open = new Map<string, { type: EntityType; url?: string; language?: string; user_id?: number; start: number }>()
-  const keyOf = (a: Active) => `${a.type}|${a.url ?? ''}|${a.language ?? ''}|${a.user_id ?? ''}`
+  const open = new Map<string, { type: EntityType; url?: string; language?: string; user_id?: number; document_id?: number; start: number }>()
+  const keyOf = (a: Active) => `${a.type}|${a.url ?? ''}|${a.language ?? ''}|${a.user_id ?? ''}|${a.document_id ?? ''}|${a.ce ?? ''}`
   const close = (k: string, end: number) => {
     const s = open.get(k)
-    if (s && end > s.start) entities.push({ type: s.type, offset: s.start, length: end - s.start, url: s.url, language: s.language, user_id: s.user_id })
+    if (s && end > s.start) entities.push({ type: s.type, offset: s.start, length: end - s.start, url: s.url, language: s.language, user_id: s.user_id, document_id: s.document_id })
     open.delete(k)
   }
   let text = ''
@@ -97,7 +107,7 @@ export function serialize(root: HTMLElement): { text: string; entities: MessageE
   for (const run of runs) {
     const keys = new Set(run.active.map(keyOf))
     for (const k of [...open.keys()]) if (!keys.has(k)) close(k, offset)
-    for (const a of run.active) { const k = keyOf(a); if (!open.has(k)) open.set(k, { type: a.type, url: a.url, language: a.language, user_id: a.user_id, start: offset }) }
+    for (const a of run.active) { const k = keyOf(a); if (!open.has(k)) open.set(k, { type: a.type, url: a.url, language: a.language, user_id: a.user_id, document_id: a.document_id, start: offset }) }
     text += run.text
     offset += run.text.length
   }
@@ -260,7 +270,7 @@ export function activeTypes(root: HTMLElement): Set<EntityType> {
 
 // --- entities → DOM (for editing an existing formatted message) -------------
 
-interface Seg { text: string; types: EntityType[]; url?: string; language?: string; userId?: number }
+interface Seg { text: string; types: EntityType[]; url?: string; language?: string; userId?: number; documentId?: number }
 
 // Split text into non-overlapping segments at every entity boundary.
 function segmentize(text: string, entities: MessageEntity[]): Seg[] {
@@ -279,21 +289,33 @@ function segmentize(text: string, entities: MessageEntity[]): Seg[] {
     let url: string | undefined
     let language: string | undefined
     let userId: number | undefined
+    let documentId: number | undefined
     for (const e of entities) {
       if (e.offset <= s && e.offset + e.length >= en) {
         types.push(e.type)
         if (e.type === 'text_link') url = e.url
         if (e.type === 'pre') language = e.language
         if (e.type === 'text_mention') userId = e.user_id
+        if (e.type === 'custom_emoji') documentId = e.document_id
       }
     }
-    segs.push({ text: text.slice(s, en), types, url, language, userId })
+    segs.push({ text: text.slice(s, en), types, url, language, userId, documentId })
   }
   return segs
 }
 
-function elementFor(type: EntityType, url?: string, language?: string, userId?: number): HTMLElement {
+function elementFor(type: EntityType, url?: string, language?: string, userId?: number, documentId?: number): HTMLElement {
   switch (type) {
+    case 'custom_emoji': {
+      // Atomic inline unit (tweb custom-emoji placeholder): contenteditable=false so
+      // the glyph can't be edited apart from its document; serialize() reads it back
+      // via class + data-doc-id. The glyph itself is appended as the element's text.
+      const span = document.createElement('span')
+      span.className = 'md-custom-emoji'
+      span.contentEditable = 'false'
+      if (documentId != null) span.dataset.docId = String(documentId)
+      return span
+    }
     case 'text_mention': {
       const a = document.createElement('a')
       a.className = 'md-mention'
@@ -341,7 +363,7 @@ export function entitiesToFragment(text: string, entities?: MessageEntity[]): Do
     let outer: HTMLElement | null = null
     let inner: HTMLElement | null = null
     for (const ty of seg.types) {
-      const el = elementFor(ty, seg.url, seg.language, seg.userId)
+      const el = elementFor(ty, seg.url, seg.language, seg.userId, seg.documentId)
       if (!outer) outer = el
       else inner!.appendChild(el)
       inner = el

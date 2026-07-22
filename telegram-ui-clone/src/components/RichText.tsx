@@ -1,14 +1,17 @@
-import { useState, type CSSProperties, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { EntityType, MessageEntity } from '../core/models'
 import { safeUrl } from '../core/safeUrl'
 import CodeBlock from './CodeBlock'
 import classNames from '../shared/lib/classNames'
 import s from './RichText.module.scss'
 
+// Ленивый импорт: StickerMedia тянет lottie-web — грузим его только когда в
+// тексте реально есть кастом-эмодзи (и он попал во вьюпорт), чтобы не раздувать
+// граф модуля/бандл сообщений на каждый бабл.
+const StickerMedia = lazy(() => import('./StickerMedia'))
+
 // Matches URLs, t.me links, @usernames and #hashtags
 const ENTITY_RE = /(https?:\/\/\S+|t\.me\/\S+|@[A-Za-z0-9_]{3,}|#[\p{L}0-9_]+)/gu
-// Custom (premium) emoji marker: {e:🔥}
-const CE_RE = /\{e:([^}]+)\}/g
 
 /**
  * If `text` is only 1–3 emoji (with optional ZWJ joins / skin tones), returns
@@ -24,8 +27,8 @@ export function emojiOnlyCount(text: string): number {
   return matches.length <= 3 ? matches.length : 0
 }
 
-/** Linkifies a plain text segment (no custom-emoji markers). */
-function entityNodes(text: string, linkColor: string, keyBase: string): ReactNode[] {
+/** Linkifies a plain text run (auto-links URLs / @mentions / #hashtags). */
+function plainRun(text: string, linkColor: string, keyBase: string): ReactNode[] {
   const out: ReactNode[] = []
   let last = 0
   for (const m of text.matchAll(ENTITY_RE)) {
@@ -42,23 +45,46 @@ function entityNodes(text: string, linkColor: string, keyBase: string): ReactNod
   return out
 }
 
-/** Renders a plain text run with auto-links + inline custom emoji `{e:😎}`. */
-function plainRun(text: string, linkColor: string, keyBase: string): ReactNode[] {
-  const out: ReactNode[] = []
-  let last = 0
-  let seg = 0
-  for (const m of text.matchAll(CE_RE)) {
-    const idx = m.index ?? 0
-    if (idx > last) out.push(...entityNodes(text.slice(last, idx), linkColor, `${keyBase}-s${seg++}`))
-    out.push(
-      <span key={`${keyBase}-ce-${idx}`} className={s.customEmoji}>
-        {m[1]}
-      </span>,
+/**
+ * Inline animated custom emoji (tweb custom-emoji-element). Renders the sticker
+ * document (`documentId` = media id) at ~1.2× the surrounding font size, in place
+ * of its fallback glyph. Lazy + visibility-gated for perf: the animated media is
+ * only mounted (and thus only plays) while the element is on screen — scrolled
+ * out, it unmounts and the cheap glyph fallback shows again. Faithful to tweb's
+ * "play only visible" without the shared-canvas renderer (each emoji is its own
+ * small lottie/still via StickerMedia).
+ */
+function CustomEmoji({ documentId, fallback }: { documentId: number; fallback: string }) {
+  const ref = useRef<HTMLSpanElement>(null)
+  const [visible, setVisible] = useState(false)
+  const [size, setSize] = useState(20)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const fs = parseFloat(getComputedStyle(el).fontSize) || 16
+    setSize(Math.round(fs * 1.2))
+    const io = new IntersectionObserver(
+      (entries) => { for (const e of entries) setVisible(e.isIntersecting) },
+      { rootMargin: '150px' },
     )
-    last = idx + m[0].length
-  }
-  if (last < text.length) out.push(...entityNodes(text.slice(last), linkColor, `${keyBase}-s${seg++}`))
-  return out
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
+
+  return (
+    <span ref={ref} className={s.customEmoji} style={{ width: size, height: size }}>
+      {/* fallback glyph — sits underneath until (and if) the media loads/plays */}
+      <span className={s.customEmojiGlyph} style={{ fontSize: size }}>{fallback}</span>
+      {visible && (
+        <span className={s.customEmojiMedia}>
+          <Suspense fallback={null}>
+            <StickerMedia mediaId={documentId} width={size} height={size} autoplay loop />
+          </Suspense>
+        </span>
+      )}
+    </span>
+  )
 }
 
 // Click-to-reveal spoiler (tweb-style blur until tapped).
@@ -75,10 +101,10 @@ function Spoiler({ children }: { children: ReactNode }) {
   )
 }
 
-interface Seg { text: string; types: Set<EntityType>; url?: string }
+interface Seg { text: string; types: Set<EntityType>; url?: string; documentId?: number }
 
 // Split text into non-overlapping segments at every entity boundary, recording
-// which entity types (and link url) cover each segment.
+// which entity types (and link url / custom-emoji document) cover each segment.
 function toSegments(text: string, entities: MessageEntity[]): Seg[] {
   const bounds = new Set<number>([0, text.length])
   for (const e of entities) {
@@ -93,13 +119,15 @@ function toSegments(text: string, entities: MessageEntity[]): Seg[] {
     if (en <= s) continue
     const types = new Set<EntityType>()
     let url: string | undefined
+    let documentId: number | undefined
     for (const e of entities) {
       if (e.offset <= s && e.offset + e.length >= en) {
         types.add(e.type)
         if (e.type === 'text_link') url = e.url
+        if (e.type === 'custom_emoji') documentId = e.document_id
       }
     }
-    segs.push({ text: text.slice(s, en), types, url })
+    segs.push({ text: text.slice(s, en), types, url, documentId })
   }
   return segs
 }
@@ -178,6 +206,13 @@ function renderInline(text: string, entities: MessageEntity[], linkColor: string
         const href = seg.types.has('text_link') ? safeUrl(seg.url) : undefined
         const isLink = !!href
         const isQuote = seg.types.has('blockquote')
+
+        // inline custom emoji (tweb messageEntityCustomEmoji): render the sticker
+        // document in place of the fallback glyph (seg.text). document_id может
+        // отсутствовать после санитайза — тогда остаётся обычный глиф.
+        if (seg.types.has('custom_emoji') && seg.documentId != null) {
+          return <CustomEmoji key={key} documentId={seg.documentId} fallback={seg.text} />
+        }
 
         // custom mention юзера без username (tweb messageEntityMentionName):
         // акцентный текст, как @mention-автолинк

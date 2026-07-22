@@ -74,6 +74,61 @@ func (i *Interactor) ChannelStats(ctx context.Context, chatID, userID int64) (do
 	}, nil
 }
 
+// PostStats собирает статистику одного поста канала (аналог tweb
+// stats.getMessageStats). Доступ — как у ChannelStats: создатель/админ канала
+// или (супер)группы. Числа и ряды считаются на лету из реальных данных.
+func (i *Interactor) PostStats(ctx context.Context, chatID, msgID, userID int64) (domain.PostStats, error) {
+	typ, err := i.repo.ChatType(ctx, chatID)
+	if err != nil {
+		return domain.PostStats{}, err
+	}
+	if typ != "channel" && typ != "group" {
+		return domain.PostStats{}, domain.ErrForbidden
+	}
+
+	role, _, err := i.repo.MemberRole(ctx, chatID, userID)
+	if err != nil {
+		return domain.PostStats{}, domain.ErrForbidden
+	}
+	if role != domain.RoleCreator && role != domain.RoleAdmin {
+		return domain.PostStats{}, domain.ErrForbidden
+	}
+
+	exists, err := i.repo.PostExists(ctx, chatID, msgID)
+	if err != nil {
+		return domain.PostStats{}, err
+	}
+	if !exists {
+		return domain.PostStats{}, domain.ErrNotFound
+	}
+
+	views, forwards, err := i.repo.PostOverview(ctx, chatID, msgID)
+	if err != nil {
+		return domain.PostStats{}, err
+	}
+	reactions, err := i.repo.PostReactions(ctx, msgID)
+	if err != nil {
+		return domain.PostStats{}, err
+	}
+	viewsByDay, err := i.repo.PostViewsByDay(ctx, msgID)
+	if err != nil {
+		return domain.PostStats{}, err
+	}
+
+	var total int64
+	for _, rc := range reactions {
+		total += int64(rc.Count)
+	}
+
+	return domain.PostStats{
+		Views:          views,
+		Forwards:       forwards,
+		ReactionsTotal: total,
+		Reactions:      reactions,
+		ViewsByDay:     viewsByDay,
+	}, nil
+}
+
 // cumulative превращает суточные приросты в кумулятивный ряд (рост участников):
 // каждая точка = сумма всех предыдущих значений включительно.
 func cumulative(points []domain.StatPoint) []domain.StatPoint {

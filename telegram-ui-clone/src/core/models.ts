@@ -11,7 +11,7 @@ export type ChatKind = 'private' | 'group' | 'channel' | 'saved'
 // for 'text_link'. The set mirrors what the composer can produce.
 export type EntityType =
   | 'bold' | 'italic' | 'underline' | 'strikethrough'
-  | 'code' | 'pre' | 'spoiler' | 'blockquote' | 'text_link' | 'text_mention'
+  | 'code' | 'pre' | 'spoiler' | 'blockquote' | 'text_link' | 'text_mention' | 'custom_emoji'
 export interface MessageEntity {
   type: EntityType
   offset: number
@@ -20,6 +20,9 @@ export interface MessageEntity {
   language?: string
   /** target user for 'text_mention' (упоминание юзера без username) */
   user_id?: number
+  /** sticker-document (media id) that replaces the spanned fallback glyph for
+   * 'custom_emoji' (Telegram messageEntityCustomEmoji.document_id) */
+  document_id?: number
 }
 
 // GeoData — гео-точка сообщения. venue: title/address; live location: livePeriod

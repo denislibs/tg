@@ -22,7 +22,9 @@ import TgIcon, { type IconName } from '../TgIcon'
 import Emoji, { EMOJI_CDN_BASE, emojiCodepoints } from './Emoji'
 import StickersTab from './StickersTab'
 import GifsTab from './GifsTab'
+import StickerMedia from '../StickerMedia'
 import type { Sticker } from '../../core/managers/stickersManager'
+import { useCustomEmojiSets } from '../../core/hooks/useStickers'
 import type { GifItem } from '../../core/gifs'
 import { CATEGORIES, DEFAULT_FREQUENT, QUICK_CHIPS, searchEmojisByWord } from './emojiData'
 import { useT } from '../../i18n'
@@ -209,10 +211,57 @@ const EmojiCategory = memo(function EmojiCategory({
   )
 })
 
+// ── Ячейка кастом-эмодзи (tweb super-emoji-custom: анимир. стикер-документ) ──
+// Тот же 42px-слот, что у обычного эмодзи; StickerMedia играет на hover (как в
+// пикере стикеров). Клик вставляет entity custom_emoji (document_id = media id).
+const CustomEmojiCell = memo(function CustomEmojiCell({
+  st,
+  onPick,
+}: {
+  st: Sticker
+  onPick: (documentId: number, emoji: string) => void
+}) {
+  return (
+    <span className={s.superEmoji} onClick={() => onPick(st.mediaId, st.emoji)}>
+      <StickerMedia mediaId={st.mediaId} width={34} height={34} playOnHover />
+    </span>
+  )
+})
+
+// ── Категория кастом-эмодзи (набор kind='emoji') ─────────────────────────────
+const CustomEmojiCategory = memo(function CustomEmojiCategory({
+  catKey,
+  title,
+  stickers,
+  cols,
+  visible,
+  onPick,
+  register,
+}: {
+  catKey: string
+  title: string
+  stickers: Sticker[]
+  cols: number
+  visible: boolean
+  onPick: (documentId: number, emoji: string) => void
+  register: (key: string, el: HTMLDivElement | null) => void
+}) {
+  const rows = Math.ceil(stickers.length / cols)
+  return (
+    <div ref={(el) => register(catKey, el)} className={s.emojiCategory}>
+      <div className={s.categoryTitle}>{title}</div>
+      <div className={s.superEmojis} style={{ minHeight: rows * CELL }}>
+        {visible && stickers.map((st) => <CustomEmojiCell key={st.id} st={st} onPick={onPick} />)}
+      </div>
+    </div>
+  )
+})
+
 // ── Дропдаун ─────────────────────────────────────────────────────────────────
 export default function EmojiDropdown({
   open,
   onPick,
+  onPickCustomEmoji,
   onPickSticker,
   onPickGif,
   onClose,
@@ -223,6 +272,9 @@ export default function EmojiDropdown({
 }: {
   open: boolean
   onPick: (emoji: string) => void
+  /** выбор кастом-эмодзи (композер): вставляет entity custom_emoji в инпут.
+   * Наличие включает наборы кастом-эмодзи во вкладке эмодзи (tweb). */
+  onPickCustomEmoji?: (documentId: number, emoji: string) => void
   /** включает вкладку стикеров (композер); выбор закрывает дропдаун (tweb) */
   onPickSticker?: (st: Sticker) => void
   /** включает вкладку GIF (композер, не реакции); выбор закрывает дропдаун */
@@ -309,6 +361,17 @@ export default function EmojiDropdown({
     [frequent],
   )
 
+  // Наборы кастом-эмодзи (композер): грузятся лениво при открытой вкладке эмодзи
+  // и рендерятся отдельными категориями после нативных (tweb custom emoji sets).
+  const customSets = useCustomEmojiSets(open && tab === 'emoji' && !!onPickCustomEmoji)
+  const customCats = useMemo(
+    () =>
+      customSets
+        .map(({ set, stickers }) => ({ key: `ce-${set.slug}`, title: set.title, thumb: stickers[0]?.mediaId, stickers }))
+        .filter((c) => c.stickers.length > 0),
+    [customSets],
+  )
+
   // Число колонок — из фактической ширины скролл-контейнера (tweb setCategoryItemsHeight).
   useLayoutEffect(() => {
     const sc = scrollRef.current
@@ -344,7 +407,9 @@ export default function EmojiDropdown({
     )
     for (const el of catElsRef.current.values()) io.observe(el)
     return () => io.disconnect()
-  }, [])
+    // пересоздаём при появлении кастом-категорий (грузятся асинхронно), чтобы IO
+    // начал наблюдать их элементы (как StickersTab пересоздаёт на sections.length)
+  }, [customCats.length])
 
   const register = useCallback((key: string, el: HTMLDivElement | null) => {
     if (el) {
@@ -364,7 +429,7 @@ export default function EmojiDropdown({
       if (!sc) return
       const top = sc.scrollTop + 50
       let cur = cats[0]?.key
-      for (const c of cats) {
+      for (const c of [...cats, ...customCats]) {
         const el = catElsRef.current.get(c.key)
         if (el && el.offsetTop <= top) cur = c.key
       }
@@ -423,6 +488,16 @@ export default function EmojiDropdown({
                     <TgIcon name={CAT_ICON[c.key]} size={24} />
                   </button>
                 ))}
+                {customCats.map((c) => (
+                  <button
+                    key={c.key}
+                    type="button"
+                    className={classNames(s.menuItem, activeCat === c.key ? s.active : '')}
+                    onClick={() => scrollToCat(c.key)}
+                  >
+                    {c.thumb != null ? <StickerMedia mediaId={c.thumb} width={24} height={24} /> : <TgIcon name="smile" size={24} />}
+                  </button>
+                ))}
               </nav>
             </div>
 
@@ -476,6 +551,19 @@ export default function EmojiDropdown({
                       register={register}
                     />
                   ))}
+                  {onPickCustomEmoji &&
+                    customCats.map((c) => (
+                      <CustomEmojiCategory
+                        key={c.key}
+                        catKey={c.key}
+                        title={c.title}
+                        stickers={c.stickers}
+                        cols={cols}
+                        visible={visibleCats.has(c.key)}
+                        onPick={onPickCustomEmoji}
+                        register={register}
+                      />
+                    ))}
                 </div>
                 {results &&
                   (results.length ? (

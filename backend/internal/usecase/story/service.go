@@ -98,6 +98,19 @@ func (s *Service) Viewers(ctx context.Context, storyID, requesterID int64) ([]do
 	return s.repo.Viewers(ctx, storyID)
 }
 
+// Stats returns view statistics for a story; only the author may read them
+// (domain.ErrForbidden otherwise, domain.ErrNotFound if the story is gone).
+func (s *Service) Stats(ctx context.Context, storyID, requesterID int64) (domain.StoryStats, error) {
+	author, err := s.repo.GetAuthor(ctx, storyID)
+	if err != nil {
+		return domain.StoryStats{}, err
+	}
+	if author != requesterID {
+		return domain.StoryStats{}, domain.ErrForbidden
+	}
+	return s.repo.Stats(ctx, storyID)
+}
+
 // Delete removes a story owned by authorID.
 func (s *Service) Delete(ctx context.Context, storyID, authorID int64) error {
 	return s.repo.Delete(ctx, storyID, authorID)

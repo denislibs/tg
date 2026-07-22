@@ -108,6 +108,25 @@ func (h *StoryHandler) Viewers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"viewers": out, "count": len(out)})
 }
 
+// Stats serves GET /stories/{storyID}/stats — view statistics for the author's
+// own story (tweb stats.getStoryStats): total views + a per-day views series.
+func (h *StoryHandler) Stats(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	storyID, ok := pathInt(w, r, "storyID")
+	if !ok {
+		return
+	}
+	st, err := h.svc.Stats(r.Context(), storyID, user.ID)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"views":        st.Views,
+		"views_by_day": seriesJSON(st.ViewsByDay),
+	})
+}
+
 func (h *StoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	storyID, ok := pathInt(w, r, "storyID")

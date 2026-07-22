@@ -217,6 +217,8 @@ const ru: Dict = {
   'Convert to': 'Обменять на',
   'View Gift': 'Посмотреть подарок',
   'Gift Sent': 'Подарок отправлен',
+  'No gifts yet': 'Пока нет подарков',
+  'Hidden from your profile': 'Скрыт из вашего профиля',
   // Меню «Ещё»
   'Dark Mode': 'Тёмный режим',
   'Disable Animations': 'Без анимации',
@@ -571,6 +573,11 @@ const ru: Dict = {
   'Member growth': 'Рост участников',
   'Views by day': 'Просмотры по дням',
   'Posts by day': 'Посты по дням',
+  // ── Статистика поста/истории (tweb messageStatistics / storyStatistics) ──
+  'Post statistics': 'Статистика поста',
+  'Story statistics': 'Статистика истории',
+  Views: 'Просмотры',
+  Forwards: 'Пересылки',
   'New Topic': 'Новая тема',
   'Create Topic': 'Создать тему',
   'Topic Name': 'Название темы',

@@ -524,6 +524,25 @@ function Composer({
     syncEmpty()
     autosize()
   }
+  // Вставка кастом-эмодзи из пикера (tweb onEmojiSelected с docId): атомарный
+  // contenteditable=false span с fallback-глифом + data-doc-id. serialize()
+  // на отправке превратит его в entity custom_emoji с document_id (media id).
+  const insertCustomEmoji = (documentId: number, emoji: string) => {
+    const root = editorRef.current
+    if (!root) return
+    root.focus()
+    const span = document.createElement('span')
+    span.className = 'md-custom-emoji'
+    span.contentEditable = 'false'
+    span.dataset.docId = String(documentId)
+    span.textContent = emoji
+    const frag = document.createDocumentFragment()
+    frag.appendChild(span)
+    insertFragment(frag)
+    syncEmpty()
+    autosize()
+    onTyping()
+  }
   // Кнопка backspace в нижних табах дропдауна (tweb emoji-tabs-delete).
   const deleteBeforeCaret = () => {
     const root = editorRef.current
@@ -1046,6 +1065,7 @@ function Composer({
           <EmojiDropdown
             open={emojiDd.open}
             onPick={insertEmoji}
+            onPickCustomEmoji={insertCustomEmoji}
             onPickSticker={onPickSticker}
             onPickGif={onPickGif}
             onDelete={deleteBeforeCaret}

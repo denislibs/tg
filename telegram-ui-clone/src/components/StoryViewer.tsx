@@ -8,6 +8,7 @@ import { EASE, DUR } from '../motion'
 import Avatar from '../shared/ui/Avatar'
 import { gradientFor } from '../core/dialogToChat'
 import { useStoryViewer } from '../core/hooks/useStoryViewer'
+import StoryStats from './StoryStats'
 import classNames from '../shared/lib/classNames'
 import s from './StoryViewer.module.scss'
 
@@ -31,6 +32,9 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
     showViewers,
     setShowViewers,
     viewers,
+    showStats,
+    openStats,
+    closeStats,
     next,
     prev,
     openViewers,
@@ -103,6 +107,11 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
               {group.author.displayName}
             </Text>
             <div className={s.spacer} />
+            {isMe && (
+              <IconButton onClick={openStats} color="#fff" size="small" aria-label="Статистика">
+                <TgIcon name="statistics" />
+              </IconButton>
+            )}
             <IconButton onClick={onClose} color="#fff" size="small">
               <TgIcon name="close" />
             </IconButton>
@@ -170,6 +179,11 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
             )}
           </AnimatePresence>
         </motion.div>
+
+        {/* Статистика своей истории (full-screen оверлей над просмотрщиком) */}
+        <AnimatePresence>
+          {showStats && story && <StoryStats storyId={story.id} onClose={closeStats} />}
+        </AnimatePresence>
       </motion.div>
     </AnimatePresence>,
     document.body,
