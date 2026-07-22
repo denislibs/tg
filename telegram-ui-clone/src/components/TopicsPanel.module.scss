@@ -52,12 +52,9 @@
 .rowActive {
   background: var(--tg-accent);
 
-  // подсветка активной темы: текст/иконки — белым (как выбранный диалог)
-  :global(.tgico), span {
-    color: #fff !important;
-  }
-
-  // бейдж непрочитанных на активной строке — белый фон, акцентный текст (tweb .active .badge)
+  // Цвета текста/иконок активного ряда задаются через prop active в renderRow
+  // (Text рендерит div — CSS-селектор span сюда не попадает). Здесь только бейдж:
+  // на акцентном фоне — белый фон, акцентный текст (tweb .active .badge).
   .badge {
     background-color: #fff !important;
     color: var(--tg-accent) !important;
