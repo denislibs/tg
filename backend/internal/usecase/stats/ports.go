@@ -26,4 +26,15 @@ type Repo interface {
 	PostsByDay(ctx context.Context, chatID int64) ([]domain.StatPoint, error)
 	// TopPosts — до limit постов, отсортированных по просмотрам (по убыванию).
 	TopPosts(ctx context.Context, chatID int64, limit int) ([]domain.TopPost, error)
+
+	// PostExists сообщает, есть ли в чате не удалённый пост с таким id.
+	PostExists(ctx context.Context, chatID, msgID int64) (bool, error)
+	// PostOverview — счётчики поста: просмотры (messages.views) и пересылки
+	// (messages.forwards).
+	PostOverview(ctx context.Context, chatID, msgID int64) (views, forwards int64, err error)
+	// PostReactions — разбивка реакций поста по эмодзи (reactions), по убыванию
+	// количества.
+	PostReactions(ctx context.Context, msgID int64) ([]domain.ReactionCount, error)
+	// PostViewsByDay — просмотры поста по дням (message_views.viewed_at), возрастающе.
+	PostViewsByDay(ctx context.Context, msgID int64) ([]domain.StatPoint, error)
 }

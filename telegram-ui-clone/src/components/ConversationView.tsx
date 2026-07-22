@@ -71,6 +71,7 @@ import ScrollDownFab from './conversation/ScrollDownFab'
 import SelectionBar from './conversation/SelectionBar'
 import MessageContextMenu from './conversation/MessageContextMenu'
 import StarReactionPopup from './stars/StarReactionPopup'
+import PostStats from './PostStats'
 import { useChatsStore, loadChats } from '../stores/chatsStore'
 import { useSecretChatStore } from '../stores/secretChatStore'
 import { type MessageEntity } from '../core/models'
@@ -452,13 +453,17 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     msgMenu, openMsgMenu, closeMsgMenu, destroyMsgMenu, msgMenuItems,
     toggleReaction, reactToMenuMsg, showReactedUsers,
     openStarReaction, starReact, closeStarReaction,
+    postStats, closePostStats,
     delIds, doDelete, closeDelete, openDeleteFor,
     forwardIds, doForward, closeForward, openForwardFor,
     viewers, closeViewers,
     reacted, closeReacted,
     translateText, closeTranslate,
   } = useMessageActions({
-    chat, numericChatId, isRealChat, win: winV, msgs, meId, pins, managers, accent: accentColor,
+    chat, numericChatId, isRealChat,
+    // Пост канала + зритель админ/владелец → пункт «Статистика» (tweb can_view_stats).
+    canViewPostStats: isChannel && isRealChat && (card?.myRole === 'creator' || card?.myRole === 'admin'),
+    win: winV, msgs, meId, pins, managers, accent: accentColor,
     setReply, setEditing, setSelectionMode, setSelected, clearSelection, onChatCreated,
   })
 
@@ -1286,6 +1291,13 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       {msgMenu && (
         <MessageContextMenu menu={msgMenu} items={msgMenuItems} onClose={closeMsgMenu} onExited={destroyMsgMenu} onReaction={isRealChat ? reactToMenuMsg : undefined} />
       )}
+
+      {/* Статистика поста канала (slide-in сабвью, tweb messageStatistics) */}
+      <AnimatePresence>
+        {postStats && (
+          <PostStats chatId={numericChatId} msgId={postStats.msgId} onBack={closePostStats} />
+        )}
+      </AnimatePresence>
 
       {/* "Seen by" popup */}
       {viewers && (

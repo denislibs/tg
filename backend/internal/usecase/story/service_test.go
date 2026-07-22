@@ -29,6 +29,8 @@ type fakeRepo struct {
 	authorErr     error
 	viewers       []domain.UserCard
 	viewersErr    error
+	stats         domain.StoryStats
+	statsErr      error
 	deleted       bool
 	deleteErr     error
 }
@@ -52,6 +54,9 @@ func (f *fakeRepo) Viewers(ctx context.Context, storyID int64) ([]domain.UserCar
 }
 func (f *fakeRepo) GetAuthor(ctx context.Context, storyID int64) (int64, error) {
 	return f.author, f.authorErr
+}
+func (f *fakeRepo) Stats(ctx context.Context, storyID int64) (domain.StoryStats, error) {
+	return f.stats, f.statsErr
 }
 func (f *fakeRepo) Delete(ctx context.Context, storyID, authorID int64) error {
 	f.deleted = true
@@ -183,5 +188,26 @@ func TestViewers_Author_ReturnsList(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].ID != 2 {
 		t.Fatalf("unexpected viewers: %+v", got)
+	}
+}
+
+func TestStats_NonAuthor_Forbidden(t *testing.T) {
+	repo := &fakeRepo{author: 99}
+	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
+	_, err := svc.Stats(context.Background(), 5, 1)
+	if !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("want ErrForbidden, got %v", err)
+	}
+}
+
+func TestStats_Author_ReturnsStats(t *testing.T) {
+	repo := &fakeRepo{author: 1, stats: domain.StoryStats{Views: 7}}
+	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
+	got, err := svc.Stats(context.Background(), 5, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Views != 7 {
+		t.Fatalf("Views: want 7, got %d", got.Views)
 	}
 }

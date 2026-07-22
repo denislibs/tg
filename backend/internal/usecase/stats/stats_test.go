@@ -9,10 +9,15 @@ import (
 )
 
 type fakeRepo struct {
-	typ     string
-	role    string
-	summary domain.ChannelStatsSummary
-	members []domain.StatPoint
+	typ           string
+	role          string
+	summary       domain.ChannelStatsSummary
+	members       []domain.StatPoint
+	postExists    bool
+	postViews     int64
+	postForwards  int64
+	postReactions []domain.ReactionCount
+	postViewsDay  []domain.StatPoint
 }
 
 func (f *fakeRepo) ChatType(context.Context, int64) (string, error) { return f.typ, nil }
@@ -31,6 +36,18 @@ func (f *fakeRepo) MembersByDay(context.Context, int64) ([]domain.StatPoint, err
 func (f *fakeRepo) ViewsByDay(context.Context, int64) ([]domain.StatPoint, error)  { return nil, nil }
 func (f *fakeRepo) PostsByDay(context.Context, int64) ([]domain.StatPoint, error)  { return nil, nil }
 func (f *fakeRepo) TopPosts(context.Context, int64, int) ([]domain.TopPost, error) { return nil, nil }
+func (f *fakeRepo) PostExists(context.Context, int64, int64) (bool, error) {
+	return f.postExists, nil
+}
+func (f *fakeRepo) PostOverview(context.Context, int64, int64) (int64, int64, error) {
+	return f.postViews, f.postForwards, nil
+}
+func (f *fakeRepo) PostReactions(context.Context, int64) ([]domain.ReactionCount, error) {
+	return f.postReactions, nil
+}
+func (f *fakeRepo) PostViewsByDay(context.Context, int64) ([]domain.StatPoint, error) {
+	return f.postViewsDay, nil
+}
 
 func day(s string) time.Time { t, _ := time.Parse("2006-01-02", s); return t }
 
@@ -80,5 +97,38 @@ func TestChannelStatsCumulativeAndAvgReach(t *testing.T) {
 		if st.MembersGrowth[i].Value != w {
 			t.Fatalf("MembersGrowth[%d]: want %d, got %d", i, w, st.MembersGrowth[i].Value)
 		}
+	}
+}
+
+func TestPostStatsForbiddenForNonAdmin(t *testing.T) {
+	uc := New(&fakeRepo{typ: "channel", role: domain.RoleMember, postExists: true})
+	if _, err := uc.PostStats(context.Background(), 1, 2, 7); err != domain.ErrForbidden {
+		t.Fatalf("want ErrForbidden, got %v", err)
+	}
+}
+
+func TestPostStatsNotFoundForMissingPost(t *testing.T) {
+	uc := New(&fakeRepo{typ: "channel", role: domain.RoleAdmin, postExists: false})
+	if _, err := uc.PostStats(context.Background(), 1, 2, 7); err != domain.ErrNotFound {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+}
+
+func TestPostStatsReactionsTotal(t *testing.T) {
+	uc := New(&fakeRepo{
+		typ: "channel", role: domain.RoleCreator, postExists: true,
+		postViews: 120, postForwards: 4,
+		postReactions: []domain.ReactionCount{{Emoji: "❤️", Count: 5}, {Emoji: "👍", Count: 3}},
+	})
+	st, err := uc.PostStats(context.Background(), 1, 2, 7)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if st.Views != 120 || st.Forwards != 4 {
+		t.Fatalf("overview mismatch: views=%d forwards=%d", st.Views, st.Forwards)
+	}
+	// Итог реакций = сумма разбивки: 5 + 3 = 8.
+	if st.ReactionsTotal != 8 {
+		t.Fatalf("ReactionsTotal: want 8, got %d", st.ReactionsTotal)
 	}
 }

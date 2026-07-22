@@ -39,6 +39,8 @@ interface UseMessageActionsArgs {
   chat: Chat
   numericChatId: number
   isRealChat: boolean
+  // Пост канала + текущий пользователь — админ/владелец: показывать «Статистику».
+  canViewPostStats?: boolean
   win: MessageWindow
   msgs: ConvMsg[]
   meId: number | null
@@ -54,7 +56,7 @@ interface UseMessageActionsArgs {
 }
 
 export function useMessageActions({
-  chat, numericChatId, isRealChat, win, msgs, meId, pins, managers, accent,
+  chat, numericChatId, isRealChat, canViewPostStats, win, msgs, meId, pins, managers, accent,
   setReply, setEditing, setSelectionMode, setSelected, clearSelection, onChatCreated,
 }: UseMessageActionsArgs) {
   const t = useT()
@@ -63,6 +65,8 @@ export function useMessageActions({
   // Read-date подгружаем при открытии меню; reqRef отсекает ответ прошлого меню.
   const [readDate, setReadDate] = useState<ReadDateState | null>(null)
   const readDateReqRef = useRef(0)
+  // Оверлей «Статистика поста» (канал, админ): открывается из меню, id поста.
+  const [postStats, setPostStats] = useState<{ msgId: number } | null>(null)
   // Ответ с цитатой: текст, выделенный внутри сообщения на момент открытия меню
   // (right-click сохраняет выделение), плюс его offset (UTF-16) в тексте сообщения.
   // Используется startReply; сбрасывается, если выделения не было.
@@ -319,6 +323,12 @@ export function useMessageActions({
     closeMsgMenu()
     if (raw?.id != null) setStarReact({ msgId: raw.id })
   }
+  // «Статистика» поста канала (tweb messageStatistics): открыть оверлей PostStats.
+  const openPostStats = () => {
+    const raw = menuRawMsg()
+    closeMsgMenu()
+    if (raw?.id != null) setPostStats({ msgId: raw.id })
+  }
 
   // Полоска эмодзи над контекстным меню: реакция на сообщение меню.
   const reactToMenuMsg = (emoji: string) => {
@@ -421,6 +431,10 @@ export function useMessageActions({
       }
       return [{ icon: <TgIcon name="checks" size={20} />, label: 'Viewers', onClick: showViewers }]
     })(),
+    // «Статистика» — пост канала, зритель админ/владелец (tweb can_view_stats).
+    ...(canViewPostStats && menuRawMsg()?.id != null
+      ? [{ icon: <TgIcon name="statistics" size={20} />, label: 'Statistics', onClick: openPostStats }]
+      : []),
     // «Пожаловаться» — на чужие сообщения в реальном чате (своё не жалуют).
     ...(isRealChat && !(msgs[msgMenu?.idx ?? -1]?.out ?? false)
       ? [{ icon: <TgIcon name="hand" size={20} />, label: 'Report', danger: true, onClick: openReport }]
@@ -434,6 +448,7 @@ export function useMessageActions({
     msgMenu, openMsgMenu, closeMsgMenu, destroyMsgMenu, msgMenuItems,
     toggleReaction, reactToMenuMsg, showReactedUsers,
     openStarReaction, starReact, closeStarReaction: () => setStarReact(null),
+    postStats, closePostStats: () => setPostStats(null),
     delIds, doDelete, closeDelete: () => setDelIds(null), openDeleteFor, canRevokeAll,
     forwardIds, doForward, closeForward: () => setForwardIds(null), openForwardFor,
     viewers, closeViewers: () => setViewers(null),
