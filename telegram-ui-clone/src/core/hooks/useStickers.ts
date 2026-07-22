@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useManagers } from './useManagers'
 import type { Sticker, StickerSet } from '../managers/stickersManager'
+import { ANIMATED_EMOJI_SLUG } from '../animatedEmoji'
 
 // Лимиты бэка (usecase/stickers): recent 20, faved 10.
 const RECENT_MAX = 20
@@ -90,4 +91,35 @@ export function useStickersByEmoji(emoji: string | null): Sticker[] {
   }, [emoji, managers])
 
   return emoji ? list : []
+}
+
+// Наборы кастом-эмодзи для вкладки эмодзи (tweb getCustomEmojis /
+// getEmojiStickers): установленные наборы kind='emoji' + сид-набор
+// animated_emoji (та же инфра, что big-emoji), чтобы вкладка не была пустой,
+// пока пользователь не установил свои. Ленивая загрузка при первом открытии.
+export function useCustomEmojiSets(active: boolean): { set: StickerSet; stickers: Sticker[] }[] {
+  const managers = useManagers()
+  const [sets, setSets] = useState<{ set: StickerSet; stickers: Sticker[] }[]>([])
+  const startedRef = useRef(false)
+
+  useEffect(() => {
+    if (!active || startedRef.current) return
+    startedRef.current = true
+    let alive = true
+    void (async () => {
+      try {
+        const mySets = await managers.stickers.mySets()
+        const slugs = Array.from(
+          new Set([ANIMATED_EMOJI_SLUG, ...mySets.filter((x) => x.kind === 'emoji').map((x) => x.slug)]),
+        )
+        const full = await Promise.all(slugs.map((sl) => managers.stickers.setBySlug(sl).catch(() => null)))
+        if (alive) setSets(full.filter((x): x is { set: StickerSet; stickers: Sticker[] } => !!x && x.stickers.length > 0))
+      } catch {
+        /* нет наборов — вкладка кастом-эмодзи просто пустая */
+      }
+    })()
+    return () => { alive = false }
+  }, [active, managers])
+
+  return sets
 }
