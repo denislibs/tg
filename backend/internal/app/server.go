@@ -94,6 +94,11 @@ func registerServer(p serverParams) {
 	// Чек-листы: хранение + отметки, live-обновления фреймом checklist_update.
 	p.ChatUC.SetChecklists(pgadapter.NewChecklistsRepo(p.Pool))
 
+	// RTMP-трансляции (Telegram livestream): метаданные потока (stream key,
+	// активность, старт) в Postgres, число зрителей — участники группового
+	// звонка; старт/стоп фанятся кадром livestream_update.
+	p.ChatUC.SetLivestreams(pgadapter.NewLivestreamRepo(p.Pool), p.Cfg.RTMPBaseURL)
+
 	// Бусты каналов + розыгрыши: буст доступен premium, счётчик бустов и статус
 	// розыгрыша рассылаются фреймами boost_update / giveaway_update.
 	p.ChatUC.SetBoosts(pgadapter.NewBoostsRepo(p.Pool))
