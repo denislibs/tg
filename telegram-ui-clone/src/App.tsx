@@ -5,7 +5,9 @@ import type { ThreadInfo } from './components/ConversationView'
 import type { TopicRow } from './core/managers/groupsManager'
 import { uiEvents } from './core/hooks/uiEvents'
 import GroupCallScreen from './components/GroupCallScreen'
+import LivestreamScreen from './components/LivestreamScreen'
 import { useGroupCallStore } from './stores/groupCallStore'
+import { useLivestreamStore } from './stores/livestreamStore'
 import { useConnectionStore, pingBackend } from './stores/connectionStore'
 import { AnimatePresence, motion, MotionConfig } from 'framer-motion'
 import Text from './shared/ui/Text'
@@ -67,6 +69,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   const [qrConfirmToken, setQrConfirmToken] = useState<string | null>(null)
   const [addlistSlug, setAddlistSlug] = useState<string | null>(null)
   const groupCallChatId = useGroupCallStore((s) => s.chatId)
+  const livestreamChatId = useLivestreamStore((s) => s.watchingChatId)
 
   // Появление мессенджера (tweb src/index.ts / #main-columns fade-in). При
   // возврате к прежнему аккаунту / после смены — scale-enter (флаг ANIMATE_MAIN,
@@ -485,6 +488,12 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
         {groupCallChatId != null && (
           <GroupCallScreen
             chatName={chatList.find((c) => c.id === String(groupCallChatId))?.name ?? ''}
+          />
+        )}
+        {/* RTMP-трансляция — глобальное окно просмотра (поверх любого чата) */}
+        {livestreamChatId != null && (
+          <LivestreamScreen
+            chatName={chatList.find((c) => c.id === String(livestreamChatId))?.name ?? ''}
           />
         )}
         {joinToast && (

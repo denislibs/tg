@@ -22,6 +22,7 @@ import type { PrivacyRule, BlockedUser, UserProfile } from '../core/managers/pri
 import type { SignInOutcome, PasswordState, PasskeyInfo } from '../core/managers/authManager'
 import type { Session } from '../core/managers/sessionsManager'
 import type { IceConfig } from '../core/managers/callsManager'
+import type { LivestreamStatus } from '../core/managers/livestreamManager'
 import type { StarGift, GiftInfo } from '../core/managers/starsManager'
 import type { ReportArgs } from '../core/managers/reportManager'
 import type { ChannelStats } from '../core/managers/statsManager'
@@ -265,6 +266,12 @@ export interface Managers {
   }
   calls: {
     iceConfig(): Promise<IceConfig>
+  }
+  livestream: {
+    status(chatId: number): Promise<LivestreamStatus>
+    start(chatId: number): Promise<LivestreamStatus>
+    stop(chatId: number): Promise<void>
+    revokeKey(chatId: number): Promise<LivestreamStatus>
   }
   stars: {
     balance(): Promise<number>

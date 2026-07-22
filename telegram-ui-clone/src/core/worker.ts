@@ -32,6 +32,7 @@ import { newDraftsManager } from './managers/draftsManager'
 import { newChatThemesManager } from './managers/chatThemesManager'
 import { newSessionsManager } from './managers/sessionsManager'
 import { newCallsManager } from './managers/callsManager'
+import { newLivestreamManager } from './managers/livestreamManager'
 import { newConnectionManager } from './realtime/connectionManager'
 import { newSyncEngine } from './realtime/syncEngine'
 import { createSecretManager } from './managers/secretManager'
@@ -68,6 +69,7 @@ const drafts = newDraftsManager({ rest })
 const chatThemes = newChatThemesManager({ rest })
 const sessions = newSessionsManager({ rest })
 const calls = newCallsManager({ rest })
+const livestream = newLivestreamManager({ rest })
 const stars = newStarsManager({ rest })
 const boosts = newBoostsManager({ rest })
 const report = newReportManager({ rest })
@@ -163,6 +165,7 @@ const conn = newConnectionManager({
       if (p.chat_id && p.responder_pub) void secret.complete(p.chat_id, p.responder_pub)
     }
     else if (type === 'secret_chat_reject') broadcast(RT.secretReject, payload)
+    else if (type.startsWith('livestream_')) broadcast(RT.livestream, { t: type, d: payload })
     else if (type.startsWith('group_call_')) broadcast(RT.groupCall, { t: type, d: payload })
     else if (type.startsWith('call_')) broadcast(RT.call, { t: type, d: payload })
   },
@@ -212,6 +215,7 @@ function bind(ep: Endpoint) {
     chatThemes: chatThemes as unknown as Record<string, (...a: unknown[]) => unknown>,
     sessions: sessions as unknown as Record<string, (...a: unknown[]) => unknown>,
     calls: calls as unknown as Record<string, (...a: unknown[]) => unknown>,
+    livestream: livestream as unknown as Record<string, (...a: unknown[]) => unknown>,
     stars: stars as unknown as Record<string, (...a: unknown[]) => unknown>,
     boosts: boosts as unknown as Record<string, (...a: unknown[]) => unknown>,
     report: report as unknown as Record<string, (...a: unknown[]) => unknown>,

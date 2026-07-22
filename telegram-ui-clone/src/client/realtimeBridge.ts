@@ -18,6 +18,7 @@ import { useSettingsStore } from '../settings'
 import { useSecretChatStore } from '../stores/secretChatStore'
 import * as callEngine from '../core/calls/callEngine'
 import { handleGroupCallFrame, type GroupCallFrame } from '../core/calls/groupCallEngine'
+import { handleLivestreamFrame, type LivestreamFrame } from '../core/calls/livestreamEngine'
 
 let started = false
 
@@ -208,6 +209,8 @@ export function startRealtime(): void {
   // 1:1 call signaling → движок звонка (стейт живёт в callStore)
   smp.on(RT.call, (raw) => { callEngine.handleFrame(raw as CallFrameEvt) })
   smp.on(RT.groupCall, (raw) => { handleGroupCallFrame(raw as GroupCallFrame) })
+  // RTMP-трансляция: старт/стоп → livestreamStore (плашка LIVE + экран просмотра)
+  smp.on(RT.livestream, (raw) => { handleLivestreamFrame(raw as LivestreamFrame) })
   // Новый баланс звёзд (после пополнения/подарка/конвертации) — в starsStore.
   smp.on(RT.balanceUpdate, (raw) => {
     const b = (raw as { balance: number }).balance
