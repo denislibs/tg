@@ -127,7 +127,7 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
           ) : (
             <TopicIcon color={topic.iconColor} emoji={topic.iconEmoji} title={topic.title} size={20} />
           )}
-          <Text noWrap size={15.5} weight={600} color={titleColor} style={{ flex: 1 }}>
+          <Text noWrap size={16} weight={500} color={titleColor} style={{ flex: 1 }}>
             {topic.isGeneral ? t('General') : topic.title}
           </Text>
           {/* muted тема — иконка nosound серым (tweb .is-muted .dialog-title .tgico-nosound) */}
@@ -142,7 +142,7 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
           <Text size={12} color={metaColor} style={{ flexShrink: 0 }}>{fmtWhen(topic.lastAt)}</Text>
         </div>
         <div className={s.subtitleRow}>
-          <Text noWrap size={14.5} color={subColor} style={{ flex: 1 }}>
+          <Text noWrap size={16} color={subColor} style={{ flex: 1 }}>
             {topic.lastSenderName ? `${topic.lastSenderName}: ` : ''}
             {topic.lastText || mediaLabel(topic.lastType)}
           </Text>
