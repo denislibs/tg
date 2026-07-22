@@ -23,6 +23,7 @@ import type { Session } from '../core/managers/sessionsManager'
 import type { IceConfig } from '../core/managers/callsManager'
 import type { StarGift, GiftInfo } from '../core/managers/starsManager'
 import type { ReportArgs } from '../core/managers/reportManager'
+import type { ChannelStats } from '../core/managers/statsManager'
 import type { BotCommand, CallbackAnswer, InlineResult } from '../core/managers/botsManager'
 import type { StickerSet, Sticker, SavedGif, GifPage } from '../core/managers/stickersManager'
 import type { IVArticle } from '../core/managers/ivManager'
@@ -254,6 +255,9 @@ export interface Managers {
   }
   report: {
     report(a: ReportArgs): Promise<void>
+  }
+  stats: {
+    getChannelStats(chatId: number): Promise<ChannelStats>
   }
   bots: {
     commands(botId: number): Promise<BotCommand[]>

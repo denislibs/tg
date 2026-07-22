@@ -7,6 +7,7 @@ import QrModal from './QrModal'
 import { AnimatePresence, motion } from 'framer-motion'
 import { EASE, DUR, slideInRight } from '../motion'
 import TgIcon from './TgIcon'
+import ChannelStats from './ChannelStats'
 import Avatar from '../shared/ui/Avatar'
 import { useAvatarSrc } from './useAvatarSrc'
 import UserAvatar from './UserAvatar'
@@ -98,6 +99,7 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onChatCreated
   }, [isSaved, managers])
   const [editing, setEditing] = useState(false)
   const [addingMembers, setAddingMembers] = useState(false)
+  const [showStats, setShowStats] = useState(false)
   const headerAvatarSrc = useAvatarSrc(chat.avatarUrl)
 
   // Чужой профиль с применённой конфиденциальностью (GET /users/{id}):
@@ -154,6 +156,7 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onChatCreated
     canInvite,
     canManageDiscussion,
     canManageTopics,
+    canViewStats,
     discussionChatId,
     enablingDiscussion,
     inviteLinks,
@@ -697,6 +700,25 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onChatCreated
           )}
 
 
+          {/* Статистика (tweb chatFull.can_view_stats): канал/супергруппа → графики */}
+          {isRealChat && canViewStats && (
+            <div className={s.section}>
+              <div className={s.cardPlain}>
+                <div
+                  className={s.enabledRow}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => setShowStats(true)}
+                >
+                  <TgIcon name="statistics" size={24} color="var(--tg-textSecondary)" />
+                  <Text size={16} color="var(--tg-textPrimary)" style={{ flex: 1 }}>
+                    {t('Statistics')}
+                  </Text>
+                  <TgIcon name="next" size={20} color="var(--tg-textSecondary)" />
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Темы (tweb editChat Topics toggle): группа → форум-топики */}
           {isRealChat && chat.type === 'group' && canManageTopics && (
             <div className={s.section}>
@@ -888,6 +910,17 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onChatCreated
                 setAddingMembers(false)
                 void refreshMembers()
               }}
+            />
+          )}
+        </AnimatePresence>
+
+        {/* Статистика канала/супергруппы (slide-in сабвью, tweb statistics) */}
+        <AnimatePresence>
+          {showStats && isRealChat && (
+            <ChannelStats
+              chatId={Number(chat.id)}
+              isChannel={isChannel}
+              onBack={() => setShowStats(false)}
             />
           )}
         </AnimatePresence>
