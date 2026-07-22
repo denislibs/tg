@@ -6,6 +6,8 @@ type Dict = Record<string, string>
 // entries (t() falls back to the key). Other languages map English -> translation.
 
 const ru: Dict = {
+  // ── Предложенное фото профиля (tweb UserInfo.SetPhotoTitle) ──
+  'Set Photo': 'Установить фото',
   // ── Instant View ──
   'Instant View': 'Мгновенный просмотр',
   'Open in browser': 'Открыть в браузере',

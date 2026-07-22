@@ -217,6 +217,10 @@ export interface Managers {
     add(input: AddContactInput): Promise<Contact>
     list(): Promise<Contact[]>
     del(contactId: number): Promise<void>
+    setPhoto(contactId: number, mediaId: number): Promise<{ url: string }>
+    clearPhoto(contactId: number): Promise<void>
+    suggestPhoto(contactId: number, mediaId: number): Promise<void>
+    acceptPhotoSuggestion(msgId: number): Promise<void>
   }
   privacy: {
     rules(): Promise<PrivacyRule[]>

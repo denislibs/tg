@@ -50,6 +50,9 @@ export interface ConvMsg {
   mediaUnread?: boolean // голосовое/кружок не прослушано получателем (точка у обеих сторон)
   deleted?: boolean
   forwardFrom?: { name: string; color?: string } // "Переслано от X"
+  // Предложение фото профиля (service-сообщение suggest_photo): у получателя под
+  // превью — кнопка «Установить фото»; accepted скрывает её на всех устройствах.
+  photoSuggestion?: { accepted: boolean }
   reply?: { name: string; text: string; entities?: MessageEntity[]; color?: string; seq?: number; mediaId?: number; mediaType?: string; quote?: boolean }
   duration?: string // voice message length, e.g. "0:14"
   waveform?: number[] // voice waveform bar heights (0..1)

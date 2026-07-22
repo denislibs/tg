@@ -5,6 +5,7 @@ import TgIcon from './TgIcon'
 import { useAvatarSrc } from './useAvatarSrc'
 import UserInfoPanel from './UserInfoPanel'
 import AddContactView from './AddContactView'
+import EditContactView from './EditContactView'
 import HeaderMenu from './HeaderMenu'
 import ConfirmDialog from './settings/ConfirmDialog'
 import MutePopup from './MutePopup'
@@ -268,6 +269,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
   const [addContactOpen, setAddContactOpen] = useState(false)
+  const [editContactOpen, setEditContactOpen] = useState(false)
   const [attachAnchor, setAttachAnchor] = useState<{ left: number; bottom: number } | null>(null)
   const [createPollOpen, setCreatePollOpen] = useState(false)
   const [contactPickerOpen, setContactPickerOpen] = useState(false)
@@ -979,6 +981,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
             onOpenPeer={onOpenPeer}
             onChatCreated={onChatCreated}
             canAddMembers={canAddMember}
+            onEditContact={() => { setInfoOpen(false); setEditContactOpen(true) }}
           />
         )}
       </AnimatePresence>
@@ -986,6 +989,11 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       {/* Add-contact screen (private chats) */}
       <AnimatePresence>
         {addContactOpen && <AddContactView chat={chat} onClose={() => setAddContactOpen(false)} />}
+      </AnimatePresence>
+
+      {/* Edit-contact screen (private chats): все редактируемые поля контакта */}
+      <AnimatePresence>
+        {editContactOpen && <EditContactView chat={chat} onClose={() => setEditContactOpen(false)} />}
       </AnimatePresence>
 
       {/* Попап длительности mute (tweb PopupMute) */}

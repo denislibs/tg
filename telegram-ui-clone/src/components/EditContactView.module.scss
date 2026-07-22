@@ -1,0 +1,57 @@
+// EditContactView — экран «Изменить контакт» (порт tweb editContact).
+// Панель/шапка/аватар/карточка полей переиспользуются из AddContactView.module.scss;
+// здесь — карточки-секции действий (уведомления/др, фото, удалить).
+
+// карточка-секция со строками-действиями (фон зависит от темы)
+.actionCard {
+  margin: 12px 10px 0;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #ffffff;
+
+  :global(html[data-theme='night']) &,
+  :global(html[data-theme='dark']) & {
+    background: #2b2b2b;
+  }
+}
+
+// строка-действие: иконка + подпись (+ правый слот)
+.actionRow {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 12px 16px;
+  cursor: pointer;
+  min-height: 24px;
+
+  & + & {
+    border-top: 1px solid var(--tg-borderSubtle, rgba(0, 0, 0, 0.08));
+  }
+
+  :global(html[data-theme='night']) & + &,
+  :global(html[data-theme='dark']) & + & {
+    border-top-color: rgba(255, 255, 255, 0.08);
+  }
+}
+
+.actionLabel {
+  flex: 1;
+  min-width: 0;
+}
+
+.rowRight {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+// серый пояснительный текст под карточкой фото
+.hint {
+  display: block;
+  padding: 8px 20px 0;
+}
