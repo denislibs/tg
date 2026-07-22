@@ -826,6 +826,7 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, onChatCreated
             savedDialogs={isSaved ? savedDialogs ?? [] : undefined}
             gifts={isUser ? gifts : undefined}
             onOpenGift={setSelectedGift}
+            onSendGift={isUser && peerId !== meId ? () => setGiftPopupOpen(true) : undefined}
             isChannel={isChannel}
             canManageAdmins={canManageAdmins}
             onOpenPeer={onOpenPeer}
@@ -964,7 +965,7 @@ const TAB_FILTER: Record<string, 'media' | 'files' | 'links' | 'music' | 'voice'
 }
 
 
-function SharedMedia({ tab, onTab, chatId, members, savedDialogs, gifts, onOpenGift, isChannel, canManageAdmins, onOpenPeer, onEditMember, navRef, stickyTop, onCount }: {
+function SharedMedia({ tab, onTab, chatId, members, savedDialogs, gifts, onOpenGift, onSendGift, isChannel, canManageAdmins, onOpenPeer, onEditMember, navRef, stickyTop, onCount }: {
   tab: string
   onTab: (v: string) => void
   chatId: number | null
@@ -975,6 +976,8 @@ function SharedMedia({ tab, onTab, chatId, members, savedDialogs, gifts, onOpenG
   /** подарки профиля пользователя (таб «Подарки») */
   gifts?: GiftInfo[]
   onOpenGift?: (g: GiftInfo) => void
+  /** открыть попап отправки подарка из пустого состояния (только чужой профиль) */
+  onSendGift?: () => void
   isChannel?: boolean
   canManageAdmins?: boolean
   onOpenPeer?: (peer: OpenPeer) => void
@@ -1091,9 +1094,11 @@ function SharedMedia({ tab, onTab, chatId, members, savedDialogs, gifts, onOpenG
   // показываются только непустые). Медиа-таб появляется, лишь когда его total
   // загрузился и > 0 — иначе таб-бар мигал бы пустыми на открытии.
   const mediaTabs = SHARED_TABS.filter((name) => (totals[TAB_FILTER[name]] ?? 0) > 0)
+  // Подарки: таб есть у любого пользовательского профиля (tweb показывает
+  // витрину и пустой — с приглашением подарить); у групп/каналов gifts == null.
   const tabOrder = [
     ...(savedDialogs ? ['Chats'] : members ? ['Members'] : []),
-    ...(gifts && gifts.length > 0 ? ['Gifts'] : []),
+    ...(gifts ? ['Gifts'] : []),
     ...mediaTabs,
   ]
 
@@ -1193,19 +1198,50 @@ function SharedMedia({ tab, onTab, chatId, members, savedDialogs, gifts, onOpenG
         </div>
       )}
 
-      {/* Подарки профиля (tweb Gifts tab): сетка полученных подарков */}
+      {/* Подарки профиля (tweb stargifts/profileList): сетка полученных подарков.
+          Скрытые (hidden) приходят только владельцу — помечаем «глаз-off» и
+          приглушаем. Ограниченные — бейдж «Лимит»; отправитель — мини-аватар
+          (аноним → безликий кружок), как itemFrom/itemUnsaved в tweb. */}
       {tab === 'Gifts' && gifts && (
-        <div className={s.giftsProfileGrid} style={{ padding: '4px 12px' }}>
-          {gifts.map((g) => (
-            <div key={g.id} className={s.giftTile} onClick={() => onOpenGift?.(g)}>
-              <span className={s.giftTileEmoji}>{g.gift.emoji}</span>
-              <span className={s.giftTilePrice}>
-                <StarIcon size={12} />
-                {g.gift.priceStars}
-              </span>
-            </div>
-          ))}
-        </div>
+        gifts.length === 0 ? (
+          <div className={s.giftsEmpty}>
+            <span className={s.giftsEmptyEmoji}>🎁</span>
+            <Text size={15} color="var(--tg-textSecondary)">{t('No gifts yet')}</Text>
+            {onSendGift && (
+              <button type="button" className={s.giftsEmptyBtn} onClick={onSendGift}>
+                {t('Send a Gift')}
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className={s.giftsProfileGrid}>
+            {gifts.map((g) => {
+              const anon = g.anonymous || (!g.fromName && g.fromId == null)
+              return (
+                <div
+                  key={g.id}
+                  className={classNames(s.giftTile, g.hidden ? s.giftTileHidden : '')}
+                  onClick={() => onOpenGift?.(g)}
+                >
+                  {g.hidden && <TgIcon name="hide" size={16} className={s.giftTileHiddenIcon} />}
+                  {g.gift.total != null && <span className={s.giftTileBadge}>{t('Limited')}</span>}
+                  <span className={s.giftTileEmoji}>{g.gift.emoji}</span>
+                  <span className={s.giftTilePrice}>
+                    <StarIcon size={12} />
+                    {g.gift.priceStars}
+                  </span>
+                  <div className={s.giftTileFrom}>
+                    {anon ? (
+                      <span className={s.giftTileAnon}>?</span>
+                    ) : (
+                      <UserAvatar id={g.fromId ?? undefined} name={g.fromName} size={18} />
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )
       )}
 
       {msgs != null && msgs.length === 0 && tab !== 'Gifts' && empty}

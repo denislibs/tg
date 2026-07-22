@@ -9,6 +9,7 @@ import TgIcon from '../TgIcon'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useStarsStore } from '../../stores/starsStore'
 import { usePortalContainer } from '../../core/pip'
+import { fmtWhen } from '../../core/dialogToChat'
 import { useT } from '../../i18n'
 import type { GiftInfo } from '../../core/managers/starsManager'
 import StarIcon from './StarIcon'
@@ -54,6 +55,7 @@ export default function GiftInfoPopup({
   const fromLabel = gift.anonymous && !isOwner
     ? t('Anonymous')
     : gift.fromName || t('Anonymous')
+  const dateLabel = fmtWhen(gift.date)
 
   return createPortal(
     <AnimatePresence>
@@ -87,8 +89,11 @@ export default function GiftInfoPopup({
               <span className={s.chosenEmoji}>{gift.gift.emoji}</span>
               <Text size={17} weight={600} color="var(--tg-textPrimary)">{gift.gift.title}</Text>
               <Text size={14} color="var(--tg-textSecondary)">
-                {t('From')}: {fromLabel}
+                {t('From')}: {fromLabel}{dateLabel ? ` · ${dateLabel}` : ''}
               </Text>
+              {isOwner && gift.hidden && (
+                <Text size={13} color="var(--tg-textFaint)">{t('Hidden from your profile')}</Text>
+              )}
               {gift.message && (
                 <Text size={15} color="var(--tg-textPrimary)" style={{ marginTop: 4 }}>{gift.message}</Text>
               )}

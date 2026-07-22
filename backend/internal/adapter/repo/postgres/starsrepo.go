@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -98,19 +99,21 @@ func (r *StarsRepo) SaveGift(ctx context.Context, ownerID int64, fromID *int64, 
 const giftInfoCols = `sg.id, sg.owner_id, sg.from_id, sg.message, sg.anonymous, sg.hidden, sg.converted,
 	g.id, g.emoji, g.title, g.price_stars, g.convert_stars, g.total, g.remains,
 	(g.remains IS NOT NULL AND g.remains <= 0),
-	COALESCE(u.display_name, '')`
+	COALESCE(u.display_name, ''), sg.created_at`
 
 func scanGiftInfo(s scanner, viewerID int64) (domain.GiftInfo, int64, error) {
 	var gi domain.GiftInfo
 	var ownerID int64
 	var fromName string
+	var createdAt time.Time
 	err := s.Scan(&gi.ID, &ownerID, &gi.FromID, &gi.Message, &gi.Anonymous, &gi.Hidden, &gi.Converted,
 		&gi.Gift.ID, &gi.Gift.Emoji, &gi.Gift.Title, &gi.Gift.PriceStars, &gi.Gift.ConvertStars,
-		&gi.Gift.Total, &gi.Gift.Remains, &gi.Gift.SoldOut, &fromName)
+		&gi.Gift.Total, &gi.Gift.Remains, &gi.Gift.SoldOut, &fromName, &createdAt)
 	if err != nil {
 		return domain.GiftInfo{}, 0, err
 	}
 	gi.ConvertStars = gi.Gift.ConvertStars
+	gi.Date = createdAt.UTC().Format(time.RFC3339)
 	// Отправитель раскрывается только не-анонимного подарка, либо владельцу.
 	if gi.Anonymous && viewerID != ownerID {
 		gi.FromID = nil

@@ -264,14 +264,15 @@
   padding-bottom: 4px;
 }
 
-// сетка подарков в профиле (tweb Gifts tab)
+// сетка подарков в профиле (tweb stargifts/profileList)
 .giftsProfileGrid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
-  padding: 0 4px;
+  padding: 4px 12px;
 }
 .giftTile {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -285,6 +286,29 @@
   &:hover { background: var(--tg-hover); }
   &:active { transform: scale(0.97); }
 }
+// скрытый из витрины подарок (виден только владельцу) — приглушён
+.giftTileHidden {
+  opacity: 0.55;
+}
+.giftTileHiddenIcon {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  color: var(--tg-textSecondary);
+}
+// бейдж «Лимит» для ограниченного подарка (tweb StarGiftBadge)
+.giftTileBadge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--tg-textSecondary);
+  background: var(--tg-hover);
+  border-radius: 8px;
+  padding: 2px 5px;
+}
 .giftTileEmoji {
   font-size: 40px;
   line-height: 1;
@@ -296,6 +320,54 @@
   font-size: 12px;
   font-weight: 700;
   color: #f7a02e;
+}
+// мини-аватар отправителя (tweb itemFrom) — под ценой
+.giftTileFrom {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 18px;
+}
+.giftTileAnon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--tg-hover);
+  color: var(--tg-textSecondary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+// пустое состояние витрины подарков («Пока нет подарков» + подарить)
+.giftsEmpty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 40px 24px;
+  text-align: center;
+}
+.giftsEmptyEmoji {
+  font-size: 56px;
+  line-height: 1;
+  opacity: 0.7;
+}
+.giftsEmptyBtn {
+  margin-top: 4px;
+  padding: 10px 22px;
+  border-radius: 12px;
+  border: none;
+  background: var(--tg-accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+
+  &:hover { filter: brightness(1.06); }
 }
 
 // --- шаред-медиа (табы Медиа/Файлы/Ссылки/Музыка/Голосовые) ---

@@ -217,6 +217,8 @@ const ru: Dict = {
   'Convert to': 'Обменять на',
   'View Gift': 'Посмотреть подарок',
   'Gift Sent': 'Подарок отправлен',
+  'No gifts yet': 'Пока нет подарков',
+  'Hidden from your profile': 'Скрыт из вашего профиля',
   // Меню «Ещё»
   'Dark Mode': 'Тёмный режим',
   'Disable Animations': 'Без анимации',
