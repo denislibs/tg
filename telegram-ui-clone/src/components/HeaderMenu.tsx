@@ -28,9 +28,11 @@ interface Props {
   onDeleteChat?: () => void
   /** очистить историю у себя (Telegram deleteHistory just_clear) */
   onClearHistory?: () => void
+  /** открыть пикер темы оформления чата (messages.setChatTheme) */
+  onChangeTheme?: () => void
 }
 
-export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddMember, onSelectMessages, onAddContact, onDeleteChat, onClearHistory }: Props) {
+export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddMember, onSelectMessages, onAddContact, onDeleteChat, onClearHistory, onChangeTheme }: Props) {
   const t = useT()
   const managers = useManagers()
   const { start: startCall } = useCall()
@@ -81,6 +83,11 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
   // «Очистить историю» у себя (tweb PeerInfo.Action.ClearHistory): приватные чаты
   // и группы, где ты участник. Глиф broom в наш tgico-набор не портирован — берём
   // корзину delete, как остальные деструктивные действия.
+  // «Изменить тему оформления» (Telegram messages.setChatTheme) — пикер тем чата.
+  const themeItem: Item | null = onChangeTheme
+    ? { icon: <TgIcon name="darkmode" size={20} />, label: 'Change Theme', onClick: () => { onChangeTheme(); close() } }
+    : null
+
   const clearItem: Item | null = onClearHistory
     ? { icon: <TgIcon name="delete" size={20} />, label: 'Clear History', danger: true, onClick: () => { onClearHistory(); close() } }
     : null
@@ -123,6 +130,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
             { icon: <TgIcon name="deleteuser" size={20} />, label: 'Disable Sharing' },
           ]
         : []),
+      ...(themeItem ? [themeItem] : []),
       ...(clearItem ? [clearItem] : []),
       ...(!isService ? [reportItem] : []),
       { icon: <TgIcon name="delete" size={20} />, label: 'Delete Chat', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
@@ -143,6 +151,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
         : []),
       { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
       { icon: <TgIcon name="gift" size={20} />, label: 'Send a Gift' },
+      ...(themeItem ? [themeItem] : []),
       ...(clearItem ? [clearItem] : []),
       reportItem,
       { icon: <TgIcon name="delete" size={20} />, label: owned ? 'Delete Group' : 'Leave Group', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },

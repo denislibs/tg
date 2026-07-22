@@ -41,6 +41,22 @@
   overflow: hidden;
 }
 
+// Фон темы чата: локальный слой поверх глобальных обоев, под лентой (.scroll — z-index 1).
+.themeBg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.themeBgPattern {
+  position: absolute;
+  inset: 0;
+  background-size: 420px;
+  background-repeat: repeat;
+  opacity: 0.5;
+}
+
 // плавающая пилюля «сейчас играет» над хедером
 .nowPlaying {
   position: absolute;

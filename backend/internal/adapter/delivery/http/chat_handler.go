@@ -267,7 +267,7 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 			"unread_mentions_count": d.UnreadMentionsCount, "unread_reactions": d.UnreadReactionsCount, "muted": d.Muted,
 			"pinned": d.Pinned, "archived": d.Archived, "is_forum": d.IsForum,
 			"notify_preview": d.NotifyPreview, "notify_sound": d.NotifySound,
-			"auto_delete_period": d.AutoDeletePeriod,
+			"auto_delete_period": d.AutoDeletePeriod, "theme_id": d.ThemeID,
 		}
 		if d.HasLast {
 			row["last_message"] = map[string]any{
@@ -1503,6 +1503,34 @@ func (h *ChatHandler) SetChatAutoDelete(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"period": b.Period})
+}
+
+// SetChatTheme — PUT /chats/{chatID}/theme {theme_id}. Пустой theme_id (или
+// отсутствие поля) — сброс темы к дефолту. Тема общая для чата (Telegram
+// messages.setChatTheme): смена рассылается обоим участникам фреймом
+// chat_theme_update.
+func (h *ChatHandler) SetChatTheme(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	var b struct {
+		ThemeID string `json:"theme_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	err := h.svc.SetChatTheme(r.Context(), chatID, h.meID(r), b.ThemeID)
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusForbidden, "not a member of this chat")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"theme_id": b.ThemeID})
 }
 
 // draftJSON — wire-представление черновика.

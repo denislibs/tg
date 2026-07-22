@@ -229,6 +229,9 @@ export interface Managers {
     setAutoDelete(period: number): Promise<void>
     setChatAutoDelete(chatId: number, period: number): Promise<void>
   }
+  chatThemes: {
+    setChatTheme(chatId: number, themeId: string): Promise<void>
+  }
   drafts: {
     list(): Promise<Draft[]>
     save(chatId: number, text: string, replyToId?: number | null, entities?: MessageEntity[]): Promise<Draft | null>

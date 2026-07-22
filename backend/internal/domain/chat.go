@@ -85,6 +85,10 @@ type Dialog struct {
 	Peer *DialogPeer
 	// AutoDeletePeriod — период автоудаления сообщений чата в секундах (0 — выкл).
 	AutoDeletePeriod int
+	// ThemeID — id выбранной темы оформления чата (пресет на клиенте); ""
+	// означает «тема не задана» (дефолтное оформление). Применяется к обоим
+	// участникам (Telegram messages.setChatTheme).
+	ThemeID string
 }
 
 // Member is a full membership row (role + admin rights + mute).
