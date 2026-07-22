@@ -28,6 +28,7 @@ import { newStatsManager } from './managers/statsManager'
 import { newBotsManager } from './managers/botsManager'
 import { newIVManager } from './managers/ivManager'
 import { newDraftsManager } from './managers/draftsManager'
+import { newChatThemesManager } from './managers/chatThemesManager'
 import { newSessionsManager } from './managers/sessionsManager'
 import { newCallsManager } from './managers/callsManager'
 import { newConnectionManager } from './realtime/connectionManager'
@@ -63,6 +64,7 @@ const stories = newStoriesManager({ rest })
 const contacts = newContactsManager({ rest })
 const privacy = newPrivacyManager({ rest })
 const drafts = newDraftsManager({ rest })
+const chatThemes = newChatThemesManager({ rest })
 const sessions = newSessionsManager({ rest })
 const calls = newCallsManager({ rest })
 const stars = newStarsManager({ rest })
@@ -133,6 +135,7 @@ const conn = newConnectionManager({
     else if (type === 'presence') broadcast(RT.presence, payload)
     else if (type === 'reaction') broadcast(RT.reaction, payload)
     else if (type === 'draft_update') broadcast(RT.draftUpdate, payload)
+    else if (type === 'chat_theme_update') broadcast(RT.chatThemeUpdate, payload)
     else if (type === 'dialog_pin') broadcast(RT.dialogPin, payload)
     else if (type === 'dialog_archive') broadcast(RT.dialogArchive, payload)
     else if (type === 'poll_update') broadcast(RT.pollUpdate, payload)
@@ -196,6 +199,7 @@ function bind(ep: Endpoint) {
     contacts: contacts as unknown as Record<string, (...a: unknown[]) => unknown>,
     privacy: privacy as unknown as Record<string, (...a: unknown[]) => unknown>,
     drafts: drafts as unknown as Record<string, (...a: unknown[]) => unknown>,
+    chatThemes: chatThemes as unknown as Record<string, (...a: unknown[]) => unknown>,
     sessions: sessions as unknown as Record<string, (...a: unknown[]) => unknown>,
     calls: calls as unknown as Record<string, (...a: unknown[]) => unknown>,
     stars: stars as unknown as Record<string, (...a: unknown[]) => unknown>,

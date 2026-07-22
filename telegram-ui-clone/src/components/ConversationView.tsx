@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import Text from '../shared/ui/Text'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
@@ -6,6 +7,11 @@ import { useAvatarSrc } from './useAvatarSrc'
 import UserInfoPanel from './UserInfoPanel'
 import AddContactView from './AddContactView'
 import HeaderMenu from './HeaderMenu'
+import ChatThemesPicker from './ChatThemesPicker'
+import { chatThemeVariant } from '../chatThemes'
+import patternUrl from '../assets/pattern.svg'
+import { PRESET_MODE, resolvePreset } from '../theme'
+import { useSettingsStore } from '../settings'
 import ConfirmDialog from './settings/ConfirmDialog'
 import MutePopup from './MutePopup'
 import AttachMenu from './AttachMenu'
@@ -148,6 +154,25 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // Кандидаты @упоминаний — участники группы (tweb mentionsHelper)
   const mentionPeers = useMentionPeers(isRealChat ? numericChatId : null, isRealChat && isGroup)
 
+  // Тема оформления чата (messages.setChatTheme): id читаем реактивно из стора
+  // диалогов (chat_theme_update его патчит), с фолбэком на пропс. Тема
+  // применяется ЛОКАЛЬНО к области этого чата — переопределяем --tg-accent и
+  // рисуем фон-градиент темы поверх глобальных обоев, не трогая глобальные токены.
+  const dialogThemeId = useChatsStore((st) => st.dialogs.find((d) => d.chatId === numericChatId)?.themeId)
+  const activeThemeId = dialogThemeId ?? chat.themeId
+  const themeChoice = useSettingsStore((st) => st.themeChoice)
+  const themeMode = PRESET_MODE[resolvePreset(themeChoice)]
+  const themeVariant = chatThemeVariant(activeThemeId, themeMode)
+  const themeStyle = themeVariant
+    ? ({
+        '--tg-accent': themeVariant.accent,
+        '--tg-accentGradient': `linear-gradient(135deg, ${themeVariant.accent}, ${themeVariant.accent})`,
+      } as CSSProperties)
+    : undefined
+  const themeBg = themeVariant
+    ? `linear-gradient(150deg, ${themeVariant.gradient[0]}, ${themeVariant.gradient[1]}, ${themeVariant.gradient[2]}, ${themeVariant.gradient[3]})`
+    : undefined
+
   const draftPeerId = chat.id.startsWith('draft:') ? Number(chat.id.slice('draft:'.length)) : null
   const meId = useChatsStore((s) => s.meId)
   const me = useChatsStore((s) => s.me)
@@ -265,6 +290,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // in searchStore) to hide the pinned bar + adjust the sticky-date offset.
   const searchOpen = useSearchStore((s) => s.byChat[numericChatId]?.open ?? false)
   const [headerMenu, setHeaderMenu] = useState<{ top: number; right: number } | null>(null)
+  const [themePickerOpen, setThemePickerOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
   const [addContactOpen, setAddContactOpen] = useState(false)
@@ -707,7 +733,14 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   return (
     <CallProvider chat={chat}>
     <div className={s.root}>
-      <div className={classNames(s.column, narrow ? s.columnNarrow : '')}>
+      <div className={classNames(s.column, narrow ? s.columnNarrow : '')} style={themeStyle}>
+        {/* Тема чата: локальный фон-градиент поверх глобальных обоев (только в
+            этой колонке). Рисуется под лентой (z-index ниже .scroll). */}
+        {themeBg && (
+          <div className={s.themeBg} style={{ background: themeBg }} aria-hidden>
+            <div className={s.themeBgPattern} style={{ backgroundImage: `url("${patternUrl}")` }} />
+          </div>
+        )}
         {/* Global "now playing" plate — a floating pill above the header (tweb:
             the topbar slides down to make room). Matches the header geometry. */}
         <div className={classNames(s.nowPlaying, narrow ? s.nowPlayingNarrow : '')}>
@@ -1040,6 +1073,17 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           onAddContact={chat.type === 'private' && chat.peerId != null ? () => setAddContactOpen(true) : undefined}
           onDeleteChat={isRealChat ? () => setConfirmDelete(true) : undefined}
           onClearHistory={isRealChat && chat.type !== 'channel' ? () => setConfirmClear(true) : undefined}
+          onChangeTheme={isRealChat && (chat.type === 'private' || chat.type === 'group') ? () => setThemePickerOpen(true) : undefined}
+        />
+      )}
+
+      {/* Пикер темы оформления чата (messages.setChatTheme) */}
+      {isRealChat && (
+        <ChatThemesPicker
+          open={themePickerOpen}
+          onClose={() => setThemePickerOpen(false)}
+          chatId={numericChatId}
+          currentThemeId={activeThemeId}
         />
       )}
 

@@ -142,6 +142,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/me/auto_delete", ch.MyAutoDelete)
 		pr.Put("/me/auto_delete", ch.SetMyAutoDelete)
 		pr.Put("/chats/{chatID}/auto_delete", ch.SetChatAutoDelete)
+		pr.Put("/chats/{chatID}/theme", ch.SetChatTheme)
 		pr.Get("/drafts", ch.MyDrafts)
 		pr.Delete("/drafts", ch.ClearAllDrafts)
 		pr.Put("/chats/{chatID}/draft", ch.SaveDraft)

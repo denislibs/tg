@@ -49,6 +49,7 @@ type ChatRepo interface {
 	SetClearedSeq(ctx context.Context, chatID, userID, seq int64) error
 	// Автоудаление: период чата, глобальный период пользователя (для новых чатов).
 	SetAutoDelete(ctx context.Context, chatID int64, seconds int) error
+	SetChatTheme(ctx context.Context, chatID int64, themeID string, setBy int64) error
 	UserAutoDelete(ctx context.Context, userID int64) (int, error)
 	SetUserAutoDelete(ctx context.Context, userID int64, seconds int) error
 	PinMessage(ctx context.Context, chatID, msgID, byUser int64) error

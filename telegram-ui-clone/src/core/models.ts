@@ -60,6 +60,7 @@ export function mapGeo(g: RawGeo): GeoData {
 
 export interface RawDialog {
   auto_delete_period?: number
+  theme_id?: string
   chat_id: number
   type: ChatKind
   last_read_seq: number
@@ -102,6 +103,8 @@ export interface Dialog {
   notifySound?: string
   // период автоудаления сообщений чата в секундах (0/undefined — выключено)
   autoDeletePeriod?: number
+  // id темы оформления чата (пресет chatThemes.ts); ''/undefined — тема не задана
+  themeId?: string
   title?: string
   username?: string
   /** фото группы/канала (content-путь /media/N/content; у private — peer.avatarUrl) */
@@ -402,6 +405,7 @@ export function mapDialog(r: RawDialog): Dialog {
     notifyPreview: r.notify_preview ?? true,
     notifySound: r.notify_sound ?? 'default',
     autoDeletePeriod: r.auto_delete_period ?? 0,
+    themeId: r.theme_id || undefined,
     title: r.title,
     username: r.username,
     photoUrl: r.photo_url || undefined,

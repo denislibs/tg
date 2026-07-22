@@ -26,6 +26,8 @@ interface ChatsState {
   setDialogMuted: (chatId: number, muted: boolean) => void
   setDialogNotify: (chatId: number, patch: { notifyPreview?: boolean; notifySound?: string }) => void
   setDialogPinned: (chatId: number, pinned: boolean) => void
+  /** тема оформления чата сменилась (chat_theme_update) — '' сбрасывает к дефолту */
+  setDialogTheme: (chatId: number, themeId: string) => void
   setDialogArchived: (chatId: number, archived: boolean) => void
   removeDialog: (chatId: number) => void
   applyNewMessage: (m: NewMessageEvt) => void
@@ -71,6 +73,14 @@ export const useChatsStore = create<ChatsState>((set) => ({
       if (idx === -1) return {}
       const next = s.dialogs.slice()
       next[idx] = { ...next[idx], ...patch }
+      return { dialogs: next }
+    }),
+  setDialogTheme: (chatId, themeId) =>
+    set((s) => {
+      const idx = s.dialogs.findIndex((d) => d.chatId === chatId)
+      if (idx === -1) return {}
+      const next = s.dialogs.slice()
+      next[idx] = { ...next[idx], themeId: themeId || undefined }
       return { dialogs: next }
     }),
   // Закрепить/открепить: пин ставит диалог первым (свежий пин — выше, tweb),

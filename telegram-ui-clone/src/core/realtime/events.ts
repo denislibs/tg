@@ -17,6 +17,7 @@ export const RT = {
   call: 'rt:call',
   chatRemoved: 'rt:chat_removed',
   draftUpdate: 'rt:draft_update',
+  chatThemeUpdate: 'rt:chat_theme_update',
   dialogPin: 'rt:dialog_pin',
   dialogArchive: 'rt:dialog_archive',
   pollUpdate: 'rt:poll_update',
@@ -66,6 +67,9 @@ export interface ReadEvt { chat_id: number; user_id: number; up_to_seq: number }
 export interface MediaReadEvt { chat_id: number; msg_id: number }
 // Меня удалили из группы / я вышел — диалог убирается из списка.
 export interface ChatRemovedEvt { chat_id: number; removed: true }
+// Тема оформления чата сменилась (chat_theme_update) — общая для чата, приходит
+// обоим участникам. theme_id пустой — тема сброшена к дефолту.
+export interface ChatThemeUpdateEvt { chat_id: number; theme_id: string }
 // Черновик изменён на другом устройстве/вкладке (draft null — удалён).
 export interface DraftUpdateEvt { chat_id: number; draft: import('../models').RawDraft | null }
 // upload_* — на время аплоада медиа (tweb sendMessageUpload*Action: «отправляет файл/фото/…»)

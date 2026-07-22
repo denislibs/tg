@@ -126,6 +126,7 @@ export interface Chat {
   archived?: boolean // убран в «Архив»
   isForum?: boolean // темы (форум-группа): вместо ленты — список топиков
   autoDeletePeriod?: number // период автоудаления сообщений (сек, 0/undefined — выкл)
+  themeId?: string // id темы оформления чата (chatThemes.ts); undefined — тема не задана
   selected?: boolean
   unread?: number
   unreadMentions?: number // непрочитанные упоминания → отдельный бейдж «@»

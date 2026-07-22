@@ -112,6 +112,7 @@ export function dialogToChat(d: Dialog, meId?: number | null, draft?: Draft): Ch
     archived: d.archived || undefined,
     isForum: d.isForum || undefined,
     autoDeletePeriod: d.autoDeletePeriod || undefined,
+    themeId: d.themeId || undefined,
     unread: d.unread > 0 ? d.unread : undefined,
     unreadMentions: d.unreadMentions && d.unreadMentions > 0 ? d.unreadMentions : undefined,
     unreadReactions: d.unreadReactions && d.unreadReactions > 0 ? d.unreadReactions : undefined,

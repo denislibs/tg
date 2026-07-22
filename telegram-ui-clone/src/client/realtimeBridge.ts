@@ -9,7 +9,7 @@ import { useDraftsStore } from '../stores/draftsStore'
 import { useUploadsStore } from '../stores/uploadsStore'
 import { uiEvents } from '../core/hooks/uiEvents'
 import { mapReplyMarkup } from '../core/managers/botsManager'
-import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt, type DraftUpdateEvt, type ReactionEvt, type BotCallbackAnswerEvt, type GeoLiveUpdateEvt, type WebPageUpdateEvt } from '../core/realtime/events'
+import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt, type DraftUpdateEvt, type ReactionEvt, type BotCallbackAnswerEvt, type GeoLiveUpdateEvt, type WebPageUpdateEvt, type ChatThemeUpdateEvt } from '../core/realtime/events'
 import { playMessageSent } from '../core/audio/sounds'
 import { playEmojiEffect } from '../core/effects/emojiEffects'
 import { notifyIncomingMessage } from './uiNotifications'
@@ -97,6 +97,12 @@ export function startRealtime(): void {
   smp.on(RT.pollUpdate, (raw) => {
     const e = raw as { chat_id: number; poll: RawPoll }
     useMessagesStore.getState().applyPollUpdate(e.chat_id, mapPoll(e.poll))
+  })
+  // Тема оформления чата сменилась (общая для чата) — пишем в стор диалогов,
+  // ConversationView перекрашивает область активного чата.
+  smp.on(RT.chatThemeUpdate, (raw) => {
+    const e = raw as ChatThemeUpdateEvt
+    useChatsStore.getState().setDialogTheme(e.chat_id, e.theme_id)
   })
   // Пин/архив диалога с другого устройства/вкладки (dialog_pin / dialog_archive)
   smp.on(RT.dialogPin, (raw) => {
