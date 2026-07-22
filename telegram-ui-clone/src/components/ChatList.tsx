@@ -24,16 +24,18 @@ export interface ChatListProps {
   /** архивные чаты (только в папке «Все») → псевдо-закреплённый ряд «Архив» сверху */
   archived?: Chat[]
   onOpenArchive?: () => void
+  /** свёрнуть список в узкую колонку аватаров (открыта панель форум-тем, tweb .is-collapsed) */
+  collapsed?: boolean
 }
 
 const ChatList = forwardRef<HTMLDivElement, ChatListProps>(function ChatList(
-  { chats, selectedId, onSelect, loaded, folder, folderOrder, tabsShown, archived, onOpenArchive },
+  { chats, selectedId, onSelect, loaded, folder, folderOrder, tabsShown, archived, onOpenArchive, collapsed },
   ref,
 ) {
   return (
-    <div ref={ref} className={s.scroll}>
+    <div ref={ref} className={collapsed ? `${s.scroll} ${s.collapsed}` : s.scroll}>
       <TabSlide tab={folder} order={folderOrder} className={tabsShown ? `${s.slide} ${s.withTabs}` : s.slide}>
-        {loaded && archived != null && archived.length > 0 && onOpenArchive && (
+        {loaded && !collapsed && archived != null && archived.length > 0 && onOpenArchive && (
           <ArchiveRow chats={archived} onOpen={onOpenArchive} />
         )}
         {loaded ? (
@@ -44,6 +46,7 @@ const ChatList = forwardRef<HTMLDivElement, ChatListProps>(function ChatList(
               index={i}
               selected={chat.id === selectedId}
               onSelect={onSelect}
+              collapsed={collapsed}
             />
           ))
         ) : (

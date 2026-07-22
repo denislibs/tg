@@ -112,6 +112,29 @@
   z-index: 10;
 }
 
+// Панель форум-тем (tweb .topics-container.is-floating): выезжает справа на всю
+// высоту сайдбара, ширина = вся колонка минус 80px-полоса аватаров слева.
+// --sidebar-collapsed-width 80px из tweb _leftSidebar.scss.
+.forumPanel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  inset-inline-end: 0;
+  width: calc(100% - 80px);
+  z-index: 9;
+  background: var(--tg-sidebarBg);
+  border-inline-start: 1px solid var(--tg-divider);
+  display: flex;
+  flex-direction: column;
+}
+
+// Форум открыт: список слева стал колонкой аватаров — прячем поиск в шапке
+// (tweb .is-forum-visible .input-search opacity 0), в 80px-полосе остаётся бургер.
+.hasForum .search {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .searchInner {
   height: 100%;
   transform-origin: top center;
