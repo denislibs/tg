@@ -16,7 +16,8 @@ import { useReportStore } from '../../stores/reportStore'
 import { useSettingsStore } from '../../settings'
 import { uiEvents } from './uiEvents'
 import { isGifLike } from '../gifs'
-import { useT } from '../../i18n'
+import { friendlyMsgTime } from '../friendlyTime'
+import { useT, useLang } from '../../i18n'
 import type { Chat, ConvMsg } from '../../data'
 import type { Managers } from '../../client/bootstrap'
 import type { MessageWindow } from './useMessageWindow'
@@ -29,6 +30,9 @@ type DelState = { ids: number[]; canRevoke: boolean }
 type ViewersState = { x: number; y: number; names: string[] }
 type ReactedRow = { name: string; avatarUrl: string; emoji: string }
 type ReactedState = { x: number; y: number; rows: ReactedRow[] }
+// Read-date исходящего сообщения (приватный чат, tweb getOutboxReadDate):
+// лениво подгружается при открытии меню. null — строку не показываем.
+type ReadDateState = { state: 'loading' } | { state: 'done'; at: string } | { state: 'restricted' }
 export type MsgMenuItem = { icon: ReactNode; label: string; danger?: boolean; onClick?: (e: React.MouseEvent) => void }
 
 interface UseMessageActionsArgs {
@@ -54,7 +58,11 @@ export function useMessageActions({
   setReply, setEditing, setSelectionMode, setSelected, clearSelection, onChatCreated,
 }: UseMessageActionsArgs) {
   const t = useT()
+  const [lang] = useLang()
   const [msgMenu, setMsgMenu] = useState<MsgMenu | null>(null)
+  // Read-date подгружаем при открытии меню; reqRef отсекает ответ прошлого меню.
+  const [readDate, setReadDate] = useState<ReadDateState | null>(null)
+  const readDateReqRef = useRef(0)
   // Ответ с цитатой: текст, выделенный внутри сообщения на момент открытия меню
   // (right-click сохраняет выделение), плюс его offset (UTF-16) в тексте сообщения.
   // Используется startReply; сбрасывается, если выделения не было.
@@ -63,6 +71,8 @@ export function useMessageActions({
   const [forwardIds, setForwardIds] = useState<number[] | null>(null)
   const [viewers, setViewers] = useState<ViewersState | null>(null)
   const [reacted, setReacted] = useState<ReactedState | null>(null)
+  // Платная ⭐-реакция: открытый попап выбора количества звёзд (msgId цели).
+  const [starReact, setStarReact] = useState<{ msgId: number } | null>(null)
   const [translateText, setTranslateText] = useState<string | null>(null)
   const showTranslate = useSettingsStore((st) => st.showTranslateButton)
   // Секретный чат: скрываем forward/copy/quote (поведение Telegram) — остаётся
@@ -94,6 +104,21 @@ export function useMessageActions({
     const openLeft = e.clientX + MW > window.innerWidth
     const openUp = e.clientY + MH > window.innerHeight
     setMsgMenu({ x: e.clientX, y: e.clientY, idx, originX: openLeft ? 'right' : 'left', originY: openUp ? 'bottom' : 'top' })
+
+    // «Прочитано в HH:MM» для исходящего сообщения приватного чата (tweb
+    // getOutboxReadDate): ленивая подгрузка при открытии меню.
+    const req = ++readDateReqRef.current
+    setReadDate(null)
+    const rawId = win.msgs[idx]?.id
+    if (isRealChat && chat.type === 'private' && m.out && rawId != null && rawId > 0) {
+      setReadDate({ state: 'loading' })
+      void managers.chats.getReadDate(numericChatId, rawId).then((res) => {
+        if (req !== readDateReqRef.current) return // открыли другое меню — игнор
+        if (!res) setReadDate(null)
+        else if ('restricted' in res) setReadDate({ state: 'restricted' })
+        else setReadDate({ state: 'done', at: res.readAt })
+      }).catch(() => { if (req === readDateReqRef.current) setReadDate(null) })
+    }
   })
 
   // Закрытие в два шага: closing=true запускает exit-анимацию ui-kit Menu,
@@ -283,6 +308,18 @@ export function useMessageActions({
     setReacted({ x: Math.min(x, window.innerWidth - 240), y: Math.min(y, window.innerHeight - 320), rows })
   })
 
+  // Платная ⭐-реакция: открыть попап выбора количества (клик по чипу звезды в
+  // полоске реакций / пункт меню). Реальный чат + серверный id обязательны.
+  const openStarReaction = useEvent((msgId: number) => {
+    if (!isRealChat || msgId < 0) return
+    setStarReact({ msgId })
+  })
+  const openStarReactionFromMenu = () => {
+    const raw = menuRawMsg()
+    closeMsgMenu()
+    if (raw?.id != null) setStarReact({ msgId: raw.id })
+  }
+
   // Полоска эмодзи над контекстным меню: реакция на сообщение меню.
   const reactToMenuMsg = (emoji: string) => {
     const raw = menuRawMsg()
@@ -366,11 +403,24 @@ export function useMessageActions({
       }
       return items
     })(),
+    ...(isRealChat ? [{ icon: <TgIcon name="star" size={20} />, label: 'React with Stars', onClick: openStarReactionFromMenu }] : []),
     ...(isRealChat && !isSecret ? [{ icon: <TgIcon name="reply" size={20} style={{ transform: 'scaleX(-1)' }} />, label: 'Forward', onClick: openForward }] : []),
     ...(isRealChat ? [{ icon: <TgIcon name="checkround" size={20} />, label: 'Select', onClick: startSelect }] : []),
-    ...(isRealChat && (msgs[msgMenu?.idx ?? -1]?.out ?? false)
-      ? [{ icon: <TgIcon name="checks" size={20} />, label: 'Viewers', onClick: showViewers }]
-      : []),
+    // Исходящее сообщение: в приватном чате — «Прочитано в HH:MM» (read-date,
+    // подгружается лениво); в группе/канале — «Кто просмотрел» (viewers).
+    ...(() => {
+      const isOut = isRealChat && (msgs[msgMenu?.idx ?? -1]?.out ?? false)
+      if (!isOut) return []
+      if (chat.type === 'private') {
+        if (!readDate) return []
+        // «Прочитано»/«Read» — как в friendlyMsgTime, ru vs остальные (en).
+        const readWord = lang === 'ru' ? 'Прочитано' : 'Read'
+        const label =
+          readDate.state === 'done' ? `${readWord} ${friendlyMsgTime(readDate.at, lang)}` : readWord
+        return [{ icon: <TgIcon name="checks" size={20} />, label }]
+      }
+      return [{ icon: <TgIcon name="checks" size={20} />, label: 'Viewers', onClick: showViewers }]
+    })(),
     // «Пожаловаться» — на чужие сообщения в реальном чате (своё не жалуют).
     ...(isRealChat && !(msgs[msgMenu?.idx ?? -1]?.out ?? false)
       ? [{ icon: <TgIcon name="hand" size={20} />, label: 'Report', danger: true, onClick: openReport }]
@@ -383,6 +433,7 @@ export function useMessageActions({
   return {
     msgMenu, openMsgMenu, closeMsgMenu, destroyMsgMenu, msgMenuItems,
     toggleReaction, reactToMenuMsg, showReactedUsers,
+    openStarReaction, starReact, closeStarReaction: () => setStarReact(null),
     delIds, doDelete, closeDelete: () => setDelIds(null), openDeleteFor, canRevokeAll,
     forwardIds, doForward, closeForward: () => setForwardIds(null), openForwardFor,
     viewers, closeViewers: () => setViewers(null),

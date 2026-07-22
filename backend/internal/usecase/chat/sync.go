@@ -39,10 +39,12 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 		return HistoryResult{}, e
 	}
 	_ = i.hydratePolls(ctx, userID, msgs)
+	i.hydrateChecklists(ctx, msgs)
 	i.hydrateGifts(ctx, userID, msgs)
 	i.hydrateGiveaways(ctx, userID, msgs)
 	i.hydratePaidMedia(ctx, userID, msgs)
 	_ = i.hydrateReactions(ctx, userID, msgs)
+	i.hydrateStarReactions(ctx, userID, msgs)
 	var count int
 	if threadRoot != nil {
 		count, err = i.msgs.CountThread(ctx, chatID, *threadRoot)
@@ -235,10 +237,12 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 		return AroundResult{}, e
 	}
 	_ = i.hydratePolls(ctx, userID, msgs)
+	i.hydrateChecklists(ctx, msgs)
 	i.hydrateGifts(ctx, userID, msgs)
 	i.hydrateGiveaways(ctx, userID, msgs)
 	i.hydratePaidMedia(ctx, userID, msgs)
 	_ = i.hydrateReactions(ctx, userID, msgs)
+	i.hydrateStarReactions(ctx, userID, msgs)
 	var count int
 	if threadRoot != nil {
 		count, err = i.msgs.CountThread(ctx, chatID, *threadRoot)
@@ -296,6 +300,7 @@ func (i *Interactor) SearchMessages(ctx context.Context, chatID, userID int64, q
 		return HistoryResult{}, e
 	}
 	_ = i.hydratePolls(ctx, userID, msgs)
+	i.hydrateChecklists(ctx, msgs)
 	i.hydrateGifts(ctx, userID, msgs)
 	i.hydrateGiveaways(ctx, userID, msgs)
 	i.hydratePaidMedia(ctx, userID, msgs)
@@ -323,6 +328,7 @@ func (i *Interactor) GlobalSearchMessages(ctx context.Context, userID int64, q, 
 		return HistoryResult{}, e
 	}
 	_ = i.hydratePolls(ctx, userID, msgs)
+	i.hydrateChecklists(ctx, msgs)
 	i.hydrateGifts(ctx, userID, msgs)
 	i.hydrateGiveaways(ctx, userID, msgs)
 	i.hydratePaidMedia(ctx, userID, msgs)

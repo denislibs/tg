@@ -159,6 +159,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Delete("/chats/{chatID}/messages/{msgID}/pin", ch.Unpin)
 		pr.Get("/chats/{chatID}/pins", ch.ListPins)
 		pr.Get("/chats/{chatID}/messages/{msgID}/viewers", ch.Viewers)
+		pr.Get("/chats/{chatID}/messages/{msgID}/read_date", ch.ReadDate)
 		pr.Get("/chats/{chatID}/mentions/next", ch.NextMention)
 		pr.Get("/chats/{chatID}/history", ch.History)
 		pr.Get("/chats/{chatID}/search", ch.SearchMessages)
@@ -184,6 +185,10 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Post("/chats/{chatID}/scheduled/{schedID}/send_now", ch.SendScheduledNow)
 		pr.Post("/polls/{pollID}/vote", ch.VotePoll)
 		pr.Post("/polls/{pollID}/close", ch.ClosePoll)
+		// Чек-листы (Telegram todo list)
+		pr.Post("/chats/{chatID}/checklists", ch.SendChecklist)
+		pr.Post("/checklists/{id}/items", ch.AddChecklistItems)
+		pr.Post("/checklists/{id}/items/{itemID}/toggle", ch.ToggleChecklistItem)
 		// Бусты каналов + розыгрыши
 		pr.Get("/channels/{chatID}/boosts", ch.ChannelBoosts)
 		pr.Post("/channels/{chatID}/boost", ch.BoostChannel)
@@ -218,6 +223,8 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Delete("/chats/{chatID}/messages/{msgID}/reactions/{emoji}", ch.RemoveReaction)
 		pr.Get("/chats/{chatID}/messages/{msgID}/reactions", ch.ListReactions)
 		pr.Get("/chats/{chatID}/messages/{msgID}/reactions/users", ch.ReactionUsers)
+		pr.Post("/chats/{chatID}/messages/{msgID}/star_reaction", ch.SendStarReaction) // платная ⭐-реакция
+		pr.Get("/chats/{chatID}/messages/{msgID}/star_reaction", ch.GetStarReaction)
 		pr.Post("/chats/{chatID}/reactions/read", ch.ReadReactions) // T12: сброс бейджа непрочитанных реакций
 
 		// Стикеры и GIF

@@ -1,6 +1,6 @@
 // src/core/models.test.ts
 import { describe, it, expect } from 'vitest'
-import { mapDialog, mapDraft, mapMessage, type RawDialog, type RawMessage } from './models'
+import { mapChecklist, mapDialog, mapDraft, mapMessage, type RawChecklist, type RawDialog, type RawMessage } from './models'
 
 describe('mapDialog', () => {
   it('maps a private dialog with peer + last_message', () => {
@@ -130,5 +130,33 @@ describe('mapDraft', () => {
 
   it('drops an empty entities array', () => {
     expect(mapDraft({ chat_id: 1, text: 'x', entities: [], updated_at: 't' }).entities).toBeUndefined()
+  })
+})
+
+describe('mapChecklist', () => {
+  it('maps items with marks and permission flags (snake_case → camelCase)', () => {
+    const raw: RawChecklist = {
+      id: 7, title: 'todo',
+      items: [
+        { id: 1, text: 'a', marked_by: [10, 11] },
+        { id: 2, text: 'b', marked_by: [] },
+      ],
+      others_can_add: true, others_can_mark: false,
+    }
+    expect(mapChecklist(raw)).toEqual({
+      id: 7, title: 'todo',
+      items: [
+        { id: 1, text: 'a', markedBy: [10, 11] },
+        { id: 2, text: 'b', markedBy: [] },
+      ],
+      othersCanAdd: true, othersCanMark: false,
+    })
+  })
+
+  it('defaults absent items/marks to empty arrays', () => {
+    const c = mapChecklist({ id: 1, title: 't' } as unknown as RawChecklist)
+    expect(c.items).toEqual([])
+    expect(c.othersCanAdd).toBe(false)
+    expect(c.othersCanMark).toBe(false)
   })
 })

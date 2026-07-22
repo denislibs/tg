@@ -4,9 +4,9 @@ import type { HealthStatus } from '../core/managers/healthManager'
 import type { User } from '../core/managers/authManager'
 import type { ProfileUpdate, SetUsernameResult } from '../core/managers/profileManager'
 import type { Dialog, Draft } from '../core/models'
-import type { Message, MessageEntity, Poll, Scheduled, BoostStatus, Giveaway } from '../core/models'
+import type { Message, MessageEntity, Poll, Checklist, Scheduled, BoostStatus, Giveaway } from '../core/models'
 import type { CreateGiveawayArgs } from '../core/managers/boostsManager'
-import type { HistoryArgs, HistoryResult, SendArgs, ReactionUser } from '../core/managers/messagesManager'
+import type { HistoryArgs, HistoryResult, SendArgs, ReactionUser, StarReactionInfo, StarReactionResult } from '../core/managers/messagesManager'
 import type { ConnState, PresenceEvt, TypingAction } from '../core/realtime/events'
 import type { UploadArgs, MediaMeta } from '../core/managers/mediaManager'
 import type { SavedDialog } from '../core/managers/chatsManager'
@@ -82,6 +82,7 @@ export interface Managers {
     saved(): Promise<number>
     savedDialogs(): Promise<SavedDialog[]>
     clearHistory(chatId: number): Promise<void>
+    getReadDate(chatId: number, msgId: number): Promise<import('../core/managers/chatsManager').ReadDateResult>
   }
   messages: {
     getHistory(args: HistoryArgs): Promise<HistoryResult>
@@ -105,10 +106,15 @@ export interface Managers {
     groupCallParticipants(chatId: number): Promise<number[]>
     votePoll(pollId: number, options: number[]): Promise<Poll>
     closePoll(pollId: number): Promise<void>
+    sendChecklist(chatId: number, c: { title: string; items: string[]; othersCanAdd: boolean; othersCanMark: boolean; clientMsgId?: string }): Promise<Message>
+    toggleChecklistItem(checklistId: number, itemId: number): Promise<Checklist>
+    addChecklistItems(checklistId: number, items: string[]): Promise<Checklist>
     mediaHistory(chatId: number, filter: 'media' | 'files' | 'links' | 'music' | 'voice', offset?: number, limit?: number): Promise<{ messages: Message[]; count: number }>
     getAround(chatId: number, centerSeq: number, limit?: number, threadRoot?: number): Promise<{ messages: Message[]; reachedTop: boolean; reachedBottom: boolean }>
     react(chatId: number, msgId: number, emoji: string): Promise<void>
     unreact(chatId: number, msgId: number, emoji: string): Promise<void>
+    sendStarReaction(chatId: number, msgId: number, count: number, anonymous: boolean): Promise<StarReactionResult>
+    getStarReaction(chatId: number, msgId: number): Promise<StarReactionInfo>
     translate(text: string, toLang: string): Promise<{ text: string; source: string }>
     sendGeoLive(chatId: number, lat: number, lng: number, livePeriod: number, heading?: number): Promise<Message>
     updateGeoLive(chatId: number, msgId: number, lat: number, lng: number, opts?: { heading?: number; stopped?: boolean }): Promise<Message>

@@ -50,6 +50,7 @@ const RULE_ROWS = [
   'Voice Messages',
   'Messages',
   'Birthday',
+  'Read Time',
 ]
 
 export default function PrivacySecuritySettings({ onBack }: { onBack: () => void }) {

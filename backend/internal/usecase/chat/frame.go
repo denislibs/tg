@@ -31,6 +31,8 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 		"thread_root_id": m.ThreadRootID,
 		"poll_id":        m.PollID,
 		"poll":           m.Poll,
+		"checklist_id":   m.ChecklistID,
+		"checklist":      m.Checklist,
 		"giveaway_id":    m.GiveawayID,
 		"giveaway":       m.Giveaway,
 		"gift_id":        m.GiftID,
@@ -156,5 +158,16 @@ func reactionPayload(chatID, messageID, userID, authorID int64, emoji, action st
 	return map[string]any{
 		"chat_id": chatID, "msg_id": messageID, "user_id": userID,
 		"author_id": authorID, "emoji": emoji, "action": action,
+	}
+}
+
+// starReactionPayload — тело фрейма/апдейта star_reaction: новый агрегат звёзд
+// сообщения (total) плюс отправитель этой порции (sender_id) с его суммарным
+// вкладом (mine). Получатели правят агрегат бабла; тот, чей id == sender_id,
+// обновляет ещё и свой личный вклад (mine).
+func starReactionPayload(chatID, messageID, senderID, total, mine int64) map[string]any {
+	return map[string]any{
+		"chat_id": chatID, "msg_id": messageID, "sender_id": senderID,
+		"total": total, "mine": mine,
 	}
 }

@@ -565,17 +565,20 @@ func (c groupChats) MemberIDs(_ context.Context, chatID int64) ([]int64, error) 
 	}
 	return ids, nil
 }
-func (c groupChats) ListDialogs(context.Context, int64) ([]domain.Dialog, error)  { return nil, nil }
-func (c groupChats) ChatPartners(context.Context, int64) ([]int64, error)         { return nil, nil }
-func (c groupChats) SetAutoDelete(context.Context, int64, int) error              { return nil }
-func (c groupChats) SetChatTheme(context.Context, int64, string, int64) error     { return nil }
-func (c groupChats) UserAutoDelete(context.Context, int64) (int, error)           { return 0, nil }
-func (c groupChats) SetUserAutoDelete(context.Context, int64, int) error          { return nil }
-func (c groupChats) IncUnread(context.Context, int64, int64) error                { return nil }
-func (c groupChats) IncUnreadReactions(context.Context, int64, int64) error       { return nil }
-func (c groupChats) ClearUnreadReactions(context.Context, int64, int64) error     { return nil }
-func (c groupChats) CurrentReadSeq(context.Context, int64, int64) (int64, error)  { return 0, nil }
-func (c groupChats) SetRead(context.Context, int64, int64, int64, int) error      { return nil }
+func (c groupChats) ListDialogs(context.Context, int64) ([]domain.Dialog, error) { return nil, nil }
+func (c groupChats) ChatPartners(context.Context, int64) ([]int64, error)        { return nil, nil }
+func (c groupChats) SetAutoDelete(context.Context, int64, int) error             { return nil }
+func (c groupChats) SetChatTheme(context.Context, int64, string, int64) error    { return nil }
+func (c groupChats) UserAutoDelete(context.Context, int64) (int, error)          { return 0, nil }
+func (c groupChats) SetUserAutoDelete(context.Context, int64, int) error         { return nil }
+func (c groupChats) IncUnread(context.Context, int64, int64) error               { return nil }
+func (c groupChats) IncUnreadReactions(context.Context, int64, int64) error      { return nil }
+func (c groupChats) ClearUnreadReactions(context.Context, int64, int64) error    { return nil }
+func (c groupChats) CurrentReadSeq(context.Context, int64, int64) (int64, error) { return 0, nil }
+func (c groupChats) SetRead(context.Context, int64, int64, int64, int) error     { return nil }
+func (c groupChats) LastReadAt(context.Context, int64, int64) (time.Time, bool, error) {
+	return time.Time{}, false, nil
+}
 func (c groupChats) AddMention(context.Context, int64, int64, int64, int64) error { return nil }
 func (c groupChats) ClearMentions(context.Context, int64, int64, int64) (int, error) {
 	return 0, nil

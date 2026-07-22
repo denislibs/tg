@@ -438,6 +438,35 @@ func (h *ChatHandler) Read(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// ReadDate — GET /chats/{chatID}/messages/{msgID}/read_date: когда получатель
+// прочитал исходящее сообщение в приватном чате (tweb getOutboxReadDate).
+// 403 YOUR_PRIVACY_RESTRICTED — read-time скрыт (взаимность); 404 — read-date
+// недоступна (не приватный/не исходящее/ещё не прочитано) → клиент прячет строку.
+func (h *ChatHandler) ReadDate(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	msgID, ok := pathInt(w, r, "msgID")
+	if !ok {
+		return
+	}
+	at, err := h.svc.OutboxReadDate(r.Context(), chatID, msgID, h.meID(r))
+	if errors.Is(err, domain.ErrForbidden) {
+		writeError(w, http.StatusForbidden, "YOUR_PRIVACY_RESTRICTED")
+		return
+	}
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "no read date")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "read date failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"read_at": at.UTC().Format(time.RFC3339)})
+}
+
 // ReadReactions clears the caller's unread-reactions badge for a chat
 // (POST /chats/{chatID}/reactions/read; Telegram readReactions) without moving
 // the read horizon.
@@ -824,6 +853,106 @@ func (h *ChatHandler) ClosePoll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// SendChecklist — POST /chats/{chatID}/checklists: отправить чек-лист
+// (сообщение типа 'checklist').
+func (h *ChatHandler) SendChecklist(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Title         string   `json:"title"`
+		Items         []string `json:"items"`
+		OthersCanAdd  bool     `json:"others_can_add"`
+		OthersCanMark bool     `json:"others_can_mark"`
+		ClientMsgID   string   `json:"client_msg_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	m, err := h.svc.SendChecklist(r.Context(), usecasechat.SendChecklistInput{
+		ChatID: chatID, SenderID: h.meID(r),
+		Title: b.Title, Items: b.Items,
+		OthersCanAdd: b.OthersCanAdd, OthersCanMark: b.OthersCanMark,
+		ClientMsgID: b.ClientMsgID,
+	})
+	if errors.Is(err, domain.ErrTooLong) {
+		writeError(w, http.StatusBadRequest, "invalid checklist")
+		return
+	}
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusForbidden, "not a member of this chat")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not send checklist")
+		return
+	}
+	writeJSON(w, http.StatusOK, messageJSON(m))
+}
+
+// ToggleChecklistItem — POST /checklists/{id}/items/{itemID}/toggle: отметить/
+// снять отметку «выполнено» на пункте (учитывает право others_can_mark).
+func (h *ChatHandler) ToggleChecklistItem(w http.ResponseWriter, r *http.Request) {
+	checklistID, ok := pathInt(w, r, "id")
+	if !ok {
+		return
+	}
+	itemID, ok := pathInt(w, r, "itemID")
+	if !ok {
+		return
+	}
+	info, err := h.svc.ToggleChecklistItem(r.Context(), checklistID, int(itemID), h.meID(r))
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "checklist not found")
+		return
+	}
+	if errors.Is(err, domain.ErrForbidden) {
+		writeError(w, http.StatusForbidden, "not allowed")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not toggle item")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"checklist": info})
+}
+
+// AddChecklistItems — POST /checklists/{id}/items {items:[...]}: добавить пункты
+// (учитывает право others_can_add).
+func (h *ChatHandler) AddChecklistItems(w http.ResponseWriter, r *http.Request) {
+	checklistID, ok := pathInt(w, r, "id")
+	if !ok {
+		return
+	}
+	var b struct {
+		Items []string `json:"items"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	info, err := h.svc.AddChecklistItems(r.Context(), checklistID, h.meID(r), b.Items)
+	if errors.Is(err, domain.ErrTooLong) {
+		writeError(w, http.StatusBadRequest, "invalid items")
+		return
+	}
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "checklist not found")
+		return
+	}
+	if errors.Is(err, domain.ErrForbidden) {
+		writeError(w, http.StatusForbidden, "not allowed")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not add items")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"checklist": info})
 }
 
 // scheduledJSON — представление запланированного сообщения.
@@ -1319,6 +1448,94 @@ func (h *ChatHandler) ReactionUsers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"users": out})
 }
 
+// SendStarReaction — POST /chats/{chatID}/messages/{msgID}/star_reaction
+// {count, anonymous}: платная ⭐-реакция. Списывает звёзды у отправителя,
+// начисляет автору, накопительно фиксирует вклад; отдаёт новый агрегат,
+// топ-отправителей и новый баланс.
+func (h *ChatHandler) SendStarReaction(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	msgID, ok := pathInt(w, r, "msgID")
+	if !ok {
+		return
+	}
+	var body struct {
+		Count     int64 `json:"count"`
+		Anonymous bool  `json:"anonymous"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	agg, top, bal, err := h.svc.SendStarReaction(r.Context(), chatID, msgID, h.meID(r), body.Count, body.Anonymous)
+	if errors.Is(err, domain.ErrPaidRequired) {
+		writeError(w, http.StatusPaymentRequired, "not enough stars")
+		return
+	}
+	if errors.Is(err, domain.ErrBadReaction) {
+		writeError(w, http.StatusBadRequest, "invalid star count")
+		return
+	}
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "message not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "star reaction failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"star_reaction": map[string]any{"total": agg.Total, "mine": agg.Mine},
+		"top":           starSendersJSON(top),
+		"balance":       bal,
+	})
+}
+
+// GetStarReaction — GET /chats/{chatID}/messages/{msgID}/star_reaction: агрегат
+// звёзд сообщения (total + мой вклад) и топ-отправители.
+func (h *ChatHandler) GetStarReaction(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	msgID, ok := pathInt(w, r, "msgID")
+	if !ok {
+		return
+	}
+	agg, top, err := h.svc.StarReactionOf(r.Context(), chatID, msgID, h.meID(r))
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "message not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load star reaction")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"star_reaction": map[string]any{"total": agg.Total, "mine": agg.Mine},
+		"top":           starSendersJSON(top),
+	})
+}
+
+// starSendersJSON сериализует топ-отправителей звёзд. Анонимные приходят с
+// пустой карточкой (usecase затёр личность) — клиент рисует их как «Anonymous».
+func starSendersJSON(top []domain.StarReactionSender) []map[string]any {
+	out := make([]map[string]any, 0, len(top))
+	for _, s := range top {
+		out = append(out, map[string]any{
+			"user_id":    s.User.ID,
+			"name":       s.User.DisplayName,
+			"username":   s.User.Username,
+			"avatar_url": s.User.AvatarURL,
+			"stars":      s.Stars,
+			"anonymous":  s.Anonymous,
+		})
+	}
+	return out
+}
+
 func messageJSON(m domain.Message) map[string]any {
 	j := map[string]any{
 		"id": m.ID, "chat_id": m.ChatID, "seq": m.Seq, "sender_id": m.SenderID,
@@ -1335,6 +1552,9 @@ func messageJSON(m domain.Message) map[string]any {
 	}
 	if len(m.Reactions) > 0 {
 		j["reactions"] = m.Reactions
+	}
+	if m.StarReactionTotal > 0 {
+		j["star_reaction"] = map[string]any{"total": m.StarReactionTotal, "mine": m.StarReactionMine}
 	}
 	if m.GeoLat != nil && m.GeoLng != nil {
 		g := map[string]any{"lat": *m.GeoLat, "lng": *m.GeoLng}
@@ -1376,6 +1596,12 @@ func messageJSON(m domain.Message) map[string]any {
 	}
 	if m.Poll != nil {
 		j["poll"] = m.Poll
+	}
+	if m.ChecklistID != nil {
+		j["checklist_id"] = *m.ChecklistID
+	}
+	if m.Checklist != nil {
+		j["checklist"] = m.Checklist
 	}
 	if m.GiveawayID != nil {
 		j["giveaway_id"] = *m.GiveawayID

@@ -10,7 +10,7 @@
 // с chat_id применяются ко ВСЕМ окнам этого чата (applyToChat), новое сообщение
 // с thread_root_id попадает и в основное окно, и в окно своего треда.
 import { create } from 'zustand'
-import type { Message, MessageEntity, Poll, Giveaway, ReactionCount, GeoData, WebPageData } from '../core/models'
+import type { Message, MessageEntity, Poll, Checklist, Giveaway, ReactionCount, GeoData, WebPageData } from '../core/models'
 import type { ReplyMarkup } from '../core/managers/botsManager'
 
 // Ключ окна: основное окно чата или тред (форум-топик / комментарии).
@@ -109,6 +109,9 @@ interface MessagesState {
   applyPollUpdate: (chatId: number, poll: Poll) => void
   /** Полная замена опроса сообщения (ответ на свой голос — с myVotes). */
   setPoll: (chatId: number, poll: Poll) => void
+  /** Обновление чек-листа (checklist_update / ответ на toggle/add): отметки
+   * глобальны (видно, кто отметил) — локального состояния нет, полная замена. */
+  applyChecklistUpdate: (chatId: number, checklist: Checklist) => void
   /** Live-статус розыгрыша (giveaway_update): своё участие сохраняем локально. */
   applyGiveawayUpdate: (chatId: number, giveaway: Giveaway) => void
   /** Полная замена розыгрыша (ответ на своё участие — с participating/iWon). */
@@ -117,6 +120,9 @@ interface MessagesState {
    * Идемпотентно для своих действий — серверное эхо собственного add/remove
    * (mine=true) поверх уже применённого оптимистичного апдейта — no-op. */
   applyReaction: (chatId: number, msgId: number, emoji: string, action: 'add' | 'remove', mine: boolean) => void
+  /** Платная ⭐-реакция: новый агрегат звёзд (total). mine задан только когда это
+   * действие самого зрителя (оптимистично / эхо своего апдейта) — иначе не трогаем. */
+  applyStarReaction: (chatId: number, msgId: number, total: number, mine?: number) => void
 }
 
 // Update a single window immutably.
@@ -326,6 +332,14 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           : null,
       )),
 
+  applyChecklistUpdate: (chatId, checklist) =>
+    set((s) =>
+      patchChat(s, chatId, (w) =>
+        w.msgs.some((m) => m.checklist?.id === checklist.id)
+          ? w.msgs.map((m) => (m.checklist?.id === checklist.id ? { ...m, checklist } : m))
+          : null,
+      )),
+
   applyGiveawayUpdate: (chatId, giveaway) =>
     set((s) =>
       patchChat(s, chatId, (w) =>
@@ -435,5 +449,16 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           return { ...m, reactions: next }
         })
         return changed ? msgs : null
+      })),
+
+  applyStarReaction: (chatId, msgId, total, mine) =>
+    set((s) =>
+      patchChat(s, chatId, (w) => {
+        if (!w.msgs.some((m) => m.id === msgId)) return null
+        return w.msgs.map((m) => {
+          if (m.id !== msgId) return m
+          const nextMine = mine !== undefined ? mine : (m.starReaction?.mine ?? 0)
+          return { ...m, starReaction: { total, mine: nextMine } }
+        })
       })),
 }))

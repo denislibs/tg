@@ -1,6 +1,6 @@
 // src/core/managers/messagesManager.ts
 import type { RestClient } from '../net/restClient'
-import { mapMessage, mapPoll, mapScheduled, mapGeo, mapWebPage, type Message, type MessageEntity, type Poll, type RawMessage, type RawPoll, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
+import { mapMessage, mapPoll, mapChecklist, mapScheduled, mapGeo, mapWebPage, type Message, type MessageEntity, type Poll, type Checklist, type RawMessage, type RawPoll, type RawChecklist, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
 import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt } from '../realtime/events'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
 
@@ -47,6 +47,47 @@ interface RawReactionUser {
   username: string
   avatar_url: string
   emoji: string
+}
+
+/** Один отправитель платной ⭐-реакции (топ-отправители попапа). Анонимный —
+ * без личности (userId 0, пустое имя): рисуется как «Anonymous». */
+export interface StarSender {
+  userId: number
+  name: string
+  avatarUrl: string
+  stars: number
+  anonymous: boolean
+}
+
+interface RawStarSender {
+  user_id: number
+  name: string
+  username: string
+  avatar_url: string
+  stars: number
+  anonymous: boolean
+}
+
+/** Агрегат платной ⭐-реакции сообщения: сумма звёзд, мой вклад, топ-отправители. */
+export interface StarReactionInfo {
+  total: number
+  mine: number
+  top: StarSender[]
+}
+
+/** Результат отправки платной ⭐-реакции: новый агрегат + мой новый баланс. */
+export interface StarReactionResult extends StarReactionInfo {
+  balance: number
+}
+
+function mapStarSenders(rows: RawStarSender[] | undefined): StarSender[] {
+  return (rows ?? []).map((s) => ({
+    userId: s.user_id,
+    name: s.name,
+    avatarUrl: s.avatar_url,
+    stars: s.stars,
+    anonymous: s.anonymous,
+  }))
 }
 
 export interface MessagesDeps {
@@ -302,6 +343,26 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
       await rest.post(`/polls/${pollId}/close`, {})
     },
 
+    // ── Чек-листы (Telegram todo list) ──
+    async sendChecklist(chatId: number, c: { title: string; items: string[]; othersCanAdd: boolean; othersCanMark: boolean; clientMsgId?: string }): Promise<Message> {
+      const r = await rest.post<RawMessage>(`/chats/${chatId}/checklists`, {
+        title: c.title, items: c.items,
+        others_can_add: c.othersCanAdd, others_can_mark: c.othersCanMark,
+        client_msg_id: c.clientMsgId ?? '',
+      })
+      return mapMessage(r)
+    },
+    // Отметить/снять отметку «выполнено» на пункте; возвращает обновлённый чек-лист.
+    async toggleChecklistItem(checklistId: number, itemId: number): Promise<Checklist> {
+      const r = await rest.post<{ checklist: RawChecklist }>(`/checklists/${checklistId}/items/${itemId}/toggle`, {})
+      return mapChecklist(r.checklist)
+    },
+    // Добавить пункты; возвращает обновлённый чек-лист.
+    async addChecklistItems(checklistId: number, items: string[]): Promise<Checklist> {
+      const r = await rest.post<{ checklist: RawChecklist }>(`/checklists/${checklistId}/items`, { items })
+      return mapChecklist(r.checklist)
+    },
+
     // Сообщения треда (форум-топика) по возрастанию + total.
     async threadMessages(chatId: number, rootId: number, offset = 0, limit = 50): Promise<{ messages: Message[]; count: number }> {
       const r = await rest.get<{ messages: RawMessage[]; count: number }>(`/chats/${chatId}/threads/${rootId}`, { offset, limit })
@@ -470,6 +531,22 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
 
     async unreact(chatId: number, msgId: number, emoji: string): Promise<void> {
       await rest.del(`/chats/${chatId}/messages/${msgId}/reactions/${encodeURIComponent(emoji)}`)
+    },
+
+    // Платная ⭐-реакция: списать count звёзд у себя, начислить автору, накопить
+    // вклад. Возвращает новый агрегат + топ-отправителей + мой баланс. Live-эхо
+    // star_reaction тоже придёт (идемпотентно правит total в сторе).
+    async sendStarReaction(chatId: number, msgId: number, count: number, anonymous: boolean): Promise<StarReactionResult> {
+      const r = await rest.post<{ star_reaction: { total: number; mine: number }; top: RawStarSender[]; balance: number }>(
+        `/chats/${chatId}/messages/${msgId}/star_reaction`, { count, anonymous })
+      return { total: r.star_reaction.total, mine: r.star_reaction.mine, balance: r.balance, top: mapStarSenders(r.top) }
+    },
+
+    // Агрегат платной ⭐-реакции сообщения (total + мой вклад + топ-отправители).
+    async getStarReaction(chatId: number, msgId: number): Promise<StarReactionInfo> {
+      const r = await rest.get<{ star_reaction: { total: number; mine: number }; top: RawStarSender[] }>(
+        `/chats/${chatId}/messages/${msgId}/star_reaction`)
+      return { total: r.star_reaction.total, mine: r.star_reaction.mine, top: mapStarSenders(r.top) }
     },
 
     // Live location: отправить начальную точку трансляции по REST (нужен msgId,

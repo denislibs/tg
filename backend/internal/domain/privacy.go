@@ -17,13 +17,14 @@ const (
 	PrivacyChatInvite   PrivacyKey = "chat_invite"    // кто может приглашать меня в группы
 	PrivacyMessages     PrivacyKey = "messages"       // кто может отправлять мне сообщения
 	PrivacyVoices       PrivacyKey = "voice_messages" // кто может отправлять мне голосовые
+	PrivacyReadTime     PrivacyKey = "read_time"      // кто видит, когда я прочитал (взаимно)
 )
 
 // PrivacyKeys — канонический порядок ключей (порядок секции Privacy в tweb).
 var PrivacyKeys = []PrivacyKey{
 	PrivacyPhoneNumber, PrivacyAddedByPhone, PrivacyLastSeen, PrivacyProfilePhoto,
 	PrivacyAbout, PrivacyCalls, PrivacyForwards, PrivacyChatInvite,
-	PrivacyVoices, PrivacyMessages, PrivacyBirthday,
+	PrivacyVoices, PrivacyMessages, PrivacyBirthday, PrivacyReadTime,
 }
 
 // Значения правила (tweb PrivacyType).

@@ -23,6 +23,7 @@ func (fakeTx) WithinTx(ctx context.Context, fn func(ctx context.Context) error) 
 
 type member struct {
 	lastReadSeq int64
+	lastReadAt  time.Time
 	clearedSeq  int64
 	unread      int
 	mentions    int
@@ -260,10 +261,26 @@ func (r fakeChats) SetRead(_ context.Context, chatID, userID, seq int64, unread 
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	if m := r.s.members[chatID][userID]; m != nil {
+		if seq > m.lastReadSeq {
+			m.lastReadAt = time.Now()
+		}
 		m.lastReadSeq = seq
 		m.unread = unread
 	}
 	return nil
+}
+
+func (r fakeChats) LastReadAt(_ context.Context, chatID, userID int64) (time.Time, bool, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	m := r.s.members[chatID][userID]
+	if m == nil {
+		return time.Time{}, false, domain.ErrNotFound
+	}
+	if m.lastReadAt.IsZero() {
+		return time.Time{}, false, nil
+	}
+	return m.lastReadAt, true, nil
 }
 
 func (r fakeChats) AddMention(_ context.Context, chatID, msgID, seq, userID int64) error {
@@ -565,6 +582,20 @@ func (r fakeMsgs) ByPollID(_ context.Context, pollID int64) ([]domain.Message, e
 	for _, all := range r.s.messages {
 		for _, m := range all {
 			if m.PollID != nil && *m.PollID == pollID && !m.Deleted {
+				out = append(out, m)
+			}
+		}
+	}
+	return out, nil
+}
+
+func (r fakeMsgs) ByChecklistID(_ context.Context, checklistID int64) ([]domain.Message, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var out []domain.Message
+	for _, all := range r.s.messages {
+		for _, m := range all {
+			if m.ChecklistID != nil && *m.ChecklistID == checklistID && !m.Deleted {
 				out = append(out, m)
 			}
 		}

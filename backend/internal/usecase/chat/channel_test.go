@@ -6,6 +6,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -134,6 +135,9 @@ func (c groupMembershipChats) CurrentReadSeq(context.Context, int64, int64) (int
 	return 0, nil
 }
 func (c groupMembershipChats) SetRead(context.Context, int64, int64, int64, int) error { return nil }
+func (c groupMembershipChats) LastReadAt(context.Context, int64, int64) (time.Time, bool, error) {
+	return time.Time{}, false, nil
+}
 func (c groupMembershipChats) AddMention(context.Context, int64, int64, int64, int64) error {
 	return nil
 }

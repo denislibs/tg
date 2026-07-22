@@ -28,6 +28,7 @@ export interface ConvMsg {
     | 'roundVideo'
     | 'call'
     | 'poll'
+    | 'checklist'
     | 'geo'
     | 'contact'
     | 'gift'
@@ -46,6 +47,7 @@ export interface ConvMsg {
   views?: number // channel-post view count ("9.2K 👁"); undefined for non-posts
   forwards?: number // channel-post forward count (Telegram message.forwards); undefined for non-posts
   reactions?: { emoji: string; count: number; mine: boolean }[] // чипы реакций под сообщением
+  starReaction?: { total: number; mine: number } // платная ⭐-реакция (сумма звёзд + вклад зрителя)
   geo?: GeoData // гео-точка (type 'geo') + venue/live location
   contact?: { userId: number; name: string; phone: string } // контакт (type 'contact')
   mediaUnread?: boolean // голосовое/кружок не прослушано получателем (точка у обеих сторон)
@@ -75,6 +77,7 @@ export interface ConvMsg {
   localUrl?: string // object-URL локального файла — мгновенное превью исходящего медиа во время аплоада
   albumItems?: ConvMsg[] // собранные элементы альбома (только у сводного ConvMsg type 'album')
   poll?: import('./core/models').Poll // опрос (type 'poll')
+  checklist?: import('./core/models').Checklist // чек-лист (type 'checklist')
   giveaway?: import('./core/models').Giveaway // розыгрыш (type 'giveaway')
   gift?: import('./core/managers/starsManager').GiftInfo // подарок (type 'gift')
   replyMarkup?: import('./core/managers/botsManager').ReplyMarkup // inline-клавиатура сообщения бота

@@ -43,6 +43,9 @@ type ChatRepo interface {
 	IncUnread(ctx context.Context, chatID, userID int64) error
 	CurrentReadSeq(ctx context.Context, chatID, userID int64) (int64, error)
 	SetRead(ctx context.Context, chatID, userID, seq int64, unread int) error
+	// LastReadAt — когда участник в последний раз продвинул read-горизонт
+	// (для read-date исходящих). ok=false, если участник ещё ничего не прочитал.
+	LastReadAt(ctx context.Context, chatID, userID int64) (at time.Time, ok bool, err error)
 	// Непрочитанные упоминания (Telegram unread_mentions_count). AddMention
 	// отмечает сообщение (chat/msg/seq), где упомянут userID, и бампит его
 	// счётчик. ClearMentions снимает упоминания с seq<=uptoSeq (прочитано) и
@@ -146,6 +149,8 @@ type MessageRepo interface {
 	GetByIDs(ctx context.Context, ids []int64) ([]domain.Message, error)
 	// ByPollID — сообщения, ссылающиеся на опрос (обычно одно).
 	ByPollID(ctx context.Context, pollID int64) ([]domain.Message, error)
+	// ByChecklistID — сообщения, ссылающиеся на чек-лист (обычно одно).
+	ByChecklistID(ctx context.Context, checklistID int64) ([]domain.Message, error)
 	SearchMessages(ctx context.Context, chatID int64, q string, offset, limit int) ([]domain.Message, int, error)
 	// GlobalSearchMessages searches across every chat userID is a member of;
 	// filter narrows by shared-media kind ("" = any type).
@@ -233,6 +238,20 @@ type ReactionRepo interface {
 	ReactionUsers(ctx context.Context, messageID int64) ([]domain.ReactionUser, error)
 }
 
+// StarReactionRepo — платные ⭐-реакции сообщений (star_reactions). Вклад
+// пользователя накопительный (upsert), агрегат сообщения = SUM(stars).
+type StarReactionRepo interface {
+	// Add накопительно добавляет delta звёзд от userID к messageID (upsert) и
+	// обновляет флаг anonymous; возвращает новый суммарный вклад пользователя.
+	Add(ctx context.Context, messageID, userID, delta int64, anonymous bool) (int64, error)
+	// AggregatesFor батч-загружает агрегат звёзд по сообщениям (Total) + личный
+	// вклад зрителя (Mine). Сообщения без платных реакций отсутствуют в мапе.
+	AggregatesFor(ctx context.Context, messageIDs []int64, viewerID int64) (map[int64]domain.StarReactionAgg, error)
+	// TopSenders — крупнейшие отправители звёзд сообщения (по убыванию), с
+	// карточкой пользователя для отображения. Anonymous сохраняется во флаге.
+	TopSenders(ctx context.Context, messageID int64, limit int) ([]domain.StarReactionSender, error)
+}
+
 type MediaAccessRepo interface {
 	OwnerID(ctx context.Context, mediaID int64) (int64, error) // domain.ErrNotFound if absent
 	CanAccess(ctx context.Context, userID, mediaID int64) (bool, error)
@@ -314,6 +333,7 @@ type SendInput struct {
 	ThreadRootID     *int64
 	GroupedID        string // альбом (Telegram grouped_id); "" — не в группе
 	PollID           *int64 // опрос (messages.poll_id) — только из SendPoll
+	ChecklistID      *int64 // чек-лист (messages.checklist_id) — только из SendChecklist
 	GiveawayID       *int64 // розыгрыш (messages.giveaway_id) — только из CreateGiveaway
 	// Гео-точка (type 'geo'): обе координаты обязательны, в валидном диапазоне.
 	GeoLat *float64
@@ -391,6 +411,18 @@ type PollRepo interface {
 	Close(ctx context.Context, pollID int64) error
 	// Info — представление опроса для зрителя (агрегаты + его выбор).
 	Info(ctx context.Context, pollID, viewerID int64) (domain.PollInfo, error)
+}
+
+// ChecklistRepo хранит чек-листы и отметки «выполнено».
+type ChecklistRepo interface {
+	Create(ctx context.Context, c domain.Checklist) (domain.Checklist, error)
+	ByID(ctx context.Context, id int64) (domain.Checklist, error)
+	// SetItems заменяет список пунктов целиком (при добавлении пунктов).
+	SetItems(ctx context.Context, checklistID int64, items []domain.ChecklistItem) error
+	// ToggleMark переключает отметку пользователя на пункте (true — отмечено).
+	ToggleMark(ctx context.Context, checklistID int64, itemID int, userID int64) (bool, error)
+	// Info — представление чек-листа (пункты + кто отметил каждый).
+	Info(ctx context.Context, checklistID int64) (domain.ChecklistInfo, error)
 }
 
 // StarsRepo — баланс звёзд и каталог/выдача подарков.

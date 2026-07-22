@@ -91,6 +91,9 @@ func registerServer(p serverParams) {
 	// Опросы: хранение + голоса, live-агрегаты фреймом poll_update.
 	p.ChatUC.SetPolls(pgadapter.NewPollsRepo(p.Pool))
 
+	// Чек-листы: хранение + отметки, live-обновления фреймом checklist_update.
+	p.ChatUC.SetChecklists(pgadapter.NewChecklistsRepo(p.Pool))
+
 	// Бусты каналов + розыгрыши: буст доступен premium, счётчик бустов и статус
 	// розыгрыша рассылаются фреймами boost_update / giveaway_update.
 	p.ChatUC.SetBoosts(pgadapter.NewBoostsRepo(p.Pool))
@@ -126,6 +129,10 @@ func registerServer(p serverParams) {
 	// Платное медиа (Telegram paid media): цена доступа в звёздах хранится в
 	// отдельной таблице, медиа отдаётся получателю только после разблокировки.
 	p.ChatUC.SetPaidMedia(pgadapter.NewPaidMediaRepo(p.Pool))
+
+	// Платные ⭐-реакции (Telegram paid/star reactions): накопительный вклад в
+	// звёздах хранится отдельной таблицей, агрегат подмешивается read-моделью.
+	p.ChatUC.SetStarReactions(pgadapter.NewStarReactionsRepo(p.Pool))
 
 	// Боты: флаг is_bot + команды; демо-бот авто-отвечает в приватном чате.
 	p.ChatUC.SetBots(pgadapter.NewBotRepo(p.Pool))

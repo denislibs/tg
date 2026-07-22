@@ -12,6 +12,7 @@ export const RT = {
   typing: 'rt:typing',
   presence: 'rt:presence',
   reaction: 'rt:reaction',
+  starReaction: 'rt:star_reaction',
   ack: 'rt:ack',
   messageError: 'rt:message_error',
   call: 'rt:call',
@@ -21,6 +22,7 @@ export const RT = {
   dialogPin: 'rt:dialog_pin',
   dialogArchive: 'rt:dialog_archive',
   pollUpdate: 'rt:poll_update',
+  checklistUpdate: 'rt:checklist_update',
   boostUpdate: 'rt:boost_update',
   giveawayUpdate: 'rt:giveaway_update',
   balanceUpdate: 'rt:balance_update',
@@ -83,6 +85,9 @@ export type TypingAction = 'typing' | 'voice' | 'video' | 'upload_file' | 'uploa
 export interface TypingEvt { chat_id: number; user_id: number; action?: TypingAction }
 export interface PresenceEvt { user_id: number; online: boolean; last_seen: number }
 export interface ReactionEvt { chat_id: number; msg_id: number; user_id: number; author_id?: number; emoji: string; action: 'add' | 'remove' }
+// Обновление платной ⭐-реакции: новый агрегат звёзд сообщения (total) + вклад
+// отправителя (mine, у sender_id). Получатель правит total; sender_id===me — и mine.
+export interface StarReactionEvt { chat_id: number; msg_id: number; sender_id: number; total: number; mine: number }
 export interface AckEvt { client_msg_id: string; msg_id: number; seq: number; created_at: string }
 // Server rejected a send (e.g. text too long). The client drops it from the outbox
 // (no infinite retry) and removes the optimistic bubble.

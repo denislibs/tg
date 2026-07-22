@@ -11,41 +11,43 @@ import (
 // Interactor is the chat/message/sync/reactions application logic. It depends
 // only on ports; transactions are run through the TxManager port.
 type Interactor struct {
-	tx          TxManager
-	chats       ChatRepo
-	msgs        MessageRepo
-	updates     UpdateRepo
-	reactions   ReactionRepo
-	mediaAccess MediaAccessRepo
-	groups      GroupRepo
-	invites     InviteRepo
-	joinReqs    JoinRequestRepo
-	channels    ChannelRepo
-	search      SearchRepo
-	publisher   EventPublisher
-	chPub       ChannelPublisher
-	notifier    PushNotifier
-	privacy     PrivacyChecker
-	drafts      DraftRepo
-	polls       PollRepo
-	scheduled   ScheduledRepo
-	topics      TopicRepo
-	groupCalls  GroupCallStore
-	stars       StarsRepo
-	paidMedia   PaidMediaRepo
-	bots        BotRepo
-	botAPI      BotAPIRepo
-	botMedia    BotMediaStore
-	translator  Translator
-	secret      SecretRepo
-	stickers    StickerAccess
-	preview     LinkPreviewer
-	boosts      BoostRepo
-	giveaways   GiveawayRepo
-	premium     PremiumRepo
-	contactPics ContactPhotoLookup
-	profilePics ProfilePhotoAdder
-	botHub      *botPendingHub
+	tx           TxManager
+	chats        ChatRepo
+	msgs         MessageRepo
+	updates      UpdateRepo
+	reactions    ReactionRepo
+	mediaAccess  MediaAccessRepo
+	groups       GroupRepo
+	invites      InviteRepo
+	joinReqs     JoinRequestRepo
+	channels     ChannelRepo
+	search       SearchRepo
+	publisher    EventPublisher
+	chPub        ChannelPublisher
+	notifier     PushNotifier
+	privacy      PrivacyChecker
+	drafts       DraftRepo
+	polls        PollRepo
+	checklists   ChecklistRepo
+	scheduled    ScheduledRepo
+	topics       TopicRepo
+	groupCalls   GroupCallStore
+	stars        StarsRepo
+	paidMedia    PaidMediaRepo
+	starReaction StarReactionRepo
+	bots         BotRepo
+	botAPI       BotAPIRepo
+	botMedia     BotMediaStore
+	translator   Translator
+	secret       SecretRepo
+	stickers     StickerAccess
+	preview      LinkPreviewer
+	boosts       BoostRepo
+	giveaways    GiveawayRepo
+	premium      PremiumRepo
+	contactPics  ContactPhotoLookup
+	profilePics  ProfilePhotoAdder
+	botHub       *botPendingHub
 }
 
 // New constructs the chat interactor from its ports.
@@ -86,6 +88,9 @@ func (i *Interactor) SetDrafts(d DraftRepo) { i.drafts = d }
 // SetPolls подключает хранилище опросов (optional; без него опросы → 404).
 func (i *Interactor) SetPolls(p PollRepo) { i.polls = p }
 
+// SetChecklists подключает хранилище чек-листов (optional; без него → 404).
+func (i *Interactor) SetChecklists(c ChecklistRepo) { i.checklists = c }
+
 // SetScheduled подключает очередь запланированных сообщений (optional).
 func (i *Interactor) SetScheduled(s ScheduledRepo) { i.scheduled = s }
 
@@ -101,6 +106,10 @@ func (i *Interactor) SetStars(s StarsRepo) { i.stars = s }
 // SetPaidMedia подключает хранилище платного медиа (optional; без него платное
 // медиа отключено — цена не сохраняется, unlock → 404).
 func (i *Interactor) SetPaidMedia(p PaidMediaRepo) { i.paidMedia = p }
+
+// SetStarReactions подключает хранилище платных ⭐-реакций (optional; без него и
+// без stars star-реакции → 404).
+func (i *Interactor) SetStarReactions(s StarReactionRepo) { i.starReaction = s }
 
 // SetBots подключает данные ботов (optional; без него авто-ответы отключены).
 func (i *Interactor) SetBots(b BotRepo) { i.bots = b }

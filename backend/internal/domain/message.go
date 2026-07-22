@@ -46,6 +46,10 @@ type Message struct {
 	// развёрнутое представление для зрителя, наполняется read-моделью истории.
 	PollID *int64
 	Poll   *PollInfo
+	// ChecklistID — чек-лист сообщения типа 'checklist' (messages.checklist_id);
+	// Checklist — его развёрнутое представление, наполняется read-моделью истории.
+	ChecklistID *int64
+	Checklist   *ChecklistInfo
 	// GiveawayID — розыгрыш сообщения типа 'giveaway' (messages.giveaway_id);
 	// Giveaway — его представление для зрителя, наполняется read-моделью истории.
 	GiveawayID *int64
@@ -142,6 +146,12 @@ type Message struct {
 	// байты медиа клиенту не отдаются до разблокировки.
 	PaidMediaPrice  *int64
 	PaidMediaLocked bool
+	// Платная ⭐-реакция (Telegram paid/star reactions). StarReactionTotal —
+	// суммарное число звёзд на сообщении, StarReactionMine — вклад зрителя.
+	// Хранятся в отдельной таблице star_reactions, наполняются read-моделью
+	// (не колонки messages). Total==0 — платных реакций нет.
+	StarReactionTotal int64
+	StarReactionMine  int64
 }
 
 // ReplyPreview is the quoted snippet shown above a reply bubble.
