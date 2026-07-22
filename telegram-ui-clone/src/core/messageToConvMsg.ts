@@ -53,6 +53,7 @@ export function messageToConvMsg(
     : m.type === 'roundVideo' ? 'roundVideo'
     : m.type === 'call' ? 'call'
     : m.type === 'poll' ? 'poll'
+    : m.type === 'checklist' ? 'checklist'
     : m.type === 'giveaway' ? 'giveaway'
     : m.type === 'geo' ? 'geo'
     : m.type === 'contact' ? 'contact'
@@ -99,6 +100,7 @@ export function messageToConvMsg(
     webPage: m.webPage,
     effect: m.effect,
     poll: m.poll,
+    checklist: m.checklist,
     giveaway: m.giveaway,
     gift: m.gift,
     replyMarkup: m.replyMarkup,

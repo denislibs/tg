@@ -141,6 +141,7 @@ const conn = newConnectionManager({
     else if (type === 'dialog_pin') broadcast(RT.dialogPin, payload)
     else if (type === 'dialog_archive') broadcast(RT.dialogArchive, payload)
     else if (type === 'poll_update') broadcast(RT.pollUpdate, payload)
+    else if (type === 'checklist_update') broadcast(RT.checklistUpdate, payload)
     else if (type === 'boost_update') broadcast(RT.boostUpdate, payload)
     else if (type === 'giveaway_update') broadcast(RT.giveawayUpdate, payload)
     else if (type === 'balance_update') broadcast(RT.balanceUpdate, payload)

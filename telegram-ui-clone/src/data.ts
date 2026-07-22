@@ -28,6 +28,7 @@ export interface ConvMsg {
     | 'roundVideo'
     | 'call'
     | 'poll'
+    | 'checklist'
     | 'geo'
     | 'contact'
     | 'gift'
@@ -75,6 +76,7 @@ export interface ConvMsg {
   localUrl?: string // object-URL локального файла — мгновенное превью исходящего медиа во время аплоада
   albumItems?: ConvMsg[] // собранные элементы альбома (только у сводного ConvMsg type 'album')
   poll?: import('./core/models').Poll // опрос (type 'poll')
+  checklist?: import('./core/models').Checklist // чек-лист (type 'checklist')
   giveaway?: import('./core/models').Giveaway // розыгрыш (type 'giveaway')
   gift?: import('./core/managers/starsManager').GiftInfo // подарок (type 'gift')
   replyMarkup?: import('./core/managers/botsManager').ReplyMarkup // inline-клавиатура сообщения бота

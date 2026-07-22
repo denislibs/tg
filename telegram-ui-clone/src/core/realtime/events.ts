@@ -21,6 +21,7 @@ export const RT = {
   dialogPin: 'rt:dialog_pin',
   dialogArchive: 'rt:dialog_archive',
   pollUpdate: 'rt:poll_update',
+  checklistUpdate: 'rt:checklist_update',
   boostUpdate: 'rt:boost_update',
   giveawayUpdate: 'rt:giveaway_update',
   balanceUpdate: 'rt:balance_update',

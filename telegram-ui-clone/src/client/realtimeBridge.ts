@@ -4,7 +4,7 @@ import { loadChats, useChatsStore } from '../stores/chatsStore'
 import { useMessagesStore } from '../stores/messagesStore'
 import { usePinsStore } from '../stores/pinsStore'
 import { useStarsStore } from '../stores/starsStore'
-import { mapMessage, mapDraft, mapPoll, mapGeo, mapWebPage, mapBoostStatus, mapGiveaway, type RawPoll, type RawBoostStatus, type RawGiveaway } from '../core/models'
+import { mapMessage, mapDraft, mapPoll, mapChecklist, mapGeo, mapWebPage, mapBoostStatus, mapGiveaway, type RawPoll, type RawChecklist, type RawBoostStatus, type RawGiveaway } from '../core/models'
 import { useBoostsStore } from '../stores/boostsStore'
 import { useDraftsStore } from '../stores/draftsStore'
 import { useUploadsStore } from '../stores/uploadsStore'
@@ -98,6 +98,11 @@ export function startRealtime(): void {
   smp.on(RT.pollUpdate, (raw) => {
     const e = raw as { chat_id: number; poll: RawPoll }
     useMessagesStore.getState().applyPollUpdate(e.chat_id, mapPoll(e.poll))
+  })
+  // Обновление чек-листа (checklist_update): отметка/добавление пункта в любом чате
+  smp.on(RT.checklistUpdate, (raw) => {
+    const e = raw as { chat_id: number; checklist: RawChecklist }
+    useMessagesStore.getState().applyChecklistUpdate(e.chat_id, mapChecklist(e.checklist))
   })
   // Тема оформления чата сменилась (общая для чата) — пишем в стор диалогов,
   // ConversationView перекрашивает область активного чата.

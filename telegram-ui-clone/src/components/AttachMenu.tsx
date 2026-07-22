@@ -9,6 +9,7 @@ export default function AttachMenu({
   onPhotoVideo,
   onFile,
   onPoll,
+  onChecklist,
   onLocation,
   onContact,
 }: {
@@ -17,6 +18,7 @@ export default function AttachMenu({
   onPhotoVideo?: () => void
   onFile?: () => void
   onPoll?: () => void
+  onChecklist?: () => void
   onLocation?: () => void
   onContact?: () => void
 }) {
@@ -39,6 +41,7 @@ export default function AttachMenu({
       {onLocation && <MenuItem icon={<TgIcon name="location" size={20} />} label={t('Location')} onClick={pick(onLocation)} />}
       {onContact && <MenuItem icon={<TgIcon name="newprivate" size={20} />} label={t('Contact')} onClick={pick(onContact)} />}
       {onPoll && <MenuItem icon={<TgIcon name="poll" size={20} />} label={t('Poll')} onClick={pick(onPoll)} />}
+      {onChecklist && <MenuItem icon={<TgIcon name="check" size={20} />} label={t('Checklist')} onClick={pick(onChecklist)} />}
     </Menu>
   )
 }

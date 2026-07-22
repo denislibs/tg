@@ -51,6 +51,7 @@ import { draftReplyState, convMsgReplyState } from '../core/draftReply'
 import { useComposerDraft } from '../core/hooks/useComposerDraft'
 import { useMentionPeers } from '../core/hooks/useMentionPeers'
 import CreatePollPopup from './CreatePollPopup'
+import CreateChecklistPopup from './CreateChecklistPopup'
 import BoostPopup from './BoostPopup'
 import CreateGiveawayPopup from './CreateGiveawayPopup'
 import ScheduledView from './ScheduledView'
@@ -301,6 +302,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const [editContactOpen, setEditContactOpen] = useState(false)
   const [attachAnchor, setAttachAnchor] = useState<{ left: number; bottom: number } | null>(null)
   const [createPollOpen, setCreatePollOpen] = useState(false)
+  const [createChecklistOpen, setCreateChecklistOpen] = useState(false)
   const [boostOpen, setBoostOpen] = useState(false)
   const [createGiveawayOpen, setCreateGiveawayOpen] = useState(false)
   const [contactPickerOpen, setContactPickerOpen] = useState(false)
@@ -1146,6 +1148,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           onPhotoVideo={isRealChat ? () => openPicker('image/*,video/*', false) : undefined}
           onFile={isRealChat ? () => openPicker('*/*', true) : undefined}
           onPoll={isRealChat && (chat.type === 'group' || chat.type === 'channel') ? () => setCreatePollOpen(true) : undefined}
+          onChecklist={isRealChat ? () => setCreateChecklistOpen(true) : undefined}
           onLocation={isRealChat ? () => setLocationPickerOpen(true) : undefined}
           onContact={isRealChat ? () => setContactPickerOpen(true) : undefined}
         />
@@ -1227,6 +1230,19 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
             setCreatePollOpen(false)
             void managers.messages
               .sendPoll(numericChatId, { ...p, clientMsgId: crypto.randomUUID() })
+              .then((msg) => useMessagesStore.getState().applyIncoming(numericChatId, msg))
+          }}
+        />
+      )}
+
+      {/* «Новый чек-лист» (tweb popups/checklist.tsx) */}
+      {createChecklistOpen && (
+        <CreateChecklistPopup
+          onClose={() => setCreateChecklistOpen(false)}
+          onCreate={(c) => {
+            setCreateChecklistOpen(false)
+            void managers.messages
+              .sendChecklist(numericChatId, { ...c, clientMsgId: crypto.randomUUID() })
               .then((msg) => useMessagesStore.getState().applyIncoming(numericChatId, msg))
           }}
         />
