@@ -49,6 +49,47 @@ interface RawReactionUser {
   emoji: string
 }
 
+/** Один отправитель платной ⭐-реакции (топ-отправители попапа). Анонимный —
+ * без личности (userId 0, пустое имя): рисуется как «Anonymous». */
+export interface StarSender {
+  userId: number
+  name: string
+  avatarUrl: string
+  stars: number
+  anonymous: boolean
+}
+
+interface RawStarSender {
+  user_id: number
+  name: string
+  username: string
+  avatar_url: string
+  stars: number
+  anonymous: boolean
+}
+
+/** Агрегат платной ⭐-реакции сообщения: сумма звёзд, мой вклад, топ-отправители. */
+export interface StarReactionInfo {
+  total: number
+  mine: number
+  top: StarSender[]
+}
+
+/** Результат отправки платной ⭐-реакции: новый агрегат + мой новый баланс. */
+export interface StarReactionResult extends StarReactionInfo {
+  balance: number
+}
+
+function mapStarSenders(rows: RawStarSender[] | undefined): StarSender[] {
+  return (rows ?? []).map((s) => ({
+    userId: s.user_id,
+    name: s.name,
+    avatarUrl: s.avatar_url,
+    stars: s.stars,
+    anonymous: s.anonymous,
+  }))
+}
+
 export interface MessagesDeps {
   rest: RestClient
   /** Расшифровка ciphertext секретного чата (ключи живут в secretManager воркера). */
@@ -470,6 +511,22 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
 
     async unreact(chatId: number, msgId: number, emoji: string): Promise<void> {
       await rest.del(`/chats/${chatId}/messages/${msgId}/reactions/${encodeURIComponent(emoji)}`)
+    },
+
+    // Платная ⭐-реакция: списать count звёзд у себя, начислить автору, накопить
+    // вклад. Возвращает новый агрегат + топ-отправителей + мой баланс. Live-эхо
+    // star_reaction тоже придёт (идемпотентно правит total в сторе).
+    async sendStarReaction(chatId: number, msgId: number, count: number, anonymous: boolean): Promise<StarReactionResult> {
+      const r = await rest.post<{ star_reaction: { total: number; mine: number }; top: RawStarSender[]; balance: number }>(
+        `/chats/${chatId}/messages/${msgId}/star_reaction`, { count, anonymous })
+      return { total: r.star_reaction.total, mine: r.star_reaction.mine, balance: r.balance, top: mapStarSenders(r.top) }
+    },
+
+    // Агрегат платной ⭐-реакции сообщения (total + мой вклад + топ-отправители).
+    async getStarReaction(chatId: number, msgId: number): Promise<StarReactionInfo> {
+      const r = await rest.get<{ star_reaction: { total: number; mine: number }; top: RawStarSender[] }>(
+        `/chats/${chatId}/messages/${msgId}/star_reaction`)
+      return { total: r.star_reaction.total, mine: r.star_reaction.mine, top: mapStarSenders(r.top) }
     },
 
     // Live location: отправить начальную точку трансляции по REST (нужен msgId,

@@ -408,6 +408,18 @@
   }
 }
 
+// Платная ⭐-реакция (tweb .reaction.is-paid): при вкладе зрителя подложка —
+// звёздный градиент вместо акцента.
+.starChip {
+  &.reactionChosen {
+    color: #fff;
+
+    &::before {
+      background: linear-gradient(to bottom, #ffaa00, #ffcd3a);
+    }
+  }
+}
+
 .reactionEmoji {
   position: relative;
   z-index: 1;

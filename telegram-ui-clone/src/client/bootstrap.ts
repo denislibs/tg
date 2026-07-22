@@ -6,7 +6,7 @@ import type { ProfileUpdate, SetUsernameResult } from '../core/managers/profileM
 import type { Dialog, Draft } from '../core/models'
 import type { Message, MessageEntity, Poll, Scheduled, BoostStatus, Giveaway } from '../core/models'
 import type { CreateGiveawayArgs } from '../core/managers/boostsManager'
-import type { HistoryArgs, HistoryResult, SendArgs, ReactionUser } from '../core/managers/messagesManager'
+import type { HistoryArgs, HistoryResult, SendArgs, ReactionUser, StarReactionInfo, StarReactionResult } from '../core/managers/messagesManager'
 import type { ConnState, PresenceEvt, TypingAction } from '../core/realtime/events'
 import type { UploadArgs, MediaMeta } from '../core/managers/mediaManager'
 import type { SavedDialog } from '../core/managers/chatsManager'
@@ -109,6 +109,8 @@ export interface Managers {
     getAround(chatId: number, centerSeq: number, limit?: number, threadRoot?: number): Promise<{ messages: Message[]; reachedTop: boolean; reachedBottom: boolean }>
     react(chatId: number, msgId: number, emoji: string): Promise<void>
     unreact(chatId: number, msgId: number, emoji: string): Promise<void>
+    sendStarReaction(chatId: number, msgId: number, count: number, anonymous: boolean): Promise<StarReactionResult>
+    getStarReaction(chatId: number, msgId: number): Promise<StarReactionInfo>
     translate(text: string, toLang: string): Promise<{ text: string; source: string }>
     sendGeoLive(chatId: number, lat: number, lng: number, livePeriod: number, heading?: number): Promise<Message>
     updateGeoLive(chatId: number, msgId: number, lat: number, lng: number, opts?: { heading?: number; stopped?: boolean }): Promise<Message>

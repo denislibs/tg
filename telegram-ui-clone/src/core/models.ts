@@ -192,6 +192,9 @@ export interface RawMessage {
   /** платное медиа (Telegram paid media): цена в звёздах + заблокировано ли для
    * зрителя. У заблокированного media_id отсутствует — только blur/размеры/цена. */
   paid_media?: { price: number; locked: boolean } | null
+  /** платная ⭐-реакция (Telegram paid/star reactions): суммарно потрачено звёзд
+   * (total) и личный вклад зрителя (mine). Отсутствует — платных реакций нет. */
+  star_reaction?: { total: number; mine?: number } | null
 }
 
 // Агрегат одной реакции на сообщении (emoji + счётчик + «моя»), tweb ReactionCount.
@@ -299,6 +302,9 @@ export interface Message {
    * зрителя. Заблокированное — без mediaId (только blur/размеры), раскрывается
    * после разблокировки за Stars. */
   paidMedia?: { price: number; locked: boolean }
+  /** платная ⭐-реакция (Telegram paid/star reactions): суммарно потрачено звёзд
+   * на сообщение (total) + личный вклад зрителя (mine). undefined — реакций нет. */
+  starReaction?: { total: number; mine: number }
 }
 
 // Опрос (backend PollInfo): вопрос + варианты + агрегаты для зрителя.
@@ -585,5 +591,6 @@ export function mapMessage(r: RawMessage): Message {
     webPage: r.web_page ? mapWebPage(r.web_page) : undefined,
     effect: mapEffect(r.effect),
     paidMedia: r.paid_media ? { price: r.paid_media.price, locked: r.paid_media.locked } : undefined,
+    starReaction: r.star_reaction ? { total: r.star_reaction.total, mine: r.star_reaction.mine ?? 0 } : undefined,
   }
 }

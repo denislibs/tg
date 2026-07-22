@@ -103,6 +103,7 @@ export function messageToConvMsg(
     gift: m.gift,
     replyMarkup: m.replyMarkup,
     reactions: m.reactions,
+    starReaction: m.starReaction,
     geo: m.geo,
     contact: m.contact,
     mediaId: m.mediaId ?? undefined,

@@ -196,6 +196,12 @@ const ru: Dict = {
   'Telegram Stars': 'Telegram Stars',
   'Your balance': 'Ваш баланс',
   'Demo: top-up adds Stars instantly, no real payment.': 'Демо: пополнение начисляет звёзды сразу, без реальной оплаты.',
+  // Star reactions (платные ⭐-реакции)
+  'Star Reaction': 'Реакция звёздами',
+  'React with Stars': 'Реакция звёздами',
+  'Choose how many Stars you want to send to support this message.': 'Выберите, сколько звёзд отправить в поддержку этого сообщения.',
+  'Top Senders': 'Топ отправителей',
+  'Show my name': 'Показывать моё имя',
   'Gift to': 'Подарок для',
   'Message (optional)': 'Сообщение (необязательно)',
   'Hide my name': 'Скрыть моё имя',
