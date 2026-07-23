@@ -167,6 +167,9 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
   // заливается и показывает «имя + счётчик активного таба» (tweb sharedMedia.tsx
   // setIsSharedMedia / TransitionSlider) ──
   const [filled, setFilled] = useState(false)
+  // фон+граница шапки — отдельно от filled: сверху прозрачная, при небольшом
+  // скролле заливается (tweb .header-filled по scrollPosition >= ~5).
+  const [scrolled, setScrolled] = useState(false)
   const bodyRef = useRef<HTMLDivElement>(null)
   const tabsBarRef = useRef<HTMLDivElement>(null)
   const onBodyScroll = () => {
@@ -174,7 +177,10 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
     if (!body || !bar) return
     // скролл вниз сворачивает развёрнутое фото обратно в круг (tweb collapse)
     if (body.scrollTop > 4) setExpanded(false)
-    // порог tweb: верх таб-плашки доехал до низа шапки (top <= OFFSET)
+    // фон/граница шапки появляются при небольшом скролле (не над развёрнутым фото)
+    setScrolled(body.scrollTop > 8)
+    // порог tweb: верх таб-плашки доехал до низа шапки (top <= OFFSET) — смена
+    // заголовка на «имя + счётчик» (не связано с фоном шапки)
     const top = bar.getBoundingClientRect().top - body.getBoundingClientRect().top
     setFilled(top <= HEADER_H + STICKY_GAP + 1)
   }
@@ -398,7 +404,7 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
         {/* overPhoto: развёрнутое фото под шапкой и ещё не залито скроллом —
             шапка прозрачная, иконки/текст белые поверх верхнего градиента
             (tweb .need-white). Скролл → filled: сплошной фон, обычные цвета. */}
-        <div className={classNames(s.header, filled ? s.headerFilled : '', overPhoto ? s.headerWhite : '')}>
+        <div className={classNames(s.header, scrolled && !overPhoto ? s.headerScrolled : '', overPhoto ? s.headerWhite : '')}>
           <IconButton onClick={filled ? scrollBackToProfile : onClose} color={overPhoto ? '#fff' : 'var(--tg-textSecondary)'}>
             <TgIcon name={filled ? 'back' : 'close'} />
           </IconButton>
