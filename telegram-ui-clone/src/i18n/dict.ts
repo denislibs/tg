@@ -6,6 +6,11 @@ type Dict = Record<string, string>
 // entries (t() falls back to the key). Other languages map English -> translation.
 
 const ru: Dict = {
+  // ── Send-as (отправка от имени канала/анонимно) ──
+  'Send As…': 'Отправить как…',
+  'Your channels': 'Ваши каналы',
+  Anonymously: 'Анонимно',
+  'Personal account': 'Личный аккаунт',
   // ── Paid media (медиа за Stars) ──
   'Make paid': 'Сделать платным',
   'Paid media': 'Платное медиа',

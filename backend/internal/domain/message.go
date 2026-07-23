@@ -166,6 +166,14 @@ type Message struct {
 	// (не колонки messages). Total==0 — платных реакций нет.
 	StarReactionTotal int64
 	StarReactionMine  int64
+	// Send-as (Telegram send_as): когда задан — сообщение отображается от имени
+	// этого канала/группы, а не от реального SenderID (который сохраняется).
+	// SendAsChatID — колонка messages.send_as_chat_id. SendAsTitle/SendAsPhotoID —
+	// снимок отображаемого автора (title/photo чата), наполняется на отправке и
+	// read-моделью для бабла (не колонки messages). Nil — обычная отправка.
+	SendAsChatID  *int64
+	SendAsTitle   string
+	SendAsPhotoID *int64
 }
 
 // ReplyPreview is the quoted snippet shown above a reply bubble.

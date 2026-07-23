@@ -75,6 +75,11 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 	if m.FactCheck != nil {
 		p["factcheck"] = factCheckJSON(m.FactCheck)
 	}
+	// Send-as: отображаемый автор (канал/группа). sender_id остаётся реальным —
+	// клиент рисует бабл от имени send_as, не теряя настоящего отправителя.
+	if m.SendAsChatID != nil {
+		p["send_as"] = sendAsJSON(m)
+	}
 	// Reply quote: цитата хранится на самом сообщении — превью реплая на клиенте
 	// собирается из уже загруженного окна, так что фрагмент едет отдельным полем.
 	if m.ReplyQuoteText != nil {
@@ -93,6 +98,19 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 		p["destruct_at"] = m.DestructAt
 	}
 	return p
+}
+
+// sendAsJSON — представление отображаемого автора send-as (chat_id + снимок
+// title/photo). Реальный sender_id сериализуется отдельным полем и не теряется.
+func sendAsJSON(m domain.Message) map[string]any {
+	s := map[string]any{"chat_id": *m.SendAsChatID}
+	if m.SendAsTitle != "" {
+		s["title"] = m.SendAsTitle
+	}
+	if m.SendAsPhotoID != nil {
+		s["photo_id"] = *m.SendAsPhotoID
+	}
+	return s
 }
 
 // geoJSON — представление гео-сообщения: точка + опционально venue (title/address)

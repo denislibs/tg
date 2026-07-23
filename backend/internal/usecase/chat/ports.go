@@ -106,6 +106,12 @@ type GroupRepo interface {
 	// IsDiscussionGroup — chatID является discussion-группой какого-то канала
 	// (тред комментариев там читается и без членства, как ListComments).
 	IsDiscussionGroup(ctx context.Context, chatID int64) (bool, error)
+	// DiscussionChannel — обратный поиск: канал, чья группа-обсуждение это groupID
+	// (0 — ничья). Нужен send-as: админ привязанного канала пишет от его имени.
+	DiscussionChannel(ctx context.Context, groupID int64) (int64, error)
+	// ChatBriefs — снимки чатов по id (id/type/title/photo) для send-as: список
+	// «личностей отправителя» и отображаемый автор бабла.
+	ChatBriefs(ctx context.Context, ids []int64) (map[int64]domain.ChatBrief, error)
 	// Group edit-screen settings + removed-users list.
 	Settings(ctx context.Context, chatID int64) (domain.ChatSettings, error)
 	SetType(ctx context.Context, chatID int64, isPublic bool, username string) error // domain.ErrConflict on taken username
@@ -388,6 +394,10 @@ type SendInput struct {
 	// — обычное медиа. Применяется только к фото/видео с прикреплённым MediaID:
 	// получатели видят медиа заблокированным до разблокировки за звёзды.
 	PaidMediaPrice *int64
+	// SendAsChatID — отправка от имени канала/группы (Telegram send_as). nil —
+	// обычная отправка от себя. Проверяется правом: юзер — админ/владелец канала,
+	// либо это анонимный постинг от имени самой супергруппы (юзер — её админ).
+	SendAsChatID *int64
 }
 
 // GroupCallStore хранит участников активных групповых звонков (эфемерно, Redis).

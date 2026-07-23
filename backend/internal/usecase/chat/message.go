@@ -163,6 +163,24 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		}
 	}
 
+	// Send-as (Telegram send_as): отправка от имени канала/группы. «От себя»
+	// (send_as == сам автор) сбрасываем в nil; иначе проверяем право — юзер должен
+	// быть админом/владельцем указанного канала, либо это анонимный постинг от
+	// имени самой супергруппы (где он админ). Сервисные сообщения send_as не несут.
+	if in.SendAsChatID != nil {
+		if in.Type == "service" || *in.SendAsChatID == in.SenderID {
+			in.SendAsChatID = nil
+		} else {
+			ok, e := i.canSendAs(ctx, in.SenderID, in.ChatID, *in.SendAsChatID)
+			if e != nil {
+				return domain.Message{}, e
+			}
+			if !ok {
+				return domain.Message{}, domain.ErrForbidden
+			}
+		}
+	}
+
 	// Sender's short name rides along in the new_message payload so clients can
 	// prefix group chat-list previews ("Имя: …") without an extra lookup.
 	senderName := i.userCard(ctx, in.SenderID).ShortName()
@@ -211,6 +229,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			GeoLivePeriod: in.GeoLivePeriod, GeoHeading: in.GeoHeading,
 			ContactUserID: in.ContactUserID, ContactName: contactName, ContactPhone: contactPhone,
 			EncBody: in.EncBody, TTLSeconds: in.TTLSeconds, Effect: in.Effect,
+			SendAsChatID: in.SendAsChatID,
 			// Voice/round content starts "unlistened" (Telegram media_unread).
 			MediaUnread: in.Type == "voice" || in.Type == "roundVideo",
 		})
@@ -218,6 +237,15 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			return e
 		}
 		msg.SenderName = senderName
+		// Send-as: отображаемый автор (title/photo канала/группы) едет в new_message,
+		// чтобы получатель нарисовал бабл от имени канала без доп. запроса.
+		if msg.SendAsChatID != nil && i.groups != nil {
+			if briefs, e := i.groups.ChatBriefs(ctx, []int64{*msg.SendAsChatID}); e == nil {
+				if b, ok := briefs[*msg.SendAsChatID]; ok {
+					msg.SendAsTitle, msg.SendAsPhotoID = b.Title, b.PhotoID
+				}
+			}
+		}
 		// Сообщение-опрос несёт своё представление прямо в new_message-фрейме
 		// (свежий опрос без голосов одинаков для всех получателей).
 		if msg.PollID != nil && i.polls != nil {

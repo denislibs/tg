@@ -47,6 +47,7 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 	i.hydratePaidMedia(ctx, userID, msgs)
 	_ = i.hydrateReactions(ctx, userID, msgs)
 	i.hydrateStarReactions(ctx, userID, msgs)
+	i.hydrateSendAs(ctx, msgs)
 	var count int
 	switch {
 	case tag != "":
@@ -96,6 +97,38 @@ func (i *Interactor) checkHistoryAccess(ctx context.Context, chatID, userID int6
 		}
 	}
 	return domain.ErrNotFound
+}
+
+// hydrateSendAs fills SendAsTitle/SendAsPhotoID (the displayed author) on
+// messages sent "as" a channel/group (send_as), batch-fetching chat briefs.
+// Best-effort: cosmetic, a failure must not break history.
+func (i *Interactor) hydrateSendAs(ctx context.Context, msgs []domain.Message) {
+	if i.groups == nil {
+		return
+	}
+	var ids []int64
+	seen := map[int64]bool{}
+	for _, m := range msgs {
+		if m.SendAsChatID != nil && !seen[*m.SendAsChatID] {
+			seen[*m.SendAsChatID] = true
+			ids = append(ids, *m.SendAsChatID)
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	briefs, err := i.groups.ChatBriefs(ctx, ids)
+	if err != nil {
+		return
+	}
+	for k := range msgs {
+		if msgs[k].SendAsChatID == nil {
+			continue
+		}
+		if b, ok := briefs[*msgs[k].SendAsChatID]; ok {
+			msgs[k].SendAsTitle, msgs[k].SendAsPhotoID = b.Title, b.PhotoID
+		}
+	}
 }
 
 // hydrateReactions fills Reactions (emoji aggregates + the viewer's mine flag) on
@@ -249,6 +282,7 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 	i.hydratePaidMedia(ctx, userID, msgs)
 	_ = i.hydrateReactions(ctx, userID, msgs)
 	i.hydrateStarReactions(ctx, userID, msgs)
+	i.hydrateSendAs(ctx, msgs)
 	var count int
 	if threadRoot != nil {
 		count, err = i.msgs.CountThread(ctx, chatID, *threadRoot)

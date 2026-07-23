@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -311,6 +312,8 @@ type sendBody struct {
 	// Платное медиа (Telegram paid media): цена доступа в звёздах. nil/<=0 — обычное
 	// медиа; применяется только к фото/видео с прикреплённым media_id.
 	PaidMediaPrice *int64 `json:"paid_media_price"`
+	// Отправка от имени канала/группы (Telegram send_as); nil — от себя.
+	SendAsChatID *int64 `json:"send_as_chat_id"`
 }
 
 func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
@@ -336,6 +339,7 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		GeoTitle: body.GeoTitle, GeoAddress: body.GeoAddress,
 		GeoLivePeriod: body.GeoLivePeriod, GeoHeading: body.GeoHeading,
 		PaidMediaPrice: body.PaidMediaPrice,
+		SendAsChatID:   body.SendAsChatID,
 	})
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
@@ -1602,6 +1606,38 @@ func (h *ChatHandler) ReactionUsers(w http.ResponseWriter, r *http.Request) {
 
 // SavedTags — GET /saved/tags: теги-реакции «Избранного» вызывающего (реакция +
 // имя + число помеченных сообщений), самые частые первыми.
+// SendAs — GET /chats/{chatID}/send_as: доступные «личности отправителя»
+// (Telegram channels.getSendAs). Всегда содержит самого пользователя; для групп —
+// плюс привязанный канал (если юзер его админ) и саму группу (анонимный админ).
+func (h *ChatHandler) SendAs(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	peers, err := h.svc.GetSendAs(r.Context(), h.meID(r), chatID)
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusForbidden, "not a member of this chat")
+		return
+	}
+	if errors.Is(err, domain.ErrForbidden) {
+		writeError(w, http.StatusForbidden, "not allowed")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load send-as")
+		return
+	}
+	out := make([]map[string]any, 0, len(peers))
+	for _, p := range peers {
+		e := map[string]any{"peer_id": p.PeerID, "kind": p.Kind, "title": p.Title}
+		if p.PhotoID != nil {
+			e["avatar_url"] = fmt.Sprintf("/media/%d/content", *p.PhotoID)
+		}
+		out = append(out, e)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"peers": out})
+}
+
 func (h *ChatHandler) SavedTags(w http.ResponseWriter, r *http.Request) {
 	tags, err := h.svc.SavedTags(r.Context(), h.meID(r))
 	if err != nil {
@@ -1832,6 +1868,17 @@ func messageJSON(m domain.Message) map[string]any {
 	}
 	if m.Effect != "" {
 		j["effect"] = m.Effect
+	}
+	// Send-as: отображаемый автор (канал/группа); sender_id остаётся реальным.
+	if m.SendAsChatID != nil {
+		sa := map[string]any{"chat_id": *m.SendAsChatID}
+		if m.SendAsTitle != "" {
+			sa["title"] = m.SendAsTitle
+		}
+		if m.SendAsPhotoID != nil {
+			sa["photo_id"] = *m.SendAsPhotoID
+		}
+		j["send_as"] = sa
 	}
 	if m.ReplyTo != nil {
 		rt := map[string]any{

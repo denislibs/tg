@@ -202,6 +202,9 @@ export interface RawMessage {
   star_reaction?: { total: number; mine?: number } | null
   /** «проверка фактов» (Telegram factCheck): текст + сущности + опц. страна ISO2 */
   factcheck?: RawFactCheck | null
+  /** send-as (Telegram send_as): отображаемый автор (канал/группа) вместо
+   * sender_id, который остаётся реальным. Отсутствует — обычная отправка. */
+  send_as?: { chat_id: number; title?: string; photo_id?: number } | null
 }
 
 // «Проверка фактов» (Telegram factCheck): пояснение автора/админа канала к посту.
@@ -337,6 +340,9 @@ export interface Message {
   /** платная ⭐-реакция (Telegram paid/star reactions): суммарно потрачено звёзд
    * на сообщение (total) + личный вклад зрителя (mine). undefined — реакций нет. */
   starReaction?: { total: number; mine: number }
+  /** send-as (Telegram send_as): отображаемый автор (канал/группа) — бабл
+   * рисуется от его имени; senderId остаётся реальным. undefined — обычная. */
+  sendAs?: { chatId: number; title: string; photoId?: number }
 }
 
 // Опрос (backend PollInfo): вопрос + варианты + агрегаты для зрителя.
@@ -716,5 +722,6 @@ export function mapMessage(r: RawMessage): Message {
     effect: mapEffect(r.effect),
     paidMedia: r.paid_media ? { price: r.paid_media.price, locked: r.paid_media.locked } : undefined,
     starReaction: r.star_reaction ? { total: r.star_reaction.total, mine: r.star_reaction.mine ?? 0 } : undefined,
+    sendAs: r.send_as ? { chatId: r.send_as.chat_id, title: r.send_as.title ?? '', photoId: r.send_as.photo_id } : undefined,
   }
 }

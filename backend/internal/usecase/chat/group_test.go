@@ -223,6 +223,29 @@ func (r *fakeGroupRepo) IsDiscussionGroup(_ context.Context, chatID int64) (bool
 	return false, nil
 }
 
+func (r *fakeGroupRepo) DiscussionChannel(_ context.Context, groupID int64) (int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for ch, gid := range r.discussion {
+		if gid == groupID {
+			return ch, nil
+		}
+	}
+	return 0, nil
+}
+
+func (r *fakeGroupRepo) ChatBriefs(_ context.Context, ids []int64) (map[int64]domain.ChatBrief, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := map[int64]domain.ChatBrief{}
+	for _, id := range ids {
+		if c, ok := r.cards[id]; ok {
+			out[id] = domain.ChatBrief{ID: id, Type: c.Type, Title: c.Title, PhotoID: c.PhotoMediaID}
+		}
+	}
+	return out, nil
+}
+
 func (r *fakeGroupRepo) CreateMultiMember(_ context.Context, typ, title, about, username string, isPublic bool, creatorID int64) (int64, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

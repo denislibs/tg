@@ -44,6 +44,8 @@ type sendMessageData struct {
 	Effect string `json:"effect"`
 	// PaidMediaPrice — цена платного медиа (Telegram paid media) в звёздах.
 	PaidMediaPrice *int64 `json:"paid_media_price"`
+	// SendAsChatID — отправка от имени канала/группы (Telegram send_as); nil — от себя.
+	SendAsChatID *int64 `json:"send_as_chat_id"`
 }
 
 type readData struct {

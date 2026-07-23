@@ -34,6 +34,7 @@ import { useChatSelection } from '../core/hooks/useChatSelection'
 import { useChatInfoCard } from '../core/hooks/useChatInfoCard'
 import { usePinnedBar } from '../core/hooks/usePinnedBar'
 import { useChatSend } from '../core/hooks/useChatSend'
+import { useSendAs } from '../core/hooks/useSendAs'
 import { useSlowmode } from '../core/hooks/useSlowmode'
 import { useChatScroll } from '../core/hooks/useChatScroll'
 import { useConvMessages } from '../core/hooks/useConvMessages'
@@ -460,6 +461,11 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // and the reply/editing composer state — extracted view-model hook. Scroll intent
   // (atBottomRef/userScrolledUpRef) is owned here and passed in. Declared before
   // useMessageActions, which needs setReply/setEditing for its reply/edit actions.
+  // Send-as (Telegram send_as): «личности отправителя» доступны в реальных группах
+  // (супергруппа-обсуждение с привязанным каналом / анонимный админ). Выбор per-chat.
+  const sendAs = useSendAs(numericChatId, isRealChat && isGroup && !thread, meId, managers)
+  const sendAsChatId = sendAs.currentId !== 0 && sendAs.currentId !== meId ? sendAs.currentId : null
+
   const {
     reply, setReply, editing, setEditing,
     rec,
@@ -470,7 +476,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     sendGeo, sendContact, sendSticker, sendGif,
   } = useChatSend({
     chat, numericChatId, isRealChat, isChannel, draftPeerId, canType, secretLocked,
-    meId, win, managers, threadRootId, atBottomRef, userScrolledUpRef,
+    meId, win, managers, threadRootId, sendAsChatId, atBottomRef, userScrolledUpRef,
     onChatCreated,
   })
 
@@ -1069,6 +1075,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               slowmodeLeft={slowmodeLeft}
               secret={chat.type === 'secret'}
               chargeStars={composerChargeStars}
+              sendAs={sendAs.peers.length > 1 ? { peers: sendAs.peers, currentId: sendAs.currentId, onSelect: sendAs.select } : undefined}
               onEditLast={onComposerEditLast}
               onReplyPrev={onComposerReplyPrev}
             />

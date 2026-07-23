@@ -40,7 +40,10 @@ export function messageToConvMsg(
   meId: number | null,
   opts?: { senderName?: string; readUpToSeq?: number; forwardFromName?: string; replyToName?: string },
 ): ConvMsg {
-  const out = meId != null && m.senderId === meId
+  // Send-as (Telegram send_as): сообщение авторства канала/группы — рисуется
+  // входящим от имени send-as личности (как автофорвард поста канала), даже если
+  // реальный отправитель — я. Реальный senderId в бабле не показываем.
+  const out = meId != null && m.senderId === meId && !m.sendAs
   // Voice messages get their own bubble; service events render as a centered
   // pill (no sender/ticks); other media render via the generic media bubble
   // (keyed off mediaId), so everything else maps to 'text'.
@@ -121,8 +124,10 @@ export function messageToConvMsg(
     paidMedia: m.paidMedia,
     groupedId: m.groupedId ?? undefined,
     localUrl: m.localUrl,
-    sender: !out && opts?.senderName ? opts.senderName : undefined,
-    senderId: !out ? m.senderId : undefined,
+    // Send-as: автор бабла — канал/группа (её title), клик-профиль отключаем
+    // (senderId скрыт). Иначе — обычная логика имени участника группы.
+    sender: m.sendAs ? m.sendAs.title : (!out && opts?.senderName ? opts.senderName : undefined),
+    senderId: m.sendAs ? undefined : (!out ? m.senderId : undefined),
     edited: m.editedAt != null,
     views: m.views,
     forwards: m.forwards,
