@@ -801,7 +801,7 @@ func (r fakeMsgs) HideForUser(_ context.Context, userID, msgID int64) error {
 	return nil
 }
 
-func (r fakeMsgs) GetHistory(_ context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, _ *int64, clearedSeq int64) ([]domain.Message, error) {
+func (r fakeMsgs) GetHistory(_ context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, _ *int64, clearedSeq int64, tag string) ([]domain.Message, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	all := r.s.messages[chatID]
@@ -811,6 +811,12 @@ func (r fakeMsgs) GetHistory(_ context.Context, chatID, userID, offsetSeq int64,
 		}
 		if m.Seq <= clearedSeq {
 			return true // «очищено» у себя: за персональным горизонтом
+		}
+		// Фильтр «Избранного» по тегу-реакции: оставляем помеченные зрителем tag.
+		if tag != "" {
+			if _, ok := r.s.reactions[m.ID][userID][tag]; !ok {
+				return true
+			}
 		}
 		return r.s.hidden != nil && r.s.hidden[userID] != nil && r.s.hidden[userID][m.ID]
 	}

@@ -143,6 +143,10 @@ func registerServer(p serverParams) {
 	// звёздах хранится отдельной таблицей, агрегат подмешивается read-моделью.
 	p.ChatUC.SetStarReactions(pgadapter.NewStarReactionsRepo(p.Pool))
 
+	// Теги-реакции «Избранного» (Telegram saved reaction tags): имена тегов в
+	// отдельной таблице, список и счётчики вычисляются из reactions по самочату.
+	p.ChatUC.SetSavedTags(pgadapter.NewSavedTagsRepo(p.Pool))
+
 	// Боты: флаг is_bot + команды; демо-бот авто-отвечает в приватном чате.
 	p.ChatUC.SetBots(pgadapter.NewBotRepo(p.Pool))
 

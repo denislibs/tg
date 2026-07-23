@@ -11,7 +11,9 @@ import (
 // threadRoot != nil ограничивает окно тредом (форум-топик / комментарии поста);
 // тред discussion-группы читается и не-членом (как ListComments — комментарии
 // канала доступны подписчикам без вступления в группу).
-func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRoot *int64) (HistoryResult, error) {
+// tag (optional) — фильтр «Избранного» по тегу-реакции: возвращаются только
+// сообщения, помеченные зрителем реакцией tag (Telegram search by saved tag).
+func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRoot *int64, tag string) (HistoryResult, error) {
 	if err := i.checkHistoryAccess(ctx, chatID, userID, threadRoot); err != nil {
 		return HistoryResult{}, err
 	}
@@ -22,7 +24,7 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 	if err != nil {
 		return HistoryResult{}, err
 	}
-	msgs, err := i.msgs.GetHistory(ctx, chatID, userID, offsetSeq, addOffset, limit, threadRoot, cleared)
+	msgs, err := i.msgs.GetHistory(ctx, chatID, userID, offsetSeq, addOffset, limit, threadRoot, cleared, tag)
 	if err != nil {
 		return HistoryResult{}, err
 	}
@@ -46,9 +48,13 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 	_ = i.hydrateReactions(ctx, userID, msgs)
 	i.hydrateStarReactions(ctx, userID, msgs)
 	var count int
-	if threadRoot != nil {
+	switch {
+	case tag != "":
+		// Фильтр по тегу отдаёт своё узкое окно — общий счётчик чата тут не к месту.
+		count = len(msgs)
+	case threadRoot != nil:
 		count, err = i.msgs.CountThread(ctx, chatID, *threadRoot)
-	} else {
+	default:
 		count, err = i.msgs.CountMessages(ctx, chatID)
 	}
 	if err != nil {

@@ -149,6 +149,8 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Delete("/chats/{chatID}/draft", ch.DeleteDraft)
 		pr.Post("/saved", ch.Saved)
 		pr.Get("/saved/dialogs", ch.SavedDialogs)
+		pr.Get("/saved/tags", ch.SavedTags)                  // теги-реакции «Избранного»
+		pr.Put("/saved/tags/{reaction}", ch.SetSavedTagName) // имя тега (updateSavedReactionTag)
 		pr.Get("/chats", ch.ListDialogs)
 		pr.Post("/chats/{chatID}/messages", ch.Send)
 		pr.Patch("/chats/{chatID}/messages/{msgID}", ch.EditMessage)

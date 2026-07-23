@@ -436,6 +436,12 @@ const ru: Dict = {
   Select: 'Выбрать',
   'Nobody viewed': 'Никто не просмотрел',
   Delete: 'Удалить',
+  // ── Saved Messages tags (теги-реакции «Избранного») ──
+  Tags: 'Теги',
+  Tag: 'Тег',
+  'Rename tag': 'Переименовать тег',
+  'Filter by tag': 'Фильтр по тегу',
+  'Add a tag name': 'Добавить имя тега',
   'typing…': 'печатает…',
   'Reply to': 'Ответ',
   edited: 'изменено',

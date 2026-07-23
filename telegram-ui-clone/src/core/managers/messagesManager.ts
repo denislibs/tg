@@ -41,6 +41,19 @@ export interface ReactionUser {
   emoji: string
 }
 
+/** Тег-реакция «Избранного»: реакция (эмодзи/id кастом-эмодзи), имя и счётчик. */
+export interface SavedTag {
+  reaction: string
+  title: string
+  count: number
+}
+
+interface RawSavedTag {
+  reaction: string
+  title?: string
+  count: number
+}
+
 interface RawReactionUser {
   user_id: number
   name: string
@@ -575,6 +588,18 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
 
     async unreact(chatId: number, msgId: number, emoji: string): Promise<void> {
       await rest.del(`/chats/${chatId}/messages/${msgId}/reactions/${encodeURIComponent(emoji)}`)
+    },
+
+    // Теги-реакции «Избранного» (Telegram saved reaction tags). Пометка/снятие
+    // тега — это react/unreact в самочате; здесь — список тегов и их имена.
+    async getSavedTags(): Promise<SavedTag[]> {
+      const r = await rest.get<{ tags: RawSavedTag[] }>('/saved/tags')
+      return (r.tags ?? []).map((t) => ({ reaction: t.reaction, title: t.title ?? '', count: t.count }))
+    },
+
+    // Задать/переименовать/очистить (пустой title) имя тега (updateSavedReactionTag).
+    async renameSavedTag(reaction: string, title: string): Promise<void> {
+      await rest.put(`/saved/tags/${encodeURIComponent(reaction)}`, { title })
     },
 
     // Платная ⭐-реакция: списать count звёзд у себя, начислить автору, накопить

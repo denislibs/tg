@@ -37,6 +37,7 @@ type Interactor struct {
 	stars        StarsRepo
 	paidMedia    PaidMediaRepo
 	starReaction StarReactionRepo
+	savedTags    SavedTagRepo
 	bots         BotRepo
 	botAPI       BotAPIRepo
 	botMedia     BotMediaStore
@@ -120,6 +121,10 @@ func (i *Interactor) SetPaidMedia(p PaidMediaRepo) { i.paidMedia = p }
 // SetStarReactions подключает хранилище платных ⭐-реакций (optional; без него и
 // без stars star-реакции → 404).
 func (i *Interactor) SetStarReactions(s StarReactionRepo) { i.starReaction = s }
+
+// SetSavedTags подключает хранилище имён тегов-реакций «Избранного» (optional;
+// без него список тегов пуст, а переименование недоступно).
+func (i *Interactor) SetSavedTags(s SavedTagRepo) { i.savedTags = s }
 
 // SetBots подключает данные ботов (optional; без него авто-ответы отключены).
 func (i *Interactor) SetBots(b BotRepo) { i.bots = b }

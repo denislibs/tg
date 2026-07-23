@@ -507,7 +507,7 @@ func (r *MessagesRepo) HideForUser(ctx context.Context, userID, msgID int64) err
 // сообщения с этим thread_root_id плюс само корневое сообщение.
 // clearedSeq — персональный горизонт «очистки истории»: сообщения с seq<=clearedSeq
 // скрыты для этого читателя (0 — ничего не очищено).
-func (r *MessagesRepo) GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRootID *int64, clearedSeq int64) ([]domain.Message, error) {
+func (r *MessagesRepo) GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRootID *int64, clearedSeq int64, tag string) ([]domain.Message, error) {
 	q := querier(ctx, r.pool)
 	// Skip deleted (never shown) and rows this user hid for themselves. Placeholder
 	// differs per query shape.
@@ -516,21 +516,25 @@ func (r *MessagesRepo) GetHistory(ctx context.Context, chatID, userID, offsetSeq
 	// The %[2]d placeholder is the per-member cleared horizon (seq>clearedSeq).
 	const exclN = ` AND deleted_at IS NULL AND seq>$%[2]d AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id=messages.id AND h.user_id=$%[1]d) AND ((SELECT history_for_new FROM chats WHERE id=$1) OR messages.created_at >= COALESCE((SELECT cm.joined_at FROM chat_members cm WHERE cm.chat_id=$1 AND cm.user_id=$%[1]d AND cm.role='member'), 'epoch'::timestamptz))`
 	const thrN = ` AND ($%d::bigint IS NULL OR thread_root_id=$%[1]d OR id=$%[1]d)`
+	// tagN (Избранное): оставляем только сообщения, помеченные зрителем реакцией
+	// $%[2]d (эмодзи/id кастом-эмодзи). Пустой тег ($%[2]d='') снимает фильтр.
+	// %[1]d — плейсхолдер userID, %[2]d — плейсхолдер tag.
+	const tagN = ` AND ($%[2]d='' OR EXISTS (SELECT 1 FROM reactions rx WHERE rx.message_id=messages.id AND rx.user_id=$%[1]d AND rx.emoji=$%[2]d))`
 	var rows pgx.Rows
 	var err error
 	switch {
 	case offsetSeq == 0:
 		rows, err = q.Query(ctx,
-			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1`+fmt.Sprintf(exclN, 3, 5)+fmt.Sprintf(thrN, 4)+` ORDER BY seq DESC LIMIT $2`,
-			chatID, limit, userID, threadRootID, clearedSeq)
+			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1`+fmt.Sprintf(exclN, 3, 5)+fmt.Sprintf(thrN, 4)+fmt.Sprintf(tagN, 3, 6)+` ORDER BY seq DESC LIMIT $2`,
+			chatID, limit, userID, threadRootID, clearedSeq, tag)
 	case addOffset <= 0: // newer than offset
 		rows, err = q.Query(ctx,
-			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq>$2`+fmt.Sprintf(exclN, 4, 6)+fmt.Sprintf(thrN, 5)+` ORDER BY seq ASC LIMIT $3`,
-			chatID, offsetSeq, limit, userID, threadRootID, clearedSeq)
+			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq>$2`+fmt.Sprintf(exclN, 4, 6)+fmt.Sprintf(thrN, 5)+fmt.Sprintf(tagN, 4, 7)+` ORDER BY seq ASC LIMIT $3`,
+			chatID, offsetSeq, limit, userID, threadRootID, clearedSeq, tag)
 	default: // older, inclusive of offset
 		rows, err = q.Query(ctx,
-			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq<=$2`+fmt.Sprintf(exclN, 4, 6)+fmt.Sprintf(thrN, 5)+` ORDER BY seq DESC LIMIT $3`,
-			chatID, offsetSeq, limit, userID, threadRootID, clearedSeq)
+			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq<=$2`+fmt.Sprintf(exclN, 4, 6)+fmt.Sprintf(thrN, 5)+fmt.Sprintf(tagN, 4, 7)+` ORDER BY seq DESC LIMIT $3`,
+			chatID, offsetSeq, limit, userID, threadRootID, clearedSeq, tag)
 	}
 	if err != nil {
 		return nil, err

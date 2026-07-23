@@ -395,7 +395,9 @@ func (h *ChatHandler) History(w http.ResponseWriter, r *http.Request) {
 	}
 	offsetSeq := queryInt(r, "offset_id", 0)
 	addOffset := int(queryInt(r, "add_offset", 0))
-	res, err := h.svc.GetHistory(r.Context(), chatID, h.meID(r), offsetSeq, addOffset, limit, threadRoot)
+	// ?tag=<реакция> — фильтр «Избранного» по тегу-реакции (tweb search by saved tag).
+	tag := r.URL.Query().Get("tag")
+	res, err := h.svc.GetHistory(r.Context(), chatID, h.meID(r), offsetSeq, addOffset, limit, threadRoot, tag)
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
 		return
@@ -1596,6 +1598,53 @@ func (h *ChatHandler) ReactionUsers(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"users": out})
+}
+
+// SavedTags — GET /saved/tags: теги-реакции «Избранного» вызывающего (реакция +
+// имя + число помеченных сообщений), самые частые первыми.
+func (h *ChatHandler) SavedTags(w http.ResponseWriter, r *http.Request) {
+	tags, err := h.svc.SavedTags(r.Context(), h.meID(r))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load saved tags")
+		return
+	}
+	if tags == nil {
+		tags = []domain.SavedTag{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"tags": tags})
+}
+
+type savedTagBody struct {
+	Title string `json:"title"`
+}
+
+// SetSavedTagName — PUT /saved/tags/{reaction}: задать/переименовать/очистить имя
+// тега (Telegram updateSavedReactionTag). Пустой title стирает имя.
+func (h *ChatHandler) SetSavedTagName(w http.ResponseWriter, r *http.Request) {
+	reaction := chi.URLParam(r, "reaction")
+	if reaction == "" {
+		writeError(w, http.StatusBadRequest, "reaction is required")
+		return
+	}
+	var body savedTagBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	err := h.svc.SetSavedTagName(r.Context(), h.meID(r), reaction, body.Title)
+	if errors.Is(err, domain.ErrBadReaction) {
+		writeError(w, http.StatusBadRequest, "invalid reaction")
+		return
+	}
+	if errors.Is(err, domain.ErrTooLong) || errors.Is(err, domain.ErrInvalid) {
+		writeError(w, http.StatusBadRequest, "invalid tag name")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not update tag")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // SendStarReaction — POST /chats/{chatID}/messages/{msgID}/star_reaction

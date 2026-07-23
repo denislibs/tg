@@ -164,7 +164,7 @@ type MessageRepo interface {
 	// clearedSeq — персональный горизонт «очистки истории»: сообщения с
 	// seq<=clearedSeq скрыты для этого читателя (0 — ничего не очищено).
 	GetAround(ctx context.Context, chatID, userID, centerSeq int64, limit int, threadRootID *int64, clearedSeq int64) ([]domain.Message, bool, bool, error)
-	GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRootID *int64, clearedSeq int64) ([]domain.Message, error)
+	GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRootID *int64, clearedSeq int64, tag string) ([]domain.Message, error)
 	// LastMessageAt is the newest non-deleted message time by senderID in the chat
 	// (slowmode); domain.ErrNotFound when they haven't posted yet.
 	LastMessageAt(ctx context.Context, chatID, senderID int64) (time.Time, error)
@@ -262,6 +262,18 @@ type StarReactionRepo interface {
 	// TopSenders — крупнейшие отправители звёзд сообщения (по убыванию), с
 	// карточкой пользователя для отображения. Anonymous сохраняется во флаге.
 	TopSenders(ctx context.Context, messageID int64, limit int) ([]domain.StarReactionSender, error)
+}
+
+// SavedTagRepo — имена тегов-реакций «Избранного» (Telegram saved reaction tags).
+// Список тегов и счётчики вычисляются из reactions по самочату (ListWithCounts);
+// имена хранятся отдельной таблицей и подмешиваются.
+type SavedTagRepo interface {
+	// ListWithCounts returns the user's saved tags: each reaction they placed on a
+	// message in their saved chat, with the stored title (empty if none) and the
+	// number of tagged messages, most used first.
+	ListWithCounts(ctx context.Context, userID, savedChatID int64) ([]domain.SavedTag, error)
+	// SetTitle upserts a tag's display name; an empty title clears it (row removed).
+	SetTitle(ctx context.Context, userID int64, reaction, title string) error
 }
 
 type MediaAccessRepo interface {

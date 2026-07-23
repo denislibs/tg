@@ -206,7 +206,7 @@ func TestGetHistory_Window(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "m"})
 	}
-	res, err := in.GetHistory(ctx, chatID, a, 0, 0, 3, nil)
+	res, err := in.GetHistory(ctx, chatID, a, 0, 0, 3, nil, "")
 	if err != nil {
 		t.Fatalf("GetHistory: %v", err)
 	}
@@ -218,7 +218,7 @@ func TestGetHistory_Window(t *testing.T) {
 	}
 
 	// Non-member cannot read.
-	if _, err := in.GetHistory(ctx, chatID, 999, 0, 0, 10, nil); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := in.GetHistory(ctx, chatID, 999, 0, 0, 10, nil, ""); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound for non-member, got %v", err)
 	}
 }
@@ -239,7 +239,7 @@ func TestClearHistory(t *testing.T) {
 	}
 
 	// b больше не видит истории и не имеет непрочитанного.
-	res, err := in.GetHistory(ctx, chatID, b, 0, 0, 10, nil)
+	res, err := in.GetHistory(ctx, chatID, b, 0, 0, 10, nil, "")
 	if err != nil {
 		t.Fatalf("GetHistory b: %v", err)
 	}
@@ -251,14 +251,14 @@ func TestClearHistory(t *testing.T) {
 	}
 
 	// a (другая сторона) историю сохраняет — это «очистка у себя».
-	resA, _ := in.GetHistory(ctx, chatID, a, 0, 0, 10, nil)
+	resA, _ := in.GetHistory(ctx, chatID, a, 0, 0, 10, nil, "")
 	if len(resA.Messages) != 3 {
 		t.Fatalf("a history after b's clear = %d msgs, want 3", len(resA.Messages))
 	}
 
 	// Новое сообщение после очистки снова видно у b (seq за горизонтом).
 	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "after"})
-	resB2, _ := in.GetHistory(ctx, chatID, b, 0, 0, 10, nil)
+	resB2, _ := in.GetHistory(ctx, chatID, b, 0, 0, 10, nil, "")
 	if len(resB2.Messages) != 1 {
 		t.Fatalf("b history after new msg = %d, want 1", len(resB2.Messages))
 	}
@@ -327,7 +327,7 @@ func TestEditMessage(t *testing.T) {
 	if upd.Text != "edited" || upd.EditedAt == nil {
 		t.Fatalf("edit result = %+v", upd)
 	}
-	res, _ := in.GetHistory(ctx, chatID, a, 0, 0, 10, nil)
+	res, _ := in.GetHistory(ctx, chatID, a, 0, 0, 10, nil, "")
 	if res.Messages[0].Text != "edited" || res.Messages[0].EditedAt == nil {
 		t.Fatalf("history not edited: %+v", res.Messages[0])
 	}
@@ -350,7 +350,7 @@ func TestDeleteMessage_ForEveryone(t *testing.T) {
 		t.Fatalf("private non-author revoke: %v", err)
 	}
 	// Deleted messages are never shown — gone from history for both sides.
-	res, _ := in.GetHistory(ctx, chatID, a, 0, 0, 10, nil)
+	res, _ := in.GetHistory(ctx, chatID, a, 0, 0, 10, nil, "")
 	if len(res.Messages) != 0 {
 		t.Fatalf("after revoke (a view) should be empty: %+v", res.Messages)
 	}
@@ -368,11 +368,11 @@ func TestDeleteMessage_ForMe(t *testing.T) {
 		t.Fatalf("DeleteMessage forMe: %v", err)
 	}
 	// b no longer sees it; a still does.
-	resB, _ := in.GetHistory(ctx, chatID, b, 0, 0, 10, nil)
+	resB, _ := in.GetHistory(ctx, chatID, b, 0, 0, 10, nil, "")
 	if len(resB.Messages) != 0 {
 		t.Fatalf("b should not see hidden msg: %+v", resB.Messages)
 	}
-	resA, _ := in.GetHistory(ctx, chatID, a, 0, 0, 10, nil)
+	resA, _ := in.GetHistory(ctx, chatID, a, 0, 0, 10, nil, "")
 	if len(resA.Messages) != 1 {
 		t.Fatalf("a should still see msg: %+v", resA.Messages)
 	}
@@ -401,7 +401,7 @@ func TestForwardMessages(t *testing.T) {
 		t.Fatalf("forward origin = %+v", m)
 	}
 	// It lands in the destination history.
-	res, _ := in.GetHistory(ctx, dst, c, 0, 0, 10, nil)
+	res, _ := in.GetHistory(ctx, dst, c, 0, 0, 10, nil, "")
 	if len(res.Messages) != 1 || res.Messages[0].FwdFromUserID == nil {
 		t.Fatalf("dst history = %+v", res.Messages)
 	}
@@ -453,7 +453,7 @@ func TestGetHistory_HydratesReply(t *testing.T) {
 	orig, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "original"})
 	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: b, Text: "reply", ReplyToID: &orig.ID})
 
-	res, _ := in.GetHistory(ctx, chatID, a, 0, 0, 10, nil)
+	res, _ := in.GetHistory(ctx, chatID, a, 0, 0, 10, nil, "")
 	var replyMsg *domain.Message
 	for i := range res.Messages {
 		if res.Messages[i].Text == "reply" {

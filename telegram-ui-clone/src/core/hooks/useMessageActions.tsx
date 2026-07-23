@@ -305,6 +305,9 @@ export function useMessageActions({
       store.applyReaction(numericChatId, msgId, emoji, 'add', true)
       void managers.messages.react(numericChatId, msgId, emoji)
     }
+    // В «Избранном» реакция = тег: пусть панель тегов пересчитает список/счётчики
+    // (слушатель есть только когда открыт самочат).
+    uiEvents.emit('ui:savedTagsChanged', undefined)
   })
 
   // Кто отреагировал (long-press / правый клик по чипу реакции): попап со списком

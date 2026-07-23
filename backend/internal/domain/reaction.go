@@ -14,6 +14,15 @@ type ReactionUser struct {
 	Emoji string
 }
 
+// SavedTag — тег-реакция «Избранного» (Telegram saved reaction tag): реакция
+// (эмодзи или id кастом-эмодзи как строка), заданное пользователем имя (может
+// быть пустым) и число помеченных этим тегом сообщений в самочате.
+type SavedTag struct {
+	Reaction string `json:"reaction"`
+	Title    string `json:"title,omitempty"`
+	Count    int    `json:"count"`
+}
+
 // StarReactionAgg — агрегат платной ⭐-реакции сообщения для зрителя: суммарное
 // число звёзд (Total) и личный вклад зрителя (Mine). Наполняется read-моделью
 // истории (не хранится на строке сообщения). Total==0 — платных реакций нет.
