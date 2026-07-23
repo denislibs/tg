@@ -30,6 +30,8 @@ interface Props {
   onClearHistory?: () => void
   /** открыть пикер темы оформления чата (messages.setChatTheme) */
   onChangeTheme?: () => void
+  /** открыть попап отправки подарка собеседнику (Chat.Menu.SendGift) */
+  onSendGift?: () => void
   /** открыть попап буста канала */
   onBoost?: () => void
   /** открыть попап создания розыгрыша (владелец канала) */
@@ -40,7 +42,7 @@ interface Props {
   onOpenSuggested?: () => void
 }
 
-export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddMember, onSelectMessages, onAddContact, onDeleteChat, onClearHistory, onChangeTheme, onBoost, onCreateGiveaway, onStartStream, onOpenSuggested }: Props) {
+export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddMember, onSelectMessages, onAddContact, onDeleteChat, onClearHistory, onChangeTheme, onSendGift, onBoost, onCreateGiveaway, onStartStream, onOpenSuggested }: Props) {
   const t = useT()
   const managers = useManagers()
   const { start: startCall } = useCall()
@@ -136,7 +138,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
       ...(!isService
         ? [
             { icon: <TgIcon name="adduser" size={20} />, label: 'Add to contacts', onClick: onAddContact ? () => { onAddContact(); close() } : undefined },
-            { icon: <TgIcon name="gift" size={20} />, label: 'Send a Gift' },
+            { icon: <TgIcon name="gift" size={20} />, label: 'Send a Gift', onClick: onSendGift ? () => { onSendGift(); close() } : undefined },
             blocked
               ? { icon: <TgIcon name="lockoff" size={20} />, label: 'Unblock user', onClick: toggleBlock }
               : { icon: <TgIcon name="lock" size={20} />, label: 'Block user', onClick: toggleBlock },

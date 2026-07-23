@@ -205,7 +205,7 @@ const ru: Dict = {
   'Keyboard Shortcuts': 'Горячие клавиши',
   'Telegram Premium': 'Telegram Premium',
   'Send a Gift': 'Отправить подарок',
-  'Start Secret Chat': 'Начать секретный чат',
+  'New Secret Chat': 'Секретный чат',
   'Encryption Key': 'Ключ шифрования',
   "Compare these emoji with the ones your contact sees on their device. If they match, the chat is end-to-end encrypted.":
     'Сравните эти эмодзи с теми, что видит собеседник на своём устройстве. Если они совпадают — переписка защищена end-to-end.',

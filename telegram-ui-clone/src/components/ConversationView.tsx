@@ -79,6 +79,7 @@ import ScrollDownFab from './conversation/ScrollDownFab'
 import SelectionBar from './conversation/SelectionBar'
 import MessageContextMenu from './conversation/MessageContextMenu'
 import StarReactionPopup from './stars/StarReactionPopup'
+import SendGiftPopup from './stars/SendGiftPopup'
 import PostStats from './PostStats'
 import FactCheckEditor from './conversation/FactCheckEditor'
 import { useChatsStore, loadChats } from '../stores/chatsStore'
@@ -325,6 +326,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // in searchStore) to hide the pinned bar + adjust the sticky-date offset.
   const searchOpen = useSearchStore((s) => s.byChat[numericChatId]?.open ?? false)
   const [headerMenu, setHeaderMenu] = useState<{ top: number; right: number } | null>(null)
+  const [giftPopupOpen, setGiftPopupOpen] = useState(false)
   const [themePickerOpen, setThemePickerOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
@@ -1109,9 +1111,9 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
             chat={chat}
             onClose={() => setInfoOpen(false)}
             onOpenPeer={onOpenPeer}
-            onChatCreated={onChatCreated}
             canAddMembers={canAddMember}
             onEditContact={() => { setInfoOpen(false); setEditContactOpen(true) }}
+            onSendGift={chat.type === 'private' && chat.peerId != null && chat.peerId !== meId ? () => setGiftPopupOpen(true) : undefined}
           />
         )}
       </AnimatePresence>
@@ -1179,10 +1181,22 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           onDeleteChat={isRealChat ? () => setConfirmDelete(true) : undefined}
           onClearHistory={isRealChat && chat.type !== 'channel' ? () => setConfirmClear(true) : undefined}
           onChangeTheme={isRealChat && (chat.type === 'private' || chat.type === 'group') ? () => setThemePickerOpen(true) : undefined}
+          onSendGift={chat.type === 'private' && chat.peerId != null && chat.peerId !== meId ? () => setGiftPopupOpen(true) : undefined}
           onBoost={isChannel && isRealChat ? () => setBoostOpen(true) : undefined}
           onCreateGiveaway={canCreateGiveaway ? () => setCreateGiveawayOpen(true) : undefined}
           onStartStream={isChannel && isRealChat && owned ? () => setStreamOpen(true) : undefined}
           onOpenSuggested={canCreateGiveaway ? () => setSuggestedOpen(true) : undefined}
+        />
+      )}
+
+      {/* Отправка подарка собеседнику (Chat.Menu.SendGift) — из «…»-меню шапки,
+          независимо от открытой инфо-панели */}
+      {chat.type === 'private' && chat.peerId != null && (
+        <SendGiftPopup
+          open={giftPopupOpen}
+          onClose={() => setGiftPopupOpen(false)}
+          toUserId={chat.peerId}
+          toName={chat.name}
         />
       )}
 

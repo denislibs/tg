@@ -15,9 +15,10 @@ export interface ComposeFabProps {
   onNewGroup: () => void
   onNewPrivate: () => void
   onNewChannel: () => void
+  onNewSecret: () => void
 }
 
-function ComposeFab({ searching, onNewGroup, onNewPrivate, onNewChannel }: ComposeFabProps) {
+function ComposeFab({ searching, onNewGroup, onNewPrivate, onNewChannel, onNewSecret }: ComposeFabProps) {
   const [open, setOpen] = useState(false)
   const close = () => setOpen(false)
   const fabRef = useRef<HTMLButtonElement>(null)
@@ -72,6 +73,7 @@ function ComposeFab({ searching, onNewGroup, onNewPrivate, onNewChannel }: Compo
         onNewGroup={onNewGroup}
         onNewPrivate={onNewPrivate}
         onNewChannel={onNewChannel}
+        onNewSecret={onNewSecret}
       />
     </>
   )

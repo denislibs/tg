@@ -266,6 +266,15 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 				msg.Giveaway = &info
 			}
 		}
+		// Сообщение-подарок несёт своё представление в live-кадре — иначе баббл
+		// пуст до перезагрузки (когда history-путь гидратит подарок). viewer 0 —
+		// нейтральное представление, как у poll/giveaway; per-viewer раскрытие
+		// отправителя (анонимность) применяется на history GET через hydrateGifts.
+		if msg.GiftID != nil && i.stars != nil {
+			if info, e2 := i.stars.GiftInfo(ctx, *msg.GiftID, 0); e2 == nil {
+				msg.Gift = &info
+			}
+		}
 		// Медиа-мета в live-кадр (имя/размер/mime/размеры) — как в history read
 		// model, чтобы файл у получателя не рисовался заглушкой до перезагрузки.
 		if msg.MediaID != nil {

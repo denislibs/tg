@@ -85,13 +85,6 @@ export function newGroupsManager({ rest }: { rest: Pick<RestClient, 'post' | 'ge
     async setMute(chatId: number, muted: boolean, until?: number): Promise<void> {
       await rest.post(`/chats/${chatId}/mute`, { muted, until: until ?? null })
     },
-    // per-chat уведомления: превью текста и/или звук ('default'|'none').
-    async setNotify(chatId: number, patch: { preview?: boolean; sound?: 'default' | 'none' }): Promise<void> {
-      await rest.put(`/chats/${chatId}/notify_settings`, {
-        preview: patch.preview ?? null,
-        sound: patch.sound ?? null,
-      })
-    },
     // ── Форум-топики ──
     async setForum(chatId: number, enabled: boolean): Promise<void> {
       await rest.post(`/chats/${chatId}/forum`, { enabled })

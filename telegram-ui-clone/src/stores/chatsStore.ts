@@ -24,7 +24,6 @@ interface ChatsState {
   upsertDialog: (d: Dialog) => void
   setActiveChat: (id: number | null) => void
   setDialogMuted: (chatId: number, muted: boolean) => void
-  setDialogNotify: (chatId: number, patch: { notifyPreview?: boolean; notifySound?: string }) => void
   setDialogPinned: (chatId: number, pinned: boolean) => void
   /** тема оформления чата сменилась (chat_theme_update) — '' сбрасывает к дефолту */
   setDialogTheme: (chatId: number, themeId: string) => void
@@ -65,14 +64,6 @@ export const useChatsStore = create<ChatsState>((set) => ({
       if (idx === -1) return {}
       const next = s.dialogs.slice()
       next[idx] = { ...next[idx], muted }
-      return { dialogs: next }
-    }),
-  setDialogNotify: (chatId, patch) =>
-    set((s) => {
-      const idx = s.dialogs.findIndex((d) => d.chatId === chatId)
-      if (idx === -1) return {}
-      const next = s.dialogs.slice()
-      next[idx] = { ...next[idx], ...patch }
       return { dialogs: next }
     }),
   setDialogTheme: (chatId, themeId) =>

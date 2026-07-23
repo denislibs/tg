@@ -51,6 +51,7 @@ export function mediaLabel(type?: string): string {
     case 'poll': return '📊 Опрос'
     case 'geo': return '📍 Геолокация'
     case 'contact': return '👤 Контакт'
+    case 'gift': return '🎁 Подарок'
     default: return ''
   }
 }
