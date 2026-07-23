@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -513,7 +514,7 @@ func TestSearchMessages(t *testing.T) {
 	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: b, Text: "пока"})
 	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "ПРИВЕТ снова"})
 
-	res, err := in.SearchMessages(ctx, chatID, a, "привет", 0, 20)
+	res, err := in.SearchMessages(ctx, chatID, a, "привет", SearchFilter{}, 0, 20)
 	if err != nil {
 		t.Fatalf("SearchMessages: %v", err)
 	}
@@ -521,8 +522,73 @@ func TestSearchMessages(t *testing.T) {
 		t.Fatalf("search count=%d msgs=%d, want 2/2", res.Count, len(res.Messages))
 	}
 	// Non-member rejected.
-	if _, err := in.SearchMessages(ctx, chatID, 999, "привет", 0, 20); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := in.SearchMessages(ctx, chatID, 999, "привет", SearchFilter{}, 0, 20); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("non-member search: want ErrNotFound, got %v", err)
+	}
+}
+
+func TestSearchMessagesFilters(t *testing.T) {
+	in, deps := newInteractor()
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	m1, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "привет от a"})
+	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: b, Text: "привет от b"})
+	// реакция 👍 на первое сообщение
+	_ = fakeReactions{deps}.Add(ctx, m1.ID, b, "👍")
+
+	// фильтр по автору сужает выдачу
+	res, err := in.SearchMessages(ctx, chatID, a, "привет", SearchFilter{SenderID: a}, 0, 20)
+	if err != nil {
+		t.Fatalf("search by sender: %v", err)
+	}
+	if res.Count != 1 || len(res.Messages) != 1 || res.Messages[0].SenderID != a {
+		t.Fatalf("sender filter: got count=%d msgs=%d", res.Count, len(res.Messages))
+	}
+
+	// пустой запрос + фильтр по реакции
+	res, err = in.SearchMessages(ctx, chatID, a, "", SearchFilter{Reaction: "👍"}, 0, 20)
+	if err != nil {
+		t.Fatalf("search by reaction: %v", err)
+	}
+	if res.Count != 1 || len(res.Messages) != 1 || res.Messages[0].ID != m1.ID {
+		t.Fatalf("reaction filter: got count=%d msgs=%d", res.Count, len(res.Messages))
+	}
+
+	// пустой запрос без фильтров — ничего не ищем
+	res, err = in.SearchMessages(ctx, chatID, a, "", SearchFilter{}, 0, 20)
+	if err != nil || res.Count != 0 || len(res.Messages) != 0 {
+		t.Fatalf("empty search: count=%d msgs=%d err=%v", res.Count, len(res.Messages), err)
+	}
+}
+
+func TestMessageSeqByDate(t *testing.T) {
+	in, _ := newInteractor()
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	m1, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "one"})
+	m2, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "two"})
+
+	// дата в прошлом → самое раннее сообщение
+	seq, err := in.MessageSeqByDate(ctx, chatID, a, time.Unix(0, 0))
+	if err != nil {
+		t.Fatalf("MessageSeqByDate: %v", err)
+	}
+	if seq != m1.Seq {
+		t.Fatalf("date-in-past: seq=%d want %d", seq, m1.Seq)
+	}
+	// дата в будущем → самое новое сообщение
+	seq, err = in.MessageSeqByDate(ctx, chatID, a, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("MessageSeqByDate future: %v", err)
+	}
+	if seq != m2.Seq {
+		t.Fatalf("date-in-future: seq=%d want %d", seq, m2.Seq)
+	}
+	// не участник
+	if _, err := in.MessageSeqByDate(ctx, chatID, 999, time.Unix(0, 0)); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("non-member date: want ErrNotFound, got %v", err)
 	}
 }
 

@@ -658,6 +658,14 @@ const ru: Dict = {
   'Send today at': 'Отправить сегодня в',
   'Send on': 'Отправить',
   at: 'в',
+  // ── Поиск в чате: jump-to-date + фильтры (tweb topbarSearch) ──
+  // (Photos/Videos/Files/Links/Music/'No results' уже есть в словаре выше)
+  'Jump to Date': 'Перейти к дате',
+  'Search from': 'От кого',
+  'Search by type': 'Тип',
+  'Search by reaction': 'По реакции',
+  'Voice messages': 'Голосовые',
+  'Round videos': 'Видеосообщения',
   'New Poll': 'Новый опрос',
   'Ask a Question': 'Задайте вопрос',
   'Poll options': 'Варианты ответа',

@@ -100,7 +100,8 @@ export interface Managers {
     listPins(chatId: number): Promise<Message[]>
     viewers(chatId: number, msgId: number): Promise<number[]>
     reactionUsers(chatId: number, msgId: number): Promise<ReactionUser[]>
-    searchMessages(chatId: number, q: string, offset?: number, limit?: number): Promise<{ messages: Message[]; count: number }>
+    searchMessages(chatId: number, q: string, opts?: { senderId?: number; mediaType?: string; reaction?: string; offset?: number; limit?: number }): Promise<{ messages: Message[]; count: number }>
+    messageByDate(chatId: number, date: number): Promise<number | null>
     searchGlobal(q: string, filter?: '' | 'media' | 'files' | 'links' | 'music' | 'voice', offset?: number, limit?: number): Promise<{ messages: Message[]; count: number }>
     sendPoll(chatId: number, p: { question: string; options: string[]; anonymous: boolean; multiple: boolean; quiz: boolean; correctOption?: number; clientMsgId?: string }): Promise<Message>
     scheduleMessage(chatId: number, p: { text: string; entities?: MessageEntity[]; sendAt: number; replyToId?: number }): Promise<Scheduled>

@@ -160,7 +160,14 @@ type MessageRepo interface {
 	ByPollID(ctx context.Context, pollID int64) ([]domain.Message, error)
 	// ByChecklistID — сообщения, ссылающиеся на чек-лист (обычно одно).
 	ByChecklistID(ctx context.Context, checklistID int64) ([]domain.Message, error)
-	SearchMessages(ctx context.Context, chatID int64, q string, offset, limit int) ([]domain.Message, int, error)
+	// SearchMessages ищет по чату (текст/имя файла) с необязательными фильтрами
+	// (автор/тип медиа/реакция — tweb topbarSearch). Пустой q при заданном фильтре
+	// разрешён.
+	SearchMessages(ctx context.Context, chatID int64, q string, f SearchFilter, offset, limit int) ([]domain.Message, int, error)
+	// MessageSeqByDate возвращает seq самого раннего непустого сообщения с
+	// created_at>=from (jump-to-date); если таких нет — seq самого нового
+	// сообщения; для пустого чата — domain.ErrNotFound.
+	MessageSeqByDate(ctx context.Context, chatID int64, from time.Time) (int64, error)
 	// GlobalSearchMessages searches across every chat userID is a member of;
 	// filter narrows by shared-media kind ("" = any type).
 	GlobalSearchMessages(ctx context.Context, userID int64, q, filter string, offset, limit int) ([]domain.Message, int, error)

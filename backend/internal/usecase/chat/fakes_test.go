@@ -686,16 +686,68 @@ func (r fakeMsgs) GlobalSearchMessages(_ context.Context, userID int64, q, filte
 	return hits, count, nil
 }
 
-func (r fakeMsgs) SearchMessages(_ context.Context, chatID int64, q string, offset, limit int) ([]domain.Message, int, error) {
+func (r fakeMsgs) SearchMessages(_ context.Context, chatID int64, q string, f SearchFilter, offset, limit int) ([]domain.Message, int, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	var hits []domain.Message
 	all := r.s.messages[chatID]
 	for i := len(all) - 1; i >= 0; i-- { // newest first
 		m := all[i]
-		if !m.Deleted && q != "" && strings.Contains(strings.ToLower(m.Text), strings.ToLower(q)) {
-			hits = append(hits, m)
+		if m.Deleted {
+			continue
 		}
+		if q != "" && !strings.Contains(strings.ToLower(m.Text), strings.ToLower(q)) {
+			continue
+		}
+		if f.SenderID != 0 && m.SenderID != f.SenderID {
+			continue
+		}
+		switch f.MediaType {
+		case "":
+		case "photo":
+			if m.Type != "photo" {
+				continue
+			}
+		case "video":
+			if m.Type != "video" {
+				continue
+			}
+		case "voice":
+			if m.Type != "voice" {
+				continue
+			}
+		case "roundvideo":
+			if m.Type != "roundVideo" {
+				continue
+			}
+		case "file":
+			if m.Type != "document" {
+				continue
+			}
+		case "music":
+			if m.Type != "audio" {
+				continue
+			}
+		case "link":
+			if m.Type != "text" || !strings.Contains(m.Text, "http") {
+				continue
+			}
+		default:
+			continue
+		}
+		if f.Reaction != "" {
+			has := false
+			for _, emojis := range r.s.reactions[m.ID] {
+				if emojis[f.Reaction] {
+					has = true
+					break
+				}
+			}
+			if !has {
+				continue
+			}
+		}
+		hits = append(hits, m)
 	}
 	count := len(hits)
 	if offset > len(hits) {
@@ -706,6 +758,31 @@ func (r fakeMsgs) SearchMessages(_ context.Context, chatID int64, q string, offs
 		hits = hits[:limit]
 	}
 	return hits, count, nil
+}
+
+func (r fakeMsgs) MessageSeqByDate(_ context.Context, chatID int64, from time.Time) (int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	all := r.s.messages[chatID]
+	var earliest, newest int64
+	for _, m := range all {
+		if m.Deleted {
+			continue
+		}
+		if m.Seq > newest {
+			newest = m.Seq
+		}
+		if !m.CreatedAt.Before(from) && (earliest == 0 || m.Seq < earliest) {
+			earliest = m.Seq
+		}
+	}
+	if earliest != 0 {
+		return earliest, nil
+	}
+	if newest != 0 {
+		return newest, nil
+	}
+	return 0, domain.ErrNotFound
 }
 
 func (r fakeMsgs) GetByIDs(_ context.Context, ids []int64) ([]domain.Message, error) {

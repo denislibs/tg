@@ -382,9 +382,31 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
       return { messages: (r.messages ?? []).map(mapMessage), count: r.count }
     },
 
-    async searchMessages(chatId: number, q: string, offset = 0, limit = 20): Promise<{ messages: Message[]; count: number }> {
-      const r = await rest.get<{ messages: RawMessage[]; count: number }>(`/chats/${chatId}/search`, { q, offset, limit })
+    // Поиск в чате: текст + необязательные фильтры (tweb topbarSearch) —
+    // senderId (в группах), mediaType (photo/video/voice/roundvideo/file/link/music),
+    // reaction (эмодзи). Пустой q при заданном фильтре допустим.
+    async searchMessages(
+      chatId: number,
+      q: string,
+      opts: { senderId?: number; mediaType?: string; reaction?: string; offset?: number; limit?: number } = {},
+    ): Promise<{ messages: Message[]; count: number }> {
+      const query: Record<string, string | number> = { q, offset: opts.offset ?? 0, limit: opts.limit ?? 20 }
+      if (opts.senderId) query.sender_id = opts.senderId
+      if (opts.mediaType) query.media_type = opts.mediaType
+      if (opts.reaction) query.reaction = opts.reaction
+      const r = await rest.get<{ messages: RawMessage[]; count: number }>(`/chats/${chatId}/search`, query)
       return { messages: (r.messages ?? []).map(mapMessage), count: r.count }
+    },
+
+    // Jump-to-date: seq ближайшего сообщения на/после даты (unix, сек). null, если
+    // сообщений в чате нет (404).
+    async messageByDate(chatId: number, date: number): Promise<number | null> {
+      try {
+        const r = await rest.get<{ seq: number }>(`/chats/${chatId}/message_by_date`, { date })
+        return r.seq
+      } catch {
+        return null
+      }
     },
 
     // Глобальный поиск по сообщениям всех чатов (сайдбар-поиск): q — текст,

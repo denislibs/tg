@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -318,7 +319,21 @@ func (i *Interactor) MediaHistory(ctx context.Context, chatID, userID int64, fil
 	return HistoryResult{Messages: msgs, Count: count}, nil
 }
 
-func (i *Interactor) SearchMessages(ctx context.Context, chatID, userID int64, q string, offset, limit int) (HistoryResult, error) {
+// SearchFilter сужает поиск внутри чата (tweb topbarSearch): по автору (в
+// группах), по виду шаред-медиа и по наличию реакции на сообщении. Нулевые
+// значения отключают соответствующий фильтр.
+type SearchFilter struct {
+	SenderID  int64  // фильтр по автору (0 — любой)
+	MediaType string // photo/video/voice/roundvideo/file/link/music ("" — любой)
+	Reaction  string // сообщения, у которых есть эта реакция ("" — любая)
+}
+
+// empty — фильтр не задан (ни автор, ни тип, ни реакция).
+func (f SearchFilter) empty() bool {
+	return f.SenderID == 0 && f.MediaType == "" && f.Reaction == ""
+}
+
+func (i *Interactor) SearchMessages(ctx context.Context, chatID, userID int64, q string, f SearchFilter, offset, limit int) (HistoryResult, error) {
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
 	if err != nil {
 		return HistoryResult{}, err
@@ -326,13 +341,17 @@ func (i *Interactor) SearchMessages(ctx context.Context, chatID, userID int64, q
 	if !ok {
 		return HistoryResult{}, domain.ErrNotFound
 	}
+	// Пустой запрос без фильтров искать нечего (tweb: пустая строка + нет чипов).
+	if q == "" && f.empty() {
+		return HistoryResult{}, nil
+	}
 	if limit <= 0 || limit > 50 {
 		limit = 20
 	}
 	if offset < 0 {
 		offset = 0
 	}
-	msgs, count, err := i.msgs.SearchMessages(ctx, chatID, q, offset, limit)
+	msgs, count, err := i.msgs.SearchMessages(ctx, chatID, q, f, offset, limit)
 	if err != nil {
 		return HistoryResult{}, err
 	}
@@ -345,6 +364,20 @@ func (i *Interactor) SearchMessages(ctx context.Context, chatID, userID int64, q
 	i.hydrateGiveaways(ctx, userID, msgs)
 	i.hydratePaidMedia(ctx, userID, msgs)
 	return HistoryResult{Messages: msgs, Count: count}, nil
+}
+
+// MessageSeqByDate возвращает seq сообщения для jump-to-date: самое раннее
+// сообщение на/после указанной даты (или самое новое, если дата позже всей
+// истории). domain.ErrNotFound — не участник чата либо чат пуст.
+func (i *Interactor) MessageSeqByDate(ctx context.Context, chatID, userID int64, from time.Time) (int64, error) {
+	ok, err := i.chats.IsMember(ctx, chatID, userID)
+	if err != nil {
+		return 0, err
+	}
+	if !ok {
+		return 0, domain.ErrNotFound
+	}
+	return i.msgs.MessageSeqByDate(ctx, chatID, from)
 }
 
 // GlobalSearchMessages searches messages across every chat the user belongs to

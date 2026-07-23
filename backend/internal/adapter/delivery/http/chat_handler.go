@@ -843,7 +843,13 @@ func (h *ChatHandler) SearchMessages(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
 	offset := int(queryInt(r, "offset", 0))
 	limit := int(queryInt(r, "limit", 20))
-	res, err := h.svc.SearchMessages(r.Context(), chatID, h.meID(r), q, offset, limit)
+	// tweb topbarSearch: необязательные фильтры автор/тип медиа/реакция.
+	f := usecasechat.SearchFilter{
+		SenderID:  queryInt(r, "sender_id", 0),
+		MediaType: r.URL.Query().Get("media_type"),
+		Reaction:  r.URL.Query().Get("reaction"),
+	}
+	res, err := h.svc.SearchMessages(r.Context(), chatID, h.meID(r), q, f, offset, limit)
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
 		return
@@ -857,6 +863,26 @@ func (h *ChatHandler) SearchMessages(w http.ResponseWriter, r *http.Request) {
 		out = append(out, messageJSON(m))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": res.Count})
+}
+
+// MessageByDate — GET /chats/{chatID}/message_by_date?date=<unix>: seq
+// ближайшего сообщения на/после даты (jump-to-date, tweb datePicker/onDatePick).
+func (h *ChatHandler) MessageByDate(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	date := queryInt(r, "date", 0)
+	seq, err := h.svc.MessageSeqByDate(r.Context(), chatID, h.meID(r), time.Unix(date, 0))
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "no message for this date")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "lookup failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"seq": seq})
 }
 
 // GlobalSearchMessages — GET /search/messages?q=&filter=&offset=&limit=: поиск
