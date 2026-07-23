@@ -19,13 +19,14 @@ import { useT } from '../../i18n'
 import { EASE } from '../../motion'
 import {
   ADJUSTMENTS, ASPECT_PRESETS, CROP_HANDLES, ENHANCE_DEFAULTS,
-  aspectOf, centeredAspectCrop, coverScale, enhanceRange, fitScale,
+  aspectOf, centeredAspectCrop, contrastColor, coverScale, enhanceRange, fitScale,
   isDefaultEnhance, moveCrop, pushHistory, resizeCrop,
   type AspectPreset, type CropHandle, type EnhanceValues, type Point, type Rect,
 } from './editorMath'
 import {
-  composeScene, measureTextBlock, rebuildDrawLayer, srcSize,
-  type BrushType, type Scene, type SrcImage, type Stroke, type TextBlock, type TextStyle,
+  composeScene, fontInfoMap, measureTextBlock, rebuildDrawLayer, srcSize,
+  type BrushType, type FontKey, type Scene, type SrcImage, type Stroke, type TextAlign,
+  type TextBlock, type TextStyle,
 } from './sceneRender'
 import { EnhanceRenderer } from './enhanceGL'
 import { applyRedo, applyUndo, type HistoryItem, type RedoItem } from './editorHistory'
@@ -33,6 +34,23 @@ import s from './MediaEditor.module.scss'
 
 // Палитра tweb mediaEditor (colorPickerSwatches).
 const SWATCHES = ['#ffffff', '#fe4438', '#ff8901', '#ffd60a', '#33c759', '#62e5e0', '#0a84ff', '#bd5cf3']
+
+// Шрифты вкладки text: порядок и подписи 1:1 с tweb textTab.
+const FONTS: { key: FontKey; label: string }[] = [
+  { key: 'roboto', label: 'Roboto' },
+  { key: 'suez', label: 'Suez One' },
+  { key: 'fugaz', label: 'Fugaz One' },
+  { key: 'courier', label: 'Courier Prime' },
+  { key: 'chewy', label: 'Chewy' },
+  { key: 'sedan', label: 'Sedan' },
+  { key: 'bubbles', label: 'Rubik Bubbles' },
+  { key: 'playwrite', label: 'Playwrite' },
+]
+const ALIGNS: { key: TextAlign; icon: IconName }[] = [
+  { key: 'left', icon: 'align_left' },
+  { key: 'center', icon: 'align_center' },
+  { key: 'right', icon: 'align_right' },
+]
 
 // Кисти вкладки draw (порядок и дефолтные цвета — из tweb brushTab).
 type ColoredBrush = 'pen' | 'arrow' | 'marker' | 'neon'
@@ -104,6 +122,8 @@ interface EditingText {
   sizeSrc: number
   color: string
   style: TextStyle
+  font: FontKey
+  align: TextAlign
 }
 
 async function loadImage(file: File): Promise<SrcImage> {
@@ -151,8 +171,10 @@ export default function MediaEditor({ file, onDone, onCancel }: {
   const [brushSize, setBrushSize] = useState(18)
   const [previewSize, setPreviewSize] = useState<number | null>(null)
   const [textColor, setTextColor] = useState(SWATCHES[0])
-  const [textSize, setTextSize] = useState(32)
-  const [textStyle, setTextStyle] = useState<TextStyle>('normal')
+  const [textSize, setTextSize] = useState(40)
+  const [textStyle, setTextStyle] = useState<TextStyle>('outline')
+  const [textFontKey, setTextFontKey] = useState<FontKey>('roboto')
+  const [textAlign, setTextAlign] = useState<TextAlign>('left')
   const [editingText, setEditingText] = useState<EditingText | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -418,7 +440,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
     let next = texts
     if (ed.isNew) {
       if (value) {
-        next = [...texts, { id: ed.id, x: ed.x, y: ed.y, text: value, color: ed.color, size: ed.sizeSrc, style: ed.style }]
+        next = [...texts, { id: ed.id, x: ed.x, y: ed.y, text: value, color: ed.color, size: ed.sizeSrc, style: ed.style, font: ed.font, align: ed.align }]
         setHistory((h) => pushHistory(h, { type: 'text-add', id: ed.id }))
         setRedoStack([]) // новое действие обнуляет ветку повтора
       }
@@ -566,6 +588,8 @@ export default function MediaEditor({ file, onDone, onCancel }: {
           sizeSrc: Math.max(1, textSize / srcScale),
           color: textColor,
           style: textStyle,
+          font: textFontKey,
+          align: textAlign,
         })
       }
     }
@@ -608,6 +632,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
           setEditing({
             id: block.id, x: block.x, y: block.y, isNew: false,
             sizeSrc: block.size, color: block.color, style: block.style,
+            font: block.font, align: block.align,
           })
         }
       }
@@ -818,12 +843,16 @@ export default function MediaEditor({ file, onDone, onCancel }: {
                 className={s.textInput}
                 style={(() => {
                   const p = buildMatrix().transformPoint(new DOMPoint(editingText.x, editingText.y))
+                  const fi = fontInfoMap[editingText.font]
                   return {
                     left: p.x,
                     top: p.y,
                     width: Math.max(120, dispW - p.x - 8),
                     fontSize: editingText.sizeSrc * srcScale,
-                    color: editingText.color,
+                    fontFamily: `${fi.fontFamily}, sans-serif`,
+                    fontWeight: fi.fontWeight,
+                    textAlign: editingText.align,
+                    color: editingText.style === 'normal' ? editingText.color : contrastColor(editingText.color),
                   }
                 })()}
                 defaultValue={editingText.isNew ? '' : texts.find((b) => b.id === editingText.id)?.text ?? ''}
@@ -957,18 +986,44 @@ export default function MediaEditor({ file, onDone, onCancel }: {
           {tab === 'text' && (
             <>
               {swatches(textColor, setTextColor)}
-              <div className={s.styleRow}>
-                {([['fontframe', 'normal'], ['fontframe_outline', 'outline'], ['fontframe_bg', 'background']] as [IconName, TextStyle][]).map(([icon, st]) => (
+              <div className={s.toggleRow}>
+                <div className={s.toggleGroup}>
+                  {ALIGNS.map(({ key, icon }) => (
+                    <div
+                      key={key}
+                      className={classNames(s.styleBtn, textAlign === key ? s.styleActive : '')}
+                      onClick={() => setTextAlign(key)}
+                    >
+                      <TgIcon name={icon} size={24} />
+                    </div>
+                  ))}
+                </div>
+                <div className={s.toggleGroup}>
+                  {([['fontframe', 'normal'], ['fontframe_outline', 'outline'], ['fontframe_bg', 'background']] as [IconName, TextStyle][]).map(([icon, st]) => (
+                    <div
+                      key={st}
+                      className={classNames(s.styleBtn, textStyle === st ? s.styleActive : '')}
+                      onClick={() => setTextStyle(st)}
+                    >
+                      <TgIcon name={icon} size={24} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {sliderRow('Text size', textSize, 16, 64, setTextSize)}
+              <div className={s.label}>{t('Font')}</div>
+              <div className={s.fontList}>
+                {FONTS.map(({ key, label }) => (
                   <div
-                    key={st}
-                    className={classNames(s.styleBtn, textStyle === st ? s.styleActive : '')}
-                    onClick={() => setTextStyle(st)}
+                    key={key}
+                    className={classNames(s.fontRow, textFontKey === key ? s.fontActive : '')}
+                    style={{ fontFamily: `${fontInfoMap[key].fontFamily}, sans-serif`, fontWeight: fontInfoMap[key].fontWeight }}
+                    onClick={() => setTextFontKey(key)}
                   >
-                    <TgIcon name={icon} size={24} />
+                    {label}
                   </div>
                 ))}
               </div>
-              {sliderRow('Text size', textSize, 16, 64, setTextSize)}
             </>
           )}
         </div>

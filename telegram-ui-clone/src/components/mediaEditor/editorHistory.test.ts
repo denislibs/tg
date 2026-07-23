@@ -7,7 +7,8 @@ import type { BrushType, Stroke, TextBlock } from './sceneRender'
 
 const stroke = (n: number, brush: BrushType = 'pen'): Stroke =>
   ({ brush, color: '#fff', size: 4, points: [{ x: n, y: n }] })
-const block = (id: number): TextBlock => ({ id, x: 0, y: 0, text: `t${id}`, color: '#fff', size: 32, style: 'normal' })
+const block = (id: number): TextBlock =>
+  ({ id, x: 0, y: 0, text: `t${id}`, color: '#fff', size: 32, style: 'normal', font: 'roboto', align: 'left' })
 
 const empty = (): EditHistoryState => ({ history: [], redoStack: [], strokes: [], texts: [] })
 
@@ -61,6 +62,15 @@ describe('editorHistory — добавление/удаление текста',
     const redone = applyRedo(undone)
     expect(redone.texts).toHaveLength(0)
     expect(redone.history).toEqual([{ type: 'text-remove', block: block(3) }])
+  })
+
+  it('undo/redo сохраняет font и align текст-блока', () => {
+    const b: TextBlock = { id: 9, x: 5, y: 6, text: 'hi', color: '#fe4438', size: 40, style: 'background', font: 'chewy', align: 'center' }
+    const s0: EditHistoryState = { history: [{ type: 'text-add', id: 9 }], redoStack: [], strokes: [], texts: [b] }
+    const back = applyRedo(applyUndo(s0))
+    expect(back.texts[0].font).toBe('chewy')
+    expect(back.texts[0].align).toBe('center')
+    expect(back.texts[0]).toEqual(b)
   })
 })
 

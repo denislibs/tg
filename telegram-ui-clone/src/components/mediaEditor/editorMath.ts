@@ -270,6 +270,19 @@ export function hexToRgb(hex: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
 }
 
+/**
+ * Контрастный к фону цвет текста (порт tweb getContrastColor): по HSL-светлоте
+ * цвета — тёмный фон (l<80) → белый текст, светлый → чёрный. Используется для
+ * стилей текста outline/background, где заливка идёт цветом, а буквы — контрастом.
+ */
+export function contrastColor(hex: string): string {
+  const [r, g, b] = hexToRgb(hex)
+  const max = Math.max(r, g, b) / 255
+  const min = Math.min(r, g, b) / 255
+  const l = ((max + min) / 2) * 100
+  return l < 80 ? '#ffffff' : '#000000'
+}
+
 /** Длина лучей наконечника стрелки от толщины кисти (tweb getArrowHeadLength). */
 export const arrowHeadLength = (size: number): number => Math.sqrt(size) + size * 2.5
 

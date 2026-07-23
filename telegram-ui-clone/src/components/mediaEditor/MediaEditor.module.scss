@@ -369,6 +369,43 @@
   color: #fff;
 }
 
+// строка выравнивание + стиль (tweb toggle-group-row: две группы рядом)
+.toggleRow {
+  display: flex;
+  gap: 16px;
+  padding-bottom: 8px;
+}
+
+.toggleGroup {
+  flex: 1;
+  display: flex;
+  gap: 8px;
+}
+
+// список шрифтов (tweb textTab «Font»): подпись начертанием своего шрифта
+.fontList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fontRow {
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 20px;
+  line-height: 1.2;
+  cursor: pointer;
+  user-select: none;
+
+  @media (hover: hover) {
+    &:hover { background: rgba(255, 255, 255, 0.08); }
+  }
+}
+
+.fontActive {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 // FAB «Готово» (tweb finishButton) — круг с галочкой в нижнем правом углу панели
 .fab {
   position: absolute;

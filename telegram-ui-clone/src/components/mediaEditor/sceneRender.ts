@@ -5,7 +5,7 @@
 // согласованы автоматически). Внешний transform ctx (crop + масштаб превью)
 // довершает отображение — один код рисует и live-превью, и экспорт.
 import {
-  arrowHeadPoints, buildEnhanceFilter, hexToRgb, warmthOverlay,
+  arrowHeadPoints, buildEnhanceFilter, contrastColor, hexToRgb, warmthOverlay,
   type EnhanceValues, type Point, type Rect,
 } from './editorMath'
 
@@ -42,8 +42,33 @@ export interface Stroke {
 }
 
 export type TextStyle = 'normal' | 'outline' | 'background'
+export type TextAlign = 'left' | 'center' | 'right'
 
-/** Текст-блок; x/y — левый верхний угол, size — в пикселях исходника. */
+/**
+ * 8 шрифтов вкладки text (1:1 с tweb fontInfoMap): семейство/начертание для
+ * `ctx.font`/CSS и baseline — доля высоты строки от её верха до алфавитной
+ * базовой линии (у разных шрифтов метрики различаются, поэтому храним отдельно).
+ */
+export type FontKey = 'roboto' | 'suez' | 'bubbles' | 'playwrite' | 'chewy' | 'courier' | 'fugaz' | 'sedan'
+
+export interface FontInfo {
+  fontFamily: string
+  fontWeight: number
+  baseline: number
+}
+
+export const fontInfoMap: Record<FontKey, FontInfo> = {
+  roboto: { fontFamily: "'Roboto'", fontWeight: 500, baseline: 0.75 },
+  suez: { fontFamily: "'Suez One'", fontWeight: 400, baseline: 0.75 },
+  bubbles: { fontFamily: "'Rubik Bubbles'", fontWeight: 400, baseline: 0.75 },
+  playwrite: { fontFamily: "'Playwrite BE VLG'", fontWeight: 400, baseline: 0.85 },
+  chewy: { fontFamily: "'Chewy'", fontWeight: 400, baseline: 0.75 },
+  courier: { fontFamily: "'Courier Prime'", fontWeight: 700, baseline: 0.65 },
+  fugaz: { fontFamily: "'Fugaz One'", fontWeight: 400, baseline: 0.75 },
+  sedan: { fontFamily: "'Sedan'", fontWeight: 400, baseline: 0.75 },
+}
+
+/** Текст-блок; x/y — левый верхний угол бокса, size — в пикселях исходника. */
 export interface TextBlock {
   id: number
   x: number
@@ -52,6 +77,8 @@ export interface TextBlock {
   color: string
   size: number
   style: TextStyle
+  font: FontKey
+  align: TextAlign
 }
 
 export const srcSize = (img: SrcImage): { w: number; h: number } =>
@@ -186,55 +213,153 @@ export function rebuildDrawLayer(
   for (const s of strokes) drawStroke(ctx, s, assets)
 }
 
-export const textFont = (size: number) => `500 ${size}px Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif`
-
-// Плашка (style: 'background') — скруглённый прямоугольник вручную:
-// roundRect ещё не во всех браузерах/тайпингах.
-function roundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
-  const rr = Math.min(r, w / 2, h / 2)
-  ctx.beginPath()
-  ctx.moveTo(x + rr, y)
-  ctx.arcTo(x + w, y, x + w, y + h, rr)
-  ctx.arcTo(x + w, y + h, x, y + h, rr)
-  ctx.arcTo(x, y + h, x, y, rr)
-  ctx.arcTo(x, y, x + w, y, rr)
-  ctx.closePath()
+/** CSS/`ctx.font`-строка для шрифта font размера size (порт tweb). */
+export const textFont = (font: FontKey, size: number): string => {
+  const fi = fontInfoMap[font]
+  return `${fi.fontWeight} ${size}px ${fi.fontFamily}, sans-serif`
 }
 
-/** Габарит блока (для hit-теста и плашки); ctx нужен для measureText. */
+// Межстрочный интервал текст-слоя — 1.33em (tweb .media-editor__text-layer).
+const LINE_HEIGHT_EM = 1.33
+
+/** Геометрия одной строки в координатах бокса (левый-верх бокса = 0,0). */
+export interface TextLineLayout {
+  text: string
+  left: number
+  right: number
+  height: number
+}
+
+export interface TextLayout {
+  lines: TextLineLayout[]
+  width: number
+  height: number
+  lineHeight: number
+  padX: number
+  /** Смещение алфавитной базовой линии от верха строки. */
+  baselineOffset: number
+}
+
+/**
+ * Раскладка строк текст-блока — ЧИСТАЯ функция (без DOM), считает по заранее
+ * измеренным ширинам строк. Горизонтальный паддинг у каждой строки (0.2em, для
+ * background — 0.3em, как в tweb text-layer). Выравнивание сдвигает строки
+ * внутри бокса шириной по самой широкой строке. left/right/height каждой строки
+ * — в координатах бокса, что нужно и для скруглённой плашки, и для hit-теста.
+ */
+export function layoutText(
+  lineWidths: number[], texts: string[], size: number, style: TextStyle, align: TextAlign, baseline: number,
+): TextLayout {
+  const padX = size * (style === 'background' ? 0.3 : 0.2)
+  const lineHeight = size * LINE_HEIGHT_EM
+  const renderWidths = lineWidths.map((w) => w + padX * 2)
+  const width = renderWidths.length ? Math.max(...renderWidths) : 0
+  const lines = renderWidths.map((rw, i) => {
+    const left = align === 'center' ? (width - rw) / 2 : align === 'right' ? width - rw : 0
+    return { text: texts[i], left, right: left + rw, height: lineHeight }
+  })
+  return { lines, width, height: lineHeight * lines.length, lineHeight, padX, baselineOffset: lineHeight * baseline }
+}
+
+// Измерение строк блока текущим шрифтом (устанавливает ctx.font на выходе).
+function measureLayout(ctx: CanvasRenderingContext2D, b: TextBlock): TextLayout {
+  ctx.font = textFont(b.font, b.size)
+  const texts = b.text.split('\n')
+  const widths = texts.map((t) => ctx.measureText(t).width)
+  return layoutText(widths, texts, b.size, b.style, b.align, fontInfoMap[b.font].baseline)
+}
+
+/** Габарит блока (для hit-теста); левый-верх = b.x,b.y. */
 export function measureTextBlock(ctx: CanvasRenderingContext2D, b: TextBlock): Rect {
-  ctx.save()
-  ctx.font = textFont(b.size)
-  const w = ctx.measureText(b.text).width
-  ctx.restore()
-  const pad = b.style === 'background' ? b.size * 0.25 : 0
-  return { x: b.x - pad, y: b.y - pad, w: w + pad * 2, h: b.size * 1.2 + pad * 2 }
+  const l = measureLayout(ctx, b)
+  return { x: b.x, y: b.y, w: l.width, h: l.height }
 }
 
-/** Отрисовка блока: обычный / чёрная обводка / белая плашка (стили tweb). */
+/**
+ * Скруглённая плашка под многострочным текстом (порт tweb createTextBackgroundPath):
+ * SVG-путь, огибающий правые и левые края строк со скруглениями на переходах.
+ * Координаты — в системе бокса; вызывающий переносит на b.x,b.y.
+ */
+function textBackgroundPath(lines: TextLineLayout[]): string {
+  const first = lines[0]
+  const rounding = first.height * 0.3
+  const arc = (r: number, s = 1): (string | number)[] => ['A', r, r, 0, 0, s]
+  const path: (string | number)[] = []
+
+  path.push('M', first.left, rounding)
+  path.push(...arc(rounding), first.left + rounding, 0)
+  path.push('L', first.right - rounding, 0)
+  path.push(...arc(rounding), first.right, rounding)
+
+  let prev = first
+  let prevY = first.height
+  for (let i = 1; i < lines.length; i++) {
+    const pos = lines[i]
+    const sign = pos.right > prev.right ? 1 : -1
+    const diff = Math.min(Math.abs((pos.right - prev.right) / 2), rounding) * sign
+    const cr = Math.abs(diff)
+    path.push('L', prev.right, prevY - cr)
+    path.push(...arc(cr, sign === 1 ? 0 : 1), prev.right + diff, prevY)
+    path.push('L', pos.right - diff, prevY)
+    path.push(...arc(cr, sign === 1 ? 1 : 0), pos.right, prevY + cr)
+    prevY += pos.height
+    prev = pos
+  }
+
+  path.push('L', prev.right, prevY - rounding)
+  path.push(...arc(rounding), prev.right - rounding, prevY)
+  path.push('L', prev.left + rounding, prevY)
+  path.push(...arc(rounding), prev.left, prevY - rounding)
+
+  const last = lines[lines.length - 1]
+  prevY -= last.height
+  for (let i = lines.length - 2; i >= 0; i--) {
+    const pos = lines[i]
+    const sign = pos.left > prev.left ? 1 : -1
+    const diff = Math.min(Math.abs((pos.left - prev.left) / 2), rounding) * sign
+    const cr = Math.abs(diff)
+    path.push('L', prev.left, prevY + cr)
+    path.push(...arc(cr, sign !== 1 ? 0 : 1), prev.left + diff, prevY)
+    path.push('L', pos.left - diff, prevY)
+    path.push(...arc(cr, sign !== 1 ? 1 : 0), pos.left, prevY - cr)
+    prevY -= pos.height
+    prev = pos
+  }
+  return path.join(' ')
+}
+
+/**
+ * Отрисовка блока в координатах сцены. Стили (порт tweb):
+ * normal — заливка цветом; outline — обводка strokeText шириной size*0.15 цветом
+ * + заливка контрастным цветом; background — скруглённая плашка цветом + текст
+ * контрастным цветом. Многострочный текст выравнивается по align.
+ */
 export function drawTextBlock(ctx: CanvasRenderingContext2D, b: TextBlock): void {
   if (!b.text) return
+  const l = measureLayout(ctx, b)
   ctx.save()
-  ctx.font = textFont(b.size)
-  ctx.textBaseline = 'top'
+  ctx.font = textFont(b.font, b.size)
+  ctx.textBaseline = 'alphabetic'
   if (b.style === 'background') {
-    const r = measureTextBlock(ctx, b)
-    ctx.fillStyle = '#ffffff'
-    roundRectPath(ctx, r.x, r.y, r.w, r.h, b.size * 0.3)
-    ctx.fill()
-    // белый текст на белой плашке нечитаем — как в tweb, уводим в чёрный
-    ctx.fillStyle = b.color.toLowerCase() === '#ffffff' ? '#000000' : b.color
-    ctx.fillText(b.text, b.x, b.y + b.size * 0.1)
-  } else {
-    if (b.style === 'outline') {
-      ctx.strokeStyle = '#000000'
-      ctx.lineWidth = Math.max(2, b.size / 8)
-      ctx.lineJoin = 'round'
-      ctx.strokeText(b.text, b.x, b.y)
-    }
+    ctx.save()
+    ctx.translate(b.x, b.y)
     ctx.fillStyle = b.color
-    ctx.fillText(b.text, b.x, b.y)
+    ctx.fill(new Path2D(textBackgroundPath(l.lines)))
+    ctx.restore()
   }
+  const fill = b.style === 'normal' ? b.color : contrastColor(b.color)
+  l.lines.forEach((line, i) => {
+    const x = b.x + line.left + l.padX
+    const y = b.y + i * l.lineHeight + l.baselineOffset
+    if (b.style === 'outline') {
+      ctx.lineWidth = b.size * 0.15
+      ctx.strokeStyle = b.color
+      ctx.lineJoin = 'round'
+      ctx.strokeText(line.text, x, y)
+    }
+    ctx.fillStyle = fill
+    ctx.fillText(line.text, x, y)
+  })
   ctx.restore()
 }
 
