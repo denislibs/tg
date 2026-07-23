@@ -227,6 +227,12 @@ type SearchRepo interface {
 	SearchChats(ctx context.Context, q string, limit int) ([]domain.ChatCard, error) // public only
 	SearchUsers(ctx context.Context, q string, limit int) ([]domain.UserCard, error)
 	PublicChatByUsername(ctx context.Context, username string) (int64, error) // domain.ErrNotFound
+	// SimilarChannels рекомендует публичные каналы по пересечению аудитории с
+	// каналом chatID: берём его подписчиков, смотрим на какие ещё публичные
+	// каналы они подписаны, ранжируем по размеру пересечения. Исключаются сам
+	// канал и каналы, где зритель viewerID уже состоит. Второе значение — общее
+	// число найденных похожих каналов (для «+N» под Premium), может превышать len.
+	SimilarChannels(ctx context.Context, chatID, viewerID int64, limit int) ([]domain.ChatCard, int, error)
 }
 
 type ReactionRepo interface {

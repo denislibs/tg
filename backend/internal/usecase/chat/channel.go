@@ -97,6 +97,14 @@ func (i *Interactor) SearchChats(ctx context.Context, q string, limit int) ([]do
 	return i.search.SearchChats(ctx, q, limit)
 }
 
+// SimilarChannels рекомендует публичные каналы, похожие на chatID по аудитории.
+func (i *Interactor) SimilarChannels(ctx context.Context, chatID, viewerID int64, limit int) ([]domain.ChatCard, int, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 30
+	}
+	return i.search.SimilarChannels(ctx, chatID, viewerID, limit)
+}
+
 // SearchUsers returns users matching q.
 func (i *Interactor) SearchUsers(ctx context.Context, q string, limit int) ([]domain.UserCard, error) {
 	if limit <= 0 || limit > 50 {

@@ -215,6 +215,7 @@ export interface Managers {
     setPts(chatId: number, pts: number): Promise<void>
     join(username: string): Promise<void>
     search(q: string): Promise<SearchResult>
+    similar(chatId: number): Promise<{ chats: SearchResult['chats']; count: number }>
     enableDiscussion(channelId: number): Promise<number>
     postComment(channelId: number, postId: number, text: string, clientMsgId: string): Promise<Message>
     listComments(channelId: number, postId: number, offset?: number, limit?: number): Promise<{ messages: Message[]; count: number }>

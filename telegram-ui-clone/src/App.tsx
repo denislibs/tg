@@ -392,6 +392,15 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     void loadChats(managers)
   }
 
+  // Клик по «похожему каналу»: вступаем по @username (как в поиске) и открываем.
+  const openPublicChannel = async (chatId: number, username: string) => {
+    if (username) {
+      try { await managers.channels.join(username) } catch { /* уже вступил / приватный — просто откроем */ }
+    }
+    await loadChats(managers)
+    setSelectedId(String(chatId))
+  }
+
   // /?domain=username с публичной страницы /@username: префилл поиска.
   // /?domain=<bot>&start=<payload> — deep link бота: открыть чат и послать /start.
   const [deep] = useState(() => {
@@ -468,7 +477,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
         onChatCreated={onChatCreated}
       />
     ) : selected ? (
-      <ConversationView key={selectedId} chat={selected} onBack={backToList} onOpenPeer={openPeer} onChatCreated={onChatCreated} onOpenThread={openCommentsThread} />
+      <ConversationView key={selectedId} chat={selected} onBack={backToList} onOpenPeer={openPeer} onChatCreated={onChatCreated} onOpenThread={openCommentsThread} onOpenChannel={openPublicChannel} />
     ) : (
       <div className={s.empty}>
         <div className={s.emptyPill}>

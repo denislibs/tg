@@ -1,0 +1,179 @@
+// Порт tweb src/scss/partials/_similarChannels.scss (значения 1:1). surface →
+// --tg-bubble (поверхность карточки над обоями), secondary-text → --tg-textSecondary,
+// secondary-color (серые кружки стопки) → --tg-textFaint, hover → --tg-hover.
+@use '../../styles/foundation' as *;
+
+.container {
+  display: block;
+  background-color: var(--tg-bubble);
+  border-radius: 15px;
+  height: 8.5rem;
+  padding: 0.375rem 0 0.25rem;
+  margin: 0.625rem auto 0;
+  max-width: 28rem;
+  position: relative;
+}
+
+.notch {
+  position: absolute;
+  width: 19px;
+  height: 7px;
+  top: -7px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.notchPath {
+  fill: var(--tg-bubble);
+}
+
+.header {
+  height: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-inline: 0.75rem 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--tg-textPrimary);
+}
+
+.close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border: none;
+  background: transparent;
+  color: var(--tg-textSecondary);
+  cursor: pointer;
+  border-radius: 50%;
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+    }
+  }
+}
+
+.scroll {
+  position: relative;
+  display: flex;
+  overflow-x: auto;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.list {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.listMargin {
+  width: 0.25rem;
+  flex: 0 0 auto;
+}
+
+.channel {
+  width: 4.75rem;
+  height: 6.375rem;
+  padding: 0.5rem;
+  border-radius: $border-radius-medium;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  position: relative;
+  flex: 0 0 auto;
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--tg-hover);
+
+      .badge {
+        border-color: var(--tg-bubble);
+      }
+    }
+  }
+
+  &.isLast {
+    width: 6rem;
+    color: var(--tg-textSecondary);
+
+    .badge {
+      background: var(--tg-textFaint) !important;
+    }
+
+    .name {
+      max-width: 3.75rem;
+    }
+  }
+}
+
+.avatarStack {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  flex: 0 0 auto;
+  z-index: 0;
+}
+
+.stackFirst,
+.stackMiddle,
+.stackLast {
+  position: absolute;
+  top: 0;
+  outline: 2px solid var(--tg-bubble);
+  border-radius: 50%;
+}
+
+.stackMiddle,
+.stackLast {
+  background-color: var(--tg-textFaint);
+  width: 100%;
+  height: 100%;
+}
+
+.stackFirst {
+  inset-inline-start: -0.625rem;
+  z-index: 3;
+}
+
+.stackMiddle {
+  z-index: 2;
+}
+
+.stackLast {
+  inset-inline-end: -0.625rem;
+}
+
+.name {
+  margin-top: 0.25rem;
+  font-size: 0.6875rem;
+  line-height: 13px;
+  max-height: 1.875rem;
+  text-align: center;
+  flex: 0 0 auto;
+  @include text-overflow(2);
+}
+
+.badge {
+  position: absolute;
+  background-color: var(--tg-accent);
+  top: 53px;
+  height: 18px;
+  border: 1.5px solid var(--tg-bubble);
+  padding-inline: 0.1875rem 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  border-radius: 19px;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 600;
+  white-space: nowrap;
+}
