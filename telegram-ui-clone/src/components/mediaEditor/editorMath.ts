@@ -256,6 +256,48 @@ export function coverScale(crop: Rect, W: number, H: number, angle: number): num
   return need
 }
 
+// ── Кисти рисования — геометрия и цвет ──────────────────────────────────────
+// Чистые (без DOM) хелперы для кистей: разбор hex-цвета и геометрия наконечника
+// стрелки. Порт из tweb brushPainter (getArrowHeadLength/drawArrowHead) —
+// вынесено сюда, чтобы тестировать без канваса.
+
+/** Hex (#rgb или #rrggbb) → [r,g,b] 0..255. Не-hex → чёрный. */
+export function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace('#', '')
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h
+  const n = parseInt(full, 16)
+  if (full.length !== 6 || Number.isNaN(n)) return [0, 0, 0]
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+
+/** Длина лучей наконечника стрелки от толщины кисти (tweb getArrowHeadLength). */
+export const arrowHeadLength = (size: number): number => Math.sqrt(size) + size * 2.5
+
+/**
+ * Две крайние точки лучей наконечника стрелки для штриха points толщины size.
+ * Направление — по последним точкам (отступив назад минимум на size*0.5, чтобы
+ * дрожание хвоста не ломало угол), лучи разведены на ±45°. null — точек < 2.
+ * Порт tweb drawArrowHead (та же atan2(dx,dy)+π и sin/cos-конвенция).
+ */
+export function arrowHeadPoints(
+  points: Point[], size: number, length = arrowHeadLength(size),
+): [Point, Point] | null {
+  if (points.length < 2) return null
+  const i = points.length - 1
+  const tip = points[i]
+  let i2 = i
+  for (; i2 > 0; i2--) {
+    if (Math.hypot(tip.x - points[i2].x, tip.y - points[i2].y) > size * 0.5) break
+  }
+  const angle = Math.atan2(tip.x - points[i2].x, tip.y - points[i2].y) + Math.PI
+  const a1 = angle + Math.PI / 4
+  const a2 = angle - Math.PI / 4
+  return [
+    { x: tip.x + length * Math.sin(a1), y: tip.y + length * Math.cos(a1) },
+    { x: tip.x + length * Math.sin(a2), y: tip.y + length * Math.cos(a2) },
+  ]
+}
+
 // ── Undo-стек ─────────────────────────────────────────────────────────────
 
 /** Push с ограничением глубины: старые записи вытесняются с начала. */

@@ -25,7 +25,7 @@ import {
 } from './editorMath'
 import {
   composeScene, measureTextBlock, rebuildDrawLayer, srcSize,
-  type Scene, type SrcImage, type Stroke, type TextBlock, type TextStyle,
+  type BrushType, type Scene, type SrcImage, type Stroke, type TextBlock, type TextStyle,
 } from './sceneRender'
 import { EnhanceRenderer } from './enhanceGL'
 import { applyRedo, applyUndo, type HistoryItem, type RedoItem } from './editorHistory'
@@ -33,6 +33,25 @@ import s from './MediaEditor.module.scss'
 
 // Палитра tweb mediaEditor (colorPickerSwatches).
 const SWATCHES = ['#ffffff', '#fe4438', '#ff8901', '#ffd60a', '#33c759', '#62e5e0', '#0a84ff', '#bd5cf3']
+
+// Кисти вкладки draw (порядок и дефолтные цвета — из tweb brushTab).
+type ColoredBrush = 'pen' | 'arrow' | 'marker' | 'neon'
+const BRUSH_COLORS: Record<ColoredBrush, string> = {
+  pen: '#fe4438', arrow: '#ffd60a', marker: '#ff8901', neon: '#62e5e0',
+}
+const BRUSHES: { key: BrushType; label: string; icon: IconName }[] = [
+  { key: 'pen', label: 'Pen', icon: 'edit' },
+  { key: 'arrow', label: 'Arrow', icon: 'arrowhead' },
+  { key: 'marker', label: 'Brush', icon: 'brush' },
+  { key: 'neon', label: 'Neon', icon: 'highlights' },
+  { key: 'blur', label: 'Blur', icon: 'sharpen' },
+  { key: 'eraser', label: 'Eraser', icon: 'delete' },
+]
+const hasBrushColor = (b: BrushType): b is ColoredBrush => b in BRUSH_COLORS
+// Радиус размытия base для blur-кисти — в пикселях исходника, зависит от размера
+// картинки (tweb использует фикс. 10px на канвасе редактора; у нас слой рисования
+// в нативном разрешении, поэтому масштабируем от стороны, чтобы блюр был заметен).
+const blurRadiusFor = (w: number, h: number): number => Math.max(6, Math.round(Math.max(w, h) / 150))
 
 type Tab = 'enhance' | 'crop' | 'draw' | 'text'
 
@@ -127,8 +146,10 @@ export default function MediaEditor({ file, onDone, onCancel }: {
   const [texts, setTexts] = useState<TextBlock[]>([])
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [redoStack, setRedoStack] = useState<RedoItem[]>([])
-  const [brushColor, setBrushColor] = useState(SWATCHES[1])
-  const [brushSize, setBrushSize] = useState(12)
+  const [brush, setBrush] = useState<BrushType>('pen')
+  const [brushColors, setBrushColors] = useState<Record<ColoredBrush, string>>(BRUSH_COLORS)
+  const [brushSize, setBrushSize] = useState(18)
+  const [previewSize, setPreviewSize] = useState<number | null>(null)
   const [textColor, setTextColor] = useState(SWATCHES[0])
   const [textSize, setTextSize] = useState(32)
   const [textStyle, setTextStyle] = useState<TextStyle>('normal')
@@ -141,6 +162,10 @@ export default function MediaEditor({ file, onDone, onCancel }: {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const textInputRef = useRef<HTMLInputElement>(null)
   const drawLayerRef = useRef<HTMLCanvasElement | null>(null)
+  // Заранее размытая копия базы (W×H) для blur-кисти; пересчёт при смене
+  // исходника/коррекций. previewTimerRef — таймер скрытия превью размера кисти.
+  const blurredRef = useRef<HTMLCanvasElement | null>(null)
+  const previewTimerRef = useRef<number | null>(null)
   // WebGL-рендер коррекций: контекст/программа/буферы создаются один раз;
   // adjustedRef — canvas с наложенными коррекциями (null → fallback на CSS).
   const rendererRef = useRef<EnhanceRenderer | null>(null)
@@ -229,6 +254,33 @@ export default function MediaEditor({ file, onDone, onCancel }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [img, enhance])
 
+  // Размытая копия базы для blur-кисти (совмещена со слоем рисования W×H).
+  // Считаем после adjusted; при смене коррекций перерисовываем слой, если в нём
+  // есть blur-штрихи (их пиксели берутся из этой копии).
+  useEffect(() => {
+    if (!img) { blurredRef.current = null; return }
+    const { w, h } = srcSize(img)
+    let c = blurredRef.current
+    if (!c || c.width !== Math.round(w) || c.height !== Math.round(h)) {
+      c = document.createElement('canvas')
+      c.width = Math.round(w)
+      c.height = Math.round(h)
+      blurredRef.current = c
+    }
+    const bctx = c.getContext('2d')
+    if (!bctx) return
+    bctx.clearRect(0, 0, c.width, c.height)
+    bctx.filter = `blur(${blurRadiusFor(w, h)}px)`
+    bctx.drawImage(adjustedRef.current ?? img, 0, 0, c.width, c.height)
+    bctx.filter = 'none'
+    const layer = drawLayerRef.current
+    if (layer && strokes.some((st) => st.brush === 'blur')) {
+      rebuildDrawLayer(layer, strokes, blurredRef.current)
+      renderRef.current()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [img, enhance])
+
   // ── Вьюпорт рабочей области ──
   useEffect(() => {
     const el = workRef.current
@@ -243,6 +295,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
   useEffect(() => () => {
     rotAnimRef.current?.()
     cropAnimRef.current?.()
+    if (previewTimerRef.current) window.clearTimeout(previewTimerRef.current)
   }, [])
 
   // ── Производные величины текущего кадра ──
@@ -327,7 +380,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
       layer.height = Math.round(H)
       drawLayerRef.current = layer
     }
-    rebuildDrawLayer(layer, strokes)
+    rebuildDrawLayer(layer, strokes, blurredRef.current)
     renderRef.current()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [img, strokes])
@@ -485,9 +538,14 @@ export default function MediaEditor({ file, onDone, onCancel }: {
     const p = toSrc(e)
     if (tab === 'draw') {
       e.currentTarget.setPointerCapture(e.pointerId)
-      strokeRef.current = { color: brushColor, size: Math.max(1, brushSize / srcScale), points: [p] }
+      strokeRef.current = {
+        brush,
+        color: hasBrushColor(brush) ? brushColors[brush] : '#ffffff',
+        size: Math.max(1, brushSize / srcScale),
+        points: [p],
+      }
       const layer = drawLayerRef.current
-      if (layer) rebuildDrawLayer(layer, [...strokes, strokeRef.current])
+      if (layer) rebuildDrawLayer(layer, [...strokes, strokeRef.current], blurredRef.current)
       renderRef.current()
     } else if (tab === 'text') {
       if (editingRef.current) {
@@ -517,7 +575,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
     if (tab === 'draw' && strokeRef.current) {
       strokeRef.current.points.push(toSrc(e))
       const layer = drawLayerRef.current
-      if (layer) rebuildDrawLayer(layer, [...strokes, strokeRef.current])
+      if (layer) rebuildDrawLayer(layer, [...strokes, strokeRef.current], blurredRef.current)
       renderRef.current()
     } else if (tab === 'text' && textDragRef.current) {
       const d = textDragRef.current
@@ -660,6 +718,20 @@ export default function MediaEditor({ file, onDone, onCancel }: {
   }
   const onWheelPointerUp = () => { wheelDragRef.current = null }
 
+  // ── Кисть: текущий цвет per-brush и превью размера ──
+  const brushColorValue = hasBrushColor(brush) ? brushColors[brush] : SWATCHES[0]
+  const setBrushColorValue = (c: string) => {
+    if (hasBrushColor(brush)) setBrushColors((m) => ({ ...m, [brush]: c }))
+  }
+  // Превью размера кисти: кружок по центру, гаснет через 1с после последнего
+  // изменения слайдера (порт tweb previewBrushSize).
+  const changeBrushSize = (v: number) => {
+    setBrushSize(v)
+    setPreviewSize(v)
+    if (previewTimerRef.current) window.clearTimeout(previewTimerRef.current)
+    previewTimerRef.current = window.setTimeout(() => setPreviewSize(null), 1000)
+  }
+
   // ── UI-кусочки панели ──
   const swatches = (value: string, onChange: (c: string) => void) => (
     <div className={s.swatches}>
@@ -763,6 +835,17 @@ export default function MediaEditor({ file, onDone, onCancel }: {
                 }}
               />
             )}
+
+            {tab === 'draw' && previewSize != null && (
+              <div
+                className={s.brushPreview}
+                style={{
+                  width: previewSize,
+                  height: previewSize,
+                  background: hasBrushColor(brush) ? brushColorValue : 'rgba(255, 255, 255, 0.6)',
+                }}
+              />
+            )}
           </div>
         )}
 
@@ -851,8 +934,23 @@ export default function MediaEditor({ file, onDone, onCancel }: {
 
           {tab === 'draw' && (
             <>
-              {swatches(brushColor, setBrushColor)}
-              {sliderRow('Brush size', brushSize, 2, 32, setBrushSize)}
+              <div className={hasBrushColor(brush) ? '' : s.swatchesDisabled}>
+                {swatches(brushColorValue, setBrushColorValue)}
+              </div>
+              {sliderRow('Brush size', brushSize, 2, 32, changeBrushSize)}
+              <div className={s.label}>{t('Tool')}</div>
+              <div className={s.brushList}>
+                {BRUSHES.map(({ key, label, icon }) => (
+                  <div
+                    key={key}
+                    className={classNames(s.brushRow, brush === key ? s.brushActive : '')}
+                    onClick={() => setBrush(key)}
+                  >
+                    <TgIcon name={icon} size={24} style={{ color: hasBrushColor(key) ? brushColors[key] : '#fff' }} />
+                    <span>{t(label)}</span>
+                  </div>
+                ))}
+              </div>
             </>
           )}
 

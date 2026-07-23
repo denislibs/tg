@@ -298,6 +298,50 @@
   box-shadow: 0 0 0 2px #212121, 0 0 0 4px currentColor;
 }
 
+// вкладка draw: палитра гаснет для blur/eraser (кисти без цвета)
+.swatchesDisabled {
+  opacity: 0.25;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+// список типов кистей (tweb brushTab «Tool»)
+.brushList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.brushRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 15px;
+  cursor: pointer;
+  user-select: none;
+
+  @media (hover: hover) {
+    &:hover { background: rgba(255, 255, 255, 0.08); }
+  }
+}
+
+.brushActive {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+// превью размера кисти — кружок по центру рабочей области (tweb previewBrushSize)
+.brushPreview {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  pointer-events: none;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25), 0 0 6px rgba(0, 0, 0, 0.35);
+}
+
 // стили текста: без рамки / обводка / плашка
 .styleRow {
   display: flex;

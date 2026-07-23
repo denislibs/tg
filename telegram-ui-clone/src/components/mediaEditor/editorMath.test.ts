@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   ADJUSTMENTS, ASPECT_PRESETS, ENHANCE_DEFAULTS, HISTORY_LIMIT, MIN_CROP,
-  aspectOf, buildEnhanceFilter, centeredAspectCrop, clampCrop, coverScale, enhanceRange, fitScale,
+  arrowHeadLength, arrowHeadPoints, aspectOf, buildEnhanceFilter, centeredAspectCrop,
+  clampCrop, coverScale, enhanceRange, fitScale, hexToRgb,
   isDefaultEnhance, moveCrop, normalizeEnhance, pushHistory,
   resizeCrop, rotatePoint, warmthOverlay,
-  type Rect,
+  type Point, type Rect,
 } from './editorMath'
 
 describe('ADJUSTMENTS / дефолты', () => {
@@ -263,5 +264,43 @@ describe('fitScale', () => {
   it('вписывает без увеличения сверх 1:1', () => {
     expect(fitScale(2000, 1000, 1000, 1000)).toBe(0.5)
     expect(fitScale(100, 100, 1000, 1000)).toBe(1)
+  })
+})
+
+describe('hexToRgb', () => {
+  it('разбирает #rrggbb и #rgb', () => {
+    expect(hexToRgb('#fe4438')).toEqual([254, 68, 56])
+    expect(hexToRgb('#ffffff')).toEqual([255, 255, 255])
+    expect(hexToRgb('#000000')).toEqual([0, 0, 0])
+    expect(hexToRgb('#f00')).toEqual([255, 0, 0])
+  })
+  it('невалидный вход → чёрный', () => {
+    expect(hexToRgb('nope')).toEqual([0, 0, 0])
+  })
+})
+
+describe('arrowHead (геометрия наконечника стрелки)', () => {
+  it('длина лучей растёт с толщиной', () => {
+    expect(arrowHeadLength(4)).toBeCloseTo(Math.sqrt(4) + 10, 5)
+    expect(arrowHeadLength(18)).toBeGreaterThan(arrowHeadLength(4))
+  })
+
+  it('< 2 точек → null', () => {
+    expect(arrowHeadPoints([{ x: 0, y: 0 }], 10)).toBeNull()
+    expect(arrowHeadPoints([], 10)).toBeNull()
+  })
+
+  it('горизонтальная стрелка вправо: два луча симметричны по вертикали, оба слева от острия', () => {
+    const pts: Point[] = [{ x: 0, y: 0 }, { x: 100, y: 0 }]
+    const head = arrowHeadPoints(pts, 10, 20)
+    expect(head).not.toBeNull()
+    const [a, b] = head!
+    // лучи направлены назад (x < острия=100) и разведены симметрично по y
+    expect(a.x).toBeLessThan(100)
+    expect(b.x).toBeLessThan(100)
+    expect(a.y).toBeCloseTo(-b.y, 5)
+    // длина каждого луча от острия ≈ заданной length
+    expect(Math.hypot(a.x - 100, a.y)).toBeCloseTo(20, 5)
+    expect(Math.hypot(b.x - 100, b.y)).toBeCloseTo(20, 5)
   })
 })

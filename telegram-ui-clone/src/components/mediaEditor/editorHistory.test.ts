@@ -3,9 +3,10 @@
 // штрихе/тексте — здесь проверяем сам инвариант редьюсеров).
 import { describe, it, expect } from 'vitest'
 import { applyUndo, applyRedo, type EditHistoryState } from './editorHistory'
-import type { Stroke, TextBlock } from './sceneRender'
+import type { BrushType, Stroke, TextBlock } from './sceneRender'
 
-const stroke = (n: number): Stroke => ({ color: '#fff', size: 4, points: [{ x: n, y: n }] })
+const stroke = (n: number, brush: BrushType = 'pen'): Stroke =>
+  ({ brush, color: '#fff', size: 4, points: [{ x: n, y: n }] })
 const block = (id: number): TextBlock => ({ id, x: 0, y: 0, text: `t${id}`, color: '#fff', size: 32, style: 'normal' })
 
 const empty = (): EditHistoryState => ({ history: [], redoStack: [], strokes: [], texts: [] })
@@ -22,6 +23,24 @@ describe('editorHistory — штрихи', () => {
     expect(redone.strokes).toEqual([stroke(1)])
     expect(redone.history).toEqual([{ type: 'stroke' }])
     expect(redone.redoStack).toHaveLength(0)
+  })
+
+  it('undo/redo сохраняет тип кисти в штрихе', () => {
+    const brushes: BrushType[] = ['pen', 'arrow', 'marker', 'neon', 'blur', 'eraser']
+    const s0: EditHistoryState = {
+      history: brushes.map(() => ({ type: 'stroke' } as const)),
+      redoStack: [],
+      strokes: brushes.map((b, i) => stroke(i, b)),
+      texts: [],
+    }
+    // снять все штрихи
+    let s = s0
+    for (let i = 0; i < brushes.length; i++) s = applyUndo(s)
+    expect(s.strokes).toHaveLength(0)
+    // вернуть все — порядок и brush должны совпасть с исходными
+    for (let i = 0; i < brushes.length; i++) s = applyRedo(s)
+    expect(s.strokes.map((st) => st.brush)).toEqual(brushes)
+    expect(s.strokes).toEqual(s0.strokes)
   })
 })
 

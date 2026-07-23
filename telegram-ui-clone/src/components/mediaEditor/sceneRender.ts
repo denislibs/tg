@@ -5,11 +5,19 @@
 // согласованы автоматически). Внешний transform ctx (crop + масштаб превью)
 // довершает отображение — один код рисует и live-превью, и экспорт.
 import {
-  buildEnhanceFilter, warmthOverlay,
+  arrowHeadPoints, buildEnhanceFilter, hexToRgb, warmthOverlay,
   type EnhanceValues, type Point, type Rect,
 } from './editorMath'
 
 export type SrcImage = ImageBitmap | HTMLImageElement
+
+/**
+ * Тип кисти вкладки draw (порт tweb brushes):
+ * pen — сплошная линия; arrow — линия + наконечник; marker — полупрозрачная
+ * (rgba 0.4); neon — белая линия со свечением (shadowBlur); blur — «прорезает»
+ * размытую копию базы вдоль штриха; eraser — стирает нарисованное.
+ */
+export type BrushType = 'pen' | 'arrow' | 'marker' | 'neon' | 'blur' | 'eraser'
 
 /**
  * Трансформ сцены: центрированный исходник W×H → выходное пространство.
@@ -27,6 +35,7 @@ export interface SceneTransform {
 
 /** Штрих кисти; координаты и толщина — в пикселях исходника. */
 export interface Stroke {
+  brush: BrushType
   color: string
   size: number
   points: Point[]
@@ -50,47 +59,131 @@ export const srcSize = (img: SrcImage): { w: number; h: number } =>
     ? { w: img.naturalWidth, h: img.naturalHeight }
     : { w: img.width, h: img.height }
 
-/** Штрих со сглаживанием: квадратичные кривые через середины отрезков. */
-export function drawStroke(ctx: CanvasRenderingContext2D, s: Stroke): void {
+/**
+ * Путь штриха со сглаживанием квадратичными кривыми через середины отрезков
+ * (порт tweb drawLinePath). Одна точка — кружок; strokeStyle/тени вызывающий
+ * настроил заранее.
+ */
+function drawLinePath(ctx: CanvasRenderingContext2D, pts: Point[], size: number): void {
+  if (!pts.length) return
+  if (pts.length === 1) {
+    ctx.fillStyle = ctx.strokeStyle
+    ctx.beginPath()
+    ctx.arc(pts[0].x, pts[0].y, size / 2, 0, Math.PI * 2)
+    ctx.fill()
+    return
+  }
+  ctx.lineWidth = size
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.beginPath()
+  ctx.moveTo(pts[0].x, pts[0].y)
+  for (let i = 1; i < pts.length - 2; i++) {
+    const cx = (pts[i].x + pts[i + 1].x) / 2
+    const cy = (pts[i].y + pts[i + 1].y) / 2
+    ctx.quadraticCurveTo(pts[i].x, pts[i].y, cx, cy)
+  }
+  const i = pts.length - 1
+  ctx.quadraticCurveTo(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y)
+  ctx.stroke()
+}
+
+/**
+ * Ресурсы для «тяжёлых» кистей: blurred — заранее размытая копия базы (W×H,
+ * совмещена со слоем рисования 1:1), scratch — переиспользуемый холст-маска.
+ */
+export interface BrushAssets {
+  blurred: HTMLCanvasElement | null
+  scratch: HTMLCanvasElement | null
+}
+
+/** Штрих кистью s.brush; порт объекта brushes из tweb brushPainter. */
+export function drawStroke(ctx: CanvasRenderingContext2D, s: Stroke, assets?: BrushAssets): void {
   const pts = s.points
   if (!pts.length) return
   ctx.save()
-  ctx.strokeStyle = s.color
-  ctx.fillStyle = s.color
-  ctx.lineWidth = s.size
-  ctx.lineCap = 'round'
-  ctx.lineJoin = 'round'
-  if (pts.length < 3) {
-    // точка/короткий тап — кружок
-    ctx.beginPath()
-    ctx.arc(pts[0].x, pts[0].y, s.size / 2, 0, Math.PI * 2)
-    ctx.fill()
-    if (pts.length === 2) {
-      ctx.beginPath()
-      ctx.moveTo(pts[0].x, pts[0].y)
-      ctx.lineTo(pts[1].x, pts[1].y)
-      ctx.stroke()
+  switch (s.brush) {
+    case 'pen':
+      ctx.strokeStyle = s.color
+      drawLinePath(ctx, pts, s.size)
+      break
+    case 'arrow': {
+      ctx.strokeStyle = s.color
+      drawLinePath(ctx, pts, s.size)
+      const head = arrowHeadPoints(pts, s.size)
+      if (head) {
+        const tip = pts[pts.length - 1]
+        ctx.lineWidth = s.size
+        ctx.lineCap = 'round'
+        ctx.lineJoin = 'round'
+        ctx.beginPath()
+        ctx.moveTo(tip.x, tip.y)
+        ctx.lineTo(head[0].x, head[0].y)
+        ctx.moveTo(tip.x, tip.y)
+        ctx.lineTo(head[1].x, head[1].y)
+        ctx.stroke()
+      }
+      break
     }
-  } else {
-    ctx.beginPath()
-    ctx.moveTo(pts[0].x, pts[0].y)
-    for (let i = 1; i < pts.length - 1; i++) {
-      const mx = (pts[i].x + pts[i + 1].x) / 2
-      const my = (pts[i].y + pts[i + 1].y) / 2
-      ctx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my)
+    case 'marker': {
+      const [r, g, b] = hexToRgb(s.color)
+      ctx.strokeStyle = `rgba(${r},${g},${b},0.4)`
+      drawLinePath(ctx, pts, s.size)
+      break
     }
-    ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y)
-    ctx.stroke()
+    case 'neon':
+      ctx.strokeStyle = '#ffffff'
+      ctx.shadowBlur = s.size
+      ctx.shadowColor = s.color
+      drawLinePath(ctx, pts, s.size)
+      break
+    case 'blur': {
+      // Размытую базу «прорезаем» формой штриха: рисуем белый путь на маске,
+      // source-in оставляет от размытой копии только пиксели под штрихом, итог
+      // кладём поверх резкой базы (порт blur-кисти tweb без кэша прошлых линий).
+      const blurred = assets?.blurred
+      const scratch = assets?.scratch
+      const sctx = scratch?.getContext('2d')
+      if (blurred && scratch && sctx) {
+        sctx.save()
+        sctx.clearRect(0, 0, scratch.width, scratch.height)
+        sctx.strokeStyle = '#ffffff'
+        drawLinePath(sctx, pts, s.size)
+        sctx.globalCompositeOperation = 'source-in'
+        sctx.drawImage(blurred, 0, 0)
+        sctx.restore()
+        ctx.drawImage(scratch, 0, 0)
+      }
+      break
+    }
+    case 'eraser':
+      ctx.strokeStyle = '#ffffff'
+      ctx.globalCompositeOperation = 'destination-out'
+      drawLinePath(ctx, pts, s.size)
+      break
   }
   ctx.restore()
 }
 
-/** Перерисовать слой рисования (полное разрешение) из списка штрихов. */
-export function rebuildDrawLayer(layer: HTMLCanvasElement, strokes: Stroke[]): void {
+/**
+ * Перерисовать слой рисования (полное разрешение) из списка штрихов. blurred —
+ * размытая копия базы для blur-кисти; если среди штрихов есть blur, заводим
+ * один холст-маску на весь проход (переиспользуется всеми blur-штрихами).
+ */
+export function rebuildDrawLayer(
+  layer: HTMLCanvasElement, strokes: Stroke[], blurred: HTMLCanvasElement | null = null,
+): void {
   const ctx = layer.getContext('2d')
   if (!ctx) return
   ctx.clearRect(0, 0, layer.width, layer.height)
-  for (const s of strokes) drawStroke(ctx, s)
+  let scratch: HTMLCanvasElement | null = null
+  if (blurred && strokes.some((s) => s.brush === 'blur')) {
+    scratch = document.createElement('canvas')
+    scratch.width = layer.width
+    scratch.height = layer.height
+  }
+  const assets: BrushAssets = { blurred, scratch }
+  for (const s of strokes) drawStroke(ctx, s, assets)
 }
 
 export const textFont = (size: number) => `500 ${size}px Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif`
