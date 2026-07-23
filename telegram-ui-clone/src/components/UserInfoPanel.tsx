@@ -80,11 +80,6 @@ function countLabel(tab: string, n: number, isChannel: boolean): string {
 
 // высота шапки панели — sticky-отступ табов и порог header-filled (tweb 3.5rem)
 const HEADER_H = 56
-// небольшой зазор между шапкой и таб-плашкой при залипании. ВАЖНО: у .body есть
-// padding-top: HEADER_H (контент под absolute-шапкой), и sticky-top СКЛАДЫВАЕТСЯ с
-// ним, поэтому здесь именно зазор (~12px), а не HEADER_H+зазор — иначе табы
-// «повисают» и порог header-filled не срабатывает.
-const STICKY_GAP = 12
 
 export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers, onEditContact, onSendGift }: { chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void; canAddMembers?: boolean; onEditContact?: () => void; onSendGift?: () => void }) {
   const t = useT()
@@ -182,7 +177,7 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
     // порог tweb: верх таб-плашки доехал до низа шапки (top <= OFFSET) — смена
     // заголовка на «имя + счётчик» (не связано с фоном шапки)
     const top = bar.getBoundingClientRect().top - body.getBoundingClientRect().top
-    setFilled(top <= HEADER_H + STICKY_GAP + 1)
+    setFilled(top <= HEADER_H + 1)
   }
   // клик по «назад» в залитой шапке — к началу профиля (tweb closeBtn: scrollIntoView profile-content)
   const scrollBackToProfile = () => bodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
@@ -765,7 +760,7 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
             onOpenPeer={onOpenPeer}
             onEditMember={setEditMember}
             navRef={tabsBarRef}
-            stickyTop={STICKY_GAP}
+            stickyTop={0}
             onCount={(name, n) => setTabCounts((c) => (c[name] === n ? c : { ...c, [name]: n }))}
           />
           </div>
