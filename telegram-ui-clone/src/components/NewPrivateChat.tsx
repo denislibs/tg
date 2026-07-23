@@ -4,9 +4,25 @@ import Text from '../shared/ui/Text'
 import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import Avatar from '../shared/ui/Avatar'
+import { useAvatarSrc } from './useAvatarSrc'
 import type { Chat } from '../data'
 import { useT } from '../i18n'
 import s from './NewPrivateChat.module.scss'
+
+// Строка контакта: резолвит реальное фото через useAvatarSrc (иначе <img> ловит
+// 401 и аватар «пропадает»), фолбэк — градиент+инициал.
+function ContactRow({ c, onPick }: { c: Chat; onPick: () => void }) {
+  const src = useAvatarSrc(c.avatarUrl)
+  return (
+    <div className={s.row} onClick={onPick}>
+      <Avatar background={c.avatar} text={c.avatarText} emoji={c.avatarEmoji} src={src || undefined} size="lg" />
+      <div className={s.rowText}>
+        <Text noWrap size={16} weight={500} color="var(--tg-textPrimary)">{c.name}</Text>
+        <Text noWrap size={14} color="var(--tg-textSecondary)">{c.status}</Text>
+      </div>
+    </div>
+  )
+}
 
 interface Props {
   chats: Chat[]
@@ -83,24 +99,7 @@ export default function NewPrivateChat({ chats, onClose, onSelect, title = 'New 
           </div>
         ) : (
           people.map((c) => (
-            <div
-              key={c.id}
-              className={s.row}
-              onClick={() => {
-                onSelect(c.id)
-                onClose()
-              }}
-            >
-              <Avatar background={c.avatar} text={c.avatarText} emoji={c.avatarEmoji} size="lg" />
-              <div className={s.rowText}>
-                <Text noWrap size={16} weight={500} color="var(--tg-textPrimary)">
-                  {c.name}
-                </Text>
-                <Text noWrap size={14} color="var(--tg-textSecondary)">
-                  {c.status}
-                </Text>
-              </div>
-            </div>
+            <ContactRow key={c.id} c={c} onPick={() => { onSelect(c.id); onClose() }} />
           ))
         )}
       </div>

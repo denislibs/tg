@@ -41,22 +41,27 @@
   align-items: center;
   gap: 12px;
   padding: 0 12px;
-  // По умолчанию шапка прозрачная (tweb .sidebar-header без .header-filled):
-  // поверх фото — белые иконки, над телом панели фон панели тот же цвет.
-  background: transparent;
+  // Шапка непрозрачная (tweb .profile-content .sidebar-header: surface-color) с
+  // нижней границей-разделителем (tweb .sidebar-header:after, --border-color),
+  // чтобы не сливалась «бело-на-белом» и контент не просвечивал при скролле.
+  // Прозрачной делается ТОЛЬКО поверх развёрнутого фото (.headerWhite).
+  background: var(--tg-sidebarBg);
+  border-bottom: 1px solid var(--tg-divider);
   transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
 }
 
-// при скролле до табов шапка заливается фоном панели и отделяется тенью снизу
-// (tweb .header-filled: surface background + box-shadow section-box-shadow)
+// при скролле до табов — добавляем мягкую тень снизу (tweb .header-filled /
+// .hide-border box-shadow section-box-shadow); фон уже непрозрачный в базе.
 .headerFilled {
-  background: var(--tg-sectionBackdrop);
-  box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.16);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 }
 
-// над развёрнутым фото: иконки/заголовок белые + лёгкая тень для читаемости
-// поверх верхнего градиента (tweb .need-white)
+// над развёрнутым фото: шапка прозрачная без границы, иконки/заголовок белые +
+// лёгкая тень для читаемости поверх верхнего градиента (tweb .need-white).
 .headerWhite {
+  background: transparent;
+  border-bottom-color: transparent;
+  box-shadow: none;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
