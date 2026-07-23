@@ -283,6 +283,24 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
       return r
     },
 
+    // Расшифровка голосового/видео-кружка (Telegram transcribeAudio). Реального STT
+    // на бэке нет — возвращается детерминированный стаб и кэшируется. Патчим кэш
+    // всех окон чата, чтобы блок остался развёрнутым при перерисовке.
+    async transcribe(chatId: number, msgId: number): Promise<{ text: string; pending: boolean }> {
+      const r = await rest.post<{ text: string; pending: boolean }>(`/chats/${chatId}/messages/${msgId}/transcribe`, {})
+      for (const key of keysOf(chatId)) {
+        const c = cache.get(key)
+        if (!c) continue
+        for (const [seq, m] of c) {
+          if (m.id === msgId) {
+            c.set(seq, { ...m, transcription: r.text })
+            break
+          }
+        }
+      }
+      return r
+    },
+
     // Delete a message. revoke=true → for everyone; false → only for me. Deleted
     // messages are never shown, so evict from the cache (seq + slice) too, or a
     // later cache hit would resurrect it.

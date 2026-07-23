@@ -96,6 +96,7 @@ export interface Managers {
     unpin(chatId: number, msgId: number): Promise<{ ok: boolean }>
     setFactCheck(chatId: number, msgId: number, text: string, entities?: MessageEntity[], country?: string): Promise<Message>
     removeFactCheck(chatId: number, msgId: number): Promise<{ ok: boolean }>
+    transcribe(chatId: number, msgId: number): Promise<{ text: string; pending: boolean }>
     listPins(chatId: number): Promise<Message[]>
     viewers(chatId: number, msgId: number): Promise<number[]>
     reactionUsers(chatId: number, msgId: number): Promise<ReactionUser[]>

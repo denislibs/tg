@@ -102,6 +102,7 @@ export function messageToConvMsg(
     call: m.type === 'call' ? parseCallLog(m.text) : undefined,
     webPage: m.webPage,
     factCheck: m.factCheck,
+    transcription: m.transcription,
     effect: m.effect,
     poll: m.poll,
     checklist: m.checklist,

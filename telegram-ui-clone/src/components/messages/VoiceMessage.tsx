@@ -5,6 +5,8 @@ import { useManagers } from '../../core/hooks/useManagers'
 import { useAudioStore } from '../../stores/audioStore'
 import { useWaveform, WAVE_BARS } from '../../core/audio/waveform'
 import { Ticks } from './MessageBubbles'
+import { useTranscription, TranscribeButton, TranscribedText } from './Transcription'
+import classNames from '../../shared/lib/classNames'
 import type { MsgStatus } from '../../data'
 import s from './VoiceMessage.module.scss'
 
@@ -20,6 +22,9 @@ function fmt(sec: number): string {
 
 export default function VoiceMessage({
   mediaId,
+  msgId,
+  chatId,
+  transcription,
   out,
   time,
   status,
@@ -28,6 +33,12 @@ export default function VoiceMessage({
   onPlay,
 }: {
   mediaId: number
+  /** id сообщения (для транскрибации) — undefined у оптимистичного */
+  msgId?: number
+  /** id чата (для транскрибации) */
+  chatId?: number
+  /** кэш расшифровки на сообщении (Telegram transcribeAudio) */
+  transcription?: string
   out: boolean
   time?: string
   status?: MsgStatus
@@ -37,6 +48,7 @@ export default function VoiceMessage({
   onPlay: () => void
 }) {
   const managers = useManagers()
+  const tr = useTranscription(chatId, msgId, transcription)
   const decoded = useWaveform(mediaId)
   const bars = decoded.length ? decoded : PLACEHOLDER
   const [metaDur, setMetaDur] = useState(0)
@@ -80,7 +92,8 @@ export default function VoiceMessage({
   const showUnplayedDot = !!mediaUnread
 
   return (
-    <div className={s.voice} data-out={out || undefined}>
+    <div className={s.wrap}>
+      <div className={classNames(s.voice, tr.available ? s.canTranscribe : '')} data-out={out || undefined}>
       <div className={s.playBtn} onClick={handlePlay}>
         <PlayPauseGlyph playing={playing} className={s.glyph} />
       </div>
@@ -113,6 +126,16 @@ export default function VoiceMessage({
           {out && <Ticks status={status} color={tickColor} />}
         </div>
       </div>
+      {tr.available && (
+        <TranscribeButton
+          className={s.transcribe}
+          expanded={tr.expanded}
+          pending={tr.pending}
+          onClick={tr.toggle}
+        />
+      )}
+      </div>
+      {tr.expanded && tr.text && <TranscribedText text={tr.text} color="var(--v-dur)" />}
     </div>
   )
 }

@@ -90,6 +90,8 @@ export interface ConvMsg {
   webPage?: { siteName: string; title: string; description?: string; gradient?: string; emoji?: string; url?: string; imageUrl?: string }
   // «проверка фактов» (Telegram factCheck): блок в бабле (текст + сущности + опц. страна)
   factCheck?: import('./core/models').FactCheck
+  // расшифровка голосового/видео-кружка (Telegram transcribeAudio) — текст под баблом
+  transcription?: string
   /** лог 1:1 звонка (tweb messageActionPhoneCall): исход + длительность */
   call?: CallLog
   /** секретное сообщение (E2E) — включает таймер самоуничтожения в бабле */

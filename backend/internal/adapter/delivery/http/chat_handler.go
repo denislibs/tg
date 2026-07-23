@@ -624,6 +624,39 @@ func (h *ChatHandler) RemoveFactCheck(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// TranscribeMessage — POST /chats/{chatID}/messages/{msgID}/transcribe: расшифровка
+// голосового/видео-кружка (Telegram messages.transcribeAudio). Реального движка STT
+// нет — сервер отдаёт детерминированный демо-стаб и кэширует его. pending всегда
+// false (расшифровка синхронна).
+func (h *ChatHandler) TranscribeMessage(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	msgID, ok := pathInt(w, r, "msgID")
+	if !ok {
+		return
+	}
+	text, err := h.svc.TranscribeMessage(r.Context(), chatID, msgID, h.meID(r))
+	if errors.Is(err, domain.ErrForbidden) {
+		writeError(w, http.StatusForbidden, "not a member")
+		return
+	}
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "message not found")
+		return
+	}
+	if errors.Is(err, domain.ErrInvalid) {
+		writeError(w, http.StatusBadRequest, "message is not transcribable")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "transcribe failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"text": text, "pending": false})
+}
+
 func (h *ChatHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 	chatID, ok := pathInt(w, r, "chatID")
 	if !ok {
@@ -1868,6 +1901,9 @@ func messageJSON(m domain.Message) map[string]any {
 			fc["country"] = m.FactCheck.Country
 		}
 		j["factcheck"] = fc
+	}
+	if m.Transcription != nil && *m.Transcription != "" {
+		j["transcription"] = *m.Transcription
 	}
 	if m.Effect != "" {
 		j["effect"] = m.Effect

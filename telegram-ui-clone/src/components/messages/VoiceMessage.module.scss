@@ -2,24 +2,41 @@
 // Палитра (акцент кнопки/волны, off-бар, текст) — CSS-переменные на [data-out]:
 // out — насыщенный bubbleOutAccent на светлой out-плашке, in — accent на серой.
 // Цвет бара по прогрессу (on/off) и высота — инлайн (зависят от данных).
-.voice {
+.wrap {
   --v-accent: var(--tg-accent);
   --v-off: var(--tg-textFaint);
   --v-dur: var(--tg-textSecondary);
   --v-time: var(--tg-textFaint);
 
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  min-width: 200px;
+  flex-direction: column;
 
-  &[data-out] {
+  &:has([data-out]) {
     --v-accent: var(--tg-bubbleOutAccent);
     --v-off: color-mix(in srgb, var(--tg-bubbleOutAccent) 30%, transparent);
     --v-dur: var(--tg-bubbleOutText);
     --v-time: color-mix(in srgb, var(--tg-bubbleOutText) 70%, transparent);
   }
+}
+
+.voice {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  min-width: 200px;
+
+  // место под кнопку транскрибации в правом верхнем углу (tweb padding-inline-end)
+  &.canTranscribe {
+    padding-right: 2.75rem;
+  }
+}
+
+.transcribe {
+  position: absolute;
+  top: 8px;
+  right: 8px;
 }
 
 .playBtn {

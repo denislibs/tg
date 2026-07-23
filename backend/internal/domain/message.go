@@ -144,6 +144,9 @@ type Message struct {
 	// FactCheck — «проверка фактов» на сообщении (jsonb factcheck): текст +
 	// сущности + опц. страна. Ставит/снимает автор/админ канала; nil — нет.
 	FactCheck *FactCheck
+	// Transcription — расшифровка голосового/видео-кружка (messages.transcription,
+	// Telegram transcribeAudio). Кэшируется по запросу; nil — ещё не расшифровано.
+	Transcription *string
 	// SenderName is the sender's short name (first name, else display name),
 	// populated on send for the new_message payload (not stored) — the client
 	// prefixes group chat-list previews with it, tweb-style.

@@ -211,6 +211,9 @@ type MessageRepo interface {
 	// SetFactCheck пишет/снимает «проверку фактов» (messages.factcheck) отдельным
 	// UPDATE; fc==nil снимает проверку. Возвращает обновлённую строку.
 	SetFactCheck(ctx context.Context, msgID int64, fc *domain.FactCheck) (domain.Message, error)
+	// SetTranscription кэширует расшифровку голосового/кружка (messages.transcription)
+	// отдельным UPDATE. Возвращает обновлённую строку.
+	SetTranscription(ctx context.Context, msgID int64, text string) (domain.Message, error)
 }
 
 // LinkPreviewer строит превью ссылки (og-теги страницы) для карточки web page

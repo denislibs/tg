@@ -202,6 +202,8 @@ export interface RawMessage {
   star_reaction?: { total: number; mine?: number } | null
   /** «проверка фактов» (Telegram factCheck): текст + сущности + опц. страна ISO2 */
   factcheck?: RawFactCheck | null
+  /** расшифровка голосового/видео-кружка (Telegram transcribeAudio) — кэш на сообщении */
+  transcription?: string | null
   /** send-as (Telegram send_as): отображаемый автор (канал/группа) вместо
    * sender_id, который остаётся реальным. Отсутствует — обычная отправка. */
   send_as?: { chat_id: number; title?: string; photo_id?: number } | null
@@ -331,6 +333,8 @@ export interface Message {
   webPage?: WebPageData
   /** «проверка фактов» на сообщении (Telegram factCheck) — блок в бабле */
   factCheck?: FactCheck
+  /** расшифровка голосового/видео-кружка (Telegram transcribeAudio) — кэш на сообщении */
+  transcription?: string
   /** вид полноэкранного эффекта сообщения (наш аналог Telegram message effects) */
   effect?: EmojiEffectKind
   /** платное медиа (Telegram paid media): цена в звёздах + заблокировано ли для
@@ -719,6 +723,7 @@ export function mapMessage(r: RawMessage): Message {
     destructAt: r.destruct_at ?? undefined,
     webPage: r.web_page ? mapWebPage(r.web_page) : undefined,
     factCheck: r.factcheck ? mapFactCheck(r.factcheck) : undefined,
+    transcription: r.transcription ?? undefined,
     effect: mapEffect(r.effect),
     paidMedia: r.paid_media ? { price: r.paid_media.price, locked: r.paid_media.locked } : undefined,
     starReaction: r.star_reaction ? { total: r.star_reaction.total, mine: r.star_reaction.mine ?? 0 } : undefined,

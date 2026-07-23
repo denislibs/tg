@@ -35,6 +35,10 @@ const ru: Dict = {
   'Country code (optional)': 'Код страны (необязательно)',
   'This fact check was added by an admin.': 'Эту проверку добавил администратор.',
   'Show More': 'Показать больше',
+  // ── Транскрибация голосовых/кружков (tweb transcribeAudio) ──
+  'Transcribe Voice Message': 'Расшифровать голосовое',
+  'Hide Transcription': 'Скрыть расшифровку',
+  'Transcription unavailable in demo mode': 'Расшифровка недоступна в демо-режиме',
   // ── Редактирование группы (tweb editChat) ──
   'You can provide an optional description for your group.': 'Можете указать дополнительное описание для группы.',
   'Group Type': 'Тип группы',

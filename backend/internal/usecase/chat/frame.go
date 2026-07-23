@@ -75,6 +75,9 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 	if m.FactCheck != nil {
 		p["factcheck"] = factCheckJSON(m.FactCheck)
 	}
+	if m.Transcription != nil && *m.Transcription != "" {
+		p["transcription"] = *m.Transcription
+	}
 	// Send-as: отображаемый автор (канал/группа). sender_id остаётся реальным —
 	// клиент рисует бабл от имени send_as, не теряя настоящего отправителя.
 	if m.SendAsChatID != nil {

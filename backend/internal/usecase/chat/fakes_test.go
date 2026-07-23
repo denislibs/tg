@@ -481,6 +481,20 @@ func (r fakeMsgs) SetFactCheck(_ context.Context, msgID int64, fc *domain.FactCh
 	return domain.Message{}, domain.ErrNotFound
 }
 
+func (r fakeMsgs) SetTranscription(_ context.Context, msgID int64, text string) (domain.Message, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	for cid, msgs := range r.s.messages {
+		for idx, m := range msgs {
+			if m.ID == msgID && !m.Deleted {
+				r.s.messages[cid][idx].Transcription = &text
+				return r.s.messages[cid][idx], nil
+			}
+		}
+	}
+	return domain.Message{}, domain.ErrNotFound
+}
+
 func (r fakeMsgs) LastMessageAt(_ context.Context, chatID, senderID int64) (time.Time, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()

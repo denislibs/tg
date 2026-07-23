@@ -14,6 +14,7 @@ import RichText from '../RichText'
 import type { IVArticle } from '../../core/managers/ivManager'
 import type { ConvMsg, MsgStatus } from '../../data'
 import { useTimeFormatter } from '../../settings'
+import { useTranscription, TranscribeButton, TranscribedText } from './Transcription'
 import s from './MessageBubbles.module.scss'
 
 export function Ticks({ status, color }: { status?: MsgStatus; color: string }) {
@@ -439,6 +440,7 @@ export function RoundVideoRealBubble({ m, onPlayed, onSoundPlay }: { m: ConvMsg;
       void v.play()
     }
   }
+  const tr = useTranscription(m.chatId, m.id, m.transcription)
   const fmt = (secs: number) => `${Math.floor(secs / 60)}:${String(Math.floor(secs % 60)).padStart(2, '0')}`
   const badge = sound && left != null ? fmt(left) : fmt(Math.round(dur))
   // nosound в бейдже — пока не идёт воспроизведение со звуком (tweb setIsPaused)
@@ -480,6 +482,12 @@ export function RoundVideoRealBubble({ m, onPlayed, onSoundPlay }: { m: ConvMsg;
           {m.out && <Ticks status={m.status} color="#fff" />}
         </div>
       </div>
+      {tr.available && (
+        <div className={s.roundRealTranscribe}>
+          <TranscribeButton expanded={tr.expanded} pending={tr.pending} onClick={tr.toggle} />
+        </div>
+      )}
+      {tr.expanded && tr.text && <TranscribedText text={tr.text} />}
     </div>
   )
 }

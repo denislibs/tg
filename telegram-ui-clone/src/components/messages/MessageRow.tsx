@@ -335,6 +335,9 @@ function MessageRow({
             {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
             <VoiceMessage
               mediaId={m.mediaId}
+              msgId={m.id}
+              chatId={m.chatId}
+              transcription={m.transcription}
               out={out}
               time={m.time}
               status={m.status}
