@@ -296,6 +296,11 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/channels/{chatID}/posts/{postId}/comments", chh.ListComments)
 		pr.Get("/channels/{chatID}/comment_counts", chh.CommentCounts)
 		pr.Get("/channels/{chatID}/view_counts", chh.ViewCounts)
+		// Предложка постов (Telegram suggested posts).
+		pr.Post("/channels/{chatID}/suggested_posts", chh.Suggest)
+		pr.Get("/channels/{chatID}/suggested_posts", chh.ListSuggested)
+		pr.Post("/suggested_posts/{id}/approve", chh.ApproveSuggested)
+		pr.Post("/suggested_posts/{id}/reject", chh.RejectSuggested)
 		if statsUC != nil {
 			sth := NewStatsHandler(statsUC)
 			pr.Get("/channels/{chatID}/stats", sth.ChannelStats)

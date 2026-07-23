@@ -417,6 +417,25 @@ func (r *GroupRepo) ListMembers(ctx context.Context, chatID int64, offset, limit
 	return out, rows.Err()
 }
 
+// AdminIDs — id владельца и админов чата (role in creator/admin).
+func (r *GroupRepo) AdminIDs(ctx context.Context, chatID int64) ([]int64, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT user_id FROM chat_members WHERE chat_id=$1 AND role IN ('creator','admin')`, chatID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]int64, 0)
+	for rows.Next() {
+		var uid int64
+		if err := rows.Scan(&uid); err != nil {
+			return nil, err
+		}
+		out = append(out, uid)
+	}
+	return out, rows.Err()
+}
+
 func (r *GroupRepo) SetDiscussion(ctx context.Context, channelID, groupID int64) error {
 	_, err := querier(ctx, r.pool).Exec(ctx,
 		`UPDATE chats SET discussion_chat_id=$2 WHERE id=$1`, channelID, groupID)

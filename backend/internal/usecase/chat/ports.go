@@ -98,6 +98,9 @@ type GroupRepo interface {
 	SetPhoto(ctx context.Context, chatID, mediaID int64) error
 	UsersByIDs(ctx context.Context, ids []int64) ([]domain.UserCard, error)
 	ListMembers(ctx context.Context, chatID int64, offset, limit int) ([]domain.Member, error)
+	// AdminIDs — id владельца и админов чата (role in creator/admin), для адресной
+	// рассылки (напр. новые предложенные посты уходят только тем, кто их решает).
+	AdminIDs(ctx context.Context, chatID int64) ([]int64, error)
 	SetDiscussion(ctx context.Context, channelID, groupID int64) error
 	GetDiscussion(ctx context.Context, channelID int64) (int64, error) // 0 = none
 	// IsDiscussionGroup — chatID является discussion-группой какого-то канала
@@ -476,6 +479,25 @@ type GiveawayRepo interface {
 	ParticipantIDs(ctx context.Context, id int64) ([]int64, error)
 	// Finish помечает розыгрыш завершённым и сохраняет победителей.
 	Finish(ctx context.Context, id int64, winnerIDs []int64) error
+}
+
+// SuggestedPostRepo хранит предложенные в канал посты (таблица suggested_posts).
+type SuggestedPostRepo interface {
+	Create(ctx context.Context, sp domain.SuggestedPost) (domain.SuggestedPost, error)
+	ByID(ctx context.Context, id int64) (domain.SuggestedPost, error)
+	// ListPending — все ожидающие решения посты канала (для админа), новые сверху.
+	ListPending(ctx context.Context, chatID int64) ([]domain.SuggestedPost, error)
+	// ListByAuthor — предложки автора в канале (любой статус), новые сверху.
+	ListByAuthor(ctx context.Context, chatID, authorID int64) ([]domain.SuggestedPost, error)
+	// Decide переводит pending→status (approved|rejected), фиксируя решившего/время
+	// и назначенное время публикации (publishAt для отложенной публикации). Возвращает
+	// обновлённую запись; domain.ErrNotFound, если поста нет или он уже решён.
+	Decide(ctx context.Context, id int64, status string, decidedBy int64, publishAt *time.Time) (domain.SuggestedPost, error)
+	// MarkPublished сбрасывает publish_at у опубликованного одобренного поста, чтобы
+	// воркер отложенной публикации не опубликовал его повторно.
+	MarkPublished(ctx context.Context, id int64) error
+	// DuePublish — одобренные посты с наступившим временем публикации (для воркера).
+	DuePublish(ctx context.Context, now time.Time, limit int) ([]domain.SuggestedPost, error)
 }
 
 // PremiumRepo читает/выдаёт premium-статус (для бустов и premium-приза).
