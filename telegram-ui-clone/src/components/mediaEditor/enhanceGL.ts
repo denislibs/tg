@@ -432,6 +432,17 @@ export class EnhanceRenderer {
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, w, 0, 0, h, w, h]), gl.STATIC_DRAW)
   }
 
+  /**
+   * Обновить содержимое текстуры текущим кадром источника (для видео —
+   * texSubImage2D на каждый seek/кадр). Размер текстуры уже задан setImage.
+   */
+  updateTexture(img: SrcImage): void {
+    if (!this.available || !this.texture) return
+    const gl = this.gl
+    gl.bindTexture(gl.TEXTURE_2D, this.texture)
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, img)
+  }
+
   /** Применить коррекции; результат остаётся в this.canvas. Возвращает canvas или null. */
   render(values: EnhanceValues): HTMLCanvasElement | null {
     if (!this.available || !this.texture) return null

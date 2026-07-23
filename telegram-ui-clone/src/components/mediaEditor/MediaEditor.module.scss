@@ -134,6 +134,103 @@
   pointer-events: none;
 }
 
+// ── Тайм-лайн видео (под изображением) ──
+.videoBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 640px;
+  padding: 0 12px;
+  flex-shrink: 0;
+}
+
+.tlTrack {
+  position: relative;
+  flex: 1;
+  height: 40px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.12);
+  touch-action: none;
+  cursor: pointer;
+}
+
+// подсвеченный (оставленный) диапазон трима
+.tlActive {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-top: 2px solid var(--tg-accent);
+  border-bottom: 2px solid var(--tg-accent);
+  background: rgba(255, 255, 255, 0.06);
+  pointer-events: none;
+}
+
+// левая/правая ручки трима
+.tlHandle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  background: var(--tg-accent);
+  cursor: ew-resize;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &::after {
+    content: '';
+    width: 2px;
+    height: 16px;
+    border-radius: 1px;
+    background: rgba(255, 255, 255, 0.9);
+  }
+}
+
+.tlHandleLeft {
+  transform: translateX(-100%);
+  border-radius: 10px 0 0 10px;
+}
+
+.tlHandleRight {
+  border-radius: 0 10px 10px 0;
+}
+
+// курсор текущего времени
+.tlCursor {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 3px;
+  border-radius: 2px;
+  background: #fff;
+  box-shadow: 0 0 3px rgba(0, 0, 0, 0.6);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+// метка обложки (thumbnail)
+.tlCover {
+  position: absolute;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--tg-accent);
+  transform: translate(-50%, -50%);
+  cursor: grab;
+  touch-action: none;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+}
+
+// проценты энкода вместо галочки в FAB
+.fabProgress {
+  font-size: 15px;
+  font-weight: 600;
+}
+
 // ── Input-оверлей текста ──
 .textInput {
   position: absolute;

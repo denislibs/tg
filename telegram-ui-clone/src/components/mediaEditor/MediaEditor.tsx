@@ -32,6 +32,9 @@ import { hitSticker, resizeSticker, stickerCorners, type Corner } from './sticke
 import { StickerAssets } from './stickerAssets'
 import StickerPicker from './StickerPicker'
 import { EnhanceRenderer } from './enhanceGL'
+import { ENCODE_FPS, minTrimLength, outputSize, trimRange } from './videoMath'
+import { supportsVideoEncoding } from './videoSupport'
+import { exportVideoToMp4 } from './videoExport'
 import { applyRedo, applyUndo, type HistoryItem, type RedoItem } from './editorHistory'
 import type { Sticker } from '../../core/managers/stickersManager'
 import s from './MediaEditor.module.scss'
@@ -100,6 +103,7 @@ const DEGREE_STEP = 15
 const WHEEL_LABELS = Array.from({ length: 13 }, (_, i) => i * DEGREE_STEP - 90)
 const SNAP_RAD = (2.5 * Math.PI) / 180 // «липкий» захват к прямому углу
 const WHEEL_H = 56 // высота панели колеса под изображением
+const VIDEO_BAR_H = 76 // высота тайм-лайна видео под изображением
 const QUARTER = Math.PI / 2
 
 // Undo/redo — чистые редьюсеры в editorHistory (в стеке только штрихи и
@@ -153,11 +157,56 @@ async function loadImage(file: File): Promise<SrcImage> {
   }
 }
 
+// Загрузка видео как источника: <video> с готовым первым кадром (для загрузки в
+// текстуру). URL живёт до размонтирования (revoke — из cleanup MediaEditor).
+async function loadVideo(url: string): Promise<HTMLVideoElement> {
+  const v = document.createElement('video')
+  v.src = url
+  v.muted = true
+  v.playsInline = true
+  v.preload = 'auto'
+  v.crossOrigin = 'anonymous'
+  await new Promise<void>((resolve, reject) => {
+    const onMeta = () => { cleanup(); resolve() }
+    const onErr = () => { cleanup(); reject(new Error('video load failed')) }
+    const cleanup = () => {
+      v.removeEventListener('loadeddata', onMeta)
+      v.removeEventListener('error', onErr)
+    }
+    v.addEventListener('loadeddata', onMeta)
+    v.addEventListener('error', onErr)
+  })
+  if (!(v.duration > 0) || !v.videoWidth || !v.videoHeight) throw new Error('video has no frames')
+  // Первый кадр в декодере (для texImage2D) — перематываем на 0 и ждём seeked.
+  await new Promise<void>((resolve) => {
+    const done = () => { v.removeEventListener('seeked', done); clearTimeout(t); resolve() }
+    const t = window.setTimeout(done, 800)
+    v.addEventListener('seeked', done, { once: true })
+    v.currentTime = 0
+  })
+  return v
+}
+
+// Перемотать видео на abs-время (сек) и дождаться готовности кадра (seeked).
+function seekVideoTo(v: HTMLVideoElement, sec: number): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const done = () => { v.removeEventListener('seeked', done); clearTimeout(t); resolve() }
+    const t = window.setTimeout(done, 1200)
+    v.addEventListener('seeked', done, { once: true })
+    v.currentTime = sec
+  })
+}
+
+// Заменить/добавить расширение имени файла.
+const renameExt = (name: string, ext: string): string =>
+  /\.\w+$/.test(name) ? name.replace(/\.\w+$/, `.${ext}`) : `${name}.${ext}`
+
 export default function MediaEditor({ file, onDone, onCancel }: {
   file: File
-  onDone: (blob: Blob) => void
+  onDone: (file: File) => void
   onCancel: () => void
 }) {
+  const isVideo = file.type.startsWith('video/')
   const t = useT()
   const container = usePortalContainer()
 
@@ -189,6 +238,14 @@ export default function MediaEditor({ file, onDone, onCancel }: {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [vp, setVp] = useState({ w: 0, h: 0 })
+  // ── Видео: трим/обложка/mute/скраббинг + прогресс энкода ──
+  const [videoDuration, setVideoDuration] = useState(0)
+  const [videoCropStart, setVideoCropStart] = useState(0)   // доля 0..1
+  const [videoCropLength, setVideoCropLength] = useState(1)  // доля 0..1
+  const [videoThumbPos, setVideoThumbPos] = useState(0)      // доля 0..1
+  const [videoMuted, setVideoMuted] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)          // доля 0..1
+  const [exportProgress, setExportProgress] = useState<number | null>(null)
 
   const workRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -203,6 +260,13 @@ export default function MediaEditor({ file, onDone, onCancel }: {
   const rendererRef = useRef<EnhanceRenderer | null>(null)
   const rendererReadyRef = useRef(false)
   const adjustedRef = useRef<HTMLCanvasElement | null>(null)
+  // Видео: URL исходника (revoke на размонтировании), свежие enhance для seek-
+  // обработчика, флаг активного энкода (гасит live-перерисовку по seeked).
+  const videoUrlRef = useRef<string | null>(null)
+  const enhanceRef = useRef<EnhanceValues>(enhance)
+  enhanceRef.current = enhance
+  const exportingRef = useRef(false)
+  const tlDragRef = useRef<'start' | 'end' | 'cursor' | 'cover' | null>(null)
   const measureCtxRef = useRef<CanvasRenderingContext2D | null>(null)
   const renderRef = useRef<() => void>(() => {})
   // editingText зеркалится в ref: blur и pointerdown приходят в один тик, и
@@ -222,11 +286,22 @@ export default function MediaEditor({ file, onDone, onCancel }: {
   const rotAnimRef = useRef<(() => void) | null>(null)
   const cropAnimRef = useRef<(() => void) | null>(null)
 
-  // ── Загрузка исходника ──
+  // ── Загрузка исходника (image → bitmap/img; video → <video>) ──
   useEffect(() => {
     let dead = false
     void (async () => {
       try {
+        if (isVideo) {
+          const url = URL.createObjectURL(file)
+          videoUrlRef.current = url
+          const v = await loadVideo(url)
+          if (dead) return
+          const { w, h } = srcSize(v)
+          setVideoDuration(v.duration)
+          setImg(v)
+          setCrop({ x: 0, y: 0, w, h })
+          return
+        }
         const bmp = await loadImage(file)
         if (dead) {
           if (typeof ImageBitmap !== 'undefined' && bmp instanceof ImageBitmap) bmp.close()
@@ -246,6 +321,10 @@ export default function MediaEditor({ file, onDone, onCancel }: {
   useEffect(() => () => {
     if (img && typeof ImageBitmap !== 'undefined' && img instanceof ImageBitmap) img.close()
   }, [img])
+
+  useEffect(() => () => {
+    if (videoUrlRef.current) URL.revokeObjectURL(videoUrlRef.current)
+  }, [])
 
   // ── WebGL-рендер коррекций ──
   // Контекст/программа/буферы — один раз на монтирование; при недоступности
@@ -344,6 +423,38 @@ export default function MediaEditor({ file, onDone, onCancel }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [img, enhance])
 
+  // ── Видео: перерисовка превью при перемотке ──
+  // На каждый seeked загружаем текущий кадр в текстуру, пересчитываем adjusted
+  // (свежие enhance — из ref) и перерисовываем. Во время энкода выключено
+  // (exportingRef): там композит гоняется своим циклом.
+  useEffect(() => {
+    if (!isVideo || !img) return
+    const v = img as HTMLVideoElement
+    const onSeeked = () => {
+      if (exportingRef.current) return
+      const r = rendererRef.current
+      if (r && rendererReadyRef.current && r.available) {
+        try {
+          r.updateTexture(v)
+          adjustedRef.current = r.render(enhanceRef.current)
+        } catch {
+          adjustedRef.current = null
+        }
+      }
+      renderRef.current()
+    }
+    v.addEventListener('seeked', onSeeked)
+    return () => v.removeEventListener('seeked', onSeeked)
+  }, [img, isVideo])
+
+  // Метка обложки не должна выпадать из диапазона трима (порт tweb clamp).
+  useEffect(() => {
+    if (!isVideo) return
+    const lo = videoCropStart
+    const hi = videoCropStart + videoCropLength
+    setVideoThumbPos((p) => Math.min(hi, Math.max(lo, p)))
+  }, [videoCropStart, videoCropLength, isVideo])
+
   // ── Вьюпорт рабочей области ──
   useEffect(() => {
     const el = workRef.current
@@ -373,8 +484,9 @@ export default function MediaEditor({ file, onDone, onCancel }: {
   const ox = crop ? crop.x + crop.w / 2 - W / 2 : 0
   const oy = crop ? crop.y + crop.h / 2 - H / 2 : 0
 
-  // Доступная под превью высота (в crop-режиме снизу — панель колеса).
-  const availH = Math.max(1, vp.h - (cropTab ? WHEEL_H : 0))
+  // Доступная под превью высота (в crop-режиме снизу — колесо; для видео —
+  // тайм-лайн, показывается на всех вкладках).
+  const availH = Math.max(1, vp.h - (cropTab ? WHEEL_H : 0) - (isVideo ? VIDEO_BAR_H : 0))
   const availW = Math.max(1, vp.w)
 
   // Габарит повёрнутого изображения (для вписывания в crop-режиме).
@@ -605,6 +717,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
     strokes.length > 0 || texts.length > 0 || stickers.length > 0 || !isDefaultEnhance(enhance)
     || rotation !== 0 || flipX !== 1 || flipY !== 1
     || crop.x > 0.5 || crop.y > 0.5 || crop.w < W - 0.5 || crop.h < H - 0.5
+    || (isVideo && (videoCropStart > 1e-4 || videoCropLength < 1 - 1e-4 || videoMuted))
   )
 
   const requestClose = () => {
@@ -645,6 +758,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
   // ── Экспорт (полное разрешение обрезанного/повёрнутого результата) ──
   const doFinish = async () => {
     if (!img || !crop || busy) return
+    if (isVideo) { void doFinishVideo(); return }
     const exportTexts = editingRef.current ? commitEditing() : texts
     setBusy(true)
     try {
@@ -664,8 +778,65 @@ export default function MediaEditor({ file, onDone, onCancel }: {
       ctx.setTransform(1, 0, 0, 1, crop.w / 2 - ox, crop.h / 2 - oy)
       composeScene(ctx, scene(exportTexts))
       const blob = await new Promise<Blob | null>((resolve) => c.toBlob(resolve, 'image/jpeg', 0.92))
-      if (blob) onDone(blob)
+      if (blob) onDone(new File([blob], renameExt(file.name, 'jpg'), { type: 'image/jpeg' }))
     } finally {
+      setBusy(false)
+    }
+  }
+
+  // ── Экспорт видео: покадровый композит + mp4-энкод (WebCodecs/mediabunny) ──
+  const doFinishVideo = async () => {
+    if (!img || !crop || busy) return
+    const v = img as HTMLVideoElement
+    const supported = await supportsVideoEncoding()
+    // Деградация без WebCodecs / короткий путь «видео без изменений» — отдаём
+    // исходный файл как есть, не гоняя энкод (редактор не падает).
+    if (!supported || !dirty) { onDone(file); return }
+
+    const exportTexts = editingRef.current ? commitEditing() : texts
+    setBusy(true)
+    setExportProgress(0)
+    exportingRef.current = true
+    try {
+      const trim = trimRange(videoDuration, videoCropStart, videoCropLength)
+      const out = outputSize(Math.round(crop.w), Math.round(crop.h))
+      const sc = out.width / crop.w // масштаб нативной crop-рамки → выходной кадр
+      // Композит одного кадра: обновляем adjusted из текущего (уже перемотанного)
+      // кадра, детерминированно ставим кадр lottie-стикеров, рисуем всю сцену.
+      const renderFrameTo = (canvas: HTMLCanvasElement, relSec: number): void => {
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return
+        const r = rendererRef.current
+        if (r && rendererReadyRef.current && r.available) {
+          try { r.updateTexture(v); adjustedRef.current = r.render(enhanceRef.current) } catch { adjustedRef.current = null }
+        }
+        stickerAssetsRef.current?.seek(relSec)
+        ctx.setTransform(1, 0, 0, 1, 0, 0)
+        ctx.fillStyle = '#000000'
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+        ctx.setTransform(sc, 0, 0, sc, sc * (crop.w / 2 - ox), sc * (crop.h / 2 - oy))
+        composeScene(ctx, scene(exportTexts))
+      }
+      const { blob } = await exportVideoToMp4({
+        width: out.width,
+        height: out.height,
+        fps: ENCODE_FPS,
+        trim,
+        muted: videoMuted,
+        sourceBlob: file,
+        seekVideo: (sec) => seekVideoTo(v, sec),
+        renderFrameTo,
+        onProgress: (p) => setExportProgress(p),
+      })
+      onDone(new File([blob], renameExt(file.name, 'mp4'), { type: 'video/mp4' }))
+    } catch (e) {
+      // Любой сбой энкода — мягко отдаём исходник (лучше отправить без правок,
+      // чем уронить редактор).
+      console.error('video export failed', e)
+      onDone(file)
+    } finally {
+      exportingRef.current = false
+      setExportProgress(null)
       setBusy(false)
     }
   }
@@ -922,6 +1093,55 @@ export default function MediaEditor({ file, onDone, onCancel }: {
   }
   const onWheelPointerUp = () => { wheelDragRef.current = null }
 
+  // ── Видео: тайм-лайн (трим/скраббинг/обложка) ──
+  const tlTrackRef = useRef<HTMLDivElement | null>(null)
+
+  const seekTo = (frac: number) => {
+    const v = img as HTMLVideoElement | null
+    if (!v || !videoDuration) return
+    const f = Math.min(1, Math.max(0, frac))
+    setCurrentTime(f)
+    v.currentTime = f * videoDuration
+  }
+
+  const tlPos = (clientX: number): number => {
+    const r = tlTrackRef.current?.getBoundingClientRect()
+    if (!r || r.width <= 0) return 0
+    return Math.min(1, Math.max(0, (clientX - r.left) / r.width))
+  }
+
+  const onTlMove = (e: React.PointerEvent) => {
+    const mode = tlDragRef.current
+    if (!mode) return
+    const pos = tlPos(e.clientX)
+    const minLen = minTrimLength(videoDuration)
+    if (mode === 'start') {
+      const right = videoCropStart + videoCropLength
+      const ns = Math.max(0, Math.min(pos, right - minLen))
+      setVideoCropStart(ns)
+      setVideoCropLength(right - ns)
+      seekTo(ns)
+    } else if (mode === 'end') {
+      const ne = Math.min(1, Math.max(pos, videoCropStart + minLen))
+      setVideoCropLength(ne - videoCropStart)
+      seekTo(ne)
+    } else if (mode === 'cover') {
+      setVideoThumbPos(Math.min(videoCropStart + videoCropLength, Math.max(videoCropStart, pos)))
+    } else {
+      seekTo(Math.min(videoCropStart + videoCropLength, Math.max(videoCropStart, pos)))
+    }
+  }
+
+  const onTlDown = (e: React.PointerEvent, mode: 'start' | 'end' | 'cursor' | 'cover') => {
+    if (e.button !== 0) return
+    e.stopPropagation()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    tlDragRef.current = mode
+    if (mode === 'cursor' || mode === 'cover') onTlMove(e)
+  }
+
+  const onTlUp = () => { tlDragRef.current = null }
+
   // ── Кисть: текущий цвет per-brush и превью размера ──
   const brushColorValue = hasBrushColor(brush) ? brushColors[brush] : SWATCHES[0]
   const setBrushColorValue = (c: string) => {
@@ -1106,6 +1326,54 @@ export default function MediaEditor({ file, onDone, onCancel }: {
             </IconButton>
           </div>
         )}
+
+        {img && crop && isVideo && (
+          <div className={s.videoBar} style={{ height: VIDEO_BAR_H }}>
+            <IconButton
+              size="small"
+              color="#fff"
+              title={videoMuted ? t('Unmute') : t('Mute')}
+              onClick={() => setVideoMuted((m) => !m)}
+            >
+              <TgIcon name={videoMuted ? 'volume_off' : 'volume_up'} />
+            </IconButton>
+            <div
+              className={s.tlTrack}
+              ref={tlTrackRef}
+              onPointerDown={(e) => onTlDown(e, 'cursor')}
+              onPointerMove={onTlMove}
+              onPointerUp={onTlUp}
+            >
+              <div
+                className={s.tlActive}
+                style={{ left: `${videoCropStart * 100}%`, right: `${(1 - (videoCropStart + videoCropLength)) * 100}%` }}
+              />
+              <div
+                className={classNames(s.tlHandle, s.tlHandleLeft)}
+                style={{ left: `${videoCropStart * 100}%` }}
+                onPointerDown={(e) => onTlDown(e, 'start')}
+                onPointerMove={onTlMove}
+                onPointerUp={onTlUp}
+              />
+              <div
+                className={classNames(s.tlHandle, s.tlHandleRight)}
+                style={{ left: `${(videoCropStart + videoCropLength) * 100}%` }}
+                onPointerDown={(e) => onTlDown(e, 'end')}
+                onPointerMove={onTlMove}
+                onPointerUp={onTlUp}
+              />
+              <div className={s.tlCursor} style={{ left: `${currentTime * 100}%` }} />
+              <div
+                className={s.tlCover}
+                style={{ left: `${videoThumbPos * 100}%` }}
+                title={t('Cover')}
+                onPointerDown={(e) => onTlDown(e, 'cover')}
+                onPointerMove={onTlMove}
+                onPointerUp={onTlUp}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       <div className={s.panel}>
@@ -1236,7 +1504,9 @@ export default function MediaEditor({ file, onDone, onCancel }: {
           whileTap={{ scale: 0.92 }}
           onClick={() => void doFinish()}
         >
-          <TgIcon name="check" size={28} />
+          {exportProgress != null
+            ? <span className={s.fabProgress}>{Math.round(exportProgress * 100)}%</span>
+            : <TgIcon name="check" size={28} />}
         </motion.div>
       </div>
 

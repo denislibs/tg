@@ -10,6 +10,7 @@ import Menu, { MenuItem } from '../../shared/ui/Menu'
 import { motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
 import MediaEditor from '../mediaEditor/MediaEditor'
+import { supportsVideoEncoding } from '../mediaEditor/videoSupport'
 import StarIcon from '../stars/StarIcon'
 import { useT } from '../../i18n'
 import s from './SendMediaPopup.module.scss'
@@ -60,6 +61,10 @@ export default function SendMediaPopup({
   // дополнительного канала наверх; rev форсирует пересоздание превью-URL.
   const [editIdx, setEditIdx] = useState<number | null>(null)
   const [rev, setRev] = useState(0)
+  // Редактирование видео доступно только при поддержке WebCodecs (иначе энкод
+  // невозможен) — кнопку edit у видео показываем лишь после успешной проверки.
+  const [canEditVideo, setCanEditVideo] = useState(false)
+  useEffect(() => { let dead = false; void supportsVideoEncoding().then((ok) => { if (!dead) setCanEditVideo(ok) }); return () => { dead = true } }, [])
 
   // Object URLs for previews; revoked when files change / on unmount.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -179,7 +184,16 @@ export default function SendMediaPopup({
             )
           }
           if (showAsMedia && f.type.startsWith('video/')) {
-            return <video key={i} className={s.preview} src={urls[i]} controls />
+            return (
+              <div key={`${i}-${rev}`} className={s.previewWrap}>
+                <video className={s.preview} src={urls[i]} controls />
+                {canEditVideo && (
+                  <IconButton size="small" color="#fff" className={s.editBtn} onClick={() => setEditIdx(i)}>
+                    <TgIcon name="edit" size={20} />
+                  </IconButton>
+                )}
+              </div>
+            )
           }
           // file row (documents, audio, or "as file" mode)
           const ext = (f.name.split('.').pop() || '').slice(0, 4).toUpperCase()
@@ -199,10 +213,10 @@ export default function SendMediaPopup({
         <MediaEditor
           file={files[editIdx]}
           onCancel={() => setEditIdx(null)}
-          onDone={(blob) => {
-            const old = files[editIdx]
-            const name = /\.\w+$/.test(old.name) ? old.name.replace(/\.\w+$/, '.jpg') : `${old.name}.jpg`
-            files[editIdx] = new File([blob], name, { type: 'image/jpeg' })
+          onDone={(edited) => {
+            // MediaEditor уже собрал File с нужным mime/расширением (image/jpeg
+            // или video/mp4, либо исходник без изменений) — кладём по месту.
+            files[editIdx] = edited
             setRev((r) => r + 1)
             setEditIdx(null)
           }}

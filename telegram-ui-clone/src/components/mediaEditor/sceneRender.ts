@@ -9,7 +9,9 @@ import {
   type EnhanceValues, type Point, type Rect,
 } from './editorMath'
 
-export type SrcImage = ImageBitmap | HTMLImageElement
+// Источник медиа-базы: картинка (image/bitmap) или видео (текущий кадр —
+// drawImage/texImage2D берут кадр на момент вызова; редактор перематывает seek'ом).
+export type SrcImage = ImageBitmap | HTMLImageElement | HTMLVideoElement
 
 /**
  * Тип кисти вкладки draw (порт tweb brushes):
@@ -97,10 +99,13 @@ export interface StickerLayer {
   rotation: number
 }
 
-export const srcSize = (img: SrcImage): { w: number; h: number } =>
-  img instanceof HTMLImageElement
-    ? { w: img.naturalWidth, h: img.naturalHeight }
-    : { w: img.width, h: img.height }
+export const srcSize = (img: SrcImage): { w: number; h: number } => {
+  if (typeof HTMLVideoElement !== 'undefined' && img instanceof HTMLVideoElement) {
+    return { w: img.videoWidth, h: img.videoHeight }
+  }
+  if (img instanceof HTMLImageElement) return { w: img.naturalWidth, h: img.naturalHeight }
+  return { w: img.width, h: img.height }
+}
 
 /**
  * Путь штриха со сглаживанием квадратичными кривыми через середины отрезков

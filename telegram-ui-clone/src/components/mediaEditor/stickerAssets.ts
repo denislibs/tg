@@ -71,6 +71,20 @@ export class StickerAssets {
     return this.sources.get(mediaId) ?? null
   }
 
+  /**
+   * Детерминированно перемотать все lottie-анимации на время timeSec (для
+   * покадрового энкода видео): кадр = (timeSec * frameRate) mod totalFrames,
+   * goToAndStop рисует его в offscreen-canvas синхронно. Статичные — no-op.
+   */
+  seek(timeSec: number): void {
+    for (const anim of this.anims.values()) {
+      const total = anim.totalFrames
+      if (!total) continue
+      const fr = anim.frameRate || 60
+      anim.goToAndStop(((timeSec * fr) % total + total) % total, true)
+    }
+  }
+
   destroy(): void {
     this.dead = true
     for (const a of this.anims.values()) a.destroy()

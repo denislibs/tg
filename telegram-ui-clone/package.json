@@ -21,6 +21,7 @@
     "framer-motion": "^11.11.17",
     "leaflet": "^1.9.4",
     "lottie-web": "^5.13.0",
+    "mediabunny": "^1.51.0",
     "prismjs": "^1.30.0",
     "qr-code-styling": "^1.9.2",
     "react": "^18.3.1",
