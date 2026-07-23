@@ -15,6 +15,7 @@
   flex: 1;
   min-width: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   overflow: hidden;
@@ -67,6 +68,70 @@
   &[data-h='s'] { left: calc(50% - 7px); bottom: -7px; }
   &[data-h='sw'] { left: -7px; bottom: -7px; }
   &[data-h='w'] { left: -7px; top: calc(50% - 7px); }
+}
+
+// ── Колесо углов (под изображением, crop-режим) ──
+.wheel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 520px;
+  padding: 0 8px;
+  flex-shrink: 0;
+}
+
+.wheelTrack {
+  position: relative;
+  flex: 1;
+  height: 40px;
+  overflow: hidden;
+  touch-action: none;
+  cursor: ew-resize;
+  // растворяем метки к краям
+  mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+}
+
+.wheelStrip {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  display: flex;
+  pointer-events: none;
+}
+
+.wheelLabel {
+  width: 42px; // DEGREE_DIST_PX
+  text-align: center;
+  font-size: 12px;
+  line-height: 40px;
+  color: rgba(255, 255, 255, 0.55);
+  user-select: none;
+}
+
+.wheelArrow {
+  position: absolute;
+  left: 50%;
+  top: 2px;
+  width: 0;
+  height: 0;
+  transform: translateX(-50%);
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--tg-accent);
+  pointer-events: none;
+}
+
+.wheelValue {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tg-accent);
+  pointer-events: none;
 }
 
 // ── Input-оверлей текста ──
@@ -194,12 +259,6 @@
   background: rgba(255, 255, 255, 0.08);
   color: var(--tg-accent);
   font-weight: 600;
-}
-
-.cropTools {
-  display: flex;
-  gap: 8px;
-  padding: 12px 6px 0;
 }
 
 .resetBtn {

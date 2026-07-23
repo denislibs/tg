@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
-  ADJUSTMENTS, ENHANCE_DEFAULTS, HISTORY_LIMIT, MIN_CROP,
-  aspectOf, buildEnhanceFilter, centeredAspectCrop, clampCrop, enhanceRange, fitScale,
-  flipPointH, flipRectH, isDefaultEnhance, moveCrop, normalizeEnhance, pushHistory,
-  resizeCrop, rotatePointCW, rotateRectCW, warmthOverlay,
+  ADJUSTMENTS, ASPECT_PRESETS, ENHANCE_DEFAULTS, HISTORY_LIMIT, MIN_CROP,
+  aspectOf, buildEnhanceFilter, centeredAspectCrop, clampCrop, coverScale, enhanceRange, fitScale,
+  isDefaultEnhance, moveCrop, normalizeEnhance, pushHistory,
+  resizeCrop, rotatePoint, warmthOverlay,
+  type Rect,
 } from './editorMath'
 
 describe('ADJUSTMENTS / дефолты', () => {
@@ -78,6 +79,19 @@ describe('aspectOf / centeredAspectCrop', () => {
     expect(aspectOf('1:1', 800, 600)).toBe(1)
     expect(aspectOf('4:3', 800, 600)).toBeCloseTo(4 / 3)
     expect(aspectOf('16:9', 800, 600)).toBeCloseTo(16 / 9)
+  })
+
+  it('полный список пресетов (как в tweb cropTab)', () => {
+    expect(ASPECT_PRESETS).toEqual([
+      'free', 'original', '1:1', '3:2', '2:3', '4:3', '3:4',
+      '5:4', '4:5', '7:5', '5:7', '16:9', '9:16',
+    ])
+    expect(aspectOf('3:2', 800, 600)).toBeCloseTo(3 / 2)
+    expect(aspectOf('2:3', 800, 600)).toBeCloseTo(2 / 3)
+    expect(aspectOf('9:16', 800, 600)).toBeCloseTo(9 / 16)
+    expect(aspectOf('5:7', 800, 600)).toBeCloseTo(5 / 7)
+    // портретные и альбомные пресеты — взаимно обратные
+    expect(aspectOf('3:4', 800, 600)! * aspectOf('4:3', 800, 600)!).toBeCloseTo(1)
   })
 
   it('free — вся картинка', () => {
@@ -168,28 +182,57 @@ describe('resizeCrop (с аспектом)', () => {
   })
 })
 
-describe('поворот/отражение координат', () => {
-  it('точка на 90° по часовой: (x,y) → (H-y, x)', () => {
-    expect(rotatePointCW({ x: 10, y: 20 }, 600)).toEqual({ x: 580, y: 10 })
+describe('rotatePoint (свободный угол)', () => {
+  it('поворот на 0 — тождество', () => {
+    expect(rotatePoint({ x: 10, y: 20 }, 0)).toEqual({ x: 10, y: 20 })
   })
 
-  it('rect на 90°: четыре поворота возвращают исходник', () => {
-    const r = { x: 10, y: 20, w: 100, h: 50 }
-    let cur = r
-    let W = 800
-    let H = 600
-    for (let i = 0; i < 4; i++) {
-      cur = rotateRectCW(cur, H)
-      ;[W, H] = [H, W]
-    }
-    expect(cur).toEqual(r)
+  it('поворот на 90° по часовой (y-вниз): (x,y) → (-y, x)', () => {
+    const p = rotatePoint({ x: 10, y: 0 }, Math.PI / 2)
+    expect(p.x).toBeCloseTo(0)
+    expect(p.y).toBeCloseTo(10)
   })
 
-  it('отражение по горизонтали — инволюция', () => {
-    const r = { x: 10, y: 20, w: 100, h: 50 }
-    expect(flipRectH(r, 800)).toEqual({ x: 690, y: 20, w: 100, h: 50 })
-    expect(flipRectH(flipRectH(r, 800), 800)).toEqual(r)
-    expect(flipPointH({ x: 10, y: 20 }, 800)).toEqual({ x: 790, y: 20 })
+  it('поворот на 180° меняет знак обеих координат', () => {
+    const p = rotatePoint({ x: 3, y: 7 }, Math.PI)
+    expect(p.x).toBeCloseTo(-3)
+    expect(p.y).toBeCloseTo(-7)
+  })
+
+  it('четыре поворота на 90° возвращают точку', () => {
+    let p = { x: 12, y: -5 }
+    for (let i = 0; i < 4; i++) p = rotatePoint(p, Math.PI / 2)
+    expect(p.x).toBeCloseTo(12)
+    expect(p.y).toBeCloseTo(-5)
+  })
+})
+
+describe('coverScale (покрытие рамки при повороте)', () => {
+  const full = (w: number, h: number): Rect => ({ x: 0, y: 0, w, h })
+
+  it('без поворота полная рамка покрывается масштабом 1', () => {
+    expect(coverScale(full(800, 600), 800, 600, 0)).toBeCloseTo(1)
+  })
+
+  it('поворот квадрата на 45° требует масштаб √2', () => {
+    expect(coverScale(full(100, 100), 100, 100, Math.PI / 4)).toBeCloseTo(Math.SQRT2)
+  })
+
+  it('поворот на 90° альбомной картинки требует масштаб W/H', () => {
+    // рамка 800×600, картинка 800×600, повёрнутая на 90° → нужно w/h
+    expect(coverScale(full(800, 600), 800, 600, Math.PI / 2)).toBeCloseTo(800 / 600)
+  })
+
+  it('меньшая рамка внутри картинки без поворота не ужимает исходник (min 1)', () => {
+    expect(coverScale({ x: 200, y: 150, w: 400, h: 300 }, 800, 600, 0)).toBe(1)
+  })
+
+  it('смещённая рамка учитывает эксцентриситет центра', () => {
+    // рамка у края сильнее уходит из-под повёрнутой картинки → масштаб больше
+    const centered = coverScale({ x: 300, y: 200, w: 200, h: 200 }, 800, 600, Math.PI / 6)
+    const offCenter = coverScale({ x: 0, y: 0, w: 200, h: 200 }, 800, 600, Math.PI / 6)
+    expect(offCenter).toBeGreaterThan(centered)
+    expect(centered).toBeGreaterThanOrEqual(1)
   })
 })
 

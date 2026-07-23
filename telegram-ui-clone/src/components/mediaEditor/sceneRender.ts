@@ -1,8 +1,9 @@
 // Канвас-композиция медиа-редактора (canvas 2D, без React): базовое
-// изображение с ориентацией и enhance-фильтрами, оверлей «тепла», слой
-// рисования, текст-блоки. Все координаты — в пикселях ориентированного
-// исходника; масштаб превью задаётся transform'ом контекста, поэтому один и
-// тот же код рисует и live-превью, и экспорт в полном разрешении.
+// изображение, enhance-фильтры, оверлей «тепла», слой рисования, текст-блоки.
+// Все координаты — в пикселях СЫРОГО исходника W×H; поворот/флип/масштаб
+// покрытия применяются ко ВСЕЙ сцене одним трансформом (base + штрихи + текст
+// согласованы автоматически). Внешний transform ctx (crop + масштаб превью)
+// довершает отображение — один код рисует и live-превью, и экспорт.
 import {
   buildEnhanceFilter, warmthOverlay,
   type EnhanceValues, type Point, type Rect,
@@ -10,10 +11,18 @@ import {
 
 export type SrcImage = ImageBitmap | HTMLImageElement
 
-/** Ориентация: rot — число поворотов на 90° по часовой, flip — зеркало по X. */
-export interface Orient {
-  rot: 0 | 1 | 2 | 3
-  flip: boolean
+/**
+ * Трансформ сцены: центрированный исходник W×H → выходное пространство.
+ * flipX/flipY — зеркала по осям (±1), rotation — свободный угол (рад),
+ * scale — масштаб покрытия crop-рамки (coverScale).
+ */
+export interface SceneTransform {
+  w: number
+  h: number
+  flipX: 1 | -1
+  flipY: 1 | -1
+  rotation: number
+  scale: number
 }
 
 /** Штрих кисти; координаты и толщина — в пикселях исходника. */
@@ -40,30 +49,6 @@ export const srcSize = (img: SrcImage): { w: number; h: number } =>
   img instanceof HTMLImageElement
     ? { w: img.naturalWidth, h: img.naturalHeight }
     : { w: img.width, h: img.height }
-
-/** Размер ориентированного пространства (rot нечётный — оси меняются местами). */
-export const orientedSize = (img: SrcImage, o: Orient): { w: number; h: number } => {
-  const { w, h } = srcSize(img)
-  return o.rot % 2 ? { w: h, h: w } : { w, h }
-}
-
-// Поворот по часовой в view-пространстве: rot+1. Отражение в view-пространстве
-// при T = R(rot)∘F(flip): F∘R(rot) = R(-rot)∘F, поэтому rot → (4-rot)%4.
-export const rotateOrientCW = (o: Orient): Orient => ({ rot: ((o.rot + 1) % 4) as Orient['rot'], flip: o.flip })
-export const flipOrientH = (o: Orient): Orient => ({ rot: ((4 - o.rot) % 4) as Orient['rot'], flip: !o.flip })
-
-/** Нарисовать источник в ориентированное пространство ow×oh (в коорд. ctx). */
-export function drawOriented(ctx: CanvasRenderingContext2D, img: CanvasImageSource, o: Orient, ow: number, oh: number): void {
-  ctx.save()
-  ctx.translate(ow / 2, oh / 2)
-  ctx.rotate((o.rot * Math.PI) / 2)
-  if (o.flip) ctx.scale(-1, 1)
-  // до поворота оси исходные: при нечётном rot ширина рисуется вдоль oh
-  const w = o.rot % 2 ? oh : ow
-  const h = o.rot % 2 ? ow : oh
-  ctx.drawImage(img, -w / 2, -h / 2, w, h)
-  ctx.restore()
-}
 
 /** Штрих со сглаживанием: квадратичные кривые через середины отрезков. */
 export function drawStroke(ctx: CanvasRenderingContext2D, s: Stroke): void {
@@ -160,14 +145,13 @@ export function drawTextBlock(ctx: CanvasRenderingContext2D, b: TextBlock): void
   ctx.restore()
 }
 
-export interface Scene {
+export interface Scene extends SceneTransform {
   img: SrcImage
-  orient: Orient
   enhance: EnhanceValues
   /**
-   * Медиа-слой после WebGL-коррекций (нативное разрешение исходника, БЕЗ
-   * ориентации). Если задан — рисуется ориентированным как медиа-база. Если
-   * null (WebGL недоступен) — fallback: исходник + CSS-filter + оверлей тепла.
+   * Медиа-слой после WebGL-коррекций (нативное разрешение исходника W×H). Если
+   * задан — рисуется как медиа-база. Если null (WebGL недоступен) — fallback:
+   * исходник + CSS-filter + оверлей тепла.
    */
   adjusted: HTMLCanvasElement | null
   drawLayer: HTMLCanvasElement | null
@@ -175,19 +159,28 @@ export interface Scene {
 }
 
 /**
- * Полная композиция сцены в ориентированных координатах исходника
- * (crop → на совести transform'а ctx): медиа-база → рисунок → текст.
- * hideTextId — блок, который сейчас редактируется input-оверлеем.
+ * Полная композиция сцены. Вызывающий уже настроил transform ctx так, что
+ * центрированное выходное пространство отображается на канвас (с учётом crop и
+ * масштаба превью). Здесь применяется трансформ изображения (scale покрытия →
+ * поворот → флип → перенос в левый-верх исходника) и рисуется медиа-база →
+ * рисунок → текст в координатах СЫРОГО исходника W×H. Поэтому штрихи и текст
+ * поворачиваются/масштабируются/кадрируются вместе с картинкой и в превью, и в
+ * экспорте. hideTextId — блок, который сейчас редактируется input-оверлеем.
  */
 export function composeScene(ctx: CanvasRenderingContext2D, sc: Scene, hideTextId?: number): void {
-  const { w: ow, h: oh } = orientedSize(sc.img, sc.orient)
+  const { w, h } = sc
+  ctx.save()
+  ctx.scale(sc.scale, sc.scale)
+  ctx.rotate(sc.rotation)
+  ctx.scale(sc.flipX, sc.flipY)
+  ctx.translate(-w / 2, -h / 2)
   if (sc.adjusted) {
     // WebGL уже применил 11 коррекций к пикселям — рисуем как есть.
-    drawOriented(ctx, sc.adjusted, sc.orient, ow, oh)
+    ctx.drawImage(sc.adjusted, 0, 0, w, h)
   } else {
     // Fallback: часть коррекций через CSS-filter + оверлей тепла.
     ctx.filter = buildEnhanceFilter(sc.enhance)
-    drawOriented(ctx, sc.img, sc.orient, ow, oh)
+    ctx.drawImage(sc.img, 0, 0, w, h)
     ctx.filter = 'none'
     const warm = warmthOverlay(sc.enhance.warmth)
     if (warm) {
@@ -195,7 +188,7 @@ export function composeScene(ctx: CanvasRenderingContext2D, sc: Scene, hideTextI
       ctx.globalCompositeOperation = 'soft-light'
       ctx.globalAlpha = warm.alpha
       ctx.fillStyle = warm.color
-      ctx.fillRect(0, 0, ow, oh)
+      ctx.fillRect(0, 0, w, h)
       ctx.restore()
     }
   }
@@ -203,4 +196,5 @@ export function composeScene(ctx: CanvasRenderingContext2D, sc: Scene, hideTextI
   for (const t of sc.texts) {
     if (t.id !== hideTextId) drawTextBlock(ctx, t)
   }
+  ctx.restore()
 }

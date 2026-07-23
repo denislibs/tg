@@ -107,19 +107,27 @@ export function warmthOverlay(warmth: number): { color: string; alpha: number } 
 
 // ── Crop ──────────────────────────────────────────────────────────────────
 
-export type AspectPreset = 'free' | 'original' | '1:1' | '4:3' | '16:9'
+export type AspectPreset =
+  | 'free' | 'original'
+  | '1:1' | '3:2' | '2:3' | '4:3' | '3:4'
+  | '5:4' | '4:5' | '7:5' | '5:7' | '16:9' | '9:16'
 
-export const ASPECT_PRESETS: AspectPreset[] = ['free', 'original', '1:1', '4:3', '16:9']
+// Список и порядок 1:1 с tweb cropTab.
+export const ASPECT_PRESETS: AspectPreset[] = [
+  'free', 'original', '1:1', '3:2', '2:3', '4:3', '3:4',
+  '5:4', '4:5', '7:5', '5:7', '16:9', '9:16',
+]
+
+const ASPECT_RATIOS: Record<Exclude<AspectPreset, 'free' | 'original'>, number> = {
+  '1:1': 1, '3:2': 3 / 2, '2:3': 2 / 3, '4:3': 4 / 3, '3:4': 3 / 4,
+  '5:4': 5 / 4, '4:5': 4 / 5, '7:5': 7 / 5, '5:7': 5 / 7, '16:9': 16 / 9, '9:16': 9 / 16,
+}
 
 /** Числовой аспект пресета для картинки w×h; null — свободная рамка. */
 export function aspectOf(preset: AspectPreset, w: number, h: number): number | null {
-  switch (preset) {
-    case 'free': return null
-    case 'original': return w / h
-    case '1:1': return 1
-    case '4:3': return 4 / 3
-    case '16:9': return 16 / 9
-  }
+  if (preset === 'free') return null
+  if (preset === 'original') return w / h
+  return ASPECT_RATIOS[preset]
 }
 
 /** Максимальная рамка данного аспекта, отцентрованная в границах W×H. */
@@ -204,24 +212,48 @@ export function fitScale(w: number, h: number, maxW: number, maxH: number): numb
   return Math.min(maxW / w, maxH / h, 1)
 }
 
-// ── Поворот/отражение координат аннотаций ─────────────────────────────────
-// Пространство «ориентированного исходника» W×H; поворот на 90° по часовой
-// переводит его в H×W: (x, y) → (H - y, x).
+// ── Свободный поворот и cover-scale ───────────────────────────────────────
+// Единое координатное пространство сцены — центрированный исходник W×H.
+// Изображение крутится/флипается/масштабируется целиком (base + штрихи +
+// текст), crop вырезает осевую рамку в том же пространстве. Поэтому здесь —
+// только математика точки и минимального масштаба покрытия.
 
-export function rotatePointCW(p: Point, H: number): Point {
-  return { x: H - p.y, y: p.x }
+/** Поворот точки вокруг начала координат на angle (рад), по часовой при y-вниз. */
+export function rotatePoint(p: Point, angle: number): Point {
+  const cos = Math.cos(angle)
+  const sin = Math.sin(angle)
+  return { x: p.x * cos - p.y * sin, y: p.x * sin + p.y * cos }
 }
 
-export function rotateRectCW(r: Rect, H: number): Rect {
-  return { x: H - r.y - r.h, y: r.x, w: r.h, h: r.w }
-}
-
-export function flipPointH(p: Point, W: number): Point {
-  return { x: W - p.x, y: p.y }
-}
-
-export function flipRectH(r: Rect, W: number): Rect {
-  return { ...r, x: W - r.x - r.w }
+/**
+ * Минимальный масштаб изображения W×H (центрировано, начало — его центр),
+ * при котором повёрнутое на angle изображение полностью покрывает crop-рамку.
+ * crop задан в кадре [0,W]×[0,H] (то же пространство, что исходник при angle=0),
+ * центр рамки может быть смещён относительно центра изображения. Порт идеи
+ * getConvenientPositioning из tweb: все 4 угла рамки должны лежать внутри
+ * повёрнутого прямоугольника изображения; проверяем их в локальной (обратно
+ * повёрнутой) системе изображения. Никогда не меньше 1 — не ужимаем исходник.
+ */
+export function coverScale(crop: Rect, W: number, H: number, angle: number): number {
+  if (W <= 0 || H <= 0) return 1
+  const cos = Math.cos(angle)
+  const sin = Math.sin(angle)
+  const ox = crop.x + crop.w / 2 - W / 2
+  const oy = crop.y + crop.h / 2 - H / 2
+  const hw = crop.w / 2
+  const hh = crop.h / 2
+  let need = 1
+  for (const sx of [-1, 1]) {
+    for (const sy of [-1, 1]) {
+      const cx = ox + sx * hw
+      const cy = oy + sy * hh
+      // угол рамки в неповёрнутой системе изображения (обратный поворот)
+      const lx = cx * cos + cy * sin
+      const ly = -cx * sin + cy * cos
+      need = Math.max(need, (2 * Math.abs(lx)) / W, (2 * Math.abs(ly)) / H)
+    }
+  }
+  return need
 }
 
 // ── Undo-стек ─────────────────────────────────────────────────────────────
