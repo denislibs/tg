@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -311,6 +312,8 @@ type sendBody struct {
 	// Платное медиа (Telegram paid media): цена доступа в звёздах. nil/<=0 — обычное
 	// медиа; применяется только к фото/видео с прикреплённым media_id.
 	PaidMediaPrice *int64 `json:"paid_media_price"`
+	// Отправка от имени канала/группы (Telegram send_as); nil — от себя.
+	SendAsChatID *int64 `json:"send_as_chat_id"`
 }
 
 func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
@@ -336,6 +339,7 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		GeoTitle: body.GeoTitle, GeoAddress: body.GeoAddress,
 		GeoLivePeriod: body.GeoLivePeriod, GeoHeading: body.GeoHeading,
 		PaidMediaPrice: body.PaidMediaPrice,
+		SendAsChatID:   body.SendAsChatID,
 	})
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
@@ -395,7 +399,9 @@ func (h *ChatHandler) History(w http.ResponseWriter, r *http.Request) {
 	}
 	offsetSeq := queryInt(r, "offset_id", 0)
 	addOffset := int(queryInt(r, "add_offset", 0))
-	res, err := h.svc.GetHistory(r.Context(), chatID, h.meID(r), offsetSeq, addOffset, limit, threadRoot)
+	// ?tag=<реакция> — фильтр «Избранного» по тегу-реакции (tweb search by saved tag).
+	tag := r.URL.Query().Get("tag")
+	res, err := h.svc.GetHistory(r.Context(), chatID, h.meID(r), offsetSeq, addOffset, limit, threadRoot, tag)
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
 		return
@@ -546,6 +552,111 @@ func (h *ChatHandler) EditMessage(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, messageJSON(msg))
 }
 
+type factCheckBody struct {
+	Text     string                 `json:"text"`
+	Entities []domain.MessageEntity `json:"entities"`
+	Country  string                 `json:"country"`
+}
+
+// SetFactCheck — POST /chats/{chatID}/messages/{msgID}/factcheck: прикрепить/
+// изменить «проверку фактов» (право — автор/админ канала).
+func (h *ChatHandler) SetFactCheck(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	msgID, ok := pathInt(w, r, "msgID")
+	if !ok {
+		return
+	}
+	var body factCheckBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	msg, err := h.svc.SetFactCheck(r.Context(), chatID, msgID, h.meID(r), body.Text, body.Entities, body.Country)
+	if errors.Is(err, domain.ErrForbidden) {
+		writeError(w, http.StatusForbidden, "not allowed to edit fact check")
+		return
+	}
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "message not found")
+		return
+	}
+	if errors.Is(err, domain.ErrInvalid) {
+		writeError(w, http.StatusBadRequest, "fact check text is required")
+		return
+	}
+	if errors.Is(err, domain.ErrTooLong) {
+		writeError(w, http.StatusBadRequest, "fact check too long")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "set fact check failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, messageJSON(msg))
+}
+
+// RemoveFactCheck — DELETE /chats/{chatID}/messages/{msgID}/factcheck.
+func (h *ChatHandler) RemoveFactCheck(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	msgID, ok := pathInt(w, r, "msgID")
+	if !ok {
+		return
+	}
+	err := h.svc.RemoveFactCheck(r.Context(), chatID, msgID, h.meID(r))
+	if errors.Is(err, domain.ErrForbidden) {
+		writeError(w, http.StatusForbidden, "not allowed to edit fact check")
+		return
+	}
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "message not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "remove fact check failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// TranscribeMessage — POST /chats/{chatID}/messages/{msgID}/transcribe: расшифровка
+// голосового/видео-кружка (Telegram messages.transcribeAudio). Реального движка STT
+// нет — сервер отдаёт детерминированный демо-стаб и кэширует его. pending всегда
+// false (расшифровка синхронна).
+func (h *ChatHandler) TranscribeMessage(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	msgID, ok := pathInt(w, r, "msgID")
+	if !ok {
+		return
+	}
+	text, err := h.svc.TranscribeMessage(r.Context(), chatID, msgID, h.meID(r))
+	if errors.Is(err, domain.ErrForbidden) {
+		writeError(w, http.StatusForbidden, "not a member")
+		return
+	}
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "message not found")
+		return
+	}
+	if errors.Is(err, domain.ErrInvalid) {
+		writeError(w, http.StatusBadRequest, "message is not transcribable")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "transcribe failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"text": text, "pending": false})
+}
+
 func (h *ChatHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 	chatID, ok := pathInt(w, r, "chatID")
 	if !ok {
@@ -573,8 +684,10 @@ func (h *ChatHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 type forwardBody struct {
-	FromChatID int64   `json:"from_chat_id"`
-	MsgIDs     []int64 `json:"msg_ids"`
+	FromChatID  int64   `json:"from_chat_id"`
+	MsgIDs      []int64 `json:"msg_ids"`
+	DropAuthor  bool    `json:"drop_author"`
+	DropCaption bool    `json:"drop_caption"`
 }
 
 func (h *ChatHandler) Forward(w http.ResponseWriter, r *http.Request) {
@@ -589,6 +702,7 @@ func (h *ChatHandler) Forward(w http.ResponseWriter, r *http.Request) {
 	}
 	msgs, err := h.svc.ForwardMessages(r.Context(), usecasechat.ForwardInput{
 		FromChatID: body.FromChatID, ToChatID: toChatID, MsgIDs: body.MsgIDs, SenderID: h.meID(r),
+		DropAuthor: body.DropAuthor, DropCaption: body.DropCaption,
 	})
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member or message not found")
@@ -729,7 +843,13 @@ func (h *ChatHandler) SearchMessages(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
 	offset := int(queryInt(r, "offset", 0))
 	limit := int(queryInt(r, "limit", 20))
-	res, err := h.svc.SearchMessages(r.Context(), chatID, h.meID(r), q, offset, limit)
+	// tweb topbarSearch: необязательные фильтры автор/тип медиа/реакция.
+	f := usecasechat.SearchFilter{
+		SenderID:  queryInt(r, "sender_id", 0),
+		MediaType: r.URL.Query().Get("media_type"),
+		Reaction:  r.URL.Query().Get("reaction"),
+	}
+	res, err := h.svc.SearchMessages(r.Context(), chatID, h.meID(r), q, f, offset, limit)
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
 		return
@@ -743,6 +863,26 @@ func (h *ChatHandler) SearchMessages(w http.ResponseWriter, r *http.Request) {
 		out = append(out, messageJSON(m))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": res.Count})
+}
+
+// MessageByDate — GET /chats/{chatID}/message_by_date?date=<unix>: seq
+// ближайшего сообщения на/после даты (jump-to-date, tweb datePicker/onDatePick).
+func (h *ChatHandler) MessageByDate(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	date := queryInt(r, "date", 0)
+	seq, err := h.svc.MessageSeqByDate(r.Context(), chatID, h.meID(r), time.Unix(date, 0))
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "no message for this date")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "lookup failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"seq": seq})
 }
 
 // GlobalSearchMessages — GET /search/messages?q=&filter=&offset=&limit=: поиск
@@ -1526,6 +1666,85 @@ func (h *ChatHandler) ReactionUsers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"users": out})
 }
 
+// SavedTags — GET /saved/tags: теги-реакции «Избранного» вызывающего (реакция +
+// имя + число помеченных сообщений), самые частые первыми.
+// SendAs — GET /chats/{chatID}/send_as: доступные «личности отправителя»
+// (Telegram channels.getSendAs). Всегда содержит самого пользователя; для групп —
+// плюс привязанный канал (если юзер его админ) и саму группу (анонимный админ).
+func (h *ChatHandler) SendAs(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	peers, err := h.svc.GetSendAs(r.Context(), h.meID(r), chatID)
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusForbidden, "not a member of this chat")
+		return
+	}
+	if errors.Is(err, domain.ErrForbidden) {
+		writeError(w, http.StatusForbidden, "not allowed")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load send-as")
+		return
+	}
+	out := make([]map[string]any, 0, len(peers))
+	for _, p := range peers {
+		e := map[string]any{"peer_id": p.PeerID, "kind": p.Kind, "title": p.Title}
+		if p.PhotoID != nil {
+			e["avatar_url"] = fmt.Sprintf("/media/%d/content", *p.PhotoID)
+		}
+		out = append(out, e)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"peers": out})
+}
+
+func (h *ChatHandler) SavedTags(w http.ResponseWriter, r *http.Request) {
+	tags, err := h.svc.SavedTags(r.Context(), h.meID(r))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load saved tags")
+		return
+	}
+	if tags == nil {
+		tags = []domain.SavedTag{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"tags": tags})
+}
+
+type savedTagBody struct {
+	Title string `json:"title"`
+}
+
+// SetSavedTagName — PUT /saved/tags/{reaction}: задать/переименовать/очистить имя
+// тега (Telegram updateSavedReactionTag). Пустой title стирает имя.
+func (h *ChatHandler) SetSavedTagName(w http.ResponseWriter, r *http.Request) {
+	reaction := chi.URLParam(r, "reaction")
+	if reaction == "" {
+		writeError(w, http.StatusBadRequest, "reaction is required")
+		return
+	}
+	var body savedTagBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	err := h.svc.SetSavedTagName(r.Context(), h.meID(r), reaction, body.Title)
+	if errors.Is(err, domain.ErrBadReaction) {
+		writeError(w, http.StatusBadRequest, "invalid reaction")
+		return
+	}
+	if errors.Is(err, domain.ErrTooLong) || errors.Is(err, domain.ErrInvalid) {
+		writeError(w, http.StatusBadRequest, "invalid tag name")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not update tag")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 // SendStarReaction — POST /chats/{chatID}/messages/{msgID}/star_reaction
 // {count, anonymous}: платная ⭐-реакция. Списывает звёзды у отправителя,
 // начисляет автору, накопительно фиксирует вклад; отдаёт новый агрегат,
@@ -1699,8 +1918,32 @@ func messageJSON(m domain.Message) map[string]any {
 	if m.WebPage != nil {
 		j["web_page"] = m.WebPage
 	}
+	if m.FactCheck != nil {
+		fc := map[string]any{"text": m.FactCheck.Text}
+		if len(m.FactCheck.Entities) > 0 {
+			fc["entities"] = m.FactCheck.Entities
+		}
+		if m.FactCheck.Country != "" {
+			fc["country"] = m.FactCheck.Country
+		}
+		j["factcheck"] = fc
+	}
+	if m.Transcription != nil && *m.Transcription != "" {
+		j["transcription"] = *m.Transcription
+	}
 	if m.Effect != "" {
 		j["effect"] = m.Effect
+	}
+	// Send-as: отображаемый автор (канал/группа); sender_id остаётся реальным.
+	if m.SendAsChatID != nil {
+		sa := map[string]any{"chat_id": *m.SendAsChatID}
+		if m.SendAsTitle != "" {
+			sa["title"] = m.SendAsTitle
+		}
+		if m.SendAsPhotoID != nil {
+			sa["photo_id"] = *m.SendAsPhotoID
+		}
+		j["send_as"] = sa
 	}
 	if m.ReplyTo != nil {
 		rt := map[string]any{

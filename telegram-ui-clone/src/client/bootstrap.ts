@@ -6,7 +6,7 @@ import type { ProfileUpdate, SetUsernameResult } from '../core/managers/profileM
 import type { Dialog, Draft } from '../core/models'
 import type { Message, MessageEntity, Poll, Checklist, Scheduled, BoostStatus, Giveaway, SuggestedPost } from '../core/models'
 import type { CreateGiveawayArgs } from '../core/managers/boostsManager'
-import type { HistoryArgs, HistoryResult, SendArgs, ReactionUser, StarReactionInfo, StarReactionResult } from '../core/managers/messagesManager'
+import type { HistoryArgs, HistoryResult, SendArgs, ReactionUser, StarReactionInfo, StarReactionResult, SavedTag } from '../core/managers/messagesManager'
 import type { ConnState, PresenceEvt, TypingAction } from '../core/realtime/events'
 import type { UploadArgs, MediaMeta } from '../core/managers/mediaManager'
 import type { SavedDialog } from '../core/managers/chatsManager'
@@ -84,19 +84,24 @@ export interface Managers {
     savedDialogs(): Promise<SavedDialog[]>
     clearHistory(chatId: number): Promise<void>
     getReadDate(chatId: number, msgId: number): Promise<import('../core/managers/chatsManager').ReadDateResult>
+    getSendAs(chatId: number): Promise<import('../core/managers/chatsManager').SendAsPeer[]>
   }
   messages: {
     getHistory(args: HistoryArgs): Promise<HistoryResult>
     sendMessage(args: SendArgs): Promise<Message>
     editMessage(chatId: number, msgId: number, text: string, entities?: MessageEntity[]): Promise<Message>
     deleteMessage(chatId: number, msgId: number, revoke: boolean): Promise<{ ok: boolean }>
-    forwardMessages(toChatId: number, fromChatId: number, msgIds: number[]): Promise<Message[]>
+    forwardMessages(toChatId: number, fromChatId: number, msgIds: number[], opts?: { dropAuthor?: boolean; dropCaption?: boolean }): Promise<Message[]>
     pin(chatId: number, msgId: number): Promise<{ ok: boolean }>
     unpin(chatId: number, msgId: number): Promise<{ ok: boolean }>
+    setFactCheck(chatId: number, msgId: number, text: string, entities?: MessageEntity[], country?: string): Promise<Message>
+    removeFactCheck(chatId: number, msgId: number): Promise<{ ok: boolean }>
+    transcribe(chatId: number, msgId: number): Promise<{ text: string; pending: boolean }>
     listPins(chatId: number): Promise<Message[]>
     viewers(chatId: number, msgId: number): Promise<number[]>
     reactionUsers(chatId: number, msgId: number): Promise<ReactionUser[]>
-    searchMessages(chatId: number, q: string, offset?: number, limit?: number): Promise<{ messages: Message[]; count: number }>
+    searchMessages(chatId: number, q: string, opts?: { senderId?: number; mediaType?: string; reaction?: string; offset?: number; limit?: number }): Promise<{ messages: Message[]; count: number }>
+    messageByDate(chatId: number, date: number): Promise<number | null>
     searchGlobal(q: string, filter?: '' | 'media' | 'files' | 'links' | 'music' | 'voice', offset?: number, limit?: number): Promise<{ messages: Message[]; count: number }>
     sendPoll(chatId: number, p: { question: string; options: string[]; anonymous: boolean; multiple: boolean; quiz: boolean; correctOption?: number; clientMsgId?: string }): Promise<Message>
     scheduleMessage(chatId: number, p: { text: string; entities?: MessageEntity[]; sendAt: number; replyToId?: number }): Promise<Scheduled>
@@ -114,6 +119,8 @@ export interface Managers {
     getAround(chatId: number, centerSeq: number, limit?: number, threadRoot?: number): Promise<{ messages: Message[]; reachedTop: boolean; reachedBottom: boolean }>
     react(chatId: number, msgId: number, emoji: string): Promise<void>
     unreact(chatId: number, msgId: number, emoji: string): Promise<void>
+    getSavedTags(): Promise<SavedTag[]>
+    renameSavedTag(reaction: string, title: string): Promise<void>
     sendStarReaction(chatId: number, msgId: number, count: number, anonymous: boolean): Promise<StarReactionResult>
     getStarReaction(chatId: number, msgId: number): Promise<StarReactionInfo>
     translate(text: string, toLang: string): Promise<{ text: string; source: string }>
@@ -122,7 +129,7 @@ export interface Managers {
   }
   realtime: {
     start(): Promise<{ state: ConnState }>
-    sendMessage(args: { chatId: number; text: string; entities?: MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; replyQuoteText?: string | null; replyQuoteOffset?: number | null; mediaId?: number | null; type?: string; groupedId?: string; geo?: { lat: number; lng: number; title?: string; address?: string; livePeriod?: number; heading?: number }; contactUserId?: number; threadRootId?: number | null; encBody?: string; ttlSeconds?: number | null; silent?: boolean; effect?: string | null; paidMediaPrice?: number | null }): Promise<{ ok: boolean }>
+    sendMessage(args: { chatId: number; text: string; entities?: MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; replyQuoteText?: string | null; replyQuoteOffset?: number | null; mediaId?: number | null; type?: string; groupedId?: string; geo?: { lat: number; lng: number; title?: string; address?: string; livePeriod?: number; heading?: number }; contactUserId?: number; threadRootId?: number | null; encBody?: string; ttlSeconds?: number | null; silent?: boolean; effect?: string | null; paidMediaPrice?: number | null; sendAsChatId?: number | null }): Promise<{ ok: boolean }>
     markRead(args: { chatId: number; upToSeq: number }): Promise<{ ok: boolean }>
     markMediaRead(args: { chatId: number; msgId: number }): Promise<{ ok: boolean }>
     sendTyping(args: { chatId: number; action?: TypingAction }): Promise<{ ok: boolean }>

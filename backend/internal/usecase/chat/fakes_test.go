@@ -467,6 +467,34 @@ func (r fakeMsgs) SetWebPage(_ context.Context, msgID int64, wp *domain.WebPageP
 	return nil
 }
 
+func (r fakeMsgs) SetFactCheck(_ context.Context, msgID int64, fc *domain.FactCheck) (domain.Message, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	for cid, msgs := range r.s.messages {
+		for idx, m := range msgs {
+			if m.ID == msgID && !m.Deleted {
+				r.s.messages[cid][idx].FactCheck = fc
+				return r.s.messages[cid][idx], nil
+			}
+		}
+	}
+	return domain.Message{}, domain.ErrNotFound
+}
+
+func (r fakeMsgs) SetTranscription(_ context.Context, msgID int64, text string) (domain.Message, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	for cid, msgs := range r.s.messages {
+		for idx, m := range msgs {
+			if m.ID == msgID && !m.Deleted {
+				r.s.messages[cid][idx].Transcription = &text
+				return r.s.messages[cid][idx], nil
+			}
+		}
+	}
+	return domain.Message{}, domain.ErrNotFound
+}
+
 func (r fakeMsgs) LastMessageAt(_ context.Context, chatID, senderID int64) (time.Time, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
@@ -658,16 +686,68 @@ func (r fakeMsgs) GlobalSearchMessages(_ context.Context, userID int64, q, filte
 	return hits, count, nil
 }
 
-func (r fakeMsgs) SearchMessages(_ context.Context, chatID int64, q string, offset, limit int) ([]domain.Message, int, error) {
+func (r fakeMsgs) SearchMessages(_ context.Context, chatID int64, q string, f SearchFilter, offset, limit int) ([]domain.Message, int, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	var hits []domain.Message
 	all := r.s.messages[chatID]
 	for i := len(all) - 1; i >= 0; i-- { // newest first
 		m := all[i]
-		if !m.Deleted && q != "" && strings.Contains(strings.ToLower(m.Text), strings.ToLower(q)) {
-			hits = append(hits, m)
+		if m.Deleted {
+			continue
 		}
+		if q != "" && !strings.Contains(strings.ToLower(m.Text), strings.ToLower(q)) {
+			continue
+		}
+		if f.SenderID != 0 && m.SenderID != f.SenderID {
+			continue
+		}
+		switch f.MediaType {
+		case "":
+		case "photo":
+			if m.Type != "photo" {
+				continue
+			}
+		case "video":
+			if m.Type != "video" {
+				continue
+			}
+		case "voice":
+			if m.Type != "voice" {
+				continue
+			}
+		case "roundvideo":
+			if m.Type != "roundVideo" {
+				continue
+			}
+		case "file":
+			if m.Type != "document" {
+				continue
+			}
+		case "music":
+			if m.Type != "audio" {
+				continue
+			}
+		case "link":
+			if m.Type != "text" || !strings.Contains(m.Text, "http") {
+				continue
+			}
+		default:
+			continue
+		}
+		if f.Reaction != "" {
+			has := false
+			for _, emojis := range r.s.reactions[m.ID] {
+				if emojis[f.Reaction] {
+					has = true
+					break
+				}
+			}
+			if !has {
+				continue
+			}
+		}
+		hits = append(hits, m)
 	}
 	count := len(hits)
 	if offset > len(hits) {
@@ -678,6 +758,31 @@ func (r fakeMsgs) SearchMessages(_ context.Context, chatID int64, q string, offs
 		hits = hits[:limit]
 	}
 	return hits, count, nil
+}
+
+func (r fakeMsgs) MessageSeqByDate(_ context.Context, chatID int64, from time.Time) (int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	all := r.s.messages[chatID]
+	var earliest, newest int64
+	for _, m := range all {
+		if m.Deleted {
+			continue
+		}
+		if m.Seq > newest {
+			newest = m.Seq
+		}
+		if !m.CreatedAt.Before(from) && (earliest == 0 || m.Seq < earliest) {
+			earliest = m.Seq
+		}
+	}
+	if earliest != 0 {
+		return earliest, nil
+	}
+	if newest != 0 {
+		return newest, nil
+	}
+	return 0, domain.ErrNotFound
 }
 
 func (r fakeMsgs) GetByIDs(_ context.Context, ids []int64) ([]domain.Message, error) {
@@ -787,7 +892,7 @@ func (r fakeMsgs) HideForUser(_ context.Context, userID, msgID int64) error {
 	return nil
 }
 
-func (r fakeMsgs) GetHistory(_ context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, _ *int64, clearedSeq int64) ([]domain.Message, error) {
+func (r fakeMsgs) GetHistory(_ context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, _ *int64, clearedSeq int64, tag string) ([]domain.Message, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	all := r.s.messages[chatID]
@@ -797,6 +902,12 @@ func (r fakeMsgs) GetHistory(_ context.Context, chatID, userID, offsetSeq int64,
 		}
 		if m.Seq <= clearedSeq {
 			return true // «очищено» у себя: за персональным горизонтом
+		}
+		// Фильтр «Избранного» по тегу-реакции: оставляем помеченные зрителем tag.
+		if tag != "" {
+			if _, ok := r.s.reactions[m.ID][userID][tag]; !ok {
+				return true
+			}
 		}
 		return r.s.hidden != nil && r.s.hidden[userID] != nil && r.s.hidden[userID][m.ID]
 	}

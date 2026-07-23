@@ -3,9 +3,82 @@ package postgres
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/messenger-denis/backend/internal/domain"
 	storepostgres "github.com/messenger-denis/backend/internal/store/postgres"
+	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 )
+
+// TestMessagesRepo_SearchFiltersAndByDate проверяет фильтры поиска в чате
+// (автор/тип медиа/реакция) и jump-to-date (MessageSeqByDate).
+func TestMessagesRepo_SearchFiltersAndByDate(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+	a := seedUser(t, pool, "+7400")
+	b := seedUser(t, pool, "+7401")
+	chatID := createPrivate(t, pool, a, b)
+	msgs := NewMessagesRepo(pool)
+	reacts := NewReactionsRepo(pool)
+
+	insert := func(sender int64, typ, text string) domain.Message {
+		seq, _ := msgs.NextSeq(ctx, chatID)
+		m, err := msgs.Insert(ctx, domain.Message{ChatID: chatID, Seq: seq, SenderID: sender, Type: typ, Text: text})
+		if err != nil {
+			t.Fatalf("insert: %v", err)
+		}
+		return m
+	}
+
+	mA := insert(a, "text", "привет от a")
+	_ = insert(b, "text", "привет от b")
+	_ = insert(a, "photo", "")
+	_ = reacts.Add(ctx, mA.ID, b, "👍")
+
+	// фильтр по автору
+	got, count, err := msgs.SearchMessages(ctx, chatID, "привет", usecasechat.SearchFilter{SenderID: a}, 0, 20)
+	if err != nil {
+		t.Fatalf("search sender: %v", err)
+	}
+	if count != 1 || len(got) != 1 || got[0].SenderID != a {
+		t.Fatalf("sender filter: count=%d msgs=%d", count, len(got))
+	}
+
+	// фильтр по типу медиа (пустой запрос допустим)
+	got, count, err = msgs.SearchMessages(ctx, chatID, "", usecasechat.SearchFilter{MediaType: "photo"}, 0, 20)
+	if err != nil {
+		t.Fatalf("search media: %v", err)
+	}
+	if count != 1 || len(got) != 1 || got[0].Type != "photo" {
+		t.Fatalf("media filter: count=%d msgs=%d", count, len(got))
+	}
+
+	// фильтр по реакции
+	got, count, err = msgs.SearchMessages(ctx, chatID, "", usecasechat.SearchFilter{Reaction: "👍"}, 0, 20)
+	if err != nil {
+		t.Fatalf("search reaction: %v", err)
+	}
+	if count != 1 || len(got) != 1 || got[0].ID != mA.ID {
+		t.Fatalf("reaction filter: count=%d msgs=%d", count, len(got))
+	}
+
+	// jump-to-date: дата в прошлом → самое раннее сообщение
+	seq, err := msgs.MessageSeqByDate(ctx, chatID, time.Unix(0, 0))
+	if err != nil {
+		t.Fatalf("byDate past: %v", err)
+	}
+	if seq != mA.Seq {
+		t.Fatalf("byDate past: seq=%d want %d", seq, mA.Seq)
+	}
+	// дата в будущем → самое новое сообщение
+	seq, err = msgs.MessageSeqByDate(ctx, chatID, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("byDate future: %v", err)
+	}
+	if seq != 3 {
+		t.Fatalf("byDate future: seq=%d want 3", seq)
+	}
+}
 
 func TestSearchRepo(t *testing.T) {
 	pool := storepostgres.NewTestDB(t)

@@ -10,7 +10,7 @@
 // с chat_id применяются ко ВСЕМ окнам этого чата (applyToChat), новое сообщение
 // с thread_root_id попадает и в основное окно, и в окно своего треда.
 import { create } from 'zustand'
-import type { Message, MessageEntity, Poll, Checklist, Giveaway, ReactionCount, GeoData, WebPageData } from '../core/models'
+import type { Message, MessageEntity, Poll, Checklist, Giveaway, ReactionCount, GeoData, WebPageData, FactCheck } from '../core/models'
 import type { ReplyMarkup } from '../core/managers/botsManager'
 
 // Ключ окна: основное окно чата или тред (форум-топик / комментарии).
@@ -97,6 +97,8 @@ interface MessagesState {
   applyGeoLive: (chatId: number, msgId: number, geo: GeoData) => void
   /** Догоняющее серверное превью ссылки (web_page_update) → карточка web page. */
   applyWebPage: (chatId: number, msgId: number, webPage: WebPageData) => void
+  /** «Проверка фактов» прикреплена/изменена/снята (factcheck_update). undefined — снята. */
+  applyFactCheck: (chatId: number, msgId: number, factCheck: FactCheck | undefined) => void
   /** Платное медиа разблокировано (paid_media_unlock) → раскрываем баббл: полное
    * медиа + снятый флаг locked приезжают в готовом сообщении. */
   applyPaidUnlock: (chatId: number, msg: Message) => void
@@ -385,6 +387,14 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       patchChat(s, chatId, (w) =>
         w.msgs.some((m) => m.id === msgId)
           ? w.msgs.map((m) => (m.id === msgId ? { ...m, webPage } : m))
+          : null,
+      )),
+
+  applyFactCheck: (chatId, msgId, factCheck) =>
+    set((s) =>
+      patchChat(s, chatId, (w) =>
+        w.msgs.some((m) => m.id === msgId)
+          ? w.msgs.map((m) => (m.id === msgId ? { ...m, factCheck } : m))
           : null,
       )),
 

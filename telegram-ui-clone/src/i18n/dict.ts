@@ -6,6 +6,11 @@ type Dict = Record<string, string>
 // entries (t() falls back to the key). Other languages map English -> translation.
 
 const ru: Dict = {
+  // ── Send-as (отправка от имени канала/анонимно) ──
+  'Send As…': 'Отправить как…',
+  'Your channels': 'Ваши каналы',
+  Anonymously: 'Анонимно',
+  'Personal account': 'Личный аккаунт',
   // ── Paid media (медиа за Stars) ──
   'Make paid': 'Сделать платным',
   'Paid media': 'Платное медиа',
@@ -21,6 +26,19 @@ const ru: Dict = {
   // ── Instant View ──
   'Instant View': 'Мгновенный просмотр',
   'Open in browser': 'Открыть в браузере',
+  // ── Проверка фактов (tweb factCheck) ──
+  'Fact Check': 'Проверка фактов',
+  'Add Fact Check': 'Добавить проверку фактов',
+  'Edit Fact Check': 'Изменить проверку фактов',
+  'Delete Fact Check': 'Удалить проверку фактов',
+  'Add Fact or Context': 'Добавьте факт или контекст',
+  'Country code (optional)': 'Код страны (необязательно)',
+  'This fact check was added by an admin.': 'Эту проверку добавил администратор.',
+  'Show More': 'Показать больше',
+  // ── Транскрибация голосовых/кружков (tweb transcribeAudio) ──
+  'Transcribe Voice Message': 'Расшифровать голосовое',
+  'Hide Transcription': 'Скрыть расшифровку',
+  'Transcription unavailable in demo mode': 'Расшифровка недоступна в демо-режиме',
   // ── Редактирование группы (tweb editChat) ──
   'You can provide an optional description for your group.': 'Можете указать дополнительное описание для группы.',
   'Group Type': 'Тип группы',
@@ -427,6 +445,12 @@ const ru: Dict = {
   Select: 'Выбрать',
   'Nobody viewed': 'Никто не просмотрел',
   Delete: 'Удалить',
+  // ── Saved Messages tags (теги-реакции «Избранного») ──
+  Tags: 'Теги',
+  Tag: 'Тег',
+  'Rename tag': 'Переименовать тег',
+  'Filter by tag': 'Фильтр по тегу',
+  'Add a tag name': 'Добавить имя тега',
   'typing…': 'печатает…',
   'Reply to': 'Ответ',
   edited: 'изменено',
@@ -437,6 +461,11 @@ const ru: Dict = {
   'Delete for me': 'Удалить у себя',
   'Forwarded from': 'Переслано от',
   'Forward to…': 'Переслать в…',
+  // ── Опции пересылки (tweb forwardElements): 2 состояния каждого тумблера ──
+  'Hide sender name': 'Скрыть имя отправителя',
+  'Show sender name': 'Показать имя отправителя',
+  'Hide caption': 'Убрать подпись',
+  'Show caption': 'Показать подпись',
   Unpin: 'Открепить',
   Viewers: 'Просмотры',
   'Pinned message': 'Закреплённое сообщение',
@@ -629,6 +658,14 @@ const ru: Dict = {
   'Send today at': 'Отправить сегодня в',
   'Send on': 'Отправить',
   at: 'в',
+  // ── Поиск в чате: jump-to-date + фильтры (tweb topbarSearch) ──
+  // (Photos/Videos/Files/Links/Music/'No results' уже есть в словаре выше)
+  'Jump to Date': 'Перейти к дате',
+  'Search from': 'От кого',
+  'Search by type': 'Тип',
+  'Search by reaction': 'По реакции',
+  'Voice messages': 'Голосовые',
+  'Round videos': 'Видеосообщения',
   'New Poll': 'Новый опрос',
   'Ask a Question': 'Задайте вопрос',
   'Poll options': 'Варианты ответа',

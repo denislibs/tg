@@ -23,6 +23,10 @@ import MentionsHelper from './MentionsHelper'
 import InlineResultsHelper from './InlineResultsHelper'
 import type { InlineResult } from '../core/managers/botsManager'
 import type { Peer } from '../core/managers/peersManager'
+import type { SendAsPeer } from '../core/managers/chatsManager'
+import Avatar from '../shared/ui/Avatar'
+import { useAvatarSrc } from './useAvatarSrc'
+import { peerColor } from './peerColor'
 import { searchEmojisByWord } from './emoji/emojiData'
 import MarkupTooltip from './MarkupTooltip'
 import { serialize, apply as applyMarkup, entitiesToFragment, parseMarkdown } from '../core/markdown'
@@ -108,6 +112,68 @@ interface Props {
   onEditLast?: () => void
   // Ctrl/Cmd+↑ — ответить на последнее подходящее сообщение окна (tweb).
   onReplyPrev?: () => void
+  // Send-as (Telegram send_as): доступные «личности отправителя» (>1 → слева от
+  // инпута аватар текущей + попап выбора). onSelect родитель запоминает per-chat.
+  sendAs?: { peers: SendAsPeer[]; currentId: number; onSelect: (peerId: number) => void }
+}
+
+// SendAsButton — аватар текущей «личности отправителя» + попап выбора (tweb
+// new-message-send-as). Показывается только когда личностей >1.
+function SendAsButton({ peers, currentId, onSelect }: NonNullable<Props['sendAs']>) {
+  const t = useT()
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState<{ left: number; bottom: number } | null>(null)
+  const current = peers.find((p) => p.peerId === currentId) ?? peers[0]
+  const curSrc = useAvatarSrc(current.avatarUrl)
+  return (
+    <>
+      <button
+        type="button"
+        className={s.sendAsBtn}
+        title={t('Send As…')}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect()
+          setPos({ left: r.left, bottom: window.innerHeight - r.top + 8 })
+          setOpen(true)
+        }}
+      >
+        <Avatar background={peerColor(current.title)} text={current.title[0] ?? '#'} src={curSrc || undefined} size={30} />
+      </button>
+      {pos && (
+        <Menu
+          open={open}
+          onClose={() => setOpen(false)}
+          onExitComplete={() => setPos(null)}
+          style={{ left: pos.left, bottom: pos.bottom, transformOrigin: 'bottom left', minWidth: 220 }}
+        >
+          <div className={s.sendAsHeader}>{t('Send As…')}</div>
+          {peers.map((p) => (
+            <SendAsRow
+              key={p.peerId}
+              peer={p}
+              active={p.peerId === currentId}
+              subtitle={p.kind === 'user' ? t('Personal account') : p.kind === 'group' ? t('Anonymously') : t('Your channels')}
+              onClick={() => { onSelect(p.peerId); setOpen(false) }}
+            />
+          ))}
+        </Menu>
+      )}
+    </>
+  )
+}
+
+function SendAsRow({ peer, active, subtitle, onClick }: { peer: SendAsPeer; active: boolean; subtitle: string; onClick: () => void }) {
+  const src = useAvatarSrc(peer.avatarUrl)
+  return (
+    <button type="button" className={s.sendAsRow} data-active={active || undefined} onClick={onClick}>
+      <Avatar background={peerColor(peer.title)} text={peer.title[0] ?? '#'} src={src || undefined} size={32} />
+      <div className={s.sendAsRowText}>
+        <Text size={14} weight={600}>{peer.title}</Text>
+        <Text size={12} color="var(--tg-textSecondary)">{subtitle}</Text>
+      </div>
+    </button>
+  )
 }
 
 // Выбор эффекта сообщения в send-меню: эмодзи → вид canvas-эффекта.
@@ -168,7 +234,7 @@ function placeCaretEnd(el: HTMLElement) {
 function Composer({
   reply, editing, rec, onSend, onTyping, onPickSticker, onPickGif, onCancelReply, onCancelEdit, onOpenAttach, onPasteFiles,
   initialDraft, onDraftChange, mentions, onInlineQuery, onPickInline, botMenuButton, onSchedule, scheduledCount, onOpenScheduled, slowmodeLeft, secret, chargeStars,
-  onEditLast, onReplyPrev,
+  onEditLast, onReplyPrev, sendAs,
 }: Props) {
   const slowmodeBlocked = (slowmodeLeft ?? 0) > 0
   const slowmodeText = (slowmodeLeft ?? 0) >= 60 ? `${Math.ceil((slowmodeLeft ?? 0) / 60)}м` : String(slowmodeLeft ?? 0)
@@ -857,6 +923,9 @@ function Composer({
             </>
           ) : (
             <>
+              {/* Send-as: аватар текущей «личности отправителя» + попап выбора
+                  (tweb new-message-send-as) — только когда личностей больше одной */}
+              {sendAs && <SendAsButton {...sendAs} />}
               {/* Кнопка-меню mini-app бота (tweb bot menu button) — пилюля слева */}
               {botMenuButton && (
                 <button type="button" className={s.menuBtn} onMouseDown={(e) => e.preventDefault()} onClick={botMenuButton.onClick}>

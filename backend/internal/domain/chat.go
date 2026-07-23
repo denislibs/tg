@@ -8,6 +8,25 @@ type Chat struct {
 	LastSeq int64
 }
 
+// ChatBrief — лёгкий снимок чата (для отображения «личности отправителя»
+// send-as и её автора в бабле): id, тип, заголовок, фото.
+type ChatBrief struct {
+	ID      int64
+	Type    string // group | channel | ...
+	Title   string
+	PhotoID *int64 // chats.photo_media_id (nil — фото нет)
+}
+
+// SendAsPeer — доступная «личность отправителя» (Telegram channels.getSendAs):
+// сам пользователь, канал (где он владелец/админ) или сама супергруппа
+// (анонимный админ). Kind различает вид для подписи в попапе.
+type SendAsPeer struct {
+	PeerID  int64
+	Kind    string // "user" | "channel" | "group"
+	Title   string
+	PhotoID *int64
+}
+
 type ChatMember struct {
 	ChatID, UserID int64
 	Role           string

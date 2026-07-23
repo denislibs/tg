@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -11,7 +12,9 @@ import (
 // threadRoot != nil ограничивает окно тредом (форум-топик / комментарии поста);
 // тред discussion-группы читается и не-членом (как ListComments — комментарии
 // канала доступны подписчикам без вступления в группу).
-func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRoot *int64) (HistoryResult, error) {
+// tag (optional) — фильтр «Избранного» по тегу-реакции: возвращаются только
+// сообщения, помеченные зрителем реакцией tag (Telegram search by saved tag).
+func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRoot *int64, tag string) (HistoryResult, error) {
 	if err := i.checkHistoryAccess(ctx, chatID, userID, threadRoot); err != nil {
 		return HistoryResult{}, err
 	}
@@ -22,7 +25,7 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 	if err != nil {
 		return HistoryResult{}, err
 	}
-	msgs, err := i.msgs.GetHistory(ctx, chatID, userID, offsetSeq, addOffset, limit, threadRoot, cleared)
+	msgs, err := i.msgs.GetHistory(ctx, chatID, userID, offsetSeq, addOffset, limit, threadRoot, cleared, tag)
 	if err != nil {
 		return HistoryResult{}, err
 	}
@@ -45,10 +48,15 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 	i.hydratePaidMedia(ctx, userID, msgs)
 	_ = i.hydrateReactions(ctx, userID, msgs)
 	i.hydrateStarReactions(ctx, userID, msgs)
+	i.hydrateSendAs(ctx, msgs)
 	var count int
-	if threadRoot != nil {
+	switch {
+	case tag != "":
+		// Фильтр по тегу отдаёт своё узкое окно — общий счётчик чата тут не к месту.
+		count = len(msgs)
+	case threadRoot != nil:
 		count, err = i.msgs.CountThread(ctx, chatID, *threadRoot)
-	} else {
+	default:
 		count, err = i.msgs.CountMessages(ctx, chatID)
 	}
 	if err != nil {
@@ -90,6 +98,38 @@ func (i *Interactor) checkHistoryAccess(ctx context.Context, chatID, userID int6
 		}
 	}
 	return domain.ErrNotFound
+}
+
+// hydrateSendAs fills SendAsTitle/SendAsPhotoID (the displayed author) on
+// messages sent "as" a channel/group (send_as), batch-fetching chat briefs.
+// Best-effort: cosmetic, a failure must not break history.
+func (i *Interactor) hydrateSendAs(ctx context.Context, msgs []domain.Message) {
+	if i.groups == nil {
+		return
+	}
+	var ids []int64
+	seen := map[int64]bool{}
+	for _, m := range msgs {
+		if m.SendAsChatID != nil && !seen[*m.SendAsChatID] {
+			seen[*m.SendAsChatID] = true
+			ids = append(ids, *m.SendAsChatID)
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	briefs, err := i.groups.ChatBriefs(ctx, ids)
+	if err != nil {
+		return
+	}
+	for k := range msgs {
+		if msgs[k].SendAsChatID == nil {
+			continue
+		}
+		if b, ok := briefs[*msgs[k].SendAsChatID]; ok {
+			msgs[k].SendAsTitle, msgs[k].SendAsPhotoID = b.Title, b.PhotoID
+		}
+	}
 }
 
 // hydrateReactions fills Reactions (emoji aggregates + the viewer's mine flag) on
@@ -243,6 +283,7 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 	i.hydratePaidMedia(ctx, userID, msgs)
 	_ = i.hydrateReactions(ctx, userID, msgs)
 	i.hydrateStarReactions(ctx, userID, msgs)
+	i.hydrateSendAs(ctx, msgs)
 	var count int
 	if threadRoot != nil {
 		count, err = i.msgs.CountThread(ctx, chatID, *threadRoot)
@@ -278,7 +319,21 @@ func (i *Interactor) MediaHistory(ctx context.Context, chatID, userID int64, fil
 	return HistoryResult{Messages: msgs, Count: count}, nil
 }
 
-func (i *Interactor) SearchMessages(ctx context.Context, chatID, userID int64, q string, offset, limit int) (HistoryResult, error) {
+// SearchFilter сужает поиск внутри чата (tweb topbarSearch): по автору (в
+// группах), по виду шаред-медиа и по наличию реакции на сообщении. Нулевые
+// значения отключают соответствующий фильтр.
+type SearchFilter struct {
+	SenderID  int64  // фильтр по автору (0 — любой)
+	MediaType string // photo/video/voice/roundvideo/file/link/music ("" — любой)
+	Reaction  string // сообщения, у которых есть эта реакция ("" — любая)
+}
+
+// empty — фильтр не задан (ни автор, ни тип, ни реакция).
+func (f SearchFilter) empty() bool {
+	return f.SenderID == 0 && f.MediaType == "" && f.Reaction == ""
+}
+
+func (i *Interactor) SearchMessages(ctx context.Context, chatID, userID int64, q string, f SearchFilter, offset, limit int) (HistoryResult, error) {
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
 	if err != nil {
 		return HistoryResult{}, err
@@ -286,13 +341,17 @@ func (i *Interactor) SearchMessages(ctx context.Context, chatID, userID int64, q
 	if !ok {
 		return HistoryResult{}, domain.ErrNotFound
 	}
+	// Пустой запрос без фильтров искать нечего (tweb: пустая строка + нет чипов).
+	if q == "" && f.empty() {
+		return HistoryResult{}, nil
+	}
 	if limit <= 0 || limit > 50 {
 		limit = 20
 	}
 	if offset < 0 {
 		offset = 0
 	}
-	msgs, count, err := i.msgs.SearchMessages(ctx, chatID, q, offset, limit)
+	msgs, count, err := i.msgs.SearchMessages(ctx, chatID, q, f, offset, limit)
 	if err != nil {
 		return HistoryResult{}, err
 	}
@@ -305,6 +364,20 @@ func (i *Interactor) SearchMessages(ctx context.Context, chatID, userID int64, q
 	i.hydrateGiveaways(ctx, userID, msgs)
 	i.hydratePaidMedia(ctx, userID, msgs)
 	return HistoryResult{Messages: msgs, Count: count}, nil
+}
+
+// MessageSeqByDate возвращает seq сообщения для jump-to-date: самое раннее
+// сообщение на/после указанной даты (или самое новое, если дата позже всей
+// истории). domain.ErrNotFound — не участник чата либо чат пуст.
+func (i *Interactor) MessageSeqByDate(ctx context.Context, chatID, userID int64, from time.Time) (int64, error) {
+	ok, err := i.chats.IsMember(ctx, chatID, userID)
+	if err != nil {
+		return 0, err
+	}
+	if !ok {
+		return 0, domain.ErrNotFound
+	}
+	return i.msgs.MessageSeqByDate(ctx, chatID, from)
 }
 
 // GlobalSearchMessages searches messages across every chat the user belongs to

@@ -34,6 +34,7 @@ import { useChatSelection } from '../core/hooks/useChatSelection'
 import { useChatInfoCard } from '../core/hooks/useChatInfoCard'
 import { usePinnedBar } from '../core/hooks/usePinnedBar'
 import { useChatSend } from '../core/hooks/useChatSend'
+import { useSendAs } from '../core/hooks/useSendAs'
 import { useSlowmode } from '../core/hooks/useSlowmode'
 import { useChatScroll } from '../core/hooks/useChatScroll'
 import { useConvMessages } from '../core/hooks/useConvMessages'
@@ -72,12 +73,14 @@ import Menu, { MenuItem } from '../shared/ui/Menu'
 import IconButton from '../shared/ui/IconButton'
 import { TopicIcon } from './TopicsPanel'
 import PinnedBar from './conversation/PinnedBar'
+import SavedTagsPanel from './conversation/SavedTagsPanel'
 import PinnedMessagesScreen from './conversation/PinnedMessagesScreen'
 import ScrollDownFab from './conversation/ScrollDownFab'
 import SelectionBar from './conversation/SelectionBar'
 import MessageContextMenu from './conversation/MessageContextMenu'
 import StarReactionPopup from './stars/StarReactionPopup'
 import PostStats from './PostStats'
+import FactCheckEditor from './conversation/FactCheckEditor'
 import { useChatsStore, loadChats } from '../stores/chatsStore'
 import { useSecretChatStore } from '../stores/secretChatStore'
 import { type MessageEntity } from '../core/models'
@@ -161,11 +164,16 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const isChannel = chat.type === 'channel'
   const isGroup = chat.type === 'group'
   const isSecret = chat.type === 'secret'
+  const isSaved = chat.type === 'saved'
+  // Активный фильтр по тегу-реакции «Избранного».
+  const [savedTagFilter, setSavedTagFilter] = useState<string | null>(null)
   // Автозагрузка медиа для этого чата (tweb chat.autoDownload)
   const autoDownload = useChatAutoDownload(chat.type, chat.peerId)
 
   const numericChatId = Number(chat.id)
   const isRealChat = Number.isFinite(numericChatId) && String(numericChatId) === chat.id
+  // Сброс фильтра тегов «Избранного» при смене чата.
+  useEffect(() => { setSavedTagFilter(null) }, [numericChatId])
   // Кандидаты @упоминаний — участники группы (tweb mentionsHelper)
   const mentionPeers = useMentionPeers(isRealChat ? numericChatId : null, isRealChat && isGroup)
 
@@ -269,6 +277,18 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // Message read-model: window Message[] → ConvMsg[] (sender/forward/reply names +
   // stable-ref cache) plus the resolved peers map (reused below for voice/lightbox).
   const { msgs, peers } = useConvMessages({ numericChatId, isRealChat, isGroup, win: winV, meId, foreignRootName: thread?.kind === 'comments' ? thread.subtitle : undefined })
+  // Фильтр «Избранного» по тегу-реакции: клиентская выборка по загруженному окну
+  // (реакции в самочате = теги). msgs и winV.msgs идут параллельно — фильтруем по
+  // общим индексам, чтобы ChatFeed не рассинхронизировал ряды.
+  const [feedMsgs, feedWinMsgs] = useMemo(() => {
+    if (!savedTagFilter || msgs.length !== winV.msgs.length) return [msgs, winV.msgs] as const
+    const fm: typeof msgs = []
+    const fw: typeof winV.msgs = []
+    winV.msgs.forEach((wm, i) => {
+      if (wm.reactions?.some((r) => r.emoji === savedTagFilter)) { fm.push(msgs[i]); fw.push(wm) }
+    })
+    return [fm, fw] as const
+  }, [msgs, winV.msgs, savedTagFilter])
   // Open a private chat with a group message's sender (avatar/name click).
   const openSender = (senderId: number, fallbackName: string) => {
     const p = peers.get(senderId)
@@ -441,6 +461,11 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // and the reply/editing composer state — extracted view-model hook. Scroll intent
   // (atBottomRef/userScrolledUpRef) is owned here and passed in. Declared before
   // useMessageActions, which needs setReply/setEditing for its reply/edit actions.
+  // Send-as (Telegram send_as): «личности отправителя» доступны в реальных группах
+  // (супергруппа-обсуждение с привязанным каналом / анонимный админ). Выбор per-chat.
+  const sendAs = useSendAs(numericChatId, isRealChat && isGroup && !thread, meId, managers)
+  const sendAsChatId = sendAs.currentId !== 0 && sendAs.currentId !== meId ? sendAs.currentId : null
+
   const {
     reply, setReply, editing, setEditing,
     rec,
@@ -451,7 +476,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     sendGeo, sendContact, sendSticker, sendGif,
   } = useChatSend({
     chat, numericChatId, isRealChat, isChannel, draftPeerId, canType, secretLocked,
-    meId, win, managers, threadRootId, atBottomRef, userScrolledUpRef,
+    meId, win, managers, threadRootId, sendAsChatId, atBottomRef, userScrolledUpRef,
     onChatCreated,
   })
 
@@ -477,8 +502,9 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     toggleReaction, reactToMenuMsg, showReactedUsers,
     openStarReaction, starReact, closeStarReaction,
     postStats, closePostStats,
+    factCheckEdit, submitFactCheck, closeFactCheckEditor,
     delIds, doDelete, closeDelete, openDeleteFor,
-    forwardIds, doForward, closeForward, openForwardFor,
+    forwardIds, forwardHasCaption, doForward, closeForward, openForwardFor,
     viewers, closeViewers,
     reacted, closeReacted,
     translateText, closeTranslate,
@@ -486,6 +512,8 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     chat, numericChatId, isRealChat,
     // Пост канала + зритель админ/владелец → пункт «Статистика» (tweb can_view_stats).
     canViewPostStats: isChannel && isRealChat && (card?.myRole === 'creator' || card?.myRole === 'admin'),
+    // Канал + автор/админ → пункты «проверки фактов» (tweb canUpdateFactCheck).
+    canEditFactCheck: isChannel && isRealChat && (card?.myRole === 'creator' || card?.myRole === 'admin'),
     win: winV, msgs, meId, pins, managers, accent: accentColor,
     setReply, setEditing, setSelectionMode, setSelected, clearSelection, onChatCreated,
   })
@@ -858,6 +886,11 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           onOpenList={onOpenPinList}
         />}
 
+        {/* Панель тегов-реакций «Избранного» (Telegram saved reaction tags). */}
+        {isSaved && !thread && (
+          <SavedTagsPanel activeTag={savedTagFilter} onFilter={setSavedTagFilter} />
+        )}
+
         {/* First-load spinner — only after the grace delay (skipped on cache hits) */}
         <AnimatePresence>
           {showSpinner && (
@@ -897,8 +930,8 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
                 and the ladder is seen (not played hidden behind the spinner). */}
             {!feedLoading && (
               <ChatFeed
-                msgs={msgs}
-                winMsgs={winV.msgs}
+                msgs={feedMsgs}
+                winMsgs={feedWinMsgs}
                 autoDownload={autoDownload}
                 isRealChat={isRealChat}
                 isGroup={isGroup}
@@ -1042,6 +1075,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               slowmodeLeft={slowmodeLeft}
               secret={chat.type === 'secret'}
               chargeStars={composerChargeStars}
+              sendAs={sendAs.peers.length > 1 ? { peers: sendAs.peers, currentId: sendAs.currentId, onSelect: sendAs.select } : undefined}
               onEditLast={onComposerEditLast}
               onReplyPrev={onComposerReplyPrev}
             />
@@ -1361,6 +1395,15 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
         )}
       </AnimatePresence>
 
+      {/* Редактор «проверки фактов» (канал, автор/админ) */}
+      {factCheckEdit && (
+        <FactCheckEditor
+          initial={factCheckEdit.initial}
+          onClose={closeFactCheckEditor}
+          onSubmit={submitFactCheck}
+        />
+      )}
+
       {/* "Seen by" popup */}
       {viewers && (
         <ViewersPopup x={viewers.x} y={viewers.y} names={viewers.names} onClose={closeViewers} />
@@ -1378,7 +1421,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
 
       {/* Forward target picker */}
       {forwardIds != null && (
-        <ForwardPicker dialogs={allDialogs} onPick={doForward} onClose={closeForward} />
+        <ForwardPicker dialogs={allDialogs} hasCaption={forwardHasCaption} onPick={doForward} onClose={closeForward} />
       )}
 
       {/* Delete confirmation (for me / for everyone) */}

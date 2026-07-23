@@ -460,6 +460,40 @@ func (r *GroupRepo) IsDiscussionGroup(ctx context.Context, chatID int64) (bool, 
 	return ok, err
 }
 
+// DiscussionChannel — обратный поиск GetDiscussion: канал, чья группа-обсуждение
+// это groupID (0, если groupID ничьей группой не является). Нужен send-as: в
+// discussion-группе админ привязанного канала может писать от его имени.
+func (r *GroupRepo) DiscussionChannel(ctx context.Context, groupID int64) (int64, error) {
+	var id int64
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT COALESCE(MIN(id),0) FROM chats WHERE discussion_chat_id=$1`, groupID).Scan(&id)
+	return id, err
+}
+
+// ChatBriefs — лёгкие снимки чатов по id (id/type/title/photo) для отображения
+// «личности отправителя» send-as и её автора в бабле. Отсутствующие id просто
+// не попадают в мапу.
+func (r *GroupRepo) ChatBriefs(ctx context.Context, ids []int64) (map[int64]domain.ChatBrief, error) {
+	out := map[int64]domain.ChatBrief{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT id, type, COALESCE(title,''), photo_media_id FROM chats WHERE id = ANY($1)`, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var b domain.ChatBrief
+		if err := rows.Scan(&b.ID, &b.Type, &b.Title, &b.PhotoID); err != nil {
+			return nil, err
+		}
+		out[b.ID] = b
+	}
+	return out, rows.Err()
+}
+
 func (r *GroupRepo) UsersByIDs(ctx context.Context, ids []int64) ([]domain.UserCard, error) {
 	if len(ids) == 0 {
 		return []domain.UserCard{}, nil

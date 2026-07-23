@@ -24,7 +24,7 @@ func NewMessagesRepo(pool *pgxpool.Pool) *MessagesRepo { return &MessagesRepo{po
 
 // The full ordered column list every message SELECT/RETURNING uses, so the scan
 // order in scanMessage stays in sync across all queries.
-const messageCols = `id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id, edited_at, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, views, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, enc_body, ttl_seconds, destruct_at, forwards, reply_quote_text, reply_quote_offset, web_page, effect, giveaway_id, checklist_id`
+const messageCols = `id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id, edited_at, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, views, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, enc_body, ttl_seconds, destruct_at, forwards, reply_quote_text, reply_quote_offset, web_page, effect, giveaway_id, checklist_id, factcheck, send_as_chat_id, transcription`
 
 // messageColsPrefixed returns messageCols with each column qualified by a table
 // alias (for JOINs where bare column names like chat_id would be ambiguous).
@@ -136,18 +136,53 @@ func (r *MessagesRepo) GetAround(ctx context.Context, chatID, userID, centerSeq 
 // matches q (case-insensitive substring), newest first, plus the total match
 // count. Excludes deleted. The LEFT JOIN on media lets a query like "report.pdf"
 // or "song" find media messages by their file name, not just text/captions.
-func (r *MessagesRepo) SearchMessages(ctx context.Context, chatID int64, q string, offset, limit int) ([]domain.Message, int, error) {
+// Необязательные фильтры f (tweb topbarSearch): по автору, по виду шаред-медиа и
+// по наличию реакции на сообщении. Пустой q при заданном фильтре допустим.
+func (r *MessagesRepo) SearchMessages(ctx context.Context, chatID int64, q string, f usecasechat.SearchFilter, offset, limit int) ([]domain.Message, int, error) {
 	qq := querier(ctx, r.pool)
-	pattern := "%" + q + "%"
-	const where = ` FROM messages m LEFT JOIN media md ON md.id = m.media_id
-		WHERE m.chat_id=$1 AND m.deleted_at IS NULL AND (m.text ILIKE $2 OR md.file_name ILIKE $2)`
+	where := ` FROM messages m LEFT JOIN media md ON md.id = m.media_id
+		WHERE m.chat_id=$1 AND m.deleted_at IS NULL`
+	args := []any{chatID}
+	// add регистрирует значение и возвращает его плейсхолдер ($N).
+	add := func(v any) string {
+		args = append(args, v)
+		return fmt.Sprintf("$%d", len(args))
+	}
+	if q != "" {
+		p := add("%" + q + "%")
+		where += ` AND (m.text ILIKE ` + p + ` OR md.file_name ILIKE ` + p + `)`
+	}
+	if f.SenderID != 0 {
+		where += ` AND m.sender_id = ` + add(f.SenderID)
+	}
+	switch f.MediaType {
+	case "":
+	case "photo":
+		where += ` AND m.type = 'photo'`
+	case "video":
+		where += ` AND m.type = 'video'`
+	case "voice":
+		where += ` AND m.type = 'voice'`
+	case "roundvideo":
+		where += ` AND m.type = 'roundVideo'`
+	case "file":
+		where += ` AND m.type = 'document'`
+	case "music":
+		where += ` AND m.type = 'audio'`
+	case "link":
+		where += ` AND m.type = 'text' AND m.text ~* 'https?://'`
+	default:
+		return nil, 0, nil
+	}
+	if f.Reaction != "" {
+		where += ` AND EXISTS (SELECT 1 FROM reactions rx WHERE rx.message_id = m.id AND rx.emoji = ` + add(f.Reaction) + `)`
+	}
 	var count int
-	if err := qq.QueryRow(ctx, `SELECT count(*)`+where, chatID, pattern).Scan(&count); err != nil {
+	if err := qq.QueryRow(ctx, `SELECT count(*)`+where, args...).Scan(&count); err != nil {
 		return nil, 0, err
 	}
-	rows, err := qq.Query(ctx,
-		`SELECT `+messageColsPrefixed("m")+where+`
-		 ORDER BY m.seq DESC LIMIT $3 OFFSET $4`, chatID, pattern, limit, offset)
+	lim := fmt.Sprintf(` ORDER BY m.seq DESC LIMIT $%d OFFSET $%d`, len(args)+1, len(args)+2)
+	rows, err := qq.Query(ctx, `SELECT `+messageColsPrefixed("m")+where+lim, append(args, limit, offset)...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -161,6 +196,27 @@ func (r *MessagesRepo) SearchMessages(ctx context.Context, chatID int64, q strin
 		out = append(out, m)
 	}
 	return out, count, rows.Err()
+}
+
+// MessageSeqByDate возвращает seq для jump-to-date: самое раннее непустое
+// сообщение с created_at>=from; если дата позже всей истории — самое новое
+// сообщение; для пустого чата — domain.ErrNotFound.
+func (r *MessagesRepo) MessageSeqByDate(ctx context.Context, chatID int64, from time.Time) (int64, error) {
+	q := querier(ctx, r.pool)
+	var seq int64
+	err := q.QueryRow(ctx,
+		`SELECT seq FROM messages WHERE chat_id=$1 AND deleted_at IS NULL AND created_at >= $2
+		 ORDER BY seq ASC LIMIT 1`, chatID, from).Scan(&seq)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// дата позже последнего сообщения — прыгаем к самому новому
+		err = q.QueryRow(ctx,
+			`SELECT seq FROM messages WHERE chat_id=$1 AND deleted_at IS NULL
+			 ORDER BY seq DESC LIMIT 1`, chatID).Scan(&seq)
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, domain.ErrNotFound
+	}
+	return seq, err
 }
 
 // GlobalSearchMessages searches messages across every chat the user is a member
@@ -381,15 +437,15 @@ func (r *MessagesRepo) IncrementForwards(ctx context.Context, msgID int64) error
 func (r *MessagesRepo) Insert(ctx context.Context, m domain.Message) (domain.Message, error) {
 	q := querier(ctx, r.pool)
 	return scanOneMessage(q.QueryRow(ctx,
-		`INSERT INTO messages (chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, thread_root_id, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, enc_body, ttl_seconds, destruct_at, reply_quote_text, reply_quote_offset, effect, giveaway_id, checklist_id, auto_delete_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,
+		`INSERT INTO messages (chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, thread_root_id, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, enc_body, ttl_seconds, destruct_at, reply_quote_text, reply_quote_offset, effect, giveaway_id, checklist_id, send_as_chat_id, auto_delete_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,
 		         (SELECT CASE WHEN auto_delete_period > 0
 		                 THEN now() + make_interval(secs => auto_delete_period) END
 		            FROM chats WHERE id=$1))
 		 RETURNING `+messageCols,
 		m.ChatID, m.Seq, m.SenderID, m.Type, m.Text, m.ReplyToID, m.ClientMsgID, m.MediaID, m.ThreadRootID,
 		m.FwdFromUserID, m.FwdFromChatID, m.FwdFromMsgID, m.FwdDate, m.FwdFromName, entitiesParam(m.Entities), m.MediaUnread, m.GroupedID, m.PollID,
-		m.GeoLat, m.GeoLng, m.ContactUserID, m.ContactName, m.ContactPhone, m.GiftID, replyMarkupParam(m.ReplyMarkup), geoMetaParam(m), m.EncBody, m.TTLSeconds, m.DestructAt, m.ReplyQuoteText, m.ReplyQuoteOffset, effectParam(m.Effect), m.GiveawayID, m.ChecklistID))
+		m.GeoLat, m.GeoLng, m.ContactUserID, m.ContactName, m.ContactPhone, m.GiftID, replyMarkupParam(m.ReplyMarkup), geoMetaParam(m), m.EncBody, m.TTLSeconds, m.DestructAt, m.ReplyQuoteText, m.ReplyQuoteOffset, effectParam(m.Effect), m.GiveawayID, m.ChecklistID, m.SendAsChatID))
 }
 
 // SetWebPage пишет серверное превью ссылки (jsonb web_page) отдельным UPDATE
@@ -406,6 +462,31 @@ func (r *MessagesRepo) SetWebPage(ctx context.Context, msgID int64, wp *domain.W
 	_, err := querier(ctx, r.pool).Exec(ctx,
 		`UPDATE messages SET web_page=$2 WHERE id=$1 AND deleted_at IS NULL`, msgID, param)
 	return err
+}
+
+// SetFactCheck пишет/снимает «проверку фактов» (jsonb factcheck) и возвращает
+// обновлённую строку. fc==nil снимает проверку (factcheck=NULL). Удалённое
+// сообщение не трогаем.
+func (r *MessagesRepo) SetFactCheck(ctx context.Context, msgID int64, fc *domain.FactCheck) (domain.Message, error) {
+	var param any // jsonb — строкой (см. entitiesParam); nil → NULL
+	if fc != nil {
+		b, err := json.Marshal(fc)
+		if err != nil {
+			return domain.Message{}, err
+		}
+		param = string(b)
+	}
+	return scanOneMessage(querier(ctx, r.pool).QueryRow(ctx,
+		`UPDATE messages SET factcheck=$2 WHERE id=$1 AND deleted_at IS NULL RETURNING `+messageCols,
+		msgID, param))
+}
+
+// SetTranscription кэширует расшифровку голосового/кружка (messages.transcription)
+// отдельным UPDATE и возвращает обновлённую строку. Удалённое сообщение не трогаем.
+func (r *MessagesRepo) SetTranscription(ctx context.Context, msgID int64, text string) (domain.Message, error) {
+	return scanOneMessage(querier(ctx, r.pool).QueryRow(ctx,
+		`UPDATE messages SET transcription=$2 WHERE id=$1 AND deleted_at IS NULL RETURNING `+messageCols,
+		msgID, text))
 }
 
 // ClearMediaUnread drops the media_unread flag; reports whether the row
@@ -490,7 +571,7 @@ func (r *MessagesRepo) HideForUser(ctx context.Context, userID, msgID int64) err
 // сообщения с этим thread_root_id плюс само корневое сообщение.
 // clearedSeq — персональный горизонт «очистки истории»: сообщения с seq<=clearedSeq
 // скрыты для этого читателя (0 — ничего не очищено).
-func (r *MessagesRepo) GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRootID *int64, clearedSeq int64) ([]domain.Message, error) {
+func (r *MessagesRepo) GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRootID *int64, clearedSeq int64, tag string) ([]domain.Message, error) {
 	q := querier(ctx, r.pool)
 	// Skip deleted (never shown) and rows this user hid for themselves. Placeholder
 	// differs per query shape.
@@ -499,21 +580,25 @@ func (r *MessagesRepo) GetHistory(ctx context.Context, chatID, userID, offsetSeq
 	// The %[2]d placeholder is the per-member cleared horizon (seq>clearedSeq).
 	const exclN = ` AND deleted_at IS NULL AND seq>$%[2]d AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id=messages.id AND h.user_id=$%[1]d) AND ((SELECT history_for_new FROM chats WHERE id=$1) OR messages.created_at >= COALESCE((SELECT cm.joined_at FROM chat_members cm WHERE cm.chat_id=$1 AND cm.user_id=$%[1]d AND cm.role='member'), 'epoch'::timestamptz))`
 	const thrN = ` AND ($%d::bigint IS NULL OR thread_root_id=$%[1]d OR id=$%[1]d)`
+	// tagN (Избранное): оставляем только сообщения, помеченные зрителем реакцией
+	// $%[2]d (эмодзи/id кастом-эмодзи). Пустой тег ($%[2]d='') снимает фильтр.
+	// %[1]d — плейсхолдер userID, %[2]d — плейсхолдер tag.
+	const tagN = ` AND ($%[2]d='' OR EXISTS (SELECT 1 FROM reactions rx WHERE rx.message_id=messages.id AND rx.user_id=$%[1]d AND rx.emoji=$%[2]d))`
 	var rows pgx.Rows
 	var err error
 	switch {
 	case offsetSeq == 0:
 		rows, err = q.Query(ctx,
-			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1`+fmt.Sprintf(exclN, 3, 5)+fmt.Sprintf(thrN, 4)+` ORDER BY seq DESC LIMIT $2`,
-			chatID, limit, userID, threadRootID, clearedSeq)
+			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1`+fmt.Sprintf(exclN, 3, 5)+fmt.Sprintf(thrN, 4)+fmt.Sprintf(tagN, 3, 6)+` ORDER BY seq DESC LIMIT $2`,
+			chatID, limit, userID, threadRootID, clearedSeq, tag)
 	case addOffset <= 0: // newer than offset
 		rows, err = q.Query(ctx,
-			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq>$2`+fmt.Sprintf(exclN, 4, 6)+fmt.Sprintf(thrN, 5)+` ORDER BY seq ASC LIMIT $3`,
-			chatID, offsetSeq, limit, userID, threadRootID, clearedSeq)
+			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq>$2`+fmt.Sprintf(exclN, 4, 6)+fmt.Sprintf(thrN, 5)+fmt.Sprintf(tagN, 4, 7)+` ORDER BY seq ASC LIMIT $3`,
+			chatID, offsetSeq, limit, userID, threadRootID, clearedSeq, tag)
 	default: // older, inclusive of offset
 		rows, err = q.Query(ctx,
-			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq<=$2`+fmt.Sprintf(exclN, 4, 6)+fmt.Sprintf(thrN, 5)+` ORDER BY seq DESC LIMIT $3`,
-			chatID, offsetSeq, limit, userID, threadRootID, clearedSeq)
+			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq<=$2`+fmt.Sprintf(exclN, 4, 6)+fmt.Sprintf(thrN, 5)+fmt.Sprintf(tagN, 4, 7)+` ORDER BY seq DESC LIMIT $3`,
+			chatID, offsetSeq, limit, userID, threadRootID, clearedSeq, tag)
 	}
 	if err != nil {
 		return nil, err
@@ -740,12 +825,13 @@ func scanMessage(s scanner) (domain.Message, error) {
 	var markupRaw []byte
 	var geoMetaRaw []byte
 	var webPageRaw []byte
+	var factCheckRaw []byte
 	var effect *string
 	err := s.Scan(&m.ID, &m.ChatID, &m.Seq, &m.SenderID, &m.Type, &m.Text,
 		&m.ReplyToID, &m.ClientMsgID, &m.MediaID, &m.CreatedAt, &deletedAt, &m.ThreadRootID,
 		&m.EditedAt, &m.FwdFromUserID, &m.FwdFromChatID, &m.FwdFromMsgID, &m.FwdDate, &m.FwdFromName, &entitiesRaw, &m.Views, &m.MediaUnread, &m.GroupedID, &m.PollID,
 		&m.GeoLat, &m.GeoLng, &m.ContactUserID, &m.ContactName, &m.ContactPhone, &m.GiftID, &markupRaw, &geoMetaRaw,
-		&m.EncBody, &m.TTLSeconds, &m.DestructAt, &m.Forwards, &m.ReplyQuoteText, &m.ReplyQuoteOffset, &webPageRaw, &effect, &m.GiveawayID, &m.ChecklistID)
+		&m.EncBody, &m.TTLSeconds, &m.DestructAt, &m.Forwards, &m.ReplyQuoteText, &m.ReplyQuoteOffset, &webPageRaw, &effect, &m.GiveawayID, &m.ChecklistID, &factCheckRaw, &m.SendAsChatID, &m.Transcription)
 	m.Deleted = deletedAt != nil
 	if effect != nil {
 		m.Effect = *effect
@@ -770,6 +856,12 @@ func scanMessage(s scanner) (domain.Message, error) {
 		var wp domain.WebPagePreview
 		if json.Unmarshal(webPageRaw, &wp) == nil {
 			m.WebPage = &wp
+		}
+	}
+	if err == nil && len(factCheckRaw) > 0 && string(factCheckRaw) != "null" {
+		var fc domain.FactCheck
+		if json.Unmarshal(factCheckRaw, &fc) == nil {
+			m.FactCheck = &fc
 		}
 	}
 	return m, err

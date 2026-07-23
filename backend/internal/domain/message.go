@@ -17,6 +17,16 @@ type MessageEntity struct {
 	DocID  int64  `json:"document_id,omitempty"` // sticker document (media id) for custom_emoji (Telegram messageEntityCustomEmoji.document_id)
 }
 
+// FactCheck — «проверка фактов» на сообщении (Telegram factCheck): пояснение
+// админа/модератора (в нашем клоне — автора/админа канала) к посту. Хранится на
+// сообщении jsonb-полем (messages.factcheck); nil — проверки нет. Country — код
+// страны ISO-3166 alpha-2 (опционально), Entities — форматирование текста.
+type FactCheck struct {
+	Text     string          `json:"text"`
+	Entities []MessageEntity `json:"entities,omitempty"`
+	Country  string          `json:"country,omitempty"`
+}
+
 // WebPagePreview — серверный снимок превью ссылки (Telegram webPage):
 // og-теги первой http/https-ссылки текстового сообщения. Хранится на
 // сообщении как jsonb (сообщение несёт снимок, кэш не нужен).
@@ -131,6 +141,12 @@ type Message struct {
 	// WebPage — серверное превью первой ссылки текстового сообщения (jsonb
 	// web_page). Заполняется асинхронно после отправки; nil — превью нет.
 	WebPage *WebPagePreview
+	// FactCheck — «проверка фактов» на сообщении (jsonb factcheck): текст +
+	// сущности + опц. страна. Ставит/снимает автор/админ канала; nil — нет.
+	FactCheck *FactCheck
+	// Transcription — расшифровка голосового/видео-кружка (messages.transcription,
+	// Telegram transcribeAudio). Кэшируется по запросу; nil — ещё не расшифровано.
+	Transcription *string
 	// SenderName is the sender's short name (first name, else display name),
 	// populated on send for the new_message payload (not stored) — the client
 	// prefixes group chat-list previews with it, tweb-style.
@@ -153,6 +169,14 @@ type Message struct {
 	// (не колонки messages). Total==0 — платных реакций нет.
 	StarReactionTotal int64
 	StarReactionMine  int64
+	// Send-as (Telegram send_as): когда задан — сообщение отображается от имени
+	// этого канала/группы, а не от реального SenderID (который сохраняется).
+	// SendAsChatID — колонка messages.send_as_chat_id. SendAsTitle/SendAsPhotoID —
+	// снимок отображаемого автора (title/photo чата), наполняется на отправке и
+	// read-моделью для бабла (не колонки messages). Nil — обычная отправка.
+	SendAsChatID  *int64
+	SendAsTitle   string
+	SendAsPhotoID *int64
 }
 
 // ReplyPreview is the quoted snippet shown above a reply bubble.

@@ -37,6 +37,7 @@ import {
   AudioBubble,
   RoundVideoBubble,
   WebPagePreview,
+  FactCheckBox,
   CallBubble,
   RoundVideoRealBubble,
   GeoBubble,
@@ -334,6 +335,9 @@ function MessageRow({
             {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
             <VoiceMessage
               mediaId={m.mediaId}
+              msgId={m.id}
+              chatId={m.chatId}
+              transcription={m.transcription}
               out={out}
               time={m.time}
               status={m.status}
@@ -612,6 +616,9 @@ function MessageRow({
             </div>
             {m.webPage && (
               <WebPagePreview wp={m.webPage} out={out} linkColor="var(--b-link)" />
+            )}
+            {m.factCheck && (
+              <FactCheckBox fc={m.factCheck} out={out} linkColor="var(--b-link)" />
             )}
             {chips}
             {footer && <div className={s.footerText}>{footer}</div>}

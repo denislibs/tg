@@ -106,6 +106,12 @@ type GroupRepo interface {
 	// IsDiscussionGroup — chatID является discussion-группой какого-то канала
 	// (тред комментариев там читается и без членства, как ListComments).
 	IsDiscussionGroup(ctx context.Context, chatID int64) (bool, error)
+	// DiscussionChannel — обратный поиск: канал, чья группа-обсуждение это groupID
+	// (0 — ничья). Нужен send-as: админ привязанного канала пишет от его имени.
+	DiscussionChannel(ctx context.Context, groupID int64) (int64, error)
+	// ChatBriefs — снимки чатов по id (id/type/title/photo) для send-as: список
+	// «личностей отправителя» и отображаемый автор бабла.
+	ChatBriefs(ctx context.Context, ids []int64) (map[int64]domain.ChatBrief, error)
 	// Group edit-screen settings + removed-users list.
 	Settings(ctx context.Context, chatID int64) (domain.ChatSettings, error)
 	SetType(ctx context.Context, chatID int64, isPublic bool, username string) error // domain.ErrConflict on taken username
@@ -154,7 +160,14 @@ type MessageRepo interface {
 	ByPollID(ctx context.Context, pollID int64) ([]domain.Message, error)
 	// ByChecklistID — сообщения, ссылающиеся на чек-лист (обычно одно).
 	ByChecklistID(ctx context.Context, checklistID int64) ([]domain.Message, error)
-	SearchMessages(ctx context.Context, chatID int64, q string, offset, limit int) ([]domain.Message, int, error)
+	// SearchMessages ищет по чату (текст/имя файла) с необязательными фильтрами
+	// (автор/тип медиа/реакция — tweb topbarSearch). Пустой q при заданном фильтре
+	// разрешён.
+	SearchMessages(ctx context.Context, chatID int64, q string, f SearchFilter, offset, limit int) ([]domain.Message, int, error)
+	// MessageSeqByDate возвращает seq самого раннего непустого сообщения с
+	// created_at>=from (jump-to-date); если таких нет — seq самого нового
+	// сообщения; для пустого чата — domain.ErrNotFound.
+	MessageSeqByDate(ctx context.Context, chatID int64, from time.Time) (int64, error)
 	// GlobalSearchMessages searches across every chat userID is a member of;
 	// filter narrows by shared-media kind ("" = any type).
 	GlobalSearchMessages(ctx context.Context, userID int64, q, filter string, offset, limit int) ([]domain.Message, int, error)
@@ -164,7 +177,7 @@ type MessageRepo interface {
 	// clearedSeq — персональный горизонт «очистки истории»: сообщения с
 	// seq<=clearedSeq скрыты для этого читателя (0 — ничего не очищено).
 	GetAround(ctx context.Context, chatID, userID, centerSeq int64, limit int, threadRootID *int64, clearedSeq int64) ([]domain.Message, bool, bool, error)
-	GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRootID *int64, clearedSeq int64) ([]domain.Message, error)
+	GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRootID *int64, clearedSeq int64, tag string) ([]domain.Message, error)
 	// LastMessageAt is the newest non-deleted message time by senderID in the chat
 	// (slowmode); domain.ErrNotFound when they haven't posted yet.
 	LastMessageAt(ctx context.Context, chatID, senderID int64) (time.Time, error)
@@ -202,6 +215,12 @@ type MessageRepo interface {
 	// SetWebPage пишет серверное превью ссылки (messages.web_page) отдельным
 	// UPDATE после коммита отправки (Insert превью не несёт — оно догоняющее).
 	SetWebPage(ctx context.Context, msgID int64, wp *domain.WebPagePreview) error
+	// SetFactCheck пишет/снимает «проверку фактов» (messages.factcheck) отдельным
+	// UPDATE; fc==nil снимает проверку. Возвращает обновлённую строку.
+	SetFactCheck(ctx context.Context, msgID int64, fc *domain.FactCheck) (domain.Message, error)
+	// SetTranscription кэширует расшифровку голосового/кружка (messages.transcription)
+	// отдельным UPDATE. Возвращает обновлённую строку.
+	SetTranscription(ctx context.Context, msgID int64, text string) (domain.Message, error)
 }
 
 // LinkPreviewer строит превью ссылки (og-теги страницы) для карточки web page
@@ -259,6 +278,18 @@ type StarReactionRepo interface {
 	// TopSenders — крупнейшие отправители звёзд сообщения (по убыванию), с
 	// карточкой пользователя для отображения. Anonymous сохраняется во флаге.
 	TopSenders(ctx context.Context, messageID int64, limit int) ([]domain.StarReactionSender, error)
+}
+
+// SavedTagRepo — имена тегов-реакций «Избранного» (Telegram saved reaction tags).
+// Список тегов и счётчики вычисляются из reactions по самочату (ListWithCounts);
+// имена хранятся отдельной таблицей и подмешиваются.
+type SavedTagRepo interface {
+	// ListWithCounts returns the user's saved tags: each reaction they placed on a
+	// message in their saved chat, with the stored title (empty if none) and the
+	// number of tagged messages, most used first.
+	ListWithCounts(ctx context.Context, userID, savedChatID int64) ([]domain.SavedTag, error)
+	// SetTitle upserts a tag's display name; an empty title clears it (row removed).
+	SetTitle(ctx context.Context, userID int64, reaction, title string) error
 }
 
 type MediaAccessRepo interface {
@@ -373,6 +404,10 @@ type SendInput struct {
 	// — обычное медиа. Применяется только к фото/видео с прикреплённым MediaID:
 	// получатели видят медиа заблокированным до разблокировки за звёзды.
 	PaidMediaPrice *int64
+	// SendAsChatID — отправка от имени канала/группы (Telegram send_as). nil —
+	// обычная отправка от себя. Проверяется правом: юзер — админ/владелец канала,
+	// либо это анонимный постинг от имени самой супергруппы (юзер — её админ).
+	SendAsChatID *int64
 }
 
 // GroupCallStore хранит участников активных групповых звонков (эфемерно, Redis).

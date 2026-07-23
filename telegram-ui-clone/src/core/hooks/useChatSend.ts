@@ -46,6 +46,9 @@ interface UseChatSendArgs {
   managers: Managers
   /** тред (форум-топик/комментарии): отправка идёт с thread_root_id */
   threadRootId?: number
+  /** send-as (Telegram send_as): id канала/группы, от имени которых слать; null —
+   * от себя. Прокидывается в send_message выбранной «личностью отправителя». */
+  sendAsChatId?: number | null
   // Scroll intent (owned elsewhere): sending pins to the bottom.
   atBottomRef: MutableRefObject<boolean>
   userScrolledUpRef: MutableRefObject<boolean>
@@ -64,6 +67,7 @@ export function useChatSend({
   win,
   managers,
   threadRootId,
+  sendAsChatId = null,
   atBottomRef,
   userScrolledUpRef,
   onChatCreated,
@@ -118,7 +122,7 @@ export function useChatSend({
     // reply quote прикреплён к первому сообщению (там же, где и сам reply).
     const quote = replyTo != null ? reply?.quote : undefined
     win.appendOptimistic(text, meId ?? -1, clientMsgId, undefined, 'text', entities)
-    void managers.realtime.sendMessage({ chatId: numericChatId, text, entities, clientMsgId, replyToId: replyTo, replyQuoteText: quote?.text ?? null, replyQuoteOffset: quote?.offset ?? null, threadRootId, silent, effect: effect ?? undefined })
+    void managers.realtime.sendMessage({ chatId: numericChatId, text, entities, clientMsgId, replyToId: replyTo, replyQuoteText: quote?.text ?? null, replyQuoteOffset: quote?.offset ?? null, threadRootId, silent, effect: effect ?? undefined, sendAsChatId })
   }
 
   // Гео-точка из attach-меню: оптимистичный бабл сразу (координаты локальные),

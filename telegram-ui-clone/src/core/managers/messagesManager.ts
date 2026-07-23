@@ -1,7 +1,7 @@
 // src/core/managers/messagesManager.ts
 import type { RestClient } from '../net/restClient'
-import { mapMessage, mapPoll, mapChecklist, mapScheduled, mapGeo, mapWebPage, type Message, type MessageEntity, type Poll, type Checklist, type RawMessage, type RawPoll, type RawChecklist, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
-import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt } from '../realtime/events'
+import { mapMessage, mapPoll, mapChecklist, mapScheduled, mapGeo, mapWebPage, mapFactCheck, type Message, type MessageEntity, type Poll, type Checklist, type RawMessage, type RawPoll, type RawChecklist, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
+import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt } from '../realtime/events'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
 
 export interface HistoryArgs {
@@ -39,6 +39,19 @@ export interface ReactionUser {
   username: string
   avatarUrl: string
   emoji: string
+}
+
+/** Тег-реакция «Избранного»: реакция (эмодзи/id кастом-эмодзи), имя и счётчик. */
+export interface SavedTag {
+  reaction: string
+  title: string
+  count: number
+}
+
+interface RawSavedTag {
+  reaction: string
+  title?: string
+  count: number
 }
 
 interface RawReactionUser {
@@ -241,6 +254,53 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
       return m
     },
 
+    // «Проверка фактов» (Telegram editFactCheck): прикрепить/изменить блок на
+    // сообщении канала (право проверяет бэк — автор/админ канала). Возвращает
+    // обновлённое сообщение и патчит кэш окон чата.
+    async setFactCheck(chatId: number, msgId: number, text: string, entities?: MessageEntity[], country?: string): Promise<Message> {
+      const updated = await rest.post<RawMessage>(`/chats/${chatId}/messages/${msgId}/factcheck`, {
+        text, entities: entities ?? null, country: country ?? '',
+      })
+      const m = mapMessage(updated)
+      for (const key of keysOf(chatId)) if (cache.get(key)?.has(m.seq)) put(key, [m])
+      put(hkey(chatId, m.threadRootId), [m])
+      return m
+    },
+
+    // Снять «проверку фактов» (Telegram deleteFactCheck). Патчит кэш всех окон чата.
+    async removeFactCheck(chatId: number, msgId: number): Promise<{ ok: boolean }> {
+      const r = await rest.del<{ ok: boolean }>(`/chats/${chatId}/messages/${msgId}/factcheck`)
+      for (const key of keysOf(chatId)) {
+        const c = cache.get(key)
+        if (!c) continue
+        for (const [seq, m] of c) {
+          if (m.id === msgId) {
+            c.set(seq, { ...m, factCheck: undefined })
+            break
+          }
+        }
+      }
+      return r
+    },
+
+    // Расшифровка голосового/видео-кружка (Telegram transcribeAudio). Реального STT
+    // на бэке нет — возвращается детерминированный стаб и кэшируется. Патчим кэш
+    // всех окон чата, чтобы блок остался развёрнутым при перерисовке.
+    async transcribe(chatId: number, msgId: number): Promise<{ text: string; pending: boolean }> {
+      const r = await rest.post<{ text: string; pending: boolean }>(`/chats/${chatId}/messages/${msgId}/transcribe`, {})
+      for (const key of keysOf(chatId)) {
+        const c = cache.get(key)
+        if (!c) continue
+        for (const [seq, m] of c) {
+          if (m.id === msgId) {
+            c.set(seq, { ...m, transcription: r.text })
+            break
+          }
+        }
+      }
+      return r
+    },
+
     // Delete a message. revoke=true → for everyone; false → only for me. Deleted
     // messages are never shown, so evict from the cache (seq + slice) too, or a
     // later cache hit would resurrect it.
@@ -261,10 +321,19 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
     },
 
     // Forward messages from one chat into another; returns the created copies.
-    async forwardMessages(toChatId: number, fromChatId: number, msgIds: number[]): Promise<Message[]> {
+    // dropAuthor — скрыть отправителя (копия как своё сообщение), dropCaption —
+    // убрать подпись у пересылаемого медиа (tweb dropAuthor/dropCaptions).
+    async forwardMessages(
+      toChatId: number,
+      fromChatId: number,
+      msgIds: number[],
+      opts?: { dropAuthor?: boolean; dropCaption?: boolean },
+    ): Promise<Message[]> {
       const r = await rest.post<{ messages: RawMessage[] }>(`/chats/${toChatId}/forward`, {
         from_chat_id: fromChatId,
         msg_ids: msgIds,
+        drop_author: opts?.dropAuthor ?? false,
+        drop_caption: opts?.dropCaption ?? false,
       })
       const msgs = (r.messages ?? []).map(mapMessage)
       put(hkey(toChatId), msgs)
@@ -313,9 +382,31 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
       return { messages: (r.messages ?? []).map(mapMessage), count: r.count }
     },
 
-    async searchMessages(chatId: number, q: string, offset = 0, limit = 20): Promise<{ messages: Message[]; count: number }> {
-      const r = await rest.get<{ messages: RawMessage[]; count: number }>(`/chats/${chatId}/search`, { q, offset, limit })
+    // Поиск в чате: текст + необязательные фильтры (tweb topbarSearch) —
+    // senderId (в группах), mediaType (photo/video/voice/roundvideo/file/link/music),
+    // reaction (эмодзи). Пустой q при заданном фильтре допустим.
+    async searchMessages(
+      chatId: number,
+      q: string,
+      opts: { senderId?: number; mediaType?: string; reaction?: string; offset?: number; limit?: number } = {},
+    ): Promise<{ messages: Message[]; count: number }> {
+      const query: Record<string, string | number> = { q, offset: opts.offset ?? 0, limit: opts.limit ?? 20 }
+      if (opts.senderId) query.sender_id = opts.senderId
+      if (opts.mediaType) query.media_type = opts.mediaType
+      if (opts.reaction) query.reaction = opts.reaction
+      const r = await rest.get<{ messages: RawMessage[]; count: number }>(`/chats/${chatId}/search`, query)
       return { messages: (r.messages ?? []).map(mapMessage), count: r.count }
+    },
+
+    // Jump-to-date: seq ближайшего сообщения на/после даты (unix, сек). null, если
+    // сообщений в чате нет (404).
+    async messageByDate(chatId: number, date: number): Promise<number | null> {
+      try {
+        const r = await rest.get<{ seq: number }>(`/chats/${chatId}/message_by_date`, { date })
+        return r.seq
+      } catch {
+        return null
+      }
     },
 
     // Глобальный поиск по сообщениям всех чатов (сайдбар-поиск): q — текст,
@@ -487,6 +578,21 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
       }
     },
 
+    // «Проверка фактов» прикреплена/изменена/снята → кэш всех окон чата.
+    cacheFactCheck(evt: FactCheckUpdateEvt): void {
+      const factCheck = evt.factcheck ? mapFactCheck(evt.factcheck) : undefined
+      for (const key of keysOf(evt.chat_id)) {
+        const c = cache.get(key)
+        if (!c) continue
+        for (const [seq, m] of c) {
+          if (m.id === evt.msg_id) {
+            c.set(seq, { ...m, factCheck })
+            break
+          }
+        }
+      }
+    },
+
     // Платное медиа разблокировано: раскрываем баббл в кэше всех окон чата —
     // возвращаем ссылку на контент + метаданные и снимаем флаг locked.
     cachePaidUnlock(evt: NewMessageEvt): void {
@@ -531,6 +637,18 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
 
     async unreact(chatId: number, msgId: number, emoji: string): Promise<void> {
       await rest.del(`/chats/${chatId}/messages/${msgId}/reactions/${encodeURIComponent(emoji)}`)
+    },
+
+    // Теги-реакции «Избранного» (Telegram saved reaction tags). Пометка/снятие
+    // тега — это react/unreact в самочате; здесь — список тегов и их имена.
+    async getSavedTags(): Promise<SavedTag[]> {
+      const r = await rest.get<{ tags: RawSavedTag[] }>('/saved/tags')
+      return (r.tags ?? []).map((t) => ({ reaction: t.reaction, title: t.title ?? '', count: t.count }))
+    },
+
+    // Задать/переименовать/очистить (пустой title) имя тега (updateSavedReactionTag).
+    async renameSavedTag(reaction: string, title: string): Promise<void> {
+      await rest.put(`/saved/tags/${encodeURIComponent(reaction)}`, { title })
     },
 
     // Платная ⭐-реакция: списать count звёзд у себя, начислить автору, накопить

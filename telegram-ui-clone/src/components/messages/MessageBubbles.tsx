@@ -10,9 +10,11 @@ import { useLiveShareStore } from '../../stores/liveShareStore'
 import { mediaContentUrl } from '../../core/mediaUrl'
 import Spinner from '../../shared/ui/Spinner'
 import InstantView from '../InstantView'
+import RichText from '../RichText'
 import type { IVArticle } from '../../core/managers/ivManager'
 import type { ConvMsg, MsgStatus } from '../../data'
 import { useTimeFormatter } from '../../settings'
+import { useTranscription, TranscribeButton, TranscribedText } from './Transcription'
 import s from './MessageBubbles.module.scss'
 
 export function Ticks({ status, color }: { status?: MsgStatus; color: string }) {
@@ -289,6 +291,39 @@ export function WebPagePreview({
 }
 
 /**
+ * Блок «Проверка фактов» в бабле (tweb factCheck WebPageBox): вертикальная
+ * акцентная полоса, заголовок «Проверка фактов», текст через RichText (НЕ raw
+ * HTML) и футер-пояснение. Длинный текст сворачивается до 3 строк с «Показать
+ * больше» (tweb setLinesLimit).
+ */
+export function FactCheckBox({ fc, out, linkColor }: { fc: NonNullable<ConvMsg['factCheck']>; out: boolean; linkColor: string }) {
+  const t = useT()
+  const accent = out ? '#fff' : linkColor
+  const [expanded, setExpanded] = useState(false)
+  // «Показать больше» — эвристика по длине текста (tweb сворачивает длинную
+  // проверку до 3 строк); порог по символам, чтобы не мерить DOM.
+  const collapsible = (fc.text?.length ?? 0) > 160
+  return (
+    <div className={s.factCheck} data-out={out || undefined} style={{ borderLeft: `3px solid ${accent}` }}>
+      <Text size={14} weight={600} color={accent}>{t('Fact Check')}</Text>
+      <div className={classNames(s.factText, collapsible && !expanded ? s.clamped : '')}>
+        <Text size={14.5} color="var(--wp-title)" style={{ lineHeight: 1.35 }}>
+          <RichText text={fc.text} entities={fc.entities} linkColor={out ? '#fff' : linkColor} />
+        </Text>
+      </div>
+      {collapsible && !expanded && (
+        <button type="button" className={s.factMore} style={{ color: accent }} onClick={(e) => { e.stopPropagation(); setExpanded(true) }}>
+          {t('Show More')}
+        </button>
+      )}
+      <Text size={12.5} color="var(--wp-desc)" style={{ marginTop: 2 }}>
+        {fc.country ? t('This fact check was added by an admin.') + ` (${fc.country})` : t('This fact check was added by an admin.')}
+      </Text>
+    </div>
+  )
+}
+
+/**
  * Лог 1:1 звонка (tweb .bubble-call): иконка телефона/камеры, заголовок
  * «Исходящий/Входящий (видео)звонок», стрелка (зелёная — состоялся, красная —
  * нет) + длительность или причина, время + галочки.
@@ -405,6 +440,7 @@ export function RoundVideoRealBubble({ m, onPlayed, onSoundPlay }: { m: ConvMsg;
       void v.play()
     }
   }
+  const tr = useTranscription(m.chatId, m.id, m.transcription)
   const fmt = (secs: number) => `${Math.floor(secs / 60)}:${String(Math.floor(secs % 60)).padStart(2, '0')}`
   const badge = sound && left != null ? fmt(left) : fmt(Math.round(dur))
   // nosound в бейдже — пока не идёт воспроизведение со звуком (tweb setIsPaused)
@@ -446,6 +482,12 @@ export function RoundVideoRealBubble({ m, onPlayed, onSoundPlay }: { m: ConvMsg;
           {m.out && <Ticks status={m.status} color="#fff" />}
         </div>
       </div>
+      {tr.available && (
+        <div className={s.roundRealTranscribe}>
+          <TranscribeButton expanded={tr.expanded} pending={tr.pending} onClick={tr.toggle} />
+        </div>
+      )}
+      {tr.expanded && tr.text && <TranscribedText text={tr.text} />}
     </div>
   )
 }

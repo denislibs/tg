@@ -49,6 +49,23 @@ export function newChatsManager({ rest }: ChatsDeps) {
       }
     },
 
+    // Доступные «личности отправителя» (Telegram channels.getSendAs): сам
+    // пользователь + привязанный канал (если юзер его админ) + сама супергруппа
+    // (анонимный админ). Для приватных/каналов — только сам пользователь.
+    async getSendAs(chatId: number): Promise<SendAsPeer[]> {
+      try {
+        const r = await rest.get<{ peers?: RawSendAsPeer[] }>(`/chats/${chatId}/send_as`)
+        return (r.peers ?? []).map((p) => ({
+          peerId: p.peer_id,
+          kind: p.kind,
+          title: p.title,
+          avatarUrl: p.avatar_url || undefined,
+        }))
+      } catch {
+        return []
+      }
+    },
+
     // «Избранное» → таб «Чаты»: сохранённые сообщения, сгруппированные по
     // источнику пересылки (tweb saved dialogs); 'self' — «Мои заметки».
     async savedDialogs(): Promise<SavedDialog[]> {
@@ -77,6 +94,22 @@ interface RawSavedDialog {
   photo_url: string
   count: number
   last_message: { type: string; text: string; media_id: number; at: string }
+}
+
+interface RawSendAsPeer {
+  peer_id: number
+  kind: 'user' | 'channel' | 'group'
+  title: string
+  avatar_url?: string
+}
+
+// One "send-as" identity offered in the composer (personal account / channel /
+// anonymous group). avatarUrl is a "/media/{id}/content" path (or absent).
+export interface SendAsPeer {
+  peerId: number
+  kind: 'user' | 'channel' | 'group'
+  title: string
+  avatarUrl?: string
 }
 
 // One grouped row of Saved Messages (source peer + its newest saved message).

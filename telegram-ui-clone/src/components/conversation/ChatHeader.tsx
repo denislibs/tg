@@ -3,7 +3,8 @@
 // an animated search-mode swap). Extracted from ConversationView and memoized so
 // transient parent state (composer text, context menu, media viewer) never
 // re-renders it — only its own data (chat, presence/typing, search) does.
-import { memo, useEffect, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import Text from '../../shared/ui/Text'
 import IconButton from '../../shared/ui/IconButton'
 import classNames from '../../shared/lib/classNames'
@@ -14,9 +15,10 @@ import VerifiedBadge from '../VerifiedBadge'
 import PremiumBadge from '../PremiumBadge'
 import EmojiStatus from '../EmojiStatus'
 import TypingIndicator from './TypingIndicator'
+import Menu, { MenuItem } from '../../shared/ui/Menu'
 import { useCall } from '../call/CallProvider'
 import { useManagers } from '../../core/hooks/useManagers'
-import { useChatSearch } from '../../core/hooks/useChatSearch'
+import { useChatSearch, type SearchMediaType } from '../../core/hooks/useChatSearch'
 import { usePeers } from '../../core/hooks/usePeers'
 import { useChatsStore } from '../../stores/chatsStore'
 import { gradientFor, SERVICE_USER_ID } from '../../core/dialogToChat'
@@ -31,6 +33,41 @@ import s from './ChatHeader.module.scss'
 
 const EASE_STD = EASE
 const DUR_IN = DUR.in
+
+// Виды медиа для фильтра «Тип» (tweb inputMessagesFilter*): значение → иконка + ключ подписи.
+const MEDIA_TYPES: { value: SearchMediaType; icon: IconName; labelKey: string }[] = [
+  { value: 'photo', icon: 'image', labelKey: 'Photos' },
+  { value: 'video', icon: 'videocamera_filled', labelKey: 'Videos' },
+  { value: 'file', icon: 'document', labelKey: 'Files' },
+  { value: 'music', icon: 'music', labelKey: 'Music' },
+  { value: 'voice', icon: 'microphone_filled', labelKey: 'Voice messages' },
+  { value: 'roundvideo', icon: 'videocamera_filled', labelKey: 'Round videos' },
+  { value: 'link', icon: 'link', labelKey: 'Links' },
+]
+// Быстрый набор реакций для фильтра «По реакции» (упрощение vs saved reaction tags tweb).
+const REACTION_SET = ['👍', '👎', '❤️', '🔥', '🎉', '😁', '😢', '🤔']
+
+// Чип фильтра поиска (tweb topbarSearch: «от кого»/«тип»/«реакция»). Активный —
+// подсвечен, с × для сброса.
+function FilterChip({ active, icon, label, onClick, onClear }: {
+  active: boolean
+  icon?: IconName
+  label: string
+  onClick: (rect: DOMRect) => void
+  onClear: () => void
+}) {
+  return (
+    <button
+      type="button"
+      className={classNames(s.chip, active ? s.chipActive : '')}
+      onClick={(e) => (active ? onClear() : onClick(e.currentTarget.getBoundingClientRect()))}
+    >
+      {icon && <TgIcon name={icon} size={16} />}
+      <span className={s.chipLabel}>{label}</span>
+      {active && <TgIcon name="close" size={14} />}
+    </button>
+  )
+}
 
 // Split a preview string into runs, marking the parts that match the query so the
 // result row can bold them (tweb shows the matched word dark, the rest grey).
@@ -164,6 +201,46 @@ function ChatHeader({
   const onPickResult = (seq: number) => { search.reset(); onJumpToSeq(seq) }
 
   const meId = useChatsStore((s) => s.meId)
+
+  // ── jump-to-date: скрытый нативный date-input, открывается кнопкой-календарём ──
+  const dateInputRef = useRef<HTMLInputElement>(null)
+  const openDatePicker = () => {
+    const el = dateInputRef.current
+    if (!el) return
+    const withPicker = el as HTMLInputElement & { showPicker?: () => void }
+    if (withPicker.showPicker) withPicker.showPicker()
+    else el.click()
+  }
+  const onDatePick = (value: string) => {
+    if (!value) return
+    const d = new Date(`${value}T00:00:00`)
+    if (Number.isNaN(d.getTime())) return
+    void search.jumpToDate(Math.floor(d.getTime() / 1000)).then((seq) => {
+      if (seq != null) { search.reset(); onJumpToSeq(seq) }
+    })
+  }
+
+  // ── фильтры поиска (чипы + выпадающие меню) ──
+  const isGroup = chat.type === 'group'
+  const [filterMenu, setFilterMenu] = useState<{ kind: 'sender' | 'type' | 'reaction'; style: CSSProperties } | null>(null)
+  const openFilterMenu = (kind: 'sender' | 'type' | 'reaction') => (rect: DOMRect) =>
+    setFilterMenu({ kind, style: { top: rect.bottom + 6, left: rect.left, transformOrigin: 'top left' } })
+  const { filters, setFilters } = search
+  // Участники группы для фильтра «От кого» — грузим при открытии меню.
+  const [members, setMembers] = useState<{ userId: number; role: string }[]>([])
+  useEffect(() => {
+    if (filterMenu?.kind !== 'sender' || !isGroup) return
+    let alive = true
+    void managers.groups.members(numericChatId).then((m) => { if (alive) setMembers(m) })
+    return () => { alive = false }
+  }, [filterMenu, isGroup, numericChatId, managers])
+  const memberPeers = usePeers(useMemo(() => members.map((m) => m.userId), [members]))
+  const senderName = filters.senderId != null
+    ? (filters.senderId === meId ? 'Вы' : memberPeers.get(filters.senderId)?.displayName || String(filters.senderId))
+    : t('Search from')
+  const typeLabel = filters.mediaType != null
+    ? t(MEDIA_TYPES.find((x) => x.value === filters.mediaType)?.labelKey ?? 'Search by type')
+    : t('Search by type')
   // usePeers keys its fetch on peersKey(ids) internally, so a fresh array each render is fine.
   const resultPeers = usePeers(useMemo(() => search.results.map((m) => m.senderId), [search.results]))
   const searchResults: SearchResultRow[] = useMemo(
@@ -227,17 +304,47 @@ function ChatHeader({
                 <TgIcon name="close" size={20} />
               </IconButton>
             </div>
-            <IconButton color="var(--tg-textSecondary)">
-              <TgIcon name="newprivate" />
-            </IconButton>
-            <IconButton color="var(--tg-textSecondary)">
+            {/* jump-to-date: кнопка-календарь открывает нативный date-picker */}
+            <IconButton color="var(--tg-textSecondary)" onClick={openDatePicker} title={t('Jump to Date')}>
               <TgIcon name="calendar" />
             </IconButton>
+            <input
+              ref={dateInputRef}
+              type="date"
+              className={s.dateInput}
+              onChange={(e) => onDatePick(e.target.value)}
+            />
+          </div>
+
+          {/* чипы фильтров tweb topbarSearch: «от кого» (в группах) / «тип» / «реакция» */}
+          <div className={s.filters}>
+            {isGroup && (
+              <FilterChip
+                active={filters.senderId != null}
+                icon="newprivate"
+                label={senderName}
+                onClick={openFilterMenu('sender')}
+                onClear={() => setFilters({ ...filters, senderId: undefined })}
+              />
+            )}
+            <FilterChip
+              active={filters.mediaType != null}
+              icon="document"
+              label={typeLabel}
+              onClick={openFilterMenu('type')}
+              onClear={() => setFilters({ ...filters, mediaType: undefined })}
+            />
+            <FilterChip
+              active={filters.reaction != null}
+              label={filters.reaction ?? t('Search by reaction')}
+              onClick={openFilterMenu('reaction')}
+              onClear={() => setFilters({ ...filters, reaction: undefined })}
+            />
           </div>
 
           {/* results grow out of the input (height animates as you type) */}
           <AnimatePresence initial={false}>
-            {searchQuery.trim() && (
+            {(searchQuery.trim() || search.hasFilter) && (
               <motion.div
                 key="results"
                 className={s.resultsWrap}
@@ -250,9 +357,15 @@ function ChatHeader({
                 <div className={s.resultsScroll}>
                   {searchResults.length === 0 ? (
                     <Text size={15} color="var(--tg-textSecondary)" className={s.noResults}>
-                      {t('There were no results for')}{' '}
-                      <span className={s.bold}>“{searchQuery}”</span>
-                      {t('. Try a new search.')}
+                      {searchQuery.trim() ? (
+                        <>
+                          {t('There were no results for')}{' '}
+                          <span className={s.bold}>“{searchQuery}”</span>
+                          {t('. Try a new search.')}
+                        </>
+                      ) : (
+                        t('No results')
+                      )}
                     </Text>
                   ) : (
                     searchResults.map((r, i) => (
@@ -279,6 +392,43 @@ function ChatHeader({
               </motion.div>
             )}
           </AnimatePresence>
+
+          {/* выпадающее меню активного фильтра (переиспользуем shared Menu) */}
+          <Menu open={filterMenu != null} onClose={() => setFilterMenu(null)} style={filterMenu?.style} className={s.filterMenu}>
+            {filterMenu?.kind === 'sender' && members.map((m) => {
+              const name = m.userId === meId ? 'Вы' : memberPeers.get(m.userId)?.displayName || String(m.userId)
+              return (
+                <MenuItem
+                  key={m.userId}
+                  icon={<Avatar background={gradientFor(m.userId)} text={name.charAt(0)} size={24} />}
+                  label={name}
+                  onClick={() => { setFilters({ ...filters, senderId: m.userId }); setFilterMenu(null) }}
+                />
+              )
+            })}
+            {filterMenu?.kind === 'type' && MEDIA_TYPES.map((mt) => (
+              <MenuItem
+                key={mt.value}
+                icon={<TgIcon name={mt.icon} size={20} />}
+                label={t(mt.labelKey)}
+                onClick={() => { setFilters({ ...filters, mediaType: mt.value }); setFilterMenu(null) }}
+              />
+            ))}
+            {filterMenu?.kind === 'reaction' && (
+              <div className={s.reactionGrid}>
+                {REACTION_SET.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    className={s.reactionBtn}
+                    onClick={() => { setFilters({ ...filters, reaction: emoji }); setFilterMenu(null) }}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            )}
+          </Menu>
         </motion.div>
       ) : (
         // ── Normal header: floating rounded pill ──

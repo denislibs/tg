@@ -1,0 +1,91 @@
+// Панель тегов-реакций «Избранного» над лентой (tweb topbarSearch savedReaction).
+// Горизонтальная лента чипов-тегов: реакция + имя + счётчик + кнопка ⋯ renmame.
+.panel {
+  position: relative;
+  z-index: 3;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-color, rgba(0, 0, 0, 0.08));
+  background: var(--surface-color, var(--background-color));
+}
+
+.scroll {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.chip,
+.chipEditing {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  border-radius: 30px;
+  padding: 0 10px;
+  background: var(--light-secondary-text-color, rgba(0, 0, 0, 0.08));
+  color: var(--primary-text-color);
+  user-select: none;
+}
+
+.chip {
+  cursor: pointer;
+  gap: 5px;
+
+  &:hover {
+    background: var(--light-filled-secondary-text-color, rgba(0, 0, 0, 0.12));
+  }
+}
+
+.chipActive {
+  background: var(--primary-color, #3390ec);
+  color: #fff;
+}
+
+.emoji {
+  display: inline-flex;
+  align-items: center;
+}
+
+.title {
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.count {
+  font-size: 13px;
+  opacity: 0.7;
+}
+
+.edit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 2px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  opacity: 0.55;
+  cursor: pointer;
+
+  &:hover {
+    opacity: 1;
+  }
+}
+
+.input {
+  width: 120px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font-size: 14px;
+  margin-left: 4px;
+}

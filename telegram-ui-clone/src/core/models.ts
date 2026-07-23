@@ -200,6 +200,34 @@ export interface RawMessage {
   /** платная ⭐-реакция (Telegram paid/star reactions): суммарно потрачено звёзд
    * (total) и личный вклад зрителя (mine). Отсутствует — платных реакций нет. */
   star_reaction?: { total: number; mine?: number } | null
+  /** «проверка фактов» (Telegram factCheck): текст + сущности + опц. страна ISO2 */
+  factcheck?: RawFactCheck | null
+  /** расшифровка голосового/видео-кружка (Telegram transcribeAudio) — кэш на сообщении */
+  transcription?: string | null
+  /** send-as (Telegram send_as): отображаемый автор (канал/группа) вместо
+   * sender_id, который остаётся реальным. Отсутствует — обычная отправка. */
+  send_as?: { chat_id: number; title?: string; photo_id?: number } | null
+}
+
+// «Проверка фактов» (Telegram factCheck): пояснение автора/админа канала к посту.
+export interface RawFactCheck {
+  text: string
+  entities?: MessageEntity[] | null
+  country?: string
+}
+
+export interface FactCheck {
+  text: string
+  entities?: MessageEntity[]
+  country?: string
+}
+
+export function mapFactCheck(f: RawFactCheck): FactCheck {
+  return {
+    text: f.text ?? '',
+    entities: f.entities ?? undefined,
+    country: f.country || undefined,
+  }
 }
 
 // Агрегат одной реакции на сообщении (emoji + счётчик + «моя»), tweb ReactionCount.
@@ -303,6 +331,10 @@ export interface Message {
   secretMedia?: SecretMedia
   /** серверное превью первой ссылки текстового сообщения (Telegram webPage) */
   webPage?: WebPageData
+  /** «проверка фактов» на сообщении (Telegram factCheck) — блок в бабле */
+  factCheck?: FactCheck
+  /** расшифровка голосового/видео-кружка (Telegram transcribeAudio) — кэш на сообщении */
+  transcription?: string
   /** вид полноэкранного эффекта сообщения (наш аналог Telegram message effects) */
   effect?: EmojiEffectKind
   /** платное медиа (Telegram paid media): цена в звёздах + заблокировано ли для
@@ -312,6 +344,9 @@ export interface Message {
   /** платная ⭐-реакция (Telegram paid/star reactions): суммарно потрачено звёзд
    * на сообщение (total) + личный вклад зрителя (mine). undefined — реакций нет. */
   starReaction?: { total: number; mine: number }
+  /** send-as (Telegram send_as): отображаемый автор (канал/группа) — бабл
+   * рисуется от его имени; senderId остаётся реальным. undefined — обычная. */
+  sendAs?: { chatId: number; title: string; photoId?: number }
 }
 
 // Опрос (backend PollInfo): вопрос + варианты + агрегаты для зрителя.
@@ -687,8 +722,11 @@ export function mapMessage(r: RawMessage): Message {
     ttlSeconds: r.ttl_seconds ?? undefined,
     destructAt: r.destruct_at ?? undefined,
     webPage: r.web_page ? mapWebPage(r.web_page) : undefined,
+    factCheck: r.factcheck ? mapFactCheck(r.factcheck) : undefined,
+    transcription: r.transcription ?? undefined,
     effect: mapEffect(r.effect),
     paidMedia: r.paid_media ? { price: r.paid_media.price, locked: r.paid_media.locked } : undefined,
     starReaction: r.star_reaction ? { total: r.star_reaction.total, mine: r.star_reaction.mine ?? 0 } : undefined,
+    sendAs: r.send_as ? { chatId: r.send_as.chat_id, title: r.send_as.title ?? '', photoId: r.send_as.photo_id } : undefined,
   }
 }

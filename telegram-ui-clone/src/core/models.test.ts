@@ -103,6 +103,19 @@ describe('mapMessage', () => {
     const wp = mapMessage({ ...base, web_page: { title: 't' } }).webPage
     expect(wp).toEqual({ url: undefined, siteName: '', title: 't', description: undefined, imageUrl: undefined })
   })
+
+  it('maps factcheck (fact check block) to factCheck', () => {
+    const raw: RawMessage = {
+      id: 15, chat_id: 1, seq: 5, sender_id: 1, type: 'text', text: 'post',
+      reply_to_id: null, media_id: null, created_at: '2026-06-24T10:01:00Z',
+      factcheck: { text: 'clarification', entities: [{ type: 'bold', offset: 0, length: 4 }], country: 'DE' },
+    }
+    expect(mapMessage(raw).factCheck).toEqual({
+      text: 'clarification', entities: [{ type: 'bold', offset: 0, length: 4 }], country: 'DE',
+    })
+    const base = { ...raw, factcheck: null }
+    expect(mapMessage(base).factCheck).toBeUndefined()
+  })
 })
 
 describe('mapDraft', () => {

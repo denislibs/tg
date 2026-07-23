@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -206,7 +207,7 @@ func TestGetHistory_Window(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "m"})
 	}
-	res, err := in.GetHistory(ctx, chatID, a, 0, 0, 3, nil)
+	res, err := in.GetHistory(ctx, chatID, a, 0, 0, 3, nil, "")
 	if err != nil {
 		t.Fatalf("GetHistory: %v", err)
 	}
@@ -218,7 +219,7 @@ func TestGetHistory_Window(t *testing.T) {
 	}
 
 	// Non-member cannot read.
-	if _, err := in.GetHistory(ctx, chatID, 999, 0, 0, 10, nil); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := in.GetHistory(ctx, chatID, 999, 0, 0, 10, nil, ""); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound for non-member, got %v", err)
 	}
 }
@@ -239,7 +240,7 @@ func TestClearHistory(t *testing.T) {
 	}
 
 	// b больше не видит истории и не имеет непрочитанного.
-	res, err := in.GetHistory(ctx, chatID, b, 0, 0, 10, nil)
+	res, err := in.GetHistory(ctx, chatID, b, 0, 0, 10, nil, "")
 	if err != nil {
 		t.Fatalf("GetHistory b: %v", err)
 	}
@@ -251,14 +252,14 @@ func TestClearHistory(t *testing.T) {
 	}
 
 	// a (другая сторона) историю сохраняет — это «очистка у себя».
-	resA, _ := in.GetHistory(ctx, chatID, a, 0, 0, 10, nil)
+	resA, _ := in.GetHistory(ctx, chatID, a, 0, 0, 10, nil, "")
 	if len(resA.Messages) != 3 {
 		t.Fatalf("a history after b's clear = %d msgs, want 3", len(resA.Messages))
 	}
 
 	// Новое сообщение после очистки снова видно у b (seq за горизонтом).
 	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "after"})
-	resB2, _ := in.GetHistory(ctx, chatID, b, 0, 0, 10, nil)
+	resB2, _ := in.GetHistory(ctx, chatID, b, 0, 0, 10, nil, "")
 	if len(resB2.Messages) != 1 {
 		t.Fatalf("b history after new msg = %d, want 1", len(resB2.Messages))
 	}
@@ -327,7 +328,7 @@ func TestEditMessage(t *testing.T) {
 	if upd.Text != "edited" || upd.EditedAt == nil {
 		t.Fatalf("edit result = %+v", upd)
 	}
-	res, _ := in.GetHistory(ctx, chatID, a, 0, 0, 10, nil)
+	res, _ := in.GetHistory(ctx, chatID, a, 0, 0, 10, nil, "")
 	if res.Messages[0].Text != "edited" || res.Messages[0].EditedAt == nil {
 		t.Fatalf("history not edited: %+v", res.Messages[0])
 	}
@@ -350,7 +351,7 @@ func TestDeleteMessage_ForEveryone(t *testing.T) {
 		t.Fatalf("private non-author revoke: %v", err)
 	}
 	// Deleted messages are never shown — gone from history for both sides.
-	res, _ := in.GetHistory(ctx, chatID, a, 0, 0, 10, nil)
+	res, _ := in.GetHistory(ctx, chatID, a, 0, 0, 10, nil, "")
 	if len(res.Messages) != 0 {
 		t.Fatalf("after revoke (a view) should be empty: %+v", res.Messages)
 	}
@@ -368,11 +369,11 @@ func TestDeleteMessage_ForMe(t *testing.T) {
 		t.Fatalf("DeleteMessage forMe: %v", err)
 	}
 	// b no longer sees it; a still does.
-	resB, _ := in.GetHistory(ctx, chatID, b, 0, 0, 10, nil)
+	resB, _ := in.GetHistory(ctx, chatID, b, 0, 0, 10, nil, "")
 	if len(resB.Messages) != 0 {
 		t.Fatalf("b should not see hidden msg: %+v", resB.Messages)
 	}
-	resA, _ := in.GetHistory(ctx, chatID, a, 0, 0, 10, nil)
+	resA, _ := in.GetHistory(ctx, chatID, a, 0, 0, 10, nil, "")
 	if len(resA.Messages) != 1 {
 		t.Fatalf("a should still see msg: %+v", resA.Messages)
 	}
@@ -401,7 +402,7 @@ func TestForwardMessages(t *testing.T) {
 		t.Fatalf("forward origin = %+v", m)
 	}
 	// It lands in the destination history.
-	res, _ := in.GetHistory(ctx, dst, c, 0, 0, 10, nil)
+	res, _ := in.GetHistory(ctx, dst, c, 0, 0, 10, nil, "")
 	if len(res.Messages) != 1 || res.Messages[0].FwdFromUserID == nil {
 		t.Fatalf("dst history = %+v", res.Messages)
 	}
@@ -409,6 +410,42 @@ func TestForwardMessages(t *testing.T) {
 	// Non-member of source cannot forward.
 	if _, err := in.ForwardMessages(ctx, ForwardInput{FromChatID: src, ToChatID: dst, MsgIDs: []int64{orig.ID}, SenderID: c}); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("non-member forward: want ErrNotFound, got %v", err)
+	}
+
+	// DropAuthor: копия без атрибуции — как собственное сообщение получателя.
+	noAuthor, err := in.ForwardMessages(ctx, ForwardInput{FromChatID: src, ToChatID: dst, MsgIDs: []int64{orig.ID}, SenderID: a, DropAuthor: true})
+	if err != nil {
+		t.Fatalf("ForwardMessages drop_author: %v", err)
+	}
+	if len(noAuthor) != 1 {
+		t.Fatalf("drop_author forwarded %d, want 1", len(noAuthor))
+	}
+	if m := noAuthor[0]; m.Text != "hello" || m.FwdFromUserID != nil || m.FwdFromMsgID != nil || m.FwdFromName != nil {
+		t.Fatalf("drop_author must carry no attribution: %+v", m)
+	}
+}
+
+func TestForwardMessages_DropCaption(t *testing.T) {
+	in, s := newInteractor()
+	ctx := context.Background()
+	const a, b, c int64 = 1, 2, 3
+	src, _ := in.CreatePrivateChat(ctx, a, b)
+	dst, _ := in.CreatePrivateChat(ctx, a, c)
+
+	const mediaID int64 = 100
+	s.seedMedia(mediaID, b)
+	orig, _ := in.Send(ctx, SendInput{ChatID: src, SenderID: b, Type: "photo", Text: "caption", MediaID: ptr(mediaID)})
+
+	// DropCaption у медиа-сообщения: медиа едет, текст/entities — нет.
+	fwd, err := in.ForwardMessages(ctx, ForwardInput{FromChatID: src, ToChatID: dst, MsgIDs: []int64{orig.ID}, SenderID: a, DropCaption: true})
+	if err != nil {
+		t.Fatalf("ForwardMessages drop_caption: %v", err)
+	}
+	if len(fwd) != 1 {
+		t.Fatalf("drop_caption forwarded %d, want 1", len(fwd))
+	}
+	if m := fwd[0]; m.Text != "" || len(m.Entities) != 0 || m.MediaID == nil || *m.MediaID != mediaID {
+		t.Fatalf("drop_caption must strip text but keep media: %+v", m)
 	}
 }
 
@@ -453,7 +490,7 @@ func TestGetHistory_HydratesReply(t *testing.T) {
 	orig, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "original"})
 	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: b, Text: "reply", ReplyToID: &orig.ID})
 
-	res, _ := in.GetHistory(ctx, chatID, a, 0, 0, 10, nil)
+	res, _ := in.GetHistory(ctx, chatID, a, 0, 0, 10, nil, "")
 	var replyMsg *domain.Message
 	for i := range res.Messages {
 		if res.Messages[i].Text == "reply" {
@@ -477,7 +514,7 @@ func TestSearchMessages(t *testing.T) {
 	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: b, Text: "пока"})
 	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "ПРИВЕТ снова"})
 
-	res, err := in.SearchMessages(ctx, chatID, a, "привет", 0, 20)
+	res, err := in.SearchMessages(ctx, chatID, a, "привет", SearchFilter{}, 0, 20)
 	if err != nil {
 		t.Fatalf("SearchMessages: %v", err)
 	}
@@ -485,8 +522,73 @@ func TestSearchMessages(t *testing.T) {
 		t.Fatalf("search count=%d msgs=%d, want 2/2", res.Count, len(res.Messages))
 	}
 	// Non-member rejected.
-	if _, err := in.SearchMessages(ctx, chatID, 999, "привет", 0, 20); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := in.SearchMessages(ctx, chatID, 999, "привет", SearchFilter{}, 0, 20); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("non-member search: want ErrNotFound, got %v", err)
+	}
+}
+
+func TestSearchMessagesFilters(t *testing.T) {
+	in, deps := newInteractor()
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	m1, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "привет от a"})
+	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: b, Text: "привет от b"})
+	// реакция 👍 на первое сообщение
+	_ = fakeReactions{deps}.Add(ctx, m1.ID, b, "👍")
+
+	// фильтр по автору сужает выдачу
+	res, err := in.SearchMessages(ctx, chatID, a, "привет", SearchFilter{SenderID: a}, 0, 20)
+	if err != nil {
+		t.Fatalf("search by sender: %v", err)
+	}
+	if res.Count != 1 || len(res.Messages) != 1 || res.Messages[0].SenderID != a {
+		t.Fatalf("sender filter: got count=%d msgs=%d", res.Count, len(res.Messages))
+	}
+
+	// пустой запрос + фильтр по реакции
+	res, err = in.SearchMessages(ctx, chatID, a, "", SearchFilter{Reaction: "👍"}, 0, 20)
+	if err != nil {
+		t.Fatalf("search by reaction: %v", err)
+	}
+	if res.Count != 1 || len(res.Messages) != 1 || res.Messages[0].ID != m1.ID {
+		t.Fatalf("reaction filter: got count=%d msgs=%d", res.Count, len(res.Messages))
+	}
+
+	// пустой запрос без фильтров — ничего не ищем
+	res, err = in.SearchMessages(ctx, chatID, a, "", SearchFilter{}, 0, 20)
+	if err != nil || res.Count != 0 || len(res.Messages) != 0 {
+		t.Fatalf("empty search: count=%d msgs=%d err=%v", res.Count, len(res.Messages), err)
+	}
+}
+
+func TestMessageSeqByDate(t *testing.T) {
+	in, _ := newInteractor()
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	m1, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "one"})
+	m2, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "two"})
+
+	// дата в прошлом → самое раннее сообщение
+	seq, err := in.MessageSeqByDate(ctx, chatID, a, time.Unix(0, 0))
+	if err != nil {
+		t.Fatalf("MessageSeqByDate: %v", err)
+	}
+	if seq != m1.Seq {
+		t.Fatalf("date-in-past: seq=%d want %d", seq, m1.Seq)
+	}
+	// дата в будущем → самое новое сообщение
+	seq, err = in.MessageSeqByDate(ctx, chatID, a, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("MessageSeqByDate future: %v", err)
+	}
+	if seq != m2.Seq {
+		t.Fatalf("date-in-future: seq=%d want %d", seq, m2.Seq)
+	}
+	// не участник
+	if _, err := in.MessageSeqByDate(ctx, chatID, 999, time.Unix(0, 0)); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("non-member date: want ErrNotFound, got %v", err)
 	}
 }
 
