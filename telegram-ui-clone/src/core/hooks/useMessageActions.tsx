@@ -213,14 +213,14 @@ export function useMessageActions({
   // на чат — бэкенд принимает один toChatID). Последовательно и с изоляцией:
   // падение одного адресата не должно рвать остальные. По завершении переключаемся
   // на последний успешный чат (как открывает диалог Telegram после форварда).
-  const doForward = async (chatIds: number[]) => {
+  const doForward = async (chatIds: number[], opts?: { dropAuthor?: boolean; dropCaption?: boolean }) => {
     const ids = forwardIds
     setForwardIds(null)
     if (!ids?.length || !isRealChat || !chatIds.length) return
     let lastOk: number | null = null
     for (const toChatId of chatIds) {
       try {
-        await managers.messages.forwardMessages(toChatId, numericChatId, ids)
+        await managers.messages.forwardMessages(toChatId, numericChatId, ids, opts)
         lastOk = toChatId
       } catch (err) {
         console.error('forward failed', { toChatId }, err)
@@ -229,6 +229,14 @@ export function useMessageActions({
     clearSelection()
     if (lastOk != null) onChatCreated?.(lastOk)
   }
+  // «Убрать подпись» показываем, только если среди пересылаемых есть медиа с
+  // подписью (tweb: тумблер caption доступен лишь при наличии captions).
+  const forwardHasCaption =
+    forwardIds != null &&
+    forwardIds.some((id) => {
+      const m = msgs.find((x) => x.id === id)
+      return m != null && m.mediaId != null && !!m.text
+    })
 
   // Enter selection mode from the context menu, pre-selecting that message.
   const startSelect = () => {
@@ -493,7 +501,7 @@ export function useMessageActions({
     postStats, closePostStats: () => setPostStats(null),
     factCheckEdit, submitFactCheck, closeFactCheckEditor: () => setFactCheckEdit(null),
     delIds, doDelete, closeDelete: () => setDelIds(null), openDeleteFor, canRevokeAll,
-    forwardIds, doForward, closeForward: () => setForwardIds(null), openForwardFor,
+    forwardIds, forwardHasCaption, doForward, closeForward: () => setForwardIds(null), openForwardFor,
     viewers, closeViewers: () => setViewers(null),
     reacted, closeReacted: () => setReacted(null),
     translateText, closeTranslate: () => setTranslateText(null),

@@ -457,6 +457,11 @@ const ru: Dict = {
   'Delete for me': 'Удалить у себя',
   'Forwarded from': 'Переслано от',
   'Forward to…': 'Переслать в…',
+  // ── Опции пересылки (tweb forwardElements): 2 состояния каждого тумблера ──
+  'Hide sender name': 'Скрыть имя отправителя',
+  'Show sender name': 'Показать имя отправителя',
+  'Hide caption': 'Убрать подпись',
+  'Show caption': 'Показать подпись',
   Unpin: 'Открепить',
   Viewers: 'Просмотры',
   'Pinned message': 'Закреплённое сообщение',

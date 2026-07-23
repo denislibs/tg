@@ -57,9 +57,11 @@ export function DeleteMessageDialog({ canRevoke, onDeleteForEveryone, onDeleteFo
 // Forward target picker: multi-select dialogs to forward the selected messages
 // into. Rows toggle a checkbox; the accent «Переслать (N)» button forwards to all
 // selected chats at once (tweb popup-forward allows multiple targets).
-export function ForwardPicker({ dialogs, onPick, onClose }: {
+export function ForwardPicker({ dialogs, hasCaption, onPick, onClose }: {
   dialogs: Dialog[]
-  onPick: (chatIds: number[]) => void
+  // Среди пересылаемых есть медиа с подписью — показывать тумблер «Убрать подпись».
+  hasCaption?: boolean
+  onPick: (chatIds: number[], opts: { dropAuthor: boolean; dropCaption: boolean }) => void
   onClose: () => void
 }) {
   const t = useT()
@@ -68,15 +70,21 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
   // размонтирует пикер) — только из onExitComplete, когда карточка уехала.
   const [open, setOpen] = useState(true)
   const [selected, setSelected] = useState<Set<number>>(new Set())
+  // Опции пересылки (tweb forwardElements): скрыть отправителя / убрать подпись.
+  // Каждый тумблер — два состояния; лейбл описывает действие, которое выполнит клик.
+  const [dropAuthor, setDropAuthor] = useState(false)
+  const [dropCaption, setDropCaption] = useState(false)
   // Подтверждённый выбор фиксируем в ref: onExitComplete отработает уже после
   // того, как selected сбросится размонтированием, поэтому берём снимок здесь.
-  const confirmed = useRef<number[] | null>(null)
+  const confirmed = useRef<{ chatIds: number[]; dropAuthor: boolean; dropCaption: boolean } | null>(null)
   const toggle = (chatId: number) => setSelected((prev) => {
     const next = new Set(prev)
     if (next.has(chatId)) next.delete(chatId); else next.add(chatId)
     return next
   })
-  const confirm = () => { if (selected.size) { confirmed.current = [...selected]; setOpen(false) } }
+  const confirm = () => {
+    if (selected.size) { confirmed.current = { chatIds: [...selected], dropAuthor, dropCaption }; setOpen(false) }
+  }
   const query = q.trim().toLowerCase()
   const rows = dialogs
     .map((d) => ({
@@ -90,10 +98,31 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
       open={open}
       title={t('Send')}
       onClose={() => setOpen(false)}
-      onExitComplete={() => { if (confirmed.current) onPick(confirmed.current); else onClose() }}
+      onExitComplete={() => { const c = confirmed.current; if (c) onPick(c.chatIds, { dropAuthor: c.dropAuthor, dropCaption: c.dropCaption }); else onClose() }}
       action={selected.size ? { label: `${t('Forward')} (${selected.size})`, onClick: confirm } : undefined}
       width={440}
     >
+      {/* Опции пересылки (tweb): скрыть/показать отправителя и убрать/показать подпись */}
+      <div className={s.pickerList} style={{ marginBottom: 10 }}>
+        <div className={s.listRow} onClick={() => setDropAuthor((v) => !v)}>
+          <TgIcon name={dropAuthor ? 'author_hidden' : 'person'} size={22} color="var(--tg-accent)" />
+          <div className={s.pickerBody}>
+            <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">
+              {dropAuthor ? t('Show sender name') : t('Hide sender name')}
+            </Text>
+          </div>
+        </div>
+        {hasCaption && (
+          <div className={s.listRow} onClick={() => setDropCaption((v) => !v)}>
+            <TgIcon name="captiondown" size={22} color="var(--tg-accent)" />
+            <div className={s.pickerBody}>
+              <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">
+                {dropCaption ? t('Show caption') : t('Hide caption')}
+              </Text>
+            </div>
+          </div>
+        )}
+      </div>
       {/* поиск (tweb popup-forward: серое поле сверху) */}
       <div className={s.pickerSearch}>
         <TgIcon name="search" size={20} color="var(--tg-textFaint)" />

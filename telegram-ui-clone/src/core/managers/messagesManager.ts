@@ -303,10 +303,19 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
     },
 
     // Forward messages from one chat into another; returns the created copies.
-    async forwardMessages(toChatId: number, fromChatId: number, msgIds: number[]): Promise<Message[]> {
+    // dropAuthor — скрыть отправителя (копия как своё сообщение), dropCaption —
+    // убрать подпись у пересылаемого медиа (tweb dropAuthor/dropCaptions).
+    async forwardMessages(
+      toChatId: number,
+      fromChatId: number,
+      msgIds: number[],
+      opts?: { dropAuthor?: boolean; dropCaption?: boolean },
+    ): Promise<Message[]> {
       const r = await rest.post<{ messages: RawMessage[] }>(`/chats/${toChatId}/forward`, {
         from_chat_id: fromChatId,
         msg_ids: msgIds,
+        drop_author: opts?.dropAuthor ?? false,
+        drop_caption: opts?.dropCaption ?? false,
       })
       const msgs = (r.messages ?? []).map(mapMessage)
       put(hkey(toChatId), msgs)

@@ -91,7 +91,7 @@ export interface Managers {
     sendMessage(args: SendArgs): Promise<Message>
     editMessage(chatId: number, msgId: number, text: string, entities?: MessageEntity[]): Promise<Message>
     deleteMessage(chatId: number, msgId: number, revoke: boolean): Promise<{ ok: boolean }>
-    forwardMessages(toChatId: number, fromChatId: number, msgIds: number[]): Promise<Message[]>
+    forwardMessages(toChatId: number, fromChatId: number, msgIds: number[], opts?: { dropAuthor?: boolean; dropCaption?: boolean }): Promise<Message[]>
     pin(chatId: number, msgId: number): Promise<{ ok: boolean }>
     unpin(chatId: number, msgId: number): Promise<{ ok: boolean }>
     setFactCheck(chatId: number, msgId: number, text: string, entities?: MessageEntity[], country?: string): Promise<Message>

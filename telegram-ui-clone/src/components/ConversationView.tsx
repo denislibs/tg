@@ -504,7 +504,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     postStats, closePostStats,
     factCheckEdit, submitFactCheck, closeFactCheckEditor,
     delIds, doDelete, closeDelete, openDeleteFor,
-    forwardIds, doForward, closeForward, openForwardFor,
+    forwardIds, forwardHasCaption, doForward, closeForward, openForwardFor,
     viewers, closeViewers,
     reacted, closeReacted,
     translateText, closeTranslate,
@@ -1421,7 +1421,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
 
       {/* Forward target picker */}
       {forwardIds != null && (
-        <ForwardPicker dialogs={allDialogs} onPick={doForward} onClose={closeForward} />
+        <ForwardPicker dialogs={allDialogs} hasCaption={forwardHasCaption} onPick={doForward} onClose={closeForward} />
       )}
 
       {/* Delete confirmation (for me / for everyone) */}

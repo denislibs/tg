@@ -410,6 +410,42 @@ func TestForwardMessages(t *testing.T) {
 	if _, err := in.ForwardMessages(ctx, ForwardInput{FromChatID: src, ToChatID: dst, MsgIDs: []int64{orig.ID}, SenderID: c}); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("non-member forward: want ErrNotFound, got %v", err)
 	}
+
+	// DropAuthor: копия без атрибуции — как собственное сообщение получателя.
+	noAuthor, err := in.ForwardMessages(ctx, ForwardInput{FromChatID: src, ToChatID: dst, MsgIDs: []int64{orig.ID}, SenderID: a, DropAuthor: true})
+	if err != nil {
+		t.Fatalf("ForwardMessages drop_author: %v", err)
+	}
+	if len(noAuthor) != 1 {
+		t.Fatalf("drop_author forwarded %d, want 1", len(noAuthor))
+	}
+	if m := noAuthor[0]; m.Text != "hello" || m.FwdFromUserID != nil || m.FwdFromMsgID != nil || m.FwdFromName != nil {
+		t.Fatalf("drop_author must carry no attribution: %+v", m)
+	}
+}
+
+func TestForwardMessages_DropCaption(t *testing.T) {
+	in, s := newInteractor()
+	ctx := context.Background()
+	const a, b, c int64 = 1, 2, 3
+	src, _ := in.CreatePrivateChat(ctx, a, b)
+	dst, _ := in.CreatePrivateChat(ctx, a, c)
+
+	const mediaID int64 = 100
+	s.seedMedia(mediaID, b)
+	orig, _ := in.Send(ctx, SendInput{ChatID: src, SenderID: b, Type: "photo", Text: "caption", MediaID: ptr(mediaID)})
+
+	// DropCaption у медиа-сообщения: медиа едет, текст/entities — нет.
+	fwd, err := in.ForwardMessages(ctx, ForwardInput{FromChatID: src, ToChatID: dst, MsgIDs: []int64{orig.ID}, SenderID: a, DropCaption: true})
+	if err != nil {
+		t.Fatalf("ForwardMessages drop_caption: %v", err)
+	}
+	if len(fwd) != 1 {
+		t.Fatalf("drop_caption forwarded %d, want 1", len(fwd))
+	}
+	if m := fwd[0]; m.Text != "" || len(m.Entities) != 0 || m.MediaID == nil || *m.MediaID != mediaID {
+		t.Fatalf("drop_caption must strip text but keep media: %+v", m)
+	}
 }
 
 func TestPinAndViewers(t *testing.T) {

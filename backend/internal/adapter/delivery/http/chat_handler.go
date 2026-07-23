@@ -651,8 +651,10 @@ func (h *ChatHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 type forwardBody struct {
-	FromChatID int64   `json:"from_chat_id"`
-	MsgIDs     []int64 `json:"msg_ids"`
+	FromChatID  int64   `json:"from_chat_id"`
+	MsgIDs      []int64 `json:"msg_ids"`
+	DropAuthor  bool    `json:"drop_author"`
+	DropCaption bool    `json:"drop_caption"`
 }
 
 func (h *ChatHandler) Forward(w http.ResponseWriter, r *http.Request) {
@@ -667,6 +669,7 @@ func (h *ChatHandler) Forward(w http.ResponseWriter, r *http.Request) {
 	}
 	msgs, err := h.svc.ForwardMessages(r.Context(), usecasechat.ForwardInput{
 		FromChatID: body.FromChatID, ToChatID: toChatID, MsgIDs: body.MsgIDs, SenderID: h.meID(r),
+		DropAuthor: body.DropAuthor, DropCaption: body.DropCaption,
 	})
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member or message not found")

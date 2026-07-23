@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"slices"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -14,6 +15,12 @@ type ForwardInput struct {
 	ToChatID   int64
 	MsgIDs     []int64
 	SenderID   int64
+	// DropAuthor — «скрыть отправителя» (tweb dropAuthor): копия создаётся без
+	// атрибуции пересылки, выглядит как собственное сообщение получателя.
+	DropAuthor bool
+	// DropCaption — «убрать подпись» (tweb dropCaptions): у медиа-сообщений
+	// текст/entities не копируются (для текстовых сообщений флаг игнорируется).
+	DropCaption bool
 }
 
 // ForwardMessages copies the given messages into ToChatID as new messages with
@@ -75,32 +82,46 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 			// Пересылка увеличивает счётчик пересылок исходного поста (Telegram
 			// message.forwards) — best-effort, как views: сбой счётчика не рвёт форвард.
 			_ = i.msgs.IncrementForwards(ctx, srcID)
-			// Preserve the true origin across forward-of-forward.
-			fwdUser := src.FwdFromUserID
-			if fwdUser == nil {
-				fwdUser = &src.SenderID
+			// Атрибуцию пересылки заполняем, только если её не просят скрыть
+			// (tweb dropAuthor): при DropAuthor копия — как собственное сообщение.
+			var fwdUser, fwdChat, fwdMsg *int64
+			var fwdDate *time.Time
+			var fwdName *string
+			if !in.DropAuthor {
+				// Preserve the true origin across forward-of-forward.
+				fwdUser = src.FwdFromUserID
+				if fwdUser == nil {
+					fwdUser = &src.SenderID
+				}
+				fwdChat = src.FwdFromChatID
+				if fwdChat == nil {
+					fwdChat = &src.ChatID
+				}
+				fwdMsg = src.FwdFromMsgID
+				if fwdMsg == nil {
+					fwdMsg = &src.ID
+				}
+				fwdDate = src.FwdDate
+				if fwdDate == nil {
+					fwdDate = &src.CreatedAt
+				}
+				// Уже скрытая атрибуция едет дальше как имя; иначе правило forwards
+				// автора решает — ссылка или только имя.
+				fwdName = src.FwdFromName
+				if fwdName == nil && !canLink(*fwdUser) {
+					name := i.userCard(ctx, *fwdUser).ShortName()
+					fwdName = &name
+				}
+				if fwdName != nil {
+					fwdUser, fwdChat, fwdMsg = nil, nil, nil
+				}
 			}
-			fwdChat := src.FwdFromChatID
-			if fwdChat == nil {
-				fwdChat = &src.ChatID
-			}
-			fwdMsg := src.FwdFromMsgID
-			if fwdMsg == nil {
-				fwdMsg = &src.ID
-			}
-			fwdDate := src.FwdDate
-			if fwdDate == nil {
-				fwdDate = &src.CreatedAt
-			}
-			// Уже скрытая атрибуция едет дальше как имя; иначе правило forwards
-			// автора решает — ссылка или только имя.
-			fwdName := src.FwdFromName
-			if fwdName == nil && !canLink(*fwdUser) {
-				name := i.userCard(ctx, *fwdUser).ShortName()
-				fwdName = &name
-			}
-			if fwdName != nil {
-				fwdUser, fwdChat, fwdMsg = nil, nil, nil
+
+			// «Убрать подпись» (tweb dropCaptions) — только для медиа-сообщений:
+			// текст/entities не копируем, чтобы уехало голое медиа.
+			text, entities := src.Text, src.Entities
+			if in.DropCaption && src.MediaID != nil {
+				text, entities = "", nil
 			}
 
 			seq, e := i.msgs.NextSeq(ctx, in.ToChatID)
@@ -109,7 +130,7 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 			}
 			msg, e := i.msgs.Insert(ctx, domain.Message{
 				ChatID: in.ToChatID, Seq: seq, SenderID: in.SenderID,
-				Type: src.Type, Text: src.Text, Entities: src.Entities, MediaID: src.MediaID,
+				Type: src.Type, Text: text, Entities: entities, MediaID: src.MediaID,
 				FwdFromUserID: fwdUser, FwdFromChatID: fwdChat, FwdFromMsgID: fwdMsg, FwdDate: fwdDate,
 				FwdFromName: fwdName,
 			})
