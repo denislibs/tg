@@ -156,6 +156,7 @@ const conn = newConnectionManager({
     else if (type === 'bot_callback_answer') broadcast(RT.botCallbackAnswer, payload)
     else if (type === 'geo_live_update') { messages.cacheGeoLive(payload as never); broadcast(RT.geoLiveUpdate, payload) }
     else if (type === 'web_page_update') { messages.cacheWebPage(payload as never); broadcast(RT.webPageUpdate, payload) }
+    else if (type === 'factcheck_update') { messages.cacheFactCheck(payload as never); broadcast(RT.factCheckUpdate, payload) }
     else if (type === 'secret_chat_request') {
       const p = payload as { chat_id?: number; initiator_pub?: string }
       if (p.chat_id && p.initiator_pub) secret.stashRequest(p.chat_id, p.initiator_pub)

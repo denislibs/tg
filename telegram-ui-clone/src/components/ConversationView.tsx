@@ -78,6 +78,7 @@ import SelectionBar from './conversation/SelectionBar'
 import MessageContextMenu from './conversation/MessageContextMenu'
 import StarReactionPopup from './stars/StarReactionPopup'
 import PostStats from './PostStats'
+import FactCheckEditor from './conversation/FactCheckEditor'
 import { useChatsStore, loadChats } from '../stores/chatsStore'
 import { useSecretChatStore } from '../stores/secretChatStore'
 import { type MessageEntity } from '../core/models'
@@ -477,6 +478,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     toggleReaction, reactToMenuMsg, showReactedUsers,
     openStarReaction, starReact, closeStarReaction,
     postStats, closePostStats,
+    factCheckEdit, submitFactCheck, closeFactCheckEditor,
     delIds, doDelete, closeDelete, openDeleteFor,
     forwardIds, doForward, closeForward, openForwardFor,
     viewers, closeViewers,
@@ -486,6 +488,8 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     chat, numericChatId, isRealChat,
     // Пост канала + зритель админ/владелец → пункт «Статистика» (tweb can_view_stats).
     canViewPostStats: isChannel && isRealChat && (card?.myRole === 'creator' || card?.myRole === 'admin'),
+    // Канал + автор/админ → пункты «проверки фактов» (tweb canUpdateFactCheck).
+    canEditFactCheck: isChannel && isRealChat && (card?.myRole === 'creator' || card?.myRole === 'admin'),
     win: winV, msgs, meId, pins, managers, accent: accentColor,
     setReply, setEditing, setSelectionMode, setSelected, clearSelection, onChatCreated,
   })
@@ -1360,6 +1364,15 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           <PostStats chatId={numericChatId} msgId={postStats.msgId} onBack={closePostStats} />
         )}
       </AnimatePresence>
+
+      {/* Редактор «проверки фактов» (канал, автор/админ) */}
+      {factCheckEdit && (
+        <FactCheckEditor
+          initial={factCheckEdit.initial}
+          onClose={closeFactCheckEditor}
+          onSubmit={submitFactCheck}
+        />
+      )}
 
       {/* "Seen by" popup */}
       {viewers && (

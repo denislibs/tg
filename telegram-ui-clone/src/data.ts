@@ -88,6 +88,8 @@ export interface ConvMsg {
   audio?: { title: string; artist: string; duration: string }
   // link preview attached to a text message (imageUrl — серверное og:image; gradient/emoji — легаси моков)
   webPage?: { siteName: string; title: string; description?: string; gradient?: string; emoji?: string; url?: string; imageUrl?: string }
+  // «проверка фактов» (Telegram factCheck): блок в бабле (текст + сущности + опц. страна)
+  factCheck?: import('./core/models').FactCheck
   /** лог 1:1 звонка (tweb messageActionPhoneCall): исход + длительность */
   call?: CallLog
   /** секретное сообщение (E2E) — включает таймер самоуничтожения в бабле */

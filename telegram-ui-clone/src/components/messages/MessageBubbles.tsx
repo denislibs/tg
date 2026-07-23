@@ -10,6 +10,7 @@ import { useLiveShareStore } from '../../stores/liveShareStore'
 import { mediaContentUrl } from '../../core/mediaUrl'
 import Spinner from '../../shared/ui/Spinner'
 import InstantView from '../InstantView'
+import RichText from '../RichText'
 import type { IVArticle } from '../../core/managers/ivManager'
 import type { ConvMsg, MsgStatus } from '../../data'
 import { useTimeFormatter } from '../../settings'
@@ -284,6 +285,39 @@ export function WebPagePreview({
       {ivArticle && wp.url && (
         <InstantView url={wp.url} article={ivArticle} onClose={() => setIvArticle(null)} />
       )}
+    </div>
+  )
+}
+
+/**
+ * Блок «Проверка фактов» в бабле (tweb factCheck WebPageBox): вертикальная
+ * акцентная полоса, заголовок «Проверка фактов», текст через RichText (НЕ raw
+ * HTML) и футер-пояснение. Длинный текст сворачивается до 3 строк с «Показать
+ * больше» (tweb setLinesLimit).
+ */
+export function FactCheckBox({ fc, out, linkColor }: { fc: NonNullable<ConvMsg['factCheck']>; out: boolean; linkColor: string }) {
+  const t = useT()
+  const accent = out ? '#fff' : linkColor
+  const [expanded, setExpanded] = useState(false)
+  // «Показать больше» — эвристика по длине текста (tweb сворачивает длинную
+  // проверку до 3 строк); порог по символам, чтобы не мерить DOM.
+  const collapsible = (fc.text?.length ?? 0) > 160
+  return (
+    <div className={s.factCheck} data-out={out || undefined} style={{ borderLeft: `3px solid ${accent}` }}>
+      <Text size={14} weight={600} color={accent}>{t('Fact Check')}</Text>
+      <div className={classNames(s.factText, collapsible && !expanded ? s.clamped : '')}>
+        <Text size={14.5} color="var(--wp-title)" style={{ lineHeight: 1.35 }}>
+          <RichText text={fc.text} entities={fc.entities} linkColor={out ? '#fff' : linkColor} />
+        </Text>
+      </div>
+      {collapsible && !expanded && (
+        <button type="button" className={s.factMore} style={{ color: accent }} onClick={(e) => { e.stopPropagation(); setExpanded(true) }}>
+          {t('Show More')}
+        </button>
+      )}
+      <Text size={12.5} color="var(--wp-desc)" style={{ marginTop: 2 }}>
+        {fc.country ? t('This fact check was added by an admin.') + ` (${fc.country})` : t('This fact check was added by an admin.')}
+      </Text>
     </div>
   )
 }

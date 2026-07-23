@@ -157,6 +157,8 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Post("/chats/{chatID}/messages/{msgID}/geo_live", ch.UpdateGeoLive)
 		pr.Post("/chats/{chatID}/messages/{msgID}/pin", ch.Pin)
 		pr.Delete("/chats/{chatID}/messages/{msgID}/pin", ch.Unpin)
+		pr.Post("/chats/{chatID}/messages/{msgID}/factcheck", ch.SetFactCheck)
+		pr.Delete("/chats/{chatID}/messages/{msgID}/factcheck", ch.RemoveFactCheck)
 		pr.Get("/chats/{chatID}/pins", ch.ListPins)
 		pr.Get("/chats/{chatID}/messages/{msgID}/viewers", ch.Viewers)
 		pr.Get("/chats/{chatID}/messages/{msgID}/read_date", ch.ReadDate)

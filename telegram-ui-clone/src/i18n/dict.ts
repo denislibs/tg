@@ -21,6 +21,15 @@ const ru: Dict = {
   // ── Instant View ──
   'Instant View': 'Мгновенный просмотр',
   'Open in browser': 'Открыть в браузере',
+  // ── Проверка фактов (tweb factCheck) ──
+  'Fact Check': 'Проверка фактов',
+  'Add Fact Check': 'Добавить проверку фактов',
+  'Edit Fact Check': 'Изменить проверку фактов',
+  'Delete Fact Check': 'Удалить проверку фактов',
+  'Add Fact or Context': 'Добавьте факт или контекст',
+  'Country code (optional)': 'Код страны (необязательно)',
+  'This fact check was added by an admin.': 'Эту проверку добавил администратор.',
+  'Show More': 'Показать больше',
   // ── Редактирование группы (tweb editChat) ──
   'You can provide an optional description for your group.': 'Можете указать дополнительное описание для группы.',
   'Group Type': 'Тип группы',

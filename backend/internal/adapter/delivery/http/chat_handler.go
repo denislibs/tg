@@ -546,6 +546,78 @@ func (h *ChatHandler) EditMessage(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, messageJSON(msg))
 }
 
+type factCheckBody struct {
+	Text     string                 `json:"text"`
+	Entities []domain.MessageEntity `json:"entities"`
+	Country  string                 `json:"country"`
+}
+
+// SetFactCheck — POST /chats/{chatID}/messages/{msgID}/factcheck: прикрепить/
+// изменить «проверку фактов» (право — автор/админ канала).
+func (h *ChatHandler) SetFactCheck(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	msgID, ok := pathInt(w, r, "msgID")
+	if !ok {
+		return
+	}
+	var body factCheckBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	msg, err := h.svc.SetFactCheck(r.Context(), chatID, msgID, h.meID(r), body.Text, body.Entities, body.Country)
+	if errors.Is(err, domain.ErrForbidden) {
+		writeError(w, http.StatusForbidden, "not allowed to edit fact check")
+		return
+	}
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "message not found")
+		return
+	}
+	if errors.Is(err, domain.ErrInvalid) {
+		writeError(w, http.StatusBadRequest, "fact check text is required")
+		return
+	}
+	if errors.Is(err, domain.ErrTooLong) {
+		writeError(w, http.StatusBadRequest, "fact check too long")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "set fact check failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, messageJSON(msg))
+}
+
+// RemoveFactCheck — DELETE /chats/{chatID}/messages/{msgID}/factcheck.
+func (h *ChatHandler) RemoveFactCheck(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	msgID, ok := pathInt(w, r, "msgID")
+	if !ok {
+		return
+	}
+	err := h.svc.RemoveFactCheck(r.Context(), chatID, msgID, h.meID(r))
+	if errors.Is(err, domain.ErrForbidden) {
+		writeError(w, http.StatusForbidden, "not allowed to edit fact check")
+		return
+	}
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "message not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "remove fact check failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 func (h *ChatHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 	chatID, ok := pathInt(w, r, "chatID")
 	if !ok {
@@ -1698,6 +1770,16 @@ func messageJSON(m domain.Message) map[string]any {
 	}
 	if m.WebPage != nil {
 		j["web_page"] = m.WebPage
+	}
+	if m.FactCheck != nil {
+		fc := map[string]any{"text": m.FactCheck.Text}
+		if len(m.FactCheck.Entities) > 0 {
+			fc["entities"] = m.FactCheck.Entities
+		}
+		if m.FactCheck.Country != "" {
+			fc["country"] = m.FactCheck.Country
+		}
+		j["factcheck"] = fc
 	}
 	if m.Effect != "" {
 		j["effect"] = m.Effect

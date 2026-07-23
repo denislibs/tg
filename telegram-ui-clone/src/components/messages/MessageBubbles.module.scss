@@ -144,6 +144,41 @@
     --wp-desc: rgba(255, 255, 255, 0.85);
   }
 }
+// Блок «Проверка фактов» (tweb factCheck) — тот же quote-стиль, что и webpage
+.factCheck {
+  --wp-title: var(--tg-textPrimary);
+  --wp-desc: var(--tg-textSecondary);
+
+  margin-top: 4px;
+  padding-left: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  &[data-out] {
+    --wp-title: #fff;
+    --wp-desc: rgba(255, 255, 255, 0.85);
+  }
+}
+// сворачивание длинного текста до 3 строк (tweb setLinesLimit)
+.factText.clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.factMore {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 // кнопка «⚡ INSTANT VIEW» — полоса акцентного цвета под описанием превью
 .ivButton {
   margin-top: 6px;

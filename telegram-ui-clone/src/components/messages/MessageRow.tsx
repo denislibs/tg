@@ -37,6 +37,7 @@ import {
   AudioBubble,
   RoundVideoBubble,
   WebPagePreview,
+  FactCheckBox,
   CallBubble,
   RoundVideoRealBubble,
   GeoBubble,
@@ -612,6 +613,9 @@ function MessageRow({
             </div>
             {m.webPage && (
               <WebPagePreview wp={m.webPage} out={out} linkColor="var(--b-link)" />
+            )}
+            {m.factCheck && (
+              <FactCheckBox fc={m.factCheck} out={out} linkColor="var(--b-link)" />
             )}
             {chips}
             {footer && <div className={s.footerText}>{footer}</div>}

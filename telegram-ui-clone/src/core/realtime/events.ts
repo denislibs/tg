@@ -33,6 +33,7 @@ export const RT = {
   botCallbackAnswer: 'rt:bot_callback_answer',
   geoLiveUpdate: 'rt:geo_live_update',
   webPageUpdate: 'rt:web_page_update',
+  factCheckUpdate: 'rt:factcheck_update',
   secretRequest: 'rt:secret_chat_request',
   secretAccept: 'rt:secret_chat_accept',
   secretReject: 'rt:secret_chat_reject',
@@ -58,6 +59,9 @@ export interface GeoLiveUpdateEvt { chat_id: number; msg_id: number; seq: number
 // Догоняющее серверное превью ссылки (web_page_update): строится после
 // отправки, кадр патчит уже отрисованное сообщение карточкой web page.
 export interface WebPageUpdateEvt { chat_id: number; msg_id: number; seq: number; web_page: import('../models').RawWebPage }
+// «Проверка фактов» прикреплена/изменена/снята (factcheck_update): кадр патчит
+// блок fact-check в уже отрисованном бабле. factcheck===null — проверка снята.
+export interface FactCheckUpdateEvt { chat_id: number; msg_id: number; seq: number; factcheck: import('../models').RawFactCheck | null }
 // Ответ бота на callback уже после таймаута синхронного ожидания — тост по WS.
 export interface BotCallbackAnswerEvt { text: string; alert: boolean }
 // Рукопожатие секретного чата (request/accept/reject) — realtimeBridge

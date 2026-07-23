@@ -1,7 +1,7 @@
 // src/core/managers/messagesManager.ts
 import type { RestClient } from '../net/restClient'
-import { mapMessage, mapPoll, mapChecklist, mapScheduled, mapGeo, mapWebPage, type Message, type MessageEntity, type Poll, type Checklist, type RawMessage, type RawPoll, type RawChecklist, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
-import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt } from '../realtime/events'
+import { mapMessage, mapPoll, mapChecklist, mapScheduled, mapGeo, mapWebPage, mapFactCheck, type Message, type MessageEntity, type Poll, type Checklist, type RawMessage, type RawPoll, type RawChecklist, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
+import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt } from '../realtime/events'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
 
 export interface HistoryArgs {
@@ -239,6 +239,35 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
       for (const key of keysOf(chatId)) if (cache.get(key)?.has(m.seq)) put(key, [m])
       put(hkey(chatId, m.threadRootId), [m])
       return m
+    },
+
+    // «Проверка фактов» (Telegram editFactCheck): прикрепить/изменить блок на
+    // сообщении канала (право проверяет бэк — автор/админ канала). Возвращает
+    // обновлённое сообщение и патчит кэш окон чата.
+    async setFactCheck(chatId: number, msgId: number, text: string, entities?: MessageEntity[], country?: string): Promise<Message> {
+      const updated = await rest.post<RawMessage>(`/chats/${chatId}/messages/${msgId}/factcheck`, {
+        text, entities: entities ?? null, country: country ?? '',
+      })
+      const m = mapMessage(updated)
+      for (const key of keysOf(chatId)) if (cache.get(key)?.has(m.seq)) put(key, [m])
+      put(hkey(chatId, m.threadRootId), [m])
+      return m
+    },
+
+    // Снять «проверку фактов» (Telegram deleteFactCheck). Патчит кэш всех окон чата.
+    async removeFactCheck(chatId: number, msgId: number): Promise<{ ok: boolean }> {
+      const r = await rest.del<{ ok: boolean }>(`/chats/${chatId}/messages/${msgId}/factcheck`)
+      for (const key of keysOf(chatId)) {
+        const c = cache.get(key)
+        if (!c) continue
+        for (const [seq, m] of c) {
+          if (m.id === msgId) {
+            c.set(seq, { ...m, factCheck: undefined })
+            break
+          }
+        }
+      }
+      return r
     },
 
     // Delete a message. revoke=true → for everyone; false → only for me. Deleted
@@ -481,6 +510,21 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
         for (const [seq, m] of c) {
           if (m.id === evt.msg_id) {
             c.set(seq, { ...m, webPage })
+            break
+          }
+        }
+      }
+    },
+
+    // «Проверка фактов» прикреплена/изменена/снята → кэш всех окон чата.
+    cacheFactCheck(evt: FactCheckUpdateEvt): void {
+      const factCheck = evt.factcheck ? mapFactCheck(evt.factcheck) : undefined
+      for (const key of keysOf(evt.chat_id)) {
+        const c = cache.get(key)
+        if (!c) continue
+        for (const [seq, m] of c) {
+          if (m.id === evt.msg_id) {
+            c.set(seq, { ...m, factCheck })
             break
           }
         }

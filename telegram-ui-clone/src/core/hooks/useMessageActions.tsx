@@ -16,6 +16,8 @@ import { useReportStore } from '../../stores/reportStore'
 import { useSettingsStore } from '../../settings'
 import { uiEvents } from './uiEvents'
 import { isGifLike } from '../gifs'
+import { parseMarkdown } from '../markdown'
+import type { FactCheck } from '../models'
 import { friendlyMsgTime } from '../friendlyTime'
 import { useT, useLang } from '../../i18n'
 import type { Chat, ConvMsg } from '../../data'
@@ -41,6 +43,8 @@ interface UseMessageActionsArgs {
   isRealChat: boolean
   // Пост канала + текущий пользователь — админ/владелец: показывать «Статистику».
   canViewPostStats?: boolean
+  // Канал + зритель автор/админ: показывать пункты «проверки фактов» (tweb canUpdateFactCheck).
+  canEditFactCheck?: boolean
   win: MessageWindow
   msgs: ConvMsg[]
   meId: number | null
@@ -56,7 +60,7 @@ interface UseMessageActionsArgs {
 }
 
 export function useMessageActions({
-  chat, numericChatId, isRealChat, canViewPostStats, win, msgs, meId, pins, managers, accent,
+  chat, numericChatId, isRealChat, canViewPostStats, canEditFactCheck, win, msgs, meId, pins, managers, accent,
   setReply, setEditing, setSelectionMode, setSelected, clearSelection, onChatCreated,
 }: UseMessageActionsArgs) {
   const t = useT()
@@ -67,6 +71,8 @@ export function useMessageActions({
   const readDateReqRef = useRef(0)
   // Оверлей «Статистика поста» (канал, админ): открывается из меню, id поста.
   const [postStats, setPostStats] = useState<{ msgId: number } | null>(null)
+  // Редактор «проверки фактов» (канал, автор/админ): id сообщения + текущее значение.
+  const [factCheckEdit, setFactCheckEdit] = useState<{ msgId: number; initial?: FactCheck } | null>(null)
   // Ответ с цитатой: текст, выделенный внутри сообщения на момент открытия меню
   // (right-click сохраняет выделение), плюс его offset (UTF-16) в тексте сообщения.
   // Используется startReply; сбрасывается, если выделения не было.
@@ -330,6 +336,31 @@ export function useMessageActions({
     if (raw?.id != null) setPostStats({ msgId: raw.id })
   }
 
+  // «Проверка фактов» (tweb onEditFactCheckClick): открыть редактор (add/edit).
+  const openFactCheckEditor = () => {
+    const raw = menuRawMsg()
+    closeMsgMenu()
+    if (raw?.id != null && isRealChat) setFactCheckEdit({ msgId: raw.id, initial: raw.factCheck })
+  }
+  // Сохранить проверку: разбор markdown (сущности как при отправке), REST + оптимистичный патч стора.
+  const submitFactCheck = async (text: string, country: string) => {
+    const edit = factCheckEdit
+    setFactCheckEdit(null)
+    if (!edit || !isRealChat) return
+    const parsed = parseMarkdown(text)
+    if (!parsed.text.trim()) return
+    useMessagesStore.getState().applyFactCheck(numericChatId, edit.msgId, { text: parsed.text, entities: parsed.entities, country: country || undefined })
+    await managers.messages.setFactCheck(numericChatId, edit.msgId, parsed.text, parsed.entities, country || undefined).catch(() => {})
+  }
+  // Снять проверку фактов (tweb deleteFactCheck): оптимистично + REST.
+  const removeFactCheck = () => {
+    const raw = menuRawMsg()
+    closeMsgMenu()
+    if (raw?.id == null || !isRealChat) return
+    useMessagesStore.getState().applyFactCheck(numericChatId, raw.id, undefined)
+    void managers.messages.removeFactCheck(numericChatId, raw.id)
+  }
+
   // Полоска эмодзи над контекстным меню: реакция на сообщение меню.
   const reactToMenuMsg = (emoji: string) => {
     const raw = menuRawMsg()
@@ -435,6 +466,14 @@ export function useMessageActions({
     ...(canViewPostStats && menuRawMsg()?.id != null
       ? [{ icon: <TgIcon name="statistics" size={20} />, label: 'Statistics', onClick: openPostStats }]
       : []),
+    // «Проверка фактов» — канал, зритель автор/админ (tweb canUpdateFactCheck):
+    // добавить/изменить + (если есть) удалить.
+    ...(canEditFactCheck && menuRawMsg()?.id != null
+      ? [
+          { icon: <TgIcon name="factcheck" size={20} />, label: menuRawMsg()?.factCheck ? 'Edit Fact Check' : 'Add Fact Check', onClick: openFactCheckEditor },
+          ...(menuRawMsg()?.factCheck ? [{ icon: <TgIcon name="delete" size={20} />, label: 'Delete Fact Check', danger: true, onClick: removeFactCheck }] : []),
+        ]
+      : []),
     // «Пожаловаться» — на чужие сообщения в реальном чате (своё не жалуют).
     ...(isRealChat && !(msgs[msgMenu?.idx ?? -1]?.out ?? false)
       ? [{ icon: <TgIcon name="hand" size={20} />, label: 'Report', danger: true, onClick: openReport }]
@@ -449,6 +488,7 @@ export function useMessageActions({
     toggleReaction, reactToMenuMsg, showReactedUsers,
     openStarReaction, starReact, closeStarReaction: () => setStarReact(null),
     postStats, closePostStats: () => setPostStats(null),
+    factCheckEdit, submitFactCheck, closeFactCheckEditor: () => setFactCheckEdit(null),
     delIds, doDelete, closeDelete: () => setDelIds(null), openDeleteFor, canRevokeAll,
     forwardIds, doForward, closeForward: () => setForwardIds(null), openForwardFor,
     viewers, closeViewers: () => setViewers(null),

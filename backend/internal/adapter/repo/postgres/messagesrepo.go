@@ -24,7 +24,7 @@ func NewMessagesRepo(pool *pgxpool.Pool) *MessagesRepo { return &MessagesRepo{po
 
 // The full ordered column list every message SELECT/RETURNING uses, so the scan
 // order in scanMessage stays in sync across all queries.
-const messageCols = `id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id, edited_at, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, views, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, enc_body, ttl_seconds, destruct_at, forwards, reply_quote_text, reply_quote_offset, web_page, effect, giveaway_id, checklist_id`
+const messageCols = `id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id, edited_at, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, views, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, enc_body, ttl_seconds, destruct_at, forwards, reply_quote_text, reply_quote_offset, web_page, effect, giveaway_id, checklist_id, factcheck`
 
 // messageColsPrefixed returns messageCols with each column qualified by a table
 // alias (for JOINs where bare column names like chat_id would be ambiguous).
@@ -408,6 +408,23 @@ func (r *MessagesRepo) SetWebPage(ctx context.Context, msgID int64, wp *domain.W
 	return err
 }
 
+// SetFactCheck пишет/снимает «проверку фактов» (jsonb factcheck) и возвращает
+// обновлённую строку. fc==nil снимает проверку (factcheck=NULL). Удалённое
+// сообщение не трогаем.
+func (r *MessagesRepo) SetFactCheck(ctx context.Context, msgID int64, fc *domain.FactCheck) (domain.Message, error) {
+	var param any // jsonb — строкой (см. entitiesParam); nil → NULL
+	if fc != nil {
+		b, err := json.Marshal(fc)
+		if err != nil {
+			return domain.Message{}, err
+		}
+		param = string(b)
+	}
+	return scanOneMessage(querier(ctx, r.pool).QueryRow(ctx,
+		`UPDATE messages SET factcheck=$2 WHERE id=$1 AND deleted_at IS NULL RETURNING `+messageCols,
+		msgID, param))
+}
+
 // ClearMediaUnread drops the media_unread flag; reports whether the row
 // actually changed (so the caller can skip fan-out on repeat plays).
 func (r *MessagesRepo) ClearMediaUnread(ctx context.Context, msgID int64) (bool, error) {
@@ -740,12 +757,13 @@ func scanMessage(s scanner) (domain.Message, error) {
 	var markupRaw []byte
 	var geoMetaRaw []byte
 	var webPageRaw []byte
+	var factCheckRaw []byte
 	var effect *string
 	err := s.Scan(&m.ID, &m.ChatID, &m.Seq, &m.SenderID, &m.Type, &m.Text,
 		&m.ReplyToID, &m.ClientMsgID, &m.MediaID, &m.CreatedAt, &deletedAt, &m.ThreadRootID,
 		&m.EditedAt, &m.FwdFromUserID, &m.FwdFromChatID, &m.FwdFromMsgID, &m.FwdDate, &m.FwdFromName, &entitiesRaw, &m.Views, &m.MediaUnread, &m.GroupedID, &m.PollID,
 		&m.GeoLat, &m.GeoLng, &m.ContactUserID, &m.ContactName, &m.ContactPhone, &m.GiftID, &markupRaw, &geoMetaRaw,
-		&m.EncBody, &m.TTLSeconds, &m.DestructAt, &m.Forwards, &m.ReplyQuoteText, &m.ReplyQuoteOffset, &webPageRaw, &effect, &m.GiveawayID, &m.ChecklistID)
+		&m.EncBody, &m.TTLSeconds, &m.DestructAt, &m.Forwards, &m.ReplyQuoteText, &m.ReplyQuoteOffset, &webPageRaw, &effect, &m.GiveawayID, &m.ChecklistID, &factCheckRaw)
 	m.Deleted = deletedAt != nil
 	if effect != nil {
 		m.Effect = *effect
@@ -770,6 +788,12 @@ func scanMessage(s scanner) (domain.Message, error) {
 		var wp domain.WebPagePreview
 		if json.Unmarshal(webPageRaw, &wp) == nil {
 			m.WebPage = &wp
+		}
+	}
+	if err == nil && len(factCheckRaw) > 0 && string(factCheckRaw) != "null" {
+		var fc domain.FactCheck
+		if json.Unmarshal(factCheckRaw, &fc) == nil {
+			m.FactCheck = &fc
 		}
 	}
 	return m, err

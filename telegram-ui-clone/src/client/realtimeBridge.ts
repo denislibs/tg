@@ -4,14 +4,14 @@ import { loadChats, useChatsStore } from '../stores/chatsStore'
 import { useMessagesStore } from '../stores/messagesStore'
 import { usePinsStore } from '../stores/pinsStore'
 import { useStarsStore } from '../stores/starsStore'
-import { mapMessage, mapDraft, mapPoll, mapChecklist, mapGeo, mapWebPage, mapBoostStatus, mapGiveaway, mapSuggestedPost, type RawPoll, type RawChecklist, type RawBoostStatus, type RawGiveaway } from '../core/models'
+import { mapMessage, mapDraft, mapPoll, mapChecklist, mapGeo, mapWebPage, mapFactCheck, mapBoostStatus, mapGiveaway, mapSuggestedPost, type RawPoll, type RawChecklist, type RawBoostStatus, type RawGiveaway } from '../core/models'
 import { useBoostsStore } from '../stores/boostsStore'
 import { useSuggestedPostsStore } from '../stores/suggestedPostsStore'
 import { useDraftsStore } from '../stores/draftsStore'
 import { useUploadsStore } from '../stores/uploadsStore'
 import { uiEvents } from '../core/hooks/uiEvents'
 import { mapReplyMarkup } from '../core/managers/botsManager'
-import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type GeoLiveUpdateEvt, type WebPageUpdateEvt, type ChatThemeUpdateEvt, type SuggestedPostEvt } from '../core/realtime/events'
+import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type GeoLiveUpdateEvt, type WebPageUpdateEvt, type FactCheckUpdateEvt, type ChatThemeUpdateEvt, type SuggestedPostEvt } from '../core/realtime/events'
 import { playMessageSent } from '../core/audio/sounds'
 import { playEmojiEffect } from '../core/effects/emojiEffects'
 import { notifyIncomingMessage } from './uiNotifications'
@@ -172,6 +172,12 @@ export function startRealtime(): void {
   smp.on(RT.webPageUpdate, (raw) => {
     const e = raw as WebPageUpdateEvt
     useMessagesStore.getState().applyWebPage(e.chat_id, e.msg_id, mapWebPage(e.web_page))
+  })
+  // «Проверка фактов» прикреплена/изменена/снята: блок fact-check добирается/
+  // исчезает у уже отрисованного сообщения (factcheck===null — снята).
+  smp.on(RT.factCheckUpdate, (raw) => {
+    const e = raw as FactCheckUpdateEvt
+    useMessagesStore.getState().applyFactCheck(e.chat_id, e.msg_id, e.factcheck ? mapFactCheck(e.factcheck) : undefined)
   })
   // Pin/unpin: refetch the chat's pins and write them to the store (the only
   // socket subscription for pins — usePinnedBar just reads the store).

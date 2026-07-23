@@ -72,6 +72,9 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 	if m.PaidMediaPrice != nil {
 		p["paid_media"] = map[string]any{"price": *m.PaidMediaPrice, "locked": m.PaidMediaLocked}
 	}
+	if m.FactCheck != nil {
+		p["factcheck"] = factCheckJSON(m.FactCheck)
+	}
 	// Reply quote: цитата хранится на самом сообщении — превью реплая на клиенте
 	// собирается из уже загруженного окна, так что фрагмент едет отдельным полем.
 	if m.ReplyQuoteText != nil {
@@ -133,6 +136,30 @@ func contactJSON(m domain.Message) map[string]any {
 		c["phone"] = *m.ContactPhone
 	}
 	return c
+}
+
+// factCheckJSON — представление «проверки фактов» для клиента (nil → nil).
+func factCheckJSON(fc *domain.FactCheck) map[string]any {
+	if fc == nil {
+		return nil
+	}
+	m := map[string]any{"text": fc.Text}
+	if len(fc.Entities) > 0 {
+		m["entities"] = fc.Entities
+	}
+	if fc.Country != "" {
+		m["country"] = fc.Country
+	}
+	return m
+}
+
+// factCheckUpdatePayload — тело фрейма/апдейта factcheck_update: клиент патчит
+// блок проверки фактов в уже отрисованном бабле. factcheck==null — проверка снята.
+func factCheckUpdatePayload(m domain.Message) map[string]any {
+	return map[string]any{
+		"chat_id": m.ChatID, "msg_id": m.ID, "seq": m.Seq,
+		"factcheck": factCheckJSON(m.FactCheck),
+	}
 }
 
 // editUpdatePayload is the body of an "edit_message" update/frame. reply_markup
