@@ -11,10 +11,13 @@
   inset-inline: 0;
 }
 
-// липнет к верху скролл-контейнера (tweb .search-super-tabs-scrollable)
+// липнет к верху скролл-контейнера (tweb .search-super-tabs-scrollable:
+// СПЛОШНОЙ surface-фон, чтобы уплывающий контент не просвечивал сквозь плашку —
+// в отличие от overlay-режима, где достаточно градиента-фейда).
 .sticky {
   position: sticky;
   top: 0;
+  background: var(--tabsbar-from, var(--tg-sidebarBg));
 }
 
 // tweb .folders-tabs-gradient-container: absolute; inset: 0; z-index: -1
