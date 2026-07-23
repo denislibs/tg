@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
@@ -26,6 +27,10 @@ func (h *ChannelHandler) mapErr(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusForbidden, "forbidden")
 	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not found")
+	case errors.Is(err, domain.ErrInvalid):
+		writeError(w, http.StatusBadRequest, "invalid request")
+	case errors.Is(err, domain.ErrTooLong):
+		writeError(w, http.StatusBadRequest, "too long")
 	default:
 		writeError(w, http.StatusInternalServerError, "server error")
 	}
@@ -70,6 +75,86 @@ func (h *ChannelHandler) Post(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id": msg.ID, "chat_id": msg.ChatID, "seq": msg.Seq, "created_at": msg.CreatedAt,
 	})
+}
+
+// Suggest — участник предлагает пост в канал (текст/медиа + опц. время публикации).
+func (h *ChannelHandler) Suggest(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Text      string                 `json:"text"`
+		Entities  []domain.MessageEntity `json:"entities"`
+		MediaID   *int64                 `json:"media_id"`
+		PublishAt int64                  `json:"publish_at"` // unix-секунды, 0 — как можно скорее
+	}
+	_ = json.NewDecoder(r.Body).Decode(&b)
+	info, err := h.uc.SuggestPost(r.Context(), chatID, user.ID, b.Text, b.Entities, b.MediaID, unixToTime(b.PublishAt))
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, info)
+}
+
+// ListSuggested — предложенные посты канала (админу все pending, автору свои).
+func (h *ChannelHandler) ListSuggested(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	posts, err := h.uc.ListSuggestedPosts(r.Context(), chatID, user.ID)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"posts": posts})
+}
+
+// ApproveSuggested — админ одобряет предложенный пост (публикует; опц. по времени).
+func (h *ChannelHandler) ApproveSuggested(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	id, ok := pathInt(w, r, "id")
+	if !ok {
+		return
+	}
+	var b struct {
+		PublishAt int64 `json:"publish_at"` // unix-секунды, 0 — опубликовать сейчас
+	}
+	_ = json.NewDecoder(r.Body).Decode(&b)
+	info, err := h.uc.ApproveSuggestedPost(r.Context(), id, user.ID, unixToTime(b.PublishAt))
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, info)
+}
+
+// RejectSuggested — админ отклоняет предложенный пост.
+func (h *ChannelHandler) RejectSuggested(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	id, ok := pathInt(w, r, "id")
+	if !ok {
+		return
+	}
+	info, err := h.uc.RejectSuggestedPost(r.Context(), id, user.ID)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, info)
+}
+
+// unixToTime переводит unix-секунды (>0) в *time.Time; 0/отрицательное — nil.
+func unixToTime(sec int64) *time.Time {
+	if sec <= 0 {
+		return nil
+	}
+	t := time.Unix(sec, 0)
+	return &t
 }
 
 func (h *ChannelHandler) EnableDiscussion(w http.ResponseWriter, r *http.Request) {

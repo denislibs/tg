@@ -32,6 +32,7 @@ import { newDraftsManager } from './managers/draftsManager'
 import { newChatThemesManager } from './managers/chatThemesManager'
 import { newSessionsManager } from './managers/sessionsManager'
 import { newCallsManager } from './managers/callsManager'
+import { newLivestreamManager } from './managers/livestreamManager'
 import { newConnectionManager } from './realtime/connectionManager'
 import { newSyncEngine } from './realtime/syncEngine'
 import { createSecretManager } from './managers/secretManager'
@@ -68,6 +69,7 @@ const drafts = newDraftsManager({ rest })
 const chatThemes = newChatThemesManager({ rest })
 const sessions = newSessionsManager({ rest })
 const calls = newCallsManager({ rest })
+const livestream = newLivestreamManager({ rest })
 const stars = newStarsManager({ rest })
 const boosts = newBoostsManager({ rest })
 const report = newReportManager({ rest })
@@ -146,6 +148,7 @@ const conn = newConnectionManager({
     else if (type === 'checklist_update') broadcast(RT.checklistUpdate, payload)
     else if (type === 'boost_update') broadcast(RT.boostUpdate, payload)
     else if (type === 'giveaway_update') broadcast(RT.giveawayUpdate, payload)
+    else if (type === 'suggested_post_update') broadcast(RT.suggestedPost, payload)
     else if (type === 'balance_update') broadcast(RT.balanceUpdate, payload)
     // Платное медиа разблокировано покупателем: раскрываем баббл (полное медиа)
     // на всех его вкладках; правим кэш истории воркера тем же payload.
@@ -163,6 +166,7 @@ const conn = newConnectionManager({
       if (p.chat_id && p.responder_pub) void secret.complete(p.chat_id, p.responder_pub)
     }
     else if (type === 'secret_chat_reject') broadcast(RT.secretReject, payload)
+    else if (type.startsWith('livestream_')) broadcast(RT.livestream, { t: type, d: payload })
     else if (type.startsWith('group_call_')) broadcast(RT.groupCall, { t: type, d: payload })
     else if (type.startsWith('call_')) broadcast(RT.call, { t: type, d: payload })
   },
@@ -212,6 +216,7 @@ function bind(ep: Endpoint) {
     chatThemes: chatThemes as unknown as Record<string, (...a: unknown[]) => unknown>,
     sessions: sessions as unknown as Record<string, (...a: unknown[]) => unknown>,
     calls: calls as unknown as Record<string, (...a: unknown[]) => unknown>,
+    livestream: livestream as unknown as Record<string, (...a: unknown[]) => unknown>,
     stars: stars as unknown as Record<string, (...a: unknown[]) => unknown>,
     boosts: boosts as unknown as Record<string, (...a: unknown[]) => unknown>,
     report: report as unknown as Record<string, (...a: unknown[]) => unknown>,

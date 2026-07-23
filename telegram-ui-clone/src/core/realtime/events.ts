@@ -25,9 +25,11 @@ export const RT = {
   checklistUpdate: 'rt:checklist_update',
   boostUpdate: 'rt:boost_update',
   giveawayUpdate: 'rt:giveaway_update',
+  suggestedPost: 'rt:suggested_post_update',
   balanceUpdate: 'rt:balance_update',
   paidMediaUnlock: 'rt:paid_media_unlock',
   groupCall: 'rt:group_call',
+  livestream: 'rt:livestream',
   botCallbackAnswer: 'rt:bot_callback_answer',
   geoLiveUpdate: 'rt:geo_live_update',
   webPageUpdate: 'rt:web_page_update',
@@ -68,6 +70,9 @@ export interface SecretHandshakeEvt {
   responderPub?: string // base64 (в accept)
   state: string
 }
+// Новая/решённая предложка поста (suggested_post_update): админам — новые/решённые,
+// автору — статус его предложки. post — сырая read-модель backend.
+export interface SuggestedPostEvt { chat_id: number; post: import('../models').RawSuggestedPost }
 export interface DeleteMessageEvt { chat_id: number; msg_id: number; seq: number; for_me: boolean }
 export interface PinMessageEvt { chat_id: number; msg_id: number; pinned: boolean }
 export interface ReadEvt { chat_id: number; user_id: number; up_to_seq: number }

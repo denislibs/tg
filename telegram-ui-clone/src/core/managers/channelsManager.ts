@@ -1,6 +1,10 @@
 import type { RestClient } from '../net/restClient'
-import { mapMessage, type Message, type RawMessage } from '../models'
+import { mapMessage, mapSuggestedPost, type Message, type RawMessage, type MessageEntity, type SuggestedPost, type RawSuggestedPost } from '../models'
 import { idbGet, idbSet } from '../store/idbKv'
+
+// Аргументы «предложить пост в канал» (Telegram suggested posts). publishAt —
+// желаемое время публикации в unix-секундах (0/undefined — как можно скорее).
+export interface SuggestPostArgs { text: string; entities?: MessageEntity[]; mediaId?: number | null; publishAt?: number }
 
 export interface SearchResult {
   chats: { id: number; type: string; title: string; username: string; memberCount: number }[]
@@ -57,6 +61,26 @@ export function newChannelsManager({ rest }: { rest: Pick<RestClient, 'post' | '
       const out: Record<number, number> = {}
       for (const k in r.counts) out[+k] = r.counts[k]
       return out
+    },
+    // Предложка постов (Telegram suggested posts).
+    async suggestPost(chatId: number, args: SuggestPostArgs): Promise<SuggestedPost> {
+      const r = await rest.post<RawSuggestedPost>(`/channels/${chatId}/suggested_posts`, {
+        text: args.text, entities: args.entities ?? undefined,
+        media_id: args.mediaId ?? null, publish_at: args.publishAt ?? 0,
+      })
+      return mapSuggestedPost(r)
+    },
+    async listSuggestedPosts(chatId: number): Promise<SuggestedPost[]> {
+      const r = await rest.get<{ posts: RawSuggestedPost[] }>(`/channels/${chatId}/suggested_posts`)
+      return (r.posts ?? []).map(mapSuggestedPost)
+    },
+    async approveSuggestedPost(id: number, publishAt?: number): Promise<SuggestedPost> {
+      const r = await rest.post<RawSuggestedPost>(`/suggested_posts/${id}/approve`, { publish_at: publishAt ?? 0 })
+      return mapSuggestedPost(r)
+    },
+    async rejectSuggestedPost(id: number): Promise<SuggestedPost> {
+      const r = await rest.post<RawSuggestedPost>(`/suggested_posts/${id}/reject`, {})
+      return mapSuggestedPost(r)
     },
     async search(q: string): Promise<SearchResult> {
       // Allow "@username" queries: usernames are stored without the @, so strip

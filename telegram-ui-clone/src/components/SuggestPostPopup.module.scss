@@ -1,0 +1,62 @@
+// Модалка «Предложить пост»
+.body {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 4px 8px;
+}
+
+.label {
+  padding: 10px 4px 4px;
+}
+
+.mine {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.mineRow {
+  background: var(--tg-sectionBackdrop);
+  border-radius: 10px;
+  padding: 6px 10px;
+}
+
+.badge {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.textarea {
+  width: 100%;
+  resize: vertical;
+  border: 1px solid var(--tg-border, rgba(0, 0, 0, 0.12));
+  border-radius: 10px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 15px;
+  color: var(--tg-textPrimary);
+  background: var(--tg-inputBg, transparent);
+  outline: none;
+
+  &:focus {
+    border-color: var(--tg-accent);
+  }
+}
+
+.input {
+  width: 100%;
+  border: 1px solid var(--tg-border, rgba(0, 0, 0, 0.12));
+  border-radius: 10px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 15px;
+  color: var(--tg-textPrimary);
+  background: var(--tg-inputBg, transparent);
+  outline: none;
+
+  &:focus {
+    border-color: var(--tg-accent);
+  }
+}

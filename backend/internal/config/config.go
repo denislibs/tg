@@ -49,6 +49,11 @@ type Config struct {
 	// TenorAPIKey — ключ Tenor v2 для поиска GIF. Пусто → /gifs/search отдаёт
 	// пустую выдачу (фича мягко отключена).
 	TenorAPIKey string
+
+	// RTMPBaseURL — базовый URL RTMP-сервера для livestream-трансляций (админ
+	// вставляет его + stream key в OBS). Реального ingest в проекте нет — это
+	// только выдаваемые креды. Пусто → дефолт rtmp://localhost/live.
+	RTMPBaseURL string
 }
 
 func Load() (*Config, error) {
@@ -80,6 +85,7 @@ func Load() (*Config, error) {
 	c.TranslateURL = os.Getenv("TRANSLATE_URL")
 	c.TranslateAPIKey = os.Getenv("TRANSLATE_API_KEY")
 	c.TenorAPIKey = os.Getenv("TENOR_API_KEY")
+	c.RTMPBaseURL = getenv("RTMP_BASE_URL", "rtmp://localhost/live")
 	return c, nil
 }
 

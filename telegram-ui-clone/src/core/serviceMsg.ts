@@ -8,6 +8,8 @@ interface ServiceAction {
   actor?: string
   user?: string
   ttl?: number
+  /** название канала (предложка постов: suggest_post_approved/rejected) */
+  chat?: string
 }
 
 // Тексты — как в официальном ru-паке Telegram (ActionCreateGroup/ActionAddUser/…).
@@ -28,6 +30,15 @@ export function serviceMsgText(raw: string, out?: boolean): string {
       return out
         ? `Вы предложили установить это фото профиля`
         : `${actor} предлагает вам установить это фото профиля`
+    // Решение по предложенному посту (Telegram suggested posts).
+    case 'suggest_post_approved':
+      return a.chat
+        ? `Ваш предложенный пост одобрен в канале «${a.chat}»`
+        : `Ваш предложенный пост одобрен`
+    case 'suggest_post_rejected':
+      return a.chat
+        ? `Ваш предложенный пост отклонён в канале «${a.chat}»`
+        : `Ваш предложенный пост отклонён`
     case 'group_create': return `${actor} создал(а) группу`
     case 'add_user': return `${actor} добавил(а) ${user}`
     case 'kick_user': return `${actor} удалил(а) ${user}`

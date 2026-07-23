@@ -166,6 +166,12 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Post("/translate", ch.Translate)
 		pr.Post("/chats/{chatID}/polls", ch.SendPoll)
 		pr.Get("/chats/{chatID}/group_call", ch.GroupCallParticipants)
+		// RTMP-трансляции (Telegram livestream): старт/стоп — только админ,
+		// статус — любой участник (креды в нём только админу).
+		pr.Get("/chats/{chatID}/livestream", ch.LivestreamStatus)
+		pr.Post("/chats/{chatID}/livestream/start", ch.StartLivestream)
+		pr.Post("/chats/{chatID}/livestream/stop", ch.StopLivestream)
+		pr.Post("/chats/{chatID}/livestream/revoke_key", ch.RevokeStreamKey)
 		pr.Post("/chats/{chatID}/forum", ch.SetForum)
 		pr.Post("/chats/{chatID}/topics", ch.CreateTopic)
 		pr.Get("/chats/{chatID}/topics", ch.ListTopics)
@@ -296,6 +302,11 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/channels/{chatID}/posts/{postId}/comments", chh.ListComments)
 		pr.Get("/channels/{chatID}/comment_counts", chh.CommentCounts)
 		pr.Get("/channels/{chatID}/view_counts", chh.ViewCounts)
+		// Предложка постов (Telegram suggested posts).
+		pr.Post("/channels/{chatID}/suggested_posts", chh.Suggest)
+		pr.Get("/channels/{chatID}/suggested_posts", chh.ListSuggested)
+		pr.Post("/suggested_posts/{id}/approve", chh.ApproveSuggested)
+		pr.Post("/suggested_posts/{id}/reject", chh.RejectSuggested)
 		if statsUC != nil {
 			sth := NewStatsHandler(statsUC)
 			pr.Get("/channels/{chatID}/stats", sth.ChannelStats)

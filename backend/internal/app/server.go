@@ -94,11 +94,20 @@ func registerServer(p serverParams) {
 	// Чек-листы: хранение + отметки, live-обновления фреймом checklist_update.
 	p.ChatUC.SetChecklists(pgadapter.NewChecklistsRepo(p.Pool))
 
+	// RTMP-трансляции (Telegram livestream): метаданные потока (stream key,
+	// активность, старт) в Postgres, число зрителей — участники группового
+	// звонка; старт/стоп фанятся кадром livestream_update.
+	p.ChatUC.SetLivestreams(pgadapter.NewLivestreamRepo(p.Pool), p.Cfg.RTMPBaseURL)
+
 	// Бусты каналов + розыгрыши: буст доступен premium, счётчик бустов и статус
 	// розыгрыша рассылаются фреймами boost_update / giveaway_update.
 	p.ChatUC.SetBoosts(pgadapter.NewBoostsRepo(p.Pool))
 	p.ChatUC.SetGiveaways(pgadapter.NewGiveawaysRepo(p.Pool))
 	p.ChatUC.SetPremiumRepo(pgadapter.NewPremiumRepo(p.Pool))
+
+	// Предложка постов: участник предлагает пост, админ одобряет/отклоняет;
+	// одобренный публикуется каналным сообщением (отложенный — тикером ниже).
+	p.ChatUC.SetSuggestedPosts(pgadapter.NewSuggestedPostsRepo(p.Pool))
 
 	// Запланированные сообщения: очередь + фоновая отправка (тикер ниже).
 	p.ChatUC.SetScheduled(pgadapter.NewScheduledRepo(p.Pool))
@@ -223,6 +232,11 @@ func registerServer(p serverParams) {
 						log.Printf("scheduled dispatch: %v", err)
 					} else if n > 0 {
 						log.Printf("scheduled: sent %d message(s)", n)
+					}
+					if n, err := p.ChatUC.DispatchDueSuggestedPosts(p.Ctx); err != nil {
+						log.Printf("suggested-post dispatch: %v", err)
+					} else if n > 0 {
+						log.Printf("suggested-post: published %d post(s)", n)
 					}
 				}
 			}

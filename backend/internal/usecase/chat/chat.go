@@ -32,6 +32,8 @@ type Interactor struct {
 	scheduled    ScheduledRepo
 	topics       TopicRepo
 	groupCalls   GroupCallStore
+	livestreams  LivestreamRepo
+	rtmpURL      string
 	stars        StarsRepo
 	paidMedia    PaidMediaRepo
 	starReaction StarReactionRepo
@@ -44,6 +46,7 @@ type Interactor struct {
 	preview      LinkPreviewer
 	boosts       BoostRepo
 	giveaways    GiveawayRepo
+	suggested    SuggestedPostRepo
 	premium      PremiumRepo
 	contactPics  ContactPhotoLookup
 	profilePics  ProfilePhotoAdder
@@ -100,6 +103,13 @@ func (i *Interactor) SetTopics(t TopicRepo) { i.topics = t }
 // SetGroupCalls подключает стор участников групповых звонков (optional, Redis).
 func (i *Interactor) SetGroupCalls(s GroupCallStore) { i.groupCalls = s }
 
+// SetLivestreams подключает хранилище RTMP-трансляций (optional; без него → 404).
+// rtmpURL — базовый URL RTMP-сервера для OBS (админ вставляет его + stream key).
+func (i *Interactor) SetLivestreams(r LivestreamRepo, rtmpURL string) {
+	i.livestreams = r
+	i.rtmpURL = rtmpURL
+}
+
 // SetStars подключает хранилище звёзд/подарков (optional; без него → 404).
 func (i *Interactor) SetStars(s StarsRepo) { i.stars = s }
 
@@ -141,6 +151,10 @@ func (i *Interactor) SetBoosts(b BoostRepo) { i.boosts = b }
 
 // SetGiveaways подключает хранилище розыгрышей (optional; без него → 404).
 func (i *Interactor) SetGiveaways(g GiveawayRepo) { i.giveaways = g }
+
+// SetSuggestedPosts подключает хранилище предложенных постов (optional; без него
+// предложка → 404).
+func (i *Interactor) SetSuggestedPosts(s SuggestedPostRepo) { i.suggested = s }
 
 // SetPremiumRepo подключает чтение/выдачу premium-статуса (для бустов и
 // premium-приза розыгрыша).

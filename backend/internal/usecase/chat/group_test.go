@@ -424,6 +424,18 @@ func (r *fakeGroupRepo) ListMembers(_ context.Context, chatID int64, offset, lim
 	return out, nil
 }
 
+func (r *fakeGroupRepo) AdminIDs(_ context.Context, chatID int64) ([]int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]int64, 0)
+	for uid, m := range r.members[chatID] {
+		if m.Role == domain.RoleCreator || m.Role == domain.RoleAdmin {
+			out = append(out, uid)
+		}
+	}
+	return out, nil
+}
+
 func (r *fakeGroupRepo) UsersByIDs(_ context.Context, ids []int64) ([]domain.UserCard, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
