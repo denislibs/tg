@@ -14,15 +14,59 @@ export interface Rect {
   h: number
 }
 
-/** Значения вкладки Enhance, каждое -100..100 (0 — без эффекта). */
+/**
+ * Значения 11 коррекций медиа-редактора (как в tweb adjustmentsConfig).
+ * Диапазоны задаёт ADJUSTMENTS: `to100` → 0..100, иначе −50..50. 0 — без эффекта.
+ */
 export interface EnhanceValues {
+  enhance: number
   brightness: number
   contrast: number
   saturation: number
   warmth: number
+  fade: number
+  highlights: number
+  shadows: number
+  vignette: number
+  grain: number
+  sharpen: number
 }
 
-export const ENHANCE_DEFAULTS: EnhanceValues = { brightness: 0, contrast: 0, saturation: 0, warmth: 0 }
+export const ENHANCE_DEFAULTS: EnhanceValues = {
+  enhance: 0, brightness: 0, contrast: 0, saturation: 0, warmth: 0,
+  fade: 0, highlights: 0, shadows: 0, vignette: 0, grain: 0, sharpen: 0,
+}
+
+/**
+ * Конфиг коррекций 1:1 с tweb `adjustmentsConfig`: ключ, имя uniform в шейдере,
+ * лейбл (en; i18n добавит перевод при наличии) и `to100` — диапазон слайдера.
+ */
+export interface AdjustmentConfig {
+  key: keyof EnhanceValues
+  uniform: string
+  label: string
+  to100: boolean
+}
+
+export const ADJUSTMENTS: AdjustmentConfig[] = [
+  { key: 'enhance', uniform: 'uEnhance', label: 'Enhance', to100: true },
+  { key: 'brightness', uniform: 'uBrightness', label: 'Brightness', to100: false },
+  { key: 'contrast', uniform: 'uContrast', label: 'Contrast', to100: false },
+  { key: 'saturation', uniform: 'uSaturation', label: 'Saturation', to100: false },
+  { key: 'warmth', uniform: 'uWarmth', label: 'Warmth', to100: false },
+  { key: 'fade', uniform: 'uFade', label: 'Fade', to100: true },
+  { key: 'highlights', uniform: 'uHighlights', label: 'Highlights', to100: false },
+  { key: 'shadows', uniform: 'uShadows', label: 'Shadows', to100: false },
+  { key: 'vignette', uniform: 'uVignette', label: 'Vignette', to100: true },
+  { key: 'grain', uniform: 'uGrain', label: 'Grain', to100: true },
+  { key: 'sharpen', uniform: 'uSharpen', label: 'Sharpen', to100: true },
+]
+
+/** Диапазон слайдера коррекции: to100 → [0,100], иначе [−50,50]. */
+export const enhanceRange = (to100: boolean): [number, number] => (to100 ? [0, 100] : [-50, 50])
+
+/** Значение слайдера → uniform шейдера (как в tweb imageCanvas): value/(to100?100:50). */
+export const normalizeEnhance = (value: number, to100: boolean): number => value / (to100 ? 100 : 50)
 
 /** Минимальная сторона crop-рамки в пикселях исходника. */
 export const MIN_CROP = 64
@@ -32,47 +76,58 @@ export const HISTORY_LIMIT = 20
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
 
-export const isDefaultEnhance = (v: EnhanceValues): boolean =>
-  !v.brightness && !v.contrast && !v.saturation && !v.warmth
+export const isDefaultEnhance = (v: EnhanceValues): boolean => ADJUSTMENTS.every((a) => !v[a.key])
 
 // Число для filter-строки без экспоненциальной записи и float-шума.
-const amt = (n: number) => String(Math.round(Math.max(0, 1 + n / 100) * 100) / 100)
+const amt = (n: number) => String(Math.round(n * 1000) / 1000)
 
 /**
- * Строка ctx.filter из значений enhance: -100..100 линейно в 0..2 множителя.
- * Тепло (warmth) в CSS-фильтры не входит — оно накладывается отдельным
- * оверлеем (warmthOverlay). Всё по нулям — 'none', чтобы не платить за фильтр.
+ * CSS-фильтр для fallback-пути (когда WebGL недоступен): покрывает лишь ту часть
+ * коррекций, что выражается ctx.filter — brightness/contrast/saturation. Значения
+ * нормализуются как в шейдере (−50..50 → −1..1) и линейно кладутся в множители.
+ * Тепло идёт отдельным оверлеем (warmthOverlay). Всё по нулям — 'none'.
  */
 export function buildEnhanceFilter(v: EnhanceValues): string {
-  if (!v.brightness && !v.contrast && !v.saturation) return 'none'
-  return `brightness(${amt(v.brightness)}) contrast(${amt(v.contrast)}) saturate(${amt(v.saturation)})`
+  const b = normalizeEnhance(v.brightness, false)
+  const c = normalizeEnhance(v.contrast, false)
+  const s = normalizeEnhance(v.saturation, false)
+  if (!b && !c && !s) return 'none'
+  return `brightness(${amt(Math.max(0, 1 + b * 0.5))}) contrast(${amt(Math.max(0, 1 + c * 0.5))}) saturate(${amt(Math.max(0, 1 + s))})`
 }
 
 /**
- * Оверлей «тепла»: оранжевый при warmth>0, синий при warmth<0, alpha растёт
- * с модулем значения (максимум 0.25 — дальше картинка уже «горит»).
+ * Оверлей «тепла» для fallback-пути: оранжевый при warmth>0, синий при warmth<0,
+ * alpha растёт с модулем значения (максимум 0.25 — дальше картинка «горит»).
  */
 export function warmthOverlay(warmth: number): { color: string; alpha: number } | null {
   if (!warmth) return null
-  const alpha = Math.round(Math.min(1, Math.abs(warmth) / 100) * 0.25 * 1000) / 1000
+  const alpha = Math.round(Math.min(1, Math.abs(warmth) / 50) * 0.25 * 1000) / 1000
   return { color: warmth > 0 ? '#ff8a00' : '#0a84ff', alpha }
 }
 
 // ── Crop ──────────────────────────────────────────────────────────────────
 
-export type AspectPreset = 'free' | 'original' | '1:1' | '4:3' | '16:9'
+export type AspectPreset =
+  | 'free' | 'original'
+  | '1:1' | '3:2' | '2:3' | '4:3' | '3:4'
+  | '5:4' | '4:5' | '7:5' | '5:7' | '16:9' | '9:16'
 
-export const ASPECT_PRESETS: AspectPreset[] = ['free', 'original', '1:1', '4:3', '16:9']
+// Список и порядок 1:1 с tweb cropTab.
+export const ASPECT_PRESETS: AspectPreset[] = [
+  'free', 'original', '1:1', '3:2', '2:3', '4:3', '3:4',
+  '5:4', '4:5', '7:5', '5:7', '16:9', '9:16',
+]
+
+const ASPECT_RATIOS: Record<Exclude<AspectPreset, 'free' | 'original'>, number> = {
+  '1:1': 1, '3:2': 3 / 2, '2:3': 2 / 3, '4:3': 4 / 3, '3:4': 3 / 4,
+  '5:4': 5 / 4, '4:5': 4 / 5, '7:5': 7 / 5, '5:7': 5 / 7, '16:9': 16 / 9, '9:16': 9 / 16,
+}
 
 /** Числовой аспект пресета для картинки w×h; null — свободная рамка. */
 export function aspectOf(preset: AspectPreset, w: number, h: number): number | null {
-  switch (preset) {
-    case 'free': return null
-    case 'original': return w / h
-    case '1:1': return 1
-    case '4:3': return 4 / 3
-    case '16:9': return 16 / 9
-  }
+  if (preset === 'free') return null
+  if (preset === 'original') return w / h
+  return ASPECT_RATIOS[preset]
 }
 
 /** Максимальная рамка данного аспекта, отцентрованная в границах W×H. */
@@ -157,24 +212,103 @@ export function fitScale(w: number, h: number, maxW: number, maxH: number): numb
   return Math.min(maxW / w, maxH / h, 1)
 }
 
-// ── Поворот/отражение координат аннотаций ─────────────────────────────────
-// Пространство «ориентированного исходника» W×H; поворот на 90° по часовой
-// переводит его в H×W: (x, y) → (H - y, x).
+// ── Свободный поворот и cover-scale ───────────────────────────────────────
+// Единое координатное пространство сцены — центрированный исходник W×H.
+// Изображение крутится/флипается/масштабируется целиком (base + штрихи +
+// текст), crop вырезает осевую рамку в том же пространстве. Поэтому здесь —
+// только математика точки и минимального масштаба покрытия.
 
-export function rotatePointCW(p: Point, H: number): Point {
-  return { x: H - p.y, y: p.x }
+/** Поворот точки вокруг начала координат на angle (рад), по часовой при y-вниз. */
+export function rotatePoint(p: Point, angle: number): Point {
+  const cos = Math.cos(angle)
+  const sin = Math.sin(angle)
+  return { x: p.x * cos - p.y * sin, y: p.x * sin + p.y * cos }
 }
 
-export function rotateRectCW(r: Rect, H: number): Rect {
-  return { x: H - r.y - r.h, y: r.x, w: r.h, h: r.w }
+/**
+ * Минимальный масштаб изображения W×H (центрировано, начало — его центр),
+ * при котором повёрнутое на angle изображение полностью покрывает crop-рамку.
+ * crop задан в кадре [0,W]×[0,H] (то же пространство, что исходник при angle=0),
+ * центр рамки может быть смещён относительно центра изображения. Порт идеи
+ * getConvenientPositioning из tweb: все 4 угла рамки должны лежать внутри
+ * повёрнутого прямоугольника изображения; проверяем их в локальной (обратно
+ * повёрнутой) системе изображения. Никогда не меньше 1 — не ужимаем исходник.
+ */
+export function coverScale(crop: Rect, W: number, H: number, angle: number): number {
+  if (W <= 0 || H <= 0) return 1
+  const cos = Math.cos(angle)
+  const sin = Math.sin(angle)
+  const ox = crop.x + crop.w / 2 - W / 2
+  const oy = crop.y + crop.h / 2 - H / 2
+  const hw = crop.w / 2
+  const hh = crop.h / 2
+  let need = 1
+  for (const sx of [-1, 1]) {
+    for (const sy of [-1, 1]) {
+      const cx = ox + sx * hw
+      const cy = oy + sy * hh
+      // угол рамки в неповёрнутой системе изображения (обратный поворот)
+      const lx = cx * cos + cy * sin
+      const ly = -cx * sin + cy * cos
+      need = Math.max(need, (2 * Math.abs(lx)) / W, (2 * Math.abs(ly)) / H)
+    }
+  }
+  return need
 }
 
-export function flipPointH(p: Point, W: number): Point {
-  return { x: W - p.x, y: p.y }
+// ── Кисти рисования — геометрия и цвет ──────────────────────────────────────
+// Чистые (без DOM) хелперы для кистей: разбор hex-цвета и геометрия наконечника
+// стрелки. Порт из tweb brushPainter (getArrowHeadLength/drawArrowHead) —
+// вынесено сюда, чтобы тестировать без канваса.
+
+/** Hex (#rgb или #rrggbb) → [r,g,b] 0..255. Не-hex → чёрный. */
+export function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace('#', '')
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h
+  const n = parseInt(full, 16)
+  if (full.length !== 6 || Number.isNaN(n)) return [0, 0, 0]
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
 }
 
-export function flipRectH(r: Rect, W: number): Rect {
-  return { ...r, x: W - r.x - r.w }
+/**
+ * Контрастный к фону цвет текста (порт tweb getContrastColor): по HSL-светлоте
+ * цвета — тёмный фон (l<80) → белый текст, светлый → чёрный. Используется для
+ * стилей текста outline/background, где заливка идёт цветом, а буквы — контрастом.
+ */
+export function contrastColor(hex: string): string {
+  const [r, g, b] = hexToRgb(hex)
+  const max = Math.max(r, g, b) / 255
+  const min = Math.min(r, g, b) / 255
+  const l = ((max + min) / 2) * 100
+  return l < 80 ? '#ffffff' : '#000000'
+}
+
+/** Длина лучей наконечника стрелки от толщины кисти (tweb getArrowHeadLength). */
+export const arrowHeadLength = (size: number): number => Math.sqrt(size) + size * 2.5
+
+/**
+ * Две крайние точки лучей наконечника стрелки для штриха points толщины size.
+ * Направление — по последним точкам (отступив назад минимум на size*0.5, чтобы
+ * дрожание хвоста не ломало угол), лучи разведены на ±45°. null — точек < 2.
+ * Порт tweb drawArrowHead (та же atan2(dx,dy)+π и sin/cos-конвенция).
+ */
+export function arrowHeadPoints(
+  points: Point[], size: number, length = arrowHeadLength(size),
+): [Point, Point] | null {
+  if (points.length < 2) return null
+  const i = points.length - 1
+  const tip = points[i]
+  let i2 = i
+  for (; i2 > 0; i2--) {
+    if (Math.hypot(tip.x - points[i2].x, tip.y - points[i2].y) > size * 0.5) break
+  }
+  const angle = Math.atan2(tip.x - points[i2].x, tip.y - points[i2].y) + Math.PI
+  const a1 = angle + Math.PI / 4
+  const a2 = angle - Math.PI / 4
+  return [
+    { x: tip.x + length * Math.sin(a1), y: tip.y + length * Math.cos(a1) },
+    { x: tip.x + length * Math.sin(a2), y: tip.y + length * Math.cos(a2) },
+  ]
 }
 
 // ── Undo-стек ─────────────────────────────────────────────────────────────

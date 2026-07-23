@@ -1,41 +1,75 @@
 import { describe, expect, it } from 'vitest'
 import {
-  ENHANCE_DEFAULTS, HISTORY_LIMIT, MIN_CROP,
-  aspectOf, buildEnhanceFilter, centeredAspectCrop, clampCrop, fitScale,
-  flipPointH, flipRectH, isDefaultEnhance, moveCrop, pushHistory,
-  resizeCrop, rotatePointCW, rotateRectCW, warmthOverlay,
+  ADJUSTMENTS, ASPECT_PRESETS, ENHANCE_DEFAULTS, HISTORY_LIMIT, MIN_CROP,
+  arrowHeadLength, arrowHeadPoints, aspectOf, buildEnhanceFilter, centeredAspectCrop,
+  clampCrop, coverScale, enhanceRange, fitScale, hexToRgb,
+  isDefaultEnhance, moveCrop, normalizeEnhance, pushHistory,
+  resizeCrop, rotatePoint, warmthOverlay,
+  type Point, type Rect,
 } from './editorMath'
 
-describe('buildEnhanceFilter', () => {
-  it('все нули — none (фильтр не платится)', () => {
-    expect(buildEnhanceFilter(ENHANCE_DEFAULTS)).toBe('none')
-    // warmth не входит в CSS-фильтр — один он тоже даёт none
-    expect(buildEnhanceFilter({ ...ENHANCE_DEFAULTS, warmth: 50 })).toBe('none')
+describe('ADJUSTMENTS / дефолты', () => {
+  it('11 коррекций, дефолт каждой — 0', () => {
+    const keys = ADJUSTMENTS.map((a) => a.key)
+    expect(keys).toEqual([
+      'enhance', 'brightness', 'contrast', 'saturation', 'warmth', 'fade',
+      'highlights', 'shadows', 'vignette', 'grain', 'sharpen',
+    ])
+    for (const a of ADJUSTMENTS) expect(ENHANCE_DEFAULTS[a.key]).toBe(0)
+    expect(Object.keys(ENHANCE_DEFAULTS)).toHaveLength(11)
   })
 
-  it('-100..100 линейно в множители 0..2', () => {
-    expect(buildEnhanceFilter({ brightness: 100, contrast: -50, saturation: 25, warmth: 0 }))
-      .toBe('brightness(2) contrast(0.5) saturate(1.25)')
+  it('диапазоны: to100 → 0..100, иначе −50..50', () => {
+    expect(enhanceRange(true)).toEqual([0, 100])
+    expect(enhanceRange(false)).toEqual([-50, 50])
+    expect(ADJUSTMENTS.find((a) => a.key === 'enhance')?.to100).toBe(true)
+    expect(ADJUSTMENTS.find((a) => a.key === 'brightness')?.to100).toBe(false)
   })
 
-  it('низ клампится нулём', () => {
-    expect(buildEnhanceFilter({ brightness: -100, contrast: 0, saturation: 0, warmth: 0 }))
-      .toBe('brightness(0) contrast(1) saturate(1)')
-  })
-
-  it('isDefaultEnhance учитывает warmth', () => {
+  it('isDefaultEnhance по всем 11 полям', () => {
     expect(isDefaultEnhance(ENHANCE_DEFAULTS)).toBe(true)
-    expect(isDefaultEnhance({ ...ENHANCE_DEFAULTS, warmth: 1 })).toBe(false)
+    expect(isDefaultEnhance({ ...ENHANCE_DEFAULTS, grain: 1 })).toBe(false)
+    expect(isDefaultEnhance({ ...ENHANCE_DEFAULTS, warmth: -1 })).toBe(false)
   })
 })
 
-describe('warmthOverlay', () => {
+describe('normalizeEnhance', () => {
+  it('value/(to100?100:50)', () => {
+    expect(normalizeEnhance(100, true)).toBe(1)
+    expect(normalizeEnhance(50, true)).toBe(0.5)
+    expect(normalizeEnhance(0, true)).toBe(0)
+    expect(normalizeEnhance(50, false)).toBe(1)
+    expect(normalizeEnhance(-50, false)).toBe(-1)
+    expect(normalizeEnhance(25, false)).toBe(0.5)
+  })
+})
+
+describe('buildEnhanceFilter (CSS-fallback)', () => {
+  it('все нули — none (фильтр не платится)', () => {
+    expect(buildEnhanceFilter(ENHANCE_DEFAULTS)).toBe('none')
+    // warmth в CSS-фильтр не входит — один он тоже даёт none
+    expect(buildEnhanceFilter({ ...ENHANCE_DEFAULTS, warmth: 25 })).toBe('none')
+  })
+
+  it('нормализация как в шейдере (−50..50 → −1..1)', () => {
+    // brightness 50 → 1 → 1+1*0.5=1.5; contrast −50 → −1 → 0.5; saturation 25 → 0.5 → 1.5
+    expect(buildEnhanceFilter({ ...ENHANCE_DEFAULTS, brightness: 50, contrast: -50, saturation: 25 }))
+      .toBe('brightness(1.5) contrast(0.5) saturate(1.5)')
+  })
+
+  it('низ клампится нулём', () => {
+    expect(buildEnhanceFilter({ ...ENHANCE_DEFAULTS, saturation: -50 }))
+      .toBe('brightness(1) contrast(1) saturate(0)')
+  })
+})
+
+describe('warmthOverlay (CSS-fallback)', () => {
   it('0 — нет оверлея', () => {
     expect(warmthOverlay(0)).toBeNull()
   })
   it('тёплый — оранжевый, холодный — синий, alpha растёт с модулем', () => {
-    expect(warmthOverlay(100)).toEqual({ color: '#ff8a00', alpha: 0.25 })
-    expect(warmthOverlay(-40)).toEqual({ color: '#0a84ff', alpha: 0.1 })
+    expect(warmthOverlay(50)).toEqual({ color: '#ff8a00', alpha: 0.25 })
+    expect(warmthOverlay(-20)).toEqual({ color: '#0a84ff', alpha: 0.1 })
   })
 })
 
@@ -46,6 +80,19 @@ describe('aspectOf / centeredAspectCrop', () => {
     expect(aspectOf('1:1', 800, 600)).toBe(1)
     expect(aspectOf('4:3', 800, 600)).toBeCloseTo(4 / 3)
     expect(aspectOf('16:9', 800, 600)).toBeCloseTo(16 / 9)
+  })
+
+  it('полный список пресетов (как в tweb cropTab)', () => {
+    expect(ASPECT_PRESETS).toEqual([
+      'free', 'original', '1:1', '3:2', '2:3', '4:3', '3:4',
+      '5:4', '4:5', '7:5', '5:7', '16:9', '9:16',
+    ])
+    expect(aspectOf('3:2', 800, 600)).toBeCloseTo(3 / 2)
+    expect(aspectOf('2:3', 800, 600)).toBeCloseTo(2 / 3)
+    expect(aspectOf('9:16', 800, 600)).toBeCloseTo(9 / 16)
+    expect(aspectOf('5:7', 800, 600)).toBeCloseTo(5 / 7)
+    // портретные и альбомные пресеты — взаимно обратные
+    expect(aspectOf('3:4', 800, 600)! * aspectOf('4:3', 800, 600)!).toBeCloseTo(1)
   })
 
   it('free — вся картинка', () => {
@@ -136,28 +183,57 @@ describe('resizeCrop (с аспектом)', () => {
   })
 })
 
-describe('поворот/отражение координат', () => {
-  it('точка на 90° по часовой: (x,y) → (H-y, x)', () => {
-    expect(rotatePointCW({ x: 10, y: 20 }, 600)).toEqual({ x: 580, y: 10 })
+describe('rotatePoint (свободный угол)', () => {
+  it('поворот на 0 — тождество', () => {
+    expect(rotatePoint({ x: 10, y: 20 }, 0)).toEqual({ x: 10, y: 20 })
   })
 
-  it('rect на 90°: четыре поворота возвращают исходник', () => {
-    const r = { x: 10, y: 20, w: 100, h: 50 }
-    let cur = r
-    let W = 800
-    let H = 600
-    for (let i = 0; i < 4; i++) {
-      cur = rotateRectCW(cur, H)
-      ;[W, H] = [H, W]
-    }
-    expect(cur).toEqual(r)
+  it('поворот на 90° по часовой (y-вниз): (x,y) → (-y, x)', () => {
+    const p = rotatePoint({ x: 10, y: 0 }, Math.PI / 2)
+    expect(p.x).toBeCloseTo(0)
+    expect(p.y).toBeCloseTo(10)
   })
 
-  it('отражение по горизонтали — инволюция', () => {
-    const r = { x: 10, y: 20, w: 100, h: 50 }
-    expect(flipRectH(r, 800)).toEqual({ x: 690, y: 20, w: 100, h: 50 })
-    expect(flipRectH(flipRectH(r, 800), 800)).toEqual(r)
-    expect(flipPointH({ x: 10, y: 20 }, 800)).toEqual({ x: 790, y: 20 })
+  it('поворот на 180° меняет знак обеих координат', () => {
+    const p = rotatePoint({ x: 3, y: 7 }, Math.PI)
+    expect(p.x).toBeCloseTo(-3)
+    expect(p.y).toBeCloseTo(-7)
+  })
+
+  it('четыре поворота на 90° возвращают точку', () => {
+    let p = { x: 12, y: -5 }
+    for (let i = 0; i < 4; i++) p = rotatePoint(p, Math.PI / 2)
+    expect(p.x).toBeCloseTo(12)
+    expect(p.y).toBeCloseTo(-5)
+  })
+})
+
+describe('coverScale (покрытие рамки при повороте)', () => {
+  const full = (w: number, h: number): Rect => ({ x: 0, y: 0, w, h })
+
+  it('без поворота полная рамка покрывается масштабом 1', () => {
+    expect(coverScale(full(800, 600), 800, 600, 0)).toBeCloseTo(1)
+  })
+
+  it('поворот квадрата на 45° требует масштаб √2', () => {
+    expect(coverScale(full(100, 100), 100, 100, Math.PI / 4)).toBeCloseTo(Math.SQRT2)
+  })
+
+  it('поворот на 90° альбомной картинки требует масштаб W/H', () => {
+    // рамка 800×600, картинка 800×600, повёрнутая на 90° → нужно w/h
+    expect(coverScale(full(800, 600), 800, 600, Math.PI / 2)).toBeCloseTo(800 / 600)
+  })
+
+  it('меньшая рамка внутри картинки без поворота не ужимает исходник (min 1)', () => {
+    expect(coverScale({ x: 200, y: 150, w: 400, h: 300 }, 800, 600, 0)).toBe(1)
+  })
+
+  it('смещённая рамка учитывает эксцентриситет центра', () => {
+    // рамка у края сильнее уходит из-под повёрнутой картинки → масштаб больше
+    const centered = coverScale({ x: 300, y: 200, w: 200, h: 200 }, 800, 600, Math.PI / 6)
+    const offCenter = coverScale({ x: 0, y: 0, w: 200, h: 200 }, 800, 600, Math.PI / 6)
+    expect(offCenter).toBeGreaterThan(centered)
+    expect(centered).toBeGreaterThanOrEqual(1)
   })
 })
 
@@ -188,5 +264,43 @@ describe('fitScale', () => {
   it('вписывает без увеличения сверх 1:1', () => {
     expect(fitScale(2000, 1000, 1000, 1000)).toBe(0.5)
     expect(fitScale(100, 100, 1000, 1000)).toBe(1)
+  })
+})
+
+describe('hexToRgb', () => {
+  it('разбирает #rrggbb и #rgb', () => {
+    expect(hexToRgb('#fe4438')).toEqual([254, 68, 56])
+    expect(hexToRgb('#ffffff')).toEqual([255, 255, 255])
+    expect(hexToRgb('#000000')).toEqual([0, 0, 0])
+    expect(hexToRgb('#f00')).toEqual([255, 0, 0])
+  })
+  it('невалидный вход → чёрный', () => {
+    expect(hexToRgb('nope')).toEqual([0, 0, 0])
+  })
+})
+
+describe('arrowHead (геометрия наконечника стрелки)', () => {
+  it('длина лучей растёт с толщиной', () => {
+    expect(arrowHeadLength(4)).toBeCloseTo(Math.sqrt(4) + 10, 5)
+    expect(arrowHeadLength(18)).toBeGreaterThan(arrowHeadLength(4))
+  })
+
+  it('< 2 точек → null', () => {
+    expect(arrowHeadPoints([{ x: 0, y: 0 }], 10)).toBeNull()
+    expect(arrowHeadPoints([], 10)).toBeNull()
+  })
+
+  it('горизонтальная стрелка вправо: два луча симметричны по вертикали, оба слева от острия', () => {
+    const pts: Point[] = [{ x: 0, y: 0 }, { x: 100, y: 0 }]
+    const head = arrowHeadPoints(pts, 10, 20)
+    expect(head).not.toBeNull()
+    const [a, b] = head!
+    // лучи направлены назад (x < острия=100) и разведены симметрично по y
+    expect(a.x).toBeLessThan(100)
+    expect(b.x).toBeLessThan(100)
+    expect(a.y).toBeCloseTo(-b.y, 5)
+    // длина каждого луча от острия ≈ заданной length
+    expect(Math.hypot(a.x - 100, a.y)).toBeCloseTo(20, 5)
+    expect(Math.hypot(b.x - 100, b.y)).toBeCloseTo(20, 5)
   })
 })

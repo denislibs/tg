@@ -15,6 +15,7 @@
   flex: 1;
   min-width: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   overflow: hidden;
@@ -67,6 +68,167 @@
   &[data-h='s'] { left: calc(50% - 7px); bottom: -7px; }
   &[data-h='sw'] { left: -7px; bottom: -7px; }
   &[data-h='w'] { left: -7px; top: calc(50% - 7px); }
+}
+
+// ── Колесо углов (под изображением, crop-режим) ──
+.wheel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 520px;
+  padding: 0 8px;
+  flex-shrink: 0;
+}
+
+.wheelTrack {
+  position: relative;
+  flex: 1;
+  height: 40px;
+  overflow: hidden;
+  touch-action: none;
+  cursor: ew-resize;
+  // растворяем метки к краям
+  mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+}
+
+.wheelStrip {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  display: flex;
+  pointer-events: none;
+}
+
+.wheelLabel {
+  width: 42px; // DEGREE_DIST_PX
+  text-align: center;
+  font-size: 12px;
+  line-height: 40px;
+  color: rgba(255, 255, 255, 0.55);
+  user-select: none;
+}
+
+.wheelArrow {
+  position: absolute;
+  left: 50%;
+  top: 2px;
+  width: 0;
+  height: 0;
+  transform: translateX(-50%);
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--tg-accent);
+  pointer-events: none;
+}
+
+.wheelValue {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tg-accent);
+  pointer-events: none;
+}
+
+// ── Тайм-лайн видео (под изображением) ──
+.videoBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 640px;
+  padding: 0 12px;
+  flex-shrink: 0;
+}
+
+.tlTrack {
+  position: relative;
+  flex: 1;
+  height: 40px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.12);
+  touch-action: none;
+  cursor: pointer;
+}
+
+// подсвеченный (оставленный) диапазон трима
+.tlActive {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-top: 2px solid var(--tg-accent);
+  border-bottom: 2px solid var(--tg-accent);
+  background: rgba(255, 255, 255, 0.06);
+  pointer-events: none;
+}
+
+// левая/правая ручки трима
+.tlHandle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  background: var(--tg-accent);
+  cursor: ew-resize;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &::after {
+    content: '';
+    width: 2px;
+    height: 16px;
+    border-radius: 1px;
+    background: rgba(255, 255, 255, 0.9);
+  }
+}
+
+.tlHandleLeft {
+  transform: translateX(-100%);
+  border-radius: 10px 0 0 10px;
+}
+
+.tlHandleRight {
+  border-radius: 0 10px 10px 0;
+}
+
+// курсор текущего времени
+.tlCursor {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 3px;
+  border-radius: 2px;
+  background: #fff;
+  box-shadow: 0 0 3px rgba(0, 0, 0, 0.6);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+// метка обложки (thumbnail)
+.tlCover {
+  position: absolute;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--tg-accent);
+  transform: translate(-50%, -50%);
+  cursor: grab;
+  touch-action: none;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+}
+
+// проценты энкода вместо галочки в FAB
+.fabProgress {
+  font-size: 15px;
+  font-weight: 600;
 }
 
 // ── Input-оверлей текста ──
@@ -196,12 +358,6 @@
   font-weight: 600;
 }
 
-.cropTools {
-  display: flex;
-  gap: 8px;
-  padding: 12px 6px 0;
-}
-
 .resetBtn {
   margin-top: 12px;
   padding: 10px 14px;
@@ -239,6 +395,50 @@
   box-shadow: 0 0 0 2px #212121, 0 0 0 4px currentColor;
 }
 
+// вкладка draw: палитра гаснет для blur/eraser (кисти без цвета)
+.swatchesDisabled {
+  opacity: 0.25;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+// список типов кистей (tweb brushTab «Tool»)
+.brushList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.brushRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 15px;
+  cursor: pointer;
+  user-select: none;
+
+  @media (hover: hover) {
+    &:hover { background: rgba(255, 255, 255, 0.08); }
+  }
+}
+
+.brushActive {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+// превью размера кисти — кружок по центру рабочей области (tweb previewBrushSize)
+.brushPreview {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  pointer-events: none;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25), 0 0 6px rgba(0, 0, 0, 0.35);
+}
+
 // стили текста: без рамки / обводка / плашка
 .styleRow {
   display: flex;
@@ -264,6 +464,158 @@
 .styleActive {
   background: rgba(255, 255, 255, 0.08);
   color: #fff;
+}
+
+// строка выравнивание + стиль (tweb toggle-group-row: две группы рядом)
+.toggleRow {
+  display: flex;
+  gap: 16px;
+  padding-bottom: 8px;
+}
+
+.toggleGroup {
+  flex: 1;
+  display: flex;
+  gap: 8px;
+}
+
+// список шрифтов (tweb textTab «Font»): подпись начертанием своего шрифта
+.fontList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fontRow {
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 20px;
+  line-height: 1.2;
+  cursor: pointer;
+  user-select: none;
+
+  @media (hover: hover) {
+    &:hover { background: rgba(255, 255, 255, 0.08); }
+  }
+}
+
+.fontActive {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+// ── Вкладка стикеров ──
+// body без паддинга/скролла: пикер сам управляет своей раскладкой (пиннед
+// категории сверху + скроллируемая сетка).
+.bodyFlush {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+}
+
+.stickerPicker {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+// строка категорий (recent/faved/наборы) — как menu-wrapper в StickersTab
+.stickerCats {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 6px 8px;
+  overflow-x: auto;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar { display: none; }
+}
+
+.stickerCat {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #aaa;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+
+  @media (hover: hover) {
+    &:hover { background: rgba(255, 255, 255, 0.08); }
+  }
+}
+
+.stickerCatActive {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.stickerScroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 12px 86px; // низ — под FAB «Готово»
+}
+
+.stickerSectionTitle {
+  font-size: 14px;
+  font-weight: 500;
+  color: #aaa;
+  padding: 10px 2px 6px;
+}
+
+.stickerGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 4px;
+}
+
+.stickerCell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  cursor: pointer;
+
+  @media (hover: hover) {
+    &:hover { background: rgba(255, 255, 255, 0.08); }
+  }
+}
+
+.stickerEmpty {
+  padding: 24px 8px;
+  text-align: center;
+  color: #aaa;
+  font-size: 14px;
+}
+
+// кнопка удаления выбранного стикера — у его левого-верхнего угла
+.stickerDelete {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 2;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5);
+
+  @media (hover: hover) {
+    &:hover { background: rgba(0, 0, 0, 0.75); }
+  }
 }
 
 // FAB «Готово» (tweb finishButton) — круг с галочкой в нижнем правом углу панели

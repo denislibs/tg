@@ -296,7 +296,7 @@ export async function toggleCamera() {
   if (call.camOn) {
     // выключение: трек глушим (sender остаётся — tweb-паттерн track.enabled)
     localStream?.getVideoTracks().forEach((t) => { t.enabled = false })
-    if (videoSender?.track && localStream?.getVideoTracks().includes(videoSender.track)) {
+    if (videoSender?.track && (localStream?.getVideoTracks() as MediaStreamTrack[] | undefined)?.includes(videoSender.track)) {
       // ок: тот же трек, enabled=false уже заглушил отправку
     }
     store().patch({ camOn: false })
