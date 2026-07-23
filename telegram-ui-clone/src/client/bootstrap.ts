@@ -185,7 +185,6 @@ export interface Managers {
     revokeInvite(chatId: number, token: string): Promise<void>
     deleteGroup(chatId: number): Promise<void>
     setMute(chatId: number, muted: boolean, until?: number): Promise<void>
-    setNotify(chatId: number, patch: { preview?: boolean; sound?: 'default' | 'none' }): Promise<void>
     setPin(chatId: number, pinned: boolean): Promise<void>
     setArchive(chatId: number, archived: boolean): Promise<void>
     setForum(chatId: number, enabled: boolean): Promise<void>

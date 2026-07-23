@@ -4,6 +4,7 @@ import { EASE } from '../motion'
 import classNames from '../shared/lib/classNames'
 import s from './Sidebar.module.scss'
 import { useChatsStore, loadChats } from '../stores/chatsStore'
+import { useSecretChatStore } from '../stores/secretChatStore'
 import { useFoldersStore, loadFolders, ALL_FOLDER_ID } from '../stores/foldersStore'
 import { matchesFolder } from '../core/folderFilter'
 import type { Folder } from '../core/managers/foldersManager'
@@ -84,6 +85,7 @@ export default function Sidebar({
   const [newGroupOpen, setNewGroupOpen] = useState(false)
   const [newChannelOpen, setNewChannelOpen] = useState(false)
   const [newPrivateOpen, setNewPrivateOpen] = useState(false)
+  const [newSecretOpen, setNewSecretOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const listScrollRef = useRef<HTMLDivElement>(null)
 
@@ -119,6 +121,17 @@ export default function Sidebar({
     }
     onSelect(id)
   }
+
+  // «Секретный чат» из compose-меню (наша фича): выбор контакта → E2E-handshake
+  // managers.secret.start, затем открыть созданный чат в статусе «ожидание».
+  const startSecret = async (id: string) => {
+    const peerId = chats.find((c) => c.id === id)?.peerId
+    if (peerId == null) return
+    const { chatId } = await managers.secret.start(peerId)
+    useSecretChatStore.getState().setStatus(chatId, 'awaiting')
+    onChatCreated?.(chatId)
+  }
+
   const visibleChats = useMemo(() => chats.filter((c) => !c.archived), [chats])
   const archivedChats = useMemo(() => chats.filter((c) => !!c.archived), [chats])
 
@@ -382,6 +395,7 @@ export default function Sidebar({
         onNewGroup={() => setNewGroupOpen(true)}
         onNewPrivate={() => setNewPrivateOpen(true)}
         onNewChannel={() => setNewChannelOpen(true)}
+        onNewSecret={() => setNewSecretOpen(true)}
       />
 
       {/* Контекстное меню таба папки (tweb createFolderContextMenu) */}
@@ -502,6 +516,16 @@ export default function Sidebar({
             chats={chats}
             onClose={() => setNewPrivateOpen(false)}
             onSelect={onSelect}
+          />
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {newSecretOpen && (
+          <NewPrivateChat
+            chats={chats}
+            title="New Secret Chat"
+            onClose={() => setNewSecretOpen(false)}
+            onSelect={(id) => { void startSecret(id) }}
           />
         )}
       </AnimatePresence>

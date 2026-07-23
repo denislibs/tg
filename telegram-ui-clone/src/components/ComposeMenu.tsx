@@ -10,9 +10,10 @@ interface Props {
   onNewGroup?: () => void
   onNewPrivate?: () => void
   onNewChannel?: () => void
+  onNewSecret?: () => void
 }
 
-export default function ComposeMenu({ open, anchor, onClose, onNewGroup, onNewPrivate, onNewChannel }: Props) {
+export default function ComposeMenu({ open, anchor, onClose, onNewGroup, onNewPrivate, onNewChannel, onNewSecret }: Props) {
   const t = useT()
   return (
     <Menu
@@ -42,6 +43,14 @@ export default function ComposeMenu({ open, anchor, onClose, onNewGroup, onNewPr
         onClick={() => {
           onClose()
           onNewPrivate?.()
+        }}
+      />
+      <MenuItem
+        icon={<TgIcon name="lock" size={20} />}
+        label={t('New Secret Chat')}
+        onClick={() => {
+          onClose()
+          onNewSecret?.()
         }}
       />
     </Menu>

@@ -12,9 +12,11 @@ interface Props {
   chats: Chat[]
   onClose: () => void
   onSelect: (id: string) => void
+  /** заголовок экрана (по умолчанию «New Message»); секретный чат переиспользует пикер */
+  title?: string
 }
 
-export default function NewPrivateChat({ chats, onClose, onSelect }: Props) {
+export default function NewPrivateChat({ chats, onClose, onSelect, title = 'New Message' }: Props) {
   const t = useT()
   const [query, setQuery] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
@@ -53,7 +55,7 @@ export default function NewPrivateChat({ chats, onClose, onSelect }: Props) {
           <TgIcon name="back" />
         </IconButton>
         <Text size={19} weight={600} color="var(--tg-textPrimary)">
-          {t('New Message')}
+          {t(title)}
         </Text>
       </div>
 
