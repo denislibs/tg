@@ -14,15 +14,14 @@ import Input from '../shared/ui/Input'
 import { motion } from 'framer-motion'
 import { EASE, DUR } from '../motion'
 import TgIcon from './TgIcon'
-import TgSwitch from './TgSwitch'
 import Avatar from '../shared/ui/Avatar'
+import { Section, Row } from './settings/kit'
 import AvatarCropper from './settings/AvatarCropper'
 import BirthdayModal from './settings/BirthdayModal'
 import { useAvatarSrc } from './useAvatarSrc'
 import { useManagers } from '../core/hooks/useManagers'
 import { useChatsStore, loadChats } from '../stores/chatsStore'
 import type { Chat } from '../data'
-import s from './EditContactView.module.scss'
 import add from './AddContactView.module.scss'
 import useMediaQuery from '../shared/lib/useMediaQuery'
 
@@ -194,8 +193,8 @@ export default function EditContactView({
             <Text size={14} color="var(--tg-textSecondary)" style={{ marginTop: '2px' }}>исходное имя</Text>
           </div>
 
-          {/* Имя / фамилия / заметка */}
-          <div className={add.card}>
+          {/* Секция 1 (как в tweb editContact): поля + уведомления + дата рождения */}
+          <Section>
             <Input label="Имя (обязательно)" value={first} onChange={setFirst} autoFocus wrapClassName={`${add.field} ${add.fieldGap}`} />
             <Input label="Фамилия (необязательно)" value={last} onChange={setLast} wrapClassName={`${add.field} ${add.fieldGap}`} />
             <div className={add.noteWrap}>
@@ -204,51 +203,59 @@ export default function EditContactView({
                 <TgIcon name="smile" color="var(--tg-textFaint)" />
               </span>
             </div>
-          </div>
+            <Row
+              icon={<TgIcon name="unmute" size={24} color="var(--tg-textSecondary)" />}
+              label="Уведомления"
+              translate={false}
+              toggle
+              checked={!muted}
+              onClick={toggleNotifications}
+            />
+            <Row
+              icon={<TgIcon name="gift" size={24} color="var(--tg-textSecondary)" />}
+              label="Предложить дату рождения"
+              translate={false}
+              onClick={() => setBirthdayOpen(true)}
+            />
+          </Section>
 
-          {/* Уведомления + предложить дату рождения */}
-          <div className={s.actionCard}>
-            <div className={s.actionRow} onClick={toggleNotifications}>
-              <TgIcon name="muted" size={24} color="var(--tg-textSecondary)" />
-              <Text size={16} color="var(--tg-textPrimary)" className={s.actionLabel}>Уведомления</Text>
-              <span className={s.rowRight}><TgSwitch checked={!muted} /></span>
-            </div>
-            <div className={s.actionRow} onClick={() => setBirthdayOpen(true)}>
-              <TgIcon name="gift" size={24} color="var(--tg-textSecondary)" />
-              <Text size={16} color="var(--tg-textPrimary)" className={s.actionLabel}>Предложить дату рождения</Text>
-            </div>
-          </div>
-
-          {/* Фото контакта: личное фото / предложить фото / сброс */}
-          <div className={s.actionCard}>
-            <div className={`${s.actionRow} ${busyPhoto ? s.disabled : ''}`} onClick={() => !busyPhoto && pickPhoto('set')}>
-              <TgIcon name="cameraadd" size={24} color="var(--tg-accent)" />
-              <Text size={16} color="var(--tg-accent)" className={s.actionLabel}>
-                {hasPersonal ? `Изменить фото для ${displayFirst}` : `Установить фото для ${displayFirst}`}
-              </Text>
-            </div>
-            <div className={`${s.actionRow} ${busyPhoto ? s.disabled : ''}`} onClick={() => !busyPhoto && pickPhoto('suggest')}>
-              <TgIcon name="edit" size={24} color="var(--tg-accent)" />
-              <Text size={16} color="var(--tg-accent)" className={s.actionLabel}>Предложить фото {displayFirst}</Text>
-            </div>
+          {/* Секция 2: фото контакта (пояснение — footer секции, как caption в tweb) */}
+          <Section footer="Вы можете предложить контакту установить новую фотографию профиля — или изменить его фотографию только у себя.">
+            <Row
+              icon={<TgIcon name="cameraadd" size={24} color="var(--tg-accent)" />}
+              label={hasPersonal ? `Изменить фото для ${displayFirst}` : `Установить фото для ${displayFirst}`}
+              translate={false}
+              accent
+              onClick={() => { if (!busyPhoto) pickPhoto('set') }}
+            />
+            <Row
+              icon={<TgIcon name="edit" size={24} color="var(--tg-accent)" />}
+              label={`Предложить фото ${displayFirst}`}
+              translate={false}
+              accent
+              onClick={() => { if (!busyPhoto) pickPhoto('suggest') }}
+            />
             {hasPersonal && (
-              <div className={`${s.actionRow} ${busyPhoto ? s.disabled : ''}`} onClick={() => !busyPhoto && void resetPhoto()}>
-                <TgIcon name="delete" size={24} color="#ff595a" />
-                <Text size={16} color="#ff595a" className={s.actionLabel}>Сбросить к исходному фото</Text>
-              </div>
+              <Row
+                icon={<TgIcon name="delete" size={24} color="#ff595a" />}
+                label="Сбросить к исходному фото"
+                translate={false}
+                danger
+                onClick={() => { if (!busyPhoto) void resetPhoto() }}
+              />
             )}
-          </div>
-          <Text size={14} color="var(--tg-textSecondary)" className={s.hint}>
-            Вы можете предложить контакту установить новую фотографию профиля — или изменить его фотографию только у себя.
-          </Text>
+          </Section>
 
-          {/* Удалить контакт */}
-          <div className={s.actionCard}>
-            <div className={s.actionRow} onClick={() => void del()}>
-              <TgIcon name="delete" size={24} color="#ff595a" />
-              <Text size={16} color="#ff595a" className={s.actionLabel}>Удалить контакт</Text>
-            </div>
-          </div>
+          {/* Секция 3: удалить контакт */}
+          <Section>
+            <Row
+              icon={<TgIcon name="delete" size={24} color="#ff595a" />}
+              label="Удалить контакт"
+              translate={false}
+              danger
+              onClick={() => void del()}
+            />
+          </Section>
         </div>
 
         <motion.button

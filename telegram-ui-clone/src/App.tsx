@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
+import { chatThemeVariant } from './chatThemes'
 import { flushSync } from 'react-dom'
 import { useManagers } from './core/hooks/useManagers'
 import type { ThreadInfo } from './components/ConversationView'
@@ -465,6 +467,22 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
       }
     : null
 
+  // Тема активного чата поднимается на #app-shell — общий предок всех трёх колонок
+  // (левый список / чат / правая панель). CSS-переменные наследуются вниз по дереву,
+  // поэтому установка --tg-accent здесь тематизирует и боковые колонки, не трогая
+  // глобальные токены (<html data-theme>) и другие чаты. Обои темы остаются локально
+  // в колонке чата (ConversationView).
+  const activeChatNumId = openThread ? openThread.chatId : (selected && /^\d+$/.test(selected.id) ? Number(selected.id) : null)
+  const activeDialogThemeId = useChatsStore((st) => (activeChatNumId == null ? undefined : st.dialogs.find((d) => d.chatId === activeChatNumId)?.themeId))
+  const shellThemeChoice = useSettingsStore((st) => st.themeChoice)
+  const shellThemeVariant = chatThemeVariant(activeDialogThemeId ?? (openThread ? threadChat?.themeId : selected?.themeId), PRESET_MODE[resolvePreset(shellThemeChoice)])
+  const shellThemeStyle: CSSProperties | undefined = shellThemeVariant
+    ? {
+        '--tg-accent': shellThemeVariant.accent,
+        '--tg-accentGradient': `linear-gradient(135deg, ${shellThemeVariant.accent}, ${shellThemeVariant.accent})`,
+      } as CSSProperties
+    : undefined
+
   const chatArea =
     openThread && threadChat ? (
       <ConversationView
@@ -487,7 +505,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     )
 
   return (
-    <div id="app-shell" className={s.root}>
+    <div id="app-shell" className={s.root} style={shellThemeStyle}>
       {/* Animated 4-point gradient wallpaper + doodle pattern (tweb-style) */}
       <ChatBackground />
 
