@@ -65,6 +65,43 @@ func (r *SearchRepo) SearchUsers(ctx context.Context, q string, limit int) ([]do
 	return out, rows.Err()
 }
 
+// SimilarChannels ранжирует публичные каналы по пересечению аудитории с chatID.
+// Self-join chat_members: подписчики chatID → их другие подписки на публичные
+// каналы, сгруппированные по каналу и упорядоченные по числу общих подписчиков
+// (индекс idx_chat_members_user покрывает выборку «другие подписки юзера»).
+// count(*) OVER() — общее число похожих каналов до применения LIMIT.
+func (r *SearchRepo) SimilarChannels(ctx context.Context, chatID, viewerID int64, limit int) ([]domain.ChatCard, int, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT c.id, c.type, c.title, COALESCE(c.username,''), c.about, c.member_count, c.is_public,
+		        count(*) OVER() AS total
+		   FROM chat_members m
+		   JOIN chats c ON c.id = m.chat_id
+		  WHERE m.user_id IN (SELECT user_id FROM chat_members WHERE chat_id = $1)
+		    AND m.chat_id <> $1
+		    AND c.type = 'channel'
+		    AND c.is_public = true
+		    AND NOT EXISTS (SELECT 1 FROM chat_members me WHERE me.chat_id = c.id AND me.user_id = $2)
+		  GROUP BY c.id
+		  ORDER BY count(DISTINCT m.user_id) DESC, c.member_count DESC
+		  LIMIT $3`, chatID, viewerID, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var out []domain.ChatCard
+	total := 0
+	for rows.Next() {
+		var c domain.ChatCard
+		var t int
+		if err := rows.Scan(&c.ID, &c.Type, &c.Title, &c.Username, &c.About, &c.MemberCount, &c.IsPublic, &t); err != nil {
+			return nil, 0, err
+		}
+		total = t
+		out = append(out, c)
+	}
+	return out, total, rows.Err()
+}
+
 func (r *SearchRepo) PublicChatByUsername(ctx context.Context, username string) (int64, error) {
 	var id int64
 	err := querier(ctx, r.pool).QueryRow(ctx,

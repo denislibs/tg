@@ -45,6 +45,7 @@ import { useFeedReveal } from '../core/hooks/useFeedReveal'
 import Composer from './Composer'
 import ChatFeed from './messages/ChatFeed'
 import EmptyChatGreeting from './messages/EmptyChatGreeting'
+import SimilarChannels from './messages/SimilarChannels'
 import { useChatAutoDownload } from '../core/hooks/useChatAutoDownload'
 import { useDraftsStore } from '../stores/draftsStore'
 import { draftReplyState, convMsgReplyState } from '../core/draftReply'
@@ -143,9 +144,11 @@ interface Props {
   onCloseThread?: () => void
   /** открыть тред комментариев поста канала (клик по CommentsBar) */
   onOpenThread?: (args: { chatId: number; rootMsgId: number; title: string; subtitle?: string }) => void
+  /** открыть публичный канал по клику в блоке «похожие каналы» (вступить + перейти) */
+  onOpenChannel?: (chatId: number, username: string) => void
 }
 
-export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreated, thread, onCloseThread, onOpenThread }: Props) {
+export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreated, thread, onCloseThread, onOpenThread, onOpenChannel }: Props) {
   const t = useT()
   const headerAvatarSrc = useAvatarSrc(chat.avatarUrl)
   const [lang] = useLang()
@@ -912,6 +915,10 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               />
             )}
 
+            {/* Похожие каналы под лентой канала (tweb chat/similarChannels). */}
+            {!feedLoading && isChannel && isRealChat && !thread && onOpenChannel && (
+              <SimilarChannels chatId={numericChatId} onOpen={onOpenChannel} />
+            )}
           </div>
           {!feedLoading && emptyGreeting && (
             <EmptyChatGreeting onGreet={() => onComposerSend('👋')} />

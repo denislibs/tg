@@ -82,6 +82,15 @@ export function newChannelsManager({ rest }: { rest: Pick<RestClient, 'post' | '
       const r = await rest.post<RawSuggestedPost>(`/suggested_posts/${id}/reject`, {})
       return mapSuggestedPost(r)
     },
+    // Похожие каналы (по пересечению аудитории). count — общее число найденных
+    // (может превышать длину chats: хвост открывается по Premium).
+    async similar(chatId: number): Promise<{ chats: SearchResult['chats']; count: number }> {
+      const r = await rest.get<{ chats: { id: number; type: string; title: string; username: string; member_count: number }[]; count: number }>(`/channels/${chatId}/similar`)
+      return {
+        chats: (r.chats ?? []).map((c) => ({ id: c.id, type: c.type, title: c.title, username: c.username, memberCount: c.member_count })),
+        count: r.count ?? 0,
+      }
+    },
     async search(q: string): Promise<SearchResult> {
       // Allow "@username" queries: usernames are stored without the @, so strip
       // a leading one before hitting the directory search.

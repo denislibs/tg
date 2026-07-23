@@ -316,6 +316,28 @@ func (h *ChannelHandler) Join(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// Similar — похожие каналы (по пересечению аудитории). Формат строки канала
+// совпадает с выдачей поиска; count — общее число похожих (для «+N» под Premium).
+func (h *ChannelHandler) Similar(w http.ResponseWriter, r *http.Request) {
+	viewer, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	chats, count, err := h.uc.SimilarChannels(r.Context(), chatID, viewer.ID, 30)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	co := make([]map[string]any, 0, len(chats))
+	for _, c := range chats {
+		co = append(co, map[string]any{
+			"id": c.ID, "type": c.Type, "title": c.Title, "username": c.Username, "member_count": c.MemberCount,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"chats": co, "count": count})
+}
+
 func (h *ChannelHandler) Search(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	chats, _ := h.uc.SearchChats(r.Context(), q, 20)

@@ -74,6 +74,10 @@ func (r *fakeSearchRepo) SearchUsers(_ context.Context, _ string, _ int) ([]doma
 	return nil, nil
 }
 
+func (r *fakeSearchRepo) SimilarChannels(_ context.Context, _, _ int64, _ int) ([]domain.ChatCard, int, error) {
+	return nil, 0, nil
+}
+
 func (r *fakeSearchRepo) PublicChatByUsername(_ context.Context, username string) (int64, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
