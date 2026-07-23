@@ -52,8 +52,8 @@ export const orientedSize = (img: SrcImage, o: Orient): { w: number; h: number }
 export const rotateOrientCW = (o: Orient): Orient => ({ rot: ((o.rot + 1) % 4) as Orient['rot'], flip: o.flip })
 export const flipOrientH = (o: Orient): Orient => ({ rot: ((4 - o.rot) % 4) as Orient['rot'], flip: !o.flip })
 
-/** Нарисовать исходник в ориентированное пространство ow×oh (в коорд. ctx). */
-export function drawOriented(ctx: CanvasRenderingContext2D, img: SrcImage, o: Orient, ow: number, oh: number): void {
+/** Нарисовать источник в ориентированное пространство ow×oh (в коорд. ctx). */
+export function drawOriented(ctx: CanvasRenderingContext2D, img: CanvasImageSource, o: Orient, ow: number, oh: number): void {
   ctx.save()
   ctx.translate(ow / 2, oh / 2)
   ctx.rotate((o.rot * Math.PI) / 2)
@@ -164,28 +164,40 @@ export interface Scene {
   img: SrcImage
   orient: Orient
   enhance: EnhanceValues
+  /**
+   * Медиа-слой после WebGL-коррекций (нативное разрешение исходника, БЕЗ
+   * ориентации). Если задан — рисуется ориентированным как медиа-база. Если
+   * null (WebGL недоступен) — fallback: исходник + CSS-filter + оверлей тепла.
+   */
+  adjusted: HTMLCanvasElement | null
   drawLayer: HTMLCanvasElement | null
   texts: TextBlock[]
 }
 
 /**
  * Полная композиция сцены в ориентированных координатах исходника
- * (crop → на совести transform'а ctx): база с фильтрами → тепло → рисунок →
- * текст. hideTextId — блок, который сейчас редактируется input-оверлеем.
+ * (crop → на совести transform'а ctx): медиа-база → рисунок → текст.
+ * hideTextId — блок, который сейчас редактируется input-оверлеем.
  */
 export function composeScene(ctx: CanvasRenderingContext2D, sc: Scene, hideTextId?: number): void {
   const { w: ow, h: oh } = orientedSize(sc.img, sc.orient)
-  ctx.filter = buildEnhanceFilter(sc.enhance)
-  drawOriented(ctx, sc.img, sc.orient, ow, oh)
-  ctx.filter = 'none'
-  const warm = warmthOverlay(sc.enhance.warmth)
-  if (warm) {
-    ctx.save()
-    ctx.globalCompositeOperation = 'soft-light'
-    ctx.globalAlpha = warm.alpha
-    ctx.fillStyle = warm.color
-    ctx.fillRect(0, 0, ow, oh)
-    ctx.restore()
+  if (sc.adjusted) {
+    // WebGL уже применил 11 коррекций к пикселям — рисуем как есть.
+    drawOriented(ctx, sc.adjusted, sc.orient, ow, oh)
+  } else {
+    // Fallback: часть коррекций через CSS-filter + оверлей тепла.
+    ctx.filter = buildEnhanceFilter(sc.enhance)
+    drawOriented(ctx, sc.img, sc.orient, ow, oh)
+    ctx.filter = 'none'
+    const warm = warmthOverlay(sc.enhance.warmth)
+    if (warm) {
+      ctx.save()
+      ctx.globalCompositeOperation = 'soft-light'
+      ctx.globalAlpha = warm.alpha
+      ctx.fillStyle = warm.color
+      ctx.fillRect(0, 0, ow, oh)
+      ctx.restore()
+    }
   }
   if (sc.drawLayer) ctx.drawImage(sc.drawLayer, 0, 0)
   for (const t of sc.texts) {

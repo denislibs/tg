@@ -14,15 +14,59 @@ export interface Rect {
   h: number
 }
 
-/** Значения вкладки Enhance, каждое -100..100 (0 — без эффекта). */
+/**
+ * Значения 11 коррекций медиа-редактора (как в tweb adjustmentsConfig).
+ * Диапазоны задаёт ADJUSTMENTS: `to100` → 0..100, иначе −50..50. 0 — без эффекта.
+ */
 export interface EnhanceValues {
+  enhance: number
   brightness: number
   contrast: number
   saturation: number
   warmth: number
+  fade: number
+  highlights: number
+  shadows: number
+  vignette: number
+  grain: number
+  sharpen: number
 }
 
-export const ENHANCE_DEFAULTS: EnhanceValues = { brightness: 0, contrast: 0, saturation: 0, warmth: 0 }
+export const ENHANCE_DEFAULTS: EnhanceValues = {
+  enhance: 0, brightness: 0, contrast: 0, saturation: 0, warmth: 0,
+  fade: 0, highlights: 0, shadows: 0, vignette: 0, grain: 0, sharpen: 0,
+}
+
+/**
+ * Конфиг коррекций 1:1 с tweb `adjustmentsConfig`: ключ, имя uniform в шейдере,
+ * лейбл (en; i18n добавит перевод при наличии) и `to100` — диапазон слайдера.
+ */
+export interface AdjustmentConfig {
+  key: keyof EnhanceValues
+  uniform: string
+  label: string
+  to100: boolean
+}
+
+export const ADJUSTMENTS: AdjustmentConfig[] = [
+  { key: 'enhance', uniform: 'uEnhance', label: 'Enhance', to100: true },
+  { key: 'brightness', uniform: 'uBrightness', label: 'Brightness', to100: false },
+  { key: 'contrast', uniform: 'uContrast', label: 'Contrast', to100: false },
+  { key: 'saturation', uniform: 'uSaturation', label: 'Saturation', to100: false },
+  { key: 'warmth', uniform: 'uWarmth', label: 'Warmth', to100: false },
+  { key: 'fade', uniform: 'uFade', label: 'Fade', to100: true },
+  { key: 'highlights', uniform: 'uHighlights', label: 'Highlights', to100: false },
+  { key: 'shadows', uniform: 'uShadows', label: 'Shadows', to100: false },
+  { key: 'vignette', uniform: 'uVignette', label: 'Vignette', to100: true },
+  { key: 'grain', uniform: 'uGrain', label: 'Grain', to100: true },
+  { key: 'sharpen', uniform: 'uSharpen', label: 'Sharpen', to100: true },
+]
+
+/** Диапазон слайдера коррекции: to100 → [0,100], иначе [−50,50]. */
+export const enhanceRange = (to100: boolean): [number, number] => (to100 ? [0, 100] : [-50, 50])
+
+/** Значение слайдера → uniform шейдера (как в tweb imageCanvas): value/(to100?100:50). */
+export const normalizeEnhance = (value: number, to100: boolean): number => value / (to100 ? 100 : 50)
 
 /** Минимальная сторона crop-рамки в пикселях исходника. */
 export const MIN_CROP = 64
@@ -32,29 +76,32 @@ export const HISTORY_LIMIT = 20
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
 
-export const isDefaultEnhance = (v: EnhanceValues): boolean =>
-  !v.brightness && !v.contrast && !v.saturation && !v.warmth
+export const isDefaultEnhance = (v: EnhanceValues): boolean => ADJUSTMENTS.every((a) => !v[a.key])
 
 // Число для filter-строки без экспоненциальной записи и float-шума.
-const amt = (n: number) => String(Math.round(Math.max(0, 1 + n / 100) * 100) / 100)
+const amt = (n: number) => String(Math.round(n * 1000) / 1000)
 
 /**
- * Строка ctx.filter из значений enhance: -100..100 линейно в 0..2 множителя.
- * Тепло (warmth) в CSS-фильтры не входит — оно накладывается отдельным
- * оверлеем (warmthOverlay). Всё по нулям — 'none', чтобы не платить за фильтр.
+ * CSS-фильтр для fallback-пути (когда WebGL недоступен): покрывает лишь ту часть
+ * коррекций, что выражается ctx.filter — brightness/contrast/saturation. Значения
+ * нормализуются как в шейдере (−50..50 → −1..1) и линейно кладутся в множители.
+ * Тепло идёт отдельным оверлеем (warmthOverlay). Всё по нулям — 'none'.
  */
 export function buildEnhanceFilter(v: EnhanceValues): string {
-  if (!v.brightness && !v.contrast && !v.saturation) return 'none'
-  return `brightness(${amt(v.brightness)}) contrast(${amt(v.contrast)}) saturate(${amt(v.saturation)})`
+  const b = normalizeEnhance(v.brightness, false)
+  const c = normalizeEnhance(v.contrast, false)
+  const s = normalizeEnhance(v.saturation, false)
+  if (!b && !c && !s) return 'none'
+  return `brightness(${amt(Math.max(0, 1 + b * 0.5))}) contrast(${amt(Math.max(0, 1 + c * 0.5))}) saturate(${amt(Math.max(0, 1 + s))})`
 }
 
 /**
- * Оверлей «тепла»: оранжевый при warmth>0, синий при warmth<0, alpha растёт
- * с модулем значения (максимум 0.25 — дальше картинка уже «горит»).
+ * Оверлей «тепла» для fallback-пути: оранжевый при warmth>0, синий при warmth<0,
+ * alpha растёт с модулем значения (максимум 0.25 — дальше картинка «горит»).
  */
 export function warmthOverlay(warmth: number): { color: string; alpha: number } | null {
   if (!warmth) return null
-  const alpha = Math.round(Math.min(1, Math.abs(warmth) / 100) * 0.25 * 1000) / 1000
+  const alpha = Math.round(Math.min(1, Math.abs(warmth) / 50) * 0.25 * 1000) / 1000
   return { color: warmth > 0 ? '#ff8a00' : '#0a84ff', alpha }
 }
 

@@ -1,41 +1,73 @@
 import { describe, expect, it } from 'vitest'
 import {
-  ENHANCE_DEFAULTS, HISTORY_LIMIT, MIN_CROP,
-  aspectOf, buildEnhanceFilter, centeredAspectCrop, clampCrop, fitScale,
-  flipPointH, flipRectH, isDefaultEnhance, moveCrop, pushHistory,
+  ADJUSTMENTS, ENHANCE_DEFAULTS, HISTORY_LIMIT, MIN_CROP,
+  aspectOf, buildEnhanceFilter, centeredAspectCrop, clampCrop, enhanceRange, fitScale,
+  flipPointH, flipRectH, isDefaultEnhance, moveCrop, normalizeEnhance, pushHistory,
   resizeCrop, rotatePointCW, rotateRectCW, warmthOverlay,
 } from './editorMath'
 
-describe('buildEnhanceFilter', () => {
-  it('все нули — none (фильтр не платится)', () => {
-    expect(buildEnhanceFilter(ENHANCE_DEFAULTS)).toBe('none')
-    // warmth не входит в CSS-фильтр — один он тоже даёт none
-    expect(buildEnhanceFilter({ ...ENHANCE_DEFAULTS, warmth: 50 })).toBe('none')
+describe('ADJUSTMENTS / дефолты', () => {
+  it('11 коррекций, дефолт каждой — 0', () => {
+    const keys = ADJUSTMENTS.map((a) => a.key)
+    expect(keys).toEqual([
+      'enhance', 'brightness', 'contrast', 'saturation', 'warmth', 'fade',
+      'highlights', 'shadows', 'vignette', 'grain', 'sharpen',
+    ])
+    for (const a of ADJUSTMENTS) expect(ENHANCE_DEFAULTS[a.key]).toBe(0)
+    expect(Object.keys(ENHANCE_DEFAULTS)).toHaveLength(11)
   })
 
-  it('-100..100 линейно в множители 0..2', () => {
-    expect(buildEnhanceFilter({ brightness: 100, contrast: -50, saturation: 25, warmth: 0 }))
-      .toBe('brightness(2) contrast(0.5) saturate(1.25)')
+  it('диапазоны: to100 → 0..100, иначе −50..50', () => {
+    expect(enhanceRange(true)).toEqual([0, 100])
+    expect(enhanceRange(false)).toEqual([-50, 50])
+    expect(ADJUSTMENTS.find((a) => a.key === 'enhance')?.to100).toBe(true)
+    expect(ADJUSTMENTS.find((a) => a.key === 'brightness')?.to100).toBe(false)
   })
 
-  it('низ клампится нулём', () => {
-    expect(buildEnhanceFilter({ brightness: -100, contrast: 0, saturation: 0, warmth: 0 }))
-      .toBe('brightness(0) contrast(1) saturate(1)')
-  })
-
-  it('isDefaultEnhance учитывает warmth', () => {
+  it('isDefaultEnhance по всем 11 полям', () => {
     expect(isDefaultEnhance(ENHANCE_DEFAULTS)).toBe(true)
-    expect(isDefaultEnhance({ ...ENHANCE_DEFAULTS, warmth: 1 })).toBe(false)
+    expect(isDefaultEnhance({ ...ENHANCE_DEFAULTS, grain: 1 })).toBe(false)
+    expect(isDefaultEnhance({ ...ENHANCE_DEFAULTS, warmth: -1 })).toBe(false)
   })
 })
 
-describe('warmthOverlay', () => {
+describe('normalizeEnhance', () => {
+  it('value/(to100?100:50)', () => {
+    expect(normalizeEnhance(100, true)).toBe(1)
+    expect(normalizeEnhance(50, true)).toBe(0.5)
+    expect(normalizeEnhance(0, true)).toBe(0)
+    expect(normalizeEnhance(50, false)).toBe(1)
+    expect(normalizeEnhance(-50, false)).toBe(-1)
+    expect(normalizeEnhance(25, false)).toBe(0.5)
+  })
+})
+
+describe('buildEnhanceFilter (CSS-fallback)', () => {
+  it('все нули — none (фильтр не платится)', () => {
+    expect(buildEnhanceFilter(ENHANCE_DEFAULTS)).toBe('none')
+    // warmth в CSS-фильтр не входит — один он тоже даёт none
+    expect(buildEnhanceFilter({ ...ENHANCE_DEFAULTS, warmth: 25 })).toBe('none')
+  })
+
+  it('нормализация как в шейдере (−50..50 → −1..1)', () => {
+    // brightness 50 → 1 → 1+1*0.5=1.5; contrast −50 → −1 → 0.5; saturation 25 → 0.5 → 1.5
+    expect(buildEnhanceFilter({ ...ENHANCE_DEFAULTS, brightness: 50, contrast: -50, saturation: 25 }))
+      .toBe('brightness(1.5) contrast(0.5) saturate(1.5)')
+  })
+
+  it('низ клампится нулём', () => {
+    expect(buildEnhanceFilter({ ...ENHANCE_DEFAULTS, saturation: -50 }))
+      .toBe('brightness(1) contrast(1) saturate(0)')
+  })
+})
+
+describe('warmthOverlay (CSS-fallback)', () => {
   it('0 — нет оверлея', () => {
     expect(warmthOverlay(0)).toBeNull()
   })
   it('тёплый — оранжевый, холодный — синий, alpha растёт с модулем', () => {
-    expect(warmthOverlay(100)).toEqual({ color: '#ff8a00', alpha: 0.25 })
-    expect(warmthOverlay(-40)).toEqual({ color: '#0a84ff', alpha: 0.1 })
+    expect(warmthOverlay(50)).toEqual({ color: '#ff8a00', alpha: 0.25 })
+    expect(warmthOverlay(-20)).toEqual({ color: '#0a84ff', alpha: 0.1 })
   })
 })
 

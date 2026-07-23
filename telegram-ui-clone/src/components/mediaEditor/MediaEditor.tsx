@@ -16,8 +16,8 @@ import { usePortalContainer } from '../../core/pip'
 import { useT } from '../../i18n'
 import { EASE } from '../../motion'
 import {
-  ASPECT_PRESETS, CROP_HANDLES, ENHANCE_DEFAULTS,
-  aspectOf, centeredAspectCrop, fitScale, flipPointH, flipRectH,
+  ADJUSTMENTS, ASPECT_PRESETS, CROP_HANDLES, ENHANCE_DEFAULTS,
+  aspectOf, centeredAspectCrop, enhanceRange, fitScale, flipPointH, flipRectH,
   isDefaultEnhance, moveCrop, pushHistory, resizeCrop, rotatePointCW, rotateRectCW,
   type AspectPreset, type CropHandle, type EnhanceValues, type Point, type Rect,
 } from './editorMath'
@@ -25,6 +25,7 @@ import {
   composeScene, flipOrientH, measureTextBlock, orientedSize, rebuildDrawLayer, rotateOrientCW, srcSize,
   type Orient, type SrcImage, type Stroke, type TextBlock, type TextStyle,
 } from './sceneRender'
+import { EnhanceRenderer } from './enhanceGL'
 import { applyRedo, applyUndo, type HistoryItem, type RedoItem } from './editorHistory'
 import s from './MediaEditor.module.scss'
 
@@ -38,13 +39,6 @@ const TABS: { key: Tab; icon: IconName }[] = [
   { key: 'crop', icon: 'crop' },
   { key: 'draw', icon: 'brush' },
   { key: 'text', icon: 'text' },
-]
-
-const ENHANCE_FIELDS: { key: keyof EnhanceValues; label: string }[] = [
-  { key: 'brightness', label: 'Brightness' },
-  { key: 'contrast', label: 'Contrast' },
-  { key: 'saturation', label: 'Saturation' },
-  { key: 'warmth', label: 'Warmth' },
 ]
 
 const ASPECT_LABELS: Record<AspectPreset, string> = {
@@ -116,6 +110,11 @@ export default function MediaEditor({ file, onDone, onCancel }: {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const textInputRef = useRef<HTMLInputElement>(null)
   const drawLayerRef = useRef<HTMLCanvasElement | null>(null)
+  // WebGL-рендер коррекций: контекст/программа/буферы создаются один раз;
+  // adjustedRef — canvas с наложенными коррекциями (null → fallback на CSS).
+  const rendererRef = useRef<EnhanceRenderer | null>(null)
+  const rendererReadyRef = useRef(false)
+  const adjustedRef = useRef<HTMLCanvasElement | null>(null)
   const measureCtxRef = useRef<CanvasRenderingContext2D | null>(null)
   const renderRef = useRef<() => void>(() => {})
   // editingText зеркалится в ref: blur и pointerdown приходят в один тик, и
@@ -150,6 +149,51 @@ export default function MediaEditor({ file, onDone, onCancel }: {
   useEffect(() => () => {
     if (img && typeof ImageBitmap !== 'undefined' && img instanceof ImageBitmap) img.close()
   }, [img])
+
+  // ── WebGL-рендер коррекций ──
+  // Контекст/программа/буферы — один раз на монтирование; при недоступности
+  // WebGL rendererRef остаётся null и весь путь коррекций уходит в CSS-fallback.
+  useEffect(() => {
+    try {
+      rendererRef.current = new EnhanceRenderer()
+    } catch {
+      rendererRef.current = null
+    }
+    return () => {
+      rendererRef.current?.dispose()
+      rendererRef.current = null
+      adjustedRef.current = null
+    }
+  }, [])
+
+  // Загрузка текстуры при смене исходника.
+  useEffect(() => {
+    rendererReadyRef.current = false
+    const r = rendererRef.current
+    if (!img || !r || !r.available) return
+    try {
+      r.setImage(img)
+      rendererReadyRef.current = true
+    } catch {
+      rendererReadyRef.current = false
+    }
+  }, [img])
+
+  // Пересчёт adjusted-canvas при смене исходника/коррекций (не на каждом кадре).
+  useEffect(() => {
+    const r = rendererRef.current
+    if (img && r && rendererReadyRef.current && r.available) {
+      try {
+        adjustedRef.current = r.render(enhance)
+      } catch {
+        adjustedRef.current = null
+      }
+    } else {
+      adjustedRef.current = null
+    }
+    renderRef.current()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [img, enhance])
 
   // ── Вьюпорт рабочей области ──
   useEffect(() => {
@@ -196,7 +240,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
     ctx.setTransform(k, 0, 0, k, -view.x * k, -view.y * k)
     composeScene(
       ctx,
-      { img, orient, enhance, drawLayer: drawLayerRef.current, texts },
+      { img, orient, enhance, adjusted: adjustedRef.current, drawLayer: drawLayerRef.current, texts },
       editingRef.current && !editingRef.current.isNew ? editingRef.current.id : undefined,
     )
   }
@@ -307,7 +351,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
       ctx.fillStyle = '#ffffff'
       ctx.fillRect(0, 0, c.width, c.height)
       ctx.translate(-crop.x, -crop.y)
-      composeScene(ctx, { img, orient, enhance, drawLayer: drawLayerRef.current, texts: exportTexts })
+      composeScene(ctx, { img, orient, enhance, adjusted: adjustedRef.current, drawLayer: drawLayerRef.current, texts: exportTexts })
       const blob = await new Promise<Blob | null>((resolve) => c.toBlob(resolve, 'image/jpeg', 0.92))
       if (blob) onDone(blob)
     } finally {
@@ -581,8 +625,11 @@ export default function MediaEditor({ file, onDone, onCancel }: {
         <div className={s.body}>
           {tab === 'enhance' && (
             <>
-              {ENHANCE_FIELDS.map((f) =>
-                sliderRow(f.label, enhance[f.key], -100, 100, (v) => setEnhance({ ...enhance, [f.key]: v }), true))}
+              {ADJUSTMENTS.map((a) => {
+                const [min, max] = enhanceRange(a.to100)
+                return sliderRow(a.label, enhance[a.key], min, max,
+                  (v) => setEnhance({ ...enhance, [a.key]: v }), !a.to100)
+              })}
               {!isDefaultEnhance(enhance) && (
                 <div className={s.resetBtn} onClick={() => setEnhance(ENHANCE_DEFAULTS)}>{t('Reset')}</div>
               )}
