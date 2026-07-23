@@ -148,6 +148,7 @@ const conn = newConnectionManager({
     else if (type === 'checklist_update') broadcast(RT.checklistUpdate, payload)
     else if (type === 'boost_update') broadcast(RT.boostUpdate, payload)
     else if (type === 'giveaway_update') broadcast(RT.giveawayUpdate, payload)
+    else if (type === 'suggested_post_update') broadcast(RT.suggestedPost, payload)
     else if (type === 'balance_update') broadcast(RT.balanceUpdate, payload)
     // Платное медиа разблокировано покупателем: раскрываем баббл (полное медиа)
     // на всех его вкладках; правим кэш истории воркера тем же payload.

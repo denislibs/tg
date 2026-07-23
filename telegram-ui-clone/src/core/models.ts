@@ -514,6 +514,57 @@ export function mapScheduled(r: RawScheduled): Scheduled {
   return { id: r.id, chatId: r.chat_id, type: r.type, text: r.text, entities: r.entities ?? undefined, sendAt: r.send_at }
 }
 
+// Предложенный в канал пост (backend suggested_posts): статус pending|approved|
+// rejected; publishAt/createdAt/decidedAt — unix-миллисекунды (0 — нет значения).
+export type SuggestedPostStatus = 'pending' | 'approved' | 'rejected'
+
+export interface RawSuggestedPost {
+  id: number
+  chat_id: number
+  author_id: number
+  author_name?: string
+  text: string
+  entities?: MessageEntity[] | null
+  media_id?: number | null
+  publish_at?: number
+  status: SuggestedPostStatus
+  created_at: number
+  decided_by?: number
+  decided_at?: number
+}
+
+export interface SuggestedPost {
+  id: number
+  chatId: number
+  authorId: number
+  authorName?: string
+  text: string
+  entities?: MessageEntity[]
+  mediaId?: number | null
+  publishAt?: number
+  status: SuggestedPostStatus
+  createdAt: number
+  decidedBy?: number
+  decidedAt?: number
+}
+
+export function mapSuggestedPost(r: RawSuggestedPost): SuggestedPost {
+  return {
+    id: r.id,
+    chatId: r.chat_id,
+    authorId: r.author_id,
+    authorName: r.author_name || undefined,
+    text: r.text,
+    entities: r.entities?.length ? r.entities : undefined,
+    mediaId: r.media_id && r.media_id > 0 ? r.media_id : undefined,
+    publishAt: r.publish_at || undefined,
+    status: r.status,
+    createdAt: r.created_at,
+    decidedBy: r.decided_by || undefined,
+    decidedAt: r.decided_at || undefined,
+  }
+}
+
 // Облачный черновик (backend drafts): текст инпута с сырыми markdown-маркерами.
 export interface RawDraft {
   chat_id: number

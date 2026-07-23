@@ -55,6 +55,8 @@ import CreateChecklistPopup from './CreateChecklistPopup'
 import BoostPopup from './BoostPopup'
 import CreateGiveawayPopup from './CreateGiveawayPopup'
 import ScheduledView from './ScheduledView'
+import SuggestPostPopup from './SuggestPostPopup'
+import SuggestedPostsView from './SuggestedPostsView'
 import { useGroupCallStore } from '../stores/groupCallStore'
 import { joinGroupCall } from '../core/calls/groupCallEngine'
 import { useLivestreamStore } from '../stores/livestreamStore'
@@ -311,6 +313,9 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const [boostOpen, setBoostOpen] = useState(false)
   const [createGiveawayOpen, setCreateGiveawayOpen] = useState(false)
   const [streamOpen, setStreamOpen] = useState(false)
+  // Предложка постов: компоновщик предложки (не-постер) и список предложек (админ).
+  const [suggestOpen, setSuggestOpen] = useState(false)
+  const [suggestedOpen, setSuggestedOpen] = useState(false)
   const [contactPickerOpen, setContactPickerOpen] = useState(false)
   const [locationPickerOpen, setLocationPickerOpen] = useState(false)
   // Запланированные сообщения: счётчик (календарик в композере) + оверлей списка
@@ -1042,6 +1047,13 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               <TgIcon name={muted ? 'unmute' : 'volume_off'} size={20} color="var(--tg-textSecondary)" />
               <Text weight={600} size={15.5}>{t(muted ? 'Unmute' : 'Mute')}</Text>
             </motion.div>
+            {/* Не-постер канала предлагает пост админам (Telegram suggested posts) */}
+            {isChannel && isRealChat && (
+              <motion.div whileTap={{ scale: 0.995 }} className={s.muteBtn} onClick={() => setSuggestOpen(true)}>
+                <TgIcon name="add" size={20} color="var(--tg-accent)" />
+                <Text weight={600} size={15.5} color="var(--tg-accent)">{t('Suggest a Post')}</Text>
+              </motion.div>
+            )}
             <div className={s.giftBtn}>
               <TgIcon name="gift" color="var(--tg-textSecondary)" />
             </div>
@@ -1129,6 +1141,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           onBoost={isChannel && isRealChat ? () => setBoostOpen(true) : undefined}
           onCreateGiveaway={canCreateGiveaway ? () => setCreateGiveawayOpen(true) : undefined}
           onStartStream={isChannel && isRealChat && owned ? () => setStreamOpen(true) : undefined}
+          onOpenSuggested={canCreateGiveaway ? () => setSuggestedOpen(true) : undefined}
         />
       )}
 
@@ -1260,6 +1273,16 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               .then((msg) => useMessagesStore.getState().applyIncoming(numericChatId, msg))
           }}
         />
+      )}
+
+      {/* Предложить пост (tweb suggestPostPopup) — не-постер канала */}
+      {suggestOpen && isChannel && isRealChat && (
+        <SuggestPostPopup chatId={numericChatId} onClose={() => setSuggestOpen(false)} />
+      )}
+
+      {/* Предложенные посты — админ канала (список pending с действиями) */}
+      {suggestedOpen && isChannel && isRealChat && (
+        <SuggestedPostsView chatId={numericChatId} mode="admin" onClose={() => setSuggestedOpen(false)} />
       )}
 
       {/* «Новый опрос» (tweb popupCreatePoll) */}

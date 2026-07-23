@@ -125,6 +125,66 @@ describe('ChannelsManager.commentCounts', () => {
   })
 })
 
+describe('ChannelsManager suggested posts', () => {
+  function rawSp(id: number, status = 'pending') {
+    return { id, chat_id: 7, author_id: 8, author_name: 'Bob', text: `p${id}`, status, created_at: 1000 }
+  }
+
+  it('suggestPost POSTs text/media/publish_at and maps the result', async () => {
+    const post = vi.fn(async () => rawSp(3))
+    const rest = { post, get: vi.fn() } as unknown as RestClient
+    const mgr = newChannelsManager({ rest })
+    const p = await mgr.suggestPost(7, { text: 'hi', publishAt: 1234 })
+    expect(post).toHaveBeenCalledWith('/channels/7/suggested_posts', { text: 'hi', entities: undefined, media_id: null, publish_at: 1234 })
+    expect(p.id).toBe(3)
+    expect(p.chatId).toBe(7)
+    expect(p.authorName).toBe('Bob')
+    expect(p.status).toBe('pending')
+  })
+
+  it('listSuggestedPosts GETs the queue and maps posts', async () => {
+    const get = vi.fn(async () => ({ posts: [rawSp(1), rawSp(2, 'approved')] }))
+    const rest = { post: vi.fn(), get } as unknown as RestClient
+    const mgr = newChannelsManager({ rest })
+    const list = await mgr.listSuggestedPosts(7)
+    expect(get).toHaveBeenCalledWith('/channels/7/suggested_posts')
+    expect(list.map((p) => p.status)).toEqual(['pending', 'approved'])
+  })
+
+  it('listSuggestedPosts handles a missing posts array', async () => {
+    const get = vi.fn(async () => ({}))
+    const rest = { post: vi.fn(), get } as unknown as RestClient
+    const mgr = newChannelsManager({ rest })
+    expect(await mgr.listSuggestedPosts(7)).toEqual([])
+  })
+
+  it('approveSuggestedPost POSTs approve with publish_at', async () => {
+    const post = vi.fn(async () => rawSp(3, 'approved'))
+    const rest = { post, get: vi.fn() } as unknown as RestClient
+    const mgr = newChannelsManager({ rest })
+    const p = await mgr.approveSuggestedPost(3, 999)
+    expect(post).toHaveBeenCalledWith('/suggested_posts/3/approve', { publish_at: 999 })
+    expect(p.status).toBe('approved')
+  })
+
+  it('approveSuggestedPost defaults publish_at to 0 (publish now)', async () => {
+    const post = vi.fn(async () => rawSp(3, 'approved'))
+    const rest = { post, get: vi.fn() } as unknown as RestClient
+    const mgr = newChannelsManager({ rest })
+    await mgr.approveSuggestedPost(3)
+    expect(post).toHaveBeenCalledWith('/suggested_posts/3/approve', { publish_at: 0 })
+  })
+
+  it('rejectSuggestedPost POSTs reject', async () => {
+    const post = vi.fn(async () => rawSp(3, 'rejected'))
+    const rest = { post, get: vi.fn() } as unknown as RestClient
+    const mgr = newChannelsManager({ rest })
+    const p = await mgr.rejectSuggestedPost(3)
+    expect(post).toHaveBeenCalledWith('/suggested_posts/3/reject', {})
+    expect(p.status).toBe('rejected')
+  })
+})
+
 describe('ChannelsManager.search', () => {
   it('short-circuits an empty query without hitting REST', async () => {
     const get = vi.fn()
