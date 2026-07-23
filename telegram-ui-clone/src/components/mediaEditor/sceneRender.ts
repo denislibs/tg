@@ -81,6 +81,22 @@ export interface TextBlock {
   align: TextAlign
 }
 
+/**
+ * Слой стикера/кастом-эмодзи (порт tweb ResizableLayer type 'sticker'). Живёт в
+ * координатах СЫРОГО исходника, как текст-блоки (C2): x/y — ЦЕНТР слоя, scale —
+ * множитель базового размера (stickerBaseSize), rotation — собственный угол слоя
+ * (рад), добавляется поверх поворота сцены. Контент грузится по mediaId
+ * (StickerMedia): статичный webp/png или lottie — рисуется через resolveSticker.
+ */
+export interface StickerLayer {
+  id: number
+  mediaId: number
+  x: number
+  y: number
+  scale: number
+  rotation: number
+}
+
 export const srcSize = (img: SrcImage): { w: number; h: number } =>
   img instanceof HTMLImageElement
     ? { w: img.naturalWidth, h: img.naturalHeight }
@@ -363,6 +379,52 @@ export function drawTextBlock(ctx: CanvasRenderingContext2D, b: TextBlock): void
   ctx.restore()
 }
 
+/** Размер стороны стикера при scale=1 (в пикселях исходника) — доля от меньшей
+ * стороны кадра. tweb использует фикс. STICKER_SIZE=200 в канвасе редактора
+ * (~40% его меньшей стороны); у нас сцена — сырой исходник, поэтому база
+ * пропорциональна кадру, чтобы стикер был заметным на любом разрешении. */
+export const STICKER_BASE_FRACTION = 0.4
+export const stickerBaseSize = (w: number, h: number): number =>
+  Math.max(1, Math.round(Math.min(w, h) * STICKER_BASE_FRACTION))
+
+// Габарит источника кадра стикера (image/canvas/ImageBitmap).
+function stickerSourceSize(src: CanvasImageSource): { w: number; h: number } {
+  if (typeof HTMLImageElement !== 'undefined' && src instanceof HTMLImageElement) {
+    return { w: src.naturalWidth || src.width, h: src.naturalHeight || src.height }
+  }
+  if (typeof HTMLCanvasElement !== 'undefined' && src instanceof HTMLCanvasElement) {
+    return { w: src.width, h: src.height }
+  }
+  const b = src as ImageBitmap
+  return { w: b.width, h: b.height }
+}
+
+/**
+ * Отрисовка одного слоя стикера (порт tweb drawStickerLayer): размер стороны =
+ * base*scale, кадр вписывается в квадрат size×size с сохранением пропорций
+ * (snapToViewport), центрируется в (layer.x, layer.y) и поворачивается на
+ * layer.rotation. Вызывается ВНУТРИ трансформа сцены composeScene, поэтому слой
+ * поворачивается/масштабируется/кадрируется вместе с картинкой.
+ */
+export function drawStickerLayer(
+  ctx: CanvasRenderingContext2D, layer: StickerLayer, src: CanvasImageSource, base: number,
+): void {
+  const size = base * layer.scale
+  const { w: iw, h: ih } = stickerSourceSize(src)
+  if (!iw || !ih || size <= 0) return
+  const ratio = iw / ih
+  // snapToViewport(ratio, size, size): вписать в квадрат.
+  let w = size
+  let h = size
+  if (ratio >= 1) h = size / ratio
+  else w = size * ratio
+  ctx.save()
+  ctx.translate(layer.x, layer.y)
+  ctx.rotate(layer.rotation)
+  ctx.drawImage(src, -w / 2, -h / 2, w, h)
+  ctx.restore()
+}
+
 export interface Scene extends SceneTransform {
   img: SrcImage
   enhance: EnhanceValues
@@ -374,6 +436,11 @@ export interface Scene extends SceneTransform {
   adjusted: HTMLCanvasElement | null
   drawLayer: HTMLCanvasElement | null
   texts: TextBlock[]
+  stickers: StickerLayer[]
+  /** Размер стороны стикера при scale=1 (пиксели исходника). */
+  stickerBase: number
+  /** Текущий кадр стикера по mediaId (offscreen-canvas lottie или <img>); null — ещё не загружен. */
+  resolveSticker: (mediaId: number) => CanvasImageSource | null
 }
 
 /**
@@ -413,6 +480,13 @@ export function composeScene(ctx: CanvasRenderingContext2D, sc: Scene, hideTextI
   if (sc.drawLayer) ctx.drawImage(sc.drawLayer, 0, 0)
   for (const t of sc.texts) {
     if (t.id !== hideTextId) drawTextBlock(ctx, t)
+  }
+  // Стикеры — поверх текста; порядок внутри массива = z-order (выбранный слой
+  // MediaEditor поднимает в конец). Анимированные (lottie) флэттятся в текущий
+  // кадр из offscreen-canvas — в превью анимация, в JPEG-экспорте статичный кадр.
+  for (const st of sc.stickers) {
+    const src = sc.resolveSticker(st.mediaId)
+    if (src) drawStickerLayer(ctx, st, src, sc.stickerBase)
   }
   ctx.restore()
 }

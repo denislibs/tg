@@ -24,12 +24,16 @@ import {
   type AspectPreset, type CropHandle, type EnhanceValues, type Point, type Rect,
 } from './editorMath'
 import {
-  composeScene, fontInfoMap, measureTextBlock, rebuildDrawLayer, srcSize,
-  type BrushType, type FontKey, type Scene, type SrcImage, type Stroke, type TextAlign,
-  type TextBlock, type TextStyle,
+  composeScene, fontInfoMap, measureTextBlock, rebuildDrawLayer, srcSize, stickerBaseSize,
+  type BrushType, type FontKey, type Scene, type SrcImage, type StickerLayer, type Stroke,
+  type TextAlign, type TextBlock, type TextStyle,
 } from './sceneRender'
+import { hitSticker, resizeSticker, stickerCorners, type Corner } from './stickerLayer'
+import { StickerAssets } from './stickerAssets'
+import StickerPicker from './StickerPicker'
 import { EnhanceRenderer } from './enhanceGL'
 import { applyRedo, applyUndo, type HistoryItem, type RedoItem } from './editorHistory'
+import type { Sticker } from '../../core/managers/stickersManager'
 import s from './MediaEditor.module.scss'
 
 // Палитра tweb mediaEditor (colorPickerSwatches).
@@ -71,14 +75,18 @@ const hasBrushColor = (b: BrushType): b is ColoredBrush => b in BRUSH_COLORS
 // в нативном разрешении, поэтому масштабируем от стороны, чтобы блюр был заметен).
 const blurRadiusFor = (w: number, h: number): number => Math.max(6, Math.round(Math.max(w, h) / 150))
 
-type Tab = 'enhance' | 'crop' | 'draw' | 'text'
+type Tab = 'enhance' | 'crop' | 'draw' | 'text' | 'stickers'
 
 const TABS: { key: Tab; icon: IconName }[] = [
   { key: 'enhance', icon: 'enhance' },
   { key: 'crop', icon: 'crop' },
   { key: 'draw', icon: 'brush' },
   { key: 'text', icon: 'text' },
+  { key: 'stickers', icon: 'smile' }, // tweb mediaEditor: вкладка stickers = иконка smile
 ]
+
+// Радиус захвата угловой ручки стикера (экранные px).
+const STICKER_HANDLE_HIT = 16
 
 const ASPECT_LABELS: Record<AspectPreset, string> = {
   free: 'Free', original: 'Original', '1:1': 'Square',
@@ -164,6 +172,8 @@ export default function MediaEditor({ file, onDone, onCancel }: {
   const [aspect, setAspect] = useState<AspectPreset>('free')
   const [strokes, setStrokes] = useState<Stroke[]>([])
   const [texts, setTexts] = useState<TextBlock[]>([])
+  const [stickers, setStickers] = useState<StickerLayer[]>([])
+  const [selectedSticker, setSelectedSticker] = useState<number | null>(null)
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [redoStack, setRedoStack] = useState<RedoItem[]>([])
   const [brush, setBrush] = useState<BrushType>('pen')
@@ -201,6 +211,12 @@ export default function MediaEditor({ file, onDone, onCancel }: {
   const nextIdRef = useRef(1)
   const strokeRef = useRef<Stroke | null>(null)
   const textDragRef = useRef<{ id: number; last: Point; moved: boolean } | null>(null)
+  // Слои стикеров: кадры (lottie/img) грузит StickerAssets; перерисовку lottie
+  // коалесцируем через rAF (renderScheduledRef).
+  const stickerAssetsRef = useRef<StickerAssets | null>(null)
+  const renderScheduledRef = useRef(false)
+  const stickerDragRef = useRef<{ id: number; last: Point; moved: boolean } | null>(null)
+  const stickerResizeRef = useRef<{ id: number; corner: Corner } | null>(null)
   const cropDragRef = useRef<{ mode: 'move' | CropHandle; start: Rect; px: number; py: number } | null>(null)
   const wheelDragRef = useRef<{ startX: number; startRot: number } | null>(null)
   const rotAnimRef = useRef<(() => void) | null>(null)
@@ -246,6 +262,31 @@ export default function MediaEditor({ file, onDone, onCancel }: {
       adjustedRef.current = null
     }
   }, [])
+
+  // ── Кадры стикеров ── создаём один раз; onFrame (кадр lottie) → перерисовка
+  // превью, коалесцированная через rAF (renderRef.current — всегда свежий).
+  useEffect(() => {
+    const assets = new StickerAssets(() => {
+      if (renderScheduledRef.current) return
+      renderScheduledRef.current = true
+      requestAnimationFrame(() => {
+        renderScheduledRef.current = false
+        renderRef.current()
+      })
+    })
+    stickerAssetsRef.current = assets
+    return () => {
+      assets.destroy()
+      stickerAssetsRef.current = null
+    }
+  }, [])
+
+  // Грузим кадры для всех слоёв (добавление + восстановление undo/redo); ensure идемпотентен.
+  useEffect(() => {
+    const a = stickerAssetsRef.current
+    if (!a) return
+    for (const st of stickers) a.ensure(st.mediaId)
+  }, [stickers])
 
   // Загрузка текстуры при смене исходника.
   useEffect(() => {
@@ -324,6 +365,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
   const dims = img ? srcSize(img) : null
   const W = dims?.w ?? 0
   const H = dims?.h ?? 0
+  const stickerBase = dims ? stickerBaseSize(W, H) : 0
   const cropTab = tab === 'crop'
   // Масштаб покрытия: изображение при любом угле полностью закрывает рамку.
   const scale = dims && crop ? coverScale(crop, W, H, rotation) : 1
@@ -384,6 +426,9 @@ export default function MediaEditor({ file, onDone, onCancel }: {
     adjusted: adjustedRef.current,
     drawLayer: drawLayerRef.current,
     texts: exportTexts ?? texts,
+    stickers,
+    stickerBase,
+    resolveSticker: (id) => stickerAssetsRef.current?.get(id) ?? null,
     w: W,
     h: H,
     flipX,
@@ -421,6 +466,36 @@ export default function MediaEditor({ file, onDone, onCancel }: {
       scene(),
       editingRef.current && !editingRef.current.isNew ? editingRef.current.id : undefined,
     )
+    // Рамка выделения активного стикера (только превью, не в экспорте): рисуем в
+    // том же пространстве сцены, что и слой; толщина/ручки — постоянные в
+    // экранных px (делим на srcScale = k*scale).
+    if (tab === 'stickers' && selectedSticker != null) {
+      const L = stickers.find((l) => l.id === selectedSticker)
+      if (L) {
+        const srcScaleNow = k * scale
+        const half = (stickerBase * L.scale) / 2
+        ctx.save()
+        ctx.scale(scale, scale)
+        ctx.rotate(rotation)
+        ctx.scale(flipX, flipY)
+        ctx.translate(-W / 2, -H / 2)
+        ctx.translate(L.x, L.y)
+        ctx.rotate(L.rotation)
+        ctx.lineWidth = 1.5 / srcScaleNow
+        ctx.strokeStyle = 'rgba(255,255,255,0.9)'
+        ctx.strokeRect(-half, -half, half * 2, half * 2)
+        const r = 5 / srcScaleNow
+        ctx.fillStyle = '#fff'
+        for (const sx of [-1, 1]) {
+          for (const sy of [-1, 1]) {
+            ctx.beginPath()
+            ctx.arc(sx * half, sy * half, r, 0, Math.PI * 2)
+            ctx.fill()
+          }
+        }
+        ctx.restore()
+      }
+    }
   }
   useEffect(() => { renderRef.current() })
 
@@ -470,20 +545,64 @@ export default function MediaEditor({ file, onDone, onCancel }: {
     return null
   }
 
+  // ── Слои стикеров ──
+  // Добавление в центр видимой области (центр crop-рамки в координатах
+  // исходника). rotation = -rotation сцены → стикер добавляется прямым на экране
+  // (порт tweb stickersTab: rotation = -transform.rotation), дальше вращается
+  // вместе с медиа. scale=1 (базовый размер — доля кадра, stickerBaseSize).
+  const addSticker = (st: Sticker) => {
+    if (!crop) return
+    const id = nextIdRef.current++
+    const layer: StickerLayer = {
+      id, mediaId: st.mediaId,
+      x: crop.x + crop.w / 2, y: crop.y + crop.h / 2,
+      scale: 1, rotation: -rotation,
+    }
+    stickerAssetsRef.current?.ensure(st.mediaId)
+    setStickers((prev) => [...prev, layer])
+    setSelectedSticker(id)
+    setHistory((h) => pushHistory(h, { type: 'sticker-add', id }))
+    setRedoStack([])
+  }
+
+  const deleteSticker = (id: number) => {
+    const layer = stickers.find((l) => l.id === id)
+    setStickers((prev) => prev.filter((l) => l.id !== id))
+    if (selectedSticker === id) setSelectedSticker(null)
+    if (layer) { setHistory((h) => pushHistory(h, { type: 'sticker-remove', layer })); setRedoStack([]) }
+  }
+
+  // Выбор слоя поднимает его наверх стопки (порт moveSelectedLayerOnTop tweb).
+  const selectSticker = (id: number) => {
+    setSelectedSticker(id)
+    setStickers((prev) => {
+      const idx = prev.findIndex((l) => l.id === id)
+      if (idx < 0 || idx === prev.length - 1) return prev
+      const copy = prev.slice()
+      const [l] = copy.splice(idx, 1)
+      copy.push(l)
+      return copy
+    })
+  }
+
   // ── Undo / Redo ── (логика — чистые редьюсеры editorHistory)
   const applyHistory = (fn: typeof applyUndo) => {
-    const next = fn({ history, redoStack, strokes, texts })
+    const next = fn({ history, redoStack, strokes, texts, stickers })
     setHistory(next.history)
     setRedoStack(next.redoStack)
     setStrokes(next.strokes)
     setTexts(next.texts)
+    setStickers(next.stickers)
+    if (selectedSticker != null && !next.stickers.some((l) => l.id === selectedSticker)) {
+      setSelectedSticker(null)
+    }
   }
   const undo = () => applyHistory(applyUndo)
   const redo = () => applyHistory(applyRedo)
 
   // ── Закрытие ──
   const dirty = !!img && !!crop && (
-    strokes.length > 0 || texts.length > 0 || !isDefaultEnhance(enhance)
+    strokes.length > 0 || texts.length > 0 || stickers.length > 0 || !isDefaultEnhance(enhance)
     || rotation !== 0 || flipX !== 1 || flipY !== 1
     || crop.x > 0.5 || crop.y > 0.5 || crop.w < W - 0.5 || crop.h < H - 0.5
   )
@@ -500,6 +619,15 @@ export default function MediaEditor({ file, onDone, onCancel }: {
         if (editingRef.current) cancelEditing()
         else if (!confirmOpen) requestClose()
         else setConfirmOpen(false)
+        return
+      }
+      // Delete/Backspace удаляет выбранный стикер (когда открыта вкладка stickers
+      // и не редактируется текст).
+      if ((e.key === 'Delete' || e.key === 'Backspace') && tab === 'stickers'
+        && selectedSticker != null && !editingRef.current) {
+        e.preventDefault()
+        e.stopPropagation()
+        deleteSticker(selectedSticker)
         return
       }
       // Ctrl/Cmd+Z — undo, Ctrl/Cmd+Shift+Z или Ctrl/Cmd+Y — redo. Редактор —
@@ -592,6 +720,30 @@ export default function MediaEditor({ file, onDone, onCancel }: {
           align: textAlign,
         })
       }
+    } else if (tab === 'stickers') {
+      const rect = canvasRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const screen = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+      // угловая ручка выбранного слоя → поворот+масштаб
+      const sel = stickers.find((l) => l.id === selectedSticker)
+      if (sel) {
+        const hc = stickerCorners(sel, stickerBase, buildMatrix())
+          .find((c) => Math.hypot(c.point.x - screen.x, c.point.y - screen.y) <= STICKER_HANDLE_HIT)
+        if (hc) {
+          e.currentTarget.setPointerCapture(e.pointerId)
+          stickerResizeRef.current = { id: sel.id, corner: hc.corner }
+          return
+        }
+      }
+      // иначе — выбрать/перетащить слой под точкой или снять выделение
+      const hit = hitSticker(stickers, p, stickerBase)
+      if (hit) {
+        e.currentTarget.setPointerCapture(e.pointerId)
+        selectSticker(hit.id)
+        stickerDragRef.current = { id: hit.id, last: p, moved: false }
+      } else {
+        setSelectedSticker(null)
+      }
     }
   }
 
@@ -611,10 +763,37 @@ export default function MediaEditor({ file, onDone, onCancel }: {
         d.last = p
         setTexts((ts) => ts.map((b) => (b.id === d.id ? { ...b, x: b.x + dx, y: b.y + dy } : b)))
       }
+    } else if (tab === 'stickers' && stickerResizeRef.current) {
+      const rz = stickerResizeRef.current
+      const L = stickers.find((l) => l.id === rz.id)
+      const rect = canvasRef.current?.getBoundingClientRect()
+      if (!L || !rect) return
+      const c = buildMatrix().transformPoint(new DOMPoint(L.x, L.y))
+      const { rotation: rot, scale: sc } = resizeSticker({
+        corner: rz.corner,
+        half: (stickerBase * srcScale) / 2,
+        center: { x: c.x, y: c.y },
+        pointer: { x: e.clientX - rect.left, y: e.clientY - rect.top },
+        sceneRotation: rotation,
+      })
+      setStickers((prev) => prev.map((l) => (l.id === rz.id ? { ...l, rotation: rot, scale: Math.max(0.05, sc) } : l)))
+    } else if (tab === 'stickers' && stickerDragRef.current) {
+      const d = stickerDragRef.current
+      const p = toSrc(e)
+      const dx = p.x - d.last.x
+      const dy = p.y - d.last.y
+      if (Math.hypot(dx, dy) * srcScale > 2) d.moved = true
+      if (d.moved) {
+        d.last = p
+        setStickers((prev) => prev.map((l) => (l.id === d.id ? { ...l, x: l.x + dx, y: l.y + dy } : l)))
+      }
     }
   }
 
   const onCanvasPointerUp = () => {
+    // трансформации слоёв-стикеров — live-мутации, в историю не пишем (как drag текста)
+    stickerDragRef.current = null
+    stickerResizeRef.current = null
     if (strokeRef.current) {
       const st = strokeRef.current
       strokeRef.current = null
@@ -790,6 +969,16 @@ export default function MediaEditor({ file, onDone, onCancel }: {
   const frameLeft = originX + k * (ox - (crop?.w ?? 0) / 2)
   const frameTop = originY + k * (oy - (crop?.h ?? 0) / 2)
 
+  // Экранная позиция кнопки удаления выбранного стикера — его левый-верхний угол.
+  const stickerDeletePos = (() => {
+    if (tab !== 'stickers' || !crop) return null
+    const L = stickers.find((l) => l.id === selectedSticker)
+    if (!L) return null
+    const c = stickerCorners(L, stickerBase, buildMatrix())
+      .find((x) => x.corner.cornerX === -1 && x.corner.cornerY === -1)
+    return c ? c.point : null
+  })()
+
   return createPortal(
     <motion.div
       className={s.root}
@@ -875,6 +1064,18 @@ export default function MediaEditor({ file, onDone, onCancel }: {
                 }}
               />
             )}
+
+            {stickerDeletePos && (
+              <div
+                className={s.stickerDelete}
+                style={{ left: stickerDeletePos.x, top: stickerDeletePos.y }}
+                title={t('Delete')}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() => selectedSticker != null && deleteSticker(selectedSticker)}
+              >
+                <TgIcon name="delete" size={16} />
+              </div>
+            )}
           </div>
         )}
 
@@ -924,14 +1125,16 @@ export default function MediaEditor({ file, onDone, onCancel }: {
             <div
               key={key}
               className={classNames(s.tab, tab === key ? s.tabActive : '')}
-              onClick={() => { if (editingRef.current) commitEditing(); setTab(key) }}
+              onClick={() => { if (editingRef.current) commitEditing(); setSelectedSticker(null); setTab(key) }}
             >
               <TgIcon name={icon} size={24} />
             </div>
           ))}
         </div>
 
-        <div className={s.body}>
+        <div className={classNames(s.body, tab === 'stickers' ? s.bodyFlush : '')}>
+          {tab === 'stickers' && <StickerPicker onPick={addSticker} />}
+
           {tab === 'enhance' && (
             <>
               {ADJUSTMENTS.map((a) => {
