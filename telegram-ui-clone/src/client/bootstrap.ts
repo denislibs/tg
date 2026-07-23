@@ -4,7 +4,7 @@ import type { HealthStatus } from '../core/managers/healthManager'
 import type { User } from '../core/managers/authManager'
 import type { ProfileUpdate, SetUsernameResult } from '../core/managers/profileManager'
 import type { Dialog, Draft } from '../core/models'
-import type { Message, MessageEntity, Poll, Checklist, Scheduled, BoostStatus, Giveaway } from '../core/models'
+import type { Message, MessageEntity, Poll, Checklist, Scheduled, BoostStatus, Giveaway, SuggestedPost } from '../core/models'
 import type { CreateGiveawayArgs } from '../core/managers/boostsManager'
 import type { HistoryArgs, HistoryResult, SendArgs, ReactionUser, StarReactionInfo, StarReactionResult } from '../core/managers/messagesManager'
 import type { ConnState, PresenceEvt, TypingAction } from '../core/realtime/events'
@@ -14,7 +14,7 @@ import type { PushSub } from '../core/managers/pushManager'
 import type { NotifySettings, NotifyPatch } from '../core/managers/notifyManager'
 import type { Folder, FolderInput, FolderInvite, FolderInvitePreview } from '../core/managers/foldersManager'
 import type { GroupCard } from '../core/managers/groupsManager'
-import type { SearchResult } from '../core/managers/channelsManager'
+import type { SearchResult, SuggestPostArgs } from '../core/managers/channelsManager'
 import type { Peer } from '../core/managers/peersManager'
 import type { StoryGroup } from '../core/managers/storiesManager'
 import type { Contact, AddContactInput } from '../core/managers/contactsManager'
@@ -219,6 +219,10 @@ export interface Managers {
     listComments(channelId: number, postId: number, offset?: number, limit?: number): Promise<{ messages: Message[]; count: number }>
     commentCounts(channelId: number, postIds: number[]): Promise<Record<number, number>>
     viewCounts(channelId: number, postIds: number[]): Promise<Record<number, number>>
+    suggestPost(chatId: number, args: SuggestPostArgs): Promise<SuggestedPost>
+    listSuggestedPosts(chatId: number): Promise<SuggestedPost[]>
+    approveSuggestedPost(id: number, publishAt?: number): Promise<SuggestedPost>
+    rejectSuggestedPost(id: number): Promise<SuggestedPost>
   }
   peers: { getUsers(ids: number[]): Promise<Peer[]> }
   presence: { get(ids: number[]): Promise<PresenceEvt[]> }

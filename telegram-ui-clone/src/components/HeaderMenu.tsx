@@ -34,9 +34,11 @@ interface Props {
   onBoost?: () => void
   /** открыть попап создания розыгрыша (владелец канала) */
   onCreateGiveaway?: () => void
+  /** открыть список предложенных постов (админ канала) */
+  onOpenSuggested?: () => void
 }
 
-export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddMember, onSelectMessages, onAddContact, onDeleteChat, onClearHistory, onChangeTheme, onBoost, onCreateGiveaway }: Props) {
+export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddMember, onSelectMessages, onAddContact, onDeleteChat, onClearHistory, onChangeTheme, onBoost, onCreateGiveaway, onOpenSuggested }: Props) {
   const t = useT()
   const managers = useManagers()
   const { start: startCall } = useCall()
@@ -94,6 +96,11 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
 
   const clearItem: Item | null = onClearHistory
     ? { icon: <TgIcon name="delete" size={20} />, label: 'Clear History', danger: true, onClick: () => { onClearHistory(); close() } }
+    : null
+
+  // «Предложенные посты» (Telegram suggested posts) — админ канала.
+  const suggestedItem: Item | null = onOpenSuggested
+    ? { icon: <TgIcon name="add_chat" size={20} />, label: 'Suggested Posts', onClick: () => { onOpenSuggested(); close() } }
     : null
 
   // «Пожаловаться» на чат целиком (tweb reportPeer): открывает глобальный
@@ -171,6 +178,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
       { icon: <TgIcon name="gift" size={20} />, label: 'Send a Gift' },
       { icon: <TgIcon name="boost" size={20} />, label: 'Boost Channel', onClick: onBoost ? () => { onBoost(); close() } : undefined },
       { icon: <TgIcon name="gift_premium" size={20} />, label: 'Create Giveaway', onClick: onCreateGiveaway ? () => { onCreateGiveaway(); close() } : undefined },
+      ...(suggestedItem ? [suggestedItem] : []),
       { icon: <TgIcon name="delete" size={20} />, label: 'Delete Channel', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
     ]
   } else {
