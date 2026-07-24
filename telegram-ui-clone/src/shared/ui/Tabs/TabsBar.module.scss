@@ -11,16 +11,21 @@
   inset-inline: 0;
 }
 
-// липнет к верху скролл-контейнера (tweb .search-super-tabs-scrollable)
+// липнет к верху скролл-контейнера (tweb .search-super-tabs-scrollable) — тот же
+// градиент-фейд, что и в overlay-режиме сайдбара, без отдельного фона.
 .sticky {
   position: sticky;
   top: 0;
 }
 
-// tweb .folders-tabs-gradient-container: absolute; inset: 0; z-index: -1
+// tweb .folders-tabs-gradient-container: absolute; z-index: -1. Верх поднимается
+// на --tabsbar-gap (sticky-зазор под шапкой), чтобы фейд закрыл щель.
 .gradientContainer {
   position: absolute;
-  inset: 0;
+  top: calc(-1 * var(--tabsbar-gap, 0px));
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: -1;
 }
 

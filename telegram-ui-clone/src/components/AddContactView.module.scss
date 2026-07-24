@@ -81,15 +81,30 @@
   :global(html[data-theme='dark']) & {
     --input-bg: #2b2b2b;
   }
+
+  // поля контакта чуть выше/просторнее (ближе к tweb .input-field ~54px) —
+  // перебивает базовые 48px/13px Input по специфичности (class + tag).
+  input {
+    height: 54px;
+    padding: 16px;
+  }
+  input:focus {
+    padding: 15px;
+  }
 }
 
 .fieldGap {
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 // обёртка поля-заметки с иконкой-смайлом справа
 .noteWrap {
   position: relative;
+}
+
+// горизонтальный инсет инпутов от краёв секции (tweb .input-wrapper padding: 0 .5rem)
+.inputsPad {
+  padding: 4px 8px 0;
 }
 
 // иконка-смайл в конце поля-заметки
@@ -170,6 +185,5 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
   transition: opacity 0.2s;
 }

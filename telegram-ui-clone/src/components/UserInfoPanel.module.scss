@@ -41,22 +41,29 @@
   align-items: center;
   gap: 12px;
   padding: 0 12px;
-  // По умолчанию шапка прозрачная (tweb .sidebar-header без .header-filled):
-  // поверх фото — белые иконки, над телом панели фон панели тот же цвет.
+  // Сверху шапка ПРОЗРАЧНАЯ (tweb .sidebar-header без .header-filled): без фона и
+  // границы. Фон+граница появляются при небольшом скролле (.headerScrolled) или
+  // поверх фото — прозрачная с белым текстом (.headerWhite). Границу держим 1px
+  // transparent в базе — для плавного перехода цвета.
   background: transparent;
-  transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+  border-bottom: 1px solid transparent;
+  transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
 }
 
-// при скролле до табов шапка заливается фоном панели и отделяется тенью снизу
-// (tweb .header-filled: surface background + box-shadow section-box-shadow)
-.headerFilled {
-  background: var(--tg-sectionBackdrop);
-  box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.16);
+// при скролле шапка заливается surface + нижняя граница-разделитель + мягкая тень
+// (tweb .header-filled: surface-color + --border-color / section-box-shadow).
+.headerScrolled {
+  background: var(--tg-sidebarBg);
+  border-bottom-color: var(--tg-divider);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 }
 
-// над развёрнутым фото: иконки/заголовок белые + лёгкая тень для читаемости
-// поверх верхнего градиента (tweb .need-white)
+// над развёрнутым фото: шапка прозрачная без границы, иконки/заголовок белые +
+// лёгкая тень для читаемости поверх верхнего градиента (tweb .need-white).
 .headerWhite {
+  background: transparent;
+  border-bottom-color: transparent;
+  box-shadow: none;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
@@ -82,7 +89,6 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding-bottom: 24px;
 
   // тонкий скроллбар (как в ленте / ChatList / tweb)
   &::-webkit-scrollbar {
@@ -380,6 +386,7 @@
 }
 
 // обёртка framed-таб-ряда (выравнивание с карточками секций)
+// как в сайдбаре чатов: плашка табов с градиент-фейдом, липнет под шапку.
 .tabsWrap {
   margin: 8px 12px 0;
 }

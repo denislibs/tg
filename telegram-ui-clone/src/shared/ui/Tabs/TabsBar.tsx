@@ -25,9 +25,17 @@ export default function TabsBar({
   className?: string
   children: ReactNode
 }) {
+  // При sticky-зазоре (числовой top) градиент растягивается вверх на столько же
+  // (--tabsbar-gap), чтобы surface-часть фейда закрыла щель между шапкой и плашкой
+  // и контент под ней не просвечивал.
+  const gap = typeof top === 'number' ? top : 0
   const style: CSSProperties | undefined =
     from || top != null
-      ? { ...(from ? ({ '--tabsbar-from': from } as CSSProperties) : {}), ...(top != null ? { top } : {}) }
+      ? {
+          ...(from ? ({ '--tabsbar-from': from } as CSSProperties) : {}),
+          ...(top != null ? { top } : {}),
+          ...(gap ? ({ '--tabsbar-gap': `${gap}px` } as CSSProperties) : {}),
+        }
       : undefined
   return (
     <div ref={barRef} className={classNames(s.bar, mode === 'overlay' ? s.overlay : s.sticky, className ?? '')} style={style}>

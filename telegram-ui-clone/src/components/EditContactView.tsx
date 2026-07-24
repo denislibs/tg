@@ -177,6 +177,7 @@ export default function EditContactView({
           ? { initial: { x: '100%' }, animate: { x: '0%' }, transition: { duration: DUR.in, ease: EASE } }
           : {})}
         className={`${add.panel} ${narrow ? add.panelNarrow : add.panelWide}`}
+        style={{ background: 'var(--tg-sectionBackdrop)' }}
       >
         <div className={add.header}>
           <IconButton onClick={onClose} color="var(--tg-textSecondary)">
@@ -195,13 +196,16 @@ export default function EditContactView({
 
           {/* Секция 1 (как в tweb editContact): поля + уведомления + дата рождения */}
           <Section>
-            <Input label="Имя (обязательно)" value={first} onChange={setFirst} autoFocus wrapClassName={`${add.field} ${add.fieldGap}`} />
-            <Input label="Фамилия (необязательно)" value={last} onChange={setLast} wrapClassName={`${add.field} ${add.fieldGap}`} />
-            <div className={add.noteWrap}>
-              <Input label="Заметка" value={note} onChange={setNote} wrapClassName={add.field} />
-              <span className={add.noteIcon}>
-                <TgIcon name="smile" color="var(--tg-textFaint)" />
-              </span>
+            {/* горизонтальный инсет инпутов от краёв карточки (tweb .input-wrapper padding: 0 .5rem) */}
+            <div className={add.inputsPad}>
+              <Input label="Имя (обязательно)" value={first} onChange={setFirst} autoFocus wrapClassName={`${add.field} ${add.fieldGap}`} />
+              <Input label="Фамилия (необязательно)" value={last} onChange={setLast} wrapClassName={`${add.field} ${add.fieldGap}`} />
+              <div className={add.noteWrap}>
+                <Input label="Заметка" value={note} onChange={setNote} wrapClassName={add.field} />
+                <span className={add.noteIcon}>
+                  <TgIcon name="smile" color="var(--tg-textFaint)" />
+                </span>
+              </div>
             </div>
             <Row
               icon={<TgIcon name="unmute" size={24} color="var(--tg-textSecondary)" />}

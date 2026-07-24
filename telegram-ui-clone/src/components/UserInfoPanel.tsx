@@ -34,7 +34,7 @@ import { useLang } from '../i18n'
 import { lastSeenLabel } from '../core/presence'
 import { friendlyMsgTime } from '../core/friendlyTime'
 import { EXT_COLORS, extOf, firstUrl, fmtDur, fmtSize, hostOf } from '../core/sharedMediaFmt'
-import { mediaContentUrl, mediaThumbUrl } from '../core/mediaUrl'
+import { mediaContentUrl, mediaThumbUrl, useMediaTokenVersion } from '../core/mediaUrl'
 import type { Message } from '../core/models'
 import MediaLightbox, { type LightboxItem } from './messages/MediaLightbox'
 import { clampIndex, pickZone, stepIndex, indexAfterSwipe } from '../core/photoPager'
@@ -80,6 +80,9 @@ function countLabel(tab: string, n: number, isChannel: boolean): string {
 
 // высота шапки панели — sticky-отступ табов и порог header-filled (tweb 3.5rem)
 const HEADER_H = 56
+// зазор шапка↔таб-плашка; градиент плашки растягивается вверх на столько же
+// (TabsBar gap), чтобы закрыть зазор и контент не просвечивал.
+const TAB_GAP = 8
 
 export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers, onEditContact, onSendGift }: { chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void; canAddMembers?: boolean; onEditContact?: () => void; onSendGift?: () => void }) {
   const t = useT()
@@ -162,6 +165,9 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
   // заливается и показывает «имя + счётчик активного таба» (tweb sharedMedia.tsx
   // setIsSharedMedia / TransitionSlider) ──
   const [filled, setFilled] = useState(false)
+  // фон+граница шапки — отдельно от filled: сверху прозрачная, при небольшом
+  // скролле заливается (tweb .header-filled по scrollPosition >= ~5).
+  const [scrolled, setScrolled] = useState(false)
   const bodyRef = useRef<HTMLDivElement>(null)
   const tabsBarRef = useRef<HTMLDivElement>(null)
   const onBodyScroll = () => {
@@ -169,9 +175,12 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
     if (!body || !bar) return
     // скролл вниз сворачивает развёрнутое фото обратно в круг (tweb collapse)
     if (body.scrollTop > 4) setExpanded(false)
-    // порог tweb: верх таб-плашки доехал до низа шапки (top <= OFFSET)
+    // фон/граница шапки появляются при небольшом скролле (не над развёрнутым фото)
+    setScrolled(body.scrollTop > 8)
+    // порог tweb: верх таб-плашки доехал до низа шапки (top <= OFFSET) — смена
+    // заголовка на «имя + счётчик» (не связано с фоном шапки)
     const top = bar.getBoundingClientRect().top - body.getBoundingClientRect().top
-    setFilled(top <= HEADER_H + 1)
+    setFilled(top <= HEADER_H + TAB_GAP + 1)
   }
   // клик по «назад» в залитой шапке — к началу профиля (tweb closeBtn: scrollIntoView profile-content)
   const scrollBackToProfile = () => bodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
@@ -393,7 +402,7 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
         {/* overPhoto: развёрнутое фото под шапкой и ещё не залито скроллом —
             шапка прозрачная, иконки/текст белые поверх верхнего градиента
             (tweb .need-white). Скролл → filled: сплошной фон, обычные цвета. */}
-        <div className={classNames(s.header, filled ? s.headerFilled : '', overPhoto ? s.headerWhite : '')}>
+        <div className={classNames(s.header, scrolled && !overPhoto ? s.headerScrolled : '', overPhoto ? s.headerWhite : '')}>
           <IconButton onClick={filled ? scrollBackToProfile : onClose} color={overPhoto ? '#fff' : 'var(--tg-textSecondary)'}>
             <TgIcon name={filled ? 'back' : 'close'} />
           </IconButton>
@@ -754,7 +763,7 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
             onOpenPeer={onOpenPeer}
             onEditMember={setEditMember}
             navRef={tabsBarRef}
-            stickyTop={0}
+            stickyTop={TAB_GAP}
             onCount={(name, n) => setTabCounts((c) => (c[name] === n ? c : { ...c, [name]: n }))}
           />
           </div>
@@ -904,6 +913,10 @@ function SharedMedia({ tab, onTab, chatId, members, savedDialogs, gifts, onOpenG
   const t = useT()
   const [lang] = useLang()
   const managers = useManagers()
+  // Ре-рендер при (пере)прайме медиа-токена — иначе превью сетки рендерятся с
+  // пустым/протухшим token'ом (401) и залипают серыми плейсхолдерами (как в фиде:
+  // RealMediaBubble/AlbumGrid тоже подписаны на useMediaTokenVersion).
+  useMediaTokenVersion()
   // Глобальный плеер: клик по строке «Музыка»/«Голосовые» ставит очередь из
   // сообщений таба; плеер-плашка выезжает над шапкой чата (NowPlayingBar).
   const meId = useChatsStore((st) => st.meId)
