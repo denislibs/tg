@@ -102,6 +102,11 @@
   position: relative;
 }
 
+// горизонтальный инсет инпутов от краёв секции (tweb .input-wrapper padding: 0 .5rem)
+.inputsPad {
+  padding: 4px 8px 0;
+}
+
 // иконка-смайл в конце поля-заметки
 .noteIcon {
   position: absolute;
