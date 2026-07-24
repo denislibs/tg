@@ -81,10 +81,20 @@
   :global(html[data-theme='dark']) & {
     --input-bg: #2b2b2b;
   }
+
+  // поля контакта чуть выше/просторнее (ближе к tweb .input-field ~54px) —
+  // перебивает базовые 48px/13px Input по специфичности (class + tag).
+  input {
+    height: 54px;
+    padding: 16px;
+  }
+  input:focus {
+    padding: 15px;
+  }
 }
 
 .fieldGap {
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 // обёртка поля-заметки с иконкой-смайлом справа
