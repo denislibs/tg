@@ -34,7 +34,7 @@ import { useLang } from '../i18n'
 import { lastSeenLabel } from '../core/presence'
 import { friendlyMsgTime } from '../core/friendlyTime'
 import { EXT_COLORS, extOf, firstUrl, fmtDur, fmtSize, hostOf } from '../core/sharedMediaFmt'
-import { mediaContentUrl, mediaThumbUrl } from '../core/mediaUrl'
+import { mediaContentUrl, mediaThumbUrl, useMediaTokenVersion } from '../core/mediaUrl'
 import type { Message } from '../core/models'
 import MediaLightbox, { type LightboxItem } from './messages/MediaLightbox'
 import { clampIndex, pickZone, stepIndex, indexAfterSwipe } from '../core/photoPager'
@@ -913,6 +913,10 @@ function SharedMedia({ tab, onTab, chatId, members, savedDialogs, gifts, onOpenG
   const t = useT()
   const [lang] = useLang()
   const managers = useManagers()
+  // Ре-рендер при (пере)прайме медиа-токена — иначе превью сетки рендерятся с
+  // пустым/протухшим token'ом (401) и залипают серыми плейсхолдерами (как в фиде:
+  // RealMediaBubble/AlbumGrid тоже подписаны на useMediaTokenVersion).
+  useMediaTokenVersion()
   // Глобальный плеер: клик по строке «Музыка»/«Голосовые» ставит очередь из
   // сообщений таба; плеер-плашка выезжает над шапкой чата (NowPlayingBar).
   const meId = useChatsStore((st) => st.meId)
