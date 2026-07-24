@@ -177,6 +177,7 @@ export default function EditContactView({
           ? { initial: { x: '100%' }, animate: { x: '0%' }, transition: { duration: DUR.in, ease: EASE } }
           : {})}
         className={`${add.panel} ${narrow ? add.panelNarrow : add.panelWide}`}
+        style={{ background: 'var(--tg-sectionBackdrop)' }}
       >
         <div className={add.header}>
           <IconButton onClick={onClose} color="var(--tg-textSecondary)">
