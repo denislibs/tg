@@ -10,6 +10,7 @@ import { useManagers } from '../../core/hooks/useManagers'
 import Avatar from '../../shared/ui/Avatar'
 import CommentsBar from '../CommentsBar'
 import { peerColor } from '../peerColor'
+import { gradientFor } from '../../core/dialogToChat'
 import { useLang, useT } from '../../i18n'
 import { startOfDayMs, dayLabel } from '../../core/dayLabel'
 import { mediaContentUrl, hasMediaToken, useMediaTokenVersion } from '../../core/mediaUrl'
@@ -83,7 +84,7 @@ function ChatFeed({
               onClick={g.senderId != null ? () => feedFns.openSender(g.senderId!, g.sender) : undefined}
               style={{ cursor: g.senderId != null ? 'pointer' : 'default' }}
             >
-              <Avatar background={g.color} text={g.sender[0]} size="sm" />
+              <Avatar background={g.senderId != null ? gradientFor(g.senderId) : g.color} text={g.sender[0]} size="sm" />
             </div>
           </div>
           <div className={s.groupBody}>{rows}</div>
