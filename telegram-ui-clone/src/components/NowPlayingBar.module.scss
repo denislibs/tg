@@ -74,13 +74,10 @@
   position: relative;
   display: flex;
 }
+// Попап громкости рендерится в портал; позицию задаёт fixed-обёртка. Здесь —
+// только вид. Верхний padding побольше = «мост» без зазора между кнопкой и
+// слайдером (иначе курсор пересекает пустоту и hover рвётся).
 .volPop {
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  // без зазора до кнопки: иначе курсор при движении к слайдеру пересекает пустоту
-  // и mouseleave закрывает попап (padding даёт визуальный отступ без «дыры»).
   padding: 14px 0 12px;
   width: 36px;
   height: 120px;
@@ -90,7 +87,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 40;
 }
 // Вертикальный слайдер громкости (pointer-drag по Y).
 .volTrack {
