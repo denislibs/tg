@@ -262,6 +262,9 @@ function Composer({
   const [cancelRecOpen, setCancelRecOpen] = useState(false)
   const editorRef = useRef<HTMLDivElement>(null)
   const hasText = !emptyDraft
+  // Кнопка в режиме микрофона, но медиа в группе запрещены — светло-серая,
+  // клик показывает тост вместо записи.
+  const micDisabled = !canSendMedia && !hasText && !rec.recording && !slowmodeBlocked
   // Тип записи (голос/кружок) — персист в settings; long-press/ПКМ по кнопке
   // открывает меню переключения (tweb chatRecording.setupRecordingModeMenu).
   const recordingMediaType = useSettingsStore((st) => st.recordingMediaType)
@@ -1082,8 +1085,8 @@ function Composer({
               }
               if (!hasText && !rec.recording && canSendMedia) openRecMenu(e.currentTarget as HTMLElement)
             }}
-            whileTap={{ scale: 0.92 }}
-            className={s.sendBtn}
+            whileTap={{ scale: micDisabled ? 1 : 0.92 }}
+            className={micDisabled ? `${s.sendBtn} ${s.sendBtnMuted}` : s.sendBtn}
           >
             <AnimatePresence mode="wait" initial={false}>
               <motion.span
@@ -1096,7 +1099,7 @@ function Composer({
               >
                 {slowmodeBlocked
                   ? <span className={s.slowmodeTimer}>{slowmodeText}</span>
-                  : hasText || rec.recording ? <TgIcon name="send" /> : <TgIcon name={recordingMediaType === 'round' ? 'recordround' : 'microphone_filled'} style={{ opacity: canSendMedia ? 1 : 0.4 }} />}
+                  : hasText || rec.recording ? <TgIcon name="send" /> : <TgIcon name={recordingMediaType === 'round' ? 'recordround' : 'microphone_filled'} />}
               </motion.span>
             </AnimatePresence>
             {/* Выбран эффект сообщения — маленький эмодзи-бейдж на кнопке отправки. */}
