@@ -140,8 +140,10 @@ func (r *MessagesRepo) GetAround(ctx context.Context, chatID, userID, centerSeq 
 // по наличию реакции на сообщении. Пустой q при заданном фильтре допустим.
 func (r *MessagesRepo) SearchMessages(ctx context.Context, chatID int64, q string, f usecasechat.SearchFilter, offset, limit int) ([]domain.Message, int, error) {
 	qq := querier(ctx, r.pool)
+	// type <> 'service': системные сообщения (создал группу, сменил фото, set_ttl…)
+	// не индексируются поиском — как в tweb (service-сообщения не ищутся).
 	where := ` FROM messages m LEFT JOIN media md ON md.id = m.media_id
-		WHERE m.chat_id=$1 AND m.deleted_at IS NULL`
+		WHERE m.chat_id=$1 AND m.deleted_at IS NULL AND m.type <> 'service'`
 	args := []any{chatID}
 	// add регистрирует значение и возвращает его плейсхолдер ($N).
 	add := func(v any) string {
@@ -230,7 +232,7 @@ func (r *MessagesRepo) GlobalSearchMessages(ctx context.Context, userID int64, q
 	where := ` FROM messages m
 		JOIN chat_members cm ON cm.chat_id = m.chat_id AND cm.user_id = $1
 		LEFT JOIN media md ON md.id = m.media_id
-		WHERE m.deleted_at IS NULL
+		WHERE m.deleted_at IS NULL AND m.type <> 'service'
 		  AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id = m.id AND h.user_id = $1)
 		  AND ((SELECT c.history_for_new FROM chats c WHERE c.id = m.chat_id)
 		       OR cm.role <> 'member' OR m.created_at >= cm.joined_at)`

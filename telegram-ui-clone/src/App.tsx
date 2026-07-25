@@ -483,6 +483,8 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
         '--tg-accentGradient': `linear-gradient(135deg, ${shellThemeVariant.accent}, ${shellThemeVariant.accent})`,
         '--tg-bubbleOutAccent': shellThemeVariant.accent,
         '--tg-bubbleOut': chatThemeBubbleOut(shellThemeVariant.accent, shellThemeMode),
+        // Бейдж непрочитанных (список чатов) — часть акцента темы (tweb .badge).
+        '--tg-badge': shellThemeVariant.accent,
       } as CSSProperties
     : undefined
 
