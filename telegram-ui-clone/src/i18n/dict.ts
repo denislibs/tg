@@ -690,6 +690,10 @@ const ru: Dict = {
   'Send When Online': 'Отправить, когда онлайн',
   'Scheduled until online': 'Отправится, когда будет в сети',
   Reschedule: 'Перепланировать',
+  // ── E2E-звонки: emoji-fingerprint (SAS) ──
+  'Encryption key': 'Ключ шифрования',
+  'If the emoji match on both devices, this call is end-to-end verified.':
+    'Если эмодзи совпадают на обоих устройствах — звонок защищён сквозным шифрованием.',
   // ── Поиск в чате: jump-to-date + фильтры (tweb topbarSearch) ──
   // (Photos/Videos/Files/Links/Music/'No results' уже есть в словаре выше)
   'Jump to Date': 'Перейти к дате',

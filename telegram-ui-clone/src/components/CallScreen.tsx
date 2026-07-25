@@ -32,6 +32,7 @@ export default function CallScreen() {
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteAudioRef = useRef<HTMLAudioElement>(null)
   const [secs, setSecs] = useState(0)
+  const [sasOpen, setSasOpen] = useState(false)
 
   // таймер длительности от момента соединения
   useEffect(() => {
@@ -107,6 +108,37 @@ export default function CallScreen() {
         transition={{ duration: 16, repeat: Infinity, ease: 'linear' }}
       />
       <div className={s.scrim} />
+
+      {/* E2E emoji-fingerprint (SAS): 4 эмодзи сверху-справа (модель Telegram-звонков).
+          Обе стороны видят одинаковую цепочку — сверяют голосом против MITM. */}
+      {call.phase !== 'ended' && call.e2eFingerprint && call.e2eFingerprint.length > 0 && (
+        <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 6, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+          <div
+            role="button"
+            tabIndex={0}
+            aria-label={t('Encryption key')}
+            onClick={() => setSasOpen((v) => !v)}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSasOpen((v) => !v) } }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+              padding: '5px 10px', borderRadius: 999,
+              background: 'rgba(0,0,0,0.28)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+            }}
+          >
+            <TgIcon name="lock" size={15} color="#fff" />
+            <span style={{ fontSize: 18, lineHeight: 1, letterSpacing: 1 }}>
+              {call.e2eFingerprint.slice(0, 4).join('')}
+            </span>
+          </div>
+          {sasOpen && (
+            <div style={{ maxWidth: 260, padding: '10px 12px', borderRadius: 12, background: 'rgba(0,0,0,0.42)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' }}>
+              <Text size={13.5} color="#fff">
+                {t('If the emoji match on both devices, this call is end-to-end verified.')}
+              </Text>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* remote-медиа: звук всегда, видео — на весь экран когда есть */}
       <audio ref={remoteAudioRef} autoPlay />
