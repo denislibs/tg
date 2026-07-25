@@ -5,8 +5,95 @@
   padding: 8px 2px 4px;
 }
 
+// кнопка «Создать» в шапке справа (tweb ADD): accent-пилюля, гаснет пока невалидно
+.addBtn {
+  border: none;
+  border-radius: 999px;
+  padding: 8px 18px;
+  background: var(--tg-accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+}
+
+// аватар слева + колонка имён справа
+.row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.names {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
 .field {
   width: 100%;
+}
+
+// поле телефона: прозрачный input поверх цветного дисплея
+.phoneField {
+  position: relative;
+  display: flex;
+}
+.phoneInput,
+.phoneDisplay {
+  width: 100%;
+  height: 48px;
+  box-sizing: border-box;
+  padding: 13px 16px;
+  border-radius: 16px;
+  font-size: 16px;
+  font-family: inherit;
+  letter-spacing: 0.02em;
+  white-space: pre;
+}
+.phoneInput {
+  // Рамка 1px и на фокусе (только смена цвета) — иначе overlay-маска съедет на 1px.
+  border: 1px solid var(--tg-inputBorderIdle);
+  background: transparent;
+  color: transparent;
+  caret-color: var(--tg-accent);
+  outline: none;
+  position: relative;
+  z-index: 1;
+  transition: border-color 0.2s;
+
+  @media (hover: hover) { &:hover { border-color: var(--tg-accent); } }
+  &:focus { border-color: var(--tg-accent); }
+}
+// видимый слой (та же строка/паддинги, что у input → каретка совпадает)
+.phoneDisplay {
+  position: absolute;
+  inset: 0;
+  border: 1px solid transparent;
+  color: var(--tg-textPrimary);
+  pointer-events: none;
+}
+.dash {
+  color: var(--tg-textFaint);
+}
+// плавающий лейбл «Номер телефона» — всегда сверху (в поле всегда есть +7)
+.phoneLabel {
+  position: absolute;
+  left: 12px;
+  top: 0;
+  transform: translateY(-50%);
+  padding: 0 4px;
+  background: var(--input-bg, var(--tg-sidebarBg));
+  color: var(--tg-textFaint);
+  font-size: 13px;
+  pointer-events: none;
+  z-index: 2;
 }
 
 .error {

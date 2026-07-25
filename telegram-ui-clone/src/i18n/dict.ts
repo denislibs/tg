@@ -759,6 +759,7 @@ const ru: Dict = {
   'Retract Vote': 'Отменить голос',
   // ── Чек-листы (Telegram todo list) ──
   Create: 'Создать',
+  'Creating…': 'Создание…',
   Checklist: 'Чек-лист',
   'Group Checklist': 'Групповой чек-лист',
   'New Checklist': 'Новый чек-лист',

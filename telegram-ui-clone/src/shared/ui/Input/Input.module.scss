@@ -2,7 +2,6 @@
 // высота 48, рамка --tg-inputBorderIdle → 2px accent в фокусе; лейбл всплывает при
 // фокусе/заполнении, перекрывая рамку фоном --input-bg (по умолчанию surface).
 .field {
-  --input-bg: var(--tg-sidebarBg);
   position: relative;
   display: flex;
 }
@@ -37,14 +36,17 @@
   }
 }
 
-// плавающий лейбл
+// плавающий лейбл. Пока лежит по центру (placeholder) — фона нет (иначе
+// получалась «белая плашка» за текстом); фон-нотч включается только когда лейбл
+// всплывает наверх и должен перекрыть рамку. Цвет нотча берётся из контекста
+// (--input-bg задаёт поверхность: карточка попапа/секции), фолбэк — sidebarBg.
 .label {
   position: absolute;
   left: 12px;
   top: 50%;
   transform: translateY(-50%);
   padding: 0 4px;
-  background: var(--input-bg);
+  background: transparent;
   color: var(--tg-textFaint);
   font-size: 16px;
   pointer-events: none;
@@ -54,6 +56,7 @@
 .input:not(:placeholder-shown) ~ .label {
   top: 0;
   font-size: 13px;
+  background: var(--input-bg, var(--tg-sidebarBg));
 }
 .input:focus ~ .label {
   color: var(--tg-accent);
