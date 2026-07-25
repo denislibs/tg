@@ -1,6 +1,7 @@
-import { memo, useRef, useState, type ReactNode } from 'react'
+import { memo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import Text from '../shared/ui/Text'
+import Menu, { MenuItem } from '../shared/ui/Menu'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon, { type IconName } from './TgIcon'
 import PlayPauseGlyph from './PlayPauseGlyph'
@@ -107,6 +108,15 @@ function NowPlayingBar() {
     clearTimeout(volCloseTimer.current)
     volCloseTimer.current = setTimeout(() => setVolOpen(false), 140)
   }
+  // Меню скорости — общий shared <Menu> (портал+бэкдроп). Позицию якорим под
+  // кнопкой, растём влево-вниз (кнопка у правого края плашки).
+  const rateBtnRef = useRef<HTMLButtonElement>(null)
+  const [rateStyle, setRateStyle] = useState<CSSProperties | undefined>(undefined)
+  const openRate = () => {
+    const r = rateBtnRef.current?.getBoundingClientRect()
+    if (r) setRateStyle({ top: r.bottom + 4, right: window.innerWidth - r.right, transformOrigin: 'top right' })
+    setRateOpen(true)
+  }
   const frac = duration > 0 ? currentTime / duration : 0
   const fmt = (s: number) => {
     if (!Number.isFinite(s) || s < 0) s = 0
@@ -169,38 +179,25 @@ function NowPlayingBar() {
 
             <div className={s.rateWrap}>
               <motion.button
+                ref={rateBtnRef}
                 type="button"
-                onClick={() => setRateOpen((o) => !o)}
+                onClick={() => (rateOpen ? setRateOpen(false) : openRate())}
                 whileTap={{ scale: 0.9 }}
                 className={classNames(s.rateBtn, rateOpen ? s.rateBtnActive : '')}
                 style={rateOpen ? { color: 'var(--tg-accent)', background: 'color-mix(in srgb, var(--tg-accent) 16%, transparent)' } : undefined}
               >
                 {rateLabel}
               </motion.button>
-              <AnimatePresence>
-                {rateOpen && (
-                  <>
-                    <div className={s.rateBackdrop} onClick={() => setRateOpen(false)} />
-                    <motion.div
-                      className={s.rateMenu}
-                      initial={{ opacity: 0, scale: 0.9, y: -6 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.9, y: -6 }}
-                      transition={{ duration: 0.15 }}
-                    >
-                      {[0.5, 1, 1.5, 2].map((r) => (
-                        <div
-                          key={r}
-                          onClick={() => { setRate(r); setRateOpen(false) }}
-                          className={classNames(s.rateItem, rate === r ? s.rateItemActive : '')}
-                        >
-                          {r}x
-                        </div>
-                      ))}
-                    </motion.div>
-                  </>
-                )}
-              </AnimatePresence>
+              <Menu open={rateOpen} onClose={() => setRateOpen(false)} style={rateStyle}>
+                {[0.5, 1, 1.5, 2].map((r) => (
+                  <MenuItem
+                    key={r}
+                    label={`${r}x`}
+                    right={rate === r ? <TgIcon name="check" size={18} color="var(--tg-accent)" /> : undefined}
+                    onClick={() => { setRate(r); setRateOpen(false) }}
+                  />
+                ))}
+              </Menu>
             </div>
             <RoundBtn onClick={closePlayer} color="var(--tg-textSecondary)" label="close">
               <TgIcon name="close" />
@@ -227,7 +224,7 @@ function NowPlayingBar() {
         {track && volOpen && volRect && (
           <div
             className={s.volPortal}
-            style={{ left: volRect.left + volRect.width / 2, top: volRect.bottom }}
+            style={{ left: volRect.left + volRect.width / 2, top: volRect.bottom - 6 }}
             onMouseEnter={openVol}
             onMouseLeave={scheduleCloseVol}
           >

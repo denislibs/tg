@@ -154,42 +154,7 @@
   }
 }
 
-// Меню выбора скорости
-.rateBackdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 39;
-}
-.rateMenu {
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  margin-top: 4px;
-  min-width: 96px;
-  padding: 4px 0;
-  border-radius: 12px;
-  background: var(--tg-bubble);
-  box-shadow: var(--tg-menuShadow);
-  z-index: 40;
-}
-.rateItem {
-  display: flex;
-  align-items: center;
-  height: 32px;
-  padding: 0 14px;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--tg-textPrimary);
-  cursor: pointer;
-
-  &:hover {
-    background: var(--tg-hover);
-  }
-}
-.rateItemActive {
-  color: var(--tg-accent);
-}
+// Меню скорости — общий shared <Menu> (портал+бэкдроп), свои классы не нужны.
 
 // Линия прогресса вдоль низа плашки (tweb)
 .progress {
