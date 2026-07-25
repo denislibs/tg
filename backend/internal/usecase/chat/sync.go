@@ -420,6 +420,18 @@ func (i *Interactor) GlobalSearchMessages(ctx context.Context, userID int64, q, 
 	return HistoryResult{Messages: msgs, Count: count}, nil
 }
 
+// CallLog — журнал звонков пользователя (вкладка «Звонки»): агрегирует
+// сообщения type='call' из его личных чатов, новые сверху.
+func (i *Interactor) CallLog(ctx context.Context, userID int64, offset, limit int) ([]domain.CallLogEntry, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 40
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return i.msgs.CallLog(ctx, userID, offset, limit)
+}
+
 // GetDifference returns updates with pts>sincePts, split by kind. If the client is
 // too far behind, TooLong is set so it can do a full resync (snapshot via ListDialogs).
 func (i *Interactor) GetDifference(ctx context.Context, userID, sincePts int64) (Difference, error) {

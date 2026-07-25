@@ -63,6 +63,8 @@ export interface MainMenuHandlers {
   onOpenPremium: () => void
   onOpenMyStories?: () => void
   onOpenCloseFriends?: () => void
+  onOpenWallet?: () => void
+  onOpenCalls?: () => void
   onLogout?: () => void
   onToggleMode?: (coords?: { x: number; y: number }) => void
 }
@@ -147,6 +149,8 @@ export default function FoldersSidebar({
         }}
         onOpenMyStories={menu.onOpenMyStories ? () => { setMenuOpen(false); menu.onOpenMyStories!() } : undefined}
         onOpenCloseFriends={menu.onOpenCloseFriends ? () => { setMenuOpen(false); menu.onOpenCloseFriends!() } : undefined}
+        onOpenWallet={menu.onOpenWallet ? () => { setMenuOpen(false); menu.onOpenWallet!() } : undefined}
+        onOpenCalls={menu.onOpenCalls ? () => { setMenuOpen(false); menu.onOpenCalls!() } : undefined}
         onLogout={menu.onLogout}
         onToggleMode={menu.onToggleMode}
       />

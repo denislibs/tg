@@ -17,12 +17,14 @@ export interface SidebarMenuButtonProps {
   onOpenPremium: () => void
   onOpenMyStories?: () => void
   onOpenCloseFriends?: () => void
+  onOpenWallet?: () => void
+  onOpenCalls?: () => void
   onLogout?: () => void
   onToggleMode?: (coords?: { x: number; y: number }) => void
 }
 
 function SidebarMenuButton({
-  searching, onBack, onOpenSettings, onOpenContacts, onOpenSaved, onOpenPremium, onOpenMyStories, onOpenCloseFriends, onLogout, onToggleMode,
+  searching, onBack, onOpenSettings, onOpenContacts, onOpenSaved, onOpenPremium, onOpenMyStories, onOpenCloseFriends, onOpenWallet, onOpenCalls, onLogout, onToggleMode,
 }: SidebarMenuButtonProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const close = () => setMenuOpen(false)
@@ -57,6 +59,8 @@ function SidebarMenuButton({
         onOpenPremium={act(onOpenPremium)}
         onOpenMyStories={onOpenMyStories ? act(onOpenMyStories) : undefined}
         onOpenCloseFriends={onOpenCloseFriends ? act(onOpenCloseFriends) : undefined}
+        onOpenWallet={onOpenWallet ? act(onOpenWallet) : undefined}
+        onOpenCalls={onOpenCalls ? act(onOpenCalls) : undefined}
         onLogout={onLogout ? act(onLogout) : undefined}
         onToggleMode={onToggleMode}
       />

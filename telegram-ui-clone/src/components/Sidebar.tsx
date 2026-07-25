@@ -26,6 +26,8 @@ import ComposeFab from './ComposeFab'
 import PremiumModal from './PremiumModal'
 import SettingsView from './SettingsView'
 import ContactsView from './ContactsView'
+import CallsView from './CallsView'
+import WalletView from './stars/WalletView'
 import NewGroupFlow from './NewGroupFlow'
 import NewChannelFlow from './NewChannelFlow'
 import NewPrivateChat from './NewPrivateChat'
@@ -89,6 +91,8 @@ export default function Sidebar({
   const [searching, setSearching] = useState(!!initialQuery)
   const [showSettings, setShowSettings] = useState(false)
   const [showContacts, setShowContacts] = useState(false)
+  const [showWallet, setShowWallet] = useState(false)
+  const [showCalls, setShowCalls] = useState(false)
   const [premiumOpen, setPremiumOpen] = useState(false)
   const [newGroupOpen, setNewGroupOpen] = useState(false)
   const [newChannelOpen, setNewChannelOpen] = useState(false)
@@ -275,6 +279,8 @@ export default function Sidebar({
             onOpenPremium: () => setPremiumOpen(true),
             onOpenMyStories: () => setShowArchive(true),
             onOpenCloseFriends: () => setShowCloseFriends(true),
+            onOpenWallet: () => setShowWallet(true),
+            onOpenCalls: () => setShowCalls(true),
             onLogout,
             onToggleMode,
           }}
@@ -298,6 +304,8 @@ export default function Sidebar({
             onOpenPremium={() => setPremiumOpen(true)}
             onOpenMyStories={() => setShowArchive(true)}
             onOpenCloseFriends={() => setShowCloseFriends(true)}
+            onOpenWallet={() => setShowWallet(true)}
+            onOpenCalls={() => setShowCalls(true)}
             onLogout={onLogout}
             onToggleMode={onToggleMode}
           />
@@ -524,6 +532,17 @@ export default function Sidebar({
             onToggleMode={onToggleMode}
             chats={chats}
             initialSub={settingsSub ?? undefined}
+          />
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {showWallet && <WalletView onBack={() => setShowWallet(false)} />}
+      </AnimatePresence>
+      <AnimatePresence>
+        {showCalls && (
+          <CallsView
+            onBack={() => setShowCalls(false)}
+            onOpenChat={(chatId) => { setShowCalls(false); onSelect(String(chatId)) }}
           />
         )}
       </AnimatePresence>

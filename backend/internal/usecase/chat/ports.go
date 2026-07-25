@@ -201,6 +201,9 @@ type MessageRepo interface {
 	// filter narrows by shared-media kind ("" = any type).
 	GlobalSearchMessages(ctx context.Context, userID int64, q, filter string, offset, limit int) ([]domain.Message, int, error)
 	MediaHistory(ctx context.Context, chatID int64, filter string, offset, limit int) ([]domain.Message, int, error)
+	// CallLog — журнал звонков (type='call' сообщения из личных чатов userID,
+	// обогащённые собеседником). Для вкладки «Звонки».
+	CallLog(ctx context.Context, userID int64, offset, limit int) ([]domain.CallLogEntry, error)
 	// threadRootID != nil ограничивает окно тредом (топик/комментарии): сообщения
 	// с этим thread_root_id + само корневое сообщение.
 	// clearedSeq — персональный горизонт «очистки истории»: сообщения с
@@ -547,6 +550,10 @@ type StarsRepo interface {
 	// Convert обменивает подарок на звёзды владельцу: помечает converted и
 	// возвращает число возвращённых звёзд. Повтор/чужой → domain.ErrForbidden.
 	Convert(ctx context.Context, savedID, ownerID int64) (int64, error)
+	// RecordTx пишет строку в леджер транзакций звёзд (best-effort история).
+	RecordTx(ctx context.Context, userID, amount int64, kind, title string, peerID *int64) error
+	// Transactions — история движений баланса, новые сверху.
+	Transactions(ctx context.Context, userID int64, offset, limit int) ([]domain.StarTransaction, error)
 }
 
 // BoostRepo хранит бусты каналов (channel_boosts). Активны бусты с

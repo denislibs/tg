@@ -277,6 +277,40 @@ func (r *MessagesRepo) GlobalSearchMessages(ctx context.Context, userID int64, q
 	return out, count, rows.Err()
 }
 
+// CallLog — журнал звонков пользователя: сообщения type='call' из его личных
+// чатов, обогащённые собеседником (другой участник приватного чата). Out —
+// инициатор сам пользователь. Newest first. Для вкладки «Звонки» (агрегирует
+// messageActionPhoneCall, как в Telegram).
+func (r *MessagesRepo) CallLog(ctx context.Context, userID int64, offset, limit int) ([]domain.CallLogEntry, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT m.id, m.chat_id, m.sender_id, m.text, m.created_at,
+		        u.id, COALESCE(NULLIF(u.first_name,''), u.display_name), COALESCE(u.avatar_url,'')
+		   FROM messages m
+		   JOIN chats c ON c.id = m.chat_id AND c.type = 'private'
+		   JOIN chat_members other ON other.chat_id = m.chat_id AND other.user_id <> $1
+		   JOIN users u ON u.id = other.user_id
+		  WHERE m.type = 'call' AND m.deleted_at IS NULL
+		    AND EXISTS (SELECT 1 FROM chat_members me WHERE me.chat_id = m.chat_id AND me.user_id = $1)
+		  ORDER BY m.id DESC LIMIT $2 OFFSET $3`, userID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.CallLogEntry
+	for rows.Next() {
+		var e domain.CallLogEntry
+		var senderID int64
+		var created time.Time
+		if err := rows.Scan(&e.ID, &e.ChatID, &senderID, &e.Text, &created, &e.PeerID, &e.PeerName, &e.PeerAvatar); err != nil {
+			return nil, err
+		}
+		e.Out = senderID == userID
+		e.Date = created.Format(time.RFC3339)
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 // MediaHistory returns a chat's messages of one shared-media kind (the
 // profile's Media/Files/Links/Music/Voice tabs — tweb inputMessagesFilter*),
 // newest first. "links" is text messages containing a URL; the rest filter by
