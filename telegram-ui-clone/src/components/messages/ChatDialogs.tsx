@@ -199,6 +199,60 @@ export function ContactPicker({ dialogs, onPick, onClose }: {
   )
 }
 
+// Single-select chat picker (tweb ReplyToAnotherChat): выбор ОДНОГО чата, куда
+// перенести ответ. Та же карточка с поиском, что ForwardPicker/ContactPicker.
+export function ChatPicker({ dialogs, title, onPick, onClose }: {
+  dialogs: Dialog[]
+  title: string
+  onPick: (chatId: number) => void
+  onClose: () => void
+}) {
+  const t = useT()
+  const [q, setQ] = useState('')
+  const [open, setOpen] = useState(true)
+  const picked = useRef<number | null>(null)
+  const pick = (chatId: number) => { picked.current = chatId; setOpen(false) }
+  const query = q.trim().toLowerCase()
+  const rows = dialogs
+    .map((d) => ({
+      chatId: d.chatId,
+      title: d.title || d.peer?.displayName || `Чат ${d.chatId}`,
+      sub: d.type === 'channel' ? t('Channel') : d.type === 'group' ? t('Group') : t('Private Chat'),
+    }))
+    .filter((r) => !query || r.title.toLowerCase().includes(query))
+  return (
+    <Popup
+      open={open}
+      title={title}
+      onClose={() => setOpen(false)}
+      onExitComplete={() => { const c = picked.current; if (c != null) onPick(c); else onClose() }}
+      width={440}
+    >
+      <div className={s.pickerSearch}>
+        <TgIcon name="search" size={20} color="var(--tg-textFaint)" />
+        <input
+          className={s.pickerSearchInput}
+          autoFocus
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder={t('Search')}
+        />
+      </div>
+      <div className={s.pickerList}>
+        {rows.map((r) => (
+          <div key={r.chatId} className={s.listRow} onClick={() => pick(r.chatId)}>
+            <Avatar background={peerColor(r.title)} text={r.title[0] ?? '?'} size="md" />
+            <div className={s.pickerBody}>
+              <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{r.title}</Text>
+              <Text noWrap size={13.5} color="var(--tg-textSecondary)">{r.sub}</Text>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Popup>
+  )
+}
+
 // "Seen by" popup anchored at (x, y).
 export function ViewersPopup({ x, y, names, onClose }: {
   x: number

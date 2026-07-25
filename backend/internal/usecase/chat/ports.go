@@ -479,7 +479,19 @@ type ScheduledRepo interface {
 	CountByUser(ctx context.Context, senderID int64) (int, error)
 	ByID(ctx context.Context, id int64) (domain.ScheduledMessage, error)
 	Delete(ctx context.Context, id int64) error
+	// Due — созревшие по времени (send_at<=now, without when_online).
 	Due(ctx context.Context, now time.Time, limit int) ([]domain.ScheduledMessage, error)
+	// DueWhenOnline — записи с флагом when_online (отправляются, когда собеседник
+	// приватного чата онлайн; момент проверяет воркер через PresenceQuery).
+	DueWhenOnline(ctx context.Context, limit int) ([]domain.ScheduledMessage, error)
+	// UpdateSendAt переносит запланированное сообщение на новое время (reschedule).
+	UpdateSendAt(ctx context.Context, id int64, sendAt time.Time) error
+}
+
+// PresenceQuery отвечает, онлайн ли пользователь (Redis presence). Опционален —
+// без него «отправить когда онлайн» не срабатывает (сообщение просто ждёт).
+type PresenceQuery interface {
+	IsOnline(ctx context.Context, userID int64) (bool, error)
 }
 
 // PollRepo хранит опросы и голоса.

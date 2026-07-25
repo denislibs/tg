@@ -161,6 +161,12 @@ func (i *Interactor) hydrateReplies(ctx context.Context, msgs []domain.Message) 
 	ids := make([]int64, 0)
 	seen := map[int64]bool{}
 	for _, m := range msgs {
+		// Кросс-чат-ответ: оригинал в ДРУГОМ чате — его контент НЕ подтягиваем
+		// (клиент рисует превью из снимка reply_snapshot_*). Иначе любой участник
+		// вычитал бы содержимое чужого чата через историю.
+		if m.ReplyToPeerID != nil {
+			continue
+		}
 		if m.ReplyToID != nil && !seen[*m.ReplyToID] {
 			seen[*m.ReplyToID] = true
 			ids = append(ids, *m.ReplyToID)
@@ -178,12 +184,18 @@ func (i *Interactor) hydrateReplies(ctx context.Context, msgs []domain.Message) 
 		byID[t.ID] = t
 	}
 	for idx := range msgs {
+		// Кросс-чат-ответ рисуется из снимка — реальный оригинал не отдаём.
+		if msgs[idx].ReplyToPeerID != nil {
+			continue
+		}
 		rid := msgs[idx].ReplyToID
 		if rid == nil {
 			continue
 		}
 		t, ok := byID[*rid]
-		if !ok || t.Deleted {
+		// defense-in-depth: оригинал только из того же чата, что и ответ; иначе
+		// пропускаем (не даём просочиться контенту чужого чата).
+		if !ok || t.Deleted || t.ChatID != msgs[idx].ChatID {
 			continue
 		}
 		text := t.Text

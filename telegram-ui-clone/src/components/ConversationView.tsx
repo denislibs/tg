@@ -88,7 +88,7 @@ import { type MessageEntity } from '../core/models'
 import type { InlineResult } from '../core/managers/botsManager'
 import { openWebApp } from '../core/webapp'
 import { useSearchStore } from '../stores/searchStore'
-import { ContactPicker, DeleteMessageDialog, ForwardPicker, ViewersPopup, ReactedUsersPopup } from './messages/ChatDialogs'
+import { ChatPicker, ContactPicker, DeleteMessageDialog, ForwardPicker, ViewersPopup, ReactedUsersPopup } from './messages/ChatDialogs'
 import TranslatePopup from './messages/TranslatePopup'
 import LocationPicker from './LocationPicker'
 import SendMediaPopup from './messages/SendMediaPopup'
@@ -383,6 +383,21 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
         setScheduledOpen(true) // tweb: после планирования открывает scheduled-вид
       })
   })
+  // «Отправить, когда онлайн» (tweb canSendWhenOnline): личный чат (не сам с собой),
+  // статус собеседника виден (lastSeen>0) и он НЕ онлайн. Планирование без даты —
+  // send_at 0, флаг when_online (бэк ждёт presence).
+  const canSendWhenOnline =
+    isRealChat && !thread && chat.type === 'private' &&
+    chat.peerId != null && chat.peerId !== meId &&
+    peerPresence != null && !peerPresence.online && peerPresence.lastSeen > 0
+  const onComposerSendWhenOnline = useEvent((text: string, entities: MessageEntity[] | undefined) => {
+    void managers.messages
+      .scheduleMessage(numericChatId, { text, entities, sendAt: 0, whenOnline: true })
+      .then(() => {
+        setScheduledCount((c) => c + 1)
+        setScheduledOpen(true)
+      })
+  })
   // Scroll state machine (refs + bottom-pin intent + history pagination + scroll-restore
   // + jump-to-message + scroll-to-bottom + read-marker) — extracted view-model hook.
   // Owns atBottomRef/userScrolledUpRef (passed into useChatSend so a send pins to bottom).
@@ -497,6 +512,23 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     if (rs) setReply(rs)
   }, [draftReplyToId, msgs, reply, chat.name, accentColor, setReply])
 
+  // Кросс-чат ответ (tweb ReplyToAnotherChat): целевой чат открыт → ставим
+  // reply-плашку из pending-reply (исходный чат + снимок оригинала) и чистим стор.
+  const pendingReply = useSearchStore((s) => s.pendingReply)
+  useEffect(() => {
+    if (!pendingReply || pendingReply.targetChatId !== numericChatId) return
+    setReply({
+      msgId: pendingReply.msgId,
+      name: pendingReply.name,
+      text: pendingReply.text,
+      color: pendingReply.color,
+      chatId: pendingReply.sourceChatId,
+      snapshotName: pendingReply.name,
+      snapshotText: pendingReply.text,
+    })
+    useSearchStore.getState().clearPendingReply()
+  }, [pendingReply, numericChatId, setReply])
+
   // Message context menu + its actions (reply/edit/copy/pin/delete/forward/select/
   // download/viewers) and the delete-confirm / forward-picker / viewers-popup state.
   const {
@@ -507,6 +539,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     factCheckEdit, submitFactCheck, closeFactCheckEditor,
     delIds, doDelete, closeDelete, openDeleteFor,
     forwardIds, forwardHasCaption, doForward, closeForward, openForwardFor,
+    replyAnother, pickReplyAnotherChat, closeReplyAnother,
     viewers, closeViewers,
     reacted, closeReacted,
     translateText, closeTranslate,
@@ -1072,6 +1105,8 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               onPickInline={onComposerPickInline}
               botMenuButton={botMenu ? { text: botMenu.text, onClick: () => openWebApp({ url: botMenu.url, botName: chat.name }) } : undefined}
               onSchedule={isRealChat ? onComposerSchedule : undefined}
+              canSendWhenOnline={canSendWhenOnline}
+              onSendWhenOnline={canSendWhenOnline ? onComposerSendWhenOnline : undefined}
               scheduledCount={scheduledCount}
               onOpenScheduled={() => setScheduledOpen(true)}
               slowmodeLeft={slowmodeLeft}
@@ -1436,6 +1471,16 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       {/* Forward target picker */}
       {forwardIds != null && (
         <ForwardPicker dialogs={allDialogs} hasCaption={forwardHasCaption} onPick={doForward} onClose={closeForward} />
+      )}
+
+      {/* «Ответить в другом чате» (tweb ReplyToAnotherChat): выбор целевого чата */}
+      {replyAnother && (
+        <ChatPicker
+          dialogs={allDialogs}
+          title={t('Reply in Another Chat')}
+          onPick={pickReplyAnotherChat}
+          onClose={closeReplyAnother}
+        />
       )}
 
       {/* Delete confirmation (for me / for everyone) */}

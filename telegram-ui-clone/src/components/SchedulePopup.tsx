@@ -8,15 +8,23 @@ import s from './SchedulePopup.module.scss'
 
 const pad = (n: number) => String(n).padStart(2, '0')
 
-export default function SchedulePopup({ onPick, onClose }: {
+export default function SchedulePopup({ onPick, onClose, initUnix, onWhenOnline }: {
   onPick: (unixSeconds: number) => void
   onClose: () => void
+  /** перепланирование (tweb MessageScheduleEditTime): начальные дата/время */
+  initUnix?: number
+  /** вторичная кнопка «Отправить, когда онлайн» (tweb Schedule.SendWhenOnline) */
+  onWhenOnline?: () => void
 }) {
   const t = useT()
   const now = new Date()
-  const in10 = new Date(now.getTime() + 10 * 60_000)
-  const [date, setDate] = useState(`${in10.getFullYear()}-${pad(in10.getMonth() + 1)}-${pad(in10.getDate())}`)
-  const [time, setTime] = useState(`${pad(in10.getHours())}:${pad(in10.getMinutes())}`)
+  // Начальная дата: перепланируемое время (initUnix) либо «сейчас + 10 минут».
+  // Невалидную/прошлую метку (напр. у when_online-записи) заменяем на +10 минут.
+  const fallback = new Date(now.getTime() + 10 * 60_000)
+  const fromInit = initUnix != null ? new Date(initUnix * 1000) : null
+  const init = fromInit && !Number.isNaN(fromInit.getTime()) && fromInit.getTime() > now.getTime() ? fromInit : fallback
+  const [date, setDate] = useState(`${init.getFullYear()}-${pad(init.getMonth() + 1)}-${pad(init.getDate())}`)
+  const [time, setTime] = useState(`${pad(init.getHours())}:${pad(init.getMinutes())}`)
 
   const picked = new Date(`${date}T${time}:00`)
   const valid = !Number.isNaN(picked.getTime()) && picked.getTime() > Date.now()
@@ -36,6 +44,12 @@ export default function SchedulePopup({ onPick, onClose }: {
       <div className={s.body}>
         <input className={s.field} type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         <input className={s.field} type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+        {/* Вторичная кнопка «Отправить, когда онлайн» (tweb footerAfter). */}
+        {onWhenOnline && (
+          <button type="button" className={s.whenOnline} onClick={onWhenOnline}>
+            {t('Send When Online')}
+          </button>
+        )}
       </div>
     </Popup>
   )

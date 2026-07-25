@@ -19,6 +19,69 @@ const maxMessageRunes = 4096
 // quote), bounding storage/render cost independently of the full message limit.
 const maxReplyQuoteRunes = 1024
 
+// replySnapshotMaxRunes caps the cross-chat reply preview text snapshot (a short
+// preview line, not the whole message).
+const replySnapshotMaxRunes = 120
+
+// replyAuthorName resolves the display name of a replied-to message's author for
+// the cross-chat reply snapshot: the send-as channel/group title when posted
+// under one, else the sender's display name.
+func (i *Interactor) replyAuthorName(ctx context.Context, orig domain.Message) string {
+	if orig.SendAsChatID != nil && i.groups != nil {
+		if briefs, err := i.groups.ChatBriefs(ctx, []int64{*orig.SendAsChatID}); err == nil {
+			if b, ok := briefs[*orig.SendAsChatID]; ok && b.Title != "" {
+				return b.Title
+			}
+		}
+	}
+	return i.userCard(ctx, orig.SenderID).DisplayName
+}
+
+// replySnapshotText builds the cross-chat reply preview text: the original text
+// (truncated), or a short media label when the original has no text.
+func replySnapshotText(orig domain.Message) string {
+	if orig.Text != "" {
+		if utf8.RuneCountInString(orig.Text) > replySnapshotMaxRunes {
+			return string([]rune(orig.Text)[:replySnapshotMaxRunes])
+		}
+		return orig.Text
+	}
+	return mediaLabel(orig.Type)
+}
+
+// mediaLabel is the short type label for caption-less media in a reply preview,
+// mirroring the frontend mediaLabel (core/dialogToChat.ts).
+func mediaLabel(typ string) string {
+	switch typ {
+	case "photo":
+		return "Фото"
+	case "video":
+		return "Видео"
+	case "roundVideo":
+		return "Видеосообщение"
+	case "voice":
+		return "Голосовое сообщение"
+	case "audio":
+		return "Аудио"
+	case "document":
+		return "Файл"
+	case "sticker":
+		return "Стикер"
+	case "call":
+		return "Звонок"
+	case "poll":
+		return "📊 Опрос"
+	case "geo":
+		return "📍 Геолокация"
+	case "contact":
+		return "👤 Контакт"
+	case "gift":
+		return "🎁 Подарок"
+	default:
+		return ""
+	}
+}
+
 // mentionedUserIDs collects the distinct target users of a message's
 // "text_mention" entities (Telegram's mention-of-a-user-without-username, which
 // carries the user id inline). Plain "@username" mentions aren't resolved here —
@@ -66,6 +129,40 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		return domain.Message{}, domain.ErrTooLong
 	}
 	in.Entities = sanitizeEntities(in.Entities)
+	// Ответ на сообщение: источник истины — ФАКТИЧЕСКИЙ чат оригинала, а не
+	// присланный клиентом reply_to_peer_id (клиенту не доверяем). Резолвим
+	// оригинал по ReplyToID всегда, когда ответ есть.
+	//   • оригинал в ДРУГОМ чате → кросс-чат-ответ (Telegram reply_to_peer_id):
+	//     проверяем членство отправителя в том чате (нет доступа → forbidden) и
+	//     собираем снимок превью (имя автора + текст/лейбл) прямо на ответе, т.к.
+	//     получатель может не иметь доступа к исходному чату;
+	//   • оригинал в текущем чате → обычный ответ (снимки пустые, peer nil);
+	//   • оригинал не найден/удалён → как ненайденный reply: не падаем, снимков нет.
+	var replyPeerID *int64
+	var snapName, snapText string
+	if in.ReplyToID != nil {
+		orig, err := i.msgs.GetByID(ctx, *in.ReplyToID)
+		switch {
+		case errors.Is(err, domain.ErrNotFound):
+			// ненайденный оригинал — обычный reply без снимка (не ошибка)
+		case err != nil:
+			return domain.Message{}, err
+		case orig.Deleted:
+			// удалённый оригинал — как ненайденный
+		case orig.ChatID != in.ChatID:
+			ok, err := i.chats.IsMember(ctx, orig.ChatID, in.SenderID)
+			if err != nil {
+				return domain.Message{}, err
+			}
+			if !ok {
+				return domain.Message{}, domain.ErrForbidden // нет доступа к исходному чату
+			}
+			srcChat := orig.ChatID
+			replyPeerID = &srcChat
+			snapName = i.replyAuthorName(ctx, orig)
+			snapText = replySnapshotText(orig)
+		}
+	}
 	// Reply quote: осмыслен только при ответе; обрезаем длину, пустой — сбрасываем.
 	if in.ReplyToID == nil {
 		in.ReplyQuoteText, in.ReplyQuoteOffset = nil, nil
@@ -220,6 +317,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			ChatID: in.ChatID, Seq: seq, SenderID: in.SenderID,
 			Type: in.Type, Text: in.Text, Entities: in.Entities, ReplyToID: in.ReplyToID, ClientMsgID: cmid,
 			ReplyQuoteText: in.ReplyQuoteText, ReplyQuoteOffset: in.ReplyQuoteOffset,
+			ReplyToPeerID: replyPeerID, ReplySnapshotName: snapName, ReplySnapshotText: snapText,
 			MediaID: in.MediaID, ThreadRootID: in.ThreadRootID, GroupedID: groupedID, PollID: in.PollID,
 			ChecklistID: in.ChecklistID,
 			GiveawayID:  in.GiveawayID,

@@ -84,6 +84,14 @@ type Message struct {
 	// Хранятся на отвечающем сообщении; nil — обычный ответ на всё сообщение.
 	ReplyQuoteText   *string
 	ReplyQuoteOffset *int
+	// Ответ на сообщение из ДРУГОГО чата (Telegram reply_to_peer_id): исходный
+	// чат оригинала (ReplyToID — id того сообщения). Т.к. получатель может не
+	// иметь доступа к исходному чату, превью сохраняется снимком прямо здесь:
+	// ReplySnapshotName — отображаемое имя автора оригинала, ReplySnapshotText —
+	// текст/лейбл медиа для превью. Nil/пусто — обычный ответ в том же чате.
+	ReplyToPeerID     *int64
+	ReplySnapshotName string
+	ReplySnapshotText string
 	// Media dimensions/mime, populated by the history read model (not stored on the
 	// message row) so the client can reserve the exact media box before the bytes
 	// load — no layout shift. Zero when there's no media or it's unprocessed.

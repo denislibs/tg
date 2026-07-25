@@ -83,6 +83,44 @@ describe('messageToConvMsg', () => {
     expect(c.out).toBe(true)
     expect(c.sender).toBeUndefined()
   })
+
+  // Кросс-чат ответ (tweb ReplyToAnotherChat): превью строится из готового снимка,
+  // а не из replyTo (оригинала нет в текущем сторе). seq не задаётся → не кликабельно.
+  it('builds the reply preview from the cross-chat snapshot', () => {
+    const c = messageToConvMsg(
+      { ...base, replyToPeerId: 99, replySnapshotName: 'Алиса', replySnapshotText: 'Фотография' },
+      7,
+    )
+    expect(c.replyToPeerId).toBe(99)
+    expect(c.reply?.name).toBe('Алиса')
+    expect(c.reply?.text).toBe('Фотография')
+    expect(c.reply?.seq).toBeUndefined()
+  })
+
+  it('prefers the cross-chat snapshot over an in-chat replyTo', () => {
+    const c = messageToConvMsg(
+      {
+        ...base,
+        replyToPeerId: 99, replySnapshotName: 'Боб', replySnapshotText: 'привет из другого чата',
+        replyTo: { msgId: 5, seq: 5, senderId: 3, text: 'local', type: 'text' },
+      },
+      7,
+    )
+    expect(c.reply?.name).toBe('Боб')
+    expect(c.reply?.text).toBe('привет из другого чата')
+  })
+
+  it('keeps the normal in-chat reply preview when there is no cross-chat peer', () => {
+    const c = messageToConvMsg(
+      { ...base, replyTo: { msgId: 5, seq: 5, senderId: 3, text: 'local', type: 'text' } },
+      7,
+      { replyToName: 'Кэрол' },
+    )
+    expect(c.replyToPeerId).toBeUndefined()
+    expect(c.reply?.name).toBe('Кэрол')
+    expect(c.reply?.text).toBe('local')
+    expect(c.reply?.seq).toBe(5)
+  })
 })
 
 describe('messageToConvMsg — actions', () => {
