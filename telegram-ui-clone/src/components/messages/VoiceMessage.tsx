@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import Text from '../../shared/ui/Text'
 import PlayPauseGlyph from '../PlayPauseGlyph'
 import { useManagers } from '../../core/hooks/useManagers'
-import { useAudioStore } from '../../stores/audioStore'
+import { useAudioStore, prefetchSecretAudio } from '../../stores/audioStore'
 import { useWaveform, WAVE_BARS } from '../../core/audio/waveform'
 import { Ticks } from './MessageBubbles'
 import { useTranscription, TranscribeButton, TranscribedText } from './Transcription'
@@ -77,6 +77,13 @@ export default function VoiceMessage({
       alive = false
     }
   }, [mediaId, managers, secretMedia])
+
+  // Секретный голос: заранее скачиваем+расшифровываем blob, чтобы к клику URL был
+  // готов и .play() вызвался в рамках user-gesture (иначе await теряет активацию).
+  useEffect(() => {
+    if (!secretMedia) return
+    void prefetchSecretAudio(mediaId, { keyB64: secretMedia.keyB64, ivB64: secretMedia.ivB64, mime: secretMedia.mime }).catch(() => {})
+  }, [mediaId, secretMedia])
 
   const duration = isCurrent && curDur ? curDur : metaDur
   const progress = isCurrent && duration ? curTime / duration : 0

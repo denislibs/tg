@@ -71,7 +71,7 @@ function NowPlayingBar() {
     if (!Number.isFinite(s) || s < 0) s = 0
     return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
   }
-  const rateLabel = rate === 1 ? '1X' : rate === 1.5 ? '1.5X' : '2X'
+  const rateLabel = `${rate}X` // 0.5x/1x/1.5x/2x — раньше 0.5x ошибочно показывал «2X»
   const effVol = muted ? 0 : volume
   const volIconName: IconName = effVol === 0 ? 'volume_off' : effVol < 0.5 ? 'volume_down' : 'volume_up'
 
