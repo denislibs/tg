@@ -8,6 +8,7 @@ import { Ticks } from './MessageBubbles'
 import { useTranscription, TranscribeButton, TranscribedText } from './Transcription'
 import classNames from '../../shared/lib/classNames'
 import type { MsgStatus } from '../../data'
+import type { SecretMedia } from '../../core/models'
 import s from './VoiceMessage.module.scss'
 
 // A flat placeholder shown until the real waveform is decoded.
@@ -25,6 +26,7 @@ export default function VoiceMessage({
   msgId,
   chatId,
   transcription,
+  secretMedia,
   out,
   time,
   status,
@@ -39,6 +41,8 @@ export default function VoiceMessage({
   chatId?: number
   /** кэш расшифровки на сообщении (Telegram transcribeAudio) */
   transcription?: string
+  /** секретный чат (E2E): ключ/iv/mime для расшифровки ciphertext'а голоса */
+  secretMedia?: SecretMedia
   out: boolean
   time?: string
   status?: MsgStatus
@@ -49,7 +53,7 @@ export default function VoiceMessage({
 }) {
   const managers = useManagers()
   const tr = useTranscription(chatId, msgId, transcription)
-  const decoded = useWaveform(mediaId)
+  const decoded = useWaveform(mediaId, secretMedia ? { keyB64: secretMedia.keyB64, ivB64: secretMedia.ivB64 } : undefined)
   const bars = decoded.length ? decoded : PLACEHOLDER
   const [metaDur, setMetaDur] = useState(0)
 
@@ -60,8 +64,11 @@ export default function VoiceMessage({
   const seekFraction = useAudioStore((s) => s.seekFraction)
   const toggle = useAudioStore((s) => s.toggle)
 
-  // Backend-reported duration (recorded length) for the idle display.
+  // Backend-reported duration (recorded length) for the idle display. Для
+  // секретного голоса meta бесполезна (сервер видит только ciphertext) —
+  // длительность возьмётся из decoded blob при воспроизведении (curDur).
   useEffect(() => {
+    if (secretMedia) return
     let alive = true
     void managers.media.meta(mediaId).then((m) => {
       if (alive) setMetaDur(m.duration || 0)
@@ -69,7 +76,7 @@ export default function VoiceMessage({
     return () => {
       alive = false
     }
-  }, [mediaId, managers])
+  }, [mediaId, managers, secretMedia])
 
   const duration = isCurrent && curDur ? curDur : metaDur
   const progress = isCurrent && duration ? curTime / duration : 0

@@ -18,6 +18,10 @@ var ErrSelfContact = errors.New("cannot add yourself as a contact")
 // ErrPhoneRequired — при добавлении по номеру не передан телефон.
 var ErrPhoneRequired = errors.New("phone is required")
 
+// ErrCannotAddBot — попытка добавить бота в контакты (Telegram: ботов нельзя
+// держать в адресной книге). Хендлер мапит в 400.
+var ErrCannotAddBot = errors.New("cannot add a bot as a contact")
+
 // Interactor is the contacts application service.
 type Interactor struct {
 	repo    ContactsRepo
@@ -75,7 +79,7 @@ func (i *Interactor) Add(ctx context.Context, ownerID int64, in AddInput) (domai
 	if first == "" {
 		return domain.Contact{}, ErrNameRequired
 	}
-	return i.repo.Add(ctx, domain.Contact{
+	c, err := i.repo.Add(ctx, domain.Contact{
 		OwnerID:    ownerID,
 		UserID:     in.UserID,
 		FirstName:  first,
@@ -83,6 +87,16 @@ func (i *Interactor) Add(ctx context.Context, ownerID int64, in AddInput) (domai
 		Note:       strings.TrimSpace(in.Note),
 		SharePhone: in.SharePhone,
 	})
+	if err != nil {
+		return domain.Contact{}, err
+	}
+	// Бот в контактах недопустим (Telegram). Upsert уже вернул обогащённый is_bot —
+	// откатываем запись и отдаём ошибку (defense-in-depth к фронт-фильтру).
+	if c.IsBot {
+		_, _ = i.repo.Delete(ctx, ownerID, in.UserID)
+		return domain.Contact{}, ErrCannotAddBot
+	}
+	return c, nil
 }
 
 // AddByPhoneInput — добавление контакта по номеру телефона (как tweb
@@ -125,7 +139,7 @@ func (i *Interactor) AddByPhone(ctx context.Context, ownerID int64, in AddByPhon
 			return domain.Contact{}, domain.ErrPrivacy
 		}
 	}
-	return i.repo.Add(ctx, domain.Contact{
+	c, err := i.repo.Add(ctx, domain.Contact{
 		OwnerID:    ownerID,
 		UserID:     userID,
 		FirstName:  first,
@@ -133,6 +147,14 @@ func (i *Interactor) AddByPhone(ctx context.Context, ownerID int64, in AddByPhon
 		Note:       strings.TrimSpace(in.Note),
 		SharePhone: in.SharePhone,
 	})
+	if err != nil {
+		return domain.Contact{}, err
+	}
+	if c.IsBot {
+		_, _ = i.repo.Delete(ctx, ownerID, userID)
+		return domain.Contact{}, ErrCannotAddBot
+	}
+	return c, nil
 }
 
 // List returns ownerID's address book, ordered by saved name. Телефон контакта
@@ -141,6 +163,17 @@ func (i *Interactor) List(ctx context.Context, ownerID int64) ([]domain.Contact,
 	list, err := i.repo.List(ctx, ownerID)
 	if err != nil || len(list) == 0 {
 		return list, err
+	}
+	// Ботов в адресной книге быть не должно (старые записи/сиды) — отфильтровываем.
+	filtered := list[:0]
+	for _, c := range list {
+		if !c.IsBot {
+			filtered = append(filtered, c)
+		}
+	}
+	list = filtered
+	if len(list) == 0 {
+		return list, nil
 	}
 	ids := make([]int64, 0, len(list))
 	for _, c := range list {

@@ -8,6 +8,7 @@ import TgIcon from './TgIcon'
 import { useManagers } from '../core/hooks/useManagers'
 import { useAvatarSrc } from './useAvatarSrc'
 import { useChatsStore } from '../stores/chatsStore'
+import { useSecretChatStore } from '../stores/secretChatStore'
 import { useTypingLabel } from '../core/hooks/useTypingLabel'
 import { uiEvents } from '../core/hooks/uiEvents'
 import TypingIndicator from './conversation/TypingIndicator'
@@ -51,6 +52,11 @@ function ChatListItem({ chat, selected, onSelect, collapsed }: Props) {
   const managers = useManagers()
   const avatarSrc = useAvatarSrc(chat.avatarUrl)
   const typingLabel = useTypingLabel(Number(chat.id), chat.type === 'group')
+  // Секретный чат: статус handshake для pending-превью «Приглашение…» / «Ожидание…»
+  // в списке (не-секретные чаты в стор не подписываются — селектор вернёт undefined).
+  const secretStatus = useSecretChatStore((st) =>
+    chat.type === 'secret' ? st.byChat[Number(chat.id)]?.status : undefined,
+  )
   const presence = useChatsStore((s) => (chat.peerId != null ? s.presence[chat.peerId] : undefined))
   const setDialogMuted = useChatsStore((s) => s.setDialogMuted)
   const setDialogPinned = useChatsStore((s) => s.setDialogPinned)
@@ -184,7 +190,22 @@ function ChatListItem({ chat, selected, onSelect, collapsed }: Props) {
           </div>
 
           <div className={s.subtitleRow}>
-            {typingLabel.active ? (
+            {secretStatus === 'requested' || secretStatus === 'awaiting' || secretStatus === 'rejected' ? (
+              /* Секретный чат до завершения handshake: pending-превью вместо
+                 последнего сообщения. Заявка получателю — зелёным (акцент tweb). */
+              <Text
+                noWrap
+                size={16}
+                color={secretStatus === 'requested' ? 'var(--tg-green)' : 'var(--cl-subtitle)'}
+                style={{ flex: 1 }}
+              >
+                {secretStatus === 'requested'
+                  ? t('Приглашение в секретный чат')
+                  : secretStatus === 'rejected'
+                    ? t('Секретный чат отклонён')
+                    : t('Ожидание, пока собеседник примет секретный чат…')}
+              </Text>
+            ) : typingLabel.active ? (
               <Text noWrap size={16} color="var(--cl-accent)" style={{ flex: 1 }}>
                 <TypingIndicator kind={typingLabel.kind} color="var(--cl-accent)" />
                 {typingLabel.label}

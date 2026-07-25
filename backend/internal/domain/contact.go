@@ -24,4 +24,7 @@ type Contact struct {
 	// HasCustomPhoto — у владельца задано личное фото этого контакта (AvatarURL
 	// уже подменён им). Позволяет UI показать «Изменить»/«Сбросить» фото.
 	HasCustomPhoto bool
+	// IsBot — контакт является ботом (users.is_bot). Ботов нельзя держать в
+	// адресной книге (Telegram), поэтому read-model их отфильтровывает.
+	IsBot bool
 }

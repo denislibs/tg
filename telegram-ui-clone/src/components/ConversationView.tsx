@@ -903,6 +903,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           typingKind={headerTypingKind}
           status={headerStatus}
           online={headerOnline}
+          isBot={isBotChat}
           playerOffset={playerOffset}
           onJumpToSeq={jumpToSeqE}
           onBack={onBack}
@@ -1000,6 +1001,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
             onClear={clearSelection}
             onForward={() => openForwardFor([...selected])}
             onDelete={() => openDeleteFor([...selected])}
+            canForward={!isSecret}
           />
         ) : thread?.closed ? (
           <div className={classNames(s.footer, s.footerCompose)}>

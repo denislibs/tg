@@ -60,34 +60,9 @@ body {
   box-sizing: border-box;
 }
 
-/* Peer-typing indicator animations (1:1 from tweb _peerTyping.scss + _chat.scss).
-   Three bouncing dots for "typing", a single blinking dot for "recording
-   voice/video". scale/opacity values are tweb's sass vars resolved to literals
-   (scale-min .66667 / mid .83333 / max 1; opacity-min .8 / mid .9 / max 1). */
-@keyframes typingDotFirst {
-  0% { transform: scale(0.66667); opacity: 0.8; }
-  50% { transform: scale(0.66667); opacity: 0.8; }
-  75% { transform: scale(1); opacity: 1; }
-  100% { transform: scale(0.66667); opacity: 0.8; }
-}
-@keyframes typingDotMiddle {
-  0% { transform: scale(0.83333); opacity: 0.9; }
-  12.5% { transform: scale(0.66667); opacity: 0.8; }
-  62.5% { transform: scale(0.66667); opacity: 0.8; }
-  87.5% { transform: scale(1); opacity: 1; }
-  100% { transform: scale(0.83333); opacity: 0.9; }
-}
-@keyframes typingDotLast {
-  0% { transform: scale(1); opacity: 1; }
-  25% { transform: scale(0.66667); opacity: 0.8; }
-  75% { transform: scale(0.66667); opacity: 0.8; }
-  100% { transform: scale(1); opacity: 1; }
-}
-@keyframes recordBlink {
-  0% { opacity: 1; }
-  50% { opacity: 0.2; }
-  100% { opacity: 1; }
-}
+/* Peer-typing animations (typingDot… + recordBlink) живут в
+   components/conversation/TypingIndicator.module.scss — там же, где на них
+   ссылаются: CSS Modules скоупит @keyframes и animation-name согласованно. */
 
 /* Loading sweep over a media placeholder (blur preview) until the image decodes —
    a light band travels left→right, like Telegram's shimmer. */

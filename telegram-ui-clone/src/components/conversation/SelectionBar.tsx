@@ -13,9 +13,11 @@ export interface SelectionBarProps {
   onClear: () => void
   onForward: () => void
   onDelete: () => void
+  // Секретный чат: пересылки нет (E2E), кнопку forward прячем.
+  canForward?: boolean
 }
 
-function SelectionBar({ count, onClear, onForward, onDelete }: SelectionBarProps) {
+function SelectionBar({ count, onClear, onForward, onDelete, canForward = true }: SelectionBarProps) {
   const t = useT()
 
   return (
@@ -26,9 +28,11 @@ function SelectionBar({ count, onClear, onForward, onDelete }: SelectionBarProps
       <Text size={15} weight={600} color="var(--tg-textPrimary)" className={s.count}>
         {t('Selected')}: {count}
       </Text>
-      <IconButton onClick={onForward} color="var(--tg-accent)">
-        <TgIcon name="reply" style={{ transform: 'scaleX(-1)' }} />
-      </IconButton>
+      {canForward && (
+        <IconButton onClick={onForward} color="var(--tg-accent)">
+          <TgIcon name="reply" style={{ transform: 'scaleX(-1)' }} />
+        </IconButton>
+      )}
       <IconButton onClick={onDelete} color="#ff595a">
         <TgIcon name="delete" />
       </IconButton>

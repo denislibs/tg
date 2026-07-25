@@ -40,6 +40,10 @@ export function useVoiceQueue({ win, isRealChat, meId, meName, peers, chatName, 
           subtitle: friendlyMsgTime(m.createdAt, lang),
           chatId: numericChatId,
           msgId: m.id,
+          // Секретный голос: ключ/iv/mime для расшифровки ciphertext'а в плеере.
+          secret: m.secretMedia
+            ? { keyB64: m.secretMedia.keyB64, ivB64: m.secretMedia.ivB64, mime: m.secretMedia.mime }
+            : undefined,
         })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [win.msgs, isRealChat, chatName, numericChatId, meId, meName, peersKey(win.msgs.map((m) => m.senderId)), lang],

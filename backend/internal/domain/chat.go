@@ -47,6 +47,7 @@ type DialogPeer struct {
 	Verified    bool   // official/service account (blue check)
 	Premium     bool   // Telegram Premium subscriber (gold star badge)
 	EmojiStatus string // unicode emoji shown after the name ("" when unset)
+	IsBot       bool   // бот: клиент скрывает звонок и не даёт добавить в контакты/группу/секрет
 }
 
 // Dialog is a chat-list read model: a chat + the viewer's read state + last message.
@@ -97,6 +98,10 @@ type Dialog struct {
 	// LastSenderName is the last message sender's short name (first name, else
 	// display name) — for the "Имя: …" preview prefix in group chats.
 	LastSenderName string
+	// LastEncBody — шифр-блоб последнего сообщения секретного чата (nil у обычных).
+	// Сервер plaintext не знает; клиент расшифровывает его ключом из IndexedDB для
+	// превью в списке (как tweb показывает расшифрованный текст).
+	LastEncBody []byte
 	// PhotoURL is the group/channel photo content path ("" when unset; private
 	// chats carry the peer's avatar in Peer instead).
 	PhotoURL string

@@ -63,6 +63,7 @@ export function messageToConvMsg(
     : m.type === 'gift' ? 'gift'
     : m.type === 'sticker' ? 'sticker'
     : m.type === 'service' ? 'service'
+    : secretType === 'voice' ? 'voice'
     : secretType === 'photo' || secretType === 'video' || secretType === 'document' || secretType === 'audio' ? secretType
     : m.type === 'photo' || m.type === 'video' || m.type === 'document' || m.type === 'audio' ? m.type
     : 'text'

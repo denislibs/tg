@@ -87,6 +87,8 @@ export function ForwardPicker({ dialogs, hasCaption, onPick, onClose }: {
   }
   const query = q.trim().toLowerCase()
   const rows = dialogs
+    // Секретный чат не может быть целью пересылки/ответа (E2E: сервер отправит plaintext).
+    .filter((d) => d.type !== 'secret')
     .map((d) => ({
       chatId: d.chatId,
       title: d.title || d.peer?.displayName || `Чат ${d.chatId}`,
@@ -214,6 +216,8 @@ export function ChatPicker({ dialogs, title, onPick, onClose }: {
   const pick = (chatId: number) => { picked.current = chatId; setOpen(false) }
   const query = q.trim().toLowerCase()
   const rows = dialogs
+    // Секретный чат не может быть целью пересылки/ответа (E2E: сервер отправит plaintext).
+    .filter((d) => d.type !== 'secret')
     .map((d) => ({
       chatId: d.chatId,
       title: d.title || d.peer?.displayName || `Чат ${d.chatId}`,

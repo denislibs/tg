@@ -167,6 +167,7 @@ export interface ChatHeaderProps {
   typingKind: TypingKind
   status: string
   online: boolean
+  isBot?: boolean // бот-собеседник: скрыть кнопки звонка (у ботов нет звонков)
   playerOffset: number
   // The only thing the header needs from the parent for search: jump the feed to a
   // result's seq (the scroll machine lives in useChatScroll). Everything else about
@@ -179,7 +180,7 @@ export interface ChatHeaderProps {
 
 function ChatHeader({
   chat, avatarSrc, peerOnline, typingActive, typingText, typingKind, status, online,
-  playerOffset, onJumpToSeq, onBack, onToggleInfo, onOpenMenu,
+  isBot, playerOffset, onJumpToSeq, onBack, onToggleInfo, onOpenMenu,
 }: ChatHeaderProps) {
   const t = useT()
   const [lang] = useLang()
@@ -477,8 +478,9 @@ function ChatHeader({
           </div>
           {/* На handhelds tweb прячет кнопки звонков из шапки (остаются пунктами
               меню «⋮») — _chatTopbar.scss .chat-utils > .btn-icon: display none.
-              Сервисному аккаунту «Telegram» звонить нельзя вовсе. */}
-          {chat.type === 'private' && chat.peerId !== SERVICE_USER_ID && (
+              Сервисному аккаунту «Telegram» звонить нельзя вовсе. Ботам звонить
+              нельзя — у бот-аккаунтов нет звонков (Telegram). */}
+          {chat.type === 'private' && chat.peerId !== SERVICE_USER_ID && !(isBot || chat.isBot) && (
             <>
               <IconButton onClick={() => startCall(false)} color="var(--tg-textSecondary)" className={s.desktopOnly}>
                 <TgIcon name="phone" />
@@ -489,10 +491,14 @@ function ChatHeader({
             </>
           )}
           {/* На мобилке лупа скрыта — поиск открывается пунктом меню «⋮»
-              (tweb topbar.ts: menuButton 'Search', verify isMobile) */}
-          <IconButton onClick={onSearchOpen} color="var(--tg-textSecondary)" className={s.desktopOnly}>
-            <TgIcon name="search" />
-          </IconButton>
+              (tweb topbar.ts: menuButton 'Search', verify isMobile).
+              В секретном чате поиска нет: сервер хранит только шифртекст, искать по
+              нему нельзя (клиентского поиска по расшифрованным сообщениям тут нет). */}
+          {chat.type !== 'secret' && (
+            <IconButton onClick={onSearchOpen} color="var(--tg-textSecondary)" className={s.desktopOnly}>
+              <TgIcon name="search" />
+            </IconButton>
+          )}
           <IconButton onClick={(e) => onOpenMenu(e.currentTarget.getBoundingClientRect())} color="var(--tg-textSecondary)">
             <TgIcon name="more" />
           </IconButton>

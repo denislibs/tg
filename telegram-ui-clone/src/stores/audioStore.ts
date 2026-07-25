@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 import { startClient } from '../client/bootstrap'
+import { decryptMedia } from '../core/secret/crypto'
+import { mediaContentUrl, primeMediaToken } from '../core/mediaUrl'
 
 // A track the global player can play (a voice message or audio file).
 export interface AudioTrack {
@@ -8,6 +10,10 @@ export interface AudioTrack {
   subtitle: string
   chatId?: number
   msgId?: number
+  // Секретный чат (E2E): сервер хранит только ciphertext — байты надо скачать,
+  // расшифровать ключом файла и играть blob-URL с верным mime (иначе <audio>
+  // получает шифртекст и звук — «мусор»). Как в SecretMediaBubble для фото/видео.
+  secret?: { keyB64: string; ivB64: string; mime: string }
 }
 
 interface AudioState {
@@ -72,10 +78,32 @@ function detachExternal(pause: boolean) {
   external = null
 }
 
-// Load + play a track's bytes (resolving the media URL via the worker).
+// objectURL расшифрованного секретного трека — освобождаем при следующей загрузке.
+let secretObjectUrl: string | null = null
+function revokeSecretUrl() {
+  if (secretObjectUrl) { URL.revokeObjectURL(secretObjectUrl); secretObjectUrl = null }
+}
+
+// Расшифровать ciphertext секретного трека → blob-URL с верным mime.
+async function decryptTrackUrl(track: AudioTrack): Promise<string> {
+  await primeMediaToken()
+  const res = await fetch(mediaContentUrl(track.mediaId))
+  if (!res.ok) throw new Error(`secret audio ${res.status}`)
+  const cipher = await res.arrayBuffer()
+  const buf = await decryptMedia(cipher, track.secret!.keyB64, track.secret!.ivB64)
+  const objectUrl = URL.createObjectURL(new Blob([buf], { type: track.secret!.mime }))
+  revokeSecretUrl()
+  secretObjectUrl = objectUrl
+  return objectUrl
+}
+
+// Load + play a track's bytes (resolving the media URL via the worker; секретные
+// треки скачиваются как ciphertext и расшифровываются в blob-URL).
 async function load(track: AudioTrack, autoplay: boolean) {
   const a = audio()
-  const url = await startClient().managers.media.contentUrl(track.mediaId)
+  const url = track.secret
+    ? await decryptTrackUrl(track)
+    : await startClient().managers.media.contentUrl(track.mediaId)
   a.src = url
   a.playbackRate = useAudioStore.getState().rate
   a.muted = useAudioStore.getState().muted
@@ -195,6 +223,7 @@ export const useAudioStore = create<AudioState>((set, get) => ({
     const a = audio()
     a.pause()
     a.removeAttribute('src')
+    revokeSecretUrl()
     set({ track: null, queue: [], index: -1, playing: false, currentTime: 0, duration: 0 })
   },
   _sync: (patch) => set(patch),

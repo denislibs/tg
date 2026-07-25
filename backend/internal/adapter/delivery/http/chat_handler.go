@@ -271,16 +271,23 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 			"auto_delete_period": d.AutoDeletePeriod, "theme_id": d.ThemeID,
 		}
 		if d.HasLast {
-			row["last_message"] = map[string]any{
+			lastMsg := map[string]any{
 				"seq": d.LastSeq, "text": d.LastText, "sender_id": d.LastSenderID, "at": d.LastAt,
 				"media_id": d.LastMediaID, "type": d.LastType, "forwarded": d.LastForwarded,
 				"sender_name": d.LastSenderName,
 			}
+			// Секретный чат: отдаём шифр-блоб — клиент расшифрует его для превью
+			// (сервер plaintext не знает). У обычных чатов LastEncBody = nil.
+			if len(d.LastEncBody) > 0 {
+				lastMsg["enc_body"] = base64.StdEncoding.EncodeToString(d.LastEncBody)
+			}
+			row["last_message"] = lastMsg
 		}
 		if d.Peer != nil {
 			row["peer"] = map[string]any{
 				"id": d.Peer.ID, "display_name": d.Peer.DisplayName, "avatar_url": d.Peer.AvatarURL,
 				"verified": d.Peer.Verified, "premium": d.Peer.Premium, "emoji_status": d.Peer.EmojiStatus,
+				"is_bot": d.Peer.IsBot,
 			}
 		}
 		out = append(out, row)

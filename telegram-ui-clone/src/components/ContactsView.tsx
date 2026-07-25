@@ -29,7 +29,8 @@ export default function ContactsView({
   const contacts = useMemo(
     () =>
       chats
-        .filter((c) => c.type === 'private')
+        // Боты не входят в адресную книгу (Telegram) — не показываем в контактах.
+        .filter((c) => c.type === 'private' && !c.isBot)
         .filter((c) => c.name.toLowerCase().includes(query.trim().toLowerCase()))
         .sort((a, b) => a.name.localeCompare(b.name)),
     [chats, query],
