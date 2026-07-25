@@ -11,12 +11,14 @@ import { useDraftsStore } from '../stores/draftsStore'
 import { useUploadsStore } from '../stores/uploadsStore'
 import { uiEvents } from '../core/hooks/uiEvents'
 import { mapReplyMarkup } from '../core/managers/botsManager'
-import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type GeoLiveUpdateEvt, type WebPageUpdateEvt, type FactCheckUpdateEvt, type ChatThemeUpdateEvt, type SuggestedPostEvt } from '../core/realtime/events'
+import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type GeoLiveUpdateEvt, type WebPageUpdateEvt, type FactCheckUpdateEvt, type ChatThemeUpdateEvt, type SuggestedPostEvt, type StoryNewEvt, type StoryDeletedEvt, type StoryReactionEvt } from '../core/realtime/events'
 import { playMessageSent } from '../core/audio/sounds'
 import { playEmojiEffect } from '../core/effects/emojiEffects'
 import { notifyIncomingMessage } from './uiNotifications'
 import { useSettingsStore } from '../settings'
 import { useSecretChatStore } from '../stores/secretChatStore'
+import { useStoriesStore, loadStories } from '../stores/storiesStore'
+import { mapStory } from '../core/managers/storiesManager'
 import * as callEngine from '../core/calls/callEngine'
 import { handleGroupCallFrame, type GroupCallFrame } from '../core/calls/groupCallEngine'
 import { handleLivestreamFrame, type LivestreamFrame } from '../core/calls/livestreamEngine'
@@ -258,6 +260,29 @@ export function startRealtime(): void {
   smp.on(RT.secretReject, (raw) => {
     const r = raw as { chat_id: number }
     useSecretChatStore.getState().setStatus(r.chat_id, 'rejected')
+  })
+  // Истории (Stories realtime) → storiesStore. Новая история известного автора
+  // добавляется в его группу; для нового автора (группы ещё нет) — полный рефетч
+  // ленты (нужны имя/аватар автора). Удаление и реакции правят стор точечно.
+  smp.on(RT.storyNew, (raw) => {
+    const e = raw as StoryNewEvt
+    const st = useStoriesStore.getState()
+    const hasGroup = st.groups.some((g) => g.author.id === e.author_id)
+    if (hasGroup) {
+      st.addStory(e.author_id, mapStory({ id: e.id, media_id: e.media_id, caption: e.caption, created_at: new Date().toISOString(), viewed: false }))
+    } else {
+      void loadStories(managers)
+    }
+  })
+  smp.on(RT.storyDeleted, (raw) => {
+    const e = raw as StoryDeletedEvt
+    useStoriesStore.getState().removeStory(e.author_id, e.story_id)
+  })
+  smp.on(RT.storyReaction, (raw) => {
+    const e = raw as StoryReactionEvt
+    const meId = useChatsStore.getState().meId
+    // myReaction обновляем только для эха собственного действия (user_id === me).
+    useStoriesStore.getState().applyStoryReaction(e.story_id, e.reactions_count, e.user_id === meId ? e.reaction : undefined)
   })
   smp.on('rt:resync', () => { void loadChats(managers) })
   // Прогресс отгрузки медиа (кольцо на оптимистичном бабле)

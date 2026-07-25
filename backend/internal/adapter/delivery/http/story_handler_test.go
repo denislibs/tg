@@ -144,6 +144,62 @@ func TestStories_Flow_HTTP(t *testing.T) {
 		t.Fatalf("expected 403 for non-author stats, got %d %s", rec.Code, rec.Body.String())
 	}
 
+	// B reacts to the story; A's feed reflects the aggregate; B's my_reaction set.
+	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(posted.ID)+"/reaction", tokenB, map[string]any{"reaction": "👍"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("react: %d %s", rec.Code, rec.Body.String())
+	}
+	var reactFeed struct {
+		Groups []struct {
+			Stories []struct {
+				ReactionsCount int     `json:"reactions_count"`
+				MyReaction     *string `json:"my_reaction"`
+				Reactions      []struct {
+					Emoji string `json:"emoji"`
+					Count int    `json:"count"`
+					Mine  bool   `json:"mine"`
+				} `json:"reactions"`
+			} `json:"stories"`
+		} `json:"groups"`
+	}
+	rec = authedReq(t, h, http.MethodGet, "/stories", tokenB, nil)
+	_ = json.Unmarshal(rec.Body.Bytes(), &reactFeed)
+	if len(reactFeed.Groups) != 1 || len(reactFeed.Groups[0].Stories) != 1 {
+		t.Fatalf("react feed shape: %s", rec.Body.String())
+	}
+	st := reactFeed.Groups[0].Stories[0]
+	if st.ReactionsCount != 1 || st.MyReaction == nil || *st.MyReaction != "👍" {
+		t.Fatalf("expected my_reaction=👍 count=1, got %s", rec.Body.String())
+	}
+	if len(st.Reactions) != 1 || st.Reactions[0].Emoji != "👍" || st.Reactions[0].Count != 1 || !st.Reactions[0].Mine {
+		t.Fatalf("unexpected reactions breakdown: %s", rec.Body.String())
+	}
+
+	// A's stats include the reaction.
+	rec = authedReq(t, h, http.MethodGet, "/stories/"+itoa(posted.ID)+"/stats", tokenA, nil)
+	var rstats struct {
+		ReactionsTotal int64 `json:"reactions_total"`
+		Reactions      []struct {
+			Emoji string `json:"emoji"`
+			Count int    `json:"count"`
+		} `json:"reactions"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &rstats)
+	if rstats.ReactionsTotal != 1 || len(rstats.Reactions) != 1 || rstats.Reactions[0].Emoji != "👍" {
+		t.Fatalf("unexpected stats reactions: %s", rec.Body.String())
+	}
+
+	// B removes the reaction; count drops to 0.
+	rec = authedReq(t, h, http.MethodDelete, "/stories/"+itoa(posted.ID)+"/reaction", tokenB, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unreact: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodGet, "/stories", tokenB, nil)
+	_ = json.Unmarshal(rec.Body.Bytes(), &reactFeed)
+	if reactFeed.Groups[0].Stories[0].ReactionsCount != 0 || reactFeed.Groups[0].Stories[0].MyReaction != nil {
+		t.Fatalf("expected reactions cleared, got %s", rec.Body.String())
+	}
+
 	// A deletes the story; it disappears from B's feed.
 	rec = authedReq(t, h, http.MethodDelete, "/stories/"+itoa(posted.ID), tokenA, nil)
 	if rec.Code != http.StatusOK {

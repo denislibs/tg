@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,6 +34,13 @@ type fakeRepo struct {
 	statsErr      error
 	deleted       bool
 	deleteErr     error
+
+	setReaction    string
+	setCalled      bool
+	setErr         error
+	removeCalled   bool
+	removeErr      error
+	reactionsCount int
 }
 
 func (f *fakeRepo) Create(ctx context.Context, s domain.Story, allowIDs []int64) (int64, error) {
@@ -65,6 +73,29 @@ func (f *fakeRepo) Delete(ctx context.Context, storyID, authorID int64) error {
 func (f *fakeRepo) Visible(ctx context.Context, storyID, viewerID int64, partnerIDs []int64) (bool, error) {
 	return f.visible, f.visibleErr
 }
+func (f *fakeRepo) SetReaction(ctx context.Context, storyID, userID int64, reaction string) error {
+	f.setCalled = true
+	f.setReaction = reaction
+	return f.setErr
+}
+func (f *fakeRepo) RemoveReaction(ctx context.Context, storyID, userID int64) error {
+	f.removeCalled = true
+	return f.removeErr
+}
+func (f *fakeRepo) ReactionsCount(ctx context.Context, storyID int64) (int, error) {
+	return f.reactionsCount, nil
+}
+
+type fakePublisher struct {
+	frames map[int64][][]byte
+}
+
+func newFakePublisher() *fakePublisher { return &fakePublisher{frames: map[int64][][]byte{}} }
+
+func (f *fakePublisher) PublishToUser(ctx context.Context, userID int64, frame []byte) error {
+	f.frames[userID] = append(f.frames[userID], frame)
+	return nil
+}
 
 type fakePartners struct {
 	ids []int64
@@ -96,7 +127,7 @@ func (f *fakeTx) WithinTx(ctx context.Context, fn func(ctx context.Context) erro
 func TestPost_ForbiddenWhenOtherOwner(t *testing.T) {
 	repo := &fakeRepo{}
 	svc := New(repo, &fakePartners{}, &fakeMedia{owner: 99}, &fakeTx{})
-	_, err := svc.Post(context.Background(), 1, 7, "hi", "contacts", nil)
+	_, err := svc.Post(context.Background(), 1, 7, "hi", "contacts", nil, 0)
 	if !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("want ErrForbidden, got %v", err)
 	}
@@ -107,7 +138,7 @@ func TestPost_OK_DefaultPrivacyAndExpiry(t *testing.T) {
 	tx := &fakeTx{}
 	svc := New(repo, &fakePartners{}, &fakeMedia{owner: 1}, tx)
 	before := time.Now()
-	id, err := svc.Post(context.Background(), 1, 7, "hi", "", nil)
+	id, err := svc.Post(context.Background(), 1, 7, "hi", "", nil, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -209,5 +240,189 @@ func TestStats_Author_ReturnsStats(t *testing.T) {
 	}
 	if got.Views != 7 {
 		t.Fatalf("Views: want 7, got %d", got.Views)
+	}
+}
+
+func TestPost_PeriodToExpiry(t *testing.T) {
+	cases := []struct {
+		period int64
+		want   time.Duration
+	}{
+		{21600, 6 * time.Hour},
+		{43200, 12 * time.Hour},
+		{86400, 24 * time.Hour},
+		{172800, 48 * time.Hour},
+		{0, 24 * time.Hour},   // unset -> default
+		{999, 24 * time.Hour}, // invalid -> default
+	}
+	for _, c := range cases {
+		repo := &fakeRepo{createID: 1}
+		svc := New(repo, &fakePartners{}, &fakeMedia{owner: 1}, &fakeTx{})
+		before := time.Now()
+		if _, err := svc.Post(context.Background(), 1, 7, "hi", "everyone", nil, c.period); err != nil {
+			t.Fatalf("period %d: %v", c.period, err)
+		}
+		got := repo.createStory.ExpiresAt.Sub(before)
+		// Allow a small window for execution time.
+		if got < c.want-time.Minute || got > c.want+time.Minute {
+			t.Fatalf("period %d: expiry delta = %v, want ~%v", c.period, got, c.want)
+		}
+	}
+}
+
+func TestPost_BroadcastsStoryNew(t *testing.T) {
+	repo := &fakeRepo{createID: 42}
+	pub := newFakePublisher()
+	svc := New(repo, &fakePartners{ids: []int64{2, 3}}, &fakeMedia{owner: 1}, &fakeTx{})
+	svc.SetPublisher(pub)
+	if _, err := svc.Post(context.Background(), 1, 7, "hi", "contacts", nil, 0); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// contacts/everyone -> partners (2,3) + author (1).
+	for _, uid := range []int64{1, 2, 3} {
+		if len(pub.frames[uid]) != 1 {
+			t.Fatalf("user %d: want 1 story_new frame, got %d", uid, len(pub.frames[uid]))
+		}
+	}
+}
+
+func TestPost_SelectedBroadcastsToAllowlist(t *testing.T) {
+	repo := &fakeRepo{createID: 42}
+	pub := newFakePublisher()
+	// Partners would be 9, but selected must target the allowlist only (+author).
+	svc := New(repo, &fakePartners{ids: []int64{9}}, &fakeMedia{owner: 1}, &fakeTx{})
+	svc.SetPublisher(pub)
+	if _, err := svc.Post(context.Background(), 1, 7, "hi", "selected", []int64{2}, 0); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(pub.frames[2]) != 1 || len(pub.frames[1]) != 1 {
+		t.Fatalf("want story_new to allowlisted 2 and author 1")
+	}
+	if len(pub.frames[9]) != 0 {
+		t.Fatalf("selected story must not reach non-allowlisted partner 9")
+	}
+}
+
+func TestSetReaction_NotVisible_Forbidden(t *testing.T) {
+	repo := &fakeRepo{visible: false}
+	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
+	err := svc.SetReaction(context.Background(), 5, 1, "👍")
+	if !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("want ErrForbidden, got %v", err)
+	}
+	if repo.setCalled {
+		t.Fatal("should not set reaction when not visible")
+	}
+}
+
+func TestSetReaction_InvalidEmoji_BadReaction(t *testing.T) {
+	repo := &fakeRepo{visible: true}
+	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
+	if err := svc.SetReaction(context.Background(), 5, 1, ""); !errors.Is(err, domain.ErrBadReaction) {
+		t.Fatalf("want ErrBadReaction, got %v", err)
+	}
+}
+
+func TestSetReaction_OK_UpsertsAndNotifiesAuthor(t *testing.T) {
+	repo := &fakeRepo{visible: true, author: 10, reactionsCount: 3}
+	pub := newFakePublisher()
+	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
+	svc.SetPublisher(pub)
+	if err := svc.SetReaction(context.Background(), 5, 1, "👍"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !repo.setCalled || repo.setReaction != "👍" {
+		t.Fatalf("expected SetReaction with 👍, got called=%v r=%q", repo.setCalled, repo.setReaction)
+	}
+	if len(pub.frames[10]) != 1 {
+		t.Fatalf("expected story_reaction to author 10, got %d", len(pub.frames[10]))
+	}
+}
+
+func TestRemoveReaction_OK_NotifiesAuthor(t *testing.T) {
+	repo := &fakeRepo{visible: true, author: 10, reactionsCount: 0}
+	pub := newFakePublisher()
+	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
+	svc.SetPublisher(pub)
+	if err := svc.RemoveReaction(context.Background(), 5, 1); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !repo.removeCalled {
+		t.Fatal("expected RemoveReaction to be called")
+	}
+	if len(pub.frames[10]) != 1 {
+		t.Fatalf("expected story_reaction to author 10, got %d", len(pub.frames[10]))
+	}
+}
+
+func TestRemoveReaction_NotVisible_Forbidden(t *testing.T) {
+	repo := &fakeRepo{visible: false}
+	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
+	if err := svc.RemoveReaction(context.Background(), 5, 1); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("want ErrForbidden, got %v", err)
+	}
+	if repo.removeCalled {
+		t.Fatal("should not remove reaction when not visible")
+	}
+}
+
+func TestDelete_BroadcastsStoryDeleted(t *testing.T) {
+	repo := &fakeRepo{author: 1}
+	pub := newFakePublisher()
+	svc := New(repo, &fakePartners{ids: []int64{2}}, &fakeMedia{}, &fakeTx{})
+	svc.SetPublisher(pub)
+	if err := svc.Delete(context.Background(), 5, 1); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !repo.deleted {
+		t.Fatal("expected Delete to be called")
+	}
+	// author (1) + partner (2).
+	if len(pub.frames[1]) != 1 || len(pub.frames[2]) != 1 {
+		t.Fatalf("expected story_deleted to author 1 and partner 2")
+	}
+}
+
+func TestDelete_NonAuthor_ForbiddenNoBroadcast(t *testing.T) {
+	repo := &fakeRepo{author: 99}
+	pub := newFakePublisher()
+	svc := New(repo, &fakePartners{ids: []int64{2}}, &fakeMedia{}, &fakeTx{})
+	svc.SetPublisher(pub)
+	if err := svc.Delete(context.Background(), 5, 1); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("want ErrForbidden, got %v", err)
+	}
+	if repo.deleted {
+		t.Fatal("must not delete another user's story")
+	}
+	if len(pub.frames[1]) != 0 || len(pub.frames[2]) != 0 {
+		t.Fatal("must not broadcast story_deleted for a forbidden delete")
+	}
+}
+
+func TestDelete_NotFound_NoBroadcast(t *testing.T) {
+	repo := &fakeRepo{authorErr: domain.ErrNotFound}
+	pub := newFakePublisher()
+	svc := New(repo, &fakePartners{ids: []int64{2}}, &fakeMedia{}, &fakeTx{})
+	svc.SetPublisher(pub)
+	if err := svc.Delete(context.Background(), 5, 1); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+	if repo.deleted {
+		t.Fatal("must not delete a missing story")
+	}
+	if len(pub.frames[1]) != 0 {
+		t.Fatal("must not broadcast story_deleted for a missing story")
+	}
+}
+
+func TestPost_CaptionTooLong(t *testing.T) {
+	repo := &fakeRepo{createID: 1}
+	svc := New(repo, &fakePartners{}, &fakeMedia{owner: 1}, &fakeTx{})
+	longCaption := strings.Repeat("а", maxCaptionRunes+1)
+	if _, err := svc.Post(context.Background(), 1, 7, longCaption, "contacts", nil, 0); !errors.Is(err, domain.ErrTooLong) {
+		t.Fatalf("want ErrTooLong, got %v", err)
+	}
+	if (repo.createStory != domain.Story{}) {
+		t.Fatal("must not create a story with an oversized caption")
 	}
 }

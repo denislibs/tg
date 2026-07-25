@@ -350,6 +350,8 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 			pr.Post("/stories", storyH.Post)
 			pr.Get("/stories", storyH.Feed)
 			pr.Post("/stories/{storyID}/view", storyH.View)
+			pr.Post("/stories/{storyID}/reaction", storyH.SetReaction)
+			pr.Delete("/stories/{storyID}/reaction", storyH.RemoveReaction)
 			pr.Get("/stories/{storyID}/viewers", storyH.Viewers)
 			pr.Get("/stories/{storyID}/stats", storyH.Stats)
 			pr.Delete("/stories/{storyID}", storyH.Delete)

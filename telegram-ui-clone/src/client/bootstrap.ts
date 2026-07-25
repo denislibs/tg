@@ -243,8 +243,10 @@ export interface Managers {
   presence: { get(ids: number[]): Promise<PresenceEvt[]> }
   stories: {
     feed(): Promise<StoryGroup[]>
-    post(args: { mediaId: number; caption?: string; privacy?: 'everyone' | 'contacts' | 'selected'; allowIds?: number[] }): Promise<number>
+    post(args: { mediaId: number; caption?: string; privacy?: 'everyone' | 'contacts' | 'selected'; allowIds?: number[]; period?: number }): Promise<number>
     view(id: number): Promise<void>
+    setReaction(id: number, reaction: string): Promise<void>
+    removeReaction(id: number): Promise<void>
     viewers(id: number): Promise<{ id: number; displayName: string; avatarUrl: string }[]>
     stats(id: number): Promise<StoryStats>
     del(id: number): Promise<void>

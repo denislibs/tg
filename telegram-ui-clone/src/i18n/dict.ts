@@ -620,6 +620,9 @@ const ru: Dict = {
   // ── Статистика поста/истории (tweb messageStatistics / storyStatistics) ──
   'Post statistics': 'Статистика поста',
   'Story statistics': 'Статистика истории',
+  'Delete story': 'Удалить историю',
+  'Are you sure you want to delete this story?': 'Удалить эту историю?',
+  React: 'Реакция',
   Views: 'Просмотры',
   Forwards: 'Пересылки',
   'New Topic': 'Новая тема',

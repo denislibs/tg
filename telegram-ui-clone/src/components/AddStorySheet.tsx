@@ -11,10 +11,21 @@ import s from './AddStorySheet.module.scss'
 
 export type StoryPrivacy = 'everyone' | 'contacts' | 'selected'
 
+// Лимит длины подписи истории — совпадает с бэком (maxCaptionRunes).
+const MAX_CAPTION_LEN = 2048
+
 const PRIVACY_OPTIONS: { key: StoryPrivacy; label: string }[] = [
   { key: 'everyone', label: 'Все' },
   { key: 'contacts', label: 'Контакты' },
   { key: 'selected', label: 'Выбранные' },
+]
+
+// Период жизни истории в секундах (tweb story period): 6/12/24/48 часов.
+const PERIOD_OPTIONS: { key: number; label: string }[] = [
+  { key: 21600, label: '6ч' },
+  { key: 43200, label: '12ч' },
+  { key: 86400, label: '24ч' },
+  { key: 172800, label: '48ч' },
 ]
 
 /**
@@ -28,7 +39,7 @@ export default function AddStorySheet({
   onPublish,
 }: {
   onBack: () => void
-  onPublish: (args: { caption: string; privacy: StoryPrivacy; allowIds: number[] }) => void | Promise<void>
+  onPublish: (args: { caption: string; privacy: StoryPrivacy; allowIds: number[]; period: number }) => void | Promise<void>
 }) {
   const dialogs = useChatsStore((s) => s.dialogs)
   // private peers only — the contact pool for the "Выбранные" audience
@@ -38,6 +49,7 @@ export default function AddStorySheet({
 
   const [caption, setCaption] = useState('')
   const [privacy, setPrivacy] = useState<StoryPrivacy>('contacts')
+  const [period, setPeriod] = useState(86400)
   const [allow, setAllow] = useState<Set<number>>(new Set())
   const [busy, setBusy] = useState(false)
 
@@ -57,6 +69,7 @@ export default function AddStorySheet({
         caption: caption.trim(),
         privacy,
         allowIds: privacy === 'selected' ? [...allow] : [],
+        period,
       })
     } finally {
       setBusy(false)
@@ -96,6 +109,7 @@ export default function AddStorySheet({
             <textarea
               autoFocus
               rows={1}
+              maxLength={MAX_CAPTION_LEN}
               className={s.captionInput}
               placeholder=" "
               value={caption}
@@ -124,6 +138,36 @@ export default function AddStorySheet({
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault()
                       setPrivacy(opt.key)
+                    }
+                  }}
+                  className={classNames(s.segment, active ? s.segmentActive : '')}
+                >
+                  {opt.label}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Селектор периода (tweb story period): сколько часов история живёт */}
+        <div className={s.privacyBlock} style={{ marginTop: 12 }}>
+          <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionLabel}>
+            Сколько хранить
+          </Text>
+          <div className={classNames(s.card, s.segments)} role="radiogroup" aria-label="Сколько хранить историю">
+            {PERIOD_OPTIONS.map((opt) => {
+              const active = period === opt.key
+              return (
+                <div
+                  key={opt.key}
+                  role="radio"
+                  aria-checked={active}
+                  tabIndex={0}
+                  onClick={() => setPeriod(opt.key)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      setPeriod(opt.key)
                     }
                   }}
                   className={classNames(s.segment, active ? s.segmentActive : '')}

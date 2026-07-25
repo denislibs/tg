@@ -154,6 +154,69 @@ func TestStoryRepo_Visible_SelectedAllowlist(t *testing.T) {
 	}
 }
 
+func TestStoryRepo_Reactions(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewStoryRepo(pool)
+	ctx := context.Background()
+	u1 := seedUser(t, pool, "+930") // author
+	u2 := seedUser(t, pool, "+931") // reactor
+
+	future := time.Now().Add(24 * time.Hour)
+	storyID := createStory(t, pool, u1, "everyone", future, nil)
+
+	// Set a reaction.
+	if err := repo.SetReaction(ctx, storyID, u2, "👍"); err != nil {
+		t.Fatalf("SetReaction: %v", err)
+	}
+	if n, err := repo.ReactionsCount(ctx, storyID); err != nil || n != 1 {
+		t.Fatalf("ReactionsCount = %d, %v; want 1", n, err)
+	}
+
+	// Feed reflects the aggregate for the reactor.
+	groups, err := repo.ActiveFeed(ctx, u2, []int64{u1})
+	if err != nil || len(groups) != 1 || len(groups[0].Stories) != 1 {
+		t.Fatalf("feed: %+v, %v", groups, err)
+	}
+	it := groups[0].Stories[0]
+	if it.ReactionsCount != 1 || it.MyReaction != "👍" {
+		t.Fatalf("feed item = %+v; want count 1 / my 👍", it)
+	}
+	if len(it.Reactions) != 1 || it.Reactions[0].Emoji != "👍" || it.Reactions[0].Count != 1 || !it.Reactions[0].Mine {
+		t.Fatalf("feed reactions breakdown = %+v", it.Reactions)
+	}
+
+	// Author's feed sees the count but no personal reaction.
+	ag, _ := repo.ActiveFeed(ctx, u1, []int64{u1})
+	if ag[0].Stories[0].ReactionsCount != 1 || ag[0].Stories[0].MyReaction != "" {
+		t.Fatalf("author feed item = %+v; want count 1 / my empty", ag[0].Stories[0])
+	}
+
+	// Replace the reaction (upsert): count stays 1, emoji changes.
+	if err := repo.SetReaction(ctx, storyID, u2, "❤"); err != nil {
+		t.Fatalf("SetReaction replace: %v", err)
+	}
+	if n, _ := repo.ReactionsCount(ctx, storyID); n != 1 {
+		t.Fatalf("count after replace = %d; want 1", n)
+	}
+
+	// Stats include reactions.
+	st, err := repo.Stats(ctx, storyID)
+	if err != nil {
+		t.Fatalf("Stats: %v", err)
+	}
+	if st.ReactionsTotal != 1 || len(st.Reactions) != 1 || st.Reactions[0].Emoji != "❤" {
+		t.Fatalf("stats reactions = total %d / %+v", st.ReactionsTotal, st.Reactions)
+	}
+
+	// Remove the reaction: count drops to 0.
+	if err := repo.RemoveReaction(ctx, storyID, u2); err != nil {
+		t.Fatalf("RemoveReaction: %v", err)
+	}
+	if n, _ := repo.ReactionsCount(ctx, storyID); n != 0 {
+		t.Fatalf("count after remove = %d; want 0", n)
+	}
+}
+
 func TestStoryRepo_GetAuthor_NotFound(t *testing.T) {
 	pool := storepostgres.NewTestDB(t)
 	repo := NewStoryRepo(pool)

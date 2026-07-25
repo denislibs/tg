@@ -20,6 +20,12 @@ type StoryRepo interface {
 	GetAuthor(ctx context.Context, storyID int64) (int64, error) // domain.ErrNotFound
 	Delete(ctx context.Context, storyID, authorID int64) error
 	Visible(ctx context.Context, storyID, viewerID int64, partnerIDs []int64) (bool, error)
+	// SetReaction ставит/меняет реакцию пользователя на историю (upsert по
+	// PRIMARY KEY(story_id,user_id)); RemoveReaction снимает её.
+	SetReaction(ctx context.Context, storyID, userID int64, reaction string) error
+	RemoveReaction(ctx context.Context, storyID, userID int64) error
+	// ReactionsCount — всего реакций на историю (для живого счётчика в WS-событии).
+	ReactionsCount(ctx context.Context, storyID int64) (int, error)
 }
 
 // Partners resolves the set of users that share a chat with a viewer; satisfied
@@ -38,4 +44,10 @@ type MediaOwner interface {
 // (repo adapters pick it up). Same shape as the chat usecase's TxManager.
 type TxManager interface {
 	WithinTx(ctx context.Context, fn func(ctx context.Context) error) error
+}
+
+// EventPublisher рассылает realtime-кадры историй адресатам (по образцу chat).
+// Опционален: когда nil, истории живут только через polling GET /stories.
+type EventPublisher interface {
+	PublishToUser(ctx context.Context, userID int64, frame []byte) error
 }

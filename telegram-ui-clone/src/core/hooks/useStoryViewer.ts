@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react'
 import { useStoriesStore } from '../../stores/storiesStore'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useManagers } from './useManagers'
+import { uiEvents } from './uiEvents'
 import { gradientFor } from '../dialogToChat'
 import type { StoryGroup, StoryItem } from '../managers/storiesManager'
 
@@ -42,10 +43,19 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
   bg: string
   paused: boolean
   togglePause: () => void
+  setPaused: (v: boolean) => void
+  // 4b: реакции + ответ (DM автору) + удаление своей истории.
+  myReaction: string | null
+  reactionsCount: number
+  toggleReaction: (emoji: string) => void
+  sendReply: (text: string) => Promise<void>
+  del: () => void
 } {
   const managers = useManagers()
   const groups = useStoriesStore((s) => s.groups)
   const markViewed = useStoriesStore((s) => s.markViewed)
+  const setMyReaction = useStoriesStore((s) => s.setMyReaction)
+  const removeStory = useStoriesStore((s) => s.removeStory)
   const meId = useChatsStore((s) => s.meId)
 
   const group = groups[groupIndex]
@@ -140,6 +150,41 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
     setPaused(false)
   }
 
+  // Реакция (tweb sendReaction): тап по той же эмодзи снимает её, иначе ставит/
+  // меняет. Оптимистично правим стор, затем шлём на бэк; счётчик догонит story_reaction.
+  const toggleReaction = (emoji: string) => {
+    if (!story) return
+    const next = story.myReaction === emoji ? null : emoji
+    setMyReaction(story.id, next)
+    if (next) void managers.stories.setReaction(story.id, next)
+    else void managers.stories.removeReaction(story.id)
+  }
+
+  // Ответ на историю = обычный DM автору (явной ссылки «ответ на историю» на бэке
+  // нет — вне батча). При отсутствии лички с автором создаём её. Тост «Message sent».
+  const sendReply = async (text: string) => {
+    const t = text.trim()
+    if (!group || !t) return
+    const chatId = await managers.chats.createPrivate(group.author.id)
+    const clientMsgId = `story-${chatId}-${performance.now()}-${Math.random().toString(36).slice(2)}`
+    await managers.realtime.sendMessage({ chatId, text: t, clientMsgId })
+    uiEvents.emit('ui:toast', 'Сообщение отправлено')
+  }
+
+  // Удаление своей истории (tweb DeleteStory): ждём ответ бэка, затем убираем из
+  // стора (пустая группа исчезает → эффект ниже закрывает вьювер). Не оптимистично
+  // нарочно — удаление последней истории схлопывает группу, откатить её нечем; при
+  // сбое стор остаётся консистентным и показываем тост.
+  const del = async () => {
+    if (!story || !group) return
+    try {
+      await managers.stories.del(story.id)
+      removeStory(group.author.id, story.id)
+    } catch {
+      uiEvents.emit('ui:toast', 'Не удалось удалить историю')
+    }
+  }
+
   const bg = group ? gradientFor(group.author.id) : ''
 
   return {
@@ -162,5 +207,11 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
     bg,
     paused,
     togglePause,
+    setPaused,
+    myReaction: story?.myReaction ?? null,
+    reactionsCount: story?.reactionsCount ?? 0,
+    toggleReaction,
+    sendReply,
+    del,
   }
 }

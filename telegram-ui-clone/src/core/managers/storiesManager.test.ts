@@ -42,13 +42,35 @@ describe('StoriesManager', () => {
     expect(groups).toEqual([
       {
         author: { id: 7, displayName: 'Me', avatarUrl: 'me.png' },
-        stories: [{ id: 1, mediaId: 11, caption: 'hi', createdAt: 't0', viewed: false }],
+        stories: [{ id: 1, mediaId: 11, caption: 'hi', createdAt: 't0', viewed: false, reactionsCount: 0, myReaction: null, reactions: [] }],
       },
       {
         author: { id: 2, displayName: 'Bob', avatarUrl: 'bob.png' },
-        stories: [{ id: 2, mediaId: 22, caption: '', createdAt: 't1', viewed: true }],
+        stories: [{ id: 2, mediaId: 22, caption: '', createdAt: 't1', viewed: true, reactionsCount: 0, myReaction: null, reactions: [] }],
       },
     ])
+  })
+
+  it('feed maps reaction fields (reactions_count/my_reaction/reactions)', async () => {
+    const { rest } = fakeRest({
+      groups: [
+        {
+          author: { id: 2, display_name: 'Bob', avatar_url: '' },
+          stories: [{
+            id: 5, media_id: 50, caption: '', created_at: 't', viewed: false,
+            reactions_count: 3, my_reaction: '❤',
+            reactions: [{ emoji: '❤', count: 2, mine: true }, { emoji: '🔥', count: 1, mine: false }],
+          }],
+        },
+      ],
+    })
+    const mgr = newStoriesManager({ rest })
+    const groups = await mgr.feed()
+    expect(groups[0].stories[0]).toEqual({
+      id: 5, mediaId: 50, caption: '', createdAt: 't', viewed: false,
+      reactionsCount: 3, myReaction: '❤',
+      reactions: [{ emoji: '❤', count: 2, mine: true }, { emoji: '🔥', count: 1, mine: false }],
+    })
   })
 
   it('feed tolerates a missing groups array', async () => {
@@ -57,23 +79,32 @@ describe('StoriesManager', () => {
     expect(await mgr.feed()).toEqual([])
   })
 
-  it('post POSTs /stories with snake_case body and returns id', async () => {
+  it('post POSTs /stories with snake_case body (incl. period) and returns id', async () => {
     const { rest, calls } = fakeRest({}, { id: 99 })
     const mgr = newStoriesManager({ rest })
-    const id = await mgr.post({ mediaId: 11, caption: 'cap', privacy: 'contacts', allowIds: [2, 3] })
+    const id = await mgr.post({ mediaId: 11, caption: 'cap', privacy: 'contacts', allowIds: [2, 3], period: 43200 })
     expect(id).toBe(99)
     expect(calls[0]).toEqual({
       method: 'POST',
       path: '/stories',
-      body: { media_id: 11, caption: 'cap', privacy: 'contacts', allow_user_ids: [2, 3] },
+      body: { media_id: 11, caption: 'cap', privacy: 'contacts', allow_user_ids: [2, 3], period: 43200 },
     })
   })
 
-  it('post applies defaults for caption/privacy/allowIds', async () => {
+  it('post applies defaults for caption/privacy/allowIds/period (24h)', async () => {
     const { rest, calls } = fakeRest({}, { id: 1 })
     const mgr = newStoriesManager({ rest })
     await mgr.post({ mediaId: 5 })
-    expect(calls[0].body).toEqual({ media_id: 5, caption: '', privacy: 'contacts', allow_user_ids: [] })
+    expect(calls[0].body).toEqual({ media_id: 5, caption: '', privacy: 'contacts', allow_user_ids: [], period: 86400 })
+  })
+
+  it('setReaction POSTs /stories/:id/reaction and removeReaction DELETEs it', async () => {
+    const { rest, calls } = fakeRest({}, { ok: true })
+    const mgr = newStoriesManager({ rest })
+    await mgr.setReaction(7, '🔥')
+    await mgr.removeReaction(7)
+    expect(calls[0]).toEqual({ method: 'POST', path: '/stories/7/reaction', body: { reaction: '🔥' } })
+    expect(calls[1]).toEqual({ method: 'DELETE', path: '/stories/7/reaction' })
   })
 
   it('view POSTs /stories/:id/view', async () => {
@@ -101,17 +132,23 @@ describe('StoriesManager', () => {
     expect(calls[0]).toEqual({ method: 'DELETE', path: '/stories/42' })
   })
 
-  it('stats GETs /stories/:id/stats and maps snake->camel', async () => {
-    const { rest, calls } = fakeRest({ views: 12, views_by_day: [{ date: '2026-01-02', value: 12 }] })
+  it('stats GETs /stories/:id/stats and maps snake->camel (incl. reactions)', async () => {
+    const { rest, calls } = fakeRest({
+      views: 12, views_by_day: [{ date: '2026-01-02', value: 12 }],
+      reactions_total: 4, reactions: [{ emoji: '❤', count: 3 }, { emoji: '🔥', count: 1 }],
+    })
     const mgr = newStoriesManager({ rest })
     const stats = await mgr.stats(42)
     expect(calls[0]).toEqual({ method: 'GET', path: '/stories/42/stats' })
-    expect(stats).toEqual({ views: 12, viewsByDay: [{ date: '2026-01-02', value: 12 }] })
+    expect(stats).toEqual({
+      views: 12, viewsByDay: [{ date: '2026-01-02', value: 12 }],
+      reactionsTotal: 4, reactions: [{ emoji: '❤', count: 3 }, { emoji: '🔥', count: 1 }],
+    })
   })
 
-  it('stats tolerates a missing series array', async () => {
+  it('stats tolerates missing series/reaction arrays', async () => {
     const { rest } = fakeRest({ views: 0 })
     const mgr = newStoriesManager({ rest })
-    expect(await mgr.stats(1)).toEqual({ views: 0, viewsByDay: [] })
+    expect(await mgr.stats(1)).toEqual({ views: 0, viewsByDay: [], reactionsTotal: 0, reactions: [] })
   })
 })

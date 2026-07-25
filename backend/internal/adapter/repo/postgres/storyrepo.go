@@ -51,7 +51,9 @@ func (r *StoryRepo) ActiveFeed(ctx context.Context, viewerID int64, authorIDs []
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT s.id, s.author_id, s.media_id, s.caption, s.created_at,
 		        u.id, u.display_name, COALESCE(u.avatar_url,''),
-		        (sv.viewer_id IS NOT NULL) AS viewed
+		        (sv.viewer_id IS NOT NULL) AS viewed,
+		        (SELECT count(*) FROM story_reactions sr WHERE sr.story_id = s.id) AS reactions_count,
+		        COALESCE((SELECT sr.reaction FROM story_reactions sr WHERE sr.story_id = s.id AND sr.user_id = $1), '') AS my_reaction
 		   FROM stories s
 		   JOIN users u ON u.id = s.author_id
 		   LEFT JOIN story_views sv ON sv.story_id = s.id AND sv.viewer_id = $1
@@ -68,6 +70,10 @@ func (r *StoryRepo) ActiveFeed(ctx context.Context, viewerID int64, authorIDs []
 	defer rows.Close()
 
 	out := make([]domain.StoryGroup, 0)
+	// byID maps a story id to a pointer into the built groups, so the reactions
+	// breakdown (fetched in a second batched query) can be merged back in.
+	byID := make(map[int64]*domain.StoryItem)
+	storyIDs := make([]int64, 0)
 	var curAuthor int64
 	idx := -1
 	for rows.Next() {
@@ -77,7 +83,8 @@ func (r *StoryRepo) ActiveFeed(ctx context.Context, viewerID int64, authorIDs []
 			discard int64 // s.author_id (== u.id via JOIN)
 		)
 		if err := rows.Scan(&item.ID, &discard, &item.MediaID, &item.Caption, &item.CreatedAt,
-			&author.ID, &author.DisplayName, &author.AvatarURL, &item.Viewed); err != nil {
+			&author.ID, &author.DisplayName, &author.AvatarURL, &item.Viewed,
+			&item.ReactionsCount, &item.MyReaction); err != nil {
 			return nil, err
 		}
 		_ = discard
@@ -87,8 +94,57 @@ func (r *StoryRepo) ActiveFeed(ctx context.Context, viewerID int64, authorIDs []
 			curAuthor = author.ID
 		}
 		out[idx].Stories = append(out[idx].Stories, item)
+		storyIDs = append(storyIDs, item.ID)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// Index the just-appended items (append may have reallocated the slice, so
+	// take addresses only after the read loop finished).
+	for gi := range out {
+		for si := range out[gi].Stories {
+			it := &out[gi].Stories[si]
+			byID[it.ID] = it
+		}
+	}
+	if err := r.attachReactions(ctx, storyIDs, viewerID, byID); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// attachReactions loads the per-emoji reaction breakdown for the given stories
+// in one query and fills each item's Reactions (with Mine set for the viewer's
+// own emoji).
+func (r *StoryRepo) attachReactions(ctx context.Context, storyIDs []int64, viewerID int64, byID map[int64]*domain.StoryItem) error {
+	if len(storyIDs) == 0 {
+		return nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT story_id, reaction, count(*),
+		        bool_or(user_id = $2) AS mine
+		   FROM story_reactions
+		  WHERE story_id = ANY($1)
+		  GROUP BY story_id, reaction
+		  ORDER BY count(*) DESC, reaction`,
+		storyIDs, viewerID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			sid int64
+			rc  domain.ReactionCount
+		)
+		if err := rows.Scan(&sid, &rc.Emoji, &rc.Count, &rc.Mine); err != nil {
+			return err
+		}
+		if it := byID[sid]; it != nil {
+			it.Reactions = append(it.Reactions, rc)
+		}
+	}
+	return rows.Err()
 }
 
 func (r *StoryRepo) MarkViewed(ctx context.Context, storyID, viewerID int64) error {
@@ -120,8 +176,9 @@ func (r *StoryRepo) Viewers(ctx context.Context, storyID int64) ([]domain.UserCa
 	return out, rows.Err()
 }
 
-// Stats считает статистику истории на лету из story_views: всего уникальных
-// зрителей и их разбивку по дням (viewed_at). Реакций/пересылок у историй нет.
+// Stats считает статистику истории на лету: всего уникальных зрителей и их
+// разбивку по дням (story_views.viewed_at) плюс реакции (всего + разбивка по
+// эмодзи из story_reactions). Пересылок у историй нет.
 func (r *StoryRepo) Stats(ctx context.Context, storyID int64) (domain.StoryStats, error) {
 	var st domain.StoryStats
 	if err := querier(ctx, r.pool).QueryRow(ctx,
@@ -145,7 +202,56 @@ func (r *StoryRepo) Stats(ctx context.Context, storyID int64) (domain.StoryStats
 		}
 		st.ViewsByDay = append(st.ViewsByDay, p)
 	}
-	return st, rows.Err()
+	if err := rows.Err(); err != nil {
+		return domain.StoryStats{}, err
+	}
+
+	if err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT count(*) FROM story_reactions WHERE story_id=$1`, storyID,
+	).Scan(&st.ReactionsTotal); err != nil {
+		return domain.StoryStats{}, err
+	}
+	rrows, err := querier(ctx, r.pool).Query(ctx, `
+		SELECT reaction, count(*)
+		FROM story_reactions WHERE story_id=$1
+		GROUP BY reaction ORDER BY count(*) DESC, reaction`, storyID)
+	if err != nil {
+		return domain.StoryStats{}, err
+	}
+	defer rrows.Close()
+	st.Reactions = make([]domain.ReactionCount, 0)
+	for rrows.Next() {
+		var rc domain.ReactionCount
+		if err := rrows.Scan(&rc.Emoji, &rc.Count); err != nil {
+			return domain.StoryStats{}, err
+		}
+		st.Reactions = append(st.Reactions, rc)
+	}
+	return st, rrows.Err()
+}
+
+// SetReaction ставит/меняет реакцию пользователя на историю (upsert).
+func (r *StoryRepo) SetReaction(ctx context.Context, storyID, userID int64, reaction string) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`INSERT INTO story_reactions (story_id, user_id, reaction) VALUES ($1,$2,$3)
+		 ON CONFLICT (story_id, user_id) DO UPDATE SET reaction = EXCLUDED.reaction, created_at = now()`,
+		storyID, userID, reaction)
+	return err
+}
+
+// RemoveReaction снимает реакцию пользователя с истории.
+func (r *StoryRepo) RemoveReaction(ctx context.Context, storyID, userID int64) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`DELETE FROM story_reactions WHERE story_id=$1 AND user_id=$2`, storyID, userID)
+	return err
+}
+
+// ReactionsCount — всего реакций на историю.
+func (r *StoryRepo) ReactionsCount(ctx context.Context, storyID int64) (int, error) {
+	var n int
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT count(*) FROM story_reactions WHERE story_id=$1`, storyID).Scan(&n)
+	return n, err
 }
 
 func (r *StoryRepo) GetAuthor(ctx context.Context, storyID int64) (int64, error) {
