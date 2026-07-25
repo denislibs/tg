@@ -198,7 +198,12 @@ async function startRtc(withVideo: boolean) {
   }
 
   pc.ontrack = (e) => {
-    const stream = e.streams[0] ?? new MediaStream([e.track])
+    // ВСЕГДА новая ссылка MediaStream: при доборе видео в середине звонка браузер
+    // переиспользует тот же remote-stream (тот же msid), и patch с прежней ссылкой
+    // не перезапустил бы useEffect привязки srcObject в CallScreen — собеседник не
+    // увидел бы включённую камеру (self-view работает, т.к. локально ссылка новая).
+    const src = e.streams[0]
+    const stream = new MediaStream(src ? src.getTracks() : [e.track])
     store().patch({ remoteStream: stream })
   }
 
