@@ -245,6 +245,8 @@ export default function MediaEditor({ file, onDone, onCancel }: {
   const [videoThumbPos, setVideoThumbPos] = useState(0)      // доля 0..1
   const [videoMuted, setVideoMuted] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)          // доля 0..1
+  const [playing, setPlaying] = useState(false)              // превью играет
+  const [tlFrames, setTlFrames] = useState<string[]>([])     // кадры-превью трим-ленты
   const [exportProgress, setExportProgress] = useState<number | null>(null)
 
   const workRef = useRef<HTMLDivElement>(null)
@@ -267,6 +269,13 @@ export default function MediaEditor({ file, onDone, onCancel }: {
   enhanceRef.current = enhance
   const exportingRef = useRef(false)
   const tlDragRef = useRef<'start' | 'end' | 'cursor' | 'cover' | null>(null)
+  // Плейбек превью: rAF-цикл + актуальный диапазон трима + прямой сдвиг курсора
+  // (без React-ре-рендера на каждый кадр).
+  const playRafRef = useRef(0)
+  const playingRef = useRef(false)
+  const trimRef = useRef({ start: 0, end: 1 })
+  trimRef.current = { start: videoCropStart, end: videoCropStart + videoCropLength }
+  const tlCursorRef = useRef<HTMLDivElement | null>(null)
   const measureCtxRef = useRef<CanvasRenderingContext2D | null>(null)
   const renderRef = useRef<() => void>(() => {})
   // editingText зеркалится в ref: blur и pointerdown приходят в один тик, и
@@ -423,28 +432,31 @@ export default function MediaEditor({ file, onDone, onCancel }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [img, enhance])
 
-  // ── Видео: перерисовка превью при перемотке ──
-  // На каждый seeked загружаем текущий кадр в текстуру, пересчитываем adjusted
-  // (свежие enhance — из ref) и перерисовываем. Во время энкода выключено
-  // (exportingRef): там композит гоняется своим циклом.
+  // Загрузить текущий кадр видео в текстуру (свежие enhance из ref) и
+  // перерисовать превью. Во время энкода выключено (exportingRef): там свой цикл.
+  // Используется и для seeked (скраббинг), и для rAF-плейбека.
+  const drawVideoFrame = (v: HTMLVideoElement): void => {
+    if (exportingRef.current) return
+    const r = rendererRef.current
+    if (r && rendererReadyRef.current && r.available) {
+      try {
+        r.updateTexture(v)
+        adjustedRef.current = r.render(enhanceRef.current)
+      } catch {
+        adjustedRef.current = null
+      }
+    }
+    renderRef.current()
+  }
+
+  // ── Видео: перерисовка превью при перемотке (seeked) ──
   useEffect(() => {
     if (!isVideo || !img) return
     const v = img as HTMLVideoElement
-    const onSeeked = () => {
-      if (exportingRef.current) return
-      const r = rendererRef.current
-      if (r && rendererReadyRef.current && r.available) {
-        try {
-          r.updateTexture(v)
-          adjustedRef.current = r.render(enhanceRef.current)
-        } catch {
-          adjustedRef.current = null
-        }
-      }
-      renderRef.current()
-    }
+    const onSeeked = () => drawVideoFrame(v)
     v.addEventListener('seeked', onSeeked)
     return () => v.removeEventListener('seeked', onSeeked)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [img, isVideo])
 
   // Метка обложки не должна выпадать из диапазона трима (порт tweb clamp).
@@ -454,6 +466,49 @@ export default function MediaEditor({ file, onDone, onCancel }: {
     const hi = videoCropStart + videoCropLength
     setVideoThumbPos((p) => Math.min(hi, Math.max(lo, p)))
   }, [videoCropStart, videoCropLength, isVideo])
+
+  // ── Видео: кадры-превью для трим-ленты ──
+  // Извлекаем N равномерных кадров ОТДЕЛЬНЫМ offscreen-<video> (source — тот же
+  // blob-URL), чтобы не дёргать currentTime основного превью. Исходник локальный
+  // (blob), поэтому canvas не «портится» и toDataURL работает.
+  useEffect(() => {
+    if (!isVideo || !videoUrlRef.current || !(videoDuration > 0)) return
+    let alive = true
+    const N = 10
+    const ev = document.createElement('video')
+    ev.src = videoUrlRef.current
+    ev.muted = true
+    ev.playsInline = true
+    ev.crossOrigin = 'anonymous'
+    ev.preload = 'auto'
+    const run = async () => {
+      try {
+        await new Promise<void>((res, rej) => {
+          ev.addEventListener('loadeddata', () => res(), { once: true })
+          ev.addEventListener('error', () => rej(new Error('thumb video load failed')), { once: true })
+        })
+        if (!alive) return
+        const aspect = ev.videoWidth && ev.videoHeight ? ev.videoWidth / ev.videoHeight : 16 / 9
+        const h = 48
+        const w = Math.max(1, Math.round(h * aspect))
+        const c = document.createElement('canvas')
+        c.width = w
+        c.height = h
+        const ctx = c.getContext('2d')
+        if (!ctx) return
+        const frames: string[] = []
+        for (let i = 0; i < N && alive; i++) {
+          await seekVideoTo(ev, ((i + 0.5) / N) * videoDuration)
+          if (!alive) return
+          ctx.drawImage(ev, 0, 0, w, h)
+          frames.push(c.toDataURL('image/jpeg', 0.6))
+        }
+        if (alive) setTlFrames(frames)
+      } catch { /* превью-кадры не критичны */ }
+    }
+    void run()
+    return () => { alive = false; ev.removeAttribute('src'); ev.load() }
+  }, [isVideo, videoDuration])
 
   // ── Вьюпорт рабочей области ──
   useEffect(() => {
@@ -470,6 +525,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
     rotAnimRef.current?.()
     cropAnimRef.current?.()
     if (previewTimerRef.current) window.clearTimeout(previewTimerRef.current)
+    if (playRafRef.current) cancelAnimationFrame(playRafRef.current)
   }, [])
 
   // ── Производные величины текущего кадра ──
@@ -734,6 +790,16 @@ export default function MediaEditor({ file, onDone, onCancel }: {
         else setConfirmOpen(false)
         return
       }
+      // Пробел — play/pause превью видео (не в текстовом инпуте / не при
+      // редактировании подписи стикера).
+      if (e.code === 'Space' && isVideo && !editingRef.current) {
+        const tgt = e.target as HTMLElement | null
+        if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable)) return
+        e.preventDefault()
+        e.stopPropagation()
+        togglePlay()
+        return
+      }
       // Delete/Backspace удаляет выбранный стикер (когда открыта вкладка stickers
       // и не редактируется текст).
       if ((e.key === 'Delete' || e.key === 'Backspace') && tab === 'stickers'
@@ -787,6 +853,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
   // ── Экспорт видео: покадровый композит + mp4-энкод (WebCodecs/mediabunny) ──
   const doFinishVideo = async () => {
     if (!img || !crop || busy) return
+    if (playingRef.current) pausePlayback() // стоп превью перед энкодом
     const v = img as HTMLVideoElement
     const supported = await supportsVideoEncoding()
     // Деградация без WebCodecs / короткий путь «видео без изменений» — отдаём
@@ -1104,6 +1171,45 @@ export default function MediaEditor({ file, onDone, onCancel }: {
     v.currentTime = f * videoDuration
   }
 
+  // ── Видео: воспроизведение превью (loop внутри трима, пробел/кнопка) ──
+  const pausePlayback = () => {
+    const v = img as HTMLVideoElement | null
+    v?.pause()
+    playingRef.current = false
+    setPlaying(false)
+    if (playRafRef.current) cancelAnimationFrame(playRafRef.current)
+    playRafRef.current = 0
+    if (v && videoDuration) setCurrentTime(Math.min(1, Math.max(0, v.currentTime / videoDuration)))
+  }
+
+  // rAF-цикл: гоняет кадры видео в превью, двигает курсор напрямую (без React),
+  // зацикливает по диапазону трима.
+  const playTick = () => {
+    const v = img as HTMLVideoElement | null
+    if (!v || v.paused || !videoDuration) { pausePlayback(); return }
+    const { start, end } = trimRef.current
+    let frac = v.currentTime / videoDuration
+    if (frac >= end) { v.currentTime = start * videoDuration; frac = start }
+    if (tlCursorRef.current) tlCursorRef.current.style.left = `${Math.min(1, Math.max(0, frac)) * 100}%`
+    drawVideoFrame(v)
+    playRafRef.current = requestAnimationFrame(playTick)
+  }
+
+  const togglePlay = () => {
+    const v = img as HTMLVideoElement | null
+    if (!v || !isVideo || !videoDuration) return
+    if (playingRef.current) { pausePlayback(); return }
+    const { start, end } = trimRef.current
+    const cur = v.currentTime / videoDuration
+    if (cur < start || cur >= end - 1e-3) v.currentTime = start * videoDuration
+    v.muted = videoMuted
+    void v.play().then(() => {
+      playingRef.current = true
+      setPlaying(true)
+      playRafRef.current = requestAnimationFrame(playTick)
+    }).catch(() => { /* автоплей заблокирован — игнор */ })
+  }
+
   const tlPos = (clientX: number): number => {
     const r = tlTrackRef.current?.getBoundingClientRect()
     if (!r || r.width <= 0) return 0
@@ -1135,6 +1241,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
   const onTlDown = (e: React.PointerEvent, mode: 'start' | 'end' | 'cursor' | 'cover') => {
     if (e.button !== 0) return
     e.stopPropagation()
+    if (mode !== 'cover' && playingRef.current) pausePlayback() // скраббинг — стоп воспроизведения
     e.currentTarget.setPointerCapture(e.pointerId)
     tlDragRef.current = mode
     if (mode === 'cursor' || mode === 'cover') onTlMove(e)
@@ -1332,8 +1439,16 @@ export default function MediaEditor({ file, onDone, onCancel }: {
             <IconButton
               size="small"
               color="#fff"
+              title={playing ? t('Pause') : t('Play')}
+              onClick={togglePlay}
+            >
+              <TgIcon name={playing ? 'pause' : 'play'} />
+            </IconButton>
+            <IconButton
+              size="small"
+              color="#fff"
               title={videoMuted ? t('Unmute') : t('Mute')}
-              onClick={() => setVideoMuted((m) => !m)}
+              onClick={() => { setVideoMuted((m) => !m); const v = img as HTMLVideoElement | null; if (v) v.muted = !videoMuted }}
             >
               <TgIcon name={videoMuted ? 'volume_off' : 'volume_up'} />
             </IconButton>
@@ -1344,6 +1459,14 @@ export default function MediaEditor({ file, onDone, onCancel }: {
               onPointerMove={onTlMove}
               onPointerUp={onTlUp}
             >
+              {/* Кадры-превью видео как фон ленты (tweb timeline thumbnails). */}
+              {tlFrames.length > 0 && (
+                <div className={s.tlFrames} aria-hidden>
+                  {tlFrames.map((src, i) => (
+                    <div key={i} className={s.tlFrame} style={{ backgroundImage: `url(${src})` }} />
+                  ))}
+                </div>
+              )}
               <div
                 className={s.tlActive}
                 style={{ left: `${videoCropStart * 100}%`, right: `${(1 - (videoCropStart + videoCropLength)) * 100}%` }}
@@ -1362,7 +1485,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
                 onPointerMove={onTlMove}
                 onPointerUp={onTlUp}
               />
-              <div className={s.tlCursor} style={{ left: `${currentTime * 100}%` }} />
+              <div ref={tlCursorRef} className={s.tlCursor} style={{ left: `${currentTime * 100}%` }} />
               <div
                 className={s.tlCover}
                 style={{ left: `${videoThumbPos * 100}%` }}

@@ -153,6 +153,21 @@
   background: rgba(255, 255, 255, 0.12);
   touch-action: none;
   cursor: pointer;
+  overflow: hidden;
+}
+
+// кадры-превью как фон ленты (равномерная раскладка на всю ширину)
+.tlFrames {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  pointer-events: none;
+}
+.tlFrame {
+  flex: 1;
+  height: 100%;
+  background-size: cover;
+  background-position: center;
 }
 
 // подсвеченный (оставленный) диапазон трима
