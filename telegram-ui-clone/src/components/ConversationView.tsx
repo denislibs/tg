@@ -492,6 +492,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
 
   const {
     reply, setReply, editing, setEditing,
+    forward, setForward,
     rec,
     send,
     onComposerTyping,
@@ -536,6 +537,26 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     useSearchStore.getState().clearPendingReply()
   }, [pendingReply, numericChatId, setReply])
 
+  // Пересылка в один чат (tweb initMessagesForward): целевой чат открыт → ставим
+  // плашку форварда из pending-forward (исходный чат + id + превью) и чистим стор.
+  // Reply/edit взаимоисключимы с форвардом — сбрасываем их.
+  const pendingForward = useSearchStore((s) => s.pendingForward)
+  useEffect(() => {
+    if (!pendingForward || pendingForward.targetChatId !== numericChatId) return
+    setForward({
+      sourceChatId: pendingForward.sourceChatId,
+      msgIds: pendingForward.msgIds,
+      count: pendingForward.count,
+      text: pendingForward.text,
+      hasCaption: pendingForward.hasCaption,
+      dropAuthor: false,
+      dropCaption: false,
+    })
+    setReply(null)
+    setEditing(null)
+    useSearchStore.getState().clearPendingForward()
+  }, [pendingForward, numericChatId, setForward, setReply, setEditing])
+
   // Message context menu + its actions (reply/edit/copy/pin/delete/forward/select/
   // download/viewers) and the delete-confirm / forward-picker / viewers-popup state.
   const {
@@ -545,7 +566,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     postStats, closePostStats,
     factCheckEdit, submitFactCheck, closeFactCheckEditor,
     delIds, doDelete, closeDelete, openDeleteFor,
-    forwardIds, forwardHasCaption, doForward, closeForward, openForwardFor,
+    forwardIds, doForward, closeForward, openForwardFor, openForwardFrom,
     replyAnother, pickReplyAnotherChat, closeReplyAnother,
     viewers, closeViewers,
     reacted, closeReacted,
@@ -803,6 +824,16 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const onComposerPickGif = useEvent((g: GifItem) => { sendGif(g); slowmodeMarkSent() })
   const onComposerCancelReply = useEvent(() => setReply(null))
   const onComposerCancelEdit = useEvent(() => setEditing(null))
+  // Плашка форварда: отмена, тоггл опций меню (скрыть отправителя/подпись),
+  // «переслать в другой чат» (переоткрываем пикер с исходным чатом + снимком превью).
+  const onComposerCancelForward = useEvent(() => setForward(null))
+  const onComposerForwardOption = useEvent((opt: { dropAuthor?: boolean; dropCaption?: boolean }) =>
+    setForward((f) => (f ? { ...f, ...opt } : f)))
+  const onComposerForwardAnother = useEvent(() => {
+    if (!forward) return
+    openForwardFrom(forward.sourceChatId, forward.msgIds, { count: forward.count, text: forward.text, hasCaption: forward.hasCaption })
+    setForward(null)
+  })
   const onComposerOpenAttach = useEvent((r: DOMRect) => setAttachAnchor({ left: r.left, bottom: window.innerHeight - r.top + 8 }))
   // Files pasted/dropped into the composer → open the same media-preview popup as
   // the attach button (lets the user add a caption + choose media/file).
@@ -1093,6 +1124,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               key={chat.id}
               reply={reply}
               editing={editing}
+              forward={forward}
               rec={rec}
               onSend={onComposerSend}
               onTyping={onComposerTyping}
@@ -1100,6 +1132,9 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               onPickGif={canType && canSendMedia && !isChannel && chat.type !== 'secret' ? onComposerPickGif : undefined}
               onCancelReply={onComposerCancelReply}
               onCancelEdit={onComposerCancelEdit}
+              onCancelForward={onComposerCancelForward}
+              onForwardOption={onComposerForwardOption}
+              onForwardAnother={onComposerForwardAnother}
               onOpenAttach={onComposerOpenAttach}
               onPasteFiles={isRealChat && canSendMedia ? onComposerPasteFiles : undefined}
               initialDraft={initialDraft}
@@ -1485,7 +1520,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
 
       {/* Forward target picker */}
       {forwardIds != null && (
-        <ForwardPicker dialogs={allDialogs} hasCaption={forwardHasCaption} onPick={doForward} onClose={closeForward} />
+        <ForwardPicker dialogs={allDialogs} onPick={doForward} onClose={closeForward} />
       )}
 
       {/* «Ответить в другом чате» (tweb ReplyToAnotherChat): выбор целевого чата */}

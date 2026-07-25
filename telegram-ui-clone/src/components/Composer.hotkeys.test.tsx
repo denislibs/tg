@@ -26,11 +26,15 @@ function renderComposer(props: Partial<React.ComponentProps<typeof Composer>> = 
     <Composer
       reply={null}
       editing={null}
+      forward={null}
       rec={rec}
       onSend={vi.fn()}
       onTyping={vi.fn()}
       onCancelReply={vi.fn()}
       onCancelEdit={vi.fn()}
+      onCancelForward={vi.fn()}
+      onForwardOption={vi.fn()}
+      onForwardAnother={vi.fn()}
       onOpenAttach={vi.fn()}
       onEditLast={onEditLast}
       onReplyPrev={onReplyPrev}

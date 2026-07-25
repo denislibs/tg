@@ -106,11 +106,11 @@ function RecentChip({ chat, selected, onToggle }: { chat: Chat; selected: boolea
 // Forward target picker («Поделиться»): порт tweb popupForward — поиск, ряд
 // недавних, табы папок (липкие при скролле) и список чатов с аватарами/подписями.
 // Мультивыбор; аккордная кнопка «Переслать (N)» шлёт во все выбранные чаты сразу.
-export function ForwardPicker({ dialogs, hasCaption, onPick, onClose }: {
+export function ForwardPicker({ dialogs, onPick, onClose }: {
   dialogs: Dialog[]
-  // Среди пересылаемых есть медиа с подписью — показывать тумблер «Убрать подпись».
-  hasCaption?: boolean
-  onPick: (chatIds: number[], opts: { dropAuthor: boolean; dropCaption: boolean }) => void
+  // Один чат → tweb-флоу: открыть чат и показать плашку форварда в композере
+  // (опции show/hide sender/caption живут в меню плашки). Несколько → отправить сразу.
+  onPick: (chatIds: number[]) => void
   onClose: () => void
 }) {
   const t = useT()
@@ -125,10 +125,7 @@ export function ForwardPicker({ dialogs, hasCaption, onPick, onClose }: {
   // размонтирует пикер) — только из onExitComplete, когда карточка уехала.
   const [open, setOpen] = useState(true)
   const [selected, setSelected] = useState<Set<number>>(new Set())
-  // Опции пересылки (tweb forwardElements): скрыть отправителя / убрать подпись.
-  const [dropAuthor, setDropAuthor] = useState(false)
-  const [dropCaption, setDropCaption] = useState(false)
-  const confirmed = useRef<{ chatIds: number[]; dropAuthor: boolean; dropCaption: boolean } | null>(null)
+  const confirmed = useRef<number[] | null>(null)
 
   const toggle = (chatId: number) => setSelected((prev) => {
     const next = new Set(prev)
@@ -136,7 +133,7 @@ export function ForwardPicker({ dialogs, hasCaption, onPick, onClose }: {
     return next
   })
   const confirm = () => {
-    if (selected.size) { confirmed.current = { chatIds: [...selected], dropAuthor, dropCaption }; setOpen(false) }
+    if (selected.size) { confirmed.current = [...selected]; setOpen(false) }
   }
 
   // Секретные чаты — не цель пересылки (E2E). Маппим в Chat для аватаров/имён.
@@ -161,7 +158,7 @@ export function ForwardPicker({ dialogs, hasCaption, onPick, onClose }: {
       open={open}
       title={t('Share with')}
       onClose={() => setOpen(false)}
-      onExitComplete={() => { const c = confirmed.current; if (c) onPick(c.chatIds, { dropAuthor: c.dropAuthor, dropCaption: c.dropCaption }); else onClose() }}
+      onExitComplete={() => { const c = confirmed.current; if (c) onPick(c); else onClose() }}
       action={selected.size ? { label: `${t('Forward')} (${selected.size})`, onClick: confirm } : undefined}
       width={460}
     >
@@ -176,22 +173,6 @@ export function ForwardPicker({ dialogs, hasCaption, onPick, onClose }: {
           placeholder={t('Search')}
         />
       </div>
-
-      {/* опции пересылки (скрыть отправителя / подпись) */}
-      {!searching && (
-        <div className={s.shareOptions}>
-          <div className={s.shareOption} onClick={() => setDropAuthor((v) => !v)}>
-            <TgIcon name={dropAuthor ? 'author_hidden' : 'person'} size={20} color="var(--tg-accent)" />
-            <Text noWrap size={14.5} color="var(--tg-textPrimary)">{dropAuthor ? t('Show sender name') : t('Hide sender name')}</Text>
-          </div>
-          {hasCaption && (
-            <div className={s.shareOption} onClick={() => setDropCaption((v) => !v)}>
-              <TgIcon name="captiondown" size={20} color="var(--tg-accent)" />
-              <Text noWrap size={14.5} color="var(--tg-textPrimary)">{dropCaption ? t('Show caption') : t('Hide caption')}</Text>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* ряд недавних */}
       {recents.length > 0 && (

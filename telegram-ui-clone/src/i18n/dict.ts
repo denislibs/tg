@@ -476,6 +476,12 @@ const ru: Dict = {
   'Delete for me': 'Удалить у себя',
   'Forwarded from': 'Переслано от',
   'Forward to…': 'Переслать в…',
+  // ── Плашка форварда в композере (tweb forwarding) ──
+  'Forward Message': 'Переслать сообщение',
+  'Forward Message (sender name hidden)': 'Переслать сообщение (без имени)',
+  'Forward Messages': 'Переслать сообщения',
+  'Forward to Another Chat': 'Переслать в другой чат',
+  'Do Not Forward': 'Не пересылать',
   // ── Опции пересылки (tweb forwardElements): 2 состояния каждого тумблера ──
   'Hide sender name': 'Скрыть имя отправителя',
   'Show sender name': 'Показать имя отправителя',
