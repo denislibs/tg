@@ -22,6 +22,7 @@ import type { Managers } from '../../client/bootstrap'
 import { useMessagesStore , winKey } from '../../stores/messagesStore'
 import { useLiveShareStore } from '../../stores/liveShareStore'
 import { useUploadsStore } from '../../stores/uploadsStore'
+import { scaleImageForSend } from '../media/scaleImageForSend'
 
 // Max characters per message (matches the backend's maxMessageRunes / Telegram 4096).
 // Longer drafts are split into several messages on send.
@@ -240,29 +241,27 @@ export function useChatSend({
     if (el) { el.accept = accept; el.click() }
   }
 
-  const readImageSize = (file: File): Promise<{ width: number; height: number }> =>
-    new Promise((resolve) => {
-      if (!file.type.startsWith('image/')) return resolve({ width: 0, height: 0 })
-      const img = new Image()
-      const url = URL.createObjectURL(file)
-      img.onload = () => { resolve({ width: img.naturalWidth, height: img.naturalHeight }); URL.revokeObjectURL(url) }
-      img.onerror = () => { resolve({ width: 0, height: 0 }); URL.revokeObjectURL(url) }
-      img.src = url
-    })
-
   // asFile=true sends without "media" treatment (a photo/video becomes a
   // downloadable document). Otherwise the type is inferred from the mime.
   // caption (optional) is attached as the message text.
-  const onPickFile = async (file: File, asFile = false, caption = '', groupedId?: string, paidMediaPrice?: number | null) => {
+  const onPickFile = async (input: File, asFile = false, caption = '', groupedId?: string, paidMediaPrice?: number | null) => {
     if (!isRealChat || secretLocked) return
-    const mime = file.type || 'application/octet-stream'
+    const origMime = input.type || 'application/octet-stream'
     const type = asFile
       ? 'document'
-      : mime.startsWith('image/') ? 'photo'
-      : mime.startsWith('video/') ? 'video'
-      : mime.startsWith('audio/') ? 'audio'
+      : origMime.startsWith('image/') ? 'photo'
+      : origMime.startsWith('video/') ? 'video'
+      : origMime.startsWith('audio/') ? 'audio'
       : 'document'
-    const { width, height } = type === 'photo' ? await readImageSize(file) : { width: 0, height: 0 }
+    // Фото «как медиа»: подготовка 1:1 с tweb (scaleImageForTelegram) ПЕРЕД
+    // аплоадом — ресайз стороны >2560, пережатие тяжёлого lossless (png/bmp >2МБ)
+    // и конвертация несовместимых форматов в jpeg. Отдаёт итоговые width/height и
+    // файл с обновлённым mime/именем. Документы/видео/аудио не трогаем.
+    const prepared = type === 'photo' ? await scaleImageForSend(input) : null
+    const file = prepared?.file ?? input
+    const mime = file.type || origMime
+    const width = prepared?.width ?? 0
+    const height = prepared?.height ?? 0
     const clientMsgId = `c-${chat.id}-${performance.now()}-${Math.random().toString(36).slice(2)}`
     // «Отправляет файл/фото/видео/аудио» у собеседника на время аплоада
     // (tweb sendMessageUpload*Action): пинг сразу и каждые 3с (TTL приёмника 6с).

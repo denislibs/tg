@@ -11,6 +11,7 @@ import { mediaContentUrl, primeMediaToken } from '../core/mediaUrl'
 export type StickerContent =
   | { kind: 'lottie'; data: unknown }
   | { kind: 'image'; url: string }
+  | { kind: 'video'; url: string }
 
 const cache = new Map<number, Promise<StickerContent>>()
 
@@ -23,6 +24,8 @@ export function loadStickerContent(mediaId: number): Promise<StickerContent> {
       if (!res.ok) throw new Error(`sticker media ${mediaId}: HTTP ${res.status}`)
       const ct = res.headers.get('content-type') ?? ''
       if (ct.includes('application/json')) return { kind: 'lottie', data: await res.json() }
+      // video/webm (vp9) — видео-стикер (tweb wrapSticker WebM-ветка).
+      if (ct.startsWith('video/')) return { kind: 'video', url: URL.createObjectURL(await res.blob()) }
       return { kind: 'image', url: URL.createObjectURL(await res.blob()) }
     })()
     // упавшую загрузку не кэшировать — следующий маунт попробует снова
@@ -59,6 +62,7 @@ const StickerMedia = memo(function StickerMedia({
 }) {
   const boxRef = useRef<HTMLDivElement>(null)
   const animRef = useRef<AnimationItem | null>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
   const [content, setContent] = useState<StickerContent | null>(null)
 
   useEffect(() => {
@@ -97,20 +101,45 @@ const StickerMedia = memo(function StickerMedia({
     anim.play()
   }, [replayToken])
 
+  // Видео-стикер (webm): ленивая авто-пауза вне вьюпорта (аналог tweb
+  // animationIntersector) — офскрин-стикеры не декодируются/не жгут CPU. В пикере
+  // (playOnHover) проигрывание управляется наведением, а не вьюпортом.
+  useEffect(() => {
+    if (content?.kind !== 'video' || playOnHover || !boxRef.current) return
+    const video = videoRef.current
+    if (!video) return
+    const io = new IntersectionObserver(
+      (entries) => {
+        const visible = entries[0]?.isIntersecting
+        if (visible && autoplay) void video.play().catch(() => {})
+        else video.pause()
+      },
+      { threshold: 0.01 },
+    )
+    io.observe(boxRef.current)
+    return () => io.disconnect()
+  }, [content, autoplay, playOnHover])
+
   const hoverProps = playOnHover
     ? {
         onMouseEnter: () => {
           const anim = animRef.current
-          if (!anim) return
-          if (hoverPlaying && hoverPlaying !== anim) hoverPlaying.stop()
-          hoverPlaying = anim
-          anim.play()
+          if (anim) {
+            if (hoverPlaying && hoverPlaying !== anim) hoverPlaying.stop()
+            hoverPlaying = anim
+            anim.play()
+          }
+          const video = videoRef.current
+          if (video) void video.play().catch(() => {})
         },
         onMouseLeave: () => {
           const anim = animRef.current
-          if (!anim) return
-          if (hoverPlaying === anim) hoverPlaying = null
-          anim.stop() // возврат на первый кадр
+          if (anim) {
+            if (hoverPlaying === anim) hoverPlaying = null
+            anim.stop() // возврат на первый кадр
+          }
+          const video = videoRef.current
+          if (video) { video.pause(); video.currentTime = 0 }
         },
       }
     : undefined
@@ -119,6 +148,19 @@ const StickerMedia = memo(function StickerMedia({
     <div ref={boxRef} style={{ width, height, pointerEvents: playOnHover ? 'auto' : 'none' }} {...hoverProps}>
       {content?.kind === 'image' && (
         <img src={content.url} alt="" draggable={false} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+      )}
+      {content?.kind === 'video' && (
+        <video
+          ref={videoRef}
+          src={content.url}
+          muted
+          loop={loop}
+          playsInline
+          autoPlay={autoplay && !playOnHover}
+          preload="metadata"
+          draggable={false}
+          style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+        />
       )}
     </div>
   )

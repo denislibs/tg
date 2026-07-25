@@ -16,6 +16,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
 	minioadapter "github.com/messenger-denis/backend/internal/adapter/storage/minio"
@@ -42,6 +43,25 @@ func main() {
 
 	if err := run(*dir); err != nil {
 		log.Fatalf("seed-stickers: %v", err)
+	}
+}
+
+// stickerMime детектит mime по расширению файла стикера. Content-Type отдаётся из
+// этого mime (media.GetContent → info.ContentType), а фронт различает ветки по
+// нему: application/json → lottie, video/* → видео-стикер (webm/vp9), image/* →
+// статичный. .json остаётся application/json, чтобы не сломать lottie-детект.
+func stickerMime(file string) string {
+	switch strings.ToLower(filepath.Ext(file)) {
+	case ".webm":
+		return "video/webm"
+	case ".webp":
+		return "image/webp"
+	case ".png":
+		return "image/png"
+	case ".json":
+		return "application/json"
+	default:
+		return "application/json"
 	}
 }
 
@@ -117,7 +137,7 @@ func seedSet(ctx context.Context, stickersUC *usecasestickers.Interactor, mediaU
 			return err
 		}
 		m, _, err := mediaUC.CreateUpload(ctx, usecasemedia.UploadInput{
-			OwnerID: domain.ServiceUserID, Mime: "application/json",
+			OwnerID: domain.ServiceUserID, Mime: stickerMime(s.File),
 			Size: int64(len(data)), Width: 512, Height: 512, FileName: s.File,
 		})
 		if err != nil {
