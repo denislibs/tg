@@ -32,6 +32,7 @@ import { useGroupCandidates } from '../../core/hooks/useGroupCandidates'
 import UserAvatar from '../UserAvatar'
 import { useAvatarSrc } from '../useAvatarSrc'
 import { gradientFor } from '../../core/dialogToChat'
+import { loadChats } from '../../stores/chatsStore'
 import type { Chat } from '../../data'
 import s from './GroupEditFlow.module.scss'
 
@@ -64,6 +65,16 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
   const about = draft?.about ?? g.card?.about ?? ''
   const dirty = draft != null && (draft.title !== (g.card?.title ?? '') || draft.about !== (g.card?.about ?? ''))
   const [saving, setSaving] = useState(false)
+
+  // Форум-топики группы («Обсуждения»): оптимистичный тумблер + refresh стора.
+  const [forumOn, setForumOn] = useState(!!chat.isForum)
+  const toggleForum = () => {
+    const next = !forumOn
+    setForumOn(next)
+    void managers.groups.setForum(chatId, next)
+      .then(() => loadChats(managers))
+      .catch(() => setForumOn(!next))
+  }
 
   // Фото: file input → кроппер → savePhoto
   const fileRef = useRef<HTMLInputElement>(null)
@@ -171,6 +182,20 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
               onClick={() => void g.saveSignatures(true, !card.signatureProfiles)}
             />
           )}
+        </Section>
+      )}
+
+      {/* Обсуждения (форум-топики) — только группа (перенесено из info-панели) */}
+      {!isChannel && canChangeInfo && (
+        <Section footer="Group members can discuss different topics in separate threads.">
+          <Row
+            icon={<TgIcon name="comments" size={22} />}
+            label="Обсуждения"
+            translate={false}
+            toggle
+            checked={forumOn}
+            onClick={toggleForum}
+          />
         </Section>
       )}
 
@@ -780,6 +805,7 @@ function ReactionsScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
 
 // ── Разрешения (tweb groupPermissions: 5 toggle'ов + slowmode) ───────────────
 function PermissionsScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
+  const t = useT()
   const [perms, setPerms] = useState(g.card?.defaultPermissions ?? 31)
   const [slowIdx, setSlowIdx] = useState(Math.max(0, SLOWMODE_STEPS.indexOf(g.card?.slowmodeSeconds ?? 0)))
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -829,7 +855,7 @@ function PermissionsScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) 
       {g.isCreator && (
         <Section caption="Paid messages" footer="Charge stars per message from non-admins. 0 disables paid messages.">
           <div className={s.chargeRow}>
-            <Text size={15} color="var(--tg-textPrimary)">Stars per message</Text>
+            <Text size={15} color="var(--tg-textPrimary)">{t('Stars per message')}</Text>
             <input
               type="number"
               min={0}

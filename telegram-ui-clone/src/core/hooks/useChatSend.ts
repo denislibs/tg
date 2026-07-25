@@ -53,6 +53,9 @@ interface UseChatSendArgs {
   /** send-as (Telegram send_as): id канала/группы, от имени которых слать; null —
    * от себя. Прокидывается в send_message выбранной «личностью отправителя». */
   sendAsChatId?: number | null
+  /** Заголовок выбранной send-as личности — чтобы оптимистичный бабл сразу
+   * отрисовался от её имени (иначе показывался бы «от себя» до reconcile). */
+  sendAsTitle?: string
   // Scroll intent (owned elsewhere): sending pins to the bottom.
   atBottomRef: MutableRefObject<boolean>
   userScrolledUpRef: MutableRefObject<boolean>
@@ -72,6 +75,7 @@ export function useChatSend({
   managers,
   threadRootId,
   sendAsChatId = null,
+  sendAsTitle,
   atBottomRef,
   userScrolledUpRef,
   onChatCreated,
@@ -143,7 +147,8 @@ export function useChatSend({
     // Кросс-чат ответ (tweb ReplyToAnotherChat): reply.chatId — исходный чат
     // оригинала; отличается от текущего → уходит полем reply_to_peer_id.
     const replyToPeerId = replyTo != null && reply?.chatId != null && reply.chatId !== numericChatId ? reply.chatId : null
-    win.appendOptimistic(text, meId ?? -1, clientMsgId, undefined, 'text', entities)
+    const sendAsExtra = sendAsChatId != null ? { sendAs: { chatId: sendAsChatId, title: sendAsTitle ?? '' } } : undefined
+    win.appendOptimistic(text, meId ?? -1, clientMsgId, undefined, 'text', entities, undefined, undefined, sendAsExtra)
     void managers.realtime.sendMessage({ chatId: numericChatId, text, entities, clientMsgId, replyToId: replyTo, replyToPeerId, replyQuoteText: quote?.text ?? null, replyQuoteOffset: quote?.offset ?? null, threadRootId, silent, effect: effect ?? undefined, sendAsChatId })
   }
 

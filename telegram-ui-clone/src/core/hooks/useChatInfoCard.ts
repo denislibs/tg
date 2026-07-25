@@ -15,7 +15,12 @@ interface Card {
   discussionChatId: number
   slowmodeSeconds: number
   chargeStars: number
+  defaultPermissions: number
 }
+
+// Биты дефолтных прав группы (domain.MemberPerms): 1 — писать, 2 — медиа.
+const PERM_SEND_MESSAGES = 1
+const PERM_SEND_MEDIA = 2
 
 interface InfoManagers {
   groups: {
@@ -28,6 +33,10 @@ export interface ChatInfoCard {
   card: Card | null
   /** Channels: only posters (creator / POST_MESSAGES) may type; groups & private always can. */
   canType: boolean
+  /** Групповые дефолт-права: может ли участник вообще писать (иначе — плашка вместо композера). */
+  canSendText: boolean
+  /** Групповые дефолт-права: может ли участник отправлять медиа/голосовые/вложения. */
+  canSendMedia: boolean
   discussionChatId: number
   discussionsEnabled: boolean
   /** Live count of online group members (derived from chatsStore.presence). */
@@ -56,7 +65,7 @@ export function useChatInfoCard(args: {
     let alive = true
     void managers.groups.card(numericChatId).then((c) => {
       if (!alive) return
-      setCard({ type: c.type, memberCount: c.memberCount, myRole: c.myRole, myRights: c.myRights, discussionChatId: c.discussionChatId, slowmodeSeconds: c.slowmodeSeconds, chargeStars: c.chargeStars })
+      setCard({ type: c.type, memberCount: c.memberCount, myRole: c.myRole, myRights: c.myRights, discussionChatId: c.discussionChatId, slowmodeSeconds: c.slowmodeSeconds, chargeStars: c.chargeStars, defaultPermissions: c.defaultPermissions })
       if (c.type === 'group') {
         void managers.groups.members(numericChatId).then((mem) => {
           if (!alive) return
@@ -76,6 +85,14 @@ export function useChatInfoCard(args: {
   const canPostChannel = card?.myRole === 'creator' || ((card?.myRights ?? 0) & 1) === 1
   const canType = !isChannel || canPostChannel
 
+  // Групповые дефолт-права (admin/creator — без ограничений). До загрузки карточки
+  // считаем, что можно (оптимистично), чтобы композер не мигал заблокированным.
+  const isAdmin = card?.myRole === 'creator' || card?.myRole === 'admin'
+  const perms = card?.defaultPermissions ?? 31
+  const isGroup = card?.type === 'group'
+  const canSendText = isChannel ? canPostChannel : !isGroup || isAdmin || (perms & PERM_SEND_MESSAGES) !== 0
+  const canSendMedia = isChannel ? canPostChannel : !isGroup || isAdmin || (perms & PERM_SEND_MEDIA) !== 0
+
   // Count members currently online. Re-renders only when the number changes
   // (presence frames for non-members don't touch it).
   const onlineCount = useChatsStore((s) => {
@@ -84,5 +101,5 @@ export function useChatInfoCard(args: {
     return n
   })
 
-  return { card, canType, discussionChatId, discussionsEnabled, onlineCount }
+  return { card, canType, canSendText, canSendMedia, discussionChatId, discussionsEnabled, onlineCount }
 }

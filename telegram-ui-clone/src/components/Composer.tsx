@@ -35,6 +35,7 @@ import type { EntityType, MessageEntity } from '../core/models'
 import { fmtDur, REC_WAVE_BARS, type VoiceRecorder } from '../core/hooks/useVoiceRecorder'
 import { EASE, DUR } from '../motion'
 import { useT } from '../i18n'
+import { uiEvents } from '../core/hooks/uiEvents'
 import { useSettingsStore } from '../settings'
 import Menu, { MenuItem } from '../shared/ui/Menu'
 import SchedulePopup from './SchedulePopup'
@@ -109,6 +110,9 @@ interface Props {
   // Секретный чат: показывает кнопку выбора таймера самоуничтожения (tweb secret
   // chat self-destruct). Выбранный TTL уходит третьим аргументом onSend.
   secret?: boolean
+  // Групповые дефолт-права: если false — медиа запрещены (attach/микрофон серые,
+  // вставка файлов блокируется). По умолчанию true.
+  canSendMedia?: boolean
   // Платные сообщения (Telegram paid messages): плата за сообщение в звёздах для
   // не-админа (0/undefined — бесплатно). >0 показывает плашку над инпутом.
   chargeStars?: number
@@ -238,7 +242,7 @@ function placeCaretEnd(el: HTMLElement) {
 
 function Composer({
   reply, editing, rec, onSend, onTyping, onPickSticker, onPickGif, onCancelReply, onCancelEdit, onOpenAttach, onPasteFiles,
-  initialDraft, onDraftChange, mentions, onInlineQuery, onPickInline, botMenuButton, onSchedule, canSendWhenOnline, onSendWhenOnline, scheduledCount, onOpenScheduled, slowmodeLeft, secret, chargeStars,
+  initialDraft, onDraftChange, mentions, onInlineQuery, onPickInline, botMenuButton, onSchedule, canSendWhenOnline, onSendWhenOnline, scheduledCount, onOpenScheduled, slowmodeLeft, secret, canSendMedia = true, chargeStars,
   onEditLast, onReplyPrev, sendAs,
 }: Props) {
   const slowmodeBlocked = (slowmodeLeft ?? 0) > 0
@@ -953,9 +957,11 @@ function Composer({
                 </button>
               )}
               <IconButton
-                onClick={(e) => onOpenAttach(e.currentTarget.getBoundingClientRect())}
+                onClick={(e) => canSendMedia
+                  ? onOpenAttach(e.currentTarget.getBoundingClientRect())
+                  : uiEvents.emit('ui:toast', t('Media is not allowed in this group'))}
                 color="var(--tg-textSecondary)"
-                style={{ width: 40, height: 40 }}
+                style={{ width: 40, height: 40, opacity: canSendMedia ? 1 : 0.4 }}
               >
                 <TgIcon name="attach" />
               </IconButton>
@@ -1047,6 +1053,7 @@ function Composer({
               if (longPressed.current) { longPressed.current = false; return } // long-press открыл меню — клик глотаем
               if (hasText) submit()
               else if (rec.recording) rec.stop(true)
+              else if (!canSendMedia) uiEvents.emit('ui:toast', t('Media is not allowed in this group'))
               else void rec.start(recordingMediaType)
             }}
             // Не отдавать фокус кнопке: без preventDefault тап/клик блюрит инпут и
@@ -1054,7 +1061,7 @@ function Composer({
             // Плюс long-press ~400ms (tweb) открывает меню выбора голос/кружок.
             onMouseDown={(e) => {
               e.preventDefault()
-              if (hasText || rec.recording) return
+              if (hasText || rec.recording || !canSendMedia) return
               window.clearTimeout(longPressTimer.current)
               // таймер лишь помечает long-press; меню откроется на mouseup —
               // так click после отпускания глотается кнопкой, а не бэкдропом меню
@@ -1073,7 +1080,7 @@ function Composer({
                 setSendMenuOpen(true)
                 return
               }
-              if (!hasText && !rec.recording) openRecMenu(e.currentTarget as HTMLElement)
+              if (!hasText && !rec.recording && canSendMedia) openRecMenu(e.currentTarget as HTMLElement)
             }}
             whileTap={{ scale: 0.92 }}
             className={s.sendBtn}
@@ -1089,7 +1096,7 @@ function Composer({
               >
                 {slowmodeBlocked
                   ? <span className={s.slowmodeTimer}>{slowmodeText}</span>
-                  : hasText || rec.recording ? <TgIcon name="send" /> : <TgIcon name={recordingMediaType === 'round' ? 'recordround' : 'microphone_filled'} />}
+                  : hasText || rec.recording ? <TgIcon name="send" /> : <TgIcon name={recordingMediaType === 'round' ? 'recordround' : 'microphone_filled'} style={{ opacity: canSendMedia ? 1 : 0.4 }} />}
               </motion.span>
             </AnimatePresence>
             {/* Выбран эффект сообщения — маленький эмодзи-бейдж на кнопке отправки. */}

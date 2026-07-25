@@ -25,7 +25,7 @@ import type { Chat, OpenPeer } from '../data'
 import { useT } from '../i18n'
 import { useGroupInfo, RIGHTS, roleLabel, type RealMember } from '../core/hooks/useGroupInfo'
 import { useMessagesStore } from '../stores/messagesStore'
-import { useChatsStore, loadChats } from '../stores/chatsStore'
+import { useChatsStore } from '../stores/chatsStore'
 import { useAudioStore, type AudioTrack } from '../stores/audioStore'
 import { markMediaPlayed } from '../core/mediaRead'
 import PlayPauseGlyph from './PlayPauseGlyph'
@@ -138,7 +138,6 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
     canManageAdmins,
     canInvite,
     canManageDiscussion,
-    canManageTopics,
     canViewStats,
     discussionChatId,
     enablingDiscussion,
@@ -639,8 +638,8 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
           {/* Закреплённые в профиле истории (tweb profile stories) — только у пользователя */}
           {isUser && peerId != null && <PinnedStoriesSection peerId={peerId} />}
 
-          {/* Статистика (tweb chatFull.can_view_stats): канал/супергруппа → графики */}
-          {isRealChat && canViewStats && (
+          {/* Статистика — только канал (у групп не показываем) */}
+          {isRealChat && isChannel && canViewStats && (
             <div className={s.section}>
               <div className={s.cardPlain}>
                 <div
@@ -658,27 +657,7 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
             </div>
           )}
 
-          {/* Темы (tweb editChat Topics toggle): группа → форум-топики */}
-          {isRealChat && chat.type === 'group' && canManageTopics && (
-            <div className={s.section}>
-              <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionTitle}>
-                {t('Topics')}
-              </Text>
-              <div className={s.cardPlain}>
-                <div
-                  className={s.enabledRow}
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => {
-                    const next = !chat.isForum
-                    void managers.groups.setForum(Number(chat.id), next).then(() => loadChats(managers))
-                  }}
-                >
-                  <Text size={16} color="var(--tg-textPrimary)" style={{ flex: 1 }}>{t('Topics')}</Text>
-                  <TgSwitch checked={!!chat.isForum} />
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Форум-топики группы («Обсуждения») перенесены в «Изменить группу». */}
 
           {/* Channel discussions: admin (creator/CHANGE_INFO) toggle / enabled state */}
           {isRealChat && isChannel && canManageDiscussion && (
