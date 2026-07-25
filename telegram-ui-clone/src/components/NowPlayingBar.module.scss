@@ -91,10 +91,33 @@
   justify-content: center;
   z-index: 40;
 }
-// Вертикальный слайдер: горизонтальный range повёрнут на 90°.
-.volSliderBox {
-  width: 96px;
-  transform: rotate(-90deg);
+// Вертикальный слайдер громкости (pointer-drag по Y).
+.volTrack {
+  position: relative;
+  width: 4px;
+  height: 96px;
+  border-radius: 2px;
+  background: var(--tg-hover);
+  cursor: pointer;
+  touch-action: none;
+}
+.volFill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 2px;
+  background: var(--tg-accent);
+}
+.volThumb {
+  position: absolute;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--tg-accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transform: translate(-50%, 50%); // центр ползунка на верхней кромке заливки
 }
 
 // Кнопка скорости

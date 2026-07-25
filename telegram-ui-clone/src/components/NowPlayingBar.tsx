@@ -1,6 +1,5 @@
-import { memo, useState, type ReactNode } from 'react'
+import { memo, useRef, useState, type ReactNode } from 'react'
 import Text from '../shared/ui/Text'
-import Slider from '../shared/ui/Slider'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon, { type IconName } from './TgIcon'
 import PlayPauseGlyph from './PlayPauseGlyph'
@@ -38,6 +37,31 @@ function RoundBtn({
     >
       {children}
     </motion.button>
+  )
+}
+
+// Вертикальный слайдер громкости на pointer-событиях: перетаскивание по Y (снизу
+// вверх = 0..1). Нативный range, повёрнутый на 90°, тянулся по горизонтали — было
+// неудобно; здесь ось перетаскивания совпадает с визуальной.
+function VolumeSlider({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const apply = (clientY: number) => {
+    const el = ref.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    onChange(Math.max(0, Math.min(1, 1 - (clientY - r.top) / r.height)))
+  }
+  const pct = Math.round(value * 100)
+  return (
+    <div
+      ref={ref}
+      className={s.volTrack}
+      onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); apply(e.clientY) }}
+      onPointerMove={(e) => { if (e.buttons === 1) apply(e.clientY) }}
+    >
+      <div className={s.volFill} style={{ height: `${pct}%` }} />
+      <div className={s.volThumb} style={{ bottom: `${pct}%` }} />
+    </div>
   )
 }
 
@@ -125,9 +149,7 @@ function NowPlayingBar() {
                     exit={{ opacity: 0, y: -6 }}
                     transition={{ duration: 0.14 }}
                   >
-                    <div className={s.volSliderBox}>
-                      <Slider min={0} max={1} step={0.01} value={effVol} onChange={setVolume} />
-                    </div>
+                    <VolumeSlider value={effVol} onChange={setVolume} />
                   </motion.div>
                 )}
               </AnimatePresence>
