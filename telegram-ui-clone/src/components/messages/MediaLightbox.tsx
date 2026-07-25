@@ -22,6 +22,7 @@ import TgIcon from '../TgIcon'
 import Avatar from '../../shared/ui/Avatar'
 import { peerColor } from '../peerColor'
 import { useManagers } from '../../core/hooks/useManagers'
+import { getSecretMediaUrl } from '../../core/secret/mediaCache'
 import type { MediaMeta } from '../../core/managers/mediaManager'
 import { enterPip, pipSupported, usePortalContainer } from '../../core/pip'
 import { pushEsc } from '../../core/hotkeys'
@@ -41,6 +42,8 @@ export interface LightboxItem {
   /** натуральные размеры медиа (из сообщения) — центральный бокс стабилен с 1-го кадра */
   width?: number
   height?: number
+  /** секретное медиа (E2E): ключ/iv/mime для расшифровки ciphertext'а в blob-URL */
+  secret?: { keyB64: string; ivB64: string; mime: string }
 }
 interface Rect { top: number; left: number; width: number; height: number }
 
@@ -123,6 +126,27 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
   useEffect(() => {
     let alive = true
     setMeta(null); setUrl(''); setNatSize(null)
+    // Секретное медиа (E2E): сервер отдаёт только ciphertext — качаем, расшифровываем
+    // (общий кэш) и играем blob-URL. meta/contentUrl тут неприменимы (там шифртекст).
+    if (item.secret && item.mediaId != null) {
+      const sec = item.secret
+      const isVid = item.type === 'video' || sec.mime.startsWith('video/')
+      void getSecretMediaUrl(item.mediaId, sec.keyB64, sec.ivB64, sec.mime).then((u) => {
+        if (!alive) return
+        setUrl(u)
+        if (isVid) return
+        // натуральные размеры из декодированного blob — центральный бокс по кадру
+        const pre = new Image()
+        const delay = flyFrom ? OPEN_MS + 40 : 0
+        pre.onload = () => {
+          if (!alive) return
+          setNatSize({ w: pre.naturalWidth, h: pre.naturalHeight })
+          window.setTimeout(() => { if (alive) setImgSrc(u) }, delay)
+        }
+        pre.src = u
+      }).catch(() => {})
+      return () => { alive = false }
+    }
     if (item.mediaId == null) {
       const src = item.src
       if (!src) return
@@ -329,7 +353,10 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
   const multi = items.length > 1
   const download = async () => {
     const a = document.createElement('a')
-    if (item.mediaId != null) {
+    if (item.secret) {
+      // секретное медиа: meta вернула бы шифртекст — имя по типу
+      a.download = `media-${item.mediaId}${item.type === 'video' ? '.mp4' : '.jpg'}`
+    } else if (item.mediaId != null) {
       const m = await managers.media.meta(item.mediaId)
       a.download = m.fileName || `media-${item.mediaId}`
     } else {

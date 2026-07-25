@@ -150,15 +150,23 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
       ...(!isService ? [reportItem] : []),
       { icon: <TgIcon name="delete" size={20} />, label: 'Delete Chat', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
     ]
+  } else if (chat.type === 'saved') {
+    // «Избранное» (Saved Messages, self-peer): нет уведомлений/звонков/жалоб/
+    // удаления — только поиск (на узком экране) и выбор сообщений.
+    items = [
+      ...searchItems,
+      { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
+    ]
   } else if (chat.type === 'secret') {
     // Секретный чат (E2E): минимальное меню. Нет поиска (сервер не ищет по
-    // шифртексту), подарка/обсуждения/буста (это каналы/группы) — только базовое.
+    // шифртексту), подарка/обсуждения/буста (это каналы/группы). Удаление и
+    // очистка истории объединены в одно действие «Покинуть диалог» (удаляет
+    // секретный чат у себя целиком).
     items = [
       { icon: <TgIcon name="timer" size={20} />, label: 'Auto-delete', submenu: true },
       muteItem,
       { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
-      ...(clearItem ? [clearItem] : []),
-      { icon: <TgIcon name="delete" size={20} />, label: 'Delete Chat', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
+      { icon: <TgIcon name="delete" size={20} />, label: 'Leave chat', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
     ]
   } else if (chat.type === 'group') {
     items = [

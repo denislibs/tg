@@ -455,6 +455,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       .catch(() => {})
   }
   const deleteLabels = (() => {
+    if (isSecret) return { title: 'Leave chat', text: 'This chat will be deleted from your chat list.', action: 'Delete' }
     if (chat.type === 'private') return { title: 'Delete Chat', text: 'This chat will be deleted from your chat list.', action: 'Delete' }
     if (isChannel) return owned
       ? { title: 'Delete Channel', text: 'The channel will be deleted for all subscribers.', action: 'Delete' }
