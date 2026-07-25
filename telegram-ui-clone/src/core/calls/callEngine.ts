@@ -21,6 +21,8 @@ import { useSettingsStore } from '../../settings'
 import { playSound, stopSound } from '../audio/sounds'
 import { startClient } from '../../client/bootstrap'
 import type { CallFrameEvt } from '../realtime/events'
+import { generateKeyPair, exportPublicKey, deriveSecret, b64FromBytes, b64ToBytes } from '../secret/crypto'
+import { fingerprintEmoji } from '../secret/fingerprint'
 
 // Fallback, если /calls/ice недоступен (без TURN звонок пройдёт только в
 // пределах одной сети).
@@ -58,6 +60,35 @@ let ignoreOffer = false
 let pendingCandidates: RTCIceCandidateInit[] = []
 let ringTimer: ReturnType<typeof setTimeout> | null = null
 
+// ── E2E (SAS): ECDH поверх сигналинга → emoji-fingerprint (как в секретных чатах).
+// Медиа идёт P2P и уже шифруется DTLS-SRTP; DH-обмен добавляет верификацию против
+// MITM: обе стороны выводят одинаковую цепочку эмодзи и сверяют её голосом (модель
+// Telegram-звонков, tweb emojiFingerprint/fingerprintBadge).
+let dhPriv: CryptoKey | null = null
+let peerDhPub: Uint8Array | null = null // публичный ключ собеседника (захвачен из call_request у входящего)
+
+// Генерируем свою ECDH-пару, возвращаем публичный ключ в base64 для сигналинга.
+async function beginDh(): Promise<string> {
+  const pair = await generateKeyPair()
+  dhPriv = pair.privateKey
+  return b64FromBytes(await exportPublicKey(pair.publicKey))
+}
+
+// Выводим общий секрет из своего приватного + чужого публичного ключа и кладём
+// emoji-fingerprint в стор (обе стороны получают одинаковую цепочку).
+async function deriveFingerprint(peerPubRaw: Uint8Array) {
+  if (!dhPriv) return
+  try {
+    const { fingerprint } = await deriveSecret(dhPriv, peerPubRaw)
+    if (store().call) store().patch({ e2eFingerprint: fingerprintEmoji(fingerprint) })
+  } catch { /* обмен ключами сорвался — звонок работает без SAS-бейджа */ }
+}
+
+function resetDh() {
+  dhPriv = null
+  peerDhPub = null
+}
+
 function sendFrame(type: string, data: Record<string, unknown>) {
   const call = store().call
   if (!call) return
@@ -75,6 +106,7 @@ function cleanupRtc() {
   makingOffer = false
   ignoreOffer = false
   pendingCandidates = []
+  resetDh()
   localStream?.getTracks().forEach((t) => t.stop())
   localStream = null
   screenStream?.getTracks().forEach((t) => t.stop())
@@ -253,7 +285,8 @@ export function startOutgoing(peer: CallPeer, video: boolean, chatId: number | n
   })
   polite = false // звонящий — impolite (tweb: incoming сторона делает rollback)
   playSound('call_outgoing', { loop: true })
-  sendFrame('call_request', { video })
+  // ECDH: свой публичный ключ уходит в call_request; ответ придёт в call_accept.
+  void beginDh().then((dh) => { if (store().call?.callId === callId) sendFrame('call_request', { video, dh }) })
   ringTimer = setTimeout(() => { sendFrame('call_end', {}); finish('missed') }, RING_TIMEOUT_MS)
 }
 
@@ -262,7 +295,12 @@ export function accept() {
   if (!call || call.phase !== 'incoming') return
   clearRingTimer()
   polite = true
-  sendFrame('call_accept', {})
+  // ECDH: генерируем свою пару, выводим fingerprint по ключу звонящего (захвачен
+  // в call_request) и отправляем свой публичный ключ в call_accept.
+  void beginDh().then(async (dh) => {
+    if (peerDhPub) await deriveFingerprint(peerDhPub)
+    sendFrame('call_accept', { dh })
+  })
   void startRtc(call.video)
 }
 
@@ -430,6 +468,8 @@ export function handleFrame(evt: CallFrameEvt) {
       return
     }
     const video = !!d.video
+    // ECDH: сохраняем публичный ключ звонящего — используем при accept().
+    peerDhPub = typeof d.dh === 'string' ? b64ToBytes(d.dh) : null
     // имя/аватар звонящего подтягиваем асинхронно
     useCallStore.getState().set({
       callId, peer: { id: from, name: `ID ${from}`, avatar: 'var(--tg-accent)' },
@@ -465,6 +505,8 @@ export function handleFrame(evt: CallFrameEvt) {
     case 'call_accept':
       if (call.outgoing && call.phase === 'outgoing') {
         clearRingTimer()
+        // ECDH: пришёл публичный ключ отвечающего → выводим общий fingerprint.
+        if (typeof d.dh === 'string') void deriveFingerprint(b64ToBytes(d.dh))
         void startRtc(call.video)
       }
       break

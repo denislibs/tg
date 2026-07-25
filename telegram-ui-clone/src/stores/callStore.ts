@@ -37,6 +37,10 @@ export interface ActiveCall {
   /** live-потоки WebRTC (object refs; ставит движок) */
   localStream: MediaStream | null
   remoteStream: MediaStream | null
+  /** E2E emoji-fingerprint (SAS) из ECDH поверх сигналинга; появляется при
+      установлении звонка. Обе стороны видят одинаковую цепочку — сверяют голосом
+      (Telegram-модель верификации против MITM). undefined, пока ключи не обменяны. */
+  e2eFingerprint?: string[]
 }
 
 interface CallState {
