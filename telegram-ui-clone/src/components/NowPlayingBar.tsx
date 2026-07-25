@@ -1,11 +1,9 @@
 import { memo, useRef, useState, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
 import Text from '../shared/ui/Text'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon, { type IconName } from './TgIcon'
 import PlayPauseGlyph from './PlayPauseGlyph'
 import { useAudioStore } from '../stores/audioStore'
-import { usePortalContainer } from '../core/pip'
 import classNames from '../shared/lib/classNames'
 import s from './NowPlayingBar.module.scss'
 
@@ -92,24 +90,6 @@ function NowPlayingBar() {
 
   const [volOpen, setVolOpen] = useState(false)
   const [rateOpen, setRateOpen] = useState(false)
-  // Попап громкости рендерим в портал: плашка (.bar) имеет overflow:hidden ради
-  // скруглённой полоски прогресса и обрезала бы попап. Позиционируем по кнопке
-  // (fixed), а hover отслеживаем и на кнопке, и на попапе — портал рвёт вложенность
-  // DOM, поэтому увод курсора закрываем с задержкой (мост через зазор кнопка↔попап).
-  const portalContainer = usePortalContainer()
-  const volBtnRef = useRef<HTMLDivElement>(null)
-  const [volRect, setVolRect] = useState<DOMRect | null>(null)
-  const volCloseTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const openVol = () => {
-    clearTimeout(volCloseTimer.current)
-    const r = volBtnRef.current?.getBoundingClientRect()
-    if (r) setVolRect(r)
-    setVolOpen(true)
-  }
-  const scheduleCloseVol = () => {
-    clearTimeout(volCloseTimer.current)
-    volCloseTimer.current = setTimeout(() => setVolOpen(false), 140)
-  }
   const frac = duration > 0 ? currentTime / duration : 0
   const fmt = (s: number) => {
     if (!Number.isFinite(s) || s < 0) s = 0
@@ -152,12 +132,12 @@ function NowPlayingBar() {
             </div>
 
             {/* Громкость (как в Telegram): слайдер по наведению, клик по иконке —
-                mute/unmute. Сам слайдер — в портале (см. ниже), чтобы не обрезался. */}
+                mute/unmute. Попап — absolute-потомок (hover непрерывный, без зазора);
+                .bar больше не overflow:hidden, поэтому не обрезается. */}
             <div
-              ref={volBtnRef}
               className={s.volWrap}
-              onMouseEnter={openVol}
-              onMouseLeave={scheduleCloseVol}
+              onMouseEnter={() => setVolOpen(true)}
+              onMouseLeave={() => setVolOpen(false)}
             >
               <RoundBtn
                 onClick={toggleMute}
@@ -167,6 +147,19 @@ function NowPlayingBar() {
               >
                 <TgIcon name={volIconName} />
               </RoundBtn>
+              <AnimatePresence>
+                {volOpen && (
+                  <motion.div
+                    className={s.volPop}
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.14 }}
+                  >
+                    <VolumeSlider value={effVol} onChange={setVolume} />
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             <div className={s.rateWrap}>
@@ -220,30 +213,6 @@ function NowPlayingBar() {
             </div>
           </div>
         </motion.div>
-      )}
-      {/* Слайдер громкости — в портале (вне overflow:hidden плашки), позиция fixed
-          под кнопкой. Hover на самом попапе продлевает открытие. */}
-      {portalContainer && createPortal(
-        <AnimatePresence>
-          {volOpen && volRect && (
-            <div
-              style={{ position: 'fixed', left: volRect.left + volRect.width / 2, top: volRect.bottom, transform: 'translateX(-50%)', zIndex: 3000 }}
-              onMouseEnter={openVol}
-              onMouseLeave={scheduleCloseVol}
-            >
-              <motion.div
-                className={s.volPop}
-                initial={{ opacity: 0, y: -6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.14 }}
-              >
-                <VolumeSlider value={effVol} onChange={setVolume} />
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>,
-        portalContainer,
       )}
     </AnimatePresence>
   )

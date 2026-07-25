@@ -35,7 +35,8 @@
 // Плашка "сейчас играет" (tweb .pinned-audio).
 .bar {
   position: relative;
-  overflow: hidden;
+  // без overflow:hidden — иначе обрезается попап громкости; концы полоски
+  // прогресса убраны от скруглённых углов инсетом (см. .progress).
   display: flex;
   align-items: center;
   height: var(--chat-plate-height);
@@ -74,10 +75,11 @@
   position: relative;
   display: flex;
 }
-// Попап громкости рендерится в портал; позицию задаёт fixed-обёртка. Здесь —
-// только вид. Верхний padding побольше = «мост» без зазора между кнопкой и
-// слайдером (иначе курсор пересекает пустоту и hover рвётся).
 .volPop {
+  position: absolute;
+  top: 100%; // примыкает к кнопке (без зазора) — hover непрерывный
+  left: 50%;
+  transform: translateX(-50%);
   padding: 14px 0 12px;
   width: 36px;
   height: 120px;
@@ -87,6 +89,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 40;
 }
 // Вертикальный слайдер громкости (pointer-drag по Y).
 .volTrack {
@@ -190,14 +193,16 @@
 // Линия прогресса вдоль низа плашки (tweb)
 .progress {
   position: absolute;
-  left: 0;
-  right: 0;
+  left: 24px; // инсет от скруглённых углов (радиус .bar), без overflow:hidden
+  right: 24px;
   bottom: 0;
   height: 3px;
+  border-radius: 2px;
   background: var(--tg-hover);
   cursor: pointer;
 }
 .progressFill {
   height: 100%;
+  border-radius: 2px;
   background: var(--tg-accent);
 }
