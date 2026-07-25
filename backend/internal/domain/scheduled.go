@@ -15,4 +15,8 @@ type ScheduledMessage struct {
 	MediaID   *int64
 	SendAt    time.Time
 	CreatedAt time.Time
+	// WhenOnline — «отправить когда онлайн» (Telegram schedule sentinel): вместо
+	// SendAt сообщение ждёт, пока собеседник приватного чата появится онлайн.
+	// Только для приватных чатов. При WhenOnline поле SendAt не используется.
+	WhenOnline bool
 }

@@ -1,8 +1,22 @@
 // Пикер даты/времени планирования
 .body {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 4px 16px 12px;
+}
+
+// Вторичная кнопка «Отправить, когда онлайн» — во всю ширину под полями.
+.whenOnline {
+  flex: 1 0 100%;
+  border: none;
+  background: transparent;
+  color: var(--tg-accent);
+  font-size: 15px;
+  font-weight: 500;
+  padding: 8px 0 2px;
+  cursor: pointer;
+  text-align: center;
 }
 
 .field {

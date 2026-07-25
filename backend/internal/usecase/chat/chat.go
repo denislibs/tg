@@ -51,6 +51,7 @@ type Interactor struct {
 	premium      PremiumRepo
 	contactPics  ContactPhotoLookup
 	profilePics  ProfilePhotoAdder
+	presence     PresenceQuery
 	botHub       *botPendingHub
 }
 
@@ -172,6 +173,10 @@ func (i *Interactor) SetContactPhotos(p ContactPhotoLookup) { i.contactPics = p 
 // SetProfilePhotos подключает добавление фото в галерею пользователя (optional):
 // нужно для принятия предложенного фото профиля.
 func (i *Interactor) SetProfilePhotos(p ProfilePhotoAdder) { i.profilePics = p }
+
+// SetPresence подключает запрос онлайн-статуса (optional): нужен диспетчеру
+// запланированных «отправить когда онлайн». Без него такие сообщения ждут.
+func (i *Interactor) SetPresence(p PresenceQuery) { i.presence = p }
 
 // nowMillis is the server clock used for update dates.
 func nowMillis() int64 { return time.Now().UnixMilli() }

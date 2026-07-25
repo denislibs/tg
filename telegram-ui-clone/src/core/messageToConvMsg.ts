@@ -141,7 +141,15 @@ export function messageToConvMsg(
     secretMedia: m.secretMedia,
     ttlSeconds: m.ttlSeconds ?? undefined,
     destructAt: m.destructAt ?? undefined,
-    reply: m.replyTo
+    replyToPeerId: m.replyToPeerId ?? undefined,
+    replySnapshotName: m.replySnapshotName,
+    replySnapshotText: m.replySnapshotText,
+    // Кросс-чат ответ (tweb ReplyToAnotherChat): оригинала нет в текущем сторе —
+    // превью рисуем ИЗ ГОТОВОГО СНИМКА (имя автора + текст/медиа-лейбл), без seq
+    // (в текущем чате прыгать некуда) и без поиска оригинала по replyToId.
+    reply: m.replyToPeerId != null
+      ? { name: m.replySnapshotName || 'Сообщение', text: m.replySnapshotText || '' }
+      : m.replyTo
       ? {
           name: m.replyTo.senderId === meId ? 'Вы' : opts?.replyToName ?? 'Сообщение',
           // Ответ с цитатой (reply quote): показываем выделенный фрагмент вместо

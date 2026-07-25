@@ -658,6 +658,11 @@ const ru: Dict = {
   'Send today at': 'Отправить сегодня в',
   'Send on': 'Отправить',
   at: 'в',
+  // ── Ответ в другом чате / отправка когда онлайн / перепланирование ──
+  'Reply in Another Chat': 'Ответить в другом чате',
+  'Send When Online': 'Отправить, когда онлайн',
+  'Scheduled until online': 'Отправится, когда будет в сети',
+  Reschedule: 'Перепланировать',
   // ── Поиск в чате: jump-to-date + фильтры (tweb topbarSearch) ──
   // (Photos/Videos/Files/Links/Music/'No results' уже есть в словаре выше)
   'Jump to Date': 'Перейти к дате',

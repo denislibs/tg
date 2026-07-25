@@ -13,6 +13,8 @@ import { convMsgReplyState } from '../draftReply'
 import { useEvent } from './useEvent'
 import { useMessagesStore, winKey } from '../../stores/messagesStore'
 import { useReportStore } from '../../stores/reportStore'
+import { useSearchStore } from '../../stores/searchStore'
+import { mediaLabel } from '../dialogToChat'
 import { useSettingsStore } from '../../settings'
 import { uiEvents } from './uiEvents'
 import { isGifLike } from '../gifs'
@@ -79,6 +81,9 @@ export function useMessageActions({
   const pendingQuoteRef = useRef<{ text: string; offset: number } | null>(null)
   const [delIds, setDelIds] = useState<DelState | null>(null)
   const [forwardIds, setForwardIds] = useState<number[] | null>(null)
+  // «Ответить в другом чате» (tweb ReplyToAnotherChat): снимок оригинала ждёт
+  // выбора целевого чата в пикере. null — пикер закрыт.
+  const [replyAnother, setReplyAnother] = useState<{ msgId: number; name: string; text: string; color: string } | null>(null)
   const [viewers, setViewers] = useState<ViewersState | null>(null)
   const [reacted, setReacted] = useState<ReactedState | null>(null)
   // Платная ⭐-реакция: открытый попап выбора количества звёзд (msgId цели).
@@ -148,6 +153,29 @@ export function useMessageActions({
       // Composer focuses itself when `reply` becomes set.
     }
     closeMsgMenu()
+  }
+
+  // «Ответить в другом чате» (tweb ReplyToAnotherChat): снимаем превью оригинала
+  // (имя автора + текст/медиа-лейбл) и открываем пикер целевого чата.
+  const startReplyAnother = () => {
+    const m = msgMenu && msgs[msgMenu.idx]
+    const raw = menuRawMsg()
+    const rs = m ? convMsgReplyState(m, raw?.id, chat.name, accent) : null
+    if (rs && raw?.id != null) {
+      setReplyAnother({ msgId: raw.id, name: rs.name, text: rs.text || mediaLabel(m!.type), color: rs.color })
+    }
+    closeMsgMenu()
+  }
+  // Выбран целевой чат: кладём pending-reply в стор и переключаемся туда —
+  // ConversationView на маунте поставит reply-плашку с исходным чатом + снимком.
+  const pickReplyAnotherChat = (targetChatId: number) => {
+    const r = replyAnother
+    setReplyAnother(null)
+    if (!r || !isRealChat) return
+    useSearchStore.getState().setPendingReply({
+      targetChatId, sourceChatId: numericChatId, msgId: r.msgId, name: r.name, text: r.text, color: r.color,
+    })
+    onChatCreated?.(targetChatId)
   }
 
   const startEdit = () => {
@@ -405,6 +433,9 @@ export function useMessageActions({
 
   const regularMenuItems: MsgMenuItem[] = [
     { icon: <TgIcon name="reply" size={20} />, label: 'Reply', onClick: startReply },
+    // «Ответить в другом чате» (tweb ReplyToAnotherChat, icon replace) — рядом с
+    // «Ответить». Не в секретном чате (кросс-чат перенос там неприменим).
+    ...(isRealChat && !isSecret ? [{ icon: <TgIcon name="replace" size={20} />, label: 'Reply in Another Chat', onClick: startReplyAnother }] : []),
     ...(isRealChat && (msgs[msgMenu?.idx ?? -1]?.out ?? false)
       ? [{ icon: <TgIcon name="edit" size={20} />, label: 'Edit', onClick: startEdit }]
       : []),
@@ -502,6 +533,7 @@ export function useMessageActions({
     factCheckEdit, submitFactCheck, closeFactCheckEditor: () => setFactCheckEdit(null),
     delIds, doDelete, closeDelete: () => setDelIds(null), openDeleteFor, canRevokeAll,
     forwardIds, forwardHasCaption, doForward, closeForward: () => setForwardIds(null), openForwardFor,
+    replyAnother, pickReplyAnotherChat, closeReplyAnother: () => setReplyAnother(null),
     viewers, closeViewers: () => setViewers(null),
     reacted, closeReacted: () => setReacted(null),
     translateText, closeTranslate: () => setTranslateText(null),

@@ -178,6 +178,8 @@ func registerServer(p serverParams) {
 		p.AuthUC.SetRevocationNotifier(publisher)
 		presenceMgr = usecasepresence.NewManager(rtredis.NewPresenceStore(p.Redis.Client), publisher, p.ChatUC.ChatPartners, 35*time.Second)
 		presenceMgr.SetPrivacy(privacyUC)
+		// Диспетчеру запланированных «отправить когда онлайн» нужен запрос presence.
+		p.ChatUC.SetPresence(presenceMgr)
 		hub := ws.NewHub(p.Ctx, p.Redis.Client)
 		p.LC.Append(fx.Hook{OnStop: func(context.Context) error { return hub.Close() }})
 		wsHandler = ws.NewHandler(hub, p.AuthUC, p.ChatUC, presenceMgr)

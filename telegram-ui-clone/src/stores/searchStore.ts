@@ -10,15 +10,30 @@ interface ChatSearch {
   query: string
 }
 
+// Кросс-чат ответ (tweb ReplyToAnotherChat): выбран целевой чат → ждём его
+// открытия, ConversationView ставит reply-плашку с исходным чатом + снимком.
+export interface PendingReply {
+  targetChatId: number
+  sourceChatId: number
+  msgId: number
+  name: string
+  text: string
+  color: string
+}
+
 interface SearchState {
   byChat: Record<number, ChatSearch>
   /** результат сайдбар-поиска ждёт открытия чата → ConversationView прыгает к seq */
   pendingJump: { chatId: number; seq: number } | null
+  /** «Ответить в другом чате» ждёт открытия целевого чата → ставится reply-плашка */
+  pendingReply: PendingReply | null
   setOpen: (chatId: number, open: boolean) => void
   setQuery: (chatId: number, query: string) => void
   reset: (chatId: number) => void
   setPendingJump: (chatId: number, seq: number) => void
   clearPendingJump: () => void
+  setPendingReply: (r: PendingReply) => void
+  clearPendingReply: () => void
 }
 
 const EMPTY: ChatSearch = { open: false, query: '' }
@@ -26,9 +41,12 @@ const EMPTY: ChatSearch = { open: false, query: '' }
 export const useSearchStore = create<SearchState>((set) => ({
   byChat: {},
   pendingJump: null,
+  pendingReply: null,
   setOpen: (chatId, open) => set((s) => ({ byChat: { ...s.byChat, [chatId]: { ...(s.byChat[chatId] ?? EMPTY), open } } })),
   setQuery: (chatId, query) => set((s) => ({ byChat: { ...s.byChat, [chatId]: { ...(s.byChat[chatId] ?? EMPTY), query } } })),
   reset: (chatId) => set((s) => ({ byChat: { ...s.byChat, [chatId]: EMPTY } })),
   setPendingJump: (chatId, seq) => set({ pendingJump: { chatId, seq } }),
   clearPendingJump: () => set({ pendingJump: null }),
+  setPendingReply: (r) => set({ pendingReply: r }),
+  clearPendingReply: () => set({ pendingReply: null }),
 }))

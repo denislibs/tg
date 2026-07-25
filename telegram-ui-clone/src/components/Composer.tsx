@@ -54,7 +54,7 @@ const SHORTCUTS: Record<string, EntityType> = {
   KeyS: 'strikethrough', KeyM: 'code', KeyP: 'spoiler',
 }
 
-export interface ReplyState { msgId?: number; name: string; text: string; color: string; quote?: { text: string; offset: number } }
+export interface ReplyState { msgId?: number; name: string; text: string; color: string; quote?: { text: string; offset: number }; chatId?: number; snapshotName?: string; snapshotText?: string }
 export interface EditState { msgId: number; text: string; entities?: MessageEntity[] }
 
 interface Props {
@@ -95,6 +95,11 @@ interface Props {
   botMenuButton?: { text: string; onClick: () => void }
   // Запланированные сообщения: ПКМ по Send → «Запланировать сообщение».
   onSchedule?: (text: string, entities: MessageEntity[] | undefined, sendAtUnix: number) => void
+  // «Отправить, когда онлайн» (tweb Schedule.SendWhenOnline): доступно только в
+  // личном чате, когда статус собеседника виден и он НЕ онлайн (canSendWhenOnline).
+  // Пункт SendMenu + вторичная кнопка в попапе планирования шлют текущий драфт.
+  canSendWhenOnline?: boolean
+  onSendWhenOnline?: (text: string, entities: MessageEntity[] | undefined) => void
   // Есть запланированные → кнопка-календарик (tweb btnScheduled) открывает список.
   scheduledCount?: number
   onOpenScheduled?: () => void
@@ -233,7 +238,7 @@ function placeCaretEnd(el: HTMLElement) {
 
 function Composer({
   reply, editing, rec, onSend, onTyping, onPickSticker, onPickGif, onCancelReply, onCancelEdit, onOpenAttach, onPasteFiles,
-  initialDraft, onDraftChange, mentions, onInlineQuery, onPickInline, botMenuButton, onSchedule, scheduledCount, onOpenScheduled, slowmodeLeft, secret, chargeStars,
+  initialDraft, onDraftChange, mentions, onInlineQuery, onPickInline, botMenuButton, onSchedule, canSendWhenOnline, onSendWhenOnline, scheduledCount, onOpenScheduled, slowmodeLeft, secret, chargeStars,
   onEditLast, onReplyPrev, sendAs,
 }: Props) {
   const slowmodeBlocked = (slowmodeLeft ?? 0) > 0
@@ -373,6 +378,20 @@ function Composer({
     clearEditor()
     onDraftChange?.('')
     setScheduleOpen(false)
+  }
+  // «Отправить, когда онлайн» (tweb Schedule.SendWhenOnline): планирует текущий
+  // драфт без даты (бэк ждёт presence собеседника). Тот же разбор, что и submit.
+  const submitWhenOnline = () => {
+    const root = editorRef.current
+    if (!root || !onSendWhenOnline) return
+    const raw = serialize(root)
+    const { text, entities } = parseMarkdown(raw.text, raw.entities)
+    if (!text) return
+    onSendWhenOnline(text, entities.length ? entities : undefined)
+    clearEditor()
+    onDraftChange?.('')
+    setScheduleOpen(false)
+    setSendMenuOpen(false)
   }
 
   const submit = (silent = false) => {
@@ -837,7 +856,7 @@ function Composer({
                 <TgIcon name="reply" size={22} color={reply.color} />
                 <div className={s.barBody} style={{ borderLeft: `2px solid ${reply.color}` }}>
                   <Text size={14} weight={600} color={reply.color}>
-                    {t('Reply to')} {reply.name}
+                    {t('Reply to')} {reply.snapshotName ?? reply.name}
                   </Text>
                   <Text noWrap size={14} color="var(--tg-textSecondary)">
                     {reply.quote ? (
@@ -845,7 +864,7 @@ function Composer({
                         <TgIcon name="quote_outline" size={13} style={{ verticalAlign: '-1px', marginRight: 3, opacity: 0.7 }} />
                         {reply.quote.text}
                       </>
-                    ) : reply.text}
+                    ) : reply.snapshotText ?? reply.text}
                   </Text>
                 </div>
                 <IconButton size="small" onClick={onCancelReply} color="var(--tg-textFaint)">
@@ -1103,6 +1122,15 @@ function Composer({
             onClick={() => { setSendMenuOpen(false); setScheduleOpen(true) }}
           />
         )}
+        {/* «Отправить, когда онлайн» (tweb Schedule.SendWhenOnline) — только когда
+            собеседник в личке офлайн со видимым статусом (canSendWhenOnline). */}
+        {onSendWhenOnline && canSendWhenOnline && (
+          <MenuItem
+            icon={<TgIcon name="online" size={20} />}
+            label={t('Send When Online')}
+            onClick={submitWhenOnline}
+          />
+        )}
         {/* Эффект сообщения (наш аналог Telegram message effects): ряд эмодзи —
             выбор ставит эффект для следующей отправки + короткое превью. */}
         <div className={s.effectRow} role="group" aria-label={t('Message effect')}>
@@ -1124,7 +1152,13 @@ function Composer({
           ))}
         </div>
       </Menu>
-      {scheduleOpen && <SchedulePopup onPick={submitScheduled} onClose={() => setScheduleOpen(false)} />}
+      {scheduleOpen && (
+        <SchedulePopup
+          onPick={submitScheduled}
+          onClose={() => setScheduleOpen(false)}
+          onWhenOnline={onSendWhenOnline && canSendWhenOnline ? submitWhenOnline : undefined}
+        />
+      )}
 
       {/* Floating formatting bar over a text selection (tweb MarkupTooltip) */}
       <MarkupTooltip editorRef={editorRef} onApply={applyFmt} />

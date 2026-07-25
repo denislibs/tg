@@ -194,6 +194,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/chats/{chatID}/threads/{rootID}", ch.ThreadMessages)
 		pr.Post("/chats/{chatID}/scheduled", ch.ScheduleMessage)
 		pr.Get("/chats/{chatID}/scheduled", ch.ListScheduled)
+		pr.Patch("/chats/{chatID}/scheduled/{schedID}", ch.UpdateScheduled)
 		pr.Delete("/chats/{chatID}/scheduled/{schedID}", ch.DeleteScheduled)
 		pr.Post("/chats/{chatID}/scheduled/{schedID}/send_now", ch.SendScheduledNow)
 		pr.Post("/polls/{pollID}/vote", ch.VotePoll)

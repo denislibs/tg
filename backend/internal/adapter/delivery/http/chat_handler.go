@@ -1101,6 +1101,7 @@ func scheduledJSON(m domain.ScheduledMessage) map[string]any {
 		"id": m.ID, "chat_id": m.ChatID, "sender_id": m.SenderID,
 		"type": m.Type, "text": m.Text, "reply_to_id": m.ReplyToID,
 		"media_id": m.MediaID, "send_at": m.SendAt, "created_at": m.CreatedAt,
+		"when_online": m.WhenOnline,
 	}
 	if len(m.Entities) > 0 {
 		j["entities"] = m.Entities
@@ -1115,12 +1116,13 @@ func (h *ChatHandler) ScheduleMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var b struct {
-		Type     string                 `json:"type"`
-		Text     string                 `json:"text"`
-		Entities []domain.MessageEntity `json:"entities"`
-		ReplyTo  *int64                 `json:"reply_to_id"`
-		MediaID  *int64                 `json:"media_id"`
-		SendAt   int64                  `json:"send_at"` // unix-секунды
+		Type       string                 `json:"type"`
+		Text       string                 `json:"text"`
+		Entities   []domain.MessageEntity `json:"entities"`
+		ReplyTo    *int64                 `json:"reply_to_id"`
+		MediaID    *int64                 `json:"media_id"`
+		SendAt     int64                  `json:"send_at"`     // unix-секунды (игнор при when_online)
+		WhenOnline bool                   `json:"when_online"` // отправить когда собеседник онлайн
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
 		writeError(w, http.StatusBadRequest, "bad body")
@@ -1129,9 +1131,13 @@ func (h *ChatHandler) ScheduleMessage(w http.ResponseWriter, r *http.Request) {
 	m, err := h.svc.ScheduleMessage(r.Context(), usecasechat.SendInput{
 		ChatID: chatID, SenderID: h.meID(r), Type: b.Type, Text: b.Text,
 		Entities: b.Entities, ReplyToID: b.ReplyTo, MediaID: b.MediaID,
-	}, time.Unix(b.SendAt, 0))
+	}, time.Unix(b.SendAt, 0), b.WhenOnline)
 	if errors.Is(err, domain.ErrTooLong) {
 		writeError(w, http.StatusBadRequest, "invalid scheduled message")
+		return
+	}
+	if errors.Is(err, domain.ErrForbidden) {
+		writeError(w, http.StatusForbidden, "when_online requires a private chat")
 		return
 	}
 	if errors.Is(err, domain.ErrNotFound) {
@@ -1140,6 +1146,32 @@ func (h *ChatHandler) ScheduleMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not schedule")
+		return
+	}
+	writeJSON(w, http.StatusOK, scheduledJSON(m))
+}
+
+// UpdateScheduled — PATCH /chats/{chatID}/scheduled/{schedID} {send_at}:
+// перенести своё запланированное сообщение на новое время (reschedule).
+func (h *ChatHandler) UpdateScheduled(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathInt(w, r, "schedID")
+	if !ok {
+		return
+	}
+	var b struct {
+		SendAt int64 `json:"send_at"` // unix-секунды
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	m, err := h.svc.UpdateScheduled(r.Context(), id, h.meID(r), time.Unix(b.SendAt, 0))
+	if errors.Is(err, domain.ErrTooLong) {
+		writeError(w, http.StatusBadRequest, "send_at must be in the future")
+		return
+	}
+	if err != nil {
+		h.mapScheduledErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, scheduledJSON(m))
@@ -1960,6 +1992,14 @@ func messageJSON(m domain.Message) map[string]any {
 			rt["quote_text"] = m.ReplyTo.QuoteText
 		}
 		j["reply_to"] = rt
+	}
+	// Кросс-чат-ответ (Telegram reply_to_peer_id): исходный чат + снимок превью
+	// (имя автора + текст/лейбл) — те же ключи, что frame.go: messageUpdatePayload.
+	// Оригинал в reply_to не подтягивается (чужой чат), клиент рисует из снимка.
+	if m.ReplyToPeerID != nil {
+		j["reply_to_peer_id"] = *m.ReplyToPeerID
+		j["reply_snapshot_name"] = m.ReplySnapshotName
+		j["reply_snapshot_text"] = m.ReplySnapshotText
 	}
 	// Media metadata (history read model) so the client renders the media bubble
 	// entirely from the message — exact box, blur placeholder, poster, mime, etc. —

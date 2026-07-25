@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest'
 import { newMessagesManager } from './messagesManager'
 import type { RestClient } from '../net/restClient'
 import type { RawMessage } from '../models'
+import type { NewMessageEvt } from '../realtime/events'
 
 function rawPage(seqs: number[]): { messages: RawMessage[]; count: number } {
   // backend returns newest-first (DESC) for offset_id=0 / older pages
@@ -80,5 +81,76 @@ describe('MessagesManager.sendMessage', () => {
     const m = await mgr.sendMessage({ chatId: 1, text: 'hey', clientMsgId: 'c1' })
     expect(m.seq).toBe(6)
     expect(m.text).toBe('hey')
+  })
+
+  it('forwards reply_to_peer_id for a cross-chat reply', async () => {
+    let body: Record<string, unknown> = {}
+    const created: RawMessage = {
+      id: 10, chat_id: 1, seq: 6, sender_id: 1, type: 'text', text: 'hey',
+      reply_to_id: 5, media_id: null, created_at: '2026-06-24T11:00:00Z',
+    }
+    const rest = { post: async (_p: string, b: Record<string, unknown>) => { body = b; return created } } as unknown as RestClient
+    const mgr = newMessagesManager({ rest })
+    await mgr.sendMessage({ chatId: 1, text: 'hey', clientMsgId: 'c1', replyToId: 5, replyToPeerId: 99 })
+    expect(body.reply_to_id).toBe(5)
+    expect(body.reply_to_peer_id).toBe(99)
+  })
+})
+
+describe('MessagesManager scheduled', () => {
+  const rawScheduled = (over: Record<string, unknown> = {}) => ({
+    id: 1, chat_id: 1, sender_id: 1, type: 'text', text: 'later',
+    send_at: '2026-07-20T10:00:00Z', created_at: '2026-07-19T10:00:00Z', ...over,
+  })
+
+  it('sends when_online=true and maps the whenOnline flag', async () => {
+    let body: Record<string, unknown> = {}
+    const rest = { post: async (_p: string, b: Record<string, unknown>) => { body = b; return rawScheduled({ when_online: true }) } } as unknown as RestClient
+    const mgr = newMessagesManager({ rest })
+    const s = await mgr.scheduleMessage(1, { text: 'later', sendAt: 0, whenOnline: true })
+    expect(body.when_online).toBe(true)
+    expect(s.whenOnline).toBe(true)
+  })
+
+  it('defaults when_online to false for a dated schedule', async () => {
+    let body: Record<string, unknown> = {}
+    const rest = { post: async (_p: string, b: Record<string, unknown>) => { body = b; return rawScheduled() } } as unknown as RestClient
+    const mgr = newMessagesManager({ rest })
+    const s = await mgr.scheduleMessage(1, { text: 'later', sendAt: 1_800_000_000 })
+    expect(body.when_online).toBe(false)
+    expect(s.whenOnline).toBe(false)
+  })
+
+  it('editScheduled PATCHes the new send_at and returns the updated record', async () => {
+    let path = ''
+    let body: Record<string, unknown> = {}
+    const rest = { patch: async (p: string, b: Record<string, unknown>) => { path = p; body = b; return rawScheduled({ send_at: '2026-07-21T09:00:00Z' }) } } as unknown as RestClient
+    const mgr = newMessagesManager({ rest })
+    const s = await mgr.editScheduled(1, 7, 1_800_000_500)
+    expect(path).toBe('/chats/1/scheduled/7')
+    expect(body.send_at).toBe(1_800_000_500)
+    expect(s.sendAt).toBe('2026-07-21T09:00:00Z')
+  })
+})
+
+describe('MessagesManager.cacheLive', () => {
+  // Регресс Bug 4: снимок кросс-чат-reply должен пережить кэш — иначе при
+  // переоткрытии чата из кэша превью кросс-чат-ответа не рисуется.
+  it('preserves cross-chat reply snapshot in the cache entry', async () => {
+    const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    mgr.cacheLive({
+      chat_id: 1, msg_id: 4, seq: 4, sender_id: 1, type: 'text', text: 'ответ',
+      media_id: null, created_at: '2026-06-24T10:00:00Z',
+      reply_to_id: 999, reply_to_peer_id: 77,
+      reply_snapshot_name: 'Алиса', reply_snapshot_text: 'из другого чата',
+    } as NewMessageEvt)
+    const r = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    const live = r.messages.find((m) => m.id === 4)
+    expect(live).toBeTruthy()
+    expect(live?.replyToPeerId).toBe(77)
+    expect(live?.replySnapshotName).toBe('Алиса')
+    expect(live?.replySnapshotText).toBe('из другого чата')
   })
 })

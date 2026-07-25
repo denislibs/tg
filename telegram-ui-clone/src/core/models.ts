@@ -165,6 +165,11 @@ export interface RawMessage {
   fwd_from_msg_id?: number | null
   fwd_date?: string | null
   reply_to?: { msg_id: number; seq: number; sender_id: number; text: string; entities?: MessageEntity[] | null; type: string; media_id?: number; quote_text?: string } | null
+  /** кросс-чат ответ (tweb ReplyToAnotherChat): исходный чат оригинала + готовый
+   * снимок превью (имя автора + текст/медиа-лейбл) — оригинала нет в текущем чате */
+  reply_to_peer_id?: number | null
+  reply_snapshot_name?: string
+  reply_snapshot_text?: string
   poll_id?: number | null
   poll?: RawPoll | null
   checklist_id?: number | null
@@ -286,6 +291,12 @@ export interface Message {
   fwdDate?: string | null
   /** Lightweight preview of the replied-to message (history read model). */
   replyTo?: { msgId: number; seq: number; senderId: number; text: string; entities?: MessageEntity[]; type: string; mediaId?: number; quoteText?: string } | null
+  /** кросс-чат ответ (tweb ReplyToAnotherChat): id исходного чата оригинала +
+   * готовый снимок превью (имя автора + текст/медиа-лейбл). Оригинала нет в
+   * текущем сторе, поэтому превью рисуется из снимка, а не поиском по replyToId. */
+  replyToPeerId?: number | null
+  replySnapshotName?: string
+  replySnapshotText?: string
   /** Media metadata (history read model) — lets the bubble render fully from the
    * message (exact box, blur placeholder, poster, mime, …) with no per-media
    * meta request. */
@@ -534,6 +545,9 @@ export interface RawScheduled {
   media_id?: number | null
   send_at: string
   created_at: string
+  /** отправить, когда собеседник появится в сети (tweb Schedule.SendWhenOnline);
+   * при true send_at игнорируется — очередь ждёт presence, только приватный чат */
+  when_online?: boolean
 }
 
 export interface Scheduled {
@@ -543,10 +557,12 @@ export interface Scheduled {
   text: string
   entities?: MessageEntity[]
   sendAt: string
+  /** отправить при появлении собеседника онлайн — лейбл «Scheduled until online» */
+  whenOnline: boolean
 }
 
 export function mapScheduled(r: RawScheduled): Scheduled {
-  return { id: r.id, chatId: r.chat_id, type: r.type, text: r.text, entities: r.entities ?? undefined, sendAt: r.send_at }
+  return { id: r.id, chatId: r.chat_id, type: r.type, text: r.text, entities: r.entities ?? undefined, sendAt: r.send_at, whenOnline: !!r.when_online }
 }
 
 // Предложенный в канал пост (backend suggested_posts): статус pending|approved|
@@ -698,6 +714,9 @@ export function mapMessage(r: RawMessage): Message {
     replyTo: r.reply_to
       ? { msgId: r.reply_to.msg_id, seq: r.reply_to.seq, senderId: r.reply_to.sender_id, text: r.reply_to.text, entities: r.reply_to.entities ?? undefined, type: r.reply_to.type, mediaId: r.reply_to.media_id && r.reply_to.media_id > 0 ? r.reply_to.media_id : undefined, quoteText: r.reply_to.quote_text || undefined }
       : null,
+    replyToPeerId: r.reply_to_peer_id ?? undefined,
+    replySnapshotName: r.reply_snapshot_name || undefined,
+    replySnapshotText: r.reply_snapshot_text || undefined,
     mediaWidth: r.media_w,
     mediaHeight: r.media_h,
     mediaMime: r.media_mime,

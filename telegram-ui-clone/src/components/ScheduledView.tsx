@@ -8,6 +8,7 @@ import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import IconButton from '../shared/ui/IconButton'
 import RichText from './RichText'
+import SchedulePopup from './SchedulePopup'
 import { useManagers } from '../core/hooks/useManagers'
 import { useMessagesStore } from '../stores/messagesStore'
 import type { Scheduled } from '../core/models'
@@ -25,6 +26,9 @@ export default function ScheduledView({ chatId, onClose, onChanged }: {
   const [lang] = useLang()
   const managers = useManagers()
   const [list, setList] = useState<Scheduled[] | null>(null)
+  // Перепланирование (tweb MessageScheduleEditTime): id записи + её текущее время
+  // для префилла пикера.
+  const [reschedule, setReschedule] = useState<{ id: number; sendAt: string } | null>(null)
 
   const reload = () => {
     void managers.messages.listScheduled(chatId).then((l) => {
@@ -35,12 +39,20 @@ export default function ScheduledView({ chatId, onClose, onChanged }: {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(reload, [chatId])
 
-  const fmtWhen = (iso: string) => {
-    const d = new Date(iso)
+  const fmtWhen = (m: Scheduled) => {
+    // «Отправить, когда онлайн» (tweb MessageScheduledUntilOnline): вместо даты.
+    if (m.whenOnline) return t('Scheduled until online')
+    const d = new Date(m.sendAt)
     const today = d.toDateString() === new Date().toDateString()
     const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
     if (today) return `${t('Scheduled for today')}, ${hm}`
     return `${t('Scheduled for')} ${d.toLocaleDateString(lang)}, ${hm}`
+  }
+  const doReschedule = (sendAtUnix: number) => {
+    const r = reschedule
+    setReschedule(null)
+    if (!r) return
+    void managers.messages.editScheduled(chatId, r.id, sendAtUnix).then(reload)
   }
 
   const sendNow = (id: number) => {
@@ -53,7 +65,15 @@ export default function ScheduledView({ chatId, onClose, onChanged }: {
     void managers.messages.deleteScheduled(chatId, id).then(reload)
   }
 
-  return createPortal(
+  return <>
+    {reschedule && (
+      <SchedulePopup
+        initUnix={Math.floor(new Date(reschedule.sendAt).getTime() / 1000)}
+        onPick={doReschedule}
+        onClose={() => setReschedule(null)}
+      />
+    )}
+    {createPortal(
     <div className={s.overlay} onClick={onClose}>
       <motion.div
         className={s.card}
@@ -80,7 +100,7 @@ export default function ScheduledView({ chatId, onClose, onChanged }: {
             <div key={m.id} className={s.row}>
               <div className={s.bubble}>
                 <Text size={12.5} color="var(--tg-accent)" weight={600}>
-                  {fmtWhen(m.sendAt)}
+                  {fmtWhen(m)}
                 </Text>
                 <Text size={15} color="var(--tg-textPrimary)" style={{ wordBreak: 'break-word' }}>
                   <RichText text={m.text} entities={m.entities} linkColor="var(--tg-link)" />
@@ -89,6 +109,9 @@ export default function ScheduledView({ chatId, onClose, onChanged }: {
               <div className={s.actions}>
                 <IconButton size="small" onClick={() => sendNow(m.id)} title={t('Send Now')} aria-label={t('Send Now')}>
                   <TgIcon name="send" size={18} color="var(--tg-accent)" />
+                </IconButton>
+                <IconButton size="small" onClick={() => setReschedule({ id: m.id, sendAt: m.sendAt })} title={t('Reschedule')} aria-label={t('Reschedule')}>
+                  <TgIcon name="schedule" size={18} color="var(--tg-accent)" />
                 </IconButton>
                 <IconButton size="small" onClick={() => remove(m.id)} title={t('Delete')} aria-label={t('Delete')}>
                   <TgIcon name="delete" size={18} color="#ff595a" />
@@ -100,5 +123,6 @@ export default function ScheduledView({ chatId, onClose, onChanged }: {
       </motion.div>
     </div>,
     document.body,
-  )
+    )}
+  </>
 }

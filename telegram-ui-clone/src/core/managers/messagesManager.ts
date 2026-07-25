@@ -27,6 +27,8 @@ export interface SendArgs {
   entities?: MessageEntity[] | null
   clientMsgId: string
   replyToId?: number | null
+  /** кросс-чат ответ (tweb ReplyToAnotherChat): id исходного чата оригинала */
+  replyToPeerId?: number | null
   mediaId?: number | null
   /** сообщение в тред (форум-топик): id корневого сообщения темы */
   threadRootId?: number | null
@@ -230,6 +232,7 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
         entities: args.entities ?? null,
         client_msg_id: args.clientMsgId,
         reply_to_id: args.replyToId ?? null,
+        reply_to_peer_id: args.replyToPeerId ?? null,
         media_id: args.mediaId ?? null,
         thread_root_id: args.threadRootId ?? null,
       })
@@ -461,10 +464,13 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
     },
 
     // ── Запланированные сообщения (Telegram scheduled) ──
-    async scheduleMessage(chatId: number, p: { text: string; entities?: MessageEntity[]; sendAt: number; replyToId?: number }): Promise<Scheduled> {
+    // whenOnline (tweb Schedule.SendWhenOnline): очередь ждёт появления собеседника
+    // в сети — send_at игнорируется бэком (только приватный чат, иначе 403).
+    async scheduleMessage(chatId: number, p: { text: string; entities?: MessageEntity[]; sendAt: number; replyToId?: number; whenOnline?: boolean }): Promise<Scheduled> {
       const r = await rest.post<RawScheduled>(`/chats/${chatId}/scheduled`, {
         type: 'text', text: p.text, entities: p.entities ?? null,
         reply_to_id: p.replyToId ?? null, send_at: p.sendAt,
+        when_online: p.whenOnline ?? false,
       })
       return mapScheduled(r)
     },
@@ -474,6 +480,12 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
     },
     async deleteScheduled(chatId: number, id: number): Promise<void> {
       await rest.del(`/chats/${chatId}/scheduled/${id}`)
+    },
+    // Перепланировать (tweb MessageScheduleEditTime): сменить время отправки.
+    // Сброс when_online делает бэк (появляется конкретная дата).
+    async editScheduled(chatId: number, id: number, sendAt: number): Promise<Scheduled> {
+      const r = await rest.patch<RawScheduled>(`/chats/${chatId}/scheduled/${id}`, { send_at: sendAt })
+      return mapScheduled(r)
     },
     // Отправить запланированное немедленно; возвращает созданное сообщение.
     async sendScheduledNow(chatId: number, id: number): Promise<Message> {
@@ -512,6 +524,10 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
         id: evt.msg_id, chat_id: evt.chat_id, seq: evt.seq, sender_id: evt.sender_id,
         type: evt.type, text: evt.text, entities: evt.entities ?? null,
         reply_to_id: evt.reply_to_id ?? null, media_id: evt.media_id ?? null,
+        // Кросс-чат-ответ: снимок превью (имя автора + текст/лейбл) — иначе при
+        // переоткрытии чата из кэша превью кросс-чат-reply не восстанавливается.
+        reply_to_peer_id: evt.reply_to_peer_id ?? null,
+        reply_snapshot_name: evt.reply_snapshot_name, reply_snapshot_text: evt.reply_snapshot_text,
         created_at: evt.created_at, thread_root_id: evt.thread_root_id ?? null,
         grouped_id: evt.grouped_id ?? null, media_unread: evt.media_unread,
         geo: evt.geo ?? null, contact: evt.contact ?? null,

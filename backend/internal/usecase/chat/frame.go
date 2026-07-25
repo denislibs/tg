@@ -89,6 +89,13 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 		p["reply_quote_text"] = *m.ReplyQuoteText
 		p["reply_quote_offset"] = m.ReplyQuoteOffset
 	}
+	// Кросс-чат-ответ (Telegram reply_to_peer_id): исходный чат + снимок превью
+	// (имя автора + текст/лейбл), т.к. получатель может не иметь к нему доступа.
+	if m.ReplyToPeerID != nil {
+		p["reply_to_peer_id"] = *m.ReplyToPeerID
+		p["reply_snapshot_name"] = m.ReplySnapshotName
+		p["reply_snapshot_text"] = m.ReplySnapshotText
+	}
 	if m.GeoLat != nil && m.GeoLng != nil {
 		p["geo"] = geoJSON(m)
 	}

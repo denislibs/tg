@@ -15,8 +15,11 @@ import (
 // maxScheduledPerUser — лимит очереди (Telegram: 100 на чат; берём на юзера).
 const maxScheduledPerUser = 100
 
-// ScheduleMessage кладёт сообщение в очередь на send_at (должен быть в будущем).
-func (i *Interactor) ScheduleMessage(ctx context.Context, in SendInput, sendAt time.Time) (domain.ScheduledMessage, error) {
+// ScheduleMessage кладёт сообщение в очередь. При whenOnline режим «отправить
+// когда онлайн» (Telegram schedule sentinel): sendAt игнорируется, сообщение
+// уходит, когда собеседник приватного чата появится онлайн; доступно только в
+// приватном чате. Иначе — обычная отложка на sendAt (должен быть в будущем).
+func (i *Interactor) ScheduleMessage(ctx context.Context, in SendInput, sendAt time.Time, whenOnline bool) (domain.ScheduledMessage, error) {
 	if i.scheduled == nil {
 		return domain.ScheduledMessage{}, domain.ErrNotFound
 	}
@@ -33,7 +36,17 @@ func (i *Interactor) ScheduleMessage(ctx context.Context, in SendInput, sendAt t
 	if utf8.RuneCountInString(in.Text) > maxMessageRunes {
 		return domain.ScheduledMessage{}, domain.ErrTooLong
 	}
-	if !sendAt.After(time.Now()) {
+	if whenOnline {
+		// «Отправить когда онлайн» — только в приватном чате (1-на-1).
+		typ, e := i.chats.ChatType(ctx, in.ChatID)
+		if e != nil {
+			return domain.ScheduledMessage{}, e
+		}
+		if typ != "private" {
+			return domain.ScheduledMessage{}, domain.ErrForbidden
+		}
+		sendAt = time.Now() // заглушка: при when_online поле не используется
+	} else if !sendAt.After(time.Now()) {
 		return domain.ScheduledMessage{}, domain.ErrTooLong
 	}
 	if n, e := i.scheduled.CountByUser(ctx, in.SenderID); e != nil {
@@ -47,8 +60,32 @@ func (i *Interactor) ScheduleMessage(ctx context.Context, in SendInput, sendAt t
 	return i.scheduled.Create(ctx, domain.ScheduledMessage{
 		ChatID: in.ChatID, SenderID: in.SenderID, Type: in.Type, Text: in.Text,
 		Entities: sanitizeEntities(in.Entities), ReplyToID: in.ReplyToID, MediaID: in.MediaID,
-		SendAt: sendAt,
+		SendAt: sendAt, WhenOnline: whenOnline,
 	})
+}
+
+// UpdateScheduled переносит своё запланированное сообщение на новое время
+// (reschedule). newSendAt должен быть в будущем; чужое → forbidden.
+func (i *Interactor) UpdateScheduled(ctx context.Context, id, userID int64, newSendAt time.Time) (domain.ScheduledMessage, error) {
+	if i.scheduled == nil {
+		return domain.ScheduledMessage{}, domain.ErrNotFound
+	}
+	m, err := i.scheduled.ByID(ctx, id)
+	if err != nil {
+		return domain.ScheduledMessage{}, err
+	}
+	if m.SenderID != userID {
+		return domain.ScheduledMessage{}, domain.ErrForbidden
+	}
+	if !newSendAt.After(time.Now()) {
+		return domain.ScheduledMessage{}, domain.ErrTooLong
+	}
+	if err := i.scheduled.UpdateSendAt(ctx, id, newSendAt); err != nil {
+		return domain.ScheduledMessage{}, err
+	}
+	m.SendAt = newSendAt
+	m.WhenOnline = false
+	return m, nil
 }
 
 // ListScheduled — свои запланированные в чате (ближайшие сверху).
@@ -100,7 +137,9 @@ func (i *Interactor) SendScheduledNow(ctx context.Context, id, userID int64) (do
 	return msg, nil
 }
 
-// DispatchDueScheduled отправляет созревшие запланированные (фоновый воркер).
+// DispatchDueScheduled отправляет созревшие запланированные (фоновый воркер):
+// созревшие по времени плюс записи «отправить когда онлайн», у которых собеседник
+// приватного чата сейчас онлайн.
 func (i *Interactor) DispatchDueScheduled(ctx context.Context) (int, error) {
 	if i.scheduled == nil {
 		return 0, nil
@@ -115,7 +154,46 @@ func (i *Interactor) DispatchDueScheduled(ctx context.Context) (int, error) {
 			sent++
 		}
 	}
+	// «Отправить когда онлайн»: без presence-подсистемы просто ждут.
+	if i.presence != nil {
+		online, err := i.scheduled.DueWhenOnline(ctx, 50)
+		if err != nil {
+			return sent, err
+		}
+		for _, m := range online {
+			peer := i.privatePeer(ctx, m.ChatID, m.SenderID)
+			if peer == 0 {
+				continue // не приватный/собеседник не найден — пропускаем
+			}
+			isOnline, e := i.presence.IsOnline(ctx, peer)
+			if e != nil || !isOnline {
+				continue // собеседник оффлайн — ждём следующего тика
+			}
+			if _, e := i.dispatchScheduled(ctx, m); e == nil {
+				sent++
+			}
+		}
+	}
 	return sent, nil
+}
+
+// privatePeer возвращает собеседника приватного чата (участника, отличного от
+// senderID); 0 — если чат не приватный или собеседник не найден.
+func (i *Interactor) privatePeer(ctx context.Context, chatID, senderID int64) int64 {
+	typ, err := i.chats.ChatType(ctx, chatID)
+	if err != nil || typ != "private" {
+		return 0
+	}
+	members, err := i.chats.MemberIDs(ctx, chatID)
+	if err != nil {
+		return 0
+	}
+	for _, uid := range members {
+		if uid != senderID {
+			return uid
+		}
+	}
+	return 0
 }
 
 // dispatchScheduled: обычный Send (фан-аут/pts/пуши) + удаление из очереди.

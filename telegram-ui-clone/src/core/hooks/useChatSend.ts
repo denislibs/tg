@@ -29,7 +29,10 @@ const MAX_MESSAGE_LEN = 4096
 
 // quote — ответ с цитатой выделенного фрагмента (Telegram reply quote): текст
 // куска оригинала + его offset (UTF-16) в плоском тексте отвечаемого сообщения.
-export type ReplyState = { msgId?: number; name: string; text: string; color: string; quote?: { text: string; offset: number } } | null
+// chatId — кросс-чат ответ (tweb ReplyToAnotherChat): исходный чат оригинала;
+// != текущего → уходит полем reply_to_peer_id. snapshotName/snapshotText — готовый
+// снимок превью оригинала (его нет в текущем сторе), рисуется в плашке ответа.
+export type ReplyState = { msgId?: number; name: string; text: string; color: string; quote?: { text: string; offset: number }; chatId?: number; snapshotName?: string; snapshotText?: string } | null
 export type EditState = { msgId: number; text: string; entities?: MessageEntity[] } | null
 
 interface UseChatSendArgs {
@@ -121,8 +124,11 @@ export function useChatSend({
     }
     // reply quote прикреплён к первому сообщению (там же, где и сам reply).
     const quote = replyTo != null ? reply?.quote : undefined
+    // Кросс-чат ответ (tweb ReplyToAnotherChat): reply.chatId — исходный чат
+    // оригинала; отличается от текущего → уходит полем reply_to_peer_id.
+    const replyToPeerId = replyTo != null && reply?.chatId != null && reply.chatId !== numericChatId ? reply.chatId : null
     win.appendOptimistic(text, meId ?? -1, clientMsgId, undefined, 'text', entities)
-    void managers.realtime.sendMessage({ chatId: numericChatId, text, entities, clientMsgId, replyToId: replyTo, replyQuoteText: quote?.text ?? null, replyQuoteOffset: quote?.offset ?? null, threadRootId, silent, effect: effect ?? undefined, sendAsChatId })
+    void managers.realtime.sendMessage({ chatId: numericChatId, text, entities, clientMsgId, replyToId: replyTo, replyToPeerId, replyQuoteText: quote?.text ?? null, replyQuoteOffset: quote?.offset ?? null, threadRootId, silent, effect: effect ?? undefined, sendAsChatId })
   }
 
   // Гео-точка из attach-меню: оптимистичный бабл сразу (координаты локальные),
