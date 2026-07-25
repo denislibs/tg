@@ -24,6 +24,8 @@ interface Props {
   onOpenPremium?: () => void
   onOpenMyStories?: () => void
   onOpenCloseFriends?: () => void
+  onOpenWallet?: () => void
+  onOpenCalls?: () => void
   onLogout?: () => void
   onToggleMode?: ToggleMode
 }
@@ -43,6 +45,8 @@ export default function MainMenu({
   onOpenPremium,
   onOpenMyStories,
   onOpenCloseFriends,
+  onOpenWallet,
+  onOpenCalls,
   onLogout,
   onToggleMode,
 }: Props) {
@@ -163,9 +167,10 @@ export default function MainMenu({
       <MenuItem icon={<TgIcon name="savedmessages" size={20} />} label={t('Saved Messages')} onClick={onOpenSaved ?? onClose} />
       <MenuItem icon={<TgIcon name="radiooff" size={20} />} label={t('My Stories')} onClick={onOpenMyStories ?? onClose} />
       <MenuItem icon={<TgIcon name="user" size={20} />} label={t('Contacts')} onClick={onOpenContacts ?? onClose} />
+      <MenuItem icon={<TgIcon name="phone" size={20} />} label={t('Calls')} onClick={onOpenCalls ?? onClose} />
       <MenuItem icon={<TgIcon name="newprivate" size={20} />} label={t('Close Friends')} onClick={onOpenCloseFriends ?? onClose} />
       {divider}
-      <MenuItem icon={<TgIcon name="card_outline" size={20} />} label={t('Wallet')} onClick={onClose} />
+      <MenuItem icon={<TgIcon name="card_outline" size={20} />} label={t('Wallet')} onClick={onOpenWallet ?? onClose} />
       <MenuItem
         icon={<TgIcon name="star_filled" size={20} color="var(--tg-accent)" />}
         label={t('Telegram Premium')}

@@ -192,3 +192,34 @@ func (r *StarsRepo) Convert(ctx context.Context, savedID, ownerID int64) (int64,
 	}
 	return stars, err
 }
+
+// RecordTx пишет строку в леджер транзакций звёзд (история кошелька).
+func (r *StarsRepo) RecordTx(ctx context.Context, userID, amount int64, kind, title string, peerID *int64) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`INSERT INTO star_transactions (user_id, amount, kind, title, peer_id)
+		 VALUES ($1, $2, $3, $4, $5)`, userID, amount, kind, title, peerID)
+	return err
+}
+
+// Transactions — история движений баланса пользователя, новые сверху.
+func (r *StarsRepo) Transactions(ctx context.Context, userID int64, offset, limit int) ([]domain.StarTransaction, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT id, amount, kind, title, peer_id, created_at
+		   FROM star_transactions WHERE user_id=$1
+		  ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3`, userID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.StarTransaction
+	for rows.Next() {
+		var t domain.StarTransaction
+		var created time.Time
+		if err := rows.Scan(&t.ID, &t.Amount, &t.Kind, &t.Title, &t.PeerID, &created); err != nil {
+			return nil, err
+		}
+		t.Date = created.Format(time.RFC3339)
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}

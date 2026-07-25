@@ -14,6 +14,19 @@ type StarGift struct {
 	SoldOut      bool   `json:"sold_out"`
 }
 
+// StarTransaction — движение баланса звёзд (Telegram Stars wallet history).
+// Amount со знаком: + начисление (пополнение/обмен подарка), − списание
+// (подарок/платное медиа). Kind — тип операции, PeerID — контрагент (nil, если
+// его нет). Date — RFC3339.
+type StarTransaction struct {
+	ID     int64  `json:"id"`
+	Amount int64  `json:"amount"`
+	Kind   string `json:"kind"`
+	Title  string `json:"title,omitempty"`
+	PeerID *int64 `json:"peer_id,omitempty"`
+	Date   string `json:"date"`
+}
+
 // GiftInfo — выданный подарок (savedStarGift): экземпляр StarGift, полученный
 // пользователем. From — кто подарил (nil у анонимного/системного). Hidden —
 // скрыт из профиля, Converted — обменян на звёзды. Date — когда подарен

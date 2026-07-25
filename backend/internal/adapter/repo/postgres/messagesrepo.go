@@ -140,8 +140,10 @@ func (r *MessagesRepo) GetAround(ctx context.Context, chatID, userID, centerSeq 
 // по наличию реакции на сообщении. Пустой q при заданном фильтре допустим.
 func (r *MessagesRepo) SearchMessages(ctx context.Context, chatID int64, q string, f usecasechat.SearchFilter, offset, limit int) ([]domain.Message, int, error) {
 	qq := querier(ctx, r.pool)
+	// type <> 'service': системные сообщения (создал группу, сменил фото, set_ttl…)
+	// не индексируются поиском — как в tweb (service-сообщения не ищутся).
 	where := ` FROM messages m LEFT JOIN media md ON md.id = m.media_id
-		WHERE m.chat_id=$1 AND m.deleted_at IS NULL`
+		WHERE m.chat_id=$1 AND m.deleted_at IS NULL AND m.type <> 'service'`
 	args := []any{chatID}
 	// add регистрирует значение и возвращает его плейсхолдер ($N).
 	add := func(v any) string {
@@ -230,7 +232,7 @@ func (r *MessagesRepo) GlobalSearchMessages(ctx context.Context, userID int64, q
 	where := ` FROM messages m
 		JOIN chat_members cm ON cm.chat_id = m.chat_id AND cm.user_id = $1
 		LEFT JOIN media md ON md.id = m.media_id
-		WHERE m.deleted_at IS NULL
+		WHERE m.deleted_at IS NULL AND m.type <> 'service'
 		  AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id = m.id AND h.user_id = $1)
 		  AND ((SELECT c.history_for_new FROM chats c WHERE c.id = m.chat_id)
 		       OR cm.role <> 'member' OR m.created_at >= cm.joined_at)`
@@ -273,6 +275,40 @@ func (r *MessagesRepo) GlobalSearchMessages(ctx context.Context, userID int64, q
 		out = append(out, m)
 	}
 	return out, count, rows.Err()
+}
+
+// CallLog — журнал звонков пользователя: сообщения type='call' из его личных
+// чатов, обогащённые собеседником (другой участник приватного чата). Out —
+// инициатор сам пользователь. Newest first. Для вкладки «Звонки» (агрегирует
+// messageActionPhoneCall, как в Telegram).
+func (r *MessagesRepo) CallLog(ctx context.Context, userID int64, offset, limit int) ([]domain.CallLogEntry, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT m.id, m.chat_id, m.sender_id, m.text, m.created_at,
+		        u.id, COALESCE(NULLIF(u.first_name,''), u.display_name), COALESCE(u.avatar_url,'')
+		   FROM messages m
+		   JOIN chats c ON c.id = m.chat_id AND c.type = 'private'
+		   JOIN chat_members other ON other.chat_id = m.chat_id AND other.user_id <> $1
+		   JOIN users u ON u.id = other.user_id
+		  WHERE m.type = 'call' AND m.deleted_at IS NULL
+		    AND EXISTS (SELECT 1 FROM chat_members me WHERE me.chat_id = m.chat_id AND me.user_id = $1)
+		  ORDER BY m.id DESC LIMIT $2 OFFSET $3`, userID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.CallLogEntry
+	for rows.Next() {
+		var e domain.CallLogEntry
+		var senderID int64
+		var created time.Time
+		if err := rows.Scan(&e.ID, &e.ChatID, &senderID, &e.Text, &created, &e.PeerID, &e.PeerName, &e.PeerAvatar); err != nil {
+			return nil, err
+		}
+		e.Out = senderID == userID
+		e.Date = created.Format(time.RFC3339)
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }
 
 // MediaHistory returns a chat's messages of one shared-media kind (the

@@ -170,7 +170,7 @@ export function messageToConvMsg(
 }
 
 // Лог звонка хранится в text как JSON (см. callEngine.logCallMessage).
-function parseCallLog(text: string): CallLog {
+export function parseCallLog(text: string): CallLog {
   try {
     const p = JSON.parse(text) as Partial<CallLog>
     return {

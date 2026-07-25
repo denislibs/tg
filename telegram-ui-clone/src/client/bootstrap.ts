@@ -21,9 +21,9 @@ import type { Contact, AddContactInput } from '../core/managers/contactsManager'
 import type { PrivacyRule, BlockedUser, UserProfile } from '../core/managers/privacyManager'
 import type { SignInOutcome, PasswordState, PasskeyInfo } from '../core/managers/authManager'
 import type { Session } from '../core/managers/sessionsManager'
-import type { IceConfig } from '../core/managers/callsManager'
+import type { IceConfig, CallLogEntry } from '../core/managers/callsManager'
 import type { LivestreamStatus } from '../core/managers/livestreamManager'
-import type { StarGift, GiftInfo } from '../core/managers/starsManager'
+import type { StarGift, GiftInfo, StarTransaction } from '../core/managers/starsManager'
 import type { ReportArgs } from '../core/managers/reportManager'
 import type { ChannelStats, PostStats } from '../core/managers/statsManager'
 import type { BotCommand, CallbackAnswer, InlineResult } from '../core/managers/botsManager'
@@ -300,6 +300,7 @@ export interface Managers {
   }
   calls: {
     iceConfig(): Promise<IceConfig>
+    log(offset?: number, limit?: number): Promise<CallLogEntry[]>
   }
   livestream: {
     status(chatId: number): Promise<LivestreamStatus>
@@ -309,6 +310,7 @@ export interface Managers {
   }
   stars: {
     balance(): Promise<number>
+    transactions(offset?: number, limit?: number): Promise<StarTransaction[]>
     topUp(amount: number): Promise<number>
     catalog(): Promise<StarGift[]>
     send(toUserId: number, giftId: number, message: string, anonymous: boolean): Promise<{ balance: number }>

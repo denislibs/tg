@@ -911,6 +911,21 @@ func (h *ChatHandler) GlobalSearchMessages(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": res.Count})
 }
 
+// CallLog — GET /calls?offset=&limit=: журнал звонков (вкладка «Звонки»).
+func (h *ChatHandler) CallLog(w http.ResponseWriter, r *http.Request) {
+	offset := int(queryInt(r, "offset", 0))
+	limit := int(queryInt(r, "limit", 40))
+	calls, err := h.svc.CallLog(r.Context(), h.meID(r), offset, limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load calls")
+		return
+	}
+	if calls == nil {
+		calls = []domain.CallLogEntry{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"calls": calls})
+}
+
 // SendPoll — POST /chats/{chatID}/polls: отправить опрос (сообщение типа 'poll').
 func (h *ChatHandler) SendPoll(w http.ResponseWriter, r *http.Request) {
 	chatID, ok := pathInt(w, r, "chatID")

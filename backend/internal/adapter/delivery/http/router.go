@@ -211,6 +211,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/giveaways/{id}", ch.GetGiveaway)
 		// Stars + Star Gifts
 		pr.Get("/stars/balance", ch.StarsBalance)
+		pr.Get("/stars/transactions", ch.StarsTransactions)
 		pr.Post("/stars/topup", ch.TopUpStars)
 		pr.Post("/messages/{msgID}/unlock", ch.UnlockPaidMedia)
 		pr.Get("/gifts/catalog", ch.GiftCatalog)
@@ -389,6 +390,8 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 
 		// ICE-конфиг для звонков (STUN + эфемерные TURN-креды)
 		pr.Get("/calls/ice", iceH.Get)
+		// Журнал звонков (вкладка «Звонки») — агрегирует call-сообщения личных чатов
+		pr.Get("/calls", ch.CallLog)
 
 		// Instant View: reader-mode статья по ссылке из сообщения
 		if ivH != nil {

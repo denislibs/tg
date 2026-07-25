@@ -565,6 +565,10 @@ func (r fakeMsgs) GetAround(_ context.Context, chatID, userID, centerSeq int64, 
 	return append(older, newer...), reachedTop, reachedBottom, nil
 }
 
+func (r fakeMsgs) CallLog(context.Context, int64, int, int) ([]domain.CallLogEntry, error) {
+	return nil, nil
+}
+
 func (r fakeMsgs) MediaHistory(_ context.Context, chatID int64, filter string, offset, limit int) ([]domain.Message, int, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()

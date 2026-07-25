@@ -197,6 +197,8 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
         // Фон исходящего бабла тоже часть темы (как в tweb) — иначе бабл остаётся
         // дефолтно-сиреневым/голубым на цветной теме.
         '--tg-bubbleOut': chatThemeBubbleOut(themeVariant.accent, themeMode),
+        // Бейдж непрочитанных тоже от акцента темы (tweb .badge).
+        '--tg-badge': themeVariant.accent,
       } as CSSProperties)
     : undefined
 

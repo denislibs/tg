@@ -1,0 +1,57 @@
+// Вкладка «Звонки»: шапка + список записей журнала. Цвета — через токены --tg-*.
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px;
+}
+.title {
+  flex: 1;
+}
+
+.list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0 16px;
+}
+
+// заголовок группы по дню (Сегодня/Вчера/дата)
+.dayLabel {
+  padding: 12px 20px 4px;
+}
+
+// строка звонка: аватар + имя/направление + кнопка перезвонить
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6.8px 10px 6.8px 16px;
+  margin: 0 6px;
+  border-radius: 12px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--tg-hover);
+  }
+}
+.rowText {
+  min-width: 0;
+  flex: 1;
+}
+// подпись направления: стрелка + текст
+.sub {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+// пустое состояние
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 64px 24px;
+  text-align: center;
+}
