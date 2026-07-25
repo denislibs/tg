@@ -21,7 +21,7 @@ import s from './AddStorySheet.module.scss'
 export default function CloseFriendsSheet({ onClose }: { onClose: () => void }) {
   const t = useT()
   const managers = useManagers()
-  const candidates = useGroupCandidates(managers)
+  const candidates = useGroupCandidates()
 
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Set<number>>(new Set())

@@ -6,7 +6,7 @@
 // обычный ConversationView в thread-режиме; открытие — через App.openThread.)
 import { useEffect, useState } from 'react'
 import { useMessagesStore } from '../../stores/messagesStore'
-import type { Managers } from '../../client/bootstrap'
+import { useManagers } from './useManagers'
 import type { MessageWindow } from './useMessageWindow'
 
 interface UseChannelExtrasArgs {
@@ -14,13 +14,13 @@ interface UseChannelExtrasArgs {
   isChannel: boolean
   numericChatId: number
   win: MessageWindow
-  managers: Managers
   discussionsEnabled: boolean
 }
 
-export function useChannelExtras({ isRealChat, isChannel, numericChatId, win, managers, discussionsEnabled }: UseChannelExtrasArgs): {
+export function useChannelExtras({ isRealChat, isChannel, numericChatId, win, discussionsEnabled }: UseChannelExtrasArgs): {
   commentCounts: Map<number, number>
 } {
+  const managers = useManagers()
   const [commentCounts, setCommentCounts] = useState<Map<number, number>>(new Map())
 
   // Channel live + catch-up (mirrors tweb's getChannelDifference on open): subscribe

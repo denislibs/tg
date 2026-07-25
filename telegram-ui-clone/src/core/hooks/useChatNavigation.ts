@@ -3,20 +3,29 @@
 // действия (selectChat/openThread/closeThread) переэкспортируются из стора,
 // чтобы у View был один источник хендлеров.
 import { useCallback, useEffect } from 'react'
-import type { Managers } from '../../client/bootstrap'
+import type { TopicRow } from '../managers/groupsManager'
 import type { OpenPeer } from '../../data'
+import { useManagers } from './useManagers'
 import { useChatsStore, loadChats, loadPresence } from '../../stores/chatsStore'
 import { useNavigationStore } from '../../stores/navigationStore'
 
-export function useChatNavigation(managers: Managers) {
+export function useChatNavigation() {
+  const managers = useManagers()
   const selectedId = useNavigationStore((s) => s.selectedId)
   const openThread = useNavigationStore((s) => s.openThread)
   const draftPeer = useNavigationStore((s) => s.draftPeer)
   const selectChat = useNavigationStore((s) => s.selectChat)
   const setSelectedId = useNavigationStore((s) => s.setSelectedId)
-  const openTopicThread = useNavigationStore((s) => s.openTopicThread)
+  const openTopicThreadRaw = useNavigationStore((s) => s.openTopicThread)
   const openCommentsThread = useNavigationStore((s) => s.openCommentsThread)
   const closeThread = useNavigationStore((s) => s.closeThread)
+
+  // Субтитр темы (имя группы) готовим здесь, чтобы navigationStore не импортировал
+  // chatsStore (развязка единственного кросс-стор импорта).
+  const openTopicThread = useCallback((chatId: number, topic: TopicRow) => {
+    const subtitle = useChatsStore.getState().dialogs.find((d) => d.chatId === chatId)?.title
+    openTopicThreadRaw(chatId, topic, subtitle)
+  }, [openTopicThreadRaw])
 
   // Открыть чат с пользователем (участник, автор в группе, результат поиска).
   // Переиспользует существующий приватный диалог; иначе — черновик, который

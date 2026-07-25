@@ -5,7 +5,7 @@
 // памяти по chatId. Скрытие блока крестиком запоминается в localStorage (аналог
 // tweb hiddenSimilarChannels в app-state) — по одному ключу на канал.
 import { useEffect, useState } from 'react'
-import type { Managers } from '../../client/bootstrap'
+import { useManagers } from './useManagers'
 import type { SearchResult } from '../managers/channelsManager'
 
 export type SimilarChannel = SearchResult['chats'][number]
@@ -37,13 +37,13 @@ interface UseSimilarChannelsArgs {
   isRealChat: boolean
   isChannel: boolean
   numericChatId: number
-  managers: Managers
 }
 
-export function useSimilarChannels({ isRealChat, isChannel, numericChatId, managers }: UseSimilarChannelsArgs): {
+export function useSimilarChannels({ isRealChat, isChannel, numericChatId }: UseSimilarChannelsArgs): {
   chats: SimilarChannel[]
   count: number
 } {
+  const managers = useManagers()
   const [data, setData] = useState<{ chats: SimilarChannel[]; count: number }>(
     () => cache.get(numericChatId) ?? { chats: [], count: 0 },
   )

@@ -279,7 +279,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // Real group/channel header card (type/counts/rights) + member presence seeding +
   // post/type permission + discussion wiring + live online count — view-model hook.
   const { card, canType, canSendText, canSendMedia, discussionChatId, discussionsEnabled, onlineCount } =
-    useChatInfoCard({ isRealChat: isRealChat && !thread, isChannel, numericChatId, managers })
+    useChatInfoCard({ isRealChat: isRealChat && !thread, isChannel, numericChatId })
   // Message read-model: window Message[] → ConvMsg[] (sender/forward/reply names +
   // stable-ref cache) plus the resolved peers map (reused below for voice/lightbox).
   const { msgs, peers } = useConvMessages({ numericChatId, isRealChat, isGroup, win: winV, meId, foreignRootName: thread?.kind === 'comments' ? thread.subtitle : undefined })
@@ -324,7 +324,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   }, [thread?.kind, numericChatId, isRealChat])
   // Pinned messages in this chat (newest pin first) + индекс перелистывания
   // плашки (tweb pinnedMessage) — drives the pinned bar.
-  const { pins, index: pinIndex, follow: followPin } = usePinnedBar(numericChatId, isRealChat, managers)
+  const { pins, index: pinIndex, follow: followPin } = usePinnedBar(numericChatId, isRealChat)
   // Экран «Закреплённые сообщения» (tweb topbar.openPinned)
   const [pinnedOpen, setPinnedOpen] = useState(false)
   // Search is owned by ChatHeader now; here we only read whether it's open (single-sourced
@@ -431,7 +431,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const {
     scrollRef, contentRef, atBottomRef, userScrolledUpRef,
     highlightSeq, showScrollDown, unreadBelow, jumpToSeq, onScrollDownClick,
-  } = useChatScroll({ numericChatId, isRealChat, win, managers, playerOffset, unreadDividerSeq, unreadStickyTop: dateStickyTop })
+  } = useChatScroll({ numericChatId, isRealChat, win, playerOffset, unreadDividerSeq, unreadStickyTop: dateStickyTop })
   // Multi-select state + press-and-drag selection (extracted view-model hook).
   const { selected, setSelected, setSelectionMode, selecting, toggleSelect, clearSelection, dragSelect } =
     useChatSelection(scrollRef)
@@ -486,7 +486,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // useMessageActions, which needs setReply/setEditing for its reply/edit actions.
   // Send-as (Telegram send_as): «личности отправителя» доступны в реальных группах
   // (супергруппа-обсуждение с привязанным каналом / анонимный админ). Выбор per-chat.
-  const sendAs = useSendAs(numericChatId, isRealChat && isGroup && !thread, meId, managers)
+  const sendAs = useSendAs(numericChatId, isRealChat && isGroup && !thread, meId)
   const sendAsChatId = sendAs.currentId !== 0 && sendAs.currentId !== meId ? sendAs.currentId : null
   const sendAsTitle = sendAsChatId != null ? sendAs.peers.find((p) => p.peerId === sendAsChatId)?.title : undefined
 
@@ -500,7 +500,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     sendGeo, sendContact, sendSticker, sendGif,
   } = useChatSend({
     chat, numericChatId, isRealChat, isChannel, draftPeerId, canType, secretLocked,
-    meId, win, managers, threadRootId, sendAsChatId, sendAsTitle, atBottomRef, userScrolledUpRef,
+    meId, win, threadRootId, sendAsChatId, sendAsTitle, atBottomRef, userScrolledUpRef,
     onChatCreated,
   })
 
@@ -556,7 +556,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     canViewPostStats: isChannel && isRealChat && (card?.myRole === 'creator' || card?.myRole === 'admin'),
     // Канал + автор/админ → пункты «проверки фактов» (tweb canUpdateFactCheck).
     canEditFactCheck: isChannel && isRealChat && (card?.myRole === 'creator' || card?.myRole === 'admin'),
-    win: winV, msgs, meId, pins, managers, accent: accentColor,
+    win: winV, msgs, meId, pins, accent: accentColor,
     setReply, setEditing, setSelectionMode, setSelected, clearSelection, onChatCreated,
   })
 
@@ -575,7 +575,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // Channel-only wiring: live subscribe + catch-up, pts persistence, the open
   // discussion-thread overlay, and per-post comment counts.
   const { commentCounts } = useChannelExtras({
-    isRealChat, isChannel, numericChatId, win, managers, discussionsEnabled,
+    isRealChat, isChannel, numericChatId, win, discussionsEnabled,
   })
   // Клик по «N комментариев» под постом канала — тред комментариев в этой же
   // колонке (tweb: setPeer(discussion group, threadId=postId)).

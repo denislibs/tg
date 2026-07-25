@@ -18,7 +18,7 @@ import type { MessageEntity } from '../models'
 import type { GifItem } from '../gifs'
 import type { Chat } from '../../data'
 import type { MessageWindow } from './useMessageWindow'
-import type { Managers } from '../../client/bootstrap'
+import { useManagers } from './useManagers'
 import { useMessagesStore , winKey } from '../../stores/messagesStore'
 import { useLiveShareStore } from '../../stores/liveShareStore'
 import { useUploadsStore } from '../../stores/uploadsStore'
@@ -47,7 +47,6 @@ interface UseChatSendArgs {
   secretLocked?: boolean
   meId: number | null
   win: MessageWindow
-  managers: Managers
   /** тред (форум-топик/комментарии): отправка идёт с thread_root_id */
   threadRootId?: number
   /** send-as (Telegram send_as): id канала/группы, от имени которых слать; null —
@@ -72,7 +71,6 @@ export function useChatSend({
   secretLocked = false,
   meId,
   win,
-  managers,
   threadRootId,
   sendAsChatId = null,
   sendAsTitle,
@@ -80,6 +78,7 @@ export function useChatSend({
   userScrolledUpRef,
   onChatCreated,
 }: UseChatSendArgs) {
+  const managers = useManagers()
   // Reply / editing composer state (set on send, by the context menu via the
   // returned setters, and read by the Composer).
   const [reply, setReply] = useState<ReplyState>(null)

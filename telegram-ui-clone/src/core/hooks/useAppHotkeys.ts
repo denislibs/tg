@@ -3,12 +3,13 @@
 // «Избранное»; Alt+↑/↓ — циклическая навигация по диалогам. Все колбэки читают
 // сторы через getState() → стабильны, поэтому ref-зеркала стейта больше не нужны.
 import { useCallback, useEffect } from 'react'
-import type { Managers } from '../../client/bootstrap'
+import { useManagers } from './useManagers'
 import { useChatsStore, loadChats } from '../../stores/chatsStore'
 import { useNavigationStore } from '../../stores/navigationStore'
 import { initHotkeys } from '../hotkeys'
 
-export function useAppHotkeys(managers: Managers): void {
+export function useAppHotkeys(): void {
+  const managers = useManagers()
   // Esc: тред закрывается первым (комментарии → назад к каналу), затем чат.
   const escCloseChat = useCallback(() => {
     const nav = useNavigationStore.getState()

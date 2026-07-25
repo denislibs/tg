@@ -7,6 +7,7 @@
 // does (jump-to-message).
 import { useCallback, useEffect, useState } from 'react'
 import type { Message } from '../models'
+import { useManagers } from './useManagers'
 import { useSearchStore } from '../../stores/searchStore'
 
 // Media-type filter values (совпадают с бэком): tweb inputMessagesFilter*.
@@ -17,17 +18,6 @@ export interface SearchFilters {
   senderId?: number
   mediaType?: SearchMediaType
   reaction?: string
-}
-
-interface ChatSearchManagers {
-  messages: {
-    searchMessages(
-      chatId: number,
-      q: string,
-      opts?: { senderId?: number; mediaType?: string; reaction?: string; offset?: number; limit?: number },
-    ): Promise<{ messages: Message[]; count: number }>
-    messageByDate(chatId: number, date: number): Promise<number | null>
-  }
 }
 
 export interface ChatSearch {
@@ -45,7 +35,8 @@ export interface ChatSearch {
   reset: () => void
 }
 
-export function useChatSearch(chatId: number, enabled: boolean, managers: ChatSearchManagers): ChatSearch {
+export function useChatSearch(chatId: number, enabled: boolean): ChatSearch {
+  const managers = useManagers()
   const st = useSearchStore((s) => s.byChat[chatId])
   const open = st?.open ?? false
   const query = st?.query ?? ''

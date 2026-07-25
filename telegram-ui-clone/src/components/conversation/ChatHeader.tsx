@@ -192,7 +192,7 @@ function ChatHeader({
   // rows (sender name + time resolved here from peers/me/lang).
   const numericChatId = Number(chat.id)
   const isRealChat = Number.isFinite(numericChatId) && String(numericChatId) === chat.id
-  const search = useChatSearch(numericChatId, isRealChat, managers)
+  const search = useChatSearch(numericChatId, isRealChat)
   const searchOpen = search.open
   const searchQuery = search.query
   const onSearchChange = search.setQuery

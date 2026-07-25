@@ -23,7 +23,7 @@ import type { FactCheck } from '../models'
 import { friendlyMsgTime } from '../friendlyTime'
 import { useT, useLang } from '../../i18n'
 import type { Chat, ConvMsg } from '../../data'
-import type { Managers } from '../../client/bootstrap'
+import { useManagers } from './useManagers'
 import type { MessageWindow } from './useMessageWindow'
 import type { ReplyState, EditState } from './useChatSend'
 
@@ -51,7 +51,6 @@ interface UseMessageActionsArgs {
   msgs: ConvMsg[]
   meId: number | null
   pins: { id?: number }[]
-  managers: Managers
   accent: string
   setReply: (r: ReplyState) => void
   setEditing: (e: EditState) => void
@@ -62,9 +61,10 @@ interface UseMessageActionsArgs {
 }
 
 export function useMessageActions({
-  chat, numericChatId, isRealChat, canViewPostStats, canEditFactCheck, win, msgs, meId, pins, managers, accent,
+  chat, numericChatId, isRealChat, canViewPostStats, canEditFactCheck, win, msgs, meId, pins, accent,
   setReply, setEditing, setSelectionMode, setSelected, clearSelection, onChatCreated,
 }: UseMessageActionsArgs) {
+  const managers = useManagers()
   const t = useT()
   const [lang] = useLang()
   const [msgMenu, setMsgMenu] = useState<MsgMenu | null>(null)

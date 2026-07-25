@@ -5,7 +5,7 @@
 // channel they admin, the anonymous group) and remembers the chosen one per chat.
 import { useEffect, useMemo, useState } from 'react'
 import type { SendAsPeer } from '../managers/chatsManager'
-import type { Managers } from '../../client/bootstrap'
+import { useManagers } from './useManagers'
 
 // Per-chat selection, remembered across remounts / chat switches (tweb keeps the
 // default_send_as; we keep the last explicit pick in-session).
@@ -17,7 +17,8 @@ export interface SendAsVM {
   select: (peerId: number) => void
 }
 
-export function useSendAs(chatId: number, enabled: boolean, meId: number | null, managers: Managers): SendAsVM {
+export function useSendAs(chatId: number, enabled: boolean, meId: number | null): SendAsVM {
+  const managers = useManagers()
   const [peers, setPeers] = useState<SendAsPeer[]>([])
   const [tick, setTick] = useState(0)
 

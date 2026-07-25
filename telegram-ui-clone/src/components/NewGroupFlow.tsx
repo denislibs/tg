@@ -12,7 +12,6 @@ import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import AvatarCropper from './settings/AvatarCropper'
 import { useT, useLang } from '../i18n'
-import { useManagers } from '../core/hooks/useManagers'
 import { useGroupCandidates, type GroupCandidate } from '../core/hooks/useGroupCandidates'
 import { useChatsStore } from '../stores/chatsStore'
 import { lastSeenLabel } from '../core/presence'
@@ -32,8 +31,7 @@ interface Props {
 export default function NewGroupFlow({ onClose, onCreate }: Props) {
   const t = useT()
   const [lang] = useLang()
-  const managers = useManagers()
-  const candidates = useGroupCandidates(managers)
+  const candidates = useGroupCandidates()
   const presence = useChatsStore((st) => st.presence)
   // tweb: сначала участники (skippable), потом имя
   const [step, setStep] = useState<'members' | 'name'>('members')

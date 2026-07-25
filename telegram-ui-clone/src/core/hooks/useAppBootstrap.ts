@@ -4,7 +4,7 @@
 // путь (managers/load*) — допустим из хука; realtimeBridge остаётся единственным
 // каналом «сервер→стор».
 import { useEffect } from 'react'
-import type { Managers } from '../../client/bootstrap'
+import { useManagers } from './useManagers'
 import { loadChats, loadPresence } from '../../stores/chatsStore'
 import { loadStories } from '../../stores/storiesStore'
 import { loadNotifySettings } from '../../stores/notifyStore'
@@ -20,7 +20,8 @@ import { setupPush } from '../../client/pushSetup'
 import { initAppBadge } from '../../client/appBadge'
 import { useSettingsStore } from '../../settings'
 
-export function useAppBootstrap(managers: Managers): void {
+export function useAppBootstrap(): void {
+  const managers = useManagers()
   useEffect(() => {
     void loadChats(managers).then(() => loadPresence(managers))
     void loadStories(managers)

@@ -17,20 +17,16 @@
 // a pure UI reaction. (Folding it into a store-driven signal is future work.)
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useEvent } from './useEvent'
+import { useManagers } from './useManagers'
 import { smoothCenterElement, afterScrollSettles } from '../dom/smoothScrollToElement'
 import { uiEvents } from './uiEvents'
 import { RT, type NewMessageEvt } from '../realtime/events'
 import type { MessageWindow } from './useMessageWindow'
 
-interface ScrollManagers {
-  realtime: { markRead(args: { chatId: number; upToSeq: number }): Promise<{ ok: boolean }> }
-}
-
 interface UseChatScrollArgs {
   numericChatId: number
   isRealChat: boolean
   win: MessageWindow
-  managers: ScrollManagers
   playerOffset: number
   /** seq первого непрочитанного входящего (плашка «Непрочитанные сообщения»);
    * null — открывать чат обычным пином к низу */
@@ -40,7 +36,8 @@ interface UseChatScrollArgs {
   unreadStickyTop: number
 }
 
-export function useChatScroll({ numericChatId, isRealChat, win, managers, playerOffset, unreadDividerSeq, unreadStickyTop }: UseChatScrollArgs) {
+export function useChatScroll({ numericChatId, isRealChat, win, playerOffset, unreadDividerSeq, unreadStickyTop }: UseChatScrollArgs) {
+  const managers = useManagers()
   const [showScrollDown, setShowScrollDown] = useState(false)
   // Count of new messages that arrived below the viewport while scrolled up
   // (shown as a badge on the scroll-to-bottom button, like tweb).

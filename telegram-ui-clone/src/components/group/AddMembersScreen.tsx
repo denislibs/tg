@@ -32,7 +32,7 @@ export default function AddMembersScreen({
   const t = useT()
   const [lang] = useLang()
   const managers = useManagers()
-  const candidates = useGroupCandidates(managers)
+  const candidates = useGroupCandidates()
   const presence = useChatsStore((st) => st.presence)
   const [q, setQ] = useState('')
   const [selected, setSelected] = useState<number[]>([])

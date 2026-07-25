@@ -5,6 +5,7 @@
 // truth). Derives the post/type permissions, discussion wiring, and the live online
 // count. Behaviour is unchanged.
 import { useEffect, useRef, useState } from 'react'
+import { useManagers } from './useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
 
 interface Card {
@@ -47,9 +48,9 @@ export function useChatInfoCard(args: {
   isRealChat: boolean
   isChannel: boolean
   numericChatId: number
-  managers: InfoManagers
 }): ChatInfoCard {
-  const { isRealChat, isChannel, numericChatId, managers } = args
+  const { isRealChat, isChannel, numericChatId } = args
+  const managers: InfoManagers = useManagers()
   const [card, setCard] = useState<Card | null>(null)
   const memberIds = useRef<Set<number>>(new Set())
   // Online status is single-sourced from chatsStore.presence (fed by realtimeBridge);

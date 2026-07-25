@@ -2,13 +2,12 @@ import { create } from 'zustand'
 import type { OpenPeer } from '../data'
 import type { ThreadInfo } from '../components/ConversationView'
 import type { TopicRow } from '../core/managers/groupsManager'
-import { useChatsStore } from './chatsStore'
 
 // Навигация мессенджера (де-факто роутер): какой чат/тред/черновик открыт.
 // Единый источник истины вместо useState+ref-зеркал в App — хоткеи, SW-хендлер
-// и deep-links читают getState() напрямую. Здесь только чистое состояние и
-// действия, не требующие managers; орхестрация с сетью (openPeer/onChatCreated/
-// openPublicChannel) живёт в useChatNavigation.
+// и deep-links читают getState() напрямую. Здесь только ЧИСТОЕ состояние без
+// импортов других сторов/managers: субтитр темы и сетевую оркестрацию
+// (openPeer/onChatCreated/openPublicChannel) готовит useChatNavigation.
 
 export interface OpenThread {
   chatId: number
@@ -27,8 +26,10 @@ interface NavState {
   selectChat: (id: string | null) => void
   setSelectedId: (id: string | null) => void
   setDraftPeer: (peer: OpenPeer | null) => void
-  /** Открыть тему форума в колонке чата (форум подсвечен в списке). */
-  openTopicThread: (chatId: number, topic: TopicRow) => void
+  /** Открыть тему форума в колонке чата (форум подсвечен в списке). subtitle —
+   *  имя группы, готовит вызывающий (useChatNavigation), чтобы стор не зависел
+   *  от chatsStore. */
+  openTopicThread: (chatId: number, topic: TopicRow, subtitle?: string) => void
   /** Открыть ветку комментариев под постом канала. */
   openCommentsThread: (args: { chatId: number; rootMsgId: number; title: string; subtitle?: string }) => void
   /** Закрыть тред: топик — очистить выбор (панель тем осталась слева),
@@ -45,20 +46,18 @@ export const useNavigationStore = create<NavState>((set) => ({
   setSelectedId: (id) => set({ selectedId: id }),
   setDraftPeer: (peer) => set({ draftPeer: peer }),
 
-  openTopicThread: (chatId, topic) => {
-    const group = useChatsStore.getState().dialogs.find((d) => d.chatId === chatId)
+  openTopicThread: (chatId, topic, subtitle) =>
     set({
       openThread: {
         chatId,
         thread: {
-          rootMsgId: topic.rootMsgId, title: topic.title, subtitle: group?.title,
+          rootMsgId: topic.rootMsgId, title: topic.title, subtitle,
           iconColor: topic.iconColor, closed: topic.closed, topicId: topic.id, kind: 'topic',
         },
       },
       selectedId: String(chatId),
       draftPeer: null,
-    })
-  },
+    }),
 
   openCommentsThread: (args) =>
     set({

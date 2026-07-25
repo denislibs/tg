@@ -34,7 +34,7 @@ export default function PrivacyUserPicker({
 }) {
   const t = useT()
   const managers = useManagers()
-  const candidates = useGroupCandidates(managers)
+  const candidates = useGroupCandidates()
   const [q, setQ] = useState('')
   const [selected, setSelected] = useState<number[]>(initial)
 

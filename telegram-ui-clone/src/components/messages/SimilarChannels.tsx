@@ -7,7 +7,6 @@ import { useState } from 'react'
 import UserAvatar from '../UserAvatar'
 import TgIcon from '../TgIcon'
 import PremiumModal from '../PremiumModal'
-import { useManagers } from '../../core/hooks/useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useSimilarChannels, isSimilarHidden, setSimilarHidden, type SimilarChannel } from '../../core/hooks/useSimilarChannels'
 import { useT } from '../../i18n'
@@ -60,9 +59,8 @@ function MorePeer({ chat, more, premium, onClick }: { chat: SimilarChannel; more
 
 export default function SimilarChannels({ chatId, onOpen }: { chatId: number; onOpen: (chatId: number, username: string) => void }) {
   const t = useT()
-  const managers = useManagers()
   const premium = useChatsStore((st) => !!st.me?.premium)
-  const { chats, count } = useSimilarChannels({ isRealChat: true, isChannel: true, numericChatId: chatId, managers })
+  const { chats, count } = useSimilarChannels({ isRealChat: true, isChannel: true, numericChatId: chatId })
   const [hidden, setHidden] = useState(() => isSimilarHidden(chatId))
   const [premiumOpen, setPremiumOpen] = useState(false)
 
