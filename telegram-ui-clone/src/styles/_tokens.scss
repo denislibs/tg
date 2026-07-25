@@ -18,6 +18,9 @@
   --tg-bubble: #ffffff;
   --tg-bubbleOut: #ede9fc;
   --tg-bubbleOutText: #1c1c1e;
+  // Фон сервис-баблов/пилюль дат (tweb --message-highlighting-color): тёмный
+  // полупрозрачный на светлой теме (белый текст читается на светлых обоях).
+  --message-highlighting-color: rgba(0, 0, 0, 0.24);
   --tg-bubbleOutAccent: #7d63e8;
   --tg-bubbleBorder: rgba(0, 0, 0, 0.04);
   --tg-hover: rgba(0, 0, 0, 0.035);
@@ -88,6 +91,9 @@
   --tg-appBg: #181818;
   --tg-sidebarBg: #212121;
   --tg-bubble: #212121;
+  // Тёмная тема: светлый полупрозрачный фон сервис-баблов (белый текст читается
+  // на тёмных обоях; отличается от светлой темы).
+  --message-highlighting-color: rgba(255, 255, 255, 0.16);
   --tg-bubbleOut: #353246;
   --tg-bubbleOutText: #ffffff;
   --tg-bubbleOutAccent: #c3b9f0;

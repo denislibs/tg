@@ -19,18 +19,30 @@
 }
 
 // reply/edit-бар (фон задаётся инлайном — зависит от цвета автора/accent)
+// reply/edit-плашка (tweb chat plate) — фикс. высота 48px; фон-тинт живёт на
+// вложенном barBody (скруглённый блок), а не на всём баре.
 .bar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
+  gap: 8px;
+  height: 48px;
+  padding: 0 8px;
 }
 
-// вертикальная полоса + текст reply/edit (border-left задаётся инлайном по цвету)
+// скруглённый блок reply/edit: фон-тинт + акцентная полоса (inset-тень по цвету)
+// задаются инлайном; здесь — форма и компактная типографика под 48px.
 .barBody {
   flex: 1;
   min-width: 0;
-  padding-left: 10px;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  line-height: 1.25;
+  overflow: hidden;
 }
 
 // строка ввода (кнопки прижаты к низу — не смещаются при росте инпута)

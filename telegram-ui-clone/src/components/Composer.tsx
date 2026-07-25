@@ -861,9 +861,9 @@ function Composer({
               transition={{ duration: DUR_OUT, ease: EASE_STD }}
               style={{ overflow: 'hidden' }}
             >
-              <div className={s.bar} style={{ background: `${reply.color}1f` }}>
+              <div className={s.bar}>
                 <TgIcon name="reply" size={22} color={reply.color} />
-                <div className={s.barBody} style={{ borderLeft: `2px solid ${reply.color}` }}>
+                <div className={s.barBody} style={{ background: `${reply.color}1f`, boxShadow: `inset 2px 0 0 ${reply.color}` }}>
                   <Text size={14} weight={600} color={reply.color}>
                     {t('Reply to')} {reply.snapshotName ?? reply.name}
                   </Text>
@@ -894,9 +894,9 @@ function Composer({
               transition={{ duration: DUR_OUT, ease: EASE_STD }}
               style={{ overflow: 'hidden' }}
             >
-              <div className={s.bar} style={{ background: 'color-mix(in srgb, var(--tg-accent) 12%, transparent)' }}>
+              <div className={s.bar}>
                 <TgIcon name="edit" size={22} color="var(--tg-accent)" />
-                <div className={s.barBody} style={{ borderLeft: '2px solid var(--tg-accent)' }}>
+                <div className={s.barBody} style={{ background: 'color-mix(in srgb, var(--tg-accent) 12%, transparent)', boxShadow: 'inset 2px 0 0 var(--tg-accent)' }}>
                   <Text size={14} weight={600} color="var(--tg-accent)">{t('Edit message')}</Text>
                   <Text noWrap size={14} color="var(--tg-textSecondary)">{editing.text}</Text>
                 </div>
