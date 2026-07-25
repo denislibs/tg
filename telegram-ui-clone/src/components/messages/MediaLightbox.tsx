@@ -22,6 +22,7 @@ import TgIcon from '../TgIcon'
 import Avatar from '../../shared/ui/Avatar'
 import { peerColor } from '../peerColor'
 import { useManagers } from '../../core/hooks/useManagers'
+import { useNavLayer } from '../../core/hooks/useNavLayer'
 import { getSecretMediaUrl } from '../../core/secret/mediaCache'
 import type { MediaMeta } from '../../core/managers/mediaManager'
 import { enterPip, pipSupported, usePortalContainer } from '../../core/pip'
@@ -313,6 +314,9 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
     }
     window.setTimeout(onClose, OPEN_MS) // tweb резолвит ровно по delay
   }
+
+  // Back (браузер/аппаратный) закрывает лайтбокс с анимацией, как Esc.
+  useNavLayer(true, close)
 
   useEffect(() => {
     // Esc — через глобальный Esc-стек (core/hotkeys): лайтбокс закрывается

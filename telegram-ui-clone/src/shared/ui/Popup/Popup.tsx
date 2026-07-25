@@ -11,6 +11,7 @@ import IconButton from '../IconButton'
 import Text from '../Text'
 import TgIcon from '../../../components/TgIcon'
 import { usePortalContainer } from '../../../core/pip'
+import { useNavLayer } from '../../../core/hooks/useNavLayer'
 import s from './Popup.module.scss'
 
 const EASE: [number, number, number, number] = [0.4, 0, 0.2, 1]
@@ -36,6 +37,7 @@ interface PopupProps {
 
 export default function Popup({ open, title, onClose, onExitComplete, headerRight, footer, action, width = 420, children }: PopupProps) {
   const container = usePortalContainer()
+  useNavLayer(open, onClose) // браузерный/аппаратный Back закрывает попап
   return createPortal(
     <AnimatePresence onExitComplete={onExitComplete}>
       {open && (

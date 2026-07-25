@@ -12,6 +12,7 @@ import { slideInRight } from '../motion'
 import Avatar from '../shared/ui/Avatar'
 import { useAvatarSrc } from './useAvatarSrc'
 import { useManagers } from '../core/hooks/useManagers'
+import { useNavLayer } from '../core/hooks/useNavLayer'
 import { gradientFor } from '../core/dialogToChat'
 import { parseCallLog } from '../core/messageToConvMsg'
 import { dayLabel, startOfDayMs } from '../core/dayLabel'
@@ -70,6 +71,7 @@ export default function CallsView({ onBack, onOpenChat }: { onBack: () => void; 
   const t = useT()
   const [lang] = useLang()
   const managers = useManagers()
+  useNavLayer(true, onBack) // Back закрывает экран «Звонки»
   const [calls, setCalls] = useState<CallLogEntry[] | null>(null)
 
   useEffect(() => {

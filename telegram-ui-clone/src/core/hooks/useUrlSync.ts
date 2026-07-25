@@ -14,6 +14,7 @@ import { useEffect, useRef } from 'react'
 import { useManagers } from './useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useNavigationStore } from '../../stores/navigationStore'
+import { setBaseHandler } from '../navigation/navigationStack'
 import type { Managers } from '../../client/bootstrap'
 
 // Хэш для текущего состояния навигации (без ведущего #). '' — список чатов.
@@ -74,7 +75,8 @@ export function useUrlSync(): void {
   const suppressRef = useRef(false)
   const readyRef = useRef(false)
 
-  // хэш → стор: первичное применение + Back/Forward браузера.
+  // хэш → стор: первичное применение + Back, когда стек оверлеев пуст (базовый
+  // слой navigationStack — единственного владельца popstate).
   useEffect(() => {
     const apply = () => {
       suppressRef.current = true
@@ -84,8 +86,7 @@ export function useUrlSync(): void {
       })
     }
     apply()
-    window.addEventListener('popstate', apply)
-    return () => window.removeEventListener('popstate', apply)
+    setBaseHandler(apply)
   }, [managers])
 
   // стор → хэш: push нового адреса при навигации пользователя.

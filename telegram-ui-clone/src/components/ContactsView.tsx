@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import { slideInRight } from '../motion'
 import Avatar from '../shared/ui/Avatar'
+import { useNavLayer } from '../core/hooks/useNavLayer'
 import { useT } from '../i18n'
 import type { Chat } from '../data'
 import NewContactPopup from './NewContactPopup'
@@ -23,6 +24,7 @@ export default function ContactsView({
   onOpenChat?: (chatId: number) => void
 }) {
   const t = useT()
+  useNavLayer(true, onBack) // Back закрывает экран «Контакты»
   const [query, setQuery] = useState('')
   const [newOpen, setNewOpen] = useState(false)
 
