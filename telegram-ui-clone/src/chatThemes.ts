@@ -78,6 +78,16 @@ export const CHAT_THEMES: ChatTheme[] = [
   },
 ]
 
+// Фон исходящего бабла для темы. В Telegram/tweb фон out-бабла — часть темы
+// (themeSettings.message_colors), меняется вместе с обоями. У нас выводим из
+// акцента тем же соотношением, что и дефолтные токены (--tg-bubbleOut ≈ 13%
+// accent на белом в light): светлый тинт в light, тёмный — в dark.
+export function chatThemeBubbleOut(accent: string, mode: 'light' | 'dark'): string {
+  return mode === 'dark'
+    ? `color-mix(in srgb, ${accent} 22%, #1e1e1e)`
+    : `color-mix(in srgb, ${accent} 13%, #ffffff)`
+}
+
 // Тема по id (undefined — тема не задана / неизвестный id → дефолтное оформление).
 export function chatThemeById(id: string | undefined | null): ChatTheme | undefined {
   if (!id) return undefined

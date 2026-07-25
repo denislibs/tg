@@ -9,7 +9,7 @@ import AddContactView from './AddContactView'
 import EditContactView from './EditContactView'
 import HeaderMenu from './HeaderMenu'
 import ChatThemesPicker from './ChatThemesPicker'
-import { chatThemeVariant } from '../chatThemes'
+import { chatThemeVariant, chatThemeBubbleOut } from '../chatThemes'
 import { PRESET_MODE, resolvePreset } from '../theme'
 import { useSettingsStore } from '../settings'
 import ConfirmDialog from './settings/ConfirmDialog'
@@ -194,6 +194,9 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
         // идёт от --tg-bubbleOutAccent — тема должна перекрыть и его, иначе они
         // остаются дефолтно-синими на теме.
         '--tg-bubbleOutAccent': themeVariant.accent,
+        // Фон исходящего бабла тоже часть темы (как в tweb) — иначе бабл остаётся
+        // дефолтно-сиреневым/голубым на цветной теме.
+        '--tg-bubbleOut': chatThemeBubbleOut(themeVariant.accent, themeMode),
       } as CSSProperties)
     : undefined
 

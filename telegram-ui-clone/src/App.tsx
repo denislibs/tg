@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { chatThemeVariant } from './chatThemes'
+import { chatThemeVariant, chatThemeBubbleOut } from './chatThemes'
 import { flushSync } from 'react-dom'
 import { useManagers } from './core/hooks/useManagers'
 import type { ThreadInfo } from './components/ConversationView'
@@ -475,12 +475,14 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   const activeChatNumId = openThread ? openThread.chatId : (selected && /^\d+$/.test(selected.id) ? Number(selected.id) : null)
   const activeDialogThemeId = useChatsStore((st) => (activeChatNumId == null ? undefined : st.dialogs.find((d) => d.chatId === activeChatNumId)?.themeId))
   const shellThemeChoice = useSettingsStore((st) => st.themeChoice)
-  const shellThemeVariant = chatThemeVariant(activeDialogThemeId ?? (openThread ? threadChat?.themeId : selected?.themeId), PRESET_MODE[resolvePreset(shellThemeChoice)])
+  const shellThemeMode = PRESET_MODE[resolvePreset(shellThemeChoice)]
+  const shellThemeVariant = chatThemeVariant(activeDialogThemeId ?? (openThread ? threadChat?.themeId : selected?.themeId), shellThemeMode)
   const shellThemeStyle: CSSProperties | undefined = shellThemeVariant
     ? {
         '--tg-accent': shellThemeVariant.accent,
         '--tg-accentGradient': `linear-gradient(135deg, ${shellThemeVariant.accent}, ${shellThemeVariant.accent})`,
         '--tg-bubbleOutAccent': shellThemeVariant.accent,
+        '--tg-bubbleOut': chatThemeBubbleOut(shellThemeVariant.accent, shellThemeMode),
       } as CSSProperties
     : undefined
 
