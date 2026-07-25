@@ -13,7 +13,40 @@ export interface GroupCard {
   historyForNew: boolean
   /** плата за сообщение в звёздах (Telegram paid messages); 0 — выключено */
   chargeStars: number
+  /** канал: подписывать посты именем автора (Telegram signatures) */
+  signatures: boolean
+  /** канал: показывать профиль автора под подписью (Telegram signature_profiles) */
+  signatureProfiles: boolean
 }
+
+// Пригласительная ссылка (Telegram exportedChatInvite). Единый JSON для
+// create/list/edit; usageLimit=null — без лимита, expiresAt=undefined — бессрочно.
+export interface InviteLink {
+  token: string
+  url: string
+  uses: number
+  requiresApproval: boolean
+  expiresAt?: string
+  title: string
+  usageLimit: number | null
+  revoked: boolean
+}
+
+interface RawInvite {
+  token: string; uses?: number; url: string; requires_approval: boolean
+  expires_at?: string | null; title?: string | null; usage_limit?: number | null; revoked?: boolean
+}
+
+const mapInvite = (l: RawInvite): InviteLink => ({
+  token: l.token,
+  url: l.url,
+  uses: l.uses ?? 0,
+  requiresApproval: l.requires_approval,
+  expiresAt: l.expires_at ?? undefined,
+  title: l.title ?? '',
+  usageLimit: l.usage_limit ?? null,
+  revoked: l.revoked ?? false,
+})
 
 // Тема форум-группы (строка списка: тема + последнее сообщение треда).
 export interface TopicRow {
@@ -134,7 +167,7 @@ export function newGroupsManager({ rest }: { rest: Pick<RestClient, 'post' | 'ge
         discussion_chat_id?: number
         default_permissions?: number; slowmode_seconds?: number
         reactions_mode?: 'all' | 'some' | 'none'; reactions_allowed?: string[] | null; history_for_new?: boolean
-        charge_stars?: number
+        charge_stars?: number; signatures?: boolean; signature_profiles?: boolean
       }>(`/chats/${chatId}/card`)
       return {
         id: c.id, type: c.type, title: c.title, username: c.username, about: c.about,
@@ -146,6 +179,8 @@ export function newGroupsManager({ rest }: { rest: Pick<RestClient, 'post' | 'ge
         reactionsAllowed: c.reactions_allowed ?? [],
         historyForNew: c.history_for_new ?? true,
         chargeStars: c.charge_stars ?? 0,
+        signatures: c.signatures ?? false,
+        signatureProfiles: c.signature_profiles ?? false,
       }
     },
     async editInfo(chatId: number, args: { title: string; about?: string; username?: string }): Promise<void> {
@@ -193,8 +228,14 @@ export function newGroupsManager({ rest }: { rest: Pick<RestClient, 'post' | 'ge
     async removeMember(chatId: number, userId: number): Promise<void> {
       await rest.del(`/chats/${chatId}/members/${userId}`)
     },
-    async revokeInvite(chatId: number, token: string): Promise<void> {
+    // Hard-delete ссылки (Telegram deleteExportedChatInvite). Отзыв — через
+    // editInvite({revoked:true}) (PATCH), а не этот метод.
+    async deleteInvite(chatId: number, token: string): Promise<void> {
       await rest.del(`/chats/${chatId}/invite_links/${token}`)
+    },
+    // Удалить все отозванные ссылки чата (Telegram deleteRevokedExportedChatInvites).
+    async deleteAllRevoked(chatId: number): Promise<void> {
+      await rest.del(`/chats/${chatId}/revoked_invite_links`)
     },
     async deleteGroup(chatId: number): Promise<void> {
       await rest.del(`/chats/${chatId}`)
@@ -209,13 +250,32 @@ export function newGroupsManager({ rest }: { rest: Pick<RestClient, 'post' | 'ge
     async demoteAdmin(chatId: number, userId: number): Promise<void> {
       await rest.del(`/chats/${chatId}/admins/${userId}`)
     },
-    async createInvite(chatId: number, opts?: { usageLimit?: number; requiresApproval?: boolean; expireSeconds?: number }): Promise<{ token: string; url: string; requiresApproval: boolean; expiresAt?: string }> {
-      const r = await rest.post<{ token: string; url: string; requires_approval: boolean; expires_at: string | null }>(`/chats/${chatId}/invite_links`, { usage_limit: opts?.usageLimit ?? null, requires_approval: opts?.requiresApproval ?? false, expire_seconds: opts?.expireSeconds ?? 0 })
-      return { token: r.token, url: r.url, requiresApproval: r.requires_approval, expiresAt: r.expires_at ?? undefined }
+    async createInvite(chatId: number, opts?: { title?: string; usageLimit?: number; requiresApproval?: boolean; expireSeconds?: number }): Promise<InviteLink> {
+      const r = await rest.post<RawInvite>(`/chats/${chatId}/invite_links`, { title: opts?.title, usage_limit: opts?.usageLimit ?? null, requires_approval: opts?.requiresApproval ?? false, expire_seconds: opts?.expireSeconds ?? 0 })
+      return mapInvite(r)
     },
-    async listInvites(chatId: number): Promise<{ token: string; uses: number; url: string; requiresApproval: boolean; expiresAt?: string }[]> {
-      const r = await rest.get<{ invite_links: { token: string; uses: number; url: string; requires_approval: boolean; expires_at: string | null }[] }>(`/chats/${chatId}/invite_links`)
-      return (r.invite_links ?? []).map((l) => ({ token: l.token, uses: l.uses, url: l.url, requiresApproval: l.requires_approval, expiresAt: l.expires_at ?? undefined }))
+    // revoked=true — список отозванных ссылок (Telegram getExportedChatInvites
+    // revoked flag); по умолчанию — активные.
+    async listInvites(chatId: number, revoked = false): Promise<InviteLink[]> {
+      const r = await rest.get<{ invite_links: RawInvite[] }>(`/chats/${chatId}/invite_links${revoked ? '?revoked=true' : ''}`)
+      return (r.invite_links ?? []).map(mapInvite)
+    },
+    // Частичный PATCH ссылки (Telegram editExportedChatInvite): revoked:true — отзыв,
+    // usageLimit:null — снять лимит, expireSeconds:0 — сделать бессрочной.
+    async editInvite(chatId: number, token: string, patch: { title?: string; usageLimit?: number | null; requiresApproval?: boolean; expireSeconds?: number; revoked?: boolean }): Promise<InviteLink> {
+      const body: Record<string, unknown> = {}
+      if (patch.title !== undefined) body.title = patch.title
+      if (patch.usageLimit !== undefined) body.usage_limit = patch.usageLimit
+      if (patch.requiresApproval !== undefined) body.requires_approval = patch.requiresApproval
+      if (patch.expireSeconds !== undefined) body.expire_seconds = patch.expireSeconds
+      if (patch.revoked !== undefined) body.revoked = patch.revoked
+      const r = await rest.patch<RawInvite>(`/chats/${chatId}/invite_links/${token}`, body)
+      return mapInvite(r)
+    },
+    // Список вступивших по ссылке (Telegram chatInviteImporters).
+    async inviteImporters(chatId: number, token: string): Promise<{ importers: { userId: number; joinedAt: string }[]; count: number }> {
+      const r = await rest.get<{ importers: { user_id: number; joined_at: string }[]; count: number }>(`/chats/${chatId}/invite_links/${token}/importers`)
+      return { importers: (r.importers ?? []).map((i) => ({ userId: i.user_id, joinedAt: i.joined_at })), count: r.count ?? 0 }
     },
     async joinByToken(token: string): Promise<{ status: 'requested' | 'joined' }> {
       return rest.post<{ status: 'requested' | 'joined' }>(`/join/${token}`, {})

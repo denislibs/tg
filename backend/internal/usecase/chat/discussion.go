@@ -38,6 +38,56 @@ func (i *Interactor) EnableDiscussion(ctx context.Context, channelID, actorID in
 	return gid, nil
 }
 
+// LinkDiscussion attaches an existing group as the channel's discussion group
+// (Telegram channels.setDiscussionGroup). The actor must hold RightChangeInfo on
+// the channel AND be creator/admin of the group. The group must be a plain
+// 'group' (not a forum) and not already linked as some channel's discussion
+// group. Returns the linked group id.
+func (i *Interactor) LinkDiscussion(ctx context.Context, channelID, groupID, actorID int64) (int64, error) {
+	if err := i.requireRight(ctx, channelID, actorID, domain.RightChangeInfo); err != nil {
+		return 0, err
+	}
+	card, err := i.groups.Card(ctx, groupID, actorID)
+	if err != nil {
+		return 0, err
+	}
+	if card.Type != "group" {
+		return 0, domain.ErrForbidden
+	}
+	if card.MyRole != domain.RoleCreator && card.MyRole != domain.RoleAdmin {
+		return 0, domain.ErrForbidden
+	}
+	if forum, e := i.groups.IsForum(ctx, groupID); e != nil {
+		return 0, e
+	} else if forum {
+		return 0, domain.ErrForbidden
+	}
+	if linked, e := i.groups.IsDiscussionGroup(ctx, groupID); e != nil {
+		return 0, e
+	} else if linked {
+		return 0, domain.ErrForbidden
+	}
+	if err := i.groups.SetDiscussion(ctx, channelID, groupID); err != nil {
+		return 0, err
+	}
+	return groupID, nil
+}
+
+// UnlinkDiscussion detaches the channel's discussion group. Requires
+// RightChangeInfo on the channel.
+func (i *Interactor) UnlinkDiscussion(ctx context.Context, channelID, actorID int64) error {
+	if err := i.requireRight(ctx, channelID, actorID, domain.RightChangeInfo); err != nil {
+		return err
+	}
+	return i.groups.SetDiscussion(ctx, channelID, 0)
+}
+
+// DiscussionCandidates lists the groups the actor may link as a discussion group
+// (non-forum 'group' chats they own/administer that aren't already linked).
+func (i *Interactor) DiscussionCandidates(ctx context.Context, actorID int64) ([]domain.ChatCard, error) {
+	return i.groups.DiscussionCandidates(ctx, actorID)
+}
+
 // PostComment posts a comment on a channel post. The comment is a message in the
 // channel's discussion group with ThreadRootID set to the post id, so it threads
 // under that post. Returns domain.ErrNotFound if discussions aren't enabled. The

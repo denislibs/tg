@@ -189,7 +189,8 @@ export interface Managers {
     restrictMember(chatId: number, userId: number, deniedRights: number, untilSeconds?: number): Promise<void>
     unrestrictMember(chatId: number, userId: number): Promise<void>
     removeMember(chatId: number, userId: number): Promise<void>
-    revokeInvite(chatId: number, token: string): Promise<void>
+    deleteInvite(chatId: number, token: string): Promise<void>
+    deleteAllRevoked(chatId: number): Promise<void>
     deleteGroup(chatId: number): Promise<void>
     setMute(chatId: number, muted: boolean, until?: number): Promise<void>
     setPin(chatId: number, pinned: boolean): Promise<void>
@@ -207,8 +208,10 @@ export interface Managers {
     members(chatId: number): Promise<{ userId: number; role: string; online: boolean }[]>
     promoteAdmin(chatId: number, userId: number, rights: number): Promise<void>
     demoteAdmin(chatId: number, userId: number): Promise<void>
-    createInvite(chatId: number, opts?: { usageLimit?: number; requiresApproval?: boolean; expireSeconds?: number }): Promise<{ token: string; url: string; requiresApproval: boolean; expiresAt?: string }>
-    listInvites(chatId: number): Promise<{ token: string; uses: number; url: string; requiresApproval: boolean; expiresAt?: string }[]>
+    createInvite(chatId: number, opts?: { title?: string; usageLimit?: number; requiresApproval?: boolean; expireSeconds?: number }): Promise<import('../core/managers/groupsManager').InviteLink>
+    listInvites(chatId: number, revoked?: boolean): Promise<import('../core/managers/groupsManager').InviteLink[]>
+    editInvite(chatId: number, token: string, patch: { title?: string; usageLimit?: number | null; requiresApproval?: boolean; expireSeconds?: number; revoked?: boolean }): Promise<import('../core/managers/groupsManager').InviteLink>
+    inviteImporters(chatId: number, token: string): Promise<{ importers: { userId: number; joinedAt: string }[]; count: number }>
     joinByToken(token: string): Promise<{ status: 'requested' | 'joined' }>
     listJoinRequests(chatId: number): Promise<number[]>
     approveRequest(chatId: number, userId: number): Promise<void>
@@ -223,6 +226,10 @@ export interface Managers {
     search(q: string): Promise<SearchResult>
     similar(chatId: number): Promise<{ chats: SearchResult['chats']; count: number }>
     enableDiscussion(channelId: number): Promise<number>
+    linkDiscussion(channelId: number, groupId: number): Promise<number>
+    unlinkDiscussion(channelId: number): Promise<void>
+    discussionCandidates(channelId: number): Promise<import('../core/managers/channelsManager').DiscussionCandidate[]>
+    setSignatures(channelId: number, signatures: boolean, profiles: boolean): Promise<void>
     postComment(channelId: number, postId: number, text: string, clientMsgId: string): Promise<Message>
     listComments(channelId: number, postId: number, offset?: number, limit?: number): Promise<{ messages: Message[]; count: number }>
     commentCounts(channelId: number, postIds: number[]): Promise<Record<number, number>>

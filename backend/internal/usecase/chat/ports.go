@@ -103,6 +103,16 @@ type GroupRepo interface {
 	AdminIDs(ctx context.Context, chatID int64) ([]int64, error)
 	SetDiscussion(ctx context.Context, channelID, groupID int64) error
 	GetDiscussion(ctx context.Context, channelID int64) (int64, error) // 0 = none
+	// IsForum reports whether chatID has forum topics enabled (chats.is_forum);
+	// forum groups can't be linked as a channel's discussion group.
+	IsForum(ctx context.Context, chatID int64) (bool, error)
+	// DiscussionCandidates lists groups (type 'group', non-forum, not already a
+	// discussion group of any channel) where actorID is creator/admin — the
+	// pick-list for linking an existing discussion group.
+	DiscussionCandidates(ctx context.Context, actorID int64) ([]domain.ChatCard, error)
+	// SetSignatures toggles channel post signatures (Telegram
+	// channels.toggleSignatures). profiles is forced off when signatures is off.
+	SetSignatures(ctx context.Context, chatID int64, signatures, profiles bool) error
 	// IsDiscussionGroup — chatID является discussion-группой какого-то канала
 	// (тред комментариев там читается и без членства, как ListComments).
 	IsDiscussionGroup(ctx context.Context, chatID int64) (bool, error)
@@ -137,17 +147,36 @@ type GroupRepo interface {
 }
 
 type InviteRepo interface {
-	Create(ctx context.Context, chatID, createdBy int64, token string, usageLimit *int, requiresApproval bool, expiresAt *time.Time) (domain.InviteLink, error)
+	Create(ctx context.Context, chatID, createdBy int64, token, title string, usageLimit *int, requiresApproval bool, expiresAt *time.Time) (domain.InviteLink, error)
 	GetByToken(ctx context.Context, token string) (domain.InviteLink, error) // domain.ErrNotFound
-	List(ctx context.Context, chatID int64) ([]domain.InviteLink, error)
+	// List returns a chat's invite links: active ones (revoked=false) or the
+	// revoked ones (revoked=true), newest first.
+	List(ctx context.Context, chatID int64, revoked bool) ([]domain.InviteLink, error)
 	IncUses(ctx context.Context, id int64) error
-	Revoke(ctx context.Context, chatID int64, token string) error
+	// Delete hard-deletes a single link (matched by chat+token); no-op if absent.
+	Delete(ctx context.Context, chatID int64, token string) error
+	// DeleteAllRevoked hard-deletes every revoked link of the chat.
+	DeleteAllRevoked(ctx context.Context, chatID int64) error
+	// Update applies the edited fields of an invite link (matched by chat+token)
+	// and returns the updated row. Unset fields (see domain.InviteEdit) are left
+	// unchanged. domain.ErrNotFound if no such link.
+	Update(ctx context.Context, chatID int64, token string, e domain.InviteEdit) (domain.InviteLink, error)
+	// RecordJoin logs that userID joined chatID through the given invite token
+	// (idempotent on (token, user_id)); source for the importers list.
+	RecordJoin(ctx context.Context, chatID int64, token string, userID int64) error
+	// Importers lists who joined via the chat's token (newest first, capped at
+	// limit) plus the total count of importers. Scoped by chatID so a token that
+	// belongs to another chat yields nothing.
+	Importers(ctx context.Context, chatID int64, token string, limit int) ([]domain.InviteImporter, int, error)
 }
 
 type JoinRequestRepo interface {
 	Create(ctx context.Context, chatID, userID int64, inviteToken string) error // idempotent (ON CONFLICT DO NOTHING)
 	List(ctx context.Context, chatID int64) ([]domain.JoinRequest, error)
 	Delete(ctx context.Context, chatID, userID int64) error
+	// TokenFor returns the invite token a pending request came through ("" if the
+	// request has no associated token or no such request exists).
+	TokenFor(ctx context.Context, chatID, userID int64) (string, error)
 }
 
 type MessageRepo interface {

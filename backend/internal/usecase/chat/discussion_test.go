@@ -43,6 +43,113 @@ func TestEnableDiscussion_CreatorAndIdempotent(t *testing.T) {
 	}
 }
 
+func TestLinkDiscussion_LinksExistingGroup(t *testing.T) {
+	i, fg, _, _ := newChannelTestInteractor(t)
+	ctx := context.Background()
+	ch, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+	// actor 7 owns a plain group.
+	gid, _ := fg.CreateMultiMember(ctx, "group", "Chat", "", "", false, 7)
+	_ = fg.AddMember(ctx, gid, 7, domain.RoleCreator, domain.AllRights)
+
+	got, err := i.LinkDiscussion(ctx, ch, gid, 7)
+	if err != nil || got != gid {
+		t.Fatalf("LinkDiscussion = %d, %v; want %d", got, err, gid)
+	}
+	if cur, _ := fg.GetDiscussion(ctx, ch); cur != gid {
+		t.Fatalf("discussion not set: %d", cur)
+	}
+}
+
+func TestLinkDiscussion_ForumRejected(t *testing.T) {
+	i, fg, _, _ := newChannelTestInteractor(t)
+	ctx := context.Background()
+	ch, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+	gid, _ := fg.CreateMultiMember(ctx, "group", "Chat", "", "", false, 7)
+	_ = fg.AddMember(ctx, gid, 7, domain.RoleCreator, domain.AllRights)
+	_ = fg.SetForum(ctx, gid, true)
+
+	if _, err := i.LinkDiscussion(ctx, ch, gid, 7); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("forum group link = %v, want ErrForbidden", err)
+	}
+}
+
+func TestLinkDiscussion_NotGroupAdminRejected(t *testing.T) {
+	i, fg, _, _ := newChannelTestInteractor(t)
+	ctx := context.Background()
+	ch, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+	gid, _ := fg.CreateMultiMember(ctx, "group", "Chat", "", "", false, 99)
+	_ = fg.AddMember(ctx, gid, 99, domain.RoleCreator, domain.AllRights)
+	_ = fg.AddMember(ctx, gid, 7, domain.RoleMember, 0) // actor is a plain member
+
+	if _, err := i.LinkDiscussion(ctx, ch, gid, 7); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("non-admin group link = %v, want ErrForbidden", err)
+	}
+}
+
+func TestUnlinkDiscussion(t *testing.T) {
+	i, fg, _, _ := newChannelTestInteractor(t)
+	ctx := context.Background()
+	ch, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+	gid, _ := fg.CreateMultiMember(ctx, "group", "Chat", "", "", false, 7)
+	_ = fg.AddMember(ctx, gid, 7, domain.RoleCreator, domain.AllRights)
+	if _, err := i.LinkDiscussion(ctx, ch, gid, 7); err != nil {
+		t.Fatal(err)
+	}
+	if err := i.UnlinkDiscussion(ctx, ch, 7); err != nil {
+		t.Fatalf("UnlinkDiscussion: %v", err)
+	}
+	if cur, _ := fg.GetDiscussion(ctx, ch); cur != 0 {
+		t.Fatalf("discussion still set: %d", cur)
+	}
+}
+
+func TestDiscussionCandidates(t *testing.T) {
+	i, fg, _, _ := newChannelTestInteractor(t)
+	ctx := context.Background()
+	// eligible: plain group where 7 is creator
+	g1, _ := fg.CreateMultiMember(ctx, "group", "Eligible", "", "", false, 7)
+	_ = fg.AddMember(ctx, g1, 7, domain.RoleCreator, domain.AllRights)
+	// ineligible: forum group
+	g2, _ := fg.CreateMultiMember(ctx, "group", "Forum", "", "", false, 7)
+	_ = fg.AddMember(ctx, g2, 7, domain.RoleCreator, domain.AllRights)
+	_ = fg.SetForum(ctx, g2, true)
+	// ineligible: 7 is only a member
+	g3, _ := fg.CreateMultiMember(ctx, "group", "Member", "", "", false, 99)
+	_ = fg.AddMember(ctx, g3, 7, domain.RoleMember, 0)
+
+	cands, err := i.DiscussionCandidates(ctx, 7)
+	if err != nil {
+		t.Fatalf("DiscussionCandidates: %v", err)
+	}
+	if len(cands) != 1 || cands[0].ID != g1 {
+		t.Fatalf("candidates = %+v, want only %d", cands, g1)
+	}
+}
+
+func TestSetSignatures(t *testing.T) {
+	i, fg, _, _ := newChannelTestInteractor(t)
+	ctx := context.Background()
+	ch, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+
+	if err := i.SetSignatures(ctx, ch, 7, true, true); err != nil {
+		t.Fatalf("SetSignatures on: %v", err)
+	}
+	if c, _ := fg.Card(ctx, ch, 7); !c.Signatures || !c.SignatureProfiles {
+		t.Fatalf("signatures not set: %+v", c)
+	}
+	// profiles forced off when signatures off.
+	if err := i.SetSignatures(ctx, ch, 7, false, true); err != nil {
+		t.Fatalf("SetSignatures off: %v", err)
+	}
+	if c, _ := fg.Card(ctx, ch, 7); c.Signatures || c.SignatureProfiles {
+		t.Fatalf("signatures should be off: %+v", c)
+	}
+	// non-admin forbidden.
+	if err := i.SetSignatures(ctx, ch, 8, true, false); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("non-admin SetSignatures = %v, want ErrForbidden", err)
+	}
+}
+
 func TestPostComment_DiscussionsOff_NotFound(t *testing.T) {
 	i, _, _, _ := newChannelTestInteractor(t)
 	ch, _ := i.CreateChannel(context.Background(), 7, "News", "", "", true)

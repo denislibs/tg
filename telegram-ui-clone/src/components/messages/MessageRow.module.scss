@@ -461,4 +461,14 @@
 // Плавающая строка чипов: над обоями, фон чипов тот же (tweb).
 .reactionsOut {
   margin-top: 2px;
+
+  // tweb .bubble.is-out.is-message-empty (_chatBubble.scss:3489): под стикером/
+  // кружком/голосовым бабла нет, поэтому «моя» реакция не заливается out-акцентом,
+  // а инвертируется в surface-подложку + акцентный счётчик (читается поверх обоев).
+  // Входящий чип остаётся акцентным — как в tweb (--chosen-background-color:
+  // var(--primary-color)) и как внутри бабла.
+  .row[data-out] & {
+    --r-chosen-bg: var(--tg-bubble);
+    --r-chosen-fg: var(--tg-accent);
+  }
 }

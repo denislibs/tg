@@ -65,6 +65,19 @@ func (i *Interactor) PostToChannel(ctx context.Context, channelID, actorID int64
 	return msg, nil
 }
 
+// SetSignatures toggles channel post signatures (Telegram
+// channels.toggleSignatures). Requires RightChangeInfo. profiles is only
+// meaningful when signatures is on (the repo forces it off otherwise).
+func (i *Interactor) SetSignatures(ctx context.Context, channelID, actorID int64, signatures, profiles bool) error {
+	if err := i.requireRight(ctx, channelID, actorID, domain.RightChangeInfo); err != nil {
+		return err
+	}
+	if !signatures {
+		profiles = false
+	}
+	return i.groups.SetSignatures(ctx, channelID, signatures, profiles)
+}
+
 // GetChannelDifference returns channel updates newer than sincePts. Membership-gated.
 func (i *Interactor) GetChannelDifference(ctx context.Context, channelID, userID, sincePts int64, limit int) ([]domain.ChannelUpdate, error) {
 	ok, err := i.chats.IsMember(ctx, channelID, userID)

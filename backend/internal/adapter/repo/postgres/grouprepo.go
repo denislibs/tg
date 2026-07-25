@@ -355,14 +355,14 @@ func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.Ch
 	err := q.QueryRow(ctx,
 		`SELECT c.id, c.type, c.title, COALESCE(c.username,''), c.about, c.photo_media_id,
 		        COALESCE(c.creator_id,0), c.member_count, c.is_public,
-		        COALESCE(c.discussion_chat_id,0),
+		        COALESCE(c.discussion_chat_id,0), c.signatures, c.signature_profiles,
 		        c.default_permissions, c.slowmode_seconds, c.reactions_mode, c.reactions_allowed, c.history_for_new, c.charge_stars,
 		        m.role, m.rights, (m.muted OR (m.muted_until IS NOT NULL AND m.muted_until > now()))
 		   FROM chats c
 		   LEFT JOIN chat_members m ON m.chat_id=c.id AND m.user_id=$2
 		  WHERE c.id=$1`,
 		chatID, viewerID).Scan(&c.ID, &c.Type, &c.Title, &c.Username, &c.About, &c.PhotoMediaID,
-		&c.CreatorID, &c.MemberCount, &c.IsPublic, &c.DiscussionChatID,
+		&c.CreatorID, &c.MemberCount, &c.IsPublic, &c.DiscussionChatID, &c.Signatures, &c.SignatureProfiles,
 		&perms, &c.Settings.SlowmodeSeconds, &c.Settings.ReactionsMode, &allowed, &c.Settings.HistoryForNew, &c.Settings.ChargeStars,
 		&role, &rights, &muted)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -458,6 +458,54 @@ func (r *GroupRepo) IsDiscussionGroup(ctx context.Context, chatID int64) (bool, 
 	err := querier(ctx, r.pool).QueryRow(ctx,
 		`SELECT EXISTS(SELECT 1 FROM chats WHERE discussion_chat_id=$1)`, chatID).Scan(&ok)
 	return ok, err
+}
+
+// IsForum reports whether chatID has forum topics enabled.
+func (r *GroupRepo) IsForum(ctx context.Context, chatID int64) (bool, error) {
+	var ok bool
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT is_forum FROM chats WHERE id=$1`, chatID).Scan(&ok)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, domain.ErrNotFound
+	}
+	return ok, err
+}
+
+// DiscussionCandidates lists non-forum 'group' chats where actorID is
+// creator/admin and which aren't already some channel's discussion group.
+func (r *GroupRepo) DiscussionCandidates(ctx context.Context, actorID int64) ([]domain.ChatCard, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT c.id, c.title, COALESCE(c.username,''), c.member_count
+		   FROM chats c
+		   JOIN chat_members m ON m.chat_id=c.id AND m.user_id=$1 AND m.role IN ('creator','admin')
+		  WHERE c.type='group' AND c.is_forum=false
+		    AND NOT EXISTS (SELECT 1 FROM chats ch WHERE ch.discussion_chat_id=c.id)
+		  ORDER BY c.id DESC`, actorID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]domain.ChatCard, 0)
+	for rows.Next() {
+		var c domain.ChatCard
+		c.Type = "group"
+		if err := rows.Scan(&c.ID, &c.Title, &c.Username, &c.MemberCount); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// SetSignatures toggles channel post signatures; profiles is forced off when
+// signatures is off (Telegram invariant).
+func (r *GroupRepo) SetSignatures(ctx context.Context, chatID int64, signatures, profiles bool) error {
+	if !signatures {
+		profiles = false
+	}
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE chats SET signatures=$2, signature_profiles=$3 WHERE id=$1`, chatID, signatures, profiles)
+	return err
 }
 
 // DiscussionChannel — обратный поиск GetDiscussion: канал, чья группа-обсуждение

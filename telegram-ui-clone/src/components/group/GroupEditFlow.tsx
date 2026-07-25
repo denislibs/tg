@@ -1,10 +1,12 @@
-// GroupEditFlow — стек экранов редактирования группы (порт tweb sidebarRight
-// editChat + под-табы chatType / chatInviteLinks / chatReactions /
-// groupPermissions / chatAdministrators / chatMembers / removedUsers).
-// Каркас — SettingsScreen/Section/Row (settings/kit), данные — useGroupEdit.
-import { useMemo, useRef, useState } from 'react'
+// GroupEditFlow — стек экранов редактирования группы И канала (порт tweb
+// sidebarRight editChat + под-табы chatType / chatInviteLinks / editChatInviteLink /
+// chatInviteLink / chatReactions / groupPermissions / chatAdministrators /
+// chatMembers / removedUsers / chatDiscussion). Один компонент под оба типа:
+// isChannel = chat.type === 'channel'. Каркас — SettingsScreen/Section/Row
+// (settings/kit), данные — useGroupEdit.
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence } from 'framer-motion'
-import { SettingsScreen, Section, Row, EntryRow } from '../settings/kit'
+import { SettingsScreen, Section, Row } from '../settings/kit'
 import Text from '../../shared/ui/Text'
 import IconButton from '../../shared/ui/IconButton'
 import Input from '../../shared/ui/Input'
@@ -16,9 +18,15 @@ import TgSwitch from '../TgSwitch'
 import TgIcon from '../TgIcon'
 import LottieSticker from '../LottieSticker'
 import AvatarCropper from '../settings/AvatarCropper'
+import ConfirmDialog from '../settings/ConfirmDialog'
 import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
-import { useGroupEdit, PERMS, SLOWMODE_STEPS, slowmodeLabel, type EditMember, type GroupEdit } from '../../core/hooks/useGroupEdit'
+import {
+  useGroupEdit, PERMS, SLOWMODE_STEPS, slowmodeLabel,
+  type EditMember, type GroupEdit, type ImporterRow, type DiscussionGroup,
+} from '../../core/hooks/useGroupEdit'
+import type { InviteLink } from '../../core/managers/groupsManager'
+import type { DiscussionCandidate } from '../../core/managers/channelsManager'
 import { RIGHTS } from '../../core/hooks/useGroupInfo'
 import { useGroupCandidates } from '../../core/hooks/useGroupCandidates'
 import UserAvatar from '../UserAvatar'
@@ -29,11 +37,14 @@ import s from './GroupEditFlow.module.scss'
 
 const EMOJIS = ['👍', '❤️', '🔥', '🥰', '👏', '😁', '🤔', '🎉', '😱', '👎', '💯', '🙏']
 
+const initials = (name: string): string => name.trim().charAt(0).toUpperCase() || '?'
+
 type Sub =
   | null
   | 'type'
   | 'links'
   | 'reactions'
+  | 'discussion'
   | 'permissions'
   | 'admins'
   | 'members'
@@ -45,6 +56,7 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
   const managers = useManagers()
   const g = useGroupEdit(chatId, managers)
   const [sub, setSub] = useState<Sub>(null)
+  const isChannel = chat.type === 'channel'
 
   // Имя/описание: локальный черновик; галочка появляется при изменениях (tweb nextBtn)
   const [draft, setDraft] = useState<{ title: string; about: string } | null>(null)
@@ -76,6 +88,8 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
     : card?.reactionsMode === 'some' ? `${card.reactionsAllowed.length}/${EMOJIS.length}`
     : t('All')
   const permsCount = PERMS.filter((p) => ((card?.defaultPermissions ?? 31) & p.bit) !== 0).length
+  const activeInvites = g.invites.filter((l) => !l.revoked)
+  const linkedId = card?.discussionChatId ?? 0
 
   return (
     <SettingsScreen
@@ -91,7 +105,7 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
       }
     >
       {/* аватар + имя + описание (tweb editPeer) */}
-      <Section footer="You can provide an optional description for your group.">
+      <Section footer={isChannel ? 'You can provide an optional description for your channel.' : 'You can provide an optional description for your group.'}>
         <div className={s.infoCard}>
           <div className={s.avatarWrap} onClick={() => fileRef.current?.click()}>
             <Avatar size="profile" background={gradientFor(chatId)} src={avatarSrc} text={chat.avatarText} />
@@ -110,17 +124,20 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
               }}
             />
           </div>
-          <Input label={t('Group Name')} value={title} onChange={(v) => setDraft({ title: v, about })} wrapClassName={s.field} />
+          <Input label={t(isChannel ? 'Channel name' : 'Group Name')} value={title} onChange={(v) => setDraft({ title: v, about })} wrapClassName={s.field} />
           <Input label={t('Description')} value={about} onChange={(v) => setDraft({ title, about: v })} wrapClassName={s.field} />
         </div>
       </Section>
 
       {canChangeInfo && (
         <Section>
-          <Row icon={<TgIcon name="lock" size={22} />} label="Group Type" value={t(card!.isPublic ? 'Public' : 'Private')} chevron onClick={() => setSub('type')} />
-          <Row icon={<TgIcon name="link" size={22} />} label="Invite Links" value={String(Math.max(g.invites.length, 1))} chevron onClick={() => setSub('links')} />
+          <Row icon={<TgIcon name="lock" size={22} />} label={isChannel ? 'Channel Type' : 'Group Type'} value={t(card!.isPublic ? 'Public' : 'Private')} chevron onClick={() => setSub('type')} />
+          <Row icon={<TgIcon name="link" size={22} />} label="Invite Links" value={String(Math.max(activeInvites.length, 1))} chevron onClick={() => setSub('links')} />
           <Row icon={<TgIcon name="reactions" size={22} />} label="Reactions" value={reactionsValue} chevron onClick={() => setSub('reactions')} />
-          {g.canBan && (
+          {isChannel && (
+            <Row icon={<TgIcon name="comments" size={22} />} label="Discussion" value={linkedId ? undefined : t('Add')} chevron onClick={() => setSub('discussion')} />
+          )}
+          {!isChannel && g.canBan && (
             <Row icon={<TgIcon name="permissions" size={22} />} label="Permissions" value={`${permsCount}/${PERMS.length}`} chevron onClick={() => setSub('permissions')} />
           )}
         </Section>
@@ -128,8 +145,8 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
 
       <Section>
         <Row icon={<TgIcon name="admin" size={22} />} label="Administrators" value={String(g.admins.length)} chevron onClick={() => setSub('admins')} />
-        <Row icon={<TgIcon name="newgroup" size={22} />} label="Members" value={String(card?.memberCount ?? g.members.length)} chevron onClick={() => setSub('members')} />
-        {g.canBan && (
+        <Row icon={<TgIcon name="newgroup" size={22} />} label={isChannel ? 'Subscribers' : 'Members'} value={String(card?.memberCount ?? g.members.length)} chevron onClick={() => setSub('members')} />
+        {!isChannel && g.canBan && (
           <Row icon={<TgIcon name="permissions" size={22} />} label="Restricted Users" value={g.restricted.length ? String(g.restricted.length) : t('None')} chevron onClick={() => setSub('restricted')} />
         )}
         {g.canBan && (
@@ -137,7 +154,28 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
         )}
       </Section>
 
-      {canChangeInfo && (
+      {/* Sign Messages (только канал, tweb isBroadcast && canPostMessages) */}
+      {isChannel && canChangeInfo && card && (
+        <Section footer={card.signatureProfiles ? 'Add names and photos of admins to the messages they post, linking to their profiles.' : 'Add names of admins to the messages they post'}>
+          <Row
+            label="Sign Messages"
+            toggle
+            checked={card.signatures}
+            onClick={() => void g.saveSignatures(!card.signatures, !card.signatures && card.signatureProfiles)}
+          />
+          {card.signatures && (
+            <Row
+              label="Show Authors' Profiles"
+              toggle
+              checked={card.signatureProfiles}
+              onClick={() => void g.saveSignatures(true, !card.signatureProfiles)}
+            />
+          )}
+        </Section>
+      )}
+
+      {/* «Chat history for new members» — только группа */}
+      {!isChannel && canChangeInfo && (
         <Section footer="New members will see earlier messages when this is on.">
           <Row
             label="Chat history for new members"
@@ -151,7 +189,7 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
       <Section>
         <Row
           icon={<TgIcon name="delete" size={22} color="#ff595a" />}
-          label={g.isCreator ? 'Delete and Leave Group' : 'Leave Group'}
+          label={isChannel ? 'Delete Channel' : g.isCreator ? 'Delete and Leave Group' : 'Leave Group'}
           danger
           onClick={() => {
             void g.deleteOrLeave().then(onClose)
@@ -171,12 +209,13 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
       )}
 
       <AnimatePresence>
-        {sub === 'type' && <ChatTypeScreen g={g} onBack={() => setSub(null)} />}
-        {sub === 'links' && <InviteLinksScreen g={g} onBack={() => setSub(null)} />}
+        {sub === 'type' && <ChatTypeScreen g={g} isChannel={isChannel} onBack={() => setSub(null)} />}
+        {sub === 'links' && <InviteLinksScreen g={g} isChannel={isChannel} onBack={() => setSub(null)} />}
         {sub === 'reactions' && <ReactionsScreen g={g} onBack={() => setSub(null)} />}
+        {sub === 'discussion' && <DiscussionScreen g={g} onBack={() => setSub(null)} />}
         {sub === 'permissions' && <PermissionsScreen g={g} onBack={() => setSub(null)} />}
         {sub === 'admins' && <AdminsScreen g={g} onBack={() => setSub(null)} />}
-        {sub === 'members' && <MembersScreen g={g} onBack={() => setSub(null)} />}
+        {sub === 'members' && <MembersScreen g={g} isChannel={isChannel} onBack={() => setSub(null)} />}
         {sub === 'banned' && <RemovedUsersScreen g={g} onBack={() => setSub(null)} />}
         {sub === 'restricted' && <RestrictedUsersScreen g={g} onBack={() => setSub(null)} />}
       </AnimatePresence>
@@ -184,15 +223,15 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
   )
 }
 
-// ── Тип группы (tweb chatType) ──────────────────────────────────────────────
-function ChatTypeScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
+// ── Тип чата (tweb chatType) ────────────────────────────────────────────────
+function ChatTypeScreen({ g, isChannel, onBack }: { g: GroupEdit; isChannel: boolean; onBack: () => void }) {
   const t = useT()
   const [isPublic, setIsPublic] = useState(!!g.card?.isPublic)
   const [username, setUsername] = useState(g.card?.username ?? '')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const changed = isPublic !== !!g.card?.isPublic || (isPublic && username !== (g.card?.username ?? ''))
-  const primary = g.invites[0]
+  const primary = g.invites.find((l) => !l.revoked)
 
   const apply = async () => {
     if (saving) return
@@ -206,7 +245,7 @@ function ChatTypeScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
 
   return (
     <SettingsScreen
-      title="Group Type"
+      title={isChannel ? 'Channel Type' : 'Group Type'}
       onBack={onBack}
       zIndex={70}
       headerRight={
@@ -217,23 +256,29 @@ function ChatTypeScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
         ) : undefined
       }
     >
-      <Section caption="Group Type">
+      <Section caption={isChannel ? 'Channel Type' : 'Group Type'}>
         <Row
-          label="Private Group"
-          sublabel={t('Private groups can only be joined if you were invited or have an invite link.')}
+          label={isChannel ? 'Private Channel' : 'Private Group'}
+          sublabel={isChannel
+            ? t('Private channels can only be joined via an invite link.')
+            : t('Private groups can only be joined if you were invited or have an invite link.')}
           selected={!isPublic}
           onClick={() => setIsPublic(false)}
         />
         <Row
-          label="Public Group"
-          sublabel={t('Public groups can be found in search, chat history is available to everyone and anyone can join.')}
+          label={isChannel ? 'Public Channel' : 'Public Group'}
+          sublabel={isChannel
+            ? t('Public channels can be found in search and anyone can join.')
+            : t('Public groups can be found in search, chat history is available to everyone and anyone can join.')}
           selected={isPublic}
           onClick={() => setIsPublic(true)}
         />
       </Section>
 
       {isPublic ? (
-        <Section footer="People can share this link with others and find your group using Telegram search.">
+        <Section footer={isChannel
+          ? 'People can share this link with others and find your channel using Telegram search.'
+          : 'People can share this link with others and find your group using Telegram search.'}>
           <div className={s.usernameWrap}>
             <Text size={16} color="var(--tg-textSecondary)">t.me/</Text>
             <input
@@ -247,7 +292,9 @@ function ChatTypeScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
         </Section>
       ) : (
         primary && (
-          <Section footer="People can join your group by following this link. You can revoke the link any time.">
+          <Section footer={isChannel
+            ? 'People can join your channel by following this link. You can revoke the link any time.'
+            : 'People can join your group by following this link. You can revoke the link any time.'}>
             <div className={s.linkBox} onClick={() => void navigator.clipboard.writeText(primary.url)}>
               <Text size={15.5} color="var(--tg-link)" style={{ wordBreak: 'break-all' }}>{primary.url}</Text>
             </div>
@@ -256,7 +303,7 @@ function ChatTypeScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
               label="Revoke Link"
               danger
               onClick={() => {
-                void g.revokeInvite(primary.token).then(() => g.createInvite())
+                void g.editInvite(primary.token, { revoked: true }).then(() => g.createInvite())
               }}
             />
           </Section>
@@ -265,14 +312,6 @@ function ChatTypeScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
     </SettingsScreen>
   )
 }
-
-// Варианты срока действия ссылки (tweb «Limit by Period»): undefined — бессрочная.
-const EXPIRE_OPTIONS: { label: string; seconds: number | undefined }[] = [
-  { label: 'Never', seconds: undefined },
-  { label: '1 hour', seconds: 3600 },
-  { label: '1 day', seconds: 86400 },
-  { label: '1 week', seconds: 604800 },
-]
 
 // expiryLabel описывает срок действия ссылки: «истекла» для прошедшей даты,
 // «истекает <дата>» для будущей, пусто — бессрочная.
@@ -284,25 +323,51 @@ function expiryLabel(t: (k: string) => string, expiresAt?: string): string | und
   return `${t('Expires')} ${new Date(ts).toLocaleDateString()}`
 }
 
-// ── Пригласительные ссылки (tweb chatInviteLinks, уточка UtyanLinks) ─────────
-function InviteLinksScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
+// Подзаголовок строки ссылки (tweb createRow: joins • limit • expiry).
+function linkSubtitle(t: (k: string) => string, l: InviteLink): string {
+  if (l.revoked) return t('revoked')
+  const parts: string[] = []
+  if (l.uses > 0) {
+    parts.push(`${l.uses} ${t('joined')}`)
+    if (l.usageLimit != null && l.uses >= l.usageLimit) parts.push(t('Limit reached'))
+    else if (l.usageLimit != null) parts.push(`${l.usageLimit - l.uses} ${t('remaining')}`)
+  } else if (l.usageLimit != null) {
+    parts.push(`${t('can join')} ${l.usageLimit}`)
+  }
+  const exp = expiryLabel(t, l.expiresAt)
+  if (exp) parts.push(exp)
+  if (!parts.length && l.requiresApproval) parts.push(t('Request Admin Approval'))
+  return parts.join(' • ')
+}
+
+// ── Пригласительные ссылки (tweb chatInviteLinks) ────────────────────────────
+function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isChannel: boolean; onBack: () => void }) {
   const t = useT()
   const [copied, setCopied] = useState<string | null>(null)
-  const [expireSeconds, setExpireSeconds] = useState<number | undefined>(undefined)
+  const [editing, setEditing] = useState<InviteLink | 'new' | null>(null)
+  const [detail, setDetail] = useState<InviteLink | null>(null)
+  const [revoking, setRevoking] = useState<InviteLink | null>(null)
+  const [deletingAll, setDeletingAll] = useState(false)
+
+  const active = g.invites.filter((l) => !l.revoked)
+  const revoked = g.revokedInvites
+  const primary = active[0]
+  const additional = active.slice(1)
+
   const copy = (token: string, url: string) => {
     void navigator.clipboard.writeText(url)
     setCopied(token)
     setTimeout(() => setCopied(null), 1500)
   }
-  const primary = g.invites[0]
-  const extra = g.invites.slice(1)
 
   return (
     <SettingsScreen title="Invite Links" onBack={onBack} zIndex={70}>
       <div className={s.duck}>
         <LottieSticker name="UtyanLinks" size={120} loop />
         <Text size={14.5} color="var(--tg-textSecondary)" className={s.duckCaption}>
-          {t('Anyone who has Telegram installed will be able to join your group by following this link.')}
+          {isChannel
+            ? t('Anyone who has Telegram installed will be able to join your channel by following this link.')
+            : t('Anyone who has Telegram installed will be able to join your group by following this link.')}
         </Text>
       </div>
 
@@ -316,46 +381,360 @@ function InviteLinksScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) 
               </Text>
             </div>
             <Row
+              icon={<TgIcon name="admin" size={22} />}
+              label={linkSubtitle(t, primary) || t('View link')}
+              translate={false}
+              chevron
+              onClick={() => setDetail(primary)}
+            />
+            <Row
               icon={<TgIcon name="delete" size={22} color="#ff595a" />}
               label="Revoke Link"
               danger
-              onClick={() => void g.revokeInvite(primary.token).then(() => g.createInvite())}
+              onClick={() => setRevoking(primary)}
             />
           </>
         ) : (
-          <Row icon={<TgIcon name="plus" size={22} color="var(--tg-accent)" />} label="Create a New Link" accent onClick={() => void g.createInvite(expireSeconds)} />
+          <Row icon={<TgIcon name="plus" size={22} color="var(--tg-accent)" />} label="Create a New Link" accent onClick={() => setEditing('new')} />
         )}
-        {primary && expiryLabel(t, primary.expiresAt) && (
-          <Text size={13} color="var(--tg-textFaint)" style={{ padding: '4px 16px' }}>{expiryLabel(t, primary.expiresAt)}</Text>
+      </Section>
+
+      <Section caption="Additional Links" footer="You can create additional invite links that are limited by time, number of users, or require a paid subscription.">
+        <Row icon={<TgIcon name="plus" size={22} color="var(--tg-accent)" />} label="Create a New Link" accent onClick={() => setEditing('new')} />
+        {additional.map((l) => (
+          <Row
+            key={l.token}
+            icon={<TgIcon name="link" size={22} color="var(--tg-textFaint)" />}
+            label={l.title || l.url.replace(/^https?:\/\//, '')}
+            translate={false}
+            sublabel={linkSubtitle(t, l) || undefined}
+            chevron
+            onClick={() => setDetail(l)}
+          />
+        ))}
+      </Section>
+
+      {revoked.length > 0 && (
+        <Section caption="Revoked Links">
+          <Row icon={<TgIcon name="delete" size={22} color="#ff595a" />} label="Delete All Revoked Links" danger onClick={() => setDeletingAll(true)} />
+          {revoked.map((l) => (
+            <Row
+              key={l.token}
+              icon={<TgIcon name="link" size={22} color="var(--tg-textFaint)" />}
+              label={l.title || l.url.replace(/^https?:\/\//, '')}
+              translate={false}
+              sublabel={t('revoked')}
+              chevron
+              onClick={() => setDetail(l)}
+            />
+          ))}
+        </Section>
+      )}
+
+      {revoking && (
+        <ConfirmDialog
+          title={t('Revoke Link')}
+          text={t('Are you sure you want to revoke this link? Once the link is revoked, no one will be able to join using it.')}
+          action={t('Revoke')}
+          danger
+          zIndex={90}
+          onConfirm={() => void g.editInvite(revoking.token, { revoked: true })}
+          onClose={() => setRevoking(null)}
+        />
+      )}
+      {deletingAll && (
+        <ConfirmDialog
+          title={t('Delete All Revoked Links')}
+          text={t('Are you sure you want to delete all revoked links?')}
+          action={t('Delete')}
+          danger
+          zIndex={90}
+          onConfirm={() => void g.deleteAllRevoked()}
+          onClose={() => setDeletingAll(false)}
+        />
+      )}
+
+      <AnimatePresence>
+        {editing && (
+          <EditInviteLinkScreen
+            g={g}
+            link={editing === 'new' ? null : editing}
+            onBack={() => setEditing(null)}
+          />
         )}
+        {detail && (
+          <InviteLinkDetailScreen
+            g={g}
+            link={detail}
+            onEdit={() => { setEditing(detail); setDetail(null) }}
+            onBack={() => setDetail(null)}
+          />
+        )}
+      </AnimatePresence>
+    </SettingsScreen>
+  )
+}
+
+// Шаги «Limit by Period» (tweb stepValues 1h/1d/1w + ∞). undefined — бессрочно.
+const PERIOD_STEPS: (number | undefined)[] = [3600, 86400, 604800, undefined]
+const periodLabel = (v: number | undefined): string =>
+  v === undefined ? '∞' : v < 86400 ? '1 hour' : v < 604800 ? '1 day' : '1 week'
+// Шаги «Limit Number of Uses» (tweb 1/10/50/100 + ∞). undefined — без лимита.
+const USES_STEPS: (number | undefined)[] = [1, 10, 50, 100, undefined]
+const usesLabel = (v: number | undefined): string => (v === undefined ? '∞' : String(v))
+
+const closestStep = (steps: (number | undefined)[], value: number): number => {
+  let bestIdx = 0
+  let bestDiff = Infinity
+  steps.forEach((sv, i) => {
+    if (sv === undefined) return
+    const diff = Math.abs(sv - value)
+    if (diff < bestDiff) { bestDiff = diff; bestIdx = i }
+  })
+  return bestIdx
+}
+
+// ── Создание/редактирование ссылки (tweb editChatInviteLink) ─────────────────
+function EditInviteLinkScreen({ g, link, onBack }: { g: GroupEdit; link: InviteLink | null; onBack: () => void }) {
+  const t = useT()
+  const [name, setName] = useState(link?.title ?? '')
+  const [periodIdx, setPeriodIdx] = useState(() => {
+    if (!link?.expiresAt) return PERIOD_STEPS.length - 1
+    const remaining = (Date.parse(link.expiresAt) - Date.now()) / 1000
+    return remaining > 0 ? closestStep(PERIOD_STEPS, remaining) : PERIOD_STEPS.length - 1
+  })
+  const [approval, setApproval] = useState(link?.requiresApproval ?? false)
+  const [usesIdx, setUsesIdx] = useState(() => (link?.usageLimit != null ? closestStep(USES_STEPS, link.usageLimit) : USES_STEPS.length - 1))
+  const [saving, setSaving] = useState(false)
+
+  const save = async () => {
+    if (saving) return
+    setSaving(true)
+    const expireSeconds = PERIOD_STEPS[periodIdx] ?? 0
+    const usageLimit = approval ? undefined : USES_STEPS[usesIdx]
+    try {
+      if (link) {
+        await g.editInvite(link.token, { title: name, requiresApproval: approval, expireSeconds, usageLimit: usageLimit ?? null })
+      } else {
+        await g.createInvite({ title: name || undefined, requiresApproval: approval, expireSeconds: expireSeconds || undefined, usageLimit })
+      }
+      onBack()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <SettingsScreen
+      title={link ? 'Edit Link' : 'New Link'}
+      onBack={onBack}
+      zIndex={80}
+      headerRight={
+        <IconButton onClick={() => void save()} color="var(--tg-accent)">
+          {saving ? <Spinner size={22} /> : <TgIcon name="check" />}
+        </IconButton>
+      }
+    >
+      <Section caption="Link Name" footer="Only admins will see this name.">
+        <Input label={t('Link Name (Optional)')} value={name} onChange={setName} maxLength={32} wrapClassName={s.field} />
       </Section>
 
       <Section caption="Limit by Period" footer="You can make the link expire after a certain time.">
-        {EXPIRE_OPTIONS.map((o) => (
-          <Row
-            key={o.label}
-            label={o.label}
-            selected={expireSeconds === o.seconds}
-            onClick={() => setExpireSeconds(o.seconds)}
-          />
-        ))}
+        <div className={s.slowmode}>
+          <div className={s.slowLabels}>
+            {PERIOD_STEPS.map((v, i) => (
+              <span key={i} className={i === periodIdx ? s.slowActive : undefined}>{periodLabel(v)}</span>
+            ))}
+          </div>
+          <Slider min={0} max={PERIOD_STEPS.length - 1} step={1} value={periodIdx} onChange={setPeriodIdx} />
+        </div>
       </Section>
 
-      <Section
-        caption="Additional Links"
-        footer="You can create additional invite links and revoke them at any time."
-      >
-        <Row icon={<TgIcon name="plus" size={22} color="var(--tg-accent)" />} label="Create a New Link" accent onClick={() => void g.createInvite(expireSeconds)} />
-        {extra.map((l) => (
-          <EntryRow
-            key={l.token}
-            left={<TgIcon name="link" size={22} color="var(--tg-textFaint)" />}
-            title={l.url.replace(/^https?:\/\//, '')}
-            sub={copied === l.token ? t('Link copied to clipboard.') : expiryLabel(t, l.expiresAt) ?? (l.requiresApproval ? t('Approve new members') : undefined)}
-            onRemove={() => void g.revokeInvite(l.token)}
-          />
-        ))}
+      <Section>
+        <Row label="Request Admin Approval" toggle checked={approval} onClick={() => setApproval((v) => !v)} />
       </Section>
+
+      {!approval && (
+        <Section caption="Limit Number of Uses" footer="You can make the link work only for a certain number of users.">
+          <div className={s.slowmode}>
+            <div className={s.slowLabels}>
+              {USES_STEPS.map((v, i) => (
+                <span key={i} className={i === usesIdx ? s.slowActive : undefined}>{usesLabel(v)}</span>
+              ))}
+            </div>
+            <Slider min={0} max={USES_STEPS.length - 1} step={1} value={usesIdx} onChange={setUsesIdx} />
+          </div>
+        </Section>
+      )}
+    </SettingsScreen>
+  )
+}
+
+// ── Детали ссылки (tweb chatInviteLink): ссылка + список вступивших ──────────
+function InviteLinkDetailScreen({ g, link, onEdit, onBack }: { g: GroupEdit; link: InviteLink; onEdit: () => void; onBack: () => void }) {
+  const t = useT()
+  const [copied, setCopied] = useState(false)
+  const [importers, setImporters] = useState<ImporterRow[]>([])
+  const [revoking, setRevoking] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    if (link.uses > 0) void g.loadImporters(link.token).then((rows) => { if (alive) setImporters(rows) })
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [link.token])
+
+  const copy = () => {
+    void navigator.clipboard.writeText(link.url)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  return (
+    <SettingsScreen title={link.title || 'Invite Link'} onBack={onBack} zIndex={80}>
+      <Section caption="Invite Link">
+        <div className={s.linkBox} onClick={copy}>
+          <Text size={15.5} color="var(--tg-link)" style={{ wordBreak: 'break-all' }}>{link.url}</Text>
+          <Text size={13} color={copied ? 'var(--tg-accent)' : 'var(--tg-textFaint)'}>
+            {copied ? t('Link copied to clipboard.') : t('Copy Link')}
+          </Text>
+        </div>
+      </Section>
+
+      {link.usageLimit != null && link.uses === 0 && (
+        <Section>
+          <Text size={14.5} color="var(--tg-textSecondary)" style={{ padding: '8px 16px' }}>
+            {`${link.usageLimit} ${t('people can join via this link.')}`}
+          </Text>
+        </Section>
+      )}
+
+      {importers.length > 0 && (
+        <Section caption={`${link.uses} ${t('joined')}`}>
+          {importers.map((im) => (
+            <div key={im.userId} className={s.memberRow}>
+              <UserAvatar id={im.userId} name={im.name} avatarUrl={im.avatarUrl} />
+              <div className={s.memberBody}>
+                <Text noWrap size={16} color="var(--tg-textPrimary)">{im.name}</Text>
+                <Text noWrap size={14} color="var(--tg-textSecondary)">{new Date(im.joinedAt).toLocaleDateString()}</Text>
+              </div>
+            </div>
+          ))}
+        </Section>
+      )}
+
+      {!link.revoked ? (
+        <Section>
+          <Row icon={<TgIcon name="edit" size={22} />} label="Edit Link" onClick={onEdit} />
+          <Row icon={<TgIcon name="delete" size={22} color="#ff595a" />} label="Revoke Link" danger onClick={() => setRevoking(true)} />
+        </Section>
+      ) : (
+        <Section>
+          <Row icon={<TgIcon name="delete" size={22} color="#ff595a" />} label="Delete Link" danger onClick={() => void g.deleteInvite(link.token).then(onBack)} />
+        </Section>
+      )}
+
+      {revoking && (
+        <ConfirmDialog
+          title={t('Revoke Link')}
+          text={t('Are you sure you want to revoke this link? Once the link is revoked, no one will be able to join using it.')}
+          action={t('Revoke')}
+          danger
+          zIndex={90}
+          onConfirm={() => void g.editInvite(link.token, { revoked: true }).then(onBack)}
+          onClose={() => setRevoking(false)}
+        />
+      )}
+    </SettingsScreen>
+  )
+}
+
+// ── Обсуждение канала (tweb chatDiscussion) ──────────────────────────────────
+function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
+  const t = useT()
+  const linkedId = g.card?.discussionChatId ?? 0
+  const [linked, setLinked] = useState<DiscussionGroup | null>(null)
+  const [candidates, setCandidates] = useState<DiscussionCandidate[]>([])
+  const [confirming, setConfirming] = useState<DiscussionCandidate | null>(null)
+  const [unlinking, setUnlinking] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    if (linkedId) {
+      void g.loadDiscussionGroup().then((x) => { if (alive) setLinked(x) })
+    } else {
+      setLinked(null)
+      void g.loadDiscussionCandidates().then((c) => { if (alive) setCandidates(c) })
+    }
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedId])
+
+  return (
+    <SettingsScreen title="Discussion" onBack={onBack} zIndex={70}>
+      <Text size={14.5} color="var(--tg-textSecondary)" className={s.bansCaption}>
+        {linkedId
+          ? t('Users can now discuss your posts in the linked group.')
+          : t('Select a group chat that will host comments from your channel.')}
+      </Text>
+
+      {linkedId ? (
+        <>
+          {linked && (
+            <Section>
+              <div className={s.memberRow}>
+                <Avatar size="md" background={gradientFor(linked.id)} text={initials(linked.title)} />
+                <div className={s.memberBody}>
+                  <Text noWrap size={16} color="var(--tg-textPrimary)">{linked.title}</Text>
+                  <Text noWrap size={14} color="var(--tg-textSecondary)">
+                    {linked.username ? `@${linked.username}` : `${linked.memberCount} ${t('members')}`}
+                  </Text>
+                </div>
+              </div>
+            </Section>
+          )}
+          <Section>
+            <Row icon={<TgIcon name="delete" size={22} color="#ff595a" />} label="Unlink Group" danger onClick={() => setUnlinking(true)} />
+          </Section>
+        </>
+      ) : (
+        <Section>
+          <Row icon={<TgIcon name="newgroup" size={22} color="var(--tg-accent)" />} label="Create a New Group" accent onClick={() => void g.enableDiscussion()} />
+          {candidates.map((c) => (
+            <div key={c.id} className={s.memberRow} onClick={() => setConfirming(c)}>
+              <Avatar size="md" background={gradientFor(c.id)} text={initials(c.title)} />
+              <div className={s.memberBody}>
+                <Text noWrap size={16} color="var(--tg-textPrimary)">{c.title}</Text>
+                <Text noWrap size={14} color="var(--tg-textSecondary)">
+                  {c.username ? `@${c.username}` : `${c.memberCount} ${t('members')}`}
+                </Text>
+              </div>
+            </div>
+          ))}
+        </Section>
+      )}
+
+      {confirming && (
+        <ConfirmDialog
+          title={t('Discussion')}
+          text={`${t('Do you want to set')} «${confirming.title}» ${t('as the discussion board for this channel?')}`}
+          action={t('Link Group')}
+          zIndex={90}
+          onConfirm={() => void g.linkDiscussion(confirming.id)}
+          onClose={() => setConfirming(null)}
+        />
+      )}
+      {unlinking && (
+        <ConfirmDialog
+          title={t('Unlink Group')}
+          text={t('Are you sure you want to unlink this group from the channel?')}
+          action={t('Unlink')}
+          danger
+          zIndex={90}
+          onConfirm={() => void g.unlinkDiscussion()}
+          onClose={() => setUnlinking(false)}
+        />
+      )}
     </SettingsScreen>
   )
 }
@@ -576,8 +955,8 @@ function AdminRightsScreen({
   )
 }
 
-// ── Участники (tweb chatMembers) ─────────────────────────────────────────────
-function MembersScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
+// ── Участники / Подписчики (tweb chatMembers) ────────────────────────────────
+function MembersScreen({ g, isChannel, onBack }: { g: GroupEdit; isChannel: boolean; onBack: () => void }) {
   const t = useT()
   const managers = useManagers()
   const candidates = useGroupCandidates(managers)
@@ -595,10 +974,10 @@ function MembersScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
   )
 
   return (
-    <SettingsScreen title="Members" onBack={onBack} zIndex={70}>
+    <SettingsScreen title={isChannel ? 'Subscribers' : 'Members'} onBack={onBack} zIndex={70}>
       <div className={s.search}><InputSearch value={q} onChange={setQ} placeholder={t('Search')} /></div>
       <Section>
-        <Row icon={<TgIcon name="adduser" size={22} color="var(--tg-accent)" />} label="Add Members" accent onClick={() => setPicking(true)} />
+        <Row icon={<TgIcon name="adduser" size={22} color="var(--tg-accent)" />} label={isChannel ? 'Add Subscribers' : 'Add Members'} accent onClick={() => setPicking(true)} />
         {list.map((m) => (
           <div key={m.userId} className={s.memberRow}>
             <UserAvatar id={m.userId} name={m.name} avatarUrl={m.avatarUrl} />
@@ -610,17 +989,20 @@ function MembersScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
             </div>
             {g.canBan && m.role !== 'creator' && (
               <>
-                {m.role !== 'admin' && (
+                {/* restrict/ban — только в группе; у канала подписчиков лишь удаляют */}
+                {!isChannel && m.role !== 'admin' && (
                   <IconButton size="small" color="var(--tg-textFaint)" onClick={() => setRestricting(m)} title={t('Restrict')}>
                     <TgIcon name="permissions" size={20} />
                   </IconButton>
                 )}
-                <IconButton size="small" color="var(--tg-textFaint)" onClick={() => void g.kick(m.userId)} title={t('Remove from group')}>
+                <IconButton size="small" color="var(--tg-textFaint)" onClick={() => void g.kick(m.userId)} title={t('Remove')}>
                   <TgIcon name="close" size={20} />
                 </IconButton>
-                <IconButton size="small" color="#ff595a" onClick={() => void g.ban(m.userId)} title={t('Ban and remove from group')}>
-                  <TgIcon name="deleteuser" size={20} />
-                </IconButton>
+                {!isChannel && (
+                  <IconButton size="small" color="#ff595a" onClick={() => void g.ban(m.userId)} title={t('Ban and remove from group')}>
+                    <TgIcon name="deleteuser" size={20} />
+                  </IconButton>
+                )}
               </>
             )}
           </div>
@@ -630,7 +1012,7 @@ function MembersScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
       <AnimatePresence>
         {picking && (
           <MemberPicker
-            title="Add Members"
+            title={isChannel ? 'Add Subscribers' : 'Add Members'}
             members={addable}
             onBack={() => setPicking(false)}
             onPick={(m) => {

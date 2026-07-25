@@ -16,7 +16,6 @@ import PremiumBadge from './PremiumBadge'
 import EmojiStatus from './EmojiStatus'
 import { fmtWhen, mediaLabel } from '../core/dialogToChat'
 import type { SavedDialog } from '../core/managers/chatsManager'
-import EditView from './EditView'
 import GroupEditFlow from './group/GroupEditFlow'
 import AddMembersScreen from './group/AddMembersScreen'
 import { Section, Row } from './settings/kit'
@@ -827,9 +826,9 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
 
         {/* Edit screen overlay */}
         <AnimatePresence>
-          {editing && (isGroup && isRealChat
-            ? <GroupEditFlow chatId={Number(chat.id)} chat={chat} onClose={() => setEditing(false)} />
-            : <EditView chat={chat} onBack={() => setEditing(false)} />)}
+          {editing && isRealChat && (isGroup || isChannel) && (
+            <GroupEditFlow chatId={Number(chat.id)} chat={chat} onClose={() => setEditing(false)} />
+          )}
           {addingMembers && isRealChat && (
             <AddMembersScreen
               chatId={Number(chat.id)}

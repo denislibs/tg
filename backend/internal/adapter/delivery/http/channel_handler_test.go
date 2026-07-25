@@ -199,3 +199,100 @@ func TestChannelDiscussion_HTTP(t *testing.T) {
 		t.Fatalf("comment_counts[%s] = %d; want 1 (%s)", pid, cc.Counts[pid], rec.Body.String())
 	}
 }
+
+func TestChannelAdmin_DiscussionAndSignatures_HTTP(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990004001")
+
+	// A creates a channel.
+	rec := authedReq(t, h, http.MethodPost, "/channels", tokenA, map[string]any{"title": "Ch"})
+	var ch struct {
+		ChatID int64 `json:"chat_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &ch)
+	cid := itoa(ch.ChatID)
+
+	// A creates a plain group (discussion candidate).
+	rec = authedReq(t, h, http.MethodPost, "/groups", tokenA, map[string]any{"title": "Talk"})
+	var grp struct {
+		ChatID int64 `json:"chat_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &grp)
+	gid := grp.ChatID
+
+	// discussion_candidates lists the group.
+	rec = authedReq(t, h, http.MethodGet, "/channels/"+cid+"/discussion_candidates", tokenA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("candidates: %d %s", rec.Code, rec.Body.String())
+	}
+	var cands struct {
+		Chats []struct {
+			ID int64 `json:"id"`
+		} `json:"chats"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &cands)
+	found := false
+	for _, c := range cands.Chats {
+		if c.ID == gid {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("candidates missing group %d: %s", gid, rec.Body.String())
+	}
+
+	// PUT discussion links it.
+	rec = authedReq(t, h, http.MethodPut, "/channels/"+cid+"/discussion", tokenA, map[string]any{"group_id": gid})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("link discussion: %d %s", rec.Code, rec.Body.String())
+	}
+	var linked struct {
+		DiscussionChatID int64 `json:"discussion_chat_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &linked)
+	if linked.DiscussionChatID != gid {
+		t.Fatalf("linked discussion = %d; want %d", linked.DiscussionChatID, gid)
+	}
+
+	// Card reflects the link and the now-linked group is no longer a candidate.
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/card", tokenA, nil)
+	var card struct {
+		DiscussionChatID  int64 `json:"discussion_chat_id"`
+		Signatures        bool  `json:"signatures"`
+		SignatureProfiles bool  `json:"signature_profiles"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &card)
+	if card.DiscussionChatID != gid {
+		t.Fatalf("card discussion_chat_id = %d; want %d", card.DiscussionChatID, gid)
+	}
+
+	// DELETE discussion unlinks.
+	rec = authedReq(t, h, http.MethodDelete, "/channels/"+cid+"/discussion", tokenA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unlink: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/card", tokenA, nil)
+	_ = json.Unmarshal(rec.Body.Bytes(), &card)
+	if card.DiscussionChatID != 0 {
+		t.Fatalf("discussion still linked after unlink: %d", card.DiscussionChatID)
+	}
+
+	// sign_messages toggles signatures on the card.
+	rec = authedReq(t, h, http.MethodPut, "/channels/"+cid+"/sign_messages", tokenA, map[string]any{"signatures": true, "profiles": true})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("sign_messages: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/card", tokenA, nil)
+	_ = json.Unmarshal(rec.Body.Bytes(), &card)
+	if !card.Signatures || !card.SignatureProfiles {
+		t.Fatalf("card signatures = %+v; want both true", card)
+	}
+
+	// signatures=false forces profiles off.
+	_ = authedReq(t, h, http.MethodPut, "/channels/"+cid+"/sign_messages", tokenA, map[string]any{"signatures": false, "profiles": true})
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/card", tokenA, nil)
+	_ = json.Unmarshal(rec.Body.Bytes(), &card)
+	if card.Signatures || card.SignatureProfiles {
+		t.Fatalf("card signatures should be off: %+v", card)
+	}
+}

@@ -110,7 +110,7 @@ func (i *Interactor) CreateGroup(ctx context.Context, creatorID int64, title, ab
 	}
 	// Primary-инвайт существует у группы с рождения (tweb exported_invite).
 	if i.invites != nil {
-		_, _ = i.invites.Create(ctx, chatID, creatorID, tokenGen(), nil, false, nil)
+		_, _ = i.invites.Create(ctx, chatID, creatorID, tokenGen(), "", nil, false, nil)
 	}
 	i.postGroupService(ctx, chatID, creatorID, serviceText("group_create", i.userCard(ctx, creatorID), nil))
 	return chatID, nil
@@ -289,25 +289,57 @@ func (i *Interactor) ListMembers(ctx context.Context, chatID, viewerID int64, of
 	return i.groups.ListMembers(ctx, chatID, offset, limit)
 }
 
-func (i *Interactor) CreateInvite(ctx context.Context, chatID, actorID int64, usageLimit *int, requiresApproval bool, expiresAt *time.Time) (domain.InviteLink, error) {
+func (i *Interactor) CreateInvite(ctx context.Context, chatID, actorID int64, title string, usageLimit *int, requiresApproval bool, expiresAt *time.Time) (domain.InviteLink, error) {
 	if err := i.requireRight(ctx, chatID, actorID, domain.RightInviteUsers); err != nil {
 		return domain.InviteLink{}, err
 	}
-	return i.invites.Create(ctx, chatID, actorID, tokenGen(), usageLimit, requiresApproval, expiresAt)
+	return i.invites.Create(ctx, chatID, actorID, tokenGen(), title, usageLimit, requiresApproval, expiresAt)
 }
 
-func (i *Interactor) ListInvites(ctx context.Context, chatID, actorID int64) ([]domain.InviteLink, error) {
+// ListInvites returns the chat's invite links: active ones by default, or the
+// revoked ones when revoked is true (Telegram getExportedChatInvites revoked flag).
+func (i *Interactor) ListInvites(ctx context.Context, chatID, actorID int64, revoked bool) ([]domain.InviteLink, error) {
 	if err := i.requireRight(ctx, chatID, actorID, domain.RightInviteUsers); err != nil {
 		return nil, err
 	}
-	return i.invites.List(ctx, chatID)
+	return i.invites.List(ctx, chatID, revoked)
 }
 
-func (i *Interactor) RevokeInvite(ctx context.Context, chatID, actorID int64, token string) error {
+// EditInvite updates an invite link's editable fields (Telegram
+// messages.editExportedChatInvite). Same right as revoke/list (INVITE_USERS).
+func (i *Interactor) EditInvite(ctx context.Context, chatID, actorID int64, token string, edit domain.InviteEdit) (domain.InviteLink, error) {
+	if err := i.requireRight(ctx, chatID, actorID, domain.RightInviteUsers); err != nil {
+		return domain.InviteLink{}, err
+	}
+	return i.invites.Update(ctx, chatID, token, edit)
+}
+
+// InviteImporters lists the users who joined via a specific link (newest first,
+// capped) plus the total count. Same right as ListInvites.
+func (i *Interactor) InviteImporters(ctx context.Context, chatID, actorID int64, token string) ([]domain.InviteImporter, int, error) {
+	if err := i.requireRight(ctx, chatID, actorID, domain.RightInviteUsers); err != nil {
+		return nil, 0, err
+	}
+	return i.invites.Importers(ctx, chatID, token, 50)
+}
+
+// DeleteInvite hard-deletes a single link (Telegram deleteExportedChatInvite).
+// The token is scoped to chatID by the repo, so an actor can't delete another
+// chat's link through this chat's endpoint. Same right as revoke/list.
+func (i *Interactor) DeleteInvite(ctx context.Context, chatID, actorID int64, token string) error {
 	if err := i.requireRight(ctx, chatID, actorID, domain.RightInviteUsers); err != nil {
 		return err
 	}
-	return i.invites.Revoke(ctx, chatID, token)
+	return i.invites.Delete(ctx, chatID, token)
+}
+
+// DeleteAllRevoked hard-deletes every revoked link of the chat (Telegram
+// deleteRevokedExportedChatInvites). Same right as revoke/list.
+func (i *Interactor) DeleteAllRevoked(ctx context.Context, chatID, actorID int64) error {
+	if err := i.requireRight(ctx, chatID, actorID, domain.RightInviteUsers); err != nil {
+		return err
+	}
+	return i.invites.DeleteAllRevoked(ctx, chatID)
 }
 
 // JoinByToken resolves an invite link and either joins the user immediately or,
@@ -336,7 +368,10 @@ func (i *Interactor) JoinByToken(ctx context.Context, token string, userID int64
 		if e := i.groups.AddMember(ctx, link.ChatID, userID, domain.RoleMember, 0); e != nil {
 			return e
 		}
-		return i.invites.IncUses(ctx, link.ID)
+		if e := i.invites.IncUses(ctx, link.ID); e != nil {
+			return e
+		}
+		return i.invites.RecordJoin(ctx, link.ChatID, token, userID)
 	})
 	if err != nil {
 		return false, err
@@ -363,9 +398,17 @@ func (i *Interactor) ApproveJoinRequest(ctx context.Context, chatID, actorID, us
 	if err := i.requireRight(ctx, chatID, actorID, domain.RightInviteUsers); err != nil {
 		return err
 	}
+	// Заявка могла прийти по конкретной ссылке — вступивший должен попасть в её
+	// список importers в момент фактического добавления в участники.
+	token, _ := i.joinReqs.TokenFor(ctx, chatID, userID)
 	return i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if e := i.groups.AddMember(ctx, chatID, userID, domain.RoleMember, 0); e != nil {
 			return e
+		}
+		if token != "" {
+			if e := i.invites.RecordJoin(ctx, chatID, token, userID); e != nil {
+				return e
+			}
 		}
 		return i.joinReqs.Delete(ctx, chatID, userID)
 	})
