@@ -41,6 +41,8 @@ export class StickerAssets {
           img.src = c.url
           return
         }
+        // video-стикер (webm) в редакторе как оверлей пока не поддержан.
+        if (c.kind !== 'lottie') return
         // lottie → offscreen-canvas, обновляется на каждом кадре
         const canvas = document.createElement('canvas')
         canvas.width = LOTTIE_SIZE

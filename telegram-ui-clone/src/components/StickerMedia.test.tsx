@@ -34,6 +34,15 @@ function stubFetch(contentType: string) {
 beforeEach(() => {
   loadAnimation.mockClear()
   URL.createObjectURL = vi.fn(() => 'blob:sticker') as typeof URL.createObjectURL
+  // happy-dom не реализует IntersectionObserver — заглушка для видео-ветки.
+  vi.stubGlobal(
+    'IntersectionObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
 })
 
 describe('StickerMedia', () => {
@@ -68,5 +77,17 @@ describe('StickerMedia', () => {
     const args = loadAnimation.mock.calls[0][0]
     expect(args.autoplay).toBe(true)
     expect(args.loop).toBe(true)
+  })
+
+  it('video/webm: рендерит <video> c object-URL содержимого (видео-стикер)', async () => {
+    const fetchMock = stubFetch('video/webm')
+    const { container } = render(<StickerMedia mediaId={104} width={200} height={200} autoplay loop />)
+    await waitFor(() => {
+      const video = container.querySelector('video')
+      expect(video).not.toBeNull()
+      expect(video!.getAttribute('src')).toBe('blob:sticker')
+    })
+    expect(fetchMock).toHaveBeenCalledWith('/api/media/104/content?token=t')
+    expect(loadAnimation).not.toHaveBeenCalled()
   })
 })
