@@ -30,10 +30,14 @@ export function useVoiceQueue({ win, isRealChat, meId, meName, peers, chatName, 
 } {
   const playQueue = useAudioStore((s) => s.playQueue)
   const playExternal = useAudioStore((s) => s.playExternal)
+  // Секретный голос: сырой store-type остаётся 'encrypted' (воркер меняет только
+  // secret_media, не type), вид лежит в secretMedia.mediaType. Учитываем оба.
+  const isVoiceMsg = (m: MessageWindow['msgs'][number]) =>
+    !!m.mediaId && (m.type === 'voice' || m.secretMedia?.mediaType === 'voice')
   const voiceTracks: AudioTrack[] = useMemo(
     () =>
       (isRealChat ? win.msgs : [])
-        .filter((m) => m.type === 'voice' && m.mediaId)
+        .filter(isVoiceMsg)
         .map((m) => ({
           mediaId: m.mediaId as number,
           title: m.senderId === meId ? meName || 'Вы' : peers.get(m.senderId)?.displayName || chatName,
@@ -53,7 +57,7 @@ export function useVoiceQueue({ win, isRealChat, meId, meName, peers, chatName, 
     if (idx < 0) return
     playQueue(voiceTracks, idx)
     // Чужое непрослушанное голосовое → снять media_unread (tweb readMessageContents).
-    const msg = win.msgs.find((m) => m.type === 'voice' && m.mediaId === mediaId)
+    const msg = win.msgs.find((m) => isVoiceMsg(m) && m.mediaId === mediaId)
     if (msg && msg.senderId !== meId && msg.mediaUnread) markMediaPlayed(numericChatId, msg.id)
   }
 
