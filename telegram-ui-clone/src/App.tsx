@@ -480,6 +480,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     ? {
         '--tg-accent': shellThemeVariant.accent,
         '--tg-accentGradient': `linear-gradient(135deg, ${shellThemeVariant.accent}, ${shellThemeVariant.accent})`,
+        '--tg-bubbleOutAccent': shellThemeVariant.accent,
       } as CSSProperties
     : undefined
 
@@ -506,8 +507,10 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 
   return (
     <div id="app-shell" className={s.root} style={shellThemeStyle}>
-      {/* Animated 4-point gradient wallpaper + doodle pattern (tweb-style) */}
-      <ChatBackground />
+      {/* Animated 4-point gradient wallpaper + doodle pattern (tweb-style). Обои темы
+          активного чата поднимаются сюда, чтобы весь shell (не только колонка чата)
+          был в теме — иначе фон за сайдбаром оставался дефолтным. */}
+      <ChatBackground themeColors={shellThemeVariant?.gradient} />
 
       {/* Transient /join deep-link banner */}
       <AnimatePresence>
