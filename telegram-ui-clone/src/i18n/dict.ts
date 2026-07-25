@@ -446,6 +446,8 @@ const ru: Dict = {
   'Are you sure you want to unpin all messages?': 'Открепить все сообщения?',
   Mute: 'Без звука',
   Unmute: 'Включить звук',
+  Play: 'Воспроизвести',
+  Pause: 'Пауза',
   Reply: 'Ответить',
   Edit: 'Изменить',
   Copy: 'Копировать',
