@@ -84,7 +84,6 @@ function NowPlayingBar() {
   const prev = useAudioStore((s) => s.prev)
   const seekFraction = useAudioStore((s) => s.seekFraction)
   const setRate = useAudioStore((s) => s.setRate)
-  const toggleMute = useAudioStore((s) => s.toggleMute)
   const setVolume = useAudioStore((s) => s.setVolume)
   const closePlayer = useAudioStore((s) => s.close)
 
@@ -131,26 +130,32 @@ function NowPlayingBar() {
               </Text>
             </div>
 
-            {/* volume with a vertical slider popup (hover/focus) */}
-            <div
-              className={s.volWrap}
-              onMouseEnter={() => setVolOpen(true)}
-              onMouseLeave={() => setVolOpen(false)}
-            >
-              <RoundBtn onClick={toggleMute} color={volOpen ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'} active={volOpen} label="volume">
+            {/* Громкость: клик по иконке открывает вертикальный слайдер (закрытие —
+                клик вне). Раньше попап открывался только по hover — на клике/тач
+                ничего не появлялось. Mute — перетаскиванием слайдера в 0. */}
+            <div className={s.volWrap}>
+              <RoundBtn
+                onClick={() => setVolOpen((o) => !o)}
+                color={volOpen ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'}
+                active={volOpen}
+                label="volume"
+              >
                 <TgIcon name={volIconName} />
               </RoundBtn>
               <AnimatePresence>
                 {volOpen && (
-                  <motion.div
-                    className={s.volPop}
-                    initial={{ opacity: 0, y: -6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -6 }}
-                    transition={{ duration: 0.14 }}
-                  >
-                    <VolumeSlider value={effVol} onChange={setVolume} />
-                  </motion.div>
+                  <>
+                    <div className={s.rateBackdrop} onClick={() => setVolOpen(false)} />
+                    <motion.div
+                      className={s.volPop}
+                      initial={{ opacity: 0, y: -6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -6 }}
+                      transition={{ duration: 0.14 }}
+                    >
+                      <VolumeSlider value={effVol} onChange={setVolume} />
+                    </motion.div>
+                  </>
                 )}
               </AnimatePresence>
             </div>
