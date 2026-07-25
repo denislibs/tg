@@ -27,7 +27,8 @@
 .pill {
   padding: 0.28125rem 0.625rem;
   border-radius: 0.875rem;
-  background: rgba(0, 0, 0, 0.45);
+  // tweb --message-highlighting-color — зависит от темы (не всегда тёмный).
+  background: var(--message-highlighting-color);
   color: #fff;
   font-size: 15px; // messages-service-text-size (= textSize − 1, дефолт 16)
   font-weight: 500;
@@ -64,6 +65,15 @@
   word-break: break-word;
   white-space: break-spaces;
   user-select: none;
+  cursor: pointer;
+  transition: background-color 0.12s;
+
+  // hover-подсветка сервис-сообщения (tweb выбор при наведении)
+  @media (hover: hover) {
+    &:hover {
+      background: color-mix(in srgb, var(--message-highlighting-color) 100%, #000 12%);
+    }
+  }
 }
 
 // Кнопка «Установить фото» под предложенным фото (tweb bubble-service-media-button)
@@ -72,7 +82,7 @@
   cursor: pointer;
   padding: 0.28125rem 0.875rem;
   border-radius: 0.875rem;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--message-highlighting-color);
   color: #fff;
   font-size: 15px;
   font-weight: 500;
