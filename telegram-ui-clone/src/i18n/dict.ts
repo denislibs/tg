@@ -622,6 +622,30 @@ const ru: Dict = {
   'Story statistics': 'Статистика истории',
   'Delete story': 'Удалить историю',
   'Are you sure you want to delete this story?': 'Удалить эту историю?',
+  // ── Истории 4c: close friends / stealth / архив / pin / edit ──
+  Back: 'Назад',
+  'Close Friends': 'Близкие друзья',
+  'Close friends list updated': 'Список близких друзей обновлён',
+  'No contacts': 'Нет контактов',
+  'Stealth Mode': 'Скрытный режим',
+  'Turn Stealth Mode on to watch without appearing in the list of viewers.':
+    'Включите скрытный режим, чтобы смотреть истории, не появляясь в списке зрителей.',
+  'Hide Recent Views': 'Скрыть недавние просмотры',
+  'Hide my views from the past %s.': 'Скрыть мои просмотры за последние %s.',
+  'Hide Upcoming Views': 'Скрыть предстоящие просмотры',
+  'Hide my views for the next %s.': 'Скрыть мои просмотры на следующие %s.',
+  'ENABLE STEALTH MODE': 'ВКЛЮЧИТЬ СКРЫТНЫЙ РЕЖИМ',
+  'Available in %s': 'Доступно через %s',
+  'Stealth Mode On': 'Скрытный режим включён',
+  'Stealth Mode is on a cooldown': 'Скрытный режим на перезарядке',
+  'Stealth Mode is unavailable': 'Скрытный режим недоступен',
+  'Stories.StealthMode.View': 'Скрыть мой просмотр',
+  'Story.AddToProfile': 'Разместить в профиле',
+  'Story.RemoveFromProfile': 'Убрать из профиля',
+  'Stories Archive': 'Архив историй',
+  'No archived stories': 'Нет архивных историй',
+  'Story edited': 'История изменена',
+  'Edit story': 'Редактировать историю',
   React: 'Реакция',
   Views: 'Просмотры',
   Forwards: 'Пересылки',
@@ -3849,4 +3873,12 @@ const fr: Dict = {
     'Cela supprimera votre compte et toutes vos données. Vos messages resteront mais apparaîtront comme envoyés par un « compte supprimé ».',
 }
 
-export const dicts: Record<Lang, Dict> = { en: {}, ru, uk, es, de, fr }
+// English is normally the key itself; the exceptions are the few tweb-style
+// dotted keys whose displayed text differs from the key (Stories 4c).
+const en: Dict = {
+  'Story.AddToProfile': 'Post to Profile',
+  'Story.RemoveFromProfile': 'Remove from Profile',
+  'Stories.StealthMode.View': 'Hide My View',
+}
+
+export const dicts: Record<Lang, Dict> = { en, ru, uk, es, de, fr }

@@ -50,12 +50,17 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
   toggleReaction: (emoji: string) => void
   sendReply: (text: string) => Promise<void>
   del: () => void
+  // 4c: закреп в профиле (pin) + признак редактирования.
+  pinned: boolean
+  edited: boolean
+  togglePinned: () => void
 } {
   const managers = useManagers()
   const groups = useStoriesStore((s) => s.groups)
   const markViewed = useStoriesStore((s) => s.markViewed)
   const setMyReaction = useStoriesStore((s) => s.setMyReaction)
   const removeStory = useStoriesStore((s) => s.removeStory)
+  const setStoryPinned = useStoriesStore((s) => s.setStoryPinned)
   const meId = useChatsStore((s) => s.meId)
 
   const group = groups[groupIndex]
@@ -185,6 +190,18 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
     }
   }
 
+  // Закреп своей истории в профиле (tweb Story.AddToProfile/RemoveFromProfile):
+  // оптимистично правим стор, затем шлём на бэк; при сбое откатываем + тост.
+  const togglePinned = () => {
+    if (!story) return
+    const next = !story.pinned
+    setStoryPinned(story.id, next)
+    void managers.stories.pin(story.id, next).catch(() => {
+      setStoryPinned(story.id, !next)
+      uiEvents.emit('ui:toast', 'Не удалось обновить закрепление')
+    })
+  }
+
   const bg = group ? gradientFor(group.author.id) : ''
 
   return {
@@ -213,5 +230,8 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
     toggleReaction,
     sendReply,
     del,
+    pinned: story?.pinned ?? false,
+    edited: story?.edited ?? false,
+    togglePinned,
   }
 }

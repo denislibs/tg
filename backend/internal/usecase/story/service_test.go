@@ -41,6 +41,28 @@ type fakeRepo struct {
 	removeCalled   bool
 	removeErr      error
 	reactionsCount int
+
+	closeFriends    []int64
+	closeFriendsErr error
+	setCloseArg     []int64
+	setCloseErr     error
+	pinnedCalled    bool
+	pinnedArg       bool
+	pinnedErr       error
+	editCalled      bool
+	editCaption     *string
+	editPrivacy     *string
+	editAllow       []int64
+	editErr         error
+	allowIDsByStory map[int64][]int64
+	allowIDsErr     error
+	archiveItems    []domain.StoryItem
+	archiveErr      error
+	pinnedItems     []domain.StoryItem
+	pinnedItemsErr  error
+	purgedSince     time.Time
+	purgeCalled     bool
+	purgeErr        error
 }
 
 func (f *fakeRepo) Create(ctx context.Context, s domain.Story, allowIDs []int64) (int64, error) {
@@ -84,6 +106,58 @@ func (f *fakeRepo) RemoveReaction(ctx context.Context, storyID, userID int64) er
 }
 func (f *fakeRepo) ReactionsCount(ctx context.Context, storyID int64) (int, error) {
 	return f.reactionsCount, nil
+}
+func (f *fakeRepo) CloseFriends(ctx context.Context, ownerID int64) ([]int64, error) {
+	return f.closeFriends, f.closeFriendsErr
+}
+func (f *fakeRepo) SetCloseFriends(ctx context.Context, ownerID int64, userIDs []int64) error {
+	f.setCloseArg = userIDs
+	return f.setCloseErr
+}
+func (f *fakeRepo) SetPinned(ctx context.Context, storyID, authorID int64, pinned bool) error {
+	f.pinnedCalled = true
+	f.pinnedArg = pinned
+	return f.pinnedErr
+}
+func (f *fakeRepo) Edit(ctx context.Context, storyID, authorID int64, caption, privacy *string, allowIDs []int64) error {
+	f.editCalled = true
+	f.editCaption = caption
+	f.editPrivacy = privacy
+	f.editAllow = allowIDs
+	return f.editErr
+}
+func (f *fakeRepo) AllowIDs(ctx context.Context, storyID int64) ([]int64, error) {
+	return f.allowIDsByStory[storyID], f.allowIDsErr
+}
+func (f *fakeRepo) Archive(ctx context.Context, ownerID, limit, offsetID int64) ([]domain.StoryItem, error) {
+	return f.archiveItems, f.archiveErr
+}
+func (f *fakeRepo) Pinned(ctx context.Context, peerID, viewerID int64) ([]domain.StoryItem, error) {
+	return f.pinnedItems, f.pinnedItemsErr
+}
+func (f *fakeRepo) PurgeRecentViews(ctx context.Context, viewerID int64, since time.Time) error {
+	f.purgeCalled = true
+	f.purgedSince = since
+	return f.purgeErr
+}
+
+// fakeStealth is an in-memory StealthStore for service tests.
+type fakeStealth struct {
+	mode map[int64]domain.StealthMode
+	err  error
+}
+
+func newFakeStealth() *fakeStealth { return &fakeStealth{mode: map[int64]domain.StealthMode{}} }
+
+func (f *fakeStealth) Get(ctx context.Context, userID int64) (domain.StealthMode, error) {
+	return f.mode[userID], f.err
+}
+func (f *fakeStealth) Set(ctx context.Context, userID int64, mode domain.StealthMode) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.mode[userID] = mode
+	return nil
 }
 
 type fakePublisher struct {
@@ -412,6 +486,214 @@ func TestDelete_NotFound_NoBroadcast(t *testing.T) {
 	}
 	if len(pub.frames[1]) != 0 {
 		t.Fatal("must not broadcast story_deleted for a missing story")
+	}
+}
+
+func TestPost_InvalidPrivacy(t *testing.T) {
+	repo := &fakeRepo{createID: 1}
+	svc := New(repo, &fakePartners{}, &fakeMedia{owner: 1}, &fakeTx{})
+	if _, err := svc.Post(context.Background(), 1, 7, "hi", "public", nil, 0); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("want ErrInvalid, got %v", err)
+	}
+}
+
+func TestPost_CloseBroadcastsToCloseFriendsOnly(t *testing.T) {
+	repo := &fakeRepo{createID: 42, closeFriends: []int64{2}}
+	pub := newFakePublisher()
+	// Partners would be 9, but close must target the close-friends list only (+author).
+	svc := New(repo, &fakePartners{ids: []int64{9}}, &fakeMedia{owner: 1}, &fakeTx{})
+	svc.SetPublisher(pub)
+	if _, err := svc.Post(context.Background(), 1, 7, "hi", "close", nil, 0); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(pub.frames[2]) != 1 || len(pub.frames[1]) != 1 {
+		t.Fatalf("want story_new to close friend 2 and author 1")
+	}
+	if len(pub.frames[9]) != 0 {
+		t.Fatalf("close story must not reach non-close partner 9")
+	}
+}
+
+func TestSetCloseFriends_DropsSelfAndDedup(t *testing.T) {
+	repo := &fakeRepo{}
+	tx := &fakeTx{}
+	svc := New(repo, &fakePartners{}, &fakeMedia{}, tx)
+	if err := svc.SetCloseFriends(context.Background(), 1, []int64{2, 2, 1, 3, 0, -5}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []int64{2, 3}
+	if !reflect.DeepEqual(repo.setCloseArg, want) {
+		t.Fatalf("want cleaned %v, got %v", want, repo.setCloseArg)
+	}
+	if !tx.called {
+		t.Fatal("expected SetCloseFriends to run within a transaction")
+	}
+}
+
+func TestFeed_AttachesAllowIDsForOwnSelectedOnly(t *testing.T) {
+	// Group 1 — viewer's own stories: a selected story (allow attached) and a
+	// contacts story (untouched). Group 2 — another author's selected story:
+	// allow must NOT be attached (we don't reveal others' audiences).
+	repo := &fakeRepo{
+		feedGroups: []domain.StoryGroup{
+			{Author: domain.UserCard{ID: 1}, Stories: []domain.StoryItem{
+				{ID: 10, Privacy: "selected"},
+				{ID: 11, Privacy: "contacts"},
+			}},
+			{Author: domain.UserCard{ID: 2}, Stories: []domain.StoryItem{
+				{ID: 20, Privacy: "selected"},
+			}},
+		},
+		allowIDsByStory: map[int64][]int64{10: {5, 6}, 20: {7}},
+	}
+	svc := New(repo, &fakePartners{ids: []int64{2}}, &fakeMedia{}, &fakeTx{})
+	groups, err := svc.Feed(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !reflect.DeepEqual(groups[0].Stories[0].AllowIDs, []int64{5, 6}) {
+		t.Fatalf("own selected story: want allow [5 6], got %v", groups[0].Stories[0].AllowIDs)
+	}
+	if groups[0].Stories[1].AllowIDs != nil {
+		t.Fatalf("own non-selected story must not carry allow, got %v", groups[0].Stories[1].AllowIDs)
+	}
+	if groups[1].Stories[0].AllowIDs != nil {
+		t.Fatalf("another author's selected story must not reveal allow, got %v", groups[1].Stories[0].AllowIDs)
+	}
+}
+
+func TestView_StealthActive_DoesNotRecord(t *testing.T) {
+	repo := &fakeRepo{visible: true}
+	st := newFakeStealth()
+	st.mode[1] = domain.StealthMode{ActiveUntil: time.Now().Add(10 * time.Minute)}
+	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
+	svc.SetStealthStore(st)
+	if err := svc.View(context.Background(), 5, 1); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repo.marked {
+		t.Fatal("stealth-active viewer must not record a view")
+	}
+}
+
+func TestView_StealthExpired_Records(t *testing.T) {
+	repo := &fakeRepo{visible: true}
+	st := newFakeStealth()
+	st.mode[1] = domain.StealthMode{ActiveUntil: time.Now().Add(-time.Minute)} // expired
+	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
+	svc.SetStealthStore(st)
+	if err := svc.View(context.Background(), 5, 1); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !repo.marked {
+		t.Fatal("expired-stealth viewer must record a view")
+	}
+}
+
+func TestActivateStealth_SetsWindowAndPurges(t *testing.T) {
+	repo := &fakeRepo{}
+	st := newFakeStealth()
+	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
+	svc.SetStealthStore(st)
+	before := time.Now()
+	m, err := svc.ActivateStealth(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if m.ActiveUntil.Before(before.Add(stealthFuturePeriod-time.Minute)) || m.CooldownUntil.Before(before) {
+		t.Fatalf("unexpected window: %+v", m)
+	}
+	if !repo.purgeCalled || repo.purgedSince.After(before) {
+		t.Fatalf("expected past-purge with since<=now, called=%v since=%v", repo.purgeCalled, repo.purgedSince)
+	}
+}
+
+func TestActivateStealth_CooldownConflict(t *testing.T) {
+	repo := &fakeRepo{}
+	st := newFakeStealth()
+	st.mode[1] = domain.StealthMode{CooldownUntil: time.Now().Add(10 * time.Minute)}
+	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
+	svc.SetStealthStore(st)
+	if _, err := svc.ActivateStealth(context.Background(), 1); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("want ErrConflict during cooldown, got %v", err)
+	}
+}
+
+func TestStealth_Unavailable_WhenNoStore(t *testing.T) {
+	svc := New(&fakeRepo{}, &fakePartners{}, &fakeMedia{}, &fakeTx{})
+	if _, err := svc.StealthState(context.Background(), 1); !errors.Is(err, domain.ErrUnavailable) {
+		t.Fatalf("want ErrUnavailable, got %v", err)
+	}
+	if _, err := svc.ActivateStealth(context.Background(), 1); !errors.Is(err, domain.ErrUnavailable) {
+		t.Fatalf("want ErrUnavailable, got %v", err)
+	}
+}
+
+func TestSetPinned_NonAuthor_Forbidden(t *testing.T) {
+	repo := &fakeRepo{author: 99}
+	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
+	if err := svc.SetPinned(context.Background(), 5, 1, true); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("want ErrForbidden, got %v", err)
+	}
+	if repo.pinnedCalled {
+		t.Fatal("must not pin another user's story")
+	}
+}
+
+func TestSetPinned_Author_OK(t *testing.T) {
+	repo := &fakeRepo{author: 1}
+	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
+	if err := svc.SetPinned(context.Background(), 5, 1, true); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !repo.pinnedCalled || !repo.pinnedArg {
+		t.Fatalf("expected pin=true, got called=%v arg=%v", repo.pinnedCalled, repo.pinnedArg)
+	}
+}
+
+func TestEditStory_NonAuthor_Forbidden(t *testing.T) {
+	repo := &fakeRepo{author: 99}
+	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
+	cap := "x"
+	if err := svc.EditStory(context.Background(), 5, 1, &cap, nil, nil); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("want ErrForbidden, got %v", err)
+	}
+	if repo.editCalled {
+		t.Fatal("must not edit another user's story")
+	}
+}
+
+func TestEditStory_CaptionTooLong(t *testing.T) {
+	repo := &fakeRepo{author: 1}
+	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
+	long := strings.Repeat("а", maxCaptionRunes+1)
+	if err := svc.EditStory(context.Background(), 5, 1, &long, nil, nil); !errors.Is(err, domain.ErrTooLong) {
+		t.Fatalf("want ErrTooLong, got %v", err)
+	}
+	if repo.editCalled {
+		t.Fatal("must not edit with an oversized caption")
+	}
+}
+
+func TestEditStory_BadPrivacy(t *testing.T) {
+	repo := &fakeRepo{author: 1}
+	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
+	bad := "public"
+	if err := svc.EditStory(context.Background(), 5, 1, nil, &bad, nil); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("want ErrInvalid, got %v", err)
+	}
+}
+
+func TestEditStory_Author_OK(t *testing.T) {
+	repo := &fakeRepo{author: 1}
+	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
+	cap := "new"
+	priv := "everyone"
+	if err := svc.EditStory(context.Background(), 5, 1, &cap, &priv, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !repo.editCalled || repo.editCaption == nil || *repo.editCaption != "new" || repo.editPrivacy == nil || *repo.editPrivacy != "everyone" {
+		t.Fatalf("unexpected edit args: called=%v cap=%v priv=%v", repo.editCalled, repo.editCaption, repo.editPrivacy)
 	}
 }
 

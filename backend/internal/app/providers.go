@@ -195,3 +195,7 @@ func newGroupCallStore(client *redis.Client) usecasechat.GroupCallStore {
 func newIVCache(client *redis.Client) usecaseiv.Cache {
 	return cacheredis.NewIVCache(client)
 }
+
+func newStealthStore(client *redis.Client) storyusecase.StealthStore {
+	return cacheredis.NewStealthStore(client)
+}

@@ -13,6 +13,8 @@ import { useT } from '../i18n'
 import { gradientFor } from '../core/dialogToChat'
 import { useStoryViewer } from '../core/hooks/useStoryViewer'
 import StoryStats from './StoryStats'
+import EditStorySheet from './EditStorySheet'
+import StealthModePopup from './StealthModePopup'
 import classNames from '../shared/lib/classNames'
 import s from './StoryViewer.module.scss'
 
@@ -56,6 +58,9 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
     toggleReaction,
     sendReply,
     del,
+    pinned,
+    edited,
+    togglePinned,
   } = useStoryViewer({ groupIndex, onClose })
 
   // Пауза (Space) синхронно останавливает воспроизведение видео сториз.
@@ -71,10 +76,14 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
   const [confirmDel, setConfirmDel] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [reply, setReply] = useState('')
+  // 4c: лист редактирования (своя история), stealth-попап и меню чужой истории.
+  const [editOpen, setEditOpen] = useState(false)
+  const [stealthOpen, setStealthOpen] = useState(false)
+  const [othersMenuOpen, setOthersMenuOpen] = useState(false)
 
-  // Любой оверлей (меню удаления, подтверждение, панель реакций, ввод ответа)
-  // ставит авто-прогресс на паузу, чтобы история не сменилась под ним.
-  const holds = menuOpen || confirmDel || pickerOpen || reply.length > 0
+  // Любой оверлей (меню удаления, подтверждение, панель реакций, ввод ответа,
+  // редактирование, stealth) ставит авто-прогресс на паузу.
+  const holds = menuOpen || confirmDel || pickerOpen || reply.length > 0 || editOpen || stealthOpen || othersMenuOpen
   useEffect(() => { setPaused(holds) }, [holds, setPaused, story?.id])
 
   if (!group || !story) return null
@@ -145,18 +154,38 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
                 <TgIcon name="statistics" />
               </IconButton>
             )}
-            {isMe && (
-              <IconButton onClick={() => setMenuOpen(true)} color="#fff" size="small" aria-label={t('More')}>
-                <TgIcon name="more" />
-              </IconButton>
-            )}
+            <IconButton
+              onClick={() => (isMe ? setMenuOpen(true) : setOthersMenuOpen(true))}
+              color="#fff"
+              size="small"
+              aria-label={t('More')}
+            >
+              <TgIcon name="more" />
+            </IconButton>
             <IconButton onClick={onClose} color="#fff" size="small">
               <TgIcon name="close" />
             </IconButton>
           </div>
 
-          {/* Меню своей истории (tweb: пункт Delete). z над оверлеем сториз (3000). */}
+          {/* Меню своей истории: закреп в профиле, редактирование, удаление.
+              Add/Remove from Profile 1:1 с tweb (Story.AddToProfile/RemoveFromProfile). */}
           <Menu open={menuOpen} onClose={() => setMenuOpen(false)} zIndex={3100} style={{ top: 56, right: 16, transformOrigin: 'top right' }}>
+            <MenuItem
+              icon={<TgIcon name={pinned ? 'pinlist' : 'pinnedchat'} size={20} />}
+              label={pinned ? t('Story.RemoveFromProfile') : t('Story.AddToProfile')}
+              onClick={() => {
+                setMenuOpen(false)
+                togglePinned()
+              }}
+            />
+            <MenuItem
+              icon={<TgIcon name="edit" size={20} />}
+              label={t('Edit')}
+              onClick={() => {
+                setMenuOpen(false)
+                setEditOpen(true)
+              }}
+            />
             <MenuItem
               icon={<TgIcon name="delete" size={20} />}
               label={t('Delete')}
@@ -168,14 +197,27 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
             />
           </Menu>
 
+          {/* Меню чужой истории: Hide My View (stealth) — 1:1 с tweb Stories.StealthMode.View. */}
+          <Menu open={othersMenuOpen} onClose={() => setOthersMenuOpen(false)} zIndex={3100} style={{ top: 56, right: 16, transformOrigin: 'top right' }}>
+            <MenuItem
+              icon={<TgIcon name="eye2" size={20} />}
+              label={t('Stories.StealthMode.View')}
+              onClick={() => {
+                setOthersMenuOpen(false)
+                setStealthOpen(true)
+              }}
+            />
+          </Menu>
+
           {/* Tap zones */}
           <div className={s.tapPrev} onClick={prev} />
           <div className={s.tapNext} onClick={next} />
 
-          {/* Caption */}
-          {story.caption && (
+          {/* Caption (+ пометка edited, payload story.edited) */}
+          {(story.caption || edited) && (
             <div className={classNames(s.caption, isMe ? s.captionRaised : s.captionRaisedFooter)}>
-              <Text color="#fff" size={15}>{story.caption}</Text>
+              {story.caption && <Text color="#fff" size={15}>{story.caption}</Text>}
+              {edited && <Text color="rgba(255,255,255,0.6)" size={12}>{t('edited')}</Text>}
             </div>
           )}
 
@@ -317,6 +359,14 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
             </div>
           </Popup>
         )}
+
+        {/* Лист редактирования своей истории (portal над вьювером) */}
+        <AnimatePresence>
+          {editOpen && story && <EditStorySheet story={story} onClose={() => setEditOpen(false)} />}
+        </AnimatePresence>
+
+        {/* Stealth Mode popup (Hide My View из меню чужой истории) */}
+        {stealthOpen && <StealthModePopup onClose={() => setStealthOpen(false)} />}
       </motion.div>
     </AnimatePresence>,
     document.body,

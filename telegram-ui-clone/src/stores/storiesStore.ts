@@ -1,6 +1,6 @@
 // src/stores/storiesStore.ts
 import { create } from 'zustand'
-import type { StoryGroup, StoryItem } from '../core/managers/storiesManager'
+import type { StoryGroup, StoryItem, StoryPrivacy } from '../core/managers/storiesManager'
 
 interface StoriesState {
   groups: StoryGroup[]
@@ -17,6 +17,10 @@ interface StoriesState {
   applyStoryReaction: (storyId: number, reactionsCount: number, myReaction?: string | null) => void
   // оптимистично: поставить/сменить/снять свою реакцию (до подтверждения по WS).
   setMyReaction: (storyId: number, reaction: string | null) => void
+  // 4c: закреп истории в профиле (pin/unpin) — отражаем в модели ленты.
+  setStoryPinned: (storyId: number, pinned: boolean) => void
+  // 4c: применить результат редактирования (подпись/приватность/allow-лист) + пометка edited.
+  applyStoryEdit: (storyId: number, patch: { caption?: string; privacy?: StoryPrivacy; allowIds?: number[] }) => void
 }
 
 // Заменить историю по id внутри groups (иммутабельно).
@@ -82,6 +86,18 @@ export const useStoriesStore = create<StoriesState>((set) => ({
         const delta = (reaction ? 1 : 0) - (prev ? 1 : 0)
         return { ...s, myReaction: reaction, reactionsCount: Math.max(0, s.reactionsCount + delta), reactions }
       }),
+    })),
+  setStoryPinned: (storyId, pinned) =>
+    set((state) => ({ groups: patchStory(state.groups, storyId, (s) => ({ ...s, pinned })) })),
+  applyStoryEdit: (storyId, patch) =>
+    set((state) => ({
+      groups: patchStory(state.groups, storyId, (s) => ({
+        ...s,
+        caption: patch.caption ?? s.caption,
+        privacy: patch.privacy ?? s.privacy,
+        allowIds: patch.allowIds ?? s.allowIds,
+        edited: true,
+      })),
     })),
 }))
 

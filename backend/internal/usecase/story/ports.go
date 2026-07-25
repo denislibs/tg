@@ -2,6 +2,7 @@ package story
 
 import (
 	"context"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -26,6 +27,39 @@ type StoryRepo interface {
 	RemoveReaction(ctx context.Context, storyID, userID int64) error
 	// ReactionsCount — всего реакций на историю (для живого счётчика в WS-событии).
 	ReactionsCount(ctx context.Context, storyID int64) (int, error)
+
+	// CloseFriends возвращает id близких друзей владельца; SetCloseFriends
+	// полностью заменяет список (delete-all + insert в транзакции).
+	CloseFriends(ctx context.Context, ownerID int64) ([]int64, error)
+	SetCloseFriends(ctx context.Context, ownerID int64, userIDs []int64) error
+
+	// SetPinned переключает закреп истории в профиле (только владелец через WHERE
+	// author_id). Edit меняет caption/privacy (nil = не трогать), ставит edited=true
+	// и синхронизирует story_allow под новую privacy.
+	SetPinned(ctx context.Context, storyID, authorID int64, pinned bool) error
+	Edit(ctx context.Context, storyID, authorID int64, caption, privacy *string, allowIDs []int64) error
+
+	// AllowIDs возвращает явный allow-лист истории (story_allow) для privacy=="selected".
+	AllowIDs(ctx context.Context, storyID int64) ([]int64, error)
+
+	// Archive — свои истёкшие истории (expires_at <= now), новые сверху, с
+	// пагинацией по id (offsetID>0 — только id < offsetID). Pinned — закреплённые
+	// истории peer'а (в т.ч. истёкшие), отфильтрованные по видимости для viewer.
+	Archive(ctx context.Context, ownerID, limit, offsetID int64) ([]domain.StoryItem, error)
+	Pinned(ctx context.Context, peerID, viewerID int64) ([]domain.StoryItem, error)
+
+	// PurgeRecentViews удаляет просмотры зрителя за окно [since, now] — ретро-эффект
+	// stealth-режима (past): скрыть недавние просмотры при активации.
+	PurgeRecentViews(ctx context.Context, viewerID int64, since time.Time) error
+}
+
+// StealthStore хранит эфемерное состояние stealth-режима пользователя (Redis).
+// Опционален: когда nil, stealth-фича отключена (View всегда пишет просмотр).
+type StealthStore interface {
+	// Get возвращает текущее состояние; zero-value, если режим не активировался.
+	Get(ctx context.Context, userID int64) (domain.StealthMode, error)
+	// Set сохраняет состояние с TTL до max(ActiveUntil, CooldownUntil).
+	Set(ctx context.Context, userID int64, mode domain.StealthMode) error
 }
 
 // Partners resolves the set of users that share a chat with a viewer; satisfied

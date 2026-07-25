@@ -23,6 +23,19 @@ const maxCaptionRunes = 2048
 // allowedPeriods are the story lifetimes a client may pick (seconds): 6h/12h/24h/48h.
 var allowedPeriods = map[int64]bool{21600: true, 43200: true, 86400: true, 172800: true}
 
+// allowedPrivacy — допустимые режимы приватности истории. everyone/contacts —
+// широкий показ, close — только близкие друзья автора, selected — явный список.
+var allowedPrivacy = map[string]bool{"everyone": true, "contacts": true, "close": true, "selected": true}
+
+// stealth-периоды (tweb appConfig stories_stealth_past/future_period) и кулдаун
+// между активациями. past — окно ретро-скрытия недавних просмотров при
+// активации, future — окно «невидимого» просмотра вперёд.
+const (
+	stealthPastPeriod   = 5 * time.Minute
+	stealthFuturePeriod = 25 * time.Minute
+	stealthCooldown     = 1 * time.Hour
+)
+
 // Service is the stories application logic: posting (with media-ownership,
 // privacy defaults and a chosen lifetime), the per-viewer active feed, view
 // tracking, reactions, the author-gated viewers list/stats, and deletion. It
@@ -33,6 +46,7 @@ type Service struct {
 	media     MediaOwner
 	tx        TxManager
 	publisher EventPublisher
+	stealth   StealthStore
 }
 
 // New constructs the story service from its ports.
@@ -43,6 +57,10 @@ func New(repo StoryRepo, partners Partners, media MediaOwner, tx TxManager) *Ser
 // SetPublisher attaches a realtime publisher (optional). When nil, story events
 // are simply not broadcast (clients still poll GET /stories).
 func (s *Service) SetPublisher(p EventPublisher) { s.publisher = p }
+
+// SetStealthStore attaches the ephemeral stealth-mode store (optional). When
+// nil, stealth endpoints report domain.ErrUnavailable and View always records.
+func (s *Service) SetStealthStore(st StealthStore) { s.stealth = st }
 
 // ttlFor maps a requested lifetime (seconds) to a duration, falling back to 24h
 // for zero/invalid values.
@@ -72,6 +90,9 @@ func (s *Service) Post(ctx context.Context, authorID, mediaID int64, caption, pr
 	}
 	if privacy == "" {
 		privacy = "contacts"
+	}
+	if !allowedPrivacy[privacy] {
+		return 0, domain.ErrInvalid
 	}
 	story := domain.Story{
 		AuthorID:  authorID,
@@ -105,7 +126,29 @@ func (s *Service) Feed(ctx context.Context, viewerID int64) ([]domain.StoryGroup
 		return nil, err
 	}
 	authorIDs := append(partners, viewerID)
-	return s.repo.ActiveFeed(ctx, viewerID, authorIDs)
+	groups, err := s.repo.ActiveFeed(ctx, viewerID, authorIDs)
+	if err != nil {
+		return nil, err
+	}
+	// Для собственных selected-историй подгружаем allow-лист, чтобы автор мог
+	// отредактировать аудиторию. Чужие allow-листы не раскрываем (остаются nil).
+	for gi := range groups {
+		if groups[gi].Author.ID != viewerID {
+			continue
+		}
+		for si := range groups[gi].Stories {
+			st := &groups[gi].Stories[si]
+			if st.Privacy != "selected" {
+				continue
+			}
+			ids, err := s.repo.AllowIDs(ctx, st.ID)
+			if err != nil {
+				return nil, err
+			}
+			st.AllowIDs = ids
+		}
+	}
+	return groups, nil
 }
 
 // View marks a story as seen by viewerID, but only if the story is visible to
@@ -118,6 +161,12 @@ func (s *Service) View(ctx context.Context, storyID, viewerID int64) error {
 	}
 	if !ok {
 		return domain.ErrForbidden
+	}
+	// Stealth: пока режим активен, просмотры зрителя не записываются (tweb).
+	if s.stealth != nil {
+		if st, err := s.stealth.Get(ctx, viewerID); err == nil && time.Now().Before(st.ActiveUntil) {
+			return nil
+		}
 	}
 	return s.repo.MarkViewed(ctx, storyID, viewerID)
 }
@@ -213,8 +262,123 @@ func (s *Service) Delete(ctx context.Context, storyID, authorID int64) error {
 	return nil
 }
 
+// CloseFriends returns the owner's close-friends list.
+func (s *Service) CloseFriends(ctx context.Context, ownerID int64) ([]int64, error) {
+	return s.repo.CloseFriends(ctx, ownerID)
+}
+
+// SetCloseFriends fully replaces the owner's close-friends list (self is dropped
+// and duplicates removed defensively).
+func (s *Service) SetCloseFriends(ctx context.Context, ownerID int64, userIDs []int64) error {
+	seen := make(map[int64]struct{}, len(userIDs))
+	clean := make([]int64, 0, len(userIDs))
+	for _, uid := range userIDs {
+		if uid == ownerID || uid <= 0 {
+			continue
+		}
+		if _, dup := seen[uid]; dup {
+			continue
+		}
+		seen[uid] = struct{}{}
+		clean = append(clean, uid)
+	}
+	// Замена списка — delete-all + insert-цикл в репо; оборачиваем в транзакцию,
+	// чтобы сбой на вставке не оставил старый список удалённым (как Post/EditStory).
+	return s.tx.WithinTx(ctx, func(ctx context.Context) error {
+		return s.repo.SetCloseFriends(ctx, ownerID, clean)
+	})
+}
+
+// StealthState returns the caller's current stealth-mode window (zero-value when
+// never activated). domain.ErrUnavailable when no stealth store is configured.
+func (s *Service) StealthState(ctx context.Context, userID int64) (domain.StealthMode, error) {
+	if s.stealth == nil {
+		return domain.StealthMode{}, domain.ErrUnavailable
+	}
+	return s.stealth.Get(ctx, userID)
+}
+
+// ActivateStealth turns on stealth mode for userID: views are hidden for the
+// next stealthFuturePeriod and recent views (last stealthPastPeriod) are purged.
+// It fails with domain.ErrConflict while a cooldown is still in effect and
+// domain.ErrUnavailable when no stealth store is configured.
+func (s *Service) ActivateStealth(ctx context.Context, userID int64) (domain.StealthMode, error) {
+	if s.stealth == nil {
+		return domain.StealthMode{}, domain.ErrUnavailable
+	}
+	now := time.Now()
+	cur, err := s.stealth.Get(ctx, userID)
+	if err != nil {
+		return domain.StealthMode{}, err
+	}
+	if now.Before(cur.CooldownUntil) {
+		return domain.StealthMode{}, domain.ErrConflict
+	}
+	mode := domain.StealthMode{
+		ActiveUntil:   now.Add(stealthFuturePeriod),
+		CooldownUntil: now.Add(stealthCooldown),
+	}
+	if err := s.stealth.Set(ctx, userID, mode); err != nil {
+		return domain.StealthMode{}, err
+	}
+	// Past-эффект: ретро-удаляем просмотры зрителя за последние stealthPastPeriod.
+	_ = s.repo.PurgeRecentViews(ctx, userID, now.Add(-stealthPastPeriod))
+	return mode, nil
+}
+
+// SetPinned toggles a story's profile-pin. Ownership is verified first (like
+// Delete): missing story → domain.ErrNotFound, non-owner → domain.ErrForbidden.
+func (s *Service) SetPinned(ctx context.Context, storyID, authorID int64, pinned bool) error {
+	author, err := s.repo.GetAuthor(ctx, storyID)
+	if err != nil {
+		return err
+	}
+	if author != authorID {
+		return domain.ErrForbidden
+	}
+	return s.repo.SetPinned(ctx, storyID, authorID, pinned)
+}
+
+// EditStory updates an owner's story (tweb stories.editStory): optional caption
+// and/or privacy (+allowlist for selected); marks it edited. caption/privacy are
+// pointers so "" is distinguishable from "unset". Missing story → ErrNotFound,
+// non-owner → ErrForbidden, oversized caption → ErrTooLong, bad privacy → ErrInvalid.
+func (s *Service) EditStory(ctx context.Context, storyID, authorID int64, caption, privacy *string, allowIDs []int64) error {
+	author, err := s.repo.GetAuthor(ctx, storyID)
+	if err != nil {
+		return err
+	}
+	if author != authorID {
+		return domain.ErrForbidden
+	}
+	if caption != nil && utf8.RuneCountInString(*caption) > maxCaptionRunes {
+		return domain.ErrTooLong
+	}
+	if privacy != nil && !allowedPrivacy[*privacy] {
+		return domain.ErrInvalid
+	}
+	return s.tx.WithinTx(ctx, func(ctx context.Context) error {
+		return s.repo.Edit(ctx, storyID, authorID, caption, privacy, allowIDs)
+	})
+}
+
+// Archive returns the caller's own expired stories, newest first (tweb
+// stories.getStoriesArchive), paginated by offsetID (0 = from the top).
+func (s *Service) Archive(ctx context.Context, ownerID, limit, offsetID int64) ([]domain.StoryItem, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	return s.repo.Archive(ctx, ownerID, limit, offsetID)
+}
+
+// PinnedStories returns a peer's pinned stories (tweb stories.getPinnedStories),
+// including expired ones, filtered to what viewerID may see.
+func (s *Service) PinnedStories(ctx context.Context, peerID, viewerID int64) ([]domain.StoryItem, error) {
+	return s.repo.Pinned(ctx, peerID, viewerID)
+}
+
 // canSee reports whether viewerID may see storyID under the current privacy
-// rules (own/everyone/contacts-with-partner/selected-allow).
+// rules (own/everyone/contacts-with-partner/close-friend/selected-allow).
 func (s *Service) canSee(ctx context.Context, storyID, viewerID int64) (bool, error) {
 	partners, err := s.partners.ChatPartners(ctx, viewerID)
 	if err != nil {
@@ -229,6 +393,13 @@ func (s *Service) canSee(ctx context.Context, storyID, viewerID int64) (bool, er
 func (s *Service) recipients(ctx context.Context, authorID int64, privacy string, allowIDs []int64) []int64 {
 	if privacy == "selected" {
 		return append(allowIDs, authorID)
+	}
+	if privacy == "close" {
+		friends, err := s.repo.CloseFriends(ctx, authorID)
+		if err != nil {
+			return []int64{authorID}
+		}
+		return append(friends, authorID)
 	}
 	partners, err := s.partners.ChatPartners(ctx, authorID)
 	if err != nil {

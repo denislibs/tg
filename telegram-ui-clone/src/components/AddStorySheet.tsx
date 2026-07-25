@@ -1,15 +1,17 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import IconButton from '../shared/ui/IconButton'
 import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import Avatar from '../shared/ui/Avatar'
 import Text from '../shared/ui/Text'
 import { useChatsStore } from '../stores/chatsStore'
+import { useManagers } from '../core/hooks/useManagers'
 import { gradientFor } from '../core/dialogToChat'
 import classNames from '../shared/lib/classNames'
 import s from './AddStorySheet.module.scss'
+import type { StoryPrivacy } from '../core/managers/storiesManager'
 
-export type StoryPrivacy = 'everyone' | 'contacts' | 'selected'
+export type { StoryPrivacy }
 
 // Лимит длины подписи истории — совпадает с бэком (maxCaptionRunes).
 const MAX_CAPTION_LEN = 2048
@@ -17,6 +19,7 @@ const MAX_CAPTION_LEN = 2048
 const PRIVACY_OPTIONS: { key: StoryPrivacy; label: string }[] = [
   { key: 'everyone', label: 'Все' },
   { key: 'contacts', label: 'Контакты' },
+  { key: 'close', label: 'Близкие' },
   { key: 'selected', label: 'Выбранные' },
 ]
 
@@ -37,11 +40,15 @@ const PERIOD_OPTIONS: { key: number; label: string }[] = [
 export default function AddStorySheet({
   onBack,
   onPublish,
+  onEditCloseFriends,
 }: {
   onBack: () => void
   onPublish: (args: { caption: string; privacy: StoryPrivacy; allowIds: number[]; period: number }) => void | Promise<void>
+  // переход в редактор списка близких друзей (при выборе аудитории «Близкие»)
+  onEditCloseFriends?: () => void
 }) {
   const dialogs = useChatsStore((s) => s.dialogs)
+  const managers = useManagers()
   // private peers only — the contact pool for the "Выбранные" audience
   const contacts = dialogs
     .filter((d) => d.type === 'private' && d.peer)
@@ -52,6 +59,13 @@ export default function AddStorySheet({
   const [period, setPeriod] = useState(86400)
   const [allow, setAllow] = useState<Set<number>>(new Set())
   const [busy, setBusy] = useState(false)
+  // кол-во близких друзей — для подсказки при аудитории «Близкие»
+  const [closeCount, setCloseCount] = useState<number | null>(null)
+  useEffect(() => {
+    let alive = true
+    managers.stories.closeFriends().then((ids) => { if (alive) setCloseCount(ids.length) }).catch(() => {})
+    return () => { alive = false }
+  }, [managers])
 
   const toggleContact = (id: number) =>
     setAllow((prev) => {
@@ -178,6 +192,26 @@ export default function AddStorySheet({
             })}
           </div>
         </div>
+
+        {/* Подсказка для аудитории "Близкие" + переход в редактор списка */}
+        {privacy === 'close' && (
+          <div className={s.contactsBlock}>
+            <div
+              className={classNames(s.card, s.contactRow)}
+              role="button"
+              tabIndex={0}
+              onClick={onEditCloseFriends}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onEditCloseFriends?.() } }}
+              style={{ margin: 0, borderRadius: 16 }}
+            >
+              <TgIcon name="newprivate" size={22} color="var(--tg-accent)" />
+              <Text size={15} color="var(--tg-textPrimary)" className={s.contactName}>
+                Список близких друзей{closeCount != null ? ` (${closeCount})` : ''}
+              </Text>
+              <TgIcon name="next" size={20} color="var(--tg-textFaint)" />
+            </div>
+          </div>
+        )}
 
         {/* Выбор контактов для аудитории "Выбранные" */}
         {privacy === 'selected' && (

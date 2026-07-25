@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/messenger-denis/backend/internal/domain"
 	storyusecase "github.com/messenger-denis/backend/internal/usecase/story"
@@ -26,10 +27,16 @@ func (h *StoryHandler) mapErr(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, "invalid reaction")
 	case errors.Is(err, domain.ErrTooLong):
 		writeError(w, http.StatusBadRequest, "too long")
+	case errors.Is(err, domain.ErrInvalid):
+		writeError(w, http.StatusBadRequest, "invalid request")
 	case errors.Is(err, domain.ErrForbidden):
 		writeError(w, http.StatusForbidden, "forbidden")
 	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not found")
+	case errors.Is(err, domain.ErrConflict):
+		writeError(w, http.StatusConflict, "cooldown")
+	case errors.Is(err, domain.ErrUnavailable):
+		writeError(w, http.StatusServiceUnavailable, "unavailable")
 	default:
 		writeError(w, http.StatusInternalServerError, "server error")
 	}
@@ -51,13 +58,20 @@ func storyJSON(s domain.StoryItem) map[string]any {
 	if s.MyReaction != "" {
 		my = s.MyReaction
 	}
-	return map[string]any{
+	out := map[string]any{
 		"id": s.ID, "media_id": s.MediaID, "caption": s.Caption,
-		"created_at": s.CreatedAt, "viewed": s.Viewed,
+		"privacy": s.Privacy, "pinned": s.Pinned, "edited": s.Edited,
+		"created_at": s.CreatedAt, "expires_at": s.ExpiresAt, "viewed": s.Viewed,
 		"reactions_count": s.ReactionsCount,
 		"my_reaction":     my,
 		"reactions":       reactionsJSON(s.Reactions),
 	}
+	// allow_user_ids отдаётся только для своих selected-историй (usecase заполняет
+	// AllowIDs лишь тогда), чтобы автор мог редактировать аудиторию; чужие — nil.
+	if s.Privacy == "selected" && s.AllowIDs != nil {
+		out["allow_user_ids"] = s.AllowIDs
+	}
+	return out
 }
 
 func (h *StoryHandler) Post(w http.ResponseWriter, r *http.Request) {
@@ -205,4 +219,154 @@ func (h *StoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// CloseFriends serves GET /me/close_friends → {user_ids:[...]}.
+func (h *StoryHandler) CloseFriends(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	ids, err := h.svc.CloseFriends(r.Context(), user.ID)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"user_ids": ids})
+}
+
+// SetCloseFriends serves PUT /me/close_friends body {user_ids:[...]} — full
+// replacement of the caller's close-friends list.
+func (h *StoryHandler) SetCloseFriends(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	var b struct {
+		UserIDs []int64 `json:"user_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := h.svc.SetCloseFriends(r.Context(), user.ID, b.UserIDs); err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// stealthJSON serializes a stealth-mode window; timestamps are null when unset.
+func stealthJSON(m domain.StealthMode) map[string]any {
+	var active, cooldown any
+	if !m.ActiveUntil.IsZero() {
+		active = m.ActiveUntil
+	}
+	if !m.CooldownUntil.IsZero() {
+		cooldown = m.CooldownUntil
+	}
+	return map[string]any{"active_until": active, "cooldown_until": cooldown}
+}
+
+// StealthState serves GET /stories/stealth → current stealth window.
+func (h *StoryHandler) StealthState(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	m, err := h.svc.StealthState(r.Context(), user.ID)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, stealthJSON(m))
+}
+
+// ActivateStealth serves POST /stories/stealth/activate → the new window, or
+// 409 while a cooldown is still in effect.
+func (h *StoryHandler) ActivateStealth(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	m, err := h.svc.ActivateStealth(r.Context(), user.ID)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, stealthJSON(m))
+}
+
+// Archive serves GET /stories/archive?limit&offset_id → the caller's own expired
+// stories, newest first.
+func (h *StoryHandler) Archive(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	limit, _ := strconv.ParseInt(r.URL.Query().Get("limit"), 10, 64)
+	offsetID, _ := strconv.ParseInt(r.URL.Query().Get("offset_id"), 10, 64)
+	items, err := h.svc.Archive(r.Context(), user.ID, limit, offsetID)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"stories": storyItemsJSON(items)})
+}
+
+// Pinned serves GET /stories/pinned?peer={userID} → a peer's pinned stories
+// (defaults to the caller when peer is omitted).
+func (h *StoryHandler) Pinned(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	peer, _ := strconv.ParseInt(r.URL.Query().Get("peer"), 10, 64)
+	if peer == 0 {
+		peer = user.ID
+	}
+	items, err := h.svc.PinnedStories(r.Context(), peer, user.ID)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"stories": storyItemsJSON(items)})
+}
+
+// Pin serves POST /stories/{storyID}/pin body {pinned} — owner toggles the
+// profile-pin of a story.
+func (h *StoryHandler) Pin(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	storyID, ok := pathInt(w, r, "storyID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Pinned bool `json:"pinned"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := h.svc.SetPinned(r.Context(), storyID, user.ID, b.Pinned); err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// Edit serves PATCH /stories/{storyID} body {caption?, privacy?, allow_user_ids?}
+// — owner edits a story; caption/privacy are optional and omitted fields are
+// left unchanged.
+func (h *StoryHandler) Edit(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	storyID, ok := pathInt(w, r, "storyID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Caption      *string `json:"caption"`
+		Privacy      *string `json:"privacy"`
+		AllowUserIDs []int64 `json:"allow_user_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := h.svc.EditStory(r.Context(), storyID, user.ID, b.Caption, b.Privacy, b.AllowUserIDs); err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// storyItemsJSON serializes a flat story-item list (archive/pinned).
+func storyItemsJSON(items []domain.StoryItem) []map[string]any {
+	out := make([]map[string]any, 0, len(items))
+	for _, it := range items {
+		out = append(out, storyJSON(it))
+	}
+	return out
 }

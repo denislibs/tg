@@ -33,6 +33,8 @@ import SearchView from './SearchView'
 import StoriesRow from './StoriesRow'
 import StoryViewer from './StoryViewer'
 import AddStorySheet from './AddStorySheet'
+import CloseFriendsSheet from './CloseFriendsSheet'
+import StoriesArchiveSheet from './StoriesArchiveSheet'
 import { loadStories } from '../stores/storiesStore'
 import TopicsPanel from './TopicsPanel'
 import type { TopicRow } from '../core/managers/groupsManager'
@@ -98,6 +100,9 @@ export default function Sidebar({
   // загрузка → лист подписи/приватности/периода → publish).
   const [storyOpen, setStoryOpen] = useState<number | null>(null)
   const [storyMediaId, setStoryMediaId] = useState<number | null>(null)
+  // 4c: редактор близких друзей и архив своих истёкших историй (слайд-панели).
+  const [showCloseFriends, setShowCloseFriends] = useState(false)
+  const [showArchive, setShowArchive] = useState(false)
   const storyFileRef = useRef<HTMLInputElement>(null)
   const pickStoryFile = () => storyFileRef.current?.click()
   const onStoryFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -114,7 +119,7 @@ export default function Sidebar({
       uiEvents.emit('ui:toast', 'Не удалось загрузить историю')
     }
   }
-  const publishStory = async (args: { caption: string; privacy: 'everyone' | 'contacts' | 'selected'; allowIds: number[]; period: number }) => {
+  const publishStory = async (args: { caption: string; privacy: 'everyone' | 'contacts' | 'close' | 'selected'; allowIds: number[]; period: number }) => {
     if (storyMediaId == null) return
     await managers.stories.post({ mediaId: storyMediaId, ...args })
     setStoryMediaId(null)
@@ -260,6 +265,8 @@ export default function Sidebar({
               onSelect(String(id))
             },
             onOpenPremium: () => setPremiumOpen(true),
+            onOpenMyStories: () => setShowArchive(true),
+            onOpenCloseFriends: () => setShowCloseFriends(true),
             onLogout,
             onToggleMode,
           }}
@@ -281,6 +288,8 @@ export default function Sidebar({
               onSelect(String(id))
             }}
             onOpenPremium={() => setPremiumOpen(true)}
+            onOpenMyStories={() => setShowArchive(true)}
+            onOpenCloseFriends={() => setShowCloseFriends(true)}
             onLogout={onLogout}
             onToggleMode={onToggleMode}
           />
@@ -580,8 +589,22 @@ export default function Sidebar({
       {/* Лист создания истории (открывается после загрузки медиа) */}
       <AnimatePresence>
         {storyMediaId != null && (
-          <AddStorySheet onBack={() => setStoryMediaId(null)} onPublish={publishStory} />
+          <AddStorySheet
+            onBack={() => setStoryMediaId(null)}
+            onPublish={publishStory}
+            onEditCloseFriends={() => setShowCloseFriends(true)}
+          />
         )}
+      </AnimatePresence>
+
+      {/* Редактор списка близких друзей (4c) */}
+      <AnimatePresence>
+        {showCloseFriends && <CloseFriendsSheet onClose={() => setShowCloseFriends(false)} />}
+      </AnimatePresence>
+
+      {/* Архив своих истёкших историй (4c) */}
+      <AnimatePresence>
+        {showArchive && <StoriesArchiveSheet onClose={() => setShowArchive(false)} />}
       </AnimatePresence>
 
       {/* Полноэкранный просмотрщик историй */}

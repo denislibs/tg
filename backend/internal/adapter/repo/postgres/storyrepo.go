@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -49,7 +50,8 @@ func (r *StoryRepo) ActiveFeed(ctx context.Context, viewerID int64, authorIDs []
 		return []domain.StoryGroup{}, nil
 	}
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT s.id, s.author_id, s.media_id, s.caption, s.created_at,
+		`SELECT s.id, s.author_id, s.media_id, s.caption, s.privacy, s.pinned, s.edited,
+		        s.created_at, s.expires_at,
 		        u.id, u.display_name, COALESCE(u.avatar_url,''),
 		        (sv.viewer_id IS NOT NULL) AS viewed,
 		        (SELECT count(*) FROM story_reactions sr WHERE sr.story_id = s.id) AS reactions_count,
@@ -58,9 +60,15 @@ func (r *StoryRepo) ActiveFeed(ctx context.Context, viewerID int64, authorIDs []
 		   JOIN users u ON u.id = s.author_id
 		   LEFT JOIN story_views sv ON sv.story_id = s.id AND sv.viewer_id = $1
 		  WHERE s.expires_at > now()
-		    AND s.author_id = ANY($2)
+		    -- author set: own + chat partners ($2), плюс авторы, у которых зритель в
+		    -- close_friends (их 'close'-истории) или в allow-листе (их 'selected'), даже
+		    -- если такой автор не является чат-партнёром зрителя.
+		    AND (s.author_id = ANY($2)
+		         OR (s.privacy = 'close' AND EXISTS (SELECT 1 FROM close_friends cf WHERE cf.owner_id = s.author_id AND cf.user_id = $1))
+		         OR EXISTS (SELECT 1 FROM story_allow sa WHERE sa.story_id = s.id AND sa.user_id = $1))
 		    AND (s.author_id = $1
 		         OR s.privacy IN ('everyone','contacts')
+		         OR (s.privacy = 'close' AND EXISTS (SELECT 1 FROM close_friends cf WHERE cf.owner_id = s.author_id AND cf.user_id = $1))
 		         OR EXISTS (SELECT 1 FROM story_allow sa WHERE sa.story_id = s.id AND sa.user_id = $1))
 		  ORDER BY (s.author_id = $1) DESC, u.display_name, s.created_at`,
 		viewerID, authorIDs)
@@ -82,7 +90,8 @@ func (r *StoryRepo) ActiveFeed(ctx context.Context, viewerID int64, authorIDs []
 			author  domain.UserCard
 			discard int64 // s.author_id (== u.id via JOIN)
 		)
-		if err := rows.Scan(&item.ID, &discard, &item.MediaID, &item.Caption, &item.CreatedAt,
+		if err := rows.Scan(&item.ID, &discard, &item.MediaID, &item.Caption, &item.Privacy, &item.Pinned, &item.Edited,
+			&item.CreatedAt, &item.ExpiresAt,
 			&author.ID, &author.DisplayName, &author.AvatarURL, &item.Viewed,
 			&item.ReactionsCount, &item.MyReaction); err != nil {
 			return nil, err
@@ -279,7 +288,174 @@ func (r *StoryRepo) Visible(ctx context.Context, storyID, viewerID int64, partne
 		      AND s.expires_at > now()
 		      AND (s.author_id = $2
 		           OR s.privacy IN ('everyone','contacts')
+		           OR (s.privacy = 'close' AND EXISTS (SELECT 1 FROM close_friends cf WHERE cf.owner_id = s.author_id AND cf.user_id = $2))
 		           OR EXISTS (SELECT 1 FROM story_allow sa WHERE sa.story_id = s.id AND sa.user_id = $2)))`,
 		storyID, viewerID).Scan(&ok)
 	return ok, err
+}
+
+// storyItemCols is the column list + reaction subqueries shared by Archive and
+// Pinned (flat single-peer lists, no author grouping). $1 is the viewer.
+const storyItemCols = `s.id, s.media_id, s.caption, s.privacy, s.pinned, s.edited, s.created_at, s.expires_at,
+	(sv.viewer_id IS NOT NULL) AS viewed,
+	(SELECT count(*) FROM story_reactions sr WHERE sr.story_id = s.id) AS reactions_count,
+	COALESCE((SELECT sr.reaction FROM story_reactions sr WHERE sr.story_id = s.id AND sr.user_id = $1), '') AS my_reaction`
+
+// scanStoryItems reads a flat story-item list (Archive/Pinned) and attaches the
+// per-emoji reaction breakdown for viewerID in one extra batched query.
+func (r *StoryRepo) scanStoryItems(ctx context.Context, rows pgx.Rows, viewerID int64) ([]domain.StoryItem, error) {
+	defer rows.Close()
+	out := make([]domain.StoryItem, 0)
+	for rows.Next() {
+		var it domain.StoryItem
+		if err := rows.Scan(&it.ID, &it.MediaID, &it.Caption, &it.Privacy, &it.Pinned, &it.Edited,
+			&it.CreatedAt, &it.ExpiresAt, &it.Viewed, &it.ReactionsCount, &it.MyReaction); err != nil {
+			return nil, err
+		}
+		out = append(out, it)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	byID := make(map[int64]*domain.StoryItem, len(out))
+	storyIDs := make([]int64, 0, len(out))
+	for i := range out {
+		byID[out[i].ID] = &out[i]
+		storyIDs = append(storyIDs, out[i].ID)
+	}
+	if err := r.attachReactions(ctx, storyIDs, viewerID, byID); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (r *StoryRepo) CloseFriends(ctx context.Context, ownerID int64) ([]int64, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT user_id FROM close_friends WHERE owner_id=$1 ORDER BY created_at`, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]int64, 0)
+	for rows.Next() {
+		var uid int64
+		if err := rows.Scan(&uid); err != nil {
+			return nil, err
+		}
+		out = append(out, uid)
+	}
+	return out, rows.Err()
+}
+
+// SetCloseFriends replaces the owner's list wholesale (delete-all + insert).
+// Runs through querier so it composes inside a TxManager transaction.
+func (r *StoryRepo) SetCloseFriends(ctx context.Context, ownerID int64, userIDs []int64) error {
+	q := querier(ctx, r.pool)
+	if _, err := q.Exec(ctx, `DELETE FROM close_friends WHERE owner_id=$1`, ownerID); err != nil {
+		return err
+	}
+	for _, uid := range userIDs {
+		if _, err := q.Exec(ctx,
+			`INSERT INTO close_friends (owner_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+			ownerID, uid); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// AllowIDs returns the story's explicit allowlist (story_allow), ascending.
+func (r *StoryRepo) AllowIDs(ctx context.Context, storyID int64) ([]int64, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT user_id FROM story_allow WHERE story_id=$1 ORDER BY user_id`, storyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]int64, 0)
+	for rows.Next() {
+		var uid int64
+		if err := rows.Scan(&uid); err != nil {
+			return nil, err
+		}
+		out = append(out, uid)
+	}
+	return out, rows.Err()
+}
+
+func (r *StoryRepo) SetPinned(ctx context.Context, storyID, authorID int64, pinned bool) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE stories SET pinned=$3 WHERE id=$1 AND author_id=$2`, storyID, authorID, pinned)
+	return err
+}
+
+// Edit updates caption/privacy (COALESCE keeps unset fields), flags edited, and
+// re-syncs story_allow: for 'selected' it replaces the allowlist, for any other
+// explicit privacy it clears it; an unchanged privacy leaves the allowlist as-is.
+func (r *StoryRepo) Edit(ctx context.Context, storyID, authorID int64, caption, privacy *string, allowIDs []int64) error {
+	q := querier(ctx, r.pool)
+	if _, err := q.Exec(ctx,
+		`UPDATE stories SET caption = COALESCE($3, caption), privacy = COALESCE($4, privacy), edited = true
+		  WHERE id=$1 AND author_id=$2`,
+		storyID, authorID, caption, privacy); err != nil {
+		return err
+	}
+	if privacy == nil {
+		return nil
+	}
+	if _, err := q.Exec(ctx, `DELETE FROM story_allow WHERE story_id=$1`, storyID); err != nil {
+		return err
+	}
+	if *privacy == "selected" {
+		for _, uid := range allowIDs {
+			if _, err := q.Exec(ctx,
+				`INSERT INTO story_allow (story_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+				storyID, uid); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (r *StoryRepo) Archive(ctx context.Context, ownerID, limit, offsetID int64) ([]domain.StoryItem, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT `+storyItemCols+`
+		   FROM stories s
+		   LEFT JOIN story_views sv ON sv.story_id = s.id AND sv.viewer_id = $1
+		  WHERE s.author_id = $1
+		    AND s.expires_at <= now()
+		    AND ($3 = 0 OR s.id < $3)
+		  ORDER BY s.id DESC
+		  LIMIT $2`,
+		ownerID, limit, offsetID)
+	if err != nil {
+		return nil, err
+	}
+	return r.scanStoryItems(ctx, rows, ownerID)
+}
+
+func (r *StoryRepo) Pinned(ctx context.Context, peerID, viewerID int64) ([]domain.StoryItem, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT `+storyItemCols+`
+		   FROM stories s
+		   LEFT JOIN story_views sv ON sv.story_id = s.id AND sv.viewer_id = $1
+		  WHERE s.author_id = $2
+		    AND s.pinned
+		    AND (s.author_id = $1
+		         OR s.privacy IN ('everyone','contacts')
+		         OR (s.privacy = 'close' AND EXISTS (SELECT 1 FROM close_friends cf WHERE cf.owner_id = s.author_id AND cf.user_id = $1))
+		         OR EXISTS (SELECT 1 FROM story_allow sa WHERE sa.story_id = s.id AND sa.user_id = $1))
+		  ORDER BY s.id DESC`,
+		viewerID, peerID)
+	if err != nil {
+		return nil, err
+	}
+	return r.scanStoryItems(ctx, rows, viewerID)
+}
+
+func (r *StoryRepo) PurgeRecentViews(ctx context.Context, viewerID int64, since time.Time) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`DELETE FROM story_views WHERE viewer_id=$1 AND viewed_at >= $2`, viewerID, since)
+	return err
 }

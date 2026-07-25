@@ -19,6 +19,7 @@ import type { SavedDialog } from '../core/managers/chatsManager'
 import GroupEditFlow from './group/GroupEditFlow'
 import AddMembersScreen from './group/AddMembersScreen'
 import { Section, Row } from './settings/kit'
+import PinnedStoriesSection from './PinnedStoriesSection'
 import classNames from '../shared/lib/classNames'
 import type { Chat, OpenPeer } from '../data'
 import { useT } from '../i18n'
@@ -636,6 +637,9 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
             </Section>
           )}
 
+
+          {/* Закреплённые в профиле истории (tweb profile stories) — только у пользователя */}
+          {isUser && peerId != null && <PinnedStoriesSection peerId={peerId} />}
 
           {/* Статистика (tweb chatFull.can_view_stats): канал/супергруппа → графики */}
           {isRealChat && canViewStats && (

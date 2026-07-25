@@ -349,12 +349,20 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		if storyH != nil {
 			pr.Post("/stories", storyH.Post)
 			pr.Get("/stories", storyH.Feed)
+			pr.Get("/stories/archive", storyH.Archive)
+			pr.Get("/stories/pinned", storyH.Pinned)
+			pr.Get("/stories/stealth", storyH.StealthState)
+			pr.Post("/stories/stealth/activate", storyH.ActivateStealth)
 			pr.Post("/stories/{storyID}/view", storyH.View)
 			pr.Post("/stories/{storyID}/reaction", storyH.SetReaction)
 			pr.Delete("/stories/{storyID}/reaction", storyH.RemoveReaction)
+			pr.Post("/stories/{storyID}/pin", storyH.Pin)
 			pr.Get("/stories/{storyID}/viewers", storyH.Viewers)
 			pr.Get("/stories/{storyID}/stats", storyH.Stats)
+			pr.Patch("/stories/{storyID}", storyH.Edit)
 			pr.Delete("/stories/{storyID}", storyH.Delete)
+			pr.Get("/me/close_friends", storyH.CloseFriends)
+			pr.Put("/me/close_friends", storyH.SetCloseFriends)
 		}
 
 		if reportUC != nil {

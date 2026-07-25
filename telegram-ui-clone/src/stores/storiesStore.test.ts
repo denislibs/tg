@@ -5,7 +5,8 @@ import type { StoryGroup, StoryItem } from '../core/managers/storiesManager'
 
 const mkStory = (over: Partial<StoryItem> = {}): StoryItem => ({
   id: 1, mediaId: 11, caption: '', createdAt: 't0', viewed: false,
-  reactionsCount: 0, myReaction: null, reactions: [], ...over,
+  reactionsCount: 0, myReaction: null, reactions: [],
+  privacy: 'contacts', pinned: false, edited: false, expiresAt: 't1', ...over,
 })
 
 const groups: StoryGroup[] = [
@@ -87,5 +88,25 @@ describe('storiesStore', () => {
     expect(st.myReaction).toBeNull()
     expect(st.reactionsCount).toBe(1)
     expect(st.reactions.find((r) => r.emoji === '🔥')).toEqual({ emoji: '🔥', count: 1, mine: false })
+  })
+
+  it('setStoryPinned toggles the pinned flag of the matching story', () => {
+    useStoriesStore.getState().setGroups([{ author: { id: 7, displayName: 'Me', avatarUrl: '' }, stories: [mkStory({ id: 5, pinned: false })] }])
+    useStoriesStore.getState().setStoryPinned(5, true)
+    expect(useStoriesStore.getState().groups[0].stories[0].pinned).toBe(true)
+    useStoriesStore.getState().setStoryPinned(5, false)
+    expect(useStoriesStore.getState().groups[0].stories[0].pinned).toBe(false)
+  })
+
+  it('applyStoryEdit patches caption/privacy and marks edited (unset fields kept)', () => {
+    useStoriesStore.getState().setGroups([{ author: { id: 7, displayName: 'Me', avatarUrl: '' }, stories: [mkStory({ id: 5, caption: 'old', privacy: 'contacts', edited: false })] }])
+    // change both
+    useStoriesStore.getState().applyStoryEdit(5, { caption: 'new', privacy: 'close' })
+    let st = useStoriesStore.getState().groups[0].stories[0]
+    expect(st).toMatchObject({ caption: 'new', privacy: 'close', edited: true })
+    // omitting a field keeps the previous value, still flags edited
+    useStoriesStore.getState().applyStoryEdit(5, { caption: 'newer' })
+    st = useStoriesStore.getState().groups[0].stories[0]
+    expect(st).toMatchObject({ caption: 'newer', privacy: 'close', edited: true })
   })
 })

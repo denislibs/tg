@@ -22,6 +22,8 @@ interface Props {
   onOpenContacts?: () => void
   onOpenSaved?: () => void
   onOpenPremium?: () => void
+  onOpenMyStories?: () => void
+  onOpenCloseFriends?: () => void
   onLogout?: () => void
   onToggleMode?: ToggleMode
 }
@@ -39,6 +41,8 @@ export default function MainMenu({
   onOpenContacts,
   onOpenSaved,
   onOpenPremium,
+  onOpenMyStories,
+  onOpenCloseFriends,
   onLogout,
   onToggleMode,
 }: Props) {
@@ -157,8 +161,9 @@ export default function MainMenu({
       )}
       {divider}
       <MenuItem icon={<TgIcon name="savedmessages" size={20} />} label={t('Saved Messages')} onClick={onOpenSaved ?? onClose} />
-      <MenuItem icon={<TgIcon name="radiooff" size={20} />} label={t('My Stories')} onClick={onClose} />
+      <MenuItem icon={<TgIcon name="radiooff" size={20} />} label={t('My Stories')} onClick={onOpenMyStories ?? onClose} />
       <MenuItem icon={<TgIcon name="user" size={20} />} label={t('Contacts')} onClick={onOpenContacts ?? onClose} />
+      <MenuItem icon={<TgIcon name="newprivate" size={20} />} label={t('Close Friends')} onClick={onOpenCloseFriends ?? onClose} />
       {divider}
       <MenuItem icon={<TgIcon name="card_outline" size={20} />} label={t('Wallet')} onClick={onClose} />
       <MenuItem
