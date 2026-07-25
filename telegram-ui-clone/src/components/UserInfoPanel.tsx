@@ -30,6 +30,7 @@ import { useAudioStore, type AudioTrack } from '../stores/audioStore'
 import { markMediaPlayed } from '../core/mediaRead'
 import PlayPauseGlyph from './PlayPauseGlyph'
 import { useManagers } from '../core/hooks/useManagers'
+import { useNavLayer } from '../core/hooks/useNavLayer'
 import { useLang } from '../i18n'
 import { lastSeenLabel } from '../core/presence'
 import { friendlyMsgTime } from '../core/friendlyTime'
@@ -88,6 +89,7 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
   const t = useT()
   const narrow = useMediaQuery('(max-width:900px)')
   const managers = useManagers()
+  useNavLayer(true, onClose) // Back закрывает панель профиля (tweb right column)
   const isSaved = chat.type === 'saved'
   // группы — таб «Участники», избранное — «Чаты» (tweb savedDialogs first), остальные — «Медиа»
   const [tab, setTab] = useState(chat.type === 'group' ? 'Members' : isSaved ? 'Chats' : 'Media')

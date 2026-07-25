@@ -7,6 +7,7 @@ import { SettingsScreen, Section } from '../settings/kit'
 import Text from '../../shared/ui/Text'
 import TgIcon from '../TgIcon'
 import { useManagers } from '../../core/hooks/useManagers'
+import { useNavLayer } from '../../core/hooks/useNavLayer'
 import { useStarsStore } from '../../stores/starsStore'
 import { useT, useLang } from '../../i18n'
 import { friendlyMsgTime } from '../../core/friendlyTime'
@@ -32,6 +33,7 @@ export default function WalletView({ onBack }: { onBack: () => void }) {
   const t = useT()
   const [lang] = useLang()
   const managers = useManagers()
+  useNavLayer(true, onBack) // Back закрывает «Кошелёк»
   const balance = useStarsStore((st) => st.balance)
   const [busy, setBusy] = useState(false)
   const [txs, setTxs] = useState<StarTransaction[]>([])
