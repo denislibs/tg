@@ -415,6 +415,7 @@ function MessageRow({
                   tickColor="var(--b-tick)"
                   localUrl={m.localUrl}
                   radius={(m.type === 'photo' || m.type === 'video') ? (m.text || chips ? '14px 14px 0 0' : '14px') : undefined}
+                  onOpen={feedFns.openLightbox}
                 />
               ) : (
                 <RealMediaBubble

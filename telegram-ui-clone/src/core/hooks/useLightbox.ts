@@ -37,15 +37,24 @@ export function useLightbox({ win, isRealChat, meId, meName, peers, chatName, la
 
   const openLightbox = (mediaId: number, el: HTMLElement) => {
     if (!isRealChat) return
+    // Фото/видео чата + секретные (E2E) медиа того же вида. У секретного type в
+    // сторе — 'encrypted', вид лежит в secretMedia.mediaType; несём ключ/iv/mime
+    // для расшифровки в лайтбоксе.
+    const isViewable = (m: MessageWindow['msgs'][number]) =>
+      m.mediaId != null && (m.type === 'photo' || m.type === 'video' ||
+        m.secretMedia?.mediaType === 'photo' || m.secretMedia?.mediaType === 'video')
     let items: LightboxItem[] = win.msgs
-      .filter((m) => m.mediaId != null && (m.type === 'photo' || m.type === 'video'))
+      .filter(isViewable)
       .map((m) => ({
         mediaId: m.mediaId as number,
-        type: m.type,
+        type: m.secretMedia?.mediaType ?? m.type,
         sender: m.senderId === meId ? (meName || 'Вы') : (peers.get(m.senderId)?.displayName || chatName),
         date: friendlyMsgTime(m.createdAt, lang),
         width: m.mediaWidth,
         height: m.mediaHeight,
+        secret: m.secretMedia
+          ? { keyB64: m.secretMedia.keyB64, ivB64: m.secretMedia.ivB64, mime: m.secretMedia.mime }
+          : undefined,
       }))
     let index = items.findIndex((it) => it.mediaId === mediaId)
     if (index < 0) {
@@ -54,11 +63,14 @@ export function useLightbox({ win, isRealChat, meId, meName, peers, chatName, la
       const src = win.msgs.find((m) => m.mediaId === mediaId)
       items = [{
         mediaId,
-        type: 'photo',
+        type: src?.secretMedia?.mediaType ?? 'photo',
         sender: src && src.senderId === meId ? (meName || 'Вы') : (peers.get(src?.senderId ?? -1)?.displayName || chatName),
         date: friendlyMsgTime(src?.createdAt ?? '', lang),
         width: src?.mediaWidth,
         height: src?.mediaHeight,
+        secret: src?.secretMedia
+          ? { keyB64: src.secretMedia.keyB64, ivB64: src.secretMedia.ivB64, mime: src.secretMedia.mime }
+          : undefined,
       }]
       index = 0
     }

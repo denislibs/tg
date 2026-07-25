@@ -11,8 +11,7 @@ import type { ReactNode } from 'react'
 import Text from '../../shared/ui/Text'
 import classNames from '../../shared/lib/classNames'
 import TgIcon from '../TgIcon'
-import { decryptMedia } from '../../core/secret/crypto'
-import { mediaContentUrl, primeMediaToken } from '../../core/mediaUrl'
+import { getSecretMediaUrl } from '../../core/secret/mediaCache'
 import type { SecretMedia } from '../../core/models'
 import type { MsgStatus } from '../../data'
 import s from './RealMediaBubble.module.scss'
@@ -34,32 +33,20 @@ function Ticks({ status, color }: { status?: MsgStatus; color: string }) {
   return <TgIcon name={status === 'read' ? 'checks' : 'check'} size={16} color={color} />
 }
 
-// Скачивает ciphertext авторизованным media-URL, расшифровывает и отдаёт objectURL.
-// localUrl (у отправителя) — короткий путь без сети. Освобождает URL при cleanup.
+// Расшифрованный blob-URL через общий кэш (getSecretMediaUrl) — тот же URL делят
+// бабл и лайтбокс. localUrl (у отправителя) — короткий путь без сети.
 function useSecretMediaUrl(sm: SecretMedia, localUrl?: string): { url?: string; error: boolean } {
   const [url, setUrl] = useState<string | undefined>(localUrl)
   const [error, setError] = useState(false)
   useEffect(() => {
     if (localUrl) { setUrl(localUrl); return }
     let cancelled = false
-    let objectUrl: string | null = null
     setError(false)
     setUrl(undefined)
-    void (async () => {
-      try {
-        await primeMediaToken() // media-токен primed → синхронный URL с токеном
-        const res = await fetch(mediaContentUrl(sm.mediaId))
-        if (!res.ok) throw new Error(`secret media ${res.status}`)
-        const cipher = await res.arrayBuffer()
-        const buf = await decryptMedia(cipher, sm.keyB64, sm.ivB64)
-        if (cancelled) return
-        objectUrl = URL.createObjectURL(new Blob([buf], { type: sm.mime }))
-        setUrl(objectUrl)
-      } catch {
-        if (!cancelled) setError(true)
-      }
-    })()
-    return () => { cancelled = true; if (objectUrl) URL.revokeObjectURL(objectUrl) }
+    void getSecretMediaUrl(sm.mediaId, sm.keyB64, sm.ivB64, sm.mime)
+      .then((u) => { if (!cancelled) setUrl(u) })
+      .catch(() => { if (!cancelled) setError(true) })
+    return () => { cancelled = true }
   }, [sm.mediaId, sm.keyB64, sm.ivB64, sm.mime, localUrl])
   return { url, error }
 }
@@ -73,9 +60,11 @@ interface Props {
   /** локальное превью у отправителя (plaintext) — без fetch/decrypt */
   localUrl?: string
   radius?: string
+  /** открыть полноэкранный просмотр (лайтбокс) по клику на фото/видео */
+  onOpen?: (mediaId: number, el: HTMLElement) => void
 }
 
-export default function SecretMediaBubble({ secretMedia, out, time, status, tickColor, localUrl, radius }: Props) {
+export default function SecretMediaBubble({ secretMedia, out, time, status, tickColor, localUrl, radius, onOpen }: Props) {
   const { url, error } = useSecretMediaUrl(secretMedia, localUrl)
   const kind = secretMedia.mediaType
   const isImage = kind === 'photo' || (kind !== 'document' && secretMedia.mime.startsWith('image/'))
@@ -94,8 +83,14 @@ export default function SecretMediaBubble({ secretMedia, out, time, status, tick
   // натуральный размер, ограниченный боксом. Пока грузим/дешифруем — плейсхолдер.
   if (isImage || isVideo) {
     const mediaStyle: React.CSSProperties = { display: 'block', maxWidth: '100%', maxHeight: BOX_H, width: 'auto', height: 'auto', borderRadius: radius }
+    // Клик по готовому медиа → полноэкранный просмотр (как RealMediaBubble).
+    const canOpen = !!url && !!onOpen
     return (
-      <div className={s.media} style={{ maxWidth: BOX_W, borderRadius: radius }}>
+      <div
+        className={s.media}
+        style={{ maxWidth: BOX_W, borderRadius: radius, cursor: canOpen ? 'pointer' : undefined }}
+        onClick={canOpen ? (e) => onOpen!(secretMedia.mediaId, e.currentTarget) : undefined}
+      >
         {!url && (
           <div style={{ position: 'relative', width: 240, height: 180 }}>
             {!error
@@ -107,8 +102,12 @@ export default function SecretMediaBubble({ secretMedia, out, time, status, tick
           <img src={url} alt="" decoding="async" style={mediaStyle} />
         )}
         {url && isVideo && (
-          // eslint-disable-next-line jsx-a11y/media-has-caption
-          <video src={url} controls playsInline style={mediaStyle} />
+          <>
+            {/* постер-кадр (muted, без контролов) — воспроизведение в лайтбоксе */}
+            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+            <video src={url} muted playsInline preload="metadata" style={mediaStyle} />
+            <div className={s.play}><div className={s.playDisc}><TgIcon name="play" size={34} color="#fff" /></div></div>
+          </>
         )}
         {time && (
           <div className={s.timeBadge}>

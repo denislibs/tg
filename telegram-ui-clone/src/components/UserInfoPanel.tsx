@@ -623,18 +623,16 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
               checked={!muted}
               onClick={toggleNotifications}
             />
-          </Section>
-          )}
-
-          {/* Ключ шифрования (tweb chatEncryptionKey) — emoji-fingerprint секретного чата */}
-          {isSecret && (
-            <Section>
+            {/* Ключ шифрования (tweb chatEncryptionKey) — emoji-fingerprint
+                секретного чата; в той же секции, что и уведомления */}
+            {isSecret && (
               <Row
                 icon={<TgIcon name="key" size={24} />}
                 label="Encryption Key"
                 onClick={() => setKeyPopupOpen(true)}
               />
-            </Section>
+            )}
+          </Section>
           )}
 
 

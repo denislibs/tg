@@ -490,6 +490,7 @@ const ru: Dict = {
   'Sending…': 'Отправка…',
   'Disable Sharing': 'Отключить доступ',
   'Delete Chat': 'Удалить чат',
+  'Leave chat': 'Покинуть диалог',
   'Clear History': 'Очистить историю',
   'Change Theme': 'Изменить тему оформления',
   'Chat Theme': 'Тема оформления чата',
