@@ -30,16 +30,24 @@ export function useVoiceQueue({ win, isRealChat, meId, meName, peers, chatName, 
 } {
   const playQueue = useAudioStore((s) => s.playQueue)
   const playExternal = useAudioStore((s) => s.playExternal)
+  // Секретный голос: сырой store-type остаётся 'encrypted' (воркер меняет только
+  // secret_media, не type), вид лежит в secretMedia.mediaType. Учитываем оба.
+  const isVoiceMsg = (m: MessageWindow['msgs'][number]) =>
+    !!m.mediaId && (m.type === 'voice' || m.secretMedia?.mediaType === 'voice')
   const voiceTracks: AudioTrack[] = useMemo(
     () =>
       (isRealChat ? win.msgs : [])
-        .filter((m) => m.type === 'voice' && m.mediaId)
+        .filter(isVoiceMsg)
         .map((m) => ({
           mediaId: m.mediaId as number,
           title: m.senderId === meId ? meName || 'Вы' : peers.get(m.senderId)?.displayName || chatName,
           subtitle: friendlyMsgTime(m.createdAt, lang),
           chatId: numericChatId,
           msgId: m.id,
+          // Секретный голос: ключ/iv/mime для расшифровки ciphertext'а в плеере.
+          secret: m.secretMedia
+            ? { keyB64: m.secretMedia.keyB64, ivB64: m.secretMedia.ivB64, mime: m.secretMedia.mime }
+            : undefined,
         })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [win.msgs, isRealChat, chatName, numericChatId, meId, meName, peersKey(win.msgs.map((m) => m.senderId)), lang],
@@ -49,7 +57,7 @@ export function useVoiceQueue({ win, isRealChat, meId, meName, peers, chatName, 
     if (idx < 0) return
     playQueue(voiceTracks, idx)
     // Чужое непрослушанное голосовое → снять media_unread (tweb readMessageContents).
-    const msg = win.msgs.find((m) => m.type === 'voice' && m.mediaId === mediaId)
+    const msg = win.msgs.find((m) => isVoiceMsg(m) && m.mediaId === mediaId)
     if (msg && msg.senderId !== meId && msg.mediaUnread) markMediaPlayed(numericChatId, msg.id)
   }
 

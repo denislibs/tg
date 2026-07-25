@@ -37,14 +37,17 @@ export function fmtWhen(iso?: string): string {
     : d.toLocaleDateString([], { day: '2-digit', month: 'short' })
 }
 
-// A human label for a media message with no caption (tweb shows these in grey).
+// A human label for a media message with no caption (tweb wrapMessageForReply:
+// grey type label, эмодзи-иконки для не-визуальных видов). Никогда не возвращаем
+// пустую строку — иначе не-текстовое сообщение выглядит в списке как пустой чат.
 export function mediaLabel(type?: string): string {
   switch (type) {
     case 'photo': return 'Фото'
     case 'video': return 'Видео'
+    case 'gif': return 'GIF'
     case 'roundVideo': return 'Видеосообщение'
     case 'voice': return 'Голосовое сообщение'
-    case 'audio': return 'Аудио'
+    case 'audio': return '🎵 Аудио'
     case 'document': return 'Файл'
     case 'sticker': return 'Стикер'
     case 'call': return 'Звонок'
@@ -52,7 +55,15 @@ export function mediaLabel(type?: string): string {
     case 'geo': return '📍 Геолокация'
     case 'contact': return '👤 Контакт'
     case 'gift': return '🎁 Подарок'
-    default: return ''
+    case 'game': return '🎮 Игра'
+    case 'giveaway': return '🎉 Розыгрыш'
+    case 'story': return 'История'
+    case 'text':
+    case '':
+    case undefined:
+      return ''
+    // Незнакомый вид медиа (новый серверный type) — не показываем пустоту.
+    default: return 'Сообщение'
   }
 }
 
@@ -101,6 +112,7 @@ export function dialogToChat(d: Dialog, meId?: number | null, draft?: Draft): Ch
     avatarEmoji: isSaved ? 'saved' : isService ? 'tg-logo' : undefined,
     avatarUrl: isSaved || isService ? undefined : d.peer?.avatarUrl || d.photoUrl || undefined,
     peerId: d.peer?.id,
+    isBot: d.peer?.isBot || undefined,
     verified: d.peer?.verified || undefined,
     premium: d.peer?.premium || undefined,
     emojiStatus: d.peer?.emojiStatus || undefined,

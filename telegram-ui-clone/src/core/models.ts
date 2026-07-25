@@ -3,7 +3,7 @@ import { mapGiftInfo, type RawGiftInfo, type GiftInfo } from './managers/starsMa
 import { mapReplyMarkup, type ReplyMarkup } from './managers/botsManager'
 import type { EmojiEffectKind } from './effects/emojiEffects'
 
-export type ChatKind = 'private' | 'group' | 'channel' | 'saved'
+export type ChatKind = 'private' | 'group' | 'channel' | 'saved' | 'secret'
 
 // A rich-text formatting span over a message's text (Telegram MessageEntity model).
 // `offset`/`length` are UTF-16 code units (plain JS string indices), so the same
@@ -80,8 +80,8 @@ export interface RawDialog {
   title?: string
   username?: string
   photo_url?: string
-  peer?: { id: number; display_name: string; avatar_url: string; verified?: boolean; premium?: boolean; emoji_status?: string }
-  last_message?: { seq: number; text: string; sender_id: number; at: string; media_id?: number; type?: string; forwarded?: boolean; sender_name?: string }
+  peer?: { id: number; display_name: string; avatar_url: string; verified?: boolean; premium?: boolean; emoji_status?: string; is_bot?: boolean }
+  last_message?: { seq: number; text: string; sender_id: number; at: string; media_id?: number; type?: string; forwarded?: boolean; sender_name?: string; enc_body?: string }
 }
 
 export interface Dialog {
@@ -112,8 +112,8 @@ export interface Dialog {
   username?: string
   /** фото группы/канала (content-путь /media/N/content; у private — peer.avatarUrl) */
   photoUrl?: string
-  peer?: { id: number; displayName: string; avatarUrl: string; verified?: boolean; premium?: boolean; emojiStatus?: string }
-  lastMessage?: { seq: number; text: string; senderId: number; at: string; mediaId?: number; mediaType?: string; forwarded?: boolean; senderName?: string }
+  peer?: { id: number; displayName: string; avatarUrl: string; verified?: boolean; premium?: boolean; emojiStatus?: string; isBot?: boolean }
+  lastMessage?: { seq: number; text: string; senderId: number; at: string; mediaId?: number; mediaType?: string; forwarded?: boolean; senderName?: string; encBody?: string }
 }
 
 // Серверное превью ссылки (Telegram webPage): снимок og-тегов первой ссылки
@@ -664,7 +664,7 @@ export function mapDialog(r: RawDialog): Dialog {
     username: r.username,
     photoUrl: r.photo_url || undefined,
     peer: r.peer
-      ? { id: r.peer.id, displayName: r.peer.display_name, avatarUrl: r.peer.avatar_url, verified: r.peer.verified, premium: r.peer.premium, emojiStatus: r.peer.emoji_status }
+      ? { id: r.peer.id, displayName: r.peer.display_name, avatarUrl: r.peer.avatar_url, verified: r.peer.verified, premium: r.peer.premium, emojiStatus: r.peer.emoji_status, isBot: r.peer.is_bot }
       : undefined,
     lastMessage: r.last_message
       ? {
@@ -676,6 +676,7 @@ export function mapDialog(r: RawDialog): Dialog {
           mediaType: r.last_message.type || undefined,
           forwarded: r.last_message.forwarded || undefined,
           senderName: r.last_message.sender_name || undefined,
+          encBody: r.last_message.enc_body || undefined,
         }
       : undefined,
   }

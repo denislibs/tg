@@ -579,6 +579,7 @@ export default function Sidebar({
           <NewPrivateChat
             chats={chats}
             title="New Secret Chat"
+            excludeBots
             onClose={() => setNewSecretOpen(false)}
             onSelect={(id) => { void startSecret(id) }}
           />

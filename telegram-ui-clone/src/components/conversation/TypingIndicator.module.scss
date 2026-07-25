@@ -1,6 +1,33 @@
 // TypingIndicator — три прыгающие точки (печатает) / одна мигающая (запись).
-// Порт tweb .peer-typing-text / .peer-typing-record; кейфреймы — в styles/index.scss.
-// Цвет точек — через --typing-color (задаётся инлайн от пропса).
+// Порт tweb .peer-typing-text / .peer-typing-record. Цвет — через --typing-color.
+// ВАЖНО: keyframes держим ВНУТРИ модуля. CSS Modules скоупит и @keyframes, и
+// ссылку animation-name согласованно; при глобальных keyframes (в index.scss)
+// ссылка хэшировалась в несуществующее имя и анимация не запускалась.
+@keyframes typingDotFirst {
+  0% { transform: scale(0.66667); opacity: 0.8; }
+  50% { transform: scale(0.66667); opacity: 0.8; }
+  75% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.66667); opacity: 0.8; }
+}
+@keyframes typingDotMiddle {
+  0% { transform: scale(0.83333); opacity: 0.9; }
+  12.5% { transform: scale(0.66667); opacity: 0.8; }
+  62.5% { transform: scale(0.66667); opacity: 0.8; }
+  87.5% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.83333); opacity: 0.9; }
+}
+@keyframes typingDotLast {
+  0% { transform: scale(1); opacity: 1; }
+  25% { transform: scale(0.66667); opacity: 0.8; }
+  75% { transform: scale(0.66667); opacity: 0.8; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes recordBlink {
+  0% { opacity: 1; }
+  50% { opacity: 0.2; }
+  100% { opacity: 1; }
+}
+
 .record {
   display: inline-block;
   vertical-align: middle;

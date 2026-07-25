@@ -1,6 +1,7 @@
-import { memo, useState, type ReactNode } from 'react'
+import { memo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import Text from '../shared/ui/Text'
-import Slider from '../shared/ui/Slider'
+import Menu, { MenuItem } from '../shared/ui/Menu'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon, { type IconName } from './TgIcon'
 import PlayPauseGlyph from './PlayPauseGlyph'
@@ -41,6 +42,31 @@ function RoundBtn({
   )
 }
 
+// Вертикальный слайдер громкости на pointer-событиях: перетаскивание по Y (снизу
+// вверх = 0..1). Нативный range, повёрнутый на 90°, тянулся по горизонтали — было
+// неудобно; здесь ось перетаскивания совпадает с визуальной.
+function VolumeSlider({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const apply = (clientY: number) => {
+    const el = ref.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    onChange(Math.max(0, Math.min(1, 1 - (clientY - r.top) / r.height)))
+  }
+  const pct = Math.round(value * 100)
+  return (
+    <div
+      ref={ref}
+      className={s.volTrack}
+      onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); apply(e.clientY) }}
+      onPointerMove={(e) => { if (e.buttons === 1) apply(e.clientY) }}
+    >
+      <div className={s.volFill} style={{ height: `${pct}%` }} />
+      <div className={s.volThumb} style={{ bottom: `${pct}%` }} />
+    </div>
+  )
+}
+
 // The global "now playing" bar — modelled on tweb's `.pinned-container.pinned-audio`:
 // a flat surface strip (not a floating pill) with rewind/play/forward, a title +
 // thin seek line, and right-side utils (volume slider, speed, close).
@@ -66,16 +92,42 @@ function NowPlayingBar() {
 
   const [volOpen, setVolOpen] = useState(false)
   const [rateOpen, setRateOpen] = useState(false)
+  // Слайдер громкости — в портале (document.body), чтобы его не резал overflow:hidden
+  // плашки. Позиционируем fixed по кнопке; hover ведём и по кнопке, и по попапу, с
+  // задержкой закрытия — портал рвёт DOM-вложенность (mouseleave иначе рвёт hover).
+  const volBtnRef = useRef<HTMLDivElement>(null)
+  const [volRect, setVolRect] = useState<DOMRect | null>(null)
+  const volCloseTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const openVol = () => {
+    clearTimeout(volCloseTimer.current)
+    const r = volBtnRef.current?.getBoundingClientRect()
+    if (r) setVolRect(r)
+    setVolOpen(true)
+  }
+  const scheduleCloseVol = () => {
+    clearTimeout(volCloseTimer.current)
+    volCloseTimer.current = setTimeout(() => setVolOpen(false), 140)
+  }
+  // Меню скорости — общий shared <Menu> (портал+бэкдроп). Позицию якорим под
+  // кнопкой, растём влево-вниз (кнопка у правого края плашки).
+  const rateBtnRef = useRef<HTMLButtonElement>(null)
+  const [rateStyle, setRateStyle] = useState<CSSProperties | undefined>(undefined)
+  const openRate = () => {
+    const r = rateBtnRef.current?.getBoundingClientRect()
+    if (r) setRateStyle({ top: r.bottom + 4, right: window.innerWidth - r.right, transformOrigin: 'top right' })
+    setRateOpen(true)
+  }
   const frac = duration > 0 ? currentTime / duration : 0
   const fmt = (s: number) => {
     if (!Number.isFinite(s) || s < 0) s = 0
     return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
   }
-  const rateLabel = rate === 1 ? '1X' : rate === 1.5 ? '1.5X' : '2X'
+  const rateLabel = `${rate}X` // 0.5x/1x/1.5x/2x — раньше 0.5x ошибочно показывал «2X»
   const effVol = muted ? 0 : volume
   const volIconName: IconName = effVol === 0 ? 'volume_off' : effVol < 0.5 ? 'volume_down' : 'volume_up'
 
   return (
+    <>
     <AnimatePresence>
       {track && (
         <motion.div
@@ -107,66 +159,45 @@ function NowPlayingBar() {
               </Text>
             </div>
 
-            {/* volume with a vertical slider popup (hover/focus) */}
+            {/* Громкость (как в Telegram): слайдер по наведению, клик по иконке —
+                mute/unmute. Сам слайдер рендерится в портале (см. конец файла). */}
             <div
+              ref={volBtnRef}
               className={s.volWrap}
-              onMouseEnter={() => setVolOpen(true)}
-              onMouseLeave={() => setVolOpen(false)}
+              onMouseEnter={openVol}
+              onMouseLeave={scheduleCloseVol}
             >
-              <RoundBtn onClick={toggleMute} color={volOpen ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'} active={volOpen} label="volume">
+              <RoundBtn
+                onClick={toggleMute}
+                color={volOpen ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'}
+                active={volOpen}
+                label="volume"
+              >
                 <TgIcon name={volIconName} />
               </RoundBtn>
-              <AnimatePresence>
-                {volOpen && (
-                  <motion.div
-                    className={s.volPop}
-                    initial={{ opacity: 0, y: -6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -6 }}
-                    transition={{ duration: 0.14 }}
-                  >
-                    <div className={s.volSliderBox}>
-                      <Slider min={0} max={1} step={0.01} value={effVol} onChange={setVolume} />
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
             </div>
 
             <div className={s.rateWrap}>
               <motion.button
+                ref={rateBtnRef}
                 type="button"
-                onClick={() => setRateOpen((o) => !o)}
+                onClick={() => (rateOpen ? setRateOpen(false) : openRate())}
                 whileTap={{ scale: 0.9 }}
                 className={classNames(s.rateBtn, rateOpen ? s.rateBtnActive : '')}
                 style={rateOpen ? { color: 'var(--tg-accent)', background: 'color-mix(in srgb, var(--tg-accent) 16%, transparent)' } : undefined}
               >
                 {rateLabel}
               </motion.button>
-              <AnimatePresence>
-                {rateOpen && (
-                  <>
-                    <div className={s.rateBackdrop} onClick={() => setRateOpen(false)} />
-                    <motion.div
-                      className={s.rateMenu}
-                      initial={{ opacity: 0, scale: 0.9, y: -6 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.9, y: -6 }}
-                      transition={{ duration: 0.15 }}
-                    >
-                      {[0.5, 1, 1.5, 2].map((r) => (
-                        <div
-                          key={r}
-                          onClick={() => { setRate(r); setRateOpen(false) }}
-                          className={classNames(s.rateItem, rate === r ? s.rateItemActive : '')}
-                        >
-                          {r}x
-                        </div>
-                      ))}
-                    </motion.div>
-                  </>
-                )}
-              </AnimatePresence>
+              <Menu open={rateOpen} onClose={() => setRateOpen(false)} style={rateStyle}>
+                {[0.5, 1, 1.5, 2].map((r) => (
+                  <MenuItem
+                    key={r}
+                    label={`${r}x`}
+                    right={rate === r ? <TgIcon name="check" size={18} color="var(--tg-accent)" /> : undefined}
+                    onClick={() => { setRate(r); setRateOpen(false) }}
+                  />
+                ))}
+              </Menu>
             </div>
             <RoundBtn onClick={closePlayer} color="var(--tg-textSecondary)" label="close">
               <TgIcon name="close" />
@@ -186,6 +217,32 @@ function NowPlayingBar() {
         </motion.div>
       )}
     </AnimatePresence>
+    {/* Слайдер громкости — портал в document.body (вне overflow:hidden плашки),
+        позиция fixed под кнопкой. Hover на попапе продлевает открытие. */}
+    {createPortal(
+      <AnimatePresence>
+        {track && volOpen && volRect && (
+          <div
+            className={s.volPortal}
+            style={{ left: volRect.left + volRect.width / 2, top: volRect.bottom - 6 }}
+            onMouseEnter={openVol}
+            onMouseLeave={scheduleCloseVol}
+          >
+            <motion.div
+              className={s.volPop}
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.14 }}
+            >
+              <VolumeSlider value={effVol} onChange={setVolume} />
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>,
+      document.body,
+    )}
+    </>
   )
 }
 

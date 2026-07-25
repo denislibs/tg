@@ -249,8 +249,17 @@ export function startRealtime(): void {
     // Роль решает статус: получатель видит входящий запрос ('requested' → бар с
     // «Принять/Отклонить»), инициатор ждёт ('awaiting'). Живьём сервер шлёт кадр
     // только получателю; при reload оба состояния восстанавливает secret.sync().
-    if (meId === r.responder_id) useSecretChatStore.getState().setStatus(r.chat_id, 'requested')
-    else if (meId === r.initiator_id) useSecretChatStore.getState().setStatus(r.chat_id, 'awaiting')
+    if (meId === r.responder_id) {
+      useSecretChatStore.getState().setStatus(r.chat_id, 'requested')
+      // Живьём чат ещё не в списке диалогов у получателя — подтянуть /chats, чтобы
+      // строка-заявка появилась сверху (дебаунс внутри). Статус 'requested' даёт
+      // pending-превью «Приглашение в секретный чат» в ChatListItem.
+      if (!useChatsStore.getState().dialogs.some((d) => d.chatId === r.chat_id)) {
+        scheduleChatsReload(managers)
+      }
+    } else if (meId === r.initiator_id) {
+      useSecretChatStore.getState().setStatus(r.chat_id, 'awaiting')
+    }
   })
   smp.on(RT.secretAccept, (raw) => {
     const r = raw as { chat_id: number; state?: string; fingerprint?: string[] }

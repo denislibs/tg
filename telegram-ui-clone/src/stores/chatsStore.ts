@@ -196,15 +196,37 @@ export const useChatsStore = create<ChatsState>((set) => ({
 interface LoadDeps {
   auth: { me(): Promise<User | null> }
   chats: { listDialogs(): Promise<Dialog[]> }
+  // Секретные чаты: сервер отдаёт шифр-блоб последнего сообщения (plaintext он не
+  // знает) — расшифровываем на клиенте ключом из IndexedDB для превью в списке.
+  secret?: { decryptMessage(chatId: number, encBody: string): Promise<{ text: string; media?: { mediaType: string } } | null> }
 }
 
 // Fetch the current user + dialogs and populate the store.
 export async function loadChats(managers: LoadDeps): Promise<void> {
   const [me, dialogs] = await Promise.all([managers.auth.me(), managers.chats.listDialogs()])
+  await decryptSecretPreviews(managers, dialogs)
   const st = useChatsStore.getState()
   st.setMe(me)
   st.setMeId(me?.id ?? null)
   st.setDialogs(dialogs)
+}
+
+// Расшифровать последнее сообщение каждого секретного чата для превью в списке
+// (холодный старт/reload — live-путь уже кладёт plaintext через applyNewMessage).
+// Ошибки дешифровки глотаем: превью просто останется generic-лейблом.
+async function decryptSecretPreviews(managers: LoadDeps, dialogs: Dialog[]): Promise<void> {
+  if (!managers.secret) return
+  await Promise.all(
+    dialogs.map(async (d) => {
+      const lm = d.lastMessage
+      if (d.type !== 'secret' || !lm?.encBody || lm.text) return
+      const dec = await managers.secret!.decryptMessage(d.chatId, lm.encBody).catch(() => null)
+      if (!dec) return
+      lm.text = dec.text
+      // Медиа без подписи: показать лейбл типа ('photo'/'video'/…) вместо 'encrypted'.
+      if (!dec.text && dec.media) lm.mediaType = dec.media.mediaType
+    }),
+  )
 }
 
 // Seed online / last-seen for a set of users (or all private-dialog peers when

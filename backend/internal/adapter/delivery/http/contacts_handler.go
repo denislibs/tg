@@ -91,6 +91,9 @@ func (h *ContactsHandler) Add(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, usecasecontacts.ErrSelfContact):
 		writeError(w, http.StatusBadRequest, "cannot_add_self")
 		return
+	case errors.Is(err, usecasecontacts.ErrCannotAddBot):
+		writeError(w, http.StatusBadRequest, "cannot_add_bot")
+		return
 	case errors.Is(err, domain.ErrPrivacy):
 		writeError(w, http.StatusForbidden, "add_by_phone_restricted")
 		return

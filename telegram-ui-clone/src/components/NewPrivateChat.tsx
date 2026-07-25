@@ -30,9 +30,11 @@ interface Props {
   onSelect: (id: string) => void
   /** заголовок экрана (по умолчанию «New Message»); секретный чат переиспользует пикер */
   title?: string
+  /** секретный чат: боты недоступны (у ботов нет E2E-секретов), скрываем их */
+  excludeBots?: boolean
 }
 
-export default function NewPrivateChat({ chats, onClose, onSelect, title = 'New Message' }: Props) {
+export default function NewPrivateChat({ chats, onClose, onSelect, title = 'New Message', excludeBots }: Props) {
   const t = useT()
   const [query, setQuery] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
@@ -46,6 +48,7 @@ export default function NewPrivateChat({ chats, onClose, onSelect, title = 'New 
   const people = chats.filter(
     (c) =>
       (c.type === 'private' || c.type === 'bot') &&
+      !(excludeBots && (c.isBot || c.type === 'bot')) &&
       c.name.toLowerCase().includes(query.toLowerCase())
   )
 

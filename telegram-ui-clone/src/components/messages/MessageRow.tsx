@@ -338,6 +338,7 @@ function MessageRow({
               msgId={m.id}
               chatId={m.chatId}
               transcription={m.transcription}
+              secretMedia={m.secretMedia}
               out={out}
               time={m.time}
               status={m.status}

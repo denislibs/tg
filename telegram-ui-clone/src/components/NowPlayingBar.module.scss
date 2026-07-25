@@ -35,7 +35,7 @@
 // Плашка "сейчас играет" (tweb .pinned-audio).
 .bar {
   position: relative;
-  overflow: hidden;
+  overflow: hidden; // скругляет концы полоски прогресса (попап громкости — в портале)
   display: flex;
   align-items: center;
   height: var(--chat-plate-height);
@@ -74,13 +74,15 @@
   position: relative;
   display: flex;
 }
-.volPop {
-  position: absolute;
-  top: 100%;
-  left: 50%;
+// Портал-обёртка: fixed по кнопке, центрируем translateX(-50%). Примыкает к
+// кнопке (top = низ кнопки) — hover непрерывный (верхний padding .volPop = «мост»).
+.volPortal {
+  position: fixed;
   transform: translateX(-50%);
-  margin-top: 4px;
-  padding: 12px 0;
+  z-index: 3000;
+}
+.volPop {
+  padding: 14px 0 12px;
   width: 36px;
   height: 120px;
   border-radius: 18px;
@@ -89,12 +91,34 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 40;
 }
-// Вертикальный слайдер: горизонтальный range повёрнут на 90°.
-.volSliderBox {
-  width: 96px;
-  transform: rotate(-90deg);
+// Вертикальный слайдер громкости (pointer-drag по Y).
+.volTrack {
+  position: relative;
+  width: 4px;
+  height: 96px;
+  border-radius: 2px;
+  background: var(--tg-hover);
+  cursor: pointer;
+  touch-action: none;
+}
+.volFill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 2px;
+  background: var(--tg-accent);
+}
+.volThumb {
+  position: absolute;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--tg-accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transform: translate(-50%, 50%); // центр ползунка на верхней кромке заливки
 }
 
 // Кнопка скорости
@@ -130,42 +154,7 @@
   }
 }
 
-// Меню выбора скорости
-.rateBackdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 39;
-}
-.rateMenu {
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  margin-top: 4px;
-  min-width: 96px;
-  padding: 4px 0;
-  border-radius: 12px;
-  background: var(--tg-bubble);
-  box-shadow: var(--tg-menuShadow);
-  z-index: 40;
-}
-.rateItem {
-  display: flex;
-  align-items: center;
-  height: 32px;
-  padding: 0 14px;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--tg-textPrimary);
-  cursor: pointer;
-
-  &:hover {
-    background: var(--tg-hover);
-  }
-}
-.rateItemActive {
-  color: var(--tg-accent);
-}
+// Меню скорости — общий shared <Menu> (портал+бэкдроп), свои классы не нужны.
 
 // Линия прогресса вдоль низа плашки (tweb)
 .progress {

@@ -150,6 +150,16 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
       ...(!isService ? [reportItem] : []),
       { icon: <TgIcon name="delete" size={20} />, label: 'Delete Chat', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
     ]
+  } else if (chat.type === 'secret') {
+    // Секретный чат (E2E): минимальное меню. Нет поиска (сервер не ищет по
+    // шифртексту), подарка/обсуждения/буста (это каналы/группы) — только базовое.
+    items = [
+      { icon: <TgIcon name="timer" size={20} />, label: 'Auto-delete', submenu: true },
+      muteItem,
+      { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
+      ...(clearItem ? [clearItem] : []),
+      { icon: <TgIcon name="delete" size={20} />, label: 'Delete Chat', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
+    ]
   } else if (chat.type === 'group') {
     items = [
       // Видеочат (tweb PeerInfo.Action.VoiceChat, иконка videochat)

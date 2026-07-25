@@ -16,6 +16,13 @@ func (i *Interactor) CreateSecretChat(ctx context.Context, userID, peerID int64,
 	if userID == peerID || len(initiatorPub) == 0 {
 		return domain.SecretChat{}, domain.ErrInvalid
 	}
+	// С ботом секретного чата быть не может (нет E2E-стороны на боте) — запрет
+	// defense-in-depth к фронт-фильтру пикера.
+	if i.bots != nil {
+		if isBot, err := i.bots.IsBot(ctx, peerID); err == nil && isBot {
+			return domain.SecretChat{}, domain.ErrForbidden
+		}
+	}
 	chatID, err := i.chats.CreateSecret(ctx, userID, peerID)
 	if err != nil {
 		return domain.SecretChat{}, err
@@ -25,6 +32,11 @@ func (i *Interactor) CreateSecretChat(ctx context.Context, userID, peerID int64,
 		return domain.SecretChat{}, err
 	}
 	i.publishSecretFrame(ctx, sc, "secret_chat_request")
+	// Push оффлайн-получателю: заявка на секретный чат — сообщений в чате ещё нет,
+	// поэтому msgID/seq = 0, тело — служебный текст (гейтинг online/notify внутри).
+	if i.notifier != nil {
+		i.notifier.NotifyNewMessage(ctx, sc.ResponderID, sc.ChatID, 0, 0, sc.InitiatorID, "🔒 Приглашение в секретный чат")
+	}
 	return sc, nil
 }
 

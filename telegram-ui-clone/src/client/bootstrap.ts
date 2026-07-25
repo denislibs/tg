@@ -145,6 +145,8 @@ export interface Managers {
     sync(chatId: number, meId: number): Promise<void>
     sendText(args: { chatId: number; text: string; entities?: unknown[]; ttlSeconds?: number | null; clientMsgId: string }): Promise<{ ok: boolean }>
     sendMedia(args: { chatId: number; bytes: ArrayBuffer; name: string; mime: string; size: number; mediaType: string; ttlSeconds?: number | null; clientMsgId: string }): Promise<{ ok: boolean }>
+    // Расшифровка шифр-блоба (для превью последнего сообщения секретного чата в списке).
+    decryptMessage(chatId: number, encBody: string): Promise<{ text: string; entities: unknown[]; media?: { mediaType: string } } | null>
   }
   media: {
     upload(a: UploadArgs): Promise<number>

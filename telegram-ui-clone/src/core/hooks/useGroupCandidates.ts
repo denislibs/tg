@@ -36,7 +36,8 @@ export function useGroupCandidates(managers: Deps): GroupCandidate[] {
   return useMemo(() => {
     const map = new Map<number, GroupCandidate>()
     for (const d of dialogs) {
-      if (d.type === 'private' && d.peer && d.peer.id !== SERVICE_USER_ID) {
+      // Ботов нельзя добавить в группу как участника (Telegram) — исключаем.
+      if (d.type === 'private' && d.peer && d.peer.id !== SERVICE_USER_ID && !d.peer.isBot) {
         map.set(d.peer.id, { id: d.peer.id, name: d.peer.displayName, avatarUrl: d.peer.avatarUrl || undefined })
       }
     }

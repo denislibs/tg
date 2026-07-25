@@ -92,11 +92,26 @@ export function useChatSend({
       const { secs, blob, mime, mode } = r
       if (!blob) return
       const type = mode === 'round' ? 'roundVideo' : 'voice' // кружок → круглое видеосообщение
-      const mediaId = await managers.media.upload({ blob, mime, size: blob.size, duration: secs })
       const clientMsgId = `c-${chat.id}-${performance.now()}-${Math.random().toString(36).slice(2)}`
+      atBottomRef.current = true; userScrolledUpRef.current = false
+      // Секретный чат (E2E): голос шифруем своим ключом файла и шлём как secret-медиа
+      // (иначе он уходил ПЛЕЙНТЕКСТОМ — дыра E2E). Без оптимистичного бабла — приедет
+      // расшифрованным echo new_message (как секретные документы). Кружок (round)
+      // пока идёт прежним путём. Воспроизведение расшифровывает audioStore/waveform.
+      if (chat.type === 'secret' && type === 'voice') {
+        const bytes = await blob.arrayBuffer()
+        let cid = numericChatId
+        if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
+        try {
+          await managers.secret.sendMedia({ chatId: cid, bytes, name: 'voice', mime, size: blob.size, mediaType: 'voice', ttlSeconds: null, clientMsgId })
+        } catch { /* ключ чата отсутствует / оффлайн — бабл не появится */ }
+        window.dispatchEvent(new Event('tg-send'))
+        if (draftPeerId != null) onChatCreated?.(cid)
+        return
+      }
+      const mediaId = await managers.media.upload({ blob, mime, size: blob.size, duration: secs })
       let cid = numericChatId
       if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
-      atBottomRef.current = true; userScrolledUpRef.current = false
       if (isRealChat) win.appendOptimistic('', meId ?? -1, clientMsgId, mediaId, type)
       void managers.realtime.sendMessage({ chatId: cid, text: '', clientMsgId, mediaId, type, threadRootId })
       window.dispatchEvent(new Event('tg-send'))

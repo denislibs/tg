@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 import { startClient } from '../client/bootstrap'
+import { decryptMedia } from '../core/secret/crypto'
+import { mediaContentUrl, primeMediaToken, hasMediaToken } from '../core/mediaUrl'
 
 // A track the global player can play (a voice message or audio file).
 export interface AudioTrack {
@@ -8,6 +10,10 @@ export interface AudioTrack {
   subtitle: string
   chatId?: number
   msgId?: number
+  // Секретный чат (E2E): сервер хранит только ciphertext — байты надо скачать,
+  // расшифровать ключом файла и играть blob-URL с верным mime (иначе <audio>
+  // получает шифртекст и звук — «мусор»). Как в SecretMediaBubble для фото/видео.
+  secret?: { keyB64: string; ivB64: string; mime: string }
 }
 
 interface AudioState {
@@ -46,6 +52,9 @@ let el: HTMLAudioElement | null = null
 function audio(): HTMLAudioElement {
   if (el) return el
   el = new Audio()
+  // Ошибку загрузки/декодирования src (напр. неподдерживаемый кодек) иначе не
+  // видно — .play() к тому моменту уже зарезолвился. Логируем явно для диагностики.
+  el.addEventListener('error', () => console.error('[audio] element error', el?.error?.code, el?.error?.message))
   el.addEventListener('timeupdate', () => { if (!external) useAudioStore.getState()._sync({ currentTime: el!.currentTime }) })
   el.addEventListener('loadedmetadata', () => { if (!external) useAudioStore.getState()._sync({ duration: el!.duration || 0 }) })
   el.addEventListener('play', () => { if (!external) useAudioStore.getState()._sync({ playing: true }) })
@@ -72,15 +81,50 @@ function detachExternal(pause: boolean) {
   external = null
 }
 
-// Load + play a track's bytes (resolving the media URL via the worker).
+// Кэш blob-URL расшифрованных секретных треков по mediaId. Нужен, чтобы к моменту
+// клика URL был готов синхронно и .play() вызывался в рамках user-gesture (иначе
+// await перед play() теряет активацию и play() тихо отклоняется — «нет звука»).
+const secretUrlCache = new Map<number, string>()
+const secretInflight = new Map<number, Promise<string>>()
+
+// Скачать ciphertext, расшифровать → blob-URL с верным mime; кэшируется по mediaId.
+export function prefetchSecretAudio(mediaId: number, secret: { keyB64: string; ivB64: string; mime: string }): Promise<string> {
+  const cached = secretUrlCache.get(mediaId)
+  if (cached) return Promise.resolve(cached)
+  const running = secretInflight.get(mediaId)
+  if (running) return running
+  const job = (async () => {
+    await primeMediaToken()
+    const res = await fetch(mediaContentUrl(mediaId))
+    if (!res.ok) throw new Error(`secret audio ${res.status}`)
+    const cipher = await res.arrayBuffer()
+    const buf = await decryptMedia(cipher, secret.keyB64, secret.ivB64)
+    const objectUrl = URL.createObjectURL(new Blob([buf], { type: secret.mime }))
+    secretUrlCache.set(mediaId, objectUrl)
+    return objectUrl
+  })()
+  secretInflight.set(mediaId, job)
+  void job.catch(() => {}).finally(() => secretInflight.delete(mediaId))
+  return job
+}
+
+// Load + play a track. src выставляем СИНХРОННО в рамках жеста, где можем: обычный
+// трек — синхронный media-URL (токен уже primed фидом), секретный — из кэша
+// префетча. Только при промахе кэша/токена уходим в await (активация может
+// теряться, но это редкий путь).
 async function load(track: AudioTrack, autoplay: boolean) {
   const a = audio()
-  const url = await startClient().managers.media.contentUrl(track.mediaId)
+  let url: string
+  if (track.secret) {
+    url = secretUrlCache.get(track.mediaId) ?? await prefetchSecretAudio(track.mediaId, track.secret)
+  } else {
+    url = hasMediaToken() ? mediaContentUrl(track.mediaId) : await startClient().managers.media.contentUrl(track.mediaId)
+  }
   a.src = url
   a.playbackRate = useAudioStore.getState().rate
   a.muted = useAudioStore.getState().muted
   a.volume = useAudioStore.getState().volume
-  if (autoplay) await a.play().catch(() => {})
+  if (autoplay) await a.play().catch((e) => console.error('[audio] play() failed', e))
 }
 
 export const useAudioStore = create<AudioState>((set, get) => ({
