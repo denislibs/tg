@@ -77,7 +77,7 @@ interface MessagesState {
   prepend: (key: string, msgs: Message[], reachedTop: boolean) => void
   append: (key: string, msgs: Message[], reachedBottom: boolean) => void
   appendLocal: (key: string, m: Message) => void
-  appendOptimistic: (key: string, text: string, meId: number, clientMsgId: string, mediaId?: number, type?: string, entities?: MessageEntity[], groupedId?: string, media?: OptimisticMedia, extra?: { geo?: { lat: number; lng: number }; contact?: { userId: number; name: string; phone: string }; threadRootId?: number; secret?: boolean }) => void
+  appendOptimistic: (key: string, text: string, meId: number, clientMsgId: string, mediaId?: number, type?: string, entities?: MessageEntity[], groupedId?: string, media?: OptimisticMedia, extra?: { geo?: { lat: number; lng: number }; contact?: { userId: number; name: string; phone: string }; threadRootId?: number; secret?: boolean; sendAs?: { chatId: number; title: string; photoId?: number } }) => void
   /** Аплоад завершён — проставить оптимистичному сообщению серверный media_id. */
   setOptimisticMedia: (key: string, clientMsgId: string, mediaId: number) => void
   reconcileAck: (key: string, clientMsgId: string, ack: { msgId: number; seq: number; createdAt: string }) => void
@@ -229,6 +229,9 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           contact: extra?.contact,
           // секретный чат: плейнтекст локально, бабл сразу помечается secret
           secret: extra?.secret,
+          // send-as: бабл сразу от имени выбранной личности (канал/группа),
+          // иначе свежий бабл показывался бы как «от себя» до reconcile.
+          sendAs: extra?.sendAs,
         }
         return { msgs: dedupAsc([...w.msgs, tmp]) }
       }),

@@ -278,7 +278,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
 
   // Real group/channel header card (type/counts/rights) + member presence seeding +
   // post/type permission + discussion wiring + live online count — view-model hook.
-  const { card, canType, discussionChatId, discussionsEnabled, onlineCount } =
+  const { card, canType, canSendText, canSendMedia, discussionChatId, discussionsEnabled, onlineCount } =
     useChatInfoCard({ isRealChat: isRealChat && !thread, isChannel, numericChatId, managers })
   // Message read-model: window Message[] → ConvMsg[] (sender/forward/reply names +
   // stable-ref cache) plus the resolved peers map (reused below for voice/lightbox).
@@ -488,6 +488,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // (супергруппа-обсуждение с привязанным каналом / анонимный админ). Выбор per-chat.
   const sendAs = useSendAs(numericChatId, isRealChat && isGroup && !thread, meId, managers)
   const sendAsChatId = sendAs.currentId !== 0 && sendAs.currentId !== meId ? sendAs.currentId : null
+  const sendAsTitle = sendAsChatId != null ? sendAs.peers.find((p) => p.peerId === sendAsChatId)?.title : undefined
 
   const {
     reply, setReply, editing, setEditing,
@@ -499,7 +500,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     sendGeo, sendContact, sendSticker, sendGif,
   } = useChatSend({
     chat, numericChatId, isRealChat, isChannel, draftPeerId, canType, secretLocked,
-    meId, win, managers, threadRootId, sendAsChatId, atBottomRef, userScrolledUpRef,
+    meId, win, managers, threadRootId, sendAsChatId, sendAsTitle, atBottomRef, userScrolledUpRef,
     onChatCreated,
   })
 
@@ -1059,7 +1060,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               )}
             </div>
           </div>
-        ) : canType ? (
+        ) : canType && canSendText ? (
           <div className={classNames(s.footer, s.footerCompose)}>
             {scrollDownFab}
             {replyKeyboard && (
@@ -1095,12 +1096,12 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               rec={rec}
               onSend={onComposerSend}
               onTyping={onComposerTyping}
-              onPickSticker={canType && !isChannel && chat.type !== 'secret' ? onComposerPickSticker : undefined}
-              onPickGif={canType && !isChannel && chat.type !== 'secret' ? onComposerPickGif : undefined}
+              onPickSticker={canType && canSendMedia && !isChannel && chat.type !== 'secret' ? onComposerPickSticker : undefined}
+              onPickGif={canType && canSendMedia && !isChannel && chat.type !== 'secret' ? onComposerPickGif : undefined}
               onCancelReply={onComposerCancelReply}
               onCancelEdit={onComposerCancelEdit}
               onOpenAttach={onComposerOpenAttach}
-              onPasteFiles={isRealChat ? onComposerPasteFiles : undefined}
+              onPasteFiles={isRealChat && canSendMedia ? onComposerPasteFiles : undefined}
               initialDraft={initialDraft}
               onDraftChange={isRealChat ? onDraftChange : undefined}
               mentions={isGroup && mentionPeers.length > 0 ? mentionPeers : undefined}
@@ -1114,11 +1115,22 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               onOpenScheduled={() => setScheduledOpen(true)}
               slowmodeLeft={slowmodeLeft}
               secret={chat.type === 'secret'}
+              canSendMedia={canSendMedia}
               chargeStars={composerChargeStars}
               sendAs={sendAs.peers.length > 1 ? { peers: sendAs.peers, currentId: sendAs.currentId, onSelect: sendAs.select } : undefined}
               onEditLast={onComposerEditLast}
               onReplyPrev={onComposerReplyPrev}
             />
+          </div>
+        ) : isGroup && !canSendText ? (
+          /* Группа запрещает участникам писать (дефолт-права) — плашка вместо
+             композера, как в tweb (вместо «молчаливого» отказа на бэке). */
+          <div className={classNames(s.footer, s.footerMuted)}>
+            {scrollDownFab}
+            <div className={s.muteBtn} style={{ cursor: 'default' }}>
+              <TgIcon name="permissions" size={20} color="var(--tg-textSecondary)" />
+              <Text weight={600} size={15.5} color="var(--tg-textSecondary)">{t('Sending messages is not allowed in this group')}</Text>
+            </div>
           </div>
         ) : (
           <div className={classNames(s.footer, s.footerMuted)}>
