@@ -5,6 +5,37 @@
   padding: 8px 2px 4px;
 }
 
+// кнопка «Создать» в шапке справа (tweb ADD): accent-пилюля, гаснет пока невалидно
+.addBtn {
+  border: none;
+  border-radius: 999px;
+  padding: 8px 18px;
+  background: var(--tg-accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+}
+
+// аватар слева + колонка имён справа
+.row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.names {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
 .field {
   width: 100%;
 }

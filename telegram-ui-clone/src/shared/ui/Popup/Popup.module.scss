@@ -10,6 +10,9 @@
 }
 
 .card {
+  // Поверхность для нотча плавающих лейблов внутри попапа (иначе лейбл рисуется
+  // на дефолтном --tg-sidebarBg → «белая плашка» на серой карточке).
+  --input-bg: var(--tg-sectionBackdrop);
   margin: auto;
   max-height: min(86vh, 720px);
   display: flex;

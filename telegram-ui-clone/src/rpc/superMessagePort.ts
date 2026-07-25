@@ -9,7 +9,7 @@ export interface Endpoint {
 
 type Task =
   | { kind: 'invoke'; id: number; type: string; payload: unknown }
-  | { kind: 'result'; id: number; result?: unknown; error?: string }
+  | { kind: 'result'; id: number; result?: unknown; error?: string; errorStatus?: number }
   | { kind: 'event'; event: string; payload: unknown }
 
 export class SuperMessagePort {
@@ -64,14 +64,20 @@ export class SuperMessagePort {
         const result = await fn(task.payload)
         this.post({ kind: 'result', id: task.id, result })
       } catch (e) {
-        this.post({ kind: 'result', id: task.id, error: e instanceof Error ? e.message : String(e) })
+        // HTTP-статус (HttpError.status) переживает границу worker→main, чтобы
+        // вызывающий мог различать 404/403/… (иначе instanceof/.status терялись).
+        const status = (e as { status?: number } | null)?.status
+        this.post({ kind: 'result', id: task.id, error: e instanceof Error ? e.message : String(e), errorStatus: typeof status === 'number' ? status : undefined })
       }
     } else if (task.kind === 'result') {
       const d = this.awaiting.get(task.id)
       if (!d) return
       this.awaiting.delete(task.id)
-      if (task.error) d.reject(new Error(task.error))
-      else d.resolve(task.result)
+      if (task.error) {
+        const err = new Error(task.error) as Error & { status?: number }
+        if (typeof task.errorStatus === 'number') err.status = task.errorStatus
+        d.reject(err)
+      } else d.resolve(task.result)
     } else if (task.kind === 'event') {
       for (const cb of this.listeners.get(task.event) ?? []) cb(task.payload)
     }
