@@ -1,0 +1,62 @@
+// Глобальные хоткеи (tweb): Ctrl/Cmd+K — фокус в поиск; Esc при пустом стеке
+// оверлеев — закрыть чат/тред; Ctrl/Cmd+Shift+M — mute текущего; Ctrl/Cmd+0 —
+// «Избранное»; Alt+↑/↓ — циклическая навигация по диалогам. Все колбэки читают
+// сторы через getState() → стабильны, поэтому ref-зеркала стейта больше не нужны.
+import { useCallback, useEffect } from 'react'
+import type { Managers } from '../../client/bootstrap'
+import { useChatsStore, loadChats } from '../../stores/chatsStore'
+import { useNavigationStore } from '../../stores/navigationStore'
+import { initHotkeys } from '../hotkeys'
+
+export function useAppHotkeys(managers: Managers): void {
+  // Esc: тред закрывается первым (комментарии → назад к каналу), затем чат.
+  const escCloseChat = useCallback(() => {
+    const nav = useNavigationStore.getState()
+    if (nav.openThread) { nav.closeThread(); return }
+    if (nav.selectedId) { nav.setSelectedId(null); nav.setDraftPeer(null) }
+  }, [])
+
+  const muteCurrentChat = useCallback(() => {
+    const id = useNavigationStore.getState().selectedId
+    if (!id || id.startsWith('draft:')) return
+    const chatId = Number(id)
+    const st = useChatsStore.getState()
+    const dlg = st.dialogs.find((d) => d.chatId === chatId)
+    if (!dlg) return
+    const next = !dlg.muted
+    st.setDialogMuted(chatId, next) // оптимистично, как ChatListItem
+    void managers.groups.setMute(chatId, next).catch(() => st.setDialogMuted(chatId, !next))
+  }, [managers])
+
+  // Ctrl/Cmd+0 — «Избранное»: тот же путь, что бургер-меню сайдбара.
+  const openSaved = useCallback(() => {
+    void (async () => {
+      const id = await managers.chats.saved()
+      await loadChats(managers)
+      useNavigationStore.getState().selectChat(String(id))
+    })()
+  }, [managers])
+
+  // Alt+↑/↓ — циклическая навигация. Черновики (draft:) в список не входят.
+  const cycleChat = useCallback((dir: 1 | -1) => {
+    const list = useChatsStore.getState().dialogs
+    if (!list.length) return
+    const cur = useNavigationStore.getState().selectedId
+    const idx = list.findIndex((d) => String(d.chatId) === cur)
+    const nextIdx = idx < 0 ? (dir === 1 ? 0 : list.length - 1) : (idx + dir + list.length) % list.length
+    useNavigationStore.getState().selectChat(String(list[nextIdx].chatId))
+  }, [])
+
+  useEffect(
+    () =>
+      initHotkeys({
+        focusSearch: () => window.dispatchEvent(new Event('tg-focus-search')),
+        escFallback: escCloseChat,
+        muteChat: muteCurrentChat,
+        openSaved,
+        nextChat: () => cycleChat(1),
+        prevChat: () => cycleChat(-1),
+      }),
+    [escCloseChat, muteCurrentChat, openSaved, cycleChat],
+  )
+}
