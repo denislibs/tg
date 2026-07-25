@@ -58,6 +58,10 @@ func storyJSON(s domain.StoryItem) map[string]any {
 	if s.MyReaction != "" {
 		my = s.MyReaction
 	}
+	areas := s.MediaAreas
+	if areas == nil {
+		areas = []domain.StoryMediaArea{}
+	}
 	out := map[string]any{
 		"id": s.ID, "media_id": s.MediaID, "caption": s.Caption,
 		"privacy": s.Privacy, "pinned": s.Pinned, "edited": s.Edited,
@@ -65,6 +69,11 @@ func storyJSON(s domain.StoryItem) map[string]any {
 		"reactions_count": s.ReactionsCount,
 		"my_reaction":     my,
 		"reactions":       reactionsJSON(s.Reactions),
+		"media_areas":     areas,
+	}
+	// fwd_from присутствует только у репоста (ссылка на исходную историю).
+	if s.FwdFrom != nil {
+		out["fwd_from"] = map[string]any{"author_id": s.FwdFrom.AuthorID, "story_id": s.FwdFrom.StoryID}
 	}
 	// allow_user_ids отдаётся только для своих selected-историй (usecase заполняет
 	// AllowIDs лишь тогда), чтобы автор мог редактировать аудиторию; чужие — nil.
@@ -77,10 +86,11 @@ func storyJSON(s domain.StoryItem) map[string]any {
 func (h *StoryHandler) Post(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	var b struct {
-		MediaID      int64   `json:"media_id"`
-		Caption      string  `json:"caption"`
-		Privacy      string  `json:"privacy"`
-		AllowUserIDs []int64 `json:"allow_user_ids"`
+		MediaID      int64                   `json:"media_id"`
+		Caption      string                  `json:"caption"`
+		Privacy      string                  `json:"privacy"`
+		AllowUserIDs []int64                 `json:"allow_user_ids"`
+		MediaAreas   []domain.StoryMediaArea `json:"media_areas"`
 		// Period — срок жизни истории в секундах (6h/12h/24h/48h; 24h по умолчанию).
 		Period int64 `json:"period"`
 	}
@@ -88,12 +98,61 @@ func (h *StoryHandler) Post(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "media_id required")
 		return
 	}
-	id, err := h.svc.Post(r.Context(), user.ID, b.MediaID, b.Caption, b.Privacy, b.AllowUserIDs, b.Period)
+	id, err := h.svc.Post(r.Context(), user.ID, b.MediaID, b.Caption, b.Privacy, b.AllowUserIDs, b.MediaAreas, b.Period)
 	if err != nil {
 		h.mapErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": id})
+}
+
+// Repost serves POST /stories/repost — republish an existing story as a new one
+// referencing the source (tweb fwd_from). Body: source_story_id (required),
+// optional source_author_id (informational), caption/privacy/allow_user_ids/period
+// like Post.
+func (h *StoryHandler) Repost(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	var b struct {
+		SourceAuthorID int64   `json:"source_author_id"`
+		SourceStoryID  int64   `json:"source_story_id"`
+		Caption        string  `json:"caption"`
+		Privacy        string  `json:"privacy"`
+		AllowUserIDs   []int64 `json:"allow_user_ids"`
+		Period         int64   `json:"period"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || b.SourceStoryID == 0 {
+		writeError(w, http.StatusBadRequest, "source_story_id required")
+		return
+	}
+	id, err := h.svc.Repost(r.Context(), user.ID, b.SourceStoryID, b.Caption, b.Privacy, b.AllowUserIDs, b.Period)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"id": id})
+}
+
+// Share serves POST /stories/{storyID}/share — post the story into the given
+// chats as a regular media message with an attribution caption. Body: {chat_ids}.
+func (h *StoryHandler) Share(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	storyID, ok := pathInt(w, r, "storyID")
+	if !ok {
+		return
+	}
+	var b struct {
+		ChatIDs []int64 `json:"chat_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || len(b.ChatIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "chat_ids required")
+		return
+	}
+	sent, err := h.svc.Share(r.Context(), storyID, user.ID, b.ChatIDs)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"sent": sent})
 }
 
 func (h *StoryHandler) Feed(w http.ResponseWriter, r *http.Request) {
@@ -347,15 +406,16 @@ func (h *StoryHandler) Edit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var b struct {
-		Caption      *string `json:"caption"`
-		Privacy      *string `json:"privacy"`
-		AllowUserIDs []int64 `json:"allow_user_ids"`
+		Caption      *string                  `json:"caption"`
+		Privacy      *string                  `json:"privacy"`
+		AllowUserIDs []int64                  `json:"allow_user_ids"`
+		MediaAreas   *[]domain.StoryMediaArea `json:"media_areas"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if err := h.svc.EditStory(r.Context(), storyID, user.ID, b.Caption, b.Privacy, b.AllowUserIDs); err != nil {
+	if err := h.svc.EditStory(r.Context(), storyID, user.ID, b.Caption, b.Privacy, b.AllowUserIDs, b.MediaAreas); err != nil {
 		h.mapErr(w, err)
 		return
 	}

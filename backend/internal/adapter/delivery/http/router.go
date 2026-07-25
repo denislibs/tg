@@ -348,6 +348,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 
 		if storyH != nil {
 			pr.Post("/stories", storyH.Post)
+			pr.Post("/stories/repost", storyH.Repost)
 			pr.Get("/stories", storyH.Feed)
 			pr.Get("/stories/archive", storyH.Archive)
 			pr.Get("/stories/pinned", storyH.Pinned)
@@ -357,6 +358,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 			pr.Post("/stories/{storyID}/reaction", storyH.SetReaction)
 			pr.Delete("/stories/{storyID}/reaction", storyH.RemoveReaction)
 			pr.Post("/stories/{storyID}/pin", storyH.Pin)
+			pr.Post("/stories/{storyID}/share", storyH.Share)
 			pr.Get("/stories/{storyID}/viewers", storyH.Viewers)
 			pr.Get("/stories/{storyID}/stats", storyH.Stats)
 			pr.Patch("/stories/{storyID}", storyH.Edit)

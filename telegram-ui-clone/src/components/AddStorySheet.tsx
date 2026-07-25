@@ -8,13 +8,18 @@ import { useChatsStore } from '../stores/chatsStore'
 import { useManagers } from '../core/hooks/useManagers'
 import { gradientFor } from '../core/dialogToChat'
 import classNames from '../shared/lib/classNames'
+import Emoji from './emoji/Emoji'
 import s from './AddStorySheet.module.scss'
-import type { StoryPrivacy } from '../core/managers/storiesManager'
+import type { StoryPrivacy, MediaArea } from '../core/managers/storiesManager'
 
 export type { StoryPrivacy }
 
 // Лимит длины подписи истории — совпадает с бэком (maxCaptionRunes).
 const MAX_CAPTION_LEN = 2048
+
+// 4d: набор эмодзи для reaction-стикера (media area). Минимальный редактор —
+// одна reaction-область в нижней центральной части (без свободного перетаскивания).
+const REACTION_STICKERS = ['❤', '👍', '🔥', '🥰', '👏', '😁', '🎉']
 
 const PRIVACY_OPTIONS: { key: StoryPrivacy; label: string }[] = [
   { key: 'everyone', label: 'Все' },
@@ -43,7 +48,7 @@ export default function AddStorySheet({
   onEditCloseFriends,
 }: {
   onBack: () => void
-  onPublish: (args: { caption: string; privacy: StoryPrivacy; allowIds: number[]; period: number }) => void | Promise<void>
+  onPublish: (args: { caption: string; privacy: StoryPrivacy; allowIds: number[]; period: number; mediaAreas: MediaArea[] }) => void | Promise<void>
   // переход в редактор списка близких друзей (при выборе аудитории «Близкие»)
   onEditCloseFriends?: () => void
 }) {
@@ -58,6 +63,7 @@ export default function AddStorySheet({
   const [privacy, setPrivacy] = useState<StoryPrivacy>('contacts')
   const [period, setPeriod] = useState(86400)
   const [allow, setAllow] = useState<Set<number>>(new Set())
+  const [reactionSticker, setReactionSticker] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   // кол-во близких друзей — для подсказки при аудитории «Близкие»
   const [closeCount, setCloseCount] = useState<number | null>(null)
@@ -79,11 +85,15 @@ export default function AddStorySheet({
     if (busy) return
     setBusy(true)
     try {
+      const mediaAreas: MediaArea[] = reactionSticker
+        ? [{ type: 'reaction', coordinates: { x: 50, y: 78, w: 22, h: 12, rotation: 0 }, reaction: reactionSticker, dark: false, flipped: false }]
+        : []
       await onPublish({
         caption: caption.trim(),
         privacy,
         allowIds: privacy === 'selected' ? [...allow] : [],
         period,
+        mediaAreas,
       })
     } finally {
       setBusy(false)
@@ -187,6 +197,44 @@ export default function AddStorySheet({
                   className={classNames(s.segment, active ? s.segmentActive : '')}
                 >
                   {opt.label}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* 4d: reaction-стикер (media area). Минимальный редактор — выбор эмодзи,
+            область ставится в нижнюю центральную часть истории. */}
+        <div className={s.privacyBlock} style={{ marginTop: 12 }}>
+          <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionLabel}>
+            Реакция-стикер
+          </Text>
+          <div className={classNames(s.card, s.segments)} role="radiogroup" aria-label="Реакция-стикер">
+            <div
+              role="radio"
+              aria-checked={reactionSticker === null}
+              tabIndex={0}
+              onClick={() => setReactionSticker(null)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setReactionSticker(null) } }}
+              className={classNames(s.segment, reactionSticker === null ? s.segmentActive : '')}
+            >
+              Нет
+            </div>
+            {REACTION_STICKERS.map((emo) => {
+              const active = reactionSticker === emo
+              return (
+                <div
+                  key={emo}
+                  role="radio"
+                  aria-checked={active}
+                  aria-label={emo}
+                  tabIndex={0}
+                  onClick={() => setReactionSticker(active ? null : emo)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setReactionSticker(active ? null : emo) } }}
+                  className={classNames(s.segment, active ? s.segmentActive : '')}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Emoji e={emo} size={22} />
                 </div>
               )
             })}

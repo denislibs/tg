@@ -7,6 +7,29 @@ export interface StoryReaction { emoji: string; count: number; mine: boolean }
 // Приватность истории (4c): 'close' — только близкие друзья автора.
 export type StoryPrivacy = 'everyone' | 'contacts' | 'close' | 'selected'
 
+// 4d: media area — интерактивная область поверх истории (tweb StoryMediaArea).
+// Координаты в процентах бокса медиа (0..100); rotation — градусы.
+export interface MediaAreaCoords { x: number; y: number; w: number; h: number; rotation: number }
+export type MediaAreaType = 'geo' | 'venue' | 'reaction' | 'url'
+export interface MediaArea {
+  type: MediaAreaType
+  coordinates: MediaAreaCoords
+  // geo/venue:
+  lat?: number
+  long?: number
+  title?: string
+  address?: string
+  // reaction (suggested reaction sticker):
+  reaction?: string
+  dark?: boolean
+  flipped?: boolean
+  // url:
+  url?: string
+}
+
+// 4d: атрибуция репоста (tweb fwd_from) — автор и id исходной истории.
+export interface StoryFwd { authorId: number; storyId: number }
+
 export interface StoryItem {
   id: number
   mediaId: number
@@ -25,6 +48,9 @@ export interface StoryItem {
   // allowIds — явный allow-лист (для privacy==='selected'); бэк отдаёт его только
   // для СВОИХ историй, чтобы автор мог отредактировать аудиторию.
   allowIds?: number[]
+  // 4d: интерактивные области поверх истории + атрибуция репоста.
+  mediaAreas: MediaArea[]
+  fwdFrom?: StoryFwd
 }
 
 // Текущее окно stealth-режима (tweb getStealthMode). null — режим не активен/нет кулдауна.
@@ -61,6 +87,8 @@ interface RawStory {
   edited?: boolean
   expires_at?: string
   allow_user_ids?: number[]
+  media_areas?: MediaArea[]
+  fwd_from?: { author_id: number; story_id: number }
 }
 
 export function mapStory(s: RawStory): StoryItem {
@@ -78,6 +106,8 @@ export function mapStory(s: RawStory): StoryItem {
     edited: s.edited ?? false,
     expiresAt: s.expires_at ?? '',
     allowIds: s.allow_user_ids,
+    mediaAreas: s.media_areas ?? [],
+    fwdFrom: s.fwd_from ? { authorId: s.fwd_from.author_id, storyId: s.fwd_from.story_id } : undefined,
   }
 }
 
@@ -90,15 +120,35 @@ export function newStoriesManager({ rest }: { rest: Pick<RestClient, 'get' | 'po
         stories: g.stories.map(mapStory),
       }))
     },
-    async post(args: { mediaId: number; caption?: string; privacy?: StoryPrivacy; allowIds?: number[]; period?: number }): Promise<number> {
+    async post(args: { mediaId: number; caption?: string; privacy?: StoryPrivacy; allowIds?: number[]; period?: number; mediaAreas?: MediaArea[] }): Promise<number> {
       const r = await rest.post<{ id: number }>('/stories', {
         media_id: args.mediaId,
         caption: args.caption ?? '',
         privacy: args.privacy ?? 'contacts',
         allow_user_ids: args.allowIds ?? [],
         period: args.period ?? DEFAULT_STORY_PERIOD,
+        media_areas: args.mediaAreas ?? [],
       })
       return r.id
+    },
+    // Репост чужой истории (4d, tweb fwd_from): создаёт свою историю со ссылкой на
+    // оригинал; media берётся с бэка от источника. Возвращает id новой истории.
+    async repost(args: { sourceAuthorId: number; sourceStoryId: number; caption?: string; privacy?: StoryPrivacy; allowIds?: number[]; period?: number }): Promise<number> {
+      const r = await rest.post<{ id: number }>('/stories/repost', {
+        source_author_id: args.sourceAuthorId,
+        source_story_id: args.sourceStoryId,
+        caption: args.caption ?? '',
+        privacy: args.privacy ?? 'contacts',
+        allow_user_ids: args.allowIds ?? [],
+        period: args.period ?? DEFAULT_STORY_PERIOD,
+      })
+      return r.id
+    },
+    // Поделиться историей в чаты (4d, tweb share): в каждый чат уходит медиа-
+    // сообщение с атрибуцией. Возвращает число успешно отправленных.
+    async share(id: number, chatIds: number[]): Promise<number> {
+      const r = await rest.post<{ sent: number }>(`/stories/${id}/share`, { chat_ids: chatIds })
+      return r.sent ?? 0
     },
     async view(id: number): Promise<void> { await rest.post(`/stories/${id}/view`, {}) },
     // Close friends (4c): список id близких друзей + его полная замена.
@@ -133,11 +183,12 @@ export function newStoriesManager({ rest }: { rest: Pick<RestClient, 'get' | 'po
       return (r.stories ?? []).map(mapStory)
     },
     // Редактирование (4c): подпись/приватность (+allow-лист для selected).
-    async editStory(id: number, patch: { caption?: string; privacy?: StoryPrivacy; allowIds?: number[] }): Promise<void> {
+    async editStory(id: number, patch: { caption?: string; privacy?: StoryPrivacy; allowIds?: number[]; mediaAreas?: MediaArea[] }): Promise<void> {
       const body: Record<string, unknown> = {}
       if (patch.caption != null) body.caption = patch.caption
       if (patch.privacy != null) body.privacy = patch.privacy
       if (patch.allowIds != null) body.allow_user_ids = patch.allowIds
+      if (patch.mediaAreas != null) body.media_areas = patch.mediaAreas
       await rest.patch(`/stories/${id}`, body)
     },
     // Реакция на историю (4b): POST ставит/меняет, DELETE снимает.

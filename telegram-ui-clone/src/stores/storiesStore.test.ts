@@ -6,7 +6,7 @@ import type { StoryGroup, StoryItem } from '../core/managers/storiesManager'
 const mkStory = (over: Partial<StoryItem> = {}): StoryItem => ({
   id: 1, mediaId: 11, caption: '', createdAt: 't0', viewed: false,
   reactionsCount: 0, myReaction: null, reactions: [],
-  privacy: 'contacts', pinned: false, edited: false, expiresAt: 't1', ...over,
+  privacy: 'contacts', pinned: false, edited: false, expiresAt: 't1', mediaAreas: [], ...over,
 })
 
 const groups: StoryGroup[] = [

@@ -31,7 +31,7 @@ function fakeRest(getResult: unknown, postResult: unknown = {}) {
 }
 
 // Полный набор дефолтных полей истории после mapStory (для сравнения объектов).
-const dflt = { reactionsCount: 0, myReaction: null, reactions: [], privacy: 'contacts', pinned: false, edited: false, expiresAt: '' }
+const dflt = { reactionsCount: 0, myReaction: null, reactions: [], privacy: 'contacts', pinned: false, edited: false, expiresAt: '', mediaAreas: [] }
 
 describe('StoriesManager', () => {
   it('feed maps groups snake->camel (own group first)', async () => {
@@ -93,7 +93,7 @@ describe('StoriesManager', () => {
       id: 5, mediaId: 50, caption: '', createdAt: 't', viewed: false,
       reactionsCount: 3, myReaction: '❤',
       reactions: [{ emoji: '❤', count: 2, mine: true }, { emoji: '🔥', count: 1, mine: false }],
-      privacy: 'contacts', pinned: false, edited: false, expiresAt: '',
+      privacy: 'contacts', pinned: false, edited: false, expiresAt: '', mediaAreas: [],
     })
   })
 
@@ -111,7 +111,7 @@ describe('StoriesManager', () => {
     expect(calls[0]).toEqual({
       method: 'POST',
       path: '/stories',
-      body: { media_id: 11, caption: 'cap', privacy: 'contacts', allow_user_ids: [2, 3], period: 43200 },
+      body: { media_id: 11, caption: 'cap', privacy: 'contacts', allow_user_ids: [2, 3], period: 43200, media_areas: [] },
     })
   })
 
@@ -119,7 +119,7 @@ describe('StoriesManager', () => {
     const { rest, calls } = fakeRest({}, { id: 1 })
     const mgr = newStoriesManager({ rest })
     await mgr.post({ mediaId: 5 })
-    expect(calls[0].body).toEqual({ media_id: 5, caption: '', privacy: 'contacts', allow_user_ids: [], period: 86400 })
+    expect(calls[0].body).toEqual({ media_id: 5, caption: '', privacy: 'contacts', allow_user_ids: [], period: 86400, media_areas: [] })
   })
 
   it('setReaction POSTs /stories/:id/reaction and removeReaction DELETEs it', async () => {
@@ -226,5 +226,50 @@ describe('StoriesManager', () => {
     // omitted fields absent from body
     await mgr.editStory(7, { caption: 'only' })
     expect(calls[1].body).toEqual({ caption: 'only' })
+  })
+
+  // 4d
+  it('feed maps media_areas and fwd_from', async () => {
+    const { rest } = fakeRest({
+      groups: [{
+        author: { id: 2, display_name: 'Bob', avatar_url: '' },
+        stories: [{
+          id: 5, media_id: 50, caption: '', created_at: 't', viewed: false,
+          media_areas: [{ type: 'reaction', coordinates: { x: 50, y: 78, w: 22, h: 12, rotation: 0 }, reaction: '❤' }],
+          fwd_from: { author_id: 9, story_id: 3 },
+        }],
+      }],
+    })
+    const mgr = newStoriesManager({ rest })
+    const groups = await mgr.feed()
+    expect(groups[0].stories[0].mediaAreas).toEqual([{ type: 'reaction', coordinates: { x: 50, y: 78, w: 22, h: 12, rotation: 0 }, reaction: '❤' }])
+    expect(groups[0].stories[0].fwdFrom).toEqual({ authorId: 9, storyId: 3 })
+  })
+
+  it('post passes media_areas', async () => {
+    const { rest, calls } = fakeRest({}, { id: 1 })
+    const mgr = newStoriesManager({ rest })
+    const areas = [{ type: 'reaction' as const, coordinates: { x: 50, y: 78, w: 22, h: 12, rotation: 0 }, reaction: '👍' }]
+    await mgr.post({ mediaId: 5, mediaAreas: areas })
+    expect(calls[0].body).toMatchObject({ media_areas: areas })
+  })
+
+  it('repost POSTs /stories/repost with source + returns id', async () => {
+    const { rest, calls } = fakeRest({}, { id: 77 })
+    const mgr = newStoriesManager({ rest })
+    const id = await mgr.repost({ sourceAuthorId: 2, sourceStoryId: 5, caption: 'c', privacy: 'contacts', period: 43200 })
+    expect(id).toBe(77)
+    expect(calls[0]).toEqual({
+      method: 'POST', path: '/stories/repost',
+      body: { source_author_id: 2, source_story_id: 5, caption: 'c', privacy: 'contacts', allow_user_ids: [], period: 43200 },
+    })
+  })
+
+  it('share POSTs /stories/:id/share and returns sent count', async () => {
+    const { rest, calls } = fakeRest({}, { sent: 2 })
+    const mgr = newStoriesManager({ rest })
+    const n = await mgr.share(7, [10, 11])
+    expect(n).toBe(2)
+    expect(calls[0]).toEqual({ method: 'POST', path: '/stories/7/share', body: { chat_ids: [10, 11] } })
   })
 })

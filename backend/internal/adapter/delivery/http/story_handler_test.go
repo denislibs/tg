@@ -27,6 +27,7 @@ func newStoryRouter(t *testing.T) (http.Handler, *pgxpool.Pool) {
 		pgadapter.NewMediaAccessRepo(pool),
 		pgadapter.NewTxManager(pool),
 	)
+	storySvc.SetMessageSender(chatUC)
 	storyH := NewStoryHandler(storySvc)
 	return NewRouter(authUC, chatUC, nil, mediaH, nil, nil, storyH, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil), pool
 }
@@ -381,5 +382,167 @@ func TestStories_Flow_HTTP(t *testing.T) {
 	_ = json.Unmarshal(rec.Body.Bytes(), &feed)
 	if len(feed.Groups) != 0 {
 		t.Fatalf("expected empty feed after delete, got %s", rec.Body.String())
+	}
+}
+
+// TestStories_MediaAreasRepostShare_HTTP covers the 4d endpoints end-to-end:
+// posting a story with media_areas (round-tripped in the feed payload), a
+// visibility-gated repost carrying fwd_from, and sharing the story into a chat
+// as a regular media message.
+func TestStories_MediaAreasRepostShare_HTTP(t *testing.T) {
+	h, pool := newStoryRouter(t)
+	tokenA, idA := signUp(t, h, pool, "+79990000090")
+	tokenB, idB := signUp(t, h, pool, "+79990000091")
+	tokenC, _ := signUp(t, h, pool, "+79990000092")
+
+	// A↔B private chat makes B a partner of A (can see contacts stories) and a
+	// valid share target.
+	rec := authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": idB})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create chat: %d %s", rec.Code, rec.Body.String())
+	}
+	var chat struct {
+		ChatID int64 `json:"chat_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &chat)
+
+	// A uploads media and posts a story with media_areas.
+	rec = authedReq(t, h, http.MethodPost, "/media/upload", tokenA, map[string]any{"mime": "image/jpeg", "size": 2048})
+	var created struct {
+		MediaID int64 `json:"media_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+
+	areas := []map[string]any{
+		{"type": "reaction", "coordinates": map[string]any{"x": 50, "y": 50, "w": 10, "h": 10, "rotation": 0}, "reaction": "👍"},
+		{"type": "geo", "coordinates": map[string]any{"x": 1, "y": 2, "w": 5, "h": 5, "rotation": 0}, "lat": 55.75, "long": 37.61, "title": "Москва"},
+	}
+	// "selected" allowing only B: B may repost/see it, C may not (contacts/everyone
+	// stories are visible to everyone by the Visible predicate, so they can't gate C).
+	rec = authedReq(t, h, http.MethodPost, "/stories", tokenA, map[string]any{
+		"media_id": created.MediaID, "caption": "orig", "privacy": "selected",
+		"allow_user_ids": []int64{idB}, "media_areas": areas,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("post story: %d %s", rec.Code, rec.Body.String())
+	}
+	var posted struct {
+		ID int64 `json:"id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &posted)
+
+	// A's feed payload carries media_areas.
+	rec = authedReq(t, h, http.MethodGet, "/stories", tokenA, nil)
+	var feed struct {
+		Groups []struct {
+			Stories []struct {
+				ID         int64 `json:"id"`
+				MediaAreas []struct {
+					Type        string   `json:"type"`
+					Reaction    string   `json:"reaction"`
+					Lat         *float64 `json:"lat"`
+					Coordinates struct {
+						X float64 `json:"x"`
+					} `json:"coordinates"`
+				} `json:"media_areas"`
+			} `json:"stories"`
+		} `json:"groups"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &feed)
+	if len(feed.Groups) != 1 || len(feed.Groups[0].Stories) != 1 {
+		t.Fatalf("A feed shape: %s", rec.Body.String())
+	}
+	fa := feed.Groups[0].Stories[0].MediaAreas
+	if len(fa) != 2 || fa[0].Type != "reaction" || fa[0].Reaction != "👍" || fa[1].Type != "geo" || fa[1].Lat == nil {
+		t.Fatalf("media_areas payload = %+v", fa)
+	}
+
+	// C (no chat with A) cannot repost A's contacts story.
+	rec = authedReq(t, h, http.MethodPost, "/stories/repost", tokenC, map[string]any{
+		"source_author_id": idA, "source_story_id": posted.ID,
+	})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("C repost: want 403, got %d %s", rec.Code, rec.Body.String())
+	}
+
+	// B (partner) reposts; the new story references A via fwd_from.
+	rec = authedReq(t, h, http.MethodPost, "/stories/repost", tokenB, map[string]any{
+		"source_author_id": idA, "source_story_id": posted.ID, "caption": "look", "privacy": "everyone",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("B repost: %d %s", rec.Code, rec.Body.String())
+	}
+	var reposted struct {
+		ID int64 `json:"id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &reposted)
+
+	// B's feed shows the repost with fwd_from{author_id:A}.
+	rec = authedReq(t, h, http.MethodGet, "/stories", tokenB, nil)
+	var bfeed struct {
+		Groups []struct {
+			Stories []struct {
+				ID      int64 `json:"id"`
+				FwdFrom *struct {
+					AuthorID int64 `json:"author_id"`
+					StoryID  int64 `json:"story_id"`
+				} `json:"fwd_from"`
+			} `json:"stories"`
+		} `json:"groups"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &bfeed)
+	var fwdSeen bool
+	for _, g := range bfeed.Groups {
+		for _, s := range g.Stories {
+			if s.ID == reposted.ID {
+				if s.FwdFrom == nil || s.FwdFrom.AuthorID != idA || s.FwdFrom.StoryID != posted.ID {
+					t.Fatalf("repost fwd_from payload = %+v", s.FwdFrom)
+				}
+				fwdSeen = true
+			}
+		}
+	}
+	if !fwdSeen {
+		t.Fatalf("repost not found in B feed: %s", rec.Body.String())
+	}
+
+	// A shares the story into the A↔B chat: sent count 1, a media message lands.
+	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(posted.ID)+"/share", tokenA, map[string]any{
+		"chat_ids": []int64{chat.ChatID},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("share: %d %s", rec.Code, rec.Body.String())
+	}
+	var shareResp struct {
+		Sent int `json:"sent"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &shareResp)
+	if shareResp.Sent != 1 {
+		t.Fatalf("share sent = %d; want 1", shareResp.Sent)
+	}
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(chat.ChatID)+"/history?limit=10", tokenA, nil)
+	var hist struct {
+		Messages []struct {
+			MediaID *int64 `json:"media_id"`
+			Text    string `json:"text"`
+		} `json:"messages"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &hist)
+	var shared bool
+	for _, m := range hist.Messages {
+		if m.MediaID != nil && *m.MediaID == created.MediaID {
+			shared = true
+		}
+	}
+	if !shared {
+		t.Fatalf("shared media message not found in chat history: %s", rec.Body.String())
+	}
+
+	// C cannot share a story it cannot see.
+	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(posted.ID)+"/share", tokenC, map[string]any{
+		"chat_ids": []int64{chat.ChatID},
+	})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("C share: want 403, got %d %s", rec.Code, rec.Body.String())
 	}
 }

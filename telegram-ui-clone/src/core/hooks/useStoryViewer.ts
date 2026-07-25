@@ -10,7 +10,7 @@ import { useChatsStore } from '../../stores/chatsStore'
 import { useManagers } from './useManagers'
 import { uiEvents } from './uiEvents'
 import { gradientFor } from '../dialogToChat'
-import type { StoryGroup, StoryItem } from '../managers/storiesManager'
+import type { StoryGroup, StoryItem, MediaArea, StoryFwd } from '../managers/storiesManager'
 
 interface Viewer {
   id: number
@@ -54,6 +54,10 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
   pinned: boolean
   edited: boolean
   togglePinned: () => void
+  // 4d: media areas поверх истории, атрибуция репоста + имя автора оригинала.
+  mediaAreas: MediaArea[]
+  fwdFrom: StoryFwd | undefined
+  fwdAuthorName: string | null
 } {
   const managers = useManagers()
   const groups = useStoriesStore((s) => s.groups)
@@ -77,6 +81,8 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
   const [showStats, setShowStats] = useState(false)
   // Пауза авто-прогресса (Space) — таймер сегмента замирает, видео встаёт.
   const [paused, setPaused] = useState(false)
+  // 4d: имя автора оригинала для плашки репоста (резолвится по fwd_from.authorId).
+  const [fwdAuthorName, setFwdAuthorName] = useState<string | null>(null)
 
   const story = stories[current]
 
@@ -138,6 +144,18 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [story?.id])
+
+  // 4d: резолв имени автора оригинала для плашки репоста (tweb repostInfo).
+  useEffect(() => {
+    const fwd = story?.fwdFrom
+    if (!fwd) { setFwdAuthorName(null); return }
+    let alive = true
+    setFwdAuthorName(null)
+    void managers.peers.getUsers([fwd.authorId]).then((users) => {
+      if (alive) setFwdAuthorName(users[0]?.displayName ?? null)
+    }).catch(() => {})
+    return () => { alive = false }
+  }, [story?.fwdFrom, managers])
 
   const openViewers = () => {
     if (!story) return
@@ -233,5 +251,8 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
     pinned: story?.pinned ?? false,
     edited: story?.edited ?? false,
     togglePinned,
+    mediaAreas: story?.mediaAreas ?? [],
+    fwdFrom: story?.fwdFrom,
+    fwdAuthorName,
   }
 }

@@ -3,6 +3,7 @@ package story
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 	"unicode/utf8"
 
@@ -47,6 +48,7 @@ type Service struct {
 	tx        TxManager
 	publisher EventPublisher
 	stealth   StealthStore
+	sender    MessageSender
 }
 
 // New constructs the story service from its ports.
@@ -61,6 +63,53 @@ func (s *Service) SetPublisher(p EventPublisher) { s.publisher = p }
 // SetStealthStore attaches the ephemeral stealth-mode store (optional). When
 // nil, stealth endpoints report domain.ErrUnavailable and View always records.
 func (s *Service) SetStealthStore(st StealthStore) { s.stealth = st }
+
+// SetMessageSender attaches the chat message sender used by Share (optional).
+// When nil, Share reports domain.ErrUnavailable.
+func (s *Service) SetMessageSender(ms MessageSender) { s.sender = ms }
+
+// maxMediaAreas caps the number of interactive areas on a story (defensive
+// bound; Telegram's editor stays well under this).
+const maxMediaAreas = 20
+
+// allowedAreaTypes — поддерживаемые типы media-area (tweb; без channel_post/weather).
+var allowedAreaTypes = map[string]bool{"geo": true, "venue": true, "reaction": true, "url": true}
+
+// validateMediaAreas checks the count bound, known type, coordinate ranges
+// (0..100) and per-type required fields. Returns domain.ErrInvalid on any
+// violation.
+func validateMediaAreas(areas []domain.StoryMediaArea) error {
+	if len(areas) > maxMediaAreas {
+		return domain.ErrInvalid
+	}
+	for _, a := range areas {
+		if !allowedAreaTypes[a.Type] {
+			return domain.ErrInvalid
+		}
+		c := a.Coordinates
+		for _, v := range []float64{c.X, c.Y, c.W, c.H} {
+			if v < 0 || v > 100 {
+				return domain.ErrInvalid
+			}
+		}
+		switch a.Type {
+		case "reaction":
+			if a.Reaction == "" || len(a.Reaction) > maxReactionLen || !utf8.ValidString(a.Reaction) {
+				return domain.ErrInvalid
+			}
+		case "url":
+			if a.URL == "" {
+				return domain.ErrInvalid
+			}
+		case "geo", "venue":
+			if a.Lat == nil || a.Long == nil ||
+				*a.Lat < -90 || *a.Lat > 90 || *a.Long < -180 || *a.Long > 180 {
+				return domain.ErrInvalid
+			}
+		}
+	}
+	return nil
+}
 
 // ttlFor maps a requested lifetime (seconds) to a duration, falling back to 24h
 // for zero/invalid values.
@@ -77,7 +126,7 @@ func ttlFor(period int64) time.Duration {
 // persists within a transaction (so the story row and any story_allow rows
 // commit together). On success it broadcasts a story_new frame to the viewers
 // the story is visible to.
-func (s *Service) Post(ctx context.Context, authorID, mediaID int64, caption, privacy string, allowIDs []int64, period int64) (int64, error) {
+func (s *Service) Post(ctx context.Context, authorID, mediaID int64, caption, privacy string, allowIDs []int64, mediaAreas []domain.StoryMediaArea, period int64) (int64, error) {
 	owner, err := s.media.OwnerID(ctx, mediaID)
 	if err != nil {
 		return 0, err
@@ -94,12 +143,16 @@ func (s *Service) Post(ctx context.Context, authorID, mediaID int64, caption, pr
 	if !allowedPrivacy[privacy] {
 		return 0, domain.ErrInvalid
 	}
+	if err := validateMediaAreas(mediaAreas); err != nil {
+		return 0, err
+	}
 	story := domain.Story{
-		AuthorID:  authorID,
-		MediaID:   mediaID,
-		Caption:   caption,
-		Privacy:   privacy,
-		ExpiresAt: time.Now().Add(ttlFor(period)),
+		AuthorID:   authorID,
+		MediaID:    mediaID,
+		Caption:    caption,
+		Privacy:    privacy,
+		ExpiresAt:  time.Now().Add(ttlFor(period)),
+		MediaAreas: mediaAreas,
 	}
 	var id int64
 	err = s.tx.WithinTx(ctx, func(ctx context.Context) error {
@@ -116,6 +169,100 @@ func (s *Service) Post(ctx context.Context, authorID, mediaID int64, caption, pr
 		"caption": caption, "expires_at": story.ExpiresAt,
 	}))
 	return id, nil
+}
+
+// Repost creates a new story for authorID that references an existing story
+// (tweb fwd_from / repostInfo). The reposter must be able to see the source
+// (else domain.ErrForbidden); the new story reuses the source's media and points
+// fwd_from at the source's author+id. Privacy/period/caption behave like Post.
+func (s *Service) Repost(ctx context.Context, authorID, srcStoryID int64, caption, privacy string, allowIDs []int64, period int64) (int64, error) {
+	ok, err := s.canSee(ctx, srcStoryID, authorID)
+	if err != nil {
+		return 0, err
+	}
+	if !ok {
+		return 0, domain.ErrForbidden
+	}
+	origin, err := s.repo.Origin(ctx, srcStoryID)
+	if err != nil {
+		return 0, err
+	}
+	if utf8.RuneCountInString(caption) > maxCaptionRunes {
+		return 0, domain.ErrTooLong
+	}
+	if privacy == "" {
+		privacy = "contacts"
+	}
+	if !allowedPrivacy[privacy] {
+		return 0, domain.ErrInvalid
+	}
+	story := domain.Story{
+		AuthorID:  authorID,
+		MediaID:   origin.MediaID,
+		Caption:   caption,
+		Privacy:   privacy,
+		ExpiresAt: time.Now().Add(ttlFor(period)),
+		FwdFrom:   &domain.StoryFwd{AuthorID: origin.AuthorID, StoryID: srcStoryID},
+	}
+	var id int64
+	err = s.tx.WithinTx(ctx, func(ctx context.Context) error {
+		var e error
+		id, e = s.repo.Create(ctx, story, allowIDs)
+		return e
+	})
+	if err != nil {
+		return 0, err
+	}
+	s.broadcast(ctx, s.recipients(ctx, authorID, privacy, allowIDs), frame("story_new", map[string]any{
+		"id": id, "author_id": authorID, "media_id": origin.MediaID,
+		"caption": caption, "expires_at": story.ExpiresAt,
+		"fwd_from": map[string]any{"author_id": origin.AuthorID, "story_id": srcStoryID},
+	}))
+	return id, nil
+}
+
+// Share posts a story into each of the given chats as a regular media message
+// with an attribution caption (tweb inputMediaStory, lightweight variant). The
+// sharer must be able to see the story (else domain.ErrForbidden); non-member
+// target chats are silently skipped. Returns how many messages were sent.
+// domain.ErrUnavailable when no message sender is wired.
+func (s *Service) Share(ctx context.Context, storyID, senderID int64, chatIDs []int64) (int, error) {
+	if s.sender == nil {
+		return 0, domain.ErrUnavailable
+	}
+	ok, err := s.canSee(ctx, storyID, senderID)
+	if err != nil {
+		return 0, err
+	}
+	if !ok {
+		return 0, domain.ErrForbidden
+	}
+	origin, err := s.repo.Origin(ctx, storyID)
+	if err != nil {
+		return 0, err
+	}
+	caption := "История"
+	if origin.AuthorName != "" {
+		caption = "История от " + origin.AuthorName
+	}
+	sent := 0
+	for _, chatID := range chatIDs {
+		if chatID == 0 {
+			continue
+		}
+		err := s.sender.SendStoryShare(ctx, chatID, senderID, origin.MediaID, caption)
+		switch {
+		case err == nil:
+			sent++
+		case errors.Is(err, domain.ErrNotFound):
+			// не участник целевого чата — пропускаем, как Telegram (share идёт в чаты,
+			// где отправитель состоит).
+			continue
+		default:
+			return sent, err
+		}
+	}
+	return sent, nil
 }
 
 // Feed returns the active story groups visible to viewerID: their own stories
@@ -343,7 +490,7 @@ func (s *Service) SetPinned(ctx context.Context, storyID, authorID int64, pinned
 // and/or privacy (+allowlist for selected); marks it edited. caption/privacy are
 // pointers so "" is distinguishable from "unset". Missing story → ErrNotFound,
 // non-owner → ErrForbidden, oversized caption → ErrTooLong, bad privacy → ErrInvalid.
-func (s *Service) EditStory(ctx context.Context, storyID, authorID int64, caption, privacy *string, allowIDs []int64) error {
+func (s *Service) EditStory(ctx context.Context, storyID, authorID int64, caption, privacy *string, allowIDs []int64, mediaAreas *[]domain.StoryMediaArea) error {
 	author, err := s.repo.GetAuthor(ctx, storyID)
 	if err != nil {
 		return err
@@ -357,8 +504,13 @@ func (s *Service) EditStory(ctx context.Context, storyID, authorID int64, captio
 	if privacy != nil && !allowedPrivacy[*privacy] {
 		return domain.ErrInvalid
 	}
+	if mediaAreas != nil {
+		if err := validateMediaAreas(*mediaAreas); err != nil {
+			return err
+		}
+	}
 	return s.tx.WithinTx(ctx, func(ctx context.Context) error {
-		return s.repo.Edit(ctx, storyID, authorID, caption, privacy, allowIDs)
+		return s.repo.Edit(ctx, storyID, authorID, caption, privacy, allowIDs, mediaAreas)
 	})
 }
 

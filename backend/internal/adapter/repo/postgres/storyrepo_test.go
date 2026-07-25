@@ -388,7 +388,7 @@ func TestStoryRepo_Edit_CaptionPrivacyAndFlag(t *testing.T) {
 
 	newCap := "edited caption"
 	newPriv := "selected"
-	if err := repo.Edit(ctx, storyID, author, &newCap, &newPriv, []int64{allowed}); err != nil {
+	if err := repo.Edit(ctx, storyID, author, &newCap, &newPriv, []int64{allowed}, nil); err != nil {
 		t.Fatalf("Edit: %v", err)
 	}
 
@@ -439,5 +439,91 @@ func TestStoryRepo_GetAuthor_NotFound(t *testing.T) {
 	ctx := context.Background()
 	if _, err := repo.GetAuthor(ctx, 999999); err != domain.ErrNotFound {
 		t.Fatalf("GetAuthor(absent) = %v; want ErrNotFound", err)
+	}
+}
+
+// TestStoryRepo_MediaAreasAndRepost covers the 4d columns: media_areas jsonb
+// round-trips through Create/ActiveFeed/Edit, Origin returns the author card +
+// media, and a repost carries fwd_from.
+func TestStoryRepo_MediaAreasAndRepost(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewStoryRepo(pool)
+	ctx := context.Background()
+	author := seedUser(t, pool, "+920")
+	future := time.Now().Add(24 * time.Hour)
+
+	lat, long := 55.75, 37.61
+	areas := []domain.StoryMediaArea{
+		{Type: "reaction", Coordinates: domain.StoryAreaCoordinates{X: 50, Y: 50, W: 10, H: 10, Rotation: 5}, Reaction: "👍"},
+		{Type: "geo", Coordinates: domain.StoryAreaCoordinates{X: 1, Y: 2}, Lat: &lat, Long: &long, Title: "Москва"},
+	}
+	srcID, err := repo.Create(ctx, domain.Story{
+		AuthorID: author, MediaID: 500, Caption: "orig", Privacy: "everyone",
+		ExpiresAt: future, MediaAreas: areas,
+	}, nil)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// media_areas round-trip via the feed read model.
+	groups, err := repo.ActiveFeed(ctx, author, []int64{author})
+	if err != nil {
+		t.Fatalf("ActiveFeed: %v", err)
+	}
+	got := groups[0].Stories[0]
+	if len(got.MediaAreas) != 2 || got.MediaAreas[0].Type != "reaction" || got.MediaAreas[0].Reaction != "👍" {
+		t.Fatalf("media_areas not round-tripped: %+v", got.MediaAreas)
+	}
+	if got.MediaAreas[1].Lat == nil || *got.MediaAreas[1].Lat != lat {
+		t.Fatalf("geo lat not round-tripped: %+v", got.MediaAreas[1])
+	}
+	if got.FwdFrom != nil {
+		t.Fatalf("original story must have no fwd_from, got %+v", got.FwdFrom)
+	}
+
+	// Origin exposes author name + media for repost/share.
+	origin, err := repo.Origin(ctx, srcID)
+	if err != nil {
+		t.Fatalf("Origin: %v", err)
+	}
+	if origin.AuthorID != author || origin.MediaID != 500 || origin.AuthorName == "" {
+		t.Fatalf("unexpected origin: %+v", origin)
+	}
+
+	// Edit replaces media_areas.
+	newAreas := []domain.StoryMediaArea{{Type: "url", Coordinates: domain.StoryAreaCoordinates{X: 3}, URL: "https://t.me"}}
+	if err := repo.Edit(ctx, srcID, author, nil, nil, nil, &newAreas); err != nil {
+		t.Fatalf("Edit: %v", err)
+	}
+	groups, _ = repo.ActiveFeed(ctx, author, []int64{author})
+	if a := groups[0].Stories[0].MediaAreas; len(a) != 1 || a[0].Type != "url" || a[0].URL != "https://t.me" {
+		t.Fatalf("Edit did not replace media_areas: %+v", a)
+	}
+
+	// Repost: a new story referencing the source keeps fwd_from and the media.
+	repostID, err := repo.Create(ctx, domain.Story{
+		AuthorID: author, MediaID: origin.MediaID, Caption: "repost", Privacy: "everyone",
+		ExpiresAt: future, FwdFrom: &domain.StoryFwd{AuthorID: origin.AuthorID, StoryID: srcID},
+	}, nil)
+	if err != nil {
+		t.Fatalf("Create repost: %v", err)
+	}
+	groups, _ = repo.ActiveFeed(ctx, author, []int64{author})
+	var reposted domain.StoryItem
+	for _, s := range groups[0].Stories {
+		if s.ID == repostID {
+			reposted = s
+		}
+	}
+	if reposted.FwdFrom == nil || reposted.FwdFrom.StoryID != srcID || reposted.FwdFrom.AuthorID != author {
+		t.Fatalf("repost fwd_from not persisted: %+v", reposted.FwdFrom)
+	}
+	if reposted.MediaID != 500 {
+		t.Fatalf("repost media = %d; want 500", reposted.MediaID)
+	}
+
+	// Archive/Pinned scan path also carries the new columns.
+	if _, err := repo.Pinned(ctx, author, author); err != nil {
+		t.Fatalf("Pinned scan: %v", err)
 	}
 }

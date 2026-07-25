@@ -35,9 +35,14 @@ type StoryRepo interface {
 
 	// SetPinned переключает закреп истории в профиле (только владелец через WHERE
 	// author_id). Edit меняет caption/privacy (nil = не трогать), ставит edited=true
-	// и синхронизирует story_allow под новую privacy.
+	// и синхронизирует story_allow под новую privacy. mediaAreas: nil — не трогать,
+	// иначе полностью заменить набор областей.
 	SetPinned(ctx context.Context, storyID, authorID int64, pinned bool) error
-	Edit(ctx context.Context, storyID, authorID int64, caption, privacy *string, allowIDs []int64) error
+	Edit(ctx context.Context, storyID, authorID int64, caption, privacy *string, allowIDs []int64, mediaAreas *[]domain.StoryMediaArea) error
+
+	// Origin возвращает автора/имя автора/media исходной истории — для репоста
+	// (переиспользуем media, fwd_from) и share в чаты (атрибуция). domain.ErrNotFound.
+	Origin(ctx context.Context, storyID int64) (domain.StoryOrigin, error)
 
 	// AllowIDs возвращает явный allow-лист истории (story_allow) для privacy=="selected".
 	AllowIDs(ctx context.Context, storyID int64) ([]int64, error)
@@ -84,4 +89,12 @@ type TxManager interface {
 // Опционален: когда nil, истории живут только через polling GET /stories.
 type EventPublisher interface {
 	PublishToUser(ctx context.Context, userID int64, frame []byte) error
+}
+
+// MessageSender отправляет историю как обычное медиа-сообщение в чат (share в
+// чаты, tweb inputMediaStory — у нас лёгкий вариант без нового типа сообщения).
+// Реализуется поверх chat-usecase (Interactor.SendStoryShare). Опционален: когда
+// nil, POST /stories/{id}/share отвечает domain.ErrUnavailable.
+type MessageSender interface {
+	SendStoryShare(ctx context.Context, chatID, senderID, mediaID int64, caption string) error
 }

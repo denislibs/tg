@@ -53,7 +53,10 @@ type fakeRepo struct {
 	editCaption     *string
 	editPrivacy     *string
 	editAllow       []int64
+	editAreas       *[]domain.StoryMediaArea
 	editErr         error
+	origin          domain.StoryOrigin
+	originErr       error
 	allowIDsByStory map[int64][]int64
 	allowIDsErr     error
 	archiveItems    []domain.StoryItem
@@ -119,12 +122,16 @@ func (f *fakeRepo) SetPinned(ctx context.Context, storyID, authorID int64, pinne
 	f.pinnedArg = pinned
 	return f.pinnedErr
 }
-func (f *fakeRepo) Edit(ctx context.Context, storyID, authorID int64, caption, privacy *string, allowIDs []int64) error {
+func (f *fakeRepo) Edit(ctx context.Context, storyID, authorID int64, caption, privacy *string, allowIDs []int64, mediaAreas *[]domain.StoryMediaArea) error {
 	f.editCalled = true
 	f.editCaption = caption
 	f.editPrivacy = privacy
 	f.editAllow = allowIDs
+	f.editAreas = mediaAreas
 	return f.editErr
+}
+func (f *fakeRepo) Origin(ctx context.Context, storyID int64) (domain.StoryOrigin, error) {
+	return f.origin, f.originErr
 }
 func (f *fakeRepo) AllowIDs(ctx context.Context, storyID int64) ([]int64, error) {
 	return f.allowIDsByStory[storyID], f.allowIDsErr
@@ -189,6 +196,29 @@ func (f *fakeMedia) OwnerID(ctx context.Context, mediaID int64) (int64, error) {
 	return f.owner, f.err
 }
 
+type fakeSender struct {
+	calls   []int64 // chatIDs the story was shared into
+	mediaID int64
+	caption string
+	senders []int64
+	err     error
+	failFor map[int64]error // per-chat errors (e.g. ErrNotFound for non-member)
+}
+
+func (f *fakeSender) SendStoryShare(ctx context.Context, chatID, senderID, mediaID int64, caption string) error {
+	if e, ok := f.failFor[chatID]; ok {
+		return e
+	}
+	if f.err != nil {
+		return f.err
+	}
+	f.calls = append(f.calls, chatID)
+	f.senders = append(f.senders, senderID)
+	f.mediaID = mediaID
+	f.caption = caption
+	return nil
+}
+
 type fakeTx struct{ called bool }
 
 func (f *fakeTx) WithinTx(ctx context.Context, fn func(ctx context.Context) error) error {
@@ -201,7 +231,7 @@ func (f *fakeTx) WithinTx(ctx context.Context, fn func(ctx context.Context) erro
 func TestPost_ForbiddenWhenOtherOwner(t *testing.T) {
 	repo := &fakeRepo{}
 	svc := New(repo, &fakePartners{}, &fakeMedia{owner: 99}, &fakeTx{})
-	_, err := svc.Post(context.Background(), 1, 7, "hi", "contacts", nil, 0)
+	_, err := svc.Post(context.Background(), 1, 7, "hi", "contacts", nil, nil, 0)
 	if !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("want ErrForbidden, got %v", err)
 	}
@@ -212,7 +242,7 @@ func TestPost_OK_DefaultPrivacyAndExpiry(t *testing.T) {
 	tx := &fakeTx{}
 	svc := New(repo, &fakePartners{}, &fakeMedia{owner: 1}, tx)
 	before := time.Now()
-	id, err := svc.Post(context.Background(), 1, 7, "hi", "", nil, 0)
+	id, err := svc.Post(context.Background(), 1, 7, "hi", "", nil, nil, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -333,7 +363,7 @@ func TestPost_PeriodToExpiry(t *testing.T) {
 		repo := &fakeRepo{createID: 1}
 		svc := New(repo, &fakePartners{}, &fakeMedia{owner: 1}, &fakeTx{})
 		before := time.Now()
-		if _, err := svc.Post(context.Background(), 1, 7, "hi", "everyone", nil, c.period); err != nil {
+		if _, err := svc.Post(context.Background(), 1, 7, "hi", "everyone", nil, nil, c.period); err != nil {
 			t.Fatalf("period %d: %v", c.period, err)
 		}
 		got := repo.createStory.ExpiresAt.Sub(before)
@@ -349,7 +379,7 @@ func TestPost_BroadcastsStoryNew(t *testing.T) {
 	pub := newFakePublisher()
 	svc := New(repo, &fakePartners{ids: []int64{2, 3}}, &fakeMedia{owner: 1}, &fakeTx{})
 	svc.SetPublisher(pub)
-	if _, err := svc.Post(context.Background(), 1, 7, "hi", "contacts", nil, 0); err != nil {
+	if _, err := svc.Post(context.Background(), 1, 7, "hi", "contacts", nil, nil, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	// contacts/everyone -> partners (2,3) + author (1).
@@ -366,7 +396,7 @@ func TestPost_SelectedBroadcastsToAllowlist(t *testing.T) {
 	// Partners would be 9, but selected must target the allowlist only (+author).
 	svc := New(repo, &fakePartners{ids: []int64{9}}, &fakeMedia{owner: 1}, &fakeTx{})
 	svc.SetPublisher(pub)
-	if _, err := svc.Post(context.Background(), 1, 7, "hi", "selected", []int64{2}, 0); err != nil {
+	if _, err := svc.Post(context.Background(), 1, 7, "hi", "selected", []int64{2}, nil, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(pub.frames[2]) != 1 || len(pub.frames[1]) != 1 {
@@ -492,7 +522,7 @@ func TestDelete_NotFound_NoBroadcast(t *testing.T) {
 func TestPost_InvalidPrivacy(t *testing.T) {
 	repo := &fakeRepo{createID: 1}
 	svc := New(repo, &fakePartners{}, &fakeMedia{owner: 1}, &fakeTx{})
-	if _, err := svc.Post(context.Background(), 1, 7, "hi", "public", nil, 0); !errors.Is(err, domain.ErrInvalid) {
+	if _, err := svc.Post(context.Background(), 1, 7, "hi", "public", nil, nil, 0); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("want ErrInvalid, got %v", err)
 	}
 }
@@ -503,7 +533,7 @@ func TestPost_CloseBroadcastsToCloseFriendsOnly(t *testing.T) {
 	// Partners would be 9, but close must target the close-friends list only (+author).
 	svc := New(repo, &fakePartners{ids: []int64{9}}, &fakeMedia{owner: 1}, &fakeTx{})
 	svc.SetPublisher(pub)
-	if _, err := svc.Post(context.Background(), 1, 7, "hi", "close", nil, 0); err != nil {
+	if _, err := svc.Post(context.Background(), 1, 7, "hi", "close", nil, nil, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(pub.frames[2]) != 1 || len(pub.frames[1]) != 1 {
@@ -655,7 +685,7 @@ func TestEditStory_NonAuthor_Forbidden(t *testing.T) {
 	repo := &fakeRepo{author: 99}
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	cap := "x"
-	if err := svc.EditStory(context.Background(), 5, 1, &cap, nil, nil); !errors.Is(err, domain.ErrForbidden) {
+	if err := svc.EditStory(context.Background(), 5, 1, &cap, nil, nil, nil); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("want ErrForbidden, got %v", err)
 	}
 	if repo.editCalled {
@@ -667,7 +697,7 @@ func TestEditStory_CaptionTooLong(t *testing.T) {
 	repo := &fakeRepo{author: 1}
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	long := strings.Repeat("а", maxCaptionRunes+1)
-	if err := svc.EditStory(context.Background(), 5, 1, &long, nil, nil); !errors.Is(err, domain.ErrTooLong) {
+	if err := svc.EditStory(context.Background(), 5, 1, &long, nil, nil, nil); !errors.Is(err, domain.ErrTooLong) {
 		t.Fatalf("want ErrTooLong, got %v", err)
 	}
 	if repo.editCalled {
@@ -679,7 +709,7 @@ func TestEditStory_BadPrivacy(t *testing.T) {
 	repo := &fakeRepo{author: 1}
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	bad := "public"
-	if err := svc.EditStory(context.Background(), 5, 1, nil, &bad, nil); !errors.Is(err, domain.ErrInvalid) {
+	if err := svc.EditStory(context.Background(), 5, 1, nil, &bad, nil, nil); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("want ErrInvalid, got %v", err)
 	}
 }
@@ -689,7 +719,7 @@ func TestEditStory_Author_OK(t *testing.T) {
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	cap := "new"
 	priv := "everyone"
-	if err := svc.EditStory(context.Background(), 5, 1, &cap, &priv, nil); err != nil {
+	if err := svc.EditStory(context.Background(), 5, 1, &cap, &priv, nil, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !repo.editCalled || repo.editCaption == nil || *repo.editCaption != "new" || repo.editPrivacy == nil || *repo.editPrivacy != "everyone" {
@@ -701,10 +731,192 @@ func TestPost_CaptionTooLong(t *testing.T) {
 	repo := &fakeRepo{createID: 1}
 	svc := New(repo, &fakePartners{}, &fakeMedia{owner: 1}, &fakeTx{})
 	longCaption := strings.Repeat("а", maxCaptionRunes+1)
-	if _, err := svc.Post(context.Background(), 1, 7, longCaption, "contacts", nil, 0); !errors.Is(err, domain.ErrTooLong) {
+	if _, err := svc.Post(context.Background(), 1, 7, longCaption, "contacts", nil, nil, 0); !errors.Is(err, domain.ErrTooLong) {
 		t.Fatalf("want ErrTooLong, got %v", err)
 	}
-	if (repo.createStory != domain.Story{}) {
+	if repo.createStory.MediaID != 0 {
 		t.Fatal("must not create a story with an oversized caption")
+	}
+}
+
+// --- media areas / repost / share (4d) ---
+
+func f64(v float64) *float64 { return &v }
+
+func sampleAreas() []domain.StoryMediaArea {
+	return []domain.StoryMediaArea{
+		{Type: "reaction", Coordinates: domain.StoryAreaCoordinates{X: 50, Y: 50, W: 10, H: 10}, Reaction: "👍"},
+		{Type: "url", Coordinates: domain.StoryAreaCoordinates{X: 10, Y: 20}, URL: "https://t.me"},
+		{Type: "geo", Coordinates: domain.StoryAreaCoordinates{X: 1, Y: 2}, Lat: f64(55.75), Long: f64(37.61), Title: "Москва"},
+	}
+}
+
+func TestPost_MediaAreas_RoundTrip(t *testing.T) {
+	repo := &fakeRepo{createID: 1}
+	svc := New(repo, &fakePartners{}, &fakeMedia{owner: 1}, &fakeTx{})
+	areas := sampleAreas()
+	if _, err := svc.Post(context.Background(), 1, 7, "hi", "contacts", nil, areas, 0); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !reflect.DeepEqual(repo.createStory.MediaAreas, areas) {
+		t.Fatalf("media areas not persisted: got %+v", repo.createStory.MediaAreas)
+	}
+}
+
+func TestPost_MediaAreas_Validation(t *testing.T) {
+	cases := map[string][]domain.StoryMediaArea{
+		"bad type":     {{Type: "weather", Coordinates: domain.StoryAreaCoordinates{X: 1}}},
+		"coord over":   {{Type: "url", Coordinates: domain.StoryAreaCoordinates{X: 101}, URL: "x"}},
+		"coord neg":    {{Type: "url", Coordinates: domain.StoryAreaCoordinates{Y: -1}, URL: "x"}},
+		"empty react":  {{Type: "reaction", Coordinates: domain.StoryAreaCoordinates{X: 1}}},
+		"empty url":    {{Type: "url", Coordinates: domain.StoryAreaCoordinates{X: 1}}},
+		"geo no coord": {{Type: "geo", Coordinates: domain.StoryAreaCoordinates{X: 1}}},
+	}
+	for name, areas := range cases {
+		t.Run(name, func(t *testing.T) {
+			repo := &fakeRepo{createID: 1}
+			svc := New(repo, &fakePartners{}, &fakeMedia{owner: 1}, &fakeTx{})
+			if _, err := svc.Post(context.Background(), 1, 7, "hi", "contacts", nil, areas, 0); !errors.Is(err, domain.ErrInvalid) {
+				t.Fatalf("want ErrInvalid, got %v", err)
+			}
+			if repo.createStory.MediaID != 0 {
+				t.Fatal("must not create a story with invalid media areas")
+			}
+		})
+	}
+}
+
+func TestPost_MediaAreas_Overflow(t *testing.T) {
+	repo := &fakeRepo{createID: 1}
+	svc := New(repo, &fakePartners{}, &fakeMedia{owner: 1}, &fakeTx{})
+	areas := make([]domain.StoryMediaArea, maxMediaAreas+1)
+	for i := range areas {
+		areas[i] = domain.StoryMediaArea{Type: "url", URL: "x"}
+	}
+	if _, err := svc.Post(context.Background(), 1, 7, "hi", "contacts", nil, areas, 0); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("want ErrInvalid on overflow, got %v", err)
+	}
+}
+
+func TestEditStory_MediaAreas(t *testing.T) {
+	repo := &fakeRepo{author: 1}
+	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
+	areas := sampleAreas()
+	if err := svc.EditStory(context.Background(), 5, 1, nil, nil, nil, &areas); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repo.editAreas == nil || !reflect.DeepEqual(*repo.editAreas, areas) {
+		t.Fatalf("media areas not passed to Edit: %+v", repo.editAreas)
+	}
+	// invalid areas rejected before touching the repo.
+	repo2 := &fakeRepo{author: 1}
+	svc2 := New(repo2, &fakePartners{}, &fakeMedia{}, &fakeTx{})
+	bad := []domain.StoryMediaArea{{Type: "nope"}}
+	if err := svc2.EditStory(context.Background(), 5, 1, nil, nil, nil, &bad); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("want ErrInvalid, got %v", err)
+	}
+	if repo2.editCalled {
+		t.Fatal("must not call Edit with invalid media areas")
+	}
+}
+
+func TestRepost_OK(t *testing.T) {
+	repo := &fakeRepo{
+		createID: 77,
+		visible:  true,
+		origin:   domain.StoryOrigin{AuthorID: 9, AuthorName: "Bob", MediaID: 500},
+	}
+	tx := &fakeTx{}
+	svc := New(repo, &fakePartners{ids: []int64{2}}, &fakeMedia{}, tx)
+	id, err := svc.Repost(context.Background(), 1, 42, "look", "everyone", nil, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id != 77 {
+		t.Fatalf("want id 77, got %d", id)
+	}
+	if !tx.called {
+		t.Fatal("expected Create within tx")
+	}
+	if repo.createStory.MediaID != 500 {
+		t.Fatalf("repost must reuse source media, got %d", repo.createStory.MediaID)
+	}
+	if repo.createStory.FwdFrom == nil || repo.createStory.FwdFrom.AuthorID != 9 || repo.createStory.FwdFrom.StoryID != 42 {
+		t.Fatalf("unexpected fwd_from: %+v", repo.createStory.FwdFrom)
+	}
+	if repo.createStory.AuthorID != 1 {
+		t.Fatalf("repost author must be the reposter, got %d", repo.createStory.AuthorID)
+	}
+}
+
+func TestRepost_ForbiddenWhenSourceNotVisible(t *testing.T) {
+	repo := &fakeRepo{visible: false, origin: domain.StoryOrigin{MediaID: 500}}
+	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
+	if _, err := svc.Repost(context.Background(), 1, 42, "", "", nil, 0); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("want ErrForbidden, got %v", err)
+	}
+	if repo.createStory.MediaID != 0 {
+		t.Fatal("must not create a story when the source is not visible")
+	}
+}
+
+func TestShare_OK(t *testing.T) {
+	repo := &fakeRepo{visible: true, origin: domain.StoryOrigin{AuthorID: 9, AuthorName: "Bob", MediaID: 500}}
+	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
+	sender := &fakeSender{}
+	svc.SetMessageSender(sender)
+	sent, err := svc.Share(context.Background(), 42, 1, []int64{10, 20, 30})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sent != 3 {
+		t.Fatalf("want sent 3, got %d", sent)
+	}
+	if !reflect.DeepEqual(sender.calls, []int64{10, 20, 30}) {
+		t.Fatalf("unexpected share targets: %v", sender.calls)
+	}
+	if sender.mediaID != 500 {
+		t.Fatalf("share must use story media 500, got %d", sender.mediaID)
+	}
+	if !strings.Contains(sender.caption, "Bob") {
+		t.Fatalf("caption must attribute the author, got %q", sender.caption)
+	}
+}
+
+func TestShare_ForbiddenWhenNotVisible(t *testing.T) {
+	repo := &fakeRepo{visible: false}
+	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
+	sender := &fakeSender{}
+	svc.SetMessageSender(sender)
+	if _, err := svc.Share(context.Background(), 42, 1, []int64{10}); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("want ErrForbidden, got %v", err)
+	}
+	if len(sender.calls) != 0 {
+		t.Fatal("must not send when the story is not visible")
+	}
+}
+
+func TestShare_UnavailableWithoutSender(t *testing.T) {
+	repo := &fakeRepo{visible: true}
+	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
+	if _, err := svc.Share(context.Background(), 42, 1, []int64{10}); !errors.Is(err, domain.ErrUnavailable) {
+		t.Fatalf("want ErrUnavailable, got %v", err)
+	}
+}
+
+func TestShare_SkipsNonMemberChats(t *testing.T) {
+	repo := &fakeRepo{visible: true, origin: domain.StoryOrigin{MediaID: 500}}
+	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
+	sender := &fakeSender{failFor: map[int64]error{20: domain.ErrNotFound}}
+	svc.SetMessageSender(sender)
+	sent, err := svc.Share(context.Background(), 42, 1, []int64{10, 20, 30})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sent != 2 {
+		t.Fatalf("want sent 2 (non-member 20 skipped), got %d", sent)
+	}
+	if !reflect.DeepEqual(sender.calls, []int64{10, 30}) {
+		t.Fatalf("unexpected share targets: %v", sender.calls)
 	}
 }
