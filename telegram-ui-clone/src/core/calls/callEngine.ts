@@ -59,6 +59,12 @@ let makingOffer = false
 let ignoreOffer = false
 let pendingCandidates: RTCIceCandidateInit[] = []
 let ringTimer: ReturnType<typeof setTimeout> | null = null
+// Грейс-таймер разрыва соединения: при 'disconnected' даём шанс восстановиться,
+// иначе завершаем (иначе у собеседника «звонок-призрак», если тот перезагрузил вкладку).
+let disconnectTimer: ReturnType<typeof setTimeout> | null = null
+const DISCONNECT_GRACE_MS = 8000
+// Обработчик закрытия/перезагрузки вкладки — шлём call_end собеседнику (best-effort).
+let unloadHandler: (() => void) | null = null
 
 // ── E2E (SAS): ECDH поверх сигналинга → emoji-fingerprint (как в секретных чатах).
 // Медиа идёт P2P и уже шифруется DTLS-SRTP; DH-обмен добавляет верификацию против
@@ -106,6 +112,12 @@ function cleanupRtc() {
   makingOffer = false
   ignoreOffer = false
   pendingCandidates = []
+  if (disconnectTimer) { clearTimeout(disconnectTimer); disconnectTimer = null }
+  if (unloadHandler) {
+    window.removeEventListener('pagehide', unloadHandler)
+    window.removeEventListener('beforeunload', unloadHandler)
+    unloadHandler = null
+  }
   resetDh()
   localStream?.getTracks().forEach((t) => t.stop())
   localStream = null
@@ -220,14 +232,33 @@ async function startRtc(withVideo: boolean) {
   pc.onconnectionstatechange = () => {
     if (!pc) return
     const cur = store().call
-    if (pc.connectionState === 'connected' && cur && cur.phase !== 'active') {
-      stopSound()
-      store().patch({ phase: 'active', connectedAt: Date.now() })
-    } else if (pc.connectionState === 'failed') {
+    const st = pc.connectionState
+    if (st === 'connected') {
+      if (disconnectTimer) { clearTimeout(disconnectTimer); disconnectTimer = null } // восстановились
+      if (cur && cur.phase !== 'active') {
+        stopSound()
+        store().patch({ phase: 'active', connectedAt: Date.now() })
+      }
+    } else if (st === 'failed') {
       sendFrame('call_end', {})
       finish('failed')
+    } else if (st === 'disconnected') {
+      // Собеседник пропал (перезагрузил вкладку / потерял сеть). Даём шанс
+      // восстановиться DISCONNECT_GRACE_MS, иначе завершаем — иначе «звонок-призрак».
+      if (!disconnectTimer) {
+        disconnectTimer = setTimeout(() => {
+          disconnectTimer = null
+          if (pc && (pc.connectionState === 'disconnected' || pc.connectionState === 'failed')) finish('failed')
+        }, DISCONNECT_GRACE_MS)
+      }
     }
   }
+
+  // Перезагрузка/закрытие вкладки во время звонка → уведомить собеседника, чтобы у
+  // него звонок не завис (best-effort; выживший сам завершит по disconnected-таймеру).
+  unloadHandler = () => { try { sendFrame('call_end', {}) } catch { /* окно уже закрывается */ } }
+  window.addEventListener('pagehide', unloadHandler)
+  window.addEventListener('beforeunload', unloadHandler)
 
   localStream = await acquireLocal(withVideo)
   if (!pc) return // повесили трубку, пока ждали getUserMedia (tweb: isClosing check)
