@@ -49,6 +49,26 @@ func (h *ChatHandler) TopUpStars(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"balance": bal})
 }
 
+// StarsTransactions — GET /stars/transactions?offset&limit: история движений
+// баланса звёзд (экран «Кошелёк», tweb Stars transactions).
+func (h *ChatHandler) StarsTransactions(w http.ResponseWriter, r *http.Request) {
+	offset := int(queryInt(r, "offset", 0))
+	limit := int(queryInt(r, "limit", 30))
+	txs, err := h.svc.StarsTransactions(r.Context(), h.meID(r), offset, limit)
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "stars disabled")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load transactions")
+		return
+	}
+	if txs == nil {
+		txs = []domain.StarTransaction{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"transactions": txs})
+}
+
 // UnlockPaidMedia — POST /messages/{msgID}/unlock: разблокировать платное медиа
 // за звёзды. Списывает цену у покупателя, начисляет автору, отдаёт медиа.
 func (h *ChatHandler) UnlockPaidMedia(w http.ResponseWriter, r *http.Request) {

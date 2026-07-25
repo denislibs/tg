@@ -65,11 +65,37 @@ export const mapGiftInfo = (g: RawGiftInfo): GiftInfo => ({
   date: g.date ?? '',
 })
 
+// Транзакция звёзд (история кошелька). amount со знаком: + начисление, − списание.
+export interface StarTransaction {
+  id: number
+  amount: number
+  kind: string
+  title: string
+  peerId: number | null
+  date: string
+}
+interface RawStarTx {
+  id: number
+  amount: number
+  kind: string
+  title?: string
+  peer_id?: number | null
+  date: string
+}
+const mapTx = (t: RawStarTx): StarTransaction => ({
+  id: t.id, amount: t.amount, kind: t.kind,
+  title: t.title ?? '', peerId: t.peer_id ?? null, date: t.date,
+})
+
 export function newStarsManager({ rest }: { rest: Pick<RestClient, 'get' | 'post'> }) {
   return {
     async balance(): Promise<number> {
       const r = await rest.get<{ balance: number }>('/stars/balance')
       return r.balance
+    },
+    async transactions(offset = 0, limit = 30): Promise<StarTransaction[]> {
+      const r = await rest.get<{ transactions: RawStarTx[] }>(`/stars/transactions?offset=${offset}&limit=${limit}`)
+      return (r.transactions ?? []).map(mapTx)
     },
     // dev-пополнение (без реальной оплаты): возвращает новый баланс.
     async topUp(amount: number): Promise<number> {

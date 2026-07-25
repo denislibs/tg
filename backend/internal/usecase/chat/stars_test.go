@@ -112,6 +112,14 @@ func (f *fakeStars) SetHidden(_ context.Context, savedID, ownerID int64, hidden 
 	return nil
 }
 
+func (f *fakeStars) RecordTx(context.Context, int64, int64, string, string, *int64) error {
+	return nil
+}
+
+func (f *fakeStars) Transactions(context.Context, int64, int, int) ([]domain.StarTransaction, error) {
+	return nil, nil
+}
+
 func (f *fakeStars) Convert(_ context.Context, savedID, ownerID int64) (int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

@@ -35,8 +35,20 @@ func (i *Interactor) TopUpStars(ctx context.Context, userID, amount int64) (int6
 	if err != nil {
 		return 0, err
 	}
+	_ = i.stars.RecordTx(ctx, userID, amount, "topup", "Пополнение баланса", nil)
 	i.publishBalance(ctx, userID, bal)
 	return bal, nil
+}
+
+// StarsTransactions — история движений баланса звёзд (экран «Кошелёк»).
+func (i *Interactor) StarsTransactions(ctx context.Context, userID int64, offset, limit int) ([]domain.StarTransaction, error) {
+	if i.stars == nil {
+		return nil, domain.ErrNotFound
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 30
+	}
+	return i.stars.Transactions(ctx, userID, offset, limit)
 }
 
 // GiftCatalog — доступные для покупки подарки.
@@ -88,6 +100,7 @@ func (i *Interactor) SendGift(ctx context.Context, fromID, toID, giftID int64, m
 	if err != nil {
 		return domain.Message{}, 0, err
 	}
+	_ = i.stars.RecordTx(ctx, fromID, -gift.PriceStars, "gift_sent", gift.Title, &toID)
 	i.publishBalance(ctx, fromID, bal)
 	if info, e := i.stars.GiftInfo(ctx, savedID, fromID); e == nil {
 		msg.Gift = &info
@@ -124,6 +137,7 @@ func (i *Interactor) ConvertGift(ctx context.Context, savedID, ownerID int64) (i
 	if err != nil {
 		return 0, err
 	}
+	_ = i.stars.RecordTx(ctx, ownerID, added, "gift_converted", "Подарок обменян на звёзды", nil)
 	i.publishBalance(ctx, ownerID, bal)
 	return bal, nil
 }
