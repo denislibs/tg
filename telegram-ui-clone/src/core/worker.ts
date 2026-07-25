@@ -154,6 +154,9 @@ const conn = newConnectionManager({
     // на всех его вкладках; правим кэш истории воркера тем же payload.
     else if (type === 'paid_media_unlock') { messages.cachePaidUnlock(payload as never); broadcast(RT.paidMediaUnlock, payload) }
     else if (type === 'bot_callback_answer') broadcast(RT.botCallbackAnswer, payload)
+    else if (type === 'story_new') broadcast(RT.storyNew, payload)
+    else if (type === 'story_deleted') broadcast(RT.storyDeleted, payload)
+    else if (type === 'story_reaction') broadcast(RT.storyReaction, payload)
     else if (type === 'geo_live_update') { messages.cacheGeoLive(payload as never); broadcast(RT.geoLiveUpdate, payload) }
     else if (type === 'web_page_update') { messages.cacheWebPage(payload as never); broadcast(RT.webPageUpdate, payload) }
     else if (type === 'factcheck_update') { messages.cacheFactCheck(payload as never); broadcast(RT.factCheckUpdate, payload) }

@@ -158,6 +158,10 @@ func registerServer(p serverParams) {
 	// сообщения, асинхронно после отправки (кадр web_page_update).
 	p.ChatUC.SetLinkPreviewer(linkpreview.New())
 
+	// Share истории в чаты: отправка идёт через chat-usecase (media-сообщение с
+	// media истории). Не зависит от Redis — включаем всегда.
+	p.StoryUC.SetMessageSender(p.ChatUC)
+
 	// Перевод сообщений: LibreTranslate-совместимый сервис (опционально).
 	if p.Cfg.TranslateURL != "" {
 		p.ChatUC.SetTranslator(libretranslate.New(p.Cfg.TranslateURL, p.Cfg.TranslateAPIKey))
@@ -174,6 +178,8 @@ func registerServer(p serverParams) {
 		publisher := rtredis.NewRedisPublisher(p.Redis.Client)
 		p.ChatUC.SetPublisher(publisher)
 		p.ChatUC.SetChannelPublisher(publisher)
+		p.StoryUC.SetPublisher(publisher)
+		p.StoryUC.SetStealthStore(newStealthStore(p.Redis.Client))
 		p.ChatUC.SetGroupCalls(redisGroupCalls(p.Redis))
 		p.AuthUC.SetRevocationNotifier(publisher)
 		presenceMgr = usecasepresence.NewManager(rtredis.NewPresenceStore(p.Redis.Client), publisher, p.ChatUC.ChatPartners, 35*time.Second)

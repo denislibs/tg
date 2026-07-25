@@ -1,20 +1,39 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import IconButton from '../shared/ui/IconButton'
 import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import Avatar from '../shared/ui/Avatar'
 import Text from '../shared/ui/Text'
 import { useChatsStore } from '../stores/chatsStore'
+import { useManagers } from '../core/hooks/useManagers'
 import { gradientFor } from '../core/dialogToChat'
 import classNames from '../shared/lib/classNames'
+import Emoji from './emoji/Emoji'
 import s from './AddStorySheet.module.scss'
+import type { StoryPrivacy, MediaArea } from '../core/managers/storiesManager'
 
-export type StoryPrivacy = 'everyone' | 'contacts' | 'selected'
+export type { StoryPrivacy }
+
+// Лимит длины подписи истории — совпадает с бэком (maxCaptionRunes).
+const MAX_CAPTION_LEN = 2048
+
+// 4d: набор эмодзи для reaction-стикера (media area). Минимальный редактор —
+// одна reaction-область в нижней центральной части (без свободного перетаскивания).
+const REACTION_STICKERS = ['❤', '👍', '🔥', '🥰', '👏', '😁', '🎉']
 
 const PRIVACY_OPTIONS: { key: StoryPrivacy; label: string }[] = [
   { key: 'everyone', label: 'Все' },
   { key: 'contacts', label: 'Контакты' },
+  { key: 'close', label: 'Близкие' },
   { key: 'selected', label: 'Выбранные' },
+]
+
+// Период жизни истории в секундах (tweb story period): 6/12/24/48 часов.
+const PERIOD_OPTIONS: { key: number; label: string }[] = [
+  { key: 21600, label: '6ч' },
+  { key: 43200, label: '12ч' },
+  { key: 86400, label: '24ч' },
+  { key: 172800, label: '48ч' },
 ]
 
 /**
@@ -26,11 +45,15 @@ const PRIVACY_OPTIONS: { key: StoryPrivacy; label: string }[] = [
 export default function AddStorySheet({
   onBack,
   onPublish,
+  onEditCloseFriends,
 }: {
   onBack: () => void
-  onPublish: (args: { caption: string; privacy: StoryPrivacy; allowIds: number[] }) => void | Promise<void>
+  onPublish: (args: { caption: string; privacy: StoryPrivacy; allowIds: number[]; period: number; mediaAreas: MediaArea[] }) => void | Promise<void>
+  // переход в редактор списка близких друзей (при выборе аудитории «Близкие»)
+  onEditCloseFriends?: () => void
 }) {
   const dialogs = useChatsStore((s) => s.dialogs)
+  const managers = useManagers()
   // private peers only — the contact pool for the "Выбранные" audience
   const contacts = dialogs
     .filter((d) => d.type === 'private' && d.peer)
@@ -38,8 +61,17 @@ export default function AddStorySheet({
 
   const [caption, setCaption] = useState('')
   const [privacy, setPrivacy] = useState<StoryPrivacy>('contacts')
+  const [period, setPeriod] = useState(86400)
   const [allow, setAllow] = useState<Set<number>>(new Set())
+  const [reactionSticker, setReactionSticker] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // кол-во близких друзей — для подсказки при аудитории «Близкие»
+  const [closeCount, setCloseCount] = useState<number | null>(null)
+  useEffect(() => {
+    let alive = true
+    managers.stories.closeFriends().then((ids) => { if (alive) setCloseCount(ids.length) }).catch(() => {})
+    return () => { alive = false }
+  }, [managers])
 
   const toggleContact = (id: number) =>
     setAllow((prev) => {
@@ -53,10 +85,15 @@ export default function AddStorySheet({
     if (busy) return
     setBusy(true)
     try {
+      const mediaAreas: MediaArea[] = reactionSticker
+        ? [{ type: 'reaction', coordinates: { x: 50, y: 78, w: 22, h: 12, rotation: 0 }, reaction: reactionSticker, dark: false, flipped: false }]
+        : []
       await onPublish({
         caption: caption.trim(),
         privacy,
         allowIds: privacy === 'selected' ? [...allow] : [],
+        period,
+        mediaAreas,
       })
     } finally {
       setBusy(false)
@@ -96,6 +133,7 @@ export default function AddStorySheet({
             <textarea
               autoFocus
               rows={1}
+              maxLength={MAX_CAPTION_LEN}
               className={s.captionInput}
               placeholder=" "
               value={caption}
@@ -134,6 +172,94 @@ export default function AddStorySheet({
             })}
           </div>
         </div>
+
+        {/* Селектор периода (tweb story period): сколько часов история живёт */}
+        <div className={s.privacyBlock} style={{ marginTop: 12 }}>
+          <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionLabel}>
+            Сколько хранить
+          </Text>
+          <div className={classNames(s.card, s.segments)} role="radiogroup" aria-label="Сколько хранить историю">
+            {PERIOD_OPTIONS.map((opt) => {
+              const active = period === opt.key
+              return (
+                <div
+                  key={opt.key}
+                  role="radio"
+                  aria-checked={active}
+                  tabIndex={0}
+                  onClick={() => setPeriod(opt.key)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      setPeriod(opt.key)
+                    }
+                  }}
+                  className={classNames(s.segment, active ? s.segmentActive : '')}
+                >
+                  {opt.label}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* 4d: reaction-стикер (media area). Минимальный редактор — выбор эмодзи,
+            область ставится в нижнюю центральную часть истории. */}
+        <div className={s.privacyBlock} style={{ marginTop: 12 }}>
+          <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionLabel}>
+            Реакция-стикер
+          </Text>
+          <div className={classNames(s.card, s.segments)} role="radiogroup" aria-label="Реакция-стикер">
+            <div
+              role="radio"
+              aria-checked={reactionSticker === null}
+              tabIndex={0}
+              onClick={() => setReactionSticker(null)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setReactionSticker(null) } }}
+              className={classNames(s.segment, reactionSticker === null ? s.segmentActive : '')}
+            >
+              Нет
+            </div>
+            {REACTION_STICKERS.map((emo) => {
+              const active = reactionSticker === emo
+              return (
+                <div
+                  key={emo}
+                  role="radio"
+                  aria-checked={active}
+                  aria-label={emo}
+                  tabIndex={0}
+                  onClick={() => setReactionSticker(active ? null : emo)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setReactionSticker(active ? null : emo) } }}
+                  className={classNames(s.segment, active ? s.segmentActive : '')}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Emoji e={emo} size={22} />
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Подсказка для аудитории "Близкие" + переход в редактор списка */}
+        {privacy === 'close' && (
+          <div className={s.contactsBlock}>
+            <div
+              className={classNames(s.card, s.contactRow)}
+              role="button"
+              tabIndex={0}
+              onClick={onEditCloseFriends}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onEditCloseFriends?.() } }}
+              style={{ margin: 0, borderRadius: 16 }}
+            >
+              <TgIcon name="newprivate" size={22} color="var(--tg-accent)" />
+              <Text size={15} color="var(--tg-textPrimary)" className={s.contactName}>
+                Список близких друзей{closeCount != null ? ` (${closeCount})` : ''}
+              </Text>
+              <TgIcon name="next" size={20} color="var(--tg-textFaint)" />
+            </div>
+          </div>
+        )}
 
         {/* Выбор контактов для аудитории "Выбранные" */}
         {privacy === 'selected' && (

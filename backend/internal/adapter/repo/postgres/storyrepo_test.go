@@ -154,11 +154,376 @@ func TestStoryRepo_Visible_SelectedAllowlist(t *testing.T) {
 	}
 }
 
+func TestStoryRepo_Reactions(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewStoryRepo(pool)
+	ctx := context.Background()
+	u1 := seedUser(t, pool, "+930") // author
+	u2 := seedUser(t, pool, "+931") // reactor
+
+	future := time.Now().Add(24 * time.Hour)
+	storyID := createStory(t, pool, u1, "everyone", future, nil)
+
+	// Set a reaction.
+	if err := repo.SetReaction(ctx, storyID, u2, "👍"); err != nil {
+		t.Fatalf("SetReaction: %v", err)
+	}
+	if n, err := repo.ReactionsCount(ctx, storyID); err != nil || n != 1 {
+		t.Fatalf("ReactionsCount = %d, %v; want 1", n, err)
+	}
+
+	// Feed reflects the aggregate for the reactor.
+	groups, err := repo.ActiveFeed(ctx, u2, []int64{u1})
+	if err != nil || len(groups) != 1 || len(groups[0].Stories) != 1 {
+		t.Fatalf("feed: %+v, %v", groups, err)
+	}
+	it := groups[0].Stories[0]
+	if it.ReactionsCount != 1 || it.MyReaction != "👍" {
+		t.Fatalf("feed item = %+v; want count 1 / my 👍", it)
+	}
+	if len(it.Reactions) != 1 || it.Reactions[0].Emoji != "👍" || it.Reactions[0].Count != 1 || !it.Reactions[0].Mine {
+		t.Fatalf("feed reactions breakdown = %+v", it.Reactions)
+	}
+
+	// Author's feed sees the count but no personal reaction.
+	ag, _ := repo.ActiveFeed(ctx, u1, []int64{u1})
+	if ag[0].Stories[0].ReactionsCount != 1 || ag[0].Stories[0].MyReaction != "" {
+		t.Fatalf("author feed item = %+v; want count 1 / my empty", ag[0].Stories[0])
+	}
+
+	// Replace the reaction (upsert): count stays 1, emoji changes.
+	if err := repo.SetReaction(ctx, storyID, u2, "❤"); err != nil {
+		t.Fatalf("SetReaction replace: %v", err)
+	}
+	if n, _ := repo.ReactionsCount(ctx, storyID); n != 1 {
+		t.Fatalf("count after replace = %d; want 1", n)
+	}
+
+	// Stats include reactions.
+	st, err := repo.Stats(ctx, storyID)
+	if err != nil {
+		t.Fatalf("Stats: %v", err)
+	}
+	if st.ReactionsTotal != 1 || len(st.Reactions) != 1 || st.Reactions[0].Emoji != "❤" {
+		t.Fatalf("stats reactions = total %d / %+v", st.ReactionsTotal, st.Reactions)
+	}
+
+	// Remove the reaction: count drops to 0.
+	if err := repo.RemoveReaction(ctx, storyID, u2); err != nil {
+		t.Fatalf("RemoveReaction: %v", err)
+	}
+	if n, _ := repo.ReactionsCount(ctx, storyID); n != 0 {
+		t.Fatalf("count after remove = %d; want 0", n)
+	}
+}
+
+func TestStoryRepo_CloseFriends_SetGetAndVisibility(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewStoryRepo(pool)
+	ctx := context.Background()
+	author := seedUser(t, pool, "+940")
+	friend := seedUser(t, pool, "+941")
+	stranger := seedUser(t, pool, "+942")
+
+	if err := repo.SetCloseFriends(ctx, author, []int64{friend}); err != nil {
+		t.Fatalf("SetCloseFriends: %v", err)
+	}
+	got, err := repo.CloseFriends(ctx, author)
+	if err != nil || len(got) != 1 || got[0] != friend {
+		t.Fatalf("CloseFriends = %v, %v; want [%d]", got, err, friend)
+	}
+
+	future := time.Now().Add(24 * time.Hour)
+	storyID := createStory(t, pool, author, "close", future, nil)
+
+	// Close friend sees it; a stranger does not.
+	if ok, _ := repo.Visible(ctx, storyID, friend, nil); !ok {
+		t.Fatal("close friend should see the close story")
+	}
+	if ok, _ := repo.Visible(ctx, storyID, stranger, nil); ok {
+		t.Fatal("stranger should NOT see the close story")
+	}
+
+	// Replacement drops the old friend.
+	if err := repo.SetCloseFriends(ctx, author, []int64{stranger}); err != nil {
+		t.Fatalf("SetCloseFriends replace: %v", err)
+	}
+	if ok, _ := repo.Visible(ctx, storyID, friend, nil); ok {
+		t.Fatal("former close friend should no longer see the close story")
+	}
+	if ok, _ := repo.Visible(ctx, storyID, stranger, nil); !ok {
+		t.Fatal("new close friend should see the close story")
+	}
+}
+
+// TestStoryRepo_Feed_CloseFriendNonPartner: зритель, состоящий в close_friends
+// автора, видит его 'close'-историю в ленте, даже если автор не является его
+// чат-партнёром (не входит в переданный authorIDs). Посторонний — не видит.
+func TestStoryRepo_Feed_CloseFriendNonPartner(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewStoryRepo(pool)
+	ctx := context.Background()
+	author := seedUser(t, pool, "+945")
+	friend := seedUser(t, pool, "+946")   // close friend, но НЕ чат-партнёр
+	stranger := seedUser(t, pool, "+947") // ни то, ни другое
+
+	if err := repo.SetCloseFriends(ctx, author, []int64{friend}); err != nil {
+		t.Fatalf("SetCloseFriends: %v", err)
+	}
+	future := time.Now().Add(24 * time.Hour)
+	closeID := createStory(t, pool, author, "close", future, nil)
+
+	// friend не партнёр: authorIDs не содержит author (только сам friend), но
+	// close-история автора всё равно всплывает в его ленте.
+	groups, err := repo.ActiveFeed(ctx, friend, []int64{friend})
+	if err != nil {
+		t.Fatalf("ActiveFeed(friend): %v", err)
+	}
+	if len(groups) != 1 || len(groups[0].Stories) != 1 || groups[0].Stories[0].ID != closeID {
+		t.Fatalf("friend feed = %+v; want the close story %d", groups, closeID)
+	}
+	if groups[0].Author.ID != author {
+		t.Fatalf("group author = %d; want %d", groups[0].Author.ID, author)
+	}
+
+	// Посторонний (не close, не партнёр) close-историю не видит.
+	sg, err := repo.ActiveFeed(ctx, stranger, []int64{stranger})
+	if err != nil {
+		t.Fatalf("ActiveFeed(stranger): %v", err)
+	}
+	if len(sg) != 0 {
+		t.Fatalf("stranger feed = %+v; want empty", sg)
+	}
+
+	// А 'everyone'-история автора-не-партнёра НЕ должна всплывать у постороннего
+	// (иначе лента забьётся историями незнакомцев).
+	_ = createStory(t, pool, author, "everyone", future, nil)
+	sg, _ = repo.ActiveFeed(ctx, stranger, []int64{stranger})
+	if len(sg) != 0 {
+		t.Fatalf("stranger feed (everyone from non-partner) = %+v; want empty", sg)
+	}
+}
+
+// TestStoryRepo_Feed_SelectedNonPartner: allow-listed зритель видит 'selected'-
+// историю автора-не-партнёра в ленте.
+func TestStoryRepo_Feed_SelectedNonPartner(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewStoryRepo(pool)
+	ctx := context.Background()
+	author := seedUser(t, pool, "+955")
+	allowed := seedUser(t, pool, "+956")
+	other := seedUser(t, pool, "+957")
+
+	future := time.Now().Add(24 * time.Hour)
+	selID := createStory(t, pool, author, "selected", future, []int64{allowed})
+
+	g, err := repo.ActiveFeed(ctx, allowed, []int64{allowed})
+	if err != nil {
+		t.Fatalf("ActiveFeed(allowed): %v", err)
+	}
+	if len(g) != 1 || len(g[0].Stories) != 1 || g[0].Stories[0].ID != selID {
+		t.Fatalf("allowed feed = %+v; want selected story %d", g, selID)
+	}
+	og, _ := repo.ActiveFeed(ctx, other, []int64{other})
+	if len(og) != 0 {
+		t.Fatalf("non-allowlisted feed = %+v; want empty", og)
+	}
+}
+
+func TestStoryRepo_Archive_OwnExpiredOnly(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewStoryRepo(pool)
+	ctx := context.Background()
+	u1 := seedUser(t, pool, "+950")
+	u2 := seedUser(t, pool, "+951")
+
+	past := time.Now().Add(-time.Hour)
+	future := time.Now().Add(time.Hour)
+	expired := createStory(t, pool, u1, "everyone", past, nil)
+	_ = createStory(t, pool, u1, "everyone", future, nil) // active — not in archive
+	_ = createStory(t, pool, u2, "everyone", past, nil)   // other user's — not in archive
+
+	items, err := repo.Archive(ctx, u1, 50, 0)
+	if err != nil {
+		t.Fatalf("Archive: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != expired {
+		t.Fatalf("archive = %+v; want only expired story %d", items, expired)
+	}
+}
+
+func TestStoryRepo_Pinned_IncludesExpired(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewStoryRepo(pool)
+	ctx := context.Background()
+	author := seedUser(t, pool, "+960")
+	viewer := seedUser(t, pool, "+961")
+
+	past := time.Now().Add(-time.Hour)
+	expiredPinned := createStory(t, pool, author, "everyone", past, nil)
+	_ = createStory(t, pool, author, "everyone", past, nil) // not pinned
+
+	if err := repo.SetPinned(ctx, expiredPinned, author, true); err != nil {
+		t.Fatalf("SetPinned: %v", err)
+	}
+	items, err := repo.Pinned(ctx, author, viewer)
+	if err != nil {
+		t.Fatalf("Pinned: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != expiredPinned || !items[0].Pinned {
+		t.Fatalf("pinned = %+v; want only pinned expired story %d", items, expiredPinned)
+	}
+}
+
+func TestStoryRepo_Edit_CaptionPrivacyAndFlag(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewStoryRepo(pool)
+	ctx := context.Background()
+	author := seedUser(t, pool, "+970")
+	allowed := seedUser(t, pool, "+971")
+	viewer := seedUser(t, pool, "+972")
+
+	future := time.Now().Add(24 * time.Hour)
+	storyID := createStory(t, pool, author, "everyone", future, nil)
+
+	newCap := "edited caption"
+	newPriv := "selected"
+	if err := repo.Edit(ctx, storyID, author, &newCap, &newPriv, []int64{allowed}, nil); err != nil {
+		t.Fatalf("Edit: %v", err)
+	}
+
+	// edited flag + new privacy reflected in the author's own feed; caption updated.
+	ag, _ := repo.ActiveFeed(ctx, author, []int64{author})
+	if len(ag) != 1 || len(ag[0].Stories) != 1 {
+		t.Fatalf("author feed shape: %+v", ag)
+	}
+	it := ag[0].Stories[0]
+	if !it.Edited || it.Caption != newCap || it.Privacy != "selected" {
+		t.Fatalf("edited item = %+v; want edited/selected/%q", it, newCap)
+	}
+
+	// Now selected → only the allowlisted user sees it.
+	if ok, _ := repo.Visible(ctx, storyID, allowed, nil); !ok {
+		t.Fatal("allowlisted user should see the edited selected story")
+	}
+	if ok, _ := repo.Visible(ctx, storyID, viewer, nil); ok {
+		t.Fatal("non-allowlisted user should NOT see the edited selected story")
+	}
+}
+
+func TestStoryRepo_PurgeRecentViews(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewStoryRepo(pool)
+	ctx := context.Background()
+	author := seedUser(t, pool, "+980")
+	viewer := seedUser(t, pool, "+981")
+
+	future := time.Now().Add(24 * time.Hour)
+	storyID := createStory(t, pool, author, "everyone", future, nil)
+	if err := repo.MarkViewed(ctx, storyID, viewer); err != nil {
+		t.Fatalf("MarkViewed: %v", err)
+	}
+
+	if err := repo.PurgeRecentViews(ctx, viewer, time.Now().Add(-5*time.Minute)); err != nil {
+		t.Fatalf("PurgeRecentViews: %v", err)
+	}
+	viewers, _ := repo.Viewers(ctx, storyID)
+	if len(viewers) != 0 {
+		t.Fatalf("view should be purged, got %+v", viewers)
+	}
+}
+
 func TestStoryRepo_GetAuthor_NotFound(t *testing.T) {
 	pool := storepostgres.NewTestDB(t)
 	repo := NewStoryRepo(pool)
 	ctx := context.Background()
 	if _, err := repo.GetAuthor(ctx, 999999); err != domain.ErrNotFound {
 		t.Fatalf("GetAuthor(absent) = %v; want ErrNotFound", err)
+	}
+}
+
+// TestStoryRepo_MediaAreasAndRepost covers the 4d columns: media_areas jsonb
+// round-trips through Create/ActiveFeed/Edit, Origin returns the author card +
+// media, and a repost carries fwd_from.
+func TestStoryRepo_MediaAreasAndRepost(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewStoryRepo(pool)
+	ctx := context.Background()
+	author := seedUser(t, pool, "+920")
+	future := time.Now().Add(24 * time.Hour)
+
+	lat, long := 55.75, 37.61
+	areas := []domain.StoryMediaArea{
+		{Type: "reaction", Coordinates: domain.StoryAreaCoordinates{X: 50, Y: 50, W: 10, H: 10, Rotation: 5}, Reaction: "👍"},
+		{Type: "geo", Coordinates: domain.StoryAreaCoordinates{X: 1, Y: 2}, Lat: &lat, Long: &long, Title: "Москва"},
+	}
+	srcID, err := repo.Create(ctx, domain.Story{
+		AuthorID: author, MediaID: 500, Caption: "orig", Privacy: "everyone",
+		ExpiresAt: future, MediaAreas: areas,
+	}, nil)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// media_areas round-trip via the feed read model.
+	groups, err := repo.ActiveFeed(ctx, author, []int64{author})
+	if err != nil {
+		t.Fatalf("ActiveFeed: %v", err)
+	}
+	got := groups[0].Stories[0]
+	if len(got.MediaAreas) != 2 || got.MediaAreas[0].Type != "reaction" || got.MediaAreas[0].Reaction != "👍" {
+		t.Fatalf("media_areas not round-tripped: %+v", got.MediaAreas)
+	}
+	if got.MediaAreas[1].Lat == nil || *got.MediaAreas[1].Lat != lat {
+		t.Fatalf("geo lat not round-tripped: %+v", got.MediaAreas[1])
+	}
+	if got.FwdFrom != nil {
+		t.Fatalf("original story must have no fwd_from, got %+v", got.FwdFrom)
+	}
+
+	// Origin exposes author name + media for repost/share.
+	origin, err := repo.Origin(ctx, srcID)
+	if err != nil {
+		t.Fatalf("Origin: %v", err)
+	}
+	if origin.AuthorID != author || origin.MediaID != 500 || origin.AuthorName == "" {
+		t.Fatalf("unexpected origin: %+v", origin)
+	}
+
+	// Edit replaces media_areas.
+	newAreas := []domain.StoryMediaArea{{Type: "url", Coordinates: domain.StoryAreaCoordinates{X: 3}, URL: "https://t.me"}}
+	if err := repo.Edit(ctx, srcID, author, nil, nil, nil, &newAreas); err != nil {
+		t.Fatalf("Edit: %v", err)
+	}
+	groups, _ = repo.ActiveFeed(ctx, author, []int64{author})
+	if a := groups[0].Stories[0].MediaAreas; len(a) != 1 || a[0].Type != "url" || a[0].URL != "https://t.me" {
+		t.Fatalf("Edit did not replace media_areas: %+v", a)
+	}
+
+	// Repost: a new story referencing the source keeps fwd_from and the media.
+	repostID, err := repo.Create(ctx, domain.Story{
+		AuthorID: author, MediaID: origin.MediaID, Caption: "repost", Privacy: "everyone",
+		ExpiresAt: future, FwdFrom: &domain.StoryFwd{AuthorID: origin.AuthorID, StoryID: srcID},
+	}, nil)
+	if err != nil {
+		t.Fatalf("Create repost: %v", err)
+	}
+	groups, _ = repo.ActiveFeed(ctx, author, []int64{author})
+	var reposted domain.StoryItem
+	for _, s := range groups[0].Stories {
+		if s.ID == repostID {
+			reposted = s
+		}
+	}
+	if reposted.FwdFrom == nil || reposted.FwdFrom.StoryID != srcID || reposted.FwdFrom.AuthorID != author {
+		t.Fatalf("repost fwd_from not persisted: %+v", reposted.FwdFrom)
+	}
+	if reposted.MediaID != 500 {
+		t.Fatalf("repost media = %d; want 500", reposted.MediaID)
+	}
+
+	// Archive/Pinned scan path also carries the new columns.
+	if _, err := repo.Pinned(ctx, author, author); err != nil {
+		t.Fatalf("Pinned scan: %v", err)
 	}
 }

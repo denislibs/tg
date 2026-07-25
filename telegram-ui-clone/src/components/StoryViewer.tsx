@@ -1,16 +1,32 @@
 import { createPortal } from 'react-dom'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Text from '../shared/ui/Text'
 import IconButton from '../shared/ui/IconButton'
+import Menu, { MenuItem } from '../shared/ui/Menu'
+import Popup from '../shared/ui/Popup'
 import { motion, AnimatePresence } from 'framer-motion'
 import TgIcon from './TgIcon'
+import Emoji from './emoji/Emoji'
 import { EASE, DUR } from '../motion'
 import Avatar from '../shared/ui/Avatar'
+import { useT } from '../i18n'
 import { gradientFor } from '../core/dialogToChat'
 import { useStoryViewer } from '../core/hooks/useStoryViewer'
 import StoryStats from './StoryStats'
+import EditStorySheet from './EditStorySheet'
+import StealthModePopup from './StealthModePopup'
+import StoryMediaAreas from './StoryMediaAreas'
+import RepostStorySheet from './RepostStorySheet'
+import { ForwardPicker } from './messages/ChatDialogs'
+import { useChatsStore } from '../stores/chatsStore'
+import { useManagers } from '../core/hooks/useManagers'
+import { uiEvents } from '../core/hooks/uiEvents'
 import classNames from '../shared/lib/classNames'
 import s from './StoryViewer.module.scss'
+
+// Быстрая реакция по умолчанию (tweb DEFAULT_REACTION_EMOTICON) + панель выбора.
+const DEFAULT_REACTION = '❤'
+const REACTIONS = ['❤', '👍', '🔥', '🥰', '👏', '😁', '😢']
 
 /**
  * Full-screen story viewer over the real stories feed. Shows the selected
@@ -18,9 +34,11 @@ import s from './StoryViewer.module.scss'
  * per-story progress bars + auto-advance timer, the tap-left/right zones and the
  * Esc-to-close handler. Media is resolved via `managers.media.contentUrl`; each
  * shown story is marked viewed via `managers.stories.view`. For the viewer's own
- * stories a "Просмотры (N)" affordance reveals the viewers list.
+ * stories a "Просмотры (N)" affordance reveals the viewers list; for others'
+ * stories a footer offers a heart reaction / picker and a text reply (DM).
  */
 export default function StoryViewer({ groupIndex, onClose }: { groupIndex: number; onClose: () => void }) {
+  const t = useT()
   const {
     group,
     stories,
@@ -40,7 +58,21 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
     openViewers,
     bg,
     paused,
+    setPaused,
+    myReaction,
+    reactionsCount,
+    toggleReaction,
+    sendReply,
+    del,
+    pinned,
+    edited,
+    togglePinned,
+    mediaAreas,
+    fwdFrom,
+    fwdAuthorName,
   } = useStoryViewer({ groupIndex, onClose })
+  const managers = useManagers()
+  const dialogs = useChatsStore((st) => st.dialogs)
 
   // Пауза (Space) синхронно останавливает воспроизведение видео сториз.
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -51,7 +83,31 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
     else void v.play().catch(() => {})
   }, [paused, mediaUrl])
 
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [confirmDel, setConfirmDel] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [reply, setReply] = useState('')
+  // 4c: лист редактирования (своя история), stealth-попап и меню чужой истории.
+  const [editOpen, setEditOpen] = useState(false)
+  const [stealthOpen, setStealthOpen] = useState(false)
+  const [othersMenuOpen, setOthersMenuOpen] = useState(false)
+  // 4d: share истории в чаты + репост.
+  const [shareOpen, setShareOpen] = useState(false)
+  const [repostOpen, setRepostOpen] = useState(false)
+
+  // Любой оверлей (меню удаления, подтверждение, панель реакций, ввод ответа,
+  // редактирование, stealth, share/репост) ставит авто-прогресс на паузу.
+  const holds = menuOpen || confirmDel || pickerOpen || reply.length > 0 || editOpen || stealthOpen || othersMenuOpen || shareOpen || repostOpen
+  useEffect(() => { setPaused(holds) }, [holds, setPaused, story?.id])
+
   if (!group || !story) return null
+
+  const submitReply = () => {
+    const text = reply.trim()
+    if (!text) return
+    setReply('')
+    void sendReply(text)
+  }
 
   return createPortal(
     <AnimatePresence>
@@ -81,6 +137,11 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
             <div className={s.placeholder}>{group.author.displayName.charAt(0)}</div>
           )}
 
+          {/* 4d: интерактивные области поверх истории (tweb StoryMediaArea) */}
+          {mediaAreas.length > 0 && (
+            <StoryMediaAreas areas={mediaAreas} reactionsCount={reactionsCount} onReaction={toggleReaction} />
+          )}
+
           {/* Progress bars */}
           <div className={s.progress}>
             {stories.map((st, i) => (
@@ -108,23 +169,115 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
             </Text>
             <div className={s.spacer} />
             {isMe && (
-              <IconButton onClick={openStats} color="#fff" size="small" aria-label="Статистика">
+              <IconButton onClick={openStats} color="#fff" size="small" aria-label={t('Story statistics')}>
                 <TgIcon name="statistics" />
               </IconButton>
             )}
+            <IconButton
+              onClick={() => (isMe ? setMenuOpen(true) : setOthersMenuOpen(true))}
+              color="#fff"
+              size="small"
+              aria-label={t('More')}
+            >
+              <TgIcon name="more" />
+            </IconButton>
             <IconButton onClick={onClose} color="#fff" size="small">
               <TgIcon name="close" />
             </IconButton>
           </div>
 
+          {/* 4d: плашка репоста (tweb repostInfo) — «репост от {автор}» */}
+          {fwdFrom && (
+            <div
+              style={{
+                position: 'absolute', top: 48, left: 12, zIndex: 4,
+                display: 'flex', alignItems: 'center', gap: 4,
+                padding: '3px 8px', borderRadius: 12,
+                background: 'rgba(0,0,0,0.35)', maxWidth: 'calc(100% - 24px)',
+              }}
+            >
+              <TgIcon name="storyrepost" size={14} color="#fff" />
+              <Text noWrap color="#fff" size={12} weight={600}>
+                {fwdAuthorName ?? t('Repost')}
+              </Text>
+            </div>
+          )}
+
+          {/* Меню своей истории: закреп в профиле, редактирование, удаление.
+              Add/Remove from Profile 1:1 с tweb (Story.AddToProfile/RemoveFromProfile). */}
+          <Menu open={menuOpen} onClose={() => setMenuOpen(false)} zIndex={3100} style={{ top: 56, right: 16, transformOrigin: 'top right' }}>
+            <MenuItem
+              icon={<TgIcon name={pinned ? 'pinlist' : 'pinnedchat'} size={20} />}
+              label={pinned ? t('Story.RemoveFromProfile') : t('Story.AddToProfile')}
+              onClick={() => {
+                setMenuOpen(false)
+                togglePinned()
+              }}
+            />
+            <MenuItem
+              icon={<TgIcon name="edit" size={20} />}
+              label={t('Edit')}
+              onClick={() => {
+                setMenuOpen(false)
+                setEditOpen(true)
+              }}
+            />
+            <MenuItem
+              icon={<TgIcon name="forward" size={20} />}
+              label={t('Share')}
+              onClick={() => {
+                setMenuOpen(false)
+                setShareOpen(true)
+              }}
+            />
+            <MenuItem
+              icon={<TgIcon name="delete" size={20} />}
+              label={t('Delete')}
+              danger
+              onClick={() => {
+                setMenuOpen(false)
+                setConfirmDel(true)
+              }}
+            />
+          </Menu>
+
+          {/* Меню чужой истории: Hide My View (stealth) — 1:1 с tweb Stories.StealthMode.View. */}
+          <Menu open={othersMenuOpen} onClose={() => setOthersMenuOpen(false)} zIndex={3100} style={{ top: 56, right: 16, transformOrigin: 'top right' }}>
+            <MenuItem
+              icon={<TgIcon name="eye2" size={20} />}
+              label={t('Stories.StealthMode.View')}
+              onClick={() => {
+                setOthersMenuOpen(false)
+                setStealthOpen(true)
+              }}
+            />
+            <MenuItem
+              icon={<TgIcon name="storyrepost" size={20} />}
+              label={t('Repost')}
+              onClick={() => {
+                setOthersMenuOpen(false)
+                setRepostOpen(true)
+              }}
+            />
+            <MenuItem
+              icon={<TgIcon name="forward" size={20} />}
+              label={t('Share')}
+              onClick={() => {
+                setOthersMenuOpen(false)
+                setShareOpen(true)
+              }}
+            />
+          </Menu>
+
           {/* Tap zones */}
           <div className={s.tapPrev} onClick={prev} />
           <div className={s.tapNext} onClick={next} />
 
-          {/* Caption */}
-          {story.caption && (
-            <div className={classNames(s.caption, isMe ? s.captionRaised : '')}>
-              <Text color="#fff" size={15}>{story.caption}</Text>
+          {/* Caption (+ пометка edited, payload story.edited) */}
+          {(story.caption || edited) && (
+            <div className={classNames(s.caption, isMe ? s.captionRaised : s.captionRaisedFooter)}>
+              {story.caption && <Text color="#fff" size={15}>{story.caption}</Text>}
+              {edited && <Text color="rgba(255,255,255,0.6)" size={12}>{t('edited')}</Text>}
             </div>
           )}
 
@@ -135,6 +288,73 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
               <Text color="#fff" size={15}>
                 Просмотры{viewers ? ` (${viewers.length})` : ''}
               </Text>
+            </div>
+          )}
+
+          {/* Чужая история: футер с ответом (DM) + реакцией (tweb StoryInput) */}
+          {!isMe && (
+            <div className={s.footer}>
+              <AnimatePresence>
+                {pickerOpen && (
+                  <motion.div
+                    key="react-bar"
+                    className={s.reactBar}
+                    initial={{ opacity: 0, y: 8, scale: 0.9 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 8, scale: 0.9 }}
+                    transition={{ duration: 0.16, ease: EASE }}
+                  >
+                    {REACTIONS.map((r) => (
+                      <div
+                        key={r}
+                        className={classNames(s.reactChip, myReaction === r ? s.reactChipActive : '')}
+                        onClick={() => {
+                          toggleReaction(r)
+                          setPickerOpen(false)
+                        }}
+                      >
+                        <Emoji e={r} size={30} />
+                      </div>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <input
+                className={s.replyInput}
+                placeholder={t('Reply')}
+                value={reply}
+                onChange={(e) => setReply(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); submitReply() }
+                  // не даём навигации/паузе сториз перехватывать ввод
+                  e.stopPropagation()
+                }}
+              />
+              <IconButton
+                onClick={() => setPickerOpen((v) => !v)}
+                color="#fff"
+                aria-label={t('React')}
+              >
+                <TgIcon name="smile" />
+              </IconButton>
+              {/* быстрая ❤: тап ставит/снимает реакцию по умолчанию (анимация pop) */}
+              <motion.div
+                className={classNames(s.heartBtn, myReaction ? s.heartActive : '')}
+                onClick={() => toggleReaction(myReaction ?? DEFAULT_REACTION)}
+                whileTap={{ scale: 0.8 }}
+                role="button"
+                aria-label={t('React')}
+              >
+                {myReaction ? (
+                  <motion.div key={myReaction} initial={{ scale: 0.4 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 500, damping: 18 }}>
+                    <Emoji e={myReaction} size={26} />
+                  </motion.div>
+                ) : (
+                  <TgIcon name="reactions" size={26} color="#fff" />
+                )}
+                {reactionsCount > 0 && <span className={s.reactCount}>{reactionsCount}</span>}
+              </motion.div>
             </div>
           )}
 
@@ -184,6 +404,54 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
         <AnimatePresence>
           {showStats && story && <StoryStats storyId={story.id} onClose={closeStats} />}
         </AnimatePresence>
+
+        {/* Подтверждение удаления (tweb DeleteStoryTitle / DeleteStorySubtitle) */}
+        {confirmDel && (
+          <Popup
+            open
+            title={t('Delete story')}
+            onClose={() => setConfirmDel(false)}
+            width={360}
+            action={{ label: t('Delete'), onClick: () => { setConfirmDel(false); del() } }}
+          >
+            <div style={{ padding: '0 16px 8px' }}>
+              <Text size={15}>{t('Are you sure you want to delete this story?')}</Text>
+            </div>
+          </Popup>
+        )}
+
+        {/* Лист редактирования своей истории (portal над вьювером) */}
+        <AnimatePresence>
+          {editOpen && story && <EditStorySheet story={story} onClose={() => setEditOpen(false)} />}
+        </AnimatePresence>
+
+        {/* Stealth Mode popup (Hide My View из меню чужой истории) */}
+        {stealthOpen && <StealthModePopup onClose={() => setStealthOpen(false)} />}
+
+        {/* 4d: share истории в чаты (tweb share, переиспользуем ForwardPicker) */}
+        {shareOpen && (
+          <ForwardPicker
+            dialogs={dialogs}
+            hasCaption={false}
+            onClose={() => setShareOpen(false)}
+            onPick={(chatIds) => {
+              setShareOpen(false)
+              if (!chatIds.length) return
+              void managers.stories.share(story.id, chatIds).then((n) => {
+                uiEvents.emit('ui:toast', n > 0 ? 'История отправлена' : 'Не удалось отправить')
+              }).catch(() => uiEvents.emit('ui:toast', 'Не удалось отправить'))
+            }}
+          />
+        )}
+
+        {/* 4d: репост чужой истории */}
+        {repostOpen && (
+          <RepostStorySheet
+            sourceAuthorId={group.author.id}
+            sourceStoryId={story.id}
+            onClose={() => setRepostOpen(false)}
+          />
+        )}
       </motion.div>
     </AnimatePresence>,
     document.body,

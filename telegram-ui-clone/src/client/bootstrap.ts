@@ -16,7 +16,7 @@ import type { Folder, FolderInput, FolderInvite, FolderInvitePreview } from '../
 import type { GroupCard } from '../core/managers/groupsManager'
 import type { SearchResult, SuggestPostArgs } from '../core/managers/channelsManager'
 import type { Peer } from '../core/managers/peersManager'
-import type { StoryGroup, StoryStats } from '../core/managers/storiesManager'
+import type { StoryGroup, StoryStats, StoryItem, StoryPrivacy, StealthState, MediaArea } from '../core/managers/storiesManager'
 import type { Contact, AddContactInput } from '../core/managers/contactsManager'
 import type { PrivacyRule, BlockedUser, UserProfile } from '../core/managers/privacyManager'
 import type { SignInOutcome, PasswordState, PasskeyInfo } from '../core/managers/authManager'
@@ -244,11 +244,23 @@ export interface Managers {
   presence: { get(ids: number[]): Promise<PresenceEvt[]> }
   stories: {
     feed(): Promise<StoryGroup[]>
-    post(args: { mediaId: number; caption?: string; privacy?: 'everyone' | 'contacts' | 'selected'; allowIds?: number[] }): Promise<number>
+    post(args: { mediaId: number; caption?: string; privacy?: StoryPrivacy; allowIds?: number[]; period?: number; mediaAreas?: MediaArea[] }): Promise<number>
+    repost(args: { sourceAuthorId: number; sourceStoryId: number; caption?: string; privacy?: StoryPrivacy; allowIds?: number[]; period?: number }): Promise<number>
+    share(id: number, chatIds: number[]): Promise<number>
     view(id: number): Promise<void>
+    setReaction(id: number, reaction: string): Promise<void>
+    removeReaction(id: number): Promise<void>
     viewers(id: number): Promise<{ id: number; displayName: string; avatarUrl: string }[]>
     stats(id: number): Promise<StoryStats>
     del(id: number): Promise<void>
+    closeFriends(): Promise<number[]>
+    setCloseFriends(ids: number[]): Promise<void>
+    stealthState(): Promise<StealthState>
+    activateStealth(): Promise<StealthState>
+    archive(limit?: number, offsetId?: number): Promise<StoryItem[]>
+    pin(id: number, pinned: boolean): Promise<void>
+    pinnedStories(peer: number): Promise<StoryItem[]>
+    editStory(id: number, patch: { caption?: string; privacy?: StoryPrivacy; allowIds?: number[]; mediaAreas?: MediaArea[] }): Promise<void>
   }
   contacts: {
     add(input: AddContactInput): Promise<Contact>

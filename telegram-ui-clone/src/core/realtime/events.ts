@@ -37,6 +37,9 @@ export const RT = {
   secretRequest: 'rt:secret_chat_request',
   secretAccept: 'rt:secret_chat_accept',
   secretReject: 'rt:secret_chat_reject',
+  storyNew: 'rt:story_new',
+  storyDeleted: 'rt:story_deleted',
+  storyReaction: 'rt:story_reaction',
   state: 'rt:state',
 } as const
 
@@ -101,6 +104,10 @@ export interface ReactionEvt { chat_id: number; msg_id: number; user_id: number;
 // Обновление платной ⭐-реакции: новый агрегат звёзд сообщения (total) + вклад
 // отправителя (mine, у sender_id). Получатель правит total; sender_id===me — и mine.
 export interface StarReactionEvt { chat_id: number; msg_id: number; sender_id: number; total: number; mine: number }
+// Истории (Stories realtime): новая история автора / удаление / изменение реакции.
+export interface StoryNewEvt { id: number; author_id: number; media_id: number; caption: string; expires_at: string }
+export interface StoryDeletedEvt { story_id: number; author_id: number }
+export interface StoryReactionEvt { story_id: number; user_id: number; reaction: string | null; reactions_count: number }
 export interface AckEvt { client_msg_id: string; msg_id: number; seq: number; created_at: string }
 // Server rejected a send (e.g. text too long). The client drops it from the outbox
 // (no infinite retry) and removes the optimistic bubble.

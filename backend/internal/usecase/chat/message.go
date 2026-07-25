@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -184,6 +185,9 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			return domain.Message{}, domain.ErrNotFound // media absent
 		case err != nil:
 			return domain.Message{}, err // propagate real DB errors (don't mask as 403)
+		case ownerID != in.SenderID && in.skipMediaOwner:
+			// Share истории: media принадлежит автору истории, а не отправителю;
+			// видимость истории уже проверена story-usecase, поэтому владельца не сверяем.
 		case ownerID != in.SenderID:
 			// Стикер шлётся чужим media: наборы публичны, поэтому достаточно,
 			// чтобы media принадлежало какому-либо стикеру.
@@ -487,6 +491,26 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		i.maybeBotReply(ctx, in.ChatID, in.SenderID, msg.ID, in.Text)
 	}
 	return msg, nil
+}
+
+// SendStoryShare posts a story into a chat as a regular media message with an
+// attribution caption (story-usecase's MessageSender port; tweb inputMediaStory,
+// lightweight variant without a dedicated message type). The story-usecase has
+// already checked story visibility, so the media-owner check is skipped; chat
+// membership, slowmode and send-privacy still apply through Send (a non-member
+// yields domain.ErrNotFound). The message type follows the media mime.
+func (i *Interactor) SendStoryShare(ctx context.Context, chatID, senderID, mediaID int64, caption string) error {
+	msgType := "photo"
+	if dims, err := i.mediaAccess.DimsByIDs(ctx, []int64{mediaID}); err == nil {
+		if d, ok := dims[mediaID]; ok && strings.HasPrefix(d.Mime, "video/") {
+			msgType = "video"
+		}
+	}
+	_, err := i.Send(ctx, SendInput{
+		ChatID: chatID, SenderID: senderID, Type: msgType,
+		Text: caption, MediaID: &mediaID, skipMediaOwner: true,
+	})
+	return err
 }
 
 // MarkRead advances a member's last_read_seq, recomputes unread, and appends a

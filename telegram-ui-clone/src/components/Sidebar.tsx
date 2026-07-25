@@ -30,6 +30,13 @@ import NewGroupFlow from './NewGroupFlow'
 import NewChannelFlow from './NewChannelFlow'
 import NewPrivateChat from './NewPrivateChat'
 import SearchView from './SearchView'
+import StoriesRow from './StoriesRow'
+import StoryViewer from './StoryViewer'
+import AddStorySheet from './AddStorySheet'
+import MediaEditor from './mediaEditor/MediaEditor'
+import CloseFriendsSheet from './CloseFriendsSheet'
+import StoriesArchiveSheet from './StoriesArchiveSheet'
+import { loadStories } from '../stores/storiesStore'
 import TopicsPanel from './TopicsPanel'
 import type { TopicRow } from '../core/managers/groupsManager'
 import { useManagers } from '../core/hooks/useManagers'
@@ -38,6 +45,7 @@ import InputSearch from '../shared/ui/InputSearch'
 import FolderTabs from './FolderTabs'
 import { TabsBar } from '../shared/ui/Tabs'
 import { useT } from '../i18n'
+import { uiEvents } from '../core/hooks/uiEvents'
 
 interface Props {
   chats: Chat[]
@@ -88,6 +96,43 @@ export default function Sidebar({
   const [newSecretOpen, setNewSecretOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const listScrollRef = useRef<HTMLDivElement>(null)
+
+  // Истории (Stories): открытая группа во вьювере + флоу создания (выбор файла →
+  // загрузка → лист подписи/приватности/периода → publish).
+  const [storyOpen, setStoryOpen] = useState<number | null>(null)
+  const [storyMediaId, setStoryMediaId] = useState<number | null>(null)
+  // 4d: выбранный файл истории проходит через MediaEditor (рисование/текст/стикеры)
+  // до загрузки — как обычное медиа. onDone → загрузка отредактированного → лист.
+  const [storyEditFile, setStoryEditFile] = useState<File | null>(null)
+  // 4c: редактор близких друзей и архив своих истёкших историй (слайд-панели).
+  const [showCloseFriends, setShowCloseFriends] = useState(false)
+  const [showArchive, setShowArchive] = useState(false)
+  const storyFileRef = useRef<HTMLInputElement>(null)
+  const pickStoryFile = () => storyFileRef.current?.click()
+  const onStoryFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // разрешить повторный выбор того же файла
+    if (!file) return
+    setStoryEditFile(file) // сначала редактор (MediaEditor), загрузка — после onDone
+  }
+  const uploadStoryMedia = async (file: File) => {
+    setStoryEditFile(null)
+    try {
+      const mediaId = await managers.media.upload({ blob: file, mime: file.type, size: file.size, fileName: file.name })
+      setStoryMediaId(mediaId)
+    } catch {
+      // Аплоад сорвался — сбрасываем флоу (лист подписи не откроется) и даём
+      // повторить; тост сообщает об ошибке.
+      setStoryMediaId(null)
+      uiEvents.emit('ui:toast', 'Не удалось загрузить историю')
+    }
+  }
+  const publishStory = async (args: { caption: string; privacy: 'everyone' | 'contacts' | 'close' | 'selected'; allowIds: number[]; period: number; mediaAreas?: import('../core/managers/storiesManager').MediaArea[] }) => {
+    if (storyMediaId == null) return
+    await managers.stories.post({ mediaId: storyMediaId, ...args })
+    setStoryMediaId(null)
+    await loadStories(managers) // подтянуть свою группу с именем/аватаром автора
+  }
 
   // Папки (tweb dialog filters): «Все» + пользовательские, из foldersStore.
   const folders = useFoldersStore((st) => st.folders)
@@ -228,6 +273,8 @@ export default function Sidebar({
               onSelect(String(id))
             },
             onOpenPremium: () => setPremiumOpen(true),
+            onOpenMyStories: () => setShowArchive(true),
+            onOpenCloseFriends: () => setShowCloseFriends(true),
             onLogout,
             onToggleMode,
           }}
@@ -249,6 +296,8 @@ export default function Sidebar({
               onSelect(String(id))
             }}
             onOpenPremium={() => setPremiumOpen(true)}
+            onOpenMyStories={() => setShowArchive(true)}
+            onOpenCloseFriends={() => setShowCloseFriends(true)}
             onLogout={onLogout}
             onToggleMode={onToggleMode}
           />
@@ -277,6 +326,12 @@ export default function Sidebar({
           </IconButton>
         )}
       </div>
+
+      {/* Лента историй (tweb stories row) — горизонтальная строка аватарок над
+          списком чатов. Скрыта в поиске и при открытой панели форум-тем. */}
+      {!searching && !forumChat && (
+        <StoriesRow onOpen={setStoryOpen} onAddStory={pickStoryFile} />
+      )}
 
       {/* tweb #chatlist-container — список всегда смонтирован; поиск перекрывает его */}
       <div className={s.body}>
@@ -529,6 +584,50 @@ export default function Sidebar({
           />
         )}
       </AnimatePresence>
+
+      {/* Скрытый выбор файла истории (image/video) */}
+      <input
+        ref={storyFileRef}
+        type="file"
+        accept="image/*,video/*"
+        style={{ display: 'none' }}
+        onChange={(e) => void onStoryFile(e)}
+      />
+
+      {/* Редактор истории (4d): выбранный файл проходит через MediaEditor до загрузки */}
+      {storyEditFile && (
+        <MediaEditor
+          file={storyEditFile}
+          onDone={(f) => void uploadStoryMedia(f)}
+          onCancel={() => setStoryEditFile(null)}
+        />
+      )}
+
+      {/* Лист создания истории (открывается после загрузки медиа) */}
+      <AnimatePresence>
+        {storyMediaId != null && (
+          <AddStorySheet
+            onBack={() => setStoryMediaId(null)}
+            onPublish={publishStory}
+            onEditCloseFriends={() => setShowCloseFriends(true)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Редактор списка близких друзей (4c) */}
+      <AnimatePresence>
+        {showCloseFriends && <CloseFriendsSheet onClose={() => setShowCloseFriends(false)} />}
+      </AnimatePresence>
+
+      {/* Архив своих истёкших историй (4c) */}
+      <AnimatePresence>
+        {showArchive && <StoriesArchiveSheet onClose={() => setShowArchive(false)} />}
+      </AnimatePresence>
+
+      {/* Полноэкранный просмотрщик историй */}
+      {storyOpen != null && (
+        <StoryViewer groupIndex={storyOpen} onClose={() => setStoryOpen(null)} />
+      )}
     </div>
   )
 }

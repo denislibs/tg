@@ -51,9 +51,11 @@ type PostStats struct {
 }
 
 // StoryStats — статистика истории (аналог tweb stats.getStoryStats): просмотры и
-// их динамика по дням. Реакции/пересылки у историй в этой модели данных не
-// хранятся (нет таблицы story_reactions) — только просмотры (story_views).
+// их динамика по дням плюс реакции (всего + разбивка по эмодзи из
+// story_reactions). Пересылок у историй в этой модели данных нет.
 type StoryStats struct {
-	Views      int64       // всего просмотров (уникальные зрители story_views)
-	ViewsByDay []StatPoint // просмотры по дням (story_views.viewed_at)
+	Views          int64           // всего просмотров (уникальные зрители story_views)
+	ViewsByDay     []StatPoint     // просмотры по дням (story_views.viewed_at)
+	ReactionsTotal int64           // всего реакций (story_reactions)
+	Reactions      []ReactionCount // разбивка реакций по эмодзи
 }
