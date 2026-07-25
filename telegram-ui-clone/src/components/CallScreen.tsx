@@ -45,7 +45,10 @@ export default function CallScreen() {
   useEffect(() => {
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = call.remoteStream
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = call.remoteStream
-  }, [call.remoteStream])
+    // Когда видео-трек приходит в середине звонка, <video> монтируется только
+    // сейчас — переустанавливаем srcObject после mount (эквивалент showRemoteVideo,
+    // объявлен ниже; здесь inline, чтобы не попасть в TDZ).
+  }, [call.remoteStream, call.phase === 'active' && call.remoteCamOn && !!call.remoteStream?.getVideoTracks().length])
   useEffect(() => {
     if (localVideoRef.current) localVideoRef.current.srcObject = call.localStream
   }, [call.localStream])
@@ -177,24 +180,38 @@ export default function CallScreen() {
             <IconButton
               onClick={() => void accept()}
               color="#fff"
+              title={t('Accept')}
+              aria-label={t('Accept')}
               style={{ width: 64, height: 64, background: '#4dcd5e', '--ib-hover': '#3fbd50' } as CSSProperties}
             >
               <TgIcon name="phone_filled" size={30} color="#fff" />
             </IconButton>
-            <IconButton onClick={decline} color="#fff" style={endStyle}>
+            <IconButton onClick={decline} color="#fff" title={t('Decline')} aria-label={t('Decline')} style={endStyle}>
               <TgIcon name="endcall_filled" size={30} color="#fff" />
             </IconButton>
           </>
         ) : call.phase === 'ended' ? null : (
           <>
-            <IconButton onClick={toggleMute} color="#fff" style={ctrlStyle}>
+            <IconButton
+              onClick={toggleMute}
+              color="#fff"
+              title={call.muted ? t('Unmute') : t('Mute')}
+              aria-label={call.muted ? t('Unmute') : t('Mute')}
+              style={ctrlStyle}
+            >
               {call.muted ? (
                 <TgIcon name="microphone_crossed" size={26} color="#fff" />
               ) : (
                 <TgIcon name="microphone_filled" size={26} color="#fff" />
               )}
             </IconButton>
-            <IconButton onClick={() => void toggleCamera()} color="#fff" style={ctrlStyle}>
+            <IconButton
+              onClick={() => void toggleCamera()}
+              color="#fff"
+              title={call.camOn ? t('Turn off camera') : t('Turn on camera')}
+              aria-label={call.camOn ? t('Turn off camera') : t('Turn on camera')}
+              style={ctrlStyle}
+            >
               {call.camOn ? (
                 <TgIcon name="videocamera" size={26} color="#fff" />
               ) : (
@@ -204,11 +221,13 @@ export default function CallScreen() {
             <IconButton
               onClick={() => void toggleScreenShare()}
               color="#fff"
+              title={call.screenOn ? t('Stop screen sharing') : t('Share screen')}
+              aria-label={call.screenOn ? t('Stop screen sharing') : t('Share screen')}
               style={call.screenOn ? { ...ctrlStyle, background: 'rgba(255,255,255,0.45)' } : ctrlStyle}
             >
               <TgIcon name="sharescreen_filled" size={26} color="#fff" />
             </IconButton>
-            <IconButton onClick={hangup} color="#fff" style={endStyle}>
+            <IconButton onClick={hangup} color="#fff" title={t('End call')} aria-label={t('End call')} style={endStyle}>
               <TgIcon name="endcall_filled" size={30} color="#fff" />
             </IconButton>
           </>
