@@ -357,8 +357,10 @@ func (h *GroupHandler) Unrestrict(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-// RevokeInvite revokes an invite link (DELETE /chats/{chatID}/invite_links/{token}).
-func (h *GroupHandler) RevokeInvite(w http.ResponseWriter, r *http.Request) {
+// DeleteInvite hard-deletes an invite link
+// (DELETE /chats/{chatID}/invite_links/{token}). Revoking is done via PATCH
+// (revoked:true); this permanently removes the row (Telegram deleteExportedChatInvite).
+func (h *GroupHandler) DeleteInvite(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	chatID, ok := pathInt(w, r, "chatID")
 	if !ok {
@@ -369,7 +371,22 @@ func (h *GroupHandler) RevokeInvite(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "token required")
 		return
 	}
-	if err := h.uc.RevokeInvite(r.Context(), chatID, user.ID, token); err != nil {
+	if err := h.uc.DeleteInvite(r.Context(), chatID, user.ID, token); err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// DeleteAllRevoked hard-deletes every revoked link of the chat
+// (DELETE /chats/{chatID}/revoked_invite_links; Telegram deleteRevokedExportedChatInvites).
+func (h *GroupHandler) DeleteAllRevoked(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	if err := h.uc.DeleteAllRevoked(r.Context(), chatID, user.ID); err != nil {
 		h.mapErr(w, err)
 		return
 	}
@@ -570,6 +587,7 @@ func (h *GroupHandler) Card(w http.ResponseWriter, r *http.Request) {
 		"charge_stars":    c.Settings.ChargeStars,
 		"is_public":       c.IsPublic, "my_role": c.MyRole, "my_rights": int(c.MyRights), "muted": c.Muted,
 		"discussion_chat_id": c.DiscussionChatID,
+		"signatures":         c.Signatures, "signature_profiles": c.SignatureProfiles,
 	})
 }
 
@@ -680,6 +698,15 @@ func isoOrNil(t *time.Time) any {
 	return t.UTC().Format(time.RFC3339)
 }
 
+// inviteJSON renders an invite link in the shape shared by Create/List/Edit.
+func inviteLinkJSON(l domain.InviteLink) map[string]any {
+	return map[string]any{
+		"token": l.Token, "uses": l.Uses, "url": "/join/" + l.Token,
+		"requires_approval": l.RequiresApproval, "expires_at": isoOrNil(l.ExpiresAt),
+		"title": l.Title, "usage_limit": l.UsageLimit, "revoked": l.Revoked,
+	}
+}
+
 func (h *GroupHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	chatID, ok := pathInt(w, r, "chatID")
@@ -687,8 +714,9 @@ func (h *GroupHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var b struct {
-		UsageLimit       *int `json:"usage_limit"`
-		RequiresApproval bool `json:"requires_approval"`
+		Title            string `json:"title"`
+		UsageLimit       *int   `json:"usage_limit"`
+		RequiresApproval bool   `json:"requires_approval"`
 		// ExpireSeconds — TTL ссылки от текущего момента; 0/отсутствует — бессрочная.
 		ExpireSeconds int `json:"expire_seconds"`
 	}
@@ -698,12 +726,12 @@ func (h *GroupHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 		t := time.Now().Add(time.Duration(b.ExpireSeconds) * time.Second)
 		expiresAt = &t
 	}
-	link, err := h.uc.CreateInvite(r.Context(), chatID, user.ID, b.UsageLimit, b.RequiresApproval, expiresAt)
+	link, err := h.uc.CreateInvite(r.Context(), chatID, user.ID, b.Title, b.UsageLimit, b.RequiresApproval, expiresAt)
 	if err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"token": link.Token, "url": "/join/" + link.Token, "requires_approval": link.RequiresApproval, "expires_at": isoOrNil(link.ExpiresAt)})
+	writeJSON(w, http.StatusOK, inviteLinkJSON(link))
 }
 
 func (h *GroupHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
@@ -712,16 +740,103 @@ func (h *GroupHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	links, err := h.uc.ListInvites(r.Context(), chatID, user.ID)
+	revoked := r.URL.Query().Get("revoked") == "true"
+	links, err := h.uc.ListInvites(r.Context(), chatID, user.ID, revoked)
 	if err != nil {
 		h.mapErr(w, err)
 		return
 	}
 	out := make([]map[string]any, 0, len(links))
 	for _, l := range links {
-		out = append(out, map[string]any{"token": l.Token, "uses": l.Uses, "url": "/join/" + l.Token, "requires_approval": l.RequiresApproval, "expires_at": isoOrNil(l.ExpiresAt)})
+		out = append(out, inviteLinkJSON(l))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"invite_links": out})
+}
+
+// EditInvite updates an invite link (PATCH /chats/{chatID}/invite_links/{token}).
+// Only fields present in the body change; expire_seconds resets the TTL from now
+// (0 → no expiry).
+func (h *GroupHandler) EditInvite(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	token := chi.URLParam(r, "token")
+	if token == "" {
+		writeError(w, http.StatusBadRequest, "token required")
+		return
+	}
+	var raw map[string]json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	var edit domain.InviteEdit
+	if v, ok := raw["title"]; ok {
+		var s string
+		if json.Unmarshal(v, &s) == nil {
+			edit.Title = &s
+		}
+	}
+	if v, ok := raw["requires_approval"]; ok {
+		var b bool
+		if json.Unmarshal(v, &b) == nil {
+			edit.RequiresApproval = &b
+		}
+	}
+	if v, ok := raw["revoked"]; ok {
+		var b bool
+		if json.Unmarshal(v, &b) == nil {
+			edit.Revoked = &b
+		}
+	}
+	if v, ok := raw["usage_limit"]; ok {
+		edit.SetUsageLimit = true
+		var n *int
+		if json.Unmarshal(v, &n) == nil {
+			edit.UsageLimit = n // nil → unlimited
+		}
+	}
+	if v, ok := raw["expire_seconds"]; ok {
+		edit.SetExpiry = true
+		var secs int
+		if json.Unmarshal(v, &secs) == nil && secs > 0 {
+			t := time.Now().Add(time.Duration(secs) * time.Second)
+			edit.ExpiresAt = &t
+		} // 0/negative → nil → no expiry
+	}
+	link, err := h.uc.EditInvite(r.Context(), chatID, user.ID, token, edit)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, inviteLinkJSON(link))
+}
+
+// InviteImporters lists users who joined via a link
+// (GET /chats/{chatID}/invite_links/{token}/importers).
+func (h *GroupHandler) InviteImporters(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	token := chi.URLParam(r, "token")
+	if token == "" {
+		writeError(w, http.StatusBadRequest, "token required")
+		return
+	}
+	importers, count, err := h.uc.InviteImporters(r.Context(), chatID, user.ID, token)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	out := make([]map[string]any, 0, len(importers))
+	for _, im := range importers {
+		out = append(out, map[string]any{"user_id": im.UserID, "joined_at": im.JoinedAt.UTC().Format(time.RFC3339)})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"importers": out, "count": count})
 }
 
 func (h *GroupHandler) Join(w http.ResponseWriter, r *http.Request) {

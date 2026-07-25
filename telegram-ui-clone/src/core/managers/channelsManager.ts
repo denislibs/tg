@@ -11,7 +11,10 @@ export interface SearchResult {
   users: { id: number; username: string; displayName: string; avatarUrl: string }[]
 }
 
-export function newChannelsManager({ rest }: { rest: Pick<RestClient, 'post' | 'get'> }) {
+// Кандидат в группу-обсуждение канала (Telegram getGroupsForDiscussion).
+export interface DiscussionCandidate { id: number; title: string; username: string; memberCount: number }
+
+export function newChannelsManager({ rest }: { rest: Pick<RestClient, 'post' | 'get' | 'put' | 'del'> }) {
   return {
     async createChannel(args: { title: string; about?: string; username?: string; isPublic?: boolean }): Promise<number> {
       const r = await rest.post<{ chat_id: number }>('/channels', {
@@ -36,6 +39,24 @@ export function newChannelsManager({ rest }: { rest: Pick<RestClient, 'post' | '
     async enableDiscussion(channelId: number): Promise<number> {
       const r = await rest.post<{ discussion_chat_id: number }>(`/channels/${channelId}/discussion`, {})
       return r.discussion_chat_id
+    },
+    // Привязать существующую группу как обсуждение (Telegram setDiscussionGroup).
+    async linkDiscussion(channelId: number, groupId: number): Promise<number> {
+      const r = await rest.put<{ discussion_chat_id: number }>(`/channels/${channelId}/discussion`, { group_id: groupId })
+      return r.discussion_chat_id
+    },
+    // Отвязать обсуждение (Telegram setDiscussionGroup с пустой группой).
+    async unlinkDiscussion(channelId: number): Promise<void> {
+      await rest.del(`/channels/${channelId}/discussion`)
+    },
+    // Группы, доступные для привязки как обсуждение (Telegram getGroupsForDiscussion).
+    async discussionCandidates(channelId: number): Promise<DiscussionCandidate[]> {
+      const r = await rest.get<{ chats: { id: number; title: string; username: string; member_count: number }[] }>(`/channels/${channelId}/discussion_candidates`)
+      return (r.chats ?? []).map((c) => ({ id: c.id, title: c.title, username: c.username, memberCount: c.member_count }))
+    },
+    // Подпись постов автором (Telegram toggleSignatures). profiles — показывать профиль.
+    async setSignatures(channelId: number, signatures: boolean, profiles: boolean): Promise<void> {
+      await rest.put(`/channels/${channelId}/sign_messages`, { signatures, profiles })
     },
     async postComment(channelId: number, postId: number, text: string, clientMsgId: string): Promise<Message> {
       const r = await rest.post<RawMessage>(`/channels/${channelId}/posts/${postId}/comments`, { text, client_msg_id: clientMsgId })

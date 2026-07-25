@@ -2,7 +2,9 @@ package postgres
 
 import (
 	"context"
+	"errors"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -52,4 +54,22 @@ func (r *JoinRequestRepo) Delete(ctx context.Context, chatID, userID int64) erro
 	_, err := querier(ctx, r.pool).Exec(ctx,
 		`DELETE FROM join_requests WHERE chat_id=$1 AND user_id=$2`, chatID, userID)
 	return err
+}
+
+// TokenFor returns the invite token the pending request came through ("" if the
+// request has no token or does not exist).
+func (r *JoinRequestRepo) TokenFor(ctx context.Context, chatID, userID int64) (string, error) {
+	var token *string
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT invite_token FROM join_requests WHERE chat_id=$1 AND user_id=$2`, chatID, userID).Scan(&token)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if token == nil {
+		return "", nil
+	}
+	return *token, nil
 }

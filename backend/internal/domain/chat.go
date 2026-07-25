@@ -133,6 +133,11 @@ type ChatCard struct {
 	MyRights         Rights
 	Muted            bool
 	DiscussionChatID int64
+	// Signatures/SignatureProfiles — подписи постов канала (Telegram
+	// channels.toggleSignatures): показывать имя постящего админа и, опционально,
+	// ссылку на его профиль. Актуальны только для каналов.
+	Signatures        bool
+	SignatureProfiles bool
 	// Group-wide settings (edit screens): default member permissions, slowmode,
 	// reaction policy, history visibility for new members.
 	Settings ChatSettings
@@ -148,8 +153,35 @@ type InviteLink struct {
 	Uses             int
 	Revoked          bool
 	RequiresApproval bool
+	// Title — человекочитаемое имя ссылки (Telegram exportedChatInvite.title);
+	// "" — без имени.
+	Title string
 	// ExpiresAt — срок действия ссылки; nil — бессрочная.
 	ExpiresAt *time.Time
+}
+
+// InviteEdit carries the optional fields of an invite-link edit (PATCH). A nil
+// pointer / false "set" flag leaves that column unchanged; the flags exist for
+// the nullable columns where nil is itself a meaningful value ("unlimited" /
+// "no expiry").
+type InviteEdit struct {
+	Title            *string
+	RequiresApproval *bool
+	Revoked          *bool
+	// UsageLimit is applied only when SetUsageLimit is true; a nil value then
+	// means "unlimited".
+	UsageLimit    *int
+	SetUsageLimit bool
+	// ExpiresAt is applied only when SetExpiry is true; a nil value then means
+	// "no expiry".
+	ExpiresAt *time.Time
+	SetExpiry bool
+}
+
+// InviteImporter is one user who joined a chat through a specific invite link.
+type InviteImporter struct {
+	UserID   int64
+	JoinedAt time.Time
 }
 
 // JoinRequest is a pending request to join a chat via an approval-required link.

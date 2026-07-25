@@ -132,7 +132,7 @@ export function useGroupInfo(chat: Chat): GroupInfo {
           // у старых групп без ссылок создаём её лениво
           if (links.length === 0) {
             const l = await managers.groups.createInvite(numericId).catch(() => null)
-            if (l) links = [{ token: l.token, uses: 0, url: l.url, requiresApproval: l.requiresApproval }]
+            if (l) links = [l]
           }
           if (alive) setInviteLinks(links)
         })

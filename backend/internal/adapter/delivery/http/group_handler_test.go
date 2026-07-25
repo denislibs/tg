@@ -224,3 +224,169 @@ func TestJoinRequestFlow_HTTP(t *testing.T) {
 		t.Fatalf("B (%d) not a member after approve: %s", idB, rec.Body.String())
 	}
 }
+
+func TestInviteEditAndImporters_HTTP(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990005001")
+	tokenB, idB := signUp(t, h, pool, "+79990005002")
+
+	// A creates a group.
+	rec := authedReq(t, h, http.MethodPost, "/groups", tokenA, map[string]any{"title": "Team"})
+	var created struct {
+		ChatID int64 `json:"chat_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+	cid := itoa(created.ChatID)
+
+	// Create an invite link with a title + usage limit.
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/invite_links", tokenA, map[string]any{"title": "Team link", "usage_limit": 10})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create invite: %d %s", rec.Code, rec.Body.String())
+	}
+	var inv struct {
+		Token      string `json:"token"`
+		Title      string `json:"title"`
+		UsageLimit *int   `json:"usage_limit"`
+		Revoked    bool   `json:"revoked"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &inv)
+	if inv.Token == "" || inv.Title != "Team link" || inv.UsageLimit == nil || *inv.UsageLimit != 10 {
+		t.Fatalf("create invite fields = %s", rec.Body.String())
+	}
+
+	// PATCH renames the link and flips requires_approval.
+	rec = authedReq(t, h, http.MethodPatch, "/chats/"+cid+"/invite_links/"+inv.Token, tokenA, map[string]any{"title": "Renamed", "requires_approval": true})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("edit invite: %d %s", rec.Code, rec.Body.String())
+	}
+	var edited struct {
+		Title            string `json:"title"`
+		RequiresApproval bool   `json:"requires_approval"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &edited)
+	if edited.Title != "Renamed" || !edited.RequiresApproval {
+		t.Fatalf("edited invite = %s", rec.Body.String())
+	}
+
+	// B joins via the (now approval-required) link → requested, then A approves.
+	rec = authedReq(t, h, http.MethodPost, "/join/"+inv.Token, tokenB, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("join: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/join_requests/"+itoa(idB)+"/approve", tokenA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("approve: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// importers lists B.
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/invite_links/"+inv.Token+"/importers", tokenA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("importers: %d %s", rec.Code, rec.Body.String())
+	}
+	var imp struct {
+		Importers []struct {
+			UserID int64 `json:"user_id"`
+		} `json:"importers"`
+		Count int `json:"count"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &imp)
+	if imp.Count != 1 || len(imp.Importers) != 1 || imp.Importers[0].UserID != idB {
+		t.Fatalf("importers = %s", rec.Body.String())
+	}
+}
+
+func TestInviteRevokeAndDelete_HTTP(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990006001")
+
+	rec := authedReq(t, h, http.MethodPost, "/groups", tokenA, map[string]any{"title": "Team"})
+	var created struct {
+		ChatID int64 `json:"chat_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+	cid := itoa(created.ChatID)
+
+	// Create an extra link (the group is born with a primary one).
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/invite_links", tokenA, map[string]any{"title": "Extra"})
+	var inv struct {
+		Token string `json:"token"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &inv)
+	if inv.Token == "" {
+		t.Fatalf("create invite: %s", rec.Body.String())
+	}
+
+	listTokens := func(revoked bool) []string {
+		url := "/chats/" + cid + "/invite_links"
+		if revoked {
+			url += "?revoked=true"
+		}
+		rec := authedReq(t, h, http.MethodGet, url, tokenA, nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("list (revoked=%v): %d %s", revoked, rec.Code, rec.Body.String())
+		}
+		var out struct {
+			InviteLinks []struct {
+				Token   string `json:"token"`
+				Revoked bool   `json:"revoked"`
+			} `json:"invite_links"`
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		toks := make([]string, 0, len(out.InviteLinks))
+		for _, l := range out.InviteLinks {
+			if l.Revoked != revoked {
+				t.Fatalf("list(revoked=%v) returned link with revoked=%v", revoked, l.Revoked)
+			}
+			toks = append(toks, l.Token)
+		}
+		return toks
+	}
+
+	// Revoke via PATCH (revoked:true) → link leaves active list, joins revoked list.
+	rec = authedReq(t, h, http.MethodPatch, "/chats/"+cid+"/invite_links/"+inv.Token, tokenA, map[string]any{"revoked": true})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("revoke via patch: %d %s", rec.Code, rec.Body.String())
+	}
+	if contains(listTokens(false), inv.Token) {
+		t.Fatal("revoked link still in active list")
+	}
+	if !contains(listTokens(true), inv.Token) {
+		t.Fatal("revoked link missing from revoked list")
+	}
+
+	// Hard-delete the revoked link → gone from the revoked list too.
+	rec = authedReq(t, h, http.MethodDelete, "/chats/"+cid+"/invite_links/"+inv.Token, tokenA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("delete invite: %d %s", rec.Code, rec.Body.String())
+	}
+	if contains(listTokens(true), inv.Token) {
+		t.Fatal("hard-deleted link still in revoked list")
+	}
+
+	// DeleteAllRevoked clears the whole revoked list.
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/invite_links", tokenA, map[string]any{"title": "Extra2"})
+	var inv2 struct {
+		Token string `json:"token"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &inv2)
+	_ = authedReq(t, h, http.MethodPatch, "/chats/"+cid+"/invite_links/"+inv2.Token, tokenA, map[string]any{"revoked": true})
+	if len(listTokens(true)) == 0 {
+		t.Fatal("expected a revoked link before delete-all")
+	}
+	rec = authedReq(t, h, http.MethodDelete, "/chats/"+cid+"/revoked_invite_links", tokenA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("delete-all revoked: %d %s", rec.Code, rec.Body.String())
+	}
+	if len(listTokens(true)) != 0 {
+		t.Fatal("revoked list not empty after delete-all")
+	}
+}
+
+func contains(ss []string, want string) bool {
+	for _, s := range ss {
+		if s == want {
+			return true
+		}
+	}
+	return false
+}

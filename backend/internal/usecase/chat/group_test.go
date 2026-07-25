@@ -234,6 +234,52 @@ func (r *fakeGroupRepo) DiscussionChannel(_ context.Context, groupID int64) (int
 	return 0, nil
 }
 
+func (r *fakeGroupRepo) IsForum(_ context.Context, chatID int64) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.cards[chatID]; !ok {
+		return false, domain.ErrNotFound
+	}
+	return r.forum[chatID], nil
+}
+
+func (r *fakeGroupRepo) DiscussionCandidates(_ context.Context, actorID int64) ([]domain.ChatCard, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	linked := map[int64]bool{}
+	for _, gid := range r.discussion {
+		linked[gid] = true
+	}
+	var out []domain.ChatCard
+	for id, c := range r.cards {
+		if c.Type != "group" || r.forum[id] || linked[id] {
+			continue
+		}
+		if m, ok := r.members[id][actorID]; !ok || (m.Role != domain.RoleCreator && m.Role != domain.RoleAdmin) {
+			continue
+		}
+		out = append(out, c)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID > out[j].ID })
+	return out, nil
+}
+
+func (r *fakeGroupRepo) SetSignatures(_ context.Context, chatID int64, signatures, profiles bool) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c, ok := r.cards[chatID]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	if !signatures {
+		profiles = false
+	}
+	c.Signatures = signatures
+	c.SignatureProfiles = profiles
+	r.cards[chatID] = c
+	return nil
+}
+
 func (r *fakeGroupRepo) ChatBriefs(_ context.Context, ids []int64) (map[int64]domain.ChatBrief, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -471,23 +517,91 @@ func (r *fakeGroupRepo) UsersByIDs(_ context.Context, ids []int64) ([]domain.Use
 	return out, nil
 }
 
+type inviteJoin struct {
+	chatID   int64
+	token    string
+	userID   int64
+	joinedAt time.Time
+}
+
 type fakeInviteRepo struct {
-	mu     sync.Mutex
-	nextID int64
-	links  map[int64]domain.InviteLink // id -> link
+	mu      sync.Mutex
+	nextID  int64
+	links   map[int64]domain.InviteLink // id -> link
+	joins   []inviteJoin
+	joinSet map[string]bool // token|user dedup
 }
 
 func newFakeInviteRepo() *fakeInviteRepo {
-	return &fakeInviteRepo{links: map[int64]domain.InviteLink{}}
+	return &fakeInviteRepo{links: map[int64]domain.InviteLink{}, joinSet: map[string]bool{}}
 }
 
-func (r *fakeInviteRepo) Create(_ context.Context, chatID, createdBy int64, token string, usageLimit *int, requiresApproval bool, expiresAt *time.Time) (domain.InviteLink, error) {
+func (r *fakeInviteRepo) Create(_ context.Context, chatID, createdBy int64, token, title string, usageLimit *int, requiresApproval bool, expiresAt *time.Time) (domain.InviteLink, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.nextID++
-	l := domain.InviteLink{ID: r.nextID, ChatID: chatID, Token: token, CreatedBy: createdBy, UsageLimit: usageLimit, RequiresApproval: requiresApproval, ExpiresAt: expiresAt}
+	l := domain.InviteLink{ID: r.nextID, ChatID: chatID, Token: token, CreatedBy: createdBy, Title: title, UsageLimit: usageLimit, RequiresApproval: requiresApproval, ExpiresAt: expiresAt}
 	r.links[l.ID] = l
 	return l, nil
+}
+
+func (r *fakeInviteRepo) Update(_ context.Context, chatID int64, token string, e domain.InviteEdit) (domain.InviteLink, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for id, l := range r.links {
+		if l.ChatID != chatID || l.Token != token {
+			continue
+		}
+		if e.Title != nil {
+			l.Title = *e.Title
+		}
+		if e.RequiresApproval != nil {
+			l.RequiresApproval = *e.RequiresApproval
+		}
+		if e.Revoked != nil {
+			l.Revoked = *e.Revoked
+		}
+		if e.SetUsageLimit {
+			l.UsageLimit = e.UsageLimit
+		}
+		if e.SetExpiry {
+			l.ExpiresAt = e.ExpiresAt
+		}
+		r.links[id] = l
+		return l, nil
+	}
+	return domain.InviteLink{}, domain.ErrNotFound
+}
+
+func (r *fakeInviteRepo) RecordJoin(_ context.Context, chatID int64, token string, userID int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	key := token + "|" + fmt.Sprint(userID)
+	if r.joinSet[key] {
+		return nil
+	}
+	r.joinSet[key] = true
+	r.joins = append(r.joins, inviteJoin{chatID: chatID, token: token, userID: userID, joinedAt: time.Now()})
+	return nil
+}
+
+func (r *fakeInviteRepo) Importers(_ context.Context, chatID int64, token string, limit int) ([]domain.InviteImporter, int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if limit <= 0 {
+		limit = 50
+	}
+	var all []domain.InviteImporter
+	for i := len(r.joins) - 1; i >= 0; i-- { // newest first
+		if r.joins[i].token == token && r.joins[i].chatID == chatID {
+			all = append(all, domain.InviteImporter{UserID: r.joins[i].userID, JoinedAt: r.joins[i].joinedAt})
+		}
+	}
+	total := len(all)
+	if len(all) > limit {
+		all = all[:limit]
+	}
+	return all, total, nil
 }
 
 func (r *fakeInviteRepo) GetByToken(_ context.Context, token string) (domain.InviteLink, error) {
@@ -501,12 +615,12 @@ func (r *fakeInviteRepo) GetByToken(_ context.Context, token string) (domain.Inv
 	return domain.InviteLink{}, domain.ErrNotFound
 }
 
-func (r *fakeInviteRepo) List(_ context.Context, chatID int64) ([]domain.InviteLink, error) {
+func (r *fakeInviteRepo) List(_ context.Context, chatID int64, revoked bool) ([]domain.InviteLink, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	var out []domain.InviteLink
 	for _, l := range r.links {
-		if l.ChatID == chatID && !l.Revoked {
+		if l.ChatID == chatID && l.Revoked == revoked {
 			out = append(out, l)
 		}
 	}
@@ -525,13 +639,23 @@ func (r *fakeInviteRepo) IncUses(_ context.Context, id int64) error {
 	return nil
 }
 
-func (r *fakeInviteRepo) Revoke(_ context.Context, chatID int64, token string) error {
+func (r *fakeInviteRepo) Delete(_ context.Context, chatID int64, token string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for id, l := range r.links {
 		if l.ChatID == chatID && l.Token == token {
-			l.Revoked = true
-			r.links[id] = l
+			delete(r.links, id)
+		}
+	}
+	return nil
+}
+
+func (r *fakeInviteRepo) DeleteAllRevoked(_ context.Context, chatID int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for id, l := range r.links {
+		if l.ChatID == chatID && l.Revoked {
+			delete(r.links, id)
 		}
 	}
 	return nil
@@ -540,25 +664,37 @@ func (r *fakeInviteRepo) Revoke(_ context.Context, chatID int64, token string) e
 // fakeJoinRequestRepo is an in-memory JoinRequestRepo keyed by (chatID,userID),
 // idempotent on Create like the real ON CONFLICT DO NOTHING.
 type fakeJoinRequestRepo struct {
-	mu   sync.Mutex
-	reqs map[int64]map[int64]domain.JoinRequest // chatID -> userID -> request
+	mu     sync.Mutex
+	reqs   map[int64]map[int64]domain.JoinRequest // chatID -> userID -> request
+	tokens map[int64]map[int64]string             // chatID -> userID -> invite token
 }
 
 func newFakeJoinRequestRepo() *fakeJoinRequestRepo {
-	return &fakeJoinRequestRepo{reqs: map[int64]map[int64]domain.JoinRequest{}}
+	return &fakeJoinRequestRepo{reqs: map[int64]map[int64]domain.JoinRequest{}, tokens: map[int64]map[int64]string{}}
 }
 
-func (r *fakeJoinRequestRepo) Create(_ context.Context, chatID, userID int64, _ string) error {
+func (r *fakeJoinRequestRepo) Create(_ context.Context, chatID, userID int64, inviteToken string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.reqs[chatID] == nil {
 		r.reqs[chatID] = map[int64]domain.JoinRequest{}
+		r.tokens[chatID] = map[int64]string{}
 	}
 	if _, ok := r.reqs[chatID][userID]; ok {
 		return nil // dedup
 	}
 	r.reqs[chatID][userID] = domain.JoinRequest{ChatID: chatID, UserID: userID}
+	r.tokens[chatID][userID] = inviteToken
 	return nil
+}
+
+func (r *fakeJoinRequestRepo) TokenFor(_ context.Context, chatID, userID int64) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.tokens[chatID] == nil {
+		return "", nil
+	}
+	return r.tokens[chatID][userID], nil
 }
 
 func (r *fakeJoinRequestRepo) List(_ context.Context, chatID int64) ([]domain.JoinRequest, error) {
@@ -856,7 +992,7 @@ func TestPromoteAdmin_RequiresManageAdmins(t *testing.T) {
 func TestJoinByToken_NoApproval(t *testing.T) {
 	i, fg, fjr := newGroupTestInteractor(t)
 	id, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
-	link, _ := i.CreateInvite(context.Background(), id, 7, nil, false, nil)
+	link, _ := i.CreateInvite(context.Background(), id, 7, "", nil, false, nil)
 
 	requested, err := i.JoinByToken(context.Background(), link.Token, 9)
 	if err != nil {
@@ -896,7 +1032,7 @@ func TestJoinByToken_PostsJoinedByLinkService(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	link, err := in.CreateInvite(ctx, id, 7, nil, false, nil)
+	link, err := in.CreateInvite(ctx, id, 7, "", nil, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -922,7 +1058,7 @@ func TestJoinByToken_PostsJoinedByLinkService(t *testing.T) {
 func TestJoinByToken_RequiresApproval(t *testing.T) {
 	i, fg, fjr := newGroupTestInteractor(t)
 	id, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
-	link, _ := i.CreateInvite(context.Background(), id, 7, nil, true, nil)
+	link, _ := i.CreateInvite(context.Background(), id, 7, "", nil, true, nil)
 
 	requested, err := i.JoinByToken(context.Background(), link.Token, 9)
 	if err != nil {
@@ -942,6 +1078,163 @@ func TestJoinByToken_RequiresApproval(t *testing.T) {
 	}
 }
 
+func TestEditInvite(t *testing.T) {
+	i, _, _ := newGroupTestInteractor(t)
+	ctx := context.Background()
+	id, _ := i.CreateGroup(ctx, 7, "Team", "", "", false, nil)
+	link, _ := i.CreateInvite(ctx, id, 7, "orig", nil, false, nil)
+
+	title := "renamed"
+	limit := 3
+	approval := true
+	upd, err := i.EditInvite(ctx, id, 7, link.Token, domain.InviteEdit{
+		Title:            &title,
+		RequiresApproval: &approval,
+		UsageLimit:       &limit,
+		SetUsageLimit:    true,
+	})
+	if err != nil {
+		t.Fatalf("EditInvite: %v", err)
+	}
+	if upd.Title != "renamed" || !upd.RequiresApproval || upd.UsageLimit == nil || *upd.UsageLimit != 3 {
+		t.Fatalf("edited link = %+v", upd)
+	}
+	// non-admin forbidden.
+	if _, err := i.EditInvite(ctx, id, 8, link.Token, domain.InviteEdit{Title: &title}); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("non-admin EditInvite = %v, want ErrForbidden", err)
+	}
+}
+
+func TestInviteImporters_TracksJoins(t *testing.T) {
+	i, _, _ := newGroupTestInteractor(t)
+	ctx := context.Background()
+	id, _ := i.CreateGroup(ctx, 7, "Team", "", "", false, nil)
+
+	// direct join via a no-approval link → recorded.
+	direct, _ := i.CreateInvite(ctx, id, 7, "", nil, false, nil)
+	if _, err := i.JoinByToken(ctx, direct.Token, 9); err != nil {
+		t.Fatal(err)
+	}
+	imps, count, err := i.InviteImporters(ctx, id, 7, direct.Token)
+	if err != nil || count != 1 || len(imps) != 1 || imps[0].UserID != 9 {
+		t.Fatalf("direct importers = %+v count=%d err=%v", imps, count, err)
+	}
+
+	// approval-flow join → recorded only at approval time.
+	appr, _ := i.CreateInvite(ctx, id, 7, "", nil, true, nil)
+	if _, err := i.JoinByToken(ctx, appr.Token, 10); err != nil {
+		t.Fatal(err)
+	}
+	if imps, count, _ := i.InviteImporters(ctx, id, 7, appr.Token); count != 0 || len(imps) != 0 {
+		t.Fatalf("approval importers before approve = %+v count=%d", imps, count)
+	}
+	if err := i.ApproveJoinRequest(ctx, id, 7, 10); err != nil {
+		t.Fatal(err)
+	}
+	imps, count, err = i.InviteImporters(ctx, id, 7, appr.Token)
+	if err != nil || count != 1 || len(imps) != 1 || imps[0].UserID != 10 {
+		t.Fatalf("approval importers after approve = %+v count=%d err=%v", imps, count, err)
+	}
+
+	// non-admin forbidden.
+	if _, _, err := i.InviteImporters(ctx, id, 8, direct.Token); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("non-admin importers = %v, want ErrForbidden", err)
+	}
+
+	// IDOR guard: an admin of another chat can't read this chat's importers by
+	// passing its token — the token is scoped to the chatID from the URL.
+	other, _ := i.CreateGroup(ctx, 7, "Other", "", "", false, nil)
+	if imps, count, err := i.InviteImporters(ctx, other, 7, direct.Token); err != nil || count != 0 || len(imps) != 0 {
+		t.Fatalf("cross-chat importers = %+v count=%d err=%v, want empty", imps, count, err)
+	}
+}
+
+// hasToken reports whether any listed link carries the token.
+func hasToken(links []domain.InviteLink, token string) bool {
+	for _, l := range links {
+		if l.Token == token {
+			return true
+		}
+	}
+	return false
+}
+
+func TestListInvites_RevokedFilterAndDelete(t *testing.T) {
+	i, _, _ := newGroupTestInteractor(t)
+	ctx := context.Background()
+	id, _ := i.CreateGroup(ctx, 7, "Team", "", "", false, nil) // born with a primary link
+
+	link, _ := i.CreateInvite(ctx, id, 7, "", nil, false, nil)
+
+	// Active list contains the new link; revoked list doesn't.
+	act, err := i.ListInvites(ctx, id, 7, false)
+	if err != nil || !hasToken(act, link.Token) {
+		t.Fatalf("active list = %+v err=%v", act, err)
+	}
+	if rev, err := i.ListInvites(ctx, id, 7, true); err != nil || hasToken(rev, link.Token) {
+		t.Fatalf("revoked list (before) = %+v err=%v", rev, err)
+	}
+
+	// Revoke via edit → moves from active to revoked list.
+	revoked := true
+	if _, err := i.EditInvite(ctx, id, 7, link.Token, domain.InviteEdit{Revoked: &revoked}); err != nil {
+		t.Fatal(err)
+	}
+	if act, _ := i.ListInvites(ctx, id, 7, false); hasToken(act, link.Token) {
+		t.Fatalf("active list still has revoked link = %+v", act)
+	}
+	if rev, _ := i.ListInvites(ctx, id, 7, true); !hasToken(rev, link.Token) {
+		t.Fatalf("revoked list missing link = %+v", rev)
+	}
+
+	// non-admin forbidden on both list and delete.
+	if _, err := i.ListInvites(ctx, id, 8, true); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("non-admin list = %v, want ErrForbidden", err)
+	}
+	if err := i.DeleteInvite(ctx, id, 8, link.Token); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("non-admin delete = %v, want ErrForbidden", err)
+	}
+
+	// Hard-delete the revoked link → gone from the revoked list.
+	if err := i.DeleteInvite(ctx, id, 7, link.Token); err != nil {
+		t.Fatal(err)
+	}
+	if rev, _ := i.ListInvites(ctx, id, 7, true); hasToken(rev, link.Token) {
+		t.Fatalf("revoked list still has deleted link = %+v", rev)
+	}
+}
+
+func TestDeleteAllRevoked(t *testing.T) {
+	i, _, _ := newGroupTestInteractor(t)
+	ctx := context.Background()
+	id, _ := i.CreateGroup(ctx, 7, "Team", "", "", false, nil)
+
+	revoked := true
+	for n := 0; n < 3; n++ {
+		l, _ := i.CreateInvite(ctx, id, 7, "", nil, false, nil)
+		if _, err := i.EditInvite(ctx, id, 7, l.Token, domain.InviteEdit{Revoked: &revoked}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	active, _ := i.CreateInvite(ctx, id, 7, "", nil, false, nil)
+
+	if err := i.DeleteAllRevoked(ctx, id, 7); err != nil {
+		t.Fatal(err)
+	}
+	if rev, _ := i.ListInvites(ctx, id, 7, true); len(rev) != 0 {
+		t.Fatalf("revoked after delete-all = %+v, want empty", rev)
+	}
+	// The active link survives.
+	if act, _ := i.ListInvites(ctx, id, 7, false); !hasToken(act, active.Token) {
+		t.Fatalf("active link gone after delete-all = %+v", act)
+	}
+
+	// non-admin forbidden.
+	if err := i.DeleteAllRevoked(ctx, id, 8); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("non-admin delete-all = %v, want ErrForbidden", err)
+	}
+}
+
 func TestListJoinRequests_NonAdminForbidden(t *testing.T) {
 	i, fg, _ := newGroupTestInteractor(t)
 	id, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
@@ -958,7 +1251,7 @@ func TestListJoinRequests_NonAdminForbidden(t *testing.T) {
 func TestApproveJoinRequest(t *testing.T) {
 	i, fg, fjr := newGroupTestInteractor(t)
 	id, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
-	link, _ := i.CreateInvite(context.Background(), id, 7, nil, true, nil)
+	link, _ := i.CreateInvite(context.Background(), id, 7, "", nil, true, nil)
 	if _, err := i.JoinByToken(context.Background(), link.Token, 9); err != nil {
 		t.Fatal(err)
 	}
@@ -1051,7 +1344,7 @@ func TestGroupSettings_Enforcement(t *testing.T) {
 	}
 
 	// Бан: кикнут + не вернётся по ссылке и через добавление участником; разбан лечит.
-	link, _ := in.CreateInvite(ctx, id, 7, nil, false, nil)
+	link, _ := in.CreateInvite(ctx, id, 7, "", nil, false, nil)
 	if err := in.BanMember(ctx, id, 7, 8); err != nil {
 		t.Fatalf("BanMember: %v", err)
 	}

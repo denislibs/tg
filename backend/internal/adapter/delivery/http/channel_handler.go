@@ -171,6 +171,86 @@ func (h *ChannelHandler) EnableDiscussion(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, map[string]any{"discussion_chat_id": disc})
 }
 
+// LinkDiscussion links an existing group as the channel's discussion group
+// (PUT /channels/{chatID}/discussion, body {group_id}).
+func (h *ChannelHandler) LinkDiscussion(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	var b struct {
+		GroupID int64 `json:"group_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || b.GroupID == 0 {
+		writeError(w, http.StatusBadRequest, "group_id required")
+		return
+	}
+	disc, err := h.uc.LinkDiscussion(r.Context(), chatID, b.GroupID, user.ID)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"discussion_chat_id": disc})
+}
+
+// UnlinkDiscussion detaches the channel's discussion group
+// (DELETE /channels/{chatID}/discussion).
+func (h *ChannelHandler) UnlinkDiscussion(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	if err := h.uc.UnlinkDiscussion(r.Context(), chatID, user.ID); err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// DiscussionCandidates lists groups the actor may link as a discussion group
+// (GET /channels/{chatID}/discussion_candidates).
+func (h *ChannelHandler) DiscussionCandidates(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	if _, ok := pathInt(w, r, "chatID"); !ok {
+		return
+	}
+	cands, err := h.uc.DiscussionCandidates(r.Context(), user.ID)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	out := make([]map[string]any, 0, len(cands))
+	for _, c := range cands {
+		out = append(out, map[string]any{"id": c.ID, "title": c.Title, "username": c.Username, "member_count": c.MemberCount})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"chats": out})
+}
+
+// SetSignatures toggles channel post signatures
+// (PUT /channels/{chatID}/sign_messages, body {signatures, profiles}).
+func (h *ChannelHandler) SetSignatures(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	var b struct {
+		Signatures bool `json:"signatures"`
+		Profiles   bool `json:"profiles"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := h.uc.SetSignatures(r.Context(), chatID, user.ID, b.Signatures, b.Profiles); err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 func (h *ChannelHandler) PostComment(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	chatID, ok := pathInt(w, r, "chatID")

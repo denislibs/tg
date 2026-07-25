@@ -5,10 +5,11 @@ import type { RestClient } from '../net/restClient'
 
 type PostCall = { path: string; body: unknown }
 
-function fakeRest(opts: { postReturn?: unknown; getReturn?: unknown }) {
+function fakeRest(opts: { postReturn?: unknown; getReturn?: unknown; patchReturn?: unknown }) {
   const posts: PostCall[] = []
   const gets: string[] = []
   const dels: string[] = []
+  const patches: PostCall[] = []
   const rest = {
     async post<R>(path: string, body: unknown): Promise<R> {
       posts.push({ path, body })
@@ -18,12 +19,16 @@ function fakeRest(opts: { postReturn?: unknown; getReturn?: unknown }) {
       gets.push(path)
       return (opts.getReturn ?? {}) as R
     },
+    async patch<R>(path: string, body: unknown): Promise<R> {
+      patches.push({ path, body })
+      return (opts.patchReturn ?? {}) as R
+    },
     async del<R>(path: string): Promise<R> {
       dels.push(path)
       return {} as R
     },
   } as unknown as RestClient
-  return { rest, posts, gets, dels }
+  return { rest, posts, gets, dels, patches }
 }
 
 describe('GroupsManager', () => {
@@ -84,6 +89,7 @@ describe('GroupsManager', () => {
       memberCount: 12, isPublic: true, myRole: 'admin', myRights: 7, muted: false,
       discussionChatId: 88,
       defaultPermissions: 31, slowmodeSeconds: 0, reactionsMode: 'all', reactionsAllowed: [], historyForNew: true, chargeStars: 0,
+      signatures: false, signatureProfiles: false,
     })
   })
 
@@ -123,7 +129,7 @@ describe('GroupsManager', () => {
     expect(posts).toHaveLength(1)
     expect(posts[0].path).toBe('/chats/5/invite_links')
     expect(posts[0].body).toEqual({ usage_limit: 10, requires_approval: true, expire_seconds: 3600 })
-    expect(r).toEqual({ token: 'abc', url: 'http://x/join/abc', requiresApproval: true })
+    expect(r).toEqual({ token: 'abc', url: 'http://x/join/abc', uses: 0, requiresApproval: true, title: '', usageLimit: null, revoked: false })
   })
 
   it('createInvite defaults usage_limit=null, requires_approval=false, expire_seconds=0', async () => {
@@ -147,7 +153,58 @@ describe('GroupsManager', () => {
     const mgr = newGroupsManager({ rest })
     const links = await mgr.listInvites(5)
     expect(gets[0]).toBe('/chats/5/invite_links')
-    expect(links).toEqual([{ token: 't', uses: 3, url: 'u', requiresApproval: true }])
+    expect(links).toEqual([{ token: 't', uses: 3, url: 'u', requiresApproval: true, title: '', usageLimit: null, revoked: false }])
+  })
+
+  it('listInvites appends ?revoked=true when requesting revoked links', async () => {
+    const { rest, gets } = fakeRest({
+      getReturn: { invite_links: [{ token: 'r', url: 'u', requires_approval: false, revoked: true }] },
+    })
+    const mgr = newGroupsManager({ rest })
+    const links = await mgr.listInvites(5, true)
+    expect(gets[0]).toBe('/chats/5/invite_links?revoked=true')
+    expect(links[0].revoked).toBe(true)
+  })
+
+  it('deleteInvite DELETEs /chats/{id}/invite_links/{token} (hard delete)', async () => {
+    const { rest, dels } = fakeRest({})
+    const mgr = newGroupsManager({ rest })
+    await mgr.deleteInvite(5, 'tok')
+    expect(dels).toHaveLength(1)
+    expect(dels[0]).toBe('/chats/5/invite_links/tok')
+  })
+
+  it('deleteAllRevoked DELETEs /chats/{id}/revoked_invite_links', async () => {
+    const { rest, dels } = fakeRest({})
+    const mgr = newGroupsManager({ rest })
+    await mgr.deleteAllRevoked(5)
+    expect(dels).toHaveLength(1)
+    expect(dels[0]).toBe('/chats/5/revoked_invite_links')
+  })
+
+  it('editInvite PATCHes only present fields and maps the result', async () => {
+    const { rest, patches } = fakeRest({ patchReturn: { token: 't', uses: 5, url: 'u', requires_approval: true, title: 'Renamed', usage_limit: null, revoked: false } })
+    const mgr = newGroupsManager({ rest })
+    const r = await mgr.editInvite(5, 't', { title: 'Renamed', requiresApproval: true })
+    expect(patches).toHaveLength(1)
+    expect(patches[0].path).toBe('/chats/5/invite_links/t')
+    expect(patches[0].body).toEqual({ title: 'Renamed', requires_approval: true })
+    expect(r).toEqual({ token: 't', uses: 5, url: 'u', requiresApproval: true, title: 'Renamed', usageLimit: null, revoked: false })
+  })
+
+  it('editInvite sends usage_limit:null for unlimited and revoked flag', async () => {
+    const { rest, patches } = fakeRest({ patchReturn: { token: 't', url: 'u', requires_approval: false, revoked: true } })
+    const mgr = newGroupsManager({ rest })
+    await mgr.editInvite(5, 't', { usageLimit: null, expireSeconds: 0, revoked: true })
+    expect(patches[0].body).toEqual({ usage_limit: null, expire_seconds: 0, revoked: true })
+  })
+
+  it('inviteImporters GETs importers and maps user_id/joined_at + count', async () => {
+    const { rest, gets } = fakeRest({ getReturn: { importers: [{ user_id: 11, joined_at: '2026-08-01T00:00:00Z' }], count: 1 } })
+    const mgr = newGroupsManager({ rest })
+    const r = await mgr.inviteImporters(5, 't')
+    expect(gets[0]).toBe('/chats/5/invite_links/t/importers')
+    expect(r).toEqual({ importers: [{ userId: 11, joinedAt: '2026-08-01T00:00:00Z' }], count: 1 })
   })
 
   it('joinByToken POSTs /join/{token} and returns status', async () => {
