@@ -265,6 +265,8 @@ function Composer({
   // Кнопка в режиме микрофона, но медиа в группе запрещены — светло-серая,
   // клик показывает тост вместо записи.
   const micDisabled = !canSendMedia && !hasText && !rec.recording && !slowmodeBlocked
+  // Серая (неактивная) кнопка: запрет медиа-микрофона ИЛИ отсчёт slowmode.
+  const sendBtnMuted = micDisabled || slowmodeBlocked
   // Тип записи (голос/кружок) — персист в settings; long-press/ПКМ по кнопке
   // открывает меню переключения (tweb chatRecording.setupRecordingModeMenu).
   const recordingMediaType = useSettingsStore((st) => st.recordingMediaType)
@@ -963,8 +965,8 @@ function Composer({
                 onClick={(e) => canSendMedia
                   ? onOpenAttach(e.currentTarget.getBoundingClientRect())
                   : uiEvents.emit('ui:toast', t('Media is not allowed in this group'))}
-                color="var(--tg-textSecondary)"
-                style={{ width: 40, height: 40, opacity: canSendMedia ? 1 : 0.4 }}
+                color={canSendMedia ? 'var(--tg-textSecondary)' : 'var(--tg-textFaint)'}
+                style={{ width: 40, height: 40 }}
               >
                 <TgIcon name="attach" />
               </IconButton>
@@ -1085,8 +1087,8 @@ function Composer({
               }
               if (!hasText && !rec.recording && canSendMedia) openRecMenu(e.currentTarget as HTMLElement)
             }}
-            whileTap={{ scale: micDisabled ? 1 : 0.92 }}
-            className={micDisabled ? `${s.sendBtn} ${s.sendBtnMuted}` : s.sendBtn}
+            whileTap={{ scale: sendBtnMuted ? 1 : 0.92 }}
+            className={sendBtnMuted ? `${s.sendBtn} ${s.sendBtnMuted}` : s.sendBtn}
           >
             <AnimatePresence mode="wait" initial={false}>
               <motion.span
