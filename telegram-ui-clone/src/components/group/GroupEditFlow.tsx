@@ -55,7 +55,7 @@ type Sub =
 export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: number; chat: Chat; onClose: () => void }) {
   const t = useT()
   const managers = useManagers()
-  const g = useGroupEdit(chatId, managers)
+  const g = useGroupEdit(chatId)
   const [sub, setSub] = useState<Sub>(null)
   const isChannel = chat.type === 'channel'
 
@@ -984,8 +984,7 @@ function AdminRightsScreen({
 // ── Участники / Подписчики (tweb chatMembers) ────────────────────────────────
 function MembersScreen({ g, isChannel, onBack }: { g: GroupEdit; isChannel: boolean; onBack: () => void }) {
   const t = useT()
-  const managers = useManagers()
-  const candidates = useGroupCandidates(managers)
+  const candidates = useGroupCandidates()
   const [q, setQ] = useState('')
   const [picking, setPicking] = useState(false)
   const [restricting, setRestricting] = useState<EditMember | null>(null)

@@ -36,16 +36,16 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   const t = useT()
 
   // Инфраструктура Shell (эффекты без общего стейта).
-  useAppBootstrap(managers)
+  useAppBootstrap()
   useShellEnterAnimation()
   useAutoLock()
-  useAppHotkeys(managers)
+  useAppHotkeys()
   const { toast, showToast } = useGlobalToast()
 
   // Навигация (navigationStore) + deep-links + список чатов.
-  const nav = useChatNavigation(managers)
+  const nav = useChatNavigation()
   const { selectedId, openThread, draftPeer } = nav
-  const deep = useDeepLinks(managers, showToast)
+  const deep = useDeepLinks(showToast)
   const chatList = useChatList()
 
   const createGroup = async (name: string, memberIds: number[], photo: GroupPhoto | null) => {
@@ -167,8 +167,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 }
 
 function ThemedApp() {
-  const managers = useManagers()
-  const { authed, login, logout } = useAuthGate(managers)
+  const { authed, login, logout } = useAuthGate()
   const toggleMode = useThemeToggle()
 
   // Тема управляется атрибутом data-theme на <html> (useThemeToggle) — MUI

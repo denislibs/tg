@@ -4,6 +4,7 @@
 // действия. Все мутации перезагружают карточку (и список диалогов, когда меняется
 // то, что видно в сайдбаре: название/фото/тип).
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useManagers } from './useManagers'
 import type { GroupCard, InviteLink } from '../managers/groupsManager'
 import type { DiscussionCandidate } from '../managers/channelsManager'
 import type { Peer } from '../managers/peersManager'
@@ -151,7 +152,8 @@ export interface GroupEdit {
 const MANAGE_ADMINS = 128
 const BAN_USERS = 8
 
-export function useGroupEdit(chatId: number, managers: Managers): GroupEdit {
+export function useGroupEdit(chatId: number): GroupEdit {
+  const managers: Managers = useManagers()
   const [card, setCard] = useState<GroupCard | null>(null)
   const [members, setMembers] = useState<EditMember[]>([])
   const [invites, setInvites] = useState<InviteLink[]>([])

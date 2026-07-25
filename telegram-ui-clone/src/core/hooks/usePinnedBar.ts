@@ -13,11 +13,8 @@ import { useEffect, useState } from 'react'
 import { usePinsStore } from '../../stores/pinsStore'
 import { clampPinIndex, nextPinIndex } from '../pinnedCycle'
 import { useEvent } from './useEvent'
+import { useManagers } from './useManagers'
 import type { Message } from '../models'
-
-interface PinManagers {
-  messages: { listPins(chatId: number): Promise<Message[]> }
-}
 
 export interface PinnedBarState {
   /** пины чата, новейший первым */
@@ -30,7 +27,8 @@ export interface PinnedBarState {
 
 const NO_PINS: Message[] = []
 
-export function usePinnedBar(numericChatId: number, isRealChat: boolean, managers: PinManagers): PinnedBarState {
+export function usePinnedBar(numericChatId: number, isRealChat: boolean): PinnedBarState {
+  const managers = useManagers()
   const pins = usePinsStore((s) => s.byChat[numericChatId]) ?? NO_PINS
   const [rawIndex, setRawIndex] = useState(0)
 

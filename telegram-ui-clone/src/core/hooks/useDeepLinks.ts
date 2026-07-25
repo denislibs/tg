@@ -4,7 +4,7 @@
 // вместо четырёх эффектов в App. Состояние оверлеев (qr/addlist) отдаётся наружу
 // — Shell их рендерит. Тосты идут через showToast.
 import { useEffect, useState } from 'react'
-import type { Managers } from '../../client/bootstrap'
+import { useManagers } from './useManagers'
 import { loadChats } from '../../stores/chatsStore'
 import { loadFolders } from '../../stores/foldersStore'
 import { useNavigationStore } from '../../stores/navigationStore'
@@ -24,7 +24,8 @@ export interface DeepLinks {
   onAddlistJoined: (folderTitle: string) => void
 }
 
-export function useDeepLinks(managers: Managers, showToast: (text: string) => void): DeepLinks {
+export function useDeepLinks(showToast: (text: string) => void): DeepLinks {
+  const managers = useManagers()
   const t = useT()
   const [qrConfirmToken, setQrConfirmToken] = useState<string | null>(null)
   const [addlistSlug, setAddlistSlug] = useState<string | null>(null)

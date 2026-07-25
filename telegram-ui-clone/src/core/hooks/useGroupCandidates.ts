@@ -3,6 +3,7 @@
 // контакты): пиры существующих приватных диалогов ∪ адресная книга /contacts,
 // без дублей и сервисного аккаунта, по алфавиту.
 import { useEffect, useMemo, useState } from 'react'
+import { useManagers } from './useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
 import { SERVICE_USER_ID } from '../dialogToChat'
 
@@ -12,11 +13,8 @@ export interface GroupCandidate {
   avatarUrl?: string
 }
 
-interface Deps {
-  contacts: { list(): Promise<{ userId: number; displayName: string; avatarUrl: string }[]> }
-}
-
-export function useGroupCandidates(managers: Deps): GroupCandidate[] {
+export function useGroupCandidates(): GroupCandidate[] {
+  const managers = useManagers()
   const dialogs = useChatsStore((s) => s.dialogs)
   const [contacts, setContacts] = useState<GroupCandidate[]>([])
 

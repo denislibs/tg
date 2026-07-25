@@ -2,7 +2,7 @@
 // (рендерим ничего), false — экран входа, true — Shell. logout при мультиаккаунте
 // перезагружает под оставшимся аккаунтом.
 import { useEffect, useState } from 'react'
-import type { Managers } from '../../client/bootstrap'
+import { useManagers } from './useManagers'
 import { PREV_ACCOUNT_KEY } from '../accountTransition'
 
 export interface AuthGate {
@@ -11,7 +11,8 @@ export interface AuthGate {
   logout: () => void
 }
 
-export function useAuthGate(managers: Managers): AuthGate {
+export function useAuthGate(): AuthGate {
+  const managers = useManagers()
   const [authed, setAuthed] = useState<boolean | null>(null) // null = checking
 
   useEffect(() => {
