@@ -1,4 +1,5 @@
 import { memo, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import Text from '../shared/ui/Text'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon, { type IconName } from './TgIcon'
@@ -90,6 +91,22 @@ function NowPlayingBar() {
 
   const [volOpen, setVolOpen] = useState(false)
   const [rateOpen, setRateOpen] = useState(false)
+  // Слайдер громкости — в портале (document.body), чтобы его не резал overflow:hidden
+  // плашки. Позиционируем fixed по кнопке; hover ведём и по кнопке, и по попапу, с
+  // задержкой закрытия — портал рвёт DOM-вложенность (mouseleave иначе рвёт hover).
+  const volBtnRef = useRef<HTMLDivElement>(null)
+  const [volRect, setVolRect] = useState<DOMRect | null>(null)
+  const volCloseTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const openVol = () => {
+    clearTimeout(volCloseTimer.current)
+    const r = volBtnRef.current?.getBoundingClientRect()
+    if (r) setVolRect(r)
+    setVolOpen(true)
+  }
+  const scheduleCloseVol = () => {
+    clearTimeout(volCloseTimer.current)
+    volCloseTimer.current = setTimeout(() => setVolOpen(false), 140)
+  }
   const frac = duration > 0 ? currentTime / duration : 0
   const fmt = (s: number) => {
     if (!Number.isFinite(s) || s < 0) s = 0
@@ -100,6 +117,7 @@ function NowPlayingBar() {
   const volIconName: IconName = effVol === 0 ? 'volume_off' : effVol < 0.5 ? 'volume_down' : 'volume_up'
 
   return (
+    <>
     <AnimatePresence>
       {track && (
         <motion.div
@@ -132,12 +150,12 @@ function NowPlayingBar() {
             </div>
 
             {/* Громкость (как в Telegram): слайдер по наведению, клик по иконке —
-                mute/unmute. Попап — absolute-потомок (hover непрерывный, без зазора);
-                .bar больше не overflow:hidden, поэтому не обрезается. */}
+                mute/unmute. Сам слайдер рендерится в портале (см. конец файла). */}
             <div
+              ref={volBtnRef}
               className={s.volWrap}
-              onMouseEnter={() => setVolOpen(true)}
-              onMouseLeave={() => setVolOpen(false)}
+              onMouseEnter={openVol}
+              onMouseLeave={scheduleCloseVol}
             >
               <RoundBtn
                 onClick={toggleMute}
@@ -147,19 +165,6 @@ function NowPlayingBar() {
               >
                 <TgIcon name={volIconName} />
               </RoundBtn>
-              <AnimatePresence>
-                {volOpen && (
-                  <motion.div
-                    className={s.volPop}
-                    initial={{ opacity: 0, y: -6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -6 }}
-                    transition={{ duration: 0.14 }}
-                  >
-                    <VolumeSlider value={effVol} onChange={setVolume} />
-                  </motion.div>
-                )}
-              </AnimatePresence>
             </div>
 
             <div className={s.rateWrap}>
@@ -215,6 +220,32 @@ function NowPlayingBar() {
         </motion.div>
       )}
     </AnimatePresence>
+    {/* Слайдер громкости — портал в document.body (вне overflow:hidden плашки),
+        позиция fixed под кнопкой. Hover на попапе продлевает открытие. */}
+    {createPortal(
+      <AnimatePresence>
+        {track && volOpen && volRect && (
+          <div
+            className={s.volPortal}
+            style={{ left: volRect.left + volRect.width / 2, top: volRect.bottom }}
+            onMouseEnter={openVol}
+            onMouseLeave={scheduleCloseVol}
+          >
+            <motion.div
+              className={s.volPop}
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.14 }}
+            >
+              <VolumeSlider value={effVol} onChange={setVolume} />
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>,
+      document.body,
+    )}
+    </>
   )
 }
 
