@@ -16,6 +16,7 @@ import { loadChats } from './stores/chatsStore'
 import { gradientFor } from './core/dialogToChat'
 import { usePipStore } from './core/pip'
 import { useAppBootstrap } from './core/hooks/useAppBootstrap'
+import { useUrlSync } from './core/hooks/useUrlSync'
 import { useShellEnterAnimation } from './core/hooks/useShellEnterAnimation'
 import { useAutoLock } from './core/hooks/useAutoLock'
 import { useGlobalToast } from './core/hooks/useGlobalToast'
@@ -42,9 +43,10 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   useAppHotkeys()
   const { toast, showToast } = useGlobalToast()
 
-  // Навигация (navigationStore) + deep-links + список чатов.
+  // Навигация (navigationStore) + URL-хэш ↔ чат + deep-links + список чатов.
   const nav = useChatNavigation()
   const { selectedId, openThread, draftPeer } = nav
+  useUrlSync()
   const deep = useDeepLinks(showToast)
   const chatList = useChatList()
 
