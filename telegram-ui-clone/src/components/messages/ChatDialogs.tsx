@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 // Presentational chat dialogs/popups extracted from ConversationView: delete
 // confirm, forward target picker, "seen by" popup, add-member picker, and the
 // discard-voice confirm. Each is dumb — it self-sources i18n + motion constants
@@ -9,11 +9,18 @@ import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
 import { EASE } from '../../motion'
-import { useT } from '../../i18n'
+import { useT, useLang } from '../../i18n'
 import Avatar from '../../shared/ui/Avatar'
-import Checkbox from '../../shared/ui/Checkbox'
 import Popup from '../../shared/ui/Popup'
 import { peerColor } from '../peerColor'
+import { useAvatarSrc } from '../useAvatarSrc'
+import { dialogToChat } from '../../core/dialogToChat'
+import { matchesFolder } from '../../core/folderFilter'
+import { lastSeenLabel } from '../../core/presence'
+import { useChatsStore } from '../../stores/chatsStore'
+import { useFoldersStore, ALL_FOLDER_ID } from '../../stores/foldersStore'
+import FolderTabs from '../FolderTabs'
+import type { Chat } from '../../data'
 import type { Dialog } from '../../core/models'
 import s from './ChatDialogs.module.scss'
 
@@ -54,9 +61,51 @@ export function DeleteMessageDialog({ canRevoke, onDeleteForEveryone, onDeleteFo
   )
 }
 
-// Forward target picker: multi-select dialogs to forward the selected messages
-// into. Rows toggle a checkbox; the accent «Переслать (N)» button forwards to all
-// selected chats at once (tweb popup-forward allows multiple targets).
+// Подпись строки в пикере: private → presence/бот, группа/канал/избранное — метка.
+function shareSub(chat: Chat, presence: Record<number, { online: boolean; lastSeen: number }>, lang: string, t: (s: string) => string): string {
+  if (chat.type === 'saved') return t('forward here to save')
+  if (chat.type === 'channel') return t('Channel')
+  if (chat.type === 'group') return t('Group')
+  if (chat.isBot) return t('bot')
+  const p = chat.peerId != null ? presence[chat.peerId] : undefined
+  if (p?.online) return t('online')
+  return lastSeenLabel(p?.lastSeen ?? 0, lang)
+}
+
+// Строка списка «Поделиться»: аватар + имя/подпись, выделение галочкой.
+function ShareRow({ chat, sub, selected, onToggle }: { chat: Chat; sub: string; selected: boolean; onToggle: () => void }) {
+  const src = useAvatarSrc(chat.avatarUrl)
+  return (
+    <div className={classNames(s.shareRow, selected ? s.shareRowSel : '')} onClick={onToggle}>
+      <div className={s.shareAvatar}>
+        <Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={src} size="md" />
+        {selected && <span className={s.shareCheck}><TgIcon name="check" size={13} color="#fff" /></span>}
+      </div>
+      <div className={s.pickerBody}>
+        <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{chat.name}</Text>
+        <Text noWrap size={13.5} color="var(--tg-textSecondary)">{sub}</Text>
+      </div>
+    </div>
+  )
+}
+
+// Недавний контакт в горизонтальном ряду: круглый аватар + имя, галочка при выборе.
+function RecentChip({ chat, selected, onToggle }: { chat: Chat; selected: boolean; onToggle: () => void }) {
+  const src = useAvatarSrc(chat.avatarUrl)
+  return (
+    <div className={s.recent} onClick={onToggle}>
+      <div className={classNames(s.recentAvatar, selected ? s.recentAvatarSel : '')}>
+        <Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={src} size={54} />
+        {selected && <span className={s.shareCheck}><TgIcon name="check" size={13} color="#fff" /></span>}
+      </div>
+      <Text noWrap size={12.5} color="var(--tg-textPrimary)" className={s.recentName}>{chat.name}</Text>
+    </div>
+  )
+}
+
+// Forward target picker («Поделиться»): порт tweb popupForward — поиск, ряд
+// недавних, табы папок (липкие при скролле) и список чатов с аватарами/подписями.
+// Мультивыбор; аккордная кнопка «Переслать (N)» шлёт во все выбранные чаты сразу.
 export function ForwardPicker({ dialogs, hasCaption, onPick, onClose }: {
   dialogs: Dialog[]
   // Среди пересылаемых есть медиа с подписью — показывать тумблер «Убрать подпись».
@@ -65,18 +114,22 @@ export function ForwardPicker({ dialogs, hasCaption, onPick, onClose }: {
   onClose: () => void
 }) {
   const t = useT()
+  const [lang] = useLang()
+  const meId = useChatsStore((st) => st.meId)
+  const presence = useChatsStore((st) => st.presence)
+  const folders = useFoldersStore((st) => st.folders)
+  const contactIds = useFoldersStore((st) => st.contactIds)
   const [q, setQ] = useState('')
+  const [folderId, setFolderId] = useState(ALL_FOLDER_ID)
   // exit-анимация: закрытие/выбор сначала гасят open; колбэк владельцу (который
   // размонтирует пикер) — только из onExitComplete, когда карточка уехала.
   const [open, setOpen] = useState(true)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   // Опции пересылки (tweb forwardElements): скрыть отправителя / убрать подпись.
-  // Каждый тумблер — два состояния; лейбл описывает действие, которое выполнит клик.
   const [dropAuthor, setDropAuthor] = useState(false)
   const [dropCaption, setDropCaption] = useState(false)
-  // Подтверждённый выбор фиксируем в ref: onExitComplete отработает уже после
-  // того, как selected сбросится размонтированием, поэтому берём снимок здесь.
   const confirmed = useRef<{ chatIds: number[]; dropAuthor: boolean; dropCaption: boolean } | null>(null)
+
   const toggle = (chatId: number) => setSelected((prev) => {
     const next = new Set(prev)
     if (next.has(chatId)) next.delete(chatId); else next.add(chatId)
@@ -85,47 +138,34 @@ export function ForwardPicker({ dialogs, hasCaption, onPick, onClose }: {
   const confirm = () => {
     if (selected.size) { confirmed.current = { chatIds: [...selected], dropAuthor, dropCaption }; setOpen(false) }
   }
+
+  // Секретные чаты — не цель пересылки (E2E). Маппим в Chat для аватаров/имён.
+  const chats = useMemo<Chat[]>(
+    () => dialogs.filter((d) => d.type !== 'secret').map((d) => dialogToChat(d, meId)),
+    [dialogs, meId],
+  )
   const query = q.trim().toLowerCase()
-  const rows = dialogs
-    // Секретный чат не может быть целью пересылки/ответа (E2E: сервер отправит plaintext).
-    .filter((d) => d.type !== 'secret')
-    .map((d) => ({
-      chatId: d.chatId,
-      title: d.title || d.peer?.displayName || `Чат ${d.chatId}`,
-      sub: d.type === 'channel' ? t('Channel') : d.type === 'group' ? t('Group') : t('Private Chat'),
-    }))
-    .filter((r) => !query || r.title.toLowerCase().includes(query))
+  const activeFolder = folderId !== ALL_FOLDER_ID ? folders.find((f) => f.id === folderId) : undefined
+  const list = useMemo(() => {
+    let out = chats
+    if (activeFolder) out = out.filter((c) => matchesFolder(c, activeFolder, contactIds))
+    if (query) out = out.filter((c) => c.name.toLowerCase().includes(query))
+    return out
+  }, [chats, activeFolder, contactIds, query])
+  // Недавние — первые 8 чатов (лента отсортирована по свежести); прячем при поиске.
+  const recents = query ? [] : chats.slice(0, 8)
+  const searching = query.length > 0
+
   return (
     <Popup
       open={open}
-      title={t('Send')}
+      title={t('Share with')}
       onClose={() => setOpen(false)}
       onExitComplete={() => { const c = confirmed.current; if (c) onPick(c.chatIds, { dropAuthor: c.dropAuthor, dropCaption: c.dropCaption }); else onClose() }}
       action={selected.size ? { label: `${t('Forward')} (${selected.size})`, onClick: confirm } : undefined}
-      width={440}
+      width={460}
     >
-      {/* Опции пересылки (tweb): скрыть/показать отправителя и убрать/показать подпись */}
-      <div className={s.pickerList} style={{ marginBottom: 10 }}>
-        <div className={s.listRow} onClick={() => setDropAuthor((v) => !v)}>
-          <TgIcon name={dropAuthor ? 'author_hidden' : 'person'} size={22} color="var(--tg-accent)" />
-          <div className={s.pickerBody}>
-            <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">
-              {dropAuthor ? t('Show sender name') : t('Hide sender name')}
-            </Text>
-          </div>
-        </div>
-        {hasCaption && (
-          <div className={s.listRow} onClick={() => setDropCaption((v) => !v)}>
-            <TgIcon name="captiondown" size={22} color="var(--tg-accent)" />
-            <div className={s.pickerBody}>
-              <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">
-                {dropCaption ? t('Show caption') : t('Hide caption')}
-              </Text>
-            </div>
-          </div>
-        )}
-      </div>
-      {/* поиск (tweb popup-forward: серое поле сверху) */}
+      {/* поиск */}
       <div className={s.pickerSearch}>
         <TgIcon name="search" size={20} color="var(--tg-textFaint)" />
         <input
@@ -136,16 +176,49 @@ export function ForwardPicker({ dialogs, hasCaption, onPick, onClose }: {
           placeholder={t('Search')}
         />
       </div>
-      <div className={s.pickerList}>
-        {rows.map((r) => (
-          <div key={r.chatId} className={s.listRow} onClick={() => toggle(r.chatId)}>
-            <Checkbox checked={selected.has(r.chatId)} size={22} />
-            <Avatar background={peerColor(r.title)} text={r.title[0] ?? '?'} size="md" />
-            <div className={s.pickerBody}>
-              <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{r.title}</Text>
-              <Text noWrap size={13.5} color="var(--tg-textSecondary)">{r.sub}</Text>
-            </div>
+
+      {/* опции пересылки (скрыть отправителя / подпись) */}
+      {!searching && (
+        <div className={s.shareOptions}>
+          <div className={s.shareOption} onClick={() => setDropAuthor((v) => !v)}>
+            <TgIcon name={dropAuthor ? 'author_hidden' : 'person'} size={20} color="var(--tg-accent)" />
+            <Text noWrap size={14.5} color="var(--tg-textPrimary)">{dropAuthor ? t('Show sender name') : t('Hide sender name')}</Text>
           </div>
+          {hasCaption && (
+            <div className={s.shareOption} onClick={() => setDropCaption((v) => !v)}>
+              <TgIcon name="captiondown" size={20} color="var(--tg-accent)" />
+              <Text noWrap size={14.5} color="var(--tg-textPrimary)">{dropCaption ? t('Show caption') : t('Hide caption')}</Text>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ряд недавних */}
+      {recents.length > 0 && (
+        <div className={s.recents}>
+          {recents.map((c) => (
+            <RecentChip key={c.id} chat={c} selected={selected.has(Number(c.id))} onToggle={() => toggle(Number(c.id))} />
+          ))}
+        </div>
+      )}
+
+      {/* табы папок — липкие при скролле */}
+      {!searching && folders.length > 0 && (
+        <div className={s.shareTabs}>
+          <FolderTabs value={folderId} onChange={setFolderId} folders={folders} />
+        </div>
+      )}
+
+      {/* список чатов */}
+      <div className={s.pickerList}>
+        {list.map((c) => (
+          <ShareRow
+            key={c.id}
+            chat={c}
+            sub={shareSub(c, presence, lang, t)}
+            selected={selected.has(Number(c.id))}
+            onToggle={() => toggle(Number(c.id))}
+          />
         ))}
       </div>
     </Popup>
