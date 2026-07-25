@@ -62,3 +62,36 @@
   color: var(--tg-accent);
   font-weight: 600;
 }
+
+// ── Цифровая маска ──
+// value input'а всегда непустой (префикс+прочерки) → лейбл всплывает сам, а
+// :focus даёт акцент теми же правилами выше. Текст input'а прозрачен, каретка
+// видна; поверх — цветной дисплей (цифры белым, прочерки faint). Рамка на фокусе
+// остаётся 1px (без смены паддинга), иначе overlay сдвинулся бы на 1px.
+.masked .input {
+  color: transparent;
+  caret-color: var(--tg-accent);
+  position: relative;
+  z-index: 1;
+
+  &:focus {
+    border-width: 1px;
+    padding: 13px 16px;
+  }
+}
+.maskDisplay {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  padding: 13px 16px; // те же паддинги/размеры, что у input → каретка совпадает
+  border: 1px solid transparent;
+  font-size: 16px;
+  font-family: inherit;
+  line-height: normal;
+  color: var(--tg-textPrimary);
+  white-space: pre;
+  pointer-events: none;
+}
+.maskDash {
+  color: var(--tg-textFaint);
+}
