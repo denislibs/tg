@@ -9,8 +9,7 @@ import AddContactView from './AddContactView'
 import EditContactView from './EditContactView'
 import HeaderMenu from './HeaderMenu'
 import ChatThemesPicker from './ChatThemesPicker'
-import { chatThemeVariant } from '../chatThemes'
-import patternUrl from '../assets/pattern.svg'
+import { chatThemeVariant, chatThemeBubbleOut } from '../chatThemes'
 import { PRESET_MODE, resolvePreset } from '../theme'
 import { useSettingsStore } from '../settings'
 import ConfirmDialog from './settings/ConfirmDialog'
@@ -191,10 +190,14 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     ? ({
         '--tg-accent': themeVariant.accent,
         '--tg-accentGradient': `linear-gradient(135deg, ${themeVariant.accent}, ${themeVariant.accent})`,
+        // Акцент исходящих баблов (тики «прочитано», голосовые, ссылки, reply-полоса)
+        // идёт от --tg-bubbleOutAccent — тема должна перекрыть и его, иначе они
+        // остаются дефолтно-синими на теме.
+        '--tg-bubbleOutAccent': themeVariant.accent,
+        // Фон исходящего бабла тоже часть темы (как в tweb) — иначе бабл остаётся
+        // дефолтно-сиреневым/голубым на цветной теме.
+        '--tg-bubbleOut': chatThemeBubbleOut(themeVariant.accent, themeMode),
       } as CSSProperties)
-    : undefined
-  const themeBg = themeVariant
-    ? `linear-gradient(150deg, ${themeVariant.gradient[0]}, ${themeVariant.gradient[1]}, ${themeVariant.gradient[2]}, ${themeVariant.gradient[3]})`
     : undefined
 
   const draftPeerId = chat.id.startsWith('draft:') ? Number(chat.id.slice('draft:'.length)) : null
@@ -852,13 +855,8 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     <CallProvider chat={chat}>
     <div className={s.root} style={themeStyle}>
       <div className={classNames(s.column, narrow ? s.columnNarrow : '')}>
-        {/* Тема чата: локальный фон-градиент поверх глобальных обоев (только в
-            этой колонке). Рисуется под лентой (z-index ниже .scroll). */}
-        {themeBg && (
-          <div className={s.themeBg} style={{ background: themeBg }} aria-hidden>
-            <div className={s.themeBgPattern} style={{ backgroundImage: `url("${patternUrl}")` }} />
-          </div>
-        )}
+        {/* Обои темы чата рисует глобальный ChatBackground (App), чтобы весь shell был
+            в теме, а не только эта колонка — локальный слой убран. */}
         {/* Global "now playing" plate — a floating pill above the header (tweb:
             the topbar slides down to make room). Matches the header geometry. */}
         <div className={classNames(s.nowPlaying, narrow ? s.nowPlayingNarrow : '')}>

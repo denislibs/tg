@@ -40,7 +40,7 @@ function readTheme() {
   }
 }
 
-export default function ChatBackground() {
+export default function ChatBackground({ themeColors }: { themeColors?: string[] }) {
   const { wallpaper, wallpaperBlur, themeChoice, customWallpaperMediaId, customWallpaperBlur } = useSettings()
   const ref = useRef<TWallpaperHandlers>(null)
   const painted = useRef(false)
@@ -50,14 +50,17 @@ export default function ChatBackground() {
 
   const th = readTheme()
   const mode = th.mode
-  // The gradient colours: an explicit preset, otherwise the theme default.
-  const colors = wallpaper.kind === 'preset' ? wallpaper.colors : th.grad
+  // Обои темы активного чата (messages.setChatTheme) перекрывают глобальные обои на
+  // ВЕСЬ shell (и колонку чата, и фон за сайдбаром) — иначе слева оставались дефолтные
+  // обои, а справа тема (рассинхрон). Иначе — пресет, затем дефолт темы.
+  const colors = themeColors ?? (wallpaper.kind === 'preset' ? wallpaper.colors : th.grad)
 
-  // Приоритет: свои обои (загруженное фото) поверх пресета/цвета/дефолта.
+  // Приоритет: свои обои (загруженное фото) поверх пресета/цвета/дефолта. Тема чата
+  // сильнее своих обоев — при активной теме overlay отключаем (рисуем градиент темы).
   const ab = activeBackground({ customWallpaperMediaId, customWallpaperBlur, wallpaper })
 
   // A custom photo, solid colour or uploaded image replaces the animated gradient.
-  const overlay =
+  const overlay = themeColors ? null :
     ab.kind === 'custom'
       ? {
           backgroundImage: `url(${mediaContentUrl(ab.mediaId)})`,
@@ -88,7 +91,7 @@ export default function ChatBackground() {
     // Read fresh values here (this passive effect runs after App's layout effect
     // has applied the new data-theme), so a theme switch repaints with real hex.
     const fresh = readTheme()
-    const freshColors = wallpaper.kind === 'preset' ? wallpaper.colors : fresh.grad
+    const freshColors = themeColors ?? (wallpaper.kind === 'preset' ? wallpaper.colors : fresh.grad)
     ref.current?.updateColors(freshColors)
     ref.current?.updatePattern(patternFor(fresh.mode, fresh.appBg, wallpaperBlur))
     // updateColors only stores the colours; the canvas is painted by init() on

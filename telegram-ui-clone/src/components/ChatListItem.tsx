@@ -161,7 +161,11 @@ function ChatListItem({ chat, selected, onSelect, collapsed }: Props) {
             {chat.type === 'secret' && (
               <TgIcon name="lock" size={16} color="var(--tg-green)" style={{ flexShrink: 0, marginRight: 3 }} />
             )}
-            <Text noWrap weight={500} size={16} color={chat.type === 'secret' ? 'var(--tg-green)' : 'var(--cl-title)'} style={{ flex: 1 }}>
+            {/* Имя не растягивается (flex:0 1 auto): иначе оно занимает всё
+                свободное место и отбрасывает бейдж/статус к правому краю.
+                Бейджи стоят сразу после имени (gap .titleRow), а время/галочка
+                уходят вправо своим кластером (margin-left:auto). */}
+            <Text noWrap weight={500} size={16} color={chat.type === 'secret' ? 'var(--tg-green)' : 'var(--cl-title)'} style={{ flex: '0 1 auto', minWidth: 0 }}>
               {chat.name}
             </Text>
             {chat.verified && (
@@ -169,24 +173,17 @@ function ChatListItem({ chat, selected, onSelect, collapsed }: Props) {
             )}
             {chat.premium && <PremiumBadge size={18} />}
             {chat.emojiStatus && <EmojiStatus emoji={chat.emojiStatus} size={18} />}
-            {chat.muted && <TgIcon name="muted" size={17} color="var(--cl-muted)" />}
-            {/* tweb places the sent/read tick in the title row, just left of the time */}
-            {chat.sent && (
-              <TgIcon
-                name={chat.read ? 'checks' : 'check'}
-                size={18}
-                color="var(--cl-accent)"
-                style={{ marginLeft: 4, flexShrink: 0 }}
-              />
-            )}
-            {/* tweb .dialog-title-details: .75rem, margin-inline-start .5rem */}
-            <Text
-              size={12}
-              color="var(--cl-meta)"
-              style={{ marginLeft: chat.sent ? '2px' : '8px', flexShrink: 0 }}
-            >
-              {fmtTime(chat.date)}
-            </Text>
+            {/* Правый кластер: mute + галочка отправки + время (tweb
+                .dialog-title-details, margin-inline-start: auto). */}
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+              {chat.muted && <TgIcon name="muted" size={17} color="var(--cl-muted)" />}
+              {chat.sent && (
+                <TgIcon name={chat.read ? 'checks' : 'check'} size={18} color="var(--cl-accent)" />
+              )}
+              <Text size={12} color="var(--cl-meta)">
+                {fmtTime(chat.date)}
+              </Text>
+            </div>
           </div>
 
           <div className={s.subtitleRow}>

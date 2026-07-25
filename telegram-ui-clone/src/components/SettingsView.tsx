@@ -140,7 +140,8 @@ export default function SettingsView({
           )}
         </Section>
 
-        {/* Appearance — theme toggle */}
+        {/* Settings list — своя строка ради подсветки активного пункта.
+            Ночной режим — первой строкой этой же секции (Appearance-toggle). */}
         <Section>
           <div className={s.rowClickable} onClick={(e) => onToggleMode({ x: e.clientX, y: e.clientY })}>
             <div className={s.rowIcon}>
@@ -149,10 +150,6 @@ export default function SettingsView({
             <Text size={16} color="var(--tg-textPrimary)" className={s.rowBody}>{t('Night Mode')}</Text>
             <TgSwitch checked={isDark} />
           </div>
-        </Section>
-
-        {/* Settings list — своя строка ради подсветки активного пункта */}
-        <Section>
           {settingsItems.map((it) => (
             <div
               key={it.label}
