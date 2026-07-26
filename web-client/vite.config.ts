@@ -9,6 +9,9 @@ export default defineConfig({
     format: 'es',
   },
   build: {
+    // Раздаём только современным браузерам (Chrome/Firefox evergreen) — не даунлевелим
+    // синтаксис, output чуть меньше и быстрее парсится.
+    target: 'esnext',
     rollupOptions: {
       output: {
         manualChunks(id) {

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { dicts, type Lang } from './dict'
+import { en, loaders, type Dict, type Lang } from './dict'
 
 export type { Lang }
 
@@ -13,18 +13,22 @@ export const LANGS: { code: Lang; name: string }[] = [
   { code: 'fr', name: 'Français' },
 ]
 
-function getInitial(): Lang {
-  const saved = localStorage.getItem('tg-lang')
-  if (saved && saved in dicts) return saved as Lang
-  const nav = typeof navigator !== 'undefined' ? navigator.language?.slice(0, 2) : 'en'
-  return (nav && nav in dicts ? nav : 'en') as Lang
+function isLang(l: string): l is Lang {
+  return l === 'en' || l in loaders
 }
 
-// `t` looks up the translation for the current language; English is the key
-// itself, so it falls back to the original string when no entry exists. A fresh
-// `t` is produced on every language change so consumers selecting `t` re-render.
-function makeT(lang: Lang): (s: string) => string {
-  return (s) => dicts[lang]?.[s] ?? s
+export function getInitial(): Lang {
+  const saved = localStorage.getItem('tg-lang')
+  if (saved && isLang(saved)) return saved
+  const nav = typeof navigator !== 'undefined' ? navigator.language?.slice(0, 2) : 'en'
+  return nav && isLang(nav) ? nav : 'en'
+}
+
+// `t` looks up the translation for the current language; English is the key itself,
+// so it falls back to the original string when no entry exists. A fresh `t` is
+// produced whenever the active dict changes so consumers selecting `t` re-render.
+function makeT(dict: Dict): (s: string) => string {
+  return (s) => dict[s] ?? s
 }
 
 interface I18nState {
@@ -33,18 +37,27 @@ interface I18nState {
   setLang: (l: Lang) => void
 }
 
-// Global language lives in a store (not a React context).
-export const useI18nStore = create<I18nState>((set) => {
-  const lang = getInitial()
-  return {
-    lang,
-    t: makeT(lang),
-    setLang: (l) => {
-      localStorage.setItem('tg-lang', l)
-      set({ lang: l, t: makeT(l) })
-    },
+// Global language lives in a store (not a React context). `t` starts on the inline
+// English fallback; `loadLang` pulls the active language's chunk and swaps it in.
+export const useI18nStore = create<I18nState>((set) => ({
+  lang: getInitial(),
+  t: makeT(en),
+  setLang: (l) => {
+    localStorage.setItem('tg-lang', l)
+    set({ lang: l })
+    void loadLang(l)
+  },
+}))
+
+// Load a language's dict chunk and swap `t`. English is inline (no chunk fetched).
+// Guarded against races: a slow chunk for a language the user already switched away
+// from is discarded.
+export async function loadLang(lang: Lang): Promise<void> {
+  const dict = lang === 'en' ? en : { ...en, ...(await loaders[lang]()) }
+  if (useI18nStore.getState().lang === lang) {
+    useI18nStore.setState({ t: makeT(dict) })
   }
-})
+}
 
 export const useI18n = () => useI18nStore()
 export const useT = () => useI18nStore((s) => s.t)
