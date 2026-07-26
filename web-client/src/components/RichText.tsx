@@ -1,14 +1,10 @@
-import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { EntityType, MessageEntity } from '../core/models'
 import { safeUrl } from '../core/safeUrl'
 import CodeBlock from './CodeBlock'
+import StickerMedia from './StickerMedia'
 import classNames from '../shared/lib/classNames'
 import s from './RichText.module.scss'
-
-// Ленивый импорт: StickerMedia тянет lottie-web — грузим его только когда в
-// тексте реально есть кастом-эмодзи (и он попал во вьюпорт), чтобы не раздувать
-// граф модуля/бандл сообщений на каждый бабл.
-const StickerMedia = lazy(() => import('./StickerMedia'))
 
 // Matches URLs, t.me links, @usernames and #hashtags
 const ENTITY_RE = /(https?:\/\/\S+|t\.me\/\S+|@[A-Za-z0-9_]{3,}|#[\p{L}0-9_]+)/gu
@@ -78,9 +74,7 @@ function CustomEmoji({ documentId, fallback }: { documentId: number; fallback: s
       <span className={s.customEmojiGlyph} style={{ fontSize: size }}>{fallback}</span>
       {visible && (
         <span className={s.customEmojiMedia}>
-          <Suspense fallback={null}>
-            <StickerMedia mediaId={documentId} width={size} height={size} autoplay loop />
-          </Suspense>
+          <StickerMedia mediaId={documentId} width={size} height={size} autoplay loop />
         </span>
       )}
     </span>

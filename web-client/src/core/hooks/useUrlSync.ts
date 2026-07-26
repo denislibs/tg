@@ -12,7 +12,7 @@
 // для неё нужны метаданные топика).
 import { useEffect, useRef } from 'react'
 import { useManagers } from './useManagers'
-import { useChatsStore } from '../../stores/chatsStore'
+import { useChatsStore, loadChats } from '../../stores/chatsStore'
 import { useNavigationStore } from '../../stores/navigationStore'
 import { setBaseHandler } from '../navigation/navigationStack'
 import type { Managers } from '../../client/bootstrap'
@@ -49,7 +49,6 @@ async function applyHash(rawHash: string, managers: Managers): Promise<void> {
       const chat = res.chats.find((c) => c.username.toLowerCase() === username)
       if (chat) {
         try { await managers.channels.join(chat.username) } catch { /* уже вступил / приватный */ }
-        const { loadChats } = await import('../../stores/chatsStore')
         await loadChats(managers)
         useNavigationStore.getState().selectChat(String(chat.id))
         return
