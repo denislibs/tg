@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite build --watch --base=/ --outDir ../client-build --emptyOutDir",
+    "dev": "vite build --watch --outDir ../client-build --emptyOutDir",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src",

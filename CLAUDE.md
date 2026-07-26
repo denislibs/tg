@@ -28,7 +28,7 @@ Go-бэкенд (`backend/`) + React/TS-фронтенд (`web-client/`). Обз
 
 ```bash
 # фронт собрать в client-build/ (раздаётся nginx)
-cd web-client && npx vite build --base=/ --outDir ../client-build && cd ..
+cd web-client && npx vite build --outDir ../client-build && cd ..
 docker compose up -d --build          # приложение на http://localhost:8080
 ```
 

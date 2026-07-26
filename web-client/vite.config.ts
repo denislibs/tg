@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 import { keepBackdropFilterUnprefixed } from './vite/keepBackdropFilterUnprefixed'
 
 export default defineConfig({
-  base: '/telegram-remake/',
+  base: '/',
   plugins: [react(), keepBackdropFilterUnprefixed()],
   worker: {
     format: 'es',

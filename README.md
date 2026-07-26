@@ -217,7 +217,7 @@ Postgres commit → usecase публикует update в Redis pub/sub
 
 ```bash
 # 1. собрать фронтенд в client-build/ (раздаётся nginx)
-cd web-client && npm install && npx vite build --base=/ --outDir ../client-build && cd ..
+cd web-client && npm install && npx vite build --outDir ../client-build && cd ..
 
 # 2. поднять стек
 docker compose up -d --build
