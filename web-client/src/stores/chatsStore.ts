@@ -201,9 +201,18 @@ interface LoadDeps {
   secret?: { decryptMessage(chatId: number, encBody: string): Promise<{ text: string; media?: { mediaType: string } } | null> }
 }
 
-// Fetch the current user + dialogs and populate the store.
-export async function loadChats(managers: LoadDeps): Promise<void> {
-  const [me, dialogs] = await Promise.all([managers.auth.me(), managers.chats.listDialogs()])
+// Fetch the current user + dialogs and populate the store. На холодном старте
+// принимает уже летящие промисы (prefetch из main.tsx) — так первый вызов не
+// плодит второй round-trip и переиспользует me()/listDialogs(), запущенные до
+// монтирования React.
+export async function loadChats(
+  managers: LoadDeps,
+  prefetch?: { me: Promise<User | null>; dialogs: Promise<Dialog[]> },
+): Promise<void> {
+  const [me, dialogs] = await Promise.all([
+    prefetch?.me ?? managers.auth.me(),
+    prefetch?.dialogs ?? managers.chats.listDialogs(),
+  ])
   await decryptSecretPreviews(managers, dialogs)
   const st = useChatsStore.getState()
   st.setMe(me)

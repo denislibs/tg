@@ -19,11 +19,15 @@ import { startRealtime } from '../../client/realtimeBridge'
 import { setupPush } from '../../client/pushSetup'
 import { initAppBadge } from '../../client/appBadge'
 import { useSettingsStore } from '../../settings'
+import { bootData } from '../../client/bootData'
 
 export function useAppBootstrap(): void {
   const managers = useManagers()
   useEffect(() => {
-    void loadChats(managers).then(() => loadPresence(managers))
+    // Первый вызов переиспользует me()/listDialogs(), запущенные в main.tsx до
+    // рендера (нет второго round-trip; см. bootData/#1).
+    const prefetch = bootData ? { me: bootData.me, dialogs: bootData.dialogs } : undefined
+    void loadChats(managers, prefetch).then(() => loadPresence(managers))
     void loadStories(managers)
     void loadNotifySettings(managers)
     void loadFolders(managers)

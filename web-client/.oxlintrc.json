@@ -19,7 +19,8 @@
     "coverage",
     "**/*.d.ts",
     "src/components/emoji/emojiData.ts",
-    "src/i18n/dict.ts"
+    "src/i18n/dict.ts",
+    "src/i18n/dict.*.ts"
   ],
   "options": {
     "typeAware": true
