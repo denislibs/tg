@@ -21,6 +21,27 @@ describe('RestClient', () => {
     await expect(rest.post('/auth/sign_in', {})).rejects.toThrow('invalid code')
   })
 
+  it('ждёт готовности токена перед запросом (нет гонки missing-token на старте)', async () => {
+    // Воркер грузит токен из IDB асинхронно; REST-RPC не должен уйти без него.
+    let token: string | null = null
+    let markReady!: () => void
+    const ready = new Promise<void>((res) => { markReady = () => { token = 'tok'; res() } })
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
+      new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const rest = new RestClient('/api', () => token, () => ready)
+    const p = rest.get('/me')
+    // токен ещё не загружен → запрос не ушёл
+    await Promise.resolve()
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    markReady()
+    await p
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect((fetchMock.mock.calls[0][1] as RequestInit).headers).toMatchObject({ Authorization: 'Bearer tok' })
+  })
+
   it('putBytes PUTs a raw body with the content-type and bearer (XHR + progress)', async () => {
     // putBytes использует XMLHttpRequest ради событий прогресса отправки —
     // мокаем минимально: open/setRequestHeader/send + upload.onprogress + onload.

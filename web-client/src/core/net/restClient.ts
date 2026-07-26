@@ -3,7 +3,15 @@ export class HttpError extends Error {
 }
 
 export class RestClient {
-  constructor(private base: string, private getToken: () => string | null) {}
+  // `ready` (опц.) — резолвится, когда токен загружен из хранилища. Запросы ждут
+  // его, иначе на старте REST-RPC уходит без токена → 401 «missing token» (гонка:
+  // TokenStore.load() читает IDB асинхронно, а UI уже шлёт запросы). Мемоизирован
+  // в TokenStore, после первой загрузки резолвится мгновенно.
+  constructor(
+    private base: string,
+    private getToken: () => string | null,
+    private ready?: () => Promise<void>,
+  ) {}
 
   private headers(): Record<string, string> {
     const h: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -34,6 +42,7 @@ export class RestClient {
   }
 
   async putBytes(path: string, body: ArrayBuffer, contentType: string, onProgress?: (loaded: number, total: number) => void, signal?: AbortSignal): Promise<void> {
+    if (this.ready) await this.ready() // дождаться загрузки токена (см. конструктор)
     // XHR вместо fetch: у fetch нет событий прогресса ОТПРАВКИ, а спиннер
     // загрузки медиа (tweb ProgressivePreloader) живёт на xhr.upload.onprogress.
     // Если XHR в этом контексте недоступен — тихий фолбэк на fetch (без прогресса).
@@ -81,6 +90,7 @@ export class RestClient {
   }
 
   private async request<R>(method: string, path: string, body?: unknown): Promise<R> {
+    if (this.ready) await this.ready() // дождаться загрузки токена (см. конструктор)
     const res = await fetch(this.base + path, {
       method,
       headers: this.headers(),
