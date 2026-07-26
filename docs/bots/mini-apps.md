@@ -49,7 +49,7 @@ URL) и даёт прямую ссылку вида `t.me/<bot>/<app>`.
 
 Вам **не нужно** реализовывать это вручную — используйте объект
 `window.Telegram.WebApp` (shim). Полный готовый shim — в
-[`telegram-ui-clone/public/webapp-demo.html`](../../telegram-ui-clone/public/webapp-demo.html);
+[`web-client/public/webapp-demo.html`](../../web-client/public/webapp-demo.html);
 скопируйте `<script>` оттуда в свою страницу.
 
 ## API `Telegram.WebApp` (поддерживаемое подмножество)
@@ -167,7 +167,7 @@ DeviceMotion/DeviceOrientation браузера (работают на устр�
 ## Требования и ограничения
 
 - Страница должна отдаваться по **https** и быть самодостаточной (в деве можно
-  положить в `telegram-ui-clone/public/` — раздаётся тем же nginx, тогда URL
+  положить в `web-client/public/` — раздаётся тем же nginx, тогда URL
   относительный, например `/my-app.html`).
 - Реальный `telegram-web-app.js` с telegram.org **не** загружается — используйте
   свой shim (шаблон выше / `public/webapp-demo.html`, где есть готовые

@@ -9,7 +9,7 @@
 ```
 messenger-denis/
 ├── backend/            # Go-сервис (API + WebSocket). См. backend/README.md
-├── telegram-ui-clone/  # React/TS SPA. См. telegram-ui-clone/README.md
+├── web-client/         # React/TS SPA. См. web-client/README.md
 ├── nginx/              # nginx.conf — раздаёт статику фронта и проксирует на backend
 ├── docs/               # contracts.md, ui-kit-migration.md, research/
 ├── client-build/       # собранная статика фронта (раздаётся nginx)
@@ -138,30 +138,78 @@ messenger-denis/
 
 ## Архитектура
 
+### Топология
+
 ```
-                 ┌─────────────────────────────┐
-   браузер ────► │ nginx (:8080)               │
-                 │  /         → статика фронта  │
-                 │  /api, /ws → backend:8080    │
-                 └──────────────┬──────────────┘
-                                │
-                 ┌──────────────▼──────────────┐
-                 │ backend (Go, chi + fx)      │
-                 │  REST + WebSocket            │
-                 └───┬──────────┬──────────┬───┘
-                     │          │          │
-              ┌──────▼───┐ ┌────▼────┐ ┌───▼─────┐
-              │ Postgres │ │  Redis  │ │  MinIO  │
-              │ (данные) │ │(кэш/RT/ │ │ (медиа) │
-              │          │ │presence)│ │         │
-              └──────────┘ └─────────┘ └─────────┘
+                        ┌─────────────────────────────────────────┐
+   браузер (SPA) ─────► │ nginx (:8080)                           │
+     ▲  ▲               │  /            → статика из client-build  │
+     │  │               │  /api/* , /ws → backend:8080 (reverse-   │
+     │  │               │                  proxy, upgrade для WS)   │
+     │  │               └───────────────────┬─────────────────────┘
+     │  │ HTTP (REST)                        │
+     │  └─ WSS (кадры {t,d})                 │
+     │                  ┌───────────────────▼─────────────────────┐
+     │                  │ backend (Go · chi + uber/fx)            │
+     │                  │  delivery/http  ─┐                       │
+     │                  │  delivery/ws    ─┤→ usecase → adapter    │
+     │                  │  (clean arch: domain ← usecase ← adapter)│
+     │                  └───┬──────────────┬───────────────┬──────┘
+     │                      │              │               │
+     │               ┌──────▼───┐  ┌───────▼───────┐  ┌────▼────┐
+     │               │ Postgres │  │     Redis     │  │  MinIO  │
+     │               │ источник │  │ кэш · pub/sub │  │  медиа  │
+     │               │  истины  │  │ presence·push │  │ (S3 API)│
+     │               └──────────┘  └───────┬───────┘  └─────────┘
+     │                                      │ fan-out realtime
+     └──────────────────────────────────────┘  (Redis pub/sub → все ноды → WS-hub → клиенты)
 ```
 
-- **Postgres** — основное хранилище (пользователи, чаты, сообщения, реакции, истории, контакты…).
-- **Redis** — кэш сессий, QR-логин, pub/sub реалтайма, presence (online/last-seen), очередь web-push. Опционален: при недоступности сервис деградирует мягко.
-- **MinIO** — объектное хранилище медиа; сервер генерирует превью через ffmpeg. Опционален: без него медиа отключается.
+- **nginx** — единая точка входа: отдаёт собранный SPA (`client-build/`) и проксирует `/api` + `/ws`
+  на backend (WebSocket-upgrade). Клиент не ходит на backend напрямую.
+- **backend (Go)** — REST + WebSocket-шлюз, чистая архитектура `domain ← usecase ← adapter`, DI на
+  uber/fx. Горизонтально масштабируется: состояние соединений локально, а межнодовый realtime идёт
+  через Redis pub/sub.
+- **Postgres** — единственный источник истины (пользователи, чаты, сообщения, реакции, истории,
+  контакты, права…). Порядок сообщений — монотонный `seq` в пределах чата; догон клиента — по `pts`.
+- **Redis** — кэш сессий, QR-store, **pub/sub реалтайма** (фан-аут событий между нодами), presence
+  (online/last-seen), очередь web-push. Опционален — при недоступности сервис деградирует мягко.
+- **MinIO** — объектное S3-хранилище медиа; сервер генерирует превью/постеры и снимает размеры/длительность
+  через ffmpeg. Опционален — без него медиа отключается.
 
-Подробности слоёв — в [`backend/README.md`](backend/README.md) и [`telegram-ui-clone/README.md`](telegram-ui-clone/README.md).
+### Поток данных
+
+**Отправка сообщения (client → server, оптимистично):**
+
+```
+Composer → useChatSend (hook) → managersProxy.messages.send
+   → SuperMessagePort (RPC в Web Worker) → wsClient: кадр {t:"send_message", d:{…, client_msg_id}}
+   → nginx → backend ws-handler → usecase/chat → Postgres (INSERT, назначает seq)
+   → backend: кадр {t:"message_ack", d:{client_msg_id, msg_id, seq}} обратно отправителю
+      + публикация new_message в Redis pub/sub → всем подписчикам чата
+```
+
+Клиент рисует «бабл» сразу по `client_msg_id` (временный отрицательный id), затем `message_ack`
+сверяет оптимистичную запись с серверной (`reconcileAck`), а `message_error` помечает её ошибкой.
+Неподтверждённые отправки лежат в durable **outbox** (переживает перезагрузку вкладки) и переотправляются
+после реконнекта.
+
+**Приём события (server → client, однонаправленно вниз):**
+
+```
+Postgres commit → usecase публикует update в Redis pub/sub
+   → ws-hub каждой ноды → активные соединения → кадр {t, d} клиенту
+   → wsClient → SuperMessagePort → client/realtimeBridge (ЕДИНСТВЕННЫЙ мост «сокет → стор»)
+   → Zustand-store (нормализовано по id) → селектор → React-компонент
+```
+
+Ключевой инвариант фронта: **компоненты читают из стора, а не из сокета**. Все realtime-кадры
+проходят через один `realtimeBridge`, который и мутирует сторы; UI лишь подписан на сторы селекторами.
+
+**Догон после оффлайна:** при реконнекте клиент запрашивает `GET /sync` (и `GET /channels/{id}/difference`
+по `pts` для каналов) — сервер отдаёт пропущенные апдейты, клиент применяет их тем же путём через стор.
+
+Подробности слоёв — в [`backend/README.md`](backend/README.md) и [`web-client/README.md`](web-client/README.md).
 
 ## Быстрый старт (Docker)
 
@@ -169,7 +217,7 @@ messenger-denis/
 
 ```bash
 # 1. собрать фронтенд в client-build/ (раздаётся nginx)
-cd telegram-ui-clone && npm install && npx vite build --base=/ --outDir ../client-build && cd ..
+cd web-client && npm install && npx vite build --base=/ --outDir ../client-build && cd ..
 
 # 2. поднять стек
 docker compose up -d --build
@@ -206,7 +254,7 @@ go test ./...                  # интеграционные тесты на te
 **Фронтенд** (dev-сервера нет — watch-сборка в `client-build/`, раздаёт nginx стенда):
 
 ```bash
-cd telegram-ui-clone
+cd web-client
 npm install
 npm run dev      # vite build --watch → ../client-build (открывать http://localhost:38080)
 npm test         # vitest

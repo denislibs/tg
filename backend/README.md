@@ -54,6 +54,59 @@ internal/
 Опциональные зависимости (Redis, MinIO, VAPID, GeoIP) деградируют мягко: при их отсутствии
 соответствующая функциональность отключается, сервис продолжает работать.
 
+## Архитектура и поток данных
+
+### Слои и направление зависимостей
+
+Зависимости направлены строго внутрь: `domain ← usecase ← adapter`.
+
+- **`domain/`** — сущности и инварианты (value-объекты, ошибки, права). Чистый Go, без импортов
+  фреймворков/БД/HTTP. Здесь же — доменные ошибки (`ErrNotFound`, `ErrForbidden`, `ErrTooLong`…).
+- **`usecase/<feature>/`** — бизнес-логика. Знает только `domain` и **порты** (`ports.go` —
+  интерфейсы репозиториев/сервисов), не конкретные реализации. Санитизация ввода (allow-list схем
+  ссылок, лимиты длины/числа сущностей) живёт здесь (`usecase/chat/sanitize.go`). 17 доменов:
+  `auth, chat, contacts, folders, iv, media, notify, passkeys, presence, privacy, public, push,
+  report, stats, stickers, story`.
+- **`adapter/`** — реализация портов: `delivery/http` (chi-хендлеры), `delivery/ws` (WS-шлюз),
+  `repo/postgres` (pgx), `storage/minio`, `cache/redis`, `realtime/redis`, `queue/redis`,
+  `push/webpush`, `media/ffmpeg`, `geoip`.
+- **`app/`** — DI-сборка на uber/fx (`providers.go` — фабрики, `server.go` — wiring). Новый компонент
+  регистрируется тут; всё связывается через конструкторы, а не глобальные синглтоны.
+
+Хендлеры **не содержат бизнес-логики**: парсят запрос → зовут usecase → сериализуют ответ; доменные
+ошибки мапятся в HTTP-коды (сырые ошибки наружу не уходят).
+
+### Жизненный цикл REST-запроса
+
+```
+nginx → chi router → middleware (auth: Bearer → userID) → *_handler.go
+   → usecase.<Method>(ctx, input)  ── зовёт порты ──►  repo/postgres, storage/minio, cache/redis
+   → domain-результат/ошибка → handler сериализует JSON (или мапит ErrX → 4xx/5xx)
+```
+
+### Реалтайм: путь события
+
+Источник истины — Postgres. После коммита usecase публикует апдейт в Redis pub/sub; каждая нода
+слушает канал и рассылает событие своим активным WS-соединениям. Это делает бэкенд **горизонтально
+масштабируемым**: клиент подключён к одной ноде, но события долетают со всех.
+
+```
+usecase (после commit в Postgres)
+   → realtime/redis: PUBLISH update  ──►  Redis pub/sub
+   → каждая нода: SUBSCRIBE → ws-hub → соединения подписчиков чата
+   → кадр {t, d} клиенту
+```
+
+Отправка клиента идёт зеркально: WS-кадр `send_message` → `delivery/ws` → `usecase/chat` →
+Postgres (назначает монотонный `seq`) → `message_ack` отправителю + `new_message` в pub/sub остальным.
+
+### Консистентность и догон
+
+- **Порядок**: у сообщения есть монотонный `seq` в пределах чата (курсор истории/пагинации).
+- **Догон после оффлайна**: `GET /sync` отдаёт апдейты с момента последнего курсора; для каналов —
+  `GET /channels/{id}/difference` по `pts`. Клиент применяет их тем же путём, что и live-события.
+- **Presence** (online/last-seen) и typing — эфемерны, живут в Redis (TTL), не пишутся в Postgres.
+
 ## HTTP API
 
 Роутинг — `internal/adapter/delivery/http/router.go` (chi/v5). Две группы: публичная и защищённая (Bearer-токен).
@@ -104,27 +157,25 @@ internal/
 
 ## Хранилища
 
-**PostgreSQL** — миграции в `internal/store/postgres/migrations/`:
+**PostgreSQL** — источник истины. Миграции в `internal/store/postgres/migrations/` (goose),
+последовательная нумерация `NNNN_name.sql`, применяются **автоматически** на старте (сейчас
+`0001`…`0083`, 81 файл). Правило: не менять уже применённые миграции — только добавлять новые
+следующим номером. Опорные вехи:
 
 | Файл | Содержимое |
 |---|---|
 | `0001_init` | пользователи, устройства (сессии) |
-| `0002_chats_messages` | чаты (private/group/channel/saved), участники, сообщения |
-| `0003_reactions` | реакции (счётчики emoji) |
-| `0004_media` | метаданные медиа |
-| `0005_push` | подписки web-push |
-| `0006_groups_channels` | инфо групп/каналов, битовая маска прав админа |
-| `0007_join_requests` | заявки на вступление (паблики с аппрувом) |
-| `0008_discussions` | discussion-чаты для каналов; `thread_root_id` у сообщений |
+| `0002_chats_messages` | чаты (private/group/channel/saved), участники, сообщения (монотонный `seq`) |
+| `0003_reactions` · `0015_message_entities` | реакции; rich-text спаны (JSONB) |
+| `0006_groups_channels` · `0007_join_requests` · `0008_discussions` | группы/каналы, права (битовая маска), заявки, обсуждения (`thread_root_id`) |
 | `0009_stories` | истории + просмотры + allowlist приватности |
-| `0010_user_profile` | first/last name, день рождения, видимость телефона |
-| `0011_message_actions` | атрибуция форвардов, «удалить у меня», закреплённые |
-| `0012_media_variants` | оригинальное имя файла, ключ серверного превью |
-| `0013_contacts` | адресная книга (owner → user + сохранённое имя) |
-| `0014_service_user` | служебный аккаунт `id=777000` для системных уведомлений |
-| `0015_message_entities` | rich-text спаны (bold/italic/code/links) как JSONB |
+| `0011_message_actions` | атрибуция форвардов (`fwd_from_*`), «удалить у меня», закреплённые |
+| `0083_star_transactions` | леджер Telegram Stars (транзакции ⭐) |
 
-**Redis** — кэш сессий, QR-store (короткий TTL), publisher реалтайма, presence-store, очередь push.
+Полный список — в каталоге миграций; они и есть авторитетный источник схемы.
+
+**Redis** — кэш сессий, QR-store (короткий TTL), publisher/subscriber реалтайма (pub/sub-фан-аут
+между нодами), presence-store (online/last-seen, TTL), очередь web-push.
 
 **MinIO** — медиа-объекты; ffmpeg генерирует превью/постеры и снимает размеры/длительность.
 
