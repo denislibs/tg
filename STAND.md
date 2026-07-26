@@ -39,7 +39,7 @@ docker compose -p msgrverify -f docker-compose.verify.yml up -d --build backend
 docker compose -p msgrverify -f docker-compose.verify.yml restart nginx   # обязательно!
 
 # фронтенд: пересборка подхватывается без рестарта контейнеров
-cd telegram-ui-clone && npx vite build --base=/ --outDir ../client-build
+cd web-client && npx vite build --base=/ --outDir ../client-build
 ```
 
 ## Грабли

@@ -137,5 +137,5 @@ Confirmed decisions:
 Phase 0 (backend + migrations) first. Then Phase 1 (model). Then parallelizable:
 Phase 2 (menu+copy/edit/delete/pin), Phase 5 (dates/service/pin-bar/views — mostly
 frontend). Phase 4 (select) standalone. Each = its own commit, tests + browser check.
-Two git repos: backend at root, frontend at telegram-ui-clone.
+Two git repos: backend at root, frontend at web-client.
 </content>

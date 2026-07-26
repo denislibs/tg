@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 Инструкции для работы с этим репозиторием. Это монорепо клона Telegram:
-Go-бэкенд (`backend/`) + React/TS-фронтенд (`telegram-ui-clone/`). Обзор — в [`README.md`](README.md).
+Go-бэкенд (`backend/`) + React/TS-фронтенд (`web-client/`). Обзор — в [`README.md`](README.md).
 
 ## Как работать
 
@@ -19,7 +19,7 @@ Go-бэкенд (`backend/`) + React/TS-фронтенд (`telegram-ui-clone/`).
 - **Frontend:** React 18, TypeScript (strict), Vite 6, MUI 6, Zustand, framer-motion, prismjs, vitest.
 - **Хранилища:** Postgres (данные), Redis (кэш/realtime/presence/очередь), MinIO (медиа).
 
-Детали — в [`backend/README.md`](backend/README.md) и [`telegram-ui-clone/README.md`](telegram-ui-clone/README.md).
+Детали — в [`backend/README.md`](backend/README.md) и [`web-client/README.md`](web-client/README.md).
 
 ## Сборка и запуск
 
@@ -27,12 +27,12 @@ Go-бэкенд (`backend/`) + React/TS-фронтенд (`telegram-ui-clone/`).
 
 ```bash
 # фронт собрать в client-build/ (раздаётся nginx)
-cd telegram-ui-clone && npx vite build --base=/ --outDir ../client-build && cd ..
+cd web-client && npx vite build --base=/ --outDir ../client-build && cd ..
 docker compose up -d --build          # приложение на http://localhost:8080
 ```
 
 Команды для разработки и зональные правила — в [`backend/CLAUDE.md`](backend/CLAUDE.md)
-и [`telegram-ui-clone/CLAUDE.md`](telegram-ui-clone/CLAUDE.md).
+и [`web-client/CLAUDE.md`](web-client/CLAUDE.md).
 
 ## Кросс-каттинг (общее для обеих частей)
 

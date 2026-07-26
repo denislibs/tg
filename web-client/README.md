@@ -79,19 +79,60 @@ src/
     └── NewGroupFlow / NewChannelFlow / NewPrivateChat / ContactsView / AddContactView …
 ```
 
-## Как устроена работа с бэкендом
+## Архитектура и поток данных
+
+Строго **однонаправленный** поток (детали и обоснование — в
+[`../docs/research/2026-06-29-frontend-refactor-plan.md`](../docs/research/2026-06-29-frontend-refactor-plan.md)):
+
+```
+вверх (данные):  сервер → smp → realtimeBridge → store → селектор → View
+вниз (команды):  View → хук (use*) → manager → worker → сервер
+```
+
+### Слои и кто за что отвечает
+
+- **View** (`components/*`) — только рендер + колбэки. Не фетчит, не слушает сокет, не держит данные.
+- **ViewModel-хуки** (`core/hooks/use*`) — presentation logic: читают стор селектором, отдают
+  компоненту данные + действия (`useChatSend`, `useMessageWindow`, `useMessageActions`, …).
+- **Store** (`stores/*`, Zustand) — нормализованное хранилище сущностей по id, **единственный
+  источник истины** на клиенте (~25 сторов: `chatsStore`, `messagesStore`, `storiesStore`,
+  `callStore`, `navigationStore`, `searchStore`, …).
+- **realtimeBridge** (`client/realtimeBridge.ts`) — **единственный** канал «сервер → store».
+- **managers** (`core/managers/*`) — команды/запросы к бэку (REST/WS); не знают про React/DOM
+  (~40 менеджеров: `messagesManager`, `mediaManager`, `chatsManager`, `channelsManager`,
+  `storiesManager`, `callsManager`, `secretManager`, …).
+
+### Web Worker + RPC
+
+Менеджеры и сетевой слой живут в **Web/SharedWorker**, а не в UI-потоке. Общение — через
+`SuperMessagePort` (`rpc/superMessagePort.ts`): `invoke`/`handle`/`emit`. UI дергает менеджеров
+через прокси (`rpc/managersProxy.ts`, доступ из React — `useManagers()`, вне React —
+`startClient().managers`). Так тяжёлая работа (крипта секретных чатов, разбор кадров, кэш истории)
+не блокирует рендер.
+
+### Транспорт
 
 - **REST** (`core/net/restClient.ts`) — Bearer-токен в заголовке; `.contentUrl()`/`.mediaUrl()`
   строят ссылки с токеном для `<img>`/`<video>`.
 - **WebSocket** (`core/net/wsClient.ts` + `core/realtime/connectionManager.ts`) — кадры `{t, d}`,
-  авто-реконнект с экспоненциальным backoff, heartbeat (ping/pong), **outbox** неподтверждённых
-  отправок: по `message_ack` сообщение помечается доставленным, по `message_error` — удаляется.
+  авто-реконнект с экспоненциальным backoff, heartbeat (ping/pong), durable **outbox**
+  неподтверждённых отправок (переживает перезагрузку): по `message_ack` — доставлено, по
+  `message_error` — ошибка; после реконнекта — переотправка + `GET /sync` для догона.
+
+### Отправка и кэш истории
+
 - **Оптимистичная отправка** (`core/hooks/useMessageWindow.ts`) — бабл появляется сразу
-  (`client_msg_id`, временный seq), затем сверяется с ответом сервера (`reconcileAck` / `failOptimistic`).
-- **Кэш истории** (`slicedArray` + `messagesManager`) — разрежённые seq-диапазоны; пагинация
-  `loadOlder/loadNewer`, прыжок к сообщению `jumpTo`.
-- **Состояние** — Zustand-сторы (диалоги, presence, typing, истории, звонки) обновляются
-  realtime-мостом `client/realtimeBridge.ts`.
+  (`client_msg_id`, временный отрицательный id), затем сверяется с `message_ack`
+  (`reconcileAck` / `failOptimistic`).
+- **Кэш истории** (`core/history/slicedArray.ts` + `messagesManager`) — разрежённые `seq`-диапазоны;
+  пагинация `loadOlder`/`loadNewer`, прыжок к сообщению `getAround`/`jumpTo`.
+
+### Инварианты (НЕ нарушать)
+
+- Подписка на сокет — **только** в `realtimeBridge`. Компоненты и хуки **читают из стора**, не из сокета.
+- Одна сущность живёт в сторе один раз (нормализовано по id). Не дублировать realtime-данные и не
+  держать в `useState` копию того, что уже в сторе (производные — мемо-селектором).
+- `useEffect` — для честных side-effect'ов (DOM-listener, императивный скролл), не для синхронизации стора.
 
 ## Rich-text (`core/markdown.ts`)
 
