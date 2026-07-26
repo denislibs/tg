@@ -11,7 +11,7 @@ import QrCode from './QrCode'
 import PasswordMonkey from '../PasswordMonkey'
 import { isWebAuthnSupported, getPasskeyAssertion } from '../../core/webauthnBrowser'
 import { ANIMATE_AUTH_KEY, ANIMATE_MAIN_KEY, PREV_ACCOUNT_KEY, playAuthHostEnter, playAuthHostExit } from '../../core/accountTransition'
-import ChatBackground from '../ChatBackground'
+import ChatBackground from '../ChatBackgroundLazy'
 import type { ToggleMode } from '../../App'
 import s from './AuthFlow.module.scss'
 

@@ -193,7 +193,7 @@ export default function RealMediaBubble({
               onError={() => { void primeMediaToken(true) }}
             />
           ) : (
-            <img ref={imgRef} className={s.img} src={displaySrc} alt="" decoding="async" onLoad={() => setImgLoaded(true)} onError={() => { void primeMediaToken(true) }} />
+            <img ref={imgRef} className={s.img} src={displaySrc} alt="" loading="lazy" decoding="async" onLoad={() => setImgLoaded(true)} onError={() => { void primeMediaToken(true) }} />
           )
         ) : null}
         {blocked && (

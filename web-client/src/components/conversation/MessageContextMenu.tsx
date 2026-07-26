@@ -7,11 +7,12 @@
 // разворачивает полный EmojiDropdown (tweb onMoreClick → EmojiTab). Lottie
 // appear/select-анимации реакций приходят с MTProto-сервера и вне Telegram
 // недоступны — замена: scale-подскок на hover.
-import { memo, useRef, useState, type ReactNode, type MouseEvent, type CSSProperties } from 'react'
+import { lazy, memo, Suspense, useRef, useState, type ReactNode, type MouseEvent, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import Menu, { MenuItem } from '../../shared/ui/Menu'
 import Emoji from '../emoji/Emoji'
-import EmojiDropdown from '../emoji/EmojiDropdown'
+// Полный пикер эмодзи (шеврон «ещё реакции») — тот же ленивый чанк, что и в Composer.
+const EmojiDropdown = lazy(() => import('../emoji/EmojiDropdown'))
 import TgIcon from '../TgIcon'
 import { useT } from '../../i18n'
 import { usePortalContainer } from '../../core/pip'
@@ -72,13 +73,15 @@ function MessageContextMenu({ menu, items, onClose, onExited, onReaction }: Mess
           />
         )}
         <div style={{ position: 'fixed', ...xPos, ...yPos, zIndex: 2001 }}>
-          <EmojiDropdown
-            open={!menu.closing}
-            className={s.pickerInMenu}
-            onPick={(e) => onReaction(e)}
-            onClose={onClose}
-            onExitComplete={onExited}
-          />
+          <Suspense fallback={null}>
+            <EmojiDropdown
+              open={!menu.closing}
+              className={s.pickerInMenu}
+              onPick={(e) => onReaction(e)}
+              onClose={onClose}
+              onExitComplete={onExited}
+            />
+          </Suspense>
         </div>
       </>,
       portalContainer,

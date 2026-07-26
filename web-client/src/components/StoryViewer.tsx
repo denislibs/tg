@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom'
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import Text from '../shared/ui/Text'
 import IconButton from '../shared/ui/IconButton'
 import Menu, { MenuItem } from '../shared/ui/Menu'
@@ -12,7 +12,6 @@ import Avatar from '../shared/ui/Avatar'
 import { useT } from '../i18n'
 import { gradientFor } from '../core/dialogToChat'
 import { useStoryViewer } from '../core/hooks/useStoryViewer'
-import StoryStats from './StoryStats'
 import EditStorySheet from './EditStorySheet'
 import StealthModePopup from './StealthModePopup'
 import StoryMediaAreas from './StoryMediaAreas'
@@ -23,6 +22,9 @@ import { useManagers } from '../core/hooks/useManagers'
 import { uiEvents } from '../core/hooks/uiEvents'
 import classNames from '../shared/lib/classNames'
 import s from './StoryViewer.module.scss'
+
+// Статистика своей истории (графики) — оверлей по кнопке, не первый кадр → лениво.
+const StoryStats = lazy(() => import('./StoryStats'))
 
 // Быстрая реакция по умолчанию (tweb DEFAULT_REACTION_EMOTICON) + панель выбора.
 const DEFAULT_REACTION = '❤'
@@ -401,9 +403,11 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
         </motion.div>
 
         {/* Статистика своей истории (full-screen оверлей над просмотрщиком) */}
-        <AnimatePresence>
-          {showStats && story && <StoryStats storyId={story.id} onClose={closeStats} />}
-        </AnimatePresence>
+        <Suspense fallback={null}>
+          <AnimatePresence>
+            {showStats && story && <StoryStats storyId={story.id} onClose={closeStats} />}
+          </AnimatePresence>
+        </Suspense>
 
         {/* Подтверждение удаления (tweb DeleteStoryTitle / DeleteStorySubtitle) */}
         {confirmDel && (

@@ -1165,6 +1165,7 @@ function SharedMedia({ tab, onTab, chatId, members, savedDialogs, gifts, onOpenG
                   src={mediaThumbUrl(m.mediaId)}
                   alt=""
                   loading="lazy"
+                  decoding="async"
                   onError={(e) => {
                     // превью ещё не сгенерировано → полный контент
                     const img = e.currentTarget

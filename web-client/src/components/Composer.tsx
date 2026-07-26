@@ -9,12 +9,12 @@
 // The input is a contenteditable div (not a textarea) so it can show rich
 // formatting inline (bold/italic/spoiler/code/quote/link), 1:1 with tweb. On send
 // the DOM is serialized to plain text + a MessageEntity[] (see core/markdown).
-import { memo, useEffect, useRef, useState } from 'react'
+import { lazy, memo, Suspense, useEffect, useRef, useState } from 'react'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
-import EmojiDropdown, { useDropdownHover } from './emoji/EmojiDropdown'
+import { useDropdownHover } from './emoji/useDropdownHover'
 import EmojiHelper from './EmojiHelper'
 import StickersHelper, { stickerSuggestEmoji } from './StickersHelper'
 import type { Sticker } from '../core/managers/stickersManager'
@@ -42,6 +42,10 @@ import SchedulePopup from './SchedulePopup'
 import { createPortal } from 'react-dom'
 import { DiscardVoiceDialog } from './messages/ChatDialogs.tsx'
 import s from './Composer.module.scss'
+
+// Пикер эмодзи/стикеров/гифок — тяжёлый (сетки, StickersTab/GifsTab), но нужен
+// только по открытию. Грузим лениво отдельным чанком — вон из главного бандла.
+const EmojiDropdown = lazy(() => import('./emoji/EmojiDropdown'))
 
 const EASE_STD = EASE
 const DUR_OUT = DUR.out
@@ -1289,16 +1293,18 @@ function Composer({
 
       {emojiMounted && (
         <div ref={emojiDd.panelRef} style={{ display: 'contents' }}>
-          <EmojiDropdown
-            open={emojiDd.open}
-            onPick={insertEmoji}
-            onPickCustomEmoji={insertCustomEmoji}
-            onPickSticker={onPickSticker}
-            onPickGif={onPickGif}
-            onDelete={deleteBeforeCaret}
-            onClose={emojiDd.close}
-            panelProps={emojiDd.panelProps}
-          />
+          <Suspense fallback={null}>
+            <EmojiDropdown
+              open={emojiDd.open}
+              onPick={insertEmoji}
+              onPickCustomEmoji={insertCustomEmoji}
+              onPickSticker={onPickSticker}
+              onPickGif={onPickGif}
+              onDelete={deleteBeforeCaret}
+              onClose={emojiDd.close}
+              panelProps={emojiDd.panelProps}
+            />
+          </Suspense>
         </div>
       )}
 

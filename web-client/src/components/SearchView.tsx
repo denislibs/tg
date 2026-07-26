@@ -362,6 +362,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                             src={mediaThumbUrl(m.mediaId)}
                             alt=""
                             loading="lazy"
+                            decoding="async"
                             onError={(e) => {
                               // превью ещё не сгенерировано → полный контент
                               const img = e.currentTarget

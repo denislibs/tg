@@ -1,6 +1,17 @@
-/* Web Push + медиакэш service worker. Scope: / (served from the build root). */
+/* Web Push + медиакэш + app-shell service worker. Scope: / (build root). */
 self.addEventListener('install', () => self.skipWaiting())
-self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()))
+self.addEventListener('activate', (e) =>
+  e.waitUntil(
+    (async () => {
+      // Подчищаем предыдущие версии app-shell кэша (media-кэш не трогаем).
+      const names = await caches.keys()
+      await Promise.all(
+        names.filter((n) => n.startsWith('app-shell-') && n !== APP_SHELL).map((n) => caches.delete(n)),
+      )
+      await self.clients.claim()
+    })(),
+  ),
+)
 
 /* ---- Медиакэш (tweb CacheStorage 'cachedFiles') ----------------------------
  * Ответы /api/media/{id}/content складываются в caches со штампами
@@ -8,6 +19,14 @@ self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()))
  * «Данные и память» считает объём, а clearOldCache чистит по TTL/лимиту. */
 const CACHED_FILES = 'cachedFiles'
 const MEDIA_RE = /^\/api\/media\/\d+\/content$/
+
+/* ---- App-shell кэш (мгновенный повторный старт на медленной сети) -----------
+ * Хешированные ассеты (/assets/) и шрифты (/fonts/) контентно-адресуемы и отдаются
+ * с Cache-Control: immutable — их безопасно держать cache-first без ревалидации.
+ * index.html — network-first (онлайн всегда свежий, оффлайн — из кэша). */
+const APP_SHELL = 'app-shell-v1'
+const IMMUTABLE_RE = /^\/(assets|fonts)\//
+const SHELL_MAX = 80 // потолок записей (старые хеш-чанки после деплоев — под нож)
 
 // Ключ кэша — URL без короткоживущего token (иначе каждая ротация токена
 // плодит дубликаты); v=thumb остаётся — превью и оригинал живут раздельно.
@@ -21,29 +40,86 @@ self.addEventListener('fetch', (event) => {
   const req = event.request
   if (req.method !== 'GET') return
   const url = new URL(req.url)
-  if (url.origin !== self.location.origin || !MEDIA_RE.test(url.pathname)) return
-  if (req.headers.has('range')) return // потоковое видео с Range — мимо кэша
-  const key = mediaCacheKey(req.url)
-  event.respondWith(
-    caches.open(CACHED_FILES).then(async (cache) => {
-      const hit = await cache.match(key)
-      if (hit) return hit
-      const res = await fetch(req)
-      if (res.status === 200) {
-        try {
-          const blob = await res.clone().blob()
-          const headers = new Headers()
-          const ct = res.headers.get('content-type')
-          if (ct) headers.set('Content-Type', ct)
-          headers.set('Content-Length', String(blob.size))
-          headers.set('Time-Cached', String(Math.floor(Date.now() / 1000)))
-          await cache.put(key, new Response(blob, { status: 200, headers }))
-        } catch (_e) { /* quota — не мешаем ответу */ }
-      }
-      return res
-    }),
-  )
+  if (url.origin !== self.location.origin) return
+
+  // Медиа — свой cache-first (Range-стриминг проходит мимо кэша).
+  if (MEDIA_RE.test(url.pathname)) {
+    if (req.headers.has('range')) return
+    event.respondWith(handleMedia(req))
+    return
+  }
+
+  // API/WS и публичные @username-страницы — никогда не перехватываем и не кэшируем.
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/ws') || url.pathname.startsWith('/@')) return
+
+  // Навигации (SPA) — network-first, оффлайн-фолбэк на закэшированный index.html.
+  if (req.mode === 'navigate') {
+    event.respondWith(handleNavigation(req))
+    return
+  }
+
+  // Хешированные ассеты и шрифты — immutable, cache-first (мгновенный ре-старт).
+  if (IMMUTABLE_RE.test(url.pathname)) {
+    event.respondWith(handleImmutable(req))
+    return
+  }
 })
+
+async function handleMedia(req) {
+  const cache = await caches.open(CACHED_FILES)
+  const key = mediaCacheKey(req.url)
+  const hit = await cache.match(key)
+  if (hit) return hit
+  const res = await fetch(req)
+  if (res.status === 200) {
+    try {
+      const blob = await res.clone().blob()
+      const headers = new Headers()
+      const ct = res.headers.get('content-type')
+      if (ct) headers.set('Content-Type', ct)
+      headers.set('Content-Length', String(blob.size))
+      headers.set('Time-Cached', String(Math.floor(Date.now() / 1000)))
+      await cache.put(key, new Response(blob, { status: 200, headers }))
+    } catch (_e) { /* quota — не мешаем ответу */ }
+  }
+  return res
+}
+
+async function handleNavigation(req) {
+  const cache = await caches.open(APP_SHELL)
+  try {
+    const res = await fetch(req)
+    if (res.ok) cache.put('/index.html', res.clone()) // свежая оболочка для оффлайна
+    return res
+  } catch (_e) {
+    const fallback = await cache.match('/index.html')
+    return fallback || Response.error()
+  }
+}
+
+async function handleImmutable(req) {
+  const cache = await caches.open(APP_SHELL)
+  const hit = await cache.match(req)
+  if (hit) return hit
+  const res = await fetch(req)
+  if (res.ok) {
+    await cache.put(req, res.clone())
+    trimShell(cache) // fire-and-forget: держим кэш в пределах SHELL_MAX
+  }
+  return res
+}
+
+// Хеш-имена уникальны, ревалидация не нужна — но старые чанки после деплоев
+// копятся. Держим потолок: сверх лимита выбрасываем старейшие (index.html — нет).
+async function trimShell(cache) {
+  try {
+    const keys = await cache.keys()
+    if (keys.length <= SHELL_MAX) return
+    const evictable = keys.filter((k) => !k.url.endsWith('/index.html'))
+    const over = keys.length - SHELL_MAX
+    for (let i = 0; i < over && i < evictable.length; i++) await cache.delete(evictable[i])
+  } catch (_e) { /* не роняем SW */ }
+}
 
 /* Очистка по TTL/лимиту размера (tweb serviceWorker/clearOldCache.ts).
  * Настройки приходят postMessage'ем из вкладки при старте и при изменении
