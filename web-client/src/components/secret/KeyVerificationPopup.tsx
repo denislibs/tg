@@ -49,7 +49,7 @@ export default function KeyVerificationPopup({
             color="var(--tg-textSecondary)"
             style={{ display: 'block', textAlign: 'center', padding: '0 8px' }}
           >
-            {t("Compare these emoji with the ones your contact sees on their device. If they match, the chat is end-to-end encrypted.")}
+            {t('Compare these emoji with the ones your contact sees on their device. If they match, the chat is end-to-end encrypted.')}
           </Text>
         </>
       ) : (

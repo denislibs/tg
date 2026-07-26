@@ -96,8 +96,6 @@ import classNames from '../shared/lib/classNames'
 import s from './ConversationView.module.scss'
 import useMediaQuery from '../shared/lib/useMediaQuery'
 
-
-
 // tweb's exact bubbles-scrollable fade: a pure alpha mask on the scroll viewport
 // (no blur, no colour) so messages simply fade out to a 0.24 floor behind the
 // floating header/composer, eased iOS-style (cubic-bezier sampled at 0/.2/.4/.6/.8/1).
@@ -1473,14 +1471,14 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       )}
 
       {/* Discard-recording confirm (Esc) */}
-      {/*<AnimatePresence>*/}
+      {/* <AnimatePresence>*/}
       {/*  {cancelRecOpen && (*/}
       {/*    <DiscardVoiceDialog*/}
       {/*      onCancel={() => setCancelRecOpen(false)}*/}
       {/*      onDiscard={() => { setCancelRecOpen(false); rec.stop(false) }}*/}
       {/*    />*/}
       {/*  )}*/}
-      {/*</AnimatePresence>*/}
+      {/* </AnimatePresence>*/}
 
       {/* Message context menu — reactions strip + actions */}
       {msgMenu && (

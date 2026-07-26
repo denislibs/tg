@@ -6,9 +6,11 @@ React/TS-клиент (Telegram Web K remake). Общие мандаты — в 
 ## Команды
 
 ```bash
-npm run dev    # watch-сборка в ../client-build (dev-сервера нет; раздаёт nginx :38080)
-npm test       # vitest
-npm run build  # tsc -b + vite build (типы должны проходить)
+npm run dev        # watch-сборка в ../client-build (dev-сервера нет; раздаёт nginx :38080)
+npm test           # vitest
+npm run typecheck  # tsc --noEmit на TS7 native (@typescript/native)
+npm run lint       # oxlint (typeAware); lint:fix — с автофиксом
+npm run build      # tsc --noEmit + vite build (типы должны проходить)
 # разовая прод-сборка для nginx (из этой папки):
 npx vite build --base=/ --outDir ../client-build
 ```
@@ -21,9 +23,12 @@ npx vite build --base=/ --outDir ../client-build
 
 ## Стек и стиль
 
-- **React 19 + Vite 8 + TS strict.** Стилизация — **SCSS-модули** (`*.module.scss` + `sass`); глобальные
-  дизайн-токены (CSS custom properties) в `src/styles/_tokens.scss`, тема через атрибут `data-theme` на
-  `<html>`. **MUI убран** — не добавлять `@mui`/`sx`/emotion, только SCSS-модули.
+- **React 19 + Vite 8 (Rolldown) + TS strict.** Тайпчек — **TS7 native** (`@typescript/native`,
+  нативный `tsc`); линт — **Oxlint** (typeAware, `.oxlintrc.json`). Воркеры собираются как отдельные
+  ESM-чанки (`worker.format: 'es'` в `vite.config.ts` + `new Worker(new URL(..., import.meta.url), {type:'module'})`).
+  Стилизация — **SCSS-модули** (`*.module.scss` + `sass`); глобальные дизайн-токены (CSS custom properties)
+  в `src/styles/_tokens.scss`, тема через атрибут `data-theme` на `<html>`. **MUI убран** — не добавлять
+  `@mui`/`sx`/emotion, только SCSS-модули.
 - **Zustand** — глобальное состояние (`src/stores/*`). Не плодить React-контексты под то, что уже в сторах.
 - **framer-motion** — анимации. **TS strict** — без `any`, неиспользуемые переменные не пройдут сборку.
 - Тяжёлые списки: `MessageRow`/`ChatFeed` мемоизированы — не ломай стабильность пропсов/рефов.

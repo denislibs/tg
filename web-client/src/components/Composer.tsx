@@ -40,7 +40,7 @@ import { useSettingsStore } from '../settings'
 import Menu, { MenuItem } from '../shared/ui/Menu'
 import SchedulePopup from './SchedulePopup'
 import { createPortal } from 'react-dom'
-import {DiscardVoiceDialog} from "./messages/ChatDialogs.tsx";
+import { DiscardVoiceDialog } from './messages/ChatDialogs.tsx'
 import s from './Composer.module.scss'
 
 const EASE_STD = EASE

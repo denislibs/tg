@@ -9,4 +9,10 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   base: '/telegram-remake/',
   plugins: [react()],
+  // Воркеры инстанцируются как `new Worker(new URL('./x.worker.ts', import.meta.url),
+  // { type: 'module' })` (см. core/worker.ts). format:'es' заставляет Rolldown собирать
+  // каждый воркер отдельным ESM-чанком (как в tweb), а не инлайнить/оборачивать в iife.
+  worker: {
+    format: 'es',
+  },
 })

@@ -611,7 +611,7 @@ export default function Sidebar({
         type="file"
         accept="image/*,video/*"
         style={{ display: 'none' }}
-        onChange={(e) => void onStoryFile(e)}
+        onChange={(e) => onStoryFile(e)}
       />
 
       {/* Редактор истории (4d): выбранный файл проходит через MediaEditor до загрузки */}

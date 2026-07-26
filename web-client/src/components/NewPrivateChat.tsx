@@ -49,7 +49,7 @@ export default function NewPrivateChat({ chats, onClose, onSelect, title = 'New 
     (c) =>
       (c.type === 'private' || c.type === 'bot') &&
       !(excludeBots && (c.isBot || c.type === 'bot')) &&
-      c.name.toLowerCase().includes(query.toLowerCase())
+      c.name.toLowerCase().includes(query.toLowerCase()),
   )
 
   return (

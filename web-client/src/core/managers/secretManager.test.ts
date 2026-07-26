@@ -23,12 +23,12 @@ function makeDeps() {
   const getState = { handshake: null as Handshake | null, err: null as Error | null }
   const deps: SecretDeps = {
     rest: {
-      get: async <T,>(url: string): Promise<T> => {
+      get: async <T>(url: string): Promise<T> => {
         getCalls.push(url)
         if (getState.err) throw getState.err
         return getState.handshake as unknown as T
       },
-      post: async <T,>(url: string, body: unknown): Promise<T> => {
+      post: async <T>(url: string, body: unknown): Promise<T> => {
         restCalls.push({ url, body })
         if (url === '/secret_chats') return { chat_id: 1, state: 'requested' } as unknown as T
         return {} as T

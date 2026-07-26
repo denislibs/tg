@@ -52,7 +52,7 @@ const SPARK_COLORS = ['#ffd54d', '#ff8a65', '#4fc3f7', '#aed581', '#f06292', '#f
 const HEART_COLORS = ['#e0245e', '#ff5c8a', '#ff8fab', '#d81b60']
 
 const rnd = (a: number, b: number) => a + Math.random() * (b - a)
-const pick = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)]
+const pick = <T>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)]
 
 /**
  * Чистая генерация начальных частиц эффекта (позиции/скорости по виду).

@@ -27,7 +27,6 @@ function splitName(full: string): { first: string; last: string } {
   return { first: parts[0] ?? '', last: parts.slice(1).join(' ') }
 }
 
-
 export default function AddContactView({
   chat,
   onClose,

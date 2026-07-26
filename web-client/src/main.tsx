@@ -33,5 +33,5 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <ManagersProvider managers={managers}>
       <App />
     </ManagersProvider>
-  </React.StrictMode>
+  </React.StrictMode>,
 )
