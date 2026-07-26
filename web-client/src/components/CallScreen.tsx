@@ -178,7 +178,7 @@ export default function CallScreen() {
           <>
             {/* принять (зелёная) / отклонить (красная) — tweb incoming pending */}
             <IconButton
-              onClick={() => void accept()}
+              onClick={() => accept()}
               color="#fff"
               title={t('Accept')}
               aria-label={t('Accept')}

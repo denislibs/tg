@@ -13,7 +13,6 @@ export const FULL_H = 92
 
 const UNSEEN_RING = 'linear-gradient(215deg, #34c76f -1.61%, #3da1fd 97.44%)'
 
-
 /** A row entry derived from the real stories feed. */
 export interface StoryItem {
   /** stable key */

@@ -636,7 +636,6 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
           </Section>
           )}
 
-
           {/* Закреплённые в профиле истории (tweb profile stories) — только у пользователя */}
           {isUser && peerId != null && <PinnedStoriesSection peerId={peerId} />}
 
@@ -866,7 +865,6 @@ function sharedMediaChatId(id: string): number | null {
 const TAB_FILTER: Record<string, 'media' | 'files' | 'links' | 'music' | 'voice'> = {
   Media: 'media', Files: 'files', Links: 'links', Music: 'music', Voice: 'voice',
 }
-
 
 function SharedMedia({ tab, onTab, chatId, members, savedDialogs, gifts, onOpenGift, onSendGift, isChannel, canManageAdmins, onOpenPeer, onEditMember, navRef, stickyTop, onCount }: {
   tab: string

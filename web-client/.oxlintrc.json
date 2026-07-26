@@ -1,0 +1,57 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "react", "react-perf", "import", "oxc", "unicorn"],
+  "jsPlugins": [
+    {
+      "name": "style",
+      "specifier": "@stylistic/eslint-plugin"
+    }
+  ],
+  "env": {
+    "browser": true,
+    "es2024": true
+  },
+  "categories": {
+    "correctness": "warn"
+  },
+  "ignorePatterns": [
+    "dist",
+    "coverage",
+    "**/*.d.ts",
+    "src/components/emoji/emojiData.ts",
+    "src/i18n/dict.ts"
+  ],
+  "options": {
+    "typeAware": true
+  },
+  "rules": {
+    "typescript/no-explicit-any": "warn",
+
+    "eslint/prefer-const": ["error", { "destructuring": "all" }],
+    "eslint/no-var": "error",
+    "eslint/no-debugger": "error",
+
+    "typescript/return-await": ["error", "error-handling-correctness-only"],
+    "eslint/no-new-wrappers": "error",
+    "eslint/no-multi-str": "error",
+    "eslint/no-unexpected-multiline": "error",
+    "eslint/no-irregular-whitespace": ["error", { "skipStrings": true, "skipComments": true, "skipRegExps": true, "skipTemplates": true }],
+    "eslint/no-useless-call": "error",
+
+    "style/no-trailing-spaces": "error",
+    "style/eol-last": "error",
+    "style/linebreak-style": ["error", "unix"],
+    "style/no-tabs": "error",
+    "style/no-mixed-spaces-and-tabs": "error",
+    "style/no-multiple-empty-lines": ["error", { "max": 1 }],
+    "style/spaced-comment": ["error", "always"],
+    "style/space-before-blocks": ["error", "always"],
+    "style/comma-spacing": "error",
+    "style/switch-colon-spacing": "error",
+
+    "style/semi": ["error", "never"],
+    "style/quotes": ["error", "single", { "allowTemplateLiterals": "always", "avoidEscape": true }],
+    "style/object-curly-spacing": ["error", "always"],
+    "style/comma-dangle": ["error", "always-multiline"]
+  }
+}
