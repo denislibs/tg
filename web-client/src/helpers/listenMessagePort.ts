@@ -1,0 +1,25 @@
+// @ts-nocheck — вендорено из tweb 1:1 (островок tlottie); типы проверяются в апстриме
+import type SuperMessagePort from '@lib/superMessagePort';
+import ctx from '@environment/ctx';
+
+export default function listenMessagePort(
+  messagePort: SuperMessagePort<any, any, any>,
+  onConnect?: (source: MessageEventSource) => void,
+  onDisconnect?: (source: MessageEventSource) => void
+) {
+  const attachPort = (listenPort: any, sendPort: any) => {
+    messagePort.attachListenPort(listenPort);
+    sendPort && messagePort.attachSendPort(sendPort);
+    onConnect?.(listenPort);
+  };
+
+  messagePort.setOnPortDisconnect(onDisconnect);
+
+  if(typeof(SharedWorkerGlobalScope) !== 'undefined') {
+    (ctx as any as SharedWorkerGlobalScope).addEventListener('connect', (e) => attachPort(e.source, e.source));
+  } else if(typeof(ServiceWorkerGlobalScope) !== 'undefined') {
+    attachPort(ctx, null);
+  } else {
+    attachPort(ctx, ctx);
+  }
+}

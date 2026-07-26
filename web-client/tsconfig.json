@@ -12,6 +12,17 @@
     "moduleDetection": "force",
     "noEmit": true,
     "jsx": "react-jsx",
+    "paths": {
+      "@lib/*": ["./src/lib/*"],
+      "@helpers/*": ["./src/helpers/*"],
+      "@environment/*": ["./src/environment/*"],
+      "@config/*": ["./src/config/*"],
+      "@vendor/*": ["./src/vendor/*"],
+      "@components/*": ["./src/components/*"],
+      "@customEmoji/*": ["./src/lib/customEmoji/*"],
+      "@types": ["./src/types.d.ts"],
+      "@/*": ["./src/*"]
+    },
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
