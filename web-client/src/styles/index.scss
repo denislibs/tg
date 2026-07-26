@@ -162,3 +162,14 @@ body.rt-no-select * {
   opacity: 0;
   transform: translateY(18px) scale(1.01);
 }
+
+// tlottie: canvas плеера (класс .lottie, создаётся LottiePlayer вне React)
+// вписывается в контейнер стикера. 1:1 с tweb base.scss (.lottie).
+.lottie {
+  position: absolute;
+  inset: 0;
+  max-width: 100%;
+  max-height: 100%;
+  width: 100%;
+  height: 100%;
+}

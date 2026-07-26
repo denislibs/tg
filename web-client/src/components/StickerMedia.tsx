@@ -4,9 +4,13 @@
 // поэтому контент грузится fetch'ем и различается по Content-Type; результат
 // кэшируется на сессию — повторный маунт (перелистывание категорий пикера,
 // скролл ленты) не перекачивает файл.
+//
+// Анимированные стикеры (lottie) рендерит движок tlottie (SIMD-WASM), портированный
+// из tweb 1:1: декод кадров идёт в отдельном воркере, отрисовка — на main-thread
+// (этап 1, legacy-режим). См. src/lib/lottie/*.
 import { memo, useEffect, useRef, useState } from 'react'
-import { type AnimationItem } from 'lottie-web'
-import { loadLottie } from './lottie'
+import lottieLoader from '../lib/lottie/lottieLoader'
+import type LottiePlayer from '../lib/lottie/lottiePlayer'
 import { mediaContentUrl, primeMediaToken } from '../core/mediaUrl'
 
 export type StickerContent =
@@ -38,7 +42,7 @@ export function loadStickerContent(mediaId: number): Promise<StickerContent> {
 
 // Hover-анимация в пикере: одновременно играет максимум одна (tweb играет
 // только стикер под курсором).
-let hoverPlaying: AnimationItem | null = null
+let hoverPlaying: LottiePlayer | null = null
 
 const StickerMedia = memo(function StickerMedia({
   mediaId,
@@ -62,7 +66,7 @@ const StickerMedia = memo(function StickerMedia({
   replayToken?: number
 }) {
   const boxRef = useRef<HTMLDivElement>(null)
-  const animRef = useRef<AnimationItem | null>(null)
+  const playerRef = useRef<LottiePlayer | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const [content, setContent] = useState<StickerContent | null>(null)
 
@@ -72,44 +76,58 @@ const StickerMedia = memo(function StickerMedia({
     return () => { alive = false }
   }, [mediaId])
 
-  // lottie монтируется лениво по факту загрузки json; без autoplay показываем
-  // первый кадр (goToAndStop), как статичное превью.
+  // lottie монтируется лениво по факту загрузки json: декод в воркере tlottie,
+  // отрисовка на <canvas> (плеер сам создаёт и аппендит его в контейнер на первом
+  // кадре). group:'none' → плеер самозапускается в onLoad при autoplay; без
+  // autoplay в контейнере остаётся статичный первый кадр.
   useEffect(() => {
     if (content?.kind !== 'lottie' || !boxRef.current) return
-    const animationData = content.data
     const container = boxRef.current
+    // Воркер парсит анимацию из Blob (readBlobAsText + JSON.parse); наш бэк отдаёт
+    // несжатый JSON, поэтому просто сериализуем разобранные данные обратно в Blob.
+    const blob = new Blob([JSON.stringify(content.data)], { type: 'application/json' })
     let alive = true
-    let anim: AnimationItem | null = null
-    void loadLottie().then((lottie) => {
-      if (!alive) return
-      anim = lottie.loadAnimation({
+    let player: LottiePlayer | null = null
+    void lottieLoader
+      .loadAnimationWorker({
         container,
-        renderer: 'canvas',
+        animationData: blob,
         loop,
         autoplay,
-        animationData,
+        width,
+        height,
+        group: 'none',
+        noOffscreen: true, // этап 1: legacy-рендер (декод в воркере, отрисовка на main)
+        // Кэш кадров только для зацикленных стикеров. У one-shot (loop=false) при
+        // завершении срабатывает onLap → clearCache → ImageBitmap.close(), и кадр,
+        // который в этот момент дорисовывается, детачится (drawImage on detached).
+        // В tweb этот путь координирует animationIntersector, который на этапе 1 не
+        // переносим. Для one-shot кэш всё равно бесполезен (каждый кадр показывается
+        // один раз), а loop=true никогда не завершается → clearCache не вызывается,
+        // кэш безопасен и ускоряет повторы. Этап 2 (offscreen) кэширует в воркере.
+        noCache: !loop,
       })
-      if (!autoplay) anim.goToAndStop(0, true)
-      animRef.current = anim
-    })
+      .then((p) => {
+        if (!alive) { p.remove(); return }
+        player = p
+        playerRef.current = p
+      })
+      .catch(() => {}) // NO_WASM (нет SIMD) и т.п. — стикер просто не анимируется
     return () => {
       alive = false
-      if (anim) {
-        if (hoverPlaying === anim) hoverPlaying = null
-        anim.destroy()
+      if (player) {
+        if (hoverPlaying === player) hoverPlaying = null
+        player.remove()
       }
-      animRef.current = null
+      playerRef.current = null
     }
-  }, [content, loop, autoplay])
+  }, [content, loop, autoplay, width, height, mediaId])
 
   // Replay по клику big-emoji (tweb: клик по анимированному эмодзи проигрывает
-  // его заново): сброс на первый кадр + play при каждом инкременте токена.
+  // его заново): рестарт с первого кадра при каждом инкременте токена.
   useEffect(() => {
     if (!replayToken) return
-    const anim = animRef.current
-    if (!anim) return
-    anim.goToAndStop(0, true)
-    anim.play()
+    playerRef.current?.restart()
   }, [replayToken])
 
   // Видео-стикер (webm): ленивая авто-пауза вне вьюпорта (аналог tweb
@@ -134,20 +152,20 @@ const StickerMedia = memo(function StickerMedia({
   const hoverProps = playOnHover
     ? {
         onMouseEnter: () => {
-          const anim = animRef.current
-          if (anim) {
-            if (hoverPlaying && hoverPlaying !== anim) hoverPlaying.stop()
-            hoverPlaying = anim
-            anim.play()
+          const player = playerRef.current
+          if (player) {
+            if (hoverPlaying && hoverPlaying !== player) hoverPlaying.stop()
+            hoverPlaying = player
+            player.play()
           }
           const video = videoRef.current
           if (video) void video.play().catch(() => {})
         },
         onMouseLeave: () => {
-          const anim = animRef.current
-          if (anim) {
-            if (hoverPlaying === anim) hoverPlaying = null
-            anim.stop() // возврат на первый кадр
+          const player = playerRef.current
+          if (player) {
+            if (hoverPlaying === player) hoverPlaying = null
+            player.stop() // возврат на первый кадр
           }
           const video = videoRef.current
           if (video) { video.pause(); video.currentTime = 0 }
@@ -156,7 +174,7 @@ const StickerMedia = memo(function StickerMedia({
     : undefined
 
   return (
-    <div ref={boxRef} style={{ width, height, pointerEvents: playOnHover ? 'auto' : 'none' }} {...hoverProps}>
+    <div ref={boxRef} style={{ position: 'relative', width, height, pointerEvents: playOnHover ? 'auto' : 'none' }} {...hoverProps}>
       {content?.kind === 'image' && (
         <img src={content.url} alt="" draggable={false} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
       )}

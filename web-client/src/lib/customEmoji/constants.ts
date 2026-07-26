@@ -1,0 +1,6 @@
+// @ts-nocheck — вендорено из tweb 1:1 (островок tlottie); типы проверяются в апстриме
+export const CUSTOM_EMOJI_FPS = 60;
+export const CUSTOM_EMOJI_FRAME_INTERVAL = 1000 / CUSTOM_EMOJI_FPS;
+export const CUSTOM_EMOJI_FADE_IN_DURATION = 250;
+
+export const PAID_REACTION_EMOJI_DOCID = '__PAID_REACTION_EMOJI__';

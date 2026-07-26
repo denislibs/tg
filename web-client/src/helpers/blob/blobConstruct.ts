@@ -1,0 +1,17 @@
+// @ts-nocheck — вендорено из tweb 1:1 (островок tlottie); типы проверяются в апстриме
+/*
+ * Originally from:
+ * https://github.com/zhukov/webogram
+ * Copyright (C) 2014 Igor Zhukov <igor.beatle@gmail.com>
+ * https://github.com/zhukov/webogram/blob/master/LICENSE
+ */
+
+import toArray from '@helpers/array/toArray';
+import blobSafeMimeType from '@helpers/blob/blobSafeMimeType';
+
+export default function blobConstruct<T extends Uint8Array | string>(blobParts: Array<T> | T, mimeType: string = ''): Blob {
+  blobParts = toArray(blobParts);
+  const safeMimeType = blobSafeMimeType(mimeType);
+  const blob = new Blob(blobParts as BlobPart[], {type: safeMimeType});
+  return blob;
+}
