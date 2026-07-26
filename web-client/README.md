@@ -9,11 +9,13 @@
 
 ## Стек
 
-- **React 18** + **TypeScript** (strict)
-- **Vite 6** — сборка (watch-режим вместо dev-сервера)
-- **MUI 6** (`@mui/material`, emotion) — компоненты и стили (`sx`)
-- **Zustand 5** — глобальное состояние (чаты, истории, звонки, аудио)
-- **framer-motion** — анимации
+- **React 19** + **TypeScript** (strict)
+- **Vite 8** — сборка (watch-режим вместо dev-сервера)
+- **SCSS-модули** (`*.module.scss` + `sass`) — стилизация; глобальные дизайн-токены —
+  CSS custom properties в `src/styles/_tokens.scss`, тема через атрибут `data-theme` на `<html>`.
+  **MUI больше не используется** (историческая база была на MUI/`sx`, полностью мигрирована на SCSS).
+- **Zustand 5** — глобальное состояние (чаты, сообщения, истории, звонки, аудио…)
+- **framer-motion 12** — анимации
 - **prismjs** — подсветка кода в блоках
 - **qr-code-styling** — QR для логина; **vitest** + happy-dom — тесты
 
@@ -133,6 +135,51 @@ src/
 - Одна сущность живёт в сторе один раз (нормализовано по id). Не дублировать realtime-данные и не
   держать в `useState` копию того, что уже в сторе (производные — мемо-селектором).
 - `useEffect` — для честных side-effect'ов (DOM-listener, императивный скролл), не для синхронизации стора.
+
+### Пример: путь команды через слои
+
+Отправка текста «сверху вниз» и приезд эха «снизу вверх» — как слои стыкуются на конкретном действии:
+
+```
+[View]        Composer.onSubmit(text)
+   │ колбэк
+[ViewModel]   useChatSend(): оптимистичный бабл в messagesStore (client_msg_id),
+   │          затем вызывает команду менеджера
+[RPC]         managersProxy.messages.send(...)  ──SuperMessagePort.invoke──►  (граница Worker)
+   │
+[Worker]      messagesManager.send() → connectionManager (outbox) → wsClient
+   │          кадр {t:"send_message", d:{…, client_msg_id}}
+[Backend]     nginx → ws → usecase/chat → Postgres (seq)
+   ▲
+   │  {t:"message_ack"|"new_message"}  ──SuperMessagePort.emit──►  (граница Worker → UI)
+[Bridge]      client/realtimeBridge.ts: rt:ack → messagesStore.reconcileAck;
+   │          rt:new_message → messagesStore.applyIncoming (dedup по id)
+[Store→View]  Zustand уведомляет селекторы → бабл «дорастает» до отправленного/прочитанного
+```
+
+Каждый слой знает только соседний: View не знает про сокет, менеджеры не знают про React/DOM,
+`realtimeBridge` — единственный, кто пишет в стор из realtime.
+
+### Авторизация
+
+Токен сессии — Bearer, живёт в **IndexedDB** (`core/auth/tokenStore.ts` поверх `core/store/idbKv.ts`) и в
+памяти воркера (у SharedWorker нет `localStorage`). Все REST/WS-запросы берут токен из `tokenStore`.
+
+- **Вход по телефону + OTP:** `AuthFlow` (View) → `managers.auth` → worker `authManager`:
+  `requestCode(phone)` → `POST /auth/request_code`; `signIn(phone, code)` → `POST /auth/sign_in` →
+  сервер возвращает `session_token` (+ профиль) → менеджер кладёт токен в `tokenStore`. В dev OTP = `12345`.
+- **Гейтинг сессии:** на старте `client/bootstrap.ts` (`startClient`) зовёт `managers.auth.me()`
+  (`GET /me`): токен валиден → рисуем оболочку; иначе — `AuthFlow`. Перезагрузка вкладки сохраняет вход
+  (токен из IndexedDB; `tokenStore.ready()` защищает от гонки при старте).
+- **2FA (облачный пароль):** если включён, `sign_in` возвращает `password_token` → шаг пароля
+  (`POST /auth/check_password`) → `session_token`.
+- **QR-логин:** desktop `POST /auth/qr/new` → рендер QR, кодирующего `${origin}/qr/{token}`, + поллинг
+  `GET /auth/qr/{token}`; уже авторизованное устройство открывает `/qr/{token}` → `POST /auth/qr/confirm` →
+  desktop получает `session_token` из статуса и входит.
+- **Passkeys (WebAuthn):** begin/finish выполняются в **UI-потоке** (`core/webauthnBrowser.ts`,
+  `navigator.credentials`) — WebAuthn недоступен в воркере.
+- **Passcode-lock:** локальная блокировка приложения (PBKDF2-хэш в IndexedDB, `stores/lockStore.ts`),
+  независима от серверной сессии.
 
 ## Rich-text (`core/markdown.ts`)
 

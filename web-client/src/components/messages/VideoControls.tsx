@@ -13,9 +13,10 @@ import s from './VideoControls.module.scss'
 const HIDE_MS = 2500 // tweb ControlsHover скрывает при бездействии
 
 interface Props {
-  videoRef: RefObject<HTMLVideoElement>
+  // React 19: useRef<T>(null) → RefObject<T | null>; принимаем nullable-реф.
+  videoRef: RefObject<HTMLVideoElement | null>
   /** элемент, который уходит в фуллскрин (мовер) */
-  fullscreenRef: RefObject<HTMLElement>
+  fullscreenRef: RefObject<HTMLElement | null>
   rate: number
   onRateChange: (rate: number) => void
 }

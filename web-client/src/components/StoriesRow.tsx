@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, motion, type Variants } from 'framer-motion'
 import TgIcon from './TgIcon'
 import Text from '../shared/ui/Text'
 import Avatar from '../shared/ui/Avatar'
@@ -172,11 +172,13 @@ export function StoriesStack({
     .slice(0, 3)
 
   // each avatar grows and flies up into place from below, staggered
-  const container = {
+  // Аннотация Variants обязательна (framer-motion 12): без неё TS расширяет
+  // transition.type 'spring' до string и variants-проп не принимает объект.
+  const container: Variants = {
     hidden: { transition: { staggerChildren: 0.05, staggerDirection: -1 } },
     show: { transition: { staggerChildren: 0.07, delayChildren: 0.02 } },
   }
-  const item = {
+  const item: Variants = {
     hidden: { opacity: 0, y: 16, scale: 0.2 },
     show: { opacity: 1, y: 0, scale: 1, transition: { type: 'spring', stiffness: 520, damping: 24 } },
   }
