@@ -35,6 +35,8 @@
 // по цвету) задаются инлайном. Высота = высота бара минус его верт. паддинг
 // (~40px, tweb .reply min-height 2.5rem). Внутренние отступы — только по бокам
 // (верт. паддинг живёт на баре), слева больше — чтобы текст не упирался в полосу.
+// Левые углы прямые (border-radius только справа) → акцентная полоса ровная,
+// не заворачивается по скруглению.
 .barBody {
   flex: 1;
   min-width: 0;
@@ -42,11 +44,16 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 1px;
+  gap: 0;
   padding: 0 12px;
-  border-radius: 8px;
-  line-height: 1.25;
+  border-radius: 0 8px 8px 0;
   overflow: hidden;
+
+  // Плотный межстрочный интервал (заголовок + превью в ~40px). Специфичность
+  // `.barBody > div` перебивает line-height 1.5 из Text.module.scss.
+  > div {
+    line-height: 1.3;
+  }
 }
 
 // строка ввода (кнопки прижаты к низу — не смещаются при росте инпута)
