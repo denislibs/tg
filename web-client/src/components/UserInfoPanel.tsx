@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import TgSwitch from './TgSwitch'
@@ -37,7 +37,9 @@ import { friendlyMsgTime } from '../core/friendlyTime'
 import { EXT_COLORS, extOf, firstUrl, fmtDur, fmtSize, hostOf } from '../core/sharedMediaFmt'
 import { mediaContentUrl, mediaThumbUrl, useMediaTokenVersion } from '../core/mediaUrl'
 import type { Message } from '../core/models'
-import MediaLightbox, { type LightboxItem } from './messages/MediaLightbox'
+// MediaLightbox грузится лениво; тип — type-only импорт (стирается, статической связи не создаёт)
+import type { LightboxItem } from './messages/MediaLightbox'
+const MediaLightbox = lazy(() => import('./messages/MediaLightbox'))
 import { clampIndex, pickZone, stepIndex, indexAfterSwipe } from '../core/photoPager'
 import s from './UserInfoPanel.module.scss'
 import useMediaQuery from '../shared/lib/useMediaQuery'
@@ -752,14 +754,16 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
           {/* просмотрщик фото профиля (tweb openAvatarViewer) — стартует с
               текущего фото шапки-пейджера (avatarView.index) */}
           {avatarView && headerAvatarSrc && (
-            <MediaLightbox
-              items={avatarItems.length ? avatarItems : [{ src: headerAvatarSrc }]}
-              index={avatarView.index}
-              originRect={avatarView.originRect}
-              originSrc={curPhoto?.src ?? headerAvatarSrc}
-              originEl={avatarView.originEl}
-              onClose={closeAvatarViewer}
-            />
+            <Suspense fallback={null}>
+              <MediaLightbox
+                items={avatarItems.length ? avatarItems : [{ src: headerAvatarSrc }]}
+                index={avatarView.index}
+                originRect={avatarView.originRect}
+                originSrc={curPhoto?.src ?? headerAvatarSrc}
+                originEl={avatarView.originEl}
+                onClose={closeAvatarViewer}
+              />
+            </Suspense>
           )}
 
           {/* Инфо полученного подарка (tweb PopupStarGiftInfo) */}
@@ -1247,15 +1251,17 @@ function SharedMedia({ tab, onTab, chatId, members, savedDialogs, gifts, onOpenG
 
       {/* вне TabSlide: transform слайда ломал бы position:fixed лайтбокса */}
       {lightbox && (
-        <MediaLightbox
-          items={lightbox.items}
-          index={lightbox.index}
-          originRect={lightbox.originRect}
-          originSrc={lightbox.originSrc}
-          originEl={lightbox.originEl}
-          onClosingStart={() => { lightbox.originEl.style.visibility = '' }}
-          onClose={() => { lightbox.originEl.style.visibility = ''; setLightbox(null) }}
-        />
+        <Suspense fallback={null}>
+          <MediaLightbox
+            items={lightbox.items}
+            index={lightbox.index}
+            originRect={lightbox.originRect}
+            originSrc={lightbox.originSrc}
+            originEl={lightbox.originEl}
+            onClosingStart={() => { lightbox.originEl.style.visibility = '' }}
+            onClose={() => { lightbox.originEl.style.visibility = ''; setLightbox(null) }}
+          />
+        </Suspense>
       )}
     </>
   )

@@ -1,18 +1,22 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { keepBackdropFilterUnprefixed } from './vite/keepBackdropFilterUnprefixed'
 
-// https://vite.dev/config/
-// Dev-сервера нет: `npm run dev` — watch-сборка в ../client-build, которую раздаёт
-// nginx стенда (:38080). `base` по умолчанию — путь GitHub Pages
-// (https://denislibs.github.io/telegram-remake/); локальные сборки переопределяют
-// его флагом --base=/.
 export default defineConfig({
   base: '/telegram-remake/',
-  plugins: [react()],
-  // Воркеры инстанцируются как `new Worker(new URL('./x.worker.ts', import.meta.url),
-  // { type: 'module' })` (см. core/worker.ts). format:'es' заставляет Rolldown собирать
-  // каждый воркер отдельным ESM-чанком (как в tweb), а не инлайнить/оборачивать в iife.
+  plugins: [react(), keepBackdropFilterUnprefixed()],
   worker: {
     format: 'es',
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+          if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) return 'react'
+          if (/[\\/]node_modules[\\/](framer-motion|motion-dom|motion-utils)[\\/]/.test(id)) return 'motion'
+        },
+      },
+    },
   },
 })

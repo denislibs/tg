@@ -2,7 +2,8 @@
 // tgs TwoFactorSetupMonkeyPeek, size 157). Закрывает глаза лапами; когда пароль
 // показан «глазком» — подглядывает (кадры 0→16, обратно 16→0, как в tweb).
 import { useEffect, useRef } from 'react'
-import lottie, { type AnimationItem } from 'lottie-web'
+import { type AnimationItem } from 'lottie-web'
+import { loadLottie } from './lottie'
 
 const PEEK_FRAME = 16 // tweb PasswordMonkey: сегмент [0..16] — раскрыть глаза
 
@@ -12,7 +13,7 @@ export default function PasswordMonkey({ peeking, size = 157 }: { peeking: boole
 
   useEffect(() => {
     let alive = true
-    void import('../assets/tgs/TwoFactorSetupMonkeyPeek.json').then((mod) => {
+    void Promise.all([loadLottie(), import('../assets/tgs/TwoFactorSetupMonkeyPeek.json')]).then(([lottie, mod]) => {
       if (!alive || !ref.current) return
       const anim = lottie.loadAnimation({
         container: ref.current,

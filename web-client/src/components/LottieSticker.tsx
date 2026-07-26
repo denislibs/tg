@@ -2,7 +2,8 @@
 // те же данные, что играет rlottie в оригинале; здесь — lottie-web/canvas).
 // Ассеты подтягиваются лениво, чтобы не раздувать основной бандл.
 import { useEffect, useRef } from 'react'
-import lottie, { type AnimationItem } from 'lottie-web'
+import { type AnimationItem } from 'lottie-web'
+import { loadLottie } from './lottie'
 
 const ASSETS: Record<string, () => Promise<{ default: unknown }>> = {
   UtyanLinks: () => import('../assets/tgs/UtyanLinks.json'),
@@ -30,7 +31,7 @@ export default function LottieSticker({
 
   useEffect(() => {
     let alive = true
-    void ASSETS[name]().then((mod) => {
+    void Promise.all([loadLottie(), ASSETS[name]()]).then(([lottie, mod]) => {
       if (!alive || !ref.current) return
       animRef.current = lottie.loadAnimation({
         container: ref.current,

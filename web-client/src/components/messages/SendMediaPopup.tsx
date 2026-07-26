@@ -2,14 +2,15 @@
 // Compose-before-send dialog (port of tweb popups/newMedia.ts) на общем Popup:
 // превью выбранных файлов, подпись, «как медиа / как файл» в меню «⋮», отправка.
 // The parent owns the actual upload/send (onSend).
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import Text from '../../shared/ui/Text'
 import IconButton from '../../shared/ui/IconButton'
 import Popup from '../../shared/ui/Popup'
 import Menu, { MenuItem } from '../../shared/ui/Menu'
 import { motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
-import MediaEditor from '../mediaEditor/MediaEditor'
+// MediaEditor грузится лениво — только когда открывают редактор конкретного вложения
+const MediaEditor = lazy(() => import('../mediaEditor/MediaEditor'))
 import { supportsVideoEncoding } from '../mediaEditor/videoSupport'
 import StarIcon from '../stars/StarIcon'
 import { useT } from '../../i18n'
@@ -210,17 +211,19 @@ export default function SendMediaPopup({
       </div>
 
       {editIdx != null && files[editIdx] && (
-        <MediaEditor
-          file={files[editIdx]}
-          onCancel={() => setEditIdx(null)}
-          onDone={(edited) => {
-            // MediaEditor уже собрал File с нужным mime/расширением (image/jpeg
-            // или video/mp4, либо исходник без изменений) — кладём по месту.
-            files[editIdx] = edited
-            setRev((r) => r + 1)
-            setEditIdx(null)
-          }}
-        />
+        <Suspense fallback={null}>
+          <MediaEditor
+            file={files[editIdx]}
+            onCancel={() => setEditIdx(null)}
+            onDone={(edited) => {
+              // MediaEditor уже собрал File с нужным mime/расширением (image/jpeg
+              // или video/mp4, либо исходник без изменений) — кладём по месту.
+              files[editIdx] = edited
+              setRev((r) => r + 1)
+              setEditIdx(null)
+            }}
+          />
+        </Suspense>
       )}
     </Popup>
   )

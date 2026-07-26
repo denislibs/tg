@@ -5,7 +5,8 @@
 // кэшируется на сессию — повторный маунт (перелистывание категорий пикера,
 // скролл ленты) не перекачивает файл.
 import { memo, useEffect, useRef, useState } from 'react'
-import lottie, { type AnimationItem } from 'lottie-web'
+import { type AnimationItem } from 'lottie-web'
+import { loadLottie } from './lottie'
 import { mediaContentUrl, primeMediaToken } from '../core/mediaUrl'
 
 export type StickerContent =
@@ -75,18 +76,28 @@ const StickerMedia = memo(function StickerMedia({
   // первый кадр (goToAndStop), как статичное превью.
   useEffect(() => {
     if (content?.kind !== 'lottie' || !boxRef.current) return
-    const anim = lottie.loadAnimation({
-      container: boxRef.current,
-      renderer: 'canvas',
-      loop,
-      autoplay,
-      animationData: content.data,
+    const animationData = content.data
+    const container = boxRef.current
+    let alive = true
+    let anim: AnimationItem | null = null
+    void loadLottie().then((lottie) => {
+      if (!alive) return
+      anim = lottie.loadAnimation({
+        container,
+        renderer: 'canvas',
+        loop,
+        autoplay,
+        animationData,
+      })
+      if (!autoplay) anim.goToAndStop(0, true)
+      animRef.current = anim
     })
-    if (!autoplay) anim.goToAndStop(0, true)
-    animRef.current = anim
     return () => {
-      if (hoverPlaying === anim) hoverPlaying = null
-      anim.destroy()
+      alive = false
+      if (anim) {
+        if (hoverPlaying === anim) hoverPlaying = null
+        anim.destroy()
+      }
       animRef.current = null
     }
   }, [content, loop, autoplay])
