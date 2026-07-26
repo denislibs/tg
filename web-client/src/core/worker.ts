@@ -41,7 +41,9 @@ import { idbGet, idbSet } from './store/idbKv'
 
 const tokens = new TokenStore()
 void tokens.load()
-const rest = new RestClient('/api', () => tokens.get())
+// ready() гейтит REST-запросы до загрузки токена из IDB (иначе гонка «missing token»
+// на старте, когда UI шлёт RPC раньше, чем поднялся токен воркера).
+const rest = new RestClient('/api', () => tokens.get(), () => tokens.ready())
 const auth = newAuthManager({ rest, store: tokens })
 const profile = newProfileManager({ rest })
 const premium = newPremiumManager({ rest })
