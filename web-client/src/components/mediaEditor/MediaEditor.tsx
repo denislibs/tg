@@ -5,6 +5,16 @@
 // поворот/флип/масштаб покрытия применяются ко всей сцене (base + штрихи +
 // текст) одним трансформом, поэтому слои всегда согласованы; crop вырезает
 // осевую рамку. Экспорт — в полном разрешении тем же composeScene.
+// Шрифты вкладки «Текст» (порядок/веса — из tweb fontInfoMap). Импортятся здесь,
+// а не в main.tsx: MediaEditor — ленивый чанк, поэтому @font-face + woff2 не
+// висят в критическом пути и грузятся только при открытии редактора.
+import '@fontsource/suez-one/400.css'
+import '@fontsource/rubik-bubbles/400.css'
+import '@fontsource/chewy/400.css'
+import '@fontsource/courier-prime/700.css'
+import '@fontsource/fugaz-one/400.css'
+import '@fontsource/sedan/400.css'
+import '@fontsource/playwrite-be-vlg/400.css'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'

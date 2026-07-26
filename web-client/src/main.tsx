@@ -3,44 +3,15 @@ import ReactDOM from 'react-dom/client'
 import '@fontsource/roboto/400.css'
 import '@fontsource/roboto/500.css'
 import '@fontsource/roboto/700.css'
-// Шрифты вкладки «Текст» медиа-редактора (порядок/веса — из tweb fontInfoMap).
-import '@fontsource/suez-one/400.css'
-import '@fontsource/rubik-bubbles/400.css'
-import '@fontsource/chewy/400.css'
-import '@fontsource/courier-prime/700.css'
-import '@fontsource/fugaz-one/400.css'
-import '@fontsource/sedan/400.css'
-import '@fontsource/playwrite-be-vlg/400.css'
 import App from './App'
 import './styles/index.scss'
 import { ManagersProvider } from './core/hooks/useManagers'
-import { startClient } from './client/bootstrap'
-import { initPwaInstall } from './core/pwa'
-import { getInitial, loadLang } from './i18n'
-import { setBootData } from './client/bootData'
-import { hydrateChatsFromCache, startChatsCachePersist } from './stores/chatsCache'
+import { bootstrap } from './client/boot'
+import { startChatsCachePersist } from './stores/chatsCache'
 
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js').catch(() => { /* push unavailable */ })
-}
-
-// Ловим beforeinstallprompt для пункта «Установить приложение» (PWA).
-initPwaInstall()
-
-// Single injection point for the manager layer: the worker-backed singleton in prod
-// (tests render subtrees under their own <ManagersProvider managers={mock}>).
-const { managers } = startClient()
-
-// #1 — критические RPC стартуют СРАЗУ, до рендера: к моменту mount ответ уже
-// летит (параллельно с бандлом, словарём, гидрацией). Переиспользуются в
-// useAuthGate/первом loadChats — без второго round-trip.
-const bootMe = managers.auth.me()
-const bootDialogs = managers.chats.listDialogs()
-
-// #2 — гидрация списка чатов из IDB-кэша + словарь: и то и другое до первого
-// рендера, чтобы сразу показать последний известный UI (offline-first).
-void Promise.all([hydrateChatsFromCache(), loadLang(getInitial())]).then(([hydratedFromCache]) => {
-  setBootData({ me: bootMe, dialogs: bootDialogs, hydratedFromCache })
+// Весь холодный старт — в bootstrap() (client/boot.ts). Здесь остаётся только
+// рендер после того, как критические данные подняты, и запуск персиста кэша.
+void bootstrap().then(({ managers }) => {
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       <ManagersProvider managers={managers}>
