@@ -718,7 +718,7 @@ function StickerRealBubble({ m, fmtTime }: { m: ConvMsg; fmtTime: (hhmm?: string
 function ReplyThumb({ id }: { id: number }) {
   useMediaTokenVersion()
   if (!hasMediaToken()) return null
-  return <img className={s.replyThumb} src={mediaThumbUrl(id)} alt="" />
+  return <img className={s.replyThumb} src={mediaThumbUrl(id)} alt="" loading="lazy" decoding="async" />
 }
 
 export default memo(MessageRow)

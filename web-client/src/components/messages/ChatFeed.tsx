@@ -287,7 +287,7 @@ function ServicePhoto({ mediaId, onOpen }: { mediaId: number; onOpen: FeedFns['o
       role="button"
       tabIndex={0}
     >
-      <img src={mediaContentUrl(mediaId)} alt="" />
+      <img src={mediaContentUrl(mediaId)} alt="" loading="lazy" decoding="async" />
     </div>
   )
 }

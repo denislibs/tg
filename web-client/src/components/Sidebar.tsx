@@ -24,10 +24,7 @@ import { useLockStore } from '../stores/lockStore'
 import SidebarMenuButton from './SidebarMenuButton'
 import ComposeFab from './ComposeFab'
 import PremiumModal from './PremiumModal'
-import SettingsView from './SettingsView'
 import ContactsView from './ContactsView'
-import CallsView from './CallsView'
-import WalletView from './stars/WalletView'
 import NewGroupFlow from './NewGroupFlow'
 import NewChannelFlow from './NewChannelFlow'
 import NewPrivateChat from './NewPrivateChat'
@@ -37,6 +34,12 @@ import StoryViewer from './StoryViewer'
 import AddStorySheet from './AddStorySheet'
 // MediaEditor (+ WebGL sceneRender/enhanceGL) грузится лениво — только при редактировании медиа
 const MediaEditor = lazy(() => import('./mediaEditor/MediaEditor'))
+// Экран настроек со всеми под-экранами (Privacy/Notifications/Language/…) — большое
+// поддерево JS+CSS, не нужное до первого кадра. Открывается из меню → грузим лениво.
+const SettingsView = lazy(() => import('./SettingsView'))
+// Кошелёк (звёзды) и экран звонков — тоже из меню, не первый кадр → лениво.
+const WalletView = lazy(() => import('./stars/WalletView'))
+const CallsView = lazy(() => import('./CallsView'))
 import CloseFriendsSheet from './CloseFriendsSheet'
 import StoriesArchiveSheet from './StoriesArchiveSheet'
 import { loadStories } from '../stores/storiesStore'
@@ -523,30 +526,39 @@ export default function Sidebar({
 
       {/* Overlays */}
       <PremiumModal open={premiumOpen} onClose={() => setPremiumOpen(false)} />
-      <AnimatePresence>
-        {showSettings && (
-          <SettingsView
-            onBack={() => {
-              setShowSettings(false)
-              setSettingsSub(null)
-            }}
-            onToggleMode={onToggleMode}
-            chats={chats}
-            initialSub={settingsSub ?? undefined}
-          />
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {showWallet && <WalletView onBack={() => setShowWallet(false)} />}
-      </AnimatePresence>
-      <AnimatePresence>
-        {showCalls && (
-          <CallsView
-            onBack={() => setShowCalls(false)}
-            onOpenChat={(chatId) => { setShowCalls(false); onSelect(String(chatId)) }}
-          />
-        )}
-      </AnimatePresence>
+      {/* Suspense — СНАРУЖИ AnimatePresence: прямым потомком остаётся motion-компонент
+          SettingsView, поэтому выезд/заезд панели сохраняются; Suspense срабатывает
+          лишь на самой первой загрузке ленивого чанка. */}
+      <Suspense fallback={null}>
+        <AnimatePresence>
+          {showSettings && (
+            <SettingsView
+              onBack={() => {
+                setShowSettings(false)
+                setSettingsSub(null)
+              }}
+              onToggleMode={onToggleMode}
+              chats={chats}
+              initialSub={settingsSub ?? undefined}
+            />
+          )}
+        </AnimatePresence>
+      </Suspense>
+      <Suspense fallback={null}>
+        <AnimatePresence>
+          {showWallet && <WalletView onBack={() => setShowWallet(false)} />}
+        </AnimatePresence>
+      </Suspense>
+      <Suspense fallback={null}>
+        <AnimatePresence>
+          {showCalls && (
+            <CallsView
+              onBack={() => setShowCalls(false)}
+              onOpenChat={(chatId) => { setShowCalls(false); onSelect(String(chatId)) }}
+            />
+          )}
+        </AnimatePresence>
+      </Suspense>
       <AnimatePresence>
         {showContacts && (
           <ContactsView

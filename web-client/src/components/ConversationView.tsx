@@ -4,7 +4,6 @@ import Text from '../shared/ui/Text'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import { useAvatarSrc } from './useAvatarSrc'
-import UserInfoPanel from './UserInfoPanel'
 import AddContactView from './AddContactView'
 import EditContactView from './EditContactView'
 import HeaderMenu from './HeaderMenu'
@@ -79,7 +78,6 @@ import SelectionBar from './conversation/SelectionBar'
 import MessageContextMenu from './conversation/MessageContextMenu'
 import StarReactionPopup from './stars/StarReactionPopup'
 import SendGiftPopup from './stars/SendGiftPopup'
-import PostStats from './PostStats'
 import FactCheckEditor from './conversation/FactCheckEditor'
 import { useChatsStore, loadChats } from '../stores/chatsStore'
 import { useSecretChatStore } from '../stores/secretChatStore'
@@ -93,6 +91,10 @@ import LocationPicker from './LocationPicker'
 import SendMediaPopup from './messages/SendMediaPopup'
 // MediaLightbox (просмотрщик медиа) грузится лениво — только при открытии
 const MediaLightbox = lazy(() => import('./messages/MediaLightbox'))
+// Инфо-панель (открывается по клику) и статистика поста (slide-in сабвью) — не
+// первый кадр; их поддерево (+ ChannelStats внутри панели) уводим в ленивые чанки.
+const UserInfoPanel = lazy(() => import('./UserInfoPanel'))
+const PostStats = lazy(() => import('./PostStats'))
 import classNames from '../shared/lib/classNames'
 import s from './ConversationView.module.scss'
 import useMediaQuery from '../shared/lib/useMediaQuery'
@@ -1189,6 +1191,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       </div>
 
       {/* Info panel (private / group / channel) */}
+      <Suspense fallback={null}>
       <AnimatePresence>
         {infoOpen && (
           <UserInfoPanel
@@ -1201,6 +1204,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
           />
         )}
       </AnimatePresence>
+      </Suspense>
 
       {/* Add-contact screen (private chats) */}
       <AnimatePresence>
@@ -1489,11 +1493,13 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       )}
 
       {/* Статистика поста канала (slide-in сабвью, tweb messageStatistics) */}
-      <AnimatePresence>
-        {postStats && (
-          <PostStats chatId={numericChatId} msgId={postStats.msgId} onBack={closePostStats} />
-        )}
-      </AnimatePresence>
+      <Suspense fallback={null}>
+        <AnimatePresence>
+          {postStats && (
+            <PostStats chatId={numericChatId} msgId={postStats.msgId} onBack={closePostStats} />
+          )}
+        </AnimatePresence>
+      </Suspense>
 
       {/* Редактор «проверки фактов» (канал, автор/админ) */}
       {factCheckEdit && (

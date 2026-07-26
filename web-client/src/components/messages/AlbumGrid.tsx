@@ -95,7 +95,7 @@ export default function AlbumGrid({
               if (m.mediaId != null) onOpen?.(m.mediaId, e.currentTarget)
             }}
           >
-            {src && <img className={s.img} src={src} alt="" decoding="async" />}
+            {src && <img className={s.img} src={src} alt="" loading="lazy" decoding="async" />}
             {isSel && <div className={s.selectedDim} />}
             {selecting && m.id != null && (
               <div className={s.check}>

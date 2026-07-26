@@ -99,7 +99,7 @@ export default function SecretMediaBubble({ secretMedia, out, time, status, tick
           </div>
         )}
         {url && isImage && (
-          <img src={url} alt="" decoding="async" style={mediaStyle} />
+          <img src={url} alt="" loading="lazy" decoding="async" style={mediaStyle} />
         )}
         {url && isVideo && (
           <>
