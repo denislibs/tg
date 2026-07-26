@@ -4,28 +4,14 @@
 // Highlighting uses prismjs (same lib as tweb). Prism tokens are rendered to React
 // nodes (not innerHTML) so there's no injection surface; token colors come from
 // the `.token.*` CSS in styles/index.scss.
-import { useMemo, useState, type ReactNode } from 'react'
-import Prism from 'prismjs'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+// prismjs (+ грамматики) грузится лениво через ./prism (см. prism.ts). Тип — type-only
+// импорт (стирается при сборке). До загрузки блок кода рендерится как plain-текст, затем
+// перерисовывается с подсветкой — без Suspense-вспышки в ленте сообщений.
+import type PrismNS from 'prismjs'
 import TgIcon from './TgIcon'
 import classNames from '../shared/lib/classNames'
 import s from './CodeBlock.module.scss'
-// Common languages, imported in dependency order: clike/markup/css are bases;
-// javascript needs clike; jsx needs markup+javascript; typescript needs javascript;
-// tsx needs jsx+typescript.
-import 'prismjs/components/prism-clike'
-import 'prismjs/components/prism-markup' // html/xml
-import 'prismjs/components/prism-css'
-import 'prismjs/components/prism-javascript'
-import 'prismjs/components/prism-jsx'
-import 'prismjs/components/prism-typescript'
-import 'prismjs/components/prism-tsx'
-import 'prismjs/components/prism-json'
-import 'prismjs/components/prism-bash'
-import 'prismjs/components/prism-python'
-import 'prismjs/components/prism-go'
-import 'prismjs/components/prism-rust'
-import 'prismjs/components/prism-sql'
-import 'prismjs/components/prism-yaml'
 
 // Map a fence tag to Prism's grammar key + a human label for the header.
 const LANGS: Record<string, { grammar: string; label: string }> = {
@@ -53,14 +39,14 @@ const LANGS: Record<string, { grammar: string; label: string }> = {
 
 // Recursively render Prism's token stream into React nodes with `.token.<type>`
 // classes (styled in styles/index.scss).
-function renderTokens(tokens: (string | Prism.Token)[], keyBase: string): ReactNode[] {
+function renderTokens(tokens: (string | PrismNS.Token)[], keyBase: string): ReactNode[] {
   return tokens.map((tok, i) => {
     const key = `${keyBase}-${i}`
     if (typeof tok === 'string') return <span key={key}>{tok}</span>
     const type = Array.isArray(tok.type) ? tok.type.join(' ') : tok.type
     const content = tok.content
     const inner: ReactNode = Array.isArray(content)
-      ? renderTokens(content as (string | Prism.Token)[], key)
+      ? renderTokens(content as (string | PrismNS.Token)[], key)
       : typeof content === 'string'
         ? content
         : renderTokens([content], key)
@@ -70,17 +56,28 @@ function renderTokens(tokens: (string | Prism.Token)[], keyBase: string): ReactN
 
 export default function CodeBlock({ code, language }: { code: string; language?: string }) {
   const [copied, setCopied] = useState(false)
+  const [prism, setPrism] = useState<typeof PrismNS | null>(null)
 
   const lang = language ? LANGS[language.toLowerCase()] : undefined
+
+  // Грузим prism только когда есть что подсвечивать (известный язык). Пока не загрузился —
+  // body ниже отдаёт plain-текст; после загрузки setPrism перерисует с подсветкой.
+  useEffect(() => {
+    if (!lang) return
+    let cancelled = false
+    void import('./prism').then((m) => { if (!cancelled) setPrism(m.default) })
+    return () => { cancelled = true }
+  }, [lang])
+
   const body = useMemo<ReactNode>(() => {
     // Skip highlighting very long blocks: Prism tokenization is non-trivial and a
     // few grammars can backtrack badly (ReDoS) — cap the cost, render plain.
-    if (lang && Prism.languages[lang.grammar] && code.length <= 20000) {
-      const tokens = Prism.tokenize(code, Prism.languages[lang.grammar])
+    if (prism && lang && prism.languages[lang.grammar] && code.length <= 20000) {
+      const tokens = prism.tokenize(code, prism.languages[lang.grammar])
       return renderTokens(tokens, 'tk')
     }
     return code
-  }, [code, lang])
+  }, [code, lang, prism])
 
   const copy = (e: React.MouseEvent) => {
     e.stopPropagation()

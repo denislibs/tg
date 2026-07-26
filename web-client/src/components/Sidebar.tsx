@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { EASE } from '../motion'
 import classNames from '../shared/lib/classNames'
@@ -35,7 +35,8 @@ import SearchView from './SearchView'
 import StoriesRow from './StoriesRow'
 import StoryViewer from './StoryViewer'
 import AddStorySheet from './AddStorySheet'
-import MediaEditor from './mediaEditor/MediaEditor'
+// MediaEditor (+ WebGL sceneRender/enhanceGL) грузится лениво — только при редактировании медиа
+const MediaEditor = lazy(() => import('./mediaEditor/MediaEditor'))
 import CloseFriendsSheet from './CloseFriendsSheet'
 import StoriesArchiveSheet from './StoriesArchiveSheet'
 import { loadStories } from '../stores/storiesStore'
@@ -616,11 +617,13 @@ export default function Sidebar({
 
       {/* Редактор истории (4d): выбранный файл проходит через MediaEditor до загрузки */}
       {storyEditFile && (
-        <MediaEditor
-          file={storyEditFile}
-          onDone={(f) => void uploadStoryMedia(f)}
-          onCancel={() => setStoryEditFile(null)}
-        />
+        <Suspense fallback={null}>
+          <MediaEditor
+            file={storyEditFile}
+            onDone={(f) => void uploadStoryMedia(f)}
+            onCancel={() => setStoryEditFile(null)}
+          />
+        </Suspense>
       )}
 
       {/* Лист создания истории (открывается после загрузки медиа) */}

@@ -4,8 +4,9 @@
 // (live location) на выбранный срок. В tweb-K нет map-picker'а — вёрстка своя на
 // базе общего Popup, поведение как в мобильном Telegram (пин по центру).
 import { useEffect, useRef, useState } from 'react'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
+// leaflet (~237 kB) грузится динамически внутри эффекта — только когда пикер реально
+// открывают. Тип берём type-only импортом (стирается при сборке), рантайм — import('leaflet').
+import type { Map as LeafletMap } from 'leaflet'
 import Popup from '../shared/ui/Popup'
 import Text from '../shared/ui/Text'
 import Input from '../shared/ui/Input'
@@ -29,30 +30,41 @@ export default function LocationPicker({
   onSend: (lat: number, lng: number, opts?: { title?: string; livePeriod?: number }) => void
 }) {
   const mapEl = useRef<HTMLDivElement | null>(null)
-  const mapRef = useRef<L.Map | null>(null)
+  const mapRef = useRef<LeafletMap | null>(null)
   const centerRef = useRef<[number, number]>(DEFAULT_CENTER)
   const [title, setTitle] = useState('')
   const [liveOpen, setLiveOpen] = useState(false)
 
   useEffect(() => {
     if (!open || !mapEl.current || mapRef.current) return
-    const map = L.map(mapEl.current, { zoomControl: true, attributionControl: false }).setView(DEFAULT_CENTER, 14)
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map)
-    map.on('move', () => {
-      const c = map.getCenter()
-      centerRef.current = [c.lat, c.lng]
-    })
-    mapRef.current = map
-    // спросить текущую позицию и переехать на неё
-    navigator.geolocation?.getCurrentPosition(
-      (pos) => { map.setView([pos.coords.latitude, pos.coords.longitude], 16) },
-      () => {},
-      { enableHighAccuracy: true, timeout: 8000 },
-    )
-    // Leaflet считает размеры контейнера при создании; после анимации попапа
-    // размер уже финальный — пересчитываем, иначе тайлы «съезжают».
-    const t = setTimeout(() => map.invalidateSize(), 250)
-    return () => { clearTimeout(t); map.remove(); mapRef.current = null }
+    let cancelled = false
+    let cleanup: (() => void) | undefined
+    void (async () => {
+      // грузим leaflet и его css лениво (оба уходят в отдельный чанк)
+      const [{ default: L }] = await Promise.all([
+        import('leaflet'),
+        import('leaflet/dist/leaflet.css'),
+      ])
+      if (cancelled || !mapEl.current || mapRef.current) return
+      const map = L.map(mapEl.current, { zoomControl: true, attributionControl: false }).setView(DEFAULT_CENTER, 14)
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map)
+      map.on('move', () => {
+        const c = map.getCenter()
+        centerRef.current = [c.lat, c.lng]
+      })
+      mapRef.current = map
+      // спросить текущую позицию и переехать на неё
+      navigator.geolocation?.getCurrentPosition(
+        (pos) => { map.setView([pos.coords.latitude, pos.coords.longitude], 16) },
+        () => {},
+        { enableHighAccuracy: true, timeout: 8000 },
+      )
+      // Leaflet считает размеры контейнера при создании; после анимации попапа
+      // размер уже финальный — пересчитываем, иначе тайлы «съезжают».
+      const t = setTimeout(() => map.invalidateSize(), 250)
+      cleanup = () => { clearTimeout(t); map.remove(); mapRef.current = null }
+    })()
+    return () => { cancelled = true; cleanup?.() }
   }, [open])
 
   const locateMe = () => {

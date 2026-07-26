@@ -12,7 +12,7 @@ npm run typecheck  # tsc --noEmit на TS7 native (@typescript/native)
 npm run lint       # oxlint (typeAware); lint:fix — с автофиксом
 npm run build      # tsc --noEmit + vite build (типы должны проходить)
 # разовая прод-сборка для nginx (из этой папки):
-npx vite build --base=/ --outDir ../client-build
+npx vite build --outDir ../client-build
 ```
 
 ## Главное правило: 1:1 с tweb

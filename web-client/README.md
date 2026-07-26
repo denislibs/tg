@@ -30,7 +30,7 @@ npm test         # vitest
 
 Dev-сервера нет: `npm run dev` пересобирает бандл в `../client-build` при каждом изменении,
 а nginx стенда монтирует эту папку — после ребилда достаточно обновить страницу
-на http://localhost:38080. Разовая прод-сборка та же: `npx vite build --base=/ --outDir ../client-build`.
+на http://localhost:38080. Разовая прод-сборка та же: `npx vite build --outDir ../client-build`.
 
 ## Структура
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import Text from '../shared/ui/Text'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -91,7 +91,8 @@ import { ChatPicker, ContactPicker, DeleteMessageDialog, ForwardPicker, ViewersP
 import TranslatePopup from './messages/TranslatePopup'
 import LocationPicker from './LocationPicker'
 import SendMediaPopup from './messages/SendMediaPopup'
-import MediaLightbox from './messages/MediaLightbox'
+// MediaLightbox (просмотрщик медиа) грузится лениво — только при открытии
+const MediaLightbox = lazy(() => import('./messages/MediaLightbox'))
 import classNames from '../shared/lib/classNames'
 import s from './ConversationView.module.scss'
 import useMediaQuery from '../shared/lib/useMediaQuery'
@@ -1459,15 +1460,17 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       )}
 
       {lightbox && (
-        <MediaLightbox
-          items={lightbox.items}
-          index={lightbox.index}
-          originRect={lightbox.originRect}
-          originSrc={lightbox.originSrc}
-          originEl={lightbox.originEl}
-          onClosingStart={() => { lightbox.originEl.style.visibility = '' }}
-          onClose={closeLightbox}
-        />
+        <Suspense fallback={null}>
+          <MediaLightbox
+            items={lightbox.items}
+            index={lightbox.index}
+            originRect={lightbox.originRect}
+            originSrc={lightbox.originSrc}
+            originEl={lightbox.originEl}
+            onClosingStart={() => { lightbox.originEl.style.visibility = '' }}
+            onClose={closeLightbox}
+          />
+        </Suspense>
       )}
 
       {/* Discard-recording confirm (Esc) */}

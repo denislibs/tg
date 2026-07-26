@@ -6,7 +6,8 @@
 //    каждом кадре дёргаем onFrame → редактор перерисовывает превью (анимация
 //    видна вживую; JPEG-экспорт берёт кадр, что нарисован на момент экспорта —
 //    полноценное видео будет в C6).
-import lottie, { type AnimationItem } from 'lottie-web'
+import { type AnimationItem } from 'lottie-web'
+import { loadLottie } from '../lottie'
 import { loadStickerContent } from '../StickerMedia'
 
 // Сторона offscreen-канваса lottie (кадр вписывается preserveAspectRatio).
@@ -43,26 +44,32 @@ export class StickerAssets {
         }
         // video-стикер (webm) в редакторе как оверлей пока не поддержан.
         if (c.kind !== 'lottie') return
+        const animationData = c.data
         // lottie → offscreen-canvas, обновляется на каждом кадре
         const canvas = document.createElement('canvas')
         canvas.width = LOTTIE_SIZE
         canvas.height = LOTTIE_SIZE
         const ctx = canvas.getContext('2d')
         if (!ctx) return
-        const anim = lottie.loadAnimation<'canvas'>({
-          // container обязателен по типам; при заданном rendererSettings.context
-          // lottie рисует в наш offscreen-контекст, а фиктивный container не трогает.
-          container: document.createElement('div'),
-          renderer: 'canvas',
-          loop: true,
-          autoplay: true,
-          animationData: c.data,
-          rendererSettings: { context: ctx, clearCanvas: true, preserveAspectRatio: 'xMidYMid meet' },
+        // lottie-web грузится лениво (общий чанк); к моменту готовности проверяем, что
+        // инстанс ещё жив и не создан параллельным ensure().
+        void loadLottie().then((lottie) => {
+          if (this.dead || this.anims.has(mediaId)) return
+          const anim = lottie.loadAnimation<'canvas'>({
+            // container обязателен по типам; при заданном rendererSettings.context
+            // lottie рисует в наш offscreen-контекст, а фиктивный container не трогает.
+            container: document.createElement('div'),
+            renderer: 'canvas',
+            loop: true,
+            autoplay: true,
+            animationData,
+            rendererSettings: { context: ctx, clearCanvas: true, preserveAspectRatio: 'xMidYMid meet' },
+          })
+          anim.addEventListener('enterFrame', this.onFrame)
+          this.anims.set(mediaId, anim)
+          this.sources.set(mediaId, canvas)
+          this.onFrame()
         })
-        anim.addEventListener('enterFrame', this.onFrame)
-        this.anims.set(mediaId, anim)
-        this.sources.set(mediaId, canvas)
-        this.onFrame()
       },
       () => { this.pending.delete(mediaId) },
     )
