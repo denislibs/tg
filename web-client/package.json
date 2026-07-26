@@ -18,14 +18,14 @@
     "@fontsource/sedan": "^5.3.0",
     "@fontsource/suez-one": "^5.3.0",
     "@twallpaper/react": "^2.1.2",
-    "framer-motion": "^11.11.17",
+    "framer-motion": "^12.42.2",
     "leaflet": "^1.9.4",
     "lottie-web": "^5.13.0",
     "mediabunny": "^1.51.0",
     "prismjs": "^1.30.0",
     "qr-code-styling": "^1.9.2",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
@@ -33,14 +33,14 @@
     "@testing-library/react": "^16.3.2",
     "@types/leaflet": "^1.9.21",
     "@types/prismjs": "^1.26.6",
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1",
-    "@vitejs/plugin-react": "^4.3.3",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.4",
     "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20.10.6",
     "sass": "^1.101.0",
     "typescript": "^5.6.3",
-    "vite": "^6.0.1",
-    "vitest": "^4.1.9"
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10"
   }
 }

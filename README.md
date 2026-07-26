@@ -272,4 +272,5 @@ npm test         # vitest
 **Backend:** Go 1.25, chi/v5, uber/fx, pgx/v5, go-redis, minio-go, goose, gorilla/websocket,
 webpush-go, geoip2-golang, testcontainers-go.
 
-**Frontend:** React 18, TypeScript, Vite 6, MUI 6, Zustand, framer-motion, prismjs, vitest.
+**Frontend:** React 19, TypeScript (strict), Vite 8, SCSS-модули (sass; MUI убран), Zustand 5,
+framer-motion 12, prismjs, vitest. Логика/сеть — в Web/SharedWorker (RPC через SuperMessagePort).

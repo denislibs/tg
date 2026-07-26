@@ -21,8 +21,9 @@ npx vite build --base=/ --outDir ../client-build
 
 ## Стек и стиль
 
-- **React 18 + MUI 6** — стилизация через `sx`, не отдельные CSS-классы (кроме `index.css` с глобальными
-  токенами/palette prism).
+- **React 19 + Vite 8 + TS strict.** Стилизация — **SCSS-модули** (`*.module.scss` + `sass`); глобальные
+  дизайн-токены (CSS custom properties) в `src/styles/_tokens.scss`, тема через атрибут `data-theme` на
+  `<html>`. **MUI убран** — не добавлять `@mui`/`sx`/emotion, только SCSS-модули.
 - **Zustand** — глобальное состояние (`src/stores/*`). Не плодить React-контексты под то, что уже в сторах.
 - **framer-motion** — анимации. **TS strict** — без `any`, неиспользуемые переменные не пройдут сборку.
 - Тяжёлые списки: `MessageRow`/`ChatFeed` мемоизированы — не ломай стабильность пропсов/рефов.

@@ -16,7 +16,8 @@ Go-бэкенд (`backend/`) + React/TS-фронтенд (`web-client/`). Обз
 
 - **Backend:** Go 1.25, chi/v5, uber/fx (DI), pgx/v5, go-redis, minio-go, goose (миграции),
   gorilla/websocket, webpush-go, geoip2-golang. Чистая архитектура: `domain → usecase → adapter`.
-- **Frontend:** React 18, TypeScript (strict), Vite 6, MUI 6, Zustand, framer-motion, prismjs, vitest.
+- **Frontend:** React 19, TypeScript (strict), Vite 8, SCSS-модули (sass; **MUI убран** — не возвращать),
+  Zustand 5, framer-motion 12, prismjs, vitest. Логика/сеть в Web/SharedWorker (RPC через SuperMessagePort).
 - **Хранилища:** Postgres (данные), Redis (кэш/realtime/presence/очередь), MinIO (медиа).
 
 Детали — в [`backend/README.md`](backend/README.md) и [`web-client/README.md`](web-client/README.md).
