@@ -432,7 +432,6 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
         {shareOpen && (
           <ForwardPicker
             dialogs={dialogs}
-            hasCaption={false}
             onClose={() => setShareOpen(false)}
             onPick={(chatIds) => {
               setShareOpen(false)

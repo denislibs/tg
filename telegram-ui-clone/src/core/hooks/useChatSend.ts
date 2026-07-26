@@ -35,6 +35,11 @@ const MAX_MESSAGE_LEN = 4096
 // снимок превью оригинала (его нет в текущем сторе), рисуется в плашке ответа.
 export type ReplyState = { msgId?: number; name: string; text: string; color: string; quote?: { text: string; offset: number }; chatId?: number; snapshotName?: string; snapshotText?: string } | null
 export type EditState = { msgId: number; text: string; entities?: MessageEntity[] } | null
+// Пересылка через плашку композера (tweb initMessagesForward): исходный чат +
+// id сообщений ждут финализации по «Отправить». dropAuthor/dropCaption — опции
+// из меню плашки (скрыть отправителя / убрать подпись). text/count/hasCaption —
+// для превью + заголовка плашки.
+export type ForwardState = { sourceChatId: number; msgIds: number[]; count: number; text: string; hasCaption: boolean; dropAuthor: boolean; dropCaption: boolean } | null
 
 interface UseChatSendArgs {
   chat: Chat
@@ -83,6 +88,8 @@ export function useChatSend({
   // returned setters, and read by the Composer).
   const [reply, setReply] = useState<ReplyState>(null)
   const [editing, setEditing] = useState<EditState>(null)
+  // Пересылка (tweb forwarding): плашка форварда в композере; финализируется в send().
+  const [forward, setForward] = useState<ForwardState>(null)
 
   // Voice-recording mechanics live in useVoiceRecorder; here we only decide what to
   // do with a finished clip: upload + send (creating the private chat first on a draft).
@@ -384,7 +391,32 @@ export function useChatSend({
   // Called by the Composer with the trimmed draft text (the Composer owns the
   // text state + clears itself afterwards); we route by chat kind / edit / reply.
   const send = (text: string, entities?: MessageEntity[], ttlSeconds?: number | null, silent = false, effect: EmojiEffectKind | null = null) => {
-    if (!text || !canType || secretLocked) return
+    if (!canType || secretLocked) return
+    // Forward finalize (tweb sendMessageWithForward): пересылаем отложенные
+    // сообщения из исходного чата, затем — набранный комментарий как обычное
+    // сообщение (если он есть). Комментарий шлём ПОСЛЕ форварда — как в Telegram
+    // (пересланные сверху, подпись под ними). Пустой инпут → просто форвард.
+    if (forward) {
+      const fwd = forward
+      setForward(null)
+      atBottomRef.current = true; userScrolledUpRef.current = false
+      window.dispatchEvent(new Event('tg-send'))
+      void (async () => {
+        try {
+          await managers.messages.forwardMessages(numericChatId, fwd.sourceChatId, fwd.msgIds, { dropAuthor: fwd.dropAuthor, dropCaption: fwd.dropCaption })
+        } catch (err) {
+          console.error('forward failed', err)
+          return
+        }
+        if (text) {
+          for (const p of splitRich(text, entities ?? [], MAX_MESSAGE_LEN)) {
+            void managers.realtime.sendMessage({ chatId: numericChatId, text: p.text, entities: p.entities.length ? p.entities : undefined, clientMsgId: mkClientMsgId(), threadRootId })
+          }
+        }
+      })()
+      return
+    }
+    if (!text) return
     // Edit mode: PATCH the existing message instead of sending a new one.
     if (editing && isRealChat) {
       const { msgId } = editing
@@ -447,6 +479,7 @@ export function useChatSend({
 
   return {
     reply, setReply, editing, setEditing,
+    forward, setForward,
     rec,
     send,
     onComposerTyping,

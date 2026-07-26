@@ -81,6 +81,12 @@ export function useMessageActions({
   const pendingQuoteRef = useRef<{ text: string; offset: number } | null>(null)
   const [delIds, setDelIds] = useState<DelState | null>(null)
   const [forwardIds, setForwardIds] = useState<number[] | null>(null)
+  // Источник пересылаемых сообщений (null = текущий чат). Для «Переслать в другой
+  // чат» из плашки форварда источник — исходный чат, а не открытый сейчас.
+  const forwardSourceRef = useRef<number | null>(null)
+  // Готовое превью плашки (кросс-чат форвард): исходных сообщений нет в текущем
+  // сторе, поэтому превью переносим снимком, а не пересобираем из msgs.
+  const forwardPreviewRef = useRef<{ count: number; text: string; hasCaption: boolean } | null>(null)
   // «Ответить в другом чате» (tweb ReplyToAnotherChat): снимок оригинала ждёт
   // выбора целевого чата в пикере. null — пикер закрыт.
   const [replyAnother, setReplyAnother] = useState<{ msgId: number; name: string; text: string; color: string } | null>(null)
@@ -232,23 +238,65 @@ export function useMessageActions({
 
   const openForward = () => {
     const raw = menuRawMsg()
-    if (raw?.id != null) setForwardIds([raw.id])
+    if (raw?.id != null) { forwardSourceRef.current = null; forwardPreviewRef.current = null; setForwardIds([raw.id]) }
     closeMsgMenu()
   }
   // Open the forward picker for an arbitrary id set (the selection bar's bulk forward).
-  const openForwardFor = (ids: number[]) => setForwardIds(ids)
-  // Пересылаем выбранные сообщения во все выбранные чаты (по одному REST-запросу
-  // на чат — бэкенд принимает один toChatID). Последовательно и с изоляцией:
-  // падение одного адресата не должно рвать остальные. По завершении переключаемся
-  // на последний успешный чат (как открывает диалог Telegram после форварда).
-  const doForward = async (chatIds: number[], opts?: { dropAuthor?: boolean; dropCaption?: boolean }) => {
+  const openForwardFor = (ids: number[]) => { forwardSourceRef.current = null; forwardPreviewRef.current = null; setForwardIds(ids) }
+  // «Переслать в другой чат» из плашки форварда: источник и превью переносим явно
+  // (мы не в исходном чате, его сообщений нет в текущем msgs).
+  const openForwardFrom = (sourceChatId: number, ids: number[], preview: { count: number; text: string; hasCaption: boolean }) => {
+    forwardSourceRef.current = sourceChatId
+    forwardPreviewRef.current = preview
+    setForwardIds(ids)
+  }
+  // Метка отправителя для превью плашки форварда (tweb senderTitles): «Вы» для
+  // своих, иначе имя автора / скрытая атрибуция форварда / имя чата-источника.
+  const fwdSenderLabel = (m: ConvMsg): string => (m.out ? t('You') : (m.sender ?? m.forwardFrom?.name ?? chat.name))
+  // Превью плашки форварда (tweb setTopInfo forward): «Отправитель: текст» для
+  // одного сообщения, иначе «Переслано от: имена». Строится из текущего msgs.
+  const buildForwardPreview = (ids: number[]) => {
+    const picked = ids.map((id) => msgs.find((m) => m.id === id)).filter((m): m is ConvMsg => !!m)
+    const count = ids.length
+    const senders = [...new Set(picked.map(fwdSenderLabel))]
+    let text: string
+    if (count === 1 && picked[0]) {
+      const m = picked[0]
+      const body = m.text || mediaLabel(m.type) || ''
+      text = body ? `${senders[0]}: ${body}` : senders[0]
+    } else {
+      const names = senders.length <= 2 ? senders.join(', ') : `${senders.slice(0, 2).join(', ')} …`
+      text = `${t('Forwarded from')}: ${names}`
+    }
+    const hasCaption = picked.some((m) => m.mediaId != null && !!m.text)
+    return { count, text, hasCaption }
+  }
+  // Выбор адресата(ов) в пикере. Один чат → tweb-флоу: открываем чат и показываем
+  // плашку форварда в композере (финализация по «Отправить»). Несколько → шлём
+  // сразу во все с параметрами по умолчанию (составить коммент в N чатах нельзя).
+  const doForward = async (chatIds: number[]) => {
     const ids = forwardIds
+    const source = forwardSourceRef.current ?? numericChatId
+    const previewSnap = forwardPreviewRef.current
     setForwardIds(null)
+    forwardSourceRef.current = null
+    forwardPreviewRef.current = null
     if (!ids?.length || !isRealChat || !chatIds.length) return
+    if (chatIds.length === 1) {
+      const targetChatId = chatIds[0]
+      const preview = previewSnap ?? buildForwardPreview(ids)
+      useSearchStore.getState().setPendingForward({
+        targetChatId, sourceChatId: source, msgIds: ids,
+        count: preview.count, text: preview.text, hasCaption: preview.hasCaption,
+      })
+      clearSelection()
+      onChatCreated?.(targetChatId)
+      return
+    }
     let lastOk: number | null = null
     for (const toChatId of chatIds) {
       try {
-        await managers.messages.forwardMessages(toChatId, numericChatId, ids, opts)
+        await managers.messages.forwardMessages(toChatId, source, ids)
         lastOk = toChatId
       } catch (err) {
         console.error('forward failed', { toChatId }, err)
@@ -257,14 +305,6 @@ export function useMessageActions({
     clearSelection()
     if (lastOk != null) onChatCreated?.(lastOk)
   }
-  // «Убрать подпись» показываем, только если среди пересылаемых есть медиа с
-  // подписью (tweb: тумблер caption доступен лишь при наличии captions).
-  const forwardHasCaption =
-    forwardIds != null &&
-    forwardIds.some((id) => {
-      const m = msgs.find((x) => x.id === id)
-      return m != null && m.mediaId != null && !!m.text
-    })
 
   // Enter selection mode from the context menu, pre-selecting that message.
   const startSelect = () => {
@@ -532,7 +572,7 @@ export function useMessageActions({
     postStats, closePostStats: () => setPostStats(null),
     factCheckEdit, submitFactCheck, closeFactCheckEditor: () => setFactCheckEdit(null),
     delIds, doDelete, closeDelete: () => setDelIds(null), openDeleteFor, canRevokeAll,
-    forwardIds, forwardHasCaption, doForward, closeForward: () => setForwardIds(null), openForwardFor,
+    forwardIds, doForward, closeForward: () => setForwardIds(null), openForwardFor, openForwardFrom,
     replyAnother, pickReplyAnotherChat, closeReplyAnother: () => setReplyAnother(null),
     viewers, closeViewers: () => setViewers(null),
     reacted, closeReacted: () => setReacted(null),

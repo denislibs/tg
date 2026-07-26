@@ -26,11 +26,15 @@
   align-items: center;
   gap: 8px;
   height: 48px;
-  padding: 0 8px;
+  // Вертикальный отступ на баре (tweb reply-wrapper): плашка внутри «плавает»
+  // ~40px, не упираясь в края композера. Горизонтально — 8px как в tweb.
+  padding: 4px 8px;
 }
 
-// скруглённый блок reply/edit: фон-тинт + акцентная полоса (inset-тень по цвету)
-// задаются инлайном; здесь — форма и компактная типографика под 48px.
+// скруглённый блок reply/edit/forward: фон-тинт + акцентная полоса (inset-тень
+// по цвету) задаются инлайном. Высота = высота бара минус его верт. паддинг
+// (~40px, tweb .reply min-height 2.5rem). Внутренние отступы — только по бокам
+// (верт. паддинг живёт на баре), слева больше — чтобы текст не упирался в полосу.
 .barBody {
   flex: 1;
   min-width: 0;
@@ -39,7 +43,7 @@
   flex-direction: column;
   justify-content: center;
   gap: 1px;
-  padding: 4px 10px;
+  padding: 0 12px;
   border-radius: 8px;
   line-height: 1.25;
   overflow: hidden;

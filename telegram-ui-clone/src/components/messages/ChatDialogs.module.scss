@@ -177,23 +177,6 @@
 }
 
 // ── «Поделиться» (ForwardPicker, вид tweb) ──
-// опции пересылки (скрыть отправителя/подпись) — компактные строки
-.shareOptions {
-  display: flex;
-  flex-direction: column;
-  margin-bottom: 10px;
-}
-.shareOption {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border-radius: 12px;
-  cursor: pointer;
-
-  @media (hover: hover) { &:hover { background: var(--tg-hover); } }
-}
-
 // горизонтальный ряд недавних
 .recents {
   display: flex;

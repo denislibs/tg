@@ -57,10 +57,13 @@ const SHORTCUTS: Record<string, EntityType> = {
 
 export interface ReplyState { msgId?: number; name: string; text: string; color: string; quote?: { text: string; offset: number }; chatId?: number; snapshotName?: string; snapshotText?: string }
 export interface EditState { msgId: number; text: string; entities?: MessageEntity[] }
+// Плашка форварда (tweb forwarding): превью пересылаемого + опции меню.
+export interface ForwardBar { sourceChatId: number; msgIds: number[]; count: number; text: string; hasCaption: boolean; dropAuthor: boolean; dropCaption: boolean }
 
 interface Props {
   reply: ReplyState | null
   editing: EditState | null
+  forward: ForwardBar | null
   rec: VoiceRecorder
   // Send the trimmed draft text + its formatting entities. The parent decides
   // reply/edit/draft/channel routing; the composer just clears its draft afterwards.
@@ -77,6 +80,10 @@ interface Props {
   onPickGif?: (g: GifItem) => void
   onCancelReply: () => void
   onCancelEdit: () => void
+  // Плашка форварда: отмена, тоггл опций (скрыть отправителя/подпись), «в другой чат».
+  onCancelForward: () => void
+  onForwardOption: (opt: { dropAuthor?: boolean; dropCaption?: boolean }) => void
+  onForwardAnother: () => void
   // Open the attach menu anchored to the paperclip button.
   onOpenAttach: (rect: DOMRect) => void
   // Files pasted/dropped into the input (images, etc.) — routed to the attach flow.
@@ -241,7 +248,8 @@ function placeCaretEnd(el: HTMLElement) {
 }
 
 function Composer({
-  reply, editing, rec, onSend, onTyping, onPickSticker, onPickGif, onCancelReply, onCancelEdit, onOpenAttach, onPasteFiles,
+  reply, editing, forward, rec, onSend, onTyping, onPickSticker, onPickGif, onCancelReply, onCancelEdit,
+  onCancelForward, onForwardOption, onForwardAnother, onOpenAttach, onPasteFiles,
   initialDraft, onDraftChange, mentions, onInlineQuery, onPickInline, botMenuButton, onSchedule, canSendWhenOnline, onSendWhenOnline, scheduledCount, onOpenScheduled, slowmodeLeft, secret, canSendMedia = true, chargeStars,
   onEditLast, onReplyPrev, sendAs,
 }: Props) {
@@ -262,9 +270,23 @@ function Composer({
   const [cancelRecOpen, setCancelRecOpen] = useState(false)
   const editorRef = useRef<HTMLDivElement>(null)
   const hasText = !emptyDraft
+  // Плашка форварда активна → показываем «Отправить» (стрелку) даже при пустом
+  // инпуте: пустой коммент = просто пересылка (tweb forwarding без текста).
+  const forwardActive = !!forward
+  const showSend = hasText || forwardActive
+  // Меню плашки форварда (tweb reply-line-menu): show/hide sender/caption,
+  // переслать в другой чат, не пересылать. Открывается кликом по плашке.
+  const [fwdMenuOpen, setFwdMenuOpen] = useState(false)
+  const fwdBarRef = useRef<HTMLDivElement>(null)
+  const [fwdMenuPos, setFwdMenuPos] = useState<{ left: number; bottom: number } | null>(null)
+  const openFwdMenu = () => {
+    const r = fwdBarRef.current?.getBoundingClientRect()
+    if (r) setFwdMenuPos({ left: r.left, bottom: window.innerHeight - r.top + 6 })
+    setFwdMenuOpen(true)
+  }
   // Кнопка в режиме микрофона, но медиа в группе запрещены — светло-серая,
   // клик показывает тост вместо записи.
-  const micDisabled = !canSendMedia && !hasText && !rec.recording && !slowmodeBlocked
+  const micDisabled = !canSendMedia && !showSend && !rec.recording && !slowmodeBlocked
   // Серая (неактивная) кнопка: запрет медиа-микрофона ИЛИ отсчёт slowmode.
   const sendBtnMuted = micDisabled || slowmodeBlocked
   // Тип записи (голос/кружок) — персист в settings; long-press/ПКМ по кнопке
@@ -408,7 +430,16 @@ function Composer({
     const root = editorRef.current
     if (!root) return
     const raw = serialize(root)
-    if (!raw.text) return
+    if (!raw.text) {
+      // Пустой инпут при активном форварде — просто пересылаем (без комментария).
+      // Родитель финализирует форвард в onSend, игнорируя пустой текст.
+      if (forwardActive) {
+        onSend('', undefined, secret ? secretTtl : undefined, silent, null)
+        setSelectedEffect(null)
+        clearEditor()
+      }
+      return
+    }
     // Parse markdown markers → entities on send (tweb model: the input stays raw,
     // markers become formatting only when sent). Toolbar-applied entities are passed
     // in and merged/offset-adjusted.
@@ -863,7 +894,7 @@ function Composer({
             >
               <div className={s.bar}>
                 <TgIcon name="reply" size={22} color={reply.color} />
-                <div className={s.barBody} style={{ background: `${reply.color}1f`, boxShadow: `inset 2px 0 0 ${reply.color}` }}>
+                <div className={s.barBody} style={{ background: `${reply.color}1f`, boxShadow: `inset 3px 0 0 ${reply.color}` }}>
                   <Text size={14} weight={600} color={reply.color}>
                     {t('Reply to')} {reply.snapshotName ?? reply.name}
                   </Text>
@@ -896,11 +927,46 @@ function Composer({
             >
               <div className={s.bar}>
                 <TgIcon name="edit" size={22} color="var(--tg-accent)" />
-                <div className={s.barBody} style={{ background: 'color-mix(in srgb, var(--tg-accent) 12%, transparent)', boxShadow: 'inset 2px 0 0 var(--tg-accent)' }}>
+                <div className={s.barBody} style={{ background: 'color-mix(in srgb, var(--tg-accent) 12%, transparent)', boxShadow: 'inset 3px 0 0 var(--tg-accent)' }}>
                   <Text size={14} weight={600} color="var(--tg-accent)">{t('Edit message')}</Text>
                   <Text noWrap size={14} color="var(--tg-textSecondary)">{editing.text}</Text>
                 </div>
                 <IconButton size="small" onClick={() => { onCancelEdit(); clearEditor() }} color="var(--tg-textFaint)">
+                  <TgIcon name="close" size={20} />
+                </IconButton>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Плашка форварда (tweb forwarding): иконка + превью (заголовок «Переслать
+            сообщение» + «Отправитель: текст») + акцентная полоса; клик по телу
+            открывает меню опций. Крестик — отмена (Do Not Forward). */}
+        <AnimatePresence initial={false}>
+          {forward && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: DUR_OUT, ease: EASE_STD }}
+              style={{ overflow: 'hidden' }}
+            >
+              <div className={s.bar}>
+                <TgIcon name="forward" size={22} color="var(--tg-accent)" />
+                <div
+                  ref={fwdBarRef}
+                  className={s.barBody}
+                  style={{ background: 'color-mix(in srgb, var(--tg-accent) 12%, transparent)', boxShadow: 'inset 3px 0 0 var(--tg-accent)', cursor: 'pointer' }}
+                  onClick={openFwdMenu}
+                >
+                  <Text noWrap size={14} weight={600} color="var(--tg-accent)">
+                    {forward.count === 1
+                      ? (forward.dropAuthor ? t('Forward Message (sender name hidden)') : t('Forward Message'))
+                      : `${t('Forward Messages')} (${forward.count})`}
+                  </Text>
+                  <Text noWrap size={14} color="var(--tg-textSecondary)">{forward.text}</Text>
+                </div>
+                <IconButton size="small" onClick={onCancelForward} color="var(--tg-textFaint)">
                   <TgIcon name="close" size={20} />
                 </IconButton>
               </div>
@@ -1056,7 +1122,7 @@ function Composer({
           <motion.div
             onClick={() => {
               if (longPressed.current) { longPressed.current = false; return } // long-press открыл меню — клик глотаем
-              if (hasText) submit()
+              if (showSend) submit()
               else if (rec.recording) rec.stop(true)
               else if (!canSendMedia) uiEvents.emit('ui:toast', t('Media is not allowed in this group'))
               else void rec.start(recordingMediaType)
@@ -1066,7 +1132,7 @@ function Composer({
             // Плюс long-press ~400ms (tweb) открывает меню выбора голос/кружок.
             onMouseDown={(e) => {
               e.preventDefault()
-              if (hasText || rec.recording || !canSendMedia) return
+              if (showSend || rec.recording || !canSendMedia) return
               window.clearTimeout(longPressTimer.current)
               // таймер лишь помечает long-press; меню откроется на mouseup —
               // так click после отпускания глотается кнопкой, а не бэкдропом меню
@@ -1085,14 +1151,14 @@ function Composer({
                 setSendMenuOpen(true)
                 return
               }
-              if (!hasText && !rec.recording && canSendMedia) openRecMenu(e.currentTarget as HTMLElement)
+              if (!showSend && !rec.recording && canSendMedia) openRecMenu(e.currentTarget as HTMLElement)
             }}
             whileTap={{ scale: sendBtnMuted ? 1 : 0.92 }}
             className={sendBtnMuted ? `${s.sendBtn} ${s.sendBtnMuted}` : s.sendBtn}
           >
             <AnimatePresence mode="wait" initial={false}>
               <motion.span
-                key={slowmodeBlocked ? 'slow' : hasText || rec.recording ? 'send' : 'mic'}
+                key={slowmodeBlocked ? 'slow' : showSend || rec.recording ? 'send' : 'mic'}
                 initial={{ scale: 0.5, opacity: 0.8 }}
                 animate={{ scale: [0.5, 1.1, 1], opacity: 1 }}
                 exit={{ scale: 0.5, opacity: 0 }}
@@ -1101,7 +1167,7 @@ function Composer({
               >
                 {slowmodeBlocked
                   ? <span className={s.slowmodeTimer}>{slowmodeText}</span>
-                  : hasText || rec.recording ? <TgIcon name="send" /> : <TgIcon name={recordingMediaType === 'round' ? 'recordround' : 'microphone_filled'} />}
+                  : showSend || rec.recording ? <TgIcon name="send" /> : <TgIcon name={recordingMediaType === 'round' ? 'recordround' : 'microphone_filled'} />}
               </motion.span>
             </AnimatePresence>
             {/* Выбран эффект сообщения — маленький эмодзи-бейдж на кнопке отправки. */}
@@ -1164,6 +1230,52 @@ function Composer({
           ))}
         </div>
       </Menu>
+
+      {/* Меню плашки форварда (tweb reply-line-menu): радио show/hide sender + (при
+          наличии подписи) show/hide caption, «переслать в другой чат», «не пересылать».
+          Галочка слева отмечает активный вариант; выравнивание — прозрачной иконкой. */}
+      <Menu
+        open={fwdMenuOpen}
+        onClose={() => setFwdMenuOpen(false)}
+        style={fwdMenuPos ? { left: fwdMenuPos.left, bottom: fwdMenuPos.bottom, transformOrigin: 'bottom left' } : undefined}
+      >
+        <MenuItem
+          icon={<TgIcon name="check" size={20} color={forward && !forward.dropAuthor ? 'var(--tg-accent)' : 'transparent'} />}
+          label={t('Show sender name')}
+          onClick={() => { onForwardOption({ dropAuthor: false }); setFwdMenuOpen(false) }}
+        />
+        <MenuItem
+          icon={<TgIcon name="check" size={20} color={forward && forward.dropAuthor ? 'var(--tg-accent)' : 'transparent'} />}
+          label={t('Hide sender name')}
+          onClick={() => { onForwardOption({ dropAuthor: true }); setFwdMenuOpen(false) }}
+        />
+        {forward?.hasCaption && (
+          <>
+            <MenuItem
+              icon={<TgIcon name="check" size={20} color={forward && !forward.dropCaption ? 'var(--tg-accent)' : 'transparent'} />}
+              label={t('Show caption')}
+              onClick={() => { onForwardOption({ dropCaption: false }); setFwdMenuOpen(false) }}
+            />
+            <MenuItem
+              icon={<TgIcon name="check" size={20} color={forward && forward.dropCaption ? 'var(--tg-accent)' : 'transparent'} />}
+              label={t('Hide caption')}
+              onClick={() => { onForwardOption({ dropCaption: true }); setFwdMenuOpen(false) }}
+            />
+          </>
+        )}
+        <MenuItem
+          icon={<TgIcon name="replace" size={20} />}
+          label={t('Forward to Another Chat')}
+          onClick={() => { setFwdMenuOpen(false); onForwardAnother() }}
+        />
+        <MenuItem
+          icon={<TgIcon name="delete" size={20} />}
+          label={t('Do Not Forward')}
+          danger
+          onClick={() => { setFwdMenuOpen(false); onCancelForward() }}
+        />
+      </Menu>
+
       {scheduleOpen && (
         <SchedulePopup
           onPick={submitScheduled}
