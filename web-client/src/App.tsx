@@ -173,15 +173,15 @@ function ThemedApp() {
   const { authed, login, logout } = useAuthGate()
   const toggleMode = useThemeToggle()
 
-  // Снимаем сплеш, когда есть что показать (Shell или экран входа). До этого он
-  // перекрывает пустой authed===null, пока идёт проверка сети.
+  // Снимаем фон сплеша сразу на первом рендере: authed решён локально (по токену),
+  // так что и Shell, и экран входа рисуются без сетевого ожидания — как tweb.
   useEffect(() => {
-    if (authed !== null) removeInitialLoader()
-  }, [authed])
+    removeInitialLoader()
+  }, [])
 
   // Тема управляется атрибутом data-theme на <html> (useThemeToggle) — MUI
   // ThemeProvider не нужен.
-  return authed === null ? null : authed ? (
+  return authed ? (
     <Shell onToggleMode={toggleMode} onLogout={logout} />
   ) : (
     <AuthFlow onComplete={login} onToggleMode={toggleMode} />

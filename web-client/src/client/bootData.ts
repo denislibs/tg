@@ -10,6 +10,9 @@ export interface BootData {
   me: Promise<User | null>
   dialogs: Promise<Dialog[]>
   hydratedFromCache: boolean
+  // Есть ли локальный session_token (IDB). По нему useAuthGate решает authed до
+  // ответа сети (как tweb — auth из локального состояния), без промежуточного null.
+  hasToken: boolean
 }
 
 export let bootData: BootData | null = null

@@ -1,11 +1,10 @@
-// Проверка авторизации при старте + вход/выход. authed=null — идёт проверка
-// (рендерим ничего), false — экран входа, true — Shell. logout при мультиаккаунте
-// перезагружает под оставшимся аккаунтом.
+// Проверка авторизации при старте + вход/выход. false — экран входа, true — Shell.
+// logout при мультиаккаунте перезагружает под оставшимся аккаунтом.
 //
-// Offline-first: если список чатов уже отрисован из IDB-кэша (bootData), стартуем
-// с authed=true оптимистично и подтверждаем/опровергаем сетевым me() в фоне —
-// как tweb (auth из кэша, реконсайл сетью). При отсутствии кэша — как раньше:
-// authed=null до ответа сети.
+// Как tweb: authed решается по ЛОКАЛЬНОМУ состоянию (наличие session_token в IDB,
+// bootData.hasToken), а не по сети — поэтому промежуточного null нет, приложение
+// (или экран входа) рисуется сразу, без стартового спиннера. Сетевой me() в фоне
+// подтверждает/опровергает: истёкшая сессия → logout (миг пустого Shell, как в tweb).
 import { useEffect, useState } from 'react'
 import { useManagers } from './useManagers'
 import { PREV_ACCOUNT_KEY } from '../accountTransition'
@@ -13,14 +12,15 @@ import { bootData } from '../../client/bootData'
 import { clearChatsCache } from '../../stores/chatsCache'
 
 export interface AuthGate {
-  authed: boolean | null
+  authed: boolean
   login: () => void
   logout: () => void
 }
 
 export function useAuthGate(): AuthGate {
   const managers = useManagers()
-  const [authed, setAuthed] = useState<boolean | null>(bootData?.hydratedFromCache ? true : null)
+  // Локальное решение: есть токен → оптимистично Shell, нет → экран входа.
+  const [authed, setAuthed] = useState<boolean>(!!bootData?.hasToken)
 
   useEffect(() => {
     ;(bootData?.me ?? managers.auth.me())
@@ -29,9 +29,9 @@ export function useAuthGate(): AuthGate {
         else { setAuthed(false); void clearChatsCache() } // сессия истекла — сбрасываем кэш
       })
       .catch(() => {
-        // Сеть недоступна: с кэшем остаёмся в оффлайн-режиме (authed уже true),
-        // без кэша — экран входа.
-        if (!bootData?.hydratedFromCache) setAuthed(false)
+        // Сеть недоступна: с валидным токеном остаёмся в оффлайн-режиме (authed уже
+        // true); без токена — экран входа.
+        if (!bootData?.hasToken) setAuthed(false)
       })
   }, [managers])
 
