@@ -27,6 +27,7 @@ import { useShellTheme } from './core/hooks/useShellTheme'
 import { useAppHotkeys } from './core/hooks/useAppHotkeys'
 import { useAuthGate } from './core/hooks/useAuthGate'
 import { useThemeToggle } from './core/hooks/useThemeToggle'
+import { removeInitialLoader } from './client/initialLoader'
 import s from './App.module.scss'
 import useMediaQuery from './shared/lib/useMediaQuery'
 
@@ -171,6 +172,12 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 function ThemedApp() {
   const { authed, login, logout } = useAuthGate()
   const toggleMode = useThemeToggle()
+
+  // Снимаем сплеш, когда есть что показать (Shell или экран входа). До этого он
+  // перекрывает пустой authed===null, пока идёт проверка сети.
+  useEffect(() => {
+    if (authed !== null) removeInitialLoader()
+  }, [authed])
 
   // Тема управляется атрибутом data-theme на <html> (useThemeToggle) — MUI
   // ThemeProvider не нужен.

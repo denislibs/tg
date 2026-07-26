@@ -17,6 +17,8 @@ import { ManagersProvider } from './core/hooks/useManagers'
 import { startClient } from './client/bootstrap'
 import { initPwaInstall } from './core/pwa'
 import { getInitial, loadLang } from './i18n'
+import { setBootData } from './client/bootData'
+import { hydrateChatsFromCache, startChatsCachePersist } from './stores/chatsCache'
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => { /* push unavailable */ })
@@ -29,17 +31,16 @@ initPwaInstall()
 // (tests render subtrees under their own <ManagersProvider managers={mock}>).
 const { managers } = startClient()
 
-// Убираем статический сплеш (index.html) после первого рендера — с фейдом.
-function removeInitialLoader() {
-  const loader = document.getElementById('initial-loader')
-  if (!loader) return
-  loader.classList.add('hide')
-  loader.addEventListener('transitionend', () => loader.remove(), { once: true })
-}
+// #1 — критические RPC стартуют СРАЗУ, до рендера: к моменту mount ответ уже
+// летит (параллельно с бандлом, словарём, гидрацией). Переиспользуются в
+// useAuthGate/первом loadChats — без второго round-trip.
+const bootMe = managers.auth.me()
+const bootDialogs = managers.chats.listDialogs()
 
-// Загружаем словарь активного языка до первого рендера — иначе не-английский UI
-// на миг мигнул бы английским, пока подтягивается языковой чанк.
-void loadLang(getInitial()).then(() => {
+// #2 — гидрация списка чатов из IDB-кэша + словарь: и то и другое до первого
+// рендера, чтобы сразу показать последний известный UI (offline-first).
+void Promise.all([hydrateChatsFromCache(), loadLang(getInitial())]).then(([hydratedFromCache]) => {
+  setBootData({ me: bootMe, dialogs: bootDialogs, hydratedFromCache })
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       <ManagersProvider managers={managers}>
@@ -47,5 +48,5 @@ void loadLang(getInitial()).then(() => {
       </ManagersProvider>
     </React.StrictMode>,
   )
-  requestAnimationFrame(removeInitialLoader)
+  startChatsCachePersist() // персист диалогов для следующего холодного старта
 })
