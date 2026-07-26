@@ -11,8 +11,63 @@
             crossOrigin="anonymous"
             src="//unpkg.com/react-scan@1.2.0/dist/auto.global.js"
     ></script>
+    <!-- Тема до первого paint (без FOUC и чтобы фон сплеша совпал с приложением).
+         Дублирует settings.tsx: tg-settings.themeChoice, legacy tg-theme, system→OS. -->
+    <script>
+      try {
+        var raw = localStorage.getItem('tg-settings')
+        var choice = raw ? JSON.parse(raw).themeChoice : null
+        if (!choice) {
+          var legacy = localStorage.getItem('tg-theme')
+          choice = legacy === 'dark' ? 'night' : legacy === 'light' ? 'classic' : 'system'
+        }
+        if (choice === 'system') {
+          choice = matchMedia('(prefers-color-scheme: dark)').matches ? 'night' : 'classic'
+        }
+        document.documentElement.dataset.theme = choice
+      } catch (e) { /* приватный режим / битый JSON — останется дефолт */ }
+    </script>
+    <!-- Статический сплеш-спиннер (разметка/анимация 1:1 из tweb putPreloader +
+         _preloader.scss). Виден пока грузится бандл и языковой чанк, до монтирования
+         React; убирается в main.tsx после первого рендера. -->
+    <style>
+      #initial-loader {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #ffffff;
+        transition: opacity 0.2s ease-in-out;
+      }
+      html[data-theme='night'] #initial-loader,
+      html[data-theme='dark'] #initial-loader { background: #212121; }
+      #initial-loader.hide { opacity: 0; }
+      #initial-loader .preloader-circular {
+        animation: initial-loader-rotate 1s linear infinite;
+        width: 54px;
+        height: 54px;
+        transform-origin: center center;
+      }
+      #initial-loader .preloader-path {
+        stroke-dasharray: 93.6375, 124.85;
+        stroke-dashoffset: 0;
+        stroke-linecap: round;
+        stroke: #3390ec;
+        stroke-width: 3;
+      }
+      html[data-theme='night'] #initial-loader .preloader-path,
+      html[data-theme='dark'] #initial-loader .preloader-path { stroke: #ffffff; }
+      @keyframes initial-loader-rotate { 100% { transform: rotate(360deg); } }
+    </style>
   </head>
   <body>
+    <div id="initial-loader">
+      <svg xmlns="http://www.w3.org/2000/svg" class="preloader-circular" viewBox="25 25 50 50">
+        <circle class="preloader-path" cx="50" cy="50" r="20" fill="none" stroke-miterlimit="10" />
+      </svg>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

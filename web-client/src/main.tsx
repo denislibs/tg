@@ -29,6 +29,14 @@ initPwaInstall()
 // (tests render subtrees under their own <ManagersProvider managers={mock}>).
 const { managers } = startClient()
 
+// Убираем статический сплеш (index.html) после первого рендера — с фейдом.
+function removeInitialLoader() {
+  const loader = document.getElementById('initial-loader')
+  if (!loader) return
+  loader.classList.add('hide')
+  loader.addEventListener('transitionend', () => loader.remove(), { once: true })
+}
+
 // Загружаем словарь активного языка до первого рендера — иначе не-английский UI
 // на миг мигнул бы английским, пока подтягивается языковой чанк.
 void loadLang(getInitial()).then(() => {
@@ -39,4 +47,5 @@ void loadLang(getInitial()).then(() => {
       </ManagersProvider>
     </React.StrictMode>,
   )
+  requestAnimationFrame(removeInitialLoader)
 })
