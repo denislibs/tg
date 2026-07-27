@@ -50,7 +50,8 @@ src/
 │   ├── auth/tokenStore.ts    # токен сессии (IndexedDB + память)
 │   ├── net/                  # restClient.ts (GET/POST/PUT/PATCH/DELETE), wsClient.ts
 │   ├── realtime/             # connectionManager.ts (стейт-машина + outbox + heartbeat),
-│   │                         #   events.ts (типы RT-событий), syncEngine.ts
+│   │                         #   events.ts (RT-каталог), eventBus.ts (типизир. шина), syncEngine.ts
+│   ├── liveShareEngine.ts    # императивный lifecycle live-геопозиции (вне стора)
 │   ├── managers/             # messagesManager, mediaManager, chats/groups/channels,
 │   │                         #   profile, stories, contacts, presence, push, auth, health
 │   ├── hooks/                # useMessageWindow (пагинация окна), useVoiceRecorder,
@@ -58,12 +59,15 @@ src/
 │   ├── history/slicedArray.ts # разрежённый seq-кэш истории
 │   ├── dom/                  # scrollSaver, getViewportSlice, smoothScrollToElement, …
 │   ├── audio/                # звуки звонков, плеер, waveform
-│   └── store/idbKv.ts        # key-value в IndexedDB
+│   └── store/                # idbKv.ts (key-value в IndexedDB), persist.ts (норм. офлайн-стор)
 │
-├── stores/               # Zustand: chatsStore, storiesStore, callStore, audioStore,
-│                         #   voicePlayedStore, connectionStore
-├── client/               # bootstrap.ts (startClient), realtimeBridge.ts (RT → UI), pushSetup.ts
-├── rpc/                  # superMessagePort.ts, managersProxy.ts (RPC к воркеру)
+├── stores/               # Zustand (чистое состояние): chatsStore, messagesStore, storiesStore,
+│                         #   callStore, audioStore, …; dialogsPersist.ts (диалоги+me ↔ persist)
+├── client/               # bootstrap.ts (startClient + тип Managers), realtimeBridge.ts (насос
+│   └── realtime/         #   smp→eventBus + регистрация), realtime/: storeProjection.ts,
+│                         #   soundSubscriber.ts, notificationSubscriber.ts; pushSetup.ts
+├── rpc/                  # superMessagePort.ts (настоящий RPC), managersProxy.ts (прокси к воркеру)
+├── lib/                  # вендор-подсистемы: lottie/, customEmoji/, twebMessagePort.ts (порт из tweb)
 ├── protocol/frames.ts    # кодирование WS-кадров {t, d}
 │
 └── components/
@@ -83,13 +87,21 @@ src/
 
 ## Архитектура и поток данных
 
-Строго **однонаправленный** поток (детали и обоснование — в
-[`../docs/research/2026-06-29-frontend-refactor-plan.md`](../docs/research/2026-06-29-frontend-refactor-plan.md)):
+Строго **однонаправленный** поток. Исходное обоснование — в
+[`../docs/research/2026-06-29-frontend-refactor-plan.md`](../docs/research/2026-06-29-frontend-refactor-plan.md);
+последующий рефакторинг (типизация Managers, EventBus, вынос Store-проектора и др.) —
+в [`../docs/research/2026-07-28-web-client-refactor-plan.md`](../docs/research/2026-07-28-web-client-refactor-plan.md).
 
 ```
-вверх (данные):  сервер → smp → realtimeBridge → store → селектор → View
+вверх (данные):  сервер → smp → eventBus → { Store-проектор, Sound, Notifications } → store → селектор → View
 вниз (команды):  View → хук (use*) → manager → worker → сервер
 ```
+
+Наверху — **event-driven**: воркер шлёт realtime-кадры через `smp`, единственный «насос»
+(`client/realtimeBridge.ts`) публикует их в `core/realtime/eventBus.ts`, а независимые
+подписчики разбирают: `storeProjection` пишет в сторы, `soundSubscriber` — звук/эффекты,
+`notificationSubscriber` — браузерные уведомления. Добавить нового потребителя события
+(например, аналитику) = отдельный модуль + одна строка `eventBus.subscribe`, без правок моста.
 
 ### Слои и кто за что отвечает
 
@@ -98,19 +110,31 @@ src/
   компоненту данные + действия (`useChatSend`, `useMessageWindow`, `useMessageActions`, …).
 - **Store** (`stores/*`, Zustand) — нормализованное хранилище сущностей по id, **единственный
   источник истины** на клиенте (~25 сторов: `chatsStore`, `messagesStore`, `storiesStore`,
-  `callStore`, `navigationStore`, `searchStore`, …).
-- **realtimeBridge** (`client/realtimeBridge.ts`) — **единственный** канал «сервер → store».
+  `callStore`, `navigationStore`, `searchStore`, …). Сторы — **чистое состояние**: в сеть не
+  ходят (сеть — в хуках/менеджерах/движках). Мелкий стор, колокейтед со своей фичей
+  (`settings`, `i18n`, `pip`, `pwa`, `webapp`), живёт рядом с ней — это норма.
+- **eventBus** (`core/realtime/eventBus.ts`) — типизированная шина realtime-событий
+  (каталог `RtEventMap`: событие → тип payload); единственный веер «сервер → потребители».
+- **realtimeBridge** (`client/realtimeBridge.ts`) — тонкий оркестратор: насос `smp → eventBus`
+  (единственный потребитель `smp`) + регистрация подписчиков. Обработчики живут в подписчиках.
+- **storeProjection** (`client/realtime/storeProjection.ts`) — подписчик eventBus, проецирующий
+  события в сторы (реестр `APPLY` для «1:1» + особые обработчики); **единственный** пишущий
+  realtime → store. Рядом — `soundSubscriber`, `notificationSubscriber`.
 - **managers** (`core/managers/*`) — команды/запросы к бэку (REST/WS); не знают про React/DOM
   (~40 менеджеров: `messagesManager`, `mediaManager`, `chatsManager`, `channelsManager`,
-  `storiesManager`, `callsManager`, `secretManager`, …).
+  `storiesManager`, `callsManager`, `secretManager`, …). Их типы (`Managers`) **выводятся из
+  фабрик** `new*Manager` (без ручного дубля сигнатур на UI-стороне).
 
 ### Web Worker + RPC
 
 Менеджеры и сетевой слой живут в **Web/SharedWorker**, а не в UI-потоке. Общение — через
 `SuperMessagePort` (`rpc/superMessagePort.ts`): `invoke`/`handle`/`emit`. UI дергает менеджеров
 через прокси (`rpc/managersProxy.ts`, доступ из React — `useManagers()`, вне React —
-`startClient().managers`). Так тяжёлая работа (крипта секретных чатов, разбор кадров, кэш истории)
-не блокирует рендер.
+`startClient().managers`); тип `Managers` выводится из фабрик менеджеров. Так тяжёлая работа
+(крипта секретных чатов, разбор кадров, кэш истории) не блокирует рендер.
+
+> Не путать с `lib/twebMessagePort.ts` — это **вендорный** (из tweb 1:1, `@ts-nocheck`) порт
+> для воркеров lottie/customEmoji; настоящий RPC приложения — `rpc/superMessagePort.ts`.
 
 ### Транспорт
 
@@ -131,9 +155,14 @@ src/
 
 ### Инварианты (НЕ нарушать)
 
-- Подписка на сокет — **только** в `realtimeBridge`. Компоненты и хуки **читают из стора**, не из сокета.
+- Потребитель `smp` — **только** насос в `realtimeBridge`. Нужны realtime-события в новом модуле —
+  подписывайся на `eventBus.subscribe`, а не на `smp`. Компоненты и хуки **читают из стора**, не из сокета.
+- Пишущий realtime → store — **только** `storeProjection`. Прочие подписчики (звук, уведомления,
+  аналитика) читают состояние, но не дублируют запись сущностей.
 - Одна сущность живёт в сторе один раз (нормализовано по id). Не дублировать realtime-данные и не
   держать в `useState` копию того, что уже в сторе (производные — мемо-селектором).
+- Сторы — чистое состояние: **не ходят в сеть** (сеть — в хуках/менеджерах; императивный lifecycle,
+  как live-геопозиция, — в движках вроде `core/liveShareEngine.ts`).
 - `useEffect` — для честных side-effect'ов (DOM-listener, императивный скролл), не для синхронизации стора.
 
 ### Пример: путь команды через слои
@@ -152,13 +181,16 @@ src/
 [Backend]     nginx → ws → usecase/chat → Postgres (seq)
    ▲
    │  {t:"message_ack"|"new_message"}  ──SuperMessagePort.emit──►  (граница Worker → UI)
-[Bridge]      client/realtimeBridge.ts: rt:ack → messagesStore.reconcileAck;
+[Bridge]      client/realtimeBridge.ts: насос smp → eventBus.publish(rt:ack | rt:new_message)
+   │
+[Subscriber]  storeProjection: rt:ack → messagesStore.reconcileAck;
    │          rt:new_message → messagesStore.applyIncoming (dedup по id)
+   │          (параллельно soundSubscriber играет «пак», notificationSubscriber — уведомление)
 [Store→View]  Zustand уведомляет селекторы → бабл «дорастает» до отправленного/прочитанного
 ```
 
 Каждый слой знает только соседний: View не знает про сокет, менеджеры не знают про React/DOM,
-`realtimeBridge` — единственный, кто пишет в стор из realtime.
+`storeProjection` — единственный, кто пишет в стор из realtime.
 
 ### Авторизация
 

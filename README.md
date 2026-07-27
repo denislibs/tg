@@ -199,12 +199,16 @@ Composer → useChatSend (hook) → managersProxy.messages.send
 ```
 Postgres commit → usecase публикует update в Redis pub/sub
    → ws-hub каждой ноды → активные соединения → кадр {t, d} клиенту
-   → wsClient → SuperMessagePort → client/realtimeBridge (ЕДИНСТВЕННЫЙ мост «сокет → стор»)
+   → wsClient → SuperMessagePort → client/realtimeBridge (насос: ЕДИНСТВЕННЫЙ потребитель smp)
+   → eventBus.publish → подписчики: storeProjection (пишет в стор), soundSubscriber, notificationSubscriber
    → Zustand-store (нормализовано по id) → селектор → React-компонент
 ```
 
-Ключевой инвариант фронта: **компоненты читают из стора, а не из сокета**. Все realtime-кадры
-проходят через один `realtimeBridge`, который и мутирует сторы; UI лишь подписан на сторы селекторами.
+Фронт **event-driven**: насос перекачивает все realtime-кадры в типизированную шину
+`eventBus`, а независимые подписчики их разбирают. Ключевые инварианты: **компоненты читают
+из стора, а не из сокета**; в стор из realtime пишет **только** `storeProjection`; сами сторы —
+чистое состояние (в сеть не ходят). Новый потребитель события (аналитика/лог) = одна строка
+`eventBus.subscribe`. Подробнее — в [`web-client/README.md`](web-client/README.md).
 
 **Догон после оффлайна:** при реконнекте клиент запрашивает `GET /sync` (и `GET /channels/{id}/difference`
 по `pts` для каналов) — сервер отдаёт пропущенные апдейты, клиент применяет их тем же путём через стор.
