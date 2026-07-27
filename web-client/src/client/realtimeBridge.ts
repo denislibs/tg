@@ -4,7 +4,7 @@ import { loadChats, useChatsStore } from '../stores/chatsStore'
 import { useMessagesStore } from '../stores/messagesStore'
 import { usePinsStore } from '../stores/pinsStore'
 import { useStarsStore } from '../stores/starsStore'
-import { mapMessage, mapDraft, mapPoll, mapChecklist, mapGeo, mapWebPage, mapFactCheck, mapBoostStatus, mapGiveaway, mapSuggestedPost, type RawPoll, type RawChecklist, type RawBoostStatus, type RawGiveaway } from '../core/models'
+import { fromNewMessageEvt, mapDraft, mapPoll, mapChecklist, mapGeo, mapWebPage, mapFactCheck, mapBoostStatus, mapGiveaway, mapSuggestedPost, type RawPoll, type RawChecklist, type RawBoostStatus, type RawGiveaway } from '../core/models'
 import { useBoostsStore } from '../stores/boostsStore'
 import { useSuggestedPostsStore } from '../stores/suggestedPostsStore'
 import { useDraftsStore } from '../stores/draftsStore'
@@ -41,12 +41,43 @@ function scheduleChatsReload(managers: Parameters<typeof loadChats>[0]): void {
   }, 300)
 }
 
+// Реестр «1:1» realtime-обработчиков: событие → одна мутация стора, без побочных
+// эффектов. Добавить такое событие = одна строка здесь (подписка — циклом ниже).
+// Обработчики с таймерами/uiEvents/meId/сетью/движками остаются явными в startRealtime.
+const APPLY: Record<string, (raw: unknown) => void> = {
+  [RT.mediaRead]: (raw) => { const e = raw as MediaReadEvt; useMessagesStore.getState().applyMediaRead(e.chat_id, e.msg_id) },
+  [RT.chatRemoved]: (raw) => useChatsStore.getState().removeDialog((raw as ChatRemovedEvt).chat_id),
+  // Live-агрегаты опроса / чек-листа / розыгрыша / бустов / предложки поста.
+  [RT.pollUpdate]: (raw) => { const e = raw as { chat_id: number; poll: RawPoll }; useMessagesStore.getState().applyPollUpdate(e.chat_id, mapPoll(e.poll)) },
+  [RT.checklistUpdate]: (raw) => { const e = raw as { chat_id: number; checklist: RawChecklist }; useMessagesStore.getState().applyChecklistUpdate(e.chat_id, mapChecklist(e.checklist)) },
+  [RT.boostUpdate]: (raw) => { const e = raw as { chat_id: number; status: RawBoostStatus }; useBoostsStore.getState().applyStatus(e.chat_id, mapBoostStatus(e.status)) },
+  [RT.giveawayUpdate]: (raw) => { const e = raw as { chat_id: number; giveaway: RawGiveaway }; useMessagesStore.getState().applyGiveawayUpdate(e.chat_id, mapGiveaway(e.giveaway)) },
+  [RT.suggestedPost]: (raw) => { const e = raw as SuggestedPostEvt; useSuggestedPostsStore.getState().apply(e.chat_id, mapSuggestedPost(e.post)) },
+  // Тема оформления / пин / архив / mute диалога (с другого устройства/вкладки).
+  [RT.chatThemeUpdate]: (raw) => { const e = raw as ChatThemeUpdateEvt; useChatsStore.getState().setDialogTheme(e.chat_id, e.theme_id) },
+  [RT.dialogPin]: (raw) => { const e = raw as { chat_id: number; pinned: boolean }; useChatsStore.getState().setDialogPinned(e.chat_id, e.pinned) },
+  [RT.dialogArchive]: (raw) => { const e = raw as { chat_id: number; archived: boolean }; useChatsStore.getState().setDialogArchived(e.chat_id, e.archived) },
+  [RT.dialogMute]: (raw) => { const e = raw as { chat_id: number; muted: boolean }; useChatsStore.getState().setDialogMuted(e.chat_id, e.muted) },
+  // Edit/delete/гео-трансляция/web-page/fact-check → окно сообщений чата.
+  [RT.editMessage]: (raw) => { const e = raw as EditMessageEvt; useMessagesStore.getState().applyEdit(e.chat_id, e.msg_id, e.text, e.edited_at, e.entities ?? undefined, e.reply_markup ? mapReplyMarkup(e.reply_markup) : null) },
+  [RT.deleteMessage]: (raw) => { const e = raw as DeleteMessageEvt; useMessagesStore.getState().applyDelete(e.chat_id, e.msg_id) },
+  [RT.geoLiveUpdate]: (raw) => { const e = raw as GeoLiveUpdateEvt; useMessagesStore.getState().applyGeoLive(e.chat_id, e.msg_id, mapGeo(e.geo)) },
+  [RT.webPageUpdate]: (raw) => { const e = raw as WebPageUpdateEvt; useMessagesStore.getState().applyWebPage(e.chat_id, e.msg_id, mapWebPage(e.web_page)) },
+  [RT.factCheckUpdate]: (raw) => { const e = raw as FactCheckUpdateEvt; useMessagesStore.getState().applyFactCheck(e.chat_id, e.msg_id, e.factcheck ? mapFactCheck(e.factcheck) : undefined) },
+  // Новый баланс звёзд; удаление истории.
+  [RT.balanceUpdate]: (raw) => { const b = (raw as { balance: number }).balance; if (typeof b === 'number') useStarsStore.getState().setBalance(b) },
+  [RT.storyDeleted]: (raw) => { const e = raw as StoryDeletedEvt; useStoriesStore.getState().removeStory(e.author_id, e.story_id) },
+}
+
 // Subscribe to worker realtime events exactly once per page.
 export function startRealtime(): void {
   if (started) return
   started = true
   const { smp, managers } = startClient()
   const store = useChatsStore.getState()
+
+  // 1:1-события (см. APPLY) — одним циклом; ниже только обработчики с побочными эффектами.
+  for (const [ev, fn] of Object.entries(APPLY)) smp.on(ev, fn)
 
   smp.on(RT.newMessage, (m) => {
     const evt = m as NewMessageEvt
@@ -64,11 +95,11 @@ export function startRealtime(): void {
     // unread-below is decided in ConversationView (it needs scroll/focus state).
     const ms = useMessagesStore.getState()
     const rt = evt.reply_to_id != null ? ms.byKey[String(evt.chat_id)]?.msgs.find((x) => x.id === evt.reply_to_id) : undefined
+    // Резолвим превью ответа из уже загруженного окна, чтобы ответ показал цитату
+    // сразу (в кадре её нет). Маппинг кадра → Message + инжект secret_media внутри
+    // fromNewMessageEvt (единый источник, см. models.ts).
     const replyTo = rt ? { msg_id: rt.id, seq: rt.seq, sender_id: rt.senderId, text: rt.text, type: rt.type, quote_text: evt.reply_quote_text || undefined } : null
-    const incoming = mapMessage({ id: evt.msg_id, chat_id: evt.chat_id, seq: evt.seq, sender_id: evt.sender_id, type: evt.type, text: evt.text, entities: evt.entities ?? null, reply_to_id: evt.reply_to_id ?? null, media_id: evt.media_id, created_at: evt.created_at, fwd_from_user_id: evt.fwd_from_user_id ?? null, fwd_from_chat_id: evt.fwd_from_chat_id ?? null, fwd_from_msg_id: evt.fwd_from_msg_id ?? null, fwd_date: evt.fwd_date ?? null, reply_to: replyTo, reply_to_peer_id: evt.reply_to_peer_id ?? null, reply_snapshot_name: evt.reply_snapshot_name, reply_snapshot_text: evt.reply_snapshot_text, media_unread: evt.media_unread, grouped_id: evt.grouped_id ?? null, geo: evt.geo ?? null, contact: evt.contact ?? null, gift: evt.gift ?? null, reply_markup: evt.reply_markup ?? null, thread_root_id: evt.thread_root_id ?? null, media_w: evt.media_w, media_h: evt.media_h, media_mime: evt.media_mime, media_blur: evt.media_blur, media_has_thumb: evt.media_has_thumb, media_duration: evt.media_duration, media_size: evt.media_size, media_name: evt.media_name, effect: evt.effect ?? null, paid_media: evt.paid_media ?? null })
-    // E2E-медиа секретного чата: воркер расшифровал enc_body и положил key/iv/mime
-    // в secret_media (не проводное поле → инжектим после mapMessage). secret тоже.
-    if (evt.secret_media) { incoming.secretMedia = evt.secret_media; incoming.secret = true }
+    const incoming = fromNewMessageEvt(evt, replyTo)
     ms.applyIncoming(evt.chat_id, incoming)
     // Эффект сообщения (наш аналог Telegram message effects): чужое сообщение с
     // эффектом, пришедшее в ОТКРЫТЫЙ чат, проигрываем один раз (своё уже сыграли
@@ -83,13 +114,6 @@ export function startRealtime(): void {
     notifyIncomingMessage(evt)
   })
   smp.on(RT.read, (r) => { store.applyRead(r as ReadEvt); uiEvents.emit(RT.read, r) })
-  smp.on(RT.mediaRead, (raw) => {
-    const e = raw as MediaReadEvt
-    useMessagesStore.getState().applyMediaRead(e.chat_id, e.msg_id)
-  })
-  smp.on(RT.chatRemoved, (raw) => {
-    useChatsStore.getState().removeDialog((raw as ChatRemovedEvt).chat_id)
-  })
   // Черновик изменён на другом устройстве/вкладке (или снят отправкой/очисткой)
   smp.on(RT.draftUpdate, (raw) => {
     const e = raw as DraftUpdateEvt
@@ -97,52 +121,6 @@ export function startRealtime(): void {
     if (e.draft) st.setDraft(mapDraft(e.draft))
     else st.removeDraft(e.chat_id)
     uiEvents.emit(RT.draftUpdate, e)
-  })
-  // Live-агрегаты опроса (poll_update): голос/закрытие в любом чате
-  smp.on(RT.pollUpdate, (raw) => {
-    const e = raw as { chat_id: number; poll: RawPoll }
-    useMessagesStore.getState().applyPollUpdate(e.chat_id, mapPoll(e.poll))
-  })
-  // Обновление чек-листа (checklist_update): отметка/добавление пункта в любом чате
-  smp.on(RT.checklistUpdate, (raw) => {
-    const e = raw as { chat_id: number; checklist: RawChecklist }
-    useMessagesStore.getState().applyChecklistUpdate(e.chat_id, mapChecklist(e.checklist))
-  })
-  // Тема оформления чата сменилась (общая для чата) — пишем в стор диалогов,
-  // ConversationView перекрашивает область активного чата.
-  smp.on(RT.chatThemeUpdate, (raw) => {
-    const e = raw as ChatThemeUpdateEvt
-    useChatsStore.getState().setDialogTheme(e.chat_id, e.theme_id)
-  })
-  // Счётчик/уровень бустов канала (boost_update).
-  smp.on(RT.boostUpdate, (raw) => {
-    const e = raw as { chat_id: number; status: RawBoostStatus }
-    useBoostsStore.getState().applyStatus(e.chat_id, mapBoostStatus(e.status))
-  })
-  // Live-статус розыгрыша (giveaway_update): число участников/завершение.
-  smp.on(RT.giveawayUpdate, (raw) => {
-    const e = raw as { chat_id: number; giveaway: RawGiveaway }
-    useMessagesStore.getState().applyGiveawayUpdate(e.chat_id, mapGiveaway(e.giveaway))
-  })
-  // Новая/решённая предложка поста (suggested_post_update).
-  smp.on(RT.suggestedPost, (raw) => {
-    const e = raw as SuggestedPostEvt
-    useSuggestedPostsStore.getState().apply(e.chat_id, mapSuggestedPost(e.post))
-  })
-  // Пин/архив диалога с другого устройства/вкладки (dialog_pin / dialog_archive)
-  smp.on(RT.dialogPin, (raw) => {
-    const e = raw as { chat_id: number; pinned: boolean }
-    useChatsStore.getState().setDialogPinned(e.chat_id, e.pinned)
-  })
-  smp.on(RT.dialogArchive, (raw) => {
-    const e = raw as { chat_id: number; archived: boolean }
-    useChatsStore.getState().setDialogArchived(e.chat_id, e.archived)
-  })
-  // Кросс-таб-эхо mute (клиентское, ретранслирует воркер): вкладка-инициатор уже
-  // обновилась оптимистично — здесь идемпотентно догоняются остальные вкладки.
-  smp.on(RT.dialogMute, (raw) => {
-    const e = raw as { chat_id: number; muted: boolean }
-    useChatsStore.getState().setDialogMuted(e.chat_id, e.muted)
   })
   smp.on(RT.presence, (p) => { store.setPresence(p as PresenceEvt); uiEvents.emit(RT.presence, p) })
   smp.on(RT.typing, (raw) => {
@@ -160,32 +138,6 @@ export function startRealtime(): void {
       }, TYPING_TTL),
     )
     uiEvents.emit(RT.typing, t)
-  })
-  // Edit/delete carry chat_id → apply straight to that chat's message window.
-  smp.on(RT.editMessage, (raw) => {
-    const e = raw as EditMessageEvt
-    const markup = e.reply_markup ? mapReplyMarkup(e.reply_markup) : null
-    useMessagesStore.getState().applyEdit(e.chat_id, e.msg_id, e.text, e.edited_at, e.entities ?? undefined, markup)
-  })
-  smp.on(RT.deleteMessage, (raw) => {
-    const e = raw as DeleteMessageEvt
-    useMessagesStore.getState().applyDelete(e.chat_id, e.msg_id)
-  })
-  smp.on(RT.geoLiveUpdate, (raw) => {
-    const e = raw as GeoLiveUpdateEvt
-    useMessagesStore.getState().applyGeoLive(e.chat_id, e.msg_id, mapGeo(e.geo))
-  })
-  // Догоняющее серверное превью ссылки: карточка web page добирается к уже
-  // отрисованному сообщению (сервер строит её после коммита отправки).
-  smp.on(RT.webPageUpdate, (raw) => {
-    const e = raw as WebPageUpdateEvt
-    useMessagesStore.getState().applyWebPage(e.chat_id, e.msg_id, mapWebPage(e.web_page))
-  })
-  // «Проверка фактов» прикреплена/изменена/снята: блок fact-check добирается/
-  // исчезает у уже отрисованного сообщения (factcheck===null — снята).
-  smp.on(RT.factCheckUpdate, (raw) => {
-    const e = raw as FactCheckUpdateEvt
-    useMessagesStore.getState().applyFactCheck(e.chat_id, e.msg_id, e.factcheck ? mapFactCheck(e.factcheck) : undefined)
   })
   // Pin/unpin: refetch the chat's pins and write them to the store (the only
   // socket subscription for pins — usePinnedBar just reads the store).
@@ -231,16 +183,11 @@ export function startRealtime(): void {
   smp.on(RT.groupCall, (raw) => { handleGroupCallFrame(raw as GroupCallFrame) })
   // RTMP-трансляция: старт/стоп → livestreamStore (плашка LIVE + экран просмотра)
   smp.on(RT.livestream, (raw) => { handleLivestreamFrame(raw as LivestreamFrame) })
-  // Новый баланс звёзд (после пополнения/подарка/конвертации) — в starsStore.
-  smp.on(RT.balanceUpdate, (raw) => {
-    const b = (raw as { balance: number }).balance
-    if (typeof b === 'number') useStarsStore.getState().setBalance(b)
-  })
   // Платное медиа разблокировано покупателем (на всех его вкладках): раскрываем
   // баббл — полное медиа приезжает готовым сообщением (тот же payload, что new_message).
   smp.on(RT.paidMediaUnlock, (raw) => {
     const e = raw as NewMessageEvt
-    const incoming = mapMessage({ id: e.msg_id, chat_id: e.chat_id, seq: e.seq, sender_id: e.sender_id, type: e.type, text: e.text, entities: e.entities ?? null, reply_to_id: e.reply_to_id ?? null, media_id: e.media_id, created_at: e.created_at, media_w: e.media_w, media_h: e.media_h, media_mime: e.media_mime, media_blur: e.media_blur, media_has_thumb: e.media_has_thumb, media_duration: e.media_duration, media_size: e.media_size, media_name: e.media_name, paid_media: e.paid_media ?? null })
+    const incoming = fromNewMessageEvt(e)
     useMessagesStore.getState().applyPaidUnlock(e.chat_id, incoming)
   })
   // Поздний ответ бота на callback (после таймаута синхронного ожидания) — тост.
@@ -288,10 +235,6 @@ export function startRealtime(): void {
     } else {
       void loadStories(managers)
     }
-  })
-  smp.on(RT.storyDeleted, (raw) => {
-    const e = raw as StoryDeletedEvt
-    useStoriesStore.getState().removeStory(e.author_id, e.story_id)
   })
   smp.on(RT.storyReaction, (raw) => {
     const e = raw as StoryReactionEvt

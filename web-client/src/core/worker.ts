@@ -104,6 +104,33 @@ function dispatchOther(u: unknown) {
   else if ('msg_id' in o) broadcast(RT.mediaRead, o)
 }
 
+// Реестр live-кадров WS — единый источник маршрутизации (заменяет длинный switch в
+// onFrame). CACHE_THEN_BROADCAST: кадр сперва отражаем в кэше истории воркера (иначе
+// переоткрытие чата отдаёт из кэша срез без свежего апдейта), затем broadcast.
+// PASS_THROUGH: кадр транслируется в UI как есть. Bespoke-кадры (new_message с E2E,
+// secret-handshake, обёртки звонков) остаются явными в onFrame.
+const CACHE_THEN_BROADCAST: Record<string, { rt: string; cache: (p: never) => void }> = {
+  edit_message:      { rt: RT.editMessage,     cache: (p) => messages.cacheEdit(p) },
+  delete_message:    { rt: RT.deleteMessage,   cache: (p) => messages.cacheDelete(p) },
+  paid_media_unlock: { rt: RT.paidMediaUnlock, cache: (p) => messages.cachePaidUnlock(p) },
+  geo_live_update:   { rt: RT.geoLiveUpdate,   cache: (p) => messages.cacheGeoLive(p) },
+  web_page_update:   { rt: RT.webPageUpdate,   cache: (p) => messages.cacheWebPage(p) },
+  factcheck_update:  { rt: RT.factCheckUpdate, cache: (p) => messages.cacheFactCheck(p) },
+}
+const PASS_THROUGH: Record<string, string> = {
+  message_ack: RT.ack, message_error: RT.messageError, pin_message: RT.pinMessage,
+  read: RT.read, media_read: RT.mediaRead, chat_removed: RT.chatRemoved,
+  typing: RT.typing, presence: RT.presence, reaction: RT.reaction, star_reaction: RT.starReaction,
+  draft_update: RT.draftUpdate, chat_theme_update: RT.chatThemeUpdate,
+  dialog_pin: RT.dialogPin, dialog_archive: RT.dialogArchive,
+  poll_update: RT.pollUpdate, checklist_update: RT.checklistUpdate,
+  boost_update: RT.boostUpdate, giveaway_update: RT.giveawayUpdate,
+  suggested_post_update: RT.suggestedPost, balance_update: RT.balanceUpdate,
+  bot_callback_answer: RT.botCallbackAnswer, story_new: RT.storyNew,
+  story_deleted: RT.storyDeleted, story_reaction: RT.storyReaction,
+  secret_chat_reject: RT.secretReject,
+}
+
 const ws = new WsClient('/ws')
 const sync = newSyncEngine({
   rest, store: { get: idbGet, set: idbSet },
@@ -122,11 +149,8 @@ const conn = newConnectionManager({
   onReady: () => { void sync.catchUp() },
   onState: (s) => broadcast(RT.state, { state: s }),
   onFrame: (type, payload) => {
-    if (type === 'message_ack') broadcast(RT.ack, payload)
-    else if (type === 'message_error') broadcast(RT.messageError, payload)
-    // Кэш истории живёт в этом воркере — live-кадры отражаем в нём ДО broadcast,
-    // иначе переоткрытие чата/треда отдаёт из кэша срез без свежих сообщений.
-    else if (type === 'new_message') {
+    // new_message: возможна E2E-расшифровка enc_body перед кэшем/broadcast → bespoke.
+    if (type === 'new_message') {
       const p = payload as { chat_id?: number; enc_body?: string; text?: string; entities?: unknown; secret_media?: unknown }
       if (p.enc_body && p.chat_id) {
         void secret.decryptMessage(p.chat_id, p.enc_body).then((dec) => {
@@ -136,50 +160,29 @@ const conn = newConnectionManager({
       } else {
         messages.cacheLive(payload as never); broadcast(RT.newMessage, payload)
       }
+      return
     }
-    else if (type === 'edit_message') { messages.cacheEdit(payload as never); broadcast(RT.editMessage, payload) }
-    else if (type === 'delete_message') { messages.cacheDelete(payload as never); broadcast(RT.deleteMessage, payload) }
-    else if (type === 'pin_message') broadcast(RT.pinMessage, payload)
-    else if (type === 'read') broadcast(RT.read, payload)
-    else if (type === 'media_read') broadcast(RT.mediaRead, payload)
-    else if (type === 'chat_removed') broadcast(RT.chatRemoved, payload)
-    else if (type === 'typing') broadcast(RT.typing, payload)
-    else if (type === 'presence') broadcast(RT.presence, payload)
-    else if (type === 'reaction') broadcast(RT.reaction, payload)
-    else if (type === 'star_reaction') broadcast(RT.starReaction, payload)
-    else if (type === 'draft_update') broadcast(RT.draftUpdate, payload)
-    else if (type === 'chat_theme_update') broadcast(RT.chatThemeUpdate, payload)
-    else if (type === 'dialog_pin') broadcast(RT.dialogPin, payload)
-    else if (type === 'dialog_archive') broadcast(RT.dialogArchive, payload)
-    else if (type === 'poll_update') broadcast(RT.pollUpdate, payload)
-    else if (type === 'checklist_update') broadcast(RT.checklistUpdate, payload)
-    else if (type === 'boost_update') broadcast(RT.boostUpdate, payload)
-    else if (type === 'giveaway_update') broadcast(RT.giveawayUpdate, payload)
-    else if (type === 'suggested_post_update') broadcast(RT.suggestedPost, payload)
-    else if (type === 'balance_update') broadcast(RT.balanceUpdate, payload)
-    // Платное медиа разблокировано покупателем: раскрываем баббл (полное медиа)
-    // на всех его вкладках; правим кэш истории воркера тем же payload.
-    else if (type === 'paid_media_unlock') { messages.cachePaidUnlock(payload as never); broadcast(RT.paidMediaUnlock, payload) }
-    else if (type === 'bot_callback_answer') broadcast(RT.botCallbackAnswer, payload)
-    else if (type === 'story_new') broadcast(RT.storyNew, payload)
-    else if (type === 'story_deleted') broadcast(RT.storyDeleted, payload)
-    else if (type === 'story_reaction') broadcast(RT.storyReaction, payload)
-    else if (type === 'geo_live_update') { messages.cacheGeoLive(payload as never); broadcast(RT.geoLiveUpdate, payload) }
-    else if (type === 'web_page_update') { messages.cacheWebPage(payload as never); broadcast(RT.webPageUpdate, payload) }
-    else if (type === 'factcheck_update') { messages.cacheFactCheck(payload as never); broadcast(RT.factCheckUpdate, payload) }
-    else if (type === 'secret_chat_request') {
+    // Кадры с отражением в кэше истории воркера ДО broadcast.
+    const cached = CACHE_THEN_BROADCAST[type]
+    if (cached) { cached.cache(payload as never); broadcast(cached.rt, payload); return }
+    // Секретный handshake: криптообработка в воркере до/вместо трансляции.
+    if (type === 'secret_chat_request') {
       const p = payload as { chat_id?: number; initiator_pub?: string }
       if (p.chat_id && p.initiator_pub) secret.stashRequest(p.chat_id, p.initiator_pub)
-      broadcast(RT.secretRequest, payload)
+      broadcast(RT.secretRequest, payload); return
     }
-    else if (type === 'secret_chat_accept') {
+    if (type === 'secret_chat_accept') {
       const p = payload as { chat_id?: number; responder_pub?: string }
       if (p.chat_id && p.responder_pub) void secret.complete(p.chat_id, p.responder_pub)
+      return
     }
-    else if (type === 'secret_chat_reject') broadcast(RT.secretReject, payload)
-    else if (type.startsWith('livestream_')) broadcast(RT.livestream, { t: type, d: payload })
-    else if (type.startsWith('group_call_')) broadcast(RT.groupCall, { t: type, d: payload })
-    else if (type.startsWith('call_')) broadcast(RT.call, { t: type, d: payload })
+    // Кадры-«обёртки» по префиксу (звонки/трансляции) → один RT с {t,d}.
+    if (type.startsWith('livestream_')) { broadcast(RT.livestream, { t: type, d: payload }); return }
+    if (type.startsWith('group_call_')) { broadcast(RT.groupCall, { t: type, d: payload }); return }
+    if (type.startsWith('call_')) { broadcast(RT.call, { t: type, d: payload }); return }
+    // Остальное — чистая трансляция в UI (см. PASS_THROUGH).
+    const rt = PASS_THROUGH[type]
+    if (rt) broadcast(rt, payload)
   },
 })
 
