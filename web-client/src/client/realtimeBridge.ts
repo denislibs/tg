@@ -12,10 +12,8 @@ import { useUploadsStore } from '../stores/uploadsStore'
 import { uiEvents } from '../core/hooks/uiEvents'
 import { mapReplyMarkup } from '../core/managers/botsManager'
 import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type GeoLiveUpdateEvt, type WebPageUpdateEvt, type FactCheckUpdateEvt, type ChatThemeUpdateEvt, type SuggestedPostEvt, type StoryNewEvt, type StoryDeletedEvt, type StoryReactionEvt } from '../core/realtime/events'
-import { playMessageSent } from '../core/audio/sounds'
-import { playEmojiEffect } from '../core/effects/emojiEffects'
-import { notifyIncomingMessage } from './uiNotifications'
-import { useSettingsStore } from '../settings'
+import { registerSoundSubscriber } from './realtime/soundSubscriber'
+import { registerNotificationSubscriber } from './realtime/notificationSubscriber'
 import { useSecretChatStore } from '../stores/secretChatStore'
 import { useStoriesStore, loadStories } from '../stores/storiesStore'
 import { mapStory } from '../core/managers/storiesManager'
@@ -86,6 +84,12 @@ export function startRealtime(): void {
   // Дальше всё подписывается на шину, а не на smp напрямую.
   for (const ev of WORKER_EVENTS) smp.on(ev, (p) => eventBus.publish(ev, p))
 
+  // Побочные подписчики (звук/эффекты, браузерные уведомления) — независимы от
+  // Store-проектора ниже. Новый кросс-каттинг (Analytics/Logger) добавляется так же:
+  // отдельный модуль с registerX() + eventBus.subscribe, без правок моста.
+  registerSoundSubscriber()
+  registerNotificationSubscriber()
+
   // 1:1-события (см. APPLY) — одним циклом; ниже только обработчики с побочными эффектами.
   for (const [ev, fn] of Object.entries(APPLY)) eventBus.subscribe(ev, fn)
 
@@ -111,17 +115,9 @@ export function startRealtime(): void {
     const replyTo = rt ? { msg_id: rt.id, seq: rt.seq, sender_id: rt.senderId, text: rt.text, type: rt.type, quote_text: evt.reply_quote_text || undefined } : null
     const incoming = fromNewMessageEvt(evt, replyTo)
     ms.applyIncoming(evt.chat_id, incoming)
-    // Эффект сообщения (наш аналог Telegram message effects): чужое сообщение с
-    // эффектом, пришедшее в ОТКРЫТЫЙ чат, проигрываем один раз (своё уже сыграли
-    // на отправке; для закрытого чата — только click-replay в истории).
-    const cs = useChatsStore.getState()
-    if (incoming.effect && evt.sender_id !== cs.meId && cs.activeChatId === evt.chat_id) {
-      playEmojiEffect(incoming.effect)
-    }
+    // Уведомляем компоненты (напр. useChatScroll) через uiEvents. Звук/эффект и
+    // браузерное уведомление — отдельные подписчики eventBus (sound/notification).
     uiEvents.emit(RT.newMessage, m)
-    // Звук + браузерное уведомление, гейтинг как в tweb: per-chat mute →
-    // глобальные настройки типа чата → клиентские настройки (см. uiNotifications).
-    notifyIncomingMessage(evt)
   })
   eventBus.subscribe(RT.read, (r) => { store.applyRead(r as ReadEvt); uiEvents.emit(RT.read, r) })
   // Черновик изменён на другом устройстве/вкладке (или снят отправкой/очисткой)
@@ -178,9 +174,7 @@ export function startRealtime(): void {
   eventBus.subscribe(RT.ack, (raw) => {
     const a = raw as AckEvt
     useMessagesStore.getState().reconcileAckByClient(a.client_msg_id, { msgId: a.msg_id, seq: a.seq, createdAt: a.created_at })
-    // Server confirmed one of our sends → the "pak" (tweb's message_sent),
-    // если не выключен в настройках (Sound Effects → Message Sent).
-    if (useSettingsStore.getState().sentMessageSound) playMessageSent()
+    // Звук подтверждения отправки («пак») — отдельный подписчик eventBus (sound).
   })
   eventBus.subscribe(RT.messageError, (raw) => {
     const err = raw as MessageErrorEvt
