@@ -21,7 +21,7 @@
 | P5 | Сторы ходят в сеть (нарушение инварианта) | `audioStore`, `starsStore`, `liveShareStore` | 3 стора |
 | P6 | 5 Zustand-сторов лежат вне `stores/` | `settings.tsx`, `core/pip.ts`, `core/pwa.ts`, `core/webapp.ts`, `i18n/index.tsx` | конвенция сломана |
 | P7 | Коллизия имён: два `superMessagePort.ts` | `rpc/` (85) и `lib/` (712) | путаница |
-| P8 | Остатки старой архитектуры не удалены | `stores/chatsCache.ts` рядом с `core/store/persist.ts` | мёртвый код |
+| P8 | ~~Мёртвый `chatsCache`~~ — оказался живым; вводящее в заблуждение имя | `stores/chatsCache.ts` → `dialogsPersist.ts` | сделано (PR-7) |
 | P9 | 4 свалки утилит без правила «что куда» | `helpers/`, `core/*.ts`, `lib/`, `shared/lib/` | ~80 файлов |
 | P10 | 161 компонент плоско в корне `components/` | `components/` | миграция в фича-папки брошена |
 | P11 | God-компоненты (БЛ + сеть + UI в одном файле) | ConversationView, Composer, UserInfoPanel, GroupEditFlow, MediaEditor | 1300–1660 строк |
@@ -193,21 +193,23 @@ lottie/customEmoji). Ручной прогон: анимированный ст�
 
 ---
 
-### PR-7 — Удалить мёртвый `chatsCache` *(риск: низкий, требует проверки)*
+### PR-7 — ~~Удалить мёртвый `chatsCache`~~ → переименовать в `dialogsPersist` *(сделано)*
 
-**Проблема (P8).** `stores/chatsCache.ts` (59 строк) — остаток старого кэша «последние 100
-диалогов без сообщений». Его заменил нормализованный `core/store/persist.ts` (сам себя
-так и описывает в комментарии).
+**Исходная посылка была НЕВЕРНОЙ.** `stores/chatsCache.ts` — **не** мёртвый код. Путаница
+пошла от комментария в `persist.ts` («в отличие от прежнего **chats_cache**…»): тот
+*прежний* `chats_cache` — старый подход, который `persist` уже заменил и которого в коде
+нет. А одноимённый файл `chatsCache.ts` — **актуальный** слой персиста диалогов+me поверх
+`persist`, с тремя живыми вызовами:
+- `hydrateChatsFromCache()` (`boot.ts`) — мгновенная гидрация ленты диалогов до сети;
+- `startChatsCachePersist()` (`main.tsx`) — дебаунс-персист диалогов+me при изменениях;
+- `clearChatsCache()` (`useAuthGate.ts`) — сброс при логауте.
 
-**Что сделать.**
-- Найти всех импортёров `chatsCache` (`grep -rl chatsCache src`).
-- Убедиться, что `persist` покрывает их сценарии (dialogs/users/messages/meta).
-- Переключить оставшихся потребителей на `persist`, удалить `chatsCache.ts` и тест.
-
-**Файлы.** `stores/chatsCache.ts`, импортёры.
-
-**Проверка.** `npm test`; ручной прогон офлайн-старта (persist-гидрация) и смены аккаунта
-(scope-очистка).
+Удалять было нечего. Вместо удаления — **переименование**, чтобы имя не читалось как
+«старый кэш» (что и вызвало ошибку плана):
+- `stores/chatsCache.ts` → `stores/dialogsPersist.ts`;
+- `hydrateChatsFromCache` → `hydrateDialogsFromPersist`, `startChatsCachePersist` →
+  `startDialogsPersist`, `clearChatsCache` → `clearDialogsPersist`;
+- обновлены импортёры (`boot.ts`, `main.tsx`, `useAuthGate.ts`) и комментарий в `persist.ts`.
 
 ---
 
@@ -336,7 +338,7 @@ PR-2 (fromNewMessageEvt)─┼─► PR-3 (таблица событий)  ─�
 PR-4 (сеть из сторов)    │   независимы, можно параллельно
 PR-5 (дикие сторы)       │
 PR-6 (переименование)    │
-PR-7 (удалить chatsCache)│
+PR-7 (переименов. chatsCache→dialogsPersist)│
 PR-8 (свалки утилит)     │
                          └─► PR-9 (типы границы RPC)  ── после PR-1
 PR-10 (фича-папки)  ──► PR-11 (фасад)  ──► PR-12 (God-компоненты)

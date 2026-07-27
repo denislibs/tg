@@ -1,9 +1,11 @@
 // Синхронизация main-thread-стора диалогов с нормализованным офлайн-стором
-// (core/store/persist.ts). Диалоги — единственная сущность, чей самый свежий вид
-// (порядок/непрочитанное/превью) живёт в main-thread-сторе (туда их правит
-// realtimeBridge), поэтому именно отсюда они и персистятся; юзеров и сообщения
-// пишет воркер. На холодном старте hydrate поднимает последний список мгновенно,
-// до ответа сети, а сеть реконсайлит поверх.
+// (core/store/persist.ts). НЕ путать с прежним «chats_cache» — тот подход persist
+// уже заменил; здесь — актуальный слой персиста именно диалогов+me поверх persist.
+// Диалоги — единственная сущность, чей самый свежий вид (порядок/непрочитанное/
+// превью) живёт в main-thread-сторе (туда их правит storeProjection), поэтому
+// именно отсюда они и персистятся; юзеров и сообщения пишет воркер. На холодном
+// старте hydrate поднимает последний список мгновенно, до ответа сети, а сеть
+// реконсайлит поверх.
 //
 // Скоуп по токену и очистку при смене аккаунта делает persistScope (boot.ts);
 // под passcode-локом persist сам ничего не пишет/не читает (нет plaintext at rest).
@@ -13,7 +15,7 @@ import { useSettingsStore } from '../settings'
 
 // Заполнить стор из персиста до первого рендера. Возвращает true, если что-то
 // отрисовали (тогда useAuthGate стартует с authed=true оптимистично).
-export async function hydrateChatsFromCache(): Promise<boolean> {
+export async function hydrateDialogsFromPersist(): Promise<boolean> {
   // Под passcode-локом список чатов не должен мелькнуть до экрана блокировки.
   if (useSettingsStore.getState().passcodeEnabled) return false
   try {
@@ -32,7 +34,7 @@ export async function hydrateChatsFromCache(): Promise<boolean> {
 
 // Подписка на стор: дебаунсом персистит диалоги + me, чтобы следующий холодный
 // старт был мгновенным. Вызывать один раз после первого рендера.
-export function startChatsCachePersist(): void {
+export function startDialogsPersist(): void {
   let timer: ReturnType<typeof setTimeout> | null = null
   let lastDialogs = useChatsStore.getState().dialogs
   let lastMe = useChatsStore.getState().me
@@ -54,6 +56,6 @@ export function startChatsCachePersist(): void {
   })
 }
 
-export async function clearChatsCache(): Promise<void> {
+export async function clearDialogsPersist(): Promise<void> {
   await persistClearAll()
 }
