@@ -6,7 +6,7 @@ import { startClient, type Managers } from './bootstrap'
 import { initPwaInstall } from '../core/pwa'
 import { getInitial, loadLang } from '../i18n'
 import { setBootData } from './bootData'
-import { hydrateChatsFromCache } from '../stores/chatsCache'
+import { hydrateDialogsFromPersist } from '../stores/dialogsPersist'
 import { persistScope } from '../core/store/persist'
 import { idbGet } from '../core/store/idbKv'
 import { useSettingsStore } from '../settings'
@@ -15,7 +15,7 @@ import { preventCrossTabDynamicImportDeadlock } from '../core/preventDeadlock'
 import type { User } from '../core/managers/authManager'
 import type { Dialog } from '../core/models'
 
-const TOKEN_KEY = 'session_token' // тот же ключ, что у TokenStore/chatsCache
+const TOKEN_KEY = 'session_token' // тот же ключ, что у TokenStore/dialogsPersist
 
 export async function bootstrap(): Promise<{ managers: Managers }> {
   // В самом начале boot (как tweb index.ts): ждём один кадр анимации, чтобы
@@ -52,7 +52,7 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   const token = await idbGet<string>(TOKEN_KEY)
   await persistScope(token ?? null)
   const [hydratedFromCache] = await Promise.all([
-    locked ? Promise.resolve(false) : hydrateChatsFromCache(),
+    locked ? Promise.resolve(false) : hydrateDialogsFromPersist(),
     loadLang(getInitial()),
   ])
   setBootData({ me, dialogs, hydratedFromCache, hasToken: !!token, locked })

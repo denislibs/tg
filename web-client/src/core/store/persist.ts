@@ -217,7 +217,7 @@ export async function persistClearAll(): Promise<void> {
   } catch { /* idb недоступен */ }
 }
 
-// ── Диалоги + me (пишет main-thread-стор через chatsCache) ─────────────────────
+// ── Диалоги + me (пишет main-thread-стор через dialogsPersist) ─────────────────────
 
 // Секретные чаты: не персистим расшифрованный текст/шифр-блоб превью (E2E).
 function sanitizeDialog(d: Dialog): Dialog {

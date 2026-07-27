@@ -9,7 +9,7 @@ import { useEffect, useState } from 'react'
 import { useManagers } from './useManagers'
 import { PREV_ACCOUNT_KEY } from '../accountTransition'
 import { bootData } from '../../client/bootData'
-import { clearChatsCache } from '../../stores/chatsCache'
+import { clearDialogsPersist } from '../../stores/dialogsPersist'
 import { runWhenUnlocked } from '../../stores/lockStore'
 
 export interface AuthGate {
@@ -31,7 +31,7 @@ export function useAuthGate(): AuthGate {
       ;((bootData && !bootData.locked && bootData.me) || managers.auth.me())
         .then((u) => {
           if (u) setAuthed(true)
-          else { setAuthed(false); void clearChatsCache() } // сессия истекла — сбрасываем кэш
+          else { setAuthed(false); void clearDialogsPersist() } // сессия истекла — сбрасываем персист
         })
         .catch(() => {
           // Сеть недоступна: с валидным токеном остаёмся в оффлайн-режиме (authed уже
@@ -49,7 +49,7 @@ export function useAuthGate(): AuthGate {
   }
 
   const logout = () => {
-    void clearChatsCache()
+    void clearDialogsPersist()
     void managers.auth.logout().then((r) => {
       // остался другой аккаунт (мультиаккаунт) → перезагрузка под ним; иначе экран входа
       if (r.switched) location.reload()

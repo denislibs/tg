@@ -5,7 +5,7 @@ import './styles/index.scss'
 import { ManagersProvider } from './core/hooks/useManagers'
 import { bootstrap } from './client/boot'
 import { loadFonts } from './core/dom/loadFonts'
-import { startChatsCachePersist } from './stores/chatsCache'
+import { startDialogsPersist } from './stores/dialogsPersist'
 import { startFoldersPersist } from './stores/foldersStore'
 import { startDraftsPersist } from './stores/draftsStore'
 
@@ -27,7 +27,7 @@ void bootstrap().then(({ managers }) => {
     </React.StrictMode>,
   )
   // Персист для мгновенного/офлайн следующего старта: диалоги+me, папки, черновики.
-  startChatsCachePersist()
+  startDialogsPersist()
   startFoldersPersist()
   startDraftsPersist()
 })
