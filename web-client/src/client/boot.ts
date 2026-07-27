@@ -11,12 +11,19 @@ import { persistScope } from '../core/store/persist'
 import { idbGet } from '../core/store/idbKv'
 import { useSettingsStore } from '../settings'
 import { useLockStore } from '../stores/lockStore'
+import { preventCrossTabDynamicImportDeadlock } from '../core/preventDeadlock'
 import type { User } from '../core/managers/authManager'
 import type { Dialog } from '../core/models'
 
 const TOKEN_KEY = 'session_token' // тот же ключ, что у TokenStore/chatsCache
 
 export async function bootstrap(): Promise<{ managers: Managers }> {
+  // В самом начале boot (как tweb index.ts): ждём один кадр анимации, чтобы
+  // отложить последующие dynamic import и не словить кросс-табовый deadlock
+  // загрузки модулей в Chrome (см. preventDeadlock.ts). До решения о passcode-локе
+  // и до любого ленивого import.
+  await preventCrossTabDynamicImportDeadlock()
+
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => { /* push unavailable */ })
   }
