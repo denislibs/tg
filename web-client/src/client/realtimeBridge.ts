@@ -27,7 +27,7 @@ let started = false
 // Полный каталог событий, которые может прислать воркер. Насос (в startRealtime)
 // перекачивает каждое из них в eventBus. Новое событие достаточно добавить в RT —
 // оно будет автоматически транслироваться в шину.
-const WORKER_EVENTS = [...Object.values(RT), 'rt:resync', 'media:upload_progress']
+const WORKER_EVENTS: string[] = [...Object.values(RT), 'rt:resync', 'media:upload_progress']
 
 // A typing indicator with no follow-up clears itself after this long (the server
 // emits no "stopped typing" frame; the client re-sends every ~3s while active).

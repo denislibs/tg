@@ -2,7 +2,7 @@
 // подписывается на eventBus и сам читает нужное состояние. Добавить/убрать звук —
 // не трогая мост.
 import { eventBus } from '../../core/realtime/eventBus'
-import { RT, type NewMessageEvt } from '../../core/realtime/events'
+import { RT } from '../../core/realtime/events'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useSettingsStore } from '../../settings'
 import { mapEffect } from '../../core/models'
@@ -18,8 +18,7 @@ export function registerSoundSubscriber(): void {
   // Эффект сообщения (наш аналог Telegram message effects): чужое сообщение с
   // эффектом, пришедшее в ОТКРЫТЫЙ чат, проигрываем один раз (своё уже сыграли на
   // отправке; для закрытого чата — только click-replay в истории).
-  eventBus.subscribe(RT.newMessage, (raw) => {
-    const evt = raw as NewMessageEvt
+  eventBus.subscribe(RT.newMessage, (evt) => {
     const effect = mapEffect(evt.effect)
     if (!effect) return
     const cs = useChatsStore.getState()
