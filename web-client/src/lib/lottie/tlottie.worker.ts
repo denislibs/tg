@@ -8,7 +8,7 @@ import makeError from '@helpers/makeError';
 import safeAssign from '@helpers/object/safeAssign';
 import lottieMessagePort, {LottieOffscreenInit} from '@lib/lottie/lottieMessagePort';
 import loadTLottieWasm, {TLottieFitzModifier, TLottieHandle, TLottieWasm} from '@lib/lottie/tlottieWasm';
-import SuperMessagePort from '@lib/superMessagePort';
+import SuperMessagePort from '@lib/twebMessagePort';
 
 type WorkerFramesCacheEntry = {frames: Map<number, ImageBitmap>, refs: Set<number>};
 const framesCacheByName: Map<string, WorkerFramesCacheEntry> = new Map();

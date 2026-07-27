@@ -29,9 +29,16 @@ npx vite build --outDir ../client-build
   Стилизация — **SCSS-модули** (`*.module.scss` + `sass`); глобальные дизайн-токены (CSS custom properties)
   в `src/styles/_tokens.scss`, тема через атрибут `data-theme` на `<html>`. **MUI убран** — не добавлять
   `@mui`/`sx`/emotion, только SCSS-модули.
-- **Zustand** — глобальное состояние (`src/stores/*`). Не плодить React-контексты под то, что уже в сторах.
+- **Zustand** — глобальное состояние. Отдельно стоящие сущностные сторы — в `src/stores/*`;
+  маленький стор, колокейтед со своей фичей (`settings`, `i18n`, `pip`, `pwa`, `webapp`), живёт
+  рядом с ней — это норма (не растаскивать по `stores/` в ущерб когезии). Не плодить
+  React-контексты под то, что уже в сторах.
 - **framer-motion** — анимации. **TS strict** — без `any`, неиспользуемые переменные не пройдут сборку.
 - Тяжёлые списки: `MessageRow`/`ChatFeed` мемоизированы — не ломай стабильность пропсов/рефов.
+- **Импорт-алиасы** (tsconfig + vite + vitest, держать синхронно): `@core @stores @shared @rpc
+  @lib @helpers @components @config @environment @vendor @customEmoji @/*`. Раскладка кросс-каттинга:
+  `shared/lib` — чистые переиспользуемые утилиты; `lib` — толстые вендор-подсистемы (lottie,
+  customEmoji, `twebMessagePort`); `helpers` — легаси-корзина, новое туда не класть.
 
 ## Архитектура клиента (инварианты — НЕ нарушать)
 

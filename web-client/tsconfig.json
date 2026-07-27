@@ -20,6 +20,10 @@
       "@vendor/*": ["./src/vendor/*"],
       "@components/*": ["./src/components/*"],
       "@customEmoji/*": ["./src/lib/customEmoji/*"],
+      "@core/*": ["./src/core/*"],
+      "@stores/*": ["./src/stores/*"],
+      "@shared/*": ["./src/shared/*"],
+      "@rpc/*": ["./src/rpc/*"],
       "@types": ["./src/types.d.ts"],
       "@/*": ["./src/*"]
     },
