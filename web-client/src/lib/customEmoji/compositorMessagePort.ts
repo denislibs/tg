@@ -1,5 +1,5 @@
 // @ts-nocheck — вендорено из tweb 1:1 (островок tlottie); типы проверяются в апстриме
-import SuperMessagePort from '@lib/superMessagePort';
+import SuperMessagePort from '@lib/twebMessagePort';
 import {MOUNT_CLASS_TO} from '@config/debug';
 
 export type EmojiCompositorMethods = {

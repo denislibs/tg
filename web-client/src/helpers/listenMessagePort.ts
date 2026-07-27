@@ -1,5 +1,5 @@
 // @ts-nocheck — вендорено из tweb 1:1 (островок tlottie); типы проверяются в апстриме
-import type SuperMessagePort from '@lib/superMessagePort';
+import type SuperMessagePort from '@lib/twebMessagePort';
 import ctx from '@environment/ctx';
 
 export default function listenMessagePort(
