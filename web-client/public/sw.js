@@ -23,8 +23,10 @@ const MEDIA_RE = /^\/api\/media\/\d+\/content$/
 /* ---- App-shell кэш (мгновенный повторный старт на медленной сети) -----------
  * Хешированные ассеты (/assets/) и шрифты (/fonts/) контентно-адресуемы и отдаются
  * с Cache-Control: immutable — их безопасно держать cache-first без ревалидации.
- * index.html — network-first (онлайн всегда свежий, оффлайн — из кэша). */
-const APP_SHELL = 'app-shell-v1'
+ * index.html — network-first (онлайн всегда свежий, оффлайн — из кэша).
+ * Имя app-shell-<build> штампует scripts/write-version.mjs на сборке: новый деплой →
+ * новое имя → activate удаляет старые app-shell-* (см. ниже) → свежая оболочка. */
+const APP_SHELL = 'app-shell-1'
 const IMMUTABLE_RE = /^\/(assets|fonts)\//
 const SHELL_MAX = 80 // потолок записей (старые хеш-чанки после деплоев — под нож)
 

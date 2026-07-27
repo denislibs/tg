@@ -2,9 +2,11 @@
   "name": "web-client",
   "private": true,
   "version": "0.1.0",
+  "build": 1,
   "type": "module",
   "scripts": {
     "dev": "vite build --watch --outDir ../client-build --emptyOutDir",
+    "prebuild": "node scripts/write-version.mjs",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src",

@@ -28,6 +28,8 @@ import { useAppHotkeys } from './core/hooks/useAppHotkeys'
 import { useAuthGate } from './core/hooks/useAuthGate'
 import { useThemeToggle } from './core/hooks/useThemeToggle'
 import { removeInitialLoader } from './client/initialLoader'
+import { startVersionCheck } from './core/version/versionCheck'
+import { useUpdateStore } from './stores/updateStore'
 import s from './App.module.scss'
 import useMediaQuery from './shared/lib/useMediaQuery'
 
@@ -193,9 +195,16 @@ export default function App() {
   const backendOk = useConnectionStore((s) => s.backendOk)
   // «Без анимаций» (меню «Ещё»): framer-анимации выключаются глобально.
   const reduceMotion = useSettingsStore((st) => st.reduceMotion)
+  // Доступно ли обновление приложения (новая сборка задеплоена — см. versionCheck).
+  const updateAvailable = useUpdateStore((st) => st.available)
   useEffect(() => {
     void pingBackend(managers)
   }, [managers])
+  // Опрос версии раз в 30 мин: при расхождении public/version с вкомпиленной строкой
+  // показываем кнопку «Обновить приложение» вместо залипания на устаревшем бандле.
+  useEffect(() => {
+    startVersionCheck()
+  }, [])
   useLayoutEffect(() => {
     document.documentElement.toggleAttribute('data-reduce-motion', reduceMotion)
   }, [reduceMotion])
@@ -203,6 +212,31 @@ export default function App() {
   return (
     <MotionConfig reducedMotion={reduceMotion ? 'always' : 'never'}>
       <ThemedApp />
+      {/* Ненавязчивая пилюля «доступна новая сборка» (инлайн-стиль, как apiBadge —
+          App.module.scss тут не трогаем). Клик — перезагрузка на свежий бандл. */}
+      {updateAvailable && (
+        <button
+          type="button"
+          onClick={() => location.reload()}
+          style={{
+            position: 'fixed',
+            bottom: 16,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 5000,
+            padding: '9px 18px',
+            borderRadius: 20,
+            background: 'var(--tg-accent)',
+            color: '#fff',
+            fontSize: 14,
+            fontWeight: 600,
+            cursor: 'pointer',
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)',
+          }}
+        >
+          Обновить приложение
+        </button>
+      )}
       <div
         className={s.apiBadge}
         style={{ background: backendOk == null ? '#888' : backendOk ? '#1a7f37' : '#b3261e' }}

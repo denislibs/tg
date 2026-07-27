@@ -111,4 +111,84 @@ describe('persist (normalized offline store)', () => {
     expect((await loadDialogs()).map((d) => d.chatId)).toEqual([5])
     expect(await persistGetToken()).toBe('newtok')
   })
+
+  // ── Микротаск-батчинг записей ────────────────────────────────────────────────
+
+  it('coalesces N rapid saveMessages in one tick into a single readwrite transaction', async () => {
+    // Прогрев: persistScope прогревает memoized locked()-кэш (false), а первый
+    // saveMessages открывает БД — чтобы замер считал только транзакции пачки.
+    await persistScope('tok')
+    await saveMessages(1, [msg(1, 1)])
+
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- намеренный monkeypatch метода прототипа для замера числа транзакций
+    const orig = IDBDatabase.prototype.transaction
+    let rw = 0
+    IDBDatabase.prototype.transaction = function (this: IDBDatabase, ...args: Parameters<typeof orig>): IDBTransaction {
+      if (args[1] === 'readwrite') rw++
+      return orig.apply(this, args)
+    }
+    try {
+      await Promise.all([
+        saveMessages(1, [msg(1, 10)]),
+        saveMessages(1, [msg(1, 11)]),
+        saveMessages(1, [msg(1, 12)]),
+      ])
+    } finally {
+      IDBDatabase.prototype.transaction = orig
+    }
+
+    expect(rw).toBe(1) // три save одного тика → одна транзакция
+    expect((await loadMessages(1)).map((m) => m.seq)).toEqual([1, 10, 11, 12])
+  })
+
+  it('read-after-write: loadMessages sees enqueued-but-not-yet-flushed writes in the same tick', async () => {
+    await persistScope('tok') // прогрев locked()-кэша
+    const p1 = saveMessages(2, [msg(2, 1)])
+    const p2 = saveMessages(2, [msg(2, 2)])
+    // p1/p2 намеренно НЕ ждём по отдельности: read обязан сфлашить буфер до чтения
+    expect((await loadMessages(2)).map((m) => m.seq)).toEqual([1, 2])
+    await Promise.all([p1, p2]) // и промисы записи резолвятся по факту коммита
+  })
+
+  it('read-after-write across stores + program order within a batch (clear then puts)', async () => {
+    await persistScope('tok')
+    const pu = saveUsers([{ id: 1, username: 'a', displayName: 'A', avatarUrl: '' }])
+    expect((await loadUsers()).map((u) => u.id)).toEqual([1]) // видно до явного await pu
+    await pu
+
+    // saveDialogs кладёт в ОДИН батч [clear, put, put]: операции проигрываются в
+    // одной транзакции в порядке постановки — clear идёт первым, puts после него
+    // выживают. Это тот же механизм, что и «delete после put того же ключа побеждает».
+    await saveDialogs([dialog(1), dialog(2)])
+    expect((await loadDialogs()).map((d) => d.chatId).sort((a, b) => a - b)).toEqual([1, 2])
+  })
+
+  // ── Схема/миграции ────────────────────────────────────────────────────────────
+
+  it('opening at current VERSION is a no-op upgrade and preserves user data (no wipe)', async () => {
+    await persistScope('tok')
+    await saveMessages(4, [msg(4, 1), msg(4, 2)])
+
+    // Независимое соединение к тому же msgr-store на текущей VERSION: onupgradeneeded
+    // не должен сработать (oldVersion уже == VERSION), схема и данные — на месте.
+    let upgraded = false
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open('msgr-store', 1)
+      req.onupgradeneeded = () => { upgraded = true }
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+    try {
+      expect(upgraded).toBe(false) // апгрейда нет — данные не тронуты
+      expect([...db.objectStoreNames].sort()).toEqual(['dialogs', 'messages', 'meta', 'users'])
+      const rows = await new Promise<unknown[]>((resolve, reject) => {
+        const r = db.transaction('messages', 'readonly').objectStore('messages').index('byChat').getAll(IDBKeyRange.only(4))
+        r.onsuccess = () => resolve(r.result as unknown[])
+        r.onerror = () => reject(r.error)
+      })
+      expect(rows.length).toBe(2) // сообщения пережили reopen
+    } finally {
+      db.close()
+    }
+  })
 })
