@@ -3,6 +3,7 @@
 import { create } from 'zustand'
 import type { Folder } from '../core/managers/foldersManager'
 import type { Contact } from '../core/managers/contactsManager'
+import { saveFolders as savePersistedFolders, loadFolders as loadPersistedFolders } from '../core/store/persist'
 
 // id псевдо-папки «Все чаты» (tweb FOLDER_ID_ALL)
 export const ALL_FOLDER_ID = 0
@@ -47,14 +48,36 @@ export async function loadFolders(managers: {
   contacts: { list(): Promise<Contact[]> }
 }): Promise<void> {
   const st = useFoldersStore.getState()
+  // offline-first: показать персистнутые папки сразу (табы слева не пропадают
+  // офлайн), сеть реконсайлит поверх. Пре-гидрация только при пустом сторе.
+  if (!st.loaded) {
+    const cached = await loadPersistedFolders()
+    if (cached.length) st.setFolders(cached)
+  }
   try {
     st.setFolders(await managers.folders.list())
   } catch {
-    /* оффлайн — табы просто не показываются */
+    /* оффлайн — остаёмся на персистнутых папках */
   }
   try {
     st.setContacts((await managers.contacts.list()).map((c) => c.userId))
   } catch {
     /* без контактов правила contacts/non_contacts считают всех не-контактами */
   }
+}
+
+// Подписка на стор: дебаунсом персистит папки (загрузка + мутации upsert/remove),
+// чтобы следующий старт/офлайн показал табы мгновенно. Вызывать один раз.
+export function startFoldersPersist(): void {
+  let timer: ReturnType<typeof setTimeout> | null = null
+  let last = useFoldersStore.getState().folders
+  useFoldersStore.subscribe((s) => {
+    if (s.folders === last) return
+    last = s.folders
+    if (timer) clearTimeout(timer)
+    timer = setTimeout(() => {
+      timer = null
+      if (useFoldersStore.getState().loaded) void savePersistedFolders(useFoldersStore.getState().folders)
+    }, 800)
+  })
 }

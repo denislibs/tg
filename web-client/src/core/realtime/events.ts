@@ -21,6 +21,9 @@ export const RT = {
   chatThemeUpdate: 'rt:chat_theme_update',
   dialogPin: 'rt:dialog_pin',
   dialogArchive: 'rt:dialog_archive',
+  // Клиентский кросс-таб-эхо REST-мутации mute (у бэка WS-эха mute нет): воркер
+  // ретранслирует его всем вкладкам после успешного /mute — см. groupsManager.
+  dialogMute: 'rt:dialog_mute',
   pollUpdate: 'rt:poll_update',
   checklistUpdate: 'rt:checklist_update',
   boostUpdate: 'rt:boost_update',

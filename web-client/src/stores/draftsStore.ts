@@ -3,6 +3,7 @@
 // rt:draft_update (синк с других устройств/вкладок).
 import { create } from 'zustand'
 import type { Draft } from '../core/models'
+import { saveDrafts as savePersistedDrafts, loadDrafts as loadPersistedDrafts } from '../core/store/persist'
 
 interface DraftsState {
   byChat: Record<number, Draft>
@@ -27,9 +28,32 @@ export const useDraftsStore = create<DraftsState>((set) => ({
 }))
 
 export async function loadDrafts(managers: { drafts: { list(): Promise<Draft[]> } }): Promise<void> {
-  try {
-    useDraftsStore.getState().setAll(await managers.drafts.list())
-  } catch {
-    /* черновики не критичны — молча без них */
+  const st = useDraftsStore.getState()
+  // offline-first: поднять персистнутые черновики (текст композера по чатам не
+  // теряется офлайн), сеть реконсайлит поверх. Пре-гидрация только при пустом сторе.
+  if (!Object.keys(st.byChat).length) {
+    const cached = await loadPersistedDrafts()
+    if (cached.length) st.setAll(cached)
   }
+  try {
+    st.setAll(await managers.drafts.list())
+  } catch {
+    /* оффлайн — остаёмся на персистнутых черновиках */
+  }
+}
+
+// Подписка на стор: дебаунсом персистит карту черновиков (загрузка + оптимистичные
+// правки из композера + rt:draft_update), чтобы офлайн текст не терялся. Вызывать один раз.
+export function startDraftsPersist(): void {
+  let timer: ReturnType<typeof setTimeout> | null = null
+  let last = useDraftsStore.getState().byChat
+  useDraftsStore.subscribe((s) => {
+    if (s.byChat === last) return
+    last = s.byChat
+    if (timer) clearTimeout(timer)
+    timer = setTimeout(() => {
+      timer = null
+      void savePersistedDrafts(Object.values(useDraftsStore.getState().byChat))
+    }, 800)
+  })
 }

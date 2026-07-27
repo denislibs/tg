@@ -3,6 +3,7 @@
 // флаг enabled — в settings-сторе. Лимит попыток и таймаут — как экран
 // блокировки tweb (5 попыток, 60 секунд).
 import { idbGet, idbSet, idbDel } from './store/idbKv'
+import { persistClearAll } from './store/persist'
 import { useSettingsStore } from '../settings'
 import { useLockStore } from '../stores/lockStore'
 
@@ -34,6 +35,9 @@ export async function enablePasscode(passcode: string): Promise<void> {
     verificationHash: [...hash],
     verificationSalt: [...salt],
   } satisfies StoredPasscode)
+  // Стереть нормализованный офлайн-стор: под кодом plaintext сообщений/диалогов
+  // не должен оставаться в IndexedDB (persist дальше сам блокирует запись).
+  await persistClearAll()
   useSettingsStore.getState().update({ passcodeEnabled: true })
 }
 
@@ -56,12 +60,4 @@ export async function disablePasscode(): Promise<void> {
 
 export async function changePasscode(newPasscode: string): Promise<void> {
   await enablePasscode(newPasscode)
-}
-
-// Блокировка при старте: если код включён — приложение открывается запертым
-// (tweb: хранилища зашифрованы, у нас — lock-оверлей).
-export function lockOnStartIfEnabled(): void {
-  if (useSettingsStore.getState().passcodeEnabled) {
-    useLockStore.getState().lock()
-  }
 }

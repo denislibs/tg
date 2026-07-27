@@ -24,3 +24,21 @@ export const useLockStore = create<LockState>((set, get) => ({
     else set({ attempts: n })
   },
 }))
+
+// Выполнить fn сразу, если приложение не под локом; иначе — один раз, когда
+// код-пароль снимут. Возвращает отписку (для cleanup эффекта). Так загрузка
+// данных и коннект realtime не стартуют под экраном блокировки, а поднимаются
+// сразу после разблокировки.
+export function runWhenUnlocked(fn: () => void): () => void {
+  if (!useLockStore.getState().locked) {
+    fn()
+    return () => {}
+  }
+  const unsub = useLockStore.subscribe((s, prev) => {
+    if (prev.locked && !s.locked) {
+      unsub()
+      fn()
+    }
+  })
+  return unsub
+}

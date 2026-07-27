@@ -1,79 +1,59 @@
-// Offline-first кэш списка чатов в IndexedDB (аналог tweb loadAllStates): на
-// холодном старте показываем последний известный список мгновенно, до ответа
-// сети, а сеть реконсайлит поверх. Кэш скоупится по активному session_token
-// (мультиаккаунт), не пишется под passcode-локом и не хранит plaintext секретных
-// чатов (E2E).
-import { idbGet, idbSet, idbDel } from '../core/store/idbKv'
-import type { Dialog } from '../core/models'
-import type { User } from '../core/managers/authManager'
+// Синхронизация main-thread-стора диалогов с нормализованным офлайн-стором
+// (core/store/persist.ts). Диалоги — единственная сущность, чей самый свежий вид
+// (порядок/непрочитанное/превью) живёт в main-thread-сторе (туда их правит
+// realtimeBridge), поэтому именно отсюда они и персистятся; юзеров и сообщения
+// пишет воркер. На холодном старте hydrate поднимает последний список мгновенно,
+// до ответа сети, а сеть реконсайлит поверх.
+//
+// Скоуп по токену и очистку при смене аккаунта делает persistScope (boot.ts);
+// под passcode-локом persist сам ничего не пишет/не читает (нет plaintext at rest).
+import { saveDialogs, saveMe, loadDialogs, loadMe, persistClearAll } from '../core/store/persist'
 import { useChatsStore } from './chatsStore'
 import { useSettingsStore } from '../settings'
 
-const CACHE_KEY = 'chats_cache'
-const TOKEN_KEY = 'session_token' // тот же ключ, что у TokenStore
-const MAX_CACHED = 100 // хватает на первый экран; остальное дольёт сеть
-
-interface CacheShape {
-  token: string | null
-  me: User | null
-  dialogs: Dialog[]
-}
-
-// Секретные чаты E2E: не персистим расшифрованный текст/шифр-блоб превью.
-// Диалог остаётся (для мгновенного списка), превью дольётся сетью + дешифровкой.
-function sanitize(dialogs: Dialog[]): Dialog[] {
-  return dialogs.slice(0, MAX_CACHED).map((d) => {
-    if (d.type !== 'secret' || !d.lastMessage) return d
-    return { ...d, lastMessage: { ...d.lastMessage, text: '', encBody: undefined } }
-  })
-}
-
-// Заполнить стор из кэша до первого рендера. Возвращает true, если что-то
+// Заполнить стор из персиста до первого рендера. Возвращает true, если что-то
 // отрисовали (тогда useAuthGate стартует с authed=true оптимистично).
 export async function hydrateChatsFromCache(): Promise<boolean> {
-  // Под passcode-локом кэш не показываем: список чатов не должен мелькнуть до
-  // экрана блокировки.
+  // Под passcode-локом список чатов не должен мелькнуть до экрана блокировки.
   if (useSettingsStore.getState().passcodeEnabled) return false
   try {
-    const [cache, token] = await Promise.all([idbGet<CacheShape>(CACHE_KEY), idbGet<string>(TOKEN_KEY)])
-    if (!cache?.dialogs?.length || cache.token !== token) return false
+    const [dialogs, me] = await Promise.all([loadDialogs(), loadMe()])
+    if (!dialogs.length) return false
     const st = useChatsStore.getState()
     if (st.loaded) return false // сеть уже успела — не затираем
-    st.setMe(cache.me)
-    st.setMeId(cache.me?.id ?? null)
-    st.setDialogs(cache.dialogs)
+    st.setMe(me)
+    st.setMeId(me?.id ?? null)
+    st.setDialogs(dialogs)
     return true
   } catch {
     return false // idb недоступен — фича мягко деградирует
   }
 }
 
-// Подписка на стор: дебаунсом персистит диалоги, чтобы следующий холодный старт
-// был мгновенным. Вызывать один раз после первого рендера.
+// Подписка на стор: дебаунсом персистит диалоги + me, чтобы следующий холодный
+// старт был мгновенным. Вызывать один раз после первого рендера.
 export function startChatsCachePersist(): void {
   let timer: ReturnType<typeof setTimeout> | null = null
   let lastDialogs = useChatsStore.getState().dialogs
+  let lastMe = useChatsStore.getState().me
 
   const flush = () => {
     timer = null
     const st = useChatsStore.getState()
     if (!st.loaded || !st.dialogs.length) return
-    void (async () => {
-      try {
-        const token = (await idbGet<string>(TOKEN_KEY)) ?? null
-        await idbSet(CACHE_KEY, { token, me: st.me, dialogs: sanitize(st.dialogs) })
-      } catch { /* idb недоступен */ }
-    })()
+    void saveDialogs(st.dialogs)
+    void saveMe(st.me)
   }
 
   useChatsStore.subscribe((s) => {
-    if (s.dialogs === lastDialogs) return // не диалоги (typing/presence) — пропускаем
+    if (s.dialogs === lastDialogs && s.me === lastMe) return // не диалоги/me — пропускаем
     lastDialogs = s.dialogs
+    lastMe = s.me
     if (timer) clearTimeout(timer)
     timer = setTimeout(flush, 800)
   })
 }
 
 export async function clearChatsCache(): Promise<void> {
-  try { await idbDel(CACHE_KEY) } catch { /* idb недоступен */ }
+  await persistClearAll()
 }
