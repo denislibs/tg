@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useLiveShareStore } from '../../stores/liveShareStore'
+import { stopLiveShare } from '../../core/liveShareEngine'
 import { mediaContentUrl } from '../../core/mediaUrl'
 import Spinner from '../../shared/ui/Spinner'
 import InstantView from '../InstantView'
@@ -587,7 +588,7 @@ export function GeoBubble({ m, out, lastInGroup, radius }: {
                 {sharingByMe && (
                   <span
                     className={s.geoStop}
-                    onClick={(e) => { e.preventDefault(); if (m.chatId != null) useLiveShareStore.getState().stop(managers, m.chatId) }}
+                    onClick={(e) => { e.preventDefault(); if (m.chatId != null) stopLiveShare(managers, m.chatId) }}
                   >
                     Остановить
                   </span>
