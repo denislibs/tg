@@ -39,7 +39,7 @@ npx vite build --outDir ../client-build
 [`../docs/research/2026-06-29-frontend-refactor-plan.md`](../docs/research/2026-06-29-frontend-refactor-plan.md).
 
 ```
-вверх (данные):  сервер → smp → realtimeBridge → store → селектор → View
+вверх (данные):  сервер → smp → eventBus → {Store-проектор, Sound, Notifications, …} → селектор → View
 вниз (команды):  View → хук (use*) → managers → сервер
 ```
 
@@ -47,12 +47,17 @@ npx vite build --outDir ../client-build
 - **View** (`components/*`) — только рендер + колбэки. Не фетчит, не слушает сокет, не держит данные.
 - **ViewModel-хуки** (`core/hooks/use*`) — presentation logic: читают стор селектором, отдают данные + действия.
 - **Store** (`stores/*`) — нормализованное хранилище сущностей по id, единственный источник истины.
-- **realtimeBridge** (`client/realtimeBridge.ts`) — **единственный** канал «сервер → store».
+- **eventBus** (`core/realtime/eventBus.ts`) — шина realtime-событий воркера. Насос в
+  `realtimeBridge` (единственный потребитель `smp`) публикует в неё; кросс-каттинг-подписчики
+  (Store-проектор, `client/realtime/soundSubscriber`, `notificationSubscriber`, будущие Analytics/Logger)
+  подписываются на неё через `eventBus.subscribe`.
+- **realtimeBridge** (`client/realtimeBridge.ts`) — насос `smp → eventBus` + Store-проектор
+  (событие → мутация стора: реестр `APPLY` + особые обработчики).
 - **managers** (`core/managers/*`) — команды/запросы к бэку; не знают про React/DOM.
 
 **НЕЛЬЗЯ:**
-- Подписываться на сокет (`smp.on` / `uiEvents.on(RT.*)`) где-либо, кроме `realtimeBridge`.
-  Компоненты и хуки **читают из стора**, а не из сокета.
+- Подписываться на сокет (`smp.on`) где-либо, кроме насоса в `realtimeBridge`. Нужны realtime-события
+  в новом модуле — подписывайся на `eventBus.subscribe`, а не на `smp`. Компоненты/хуки **читают из стора**.
 - Дублировать realtime-данные: одна сущность живёт в сторе один раз (нормализовано по id).
   `connectionManager.outbox` (worker) — **только** транспортный буфер resend, не источник для UI.
 - Держать в `useState` копию того, что уже в сторе. Производные значения — мемо-селектором, не дублем поля.
