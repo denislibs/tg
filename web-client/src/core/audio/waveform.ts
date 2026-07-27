@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
-import { startClient } from '../../client/bootstrap'
 import { decryptMedia } from '../secret/crypto'
-import { mediaContentUrl, primeMediaToken } from '../mediaUrl'
+import { mediaContentUrl, primeMediaToken, resolveMediaContentUrl } from '../mediaUrl'
 
 export const WAVE_BARS = 44
 
@@ -82,7 +81,7 @@ export function useWaveform(mediaId: number, secret?: WaveSecret): number[] {
           if (!res.ok) throw new Error(`secret audio ${res.status}`)
           return decryptMedia(await res.arrayBuffer(), keyB64, ivB64)
         })
-      : startClient().managers.media.contentUrl(mediaId).then((url) => computeWaveform(mediaId, url))
+      : Promise.resolve(resolveMediaContentUrl(mediaId)).then((url) => computeWaveform(mediaId, url))
     void raw.then((b) => { if (alive) setBars(b) }).catch(() => {})
     return () => {
       alive = false
