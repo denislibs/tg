@@ -20,7 +20,7 @@ import type { Chat } from '../../data'
 import type { MessageWindow } from './useMessageWindow'
 import { useManagers } from './useManagers'
 import { useMessagesStore, winKey } from '../../stores/messagesStore'
-import { useLiveShareStore } from '../../stores/liveShareStore'
+import { startLiveShare } from '../liveShareEngine'
 import { useUploadsStore } from '../../stores/uploadsStore'
 import { scaleImageForSend } from '../media/scaleImageForSend'
 
@@ -167,7 +167,7 @@ export function useChatSend({
     // оптимистичным WS-путём.
     if (opts?.livePeriod) {
       void managers.messages.sendGeoLive(numericChatId, lat, lng, opts.livePeriod, opts.heading).then((m) => {
-        useLiveShareStore.getState().start(managers, numericChatId, m.id, Date.now() + opts.livePeriod! * 1000)
+        startLiveShare(managers, numericChatId, m.id, Date.now() + opts.livePeriod! * 1000)
       })
       window.dispatchEvent(new Event('tg-send'))
       return

@@ -1,7 +1,6 @@
 import { create } from 'zustand'
-import { startClient } from '../client/bootstrap'
 import { decryptMedia } from '../core/secret/crypto'
-import { mediaContentUrl, primeMediaToken, hasMediaToken } from '../core/mediaUrl'
+import { mediaContentUrl, primeMediaToken, resolveMediaContentUrl } from '../core/mediaUrl'
 
 // A track the global player can play (a voice message or audio file).
 export interface AudioTrack {
@@ -118,7 +117,8 @@ async function load(track: AudioTrack, autoplay: boolean) {
   if (track.secret) {
     url = secretUrlCache.get(track.mediaId) ?? await prefetchSecretAudio(track.mediaId, track.secret)
   } else {
-    url = hasMediaToken() ? mediaContentUrl(track.mediaId) : await startClient().managers.media.contentUrl(track.mediaId)
+    const resolved = resolveMediaContentUrl(track.mediaId)
+    url = typeof resolved === 'string' ? resolved : await resolved
   }
   a.src = url
   a.playbackRate = useAudioStore.getState().rate

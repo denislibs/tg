@@ -55,6 +55,14 @@ export function mediaContentUrl(id: number): string {
 
 export const mediaThumbUrl = (id: number): string => mediaContentUrl(id) + '&v=thumb'
 
+// Разрешить URL медиа для не-render одноразовых нужд (аудио, waveform): синхронно
+// при свежем токене (важно, чтобы назначить src в рамках user-gesture), иначе один
+// async-RPC к media-менеджеру. Инкапсулирует доступ к воркеру здесь, чтобы сторам/
+// хелперам не тянуть startClient напрямую.
+export function resolveMediaContentUrl(id: number): string | Promise<string> {
+  return hasMediaToken() ? mediaContentUrl(id) : startClient().managers.media.contentUrl(id)
+}
+
 // Subscribe a component to token (re)primes so it re-renders with a fresh URL.
 // Returns a version number that changes whenever the token is refreshed.
 export function useMediaTokenVersion(): number {
