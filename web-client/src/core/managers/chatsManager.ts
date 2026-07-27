@@ -1,6 +1,7 @@
 // src/core/managers/chatsManager.ts
 import { HttpError, type RestClient } from '../net/restClient'
 import { mapDialog, type Dialog, type RawDialog } from '../models'
+import { loadDialogs, clearPersistedChat } from '../store/persist'
 
 export interface ChatsDeps { rest: RestClient }
 
@@ -14,8 +15,18 @@ export type ReadDateResult = { readAt: string } | { restricted: true } | null
 export function newChatsManager({ rest }: ChatsDeps) {
   return {
     async listDialogs(): Promise<Dialog[]> {
-      const r = await rest.get<{ chats?: RawDialog[] }>('/chats')
-      return (r.chats ?? []).map(mapDialog)
+      try {
+        const r = await rest.get<{ chats?: RawDialog[] }>('/chats')
+        return (r.chats ?? []).map(mapDialog)
+      } catch (e) {
+        // Сеть недоступна (fetch reject, не HttpError) — отдаём последний
+        // персистнутый список (offline-first). Диалоги пишет main-thread-стор.
+        if (!(e instanceof HttpError)) {
+          const cached = await loadDialogs()
+          if (cached.length) return cached
+        }
+        throw e
+      }
     },
 
     // Resolve (creating if needed) the private chat with a user; returns its id.
@@ -35,6 +46,7 @@ export function newChatsManager({ rest }: ChatsDeps) {
     // скрываются только для меня, у остальных участников остаются.
     async clearHistory(chatId: number): Promise<void> {
       await rest.post(`/chats/${chatId}/clear`, {})
+      void clearPersistedChat(chatId) // офлайн-история чата тоже очищается
     },
 
     // Когда получатель прочитал исходящее сообщение в приватном чате

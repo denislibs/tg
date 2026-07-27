@@ -10,6 +10,7 @@ import { useManagers } from './useManagers'
 import { PREV_ACCOUNT_KEY } from '../accountTransition'
 import { bootData } from '../../client/bootData'
 import { clearChatsCache } from '../../stores/chatsCache'
+import { runWhenUnlocked } from '../../stores/lockStore'
 
 export interface AuthGate {
   authed: boolean
@@ -23,16 +24,22 @@ export function useAuthGate(): AuthGate {
   const [authed, setAuthed] = useState<boolean>(!!bootData?.hasToken)
 
   useEffect(() => {
-    ;(bootData?.me ?? managers.auth.me())
-      .then((u) => {
-        if (u) setAuthed(true)
-        else { setAuthed(false); void clearChatsCache() } // сессия истекла — сбрасываем кэш
-      })
-      .catch(() => {
-        // Сеть недоступна: с валидным токеном остаёмся в оффлайн-режиме (authed уже
-        // true); без токена — экран входа.
-        if (!bootData?.hasToken) setAuthed(false)
-      })
+    // Под passcode-локом сетевой me() НЕ шлём (RPC не летят до разблокировки):
+    // подтверждаем сессию сразу после unlock. Префетч bootData.me переиспользуем
+    // только если старт был не под локом — иначе это пустышка, тянем свежий me().
+    const confirm = () => {
+      ;((bootData && !bootData.locked && bootData.me) || managers.auth.me())
+        .then((u) => {
+          if (u) setAuthed(true)
+          else { setAuthed(false); void clearChatsCache() } // сессия истекла — сбрасываем кэш
+        })
+        .catch(() => {
+          // Сеть недоступна: с валидным токеном остаёмся в оффлайн-режиме (authed уже
+          // true); без токена — экран входа.
+          if (!bootData?.hasToken) setAuthed(false)
+        })
+    }
+    return runWhenUnlocked(confirm)
   }, [managers])
 
   const login = () => {

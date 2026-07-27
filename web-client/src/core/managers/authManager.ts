@@ -1,5 +1,6 @@
 import { HttpError, type RestClient } from '../net/restClient'
 import { listAccounts, upsertAccount, removeAccount, tokenOf, toPublic, type PublicAccount } from '../auth/accounts'
+import { loadMe } from '../store/persist'
 
 export interface Birthday { day: number; month: number; year?: number }
 
@@ -229,6 +230,12 @@ export function newAuthManager({ rest, store }: AuthDeps) {
         if (e instanceof HttpError && e.status === 401) {
           await store.clear()
           return null
+        }
+        // Сеть недоступна (fetch reject, не HttpError) — отдаём последний известный
+        // профиль из офлайн-стора, чтобы UI не терял себя (аватар/имя) без сети.
+        if (!(e instanceof HttpError)) {
+          const cached = await loadMe()
+          if (cached) return cached
         }
         throw e
       }

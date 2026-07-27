@@ -13,6 +13,10 @@ export interface BootData {
   // Есть ли локальный session_token (IDB). По нему useAuthGate решает authed до
   // ответа сети (как tweb — auth из локального состояния), без промежуточного null.
   hasToken: boolean
+  // Стартовали под passcode-локом: под ним НЕ префетчим me/dialogs и не гидрируем
+  // (RPC/WS не поднимаем до разблокировки). me/dialogs здесь — пустышки; настоящую
+  // загрузку useAppBootstrap/useAuthGate делают после unlock (runWhenUnlocked).
+  locked: boolean
 }
 
 export let bootData: BootData | null = null

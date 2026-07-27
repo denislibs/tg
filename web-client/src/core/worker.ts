@@ -38,9 +38,12 @@ import { newSyncEngine } from './realtime/syncEngine'
 import { createSecretManager } from './managers/secretManager'
 import { RT, type TypingAction } from './realtime/events'
 import { idbGet, idbSet } from './store/idbKv'
+import { persistScope } from './store/persist'
 
 const tokens = new TokenStore()
-void tokens.load()
+// Скоуп нормализованного офлайн-стора по токену: при смене аккаунта данные
+// предыдущего стираются, прежде чем воркер начнёт писать сообщения/юзеров.
+void tokens.load().then(() => persistScope(tokens.get()))
 // ready() гейтит REST-запросы до загрузки токена из IDB (иначе гонка «missing token»
 // на старте, когда UI шлёт RPC раньше, чем поднялся токен воркера).
 const rest = new RestClient('/api', () => tokens.get(), () => tokens.ready())
@@ -60,7 +63,9 @@ const media = newMediaManager({
 const push = newPushManager({ rest })
 const notify = newNotifyManager({ rest })
 const folders = newFoldersManager({ rest })
-const groups = newGroupsManager({ rest })
+// broadcast объявлен ниже — стрелка дергает его лениво (к моменту первой мутации
+// порты уже подняты), как у media. Кросс-таб-эхо REST-мутаций без WS-эха бэка.
+const groups = newGroupsManager({ rest, broadcast: (event, payload) => broadcast(event, payload) })
 const channels = newChannelsManager({ rest })
 const peers = newPeersManager({ rest })
 const presence = newPresenceManager({ rest })

@@ -187,6 +187,21 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 }))
 
+// Кросс-таб-синхронизация настроек: localStorage.setItem в одной вкладке рождает
+// `storage`-событие во ВСЕХ остальных вкладках — подхватываем и обновляем стор
+// напрямую (setState, без обратной записи в localStorage → без петли). Так смена
+// темы/формата времени/уведомлений в одной вкладке отражается в других мгновенно.
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key !== KEY || !e.newValue) return
+    try {
+      useSettingsStore.setState(JSON.parse(e.newValue) as Partial<Settings>)
+    } catch {
+      /* битый JSON — игнорируем */
+    }
+  })
+}
+
 // Read the whole settings object (+ update) — same shape the old context returned.
 export function useSettings(): SettingsState {
   return useSettingsStore()

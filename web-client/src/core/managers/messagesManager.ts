@@ -1,8 +1,9 @@
 // src/core/managers/messagesManager.ts
-import type { RestClient } from '../net/restClient'
+import { HttpError, type RestClient } from '../net/restClient'
 import { mapMessage, mapPoll, mapChecklist, mapScheduled, mapGeo, mapWebPage, mapFactCheck, type Message, type MessageEntity, type Poll, type Checklist, type RawMessage, type RawPoll, type RawChecklist, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
 import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt } from '../realtime/events'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
+import { saveMessages, loadMessages, deletePersistedMessage } from '../store/persist'
 
 export interface HistoryArgs {
   chatId: number
@@ -147,9 +148,16 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
     if (!c) { c = new Map(); cache.set(key, c) }
     return c
   }
+  // chatId из ключа истории ("chatId" / "chatId:root") — для персиста по чату.
+  const chatIdOf = (key: string): number => parseInt(key, 10)
   const put = (key: string, msgs: Message[]) => {
     const c = cacheFor(key)
     for (const m of msgs) c.set(m.seq, m)
+    // Write-through в офлайн-стор: put — единственный путь входа/обновления
+    // сообщений в кэше (страницы истории, отправка, live, пересылка, правки),
+    // поэтому персист здесь покрывает их все. Ключ треда даёт тот же chatId
+    // (идемпотентно по pk `${chatId}:${seq}`).
+    if (msgs.length) void saveMessages(chatIdOf(key), msgs)
   }
 
   return {
@@ -188,10 +196,28 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
       }
 
       // --- network fetch ---
-      const r = await rest.get<{ messages: RawMessage[]; count: number }>(
-        `/chats/${chatId}/history`,
-        { offset_id: offsetSeq, add_offset: addOffset, limit, ...(threadRoot ? { thread_root: threadRoot } : {}) },
-      )
+      let r: { messages: RawMessage[]; count: number }
+      try {
+        r = await rest.get<{ messages: RawMessage[]; count: number }>(
+          `/chats/${chatId}/history`,
+          { offset_id: offsetSeq, add_offset: addOffset, limit, ...(threadRoot ? { thread_root: threadRoot } : {}) },
+        )
+      } catch (e) {
+        // Сеть недоступна (fetch reject, не HttpError): отдаём персистнутую историю
+        // основного окна чата (тред офлайн не поднимаем — его срез не хранится
+        // отдельно). Сидим кэш+срез напрямую (минуя put, чтобы не перезаписывать).
+        if (!(e instanceof HttpError) && !threadRoot) {
+          const persisted = await loadMessages(chatId)
+          if (persisted.length) {
+            for (const m of persisted) c.set(m.seq, m)
+            const seqsDesc = persisted.map((m) => m.seq).sort((a, b) => b - a)
+            const inserted = sa.insertSlice(seqsDesc)
+            if (inserted) inserted.setEnd(SliceEnd.Bottom) // низ = последнее известное
+            return { messages: persisted.slice(), count: persisted.length, reachedTop: false, reachedBottom: true, cached: true }
+          }
+        }
+        throw e
+      }
       const fetched = await decryptPage((r.messages ?? []).map(mapMessage))
       put(key, fetched)
 
@@ -278,7 +304,9 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
         if (!c) continue
         for (const [seq, m] of c) {
           if (m.id === msgId) {
-            c.set(seq, { ...m, factCheck: undefined })
+            const upd = { ...m, factCheck: undefined }
+            c.set(seq, upd)
+            void saveMessages(chatId, [upd])
             break
           }
         }
@@ -296,7 +324,9 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
         if (!c) continue
         for (const [seq, m] of c) {
           if (m.id === msgId) {
-            c.set(seq, { ...m, transcription: r.text })
+            const upd = { ...m, transcription: r.text }
+            c.set(seq, upd)
+            void saveMessages(chatId, [upd])
             break
           }
         }
@@ -316,6 +346,7 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
           if (m.id === msgId) {
             c.delete(seq)
             sliceFor(key).delete(seq)
+            void deletePersistedMessage(chatId, seq) // офлайн-стор тоже
             break
           }
         }
@@ -368,6 +399,7 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
       slices.set(key, sa)
       const c = cacheFor(key)
       for (const m of asc) c.set(m.seq, m)
+      void saveMessages(chatId, asc) // офлайн-персист окна jump-to-message
       const seqsDesc = asc.map((m) => m.seq).sort((a, b) => b - a)
       const inserted = seqsDesc.length ? sa.insertSlice(seqsDesc) : sa.first
       if (inserted) {
@@ -557,7 +589,9 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
         if (!c) continue
         for (const [seq, m] of c) {
           if (m.id === evt.msg_id) {
-            c.set(seq, { ...m, text: evt.text, entities: evt.entities ?? undefined, editedAt: evt.edited_at })
+            const upd = { ...m, text: evt.text, entities: evt.entities ?? undefined, editedAt: evt.edited_at }
+            c.set(seq, upd)
+            void saveMessages(evt.chat_id, [upd])
             break
           }
         }
@@ -572,7 +606,9 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
         if (!c) continue
         for (const [seq, m] of c) {
           if (m.id === evt.msg_id) {
-            c.set(seq, { ...m, geo })
+            const upd = { ...m, geo }
+            c.set(seq, upd)
+            void saveMessages(evt.chat_id, [upd])
             break
           }
         }
@@ -587,7 +623,9 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
         if (!c) continue
         for (const [seq, m] of c) {
           if (m.id === evt.msg_id) {
-            c.set(seq, { ...m, webPage })
+            const upd = { ...m, webPage }
+            c.set(seq, upd)
+            void saveMessages(evt.chat_id, [upd])
             break
           }
         }
@@ -602,7 +640,9 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
         if (!c) continue
         for (const [seq, m] of c) {
           if (m.id === evt.msg_id) {
-            c.set(seq, { ...m, factCheck })
+            const upd = { ...m, factCheck }
+            c.set(seq, upd)
+            void saveMessages(evt.chat_id, [upd])
             break
           }
         }
@@ -617,7 +657,7 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
         if (!c) continue
         for (const [seq, m] of c) {
           if (m.id === evt.msg_id) {
-            c.set(seq, {
+            const upd = {
               ...m,
               mediaId: evt.media_id ?? null,
               mediaWidth: evt.media_w, mediaHeight: evt.media_h,
@@ -625,7 +665,9 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
               mediaHasThumb: evt.media_has_thumb, mediaDuration: evt.media_duration,
               mediaSize: evt.media_size, mediaName: evt.media_name,
               paidMedia: evt.paid_media ? { price: evt.paid_media.price, locked: evt.paid_media.locked } : undefined,
-            })
+            }
+            c.set(seq, upd)
+            void saveMessages(evt.chat_id, [upd])
             break
           }
         }
@@ -640,6 +682,7 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
           if (m.id === evt.msg_id) {
             c.delete(seq)
             slices.get(key)?.delete(seq)
+            void deletePersistedMessage(evt.chat_id, seq) // офлайн-стор тоже
             break
           }
         }

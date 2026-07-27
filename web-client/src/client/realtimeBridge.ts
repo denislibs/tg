@@ -138,6 +138,12 @@ export function startRealtime(): void {
     const e = raw as { chat_id: number; archived: boolean }
     useChatsStore.getState().setDialogArchived(e.chat_id, e.archived)
   })
+  // Кросс-таб-эхо mute (клиентское, ретранслирует воркер): вкладка-инициатор уже
+  // обновилась оптимистично — здесь идемпотентно догоняются остальные вкладки.
+  smp.on(RT.dialogMute, (raw) => {
+    const e = raw as { chat_id: number; muted: boolean }
+    useChatsStore.getState().setDialogMuted(e.chat_id, e.muted)
+  })
   smp.on(RT.presence, (p) => { store.setPresence(p as PresenceEvt); uiEvents.emit(RT.presence, p) })
   smp.on(RT.typing, (raw) => {
     const t = raw as TypingEvt
