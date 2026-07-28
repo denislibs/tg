@@ -6,7 +6,6 @@
 import { useEffect, useState } from 'react'
 import Text from '../../shared/ui/Text'
 import { useManagers } from '../../core/hooks/useManagers'
-import { useMessagesStore } from '../../stores/messagesStore'
 import { useChatsStore } from '../../stores/chatsStore'
 import type { Giveaway } from '../../core/models'
 import { useT } from '../../i18n'
@@ -50,9 +49,9 @@ export default function GiveawayBubble({ giveaway }: { giveaway: Giveaway }) {
   const onParticipate = () => {
     if (busy) return
     setBusy(true)
-    void managers.boosts
-      .participateGiveaway(giveaway.id)
-      .then((g) => useMessagesStore.getState().setGiveaway(chatId, g))
+    // SSOT-запись делает воркер (participateGiveaway пушит в кэш + broadcast → storeProjection).
+    void managers.messages
+      .participateGiveaway(chatId, giveaway.id)
       .finally(() => setBusy(false))
   }
 

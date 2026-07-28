@@ -1,6 +1,6 @@
 // src/core/managers/messagesManager.ts
 import { HttpError, type RestClient } from '../net/restClient'
-import { mapMessage, mapPoll, mapChecklist, mapGiveaway, mapScheduled, mapGeo, mapWebPage, mapFactCheck, type Message, type MessageEntity, type Poll, type Checklist, type RawMessage, type RawPoll, type RawChecklist, type RawGiveaway, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
+import { mapMessage, mapPoll, mapChecklist, mapGiveaway, mapScheduled, mapGeo, mapWebPage, mapFactCheck, type Message, type MessageEntity, type Poll, type Checklist, type Giveaway, type RawMessage, type RawPoll, type RawChecklist, type RawGiveaway, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
 import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, ReactionEvt, StarReactionEvt } from '../realtime/events'
 import { RT } from '../realtime/events'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
@@ -549,6 +549,17 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast }: 
       const r = await rest.post<{ checklist: RawChecklist }>(`/checklists/${checklistId}/items`, { items })
       emitChecklist(chatId, r.checklist)
       return mapChecklist(r.checklist)
+    },
+
+    // Участвовать в розыгрыше (перенесено из boostsManager к SSOT сообщений). Ответ
+    // несёт participating/iWon → ставим розыгрыш ПОЛНОСТЬЮ в SSOT и бродкастим
+    // giveawayJoined (setGiveaway, не merge). storeProjection единственный писатель.
+    async participateGiveaway(chatId: number, giveawayId: number): Promise<Giveaway> {
+      const r = await rest.post<{ giveaway: RawGiveaway }>(`/giveaways/${giveawayId}/participate`, {})
+      const giveaway = mapGiveaway(r.giveaway)
+      patchMsg(chatId, (m) => m.giveaway?.id === giveaway.id, (m) => ({ ...m, giveaway }))
+      broadcast?.(RT.giveawayJoined, { chat_id: chatId, giveaway: r.giveaway })
+      return giveaway
     },
 
     // Сообщения треда (форум-топика) по возрастанию + total.

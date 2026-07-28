@@ -41,10 +41,8 @@ export function newBoostsManager({ rest }: { rest: Pick<RestClient, 'get' | 'pos
       })
       return mapMessage(r)
     },
-    async participateGiveaway(id: number): Promise<Giveaway> {
-      const r = await rest.post<{ giveaway: RawGiveaway }>(`/giveaways/${id}/participate`, {})
-      return mapGiveaway(r.giveaway)
-    },
+    // participateGiveaway перенесён в messagesManager (single-writer: пуш в SSOT
+    // сообщений + broadcast → storeProjection). Здесь остаётся только чтение статуса.
     async getGiveaway(id: number): Promise<Giveaway> {
       const r = await rest.get<{ giveaway: RawGiveaway }>(`/giveaways/${id}`)
       return mapGiveaway(r.giveaway)

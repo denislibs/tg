@@ -31,6 +31,9 @@ export const RT = {
   checklistUpdate: 'rt:checklist_update',
   boostUpdate: 'rt:boost_update',
   giveawayUpdate: 'rt:giveaway_update',
+  // Командное эхо своего участия (participateGiveaway): несёт participating/iWon из
+  // ответа — стор ставит розыгрыш ПОЛНОСТЬЮ (setGiveaway), не мержит.
+  giveawayJoined: 'rt:giveaway_joined',
   suggestedPost: 'rt:suggested_post_update',
   balanceUpdate: 'rt:balance_update',
   paidMediaUnlock: 'rt:paid_media_unlock',
