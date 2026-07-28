@@ -241,3 +241,19 @@ tweb `PopupElement`). Это убирает ~20 `useState` и ~20 веток о�
 
 **Связь с существующим планом** (`docs/research/2026-07-28-web-client-refactor-plan.md`):
 пункты 1-3 — новые P0, которых в плане не было; 4 — уточняет PR-9; 5-6 — уточняют PR-12.
+
+---
+
+## Найдено при реализации (фазы 1-2, PR feat/messages-ssot-normalization)
+
+- **Реакции дважды считаются на reconnect (предсуществующий, не regress).** `reaction` —
+  дельта `count±1` (`reactionDelta`). Live-путь не двигает pts, поэтому `/sync` catch-up
+  переотдаёт уже применённую live-реакцию → и стор (`applyReaction`), и (если бы кэшировали)
+  воркер-SSOT удвоили бы счётчик. Идемпотентные апдейты (edit/delete/star=absolute/media_read)
+  на catch-up теперь пишутся в SSOT (`dispatchOther`), а reaction оставлен broadcast-only.
+  **Настоящий фикс** — update-level дедуп (монотонный id/pts на апдейт, как tweb `pendingPtsUpdates`),
+  а не seq-по-сообщению. Требует тега на бэке. → отдельная задача.
+- **Статус фаз:** Фаза 1 (SSOT воркер-кэша) + Фаза 2 (подавление backfill) — сделаны в этой ветке
+  (P0-1 закрыт для live + идемпотентного catch-up; P0-2 — для reconnect в пределах жизни
+  SharedWorker). Фазы 3 (стор → проекция `ids[]`+`byId`) и 4 (воркер как push-источник) —
+  отдельной веткой (переписывают read-путь всех потребителей, нельзя мешать с 1-2).

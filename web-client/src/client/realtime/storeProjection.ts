@@ -76,14 +76,6 @@ export function registerStoreProjection(managers: Managers): void {
 
   eventBus.subscribe(RT.newMessage, (m) => {
     const evt = m as NewMessageEvt
-    // Сообщение в неизвестный чат = меня только что добавили в новый чат (первое
-    // сообщение / сервисное «создал группу») → подтянуть список диалогов.
-    // Сервисное сообщение в известный чат — признак смены метаданных группы
-    // (фото/название) → тоже рефетч (дебаунс внутри).
-    if (!useChatsStore.getState().dialogs.some((d) => d.chatId === evt.chat_id) || evt.type === 'service') {
-      scheduleChatsReload(managers)
-    }
-    store.applyNewMessage(evt) // dialog-list preview (chatsStore)
     // Append to the chat's message window (single source of truth). Resolve the
     // reply preview from the already-loaded window so a reply shows its quote
     // immediately (applyIncoming no-ops if the window isn't loaded). markRead /
@@ -95,7 +87,20 @@ export function registerStoreProjection(managers: Managers): void {
     // fromNewMessageEvt (единый источник, см. models.ts).
     const replyTo = rt ? { msg_id: rt.id, seq: rt.seq, sender_id: rt.senderId, text: rt.text, type: rt.type, quote_text: evt.reply_quote_text || undefined } : null
     const incoming = fromNewMessageEvt(evt, replyTo)
-    ms.applyIncoming(evt.chat_id, incoming)
+    ms.applyIncoming(evt.chat_id, incoming) // дедупит по seq — для backfill no-op
+    // backfill (catch-up после reconnect, уже доставляли вживую): окно дедупнуто —
+    // превью диалога, счётчик непрочитанных, всплытие диалога наверх и уведомление
+    // компонентов (unread-below в useChatScroll) НЕ повторяем, иначе бейдж/список
+    // инфлейтят на каждый reconnect. Звук/нотификация гейтятся в своих подписчиках.
+    if (evt.backfill) return
+    // Сообщение в неизвестный чат = меня только что добавили в новый чат (первое
+    // сообщение / сервисное «создал группу») → подтянуть список диалогов.
+    // Сервисное сообщение в известный чат — признак смены метаданных группы
+    // (фото/название) → тоже рефетч (дебаунс внутри).
+    if (!useChatsStore.getState().dialogs.some((d) => d.chatId === evt.chat_id) || evt.type === 'service') {
+      scheduleChatsReload(managers)
+    }
+    store.applyNewMessage(evt) // dialog-list preview (chatsStore)
     // Уведомляем компоненты (напр. useChatScroll) через uiEvents. Звук/эффект и
     // браузерное уведомление — отдельные подписчики eventBus (sound/notification).
     uiEvents.emit(RT.newMessage, m)

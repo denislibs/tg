@@ -108,19 +108,25 @@ const emitLive = (payload: unknown): void => {
   broadcast(RT.newMessage, payload)
 }
 
-// map an `other_update` from /sync to the right rt:* event
+// map an `other_update` from /sync to the right rt:* event. Апдейт, пришедший
+// через catch-up (WS был отключён), тоже отражаем в SSOT воркера — иначе после
+// reconnect он виден в живом UI, но теряется при переоткрытии чата из кэша (P0-1).
+// В кэш пускаем только ИДЕМПОТЕНТНЫЕ апдейты (edit/delete/star=absolute total/
+// media_read=снятие флага). reaction — count±1-ДЕЛЬТА: catch-up переотдаёт уже
+// применённую live-реакцию (live-путь не двигает pts), повторное применение
+// удвоило бы счётчик — оставляем broadcast-only до update-level дедупа (см. план).
 function dispatchOther(u: unknown) {
   const o = u as Record<string, unknown>
   if (!o) return
   if ('up_to_seq' in o) broadcast(RT.read, o)
   else if ('emoji' in o) broadcast(RT.reaction, o)
-  else if ('total' in o) broadcast(RT.starReaction, o)
-  else if ('edited_at' in o) broadcast(RT.editMessage, o)
-  else if ('for_me' in o) broadcast(RT.deleteMessage, o)
+  else if ('total' in o) { messages.cacheStarReaction(o as never); broadcast(RT.starReaction, o) }
+  else if ('edited_at' in o) { messages.cacheEdit(o as never); broadcast(RT.editMessage, o) }
+  else if ('for_me' in o) { messages.cacheDelete(o as never); broadcast(RT.deleteMessage, o) }
   else if ('pinned' in o) broadcast(RT.pinMessage, o)
   else if ('removed' in o) broadcast(RT.chatRemoved, o)
   // media_read несёт только {chat_id, msg_id} — распознаётся последним, по остатку
-  else if ('msg_id' in o) broadcast(RT.mediaRead, o)
+  else if ('msg_id' in o) { messages.cacheMediaRead(o as never); broadcast(RT.mediaRead, o) }
 }
 
 // Реестр live-кадров WS — единый источник маршрутизации (заменяет длинный switch в
