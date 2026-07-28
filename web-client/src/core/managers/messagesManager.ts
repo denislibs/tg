@@ -128,36 +128,64 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
   }
   // Кэш истории ключуется чатом ИЛИ тредом чата ("chatId" / "chatId:root") —
   // окно топика/комментариев живёт отдельным срезом (tweb: history по threadId).
+  // SSOT сообщений воркера: ОДНА копия сообщения на (чат, seq). Окна/треды —
+  // это списки seq в `slices`, ссылающиеся в эту единую Map (как в tweb:
+  // messagesStorageByPeerId + history: SlicedArray<mid>). Раньше кэш ключевался
+  // по окну, и тред-сообщение дублировало объект между основным окном и окном
+  // треда; живые апдейты приходилось раскатывать по всем окнам (keysOf).
   const slices = new Map<string, SlicedArray<number>>()
-  const cache = new Map<string, Map<number, Message>>()
+  const msgsByChat = new Map<number, Map<number, Message>>()
   const hkey = (chatId: number, threadRoot?: number | null): string =>
     threadRoot ? `${chatId}:${threadRoot}` : String(chatId)
-  // Все ключи чата (основное окно + его треды) — для инвалидации по chatId.
-  const keysOf = (chatId: number): string[] =>
-    [...new Set([...slices.keys(), ...cache.keys()])].filter(
-      (k) => k === String(chatId) || k.startsWith(`${chatId}:`),
-    )
+  // Ключи-ОКНА чата (основное + треды) — для операций над срезами (slices).
+  const winKeysOf = (chatId: number): string[] =>
+    [...slices.keys()].filter((k) => k === String(chatId) || k.startsWith(`${chatId}:`))
 
   const sliceFor = (key: string): SlicedArray<number> => {
     let sa = slices.get(key)
     if (!sa) { sa = new SlicedArray<number>(); slices.set(key, sa) }
     return sa
   }
-  const cacheFor = (key: string): Map<number, Message> => {
-    let c = cache.get(key)
-    if (!c) { c = new Map(); cache.set(key, c) }
-    return c
-  }
   // chatId из ключа истории ("chatId" / "chatId:root") — для персиста по чату.
   const chatIdOf = (key: string): number => parseInt(key, 10)
+  // Единая по чату Map сообщений (SSOT воркера). Все окна чата читают/пишут сюда.
+  const msgsFor = (chatId: number): Map<number, Message> => {
+    let c = msgsByChat.get(chatId)
+    if (!c) { c = new Map(); msgsByChat.set(chatId, c) }
+    return c
+  }
+  // Совместимость: сайты истории оперируют «кэшем окна» — теперь это единая
+  // по чату Map (окно определяется срезом `slices`, а не отдельной Map).
+  const cacheFor = (key: string): Map<number, Message> => msgsFor(chatIdOf(key))
   const put = (key: string, msgs: Message[]) => {
-    const c = cacheFor(key)
+    const c = msgsFor(chatIdOf(key))
     for (const m of msgs) c.set(m.seq, m)
     // Write-through в офлайн-стор: put — единственный путь входа/обновления
-    // сообщений в кэше (страницы истории, отправка, live, пересылка, правки),
-    // поэтому персист здесь покрывает их все. Ключ треда даёт тот же chatId
-    // (идемпотентно по pk `${chatId}:${seq}`).
+    // сообщений в SSOT (страницы истории, отправка, live, пересылка, правки),
+    // поэтому персист здесь покрывает их все.
     if (msgs.length) void saveMessages(chatIdOf(key), msgs)
+  }
+  // Точечно обновить одно сообщение чата в SSOT + персист. match — по id/вложенному
+  // объекту (события реакций/опросов/read несут msg_id, а не seq). upd строит новую
+  // версию. Идемпотентно, единый проход по одной Map (раньше — по всем окнам).
+  const patchMsg = (chatId: number, match: (m: Message) => boolean, upd: (m: Message) => Message): void => {
+    const c = msgsByChat.get(chatId)
+    if (!c) return
+    for (const [seq, m] of c) {
+      if (!match(m)) continue
+      c.set(seq, upd(m))
+      void saveMessages(chatId, [c.get(seq)!])
+      return
+    }
+  }
+  // Удалить сообщение из SSOT + снять его seq из всех окон-срезов чата + персист.
+  const evictMsg = (chatId: number, msgId: number): void => {
+    const c = msgsByChat.get(chatId)
+    let seq: number | undefined
+    if (c) for (const [s, m] of c) if (m.id === msgId) { seq = s; c.delete(s); break }
+    if (seq === undefined) return
+    for (const k of winKeysOf(chatId)) slices.get(k)?.delete(seq)
+    void deletePersistedMessage(chatId, seq)
   }
 
   return {
@@ -278,79 +306,45 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
     async editMessage(chatId: number, msgId: number, text: string, entities?: MessageEntity[]): Promise<Message> {
       const updated = await rest.patch<RawMessage>(`/chats/${chatId}/messages/${msgId}`, { text, entities: entities ?? null })
       const m = mapMessage(updated)
-      for (const key of keysOf(chatId)) if (cache.get(key)?.has(m.seq)) put(key, [m])
-      put(hkey(chatId, m.threadRootId), [m])
+      // upsert правки в SSOT (только если сообщение уже загружено в чат).
+      if (msgsFor(chatId).has(m.seq)) put(hkey(chatId), [m])
       return m
     },
 
     // «Проверка фактов» (Telegram editFactCheck): прикрепить/изменить блок на
     // сообщении канала (право проверяет бэк — автор/админ канала). Возвращает
-    // обновлённое сообщение и патчит кэш окон чата.
+    // обновлённое сообщение и патчит SSOT.
     async setFactCheck(chatId: number, msgId: number, text: string, entities?: MessageEntity[], country?: string): Promise<Message> {
       const updated = await rest.post<RawMessage>(`/chats/${chatId}/messages/${msgId}/factcheck`, {
         text, entities: entities ?? null, country: country ?? '',
       })
       const m = mapMessage(updated)
-      for (const key of keysOf(chatId)) if (cache.get(key)?.has(m.seq)) put(key, [m])
-      put(hkey(chatId, m.threadRootId), [m])
+      if (msgsFor(chatId).has(m.seq)) put(hkey(chatId), [m])
       return m
     },
 
-    // Снять «проверку фактов» (Telegram deleteFactCheck). Патчит кэш всех окон чата.
+    // Снять «проверку фактов» (Telegram deleteFactCheck). Патчит SSOT.
     async removeFactCheck(chatId: number, msgId: number): Promise<{ ok: boolean }> {
       const r = await rest.del<{ ok: boolean }>(`/chats/${chatId}/messages/${msgId}/factcheck`)
-      for (const key of keysOf(chatId)) {
-        const c = cache.get(key)
-        if (!c) continue
-        for (const [seq, m] of c) {
-          if (m.id === msgId) {
-            const upd = { ...m, factCheck: undefined }
-            c.set(seq, upd)
-            void saveMessages(chatId, [upd])
-            break
-          }
-        }
-      }
+      patchMsg(chatId, (m) => m.id === msgId, (m) => ({ ...m, factCheck: undefined }))
       return r
     },
 
     // Расшифровка голосового/видео-кружка (Telegram transcribeAudio). Реального STT
-    // на бэке нет — возвращается детерминированный стаб и кэшируется. Патчим кэш
-    // всех окон чата, чтобы блок остался развёрнутым при перерисовке.
+    // на бэке нет — возвращается детерминированный стаб и кэшируется в SSOT, чтобы
+    // блок остался развёрнутым при перерисовке.
     async transcribe(chatId: number, msgId: number): Promise<{ text: string; pending: boolean }> {
       const r = await rest.post<{ text: string; pending: boolean }>(`/chats/${chatId}/messages/${msgId}/transcribe`, {})
-      for (const key of keysOf(chatId)) {
-        const c = cache.get(key)
-        if (!c) continue
-        for (const [seq, m] of c) {
-          if (m.id === msgId) {
-            const upd = { ...m, transcription: r.text }
-            c.set(seq, upd)
-            void saveMessages(chatId, [upd])
-            break
-          }
-        }
-      }
+      patchMsg(chatId, (m) => m.id === msgId, (m) => ({ ...m, transcription: r.text }))
       return r
     },
 
     // Delete a message. revoke=true → for everyone; false → only for me. Deleted
-    // messages are never shown, so evict from the cache (seq + slice) too, or a
-    // later cache hit would resurrect it.
+    // messages are never shown, so evict from the SSOT (+ all window slices) too,
+    // or a later cache hit would resurrect it.
     async deleteMessage(chatId: number, msgId: number, revoke: boolean): Promise<{ ok: boolean }> {
       const r = await rest.del<{ ok: boolean }>(`/chats/${chatId}/messages/${msgId}?revoke=${revoke ? 'true' : 'false'}`)
-      // Вычистить из основного окна и всех тред-окон этого чата.
-      for (const key of keysOf(chatId)) {
-        const c = cacheFor(key)
-        for (const [seq, m] of c) {
-          if (m.id === msgId) {
-            c.delete(seq)
-            sliceFor(key).delete(seq)
-            void deletePersistedMessage(chatId, seq) // офлайн-стор тоже
-            break
-          }
-        }
-      }
+      evictMsg(chatId, msgId)
       return r
     },
 
@@ -582,111 +576,46 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
       }
     },
 
-    // Live-правка/удаление от любого участника → кэш всех окон этого чата.
+    // Live-правка от любого участника → единый объект в SSOT.
     cacheEdit(evt: EditMessageEvt): void {
-      for (const key of keysOf(evt.chat_id)) {
-        const c = cache.get(key)
-        if (!c) continue
-        for (const [seq, m] of c) {
-          if (m.id === evt.msg_id) {
-            const upd = { ...m, text: evt.text, entities: evt.entities ?? undefined, editedAt: evt.edited_at }
-            c.set(seq, upd)
-            void saveMessages(evt.chat_id, [upd])
-            break
-          }
-        }
-      }
+      patchMsg(evt.chat_id, (m) => m.id === evt.msg_id,
+        (m) => ({ ...m, text: evt.text, entities: evt.entities ?? undefined, editedAt: evt.edited_at }))
     },
 
-    // Live-обновление координат гео-трансляции → кэш всех окон чата.
+    // Live-обновление координат гео-трансляции → SSOT.
     cacheGeoLive(evt: GeoLiveUpdateEvt): void {
       const geo = mapGeo(evt.geo)
-      for (const key of keysOf(evt.chat_id)) {
-        const c = cache.get(key)
-        if (!c) continue
-        for (const [seq, m] of c) {
-          if (m.id === evt.msg_id) {
-            const upd = { ...m, geo }
-            c.set(seq, upd)
-            void saveMessages(evt.chat_id, [upd])
-            break
-          }
-        }
-      }
+      patchMsg(evt.chat_id, (m) => m.id === evt.msg_id, (m) => ({ ...m, geo }))
     },
 
-    // Догоняющее серверное превью ссылки → кэш всех окон чата.
+    // Догоняющее серверное превью ссылки → SSOT.
     cacheWebPage(evt: WebPageUpdateEvt): void {
       const webPage = mapWebPage(evt.web_page)
-      for (const key of keysOf(evt.chat_id)) {
-        const c = cache.get(key)
-        if (!c) continue
-        for (const [seq, m] of c) {
-          if (m.id === evt.msg_id) {
-            const upd = { ...m, webPage }
-            c.set(seq, upd)
-            void saveMessages(evt.chat_id, [upd])
-            break
-          }
-        }
-      }
+      patchMsg(evt.chat_id, (m) => m.id === evt.msg_id, (m) => ({ ...m, webPage }))
     },
 
-    // «Проверка фактов» прикреплена/изменена/снята → кэш всех окон чата.
+    // «Проверка фактов» прикреплена/изменена/снята → SSOT.
     cacheFactCheck(evt: FactCheckUpdateEvt): void {
       const factCheck = evt.factcheck ? mapFactCheck(evt.factcheck) : undefined
-      for (const key of keysOf(evt.chat_id)) {
-        const c = cache.get(key)
-        if (!c) continue
-        for (const [seq, m] of c) {
-          if (m.id === evt.msg_id) {
-            const upd = { ...m, factCheck }
-            c.set(seq, upd)
-            void saveMessages(evt.chat_id, [upd])
-            break
-          }
-        }
-      }
+      patchMsg(evt.chat_id, (m) => m.id === evt.msg_id, (m) => ({ ...m, factCheck }))
     },
 
-    // Платное медиа разблокировано: раскрываем баббл в кэше всех окон чата —
-    // возвращаем ссылку на контент + метаданные и снимаем флаг locked.
+    // Платное медиа разблокировано: раскрываем баббл в SSOT — возвращаем ссылку на
+    // контент + метаданные и снимаем флаг locked.
     cachePaidUnlock(evt: NewMessageEvt): void {
-      for (const key of keysOf(evt.chat_id)) {
-        const c = cache.get(key)
-        if (!c) continue
-        for (const [seq, m] of c) {
-          if (m.id === evt.msg_id) {
-            const upd = {
-              ...m,
-              mediaId: evt.media_id ?? null,
-              mediaWidth: evt.media_w, mediaHeight: evt.media_h,
-              mediaMime: evt.media_mime, mediaBlur: evt.media_blur,
-              mediaHasThumb: evt.media_has_thumb, mediaDuration: evt.media_duration,
-              mediaSize: evt.media_size, mediaName: evt.media_name,
-              paidMedia: evt.paid_media ? { price: evt.paid_media.price, locked: evt.paid_media.locked } : undefined,
-            }
-            c.set(seq, upd)
-            void saveMessages(evt.chat_id, [upd])
-            break
-          }
-        }
-      }
+      patchMsg(evt.chat_id, (m) => m.id === evt.msg_id, (m) => ({
+        ...m,
+        mediaId: evt.media_id ?? null,
+        mediaWidth: evt.media_w, mediaHeight: evt.media_h,
+        mediaMime: evt.media_mime, mediaBlur: evt.media_blur,
+        mediaHasThumb: evt.media_has_thumb, mediaDuration: evt.media_duration,
+        mediaSize: evt.media_size, mediaName: evt.media_name,
+        paidMedia: evt.paid_media ? { price: evt.paid_media.price, locked: evt.paid_media.locked } : undefined,
+      }))
     },
 
     cacheDelete(evt: DeleteMessageEvt): void {
-      for (const key of keysOf(evt.chat_id)) {
-        const c = cache.get(key)
-        if (!c) continue
-        for (const [seq, m] of c) {
-          if (m.id === evt.msg_id) {
-            c.delete(seq)
-            slices.get(key)?.delete(seq)
-            void deletePersistedMessage(evt.chat_id, seq) // офлайн-стор тоже
-            break
-          }
-        }
-      }
+      evictMsg(evt.chat_id, evt.msg_id)
     },
 
     // Реакции: поставить/снять свою (агрегаты приходят realtime-фреймом reaction).
@@ -746,7 +675,7 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
         lat, lng, heading: opts?.heading ?? null, stopped: opts?.stopped ?? false,
       })
       const m = mapMessage(r)
-      for (const key of keysOf(chatId)) if (cache.get(key)?.has(m.seq)) put(key, [m])
+      if (msgsFor(chatId).has(m.seq)) put(hkey(chatId), [m])
       return m
     },
 
