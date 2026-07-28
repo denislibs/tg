@@ -36,7 +36,7 @@ import { newLivestreamManager } from './managers/livestreamManager'
 import { newConnectionManager } from './realtime/connectionManager'
 import { newSyncEngine } from './realtime/syncEngine'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type TypingAction } from './realtime/events'
+import { RT, type TypingAction, type NewMessageEvt } from './realtime/events'
 import { idbGet, idbSet } from './store/idbKv'
 import { persistScope } from './store/persist'
 
@@ -51,9 +51,14 @@ const auth = newAuthManager({ rest, store: tokens })
 const profile = newProfileManager({ rest })
 const premium = newPremiumManager({ rest })
 const chats = newChatsManager({ rest })
+// id текущего пользователя в воркере: нужен, чтобы кэшировать `mine` реакций
+// (событие reaction несёт user_id реагирующего). Разрешаем лениво через /me после
+// загрузки токена; при смене аккаунта перезагрузка воркера обнулит его заново.
+let meId: number | null = null
+void tokens.ready().then(() => auth.me()).then((u) => { meId = u?.id ?? null }).catch(() => {})
 // decryptSecret дергает secret лениво — стрелка вызывается только на fetch истории
 // (после инициализации модуля), поэтому forward-ссылка на объявленный ниже secret безопасна.
-const messages = newMessagesManager({ rest, decryptSecret: (chatId, encBody) => secret.decryptMessage(chatId, encBody) })
+const messages = newMessagesManager({ rest, decryptSecret: (chatId, encBody) => secret.decryptMessage(chatId, encBody), getMeId: () => meId })
 // broadcast объявлен ниже — замыкание дергает его лениво (к моменту первого
 // аплоада порты уже подняты)
 const media = newMediaManager({
@@ -89,19 +94,39 @@ const iv = newIVManager({ rest })
 const ports: SuperMessagePort[] = []
 const broadcast = (event: string, payload: unknown) => { for (const p of ports) p.emit(event, payload) }
 
-// map an `other_update` from /sync to the right rt:* event
+// P0-2: пер-чатовый максимум seq, уже доставленного вживую в этой сессии воркера.
+// Живёт в SharedWorker → переживает reload вкладки. При catch-up после reconnect
+// /sync повторно отдаёт уже доставленные сообщения (live-путь не двигает pts —
+// это на бэке); такие помечаем backfill:true, и звук/нотификации их пропускают
+// (иначе дубль уведомления/звука/непрочитанных на каждый reconnect).
+const deliveredSeq = new Map<number, number>()
+// Живое новое сообщение: запомнить как доставленное, отразить в SSOT, разослать.
+const emitLive = (payload: unknown): void => {
+  const e = payload as NewMessageEvt
+  deliveredSeq.set(e.chat_id, Math.max(deliveredSeq.get(e.chat_id) ?? 0, e.seq))
+  messages.cacheLive(payload as never)
+  broadcast(RT.newMessage, payload)
+}
+
+// map an `other_update` from /sync to the right rt:* event. Апдейт, пришедший
+// через catch-up (WS был отключён), тоже отражаем в SSOT воркера — иначе после
+// reconnect он виден в живом UI, но теряется при переоткрытии чата из кэша (P0-1).
+// В кэш пускаем только ИДЕМПОТЕНТНЫЕ апдейты (edit/delete/star=absolute total/
+// media_read=снятие флага). reaction — count±1-ДЕЛЬТА: catch-up переотдаёт уже
+// применённую live-реакцию (live-путь не двигает pts), повторное применение
+// удвоило бы счётчик — оставляем broadcast-only до update-level дедупа (см. план).
 function dispatchOther(u: unknown) {
   const o = u as Record<string, unknown>
   if (!o) return
   if ('up_to_seq' in o) broadcast(RT.read, o)
   else if ('emoji' in o) broadcast(RT.reaction, o)
-  else if ('total' in o) broadcast(RT.starReaction, o)
-  else if ('edited_at' in o) broadcast(RT.editMessage, o)
-  else if ('for_me' in o) broadcast(RT.deleteMessage, o)
+  else if ('total' in o) { messages.cacheStarReaction(o as never); broadcast(RT.starReaction, o) }
+  else if ('edited_at' in o) { messages.cacheEdit(o as never); broadcast(RT.editMessage, o) }
+  else if ('for_me' in o) { messages.cacheDelete(o as never); broadcast(RT.deleteMessage, o) }
   else if ('pinned' in o) broadcast(RT.pinMessage, o)
   else if ('removed' in o) broadcast(RT.chatRemoved, o)
   // media_read несёт только {chat_id, msg_id} — распознаётся последним, по остатку
-  else if ('msg_id' in o) broadcast(RT.mediaRead, o)
+  else if ('msg_id' in o) { messages.cacheMediaRead(o as never); broadcast(RT.mediaRead, o) }
 }
 
 // Реестр live-кадров WS — единый источник маршрутизации (заменяет длинный switch в
@@ -116,15 +141,22 @@ const CACHE_THEN_BROADCAST: Record<string, { rt: string; cache: (p: never) => vo
   geo_live_update:   { rt: RT.geoLiveUpdate,   cache: (p) => messages.cacheGeoLive(p) },
   web_page_update:   { rt: RT.webPageUpdate,   cache: (p) => messages.cacheWebPage(p) },
   factcheck_update:  { rt: RT.factCheckUpdate, cache: (p) => messages.cacheFactCheck(p) },
+  // P0-1: агрегаты, которые раньше были broadcast-only и терялись при переоткрытии
+  // чата из кэша воркера (реакции/⭐ — в фазе 1b-2, нужен meId).
+  media_read:        { rt: RT.mediaRead,       cache: (p) => messages.cacheMediaRead(p) },
+  poll_update:       { rt: RT.pollUpdate,      cache: (p) => messages.cachePoll(p) },
+  checklist_update:  { rt: RT.checklistUpdate, cache: (p) => messages.cacheChecklist(p) },
+  giveaway_update:   { rt: RT.giveawayUpdate,  cache: (p) => messages.cacheGiveaway(p) },
+  reaction:          { rt: RT.reaction,        cache: (p) => messages.cacheReaction(p) },
+  star_reaction:     { rt: RT.starReaction,    cache: (p) => messages.cacheStarReaction(p) },
 }
 const PASS_THROUGH: Record<string, string> = {
   message_ack: RT.ack, message_error: RT.messageError, pin_message: RT.pinMessage,
-  read: RT.read, media_read: RT.mediaRead, chat_removed: RT.chatRemoved,
-  typing: RT.typing, presence: RT.presence, reaction: RT.reaction, star_reaction: RT.starReaction,
+  read: RT.read, chat_removed: RT.chatRemoved,
+  typing: RT.typing, presence: RT.presence,
   draft_update: RT.draftUpdate, chat_theme_update: RT.chatThemeUpdate,
   dialog_pin: RT.dialogPin, dialog_archive: RT.dialogArchive,
-  poll_update: RT.pollUpdate, checklist_update: RT.checklistUpdate,
-  boost_update: RT.boostUpdate, giveaway_update: RT.giveawayUpdate,
+  boost_update: RT.boostUpdate,
   suggested_post_update: RT.suggestedPost, balance_update: RT.balanceUpdate,
   bot_callback_answer: RT.botCallbackAnswer, story_new: RT.storyNew,
   story_deleted: RT.storyDeleted, story_reaction: RT.storyReaction,
@@ -134,7 +166,16 @@ const PASS_THROUGH: Record<string, string> = {
 const ws = new WsClient('/ws')
 const sync = newSyncEngine({
   rest, store: { get: idbGet, set: idbSet },
-  onNewMessage: (m) => broadcast(RT.newMessage, m),
+  onNewMessage: (m) => {
+    const e = m as NewMessageEvt
+    // Уже доставляли вживую в этой сессии → backfill: в стор попадёт (dedup),
+    // но звук/нотификация/непрочитанные не сработают повторно.
+    if (e.seq <= (deliveredSeq.get(e.chat_id) ?? 0)) { broadcast(RT.newMessage, { ...e, backfill: true }); return }
+    // Пропущенное в офлайне — доставляем как новое (и кэшируем в SSOT).
+    deliveredSeq.set(e.chat_id, e.seq)
+    messages.cacheLive(m as never)
+    broadcast(RT.newMessage, m)
+  },
   onOtherUpdate: dispatchOther,
   onResync: () => broadcast('rt:resync', null),
 })
@@ -155,10 +196,10 @@ const conn = newConnectionManager({
       if (p.enc_body && p.chat_id) {
         void secret.decryptMessage(p.chat_id, p.enc_body).then((dec) => {
           if (dec) { p.text = dec.text; p.entities = dec.entities; if (dec.media) p.secret_media = dec.media }
-          messages.cacheLive(payload as never); broadcast(RT.newMessage, payload)
+          emitLive(payload)
         })
       } else {
-        messages.cacheLive(payload as never); broadcast(RT.newMessage, payload)
+        emitLive(payload)
       }
       return
     }
