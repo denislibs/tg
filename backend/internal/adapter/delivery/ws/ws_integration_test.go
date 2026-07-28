@@ -90,6 +90,38 @@ func newWSEnv(t *testing.T) *wsEnv {
 	}
 }
 
+func TestWS_HelloIsFirstFrame(t *testing.T) {
+	env := newWSEnv(t)
+	defer env.close()
+
+	conn := dial(t, env.url, env.tokenA)
+	defer conn.Close()
+
+	// The very FIRST frame on connect must be the hello cursor frame, carrying the
+	// user's current pts/date so the client can decide whether to catch up.
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, data, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatalf("read hello: %v", err)
+	}
+	var f struct {
+		T string `json:"t"`
+		D struct {
+			Pts  *int64 `json:"pts"`
+			Date *int64 `json:"date"`
+		} `json:"d"`
+	}
+	if err := json.Unmarshal(data, &f); err != nil {
+		t.Fatalf("unmarshal hello: %v", err)
+	}
+	if f.T != "hello" {
+		t.Fatalf("first frame = %q; want hello", f.T)
+	}
+	if f.D.Pts == nil || f.D.Date == nil {
+		t.Fatalf("hello payload missing pts/date: %s", data)
+	}
+}
+
 func TestWS_LiveDelivery(t *testing.T) {
 	env := newWSEnv(t)
 	defer env.close()

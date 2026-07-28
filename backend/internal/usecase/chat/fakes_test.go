@@ -221,22 +221,24 @@ func (r fakeChats) ChatPartners(_ context.Context, userID int64) ([]int64, error
 	return out, nil
 }
 
-func (r fakeChats) IncUnread(_ context.Context, chatID, userID int64) error {
+func (r fakeChats) IncUnread(_ context.Context, chatID, userID int64) (int, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	if m := r.s.members[chatID][userID]; m != nil {
 		m.unread++
+		return m.unread, nil
 	}
-	return nil
+	return 0, nil
 }
 
-func (r fakeChats) IncUnreadReactions(_ context.Context, chatID, userID int64) error {
+func (r fakeChats) IncUnreadReactions(_ context.Context, chatID, userID int64) (int, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	if m := r.s.members[chatID][userID]; m != nil {
 		m.reactions++
+		return m.reactions, nil
 	}
-	return nil
+	return 0, nil
 }
 
 func (r fakeChats) ClearUnreadReactions(_ context.Context, chatID, userID int64) error {

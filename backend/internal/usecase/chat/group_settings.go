@@ -299,6 +299,7 @@ func (i *Interactor) DeleteGroup(ctx context.Context, chatID, actorID int64) err
 	}
 	slices.Sort(members)
 	payload := map[string]any{"chat_id": chatID, "removed": true}
+	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if i.updates != nil {
 			b, e := json.Marshal(payload)
@@ -307,9 +308,11 @@ func (i *Interactor) DeleteGroup(ctx context.Context, chatID, actorID int64) err
 			}
 			date := nowMillis()
 			for _, uid := range members {
-				if _, e := i.updates.AppendUpdate(ctx, uid, 1, date, "chat_removed", b); e != nil {
+				pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "chat_removed", b)
+				if e != nil {
 					return e
 				}
+				ptsByUser[uid] = pts
 			}
 		}
 		return i.groups.DeleteChat(ctx, chatID)
@@ -318,9 +321,12 @@ func (i *Interactor) DeleteGroup(ctx context.Context, chatID, actorID int64) err
 		return err
 	}
 	if i.publisher != nil {
-		f := frame("chat_removed", payload)
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, f)
+			if pts, ok := ptsByUser[uid]; ok {
+				_ = i.publisher.PublishToUser(ctx, uid, framePts("chat_removed", payload, pts))
+			} else {
+				_ = i.publisher.PublishToUser(ctx, uid, frame("chat_removed", payload))
+			}
 		}
 	}
 	return nil

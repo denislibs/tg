@@ -17,17 +17,25 @@ func frame(t string, d any) []byte {
 	return b
 }
 
-// framePts is frame() with the recipient's per-user pts injected into the payload
-// — lets the client dedup this live update against catch-up replay (the same pts
-// is carried on /sync items), e.g. to stop reaction deltas double-counting on
-// reconnect. base must be a map (a shallow copy is made so callers can reuse it).
-func framePts(t string, base map[string]any, pts int64) []byte {
-	d := make(map[string]any, len(base)+1)
+// frameFields encodes {t, d} with extra fields merged into a COPY of base. base
+// is shared across recipients (marshalled once for the pts log), so it must never
+// be mutated — every recipient gets its own d with its own per-user fields.
+func frameFields(t string, base map[string]any, extra map[string]any) []byte {
+	d := make(map[string]any, len(base)+len(extra))
 	for k, v := range base {
 		d[k] = v
 	}
-	d["pts"] = pts
+	for k, v := range extra {
+		d[k] = v
+	}
 	return frame(t, d)
+}
+
+// framePts encodes {t, d} with the recipient's per-user pts (dense monotonic
+// cursor) injected into d, so a live frame advances the client's cursor exactly
+// like the matching /sync update row does.
+func framePts(t string, base map[string]any, pts int64) []byte {
+	return frameFields(t, base, map[string]any{"pts": pts})
 }
 
 func messageUpdatePayload(m domain.Message) map[string]any {
@@ -50,6 +58,12 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 		"giveaway":       m.Giveaway,
 		"gift_id":        m.GiftID,
 		"gift":           m.Gift,
+	}
+	// client_msg_id едет в echo нового сообщения: отправитель матчит его со своим
+	// оптимистичным баблом тем же ключом, что и message_ack (у остальных
+	// получателей такого ключа нет — поле для них безвредно).
+	if m.ClientMsgID != nil {
+		p["client_msg_id"] = *m.ClientMsgID
 	}
 	if m.ReplyMarkup != nil {
 		p["reply_markup"] = m.ReplyMarkup
@@ -222,10 +236,20 @@ func deleteUpdatePayload(chatID, msgID, seq int64, forMe bool) map[string]any {
 	}
 }
 
-func reactionPayload(chatID, messageID, userID, authorID int64, emoji, action string) map[string]any {
+// reactionPayload — тело фрейма/апдейта reaction. Помимо диффа (user_id + emoji +
+// action, нужного для анимации и вычисления mine на клиенте) несёт АБСОЛЮТНЫЙ
+// агрегат counts: [{emoji, count}] — полное текущее состояние реакций сообщения,
+// посчитанное в той же транзакции после Add/Remove. Абсолютный агрегат делает
+// повтор из /sync идемпотентным по построению. counts viewer-agnostic (без mine):
+// один и тот же payload уходит всем получателям и в лог.
+func reactionPayload(chatID, messageID, userID, authorID int64, emoji, action string, counts []domain.ReactionCount) map[string]any {
+	if counts == nil {
+		counts = []domain.ReactionCount{}
+	}
 	return map[string]any{
 		"chat_id": chatID, "msg_id": messageID, "user_id": userID,
 		"author_id": authorID, "emoji": emoji, "action": action,
+		"counts": counts,
 	}
 }
 

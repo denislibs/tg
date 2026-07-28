@@ -48,6 +48,7 @@ func (i *Interactor) botEditMessage(ctx context.Context, bot domain.BotAccount, 
 	}
 	msg := cur
 	var members []int64
+	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if text != nil {
 			m, e := i.msgs.UpdateText(ctx, msgID, *text, entities)
@@ -75,9 +76,11 @@ func (i *Interactor) botEditMessage(ctx context.Context, bot domain.BotAccount, 
 		}
 		date := nowMillis()
 		for _, uid := range members {
-			if _, e := i.updates.AppendUpdate(ctx, uid, 1, date, "edit_message", payload); e != nil {
+			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "edit_message", payload)
+			if e != nil {
 				return e
 			}
+			ptsByUser[uid] = pts
 		}
 		return nil
 	})
@@ -85,9 +88,9 @@ func (i *Interactor) botEditMessage(ctx context.Context, bot domain.BotAccount, 
 		return domain.Message{}, err
 	}
 	if i.publisher != nil {
-		f := frame("edit_message", editUpdatePayload(msg))
+		base := editUpdatePayload(msg)
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, f)
+			_ = i.publisher.PublishToUser(ctx, uid, framePts("edit_message", base, ptsByUser[uid]))
 		}
 	}
 	return msg, nil

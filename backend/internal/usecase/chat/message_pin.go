@@ -33,6 +33,7 @@ func (i *Interactor) SetPin(ctx context.Context, chatID, msgID, userID int64, pi
 	}
 
 	var members []int64
+	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if pin {
 			if e := i.chats.PinMessage(ctx, chatID, msgID, userID); e != nil {
@@ -53,9 +54,11 @@ func (i *Interactor) SetPin(ctx context.Context, chatID, msgID, userID int64, pi
 		}
 		date := nowMillis()
 		for _, uid := range members {
-			if _, e := i.updates.AppendUpdate(ctx, uid, 1, date, "pin_message", payload); e != nil {
+			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "pin_message", payload)
+			if e != nil {
 				return e
 			}
+			ptsByUser[uid] = pts
 		}
 		return nil
 	})
@@ -63,9 +66,9 @@ func (i *Interactor) SetPin(ctx context.Context, chatID, msgID, userID int64, pi
 		return err
 	}
 	if i.publisher != nil {
-		f := frame("pin_message", map[string]any{"chat_id": chatID, "msg_id": msgID, "pinned": pin})
+		base := map[string]any{"chat_id": chatID, "msg_id": msgID, "pinned": pin}
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, f)
+			_ = i.publisher.PublishToUser(ctx, uid, framePts("pin_message", base, ptsByUser[uid]))
 		}
 	}
 	return nil

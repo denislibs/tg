@@ -72,6 +72,7 @@ func (i *Interactor) PurgeExpiredMessages(ctx context.Context) (int, error) {
 	purged := 0
 	for _, msg := range expired {
 		var members []int64
+		ptsByUser := map[int64]int64{}
 		err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
 			if e := i.msgs.SoftDelete(ctx, msg.ID); e != nil {
 				return e
@@ -88,9 +89,11 @@ func (i *Interactor) PurgeExpiredMessages(ctx context.Context) (int, error) {
 			}
 			date := nowMillis()
 			for _, uid := range members {
-				if _, e := i.updates.AppendUpdate(ctx, uid, 1, date, "delete_message", payload); e != nil {
+				pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "delete_message", payload)
+				if e != nil {
 					return e
 				}
+				ptsByUser[uid] = pts
 			}
 			return nil
 		})
@@ -99,9 +102,9 @@ func (i *Interactor) PurgeExpiredMessages(ctx context.Context) (int, error) {
 		}
 		purged++
 		if i.publisher != nil {
-			f := frame("delete_message", deleteUpdatePayload(msg.ChatID, msg.ID, msg.Seq, false))
+			base := deleteUpdatePayload(msg.ChatID, msg.ID, msg.Seq, false)
 			for _, uid := range members {
-				_ = i.publisher.PublishToUser(ctx, uid, f)
+				_ = i.publisher.PublishToUser(ctx, uid, framePts("delete_message", base, ptsByUser[uid]))
 			}
 		}
 	}

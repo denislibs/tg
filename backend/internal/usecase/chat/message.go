@@ -289,6 +289,10 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	var msg domain.Message
 	var recipients []int64 // non-nil only when a NEW message was inserted
 	var charge paidCharge  // платная группа: списание/начисление (публикуем после коммита)
+	// Per-recipient pts (dense cursor) + authoritative unread, captured INSIDE the
+	// tx so the live frame carries exactly the values persisted for each member.
+	ptsByUser := map[int64]int64{}
+	unreadByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if in.ClientMsgID != "" {
 			if existing, e := i.msgs.FindByClientMsgID(ctx, in.ChatID, in.SenderID, in.ClientMsgID); e == nil {
@@ -426,13 +430,17 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			if payloadLocked != nil && uid != in.SenderID {
 				p = payloadLocked
 			}
-			if _, e := i.updates.AppendUpdate(ctx, uid, 1, date, "new_message", p); e != nil {
+			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "new_message", p)
+			if e != nil {
 				return e
 			}
+			ptsByUser[uid] = pts
 			if uid != in.SenderID {
-				if e := i.chats.IncUnread(ctx, in.ChatID, uid); e != nil {
+				n, e := i.chats.IncUnread(ctx, in.ChatID, uid)
+				if e != nil {
 					return e
 				}
+				unreadByUser[uid] = int64(n)
 				// Отмечаем упоминание только для реального участника (кроме автора).
 				if mentioned[uid] {
 					if e := i.chats.AddMention(ctx, in.ChatID, msg.ID, msg.Seq, uid); e != nil {
@@ -455,18 +463,23 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		}
 	}
 	if recipients != nil {
-		f := frame("new_message", messageUpdatePayload(msg))
-		var fLocked []byte
+		base := messageUpdatePayload(msg)
+		var baseLocked map[string]any
 		if msg.PaidMediaPrice != nil {
-			fLocked = frame("new_message", messageUpdatePayload(lockedPaidCopy(msg)))
+			baseLocked = messageUpdatePayload(lockedPaidCopy(msg))
 		}
 		for _, uid := range recipients {
-			ff := f
-			if fLocked != nil && uid != in.SenderID {
-				ff = fLocked
+			b := base
+			if baseLocked != nil && uid != in.SenderID {
+				b = baseLocked
+			}
+			// pts у всех; authoritative unread — только у получателей (не автора).
+			extra := map[string]any{"pts": ptsByUser[uid]}
+			if uid != in.SenderID {
+				extra["unread"] = unreadByUser[uid]
 			}
 			if i.publisher != nil {
-				_ = i.publisher.PublishToUser(ctx, uid, ff)
+				_ = i.publisher.PublishToUser(ctx, uid, frameFields("new_message", b, extra))
 			}
 			if i.notifier != nil && uid != in.SenderID && !in.Silent {
 				i.notifier.NotifyNewMessage(ctx, uid, msg.ChatID, msg.ID, msg.Seq, msg.SenderID, msg.Text)
@@ -526,6 +539,8 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 	var members []int64
 	var effective int64
 	var advanced bool
+	var unread int
+	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		cur, e := i.chats.CurrentReadSeq(ctx, chatID, userID)
 		if e != nil {
@@ -536,10 +551,11 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 			effective = cur
 		}
 		advanced = effective > cur
-		unread, e := i.msgs.CountUnread(ctx, chatID, userID, effective)
+		u, e := i.msgs.CountUnread(ctx, chatID, userID, effective)
 		if e != nil {
 			return e
 		}
+		unread = u
 		if e := i.chats.SetRead(ctx, chatID, userID, effective, unread); e != nil {
 			return e
 		}
@@ -564,17 +580,23 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 		}
 		slices.Sort(m)
 		members = m
-		payload, e := json.Marshal(map[string]any{
-			"chat_id": chatID, "user_id": userID, "up_to_seq": effective,
-		})
+		// Один и тот же base для лога и live-кадра: authoritative unread — это unread
+		// самого читателя (единое значение); клиент применяет его, только если
+		// user_id == me (у остальных участников это read-receipt по up_to_seq).
+		base := map[string]any{
+			"chat_id": chatID, "user_id": userID, "up_to_seq": effective, "unread": unread,
+		}
+		payload, e := json.Marshal(base)
 		if e != nil {
 			return e
 		}
 		date := nowMillis()
 		for _, uid := range members {
-			if _, e := i.updates.AppendUpdate(ctx, uid, 1, date, "read", payload); e != nil {
+			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "read", payload)
+			if e != nil {
 				return e
 			}
+			ptsByUser[uid] = pts
 		}
 		return nil
 	})
@@ -584,9 +606,9 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 	// Only fan out when the read marker actually advanced — a no-op re-read
 	// must not spam every member with a redundant read frame.
 	if i.publisher != nil && advanced {
-		f := frame("read", map[string]any{"chat_id": chatID, "user_id": userID, "up_to_seq": effective})
+		base := map[string]any{"chat_id": chatID, "user_id": userID, "up_to_seq": effective, "unread": unread}
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, f)
+			_ = i.publisher.PublishToUser(ctx, uid, framePts("read", base, ptsByUser[uid]))
 		}
 	}
 	// Channel posts track a per-viewer view count: register this reader's view of
@@ -752,6 +774,7 @@ func (i *Interactor) ReadMedia(ctx context.Context, chatID, userID, msgID int64)
 	}
 	var members []int64
 	var cleared bool
+	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		c, e := i.msgs.ClearMediaUnread(ctx, msgID)
 		if e != nil || !c {
@@ -770,9 +793,11 @@ func (i *Interactor) ReadMedia(ctx context.Context, chatID, userID, msgID int64)
 		}
 		date := nowMillis()
 		for _, uid := range members {
-			if _, e := i.updates.AppendUpdate(ctx, uid, 1, date, "media_read", payload); e != nil {
+			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "media_read", payload)
+			if e != nil {
 				return e
 			}
+			ptsByUser[uid] = pts
 		}
 		return nil
 	})
@@ -780,9 +805,9 @@ func (i *Interactor) ReadMedia(ctx context.Context, chatID, userID, msgID int64)
 		return err
 	}
 	if cleared && i.publisher != nil {
-		f := frame("media_read", map[string]any{"chat_id": chatID, "msg_id": msgID})
+		base := map[string]any{"chat_id": chatID, "msg_id": msgID}
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, f)
+			_ = i.publisher.PublishToUser(ctx, uid, framePts("media_read", base, ptsByUser[uid]))
 		}
 	}
 	return nil

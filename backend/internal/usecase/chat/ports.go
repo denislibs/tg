@@ -40,7 +40,9 @@ type ChatRepo interface {
 	ChatType(ctx context.Context, chatID int64) (string, error) // 'private'|'group'|'channel'|'saved'
 	ListDialogs(ctx context.Context, userID int64) ([]domain.Dialog, error)
 	ChatPartners(ctx context.Context, userID int64) ([]int64, error)
-	IncUnread(ctx context.Context, chatID, userID int64) error
+	// IncUnread bumps a member's unread counter by one and returns the new value
+	// (so the new_message frame can carry the recipient's authoritative unread).
+	IncUnread(ctx context.Context, chatID, userID int64) (int, error)
 	CurrentReadSeq(ctx context.Context, chatID, userID int64) (int64, error)
 	SetRead(ctx context.Context, chatID, userID, seq int64, unread int) error
 	// LastReadAt — когда участник в последний раз продвинул read-горизонт
@@ -57,7 +59,7 @@ type ChatRepo interface {
 	// Непрочитанные реакции (Telegram unread_reactions_count). IncUnreadReactions
 	// бампит счётчик автора сообщения, когда на него реагирует кто-то другой;
 	// ClearUnreadReactions обнуляет счётчик (автор прочитал чат / реакции).
-	IncUnreadReactions(ctx context.Context, chatID, userID int64) error
+	IncUnreadReactions(ctx context.Context, chatID, userID int64) (int, error)
 	ClearUnreadReactions(ctx context.Context, chatID, userID int64) error
 	// «Очистить историю» у себя: MaxSeq — текущий максимум seq чата (горизонт);
 	// ClearedSeq/SetClearedSeq — персональный горизонт участника (cleared_max_seq).

@@ -170,6 +170,8 @@ func (i *Interactor) RemoveMember(ctx context.Context, chatID, actorID, userID i
 		i.postGroupService(ctx, chatID, actorID, serviceText("kick_user", i.userCard(ctx, actorID), &target))
 	}
 	payload := map[string]any{"chat_id": chatID, "removed": true}
+	var pts int64
+	var havePts bool
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if e := i.groups.RemoveMember(ctx, chatID, userID); e != nil {
 			return e
@@ -179,9 +181,11 @@ func (i *Interactor) RemoveMember(ctx context.Context, chatID, actorID, userID i
 			if e != nil {
 				return e
 			}
-			if _, e := i.updates.AppendUpdate(ctx, userID, 1, nowMillis(), "chat_removed", b); e != nil {
+			p, e := i.updates.AppendUpdate(ctx, userID, 1, nowMillis(), "chat_removed", b)
+			if e != nil {
 				return e
 			}
+			pts, havePts = p, true
 		}
 		return nil
 	})
@@ -189,7 +193,11 @@ func (i *Interactor) RemoveMember(ctx context.Context, chatID, actorID, userID i
 		return err
 	}
 	if i.publisher != nil {
-		_ = i.publisher.PublishToUser(ctx, userID, frame("chat_removed", payload))
+		if havePts {
+			_ = i.publisher.PublishToUser(ctx, userID, framePts("chat_removed", payload, pts))
+		} else {
+			_ = i.publisher.PublishToUser(ctx, userID, frame("chat_removed", payload))
+		}
 	}
 	return nil
 }

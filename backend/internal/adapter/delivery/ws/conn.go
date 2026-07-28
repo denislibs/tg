@@ -60,6 +60,12 @@ func (c *Conn) Send(frame []byte) {
 }
 
 func (c *Conn) run(ctx context.Context) {
+	// hello — самый первый кадр (pts/date пользователя): ставим в очередь ДО
+	// Register, чтобы никакой фан-аут не опередил его. Сбой чтения state не
+	// фатален — просто без hello (клиент сделает полный catch-up).
+	if st, err := c.svc.UserState(ctx, c.userID); err == nil {
+		c.Send(helloFrame(st))
+	}
 	c.hub.Register(ctx, c.userID, c.deviceID, c)
 	if c.presence != nil {
 		_ = c.presence.Online(ctx, c.userID)
