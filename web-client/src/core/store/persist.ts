@@ -2,18 +2,23 @@
 // диалоги, юзеры и сообщения хранятся по id в IndexedDB и поднимаются на холодном
 // старте до сети (offline-first). В отличие от прежнего chats_cache (последние 100
 // диалогов, без сообщений) — полный нормализованный стор:
-//   • dialogs  — весь список (keyPath chatId), пишет main-thread-стор;
-//   • users    — peer-метаданные (keyPath id), пишет peersManager воркера;
-//   • messages — история чатов (keyPath `${chatId}:${seq}`, индекс byChat),
-//                пишет messagesManager воркера;
+//   • dialogs  — весь список (keyPath chatId);
+//   • users    — peer-метаданные (keyPath id);
+//   • messages — история чатов (keyPath `${chatId}:${seq}`, индекс byChat);
 //   • meta     — token (скоуп мультиаккаунта) + me (свой профиль для мгновенного UI).
+//
+// ЕДИНЫЙ writer — воркер. Все saveX/persistClearAll вызываются из менеджеров воркера
+// (peersManager/messagesManager напрямую; dialogs/me/folders/drafts — через
+// persistManager по снапшоту с main): один SharedWorker = одно readwrite-соединение
+// на все вкладки, без конкуренции за транзакции одной БД. main — только READER
+// (loadX на холодном старте). persistScope зовётся и там, и там (идемпотентно).
 //
 // Инварианты безопасности (как в chats_cache):
 //   • скоуп по session_token — при смене аккаунта данные предыдущего стираются;
 //   • под passcode-локом ничего не пишем и не читаем (нет plaintext at rest);
 //   • секретные чаты (E2E) не персистятся в открытом виде (text/encBody вырезаются).
 //
-// Чистый IndexedDB, без DOM — работает и в воркере, и в main-thread (одна БЛ origin).
+// Чистый IndexedDB, без DOM — работает и в воркере, и в main-thread (одна БД origin).
 import { idbGet } from './idbKv'
 import type { Dialog, Message, Draft } from '../models'
 import type { User } from '../managers/authManager'
@@ -217,7 +222,7 @@ export async function persistClearAll(): Promise<void> {
   } catch { /* idb недоступен */ }
 }
 
-// ── Диалоги + me (пишет main-thread-стор через dialogsPersist) ─────────────────────
+// ── Диалоги + me (снапшот собирает dialogsPersist на main, пишет воркер) ───────────
 
 // Секретные чаты: не персистим расшифрованный текст/шифр-блоб превью (E2E).
 function sanitizeDialog(d: Dialog): Dialog {
@@ -251,7 +256,7 @@ export async function loadMe(): Promise<User | null> {
   try { return (await read<User | undefined>(S_META, (s) => s.get('me'))) ?? null } catch { return null }
 }
 
-// ── Папки + черновики (пишет main-thread стор подпиской, как диалоги) ──────────
+// ── Папки + черновики (снапшот собирает подписка на main, пишет воркер) ─────────
 // Небольшие списки — храним целым блобом в meta (как tweb: filtersArr / drafts в
 // state), а не отдельным стором. Черновики — локальный ввод пользователя, поэтому
 // под passcode-локом не персистятся (общий гард locked()).

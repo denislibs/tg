@@ -27,7 +27,9 @@ void bootstrap().then(({ managers }) => {
     </React.StrictMode>,
   )
   // Персист для мгновенного/офлайн следующего старта: диалоги+me, папки, черновики.
-  startDialogsPersist()
-  startFoldersPersist()
-  startDraftsPersist()
+  // main лишь собирает свежий вид и шлёт снапшот воркеру — физически пишет он один
+  // (persistManager), поэтому подписки получают managers.
+  startDialogsPersist(managers)
+  startFoldersPersist(managers)
+  startDraftsPersist(managers)
 })

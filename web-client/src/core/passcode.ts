@@ -3,7 +3,6 @@
 // флаг enabled — в settings-сторе. Лимит попыток и таймаут — как экран
 // блокировки tweb (5 попыток, 60 секунд).
 import { idbGet, idbSet, idbDel } from './store/idbKv'
-import { persistClearAll } from './store/persist'
 import { useSettingsStore } from '../settings'
 import { useLockStore } from '../stores/lockStore'
 
@@ -28,7 +27,11 @@ async function hashPasscode(passcode: string, salt: Uint8Array): Promise<Uint8Ar
   return new Uint8Array(bits)
 }
 
-export async function enablePasscode(passcode: string): Promise<void> {
+// persist — RPC-фасад writer'а офлайн-стора из воркера (persistManager). Очистку
+// гоним ТЕМ ЖЕ writer'ом, что и обычные записи: clear сериализуется после любых
+// накопленных воркером put'ов, поэтому plaintext не может «пережить» wipe, придя с
+// другого соединения (main) уже после очистки.
+export async function enablePasscode(passcode: string, persist: { clearAll(): Promise<void> }): Promise<void> {
   const salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH))
   const hash = await hashPasscode(passcode, salt)
   await idbSet(STORE_KEY, {
@@ -37,7 +40,7 @@ export async function enablePasscode(passcode: string): Promise<void> {
   } satisfies StoredPasscode)
   // Стереть нормализованный офлайн-стор: под кодом plaintext сообщений/диалогов
   // не должен оставаться в IndexedDB (persist дальше сам блокирует запись).
-  await persistClearAll()
+  await persist.clearAll()
   useSettingsStore.getState().update({ passcodeEnabled: true })
 }
 
@@ -58,6 +61,6 @@ export async function disablePasscode(): Promise<void> {
   useLockStore.getState().unlock()
 }
 
-export async function changePasscode(newPasscode: string): Promise<void> {
-  await enablePasscode(newPasscode)
+export async function changePasscode(newPasscode: string, persist: { clearAll(): Promise<void> }): Promise<void> {
+  await enablePasscode(newPasscode, persist)
 }

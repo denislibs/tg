@@ -35,6 +35,7 @@ import type { newBotsManager } from '../core/managers/botsManager'
 import type { newStickersManager } from '../core/managers/stickersManager'
 import type { newIVManager } from '../core/managers/ivManager'
 import type { createSecretManager } from '../core/managers/secretManager'
+import type { newPersistManager } from '../core/managers/persistManager'
 
 // RPC всегда асинхронный: любой метод менеджера, синхронный он в воркере или нет,
 // на UI-стороне возвращает Promise. Оборачиваем каждый метод в Promise<Awaited<…>>,
@@ -90,6 +91,7 @@ export interface Managers {
   bots: MgrOf<typeof newBotsManager>
   stickers: MgrOf<typeof newStickersManager>
   iv: MgrOf<typeof newIVManager>
+  persist: MgrOf<typeof newPersistManager>
 }
 
 let cached: { smp: SuperMessagePort; managers: Managers } | null = null

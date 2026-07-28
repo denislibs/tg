@@ -3,7 +3,7 @@
 import { create } from 'zustand'
 import type { Folder } from '../core/managers/foldersManager'
 import type { Contact } from '../core/managers/contactsManager'
-import { saveFolders as savePersistedFolders, loadFolders as loadPersistedFolders } from '../core/store/persist'
+import { loadFolders as loadPersistedFolders } from '../core/store/persist'
 
 // id псевдо-папки «Все чаты» (tweb FOLDER_ID_ALL)
 export const ALL_FOLDER_ID = 0
@@ -66,9 +66,10 @@ export async function loadFolders(managers: {
   }
 }
 
-// Подписка на стор: дебаунсом персистит папки (загрузка + мутации upsert/remove),
-// чтобы следующий старт/офлайн показал табы мгновенно. Вызывать один раз.
-export function startFoldersPersist(): void {
+// Подписка на стор: дебаунсом шлёт папки воркеру на запись (загрузка + мутации
+// upsert/remove), чтобы следующий старт/офлайн показал табы мгновенно. Физически
+// пишет воркер (persistManager) — один writer на все вкладки. Вызывать один раз.
+export function startFoldersPersist(managers: { persist: { folders(folders: Folder[]): Promise<void> } }): void {
   let timer: ReturnType<typeof setTimeout> | null = null
   let last = useFoldersStore.getState().folders
   useFoldersStore.subscribe((s) => {
@@ -77,7 +78,7 @@ export function startFoldersPersist(): void {
     if (timer) clearTimeout(timer)
     timer = setTimeout(() => {
       timer = null
-      if (useFoldersStore.getState().loaded) void savePersistedFolders(useFoldersStore.getState().folders)
+      if (useFoldersStore.getState().loaded) void managers.persist.folders(useFoldersStore.getState().folders)
     }, 800)
   })
 }

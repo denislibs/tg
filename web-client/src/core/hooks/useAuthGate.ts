@@ -31,7 +31,7 @@ export function useAuthGate(): AuthGate {
       ;((bootData && !bootData.locked && bootData.me) || managers.auth.me())
         .then((u) => {
           if (u) setAuthed(true)
-          else { setAuthed(false); void clearDialogsPersist() } // сессия истекла — сбрасываем персист
+          else { setAuthed(false); void clearDialogsPersist(managers) } // сессия истекла — сбрасываем персист
         })
         .catch(() => {
           // Сеть недоступна: с валидным токеном остаёмся в оффлайн-режиме (authed уже
@@ -49,7 +49,7 @@ export function useAuthGate(): AuthGate {
   }
 
   const logout = () => {
-    void clearDialogsPersist()
+    void clearDialogsPersist(managers)
     void managers.auth.logout().then((r) => {
       // остался другой аккаунт (мультиаккаунт) → перезагрузка под ним; иначе экран входа
       if (r.switched) location.reload()
