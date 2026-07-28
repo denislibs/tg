@@ -1,7 +1,7 @@
 // src/core/managers/messagesManager.ts
 import { HttpError, type RestClient } from '../net/restClient'
-import { mapMessage, mapPoll, mapChecklist, mapScheduled, mapGeo, mapWebPage, mapFactCheck, type Message, type MessageEntity, type Poll, type Checklist, type RawMessage, type RawPoll, type RawChecklist, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
-import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt } from '../realtime/events'
+import { mapMessage, mapPoll, mapChecklist, mapGiveaway, mapScheduled, mapGeo, mapWebPage, mapFactCheck, type Message, type MessageEntity, type Poll, type Checklist, type RawMessage, type RawPoll, type RawChecklist, type RawGiveaway, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
+import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt } from '../realtime/events'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
 import { saveMessages, loadMessages, deletePersistedMessage } from '../store/persist'
 
@@ -616,6 +616,33 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
 
     cacheDelete(evt: DeleteMessageEvt): void {
       evictMsg(evt.chat_id, evt.msg_id)
+    },
+
+    // Голосовое/кружок прослушано → точка media_unread гаснет. Без кэша переоткрытие
+    // чата из кэша возвращало точку (P0-1).
+    cacheMediaRead(evt: MediaReadEvt): void {
+      patchMsg(evt.chat_id, (m) => m.id === evt.msg_id && !!m.mediaUnread, (m) => ({ ...m, mediaUnread: false }))
+    },
+
+    // Live-агрегат опроса (poll_update) → SSOT; свой выбор (myVotes) — локальный,
+    // сохраняем (серверный broadcast его не несёт).
+    cachePoll(evt: { chat_id: number; poll: RawPoll }): void {
+      const poll = mapPoll(evt.poll)
+      patchMsg(evt.chat_id, (m) => m.poll?.id === poll.id, (m) => ({ ...m, poll: { ...poll, myVotes: m.poll!.myVotes } }))
+    },
+
+    // Обновление чек-листа → SSOT. Отметки глобальны (видно, кто отметил) —
+    // локального состояния нет, полная замена.
+    cacheChecklist(evt: { chat_id: number; checklist: RawChecklist }): void {
+      const checklist = mapChecklist(evt.checklist)
+      patchMsg(evt.chat_id, (m) => m.checklist?.id === checklist.id, (m) => ({ ...m, checklist }))
+    },
+
+    // Live-статус розыгрыша (giveaway_update) → SSOT; своё участие
+    // (participating/iWon) — локальное, сохраняем.
+    cacheGiveaway(evt: { chat_id: number; giveaway: RawGiveaway }): void {
+      const giveaway = mapGiveaway(evt.giveaway)
+      patchMsg(evt.chat_id, (m) => m.giveaway?.id === giveaway.id, (m) => ({ ...m, giveaway: { ...giveaway, participating: m.giveaway!.participating, iWon: m.giveaway!.iWon } }))
     },
 
     // Реакции: поставить/снять свою (агрегаты приходят realtime-фреймом reaction).

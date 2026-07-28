@@ -116,15 +116,20 @@ const CACHE_THEN_BROADCAST: Record<string, { rt: string; cache: (p: never) => vo
   geo_live_update:   { rt: RT.geoLiveUpdate,   cache: (p) => messages.cacheGeoLive(p) },
   web_page_update:   { rt: RT.webPageUpdate,   cache: (p) => messages.cacheWebPage(p) },
   factcheck_update:  { rt: RT.factCheckUpdate, cache: (p) => messages.cacheFactCheck(p) },
+  // P0-1: агрегаты, которые раньше были broadcast-only и терялись при переоткрытии
+  // чата из кэша воркера (реакции/⭐ — в фазе 1b-2, нужен meId).
+  media_read:        { rt: RT.mediaRead,       cache: (p) => messages.cacheMediaRead(p) },
+  poll_update:       { rt: RT.pollUpdate,      cache: (p) => messages.cachePoll(p) },
+  checklist_update:  { rt: RT.checklistUpdate, cache: (p) => messages.cacheChecklist(p) },
+  giveaway_update:   { rt: RT.giveawayUpdate,  cache: (p) => messages.cacheGiveaway(p) },
 }
 const PASS_THROUGH: Record<string, string> = {
   message_ack: RT.ack, message_error: RT.messageError, pin_message: RT.pinMessage,
-  read: RT.read, media_read: RT.mediaRead, chat_removed: RT.chatRemoved,
+  read: RT.read, chat_removed: RT.chatRemoved,
   typing: RT.typing, presence: RT.presence, reaction: RT.reaction, star_reaction: RT.starReaction,
   draft_update: RT.draftUpdate, chat_theme_update: RT.chatThemeUpdate,
   dialog_pin: RT.dialogPin, dialog_archive: RT.dialogArchive,
-  poll_update: RT.pollUpdate, checklist_update: RT.checklistUpdate,
-  boost_update: RT.boostUpdate, giveaway_update: RT.giveawayUpdate,
+  boost_update: RT.boostUpdate,
   suggested_post_update: RT.suggestedPost, balance_update: RT.balanceUpdate,
   bot_callback_answer: RT.botCallbackAnswer, story_new: RT.storyNew,
   story_deleted: RT.storyDeleted, story_reaction: RT.storyReaction,
