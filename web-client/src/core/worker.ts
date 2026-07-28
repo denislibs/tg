@@ -51,9 +51,14 @@ const auth = newAuthManager({ rest, store: tokens })
 const profile = newProfileManager({ rest })
 const premium = newPremiumManager({ rest })
 const chats = newChatsManager({ rest })
+// id текущего пользователя в воркере: нужен, чтобы кэшировать `mine` реакций
+// (событие reaction несёт user_id реагирующего). Разрешаем лениво через /me после
+// загрузки токена; при смене аккаунта перезагрузка воркера обнулит его заново.
+let meId: number | null = null
+void tokens.ready().then(() => auth.me()).then((u) => { meId = u?.id ?? null }).catch(() => {})
 // decryptSecret дергает secret лениво — стрелка вызывается только на fetch истории
 // (после инициализации модуля), поэтому forward-ссылка на объявленный ниже secret безопасна.
-const messages = newMessagesManager({ rest, decryptSecret: (chatId, encBody) => secret.decryptMessage(chatId, encBody) })
+const messages = newMessagesManager({ rest, decryptSecret: (chatId, encBody) => secret.decryptMessage(chatId, encBody), getMeId: () => meId })
 // broadcast объявлен ниже — замыкание дергает его лениво (к моменту первого
 // аплоада порты уже подняты)
 const media = newMediaManager({
@@ -122,11 +127,13 @@ const CACHE_THEN_BROADCAST: Record<string, { rt: string; cache: (p: never) => vo
   poll_update:       { rt: RT.pollUpdate,      cache: (p) => messages.cachePoll(p) },
   checklist_update:  { rt: RT.checklistUpdate, cache: (p) => messages.cacheChecklist(p) },
   giveaway_update:   { rt: RT.giveawayUpdate,  cache: (p) => messages.cacheGiveaway(p) },
+  reaction:          { rt: RT.reaction,        cache: (p) => messages.cacheReaction(p) },
+  star_reaction:     { rt: RT.starReaction,    cache: (p) => messages.cacheStarReaction(p) },
 }
 const PASS_THROUGH: Record<string, string> = {
   message_ack: RT.ack, message_error: RT.messageError, pin_message: RT.pinMessage,
   read: RT.read, chat_removed: RT.chatRemoved,
-  typing: RT.typing, presence: RT.presence, reaction: RT.reaction, star_reaction: RT.starReaction,
+  typing: RT.typing, presence: RT.presence,
   draft_update: RT.draftUpdate, chat_theme_update: RT.chatThemeUpdate,
   dialog_pin: RT.dialogPin, dialog_archive: RT.dialogArchive,
   boost_update: RT.boostUpdate,

@@ -10,8 +10,9 @@
 // с chat_id применяются ко ВСЕМ окнам этого чата (applyToChat), новое сообщение
 // с thread_root_id попадает и в основное окно, и в окно своего треда.
 import { create } from 'zustand'
-import type { Message, MessageEntity, Poll, Checklist, Giveaway, ReactionCount, GeoData, WebPageData, FactCheck } from '../core/models'
+import type { Message, MessageEntity, Poll, Checklist, Giveaway, GeoData, WebPageData, FactCheck } from '../core/models'
 import type { ReplyMarkup } from '../core/managers/botsManager'
+import { reactionDelta } from '../core/reactionDelta'
 
 // Ключ окна: основное окно чата или тред (форум-топик / комментарии).
 export const winKey = (chatId: number, threadRootId?: number | null): string =>
@@ -155,26 +156,6 @@ function patchChat(
     next[key] = { ...w, msgs }
   }
   return next ? { byKey: next } : {}
-}
-
-// Apply one reaction delta to a message's aggregate list (pure helper).
-function reactionDelta(list: ReactionCount[] | undefined, emoji: string, action: 'add' | 'remove', mine: boolean): ReactionCount[] | undefined | null {
-  const cur = list ? [...list] : []
-  const i = cur.findIndex((r) => r.emoji === emoji)
-  if (action === 'add') {
-    if (i < 0) cur.push({ emoji, count: 1, mine })
-    else {
-      if (mine && cur[i].mine) return null // эхо своей уже применённой реакции
-      cur[i] = { emoji, count: cur[i].count + 1, mine: cur[i].mine || mine }
-    }
-  } else {
-    if (i < 0) return null
-    if (mine && !cur[i].mine) return null // эхо своего уже применённого снятия
-    const next = { emoji, count: cur[i].count - 1, mine: cur[i].mine && !mine }
-    if (next.count <= 0) cur.splice(i, 1)
-    else cur[i] = next
-  }
-  return cur.length ? cur : undefined
 }
 
 export const useMessagesStore = create<MessagesState>((set, get) => ({

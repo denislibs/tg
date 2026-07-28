@@ -1,9 +1,10 @@
 // src/core/managers/messagesManager.ts
 import { HttpError, type RestClient } from '../net/restClient'
 import { mapMessage, mapPoll, mapChecklist, mapGiveaway, mapScheduled, mapGeo, mapWebPage, mapFactCheck, type Message, type MessageEntity, type Poll, type Checklist, type RawMessage, type RawPoll, type RawChecklist, type RawGiveaway, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
-import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt } from '../realtime/events'
+import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, ReactionEvt, StarReactionEvt } from '../realtime/events'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
 import { saveMessages, loadMessages, deletePersistedMessage } from '../store/persist'
+import { reactionDelta } from '../reactionDelta'
 
 export interface HistoryArgs {
   chatId: number
@@ -110,9 +111,13 @@ export interface MessagesDeps {
   rest: RestClient
   /** Расшифровка ciphertext секретного чата (ключи живут в secretManager воркера). */
   decryptSecret?: (chatId: number, encBody: string) => Promise<{ text: string; entities?: unknown[]; media?: SecretMedia } | null>
+  /** id текущего пользователя — воркеру нужен, чтобы кэшировать `mine` реакций
+   * (событие reaction несёт user_id реагирующего, а не флаг «моё»). Разрешается
+   * лениво (воркер зовёт /me), поэтому геттер, а не значение. */
+  getMeId?: () => number | null
 }
 
-export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
+export function newMessagesManager({ rest, decryptSecret, getMeId }: MessagesDeps) {
   // История секретного чата приходит с REST как encBody+пустой text — расшифровываем
   // страницу до отдачи в UI. Без ключа text остаётся пустым, но secret:true проставлен
   // (UI покажет плейсхолдер). Живые сообщения дешифруются в worker.ts.
@@ -168,13 +173,15 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
   // Точечно обновить одно сообщение чата в SSOT + персист. match — по id/вложенному
   // объекту (события реакций/опросов/read несут msg_id, а не seq). upd строит новую
   // версию. Идемпотентно, единый проход по одной Map (раньше — по всем окнам).
-  const patchMsg = (chatId: number, match: (m: Message) => boolean, upd: (m: Message) => Message): void => {
+  const patchMsg = (chatId: number, match: (m: Message) => boolean, upd: (m: Message) => Message | null): void => {
     const c = msgsByChat.get(chatId)
     if (!c) return
     for (const [seq, m] of c) {
       if (!match(m)) continue
-      c.set(seq, upd(m))
-      void saveMessages(chatId, [c.get(seq)!])
+      const n = upd(m) // null — применять нечего (идемпотентное эхо своего действия)
+      if (n === null) return
+      c.set(seq, n)
+      void saveMessages(chatId, [n])
       return
     }
   }
@@ -643,6 +650,25 @@ export function newMessagesManager({ rest, decryptSecret }: MessagesDeps) {
     cacheGiveaway(evt: { chat_id: number; giveaway: RawGiveaway }): void {
       const giveaway = mapGiveaway(evt.giveaway)
       patchMsg(evt.chat_id, (m) => m.giveaway?.id === giveaway.id, (m) => ({ ...m, giveaway: { ...giveaway, participating: m.giveaway!.participating, iWon: m.giveaway!.iWon } }))
+    },
+
+    // Дельта реакции (count±1 по emoji) → SSOT. `mine` = моё ли действие
+    // (user_id === meId); та же чистая reactionDelta, что и в сторе (без
+    // дублирования логики). null из дельты — эхо своего действия, no-op.
+    cacheReaction(evt: ReactionEvt): void {
+      const mine = evt.user_id === (getMeId?.() ?? null)
+      patchMsg(evt.chat_id, (m) => m.id === evt.msg_id, (m) => {
+        const next = reactionDelta(m.reactions, evt.emoji, evt.action, mine)
+        return next === null ? null : { ...m, reactions: next }
+      })
+    },
+
+    // Платная ⭐-реакция: новый агрегат total. Свой вклад (mine) обновляем только
+    // для собственного действия (sender_id === meId), иначе сохраняем кэшированный.
+    cacheStarReaction(evt: StarReactionEvt): void {
+      const isMine = evt.sender_id === (getMeId?.() ?? null)
+      patchMsg(evt.chat_id, (m) => m.id === evt.msg_id,
+        (m) => ({ ...m, starReaction: { total: evt.total, mine: isMine ? evt.mine : (m.starReaction?.mine ?? 0) } }))
     },
 
     // Реакции: поставить/снять свою (агрегаты приходят realtime-фреймом reaction).
