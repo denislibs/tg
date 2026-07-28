@@ -11,7 +11,7 @@
 // so the store's loading flag isn't visible yet).
 import { useCallback, useEffect, useRef } from 'react'
 import type { Message, MessageEntity } from '../models'
-import { useMessagesStore, EMPTY_WINDOW, winKey, type OptimisticMedia } from '../../stores/messagesStore'
+import { useMessagesStore, EMPTY_WINDOW, winKey } from '../../stores/messagesStore'
 import { useManagers } from './useManagers'
 
 export interface MessageWindow {
@@ -27,10 +27,6 @@ export interface MessageWindow {
   loadOlder: () => Promise<void>
   loadNewer: () => Promise<void>
   appendLocal: (m: Message) => void
-  appendOptimistic: (text: string, meId: number, clientMsgId: string, mediaId?: number, type?: string, entities?: MessageEntity[], groupedId?: string, media?: OptimisticMedia, extra?: { geo?: { lat: number; lng: number }; contact?: { userId: number; name: string; phone: string }; secret?: boolean; sendAs?: { chatId: number; title: string; photoId?: number } }) => void
-  reconcileAck: (clientMsgId: string, ack: { msgId: number; seq: number; createdAt: string }) => void
-  /** Server rejected the send (e.g. too long) — drop the optimistic bubble. */
-  failOptimistic: (clientMsgId: string) => void
   applyIncoming: (m: Message) => void
   /** A message was edited (live or via /sync): patch its text + entities + editedAt in place. */
   applyEdit: (msgId: number, text: string, editedAt: string, entities?: MessageEntity[]) => void
@@ -58,9 +54,6 @@ export function useMessageWindow(chatId: number, limit = 40, threadRootId?: numb
   const prepend = useMessagesStore((s) => s.prepend)
   const append = useMessagesStore((s) => s.append)
   const appendLocalAction = useMessagesStore((s) => s.appendLocal)
-  const appendOptimisticAction = useMessagesStore((s) => s.appendOptimistic)
-  const reconcileAckAction = useMessagesStore((s) => s.reconcileAck)
-  const failOptimisticAction = useMessagesStore((s) => s.failOptimistic)
   const applyIncomingAction = useMessagesStore((s) => s.applyIncoming)
   const applyEditAction = useMessagesStore((s) => s.applyEdit)
   const applyDeleteAction = useMessagesStore((s) => s.applyDelete)
@@ -130,21 +123,6 @@ export function useMessageWindow(chatId: number, limit = 40, threadRootId?: numb
 
   const appendLocal = useCallback((m: Message) => appendLocalAction(key, m), [key, appendLocalAction])
 
-  const appendOptimistic = useCallback(
-    (text: string, meId: number, clientMsgId: string, mediaId?: number, type = 'text', entities?: MessageEntity[], groupedId?: string, media?: OptimisticMedia, extra?: { geo?: { lat: number; lng: number }; contact?: { userId: number; name: string; phone: string }; secret?: boolean; sendAs?: { chatId: number; title: string; photoId?: number } }) =>
-      appendOptimisticAction(key, text, meId, clientMsgId, mediaId, type, entities, groupedId, media,
-        { ...extra, threadRootId }),
-    [key, threadRootId, appendOptimisticAction],
-  )
-
-  const reconcileAck = useCallback(
-    (clientMsgId: string, ack: { msgId: number; seq: number; createdAt: string }) =>
-      reconcileAckAction(key, clientMsgId, ack),
-    [key, reconcileAckAction],
-  )
-
-  const failOptimistic = useCallback((clientMsgId: string) => failOptimisticAction(key, clientMsgId), [key, failOptimisticAction])
-
   const applyIncoming = useCallback((m: Message) => applyIncomingAction(chatId, m), [chatId, applyIncomingAction])
 
   const applyEdit = useCallback(
@@ -179,6 +157,6 @@ export function useMessageWindow(chatId: number, limit = 40, threadRootId?: numb
     loading: win.loading,
     loadedFromCache: win.loadedFromCache,
     loadOlder, loadNewer, jumpTo, reloadNewest,
-    appendLocal, appendOptimistic, reconcileAck, failOptimistic, applyIncoming, applyEdit, applyDelete,
+    appendLocal, applyIncoming, applyEdit, applyDelete,
   }
 }

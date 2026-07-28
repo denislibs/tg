@@ -53,6 +53,12 @@ interface RealtimeApi {
   sendMessage(args: { chatId: number; text: string; entities?: MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; replyToPeerId?: number | null; replyQuoteText?: string | null; replyQuoteOffset?: number | null; mediaId?: number | null; type?: string; groupedId?: string; geo?: { lat: number; lng: number; title?: string; address?: string; livePeriod?: number; heading?: number }; contactUserId?: number; threadRootId?: number | null; encBody?: string; ttlSeconds?: number | null; silent?: boolean; effect?: string | null; paidMediaPrice?: number | null; sendAsChatId?: number | null }): Promise<{ ok: boolean }>
   markRead(args: { chatId: number; upToSeq: number }): Promise<{ ok: boolean }>
   markMediaRead(args: { chatId: number; msgId: number }): Promise<{ ok: boolean }>
+  // Оптимистичный бабл отправки (воркер — funnel, storeProjection единственный писатель).
+  appendPending(p: import('../core/realtime/events').PendingNewEvt): Promise<{ ok: boolean }>
+  attachPendingMedia(args: { chatId: number; threadRootId?: number | null; clientMsgId: string; mediaId: number }): Promise<{ ok: boolean }>
+  failPending(args: { chatId: number; threadRootId?: number | null; clientMsgId: string }): Promise<{ ok: boolean }>
+  retryPending(args: { chatId: number; threadRootId?: number | null; clientMsgId: string }): Promise<{ ok: boolean }>
+  removePending(args: { chatId: number; threadRootId?: number | null; clientMsgId: string }): Promise<{ ok: boolean }>
   sendTyping(args: { chatId: number; action?: TypingAction }): Promise<{ ok: boolean }>
   sendCallFrame(args: { type: string; data: Record<string, unknown> }): Promise<{ ok: boolean }>
   subscribeChannel(args: { chatId: number }): Promise<{ ok: boolean }>

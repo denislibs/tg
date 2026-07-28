@@ -15,6 +15,15 @@ export const RT = {
   starReaction: 'rt:star_reaction',
   ack: 'rt:ack',
   messageError: 'rt:message_error',
+  // Оптимистичная отправка (tweb pending): воркер — funnel жизненного цикла бабла,
+  // storeProjection единственный писатель окна. new — вставка бабла; media —
+  // проставить серверный media_id после аплоада; fail — пометить ошибкой (аплоад
+  // не удался); retry — снять ошибку перед переотправкой; remove — убрать бабл.
+  pendingNew: 'rt:pending_new',
+  pendingMedia: 'rt:pending_media',
+  pendingFail: 'rt:pending_fail',
+  pendingRetry: 'rt:pending_retry',
+  pendingRemove: 'rt:pending_remove',
   call: 'rt:call',
   chatRemoved: 'rt:chat_removed',
   draftUpdate: 'rt:draft_update',
@@ -125,6 +134,33 @@ export interface AckEvt { client_msg_id: string; msg_id: number; seq: number; cr
 // Server rejected a send (e.g. text too long). The client drops it from the outbox
 // (no infinite retry) and removes the optimistic bubble.
 export interface MessageErrorEvt { client_msg_id: string; reason: string }
+
+// Оптимистичный бабл отправки (worker → UI). Поля 1:1 с аргументами
+// messagesStore.appendOptimistic; localUrl/размеры — превью до аплоада (blob-URL
+// валиден только во вкладке-инициаторе, в других — плейсхолдер до echo).
+export interface PendingMedia { localUrl?: string; width?: number; height?: number; mime?: string; size?: number; name?: string }
+export interface PendingNewEvt {
+  chat_id: number
+  thread_root_id?: number | null
+  client_msg_id: string
+  sender_id: number
+  // id вкладки-инициатора: media.localUrl (blob-URL) валиден только в ней —
+  // storeProjection вырезает localUrl в остальных вкладках (иначе битый бабл).
+  origin_tab?: number
+  text: string
+  type?: string
+  media_id?: number | null
+  entities?: MessageEntity[]
+  grouped_id?: string
+  media?: PendingMedia
+  geo?: { lat: number; lng: number }
+  contact?: { userId: number; name: string; phone: string }
+  secret?: boolean
+  send_as?: { chatId: number; title: string; photoId?: number }
+}
+// Лёгкие кадры жизненного цикла: chat_id/thread_root_id — маршрут к окну.
+export interface PendingRouteEvt { chat_id: number; thread_root_id?: number | null; client_msg_id: string }
+export interface PendingMediaEvt extends PendingRouteEvt { media_id: number }
 
 // One envelope for every 1:1 call signaling frame (call_request / call_accept /
 // call_decline / call_end / call_signal); `d.from_user_id` is stamped by the server.

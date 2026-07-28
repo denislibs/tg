@@ -16,7 +16,6 @@
 // Не React-модуль: пишет состояние в callStore, UI зовёт его функции.
 import { useCallStore, type CallPeer, type CallEndReason } from '../../stores/callStore'
 import { useChatsStore } from '../../stores/chatsStore'
-import { useMessagesStore } from '../../stores/messagesStore'
 import { useSettingsStore } from '../../settings'
 import { playSound, stopSound } from '../audio/sounds'
 import { startClient } from '../../client/bootstrap'
@@ -148,7 +147,8 @@ function logCallMessage(reason: CallEndReason) {
   const text = JSON.stringify({ video: call.video, reason: mapped, duration })
   const clientMsgId = crypto.randomUUID()
   const meId = useChatsStore.getState().meId
-  if (meId != null) useMessagesStore.getState().appendOptimistic(String(call.chatId), text, meId, clientMsgId, undefined, 'call')
+  // Оптимистичный лог звонка через воркер-funnel (storeProjection единственный писатель).
+  if (meId != null) void managers().realtime.appendPending({ chat_id: call.chatId, client_msg_id: clientMsgId, sender_id: meId, text, type: 'call' })
   void managers().realtime.sendMessage({ chatId: call.chatId, text, clientMsgId, type: 'call' })
 }
 

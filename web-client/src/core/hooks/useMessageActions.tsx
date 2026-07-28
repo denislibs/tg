@@ -11,7 +11,6 @@ import type { ReactNode } from 'react'
 import TgIcon from '../../components/TgIcon'
 import { convMsgReplyState } from '../draftReply'
 import { useEvent } from './useEvent'
-import { useMessagesStore, winKey } from '../../stores/messagesStore'
 import { useReportStore } from '../../stores/reportStore'
 import { useSearchStore } from '../../stores/searchStore'
 import { mediaLabel } from '../dialogToChat'
@@ -447,7 +446,8 @@ export function useMessageActions({
     const raw = menuRawMsg()
     closeMsgMenu()
     if (!raw?.failed || !raw.clientId) return
-    useMessagesStore.getState().retryOptimistic(winKey(numericChatId, raw.threadRootId), raw.clientId)
+    // Снять пометку ошибки (воркер → storeProjection) и переотправить тем же clientId.
+    void managers.realtime.retryPending({ chatId: numericChatId, threadRootId: raw.threadRootId ?? null, clientMsgId: raw.clientId })
     void managers.realtime.sendMessage({
       chatId: numericChatId, text: raw.text, entities: raw.entities,
       clientMsgId: raw.clientId, replyToId: raw.replyToId, mediaId: raw.mediaId,
@@ -457,7 +457,7 @@ export function useMessageActions({
   const removeFailed = () => {
     const raw = menuRawMsg()
     closeMsgMenu()
-    if (raw?.clientId) useMessagesStore.getState().removeOptimistic(winKey(numericChatId, raw.threadRootId), raw.clientId)
+    if (raw?.clientId) void managers.realtime.removePending({ chatId: numericChatId, threadRootId: raw.threadRootId ?? null, clientMsgId: raw.clientId })
   }
   const failedMenuItems: MsgMenuItem[] = [
     { icon: <TgIcon name="send" size={20} />, label: 'Resend', onClick: resendFailed },
