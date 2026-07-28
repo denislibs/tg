@@ -36,7 +36,7 @@ import { newLivestreamManager } from './managers/livestreamManager'
 import { newConnectionManager } from './realtime/connectionManager'
 import { newSyncEngine } from './realtime/syncEngine'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type TypingAction } from './realtime/events'
+import { RT, type TypingAction, type NewMessageEvt } from './realtime/events'
 import { idbGet, idbSet } from './store/idbKv'
 import { persistScope } from './store/persist'
 
@@ -94,6 +94,20 @@ const iv = newIVManager({ rest })
 const ports: SuperMessagePort[] = []
 const broadcast = (event: string, payload: unknown) => { for (const p of ports) p.emit(event, payload) }
 
+// P0-2: пер-чатовый максимум seq, уже доставленного вживую в этой сессии воркера.
+// Живёт в SharedWorker → переживает reload вкладки. При catch-up после reconnect
+// /sync повторно отдаёт уже доставленные сообщения (live-путь не двигает pts —
+// это на бэке); такие помечаем backfill:true, и звук/нотификации их пропускают
+// (иначе дубль уведомления/звука/непрочитанных на каждый reconnect).
+const deliveredSeq = new Map<number, number>()
+// Живое новое сообщение: запомнить как доставленное, отразить в SSOT, разослать.
+const emitLive = (payload: unknown): void => {
+  const e = payload as NewMessageEvt
+  deliveredSeq.set(e.chat_id, Math.max(deliveredSeq.get(e.chat_id) ?? 0, e.seq))
+  messages.cacheLive(payload as never)
+  broadcast(RT.newMessage, payload)
+}
+
 // map an `other_update` from /sync to the right rt:* event
 function dispatchOther(u: unknown) {
   const o = u as Record<string, unknown>
@@ -146,7 +160,16 @@ const PASS_THROUGH: Record<string, string> = {
 const ws = new WsClient('/ws')
 const sync = newSyncEngine({
   rest, store: { get: idbGet, set: idbSet },
-  onNewMessage: (m) => broadcast(RT.newMessage, m),
+  onNewMessage: (m) => {
+    const e = m as NewMessageEvt
+    // Уже доставляли вживую в этой сессии → backfill: в стор попадёт (dedup),
+    // но звук/нотификация/непрочитанные не сработают повторно.
+    if (e.seq <= (deliveredSeq.get(e.chat_id) ?? 0)) { broadcast(RT.newMessage, { ...e, backfill: true }); return }
+    // Пропущенное в офлайне — доставляем как новое (и кэшируем в SSOT).
+    deliveredSeq.set(e.chat_id, e.seq)
+    messages.cacheLive(m as never)
+    broadcast(RT.newMessage, m)
+  },
   onOtherUpdate: dispatchOther,
   onResync: () => broadcast('rt:resync', null),
 })
@@ -167,10 +190,10 @@ const conn = newConnectionManager({
       if (p.enc_body && p.chat_id) {
         void secret.decryptMessage(p.chat_id, p.enc_body).then((dec) => {
           if (dec) { p.text = dec.text; p.entities = dec.entities; if (dec.media) p.secret_media = dec.media }
-          messages.cacheLive(payload as never); broadcast(RT.newMessage, payload)
+          emitLive(payload)
         })
       } else {
-        messages.cacheLive(payload as never); broadcast(RT.newMessage, payload)
+        emitLive(payload)
       }
       return
     }

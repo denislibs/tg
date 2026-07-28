@@ -19,6 +19,7 @@ export function registerSoundSubscriber(): void {
   // эффектом, пришедшее в ОТКРЫТЫЙ чат, проигрываем один раз (своё уже сыграли на
   // отправке; для закрытого чата — только click-replay в истории).
   eventBus.subscribe(RT.newMessage, (evt) => {
+    if (evt.backfill) return // catch-up после reconnect — эффект уже играли вживую
     const effect = mapEffect(evt.effect)
     if (!effect) return
     const cs = useChatsStore.getState()
