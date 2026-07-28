@@ -17,6 +17,19 @@ func frame(t string, d any) []byte {
 	return b
 }
 
+// framePts is frame() with the recipient's per-user pts injected into the payload
+// — lets the client dedup this live update against catch-up replay (the same pts
+// is carried on /sync items), e.g. to stop reaction deltas double-counting on
+// reconnect. base must be a map (a shallow copy is made so callers can reuse it).
+func framePts(t string, base map[string]any, pts int64) []byte {
+	d := make(map[string]any, len(base)+1)
+	for k, v := range base {
+		d[k] = v
+	}
+	d["pts"] = pts
+	return frame(t, d)
+}
+
 func messageUpdatePayload(m domain.Message) map[string]any {
 	p := map[string]any{
 		"chat_id": m.ChatID, "msg_id": m.ID, "seq": m.Seq,

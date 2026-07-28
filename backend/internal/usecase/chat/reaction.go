@@ -53,6 +53,7 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 	p := reactionPayload(chatID, messageID, userID, msg.SenderID, emoji, action)
 
 	var members []int64
+	ptsByUser := map[int64]int64{} // per-recipient pts for live-frame dedup vs catch-up
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if add {
 			if e := i.reactions.Add(ctx, messageID, userID, emoji); e != nil {
@@ -81,9 +82,11 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 		}
 		date := nowMillis()
 		for _, uid := range members {
-			if _, e := i.updates.AppendUpdate(ctx, uid, 1, date, "reaction", payload); e != nil {
+			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "reaction", payload)
+			if e != nil {
 				return e
 			}
+			ptsByUser[uid] = pts
 		}
 		return nil
 	})
@@ -91,9 +94,10 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 		return err
 	}
 	if i.publisher != nil {
-		f := frame("reaction", p)
+		// Кадр с per-recipient pts: клиент по нему дедупит live-реакцию против
+		// её же catch-up-переотдачи (reaction — дельта count±1, повтор удвоил бы).
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, f)
+			_ = i.publisher.PublishToUser(ctx, uid, framePts("reaction", p, ptsByUser[uid]))
 		}
 	}
 	return nil

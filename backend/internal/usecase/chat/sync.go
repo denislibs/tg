@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"encoding/json"
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -449,12 +448,13 @@ func (i *Interactor) GetDifference(ctx context.Context, userID, sincePts int64) 
 	if err != nil {
 		return Difference{}, err
 	}
-	d := Difference{State: state, NewMessages: []json.RawMessage{}, OtherUpdates: []json.RawMessage{}}
+	d := Difference{State: state, NewMessages: []SyncUpdate{}, OtherUpdates: []SyncUpdate{}}
 	for _, u := range ups {
+		su := SyncUpdate{Type: u.Type, Pts: u.Pts, Payload: u.Payload}
 		if u.Type == "new_message" {
-			d.NewMessages = append(d.NewMessages, u.Payload)
+			d.NewMessages = append(d.NewMessages, su)
 		} else {
-			d.OtherUpdates = append(d.OtherUpdates, u.Payload)
+			d.OtherUpdates = append(d.OtherUpdates, su)
 		}
 	}
 	if len(ups) == syncLimit {

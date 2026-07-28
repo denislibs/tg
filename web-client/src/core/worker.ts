@@ -105,34 +105,87 @@ const broadcast = (event: string, payload: unknown) => { for (const p of ports) 
 // /sync повторно отдаёт уже доставленные сообщения (live-путь не двигает pts —
 // это на бэке); такие помечаем backfill:true, и звук/нотификации их пропускают
 // (иначе дубль уведомления/звука/непрочитанных на каждый reconnect).
+// Персистится в IDB (не только память) — переживает РЕСТАРТ воркера (закрытие/
+// переоткрытие браузера), иначе после рестарта catch-up переотдал бы уже
+// доставленные сообщения и звук/нотиф/непрочитанные сработали бы повторно (P0-2).
 const deliveredSeq = new Map<number, number>()
+const deliveredReady = idbGet<Record<string, number>>('deliveredSeq')
+  // Мерж, не перезапись: живой кадр мог обогнать async-загрузку и уже поднять
+  // in-memory значение — не откатываем его назад (иначе catch-up переотдаст).
+  .then((o) => { if (o) for (const k in o) deliveredSeq.set(Number(k), Math.max(deliveredSeq.get(Number(k)) ?? 0, o[k])) })
+  .catch(() => {})
+let persistTimer: ReturnType<typeof setTimeout> | null = null
+const persistDelivered = (): void => {
+  if (persistTimer) return
+  persistTimer = setTimeout(() => { persistTimer = null; void idbSet('deliveredSeq', Object.fromEntries(deliveredSeq)) }, 1000)
+}
+// High-water pts применённых live-реакций (реакция — дельта count±1; catch-up
+// переотдаёт уже применённую live-реакцию → повтор удвоил бы счётчик). Кадр
+// reaction и элемент /sync несут pts (per-user монотонный) → catch-up с pts <=
+// max пропускаем. Персистится: переживает рестарт воркера.
+let maxReactionPts = 0
+const reactionReady = idbGet<number>('maxReactionPts')
+  .then((v) => { if (typeof v === 'number') maxReactionPts = Math.max(maxReactionPts, v) })
+  .catch(() => {})
+let rpTimer: ReturnType<typeof setTimeout> | null = null
+const recordReactionPts = (payload: unknown): void => {
+  const pts = (payload as { pts?: number })?.pts
+  if (typeof pts !== 'number' || pts <= maxReactionPts) return
+  maxReactionPts = pts
+  if (rpTimer) return
+  rpTimer = setTimeout(() => { rpTimer = null; void idbSet('maxReactionPts', maxReactionPts) }, 1000)
+}
 // Живое новое сообщение: запомнить как доставленное, отразить в SSOT, разослать.
 const emitLive = (payload: unknown): void => {
   const e = payload as NewMessageEvt
-  deliveredSeq.set(e.chat_id, Math.max(deliveredSeq.get(e.chat_id) ?? 0, e.seq))
+  const prev = deliveredSeq.get(e.chat_id) ?? 0
+  // Дыра в per-chat seq (пропущен живой кадр) → точечный catch-up добирает
+  // пропущенное по порядку (P0-4 для сообщений). Только при известном prev>0.
+  if (prev > 0 && e.seq > prev + 1) void sync.catchUp()
+  deliveredSeq.set(e.chat_id, Math.max(prev, e.seq))
+  persistDelivered()
   messages.cacheLive(payload as never)
   broadcast(RT.newMessage, payload)
 }
 
-// map an `other_update` from /sync to the right rt:* event. Апдейт, пришедший
-// через catch-up (WS был отключён), тоже отражаем в SSOT воркера — иначе после
-// reconnect он виден в живом UI, но теряется при переоткрытии чата из кэша (P0-1).
-// В кэш пускаем только ИДЕМПОТЕНТНЫЕ апдейты (edit/delete/star=absolute total/
-// media_read=снятие флага). reaction — count±1-ДЕЛЬТА: catch-up переотдаёт уже
-// применённую live-реакцию (live-путь не двигает pts), повторное применение
-// удвоило бы счётчик — оставляем broadcast-only до update-level дедупа (см. план).
-function dispatchOther(u: unknown) {
-  const o = u as Record<string, unknown>
-  if (!o) return
-  if ('up_to_seq' in o) broadcast(RT.read, o)
-  else if ('emoji' in o) broadcast(RT.reaction, o)
-  else if ('total' in o) { messages.cacheStarReaction(o as never); broadcast(RT.starReaction, o) }
-  else if ('edited_at' in o) { messages.cacheEdit(o as never); broadcast(RT.editMessage, o) }
-  else if ('for_me' in o) { messages.cacheDelete(o as never); broadcast(RT.deleteMessage, o) }
-  else if ('pinned' in o) broadcast(RT.pinMessage, o)
-  else if ('removed' in o) broadcast(RT.chatRemoved, o)
-  // media_read несёт только {chat_id, msg_id} — распознаётся последним, по остатку
-  else if ('msg_id' in o) { messages.cacheMediaRead(o as never); broadcast(RT.mediaRead, o) }
+// Диспетчер catch-up other_update ПО ЯВНОМУ ТИПУ (`t`), а не по наличию поля
+// (P0-3: раньше `'field' in o`-эвристика молча уводила апдейт в чужую ветку, если
+// бэк добавит лишнее поле). Апдейт из catch-up тоже отражаем в SSOT воркера —
+// иначе после reconnect он виден в живом UI, но теряется при переоткрытии чата из
+// кэша (P0-1). В кэш пускаем только идемпотентные (edit/delete/star=absolute/
+// media_read/factcheck). reaction — count±1-ДЕЛЬТА: catch-up переотдаёт уже
+// применённую live-реакцию → повтор удвоил бы счётчик; полный фикс — глобальный pts
+// (Tier 2), пока broadcast-only.
+const CATCHUP: Record<string, { rt: string; cache?: (p: never) => void }> = {
+  read: { rt: RT.read },
+  // reaction — спец-обработка в dispatchOther (дедуп по pts), не здесь.
+  star_reaction: { rt: RT.starReaction, cache: (p) => messages.cacheStarReaction(p) },
+  edit_message: { rt: RT.editMessage, cache: (p) => messages.cacheEdit(p) },
+  delete_message: { rt: RT.deleteMessage, cache: (p) => messages.cacheDelete(p) },
+  media_read: { rt: RT.mediaRead, cache: (p) => messages.cacheMediaRead(p) },
+  factcheck_update: { rt: RT.factCheckUpdate, cache: (p) => messages.cacheFactCheck(p) },
+  pin_message: { rt: RT.pinMessage },
+  chat_removed: { rt: RT.chatRemoved },
+}
+function dispatchOther(item: unknown) {
+  const su = item as { t?: string; pts?: number; d?: unknown }
+  if (!su?.t) return
+  // Реакция-дельта: пропускаем catch-up-повтор уже применённой live-реакции
+  // (pts <= high-water). Иначе применяем и двигаем high-water (пропущенная офлайн).
+  if (su.t === 'reaction') {
+    if (typeof su.pts === 'number' && su.pts <= maxReactionPts) return // дубль live-реакции
+    // Пропущенная офлайн реакция (pts>max): отражаем в SSOT воркера (как все catch-up
+    // апдейты), иначе она ревертнётся при переоткрытии чата из кэша. Дубли сюда не
+    // доходят (отсечены выше) — двойного счёта нет.
+    messages.cacheReaction(su.d as never)
+    broadcast(RT.reaction, su.d)
+    recordReactionPts(su)
+    return
+  }
+  const h = CATCHUP[su.t]
+  if (!h) return
+  h.cache?.(su.d as never)
+  broadcast(h.rt, su.d)
 }
 
 // Реестр live-кадров WS — единый источник маршрутизации (заменяет длинный switch в
@@ -176,14 +229,14 @@ const ws = new WsClient('/ws')
 const sync = newSyncEngine({
   rest, store: { get: idbGet, set: idbSet },
   onNewMessage: (m) => {
-    const e = m as NewMessageEvt
-    // Уже доставляли вживую в этой сессии → backfill: в стор попадёт (dedup),
-    // но звук/нотификация/непрочитанные не сработают повторно.
+    const e = (m as { d: NewMessageEvt }).d // /sync теперь шлёт {t, pts, d}
+    // Уже доставляли (в этой сессии ИЛИ прошлой — deliveredSeq персистится) →
+    // backfill: в стор попадёт (dedup), но звук/нотиф/непрочитанные не повторятся.
     if (e.seq <= (deliveredSeq.get(e.chat_id) ?? 0)) { broadcast(RT.newMessage, { ...e, backfill: true }); return }
     // Пропущенное в офлайне — доставляем как новое (и кэшируем в SSOT).
-    deliveredSeq.set(e.chat_id, e.seq)
-    messages.cacheLive(m as never)
-    broadcast(RT.newMessage, m)
+    deliveredSeq.set(e.chat_id, e.seq); persistDelivered()
+    messages.cacheLive(e as never)
+    broadcast(RT.newMessage, e)
   },
   onOtherUpdate: dispatchOther,
   onResync: () => broadcast('rt:resync', null),
@@ -196,7 +249,7 @@ const conn = newConnectionManager({
     load: () => idbGet<import('./realtime/connectionManager').SendArgs[]>('outbox'),
     save: (list) => { void idbSet('outbox', list) },
   },
-  onReady: () => { void sync.catchUp() },
+  onReady: () => { void Promise.all([deliveredReady, reactionReady]).then(() => sync.catchUp()) },
   onState: (s) => broadcast(RT.state, { state: s }),
   onFrame: (type, payload) => {
     // new_message: возможна E2E-расшифровка enc_body перед кэшем/broadcast → bespoke.
@@ -214,7 +267,10 @@ const conn = newConnectionManager({
     }
     // Кадры с отражением в кэше истории воркера ДО broadcast.
     const cached = CACHE_THEN_BROADCAST[type]
-    if (cached) { cached.cache(payload as never); broadcast(cached.rt, payload); return }
+    if (cached) {
+      if (type === 'reaction') recordReactionPts(payload) // live-реакция → high-water для дедупа catch-up
+      cached.cache(payload as never); broadcast(cached.rt, payload); return
+    }
     // Секретный handshake: криптообработка в воркере до/вместо трансляции.
     if (type === 'secret_chat_request') {
       const p = payload as { chat_id?: number; initiator_pub?: string }

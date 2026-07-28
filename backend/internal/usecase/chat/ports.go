@@ -685,12 +685,21 @@ type HistoryResult struct {
 	Count    int
 }
 
+// SyncUpdate — один апдейт catch-up с явным типом и pts (в отличие от голого
+// payload раньше). Тип убирает эвристику «по наличию поля» на клиенте (P0-3);
+// pts даёт клиенту тот же плотный монотонный курсор, что и живой путь (P0-2/P0-4).
+type SyncUpdate struct {
+	Type    string          `json:"t"`
+	Pts     int64           `json:"pts"`
+	Payload json.RawMessage `json:"d"`
+}
+
 type Difference struct {
-	NewMessages  []json.RawMessage `json:"new_messages"`
-	OtherUpdates []json.RawMessage `json:"other_updates"`
-	State        domain.UserState  `json:"state"`
-	Slice        bool              `json:"slice"`
-	TooLong      bool              `json:"too_long"`
+	NewMessages  []SyncUpdate     `json:"new_messages"`
+	OtherUpdates []SyncUpdate     `json:"other_updates"`
+	State        domain.UserState `json:"state"`
+	Slice        bool             `json:"slice"`
+	TooLong      bool             `json:"too_long"`
 }
 
 const (
