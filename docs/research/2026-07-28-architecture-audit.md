@@ -257,3 +257,35 @@ tweb `PopupElement`). Это убирает ~20 `useState` и ~20 веток о�
   (P0-1 закрыт для live + идемпотентного catch-up; P0-2 — для reconnect в пределах жизни
   SharedWorker). Фазы 3 (стор → проекция `ids[]`+`byId`) и 4 (воркер как push-источник) —
   отдельной веткой (переписывают read-путь всех потребителей, нельзя мешать с 1-2).
+
+---
+
+## Повторная сверка с tweb (single-writer / mirror) — ветка `feat/messages-mirror-tweb`
+
+Проверено по исходникам tweb, а не по памяти:
+
+- **tweb: единственная авторитетная копия сообщения** — `appMessagesManager.messagesStorageByPeerId`
+  (`peerId→mid→message`), в **воркере** (`appMessagesManager.ts:205,504`). Главный тред держит
+  **read-only зеркало** `mirrors.messages`, пишется ТОЛЬКО пушем из воркера (`apiManagerProxy.ts:172-233`).
+- **Вся оптимистика идёт через воркер-менеджер** (send `beforeMessageSending`, реакции
+  `sendReaction→processLocalUpdate({local:true})`) → зеркало → UI перечитывает. Компонент никогда
+  не пишет авторитетную копию. Значит «воркер как единственный applier» не заблокирован — это канон.
+- **Наше расхождение:** ~21 «второй писатель» напрямую мутировали `messagesStore`. Фазы 1-2
+  (идемпотентное эхо) — костыль под двух-писательную модель; tighter fix = убрать вторых писателей.
+
+**Сделано в ветке (single-writer для агрегатов):** мутации перенесены в воркер-менеджер, который
+правит SSOT и `broadcast(...)` эхо всем вкладкам; `storeProjection` — единственный писатель стора,
+кросс-таб бесплатно. Домены: **реакции** (оптимистично до REST + откат), **⭐-реакция**, **чек-лист**
+(chatId в сигнатуре), **media-read** (`worker.ts markMediaRead`), **голос в опросе**
+(новое `RT.pollVoted`→`setPoll`, полный set — сохраняет мой `myVotes`), **fact-check** (set/remove),
+**delete** (broadcast + eviction ПОСЛЕ успеха REST — не оптимистично: откат eviction+persist
+рисковен, сервер может отклонить удаление). Реакции — идемпотентны через `reactionDelta`
+(null-гард на своё эхо); star/poll/checklist/factcheck — absolute-set (двойное применение безвредно).
+
+**Осталось (осознанно не в этой ветке):**
+- **Giveaway «участвовать»** — живёт в `boostsManager`, не в messages; перенос тянет кросс-менеджерную
+  связь (нужен доступ к messages-SSOT/chatId). Оставлен component-writer до отдельного решения.
+- **Send-кластер + insert-from-REST** (`useChatSend` `appendOptimistic`, scheduled «send now»,
+  create poll/giveaway/checklist) — это **outbox** (оптимистичный бабл + reconcile по ack). Крупный
+  и рисковый (offline-очередь, retry, failed, upload-progress); tweb держит его в воркере
+  (`pendingByRandomId`). → **отдельный PR**, не мешать с агрегатами.

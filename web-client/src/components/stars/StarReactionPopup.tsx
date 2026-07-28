@@ -14,7 +14,6 @@ import StarsPopup from './StarsPopup'
 import { peerColor } from '../peerColor'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useStarsStore } from '../../stores/starsStore'
-import { useMessagesStore } from '../../stores/messagesStore'
 import { useT } from '../../i18n'
 import type { StarSender } from '../../core/managers/messagesManager'
 import s from './starReaction.module.scss'
@@ -57,7 +56,8 @@ export default function StarReactionPopup({
     setBusy(true)
     try {
       const res = await managers.messages.sendStarReaction(chatId, msgId, count, !showName)
-      useMessagesStore.getState().applyStarReaction(chatId, msgId, res.total, res.mine)
+      // Агрегат сообщения пишет воркер (SSOT + broadcast → storeProjection); здесь
+      // только баланс звёзд (не про сообщение).
       useStarsStore.getState().setBalance(res.balance)
       onClose()
     } catch {

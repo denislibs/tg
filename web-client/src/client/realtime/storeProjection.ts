@@ -47,6 +47,8 @@ const APPLY: Record<string, (raw: unknown) => void> = {
   [RT.chatRemoved]: (raw) => useChatsStore.getState().removeDialog((raw as ChatRemovedEvt).chat_id),
   // Live-агрегаты опроса / чек-листа / розыгрыша / бустов / предложки поста.
   [RT.pollUpdate]: (raw) => { const e = raw as { chat_id: number; poll: RawPoll }; useMessagesStore.getState().applyPollUpdate(e.chat_id, mapPoll(e.poll)) },
+  // Эхо своего голоса → полная установка опроса (myVotes из ответа сервера).
+  [RT.pollVoted]: (raw) => { const e = raw as { chat_id: number; poll: RawPoll }; useMessagesStore.getState().setPoll(e.chat_id, mapPoll(e.poll)) },
   [RT.checklistUpdate]: (raw) => { const e = raw as { chat_id: number; checklist: RawChecklist }; useMessagesStore.getState().applyChecklistUpdate(e.chat_id, mapChecklist(e.checklist)) },
   [RT.boostUpdate]: (raw) => { const e = raw as { chat_id: number; status: RawBoostStatus }; useBoostsStore.getState().applyStatus(e.chat_id, mapBoostStatus(e.status)) },
   [RT.giveawayUpdate]: (raw) => { const e = raw as { chat_id: number; giveaway: RawGiveaway }; useMessagesStore.getState().applyGiveawayUpdate(e.chat_id, mapGiveaway(e.giveaway)) },
