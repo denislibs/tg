@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -11,6 +12,39 @@ import (
 )
 
 const maxBioLen = 70
+
+// emitUserUpdate broadcasts a user_update WS frame after a profile change so
+// clients re-render the peer everywhere it's shown (name/username, and avatar on
+// refetch). Fan-out = users sharing a chat + the user's own sessions (partners
+// excludes self). Optional deps → no-op when unwired (tests / no-Redis mode).
+//
+// The frame carries only always-public fields; the avatar is privacy-gated
+// per viewer (see /users), so we only flag avatar_changed and let clients
+// refetch the card — which enforces PrivacyProfilePhoto — rather than pushing a
+// url that could leak past that setting.
+func (i *Interactor) emitUserUpdate(ctx context.Context, u domain.User, avatarChanged bool) {
+	if i.pub == nil || i.partners == nil {
+		return
+	}
+	username := ""
+	if u.Username != nil {
+		username = *u.Username
+	}
+	b, err := json.Marshal(map[string]any{"t": "user_update", "d": map[string]any{
+		"id": u.ID, "username": username, "display_name": u.DisplayName, "avatar_changed": avatarChanged,
+	}})
+	if err != nil {
+		return
+	}
+	partners, err := i.partners(ctx, u.ID)
+	if err != nil {
+		i.logf("[user_update] partners for %d: %v", u.ID, err)
+	}
+	_ = i.pub.PublishToUser(ctx, u.ID, b) // own other devices/tabs
+	for _, p := range partners {
+		_ = i.pub.PublishToUser(ctx, p, b)
+	}
+}
 
 // ProfileInput carries the editable profile fields for UpdateProfile.
 type ProfileInput struct {
@@ -45,7 +79,11 @@ func (i *Interactor) UpdateProfile(ctx context.Context, id int64, in ProfileInpu
 	if !domain.ValidPhoneVisibility(pv) {
 		return domain.User{}, errors.New("invalid phone visibility")
 	}
-	return i.users.UpdateProfile(ctx, id, first, strings.TrimSpace(in.LastName), in.Bio, in.Birthday, pv)
+	u, err := i.users.UpdateProfile(ctx, id, first, strings.TrimSpace(in.LastName), in.Bio, in.Birthday, pv)
+	if err == nil {
+		i.emitUserUpdate(ctx, u, false) // display_name may have changed
+	}
+	return u, err
 }
 
 // SetEmojiStatus validates and persists the user's emoji status. An empty string
@@ -125,13 +163,18 @@ func (i *Interactor) CheckUsername(ctx context.Context, raw string, forUserID in
 // when already taken or a format error for an invalid value.
 func (i *Interactor) SetUsername(ctx context.Context, id int64, raw string) (domain.User, error) {
 	n := domain.NormalizeUsername(raw)
-	if n == "" {
-		return i.users.SetUsername(ctx, id, nil)
+	var up *string
+	if n != "" {
+		if err := domain.ValidateUsername(n); err != nil {
+			return domain.User{}, err
+		}
+		up = &n
 	}
-	if err := domain.ValidateUsername(n); err != nil {
-		return domain.User{}, err
+	u, err := i.users.SetUsername(ctx, id, up)
+	if err == nil {
+		i.emitUserUpdate(ctx, u, false)
 	}
-	return i.users.SetUsername(ctx, id, &n)
+	return u, err
 }
 
 // SetAvatar stores the avatar URL (a /media/{id}/content path) for the user and
@@ -141,14 +184,24 @@ func (i *Interactor) SetAvatar(ctx context.Context, id int64, url string) (domai
 	if _, err := i.users.AddProfilePhoto(ctx, id, url, ""); err != nil {
 		return domain.User{}, err
 	}
-	return i.users.GetByID(ctx, id)
+	u, err := i.users.GetByID(ctx, id)
+	if err == nil {
+		i.emitUserUpdate(ctx, u, true) // avatar changed → peers refetch /users
+	}
+	return u, err
 }
 
 // AddProfilePhoto adds a photo to the user's gallery and promotes it to the
 // current avatar. url/videoURL are already-converted /media/{id}/content paths
 // (the delivery layer does the media_id→url conversion, as SetAvatar does).
 func (i *Interactor) AddProfilePhoto(ctx context.Context, userID int64, url, videoURL string) (domain.ProfilePhoto, error) {
-	return i.users.AddProfilePhoto(ctx, userID, url, videoURL)
+	ph, err := i.users.AddProfilePhoto(ctx, userID, url, videoURL)
+	if err == nil {
+		if u, gerr := i.users.GetByID(ctx, userID); gerr == nil {
+			i.emitUserUpdate(ctx, u, true)
+		}
+	}
+	return ph, err
 }
 
 // ListProfilePhotos returns a user's profile-photo gallery, newest first.
@@ -160,5 +213,10 @@ func (i *Interactor) ListProfilePhotos(ctx context.Context, userID int64) ([]dom
 // repo falls avatar_url back to the next most-recent photo (or "").
 func (i *Interactor) DeleteProfilePhoto(ctx context.Context, userID, photoID int64) error {
 	_, err := i.users.DeleteProfilePhoto(ctx, userID, photoID)
+	if err == nil {
+		if u, gerr := i.users.GetByID(ctx, userID); gerr == nil {
+			i.emitUserUpdate(ctx, u, true) // avatar may have fallen back to another photo
+		}
+	}
 	return err
 }

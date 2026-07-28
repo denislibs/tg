@@ -5,6 +5,7 @@
 import { loadChats, useChatsStore } from '../../stores/chatsStore'
 import { useMessagesStore, winKey } from '../../stores/messagesStore'
 import tabId from '../../config/tabId'
+import { usePeersStore } from '../../stores/peersStore'
 import { usePinsStore } from '../../stores/pinsStore'
 import { useStarsStore } from '../../stores/starsStore'
 import { fromNewMessageEvt, mapDraft, mapPoll, mapChecklist, mapGeo, mapWebPage, mapFactCheck, mapBoostStatus, mapGiveaway, mapSuggestedPost, type RawPoll, type RawChecklist, type RawBoostStatus, type RawGiveaway } from '../../core/models'
@@ -14,7 +15,7 @@ import { useDraftsStore } from '../../stores/draftsStore'
 import { useUploadsStore } from '../../stores/uploadsStore'
 import { uiEvents } from '../../core/hooks/uiEvents'
 import { mapReplyMarkup } from '../../core/managers/botsManager'
-import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type GeoLiveUpdateEvt, type WebPageUpdateEvt, type FactCheckUpdateEvt, type ChatThemeUpdateEvt, type SuggestedPostEvt, type StoryNewEvt, type StoryDeletedEvt, type StoryReactionEvt, type PendingNewEvt, type PendingRouteEvt, type PendingMediaEvt } from '../../core/realtime/events'
+import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type GeoLiveUpdateEvt, type WebPageUpdateEvt, type FactCheckUpdateEvt, type ChatThemeUpdateEvt, type SuggestedPostEvt, type StoryNewEvt, type StoryDeletedEvt, type StoryReactionEvt, type PendingNewEvt, type PendingRouteEvt, type PendingMediaEvt, type UserUpdateEvt } from '../../core/realtime/events'
 import { useSecretChatStore } from '../../stores/secretChatStore'
 import { useStoriesStore, loadStories } from '../../stores/storiesStore'
 import { mapStory } from '../../core/managers/storiesManager'
@@ -250,6 +251,17 @@ export function registerStoreProjection(managers: Managers): void {
     const meId = useChatsStore.getState().meId
     // myReaction обновляем только для эха собственного действия (user_id === me).
     useStoriesStore.getState().applyStoryReaction(e.story_id, e.reactions_count, e.user_id === meId ? e.reaction : undefined)
+  })
+  // Юзер сменил имя/username/аватар → патчим карточку пира в peersStore (все места,
+  // где он нарисован, перерисуются). Неизвестного пира не заводим. avatar_changed —
+  // до-фетч /users (url приватен per-viewer, сервер применит PrivacyProfilePhoto).
+  eventBus.subscribe(RT.userUpdate, (raw) => {
+    const e = raw as UserUpdateEvt
+    if (!usePeersStore.getState().byId[e.id]) return
+    usePeersStore.getState().patch(e.id, { username: e.username, displayName: e.display_name })
+    if (e.avatar_changed) {
+      void managers.peers.refresh([e.id]).then((peers) => usePeersStore.getState().upsert(peers))
+    }
   })
   eventBus.subscribe('rt:resync', () => { void loadChats(managers) })
   // Прогресс отгрузки медиа (кольцо на оптимистичном бабле)

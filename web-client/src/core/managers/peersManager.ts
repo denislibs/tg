@@ -24,6 +24,33 @@ export function newPeersManager({ rest }: { rest: Pick<RestClient, 'get'> }) {
       }
       return ids.map((id) => cache.get(id)).filter((p): p is Peer => !!p)
     },
+    // Форс-обновление карточек (realtime user_update с avatar_changed): игнорирует
+    // кэш и перечитывает /users — сервер применяет PrivacyProfilePhoto к avatar_url.
+    // Обновляет кэш воркера; пустой массив при сетевой ошибке (UI оставит старое).
+    async refresh(ids: number[]): Promise<Peer[]> {
+      if (!ids.length) return []
+      try {
+        const r = await rest.get<{ users: { id: number; username: string; display_name: string; avatar_url: string }[] }>('/users', { ids: ids.join(',') })
+        const fetched: Peer[] = (r.users ?? []).map((u) => ({ id: u.id, username: u.username, displayName: u.display_name, avatarUrl: u.avatar_url }))
+        for (const u of fetched) cache.set(u.id, u)
+        void saveUsers(fetched)
+        return fetched
+      } catch {
+        return []
+      }
+    },
+    // Инвалидация кэша по realtime user_update — иначе прямые getUsers (мимо
+    // peersStore) продолжали бы отдавать устаревшую карточку из кэша. name-only:
+    // патчим имя/username на месте; avatar_changed: выселяем (url приватен
+    // per-viewer — следующий getUsers перечитает /users, сервер применит приватность).
+    applyUserUpdate(evt: { id: number; username: string; display_name: string; avatar_changed: boolean }): void {
+      if (evt.avatar_changed) { cache.delete(evt.id); return }
+      const cur = cache.get(evt.id)
+      if (!cur || (cur.username === evt.username && cur.displayName === evt.display_name)) return
+      const updated: Peer = { ...cur, username: evt.username, displayName: evt.display_name }
+      cache.set(evt.id, updated)
+      void saveUsers([updated])
+    },
   }
 }
 export type PeersManager = ReturnType<typeof newPeersManager>

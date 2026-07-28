@@ -178,6 +178,10 @@ func registerServer(p serverParams) {
 		publisher := rtredis.NewRedisPublisher(p.Redis.Client)
 		p.ChatUC.SetPublisher(publisher)
 		p.ChatUC.SetChannelPublisher(publisher)
+		// user_update fan-out on profile changes: same publisher + the shared-chat
+		// peer set that presence uses (ChatPartners).
+		p.AuthUC.SetPublisher(publisher)
+		p.AuthUC.SetPartners(p.ChatUC.ChatPartners)
 		p.StoryUC.SetPublisher(publisher)
 		p.StoryUC.SetStealthStore(newStealthStore(p.Redis.Client))
 		p.ChatUC.SetGroupCalls(redisGroupCalls(p.Redis))
