@@ -52,6 +52,8 @@ const APPLY: Record<string, (raw: unknown) => void> = {
   [RT.checklistUpdate]: (raw) => { const e = raw as { chat_id: number; checklist: RawChecklist }; useMessagesStore.getState().applyChecklistUpdate(e.chat_id, mapChecklist(e.checklist)) },
   [RT.boostUpdate]: (raw) => { const e = raw as { chat_id: number; status: RawBoostStatus }; useBoostsStore.getState().applyStatus(e.chat_id, mapBoostStatus(e.status)) },
   [RT.giveawayUpdate]: (raw) => { const e = raw as { chat_id: number; giveaway: RawGiveaway }; useMessagesStore.getState().applyGiveawayUpdate(e.chat_id, mapGiveaway(e.giveaway)) },
+  // Эхо своего участия → полная установка розыгрыша (participating/iWon из ответа).
+  [RT.giveawayJoined]: (raw) => { const e = raw as { chat_id: number; giveaway: RawGiveaway }; useMessagesStore.getState().setGiveaway(e.chat_id, mapGiveaway(e.giveaway)) },
   [RT.suggestedPost]: (raw) => { const e = raw as SuggestedPostEvt; useSuggestedPostsStore.getState().apply(e.chat_id, mapSuggestedPost(e.post)) },
   // Тема оформления / пин / архив / mute диалога (с другого устройства/вкладки).
   [RT.chatThemeUpdate]: (raw) => { const e = raw as ChatThemeUpdateEvt; useChatsStore.getState().setDialogTheme(e.chat_id, e.theme_id) },
