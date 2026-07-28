@@ -25,6 +25,9 @@ export const RT = {
   // ретранслирует его всем вкладкам после успешного /mute — см. groupsManager.
   dialogMute: 'rt:dialog_mute',
   pollUpdate: 'rt:poll_update',
+  // Командное эхо своего голоса (votePoll): в отличие от live poll_update несёт мой
+  // выбор (myVotes) — стор ставит опрос ПОЛНОСТЬЮ (setPoll), не мержит.
+  pollVoted: 'rt:poll_voted',
   checklistUpdate: 'rt:checklist_update',
   boostUpdate: 'rt:boost_update',
   giveawayUpdate: 'rt:giveaway_update',

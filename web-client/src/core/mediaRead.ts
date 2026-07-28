@@ -1,11 +1,9 @@
 // «Прослушано/просмотрено» для голосовых и видео-кружков (tweb
-// messages.readMessageContents): локально гасит точку media_unread сразу,
-// серверу шлёт read_media — тот снимает флаг и рассылает media_read всем
-// участникам (у отправителя точка гаснет live).
+// messages.readMessageContents): шлёт read_media воркеру — тот гасит точку в SSOT
+// и бродкастит media_read всем вкладкам (storeProjection единственный писатель),
+// а серверу отправляет read_media (у отправителя точка гаснет по его live-кадру).
 import { startClient } from '../client/bootstrap'
-import { useMessagesStore } from '../stores/messagesStore'
 
 export function markMediaPlayed(chatId: number, msgId: number): void {
-  useMessagesStore.getState().applyMediaRead(chatId, msgId)
   void startClient().managers.realtime.markMediaRead({ chatId, msgId })
 }

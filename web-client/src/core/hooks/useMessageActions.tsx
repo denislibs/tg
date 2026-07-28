@@ -220,10 +220,9 @@ export function useMessageActions({
   const openDeleteFor = (ids: number[]) => setDelIds({ ids, canRevoke: canRevokeAll(ids) })
   const doDelete = (revoke: boolean) => {
     if (!delIds || !isRealChat) return setDelIds(null)
-    for (const id of delIds.ids) {
-      win.applyDelete(id, !revoke) // optimistic — gone immediately
-      void managers.messages.deleteMessage(numericChatId, id, revoke)
-    }
+    // Удаление делает воркер: deleteMessage после успеха REST бродкастит
+    // rt:delete_message + eviction из SSOT → storeProjection единственный писатель.
+    for (const id of delIds.ids) void managers.messages.deleteMessage(numericChatId, id, revoke)
     setDelIds(null)
     clearSelection()
   }
@@ -364,23 +363,18 @@ export function useMessageActions({
     setViewers({ x: Math.min(x, window.innerWidth - 240), y: Math.min(y, window.innerHeight - 320), names })
   }
 
-  // Тоггл реакции (клик по чипу / полоске эмодзи в меню). Оптимистично правим
-  // агрегаты в сторе (applyReaction идемпотентен к серверному эху), REST — следом.
-  // Несколько разных реакций на одно сообщение разрешены (как premium tweb):
-  // тап по эмодзи снимает/ставит ТОЛЬКО его, остальные не трогаем.
+  // Тоггл реакции (клик по чипу / полоске эмодзи в меню). Оптимистику применяет
+  // воркер (tweb-модель, SSOT): react/unreact правят кэш и бродкастят эхо ДО сети —
+  // storeProjection единственный писатель стора, кросс-таб бесплатно. Несколько
+  // разных реакций на одно сообщение разрешены (как premium tweb): тап по эмодзи
+  // снимает/ставит ТОЛЬКО его, остальные не трогаем.
   const toggleReaction = useEvent((msgId: number, emoji: string) => {
     if (!isRealChat) return
     const raw = win.msgs.find((m) => m.id === msgId)
     if (!raw || raw.id < 0) return // оптимистичный бабл ещё без серверного id
-    const store = useMessagesStore.getState()
     const mine = raw.reactions?.find((r) => r.emoji === emoji)?.mine
-    if (mine) {
-      store.applyReaction(numericChatId, msgId, emoji, 'remove', true)
-      void managers.messages.unreact(numericChatId, msgId, emoji)
-    } else {
-      store.applyReaction(numericChatId, msgId, emoji, 'add', true)
-      void managers.messages.react(numericChatId, msgId, emoji)
-    }
+    if (mine) void managers.messages.unreact(numericChatId, msgId, emoji)
+    else void managers.messages.react(numericChatId, msgId, emoji)
     // В «Избранном» реакция = тег: пусть панель тегов пересчитает список/счётчики
     // (слушатель есть только когда открыт самочат).
     uiEvents.emit('ui:savedTagsChanged', undefined)
@@ -428,7 +422,7 @@ export function useMessageActions({
     if (!edit || !isRealChat) return
     const parsed = parseMarkdown(text)
     if (!parsed.text.trim()) return
-    useMessagesStore.getState().applyFactCheck(numericChatId, edit.msgId, { text: parsed.text, entities: parsed.entities, country: country || undefined })
+    // SSOT-запись делает воркер (setFactCheck пушит в кэш + broadcast → storeProjection).
     await managers.messages.setFactCheck(numericChatId, edit.msgId, parsed.text, parsed.entities, country || undefined).catch(() => {})
   }
   // Снять проверку фактов (tweb deleteFactCheck): оптимистично + REST.
@@ -436,7 +430,7 @@ export function useMessageActions({
     const raw = menuRawMsg()
     closeMsgMenu()
     if (raw?.id == null || !isRealChat) return
-    useMessagesStore.getState().applyFactCheck(numericChatId, raw.id, undefined)
+    // SSOT-запись делает воркер (removeFactCheck патчит кэш + broadcast → storeProjection).
     void managers.messages.removeFactCheck(numericChatId, raw.id)
   }
 
@@ -511,10 +505,7 @@ export function useMessageActions({
         items.push({
           icon: <TgIcon name="checkretract" size={20} />,
           label: 'Retract Vote',
-          onClick: () => {
-            void managers.messages.votePoll(poll.id, [])
-              .then((p) => useMessagesStore.getState().setPoll(numericChatId, p))
-          },
+          onClick: () => { void managers.messages.votePoll(numericChatId, poll.id, []) },
         })
       }
       if (!poll.closed && raw!.senderId === meId) {

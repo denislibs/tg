@@ -58,7 +58,9 @@ let meId: number | null = null
 void tokens.ready().then(() => auth.me()).then((u) => { meId = u?.id ?? null }).catch(() => {})
 // decryptSecret дергает secret лениво — стрелка вызывается только на fetch истории
 // (после инициализации модуля), поэтому forward-ссылка на объявленный ниже secret безопасна.
-const messages = newMessagesManager({ rest, decryptSecret: (chatId, encBody) => secret.decryptMessage(chatId, encBody), getMeId: () => meId })
+// broadcast объявлен ниже — стрелка дергает его лениво (оптимистичные мутации
+// tweb-модели: менеджер применяет к SSOT и бродкастит эхо всем вкладкам).
+const messages = newMessagesManager({ rest, decryptSecret: (chatId, encBody) => secret.decryptMessage(chatId, encBody), getMeId: () => meId, broadcast: (event, payload) => broadcast(event, payload) })
 // broadcast объявлен ниже — замыкание дергает его лениво (к моменту первого
 // аплоада порты уже подняты)
 const media = newMediaManager({
@@ -238,7 +240,14 @@ const realtime = {
   async start() { await tokens.load(); conn.start(); return { state: conn.state() } },
   async sendMessage(args: { chatId: number; text: string; entities?: import('./models').MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; replyToPeerId?: number | null; replyQuoteText?: string | null; replyQuoteOffset?: number | null; mediaId?: number | null; type?: string; groupedId?: string; encBody?: string; ttlSeconds?: number | null; silent?: boolean; effect?: string | null; paidMediaPrice?: number | null; sendAsChatId?: number | null }) { conn.sendMessage(args); return { ok: true } },
   async markRead(args: { chatId: number; upToSeq: number }) { conn.markRead(args.chatId, args.upToSeq); return { ok: true } },
-  async markMediaRead(args: { chatId: number; msgId: number }) { conn.markMediaRead(args.chatId, args.msgId); return { ok: true } },
+  async markMediaRead(args: { chatId: number; msgId: number }) {
+    // Локально гасим точку media_unread в SSOT + эхо всем вкладкам (у отправителя
+    // точка гаснет по его серверному media_read-кадру), затем шлём read_media серверу.
+    messages.cacheMediaRead({ chat_id: args.chatId, msg_id: args.msgId })
+    broadcast(RT.mediaRead, { chat_id: args.chatId, msg_id: args.msgId })
+    conn.markMediaRead(args.chatId, args.msgId)
+    return { ok: true }
+  },
   async sendTyping(args: { chatId: number; action?: TypingAction }) { conn.sendTyping(args.chatId, args.action ?? 'typing'); return { ok: true } },
   async sendCallFrame(args: { type: string; data: Record<string, unknown> }) { conn.sendCallFrame(args.type, args.data); return { ok: true } },
   async subscribeChannel(args: { chatId: number }) { conn.subscribeChannel(args.chatId); return { ok: true } },

@@ -7,7 +7,6 @@ import Text from '../../shared/ui/Text'
 import TgIcon from '../TgIcon'
 import classNames from '../../shared/lib/classNames'
 import { useManagers } from '../../core/hooks/useManagers'
-import { useMessagesStore } from '../../stores/messagesStore'
 import { useChatsStore } from '../../stores/chatsStore'
 import type { Poll } from '../../core/models'
 import { useT } from '../../i18n'
@@ -34,9 +33,9 @@ export default function PollBubble({ poll, out }: { poll: Poll; out: boolean }) 
   const sendVote = (options: number[]) => {
     if (busy) return
     setBusy(true)
+    // SSOT-запись делает воркер (votePoll пушит в кэш + broadcast → storeProjection).
     void managers.messages
-      .votePoll(poll.id, options)
-      .then((p) => useMessagesStore.getState().setPoll(chatId, p))
+      .votePoll(chatId, poll.id, options)
       .finally(() => setBusy(false))
     setPending([])
   }
