@@ -4,6 +4,7 @@ import { describe, it, expect } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { useMessageWindow } from './useMessageWindow'
 import { ManagersProvider } from './useManagers'
+import { useMessagesStore } from '../../stores/messagesStore'
 import type { Message } from '../models'
 import type { HistoryArgs, HistoryResult } from '../managers/messagesManager'
 
@@ -67,10 +68,12 @@ describe('useMessageWindow', () => {
     const managers = fakeManagers(() => ({ messages: [], count: 0, reachedTop: true, reachedBottom: true }))
     const { result } = mount(managers)
     await waitFor(() => expect(result.current.reachedBottom).toBe(true))
-    act(() => { result.current.appendOptimistic('hi', 7, 'c1', 42) })
+    // Оптимистичная отправка теперь пишется в стор через storeProjection (воркер-funnel);
+    // логику стора проверяем прямым вызовом экшенов на окне '1' (winKey(1)).
+    act(() => { useMessagesStore.getState().appendOptimistic('1', 'hi', 7, 'c1', 42) })
     expect(result.current.msgs[result.current.msgs.length - 1]?.text).toBe('hi')
     expect(result.current.msgs[result.current.msgs.length - 1]?.mediaId).toBe(42)
-    act(() => { result.current.reconcileAck('c1', { msgId: 50, seq: 12, createdAt: 'now' }) })
+    act(() => { useMessagesStore.getState().reconcileAck('1', 'c1', { msgId: 50, seq: 12, createdAt: 'now' }) })
     const last = result.current.msgs[result.current.msgs.length - 1]!
     expect(last.id).toBe(50); expect(last.seq).toBe(12)
   })
@@ -90,7 +93,7 @@ describe('useMessageWindow', () => {
     const { result } = mount(managers)
     await waitFor(() => expect(result.current.reachedBottom).toBe(true))
     // Send → optimistic entry carries a stable clientId at tentative seq 1.
-    act(() => { result.current.appendOptimistic('hey', 7, 'c-stable') })
+    act(() => { useMessagesStore.getState().appendOptimistic('1', 'hey', 7, 'c-stable') })
     const tentativeSeq = result.current.msgs[result.current.msgs.length - 1]!.seq
     // The realtime echo arrives with the real server id but the SAME seq and no
     // clientId — it must not strip the optimistic clientId (that would remount).

@@ -3,7 +3,8 @@
 // подписчиков шины (рядом с soundSubscriber/notificationSubscriber); побочных эффектов
 // (звук/уведомления) не делает. Раньше жил внутри realtimeBridge.
 import { loadChats, useChatsStore } from '../../stores/chatsStore'
-import { useMessagesStore } from '../../stores/messagesStore'
+import { useMessagesStore, winKey } from '../../stores/messagesStore'
+import tabId from '../../config/tabId'
 import { usePinsStore } from '../../stores/pinsStore'
 import { useStarsStore } from '../../stores/starsStore'
 import { fromNewMessageEvt, mapDraft, mapPoll, mapChecklist, mapGeo, mapWebPage, mapFactCheck, mapBoostStatus, mapGiveaway, mapSuggestedPost, type RawPoll, type RawChecklist, type RawBoostStatus, type RawGiveaway } from '../../core/models'
@@ -13,7 +14,7 @@ import { useDraftsStore } from '../../stores/draftsStore'
 import { useUploadsStore } from '../../stores/uploadsStore'
 import { uiEvents } from '../../core/hooks/uiEvents'
 import { mapReplyMarkup } from '../../core/managers/botsManager'
-import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type GeoLiveUpdateEvt, type WebPageUpdateEvt, type FactCheckUpdateEvt, type ChatThemeUpdateEvt, type SuggestedPostEvt, type StoryNewEvt, type StoryDeletedEvt, type StoryReactionEvt } from '../../core/realtime/events'
+import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type GeoLiveUpdateEvt, type WebPageUpdateEvt, type FactCheckUpdateEvt, type ChatThemeUpdateEvt, type SuggestedPostEvt, type StoryNewEvt, type StoryDeletedEvt, type StoryReactionEvt, type PendingNewEvt, type PendingRouteEvt, type PendingMediaEvt } from '../../core/realtime/events'
 import { useSecretChatStore } from '../../stores/secretChatStore'
 import { useStoriesStore, loadStories } from '../../stores/storiesStore'
 import { mapStory } from '../../core/managers/storiesManager'
@@ -69,6 +70,20 @@ const APPLY: Record<string, (raw: unknown) => void> = {
   // Новый баланс звёзд; удаление истории.
   [RT.balanceUpdate]: (raw) => { const b = (raw as { balance: number }).balance; if (typeof b === 'number') useStarsStore.getState().setBalance(b) },
   [RT.storyDeleted]: (raw) => { const e = raw as StoryDeletedEvt; useStoriesStore.getState().removeStory(e.author_id, e.story_id) },
+  // Оптимистичная отправка (воркер — funnel): вставка/медиа/ошибка/ретрай/удаление
+  // бабла. storeProjection единственный писатель окна; reconcile ack/err — ниже.
+  [RT.pendingNew]: (raw) => {
+    const e = raw as PendingNewEvt
+    // localUrl (blob-URL) валиден только во вкладке-инициаторе — в остальных
+    // вырезаем, иначе битый превью-бабл навсегда (localUrl приоритетнее mediaId и
+    // не очищается). В своей вкладке — оставляем для мгновенного превью.
+    const media = e.media && e.origin_tab !== tabId ? { ...e.media, localUrl: undefined } : e.media
+    useMessagesStore.getState().appendOptimistic(winKey(e.chat_id, e.thread_root_id ?? undefined), e.text, e.sender_id, e.client_msg_id, e.media_id ?? undefined, e.type, e.entities, e.grouped_id, media, { geo: e.geo, contact: e.contact, threadRootId: e.thread_root_id ?? undefined, secret: e.secret, sendAs: e.send_as })
+  },
+  [RT.pendingMedia]: (raw) => { const e = raw as PendingMediaEvt; useMessagesStore.getState().setOptimisticMedia(winKey(e.chat_id, e.thread_root_id ?? undefined), e.client_msg_id, e.media_id) },
+  [RT.pendingFail]: (raw) => { const e = raw as PendingRouteEvt; useMessagesStore.getState().failOptimistic(winKey(e.chat_id, e.thread_root_id ?? undefined), e.client_msg_id) },
+  [RT.pendingRetry]: (raw) => { const e = raw as PendingRouteEvt; useMessagesStore.getState().retryOptimistic(winKey(e.chat_id, e.thread_root_id ?? undefined), e.client_msg_id) },
+  [RT.pendingRemove]: (raw) => { const e = raw as PendingRouteEvt; useMessagesStore.getState().removeOptimistic(winKey(e.chat_id, e.thread_root_id ?? undefined), e.client_msg_id) },
 }
 
 // Регистрирует все стор-подписки на eventBus. Вызывается один раз из realtimeBridge.

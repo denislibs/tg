@@ -19,10 +19,10 @@ import type { GifItem } from '../gifs'
 import type { Chat } from '../../data'
 import type { MessageWindow } from './useMessageWindow'
 import { useManagers } from './useManagers'
-import { useMessagesStore, winKey } from '../../stores/messagesStore'
 import { startLiveShare } from '../liveShareEngine'
 import { useUploadsStore } from '../../stores/uploadsStore'
 import { scaleImageForSend } from '../media/scaleImageForSend'
+import tabId from '../../config/tabId'
 
 // Max characters per message (matches the backend's maxMessageRunes / Telegram 4096).
 // Longer drafts are split into several messages on send.
@@ -75,7 +75,6 @@ export function useChatSend({
   canType,
   secretLocked = false,
   meId,
-  win,
   threadRootId,
   sendAsChatId = null,
   sendAsTitle,
@@ -122,7 +121,7 @@ export function useChatSend({
       const mediaId = await managers.media.upload({ blob, mime, size: blob.size, duration: secs })
       let cid = numericChatId
       if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
-      if (isRealChat) win.appendOptimistic('', meId ?? -1, clientMsgId, mediaId, type)
+      if (isRealChat) void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: '', type, media_id: mediaId })
       void managers.realtime.sendMessage({ chatId: cid, text: '', clientMsgId, mediaId, type, threadRootId })
       window.dispatchEvent(new Event('tg-send'))
       if (draftPeerId != null) onChatCreated?.(cid)
@@ -144,7 +143,7 @@ export function useChatSend({
       // отправка — reconcile по clientMsgId работает как всегда), затем E2E-шифрование
       // и отправка type:'encrypted' по WS. Реальный бабл приедет расшифрованным echo
       // new_message с тем же clientMsgId. reply/thread здесь пока не поддержаны.
-      win.appendOptimistic(text, meId ?? -1, clientMsgId, undefined, 'text', entities, undefined, undefined, { secret: true })
+      void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text, type: 'text', entities, secret: true })
       void managers.secret.sendText({ chatId: numericChatId, text, entities, clientMsgId, ttlSeconds })
       return
     }
@@ -153,8 +152,8 @@ export function useChatSend({
     // Кросс-чат ответ (tweb ReplyToAnotherChat): reply.chatId — исходный чат
     // оригинала; отличается от текущего → уходит полем reply_to_peer_id.
     const replyToPeerId = replyTo != null && reply?.chatId != null && reply.chatId !== numericChatId ? reply.chatId : null
-    const sendAsExtra = sendAsChatId != null ? { sendAs: { chatId: sendAsChatId, title: sendAsTitle ?? '' } } : undefined
-    win.appendOptimistic(text, meId ?? -1, clientMsgId, undefined, 'text', entities, undefined, undefined, sendAsExtra)
+    const sendAs = sendAsChatId != null ? { chatId: sendAsChatId, title: sendAsTitle ?? '' } : undefined
+    void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text, type: 'text', entities, send_as: sendAs })
     void managers.realtime.sendMessage({ chatId: numericChatId, text, entities, clientMsgId, replyToId: replyTo, replyToPeerId, replyQuoteText: quote?.text ?? null, replyQuoteOffset: quote?.offset ?? null, threadRootId, silent, effect: effect ?? undefined, sendAsChatId })
   }
 
@@ -174,7 +173,7 @@ export function useChatSend({
     }
     const clientMsgId = mkClientMsgId()
     const geo = { lat, lng, ...opts }
-    win.appendOptimistic('', meId ?? -1, clientMsgId, undefined, 'geo', undefined, undefined, undefined, { geo })
+    void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: '', type: 'geo', geo })
     void managers.realtime.sendMessage({ chatId: numericChatId, text: '', clientMsgId, type: 'geo', geo, threadRootId })
     window.dispatchEvent(new Event('tg-send'))
   }
@@ -189,7 +188,7 @@ export function useChatSend({
     void (async () => {
       let cid = numericChatId
       if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
-      if (isRealChat) win.appendOptimistic('', meId ?? -1, clientMsgId, st.mediaId, 'sticker')
+      if (isRealChat) void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: '', type: 'sticker', media_id: st.mediaId })
       void managers.realtime.sendMessage({ chatId: cid, text: '', clientMsgId, mediaId: st.mediaId, type: 'sticker', threadRootId })
       void managers.stickers.use(st.id).catch(() => {})
       window.dispatchEvent(new Event('tg-send'))
@@ -213,9 +212,7 @@ export function useChatSend({
         let cid = numericChatId
         if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
         if (isRealChat) {
-          win.appendOptimistic('', meId ?? -1, clientMsgId, mediaId, 'video', undefined, undefined, {
-            width: g.width, height: g.height, mime: g.mime, size: g.size, name: g.fileName,
-          })
+          void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: '', type: 'video', media_id: mediaId, media: { width: g.width, height: g.height, mime: g.mime, size: g.size, name: g.fileName } })
         }
         void managers.realtime.sendMessage({ chatId: cid, text: '', clientMsgId, mediaId, type: 'video', threadRootId })
         window.dispatchEvent(new Event('tg-send'))
@@ -234,18 +231,16 @@ export function useChatSend({
         return // CDN не отдал mp4 — отправлять нечего
       }
       const localUrl = URL.createObjectURL(blob)
-      win.appendOptimistic('', meId ?? -1, clientMsgId, undefined, 'video', undefined, undefined, {
-        localUrl, width: g.width, height: g.height, mime: 'video/mp4', size: blob.size, name: 'tenor.mp4',
-      })
+      void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: '', type: 'video', media: { localUrl, width: g.width, height: g.height, mime: 'video/mp4', size: blob.size, name: 'tenor.mp4' }, origin_tab: tabId })
       useUploadsStore.getState().setProgress(clientMsgId, 0)
       window.dispatchEvent(new Event('tg-send'))
       try {
         const mediaId = await managers.media.upload({ blob, mime: 'video/mp4', size: blob.size, width: g.width, height: g.height, fileName: 'tenor.mp4', progressId: clientMsgId })
-        useMessagesStore.getState().setOptimisticMedia(winKey(numericChatId, threadRootId), clientMsgId, mediaId)
+        void managers.realtime.attachPendingMedia({ chatId: numericChatId, threadRootId, clientMsgId, mediaId })
         void managers.realtime.sendMessage({ chatId: numericChatId, text: '', clientMsgId, mediaId, type: 'video', threadRootId })
         void managers.stickers.saveGif(mediaId).catch(() => {})
       } catch {
-        useMessagesStore.getState().failOptimisticByClient(clientMsgId)
+        void managers.realtime.failPending({ chatId: numericChatId, threadRootId, clientMsgId })
       } finally {
         useUploadsStore.getState().clear(clientMsgId)
       }
@@ -257,7 +252,7 @@ export function useChatSend({
   const sendContact = (userId: number, name: string) => {
     const clientMsgId = mkClientMsgId()
     atBottomRef.current = true; userScrolledUpRef.current = false
-    win.appendOptimistic('', meId ?? -1, clientMsgId, undefined, 'contact', undefined, undefined, undefined, { contact: { userId, name, phone: '' } })
+    void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: '', type: 'contact', contact: { userId, name, phone: '' } })
     void managers.realtime.sendMessage({ chatId: numericChatId, text: '', clientMsgId, type: 'contact', contactUserId: userId, threadRootId })
     window.dispatchEvent(new Event('tg-send'))
   }
@@ -317,30 +312,27 @@ export function useChatSend({
       const bytes = await file.arrayBuffer()
       if (isVisual) {
         const localUrl = URL.createObjectURL(file)
-        win.appendOptimistic(caption, meId ?? -1, clientMsgId, undefined, type, undefined, undefined,
-          { localUrl, width, height, mime, size: file.size, name: file.name }, { secret: true })
+        void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: caption, type, media: { localUrl, width, height, mime, size: file.size, name: file.name }, secret: true, origin_tab: tabId })
       }
       try {
         await managers.secret.sendMedia({ chatId: numericChatId, bytes, name: file.name, mime, size: file.size, mediaType: type, ttlSeconds: null, clientMsgId })
       } catch {
-        if (isVisual) useMessagesStore.getState().failOptimisticByClient(clientMsgId)
+        if (isVisual) void managers.realtime.failPending({ chatId: numericChatId, threadRootId, clientMsgId })
       }
       window.dispatchEvent(new Event('tg-send'))
       return
     }
     if (isVisual) {
       const localUrl = URL.createObjectURL(file)
-      win.appendOptimistic(caption, meId ?? -1, clientMsgId, undefined, type, undefined, groupedId, {
-        localUrl, width, height, mime, size: file.size, name: file.name,
-      })
+      void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: caption, type, grouped_id: groupedId, media: { localUrl, width, height, mime, size: file.size, name: file.name }, origin_tab: tabId })
       useUploadsStore.getState().setProgress(clientMsgId, 0)
       const typingTimer = startUploadTyping()
       try {
         const mediaId = await managers.media.upload({ blob: file, mime, size: file.size, width, height, fileName: file.name, progressId: clientMsgId })
-        useMessagesStore.getState().setOptimisticMedia(winKey(numericChatId, threadRootId), clientMsgId, mediaId)
+        void managers.realtime.attachPendingMedia({ chatId: numericChatId, threadRootId, clientMsgId, mediaId })
         void managers.realtime.sendMessage({ chatId: numericChatId, text: caption, clientMsgId, mediaId, type, groupedId, threadRootId, paidMediaPrice: paidMediaPrice ?? undefined })
       } catch {
-        useMessagesStore.getState().failOptimisticByClient(clientMsgId)
+        void managers.realtime.failPending({ chatId: numericChatId, threadRootId, clientMsgId })
       } finally {
         window.clearInterval(typingTimer)
         useUploadsStore.getState().clear(clientMsgId)
@@ -351,18 +343,16 @@ export function useChatSend({
     // кольцом прогресса аплоада с отменой (tweb ProgressivePreloader) — раньше
     // бабл ждал конца аплоада, и было непонятно, грузится ли файл вообще.
     // Большие файлы идут чанковым/резюмируемым путём (blob → uploadChunked).
-    win.appendOptimistic(caption, meId ?? -1, clientMsgId, undefined, type, undefined, groupedId, {
-      mime, size: file.size, name: file.name,
-    })
+    void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: caption, type, grouped_id: groupedId, media: { mime, size: file.size, name: file.name } })
     useUploadsStore.getState().setProgress(clientMsgId, 0)
     const typingTimer = startUploadTyping()
     try {
       const mediaId = await managers.media.upload({ blob: file, mime, size: file.size, width, height, fileName: file.name, progressId: clientMsgId })
-      useMessagesStore.getState().setOptimisticMedia(winKey(numericChatId, threadRootId), clientMsgId, mediaId)
+      void managers.realtime.attachPendingMedia({ chatId: numericChatId, threadRootId, clientMsgId, mediaId })
       void managers.realtime.sendMessage({ chatId: numericChatId, text: caption, clientMsgId, mediaId, type, groupedId, threadRootId })
     } catch {
-      // Отменённый аплоад бабл уже удалил (removeOptimisticByClient) — fail будет no-op.
-      useMessagesStore.getState().failOptimisticByClient(clientMsgId)
+      // Отменённый аплоад бабл уже удалил (removePending) — fail будет no-op.
+      void managers.realtime.failPending({ chatId: numericChatId, threadRootId, clientMsgId })
     } finally {
       window.clearInterval(typingTimer)
       useUploadsStore.getState().clear(clientMsgId)
@@ -452,7 +442,7 @@ export function useChatSend({
       atBottomRef.current = true; userScrolledUpRef.current = false
       for (let k = 0; k < parts.length; k++) {
         const clientMsgId = mkClientMsgId(k)
-        win.appendOptimistic(parts[k].text, meId ?? -1, clientMsgId)
+        void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: parts[k].text })
         void managers.channels.post(numericChatId, parts[k].text, clientMsgId)
       }
       return

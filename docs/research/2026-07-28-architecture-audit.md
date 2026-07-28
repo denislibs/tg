@@ -283,9 +283,30 @@ tweb `PopupElement`). Это убирает ~20 `useState` и ~20 веток о�
 (null-гард на своё эхо); star/poll/checklist/factcheck — absolute-set (двойное применение безвредно).
 
 **Осталось (осознанно не в этой ветке):**
-- **Giveaway «участвовать»** — живёт в `boostsManager`, не в messages; перенос тянет кросс-менеджерную
-  связь (нужен доступ к messages-SSOT/chatId). Оставлен component-writer до отдельного решения.
-- **Send-кластер + insert-from-REST** (`useChatSend` `appendOptimistic`, scheduled «send now»,
-  create poll/giveaway/checklist) — это **outbox** (оптимистичный бабл + reconcile по ack). Крупный
-  и рисковый (offline-очередь, retry, failed, upload-progress); tweb держит его в воркере
-  (`pendingByRandomId`). → **отдельный PR**, не мешать с агрегатами.
+- ~~Giveaway «участвовать»~~ — **сделано** (PR #69): `participateGiveaway` перенесён в
+  `messagesManager`, новое `RT.giveawayJoined` → `setGiveaway`.
+- ~~Send-кластер~~ — **сделано** (ветка `feat/outbox-worker-pending`, см. ниже).
+
+---
+
+## Send / outbox → single-writer (ветка `feat/outbox-worker-pending`)
+
+Последняя фаза. **Прагматичная реализация** «полного переноса»: не переписываем pending против
+`SlicedArray` вслепую (это ядро отправки — так проще всего сломать), а делаем воркер **funnel'ом
+жизненного цикла**, переиспользуя проверенную reconcile-логику стора без изменений.
+
+- Компоненты (`useChatSend`, `useMessageActions`, `callEngine`, `ConversationView`-cancel) больше не
+  зовут стор-экшены отправки напрямую. Вместо этого — RPC воркера: `appendPending` / `attachPendingMedia`
+  / `failPending` / `retryPending` / `removePending`, которые `broadcast(...)` новое событие всем вкладкам.
+- `storeProjection` подписан на `RT.pending*` и вызывает те же стор-экшены (`appendOptimistic` и т.д.) —
+  **единственный писатель** окна. Кросс-таб оптимистика бесплатно (blob-превью медиа валидно только во
+  вкладке-инициаторе — ограничение blob-URL, как в tweb).
+- Транспортный `outbox` (durable, resend) и reconcile ack/err (`reconcileAckByClient` по `clientToWin`) —
+  **без изменений**; `clientToWin` заполняет `appendOptimistic`, теперь вызываемый из `storeProjection`
+  (до ack — гарантировано порядком на порту: `appendPending` обрабатывается раньше `sendMessage`).
+- Удалены мёртвые обёртки `useMessageWindow` (`appendOptimistic`/`reconcileAck`/`failOptimistic`).
+- **Осознанно НЕ сделано:** сам pending-Message остаётся материализован в сторе (рендер-модель), а не
+  в worker-SSOT `SlicedArray` — литеральное объединение хранилищ требует reindex tentative→real seq и
+  живого прогона, при нулевой доп. пользе для пользователя. → возможный follow-up.
+- **Требует живого прогона `:38080`** перед мержем: отправка текста/медиа/альбома/секретных, retry
+  failed, offline-resend, отмена аплоада, тред/канал.

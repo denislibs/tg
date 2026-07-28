@@ -641,7 +641,8 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // затем оборвать PUT в воркере (upload() кинет 'aborted' — fail будет no-op).
   const cancelUploadE = useEvent((clientId: string) => {
     useUploadsStore.getState().clear(clientId)
-    useMessagesStore.getState().removeOptimisticByClient(clientId)
+    // Убрать бабл через воркер-funnel (storeProjection единственный писатель окна).
+    void managers.realtime.removePending({ chatId: numericChatId, threadRootId: threadRootId ?? null, clientMsgId: clientId })
     void managers.media.cancelUpload(clientId)
   })
   // Разблокировать платное медиа за звёзды (Telegram paid media): списание +
