@@ -33,6 +33,9 @@ export const RT = {
   // Клиентский кросс-таб-эхо REST-мутации mute (у бэка WS-эха mute нет): воркер
   // ретранслирует его всем вкладкам после успешного /mute — см. groupsManager.
   dialogMute: 'rt:dialog_mute',
+  // Юзер сменил имя/username/аватар (сервер шлёт участникам общих чатов + своим
+  // сессиям). peersStore патчит карточку пира; avatar_changed → до-фетч /users.
+  userUpdate: 'rt:user_update',
   pollUpdate: 'rt:poll_update',
   // Командное эхо своего голоса (votePoll): в отличие от live poll_update несёт мой
   // выбор (myVotes) — стор ставит опрос ПОЛНОСТЬЮ (setPoll), не мержит.
@@ -106,6 +109,10 @@ export interface SecretHandshakeEvt {
 // Новая/решённая предложка поста (suggested_post_update): админам — новые/решённые,
 // автору — статус его предложки. post — сырая read-модель backend.
 export interface SuggestedPostEvt { chat_id: number; post: import('../models').RawSuggestedPost }
+// Юзер сменил всегда-публичные поля (имя/username). avatar_changed — сигнал, что
+// аватар изменился: url в кадре не несём (он приватен per-viewer у /users), клиент
+// до-фетчит карточку, и сервер применит PrivacyProfilePhoto.
+export interface UserUpdateEvt { id: number; username: string; display_name: string; avatar_changed: boolean }
 export interface DeleteMessageEvt { chat_id: number; msg_id: number; seq: number; for_me: boolean }
 export interface PinMessageEvt { chat_id: number; msg_id: number; pinned: boolean }
 export interface ReadEvt { chat_id: number; user_id: number; up_to_seq: number }

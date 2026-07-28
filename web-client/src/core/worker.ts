@@ -155,6 +155,9 @@ const CACHE_THEN_BROADCAST: Record<string, { rt: string; cache: (p: never) => vo
   giveaway_update:   { rt: RT.giveawayUpdate,  cache: (p) => messages.cacheGiveaway(p) },
   reaction:          { rt: RT.reaction,        cache: (p) => messages.cacheReaction(p) },
   star_reaction:     { rt: RT.starReaction,    cache: (p) => messages.cacheStarReaction(p) },
+  // Юзер сменил профиль: чиним кэш пиров воркера ДО broadcast, иначе прямые
+  // getUsers (мимо peersStore) отдавали бы устаревшую карточку.
+  user_update:       { rt: RT.userUpdate,      cache: (p) => peers.applyUserUpdate(p) },
 }
 const PASS_THROUGH: Record<string, string> = {
   message_ack: RT.ack, message_error: RT.messageError, pin_message: RT.pinMessage,

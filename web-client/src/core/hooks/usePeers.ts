@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useManagers } from './useManagers'
 import type { Peer } from '../managers/peersManager'
+import { usePeersStore } from '../../stores/peersStore'
 
 // Stable cache key for a set of ids: sorted, deduped, comma-joined.
 // Used as the effect dependency so reorderings/duplicates don't refetch.
@@ -10,26 +11,31 @@ export function peersKey(ids: number[]): string {
     .join(',')
 }
 
-// Resolve a set of user ids to a name map, fetching missing ones via the worker.
+// Resolve a set of user ids to a name map. Reads the shared peersStore (SSOT),
+// fetching only the ids not yet cached. Realtime user_update patches the store,
+// so every usePeers consumer of a changed peer re-renders automatically.
 export function usePeers(ids: number[]): Map<number, Peer> {
-  const [map, setMap] = useState<Map<number, Peer>>(new Map())
   const managers = useManagers()
   const key = peersKey(ids)
+  const byId = usePeersStore((s) => s.byId)
+
   useEffect(() => {
     if (ids.length === 0) return
-    let alive = true
-    managers.peers.getUsers(ids).then((peers) => {
-      if (!alive) return
-      setMap((prev) => {
-        const next = new Map(prev)
-        for (const p of peers) next.set(p.id, p)
-        return next
-      })
-    })
-    return () => {
-      alive = false
+    const missing = ids.filter((id) => !usePeersStore.getState().byId[id])
+    if (missing.length) {
+      void managers.peers.getUsers(missing).then((peers) => usePeersStore.getState().upsert(peers))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key])
-  return map
+
+  // Subset map for the requested ids (recomputed when the store or ids change).
+  return useMemo(() => {
+    const m = new Map<number, Peer>()
+    for (const id of ids) {
+      const p = byId[id]
+      if (p) m.set(id, p)
+    }
+    return m
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, byId])
 }

@@ -16,19 +16,33 @@ var ErrQRUnavailable = errors.New("qr login unavailable")
 const codeTTL = 5 * time.Minute
 
 type Interactor struct {
-	users   UserRepo
-	devices DeviceRepo
-	codes   CodeRepo
-	pw      PasswordRepo
-	devCode string
-	logf    func(string, ...any)
-	cache   SessionCache       // optional
-	revoker RevocationNotifier // optional
-	qr      QRStore            // optional
-	svc     ServiceNotifier    // optional
-	geo     GeoResolver        // optional
-	premium PremiumRepo        // optional
+	users    UserRepo
+	devices  DeviceRepo
+	codes    CodeRepo
+	pw       PasswordRepo
+	devCode  string
+	logf     func(string, ...any)
+	cache    SessionCache       // optional
+	revoker  RevocationNotifier // optional
+	qr       QRStore            // optional
+	svc      ServiceNotifier    // optional
+	geo      GeoResolver        // optional
+	premium  PremiumRepo        // optional
+	pub      EventPublisher     // optional: realtime user_update fan-out
+	partners PartnersFunc       // optional: user_update recipient set (shared-chat peers)
 }
+
+// EventPublisher pushes a realtime WS frame to a user's connected sessions.
+// Optional (wired to the Redis publisher when available); mirrors the chat
+// usecase's publisher. Used to broadcast user_update on profile changes.
+type EventPublisher interface {
+	PublishToUser(ctx context.Context, userID int64, frame []byte) error
+}
+
+// PartnersFunc returns the ids of users who share at least one chat with the
+// given user — the user_update fan-out set. Wired to the chat usecase's
+// ChatPartners, the same source presence fan-out uses.
+type PartnersFunc func(ctx context.Context, userID int64) ([]int64, error)
 
 // GeoResolver turns an IP into a human place ("Москва, Россия"). Backed by a
 // MaxMind GeoLite2 lookup; optional, so auth runs without it (returns "").
@@ -102,6 +116,8 @@ func (i *Interactor) SetGeoResolver(g GeoResolver)               { i.geo = g }
 func (i *Interactor) SetRevocationNotifier(n RevocationNotifier) { i.revoker = n }
 func (i *Interactor) SetQRStore(q QRStore)                       { i.qr = q }
 func (i *Interactor) SetPremiumRepo(p PremiumRepo)               { i.premium = p }
+func (i *Interactor) SetPublisher(p EventPublisher)              { i.pub = p }
+func (i *Interactor) SetPartners(f PartnersFunc)                 { i.partners = f }
 
 func (i *Interactor) RequestCode(ctx context.Context, rawPhone string) error {
 	phone := domain.NormalizePhone(rawPhone)
