@@ -12,6 +12,7 @@ import Popup from '../../shared/ui/Popup'
 import { useT } from '../../i18n'
 import { useSettingsStore } from '../../settings'
 import { enablePasscode, disablePasscode, isMyPasscode, MAX_PASSCODE_LENGTH } from '../../core/passcode'
+import { useManagers } from '../../core/hooks/useManagers'
 import { useLockStore } from '../../stores/lockStore'
 import { SettingsScreen, Section, Row } from './kit'
 import s from './TwoStepVerification.module.scss'
@@ -23,6 +24,7 @@ const AUTO_LOCK_OPTIONS = [0, 1, 5, 10, 15, 30]
 
 export default function PasscodeLock({ onBack }: { onBack: () => void }) {
   const t = useT()
+  const managers = useManagers()
   const enabled = useSettingsStore((st) => st.passcodeEnabled)
   const autoLock = useSettingsStore((st) => st.passcodeAutoLockMins)
   const update = useSettingsStore((st) => st.update)
@@ -51,7 +53,7 @@ export default function PasscodeLock({ onBack }: { onBack: () => void }) {
       setStep('enter')
       return
     }
-    await enablePasscode(first)
+    await enablePasscode(first, managers.persist)
     setHintText(t(changing ? 'Your passcode has been changed.' : 'Passcode has been set.'))
     reset()
     setStep('main')

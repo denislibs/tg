@@ -3,15 +3,24 @@
 // уже заменил; здесь — актуальный слой персиста именно диалогов+me поверх persist.
 // Диалоги — единственная сущность, чей самый свежий вид (порядок/непрочитанное/
 // превью) живёт в main-thread-сторе (туда их правит storeProjection), поэтому
-// именно отсюда они и персистятся; юзеров и сообщения пишет воркер. На холодном
-// старте hydrate поднимает последний список мгновенно, до ответа сети, а сеть
-// реконсайлит поверх.
+// именно ЗДЕСЬ он собирается. Но ФИЗИЧЕСКИ в IndexedDB пишет воркер (persistManager):
+// один writer на все вкладки — main лишь шлёт снапшот командой. На холодном старте
+// hydrate ЧИТАЕТ последний список прямо с main (данные прошлой сессии уже
+// закоммичены), мгновенно, до ответа сети, а сеть реконсайлит поверх.
 //
 // Скоуп по токену и очистку при смене аккаунта делает persistScope (boot.ts);
 // под passcode-локом persist сам ничего не пишет/не читает (нет plaintext at rest).
-import { saveDialogs, saveMe, loadDialogs, loadMe, persistClearAll } from '../core/store/persist'
+import { loadDialogs, loadMe } from '../core/store/persist'
 import { useChatsStore } from './chatsStore'
 import { useSettingsStore } from '../settings'
+import type { Dialog } from '../core/models'
+import type { User } from '../core/managers/authManager'
+
+// RPC-фасад writer'а из воркера (persistManager). main собирает свежий вид, пишет воркер.
+type PersistWriter = {
+  dialogs(dialogs: Dialog[], me: User | null): Promise<void>
+  clearAll(): Promise<void>
+}
 
 // Заполнить стор из персиста до первого рендера. Возвращает true, если что-то
 // отрисовали (тогда useAuthGate стартует с authed=true оптимистично).
@@ -32,9 +41,9 @@ export async function hydrateDialogsFromPersist(): Promise<boolean> {
   }
 }
 
-// Подписка на стор: дебаунсом персистит диалоги + me, чтобы следующий холодный
-// старт был мгновенным. Вызывать один раз после первого рендера.
-export function startDialogsPersist(): void {
+// Подписка на стор: дебаунсом шлёт диалоги + me воркеру на запись, чтобы следующий
+// холодный старт был мгновенным. Вызывать один раз после первого рендера.
+export function startDialogsPersist(managers: { persist: Pick<PersistWriter, 'dialogs'> }): void {
   let timer: ReturnType<typeof setTimeout> | null = null
   let lastDialogs = useChatsStore.getState().dialogs
   let lastMe = useChatsStore.getState().me
@@ -43,8 +52,7 @@ export function startDialogsPersist(): void {
     timer = null
     const st = useChatsStore.getState()
     if (!st.loaded || !st.dialogs.length) return
-    void saveDialogs(st.dialogs)
-    void saveMe(st.me)
+    void managers.persist.dialogs(st.dialogs, st.me)
   }
 
   useChatsStore.subscribe((s) => {
@@ -56,6 +64,6 @@ export function startDialogsPersist(): void {
   })
 }
 
-export async function clearDialogsPersist(): Promise<void> {
-  await persistClearAll()
+export async function clearDialogsPersist(managers: { persist: Pick<PersistWriter, 'clearAll'> }): Promise<void> {
+  await managers.persist.clearAll()
 }

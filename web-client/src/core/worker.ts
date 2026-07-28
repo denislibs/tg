@@ -29,6 +29,7 @@ import { newStatsManager } from './managers/statsManager'
 import { newBotsManager } from './managers/botsManager'
 import { newIVManager } from './managers/ivManager'
 import { newDraftsManager } from './managers/draftsManager'
+import { newPersistManager } from './managers/persistManager'
 import { newChatThemesManager } from './managers/chatThemesManager'
 import { newSessionsManager } from './managers/sessionsManager'
 import { newCallsManager } from './managers/callsManager'
@@ -91,6 +92,9 @@ const stats = newStatsManager({ rest })
 const bots = newBotsManager({ rest })
 const stickers = newStickersManager({ rest })
 const iv = newIVManager({ rest })
+// Единый writer офлайн-стора: диалоги/me/папки/черновики теперь пишет воркер (не
+// каждая вкладка со своего main-соединения). Без rest — чистый IndexedDB.
+const persist = newPersistManager()
 
 // every connected tab's port — events broadcast to all
 const ports: SuperMessagePort[] = []
@@ -289,6 +293,7 @@ function bind(ep: Endpoint) {
     stickers: stickers as unknown as Record<string, (...a: unknown[]) => unknown>,
     iv: iv as unknown as Record<string, (...a: unknown[]) => unknown>,
     secret: secret as unknown as Record<string, (...a: unknown[]) => unknown>,
+    persist: persist as unknown as Record<string, (...a: unknown[]) => unknown>,
   })
 }
 

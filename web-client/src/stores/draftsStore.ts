@@ -3,7 +3,7 @@
 // rt:draft_update (синк с других устройств/вкладок).
 import { create } from 'zustand'
 import type { Draft } from '../core/models'
-import { saveDrafts as savePersistedDrafts, loadDrafts as loadPersistedDrafts } from '../core/store/persist'
+import { loadDrafts as loadPersistedDrafts } from '../core/store/persist'
 
 interface DraftsState {
   byChat: Record<number, Draft>
@@ -42,9 +42,10 @@ export async function loadDrafts(managers: { drafts: { list(): Promise<Draft[]> 
   }
 }
 
-// Подписка на стор: дебаунсом персистит карту черновиков (загрузка + оптимистичные
-// правки из композера + rt:draft_update), чтобы офлайн текст не терялся. Вызывать один раз.
-export function startDraftsPersist(): void {
+// Подписка на стор: дебаунсом шлёт карту черновиков воркеру на запись (загрузка +
+// оптимистичные правки из композера + rt:draft_update), чтобы офлайн текст не
+// терялся. Физически пишет воркер (persistManager) — один writer. Вызывать один раз.
+export function startDraftsPersist(managers: { persist: { drafts(drafts: Draft[]): Promise<void> } }): void {
   let timer: ReturnType<typeof setTimeout> | null = null
   let last = useDraftsStore.getState().byChat
   useDraftsStore.subscribe((s) => {
@@ -53,7 +54,7 @@ export function startDraftsPersist(): void {
     if (timer) clearTimeout(timer)
     timer = setTimeout(() => {
       timer = null
-      void savePersistedDrafts(Object.values(useDraftsStore.getState().byChat))
+      void managers.persist.drafts(Object.values(useDraftsStore.getState().byChat))
     }, 800)
   })
 }
