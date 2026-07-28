@@ -55,9 +55,9 @@ func (i *Interactor) ArchiveDialog(ctx context.Context, chatID, userID int64, ar
 	return nil
 }
 
+// publishDialogFlag логирует и шлёт dialog_pin / dialog_archive на устройства
+// владельца: запись в апдейт-лог даёт плотный pts-курсор, так что пин/архив
+// доезжают и через /sync (editPeerFolders).
 func (i *Interactor) publishDialogFlag(ctx context.Context, userID int64, t string, payload map[string]any) {
-	if i.publisher == nil {
-		return
-	}
-	_ = i.publisher.PublishToUser(ctx, userID, frame(t, payload))
+	_ = i.logAndPublish(ctx, []int64{userID}, t, payload)
 }

@@ -114,7 +114,11 @@ func (i *Interactor) SetChatType(ctx context.Context, chatID, actorID int64, isP
 	if err := i.requireRight(ctx, chatID, actorID, domain.RightChangeInfo); err != nil {
 		return err
 	}
-	return i.groups.SetType(ctx, chatID, isPublic, username)
+	if err := i.groups.SetType(ctx, chatID, isPublic, username); err != nil {
+		return err
+	}
+	i.publishChatUpdate(ctx, chatID)
+	return nil
 }
 
 // SetChatPermissions stores the default member permissions + slowmode (tweb
@@ -127,7 +131,11 @@ func (i *Interactor) SetChatPermissions(ctx context.Context, chatID, actorID int
 	if !slices.Contains([]int{0, 5, 10, 30, 60, 300, 900, 3600}, slowmodeSeconds) {
 		slowmodeSeconds = 0
 	}
-	return i.groups.SetPermissions(ctx, chatID, perms, slowmodeSeconds)
+	if err := i.groups.SetPermissions(ctx, chatID, perms, slowmodeSeconds); err != nil {
+		return err
+	}
+	i.publishChatUpdate(ctx, chatID)
+	return nil
 }
 
 // SetChatReactions stores the reaction policy: 'all' | 'some' (allowed list) | 'none'.
@@ -149,7 +157,11 @@ func (i *Interactor) SetChatReactions(ctx context.Context, chatID, actorID int64
 			return domain.ErrBadReaction
 		}
 	}
-	return i.groups.SetReactions(ctx, chatID, mode, allowed)
+	if err := i.groups.SetReactions(ctx, chatID, mode, allowed); err != nil {
+		return err
+	}
+	i.publishChatUpdate(ctx, chatID)
+	return nil
 }
 
 // SetChatHistoryForNew toggles "Chat history for new members" (tweb ChatHistory).
@@ -157,7 +169,11 @@ func (i *Interactor) SetChatHistoryForNew(ctx context.Context, chatID, actorID i
 	if err := i.requireRight(ctx, chatID, actorID, domain.RightChangeInfo); err != nil {
 		return err
 	}
-	return i.groups.SetHistoryForNew(ctx, chatID, visible)
+	if err := i.groups.SetHistoryForNew(ctx, chatID, visible); err != nil {
+		return err
+	}
+	i.publishChatUpdate(ctx, chatID)
+	return nil
 }
 
 // SetChatChargeStars задаёт плату за одно сообщение в звёздах (Telegram paid
@@ -176,7 +192,11 @@ func (i *Interactor) SetChatChargeStars(ctx context.Context, chatID, actorID int
 	if stars > 10000 {
 		stars = 10000
 	}
-	return i.groups.SetChargeStars(ctx, chatID, stars)
+	if err := i.groups.SetChargeStars(ctx, chatID, stars); err != nil {
+		return err
+	}
+	i.publishChatUpdate(ctx, chatID)
+	return nil
 }
 
 // BanMember kicks userID (if a member) and puts them on the removed-users list

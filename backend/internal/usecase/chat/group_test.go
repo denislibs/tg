@@ -877,8 +877,10 @@ func TestGroupLifecycle_ServiceMessagesAndChatRemoved(t *testing.T) {
 	if err := in.AddMember(ctx, id, 7, 10); err != nil {
 		t.Fatal(err)
 	}
-	if pub.countFor(10) != 1 {
-		t.Fatalf("add_user frame for new member = %d; want 1", pub.countFor(10))
+	// Новый участник получает add_user (service new_message) + chat_update (снимок
+	// метаданных: число участников изменилось) = 2 кадра.
+	if pub.countFor(10) != 2 {
+		t.Fatalf("add_user+chat_update frames for new member = %d; want 2", pub.countFor(10))
 	}
 	if msgs := s.messages[id]; !strings.Contains(msgs[len(msgs)-1].Text, `"action":"add_user"`) ||
 		!strings.Contains(msgs[len(msgs)-1].Text, "Дарья") {

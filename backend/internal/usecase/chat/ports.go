@@ -705,8 +705,17 @@ type Difference struct {
 }
 
 const (
-	syncLimit        = 500
-	tooLongThreshold = 2000
+	syncLimit = 500
+	// tooLongThreshold — на сколько pts клиент может отстать, прежде чем /sync
+	// отдаст too_long (полный ре-синк снапшотом вместо диффа). Wave 2 логирует в
+	// пер-юзерный апдейт-лог заметно больше типов (draft/dialog_*/poll/checklist/
+	// giveaway/boost/theme/web_page/paid_media/balance/user/folder/chat_update),
+	// поэтому pts на пользователя растёт быстрее и старый порог 2000 срабатывал бы
+	// слишком часто, гоняя дорогой полный ре-синк там, где хватило бы диффа.
+	// Курсор плотный и дешёвый (одна строка на апдейт, отдаётся батчами по
+	// syncLimit), так что поднимаем порог до 10000 — дифф остаётся выгоднее полного
+	// снапшота вплоть до ~20 страниц catch-up.
+	tooLongThreshold = 10000
 	maxEmojiLen      = 32
 	presenceTTL      = 35 * time.Second // (kept here only if needed; presence stays in its package)
 )

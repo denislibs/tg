@@ -5,8 +5,10 @@ package folders
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -54,14 +56,80 @@ type TxManager interface {
 	WithinTx(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
+// EventPublisher pushes a realtime WS frame to a user's connected sessions.
+// Optional (wired to the Redis publisher when available); mirrors the chat/auth
+// usecases. Used to fan out folder_update to the owner's own devices.
+type EventPublisher interface {
+	PublishToUser(ctx context.Context, userID int64, frame []byte) error
+}
+
+// UpdateLog appends one row to a user's per-user update log and returns the new
+// dense pts (same contract as the chat usecase's UpdateRepo.AppendUpdate). Folder
+// mutations are logged here so a client's /sync catch-up replays them and the pts
+// cursor stays dense. Optional — no-op when unwired (tests / no-DB setups).
+type UpdateLog interface {
+	AppendUpdate(ctx context.Context, userID int64, ptsCount int, date int64, typ string, payload json.RawMessage) (int64, error)
+}
+
 type Interactor struct {
-	repo  Repo
-	chats Chats
-	tx    TxManager
+	repo    Repo
+	chats   Chats
+	tx      TxManager
+	pub     EventPublisher // optional
+	updates UpdateLog      // optional
 }
 
 func New(repo Repo, chats Chats, tx TxManager) *Interactor {
 	return &Interactor{repo: repo, chats: chats, tx: tx}
+}
+
+// SetPublisher attaches a realtime publisher (optional).
+func (i *Interactor) SetPublisher(p EventPublisher) { i.pub = p }
+
+// SetUpdateLog attaches the per-user update log (optional).
+func (i *Interactor) SetUpdateLog(u UpdateLog) { i.updates = u }
+
+// folderJSON — абсолютный снимок папки для folder_update (клиент заменяет
+// определение целиком, порядок доставки апдейтов не важен — идемпотентно).
+func folderJSON(f domain.Folder) map[string]any {
+	return map[string]any{
+		"id": f.ID, "title": f.Title, "pos": f.Pos,
+		"contacts": f.Contacts, "non_contacts": f.NonContacts,
+		"groups": f.Groups, "broadcasts": f.Broadcasts, "bots": f.Bots,
+		"exclude_muted": f.ExcludeMuted, "exclude_read": f.ExcludeRead,
+		"include_chats": f.IncludeChats, "exclude_chats": f.ExcludeChats,
+	}
+}
+
+// emitFolderUpdate логирует folder_update в апдейт-лог владельца (плотный pts) и
+// шлёт живой кадр на его устройства. base — общий payload (снимок папки либо
+// {folder_id, deleted:true}); pts инжектится в КОПИЮ d, base не мутируется.
+// Best-effort и no-op без апдейт-лога/публишера (тесты / без БД).
+func (i *Interactor) emitFolderUpdate(ctx context.Context, ownerID int64, base map[string]any) {
+	if i.updates == nil {
+		return
+	}
+	payload, err := json.Marshal(base)
+	if err != nil {
+		return
+	}
+	pts, err := i.updates.AppendUpdate(ctx, ownerID, 1, time.Now().UnixMilli(), "folder_update", payload)
+	if err != nil {
+		return
+	}
+	if i.pub == nil {
+		return
+	}
+	d := make(map[string]any, len(base)+1)
+	for k, v := range base {
+		d[k] = v
+	}
+	d["pts"] = pts
+	frame, err := json.Marshal(map[string]any{"t": "folder_update", "d": d})
+	if err != nil {
+		return
+	}
+	_ = i.pub.PublishToUser(ctx, ownerID, frame)
 }
 
 func (i *Interactor) List(ctx context.Context, ownerID int64) ([]domain.Folder, error) {
@@ -79,18 +147,32 @@ func (i *Interactor) Create(ctx context.Context, ownerID int64, f domain.Folder)
 	if n >= domain.MaxFoldersPerUser {
 		return domain.Folder{}, ErrTooMany
 	}
-	return i.repo.Create(ctx, ownerID, f)
+	created, err := i.repo.Create(ctx, ownerID, f)
+	if err != nil {
+		return domain.Folder{}, err
+	}
+	i.emitFolderUpdate(ctx, ownerID, map[string]any{"folder": folderJSON(created)})
+	return created, nil
 }
 
 func (i *Interactor) Update(ctx context.Context, ownerID int64, f domain.Folder) (domain.Folder, error) {
 	if err := validate(&f); err != nil {
 		return domain.Folder{}, err
 	}
-	return i.repo.Update(ctx, ownerID, f)
+	updated, err := i.repo.Update(ctx, ownerID, f)
+	if err != nil {
+		return domain.Folder{}, err
+	}
+	i.emitFolderUpdate(ctx, ownerID, map[string]any{"folder": folderJSON(updated)})
+	return updated, nil
 }
 
 func (i *Interactor) Delete(ctx context.Context, ownerID, folderID int64) error {
-	return i.repo.Delete(ctx, ownerID, folderID)
+	if err := i.repo.Delete(ctx, ownerID, folderID); err != nil {
+		return err
+	}
+	i.emitFolderUpdate(ctx, ownerID, map[string]any{"folder_id": folderID, "deleted": true})
+	return nil
 }
 
 // CreateInvite создаёт ссылку-приглашение в папку. Расшариваются только те
@@ -172,6 +254,8 @@ func (i *Interactor) JoinInvite(ctx context.Context, userID int64, slug string, 
 		want = inv.ChatIDs
 	}
 	joined := make([]int64, 0, len(want))
+	var created domain.Folder
+	var haveFolder bool
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		for _, id := range want {
 			if !allowed[id] {
@@ -195,10 +279,21 @@ func (i *Interactor) JoinInvite(ctx context.Context, userID int64, slug string, 
 		if !domain.ValidFolderTitle(title) {
 			title = truncateTitle(title)
 		}
-		_, e := i.repo.Create(ctx, userID, domain.Folder{Title: title, IncludeChats: joined})
-		return e
+		f, e := i.repo.Create(ctx, userID, domain.Folder{Title: title, IncludeChats: joined})
+		if e != nil {
+			return e
+		}
+		created, haveFolder = f, true
+		return nil
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	// Новая папка появилась на устройствах вступившего — шлём folder_update.
+	if haveFolder {
+		i.emitFolderUpdate(ctx, userID, map[string]any{"folder": folderJSON(created)})
+	}
+	return nil
 }
 
 // ownedFolder возвращает папку folderID пользователя ownerID; domain.ErrNotFound

@@ -155,9 +155,8 @@ func (i *Interactor) UnlockPaidMedia(ctx context.Context, msgID, userID int64) (
 	msg.PaidMediaPrice = &price
 	msg.PaidMediaLocked = false
 	// Realtime: раскрываем баббл только на устройствах покупателя (медиа не должно
-	// утечь другим участникам) — кадром paid_media_unlock с полным медиа.
-	if i.publisher != nil {
-		_ = i.publisher.PublishToUser(ctx, userID, frame("paid_media_unlock", messageUpdatePayload(msg)))
-	}
+	// утечь другим участникам) — кадром paid_media_unlock с полным медиа. Логируем
+	// в его же апдейт-лог, чтобы разблокировка доехала и через /sync (плотный pts).
+	_ = i.logAndPublish(ctx, []int64{userID}, "paid_media_unlock", messageUpdatePayload(msg))
 	return msg, bal, nil
 }

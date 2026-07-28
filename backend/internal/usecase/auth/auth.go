@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -30,6 +31,7 @@ type Interactor struct {
 	premium  PremiumRepo        // optional
 	pub      EventPublisher     // optional: realtime user_update fan-out
 	partners PartnersFunc       // optional: user_update recipient set (shared-chat peers)
+	updates  UpdateLog          // optional: per-user update log for user_update (dense pts)
 }
 
 // EventPublisher pushes a realtime WS frame to a user's connected sessions.
@@ -43,6 +45,15 @@ type EventPublisher interface {
 // given user — the user_update fan-out set. Wired to the chat usecase's
 // ChatPartners, the same source presence fan-out uses.
 type PartnersFunc func(ctx context.Context, userID int64) ([]int64, error)
+
+// UpdateLog appends one row to a user's per-user update log and returns the new
+// dense pts (same contract as the chat usecase's UpdateRepo.AppendUpdate). A
+// profile change logs user_update to every recipient (own devices + shared-chat
+// peers) so /sync catch-up replays it and the pts cursor stays dense. Optional —
+// no-op when unwired (tests / no-DB setups).
+type UpdateLog interface {
+	AppendUpdate(ctx context.Context, userID int64, ptsCount int, date int64, typ string, payload json.RawMessage) (int64, error)
+}
 
 // GeoResolver turns an IP into a human place ("Москва, Россия"). Backed by a
 // MaxMind GeoLite2 lookup; optional, so auth runs without it (returns "").
@@ -118,6 +129,7 @@ func (i *Interactor) SetQRStore(q QRStore)                       { i.qr = q }
 func (i *Interactor) SetPremiumRepo(p PremiumRepo)               { i.premium = p }
 func (i *Interactor) SetPublisher(p EventPublisher)              { i.pub = p }
 func (i *Interactor) SetPartners(f PartnersFunc)                 { i.partners = f }
+func (i *Interactor) SetUpdateLog(u UpdateLog)                   { i.updates = u }
 
 func (i *Interactor) RequestCode(ctx context.Context, rawPhone string) error {
 	phone := domain.NormalizePhone(rawPhone)

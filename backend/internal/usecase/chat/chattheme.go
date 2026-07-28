@@ -22,15 +22,11 @@ func (i *Interactor) SetChatTheme(ctx context.Context, chatID, actorID int64, th
 	if err := i.chats.SetChatTheme(ctx, chatID, themeID, actorID); err != nil {
 		return err
 	}
-	if i.publisher != nil {
-		members, err := i.chats.MemberIDs(ctx, chatID)
-		if err != nil {
-			return err
-		}
-		f := frame("chat_theme_update", map[string]any{"chat_id": chatID, "theme_id": themeID})
-		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, f)
-		}
+	members, err := i.chats.MemberIDs(ctx, chatID)
+	if err != nil {
+		return err
 	}
-	return nil
+	// Логируем + шлём chat_theme_update всем членам: плотный pts-курсор доносит
+	// смену темы и через /sync (при перезагрузке тема также едет в списке диалогов).
+	return i.logAndPublish(ctx, members, "chat_theme_update", map[string]any{"chat_id": chatID, "theme_id": themeID})
 }

@@ -224,9 +224,6 @@ func (i *Interactor) hydratePolls(ctx context.Context, viewerID int64, msgs []do
 // свой выбор каждый клиент знает сам; correct_option скрыт как для
 // непроголосовавшего зрителя).
 func (i *Interactor) publishPollUpdate(ctx context.Context, chatID, pollID int64) {
-	if i.publisher == nil {
-		return
-	}
 	info, err := i.pollInfoFor(ctx, pollID, 0) // viewer 0 — «никто»: MyVotes пуст
 	if err != nil {
 		return
@@ -235,8 +232,7 @@ func (i *Interactor) publishPollUpdate(ctx context.Context, chatID, pollID int64
 	if err != nil {
 		return
 	}
-	f := frame("poll_update", map[string]any{"chat_id": chatID, "poll": info})
-	for _, uid := range members {
-		_ = i.publisher.PublishToUser(ctx, uid, f)
-	}
+	// Абсолютные агрегаты опроса + плотный pts-курсор делают catch-up через /sync
+	// идемпотентным (свой выбор клиент знает сам, correct_option скрыт).
+	_ = i.logAndPublish(ctx, members, "poll_update", map[string]any{"chat_id": chatID, "poll": info})
 }

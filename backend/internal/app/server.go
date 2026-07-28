@@ -172,16 +172,19 @@ func registerServer(p serverParams) {
 
 	var wsHandler http.Handler
 	var presenceMgr *usecasepresence.Manager
+	var realtimePublisher *rtredis.RedisPublisher // set when Redis is up; wired to folders below
 	if p.Redis.OK {
 		p.AuthUC.SetCache(redisSessionCache(p.Redis))
 		p.AuthUC.SetQRStore(redisQRStore(p.Redis))
 		publisher := rtredis.NewRedisPublisher(p.Redis.Client)
+		realtimePublisher = publisher
 		p.ChatUC.SetPublisher(publisher)
 		p.ChatUC.SetChannelPublisher(publisher)
 		// user_update fan-out on profile changes: same publisher + the shared-chat
 		// peer set that presence uses (ChatPartners).
 		p.AuthUC.SetPublisher(publisher)
 		p.AuthUC.SetPartners(p.ChatUC.ChatPartners)
+		p.AuthUC.SetUpdateLog(pgadapter.NewUpdatesRepo(p.Pool))
 		p.StoryUC.SetPublisher(publisher)
 		p.StoryUC.SetStealthStore(newStealthStore(p.Redis.Client))
 		p.ChatUC.SetGroupCalls(redisGroupCalls(p.Redis))
@@ -276,6 +279,13 @@ func registerServer(p serverParams) {
 	// из реальных данных (messages / chat_members / message_views).
 	statsUC := usecasestats.New(pgadapter.NewStatsRepo(p.Pool))
 	foldersUC := usecasefolders.New(pgadapter.NewFoldersRepo(p.Pool), pgadapter.NewFolderChatAccess(p.Pool), pgadapter.NewTxManager(p.Pool))
+	// folder_update: логируем мутации папок в пер-юзерный апдейт-лог (плотный
+	// pts-курсор для /sync), а при живом Redis — ещё и шлём кадр на устройства
+	// владельца.
+	foldersUC.SetUpdateLog(pgadapter.NewUpdatesRepo(p.Pool))
+	if realtimePublisher != nil {
+		foldersUC.SetPublisher(realtimePublisher)
+	}
 	// Публичная страница-превью @username (аналог t.me)
 	pubH := httptransport.NewPublicHandler(usecasepublic.New(pgadapter.NewPublicRepo(p.Pool)), mediaUC)
 
