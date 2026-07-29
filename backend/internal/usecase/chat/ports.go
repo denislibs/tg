@@ -356,6 +356,10 @@ type MediaDims struct {
 
 type EventPublisher interface {
 	PublishToUser(ctx context.Context, userID int64, frame []byte) error
+	// PublishToUsers delivers per-user frames (userIDs[i] gets frames[i]) in a
+	// single round-trip instead of N sequential publishes. Each user gets its own
+	// frame (per-user pts/unread differ). Best-effort, like PublishToUser.
+	PublishToUsers(ctx context.Context, userIDs []int64, frames [][]byte) error
 }
 
 // StickerAccess отвечает, принадлежит ли media какому-либо стикеру: наборы

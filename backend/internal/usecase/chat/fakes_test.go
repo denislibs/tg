@@ -1277,6 +1277,15 @@ func (p *fakePublisher) PublishToUser(_ context.Context, userID int64, f []byte)
 	return nil
 }
 
+func (p *fakePublisher) PublishToUsers(_ context.Context, userIDs []int64, frames [][]byte) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for i, userID := range userIDs {
+		p.frames = append(p.frames, capturedFrame{userID, append([]byte(nil), frames[i]...)})
+	}
+	return nil
+}
+
 func (p *fakePublisher) countFor(userID int64) int {
 	p.mu.Lock()
 	defer p.mu.Unlock()

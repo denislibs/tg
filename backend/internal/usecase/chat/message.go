@@ -506,21 +506,31 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		if msg.PaidMediaPrice != nil {
 			baseLocked = messageUpdatePayload(lockedPaidCopy(msg))
 		}
-		for _, uid := range recipients {
-			b := base
-			if baseLocked != nil && uid != in.SenderID {
-				b = baseLocked
+		// Realtime-кадры всем получателям — одним pipeline'ом (было M
+		// последовательных PUBLISH). У каждого свой кадр (pts у всех; authoritative
+		// unread — только у получателей, не автора).
+		if i.publisher != nil {
+			uids := make([]int64, 0, len(recipients))
+			frames := make([][]byte, 0, len(recipients))
+			for _, uid := range recipients {
+				b := base
+				if baseLocked != nil && uid != in.SenderID {
+					b = baseLocked
+				}
+				extra := map[string]any{"pts": ptsByUser[uid]}
+				if uid != in.SenderID {
+					extra["unread"] = unreadByUser[uid]
+				}
+				uids = append(uids, uid)
+				frames = append(frames, frameFields("new_message", b, extra))
 			}
-			// pts у всех; authoritative unread — только у получателей (не автора).
-			extra := map[string]any{"pts": ptsByUser[uid]}
-			if uid != in.SenderID {
-				extra["unread"] = unreadByUser[uid]
-			}
-			if i.publisher != nil {
-				_ = i.publisher.PublishToUser(ctx, uid, frameFields("new_message", b, extra))
-			}
-			if i.notifier != nil && uid != in.SenderID && !in.Silent {
-				i.notifier.NotifyNewMessage(ctx, uid, msg.ChatID, msg.ID, msg.Seq, msg.SenderID, msg.Text)
+			_ = i.publisher.PublishToUsers(ctx, uids, frames)
+		}
+		if i.notifier != nil && !in.Silent {
+			for _, uid := range recipients {
+				if uid != in.SenderID {
+					i.notifier.NotifyNewMessage(ctx, uid, msg.ChatID, msg.ID, msg.Seq, msg.SenderID, msg.Text)
+				}
 			}
 		}
 		// Отправка сообщения снимает черновик чата (Telegram-семантика).
