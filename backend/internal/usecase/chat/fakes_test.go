@@ -1127,6 +1127,25 @@ func (r fakeUpdates) AppendUpdateBulk(_ context.Context, userIDs []int64, ptsCou
 	return out, nil
 }
 
+func (r fakeUpdates) PruneUpdates(_ context.Context, keepPerUser int64, _ int) (int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var deleted int64
+	for uid, ups := range r.s.updates {
+		cur := r.s.pts[uid]
+		kept := ups[:0]
+		for _, u := range ups {
+			if u.Pts > cur-keepPerUser {
+				kept = append(kept, u)
+			} else {
+				deleted++
+			}
+		}
+		r.s.updates[uid] = kept
+	}
+	return deleted, nil
+}
+
 func (r fakeUpdates) GetUserState(_ context.Context, userID int64) (domain.UserState, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()

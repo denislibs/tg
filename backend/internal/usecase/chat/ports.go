@@ -273,6 +273,9 @@ type UpdateRepo interface {
 	AppendUpdateBulk(ctx context.Context, userIDs []int64, ptsCount int, date int64, typ string, payload json.RawMessage) (map[int64]int64, error)
 	GetUserState(ctx context.Context, userID int64) (domain.UserState, error)
 	UpdatesSince(ctx context.Context, userID, sincePts int64, limit int) ([]domain.Update, error)
+	// PruneUpdates trims the per-user log to keepPerUser pts of history (bounded
+	// by maxRows per call). Returns rows deleted.
+	PruneUpdates(ctx context.Context, keepPerUser int64, maxRows int) (int64, error)
 }
 
 type ChannelRepo interface {

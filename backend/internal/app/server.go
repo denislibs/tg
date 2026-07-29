@@ -237,11 +237,24 @@ func registerServer(p serverParams) {
 		go func() {
 			t := time.NewTicker(15 * time.Second)
 			defer t.Stop()
+			tick := 0
 			for {
 				select {
 				case <-p.Ctx.Done():
 					return
 				case <-t.C:
+					tick++
+					// Retention лога апдейтов — раз в ~4 мин (не каждые 15с: DELETE
+					// плодит мёртвые кортежи, ни к чему гонять autovacuum). Держит
+					// tooLongThreshold pts истории на юзера, ограничивая рост таблицы
+					// (иначе одна строка на получателя на событие — безграничный рост).
+					if tick%16 == 0 {
+						if n, err := p.ChatUC.PruneUpdateLog(p.Ctx); err != nil {
+							log.Printf("updates prune: %v", err)
+						} else if n > 0 {
+							log.Printf("updates: pruned %d log row(s)", n)
+						}
+					}
 					if n, err := p.ChatUC.PurgeExpiredMessages(p.Ctx); err != nil {
 						log.Printf("auto-delete purge: %v", err)
 					} else if n > 0 {

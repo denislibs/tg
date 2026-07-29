@@ -73,6 +73,26 @@ func (r *UpdatesRepo) AppendUpdateBulk(ctx context.Context, userIDs []int64, pts
 	return out, rows.Err()
 }
 
+// PruneUpdates deletes update-log rows more than keepPerUser pts behind each
+// user's current pts, in one bounded statement (≤ maxRows). Safe: any client
+// within keepPerUser still has all its rows, and keepPerUser must be ≥ the sync
+// too-long threshold so further-behind clients get a full resync instead of a
+// silent gap. Called periodically to bound otherwise-unbounded log growth (one
+// row per recipient per event). Returns rows deleted; a periodic ticker chips
+// away at any large initial backlog across successive calls.
+func (r *UpdatesRepo) PruneUpdates(ctx context.Context, keepPerUser int64, maxRows int) (int64, error) {
+	q := querier(ctx, r.pool)
+	tag, err := q.Exec(ctx,
+		`DELETE FROM updates WHERE ctid IN (
+		   SELECT u.ctid FROM updates u JOIN user_state s ON u.user_id = s.user_id
+		   WHERE u.pts <= s.pts - $1 LIMIT $2
+		 )`, keepPerUser, maxRows)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 // GetUserState returns a user's current pts/date (zero values if no state yet).
 func (r *UpdatesRepo) GetUserState(ctx context.Context, userID int64) (domain.UserState, error) {
 	q := querier(ctx, r.pool)

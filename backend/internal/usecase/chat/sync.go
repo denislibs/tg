@@ -469,3 +469,14 @@ func (i *Interactor) GetDifference(ctx context.Context, userID, sincePts int64) 
 	}
 	return d, nil
 }
+
+// PruneUpdateLog trims the per-user update log so it can't grow without bound (one
+// row is written per recipient per event). Keeps tooLongThreshold pts of history
+// per user — exactly the window within which /sync serves a diff; anyone further
+// behind already gets a full resync (too_long), so older rows are dead weight.
+// Bounded per call (maxRows) so a large initial backlog drains across ticks
+// instead of one giant locking DELETE. Returns rows deleted.
+func (i *Interactor) PruneUpdateLog(ctx context.Context) (int64, error) {
+	const maxRowsPerRun = 20000
+	return i.updates.PruneUpdates(ctx, tooLongThreshold, maxRowsPerRun)
+}
