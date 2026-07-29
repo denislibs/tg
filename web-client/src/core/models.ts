@@ -776,5 +776,8 @@ export function fromNewMessageEvt(evt: NewMessageEvt, replyTo: RawMessage['reply
   // secret_media (не проводное поле → инжектим после mapMessage). Для paid-unlock кадра
   // поля нет — ветка no-op.
   if (evt.secret_media) { msg.secretMedia = evt.secret_media; msg.secret = true }
+  // Эхо своей отправки: несёт client_msg_id → applyIncoming матчит оптимистичный
+  // бабл по нему (стабильный React-ключ, без tentative-seq подгадывания).
+  if (evt.client_msg_id) msg.clientId = evt.client_msg_id
   return msg
 }

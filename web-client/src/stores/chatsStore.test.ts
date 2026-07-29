@@ -53,6 +53,25 @@ describe('chatsStore', () => {
     expect(useChatsStore.getState().dialogs[0].unread).toBe(0)
   })
 
+  it('applyNewMessage takes unread from the frame verbatim (Wave 3 projection)', () => {
+    useChatsStore.setState({ dialogs: [{ chatId: 2, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false, pinned: false, archived: false }], meId: 7, activeChatId: null })
+    // server-authoritative unread=5 wins over the local +1
+    useChatsStore.getState().applyNewMessage({ chat_id: 2, msg_id: 9, seq: 4, sender_id: 5, type: 'text', text: 'yo', media_id: null, created_at: 'now', unread: 5 })
+    expect(useChatsStore.getState().dialogs[0].unread).toBe(5)
+  })
+
+  it('applyNewMessage falls back to local +1 when the frame omits unread', () => {
+    useChatsStore.setState({ dialogs: [{ chatId: 2, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 2, muted: false, pinned: false, archived: false }], meId: 7, activeChatId: null })
+    useChatsStore.getState().applyNewMessage({ chat_id: 2, msg_id: 9, seq: 4, sender_id: 5, type: 'text', text: 'yo', media_id: null, created_at: 'now' })
+    expect(useChatsStore.getState().dialogs[0].unread).toBe(3)
+  })
+
+  it('applyRead takes unread from the frame verbatim (fallback 0)', () => {
+    useChatsStore.setState({ dialogs: [{ chatId: 2, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 5, muted: false, pinned: false, archived: false }], meId: 7 })
+    useChatsStore.getState().applyRead({ chat_id: 2, user_id: 7, up_to_seq: 3, unread: 2 })
+    expect(useChatsStore.getState().dialogs[0].unread).toBe(2)
+  })
+
   it('setDialogMuted flips muted on the matching dialog only', () => {
     useChatsStore.setState({ dialogs: [
       { chatId: 1, type: 'group', lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false, pinned: false, archived: false },

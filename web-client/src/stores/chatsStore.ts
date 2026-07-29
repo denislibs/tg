@@ -128,6 +128,12 @@ export const useChatsStore = create<ChatsState>((set) => ({
       const d = s.dialogs[idx]
       const incoming = m.sender_id !== s.meId
       const bumpUnread = incoming && s.activeChatId !== m.chat_id
+      // Wave 3: сервер шлёт авторитетный unread получателям — берём verbatim; локальный
+      // +1 остаётся fallback (старый бэк без поля). Активный чат не «моргает» бейджем:
+      // мы тут же зовём markRead, поэтому счётчик держим на месте.
+      const nextUnread = bumpUnread
+        ? (m.unread ?? d.unread + 1)
+        : d.unread
       const updated = {
         ...d,
         // carry media so the sidebar preview keeps its thumbnail + type label
@@ -142,7 +148,7 @@ export const useChatsStore = create<ChatsState>((set) => ({
           // forward arrow in the sidebar preview live (not only on a full reload)
           forwarded: m.fwd_from_user_id != null || m.fwd_from_chat_id != null || undefined,
         },
-        unread: bumpUnread ? d.unread + 1 : d.unread,
+        unread: nextUnread,
       }
       const rest = s.dialogs.filter((_, i) => i !== idx)
       // A message from a user clears their typing indicator in that chat.
@@ -175,8 +181,9 @@ export const useChatsStore = create<ChatsState>((set) => ({
       if (idx === -1) return {}
       const next = s.dialogs.slice()
       if (r.user_id === s.meId) {
-        // my own read (also echoed to my other tabs) → clear unread (+ mentions/reactions) + advance my horizon
-        next[idx] = { ...next[idx], unread: 0, unreadMentions: 0, unreadReactions: 0, lastReadSeq: Math.max(next[idx].lastReadSeq, r.up_to_seq) }
+        // my own read (also echoed to my other tabs) → clear unread (+ mentions/reactions) + advance my horizon.
+        // Wave 3: авторитетный unread из кадра verbatim (обычно 0); локальный =0 — fallback.
+        next[idx] = { ...next[idx], unread: r.unread ?? 0, unreadMentions: 0, unreadReactions: 0, lastReadSeq: Math.max(next[idx].lastReadSeq, r.up_to_seq) }
       } else {
         // the OTHER side read my messages → advance the peer horizon (out ticks → ✓✓)
         next[idx] = { ...next[idx], peerReadSeq: Math.max(next[idx].peerReadSeq, r.up_to_seq) }

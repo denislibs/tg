@@ -1,5 +1,5 @@
-// applyReaction: дельты агрегатов реакций + идемпотентность к серверному эху
-// собственного действия (оптимистичный апдейт уже применён).
+// applyReaction (Wave 3): АБСОЛЮТНЫЙ агрегат из серверного counts + деривация mine;
+// applyReactionOptimistic: дельта оптимистичного клика до эха.
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useMessagesStore } from './messagesStore'
 import type { Message } from '../core/models'
@@ -12,56 +12,78 @@ function msg(id: number): Message {
     replyToId: null, mediaId: null, createdAt: '2026-07-19T10:00:00Z', threadRootId: null,
   }
 }
-
 function reactionsOf(id: number) {
   return useMessagesStore.getState().byKey[String(CHAT)].msgs.find((m) => m.id === id)?.reactions
 }
 
-describe('messagesStore.applyReaction', () => {
+describe('messagesStore.applyReaction (absolute)', () => {
   beforeEach(() => {
     useMessagesStore.setState({ byKey: {} })
     useMessagesStore.getState().setWindow(String(CHAT), { msgs: [msg(10)], reachedTop: true, reachedBottom: true })
   })
 
-  it('добавляет новый чип и инкрементит существующий', () => {
-    const st = useMessagesStore.getState()
-    st.applyReaction(CHAT, 10, '🔥', 'add', false)
+  it('ставит агрегат counts verbatim (чужое действие → mine=false)', () => {
+    useMessagesStore.getState().applyReaction(CHAT, 10, [{ emoji: '🔥', count: 1 }], null, null)
     expect(reactionsOf(10)).toEqual([{ emoji: '🔥', count: 1, mine: false }])
-    st.applyReaction(CHAT, 10, '🔥', 'add', true)
-    expect(reactionsOf(10)).toEqual([{ emoji: '🔥', count: 2, mine: true }])
   })
 
-  it('remove декрементит и убирает чип при нуле', () => {
+  it('моё add ставит mine на своём emoji; моё remove — снимает', () => {
     const st = useMessagesStore.getState()
-    st.applyReaction(CHAT, 10, '❤️', 'add', false)
-    st.applyReaction(CHAT, 10, '❤️', 'add', true)
-    st.applyReaction(CHAT, 10, '❤️', 'remove', false)
-    expect(reactionsOf(10)).toEqual([{ emoji: '❤️', count: 1, mine: true }])
-    st.applyReaction(CHAT, 10, '❤️', 'remove', true)
+    st.applyReaction(CHAT, 10, [{ emoji: '🔥', count: 2 }], '🔥', 'add')
+    expect(reactionsOf(10)).toEqual([{ emoji: '🔥', count: 2, mine: true }])
+    st.applyReaction(CHAT, 10, [{ emoji: '🔥', count: 1 }], '🔥', 'remove')
+    expect(reactionsOf(10)).toEqual([{ emoji: '🔥', count: 1, mine: false }])
+  })
+
+  it('сохраняет mine для не затронутых emoji при чужом обновлении', () => {
+    const st = useMessagesStore.getState()
+    st.applyReaction(CHAT, 10, [{ emoji: '👍', count: 1 }], '👍', 'add') // моё
+    // чужой добавил ❤️ — mine на 👍 должен сохраниться
+    st.applyReaction(CHAT, 10, [{ emoji: '👍', count: 1 }, { emoji: '❤️', count: 1 }], null, null)
+    expect(reactionsOf(10)).toEqual([
+      { emoji: '👍', count: 1, mine: true },
+      { emoji: '❤️', count: 1, mine: false },
+    ])
+  })
+
+  it('пустой counts убирает чипы', () => {
+    const st = useMessagesStore.getState()
+    st.applyReaction(CHAT, 10, [{ emoji: '🔥', count: 1 }], null, null)
+    st.applyReaction(CHAT, 10, [], null, null)
     expect(reactionsOf(10)).toBeUndefined()
   })
 
-  it('эхо собственного add поверх оптимистичного — no-op', () => {
+  it('идемпотентно на реплей: тот же агрегат → без изменения ссылки msgs', () => {
     const st = useMessagesStore.getState()
-    st.applyReaction(CHAT, 10, '👍', 'add', true) // оптимистично
-    st.applyReaction(CHAT, 10, '👍', 'add', true) // серверное эхо
-    expect(reactionsOf(10)).toEqual([{ emoji: '👍', count: 1, mine: true }])
-  })
-
-  it('эхо собственного remove поверх оптимистичного — no-op', () => {
-    const st = useMessagesStore.getState()
-    st.applyReaction(CHAT, 10, '👍', 'add', false) // чужая остаётся
-    st.applyReaction(CHAT, 10, '👍', 'add', true)
-    st.applyReaction(CHAT, 10, '👍', 'remove', true) // оптимистичное снятие
-    st.applyReaction(CHAT, 10, '👍', 'remove', true) // эхо
-    expect(reactionsOf(10)).toEqual([{ emoji: '👍', count: 1, mine: false }])
+    st.applyReaction(CHAT, 10, [{ emoji: '🔥', count: 3 }], '🔥', 'add')
+    const before = useMessagesStore.getState().byKey[String(CHAT)].msgs
+    st.applyReaction(CHAT, 10, [{ emoji: '🔥', count: 3 }], '🔥', 'add') // catch-up повтор
+    const after = useMessagesStore.getState().byKey[String(CHAT)].msgs
+    expect(after).toBe(before) // no-op, ссылка окна не пересобралась
+    expect(reactionsOf(10)).toEqual([{ emoji: '🔥', count: 3, mine: true }])
   })
 
   it('незагруженное окно / чужой msgId — no-op', () => {
     const st = useMessagesStore.getState()
-    st.applyReaction(999, 10, '🔥', 'add', false)
-    st.applyReaction(CHAT, 555, '🔥', 'add', false)
+    st.applyReaction(999, 10, [{ emoji: '🔥', count: 1 }], null, null)
+    st.applyReaction(CHAT, 555, [{ emoji: '🔥', count: 1 }], null, null)
     expect(useMessagesStore.getState().byKey[String(999)]).toBeUndefined()
     expect(reactionsOf(10)).toBeUndefined()
+  })
+})
+
+describe('messagesStore.applyReactionOptimistic (delta)', () => {
+  beforeEach(() => {
+    useMessagesStore.setState({ byKey: {} })
+    useMessagesStore.getState().setWindow(String(CHAT), { msgs: [msg(10)], reachedTop: true, reachedBottom: true })
+  })
+
+  it('инкремент своего клика с mine, затем абсолютное эхо перезаписывает агрегат', () => {
+    const st = useMessagesStore.getState()
+    st.applyReactionOptimistic(CHAT, 10, '👍', 'add')
+    expect(reactionsOf(10)).toEqual([{ emoji: '👍', count: 1, mine: true }])
+    // сервер прислал абсолютный агрегат (кто-то ещё тоже нажал) — mine сохраняется
+    st.applyReaction(CHAT, 10, [{ emoji: '👍', count: 2 }], '👍', 'add')
+    expect(reactionsOf(10)).toEqual([{ emoji: '👍', count: 2, mine: true }])
   })
 })
