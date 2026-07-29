@@ -40,7 +40,9 @@ type ChatRepo interface {
 	ChatType(ctx context.Context, chatID int64) (string, error) // 'private'|'group'|'channel'|'saved'
 	ListDialogs(ctx context.Context, userID int64) ([]domain.Dialog, error)
 	ChatPartners(ctx context.Context, userID int64) ([]int64, error)
-	IncUnread(ctx context.Context, chatID, userID int64) error
+	// IncUnread bumps a member's unread counter by one and returns the new value
+	// (so the new_message frame can carry the recipient's authoritative unread).
+	IncUnread(ctx context.Context, chatID, userID int64) (int, error)
 	CurrentReadSeq(ctx context.Context, chatID, userID int64) (int64, error)
 	SetRead(ctx context.Context, chatID, userID, seq int64, unread int) error
 	// LastReadAt — когда участник в последний раз продвинул read-горизонт
@@ -57,7 +59,7 @@ type ChatRepo interface {
 	// Непрочитанные реакции (Telegram unread_reactions_count). IncUnreadReactions
 	// бампит счётчик автора сообщения, когда на него реагирует кто-то другой;
 	// ClearUnreadReactions обнуляет счётчик (автор прочитал чат / реакции).
-	IncUnreadReactions(ctx context.Context, chatID, userID int64) error
+	IncUnreadReactions(ctx context.Context, chatID, userID int64) (int, error)
 	ClearUnreadReactions(ctx context.Context, chatID, userID int64) error
 	// «Очистить историю» у себя: MaxSeq — текущий максимум seq чата (горизонт);
 	// ClearedSeq/SetClearedSeq — персональный горизонт участника (cleared_max_seq).
@@ -685,17 +687,35 @@ type HistoryResult struct {
 	Count    int
 }
 
+// SyncUpdate — один апдейт catch-up с явным типом и pts (в отличие от голого
+// payload раньше). Тип убирает эвристику «по наличию поля» на клиенте (P0-3);
+// pts даёт клиенту тот же плотный монотонный курсор, что и живой путь (P0-2/P0-4).
+type SyncUpdate struct {
+	Type    string          `json:"t"`
+	Pts     int64           `json:"pts"`
+	Payload json.RawMessage `json:"d"`
+}
+
 type Difference struct {
-	NewMessages  []json.RawMessage `json:"new_messages"`
-	OtherUpdates []json.RawMessage `json:"other_updates"`
-	State        domain.UserState  `json:"state"`
-	Slice        bool              `json:"slice"`
-	TooLong      bool              `json:"too_long"`
+	NewMessages  []SyncUpdate     `json:"new_messages"`
+	OtherUpdates []SyncUpdate     `json:"other_updates"`
+	State        domain.UserState `json:"state"`
+	Slice        bool             `json:"slice"`
+	TooLong      bool             `json:"too_long"`
 }
 
 const (
-	syncLimit        = 500
-	tooLongThreshold = 2000
+	syncLimit = 500
+	// tooLongThreshold — на сколько pts клиент может отстать, прежде чем /sync
+	// отдаст too_long (полный ре-синк снапшотом вместо диффа). Wave 2 логирует в
+	// пер-юзерный апдейт-лог заметно больше типов (draft/dialog_*/poll/checklist/
+	// giveaway/boost/theme/web_page/paid_media/balance/user/folder/chat_update),
+	// поэтому pts на пользователя растёт быстрее и старый порог 2000 срабатывал бы
+	// слишком часто, гоняя дорогой полный ре-синк там, где хватило бы диффа.
+	// Курсор плотный и дешёвый (одна строка на апдейт, отдаётся батчами по
+	// syncLimit), так что поднимаем порог до 10000 — дифф остаётся выгоднее полного
+	// снапшота вплоть до ~20 страниц catch-up.
+	tooLongThreshold = 10000
 	maxEmojiLen      = 32
 	presenceTTL      = 35 * time.Second // (kept here only if needed; presence stays in its package)
 )

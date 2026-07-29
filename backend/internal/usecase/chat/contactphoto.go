@@ -97,6 +97,7 @@ func (i *Interactor) AcceptProfilePhotoSuggestion(ctx context.Context, userID, m
 	act.Accepted = true
 	updated, _ := json.Marshal(act)
 	var members []int64
+	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		msg, e := i.msgs.UpdateText(ctx, msgID, string(updated), nil)
 		if e != nil {
@@ -114,9 +115,11 @@ func (i *Interactor) AcceptProfilePhotoSuggestion(ctx context.Context, userID, m
 		}
 		date := nowMillis()
 		for _, uid := range members {
-			if _, e := i.updates.AppendUpdate(ctx, uid, 1, date, "edit_message", p); e != nil {
+			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "edit_message", p)
+			if e != nil {
 				return e
 			}
+			ptsByUser[uid] = pts
 		}
 		return nil
 	})
@@ -126,9 +129,9 @@ func (i *Interactor) AcceptProfilePhotoSuggestion(ctx context.Context, userID, m
 	if i.publisher != nil {
 		fresh, e := i.msgs.GetByID(ctx, msgID)
 		if e == nil {
-			f := frame("edit_message", editUpdatePayload(fresh))
+			base := editUpdatePayload(fresh)
 			for _, uid := range members {
-				_ = i.publisher.PublishToUser(ctx, uid, f)
+				_ = i.publisher.PublishToUser(ctx, uid, framePts("edit_message", base, ptsByUser[uid]))
 			}
 		}
 	}

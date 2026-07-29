@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"encoding/json"
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -432,6 +431,12 @@ func (i *Interactor) CallLog(ctx context.Context, userID int64, offset, limit in
 	return i.msgs.CallLog(ctx, userID, offset, limit)
 }
 
+// UserState returns the caller's per-user update cursor (pts) and date — sent as
+// the WS "hello" frame so a client whose cursor already matches can skip catch-up.
+func (i *Interactor) UserState(ctx context.Context, userID int64) (domain.UserState, error) {
+	return i.updates.GetUserState(ctx, userID)
+}
+
 // GetDifference returns updates with pts>sincePts, split by kind. If the client is
 // too far behind, TooLong is set so it can do a full resync (snapshot via ListDialogs).
 func (i *Interactor) GetDifference(ctx context.Context, userID, sincePts int64) (Difference, error) {
@@ -449,12 +454,13 @@ func (i *Interactor) GetDifference(ctx context.Context, userID, sincePts int64) 
 	if err != nil {
 		return Difference{}, err
 	}
-	d := Difference{State: state, NewMessages: []json.RawMessage{}, OtherUpdates: []json.RawMessage{}}
+	d := Difference{State: state, NewMessages: []SyncUpdate{}, OtherUpdates: []SyncUpdate{}}
 	for _, u := range ups {
+		su := SyncUpdate{Type: u.Type, Pts: u.Pts, Payload: u.Payload}
 		if u.Type == "new_message" {
-			d.NewMessages = append(d.NewMessages, u.Payload)
+			d.NewMessages = append(d.NewMessages, su)
 		} else {
-			d.OtherUpdates = append(d.OtherUpdates, u.Payload)
+			d.OtherUpdates = append(d.OtherUpdates, su)
 		}
 	}
 	if len(ups) == syncLimit {

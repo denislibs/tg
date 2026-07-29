@@ -101,12 +101,10 @@ func (i *Interactor) requireChannel(ctx context.Context, chatID int64) error {
 	return nil
 }
 
-// publishBoostUpdate рассылает участникам канала счётчик бустов/уровень
-// (без per-viewer полей — их каждый клиент знает сам).
+// publishBoostUpdate логирует и рассылает участникам канала счётчик бустов/уровень
+// (без per-viewer полей — их каждый клиент знает сам). Абсолютный статус + плотный
+// pts-курсор делают catch-up через /sync идемпотентным.
 func (i *Interactor) publishBoostUpdate(ctx context.Context, chatID int64) {
-	if i.publisher == nil {
-		return
-	}
 	st, err := i.BoostStatus(ctx, chatID, 0)
 	if err != nil {
 		return
@@ -115,8 +113,5 @@ func (i *Interactor) publishBoostUpdate(ctx context.Context, chatID int64) {
 	if err != nil {
 		return
 	}
-	f := frame("boost_update", map[string]any{"chat_id": chatID, "status": st})
-	for _, uid := range members {
-		_ = i.publisher.PublishToUser(ctx, uid, f)
-	}
+	_ = i.logAndPublish(ctx, members, "boost_update", map[string]any{"chat_id": chatID, "status": st})
 }

@@ -109,16 +109,15 @@ func (i *Interactor) deleteDraft(ctx context.Context, userID, chatID int64) erro
 	return nil
 }
 
-// publishDraft шлёт draft_update на все устройства владельца (d nil — удалён).
+// publishDraft логирует и шлёт draft_update на все устройства владельца (d nil —
+// удалён): запись в апдейт-лог даёт плотный pts-курсор, так что смена черновика
+// доезжает и через /sync (updateDraftMessage). Recipients — владелец (свои устройства).
 func (i *Interactor) publishDraft(ctx context.Context, userID, chatID int64, d *domain.Draft) {
-	if i.publisher == nil {
-		return
-	}
 	payload := map[string]any{"chat_id": chatID, "draft": nil}
 	if d != nil {
 		payload["draft"] = draftJSON(*d)
 	}
-	_ = i.publisher.PublishToUser(ctx, userID, frame("draft_update", payload))
+	_ = i.logAndPublish(ctx, []int64{userID}, "draft_update", payload)
 }
 
 func draftJSON(d domain.Draft) map[string]any {

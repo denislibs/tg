@@ -229,8 +229,8 @@ func TestChatsRepo_ReadState(t *testing.T) {
 	// One message from a, then b's unread is bumped.
 	seq, _ := msgs.NextSeq(ctx, chatID)
 	_, _ = msgs.Insert(ctx, domain.Message{ChatID: chatID, Seq: seq, SenderID: a, Type: "text", Text: "m"})
-	if err := repo.IncUnread(ctx, chatID, b); err != nil {
-		t.Fatalf("IncUnread: %v", err)
+	if n, err := repo.IncUnread(ctx, chatID, b); err != nil || n != 1 {
+		t.Fatalf("IncUnread = %d, %v; want 1, nil", n, err)
 	}
 
 	cur, err := repo.CurrentReadSeq(ctx, chatID, b)

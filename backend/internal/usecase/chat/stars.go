@@ -219,10 +219,9 @@ func (i *Interactor) chargePaidMessage(ctx context.Context, in SendInput) (paidC
 	return c, nil
 }
 
-// publishBalance рассылает пользователю его новый баланс звёзд (все вкладки).
+// publishBalance логирует и рассылает пользователю его новый баланс звёзд (все
+// вкладки). Абсолютное значение баланса + плотный pts-курсор делают catch-up через
+// /sync идемпотентным. Recipient — сам пользователь (свои устройства).
 func (i *Interactor) publishBalance(ctx context.Context, userID, balance int64) {
-	if i.publisher == nil {
-		return
-	}
-	_ = i.publisher.PublishToUser(ctx, userID, frame("balance_update", map[string]any{"balance": balance}))
+	_ = i.logAndPublish(ctx, []int64{userID}, "balance_update", map[string]any{"balance": balance})
 }

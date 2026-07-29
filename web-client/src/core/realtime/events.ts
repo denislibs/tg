@@ -33,6 +33,12 @@ export const RT = {
   // Клиентский кросс-таб-эхо REST-мутации mute (у бэка WS-эха mute нет): воркер
   // ретранслирует его всем вкладкам после успешного /mute — см. groupsManager.
   dialogMute: 'rt:dialog_mute',
+  // Метаданные чата (title/photo/настройки/права/подписи) — абсолютный снапшот,
+  // сервер шлёт участникам (logged, pts). Клиент рефетчит список диалогов + карточку.
+  chatUpdate: 'rt:chat_update',
+  // Мутация папок с другого устройства/вкладки (create/edit/delete/reorder) —
+  // logged, pts. Клиент перечитывает список папок.
+  folderUpdate: 'rt:folder_update',
   // Юзер сменил имя/username/аватар (сервер шлёт участникам общих чатов + своим
   // сессиям). peersStore патчит карточку пира; avatar_changed → до-фетч /users.
   userUpdate: 'rt:user_update',
@@ -84,7 +90,15 @@ export interface NewMessageEvt { chat_id: number; msg_id: number; seq: number; s
   backfill?: boolean;
   /** платное медиа (Telegram paid media): цена в звёздах + заблокировано ли для
    * получателя (у заблокированного кадра media_id отсутствует) */
-  paid_media?: { price: number; locked: boolean } | null }
+  paid_media?: { price: number; locked: boolean } | null;
+  /** Wave 3: эхо своей отправки несёт client_msg_id → applyIncoming/reconcileAck
+   * матчат оптимистичный бабл по нему (а не по фабричному tentative seq). */
+  client_msg_id?: string;
+  /** плотный монотонный pts (funnel-дедуп/гейт/gap). */
+  pts?: number;
+  /** авторитетный счётчик непрочитанных диалога (только получателям): стор берёт
+   * его verbatim вместо локального +1. Отсутствует у старого бэка → fallback. */
+  unread?: number }
 export interface EditMessageEvt { chat_id: number; msg_id: number; seq: number; text: string; entities?: MessageEntity[] | null; edited_at: string; reply_markup?: import('../models').RawMessage['reply_markup'] }
 // Live-обновление координат гео-трансляции (geo_live_update).
 export interface GeoLiveUpdateEvt { chat_id: number; msg_id: number; seq: number; geo: RawGeo }
@@ -115,7 +129,10 @@ export interface SuggestedPostEvt { chat_id: number; post: import('../models').R
 export interface UserUpdateEvt { id: number; username: string; display_name: string; avatar_changed: boolean }
 export interface DeleteMessageEvt { chat_id: number; msg_id: number; seq: number; for_me: boolean }
 export interface PinMessageEvt { chat_id: number; msg_id: number; pinned: boolean }
-export interface ReadEvt { chat_id: number; user_id: number; up_to_seq: number }
+export interface ReadEvt { chat_id: number; user_id: number; up_to_seq: number;
+  /** авторитетный счётчик непрочитанных диалога после этого read (Wave 3): стор
+   * берёт его verbatim вместо локального =0. Отсутствует у старого бэка → fallback. */
+  unread?: number; pts?: number }
 // Голосовое/кружок прослушано получателем → у сообщения гаснет точка media_unread.
 export interface MediaReadEvt { chat_id: number; msg_id: number }
 // Меня удалили из группы / я вышел — диалог убирается из списка.
@@ -129,7 +146,13 @@ export interface DraftUpdateEvt { chat_id: number; draft: import('../models').Ra
 export type TypingAction = 'typing' | 'voice' | 'video' | 'upload_file' | 'upload_photo' | 'upload_video' | 'upload_audio'
 export interface TypingEvt { chat_id: number; user_id: number; action?: TypingAction }
 export interface PresenceEvt { user_id: number; online: boolean; last_seen: number }
-export interface ReactionEvt { chat_id: number; msg_id: number; user_id: number; author_id?: number; emoji: string; action: 'add' | 'remove' }
+// Реакция (Wave 3, АБСОЛЮТНАЯ): counts — полный агрегат сообщения (набор
+// {emoji,count}); `mine` не приходит с сервера и деривится клиентом (см.
+// applyReaction). emoji/action/user_id описывают конкретное действие → нужны только
+// чтобы поставить/снять `mine` у реагирующего (когда user_id===meId). Оптимистичный
+// клик бродкастит этот же тип БЕЗ counts (дельта до эха) — потребитель ветвится по
+// наличию counts. pts — для funnel-дедупа/гейта.
+export interface ReactionEvt { chat_id: number; msg_id: number; user_id: number; author_id?: number; emoji: string; action: 'add' | 'remove'; counts?: { emoji: string; count: number }[]; unread_reactions?: number; pts?: number }
 // Обновление платной ⭐-реакции: новый агрегат звёзд сообщения (total) + вклад
 // отправителя (mine, у sender_id). Получатель правит total; sender_id===me — и mine.
 export interface StarReactionEvt { chat_id: number; msg_id: number; sender_id: number; total: number; mine: number }

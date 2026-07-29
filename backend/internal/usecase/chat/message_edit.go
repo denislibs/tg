@@ -37,6 +37,7 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 
 	var msg domain.Message
 	var members []int64
+	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		m, e := i.msgs.UpdateText(ctx, msgID, text, entities)
 		if e != nil {
@@ -55,9 +56,11 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 		}
 		date := nowMillis()
 		for _, uid := range members {
-			if _, e := i.updates.AppendUpdate(ctx, uid, 1, date, "edit_message", payload); e != nil {
+			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "edit_message", payload)
+			if e != nil {
 				return e
 			}
+			ptsByUser[uid] = pts
 		}
 		return nil
 	})
@@ -65,9 +68,9 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 		return domain.Message{}, err
 	}
 	if i.publisher != nil {
-		f := frame("edit_message", editUpdatePayload(msg))
+		base := editUpdatePayload(msg)
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, f)
+			_ = i.publisher.PublishToUser(ctx, uid, framePts("edit_message", base, ptsByUser[uid]))
 		}
 	}
 	return msg, nil
@@ -106,6 +109,7 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 	}
 
 	var members []int64
+	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		date := nowMillis()
 		if revoke {
@@ -123,9 +127,11 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 				return e
 			}
 			for _, uid := range members {
-				if _, e := i.updates.AppendUpdate(ctx, uid, 1, date, "delete_message", payload); e != nil {
+				pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "delete_message", payload)
+				if e != nil {
 					return e
 				}
+				ptsByUser[uid] = pts
 			}
 			return nil
 		}
@@ -138,16 +144,20 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 		if e != nil {
 			return e
 		}
-		_, e = i.updates.AppendUpdate(ctx, userID, 1, date, "delete_message", payload)
-		return e
+		pts, e := i.updates.AppendUpdate(ctx, userID, 1, date, "delete_message", payload)
+		if e != nil {
+			return e
+		}
+		ptsByUser[userID] = pts
+		return nil
 	})
 	if err != nil {
 		return err
 	}
 	if i.publisher != nil {
-		f := frame("delete_message", deleteUpdatePayload(chatID, msgID, cur.Seq, !revoke))
+		base := deleteUpdatePayload(chatID, msgID, cur.Seq, !revoke)
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, f)
+			_ = i.publisher.PublishToUser(ctx, uid, framePts("delete_message", base, ptsByUser[uid]))
 		}
 	}
 	return nil

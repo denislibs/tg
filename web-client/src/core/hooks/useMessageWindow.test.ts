@@ -94,14 +94,16 @@ describe('useMessageWindow', () => {
     await waitFor(() => expect(result.current.reachedBottom).toBe(true))
     // Send → optimistic entry carries a stable clientId at tentative seq 1.
     act(() => { useMessagesStore.getState().appendOptimistic('1', 'hey', 7, 'c-stable') })
-    const tentativeSeq = result.current.msgs[result.current.msgs.length - 1]!.seq
-    // The realtime echo arrives with the real server id but the SAME seq and no
-    // clientId — it must not strip the optimistic clientId (that would remount).
-    const echo: Message = { id: 500, chatId: 1, seq: tentativeSeq, senderId: 7, type: 'text', text: 'hey', replyToId: null, mediaId: null, createdAt: 'now', threadRootId: null }
+    // Wave 3: the realtime echo carries the real server id/seq AND the client_msg_id
+    // (mapped to clientId). Matched by clientId, it replaces the optimistic bubble
+    // (no duplicate even if the server seq differs) and preserves clientId so the
+    // React key stays stable (no remount mid-appear).
+    const echo: Message = { id: 500, chatId: 1, seq: 9, senderId: 7, type: 'text', text: 'hey', replyToId: null, mediaId: null, createdAt: 'now', threadRootId: null, clientId: 'c-stable' }
     act(() => { result.current.applyIncoming(echo) })
-    const merged = result.current.msgs.filter((x) => x.seq === tentativeSeq)
+    const merged = result.current.msgs.filter((x) => x.clientId === 'c-stable')
     expect(merged).toHaveLength(1)
     expect(merged[0]!.id).toBe(500)
+    expect(merged[0]!.seq).toBe(9)
     expect(merged[0]!.clientId).toBe('c-stable')
   })
 

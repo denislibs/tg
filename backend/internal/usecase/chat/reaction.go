@@ -45,15 +45,21 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 		}
 	}
 
-	// Build the payload once so the pts log and the live frame can never diverge.
 	action := "remove"
 	if add {
 		action = "add"
 	}
-	p := reactionPayload(chatID, messageID, userID, msg.SenderID, emoji, action)
 
+	// Build the payload once so the pts log and the live frame can never diverge.
+	// It carries the diff (user_id/emoji/action) AND the absolute aggregate (counts),
+	// computed in the tx after Add/Remove — the same payload goes to the log, so a
+	// /sync replay is idempotent by construction. Per-recipient pts is injected on
+	// top of this shared base at publish time.
 	var members []int64
+	var p map[string]any
+	ptsByUser := map[int64]int64{} // per-recipient pts на каждый live-кадр реакции
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		unreadReactions := int64(-1)
 		if add {
 			if e := i.reactions.Add(ctx, messageID, userID, emoji); e != nil {
 				return e
@@ -61,14 +67,29 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 			// Реакция на ЧУЖОЕ сообщение бампит счётчик непрочитанных реакций его
 			// автора (Telegram unread_reactions_count) — свои реакции не считаются.
 			if userID != msg.SenderID {
-				if e := i.chats.IncUnreadReactions(ctx, chatID, msg.SenderID); e != nil {
+				n, e := i.chats.IncUnreadReactions(ctx, chatID, msg.SenderID)
+				if e != nil {
 					return e
 				}
+				unreadReactions = int64(n)
 			}
 		} else {
 			if e := i.reactions.Remove(ctx, messageID, userID, emoji); e != nil {
 				return e
 			}
+		}
+		// Абсолютный агрегат сообщения ПОСЛЕ Add/Remove; viewerID=0 — без mine
+		// (payload общий для всех получателей и лога; mine клиент выводит из
+		// user_id/action локально).
+		byMsg, e := i.reactions.ReactionsFor(ctx, []int64{messageID}, 0)
+		if e != nil {
+			return e
+		}
+		p = reactionPayload(chatID, messageID, userID, msg.SenderID, emoji, action, byMsg[messageID])
+		// unread_reactions адресован автору сообщения (клиент применяет, только если
+		// author_id == me); для остальных получателей поле безвредно.
+		if unreadReactions >= 0 {
+			p["unread_reactions"] = unreadReactions
 		}
 		m, e := i.chats.MemberIDs(ctx, chatID)
 		if e != nil {
@@ -81,9 +102,11 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 		}
 		date := nowMillis()
 		for _, uid := range members {
-			if _, e := i.updates.AppendUpdate(ctx, uid, 1, date, "reaction", payload); e != nil {
+			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "reaction", payload)
+			if e != nil {
 				return e
 			}
+			ptsByUser[uid] = pts
 		}
 		return nil
 	})
@@ -91,9 +114,10 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 		return err
 	}
 	if i.publisher != nil {
-		f := frame("reaction", p)
+		// Кадр с per-recipient pts (клиент двигает по нему курсор); payload несёт
+		// абсолютные counts, так что catch-up-реплей идемпотентен by construction.
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, f)
+			_ = i.publisher.PublishToUser(ctx, uid, framePts("reaction", p, ptsByUser[uid]))
 		}
 	}
 	return nil

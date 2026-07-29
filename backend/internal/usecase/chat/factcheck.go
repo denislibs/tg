@@ -79,6 +79,7 @@ func (i *Interactor) requireFactCheckRight(ctx context.Context, chatID, userID i
 func (i *Interactor) applyFactCheck(ctx context.Context, chatID, msgID int64, fc *domain.FactCheck) (domain.Message, error) {
 	var msg domain.Message
 	var members []int64
+	ptsByUser := map[int64]int64{}
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		m, e := i.msgs.SetFactCheck(ctx, msgID, fc)
 		if e != nil {
@@ -97,9 +98,11 @@ func (i *Interactor) applyFactCheck(ctx context.Context, chatID, msgID int64, fc
 		}
 		date := nowMillis()
 		for _, uid := range members {
-			if _, e := i.updates.AppendUpdate(ctx, uid, 1, date, "factcheck_update", payload); e != nil {
+			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "factcheck_update", payload)
+			if e != nil {
 				return e
 			}
+			ptsByUser[uid] = pts
 		}
 		return nil
 	})
@@ -107,9 +110,9 @@ func (i *Interactor) applyFactCheck(ctx context.Context, chatID, msgID int64, fc
 		return domain.Message{}, err
 	}
 	if i.publisher != nil {
-		f := frame("factcheck_update", factCheckUpdatePayload(msg))
+		base := factCheckUpdatePayload(msg)
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, f)
+			_ = i.publisher.PublishToUser(ctx, uid, framePts("factcheck_update", base, ptsByUser[uid]))
 		}
 	}
 	return msg, nil

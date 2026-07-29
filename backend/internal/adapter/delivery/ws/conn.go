@@ -60,7 +60,17 @@ func (c *Conn) Send(frame []byte) {
 }
 
 func (c *Conn) run(ctx context.Context) {
+	// Register ДО hello. Иначе апдейт, закоммиченный между чтением UserState и
+	// Register, ушёл бы фан-аутом только уже-зарегистрированным сокетам (этот ещё
+	// не виден) и потерялся БЫ навсегда, а hello с устаревшим-но-консистентным pts
+	// заставил бы клиент пропустить catch-up (want===cursor). С Register-first такой
+	// апдейт доставляется живым; если он опередит hello — это безвредный дубль/
+	// лишний catch-up на клиенте, но не потеря. Сбой чтения state не фатален —
+	// просто без hello (клиент сделает полный catch-up).
 	c.hub.Register(ctx, c.userID, c.deviceID, c)
+	if st, err := c.svc.UserState(ctx, c.userID); err == nil {
+		c.Send(helloFrame(st))
+	}
 	if c.presence != nil {
 		_ = c.presence.Online(ctx, c.userID)
 	}

@@ -736,17 +736,17 @@ func (c groupChats) MemberIDs(_ context.Context, chatID int64) ([]int64, error) 
 	}
 	return ids, nil
 }
-func (c groupChats) ListDialogs(context.Context, int64) ([]domain.Dialog, error) { return nil, nil }
-func (c groupChats) ChatPartners(context.Context, int64) ([]int64, error)        { return nil, nil }
-func (c groupChats) SetAutoDelete(context.Context, int64, int) error             { return nil }
-func (c groupChats) SetChatTheme(context.Context, int64, string, int64) error    { return nil }
-func (c groupChats) UserAutoDelete(context.Context, int64) (int, error)          { return 0, nil }
-func (c groupChats) SetUserAutoDelete(context.Context, int64, int) error         { return nil }
-func (c groupChats) IncUnread(context.Context, int64, int64) error               { return nil }
-func (c groupChats) IncUnreadReactions(context.Context, int64, int64) error      { return nil }
-func (c groupChats) ClearUnreadReactions(context.Context, int64, int64) error    { return nil }
-func (c groupChats) CurrentReadSeq(context.Context, int64, int64) (int64, error) { return 0, nil }
-func (c groupChats) SetRead(context.Context, int64, int64, int64, int) error     { return nil }
+func (c groupChats) ListDialogs(context.Context, int64) ([]domain.Dialog, error)   { return nil, nil }
+func (c groupChats) ChatPartners(context.Context, int64) ([]int64, error)          { return nil, nil }
+func (c groupChats) SetAutoDelete(context.Context, int64, int) error               { return nil }
+func (c groupChats) SetChatTheme(context.Context, int64, string, int64) error      { return nil }
+func (c groupChats) UserAutoDelete(context.Context, int64) (int, error)            { return 0, nil }
+func (c groupChats) SetUserAutoDelete(context.Context, int64, int) error           { return nil }
+func (c groupChats) IncUnread(context.Context, int64, int64) (int, error)          { return 0, nil }
+func (c groupChats) IncUnreadReactions(context.Context, int64, int64) (int, error) { return 0, nil }
+func (c groupChats) ClearUnreadReactions(context.Context, int64, int64) error      { return nil }
+func (c groupChats) CurrentReadSeq(context.Context, int64, int64) (int64, error)   { return 0, nil }
+func (c groupChats) SetRead(context.Context, int64, int64, int64, int) error       { return nil }
 func (c groupChats) LastReadAt(context.Context, int64, int64) (time.Time, bool, error) {
 	return time.Time{}, false, nil
 }
@@ -877,8 +877,10 @@ func TestGroupLifecycle_ServiceMessagesAndChatRemoved(t *testing.T) {
 	if err := in.AddMember(ctx, id, 7, 10); err != nil {
 		t.Fatal(err)
 	}
-	if pub.countFor(10) != 1 {
-		t.Fatalf("add_user frame for new member = %d; want 1", pub.countFor(10))
+	// Новый участник получает add_user (service new_message) + chat_update (снимок
+	// метаданных: число участников изменилось) = 2 кадра.
+	if pub.countFor(10) != 2 {
+		t.Fatalf("add_user+chat_update frames for new member = %d; want 2", pub.countFor(10))
 	}
 	if msgs := s.messages[id]; !strings.Contains(msgs[len(msgs)-1].Text, `"action":"add_user"`) ||
 		!strings.Contains(msgs[len(msgs)-1].Text, "Дарья") {

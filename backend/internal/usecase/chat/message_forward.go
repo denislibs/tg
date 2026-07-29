@@ -63,6 +63,10 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 	}
 	var created []domain.Message
 	var members []int64
+	// Per-message, per-recipient pts + authoritative unread (parallel to created):
+	// a forward fans out one new_message per copy, each with its own cursor.
+	var ptsMaps []map[int64]int64
+	var unreadMaps []map[int64]int64
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		mem, e := i.chats.MemberIDs(ctx, in.ToChatID)
 		if e != nil {
@@ -150,17 +154,25 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 			if e != nil {
 				return e
 			}
+			ptsByUser := make(map[int64]int64, len(members))
+			unreadByUser := make(map[int64]int64, len(members))
 			for _, uid := range members {
-				if _, e := i.updates.AppendUpdate(ctx, uid, 1, date, "new_message", payload); e != nil {
+				pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "new_message", payload)
+				if e != nil {
 					return e
 				}
+				ptsByUser[uid] = pts
 				if uid != in.SenderID {
-					if e := i.chats.IncUnread(ctx, in.ToChatID, uid); e != nil {
+					n, e := i.chats.IncUnread(ctx, in.ToChatID, uid)
+					if e != nil {
 						return e
 					}
+					unreadByUser[uid] = int64(n)
 				}
 			}
 			created = append(created, msg)
+			ptsMaps = append(ptsMaps, ptsByUser)
+			unreadMaps = append(unreadMaps, unreadByUser)
 		}
 		return nil
 	})
@@ -168,10 +180,14 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 		return nil, err
 	}
 	if i.publisher != nil {
-		for _, msg := range created {
-			f := frame("new_message", messageUpdatePayload(msg))
+		for idx, msg := range created {
+			base := messageUpdatePayload(msg)
 			for _, uid := range members {
-				_ = i.publisher.PublishToUser(ctx, uid, f)
+				extra := map[string]any{"pts": ptsMaps[idx][uid]}
+				if uid != in.SenderID {
+					extra["unread"] = unreadMaps[idx][uid]
+				}
+				_ = i.publisher.PublishToUser(ctx, uid, frameFields("new_message", base, extra))
 				if i.notifier != nil && uid != in.SenderID {
 					i.notifier.NotifyNewMessage(ctx, uid, msg.ChatID, msg.ID, msg.Seq, msg.SenderID, msg.Text)
 				}

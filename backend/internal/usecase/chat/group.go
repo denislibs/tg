@@ -147,6 +147,8 @@ func (i *Interactor) AddMember(ctx context.Context, chatID, actorID, userID int6
 	}
 	target := i.userCard(ctx, userID)
 	i.postGroupService(ctx, chatID, actorID, serviceText("add_user", i.userCard(ctx, actorID), &target))
+	// Число участников изменилось — рассылаем свежий снимок метаданных чата.
+	i.publishChatUpdate(ctx, chatID)
 	return nil
 }
 
@@ -170,6 +172,8 @@ func (i *Interactor) RemoveMember(ctx context.Context, chatID, actorID, userID i
 		i.postGroupService(ctx, chatID, actorID, serviceText("kick_user", i.userCard(ctx, actorID), &target))
 	}
 	payload := map[string]any{"chat_id": chatID, "removed": true}
+	var pts int64
+	var havePts bool
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if e := i.groups.RemoveMember(ctx, chatID, userID); e != nil {
 			return e
@@ -179,17 +183,26 @@ func (i *Interactor) RemoveMember(ctx context.Context, chatID, actorID, userID i
 			if e != nil {
 				return e
 			}
-			if _, e := i.updates.AppendUpdate(ctx, userID, 1, nowMillis(), "chat_removed", b); e != nil {
+			p, e := i.updates.AppendUpdate(ctx, userID, 1, nowMillis(), "chat_removed", b)
+			if e != nil {
 				return e
 			}
+			pts, havePts = p, true
 		}
 		return nil
 	})
 	if err != nil {
 		return err
 	}
+	// Число участников изменилось — снимок метаданных оставшимся участникам
+	// (выбывший их не получает; ему адресован chat_removed ниже, он же последний).
+	i.publishChatUpdate(ctx, chatID)
 	if i.publisher != nil {
-		_ = i.publisher.PublishToUser(ctx, userID, frame("chat_removed", payload))
+		if havePts {
+			_ = i.publisher.PublishToUser(ctx, userID, framePts("chat_removed", payload, pts))
+		} else {
+			_ = i.publisher.PublishToUser(ctx, userID, frame("chat_removed", payload))
+		}
 	}
 	return nil
 }
@@ -198,14 +211,22 @@ func (i *Interactor) PromoteAdmin(ctx context.Context, chatID, actorID, userID i
 	if err := i.requireRight(ctx, chatID, actorID, domain.RightManageAdmins); err != nil {
 		return err
 	}
-	return i.groups.SetRole(ctx, chatID, userID, domain.RoleAdmin, rights)
+	if err := i.groups.SetRole(ctx, chatID, userID, domain.RoleAdmin, rights); err != nil {
+		return err
+	}
+	i.publishChatUpdate(ctx, chatID) // состав админов изменился
+	return nil
 }
 
 func (i *Interactor) DemoteAdmin(ctx context.Context, chatID, actorID, userID int64) error {
 	if err := i.requireRight(ctx, chatID, actorID, domain.RightManageAdmins); err != nil {
 		return err
 	}
-	return i.groups.SetRole(ctx, chatID, userID, domain.RoleMember, 0)
+	if err := i.groups.SetRole(ctx, chatID, userID, domain.RoleMember, 0); err != nil {
+		return err
+	}
+	i.publishChatUpdate(ctx, chatID) // состав админов изменился
+	return nil
 }
 
 func (i *Interactor) EditInfo(ctx context.Context, chatID, actorID int64, title, about, username string) error {
@@ -221,6 +242,7 @@ func (i *Interactor) EditInfo(ctx context.Context, chatID, actorID int64, title,
 	if old.Title != "" && old.Title != title {
 		i.postGroupService(ctx, chatID, actorID, serviceText("edit_title", i.userCard(ctx, actorID), nil))
 	}
+	i.publishChatUpdate(ctx, chatID) // title/about/username изменились
 	return nil
 }
 
@@ -245,17 +267,30 @@ func (i *Interactor) SetChatPhoto(ctx context.Context, chatID, actorID, mediaID 
 	// Фото едет медиа-полем сервисного сообщения (tweb messageActionChatEditPhoto
 	// несёт photo) — клиент рисует кликабельную круглую миниатюру под пилюлей.
 	i.postGroupServiceMedia(ctx, chatID, actorID, mediaID, serviceText("edit_photo", i.userCard(ctx, actorID), nil))
+	i.publishChatUpdate(ctx, chatID) // фото чата изменилось
 	return nil
 }
 
 // SetMute: muted=true без until — навсегда (tweb «Forever»), с until —
-// временный mute («For 1 Hour…»); muted=false снимает и то и другое.
+// временный mute («For 1 Hour…»); muted=false снимает и то и другое. Смена
+// логируется + шлётся dialog_mute на устройства владельца: раньше это был
+// клиентский fake-echo (groupsManager), теперь сервер эмитит его сам, так что
+// mute доезжает и на другие вкладки/устройства и через /sync (плотный pts).
 func (i *Interactor) SetMute(ctx context.Context, chatID, userID int64, muted bool, until *time.Time) error {
 	if !muted {
 		until = nil
 	}
 	forever := muted && until == nil
-	return i.groups.SetMuted(ctx, chatID, userID, forever, until)
+	if err := i.groups.SetMuted(ctx, chatID, userID, forever, until); err != nil {
+		return err
+	}
+	payload := map[string]any{"chat_id": chatID, "muted": muted}
+	if until != nil {
+		payload["muted_until"] = until.Unix()
+	}
+	// best-effort: мутация закоммичена — сбой лога/публикации не возвращаем как ошибку.
+	_ = i.logAndPublish(ctx, []int64{userID}, "dialog_mute", payload)
+	return nil
 }
 
 // SetChatNotify обновляет per-chat уведомления (показ превью, звук). nil-поля не

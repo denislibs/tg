@@ -215,12 +215,10 @@ func (i *Interactor) hydrateGiveaways(ctx context.Context, viewerID int64, msgs 
 	}
 }
 
-// publishGiveawayUpdate рассылает участникам чата состояние розыгрыша
-// (без per-viewer полей — их каждый клиент знает сам).
+// publishGiveawayUpdate логирует и рассылает участникам чата состояние розыгрыша
+// (без per-viewer полей — их каждый клиент знает сам). Абсолютный снимок + плотный
+// pts-курсор делают catch-up через /sync идемпотентным.
 func (i *Interactor) publishGiveawayUpdate(ctx context.Context, chatID, giveawayID int64) {
-	if i.publisher == nil {
-		return
-	}
 	info, err := i.giveawayInfoFor(ctx, giveawayID, 0)
 	if err != nil {
 		return
@@ -229,8 +227,5 @@ func (i *Interactor) publishGiveawayUpdate(ctx context.Context, chatID, giveaway
 	if err != nil {
 		return
 	}
-	f := frame("giveaway_update", map[string]any{"chat_id": chatID, "giveaway": info})
-	for _, uid := range members {
-		_ = i.publisher.PublishToUser(ctx, uid, f)
-	}
+	_ = i.logAndPublish(ctx, members, "giveaway_update", map[string]any{"chat_id": chatID, "giveaway": info})
 }

@@ -12,6 +12,19 @@ type Frame struct {
 	D json.RawMessage `json:"d,omitempty"`
 }
 
+// helloFrame is the FIRST frame sent on connect: the user's current update cursor
+// (pts) and date, so a client whose cursor already matches can skip catch-up.
+func helloFrame(st domain.UserState) []byte {
+	b, err := json.Marshal(map[string]any{
+		"t": "hello",
+		"d": map[string]any{"pts": st.Pts, "date": st.Date},
+	})
+	if err != nil {
+		return nil
+	}
+	return b
+}
+
 type sendMessageData struct {
 	ChatID    int64                  `json:"chat_id"`
 	Type      string                 `json:"type"`

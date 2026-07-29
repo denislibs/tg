@@ -298,23 +298,25 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 	return out, rows.Err()
 }
 
-// IncUnread bumps a member's unread counter by one.
-func (r *ChatsRepo) IncUnread(ctx context.Context, chatID, userID int64) error {
+// IncUnread bumps a member's unread counter by one and returns the new value.
+func (r *ChatsRepo) IncUnread(ctx context.Context, chatID, userID int64) (int, error) {
 	q := querier(ctx, r.pool)
-	_, err := q.Exec(ctx,
-		`UPDATE chat_members SET unread_count = unread_count + 1 WHERE chat_id=$1 AND user_id=$2`,
-		chatID, userID)
-	return err
+	var n int
+	err := q.QueryRow(ctx,
+		`UPDATE chat_members SET unread_count = unread_count + 1 WHERE chat_id=$1 AND user_id=$2 RETURNING unread_count`,
+		chatID, userID).Scan(&n)
+	return n, err
 }
 
 // IncUnreadReactions bumps a member's unread-reactions counter by one (someone
-// reacted to their message — Telegram unread_reactions_count).
-func (r *ChatsRepo) IncUnreadReactions(ctx context.Context, chatID, userID int64) error {
+// reacted to their message — Telegram unread_reactions_count) and returns the new value.
+func (r *ChatsRepo) IncUnreadReactions(ctx context.Context, chatID, userID int64) (int, error) {
 	q := querier(ctx, r.pool)
-	_, err := q.Exec(ctx,
-		`UPDATE chat_members SET unread_reactions = unread_reactions + 1 WHERE chat_id=$1 AND user_id=$2`,
-		chatID, userID)
-	return err
+	var n int
+	err := q.QueryRow(ctx,
+		`UPDATE chat_members SET unread_reactions = unread_reactions + 1 WHERE chat_id=$1 AND user_id=$2 RETURNING unread_reactions`,
+		chatID, userID).Scan(&n)
+	return n, err
 }
 
 // ClearUnreadReactions resets a member's unread-reactions counter to zero (they

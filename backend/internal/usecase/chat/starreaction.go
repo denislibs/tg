@@ -47,6 +47,7 @@ func (i *Interactor) SendStarReaction(ctx context.Context, chatID, messageID, us
 		authorBal    int64
 		authorCredit bool
 	)
+	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		b, e := i.stars.AddBalance(ctx, userID, -count)
 		if e == domain.ErrForbidden {
@@ -89,9 +90,11 @@ func (i *Interactor) SendStarReaction(ctx context.Context, chatID, messageID, us
 		}
 		date := nowMillis()
 		for _, uid := range members {
-			if _, e := i.updates.AppendUpdate(ctx, uid, 1, date, "star_reaction", payload); e != nil {
+			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "star_reaction", payload)
+			if e != nil {
 				return e
 			}
+			ptsByUser[uid] = pts
 		}
 		return nil
 	})
@@ -100,9 +103,9 @@ func (i *Interactor) SendStarReaction(ctx context.Context, chatID, messageID, us
 	}
 
 	if i.publisher != nil {
-		f := frame("star_reaction", starReactionPayload(chatID, messageID, userID, agg.Total, agg.Mine))
+		base := starReactionPayload(chatID, messageID, userID, agg.Total, agg.Mine)
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, f)
+			_ = i.publisher.PublishToUser(ctx, uid, framePts("star_reaction", base, ptsByUser[uid]))
 		}
 	}
 	i.publishBalance(ctx, userID, senderBal)

@@ -46,13 +46,9 @@ func (i *Interactor) attachWebPreview(msg domain.Message, url string, recipients
 	if err := i.msgs.SetWebPage(ctx, msg.ID, wp); err != nil {
 		return
 	}
-	if i.publisher == nil {
-		return
-	}
-	f := frame("web_page_update", map[string]any{
+	// Логируем + шлём web_page_update всем получателям: догоняющее превью доезжает
+	// и через /sync (плотный pts-курсор), а не только живым кадром.
+	_ = i.logAndPublish(ctx, recipients, "web_page_update", map[string]any{
 		"chat_id": msg.ChatID, "msg_id": msg.ID, "seq": msg.Seq, "web_page": wp,
 	})
-	for _, uid := range recipients {
-		_ = i.publisher.PublishToUser(ctx, uid, f)
-	}
 }

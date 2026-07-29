@@ -13,36 +13,65 @@ import (
 
 const maxBioLen = 70
 
-// emitUserUpdate broadcasts a user_update WS frame after a profile change so
+// emitUserUpdate logs and broadcasts a user_update after a profile change so
 // clients re-render the peer everywhere it's shown (name/username, and avatar on
-// refetch). Fan-out = users sharing a chat + the user's own sessions (partners
-// excludes self). Optional deps → no-op when unwired (tests / no-Redis mode).
+// refetch). Fan-out = the user's own sessions + users sharing a chat (partners).
+// Each recipient's row is appended to their per-user update log, so /sync catch-up
+// replays the change and the pts cursor stays dense (Wave 2); the live frame
+// carries that same per-recipient pts. Optional deps degrade: without an update
+// log nothing is logged (still published, pts-less for back-compat); without a
+// publisher nothing is pushed (still logged); without partners the fan-out is the
+// user's own devices only.
 //
-// The frame carries only always-public fields; the avatar is privacy-gated
-// per viewer (see /users), so we only flag avatar_changed and let clients
-// refetch the card — which enforces PrivacyProfilePhoto — rather than pushing a
-// url that could leak past that setting.
+// The payload carries only always-public fields; the avatar is privacy-gated per
+// viewer (see /users), so we only flag avatar_changed and let clients refetch the
+// card — which enforces PrivacyProfilePhoto — rather than pushing a url that could
+// leak past that setting.
 func (i *Interactor) emitUserUpdate(ctx context.Context, u domain.User, avatarChanged bool) {
-	if i.pub == nil || i.partners == nil {
+	if i.pub == nil && i.updates == nil {
 		return
 	}
 	username := ""
 	if u.Username != nil {
 		username = *u.Username
 	}
-	b, err := json.Marshal(map[string]any{"t": "user_update", "d": map[string]any{
+	base := map[string]any{
 		"id": u.ID, "username": username, "display_name": u.DisplayName, "avatar_changed": avatarChanged,
-	}})
+	}
+	payload, err := json.Marshal(base)
 	if err != nil {
 		return
 	}
-	partners, err := i.partners(ctx, u.ID)
-	if err != nil {
-		i.logf("[user_update] partners for %d: %v", u.ID, err)
+	// Recipients: own devices first, then shared-chat peers (dedup not needed —
+	// partners excludes self).
+	recipients := []int64{u.ID}
+	if i.partners != nil {
+		partners, err := i.partners(ctx, u.ID)
+		if err != nil {
+			i.logf("[user_update] partners for %d: %v", u.ID, err)
+		}
+		recipients = append(recipients, partners...)
 	}
-	_ = i.pub.PublishToUser(ctx, u.ID, b) // own other devices/tabs
-	for _, p := range partners {
-		_ = i.pub.PublishToUser(ctx, p, b)
+	date := time.Now().UnixMilli()
+	for _, uid := range recipients {
+		d := map[string]any{
+			"id": u.ID, "username": username, "display_name": u.DisplayName, "avatar_changed": avatarChanged,
+		}
+		if i.updates != nil {
+			if pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "user_update", payload); e == nil {
+				d["pts"] = pts // live frame advances the client's cursor like the /sync row
+			} else {
+				i.logf("[user_update] append for %d: %v", uid, e)
+			}
+		}
+		if i.pub == nil {
+			continue
+		}
+		b, e := json.Marshal(map[string]any{"t": "user_update", "d": d})
+		if e != nil {
+			continue
+		}
+		_ = i.pub.PublishToUser(ctx, uid, b)
 	}
 }
 

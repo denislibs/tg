@@ -10,7 +10,7 @@
 // с chat_id применяются ко ВСЕМ окнам этого чата (applyToChat), новое сообщение
 // с thread_root_id попадает и в основное окно, и в окно своего треда.
 import { create } from 'zustand'
-import type { Message, MessageEntity, Poll, Checklist, Giveaway, GeoData, WebPageData, FactCheck } from '../core/models'
+import type { Message, MessageEntity, Poll, Checklist, Giveaway, GeoData, WebPageData, FactCheck, ReactionCount } from '../core/models'
 import type { ReplyMarkup } from '../core/managers/botsManager'
 import { reactionDelta } from '../core/reactionDelta'
 
@@ -45,26 +45,43 @@ export const EMPTY_WINDOW: ChatWindow = {
   loadingOlder: false, loadingNewer: false, loading: true, loadedFromCache: false,
 }
 
-// clientMsgId -> tentative seq, per window. This is the UI reconcile index only
-// (maps an ack back to the optimistic bubble's tentative seq); not rendered, so
-// kept out of reactive state. It is NOT a duplicate of connectionManager.outbox:
-// that lives in the worker and is the transport retry buffer (full SendArgs,
-// resent on reconnect). Different threads, different jobs — the UI window's single
-// source of truth is this store; the outbox never feeds the UI.
-const pendingByWin = new Map<string, Map<string, number>>()
-function pendingFor(key: string): Map<string, number> {
-  let m = pendingByWin.get(key)
-  if (!m) pendingByWin.set(key, (m = new Map()))
-  return m
-}
 // Reverse index clientMsgId -> window key. An ack/error frame carries only the
 // client_msg_id (no chat_id), so realtimeBridge resolves the window through this.
+// Wave 3: бабл матчится по clientId напрямую (эхо new_message несёт client_msg_id),
+// поэтому tentative-seq индекс больше не нужен — остался только этот reverse-индекс.
 const clientToWin = new Map<string, string>()
 
 function dedupAsc(list: Message[]): Message[] {
   const bySeq = new Map<number, Message>()
   for (const m of list) bySeq.set(m.seq, m)
   return Array.from(bySeq.values()).sort((a, b) => a.seq - b.seq)
+}
+
+// Абсолютный агрегат реакций из серверного counts. `mine` не приходит с сервера
+// (counts безличный) → деривим: сохраняем прежний mine для не затронутых emoji,
+// а для emoji своего действия ставим (add) / снимаем (remove). myEmoji/myAction
+// заданы только когда реагировал я — иначе весь прежний mine переносится as-is.
+function setReactions(
+  prev: ReactionCount[] | undefined,
+  counts: { emoji: string; count: number }[],
+  myEmoji: string | null,
+  myAction: 'add' | 'remove' | null,
+): ReactionCount[] | undefined {
+  const prevMine = new Set((prev ?? []).filter((r) => r.mine).map((r) => r.emoji))
+  const next = counts.map((c) => {
+    let mine = prevMine.has(c.emoji)
+    if (myEmoji === c.emoji && myAction) mine = myAction === 'add'
+    return { emoji: c.emoji, count: c.count, mine }
+  })
+  return next.length ? next : undefined
+}
+function sameReactions(a: ReactionCount[] | undefined, b: ReactionCount[] | undefined): boolean {
+  if ((a?.length ?? 0) !== (b?.length ?? 0)) return false
+  if (!a || !b) return true
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].emoji !== b[i].emoji || a[i].count !== b[i].count || a[i].mine !== b[i].mine) return false
+  }
+  return true
 }
 
 interface MessagesState {
@@ -119,10 +136,15 @@ interface MessagesState {
   applyGiveawayUpdate: (chatId: number, giveaway: Giveaway) => void
   /** Полная замена розыгрыша (ответ на своё участие — с participating/iWon). */
   setGiveaway: (chatId: number, giveaway: Giveaway) => void
-  /** Дельта реакции (rt:reaction / оптимистичный клик): count±1 по emoji.
-   * Идемпотентно для своих действий — серверное эхо собственного add/remove
-   * (mine=true) поверх уже применённого оптимистичного апдейта — no-op. */
-  applyReaction: (chatId: number, msgId: number, emoji: string, action: 'add' | 'remove', mine: boolean) => void
+  /** АБСОЛЮТНЫЙ агрегат реакций (rt:reaction c counts / catch-up): ставим counts
+   * verbatim. `mine` деривим — сохраняем для не затронутых emoji; для emoji своего
+   * действия ставим (add) / снимаем (remove). myEmoji/myAction заданы только когда
+   * реагировал я (user_id===meId), иначе null → mine целиком сохраняется. Идемпотентно
+   * на реплей (тот же агрегат → no-op). */
+  applyReaction: (chatId: number, msgId: number, counts: { emoji: string; count: number }[], myEmoji: string | null, myAction: 'add' | 'remove' | null) => void
+  /** Оптимистичный клик (дельта до эха, всегда моё действие): count±1 по emoji +
+   * mine. Абсолютное эхо сервера следом перезапишет агрегат авторитетно. */
+  applyReactionOptimistic: (chatId: number, msgId: number, emoji: string, action: 'add' | 'remove') => void
   /** Платная ⭐-реакция: новый агрегат звёзд (total). mine задан только когда это
    * действие самого зрителя (оптимистично / эхо своего апдейта) — иначе не трогаем. */
   applyStarReaction: (chatId: number, msgId: number, total: number, mine?: number) => void
@@ -190,9 +212,10 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   appendOptimistic: (key, text, meId, clientMsgId, mediaId, type = 'text', entities, groupedId, media, extra) =>
     set((s) =>
       patch(s, key, (w) => {
+        // tentativeSeq лишь упорядочивает бабл внизу окна (dedupAsc сортирует по seq);
+        // reconcile матчит по clientId, не по этому seq.
         const maxSeq = w.msgs.length ? w.msgs[w.msgs.length - 1].seq : 0
         const tentativeSeq = maxSeq + 1
-        pendingFor(key).set(clientMsgId, tentativeSeq)
         clientToWin.set(clientMsgId, key)
         const tmp: Message = {
           id: -Date.now(), chatId: Number(key.split(':')[0]), seq: tentativeSeq, senderId: meId, type, text, entities,
@@ -225,15 +248,17 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       })),
     ),
 
+  // Wave 3: матч по clientId (не по фабричному tentative seq). Идемпотентно, если
+  // echo new_message уже сверил бабл раньше (ack-then-echo/echo-then-ack — оба
+  // порядка сходятся на одном бабле, без дубля).
   reconcileAck: (key, clientMsgId, ack) =>
     set((s) => {
-      const tentativeSeq = pendingFor(key).get(clientMsgId)
-      if (tentativeSeq === undefined) return {}
-      pendingFor(key).delete(clientMsgId)
       clientToWin.delete(clientMsgId)
-      return patch(s, key, (w) => ({
+      const w = s.byKey[key]
+      if (!w || !w.msgs.some((m) => m.clientId === clientMsgId)) return {}
+      return patch(s, key, (win) => ({
         msgs: dedupAsc(
-          w.msgs.map((m) => (m.seq === tentativeSeq ? { ...m, id: ack.msgId, seq: ack.seq, createdAt: ack.createdAt } : m)),
+          win.msgs.map((m) => (m.clientId === clientMsgId ? { ...m, id: ack.msgId, seq: ack.seq, createdAt: ack.createdAt } : m)),
         ),
       }))
     }),
@@ -253,7 +278,6 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
   removeOptimistic: (key, clientMsgId) =>
     set((s) => {
-      pendingFor(key).delete(clientMsgId)
       clientToWin.delete(clientMsgId)
       return patch(s, key, (w) => ({ msgs: w.msgs.filter((m) => m.clientId !== clientMsgId) }))
     }),
@@ -283,20 +307,18 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       for (const key of keys) {
         if (!cur.byKey[key]) continue
         const w = cur.byKey[key]
+        // ack-then-echo: бабл уже сверен ack'ом (id=серверный) → эхо здесь дубль, skip.
         if (w.msgs.some((x) => x.id === m.id)) continue
-        // The realtime echo of our OWN just-sent message arrives with the server
-        // id/seq but no clientId, and dedupAsc (keyed by seq) would replace the
-        // optimistic entry — flipping its React key (clientId → m-<id>) and
-        // remounting the bubble mid-appear. Carry the optimistic clientId over so
-        // the key stays stable and the appear animation isn't cut short. Also keep
-        // the local blob preview (localUrl) so an uploaded photo doesn't re-fetch
-        // from the server (tweb reuses the local object URL).
-        const optimistic = w.msgs.find((x) => x.clientId && x.seq === m.seq)
-        // secret: echo new_message несёт расшифрованный text, но флаг secret на нём
-        // не выставлен — сохраняем его из оптимистичного бабла, чтобы после ack
-        // сообщение осталось секретным.
+        // Wave 3: эхо своей отправки несёт client_msg_id (m.clientId) → матчим
+        // оптимистичный бабл ПО НЕМУ (не по подгаданному tentative seq). Старый
+        // бабл (с tentative seq) удаляем и вставляем merged (серверный seq), иначе
+        // при расхождении seq остались бы два бабла. Переносим clientId (стабильный
+        // React-ключ — appear-анимация не обрывается), localUrl (загруженное фото не
+        // рефетчится) и secret-флаг (эхо несёт расшифрованный text без флага).
+        const optimistic = m.clientId ? w.msgs.find((x) => x.clientId === m.clientId) : undefined
         const merged = optimistic ? { ...m, clientId: optimistic.clientId, localUrl: optimistic.localUrl, secret: m.secret ?? optimistic.secret } : m
-        out = patch(cur as MessagesState, key, () => ({ msgs: dedupAsc([...w.msgs, merged]) }))
+        const base = optimistic ? w.msgs.filter((x) => x !== optimistic) : w.msgs
+        out = patch(cur as MessagesState, key, () => ({ msgs: dedupAsc([...base, merged]) }))
         cur = { ...cur, ...out }
       }
       return out
@@ -430,14 +452,29 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           : null,
       )),
 
-  applyReaction: (chatId, msgId, emoji, action, mine) =>
+  applyReaction: (chatId, msgId, counts, myEmoji, myAction) =>
     set((s) =>
       patchChat(s, chatId, (w) => {
         if (!w.msgs.some((m) => m.id === msgId)) return null
         let changed = false
         const msgs = w.msgs.map((m) => {
           if (m.id !== msgId) return m
-          const next = reactionDelta(m.reactions, emoji, action, mine)
+          const next = setReactions(m.reactions, counts, myEmoji, myAction)
+          if (sameReactions(m.reactions, next)) return m
+          changed = true
+          return { ...m, reactions: next }
+        })
+        return changed ? msgs : null
+      })),
+
+  applyReactionOptimistic: (chatId, msgId, emoji, action) =>
+    set((s) =>
+      patchChat(s, chatId, (w) => {
+        if (!w.msgs.some((m) => m.id === msgId)) return null
+        let changed = false
+        const msgs = w.msgs.map((m) => {
+          if (m.id !== msgId) return m
+          const next = reactionDelta(m.reactions, emoji, action, true)
           if (next === null) return m
           changed = true
           return { ...m, reactions: next }

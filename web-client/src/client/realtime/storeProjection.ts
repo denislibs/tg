@@ -3,6 +3,7 @@
 // подписчиков шины (рядом с soundSubscriber/notificationSubscriber); побочных эффектов
 // (звук/уведомления) не делает. Раньше жил внутри realtimeBridge.
 import { loadChats, useChatsStore } from '../../stores/chatsStore'
+import { useFoldersStore } from '../../stores/foldersStore'
 import { useMessagesStore, winKey } from '../../stores/messagesStore'
 import tabId from '../../config/tabId'
 import { usePeersStore } from '../../stores/peersStore'
@@ -157,16 +158,22 @@ export function registerStoreProjection(managers: Managers): void {
     const e = raw as PinMessageEvt
     void managers.messages.listPins(e.chat_id).then((p) => usePinsStore.getState().setPins(e.chat_id, p))
   })
-  // Дельта реакции → окно сообщений. Эхо собственного действия (mine) поверх
-  // оптимистичного апдейта гасится в applyReaction (идемпотентно).
+  // Реакция → окно сообщений. С counts (серверное эхо/catch-up) — АБСОЛЮТНЫЙ set
+  // агрегата; без counts (оптимистичный клик воркера до эха) — дельта. Эхо своего
+  // действия поверх оптимистичного даёт тот же агрегат (no-op для рендера).
   eventBus.subscribe(RT.reaction, (raw) => {
     const e = raw as ReactionEvt
     const meId = useChatsStore.getState().meId
-    useMessagesStore.getState().applyReaction(e.chat_id, e.msg_id, e.emoji, e.action, e.user_id === meId)
+    const isMine = e.user_id === meId
+    if (e.counts) {
+      useMessagesStore.getState().applyReaction(e.chat_id, e.msg_id, e.counts, isMine ? e.emoji : null, isMine ? e.action : null)
+    } else {
+      useMessagesStore.getState().applyReactionOptimistic(e.chat_id, e.msg_id, e.emoji, e.action)
+    }
     // Кто-то поставил реакцию на МОЁ сообщение → бейдж непрочитанных реакций
     // диалога (Telegram unread_reactions_count). Сброс — на прочтении чата (applyRead).
-    if (e.action === 'add' && e.author_id === meId && e.user_id !== meId) {
-      useChatsStore.getState().bumpUnreadReactions(e.chat_id)
+    if (e.action === 'add' && e.author_id === meId && !isMine) {
+      useChatsStore.getState().bumpUnreadReactions(e.chat_id, e.unread_reactions)
     }
   })
   // Платная ⭐-реакция → окно сообщений: новый агрегат total; личный вклад mine
@@ -262,6 +269,16 @@ export function registerStoreProjection(managers: Managers): void {
     if (e.avatar_changed) {
       void managers.peers.refresh([e.id]).then((peers) => usePeersStore.getState().upsert(peers))
     }
+  })
+  // Метаданные чата сменились (title/photo/права/настройки/подписи) — рефетчим
+  // список диалогов (title/аватар в списке) и уведомляем открытую карточку чата.
+  eventBus.subscribe(RT.chatUpdate, (raw) => {
+    scheduleChatsReload(managers)
+    uiEvents.emit(RT.chatUpdate, raw)
+  })
+  // Папки изменились на другом устройстве/вкладке → перечитать список папок.
+  eventBus.subscribe(RT.folderUpdate, () => {
+    void managers.folders.list().then((f) => useFoldersStore.getState().setFolders(f))
   })
   eventBus.subscribe('rt:resync', () => { void loadChats(managers) })
   // Прогресс отгрузки медиа (кольцо на оптимистичном бабле)

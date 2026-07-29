@@ -132,8 +132,10 @@ func (c groupMembershipChats) SetAutoDelete(context.Context, int64, int) error  
 func (c groupMembershipChats) SetChatTheme(context.Context, int64, string, int64) error { return nil }
 func (c groupMembershipChats) UserAutoDelete(context.Context, int64) (int, error)       { return 0, nil }
 func (c groupMembershipChats) SetUserAutoDelete(context.Context, int64, int) error      { return nil }
-func (c groupMembershipChats) IncUnread(context.Context, int64, int64) error            { return nil }
-func (c groupMembershipChats) IncUnreadReactions(context.Context, int64, int64) error   { return nil }
+func (c groupMembershipChats) IncUnread(context.Context, int64, int64) (int, error)     { return 0, nil }
+func (c groupMembershipChats) IncUnreadReactions(context.Context, int64, int64) (int, error) {
+	return 0, nil
+}
 func (c groupMembershipChats) ClearUnreadReactions(context.Context, int64, int64) error { return nil }
 func (c groupMembershipChats) CurrentReadSeq(context.Context, int64, int64) (int64, error) {
 	return 0, nil

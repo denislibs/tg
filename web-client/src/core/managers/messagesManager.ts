@@ -211,6 +211,23 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast }: 
       return next === null ? null : { ...m, reactions: next }
     })
   }
+  // Wave 3: АБСОЛЮТНЫЙ агрегат (серверное эхо с counts) → SSOT. counts ставим
+  // verbatim; `mine` деривим — сохраняем прежний для не затронутых emoji, ставим/
+  // снимаем для emoji своего действия (только когда user_id===meId). Идемпотентно
+  // на реплей (catch-up), поэтому дедуп по pts тут не нужен.
+  const applyAbsoluteReactionToCache = (evt: ReactionEvt): void => {
+    const counts = evt.counts ?? []
+    const isMine = evt.user_id === (getMeId?.() ?? null)
+    patchMsg(evt.chat_id, (m) => m.id === evt.msg_id, (m) => {
+      const prevMine = new Set((m.reactions ?? []).filter((r) => r.mine).map((r) => r.emoji))
+      const next = counts.map((c) => {
+        let mine = prevMine.has(c.emoji)
+        if (isMine && c.emoji === evt.emoji) mine = evt.action === 'add'
+        return { emoji: c.emoji, count: c.count, mine }
+      })
+      return { ...m, reactions: next.length ? next : undefined }
+    })
+  }
   // Оптимистичная реакция (tweb sendReaction: применяем локально ДО сети): правим
   // SSOT и бродкастим эхо всем вкладкам как своё действие — storeProjection применит
   // его как единственный писатель, кросс-таб бесплатно. Серверное эхо reaction придёт
@@ -722,9 +739,11 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast }: 
       patchMsg(evt.chat_id, (m) => m.giveaway?.id === giveaway.id, (m) => ({ ...m, giveaway: { ...giveaway, participating: m.giveaway!.participating, iWon: m.giveaway!.iWon } }))
     },
 
-    // Live-кадр reaction (server echo) → SSOT (broadcast делает worker.ts отдельно).
+    // Reaction → SSOT. С counts (серверное эхо/catch-up) — АБСОЛЮТНЫЙ set; без
+    // counts (оптимистичный клик до эха) — дельта. broadcast делает worker.ts.
     cacheReaction(evt: ReactionEvt): void {
-      applyReactionToCache(evt)
+      if (evt.counts) applyAbsoluteReactionToCache(evt)
+      else applyReactionToCache(evt)
     },
 
     // Live-кадр star_reaction (server echo) → SSOT (broadcast делает worker.ts).

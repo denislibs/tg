@@ -75,7 +75,11 @@ func (i *Interactor) SetSignatures(ctx context.Context, channelID, actorID int64
 	if !signatures {
 		profiles = false
 	}
-	return i.groups.SetSignatures(ctx, channelID, signatures, profiles)
+	if err := i.groups.SetSignatures(ctx, channelID, signatures, profiles); err != nil {
+		return err
+	}
+	i.publishChatUpdate(ctx, channelID) // подписи постов канала изменились
+	return nil
 }
 
 // GetChannelDifference returns channel updates newer than sincePts. Membership-gated.
