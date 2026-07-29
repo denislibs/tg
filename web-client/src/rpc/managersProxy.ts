@@ -2,13 +2,19 @@ import type { SuperMessagePort } from './superMessagePort'
 
 interface ManagerCall { name: string; method: string; args: unknown[] }
 
-/** Worker side: dispatch invoke('manager', {name,method,args}) to a manager object. */
-export function registerManagers(smp: SuperMessagePort, registry: Record<string, Record<string, (...a: unknown[]) => unknown>>): void {
+/**
+ * Worker side: dispatch invoke('manager', {name,method,args}) to a manager object.
+ * Принимает реестр как есть (объект менеджеров с любыми сигнатурами) — вызывающий
+ * держит его типизированным, из этого же объекта выводится UI-тип Managers, так
+ * что каст здесь локальный и не размывает контракт границы.
+ */
+export function registerManagers(smp: SuperMessagePort, registry: Record<string, object>): void {
   smp.handle('manager', (payload) => {
     const { name, method, args } = payload as ManagerCall
-    const mgr = registry[name]
-    if (!mgr || typeof mgr[method] !== 'function') throw new Error(`no manager method: ${name}.${method}`)
-    return mgr[method](...args)
+    const mgr = registry[name] as Record<string, unknown> | undefined
+    const fn = mgr?.[method]
+    if (typeof fn !== 'function') throw new Error(`no manager method: ${name}.${method}`)
+    return (fn as (...a: unknown[]) => unknown)(...args)
   })
 }
 
