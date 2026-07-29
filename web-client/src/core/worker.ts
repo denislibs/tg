@@ -104,41 +104,6 @@ const persist = newPersistManager()
 const ports: SuperMessagePort[] = []
 const broadcast = (event: string, payload: unknown) => { for (const p of ports) p.emit(event, payload) }
 
-// P0-2: пер-чатовый максимум seq, уже доставленного вживую в этой сессии воркера.
-// Живёт в SharedWorker → переживает reload вкладки. При catch-up после reconnect
-// /sync повторно отдаёт уже доставленные сообщения (live-путь не двигает pts —
-// это на бэке); такие помечаем backfill:true, и звук/нотификации их пропускают
-// (иначе дубль уведомления/звука/непрочитанных на каждый reconnect).
-// Персистится в IDB (не только память) — переживает РЕСТАРТ воркера (закрытие/
-// переоткрытие браузера), иначе после рестарта catch-up переотдал бы уже
-// доставленные сообщения и звук/нотиф/непрочитанные сработали бы повторно (P0-2).
-const deliveredSeq = new Map<number, number>()
-const deliveredReady = idbGet<Record<string, number>>('deliveredSeq')
-  // Мерж, не перезапись: живой кадр мог обогнать async-загрузку и уже поднять
-  // in-memory значение — не откатываем его назад (иначе catch-up переотдаст).
-  .then((o) => { if (o) for (const k in o) deliveredSeq.set(Number(k), Math.max(deliveredSeq.get(Number(k)) ?? 0, o[k])) })
-  .catch(() => {})
-let persistTimer: ReturnType<typeof setTimeout> | null = null
-const persistDelivered = (): void => {
-  if (persistTimer) return
-  persistTimer = setTimeout(() => { persistTimer = null; void idbSet('deliveredSeq', Object.fromEntries(deliveredSeq)) }, 1000)
-}
-// High-water pts применённых live-реакций (реакция — дельта count±1; catch-up
-// переотдаёт уже применённую live-реакцию → повтор удвоил бы счётчик). Кадр
-// reaction и элемент /sync несут pts (per-user монотонный) → catch-up с pts <=
-// max пропускаем. Персистится: переживает рестарт воркера.
-let maxReactionPts = 0
-const reactionReady = idbGet<number>('maxReactionPts')
-  .then((v) => { if (typeof v === 'number') maxReactionPts = Math.max(maxReactionPts, v) })
-  .catch(() => {})
-let rpTimer: ReturnType<typeof setTimeout> | null = null
-const recordReactionPts = (payload: unknown): void => {
-  const pts = (payload as { pts?: number })?.pts
-  if (typeof pts !== 'number' || pts <= maxReactionPts) return
-  maxReactionPts = pts
-  if (rpTimer) return
-  rpTimer = setTimeout(() => { rpTimer = null; void idbSet('maxReactionPts', maxReactionPts) }, 1000)
-}
 // ── Wave 3 funnel ────────────────────────────────────────────────────────────
 // Единая точка применения ВСЕХ логируемых апдейтов (и live-кадр, и элемент /sync).
 // Плотный монотонный pts из курсора решает: дубль / следующий / дыра. Эфемерные
@@ -149,8 +114,8 @@ void cursor.ready().then(() => { cursorReady = true })
 
 // Единый реестр маршрутизации логируемых типов: cache (в SSOT воркера, ДО broadcast —
 // иначе переоткрытие чата из кэша теряет апдейт) + rt (имя события для UI). Замена
-// прежних CACHE_THEN_BROADCAST + CATCHUP. new_message — спец-обработка (E2E/deliveredSeq),
-// см. routeNewMessage.
+// прежних CACHE_THEN_BROADCAST + CATCHUP. new_message — спец-обработка (E2E-расшифровка
+// + cacheLive), см. routeNewMessage.
 const APPLY: Record<string, { rt: string; cache?: (p: never) => void }> = {
   read:              { rt: RT.read },
   media_read:        { rt: RT.mediaRead,       cache: (p) => messages.cacheMediaRead(p) },
@@ -192,27 +157,20 @@ const PASS_THROUGH: Record<string, string> = {
 }
 
 // Отражение логируемого апдейта в SSOT + broadcast (без арифметики pts — её делает
-// applyUpdate). `d` — полезная нагрузка (для live это весь payload с d.pts, для /sync
-// это item.d). new_message — спец-путь (E2E/deliveredSeq-мост).
-function dispatch(t: string, pts: number | undefined, d: unknown, live: boolean): void {
-  if (t === 'new_message') { routeNewMessage(d as NewMessageEvt, live); return }
+// applyUpdate). `d` — полезная нагрузка (для live это весь payload, для /sync это
+// item.d). new_message — спец-путь (E2E-расшифровка + bespoke cacheLive).
+function dispatch(t: string, d: unknown): void {
+  if (t === 'new_message') { routeNewMessage(d as NewMessageEvt); return }
   const h = APPLY[t]
   if (!h) return
-  // Мост maxReactionPts (Wave 4 удалит): high-water поддерживаем, но дедуп теперь
-  // на курсоре, а реакции абсолютны (реплей идемпотентен) — так что это belt-only.
-  if (t === 'reaction' && typeof pts === 'number') recordReactionPts({ pts })
   h.cache?.(d as never)
   broadcast(h.rt, d)
 }
 
-// Новое сообщение → SSOT + broadcast. Мост deliveredSeq (Wave 4 удалит) поддерживаем;
-// backfill (гашение звука/нотиф/непрочитанных) нужен только на /sync-пути для кадров,
-// уже доставленных в ПРОШЛОЙ сессии воркера (курсор их не отсёк, т.к. pts тогда не
-// было) — на live-пути дедуп полностью на курсоре, backfill не нужен.
-function routeNewMessage(e: NewMessageEvt, live: boolean): void {
-  const prev = deliveredSeq.get(e.chat_id) ?? 0
-  if (!live && e.seq <= prev) { broadcast(RT.newMessage, { ...e, backfill: true }); return }
-  deliveredSeq.set(e.chat_id, Math.max(prev, e.seq)); persistDelivered()
+// Новое сообщение → SSOT + broadcast. Дедуп и порядок — на курсоре в applyUpdate
+// (дубль с pts<=cursor сюда уже не доходит), поэтому спец-belt'ов дедупа сообщений
+// больше нет: catch-up-реплей отсекается funnel'ом до этой точки.
+function routeNewMessage(e: NewMessageEvt): void {
   messages.cacheLive(e as never)
   broadcast(RT.newMessage, e)
 }
@@ -244,7 +202,7 @@ function clearPtsSync(): void {
 function drainPending(): void {
   if (!pendingPts.has()) return
   pendingPts.drain(() => cursor.get().pts, (item) => {
-    dispatch(item.t, item.pts, item.d, true)
+    dispatch(item.t, item.d)
     cursor.advance(item.pts)
   })
   if (!pendingPts.has() && ptsSyncTimer) { clearTimeout(ptsSyncTimer); ptsSyncTimer = null }
@@ -254,7 +212,7 @@ function drainPending(): void {
 // (pts сверху). Арифметика курсора: dup→drop, next→apply+advance, gap(live)→буфер.
 function applyUpdate(t: string, pts: number | undefined, d: unknown, live: boolean): void {
   // Без pts — эфемерный/устаревший бэк: транслируем как есть, не гейтим.
-  if (typeof pts !== 'number') { dispatch(t, pts, d, live); return }
+  if (typeof pts !== 'number') { dispatch(t, d); return }
   if (live) {
     // Гейт гидратации: до загрузки курсора из IDB не применяем вслепую — catch-up
     // (он ждёт cursor.ready()) добёрет по порядку.
@@ -272,14 +230,14 @@ function applyUpdate(t: string, pts: number | undefined, d: unknown, live: boole
       schedulePtsSync()
       return
     }
-    dispatch(t, pts, d, true)
+    dispatch(t, d)
     cursor.advance(pts)
     drainPending()
     return
   }
   // /sync-путь: применяем строго вперёд, дубли (уже применённые live) отсекаем.
   if (classifyPts(cursor.get().pts, pts) === 'dup') return
-  dispatch(t, pts, d, false)
+  dispatch(t, d)
   cursor.advance(pts)
 }
 
@@ -299,10 +257,10 @@ const conn = newConnectionManager({
     load: () => idbGet<import('./realtime/connectionManager').SendArgs[]>('outbox'),
     save: (list) => { void idbSet('outbox', list) },
   },
-  // onReady: только гарантируем гидратацию мостов/курсора (гейт первого apply).
-  // Сам catch-up на (ре)коннекте инициирует hello-кадр (fast-reconnect без REST,
-  // если pts совпал). Ждём ещё deliveredReady/reactionReady — мост Wave 4.
-  onReady: () => { void Promise.all([cursor.ready(), deliveredReady, reactionReady]) },
+  // onReady: гарантируем гидратацию курсора из IDB (гейт первого apply). Сам
+  // catch-up на (ре)коннекте инициирует hello-кадр (fast-reconnect без REST,
+  // если pts совпал).
+  onReady: () => { void cursor.ready() },
   onState: (s) => broadcast(RT.state, { state: s }),
   onFrame: (type, payload) => {
     // hello — первый кадр WS: {pts,date}. pts===cursor → быстрый reconnect без REST;
