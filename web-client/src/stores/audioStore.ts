@@ -1,6 +1,5 @@
 import { create } from 'zustand'
-import { decryptMedia } from '../core/secret/crypto'
-import { mediaContentUrl, primeMediaToken, resolveMediaContentUrl } from '../core/mediaUrl'
+import { mediaPlayback } from '../core/audio/mediaPlaybackController'
 
 // A track the global player can play (a voice message or audio file).
 export interface AudioTrack {
@@ -15,6 +14,10 @@ export interface AudioTrack {
   secret?: { keyB64: string; ivB64: string; mime: string }
 }
 
+// Реактивное состояние плеера (UI читает отсюда). Императивный <audio>-движок и
+// вся playback-логика — в mediaPlaybackController; действия здесь — тонкие делегаты
+// в него, чтобы публичный API стора (useAudioStore.getState().toggle() и т.п.) не
+// менялся. _sync/setState движок использует для обновления этого состояния.
 interface AudioState {
   track: AudioTrack | null
   queue: AudioTrack[]
@@ -25,7 +28,7 @@ interface AudioState {
   rate: number
   muted: boolean
   volume: number
-  // actions
+  // actions (делегаты в mediaPlaybackController)
   playQueue: (queue: AudioTrack[], index: number) => void
   /** Внешний медиа-элемент (видео кружка) как текущий трек: плашка плеера
    * управляет им (pause/seek/close) вместо внутреннего <audio> (tweb: round
@@ -40,94 +43,11 @@ interface AudioState {
   next: () => void
   prev: () => void
   close: () => void
-  // internal (driven by the <audio> element)
+  // internal (driven by the <audio> element via the controller)
   _sync: (patch: Partial<AudioState>) => void
 }
 
-const RATES = [0.5, 1, 1.5, 2]
-
-// A single shared <audio> element drives normal playback.
-let el: HTMLAudioElement | null = null
-function audio(): HTMLAudioElement {
-  if (el) return el
-  el = new Audio()
-  // Ошибку загрузки/декодирования src (напр. неподдерживаемый кодек) иначе не
-  // видно — .play() к тому моменту уже зарезолвился. Логируем явно для диагностики.
-  el.addEventListener('error', () => console.error('[audio] element error', el?.error?.code, el?.error?.message))
-  el.addEventListener('timeupdate', () => { if (!external) useAudioStore.getState()._sync({ currentTime: el!.currentTime }) })
-  el.addEventListener('loadedmetadata', () => { if (!external) useAudioStore.getState()._sync({ duration: el!.duration || 0 }) })
-  el.addEventListener('play', () => { if (!external) useAudioStore.getState()._sync({ playing: true }) })
-  el.addEventListener('pause', () => { if (!external) useAudioStore.getState()._sync({ playing: false }) })
-  el.addEventListener('ended', () => { if (!external) useAudioStore.getState().next() })
-  return el
-}
-
-// Attached external element (round-video bubble) + its listener teardown.
-let external: HTMLMediaElement | null = null
-let unwireExternal: (() => void) | null = null
-
-// Элемент, которым сейчас управляют кнопки плеера.
-function current(): HTMLMediaElement {
-  return external ?? audio()
-}
-
-// Отцепить внешний элемент (опционально ставя его на паузу).
-function detachExternal(pause: boolean) {
-  if (!external) return
-  if (pause) external.pause()
-  unwireExternal?.()
-  unwireExternal = null
-  external = null
-}
-
-// Кэш blob-URL расшифрованных секретных треков по mediaId. Нужен, чтобы к моменту
-// клика URL был готов синхронно и .play() вызывался в рамках user-gesture (иначе
-// await перед play() теряет активацию и play() тихо отклоняется — «нет звука»).
-const secretUrlCache = new Map<number, string>()
-const secretInflight = new Map<number, Promise<string>>()
-
-// Скачать ciphertext, расшифровать → blob-URL с верным mime; кэшируется по mediaId.
-export function prefetchSecretAudio(mediaId: number, secret: { keyB64: string; ivB64: string; mime: string }): Promise<string> {
-  const cached = secretUrlCache.get(mediaId)
-  if (cached) return Promise.resolve(cached)
-  const running = secretInflight.get(mediaId)
-  if (running) return running
-  const job = (async () => {
-    await primeMediaToken()
-    const res = await fetch(mediaContentUrl(mediaId))
-    if (!res.ok) throw new Error(`secret audio ${res.status}`)
-    const cipher = await res.arrayBuffer()
-    const buf = await decryptMedia(cipher, secret.keyB64, secret.ivB64)
-    const objectUrl = URL.createObjectURL(new Blob([buf], { type: secret.mime }))
-    secretUrlCache.set(mediaId, objectUrl)
-    return objectUrl
-  })()
-  secretInflight.set(mediaId, job)
-  void job.catch(() => {}).finally(() => secretInflight.delete(mediaId))
-  return job
-}
-
-// Load + play a track. src выставляем СИНХРОННО в рамках жеста, где можем: обычный
-// трек — синхронный media-URL (токен уже primed фидом), секретный — из кэша
-// префетча. Только при промахе кэша/токена уходим в await (активация может
-// теряться, но это редкий путь).
-async function load(track: AudioTrack, autoplay: boolean) {
-  const a = audio()
-  let url: string
-  if (track.secret) {
-    url = secretUrlCache.get(track.mediaId) ?? await prefetchSecretAudio(track.mediaId, track.secret)
-  } else {
-    const resolved = resolveMediaContentUrl(track.mediaId)
-    url = typeof resolved === 'string' ? resolved : await resolved
-  }
-  a.src = url
-  a.playbackRate = useAudioStore.getState().rate
-  a.muted = useAudioStore.getState().muted
-  a.volume = useAudioStore.getState().volume
-  if (autoplay) await a.play().catch((e) => console.error('[audio] play() failed', e))
-}
-
-export const useAudioStore = create<AudioState>((set, get) => ({
+export const useAudioStore = create<AudioState>((set) => ({
   track: null,
   queue: [],
   index: -1,
@@ -138,108 +58,20 @@ export const useAudioStore = create<AudioState>((set, get) => ({
   muted: false,
   volume: 1,
 
-  playQueue: (queue, index) => {
-    const track = queue[index]
-    if (!track) return
-    detachExternal(true)
-    set({ queue, index, track, currentTime: 0, duration: 0 })
-    void load(track, true)
-  },
-  playExternal: (track, media) => {
-    // предыдущий источник (внутренний audio или другой кружок) — на паузу
-    if (external && external !== media) detachExternal(true)
-    else if (!external) audio().pause()
-    unwireExternal?.()
-    const sync = () => useAudioStore.getState()._sync({ currentTime: media.currentTime, duration: media.duration || 0 })
-    const onPlay = () => useAudioStore.getState()._sync({ playing: true })
-    const onPause = () => useAudioStore.getState()._sync({ playing: false })
-    // кружок докручен до конца — бабл сам вернётся в muted-превью, плашку прячем
-    const onEnded = () => { detachExternal(false); set({ track: null, queue: [], index: -1, playing: false, currentTime: 0, duration: 0 }) }
-    media.addEventListener('timeupdate', sync)
-    media.addEventListener('play', onPlay)
-    media.addEventListener('pause', onPause)
-    media.addEventListener('ended', onEnded)
-    external = media
-    unwireExternal = () => {
-      media.removeEventListener('timeupdate', sync)
-      media.removeEventListener('play', onPlay)
-      media.removeEventListener('pause', onPause)
-      media.removeEventListener('ended', onEnded)
-    }
-    set({
-      track, queue: [track], index: 0,
-      playing: !media.paused,
-      currentTime: media.currentTime,
-      duration: Number.isFinite(media.duration) ? media.duration || 0 : 0,
-    })
-  },
-  toggle: () => {
-    const a = current()
-    if (a.paused) void a.play().catch(() => {})
-    else a.pause()
-  },
-  seekFraction: (f) => {
-    const a = current()
-    const d = get().duration || a.duration || 0
-    if (d > 0) {
-      a.currentTime = Math.max(0, Math.min(1, f)) * d
-      set({ currentTime: a.currentTime })
-    }
-  },
-  cycleRate: () => {
-    const next = RATES[(RATES.indexOf(get().rate) + 1) % RATES.length]
-    current().playbackRate = next
-    set({ rate: next })
-  },
-  setRate: (r) => {
-    current().playbackRate = r
-    set({ rate: r })
-  },
-  toggleMute: () => {
-    const m = !get().muted
-    current().muted = m
-    set({ muted: m })
-  },
-  setVolume: (v) => {
-    const vol = Math.max(0, Math.min(1, v))
-    const a = current()
-    a.volume = vol
-    a.muted = vol === 0
-    set({ volume: vol, muted: vol === 0 })
-  },
-  next: () => {
-    // для внешнего трека (кружок) очередь одиночная — перемотка в начало
-    if (external) {
-      get().seekFraction(0)
-      return
-    }
-    const { queue, index } = get()
-    const ni = index + 1
-    if (ni < queue.length) {
-      set({ index: ni, track: queue[ni], currentTime: 0, duration: 0 })
-      void load(queue[ni], true)
-    } else {
-      set({ playing: false })
-    }
-  },
-  prev: () => {
-    const { queue, index, currentTime } = get()
-    // Telegram: >3s in, restart the current track; else go to the previous one.
-    if (external || currentTime > 3 || index <= 0) {
-      get().seekFraction(0)
-      void current().play().catch(() => {})
-      return
-    }
-    const pi = index - 1
-    set({ index: pi, track: queue[pi], currentTime: 0, duration: 0 })
-    void load(queue[pi], true)
-  },
-  close: () => {
-    detachExternal(true)
-    const a = audio()
-    a.pause()
-    a.removeAttribute('src')
-    set({ track: null, queue: [], index: -1, playing: false, currentTime: 0, duration: 0 })
-  },
+  playQueue: (queue, index) => mediaPlayback.playQueue(queue, index),
+  playExternal: (track, media) => mediaPlayback.playExternal(track, media),
+  toggle: () => mediaPlayback.toggle(),
+  seekFraction: (f) => mediaPlayback.seekFraction(f),
+  cycleRate: () => mediaPlayback.cycleRate(),
+  setRate: (r) => mediaPlayback.setRate(r),
+  toggleMute: () => mediaPlayback.toggleMute(),
+  setVolume: (v) => mediaPlayback.setVolume(v),
+  next: () => mediaPlayback.next(),
+  prev: () => mediaPlayback.prev(),
+  close: () => mediaPlayback.close(),
   _sync: (patch) => set(patch),
 }))
+
+// Префетч секретного аудио — часть движка; ре-экспорт для мест, что импортировали
+// его из audioStore (напр. VoiceMessage прогревает URL по наведению).
+export { prefetchSecretAudio } from '../core/audio/mediaPlaybackController'
