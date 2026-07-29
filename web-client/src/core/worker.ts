@@ -167,6 +167,8 @@ const APPLY: Record<string, { rt: string; cache?: (p: never) => void }> = {
   giveaway_update:   { rt: RT.giveawayUpdate,  cache: (p) => messages.cacheGiveaway(p) },
   boost_update:      { rt: RT.boostUpdate },
   chat_theme_update: { rt: RT.chatThemeUpdate },
+  chat_update:       { rt: RT.chatUpdate },
+  folder_update:     { rt: RT.folderUpdate },
   web_page_update:   { rt: RT.webPageUpdate,   cache: (p) => messages.cacheWebPage(p) },
   paid_media_unlock: { rt: RT.paidMediaUnlock, cache: (p) => messages.cachePaidUnlock(p) },
   balance_update:    { rt: RT.balanceUpdate },

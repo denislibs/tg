@@ -32,7 +32,7 @@ interface ChatsState {
   applyNewMessage: (m: NewMessageEvt) => void
   applyRead: (r: ReadEvt) => void
   /** кто-то отреагировал на моё сообщение → бампим бейдж непрочитанных реакций диалога */
-  bumpUnreadReactions: (chatId: number) => void
+  bumpUnreadReactions: (chatId: number, count?: number) => void
   setPresence: (p: PresenceEvt) => void
   setTyping: (chatId: number, userId: number, action: TypingAction, at: number) => void
   clearTyping: (chatId: number, userId: number) => void
@@ -190,12 +190,15 @@ export const useChatsStore = create<ChatsState>((set) => ({
       }
       return { dialogs: next }
     }),
-  bumpUnreadReactions: (chatId) =>
+  bumpUnreadReactions: (chatId, count) =>
     set((s) => {
       const idx = s.dialogs.findIndex((d) => d.chatId === chatId)
       if (idx === -1) return {}
       const next = s.dialogs.slice()
-      next[idx] = { ...next[idx], unreadReactions: (next[idx].unreadReactions ?? 0) + 1 }
+      // Авторитетный счётчик из кадра (reaction.unread_reactions) — verbatim, как
+      // unread у new_message/read; локальный +1 — fallback, если поля нет.
+      const value = typeof count === 'number' ? count : (next[idx].unreadReactions ?? 0) + 1
+      next[idx] = { ...next[idx], unreadReactions: value }
       return { dialogs: next }
     }),
 }))

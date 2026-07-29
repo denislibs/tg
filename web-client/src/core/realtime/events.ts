@@ -33,6 +33,12 @@ export const RT = {
   // Клиентский кросс-таб-эхо REST-мутации mute (у бэка WS-эха mute нет): воркер
   // ретранслирует его всем вкладкам после успешного /mute — см. groupsManager.
   dialogMute: 'rt:dialog_mute',
+  // Метаданные чата (title/photo/настройки/права/подписи) — абсолютный снапшот,
+  // сервер шлёт участникам (logged, pts). Клиент рефетчит список диалогов + карточку.
+  chatUpdate: 'rt:chat_update',
+  // Мутация папок с другого устройства/вкладки (create/edit/delete/reorder) —
+  // logged, pts. Клиент перечитывает список папок.
+  folderUpdate: 'rt:folder_update',
   // Юзер сменил имя/username/аватар (сервер шлёт участникам общих чатов + своим
   // сессиям). peersStore патчит карточку пира; avatar_changed → до-фетч /users.
   userUpdate: 'rt:user_update',

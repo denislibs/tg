@@ -3,6 +3,7 @@
 // подписчиков шины (рядом с soundSubscriber/notificationSubscriber); побочных эффектов
 // (звук/уведомления) не делает. Раньше жил внутри realtimeBridge.
 import { loadChats, useChatsStore } from '../../stores/chatsStore'
+import { useFoldersStore } from '../../stores/foldersStore'
 import { useMessagesStore, winKey } from '../../stores/messagesStore'
 import tabId from '../../config/tabId'
 import { usePeersStore } from '../../stores/peersStore'
@@ -172,7 +173,7 @@ export function registerStoreProjection(managers: Managers): void {
     // Кто-то поставил реакцию на МОЁ сообщение → бейдж непрочитанных реакций
     // диалога (Telegram unread_reactions_count). Сброс — на прочтении чата (applyRead).
     if (e.action === 'add' && e.author_id === meId && !isMine) {
-      useChatsStore.getState().bumpUnreadReactions(e.chat_id)
+      useChatsStore.getState().bumpUnreadReactions(e.chat_id, e.unread_reactions)
     }
   })
   // Платная ⭐-реакция → окно сообщений: новый агрегат total; личный вклад mine
@@ -268,6 +269,16 @@ export function registerStoreProjection(managers: Managers): void {
     if (e.avatar_changed) {
       void managers.peers.refresh([e.id]).then((peers) => usePeersStore.getState().upsert(peers))
     }
+  })
+  // Метаданные чата сменились (title/photo/права/настройки/подписи) — рефетчим
+  // список диалогов (title/аватар в списке) и уведомляем открытую карточку чата.
+  eventBus.subscribe(RT.chatUpdate, (raw) => {
+    scheduleChatsReload(managers)
+    uiEvents.emit(RT.chatUpdate, raw)
+  })
+  // Папки изменились на другом устройстве/вкладке → перечитать список папок.
+  eventBus.subscribe(RT.folderUpdate, () => {
+    void managers.folders.list().then((f) => useFoldersStore.getState().setFolders(f))
   })
   eventBus.subscribe('rt:resync', () => { void loadChats(managers) })
   // Прогресс отгрузки медиа (кольцо на оптимистичном бабле)
