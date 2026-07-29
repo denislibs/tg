@@ -37,6 +37,7 @@ import { newLivestreamManager } from './managers/livestreamManager'
 import { newConnectionManager } from './realtime/connectionManager'
 import { newSyncEngine } from './realtime/syncEngine'
 import { newCursor, classifyPts } from './realtime/cursor'
+import { newPendingPts } from './realtime/pendingPts'
 import { createSecretManager } from './managers/secretManager'
 import { RT, type TypingAction, type NewMessageEvt } from './realtime/events'
 import { idbGet, idbSet } from './store/idbKv'
@@ -214,8 +215,41 @@ function routeNewMessage(e: NewMessageEvt, live: boolean): void {
   broadcast(RT.newMessage, e)
 }
 
+// Буфер out-of-order живых кадров (порт pendingPtsUpdates tweb). Дыру в pts не
+// гоним сразу в /sync — придерживаем кадр и ждём, пока её закроют следующие живые
+// кадры (наш источник переупорядочивания — async-decrypt секретов, см. onFrame).
+const pendingPts = newPendingPts()
+// tweb: SYNC_DELAY=6мс — там апдейты синхронны, «дырка» закрывается в том же тике.
+// У нас переупорядочивание даёт асинхронная расшифровка (WebCrypto, десятки мс),
+// поэтому ждём дольше, прежде чем уйти в catch-up. Реальную потерю кадра (publish
+// упал) буфер пересидеть не сможет — по таймауту чистимся и добираем через /sync.
+const PTS_SYNC_DELAY = 250
+let ptsSyncTimer: ReturnType<typeof setTimeout> | null = null
+function schedulePtsSync(): void {
+  if (ptsSyncTimer) return
+  ptsSyncTimer = setTimeout(() => {
+    ptsSyncTimer = null
+    if (!pendingPts.has()) return
+    pendingPts.clear()      // как tweb: getDifference сбрасывает pendingPtsUpdates
+    void sync.catchUp()
+  }, PTS_SYNC_DELAY)
+}
+function clearPtsSync(): void {
+  if (ptsSyncTimer) { clearTimeout(ptsSyncTimer); ptsSyncTimer = null }
+  pendingPts.clear()
+}
+// Слить подряд идущие буферные кадры после того, как живой next закрыл дыру.
+function drainPending(): void {
+  if (!pendingPts.has()) return
+  pendingPts.drain(() => cursor.get().pts, (item) => {
+    dispatch(item.t, item.pts, item.d, true)
+    cursor.advance(item.pts)
+  })
+  if (!pendingPts.has() && ptsSyncTimer) { clearTimeout(ptsSyncTimer); ptsSyncTimer = null }
+}
+
 // Единый funnel. live=true — WS-кадр (pts внутри payload), live=false — элемент /sync
-// (pts сверху). Арифметика курсора: dup→drop, next→apply+advance, gap(live)→catch-up.
+// (pts сверху). Арифметика курсора: dup→drop, next→apply+advance, gap(live)→буфер.
 function applyUpdate(t: string, pts: number | undefined, d: unknown, live: boolean): void {
   // Без pts — эфемерный/устаревший бэк: транслируем как есть, не гейтим.
   if (typeof pts !== 'number') { dispatch(t, pts, d, live); return }
@@ -228,9 +262,17 @@ function applyUpdate(t: string, pts: number | undefined, d: unknown, live: boole
     if (sync.isSyncing()) return
     const cls = classifyPts(cursor.get().pts, pts)
     if (cls === 'dup') return
-    if (cls === 'gap') { void sync.catchUp(); return } // дыра → catch-up, live-кадр дропаем
+    if (cls === 'gap') {
+      // Out-of-order живой кадр: буферизуем и ждём, что дыру закроют следующие
+      // кадры (тогда drainPending применит по порядку без round-trip). Переполнение
+      // буфера — дыра слишком велика, чтобы пересидеть → сразу catch-up.
+      if (!pendingPts.push({ t, pts, d })) { clearPtsSync(); void sync.catchUp(); return }
+      schedulePtsSync()
+      return
+    }
     dispatch(t, pts, d, true)
     cursor.advance(pts)
+    drainPending()
     return
   }
   // /sync-путь: применяем строго вперёд, дубли (уже применённые live) отсекаем.
@@ -243,7 +285,9 @@ const ws = new WsClient('/ws')
 const sync = newSyncEngine({
   rest, cursor,
   onUpdate: (item) => applyUpdate(item.t, item.pts, item.d, false),
-  onResync: () => broadcast('rt:resync', null),
+  // Полный resync ставит курсор на серверный pts — придержанные out-of-order кадры
+  // теперь либо дубли, либо оторванная «будущая» дыра; сбрасываем, чтобы не всплыли.
+  onResync: () => { clearPtsSync(); broadcast('rt:resync', null) },
 })
 const conn = newConnectionManager({
   ws, getToken: () => tokens.get(),
@@ -265,7 +309,10 @@ const conn = newConnectionManager({
       const p = payload as { pts?: number; date?: number }
       if (typeof p?.pts === 'number') {
         const want = p.pts
-        void cursor.ready().then(() => { if (want !== cursor.get().pts) void sync.catchUp() })
+        // Реконнект с расхождением pts: catch-up добёрет разницу — придержанные
+        // out-of-order кадры теперь оторваны от новой базы, сбрасываем (инвариант
+        // tweb: getDifference чистит pendingPtsUpdates), чтобы не всплыли позже.
+        void cursor.ready().then(() => { if (want !== cursor.get().pts) { clearPtsSync(); void sync.catchUp() } })
       }
       return
     }
