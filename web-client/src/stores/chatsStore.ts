@@ -19,8 +19,9 @@ interface ChatsState {
   presence: Record<number, { online: boolean; lastSeen: number }>
   typing: Record<number, ChatTyping>
   setDialogs: (d: Dialog[]) => void
+  /** meId выводится из me (единый писатель) — отдельного setMeId нет, чтобы id и
+   * профиль не расходились. */
   setMe: (u: User | null) => void
-  setMeId: (id: number | null) => void
   upsertDialog: (d: Dialog) => void
   setActiveChat: (id: number | null) => void
   setDialogMuted: (chatId: number, muted: boolean) => void
@@ -47,8 +48,7 @@ export const useChatsStore = create<ChatsState>((set) => ({
   presence: {},
   typing: {},
   setDialogs: (dialogs) => set({ dialogs, loaded: true }),
-  setMe: (me) => set({ me }),
-  setMeId: (meId) => set({ meId }),
+  setMe: (me) => set({ me, meId: me?.id ?? null }),
   upsertDialog: (d) =>
     set((s) => {
       const idx = s.dialogs.findIndex((x) => x.chatId === d.chatId)
@@ -225,8 +225,7 @@ export async function loadChats(
   ])
   await decryptSecretPreviews(managers, dialogs)
   const st = useChatsStore.getState()
-  st.setMe(me)
-  st.setMeId(me?.id ?? null)
+  st.setMe(me) // meId выводится из me внутри setMe
   st.setDialogs(dialogs)
 }
 

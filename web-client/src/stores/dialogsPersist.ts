@@ -32,8 +32,7 @@ export async function hydrateDialogsFromPersist(): Promise<boolean> {
     if (!dialogs.length) return false
     const st = useChatsStore.getState()
     if (st.loaded) return false // сеть уже успела — не затираем
-    st.setMe(me)
-    st.setMeId(me?.id ?? null)
+    st.setMe(me) // meId выводится из me внутри setMe
     st.setDialogs(dialogs)
     return true
   } catch {
