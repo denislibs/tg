@@ -28,5 +28,8 @@ func (i *Interactor) SetChatTheme(ctx context.Context, chatID, actorID int64, th
 	}
 	// Логируем + шлём chat_theme_update всем членам: плотный pts-курсор доносит
 	// смену темы и через /sync (при перезагрузке тема также едет в списке диалогов).
-	return i.logAndPublish(ctx, members, "chat_theme_update", map[string]any{"chat_id": chatID, "theme_id": themeID})
+	// Лог/публикация — best-effort: мутация уже закоммичена, её сбой не должен
+	// возвращаться как ошибка запроса (иначе клиент увидит 500 при успешной смене).
+	_ = i.logAndPublish(ctx, members, "chat_theme_update", map[string]any{"chat_id": chatID, "theme_id": themeID})
+	return nil
 }

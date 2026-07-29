@@ -288,7 +288,9 @@ func (i *Interactor) SetMute(ctx context.Context, chatID, userID int64, muted bo
 	if until != nil {
 		payload["muted_until"] = until.Unix()
 	}
-	return i.logAndPublish(ctx, []int64{userID}, "dialog_mute", payload)
+	// best-effort: мутация закоммичена — сбой лога/публикации не возвращаем как ошибку.
+	_ = i.logAndPublish(ctx, []int64{userID}, "dialog_mute", payload)
+	return nil
 }
 
 // SetChatNotify обновляет per-chat уведомления (показ превью, звук). nil-поля не
