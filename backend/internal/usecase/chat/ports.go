@@ -43,6 +43,9 @@ type ChatRepo interface {
 	// IncUnread bumps a member's unread counter by one and returns the new value
 	// (so the new_message frame can carry the recipient's authoritative unread).
 	IncUnread(ctx context.Context, chatID, userID int64) (int, error)
+	// IncUnreadBulk — batched IncUnread for many members (one query). Returns the
+	// new unread_count per user.
+	IncUnreadBulk(ctx context.Context, chatID int64, userIDs []int64) (map[int64]int64, error)
 	CurrentReadSeq(ctx context.Context, chatID, userID int64) (int64, error)
 	SetRead(ctx context.Context, chatID, userID, seq int64, unread int) error
 	// LastReadAt — когда участник в последний раз продвинул read-горизонт
@@ -265,6 +268,9 @@ type LinkPreviewer interface {
 
 type UpdateRepo interface {
 	AppendUpdate(ctx context.Context, userID int64, ptsCount int, date int64, typ string, payload json.RawMessage) (int64, error)
+	// AppendUpdateBulk — batched AppendUpdate for a set of users sharing one payload
+	// (one round-trip instead of 2×N). Returns per-user resulting pts.
+	AppendUpdateBulk(ctx context.Context, userIDs []int64, ptsCount int, date int64, typ string, payload json.RawMessage) (map[int64]int64, error)
 	GetUserState(ctx context.Context, userID int64) (domain.UserState, error)
 	UpdatesSince(ctx context.Context, userID, sincePts int64, limit int) ([]domain.Update, error)
 }

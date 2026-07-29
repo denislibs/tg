@@ -425,23 +425,61 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			}
 		}
 		date := nowMillis()
+		// Fan-out батчами: 3 запроса вместо 3×M. Раньше на каждого участника шли
+		// AppendUpdate (2 запроса) + IncUnread — под локом строки chats это O(M)
+		// запросов в одной транзакции (замер: 0.34 мс/участник, 200 → 70 мс).
+		others := make([]int64, 0, len(members))
+		senderIn := false
 		for _, uid := range members {
-			p := payload
-			if payloadLocked != nil && uid != in.SenderID {
-				p = payloadLocked
+			if uid == in.SenderID {
+				senderIn = true
+				continue
 			}
-			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "new_message", p)
-			if e != nil {
-				return e
-			}
-			ptsByUser[uid] = pts
-			if uid != in.SenderID {
-				n, e := i.chats.IncUnread(ctx, in.ChatID, uid)
+			others = append(others, uid)
+		}
+		// pts-лог: автору — обычный payload, получателям — обычный или locked
+		// (платное медиа). Один payload на батч.
+		// len-гарды сохраняют семантику прежнего `for range members` (пустой список
+		// — ни одного вызова репозитория; часть тест-стабов не задаёт updates).
+		if payloadLocked != nil {
+			if senderIn {
+				m1, e := i.updates.AppendUpdateBulk(ctx, []int64{in.SenderID}, 1, date, "new_message", payload)
 				if e != nil {
 					return e
 				}
-				unreadByUser[uid] = int64(n)
-				// Отмечаем упоминание только для реального участника (кроме автора).
+				for u, p := range m1 {
+					ptsByUser[u] = p
+				}
+			}
+			if len(others) > 0 {
+				m2, e := i.updates.AppendUpdateBulk(ctx, others, 1, date, "new_message", payloadLocked)
+				if e != nil {
+					return e
+				}
+				for u, p := range m2 {
+					ptsByUser[u] = p
+				}
+			}
+		} else if len(members) > 0 {
+			pm, e := i.updates.AppendUpdateBulk(ctx, members, 1, date, "new_message", payload)
+			if e != nil {
+				return e
+			}
+			for u, p := range pm {
+				ptsByUser[u] = p
+			}
+		}
+		// Непрочитанные — одним запросом всем получателям (кроме автора).
+		if len(others) > 0 {
+			um, e := i.chats.IncUnreadBulk(ctx, in.ChatID, others)
+			if e != nil {
+				return e
+			}
+			for u, n := range um {
+				unreadByUser[u] = n
+			}
+			// Упоминания редки — точечно (по остатку text_mention).
+			for _, uid := range others {
 				if mentioned[uid] {
 					if e := i.chats.AddMention(ctx, in.ChatID, msg.ID, msg.Seq, uid); e != nil {
 						return e

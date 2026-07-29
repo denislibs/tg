@@ -133,6 +133,9 @@ func (c groupMembershipChats) SetChatTheme(context.Context, int64, string, int64
 func (c groupMembershipChats) UserAutoDelete(context.Context, int64) (int, error)       { return 0, nil }
 func (c groupMembershipChats) SetUserAutoDelete(context.Context, int64, int) error      { return nil }
 func (c groupMembershipChats) IncUnread(context.Context, int64, int64) (int, error)     { return 0, nil }
+func (c groupMembershipChats) IncUnreadBulk(context.Context, int64, []int64) (map[int64]int64, error) {
+	return nil, nil
+}
 func (c groupMembershipChats) IncUnreadReactions(context.Context, int64, int64) (int, error) {
 	return 0, nil
 }

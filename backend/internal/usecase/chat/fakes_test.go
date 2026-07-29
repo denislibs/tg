@@ -231,6 +231,19 @@ func (r fakeChats) IncUnread(_ context.Context, chatID, userID int64) (int, erro
 	return 0, nil
 }
 
+func (r fakeChats) IncUnreadBulk(_ context.Context, chatID int64, userIDs []int64) (map[int64]int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	out := make(map[int64]int64, len(userIDs))
+	for _, uid := range userIDs {
+		if m := r.s.members[chatID][uid]; m != nil {
+			m.unread++
+			out[uid] = int64(m.unread)
+		}
+	}
+	return out, nil
+}
+
 func (r fakeChats) IncUnreadReactions(_ context.Context, chatID, userID int64) (int, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
@@ -1096,6 +1109,22 @@ func (r fakeUpdates) AppendUpdate(_ context.Context, userID int64, ptsCount int,
 		Pts: newPts, PtsCount: ptsCount, Type: typ, Payload: payload,
 	})
 	return newPts, nil
+}
+
+func (r fakeUpdates) AppendUpdateBulk(_ context.Context, userIDs []int64, ptsCount int, date int64, typ string, payload json.RawMessage) (map[int64]int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	out := make(map[int64]int64, len(userIDs))
+	for _, userID := range userIDs {
+		r.s.pts[userID] += int64(ptsCount)
+		r.s.date[userID] = date
+		newPts := r.s.pts[userID]
+		r.s.updates[userID] = append(r.s.updates[userID], domain.Update{
+			Pts: newPts, PtsCount: ptsCount, Type: typ, Payload: payload,
+		})
+		out[userID] = newPts
+	}
+	return out, nil
 }
 
 func (r fakeUpdates) GetUserState(_ context.Context, userID int64) (domain.UserState, error) {

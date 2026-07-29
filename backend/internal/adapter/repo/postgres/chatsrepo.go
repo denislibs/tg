@@ -310,6 +310,32 @@ func (r *ChatsRepo) IncUnread(ctx context.Context, chatID, userID int64) (int, e
 
 // IncUnreadReactions bumps a member's unread-reactions counter by one (someone
 // reacted to their message — Telegram unread_reactions_count) and returns the new value.
+// IncUnreadBulk bumps unread_count by one for many members of a chat in a single
+// query (vs IncUnread × N). Returns the new count per user.
+func (r *ChatsRepo) IncUnreadBulk(ctx context.Context, chatID int64, userIDs []int64) (map[int64]int64, error) {
+	out := make(map[int64]int64, len(userIDs))
+	if len(userIDs) == 0 {
+		return out, nil
+	}
+	q := querier(ctx, r.pool)
+	rows, err := q.Query(ctx,
+		`UPDATE chat_members SET unread_count = unread_count + 1
+		 WHERE chat_id=$1 AND user_id = ANY($2::bigint[])
+		 RETURNING user_id, unread_count`, chatID, userIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var uid, n int64
+		if err := rows.Scan(&uid, &n); err != nil {
+			return nil, err
+		}
+		out[uid] = n
+	}
+	return out, rows.Err()
+}
+
 func (r *ChatsRepo) IncUnreadReactions(ctx context.Context, chatID, userID int64) (int, error) {
 	q := querier(ctx, r.pool)
 	var n int
