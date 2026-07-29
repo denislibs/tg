@@ -7,7 +7,6 @@ export function registerNotificationSubscriber(): void {
   // Уведомление о входящем, гейтинг как в tweb: per-chat mute → глобальные настройки
   // типа чата → клиентские настройки (см. uiNotifications).
   eventBus.subscribe(RT.newMessage, (evt) => {
-    if (evt.backfill) return // catch-up после reconnect — уже уведомляли вживую
     notifyIncomingMessage(evt)
   })
 }

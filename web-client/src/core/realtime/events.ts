@@ -84,10 +84,6 @@ export interface NewMessageEvt { chat_id: number; msg_id: number; seq: number; s
   secret_media?: import('../models').SecretMedia;
   /** вид эффекта сообщения (наш аналог Telegram message effects) */
   effect?: string | null;
-  /** воркер-флаг: сообщение переотдано /sync при catch-up после reconnect
-   * (уже доставлялось вживую) — стор его дедупит, но звук/нотификация/непрочитанные
-   * должны пропустить, иначе дубль на каждый reconnect. Не проводное поле сервера. */
-  backfill?: boolean;
   /** платное медиа (Telegram paid media): цена в звёздах + заблокировано ли для
    * получателя (у заблокированного кадра media_id отсутствует) */
   paid_media?: { price: number; locked: boolean } | null;
