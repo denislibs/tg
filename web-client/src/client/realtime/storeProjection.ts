@@ -3,11 +3,9 @@
 // подписчиков шины (рядом с soundSubscriber/notificationSubscriber); побочных эффектов
 // (звук/уведомления) не делает. Раньше жил внутри realtimeBridge.
 import { loadChats, useChatsStore } from '../../stores/chatsStore'
-import { useFoldersStore } from '../../stores/foldersStore'
 import { useMessagesStore, winKey } from '../../stores/messagesStore'
 import tabId from '../../config/tabId'
 import { usePeersStore } from '../../stores/peersStore'
-import { usePinsStore } from '../../stores/pinsStore'
 import { useStarsStore } from '../../stores/starsStore'
 import { fromNewMessageEvt, mapDraft, mapPoll, mapChecklist, mapGeo, mapWebPage, mapFactCheck, mapBoostStatus, mapGiveaway, mapSuggestedPost, type RawPoll, type RawChecklist, type RawBoostStatus, type RawGiveaway } from '../../core/models'
 import { useBoostsStore } from '../../stores/boostsStore'
@@ -16,13 +14,10 @@ import { useDraftsStore } from '../../stores/draftsStore'
 import { useUploadsStore } from '../../stores/uploadsStore'
 import { uiEvents } from '../../core/hooks/uiEvents'
 import { mapReplyMarkup } from '../../core/managers/botsManager'
-import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type PinMessageEvt, type CallFrameEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type GeoLiveUpdateEvt, type WebPageUpdateEvt, type FactCheckUpdateEvt, type ChatThemeUpdateEvt, type SuggestedPostEvt, type StoryNewEvt, type StoryDeletedEvt, type StoryReactionEvt, type PendingNewEvt, type PendingRouteEvt, type PendingMediaEvt, type UserUpdateEvt } from '../../core/realtime/events'
+import { RT, type NewMessageEvt, type ReadEvt, type MediaReadEvt, type ChatRemovedEvt, type PresenceEvt, type TypingEvt, type AckEvt, type MessageErrorEvt, type EditMessageEvt, type DeleteMessageEvt, type DraftUpdateEvt, type ReactionEvt, type StarReactionEvt, type BotCallbackAnswerEvt, type GeoLiveUpdateEvt, type WebPageUpdateEvt, type FactCheckUpdateEvt, type ChatThemeUpdateEvt, type SuggestedPostEvt, type StoryNewEvt, type StoryDeletedEvt, type StoryReactionEvt, type PendingNewEvt, type PendingRouteEvt, type PendingMediaEvt, type UserUpdateEvt } from '../../core/realtime/events'
 import { useSecretChatStore } from '../../stores/secretChatStore'
 import { useStoriesStore, loadStories } from '../../stores/storiesStore'
 import { mapStory } from '../../core/managers/storiesManager'
-import * as callEngine from '../../core/calls/callEngine'
-import { handleGroupCallFrame, type GroupCallFrame } from '../../core/calls/groupCallEngine'
-import { handleLivestreamFrame, type LivestreamFrame } from '../../core/calls/livestreamEngine'
 import { eventBus } from '../../core/realtime/eventBus'
 import type { Managers } from '../bootstrap'
 
@@ -141,12 +136,6 @@ export function registerStoreProjection(managers: Managers): void {
       }, TYPING_TTL),
     )
   })
-  // Pin/unpin: refetch the chat's pins and write them to the store (the only
-  // socket subscription for pins — usePinnedBar just reads the store).
-  eventBus.subscribe(RT.pinMessage, (raw) => {
-    const e = raw as PinMessageEvt
-    void managers.messages.listPins(e.chat_id).then((p) => usePinsStore.getState().setPins(e.chat_id, p))
-  })
   // Реакция → окно сообщений. Серверное эхо (live/catch-up) несёт АБСОЛЮТНЫЙ агрегат
   // (counts) → set verbatim; поверх оптимистичного клика (хук) даёт тот же результат.
   eventBus.subscribe(RT.reaction, (raw) => {
@@ -183,11 +172,6 @@ export function registerStoreProjection(managers: Managers): void {
     // Платное сообщение отвергнуто из-за нехватки звёзд — тост (Telegram paid messages).
     if (err.reason === 'paid_required') uiEvents.emit('ui:toast', 'Недостаточно звёзд для отправки сообщения')
   })
-  // 1:1 call signaling → движок звонка (стейт живёт в callStore)
-  eventBus.subscribe(RT.call, (raw) => { callEngine.handleFrame(raw as CallFrameEvt) })
-  eventBus.subscribe(RT.groupCall, (raw) => { handleGroupCallFrame(raw as GroupCallFrame) })
-  // RTMP-трансляция: старт/стоп → livestreamStore (плашка LIVE + экран просмотра)
-  eventBus.subscribe(RT.livestream, (raw) => { handleLivestreamFrame(raw as LivestreamFrame) })
   // Платное медиа разблокировано покупателем (на всех его вкладках): раскрываем
   // баббл — полное медиа приезжает готовым сообщением (тот же payload, что new_message).
   eventBus.subscribe(RT.paidMediaUnlock, (raw) => {
@@ -258,17 +242,6 @@ export function registerStoreProjection(managers: Managers): void {
       void managers.peers.refresh([e.id]).then((peers) => usePeersStore.getState().upsert(peers))
     }
   })
-  // Метаданные чата сменились (title/photo/права/настройки/подписи) — рефетчим
-  // список диалогов (title/аватар в списке). Открытая карточка чата, если нужно,
-  // подписывается на RT.chatUpdate через eventBus напрямую.
-  eventBus.subscribe(RT.chatUpdate, () => {
-    scheduleChatsReload(managers)
-  })
-  // Папки изменились на другом устройстве/вкладке → перечитать список папок.
-  eventBus.subscribe(RT.folderUpdate, () => {
-    void managers.folders.list().then((f) => useFoldersStore.getState().setFolders(f))
-  })
-  eventBus.subscribe('rt:resync', () => { void loadChats(managers) })
   // Прогресс отгрузки медиа (кольцо на оптимистичном бабле)
   eventBus.subscribe('media:upload_progress', (raw) => {
     const e = raw as { id: string; loaded: number; total: number }

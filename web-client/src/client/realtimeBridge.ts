@@ -8,6 +8,8 @@ import { eventBus } from '../core/realtime/eventBus'
 import { registerStoreProjection } from './realtime/storeProjection'
 import { registerSoundSubscriber } from './realtime/soundSubscriber'
 import { registerNotificationSubscriber } from './realtime/notificationSubscriber'
+import { registerCallSubscriber } from './realtime/callSubscriber'
+import { registerRefetchSubscriber } from './realtime/refetchSubscriber'
 
 let started = false
 
@@ -29,6 +31,8 @@ export function startRealtime(): void {
   registerStoreProjection(managers)
   registerSoundSubscriber()
   registerNotificationSubscriber()
+  registerCallSubscriber()
+  registerRefetchSubscriber(managers)
 
   void managers.realtime.start()
 }
