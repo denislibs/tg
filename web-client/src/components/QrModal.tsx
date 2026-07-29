@@ -80,7 +80,7 @@ export interface QrModalProps {
 export default function QrModal({ open, onClose, url, label, avatar }: QrModalProps) {
   const t = useT()
   const portalContainer = usePortalContainer()
-  const { themeChoice } = useSettings()
+  const themeChoice = useSettings((s) => s.themeChoice)
   const [themeIdx, setThemeIdx] = useState(0)
   // tweb: дефолт луны — текущая яркость темы приложения
   const [night, setNight] = useState(PRESET_MODE[resolvePreset(themeChoice)] === 'dark')

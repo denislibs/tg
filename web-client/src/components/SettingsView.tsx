@@ -62,7 +62,7 @@ export default function SettingsView({
   const t = useT()
   const [lang] = useLang()
   const currentLangName = LANGS.find((l) => l.code === lang)?.name ?? 'English'
-  const { themeChoice } = useSettings()
+  const themeChoice = useSettings((s) => s.themeChoice)
   const isDark = PRESET_MODE[resolvePreset(themeChoice)] === 'dark'
   const [active, setActive] = useState(initialSub ?? 'Notifications and Sounds')
   const [sub, setSub] = useState<string | null>(initialSub ?? null)
