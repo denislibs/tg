@@ -18,13 +18,34 @@ export function registerManagers(smp: SuperMessagePort, registry: Record<string,
   })
 }
 
-/** UI side: managers.<name>.<method>(...args) -> RPC invoke. */
+/**
+ * UI side: managers.<name>.<method>(...args) -> RPC invoke.
+ * Прокси-объекты менеджеров и их методы мемоизируются: `managers.x` и
+ * `managers.x.y` возвращают стабильную ссылку между обращениями (раньше каждый
+ * доступ создавал новый Proxy/функцию). Это и убирает аллокацию на каждый вызов
+ * (188 обращений по коду), и даёт стабильную идентичность метода — безопасно
+ * класть в deps хуков / прокидывать в мемоизированные компоненты.
+ */
 export function createManagers<T extends object>(smp: SuperMessagePort): T {
+  const mgrCache = new Map<PropertyKey, object>()
   return new Proxy({}, {
-    get: (_t, name: string) =>
-      new Proxy({}, {
-        get: (_t2, method: string) =>
-          (...args: unknown[]) => smp.invoke('manager', { name, method, args }),
-      }),
+    get: (_t, name: PropertyKey) => {
+      let mgr = mgrCache.get(name)
+      if (!mgr) {
+        const methodCache = new Map<PropertyKey, (...args: unknown[]) => Promise<unknown>>()
+        mgr = new Proxy({}, {
+          get: (_t2, method: PropertyKey) => {
+            let fn = methodCache.get(method)
+            if (!fn) {
+              fn = (...args: unknown[]) => smp.invoke('manager', { name: name as string, method: method as string, args })
+              methodCache.set(method, fn)
+            }
+            return fn
+          },
+        })
+        mgrCache.set(name, mgr)
+      }
+      return mgr
+    },
   }) as T
 }
