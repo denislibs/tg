@@ -19,8 +19,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useEvent } from './useEvent'
 import { useManagers } from './useManagers'
 import { smoothCenterElement, afterScrollSettles } from '../dom/smoothScrollToElement'
-import { uiEvents } from './uiEvents'
-import { RT, type NewMessageEvt } from '../realtime/events'
+import { eventBus } from '../realtime/eventBus'
+import { RT } from '../realtime/events'
 import type { MessageWindow } from './useMessageWindow'
 
 interface UseChatScrollArgs {
@@ -314,8 +314,10 @@ export function useChatScroll({ numericChatId, isRealChat, win, playerOffset, un
   // seen). The DATA path is realtimeBridge → messagesStore; this is a UI reaction.
   useEffect(() => {
     if (!isRealChat) return
-    return uiEvents.on(RT.newMessage, (raw) => {
-      const m = raw as NewMessageEvt
+    // Подписка на eventBus напрямую (типизированный payload). storeProjection
+    // пишет стор раньше (его подписка регистрируется на старте bridge), поэтому к
+    // моменту этого обработчика окно/диалог уже обновлены.
+    return eventBus.subscribe(RT.newMessage, (m) => {
       if (m.chat_id !== numericChatId) return
       if (atBottomRef.current && document.hasFocus()) {
         void managers.realtime.markRead({ chatId: numericChatId, upToSeq: m.seq })
