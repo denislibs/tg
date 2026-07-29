@@ -64,7 +64,7 @@ void tokens.ready().then(() => auth.me()).then((u) => { meId = u?.id ?? null }).
 // (после инициализации модуля), поэтому forward-ссылка на объявленный ниже secret безопасна.
 // broadcast объявлен ниже — стрелка дергает его лениво (оптимистичные мутации
 // tweb-модели: менеджер применяет к SSOT и бродкастит эхо всем вкладкам).
-const messages = newMessagesManager({ rest, decryptSecret: (chatId, encBody) => secret.decryptMessage(chatId, encBody), getMeId: () => meId, broadcast: (event, payload) => broadcast(event, payload) })
+const messages = newMessagesManager({ rest, decryptSecret: (chatId, encBody) => secret.decryptMessage(chatId, encBody), getMeId: () => meId })
 // broadcast объявлен ниже — замыкание дергает его лениво (к моменту первого
 // аплоада порты уже подняты)
 const media = newMediaManager({
@@ -76,7 +76,7 @@ const notify = newNotifyManager({ rest })
 const folders = newFoldersManager({ rest })
 // broadcast объявлен ниже — стрелка дергает его лениво (к моменту первой мутации
 // порты уже подняты), как у media. Кросс-таб-эхо REST-мутаций без WS-эха бэка.
-const groups = newGroupsManager({ rest, broadcast: (event, payload) => broadcast(event, payload) })
+const groups = newGroupsManager({ rest })
 const channels = newChannelsManager({ rest })
 const peers = newPeersManager({ rest })
 const presence = newPresenceManager({ rest })

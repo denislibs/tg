@@ -2,7 +2,6 @@
 import { HttpError, type RestClient } from '../net/restClient'
 import { mapMessage, mapPoll, mapChecklist, mapGiveaway, mapScheduled, mapGeo, mapWebPage, mapFactCheck, type Message, type MessageEntity, type Poll, type Checklist, type Giveaway, type RawMessage, type RawPoll, type RawChecklist, type RawGiveaway, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
 import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, ReactionEvt, StarReactionEvt } from '../realtime/events'
-import { RT } from '../realtime/events'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
 import { saveMessages, loadMessages, deletePersistedMessage } from '../store/persist'
 import { reactionDelta } from '../reactionDelta'
@@ -116,13 +115,9 @@ export interface MessagesDeps {
    * (событие reaction несёт user_id реагирующего, а не флаг «моё»). Разрешается
    * лениво (воркер зовёт /me), поэтому геттер, а не значение. */
   getMeId?: () => number | null
-  /** Ретрансляция события всем вкладкам (worker broadcast). Нужна для оптимистичных
-   * мутаций tweb-модели: менеджер применяет действие к SSOT и бродкастит эхо —
-   * storeProjection остаётся единственным писателем стора. */
-  broadcast?: (event: string, payload: unknown) => void
 }
 
-export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast }: MessagesDeps) {
+export function newMessagesManager({ rest, decryptSecret, getMeId }: MessagesDeps) {
   // История секретного чата приходит с REST как encBody+пустой text — расшифровываем
   // страницу до отдачи в UI. Без ключа text остаётся пустым, но secret:true проставлен
   // (UI покажет плейсхолдер). Живые сообщения дешифруются в worker.ts.
@@ -203,7 +198,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast }: 
   // Дельта реакции (count±1 по emoji) → SSOT. `mine` = моё ли действие
   // (user_id === meId); та же чистая reactionDelta, что и в сторе. null из дельты —
   // эхо своего уже применённого действия, no-op. Общая для live-кадра (cacheReaction)
-  // и оптимистичного клика (emitReaction).
+  // и оптимистичной записи в SSOT из react/unreact.
   const applyReactionToCache = (evt: ReactionEvt): void => {
     const mine = evt.user_id === (getMeId?.() ?? null)
     patchMsg(evt.chat_id, (m) => m.id === evt.msg_id, (m) => {
@@ -228,15 +223,6 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast }: 
       return { ...m, reactions: next.length ? next : undefined }
     })
   }
-  // Оптимистичная реакция (tweb sendReaction: применяем локально ДО сети): правим
-  // SSOT и бродкастим эхо всем вкладкам как своё действие — storeProjection применит
-  // его как единственный писатель, кросс-таб бесплатно. Серверное эхо reaction придёт
-  // следом и будет идемпотентным no-op (reactionDelta гасит уже применённое своё).
-  const emitReaction = (evt: ReactionEvt): void => {
-    applyReactionToCache(evt)
-    broadcast?.(RT.reaction, evt)
-  }
-
   // Платная ⭐-реакция → SSOT: total авторитетен, свой вклад (mine) — только для
   // собственного действия (sender_id === meId), иначе сохраняем кэшированный.
   const applyStarToCache = (evt: StarReactionEvt): void => {
@@ -249,11 +235,10 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast }: 
     const checklist = mapChecklist(raw)
     patchMsg(chatId, (m) => m.checklist?.id === checklist.id, (m) => ({ ...m, checklist }))
   }
-  // Командные пуши агрегатов, чей серверный ответ авторитетен и НЕ мержится с
-  // локальным (в отличие от poll.myVotes / giveaway.participating): применяем к SSOT
-  // и бродкастим эхо всем вкладкам — storeProjection остаётся единственным писателем.
-  const emitStarReaction = (evt: StarReactionEvt): void => { applyStarToCache(evt); broadcast?.(RT.starReaction, evt) }
-  const emitChecklist = (chatId: number, raw: RawChecklist): void => { applyChecklistToCache(chatId, raw); broadcast?.(RT.checklistUpdate, { chat_id: chatId, checklist: raw }) }
+  // Оптимистика в SSOT воркера (для переоткрытия чата до серверного эха): applyX
+  // ToCache-хелперы выше. main-стор двигают клиентские вызыватели/хуки, а серверные
+  // WS-эхо (reaction/star_reaction/checklist_update) приходят через funnel и
+  // реконсилят абсолютно — broadcast'ов из менеджера больше нет.
 
   return {
     async getHistory(args: HistoryArgs): Promise<HistoryResult> {
@@ -387,8 +372,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast }: 
       })
       const m = mapMessage(updated)
       if (msgsFor(chatId).has(m.seq)) put(hkey(chatId), [m])
-      // Эхо всем вкладкам (storeProjection единственный писатель); factcheck idempotent.
-      broadcast?.(RT.factCheckUpdate, { chat_id: chatId, msg_id: msgId, seq: m.seq, factcheck: updated.factcheck ?? null })
+      // main-стор обновит вызыватель (applyFactCheck); WS factcheck_update реконсилит.
       return m
     },
 
@@ -396,7 +380,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast }: 
     async removeFactCheck(chatId: number, msgId: number): Promise<{ ok: boolean }> {
       const r = await rest.del<{ ok: boolean }>(`/chats/${chatId}/messages/${msgId}/factcheck`)
       patchMsg(chatId, (m) => m.id === msgId, (m) => ({ ...m, factCheck: undefined }))
-      broadcast?.(RT.factCheckUpdate, { chat_id: chatId, msg_id: msgId, seq: 0, factcheck: null })
+      // main-стор обновит вызыватель (applyFactCheck); WS factcheck_update реконсилит.
       return r
     },
 
@@ -418,11 +402,8 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast }: 
       // удаление (напр. «для всех» после окна времени), а откат eviction+persist
       // сложен и рисковен — мгновенность удаления тут не критична (tweb-компромисс).
       const r = await rest.del<{ ok: boolean }>(`/chats/${chatId}/messages/${msgId}?revoke=${revoke ? 'true' : 'false'}`)
-      let seq = 0
-      for (const [s, m] of msgsFor(chatId)) if (m.id === msgId) { seq = s; break }
-      broadcast?.(RT.deleteMessage, { chat_id: chatId, msg_id: msgId, seq, for_me: !revoke })
-      evictMsg(chatId, msgId)
-      return r
+      evictMsg(chatId, msgId) // eviction из SSOT воркера; main-стор обновит вызыватель
+      return r                // (applyDelete), а WS delete_message реконсилит.
     },
 
     // Forward messages from one chat into another; returns the created copies.
@@ -531,14 +512,14 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast }: 
       })
       return mapMessage(r)
     },
-    // Голос (пустой список — отзыв); ответ авторитетен и несёт мой выбор → ставим
-    // опрос ПОЛНОСТЬЮ в SSOT и бродкастим pollVoted (setPoll, не merge), чтобы свой
-    // голос не потерялся. storeProjection единственный писатель.
+    // Голос (пустой список — отзыв); ответ авторитетен и несёт МОЙ выбор (myVotes),
+    // которого нет в общем WS-событии poll_update. Ставим опрос ПОЛНОСТЬЮ в SSOT
+    // воркера; main-стор обновляет вызыватель результатом (setPoll, не merge), иначе
+    // WS-merge потерял бы myVotes. WS poll_update затем реконсилит агрегат.
     async votePoll(chatId: number, pollId: number, options: number[]): Promise<Poll> {
       const r = await rest.post<{ poll: RawPoll }>(`/polls/${pollId}/vote`, { options })
       const poll = mapPoll(r.poll)
       patchMsg(chatId, (m) => m.poll?.id === poll.id, (m) => ({ ...m, poll }))
-      broadcast?.(RT.pollVoted, { chat_id: chatId, poll: r.poll })
       return poll
     },
     async closePoll(pollId: number): Promise<void> {
@@ -558,24 +539,23 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast }: 
     // отметку) → пушим в SSOT и бродкастим (storeProjection единственный писатель).
     async toggleChecklistItem(chatId: number, checklistId: number, itemId: number): Promise<Checklist> {
       const r = await rest.post<{ checklist: RawChecklist }>(`/checklists/${checklistId}/items/${itemId}/toggle`, {})
-      emitChecklist(chatId, r.checklist)
+      applyChecklistToCache(chatId, r.checklist)
       return mapChecklist(r.checklist)
     },
     // Добавить пункты; ответ авторитетен → пуш в SSOT + broadcast.
     async addChecklistItems(chatId: number, checklistId: number, items: string[]): Promise<Checklist> {
       const r = await rest.post<{ checklist: RawChecklist }>(`/checklists/${checklistId}/items`, { items })
-      emitChecklist(chatId, r.checklist)
+      applyChecklistToCache(chatId, r.checklist)
       return mapChecklist(r.checklist)
     },
 
-    // Участвовать в розыгрыше (перенесено из boostsManager к SSOT сообщений). Ответ
-    // несёт participating/iWon → ставим розыгрыш ПОЛНОСТЬЮ в SSOT и бродкастим
-    // giveawayJoined (setGiveaway, не merge). storeProjection единственный писатель.
+    // Участвовать в розыгрыше. Ответ несёт МОЁ participating/iWon, которого нет в
+    // общем WS giveaway_update → ставим розыгрыш ПОЛНОСТЬЮ в SSOT воркера; main-стор
+    // обновляет вызыватель результатом (setGiveaway, не merge). WS реконсилит агрегат.
     async participateGiveaway(chatId: number, giveawayId: number): Promise<Giveaway> {
       const r = await rest.post<{ giveaway: RawGiveaway }>(`/giveaways/${giveawayId}/participate`, {})
       const giveaway = mapGiveaway(r.giveaway)
       patchMsg(chatId, (m) => m.giveaway?.id === giveaway.id, (m) => ({ ...m, giveaway }))
-      broadcast?.(RT.giveawayJoined, { chat_id: chatId, giveaway: r.giveaway })
       return giveaway
     },
 
@@ -757,22 +737,22 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast }: 
     // деривации `mine`; пока не разрешён (старт) — без оптимистики, ждём эхо сервера.
     async react(chatId: number, msgId: number, emoji: string): Promise<void> {
       const me = getMeId?.() ?? null
-      if (me != null) emitReaction({ chat_id: chatId, msg_id: msgId, user_id: me, emoji, action: 'add' })
+      if (me != null) applyReactionToCache({ chat_id: chatId, msg_id: msgId, user_id: me, emoji, action: 'add' })
       try {
         await rest.post(`/chats/${chatId}/messages/${msgId}/reactions`, { emoji })
       } catch (e) {
-        if (me != null) emitReaction({ chat_id: chatId, msg_id: msgId, user_id: me, emoji, action: 'remove' })
+        if (me != null) applyReactionToCache({ chat_id: chatId, msg_id: msgId, user_id: me, emoji, action: 'remove' })
         throw e
       }
     },
 
     async unreact(chatId: number, msgId: number, emoji: string): Promise<void> {
       const me = getMeId?.() ?? null
-      if (me != null) emitReaction({ chat_id: chatId, msg_id: msgId, user_id: me, emoji, action: 'remove' })
+      if (me != null) applyReactionToCache({ chat_id: chatId, msg_id: msgId, user_id: me, emoji, action: 'remove' })
       try {
         await rest.del(`/chats/${chatId}/messages/${msgId}/reactions/${encodeURIComponent(emoji)}`)
       } catch (e) {
-        if (me != null) emitReaction({ chat_id: chatId, msg_id: msgId, user_id: me, emoji, action: 'add' })
+        if (me != null) applyReactionToCache({ chat_id: chatId, msg_id: msgId, user_id: me, emoji, action: 'add' })
         throw e
       }
     },
@@ -797,7 +777,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, broadcast }: 
         `/chats/${chatId}/messages/${msgId}/star_reaction`, { count, anonymous })
       // Агрегат сообщения (total/mine) → SSOT + эхо всем вкладкам; баланс/топ отдаём
       // вызывающему попапу отдельно (это не про сообщение).
-      emitStarReaction({ chat_id: chatId, msg_id: msgId, sender_id: getMeId?.() ?? 0, total: r.star_reaction.total, mine: r.star_reaction.mine })
+      applyStarToCache({ chat_id: chatId, msg_id: msgId, sender_id: getMeId?.() ?? 0, total: r.star_reaction.total, mine: r.star_reaction.mine })
       return { total: r.star_reaction.total, mine: r.star_reaction.mine, balance: r.balance, top: mapStarSenders(r.top) }
     },
 

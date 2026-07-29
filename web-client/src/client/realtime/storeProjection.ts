@@ -50,13 +50,9 @@ const APPLY: Record<string, (raw: unknown) => void> = {
   [RT.chatRemoved]: (raw) => useChatsStore.getState().removeDialog((raw as ChatRemovedEvt).chat_id),
   // Live-агрегаты опроса / чек-листа / розыгрыша / бустов / предложки поста.
   [RT.pollUpdate]: (raw) => { const e = raw as { chat_id: number; poll: RawPoll }; useMessagesStore.getState().applyPollUpdate(e.chat_id, mapPoll(e.poll)) },
-  // Эхо своего голоса → полная установка опроса (myVotes из ответа сервера).
-  [RT.pollVoted]: (raw) => { const e = raw as { chat_id: number; poll: RawPoll }; useMessagesStore.getState().setPoll(e.chat_id, mapPoll(e.poll)) },
   [RT.checklistUpdate]: (raw) => { const e = raw as { chat_id: number; checklist: RawChecklist }; useMessagesStore.getState().applyChecklistUpdate(e.chat_id, mapChecklist(e.checklist)) },
   [RT.boostUpdate]: (raw) => { const e = raw as { chat_id: number; status: RawBoostStatus }; useBoostsStore.getState().applyStatus(e.chat_id, mapBoostStatus(e.status)) },
   [RT.giveawayUpdate]: (raw) => { const e = raw as { chat_id: number; giveaway: RawGiveaway }; useMessagesStore.getState().applyGiveawayUpdate(e.chat_id, mapGiveaway(e.giveaway)) },
-  // Эхо своего участия → полная установка розыгрыша (participating/iWon из ответа).
-  [RT.giveawayJoined]: (raw) => { const e = raw as { chat_id: number; giveaway: RawGiveaway }; useMessagesStore.getState().setGiveaway(e.chat_id, mapGiveaway(e.giveaway)) },
   [RT.suggestedPost]: (raw) => { const e = raw as SuggestedPostEvt; useSuggestedPostsStore.getState().apply(e.chat_id, mapSuggestedPost(e.post)) },
   // Тема оформления / пин / архив / mute диалога (с другого устройства/вкладки).
   [RT.chatThemeUpdate]: (raw) => { const e = raw as ChatThemeUpdateEvt; useChatsStore.getState().setDialogTheme(e.chat_id, e.theme_id) },
@@ -153,17 +149,16 @@ export function registerStoreProjection(managers: Managers): void {
     const e = raw as PinMessageEvt
     void managers.messages.listPins(e.chat_id).then((p) => usePinsStore.getState().setPins(e.chat_id, p))
   })
-  // Реакция → окно сообщений. С counts (серверное эхо/catch-up) — АБСОЛЮТНЫЙ set
-  // агрегата; без counts (оптимистичный клик воркера до эха) — дельта. Эхо своего
-  // действия поверх оптимистичного даёт тот же агрегат (no-op для рендера).
+  // Реакция → окно сообщений. Серверное эхо (live/catch-up) несёт АБСОЛЮТНЫЙ агрегат
+  // (counts) → set verbatim; поверх оптимистичного клика (хук) даёт тот же результат.
   eventBus.subscribe(RT.reaction, (raw) => {
     const e = raw as ReactionEvt
     const meId = useChatsStore.getState().meId
     const isMine = e.user_id === meId
+    // Серверное эхо реакции несёт АБСОЛЮТНЫЙ агрегат (counts) → ставим verbatim.
+    // Оптимистику клика теперь двигает хук (applyReactionOptimistic), не воркер-эхо.
     if (e.counts) {
       useMessagesStore.getState().applyReaction(e.chat_id, e.msg_id, e.counts, isMine ? e.emoji : null, isMine ? e.action : null)
-    } else {
-      useMessagesStore.getState().applyReactionOptimistic(e.chat_id, e.msg_id, e.emoji, e.action)
     }
     // Кто-то поставил реакцию на МОЁ сообщение → бейдж непрочитанных реакций
     // диалога (Telegram unread_reactions_count). Сброс — на прочтении чата (applyRead).

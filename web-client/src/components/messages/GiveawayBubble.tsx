@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react'
 import Text from '../../shared/ui/Text'
 import { useManagers } from '../../core/hooks/useManagers'
+import { useMessagesStore } from '../../stores/messagesStore'
 import { useChatsStore } from '../../stores/chatsStore'
 import type { Giveaway } from '../../core/models'
 import { useT } from '../../i18n'
@@ -49,9 +50,11 @@ export default function GiveawayBubble({ giveaway }: { giveaway: Giveaway }) {
   const onParticipate = () => {
     if (busy) return
     setBusy(true)
-    // SSOT-запись делает воркер (participateGiveaway пушит в кэш + broadcast → storeProjection).
+    // Ответ несёт МОЁ participating/iWon, которого нет в общем WS giveaway_update →
+    // ставим результат в стор здесь (не merge); WS затем реконсилит агрегат.
     void managers.messages
       .participateGiveaway(chatId, giveaway.id)
+      .then((g) => useMessagesStore.getState().setGiveaway(chatId, g))
       .finally(() => setBusy(false))
   }
 

@@ -1,6 +1,5 @@
 // src/core/managers/groupsManager.ts
 import type { RestClient } from '../net/restClient'
-import { RT } from '../realtime/events'
 
 export interface GroupCard {
   id: number; type: string; title: string; username: string; about: string
@@ -99,10 +98,8 @@ const mapTopic = (r: RawTopic): TopicRow => ({
   lastOut: r.last_out ?? false, lastMsgSeq: r.last_seq ?? 0,
 })
 
-export function newGroupsManager({ rest, broadcast }: {
+export function newGroupsManager({ rest }: {
   rest: Pick<RestClient, 'post' | 'get' | 'put' | 'patch' | 'del'>
-  // Кросс-таб-эхо мутаций без WS-эха бэка: воркер шлёт событие всем вкладкам.
-  broadcast?: (event: string, payload: unknown) => void
 }) {
   return {
     async createGroup(args: { title: string; about?: string; username?: string; isPublic?: boolean; memberIds?: number[] }): Promise<number> {
@@ -122,9 +119,8 @@ export function newGroupsManager({ rest, broadcast }: {
     // muted=true без until — навсегда.
     async setMute(chatId: number, muted: boolean, until?: number): Promise<void> {
       await rest.post(`/chats/${chatId}/mute`, { muted, until: until ?? null })
-      // Кросс-таб-консистентность: у бэка WS-эха mute нет, поэтому ретранслируем
-      // мутацию сами — все вкладки (включая инициатора, идемпотентно) обновят стор.
-      broadcast?.(RT.dialogMute, { chat_id: chatId, muted })
+      // Оптимистику двигает вызыватель (setDialogMuted), а кросс-таб/реконсил — реальное
+      // WS-событие dialog_mute с бэка (logAndPublish на устройства владельца).
     },
     // ── Форум-топики ──
     async setForum(chatId: number, enabled: boolean): Promise<void> {

@@ -13,6 +13,7 @@ import { convMsgReplyState } from '../draftReply'
 import { useEvent } from './useEvent'
 import { useReportStore } from '../../stores/reportStore'
 import { useSearchStore } from '../../stores/searchStore'
+import { useMessagesStore } from '../../stores/messagesStore'
 import { mediaLabel } from '../dialogToChat'
 import { useSettingsStore } from '../../settings'
 import { uiEvents } from './uiEvents'
@@ -219,9 +220,12 @@ export function useMessageActions({
   const openDeleteFor = (ids: number[]) => setDelIds({ ids, canRevoke: canRevokeAll(ids) })
   const doDelete = (revoke: boolean) => {
     if (!delIds || !isRealChat) return setDelIds(null)
-    // Удаление делает воркер: deleteMessage после успеха REST бродкастит
-    // rt:delete_message + eviction из SSOT → storeProjection единственный писатель.
-    for (const id of delIds.ids) void managers.messages.deleteMessage(numericChatId, id, revoke)
+    // deleteMessage после успеха REST удаляет из SSOT воркера; main-стор убираем
+    // здесь (applyDelete), а WS delete_message затем реконсилит (идемпотентно).
+    const store = useMessagesStore.getState()
+    for (const id of delIds.ids) {
+      void managers.messages.deleteMessage(numericChatId, id, revoke).then(() => store.applyDelete(numericChatId, id))
+    }
     setDelIds(null)
     clearSelection()
   }
@@ -372,8 +376,16 @@ export function useMessageActions({
     const raw = win.msgs.find((m) => m.id === msgId)
     if (!raw || raw.id < 0) return // оптимистичный бабл ещё без серверного id
     const mine = raw.reactions?.find((r) => r.emoji === emoji)?.mine
-    if (mine) void managers.messages.unreact(numericChatId, msgId, emoji)
-    else void managers.messages.react(numericChatId, msgId, emoji)
+    // Оптимистика в main-сторе (tweb sendReaction — мгновенно, ДО сети): дельта
+    // ±1; серверное эхо reaction (с counts) реконсилит абсолютно, на ошибке сети —
+    // откат обратной дельтой. Раньше это делал worker fake-broadcast.
+    const action: 'add' | 'remove' = mine ? 'remove' : 'add'
+    const store = useMessagesStore.getState()
+    store.applyReactionOptimistic(numericChatId, msgId, emoji, action)
+    const req = mine
+      ? managers.messages.unreact(numericChatId, msgId, emoji)
+      : managers.messages.react(numericChatId, msgId, emoji)
+    void req.catch(() => store.applyReactionOptimistic(numericChatId, msgId, emoji, action === 'add' ? 'remove' : 'add'))
     // В «Избранном» реакция = тег: пусть панель тегов пересчитает список/счётчики
     // (слушатель есть только когда открыт самочат).
     uiEvents.emit('ui:savedTagsChanged', undefined)
@@ -421,16 +433,20 @@ export function useMessageActions({
     if (!edit || !isRealChat) return
     const parsed = parseMarkdown(text)
     if (!parsed.text.trim()) return
-    // SSOT-запись делает воркер (setFactCheck пушит в кэш + broadcast → storeProjection).
-    await managers.messages.setFactCheck(numericChatId, edit.msgId, parsed.text, parsed.entities, country || undefined).catch(() => {})
+    // Воркер пишет свой SSOT; main-стор патчим здесь результатом (factcheck на
+    // сообщении, не пер-юзерный), WS factcheck_update затем реконсилит.
+    const m = await managers.messages.setFactCheck(numericChatId, edit.msgId, parsed.text, parsed.entities, country || undefined).catch(() => null)
+    if (m) useMessagesStore.getState().applyFactCheck(numericChatId, edit.msgId, m.factCheck)
   }
   // Снять проверку фактов (tweb deleteFactCheck): оптимистично + REST.
   const removeFactCheck = () => {
     const raw = menuRawMsg()
     closeMsgMenu()
     if (raw?.id == null || !isRealChat) return
-    // SSOT-запись делает воркер (removeFactCheck патчит кэш + broadcast → storeProjection).
-    void managers.messages.removeFactCheck(numericChatId, raw.id)
+    const msgId = raw.id
+    // Оптимистично снимаем в main-сторе; воркер патчит свой SSOT; WS реконсилит.
+    useMessagesStore.getState().applyFactCheck(numericChatId, msgId, undefined)
+    void managers.messages.removeFactCheck(numericChatId, msgId)
   }
 
   // Полоска эмодзи над контекстным меню: реакция на сообщение меню.
@@ -505,7 +521,7 @@ export function useMessageActions({
         items.push({
           icon: <TgIcon name="checkretract" size={20} />,
           label: 'Retract Vote',
-          onClick: () => { void managers.messages.votePoll(numericChatId, poll.id, []) },
+          onClick: () => { void managers.messages.votePoll(numericChatId, poll.id, []).then((p) => useMessagesStore.getState().setPoll(numericChatId, p)) },
         })
       }
       if (!poll.closed && raw!.senderId === meId) {
