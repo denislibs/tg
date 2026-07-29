@@ -246,7 +246,7 @@ function MessageRow({
   selecting, isSelected, isHighlighted, ladderActive, ladderDelay,
   feedFns, autoDownload, albumSelectedKey, footer,
 }: MessageRowProps) {
-  const { textSize } = useSettings()
+  const textSize = useSettings((s) => s.textSize)
   const t = useT()
   const fmtTime = useTimeFormatter()
   const bigEmoji = m.type === 'text' && m.text ? emojiOnlyCount(m.text) : 0
@@ -694,7 +694,7 @@ function BigEmojiBubble({ m, count, selecting, fmtTime }: {
 // (различает StickerMedia). Бейдж времени — тот же, что у big-emoji.
 const STICKER_BOX = 200
 function StickerRealBubble({ m, fmtTime }: { m: ConvMsg; fmtTime: (hhmm?: string) => string | undefined }) {
-  const loopStickers = useSettings().loopStickers
+  const loopStickers = useSettings((s) => s.loopStickers)
   let w = STICKER_BOX
   let h = STICKER_BOX
   if (m.mediaWidth && m.mediaHeight) {

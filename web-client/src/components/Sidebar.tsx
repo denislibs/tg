@@ -228,7 +228,7 @@ export default function Sidebar({
   // «Расположение папок → Слева от чатов» (tweb tabsInSidebar): вертикальная
   // колонка вместо горизонтальных табов; на узких экранах скрыта (tweb
   // until-floating-left-sidebar).
-  const { tabsInSidebar } = useSettings()
+  const tabsInSidebar = useSettings((s) => s.tabsInSidebar)
   const narrowScreen = useMediaQuery('(max-width:900px)')
   const foldersSidebarShown = tabsInSidebar && folders.length > 0 && !narrowScreen && !fullWidth
   const openFolderSettings = () => {

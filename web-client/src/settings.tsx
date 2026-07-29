@@ -202,9 +202,16 @@ if (typeof window !== 'undefined') {
   })
 }
 
-// Read the whole settings object (+ update) — same shape the old context returned.
-export function useSettings(): SettingsState {
-  return useSettingsStore()
+// Read settings. Без аргумента — весь объект (+ update), как раньше. С селектором
+// — подписка только на выбранный срез (zustand-идиома): горячие мемо-потребители
+// (MessageRow) не должны ре-рендериться на смену несвязанного поля, напр. смена
+// языка не должна инвалидировать весь фид. Для одного поля Object.is-сравнение
+// стора достаточно; для нескольких полей используйте отдельные вызовы селектора
+// (иначе object-селектор без useShallow даёт новый объект каждый рендер).
+export function useSettings(): SettingsState
+export function useSettings<T>(selector: (s: SettingsState) => T): T
+export function useSettings<T>(selector?: (s: SettingsState) => T): SettingsState | T {
+  return selector ? useSettingsStore(selector) : useSettingsStore()
 }
 
 // Convert a stored 24h "HH:MM" string to the user's preferred format.

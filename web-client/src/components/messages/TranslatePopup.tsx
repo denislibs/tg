@@ -35,7 +35,7 @@ export default function TranslatePopup({
   managers: Managers
 }) {
   const t = useT()
-  const { translateTo } = useSettings()
+  const translateTo = useSettings((s) => s.translateTo)
   const [lang, setLang] = useState(translateTo || 'ru')
   const [result, setResult] = useState<string | null>(null)
   const [source, setSource] = useState('')
