@@ -41,6 +41,7 @@ import { newCursor, classifyPts } from './realtime/cursor'
 import { newPendingPts } from './realtime/pendingPts'
 import { createSecretManager } from './managers/secretManager'
 import { RT, type NewMessageEvt } from './realtime/events'
+import { PASS_THROUGH, type LoggedWsType } from './realtime/eventCatalog'
 import { idbGet, idbSet } from './store/idbKv'
 import { persistScope } from './store/persist'
 
@@ -116,7 +117,9 @@ void cursor.ready().then(() => { cursorReady = true })
 // иначе переоткрытие чата из кэша теряет апдейт) + rt (имя события для UI). Замена
 // прежних CACHE_THEN_BROADCAST + CATCHUP. new_message — спец-обработка (E2E-расшифровка
 // + cacheLive), см. routeNewMessage.
-const APPLY: Record<string, { rt: string; cache?: (p: never) => void }> = {
+// Ключи APPLY типизированы как LoggedWsType (из eventCatalog) — пропуск/лишний
+// логируемый тип ловит компилятор, реестры не дрейфуют.
+const APPLY: Record<LoggedWsType, { rt: string; cache?: (p: never) => void }> = {
   read:              { rt: RT.read },
   media_read:        { rt: RT.mediaRead,       cache: (p) => messages.cacheMediaRead(p) },
   edit_message:      { rt: RT.editMessage,     cache: (p) => messages.cacheEdit(p) },
@@ -144,24 +147,16 @@ const APPLY: Record<string, { rt: string; cache?: (p: never) => void }> = {
   // getUsers (мимо peersStore) отдавали бы устаревшую карточку.
   user_update:       { rt: RT.userUpdate,      cache: (p) => peers.applyUserUpdate(p) },
 }
-// Эфемерные кадры (без pts): транслируются в UI как есть, НИКОГДА не гейтятся
-// курсором/catch-up. Bespoke-кадры (secret-handshake, обёртки звонков) — явно в onFrame.
-const PASS_THROUGH: Record<string, string> = {
-  message_ack: RT.ack, message_error: RT.messageError,
-  typing: RT.typing, presence: RT.presence,
-  geo_live_update: RT.geoLiveUpdate,
-  suggested_post_update: RT.suggestedPost,
-  bot_callback_answer: RT.botCallbackAnswer, story_new: RT.storyNew,
-  story_deleted: RT.storyDeleted, story_reaction: RT.storyReaction,
-  secret_chat_reject: RT.secretReject,
-}
+// Эфемерные кадры (PASS_THROUGH) и логируемые (APPLY) выводятся из eventCatalog —
+// единого реестра WS-типов. Bespoke-кадры (hello/секрет-handshake/обёртки звонков)
+// обрабатываются явно в onFrame.
 
 // Отражение логируемого апдейта в SSOT + broadcast (без арифметики pts — её делает
 // applyUpdate). `d` — полезная нагрузка (для live это весь payload, для /sync это
 // item.d). new_message — спец-путь (E2E-расшифровка + bespoke cacheLive).
 function dispatch(t: string, d: unknown): void {
   if (t === 'new_message') { routeNewMessage(d as NewMessageEvt); return }
-  const h = APPLY[t]
+  const h = APPLY[t as LoggedWsType]
   if (!h) return
   h.cache?.(d as never)
   broadcast(h.rt, d)
@@ -290,7 +285,7 @@ const conn = newConnectionManager({
       return
     }
     // Логируемый кадр (несёт pts) → единый funnel: дедуп/gap/cache/broadcast.
-    if (APPLY[type]) { applyUpdate(type, (payload as { pts?: number })?.pts, payload, true); return }
+    if (APPLY[type as LoggedWsType]) { applyUpdate(type, (payload as { pts?: number })?.pts, payload, true); return }
     // Секретный handshake: криптообработка в воркере до/вместо трансляции.
     if (type === 'secret_chat_request') {
       const p = payload as { chat_id?: number; initiator_pub?: string }
