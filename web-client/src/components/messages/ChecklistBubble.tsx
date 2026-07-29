@@ -9,6 +9,7 @@ import TgIcon from '../TgIcon'
 import UserAvatar from '../UserAvatar'
 import classNames from '../../shared/lib/classNames'
 import { useManagers } from '../../core/hooks/useManagers'
+import { useMessagesStore } from '../../stores/messagesStore'
 import { useChatsStore } from '../../stores/chatsStore'
 import { usePeers } from '../../core/hooks/usePeers'
 import type { Checklist } from '../../core/models'
@@ -34,12 +35,14 @@ export default function ChecklistBubble({ checklist, out }: { checklist: Checkli
   const markerIds = Array.from(new Set(checklist.items.flatMap((it) => it.markedBy)))
   const peers = usePeers(markerIds)
 
-  // SSOT-запись делает воркер (toggle/add пушат в кэш + broadcast → storeProjection).
+  // Воркер пишет свой SSOT; main-стор обновляем результатом (отметки чек-листа
+  // глобальны, без пер-юзерного merge); WS checklist_update затем реконсилит.
   const toggle = (itemId: number) => {
     if (!canMark || busy) return
     setBusy(true)
     void managers.messages
       .toggleChecklistItem(chatId, checklist.id, itemId)
+      .then((c) => useMessagesStore.getState().applyChecklistUpdate(chatId, c))
       .finally(() => setBusy(false))
   }
 
@@ -49,6 +52,7 @@ export default function ChecklistBubble({ checklist, out }: { checklist: Checkli
     setBusy(true)
     void managers.messages
       .addChecklistItems(chatId, checklist.id, [text])
+      .then((c) => useMessagesStore.getState().applyChecklistUpdate(chatId, c))
       .finally(() => {
         setBusy(false)
         setDraft('')

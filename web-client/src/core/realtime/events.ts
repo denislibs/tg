@@ -43,15 +43,9 @@ export const RT = {
   // сессиям). peersStore патчит карточку пира; avatar_changed → до-фетч /users.
   userUpdate: 'rt:user_update',
   pollUpdate: 'rt:poll_update',
-  // Командное эхо своего голоса (votePoll): в отличие от live poll_update несёт мой
-  // выбор (myVotes) — стор ставит опрос ПОЛНОСТЬЮ (setPoll), не мержит.
-  pollVoted: 'rt:poll_voted',
   checklistUpdate: 'rt:checklist_update',
   boostUpdate: 'rt:boost_update',
   giveawayUpdate: 'rt:giveaway_update',
-  // Командное эхо своего участия (participateGiveaway): несёт participating/iWon из
-  // ответа — стор ставит розыгрыш ПОЛНОСТЬЮ (setGiveaway), не мержит.
-  giveawayJoined: 'rt:giveaway_joined',
   suggestedPost: 'rt:suggested_post_update',
   balanceUpdate: 'rt:balance_update',
   paidMediaUnlock: 'rt:paid_media_unlock',
