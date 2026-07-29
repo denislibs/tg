@@ -231,6 +231,19 @@ func (r fakeChats) IncUnread(_ context.Context, chatID, userID int64) (int, erro
 	return 0, nil
 }
 
+func (r fakeChats) IncUnreadBulk(_ context.Context, chatID int64, userIDs []int64) (map[int64]int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	out := make(map[int64]int64, len(userIDs))
+	for _, uid := range userIDs {
+		if m := r.s.members[chatID][uid]; m != nil {
+			m.unread++
+			out[uid] = int64(m.unread)
+		}
+	}
+	return out, nil
+}
+
 func (r fakeChats) IncUnreadReactions(_ context.Context, chatID, userID int64) (int, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
@@ -1098,6 +1111,41 @@ func (r fakeUpdates) AppendUpdate(_ context.Context, userID int64, ptsCount int,
 	return newPts, nil
 }
 
+func (r fakeUpdates) AppendUpdateBulk(_ context.Context, userIDs []int64, ptsCount int, date int64, typ string, payload json.RawMessage) (map[int64]int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	out := make(map[int64]int64, len(userIDs))
+	for _, userID := range userIDs {
+		r.s.pts[userID] += int64(ptsCount)
+		r.s.date[userID] = date
+		newPts := r.s.pts[userID]
+		r.s.updates[userID] = append(r.s.updates[userID], domain.Update{
+			Pts: newPts, PtsCount: ptsCount, Type: typ, Payload: payload,
+		})
+		out[userID] = newPts
+	}
+	return out, nil
+}
+
+func (r fakeUpdates) PruneUpdates(_ context.Context, keepPerUser int64, _ int) (int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var deleted int64
+	for uid, ups := range r.s.updates {
+		cur := r.s.pts[uid]
+		kept := ups[:0]
+		for _, u := range ups {
+			if u.Pts > cur-keepPerUser {
+				kept = append(kept, u)
+			} else {
+				deleted++
+			}
+		}
+		r.s.updates[uid] = kept
+	}
+	return deleted, nil
+}
+
 func (r fakeUpdates) GetUserState(_ context.Context, userID int64) (domain.UserState, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
@@ -1245,6 +1293,15 @@ func (p *fakePublisher) PublishToUser(_ context.Context, userID int64, f []byte)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.frames = append(p.frames, capturedFrame{userID, append([]byte(nil), f...)})
+	return nil
+}
+
+func (p *fakePublisher) PublishToUsers(_ context.Context, userIDs []int64, frames [][]byte) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for i, userID := range userIDs {
+		p.frames = append(p.frames, capturedFrame{userID, append([]byte(nil), frames[i]...)})
+	}
 	return nil
 }
 

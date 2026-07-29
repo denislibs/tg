@@ -26,6 +26,7 @@ type Interactor struct {
 	chPub        ChannelPublisher
 	notifier     PushNotifier
 	privacy      PrivacyChecker
+	dialogsCache DialogsCache
 	drafts       DraftRepo
 	polls        PollRepo
 	checklists   ChecklistRepo
@@ -170,6 +171,9 @@ func (i *Interactor) SetPremiumRepo(p PremiumRepo) { i.premium = p }
 // списке диалогов аватар приватного пира подменяется личным фото владельца.
 func (i *Interactor) SetContactPhotos(p ContactPhotoLookup) { i.contactPics = p }
 
+// SetDialogsCache attaches an optional per-user dialogs-snapshot cache.
+func (i *Interactor) SetDialogsCache(c DialogsCache) { i.dialogsCache = c }
+
 // SetProfilePhotos подключает добавление фото в галерею пользователя (optional):
 // нужно для принятия предложенного фото профиля.
 func (i *Interactor) SetProfilePhotos(p ProfilePhotoAdder) { i.profilePics = p }
@@ -269,6 +273,11 @@ func (i *Interactor) PostServiceMessage(ctx context.Context, toUserID int64, tex
 // ListDialogs returns the user's chat list. Аватар пира скрывается, когда его
 // privacy-правило profile_photo не разрешает показ этому пользователю.
 func (i *Interactor) ListDialogs(ctx context.Context, userID int64) ([]domain.Dialog, error) {
+	if i.dialogsCache != nil {
+		if cached, ok := i.dialogsCache.Get(ctx, userID); ok {
+			return cached, nil
+		}
+	}
 	dialogs, err := i.chats.ListDialogs(ctx, userID)
 	if err != nil {
 		return dialogs, err
@@ -280,6 +289,9 @@ func (i *Interactor) ListDialogs(ctx context.Context, userID int64) ([]domain.Di
 		}
 	}
 	if len(peerIDs) == 0 {
+		if i.dialogsCache != nil {
+			i.dialogsCache.Set(ctx, userID, dialogs)
+		}
 		return dialogs, nil
 	}
 	if i.privacy != nil {
@@ -308,6 +320,9 @@ func (i *Interactor) ListDialogs(ctx context.Context, userID int64) ([]domain.Di
 				d.Peer.AvatarURL = url
 			}
 		}
+	}
+	if i.dialogsCache != nil {
+		i.dialogsCache.Set(ctx, userID, dialogs)
 	}
 	return dialogs, nil
 }

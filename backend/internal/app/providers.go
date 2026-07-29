@@ -192,6 +192,10 @@ func newGroupCallStore(client *redis.Client) usecasechat.GroupCallStore {
 	return cacheredis.NewGroupCallStore(client)
 }
 
+func newDialogsCache(client *redis.Client) usecasechat.DialogsCache {
+	return cacheredis.NewDialogsCache(client)
+}
+
 func newIVCache(client *redis.Client) usecaseiv.Cache {
 	return cacheredis.NewIVCache(client)
 }

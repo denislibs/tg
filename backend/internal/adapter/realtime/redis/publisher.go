@@ -21,6 +21,20 @@ func (p *RedisPublisher) PublishToUser(ctx context.Context, userID int64, frame 
 	return p.rdb.Publish(ctx, UserChannel(userID), frame).Err()
 }
 
+// PublishToUsers publishes per-user frames in one Redis pipeline (single
+// round-trip) instead of N sequential PUBLISH calls — the group send fan-out.
+func (p *RedisPublisher) PublishToUsers(ctx context.Context, userIDs []int64, frames [][]byte) error {
+	if len(userIDs) == 0 {
+		return nil
+	}
+	pipe := p.rdb.Pipeline()
+	for i, uid := range userIDs {
+		pipe.Publish(ctx, UserChannel(uid), frames[i])
+	}
+	_, err := pipe.Exec(ctx)
+	return err
+}
+
 // ChannelTopic is the Redis pub/sub topic for a channel's posts.
 func ChannelTopic(channelID int64) string { return fmt.Sprintf("channel:%d", channelID) }
 

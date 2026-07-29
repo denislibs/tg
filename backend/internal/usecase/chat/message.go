@@ -425,23 +425,61 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			}
 		}
 		date := nowMillis()
+		// Fan-out батчами: 3 запроса вместо 3×M. Раньше на каждого участника шли
+		// AppendUpdate (2 запроса) + IncUnread — под локом строки chats это O(M)
+		// запросов в одной транзакции (замер: 0.34 мс/участник, 200 → 70 мс).
+		others := make([]int64, 0, len(members))
+		senderIn := false
 		for _, uid := range members {
-			p := payload
-			if payloadLocked != nil && uid != in.SenderID {
-				p = payloadLocked
+			if uid == in.SenderID {
+				senderIn = true
+				continue
 			}
-			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "new_message", p)
-			if e != nil {
-				return e
-			}
-			ptsByUser[uid] = pts
-			if uid != in.SenderID {
-				n, e := i.chats.IncUnread(ctx, in.ChatID, uid)
+			others = append(others, uid)
+		}
+		// pts-лог: автору — обычный payload, получателям — обычный или locked
+		// (платное медиа). Один payload на батч.
+		// len-гарды сохраняют семантику прежнего `for range members` (пустой список
+		// — ни одного вызова репозитория; часть тест-стабов не задаёт updates).
+		if payloadLocked != nil {
+			if senderIn {
+				m1, e := i.updates.AppendUpdateBulk(ctx, []int64{in.SenderID}, 1, date, "new_message", payload)
 				if e != nil {
 					return e
 				}
-				unreadByUser[uid] = int64(n)
-				// Отмечаем упоминание только для реального участника (кроме автора).
+				for u, p := range m1 {
+					ptsByUser[u] = p
+				}
+			}
+			if len(others) > 0 {
+				m2, e := i.updates.AppendUpdateBulk(ctx, others, 1, date, "new_message", payloadLocked)
+				if e != nil {
+					return e
+				}
+				for u, p := range m2 {
+					ptsByUser[u] = p
+				}
+			}
+		} else if len(members) > 0 {
+			pm, e := i.updates.AppendUpdateBulk(ctx, members, 1, date, "new_message", payload)
+			if e != nil {
+				return e
+			}
+			for u, p := range pm {
+				ptsByUser[u] = p
+			}
+		}
+		// Непрочитанные — одним запросом всем получателям (кроме автора).
+		if len(others) > 0 {
+			um, e := i.chats.IncUnreadBulk(ctx, in.ChatID, others)
+			if e != nil {
+				return e
+			}
+			for u, n := range um {
+				unreadByUser[u] = n
+			}
+			// Упоминания редки — точечно (по остатку text_mention).
+			for _, uid := range others {
 				if mentioned[uid] {
 					if e := i.chats.AddMention(ctx, in.ChatID, msg.ID, msg.Seq, uid); e != nil {
 						return e
@@ -463,26 +501,41 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		}
 	}
 	if recipients != nil {
+		// Список диалогов получателей изменился (unread/порядок/превью) — сбрасываем
+		// их кэш снапшота (следующий /chats пересчитает).
+		if i.dialogsCache != nil {
+			i.dialogsCache.Invalidate(ctx, recipients...)
+		}
 		base := messageUpdatePayload(msg)
 		var baseLocked map[string]any
 		if msg.PaidMediaPrice != nil {
 			baseLocked = messageUpdatePayload(lockedPaidCopy(msg))
 		}
-		for _, uid := range recipients {
-			b := base
-			if baseLocked != nil && uid != in.SenderID {
-				b = baseLocked
+		// Realtime-кадры всем получателям — одним pipeline'ом (было M
+		// последовательных PUBLISH). У каждого свой кадр (pts у всех; authoritative
+		// unread — только у получателей, не автора).
+		if i.publisher != nil {
+			uids := make([]int64, 0, len(recipients))
+			frames := make([][]byte, 0, len(recipients))
+			for _, uid := range recipients {
+				b := base
+				if baseLocked != nil && uid != in.SenderID {
+					b = baseLocked
+				}
+				extra := map[string]any{"pts": ptsByUser[uid]}
+				if uid != in.SenderID {
+					extra["unread"] = unreadByUser[uid]
+				}
+				uids = append(uids, uid)
+				frames = append(frames, frameFields("new_message", b, extra))
 			}
-			// pts у всех; authoritative unread — только у получателей (не автора).
-			extra := map[string]any{"pts": ptsByUser[uid]}
-			if uid != in.SenderID {
-				extra["unread"] = unreadByUser[uid]
-			}
-			if i.publisher != nil {
-				_ = i.publisher.PublishToUser(ctx, uid, frameFields("new_message", b, extra))
-			}
-			if i.notifier != nil && uid != in.SenderID && !in.Silent {
-				i.notifier.NotifyNewMessage(ctx, uid, msg.ChatID, msg.ID, msg.Seq, msg.SenderID, msg.Text)
+			_ = i.publisher.PublishToUsers(ctx, uids, frames)
+		}
+		if i.notifier != nil && !in.Silent {
+			for _, uid := range recipients {
+				if uid != in.SenderID {
+					i.notifier.NotifyNewMessage(ctx, uid, msg.ChatID, msg.ID, msg.Seq, msg.SenderID, msg.Text)
+				}
 			}
 		}
 		// Отправка сообщения снимает черновик чата (Telegram-семантика).
@@ -602,6 +655,10 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 	})
 	if err != nil {
 		return err
+	}
+	// Прочтение обнулило unread читателя — сбрасываем его кэш снапшота диалогов.
+	if i.dialogsCache != nil && advanced {
+		i.dialogsCache.Invalidate(ctx, userID)
 	}
 	// Only fan out when the read marker actually advanced — a no-op re-read
 	// must not spam every member with a redundant read frame.

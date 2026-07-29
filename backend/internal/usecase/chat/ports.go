@@ -43,6 +43,9 @@ type ChatRepo interface {
 	// IncUnread bumps a member's unread counter by one and returns the new value
 	// (so the new_message frame can carry the recipient's authoritative unread).
 	IncUnread(ctx context.Context, chatID, userID int64) (int, error)
+	// IncUnreadBulk — batched IncUnread for many members (one query). Returns the
+	// new unread_count per user.
+	IncUnreadBulk(ctx context.Context, chatID int64, userIDs []int64) (map[int64]int64, error)
 	CurrentReadSeq(ctx context.Context, chatID, userID int64) (int64, error)
 	SetRead(ctx context.Context, chatID, userID, seq int64, unread int) error
 	// LastReadAt — когда участник в последний раз продвинул read-горизонт
@@ -265,8 +268,14 @@ type LinkPreviewer interface {
 
 type UpdateRepo interface {
 	AppendUpdate(ctx context.Context, userID int64, ptsCount int, date int64, typ string, payload json.RawMessage) (int64, error)
+	// AppendUpdateBulk — batched AppendUpdate for a set of users sharing one payload
+	// (one round-trip instead of 2×N). Returns per-user resulting pts.
+	AppendUpdateBulk(ctx context.Context, userIDs []int64, ptsCount int, date int64, typ string, payload json.RawMessage) (map[int64]int64, error)
 	GetUserState(ctx context.Context, userID int64) (domain.UserState, error)
 	UpdatesSince(ctx context.Context, userID, sincePts int64, limit int) ([]domain.Update, error)
+	// PruneUpdates trims the per-user log to keepPerUser pts of history (bounded
+	// by maxRows per call). Returns rows deleted.
+	PruneUpdates(ctx context.Context, keepPerUser int64, maxRows int) (int64, error)
 }
 
 type ChannelRepo interface {
@@ -348,8 +357,20 @@ type MediaDims struct {
 	FileName string
 }
 
+// DialogsCache — опциональный per-user кэш снапшота диалогов (bounded-staleness
+// read-кэш поверх тяжёлого ListDialogs). Мягко деградирует при nil.
+type DialogsCache interface {
+	Get(ctx context.Context, userID int64) ([]domain.Dialog, bool)
+	Set(ctx context.Context, userID int64, dialogs []domain.Dialog)
+	Invalidate(ctx context.Context, userIDs ...int64)
+}
+
 type EventPublisher interface {
 	PublishToUser(ctx context.Context, userID int64, frame []byte) error
+	// PublishToUsers delivers per-user frames (userIDs[i] gets frames[i]) in a
+	// single round-trip instead of N sequential publishes. Each user gets its own
+	// frame (per-user pts/unread differ). Best-effort, like PublishToUser.
+	PublishToUsers(ctx context.Context, userIDs []int64, frames [][]byte) error
 }
 
 // StickerAccess отвечает, принадлежит ли media какому-либо стикеру: наборы
