@@ -2,14 +2,14 @@
 import { describe, it, expect, vi } from 'vitest'
 import { uiEvents } from './uiEvents'
 
-describe('uiEvents', () => {
+describe('uiEvents (typed UI bus)', () => {
   it('delivers to subscribers and unsubscribes', () => {
     const cb = vi.fn()
-    const off = uiEvents.on('rt:new_message', cb)
-    uiEvents.emit('rt:new_message', { msg_id: 1 })
-    expect(cb).toHaveBeenCalledWith({ msg_id: 1 })
+    const off = uiEvents.on('ui:toast', cb)
+    uiEvents.emit('ui:toast', 'hello')
+    expect(cb).toHaveBeenCalledWith('hello')
     off()
-    uiEvents.emit('rt:new_message', { msg_id: 2 })
+    uiEvents.emit('ui:toast', 'again')
     expect(cb).toHaveBeenCalledTimes(1)
   })
 })

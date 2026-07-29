@@ -113,20 +113,19 @@ export function registerStoreProjection(managers: Managers): void {
       scheduleChatsReload(managers)
     }
     store.applyNewMessage(evt) // dialog-list preview (chatsStore)
-    // Уведомляем компоненты (напр. useChatScroll) через uiEvents. Звук/эффект и
-    // браузерное уведомление — отдельные подписчики eventBus (sound/notification).
-    uiEvents.emit(RT.newMessage, m)
+    // UI-реакции на новое сообщение (read-marker/unread-pill в useChatScroll,
+    // звук, нотификация) — отдельные подписчики eventBus напрямую, без ре-эмита
+    // в нетипизированную uiEvents.
   })
-  eventBus.subscribe(RT.read, (r) => { store.applyRead(r as ReadEvt); uiEvents.emit(RT.read, r) })
+  eventBus.subscribe(RT.read, (r) => { store.applyRead(r as ReadEvt) })
   // Черновик изменён на другом устройстве/вкладке (или снят отправкой/очисткой)
   eventBus.subscribe(RT.draftUpdate, (raw) => {
     const e = raw as DraftUpdateEvt
     const st = useDraftsStore.getState()
     if (e.draft) st.setDraft(mapDraft(e.draft))
     else st.removeDraft(e.chat_id)
-    uiEvents.emit(RT.draftUpdate, e)
   })
-  eventBus.subscribe(RT.presence, (p) => { store.setPresence(p as PresenceEvt); uiEvents.emit(RT.presence, p) })
+  eventBus.subscribe(RT.presence, (p) => { store.setPresence(p as PresenceEvt) })
   eventBus.subscribe(RT.typing, (raw) => {
     const t = raw as TypingEvt
     const action = t.action ?? 'typing'
@@ -141,7 +140,6 @@ export function registerStoreProjection(managers: Managers): void {
         store.clearTyping(t.chat_id, t.user_id)
       }, TYPING_TTL),
     )
-    uiEvents.emit(RT.typing, t)
   })
   // Pin/unpin: refetch the chat's pins and write them to the store (the only
   // socket subscription for pins — usePinnedBar just reads the store).
@@ -261,10 +259,10 @@ export function registerStoreProjection(managers: Managers): void {
     }
   })
   // Метаданные чата сменились (title/photo/права/настройки/подписи) — рефетчим
-  // список диалогов (title/аватар в списке) и уведомляем открытую карточку чата.
-  eventBus.subscribe(RT.chatUpdate, (raw) => {
+  // список диалогов (title/аватар в списке). Открытая карточка чата, если нужно,
+  // подписывается на RT.chatUpdate через eventBus напрямую.
+  eventBus.subscribe(RT.chatUpdate, () => {
     scheduleChatsReload(managers)
-    uiEvents.emit(RT.chatUpdate, raw)
   })
   // Папки изменились на другом устройстве/вкладке → перечитать список папок.
   eventBus.subscribe(RT.folderUpdate, () => {
