@@ -501,6 +501,11 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		}
 	}
 	if recipients != nil {
+		// Список диалогов получателей изменился (unread/порядок/превью) — сбрасываем
+		// их кэш снапшота (следующий /chats пересчитает).
+		if i.dialogsCache != nil {
+			i.dialogsCache.Invalidate(ctx, recipients...)
+		}
 		base := messageUpdatePayload(msg)
 		var baseLocked map[string]any
 		if msg.PaidMediaPrice != nil {
@@ -650,6 +655,10 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 	})
 	if err != nil {
 		return err
+	}
+	// Прочтение обнулило unread читателя — сбрасываем его кэш снапшота диалогов.
+	if i.dialogsCache != nil && advanced {
+		i.dialogsCache.Invalidate(ctx, userID)
 	}
 	// Only fan out when the read marker actually advanced — a no-op re-read
 	// must not spam every member with a redundant read frame.

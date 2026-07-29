@@ -357,6 +357,14 @@ type MediaDims struct {
 	FileName string
 }
 
+// DialogsCache — опциональный per-user кэш снапшота диалогов (bounded-staleness
+// read-кэш поверх тяжёлого ListDialogs). Мягко деградирует при nil.
+type DialogsCache interface {
+	Get(ctx context.Context, userID int64) ([]domain.Dialog, bool)
+	Set(ctx context.Context, userID int64, dialogs []domain.Dialog)
+	Invalidate(ctx context.Context, userIDs ...int64)
+}
+
 type EventPublisher interface {
 	PublishToUser(ctx context.Context, userID int64, frame []byte) error
 	// PublishToUsers delivers per-user frames (userIDs[i] gets frames[i]) in a
