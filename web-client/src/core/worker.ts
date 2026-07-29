@@ -35,11 +35,12 @@ import { newSessionsManager } from './managers/sessionsManager'
 import { newCallsManager } from './managers/callsManager'
 import { newLivestreamManager } from './managers/livestreamManager'
 import { newConnectionManager } from './realtime/connectionManager'
+import { newRealtime } from './realtime/realtime'
 import { newSyncEngine } from './realtime/syncEngine'
 import { newCursor, classifyPts } from './realtime/cursor'
 import { newPendingPts } from './realtime/pendingPts'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type TypingAction, type NewMessageEvt } from './realtime/events'
+import { RT, type NewMessageEvt } from './realtime/events'
 import { idbGet, idbSet } from './store/idbKv'
 import { persistScope } from './store/persist'
 
@@ -94,6 +95,7 @@ const stats = newStatsManager({ rest })
 const bots = newBotsManager({ rest })
 const stickers = newStickersManager({ rest })
 const iv = newIVManager({ rest })
+const health = newHealthManager(rest)
 // Единый writer офлайн-стора: диалоги/me/папки/черновики теперь пишет воркер (не
 // каждая вкладка со своего main-соединения). Без rest — чистый IndexedDB.
 const persist = newPersistManager()
@@ -359,69 +361,23 @@ const secret = createSecretManager({
   upload: (bytes, mime, size, fileName) => media.upload({ bytes, mime, size, fileName }),
 })
 
-const realtime = {
-  async start() { await tokens.load(); conn.start(); return { state: conn.state() } },
-  async sendMessage(args: { chatId: number; text: string; entities?: import('./models').MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; replyToPeerId?: number | null; replyQuoteText?: string | null; replyQuoteOffset?: number | null; mediaId?: number | null; type?: string; groupedId?: string; encBody?: string; ttlSeconds?: number | null; silent?: boolean; effect?: string | null; paidMediaPrice?: number | null; sendAsChatId?: number | null }) { conn.sendMessage(args); return { ok: true } },
-  async markRead(args: { chatId: number; upToSeq: number }) { conn.markRead(args.chatId, args.upToSeq); return { ok: true } },
-  async markMediaRead(args: { chatId: number; msgId: number }) {
-    // Локально гасим точку media_unread в SSOT + эхо всем вкладкам (у отправителя
-    // точка гаснет по его серверному media_read-кадру), затем шлём read_media серверу.
-    messages.cacheMediaRead({ chat_id: args.chatId, msg_id: args.msgId })
-    broadcast(RT.mediaRead, { chat_id: args.chatId, msg_id: args.msgId })
-    conn.markMediaRead(args.chatId, args.msgId)
-    return { ok: true }
-  },
-  // Оптимистичный бабл отправки: воркер — funnel жизненного цикла, бродкастит эхо
-  // всем вкладкам → storeProjection (единственный писатель окна). Транспорт (outbox)
-  // и reconcile ack/err — прежним путём (conn), ack/err воркер обогащает маршрутом.
-  async appendPending(p: import('./realtime/events').PendingNewEvt) { broadcast(RT.pendingNew, p); return { ok: true } },
-  async attachPendingMedia(args: { chatId: number; threadRootId?: number | null; clientMsgId: string; mediaId: number }) { broadcast(RT.pendingMedia, { chat_id: args.chatId, thread_root_id: args.threadRootId ?? null, client_msg_id: args.clientMsgId, media_id: args.mediaId }); return { ok: true } },
-  async failPending(args: { chatId: number; threadRootId?: number | null; clientMsgId: string }) { broadcast(RT.pendingFail, { chat_id: args.chatId, thread_root_id: args.threadRootId ?? null, client_msg_id: args.clientMsgId }); return { ok: true } },
-  async retryPending(args: { chatId: number; threadRootId?: number | null; clientMsgId: string }) { broadcast(RT.pendingRetry, { chat_id: args.chatId, thread_root_id: args.threadRootId ?? null, client_msg_id: args.clientMsgId }); return { ok: true } },
-  async removePending(args: { chatId: number; threadRootId?: number | null; clientMsgId: string }) { broadcast(RT.pendingRemove, { chat_id: args.chatId, thread_root_id: args.threadRootId ?? null, client_msg_id: args.clientMsgId }); return { ok: true } },
-  async sendTyping(args: { chatId: number; action?: TypingAction }) { conn.sendTyping(args.chatId, args.action ?? 'typing'); return { ok: true } },
-  async sendCallFrame(args: { type: string; data: Record<string, unknown> }) { conn.sendCallFrame(args.type, args.data); return { ok: true } },
-  async subscribeChannel(args: { chatId: number }) { conn.subscribeChannel(args.chatId); return { ok: true } },
-  async unsubscribeChannel(args: { chatId: number }) { conn.unsubscribeChannel(args.chatId); return { ok: true } },
+const realtime = newRealtime({ conn, tokens, messages, broadcast })
+
+// Единый реестр менеджеров — единственный источник правды. UI-тип Managers
+// (bootstrap.ts) выводится из этого объекта (WorkerRegistry), поэтому рассинхрон
+// «забыл в одном списке» невозможен by construction (как Managers в tweb).
+const registry = {
+  health, auth, profile, premium, chats, messages, realtime, media, push, notify,
+  folders, groups, channels, peers, presence, stories, contacts, privacy, drafts,
+  chatThemes, sessions, calls, livestream, stars, boosts, report, stats, bots,
+  stickers, iv, secret, persist,
 }
+export type WorkerRegistry = typeof registry
 
 function bind(ep: Endpoint) {
   const smp = new SuperMessagePort(ep)
   ports.push(smp)
-  registerManagers(smp, {
-    health: newHealthManager(rest),
-    auth: auth as unknown as Record<string, (...a: unknown[]) => unknown>,
-    profile: profile as unknown as Record<string, (...a: unknown[]) => unknown>,
-    premium: premium as unknown as Record<string, (...a: unknown[]) => unknown>,
-    chats: chats as unknown as Record<string, (...a: unknown[]) => unknown>,
-    messages: messages as unknown as Record<string, (...a: unknown[]) => unknown>,
-    realtime: realtime as unknown as Record<string, (...a: unknown[]) => unknown>,
-    media: media as unknown as Record<string, (...a: unknown[]) => unknown>,
-    push: push as unknown as Record<string, (...a: unknown[]) => unknown>,
-    notify: notify as unknown as Record<string, (...a: unknown[]) => unknown>,
-    folders: folders as unknown as Record<string, (...a: unknown[]) => unknown>,
-    groups: groups as unknown as Record<string, (...a: unknown[]) => unknown>,
-    channels: channels as unknown as Record<string, (...a: unknown[]) => unknown>,
-    peers: peers as unknown as Record<string, (...a: unknown[]) => unknown>,
-    presence: presence as unknown as Record<string, (...a: unknown[]) => unknown>,
-    stories: stories as unknown as Record<string, (...a: unknown[]) => unknown>,
-    contacts: contacts as unknown as Record<string, (...a: unknown[]) => unknown>,
-    privacy: privacy as unknown as Record<string, (...a: unknown[]) => unknown>,
-    drafts: drafts as unknown as Record<string, (...a: unknown[]) => unknown>,
-    chatThemes: chatThemes as unknown as Record<string, (...a: unknown[]) => unknown>,
-    sessions: sessions as unknown as Record<string, (...a: unknown[]) => unknown>,
-    calls: calls as unknown as Record<string, (...a: unknown[]) => unknown>,
-    livestream: livestream as unknown as Record<string, (...a: unknown[]) => unknown>,
-    stars: stars as unknown as Record<string, (...a: unknown[]) => unknown>,
-    boosts: boosts as unknown as Record<string, (...a: unknown[]) => unknown>,
-    report: report as unknown as Record<string, (...a: unknown[]) => unknown>,
-    stats: stats as unknown as Record<string, (...a: unknown[]) => unknown>,
-    bots: bots as unknown as Record<string, (...a: unknown[]) => unknown>,
-    stickers: stickers as unknown as Record<string, (...a: unknown[]) => unknown>,
-    iv: iv as unknown as Record<string, (...a: unknown[]) => unknown>,
-    secret: secret as unknown as Record<string, (...a: unknown[]) => unknown>,
-    persist: persist as unknown as Record<string, (...a: unknown[]) => unknown>,
-  })
+  registerManagers(smp, registry)
 }
 
 const g = self as unknown as {
