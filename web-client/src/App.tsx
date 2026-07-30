@@ -6,6 +6,7 @@ import { useSettingsStore } from './settings'
 import Sidebar from './components/Sidebar'
 import type { GroupPhoto } from './components/NewGroupFlow'
 import ConversationView from './components/ConversationView'
+import PopupHost from './components/PopupHost'
 import ChatBackground from './components/ChatBackgroundLazy'
 import GlobalOverlays from './components/shell/GlobalOverlays'
 import ShellLayout from './components/shell/ShellLayout'
@@ -212,6 +213,9 @@ export default function App() {
   return (
     <MotionConfig reducedMotion={reduceMotion ? 'always' : 'never'}>
       <ThemedApp />
+      {/* Стек попапов (popupStore) — единая точка рендера всех императивно
+          открываемых попапов чата (порт tweb PopupManager). */}
+      <PopupHost />
       {/* Ненавязчивая пилюля «доступна новая сборка» (инлайн-стиль, как apiBadge —
           App.module.scss тут не трогаем). Клик — перезагрузка на свежий бандл. */}
       {updateAvailable && (
