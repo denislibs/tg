@@ -1,12 +1,15 @@
 // src/core/managers/messagesManager.ts
 import { HttpError, type RestClient } from '../net/restClient'
 import { mapMessage, mapScheduled, mapGeo, mapWebPage, mapFactCheck, type Message, type MessageEntity, type RawMessage, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
-import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, ReactionEvt, StarReactionEvt } from '../realtime/events'
+import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt } from '../realtime/events'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
 import { saveMessages, loadMessages, deletePersistedMessage } from '../store/persist'
-import { reactionDelta } from '../reactionDelta'
 import { newPollMethods } from './messages/pollMethods'
 import { newTranslationMethods } from './messages/translationMethods'
+import { newReactionMethods } from './messages/reactionMethods'
+// Реакционные типы переехали в reactionMethods — реэкспорт для стабильности
+// импортов (StarReactionPopup, SavedTagsPanel и др. берут их отсюда).
+export type { ReactionUser, SavedTag, StarSender, StarReactionInfo, StarReactionResult } from './messages/reactionMethods'
 
 export interface HistoryArgs {
   chatId: number
@@ -36,77 +39,6 @@ export interface SendArgs {
   mediaId?: number | null
   /** сообщение в тред (форум-топик): id корневого сообщения темы */
   threadRootId?: number | null
-}
-
-/** Кто отреагировал (для попапа who-reacted). */
-export interface ReactionUser {
-  userId: number
-  name: string
-  username: string
-  avatarUrl: string
-  emoji: string
-}
-
-/** Тег-реакция «Избранного»: реакция (эмодзи/id кастом-эмодзи), имя и счётчик. */
-export interface SavedTag {
-  reaction: string
-  title: string
-  count: number
-}
-
-interface RawSavedTag {
-  reaction: string
-  title?: string
-  count: number
-}
-
-interface RawReactionUser {
-  user_id: number
-  name: string
-  username: string
-  avatar_url: string
-  emoji: string
-}
-
-/** Один отправитель платной ⭐-реакции (топ-отправители попапа). Анонимный —
- * без личности (userId 0, пустое имя): рисуется как «Anonymous». */
-export interface StarSender {
-  userId: number
-  name: string
-  avatarUrl: string
-  stars: number
-  anonymous: boolean
-}
-
-interface RawStarSender {
-  user_id: number
-  name: string
-  username: string
-  avatar_url: string
-  stars: number
-  anonymous: boolean
-}
-
-/** Агрегат платной ⭐-реакции сообщения: сумма звёзд, мой вклад, топ-отправители. */
-export interface StarReactionInfo {
-  total: number
-  mine: number
-  top: StarSender[]
-}
-
-/** Результат отправки платной ⭐-реакции: новый агрегат + мой новый баланс. */
-export interface StarReactionResult extends StarReactionInfo {
-  balance: number
-}
-
-function mapStarSenders(rows: RawStarSender[] | undefined): StarSender[] {
-  return (rows ?? []).map((s) => ({
-    userId: s.user_id,
-    name: s.name,
-    avatarUrl: s.avatar_url,
-    stars: s.stars,
-    anonymous: s.anonymous,
-  }))
 }
 
 export interface MessagesDeps {
@@ -197,51 +129,17 @@ export function newMessagesManager({ rest, decryptSecret, getMeId }: MessagesDep
     void deletePersistedMessage(chatId, seq)
   }
 
-  // Дельта реакции (count±1 по emoji) → SSOT. `mine` = моё ли действие
-  // (user_id === meId); та же чистая reactionDelta, что и в сторе. null из дельты —
-  // эхо своего уже применённого действия, no-op. Общая для live-кадра (cacheReaction)
-  // и оптимистичной записи в SSOT из react/unreact.
-  const applyReactionToCache = (evt: ReactionEvt): void => {
-    const mine = evt.user_id === (getMeId?.() ?? null)
-    patchMsg(evt.chat_id, (m) => m.id === evt.msg_id, (m) => {
-      const next = reactionDelta(m.reactions, evt.emoji, evt.action, mine)
-      return next === null ? null : { ...m, reactions: next }
-    })
-  }
-  // Wave 3: АБСОЛЮТНЫЙ агрегат (серверное эхо с counts) → SSOT. counts ставим
-  // verbatim; `mine` деривим — сохраняем прежний для не затронутых emoji, ставим/
-  // снимаем для emoji своего действия (только когда user_id===meId). Идемпотентно
-  // на реплей (catch-up), поэтому дедуп по pts тут не нужен.
-  const applyAbsoluteReactionToCache = (evt: ReactionEvt): void => {
-    const counts = evt.counts ?? []
-    const isMine = evt.user_id === (getMeId?.() ?? null)
-    patchMsg(evt.chat_id, (m) => m.id === evt.msg_id, (m) => {
-      const prevMine = new Set((m.reactions ?? []).filter((r) => r.mine).map((r) => r.emoji))
-      const next = counts.map((c) => {
-        let mine = prevMine.has(c.emoji)
-        if (isMine && c.emoji === evt.emoji) mine = evt.action === 'add'
-        return { emoji: c.emoji, count: c.count, mine }
-      })
-      return { ...m, reactions: next.length ? next : undefined }
-    })
-  }
-  // Платная ⭐-реакция → SSOT: total авторитетен, свой вклад (mine) — только для
-  // собственного действия (sender_id === meId), иначе сохраняем кэшированный.
-  const applyStarToCache = (evt: StarReactionEvt): void => {
-    const isMine = evt.sender_id === (getMeId?.() ?? null)
-    patchMsg(evt.chat_id, (m) => m.id === evt.msg_id,
-      (m) => ({ ...m, starReaction: { total: evt.total, mine: isMine ? evt.mine : (m.starReaction?.mine ?? 0) } }))
-  }
-  // Оптимистика в SSOT воркера (для переоткрытия чата до серверного эха): applyX
-  // ToCache-хелперы выше. main-стор двигают клиентские вызыватели/хуки, а серверные
-  // WS-эхо (reaction/star_reaction/checklist_update) приходят через funnel и
-  // реконсилят абсолютно — broadcast'ов из менеджера больше нет.
+  // Оптимистика в SSOT воркера (для переоткрытия чата до серверного эха): apply-хелперы
+  // реакций/чек-листов живут в под-модулях. main-стор двигают клиентские вызыватели/
+  // хуки, серверные WS-эхо приходят через funnel и реконсилят абсолютно.
 
-  // Под-модули God-объекта (P1-6): опросы/чек-листы/розыгрыши и перевод/транскрипция
-  // выделены в отдельные файлы, спредятся сюда — публичный API messages.* не меняется.
+  // Под-модули God-объекта (P1-6): опросы/чек-листы/розыгрыши, перевод/транскрипция и
+  // реакции/теги/⭐ выделены в отдельные файлы, спредятся сюда — публичный API
+  // messages.* не меняется.
   const ctx = { rest, patchMsg, getMeId }
 
   return {
+    ...newReactionMethods(ctx),
     ...newPollMethods(ctx),
     ...newTranslationMethods(ctx),
     async getHistory(args: HistoryArgs): Promise<HistoryResult> {
@@ -544,18 +442,6 @@ export function newMessagesManager({ rest, decryptSecret, getMeId }: MessagesDep
       return r.user_ids ?? []
     },
 
-    // Кто отреагировал и каким эмодзи (попап who-reacted).
-    async reactionUsers(chatId: number, msgId: number): Promise<ReactionUser[]> {
-      const r = await rest.get<{ users: RawReactionUser[] }>(`/chats/${chatId}/messages/${msgId}/reactions/users`)
-      return (r.users ?? []).map((u) => ({
-        userId: u.user_id,
-        name: u.name,
-        username: u.username,
-        avatarUrl: u.avatar_url,
-        emoji: u.emoji,
-      }))
-    },
-
     // Live-фрейм new_message → кэш истории (в чат-ключ и, для тред-сообщения,
     // в ключ треда). Без этого переоткрытие чата/треда попадало в устаревший
     // кэш-срез без свежих сообщений (свои комментарии «пропадали» до F5).
@@ -636,75 +522,6 @@ export function newMessagesManager({ rest, decryptSecret, getMeId }: MessagesDep
     // чата из кэша возвращало точку (P0-1).
     cacheMediaRead(evt: MediaReadEvt): void {
       patchMsg(evt.chat_id, (m) => m.id === evt.msg_id && !!m.mediaUnread, (m) => ({ ...m, mediaUnread: false }))
-    },
-
-    // Reaction → SSOT. С counts (серверное эхо/catch-up) — АБСОЛЮТНЫЙ set; без
-    // counts (оптимистичный клик до эха) — дельта. broadcast делает worker.ts.
-    cacheReaction(evt: ReactionEvt): void {
-      if (evt.counts) applyAbsoluteReactionToCache(evt)
-      else applyReactionToCache(evt)
-    },
-
-    // Live-кадр star_reaction (server echo) → SSOT (broadcast делает worker.ts).
-    cacheStarReaction(evt: StarReactionEvt): void {
-      applyStarToCache(evt)
-    },
-
-    // Реакции: поставить/снять свою. Оптимистика в воркере (tweb sendReaction) —
-    // применяем локально и бродкастим эхо ДО сети, storeProjection единственный
-    // писатель. На ошибке сети — откат обратной дельтой. meId обязателен для верной
-    // деривации `mine`; пока не разрешён (старт) — без оптимистики, ждём эхо сервера.
-    async react(chatId: number, msgId: number, emoji: string): Promise<void> {
-      const me = getMeId?.() ?? null
-      if (me != null) applyReactionToCache({ chat_id: chatId, msg_id: msgId, user_id: me, emoji, action: 'add' })
-      try {
-        await rest.post(`/chats/${chatId}/messages/${msgId}/reactions`, { emoji })
-      } catch (e) {
-        if (me != null) applyReactionToCache({ chat_id: chatId, msg_id: msgId, user_id: me, emoji, action: 'remove' })
-        throw e
-      }
-    },
-
-    async unreact(chatId: number, msgId: number, emoji: string): Promise<void> {
-      const me = getMeId?.() ?? null
-      if (me != null) applyReactionToCache({ chat_id: chatId, msg_id: msgId, user_id: me, emoji, action: 'remove' })
-      try {
-        await rest.del(`/chats/${chatId}/messages/${msgId}/reactions/${encodeURIComponent(emoji)}`)
-      } catch (e) {
-        if (me != null) applyReactionToCache({ chat_id: chatId, msg_id: msgId, user_id: me, emoji, action: 'add' })
-        throw e
-      }
-    },
-
-    // Теги-реакции «Избранного» (Telegram saved reaction tags). Пометка/снятие
-    // тега — это react/unreact в самочате; здесь — список тегов и их имена.
-    async getSavedTags(): Promise<SavedTag[]> {
-      const r = await rest.get<{ tags: RawSavedTag[] }>('/saved/tags')
-      return (r.tags ?? []).map((t) => ({ reaction: t.reaction, title: t.title ?? '', count: t.count }))
-    },
-
-    // Задать/переименовать/очистить (пустой title) имя тега (updateSavedReactionTag).
-    async renameSavedTag(reaction: string, title: string): Promise<void> {
-      await rest.put(`/saved/tags/${encodeURIComponent(reaction)}`, { title })
-    },
-
-    // Платная ⭐-реакция: списать count звёзд у себя, начислить автору, накопить
-    // вклад. Возвращает новый агрегат + топ-отправителей + мой баланс. Live-эхо
-    // star_reaction тоже придёт (идемпотентно правит total в сторе).
-    async sendStarReaction(chatId: number, msgId: number, count: number, anonymous: boolean): Promise<StarReactionResult> {
-      const r = await rest.post<{ star_reaction: { total: number; mine: number }; top: RawStarSender[]; balance: number }>(
-        `/chats/${chatId}/messages/${msgId}/star_reaction`, { count, anonymous })
-      // Агрегат сообщения (total/mine) → SSOT + эхо всем вкладкам; баланс/топ отдаём
-      // вызывающему попапу отдельно (это не про сообщение).
-      applyStarToCache({ chat_id: chatId, msg_id: msgId, sender_id: getMeId?.() ?? 0, total: r.star_reaction.total, mine: r.star_reaction.mine })
-      return { total: r.star_reaction.total, mine: r.star_reaction.mine, balance: r.balance, top: mapStarSenders(r.top) }
-    },
-
-    // Агрегат платной ⭐-реакции сообщения (total + мой вклад + топ-отправители).
-    async getStarReaction(chatId: number, msgId: number): Promise<StarReactionInfo> {
-      const r = await rest.get<{ star_reaction: { total: number; mine: number }; top: RawStarSender[] }>(
-        `/chats/${chatId}/messages/${msgId}/star_reaction`)
-      return { total: r.star_reaction.total, mine: r.star_reaction.mine, top: mapStarSenders(r.top) }
     },
 
     // Live location: отправить начальную точку трансляции по REST (нужен msgId,
