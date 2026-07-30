@@ -4,7 +4,7 @@
 // (😎 = суррогатная пара, длина 2) и что document_id проходит через parseMarkdown.
 import { describe, it, expect } from 'vitest'
 import { serialize, entitiesToFragment, parseMarkdown } from './markdown'
-import type { MessageEntity } from './models'
+import type { MessageEntity } from '../models'
 
 function customEmojiSpan(emoji: string, docId: number): HTMLSpanElement {
   const span = document.createElement('span')
