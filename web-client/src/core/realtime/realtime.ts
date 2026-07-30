@@ -12,6 +12,7 @@
 
 import type { newConnectionManager } from './connectionManager'
 import type { SendArgs } from './connectionManager'
+import type { ChannelFunnel } from './channelFunnel'
 import { RT, type TypingAction, type PendingNewEvt } from './events'
 
 type Conn = ReturnType<typeof newConnectionManager>
@@ -21,9 +22,10 @@ export interface RealtimeDeps {
   tokens: { load(): Promise<unknown> }
   messages: { cacheMediaRead(p: { chat_id: number; msg_id: number }): void }
   broadcast: (event: string, payload: unknown) => void
+  channelFunnel: ChannelFunnel
 }
 
-export function newRealtime({ conn, tokens, messages, broadcast }: RealtimeDeps) {
+export function newRealtime({ conn, tokens, messages, broadcast, channelFunnel }: RealtimeDeps) {
   return {
     async start() { await tokens.load(); conn.start(); return { state: conn.state() } },
     async sendMessage(args: SendArgs) { conn.sendMessage(args); return { ok: true } },
@@ -46,7 +48,9 @@ export function newRealtime({ conn, tokens, messages, broadcast }: RealtimeDeps)
     async removePending(args: { chatId: number; threadRootId?: number | null; clientMsgId: string }) { broadcast(RT.pendingRemove, { chat_id: args.chatId, thread_root_id: args.threadRootId ?? null, client_msg_id: args.clientMsgId }); return { ok: true } },
     async sendTyping(args: { chatId: number; action?: TypingAction }) { conn.sendTyping(args.chatId, args.action ?? 'typing'); return { ok: true } },
     async sendCallFrame(args: { type: string; data: Record<string, unknown> }) { conn.sendCallFrame(args.type, args.data); return { ok: true } },
-    async subscribeChannel(args: { chatId: number }) { conn.subscribeChannel(args.chatId); return { ok: true } },
-    async unsubscribeChannel(args: { chatId: number }) { conn.unsubscribeChannel(args.chatId); return { ok: true } },
+    // Подписка на канал = вход в per-channel funnel: подписаться на топик (живые
+    // кадры) + open (сид курсора из IDB и добор пропущенного через difference).
+    async subscribeChannel(args: { chatId: number }) { conn.subscribeChannel(args.chatId); void channelFunnel.open(args.chatId); return { ok: true } },
+    async unsubscribeChannel(args: { chatId: number }) { conn.unsubscribeChannel(args.chatId); channelFunnel.close(args.chatId); return { ok: true } },
   }
 }

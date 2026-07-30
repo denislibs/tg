@@ -17,11 +17,11 @@ func TestChannelRepo_AppendAndSince(t *testing.T) {
 	chID, _ := g.CreateMultiMember(ctx, "channel", "News", "", "", true, u)
 	r := NewChannelRepo(pool)
 
-	p1, err := r.AppendUpdate(ctx, chID, json.RawMessage(`{"msg_id":1}`))
+	p1, err := r.AppendUpdate(ctx, chID, "new_message", json.RawMessage(`{"msg_id":1}`))
 	if err != nil || p1 != 1 {
 		t.Fatalf("append1: pts=%d err=%v", p1, err)
 	}
-	p2, _ := r.AppendUpdate(ctx, chID, json.RawMessage(`{"msg_id":2}`))
+	p2, _ := r.AppendUpdate(ctx, chID, "chat_update", json.RawMessage(`{"msg_id":2}`))
 	if p2 != 2 {
 		t.Fatalf("append2 pts=%d", p2)
 	}
@@ -35,7 +35,7 @@ func TestChannelRepo_AppendAndSince(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ups) != 1 || ups[0].Pts != 2 {
+	if len(ups) != 1 || ups[0].Pts != 2 || ups[0].Type != "chat_update" {
 		t.Fatalf("since(1)=%+v", ups)
 	}
 	_ = domain.ChannelUpdate{}

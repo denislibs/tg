@@ -24,13 +24,13 @@ func newFakeChannelRepo() *fakeChannelRepo {
 	return &fakeChannelRepo{pts: map[int64]int64{}, updates: map[int64][]domain.ChannelUpdate{}}
 }
 
-func (r *fakeChannelRepo) AppendUpdate(_ context.Context, channelID int64, payload json.RawMessage) (int64, error) {
+func (r *fakeChannelRepo) AppendUpdate(_ context.Context, channelID int64, typ string, payload json.RawMessage) (int64, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.pts[channelID]++
 	p := r.pts[channelID]
 	r.updates[channelID] = append(r.updates[channelID], domain.ChannelUpdate{
-		Pts: p, PtsCount: 1, Payload: append([]byte(nil), payload...),
+		Pts: p, PtsCount: 1, Type: typ, Payload: append([]byte(nil), payload...),
 	})
 	return p, nil
 }
@@ -236,6 +236,34 @@ func TestGetChannelDifference(t *testing.T) {
 	}
 	if len(ups) != 1 {
 		t.Fatalf("diff since 1 = %d", len(ups))
+	}
+}
+
+// SetSignatures on a channel must broadcast chat_update once over the channel
+// envelope (O(1)) — NOT fan out one per-user log row per subscriber — and land as
+// a typed row in the channel difference so subscribers catch it up on open.
+func TestSetSignatures_ChannelBroadcastNoFanout(t *testing.T) {
+	i, fg, _, fpub := newChannelTestInteractor(t)
+	ctx := context.Background()
+	id, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+	// two subscribers — an N+1 fan-out would scale with this, a broadcast won't
+	_ = fg.AddMember(ctx, id, 8, domain.RoleSubscriber, 0)
+	_ = fg.AddMember(ctx, id, 9, domain.RoleSubscriber, 0)
+
+	if err := i.SetSignatures(ctx, id, 7, true, false); err != nil {
+		t.Fatalf("SetSignatures: %v", err)
+	}
+	// exactly one channel-broadcast regardless of subscriber count
+	if fpub.count != 1 {
+		t.Fatalf("channel publishes=%d, want 1 (no per-subscriber fan-out)", fpub.count)
+	}
+	// and one typed chat_update row in the channel difference feed
+	ups, err := i.GetChannelDifference(ctx, id, 7, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ups) != 1 || ups[0].Type != "chat_update" {
+		t.Fatalf("difference=%+v, want 1 chat_update", ups)
 	}
 }
 

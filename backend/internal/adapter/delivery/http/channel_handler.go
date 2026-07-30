@@ -369,15 +369,17 @@ func (h *ChannelHandler) Difference(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	raw := make([]json.RawMessage, 0, len(ups))
+	// Типизированный конверт {t,pts,d} — тот же, что несёт живой channel-кадр, так
+	// что клиент прогоняет catch-up через тот же per-channel funnel, что и live.
+	out := make([]map[string]any, 0, len(ups))
 	maxPts := pts
 	for _, u := range ups {
-		raw = append(raw, json.RawMessage(u.Payload))
+		out = append(out, map[string]any{"t": u.Type, "pts": u.Pts, "d": json.RawMessage(u.Payload)})
 		if u.Pts > maxPts {
 			maxPts = u.Pts
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"updates": raw, "pts": maxPts, "slice": len(ups) == 100})
+	writeJSON(w, http.StatusOK, map[string]any{"updates": out, "pts": maxPts, "slice": len(ups) == 100})
 }
 
 func (h *ChannelHandler) Join(w http.ResponseWriter, r *http.Request) {

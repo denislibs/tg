@@ -211,6 +211,7 @@ func (i *Interactor) publishApprovedPost(ctx context.Context, sp domain.Suggeste
 		msgType = i.channelMediaType(ctx, *sp.MediaID)
 	}
 	var msg domain.Message
+	var pts int64
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		seq, e := i.msgs.NextSeq(ctx, sp.ChatID)
 		if e != nil {
@@ -234,14 +235,14 @@ func (i *Interactor) publishApprovedPost(ctx context.Context, sp domain.Suggeste
 		if e != nil {
 			return e
 		}
-		_, e = i.channels.AppendUpdate(ctx, sp.ChatID, payload)
+		pts, e = i.channels.AppendUpdate(ctx, sp.ChatID, "new_message", payload)
 		return e
 	})
 	if err != nil {
 		return domain.Message{}, err
 	}
 	if i.chPub != nil {
-		_ = i.chPub.PublishToChannel(ctx, sp.ChatID, frame("new_message", messageUpdatePayload(msg)))
+		_ = i.chPub.PublishToChannel(ctx, sp.ChatID, frameChannelPts("new_message", messageUpdatePayload(msg), pts))
 	}
 	return msg, nil
 }

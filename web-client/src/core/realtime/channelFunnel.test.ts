@@ -1,0 +1,100 @@
+// src/core/realtime/channelFunnel.test.ts
+import { describe, it, expect, vi } from 'vitest'
+import { newChannelFunnel, type ChannelDiff } from './channelFunnel'
+
+// Тестовый жгут: записываем dispatch(t,pts?), храним курсоры в памяти, difference —
+// программируемая очередь ответов.
+function harness(diffs: ChannelDiff[] = []) {
+  const dispatched: { t: string; d: unknown }[] = []
+  const saved = new Map<number, number>()
+  const stored = new Map<number, number>()
+  let diffIdx = 0
+  const getDifference = vi.fn(async (_chatId: number, _since: number): Promise<ChannelDiff> => {
+    return diffs[diffIdx++] ?? { updates: [], pts: _since, slice: false }
+  })
+  const funnel = newChannelFunnel({
+    dispatch: (t, d) => dispatched.push({ t, d }),
+    getDifference,
+    loadPts: async (id) => stored.get(id) ?? null,
+    savePts: (id, pts) => saved.set(id, pts),
+  })
+  return { funnel, dispatched, saved, stored, getDifference }
+}
+
+const post = (chatId: number, pts: number) => ({ t: 'new_message', pts, d: { chat_id: chatId, channel_pts: pts, msg_id: pts } })
+
+describe('channelFunnel.applyLive', () => {
+  it('первый живой кадр сидирует курсор и применяется без реплея', () => {
+    const h = harness()
+    h.funnel.applyLive(1, 'new_message', 5, post(1, 5).d)
+    expect(h.dispatched).toHaveLength(1)
+    expect(h.saved.get(1)).toBe(5)
+    // ни одного difference-запроса — историю грузит окно, не funnel
+    expect(h.getDifference).not.toHaveBeenCalled()
+  })
+
+  it('next применяется и двигает курсор; dup отбрасывается', () => {
+    const h = harness()
+    h.funnel.applyLive(1, 'new_message', 5, {})   // seed
+    h.funnel.applyLive(1, 'new_message', 6, {})   // next
+    h.funnel.applyLive(1, 'new_message', 6, {})   // dup
+    h.funnel.applyLive(1, 'new_message', 4, {})   // dup (позади)
+    expect(h.dispatched).toHaveLength(2)
+    expect(h.saved.get(1)).toBe(6)
+  })
+
+  it('gap придерживается и дренажится, когда дыру закрывает следующий кадр', () => {
+    const h = harness()
+    h.funnel.applyLive(1, 'new_message', 5, {})   // seed → cursor 5
+    h.funnel.applyLive(1, 'new_message', 7, { hole: true }) // gap → буфер
+    expect(h.dispatched).toHaveLength(1)          // 7 придержан
+    h.funnel.applyLive(1, 'new_message', 6, {})   // next закрывает дыру → 6, затем дренаж 7
+    expect(h.dispatched).toHaveLength(3)
+    expect(h.saved.get(1)).toBe(7)
+  })
+
+  it('курсоры per-channel независимы', () => {
+    const h = harness()
+    h.funnel.applyLive(1, 'new_message', 5, {})
+    h.funnel.applyLive(2, 'new_message', 100, {})
+    expect(h.saved.get(1)).toBe(5)
+    expect(h.saved.get(2)).toBe(100)
+  })
+})
+
+describe('channelFunnel.open', () => {
+  it('со stored pts добирает пропущенное через типизированный difference', async () => {
+    const h = harness([{ updates: [
+      { t: 'new_message', pts: 4, d: {} },
+      { t: 'chat_update', pts: 5, d: {} },
+    ], pts: 5, slice: false }])
+    h.stored.set(1, 3)
+    await h.funnel.open(1)
+    await Promise.resolve()
+    expect(h.getDifference).toHaveBeenCalledWith(1, 3)
+    expect(h.dispatched.map((x) => x.t)).toEqual(['new_message', 'chat_update'])
+    expect(h.saved.get(1)).toBe(5)
+  })
+
+  it('без stored pts не ходит в difference (первый live сидирует)', async () => {
+    const h = harness()
+    await h.funnel.open(1)
+    expect(h.getDifference).not.toHaveBeenCalled()
+  })
+})
+
+describe('channelFunnel gap → difference', () => {
+  it('по таймауту недобранной дыры уходит в difference', async () => {
+    vi.useFakeTimers()
+    try {
+      const h = harness([{ updates: [{ t: 'new_message', pts: 6, d: {} }], pts: 6, slice: false }])
+      h.funnel.applyLive(1, 'new_message', 5, {})   // seed
+      h.funnel.applyLive(1, 'new_message', 7, {})   // gap, дыру никто не закрыл
+      expect(h.getDifference).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(300)         // SYNC_DELAY прошёл
+      expect(h.getDifference).toHaveBeenCalledWith(1, 5)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})

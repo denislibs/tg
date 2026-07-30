@@ -55,12 +55,20 @@ func TestChannelFlow_HTTP(t *testing.T) {
 		t.Fatalf("difference: %d %s", rec.Code, rec.Body.String())
 	}
 	var diff struct {
-		Updates []json.RawMessage `json:"updates"`
-		Pts     int64             `json:"pts"`
+		Updates []struct {
+			T   string          `json:"t"`
+			Pts int64           `json:"pts"`
+			D   json.RawMessage `json:"d"`
+		} `json:"updates"`
+		Pts int64 `json:"pts"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &diff)
 	if len(diff.Updates) != 2 || diff.Pts != 2 {
 		t.Fatalf("difference = %+v (%s)", diff, rec.Body.String())
+	}
+	// typed envelope {t,pts,d}: posts carry type new_message with the dense pts
+	if diff.Updates[0].T != "new_message" || diff.Updates[0].Pts != 1 {
+		t.Fatalf("update[0] = {t:%q pts:%d}; want new_message/1", diff.Updates[0].T, diff.Updates[0].Pts)
 	}
 
 	// search?q= finds the public channel by username.

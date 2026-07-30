@@ -1,20 +1,8 @@
 // src/core/managers/channelsManager.test.ts
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { newChannelsManager } from './channelsManager'
 import type { RestClient } from '../net/restClient'
 import type { RawMessage } from '../models'
-import { idbGet, idbSet } from '../store/idbKv'
-
-vi.mock('../store/idbKv', () => ({
-  idbGet: vi.fn(async () => 0),
-  idbSet: vi.fn(async () => {}),
-}))
-
-beforeEach(() => {
-  vi.mocked(idbGet).mockClear()
-  vi.mocked(idbSet).mockClear()
-  vi.mocked(idbGet).mockResolvedValue(0 as never)
-})
 
 function raw(seq: number): RawMessage {
   return {
@@ -44,20 +32,6 @@ describe('ChannelsManager.post', () => {
     expect(m.chatId).toBe(7)
     expect(m.seq).toBe(6)
     expect(m.text).toBe('m6')
-  })
-})
-
-describe('ChannelsManager.getDifference', () => {
-  it('reads stored pts, GETs difference, returns ascending and persists new pts', async () => {
-    vi.mocked(idbGet).mockResolvedValue(3 as never)
-    const get = vi.fn(async () => ({ updates: [raw(6), raw(4), raw(5)], pts: 6 }))
-    const rest = { post: vi.fn(), get } as unknown as RestClient
-    const mgr = newChannelsManager({ rest })
-    const msgs = await mgr.getDifference(7)
-    expect(idbGet).toHaveBeenCalledWith('chpts:7')
-    expect(get).toHaveBeenCalledWith('/channels/7/difference', { pts: 3 })
-    expect(msgs.map((m) => m.seq)).toEqual([4, 5, 6])
-    expect(idbSet).toHaveBeenCalledWith('chpts:7', 6)
   })
 })
 

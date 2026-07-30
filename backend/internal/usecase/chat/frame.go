@@ -38,6 +38,15 @@ func framePts(t string, base map[string]any, pts int64) []byte {
 	return frameFields(t, base, map[string]any{"pts": pts})
 }
 
+// frameChannelPts encodes {t, d} with the channel's pts injected into d as
+// channel_pts (a per-channel dense cursor, distinct from the per-user pts). The
+// client routes any frame carrying channel_pts + chat_id through its per-channel
+// funnel and gates it against the channel cursor — the same envelope the typed
+// GET /channels/{id}/difference replays for catch-up.
+func frameChannelPts(t string, base map[string]any, pts int64) []byte {
+	return frameFields(t, base, map[string]any{"channel_pts": pts})
+}
+
 func messageUpdatePayload(m domain.Message) map[string]any {
 	p := map[string]any{
 		"chat_id": m.ChatID, "msg_id": m.ID, "seq": m.Seq,

@@ -256,5 +256,6 @@ func (u UserCard) ShortName() string {
 type ChannelUpdate struct {
 	Pts      int64
 	PtsCount int
+	Type     string // тип апдейта (new_message/chat_update/boost_update) — для типизированного difference
 	Payload  []byte
 }
