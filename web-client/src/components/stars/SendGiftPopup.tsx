@@ -21,10 +21,12 @@ import s from './stars.module.scss'
 const EASE: [number, number, number, number] = [0.4, 0, 0.2, 1]
 
 export default function SendGiftPopup({
-  open, onClose, toUserId, toName, onSent,
+  open, onClose, onExitComplete, toUserId, toName, onSent,
 }: {
   open: boolean
   onClose: () => void
+  /** вызывается после exit-анимации — для управления из popupStore (снять со стека) */
+  onExitComplete?: () => void
   toUserId: number
   toName: string
   onSent?: () => void
@@ -64,7 +66,7 @@ export default function SendGiftPopup({
 
   return createPortal(
     <>
-      <AnimatePresence>
+      <AnimatePresence onExitComplete={onExitComplete}>
         {open && (
           <motion.div
             className={s.overlay}

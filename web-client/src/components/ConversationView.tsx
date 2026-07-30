@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import Text from '../shared/ui/Text'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -61,11 +61,19 @@ import { type MessageEntity } from '../core/models'
 import type { InlineResult } from '../core/managers/botsManager'
 import { openWebApp } from '../core/webapp'
 import { useSearchStore } from '../stores/searchStore'
-import ConversationOverlays from './conversation/ConversationOverlays'
-import { useConversationPopups } from '../core/hooks/useConversationPopups'
+import { useChatPopups } from '../core/hooks/useChatPopups'
+import { clearPopups } from '../stores/popupStore'
+import ChatMsgActionPopups from './conversation/ChatMsgActionPopups'
+import SendMediaPopup from './messages/SendMediaPopup'
+import { joinGroupCall } from '../core/calls/groupCallEngine'
+import { watchLivestream } from '../core/calls/livestreamEngine'
 import classNames from '../shared/lib/classNames'
 import s from './ConversationView.module.scss'
 import useMediaQuery from '../shared/lib/useMediaQuery'
+
+// Инфо-панель и просмотрщик медиа — не первый кадр; ленивые чанки.
+const UserInfoPanel = lazy(() => import('./UserInfoPanel'))
+const MediaLightbox = lazy(() => import('./messages/MediaLightbox'))
 
 // tweb's exact bubbles-scrollable fade: a pure alpha mask on the scroll viewport
 // (no blur, no colour) so messages simply fade out to a 0.24 floor behind the
@@ -174,7 +182,6 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const draftPeerId = chat.id.startsWith('draft:') ? Number(chat.id.slice('draft:'.length)) : null
   const meId = useChatsStore((s) => s.meId)
   const me = useChatsStore((s) => s.me)
-  const allDialogs = useChatsStore((s) => s.dialogs)
 
   const typingLabel = useTypingLabel(numericChatId, isGroup)
   const peerPresence = useChatsStore((s) => (chat.peerId != null ? s.presence[chat.peerId] : undefined))
@@ -278,9 +285,11 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const { playVoice, attachRound, playerOffset } = useVoiceQueue({
     win, isRealChat, meId, meName: me?.displayName, peers, chatName: chat.name, numericChatId, lang,
   })
-  // Реестр UI-попапов колонки (инфо-панель, меню, пикеры, попапы канала…) — весь
-  // рендер оверлеев ушёл в <ConversationOverlays>; тут только открываем их из хендлеров.
-  const popups = useConversationPopups()
+  // Инфо-панель — локальный toggle (сосуществует с gift-попапом поверх профиля).
+  // Остальные попапы колонки открываются императивно через popupStore (useChatPopups).
+  const [infoOpen, setInfoOpen] = useState(false)
+  // Попапы чат-скоупные: снимаем их со стека при уходе с чата (колонка ремаунтится по key).
+  useEffect(() => () => clearPopups(), [])
   // ⋮-меню тред-шапки требует права «Закрыть тему»
   const [canManageTopic, setCanManageTopic] = useState(false)
   useEffect(() => {
@@ -302,7 +311,6 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const [scheduledCount, setScheduledCount] = useState(0)
   useEffect(() => {
     setScheduledCount(0)
-    popups.setScheduledOpen(false)
     if (!isRealChat) return
     void managers.messages.listScheduled(numericChatId).then((l) => setScheduledCount(l.length)).catch(() => undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -334,7 +342,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       .scheduleMessage(numericChatId, { text, entities, sendAt: sendAtUnix })
       .then(() => {
         setScheduledCount((c) => c + 1)
-        popups.setScheduledOpen(true) // tweb: после планирования открывает scheduled-вид
+        pop.openScheduled() // tweb: после планирования открывает scheduled-вид
       })
   })
   // «Отправить, когда онлайн» (tweb canSendWhenOnline): личный чат (не сам с собой),
@@ -349,7 +357,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       .scheduleMessage(numericChatId, { text, entities, sendAt: 0, whenOnline: true })
       .then(() => {
         setScheduledCount((c) => c + 1)
-        popups.setScheduledOpen(true)
+        pop.openScheduled()
       })
   })
   // Scroll state machine (refs + bottom-pin intent + history pagination + scroll-restore
@@ -385,7 +393,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const { selected, setSelected, setSelectionMode, selecting, toggleSelect, clearSelection, dragSelect } =
     useChatSelection(scrollRef)
   // Enter selection mode from the header menu with nothing selected yet.
-  const startSelectMode = () => { setSelectionMode(true); popups.setHeaderMenu(null) }
+  const startSelectMode = () => setSelectionMode(true)
 
   // Удаление чата / выход. Владелец группы/канала удаляет для всех (DELETE
   // /chats/{id}); иначе — выхожу сам (DELETE members/me), приватный чат так же
@@ -643,7 +651,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const toggleMute = () => {
     if (!isRealChat) return
     if (muted) applyMute(false)
-    else popups.setMuteOpen(true)
+    else pop.openMute()
   }
 
   // Добавление участников: полноценный под-экран живёт в UserInfoPanel
@@ -715,8 +723,8 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
 
   // Stable handlers for the extracted header/pinned bars so their memo holds
   // across the parent's transient re-renders.
-  const onToggleInfo = useEvent(() => popups.setInfoOpen((o) => !o))
-  const onOpenHeaderMenu = useEvent((r: DOMRect) => popups.setHeaderMenu({ top: r.bottom + 6, right: window.innerWidth - r.right }))
+  const onToggleInfo = useEvent(() => setInfoOpen((o) => !o))
+  const onOpenHeaderMenu = useEvent((r: DOMRect) => pop.openHeaderMenu({ top: r.bottom + 6, right: window.innerWidth - r.right }))
   const onUnpin = useEvent((id: number) => { void managers.messages.unpin(numericChatId, id) })
   // Клик по пин-плашке (tweb followPinnedMessage): прыжок к показанному пину,
   // бар перелистывается на следующий (более старый, циклически).
@@ -724,7 +732,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     const m = followPin()
     if (m) jumpToSeqE(m.seq)
   })
-  const onOpenPinList = useEvent(() => popups.setPinnedOpen(true))
+  const onOpenPinList = useEvent(() => pop.openPinned())
   // Право «Открепить все» (tweb canPinMessage): приватный/личный чат — всегда;
   // группа/канал — создатель или админ с RightPinMessages (1<<5).
   const canUnpinAll = chat.type === 'private' || chat.type === 'saved' ||
@@ -776,7 +784,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     openForwardFrom(forward.sourceChatId, forward.msgIds, { count: forward.count, text: forward.text, hasCaption: forward.hasCaption })
     setForward(null)
   })
-  const onComposerOpenAttach = useEvent((r: DOMRect) => popups.setAttachAnchor({ left: r.left, bottom: window.innerHeight - r.top + 8 }))
+  const onComposerOpenAttach = useEvent((r: DOMRect) => pop.openAttach({ left: r.left, bottom: window.innerHeight - r.top + 8 }))
   // Files pasted/dropped into the composer → open the same media-preview popup as
   // the attach button (lets the user add a caption + choose media/file).
   const onComposerPasteFiles = useEvent((files: File[]) => setPendingMedia({ files, asFile: false }))
@@ -827,6 +835,20 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // панель топиков в ЛЕВОМ сайдбаре (Sidebar → TopicsPanel); тред топика — этот же
   // компонент в thread-режиме, а «Показать как сообщения» — обычный чат.
 
+  // Фасад открытия императивных попапов колонки (меню/пикеры/подтверждения/попапы
+  // канала) через popupStore. Объявлен после всех зависимостей; хендлеры выше
+  // зовут его лениво (по событию), так что порядок не важен.
+  const pop = useChatPopups({
+    chat, numericChatId, isRealChat, isChannel,
+    activeThemeId, muted, owned, thread, canManageTopic,
+    canAddMember, canCreateGiveaway, canUnpinAll, pins, deleteLabels, livestreamActive,
+    setInfoOpen,
+    applyMute, toggleMute, startSelectMode, setSelectionMode,
+    doDeleteChat, doClearHistory, openPicker, sendGeo, sendContact, setPendingMedia,
+    slowmodeMarkSent, jumpToSeq: jumpToSeqE, setScheduledCount,
+    onOpenPeer, onCloseThread,
+  })
+
   return (
     <CallProvider chat={chat}>
     <div className={s.root} style={themeStyle}>
@@ -852,7 +874,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
             ) : (
               <TgIcon name="comments" size={26} color="var(--tg-accent)" />
             )}
-            <div className={s.threadHeaderBody} onClick={() => popups.setInfoOpen(true)} style={{ cursor: 'pointer' }}>
+            <div className={s.threadHeaderBody} onClick={() => setInfoOpen(true)} style={{ cursor: 'pointer' }}>
               <Text noWrap weight={600} size={15.5} color="var(--tg-textPrimary)">{thread.title}</Text>
               <Text noWrap size={12.5} color="var(--tg-textSecondary)">{thread.subtitle ?? chat.name}</Text>
             </div>
@@ -860,7 +882,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
             <IconButton
               onClick={(e) => {
                 const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
-                popups.setThreadMenu({ top: r.bottom + 6, right: window.innerWidth - r.right })
+                pop.openThreadMenu({ top: r.bottom + 6, right: window.innerWidth - r.right })
               }}
               color="var(--tg-textFaint)"
             >
@@ -1089,7 +1111,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               canSendWhenOnline={canSendWhenOnline}
               onSendWhenOnline={canSendWhenOnline ? onComposerSendWhenOnline : undefined}
               scheduledCount={scheduledCount}
-              onOpenScheduled={() => popups.setScheduledOpen(true)}
+              onOpenScheduled={() => pop.openScheduled()}
               slowmodeLeft={slowmodeLeft}
               secret={chat.type === 'secret'}
               canSendMedia={canSendMedia}
@@ -1119,7 +1141,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
             </motion.div>
             {/* Не-постер канала предлагает пост админам (Telegram suggested posts) */}
             {isChannel && isRealChat && (
-              <motion.div whileTap={{ scale: 0.995 }} className={s.muteBtn} onClick={() => popups.setSuggestOpen(true)}>
+              <motion.div whileTap={{ scale: 0.995 }} className={s.muteBtn} onClick={() => pop.openSuggest()}>
                 <TgIcon name="add" size={20} color="var(--tg-accent)" />
                 <Text weight={600} size={15.5} color="var(--tg-accent)">{t('Suggest a Post')}</Text>
               </motion.div>
@@ -1131,50 +1153,72 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
         )}
       </div>
 
-      <ConversationOverlays
-        chat={chat}
-        numericChatId={numericChatId}
-        isRealChat={isRealChat}
-        isChannel={isChannel}
-        meId={meId}
-        meName={me?.displayName}
-        allDialogs={allDialogs}
-        activeThemeId={activeThemeId}
-        muted={muted}
-        owned={owned}
-        thread={thread}
-        canManageTopic={canManageTopic}
-        canAddMember={canAddMember}
-        canCreateGiveaway={canCreateGiveaway}
-        canUnpinAll={canUnpinAll}
-        pins={pins}
-        lightbox={lightbox}
-        deleteLabels={deleteLabels}
-        livestreamActive={livestreamActive}
-        groupCallActive={groupCallActive}
-        myGroupCallChat={myGroupCallChat}
-        myWatchingChat={myWatchingChat}
-        pendingMedia={pendingMedia}
-        popups={popups}
-        msgActions={msgActions}
-        onOpenPeer={onOpenPeer}
-        onCloseThread={onCloseThread}
-        applyMute={applyMute}
-        toggleMute={toggleMute}
-        startSelectMode={startSelectMode}
-        setSelectionMode={setSelectionMode}
-        doDeleteChat={doDeleteChat}
-        doClearHistory={doClearHistory}
-        openPicker={openPicker}
-        sendGeo={sendGeo}
-        sendContact={sendContact}
-        setPendingMedia={setPendingMedia}
-        sendPendingMedia={sendPendingMedia}
-        slowmodeMarkSent={slowmodeMarkSent}
-        closeLightbox={closeLightbox}
-        jumpToSeq={jumpToSeqE}
-        setScheduledCount={setScheduledCount}
-      />
+      {/* Инфо-панель (private / group / channel) — локальный toggle; поверх неё
+          может открыться gift-попап (стек popupStore). */}
+      <Suspense fallback={null}>
+      <AnimatePresence>
+        {infoOpen && (
+          <UserInfoPanel
+            chat={chat}
+            onClose={() => setInfoOpen(false)}
+            onOpenPeer={onOpenPeer}
+            canAddMembers={canAddMember}
+            onEditContact={() => { setInfoOpen(false); pop.openEditContact() }}
+            onSendGift={chat.type === 'private' && chat.peerId != null && chat.peerId !== meId ? pop.openGift : undefined}
+          />
+        )}
+      </AnimatePresence>
+      </Suspense>
+
+      {/* Баннер идущего видеочата (tweb topbar-call): Join, пока сам не в звонке */}
+      {isRealChat && !thread && groupCallActive.length > 0 && myGroupCallChat !== numericChatId && (
+        <div className={s.groupCallBanner} onClick={() => void joinGroupCall(numericChatId)}>
+          <TgIcon name="videochat" size={18} color="#fff" />
+          <Text size={14} weight={600} color="#fff" style={{ flex: 1 }}>
+            {t('Video Chat')} · {groupCallActive.length} {t('participants')}
+          </Text>
+          <Text size={14} weight={700} color="#fff">{t('Join')}</Text>
+        </div>
+      )}
+
+      {/* Баннер идущей RTMP-трансляции (tweb topbarLive): смотреть, пока сам не смотришь */}
+      {isRealChat && !thread && livestreamActive && myWatchingChat !== numericChatId && (
+        <div className={s.groupCallBanner} onClick={() => watchLivestream(numericChatId)}>
+          <TgIcon name="livestream" size={18} color="#fff" />
+          <Text size={14} weight={600} color="#fff" style={{ flex: 1 }}>
+            {t('Live Stream')}
+          </Text>
+          <Text size={14} weight={700} color="#fff">{t('Join')}</Text>
+        </div>
+      )}
+
+      {/* Превью-отправка медиа (буфер обмена/attach) — state-driven из useChatSend */}
+      {pendingMedia && (
+        <SendMediaPopup
+          files={pendingMedia.files}
+          initialAsFile={pendingMedia.asFile}
+          onClose={() => setPendingMedia(null)}
+          onSend={(caption, asFile, paidPrice) => { void sendPendingMedia(caption, asFile, paidPrice); slowmodeMarkSent() }}
+        />
+      )}
+
+      {/* Просмотрщик медиа (lightbox) — state-driven из useLightbox */}
+      {lightbox && (
+        <Suspense fallback={null}>
+          <MediaLightbox
+            items={lightbox.items}
+            index={lightbox.index}
+            originRect={lightbox.originRect}
+            originSrc={lightbox.originSrc}
+            originEl={lightbox.originEl}
+            onClosingStart={() => { lightbox.originEl.style.visibility = '' }}
+            onClose={closeLightbox}
+          />
+        </Suspense>
+      )}
+
+      {/* Попапы действий над сообщением (state-driven из useMessageActions) */}
+      <ChatMsgActionPopups msgActions={msgActions} numericChatId={numericChatId} isRealChat={isRealChat} />
 
     </div>
     </CallProvider>
