@@ -1,0 +1,191 @@
+// src/core/managers/messages/reactionMethods.ts
+//
+// Реакции + теги «Избранного» + платная ⭐-реакция (порт tweb appReactions).
+// Выделено из God-объекта messagesManager: зависит от rest, точечного патча SSOT
+// (patchMsg) и meId (для деривации `mine`) через ctx. Публичный API не меняется —
+// методы спредятся в объект messagesManager; типы реэкспортятся оттуда же.
+import { reactionDelta } from '../../reactionDelta'
+import type { Message } from '../../models'
+import type { ReactionEvt, StarReactionEvt } from '../../realtime/events'
+import type { MessagesCtx } from './ctx'
+
+/** Кто отреагировал (для попапа who-reacted). */
+export interface ReactionUser {
+  userId: number
+  name: string
+  username: string
+  avatarUrl: string
+  emoji: string
+}
+
+interface RawReactionUser {
+  user_id: number
+  name: string
+  username: string
+  avatar_url: string
+  emoji: string
+}
+
+/** Тег-реакция «Избранного»: реакция (эмодзи/id кастом-эмодзи), имя и счётчик. */
+export interface SavedTag {
+  reaction: string
+  title: string
+  count: number
+}
+
+interface RawSavedTag {
+  reaction: string
+  title?: string
+  count: number
+}
+
+/** Один отправитель платной ⭐-реакции (топ-отправители попапа). Анонимный —
+ * без личности (userId 0, пустое имя): рисуется как «Anonymous». */
+export interface StarSender {
+  userId: number
+  name: string
+  avatarUrl: string
+  stars: number
+  anonymous: boolean
+}
+
+interface RawStarSender {
+  user_id: number
+  name: string
+  username: string
+  avatar_url: string
+  stars: number
+  anonymous: boolean
+}
+
+/** Агрегат платной ⭐-реакции сообщения: сумма звёзд, мой вклад, топ-отправители. */
+export interface StarReactionInfo {
+  total: number
+  mine: number
+  top: StarSender[]
+}
+
+/** Результат отправки платной ⭐-реакции: новый агрегат + мой новый баланс. */
+export interface StarReactionResult extends StarReactionInfo {
+  balance: number
+}
+
+function mapStarSenders(rows: RawStarSender[] | undefined): StarSender[] {
+  return (rows ?? []).map((s) => ({
+    userId: s.user_id,
+    name: s.name,
+    avatarUrl: s.avatar_url,
+    stars: s.stars,
+    anonymous: s.anonymous,
+  }))
+}
+
+export function newReactionMethods({ rest, patchMsg, getMeId }: MessagesCtx) {
+  // Дельта реакции (count±1 по emoji) → SSOT. `mine` = моё ли действие
+  // (user_id === meId). null из дельты — эхо своего уже применённого действия, no-op.
+  const applyReactionToCache = (evt: ReactionEvt): void => {
+    const mine = evt.user_id === (getMeId?.() ?? null)
+    patchMsg(evt.chat_id, (m) => m.id === evt.msg_id, (m: Message) => {
+      const next = reactionDelta(m.reactions, evt.emoji, evt.action, mine)
+      return next === null ? null : { ...m, reactions: next }
+    })
+  }
+  // АБСОЛЮТНЫЙ агрегат (серверное эхо с counts) → SSOT verbatim; `mine` деривим.
+  // Идемпотентно на реплей (catch-up), поэтому дедуп по pts тут не нужен.
+  const applyAbsoluteReactionToCache = (evt: ReactionEvt): void => {
+    const counts = evt.counts ?? []
+    const isMine = evt.user_id === (getMeId?.() ?? null)
+    patchMsg(evt.chat_id, (m) => m.id === evt.msg_id, (m: Message) => {
+      const prevMine = new Set((m.reactions ?? []).filter((r) => r.mine).map((r) => r.emoji))
+      const next = counts.map((c) => {
+        let mine = prevMine.has(c.emoji)
+        if (isMine && c.emoji === evt.emoji) mine = evt.action === 'add'
+        return { emoji: c.emoji, count: c.count, mine }
+      })
+      return { ...m, reactions: next.length ? next : undefined }
+    })
+  }
+  // Платная ⭐-реакция → SSOT: total авторитетен, свой вклад (mine) — только для
+  // собственного действия (sender_id === meId), иначе сохраняем кэшированный.
+  const applyStarToCache = (evt: StarReactionEvt): void => {
+    const isMine = evt.sender_id === (getMeId?.() ?? null)
+    patchMsg(evt.chat_id, (m) => m.id === evt.msg_id,
+      (m: Message) => ({ ...m, starReaction: { total: evt.total, mine: isMine ? evt.mine : (m.starReaction?.mine ?? 0) } }))
+  }
+
+  return {
+    // ── Live-кадры funnel'а (worker APPLY зовёт messages.cacheX) → SSOT ──
+    // С counts (серверное эхо/catch-up) — АБСОЛЮТНЫЙ set; без counts (оптимистичный
+    // клик до эха) — дельта.
+    cacheReaction(evt: ReactionEvt): void {
+      if (evt.counts) applyAbsoluteReactionToCache(evt)
+      else applyReactionToCache(evt)
+    },
+    cacheStarReaction(evt: StarReactionEvt): void {
+      applyStarToCache(evt)
+    },
+
+    // Реакции: поставить/снять свою. Оптимистика в SSOT воркера (tweb sendReaction)
+    // — применяем локально ДО сети; на ошибке сети — откат обратной дельтой. meId
+    // обязателен для верной деривации `mine`; пока не разрешён (старт) — ждём эхо.
+    async react(chatId: number, msgId: number, emoji: string): Promise<void> {
+      const me = getMeId?.() ?? null
+      if (me != null) applyReactionToCache({ chat_id: chatId, msg_id: msgId, user_id: me, emoji, action: 'add' })
+      try {
+        await rest.post(`/chats/${chatId}/messages/${msgId}/reactions`, { emoji })
+      } catch (e) {
+        if (me != null) applyReactionToCache({ chat_id: chatId, msg_id: msgId, user_id: me, emoji, action: 'remove' })
+        throw e
+      }
+    },
+
+    async unreact(chatId: number, msgId: number, emoji: string): Promise<void> {
+      const me = getMeId?.() ?? null
+      if (me != null) applyReactionToCache({ chat_id: chatId, msg_id: msgId, user_id: me, emoji, action: 'remove' })
+      try {
+        await rest.del(`/chats/${chatId}/messages/${msgId}/reactions/${encodeURIComponent(emoji)}`)
+      } catch (e) {
+        if (me != null) applyReactionToCache({ chat_id: chatId, msg_id: msgId, user_id: me, emoji, action: 'add' })
+        throw e
+      }
+    },
+
+    // Кто отреагировал (who-reacted попап). Член чата — проверяет бэк.
+    async reactionUsers(chatId: number, msgId: number): Promise<ReactionUser[]> {
+      const r = await rest.get<{ users: RawReactionUser[] }>(`/chats/${chatId}/messages/${msgId}/reactions/users`)
+      return (r.users ?? []).map((u) => ({
+        userId: u.user_id,
+        name: u.name,
+        username: u.username,
+        avatarUrl: u.avatar_url,
+        emoji: u.emoji,
+      }))
+    },
+
+    // Теги-реакции «Избранного» (Telegram saved reaction tags): список тегов и имена.
+    async getSavedTags(): Promise<SavedTag[]> {
+      const r = await rest.get<{ tags: RawSavedTag[] }>('/saved/tags')
+      return (r.tags ?? []).map((t) => ({ reaction: t.reaction, title: t.title ?? '', count: t.count }))
+    },
+    // Задать/переименовать/очистить (пустой title) имя тега (updateSavedReactionTag).
+    async renameSavedTag(reaction: string, title: string): Promise<void> {
+      await rest.put(`/saved/tags/${encodeURIComponent(reaction)}`, { title })
+    },
+
+    // Платная ⭐-реакция: списать count звёзд, начислить автору, накопить вклад.
+    // Возвращает агрегат + топ-отправителей + мой баланс. Live-эхо star_reaction
+    // тоже придёт (идемпотентно правит total в сторе).
+    async sendStarReaction(chatId: number, msgId: number, count: number, anonymous: boolean): Promise<StarReactionResult> {
+      const r = await rest.post<{ star_reaction: { total: number; mine: number }; top: RawStarSender[]; balance: number }>(
+        `/chats/${chatId}/messages/${msgId}/star_reaction`, { count, anonymous })
+      applyStarToCache({ chat_id: chatId, msg_id: msgId, sender_id: getMeId?.() ?? 0, total: r.star_reaction.total, mine: r.star_reaction.mine })
+      return { total: r.star_reaction.total, mine: r.star_reaction.mine, balance: r.balance, top: mapStarSenders(r.top) }
+    },
+    // Агрегат платной ⭐-реакции сообщения (total + мой вклад + топ-отправители).
+    async getStarReaction(chatId: number, msgId: number): Promise<StarReactionInfo> {
+      const r = await rest.get<{ star_reaction: { total: number; mine: number }; top: RawStarSender[] }>(
+        `/chats/${chatId}/messages/${msgId}/star_reaction`)
+      return { total: r.star_reaction.total, mine: r.star_reaction.mine, top: mapStarSenders(r.top) }
+    },
+  }
+}
