@@ -1,4 +1,4 @@
-import type { Lang } from '../i18n'
+import type { Lang } from '../../i18n'
 
 // Localized "N comments" label (tweb Chat.Title.Comments). Russian/Ukrainian use
 // the Slavic 1 / 2-4 / 5+ plural forms; other locales fall back to the English
