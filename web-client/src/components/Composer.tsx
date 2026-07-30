@@ -24,12 +24,12 @@ import InlineResultsHelper from './InlineResultsHelper'
 import type { InlineResult } from '../core/managers/botsManager'
 import type { Peer } from '../core/managers/peersManager'
 import type { SendAsPeer } from '../core/managers/chatsManager'
-import Avatar from '../shared/ui/Avatar'
-import { useAvatarSrc } from './useAvatarSrc'
-import { peerColor } from './peerColor'
-import { searchEmojisByWord } from './emoji/emojiData'
 import MarkupTooltip from './MarkupTooltip'
 import { serialize, apply as applyMarkup, entitiesToFragment, parseMarkdown } from '../core/richtext/markdown'
+import SendAsButton from './composer/SendAsButton'
+import RoundRecordPreview from './composer/RoundRecordPreview'
+import { MAX_LEN, SHORTCUTS, EFFECT_CHOICES, TTL_OPTIONS, ttlShort, htmlToRich, placeCaretEnd } from './composer/helpers'
+import { useComposerAutocomplete } from './composer/useComposerAutocomplete'
 import { playEmojiEffect, type EmojiEffectKind } from '../core/effects/emojiEffects'
 import type { EntityType, MessageEntity } from '../core/models'
 import { fmtDur, REC_WAVE_BARS, type VoiceRecorder } from '../core/hooks/useVoiceRecorder'
@@ -49,15 +49,6 @@ const EmojiDropdown = lazy(() => import('./emoji/EmojiDropdown'))
 
 const EASE_STD = EASE
 const DUR_OUT = DUR.out
-
-// Max message length (matches the backend's maxMessageRunes / Telegram's 4096).
-const MAX_LEN = 4096
-
-// Ctrl/Cmd + key → format. text_link is handled by the tooltip (needs a URL).
-const SHORTCUTS: Record<string, EntityType> = {
-  KeyB: 'bold', KeyI: 'italic', KeyU: 'underline',
-  KeyS: 'strikethrough', KeyM: 'code', KeyP: 'spoiler',
-}
 
 export interface ReplyState { msgId?: number; name: string; text: string; color: string; quote?: { text: string; offset: number }; chatId?: number; snapshotName?: string; snapshotText?: string }
 export interface EditState { msgId: number; text: string; entities?: MessageEntity[] }
@@ -135,120 +126,6 @@ interface Props {
   // Send-as (Telegram send_as): доступные «личности отправителя» (>1 → слева от
   // инпута аватар текущей + попап выбора). onSelect родитель запоминает per-chat.
   sendAs?: { peers: SendAsPeer[]; currentId: number; onSelect: (peerId: number) => void }
-}
-
-// SendAsButton — аватар текущей «личности отправителя» + попап выбора (tweb
-// new-message-send-as). Показывается только когда личностей >1.
-function SendAsButton({ peers, currentId, onSelect }: NonNullable<Props['sendAs']>) {
-  const t = useT()
-  const [open, setOpen] = useState(false)
-  const [pos, setPos] = useState<{ left: number; bottom: number } | null>(null)
-  const current = peers.find((p) => p.peerId === currentId) ?? peers[0]
-  const curSrc = useAvatarSrc(current.avatarUrl)
-  return (
-    <>
-      <button
-        type="button"
-        className={s.sendAsBtn}
-        title={t('Send As…')}
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={(e) => {
-          const r = e.currentTarget.getBoundingClientRect()
-          setPos({ left: r.left, bottom: window.innerHeight - r.top + 8 })
-          setOpen(true)
-        }}
-      >
-        <Avatar background={peerColor(current.title)} text={current.title[0] ?? '#'} src={curSrc || undefined} size={30} />
-      </button>
-      {pos && (
-        <Menu
-          open={open}
-          onClose={() => setOpen(false)}
-          onExitComplete={() => setPos(null)}
-          style={{ left: pos.left, bottom: pos.bottom, transformOrigin: 'bottom left', minWidth: 220 }}
-        >
-          <div className={s.sendAsHeader}>{t('Send As…')}</div>
-          {peers.map((p) => (
-            <SendAsRow
-              key={p.peerId}
-              peer={p}
-              active={p.peerId === currentId}
-              subtitle={p.kind === 'user' ? t('Personal account') : p.kind === 'group' ? t('Anonymously') : t('Your channels')}
-              onClick={() => { onSelect(p.peerId); setOpen(false) }}
-            />
-          ))}
-        </Menu>
-      )}
-    </>
-  )
-}
-
-function SendAsRow({ peer, active, subtitle, onClick }: { peer: SendAsPeer; active: boolean; subtitle: string; onClick: () => void }) {
-  const src = useAvatarSrc(peer.avatarUrl)
-  return (
-    <button type="button" className={s.sendAsRow} data-active={active || undefined} onClick={onClick}>
-      <Avatar background={peerColor(peer.title)} text={peer.title[0] ?? '#'} src={src || undefined} size={32} />
-      <div className={s.sendAsRowText}>
-        <Text size={14} weight={600}>{peer.title}</Text>
-        <Text size={12} color="var(--tg-textSecondary)">{subtitle}</Text>
-      </div>
-    </button>
-  )
-}
-
-// Выбор эффекта сообщения в send-меню: эмодзи → вид canvas-эффекта.
-const EFFECT_CHOICES: { emoji: string; kind: EmojiEffectKind }[] = [
-  { emoji: '🎉', kind: 'confetti' },
-  { emoji: '🎆', kind: 'fireworks' },
-  { emoji: '❤️', kind: 'hearts' },
-  { emoji: '👍', kind: 'thumbs' },
-  { emoji: '💩', kind: 'poop' },
-  { emoji: '🎂', kind: 'cake' },
-]
-
-// Таймер самоуничтожения для секретных чатов (tweb ttl options). null — «Выкл».
-const TTL_OPTIONS: { label: string; secs: number | null }[] = [
-  { label: 'Off', secs: null },
-  { label: '5с', secs: 5 },
-  { label: '10с', secs: 10 },
-  { label: '30с', secs: 30 },
-  { label: '1м', secs: 60 },
-  { label: '1ч', secs: 3600 },
-  { label: '1д', secs: 86400 },
-  { label: '1нед', secs: 604800 },
-]
-// Короткая подпись выбранного TTL для кнопки-часов.
-const ttlShort = (s: number): string =>
-  s < 60 ? `${s}с` : s < 3600 ? `${s / 60}м` : s < 86400 ? `${s / 3600}ч` : s < 604800 ? `${s / 86400}д` : `${s / 604800}нед`
-
-// URL schemes safe to keep on a pasted link (others are dropped — see RichText).
-const SAFE_SCHEMES = new Set(['http', 'https', 'mailto', 'tel', 'tg'])
-function isSafeUrl(u?: string): boolean {
-  if (!u) return false
-  const m = u.trim().match(/^([a-z][a-z0-9+.-]*):/i)
-  return !m || SAFE_SCHEMES.has(m[1].toLowerCase())
-}
-
-// Parse pasted HTML into our { text, entities }. Strips script/style/comments,
-// then reuses serialize() (which understands b/i/u/s/a/code/pre/blockquote +
-// inline styles). Unsafe links are dropped.
-function htmlToRich(html: string): { text: string; entities: MessageEntity[] } {
-  const cleaned = html
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<!--[\s\S]*?-->/g, '')
-  const doc = new DOMParser().parseFromString(cleaned, 'text/html')
-  const { text, entities } = serialize(doc.body)
-  return { text, entities: entities.filter((e) => e.type !== 'text_link' || isSafeUrl(e.url)) }
-}
-
-function placeCaretEnd(el: HTMLElement) {
-  const range = document.createRange()
-  range.selectNodeContents(el)
-  range.collapse(false)
-  const sel = window.getSelection()
-  sel?.removeAllRanges()
-  sel?.addRange(range)
 }
 
 function Composer({
@@ -697,165 +574,16 @@ function Composer({
     if (ed) { ed.focus(); placeCaretEnd(ed) }
   }
 
-  // ── Эмодзи-автокомплит (tweb emojiHelper): подсказки по слову у каретки ──
-  // idx = -1 — навигация «спит» до первой стрелки (tweb waitForKey для слова);
-  // для ':query' активируется сразу.
-  const [emojiSug, setEmojiSug] = useState<{ list: string[]; wordLen: number; idx: number } | null>(null)
-
-  // слово перед кареткой (в пределах одной текстовой ноды)
-  const caretWord = (): { word: string; node: Text; end: number } | null => {
-    const root = editorRef.current
-    const sel = window.getSelection()
-    if (!root || !sel || !sel.rangeCount || !sel.isCollapsed) return null
-    const range = sel.getRangeAt(0)
-    const node = range.startContainer
-    if (node.nodeType !== Node.TEXT_NODE || !root.contains(node)) return null
-    const text = (node.textContent ?? '').slice(0, range.startOffset)
-    const m = text.match(/(?:^|\s)(\S+)$/)
-    if (!m) return null
-    return { word: m[1], node: node as Text, end: range.startOffset }
-  }
-
-  // tweb checkAutocomplete: эмодзи-ветка — ':query' или обычное слово без :@/
-  const checkEmojiAutocomplete = () => {
-    const cw = caretWord()
-    if (!cw) {
-      setEmojiSug(null)
-      return
-    }
-    const colon = cw.word.startsWith(':')
-    const query = colon ? cw.word.slice(1) : cw.word
-    if ((!colon && /[:@/]/.test(cw.word)) || query.length < 2) {
-      setEmojiSug(null)
-      return
-    }
-    const list = searchEmojisByWord(query)
-    if (!list.length) {
-      setEmojiSug(null)
-      return
-    }
-    setEmojiSug((prev) => ({
-      list,
-      wordLen: cw.word.length,
-      // не сбрасывать активную позицию, если пользователь уже навигировал
-      idx: colon ? Math.max(0, prev?.idx ?? 0) : (prev?.idx ?? -1),
-    }))
-  }
-
-  // ── Inline-режим (tweb InlineHelper): весь инпут начинается с «@bot query» ──
-  const [inlineSug, setInlineSug] = useState<{ list: InlineResult[]; idx: number } | null>(null)
-  const inlineTimer = useRef<number | undefined>(undefined)
-  const inlineReq = useRef(0) // токен запроса — гасим гонки
-
-  // tweb checkInlineAutocomplete: строка вида «@username » (username 3–32) + запрос.
-  const checkInlineAutocomplete = () => {
-    if (!onInlineQuery) return
-    const text = editorRef.current?.textContent ?? ''
-    const m = text.match(/^@([a-zA-Z\d_]{3,32})\s([\s\S]*)$/)
-    if (!m) {
-      setInlineSug(null)
-      window.clearTimeout(inlineTimer.current)
-      return
-    }
-    const username = m[1]
-    const query = m[2]
-    const req = ++inlineReq.current
-    window.clearTimeout(inlineTimer.current)
-    // debounce 200мс (tweb debounce)
-    inlineTimer.current = window.setTimeout(() => {
-      void onInlineQuery(username, query).then((list) => {
-        if (req !== inlineReq.current) return // устарел
-        setInlineSug(list && list.length ? { list, idx: 0 } : null)
-      })
-    }, 200)
-  }
-  const pickInline = (r: InlineResult) => {
-    onPickInline?.(r)
-    setInlineSug(null)
-    clearEditor()
-    onDraftChange?.('')
-    const ed = editorRef.current
-    if (ed) { ed.focus(); placeCaretEnd(ed) }
-  }
-
-  // ── @упоминания (tweb mentionsHelper): участники группы по слову '@query' ──
-  const [mentionSug, setMentionSug] = useState<{ list: Peer[]; wordLen: number; idx: number } | null>(null)
-
-  const checkMentionAutocomplete = () => {
-    if (!mentions || mentions.length === 0) return
-    const cw = caretWord()
-    if (!cw || !cw.word.startsWith('@')) {
-      setMentionSug(null)
-      return
-    }
-    const q = cw.word.slice(1).toLowerCase()
-    const list = mentions
-      .filter((p) => {
-        if (!q) return true
-        if (p.username.toLowerCase().startsWith(q)) return true
-        return p.displayName.toLowerCase().split(/\s+/).some((w) => w.startsWith(q))
-      })
-      .slice(0, 20)
-    if (!list.length) {
-      setMentionSug(null)
-      return
-    }
-    setMentionSug((prev) => ({
-      list,
-      wordLen: cw.word.length,
-      idx: Math.min(Math.max(0, prev?.idx ?? 0), list.length - 1),
-    }))
-  }
-
-  // Выбор участника: с username — текст «@username » (распарсится как mention);
-  // без username — <a data-mention-id> → text_mention entity (tweb mentionUser).
-  const pickMention = (p: Peer) => {
-    const cw = caretWord()
-    const root = editorRef.current
-    if (cw && root) {
-      const start = Math.max(0, cw.end - (mentionSug?.wordLen ?? cw.word.length))
-      const r = document.createRange()
-      r.setStart(cw.node, start)
-      r.setEnd(cw.node, cw.end)
-      const sel = window.getSelection()
-      sel?.removeAllRanges()
-      sel?.addRange(r)
-      if (p.username) {
-        document.execCommand('insertText', false, `@${p.username} `)
-      } else {
-        const frag = document.createDocumentFragment()
-        const a = document.createElement('a')
-        a.className = 'md-mention'
-        a.dataset.mentionId = String(p.id)
-        a.textContent = p.displayName || `#${p.id}`
-        frag.appendChild(a)
-        frag.appendChild(document.createTextNode(' '))
-        insertFragment(frag)
-      }
-      syncEmpty()
-      autosize()
-    }
-    setMentionSug(null)
-  }
-
-  // выбор подсказки: заменить набранное слово эмодзи (tweb insertAtCaret с replaceText)
-  const pickEmojiSuggestion = (em: string) => {
-    const cw = caretWord()
-    const root = editorRef.current
-    if (cw && root) {
-      const start = Math.max(0, cw.end - (emojiSug?.wordLen ?? cw.word.length))
-      const r = document.createRange()
-      r.setStart(cw.node, start)
-      r.setEnd(cw.node, cw.end)
-      const sel = window.getSelection()
-      sel?.removeAllRanges()
-      sel?.addRange(r)
-      document.execCommand('insertText', false, em)
-      syncEmpty()
-      autosize()
-    }
-    setEmojiSug(null)
-  }
+  // Автокомплит инпута (эмодзи / inline «@bot query» / @упоминания) — вынесен в
+  // хук useComposerAutocomplete; стикер-саджесты остаются выше (завязаны на clearEditor).
+  const {
+    emojiSug, setEmojiSug, inlineSug, setInlineSug, mentionSug, setMentionSug,
+    checkEmojiAutocomplete, checkInlineAutocomplete, checkMentionAutocomplete,
+    pickEmojiSuggestion, pickMention, pickInline,
+  } = useComposerAutocomplete({
+    editorRef, mentions, onInlineQuery, onPickInline,
+    syncEmpty, autosize, insertFragment, clearEditor, onDraftChange,
+  })
 
   return (
     <>
@@ -1365,30 +1093,4 @@ function Composer({
     </>
   )
 }
-
-// Круглое зеркальное превью записываемого кружка по центру чата + кольцо
-// прогресса лимита (tweb: белая дуга бежит по кругу до 60с).
-const ROUND_LIMIT = 60
-function RoundRecordPreview({ stream, secs }: { stream: MediaStream; secs: number }) {
-  const ref = useRef<HTMLVideoElement>(null)
-  useEffect(() => {
-    if (ref.current) ref.current.srcObject = stream
-  }, [stream])
-  const C = 2 * Math.PI * 49
-  return (
-    <div className={s.roundPreviewWrap}>
-      <video ref={ref} className={s.roundPreview} autoPlay muted playsInline />
-      <svg className={s.roundProgress} viewBox="0 0 100 100">
-        <circle
-          cx="50" cy="50" r="49" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round"
-          strokeDasharray={C}
-          strokeDashoffset={C * (1 - Math.min(1, secs / ROUND_LIMIT))}
-          transform="rotate(-90 50 50)"
-          style={{ transition: 'stroke-dashoffset 1s linear' }}
-        />
-      </svg>
-    </div>
-  )
-}
-
 export default memo(Composer)
