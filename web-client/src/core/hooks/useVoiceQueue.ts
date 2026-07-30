@@ -7,7 +7,7 @@
 import { useMemo } from 'react'
 import { useAudioStore, type AudioTrack } from '../../stores/audioStore'
 import { markMediaPlayed } from '../mediaRead'
-import { friendlyMsgTime } from '../friendlyTime'
+import { friendlyMsgTime } from '../format/friendlyTime'
 import { peersKey } from './usePeers'
 import type { Peer } from '../managers/peersManager'
 import type { MessageWindow } from './useMessageWindow'

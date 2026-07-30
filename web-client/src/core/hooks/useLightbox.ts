@@ -5,7 +5,7 @@
 // clicked element's rect as the zoom origin, and hides the source thumbnail while
 // open so only the growing clone is visible (tweb behaviour).
 import { useState } from 'react'
-import { friendlyMsgTime } from '../friendlyTime'
+import { friendlyMsgTime } from '../format/friendlyTime'
 import type { Peer } from '../managers/peersManager'
 import type { MessageWindow } from './useMessageWindow'
 import type { LightboxItem } from '../../components/messages/MediaLightbox'

@@ -22,7 +22,7 @@ import { useChatSearch, type SearchMediaType } from '../../core/hooks/useChatSea
 import { usePeers } from '../../core/hooks/usePeers'
 import { useChatsStore } from '../../stores/chatsStore'
 import { gradientFor, SERVICE_USER_ID } from '../../core/dialogToChat'
-import { friendlyMsgTime } from '../../core/friendlyTime'
+import { friendlyMsgTime } from '../../core/format/friendlyTime'
 import { useT, useLang } from '../../i18n'
 import { useMemo } from 'react'
 import useMediaQuery from '../../shared/lib/useMediaQuery'

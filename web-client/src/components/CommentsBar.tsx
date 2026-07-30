@@ -1,7 +1,7 @@
 import TgIcon from './TgIcon'
 import Text from '../shared/ui/Text'
 import { useT, useLang } from '../i18n'
-import { commentsLabel } from '../core/commentsLabel'
+import { commentsLabel } from '../core/format/commentsLabel'
 import s from './CommentsBar.module.scss'
 
 // Recent-commenter avatars (decorative stack, as tweb shows the last few
