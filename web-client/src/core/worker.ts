@@ -39,6 +39,7 @@ import { newRealtime } from './realtime/realtime'
 import { newSyncEngine } from './realtime/syncEngine'
 import { newCursor, classifyPts } from './realtime/cursor'
 import { newPendingPts } from './realtime/pendingPts'
+import { newChannelFunnel, type ChannelDiff } from './realtime/channelFunnel'
 import { createSecretManager } from './managers/secretManager'
 import { RT, type NewMessageEvt } from './realtime/events'
 import { PASS_THROUGH, type LoggedWsType } from './realtime/eventCatalog'
@@ -236,13 +237,24 @@ function applyUpdate(t: string, pts: number | undefined, d: unknown, live: boole
   cursor.advance(pts)
 }
 
+// Per-channel pts-конверт (Волна 5): каналы гейтятся против собственного
+// channel_pts, а не общего пер-юзерного курсора. dispatch — тот же (SSOT+broadcast),
+// difference — типизированный конверт, курсор персистится в IDB (chpts:{id}).
+const channelFunnel = newChannelFunnel({
+  dispatch,
+  getDifference: (chatId, sincePts) => rest.get<ChannelDiff>(`/channels/${chatId}/difference`, { pts: sincePts }),
+  loadPts: (chatId) => idbGet<number>(`chpts:${chatId}`).then((v) => (typeof v === 'number' ? v : null)),
+  savePts: (chatId, pts) => { void idbSet(`chpts:${chatId}`, pts) },
+})
+
 const ws = new WsClient('/ws')
 const sync = newSyncEngine({
   rest, cursor,
   onUpdate: (item) => applyUpdate(item.t, item.pts, item.d, false),
   // Полный resync ставит курсор на серверный pts — придержанные out-of-order кадры
   // теперь либо дубли, либо оторванная «будущая» дыра; сбрасываем, чтобы не всплыли.
-  onResync: () => { clearPtsSync(); broadcast('rt:resync', null) },
+  // Канальные in-memory курсоры тоже забываем — переоткрытие пересидирует из IDB.
+  onResync: () => { clearPtsSync(); channelFunnel.reset(); broadcast('rt:resync', null) },
 })
 const conn = newConnectionManager({
   ws, getToken: () => tokens.get(),
@@ -270,6 +282,17 @@ const conn = newConnectionManager({
         void cursor.ready().then(() => { if (want !== cursor.get().pts) { clearPtsSync(); void sync.catchUp() } })
       }
       return
+    }
+    // Канальный кадр (пост или метаданные канала: chat_update/boost_update) несёт
+    // channel_pts + chat_id → per-channel funnel (свой курсор, difference-catch-up).
+    // Раньше new_message-ветки: посты канала приходят как new_message, но с
+    // channel_pts и без E2E (каналы — публичный broadcast, enc_body не бывает).
+    {
+      const cf = payload as { channel_pts?: number; chat_id?: number }
+      if (typeof cf?.channel_pts === 'number' && typeof cf?.chat_id === 'number') {
+        channelFunnel.applyLive(cf.chat_id, type, cf.channel_pts, payload)
+        return
+      }
     }
     // new_message: возможна E2E-расшифровка enc_body перед funnel → bespoke.
     if (type === 'new_message') {
@@ -314,7 +337,7 @@ const secret = createSecretManager({
   upload: (bytes, mime, size, fileName) => media.upload({ bytes, mime, size, fileName }),
 })
 
-const realtime = newRealtime({ conn, tokens, messages, broadcast })
+const realtime = newRealtime({ conn, tokens, messages, broadcast, channelFunnel })
 
 // Единый реестр менеджеров — единственный источник правды. UI-тип Managers
 // (bootstrap.ts) выводится из этого объекта (WorkerRegistry), поэтому рассинхрон

@@ -1,6 +1,5 @@
 import type { RestClient } from '../net/restClient'
 import { mapMessage, mapSuggestedPost, type Message, type RawMessage, type MessageEntity, type SuggestedPost, type RawSuggestedPost } from '../models'
-import { idbGet, idbSet } from '../store/idbKv'
 
 // Аргументы «предложить пост в канал» (Telegram suggested posts). publishAt —
 // желаемое время публикации в unix-секундах (0/undefined — как можно скорее).
@@ -26,15 +25,9 @@ export function newChannelsManager({ rest }: { rest: Pick<RestClient, 'post' | '
       const r = await rest.post<RawMessage>(`/channels/${chatId}/messages`, { text, client_msg_id: clientMsgId })
       return mapMessage(r)
     },
-    // Fetch posts newer than the stored pts; returns them ascending + advances stored pts.
-    async getDifference(chatId: number): Promise<Message[]> {
-      const pts = (await idbGet<number>(`chpts:${chatId}`)) ?? 0
-      const r = await rest.get<{ updates: RawMessage[]; pts: number }>(`/channels/${chatId}/difference`, { pts })
-      const msgs = (r.updates ?? []).map(mapMessage).sort((a, b) => a.seq - b.seq)
-      if (r.pts != null) await idbSet(`chpts:${chatId}`, r.pts)
-      return msgs
-    },
-    async setPts(chatId: number, pts: number): Promise<void> { await idbSet(`chpts:${chatId}`, pts) },
+    // catch-up канала (GET /channels/{id}/difference) ведёт per-channel funnel в
+    // воркере (channelFunnel), а не менеджер — курсор и гейтинг живут там же, где
+    // funnel обычных апдейтов. Здесь только команды/запросы к бэку.
     async join(username: string): Promise<void> { await rest.post('/channels/join', { username }) },
     async enableDiscussion(channelId: number): Promise<number> {
       const r = await rest.post<{ discussion_chat_id: number }>(`/channels/${channelId}/discussion`, {})

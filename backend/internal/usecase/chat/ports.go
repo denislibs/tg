@@ -279,8 +279,8 @@ type UpdateRepo interface {
 }
 
 type ChannelRepo interface {
-	// AppendUpdate bumps the channel's pts by 1 and records the update; returns the new pts.
-	AppendUpdate(ctx context.Context, channelID int64, payload json.RawMessage) (int64, error)
+	// AppendUpdate bumps the channel's pts by 1 and records the typed update; returns the new pts.
+	AppendUpdate(ctx context.Context, channelID int64, typ string, payload json.RawMessage) (int64, error)
 	UpdatesSince(ctx context.Context, channelID, sincePts int64, limit int) ([]domain.ChannelUpdate, error)
 	CurrentPts(ctx context.Context, channelID int64) (int64, error)
 }

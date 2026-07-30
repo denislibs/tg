@@ -49,3 +49,33 @@ func (i *Interactor) logAndPublish(ctx context.Context, recipients []int64, typ 
 	}
 	return nil
 }
+
+// logAndPublishChannel is the O(1) channel-broadcast counterpart of logAndPublish
+// for stateful channel updates (chat_update/boost_update): instead of fanning the
+// payload into every subscriber's per-user log (N rows + N publishes), it appends
+// ONE typed row to the channel_updates log (dense channel_pts) and PUBLISHes ONCE
+// to channel:{id}. Subscribers receive it live; the rest catch up on open via the
+// typed GET /channels/{id}/difference. base is an absolute snapshot, so replay is
+// idempotent. No-op without a channel log; publish skipped without a publisher.
+func (i *Interactor) logAndPublishChannel(ctx context.Context, channelID int64, typ string, base map[string]any) error {
+	if i.channels == nil {
+		return nil
+	}
+	payload, err := json.Marshal(base)
+	if err != nil {
+		return err
+	}
+	var pts int64
+	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		p, e := i.channels.AppendUpdate(ctx, channelID, typ, payload)
+		pts = p
+		return e
+	})
+	if err != nil {
+		return err
+	}
+	if i.chPub != nil {
+		_ = i.chPub.PublishToChannel(ctx, channelID, frameChannelPts(typ, base, pts))
+	}
+	return nil
+}

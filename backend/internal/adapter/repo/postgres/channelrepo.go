@@ -22,7 +22,7 @@ var _ usecasechat.ChannelRepo = (*ChannelRepo)(nil)
 
 func NewChannelRepo(pool *pgxpool.Pool) *ChannelRepo { return &ChannelRepo{pool: pool} }
 
-func (r *ChannelRepo) AppendUpdate(ctx context.Context, channelID int64, payload json.RawMessage) (int64, error) {
+func (r *ChannelRepo) AppendUpdate(ctx context.Context, channelID int64, typ string, payload json.RawMessage) (int64, error) {
 	q := querier(ctx, r.pool)
 	var pts int64
 	// atomically bump and read the channel pts (row-locked by the UPDATE)
@@ -32,8 +32,8 @@ func (r *ChannelRepo) AppendUpdate(ctx context.Context, channelID int64, payload
 		return 0, err
 	}
 	if _, err := q.Exec(ctx,
-		`INSERT INTO channel_updates (channel_id, pts, pts_count, payload) VALUES ($1,$2,1,$3)`,
-		channelID, pts, []byte(payload)); err != nil {
+		`INSERT INTO channel_updates (channel_id, pts, pts_count, type, payload) VALUES ($1,$2,1,$3,$4)`,
+		channelID, pts, typ, []byte(payload)); err != nil {
 		return 0, err
 	}
 	return pts, nil
@@ -41,7 +41,7 @@ func (r *ChannelRepo) AppendUpdate(ctx context.Context, channelID int64, payload
 
 func (r *ChannelRepo) UpdatesSince(ctx context.Context, channelID, sincePts int64, limit int) ([]domain.ChannelUpdate, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT pts, pts_count, payload FROM channel_updates
+		`SELECT pts, pts_count, type, payload FROM channel_updates
 		 WHERE channel_id=$1 AND pts>$2 ORDER BY pts ASC LIMIT $3`, channelID, sincePts, limit)
 	if err != nil {
 		return nil, err
@@ -50,7 +50,7 @@ func (r *ChannelRepo) UpdatesSince(ctx context.Context, channelID, sincePts int6
 	var out []domain.ChannelUpdate
 	for rows.Next() {
 		var u domain.ChannelUpdate
-		if err := rows.Scan(&u.Pts, &u.PtsCount, &u.Payload); err != nil {
+		if err := rows.Scan(&u.Pts, &u.PtsCount, &u.Type, &u.Payload); err != nil {
 			return nil, err
 		}
 		out = append(out, u)

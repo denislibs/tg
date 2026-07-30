@@ -1,9 +1,10 @@
 // src/core/hooks/useChannelExtras.ts
 //
-// Channel-only wiring for the conversation: live subscription + catch-up (tweb's
-// getChannelDifference on open), persisting the current max seq as pts, and
-// per-post comment counts. No-ops for non-channels. (Сам тред комментариев —
-// обычный ConversationView в thread-режиме; открытие — через App.openThread.)
+// Channel-only wiring for the conversation: live subscription (which also drives
+// the worker's per-channel pts funnel — cursor seed + catch-up via typed
+// /difference), plus per-post comment/view counts. No-ops for non-channels. (Сам
+// тред комментариев — обычный ConversationView в thread-режиме; открытие — через
+// App.openThread.)
 import { useEffect, useState } from 'react'
 import { useMessagesStore } from '../../stores/messagesStore'
 import { useManagers } from './useManagers'
@@ -23,27 +24,16 @@ export function useChannelExtras({ isRealChat, isChannel, numericChatId, win, di
   const managers = useManagers()
   const [commentCounts, setCommentCounts] = useState<Map<number, number>>(new Map())
 
-  // Channel live + catch-up (mirrors tweb's getChannelDifference on open): subscribe
-  // to the channel topic so live posts arrive via rt:new_message (existing path), and
-  // fetch posts missed while away, applying them through the same window.
+  // Channel live + catch-up: subscribeChannel подписывает на топик (живые посты и
+  // метаданные приходят через per-channel funnel воркера) и открывает канал в
+  // funnel — сид курсора из IDB + добор пропущенного через типизированный
+  // /difference. Пропущенное едет тем же путём, что живое (dispatch → стор), поэтому
+  // окно рендерит его из стора — отдельного applyIncoming здесь больше нет.
   useEffect(() => {
     if (!isRealChat || !isChannel) return
-    let alive = true
     void managers.realtime.subscribeChannel({ chatId: numericChatId })
-    void managers.channels.getDifference(numericChatId).then((missed) => {
-      if (alive) missed.forEach((m) => win.applyIncoming(m))
-    })
-    return () => { alive = false; void managers.realtime.unsubscribeChannel({ chatId: numericChatId }) }
-  }, [isRealChat, isChannel, numericChatId, managers, win])
-
-  // Persist the channel's current max seq as pts once the newest posts are loaded so
-  // future getChannelDifference starts there. pts ≈ seq is an approximation that holds
-  // for our single-stream channels (one monotonic seq per channel).
-  useEffect(() => {
-    if (!isRealChat || !isChannel || !win.reachedBottom || win.msgs.length === 0) return
-    const maxSeq = win.msgs[win.msgs.length - 1].seq
-    void managers.channels.setPts(numericChatId, maxSeq)
-  }, [isRealChat, isChannel, win.reachedBottom, win.msgs, numericChatId, managers])
+    return () => { void managers.realtime.unsubscribeChannel({ chatId: numericChatId }) }
+  }, [isRealChat, isChannel, numericChatId, managers])
 
   // Channel discussions: fetch comment counts for the loaded post ids (debounced on
   // msgs change). Only real channel posts with discussions enabled get a count.

@@ -32,6 +32,7 @@ func (i *Interactor) PostToChannel(ctx context.Context, channelID, actorID int64
 		cmid = &clientMsgID
 	}
 	var msg domain.Message
+	var pts int64
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		seq, e := i.msgs.NextSeq(ctx, channelID)
 		if e != nil {
@@ -44,25 +45,28 @@ func (i *Interactor) PostToChannel(ctx context.Context, channelID, actorID int64
 			return e
 		}
 		msg = m
-		payload, _ := json.Marshal(map[string]any{
-			"chat_id": channelID, "msg_id": m.ID, "seq": m.Seq, "sender_id": actorID,
-			"type": "text", "text": text, "media_id": nil, "created_at": m.CreatedAt,
-		})
-		_, e = i.channels.AppendUpdate(ctx, channelID, payload)
+		payload, _ := json.Marshal(channelPostPayload(m, actorID))
+		pts, e = i.channels.AppendUpdate(ctx, channelID, "new_message", payload)
 		return e
 	})
 	if err != nil {
 		return domain.Message{}, err
 	}
-	// publish once after commit
+	// publish once after commit — the live frame carries channel_pts so the client
+	// gates it against the per-channel cursor (same envelope /difference replays).
 	if i.chPub != nil {
-		frame, _ := json.Marshal(map[string]any{"t": "new_message", "d": map[string]any{
-			"chat_id": channelID, "msg_id": msg.ID, "seq": msg.Seq, "sender_id": actorID,
-			"type": "text", "text": text, "media_id": nil, "created_at": msg.CreatedAt,
-		}})
-		_ = i.chPub.PublishToChannel(ctx, channelID, frame)
+		_ = i.chPub.PublishToChannel(ctx, channelID, frameChannelPts("new_message", channelPostPayload(msg, actorID), pts))
 	}
 	return msg, nil
+}
+
+// channelPostPayload — снимок поста канала для channel-лога и живого кадра (единый
+// источник, чтобы difference-реплей и live совпадали побайтно, кроме channel_pts).
+func channelPostPayload(m domain.Message, actorID int64) map[string]any {
+	return map[string]any{
+		"chat_id": m.ChatID, "msg_id": m.ID, "seq": m.Seq, "sender_id": actorID,
+		"type": "text", "text": m.Text, "media_id": nil, "created_at": m.CreatedAt,
+	}
 }
 
 // SetSignatures toggles channel post signatures (Telegram

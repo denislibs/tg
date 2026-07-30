@@ -54,9 +54,18 @@ func (i *Interactor) publishChatUpdate(ctx context.Context, chatID int64) {
 	if err != nil {
 		return
 	}
+	payload := chatUpdatePayload(card)
+	// Канал: один channel-broadcast (O(1)) по channel-конверту вместо N+1 fan-out
+	// в per-user лог каждого подписчика. Подписчики получают кадр живым, остальные
+	// добирают снимок при открытии через /channels/{id}/difference. Группа —
+	// прежний per-user путь (у групп нет channel_pts/топика).
+	if card.Type == "channel" {
+		_ = i.logAndPublishChannel(ctx, chatID, "chat_update", payload)
+		return
+	}
 	members, err := i.chats.MemberIDs(ctx, chatID)
 	if err != nil {
 		return
 	}
-	_ = i.logAndPublish(ctx, members, "chat_update", chatUpdatePayload(card))
+	_ = i.logAndPublish(ctx, members, "chat_update", payload)
 }
