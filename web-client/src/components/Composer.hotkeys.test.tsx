@@ -10,11 +10,11 @@ import type { VoiceRecorder } from '../core/hooks/useVoiceRecorder'
 vi.mock('lottie-web', () => ({ default: { loadAnimation: vi.fn() } }))
 
 // applyMarkup замокан — проверяем, что Ctrl+K зовёт его с типом text_link.
-vi.mock('../core/markdown', async (orig) => {
-  const actual = await orig<typeof import('../core/markdown')>()
+vi.mock('../core/richtext/markdown', async (orig) => {
+  const actual = await orig<typeof import('../core/richtext/markdown')>()
   return { ...actual, apply: vi.fn() }
 })
-import { apply as applyMarkup } from '../core/markdown'
+import { apply as applyMarkup } from '../core/richtext/markdown'
 import Composer from './Composer'
 
 const rec = { recording: false, paused: false, secs: 0, bars: [] as number[] } as unknown as VoiceRecorder
