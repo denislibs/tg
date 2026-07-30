@@ -1,19 +1,12 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import Text from '../shared/ui/Text'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import { useAvatarSrc } from './useAvatarSrc'
-import AddContactView from './AddContactView'
-import EditContactView from './EditContactView'
-import HeaderMenu from './HeaderMenu'
-import ChatThemesPicker from './ChatThemesPicker'
 import { chatThemeVariant, chatThemeBubbleOut } from '../chatThemes'
 import { PRESET_MODE, resolvePreset } from '../theme'
 import { useSettingsStore } from '../settings'
-import ConfirmDialog from './settings/ConfirmDialog'
-import MutePopup from './MutePopup'
-import AttachMenu from './AttachMenu'
 import { CallProvider } from './call/CallProvider'
 import { startOutgoing } from '../core/calls/callEngine'
 import NowPlayingBar from './NowPlayingBar'
@@ -50,51 +43,26 @@ import { useDraftsStore } from '../stores/draftsStore'
 import { draftReplyState, convMsgReplyState } from '../core/draftReply'
 import { useComposerDraft } from '../core/hooks/useComposerDraft'
 import { useMentionPeers } from '../core/hooks/useMentionPeers'
-import CreatePollPopup from './CreatePollPopup'
-import CreateChecklistPopup from './CreateChecklistPopup'
-import BoostPopup from './BoostPopup'
-import CreateGiveawayPopup from './CreateGiveawayPopup'
-import ScheduledView from './ScheduledView'
-import SuggestPostPopup from './SuggestPostPopup'
-import SuggestedPostsView from './SuggestedPostsView'
 import { useGroupCallStore } from '../stores/groupCallStore'
-import { joinGroupCall } from '../core/calls/groupCallEngine'
 import { useLivestreamStore } from '../stores/livestreamStore'
-import { watchLivestream } from '../core/calls/livestreamEngine'
-import StreamSettingsPopup from './StreamSettingsPopup'
 
 const EMPTY_IDS: number[] = []
-import { useMessagesStore } from '../stores/messagesStore'
 import { useUploadsStore } from '../stores/uploadsStore'
 import ChatHeader from './conversation/ChatHeader'
-import Menu, { MenuItem } from '../shared/ui/Menu'
 import IconButton from '../shared/ui/IconButton'
 import { TopicIcon } from './TopicsPanel'
 import PinnedBar from './conversation/PinnedBar'
 import SavedTagsPanel from './conversation/SavedTagsPanel'
-import PinnedMessagesScreen from './conversation/PinnedMessagesScreen'
 import ScrollDownFab from './conversation/ScrollDownFab'
 import SelectionBar from './conversation/SelectionBar'
-import MessageContextMenu from './conversation/MessageContextMenu'
-import StarReactionPopup from './stars/StarReactionPopup'
-import SendGiftPopup from './stars/SendGiftPopup'
-import FactCheckEditor from './conversation/FactCheckEditor'
 import { useChatsStore, loadChats } from '../stores/chatsStore'
 import { useSecretChatStore } from '../stores/secretChatStore'
 import { type MessageEntity } from '../core/models'
 import type { InlineResult } from '../core/managers/botsManager'
 import { openWebApp } from '../core/webapp'
 import { useSearchStore } from '../stores/searchStore'
-import { ChatPicker, ContactPicker, DeleteMessageDialog, ForwardPicker, ViewersPopup, ReactedUsersPopup } from './messages/ChatDialogs'
-import TranslatePopup from './messages/TranslatePopup'
-import LocationPicker from './LocationPicker'
-import SendMediaPopup from './messages/SendMediaPopup'
-// MediaLightbox (просмотрщик медиа) грузится лениво — только при открытии
-const MediaLightbox = lazy(() => import('./messages/MediaLightbox'))
-// Инфо-панель (открывается по клику) и статистика поста (slide-in сабвью) — не
-// первый кадр; их поддерево (+ ChannelStats внутри панели) уводим в ленивые чанки.
-const UserInfoPanel = lazy(() => import('./UserInfoPanel'))
-const PostStats = lazy(() => import('./PostStats'))
+import ConversationOverlays from './conversation/ConversationOverlays'
+import { useConversationPopups } from '../core/hooks/useConversationPopups'
 import classNames from '../shared/lib/classNames'
 import s from './ConversationView.module.scss'
 import useMediaQuery from '../shared/lib/useMediaQuery'
@@ -310,9 +278,10 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const { playVoice, attachRound, playerOffset } = useVoiceQueue({
     win, isRealChat, meId, meName: me?.displayName, peers, chatName: chat.name, numericChatId, lang,
   })
-  const [infoOpen, setInfoOpen] = useState(false)
-  // ⋮-меню тред-шапки (tweb topbar в треде) + право «Закрыть тему»
-  const [threadMenu, setThreadMenu] = useState<{ top: number; right: number } | null>(null)
+  // Реестр UI-попапов колонки (инфо-панель, меню, пикеры, попапы канала…) — весь
+  // рендер оверлеев ушёл в <ConversationOverlays>; тут только открываем их из хендлеров.
+  const popups = useConversationPopups()
+  // ⋮-меню тред-шапки требует права «Закрыть тему»
   const [canManageTopic, setCanManageTopic] = useState(false)
   useEffect(() => {
     if (!thread || thread.kind !== 'topic' || !isRealChat) return
@@ -326,35 +295,14 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // Pinned messages in this chat (newest pin first) + индекс перелистывания
   // плашки (tweb pinnedMessage) — drives the pinned bar.
   const { pins, index: pinIndex, follow: followPin } = usePinnedBar(numericChatId, isRealChat)
-  // Экран «Закреплённые сообщения» (tweb topbar.openPinned)
-  const [pinnedOpen, setPinnedOpen] = useState(false)
   // Search is owned by ChatHeader now; here we only read whether it's open (single-sourced
   // in searchStore) to hide the pinned bar + adjust the sticky-date offset.
   const searchOpen = useSearchStore((s) => s.byChat[numericChatId]?.open ?? false)
-  const [headerMenu, setHeaderMenu] = useState<{ top: number; right: number } | null>(null)
-  const [giftPopupOpen, setGiftPopupOpen] = useState(false)
-  const [themePickerOpen, setThemePickerOpen] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
-  const [confirmClear, setConfirmClear] = useState(false)
-  const [addContactOpen, setAddContactOpen] = useState(false)
-  const [editContactOpen, setEditContactOpen] = useState(false)
-  const [attachAnchor, setAttachAnchor] = useState<{ left: number; bottom: number } | null>(null)
-  const [createPollOpen, setCreatePollOpen] = useState(false)
-  const [createChecklistOpen, setCreateChecklistOpen] = useState(false)
-  const [boostOpen, setBoostOpen] = useState(false)
-  const [createGiveawayOpen, setCreateGiveawayOpen] = useState(false)
-  const [streamOpen, setStreamOpen] = useState(false)
-  // Предложка постов: компоновщик предложки (не-постер) и список предложек (админ).
-  const [suggestOpen, setSuggestOpen] = useState(false)
-  const [suggestedOpen, setSuggestedOpen] = useState(false)
-  const [contactPickerOpen, setContactPickerOpen] = useState(false)
-  const [locationPickerOpen, setLocationPickerOpen] = useState(false)
-  // Запланированные сообщения: счётчик (календарик в композере) + оверлей списка
+  // Запланированные сообщения: счётчик (календарик в композере); оверлей списка — в popups.
   const [scheduledCount, setScheduledCount] = useState(0)
-  const [scheduledOpen, setScheduledOpen] = useState(false)
   useEffect(() => {
     setScheduledCount(0)
-    setScheduledOpen(false)
+    popups.setScheduledOpen(false)
     if (!isRealChat) return
     void managers.messages.listScheduled(numericChatId).then((l) => setScheduledCount(l.length)).catch(() => undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -386,7 +334,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       .scheduleMessage(numericChatId, { text, entities, sendAt: sendAtUnix })
       .then(() => {
         setScheduledCount((c) => c + 1)
-        setScheduledOpen(true) // tweb: после планирования открывает scheduled-вид
+        popups.setScheduledOpen(true) // tweb: после планирования открывает scheduled-вид
       })
   })
   // «Отправить, когда онлайн» (tweb canSendWhenOnline): личный чат (не сам с собой),
@@ -401,7 +349,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
       .scheduleMessage(numericChatId, { text, entities, sendAt: 0, whenOnline: true })
       .then(() => {
         setScheduledCount((c) => c + 1)
-        setScheduledOpen(true)
+        popups.setScheduledOpen(true)
       })
   })
   // Scroll state machine (refs + bottom-pin intent + history pagination + scroll-restore
@@ -437,7 +385,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const { selected, setSelected, setSelectionMode, selecting, toggleSelect, clearSelection, dragSelect } =
     useChatSelection(scrollRef)
   // Enter selection mode from the header menu with nothing selected yet.
-  const startSelectMode = () => { setSelectionMode(true); setHeaderMenu(null) }
+  const startSelectMode = () => { setSelectionMode(true); popups.setHeaderMenu(null) }
 
   // Удаление чата / выход. Владелец группы/канала удаляет для всех (DELETE
   // /chats/{id}); иначе — выхожу сам (DELETE members/me), приватный чат так же
@@ -560,19 +508,11 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
 
   // Message context menu + its actions (reply/edit/copy/pin/delete/forward/select/
   // download/viewers) and the delete-confirm / forward-picker / viewers-popup state.
-  const {
-    msgMenu, openMsgMenu, closeMsgMenu, destroyMsgMenu, msgMenuItems,
-    toggleReaction, reactToMenuMsg, showReactedUsers,
-    openStarReaction, starReact, closeStarReaction,
-    postStats, closePostStats,
-    factCheckEdit, submitFactCheck, closeFactCheckEditor,
-    delIds, doDelete, closeDelete, openDeleteFor,
-    forwardIds, doForward, closeForward, openForwardFor, openForwardFrom,
-    replyAnother, pickReplyAnotherChat, closeReplyAnother,
-    viewers, closeViewers,
-    reacted, closeReacted,
-    translateText, closeTranslate,
-  } = useMessageActions({
+  // Меню сообщения + действия (reply/edit/copy/pin/delete/forward/select/…). Весь
+  // рендер попапов этого бэга (context-menu, delete/forward-пикеры, viewers, перевод…)
+  // — в ConversationOverlays; тут разбираем лишь то, что нужно самому контроллеру
+  // (feedFns + панель выделения + «переслать из…»).
+  const msgActions = useMessageActions({
     chat, numericChatId, isRealChat,
     // Пост канала + зритель админ/владелец → пункт «Статистика» (tweb can_view_stats).
     canViewPostStats: isChannel && isRealChat && (card?.myRole === 'creator' || card?.myRole === 'admin'),
@@ -581,6 +521,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     win: winV, msgs, meId, pins, accent: accentColor,
     setReply, setEditing, setSelectionMode, setSelected, clearSelection, onChatCreated,
   })
+  const { openMsgMenu, toggleReaction, showReactedUsers, openStarReaction, openDeleteFor, openForwardFor, openForwardFrom } = msgActions
 
   // First-load reveal policy: grace-delayed spinner (no flash on cache hits),
   // `feedLoading` to gate the list, and the open-chat ladder arming.
@@ -692,8 +633,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   // listener is needed here.)
 
   // Mute как в tweb: включение mute из меню — через попап длительности
-  // (PopupMute), снятие — сразу. null — попап ещё не монтировали.
-  const [muteOpen, setMuteOpen] = useState<boolean | null>(null)
+  // (PopupMute, монтируется в ConversationOverlays), снятие — сразу.
   const applyMute = (next: boolean, seconds?: number | null) => {
     if (!isRealChat) return
     setDialogMuted(numericChatId, next) // optimistic
@@ -703,7 +643,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
   const toggleMute = () => {
     if (!isRealChat) return
     if (muted) applyMute(false)
-    else setMuteOpen(true)
+    else popups.setMuteOpen(true)
   }
 
   // Добавление участников: полноценный под-экран живёт в UserInfoPanel
@@ -775,8 +715,8 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
 
   // Stable handlers for the extracted header/pinned bars so their memo holds
   // across the parent's transient re-renders.
-  const onToggleInfo = useEvent(() => setInfoOpen((o) => !o))
-  const onOpenHeaderMenu = useEvent((r: DOMRect) => setHeaderMenu({ top: r.bottom + 6, right: window.innerWidth - r.right }))
+  const onToggleInfo = useEvent(() => popups.setInfoOpen((o) => !o))
+  const onOpenHeaderMenu = useEvent((r: DOMRect) => popups.setHeaderMenu({ top: r.bottom + 6, right: window.innerWidth - r.right }))
   const onUnpin = useEvent((id: number) => { void managers.messages.unpin(numericChatId, id) })
   // Клик по пин-плашке (tweb followPinnedMessage): прыжок к показанному пину,
   // бар перелистывается на следующий (более старый, циклически).
@@ -784,7 +724,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     const m = followPin()
     if (m) jumpToSeqE(m.seq)
   })
-  const onOpenPinList = useEvent(() => setPinnedOpen(true))
+  const onOpenPinList = useEvent(() => popups.setPinnedOpen(true))
   // Право «Открепить все» (tweb canPinMessage): приватный/личный чат — всегда;
   // группа/канал — создатель или админ с RightPinMessages (1<<5).
   const canUnpinAll = chat.type === 'private' || chat.type === 'saved' ||
@@ -836,7 +776,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
     openForwardFrom(forward.sourceChatId, forward.msgIds, { count: forward.count, text: forward.text, hasCaption: forward.hasCaption })
     setForward(null)
   })
-  const onComposerOpenAttach = useEvent((r: DOMRect) => setAttachAnchor({ left: r.left, bottom: window.innerHeight - r.top + 8 }))
+  const onComposerOpenAttach = useEvent((r: DOMRect) => popups.setAttachAnchor({ left: r.left, bottom: window.innerHeight - r.top + 8 }))
   // Files pasted/dropped into the composer → open the same media-preview popup as
   // the attach button (lets the user add a caption + choose media/file).
   const onComposerPasteFiles = useEvent((files: File[]) => setPendingMedia({ files, asFile: false }))
@@ -912,7 +852,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
             ) : (
               <TgIcon name="comments" size={26} color="var(--tg-accent)" />
             )}
-            <div className={s.threadHeaderBody} onClick={() => setInfoOpen(true)} style={{ cursor: 'pointer' }}>
+            <div className={s.threadHeaderBody} onClick={() => popups.setInfoOpen(true)} style={{ cursor: 'pointer' }}>
               <Text noWrap weight={600} size={15.5} color="var(--tg-textPrimary)">{thread.title}</Text>
               <Text noWrap size={12.5} color="var(--tg-textSecondary)">{thread.subtitle ?? chat.name}</Text>
             </div>
@@ -920,7 +860,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
             <IconButton
               onClick={(e) => {
                 const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
-                setThreadMenu({ top: r.bottom + 6, right: window.innerWidth - r.right })
+                popups.setThreadMenu({ top: r.bottom + 6, right: window.innerWidth - r.right })
               }}
               color="var(--tg-textFaint)"
             >
@@ -1149,7 +1089,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
               canSendWhenOnline={canSendWhenOnline}
               onSendWhenOnline={canSendWhenOnline ? onComposerSendWhenOnline : undefined}
               scheduledCount={scheduledCount}
-              onOpenScheduled={() => setScheduledOpen(true)}
+              onOpenScheduled={() => popups.setScheduledOpen(true)}
               slowmodeLeft={slowmodeLeft}
               secret={chat.type === 'secret'}
               canSendMedia={canSendMedia}
@@ -1179,7 +1119,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
             </motion.div>
             {/* Не-постер канала предлагает пост админам (Telegram suggested posts) */}
             {isChannel && isRealChat && (
-              <motion.div whileTap={{ scale: 0.995 }} className={s.muteBtn} onClick={() => setSuggestOpen(true)}>
+              <motion.div whileTap={{ scale: 0.995 }} className={s.muteBtn} onClick={() => popups.setSuggestOpen(true)}>
                 <TgIcon name="add" size={20} color="var(--tg-accent)" />
                 <Text weight={600} size={15.5} color="var(--tg-accent)">{t('Suggest a Post')}</Text>
               </motion.div>
@@ -1191,373 +1131,51 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
         )}
       </div>
 
-      {/* Info panel (private / group / channel) */}
-      <Suspense fallback={null}>
-      <AnimatePresence>
-        {infoOpen && (
-          <UserInfoPanel
-            chat={chat}
-            onClose={() => setInfoOpen(false)}
-            onOpenPeer={onOpenPeer}
-            canAddMembers={canAddMember}
-            onEditContact={() => { setInfoOpen(false); setEditContactOpen(true) }}
-            onSendGift={chat.type === 'private' && chat.peerId != null && chat.peerId !== meId ? () => setGiftPopupOpen(true) : undefined}
-          />
-        )}
-      </AnimatePresence>
-      </Suspense>
-
-      {/* Add-contact screen (private chats) */}
-      <AnimatePresence>
-        {addContactOpen && <AddContactView chat={chat} onClose={() => setAddContactOpen(false)} />}
-      </AnimatePresence>
-
-      {/* Edit-contact screen (private chats): все редактируемые поля контакта */}
-      <AnimatePresence>
-        {editContactOpen && <EditContactView chat={chat} onClose={() => setEditContactOpen(false)} />}
-      </AnimatePresence>
-
-      {/* Попап длительности mute (tweb PopupMute) */}
-      {muteOpen != null && (
-        <MutePopup
-          open={muteOpen}
-          onClose={() => setMuteOpen(false)}
-          onExitComplete={() => setMuteOpen(null)}
-          onMute={(seconds) => applyMute(true, seconds)}
-        />
-      )}
-
-      {/* ⋮-меню тред-шапки (tweb topbar в треде): Select / Mute / Закрыть тему */}
-      {thread && (
-        <Menu
-          open={threadMenu != null}
-          onClose={() => setThreadMenu(null)}
-          style={threadMenu ? { top: threadMenu.top, right: threadMenu.right, transformOrigin: 'top right' } : undefined}
-        >
-          <MenuItem
-            icon={<TgIcon name="checkround" size={20} />}
-            label={t('Select Messages')}
-            onClick={() => { setThreadMenu(null); setSelectionMode(true) }}
-          />
-          <MenuItem
-            icon={<TgIcon name={muted ? 'unmute' : 'mute'} size={20} />}
-            label={t(muted ? 'Unmute' : 'Mute')}
-            onClick={() => { setThreadMenu(null); applyMute(!muted) }}
-          />
-          {thread.kind === 'topic' && thread.topicId != null && canManageTopic && (
-            <MenuItem
-              icon={<TgIcon name="lock" size={20} />}
-              label={t(thread.closed ? 'Reopen Topic' : 'Close Topic')}
-              onClick={() => {
-                setThreadMenu(null)
-                void managers.groups.closeTopic(numericChatId, thread.topicId!, !thread.closed).then(() => onCloseThread?.())
-              }}
-            />
-          )}
-        </Menu>
-      )}
-
-      {/* Header "⋮" menu */}
-      {headerMenu && (
-        <HeaderMenu
-          chat={isRealChat ? { ...chat, muted: muted || undefined } : chat}
-          anchor={headerMenu}
-          onClose={() => setHeaderMenu(null)}
-          onToggleMute={isRealChat ? toggleMute : undefined}
-          onAddMember={canAddMember ? () => setInfoOpen(true) : undefined}
-          onSelectMessages={startSelectMode}
-          onAddContact={chat.type === 'private' && chat.peerId != null ? () => setAddContactOpen(true) : undefined}
-          onDeleteChat={isRealChat ? () => setConfirmDelete(true) : undefined}
-          onClearHistory={isRealChat && chat.type !== 'channel' ? () => setConfirmClear(true) : undefined}
-          onChangeTheme={isRealChat && (chat.type === 'private' || chat.type === 'group') ? () => setThemePickerOpen(true) : undefined}
-          onSendGift={chat.type === 'private' && chat.peerId != null && chat.peerId !== meId ? () => setGiftPopupOpen(true) : undefined}
-          onBoost={isChannel && isRealChat ? () => setBoostOpen(true) : undefined}
-          onCreateGiveaway={canCreateGiveaway ? () => setCreateGiveawayOpen(true) : undefined}
-          onStartStream={isChannel && isRealChat && owned ? () => setStreamOpen(true) : undefined}
-          onOpenSuggested={canCreateGiveaway ? () => setSuggestedOpen(true) : undefined}
-        />
-      )}
-
-      {/* Отправка подарка собеседнику (Chat.Menu.SendGift) — из «…»-меню шапки,
-          независимо от открытой инфо-панели */}
-      {chat.type === 'private' && chat.peerId != null && (
-        <SendGiftPopup
-          open={giftPopupOpen}
-          onClose={() => setGiftPopupOpen(false)}
-          toUserId={chat.peerId}
-          toName={chat.name}
-        />
-      )}
-
-      {/* Пикер темы оформления чата (messages.setChatTheme) */}
-      {isRealChat && (
-        <ChatThemesPicker
-          open={themePickerOpen}
-          onClose={() => setThemePickerOpen(false)}
-          chatId={numericChatId}
-          currentThemeId={activeThemeId}
-        />
-      )}
-
-      {confirmDelete && (
-        <ConfirmDialog
-          title={t(deleteLabels.title)}
-          text={t(deleteLabels.text)}
-          action={t(deleteLabels.action)}
-          danger
-          onConfirm={doDeleteChat}
-          onClose={() => setConfirmDelete(false)}
-        />
-      )}
-
-      {confirmClear && (
-        <ConfirmDialog
-          title={t('Clear History')}
-          text={t('Are you sure you want to clear history?')}
-          action={t('Clear')}
-          danger
-          onConfirm={doClearHistory}
-          onClose={() => setConfirmClear(false)}
-        />
-      )}
-
-      {/* Attach menu */}
-      {attachAnchor && (
-        <AttachMenu
-          anchor={attachAnchor}
-          onClose={() => setAttachAnchor(null)}
-          onPhotoVideo={isRealChat ? () => openPicker('image/*,video/*', false) : undefined}
-          onFile={isRealChat ? () => openPicker('*/*', true) : undefined}
-          onPoll={isRealChat && (chat.type === 'group' || chat.type === 'channel') ? () => setCreatePollOpen(true) : undefined}
-          onChecklist={isRealChat ? () => setCreateChecklistOpen(true) : undefined}
-          onLocation={isRealChat ? () => setLocationPickerOpen(true) : undefined}
-          onContact={isRealChat ? () => setContactPickerOpen(true) : undefined}
-        />
-      )}
-
-      {/* Пикер геолокации (attach-меню → Локация): карта + venue + live */}
-      <LocationPicker
-        open={locationPickerOpen}
-        onClose={() => setLocationPickerOpen(false)}
-        onSend={(lat, lng, opts) => sendGeo(lat, lng, opts)}
+      <ConversationOverlays
+        chat={chat}
+        numericChatId={numericChatId}
+        isRealChat={isRealChat}
+        isChannel={isChannel}
+        meId={meId}
+        meName={me?.displayName}
+        allDialogs={allDialogs}
+        activeThemeId={activeThemeId}
+        muted={muted}
+        owned={owned}
+        thread={thread}
+        canManageTopic={canManageTopic}
+        canAddMember={canAddMember}
+        canCreateGiveaway={canCreateGiveaway}
+        canUnpinAll={canUnpinAll}
+        pins={pins}
+        lightbox={lightbox}
+        deleteLabels={deleteLabels}
+        livestreamActive={livestreamActive}
+        groupCallActive={groupCallActive}
+        myGroupCallChat={myGroupCallChat}
+        myWatchingChat={myWatchingChat}
+        pendingMedia={pendingMedia}
+        popups={popups}
+        msgActions={msgActions}
+        onOpenPeer={onOpenPeer}
+        onCloseThread={onCloseThread}
+        applyMute={applyMute}
+        toggleMute={toggleMute}
+        startSelectMode={startSelectMode}
+        setSelectionMode={setSelectionMode}
+        doDeleteChat={doDeleteChat}
+        doClearHistory={doClearHistory}
+        openPicker={openPicker}
+        sendGeo={sendGeo}
+        sendContact={sendContact}
+        setPendingMedia={setPendingMedia}
+        sendPendingMedia={sendPendingMedia}
+        slowmodeMarkSent={slowmodeMarkSent}
+        closeLightbox={closeLightbox}
+        jumpToSeq={jumpToSeqE}
+        setScheduledCount={setScheduledCount}
       />
 
-      {/* Пикер контакта (attach-меню → Контакт) */}
-      {contactPickerOpen && (
-        <ContactPicker
-          dialogs={allDialogs}
-          onPick={(userId, name) => { setContactPickerOpen(false); sendContact(userId, name) }}
-          onClose={() => setContactPickerOpen(false)}
-        />
-      )}
-
-      {/* Баннер идущего видеочата (tweb topbar-call): Join, пока сам не в звонке */}
-      {isRealChat && !thread && groupCallActive.length > 0 && myGroupCallChat !== numericChatId && (
-        <div className={s.groupCallBanner} onClick={() => void joinGroupCall(numericChatId)}>
-          <TgIcon name="videochat" size={18} color="#fff" />
-          <Text size={14} weight={600} color="#fff" style={{ flex: 1 }}>
-            {t('Video Chat')} · {groupCallActive.length} {t('participants')}
-          </Text>
-          <Text size={14} weight={700} color="#fff">{t('Join')}</Text>
-        </div>
-      )}
-
-      {/* Баннер идущей RTMP-трансляции (tweb topbarLive): смотреть, пока сам не смотришь */}
-      {isRealChat && !thread && livestreamActive && myWatchingChat !== numericChatId && (
-        <div className={s.groupCallBanner} onClick={() => watchLivestream(numericChatId)}>
-          <TgIcon name="livestream" size={18} color="#fff" />
-          <Text size={14} weight={600} color="#fff" style={{ flex: 1 }}>
-            {t('Live Stream')}
-          </Text>
-          <Text size={14} weight={700} color="#fff">{t('Join')}</Text>
-        </div>
-      )}
-
-      {/* «Закреплённые сообщения» (tweb ChatType.Pinned): открепление последнего
-          пина убирает pins → оверлей сам закрывается (tweb закрывает pinned-таб) */}
-      {pinnedOpen && isRealChat && pins.length > 0 && (
-        <PinnedMessagesScreen
-          chatId={numericChatId}
-          pins={pins}
-          meId={meId}
-          meName={me?.displayName}
-          canUnpinAll={canUnpinAll}
-          onJump={(seq) => { setPinnedOpen(false); jumpToSeqE(seq) }}
-          onClose={() => setPinnedOpen(false)}
-        />
-      )}
-
-      {/* «Запланированные сообщения» (tweb ChatType.Scheduled) */}
-      {scheduledOpen && isRealChat && (
-        <ScheduledView
-          chatId={numericChatId}
-          onClose={() => setScheduledOpen(false)}
-          onChanged={setScheduledCount}
-        />
-      )}
-
-      {/* Буст канала (tweb popupBoost) */}
-      {boostOpen && isChannel && isRealChat && (
-        <BoostPopup chatId={numericChatId} onClose={() => setBoostOpen(false)} />
-      )}
-
-      {/* Настройки RTMP-трансляции (tweb RtmpStartStreamPopup) — владелец канала */}
-      {streamOpen && isChannel && isRealChat && (
-        <StreamSettingsPopup chatId={numericChatId} active={livestreamActive} onClose={() => setStreamOpen(false)} />
-      )}
-
-      {/* Создание розыгрыша (tweb popupBoostsViaGifts) */}
-      {createGiveawayOpen && (
-        <CreateGiveawayPopup
-          onClose={() => setCreateGiveawayOpen(false)}
-          onCreate={(a) => {
-            setCreateGiveawayOpen(false)
-            void managers.boosts
-              .createGiveaway(numericChatId, { ...a, clientMsgId: crypto.randomUUID() })
-              .then((msg) => useMessagesStore.getState().applyIncoming(numericChatId, msg))
-          }}
-        />
-      )}
-
-      {/* Предложить пост (tweb suggestPostPopup) — не-постер канала */}
-      {suggestOpen && isChannel && isRealChat && (
-        <SuggestPostPopup chatId={numericChatId} onClose={() => setSuggestOpen(false)} />
-      )}
-
-      {/* Предложенные посты — админ канала (список pending с действиями) */}
-      {suggestedOpen && isChannel && isRealChat && (
-        <SuggestedPostsView chatId={numericChatId} mode="admin" onClose={() => setSuggestedOpen(false)} />
-      )}
-
-      {/* «Новый опрос» (tweb popupCreatePoll) */}
-      {createPollOpen && (
-        <CreatePollPopup
-          onClose={() => setCreatePollOpen(false)}
-          onCreate={(p) => {
-            setCreatePollOpen(false)
-            void managers.messages
-              .sendPoll(numericChatId, { ...p, clientMsgId: crypto.randomUUID() })
-              .then((msg) => useMessagesStore.getState().applyIncoming(numericChatId, msg))
-          }}
-        />
-      )}
-
-      {/* «Новый чек-лист» (tweb popups/checklist.tsx) */}
-      {createChecklistOpen && (
-        <CreateChecklistPopup
-          onClose={() => setCreateChecklistOpen(false)}
-          onCreate={(c) => {
-            setCreateChecklistOpen(false)
-            void managers.messages
-              .sendChecklist(numericChatId, { ...c, clientMsgId: crypto.randomUUID() })
-              .then((msg) => useMessagesStore.getState().applyIncoming(numericChatId, msg))
-          }}
-        />
-      )}
-
-      {pendingMedia && (
-        <SendMediaPopup
-          files={pendingMedia.files}
-          initialAsFile={pendingMedia.asFile}
-          onClose={() => setPendingMedia(null)}
-          onSend={(caption, asFile, paidPrice) => { void sendPendingMedia(caption, asFile, paidPrice); slowmodeMarkSent() }}
-        />
-      )}
-
-      {lightbox && (
-        <Suspense fallback={null}>
-          <MediaLightbox
-            items={lightbox.items}
-            index={lightbox.index}
-            originRect={lightbox.originRect}
-            originSrc={lightbox.originSrc}
-            originEl={lightbox.originEl}
-            onClosingStart={() => { lightbox.originEl.style.visibility = '' }}
-            onClose={closeLightbox}
-          />
-        </Suspense>
-      )}
-
-      {/* Discard-recording confirm (Esc) */}
-      {/* <AnimatePresence>*/}
-      {/*  {cancelRecOpen && (*/}
-      {/*    <DiscardVoiceDialog*/}
-      {/*      onCancel={() => setCancelRecOpen(false)}*/}
-      {/*      onDiscard={() => { setCancelRecOpen(false); rec.stop(false) }}*/}
-      {/*    />*/}
-      {/*  )}*/}
-      {/* </AnimatePresence>*/}
-
-      {/* Message context menu — reactions strip + actions */}
-      {msgMenu && (
-        <MessageContextMenu menu={msgMenu} items={msgMenuItems} onClose={closeMsgMenu} onExited={destroyMsgMenu} onReaction={isRealChat ? reactToMenuMsg : undefined} />
-      )}
-
-      {/* Статистика поста канала (slide-in сабвью, tweb messageStatistics) */}
-      <Suspense fallback={null}>
-        <AnimatePresence>
-          {postStats && (
-            <PostStats chatId={numericChatId} msgId={postStats.msgId} onBack={closePostStats} />
-          )}
-        </AnimatePresence>
-      </Suspense>
-
-      {/* Редактор «проверки фактов» (канал, автор/админ) */}
-      {factCheckEdit && (
-        <FactCheckEditor
-          initial={factCheckEdit.initial}
-          onClose={closeFactCheckEditor}
-          onSubmit={submitFactCheck}
-        />
-      )}
-
-      {/* "Seen by" popup */}
-      {viewers && (
-        <ViewersPopup x={viewers.x} y={viewers.y} names={viewers.names} onClose={closeViewers} />
-      )}
-
-      {/* Кто отреагировал (long-press/правый клик по чипу реакции) */}
-      {reacted && (
-        <ReactedUsersPopup x={reacted.x} y={reacted.y} rows={reacted.rows} onClose={closeReacted} />
-      )}
-
-      {/* Платная ⭐-реакция: попап выбора количества звёзд (tweb PopupStarReaction) */}
-      {starReact && isRealChat && (
-        <StarReactionPopup open chatId={numericChatId} msgId={starReact.msgId} onClose={closeStarReaction} />
-      )}
-
-      {/* Forward target picker */}
-      {forwardIds != null && (
-        <ForwardPicker dialogs={allDialogs} onPick={doForward} onClose={closeForward} />
-      )}
-
-      {/* «Ответить в другом чате» (tweb ReplyToAnotherChat): выбор целевого чата */}
-      {replyAnother && (
-        <ChatPicker
-          dialogs={allDialogs}
-          title={t('Reply in Another Chat')}
-          onPick={pickReplyAnotherChat}
-          onClose={closeReplyAnother}
-        />
-      )}
-
-      {/* Delete confirmation (for me / for everyone) */}
-      {delIds && (
-        <DeleteMessageDialog
-          canRevoke={delIds.canRevoke}
-          onDeleteForEveryone={() => doDelete(true)}
-          onDeleteForMe={() => doDelete(false)}
-          onClose={closeDelete}
-        />
-      )}
-
-      {/* Перевод сообщения (контекстное меню → Translate) */}
-      <TranslatePopup
-        open={translateText != null}
-        text={translateText ?? ''}
-        managers={managers}
-        onClose={closeTranslate}
-      />
     </div>
     </CallProvider>
   )
