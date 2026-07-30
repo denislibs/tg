@@ -1,10 +1,12 @@
 // src/core/managers/messagesManager.ts
 import { HttpError, type RestClient } from '../net/restClient'
-import { mapMessage, mapPoll, mapChecklist, mapGiveaway, mapScheduled, mapGeo, mapWebPage, mapFactCheck, type Message, type MessageEntity, type Poll, type Checklist, type Giveaway, type RawMessage, type RawPoll, type RawChecklist, type RawGiveaway, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
+import { mapMessage, mapScheduled, mapGeo, mapWebPage, mapFactCheck, type Message, type MessageEntity, type RawMessage, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
 import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, ReactionEvt, StarReactionEvt } from '../realtime/events'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
 import { saveMessages, loadMessages, deletePersistedMessage } from '../store/persist'
 import { reactionDelta } from '../reactionDelta'
+import { newPollMethods } from './messages/pollMethods'
+import { newTranslationMethods } from './messages/translationMethods'
 
 export interface HistoryArgs {
   chatId: number
@@ -230,17 +232,18 @@ export function newMessagesManager({ rest, decryptSecret, getMeId }: MessagesDep
     patchMsg(evt.chat_id, (m) => m.id === evt.msg_id,
       (m) => ({ ...m, starReaction: { total: evt.total, mine: isMine ? evt.mine : (m.starReaction?.mine ?? 0) } }))
   }
-  // Чек-лист → SSOT: отметки глобальны (нет локального состояния), полная замена.
-  const applyChecklistToCache = (chatId: number, raw: RawChecklist): void => {
-    const checklist = mapChecklist(raw)
-    patchMsg(chatId, (m) => m.checklist?.id === checklist.id, (m) => ({ ...m, checklist }))
-  }
   // Оптимистика в SSOT воркера (для переоткрытия чата до серверного эха): applyX
   // ToCache-хелперы выше. main-стор двигают клиентские вызыватели/хуки, а серверные
   // WS-эхо (reaction/star_reaction/checklist_update) приходят через funnel и
   // реконсилят абсолютно — broadcast'ов из менеджера больше нет.
 
+  // Под-модули God-объекта (P1-6): опросы/чек-листы/розыгрыши и перевод/транскрипция
+  // выделены в отдельные файлы, спредятся сюда — публичный API messages.* не меняется.
+  const ctx = { rest, patchMsg, getMeId }
+
   return {
+    ...newPollMethods(ctx),
+    ...newTranslationMethods(ctx),
     async getHistory(args: HistoryArgs): Promise<HistoryResult> {
       const { chatId, offsetSeq = 0, addOffset = 0, limit = 40, threadRoot } = args
       const key = hkey(chatId, threadRoot)
@@ -384,15 +387,6 @@ export function newMessagesManager({ rest, decryptSecret, getMeId }: MessagesDep
       return r
     },
 
-    // Расшифровка голосового/видео-кружка (Telegram transcribeAudio). Реального STT
-    // на бэке нет — возвращается детерминированный стаб и кэшируется в SSOT, чтобы
-    // блок остался развёрнутым при перерисовке.
-    async transcribe(chatId: number, msgId: number): Promise<{ text: string; pending: boolean }> {
-      const r = await rest.post<{ text: string; pending: boolean }>(`/chats/${chatId}/messages/${msgId}/transcribe`, {})
-      patchMsg(chatId, (m) => m.id === msgId, (m) => ({ ...m, transcription: r.text }))
-      return r
-    },
-
     // Delete a message. revoke=true → for everyone; false → only for me. Deleted
     // messages are never shown, so evict from the SSOT (+ all window slices) too,
     // or a later cache hit would resurrect it.
@@ -501,62 +495,6 @@ export function newMessagesManager({ rest, decryptSecret, getMeId }: MessagesDep
     async searchGlobal(q: string, filter: '' | 'media' | 'files' | 'links' | 'music' | 'voice' = '', offset = 0, limit = 20): Promise<{ messages: Message[]; count: number }> {
       const r = await rest.get<{ messages: RawMessage[]; count: number }>('/search/messages', { q, filter, offset, limit })
       return { messages: (r.messages ?? []).map(mapMessage), count: r.count }
-    },
-
-    // ── Опросы (Telegram Poll) ──
-    async sendPoll(chatId: number, p: { question: string; options: string[]; anonymous: boolean; multiple: boolean; quiz: boolean; correctOption?: number; clientMsgId?: string }): Promise<Message> {
-      const r = await rest.post<RawMessage>(`/chats/${chatId}/polls`, {
-        question: p.question, options: p.options, anonymous: p.anonymous,
-        multiple: p.multiple, quiz: p.quiz, correct_option: p.correctOption ?? null,
-        client_msg_id: p.clientMsgId ?? '',
-      })
-      return mapMessage(r)
-    },
-    // Голос (пустой список — отзыв); ответ авторитетен и несёт МОЙ выбор (myVotes),
-    // которого нет в общем WS-событии poll_update. Ставим опрос ПОЛНОСТЬЮ в SSOT
-    // воркера; main-стор обновляет вызыватель результатом (setPoll, не merge), иначе
-    // WS-merge потерял бы myVotes. WS poll_update затем реконсилит агрегат.
-    async votePoll(chatId: number, pollId: number, options: number[]): Promise<Poll> {
-      const r = await rest.post<{ poll: RawPoll }>(`/polls/${pollId}/vote`, { options })
-      const poll = mapPoll(r.poll)
-      patchMsg(chatId, (m) => m.poll?.id === poll.id, (m) => ({ ...m, poll }))
-      return poll
-    },
-    async closePoll(pollId: number): Promise<void> {
-      await rest.post(`/polls/${pollId}/close`, {})
-    },
-
-    // ── Чек-листы (Telegram todo list) ──
-    async sendChecklist(chatId: number, c: { title: string; items: string[]; othersCanAdd: boolean; othersCanMark: boolean; clientMsgId?: string }): Promise<Message> {
-      const r = await rest.post<RawMessage>(`/chats/${chatId}/checklists`, {
-        title: c.title, items: c.items,
-        others_can_add: c.othersCanAdd, others_can_mark: c.othersCanMark,
-        client_msg_id: c.clientMsgId ?? '',
-      })
-      return mapMessage(r)
-    },
-    // Отметить/снять отметку «выполнено» на пункте. Ответ авторитетен (несёт мою
-    // отметку) → пушим в SSOT и бродкастим (storeProjection единственный писатель).
-    async toggleChecklistItem(chatId: number, checklistId: number, itemId: number): Promise<Checklist> {
-      const r = await rest.post<{ checklist: RawChecklist }>(`/checklists/${checklistId}/items/${itemId}/toggle`, {})
-      applyChecklistToCache(chatId, r.checklist)
-      return mapChecklist(r.checklist)
-    },
-    // Добавить пункты; ответ авторитетен → пуш в SSOT + broadcast.
-    async addChecklistItems(chatId: number, checklistId: number, items: string[]): Promise<Checklist> {
-      const r = await rest.post<{ checklist: RawChecklist }>(`/checklists/${checklistId}/items`, { items })
-      applyChecklistToCache(chatId, r.checklist)
-      return mapChecklist(r.checklist)
-    },
-
-    // Участвовать в розыгрыше. Ответ несёт МОЁ participating/iWon, которого нет в
-    // общем WS giveaway_update → ставим розыгрыш ПОЛНОСТЬЮ в SSOT воркера; main-стор
-    // обновляет вызыватель результатом (setGiveaway, не merge). WS реконсилит агрегат.
-    async participateGiveaway(chatId: number, giveawayId: number): Promise<Giveaway> {
-      const r = await rest.post<{ giveaway: RawGiveaway }>(`/giveaways/${giveawayId}/participate`, {})
-      const giveaway = mapGiveaway(r.giveaway)
-      patchMsg(chatId, (m) => m.giveaway?.id === giveaway.id, (m) => ({ ...m, giveaway }))
-      return giveaway
     },
 
     // Сообщения треда (форум-топика) по возрастанию + total.
@@ -700,25 +638,6 @@ export function newMessagesManager({ rest, decryptSecret, getMeId }: MessagesDep
       patchMsg(evt.chat_id, (m) => m.id === evt.msg_id && !!m.mediaUnread, (m) => ({ ...m, mediaUnread: false }))
     },
 
-    // Live-агрегат опроса (poll_update) → SSOT; свой выбор (myVotes) — локальный,
-    // сохраняем (серверный broadcast его не несёт).
-    cachePoll(evt: { chat_id: number; poll: RawPoll }): void {
-      const poll = mapPoll(evt.poll)
-      patchMsg(evt.chat_id, (m) => m.poll?.id === poll.id, (m) => ({ ...m, poll: { ...poll, myVotes: m.poll!.myVotes } }))
-    },
-
-    // Live-кадр checklist_update → SSOT (broadcast делает worker.ts отдельно).
-    cacheChecklist(evt: { chat_id: number; checklist: RawChecklist }): void {
-      applyChecklistToCache(evt.chat_id, evt.checklist)
-    },
-
-    // Live-статус розыгрыша (giveaway_update) → SSOT; своё участие
-    // (participating/iWon) — локальное, сохраняем.
-    cacheGiveaway(evt: { chat_id: number; giveaway: RawGiveaway }): void {
-      const giveaway = mapGiveaway(evt.giveaway)
-      patchMsg(evt.chat_id, (m) => m.giveaway?.id === giveaway.id, (m) => ({ ...m, giveaway: { ...giveaway, participating: m.giveaway!.participating, iWon: m.giveaway!.iWon } }))
-    },
-
     // Reaction → SSOT. С counts (серверное эхо/catch-up) — АБСОЛЮТНЫЙ set; без
     // counts (оптимистичный клик до эха) — дельта. broadcast делает worker.ts.
     cacheReaction(evt: ReactionEvt): void {
@@ -812,11 +731,6 @@ export function newMessagesManager({ rest, decryptSecret, getMeId }: MessagesDep
       return m
     },
 
-    // Перевод произвольного текста на toLang (ISO-код). source — определённый
-    // сервером исходный язык. 503 при отключённом провайдере (пробрасывается).
-    async translate(text: string, toLang: string): Promise<{ text: string; source: string }> {
-      return rest.post<{ text: string; source: string }>('/translate', { text, to_lang: toLang })
-    },
   }
 }
 
