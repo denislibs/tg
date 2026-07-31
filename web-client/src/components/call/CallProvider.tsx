@@ -13,24 +13,29 @@ interface CallContextValue {
 
 const CallContext = createContext<CallContextValue | null>(null)
 
+// Старт исходящего звонка по Chat: строит CallPeer из карточки и делегирует в
+// callEngine. Не требует контекста — зовётся и из провайдера (хедер), и из
+// портального HeaderMenu (⋮-меню живёт вне CallProvider).
+export function startCallForChat(chat: Chat, video: boolean): void {
+  if (chat.peerId == null) return
+  const numericChatId = Number(chat.id)
+  startOutgoing(
+    {
+      id: chat.peerId,
+      name: chat.name,
+      avatar: chat.avatar,
+      avatarText: chat.avatarText,
+      avatarUrl: chat.avatarUrl,
+    },
+    video,
+    Number.isFinite(numericChatId) && String(numericChatId) === chat.id ? numericChatId : null,
+  )
+}
+
 export function CallProvider({ chat, children }: { chat: Chat; children: ReactNode }) {
   const value = useMemo(
     () => ({
-      start: (video: boolean) => {
-        if (chat.peerId == null) return
-        const numericChatId = Number(chat.id)
-        startOutgoing(
-          {
-            id: chat.peerId,
-            name: chat.name,
-            avatar: chat.avatar,
-            avatarText: chat.avatarText,
-            avatarUrl: chat.avatarUrl,
-          },
-          video,
-          Number.isFinite(numericChatId) && String(numericChatId) === chat.id ? numericChatId : null,
-        )
-      },
+      start: (video: boolean) => startCallForChat(chat, video),
       end: hangup,
     }),
     [chat],

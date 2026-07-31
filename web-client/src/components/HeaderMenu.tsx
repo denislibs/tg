@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import TgIcon from './TgIcon'
 import { joinGroupCall } from '../core/calls/groupCallEngine'
 import Menu, { MenuItem } from '../shared/ui/Menu'
-import { useCall } from './call/CallProvider'
+import { startCallForChat } from './call/CallProvider'
 import { SERVICE_USER_ID } from '../core/dialogToChat'
 import { useSearchStore } from '../stores/searchStore'
 import useMediaQuery from '../shared/lib/useMediaQuery'
@@ -42,7 +42,6 @@ interface Props {
 
 export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddMember, onSelectMessages, onAddContact, onDeleteChat, onClearHistory, onChangeTheme, onSendGift, onBoost, onCreateGiveaway, onStartStream, onOpenSuggested }: Props) {
   const t = useT()
-  const { start: startCall } = useCall()
   const setSearchOpen = useSearchStore((s) => s.setOpen)
   const [autoOpen, setAutoOpen] = useState(false)
   // Меню закрывается с exit-анимацией ui-kit Menu: сначала open=false, владелец
@@ -113,8 +112,8 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
       muteItem,
       ...(!isService
         ? [
-            { icon: <TgIcon name="phone" size={20} />, label: 'Call', onClick: () => { startCall(false); close() } },
-            { icon: <TgIcon name="videocamera" size={20} />, label: 'Video Call', onClick: () => { startCall(true); close() } },
+            { icon: <TgIcon name="phone" size={20} />, label: 'Call', onClick: () => { startCallForChat(chat, false); close() } },
+            { icon: <TgIcon name="videocamera" size={20} />, label: 'Video Call', onClick: () => { startCallForChat(chat, true); close() } },
           ]
         : []),
       { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
