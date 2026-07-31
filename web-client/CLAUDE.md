@@ -76,8 +76,10 @@ npx vite build --outDir ../client-build
 - `store.getState()/.setState()` из не-React кода (worker/`realtimeBridge`).
 - Вынести кластер логики в свой `core/hooks/useChat*.ts` (как `useChatSelection`/`useChatInfoCard`/`usePinnedBar`).
 
-**Известное исключение (не копировать):** `ConversationView` слушает `RT.newMessage` ради UI read-marker
-(markRead/unread-below зависят от scroll/focus). Это осознанный временный трейд-офф — новый код так не делает.
+**Известное исключение (не копировать):** `useChatScroll` слушает `RT.newMessage` ради UI read-marker —
+markRead живого сообщения, когда вьюпорт прижат к низу и вкладка в фокусе (это решение зависит от
+scroll/focus, которых нет в сторе). Счётчик unread-below при этом **производный из стора**
+(`newestSeq − lastReadSeq`), а не накапливается из потока событий. Осознанный трейд-офф — новый код так не делает.
 
 ## Безопасность (критично)
 

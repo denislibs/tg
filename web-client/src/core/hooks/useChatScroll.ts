@@ -11,16 +11,19 @@
 // (useChatSend) can pin to the bottom when the user sends.
 //
 // Known exception to the "only realtimeBridge subscribes to the socket" rule: this
-// hook listens to uiEvents(rt:new_message) to decide markRead-vs-unread-pill for a
-// live message in the OPEN chat — that decision needs scroll/focus state that only
-// lives here. The message DATA path is still realtimeBridge → messagesStore; this is
-// a pure UI reaction. (Folding it into a store-driven signal is future work.)
+// hook listens to eventBus(RT.newMessage) to markRead a live message when the
+// viewport is pinned to the bottom and focused — that decision needs scroll/focus
+// state that only lives here. The message DATA path is still realtimeBridge →
+// messagesStore; this is a pure UI reaction. The unread-below badge count is NOT
+// accumulated from that stream (it drifted on remount/resync): it is DERIVED from
+// the store — newestSeq − lastReadSeq — so it can't desync from the source of truth.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useEvent } from './useEvent'
 import { useManagers } from './useManagers'
 import { smoothCenterElement, afterScrollSettles } from '../dom/smoothScrollToElement'
 import { eventBus } from '../realtime/eventBus'
 import { RT } from '../realtime/events'
+import { useChatsStore } from '../../stores/chatsStore'
 import type { MessageWindow } from './useMessageWindow'
 
 interface UseChatScrollArgs {
@@ -39,9 +42,19 @@ interface UseChatScrollArgs {
 export function useChatScroll({ numericChatId, isRealChat, win, playerOffset, unreadDividerSeq, unreadStickyTop }: UseChatScrollArgs) {
   const managers = useManagers()
   const [showScrollDown, setShowScrollDown] = useState(false)
-  // Count of new messages that arrived below the viewport while scrolled up
-  // (shown as a badge on the scroll-to-bottom button, like tweb).
-  const [unreadBelow, setUnreadBelow] = useState(0)
+  // Unread-below badge on the scroll-to-bottom button (tweb .bubbles-go-down count):
+  // DERIVED from the store, not accumulated from the event stream. newestSeq (the
+  // dialog's last message) minus lastReadSeq (the viewer's read horizon) is the
+  // count of messages below the read point — which, while scrolled up, are exactly
+  // the ones below the viewport. markRead (at bottom) advances lastReadSeq → 0.
+  // Store-derived ⇒ survives remount/resync with no drift (the old c+1 counter lost
+  // its value on remount and double-counted on a replay). The FAB is hidden unless
+  // scrolled up (showScrollDown), so a transient count at the bottom is never seen.
+  const unreadBelow = useChatsStore((s) => {
+    const d = s.dialogs.find((x) => x.chatId === numericChatId)
+    if (!d) return 0
+    return Math.max(0, (d.lastMessage?.seq ?? 0) - d.lastReadSeq)
+  })
   // Briefly highlighted message (jump-to target), by seq.
   const [highlightSeq, setHighlightSeq] = useState<number | null>(null)
 
@@ -92,18 +105,16 @@ export function useChatScroll({ numericChatId, isRealChat, win, playerOffset, un
       // at its open-time default so the initial scroll-to-bottom isn't cancelled.
       if (!isRealChat) {
         atBottomRef.current = dist < 240
-        if (dist < 240) setUnreadBelow(0)
       } else if (win.msgs.length > 0) {
         const atRealBottom = dist < 240 && win.reachedBottom
         // Stay pinned to the bottom from open until the user scrolls up. Once they
         // have, fall back to the strict real-bottom gate (prevents a mid-history
         // jump from false-pinning + cascading loadNewer).
         atBottomRef.current = !userScrolledUpRef.current || atRealBottom
-        if (atRealBottom) {
-          setUnreadBelow(0)
-          if (document.hasFocus()) {
-            void managers.realtime.markRead({ chatId: numericChatId, upToSeq: win.msgs[win.msgs.length - 1].seq })
-          }
+        // markRead at the real bottom advances lastReadSeq → the derived
+        // unread-below badge falls to 0 (no manual reset needed).
+        if (atRealBottom && document.hasFocus()) {
+          void managers.realtime.markRead({ chatId: numericChatId, upToSeq: win.msgs[win.msgs.length - 1].seq })
         }
       }
       // Only page on genuine USER scrolls: programmatic bottom-pinning scrolls
@@ -310,8 +321,10 @@ export function useChatScroll({ numericChatId, isRealChat, win, playerOffset, un
   }, [playerOffset])
 
   // Read-marker for a live message in THIS open chat: mark read if the user is at
-  // the bottom & focused, else bump the unread-below pill (tweb: read only what's
-  // seen). The DATA path is realtimeBridge → messagesStore; this is a UI reaction.
+  // the bottom & focused (tweb: read only what's seen). When scrolled up we do
+  // nothing here — the unread-below badge is derived from the store (newestSeq −
+  // lastReadSeq), so the incoming message already grows it via lastMessage.seq. The
+  // DATA path is realtimeBridge → messagesStore; this stays a pure UI reaction.
   useEffect(() => {
     if (!isRealChat) return
     // Подписка на eventBus напрямую (типизированный payload). storeProjection
@@ -321,18 +334,19 @@ export function useChatScroll({ numericChatId, isRealChat, win, playerOffset, un
       if (m.chat_id !== numericChatId) return
       if (atBottomRef.current && document.hasFocus()) {
         void managers.realtime.markRead({ chatId: numericChatId, upToSeq: m.seq })
-      } else {
-        setUnreadBelow((c) => c + 1)
       }
     })
   }, [isRealChat, numericChatId, managers])
 
-  // Mark read on open — when the newest is loaded and the window is focused, read up
-  // to max seq (clears the unread badge). Gated on focus like tweb (a background tab
-  // shouldn't mark a chat read).
+  // Mark read on open / at the bottom — when the newest is loaded, focused, and the
+  // viewport is pinned to the bottom, read up to max seq. This effect re-runs on
+  // every win.msgs change, so it must be gated on atBottomRef: a user scrolled up in
+  // history must NOT have the messages below the fold auto-marked read (tweb reads
+  // only what's seen) — otherwise the derived unread-below badge could never rise.
+  // Gated on focus like tweb (a background tab shouldn't mark a chat read).
   useEffect(() => {
     if (!isRealChat || !win.reachedBottom || win.msgs.length === 0) return
-    if (!document.hasFocus()) return
+    if (!atBottomRef.current || !document.hasFocus()) return
     const maxSeq = win.msgs[win.msgs.length - 1].seq
     void managers.realtime.markRead({ chatId: numericChatId, upToSeq: maxSeq })
   }, [isRealChat, win.reachedBottom, win.msgs, numericChatId, managers])
@@ -344,7 +358,7 @@ export function useChatScroll({ numericChatId, isRealChat, win, playerOffset, un
       const el = scrollRef.current
       if (!el || win.msgs.length === 0) return
       if (el.scrollHeight - el.scrollTop - el.clientHeight < 240) {
-        setUnreadBelow(0)
+        // markRead advances lastReadSeq → derived unread-below badge → 0.
         void managers.realtime.markRead({ chatId: numericChatId, upToSeq: win.msgs[win.msgs.length - 1].seq })
       }
     }
@@ -357,7 +371,8 @@ export function useChatScroll({ numericChatId, isRealChat, win, playerOffset, un
   // scrolling the loaded window alone would strand us in old messages
   // (tweb onGoDownClick → setMessageId()).
   const onScrollDownClick = useEvent(() => {
-    setUnreadBelow(0)
+    // No manual badge reset: landing at the bottom triggers markRead (onScroll /
+    // reachedBottom effect) which advances lastReadSeq → derived unread-below → 0.
     if (isRealChat && !win.reachedBottom) {
       atBottomRef.current = true; userScrolledUpRef.current = false
       pendingJumpSeq.current = null
