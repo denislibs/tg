@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import { useT } from '../i18n'
-import { useManagers } from '../core/hooks/useManagers'
+import { useStoriesArchive } from '../core/hooks/useStoriesArchive'
+import { useMediaThumb } from '../core/hooks/useMediaThumb'
 import StoryReadOnlyPreview from './StoryReadOnlyPreview'
 import type { StoryItem } from '../core/managers/storiesManager'
 import s from './AddStorySheet.module.scss'
@@ -12,13 +13,7 @@ import s from './AddStorySheet.module.scss'
 // Плитка архива: грузит превью медиа истории (thumbUrl) и показывает бейджи
 // pinned/edited поверх.
 function ArchiveTile({ story, onClick }: { story: StoryItem; onClick: () => void }) {
-  const managers = useManagers()
-  const [url, setUrl] = useState('')
-  useEffect(() => {
-    let alive = true
-    void managers.media.thumbUrl(story.mediaId).then((u) => { if (alive) setUrl(u) }).catch(() => {})
-    return () => { alive = false }
-  }, [managers, story.mediaId])
+  const url = useMediaThumb(story.mediaId)
   return (
     <div
       onClick={onClick}
@@ -37,21 +32,14 @@ function ArchiveTile({ story, onClick }: { story: StoryItem; onClick: () => void
 
 /**
  * «Мои истории → Архив» (постинг-сторона, минималистично «по мотивам» TG):
- * грид своих истёкших историй через managers.stories.archive. Клик по плитке
+ * грид своих истёкших историй (useStoriesArchive). Клик по плитке
  * открывает read-only превью (медиа + подпись), без реакций/ответа/навигации —
  * архивная история уже недоступна зрителям.
  */
 export default function StoriesArchiveSheet({ onClose }: { onClose: () => void }) {
   const t = useT()
-  const managers = useManagers()
-  const [items, setItems] = useState<StoryItem[] | null>(null)
+  const items = useStoriesArchive()
   const [openId, setOpenId] = useState<number | null>(null)
-
-  useEffect(() => {
-    let alive = true
-    managers.stories.archive(60).then((list) => { if (alive) setItems(list) }).catch(() => { if (alive) setItems([]) })
-    return () => { alive = false }
-  }, [managers])
 
   const open = items?.find((i) => i.id === openId) ?? null
 

@@ -4,13 +4,12 @@
 // строку «Сбросить ключ» и кнопку «Начать»/«Закончить трансляцию». Два режима:
 // active=false → «Транслировать через…» + START STREAMING; active=true →
 // «Настройки трансляции» + END LIVE STREAM.
-import { useEffect, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import Popup from '../shared/ui/Popup'
 import Text from '../shared/ui/Text'
 import TgIcon, { type IconName } from './TgIcon'
-import { useManagers } from '../core/hooks/useManagers'
+import { useLivestreamSettings } from '../core/hooks/useLivestreamSettings'
 import { uiEvents } from '../core/hooks/uiEvents'
-import { watchLivestream, leaveLivestream } from '../core/calls/livestreamEngine'
 import { useT } from '../i18n'
 import s from './StreamSettingsPopup.module.scss'
 
@@ -45,50 +44,12 @@ function DataRow({ icon, label, value, masked, onCopy, right }: {
 
 export default function StreamSettingsPopup({ chatId, active, onClose }: Props) {
   const t = useT()
-  const managers = useManagers()
-  const [url, setUrl] = useState('')
-  const [key, setKey] = useState('')
+  const { url, key, busy, revoke, onAction } = useLivestreamSettings(chatId, active, onClose)
   const [keyVisible, setKeyVisible] = useState(false)
-  const [busy, setBusy] = useState(false)
-
-  // Забираем креды при открытии (бэк генерирует ключ при первом обращении админа).
-  useEffect(() => {
-    let alive = true
-    void managers.livestream.status(chatId).then((st) => {
-      if (!alive) return
-      setUrl(st.rtmpUrl ?? '')
-      setKey(st.streamKey ?? '')
-    }).catch(() => {})
-    return () => { alive = false }
-  }, [managers, chatId])
 
   const copy = (value: string, toast: string) => {
     if (!value) return
     void navigator.clipboard?.writeText(value).then(() => uiEvents.emit('ui:toast', t(toast))).catch(() => {})
-  }
-
-  const revoke = () => {
-    if (busy) return
-    setBusy(true)
-    void managers.livestream.revokeKey(chatId)
-      .then((st) => { setUrl(st.rtmpUrl ?? ''); setKey(st.streamKey ?? '') })
-      .finally(() => setBusy(false))
-  }
-
-  const onAction = () => {
-    if (busy) return
-    setBusy(true)
-    if (active) {
-      void managers.livestream.stop(chatId).then(() => {
-        leaveLivestream()
-        onClose()
-      }).finally(() => setBusy(false))
-    } else {
-      void managers.livestream.start(chatId).then(() => {
-        watchLivestream(chatId)
-        onClose()
-      }).finally(() => setBusy(false))
-    }
   }
 
   // ключ маскируется точками (tweb: первые 20 символов → middot)

@@ -1,13 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import UserAvatar from './UserAvatar'
 import { useT } from '../i18n'
-import { useManagers } from '../core/hooks/useManagers'
+import { useCloseFriends } from '../core/hooks/useCloseFriends'
 import { useGroupCandidates } from '../core/hooks/useGroupCandidates'
-import { uiEvents } from '../core/hooks/uiEvents'
 import classNames from '../shared/lib/classNames'
 import s from './AddStorySheet.module.scss'
 
@@ -15,55 +14,20 @@ import s from './AddStorySheet.module.scss'
  * Close-friends editor (постинг-сторона, референса в tweb нет — минималистичный
  * мультивыбор «по мотивам» TG). Загружает текущий список близких друзей,
  * позволяет отметить/снять контакты (поиск по имени) и сохраняет весь список
- * целиком через managers.stories.setCloseFriends. Слайд-панель по образцу
+ * целиком (useCloseFriends). Слайд-панель по образцу
  * AddStorySheet (тот же SCSS-модуль).
  */
 export default function CloseFriendsSheet({ onClose }: { onClose: () => void }) {
   const t = useT()
-  const managers = useManagers()
   const candidates = useGroupCandidates()
+  const { selected, loaded, busy, toggle, save } = useCloseFriends(onClose)
 
   const [query, setQuery] = useState('')
-  const [selected, setSelected] = useState<Set<number>>(new Set())
-  const [busy, setBusy] = useState(false)
-  const [loaded, setLoaded] = useState(false)
-
-  useEffect(() => {
-    let alive = true
-    managers.stories
-      .closeFriends()
-      .then((ids) => { if (alive) setSelected(new Set(ids)) })
-      .catch(() => {})
-      .finally(() => { if (alive) setLoaded(true) })
-    return () => { alive = false }
-  }, [managers])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     return q ? candidates.filter((c) => c.name.toLowerCase().includes(q)) : candidates
   }, [candidates, query])
-
-  const toggle = (id: number) =>
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-
-  const save = async () => {
-    if (busy) return
-    setBusy(true)
-    try {
-      await managers.stories.setCloseFriends([...selected])
-      uiEvents.emit('ui:toast', t('Close friends list updated'))
-      onClose()
-    } catch {
-      uiEvents.emit('ui:toast', t('Something went wrong'))
-    } finally {
-      setBusy(false)
-    }
-  }
 
   return (
     <motion.div

@@ -7,7 +7,7 @@
 // фото / предложить фото / сброс) и красное «Удалить контакт». Сохранение —
 // плавающая ✓ (contacts.add — upsert по contact_id). Инфо-панель остаётся только
 // для просмотра: все редактируемые поля живут здесь.
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import Input from '../shared/ui/Input'
@@ -19,8 +19,8 @@ import { Section, Row } from './settings/kit'
 import AvatarCropper from './settings/AvatarCropper'
 import BirthdayModal from './settings/BirthdayModal'
 import { useAvatarSrc } from './useAvatarSrc'
-import { useManagers } from '../core/hooks/useManagers'
-import { useChatsStore, loadChats } from '../stores/chatsStore'
+import { useEditContact } from '../core/hooks/useEditContact'
+import { useMuteToggle } from '../core/hooks/useMuteToggle'
 import type { Chat } from '../data'
 import add from './AddContactView.module.scss'
 import useMediaQuery from '../shared/lib/useMediaQuery'
@@ -30,9 +30,6 @@ function splitName(full: string): { first: string; last: string } {
   return { first: parts[0] ?? '', last: parts.slice(1).join(' ') }
 }
 
-// Целевое действие для выбранного фото: личное фото у себя или предложение контакту.
-type PhotoMode = 'set' | 'suggest'
-
 export default function EditContactView({
   chat,
   onClose,
@@ -40,115 +37,34 @@ export default function EditContactView({
   chat: Chat
   onClose: () => void
 }) {
-  const managers = useManagers()
   const narrow = useMediaQuery('(max-width:900px)')
   const peerId = chat.peerId ?? null
 
   const seed = splitName(chat.name)
-  const [first, setFirst] = useState(seed.first)
-  const [last, setLast] = useState(seed.last)
-  const [note, setNote] = useState('')
-  const [hasPersonal, setHasPersonal] = useState(false)
-  const [saving, setSaving] = useState(false)
+  const {
+    first, setFirst, last, setLast, note, setNote,
+    hasPersonal, busyPhoto, canSave,
+    setPhotoMode, submit, onCropConfirm, resetPhoto, del,
+  } = useEditContact(peerId, seed.first, onClose)
   const [birthdayOpen, setBirthdayOpen] = useState(false)
   const [cropFile, setCropFile] = useState<File | null>(null)
-  const [busyPhoto, setBusyPhoto] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
-  const modeRef = useRef<PhotoMode>('set')
 
   const avatarSrc = useAvatarSrc(chat.avatarUrl)
   const displayFirst = first.trim() || chat.name
 
   // Уведомления = per-chat mute (как в UserInfoPanel: checked = !muted).
   const numericChatId = Number(chat.id)
-  const setDialogMuted = useChatsStore((st) => st.setDialogMuted)
-  const dialogMuted = useChatsStore((st) => st.dialogs.find((d) => d.chatId === numericChatId)?.muted)
-  const muted = dialogMuted ?? !!chat.muted
-  const toggleNotifications = () => {
-    const next = !muted
-    setDialogMuted(numericChatId, next)
-    void managers.groups.setMute(numericChatId, next).catch(() => setDialogMuted(numericChatId, !next))
-  }
+  const { muted, toggle: toggleNotifications } = useMuteToggle(numericChatId, chat.muted)
 
-  // Прегружаем сохранённое имя/фамилию/заметку контакта + признак личного фото.
-  useEffect(() => {
-    if (peerId == null) return
-    let alive = true
-    void managers.contacts.list().then((list) => {
-      const c = list.find((x) => x.userId === peerId)
-      if (!alive || !c) return
-      setFirst(c.firstName || seed.first)
-      setLast(c.lastName)
-      setNote(c.note)
-      setHasPersonal(c.hasCustomPhoto)
-    }).catch(() => {})
-    return () => {
-      alive = false
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [peerId, managers])
-
-  const canSave = peerId != null && first.trim().length > 0 && !saving
-  const submit = async () => {
-    if (!canSave) return
-    setSaving(true)
-    try {
-      await managers.contacts.add({
-        contactId: peerId!,
-        firstName: first.trim(),
-        lastName: last.trim(),
-        note: note.trim(),
-      })
-      onClose()
-    } catch {
-      setSaving(false)
-    }
-  }
-
-  const pickPhoto = (mode: PhotoMode) => {
-    modeRef.current = mode
+  const pickPhoto = (mode: 'set' | 'suggest') => {
+    setPhotoMode(mode)
     fileRef.current?.click()
   }
   const onFilePicked = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
     e.target.value = ''
     if (f) setCropFile(f)
-  }
-  const onCropConfirm = async (blob: Blob, width: number, height: number) => {
-    setCropFile(null)
-    if (peerId == null) return
-    setBusyPhoto(true)
-    try {
-      const bytes = await blob.arrayBuffer()
-      const mediaId = await managers.media.upload({ bytes, mime: 'image/jpeg', size: blob.size, width, height })
-      if (modeRef.current === 'set') {
-        await managers.contacts.setPhoto(peerId, mediaId)
-        setHasPersonal(true)
-        await loadChats(managers) // обновить аватар в списке диалогов и шапке чата
-      } else {
-        await managers.contacts.suggestPhoto(peerId, mediaId)
-      }
-    } finally {
-      setBusyPhoto(false)
-    }
-  }
-  const resetPhoto = async () => {
-    if (peerId == null) return
-    setBusyPhoto(true)
-    try {
-      await managers.contacts.clearPhoto(peerId)
-      setHasPersonal(false)
-      await loadChats(managers)
-    } finally {
-      setBusyPhoto(false)
-    }
-  }
-
-  const del = async () => {
-    if (peerId == null) return
-    await managers.contacts.del(peerId)
-    await loadChats(managers)
-    onClose()
   }
 
   return (
@@ -274,7 +190,7 @@ export default function EditContactView({
       </motion.div>
 
       <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFilePicked} />
-      {cropFile && <AvatarCropper file={cropFile} onCancel={() => setCropFile(null)} onConfirm={onCropConfirm} />}
+      {cropFile && <AvatarCropper file={cropFile} onCancel={() => setCropFile(null)} onConfirm={(blob, w, h) => { setCropFile(null); void onCropConfirm(blob, w, h) }} />}
       <BirthdayModal open={birthdayOpen} initial={null} onClose={() => setBirthdayOpen(false)} onSave={() => setBirthdayOpen(false)} />
     </motion.div>
   )

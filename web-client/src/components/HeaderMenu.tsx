@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { ReactNode } from 'react'
 import TgIcon from './TgIcon'
 import { joinGroupCall } from '../core/calls/groupCallEngine'
@@ -9,9 +9,7 @@ import { useSearchStore } from '../stores/searchStore'
 import useMediaQuery from '../shared/lib/useMediaQuery'
 import type { Chat } from '../data'
 import { useT } from '../i18n'
-import { useManagers } from '../core/hooks/useManagers'
-import { loadChats } from '../stores/chatsStore'
-import { usePrivacyStore } from '../stores/privacyStore'
+import { useHeaderMenuActions } from '../core/hooks/useHeaderMenuActions'
 import { useReportStore } from '../stores/reportStore'
 
 type Item = { icon: ReactNode; label: string; danger?: boolean; submenu?: boolean; onClick?: () => void }
@@ -44,7 +42,6 @@ interface Props {
 
 export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddMember, onSelectMessages, onAddContact, onDeleteChat, onClearHistory, onChangeTheme, onSendGift, onBoost, onCreateGiveaway, onStartStream, onOpenSuggested }: Props) {
   const t = useT()
-  const managers = useManagers()
   const { start: startCall } = useCall()
   const setSearchOpen = useSearchStore((s) => s.setOpen)
   const [autoOpen, setAutoOpen] = useState(false)
@@ -74,21 +71,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
   // icon lock 'BlockUser' / lockoff 'Unblock'); в профиле её нет.
   const peerId = chat.peerId
   const canBlock = chat.type === 'private' && peerId != null && peerId !== SERVICE_USER_ID
-  const [blocked, setBlocked] = useState(false)
-  useEffect(() => {
-    if (!canBlock || peerId == null) return
-    let alive = true
-    void managers.privacy.profile(peerId).then((p) => { if (alive) setBlocked(p.isBlocked) }).catch(() => {})
-    return () => { alive = false }
-  }, [canBlock, peerId, managers])
-  const toggleBlock = () => {
-    if (peerId == null) return
-    void (blocked ? managers.privacy.unblock(peerId) : managers.privacy.block(peerId))
-      .then(() => managers.privacy.blocked(0, 1))
-      .then((r) => usePrivacyStore.getState().setBlockedTotal(r.total))
-      .catch(() => {})
-    close()
-  }
+  const { blocked, toggleBlock, setChatTtl } = useHeaderMenuActions({ peerId, canBlock, chatId: numericChatId, close })
 
   // «Очистить историю» у себя (tweb PeerInfo.Action.ClearHistory): приватные чаты
   // и группы, где ты участник. Глиф broom в наш tgico-набор не портирован — берём
@@ -227,12 +210,6 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
     { label: '1 month', period: 30 * DAY },
   ]
   const currentPeriod = chat.autoDeletePeriod ?? 0
-  const setChatTtl = (period: number) => {
-    if (Number.isFinite(numericChatId)) {
-      void managers.privacy.setChatAutoDelete(numericChatId, period).then(() => loadChats(managers)).catch(() => {})
-    }
-    close()
-  }
 
   return (
     <>

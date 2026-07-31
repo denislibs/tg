@@ -11,7 +11,6 @@ import { useAvatarSrc } from './useAvatarSrc'
 import VerifiedBadge from './VerifiedBadge'
 import PremiumBadge from './PremiumBadge'
 import EmojiStatus from './EmojiStatus'
-import type { SavedDialog } from '../core/managers/chatsManager'
 import GroupEditFlow from './group/GroupEditFlow'
 import AddMembersScreen from './group/AddMembersScreen'
 import { Section, Row } from './settings/kit'
@@ -20,8 +19,9 @@ import classNames from '../shared/lib/classNames'
 import type { Chat, OpenPeer } from '../data'
 import { useT } from '../i18n'
 import { useGroupInfo } from '../core/hooks/useGroupInfo'
+import { useSavedDialogs, useUserProfile, useProfileGifts, useProfilePhotos, type HeaderPhoto } from '../core/hooks/useUserProfileData'
+import { useMuteToggle } from '../core/hooks/useMuteToggle'
 import { useChatsStore } from '../stores/chatsStore'
-import { useManagers } from '../core/hooks/useManagers'
 import { useNavLayer } from '../core/hooks/useNavLayer'
 import { useLang } from '../i18n'
 import { lastSeenLabel } from '../core/presence'
@@ -31,7 +31,6 @@ const MediaLightbox = lazy(() => import('./messages/MediaLightbox'))
 import { clampIndex, pickZone, stepIndex, indexAfterSwipe } from '../core/photoPager'
 import s from './UserInfoPanel.module.scss'
 import useMediaQuery from '../shared/lib/useMediaQuery'
-import type { UserProfile } from '../core/managers/privacyManager'
 import type { GiftInfo } from '../core/managers/starsManager'
 import GiftInfoPopup from './stars/GiftInfoPopup'
 import KeyVerificationPopup from './secret/KeyVerificationPopup'
@@ -42,18 +41,13 @@ import { membersLabel, chatsLabel, countLabel, sharedMediaChatId, HEADER_H, TAB_
 export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers, onEditContact, onSendGift }: { chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void; canAddMembers?: boolean; onEditContact?: () => void; onSendGift?: () => void }) {
   const t = useT()
   const narrow = useMediaQuery('(max-width:900px)')
-  const managers = useManagers()
   useNavLayer(true, onClose) // Back закрывает панель профиля (tweb right column)
   const isSaved = chat.type === 'saved'
   // группы — таб «Участники», избранное — «Чаты» (tweb savedDialogs first), остальные — «Медиа»
   const [tab, setTab] = useState(chat.type === 'group' ? 'Members' : isSaved ? 'Chats' : 'Media')
 
   // «Избранное»: сохранённые диалоги (группировка по источнику пересылки)
-  const [savedDialogs, setSavedDialogs] = useState<SavedDialog[] | null>(null)
-  useEffect(() => {
-    if (!isSaved) return
-    void managers.chats.savedDialogs().then(setSavedDialogs).catch(() => setSavedDialogs([]))
-  }, [isSaved, managers])
+  const savedDialogs = useSavedDialogs(isSaved)
   const [editing, setEditing] = useState(false)
   const [addingMembers, setAddingMembers] = useState(false)
   const [showStats, setShowStats] = useState(false)
@@ -61,30 +55,13 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
 
   // Чужой профиль с применённой конфиденциальностью (GET /users/{id}):
   // телефон/bio/день рождения приходят пустыми, если скрыты правилами.
-  const [profile, setProfile] = useState<UserProfile | null>(null)
   const peerId = chat.peerId
-  useEffect(() => {
-    if (isSaved || peerId == null) return
-    let alive = true
-    void managers.privacy.profile(peerId).then((p) => {
-      if (alive) setProfile(p)
-    }).catch(() => {})
-    return () => {
-      alive = false
-    }
-  }, [isSaved, peerId, managers])
+  const profile = useUserProfile(peerId, isSaved)
 
   // Тумблер Notifications = per-chat mute (tweb PeerProfile: checked = !muted,
   // переключение — togglePeerMute напрямую, без попапа длительности)
   const numericChatId = Number(chat.id)
-  const setDialogMuted = useChatsStore((st) => st.setDialogMuted)
-  const dialogMuted = useChatsStore((st) => st.dialogs.find((d) => d.chatId === numericChatId)?.muted)
-  const muted = dialogMuted ?? !!chat.muted
-  const toggleNotifications = () => {
-    const next = !muted
-    setDialogMuted(numericChatId, next) // оптимистично
-    void managers.groups.setMute(numericChatId, next).catch(() => setDialogMuted(numericChatId, !next))
-  }
+  const { muted, toggle: toggleNotifications } = useMuteToggle(numericChatId, chat.muted)
 
   const {
     isRealChat,
@@ -173,38 +150,12 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
   // просмотрщик): нужен для сегментной полоски-пейджера и перелистывания
   // прямо в шапке. Пусто/ошибка → одиночный текущий аватар.
   const avatarWrapRef = useRef<HTMLDivElement>(null)
-  type HeaderPhoto = { src: string; isVideo: boolean; videoSrc?: string }
-  const [photos, setPhotos] = useState<HeaderPhoto[] | null>(null)
+  const photos = useProfilePhotos({ peerId, isSaved, expanded, headerAvatarSrc })
   const [photoIndex, setPhotoIndex] = useState(0)
-  // Смена собеседника — сбрасываем кэш галереи и позицию.
-  useEffect(() => { setPhotos(null); setPhotoIndex(0) }, [peerId])
+  // Смена собеседника — сбрасываем позицию (кэш галереи сбрасывает хук).
+  useEffect(() => { setPhotoIndex(0) }, [peerId])
   // Сворачивание шапки возвращает к первому фото (tweb setCollapsed → go first).
   useEffect(() => { if (!expanded) setPhotoIndex(0) }, [expanded])
-
-  useEffect(() => {
-    if (!expanded || peerId == null || isSaved || photos !== null) return
-    let alive = true
-    void managers.profile.listPhotos(peerId).then(async (list) => {
-      const items = await Promise.all(list.map(async (p): Promise<HeaderPhoto> => {
-        const m = p.url.match(/\/media\/(\d+)\/content/)
-        const src = m ? await managers.media.contentUrl(Number(m[1])) : p.url
-        // Видео-аватар (tweb photo_video): резолвим video_url в токен-URL так же,
-        // как still. Список чатов/сжатая шапка остаются на still — playback
-        // только в развёрнутой шапке-пейджере и просмотрщике.
-        if (p.videoUrl) {
-          const vm = p.videoUrl.match(/\/media\/(\d+)\/content/)
-          const videoSrc = vm ? await managers.media.contentUrl(Number(vm[1])) : p.videoUrl
-          return { src, isVideo: true, videoSrc }
-        }
-        return { src, isVideo: false }
-      }))
-      if (!alive) return
-      setPhotos(items.length ? items : headerAvatarSrc ? [{ src: headerAvatarSrc, isVideo: false }] : [])
-    }).catch(() => {
-      if (alive && headerAvatarSrc) setPhotos([{ src: headerAvatarSrc, isVideo: false }])
-    })
-    return () => { alive = false }
-  }, [expanded, peerId, isSaved, photos, managers, headerAvatarSrc])
 
   // Отображаемый список: загруженная галерея либо одиночный текущий аватар.
   const headerPhotos: HeaderPhoto[] = photos ?? (headerAvatarSrc ? [{ src: headerAvatarSrc, isVideo: false }] : [])
@@ -283,16 +234,8 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
   // «Ключ шифрования» (tweb chatEncryptionKey) — только для секретного чата.
   const isSecret = chat.type === 'secret'
   const [keyPopupOpen, setKeyPopupOpen] = useState<boolean | null>(null)
-  const [gifts, setGifts] = useState<GiftInfo[]>([])
+  const { gifts, reload: loadGifts } = useProfileGifts(isUser, peerId)
   const [selectedGift, setSelectedGift] = useState<GiftInfo | null>(null)
-  const loadGifts = () => {
-    if (!isUser || peerId == null) return
-    void managers.stars.profileGifts(peerId).then(setGifts).catch(() => setGifts([]))
-  }
-  useEffect(() => {
-    loadGifts()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isUser, peerId])
 
   // Ссылка группы в инфо-карточке: публичный username, иначе первая инвайт-ссылка.
   const inviteUrl = chat.username

@@ -3,7 +3,7 @@
 // (исходящий/входящий/пропущенный) и время; справа — кнопка перезвонить.
 // Пропущенные входящие подсвечены красным (как в Telegram). Клик по строке
 // открывает чат, клик по иконке трубки/камеры — новый звонок.
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import Text from '../shared/ui/Text'
 import IconButton from '../shared/ui/IconButton'
 import { motion } from 'framer-motion'
@@ -11,7 +11,7 @@ import TgIcon from './TgIcon'
 import { slideInRight } from '../motion'
 import Avatar from '../shared/ui/Avatar'
 import { useAvatarSrc } from './useAvatarSrc'
-import { useManagers } from '../core/hooks/useManagers'
+import { useCallsLog } from '../core/hooks/useCallsLog'
 import { useNavLayer } from '../core/hooks/useNavLayer'
 import { gradientFor } from '../core/dialogToChat'
 import { parseCallLog } from '../core/messageToConvMsg'
@@ -70,13 +70,8 @@ function CallRow({ call, onOpen }: { call: CallLogEntry; onOpen: (chatId: number
 export default function CallsView({ onBack, onOpenChat }: { onBack: () => void; onOpenChat: (chatId: number) => void }) {
   const t = useT()
   const [lang] = useLang()
-  const managers = useManagers()
   useNavLayer(true, onBack) // Back закрывает экран «Звонки»
-  const [calls, setCalls] = useState<CallLogEntry[] | null>(null)
-
-  useEffect(() => {
-    void managers.calls.log().then(setCalls).catch(() => setCalls([]))
-  }, [managers])
+  const calls = useCallsLog()
 
   // Группировка по дням (Сегодня/Вчера/дата) — записи с бэка уже отсортированы
   // от новых к старым, поэтому дни идут по порядку.
