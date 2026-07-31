@@ -59,8 +59,7 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
     prev,
     openViewers,
     bg,
-    paused,
-    setPaused,
+    manualPause,
     myReaction,
     reactionsCount,
     toggleReaction,
@@ -76,14 +75,7 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
   const managers = useManagers()
   const dialogs = useChatsStore((st) => st.dialogs)
 
-  // Пауза (Space) синхронно останавливает воспроизведение видео сториз.
   const videoRef = useRef<HTMLVideoElement>(null)
-  useEffect(() => {
-    const v = videoRef.current
-    if (!v) return
-    if (paused) v.pause()
-    else void v.play().catch(() => {})
-  }, [paused, mediaUrl])
 
   const [menuOpen, setMenuOpen] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
@@ -97,10 +89,20 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
   const [shareOpen, setShareOpen] = useState(false)
   const [repostOpen, setRepostOpen] = useState(false)
 
-  // Любой оверлей (меню удаления, подтверждение, панель реакций, ввод ответа,
-  // редактирование, stealth, share/репост) ставит авто-прогресс на паузу.
+  // Авто-прогресс на паузе, если пользователь нажал Space (manualPause), открыт
+  // любой оверлей (меню удаления, подтверждение, панель реакций, ввод ответа,
+  // редактирование, stealth, share/репост) или показана статистика. Производное
+  // значение — без синхронизации состояния через useEffect.
   const holds = menuOpen || confirmDel || pickerOpen || reply.length > 0 || editOpen || stealthOpen || othersMenuOpen || shareOpen || repostOpen
-  useEffect(() => { setPaused(holds) }, [holds, setPaused, story?.id])
+  const paused = manualPause || holds || showStats
+
+  // Пауза синхронно останавливает воспроизведение видео сториз.
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v) return
+    if (paused) v.pause()
+    else void v.play().catch(() => {})
+  }, [paused, mediaUrl])
 
   if (!group || !story) return null
 

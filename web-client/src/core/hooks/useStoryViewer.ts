@@ -41,9 +41,10 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
   prev: () => void
   openViewers: () => void
   bg: string
-  paused: boolean
+  // Ручная пауза авто-прогресса (Space). Итоговый `paused` вьюер выводит как
+  // manualPause || <открыт любой оверлей> || showStats.
+  manualPause: boolean
   togglePause: () => void
-  setPaused: (v: boolean) => void
   // 4b: реакции + ответ (DM автору) + удаление своей истории.
   myReaction: string | null
   reactionsCount: number
@@ -79,15 +80,16 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
   // Оверлей «Статистика истории» (только своя история). Пока открыт — прогресс
   // авто-перехода стоит на паузе, чтобы история не сменилась под панелью.
   const [showStats, setShowStats] = useState(false)
-  // Пауза авто-прогресса (Space) — таймер сегмента замирает, видео встаёт.
-  const [paused, setPaused] = useState(false)
+  // Ручная пауза авто-прогресса (Space) — таймер сегмента замирает, видео встаёт.
+  // Оверлеи и статистика добавляют паузу поверх этого (см. итоговый paused во вьюере).
+  const [manualPause, setManualPause] = useState(false)
   // 4d: имя автора оригинала для плашки репоста (резолвится по fwd_from.authorId).
   const [fwdAuthorName, setFwdAuthorName] = useState<string | null>(null)
 
   const story = stories[current]
 
   const next = () => {
-    setPaused(false)
+    setManualPause(false)
     if (current >= stories.length - 1) onClose()
     else {
       setCurrent((c) => c + 1)
@@ -95,11 +97,11 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
     }
   }
   const prev = () => {
-    setPaused(false)
+    setManualPause(false)
     setCurrent((c) => Math.max(0, c - 1))
     setShowViewers(false)
   }
-  const togglePause = () => setPaused((p) => !p)
+  const togglePause = () => setManualPause((p) => !p)
 
   // Клавиатура сториз (tweb): Esc/↓ — закрыть, →/← — навигация, Space — пауза.
   useEffect(() => {
@@ -163,14 +165,14 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
     void managers.stories.viewers(story.id).then(setViewers)
   }
 
+  // Статистика ставит авто-прогресс на паузу через сам showStats (итоговый paused
+  // во вьюере), отдельный setPaused не нужен.
   const openStats = () => {
     if (!story) return
-    setPaused(true)
     setShowStats(true)
   }
   const closeStats = () => {
     setShowStats(false)
-    setPaused(false)
   }
 
   // Реакция (tweb sendReaction): тап по той же эмодзи снимает её, иначе ставит/
@@ -240,9 +242,8 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
     prev,
     openViewers,
     bg,
-    paused,
+    manualPause,
     togglePause,
-    setPaused,
     myReaction: story?.myReaction ?? null,
     reactionsCount: story?.reactionsCount ?? 0,
     toggleReaction,
