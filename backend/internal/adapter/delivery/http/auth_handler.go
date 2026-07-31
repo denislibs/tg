@@ -20,9 +20,23 @@ func clientInfoFromRequest(r *http.Request) usecaseauth.ClientInfo {
 	return usecaseauth.ClientInfo{Browser: browser, OS: os, IP: clientIP(r)}
 }
 
+// clientIP — реальный IP клиента за доверенным обратным прокси (nginx). Клиент
+// НЕ должен уметь его подделать: иначе смена заголовка обходит rate-limit/анти-
+// брутфорс и подделывает IP/гео в login-alert.
+//   - X-Real-IP nginx ставит в $remote_addr (реальный peer) и ПЕРЕЗАПИСЫВАЕТ
+//     присланное клиентом — берём его в первую очередь.
+//   - X-Forwarded-For клиент-контролируем в ЛЕВОЙ части; nginx добавляет реальный
+//     peer в КОНЕЦ ($proxy_add_x_forwarded_for), поэтому fallback — ПРАВАЯ запись.
+//   - Иначе (без прокси, тесты) — RemoteAddr.
 func clientIP(r *http.Request) string {
+	if xr := strings.TrimSpace(r.Header.Get("X-Real-IP")); xr != "" && net.ParseIP(xr) != nil {
+		return xr
+	}
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		return strings.TrimSpace(strings.Split(xff, ",")[0])
+		parts := strings.Split(xff, ",")
+		if last := strings.TrimSpace(parts[len(parts)-1]); net.ParseIP(last) != nil {
+			return last
+		}
 	}
 	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
 		return host
@@ -66,9 +80,14 @@ func parseUserAgent(ua string) (browser, os string) {
 	return
 }
 
-type AuthHandler struct{ svc *usecaseauth.Interactor }
+type AuthHandler struct {
+	svc     *usecaseauth.Interactor
+	limiter *keyRateLimiter // анти-брутфорс OTP/пароля по реальному IP + номеру
+}
 
-func NewAuthHandler(svc *usecaseauth.Interactor) *AuthHandler { return &AuthHandler{svc: svc} }
+func NewAuthHandler(svc *usecaseauth.Interactor) *AuthHandler {
+	return &AuthHandler{svc: svc, limiter: newKeyRateLimiter()}
+}
 
 type requestCodeBody struct {
 	Phone string `json:"phone"`
@@ -78,6 +97,11 @@ func (h *AuthHandler) RequestCode(w http.ResponseWriter, r *http.Request) {
 	var body requestCodeBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Phone == "" {
 		writeError(w, http.StatusBadRequest, "phone is required")
+		return
+	}
+	// Троттлинг OTP-запроса: по IP (флуд) и по номеру (SMS-стоимость/спам жертве).
+	if !h.limiter.allow("otp-ip:"+clientIP(r), 0.2, 5) || !h.limiter.allow("otp-phone:"+body.Phone, 0.1, 3) {
+		writeError(w, http.StatusTooManyRequests, "too many requests")
 		return
 	}
 	if err := h.svc.RequestCode(r.Context(), body.Phone); err != nil {
@@ -98,6 +122,11 @@ func (h *AuthHandler) SignIn(w http.ResponseWriter, r *http.Request) {
 	var body signInBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	// Анти-брутфорс OTP-кода по реальному IP.
+	if !h.limiter.allow("signin-ip:"+clientIP(r), 0.5, 10) {
+		writeError(w, http.StatusTooManyRequests, "too many requests")
 		return
 	}
 	ctx := usecaseauth.WithClientInfo(r.Context(), clientInfoFromRequest(r))
@@ -138,6 +167,12 @@ func (h *AuthHandler) CheckPassword(w http.ResponseWriter, r *http.Request) {
 	var body checkPasswordBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	// Анти-брутфорс облачного пароля по реальному IP (в дополнение к лимиту попыток
+	// на сам password_token в usecase).
+	if !h.limiter.allow("pw-ip:"+clientIP(r), 0.2, 5) {
+		writeError(w, http.StatusTooManyRequests, "too many requests")
 		return
 	}
 	ctx := usecaseauth.WithClientInfo(r.Context(), clientInfoFromRequest(r))

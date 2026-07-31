@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -121,6 +122,14 @@ func (i *Interactor) CheckPassword(ctx context.Context, rawToken, password, devi
 		return SignInResult{}, err
 	}
 	if hash == nil || !domain.CheckPasswordHash(*hash, password) {
+		// Токен переживает опечатку (не гоняем OTP заново), НО не бесконечно:
+		// после maxPasswordAttempts неудач сжигаем его — иначе перебор облачного
+		// пароля в пределах TTL (в паре с rate-limit роута по реальному IP).
+		if i.pwFails.inc(tokenHash) >= maxPasswordAttempts {
+			_ = i.pw.DeletePasswordToken(ctx, tokenHash)
+			i.pwFails.clear(tokenHash)
+			return SignInResult{}, domain.ErrNotFound // токен исчерпан → как истёкший
+		}
 		return SignInResult{}, domain.ErrBadPassword
 	}
 	user, err := i.users.GetByID(ctx, userID)
@@ -131,6 +140,33 @@ func (i *Interactor) CheckPassword(ctx context.Context, rawToken, password, devi
 	if err != nil {
 		return SignInResult{}, err
 	}
+	i.pwFails.clear(tokenHash)
 	_ = i.pw.DeletePasswordToken(ctx, tokenHash)
 	return res, nil
+}
+
+// maxPasswordAttempts — сколько неверных паролей допускается на один
+// password_token, прежде чем он сгорит (баланс: опечатка vs брутфорс).
+const maxPasswordAttempts = 5
+
+// failCounter — потокобезопасный счётчик неудач по ключу (in-memory; токены
+// короткоживущие). Обнуляется при успехе/исчерпании.
+type failCounter struct {
+	mu sync.Mutex
+	m  map[string]int
+}
+
+func newFailCounter() *failCounter { return &failCounter{m: map[string]int{}} }
+
+func (f *failCounter) inc(key string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.m[key]++
+	return f.m[key]
+}
+
+func (f *failCounter) clear(key string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.m, key)
 }

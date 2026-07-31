@@ -73,3 +73,41 @@ func TestCloudPasswordFlow(t *testing.T) {
 		t.Fatal("password still enabled after remove")
 	}
 }
+
+// После maxPasswordAttempts неверных паролей password_token сжигается (анти-
+// брутфорс облачного пароля), даже верный пароль потом не проходит.
+func TestCloudPassword_AttemptCapBurnsToken(t *testing.T) {
+	ctx := context.Background()
+	i, _, _, codes := newInteractor()
+
+	_ = codes.SaveCode(ctx, "+79990002233", "12345", time.Now().Add(time.Hour))
+	res, err := i.SignIn(ctx, "+79990002233", "12345", "dev", "test")
+	if err != nil {
+		t.Fatalf("sign in: %v", err)
+	}
+	userID := res.User.ID
+	if err := i.SetPassword(ctx, userID, "", "s3cret", "hint", ""); err != nil {
+		t.Fatalf("SetPassword: %v", err)
+	}
+	_ = codes.SaveCode(ctx, "+79990002233", "12345", time.Now().Add(time.Hour))
+	res, err = i.SignIn(ctx, "+79990002233", "12345", "dev", "test")
+	if err != nil || !res.PasswordNeeded {
+		t.Fatalf("2fa sign in = %+v, %v", res, err)
+	}
+	tok := res.PasswordToken
+
+	// Первые maxPasswordAttempts-1 неудач — токен жив (ErrBadPassword).
+	for n := 1; n < maxPasswordAttempts; n++ {
+		if _, err := i.CheckPassword(ctx, tok, "nope", "dev", "test"); !errors.Is(err, domain.ErrBadPassword) {
+			t.Fatalf("attempt %d = %v, want ErrBadPassword", n, err)
+		}
+	}
+	// maxPasswordAttempts-я неудача сжигает токен → ErrNotFound.
+	if _, err := i.CheckPassword(ctx, tok, "nope", "dev", "test"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("attempt %d = %v, want ErrNotFound (burned)", maxPasswordAttempts, err)
+	}
+	// Даже верный пароль после сжигания — ErrNotFound.
+	if _, err := i.CheckPassword(ctx, tok, "s3cret", "dev", "test"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("after burn, correct pw = %v, want ErrNotFound", err)
+	}
+}
