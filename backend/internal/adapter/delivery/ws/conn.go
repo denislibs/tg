@@ -9,6 +9,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/messenger-denis/backend/internal/domain"
+	"github.com/messenger-denis/backend/internal/pkg/saferun"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 )
 
@@ -60,6 +61,9 @@ func (c *Conn) Send(frame []byte) {
 }
 
 func (c *Conn) run(ctx context.Context) {
+	// Последний рубеж: паника в этой горутине (несмотря на per-dispatch recover)
+	// не должна ронять процесс. Утечка регистрации лучше краша всего сервера.
+	defer saferun.Recover("ws.conn.run")
 	// Register ДО hello. Иначе апдейт, закоммиченный между чтением UserState и
 	// Register, ушёл бы фан-аутом только уже-зарегистрированным сокетам (этот ещё
 	// не виден) и потерялся БЫ навсегда, а hello с устаревшим-но-консистентным pts
@@ -112,6 +116,9 @@ func (c *Conn) readPump(ctx context.Context) {
 }
 
 func (c *Conn) dispatch(ctx context.Context, f Frame) {
+	// Паника при обработке одного входящего кадра не должна ронять соединение
+	// (и процесс) — гасим, следующий кадр читается дальше.
+	defer saferun.Recover("ws.conn.dispatch")
 	switch f.T {
 	case "ping":
 		c.Send([]byte(`{"t":"pong"}`))
@@ -246,6 +253,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 }
 
 func (c *Conn) writePump(ctx context.Context) {
+	defer saferun.Recover("ws.conn.writePump")
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()

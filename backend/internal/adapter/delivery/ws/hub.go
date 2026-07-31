@@ -10,6 +10,8 @@ import (
 	"sync"
 
 	"github.com/redis/go-redis/v9"
+
+	"github.com/messenger-denis/backend/internal/pkg/saferun"
 )
 
 // Sink is a connection a frame can be written to and that can be force-closed.
@@ -52,14 +54,21 @@ func idFromChannel(ch, prefix string) (int64, bool) {
 }
 
 func (h *Hub) run() {
+	// Паника при обработке одного pub/sub-сообщения не должна убивать весь
+	// fan-out (и процесс) — гасим на каждый кадр, цикл продолжается.
 	for msg := range h.pubsub.Channel() {
-		if userID, ok := idFromChannel(msg.Channel, "user:"); ok {
-			h.deliver(userID, []byte(msg.Payload))
-		} else if deviceID, ok := idFromChannel(msg.Channel, "device:"); ok {
-			h.closeDevice(deviceID)
-		} else if chID, ok := idFromChannel(msg.Channel, "channel:"); ok {
-			h.deliverChannel(chID, []byte(msg.Payload))
-		}
+		h.route(msg)
+	}
+}
+
+func (h *Hub) route(msg *redis.Message) {
+	defer saferun.Recover("ws.hub.route")
+	if userID, ok := idFromChannel(msg.Channel, "user:"); ok {
+		h.deliver(userID, []byte(msg.Payload))
+	} else if deviceID, ok := idFromChannel(msg.Channel, "device:"); ok {
+		h.closeDevice(deviceID)
+	} else if chID, ok := idFromChannel(msg.Channel, "channel:"); ok {
+		h.deliverChannel(chID, []byte(msg.Payload))
 	}
 }
 
@@ -163,13 +172,15 @@ func (h *Hub) UnsubscribeChannel(ctx context.Context, channelID int64, s Sink) {
 }
 
 func (h *Hub) deliverChannel(channelID int64, frame []byte) {
+	// Send держим ПОД RLock (как deliver), а не по снимку с отпущенным локом:
+	// иначе между снимком и Send сокет мог быть Unregister'ен (write-lock) и
+	// его send-канал закрыт (conn.run: close после Unregister) — и Send в
+	// закрытый канал паникнул бы (send-on-closed игнорирует select/default).
+	// Под RLock Unregister заблокирован, поэтому close ещё не произошёл; либо
+	// сокет уже удалён из channelSubs и в итерацию не попадёт. Send неблокирующий.
 	h.mu.RLock()
-	sinks := make([]Sink, 0, len(h.channelSubs[channelID]))
+	defer h.mu.RUnlock()
 	for s := range h.channelSubs[channelID] {
-		sinks = append(sinks, s)
-	}
-	h.mu.RUnlock()
-	for _, s := range sinks {
 		s.Send(frame)
 	}
 }

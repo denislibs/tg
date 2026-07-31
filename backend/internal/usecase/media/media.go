@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
+	"github.com/messenger-denis/backend/internal/pkg/saferun"
 )
 
 // Interactor implements the media usecase over a MediaRepo and ObjectStorage.
@@ -190,6 +191,9 @@ func (s *Interactor) FinalizeUpload(ctx context.Context, id, ownerID int64, in F
 // process re-reads the stored original, probes it, generates a thumbnail/poster,
 // stores the thumb, and records the results. Runs detached from the request.
 func (s *Interactor) process(m domain.Media) {
+	// Фоновая обработка загруженного медиа (ffmpeg/декод) — паника на крафтовом
+	// файле не должна ронять процесс.
+	defer saferun.Recover("media.process")
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	rc, _, err := s.storage.GetObject(ctx, m.ObjectKey)
