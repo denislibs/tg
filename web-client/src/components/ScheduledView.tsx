@@ -1,7 +1,6 @@
 // «Запланированные сообщения» (tweb ChatType.Scheduled): оверлей со списком
 // своих запланированных в чате; сервисная подпись «Отправится …», действия
 // «Отправить сейчас» / «Удалить» (tweb MessageScheduleSend / delete).
-import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import Text from '../shared/ui/Text'
@@ -9,8 +8,7 @@ import TgIcon from './TgIcon'
 import IconButton from '../shared/ui/IconButton'
 import RichText from './RichText'
 import SchedulePopup from './SchedulePopup'
-import { useManagers } from '../core/hooks/useManagers'
-import { useMessagesStore } from '../stores/messagesStore'
+import { useScheduledMessages } from '../core/hooks/useScheduledMessages'
 import type { Scheduled } from '../core/models'
 import { useLang, useT } from '../i18n'
 import { EASE } from '../motion'
@@ -24,20 +22,7 @@ export default function ScheduledView({ chatId, onClose, onChanged }: {
 }) {
   const t = useT()
   const [lang] = useLang()
-  const managers = useManagers()
-  const [list, setList] = useState<Scheduled[] | null>(null)
-  // Перепланирование (tweb MessageScheduleEditTime): id записи + её текущее время
-  // для префилла пикера.
-  const [reschedule, setReschedule] = useState<{ id: number; sendAt: string } | null>(null)
-
-  const reload = () => {
-    void managers.messages.listScheduled(chatId).then((l) => {
-      setList(l)
-      onChanged(l.length)
-    })
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(reload, [chatId])
+  const { list, reschedule, setReschedule, doReschedule, sendNow, remove } = useScheduledMessages(chatId, onChanged)
 
   const fmtWhen = (m: Scheduled) => {
     // «Отправить, когда онлайн» (tweb MessageScheduledUntilOnline): вместо даты.
@@ -47,22 +32,6 @@ export default function ScheduledView({ chatId, onClose, onChanged }: {
     const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
     if (today) return `${t('Scheduled for today')}, ${hm}`
     return `${t('Scheduled for')} ${d.toLocaleDateString(lang)}, ${hm}`
-  }
-  const doReschedule = (sendAtUnix: number) => {
-    const r = reschedule
-    setReschedule(null)
-    if (!r) return
-    void managers.messages.editScheduled(chatId, r.id, sendAtUnix).then(reload)
-  }
-
-  const sendNow = (id: number) => {
-    void managers.messages.sendScheduledNow(chatId, id).then((msg) => {
-      useMessagesStore.getState().applyIncoming(chatId, msg)
-      reload()
-    })
-  }
-  const remove = (id: number) => {
-    void managers.messages.deleteScheduled(chatId, id).then(reload)
   }
 
   return <>

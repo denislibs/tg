@@ -1,11 +1,9 @@
-import { useEffect, useState } from 'react'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import { SettingsScreen, Section, Row } from './settings/kit'
 import { useT } from '../i18n'
-import { useManagers } from '../core/hooks/useManagers'
+import { usePremiumSubscription } from '../core/hooks/usePremiumSubscription'
 import { planById, formatUsd } from '../core/premium/plans'
-import type { PremiumSubscription } from '../core/managers/premiumManager'
 
 function formatDate(iso: string): string {
   const d = new Date(iso)
@@ -18,33 +16,7 @@ function formatDate(iso: string): string {
 // its expiry and auto-renew state, and lets the user cancel auto-renew.
 export default function PremiumManage({ onBack }: { onBack: () => void }) {
   const t = useT()
-  const managers = useManagers()
-  const [sub, setSub] = useState<PremiumSubscription | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [cancelling, setCancelling] = useState(false)
-
-  useEffect(() => {
-    let alive = true
-    void managers.premium.getSubscription().then((s) => {
-      if (alive) {
-        setSub(s)
-        setLoading(false)
-      }
-    })
-    return () => {
-      alive = false
-    }
-  }, [managers])
-
-  const cancel = async () => {
-    if (cancelling) return
-    setCancelling(true)
-    try {
-      setSub(await managers.premium.cancelSubscription())
-    } finally {
-      setCancelling(false)
-    }
-  }
+  const { sub, loading, cancelling, cancel } = usePremiumSubscription()
 
   return (
     <SettingsScreen title="Telegram Premium" onBack={onBack} zIndex={70}>

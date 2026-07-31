@@ -1,10 +1,9 @@
-import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import { useT } from '../i18n'
-import { useManagers } from '../core/hooks/useManagers'
+import { useStoryPreviewMedia } from '../core/hooks/useStoryPreviewMedia'
 import { EASE } from '../motion'
 import type { StoryItem } from '../core/managers/storiesManager'
 
@@ -15,18 +14,7 @@ import type { StoryItem } from '../core/managers/storiesManager'
  */
 export default function StoryReadOnlyPreview({ story, onClose }: { story: StoryItem; onClose: () => void }) {
   const t = useT()
-  const managers = useManagers()
-  const [url, setUrl] = useState('')
-  const [isVideo, setIsVideo] = useState(false)
-  useEffect(() => {
-    let alive = true
-    void Promise.all([managers.media.contentUrl(story.mediaId), managers.media.meta(story.mediaId)]).then(([u, m]) => {
-      if (!alive) return
-      setUrl(u)
-      setIsVideo(m.mime.startsWith('video/'))
-    })
-    return () => { alive = false }
-  }, [managers, story.mediaId])
+  const { url, isVideo } = useStoryPreviewMedia(story.mediaId)
 
   return (
     <motion.div
