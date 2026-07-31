@@ -168,7 +168,7 @@ func fetchBotMedia(url string) ([]byte, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := botHTTP.Do(req) // SSRF-безопасный клиент (см. botapi.go)
 	if err != nil {
 		return nil, "", err
 	}

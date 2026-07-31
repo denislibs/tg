@@ -5,7 +5,6 @@ package iv
 import (
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -32,47 +31,9 @@ type Client struct{ http *http.Client }
 
 var _ usecaseiv.Fetcher = (*Client)(nil)
 
-// New строит клиент с SSRF-гардом (см. NewSafeHTTPClient).
+// New строит клиент с SSRF-гардом (usecaseiv.NewSafeHTTPClient).
 func New() *Client {
-	return &Client{http: NewSafeHTTPClient(fetchTimeout)}
-}
-
-// NewSafeHTTPClient — общий HTTP-клиент с анти-SSRF гардом в DialContext: хост
-// резолвится, КАЖДЫЙ адрес проверяется, соединение идёт на конкретный
-// проверенный IP. Гард срабатывает и на редиректах (каждый новый хост
-// дозванивается заново). Используется Instant View и превью ссылок.
-func NewSafeHTTPClient(timeout time.Duration) *http.Client {
-	dialer := &net.Dialer{Timeout: 5 * time.Second}
-	transport := &http.Transport{
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			host, port, err := net.SplitHostPort(addr)
-			if err != nil {
-				return nil, err
-			}
-			ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
-			if err != nil {
-				return nil, err
-			}
-			if err := usecaseiv.CheckResolved(host, ips); err != nil {
-				return nil, err
-			}
-			return dialer.DialContext(ctx, network, net.JoinHostPort(ips[0].String(), port))
-		},
-		TLSHandshakeTimeout: 5 * time.Second,
-	}
-	return &http.Client{
-		Timeout:   timeout,
-		Transport: transport,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 5 {
-				return fmt.Errorf("too many redirects")
-			}
-			if _, err := usecaseiv.ParseTargetURL(req.URL.String()); err != nil {
-				return err // редирект только на http/https
-			}
-			return nil
-		},
-	}
+	return &Client{http: usecaseiv.NewSafeHTTPClient(fetchTimeout)}
 }
 
 // Fetch загружает страницу и извлекает reader-mode статью.

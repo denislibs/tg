@@ -2,7 +2,11 @@ package iv
 
 import (
 	"net"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseTargetURL(t *testing.T) {
@@ -67,5 +71,25 @@ func TestCheckResolved(t *testing.T) {
 	}
 	if err := CheckResolved("empty.example", nil); err == nil {
 		t.Error("no addresses: want error")
+	}
+}
+
+// NewSafeHTTPClient должен ОТКАЗАТЬ в дозвоне на loopback: httptest-сервер
+// слушает 127.0.0.1, а гард в DialContext запрещает loopback (SSRF на localhost/
+// внутреннюю сеть). Общий клиент для IV/link-preview/webhook/push.
+func TestNewSafeHTTPClient_BlocksLoopback(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := NewSafeHTTPClient(3 * time.Second)
+	resp, err := c.Get(srv.URL) // srv.URL = http://127.0.0.1:PORT
+	if err == nil {
+		resp.Body.Close()
+		t.Fatalf("Get(%s): ожидали отказ SSRF-гарда, а запрос прошёл", srv.URL)
+	}
+	if !strings.Contains(err.Error(), "forbidden address") {
+		t.Errorf("Get(%s): err = %v, ожидали 'forbidden address'", srv.URL, err)
 	}
 }
