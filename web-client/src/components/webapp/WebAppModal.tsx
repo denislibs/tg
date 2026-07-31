@@ -22,6 +22,20 @@ function safeOpen(url: string) {
   } catch { /* ignore bad url */ }
 }
 
+// URL mini-app задаёт бот и напрямую идёт в src iframe. Фрейм в sandbox с
+// allow-same-origin, поэтому javascript:/data: в src исполнились бы в origin
+// приложения (кража session-токена из IndexedDB). Грузим ТОЛЬКО абсолютный
+// http/https (mini-app URL всегда абсолютный); прочее и относительные/пустые
+// (резолвятся в origin приложения) → about:blank — пустой фрейм без скриптов.
+export function safeAppUrl(url: string): string {
+  try {
+    const proto = new URL(url).protocol
+    return proto === 'http:' || proto === 'https:' ? url : 'about:blank'
+  } catch {
+    return 'about:blank'
+  }
+}
+
 interface MainBtn {
   isVisible: boolean
   isActive: boolean
@@ -313,7 +327,7 @@ function WebAppInner() {
           <iframe
             ref={frameRef}
             className={s.frame}
-            src={url}
+            src={safeAppUrl(url)}
             title={botName}
             sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-modals"
             allow="clipboard-write; camera"
