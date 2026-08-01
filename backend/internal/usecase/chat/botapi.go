@@ -1,24 +1,16 @@
 package chat
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"net/http"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
-	usecaseiv "github.com/messenger-denis/backend/internal/usecase/iv"
 )
-
-// botHTTP — SSRF-безопасный клиент для исходящих запросов бот-движка (webhook +
-// загрузка медиа по URL). URL задаёт ботовод; гард в DialContext резолвит хост
-// и запрещает loopback/private/link-local (в т.ч. на DNS-rebind), чтобы бот не
-// заставил сервер сходить в localhost/внутреннюю сеть/метадата-сервис.
-var botHTTP = usecaseiv.NewSafeHTTPClient(20 * time.Second)
 
 // Bot API — движок ботов-сервисов: пользователь пишет боту → апдейт кладётся в
 // очередь (getUpdates) и/или POST'ится на webhook; бот отвечает методами
@@ -83,30 +75,15 @@ func (i *Interactor) dispatchBotUpdate(ctx context.Context, bot domain.BotAccoun
 	if err != nil {
 		return
 	}
-	if bot.WebhookURL != "" {
+	if bot.WebhookURL != "" && i.botHTTP != nil {
 		full := map[string]any{"update_id": updateID}
 		for k, v := range inner {
 			full[k] = v
 		}
 		body, _ := json.Marshal(full)
-		go postWebhook(bot.WebhookURL, body)
-	}
-}
-
-func postWebhook(url string, body []byte) {
-	if _, err := usecaseiv.ParseTargetURL(url); err != nil {
-		return // только абсолютный http/https
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := botHTTP.Do(req)
-	if err == nil {
-		_ = resp.Body.Close()
+		// Fire-and-forget через порт (SSRF-безопасный клиент в адаптере). Отдельный
+		// Background-ctx: доставка не должна отменяться завершением исходного запроса.
+		go i.botHTTP.PostWebhook(context.Background(), bot.WebhookURL, body)
 	}
 }
 
@@ -278,12 +255,10 @@ func (i *Interactor) BotSendMessage(ctx context.Context, bot domain.BotAccount, 
 
 // BotSetWebhook / BotDeleteWebhook.
 func (i *Interactor) BotSetWebhook(ctx context.Context, bot domain.BotAccount, url string) error {
-	// Раннее отклонение SSRF-URL при регистрации (пустой url = снять webhook).
-	// Полная проверка резолва — на самом POST (botHTTP).
-	if url != "" {
-		if _, err := usecaseiv.ParseTargetURL(url); err != nil {
-			return domain.ErrForbidden
-		}
+	// Раннее отклонение не-http(s) URL при регистрации (пустой url = снять webhook).
+	// Полная проверка схемы+резолва (анти-SSRF) — на самой доставке (порт BotHTTP).
+	if url != "" && !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+		return domain.ErrForbidden
 	}
 	return i.botAPI.SetWebhook(ctx, bot.BotID, url)
 }

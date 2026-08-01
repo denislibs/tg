@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/messenger-denis/backend/internal/adapter/bothttp"
 	"github.com/messenger-denis/backend/internal/adapter/botmedia"
 	httptransport "github.com/messenger-denis/backend/internal/adapter/delivery/http"
 	"github.com/messenger-denis/backend/internal/adapter/delivery/ws"
@@ -154,6 +155,9 @@ func registerServer(p serverParams) {
 	// Bot API: боты-сервисы с токенами (getUpdates/webhook, sendMessage, …) и
 	// @BotFather (создание/управление ботами, mini-app).
 	p.ChatUC.SetBotAPI(pgadapter.NewBotAPIRepo(p.Pool))
+	// Исходящий HTTP бот-движка (webhook-доставка + загрузка медиа по URL)
+	// SSRF-безопасным клиентом — реализация порта вне usecase.
+	p.ChatUC.SetBotHTTP(bothttp.New())
 
 	// Серверные превью ссылок: og-теги первой http/https-ссылки текстового
 	// сообщения, асинхронно после отправки (кадр web_page_update).

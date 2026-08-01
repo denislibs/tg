@@ -3,8 +3,6 @@ package chat
 import (
 	"context"
 	"encoding/json"
-	"io"
-	"net/http"
 	"path"
 	"slices"
 	"strconv"
@@ -135,10 +133,11 @@ func (i *Interactor) BotSendMedia(ctx context.Context, bot domain.BotAccount, ch
 		}
 		mediaID = id
 	} else {
-		if i.botMedia == nil {
-			return domain.Message{}, domain.ErrNotFound // медиа отключено (нет MinIO)
+		if i.botMedia == nil || i.botHTTP == nil {
+			return domain.Message{}, domain.ErrNotFound // медиа отключено (нет MinIO/HTTP)
 		}
-		data, mime, err := fetchBotMedia(fileRef)
+		// Загрузка медиа по URL — через порт BotHTTP (SSRF-безопасный клиент в адаптере).
+		data, mime, err := i.botHTTP.FetchURL(ctx, fileRef, maxBotMedia)
 		if err != nil {
 			return domain.Message{}, err
 		}
@@ -154,43 +153,6 @@ func (i *Interactor) BotSendMedia(ctx context.Context, bot domain.BotAccount, ch
 		ChatID: chatID, SenderID: bot.BotID, Type: msgType,
 		Text: caption, Entities: entities, MediaID: &mediaID, ReplyMarkup: markup,
 	})
-}
-
-// fetchBotMedia скачивает файл по URL с лимитом размера; mime берётся из
-// заголовка ответа либо определяется по содержимому.
-func fetchBotMedia(url string) ([]byte, string, error) {
-	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
-		return nil, "", domain.ErrForbidden
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, "", err
-	}
-	resp, err := botHTTP.Do(req) // SSRF-безопасный клиент (см. botapi.go)
-	if err != nil {
-		return nil, "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, "", domain.ErrNotFound
-	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, maxBotMedia+1))
-	if err != nil {
-		return nil, "", err
-	}
-	if len(data) > maxBotMedia {
-		return nil, "", domain.ErrTooLong
-	}
-	mime := resp.Header.Get("Content-Type")
-	if idx := strings.IndexByte(mime, ';'); idx >= 0 {
-		mime = strings.TrimSpace(mime[:idx])
-	}
-	if mime == "" || mime == "application/octet-stream" {
-		mime = http.DetectContentType(data)
-	}
-	return data, mime, nil
 }
 
 // BotFileInfo — getFile: путь для скачивания медиа бота (file_path = media_id).
@@ -315,10 +277,10 @@ func (i *Interactor) BotSetInline(ctx context.Context, bot domain.BotAccount, en
 
 // BotSetPhotoURL задаёт аватар бота из картинки по URL (/setuserpic).
 func (i *Interactor) BotSetPhotoURL(ctx context.Context, bot domain.BotAccount, url string) error {
-	if i.botMedia == nil {
-		return domain.ErrNotFound // медиа отключено (нет MinIO)
+	if i.botMedia == nil || i.botHTTP == nil {
+		return domain.ErrNotFound // медиа отключено (нет MinIO/HTTP)
 	}
-	data, mime, err := fetchBotMedia(url)
+	data, mime, err := i.botHTTP.FetchURL(ctx, url, maxBotMedia)
 	if err != nil {
 		return err
 	}
