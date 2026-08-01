@@ -75,6 +75,12 @@ npx vite build --outDir ../client-build
 - Фетчить через `managers` (REST) из хука — это read/command-путь, не подписка на сокет.
 - `store.getState()/.setState()` из не-React кода (worker/`realtimeBridge`).
 - Вынести кластер логики в свой `core/hooks/useChat*.ts` (как `useChatSelection`/`useChatInfoCard`/`usePinnedBar`).
+- **Грузить медиа-**bytes** прямым `fetch` к аутентифицированному media-эндпоинту** (URL строит
+  `core/mediaUrl`: `mediaContentUrl`/`primeMediaToken`), НЕ через `managers`. Бинарь идёт на main-thread,
+  а не сериализуется через worker-RPC (SuperMessagePort) — как в tweb (`wrapSticker`, загрузка файлов).
+  Так делают `StickerMedia.loadStickerContent` (инспекция Content-Type → lottie/video/image + кэш) и
+  `messages/RealMediaBubble` (стрим файла с прогрессом/отменой через `ReadableStream`). Это про **bytes**;
+  метаданные/URL-резолв — по-прежнему через `managers` (`useMediaThumb`/`useMediaContentUrl`).
 
 **Известное исключение (не копировать):** `useChatScroll` слушает `RT.newMessage` ради UI read-marker —
 markRead живого сообщения, когда вьюпорт прижат к низу и вкладка в фокусе (это решение зависит от

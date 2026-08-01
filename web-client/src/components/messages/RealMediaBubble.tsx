@@ -297,6 +297,8 @@ function DocRow({ name, size, mime, href, out, uploadProgress, onCancelUpload, t
     dlAbort.current = ac
     setDl({ loaded: 0, total: size ?? 0 })
     try {
+      // Стрим файла (bytes) с прогрессом/отменой — прямой fetch к media-эндпоинту,
+      // не через managers/worker-RPC. Санкц. исключение — см. web-client/CLAUDE.md «МОЖНО».
       const res = await fetch(href, { signal: ac.signal })
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
       const total = Number(res.headers.get('content-length')) || size || 0
