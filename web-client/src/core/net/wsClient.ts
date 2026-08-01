@@ -1,6 +1,9 @@
 import { decodeFrame, encodeFrame, type Frame } from '../../protocol/frames'
 
-// Thin WS wrapper: connect to /ws?token=, JSON frames in/out, frame + lifecycle listeners.
+// Thin WS wrapper: JSON frames in/out, frame + lifecycle listeners.
+// Аутентификация — токеном в WebSocket-subprotocol (Sec-WebSocket-Protocol:
+// 'bearer', <token>), а НЕ в ?token= URL: query оседает в логах прокси и истории.
+// Сервер эхает 'bearer' в ответе рукопожатия; токен hex → валидный subprotocol.
 export class WsClient {
   private ws: WebSocket | null = null
   private listeners = new Map<string, Array<(d: unknown) => void>>()
@@ -11,7 +14,7 @@ export class WsClient {
   constructor(private url: string) {}
 
   connect(token: string): void {
-    const ws = new WebSocket(`${this.url}?token=${encodeURIComponent(token)}`)
+    const ws = new WebSocket(this.url, ['bearer', token])
     this.ws = ws
     ws.onopen = () => { for (const cb of this.openCbs) cb() }
     ws.onclose = () => { for (const cb of this.closeCbs) cb() }
