@@ -286,6 +286,47 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	// prefix group chat-list previews ("Имя: …") without an extra lookup.
 	senderName := i.userCard(ctx, in.SenderID).ShortName()
 
+	// PERF (send hot path): гидратация read-моделей (send-as/poll/checklist/
+	// giveaway/gift) читает ПРЕД-существующие строки по input-ID и не зависит от
+	// msg.ID/Seq — делаем ДО транзакции, чтобы не держать row-lock строки чата
+	// (IncUnreadBulk) на этих чтениях. Результаты применяются к msg после Insert.
+	// Media-мета (hydrateMedia) и все записи (charge/SetPrice/fan-out) — в tx.
+	var (
+		preSendAsTitle   string
+		preSendAsPhotoID *int64
+		prePoll          *domain.PollInfo
+		preChecklist     *domain.ChecklistInfo
+		preGiveaway      *domain.GiveawayInfo
+		preGift          *domain.GiftInfo
+	)
+	if in.SendAsChatID != nil && i.groups != nil {
+		if briefs, e := i.groups.ChatBriefs(ctx, []int64{*in.SendAsChatID}); e == nil {
+			if b, ok := briefs[*in.SendAsChatID]; ok {
+				preSendAsTitle, preSendAsPhotoID = b.Title, b.PhotoID
+			}
+		}
+	}
+	if in.PollID != nil && i.polls != nil {
+		if info, e := i.pollInfoFor(ctx, *in.PollID, 0); e == nil {
+			prePoll = &info
+		}
+	}
+	if in.ChecklistID != nil && i.checklists != nil {
+		if info, e := i.checklists.Info(ctx, *in.ChecklistID); e == nil {
+			preChecklist = &info
+		}
+	}
+	if in.GiveawayID != nil && i.giveaways != nil {
+		if info, e := i.giveawayInfoFor(ctx, *in.GiveawayID, 0); e == nil {
+			preGiveaway = &info
+		}
+	}
+	if in.GiftID != nil && i.stars != nil {
+		if info, e := i.stars.GiftInfo(ctx, *in.GiftID, 0); e == nil {
+			preGift = &info
+		}
+	}
+
 	var msg domain.Message
 	var recipients []int64 // non-nil only when a NEW message was inserted
 	var charge paidCharge  // платная группа: списание/начисление (публикуем после коммита)
@@ -343,44 +384,14 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			return e
 		}
 		msg.SenderName = senderName
-		// Send-as: отображаемый автор (title/photo канала/группы) едет в new_message,
-		// чтобы получатель нарисовал бабл от имени канала без доп. запроса.
-		if msg.SendAsChatID != nil && i.groups != nil {
-			if briefs, e := i.groups.ChatBriefs(ctx, []int64{*msg.SendAsChatID}); e == nil {
-				if b, ok := briefs[*msg.SendAsChatID]; ok {
-					msg.SendAsTitle, msg.SendAsPhotoID = b.Title, b.PhotoID
-				}
-			}
-		}
-		// Сообщение-опрос несёт своё представление прямо в new_message-фрейме
-		// (свежий опрос без голосов одинаков для всех получателей).
-		if msg.PollID != nil && i.polls != nil {
-			if info, e2 := i.pollInfoFor(ctx, *msg.PollID, 0); e2 == nil {
-				msg.Poll = &info
-			}
-		}
-		// Сообщение-чеклист несёт своё представление прямо в new_message-фрейме
-		// (свежий чек-лист без отметок одинаков для всех получателей).
-		if msg.ChecklistID != nil && i.checklists != nil {
-			if info, e2 := i.checklists.Info(ctx, *msg.ChecklistID); e2 == nil {
-				msg.Checklist = &info
-			}
-		}
-		// Сообщение-розыгрыш несёт своё представление прямо в new_message-фрейме.
-		if msg.GiveawayID != nil && i.giveaways != nil {
-			if info, e2 := i.giveawayInfoFor(ctx, *msg.GiveawayID, 0); e2 == nil {
-				msg.Giveaway = &info
-			}
-		}
-		// Сообщение-подарок несёт своё представление в live-кадре — иначе баббл
-		// пуст до перезагрузки (когда history-путь гидратит подарок). viewer 0 —
-		// нейтральное представление, как у poll/giveaway; per-viewer раскрытие
-		// отправителя (анонимность) применяется на history GET через hydrateGifts.
-		if msg.GiftID != nil && i.stars != nil {
-			if info, e2 := i.stars.GiftInfo(ctx, *msg.GiftID, 0); e2 == nil {
-				msg.Gift = &info
-			}
-		}
+		// Применяем гидратацию, посчитанную ДО транзакции (send-as title/photo,
+		// poll/checklist/giveaway/gift-представления одинаковы для всех получателей
+		// и не зависят от только что вставленной строки). Пустые — no-op.
+		msg.SendAsTitle, msg.SendAsPhotoID = preSendAsTitle, preSendAsPhotoID
+		msg.Poll = prePoll
+		msg.Checklist = preChecklist
+		msg.Giveaway = preGiveaway
+		msg.Gift = preGift
 		// Медиа-мета в live-кадр (имя/размер/mime/размеры) — как в history read
 		// model, чтобы файл у получателя не рисовался заглушкой до перезагрузки.
 		if msg.MediaID != nil {
