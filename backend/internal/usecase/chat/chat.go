@@ -70,6 +70,7 @@ func New(tx TxManager, chats ChatRepo, msgs MessageRepo, updates UpdateRepo, rea
 		joinReqs:    joinReqs,
 		channels:    channels,
 		search:      search,
+		botHub:      newBotHub(), // init заранее — иначе гонка на ленивой инициализации
 	}
 }
 

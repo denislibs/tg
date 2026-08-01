@@ -46,6 +46,7 @@ type serverParams struct {
 	fx.In
 
 	LC         fx.Lifecycle
+	SD         fx.Shutdowner
 	Cfg        *config.Config
 	Ctx        context.Context
 	Pool       *pgxpool.Pool
@@ -328,7 +329,10 @@ func registerServer(p serverParams) {
 			}
 			go func() {
 				if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
-					log.Fatalf("serve: %v", err)
+					// Не os.Exit из горутины (минует OnStop: hub.Close, srv.Shutdown,
+					// отмену ctx) — просим fx о штатной остановке.
+					log.Printf("serve: %v", err)
+					_ = p.SD.Shutdown()
 				}
 			}()
 			log.Printf("listening on %s", p.Cfg.HTTPAddr)

@@ -5,6 +5,7 @@ package ws
 
 import (
 	"context"
+	"log"
 	"strconv"
 	"strings"
 	"sync"
@@ -13,6 +14,20 @@ import (
 
 	"github.com/messenger-denis/backend/internal/pkg/saferun"
 )
+
+// sub/unsub — обёртки над pubsub с логом: молчаливый сбой подписки означал бы,
+// что соединение не получает кросс-реплика фан-аут без единого следа.
+func (h *Hub) sub(ctx context.Context, topic string) {
+	if err := h.pubsub.Subscribe(ctx, topic); err != nil {
+		log.Printf("ws hub: subscribe %s: %v", topic, err)
+	}
+}
+
+func (h *Hub) unsub(ctx context.Context, topic string) {
+	if err := h.pubsub.Unsubscribe(ctx, topic); err != nil {
+		log.Printf("ws hub: unsubscribe %s: %v", topic, err)
+	}
+}
 
 // Sink is a connection a frame can be written to and that can be force-closed.
 type Sink interface {
@@ -88,10 +103,10 @@ func (h *Hub) Register(ctx context.Context, userID, deviceID int64, s Sink) {
 	h.deviceConns[deviceID][s] = struct{}{}
 	h.mu.Unlock()
 	if firstUser {
-		_ = h.pubsub.Subscribe(ctx, userChannel(userID))
+		h.sub(ctx, userChannel(userID))
 	}
 	if firstDevice {
-		_ = h.pubsub.Subscribe(ctx, deviceChannel(deviceID))
+		h.sub(ctx, deviceChannel(deviceID))
 	}
 }
 
@@ -124,13 +139,13 @@ func (h *Hub) Unregister(ctx context.Context, userID, deviceID int64, s Sink) (l
 	}
 	h.mu.Unlock()
 	if lastUser {
-		_ = h.pubsub.Unsubscribe(ctx, userChannel(userID))
+		h.unsub(ctx, userChannel(userID))
 	}
 	if lastDevice {
-		_ = h.pubsub.Unsubscribe(ctx, deviceChannel(deviceID))
+		h.unsub(ctx, deviceChannel(deviceID))
 	}
 	for _, chID := range emptiedChannels {
-		_ = h.pubsub.Unsubscribe(ctx, channelTopic(chID))
+		h.unsub(ctx, channelTopic(chID))
 	}
 	return lastUser
 }
@@ -148,7 +163,7 @@ func (h *Hub) SubscribeChannel(ctx context.Context, channelID int64, s Sink) {
 	subs[s] = struct{}{}
 	h.mu.Unlock()
 	if first {
-		_ = h.pubsub.Subscribe(ctx, channelTopic(channelID))
+		h.sub(ctx, channelTopic(channelID))
 	}
 }
 
@@ -167,7 +182,7 @@ func (h *Hub) UnsubscribeChannel(ctx context.Context, channelID int64, s Sink) {
 	}
 	h.mu.Unlock()
 	if last {
-		_ = h.pubsub.Unsubscribe(ctx, channelTopic(channelID))
+		h.unsub(ctx, channelTopic(channelID))
 	}
 }
 
