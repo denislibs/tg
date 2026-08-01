@@ -12,7 +12,10 @@ export default function blobSafeMimeType(mimeType: string) {
     'image/jpeg',
     'image/png',
     'image/gif',
-    'image/svg+xml',
+    // 'image/svg+xml' убран (расхождение с tweb, SEC-5): SVG-blob, открытый
+    // top-level/во фрейме, исполняет скрипты в origin приложения. Стикеры/медиа
+    // рендерятся только в <img>/<video>, где SVG безопасен, а этот allow-list
+    // ныне не имеет потребителей — не возвращаем исполняемый тип.
     'image/webp',
     'image/bmp',
     'image/avif',

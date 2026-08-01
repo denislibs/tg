@@ -3,6 +3,7 @@ package ws
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/websocket"
 	"github.com/messenger-denis/backend/internal/domain"
@@ -24,14 +25,30 @@ type Handler struct {
 	upgrader websocket.Upgrader
 }
 
-func NewHandler(hub *Hub, auth Authenticator, chatSvc *usecasechat.Interactor, presence Presence) *Handler {
+func NewHandler(hub *Hub, auth Authenticator, chatSvc *usecasechat.Interactor, presence Presence, allowedOrigins []string) *Handler {
+	allowed := make(map[string]struct{}, len(allowedOrigins))
+	for _, o := range allowedOrigins {
+		if o = strings.TrimSpace(o); o != "" {
+			allowed[o] = struct{}{}
+		}
+	}
 	return &Handler{
 		hub:      hub,
 		auth:     auth,
 		chatSvc:  chatSvc,
 		presence: presence,
 		upgrader: websocket.Upgrader{
-			CheckOrigin: func(*http.Request) bool { return true }, // dev: allow all origins
+			// Анти-CSWSH: пускаем только с allow-list origin'ов (те же, что WebAuthn).
+			// Пустой Origin (нативные клиенты/тесты — не браузер) допускаем; аутентификация
+			// всё равно по токену в query, но origin-гейт снимает cross-site-подключение.
+			CheckOrigin: func(r *http.Request) bool {
+				origin := r.Header.Get("Origin")
+				if origin == "" {
+					return true
+				}
+				_, ok := allowed[origin]
+				return ok
+			},
 		},
 	}
 }
