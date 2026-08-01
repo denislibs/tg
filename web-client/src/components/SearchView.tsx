@@ -17,7 +17,7 @@ import ConfirmDialog from './settings/ConfirmDialog'
 import type { Chat, OpenPeer } from '../data'
 import type { SearchResult } from '../core/managers/channelsManager'
 import type { Message } from '../core/models'
-import { useManagers } from '../core/hooks/useManagers'
+import { useGlobalSearch, type SearchFilter } from '../core/hooks/useGlobalSearch'
 import { useSearchStore } from '../stores/searchStore'
 import { useChatsStore } from '../stores/chatsStore'
 import { useAudioStore, type AudioTrack } from '../stores/audioStore'
@@ -34,7 +34,6 @@ const TABS = ['Chats', 'Channels', 'Media', 'Links', 'Files', 'Music', 'Voice'] 
 const TAB_FILTER: Partial<Record<number, 'media' | 'links' | 'files' | 'music' | 'voice'>> = {
   2: 'media', 3: 'links', 4: 'files', 5: 'music', 6: 'voice',
 }
-const PAGE = 30
 
 // ── недавние запросы (tweb recentSearch: peerId[], cap 20, в состоянии клиента) ──
 const RECENT_KEY = 'recentSearch'
@@ -74,19 +73,16 @@ function Highlighted({ text, q }: { text: string; q: string }) {
 export default function SearchView({ query, chats, onSelect, searchReal, onJoin, onOpenPeer }: Props) {
   const t = useT()
   const [lang] = useLang()
-  const managers = useManagers()
   const [tab, setTab] = useState(0)
   const dirRef = useRef(0)
   const [results, setResults] = useState<SearchResult>(EMPTY_RESULT)
-  // сообщения: таб «Чаты» (filter='') и медиа-табы (filter по типу)
-  const [msgs, setMsgs] = useState<Message[] | null>(null)
-  const [msgCount, setMsgCount] = useState(0)
-  const loadingMore = useRef(false)
   const [recentIds, setRecentIds] = useState<string[]>(loadRecent)
   const [confirmClear, setConfirmClear] = useState(false)
 
   const q = query.trim()
-  const filter: '' | 'media' | 'links' | 'files' | 'music' | 'voice' = TAB_FILTER[tab] ?? ''
+  const filter: SearchFilter = TAB_FILTER[tab] ?? ''
+  // Глобальный поиск сообщений (список + пагинация) — в ViewModel-хуке.
+  const { msgs, onScroll } = useGlobalSearch(q, tab, filter)
 
   // Директория (публичные чаты + юзеры) — таб «Чаты»/«Каналы», дебаунс 250мс.
   useEffect(() => {
@@ -106,38 +102,6 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
       window.clearTimeout(id)
     }
   }, [q, searchReal, tab])
-
-  // Сообщения: таб «Чаты» ищет по тексту (нужен q); медиа-табы листают тип,
-  // q дополнительно сужает. Дебаунс 250мс, смена таба/запроса сбрасывает список.
-  useEffect(() => {
-    const need = tab === 0 ? q !== '' : filter !== ''
-    setMsgs(null)
-    setMsgCount(0)
-    if (!need) return
-    let alive = true
-    const id = window.setTimeout(() => {
-      managers.messages.searchGlobal(q, filter, 0, PAGE)
-        .then((r) => { if (alive) { setMsgs(r.messages); setMsgCount(r.count) } })
-        .catch(() => { if (alive) { setMsgs([]); setMsgCount(0) } })
-    }, 250)
-    return () => {
-      alive = false
-      window.clearTimeout(id)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, tab, filter])
-
-  // Подгрузка следующей страницы у нижнего края скролла
-  const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    const el = e.currentTarget
-    if (el.scrollHeight - el.scrollTop - el.clientHeight > 600) return
-    if (loadingMore.current || msgs == null || msgs.length >= msgCount) return
-    loadingMore.current = true
-    managers.messages.searchGlobal(q, filter, msgs.length, PAGE)
-      .then((r) => setMsgs((cur) => [...(cur ?? []), ...r.messages]))
-      .catch(() => undefined)
-      .finally(() => { loadingMore.current = false })
-  }
 
   const byId = new Map(chats.map((c) => [c.id, c]))
   const openDialog = (id: string) => {
