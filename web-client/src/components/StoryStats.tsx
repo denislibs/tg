@@ -1,14 +1,12 @@
 import { createPortal } from 'react-dom'
-import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import { slideInRight } from '../motion'
 import { useT } from '../i18n'
-import { useManagers } from '../core/hooks/useManagers'
+import { useStoryStats } from '../core/hooks/useStoryStats'
 import StatChart from './StatChart'
-import type { StoryStats as StoryStatsData } from '../core/managers/storiesManager'
 import s from './UserInfoPanel.module.scss'
 
 // Экран «Статистика истории» (аналог tweb storyStatistics). Full-screen оверлей
@@ -19,30 +17,7 @@ const nf = new Intl.NumberFormat(undefined)
 
 export default function StoryStats({ storyId, onClose }: { storyId: number; onClose: () => void }) {
   const t = useT()
-  const managers = useManagers()
-  const [stats, setStats] = useState<StoryStatsData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(false)
-
-  useEffect(() => {
-    let alive = true
-    setLoading(true)
-    setError(false)
-    void managers.stories
-      .stats(storyId)
-      .then((v) => {
-        if (alive) setStats(v)
-      })
-      .catch(() => {
-        if (alive) setError(true)
-      })
-      .finally(() => {
-        if (alive) setLoading(false)
-      })
-    return () => {
-      alive = false
-    }
-  }, [storyId, managers])
+  const { stats, loading, error } = useStoryStats(storyId)
 
   return createPortal(
     <div style={{ position: 'fixed', inset: 0, zIndex: 3000 }}>

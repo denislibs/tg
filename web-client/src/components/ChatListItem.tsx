@@ -1,4 +1,4 @@
-import { memo, useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+import { memo, useState, type CSSProperties, type ReactNode } from 'react'
 import Text from '../shared/ui/Text'
 import Avatar from '../shared/ui/Avatar'
 import Badge from '../shared/ui/Badge'
@@ -6,6 +6,7 @@ import Menu, { MenuItem } from '../shared/ui/Menu'
 import { useRipple } from '../shared/ui/Ripple/useRipple'
 import TgIcon from './TgIcon'
 import { useManagers } from '../core/hooks/useManagers'
+import { useMediaContentUrl } from '../core/hooks/useMediaContentUrl'
 import { useAvatarSrc } from './useAvatarSrc'
 import { useChatsStore } from '../stores/chatsStore'
 import { useSecretChatStore } from '../stores/secretChatStore'
@@ -36,13 +37,7 @@ interface Props {
 // Small rounded thumbnail of the last message's photo, shown before the preview
 // text (tweb's dialog-subtitle media). Resolves the content URL via the worker.
 function SidebarThumb({ id }: { id: number }) {
-  const managers = useManagers()
-  const [url, setUrl] = useState('')
-  useEffect(() => {
-    let alive = true
-    void managers.media.contentUrl(id).then((u) => { if (alive) setUrl(u) })
-    return () => { alive = false }
-  }, [id, managers])
+  const url = useMediaContentUrl(id)
   return <div className={s.thumb} style={{ backgroundImage: url ? `url(${url})` : undefined }} />
 }
 
