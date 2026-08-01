@@ -36,6 +36,31 @@ export function safeAppUrl(url: string): string {
   }
 }
 
+// Origin загруженного mini-app — цель postMessage вместо '*': если фрейм в ходе
+// сессии уйдёт на сторонний origin, сообщения (в т.ч. CloudStorage/QR) не утекут
+// чужому. '' для about:blank/невалидного (там mini-app и не загружен).
+export function frameOriginOf(url: string): string {
+  try {
+    return new URL(url).origin
+  } catch {
+    return ''
+  }
+}
+
+// Нормализует Telegram deep-link path (web_app_open_tg_link.path_full) в
+// абсолютный t.me-URL. path_full задаёт бот; конкатенация 'https://t.me'+path
+// уводила бы на чужой домен (".evil.com" → t.me.evil.com; "@evil.com" →
+// userinfo t.me@evil.com). Строим с фиксированной базой и одним ведущим слэшем —
+// путь не может выйти за origin t.me. '' — если каким-то образом не t.me.
+export function tgLinkUrl(pathFull: string): string {
+  try {
+    const u = new URL(pathFull.replace(/^\/*/, '/'), 'https://t.me/')
+    return u.origin === 'https://t.me' ? u.href : ''
+  } catch {
+    return ''
+  }
+}
+
 interface MainBtn {
   isVisible: boolean
   isActive: boolean
@@ -82,9 +107,12 @@ function WebAppInner() {
   const confirmClose = useRef(false)
   const sensors = useRef<{ motion?: (e: DeviceMotionEvent) => void; orient?: (e: DeviceOrientationEvent) => void }>({})
 
-  // Отправить событие в mini-app.
+  // Отправить событие в mini-app. targetOrigin = origin приложения (не '*'),
+  // чтобы данные не утекли, если фрейм ушёл на сторонний origin. Для about:blank
+  // (невалидный url) origin '' → '*', но там реального приложения-получателя нет.
+  const frameOrigin = frameOriginOf(url)
   const post = (eventType: string, eventData?: unknown) => {
-    frameRef.current?.contentWindow?.postMessage(JSON.stringify({ eventType, eventData }), '*')
+    frameRef.current?.contentWindow?.postMessage(JSON.stringify({ eventType, eventData }), frameOrigin || '*')
   }
   const sendTheme = () => post('theme_changed', { theme_params: webAppTheme() })
 
@@ -185,7 +213,10 @@ function WebAppInner() {
           if (typeof d.url === 'string') safeOpen(d.url)
           break
         case 'web_app_open_tg_link':
-          if (typeof d.path_full === 'string') safeOpen('https://t.me' + d.path_full)
+          if (typeof d.path_full === 'string') {
+            const href = tgLinkUrl(d.path_full)
+            if (href) safeOpen(href)
+          }
           break
         case 'web_app_data_send':
           // Доставляем данные боту-владельцу (web_app_data) + тост, затем закрываем.
