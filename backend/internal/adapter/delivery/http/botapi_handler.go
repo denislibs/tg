@@ -5,8 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"sync"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -21,11 +19,11 @@ import (
 type BotAPIHandler struct {
 	svc     *usecasechat.Interactor
 	media   *usecasemedia.Interactor // опционален: скачивание файлов (getFile)
-	limiter *botRateLimiter
+	limiter *keyRateLimiter
 }
 
 func NewBotAPIHandler(svc *usecasechat.Interactor, media *usecasemedia.Interactor) *BotAPIHandler {
-	return &BotAPIHandler{svc: svc, media: media, limiter: newBotRateLimiter()}
+	return &BotAPIHandler{svc: svc, media: media, limiter: newKeyRateLimiter()}
 }
 
 func botOK(w http.ResponseWriter, result any) {
@@ -496,39 +494,4 @@ func parseEntities(raw json.RawMessage) []domain.MessageEntity {
 	return out
 }
 
-// ── rate limiter (token bucket на ключ) ──
-
-type botRateLimiter struct {
-	mu      sync.Mutex
-	buckets map[string]*tokenBucket
-}
-type tokenBucket struct {
-	tokens float64
-	last   time.Time
-}
-
-func newBotRateLimiter() *botRateLimiter {
-	return &botRateLimiter{buckets: map[string]*tokenBucket{}}
-}
-
-// allow пропускает запрос по ключу с заданной скоростью (rps) и «ведром» (burst).
-func (l *botRateLimiter) allow(key string, rps, burst float64) bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	now := time.Now()
-	b := l.buckets[key]
-	if b == nil {
-		b = &tokenBucket{tokens: burst, last: now}
-		l.buckets[key] = b
-	}
-	b.tokens += now.Sub(b.last).Seconds() * rps
-	if b.tokens > burst {
-		b.tokens = burst
-	}
-	b.last = now
-	if b.tokens >= 1 {
-		b.tokens--
-		return true
-	}
-	return false
-}
+// Лимитер вынесен в ratelimit.go (keyRateLimiter) — общий для бота и auth.

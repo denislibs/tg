@@ -32,6 +32,7 @@ type Interactor struct {
 	pub      EventPublisher     // optional: realtime user_update fan-out
 	partners PartnersFunc       // optional: user_update recipient set (shared-chat peers)
 	updates  UpdateLog          // optional: per-user update log for user_update (dense pts)
+	pwFails  *failCounter       // счётчик неудачных попыток пароля на password_token
 }
 
 // EventPublisher pushes a realtime WS frame to a user's connected sessions.
@@ -118,7 +119,7 @@ func buildLoginText(ci ClientInfo) string {
 }
 
 func New(users UserRepo, devices DeviceRepo, codes CodeRepo, pw PasswordRepo, devCode string, logf func(string, ...any)) *Interactor {
-	return &Interactor{users: users, devices: devices, codes: codes, pw: pw, devCode: devCode, logf: logf}
+	return &Interactor{users: users, devices: devices, codes: codes, pw: pw, devCode: devCode, logf: logf, pwFails: newFailCounter()}
 }
 
 func (i *Interactor) SetCache(c SessionCache)                    { i.cache = c }
