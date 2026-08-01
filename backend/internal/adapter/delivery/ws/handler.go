@@ -38,9 +38,13 @@ func NewHandler(hub *Hub, auth Authenticator, chatSvc *usecasechat.Interactor, p
 		chatSvc:  chatSvc,
 		presence: presence,
 		upgrader: websocket.Upgrader{
+			// Эхаем subprotocol 'bearer' в ответе рукопожатия: клиент присылает
+			// ['bearer', <token>], токен несёт аутентификацию (не в URL). Без эха
+			// браузер закрыл бы соединение (сервер обязан выбрать subprotocol).
+			Subprotocols: []string{"bearer"},
 			// Анти-CSWSH: пускаем только с allow-list origin'ов (те же, что WebAuthn).
 			// Пустой Origin (нативные клиенты/тесты — не браузер) допускаем; аутентификация
-			// всё равно по токену в query, но origin-гейт снимает cross-site-подключение.
+			// по токену (subprotocol/query), origin-гейт снимает cross-site-подключение.
 			CheckOrigin: func(r *http.Request) bool {
 				origin := r.Header.Get("Origin")
 				if origin == "" {
@@ -54,7 +58,7 @@ func NewHandler(hub *Hub, auth Authenticator, chatSvc *usecasechat.Interactor, p
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	token := r.URL.Query().Get("token")
+	token := wsToken(r)
 	if token == "" {
 		http.Error(w, "missing token", http.StatusUnauthorized)
 		return
@@ -70,4 +74,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	conn := newConn(wsConn, h.hub, h.chatSvc, h.presence, user.ID, deviceID)
 	conn.run(r.Context())
+}
+
+// wsToken достаёт сессионный токен из WS-subprotocol (клиент шлёт ['bearer',
+// <token>] в Sec-WebSocket-Protocol — токен НЕ в URL). Fallback — устаревший
+// ?token= (старые вкладки до раскатки; query оседает в логах — см. SEC-6).
+func wsToken(r *http.Request) string {
+	for _, p := range websocket.Subprotocols(r) {
+		if p != "" && p != "bearer" {
+			return p
+		}
+	}
+	return r.URL.Query().Get("token")
 }
