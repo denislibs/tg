@@ -14,7 +14,6 @@ import (
 
 	"golang.org/x/net/html"
 
-	ivadapter "github.com/messenger-denis/backend/internal/adapter/iv"
 	"github.com/messenger-denis/backend/internal/domain"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 	usecaseiv "github.com/messenger-denis/backend/internal/usecase/iv"
@@ -34,7 +33,7 @@ var _ usecasechat.LinkPreviewer = (*Client)(nil)
 
 // New строит превьюер на общем SSRF-безопасном клиенте.
 func New() *Client {
-	return &Client{http: ivadapter.NewSafeHTTPClient(fetchTimeout)}
+	return &Client{http: usecaseiv.NewSafeHTTPClient(fetchTimeout)}
 }
 
 // Preview загружает страницу и собирает превью из og/twitter-мета и <title>.

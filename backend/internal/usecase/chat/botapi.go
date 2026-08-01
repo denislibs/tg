@@ -11,7 +11,14 @@ import (
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
+	usecaseiv "github.com/messenger-denis/backend/internal/usecase/iv"
 )
+
+// botHTTP — SSRF-безопасный клиент для исходящих запросов бот-движка (webhook +
+// загрузка медиа по URL). URL задаёт ботовод; гард в DialContext резолвит хост
+// и запрещает loopback/private/link-local (в т.ч. на DNS-rebind), чтобы бот не
+// заставил сервер сходить в localhost/внутреннюю сеть/метадата-сервис.
+var botHTTP = usecaseiv.NewSafeHTTPClient(20 * time.Second)
 
 // Bot API — движок ботов-сервисов: пользователь пишет боту → апдейт кладётся в
 // очередь (getUpdates) и/или POST'ится на webhook; бот отвечает методами
@@ -91,6 +98,9 @@ func (i *Interactor) dispatchBotUpdate(ctx context.Context, bot domain.BotAccoun
 }
 
 func postWebhook(url string, body []byte) {
+	if _, err := usecaseiv.ParseTargetURL(url); err != nil {
+		return // только абсолютный http/https
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
@@ -98,7 +108,7 @@ func postWebhook(url string, body []byte) {
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := botHTTP.Do(req)
 	if err == nil {
 		_ = resp.Body.Close()
 	}
@@ -272,6 +282,13 @@ func (i *Interactor) BotSendMessage(ctx context.Context, bot domain.BotAccount, 
 
 // BotSetWebhook / BotDeleteWebhook.
 func (i *Interactor) BotSetWebhook(ctx context.Context, bot domain.BotAccount, url string) error {
+	// Раннее отклонение SSRF-URL при регистрации (пустой url = снять webhook).
+	// Полная проверка резолва — на самом POST (botHTTP).
+	if url != "" {
+		if _, err := usecaseiv.ParseTargetURL(url); err != nil {
+			return domain.ErrForbidden
+		}
+	}
 	return i.botAPI.SetWebhook(ctx, bot.BotID, url)
 }
 

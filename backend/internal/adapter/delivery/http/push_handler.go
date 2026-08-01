@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/messenger-denis/backend/internal/domain"
+	usecaseiv "github.com/messenger-denis/backend/internal/usecase/iv"
 	usecasepush "github.com/messenger-denis/backend/internal/usecase/push"
 )
 
@@ -36,6 +37,12 @@ func (h *PushHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 	var body subscribeBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Endpoint == "" || body.P256dh == "" || body.Auth == "" {
 		writeError(w, http.StatusBadRequest, "endpoint, p256dh, auth required")
+		return
+	}
+	// Anti-SSRF: endpoint задаёт клиент. Раннее отклонение не-http(s)/относительных
+	// URL; резолв хоста и запрет private/loopback — на самой отправке (safe-клиент).
+	if _, err := usecaseiv.ParseTargetURL(body.Endpoint); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid endpoint")
 		return
 	}
 	if err := h.subs.Add(r.Context(), deviceID, domain.PushSubscription{
