@@ -56,12 +56,8 @@ func randID() string {
 	return hex.EncodeToString(b)
 }
 
-func (i *Interactor) hub() *botPendingHub {
-	if i.botHub == nil {
-		i.botHub = newBotHub()
-	}
-	return i.botHub
-}
+// botHub инициализируется в New() — здесь только доступ (без гонки check-then-set).
+func (i *Interactor) hub() *botPendingHub { return i.botHub }
 
 // ── генерация апдейтов ──
 

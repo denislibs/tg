@@ -57,13 +57,20 @@ func (w *Worker) handle(ctx context.Context, job Job) bool {
 		return true // nobody to push to
 	}
 	payload, _ := json.Marshal(w.buildPayload(ctx, job))
+	retry := false
 	for _, sub := range subs {
 		status, err := w.sender.Send(ctx, sub, payload)
-		if err == nil && (status == http.StatusNotFound || status == http.StatusGone) {
+		switch {
+		case err != nil:
+			// Транзиентная ошибка доставки (сеть/5xx push-сервиса) — джоб на
+			// redelivery, чтобы уведомление не потерялось (мёртвый endpoint
+			// вернул бы 404/410 — см. ниже; повтор для него не сработает).
+			retry = true
+		case status == http.StatusNotFound || status == http.StatusGone:
 			_ = w.subs.DeleteByEndpoint(ctx, sub.Endpoint)
 		}
 	}
-	return true
+	return !retry
 }
 
 // buildPayload enriches the job with sender name + unread badge for the client.

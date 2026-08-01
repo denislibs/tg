@@ -85,6 +85,29 @@ func TestWorker_TransientSubLoadErrorNotAcked(t *testing.T) {
 	}
 }
 
+// Транзиентная ошибка ОТПРАВКИ (сеть/5xx push-сервиса) не должна ACK-ать джоб —
+// уведомление уходит на redelivery, а не теряется.
+func TestWorker_TransientSendErrorNotAcked(t *testing.T) {
+	q := &fakeQueue{}
+	_ = q.Enqueue(context.Background(), Job{RecipientID: 7, Text: "hi"})
+
+	subs := &fakeSubs{byUser: map[int64][]domain.PushSubscription{
+		7: {{Endpoint: "good", P256dh: "p", Auth: "a"}},
+	}}
+	sender := &fakeSender{err: errors.New("push service 503")}
+	w := NewWorker(q, subs, sender, &fakeEnricher{})
+
+	if err := w.ProcessBatch(context.Background()); err != nil {
+		t.Fatalf("ProcessBatch: %v", err)
+	}
+	if len(sender.sent) != 1 {
+		t.Fatalf("expected 1 send attempt, got %d", len(sender.sent))
+	}
+	if len(q.acked) != 0 {
+		t.Fatalf("expected NO ack on transient send error (redelivery), got %v", q.acked)
+	}
+}
+
 func TestWorker_NoSubscriptionsAcks(t *testing.T) {
 	q := &fakeQueue{}
 	_ = q.Enqueue(context.Background(), Job{RecipientID: 7})
