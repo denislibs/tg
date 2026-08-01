@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import Popup from '../shared/ui/Popup/Popup'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import { useT } from '../i18n'
 import { useManagers } from '../core/hooks/useManagers'
+import { useStealthState } from '../core/hooks/useStealthState'
 import { uiEvents } from '../core/hooks/uiEvents'
 import { HttpError } from '../core/net/restClient'
 
@@ -28,18 +29,8 @@ function cooldownLabel(iso: string): string {
 export default function StealthModePopup({ onClose }: { onClose: () => void }) {
   const t = useT()
   const managers = useManagers()
-  const [unavailable, setUnavailable] = useState(false)
-  const [cooldownUntil, setCooldownUntil] = useState<string | null>(null)
+  const { unavailable, cooldownUntil, setUnavailable } = useStealthState()
   const [busy, setBusy] = useState(false)
-
-  useEffect(() => {
-    let alive = true
-    managers.stories
-      .stealthState()
-      .then((st) => { if (alive) setCooldownUntil(st.cooldownUntil) })
-      .catch((e) => { if (alive && e instanceof HttpError && e.status === 503) setUnavailable(true) })
-    return () => { alive = false }
-  }, [managers])
 
   const onCooldown = cooldownUntil != null && new Date(cooldownUntil).getTime() > Date.now()
 

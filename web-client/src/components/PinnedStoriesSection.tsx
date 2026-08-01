@@ -1,20 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import Text from '../shared/ui/Text'
 import { useT } from '../i18n'
-import { useManagers } from '../core/hooks/useManagers'
+import { useMediaThumb } from '../core/hooks/useMediaThumb'
+import { usePinnedStories } from '../core/hooks/usePinnedStories'
 import StoryReadOnlyPreview from './StoryReadOnlyPreview'
 import type { StoryItem } from '../core/managers/storiesManager'
 
 // Плитка закреплённой истории: превью медиа (thumbUrl).
 function Tile({ story, onClick }: { story: StoryItem; onClick: () => void }) {
-  const managers = useManagers()
-  const [url, setUrl] = useState('')
-  useEffect(() => {
-    let alive = true
-    void managers.media.thumbUrl(story.mediaId).then((u) => { if (alive) setUrl(u) }).catch(() => {})
-    return () => { alive = false }
-  }, [managers, story.mediaId])
+  const url = useMediaThumb(story.mediaId)
   return (
     <div
       onClick={onClick}
@@ -33,15 +28,8 @@ function Tile({ story, onClick }: { story: StoryItem; onClick: () => void }) {
  */
 export default function PinnedStoriesSection({ peerId }: { peerId: number }) {
   const t = useT()
-  const managers = useManagers()
-  const [items, setItems] = useState<StoryItem[]>([])
+  const items = usePinnedStories(peerId)
   const [openId, setOpenId] = useState<number | null>(null)
-
-  useEffect(() => {
-    let alive = true
-    managers.stories.pinnedStories(peerId).then((list) => { if (alive) setItems(list) }).catch(() => { if (alive) setItems([]) })
-    return () => { alive = false }
-  }, [managers, peerId])
 
   if (items.length === 0) return null
   const open = items.find((i) => i.id === openId) ?? null
