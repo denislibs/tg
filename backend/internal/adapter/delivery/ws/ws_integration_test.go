@@ -71,7 +71,7 @@ func newWSEnv(t *testing.T) *wsEnv {
 	authUC.SetRevocationNotifier(publisher)
 	presenceMgr := usecasepresence.NewManager(rtredis.NewPresenceStore(rdb), publisher, chatSvc.ChatPartners, 35*time.Second)
 	hub := ws.NewHub(ctx, rdb)
-	handler := ws.NewHandler(hub, authUC, chatSvc, presenceMgr)
+	handler := ws.NewHandler(hub, authUC, chatSvc, presenceMgr, nil)
 	srv := httptest.NewServer(http.HandlerFunc(handler.ServeHTTP))
 
 	_ = authUC.RequestCode(ctx, "+700")
