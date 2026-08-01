@@ -61,16 +61,16 @@ func Load() (*Config, error) {
 		HTTPAddr:       getenv("HTTP_ADDR", ":8080"),
 		DatabaseURL:    os.Getenv("DATABASE_URL"),
 		RedisURL:       getenv("REDIS_URL", "redis://localhost:6379"),
-		DevOTPCode:     getenv("DEV_OTP_CODE", "12345"),
+		DevOTPCode:     getenv("DEV_OTP_CODE", defOTPCode),
 		SeedDemo:       getenv("SEED_DEMO", "") == "true" || getenv("SEED_DEMO", "") == "1",
-		MediaURLSecret: getenv("MEDIA_URL_SECRET", "dev-media-url-secret-change-me"),
+		MediaURLSecret: getenv("MEDIA_URL_SECRET", defMediaURLSecret),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
 	}
 	c.MinioEndpoint = getenv("MINIO_ENDPOINT", "localhost:9000")
-	c.MinioAccessKey = getenv("MINIO_ACCESS_KEY", "minioadmin")
-	c.MinioSecretKey = getenv("MINIO_SECRET_KEY", "minioadmin")
+	c.MinioAccessKey = getenv("MINIO_ACCESS_KEY", defMinioCred)
+	c.MinioSecretKey = getenv("MINIO_SECRET_KEY", defMinioCred)
 	c.MinioBucket = getenv("MINIO_BUCKET", "media")
 	c.MinioUseSSL = getenv("MINIO_USE_SSL", "false") == "true"
 	c.VAPIDPublicKey = os.Getenv("VAPID_PUBLIC_KEY")
@@ -78,7 +78,7 @@ func Load() (*Config, error) {
 	c.VAPIDSubject = getenv("VAPID_SUBJECT", "mailto:admin@example.com")
 	c.GeoIPDBPath = os.Getenv("GEOIP_DB_PATH")
 	c.TurnHost = os.Getenv("TURN_HOST")
-	c.TurnSecret = getenv("TURN_SECRET", "dev-turn-secret-change-me")
+	c.TurnSecret = getenv("TURN_SECRET", defTurnSecret)
 	c.WebAuthnRPID = getenv("WEBAUTHN_RP_ID", "localhost")
 	c.WebAuthnOrigins = strings.Split(getenv("WEBAUTHN_ORIGINS",
 		"https://localhost:38443,http://localhost:38080,http://localhost:5173,http://localhost:8080"), ",")
@@ -86,8 +86,39 @@ func Load() (*Config, error) {
 	c.TranslateAPIKey = os.Getenv("TRANSLATE_API_KEY")
 	c.TenorAPIKey = os.Getenv("TENOR_API_KEY")
 	c.RTMPBaseURL = getenv("RTMP_BASE_URL", "rtmp://localhost/live")
+
+	// Fail-fast: в проде дефолтные секреты — это доступ к чужому медиа (форж
+	// media-токена на MEDIA_URL_SECRET), TURN и хранилищу, плюс статичный OTP.
+	// Не даём серверу стартовать молча с ними.
+	if getenv("APP_ENV", "development") == "production" {
+		var bad []string
+		if c.MediaURLSecret == defMediaURLSecret {
+			bad = append(bad, "MEDIA_URL_SECRET")
+		}
+		if c.TurnSecret == defTurnSecret {
+			bad = append(bad, "TURN_SECRET")
+		}
+		if c.MinioAccessKey == defMinioCred || c.MinioSecretKey == defMinioCred {
+			bad = append(bad, "MINIO_ACCESS_KEY/MINIO_SECRET_KEY")
+		}
+		if c.DevOTPCode == defOTPCode {
+			bad = append(bad, "DEV_OTP_CODE")
+		}
+		if len(bad) > 0 {
+			return nil, fmt.Errorf("APP_ENV=production, но используются дефолтные секреты: %s — задайте их через окружение", strings.Join(bad, ", "))
+		}
+	}
 	return c, nil
 }
+
+// Дефолтные (dev-)значения секретов — общие для getenv-дефолтов выше и fail-fast
+// проверки, чтобы не разъехались.
+const (
+	defMediaURLSecret = "dev-media-url-secret-change-me"
+	defTurnSecret     = "dev-turn-secret-change-me"
+	defMinioCred      = "minioadmin"
+	defOTPCode        = "12345"
+)
 
 func getenv(key, def string) string {
 	if v := os.Getenv(key); v != "" {

@@ -24,7 +24,7 @@ var _ usecasechat.SearchRepo = (*SearchRepo)(nil)
 func NewSearchRepo(pool *pgxpool.Pool) *SearchRepo { return &SearchRepo{pool: pool} }
 
 func (r *SearchRepo) SearchChats(ctx context.Context, q string, limit int) ([]domain.ChatCard, error) {
-	like := q + "%"
+	like := escapeLike(q) + "%"
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT id, type, title, COALESCE(username,''), about, member_count, is_public
 		   FROM chats
@@ -46,7 +46,7 @@ func (r *SearchRepo) SearchChats(ctx context.Context, q string, limit int) ([]do
 }
 
 func (r *SearchRepo) SearchUsers(ctx context.Context, q string, limit int) ([]domain.UserCard, error) {
-	like := q + "%"
+	like := escapeLike(q) + "%"
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT id, COALESCE(username,''), display_name, COALESCE(avatar_url,'')
 		   FROM users WHERE username ILIKE $1 OR display_name ILIKE $2 LIMIT $3`, like, like, limit)

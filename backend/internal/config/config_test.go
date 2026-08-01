@@ -43,6 +43,37 @@ func TestLoad_MinioDefaults(t *testing.T) {
 	}
 }
 
+func TestLoad_ProdRejectsDefaultSecrets(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/db")
+	t.Setenv("APP_ENV", "production")
+	// секреты не заданы → дефолты → Load должен упасть.
+	if _, err := Load(); err == nil {
+		t.Fatal("expected error: production with default secrets")
+	}
+}
+
+func TestLoad_ProdWithRealSecretsOK(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/db")
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("MEDIA_URL_SECRET", "real-media-secret-xyz")
+	t.Setenv("TURN_SECRET", "real-turn-secret-xyz")
+	t.Setenv("MINIO_ACCESS_KEY", "realkey")
+	t.Setenv("MINIO_SECRET_KEY", "realsecret")
+	t.Setenv("DEV_OTP_CODE", "")                 // getenv-дефолт 12345 сработал бы —
+	t.Setenv("DEV_OTP_CODE", "disabled-in-prod") // задаём не-дефолт
+	if _, err := Load(); err != nil {
+		t.Fatalf("unexpected error with real secrets: %v", err)
+	}
+}
+
+func TestLoad_DevAllowsDefaultSecrets(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/db")
+	t.Setenv("APP_ENV", "") // development по умолчанию
+	if _, err := Load(); err != nil {
+		t.Fatalf("dev with defaults должен работать: %v", err)
+	}
+}
+
 func TestLoad_VAPIDSubjectDefault(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://localhost/db")
 	t.Setenv("VAPID_SUBJECT", "")

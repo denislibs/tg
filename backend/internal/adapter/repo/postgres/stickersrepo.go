@@ -145,7 +145,7 @@ func (r *StickersRepo) SearchSets(ctx context.Context, q string, limit int) ([]d
 		   FROM sticker_sets s
 		  WHERE s.title ILIKE '%' || $1 || '%' OR s.slug ILIKE '%' || $1 || '%'
 		  ORDER BY s.id
-		  LIMIT $2`, q, limit)
+		  LIMIT $2`, escapeLike(q), limit)
 	if err != nil {
 		return nil, err
 	}
