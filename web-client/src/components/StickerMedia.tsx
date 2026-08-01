@@ -25,6 +25,9 @@ export function loadStickerContent(mediaId: number): Promise<StickerContent> {
   if (!p) {
     p = (async (): Promise<StickerContent> => {
       await primeMediaToken()
+      // Медиа-bytes грузим прямым fetch к media-эндпоинту (не через managers/worker-RPC),
+      // санкц. исключение — см. web-client/CLAUDE.md «МОЖНО». Тип стикера неизвестен
+      // заранее — определяем по Content-Type сырого ответа.
       const res = await fetch(mediaContentUrl(mediaId))
       if (!res.ok) throw new Error(`sticker media ${mediaId}: HTTP ${res.status}`)
       const ct = res.headers.get('content-type') ?? ''
