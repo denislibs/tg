@@ -42,6 +42,7 @@ type Interactor struct {
 	bots         BotRepo
 	botAPI       BotAPIRepo
 	botMedia     BotMediaStore
+	botHTTP      BotHTTP
 	translator   Translator
 	secret       SecretRepo
 	stickers     StickerAccess
@@ -139,6 +140,11 @@ func (i *Interactor) SetBotAPI(b BotAPIRepo) { i.botAPI = b }
 // SetBotMedia подключает хранилище медиа ботов (sendPhoto/Document/Video).
 // Без него медиа-методы Bot API вернут ошибку (текст продолжает работать).
 func (i *Interactor) SetBotMedia(m BotMediaStore) { i.botMedia = m }
+
+// SetBotHTTP подключает исходящий HTTP бот-движка (webhook + загрузка медиа по
+// URL) SSRF-безопасным клиентом. Без него webhook не доставляется, sendMedia по
+// URL → ErrNotFound (file_id-путь продолжает работать).
+func (i *Interactor) SetBotHTTP(b BotHTTP) { i.botHTTP = b }
 
 // SetTranslator подключает провайдер перевода (optional; без него перевод → 503).
 func (i *Interactor) SetTranslator(t Translator) { i.translator = t }

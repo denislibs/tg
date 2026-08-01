@@ -266,6 +266,18 @@ type LinkPreviewer interface {
 	Preview(ctx context.Context, url string) (*domain.WebPagePreview, error)
 }
 
+// BotHTTP — исходящие HTTP-запросы бот-движка (доставка апдейта на webhook +
+// загрузка медиа бота по URL) через SSRF-безопасный клиент адаптера. Держит
+// net/http вне usecase (чистая архитектура). Опционален: без него webhook не
+// доставляется, а sendMedia по URL → ErrNotFound.
+type BotHTTP interface {
+	// PostWebhook доставляет апдейт боту (fire-and-forget; SSRF-невалидный URL
+	// молча отбрасывается адаптером).
+	PostWebhook(ctx context.Context, url string, body []byte)
+	// FetchURL качает файл по URL с лимитом размера; возвращает байты + mime.
+	FetchURL(ctx context.Context, url string, maxBytes int64) (data []byte, mime string, err error)
+}
+
 type UpdateRepo interface {
 	AppendUpdate(ctx context.Context, userID int64, ptsCount int, date int64, typ string, payload json.RawMessage) (int64, error)
 	// AppendUpdateBulk — batched AppendUpdate for a set of users sharing one payload
