@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
+	"github.com/messenger-denis/backend/internal/pkg/saferun"
 )
 
 // previewTimeout ограничивает весь цикл превью (fetch + parse + UPDATE + fan-out):
@@ -34,6 +35,9 @@ func firstURL(text string, entities []domain.MessageEntity) string {
 // просто оставляет сообщение без карточки (история при /sync отдаст web_page,
 // если UPDATE успел). Секретные чаты исключены — сервер их контент не трогает.
 func (i *Interactor) attachWebPreview(msg domain.Message, url string, recipients []int64) {
+	// Фоновая горутина над чужим HTML (парсинг og/readability) — паника не должна
+	// ронять процесс.
+	defer saferun.Recover("chat.attachWebPreview")
 	ctx, cancel := context.WithTimeout(context.Background(), previewTimeout)
 	defer cancel()
 	if typ, err := i.chats.ChatType(ctx, msg.ChatID); err != nil || typ == "secret" {

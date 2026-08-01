@@ -126,6 +126,29 @@ func TestHub_DeliversChannelFrame(t *testing.T) {
 	}
 }
 
+// closedChanSink.Send паникует «send on closed channel» — ровно та паника, что
+// возникала в гонке deliverChannel↔conn.close(c.send) (REL-1).
+type closedChanSink struct{ ch chan []byte }
+
+func newClosedChanSink() *closedChanSink {
+	c := make(chan []byte)
+	close(c)
+	return &closedChanSink{ch: c}
+}
+func (s *closedChanSink) Send(frame []byte) { s.ch <- frame } // panic: send on closed channel
+func (s *closedChanSink) Close()            {}
+
+// route не должен пропускать панику из Send наружу (иначе горутина hub.run и весь
+// процесс падают). Проверяем оба фан-аут-пути — канальный и пользовательский.
+func TestHub_RouteRecoversFromPanickingSink(t *testing.T) {
+	chHub := &Hub{channelSubs: map[int64]map[Sink]struct{}{5: {newClosedChanSink(): {}}}}
+	chHub.route(&redis.Message{Channel: "channel:5", Payload: "x"})
+
+	userHub := &Hub{conns: map[int64]map[Sink]struct{}{7: {newClosedChanSink(): {}}}}
+	userHub.route(&redis.Message{Channel: "user:7", Payload: "y"})
+	// Если дошли сюда без падения процесса — recover в route сработал.
+}
+
 func TestHub_ClosesDeviceOnRevoke(t *testing.T) {
 	mr, _ := miniredis.Run()
 	defer mr.Close()
