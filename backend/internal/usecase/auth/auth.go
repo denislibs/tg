@@ -140,7 +140,9 @@ func (i *Interactor) RequestCode(ctx context.Context, rawPhone string) error {
 	if err := i.codes.SaveCode(ctx, phone, i.devCode, time.Now().Add(codeTTL)); err != nil {
 		return err
 	}
-	i.logf("[dev-otp] phone=%s code=%s", phone, i.devCode)
+	// Значение кода НЕ логируем (утечка OTP в логи, если devCode заменят реальной
+	// доставкой). В dev код статичен — DEV_OTP_CODE (12345).
+	i.logf("[otp] requested for phone=%s", phone)
 	return nil
 }
 
