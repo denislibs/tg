@@ -1,0 +1,110 @@
+// Логика поиска в чате для шапки: открытие/запрос (single-sourced в searchStore),
+// дебаунс-фетч, фильтры (от кого / тип / реакция), участники группы и результаты
+// (имя отправителя + время резолвятся здесь из peers/me/lang). UI — в ChatSearchCard.
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useManagers } from './useManagers'
+import { useChatSearch } from './useChatSearch'
+import { usePeers } from './usePeers'
+import { useChatsStore } from '../../stores/chatsStore'
+import { gradientFor } from '../dialogToChat'
+import { friendlyMsgTime } from '../format/friendlyTime'
+import { useT, useLang } from '../../i18n'
+import { MEDIA_TYPES, type SearchResultRow } from '../../components/conversation/chatSearchMeta'
+import type { Chat } from '../../data'
+
+export type FilterKind = 'sender' | 'type' | 'reaction'
+
+export function useChatHeaderSearch(chat: Chat, onJumpToSeq: (seq: number) => void) {
+  const t = useT()
+  const [lang] = useLang()
+  const managers = useManagers()
+  const meId = useChatsStore((s) => s.meId)
+
+  const numericChatId = Number(chat.id)
+  const isRealChat = Number.isFinite(numericChatId) && String(numericChatId) === chat.id
+  const search = useChatSearch(numericChatId, isRealChat)
+  const { filters, setFilters } = search
+
+  const onPickResult = (seq: number) => { search.reset(); onJumpToSeq(seq) }
+
+  // ── jump-to-date: скрытый нативный date-input, открывается кнопкой-календарём ──
+  const dateInputRef = useRef<HTMLInputElement>(null)
+  const openDatePicker = () => {
+    const el = dateInputRef.current
+    if (!el) return
+    const withPicker = el as HTMLInputElement & { showPicker?: () => void }
+    if (withPicker.showPicker) withPicker.showPicker()
+    else el.click()
+  }
+  const onDatePick = (value: string) => {
+    if (!value) return
+    const d = new Date(`${value}T00:00:00`)
+    if (Number.isNaN(d.getTime())) return
+    void search.jumpToDate(Math.floor(d.getTime() / 1000)).then((seq) => {
+      if (seq != null) { search.reset(); onJumpToSeq(seq) }
+    })
+  }
+
+  // ── фильтры поиска (чипы + выпадающие меню) ──
+  const isGroup = chat.type === 'group'
+  const [filterMenu, setFilterMenu] = useState<{ kind: FilterKind; style: CSSProperties } | null>(null)
+  const openFilterMenu = (kind: FilterKind) => (rect: DOMRect) =>
+    setFilterMenu({ kind, style: { top: rect.bottom + 6, left: rect.left, transformOrigin: 'top left' } })
+
+  // Участники группы для фильтра «От кого» — грузим при открытии меню.
+  const [members, setMembers] = useState<{ userId: number; role: string }[]>([])
+  useEffect(() => {
+    if (filterMenu?.kind !== 'sender' || !isGroup) return
+    let alive = true
+    void managers.groups.members(numericChatId).then((m) => { if (alive) setMembers(m) })
+    return () => { alive = false }
+  }, [filterMenu, isGroup, numericChatId, managers])
+  const memberPeers = usePeers(useMemo(() => members.map((m) => m.userId), [members]))
+
+  const senderName = filters.senderId != null
+    ? (filters.senderId === meId ? 'Вы' : memberPeers.get(filters.senderId)?.displayName || String(filters.senderId))
+    : t('Search from')
+  const typeLabel = filters.mediaType != null
+    ? t(MEDIA_TYPES.find((x) => x.value === filters.mediaType)?.labelKey ?? 'Search by type')
+    : t('Search by type')
+
+  // usePeers keys its fetch on peersKey(ids) internally, so a fresh array each render is fine.
+  const resultPeers = usePeers(useMemo(() => search.results.map((m) => m.senderId), [search.results]))
+  const searchResults: SearchResultRow[] = useMemo(
+    () =>
+      search.results.map((m) => ({
+        id: m.id,
+        seq: m.seq,
+        sender: m.senderId === meId ? 'Вы' : resultPeers.get(m.senderId)?.displayName || chat.name,
+        avatar: gradientFor(m.senderId),
+        time: friendlyMsgTime(m.createdAt, lang),
+        text: m.text ?? '',
+        mediaId: m.mediaId ?? undefined,
+        mediaType: m.type,
+      })),
+    [search.results, resultPeers, meId, chat.name, lang],
+  )
+
+  // Активный (последний открытый) результат — подсветка строки в списке.
+  const [activeIdx, setActiveIdx] = useState(0)
+  useEffect(() => { setActiveIdx(0) }, [search.query])
+
+  return {
+    open: search.open,
+    openSearch: () => search.setOpen(true),
+    query: search.query,
+    onSearchChange: search.setQuery,
+    onSearchClear: () => search.setQuery(''),
+    onSearchClose: () => search.setOpen(false),
+    hasFilter: search.hasFilter,
+    filters, setFilters,
+    dateInputRef, openDatePicker, onDatePick,
+    isGroup, meId,
+    filterMenu, setFilterMenu, openFilterMenu,
+    members, memberPeers,
+    senderName, typeLabel,
+    searchResults, activeIdx, setActiveIdx, onPickResult,
+  }
+}
+
+export type ChatHeaderSearch = ReturnType<typeof useChatHeaderSearch>
