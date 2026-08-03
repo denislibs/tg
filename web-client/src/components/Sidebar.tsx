@@ -5,7 +5,6 @@ import classNames from '../shared/lib/classNames'
 import s from './Sidebar.module.scss'
 import { useChatsStore, loadChats } from '../stores/chatsStore'
 import { ALL_FOLDER_ID } from '../stores/foldersStore'
-import type { Chat, OpenPeer } from '../data'
 import ChatList from './ChatList'
 import ChatListItem from './ChatListItem'
 import FoldersSidebar, { type MainMenuHandlers } from './folders/FoldersSidebar'
@@ -21,8 +20,10 @@ import PremiumModal from './PremiumModal'
 import SearchView from './SearchView'
 import StoriesRow from './StoriesRow'
 import SidebarScreens, { type SidebarScreen } from './SidebarScreens'
-import type { TopicRow } from '../core/managers/groupsManager'
 import { useManagers } from '../core/hooks/useManagers'
+import { useChatList } from '../core/hooks/useChatList'
+import { useNavigationStore } from '../stores/navigationStore'
+import { useNavigationActions } from '../core/hooks/useNavigationActions'
 import { openPopup } from '../stores/popupStore'
 import InputSearch from '../shared/ui/InputSearch'
 import FolderTabs from './FolderTabs'
@@ -35,44 +36,37 @@ import { useForumPanel } from '../core/hooks/useForumPanel'
 import { useSidebarFolders } from '../core/hooks/useSidebarFolders'
 
 interface Props {
-  chats: Chat[]
-  selectedId: string
-  onSelect: (id: string) => void
-  /** клик по теме в панели топиков форума — открыть тред в колонке чата */
-  onOpenTopic: (chatId: number, topic: TopicRow) => void
-  /** rootMsgId темы, открытой в колонке чата (подсветка ряда в панели топиков) */
-  activeTopicId: number | null
   onToggleMode: (coords?: { x: number; y: number }) => void
   onLogout?: () => void
-  onOpenPeer?: (peer: OpenPeer) => void
   fullWidth?: boolean
   /** префилл поиска (deep-open с публичной страницы /?domain=username) */
   initialQuery?: string
-  /** открыть только что созданный чат (после добавления контакта по номеру) */
-  onChatCreated?: (chatId: number) => void
 }
 
 // Sidebar — оркестратор левой колонки: композиция хуков (поиск/папки/истории/
 // форум/создание чатов) + разметка шапки, списка и оверлеев. Кластеры логики
 // вынесены в core/hooks/useSidebar*; экраны колонки — в <SidebarScreens>.
+// Навигация и список чатов читаются из стора напрямую (инвариант: View читает из
+// стора, а не через проброс из Shell) — тема/авторизация остаются пропсами (скоуп App).
 export default function Sidebar({
-  chats,
-  selectedId,
-  onSelect,
-  onOpenTopic,
-  activeTopicId,
   onToggleMode,
   onLogout,
-  onOpenPeer,
   fullWidth = false,
   initialQuery,
-  onChatCreated,
 }: Props) {
   const managers = useManagers()
   const t = useT()
   const loaded = useChatsStore((st) => st.loaded)
   const passcodeEnabled = useSettingsStore((st) => st.passcodeEnabled)
   const listScrollRef = useRef<HTMLDivElement>(null)
+
+  // Навигация — из navigationStore/useNavigationActions напрямую; список чатов —
+  // свой селектор (та же useChatList, что и в Shell; вторая подписка — норма).
+  const chats = useChatList()
+  const selectedId = useNavigationStore((st) => st.selectedId) ?? ''
+  const activeTopicId = useNavigationStore((st) => (st.openThread?.thread.kind === 'topic' ? st.openThread.thread.rootMsgId : null))
+  const onSelect = useNavigationStore((st) => st.selectChat)
+  const { openTopicThread: onOpenTopic, openPeer: onOpenPeer, onChatCreated } = useNavigationActions()
 
   // Экраны левой колонки взаимоисключающие — один стейт-энум (см. <SidebarScreens>).
   const [screen, setScreen] = useState<SidebarScreen>(null)

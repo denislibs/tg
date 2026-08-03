@@ -78,16 +78,9 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 
   const renderSidebar = (fullWidth = false) => (
     <Sidebar
-      chats={chatList}
       initialQuery={deep.deepDomain}
-      selectedId={selectedId ?? ''}
-      onSelect={nav.selectChat}
-      onOpenTopic={nav.openTopicThread}
-      activeTopicId={openThread?.thread.kind === 'topic' ? openThread.thread.rootMsgId : null}
       onToggleMode={onToggleMode}
       onLogout={onLogout}
-      onOpenPeer={nav.openPeer}
-      onChatCreated={nav.onChatCreated}
       fullWidth={fullWidth}
     />
   )
@@ -114,13 +107,10 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
         key={`thread-${openThread.chatId}-${openThread.thread.rootMsgId}`}
         chat={threadChat}
         thread={openThread.thread}
-        onCloseThread={nav.closeThread}
         onBack={backToList}
-        onOpenPeer={nav.openPeer}
-        onChatCreated={nav.onChatCreated}
       />
     ) : selected ? (
-      <ConversationView key={selectedId} chat={selected} onBack={backToList} onOpenPeer={nav.openPeer} onChatCreated={nav.onChatCreated} onOpenThread={nav.openCommentsThread} onOpenChannel={nav.openPublicChannel} />
+      <ConversationView key={selectedId} chat={selected} onBack={backToList} />
     ) : (
       <div className={s.empty}>
         <div className={s.emptyPill}>{t('Select a chat to start messaging')}</div>
