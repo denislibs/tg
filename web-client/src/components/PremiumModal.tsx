@@ -54,14 +54,14 @@ function PremiumStar() {
   )
 }
 
-export default function PremiumModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export default function PremiumModal({ open, onClose, onExitComplete }: { open: boolean; onClose: () => void; onExitComplete?: () => void }) {
   const t = useT()
   const [plan, setPlan] = useState<PremiumPlanId>('12m')
   const [checkoutOpen, setCheckoutOpen] = useState(false)
   const selected = planById(plan)
 
   return createPortal(
-    <AnimatePresence>
+    <AnimatePresence onExitComplete={onExitComplete}>
       {open && (
         <motion.div
           className={s.overlay}

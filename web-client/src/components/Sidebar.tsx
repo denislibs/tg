@@ -1,22 +1,16 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useRef, useState, type CSSProperties } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { EASE } from '../motion'
 import classNames from '../shared/lib/classNames'
 import s from './Sidebar.module.scss'
 import { useChatsStore, loadChats } from '../stores/chatsStore'
-import { useSecretChatStore } from '../stores/secretChatStore'
-import { useFoldersStore, loadFolders, ALL_FOLDER_ID } from '../stores/foldersStore'
-import { matchesFolder } from '../core/folderFilter'
-import type { Folder } from '../core/managers/foldersManager'
+import { ALL_FOLDER_ID } from '../stores/foldersStore'
 import type { Chat, OpenPeer } from '../data'
 import ChatList from './ChatList'
 import ChatListItem from './ChatListItem'
-import FolderEditor from './folders/FolderEditor'
-import FoldersSidebar from './folders/FoldersSidebar'
+import FoldersSidebar, { type MainMenuHandlers } from './folders/FoldersSidebar'
 import { useSettings, useSettingsStore } from '../settings'
 import useMediaQuery from '../shared/lib/useMediaQuery'
-import Menu, { MenuItem } from '../shared/ui/Menu'
-import Popup from '../shared/ui/Popup'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import IconButton from '../shared/ui/IconButton'
@@ -24,34 +18,21 @@ import { useLockStore } from '../stores/lockStore'
 import SidebarMenuButton from './SidebarMenuButton'
 import ComposeFab from './ComposeFab'
 import PremiumModal from './PremiumModal'
-import ContactsView from './ContactsView'
-import NewGroupFlow from './NewGroupFlow'
-import NewChannelFlow from './NewChannelFlow'
-import NewPrivateChat from './NewPrivateChat'
 import SearchView from './SearchView'
 import StoriesRow from './StoriesRow'
-import StoryViewer from './StoryViewer'
-import AddStorySheet from './AddStorySheet'
-// MediaEditor (+ WebGL sceneRender/enhanceGL) грузится лениво — только при редактировании медиа
-const MediaEditor = lazy(() => import('./mediaEditor/MediaEditor'))
-// Экран настроек со всеми под-экранами (Privacy/Notifications/Language/…) — большое
-// поддерево JS+CSS, не нужное до первого кадра. Открывается из меню → грузим лениво.
-const SettingsView = lazy(() => import('./SettingsView'))
-// Кошелёк (звёзды) и экран звонков — тоже из меню, не первый кадр → лениво.
-const WalletView = lazy(() => import('./stars/WalletView'))
-const CallsView = lazy(() => import('./CallsView'))
-import CloseFriendsSheet from './CloseFriendsSheet'
-import StoriesArchiveSheet from './StoriesArchiveSheet'
-import { loadStories } from '../stores/storiesStore'
-import TopicsPanel from './TopicsPanel'
+import SidebarScreens, { type SidebarScreen } from './SidebarScreens'
 import type { TopicRow } from '../core/managers/groupsManager'
 import { useManagers } from '../core/hooks/useManagers'
-import type { SearchResult } from '../core/managers/channelsManager'
+import { openPopup } from '../stores/popupStore'
 import InputSearch from '../shared/ui/InputSearch'
 import FolderTabs from './FolderTabs'
 import { TabsBar } from '../shared/ui/Tabs'
 import { useT } from '../i18n'
-import { uiEvents } from '../core/hooks/uiEvents'
+import { useSidebarSearch } from '../core/hooks/useSidebarSearch'
+import { useSidebarActions } from '../core/hooks/useSidebarActions'
+import { useSidebarStories } from '../core/hooks/useSidebarStories'
+import { useForumPanel } from '../core/hooks/useForumPanel'
+import { useSidebarFolders } from '../core/hooks/useSidebarFolders'
 
 interface Props {
   chats: Chat[]
@@ -61,8 +42,6 @@ interface Props {
   onOpenTopic: (chatId: number, topic: TopicRow) => void
   /** rootMsgId темы, открытой в колонке чата (подсветка ряда в панели топиков) */
   activeTopicId: number | null
-  onCreateGroup: (name: string, memberIds: number[], photo: import('./NewGroupFlow').GroupPhoto | null) => void
-  onCreateChannel: (name: string, description: string) => void
   onToggleMode: (coords?: { x: number; y: number }) => void
   onLogout?: () => void
   onOpenPeer?: (peer: OpenPeer) => void
@@ -73,14 +52,15 @@ interface Props {
   onChatCreated?: (chatId: number) => void
 }
 
+// Sidebar — оркестратор левой колонки: композиция хуков (поиск/папки/истории/
+// форум/создание чатов) + разметка шапки, списка и оверлеев. Кластеры логики
+// вынесены в core/hooks/useSidebar*; экраны колонки — в <SidebarScreens>.
 export default function Sidebar({
   chats,
   selectedId,
   onSelect,
   onOpenTopic,
   activeTopicId,
-  onCreateGroup,
-  onCreateChannel,
   onToggleMode,
   onLogout,
   onOpenPeer,
@@ -91,170 +71,57 @@ export default function Sidebar({
   const managers = useManagers()
   const t = useT()
   const loaded = useChatsStore((st) => st.loaded)
-  const [query, setQuery] = useState(initialQuery ?? '')
-  const [searching, setSearching] = useState(!!initialQuery)
-  const [showSettings, setShowSettings] = useState(false)
-  const [showContacts, setShowContacts] = useState(false)
-  const [showWallet, setShowWallet] = useState(false)
-  const [showCalls, setShowCalls] = useState(false)
-  const [premiumOpen, setPremiumOpen] = useState(false)
-  const [newGroupOpen, setNewGroupOpen] = useState(false)
-  const [newChannelOpen, setNewChannelOpen] = useState(false)
-  const [newPrivateOpen, setNewPrivateOpen] = useState(false)
-  const [newSecretOpen, setNewSecretOpen] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const passcodeEnabled = useSettingsStore((st) => st.passcodeEnabled)
   const listScrollRef = useRef<HTMLDivElement>(null)
 
-  // Истории (Stories): открытая группа во вьювере + флоу создания (выбор файла →
-  // загрузка → лист подписи/приватности/периода → publish).
-  const [storyOpen, setStoryOpen] = useState<number | null>(null)
-  const [storyMediaId, setStoryMediaId] = useState<number | null>(null)
-  // 4d: выбранный файл истории проходит через MediaEditor (рисование/текст/стикеры)
-  // до загрузки — как обычное медиа. onDone → загрузка отредактированного → лист.
-  const [storyEditFile, setStoryEditFile] = useState<File | null>(null)
-  // 4c: редактор близких друзей и архив своих истёкших историй (слайд-панели).
-  const [showCloseFriends, setShowCloseFriends] = useState(false)
-  const [showArchive, setShowArchive] = useState(false)
-  const storyFileRef = useRef<HTMLInputElement>(null)
-  const pickStoryFile = () => storyFileRef.current?.click()
-  const onStoryFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    e.target.value = '' // разрешить повторный выбор того же файла
-    if (!file) return
-    setStoryEditFile(file) // сначала редактор (MediaEditor), загрузка — после onDone
-  }
-  const uploadStoryMedia = async (file: File) => {
-    setStoryEditFile(null)
-    try {
-      const mediaId = await managers.media.upload({ blob: file, mime: file.type, size: file.size, fileName: file.name })
-      setStoryMediaId(mediaId)
-    } catch {
-      // Аплоад сорвался — сбрасываем флоу (лист подписи не откроется) и даём
-      // повторить; тост сообщает об ошибке.
-      setStoryMediaId(null)
-      uiEvents.emit('ui:toast', 'Не удалось загрузить историю')
-    }
-  }
-  const publishStory = async (args: { caption: string; privacy: 'everyone' | 'contacts' | 'close' | 'selected'; allowIds: number[]; period: number; mediaAreas?: import('../core/managers/storiesManager').MediaArea[] }) => {
-    if (storyMediaId == null) return
-    await managers.stories.post({ mediaId: storyMediaId, ...args })
-    setStoryMediaId(null)
-    await loadStories(managers) // подтянуть свою группу с именем/аватаром автора
-  }
-
-  // Папки (tweb dialog filters): «Все» + пользовательские, из foldersStore.
-  const folders = useFoldersStore((st) => st.folders)
-  const folderId = useFoldersStore((st) => st.selectedId)
-  const selectFolder = useFoldersStore((st) => st.select)
-  const contactIds = useFoldersStore((st) => st.contactIds)
+  // Экраны левой колонки взаимоисключающие — один стейт-энум (см. <SidebarScreens>).
+  const [screen, setScreen] = useState<SidebarScreen>(null)
+  const closeScreen = () => setScreen(null)
   // deep-open настроек на подэкран (контекстное меню «Настроить папки»)
   const [settingsSub, setSettingsSub] = useState<string | null>(null)
-  // контекстное меню таба + удаление/редактирование папки
-  const passcodeEnabled = useSettingsStore((st) => st.passcodeEnabled)
-  const [tabMenu, setTabMenu] = useState<{ id: number; pos: CSSProperties } | null>(null)
-  const [deletingFolder, setDeletingFolder] = useState<Folder | null>(null)
-  const [editingFolder, setEditingFolder] = useState<Folder | null>(null)
-
-  const activeFolder = folders.find((f) => f.id === folderId)
-  const tabOrder = useMemo(() => [ALL_FOLDER_ID, ...folders.map((f) => f.id)], [folders])
-
-  // Архив (tweb folder_id=1): архивные чаты уходят из основного списка в
-  // псевдо-закреплённый ряд «Архив»; клик открывает отдельный слайд-список.
   const [archiveOpen, setArchiveOpen] = useState(false)
 
-  // Форум-группа (tweb toggleForumTabByPeerId): клик по ней открывает панель
-  // топиков СЛЕВА поверх списка чатов — правая колонка не трогается. «Показать
-  // как сообщения» открывает чат обычным видом (onSelect напрямую).
-  const [forumChat, setForumChat] = useState<Chat | null>(null)
-  const handleSelect = (id: string) => {
-    const c = chats.find((x) => x.id === id)
-    if (c?.isForum) {
-      setForumChat(c)
-      return
-    }
-    onSelect(id)
-  }
+  const { query, setQuery, searching, setSearching, inputRef, closeSearch, searchReal, onJoin } = useSidebarSearch(initialQuery)
+  const stories = useSidebarStories()
+  const actions = useSidebarActions(chats, onChatCreated)
+  const { handleSelect, forumChat, panel: forumPanel } = useForumPanel({ chats, onSelect, activeTopicId, onOpenTopic })
 
-  // «Секретный чат» из compose-меню (наша фича): выбор контакта → E2E-handshake
-  // managers.secret.start, затем открыть созданный чат в статусе «ожидание».
-  const startSecret = async (id: string) => {
-    const peerId = chats.find((c) => c.id === id)?.peerId
-    if (peerId == null) return
-    const { chatId } = await managers.secret.start(peerId)
-    useSecretChatStore.getState().setStatus(chatId, 'awaiting')
-    onChatCreated?.(chatId)
-  }
-
-  const visibleChats = useMemo(() => chats.filter((c) => !c.archived), [chats])
-  const archivedChats = useMemo(() => chats.filter((c) => !!c.archived), [chats])
-
-  // Memoized so <ChatList> / <FolderTabs> get stable props — a sidebar re-render
-  // for overlay toggles won't produce new arrays and bust their memo.
-  const filtered = useMemo(
-    () => (activeFolder ? visibleChats.filter((c) => matchesFolder(c, activeFolder, contactIds)) : visibleChats),
-    [visibleChats, activeFolder, contactIds],
-  )
-
-  // Badge таба = число непрочитанных чатов папки (tweb folders-tabs Badge);
-  // у «Все» — только незамьюченные (tweb unreadUnmutedCount).
-  const folderUnread: Record<number, number> = useMemo(() => {
-    const counts: Record<number, number> = {
-      [ALL_FOLDER_ID]: visibleChats.filter((c) => c.unread && !c.muted).length,
-    }
-    for (const f of folders) counts[f.id] = visibleChats.filter((c) => c.unread && matchesFolder(c, f, contactIds)).length
-    return counts
-  }, [visibleChats, folders, contactIds])
-
-  const changeFolder = (id: number) => {
-    if (id === folderId) return
-    selectFolder(id)
-    const el = listScrollRef.current
-    if (el) el.scrollTop = 0
-  }
-
-  // Правый клик по табу — меню папки (tweb createFolderContextMenu)
-  const onTabContextMenu = (id: number, e: React.MouseEvent) => {
-    e.preventDefault()
-    setTabMenu({ id, pos: { left: e.clientX, top: e.clientY } })
-  }
-  const menuFolder = tabMenu ? folders.find((f) => f.id === tabMenu.id) : undefined
-
-  const doDeleteFolder = (f: Folder) => {
-    setDeletingFolder(null)
-    useFoldersStore.getState().remove(f.id) // оптимистично
-    managers.folders.del(f.id).catch(() => loadFolders(managers))
-  }
-
-  // «Расположение папок → Слева от чатов» (tweb tabsInSidebar): вертикальная
-  // колонка вместо горизонтальных табов; на узких экранах скрыта (tweb
-  // until-floating-left-sidebar).
-  const tabsInSidebar = useSettings((s) => s.tabsInSidebar)
-  const narrowScreen = useMediaQuery('(max-width:900px)')
-  const foldersSidebarShown = tabsInSidebar && folders.length > 0 && !narrowScreen && !fullWidth
   const openFolderSettings = () => {
     setSettingsSub('Chat Folders')
-    setShowSettings(true)
+    setScreen('settings')
   }
+  const {
+    folders, folderId, tabOrder, filtered, archivedChats, folderUnread,
+    changeFolder, onTabContextMenu, overlays: folderOverlays,
+  } = useSidebarFolders({ chats, listScrollRef, onOpenFolderSettings: openFolderSettings })
 
-  const closeSearch = () => {
-    setSearching(false)
-    setQuery('')
-    inputRef.current?.blur()
-  }
+  // Вьюпортная модалка Premium — через глобальный popupStore (не экран колонки).
+  const openPremium = () => openPopup((p) => (
+    <PremiumModal open={p.open} onClose={p.requestClose} onExitComplete={p.onExitComplete} />
+  ))
 
-  // Ctrl/Cmd+K (core/hotkeys) шлёт 'tg-focus-search' — фокусируем поле поиска
-  // (onFocus сам переводит сайдбар в режим поиска).
-  useEffect(() => {
-    const onFocusSearch = () => inputRef.current?.focus()
-    window.addEventListener('tg-focus-search', onFocusSearch)
-    return () => window.removeEventListener('tg-focus-search', onFocusSearch)
-  }, [])
+  // «Расположение папок → Слева от чатов» (tweb tabsInSidebar): вертикальная колонка
+  // вместо горизонтальных табов; на узких экранах скрыта (tweb until-floating-left-sidebar).
+  const tabsInSidebar = useSettings((st) => st.tabsInSidebar)
+  const narrowScreen = useMediaQuery('(max-width:900px)')
+  const foldersSidebarShown = tabsInSidebar && folders.length > 0 && !narrowScreen && !fullWidth
 
-  const searchReal = (q: string): Promise<SearchResult> => managers.channels.search(q)
-  const onJoin = async (username: string) => {
-    await managers.channels.join(username)
-    await loadChats(managers)
-    closeSearch()
+  // Меню бургера и вертикальной колонки папок — один набор обработчиков на оба места.
+  const menuActions: MainMenuHandlers = {
+    onOpenSettings: () => setScreen('settings'),
+    onOpenContacts: () => setScreen('contacts'),
+    onOpenSaved: async () => {
+      const id = await managers.chats.saved()
+      await loadChats(managers)
+      onSelect(String(id))
+    },
+    onOpenPremium: openPremium,
+    onOpenMyStories: stories.openArchive,
+    onOpenCloseFriends: stories.openCloseFriends,
+    onOpenWallet: () => setScreen('wallet'),
+    onOpenCalls: () => setScreen('calls'),
+    onLogout,
+    onToggleMode,
   }
 
   return (
@@ -272,47 +139,14 @@ export default function Sidebar({
           onSelect={changeFolder}
           onContextMenu={onTabContextMenu}
           onOpenFolderSettings={openFolderSettings}
-          menu={{
-            onOpenSettings: () => setShowSettings(true),
-            onOpenContacts: () => setShowContacts(true),
-            onOpenSaved: async () => {
-              const id = await managers.chats.saved()
-              await loadChats(managers)
-              onSelect(String(id))
-            },
-            onOpenPremium: () => setPremiumOpen(true),
-            onOpenMyStories: () => setShowArchive(true),
-            onOpenCloseFriends: () => setShowCloseFriends(true),
-            onOpenWallet: () => setShowWallet(true),
-            onOpenCalls: () => setShowCalls(true),
-            onLogout,
-            onToggleMode,
-          }}
+          menu={menuActions}
         />
       )}
-      {/* tweb .sidebar-header.main-search-sidebar-header. При включённой
-          вертикальной колонке папок бургер живёт в ней (tweb is-first
-          menu-button) — в шапке остаётся только стрелка «назад» при поиске. */}
+      {/* tweb .sidebar-header.main-search-sidebar-header. При включённой вертикальной
+          колонке папок бургер живёт в ней — в шапке остаётся только стрелка «назад». */}
       <div className={s.header}>
         {(!foldersSidebarShown || searching) && (
-          <SidebarMenuButton
-            searching={searching}
-            onBack={closeSearch}
-            onOpenSettings={() => setShowSettings(true)}
-            onOpenContacts={() => setShowContacts(true)}
-            onOpenSaved={async () => {
-              const id = await managers.chats.saved()
-              await loadChats(managers)
-              onSelect(String(id))
-            }}
-            onOpenPremium={() => setPremiumOpen(true)}
-            onOpenMyStories={() => setShowArchive(true)}
-            onOpenCloseFriends={() => setShowCloseFriends(true)}
-            onOpenWallet={() => setShowWallet(true)}
-            onOpenCalls={() => setShowCalls(true)}
-            onLogout={onLogout}
-            onToggleMode={onToggleMode}
-          />
+          <SidebarMenuButton searching={searching} onBack={closeSearch} {...menuActions} />
         )}
         <div className={s.search}>
           <InputSearch
@@ -325,8 +159,7 @@ export default function Sidebar({
             focused={searching}
           />
         </div>
-        {/* Замок над списком чатов при включённом код-пароле (tweb
-            sidebar-lock-button): клик блокирует приложение. */}
+        {/* Замок над списком чатов при включённом код-пароле (tweb sidebar-lock-button). */}
         {passcodeEnabled && !searching && (
           <IconButton
             onClick={() => useLockStore.getState().lock()}
@@ -338,11 +171,8 @@ export default function Sidebar({
           </IconButton>
         )}
       </div>
-
-      {/* Лента историй (tweb stories row) — горизонтальная строка аватарок над
-          списком чатов. Скрыта в поиске и при открытой панели форум-тем. */}
       {!searching && !forumChat && (
-        <StoriesRow onOpen={setStoryOpen} onAddStory={pickStoryFile} />
+        <StoriesRow onOpen={stories.openViewer} onAddStory={stories.pickStoryFile} />
       )}
 
       {/* tweb #chatlist-container — список всегда смонтирован; поиск перекрывает его */}
@@ -361,7 +191,6 @@ export default function Sidebar({
           collapsed={!!forumChat}
         />
 
-        {/* Список архива (tweb AppArchivedTab — отдельный слайд-таб) */}
         <AnimatePresence>
           {archiveOpen && (
             <motion.div
@@ -381,12 +210,7 @@ export default function Sidebar({
               </div>
               <div className={s.archiveList}>
                 {archivedChats.map((chat) => (
-                  <ChatListItem
-                    key={chat.id}
-                    chat={chat}
-                    selected={chat.id === selectedId}
-                    onSelect={handleSelect}
-                  />
+                  <ChatListItem key={chat.id} chat={chat} selected={chat.id === selectedId} onSelect={handleSelect} />
                 ))}
                 {archivedChats.length === 0 && (
                   <div style={{ padding: '3rem 1rem', textAlign: 'center' }}>
@@ -397,11 +221,6 @@ export default function Sidebar({
             </motion.div>
           )}
         </AnimatePresence>
-
-        {/* tweb .chatlist-overlay: градиент (за табами, гасит уплывающие строки в
-            surface) + табы папок. Список прокручивается под ними. Табы видны
-            только когда есть пользовательские папки (tweb onFiltersLengthChange)
-            и папки не вынесены в вертикальную колонку. */}
         {!searching && folders.length > 0 && !foldersSidebarShown && (
           <TabsBar mode="overlay">
             <FolderTabs
@@ -413,8 +232,6 @@ export default function Sidebar({
             />
           </TabsBar>
         )}
-
-        {/* tweb .sidebar-search — оверлей поиска (conditional: размонтируется мгновенно) */}
         {searching && (
           <div className={s.searchOverlay}>
             <motion.div
@@ -429,240 +246,33 @@ export default function Sidebar({
         )}
       </div>
 
-      {/* Панель форум-тем (tweb .topics-container.is-floating): при открытом форуме
-          список чатов слева схлопывается в колонку аватаров (80px), а панель тем
-          выезжает справа на всю высоту сайдбара шириной calc(100% - 80px). */}
-      <AnimatePresence>
-        {forumChat && (
-          <motion.div
-            className={s.forumPanel}
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ duration: 0.22, ease: EASE }}
-          >
-            <TopicsPanel
-              chatId={Number(forumChat.id)}
-              chatName={forumChat.name}
-              activeRootMsgId={activeTopicId}
-              onClose={() => setForumChat(null)}
-              onOpenTopic={(topic) => onOpenTopic(Number(forumChat.id), topic)}
-              onViewAsMessages={() => {
-                setForumChat(null)
-                onSelect(forumChat.id)
-              }}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {forumPanel}
 
-      {/* Compose FAB (hidden while searching / при открытой панели форум-тем) */}
       <ComposeFab
         searching={searching || !!forumChat}
-        onNewGroup={() => setNewGroupOpen(true)}
-        onNewPrivate={() => setNewPrivateOpen(true)}
-        onNewChannel={() => setNewChannelOpen(true)}
-        onNewSecret={() => setNewSecretOpen(true)}
+        onNewGroup={() => setScreen('newGroup')}
+        onNewPrivate={() => setScreen('newPrivate')}
+        onNewChannel={() => setScreen('newChannel')}
+        onNewSecret={() => setScreen('newSecret')}
       />
 
-      {/* Контекстное меню таба папки (tweb createFolderContextMenu) */}
-      <Menu open={!!tabMenu} onClose={() => setTabMenu(null)} style={tabMenu?.pos}>
-        {tabMenu?.id === ALL_FOLDER_ID ? (
-          <MenuItem
-            icon={<TgIcon name="edit" size={20} />}
-            label={t('Edit folders')}
-            onClick={() => {
-              setTabMenu(null)
-              setSettingsSub('Chat Folders')
-              setShowSettings(true)
-            }}
-          />
-        ) : (
-          <>
-            <MenuItem
-              icon={<TgIcon name="edit" size={20} />}
-              label={t('Edit folder')}
-              onClick={() => {
-                setTabMenu(null)
-                if (menuFolder) setEditingFolder(menuFolder)
-              }}
-            />
-            <MenuItem
-              icon={<TgIcon name="delete" size={20} />}
-              label={t('Delete')}
-              danger
-              onClick={() => {
-                setTabMenu(null)
-                if (menuFolder) setDeletingFolder(menuFolder)
-              }}
-            />
-          </>
-        )}
-      </Menu>
+      {folderOverlays}
 
-      {/* Подтверждение удаления папки (tweb ChatList.Filter.Confirm.Remove) */}
-      {deletingFolder && (
-        <Popup
-          open
-          title={t('Remove Folder')}
-          onClose={() => setDeletingFolder(null)}
-          width={360}
-          action={{ label: t('Delete'), onClick: () => doDeleteFolder(deletingFolder) }}
-        >
-          <div style={{ padding: '0 16px 8px' }}>
-            <Text size={15}>
-              {t('Are you sure you want to remove this folder? Your chats will not be deleted.')}
-            </Text>
-          </div>
-        </Popup>
-      )}
-
-      {/* Редактор папки из контекстного меню таба */}
-      <AnimatePresence>
-        {editingFolder && (
-          <FolderEditor folder={editingFolder} chats={chats} onClose={() => setEditingFolder(null)} />
-        )}
-      </AnimatePresence>
-
-      {/* Overlays */}
-      <PremiumModal open={premiumOpen} onClose={() => setPremiumOpen(false)} />
-      {/* Suspense — СНАРУЖИ AnimatePresence: прямым потомком остаётся motion-компонент
-          SettingsView, поэтому выезд/заезд панели сохраняются; Suspense срабатывает
-          лишь на самой первой загрузке ленивого чанка. */}
-      <Suspense fallback={null}>
-        <AnimatePresence>
-          {showSettings && (
-            <SettingsView
-              onBack={() => {
-                setShowSettings(false)
-                setSettingsSub(null)
-              }}
-              onToggleMode={onToggleMode}
-              chats={chats}
-              initialSub={settingsSub ?? undefined}
-            />
-          )}
-        </AnimatePresence>
-      </Suspense>
-      <Suspense fallback={null}>
-        <AnimatePresence>
-          {showWallet && <WalletView onBack={() => setShowWallet(false)} />}
-        </AnimatePresence>
-      </Suspense>
-      <Suspense fallback={null}>
-        <AnimatePresence>
-          {showCalls && (
-            <CallsView
-              onBack={() => setShowCalls(false)}
-              onOpenChat={(chatId) => { setShowCalls(false); onSelect(String(chatId)) }}
-            />
-          )}
-        </AnimatePresence>
-      </Suspense>
-      <AnimatePresence>
-        {showContacts && (
-          <ContactsView
-            chats={chats}
-            onSelect={(id) => {
-              setShowContacts(false)
-              onSelect(id)
-            }}
-            onBack={() => setShowContacts(false)}
-            onOpenChat={(chatId) => {
-              setShowContacts(false)
-              onChatCreated?.(chatId)
-            }}
-          />
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {newGroupOpen && (
-          <NewGroupFlow
-            onClose={() => setNewGroupOpen(false)}
-            onCreate={(name, memberIds, photo) => {
-              onCreateGroup(name, memberIds, photo)
-              setNewGroupOpen(false)
-            }}
-          />
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {newChannelOpen && (
-          <NewChannelFlow
-            onClose={() => setNewChannelOpen(false)}
-            onCreate={(name, description) => {
-              onCreateChannel(name, description)
-              setNewChannelOpen(false)
-            }}
-          />
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {newPrivateOpen && (
-          <NewPrivateChat
-            chats={chats}
-            onClose={() => setNewPrivateOpen(false)}
-            onSelect={onSelect}
-          />
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {newSecretOpen && (
-          <NewPrivateChat
-            chats={chats}
-            title="New Secret Chat"
-            excludeBots
-            onClose={() => setNewSecretOpen(false)}
-            onSelect={(id) => { void startSecret(id) }}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Скрытый выбор файла истории (image/video) */}
-      <input
-        ref={storyFileRef}
-        type="file"
-        accept="image/*,video/*"
-        style={{ display: 'none' }}
-        onChange={(e) => onStoryFile(e)}
+      <SidebarScreens
+        screen={screen}
+        close={closeScreen}
+        chats={chats}
+        settingsSub={settingsSub}
+        onSettingsBack={() => { closeScreen(); setSettingsSub(null) }}
+        onToggleMode={onToggleMode}
+        onSelect={onSelect}
+        onChatCreated={onChatCreated}
+        onCreateGroup={actions.createGroup}
+        onCreateChannel={actions.createChannel}
+        onStartSecret={actions.startSecret}
       />
 
-      {/* Редактор истории (4d): выбранный файл проходит через MediaEditor до загрузки */}
-      {storyEditFile && (
-        <Suspense fallback={null}>
-          <MediaEditor
-            file={storyEditFile}
-            onDone={(f) => void uploadStoryMedia(f)}
-            onCancel={() => setStoryEditFile(null)}
-          />
-        </Suspense>
-      )}
-
-      {/* Лист создания истории (открывается после загрузки медиа) */}
-      <AnimatePresence>
-        {storyMediaId != null && (
-          <AddStorySheet
-            onBack={() => setStoryMediaId(null)}
-            onPublish={publishStory}
-            onEditCloseFriends={() => setShowCloseFriends(true)}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Редактор списка близких друзей (4c) */}
-      <AnimatePresence>
-        {showCloseFriends && <CloseFriendsSheet onClose={() => setShowCloseFriends(false)} />}
-      </AnimatePresence>
-
-      {/* Архив своих истёкших историй (4c) */}
-      <AnimatePresence>
-        {showArchive && <StoriesArchiveSheet onClose={() => setShowArchive(false)} />}
-      </AnimatePresence>
-
-      {/* Полноэкранный просмотрщик историй */}
-      {storyOpen != null && (
-        <StoryViewer groupIndex={storyOpen} onClose={() => setStoryOpen(null)} />
-      )}
+      {stories.overlays}
     </div>
   )
 }
