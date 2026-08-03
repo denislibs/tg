@@ -1,5 +1,5 @@
 // src/core/realtime/connectionManager.ts
-import type { WsClient } from '../net/wsClient'
+import type { Transport } from '../net/transport'
 import type { ConnState, TypingAction } from './events'
 import type { MessageEntity } from '../models'
 import { FRAME_TYPES } from './eventCatalog'
@@ -7,7 +7,7 @@ import { FRAME_TYPES } from './eventCatalog'
 export interface SendArgs { chatId: number; text: string; entities?: MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; replyToPeerId?: number | null; replyQuoteText?: string | null; replyQuoteOffset?: number | null; mediaId?: number | null; type?: string; groupedId?: string; geo?: { lat: number; lng: number; title?: string; address?: string; livePeriod?: number; heading?: number }; contactUserId?: number; threadRootId?: number | null; encBody?: string; ttlSeconds?: number | null; silent?: boolean; effect?: string | null; paidMediaPrice?: number | null; sendAsChatId?: number | null }
 
 export interface CMDeps {
-  ws: WsClient
+  ws: Transport
   getToken: () => string | null
   onReady: () => void
   onState: (s: ConnState) => void

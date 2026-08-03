@@ -10,7 +10,7 @@ class FakeWS {
   onerror: (() => void) | null = null
   sent: string[] = []
   readyState = 0
-  constructor(public url: string) { FakeWS.instances.push(this) }
+  constructor(public url: string, public protocols?: string | string[]) { FakeWS.instances.push(this) }
   send(s: string) { this.sent.push(s) }
   close() { this.readyState = 3; this.onclose?.() }
   open() { this.readyState = 1; this.onopen?.() }
@@ -26,7 +26,8 @@ describe('WsClient', () => {
     c.onOpen(opened); c.on('new_message', got)
     c.connect('tok')
     const ws = FakeWS.instances[0]
-    expect(ws.url).toContain('/ws?token=tok')
+    expect(ws.url).toBe('/ws')
+    expect(ws.protocols).toEqual(['bearer', 'tok'])
     ws.open()
     expect(opened).toHaveBeenCalled()
     expect(c.isOpen()).toBe(true)
