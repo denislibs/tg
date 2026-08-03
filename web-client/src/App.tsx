@@ -4,7 +4,6 @@ import { useConnectionStore, pingBackend } from './stores/connectionStore'
 import { MotionConfig } from 'framer-motion'
 import { useSettingsStore } from './settings'
 import Sidebar from './components/Sidebar'
-import type { GroupPhoto } from './components/NewGroupFlow'
 import ConversationView from './components/ConversationView'
 import PopupHost from './components/PopupHost'
 import ChatBackground from './components/ChatBackgroundLazy'
@@ -13,7 +12,6 @@ import ShellLayout from './components/shell/ShellLayout'
 import AuthFlow from './components/auth/AuthFlow'
 import { useT } from './i18n'
 import type { Chat } from './data'
-import { loadChats } from './stores/chatsStore'
 import { gradientFor } from './core/dialogToChat'
 import { usePipStore } from './core/pip'
 import { useAppBootstrap } from './core/hooks/useAppBootstrap'
@@ -37,7 +35,6 @@ import useMediaQuery from './shared/lib/useMediaQuery'
 export type ToggleMode = (coords?: { x: number; y: number }) => void
 
 function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout: () => void }) {
-  const managers = useManagers()
   const t = useT()
 
   // Инфраструктура Shell (эффекты без общего стейта).
@@ -53,24 +50,6 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   useUrlSync()
   const deep = useDeepLinks(showToast)
   const chatList = useChatList()
-
-  const createGroup = async (name: string, memberIds: number[], photo: GroupPhoto | null) => {
-    const chatId = await managers.groups.createGroup({ title: name || 'New Group', memberIds })
-    // Фото — после создания, как tweb (createChat → editPhoto): upload → set.
-    if (photo) {
-      const bytes = await photo.blob.arrayBuffer()
-      const mediaId = await managers.media.upload({ bytes, mime: 'image/jpeg', size: photo.blob.size, width: photo.width, height: photo.height })
-      await managers.groups.setPhoto(chatId, mediaId)
-    }
-    await loadChats(managers)
-    nav.setSelectedId(String(chatId))
-  }
-
-  const createChannel = async (name: string, description: string) => {
-    const chatId = await managers.channels.createChannel({ title: name || 'New Channel', about: description })
-    await loadChats(managers)
-    nav.setSelectedId(String(chatId))
-  }
 
   // Responsive: below 900px columns overlap fullscreen (tweb handheld). PiP-окно
   // узкое — форсируем мобильный layout (useMediaQuery слушает основное окно).
@@ -105,8 +84,6 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
       onSelect={nav.selectChat}
       onOpenTopic={nav.openTopicThread}
       activeTopicId={openThread?.thread.kind === 'topic' ? openThread.thread.rootMsgId : null}
-      onCreateGroup={(name, memberIds, photo) => { void createGroup(name, memberIds, photo) }}
-      onCreateChannel={(name, description) => { void createChannel(name, description) }}
       onToggleMode={onToggleMode}
       onLogout={onLogout}
       onOpenPeer={nav.openPeer}
