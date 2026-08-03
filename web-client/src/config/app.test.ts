@@ -5,18 +5,15 @@ const env = (o: Record<string, string | undefined>) => o as unknown as ImportMet
 
 describe('readDnpConfig', () => {
   it('disabled by default, empty keys', () => {
-    const c = readDnpConfig(env({}), '')
+    const c = readDnpConfig(env({}))
     expect(c.enabled).toBe(false)
     expect(c.serverStaticPublicKeys).toEqual([])
   })
   it('enabled via VITE_DNP_ENABLED=1', () => {
-    expect(readDnpConfig(env({ VITE_DNP_ENABLED: '1' }), '').enabled).toBe(true)
-  })
-  it('enabled via ?dnp=1 override', () => {
-    expect(readDnpConfig(env({}), '?foo=1&dnp=1').enabled).toBe(true)
+    expect(readDnpConfig(env({ VITE_DNP_ENABLED: '1' })).enabled).toBe(true)
   })
   it('parses comma-separated pinned keys, trims, drops empties', () => {
-    const c = readDnpConfig(env({ VITE_DNP_SERVER_PUBKEYS: ' a , b ,, c ' }), '')
+    const c = readDnpConfig(env({ VITE_DNP_SERVER_PUBKEYS: ' a , b ,, c ' }))
     expect(c.serverStaticPublicKeys).toEqual(['a', 'b', 'c'])
   })
 })
