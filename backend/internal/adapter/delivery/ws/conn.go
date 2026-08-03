@@ -140,7 +140,15 @@ func (c *Conn) readPump(ctx context.Context) {
 		_ = c.ws.SetReadDeadline(time.Now().Add(pongWait))
 		plain, err := c.codec.decode(data)
 		if err != nil {
-			continue // битый/недешифруемый кадр — пропускаем (обрыв придёт отдельно)
+			// Для зашифрованного канала (DNP) сбой расшифровки означает
+			// рассинхрон Noise-nonce — nonce строго упорядочен и продвигается
+			// только при УСПЕШНОМ decrypt, поэтому один битый/потерянный/
+			// переставленный кадр необратимо десинхронизирует receive-nonce:
+			// все последующие кадры тоже не расшифруются, тихо и навсегда.
+			// Рвём соединение — клиент переподключится и заново проведёт
+			// хендшейк. Для plainCodec decode никогда не ошибается (identity),
+			// поэтому эта ветка на plain-путь не влияет.
+			return
 		}
 		var f Frame
 		if json.Unmarshal(plain, &f) != nil {
