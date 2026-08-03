@@ -104,8 +104,9 @@ export const AppConfig = {
 
 - Новый модуль `core/net/dnp/` (живёт в воркере — крипта там уже штатно, см. секретные чаты).
 - **Cipher suite:** `Noise_NK_25519_ChaChaPoly_BLAKE2s` (решение — ниже, §6).
-- **Библиотека:** `@stablelib`-примитивы (`x25519`, `chacha20poly1305`, `blake2s`) + своя тонкая
-  обёртка паттерна `NK` (решение — ниже, §6).
+- **Библиотека:** хандрол `Noise_NK` на `@noble` (`@noble/curves` x25519, `@noble/ciphers`
+  chacha20poly1305, `@noble/hashes` blake2s+hmac). Детали — в спеке PR-1b
+  [`2026-08-03-dnp-pr1b-noise-channel-design.md`](2026-08-03-dnp-pr1b-noise-channel-design.md).
 - **Хендшейк** (2 бинарных кадра): клиент → `e, es`; сервер → `e, ee`. `prologue = "dnp/1"`
   (привязка к версии, анти-downgrade). Статический pubkey сервера берётся из
   `AppConfig.dnp.serverStaticPublicKeys` (пробуем по списку — поддержка ротации).
@@ -162,10 +163,11 @@ read) работает; при флаге OFF — по-прежнему plain-WS
 1. **Cipher suite: `Noise_NK_25519_ChaChaPoly_BLAKE2s`** (ChaCha20-Poly1305). Не зависит от AES-NI,
    единый набор клиент+сервер (`flynn/noise` умеет ChaChaPoly), WebCrypto всё равно не
    используем.
-2. **Библиотека Noise на клиенте: `@stablelib`-примитивы + своя обёртка `NK`.** Против
-   `noise-c.wasm`: без WASM-загрузки/инициализации, tree-shake, TS-native, меньше бандл; паттерн
-   `NK` — 2 сообщения, обёртка тонкая. Совпадает с прецедентом секретных чатов (сборка из
-   примитивов).
+2. **Библиотека Noise на клиенте: хандрол `Noise_NK` на `@noble`** (`@noble/curves`,
+   `@noble/ciphers`, `@noble/hashes`). Актуальные, проаудированные, чистый ESM, без WASM.
+   `noise-c.wasm` отклонён (заархивирован в 2023 + WASM-возня), `@stablelib` — обновляется реже
+   `@noble`. Interop с `flynn/noise` (сервер) валидируется NK-векторами + Go↔JS-тестом. Детали —
+   спека PR-1b `2026-08-03-dnp-pr1b-noise-channel-design.md`.
 3. **Кодирование payload: текущий JSON `{t,d}`.** Нулевая правка семантики realtime-кадров.
    MessagePack/бинарь — позже, для L5.
 4. **Разбиение: два PR** (шов+флаг → DnpTransport). Флаг в PR-1a, включённая ветка до PR-1b кидает
