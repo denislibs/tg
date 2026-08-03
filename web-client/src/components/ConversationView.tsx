@@ -11,11 +11,13 @@ import { CallProvider } from './call/CallProvider'
 import { startOutgoing } from '../core/calls/callEngine'
 import NowPlayingBar from './NowPlayingBar'
 import Preloader from './Preloader'
-import type { Chat, OpenPeer } from '../data'
+import type { Chat } from '../data'
 import { useT, useLang } from '../i18n'
 import { useTypingLabel } from '../core/hooks/useTypingLabel'
 import { lastSeenLabel } from '../core/presence'
 import { useManagers } from '../core/hooks/useManagers'
+import { useNavigationActions } from '../core/hooks/useNavigationActions'
+import { useNavigationStore } from '../stores/navigationStore'
 import { useMessageWindow } from '../core/hooks/useMessageWindow'
 import { useEvent } from '../core/hooks/useEvent'
 import { uiEvents } from '../core/hooks/uiEvents'
@@ -115,21 +117,19 @@ export interface ThreadInfo {
 interface Props {
   chat: Chat
   onBack?: () => void
-  onOpenPeer?: (peer: OpenPeer) => void
-  onChatCreated?: (chatId: number) => void
   /** режим треда (tweb setPeer({peerId, threadId})): окно/отправка ограничены
    * тредом, вместо ChatHeader — плашка темы, пины/анрид-плашка/звонки скрыты */
   thread?: ThreadInfo
-  /** закрыть тред (кнопка «назад» в тред-шапке) */
-  onCloseThread?: () => void
-  /** открыть тред комментариев поста канала (клик по CommentsBar) */
-  onOpenThread?: (args: { chatId: number; rootMsgId: number; title: string; subtitle?: string }) => void
-  /** открыть публичный канал по клику в блоке «похожие каналы» (вступить + перейти) */
-  onOpenChannel?: (chatId: number, username: string) => void
 }
 
-export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreated, thread, onCloseThread, onOpenThread, onOpenChannel }: Props) {
+export default function ConversationView({ chat, onBack, thread }: Props) {
   const t = useT()
+  // Навигация — из navigationStore/useNavigationActions напрямую (инвариант: View
+  // читает из стора, а не через проброс из Shell). Имена локальные совпадают с
+  // прежними пропсами, чтобы не менять места использования ниже.
+  const { openPeer: onOpenPeer, onChatCreated, openPublicChannel: onOpenChannel } = useNavigationActions()
+  const onCloseThread = useNavigationStore((s) => s.closeThread)
+  const onOpenThread = useNavigationStore((s) => s.openCommentsThread)
   const headerAvatarSrc = useAvatarSrc(chat.avatarUrl)
   const [lang] = useLang()
 
@@ -982,7 +982,7 @@ export default function ConversationView({ chat, onBack, onOpenPeer, onChatCreat
             )}
 
             {/* Похожие каналы под лентой канала (tweb chat/similarChannels). */}
-            {!feedLoading && isChannel && isRealChat && !thread && onOpenChannel && (
+            {!feedLoading && isChannel && isRealChat && !thread && (
               <SimilarChannels chatId={numericChatId} onOpen={onOpenChannel} />
             )}
           </div>
