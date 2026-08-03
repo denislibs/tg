@@ -2,7 +2,7 @@
 import { SuperMessagePort, type Endpoint } from '../rpc/superMessagePort'
 import { registerManagers } from '../rpc/managersProxy'
 import { RestClient } from './net/restClient'
-import { WsClient } from './net/wsClient'
+import { createTransport } from './net/createTransport'
 import { newHealthManager } from './managers/healthManager'
 import { TokenStore } from './auth/tokenStore'
 import { newAuthManager } from './managers/authManager'
@@ -247,7 +247,7 @@ const channelFunnel = newChannelFunnel({
   savePts: (chatId, pts) => { void idbSet(`chpts:${chatId}`, pts) },
 })
 
-const ws = new WsClient('/ws')
+const ws = createTransport()
 const sync = newSyncEngine({
   rest, cursor,
   onUpdate: (item) => applyUpdate(item.t, item.pts, item.d, false),

@@ -1,10 +1,11 @@
 import { decodeFrame, encodeFrame, type Frame } from '../../protocol/frames'
+import type { Transport } from './transport'
 
 // Thin WS wrapper: JSON frames in/out, frame + lifecycle listeners.
 // Аутентификация — токеном в WebSocket-subprotocol (Sec-WebSocket-Protocol:
 // 'bearer', <token>), а НЕ в ?token= URL: query оседает в логах прокси и истории.
 // Сервер эхает 'bearer' в ответе рукопожатия; токен hex → валидный subprotocol.
-export class WsClient {
+export class WsClient implements Transport {
   private ws: WebSocket | null = null
   private listeners = new Map<string, Array<(d: unknown) => void>>()
   private openCbs: Array<() => void> = []
