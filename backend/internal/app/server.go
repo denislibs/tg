@@ -201,7 +201,7 @@ func registerServer(p serverParams) {
 		p.ChatUC.SetPresence(presenceMgr)
 		hub := ws.NewHub(p.Ctx, p.Redis.Client)
 		p.LC.Append(fx.Hook{OnStop: func(context.Context) error { return hub.Close() }})
-		wsHandler = ws.NewHandler(hub, p.AuthUC, p.ChatUC, presenceMgr, p.Cfg.WebAuthnOrigins)
+		wsHandler = ws.NewHandler(hub, p.AuthUC, p.ChatUC, presenceMgr, p.Cfg.WebAuthnOrigins, p.Cfg.DNPServerPrivKey)
 		log.Printf("session cache + realtime + presence enabled (redis)")
 	}
 

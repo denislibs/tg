@@ -54,6 +54,10 @@ type Config struct {
 	// вставляет его + stream key в OBS). Реального ingest в проекте нет — это
 	// только выдаваемые креды. Пусто → дефолт rtmp://localhost/live.
 	RTMPBaseURL string
+
+	// DNPServerPrivKey — hex 32-байтного Curve25519 приватного статик-ключа
+	// сервера (DNP). Пусто → DNP выключен.
+	DNPServerPrivKey string
 }
 
 func Load() (*Config, error) {
@@ -86,6 +90,7 @@ func Load() (*Config, error) {
 	c.TranslateAPIKey = os.Getenv("TRANSLATE_API_KEY")
 	c.TenorAPIKey = os.Getenv("TENOR_API_KEY")
 	c.RTMPBaseURL = getenv("RTMP_BASE_URL", "rtmp://localhost/live")
+	c.DNPServerPrivKey = os.Getenv("DNP_SERVER_PRIVKEY")
 
 	// Fail-fast: в проде дефолтные секреты — это доступ к чужому медиа (форж
 	// media-токена на MEDIA_URL_SECRET), TURN и хранилищу, плюс статичный OTP.
