@@ -72,7 +72,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return // Upgrade already wrote the error
 	}
-	conn := newConn(wsConn, h.hub, h.chatSvc, h.presence, user.ID, deviceID)
+	conn := newConn(wsConn, h.hub, h.chatSvc, h.presence, user.ID, deviceID, plainCodec{})
 	conn.run(r.Context())
 }
 

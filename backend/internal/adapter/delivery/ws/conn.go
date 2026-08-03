@@ -7,11 +7,41 @@ import (
 	"errors"
 	"time"
 
+	"github.com/flynn/noise"
 	"github.com/gorilla/websocket"
+	"github.com/messenger-denis/backend/internal/adapter/delivery/ws/dnp"
 	"github.com/messenger-denis/backend/internal/domain"
 	"github.com/messenger-denis/backend/internal/pkg/saferun"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 )
+
+// frameCodec абстрагирует чтение/запись байтов ОДНОГО кадра. dispatch/hub/pump
+// от шифрования не зависят — DNP вклинивается только здесь.
+type frameCodec interface {
+	decode(raw []byte) ([]byte, error) // WS-байты → plaintext JSON-кадр
+	encode(frame []byte) (int, []byte) // JSON-кадр → (websocket msgType, WS-байты)
+}
+
+// plainCodec — текущий путь: text-кадры JSON as-is.
+type plainCodec struct{}
+
+func (plainCodec) decode(raw []byte) ([]byte, error) { return raw, nil }
+func (plainCodec) encode(frame []byte) (int, []byte) { return websocket.TextMessage, frame }
+
+// dnpCodec — Noise-канал: binary + шифрование каждого кадра. send использует
+// только writePump, recv — только readPump (гонок нет).
+type dnpCodec struct{ send, recv *noise.CipherState }
+
+func newDNPCodec(send, recv *noise.CipherState) frameCodec { return &dnpCodec{send: send, recv: recv} }
+
+func (c *dnpCodec) decode(raw []byte) ([]byte, error) { return dnp.DecryptFrame(c.recv, raw) }
+func (c *dnpCodec) encode(frame []byte) (int, []byte) {
+	out, err := dnp.EncryptFrame(c.send, frame)
+	if err != nil {
+		return websocket.BinaryMessage, nil // nil → writePump пропустит (см. Step 4)
+	}
+	return websocket.BinaryMessage, out
+}
 
 const (
 	writeWait      = 10 * time.Second
@@ -38,13 +68,14 @@ type Conn struct {
 	userID   int64
 	deviceID int64
 	send     chan []byte
+	codec    frameCodec
 	// активный групповой звонок этого соединения (0 — нет): при обрыве
 	// сокета участника автоматически выводим из звонка.
 	groupCallChat int64
 }
 
-func newConn(ws *websocket.Conn, hub *Hub, svc *usecasechat.Interactor, presence Presence, userID, deviceID int64) *Conn {
-	return &Conn{ws: ws, hub: hub, svc: svc, presence: presence, userID: userID, deviceID: deviceID, send: make(chan []byte, sendBuffer)}
+func newConn(ws *websocket.Conn, hub *Hub, svc *usecasechat.Interactor, presence Presence, userID, deviceID int64, codec frameCodec) *Conn {
+	return &Conn{ws: ws, hub: hub, svc: svc, presence: presence, userID: userID, deviceID: deviceID, send: make(chan []byte, sendBuffer), codec: codec}
 }
 
 // Close force-closes the underlying socket (used by the hub on revoke). The
@@ -107,8 +138,12 @@ func (c *Conn) readPump(ctx context.Context) {
 			return
 		}
 		_ = c.ws.SetReadDeadline(time.Now().Add(pongWait))
+		plain, err := c.codec.decode(data)
+		if err != nil {
+			continue // битый/недешифруемый кадр — пропускаем (обрыв придёт отдельно)
+		}
 		var f Frame
-		if json.Unmarshal(data, &f) != nil {
+		if json.Unmarshal(plain, &f) != nil {
 			continue
 		}
 		c.dispatch(ctx, f)
@@ -267,7 +302,11 @@ func (c *Conn) writePump(ctx context.Context) {
 				_ = c.ws.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
-			if err := c.ws.WriteMessage(websocket.TextMessage, frame); err != nil {
+			mt, out := c.codec.encode(frame)
+			if out == nil {
+				return // сбой шифрования — рвём соединение (клиент переустановит канал)
+			}
+			if err := c.ws.WriteMessage(mt, out); err != nil {
 				return
 			}
 		case <-ticker.C:
