@@ -12,7 +12,7 @@ export class NKInitiator {
   private readonly rs: Uint8Array
 
   constructor(opts: { prologue: Uint8Array; remoteStatic: Uint8Array; ephemeral?: KeyPair }) {
-    this.rs = opts.remoteStatic
+    this.rs = opts.remoteStatic.slice() // defensive copy: не зависим от мутаций буфера вызывающего
     // Инъекция эфемерного ключа для детерминизма в тестах; иначе генерим.
     this.e = opts.ephemeral
       ? { privateKey: opts.ephemeral.privateKey, publicKey: dhPublic(opts.ephemeral.privateKey) }
@@ -34,6 +34,8 @@ export class NKInitiator {
 
   // <- e, ee
   readMessage2(message: Uint8Array): Uint8Array {
+    // NK msg2 = 32-байтный ephemeral + 16-байтный AEAD-тег (пустой payload) = 48.
+    if (message.length !== 48) throw new Error('dnp: malformed message2 (expected 48 bytes)')
     const re = message.slice(0, 32)
     this.ss.mixHash(re)
     this.ss.mixKey(dh(this.e.privateKey, re)) // ee
