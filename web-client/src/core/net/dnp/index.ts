@@ -1,8 +1,8 @@
 import type { Transport } from '../transport'
+import { DnpTransport } from './dnpTransport'
+import { AppConfig } from '../../../config/app'
 
-// PR-1b наполнит: Noise_NK-хендшейк + AEAD-кодек кадров (см. спеку подпроекта #1, §4).
-// До тех пор DNP-путь — guarded-флаг: достижим только при AppConfig.dnp.enabled (дефолт OFF),
-// поэтому прод не задет.
+// Достижимо только при AppConfig.dnp.enabled (build-time VITE_DNP_ENABLED, дефолт OFF).
 export function makeDnpTransport(): Transport {
-  throw new Error('DNP transport not implemented yet (PR-1b)')
+  return new DnpTransport('/ws', AppConfig.dnp.serverStaticPublicKeys)
 }
