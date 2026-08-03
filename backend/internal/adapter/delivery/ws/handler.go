@@ -2,6 +2,7 @@ package ws
 
 import (
 	"context"
+	"encoding/hex"
 	"net/http"
 	"strings"
 
@@ -18,30 +19,39 @@ type Authenticator interface {
 // Handler upgrades HTTP to WebSocket, authenticates via the ?token= query
 // parameter (browsers can't set headers on WS), and runs the connection.
 type Handler struct {
-	hub      *Hub
-	auth     Authenticator
-	chatSvc  *usecasechat.Interactor
-	presence Presence
-	upgrader websocket.Upgrader
+	hub           *Hub
+	auth          Authenticator
+	chatSvc       *usecasechat.Interactor
+	presence      Presence
+	upgrader      websocket.Upgrader
+	dnpServerPriv []byte // nil → DNP выключен (ветка dnp/1 не активируется)
 }
 
-func NewHandler(hub *Hub, auth Authenticator, chatSvc *usecasechat.Interactor, presence Presence, allowedOrigins []string) *Handler {
+func NewHandler(hub *Hub, auth Authenticator, chatSvc *usecasechat.Interactor, presence Presence, allowedOrigins []string, dnpServerPrivHex string) *Handler {
 	allowed := make(map[string]struct{}, len(allowedOrigins))
 	for _, o := range allowedOrigins {
 		if o = strings.TrimSpace(o); o != "" {
 			allowed[o] = struct{}{}
 		}
 	}
+	var dnpPriv []byte
+	if dnpServerPrivHex != "" {
+		if b, err := hex.DecodeString(dnpServerPrivHex); err == nil && len(b) == 32 {
+			dnpPriv = b
+		}
+	}
 	return &Handler{
-		hub:      hub,
-		auth:     auth,
-		chatSvc:  chatSvc,
-		presence: presence,
+		hub:           hub,
+		auth:          auth,
+		chatSvc:       chatSvc,
+		presence:      presence,
+		dnpServerPriv: dnpPriv,
 		upgrader: websocket.Upgrader{
-			// Эхаем subprotocol 'bearer' в ответе рукопожатия: клиент присылает
-			// ['bearer', <token>], токен несёт аутентификацию (не в URL). Без эха
-			// браузер закрыл бы соединение (сервер обязан выбрать subprotocol).
-			Subprotocols: []string{"bearer"},
+			// Эхаем subprotocol 'bearer'/'dnp/1' в ответе рукопожатия: клиент
+			// присылает ['bearer', <token>] (аутентификация по токену, не в URL)
+			// либо ['dnp/1'] (Noise-хендшейк, аутентификация внутри канала). Без
+			// эха браузер закрыл бы соединение (сервер обязан выбрать subprotocol).
+			Subprotocols: []string{"bearer", "dnp/1"},
 			// Анти-CSWSH: пускаем только с allow-list origin'ов (те же, что WebAuthn).
 			// Пустой Origin (нативные клиенты/тесты — не браузер) допускаем; аутентификация
 			// по токену (subprotocol/query), origin-гейт снимает cross-site-подключение.
@@ -58,6 +68,23 @@ func NewHandler(hub *Hub, auth Authenticator, chatSvc *usecasechat.Interactor, p
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if h.dnpServerPriv != nil && hasSubprotocol(r, "dnp/1") {
+		wsConn, err := h.upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return // Upgrade already wrote the error
+		}
+		// Читаем WS-кадры хендшейка ДО того, как readPump успел бы выставить
+		// лимит: без этого oversized-кадр обошёл бы MaxFrameLen-границу.
+		wsConn.SetReadLimit(maxMessageSize)
+		codec, userID, deviceID, err := dnpAccept(r.Context(), wsConn, h.dnpServerPriv, h.auth)
+		if err != nil {
+			_ = wsConn.Close()
+			return
+		}
+		conn := newConn(wsConn, h.hub, h.chatSvc, h.presence, userID, deviceID, codec)
+		conn.run(r.Context())
+		return
+	}
 	token := wsToken(r)
 	if token == "" {
 		http.Error(w, "missing token", http.StatusUnauthorized)
@@ -74,6 +101,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	conn := newConn(wsConn, h.hub, h.chatSvc, h.presence, user.ID, deviceID, plainCodec{})
 	conn.run(r.Context())
+}
+
+func hasSubprotocol(r *http.Request, want string) bool {
+	for _, p := range websocket.Subprotocols(r) {
+		if p == want {
+			return true
+		}
+	}
+	return false
 }
 
 // wsToken достаёт сессионный токен из WS-subprotocol (клиент шлёт ['bearer',
