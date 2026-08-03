@@ -119,13 +119,13 @@ TLS** (defense-in-depth), чего у MTProto нет. Вывод: по стой�
 
 - **Go (сервер):** [`github.com/flynn/noise`](https://github.com/flynn/noise) — эталонная
   реализация Noise, поддерживает NK/IK, Curve25519, ChaChaPoly, BLAKE2s.
-- **JS/TS (клиент, в воркере):** **JS/WASM-библиотека для всех примитивов Noise** —
-  `@stablelib/*` (x25519, chacha20poly1305, blake2s) + тонкая обёртка хендшейка NK, либо
-  готовая `noise-c.wasm` / `noise-protocol`. **Решение принято** (см. §2.4): именно
-  библиотека, а не WebCrypto. Это чистый JS/WASM, DOM не нужен, в воркере работает так же,
-  как WebCrypto, и даёт полный `Noise_NK_25519_ChaChaPoly_BLAKE2s` без оглядки на версии
-  браузеров. Выбор конкретной библиотеки (`@stablelib` vs `noise-c.wasm`) — на этапе
-  реализации (взвесить размер бандла и аудируемость).
+- **JS/TS (клиент, в воркере):** **хандрол `Noise_NK` на `@noble`** — `@noble/curves` (x25519),
+  `@noble/ciphers` (chacha20poly1305), `@noble/hashes` (blake2s + hmac) + своя обёртка symmetric-
+  state/handshake. **Решение принято** (см. §2.4 + спека PR-1b): именно библиотека примитивов, а не
+  WebCrypto (у той нет x25519/ChaChaPoly/BLAKE2s). `@noble` — актуальный, проаудированный, чистый
+  ESM, без WASM; в воркере работает как WebCrypto, даёт полный `Noise_NK_25519_ChaChaPoly_BLAKE2s`.
+  Отклонены: `noise-c.wasm` (заархивирован 2023 + WASM-возня), `@stablelib` (обновляется реже).
+  Interop с `flynn/noise` — через NK-тест-вектора + Go↔JS-тест.
 
 ### 2.4 Почему библиотека, а не WebCrypto (решено)
 
@@ -617,8 +617,8 @@ SRP (2FA). **В DNP всё это заменяется одним Noise cipher s
    пинить **массив** ключей (текущий + следующий), клиент принимает оба на время ротации (см.
    блок «Ротация pinned-ключа» в §3, слой L0). Формализовать процедуру и версионирование
    `prologue = "dnp/N"`.
-5. **Библиотека Noise на клиенте:** `@stablelib`-примитивы + своя обёртка NK vs готовая
-   `noise-c.wasm`. Взвесить размер бандла и аудируемость.
+5. **Библиотека Noise на клиенте:** РЕШЕНО — хандрол `Noise_NK` на `@noble` (curves/ciphers/hashes).
+   `noise-c.wasm` отклонён (архив 2023), `@stablelib` — реже обновляется. См. спеку PR-1b.
 
 ---
 

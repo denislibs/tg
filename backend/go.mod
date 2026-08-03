@@ -5,6 +5,7 @@ go 1.25.7
 require (
 	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/alicebob/miniredis/v2 v2.38.0
+	github.com/flynn/noise v1.1.0
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/go-shiori/go-readability v0.0.0-20251205110129-5db1dc9836f0
 	github.com/go-webauthn/webauthn v0.17.4
