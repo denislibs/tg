@@ -179,15 +179,26 @@ export const useChatsStore = create<ChatsState>((set) => ({
     set((s) => {
       const idx = s.dialogs.findIndex((d) => d.chatId === r.chat_id)
       if (idx === -1) return {}
-      const next = s.dialogs.slice()
+      const cur = s.dialogs[idx]
+      let updated: typeof cur
       if (r.user_id === s.meId) {
         // my own read (also echoed to my other tabs) → clear unread (+ mentions/reactions) + advance my horizon.
         // Wave 3: авторитетный unread из кадра verbatim (обычно 0); локальный =0 — fallback.
-        next[idx] = { ...next[idx], unread: r.unread ?? 0, unreadMentions: 0, unreadReactions: 0, lastReadSeq: Math.max(next[idx].lastReadSeq, r.up_to_seq) }
+        const unread = r.unread ?? 0
+        const lastReadSeq = Math.max(cur.lastReadSeq, r.up_to_seq)
+        // Идемпотентность: повторное эхо того же прочтения (up_to_seq ≤ горизонта,
+        // unread уже 0) НЕ должно создавать новый dialogs — иначе mark-read-эффект
+        // (деп win.msgs) перезапускается и получается бесконечный цикл ре-рендера.
+        if (unread === cur.unread && cur.unreadMentions === 0 && cur.unreadReactions === 0 && lastReadSeq === cur.lastReadSeq) return {}
+        updated = { ...cur, unread, unreadMentions: 0, unreadReactions: 0, lastReadSeq }
       } else {
         // the OTHER side read my messages → advance the peer horizon (out ticks → ✓✓)
-        next[idx] = { ...next[idx], peerReadSeq: Math.max(next[idx].peerReadSeq, r.up_to_seq) }
+        const peerReadSeq = Math.max(cur.peerReadSeq, r.up_to_seq)
+        if (peerReadSeq === cur.peerReadSeq) return {} // no advance → no-op (без нового dialogs)
+        updated = { ...cur, peerReadSeq }
       }
+      const next = s.dialogs.slice()
+      next[idx] = updated
       return { dialogs: next }
     }),
   bumpUnreadReactions: (chatId, count) =>
