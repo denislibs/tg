@@ -326,6 +326,7 @@ func registerServer(p serverParams) {
 	// type-assert безопасно возвращает ok=false в этом случае (DNP и rpc_req неактивны).
 	if h, ok := wsHandler.(*ws.Handler); ok {
 		h.SetRPCDispatcher(httptransport.NewRouterRPC(router))
+		h.SetFileDispatcher(httptransport.NewFileStreamer(p.ChatUC, mediaUC))
 	}
 
 	srv := &http.Server{
