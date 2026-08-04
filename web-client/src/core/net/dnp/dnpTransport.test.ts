@@ -5,6 +5,11 @@ import { frameLen, sealFrame, openFrame } from './codec'
 import fixture from './noise/fixtures/nk-vector.json'
 
 const fromHex = (s: string) => new Uint8Array(s.match(/.{1,2}/g)!.map((b) => parseInt(b, 16)))
+function withKind(kind: number, payload: Uint8Array): Uint8Array {
+  const out = new Uint8Array(1 + payload.length)
+  out[0] = kind; out.set(payload, 1)
+  return out
+}
 
 class FakeWS {
   static instances: FakeWS[] = []
@@ -34,7 +39,7 @@ describe('DnpTransport', () => {
     t.connect('good-token')
 
     const ws = FakeWS.instances[0]
-    expect(ws.protocols).toEqual(['dnp/1'])
+    expect(ws.protocols).toEqual(['dnp/2'])
     ws.open()
     // msg1 отправлен (детерминирован инъецированным эфемералом → совпадает с фикстурой)
     expect(ws.sent[0]).toEqual(frameLen(fromHex(fixture.msg1)))
@@ -45,14 +50,18 @@ describe('DnpTransport', () => {
     expect(opened).toHaveBeenCalled()
     expect(t.isOpen()).toBe(true)
 
-    // auth-кадр (sent[1]) расшифровывается серверным recv = CipherState(initSendKey)
+    // auth-кадр (sent[1]) расшифровывается серверным recv = CipherState(initSendKey);
+    // клиент шлёт [0x00][JSON] — снимаем kind-байт перед JSON.parse
     const serverRecv = new CipherState(fromHex(fixture.initSendKey))
-    const authPlain = JSON.parse(new TextDecoder().decode(openFrame(serverRecv, ws.sent[1])))
+    const authFramePlain = openFrame(serverRecv, ws.sent[1])
+    expect(authFramePlain[0]).toBe(0x00)
+    const authPlain = JSON.parse(new TextDecoder().decode(authFramePlain.subarray(1)))
     expect(authPlain).toEqual({ t: 'auth', d: { token: 'good-token' } })
 
-    // сервер → клиент кадр, зашифрованный initRecvKey
+    // сервер → клиент кадр, зашифрованный initRecvKey; тоже [0x00][JSON] — иначе клиент отвергнет
     const serverSend = new CipherState(fromHex(fixture.initRecvKey))
-    const frame = sealFrame(serverSend, new TextEncoder().encode(JSON.stringify({ t: 'presence', d: { user_id: 5, online: true } })))
+    const presenceJson = new TextEncoder().encode(JSON.stringify({ t: 'presence', d: { user_id: 5, online: true } }))
+    const frame = sealFrame(serverSend, withKind(0x00, presenceJson))
     ws.message(frame)
     expect(got).toHaveBeenCalledWith({ user_id: 5, online: true })
   })

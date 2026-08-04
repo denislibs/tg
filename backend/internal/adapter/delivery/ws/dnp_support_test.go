@@ -8,6 +8,20 @@ import (
 	"github.com/messenger-denis/backend/internal/adapter/delivery/ws/dnp"
 )
 
+// kindJSON/stripKind — тестовые зеркала kind-байта транспортного слоя DNP
+// (см. frameKindJSON в conn.go): initiator в тестах шлёт/читает сырые
+// dnp.EncryptFrame/DecryptFrame (в обход dnpCodec), поэтому кадр приходится
+// оборачивать/разворачивать вручную, как это делает dnpCodec на сервере.
+func kindJSON(b []byte) []byte { return append([]byte{0x00}, b...) }
+
+func stripKind(t *testing.T, b []byte) []byte {
+	t.Helper()
+	if len(b) < 1 || b[0] != 0x00 {
+		t.Fatalf("bad frame kind: %x", b)
+	}
+	return b[1:]
+}
+
 // fixedReader — детерминированный io.Reader для ключей/эфемералей в тестах.
 type fixedReader struct{ b []byte }
 
@@ -32,7 +46,7 @@ func dnpCipherPair(t *testing.T) (iSend, rRecv *noise.CipherState) {
 	}
 	initHS, err := noise.NewHandshakeState(noise.Config{
 		CipherSuite: cs, Random: fixedReader{bytes.Repeat([]byte{0x22}, 32)},
-		Pattern: noise.HandshakeNK, Initiator: true, Prologue: []byte("dnp/1"),
+		Pattern: noise.HandshakeNK, Initiator: true, Prologue: []byte("dnp/2"),
 		PeerStatic: serverStatic.Public,
 	})
 	if err != nil {

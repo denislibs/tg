@@ -51,6 +51,10 @@ func dnpAccept(ctx context.Context, wsConn *websocket.Conn, serverPriv []byte, a
 	if err != nil {
 		return nil, domain.User{}, 0, err
 	}
+	if len(plain) < 1 || plain[0] != frameKindJSON {
+		return nil, domain.User{}, 0, errors.New("dnp: expected JSON auth frame")
+	}
+	plain = plain[1:]
 	var f struct {
 		T string `json:"t"`
 		D struct {
