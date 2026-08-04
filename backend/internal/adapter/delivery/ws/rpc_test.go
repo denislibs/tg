@@ -1,12 +1,19 @@
 package ws
 
 import (
+	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/flynn/noise"
+	"github.com/gorilla/websocket"
+	"github.com/messenger-denis/backend/internal/adapter/delivery/ws/dnp"
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
@@ -110,4 +117,99 @@ func TestRpcRespFrame(t *testing.T) {
 			t.Fatalf("want null body, got %s", body)
 		}
 	})
+}
+
+// TestDNPChannelRPCEndToEnd проверяет сквозной путь: flynn/noise NK initiator
+// поднимает DNP-канал (хендшейк + auth), затем шлёт rpc_req внутри канала —
+// сервер (dnpAccept → newConn → conn.dispatch) асинхронно диспетчит его через
+// fakeRPC и отвечает rpc_resp по тому же зашифрованному каналу. Реальный
+// RouterRPC-реплей через chi-роутер покрыт отдельно в http/rpc_test.go — здесь
+// важен именно канал (handshake/auth/nonce-последовательность/async-диспатч).
+func TestDNPChannelRPCEndToEnd(t *testing.T) {
+	serverPriv := bytes.Repeat([]byte{0x11}, 32)
+	cs := dnpSuite()
+	serverStatic, _ := cs.GenerateKeypair(fixedReader{serverPriv})
+
+	up := websocket.Upgrader{Subprotocols: []string{"dnp/1"}, CheckOrigin: func(*http.Request) bool { return true }}
+	rpc := &fakeRPC{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		wsConn, err := up.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		codec, user, deviceID, err := dnpAccept(r.Context(), wsConn, serverPriv, fakeAuth{token: "good"})
+		if err != nil {
+			_ = wsConn.Close()
+			return
+		}
+		c := newConn(wsConn, nil, nil, nil, user, deviceID, codec, rpc)
+		go c.writePump(context.Background())
+		c.readPump(context.Background())
+	}))
+	defer srv.Close()
+
+	// Клиент: flynn/noise NK initiator по dnp/1 (та же обвязка, что в
+	// dnp_accept_test.go — не дублируем, а прогоняем ещё один шаг: rpc_req/rpc_resp).
+	url := "ws" + strings.TrimPrefix(srv.URL, "http")
+	d := websocket.Dialer{Subprotocols: []string{"dnp/1"}}
+	conn, _, err := d.Dial(url, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	initHS, _ := noise.NewHandshakeState(noise.Config{
+		CipherSuite: cs, Random: rand.Reader, Pattern: noise.HandshakeNK,
+		Initiator: true, Prologue: []byte("dnp/1"), PeerStatic: serverStatic.Public,
+	})
+	msg1, _, _, _ := initHS.WriteMessage(nil, nil)
+	_ = conn.WriteMessage(websocket.BinaryMessage, dnp.FrameLen(msg1))
+
+	_, raw, _ := conn.ReadMessage()
+	m2, _ := dnp.UnframeLen(raw)
+	_, iSend, iRecv, err := initHS.ReadMessage(nil, m2)
+	if err != nil {
+		t.Fatalf("read msg2: %v", err)
+	}
+
+	// auth-кадр (sealed).
+	authWire, _ := dnp.EncryptFrame(iSend, []byte(`{"t":"auth","d":{"token":"good"}}`))
+	_ = conn.WriteMessage(websocket.BinaryMessage, authWire)
+
+	// rpc_req внутри канала (sealed).
+	reqWire, err := dnp.EncryptFrame(iSend, []byte(`{"t":"rpc_req","d":{"req_id":"e1","method":"GET","path":"/dialogs","body":null}}`))
+	if err != nil {
+		t.Fatalf("encrypt rpc_req: %v", err)
+	}
+	if err := conn.WriteMessage(websocket.BinaryMessage, reqWire); err != nil {
+		t.Fatalf("write rpc_req: %v", err)
+	}
+
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, respRaw, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatalf("read rpc_resp: %v", err)
+	}
+	plain, err := dnp.DecryptFrame(iRecv, respRaw)
+	if err != nil {
+		t.Fatalf("decrypt rpc_resp: %v", err)
+	}
+
+	var out struct {
+		T string `json:"t"`
+		D struct {
+			ReqID  string          `json:"req_id"`
+			Status int             `json:"status"`
+			Body   json.RawMessage `json:"body"`
+		} `json:"d"`
+	}
+	if err := json.Unmarshal(plain, &out); err != nil {
+		t.Fatalf("bad rpc_resp json: %v (%s)", err, plain)
+	}
+	if out.T != "rpc_resp" || out.D.ReqID != "e1" || out.D.Status != 200 {
+		t.Fatalf("bad rpc_resp: %s", plain)
+	}
+	if rpc.gotUser != 42 {
+		t.Fatalf("fakeRPC did not see the dnpAccept-authenticated user: got %d, want 42", rpc.gotUser)
+	}
 }
