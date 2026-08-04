@@ -38,12 +38,12 @@ func TestDNPAcceptHandshakeAuthAndTransport(t *testing.T) {
 		if err != nil {
 			return
 		}
-		codec, uid, did, err := dnpAccept(r.Context(), wsConn, serverPriv, fakeAuth{token: "good"})
+		codec, user, did, err := dnpAccept(r.Context(), wsConn, serverPriv, fakeAuth{token: "good"})
 		if err != nil {
 			_ = wsConn.Close()
 			return
 		}
-		gotUser, gotDevice = uid, did
+		gotUser, gotDevice = user.ID, did
 		// Отправить один зашифрованный кадр обратно (проверка send-стороны).
 		_, out := codec.encode([]byte(`{"t":"pong"}`))
 		_ = wsConn.WriteMessage(websocket.BinaryMessage, out)

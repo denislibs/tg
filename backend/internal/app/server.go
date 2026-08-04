@@ -319,9 +319,18 @@ func registerServer(p serverParams) {
 		log.Printf("passkeys enabled (rp id %q)", p.Cfg.WebAuthnRPID)
 	}
 
+	router := httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, mediaUC, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC, foldersUC, pubH, privacyUC, passkeyH, stickersH, ivHandler, reportUC, statsUC)
+	// Позднее связывание: RouterRPC реплеит DNP rpc_req через тот же роутер.
+	// Разрывает цикл wsHandler↔router (роутеру нужен wsHandler, диспетчеру — роутер).
+	// wsHandler остаётся nil-типизированным http.Handler, если Redis не поднят —
+	// type-assert безопасно возвращает ok=false в этом случае (DNP и rpc_req неактивны).
+	if h, ok := wsHandler.(*ws.Handler); ok {
+		h.SetRPCDispatcher(httptransport.NewRouterRPC(router))
+	}
+
 	srv := &http.Server{
 		Addr:              p.Cfg.HTTPAddr,
-		Handler:           httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, mediaUC, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC, foldersUC, pubH, privacyUC, passkeyH, stickersH, ivHandler, reportUC, statsUC),
+		Handler:           router,
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}

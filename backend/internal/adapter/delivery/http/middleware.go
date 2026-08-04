@@ -18,10 +18,22 @@ type Authenticator interface {
 	Authenticate(ctx context.Context, token string) (domain.User, int64, error)
 }
 
+// WithUser пред-инжектит аутентифицированного (доверенным каналом, in-process)
+// юзера в ctx — так AuthMiddleware пропускает ре-аутентификацию по заголовку.
+// Внешние HTTP-запросы так юзера подсунуть НЕ могут (их ctx строится сервером с нуля).
+func WithUser(ctx context.Context, user domain.User, deviceID int64) context.Context {
+	ctx = context.WithValue(ctx, userKey, user)
+	return context.WithValue(ctx, deviceKey, deviceID)
+}
+
 // AuthMiddleware validates the Bearer token and injects the user into the context.
 func AuthMiddleware(a Authenticator) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if _, ok := UserFromContext(r.Context()); ok {
+				next.ServeHTTP(w, r) // юзер уже пред-инжектён доверенным in-process каналом
+				return
+			}
 			token := bearerToken(r)
 			if token == "" {
 				writeError(w, http.StatusUnauthorized, "missing token")
