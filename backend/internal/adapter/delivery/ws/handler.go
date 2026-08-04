@@ -24,8 +24,12 @@ type Handler struct {
 	chatSvc       *usecasechat.Interactor
 	presence      Presence
 	upgrader      websocket.Upgrader
-	dnpServerPriv []byte // nil → DNP выключен (ветка dnp/1 не активируется)
+	dnpServerPriv []byte        // nil → DNP выключен (ветка dnp/1 не активируется)
+	rpc           RPCDispatcher // late-bound (см. SetRPCDispatcher); nil → rpc_req игнорируется
 }
+
+// SetRPCDispatcher связывает диспетчер после сборки роутера (разрыв цикла wsHandler↔router).
+func (h *Handler) SetRPCDispatcher(d RPCDispatcher) { h.rpc = d }
 
 func NewHandler(hub *Hub, auth Authenticator, chatSvc *usecasechat.Interactor, presence Presence, allowedOrigins []string, dnpServerPrivHex string) *Handler {
 	allowed := make(map[string]struct{}, len(allowedOrigins))
@@ -76,12 +80,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Читаем WS-кадры хендшейка ДО того, как readPump успел бы выставить
 		// лимит: без этого oversized-кадр обошёл бы MaxFrameLen-границу.
 		wsConn.SetReadLimit(maxMessageSize)
-		codec, userID, deviceID, err := dnpAccept(r.Context(), wsConn, h.dnpServerPriv, h.auth)
+		codec, user, deviceID, err := dnpAccept(r.Context(), wsConn, h.dnpServerPriv, h.auth)
 		if err != nil {
 			_ = wsConn.Close()
 			return
 		}
-		conn := newConn(wsConn, h.hub, h.chatSvc, h.presence, userID, deviceID, codec)
+		conn := newConn(wsConn, h.hub, h.chatSvc, h.presence, user, deviceID, codec, h.rpc)
 		conn.run(r.Context())
 		return
 	}
@@ -99,7 +103,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return // Upgrade already wrote the error
 	}
-	conn := newConn(wsConn, h.hub, h.chatSvc, h.presence, user.ID, deviceID, plainCodec{})
+	conn := newConn(wsConn, h.hub, h.chatSvc, h.presence, user, deviceID, plainCodec{}, nil)
 	conn.run(r.Context())
 }
 

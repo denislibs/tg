@@ -59,23 +59,57 @@ type Presence interface {
 	Offline(ctx context.Context, userID int64) error
 }
 
+// RPCDispatcher реплеит rpc-запрос канала (реализуется в пакете http через
+// RouterRPC). Несёт user+deviceID, чтобы ws не зависел от http.
+type RPCDispatcher interface {
+	Dispatch(ctx context.Context, user domain.User, deviceID int64, method, path string, body []byte) (int, []byte)
+}
+
+const rpcMaxConcurrent = 16
+
+type rpcReqData struct {
+	ReqID  string          `json:"req_id"`
+	Method string          `json:"method"`
+	Path   string          `json:"path"`
+	Body   json.RawMessage `json:"body"`
+}
+
+func rpcRespFrame(reqID string, status int, body []byte) []byte {
+	if len(body) == 0 {
+		body = []byte("null")
+	}
+	b, _ := json.Marshal(map[string]any{
+		"t": "rpc_resp",
+		"d": map[string]any{"req_id": reqID, "status": status, "body": json.RawMessage(body)},
+	})
+	return b
+}
+
 // Conn is one client WebSocket connection. It implements Sink.
 type Conn struct {
 	ws       *websocket.Conn
 	hub      *Hub
 	svc      *usecasechat.Interactor
 	presence Presence
+	user     domain.User
 	userID   int64
 	deviceID int64
 	send     chan []byte
 	codec    frameCodec
+	rpc      RPCDispatcher // nil у plain-conn
+	rpcSem   chan struct{} // ограничение конкурентности rpc-диспатча
 	// активный групповой звонок этого соединения (0 — нет): при обрыве
 	// сокета участника автоматически выводим из звонка.
 	groupCallChat int64
 }
 
-func newConn(ws *websocket.Conn, hub *Hub, svc *usecasechat.Interactor, presence Presence, userID, deviceID int64, codec frameCodec) *Conn {
-	return &Conn{ws: ws, hub: hub, svc: svc, presence: presence, userID: userID, deviceID: deviceID, send: make(chan []byte, sendBuffer), codec: codec}
+func newConn(ws *websocket.Conn, hub *Hub, svc *usecasechat.Interactor, presence Presence, user domain.User, deviceID int64, codec frameCodec, rpc RPCDispatcher) *Conn {
+	return &Conn{
+		ws: ws, hub: hub, svc: svc, presence: presence,
+		user: user, userID: user.ID, deviceID: deviceID,
+		send: make(chan []byte, sendBuffer), codec: codec,
+		rpc: rpc, rpcSem: make(chan struct{}, rpcMaxConcurrent),
+	}
 }
 
 // Close force-closes the underlying socket (used by the hub on revoke). The
@@ -292,6 +326,29 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		chatID, _ := d["chat_id"].(float64)
 		delete(d, "to_user_id")
 		_ = c.svc.RelayGroupCallSignal(ctx, c.userID, int64(chatID), int64(to), d)
+	case "rpc_req":
+		if c.rpc == nil {
+			return // plain-conn: RPC не обслуживает
+		}
+		var d rpcReqData
+		if json.Unmarshal(f.D, &d) != nil || d.ReqID == "" {
+			return
+		}
+		// Неблокирующий гейт конкурентности: не стопорим read-pump, сбрасываем нагрузку 503.
+		select {
+		case c.rpcSem <- struct{}{}:
+		default:
+			c.Send(rpcRespFrame(d.ReqID, 503, []byte(`{"error":"rpc busy"}`)))
+			return
+		}
+		rpc, user, deviceID := c.rpc, c.user, c.deviceID
+		reqID, method, path, body := d.ReqID, d.Method, d.Path, d.Body
+		go func() {
+			defer func() { <-c.rpcSem }()
+			defer saferun.Recover("ws.conn.rpc")
+			status, respBody := rpc.Dispatch(context.Background(), user, deviceID, method, path, body)
+			c.Send(rpcRespFrame(reqID, status, respBody))
+		}()
 	}
 }
 
