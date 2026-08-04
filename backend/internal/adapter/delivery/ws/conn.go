@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/flynn/noise"
@@ -75,13 +76,24 @@ type rpcReqData struct {
 }
 
 func rpcRespFrame(reqID string, status int, body []byte) []byte {
-	if len(body) == 0 {
+	switch {
+	case len(body) == 0:
 		body = []byte("null")
+	case !json.Valid(body):
+		// chi's stock 404/500 handlers write plain text — wrap so the frame stays valid JSON.
+		if w, err := json.Marshal(map[string]string{"error": strings.TrimSpace(string(body))}); err == nil {
+			body = w
+		} else {
+			body = []byte("null")
+		}
 	}
-	b, _ := json.Marshal(map[string]any{
+	b, err := json.Marshal(map[string]any{
 		"t": "rpc_resp",
 		"d": map[string]any{"req_id": reqID, "status": status, "body": json.RawMessage(body)},
 	})
+	if err != nil {
+		return nil // unreachable now: body is guaranteed valid JSON above
+	}
 	return b
 }
 
