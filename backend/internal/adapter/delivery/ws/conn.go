@@ -398,6 +398,37 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			status, respBody := rpc.Dispatch(context.Background(), user, deviceID, method, path, body)
 			c.Send(rpcRespFrame(reqID, status, respBody))
 		}()
+	case "file_req":
+		if c.file == nil {
+			return // plain-conn / до SetFileDispatcher: file_req не обслуживаем
+		}
+		var d fileReqData
+		if json.Unmarshal(f.D, &d) != nil || d.ReqID == 0 || d.MediaID == 0 {
+			return
+		}
+		// Неблокирующий гейт: не стопорим read-pump; переполнение → file_err "busy".
+		select {
+		case c.fileSem <- struct{}{}:
+		default:
+			c.Send(fileErrFrame(d.ReqID, "busy"))
+			return
+		}
+		file, userID := c.file, c.userID
+		reqID, mediaID, offset, limit := d.ReqID, d.MediaID, d.Offset, d.Limit
+		go func() {
+			defer func() { <-c.fileSem }()
+			defer saferun.Recover("ws.conn.file")
+			data, total, err := file.ReadPart(context.Background(), userID, mediaID, offset, limit)
+			if err != nil {
+				msg := "error"
+				if errors.Is(err, domain.ErrForbidden) {
+					msg = "forbidden"
+				}
+				c.Send(fileErrFrame(reqID, msg))
+				return
+			}
+			c.SendBinary(fileChunkFrame(reqID, offset, total, data))
+		}()
 	}
 }
 
