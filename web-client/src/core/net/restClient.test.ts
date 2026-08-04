@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest'
-import { RestClient } from './restClient'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { RestClient, HttpError } from './restClient'
 
 describe('RestClient', () => {
   it('GETs with the bearer token and parses JSON', async () => {
@@ -70,5 +70,47 @@ describe('RestClient', () => {
     expect(headers['Content-Type']).toBe('image/png')
     expect(headers.Authorization).toBe('Bearer tok')
     expect(progresses).toEqual([2, 3])
+  })
+})
+
+const channelRpc = (ready: boolean, resp: { status: number; body: unknown }) => ({
+  isReady: () => ready,
+  call: vi.fn(async () => resp),
+})
+
+describe('RestClient routing', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('routes through the channel when channelRpc.isReady() and returns the body', async () => {
+    const ch = channelRpc(true, { status: 200, body: { id: 5 } })
+    const rc = new RestClient('/api', () => 'tok', undefined, ch)
+    await expect(rc.get('/me')).resolves.toEqual({ id: 5 })
+    expect(ch.call).toHaveBeenCalledWith('GET', '/me', undefined)
+  })
+
+  it('maps a non-2xx channel status to HttpError', async () => {
+    const ch = channelRpc(true, { status: 403, body: { error: 'forbidden' } })
+    const rc = new RestClient('/api', () => 'tok', undefined, ch)
+    const err = await rc.get('/x').catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(HttpError)
+    expect(err).toMatchObject({ status: 403, message: 'forbidden' })
+  })
+
+  it('falls back to fetch when channel is NOT ready', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ via: 'http' }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const ch = channelRpc(false, { status: 200, body: null })
+    const rc = new RestClient('/api', () => 'tok', undefined, ch)
+    await expect(rc.get('/me')).resolves.toEqual({ via: 'http' })
+    expect(ch.call).not.toHaveBeenCalled()
+    expect(fetchMock).toHaveBeenCalled()
+  })
+
+  it('with no channelRpc uses fetch (unchanged behavior)', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: 1 }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const rc = new RestClient('/api', () => 'tok')
+    await expect(rc.post('/z', { a: 1 })).resolves.toEqual({ ok: 1 })
+    expect(fetchMock).toHaveBeenCalled()
   })
 })
