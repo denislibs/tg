@@ -3,6 +3,8 @@ import { SuperMessagePort, type Endpoint } from '../rpc/superMessagePort'
 import { registerManagers } from '../rpc/managersProxy'
 import { RestClient } from './net/restClient'
 import { createTransport } from './net/createTransport'
+import { ChannelRpc } from './net/dnp/channelRpc'
+import { AppConfig } from '../config/app'
 import { newHealthManager } from './managers/healthManager'
 import { TokenStore } from './auth/tokenStore'
 import { newAuthManager } from './managers/authManager'
@@ -52,7 +54,12 @@ const tokens = new TokenStore()
 void tokens.load().then(() => persistScope(tokens.get()))
 // ready() гейтит REST-запросы до загрузки токена из IDB (иначе гонка «missing token»
 // на старте, когда UI шлёт RPC раньше, чем поднялся токен воркера).
-const rest = new RestClient('/api', () => tokens.get(), () => tokens.ready())
+// Транспорт создаём здесь (раньше — на строке ~250), чтобы RestClient получил канал.
+// createTransport() — чистое создание объекта, connect() зовётся позже connectionManager'ом.
+const ws = createTransport()
+// channelRpc активен только при DNP-ON; иначе RestClient идёт через fetch.
+const channelRpc = AppConfig.dnp.enabled ? new ChannelRpc(ws) : undefined
+const rest = new RestClient('/api', () => tokens.get(), () => tokens.ready(), channelRpc)
 const auth = newAuthManager({ rest, store: tokens })
 const profile = newProfileManager({ rest })
 const premium = newPremiumManager({ rest })
@@ -247,7 +254,6 @@ const channelFunnel = newChannelFunnel({
   savePts: (chatId, pts) => { void idbSet(`chpts:${chatId}`, pts) },
 })
 
-const ws = createTransport()
 const sync = newSyncEngine({
   rest, cursor,
   onUpdate: (item) => applyUpdate(item.t, item.pts, item.d, false),
