@@ -24,7 +24,7 @@ func suite() noise.CipherSuite {
 // фикстуру, против которой JS-initiator обязан сойтись байт-в-байт (interop-гейт).
 func TestGenerateInteropFixture(t *testing.T) {
 	cs := suite()
-	prologue := []byte("dnp/1")
+	prologue := []byte("dnp/2")
 
 	serverStatic, err := cs.GenerateKeypair(&fixedReader{bytes.Repeat([]byte{0x11}, 32)})
 	if err != nil {
@@ -89,7 +89,7 @@ func TestGenerateInteropFixture(t *testing.T) {
 	fx := map[string]string{
 		"serverStaticPub":   hex.EncodeToString(serverStatic.Public),
 		"initEphemeralPriv": hex.EncodeToString(bytes.Repeat([]byte{0x22}, 32)),
-		"prologue":          "dnp/1",
+		"prologue":          "dnp/2",
 		"msg1":              hex.EncodeToString(msg1),
 		"msg2":              hex.EncodeToString(msg2),
 		"initSendKey":       hex.EncodeToString(initSendKey[:]),
@@ -115,7 +115,7 @@ func TestResponderCompletesHandshakeWithFlynnInitiator(t *testing.T) {
 	}
 	initHS, _ := noise.NewHandshakeState(noise.Config{
 		CipherSuite: cs, Random: &fixedReader{bytes.Repeat([]byte{0x66}, 32)},
-		Pattern: noise.HandshakeNK, Initiator: true, Prologue: []byte("dnp/1"),
+		Pattern: noise.HandshakeNK, Initiator: true, Prologue: []byte("dnp/2"),
 		PeerStatic: serverStatic.Public,
 	})
 	msg1, _, _, _ := initHS.WriteMessage(nil, nil)

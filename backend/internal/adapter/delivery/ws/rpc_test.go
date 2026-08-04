@@ -130,7 +130,7 @@ func TestDNPChannelRPCEndToEnd(t *testing.T) {
 	cs := dnpSuite()
 	serverStatic, _ := cs.GenerateKeypair(fixedReader{serverPriv})
 
-	up := websocket.Upgrader{Subprotocols: []string{"dnp/1"}, CheckOrigin: func(*http.Request) bool { return true }}
+	up := websocket.Upgrader{Subprotocols: []string{"dnp/2"}, CheckOrigin: func(*http.Request) bool { return true }}
 	rpc := &fakeRPC{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		wsConn, err := up.Upgrade(w, r, nil)
@@ -148,10 +148,10 @@ func TestDNPChannelRPCEndToEnd(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Клиент: flynn/noise NK initiator по dnp/1 (та же обвязка, что в
+	// Клиент: flynn/noise NK initiator по dnp/2 (та же обвязка, что в
 	// dnp_accept_test.go — не дублируем, а прогоняем ещё один шаг: rpc_req/rpc_resp).
 	url := "ws" + strings.TrimPrefix(srv.URL, "http")
-	d := websocket.Dialer{Subprotocols: []string{"dnp/1"}}
+	d := websocket.Dialer{Subprotocols: []string{"dnp/2"}}
 	conn, _, err := d.Dial(url, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -160,7 +160,7 @@ func TestDNPChannelRPCEndToEnd(t *testing.T) {
 
 	initHS, _ := noise.NewHandshakeState(noise.Config{
 		CipherSuite: cs, Random: rand.Reader, Pattern: noise.HandshakeNK,
-		Initiator: true, Prologue: []byte("dnp/1"), PeerStatic: serverStatic.Public,
+		Initiator: true, Prologue: []byte("dnp/2"), PeerStatic: serverStatic.Public,
 	})
 	msg1, _, _, _ := initHS.WriteMessage(nil, nil)
 	_ = conn.WriteMessage(websocket.BinaryMessage, dnp.FrameLen(msg1))
@@ -172,12 +172,12 @@ func TestDNPChannelRPCEndToEnd(t *testing.T) {
 		t.Fatalf("read msg2: %v", err)
 	}
 
-	// auth-кадр (sealed).
-	authWire, _ := dnp.EncryptFrame(iSend, []byte(`{"t":"auth","d":{"token":"good"}}`))
+	// auth-кадр (sealed, kind-байт 0x00=JSON поверх seal-слоя).
+	authWire, _ := dnp.EncryptFrame(iSend, kindJSON([]byte(`{"t":"auth","d":{"token":"good"}}`)))
 	_ = conn.WriteMessage(websocket.BinaryMessage, authWire)
 
 	// rpc_req внутри канала (sealed).
-	reqWire, err := dnp.EncryptFrame(iSend, []byte(`{"t":"rpc_req","d":{"req_id":"e1","method":"GET","path":"/dialogs","body":null}}`))
+	reqWire, err := dnp.EncryptFrame(iSend, kindJSON([]byte(`{"t":"rpc_req","d":{"req_id":"e1","method":"GET","path":"/dialogs","body":null}}`)))
 	if err != nil {
 		t.Fatalf("encrypt rpc_req: %v", err)
 	}
@@ -190,10 +190,11 @@ func TestDNPChannelRPCEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read rpc_resp: %v", err)
 	}
-	plain, err := dnp.DecryptFrame(iRecv, respRaw)
+	respFramed, err := dnp.DecryptFrame(iRecv, respRaw)
 	if err != nil {
 		t.Fatalf("decrypt rpc_resp: %v", err)
 	}
+	plain := stripKind(t, respFramed)
 
 	var out struct {
 		T string `json:"t"`

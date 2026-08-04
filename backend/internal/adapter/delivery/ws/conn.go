@@ -35,9 +35,24 @@ type dnpCodec struct{ send, recv *noise.CipherState }
 
 func newDNPCodec(send, recv *noise.CipherState) frameCodec { return &dnpCodec{send: send, recv: recv} }
 
-func (c *dnpCodec) decode(raw []byte) ([]byte, error) { return dnp.DecryptFrame(c.recv, raw) }
+// frameKindJSON — единственный на сегодня kind транспортных кадров DNP (поверх
+// codec-слоя seal/open): 0x00 = JSON. Байт зарезервирован под будущие бинарные
+// kind'ы (например media-чанки) без смены протокола/prologue.
+const frameKindJSON byte = 0x00
+
+func (c *dnpCodec) decode(raw []byte) ([]byte, error) {
+	plain, err := dnp.DecryptFrame(c.recv, raw)
+	if err != nil {
+		return nil, err
+	}
+	if len(plain) < 1 || plain[0] != frameKindJSON {
+		return nil, errors.New("dnp: unexpected frame kind")
+	}
+	return plain[1:], nil
+}
+
 func (c *dnpCodec) encode(frame []byte) (int, []byte) {
-	out, err := dnp.EncryptFrame(c.send, frame)
+	out, err := dnp.EncryptFrame(c.send, append([]byte{frameKindJSON}, frame...))
 	if err != nil {
 		return websocket.BinaryMessage, nil // nil → writePump пропустит (см. Step 4)
 	}

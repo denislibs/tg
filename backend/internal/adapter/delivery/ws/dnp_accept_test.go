@@ -31,7 +31,7 @@ func TestDNPAcceptHandshakeAuthAndTransport(t *testing.T) {
 	cs := dnpSuite()
 	serverStatic, _ := cs.GenerateKeypair(fixedReader{serverPriv})
 
-	up := websocket.Upgrader{Subprotocols: []string{"dnp/1"}, CheckOrigin: func(*http.Request) bool { return true }}
+	up := websocket.Upgrader{Subprotocols: []string{"dnp/2"}, CheckOrigin: func(*http.Request) bool { return true }}
 	var gotUser, gotDevice int64
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		wsConn, err := up.Upgrade(w, r, nil)
@@ -50,9 +50,9 @@ func TestDNPAcceptHandshakeAuthAndTransport(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Клиент: flynn/noise NK initiator по dnp/1.
+	// Клиент: flynn/noise NK initiator по dnp/2.
 	url := "ws" + strings.TrimPrefix(srv.URL, "http")
-	d := websocket.Dialer{Subprotocols: []string{"dnp/1"}}
+	d := websocket.Dialer{Subprotocols: []string{"dnp/2"}}
 	conn, _, err := d.Dial(url, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -61,7 +61,7 @@ func TestDNPAcceptHandshakeAuthAndTransport(t *testing.T) {
 
 	initHS, _ := noise.NewHandshakeState(noise.Config{
 		CipherSuite: cs, Random: rand.Reader, Pattern: noise.HandshakeNK,
-		Initiator: true, Prologue: []byte("dnp/1"), PeerStatic: serverStatic.Public,
+		Initiator: true, Prologue: []byte("dnp/2"), PeerStatic: serverStatic.Public,
 	})
 	msg1, _, _, _ := initHS.WriteMessage(nil, nil)
 	_ = conn.WriteMessage(websocket.BinaryMessage, dnp.FrameLen(msg1))
@@ -72,16 +72,17 @@ func TestDNPAcceptHandshakeAuthAndTransport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read msg2: %v", err)
 	}
-	// auth-кадр (sealed).
-	authWire, _ := dnp.EncryptFrame(iSend, []byte(`{"t":"auth","d":{"token":"good"}}`))
+	// auth-кадр (sealed, kind-байт 0x00=JSON поверх seal-слоя).
+	authWire, _ := dnp.EncryptFrame(iSend, kindJSON([]byte(`{"t":"auth","d":{"token":"good"}}`)))
 	_ = conn.WriteMessage(websocket.BinaryMessage, authWire)
 
 	// Ответный pong.
 	_, praw, _ := conn.ReadMessage()
-	pong, err := dnp.DecryptFrame(iRecv, praw)
+	pongFramed, err := dnp.DecryptFrame(iRecv, praw)
 	if err != nil {
 		t.Fatalf("decrypt pong: %v", err)
 	}
+	pong := stripKind(t, pongFramed)
 	var f struct{ T string }
 	_ = json.Unmarshal(pong, &f)
 	if f.T != "pong" {

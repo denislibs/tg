@@ -8,7 +8,7 @@ import (
 	"github.com/flynn/noise"
 )
 
-const prologueV1 = "dnp/1"
+const prologueV1 = "dnp/2"
 
 func cipherSuite() noise.CipherSuite {
 	return noise.NewCipherSuite(noise.DH25519, noise.CipherChaChaPoly, noise.HashBLAKE2s)
