@@ -14,7 +14,7 @@ describe('NKInitiator', () => {
     const server = dhGenerate()
     const eph = { privateKey: new Uint8Array(32).fill(1), publicKey: new Uint8Array(0) }
     // publicKey заполнит конструктор из privateKey
-    const hs = new NKInitiator({ prologue: new TextEncoder().encode('dnp/1'), remoteStatic: server.publicKey, ephemeral: eph })
+    const hs = new NKInitiator({ prologue: new TextEncoder().encode('dnp/2'), remoteStatic: server.publicKey, ephemeral: eph })
     const msg1 = hs.writeMessage1()
     // NK msg1 = e(32) ‖ encryptAndHash(empty payload=16 tag)
     expect(msg1.length).toBe(32 + 16)
@@ -25,7 +25,7 @@ describe('NKInitiator hardening', () => {
   it('defensively copies remoteStatic (caller mutation after construction is ignored)', () => {
     const rs = fromHex2(fixture.serverStaticPub)
     const hs = new NKInitiator({
-      prologue: new TextEncoder().encode('dnp/1'), remoteStatic: rs,
+      prologue: new TextEncoder().encode('dnp/2'), remoteStatic: rs,
       ephemeral: { privateKey: fromHex2(fixture.initEphemeralPriv), publicKey: new Uint8Array(0) },
     })
     rs.fill(0) // портим буфер вызывающего ПОСЛЕ конструктора
@@ -33,7 +33,7 @@ describe('NKInitiator hardening', () => {
   })
   it('rejects a malformed message2 (wrong length) with a clear error', () => {
     const hs = new NKInitiator({
-      prologue: new TextEncoder().encode('dnp/1'), remoteStatic: fromHex2(fixture.serverStaticPub),
+      prologue: new TextEncoder().encode('dnp/2'), remoteStatic: fromHex2(fixture.serverStaticPub),
       ephemeral: { privateKey: fromHex2(fixture.initEphemeralPriv), publicKey: new Uint8Array(0) },
     })
     hs.writeMessage1()

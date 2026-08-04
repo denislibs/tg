@@ -5,12 +5,21 @@ import type { CipherState } from './noise/symmetricState'
 import { frameLen, unframeLen, sealFrame, openFrame } from './codec'
 import { encodeFrame, decodeFrame, type Frame } from '../../../protocol/frames'
 
-const PROLOGUE = new TextEncoder().encode('dnp/1')
+const PROLOGUE = new TextEncoder().encode('dnp/2')
+const KIND_JSON = 0x00
 
 function hexToBytes(hex: string): Uint8Array {
   const clean = hex.trim()
   const out = new Uint8Array(clean.length / 2)
   for (let i = 0; i < out.length; i++) out[i] = parseInt(clean.substr(i * 2, 2), 16)
+  return out
+}
+
+// withKind: префикс байта-типа перед сериализованным JSON-кадром. 0x00=JSON (этот PR),
+// 0x01 зарезервирован под file-кадры (PR-1b). Транспортный слой — codec.ts байто-агностичен.
+function withKind(kind: number, payload: Uint8Array): Uint8Array {
+  const out = new Uint8Array(1 + payload.length)
+  out[0] = kind; out.set(payload, 1)
   return out
 }
 
@@ -39,7 +48,7 @@ export class DnpTransport implements Transport {
   connect(token: string): void {
     this.token = token
     this.state = 'handshaking'
-    const ws = new WebSocket(this.url, ['dnp/1'])
+    const ws = new WebSocket(this.url, ['dnp/2'])
     ws.binaryType = 'arraybuffer'
     this.ws = ws
     ws.onopen = () => this.startHandshake()
@@ -65,7 +74,7 @@ export class DnpTransport implements Transport {
         const { send, recv } = this.hs!.split()
         this.cipherSend = send; this.cipherRecv = recv
         const authJson = encodeFrame('auth', { token: this.token })
-        this.ws!.send(sealFrame(this.cipherSend, new TextEncoder().encode(authJson)) as BufferSource)
+        this.ws!.send(sealFrame(this.cipherSend, withKind(KIND_JSON, new TextEncoder().encode(authJson))) as BufferSource)
         this.state = 'ready'
         for (const cb of this.openCbs) cb()
       } catch {
@@ -76,7 +85,8 @@ export class DnpTransport implements Transport {
     if (this.state === 'ready') {
       try {
         const plain = openFrame(this.cipherRecv!, raw)
-        const f: Frame = decodeFrame(new TextDecoder().decode(plain))
+        if (plain.length < 1 || plain[0] !== KIND_JSON) { this.fail(); return } // PR-1b: 0x01 file
+        const f: Frame = decodeFrame(new TextDecoder().decode(plain.subarray(1)))
         for (const cb of this.listeners.get(f.t) ?? []) cb(f.d)
       } catch {
         this.fail() // сбой decrypt = необратимый рассинхрон nonce → close → rehandshake
@@ -99,7 +109,7 @@ export class DnpTransport implements Transport {
 
   send(t: string, d?: unknown): void {
     if (this.state !== 'ready' || !this.cipherSend) return
-    this.ws!.send(sealFrame(this.cipherSend, new TextEncoder().encode(encodeFrame(t, d))) as BufferSource)
+    this.ws!.send(sealFrame(this.cipherSend, withKind(KIND_JSON, new TextEncoder().encode(encodeFrame(t, d)))) as BufferSource)
   }
 
   // Умышленное закрытие (connectionManager.stop): глушим onclose, чтобы НЕ переподключаться.
