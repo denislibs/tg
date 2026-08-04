@@ -19,15 +19,18 @@ import (
 // frameCodec абстрагирует чтение/запись байтов ОДНОГО кадра. dispatch/hub/pump
 // от шифрования не зависят — DNP вклинивается только здесь.
 type frameCodec interface {
-	decode(raw []byte) ([]byte, error) // WS-байты → plaintext JSON-кадр
-	encode(frame []byte) (int, []byte) // JSON-кадр → (websocket msgType, WS-байты)
+	decode(raw []byte) ([]byte, error)            // WS-байты → plaintext-кадр (без kind)
+	encode(kind byte, frame []byte) (int, []byte) // (kind, payload) → (websocket msgType, WS-байты)
 }
 
 // plainCodec — текущий путь: text-кадры JSON as-is.
 type plainCodec struct{}
 
 func (plainCodec) decode(raw []byte) ([]byte, error) { return raw, nil }
-func (plainCodec) encode(frame []byte) (int, []byte) { return websocket.TextMessage, frame }
+
+// kind игнорируется: plain-WS шлёт JSON-текст as-is; бинарные file-кадры на
+// plain-путь не попадают.
+func (plainCodec) encode(_ byte, frame []byte) (int, []byte) { return websocket.TextMessage, frame }
 
 // dnpCodec — Noise-канал: binary + шифрование каждого кадра. send использует
 // только writePump, recv — только readPump (гонок нет).
@@ -40,6 +43,10 @@ func newDNPCodec(send, recv *noise.CipherState) frameCodec { return &dnpCodec{se
 // kind'ы (например media-чанки) без смены протокола/prologue.
 const frameKindJSON byte = 0x00
 
+// frameKindFile — бинарный media-чанк (PR-1b). Первый байт plaintext внутри
+// AEAD-конверта; codec seal/open остаётся байто-агностичным.
+const frameKindFile byte = 0x01
+
 func (c *dnpCodec) decode(raw []byte) ([]byte, error) {
 	plain, err := dnp.DecryptFrame(c.recv, raw)
 	if err != nil {
@@ -51,10 +58,10 @@ func (c *dnpCodec) decode(raw []byte) ([]byte, error) {
 	return plain[1:], nil
 }
 
-func (c *dnpCodec) encode(frame []byte) (int, []byte) {
-	out, err := dnp.EncryptFrame(c.send, append([]byte{frameKindJSON}, frame...))
+func (c *dnpCodec) encode(kind byte, frame []byte) (int, []byte) {
+	out, err := dnp.EncryptFrame(c.send, append([]byte{kind}, frame...))
 	if err != nil {
-		return websocket.BinaryMessage, nil // nil → writePump пропустит (см. Step 4)
+		return websocket.BinaryMessage, nil // nil → writePump рвёт соединение
 	}
 	return websocket.BinaryMessage, out
 }
@@ -112,6 +119,12 @@ func rpcRespFrame(reqID string, status int, body []byte) []byte {
 	return b
 }
 
+// outFrame — единица очереди отправки: kind (0x00 JSON / 0x01 file) + payload.
+type outFrame struct {
+	kind byte
+	data []byte
+}
+
 // Conn is one client WebSocket connection. It implements Sink.
 type Conn struct {
 	ws       *websocket.Conn
@@ -121,7 +134,7 @@ type Conn struct {
 	user     domain.User
 	userID   int64
 	deviceID int64
-	send     chan []byte
+	send     chan outFrame
 	codec    frameCodec
 	rpc      RPCDispatcher // nil у plain-conn
 	rpcSem   chan struct{} // ограничение конкурентности rpc-диспатча
@@ -134,7 +147,7 @@ func newConn(ws *websocket.Conn, hub *Hub, svc *usecasechat.Interactor, presence
 	return &Conn{
 		ws: ws, hub: hub, svc: svc, presence: presence,
 		user: user, userID: user.ID, deviceID: deviceID,
-		send: make(chan []byte, sendBuffer), codec: codec,
+		send: make(chan outFrame, sendBuffer), codec: codec,
 		rpc: rpc, rpcSem: make(chan struct{}, rpcMaxConcurrent),
 	}
 }
@@ -143,11 +156,17 @@ func newConn(ws *websocket.Conn, hub *Hub, svc *usecasechat.Interactor, presence
 // read pump then exits and run() cleans up.
 func (c *Conn) Close() { _ = c.ws.Close() }
 
-// Send queues a frame for the writer. Drops the frame if the buffer is full
-// (a stuck client must not block fan-out).
-func (c *Conn) Send(frame []byte) {
+// Send queues a JSON frame (kind 0x00) for the writer. Drops the frame if the
+// buffer is full (a stuck client must not block fan-out).
+func (c *Conn) Send(frame []byte) { c.enqueue(outFrame{frameKindJSON, frame}) }
+
+// SendBinary queues a raw binary payload (kind 0x01, media-чанк). Drop-if-full
+// как Send. Плейн-conn его не зовёт (file_req обслуживается лишь при c.file != nil).
+func (c *Conn) SendBinary(payload []byte) { c.enqueue(outFrame{frameKindFile, payload}) }
+
+func (c *Conn) enqueue(f outFrame) {
 	select {
-	case c.send <- frame:
+	case c.send <- f:
 	default:
 	}
 }
@@ -388,13 +407,13 @@ func (c *Conn) writePump(ctx context.Context) {
 	}()
 	for {
 		select {
-		case frame, ok := <-c.send:
+		case f, ok := <-c.send:
 			_ = c.ws.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
 				_ = c.ws.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
-			mt, out := c.codec.encode(frame)
+			mt, out := c.codec.encode(f.kind, f.data)
 			if out == nil {
 				return // сбой шифрования — рвём соединение (клиент переустановит канал)
 			}

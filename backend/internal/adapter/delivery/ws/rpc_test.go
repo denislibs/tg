@@ -32,7 +32,7 @@ func TestConnDispatchesRPCReq(t *testing.T) {
 	c.dispatch(context.Background(), f)
 
 	select {
-	case raw := <-c.send:
+	case f := <-c.send:
 		var out struct {
 			T string `json:"t"`
 			D struct {
@@ -41,8 +41,8 @@ func TestConnDispatchesRPCReq(t *testing.T) {
 				Body   json.RawMessage `json:"body"`
 			} `json:"d"`
 		}
-		if json.Unmarshal(raw, &out) != nil || out.T != "rpc_resp" || out.D.ReqID != "r1" || out.D.Status != 200 {
-			t.Fatalf("bad rpc_resp: %s", raw)
+		if json.Unmarshal(f.data, &out) != nil || out.T != "rpc_resp" || out.D.ReqID != "r1" || out.D.Status != 200 {
+			t.Fatalf("bad rpc_resp: %s", f.data)
 		}
 		if rpc.gotUser != 77 {
 			t.Fatalf("user not passed: %d", rpc.gotUser)
