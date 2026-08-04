@@ -136,19 +136,22 @@ type Conn struct {
 	deviceID int64
 	send     chan outFrame
 	codec    frameCodec
-	rpc      RPCDispatcher // nil у plain-conn
-	rpcSem   chan struct{} // ограничение конкурентности rpc-диспатча
+	rpc      RPCDispatcher  // nil у plain-conn
+	rpcSem   chan struct{}  // ограничение конкурентности rpc-диспатча
+	file     FileDispatcher // nil у plain-conn / до SetFileDispatcher
+	fileSem  chan struct{}  // ограничение конкурентности file-диспатча
 	// активный групповой звонок этого соединения (0 — нет): при обрыве
 	// сокета участника автоматически выводим из звонка.
 	groupCallChat int64
 }
 
-func newConn(ws *websocket.Conn, hub *Hub, svc *usecasechat.Interactor, presence Presence, user domain.User, deviceID int64, codec frameCodec, rpc RPCDispatcher) *Conn {
+func newConn(ws *websocket.Conn, hub *Hub, svc *usecasechat.Interactor, presence Presence, user domain.User, deviceID int64, codec frameCodec, rpc RPCDispatcher, file FileDispatcher) *Conn {
 	return &Conn{
 		ws: ws, hub: hub, svc: svc, presence: presence,
 		user: user, userID: user.ID, deviceID: deviceID,
 		send: make(chan outFrame, sendBuffer), codec: codec,
 		rpc: rpc, rpcSem: make(chan struct{}, rpcMaxConcurrent),
+		file: file, fileSem: make(chan struct{}, fileMaxConcurrent),
 	}
 }
 
