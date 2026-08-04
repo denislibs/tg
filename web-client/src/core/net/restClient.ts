@@ -2,6 +2,13 @@ export class HttpError extends Error {
   constructor(public status: number, message: string) { super(message) }
 }
 
+// Structural-контракт канального RPC (реализуется ChannelRpc). Импортируем как тип-форму,
+// а не класс, чтобы не создавать цикл restClient↔channelRpc.
+export interface ChannelRpcLike {
+  isReady(): boolean
+  call(method: string, path: string, body: unknown): Promise<{ status: number; body: unknown }>
+}
+
 export class RestClient {
   // `ready` (опц.) — резолвится, когда токен загружен из хранилища. Запросы ждут
   // его, иначе на старте REST-RPC уходит без токена → 401 «missing token» (гонка:
@@ -11,6 +18,7 @@ export class RestClient {
     private base: string,
     private getToken: () => string | null,
     private ready?: () => Promise<void>,
+    private channelRpc?: ChannelRpcLike,
   ) {}
 
   private headers(): Record<string, string> {
@@ -90,6 +98,15 @@ export class RestClient {
   }
 
   private async request<R>(method: string, path: string, body?: unknown): Promise<R> {
+    // При DNP-ON и готовом канале REST идёт через Noise-канал; иначе (логин/пре-канал) — fetch.
+    if (this.channelRpc?.isReady()) {
+      const { status, body: respBody } = await this.channelRpc.call(method, path, body)
+      if (status < 200 || status >= 300) {
+        const err = respBody as { error?: string } | null
+        throw new HttpError(status, err?.error ?? `HTTP ${status}`)
+      }
+      return respBody as R
+    }
     if (this.ready) await this.ready() // дождаться загрузки токена (см. конструктор)
     const res = await fetch(this.base + path, {
       method,
