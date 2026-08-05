@@ -81,3 +81,46 @@ describe('sw-stream handleStreamFetch', () => {
     expect(called).toBe(0)
   })
 })
+
+describe('sw-stream tryPatchMp4', () => {
+  const s = loadStream()
+  const fromHex = (h: string) => new Uint8Array(h.match(/.{2}/g)!.map((b) => parseInt(b, 16)))
+
+  it('нет esds → false, не бросает', () => {
+    expect(s.tryPatchMp4(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]))).toBe(false)
+  })
+
+  it('битый AAC-esds → патчится в FIXED_ESDS', () => {
+    // Собираем минимальный mp4a-бокс с esds, чей DecoderConfigDescriptor несёт BROKEN_DSCI.
+    // esds payload (ES_Descriptor): 03 <len> [ES_ID:2][flags:1] 04 <len>[oti+flags+3+4+4=13 байт] 05 <len:2>[13 88]
+    const FIXED = fromHex('0327000100041940150000000001f4000000bb750507138856e5a5') // 27 байт
+    const dsci = fromHex('1388')                              // BROKEN_DSCI
+    const dcd = new Uint8Array([0x04, 0x15, /*13 config bytes:*/ 0x40,0,0,0,0,0,0,0,0,0,0,0,0, /*DSI:*/ 0x05, 0x02, dsci[0], dsci[1]])
+    // Хвостовой паддинг esdPayload — parseES_Descriptor его не читает (останавливается
+    // на DSI), а found.size (сырой байт-размер esds-бокса) должен быть >= FIXED_ESDS.length
+    // (27), иначе fixMp4ForChromium бросит 'ESDS Size not enough'.
+    const esdPayload = new Uint8Array([0x03, dcd.length + 3, 0x00, 0x01, 0x00, ...dcd, 0, 0, 0, 0])
+    // esds mp4-бокс: [size u32][type 'esds'][4 version/flags][esdPayload]; found.offset=esdsOffset+8, size=esdsSize-12
+    const esdsType = new TextEncoder().encode('esds')
+    const boxInner = new Uint8Array([0,0,0,0, ...esdPayload])  // 4 version/flags + payload
+    const esdsSize = 8 + boxInner.length                       // size(4)+type(4)+inner
+    const esdsBox = new Uint8Array(esdsSize)
+    new DataView(esdsBox.buffer).setUint32(0, esdsSize)
+    esdsBox.set(esdsType, 4); esdsBox.set(boxInner, 8)
+    // mp4a рядом (в пределах 100 байт до esds); + хвостовой паддинг буфера — граничная
+    // проверка в fixMp4ForChromium (esdsOffset + esdsSize <= u8.length, где esdsOffset —
+    // это смещение ТЕКСТА 'esds', а не начала бокса) требует запас после бокса.
+    const mp4a = new TextEncoder().encode('mp4a')
+    const padding = new Uint8Array(8)
+    const buf = new Uint8Array(mp4a.length + esdsBox.length + padding.length)
+    buf.set(mp4a, 0); buf.set(esdsBox, mp4a.length); buf.set(padding, mp4a.length + esdsBox.length)
+
+    const ok = s.tryPatchMp4(buf)
+    expect(ok).toBe(true)
+    // esdsOffset (в терминах алгоритма) — смещение текста 'esds', т.е. после
+    // 4-байтного size-поля бокса; found.offset = esdsOffset + 8, там и лежит FIXED_ESDS.
+    const esdsOffset = mp4a.length + 4
+    const patchedAt = esdsOffset + 8
+    expect(Array.from(buf.subarray(patchedAt, patchedAt + FIXED.length))).toEqual(Array.from(FIXED))
+  })
+})
