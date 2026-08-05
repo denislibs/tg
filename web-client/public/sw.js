@@ -1,4 +1,9 @@
 /* Web Push + медиакэш + app-shell service worker. Scope: / (build root). */
+
+/* DNP-мост к SharedWorker (§ PR-2a): байты медиа для 206-стриминга. */
+importScripts('/sw-bridge.js')
+const dnpBridge = self.createDnpBridge()
+
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', (e) =>
   e.waitUntil(
@@ -130,6 +135,10 @@ self.addEventListener('message', (event) => {
   const d = event.data
   if (d && d.type === 'cache-settings') {
     event.waitUntil(clearOldCache(d.cacheTTL | 0, d.cacheSize || 0))
+  }
+  if (d && d.type === 'dnp-bridge-port' && event.ports && event.ports[0]) {
+    dnpBridge.setPort(event.ports[0])
+    return
   }
 })
 

@@ -5,6 +5,7 @@ import { RestClient } from './net/restClient'
 import { createTransport } from './net/createTransport'
 import { ChannelRpc } from './net/dnp/channelRpc'
 import { newFileDownload } from './net/dnp/fileDownload'
+import { attachStreamBridge } from './net/dnp/streamBridge'
 import { AppConfig } from '../config/app'
 import { newHealthManager } from './managers/healthManager'
 import { TokenStore } from './auth/tokenStore'
@@ -364,6 +365,17 @@ function bind(ep: Endpoint) {
   const smp = new SuperMessagePort(ep)
   ports.push(smp)
   registerManagers(smp, registry)
+  // SW↔SharedWorker мост (§ PR-2a): окно (PR-2c) шлёт по этому же порту control-кадр
+  // dnp-bridge-port с переданным MessagePort к SW. SMP такой кадр игнорит (нет kind) —
+  // ловим сырым слушателем и подключаем мост к каналу. Активно лишь при DNP-ON.
+  if (fileDownload) {
+    ep.addEventListener('message', (ev: MessageEvent) => {
+      const d = ev.data as { t?: string } | null
+      if (d && d.t === 'dnp-bridge-port' && ev.ports && ev.ports[0]) {
+        attachStreamBridge(ev.ports[0], fileDownload)
+      }
+    })
+  }
 }
 
 const g = self as unknown as {
