@@ -18,7 +18,7 @@ describe('attachStreamBridge', () => {
     swSide.onmessage = (e: MessageEvent) => got.push(e.data)
     swSide.postMessage({ t: 'file_part', reqId: 7, mediaId: 5, offset: 0, limit: 512 })
     await flush()
-    expect(src.fetchFilePartWithTotal).toHaveBeenCalledWith(5, 0, 512)
+    expect(src.fetchFilePartWithTotal).toHaveBeenCalledWith(5, 0, 512, expect.any(AbortSignal))
     const ok = got[0] as { t: string; reqId: number; bytes: Uint8Array; total: number }
     expect(ok.t).toBe('file_part_ok'); expect(ok.reqId).toBe(7)
     expect(Array.from(ok.bytes)).toEqual([1, 2, 3]); expect(ok.total).toBe(99)
@@ -33,5 +33,21 @@ describe('attachStreamBridge', () => {
     swSide.postMessage({ t: 'file_part', reqId: 3, mediaId: 5, offset: 0, limit: 512 })
     await flush()
     expect(got[0].t).toBe('file_part_err'); expect(got[0].reqId).toBe(3); expect(got[0].error).toBe('forbidden')
+  })
+
+  it('file_part_cancel aborts the in-flight fetch signal', async () => {
+    let capturedSignal: AbortSignal | undefined
+    const src = {
+      fetchFilePartWithTotal: (_id: number, _o: number, _l: number, signal?: AbortSignal) => {
+        capturedSignal = signal
+        return new Promise<{ bytes: Uint8Array; total: number }>(() => {}) // виснет — ждём отмены
+      },
+    }
+    const port: any = { postMessage: vi.fn(), onmessage: null }
+    attachStreamBridge(port, src as any)
+    port.onmessage({ data: { t: 'file_part', reqId: 7, mediaId: 1, offset: 0, limit: 4096 } })
+    expect(capturedSignal?.aborted).toBe(false)
+    port.onmessage({ data: { t: 'file_part_cancel', reqId: 7 } })
+    expect(capturedSignal?.aborted).toBe(true)
   })
 })
