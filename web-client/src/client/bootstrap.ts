@@ -17,9 +17,9 @@ type AsyncManager<T> = {
 
 export type Managers = { [K in keyof WorkerRegistry]: AsyncManager<WorkerRegistry[K]> }
 
-let cached: { smp: SuperMessagePort; managers: Managers } | null = null
+let cached: { smp: SuperMessagePort; managers: Managers; ep: Endpoint } | null = null
 
-export function startClient(): { smp: SuperMessagePort; managers: Managers } {
+export function startClient(): { smp: SuperMessagePort; managers: Managers; ep: Endpoint } {
   if (cached) return cached
   let ep: Endpoint
   if (typeof SharedWorker !== 'undefined') {
@@ -32,6 +32,6 @@ export function startClient(): { smp: SuperMessagePort; managers: Managers } {
   }
   const smp = new SuperMessagePort(ep)
   const managers = createManagers<Managers>(smp)
-  cached = { smp, managers }
+  cached = { smp, managers, ep }
   return cached
 }
