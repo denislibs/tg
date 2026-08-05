@@ -74,4 +74,23 @@ describe('MediaManager', () => {
     await expect(mm.contentBlob(5)).resolves.toBe(blob)
     expect(fileDownload.downloadMedia).toHaveBeenCalledWith(5)
   })
+
+  it('streamUrl без DNP → нативный token-URL', async () => {
+    const mgr = newMediaManager({ rest: fakeRest() })
+    const u = await mgr.streamUrl(42)
+    expect(u).toBe('/api/media/42/content?token=mtok')
+  })
+
+  it('streamUrl при DNP-ON → /dnp-stream с size/mime (+mp4fix для mp4)', async () => {
+    const rest = fakeRest()
+    ;(rest as never as { get: ReturnType<typeof vi.fn> }).get.mockImplementation(async (p: string) =>
+      p === '/media/token'
+        ? { token: 'mtok', expires_at: new Date(Date.now() + 900_000).toISOString() }
+        : { id: 42, mime: 'video/mp4', size: 1000, width: 0, height: 0, duration: 0, blur_preview: '', has_thumb: false },
+    )
+    const fileDownload = { isReady: () => true, downloadMedia: vi.fn(), fetchFilePart: vi.fn(), fetchFilePartWithTotal: vi.fn() }
+    const mgr = newMediaManager({ rest, fileDownload } as never)
+    const u = await mgr.streamUrl(42)
+    expect(u).toBe('/dnp-stream/42?size=1000&mime=video%2Fmp4&mp4fix=1')
+  })
 })

@@ -47,6 +47,18 @@ export function newMediaManager({ rest, onUploadProgress, fileDownload }: {
     mediaTokenExp = new Date(r.expires_at).getTime()
     return mediaToken
   }
+  // Тело meta() — вынесено, чтобы streamUrl тоже мог достать size/mime без
+  // повторной реализации кэша (metaCache не кэширует, пока сервер не проставил thumb).
+  async function loadMeta(id: number): Promise<MediaMeta> {
+    const hit = metaCache.get(id)
+    // Don't cache until the server has finished processing (a thumb may appear
+    // a moment after upload); re-fetch while hasThumb is still false.
+    if (hit && hit.hasThumb) return hit
+    const r = await rest.get<{ id: number; mime: string; size: number; width: number; height: number; duration: number; blur_preview: string; file_name?: string; has_thumb?: boolean }>(`/media/${id}`)
+    const m: MediaMeta = { id: r.id, mime: r.mime, size: r.size, width: r.width, height: r.height, duration: r.duration, blurPreview: r.blur_preview ?? '', fileName: r.file_name ?? '', hasThumb: !!r.has_thumb }
+    metaCache.set(id, m)
+    return m
+  }
   // Chunked/resumable upload: slice the Blob into fixed-size parts and upload them
   // with limited concurrency + per-part retry, reporting aggregate progress. On a
   // failure we re-query which parts landed (GET .../parts) and re-send only the
@@ -149,19 +161,23 @@ export function newMediaManager({ rest, onUploadProgress, fileDownload }: {
     async cancelUpload(progressId: string): Promise<void> {
       uploadAborts.get(progressId)?.abort()
     },
-    async meta(id: number): Promise<MediaMeta> {
-      const hit = metaCache.get(id)
-      // Don't cache until the server has finished processing (a thumb may appear
-      // a moment after upload); re-fetch while hasThumb is still false.
-      if (hit && hit.hasThumb) return hit
-      const r = await rest.get<{ id: number; mime: string; size: number; width: number; height: number; duration: number; blur_preview: string; file_name?: string; has_thumb?: boolean }>(`/media/${id}`)
-      const m: MediaMeta = { id: r.id, mime: r.mime, size: r.size, width: r.width, height: r.height, duration: r.duration, blurPreview: r.blur_preview ?? '', fileName: r.file_name ?? '', hasThumb: !!r.has_thumb }
-      metaCache.set(id, m)
-      return m
-    },
+    async meta(id: number): Promise<MediaMeta> { return loadMeta(id) },
     async contentUrl(id: number): Promise<string> {
       const tok = await ensureToken()
       return rest.mediaUrl(`/media/${id}/content`, tok)
+    },
+    // streamUrl — URL для <video>/<audio>. При DNP-ON отдаёт /dnp-stream/{id} (SW
+    // соберёт 206 из чанков Noise-канала; size/mime — для Content-Range/Content-Type,
+    // mp4fix армит Chromium AAC-esds патч). Иначе — нативный token-URL (как contentUrl).
+    async streamUrl(id: number): Promise<string> {
+      if (!fileDownload) {
+        const tok = await ensureToken()
+        return rest.mediaUrl(`/media/${id}/content`, tok)
+      }
+      const m = await loadMeta(id)
+      let u = `/dnp-stream/${id}?size=${m.size}&mime=${encodeURIComponent(m.mime)}`
+      if (m.mime.includes('mp4')) u += '&mp4fix=1'
+      return u
     },
     // contentBlob скачивает медиа целиком через DNP-канал (blob создаётся вызывающим
     // main-потоком: objectURL из воркера в DOM невалиден). Только при DNP-ON.
