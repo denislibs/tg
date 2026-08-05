@@ -1,4 +1,14 @@
 /* Web Push + медиакэш + app-shell service worker. Scope: / (build root). */
+
+/* DNP-мост к SharedWorker (§ PR-2a): байты медиа для 206-стриминга. Грузим
+ * защищённо — если sw-bridge.js недоступен (нестыковка деплоя/CDN), деградируем
+ * DNP-стриминг, но НЕ роняем install SW (иначе push/кэш легли бы у всех). */
+let dnpBridge = null
+try {
+  importScripts('/sw-bridge.js')
+  dnpBridge = self.createDnpBridge()
+} catch (_e) { /* нет моста — DNP-стриминг недоступен, остальное работает */ }
+
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', (e) =>
   e.waitUntil(
@@ -130,6 +140,10 @@ self.addEventListener('message', (event) => {
   const d = event.data
   if (d && d.type === 'cache-settings') {
     event.waitUntil(clearOldCache(d.cacheTTL | 0, d.cacheSize || 0))
+  }
+  if (d && d.type === 'dnp-bridge-port' && dnpBridge && event.ports && event.ports[0]) {
+    dnpBridge.setPort(event.ports[0])
+    return
   }
 })
 

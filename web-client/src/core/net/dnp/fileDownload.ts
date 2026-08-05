@@ -64,6 +64,12 @@ export function newFileDownload(transport: Transport) {
       const { data } = await requestPart(mediaId, offset, limit)
       return data
     },
+    // Как fetchFilePart, но с total (полный размер файла) — нужно 206-стримингу
+    // (Content-Range) через SW↔SharedWorker мост.
+    async fetchFilePartWithTotal(mediaId: number, offset: number, limit: number): Promise<{ bytes: Uint8Array; total: number }> {
+      const { data, total } = await requestPart(mediaId, offset, limit)
+      return { bytes: data, total }
+    },
     // downloadMedia тянет весь файл чанками CHUNK_SIZE и собирает Blob.
     async downloadMedia(mediaId: number): Promise<Blob> {
       const parts: Uint8Array[] = []
