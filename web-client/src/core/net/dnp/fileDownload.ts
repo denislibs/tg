@@ -55,12 +55,19 @@ export function newFileDownload(transport: Transport) {
     const reqId = (seq = (seq + 1) >>> 0) // u32-счётчик с обёрткой
     return new Promise((resolve, reject) => {
       if (signal?.aborted) { reject(new Error('aborted')); return }
-      const timer = setTimeout(() => { pending.delete(reqId); reject(new Error('file timeout')) }, FILE_TIMEOUT_MS)
       const onAbort = () => {
         clearTimeout(timer)
         pending.delete(reqId)
         reject(new Error('aborted'))
       }
+      // Таймаут — тоже штатное завершение: снимает abort-листенер, как и
+      // resolve/reject из pending-обёртки ниже. Иначе при переданном signal
+      // onAbort остаётся навешанным на signal до GC (утечка листенера).
+      const timer = setTimeout(() => {
+        signal?.removeEventListener('abort', onAbort)
+        pending.delete(reqId)
+        reject(new Error('file timeout'))
+      }, FILE_TIMEOUT_MS)
       signal?.addEventListener('abort', onAbort, { once: true })
       pending.set(reqId, {
         resolve: (v) => { signal?.removeEventListener('abort', onAbort); resolve({ data: v.data, total: v.total }) },

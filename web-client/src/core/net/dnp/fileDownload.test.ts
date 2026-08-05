@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { newFileDownload } from './fileDownload'
 
 // Собрать бинарный file_chunk payload (как это делает сервер, БЕЗ kind-байта —
@@ -88,6 +88,27 @@ describe('fileDownload', () => {
     await expect(p).rejects.toThrow(/abort/i)
     // поздний ответ на снятую корреляцию — не должен ни зарезолвить, ни кинуть.
     expect(() => capturedReply?.(chunk(capturedReqId, 0, 100, new Uint8Array(10)))).not.toThrow()
+  })
+
+  it('таймаут file-запроса снимает abort-листенер (нет утечки при переданном signal)', async () => {
+    // Сервер не отвечает вовсе — единственный способ разрешить промис здесь: таймаут
+    // FILE_TIMEOUT_MS (30с, см. fileDownload.ts). Фикс-раунд 1: до фикса таймаут-путь
+    // реджектил напрямую, минуя pending-обёртку, которая снимает abort-листенер —
+    // listener оставался висеть на signal до GC. Проверяем явно через спай на
+    // removeEventListener, что таймаут снимает его так же, как resolve/reject/abort.
+    vi.useFakeTimers()
+    try {
+      const fd = newFileDownload(fakeTransport(() => { /* нет ответа — ждём таймаут */ }) as never)
+      const ac = new AbortController()
+      const removeSpy = vi.spyOn(ac.signal, 'removeEventListener')
+      const p = fd.fetchFilePart(1, 0, 4096, ac.signal)
+      const expectation = expect(p).rejects.toThrow(/timeout/i)
+      await vi.advanceTimersByTimeAsync(30_000)
+      await expectation
+      expect(removeSpy).toHaveBeenCalledWith('abort', expect.any(Function))
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('fetchFilePart корректно читает кадр со смещённым byteOffset (subarray среза транспорта)', async () => {
