@@ -1,4 +1,5 @@
 import type { RestClient } from '../net/restClient'
+import type { FileDownload } from '../net/dnp/fileDownload'
 
 // Either `bytes` (already in memory, legacy) or `blob` (a File/Blob, preferred for
 // large files — sliced per-chunk so the whole file never sits in memory). Files
@@ -24,11 +25,12 @@ const PART_CONCURRENCY = 3
 const PART_ATTEMPTS = 3
 const RESUME_ROUNDS = 3
 
-export function newMediaManager({ rest, onUploadProgress }: {
+export function newMediaManager({ rest, onUploadProgress, fileDownload }: {
   rest: RestLike
   // Прогресс отгрузки байтов (tweb ProgressivePreloader) — воркер транслирует
   // его вкладкам событием media:upload_progress.
   onUploadProgress?: (id: string, loaded: number, total: number) => void
+  fileDownload?: FileDownload // задан только при DNP-ON: скачивание медиа через канал
 }) {
   const metaCache = new Map<number, MediaMeta>()
   // Активные аплоады по progressId (=clientMsgId) — для отмены с бабла (tweb
@@ -160,6 +162,12 @@ export function newMediaManager({ rest, onUploadProgress }: {
     async contentUrl(id: number): Promise<string> {
       const tok = await ensureToken()
       return rest.mediaUrl(`/media/${id}/content`, tok)
+    },
+    // contentBlob скачивает медиа целиком через DNP-канал (blob создаётся вызывающим
+    // main-потоком: objectURL из воркера в DOM невалиден). Только при DNP-ON.
+    async contentBlob(id: number): Promise<Blob> {
+      if (!fileDownload) throw new Error('media: канал недоступен')
+      return fileDownload.downloadMedia(id)
     },
     // The cached media token + its expiry, so the MAIN thread can build media URLs
     // synchronously (no per-image RPC round-trip → no scroll jitter). Primed once.

@@ -66,4 +66,12 @@ describe('MediaManager', () => {
     const mgr = newMediaManager({ rest: fakeRest() })
     expect(await mgr.contentUrl(42)).toBe('/api/media/42/content?token=mtok')
   })
+
+  it('contentBlob скачивает через канал (fileDownload)', async () => {
+    const blob = new Blob([new Uint8Array([1, 2, 3])])
+    const fileDownload = { isReady: () => true, downloadMedia: vi.fn().mockResolvedValue(blob), fetchFilePart: vi.fn() }
+    const mm = newMediaManager({ rest: fakeRest(), fileDownload } as never)
+    await expect(mm.contentBlob(5)).resolves.toBe(blob)
+    expect(fileDownload.downloadMedia).toHaveBeenCalledWith(5)
+  })
 })

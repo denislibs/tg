@@ -4,6 +4,7 @@ import { registerManagers } from '../rpc/managersProxy'
 import { RestClient } from './net/restClient'
 import { createTransport } from './net/createTransport'
 import { ChannelRpc } from './net/dnp/channelRpc'
+import { newFileDownload } from './net/dnp/fileDownload'
 import { AppConfig } from '../config/app'
 import { newHealthManager } from './managers/healthManager'
 import { TokenStore } from './auth/tokenStore'
@@ -59,6 +60,8 @@ void tokens.load().then(() => persistScope(tokens.get()))
 const ws = createTransport()
 // channelRpc активен только при DNP-ON; иначе RestClient идёт через fetch.
 const channelRpc = AppConfig.dnp.enabled ? new ChannelRpc(ws) : undefined
+// fileDownload активен только при DNP-ON: скачивание медиа чанками через канал (media.contentBlob).
+const fileDownload = AppConfig.dnp.enabled ? newFileDownload(ws) : undefined
 const rest = new RestClient('/api', () => tokens.get(), () => tokens.ready(), channelRpc)
 const auth = newAuthManager({ rest, store: tokens })
 const profile = newProfileManager({ rest })
@@ -79,6 +82,7 @@ const messages = newMessagesManager({ rest, decryptSecret: (chatId, encBody) => 
 const media = newMediaManager({
   rest,
   onUploadProgress: (id, loaded, total) => broadcast('media:upload_progress', { id, loaded, total }),
+  fileDownload,
 })
 const push = newPushManager({ rest })
 const notify = newNotifyManager({ rest })
