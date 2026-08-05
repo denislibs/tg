@@ -16,17 +16,27 @@ export function handoffBridgePort(controller: Poster, ep: Poster): void {
   ep.postMessage({ t: 'dnp-bridge-port' }, [ch.port2])
 }
 
-// installBridgeHandoff — при DNP-ON ждёт готовности SW-контроллера и делает handoff;
-// пере-handoff при смене контроллера (обновление SW → новый порт к SW). На первом
-// визите контроллер появляется после clients.claim → ловим controllerchange.
+// installBridgeHandoff — connect-based (эталон tweb serviceWorker/index.service.ts):
+// окно пингует SW, SW просит порт ТОЛЬКО если его нет; SW сам инициирует то же на своём
+// старте (clients.matchAll) → рестарт SW самозалечивается без reload. Окно тут — курьер:
+// пингует + по запросу SW делает handoffBridgePort.
 export function installBridgeHandoff(ep: Poster): void {
   if (!AppConfig.dnp.enabled || !('serviceWorker' in navigator)) return
-  const trySend = () => {
-    const c = navigator.serviceWorker.controller
-    if (c) handoffBridgePort(c, ep)
+  const sw = navigator.serviceWorker
+  const ping = () => {
+    sw.controller?.postMessage({ type: 'dnp-ping' })
   }
-  void navigator.serviceWorker.ready.then(() => {
-    trySend()
-    navigator.serviceWorker.addEventListener('controllerchange', trySend)
+  sw.addEventListener('message', (ev: MessageEvent) => {
+    const d = ev.data as { type?: string } | null
+    if (d && d.type === 'dnp-request-port' && sw.controller) handoffBridgePort(sw.controller, ep)
+  })
+  void sw.ready.then(() => {
+    ping()
+    sw.addEventListener('controllerchange', ping)
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') ping()
+      })
+    }
   })
 }
