@@ -73,6 +73,23 @@ describe('fileDownload', () => {
     await expect(fd.fetchFilePart(5, 0, 512)).rejects.toThrow('forbidden')
   })
 
+  it('fetchFilePartWithTotal aborts and drops correlation', async () => {
+    // reply не вызывается синхронно — сохраняем req_id/reply, чтобы дёрнуть их
+    // ПОСЛЕ abort() и проверить, что поздний file_chunk игнорируется без ошибки.
+    let capturedReqId = 0
+    let capturedReply: ((c: Uint8Array) => void) | null = null
+    const fd = newFileDownload(fakeTransport((req, reply) => {
+      capturedReqId = req.req_id
+      capturedReply = reply
+    }) as never)
+    const ac = new AbortController()
+    const p = fd.fetchFilePartWithTotal(1, 0, 4096, ac.signal)
+    ac.abort()
+    await expect(p).rejects.toThrow(/abort/i)
+    // поздний ответ на снятую корреляцию — не должен ни зарезолвить, ни кинуть.
+    expect(() => capturedReply?.(chunk(capturedReqId, 0, 100, new Uint8Array(10)))).not.toThrow()
+  })
+
   it('fetchFilePart корректно читает кадр со смещённым byteOffset (subarray среза транспорта)', async () => {
     // В проде DnpTransport снимает kind-байт через plain.subarray(1) — итоговый
     // Uint8Array имеет byteOffset===1 в общем ArrayBuffer. Регресс на
