@@ -31,7 +31,7 @@ func TestDNPAcceptHandshakeAuthAndTransport(t *testing.T) {
 	cs := dnpSuite()
 	serverStatic, _ := cs.GenerateKeypair(fixedReader{serverPriv})
 
-	up := websocket.Upgrader{Subprotocols: []string{"dnp/2"}, CheckOrigin: func(*http.Request) bool { return true }}
+	up := websocket.Upgrader{Subprotocols: []string{"dnp.2"}, CheckOrigin: func(*http.Request) bool { return true }}
 	var gotUser, gotDevice int64
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		wsConn, err := up.Upgrade(w, r, nil)
@@ -50,9 +50,9 @@ func TestDNPAcceptHandshakeAuthAndTransport(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Клиент: flynn/noise NK initiator по dnp/2.
+	// Клиент: flynn/noise NK initiator по dnp.2.
 	url := "ws" + strings.TrimPrefix(srv.URL, "http")
-	d := websocket.Dialer{Subprotocols: []string{"dnp/2"}}
+	d := websocket.Dialer{Subprotocols: []string{"dnp.2"}}
 	conn, _, err := d.Dial(url, nil)
 	if err != nil {
 		t.Fatal(err)

@@ -5,7 +5,14 @@ import type { CipherState } from './noise/symmetricState'
 import { frameLen, unframeLen, sealFrame, openFrame } from './codec'
 import { encodeFrame, decodeFrame, type Frame } from '../../../protocol/frames'
 
+// Noise-prologue — байты, привязывающие хендшейк к версии протокола. Здесь '/'
+// допустим (это не WS-токен, а входные байты BLAKE2s). Менять синхронно с сервером
+// (noise.go prologueV1) — иначе разъедется хендшейк и interop-фикстура.
 const PROLOGUE = new TextEncoder().encode('dnp/2')
+// WS-subprotocol — токен по RFC 2616 (Sec-WebSocket-Protocol). '/' здесь ЗАПРЕЩЁН
+// (separator) — браузерный `new WebSocket(url, ['dnp/2'])` кидает SyntaxError. Потому
+// версия кодируется через '.', а не '/'. Держать в синхроне с сервером (handler.go).
+const SUBPROTOCOL = 'dnp.2'
 const KIND_JSON = 0x00
 const KIND_FILE = 0x01
 
@@ -50,7 +57,7 @@ export class DnpTransport implements Transport {
   connect(token: string): void {
     this.token = token
     this.state = 'handshaking'
-    const ws = new WebSocket(this.url, ['dnp/2'])
+    const ws = new WebSocket(this.url, [SUBPROTOCOL])
     ws.binaryType = 'arraybuffer'
     this.ws = ws
     ws.onopen = () => this.startHandshake()

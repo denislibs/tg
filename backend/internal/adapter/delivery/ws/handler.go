@@ -55,11 +55,14 @@ func NewHandler(hub *Hub, auth Authenticator, chatSvc *usecasechat.Interactor, p
 		presence:      presence,
 		dnpServerPriv: dnpPriv,
 		upgrader: websocket.Upgrader{
-			// Эхаем subprotocol 'bearer'/'dnp/2' в ответе рукопожатия: клиент
+			// Эхаем subprotocol 'bearer'/'dnp.2' в ответе рукопожатия: клиент
 			// присылает ['bearer', <token>] (аутентификация по токену, не в URL)
-			// либо ['dnp/2'] (Noise-хендшейк, аутентификация внутри канала). Без
+			// либо ['dnp.2'] (Noise-хендшейк, аутентификация внутри канала). Без
 			// эха браузер закрыл бы соединение (сервер обязан выбрать subprotocol).
-			Subprotocols: []string{"bearer", "dnp/2"},
+			// ВАЖНО: токен 'dnp.2' через '.', а не '/': '/' — separator по RFC 2616,
+			// браузерный WebSocket-конструктор такой subprotocol отвергает. Noise-
+			// prologue при этом остаётся 'dnp/2' (noise.go) — это отдельные байты.
+			Subprotocols: []string{"bearer", "dnp.2"},
 			// Анти-CSWSH: пускаем только с allow-list origin'ов (те же, что WebAuthn).
 			// Пустой Origin (нативные клиенты/тесты — не браузер) допускаем; аутентификация
 			// по токену (subprotocol/query), origin-гейт снимает cross-site-подключение.
@@ -76,7 +79,7 @@ func NewHandler(hub *Hub, auth Authenticator, chatSvc *usecasechat.Interactor, p
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if h.dnpServerPriv != nil && hasSubprotocol(r, "dnp/2") {
+	if h.dnpServerPriv != nil && hasSubprotocol(r, "dnp.2") {
 		wsConn, err := h.upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			return // Upgrade already wrote the error

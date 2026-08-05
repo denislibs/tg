@@ -130,7 +130,7 @@ func TestDNPChannelRPCEndToEnd(t *testing.T) {
 	cs := dnpSuite()
 	serverStatic, _ := cs.GenerateKeypair(fixedReader{serverPriv})
 
-	up := websocket.Upgrader{Subprotocols: []string{"dnp/2"}, CheckOrigin: func(*http.Request) bool { return true }}
+	up := websocket.Upgrader{Subprotocols: []string{"dnp.2"}, CheckOrigin: func(*http.Request) bool { return true }}
 	rpc := &fakeRPC{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		wsConn, err := up.Upgrade(w, r, nil)
@@ -148,10 +148,10 @@ func TestDNPChannelRPCEndToEnd(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Клиент: flynn/noise NK initiator по dnp/2 (та же обвязка, что в
+	// Клиент: flynn/noise NK initiator по dnp.2 (та же обвязка, что в
 	// dnp_accept_test.go — не дублируем, а прогоняем ещё один шаг: rpc_req/rpc_resp).
 	url := "ws" + strings.TrimPrefix(srv.URL, "http")
-	d := websocket.Dialer{Subprotocols: []string{"dnp/2"}}
+	d := websocket.Dialer{Subprotocols: []string{"dnp.2"}}
 	conn, _, err := d.Dial(url, nil)
 	if err != nil {
 		t.Fatal(err)
