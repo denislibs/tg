@@ -39,6 +39,15 @@ describe('fileDownload', () => {
     expect(Array.from(part)).toEqual([1, 2, 3])
   })
 
+  it('fetchFilePartWithTotal отдаёт байты и total', async () => {
+    const fd = newFileDownload(fakeTransport((req, reply) => {
+      reply(chunk(req.req_id, req.offset, 42, new Uint8Array([9, 8, 7])))
+    }) as never)
+    const { bytes, total } = await fd.fetchFilePartWithTotal(5, 0, 512)
+    expect(Array.from(bytes)).toEqual([9, 8, 7])
+    expect(total).toBe(42)
+  })
+
   it('downloadMedia собирает Blob из нескольких чанков', async () => {
     // Сервер отдаёт короткие чанки (макс. 2 байта за ответ), несмотря на запрошенный
     // limit=CHUNK_SIZE — это заставляет downloadMedia реально проитерировать несколько
