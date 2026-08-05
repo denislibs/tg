@@ -39,7 +39,7 @@ describe('DnpTransport', () => {
     t.connect('good-token')
 
     const ws = FakeWS.instances[0]
-    expect(ws.protocols).toEqual(['dnp/2'])
+    expect(ws.protocols).toEqual(['dnp.2']) // WS-subprotocol (токен без '/'); prologue отдельно = 'dnp/2'
     ws.open()
     // msg1 отправлен (детерминирован инъецированным эфемералом → совпадает с фикстурой)
     expect(ws.sent[0]).toEqual(frameLen(fromHex(fixture.msg1)))
