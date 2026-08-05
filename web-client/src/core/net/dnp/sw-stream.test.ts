@@ -46,7 +46,7 @@ describe('sw-stream handleStreamFetch', () => {
   const s = loadStream()
   // Источник: файл 0..99 (байт i = i&0xff); requestPart отдаёт срез [offset, offset+limit).
   const OBJ = new Uint8Array(100).map((_, i) => i & 0xff)
-  const requestPart = async (mediaId: number, offset: number, limit: number) => ({
+  const requestPart = async (_mediaId: number, offset: number, limit: number) => ({
     bytes: OBJ.subarray(offset, Math.min(offset + limit, OBJ.length)),
     total: OBJ.length,
   })
