@@ -9,6 +9,19 @@ try {
   dnpBridge = self.createDnpBridge()
 } catch (_e) { /* нет моста — DNP-стриминг недоступен, остальное работает */ }
 
+/* 206-стриминг (§ PR-2b): грузим защищённо тем же try/catch — битый sw-stream не
+ * должен ронять install SW (push/кэш важнее DNP-стриминга). Хендлер живёт лишь
+ * когда есть мост (dnpBridge). */
+let dnpStreamHandler = null
+try {
+  importScripts('/sw-stream.js')
+  if (dnpBridge && self.dnpStream) {
+    dnpStreamHandler = self.dnpStream.createStreamHandler(
+      (mediaId, offset, limit) => dnpBridge.requestPart(mediaId, offset, limit),
+    )
+  }
+} catch (_e) { /* нет sw-stream — DNP-стриминг недоступен, остальное работает */ }
+
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', (e) =>
   e.waitUntil(
@@ -53,6 +66,17 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return
   const url = new URL(req.url)
   if (url.origin !== self.location.origin) return
+
+  // DNP-стрим (§ PR-2b): видео/аудио через Noise-канал. 206 собирает SW из чанков.
+  if (dnpStreamHandler && url.pathname.startsWith('/dnp-stream/')) {
+    event.respondWith(
+      Promise.race([
+        dnpStreamHandler.handleStreamFetch(req),
+        new Promise((resolve) => setTimeout(() => resolve(Response.error()), 45000)),
+      ]),
+    )
+    return
+  }
 
   // Медиа — свой cache-first (Range-стриминг проходит мимо кэша).
   if (MEDIA_RE.test(url.pathname)) {
