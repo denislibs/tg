@@ -1,5 +1,5 @@
 /// <reference types="node" />
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
@@ -13,7 +13,11 @@ function loadBridge() {
   const code = readFileSync(path, 'utf8')
   const fakeSelf: any = {}
   new Function('self', code)(fakeSelf)
-  return fakeSelf.createDnpBridge as () => { setPort(p: unknown): void; requestPart(m: number, o: number, l: number): Promise<{ bytes: Uint8Array; total: number }> }
+  return fakeSelf.createDnpBridge as () => {
+    hasPort(): boolean
+    setPort(p: unknown): void
+    requestPart(m: number, o: number, l: number): Promise<{ bytes: Uint8Array; total: number }>
+  }
 }
 
 // Fake worker-порт: на file_part зовёт serve(), который отвечает через port.onmessage.
@@ -43,5 +47,41 @@ describe('sw-bridge createDnpBridge', () => {
     const bridge = createDnpBridge()
     bridge.setPort(workerFakePort((req, reply) => reply({ t: 'file_part_err', reqId: req.reqId, error: 'nope' })))
     await expect(bridge.requestPart(5, 0, 512)).rejects.toThrow('nope')
+  })
+
+  it('hasPort reflects port presence', () => {
+    const createDnpBridge = loadBridge()
+    const bridge = createDnpBridge()
+    expect(bridge.hasPort()).toBe(false)
+    const { port1 } = new MessageChannel()
+    bridge.setPort(port1)
+    expect(bridge.hasPort()).toBe(true)
+  })
+
+  it('setPort closes the superseded port', () => {
+    const createDnpBridge = loadBridge()
+    const bridge = createDnpBridge()
+    const a = new MessageChannel()
+    const b = new MessageChannel()
+    const closeA = vi.spyOn(a.port1, 'close')
+    bridge.setPort(a.port1)
+    bridge.setPort(b.port1) // вытесняет a.port1
+    expect(closeA).toHaveBeenCalledTimes(1)
+  })
+
+  it('requestPart timeout posts file_part_cancel', () => {
+    vi.useFakeTimers()
+    const createDnpBridge = loadBridge()
+    const bridge = createDnpBridge()
+    const ch = new MessageChannel()
+    const posted: any[] = []
+    // перехватываем исходящие на порт: подменяем postMessage на конце SW
+    ch.port1.postMessage = (msg: any) => { posted.push(msg) }
+    bridge.setPort(ch.port1)
+    const p = bridge.requestPart(1, 0, 4096)
+    p.catch(() => {}) // подавляем unhandled
+    vi.advanceTimersByTime(45000)
+    expect(posted.some((m) => m.t === 'file_part_cancel')).toBe(true)
+    vi.useRealTimers()
   })
 })
