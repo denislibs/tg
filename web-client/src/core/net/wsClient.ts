@@ -34,6 +34,7 @@ export class WsClient implements Transport {
   onOpen(cb: () => void): void { this.openCbs.push(cb) }
   onClose(cb: () => void): void { this.closeCbs.push(cb) }
   onError(cb: () => void): void { this.errorCbs.push(cb) }
+  onBinary(_cb: (data: Uint8Array) => void): void { /* plain-WS: медиа нативным HTTP, бинарь не приходит */ }
 
   isOpen(): boolean { return this.ws?.readyState === 1 }
 

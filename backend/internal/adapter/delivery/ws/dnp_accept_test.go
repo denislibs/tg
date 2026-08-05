@@ -45,7 +45,7 @@ func TestDNPAcceptHandshakeAuthAndTransport(t *testing.T) {
 		}
 		gotUser, gotDevice = user.ID, did
 		// Отправить один зашифрованный кадр обратно (проверка send-стороны).
-		_, out := codec.encode([]byte(`{"t":"pong"}`))
+		_, out := codec.encode(frameKindJSON, []byte(`{"t":"pong"}`))
 		_ = wsConn.WriteMessage(websocket.BinaryMessage, out)
 	}))
 	defer srv.Close()

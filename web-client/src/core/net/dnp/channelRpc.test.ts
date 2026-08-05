@@ -15,6 +15,7 @@ class FakeTransport implements Transport {
   onClose(cb: () => void): void { this.closeCbs.push(cb) }
   onError(): void {}
   on(t: string, cb: (d: unknown) => void): void { const a = this.frameCbs.get(t) ?? []; a.push(cb); this.frameCbs.set(t, a) }
+  onBinary(): void {}
   send(t: string, d?: unknown): void { this.sent.push({ t, d }) }
   // test helpers
   emit(t: string, d: unknown): void { for (const cb of this.frameCbs.get(t) ?? []) cb(d) }

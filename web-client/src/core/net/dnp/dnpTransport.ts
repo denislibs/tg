@@ -7,6 +7,7 @@ import { encodeFrame, decodeFrame, type Frame } from '../../../protocol/frames'
 
 const PROLOGUE = new TextEncoder().encode('dnp/2')
 const KIND_JSON = 0x00
+const KIND_FILE = 0x01
 
 function hexToBytes(hex: string): Uint8Array {
   const clean = hex.trim()
@@ -15,8 +16,8 @@ function hexToBytes(hex: string): Uint8Array {
   return out
 }
 
-// withKind: префикс байта-типа перед сериализованным JSON-кадром. 0x00=JSON (этот PR),
-// 0x01 зарезервирован под file-кадры (PR-1b). Транспортный слой — codec.ts байто-агностичен.
+// withKind: префикс байта-типа перед сериализованным кадром. 0x00=JSON, 0x01=бинарный
+// file-кадр (сырые байты, не JSON). Транспортный слой — codec.ts байто-агностичен.
 function withKind(kind: number, payload: Uint8Array): Uint8Array {
   const out = new Uint8Array(1 + payload.length)
   out[0] = kind; out.set(payload, 1)
@@ -35,6 +36,7 @@ export class DnpTransport implements Transport {
   private cipherRecv: CipherState | null = null
   private token = ''
   private listeners = new Map<string, Array<(d: unknown) => void>>()
+  private binaryCbs: Array<(data: Uint8Array) => void> = []
   private openCbs: Array<() => void> = []
   private closeCbs: Array<() => void> = []
   private errorCbs: Array<() => void> = []
@@ -85,7 +87,14 @@ export class DnpTransport implements Transport {
     if (this.state === 'ready') {
       try {
         const plain = openFrame(this.cipherRecv!, raw)
-        if (plain.length < 1 || plain[0] !== KIND_JSON) { this.fail(); return } // PR-1b: 0x01 file
+        if (plain.length < 1) { this.fail(); return }
+        if (plain[0] === KIND_FILE) {
+          // бинарный file-кадр: снимаем kind-байт, отдаём сырые байты как есть (не JSON)
+          const bin = plain.subarray(1)
+          for (const cb of this.binaryCbs) cb(bin)
+          return
+        }
+        if (plain[0] !== KIND_JSON) { this.fail(); return }
         const f: Frame = decodeFrame(new TextDecoder().decode(plain.subarray(1)))
         for (const cb of this.listeners.get(f.t) ?? []) cb(f.d)
       } catch {
@@ -101,6 +110,7 @@ export class DnpTransport implements Transport {
     const arr = this.listeners.get(type) ?? []
     arr.push(cb); this.listeners.set(type, arr)
   }
+  onBinary(cb: (data: Uint8Array) => void): void { this.binaryCbs.push(cb) }
   onOpen(cb: () => void): void { this.openCbs.push(cb) }
   onClose(cb: () => void): void { this.closeCbs.push(cb) }
   onError(cb: () => void): void { this.errorCbs.push(cb) }

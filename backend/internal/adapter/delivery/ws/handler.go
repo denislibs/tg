@@ -24,12 +24,16 @@ type Handler struct {
 	chatSvc       *usecasechat.Interactor
 	presence      Presence
 	upgrader      websocket.Upgrader
-	dnpServerPriv []byte        // nil → DNP выключен (ветка dnp/2 не активируется)
-	rpc           RPCDispatcher // late-bound (см. SetRPCDispatcher); nil → rpc_req игнорируется
+	dnpServerPriv []byte         // nil → DNP выключен (ветка dnp/2 не активируется)
+	rpc           RPCDispatcher  // late-bound (см. SetRPCDispatcher); nil → rpc_req игнорируется
+	file          FileDispatcher // late-bound (см. SetFileDispatcher); nil → file_req игнорируется
 }
 
 // SetRPCDispatcher связывает диспетчер после сборки роутера (разрыв цикла wsHandler↔router).
 func (h *Handler) SetRPCDispatcher(d RPCDispatcher) { h.rpc = d }
+
+// SetFileDispatcher связывает file-диспетчер после сборки роутера (как SetRPCDispatcher).
+func (h *Handler) SetFileDispatcher(d FileDispatcher) { h.file = d }
 
 func NewHandler(hub *Hub, auth Authenticator, chatSvc *usecasechat.Interactor, presence Presence, allowedOrigins []string, dnpServerPrivHex string) *Handler {
 	allowed := make(map[string]struct{}, len(allowedOrigins))
@@ -85,7 +89,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			_ = wsConn.Close()
 			return
 		}
-		conn := newConn(wsConn, h.hub, h.chatSvc, h.presence, user, deviceID, codec, h.rpc)
+		conn := newConn(wsConn, h.hub, h.chatSvc, h.presence, user, deviceID, codec, h.rpc, h.file)
 		conn.run(r.Context())
 		return
 	}
@@ -103,7 +107,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return // Upgrade already wrote the error
 	}
-	conn := newConn(wsConn, h.hub, h.chatSvc, h.presence, user, deviceID, plainCodec{}, nil)
+	conn := newConn(wsConn, h.hub, h.chatSvc, h.presence, user, deviceID, plainCodec{}, nil, nil)
 	conn.run(r.Context())
 }
 

@@ -26,13 +26,13 @@ func (f *fakeRPC) Dispatch(_ context.Context, user domain.User, _ int64, method,
 
 func TestConnDispatchesRPCReq(t *testing.T) {
 	rpc := &fakeRPC{}
-	c := newConn(nil, nil, nil, nil, domain.User{ID: 77}, 5, plainCodec{}, rpc)
+	c := newConn(nil, nil, nil, nil, domain.User{ID: 77}, 5, plainCodec{}, rpc, nil)
 	// Читаем c.send напрямую (без реального сокета).
 	f := Frame{T: "rpc_req", D: json.RawMessage(`{"req_id":"r1","method":"GET","path":"/dialogs","body":null}`)}
 	c.dispatch(context.Background(), f)
 
 	select {
-	case raw := <-c.send:
+	case f := <-c.send:
 		var out struct {
 			T string `json:"t"`
 			D struct {
@@ -41,8 +41,8 @@ func TestConnDispatchesRPCReq(t *testing.T) {
 				Body   json.RawMessage `json:"body"`
 			} `json:"d"`
 		}
-		if json.Unmarshal(raw, &out) != nil || out.T != "rpc_resp" || out.D.ReqID != "r1" || out.D.Status != 200 {
-			t.Fatalf("bad rpc_resp: %s", raw)
+		if json.Unmarshal(f.data, &out) != nil || out.T != "rpc_resp" || out.D.ReqID != "r1" || out.D.Status != 200 {
+			t.Fatalf("bad rpc_resp: %s", f.data)
 		}
 		if rpc.gotUser != 77 {
 			t.Fatalf("user not passed: %d", rpc.gotUser)
@@ -142,7 +142,7 @@ func TestDNPChannelRPCEndToEnd(t *testing.T) {
 			_ = wsConn.Close()
 			return
 		}
-		c := newConn(wsConn, nil, nil, nil, user, deviceID, codec, rpc)
+		c := newConn(wsConn, nil, nil, nil, user, deviceID, codec, rpc, nil)
 		go c.writePump(context.Background())
 		c.readPump(context.Background())
 	}))

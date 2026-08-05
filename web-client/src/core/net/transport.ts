@@ -8,5 +8,6 @@ export interface Transport {
   onClose(cb: () => void): void
   onError(cb: () => void): void
   on(type: string, cb: (d: unknown) => void): void
+  onBinary(cb: (data: Uint8Array) => void): void
   send(type: string, d?: unknown): void
 }
