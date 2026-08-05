@@ -12,6 +12,7 @@
 // image would get stuck on its placeholder.
 import { useSyncExternalStore } from 'react'
 import { startClient } from '../client/bootstrap'
+import { AppConfig } from '../config/app'
 
 const API_BASE = '/api' // mirrors the worker's RestClient base
 let token = ''
@@ -61,6 +62,14 @@ export const mediaThumbUrl = (id: number): string => mediaContentUrl(id) + '&v=t
 // хелперам не тянуть startClient напрямую.
 export function resolveMediaContentUrl(id: number): string | Promise<string> {
   return hasMediaToken() ? mediaContentUrl(id) : startClient().managers.media.contentUrl(id)
+}
+
+// Как resolveMediaContentUrl, но для стримового медиа (<video>/<audio>): при DNP-ON
+// уводит на /dnp-stream/{id} (SW-206 из Noise-канала). При DNP-off — прежнее
+// поведение (синхронный token-URL в рамках жеста, где можно).
+export function resolveStreamUrl(id: number): string | Promise<string> {
+  if (AppConfig.dnp.enabled) return startClient().managers.media.streamUrl(id)
+  return resolveMediaContentUrl(id)
 }
 
 // Subscribe a component to token (re)primes so it re-renders with a fresh URL.

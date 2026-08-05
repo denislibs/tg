@@ -175,7 +175,7 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
       setMeta(m)
       if (m.hasThumb) void managers.media.thumbUrl(mediaId).then((u) => { if (alive) setImgSrc((s) => s || u) })
     })
-    void managers.media.contentUrl(mediaId).then((u) => {
+    void (video ? managers.media.streamUrl(mediaId) : managers.media.contentUrl(mediaId)).then((u) => {
       if (!alive) return
       setUrl(u)
       if (video) return
