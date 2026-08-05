@@ -7,7 +7,7 @@
 // audioStore — движок его обновляет через set/_sync, UI читает оттуда. Это
 // разводит «железо» (медиа-элемент) и стейт, как в tweb.
 import { decryptMedia } from '../secret/crypto'
-import { mediaContentUrl, primeMediaToken, resolveMediaContentUrl } from '../mediaUrl'
+import { mediaContentUrl, primeMediaToken, resolveStreamUrl } from '../mediaUrl'
 import { useAudioStore, type AudioTrack } from '../../stores/audioStore'
 
 const RATES = [0.5, 1, 1.5, 2]
@@ -83,7 +83,7 @@ async function load(track: AudioTrack, autoplay: boolean) {
   if (track.secret) {
     url = secretUrlCache.get(track.mediaId) ?? await prefetchSecretAudio(track.mediaId, track.secret)
   } else {
-    const resolved = resolveMediaContentUrl(track.mediaId)
+    const resolved = resolveStreamUrl(track.mediaId)
     url = typeof resolved === 'string' ? resolved : await resolved
   }
   a.src = url

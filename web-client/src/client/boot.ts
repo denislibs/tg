@@ -3,6 +3,7 @@
 // нужно до первого кадра — offline-first кэш чатов и активный словарь — и отдаём
 // managers для рендера. Всё, что можно, делается параллельно и до React.
 import { startClient, type Managers } from './bootstrap'
+import { installBridgeHandoff } from './dnpBridgeHandoff'
 import { initPwaInstall } from '../core/pwa'
 import { getInitial, loadLang } from '../i18n'
 import { setBootData } from './bootData'
@@ -30,7 +31,9 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   // Ловим beforeinstallprompt для пункта «Установить приложение» (PWA).
   initPwaInstall()
 
-  const { managers } = startClient()
+  const { managers, ep } = startClient()
+  // DNP-ON: раздаём мост SW↔SharedWorker (self-gated; инертно при DNP-off).
+  installBridgeHandoff(ep)
 
   // #0 — решение о passcode-локе ДО любых RPC/коннекта. passcodeEnabled лежит в
   // localStorage (tg-settings, читается синхронно на создании стора), поэтому лок
