@@ -48,3 +48,30 @@ func TestReadPartForbidden(t *testing.T) {
 		t.Fatalf("want ErrForbidden, got %v", err)
 	}
 }
+
+func TestReadPartRejectsNegativeLimit(t *testing.T) {
+	_, _, err := newTestStreamer(true, []byte("0123456789")).ReadPart(context.Background(), 1, 2, 0, -1)
+	if !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("want ErrInvalid, got %v", err)
+	}
+}
+
+func TestReadPartRejectsNegativeOffset(t *testing.T) {
+	_, _, err := newTestStreamer(true, []byte("0123456789")).ReadPart(context.Background(), 1, 2, -1, 512)
+	if !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("want ErrInvalid, got %v", err)
+	}
+}
+
+func TestReadPartCapsOversizeLimit(t *testing.T) {
+	data, total, err := newTestStreamer(true, []byte("0123456789")).ReadPart(context.Background(), 1, 2, 0, 1<<30)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if total != 10 {
+		t.Fatalf("total = %d", total)
+	}
+	if string(data) != "0123456789" {
+		t.Fatalf("data = %q", data)
+	}
+}
