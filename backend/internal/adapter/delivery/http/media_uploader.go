@@ -2,6 +2,10 @@ package http
 
 import (
 	"context"
+	"errors"
+
+	"github.com/messenger-denis/backend/internal/domain"
+	usecasemedia "github.com/messenger-denis/backend/internal/usecase/media"
 )
 
 // chunkWriter — узкий порт usecase (тестируемость): совпадает с
@@ -18,7 +22,14 @@ func NewMediaUploader(su chunkWriter) *MediaUploader { return &MediaUploader{su:
 
 // WriteChunk инвертирует порядок аргументов ws-контракта (userID, mediaID) в
 // порядок usecase (ownerID=userID, mediaID) — права владельца проверяются
-// внутри su.
+// внутри su. usecasemedia.ErrForbidden — отдельный сентинел (не тот же объект,
+// что domain.ErrForbidden), а ws-слой (dispatchFileUp) матчит именно
+// domain.ErrForbidden, чтобы не зависеть от usecase напрямую — транслируем
+// здесь, на границе адаптера.
 func (u *MediaUploader) WriteChunk(ctx context.Context, userID, mediaID, offset, total int64, data []byte) (bool, error) {
-	return u.su.WriteChunk(ctx, userID, mediaID, offset, total, data)
+	done, err := u.su.WriteChunk(ctx, userID, mediaID, offset, total, data)
+	if errors.Is(err, usecasemedia.ErrForbidden) {
+		return done, domain.ErrForbidden
+	}
+	return done, err
 }
