@@ -14,9 +14,9 @@ func TestPlainCodecIdentity(t *testing.T) {
 	if mt != websocket.TextMessage || string(out) != `{"t":"x"}` {
 		t.Fatalf("encode: %d %q", mt, out)
 	}
-	got, err := c.decode([]byte(`{"t":"x"}`))
-	if err != nil || string(got) != `{"t":"x"}` {
-		t.Fatalf("decode: %v %q", err, got)
+	kind, got, err := c.decode([]byte(`{"t":"x"}`))
+	if err != nil || kind != frameKindJSON || string(got) != `{"t":"x"}` {
+		t.Fatalf("decode: %v %d %q", err, kind, got)
 	}
 }
 
@@ -28,14 +28,14 @@ func TestDNPCodecRoundTripBinary(t *testing.T) {
 		t.Fatalf("dnp must use binary, got %d", mt)
 	}
 	dec := newDNPCodec(nil, recv)
-	got, err := dec.decode(wire)
-	if err != nil || !bytes.Equal(got, []byte(`{"t":"ping"}`)) {
-		t.Fatalf("decode: %v %q", err, got)
+	kind, got, err := dec.decode(wire)
+	if err != nil || kind != frameKindJSON || !bytes.Equal(got, []byte(`{"t":"ping"}`)) {
+		t.Fatalf("decode: %v %d %q", err, kind, got)
 	}
 }
 
-// file-kind (0x01): decode ('только JSON') должен отвергнуть чужой kind, но сам
-// зашифрованный payload должен нести именно 0x01 первым байтом plaintext.
+// file-kind (0x01): зашифрованный payload должен нести именно 0x01 первым
+// байтом plaintext (decode теперь просто возвращает kind как есть).
 func TestDNPCodecEncodeFileKind(t *testing.T) {
 	send, recv := dnpCipherPair(t)
 	enc := newDNPCodec(send, nil)

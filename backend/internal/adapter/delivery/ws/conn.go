@@ -19,14 +19,14 @@ import (
 // frameCodec абстрагирует чтение/запись байтов ОДНОГО кадра. dispatch/hub/pump
 // от шифрования не зависят — DNP вклинивается только здесь.
 type frameCodec interface {
-	decode(raw []byte) ([]byte, error)            // WS-байты → plaintext-кадр (без kind)
-	encode(kind byte, frame []byte) (int, []byte) // (kind, payload) → (websocket msgType, WS-байты)
+	decode(raw []byte) (kind byte, payload []byte, err error) // WS-байты → (kind, plaintext-кадр)
+	encode(kind byte, frame []byte) (int, []byte)             // (kind, payload) → (websocket msgType, WS-байты)
 }
 
 // plainCodec — текущий путь: text-кадры JSON as-is.
 type plainCodec struct{}
 
-func (plainCodec) decode(raw []byte) ([]byte, error) { return raw, nil }
+func (plainCodec) decode(raw []byte) (byte, []byte, error) { return frameKindJSON, raw, nil }
 
 // kind игнорируется: plain-WS шлёт JSON-текст as-is; бинарные file-кадры на
 // plain-путь не попадают.
@@ -47,15 +47,18 @@ const frameKindJSON byte = 0x00
 // AEAD-конверта; codec seal/open остаётся байто-агностичным.
 const frameKindFile byte = 0x01
 
-func (c *dnpCodec) decode(raw []byte) ([]byte, error) {
+// frameKindFileUp — бинарный upload-чанк клиент→сервер (DNP L5 upload).
+const frameKindFileUp byte = 0x02
+
+func (c *dnpCodec) decode(raw []byte) (byte, []byte, error) {
 	plain, err := dnp.DecryptFrame(c.recv, raw)
 	if err != nil {
-		return nil, err
+		return 0, nil, err
 	}
-	if len(plain) < 1 || plain[0] != frameKindJSON {
-		return nil, errors.New("dnp: unexpected frame kind")
+	if len(plain) < 1 {
+		return 0, nil, errors.New("dnp: empty frame")
 	}
-	return plain[1:], nil
+	return plain[0], plain[1:], nil
 }
 
 func (c *dnpCodec) encode(kind byte, frame []byte) (int, []byte) {
@@ -127,19 +130,21 @@ type outFrame struct {
 
 // Conn is one client WebSocket connection. It implements Sink.
 type Conn struct {
-	ws       *websocket.Conn
-	hub      *Hub
-	svc      *usecasechat.Interactor
-	presence Presence
-	user     domain.User
-	userID   int64
-	deviceID int64
-	send     chan outFrame
-	codec    frameCodec
-	rpc      RPCDispatcher  // nil у plain-conn
-	rpcSem   chan struct{}  // ограничение конкурентности rpc-диспатча
-	file     FileDispatcher // nil у plain-conn / до SetFileDispatcher
-	fileSem  chan struct{}  // ограничение конкурентности file-диспатча
+	ws        *websocket.Conn
+	hub       *Hub
+	svc       *usecasechat.Interactor
+	presence  Presence
+	user      domain.User
+	userID    int64
+	deviceID  int64
+	send      chan outFrame
+	codec     frameCodec
+	rpc       RPCDispatcher    // nil у plain-conn
+	rpcSem    chan struct{}    // ограничение конкурентности rpc-диспатча
+	file      FileDispatcher   // nil у plain-conn / до SetFileDispatcher
+	fileSem   chan struct{}    // ограничение конкурентности file-диспатча
+	upload    UploadDispatcher // nil у plain-conn / до SetUploadDispatcher
+	uploadSem chan struct{}    // ограничение конкурентности upload-диспатча (file_up)
 	// активный групповой звонок этого соединения (0 — нет): при обрыве
 	// сокета участника автоматически выводим из звонка.
 	groupCallChat int64
@@ -152,8 +157,12 @@ func newConn(ws *websocket.Conn, hub *Hub, svc *usecasechat.Interactor, presence
 		send: make(chan outFrame, sendBuffer), codec: codec,
 		rpc: rpc, rpcSem: make(chan struct{}, rpcMaxConcurrent),
 		file: file, fileSem: make(chan struct{}, fileMaxConcurrent),
+		uploadSem: make(chan struct{}, uploadMaxConcurrent),
 	}
 }
+
+// SetUploadDispatcher связывает upload-диспетчер после сборки роутера (как SetFileDispatcher).
+func (c *Conn) SetUploadDispatcher(u UploadDispatcher) { c.upload = u }
 
 // Close force-closes the underlying socket (used by the hub on revoke). The
 // read pump then exits and run() cleans up.
@@ -221,7 +230,7 @@ func (c *Conn) readPump(ctx context.Context) {
 			return
 		}
 		_ = c.ws.SetReadDeadline(time.Now().Add(pongWait))
-		plain, err := c.codec.decode(data)
+		kind, plain, err := c.codec.decode(data)
 		if err != nil {
 			// Для зашифрованного канала (DNP) сбой расшифровки означает
 			// рассинхрон Noise-nonce — nonce строго упорядочен и продвигается
@@ -233,12 +242,56 @@ func (c *Conn) readPump(ctx context.Context) {
 			// поэтому эта ветка на plain-путь не влияет.
 			return
 		}
-		var f Frame
-		if json.Unmarshal(plain, &f) != nil {
+		switch kind {
+		case frameKindFileUp:
+			c.dispatchFileUp(ctx, plain)
 			continue
+		case frameKindJSON:
+			var f Frame
+			if json.Unmarshal(plain, &f) != nil {
+				continue
+			}
+			c.dispatch(ctx, f)
+		default:
+			continue // неизвестный kind — дропаем кадр (decrypt удался, nonce цел)
 		}
-		c.dispatch(ctx, f)
 	}
+}
+
+// dispatchFileUp обрабатывает один бинарный чанк upload'а (kind 0x02, по
+// образцу case "file_req"): неблокирующий семафор, горутина, ack/err JSON.
+func (c *Conn) dispatchFileUp(ctx context.Context, payload []byte) {
+	if c.upload == nil {
+		return // plain-conn / до SetUploadDispatcher
+	}
+	reqID, mediaID, index, total, data, ok := parseFileUp(payload)
+	if !ok || mediaID == 0 {
+		return // битый кадр — молча дропаем (req_id мог не распарситься)
+	}
+	if len(data) > maxFileUpChunk {
+		c.Send(fileUpErrFrame(reqID, "error"))
+		return
+	}
+	select {
+	case c.uploadSem <- struct{}{}:
+	default:
+		c.Send(fileUpErrFrame(reqID, "busy"))
+		return
+	}
+	upload, userID := c.upload, c.userID
+	go func() {
+		defer func() { <-c.uploadSem }()
+		defer saferun.Recover("ws.conn.upload")
+		err := upload.SavePart(context.Background(), userID, mediaID, index, total, data)
+		switch {
+		case err == nil:
+			c.Send(fileUpOkFrame(reqID))
+		case errors.Is(err, domain.ErrForbidden):
+			c.Send(fileUpErrFrame(reqID, "forbidden"))
+		default:
+			c.Send(fileUpErrFrame(reqID, "error")) // bad_part и прочее — короткий код
+		}
+	}()
 }
 
 func (c *Conn) dispatch(ctx context.Context, f Frame) {

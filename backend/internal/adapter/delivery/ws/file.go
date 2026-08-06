@@ -19,6 +19,12 @@ type FileDispatcher interface {
 	ReadPart(ctx context.Context, userID, mediaID, offset, limit int64) (data []byte, total int64, err error)
 }
 
+// UploadDispatcher пишет один part медиа (реализуется в http через MediaUploader).
+// Права (владелец медиа) проверяются внутри реализации; ошибка → domain.ErrForbidden.
+type UploadDispatcher interface {
+	SavePart(ctx context.Context, userID, mediaID int64, index, total int, data []byte) error
+}
+
 type fileReqData struct {
 	ReqID   uint32 `json:"req_id"`
 	MediaID int64  `json:"media_id"`
