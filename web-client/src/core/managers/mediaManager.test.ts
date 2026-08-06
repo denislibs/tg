@@ -93,4 +93,29 @@ describe('MediaManager', () => {
     const u = await mgr.streamUrl(42)
     expect(u).toBe('/dnp-stream/42?size=1000&mime=video%2Fmp4&mp4fix=1')
   })
+
+  it('DNP-ON: upload стримит через fileUpload, не putBytes, без finalize', async () => {
+    const putBytes = vi.fn()
+    const uploadStream = vi.fn().mockResolvedValue(undefined)
+    const post = vi.fn(async (path: string) => path === '/media/upload' ? { media_id: 77 } : ({}))
+    const mm = newMediaManager({
+      rest: { post, get: vi.fn(), putBytes, contentUrl: vi.fn(), mediaUrl: vi.fn() } as never,
+      fileUpload: { isReady: () => true, uploadStream } as never,
+    })
+    const blob = new Blob([new Uint8Array(1000)])
+    const id = await mm.upload({ blob, mime: 'video/mp4', size: 1000 })
+    expect(id).toBe(77)
+    expect(uploadStream).toHaveBeenCalledWith(77, expect.any(Blob), 1000, expect.anything(), undefined)
+    expect(putBytes).not.toHaveBeenCalled()
+    // finalize НЕ вызван по каналу-пути
+    expect(post).not.toHaveBeenCalledWith(expect.stringContaining('/finalize'), expect.anything())
+  })
+
+  it('DNP-off (нет fileUpload): upload идёт по HTTP putBytes', async () => {
+    const putBytes = vi.fn().mockResolvedValue(undefined)
+    const post = vi.fn(async () => ({ media_id: 9 }))
+    const mm = newMediaManager({ rest: { post, get: vi.fn(), putBytes, contentUrl: vi.fn(), mediaUrl: vi.fn() } as never })
+    await mm.upload({ blob: new Blob([new Uint8Array(10)]), mime: 'image/png', size: 10 })
+    expect(putBytes).toHaveBeenCalled()
+  })
 })

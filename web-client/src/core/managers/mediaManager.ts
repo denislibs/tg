@@ -1,5 +1,6 @@
 import type { RestClient } from '../net/restClient'
 import type { FileDownload } from '../net/dnp/fileDownload'
+import type { FileUpload } from '../net/dnp/fileUpload'
 
 // Either `bytes` (already in memory, legacy) or `blob` (a File/Blob, preferred for
 // large files — sliced per-chunk so the whole file never sits in memory). Files
@@ -25,12 +26,13 @@ const PART_CONCURRENCY = 3
 const PART_ATTEMPTS = 3
 const RESUME_ROUNDS = 3
 
-export function newMediaManager({ rest, onUploadProgress, fileDownload }: {
+export function newMediaManager({ rest, onUploadProgress, fileDownload, fileUpload }: {
   rest: RestLike
   // Прогресс отгрузки байтов (tweb ProgressivePreloader) — воркер транслирует
   // его вкладкам событием media:upload_progress.
   onUploadProgress?: (id: string, loaded: number, total: number) => void
   fileDownload?: FileDownload // задан только при DNP-ON: скачивание медиа через канал
+  fileUpload?: FileUpload // задан только при DNP-ON: загрузка медиа стримом чанков через канал
 }) {
   const metaCache = new Map<number, MediaMeta>()
   // Активные аплоады по progressId (=clientMsgId) — для отмены с бабла (tweb
@@ -145,8 +147,16 @@ export function newMediaManager({ rest, onUploadProgress, fileDownload }: {
       const ac = a.progressId ? new AbortController() : undefined
       if (ac && a.progressId) uploadAborts.set(a.progressId, ac)
       try {
-        // Large files with a Blob → chunked/resumable path; everything else → single PUT.
-        if (a.blob && a.size > CHUNK_THRESHOLD) {
+        if (fileUpload?.isReady()) {
+          // DNP-ON: стрим всего файла чанками по каналу; бэкенд собирает объект и
+          // авто-процессит на последнем чанке — finalize НЕ нужен. onProgress —
+          // всегда функция (даже без progressId): fileUpload использует её сам
+          // для внутреннего учёта offset/total стрима, не только для UI-прогресса.
+          const blob = a.blob ?? new Blob([a.bytes!])
+          const onProgress = (loaded: number, total: number) => progress?.(loaded, total)
+          await fileUpload.uploadStream(r.media_id, blob, a.size, onProgress, ac?.signal)
+        } else if (a.blob && a.size > CHUNK_THRESHOLD) {
+          // Large files with a Blob → chunked/resumable path; everything else → single PUT.
           await uploadChunked(r.media_id, a.blob, a, progress, ac?.signal)
         } else {
           const bytes = a.bytes ?? await a.blob!.arrayBuffer()
