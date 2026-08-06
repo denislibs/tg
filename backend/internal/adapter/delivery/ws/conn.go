@@ -264,7 +264,7 @@ func (c *Conn) dispatchFileUp(ctx context.Context, payload []byte) {
 	if c.upload == nil {
 		return // plain-conn / до SetUploadDispatcher
 	}
-	reqID, mediaID, index, total, data, ok := parseFileUp(payload)
+	reqID, mediaID, offset, total, data, ok := parseFileUp(payload)
 	if !ok || mediaID == 0 {
 		return // битый кадр — молча дропаем (req_id мог не распарситься)
 	}
@@ -282,7 +282,11 @@ func (c *Conn) dispatchFileUp(ctx context.Context, payload []byte) {
 	go func() {
 		defer func() { <-c.uploadSem }()
 		defer saferun.Recover("ws.conn.upload")
-		err := upload.SavePart(context.Background(), userID, mediaID, index, total, data)
+		// done для ack не используется — клиент знает завершение по последнему
+		// отправленному offset+len==total. Порядок обеспечен stop-and-wait:
+		// клиент шлёт следующий чанк только после file_up_ok, поэтому
+		// конкурентных WriteChunk по одному mediaID нет, offset монотонен.
+		_, err := upload.WriteChunk(context.Background(), userID, mediaID, offset, total, data)
 		switch {
 		case err == nil:
 			c.Send(fileUpOkFrame(reqID))
