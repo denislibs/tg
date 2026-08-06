@@ -24,9 +24,10 @@ type Handler struct {
 	chatSvc       *usecasechat.Interactor
 	presence      Presence
 	upgrader      websocket.Upgrader
-	dnpServerPriv []byte         // nil → DNP выключен (ветка dnp/2 не активируется)
-	rpc           RPCDispatcher  // late-bound (см. SetRPCDispatcher); nil → rpc_req игнорируется
-	file          FileDispatcher // late-bound (см. SetFileDispatcher); nil → file_req игнорируется
+	dnpServerPriv []byte           // nil → DNP выключен (ветка dnp/2 не активируется)
+	rpc           RPCDispatcher    // late-bound (см. SetRPCDispatcher); nil → rpc_req игнорируется
+	file          FileDispatcher   // late-bound (см. SetFileDispatcher); nil → file_req игнорируется
+	upload        UploadDispatcher // late-bound (см. SetUploadDispatcher); nil → file_up игнорируется
 }
 
 // SetRPCDispatcher связывает диспетчер после сборки роутера (разрыв цикла wsHandler↔router).
@@ -34,6 +35,11 @@ func (h *Handler) SetRPCDispatcher(d RPCDispatcher) { h.rpc = d }
 
 // SetFileDispatcher связывает file-диспетчер после сборки роутера (как SetRPCDispatcher).
 func (h *Handler) SetFileDispatcher(d FileDispatcher) { h.file = d }
+
+// SetUploadDispatcher связывает upload-диспетчер после сборки роутера (как SetFileDispatcher).
+// Каждый новый Conn получает его в ServeHTTP ДО conn.run() (happens-before запуска
+// readPump/writePump — гонок с dispatchFileUp нет).
+func (h *Handler) SetUploadDispatcher(d UploadDispatcher) { h.upload = d }
 
 func NewHandler(hub *Hub, auth Authenticator, chatSvc *usecasechat.Interactor, presence Presence, allowedOrigins []string, dnpServerPrivHex string) *Handler {
 	allowed := make(map[string]struct{}, len(allowedOrigins))
@@ -93,6 +99,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		conn := newConn(wsConn, h.hub, h.chatSvc, h.presence, user, deviceID, codec, h.rpc, h.file)
+		conn.SetUploadDispatcher(h.upload)
 		conn.run(r.Context())
 		return
 	}
