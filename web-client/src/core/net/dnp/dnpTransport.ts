@@ -15,6 +15,7 @@ const PROLOGUE = new TextEncoder().encode('dnp/2')
 const SUBPROTOCOL = 'dnp.2'
 const KIND_JSON = 0x00
 const KIND_FILE = 0x01
+const KIND_FILE_UP = 0x02
 
 function hexToBytes(hex: string): Uint8Array {
   const clean = hex.trim()
@@ -127,6 +128,13 @@ export class DnpTransport implements Transport {
   send(t: string, d?: unknown): void {
     if (this.state !== 'ready' || !this.cipherSend) return
     this.ws!.send(sealFrame(this.cipherSend, withKind(KIND_JSON, new TextEncoder().encode(encodeFrame(t, d)))) as BufferSource)
+  }
+
+  // sendBinary — бинарный кадр kind 0x02 (file_up). data — уже готовый payload (28Б-заголовок +
+  // байты чанка), клеим kind и запечатываем. Активен только когда канал ready.
+  sendBinary(data: Uint8Array): void {
+    if (this.state !== 'ready' || !this.cipherSend) return
+    this.ws!.send(sealFrame(this.cipherSend, withKind(KIND_FILE_UP, data)) as BufferSource)
   }
 
   // Умышленное закрытие (connectionManager.stop): глушим onclose, чтобы НЕ переподключаться.

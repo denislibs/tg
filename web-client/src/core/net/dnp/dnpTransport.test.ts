@@ -95,6 +95,31 @@ describe('DnpTransport', () => {
     expect(got).toHaveBeenCalledWith({ user_id: 7, online: false })
   })
 
+  it('sendBinary отправляет sealed-кадр с kind 0x02', () => {
+    const t = new DnpTransport('/ws', [fixture.serverStaticPub], {
+      privateKey: fromHex(fixture.initEphemeralPriv), publicKey: new Uint8Array(0),
+    })
+    t.connect('good-token')
+
+    const ws = FakeWS.instances[0]
+    ws.open()
+    ws.message(frameLen(fromHex(fixture.msg2)))
+    expect(t.isOpen()).toBe(true)
+
+    const before = ws.sent.length
+    t.sendBinary(new Uint8Array([1, 2, 3]))
+    expect(ws.sent.length).toBe(before + 1)
+
+    // расшифровываем исходящие кадры клиента тем же серверным recv-ключом, что и в
+    // хендшейк-тесте выше: сначала auth-кадр (sent[1], nonce 0), затем sendBinary (sent[2], nonce 1) —
+    // CipherState стейтфулен, nonce должен продвигаться последовательно по кадрам клиента.
+    const serverRecv = new CipherState(fromHex(fixture.initSendKey))
+    openFrame(serverRecv, ws.sent[1]) // auth-кадр — продвигает nonce
+    const sentPlain = openFrame(serverRecv, ws.sent[2])
+    expect(sentPlain[0]).toBe(0x02)
+    expect(Array.from(sentPlain.subarray(1))).toEqual([1, 2, 3])
+  })
+
   it('closes (triggering reconnect) on a corrupt server frame', () => {
     const t = new DnpTransport('/ws', [fixture.serverStaticPub], {
       privateKey: fromHex(fixture.initEphemeralPriv), publicKey: new Uint8Array(0),
