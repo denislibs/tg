@@ -8,6 +8,19 @@ import (
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
+// TestGetContentBeforeStreamed — guardrail (design §5, guardrail 2): if a
+// media row exists (CreateUpload) but the stream write has not finished (the
+// object was never PutObject'd into storage), GetContent must error, not
+// return partial/empty bytes. Otherwise a 206 Content-Range response could
+// race the in-flight PUT/multipart-assemble and desync from the real object.
+func TestGetContentBeforeStreamed(t *testing.T) {
+	st := &fakeStorage{} // object "k" intentionally NOT written
+	svc := New(&fakeRepo{m: domain.Media{ID: 42, OwnerID: 7, ObjectKey: "k"}}, st, nil)
+	if _, _, _, err := svc.GetContent(context.Background(), 42); err == nil {
+		t.Fatal("GetContent on an unfinalized object must error, not return bytes")
+	}
+}
+
 // get returns the blob stored under key (nil if absent) — test helper for
 // asserting the object StreamUploads assembled via PutObject.
 func (f *fakeStorage) get(key string) []byte {
