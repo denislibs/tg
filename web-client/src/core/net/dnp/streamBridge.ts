@@ -13,7 +13,10 @@ export interface BridgePort {
 }
 
 interface FilePartReq { t: 'file_part'; reqId: number; mediaId: number; offset: number; limit: number }
-interface FilePartCancel { t: 'file_part_cancel'; reqId: number }
+// Входящий кадр моста (плоская форма): t остаётся string — честная дискриминация по
+// литералам ниже. НЕ Partial<A>&Partial<B>: пересечение схлопнуло бы t в undefined и
+// сравнения `d.t === '…'` потеряли бы компайл-тайм смысл.
+interface BridgeMsg { t?: string; reqId?: number; mediaId?: number; offset?: number; limit?: number }
 
 // attachStreamBridge — вешает обработчик file_part/file_part_cancel на порт: тянет чанк
 // из канала и отвечает file_part_ok (buffer передаётся transferable) либо file_part_err.
@@ -22,7 +25,7 @@ interface FilePartCancel { t: 'file_part_cancel'; reqId: number }
 export function attachStreamBridge(port: BridgePort, src: PartSource): void {
   const inflight = new Map<number, AbortController>()
   port.onmessage = async (ev: MessageEvent) => {
-    const d = ev.data as (Partial<FilePartReq> & Partial<FilePartCancel>) | null
+    const d = ev.data as BridgeMsg | null
     if (!d || typeof d.reqId !== 'number') return
     if (d.t === 'file_part_cancel') {
       const ac = inflight.get(d.reqId)
@@ -42,7 +45,9 @@ export function attachStreamBridge(port: BridgePort, src: PartSource): void {
     } catch (e) {
       port.postMessage({ t: 'file_part_err', reqId, error: e instanceof Error ? e.message : String(e) })
     } finally {
-      inflight.delete(reqId)
+      // Идентичность-guard: не удалять запись, если reqId уже переиспользован новым
+      // file_part (наш ac вытеснён) — иначе снесли бы чужой in-flight controller.
+      if (inflight.get(reqId) === ac) inflight.delete(reqId)
     }
   }
 }

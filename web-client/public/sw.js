@@ -17,7 +17,7 @@ function requestBridgePortIfNeeded(client) {
   if (client) { client.postMessage({ type: 'dnp-request-port' }); return }
   self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (cs) {
     cs.forEach(function (c) { c.postMessage({ type: 'dnp-request-port' }) })
-  })
+  }).catch(function () { /* matchAll может отклониться — не роняем и не шумим в SW-консоль */ })
 }
 // Стартовая инициатива SW (top-level: исполняется при каждом запуске SW, включая рестарт).
 if (dnpBridge) { try { requestBridgePortIfNeeded(null) } catch (_e) {} }
