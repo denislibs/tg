@@ -73,11 +73,10 @@ func TestDispatchFileUpOK(t *testing.T) {
 	up := &fakeUploader{}
 	c := newTestConnWithUpload(t, up, 555) // helper: Conn с userID=555, codec собирающий Send-кадры
 	c.dispatchFileUp(context.Background(), fileUpFrame(9, 42, 3, 10, []byte{1, 2, 3}))
-	waitSend(t, c) // дождаться ack из горутины
+	got := lastSent(t, c) // дождаться ack из горутины (единственное чтение c.send)
 	if up.gotUserID != 555 || up.gotMediaID != 42 || up.gotIndex != 3 || up.gotTotal != 10 || string(up.gotData) != string([]byte{1, 2, 3}) {
 		t.Fatalf("SavePart args mismatch: %+v", up)
 	}
-	got := lastSent(t, c)
 	var f struct {
 		T string
 		D struct {
@@ -94,7 +93,6 @@ func TestDispatchFileUpForbidden(t *testing.T) {
 	up := &fakeUploader{err: domain.ErrForbidden}
 	c := newTestConnWithUpload(t, up, 555)
 	c.dispatchFileUp(context.Background(), fileUpFrame(9, 42, 1, 1, []byte{1}))
-	waitSend(t, c)
 	if got := lastSent(t, c); !containsErr(got, 9, "forbidden") {
 		t.Fatalf("expected file_up_err forbidden, got %s", got)
 	}
@@ -105,7 +103,6 @@ func TestDispatchFileUpTooLarge(t *testing.T) {
 	c := newTestConnWithUpload(t, up, 555)
 	big := make([]byte, maxFileUpChunk+1)
 	c.dispatchFileUp(context.Background(), fileUpFrame(9, 42, 1, 1, big))
-	waitSend(t, c)
 	if up.gotMediaID != 0 { // SavePart не должен вызваться
 		t.Fatal("oversized chunk must be rejected before SavePart")
 	}
