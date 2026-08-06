@@ -19,7 +19,7 @@ func (f *fakeStorage) get(key string) []byte {
 
 func TestStreamUploadAssembles(t *testing.T) {
 	st := &fakeStorage{} // PutObject: io.ReadAll(r) → store by objectKey
-	repo := &fakeRepo{m: domain.Media{ID: 42, OwnerID: 7, ObjectKey: "k", Mime: "video/mp4"}}
+	repo := &fakeRepo{m: domain.Media{ID: 42, OwnerID: 7, ObjectKey: "k", Mime: "video/mp4", Size: 6}}
 	svc := New(repo, st, nil) // processor nil
 	su := NewStreamUploads(svc)
 	ctx := context.Background()
@@ -40,7 +40,7 @@ func TestStreamUploadAssembles(t *testing.T) {
 }
 
 func TestStreamUploadOrder(t *testing.T) {
-	su := NewStreamUploads(New(&fakeRepo{m: domain.Media{ID: 42, OwnerID: 7, ObjectKey: "k"}}, &fakeStorage{}, nil))
+	su := NewStreamUploads(New(&fakeRepo{m: domain.Media{ID: 42, OwnerID: 7, ObjectKey: "k", Size: 9}}, &fakeStorage{}, nil))
 	if _, err := su.WriteChunk(context.Background(), 7, 42, 0, 9, []byte{1, 2, 3}); err != nil {
 		t.Fatal(err)
 	}
@@ -51,9 +51,50 @@ func TestStreamUploadOrder(t *testing.T) {
 }
 
 func TestStreamUploadForbidden(t *testing.T) {
-	su := NewStreamUploads(New(&fakeRepo{m: domain.Media{ID: 42, OwnerID: 7, ObjectKey: "k"}}, &fakeStorage{}, nil))
+	su := NewStreamUploads(New(&fakeRepo{m: domain.Media{ID: 42, OwnerID: 7, ObjectKey: "k", Size: 3}}, &fakeStorage{}, nil))
 	_, err := su.WriteChunk(context.Background(), 999, 42, 0, 3, []byte{1, 2, 3}) // not the owner
 	if err != ErrForbidden {
 		t.Fatalf("expected ErrForbidden, got %v", err)
+	}
+}
+
+// TestStreamUploadForbiddenMidStream — fix-round 1, item 1 (authorization
+// bypass): the session must recheck ownership on EVERY chunk, not only on the
+// first one that creates it. Otherwise another user who knows/guesses the
+// mediaID and the next expected offset can inject bytes into someone else's
+// in-flight upload.
+func TestStreamUploadForbiddenMidStream(t *testing.T) {
+	su := NewStreamUploads(New(&fakeRepo{m: domain.Media{ID: 42, OwnerID: 7, ObjectKey: "k", Size: 9}}, &fakeStorage{}, nil))
+	ctx := context.Background()
+
+	// Legit owner opens the session with the first chunk.
+	if _, err := su.WriteChunk(ctx, 7, 42, 0, 9, []byte{1, 2, 3}); err != nil {
+		t.Fatalf("owner chunk1: %v", err)
+	}
+	// A different user sends the next (correctly-ordered) chunk — must be
+	// rejected even though the offset matches, because the session is not theirs.
+	if _, err := su.WriteChunk(ctx, 999, 42, 3, 9, []byte{4, 5, 6}); err != ErrForbidden {
+		t.Fatalf("expected ErrForbidden for non-owner mid-stream chunk, got %v", err)
+	}
+}
+
+// TestStreamUploadTotalMismatch — fix-round 1, item 2 (resource-cap bypass):
+// total must match the media row's declared Size; a client cannot open a
+// session for a small CreateUpload and then stream an arbitrarily large total.
+func TestStreamUploadTotalMismatch(t *testing.T) {
+	su := NewStreamUploads(New(&fakeRepo{m: domain.Media{ID: 42, OwnerID: 7, ObjectKey: "k", Size: 1024}}, &fakeStorage{}, nil))
+	_, err := su.WriteChunk(context.Background(), 7, 42, 0, 10<<30, []byte{1, 2, 3}) // total=10GiB vs Size=1KiB
+	if err == nil {
+		t.Fatal("total != m.Size must error")
+	}
+}
+
+// TestStreamUploadOverCap — fix-round 1, item 2: a chunk that would write past
+// the declared total must be rejected before it reaches the pipe/storage.
+func TestStreamUploadOverCap(t *testing.T) {
+	su := NewStreamUploads(New(&fakeRepo{m: domain.Media{ID: 42, OwnerID: 7, ObjectKey: "k", Size: 6}}, &fakeStorage{}, nil))
+	_, err := su.WriteChunk(context.Background(), 7, 42, 0, 6, []byte{1, 2, 3, 4, 5, 6, 7, 8}) // 8 bytes > total 6
+	if err == nil {
+		t.Fatal("chunk exceeding total must error")
 	}
 }
