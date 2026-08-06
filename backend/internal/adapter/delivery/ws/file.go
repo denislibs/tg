@@ -19,10 +19,12 @@ type FileDispatcher interface {
 	ReadPart(ctx context.Context, userID, mediaID, offset, limit int64) (data []byte, total int64, err error)
 }
 
-// UploadDispatcher пишет один part медиа (реализуется в http через MediaUploader).
-// Права (владелец медиа) проверяются внутри реализации; ошибка → domain.ErrForbidden.
+// UploadDispatcher пишет один offset-ordered чанк медиа (реализуется в http
+// через MediaUploader → usecase StreamUploads). Права (владелец медиа)
+// проверяются внутри реализации; ошибка → domain.ErrForbidden. done=true —
+// объект собран целиком (чанк с offset+len(data)==total).
 type UploadDispatcher interface {
-	SavePart(ctx context.Context, userID, mediaID int64, index, total int, data []byte) error
+	WriteChunk(ctx context.Context, userID, mediaID, offset, total int64, data []byte) (done bool, err error)
 }
 
 type fileReqData struct {

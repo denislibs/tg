@@ -10,15 +10,15 @@ import (
 )
 
 type fakeUploader struct {
-	gotUserID, gotMediaID int64
-	gotIndex, gotTotal    int
-	gotData               []byte
-	err                   error
+	gotUserID, gotMediaID, gotOffset, gotTotal int64
+	gotData                                    []byte
+	done                                       bool
+	err                                        error
 }
 
-func (f *fakeUploader) SavePart(_ context.Context, userID, mediaID int64, index, total int, data []byte) error {
-	f.gotUserID, f.gotMediaID, f.gotIndex, f.gotTotal, f.gotData = userID, mediaID, index, total, append([]byte(nil), data...)
-	return f.err
+func (f *fakeUploader) WriteChunk(_ context.Context, userID, mediaID, offset, total int64, data []byte) (bool, error) {
+	f.gotUserID, f.gotMediaID, f.gotOffset, f.gotTotal, f.gotData = userID, mediaID, offset, total, append([]byte(nil), data...)
+	return f.done, f.err
 }
 
 // newTestConnWithUpload собирает Conn с userID и заданным UploadDispatcher (по
@@ -36,22 +36,18 @@ func newTestConnWithUpload(t *testing.T, up UploadDispatcher, userID int64) *Con
 	return c
 }
 
-// waitSend ждёт один outFrame из очереди (dispatchFileUp шлёт ack из горутины).
-func waitSend(t *testing.T, c *Conn) outFrame {
+// lastSent ждёт ОДИН outFrame из очереди (dispatchFileUp шлёт ack/err из
+// горутины) — единственное чтение c.send на тест (см. исправление #137: без
+// отдельного waitSend + повторного чтения).
+func lastSent(t *testing.T, c *Conn) []byte {
 	t.Helper()
 	select {
 	case f := <-c.send:
-		return f
+		return f.data
 	case <-time.After(2 * time.Second):
 		t.Fatal("no frame sent")
-		return outFrame{}
+		return nil
 	}
-}
-
-// lastSent — синоним waitSend для читаемости в тестах, ожидающих payload ack/err.
-func lastSent(t *testing.T, c *Conn) []byte {
-	t.Helper()
-	return waitSend(t, c).data
 }
 
 // containsErr парсит JSON file_up_err и сверяет t/req_id/error.
@@ -72,10 +68,10 @@ func containsErr(b []byte, reqID uint32, msg string) bool {
 func TestDispatchFileUpOK(t *testing.T) {
 	up := &fakeUploader{}
 	c := newTestConnWithUpload(t, up, 555) // helper: Conn с userID=555, codec собирающий Send-кадры
-	c.dispatchFileUp(context.Background(), fileUpFrame(9, 42, 3, 10, []byte{1, 2, 3}))
+	c.dispatchFileUp(context.Background(), fileUpFrame(9, 42, 0, 3, []byte{1, 2, 3}))
 	got := lastSent(t, c) // дождаться ack из горутины (единственное чтение c.send)
-	if up.gotUserID != 555 || up.gotMediaID != 42 || up.gotIndex != 3 || up.gotTotal != 10 || string(up.gotData) != string([]byte{1, 2, 3}) {
-		t.Fatalf("SavePart args mismatch: %+v", up)
+	if up.gotUserID != 555 || up.gotMediaID != 42 || up.gotOffset != 0 || up.gotTotal != 3 || string(up.gotData) != string([]byte{1, 2, 3}) {
+		t.Fatalf("WriteChunk args mismatch: %+v", up)
 	}
 	var f struct {
 		T string
@@ -92,7 +88,7 @@ func TestDispatchFileUpOK(t *testing.T) {
 func TestDispatchFileUpForbidden(t *testing.T) {
 	up := &fakeUploader{err: domain.ErrForbidden}
 	c := newTestConnWithUpload(t, up, 555)
-	c.dispatchFileUp(context.Background(), fileUpFrame(9, 42, 1, 1, []byte{1}))
+	c.dispatchFileUp(context.Background(), fileUpFrame(9, 42, 0, 1, []byte{1}))
 	if got := lastSent(t, c); !containsErr(got, 9, "forbidden") {
 		t.Fatalf("expected file_up_err forbidden, got %s", got)
 	}
@@ -102,9 +98,9 @@ func TestDispatchFileUpTooLarge(t *testing.T) {
 	up := &fakeUploader{}
 	c := newTestConnWithUpload(t, up, 555)
 	big := make([]byte, maxFileUpChunk+1)
-	c.dispatchFileUp(context.Background(), fileUpFrame(9, 42, 1, 1, big))
-	if up.gotMediaID != 0 { // SavePart не должен вызваться
-		t.Fatal("oversized chunk must be rejected before SavePart")
+	c.dispatchFileUp(context.Background(), fileUpFrame(9, 42, 0, 1, big))
+	if up.gotMediaID != 0 { // WriteChunk не должен вызваться
+		t.Fatal("oversized chunk must be rejected before WriteChunk")
 	}
 	if got := lastSent(t, c); !containsErr(got, 9, "error") {
 		t.Fatalf("expected file_up_err error, got %s", got)

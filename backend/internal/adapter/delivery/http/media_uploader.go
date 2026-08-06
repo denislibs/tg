@@ -1,25 +1,24 @@
 package http
 
 import (
-	"bytes"
 	"context"
-	"io"
 )
 
-// partSaver — узкий порт usecase (тестируемость): совпадает с
-// usecasemedia.Interactor.SavePart.
-type partSaver interface {
-	SavePart(ctx context.Context, id, ownerID int64, partIndex, total int, r io.Reader, size int64) error
+// chunkWriter — узкий порт usecase (тестируемость): совпадает с
+// usecasemedia.StreamUploads.WriteChunk.
+type chunkWriter interface {
+	WriteChunk(ctx context.Context, ownerID, mediaID, offset, total int64, data []byte) (bool, error)
 }
 
-// MediaUploader реализует ws.UploadDispatcher: пишет part медиа из DNP-канала через
-// usecase SavePart (права владельца — внутри usecase).
-type MediaUploader struct{ svc partSaver }
+// MediaUploader реализует ws.UploadDispatcher: пишет offset-ordered чанк медиа
+// из DNP-канала через usecase StreamUploads (права владельца — внутри usecase).
+type MediaUploader struct{ su chunkWriter }
 
-func NewMediaUploader(svc partSaver) *MediaUploader { return &MediaUploader{svc: svc} }
+func NewMediaUploader(su chunkWriter) *MediaUploader { return &MediaUploader{su: su} }
 
-// SavePart инвертирует порядок аргументов ws-контракта (userID, mediaID) в порядок
-// usecase (id=mediaID, ownerID=userID) — права владельца проверяются внутри svc.
-func (u *MediaUploader) SavePart(ctx context.Context, userID, mediaID int64, index, total int, data []byte) error {
-	return u.svc.SavePart(ctx, mediaID, userID, index, total, bytes.NewReader(data), int64(len(data)))
+// WriteChunk инвертирует порядок аргументов ws-контракта (userID, mediaID) в
+// порядок usecase (ownerID=userID, mediaID) — права владельца проверяются
+// внутри su.
+func (u *MediaUploader) WriteChunk(ctx context.Context, userID, mediaID, offset, total int64, data []byte) (bool, error) {
+	return u.su.WriteChunk(ctx, userID, mediaID, offset, total, data)
 }
