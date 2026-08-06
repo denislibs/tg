@@ -327,6 +327,7 @@ func registerServer(p serverParams) {
 	if h, ok := wsHandler.(*ws.Handler); ok {
 		h.SetRPCDispatcher(httptransport.NewRouterRPC(router))
 		h.SetFileDispatcher(httptransport.NewFileStreamer(p.ChatUC, mediaUC))
+		h.SetUploadDispatcher(httptransport.NewMediaUploader(mediaUC))
 	}
 
 	srv := &http.Server{
