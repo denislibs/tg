@@ -150,8 +150,8 @@ export function newMediaManager({ rest, onUploadProgress, fileDownload, fileUplo
         if (fileUpload?.isReady()) {
           // DNP-ON: стрим всего файла чанками по каналу; бэкенд собирает объект и
           // авто-процессит на последнем чанке — finalize НЕ нужен. onProgress —
-          // всегда функция (даже без progressId): fileUpload использует её сам
-          // для внутреннего учёта offset/total стрима, не только для UI-прогресса.
+          // тонкая обёртка над опциональным progress (форвардит, если задан);
+          // семантика та же, что при прямой передаче progress.
           const blob = a.blob ?? new Blob([a.bytes!])
           const onProgress = (loaded: number, total: number) => progress?.(loaded, total)
           await fileUpload.uploadStream(r.media_id, blob, a.size, onProgress, ac?.signal)
