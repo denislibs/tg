@@ -10,4 +10,5 @@ export interface Transport {
   on(type: string, cb: (d: unknown) => void): void
   onBinary(cb: (data: Uint8Array) => void): void
   send(type: string, d?: unknown): void
+  sendBinary(data: Uint8Array): void
 }

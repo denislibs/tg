@@ -39,6 +39,7 @@ export class WsClient implements Transport {
   isOpen(): boolean { return this.ws?.readyState === 1 }
 
   send(t: string, d?: unknown): void { this.ws?.send(encodeFrame(t, d)) }
+  sendBinary(): void { /* DNP-only: plain-WS не шлёт бинарные file_up-кадры */ }
 
   close(): void {
     if (this.ws) { this.ws.onclose = null; this.ws.close(); this.ws = null }
