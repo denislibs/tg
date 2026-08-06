@@ -21,7 +21,11 @@
     }
 
     return {
+      hasPort: function () { return !!port },
       setPort: function (p) {
+        if (port && port !== p && typeof port.close === 'function') {
+          try { port.close() } catch (_e) { /* порт мог уже умереть */ }
+        }
         port = p
         port.onmessage = onMessage
       },
@@ -32,6 +36,8 @@
           if (!port) { reject(new Error('bridge: no port')); return }
           var timer = setTimeout(function () {
             pending.delete(reqId)
+            // 3b: просим SharedWorker снять in-flight file_req (intra-bridge, не backend-кадр).
+            try { port.postMessage({ t: 'file_part_cancel', reqId: reqId }) } catch (_e) {}
             reject(new Error('bridge timeout'))
           }, BRIDGE_TIMEOUT_MS)
           pending.set(reqId, { resolve: resolve, reject: reject, timer: timer })

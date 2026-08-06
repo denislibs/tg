@@ -48,11 +48,32 @@ export function newFileDownload(transport: Transport) {
   })
 
   // requestPart возвращает {data, total}: один чанк (до limit байт с offset).
-  function requestPart(mediaId: number, offset: number, limit: number): Promise<{ data: Uint8Array; total: number }> {
+  // signal — опциональная отмена in-flight запроса (для стриминга через мост SW):
+  // по abort корреляция снимается, промис реджектится 'aborted', поздний file_chunk
+  // на этот req_id молча игнорируется (pending.get вернёт undefined).
+  function requestPart(mediaId: number, offset: number, limit: number, signal?: AbortSignal): Promise<{ data: Uint8Array; total: number }> {
     const reqId = (seq = (seq + 1) >>> 0) // u32-счётчик с обёрткой
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { pending.delete(reqId); reject(new Error('file timeout')) }, FILE_TIMEOUT_MS)
-      pending.set(reqId, { resolve: (v) => resolve({ data: v.data, total: v.total }), reject, timer })
+      if (signal?.aborted) { reject(new Error('aborted')); return }
+      const onAbort = () => {
+        clearTimeout(timer)
+        pending.delete(reqId)
+        reject(new Error('aborted'))
+      }
+      // Таймаут — тоже штатное завершение: снимает abort-листенер, как и
+      // resolve/reject из pending-обёртки ниже. Иначе при переданном signal
+      // onAbort остаётся навешанным на signal до GC (утечка листенера).
+      const timer = setTimeout(() => {
+        signal?.removeEventListener('abort', onAbort)
+        pending.delete(reqId)
+        reject(new Error('file timeout'))
+      }, FILE_TIMEOUT_MS)
+      signal?.addEventListener('abort', onAbort, { once: true })
+      pending.set(reqId, {
+        resolve: (v) => { signal?.removeEventListener('abort', onAbort); resolve({ data: v.data, total: v.total }) },
+        reject: (e) => { signal?.removeEventListener('abort', onAbort); reject(e) },
+        timer,
+      })
       transport.send('file_req', { req_id: reqId, media_id: mediaId, offset, limit })
     })
   }
@@ -60,14 +81,15 @@ export function newFileDownload(transport: Transport) {
   return {
     isReady(): boolean { return transport.isOpen() },
     // Публичный примитив: один чанк (байты). Обёртка над requestPart без total.
-    async fetchFilePart(mediaId: number, offset: number, limit: number): Promise<Uint8Array> {
-      const { data } = await requestPart(mediaId, offset, limit)
+    // signal — отмена in-flight file_req (используется мостом при таймауте/уходе клиента).
+    async fetchFilePart(mediaId: number, offset: number, limit: number, signal?: AbortSignal): Promise<Uint8Array> {
+      const { data } = await requestPart(mediaId, offset, limit, signal)
       return data
     },
     // Как fetchFilePart, но с total (полный размер файла) — нужно 206-стримингу
     // (Content-Range) через SW↔SharedWorker мост.
-    async fetchFilePartWithTotal(mediaId: number, offset: number, limit: number): Promise<{ bytes: Uint8Array; total: number }> {
-      const { data, total } = await requestPart(mediaId, offset, limit)
+    async fetchFilePartWithTotal(mediaId: number, offset: number, limit: number, signal?: AbortSignal): Promise<{ bytes: Uint8Array; total: number }> {
+      const { data, total } = await requestPart(mediaId, offset, limit, signal)
       return { bytes: data, total }
     },
     // downloadMedia тянет весь файл чанками CHUNK_SIZE и собирает Blob.

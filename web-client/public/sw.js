@@ -9,6 +9,19 @@ try {
   dnpBridge = self.createDnpBridge()
 } catch (_e) { /* нет моста — DNP-стриминг недоступен, остальное работает */ }
 
+/* Переустановка моста (§ handoff-robustness, эталон tweb 'startup check'):
+ * если у dnpBridge нет порта — просим активные окна переотдать. Вызывается на старте SW
+ * (в т.ч. после рестарта — порт in-memory теряется) и на dnp-ping от окна. */
+function requestBridgePortIfNeeded(client) {
+  if (!dnpBridge || dnpBridge.hasPort()) return
+  if (client) { client.postMessage({ type: 'dnp-request-port' }); return }
+  self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (cs) {
+    cs.forEach(function (c) { c.postMessage({ type: 'dnp-request-port' }) })
+  }).catch(function () { /* matchAll может отклониться — не роняем и не шумим в SW-консоль */ })
+}
+// Стартовая инициатива SW (top-level: исполняется при каждом запуске SW, включая рестарт).
+if (dnpBridge) { try { requestBridgePortIfNeeded(null) } catch (_e) {} }
+
 /* 206-стриминг (§ PR-2b): грузим защищённо тем же try/catch — битый sw-stream не
  * должен ронять install SW (push/кэш важнее DNP-стриминга). Хендлер живёт лишь
  * когда есть мост (dnpBridge). */
@@ -167,6 +180,10 @@ self.addEventListener('message', (event) => {
   }
   if (d && d.type === 'dnp-bridge-port' && dnpBridge && event.ports && event.ports[0]) {
     dnpBridge.setPort(event.ports[0])
+    return
+  }
+  if (d && d.type === 'dnp-ping') {
+    requestBridgePortIfNeeded(event.source)
     return
   }
 })
