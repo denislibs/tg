@@ -108,7 +108,7 @@ function ResultPreview({ row, query }: { row: SearchResultRow; query: string }) 
   const { icon, label } = byType[kind] ?? { icon: 'document' as IconName, label: fileName || 'Файл' }
   return (
     <span className={s.mediaPreview}>
-      <TgIcon name={icon} size={16} color="var(--tg-textFaint)" style={{ flexShrink: 0 }} />
+      <TgIcon name={icon} size={16} color="var(--secondary-text-color)" style={{ flexShrink: 0 }} />
       <span className={s.mediaLabel}>
         {splitMatch(label, query).map((p, j) => (
           <span key={j} className={p.m ? s.match : undefined}>{p.t}</span>
@@ -140,7 +140,7 @@ export default function ChatSearchCard({ chat, avatarSrc, search }: {
       <div className={s.searchInputRow}>
         <Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={avatarSrc} size="sm" />
         <div className={s.searchField}>
-          <TgIcon name="search" size={22} color="var(--tg-textFaint)" />
+          <TgIcon name="search" size={22} color="var(--secondary-text-color)" />
           <input
             className={s.searchInput}
             autoFocus
@@ -149,12 +149,12 @@ export default function ChatSearchCard({ chat, avatarSrc, search }: {
             onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); onSearchClose() } }}
             placeholder={t('Search')}
           />
-          <IconButton size="small" onClick={() => { if (query) onSearchClear(); else onSearchClose() }} color="var(--tg-textFaint)">
+          <IconButton size="small" onClick={() => { if (query) onSearchClear(); else onSearchClose() }} color="var(--secondary-text-color)">
             <TgIcon name="close" size={20} />
           </IconButton>
         </div>
         {/* jump-to-date: кнопка-календарь открывает нативный date-picker */}
-        <IconButton color="var(--tg-textSecondary)" onClick={openDatePicker} title={t('Jump to Date')}>
+        <IconButton color="var(--secondary-text-color)" onClick={openDatePicker} title={t('Jump to Date')}>
           <TgIcon name="calendar" />
         </IconButton>
         <input ref={dateInputRef} type="date" className={s.dateInput} onChange={(e) => onDatePick(e.target.value)} />
@@ -200,7 +200,7 @@ export default function ChatSearchCard({ chat, avatarSrc, search }: {
             <div className={s.divider} />
             <div className={s.resultsScroll}>
               {searchResults.length === 0 ? (
-                <Text size={15} color="var(--tg-textSecondary)" className={s.noResults}>
+                <Text size={15} color="var(--secondary-text-color)" className={s.noResults}>
                   {query.trim() ? (
                     <>
                       {t('There were no results for')}{' '}
@@ -222,8 +222,8 @@ export default function ChatSearchCard({ chat, avatarSrc, search }: {
                     <Avatar background={r.avatar} text={r.sender.charAt(0)} size="sm" />
                     <div className={s.resultBody}>
                       <div className={s.resultTop}>
-                        <Text noWrap size={14.5} weight={600} color="var(--tg-textPrimary)" className={s.resultName}>{r.sender}</Text>
-                        <Text size={12} color="var(--tg-textFaint)" className={s.resultTime}>{r.time}</Text>
+                        <Text noWrap size={14.5} weight={600} color="var(--primary-text-color)" className={s.resultName}>{r.sender}</Text>
+                        <Text size={12} color="var(--secondary-text-color)" className={s.resultTime}>{r.time}</Text>
                       </div>
                       <div className={s.resultPreview}>
                         <ResultPreview row={r} query={query} />

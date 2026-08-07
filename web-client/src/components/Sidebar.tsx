@@ -157,7 +157,7 @@ export default function Sidebar({
         {passcodeEnabled && !searching && (
           <IconButton
             onClick={() => useLockStore.getState().lock()}
-            color="var(--tg-textSecondary)"
+            color="var(--secondary-text-color)"
             aria-label={t('Lock the app')}
             title={t('Lock the app')}
           >
@@ -195,10 +195,10 @@ export default function Sidebar({
               transition={{ duration: 0.22, ease: EASE }}
             >
               <div className={s.archiveHeader}>
-                <IconButton onClick={() => setArchiveOpen(false)} color="var(--tg-textSecondary)" aria-label={t('Back')}>
+                <IconButton onClick={() => setArchiveOpen(false)} color="var(--secondary-text-color)" aria-label={t('Back')}>
                   <TgIcon name="back" size={24} />
                 </IconButton>
-                <Text size={18} weight={600} color="var(--tg-textPrimary)">
+                <Text size={18} weight={600} color="var(--primary-text-color)">
                   {t('Archived Chats')}
                 </Text>
               </div>
@@ -208,7 +208,7 @@ export default function Sidebar({
                 ))}
                 {archivedChats.length === 0 && (
                   <div style={{ padding: '3rem 1rem', textAlign: 'center' }}>
-                    <Text size={15} color="var(--tg-textSecondary)">{t('No archived chats')}</Text>
+                    <Text size={15} color="var(--secondary-text-color)">{t('No archived chats')}</Text>
                   </div>
                 )}
               </div>

@@ -609,7 +609,7 @@ function Composer({
         {/* Платные сообщения (Telegram paid messages): плашка о стоимости для не-админа. */}
         {(chargeStars ?? 0) > 0 && (
           <div className={s.paidBar}>
-            <Text size={13.5} color="var(--tg-textSecondary)">
+            <Text size={13.5} color="var(--secondary-text-color)">
               {t('Each message costs')} {chargeStars} ⭐
             </Text>
           </div>
@@ -630,7 +630,7 @@ function Composer({
                   <Text size={14} weight={600} color={reply.color}>
                     {t('Reply to')} {reply.snapshotName ?? reply.name}
                   </Text>
-                  <Text noWrap size={14} color="var(--tg-textSecondary)">
+                  <Text noWrap size={14} color="var(--secondary-text-color)">
                     {reply.quote ? (
                       <>
                         <TgIcon name="quote_outline" size={13} style={{ verticalAlign: '-1px', marginRight: 3, opacity: 0.7 }} />
@@ -639,7 +639,7 @@ function Composer({
                     ) : reply.snapshotText ?? reply.text}
                   </Text>
                 </div>
-                <IconButton size="small" onClick={onCancelReply} color="var(--tg-textFaint)">
+                <IconButton size="small" onClick={onCancelReply} color="var(--secondary-text-color)">
                   <TgIcon name="close" size={20} />
                 </IconButton>
               </div>
@@ -658,12 +658,12 @@ function Composer({
               style={{ overflow: 'hidden' }}
             >
               <div className={s.bar}>
-                <TgIcon name="edit" size={22} color="var(--tg-accent)" />
-                <div className={s.barBody} style={{ background: 'color-mix(in srgb, var(--tg-accent) 12%, transparent)', boxShadow: 'inset 3px 0 0 var(--tg-accent)' }}>
-                  <Text size={14} weight={600} color="var(--tg-accent)">{t('Edit message')}</Text>
-                  <Text noWrap size={14} color="var(--tg-textSecondary)">{editing.text}</Text>
+                <TgIcon name="edit" size={22} color="var(--primary-color)" />
+                <div className={s.barBody} style={{ background: 'color-mix(in srgb, var(--primary-color) 12%, transparent)', boxShadow: 'inset 3px 0 0 var(--primary-color)' }}>
+                  <Text size={14} weight={600} color="var(--primary-color)">{t('Edit message')}</Text>
+                  <Text noWrap size={14} color="var(--secondary-text-color)">{editing.text}</Text>
                 </div>
-                <IconButton size="small" onClick={() => { onCancelEdit(); clearEditor() }} color="var(--tg-textFaint)">
+                <IconButton size="small" onClick={() => { onCancelEdit(); clearEditor() }} color="var(--secondary-text-color)">
                   <TgIcon name="close" size={20} />
                 </IconButton>
               </div>
@@ -684,21 +684,21 @@ function Composer({
               style={{ overflow: 'hidden' }}
             >
               <div className={s.bar}>
-                <TgIcon name="forward" size={22} color="var(--tg-accent)" />
+                <TgIcon name="forward" size={22} color="var(--primary-color)" />
                 <div
                   ref={fwdBarRef}
                   className={s.barBody}
-                  style={{ background: 'color-mix(in srgb, var(--tg-accent) 12%, transparent)', boxShadow: 'inset 3px 0 0 var(--tg-accent)', cursor: 'pointer' }}
+                  style={{ background: 'color-mix(in srgb, var(--primary-color) 12%, transparent)', boxShadow: 'inset 3px 0 0 var(--primary-color)', cursor: 'pointer' }}
                   onClick={openFwdMenu}
                 >
-                  <Text noWrap size={14} weight={600} color="var(--tg-accent)">
+                  <Text noWrap size={14} weight={600} color="var(--primary-color)">
                     {forward.count === 1
                       ? (forward.dropAuthor ? t('Forward Message (sender name hidden)') : t('Forward Message'))
                       : `${t('Forward Messages')} (${forward.count})`}
                   </Text>
-                  <Text noWrap size={14} color="var(--tg-textSecondary)">{forward.text}</Text>
+                  <Text noWrap size={14} color="var(--secondary-text-color)">{forward.text}</Text>
                 </div>
-                <IconButton size="small" onClick={onCancelForward} color="var(--tg-textFaint)">
+                <IconButton size="small" onClick={onCancelForward} color="var(--secondary-text-color)">
                   <TgIcon name="close" size={20} />
                 </IconButton>
               </div>
@@ -725,7 +725,7 @@ function Composer({
                     transition={{ duration: 1.1, repeat: Infinity, ease: 'easeInOut' }}
                   />
                 )}
-                <Text size={16} color="var(--tg-textPrimary)" style={{ fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                <Text size={16} color="var(--primary-text-color)" style={{ fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
                   {fmtDur(rec.secs)}
                 </Text>
                 {/* live input-level waveform — fills the full pill width
@@ -743,7 +743,7 @@ function Composer({
                 </div>
               </div>
               {/* pause / resume toggle */}
-              <IconButton onClick={rec.togglePause} color="var(--tg-accent)" style={{ width: 40, height: 40, flexShrink: 0 }}>
+              <IconButton onClick={rec.togglePause} color="var(--primary-color)" style={{ width: 40, height: 40, flexShrink: 0 }}>
                 {rec.paused ? <TgIcon name="microphone_filled" /> : <TgIcon name="pause" />}
               </IconButton>
             </>
@@ -763,7 +763,7 @@ function Composer({
                 onClick={(e) => canSendMedia
                   ? onOpenAttach(e.currentTarget.getBoundingClientRect())
                   : uiEvents.emit('ui:toast', t('Media is not allowed in this group'))}
-                color={canSendMedia ? 'var(--tg-textSecondary)' : 'var(--tg-textFaint)'}
+                color={canSendMedia ? 'var(--secondary-text-color)' : 'var(--secondary-text-color)'}
                 style={{ width: 40, height: 40 }}
               >
                 <TgIcon name="attach" />
@@ -776,7 +776,7 @@ function Composer({
                     const r = e.currentTarget.getBoundingClientRect()
                     setTtlMenu({ left: r.left, bottom: window.innerHeight - r.top + 8 })
                   }}
-                  color={secretTtl != null ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'}
+                  color={secretTtl != null ? 'var(--primary-color)' : 'var(--secondary-text-color)'}
                   style={{ width: 40, height: 40, position: 'relative' }}
                 >
                   <TgIcon name="timer" />
@@ -785,7 +785,7 @@ function Composer({
                       style={{
                         position: 'absolute', bottom: 1, right: 0,
                         fontSize: 9, fontWeight: 700, lineHeight: 1,
-                        color: 'var(--tg-accent)', pointerEvents: 'none',
+                        color: 'var(--primary-color)', pointerEvents: 'none',
                       }}
                     >
                       {ttlShort(secretTtl)}
@@ -795,7 +795,7 @@ function Composer({
               )}
               {/* Календарик при наличии запланированных (tweb btnScheduled) */}
               {(scheduledCount ?? 0) > 0 && onOpenScheduled && (
-                <IconButton onClick={onOpenScheduled} color="var(--tg-accent)" style={{ width: 40, height: 40 }}>
+                <IconButton onClick={onOpenScheduled} color="var(--primary-color)" style={{ width: 40, height: 40 }}>
                   <TgIcon name="scheduled" />
                 </IconButton>
               )}
@@ -807,7 +807,7 @@ function Composer({
                   <Text
                     aria-hidden
                     size={16}
-                    color="var(--tg-textFaint)"
+                    color="var(--secondary-text-color)"
                     className={s.placeholder}
                   >
                     {t('Message')}
@@ -834,7 +834,7 @@ function Composer({
                 <Text
                   title={msgCount > 1 ? `Будет отправлено сообщений: ${msgCount}` : undefined}
                   size={12}
-                  color={msgCount > 1 ? 'var(--tg-accent)' : 'var(--tg-textFaint)'}
+                  color={msgCount > 1 ? 'var(--primary-color)' : 'var(--secondary-text-color)'}
                   className={s.counter}
                 >
                   {msgCount > 1 ? `${msgCount} 💬` : MAX_LEN - len}
@@ -842,7 +842,7 @@ function Composer({
               )}
               <span ref={emojiDd.buttonRef} {...emojiDd.buttonProps} style={{ display: 'inline-flex' }}>
                 <IconButton
-                  color={emojiDd.open ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'}
+                  color={emojiDd.open ? 'var(--primary-color)' : 'var(--secondary-text-color)'}
                   style={{ width: 40, height: 40 }}
                 >
                   <TgIcon name="smile" />
@@ -972,24 +972,24 @@ function Composer({
         style={fwdMenuPos ? { left: fwdMenuPos.left, bottom: fwdMenuPos.bottom, transformOrigin: 'bottom left' } : undefined}
       >
         <MenuItem
-          icon={<TgIcon name="check" size={20} color={forward && !forward.dropAuthor ? 'var(--tg-accent)' : 'transparent'} />}
+          icon={<TgIcon name="check" size={20} color={forward && !forward.dropAuthor ? 'var(--primary-color)' : 'transparent'} />}
           label={t('Show sender name')}
           onClick={() => { onForwardOption({ dropAuthor: false }); setFwdMenuOpen(false) }}
         />
         <MenuItem
-          icon={<TgIcon name="check" size={20} color={forward && forward.dropAuthor ? 'var(--tg-accent)' : 'transparent'} />}
+          icon={<TgIcon name="check" size={20} color={forward && forward.dropAuthor ? 'var(--primary-color)' : 'transparent'} />}
           label={t('Hide sender name')}
           onClick={() => { onForwardOption({ dropAuthor: true }); setFwdMenuOpen(false) }}
         />
         {forward?.hasCaption && (
           <>
             <MenuItem
-              icon={<TgIcon name="check" size={20} color={forward && !forward.dropCaption ? 'var(--tg-accent)' : 'transparent'} />}
+              icon={<TgIcon name="check" size={20} color={forward && !forward.dropCaption ? 'var(--primary-color)' : 'transparent'} />}
               label={t('Show caption')}
               onClick={() => { onForwardOption({ dropCaption: false }); setFwdMenuOpen(false) }}
             />
             <MenuItem
-              icon={<TgIcon name="check" size={20} color={forward && forward.dropCaption ? 'var(--tg-accent)' : 'transparent'} />}
+              icon={<TgIcon name="check" size={20} color={forward && forward.dropCaption ? 'var(--primary-color)' : 'transparent'} />}
               label={t('Hide caption')}
               onClick={() => { onForwardOption({ dropCaption: true }); setFwdMenuOpen(false) }}
             />
@@ -1048,7 +1048,7 @@ function Composer({
                 key={o.label}
                 icon={<TgIcon name="timer" size={20} />}
                 label={o.secs == null ? t('Off') : o.label}
-                right={secretTtl === o.secs ? <TgIcon name="check" size={18} color="var(--tg-accent)" /> : undefined}
+                right={secretTtl === o.secs ? <TgIcon name="check" size={18} color="var(--primary-color)" /> : undefined}
                 onClick={() => { setSecretTtl(o.secs); setTtlMenu(null) }}
               />
             ))}

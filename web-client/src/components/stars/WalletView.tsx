@@ -76,7 +76,7 @@ export default function WalletView({ onBack }: { onBack: () => void }) {
             </div>
           ))}
         </div>
-        <Text size={13} color="var(--tg-textSecondary)" style={{ display: 'block', textAlign: 'center', padding: '10px 4px 2px' }}>
+        <Text size={13} color="var(--secondary-text-color)" style={{ display: 'block', textAlign: 'center', padding: '10px 4px 2px' }}>
           {t('Demo: top-up adds Stars instantly, no real payment.')}
         </Text>
       </Section>
@@ -90,13 +90,13 @@ export default function WalletView({ onBack }: { onBack: () => void }) {
             return (
               <div key={tx.id} className={w.txRow}>
                 <div className={w.txIcon}>
-                  <TgIcon name={m.icon} size={22} color="var(--tg-textSecondary)" />
+                  <TgIcon name={m.icon} size={22} color="var(--secondary-text-color)" />
                 </div>
                 <div className={w.txBody}>
-                  <Text noWrap size={15.5} color="var(--tg-textPrimary)">{m.label}</Text>
-                  <Text noWrap size={13} color="var(--tg-textSecondary)">{friendlyMsgTime(tx.date, lang)}</Text>
+                  <Text noWrap size={15.5} color="var(--primary-text-color)">{m.label}</Text>
+                  <Text noWrap size={13} color="var(--secondary-text-color)">{friendlyMsgTime(tx.date, lang)}</Text>
                 </div>
-                <div className={w.txAmount} style={{ color: positive ? 'var(--tg-green)' : 'var(--tg-textPrimary)' }}>
+                <div className={w.txAmount} style={{ color: positive ? 'var(--green-color)' : 'var(--primary-text-color)' }}>
                   {positive ? '+' : '−'}{Math.abs(tx.amount)}
                   <StarIcon size={15} />
                 </div>

@@ -24,11 +24,11 @@
 
   @media (hover: hover) {
     &:hover {
-      background: var(--tg-hover);
+      background: var(--light-secondary-text-color);
     }
   }
   &[data-picked] {
-    background: var(--tg-hover);
-    outline: 2px solid var(--tg-accent);
+    background: var(--light-secondary-text-color);
+    outline: 2px solid var(--primary-color);
   }
 }

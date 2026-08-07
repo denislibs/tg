@@ -23,11 +23,11 @@ function OverviewCard({ value, label }: { value: string; label: string }) {
         minWidth: 0,
         padding: '10px 12px',
         borderRadius: 12,
-        background: 'var(--tg-sidebarBg)',
+        background: 'var(--surface-color)',
       }}
     >
-      <Text size={19} weight={600} color="var(--tg-accent)">{value}</Text>
-      <Text noWrap size={13} color="var(--tg-textSecondary)">{label}</Text>
+      <Text size={19} weight={600} color="var(--primary-color)">{value}</Text>
+      <Text noWrap size={13} color="var(--secondary-text-color)">{label}</Text>
     </div>
   )
 }
@@ -41,7 +41,7 @@ function ChartSection({
 }) {
   return (
     <div className={s.section}>
-      <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionTitle}>
+      <Text size={14} weight={600} color="var(--primary-color)" className={s.sectionTitle}>
         {title}
       </Text>
       <div className={s.cardPlain} style={{ padding: '12px 12px 8px' }}>
@@ -71,10 +71,10 @@ export default function ChannelStats({
   return (
     <motion.div variants={slideInRight} initial="initial" animate="animate" exit="exit" className={s.rights}>
       <div className={s.rightsHeader}>
-        <IconButton onClick={onBack} color="var(--tg-textSecondary)">
+        <IconButton onClick={onBack} color="var(--secondary-text-color)">
           <TgIcon name="back" />
         </IconButton>
-        <Text noWrap size={19} weight={600} color="var(--tg-textPrimary)" style={{ flex: 1 }}>
+        <Text noWrap size={19} weight={600} color="var(--primary-text-color)" style={{ flex: 1 }}>
           {t('Statistics')}
         </Text>
       </div>
@@ -82,12 +82,12 @@ export default function ChannelStats({
       <div className={s.body}>
         {loading && (
           <div style={{ padding: 24, textAlign: 'center' }}>
-            <Text size={15} color="var(--tg-textSecondary)">{t('Loading statistics…')}</Text>
+            <Text size={15} color="var(--secondary-text-color)">{t('Loading statistics…')}</Text>
           </div>
         )}
         {error && !loading && (
           <div style={{ padding: 24, textAlign: 'center' }}>
-            <Text size={15} color="var(--tg-textSecondary)">{t('Statistics are not available.')}</Text>
+            <Text size={15} color="var(--secondary-text-color)">{t('Statistics are not available.')}</Text>
           </div>
         )}
 
@@ -95,7 +95,7 @@ export default function ChannelStats({
           <>
             {/* Overview — карточки-числа */}
             <div className={s.section} style={{ marginTop: 8 }}>
-              <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionTitle}>
+              <Text size={14} weight={600} color="var(--primary-color)" className={s.sectionTitle}>
                 {t('Overview')}
               </Text>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -115,7 +115,7 @@ export default function ChannelStats({
 
             {stats.viewsByDay.length > 0 && (
               <ChartSection title={t('Views by day')}>
-                <StatChart points={stats.viewsByDay} variant="line" color="var(--tg-green, #4dcd5e)" />
+                <StatChart points={stats.viewsByDay} variant="line" color="var(--green-color, #4dcd5e)" />
               </ChartSection>
             )}
 
@@ -127,7 +127,7 @@ export default function ChannelStats({
 
             {stats.topPosts.length > 0 && (
               <div className={s.section}>
-                <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionTitle}>
+                <Text size={14} weight={600} color="var(--primary-color)" className={s.sectionTitle}>
                   {t('Top posts')}
                 </Text>
                 <div className={s.cardPlain}>
@@ -137,14 +137,14 @@ export default function ChannelStats({
                       style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 16px' }}
                     >
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <Text noWrap size={15} color="var(--tg-textPrimary)">
+                        <Text noWrap size={15} color="var(--primary-text-color)">
                           {p.text.trim() || t('Media post')}
                         </Text>
-                        <Text noWrap size={13} color="var(--tg-textSecondary)">
+                        <Text noWrap size={13} color="var(--secondary-text-color)">
                           {new Date(p.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
                         </Text>
                       </div>
-                      <Text size={14} color="var(--tg-textSecondary)" style={{ flexShrink: 0 }}>
+                      <Text size={14} color="var(--secondary-text-color)" style={{ flexShrink: 0 }}>
                         {nf.format(p.views)} 👁
                       </Text>
                     </div>

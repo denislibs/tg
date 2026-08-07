@@ -254,11 +254,11 @@ export default function AuthFlow({ onComplete, onToggleMode }: { onComplete: () 
   const phoneStep = (
     <>
       {Logo}
-      <Text size={26} weight={600} color="var(--tg-textPrimary)" style={{ textAlign: 'center' }}>
+      <Text size={26} weight={600} color="var(--primary-text-color)" style={{ textAlign: 'center' }}>
         Telegram
       </Text>
       <Text
-        size={15} color="var(--tg-textSecondary)"
+        size={15} color="var(--secondary-text-color)"
         style={{ textAlign: 'center', marginTop: '8px', marginBottom: '24px', lineHeight: 1.5 }}
       >
         {t('Please confirm your country code and enter your phone number.')}
@@ -272,9 +272,9 @@ export default function AuthFlow({ onComplete, onToggleMode }: { onComplete: () 
         >
           <div className={s.countryLabel}>
             <span className={s.flag}>{country.flag}</span>
-            <Text size={16} color="var(--tg-textPrimary)">{country.name}</Text>
+            <Text size={16} color="var(--primary-text-color)">{country.name}</Text>
           </div>
-          <TgIcon name="down" color="var(--tg-textFaint)" />
+          <TgIcon name="down" color="var(--secondary-text-color)" />
         </div>
         <AnimatePresence>
           {countryOpen && (
@@ -296,8 +296,8 @@ export default function AuthFlow({ onComplete, onToggleMode }: { onComplete: () 
                   className={s.dropdownItem}
                 >
                   <span className={s.flagSmall}>{c.flag}</span>
-                  <Text size={15} color="var(--tg-textPrimary)" style={{ flex: 1 }}>{c.name}</Text>
-                  <Text size={15} color="var(--tg-textFaint)">{c.code}</Text>
+                  <Text size={15} color="var(--primary-text-color)" style={{ flex: 1 }}>{c.name}</Text>
+                  <Text size={15} color="var(--secondary-text-color)">{c.code}</Text>
                 </div>
               ))}
             </motion.div>
@@ -307,7 +307,7 @@ export default function AuthFlow({ onComplete, onToggleMode }: { onComplete: () 
 
       {/* phone field */}
       <div className={s.fieldWrap}>
-        <Text size={16} color="var(--tg-textPrimary)" style={{ marginRight: '8px' }}>{country.code}</Text>
+        <Text size={16} color="var(--primary-text-color)" style={{ marginRight: '8px' }}>{country.code}</Text>
         <input
           autoFocus
           className={s.phoneInput}
@@ -323,7 +323,7 @@ export default function AuthFlow({ onComplete, onToggleMode }: { onComplete: () 
         <div className={classNames(s.keepBox, keep ? s.keepBoxOn : '')}>
           {keep && <TgIcon name="check" size={16} color="#fff" />}
         </div>
-        <Text size={15} color="var(--tg-textPrimary)">{t('Keep me signed in')}</Text>
+        <Text size={15} color="var(--primary-text-color)">{t('Keep me signed in')}</Text>
       </div>
 
       <div
@@ -358,7 +358,7 @@ export default function AuthFlow({ onComplete, onToggleMode }: { onComplete: () 
 
   const qrStep = (
     <>
-      <Text size={24} weight={600} color="var(--tg-textPrimary)" style={{ textAlign: 'center', marginBottom: '24px' }}>
+      <Text size={24} weight={600} color="var(--primary-text-color)" style={{ textAlign: 'center', marginBottom: '24px' }}>
         {t('Log in to Telegram by QR Code')}
       </Text>
 
@@ -389,7 +389,7 @@ export default function AuthFlow({ onComplete, onToggleMode }: { onComplete: () 
         ].map((line, i) => (
           <div key={i} className={s.qrStepRow}>
             <div className={s.qrStepNum}>{i + 1}</div>
-            <Text size={14.5} color="var(--tg-textSecondary)">{line}</Text>
+            <Text size={14.5} color="var(--secondary-text-color)">{line}</Text>
           </div>
         ))}
       </div>
@@ -403,11 +403,11 @@ export default function AuthFlow({ onComplete, onToggleMode }: { onComplete: () 
   const codeStep = (
     <>
       {Logo}
-      <Text size={22} weight={600} color="var(--tg-textPrimary)" style={{ textAlign: 'center' }}>
+      <Text size={22} weight={600} color="var(--primary-text-color)" style={{ textAlign: 'center' }}>
         {country.code} {phone}
       </Text>
       <Text
-        size={15} color="var(--tg-textSecondary)"
+        size={15} color="var(--secondary-text-color)"
         style={{ textAlign: 'center', marginTop: '8px', marginBottom: '24px', lineHeight: 1.5 }}
       >
         {t('We have sent you a message with the code.')}
@@ -444,11 +444,11 @@ export default function AuthFlow({ onComplete, onToggleMode }: { onComplete: () 
   const passwordStep = (
     <>
       <PasswordMonkey peeking={showPw} />
-      <Text size={22} weight={600} color="var(--tg-textPrimary)" style={{ textAlign: 'center', marginTop: '8px' }}>
+      <Text size={22} weight={600} color="var(--primary-text-color)" style={{ textAlign: 'center', marginTop: '8px' }}>
         {t('Enter Your Password')}
       </Text>
       <Text
-        size={15} color="var(--tg-textSecondary)"
+        size={15} color="var(--secondary-text-color)"
         style={{ textAlign: 'center', marginTop: '8px', marginBottom: '24px', lineHeight: 1.5 }}
       >
         {t('Your account is protected with an additional password.')}
@@ -464,7 +464,7 @@ export default function AuthFlow({ onComplete, onToggleMode }: { onComplete: () 
           onKeyDown={(e) => { if (e.key === 'Enter') void submitPassword() }}
           placeholder={pwHint ? `${t('Password')} (${pwHint})` : t('Password')}
         />
-        <IconButton size="small" color="var(--tg-textFaint)" onClick={() => setShowPw((v) => !v)} aria-label="toggle password">
+        <IconButton size="small" color="var(--secondary-text-color)" onClick={() => setShowPw((v) => !v)} aria-label="toggle password">
           <TgIcon name={showPw ? 'eye2' : 'eye1'} size={22} />
         </IconButton>
       </div>

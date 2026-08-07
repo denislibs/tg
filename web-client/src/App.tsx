@@ -99,7 +99,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
       }
     : null
 
-  const { shellThemeVariant, shellThemeStyle } = useShellTheme({ selected, openThread, threadChat })
+  const { shellThemeVariant } = useShellTheme({ selected, openThread, threadChat })
 
   const chatArea =
     openThread && threadChat ? (
@@ -118,9 +118,11 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     )
 
   return (
-    <div id="app-shell" className={s.root} style={shellThemeStyle}>
+    <div id="app-shell" className={s.root}>
       {/* Animated 4-point gradient wallpaper + doodle pattern (tweb-style). Обои темы
-          активного чата поднимаются сюда, чтобы весь shell был в теме. */}
+          активного чата поднимаются сюда, чтобы весь shell был в теме (осознанное
+          отклонение от tweb-скоупа для цветов — см. useShellTheme). Цвета темы чата
+          при этом остаются локально в колонке (ConversationView). */}
       <ChatBackground themeColors={shellThemeVariant?.gradient} />
 
       <ShellLayout narrow={narrow} selectedId={selectedId} renderSidebar={renderSidebar} chatArea={chatArea} />
@@ -197,7 +199,7 @@ export default function App() {
             zIndex: 5000,
             padding: '9px 18px',
             borderRadius: 20,
-            background: 'var(--tg-accent)',
+            background: 'var(--primary-color)',
             color: '#fff',
             fontSize: 14,
             fontWeight: 600,

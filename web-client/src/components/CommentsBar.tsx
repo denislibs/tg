@@ -28,10 +28,10 @@ export default function CommentsBar({ onOpen, count }: { onOpen?: () => void; co
           </div>
         ))}
       </div>
-      <Text size={15} weight={700} color="var(--tg-accent)" className={s.label}>
+      <Text size={15} weight={700} color="var(--primary-color)" className={s.label}>
         {commentsLabel(count ?? 0, lang, t)}
       </Text>
-      <TgIcon name="next" size={24} color="var(--tg-accent)" className={s.next} />
+      <TgIcon name="next" size={24} color="var(--primary-color)" className={s.next} />
     </div>
   )
 }

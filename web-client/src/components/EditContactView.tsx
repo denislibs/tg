@@ -93,21 +93,21 @@ export default function EditContactView({
           ? { initial: { x: '100%' }, animate: { x: '0%' }, transition: { duration: DUR.in, ease: EASE } }
           : {})}
         className={`${add.panel} ${narrow ? add.panelNarrow : add.panelWide}`}
-        style={{ background: 'var(--tg-sectionBackdrop)' }}
+        style={{ background: 'var(--background-color)' }}
       >
         <div className={add.header}>
-          <IconButton onClick={onClose} color="var(--tg-textSecondary)">
+          <IconButton onClick={onClose} color="var(--secondary-text-color)">
             <TgIcon name="back" />
           </IconButton>
-          <Text size={19} weight={600} color="var(--tg-textPrimary)">Изменить контакт</Text>
+          <Text size={19} weight={600} color="var(--primary-text-color)">Изменить контакт</Text>
         </div>
 
         <div className={add.body}>
           {/* Аватар + исходное имя */}
           <div className={add.avatarBlock}>
             <Avatar background={chat.avatar} text={chat.avatarText ?? chat.name[0]} src={avatarSrc} size="profile" />
-            <Text size={22} weight={600} color="var(--tg-textPrimary)" style={{ marginTop: '16px' }}>{chat.name}</Text>
-            <Text size={14} color="var(--tg-textSecondary)" style={{ marginTop: '2px' }}>исходное имя</Text>
+            <Text size={22} weight={600} color="var(--primary-text-color)" style={{ marginTop: '16px' }}>{chat.name}</Text>
+            <Text size={14} color="var(--secondary-text-color)" style={{ marginTop: '2px' }}>исходное имя</Text>
           </div>
 
           {/* Секция 1 (как в tweb editContact): поля + уведомления + дата рождения */}
@@ -119,12 +119,12 @@ export default function EditContactView({
               <div className={add.noteWrap}>
                 <Input label="Заметка" value={note} onChange={setNote} wrapClassName={add.field} />
                 <span className={add.noteIcon}>
-                  <TgIcon name="smile" color="var(--tg-textFaint)" />
+                  <TgIcon name="smile" color="var(--secondary-text-color)" />
                 </span>
               </div>
             </div>
             <Row
-              icon={<TgIcon name="unmute" size={24} color="var(--tg-textSecondary)" />}
+              icon={<TgIcon name="unmute" size={24} color="var(--secondary-text-color)" />}
               label="Уведомления"
               translate={false}
               toggle
@@ -132,7 +132,7 @@ export default function EditContactView({
               onClick={toggleNotifications}
             />
             <Row
-              icon={<TgIcon name="gift" size={24} color="var(--tg-textSecondary)" />}
+              icon={<TgIcon name="gift" size={24} color="var(--secondary-text-color)" />}
               label="Предложить дату рождения"
               translate={false}
               onClick={() => setBirthdayOpen(true)}
@@ -142,14 +142,14 @@ export default function EditContactView({
           {/* Секция 2: фото контакта (пояснение — footer секции, как caption в tweb) */}
           <Section footer="Вы можете предложить контакту установить новую фотографию профиля — или изменить его фотографию только у себя.">
             <Row
-              icon={<TgIcon name="cameraadd" size={24} color="var(--tg-accent)" />}
+              icon={<TgIcon name="cameraadd" size={24} color="var(--primary-color)" />}
               label={hasPersonal ? `Изменить фото для ${displayFirst}` : `Установить фото для ${displayFirst}`}
               translate={false}
               accent
               onClick={() => { if (!busyPhoto) pickPhoto('set') }}
             />
             <Row
-              icon={<TgIcon name="edit" size={24} color="var(--tg-accent)" />}
+              icon={<TgIcon name="edit" size={24} color="var(--primary-color)" />}
               label={`Предложить фото ${displayFirst}`}
               translate={false}
               accent

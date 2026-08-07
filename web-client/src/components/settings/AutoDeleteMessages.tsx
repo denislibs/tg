@@ -88,10 +88,10 @@ export default function AutoDeleteMessages({ onBack }: { onBack: () => void }) {
               onClick={() => { save(sec); setCustomOpen(false) }}
               style={{ padding: '12px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12 }}
             >
-              <Text size={15.5} color="var(--tg-textPrimary)" style={{ flex: 1 }}>
+              <Text size={15.5} color="var(--primary-text-color)" style={{ flex: 1 }}>
                 {autoDeleteLabel(sec, t)}
               </Text>
-              {period === sec && <TgIcon name="check" size={20} color="var(--tg-accent)" />}
+              {period === sec && <TgIcon name="check" size={20} color="var(--primary-color)" />}
             </div>
           ))}
         </div>

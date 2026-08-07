@@ -111,9 +111,9 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
   // рендерит div, поэтому цвета задаём через active, а не CSS-селектором span).
   const renderRow = (topic: TopicRow, dimmed = false) => {
     const active = topic.rootMsgId === activeRootMsgId
-    const titleColor = active ? '#fff' : 'var(--tg-textPrimary)'
-    const subColor = active ? 'rgba(255,255,255,0.9)' : 'var(--tg-textSecondary)'
-    const metaColor = active ? 'rgba(255,255,255,0.85)' : 'var(--tg-textFaint)'
+    const titleColor = active ? '#fff' : 'var(--primary-text-color)'
+    const subColor = active ? 'rgba(255,255,255,0.9)' : 'var(--secondary-text-color)'
+    const metaColor = active ? 'rgba(255,255,255,0.85)' : 'var(--secondary-text-color)'
     return (
       <div
         key={topic.id}
@@ -137,7 +137,7 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
           {topic.closed ? (
             <TgIcon name="lock" size={16} color={metaColor} style={{ flexShrink: 0 }} />
           ) : topic.lastOut ? (
-            <TgIcon name="checks" size={18} color={active ? '#fff' : 'var(--tg-accent)'} style={{ flexShrink: 0 }} />
+            <TgIcon name="checks" size={18} color={active ? '#fff' : 'var(--primary-color)'} style={{ flexShrink: 0 }} />
           ) : null}
           <Text size={12} color={metaColor} style={{ flexShrink: 0 }}>{fmtWhen(topic.lastAt)}</Text>
         </div>
@@ -161,13 +161,13 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
   return (
     <div className={s.root}>
       <div className={s.header}>
-        <IconButton onClick={onClose} color="var(--tg-textSecondary)" aria-label={t('Close')}>
+        <IconButton onClick={onClose} color="var(--secondary-text-color)" aria-label={t('Close')}>
           <TgIcon name="close" size={24} />
         </IconButton>
         {query === null ? (
           <div className={s.headerBody}>
-            <Text noWrap size={16.5} weight={600} color="var(--tg-textPrimary)">{chatName}</Text>
-            <Text size={13} color="var(--tg-textSecondary)">
+            <Text noWrap size={16.5} weight={600} color="var(--primary-text-color)">{chatName}</Text>
+            <Text size={13} color="var(--secondary-text-color)">
               {topics ? `${topics.length} ${t('topics')}` : t('Topics')}
             </Text>
           </div>
@@ -182,7 +182,7 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
         )}
         <IconButton
           onClick={() => setQuery((q) => (q === null ? '' : null))}
-          color="var(--tg-textFaint)"
+          color="var(--secondary-text-color)"
           aria-label={t('Search')}
         >
           <TgIcon name={query === null ? 'search' : 'close'} size={24} />
@@ -192,7 +192,7 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
             const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
             setMenuAnchor({ top: r.bottom + 4, right: window.innerWidth - r.right })
           }}
-          color="var(--tg-textFaint)"
+          color="var(--secondary-text-color)"
           aria-label={t('Menu')}
         >
           <TgIcon name="more" size={24} />
@@ -265,7 +265,7 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
 
       <div className={s.list}>
         {topics != null && all.length === 0 && (
-          <Text size={14.5} color="var(--tg-textSecondary)" style={{ padding: '3rem 1rem', textAlign: 'center', display: 'block' }}>
+          <Text size={14.5} color="var(--secondary-text-color)" style={{ padding: '3rem 1rem', textAlign: 'center', display: 'block' }}>
             {t('No topics')}
           </Text>
         )}
@@ -274,8 +274,8 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
         {hidden.length > 0 && (
           <>
             <div className={s.hiddenHeader} onClick={() => setShowHidden((v) => !v)}>
-              <TgIcon name={showHidden ? 'down' : 'next'} size={16} color="var(--tg-textFaint)" />
-              <Text size={13} weight={600} color="var(--tg-textSecondary)">
+              <TgIcon name={showHidden ? 'down' : 'next'} size={16} color="var(--secondary-text-color)" />
+              <Text size={13} weight={600} color="var(--secondary-text-color)">
                 {t('Hidden Topics')} ({hidden.length})
               </Text>
             </div>

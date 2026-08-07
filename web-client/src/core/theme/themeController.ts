@@ -25,7 +25,17 @@
 
 import type { AppColor, AppColorName, ThemePresetName } from '../../config/themePresets'
 import { appColorMap, presetToColorMap } from '../../config/themePresets'
-import { hexToRgb, hslaToRgba, mixColors, rgbaToHexa, rgbaToHsla } from '../../shared/lib/color'
+import {
+  changeColorAccent,
+  getAccentColor,
+  getAverageColor,
+  hexToRgb,
+  hslaToRgba,
+  mixColors,
+  rgbaToHexa,
+  rgbaToHsla,
+  rgbToHsv,
+} from '../../shared/lib/color'
 import type { ColorRgb } from '../../shared/lib/color'
 
 // tweb scss/variables.scss:6 `$hover-alpha: .08;` = дефолт `lightenAlpha` в
@@ -166,19 +176,23 @@ function buildAppColorVars(name: AppColorName, hex: string, flags: AppColor, par
   return vars
 }
 
-function buildThemeCss(preset: ThemePresetName): { css: string; isNight: boolean } {
-  const colorMap = presetToColorMap(preset)
-  const isNight = DARK_PRESETS.has(preset)
+// Общая часть buildThemeCss (Task 3) и deriveChatThemeVars (Task 1, accent-путь
+// tweb applyTheme) — прогоняет ВСЕ AppColorName через buildAppColorVars для
+// заданного colorMap (в котором вызывающий код уже применил свои overrides —
+// сдвиг primary под акцент, пересчёт out-bubble под message_colors и т.п.).
+// Имена переменных — БЕЗ ведущего "--" (добавляется на границе конкретного
+// потребителя: buildThemeCss — при сборке CSS-текста, deriveChatThemeVars —
+// при возврате наружу).
+function buildColorMapVars(colorMap: Record<AppColorName, string>, isNight: boolean): CssVar[] {
   const surfaceRgb = hexToRgb(colorMap['surface-color'])
-
-  const declarations: string[] = []
+  const declarations: CssVar[] = []
 
   for (const name of Object.keys(appColorMap) as AppColorName[]) {
     let hex = colorMap[name]
 
-    // CARRY из Task 2 / tweb themeController.ts:889: в тёмных темах
-    // message-out-primary-color всегда белый (текст/иконки исходящих бабблов
-    // поверх сплошной заливки), а не производный от акцента.
+    // tweb themeController.ts:889: в тёмных темах message-out-primary-color
+    // всегда белый (текст/иконки исходящих бабблов поверх сплошной заливки),
+    // а не производный от акцента/message_colors.
     if (isNight && name === 'message-out-primary-color') {
       hex = '#ffffff'
     }
@@ -190,11 +204,17 @@ function buildThemeCss(preset: ThemePresetName): { css: string; isNight: boolean
       mixColorRgb: override.mixColorRgb ?? surfaceRgb,
     }
 
-    const vars = buildAppColorVars(name, hex, appColorMap[name], params)
-    for (const [varName, value] of vars) {
-      declarations.push(`--${varName}:${value};`)
-    }
+    declarations.push(...buildAppColorVars(name, hex, appColorMap[name], params))
   }
+
+  return declarations
+}
+
+function buildThemeCss(preset: ThemePresetName): { css: string; isNight: boolean } {
+  const colorMap = presetToColorMap(preset)
+  const isNight = DARK_PRESETS.has(preset)
+
+  const declarations = buildColorMapVars(colorMap, isNight).map(([varName, value]) => `--${varName}:${value};`)
 
   return { css: `:root{${declarations.join('')}}`, isNight }
 }
@@ -218,4 +238,113 @@ export function setTheme(preset: ThemePresetName): void {
 
 export function getCurrentPreset(): ThemePresetName | null {
   return currentPreset
+}
+
+// Порт accent-пути tweb `applyTheme` (themeController.ts:739-898) для темы
+// ОТДЕЛЬНОГО ЧАТА (в отличие от buildThemeCss/setTheme выше, которые
+// покрывают только 4 встроенных пресета без пользовательского акцента —
+// см. шапку файла). Здесь `accentColor`/`messageColors` приходят из
+// per-чатовой темы (theme_settings.accent_color / message_colors в tweb,
+// уже сконвертированные в hex — см. бриф Task 1).
+//
+// Переопределяются три токена, 1:1 как в applyTheme:
+//   - primary-color               — themeController.ts:792-798 (changeColorAccent)
+//   - saved-color                 — themeController.ts:811-816 (тот же newAccentHex,
+//     что и primary-color; отдельного пересчёта акцента для saved-color в tweb нет —
+//     lightenAlpha:0.64/mixColor:[255,255,255] уже обеспечены существующим
+//     getColorOverride('saved-color', ...))
+//   - message-out-background/primary-color — themeController.ts:833-891
+// Остальные токены остаются literal-хексами пресета — как и в buildThemeCss (см.
+// шапку файла: "у нас это дефолтный/безакцентный случай").
+// Не портировано: tinted iOS-деривация (themeController.ts:748-831) и
+// outbox_accent_color (themeController.ts:871, 887-891) — оба out-of-scope
+// Task 1 (см. бриф).
+export function deriveChatThemeVars(
+  preset: ThemePresetName,
+  accentColor: string,
+  messageColors: string[],
+): Array<[string, string]> {
+  const baseColorMap = presetToColorMap(preset)
+  const isNight = DARK_PRESETS.has(preset)
+  const colorMap: Record<AppColorName, string> = { ...baseColorMap }
+
+  // primary + saved-color: tweb :792-798, :811-816 — оба берут один и тот же
+  // newAccentHex = changeColorAccent(rgbToHsv(base), rgbToHsv(accent), baseRgb,
+  // !isNight). В tweb `color`-параметр — это тот же baseColors['primary-color'],
+  // что и `baseHsv` — поэтому diffH-guard внутри changeColorAccent всегда 0 и не
+  // срабатывает (диффузия хвоста применяется только когда base и color различны).
+  const basePrimaryRgb = hexToRgb(baseColorMap['primary-color'])
+  const newPrimaryRgb = changeColorAccent(
+    rgbToHsv(...basePrimaryRgb),
+    rgbToHsv(...hexToRgb(accentColor)),
+    basePrimaryRgb,
+    !isNight,
+  )
+  const newAccentHex = rgbaToHexa(newPrimaryRgb)
+  colorMap['primary-color'] = newAccentHex
+  colorMap['saved-color'] = newAccentHex
+
+  // out-bubble: tweb :833-891. Пустой messageColors — как early-return в tweb
+  // (`if (!themeSettings.message_colors?.length) return`) — оставляем базовые
+  // literal-хексы пресета для message-out-*.
+  if (messageColors.length > 0) {
+    const surfaceRgb = hexToRgb(baseColorMap['surface-color'])
+    const messageLightenAlpha = isNight ? 1 : 0.12
+    const baseMessageColor = hexToRgb(baseColorMap['message-out-primary-color'])
+    const baseHsv = rgbToHsv(...baseMessageColor)
+    const baseMessageOutBackgroundColor = mixColors(baseMessageColor, surfaceRgb, messageLightenAlpha)
+
+    // tweb :845-858 — первый цвет как есть; для >1 цветов — последовательное
+    // усреднение (getAverageColor) и затем getAccentColor относительно базы.
+    let myMessagesAccent = hexToRgb(messageColors[0])
+    for (const nextColor of messageColors.slice(1)) {
+      myMessagesAccent = getAverageColor(myMessagesAccent, hexToRgb(nextColor))
+    }
+    if (messageColors.length > 1) {
+      myMessagesAccent = getAccentColor(baseHsv, baseMessageOutBackgroundColor, myMessagesAccent)
+    }
+
+    // tweb :873-879 — mixColors + saturation-boost (+63) для non-night.
+    let newMessageOutBackgroundColor = mixColors(myMessagesAccent, surfaceRgb, messageLightenAlpha)
+    if (!isNight) {
+      const hsla = rgbaToHsla(...newMessageOutBackgroundColor)
+      const boostedS = Math.min(hsla.s + 63, 100)
+      newMessageOutBackgroundColor = hslaToRgba(hsla.h, boostedS, hsla.l, hsla.a).slice(0, 3) as ColorRgb
+    }
+
+    colorMap['message-out-background-color'] = rgbaToHexa(newMessageOutBackgroundColor)
+    // tweb :887-889 — night принудительно белый (учтено ниже в buildColorMapVars
+    // для ЛЮБОГО colorMap), для day/light — посчитанный акцент (outbox_accent_color
+    // не портирован, см. комментарий выше функции).
+    colorMap['message-out-primary-color'] = isNight ? '#ffffff' : rgbaToHexa(myMessagesAccent)
+  }
+
+  const baseVars = buildColorMapVars(colorMap, isNight)
+
+  return baseVars.map(([name, value]) => [`--${name}`, value])
+}
+
+/** Пишет vars из deriveChatThemeVars инлайном на element (--var через style.setProperty). */
+export function applyChatTheme(
+  element: HTMLElement,
+  preset: ThemePresetName,
+  accentColor: string,
+  messageColors: string[],
+): void {
+  for (const [name, value] of deriveChatThemeVars(preset, accentColor, messageColors)) {
+    element.style.setProperty(name, value)
+  }
+}
+
+// Набор имён переменных детерминирован (зависит только от appColorMap, не от
+// конкретных hex/preset/messageColors) — переиспользуем buildColorMapVars с
+// произвольным валидным colorMap только чтобы перечислить имена.
+const CHAT_THEME_BASE_VARS = buildColorMapVars(presetToColorMap('day'), false)
+const CHAT_THEME_VAR_NAMES = CHAT_THEME_BASE_VARS.map(([name]) => `--${name}`)
+
+/** Снимает inline-переменные, записанные applyChatTheme (сброс на глобальную тему). */
+export function clearChatTheme(element: HTMLElement): void {
+  for (const name of CHAT_THEME_VAR_NAMES) {
+    element.style.removeProperty(name)
+  }
 }

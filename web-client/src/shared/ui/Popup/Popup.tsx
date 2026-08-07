@@ -60,10 +60,10 @@ export default function Popup({ open, title, onClose, onExitComplete, headerRigh
             transition={{ duration: DUR, ease: EASE }}
           >
             <div className={s.header}>
-              <IconButton size="small" onClick={onClose} color="var(--tg-textSecondary)">
+              <IconButton size="small" onClick={onClose} color="var(--secondary-text-color)">
                 <TgIcon name="close" size={22} />
               </IconButton>
-              <Text size={19} weight={600} color="var(--tg-textPrimary)" className={s.title}>{title}</Text>
+              <Text size={19} weight={600} color="var(--primary-text-color)" className={s.title}>{title}</Text>
               {headerRight}
             </div>
             <div className={s.body}>{children}</div>

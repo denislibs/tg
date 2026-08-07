@@ -49,8 +49,8 @@
 }
 
 .checked {
-  background: var(--tg-accent);
-  border-color: var(--tg-accent);
+  background: var(--primary-color);
+  border-color: var(--primary-color);
 }
 
 .body {
@@ -106,10 +106,10 @@
   font-size: 15px;
   color: var(--b-text);
   padding: 6px 2px;
-  border-bottom: 1px solid var(--tg-hover);
+  border-bottom: 1px solid var(--light-secondary-text-color);
 
   &:focus {
-    border-bottom-color: var(--tg-accent);
+    border-bottom-color: var(--primary-color);
   }
 
   &::placeholder {

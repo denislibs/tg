@@ -1,5 +1,5 @@
 // ConversationView — корневая раскладка чата (окно сообщений + хедер + композер).
-// Порт разметки из MUI sx. Цвета — токены --tg-*. Динамика (maskImage/offset/
+// Порт разметки из MUI sx. Цвета — CSS-переменные темы. Динамика (maskImage/offset/
 // paddings по playerOffset) — инлайном.
 
 // внешний ряд: чат + (info-панель справа)
@@ -107,7 +107,7 @@
     transition: background 0.2s;
   }
   &:hover::-webkit-scrollbar-thumb {
-    background: var(--tg-textFaint);
+    background: var(--secondary-text-color);
   }
 }
 
@@ -178,14 +178,14 @@
   padding: 8px 12px;
   border: none;
   border-radius: 10px;
-  background: var(--tg-sidebarBg);
-  color: var(--tg-textPrimary);
+  background: var(--surface-color);
+  color: var(--primary-text-color);
   font-size: 15px;
   font-weight: 500;
   cursor: pointer;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 
-  &:hover { background: var(--tg-hover); }
+  &:hover { background: var(--light-secondary-text-color); }
   &:active { transform: scale(0.99); }
 }
 
@@ -201,11 +201,11 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: var(--tg-bubble);
+  background: var(--surface-color);
   border-radius: 14px;
   padding: 12px 0;
   cursor: pointer;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
 }
 
 // квадратная кнопка «подарок»
@@ -213,7 +213,7 @@
   width: 52px;
   height: 52px;
   border-radius: 14px;
-  background: var(--tg-bubble);
+  background: var(--surface-color);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -244,7 +244,7 @@
   padding: 4px 12px 4px 4px;
   height: var(--chat-plate-height);
   border-radius: 24px;
-  background: var(--tg-bubble);
+  background: var(--surface-color);
   box-shadow: var(--tg-plateShadow);
 }
 .threadHeaderBody {
@@ -264,7 +264,7 @@
   gap: 8px;
   height: var(--chat-plate-height);
   border-radius: 24px;
-  background: var(--tg-bubble);
+  background: var(--surface-color);
   box-shadow: var(--tg-plateShadow);
 }
 
@@ -279,7 +279,7 @@
   min-height: var(--chat-plate-height);
   padding: 12px 16px;
   border-radius: 24px;
-  background: var(--tg-bubble);
+  background: var(--surface-color);
   box-shadow: var(--tg-plateShadow);
 }
 .secretBarBtns {
@@ -296,14 +296,14 @@
   padding: 8px 16px;
   border: none;
   border-radius: 12px;
-  background: var(--tg-sidebarBg);
+  background: var(--surface-color);
   cursor: pointer;
 
-  &:hover { background: var(--tg-hover); }
+  &:hover { background: var(--light-secondary-text-color); }
   &:disabled { opacity: 0.6; cursor: default; }
 }
 .secretBtnPrimary {
-  background: var(--tg-accent);
+  background: var(--primary-color);
 
-  &:hover { background: var(--tg-accent); filter: brightness(1.05); }
+  &:hover { background: var(--primary-color); filter: brightness(1.05); }
 }

@@ -1,5 +1,5 @@
 // NewPrivateChat — экран нового сообщения (порт tweb newPrivateChat): поиск людей
-// + список контактов. Цвета — через токены --tg-*.
+// + список контактов. Цвета — через CSS-переменные темы.
 
 // шапка: назад + заголовок
 .header {
@@ -34,10 +34,10 @@
   background: transparent;
   font-size: 16px;
   font-family: inherit;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
 
   &::placeholder {
-    color: var(--tg-textFaint);
+    color: var(--secondary-text-color);
     opacity: 1;
   }
 }
@@ -75,7 +75,7 @@
   cursor: pointer;
 
   &:hover {
-    background: var(--tg-hover);
+    background: var(--light-secondary-text-color);
   }
 }
 

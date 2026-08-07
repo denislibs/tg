@@ -1,6 +1,7 @@
 // Тема управляется атрибутом `data-theme` на <html> (см. core/theme/themeController.ts
-// + styles/_tokens.scss); значения токенов — CSS-переменные `--tg-*`/tweb-семантика,
-// JS их не хранит. Здесь остаются только типы выбора темы и утилита разрешения
+// + styles/_tokens.scss); значения токенов — tweb-семантические CSS-переменные
+// (--primary-color/--surface-color/...), JS их не хранит. Здесь остаются только
+// типы выбора темы и утилита разрешения
 // 'system' → пресет. `ThemePreset` согласован с `ThemePresetName` из
 // config/themePresets.ts — это тот же union (см. реэкспорт там), один источник истины.
 export type { ThemePresetName as ThemePreset } from './config/themePresets'

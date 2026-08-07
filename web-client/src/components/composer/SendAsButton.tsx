@@ -68,7 +68,7 @@ function SendAsRow({ peer, active, subtitle, onClick }: { peer: SendAsPeer; acti
       <Avatar background={peerColor(peer.title)} text={peer.title[0] ?? '#'} src={src || undefined} size={32} />
       <div className={s.sendAsRowText}>
         <Text size={14} weight={600}>{peer.title}</Text>
-        <Text size={12} color="var(--tg-textSecondary)">{subtitle}</Text>
+        <Text size={12} color="var(--secondary-text-color)">{subtitle}</Text>
       </div>
     </button>
   )

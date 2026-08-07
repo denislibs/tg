@@ -22,14 +22,14 @@ function SelectionBar({ count, onClear, onForward, onDelete, canForward = true }
 
   return (
     <div className={s.bar}>
-      <IconButton onClick={onClear} color="var(--tg-textSecondary)">
+      <IconButton onClick={onClear} color="var(--secondary-text-color)">
         <TgIcon name="close" />
       </IconButton>
-      <Text size={15} weight={600} color="var(--tg-textPrimary)" className={s.count}>
+      <Text size={15} weight={600} color="var(--primary-text-color)" className={s.count}>
         {t('Selected')}: {count}
       </Text>
       {canForward && (
-        <IconButton onClick={onForward} color="var(--tg-accent)">
+        <IconButton onClick={onForward} color="var(--primary-color)">
           <TgIcon name="reply" style={{ transform: 'scaleX(-1)' }} />
         </IconButton>
       )}

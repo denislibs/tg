@@ -8,8 +8,8 @@
   border-radius: 15px;
   cursor: pointer;
   user-select: none;
-  background: var(--tg-searchBg);
-  color: var(--tg-accent);
+  background: var(--input-search-background-color);
+  color: var(--primary-color);
 
   &.hasCount {
     width: auto;

@@ -96,7 +96,7 @@ export default function StarReactionPopup({
             <span>{count}</span>
           </div>
           <Slider value={count} min={1} max={MAX_STARS} step={1} onChange={setCount} className={s.slider} />
-          <Text size={14} color="var(--tg-textSecondary)" className={s.subtitle}>
+          <Text size={14} color="var(--secondary-text-color)" className={s.subtitle}>
             {t('Choose how many Stars you want to send to support this message.')}
           </Text>
 
@@ -104,7 +104,7 @@ export default function StarReactionPopup({
             <div className={s.senders}>
               <div className={s.sendersTitle}>
                 <span className={s.line} />
-                <Text size={13} color="var(--tg-textSecondary)">{t('Top Senders')}</Text>
+                <Text size={13} color="var(--secondary-text-color)">{t('Top Senders')}</Text>
                 <span className={s.line} />
               </div>
               <div className={s.sendersList}>
@@ -112,14 +112,14 @@ export default function StarReactionPopup({
                   <div key={i} className={s.sender}>
                     <div className={s.senderAvatar}>
                       {snd.anonymous
-                        ? <Avatar background="var(--tg-textFaint)" text="?" size={56} />
+                        ? <Avatar background="var(--secondary-text-color)" text="?" size={56} />
                         : <Avatar background={peerColor(snd.name)} text={snd.name[0] ?? '?'} src={snd.avatarUrl || undefined} size={56} />}
                       <span className={s.senderAmount}>
                         <StarIcon size={12} />
                         {snd.stars}
                       </span>
                     </div>
-                    <Text noWrap size={12.5} color="var(--tg-textPrimary)" className={s.senderName}>
+                    <Text noWrap size={12.5} color="var(--primary-text-color)" className={s.senderName}>
                       {snd.anonymous ? t('Anonymous') : snd.name}
                     </Text>
                   </div>
@@ -132,7 +132,7 @@ export default function StarReactionPopup({
             <div onClick={() => setShowName((v) => !v)} style={{ cursor: 'pointer' }}>
               <Checkbox checked={showName} />
             </div>
-            <Text size={14.5} color="var(--tg-textPrimary)">{t('Show my name')}</Text>
+            <Text size={14.5} color="var(--primary-text-color)">{t('Show my name')}</Text>
           </label>
         </div>
       </Popup>

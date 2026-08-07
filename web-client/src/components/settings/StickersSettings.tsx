@@ -67,7 +67,7 @@ export default function StickersSettings({ onBack }: { onBack: () => void }) {
         {(mySets ?? []).map((set) => (
           <EntryRow
             key={set.id}
-            left={<TgIcon name="stickers" size={24} color="var(--tg-textSecondary)" />}
+            left={<TgIcon name="stickers" size={24} color="var(--secondary-text-color)" />}
             title={set.title}
             sub={`${set.count} ${t('stickers')}`}
             onRemove={() => uninstall(set)}
@@ -85,7 +85,7 @@ export default function StickersSettings({ onBack }: { onBack: () => void }) {
             style={{
               width: '100%', height: 40, border: 'none', outline: 'none',
               borderRadius: 12, padding: '0 14px', fontSize: 15, boxSizing: 'border-box',
-              background: 'var(--tg-hover)', color: 'var(--tg-textPrimary)', fontFamily: 'inherit',
+              background: 'var(--light-secondary-text-color)', color: 'var(--primary-text-color)', fontFamily: 'inherit',
             }}
           />
         </div>

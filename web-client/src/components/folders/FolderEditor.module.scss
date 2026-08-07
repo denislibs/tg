@@ -15,22 +15,22 @@
   width: 100%;
   box-sizing: border-box;
   padding: 14px 16px;
-  border: 1px solid var(--tg-borderColor, rgba(0, 0, 0, 0.14));
+  border: 1px solid rgba(0, 0, 0, 0.14);
   border-radius: 10px;
   background: transparent;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
   font-size: 16px;
   outline: none;
   transition: border-color 0.15s;
 
   &:focus {
-    border-color: var(--tg-accent);
+    border-color: var(--primary-color);
     border-width: 2px;
     padding: 13px 15px;
   }
 
   &::placeholder {
-    color: var(--tg-textFaint);
+    color: var(--secondary-text-color);
   }
 }
 
@@ -46,7 +46,7 @@
   gap: 4px;
   padding: 12px;
   border-radius: 10px;
-  background: var(--tg-hover);
+  background: var(--light-secondary-text-color);
   cursor: pointer;
   margin: 4px 0 8px;
 }

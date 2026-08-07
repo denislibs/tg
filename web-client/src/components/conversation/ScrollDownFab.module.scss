@@ -6,13 +6,13 @@
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: var(--tg-bubble);
+  background: var(--surface-color);
   box-shadow: var(--tg-plateShadow);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: var(--tg-textSecondary);
+  color: var(--secondary-text-color);
   z-index: 7;
 }
 .badge {
@@ -22,12 +22,12 @@
   height: 22px;
   padding: 0 6px;
   border-radius: 11px;
-  background: var(--tg-badge);
+  background: var(--primary-color);
   color: #fff;
   font-size: 12.5px;
   font-weight: 600;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 0 2px var(--tg-bubble);
+  box-shadow: 0 0 0 2px var(--surface-color);
 }

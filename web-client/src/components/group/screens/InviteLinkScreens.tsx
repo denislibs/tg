@@ -70,7 +70,7 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
     <SettingsScreen title="Invite Links" onBack={onBack} zIndex={70}>
       <div className={s.duck}>
         <LottieSticker name="UtyanLinks" size={120} loop />
-        <Text size={14.5} color="var(--tg-textSecondary)" className={s.duckCaption}>
+        <Text size={14.5} color="var(--secondary-text-color)" className={s.duckCaption}>
           {isChannel
             ? t('Anyone who has Telegram installed will be able to join your channel by following this link.')
             : t('Anyone who has Telegram installed will be able to join your group by following this link.')}
@@ -81,8 +81,8 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
         {primary ? (
           <>
             <div className={s.linkBox} onClick={() => copy(primary.token, primary.url)}>
-              <Text size={15.5} color="var(--tg-link)" style={{ wordBreak: 'break-all' }}>{primary.url}</Text>
-              <Text size={13} color={copied === primary.token ? 'var(--tg-accent)' : 'var(--tg-textFaint)'}>
+              <Text size={15.5} color="var(--link-color)" style={{ wordBreak: 'break-all' }}>{primary.url}</Text>
+              <Text size={13} color={copied === primary.token ? 'var(--primary-color)' : 'var(--secondary-text-color)'}>
                 {copied === primary.token ? t('Link copied to clipboard.') : t('Copy Link')}
               </Text>
             </div>
@@ -101,16 +101,16 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
             />
           </>
         ) : (
-          <Row icon={<TgIcon name="plus" size={22} color="var(--tg-accent)" />} label="Create a New Link" accent onClick={() => setEditing('new')} />
+          <Row icon={<TgIcon name="plus" size={22} color="var(--primary-color)" />} label="Create a New Link" accent onClick={() => setEditing('new')} />
         )}
       </Section>
 
       <Section caption="Additional Links" footer="You can create additional invite links that are limited by time, number of users, or require a paid subscription.">
-        <Row icon={<TgIcon name="plus" size={22} color="var(--tg-accent)" />} label="Create a New Link" accent onClick={() => setEditing('new')} />
+        <Row icon={<TgIcon name="plus" size={22} color="var(--primary-color)" />} label="Create a New Link" accent onClick={() => setEditing('new')} />
         {additional.map((l) => (
           <Row
             key={l.token}
-            icon={<TgIcon name="link" size={22} color="var(--tg-textFaint)" />}
+            icon={<TgIcon name="link" size={22} color="var(--secondary-text-color)" />}
             label={l.title || l.url.replace(/^https?:\/\//, '')}
             translate={false}
             sublabel={linkSubtitle(t, l) || undefined}
@@ -126,7 +126,7 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
           {revoked.map((l) => (
             <Row
               key={l.token}
-              icon={<TgIcon name="link" size={22} color="var(--tg-textFaint)" />}
+              icon={<TgIcon name="link" size={22} color="var(--secondary-text-color)" />}
               label={l.title || l.url.replace(/^https?:\/\//, '')}
               translate={false}
               sublabel={t('revoked')}
@@ -236,7 +236,7 @@ function EditInviteLinkScreen({ g, link, onBack }: { g: GroupEdit; link: InviteL
       onBack={onBack}
       zIndex={80}
       headerRight={
-        <IconButton onClick={() => void save()} color="var(--tg-accent)">
+        <IconButton onClick={() => void save()} color="var(--primary-color)">
           {saving ? <Spinner size={22} /> : <TgIcon name="check" />}
         </IconButton>
       }
@@ -300,8 +300,8 @@ function InviteLinkDetailScreen({ g, link, onEdit, onBack }: { g: GroupEdit; lin
     <SettingsScreen title={link.title || 'Invite Link'} onBack={onBack} zIndex={80}>
       <Section caption="Invite Link">
         <div className={s.linkBox} onClick={copy}>
-          <Text size={15.5} color="var(--tg-link)" style={{ wordBreak: 'break-all' }}>{link.url}</Text>
-          <Text size={13} color={copied ? 'var(--tg-accent)' : 'var(--tg-textFaint)'}>
+          <Text size={15.5} color="var(--link-color)" style={{ wordBreak: 'break-all' }}>{link.url}</Text>
+          <Text size={13} color={copied ? 'var(--primary-color)' : 'var(--secondary-text-color)'}>
             {copied ? t('Link copied to clipboard.') : t('Copy Link')}
           </Text>
         </div>
@@ -309,7 +309,7 @@ function InviteLinkDetailScreen({ g, link, onEdit, onBack }: { g: GroupEdit; lin
 
       {link.usageLimit != null && link.uses === 0 && (
         <Section>
-          <Text size={14.5} color="var(--tg-textSecondary)" style={{ padding: '8px 16px' }}>
+          <Text size={14.5} color="var(--secondary-text-color)" style={{ padding: '8px 16px' }}>
             {`${link.usageLimit} ${t('people can join via this link.')}`}
           </Text>
         </Section>
@@ -321,8 +321,8 @@ function InviteLinkDetailScreen({ g, link, onEdit, onBack }: { g: GroupEdit; lin
             <div key={im.userId} className={s.memberRow}>
               <UserAvatar id={im.userId} name={im.name} avatarUrl={im.avatarUrl} />
               <div className={s.memberBody}>
-                <Text noWrap size={16} color="var(--tg-textPrimary)">{im.name}</Text>
-                <Text noWrap size={14} color="var(--tg-textSecondary)">{new Date(im.joinedAt).toLocaleDateString()}</Text>
+                <Text noWrap size={16} color="var(--primary-text-color)">{im.name}</Text>
+                <Text noWrap size={14} color="var(--secondary-text-color)">{new Date(im.joinedAt).toLocaleDateString()}</Text>
               </div>
             </div>
           ))}

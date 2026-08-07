@@ -14,7 +14,7 @@ export default function QuickReaction({ onBack }: { onBack: () => void }) {
     <SettingsScreen title="Quick Reaction" onBack={onBack}>
       <div className={s.hero}>
         <div className={s.heroEmoji}>{picked}</div>
-        <Text size={14} color="var(--tg-textSecondary)" style={{ marginTop: '8px', paddingLeft: '40px', paddingRight: '40px' }}>
+        <Text size={14} color="var(--secondary-text-color)" style={{ marginTop: '8px', paddingLeft: '40px', paddingRight: '40px' }}>
           {t('Double-tap a message to send this reaction quickly.')}
         </Text>
       </div>

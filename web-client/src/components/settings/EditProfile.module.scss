@@ -22,7 +22,7 @@
   margin: 0 10px;
   padding: 16px;
   border-radius: 18px;
-  background: var(--tg-sidebarBg);
+  background: var(--surface-color);
 }
 .form {
   display: flex;
@@ -39,7 +39,7 @@
 
   @media (hover: hover) {
     &:hover {
-      background: var(--tg-hover);
+      background: var(--light-secondary-text-color);
     }
   }
 }

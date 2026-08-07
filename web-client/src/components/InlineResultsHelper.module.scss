@@ -47,14 +47,14 @@
     right: 0;
     bottom: 0;
     height: 1px;
-    background: var(--tg-divider, rgba(0, 0, 0, 0.08));
+    background: var(--border-color, rgba(0, 0, 0, 0.08));
   }
 
   @media (hover: hover) {
-    &:hover { background: var(--tg-hover); }
+    &:hover { background: var(--light-secondary-text-color); }
   }
 }
-.active { background: var(--tg-hover); }
+.active { background: var(--light-secondary-text-color); }
 // превью 48px (tweb .inline-helper-result-preview) — эмодзи по центру
 .preview {
   position: absolute;
@@ -64,7 +64,7 @@
   width: 48px;
   height: 48px;
   border-radius: 8px;
-  background: var(--tg-secondaryBg, rgba(128, 128, 128, 0.12));
+  background: rgba(128, 128, 128, 0.12);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -73,14 +73,14 @@
 .title {
   font-size: 15px;
   font-weight: 500;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .desc {
   font-size: 13px;
-  color: var(--tg-textSecondary);
+  color: var(--secondary-text-color);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

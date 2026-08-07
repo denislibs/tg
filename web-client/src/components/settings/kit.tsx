@@ -35,10 +35,10 @@ export function SettingsScreen({
       style={{ zIndex }}
     >
       <div className={s.header}>
-        <IconButton onClick={onBack} color="var(--tg-textSecondary)">
+        <IconButton onClick={onBack} color="var(--secondary-text-color)">
           <TgIcon name="back" />
         </IconButton>
-        <Text size={19} weight={600} color="var(--tg-textPrimary)" className={s.title}>
+        <Text size={19} weight={600} color="var(--primary-text-color)" className={s.title}>
           {t(title)}
         </Text>
         {headerRight}
@@ -63,7 +63,7 @@ export function Section({
       {/* Заголовок — ВНУТРИ карточки (tweb .sidebar-left-section-name) */}
       <SidebarSection noMargin title={caption ? t(caption) : undefined}>{children}</SidebarSection>
       {footer && (
-        <Text size={13.5} color="var(--tg-textSecondary)" className={s.footer}>
+        <Text size={13.5} color="var(--secondary-text-color)" className={s.footer}>
           {t(footer)}
         </Text>
       )}
@@ -87,11 +87,11 @@ export function EntryRow({
     <div className={s.entry}>
       {left}
       <div className={s.entryBody}>
-        <Text noWrap size={16} color="var(--tg-textPrimary)">{title}</Text>
-        {sub && <Text noWrap size={13.5} color="var(--tg-textSecondary)">{sub}</Text>}
+        <Text noWrap size={16} color="var(--primary-text-color)">{title}</Text>
+        {sub && <Text noWrap size={13.5} color="var(--secondary-text-color)">{sub}</Text>}
       </div>
       {onRemove && (
-        <TgIcon name="close" size={20} color="var(--tg-textFaint)" onClick={onRemove} style={{ cursor: 'pointer', flexShrink: 0 }} />
+        <TgIcon name="close" size={20} color="var(--secondary-text-color)" onClick={onRemove} style={{ cursor: 'pointer', flexShrink: 0 }} />
       )}
     </div>
   )
@@ -126,7 +126,7 @@ export function Row({
   translate?: boolean
 }) {
   const t = useT()
-  const color = danger ? '#ff595a' : accent ? 'var(--tg-accent)' : 'var(--tg-textPrimary)'
+  const color = danger ? '#ff595a' : accent ? 'var(--primary-color)' : 'var(--primary-text-color)'
   return (
     <div className={classNames(s.row, onClick ? s.rowClickable : '')} onClick={onClick}>
       {icon && <div className={s.rowIcon}>{icon}</div>}
@@ -135,17 +135,17 @@ export function Row({
           {translate ? t(label) : label}
         </Text>
         {sublabel && (
-          <Text noWrap size={13.5} color="var(--tg-textSecondary)">
+          <Text noWrap size={13.5} color="var(--secondary-text-color)">
             {sublabel}
           </Text>
         )}
       </div>
       {value != null && (
-        <Text size={15} color="var(--tg-textFaint)" className={s.rowValue}>{value}</Text>
+        <Text size={15} color="var(--secondary-text-color)" className={s.rowValue}>{value}</Text>
       )}
       {toggle && <TgSwitch checked={!!checked} />}
-      {selected && <TgIcon name="check" size={22} color="var(--tg-accent)" />}
-      {chevron && <TgIcon name="next" size={22} color="var(--tg-textFaint)" />}
+      {selected && <TgIcon name="check" size={22} color="var(--primary-color)" />}
+      {chevron && <TgIcon name="next" size={22} color="var(--secondary-text-color)" />}
     </div>
   )
 }

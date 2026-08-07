@@ -80,7 +80,7 @@ export default function FolderChatsPicker({
       onBack={onClose}
       zIndex={80}
       headerRight={
-        <IconButton onClick={() => onConfirm([...ids], flags)} color="var(--tg-accent)">
+        <IconButton onClick={() => onConfirm([...ids], flags)} color="var(--primary-color)">
           <TgIcon name="check" />
         </IconButton>
       }
@@ -89,7 +89,7 @@ export default function FolderChatsPicker({
         {types.map((tp) => (
           <Row
             key={tp.key}
-            icon={<TgIcon name={tp.icon as never} size={24} color="var(--tg-accent)" />}
+            icon={<TgIcon name={tp.icon as never} size={24} color="var(--primary-color)" />}
             label={tp.label}
             selected={flags[tp.key]}
             onClick={() => toggleFlag(tp.key)}

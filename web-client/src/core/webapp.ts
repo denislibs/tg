@@ -24,7 +24,7 @@ export function closeWebApp(): void {
   useWebAppStore.setState({ open: false })
 }
 
-// Тема для mini-app (Telegram themeParams): значения из CSS-токенов --tg-*.
+// Тема для mini-app (Telegram themeParams): значения из tweb-семантических CSS-токенов.
 export interface WebAppTheme {
   bg_color: string
   text_color: string
@@ -41,18 +41,18 @@ export interface WebAppTheme {
 export function webAppTheme(): WebAppTheme {
   const cs = getComputedStyle(document.documentElement)
   const v = (name: string, fallback: string) => (cs.getPropertyValue(name).trim() || fallback)
-  const accent = v('--tg-accent', '#8774e1')
+  const accent = v('--primary-color', '#8774e1')
   return {
-    bg_color: v('--tg-appBg', '#ffffff'),
-    text_color: v('--tg-textPrimary', '#000000'),
-    hint_color: v('--tg-textSecondary', '#999999'),
-    link_color: v('--tg-link', accent),
+    bg_color: v('--background-color', '#ffffff'),
+    text_color: v('--primary-text-color', '#000000'),
+    hint_color: v('--secondary-text-color', '#999999'),
+    link_color: v('--link-color', accent),
     button_color: accent,
     button_text_color: '#ffffff',
-    secondary_bg_color: v('--tg-sidebarBg', '#f0f0f0'),
-    header_bg_color: v('--tg-sidebarBg', '#ffffff'),
+    secondary_bg_color: v('--surface-color', '#f0f0f0'),
+    header_bg_color: v('--surface-color', '#ffffff'),
     accent_text_color: accent,
-    section_bg_color: v('--tg-bubble', '#ffffff'),
+    section_bg_color: v('--surface-color', '#ffffff'),
     destructive_text_color: '#e53935',
   }
 }

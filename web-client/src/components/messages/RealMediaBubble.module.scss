@@ -114,9 +114,9 @@
 
 // ── документ / музыка ──
 .fileRow {
-  --m-primary: var(--tg-textPrimary);
-  --m-secondary: var(--tg-textSecondary);
-  --m-circle: var(--tg-accent);
+  --m-primary: var(--primary-text-color);
+  --m-secondary: var(--secondary-text-color);
+  --m-circle: var(--primary-color);
 
   display: flex;
   align-items: center;
@@ -125,10 +125,10 @@
 
   &[data-out] {
     // Имя/подпись файла — тем же адаптивным цветом текста исходящего бабла
-    // (--tg-bubbleOutText: тёмный на светлой теме, белый на тёмной), а не
+    // (--message-out-primary-color: тёмный на светлой теме, белый на тёмной), а не
     // хардкод #fff — иначе на светло-лавандовом out-бабле имя washed out.
-    --m-primary: var(--tg-bubbleOutText);
-    --m-secondary: color-mix(in srgb, var(--tg-bubbleOutText) 70%, transparent);
+    --m-primary: var(--message-out-primary-color);
+    --m-secondary: color-mix(in srgb, var(--message-out-primary-color) 70%, transparent);
     --m-circle: rgba(255, 255, 255, 0.22);
   }
 }

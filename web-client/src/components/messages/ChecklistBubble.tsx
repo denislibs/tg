@@ -101,8 +101,8 @@ export default function ChecklistBubble({ checklist, out }: { checklist: Checkli
         <Text size={13} color="var(--b-time)">{`${done} ${t('of')} ${total} ${t('done')}`}</Text>
         {canAdd && !adding && (
           <span className={s.addBtn} onClick={() => setAdding(true)}>
-            <TgIcon name="add" size={16} color="var(--tg-accent)" />
-            <Text size={13} weight={600} color="var(--tg-accent)">{t('Add a Task')}</Text>
+            <TgIcon name="add" size={16} color="var(--primary-color)" />
+            <Text size={13} weight={600} color="var(--primary-color)">{t('Add a Task')}</Text>
           </span>
         )}
       </div>

@@ -1,9 +1,12 @@
-// Тема активного чата, поднятая на #app-shell (общий предок трёх колонок):
-// CSS-переменные наследуются вниз, поэтому --tg-accent тут тематизирует и боковые
-// колонки, не трогая глобальные токены (<html data-theme>) и другие чаты. Обои
-// темы остаются локально в колонке чата (ConversationView).
-import type { CSSProperties } from 'react'
-import { chatThemeVariant, chatThemeBubbleOut, type ChatThemeVariant } from '../../chatThemes'
+// Тема активного чата (только её вариант — акцент/градиент обоев), нужная
+// глобальному ChatBackground (App), чтобы обои темы чата были видны за
+// колонками (tweb рисует обои per-peer, а не только в колонке). Цветовые
+// CSS-переменные (--primary-color и производные) больше НЕ поднимаются на
+// #app-shell — tweb применяет тему чата только на контейнере колонки чата
+// (chat.ts applyContainerTheme → applyTheme(theme, this.container)), боковые
+// колонки остаются на глобальной теме. Скоуп цвета — в ConversationView
+// (applyChatTheme/clearChatTheme на .root).
+import { chatThemeVariant, type ChatThemeVariant } from '../../chatThemes'
 import { resolvePreset, PRESET_MODE } from '../../theme'
 import { useSettingsStore } from '../../settings'
 import { useChatsStore } from '../../stores/chatsStore'
@@ -12,7 +15,6 @@ import type { OpenThread } from '../../stores/navigationStore'
 
 export interface ShellTheme {
   shellThemeVariant: ChatThemeVariant | undefined
-  shellThemeStyle: CSSProperties | undefined
 }
 
 export function useShellTheme(args: {
@@ -32,15 +34,5 @@ export function useShellTheme(args: {
     activeDialogThemeId ?? (openThread ? threadChat?.themeId : selected?.themeId),
     shellThemeMode,
   )
-  const shellThemeStyle: CSSProperties | undefined = shellThemeVariant
-    ? ({
-        '--tg-accent': shellThemeVariant.accent,
-        '--tg-accentGradient': `linear-gradient(135deg, ${shellThemeVariant.accent}, ${shellThemeVariant.accent})`,
-        '--tg-bubbleOutAccent': shellThemeVariant.accent,
-        '--tg-bubbleOut': chatThemeBubbleOut(shellThemeVariant.accent, shellThemeMode),
-        // Бейдж непрочитанных (список чатов) — часть акцента темы (tweb .badge).
-        '--tg-badge': shellThemeVariant.accent,
-      } as CSSProperties)
-    : undefined
-  return { shellThemeVariant, shellThemeStyle }
+  return { shellThemeVariant }
 }

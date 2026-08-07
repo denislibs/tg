@@ -100,7 +100,7 @@ function WebAppInner() {
   const [loaded, setLoaded] = useState(false)
   const [backVisible, setBackVisible] = useState(false)
   const [main, setMain] = useState<MainBtn>({
-    isVisible: false, isActive: true, text: '', color: 'var(--tg-accent)', textColor: '#fff', isProgress: false,
+    isVisible: false, isActive: true, text: '', color: 'var(--primary-color)', textColor: '#fff', isProgress: false,
   })
   const [popup, setPopup] = useState<PopupReq | null>(null)
   const [qr, setQr] = useState<{ text?: string } | null>(null)
@@ -198,7 +198,7 @@ function WebAppInner() {
             isVisible: !!d.is_visible,
             isActive: d.is_active !== false,
             text: String(d.text ?? ''),
-            color: String(d.color ?? 'var(--tg-accent)'),
+            color: String(d.color ?? 'var(--primary-color)'),
             textColor: String(d.text_color ?? '#fff'),
             isProgress: !!d.is_progress_visible,
           })
@@ -345,8 +345,8 @@ function WebAppInner() {
             <div style={{ width: 40 }} />
           )}
           <div className={s.title}>
-            <Text noWrap size={15} weight={600} color="var(--tg-textPrimary)">{botName}</Text>
-            <Text noWrap size={12} color="var(--tg-textSecondary)">mini app</Text>
+            <Text noWrap size={15} weight={600} color="var(--primary-text-color)">{botName}</Text>
+            <Text noWrap size={12} color="var(--secondary-text-color)">mini app</Text>
           </div>
           <button className={s.hbtn} onClick={requestClose} aria-label="close">
             <TgIcon name="close" size={22} />
@@ -384,9 +384,9 @@ function WebAppInner() {
       {/* web_app_open_popup — нативный попап mini-app */}
       {popup && (
         <div className={s.overlay} style={{ zIndex: 1310 }} onMouseDown={(e) => { if (e.target === e.currentTarget) onPopupPick() }}>
-          <div style={{ background: 'var(--tg-appBg)', borderRadius: 12, padding: 20, minWidth: 280, maxWidth: 340 }}>
-            {popup.title && <Text size={16} weight={600} color="var(--tg-textPrimary)">{popup.title}</Text>}
-            <Text size={14} color="var(--tg-textSecondary)" style={{ display: 'block', margin: '8px 0 16px' }}>{popup.message}</Text>
+          <div style={{ background: 'var(--background-color)', borderRadius: 12, padding: 20, minWidth: 280, maxWidth: 340 }}>
+            {popup.title && <Text size={16} weight={600} color="var(--primary-text-color)">{popup.title}</Text>}
+            <Text size={14} color="var(--secondary-text-color)" style={{ display: 'block', margin: '8px 0 16px' }}>{popup.message}</Text>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               {popup.buttons.map((b, i) => (
                 <button
@@ -395,7 +395,7 @@ function WebAppInner() {
                   style={{
                     border: 'none', background: 'transparent', cursor: 'pointer', padding: '8px 12px',
                     borderRadius: 8, fontSize: 15, fontWeight: 600,
-                    color: b.type === 'destructive' ? '#e53935' : 'var(--tg-accent)',
+                    color: b.type === 'destructive' ? '#e53935' : 'var(--primary-color)',
                   }}
                 >
                   {b.text || (b.type === 'ok' ? 'OK' : b.type === 'cancel' ? t('Cancel') : t('Close'))}

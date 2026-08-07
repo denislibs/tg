@@ -85,10 +85,10 @@ export default function SendGiftPopup({
               transition={{ duration: 0.18, ease: EASE }}
             >
               <div className={s.header}>
-                <IconButton onClick={chosen ? () => setChosen(null) : onClose} color="var(--tg-textSecondary)">
+                <IconButton onClick={chosen ? () => setChosen(null) : onClose} color="var(--secondary-text-color)">
                   <TgIcon name={chosen ? 'back' : 'close'} />
                 </IconButton>
-                <Text size={18} weight={600} color="var(--tg-textPrimary)" className={s.headerTitle}>
+                <Text size={18} weight={600} color="var(--primary-text-color)" className={s.headerTitle}>
                   {chosen ? t('Send a Gift') : t('Send a Gift')}
                 </Text>
                 <div className={s.balancePill} onClick={() => setTopupOpen(true)} style={{ cursor: 'pointer' }}>
@@ -120,8 +120,8 @@ export default function SendGiftPopup({
                 ) : (
                   <div className={s.chosen}>
                     <span className={s.chosenEmoji}>{chosen.emoji}</span>
-                    <Text size={17} weight={600} color="var(--tg-textPrimary)">{chosen.title}</Text>
-                    <Text size={14} color="var(--tg-textSecondary)" style={{ textAlign: 'center' }}>
+                    <Text size={17} weight={600} color="var(--primary-text-color)">{chosen.title}</Text>
+                    <Text size={14} color="var(--secondary-text-color)" style={{ textAlign: 'center' }}>
                       {t('Gift to')} {toName}
                     </Text>
                     <input

@@ -63,12 +63,12 @@ export default function StealthModePopup({ onClose }: { onClose: () => void }) {
 
   const row = (icon: 'backward_5' | 'forward_25', title: string, subtitle: string) => (
     <div style={{ display: 'flex', gap: 16, padding: '10px 20px', alignItems: 'flex-start' }}>
-      <div style={{ color: 'var(--tg-accent)', flexShrink: 0, marginTop: 2 }}>
+      <div style={{ color: 'var(--primary-color)', flexShrink: 0, marginTop: 2 }}>
         <TgIcon name={icon} size={26} />
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <Text size={15} weight={600} color="var(--tg-textPrimary)">{title}</Text>
-        <Text size={14} color="var(--tg-textSecondary)">{subtitle}</Text>
+        <Text size={15} weight={600} color="var(--primary-text-color)">{title}</Text>
+        <Text size={14} color="var(--secondary-text-color)">{subtitle}</Text>
       </div>
     </div>
   )
@@ -76,7 +76,7 @@ export default function StealthModePopup({ onClose }: { onClose: () => void }) {
   return (
     <Popup open title={t('Stealth Mode')} onClose={onClose} width={360}>
       <div style={{ padding: '0 20px 4px' }}>
-        <Text size={14} color="var(--tg-textSecondary)">
+        <Text size={14} color="var(--secondary-text-color)">
           {t('Turn Stealth Mode on to watch without appearing in the list of viewers.')}
         </Text>
       </div>
@@ -92,7 +92,7 @@ export default function StealthModePopup({ onClose }: { onClose: () => void }) {
             borderRadius: 12,
             border: 'none',
             cursor: disabled ? 'default' : 'pointer',
-            background: disabled ? 'var(--tg-textFaint)' : 'var(--tg-accentGradient)',
+            background: disabled ? 'var(--secondary-text-color)' : 'var(--tg-accentGradient)',
             color: '#fff',
             fontSize: 15,
             fontWeight: 600,

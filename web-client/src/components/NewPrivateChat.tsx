@@ -17,8 +17,8 @@ function ContactRow({ c, onPick }: { c: Chat; onPick: () => void }) {
     <div className={s.row} onClick={onPick}>
       <Avatar background={c.avatar} text={c.avatarText} emoji={c.avatarEmoji} src={src || undefined} size="lg" />
       <div className={s.rowText}>
-        <Text noWrap size={16} weight={500} color="var(--tg-textPrimary)">{c.name}</Text>
-        <Text noWrap size={14} color="var(--tg-textSecondary)">{c.status}</Text>
+        <Text noWrap size={16} weight={500} color="var(--primary-text-color)">{c.name}</Text>
+        <Text noWrap size={14} color="var(--secondary-text-color)">{c.status}</Text>
       </div>
     </div>
   )
@@ -62,7 +62,7 @@ export default function NewPrivateChat({ chats, onClose, onSelect, title = 'New 
         position: 'absolute',
         inset: 0,
         zIndex: 41,
-        background: 'var(--tg-sidebarBg)',
+        background: 'var(--surface-color)',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
@@ -70,17 +70,17 @@ export default function NewPrivateChat({ chats, onClose, onSelect, title = 'New 
     >
       {/* Header */}
       <div className={s.header}>
-        <IconButton onClick={onClose} color="var(--tg-textSecondary)">
+        <IconButton onClick={onClose} color="var(--secondary-text-color)">
           <TgIcon name="back" />
         </IconButton>
-        <Text size={19} weight={600} color="var(--tg-textPrimary)">
+        <Text size={19} weight={600} color="var(--primary-text-color)">
           {t(title)}
         </Text>
       </div>
 
       {/* Search */}
       <div className={s.searchBar}>
-        <TgIcon name="search" size={22} color="var(--tg-textFaint)" />
+        <TgIcon name="search" size={22} color="var(--secondary-text-color)" />
         <input
           ref={inputRef}
           className={s.searchInput}
@@ -95,10 +95,10 @@ export default function NewPrivateChat({ chats, onClose, onSelect, title = 'New 
         {people.length === 0 ? (
           <div className={s.empty}>
             <div className={s.emoji}>🐤</div>
-            <Text size={19} weight={600} color="var(--tg-textPrimary)">
+            <Text size={19} weight={600} color="var(--primary-text-color)">
               {t('No Results')}
             </Text>
-            <Text size={15} color="var(--tg-textSecondary)">{t('Try searching.')}</Text>
+            <Text size={15} color="var(--secondary-text-color)">{t('Try searching.')}</Text>
           </div>
         ) : (
           people.map((c) => (

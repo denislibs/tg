@@ -7,7 +7,7 @@
 }
 
 .card {
-  background: var(--tg-bubble);
+  background: var(--surface-color);
   border: 1px solid var(--tg-bubbleBorder);
   border-radius: 14px;
   overflow: hidden;
@@ -30,7 +30,7 @@
 
 // ссылка внутри текста поста
 .link {
-  color: var(--tg-link);
+  color: var(--link-color);
   cursor: pointer;
 
   &:hover {
@@ -53,5 +53,5 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  color: var(--tg-textFaint);
+  color: var(--secondary-text-color);
 }

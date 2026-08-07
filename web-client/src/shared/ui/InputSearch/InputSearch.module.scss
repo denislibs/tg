@@ -17,8 +17,8 @@
   padding: 0 44px 0 48px; // место под иконку слева и clear справа
   border-radius: calc(var(--height) / 2);
   border: 1.5px solid transparent;
-  background: var(--tg-inputSearchBg);
-  color: var(--tg-textPrimary);
+  background: var(--input-search-background-color);
+  color: var(--primary-text-color);
   font-size: 16px;
   line-height: 21px;
   outline: none;
@@ -30,7 +30,7 @@
 
   @media (hover: hover) {
     &:not(:focus):hover {
-      border-color: var(--tg-textFaint);
+      border-color: var(--secondary-text-color);
     }
   }
 }
@@ -42,7 +42,7 @@
   top: 50%;
   transform: translateY(-50%);
   display: flex;
-  color: var(--tg-textSecondary);
+  color: var(--secondary-text-color);
   opacity: 0.6;
   pointer-events: none;
   z-index: 1;
@@ -54,7 +54,7 @@
   inset-inline-start: 48px;
   top: 50%;
   transform: translateY(-50%);
-  color: var(--tg-textFaint);
+  color: var(--secondary-text-color);
   white-space: nowrap;
   pointer-events: none;
   z-index: 1;
@@ -81,9 +81,9 @@
 // Focused/active (parent-controlled "searching"): accent border + accent icon.
 .root.focused .input,
 .input:focus {
-  border-color: var(--tg-accent);
+  border-color: var(--primary-color);
 }
 .root.focused .icon {
-  color: var(--tg-accent);
+  color: var(--primary-color);
   opacity: 1;
 }

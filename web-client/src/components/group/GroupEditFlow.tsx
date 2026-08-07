@@ -101,7 +101,7 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
       zIndex={60}
       headerRight={
         dirty && title.trim() ? (
-          <IconButton onClick={() => void save()} color="var(--tg-accent)">
+          <IconButton onClick={() => void save()} color="var(--primary-color)">
             {saving ? <Spinner size={22} /> : <TgIcon name="check" />}
           </IconButton>
         ) : undefined

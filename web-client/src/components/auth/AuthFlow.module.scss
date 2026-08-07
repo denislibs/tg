@@ -46,7 +46,7 @@
   z-index: 1;
   width: 100%;
   max-width: 384px;
-  background: var(--tg-sidebarBg);
+  background: var(--surface-color);
   border-radius: 32px;
   padding: 40px 36px;
   box-shadow: 0 8px 40px -12px rgba(0, 0, 0, 0.25);
@@ -67,7 +67,7 @@
 
 // Общий бокс поля (селектор страны, ввод телефона).
 .fieldWrap {
-  border: 1.5px solid var(--tg-divider);
+  border: 1.5px solid var(--border-color);
   border-radius: 12px;
   padding: 0 14px;
   height: 54px;
@@ -76,7 +76,7 @@
   transition: border-color 0.15s ease;
 
   &:focus-within {
-    border-color: var(--tg-accent);
+    border-color: var(--primary-color);
   }
 }
 
@@ -108,11 +108,11 @@
   z-index: 10;
   max-height: 240px;
   overflow-y: auto;
-  background: var(--tg-menuBg);
+  background: var(--menu-background-color);
   backdrop-filter: blur(40px);
   -webkit-backdrop-filter: blur(40px);
   border-radius: 12px;
-  box-shadow: var(--tg-menuShadow);
+  box-shadow: var(--menu-box-shadow);
   padding: 4px 0;
 }
 .dropdownItem {
@@ -123,7 +123,7 @@
   cursor: pointer;
 
   &:hover {
-    background: var(--tg-hover);
+    background: var(--light-secondary-text-color);
   }
 }
 .flagSmall {
@@ -135,14 +135,14 @@
 .phoneInput {
   flex: 1;
   font-size: 16px;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
   border: none;
   outline: none;
   background: transparent;
   min-width: 0;
 
   &::placeholder {
-    color: var(--tg-textFaint);
+    color: var(--secondary-text-color);
     opacity: 1;
   }
 }
@@ -163,11 +163,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid var(--tg-textFaint);
+  border: 2px solid var(--secondary-text-color);
   transition: background 0.15s ease;
 }
 .keepBoxOn {
-  background: var(--tg-accent);
+  background: var(--primary-color);
   border: none;
 }
 
@@ -175,7 +175,7 @@
 .accentBtn {
   height: 54px;
   border-radius: 12px;
-  background: var(--tg-accent);
+  background: var(--primary-color);
   color: #fff;
   font-size: 15px;
   font-weight: 600;
@@ -205,7 +205,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.3px;
-  color: var(--tg-accent);
+  color: var(--primary-color);
   cursor: pointer;
 
   &:hover {
@@ -261,7 +261,7 @@
   height: 24px;
   flex-shrink: 0;
   border-radius: 50%;
-  background: var(--tg-accent);
+  background: var(--primary-color);
   color: #fff;
   font-size: 13px;
   font-weight: 700;
@@ -282,20 +282,20 @@
 .codeCell {
   width: 48px;
   height: 56px;
-  border: 1.5px solid var(--tg-divider);
+  border: 1.5px solid var(--border-color);
   border-radius: 12px;
   font-size: 24px;
   font-weight: 600;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
   text-align: center;
   outline: none;
   background: transparent;
   transition: border-color 0.15s ease;
 
   &:focus {
-    border-color: var(--tg-accent);
+    border-color: var(--primary-color);
   }
 }
 .codeCellFilled {
-  border-color: var(--tg-accent);
+  border-color: var(--primary-color);
 }

@@ -3,7 +3,7 @@
   position: absolute;
   inset: 0;
   z-index: 40;
-  background: var(--tg-sectionBackdrop);
+  background: var(--background-color);
   display: flex;
   flex-direction: column;
 }
@@ -47,15 +47,15 @@
 
   @media (hover: hover) {
     &:hover {
-      background: var(--tg-hover);
+      background: var(--light-secondary-text-color);
     }
   }
 }
 .rowActive {
-  background: var(--tg-hover);
+  background: var(--light-secondary-text-color);
 }
 .rowIcon {
-  color: var(--tg-textSecondary);
+  color: var(--secondary-text-color);
   display: flex;
 
   svg {

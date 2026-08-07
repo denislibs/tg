@@ -5,7 +5,7 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--tg-sidebarBg);
+  background: var(--surface-color);
 }
 
 .header {
@@ -30,7 +30,7 @@
 
   &::-webkit-scrollbar { width: 6px; }
   &::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; transition: background 0.2s; }
-  &:hover::-webkit-scrollbar-thumb { background: var(--tg-textFaint); }
+  &:hover::-webkit-scrollbar-thumb { background: var(--secondary-text-color); }
 }
 
 // ряд темы (tweb SortedDialogList itemSize 64, noAvatar — иконка в заголовке)
@@ -45,17 +45,17 @@
   cursor: pointer;
 
   @media (hover: hover) {
-    &:hover { background: var(--tg-hover); }
+    &:hover { background: var(--light-secondary-text-color); }
   }
 }
 
 .rowActive {
-  background: var(--tg-accent);
+  background: var(--primary-color);
 
   // Ховер активного ряда НЕ сбрасывает фон на серый (иначе белый текст на сером
   // не виден) — остаётся акцентным, чуть темнее для отклика (tweb .active:hover).
   @media (hover: hover) {
-    &:hover { background: color-mix(in srgb, var(--tg-accent) 90%, #000); }
+    &:hover { background: color-mix(in srgb, var(--primary-color) 90%, #000); }
   }
 
   // Цвета текста/иконок активного ряда задаются через prop active в renderRow
@@ -63,7 +63,7 @@
   // на акцентном фоне — белый фон, акцентный текст (tweb .active .badge).
   .badge {
     background-color: #fff !important;
-    color: var(--tg-accent) !important;
+    color: var(--primary-color) !important;
   }
 }
 
@@ -126,12 +126,12 @@
   outline: none;
   background: transparent;
   font-size: 16px;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
   padding: 10px 4px;
-  border-bottom: 1px solid var(--tg-hover);
+  border-bottom: 1px solid var(--light-secondary-text-color);
 
-  &:focus { border-bottom-color: var(--tg-accent); }
-  &::placeholder { color: var(--tg-textFaint); }
+  &:focus { border-bottom-color: var(--primary-color); }
+  &::placeholder { color: var(--secondary-text-color); }
 }
 
 // выбор emoji/цвета значка темы в форме создания/редактирования
@@ -153,17 +153,17 @@
   cursor: pointer;
   font-size: 20px;
   line-height: 1;
-  color: var(--tg-textSecondary);
+  color: var(--secondary-text-color);
   transition: background 0.15s;
 
   @media (hover: hover) {
-    &:hover { background: var(--tg-hover); }
+    &:hover { background: var(--light-secondary-text-color); }
   }
 }
 
 .emojiCellActive {
-  background: var(--tg-hover);
-  box-shadow: inset 0 0 0 2px var(--tg-accent);
+  background: var(--light-secondary-text-color);
+  box-shadow: inset 0 0 0 2px var(--primary-color);
 }
 
 // строка поиска по темам (в шапке вместо названия, tweb ForumTab search)
@@ -174,11 +174,11 @@
   outline: none;
   background: transparent;
   font-size: 16px;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
   font-family: inherit;
 
   &::placeholder {
-    color: var(--tg-textFaint);
+    color: var(--secondary-text-color);
     opacity: 1;
   }
 }

@@ -32,5 +32,5 @@
 // surface → transparent (гасит уплывающие строки под табами)
 .gradient {
   height: 100%;
-  background: linear-gradient(180deg, var(--tabsbar-from, var(--tg-sidebarBg)), transparent 100%);
+  background: linear-gradient(180deg, var(--tabsbar-from, var(--surface-color)), transparent 100%);
 }

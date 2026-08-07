@@ -18,11 +18,11 @@ function Row({ peer, active, onPick }: { peer: Peer; active: boolean; onPick: (p
   return (
     <div className={classNames(s.row, active ? s.active : '')} onClick={() => onPick(peer)}>
       <Avatar background={gradientFor(peer.id)} src={avatarSrc} text={name.charAt(0).toUpperCase()} size="xs" />
-      <Text noWrap size={15} weight={600} color="var(--tg-textPrimary)" style={{ flex: 1 }}>
+      <Text noWrap size={15} weight={600} color="var(--primary-text-color)" style={{ flex: 1 }}>
         {name}
       </Text>
       {peer.username && (
-        <Text noWrap size={14} color="var(--tg-textSecondary)">
+        <Text noWrap size={14} color="var(--secondary-text-color)">
           @{peer.username}
         </Text>
       )}

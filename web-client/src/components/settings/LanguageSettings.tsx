@@ -84,8 +84,8 @@ export default function LanguageSettings({ onBack }: { onBack: () => void }) {
             >
               <Radio on={on} />
               <div className={s.langBody}>
-                <Text size={16} color="var(--tg-textPrimary)">{it.en}</Text>
-                <Text size={13.5} color="var(--tg-textSecondary)">{it.native}</Text>
+                <Text size={16} color="var(--primary-text-color)">{it.en}</Text>
+                <Text size={13.5} color="var(--secondary-text-color)">{it.native}</Text>
               </div>
             </div>
           )

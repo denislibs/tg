@@ -60,7 +60,7 @@ export function PermissionsScreen({ g, onBack }: { g: GroupEdit; onBack: () => v
       {g.isCreator && (
         <Section caption="Paid messages" footer="Charge stars per message from non-admins. 0 disables paid messages.">
           <div className={s.chargeRow}>
-            <Text size={15} color="var(--tg-textPrimary)">{t('Stars per message')}</Text>
+            <Text size={15} color="var(--primary-text-color)">{t('Stars per message')}</Text>
             <input
               type="number"
               min={0}

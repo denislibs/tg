@@ -44,11 +44,11 @@
 
   @media (hover: hover) {
     &:hover {
-      background: var(--tg-hover);
+      background: var(--light-secondary-text-color);
     }
   }
 }
 
 .active {
-  background: var(--tg-hover);
+  background: var(--light-secondary-text-color);
 }

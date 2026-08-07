@@ -56,15 +56,15 @@ function PinnedBar({ pins, index, searchOpen, playerOffset, onFollow, onUnpin, o
           onClick={onFollow}
           style={{ top: `${(narrow ? 8 : 16) + 48 + 8 + playerOffset}px` }}
         >
-          <TgIcon name="pin" size={20} color="var(--tg-accent)" />
+          <TgIcon name="pin" size={20} color="var(--primary-color)" />
           {/* tweb pinnedMessageBorder.render(count, count - pinnedIndex - 1):
               сегменты по треку сверху вниз — верхний это старейший пин */}
           <PinnedBorder count={pins.length} index={pins.length - index - 1} />
           <div className={s.body}>
-            <Text size={13} weight={600} color="var(--tg-accent)" style={{ lineHeight: 1.2 }}>
+            <Text size={13} weight={600} color="var(--primary-color)" style={{ lineHeight: 1.2 }}>
               {t('Pinned message')}{badge != null ? ` #${badge}` : ''}
             </Text>
-            <Text noWrap size={13.5} color="var(--tg-textSecondary)">
+            <Text noWrap size={13.5} color="var(--secondary-text-color)">
               {shown?.text || replyMediaLabel(shown?.type) || t('Message')}
             </Text>
           </div>
@@ -72,7 +72,7 @@ function PinnedBar({ pins, index, searchOpen, playerOffset, onFollow, onUnpin, o
             <IconButton
               size="small"
               onClick={(e) => { e.stopPropagation(); onOpenList() }}
-              color="var(--tg-textFaint)"
+              color="var(--secondary-text-color)"
               aria-label={t('Pinned Messages')}
             >
               <TgIcon name="pinlist" size={20} />
@@ -81,7 +81,7 @@ function PinnedBar({ pins, index, searchOpen, playerOffset, onFollow, onUnpin, o
             <IconButton
               size="small"
               onClick={(e) => { e.stopPropagation(); if (shown?.id != null) onUnpin(shown.id) }}
-              color="var(--tg-textFaint)"
+              color="var(--secondary-text-color)"
               aria-label={t('Unpin')}
             >
               <TgIcon name="close" size={20} />

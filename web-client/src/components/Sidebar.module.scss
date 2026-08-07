@@ -21,7 +21,7 @@
   // Наш шелл — flex-ряд с align-items:flex-start (в tweb высоту даёт
   // растягивающийся родитель), поэтому высоту и sticky задаём здесь; отступ —
   // из той же --page-chats-padding. Фон — surface.
-  background: var(--tg-sidebarBg);
+  background: var(--surface-color);
   position: sticky;
   top: var(--page-chats-padding);
   height: calc(100vh - 2 * var(--page-chats-padding));
@@ -63,7 +63,7 @@
   position: relative;
   min-height: 0;
   max-height: 100%;
-  background-color: var(--tg-sidebarBg);
+  background-color: var(--surface-color);
 }
 
 // tweb .chatlist-overlay: position:absolute; top:0; inset-inline:0; z-index:2.
@@ -73,7 +73,7 @@
   position: absolute;
   inset: 0;
   overflow: hidden;
-  background: var(--tg-sidebarBg);
+  background: var(--surface-color);
   z-index: 9;
   display: flex;
   flex-direction: column;
@@ -100,7 +100,7 @@
     transition: background 0.2s;
   }
   &:hover::-webkit-scrollbar-thumb {
-    background: var(--tg-textFaint);
+    background: var(--secondary-text-color);
   }
 }
 
@@ -108,7 +108,7 @@
   position: absolute;
   inset: 0;
   overflow: hidden;
-  background: var(--tg-sectionBackdrop);
+  background: var(--background-color);
   z-index: 10;
 }
 
@@ -122,8 +122,8 @@
   inset-inline-end: 0;
   width: calc(100% - 80px);
   z-index: 9;
-  background: var(--tg-sidebarBg);
-  border-inline-start: 1px solid var(--tg-divider);
+  background: var(--surface-color);
+  border-inline-start: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
 }

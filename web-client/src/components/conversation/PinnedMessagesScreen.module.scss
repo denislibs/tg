@@ -14,7 +14,7 @@
   width: 440px;
   max-width: calc(100vw - 32px);
   max-height: 70vh;
-  background: var(--tg-sidebarBg);
+  background: var(--surface-color);
   border-radius: 16px;
   display: flex;
   flex-direction: column;
@@ -43,7 +43,7 @@
   cursor: pointer;
 
   &:hover {
-    background: var(--tg-hover);
+    background: var(--light-secondary-text-color);
   }
 }
 
@@ -61,7 +61,7 @@
 // «Открепить все» внизу (tweb pinned-container-primary-button в pinned-чате)
 .footer {
   flex-shrink: 0;
-  border-top: 1px solid var(--tg-divider);
+  border-top: 1px solid var(--border-color);
   padding: 8px;
 }
 

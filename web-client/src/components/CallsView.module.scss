@@ -1,4 +1,4 @@
-// Вкладка «Звонки»: шапка + список записей журнала. Цвета — через токены --tg-*.
+// Вкладка «Звонки»: шапка + список записей журнала. Цвета — через CSS-переменные темы.
 
 .header {
   display: flex;
@@ -32,7 +32,7 @@
   cursor: pointer;
 
   &:hover {
-    background: var(--tg-hover);
+    background: var(--light-secondary-text-color);
   }
 }
 .rowText {

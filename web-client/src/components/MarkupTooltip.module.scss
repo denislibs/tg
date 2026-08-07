@@ -39,7 +39,7 @@
   border: none;
   outline: none;
   background: transparent;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
   font-size: 15px;
   padding: 0 8px;
 }
@@ -48,7 +48,7 @@
   border: none;
   background: transparent;
   cursor: pointer;
-  color: var(--tg-accent);
+  color: var(--primary-color);
   padding: 6px;
   display: inline-flex;
 }
@@ -65,10 +65,10 @@
   align-items: center;
   justify-content: center;
   background: transparent;
-  color: var(--tg-textSecondary);
+  color: var(--secondary-text-color);
 
   &.active {
-    background: var(--tg-accent);
+    background: var(--primary-color);
     color: #fff;
   }
 }

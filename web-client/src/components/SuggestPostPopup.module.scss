@@ -18,7 +18,7 @@
 }
 
 .mineRow {
-  background: var(--tg-sectionBackdrop);
+  background: var(--background-color);
   border-radius: 10px;
   padding: 6px 10px;
 }
@@ -31,32 +31,32 @@
 .textarea {
   width: 100%;
   resize: vertical;
-  border: 1px solid var(--tg-border, rgba(0, 0, 0, 0.12));
+  border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 10px;
   padding: 10px 12px;
   font: inherit;
   font-size: 15px;
-  color: var(--tg-textPrimary);
-  background: var(--tg-inputBg, transparent);
+  color: var(--primary-text-color);
+  background: transparent;
   outline: none;
 
   &:focus {
-    border-color: var(--tg-accent);
+    border-color: var(--primary-color);
   }
 }
 
 .input {
   width: 100%;
-  border: 1px solid var(--tg-border, rgba(0, 0, 0, 0.12));
+  border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 10px;
   padding: 10px 12px;
   font: inherit;
   font-size: 15px;
-  color: var(--tg-textPrimary);
-  background: var(--tg-inputBg, transparent);
+  color: var(--primary-text-color);
+  background: transparent;
   outline: none;
 
   &:focus {
-    border-color: var(--tg-accent);
+    border-color: var(--primary-color);
   }
 }

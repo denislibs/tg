@@ -19,7 +19,7 @@ export default function Reaction({ emoji, count, highlighted }: Props) {
     >
       <span className={s.emoji}>{emoji}</span>
       {count != null && (
-        <Text size={13.5} weight={600} color="var(--tg-accent)">{count}</Text>
+        <Text size={13.5} weight={600} color="var(--primary-color)">{count}</Text>
       )}
     </motion.div>
   )

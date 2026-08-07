@@ -17,7 +17,7 @@
   height: var(--chat-plate-height);
   border-radius: 24px;
   cursor: pointer;
-  background: var(--tg-bubble);
+  background: var(--surface-color);
   box-shadow: var(--tg-plateShadow);
 
   // tweb: на handhelds плейты в 8px от краёв (--page-chats-padding: 8px)
@@ -47,7 +47,7 @@
   height: 40px;
   width: 3px;
   border-radius: 3px;
-  background: var(--tg-accent);
+  background: var(--primary-color);
 }
 // >4 пинов: трек скроллится внутри 40px окна, края фейдятся в цвет плашки
 .borderMasked {
@@ -67,11 +67,11 @@
   }
   &::before {
     top: 0;
-    background: linear-gradient(var(--tg-bubble), transparent);
+    background: linear-gradient(var(--surface-color), transparent);
   }
   &::after {
     bottom: 0;
-    background: linear-gradient(transparent, var(--tg-bubble));
+    background: linear-gradient(transparent, var(--surface-color));
   }
 }
 .borderMaskTop::before {
@@ -82,7 +82,7 @@
 }
 // трек: сегменты вырезаны clipPath, подложка — accent с opacity .4
 .borderWrapper {
-  color: var(--tg-accent);
+  color: var(--primary-color);
   position: relative;
   transition: transform 0.25s ease-in-out;
 
@@ -91,7 +91,7 @@
     content: ' ';
     inset: 0;
     display: block;
-    background: var(--tg-accent);
+    background: var(--primary-color);
     opacity: 0.4;
   }
 }

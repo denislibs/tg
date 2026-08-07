@@ -125,7 +125,7 @@ export default function ChangePhone({ onBack }: { onBack: () => void }) {
   const phoneStep = (
     <div className={auth.card} style={{ margin: '0 auto', boxShadow: 'none' }}>
       <Text
-        size={15} color="var(--tg-textSecondary)"
+        size={15} color="var(--secondary-text-color)"
         style={{ textAlign: 'center', marginBottom: '24px', lineHeight: 1.5 }}
       >
         {t('Please confirm your country code and enter your new phone number.')}
@@ -138,9 +138,9 @@ export default function ChangePhone({ onBack }: { onBack: () => void }) {
         >
           <div className={auth.countryLabel}>
             <span className={auth.flag}>{country.flag}</span>
-            <Text size={16} color="var(--tg-textPrimary)">{country.name}</Text>
+            <Text size={16} color="var(--primary-text-color)">{country.name}</Text>
           </div>
-          <TgIcon name="down" color="var(--tg-textFaint)" />
+          <TgIcon name="down" color="var(--secondary-text-color)" />
         </div>
         <AnimatePresence>
           {countryOpen && (
@@ -162,8 +162,8 @@ export default function ChangePhone({ onBack }: { onBack: () => void }) {
                   className={auth.dropdownItem}
                 >
                   <span className={auth.flagSmall}>{c.flag}</span>
-                  <Text size={15} color="var(--tg-textPrimary)" style={{ flex: 1 }}>{c.name}</Text>
-                  <Text size={15} color="var(--tg-textFaint)">{c.code}</Text>
+                  <Text size={15} color="var(--primary-text-color)" style={{ flex: 1 }}>{c.name}</Text>
+                  <Text size={15} color="var(--secondary-text-color)">{c.code}</Text>
                 </div>
               ))}
             </motion.div>
@@ -172,7 +172,7 @@ export default function ChangePhone({ onBack }: { onBack: () => void }) {
       </div>
 
       <div className={auth.fieldWrap}>
-        <Text size={16} color="var(--tg-textPrimary)" style={{ marginRight: '8px' }}>{country.code}</Text>
+        <Text size={16} color="var(--primary-text-color)" style={{ marginRight: '8px' }}>{country.code}</Text>
         <input
           autoFocus
           className={auth.phoneInput}
@@ -196,11 +196,11 @@ export default function ChangePhone({ onBack }: { onBack: () => void }) {
 
   const codeStep = (
     <div className={auth.card} style={{ margin: '0 auto', boxShadow: 'none' }}>
-      <Text size={22} weight={600} color="var(--tg-textPrimary)" style={{ textAlign: 'center' }}>
+      <Text size={22} weight={600} color="var(--primary-text-color)" style={{ textAlign: 'center' }}>
         {country.code} {phone}
       </Text>
       <Text
-        size={15} color="var(--tg-textSecondary)"
+        size={15} color="var(--secondary-text-color)"
         style={{ textAlign: 'center', marginTop: '8px', marginBottom: '24px', lineHeight: 1.5 }}
       >
         {t('We have sent you a message with the code.')}

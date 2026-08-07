@@ -5,12 +5,12 @@
 
 .row {
   --row-mb: #{$bubble-margin}; // tweb $bubble-margin
-  --b-bg: var(--tg-bubble);
-  --b-text: var(--tg-textPrimary);
-  --b-link: var(--tg-link);
-  --b-tick: var(--tg-bubbleOutAccent); // тики (только исходящие их показывают)
-  --b-time: var(--tg-textFaint);
-  --b-secondary: var(--tg-textSecondary);
+  --b-bg: var(--surface-color);
+  --b-text: var(--primary-text-color);
+  --b-link: var(--link-color);
+  --b-tick: var(--message-out-primary-color); // тики (только исходящие их показывают)
+  --b-time: var(--secondary-text-color);
+  --b-secondary: var(--secondary-text-color);
 
   position: relative;
   display: flex;
@@ -25,22 +25,22 @@
 
   // Реакции (tweb _reaction.scss): фон невыбранного чипа — полупрозрачный акцент
   // (--message-highlighting-color), выбранного — сплошной (--message-primary-color).
-  --r-bg: color-mix(in srgb, var(--tg-accent) 10%, transparent);
-  --r-fg: var(--tg-accent);
-  --r-chosen-bg: var(--tg-accent);
+  --r-bg: color-mix(in srgb, var(--primary-color) 10%, transparent);
+  --r-fg: var(--primary-color);
+  --r-chosen-bg: var(--primary-color);
   --r-chosen-fg: #fff;
 
   &[data-out] {
     transform-origin: bottom right;
-    --b-bg: var(--tg-bubbleOut);
-    --b-text: var(--tg-bubbleOutText);
-    --b-link: var(--tg-bubbleOutAccent);
-    --b-time: color-mix(in srgb, var(--tg-bubbleOutText) 70%, transparent);
-    --b-secondary: color-mix(in srgb, var(--tg-bubbleOutText) 85%, transparent);
-    --r-bg: color-mix(in srgb, var(--tg-bubbleOutAccent) 12%, transparent);
-    --r-fg: var(--tg-bubbleOutAccent);
-    --r-chosen-bg: var(--tg-bubbleOutAccent);
-    --r-chosen-fg: var(--tg-bubbleOut);
+    --b-bg: var(--message-out-background-color);
+    --b-text: var(--message-out-primary-color);
+    --b-link: var(--message-out-primary-color);
+    --b-time: color-mix(in srgb, var(--message-out-primary-color) 70%, transparent);
+    --b-secondary: color-mix(in srgb, var(--message-out-primary-color) 85%, transparent);
+    --r-bg: color-mix(in srgb, var(--message-out-primary-color) 12%, transparent);
+    --r-fg: var(--message-out-primary-color);
+    --r-chosen-bg: var(--message-out-primary-color);
+    --r-chosen-fg: var(--message-out-background-color);
   }
 
   &[data-selecting] {
@@ -56,7 +56,7 @@
   left: 50%;
   transform: translateX(-50%);
   width: 100vw;
-  background: color-mix(in srgb, var(--tg-accent) 30%, transparent);
+  background: color-mix(in srgb, var(--primary-color) 30%, transparent);
   z-index: 0;
   pointer-events: none;
 }
@@ -180,10 +180,10 @@
   justify-content: center;
   color: #fff;
   cursor: pointer;
-  background: var(--tg-accent);
+  background: var(--primary-color);
 
   .row[data-out] & {
-    background: var(--tg-bubbleOutAccent);
+    background: var(--message-out-primary-color);
   }
 }
 .voiceBody {
@@ -199,10 +199,10 @@
   width: 2.5px;
   flex-shrink: 0;
   border-radius: 2px;
-  background: var(--tg-textFaint);
+  background: var(--secondary-text-color);
 
   .row[data-out] & {
-    background: var(--tg-bubbleOutAccent);
+    background: var(--message-out-primary-color);
   }
 }
 .voiceMeta {
@@ -468,7 +468,7 @@
   // Входящий чип остаётся акцентным — как в tweb (--chosen-background-color:
   // var(--primary-color)) и как внутри бабла.
   .row[data-out] & {
-    --r-chosen-bg: var(--tg-bubble);
-    --r-chosen-fg: var(--tg-accent);
+    --r-chosen-bg: var(--surface-color);
+    --r-chosen-fg: var(--primary-color);
   }
 }

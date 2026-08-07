@@ -18,7 +18,7 @@ function ArchiveTile({ story, onClick }: { story: StoryItem; onClick: () => void
     <div
       onClick={onClick}
       role="button"
-      style={{ position: 'relative', aspectRatio: '9 / 16', borderRadius: 10, overflow: 'hidden', background: 'var(--tg-inputSearchBg)', cursor: 'pointer' }}
+      style={{ position: 'relative', aspectRatio: '9 / 16', borderRadius: 10, overflow: 'hidden', background: 'var(--input-search-background-color)', cursor: 'pointer' }}
     >
       {url && <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
       {story.pinned && (
@@ -49,22 +49,22 @@ export default function StoriesArchiveSheet({ onClose }: { onClose: () => void }
       animate={{ x: 0 }}
       exit={{ x: '100%' }}
       transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-      style={{ position: 'absolute', inset: 0, zIndex: 42, background: 'var(--tg-sidebarBg)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+      style={{ position: 'absolute', inset: 0, zIndex: 42, background: 'var(--surface-color)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
     >
       <div className={s.header}>
-        <IconButton onClick={onClose} aria-label={t('Back')} color="var(--tg-textSecondary)">
+        <IconButton onClick={onClose} aria-label={t('Back')} color="var(--secondary-text-color)">
           <TgIcon name="back" />
         </IconButton>
-        <Text size={19} weight={600} color="var(--tg-textPrimary)">
+        <Text size={19} weight={600} color="var(--primary-text-color)">
           {t('Stories Archive')}
         </Text>
       </div>
 
       <div className={s.body} style={{ padding: '4px 12px 24px' }}>
         {items == null ? (
-          <Text size={15} color="var(--tg-textSecondary)" style={{ padding: 16 }}>{t('Loading')}</Text>
+          <Text size={15} color="var(--secondary-text-color)" style={{ padding: 16 }}>{t('Loading')}</Text>
         ) : items.length === 0 ? (
-          <Text size={15} color="var(--tg-textSecondary)" style={{ padding: 16 }}>{t('No archived stories')}</Text>
+          <Text size={15} color="var(--secondary-text-color)" style={{ padding: 16 }}>{t('No archived stories')}</Text>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
             {items.map((it) => (

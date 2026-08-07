@@ -59,20 +59,20 @@ export default function ContactsView({
         position: 'absolute',
         inset: 0,
         zIndex: 40,
-        background: 'var(--tg-sidebarBg)',
+        background: 'var(--surface-color)',
         display: 'flex',
         flexDirection: 'column',
       }}
     >
       {/* Header */}
       <div className={s.header}>
-        <IconButton onClick={onBack} color="var(--tg-textSecondary)">
+        <IconButton onClick={onBack} color="var(--secondary-text-color)">
           <TgIcon name="back" />
         </IconButton>
-        <Text size={19} weight={600} color="var(--tg-textPrimary)" className={s.title}>
+        <Text size={19} weight={600} color="var(--primary-text-color)" className={s.title}>
           {t('Contacts')}
         </Text>
-        <IconButton color="var(--tg-textSecondary)" onClick={() => setNewOpen(true)}>
+        <IconButton color="var(--secondary-text-color)" onClick={() => setNewOpen(true)}>
           <TgIcon name="adduser" />
         </IconButton>
       </div>
@@ -80,7 +80,7 @@ export default function ContactsView({
       {/* Search */}
       <div className={s.searchWrap}>
         <div className={s.searchBar}>
-          <TgIcon name="search" size={20} color="var(--tg-textFaint)" />
+          <TgIcon name="search" size={20} color="var(--secondary-text-color)" />
           <input
             className={s.searchInput}
             value={query}
@@ -93,13 +93,13 @@ export default function ContactsView({
       {/* List */}
       <div className={s.list}>
         {groups.length === 0 && (
-          <Text size={14} color="var(--tg-textSecondary)" className={s.emptyHint}>
+          <Text size={14} color="var(--secondary-text-color)" className={s.emptyHint}>
             {t('No contacts found.')}
           </Text>
         )}
         {groups.map(([letter, list]) => (
           <div key={letter}>
-            <Text size={13} weight={600} color="var(--tg-accent)" className={s.groupLetter}>
+            <Text size={13} weight={600} color="var(--primary-color)" className={s.groupLetter}>
               {letter}
             </Text>
             {list.map((c) => (
@@ -112,10 +112,10 @@ export default function ContactsView({
                   online={c.online}
                 />
                 <div className={s.rowText}>
-                  <Text noWrap size={16} color="var(--tg-textPrimary)">
+                  <Text noWrap size={16} color="var(--primary-text-color)">
                     {c.name}
                   </Text>
-                  <Text noWrap size={13.5} color={c.online ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'}>
+                  <Text noWrap size={13.5} color={c.online ? 'var(--primary-color)' : 'var(--secondary-text-color)'}>
                     {c.online ? t('online') : c.status || t('last seen recently')}
                   </Text>
                 </div>

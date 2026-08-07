@@ -154,13 +154,13 @@ function ChatListItem({ chat, selected, onSelect, collapsed }: Props) {
           <div className={s.titleRow}>
             {/* секретный чат: замок + зелёное имя (tweb .is-secret) */}
             {chat.type === 'secret' && (
-              <TgIcon name="lock" size={16} color="var(--tg-green)" style={{ flexShrink: 0, marginRight: 3 }} />
+              <TgIcon name="lock" size={16} color="var(--green-color)" style={{ flexShrink: 0, marginRight: 3 }} />
             )}
             {/* Имя не растягивается (flex:0 1 auto): иначе оно занимает всё
                 свободное место и отбрасывает бейдж/статус к правому краю.
                 Бейджи стоят сразу после имени (gap .titleRow), а время/галочка
                 уходят вправо своим кластером (margin-left:auto). */}
-            <Text noWrap weight={500} size={16} color={chat.type === 'secret' ? 'var(--tg-green)' : 'var(--cl-title)'} style={{ flex: '0 1 auto', minWidth: 0 }}>
+            <Text noWrap weight={500} size={16} color={chat.type === 'secret' ? 'var(--green-color)' : 'var(--cl-title)'} style={{ flex: '0 1 auto', minWidth: 0 }}>
               {chat.name}
             </Text>
             {chat.verified && (
@@ -188,7 +188,7 @@ function ChatListItem({ chat, selected, onSelect, collapsed }: Props) {
               <Text
                 noWrap
                 size={16}
-                color={secretStatus === 'requested' ? 'var(--tg-green)' : 'var(--cl-subtitle)'}
+                color={secretStatus === 'requested' ? 'var(--green-color)' : 'var(--cl-subtitle)'}
                 style={{ flex: 1 }}
               >
                 {secretStatus === 'requested'

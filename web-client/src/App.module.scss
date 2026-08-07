@@ -6,7 +6,7 @@
   display: flex;
   align-items: flex-start;
   min-height: 100vh;
-  background: var(--tg-appBg);
+  background: var(--background-color);
 }
 
 // мобильная колонка (список чатов / чат) — фуллскрин-слой под классический
@@ -74,11 +74,11 @@
   z-index: 4101;
   width: min(360px, calc(100vw - 32px));
   padding: 20px;
-  background: var(--tg-menuBg);
+  background: var(--menu-background-color);
   backdrop-filter: blur(40px);
   -webkit-backdrop-filter: blur(40px);
   border-radius: 14px;
-  box-shadow: var(--tg-menuShadow);
+  box-shadow: var(--menu-box-shadow);
 }
 
 // ряд кнопок в qr-карточке
@@ -101,17 +101,17 @@
 
   @media (hover: hover) {
     &:hover {
-      background: var(--tg-hover);
+      background: var(--light-secondary-text-color);
     }
   }
 }
 
 .qrCancel {
-  color: var(--tg-textSecondary);
+  color: var(--secondary-text-color);
 }
 
 .qrConfirm {
-  color: var(--tg-accent);
+  color: var(--primary-color);
 }
 
 // индикатор состояния API (правый нижний угол)

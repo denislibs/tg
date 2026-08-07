@@ -32,14 +32,14 @@ export function RemovedUsersScreen({ g, onBack }: { g: GroupEdit; onBack: () => 
   return (
     <SettingsScreen title="Removed Users" onBack={onBack} zIndex={70}>
       <div className={s.search}><InputSearch value={q} onChange={setQ} placeholder={t('Search')} /></div>
-      <Text size={13.5} color="var(--tg-textSecondary)" className={s.bansCaption}>
+      <Text size={13.5} color="var(--secondary-text-color)" className={s.bansCaption}>
         {t('Users removed by group admins cannot rejoin via invite links.')}
       </Text>
       {list.length === 0 ? (
         <div className={s.duck}>
           <LottieSticker name="UtyanSearch" size={120} />
-          <Text size={17} weight={600} color="var(--tg-textPrimary)">{t('No Results')}</Text>
-          <Text size={14.5} color="var(--tg-textSecondary)">{t('Try searching.')}</Text>
+          <Text size={17} weight={600} color="var(--primary-text-color)">{t('No Results')}</Text>
+          <Text size={14.5} color="var(--secondary-text-color)">{t('Try searching.')}</Text>
         </div>
       ) : (
         <Section>
@@ -47,9 +47,9 @@ export function RemovedUsersScreen({ g, onBack }: { g: GroupEdit; onBack: () => 
             <div key={b.userId} className={s.memberRow}>
               <UserAvatar id={b.userId} name={b.name} avatarUrl={b.avatarUrl} />
               <div className={s.memberBody}>
-                <Text noWrap size={16} color="var(--tg-textPrimary)">{b.name}</Text>
+                <Text noWrap size={16} color="var(--primary-text-color)">{b.name}</Text>
               </div>
-              <IconButton size="small" color="var(--tg-accent)" onClick={() => void g.unban(b.userId)} title={t('Unban')}>
+              <IconButton size="small" color="var(--primary-color)" onClick={() => void g.unban(b.userId)} title={t('Unban')}>
                 <TgIcon name="close" size={20} />
               </IconButton>
             </div>
@@ -108,7 +108,7 @@ export function MemberRestrictScreen({
       onBack={onBack}
       zIndex={80}
       headerRight={
-        <IconButton onClick={() => onSave((31 & ~allowed) >>> 0, RESTRICT_DURATIONS[durIdx].seconds)} color="var(--tg-accent)">
+        <IconButton onClick={() => onSave((31 & ~allowed) >>> 0, RESTRICT_DURATIONS[durIdx].seconds)} color="var(--primary-color)">
           <TgIcon name="check" />
         </IconButton>
       }
@@ -117,7 +117,7 @@ export function MemberRestrictScreen({
         <div className={s.memberRow}>
           <UserAvatar id={member.userId} name={member.name} avatarUrl={member.avatarUrl} />
           <div className={s.memberBody}>
-            <Text noWrap size={16} color="var(--tg-textPrimary)">{member.name}</Text>
+            <Text noWrap size={16} color="var(--primary-text-color)">{member.name}</Text>
           </div>
         </div>
       </Section>
@@ -158,13 +158,13 @@ export function RestrictedUsersScreen({ g, onBack }: { g: GroupEdit; onBack: () 
   return (
     <SettingsScreen title="Restricted Users" onBack={onBack} zIndex={70}>
       <div className={s.search}><InputSearch value={q} onChange={setQ} placeholder={t('Search')} /></div>
-      <Text size={13.5} color="var(--tg-textSecondary)" className={s.bansCaption}>
+      <Text size={13.5} color="var(--secondary-text-color)" className={s.bansCaption}>
         {t('These members have limited rights in this group.')}
       </Text>
       {list.length === 0 ? (
         <div className={s.duck}>
           <LottieSticker name="UtyanSearch" size={120} />
-          <Text size={17} weight={600} color="var(--tg-textPrimary)">{t('No Results')}</Text>
+          <Text size={17} weight={600} color="var(--primary-text-color)">{t('No Results')}</Text>
         </div>
       ) : (
         <Section>
@@ -172,10 +172,10 @@ export function RestrictedUsersScreen({ g, onBack }: { g: GroupEdit; onBack: () 
             <div key={r.userId} className={s.memberRow}>
               <UserAvatar id={r.userId} name={r.name} avatarUrl={r.avatarUrl} />
               <div className={s.memberBody}>
-                <Text noWrap size={16} color="var(--tg-textPrimary)">{r.name}</Text>
-                <Text noWrap size={14} color="var(--tg-textSecondary)">{t('Restricted')}: {deniedLabels(r.deniedRights)}</Text>
+                <Text noWrap size={16} color="var(--primary-text-color)">{r.name}</Text>
+                <Text noWrap size={14} color="var(--secondary-text-color)">{t('Restricted')}: {deniedLabels(r.deniedRights)}</Text>
               </div>
-              <IconButton size="small" color="var(--tg-accent)" onClick={() => void g.unrestrict(r.userId)} title={t('Unban')}>
+              <IconButton size="small" color="var(--primary-color)" onClick={() => void g.unrestrict(r.userId)} title={t('Unban')}>
                 <TgIcon name="close" size={20} />
               </IconButton>
             </div>

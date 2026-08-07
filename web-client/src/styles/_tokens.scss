@@ -8,57 +8,24 @@
 // `<style id="theme">` (см. config/themePresets.ts + core/theme/themeController.ts).
 //
 // Здесь остаются два рода токенов:
-//  (а) семантические --tg-* — тонкие алиасы на инжектнутые tweb-токены (плюс пара
-//      статичных tweb 1:1 констант вроде --menu-box-shadow, которые в tweb сами не
-//      зависят от темы). Один :root — значение меняется само, когда themeController
-//      переинжектит :root-блок под новый пресет.
+//  (а) статичные tweb 1:1 константы (--menu-box-shadow(-color)/--menu-background-color),
+//      которые в tweb сами не зависят от темы/акцента — реальные значения семантических
+//      tweb-токенов (--primary-color, --surface-color и т.п.) больше НЕ дублируются тут
+//      алиасами: потребители читают их напрямую (--primary-color/--surface-color/...),
+//      themeController.setTheme() инжектит их значения в `<style id="theme">`.
 //  (b) «бесхозные» --tg-* без прямого tweb-аналога (декоративные тени/градиенты
 //      нашего UI, дефолтный обойный градиент) — статика per-theme, сгруппированная
 //      под 2 визуальных лагеря: day+light (светлый) и night+tinted (тёмный).
 
 :root {
-  // ── Семантические алиасы (см. config/themePresets.ts AppColorName) ──
-  --tg-accent: var(--primary-color);
-  --tg-badge: var(--primary-color);
-  // фон-подложка целых экранов (паскод-лок и т.п.) и подложка секций-карточек
-  --tg-bg: var(--background-color);
-  --tg-appBg: var(--background-color);
-  --tg-sectionBackdrop: var(--background-color);
-  --tg-bubble: var(--surface-color);
-  --tg-sidebarBg: var(--surface-color);
-  --tg-skelBase: var(--surface-color);
-  --tg-bubbleOut: var(--message-out-background-color);
-  --tg-bubbleOutText: var(--message-out-primary-color);
-  // тики/ссылки/реакции поверх исходящего баббла — тот же текст/иконка-цвет, что и
-  // основной текст баббла (кастомные темы чата перекрывают инлайн-стилем, см.
-  // useShellTheme/ConversationView).
-  --tg-bubbleOutAccent: var(--message-out-primary-color);
-  --tg-dangerText: var(--danger-color);
-  --tg-divider: var(--border-color);
-  --tg-green: var(--green-color);
-  // hover-подсветка строк — лёгкий тон вторичного текста (нет отдельного --hover-color
-  // в themeController, ближайший семантический аналог)
-  --tg-hover: var(--light-secondary-text-color);
-  --tg-skelHi: var(--light-secondary-text-color);
-  --tg-inputSearchBg: var(--input-search-background-color);
-  --tg-searchBg: var(--input-search-background-color);
-  --tg-link: var(--link-color);
-  --tg-switchOff: var(--secondary-color);
-  --tg-textPrimary: var(--primary-text-color);
-  --tg-textSecondary: var(--secondary-text-color);
-  // нет отдельного "faint"-токена в tweb — ближайший аналог, secondary-text-color
-  --tg-textFaint: var(--secondary-text-color);
-
   // ── Статичные tweb 1:1 константы (tweb scss/base.scss:121,232,258) ──
   // menu-box-shadow(-color) в tweb НЕ переопределяется в .night — одна и та же тень
   // на любой теме (плавающие меню одинаково тёмные поверх light/dark поверхностей).
   --menu-box-shadow-color: rgba(0, 0, 0, 0.15);
   --menu-box-shadow: 0px 0px 10px var(--menu-box-shadow-color);
-  --tg-menuShadow: var(--menu-box-shadow);
   // menu-background-color = surface-color при --backdrop-opacity (per-theme, ниже),
   // 1:1 tweb base.scss (:root .85 / .night .75).
   --menu-background-color: rgba(var(--surface-color-rgb), var(--backdrop-opacity));
-  --tg-menuBg: var(--menu-background-color);
 
   // tweb-набор теней секций/колонки (base.scss) — композиция здесь, цвета — по темам.
   --section-box-shadow: 0px 1px 4px 0px var(--section-box-shadow-color);
@@ -84,7 +51,7 @@
   // тень плавающих плашек чата (selection/pinned/scroll-down FAB)
   --tg-plateShadow: 0 1px 8px rgba(0, 0, 0, 0.16);
   // рамка outlined-инпута в покое (tweb --input-search-border-color: #dfe1e5)
-  --tg-inputBorderIdle: #dfe1e5;
+  --input-search-border-color: #dfe1e5;
   // тонкая рамка входящего баббла
   --tg-bubbleBorder: rgba(0, 0, 0, 0.04);
   // подложка баннеров/inline-плашек (NotificationBanner) — нет tweb-аналога, свой
@@ -115,7 +82,7 @@
   --tg-searchCardShadow: 0 6px 28px -4px rgba(0, 0, 0, 0.6);
   --tg-plateShadow: 0 1px 8px rgba(0, 0, 0, 0.45);
   // tweb --input-search-border-color night: #2f2f2f
-  --tg-inputBorderIdle: #2f2f2f;
+  --input-search-border-color: #2f2f2f;
   --tg-bubbleBorder: rgba(255, 255, 255, 0.04);
   // подложка баннеров/inline-плашек — нейтрально-белая (не акцентная), старое
   // значение night/dark 1:1

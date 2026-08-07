@@ -53,7 +53,7 @@ export default function PasscodeLockScreen() {
     <div className={s.overlay}>
       <div className={s.card}>
         <PasswordMonkey peeking={show} size={140} />
-        <Text size={20} weight={600} color="var(--tg-textPrimary)" style={{ textAlign: 'center', marginTop: 4 }}>
+        <Text size={20} weight={600} color="var(--primary-text-color)" style={{ textAlign: 'center', marginTop: 4 }}>
           {t('Enter your passcode')}
         </Text>
         <div className={s.field}>
@@ -67,7 +67,7 @@ export default function PasscodeLockScreen() {
             onKeyDown={(e) => { if (e.key === 'Enter') void proceed() }}
             placeholder={t('Passcode')}
           />
-          <IconButton size="small" color="var(--tg-textFaint)" onClick={() => setShow((v) => !v)} aria-label="toggle passcode">
+          <IconButton size="small" color="var(--secondary-text-color)" onClick={() => setShow((v) => !v)} aria-label="toggle passcode">
             <TgIcon name={show ? 'eye2' : 'eye1'} size={22} />
           </IconButton>
         </div>
@@ -83,7 +83,7 @@ export default function PasscodeLockScreen() {
             {t('Proceed')}
           </Button>
         </div>
-        <Text size={13.5} color="var(--tg-textSecondary)" style={{ textAlign: 'center', lineHeight: 1.5 }}>
+        <Text size={13.5} color="var(--secondary-text-color)" style={{ textAlign: 'center', lineHeight: 1.5 }}>
           {t('If you forgot your passcode, you need to log out and log in again.')}{' '}
           <span className={s.logout} onClick={() => setLogoutOpen(true)}>{t('Log Out')}</span>
         </Text>
@@ -100,7 +100,7 @@ export default function PasscodeLockScreen() {
           },
         }}
       >
-        <Text size={15} color="var(--tg-textPrimary)" style={{ lineHeight: 1.5 }}>
+        <Text size={15} color="var(--primary-text-color)" style={{ lineHeight: 1.5 }}>
           {t('Are you sure you want to log out? You will need to sign in again.')}
         </Text>
       </Popup>

@@ -180,12 +180,12 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
         />
         <div className={s.body}>
           <div className={s.top}>
-            <Text noWrap size={16} weight={600} color="var(--tg-textPrimary)" className={s.titleFlex}>
+            <Text noWrap size={16} weight={600} color="var(--primary-text-color)" className={s.titleFlex}>
               {chat?.name ?? `#${m.chatId}`}
             </Text>
-            <Text size={13} color="var(--tg-textFaint)">{friendlyMsgTime(m.createdAt, lang)}</Text>
+            <Text size={13} color="var(--secondary-text-color)">{friendlyMsgTime(m.createdAt, lang)}</Text>
           </div>
-          <Text noWrap size={15} color="var(--tg-textSecondary)">
+          <Text noWrap size={15} color="var(--secondary-text-color)">
             <Highlighted text={snippet} q={q} />
           </Text>
         </div>
@@ -358,8 +358,8 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                             {hostOf(url).charAt(0).toUpperCase()}
                           </div>
                           <div className={s.body}>
-                            <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{hostOf(url)}</Text>
-                            <Text noWrap size={13.5} color="var(--tg-link)">{url}</Text>
+                            <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">{hostOf(url)}</Text>
+                            <Text noWrap size={13.5} color="var(--link-color)">{url}</Text>
                           </div>
                         </div>
                       )
@@ -376,14 +376,14 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                   <SidebarSection>
                     {msgs.map((m) => (
                       <div key={m.id} className={s.row} onClick={() => openMessage(m)}>
-                        <div className={s.rowSquare} style={{ background: EXT_COLORS[extOf(m.mediaName)] ?? 'var(--tg-accent)' }}>
+                        <div className={s.rowSquare} style={{ background: EXT_COLORS[extOf(m.mediaName)] ?? 'var(--primary-color)' }}>
                           {extOf(m.mediaName).toUpperCase().slice(0, 4) || 'FILE'}
                         </div>
                         <div className={s.body}>
-                          <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">
+                          <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">
                             <Highlighted text={m.mediaName || t('Document')} q={q} />
                           </Text>
-                          <Text size={13.5} color="var(--tg-textSecondary)">
+                          <Text size={13.5} color="var(--secondary-text-color)">
                             {[fmtSize(m.mediaSize), friendlyMsgTime(m.createdAt, lang)].filter(Boolean).join(' · ')}
                           </Text>
                         </div>
@@ -409,10 +409,10 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                             <PlayPauseGlyph playing={audioPlaying && m.mediaId === curMediaId} size={22} className={s.rowGlyph} />
                           </div>
                           <div className={s.body}>
-                            <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">
+                            <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">
                               <Highlighted text={title} q={q} />
                             </Text>
-                            <Text size={13.5} color="var(--tg-textSecondary)">
+                            <Text size={13.5} color="var(--secondary-text-color)">
                               {[fmtDur(m.mediaDuration), friendlyMsgTime(m.createdAt, lang)].filter(Boolean).join(' · ')}
                             </Text>
                           </div>
@@ -452,14 +452,14 @@ function ChatRow({ chat, q, onClick }: { chat: Chat; q?: string; onClick: () => 
       <Avatar background={chat.avatar} src={avatarSrc} text={chat.avatarText} emoji={chat.avatarEmoji} size="lg" />
       <div className={s.body}>
         <div className={s.top}>
-          <Text noWrap size={16} weight={600} color="var(--tg-textPrimary)">
+          <Text noWrap size={16} weight={600} color="var(--primary-text-color)">
             {q ? <Highlighted text={chat.name} q={q} /> : chat.name}
           </Text>
-          {chat.verified && <VerifiedBadge size={16} color="var(--tg-accent)" />}
+          {chat.verified && <VerifiedBadge size={16} color="var(--primary-color)" />}
           {chat.premium && <PremiumBadge size={16} />}
           {chat.emojiStatus && <EmojiStatus emoji={chat.emojiStatus} size={16} />}
         </div>
-        <Text noWrap size={14.5} color="var(--tg-textSecondary)">
+        <Text noWrap size={14.5} color="var(--secondary-text-color)">
           {chat.status || (chat.username ? `@${chat.username}` : '')}
         </Text>
       </div>
@@ -483,10 +483,10 @@ function ResultRow({ bg, src, t, tc, title, subtitle, verified, onClick }: {
       <Avatar background={bg} src={avatarSrc} text={t} size="lg" color={tc ?? '#fff'} />
       <div className={s.body}>
         <div className={s.top}>
-          <Text noWrap size={16} weight={600} color="var(--tg-textPrimary)">{title}</Text>
-          {verified && <VerifiedBadge size={16} color="var(--tg-accent)" />}
+          <Text noWrap size={16} weight={600} color="var(--primary-text-color)">{title}</Text>
+          {verified && <VerifiedBadge size={16} color="var(--primary-color)" />}
         </div>
-        <Text noWrap size={14.5} color="var(--tg-textSecondary)">{subtitle}</Text>
+        <Text noWrap size={14.5} color="var(--secondary-text-color)">{subtitle}</Text>
       </div>
     </div>
   )
@@ -495,7 +495,7 @@ function ResultRow({ bg, src, t, tc, title, subtitle, verified, onClick }: {
 function Empty({ text }: { text: string }) {
   return (
     <div className={s.empty}>
-      <Text size={16} color="var(--tg-textSecondary)" style={{ textAlign: 'center', whiteSpace: 'pre-line' }}>
+      <Text size={16} color="var(--secondary-text-color)" style={{ textAlign: 'center', whiteSpace: 'pre-line' }}>
         {text}
       </Text>
     </div>

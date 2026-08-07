@@ -17,7 +17,7 @@
   max-height: calc(100vh - 64px);
   display: flex;
   flex-direction: column;
-  background: var(--tg-sidebarBg);
+  background: var(--surface-color);
   border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 12px 48px -12px rgba(0, 0, 0, 0.4);
@@ -44,7 +44,7 @@
   gap: 4px;
   font-size: 15px;
   font-weight: 600;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
 }
 
 .body {
@@ -67,11 +67,11 @@
   gap: 8px;
   font-size: 34px;
   font-weight: 700;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
 }
 .bigBalanceLabel {
   font-size: 14px;
-  color: var(--tg-textSecondary);
+  color: var(--secondary-text-color);
 }
 
 // сетка опций пополнения
@@ -87,11 +87,11 @@
   gap: 6px;
   padding: 16px 8px;
   border-radius: 14px;
-  background: var(--tg-hover);
+  background: var(--light-secondary-text-color);
   cursor: pointer;
   transition: background 0.15s ease, transform 0.1s ease;
 
-  &:hover { background: var(--tg-divider); }
+  &:hover { background: var(--border-color); }
   &:active { transform: scale(0.97); }
 }
 .optionStars {
@@ -100,7 +100,7 @@
   gap: 5px;
   font-size: 17px;
   font-weight: 700;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
 }
 
 // сетка подарков (каталог)
@@ -117,11 +117,11 @@
   gap: 8px;
   padding: 16px 6px 10px;
   border-radius: 14px;
-  background: var(--tg-hover);
+  background: var(--light-secondary-text-color);
   cursor: pointer;
   transition: background 0.15s ease, transform 0.1s ease;
 
-  &:hover { background: var(--tg-divider); }
+  &:hover { background: var(--border-color); }
   &:active { transform: scale(0.97); }
 }
 .giftEmoji {
@@ -134,7 +134,7 @@
   gap: 4px;
   padding: 2px 10px;
   border-radius: 12px;
-  background: var(--tg-sidebarBg);
+  background: var(--surface-color);
   font-size: 13px;
   font-weight: 700;
   color: #f7a02e;
@@ -149,8 +149,8 @@
   right: 6px;
   font-size: 10px;
   font-weight: 600;
-  color: var(--tg-textSecondary);
-  background: var(--tg-sidebarBg);
+  color: var(--secondary-text-color);
+  background: var(--surface-color);
   border-radius: 8px;
   padding: 1px 6px;
 }
@@ -169,17 +169,17 @@
 }
 .giftInput {
   width: 100%;
-  border: 1.5px solid var(--tg-divider);
+  border: 1.5px solid var(--border-color);
   border-radius: 12px;
   padding: 12px 14px;
   font-size: 15px;
   font-family: inherit;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
   background: transparent;
   outline: none;
 
-  &:focus { border-color: var(--tg-accent); }
-  &::placeholder { color: var(--tg-textFaint); }
+  &:focus { border-color: var(--primary-color); }
+  &::placeholder { color: var(--secondary-text-color); }
 }
 .rowToggle {
   display: flex;
@@ -189,7 +189,7 @@
   padding: 6px 2px;
   cursor: pointer;
   font-size: 15px;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
 }
 
 // главная кнопка (оплатить/пополнить)
@@ -201,7 +201,7 @@
   width: 100%;
   padding: 13px;
   border-radius: 12px;
-  background: var(--tg-accent);
+  background: var(--primary-color);
   color: #fff;
   font-size: 15px;
   font-weight: 600;
@@ -217,7 +217,7 @@
 .notEnough {
   text-align: center;
   font-size: 13.5px;
-  color: var(--tg-textSecondary);
+  color: var(--secondary-text-color);
   margin-top: 10px;
 }
 
@@ -241,13 +241,13 @@
   width: 100%;
   padding: 12px;
   border-radius: 12px;
-  background: var(--tg-hover);
-  color: var(--tg-textPrimary);
+  background: var(--light-secondary-text-color);
+  color: var(--primary-text-color);
   font-size: 15px;
   font-weight: 500;
   cursor: pointer;
   border: none;
   text-align: center;
 
-  &:hover { background: var(--tg-divider); }
+  &:hover { background: var(--border-color); }
 }

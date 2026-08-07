@@ -9,9 +9,9 @@ const EASE = 'easeInOut' as const
 
 export interface CheckboxProps {
   checked: boolean
-  /** цвет заливки (по умолчанию --tg-accent) */
+  /** цвет заливки (по умолчанию --primary-color) */
   accent?: string
-  /** цвет кольца (по умолчанию --tg-textFaint) */
+  /** цвет кольца (по умолчанию --secondary-text-color) */
   ring?: string
   size?: number
   /** square — квадрат со скруглением (tweb .checkbox-field, add members) */
@@ -20,7 +20,7 @@ export interface CheckboxProps {
   disabled?: boolean
 }
 
-export default function Checkbox({ checked, accent = 'var(--tg-accent)', ring = 'var(--tg-textFaint)', size = 18, shape = 'round', disabled = false }: CheckboxProps) {
+export default function Checkbox({ checked, accent = 'var(--primary-color)', ring = 'var(--secondary-text-color)', size = 18, shape = 'round', disabled = false }: CheckboxProps) {
   const style = {
     width: size, height: size, '--cb-accent': accent, '--cb-ring': ring,
     '--cb-radius': shape === 'square' ? '31%' : '50%',

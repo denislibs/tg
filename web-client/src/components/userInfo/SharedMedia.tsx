@@ -161,7 +161,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
     })
   }
   const empty = (
-    <Text size={14} color="var(--tg-textSecondary)" style={{ padding: '16px 24px', display: 'block', textAlign: 'center' }}>
+    <Text size={14} color="var(--secondary-text-color)" style={{ padding: '16px 24px', display: 'block', textAlign: 'center' }}>
       {t('Nothing here yet.')}
     </Text>
   )
@@ -191,7 +191,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
     <>
       {/* Тот же framed-таб-ряд, что и у папок в списке чатов; липнет под
           absolute-шапку панели (tweb .search-super-tabs-scrollable: sticky) */}
-      <TabsBar mode="sticky" from="var(--tg-sectionBackdrop)" top={stickyTop} barRef={navRef}>
+      <TabsBar mode="sticky" from="var(--background-color)" top={stickyTop} barRef={navRef}>
         <div className={s.tabsWrap}>
           <Tabs value={tab} onChange={(v) => onTab(v as string)}>
             <Tabs.List framed>
@@ -232,10 +232,10 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
                 )}
                 <div className={s.grow}>
                   <div className={s.memberTitleRow}>
-                    <Text noWrap size={16} color="var(--tg-textPrimary)">{title}</Text>
+                    <Text noWrap size={16} color="var(--primary-text-color)">{title}</Text>
                     <span className={s.roleLabel}>{fmtWhen(d.last.at)}</span>
                   </div>
-                  <Text noWrap size={14} color="var(--tg-textSecondary)">
+                  <Text noWrap size={14} color="var(--secondary-text-color)">
                     {d.last.text || mediaLabel(d.last.type)}
                   </Text>
                 </div>
@@ -257,7 +257,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
               <div className={s.grow}>
                 {/* роль — на линии заголовка (tweb row-title-right-secondary) */}
                 <div className={s.memberTitleRow}>
-                  <Text noWrap size={16} color="var(--tg-textPrimary)">{mem.displayName}</Text>
+                  <Text noWrap size={16} color="var(--primary-text-color)">{mem.displayName}</Text>
                   <span
                     onClick={canManageAdmins ? (e) => { e.stopPropagation(); onEditMember?.(mem) } : undefined}
                     className={classNames(s.roleLabel, canManageAdmins ? s.roleClickable : '')}
@@ -265,7 +265,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
                     {roleLabel(mem.role, !!isChannel)}
                   </span>
                 </div>
-                <Text size={14} color="var(--tg-textSecondary)">
+                <Text size={14} color="var(--secondary-text-color)">
                   {mem.online ? t('online') : t('last seen recently')}
                 </Text>
               </div>
@@ -282,7 +282,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         gifts.length === 0 ? (
           <div className={s.giftsEmpty}>
             <span className={s.giftsEmptyEmoji}>🎁</span>
-            <Text size={15} color="var(--tg-textSecondary)">{t('No gifts yet')}</Text>
+            <Text size={15} color="var(--secondary-text-color)">{t('No gifts yet')}</Text>
             {onSendGift && (
               <button type="button" className={s.giftsEmptyBtn} onClick={onSendGift}>
                 {t('Send a Gift')}
@@ -353,12 +353,12 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         <div className={s.mediaList}>
           {msgs.map((m) => (
             <div key={m.id} className={s.mediaRow}>
-              <div className={s.rowSquare} style={{ background: EXT_COLORS[extOf(m.mediaName)] ?? 'var(--tg-accent)' }}>
+              <div className={s.rowSquare} style={{ background: EXT_COLORS[extOf(m.mediaName)] ?? 'var(--primary-color)' }}>
                 {extOf(m.mediaName).toUpperCase().slice(0, 4) || 'FILE'}
               </div>
               <div className={s.grow}>
-                <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{m.mediaName || t('Document')}</Text>
-                <Text size={13.5} color="var(--tg-textSecondary)">{[fmtSize(m.mediaSize), when(m)].filter(Boolean).join(' · ')}</Text>
+                <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">{m.mediaName || t('Document')}</Text>
+                <Text size={13.5} color="var(--secondary-text-color)">{[fmtSize(m.mediaSize), when(m)].filter(Boolean).join(' · ')}</Text>
               </div>
             </div>
           ))}
@@ -375,8 +375,8 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
                   {hostOf(url).charAt(0).toUpperCase()}
                 </div>
                 <div className={s.grow}>
-                  <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{hostOf(url)}</Text>
-                  <Text noWrap size={13.5} color="var(--tg-link)">{url}</Text>
+                  <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">{hostOf(url)}</Text>
+                  <Text noWrap size={13.5} color="var(--link-color)">{url}</Text>
                 </div>
               </div>
             )
@@ -392,8 +392,8 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
                 <PlayPauseGlyph playing={audioPlaying && m.mediaId === curMediaId} size={22} className={s.rowGlyph} />
               </div>
               <div className={s.grow}>
-                <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{m.mediaName || t('Audio')}</Text>
-                <Text noWrap size={13.5} color="var(--tg-textSecondary)">{[fmtDur(m.mediaDuration), when(m)].filter(Boolean).join(' · ')}</Text>
+                <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">{m.mediaName || t('Audio')}</Text>
+                <Text noWrap size={13.5} color="var(--secondary-text-color)">{[fmtDur(m.mediaDuration), when(m)].filter(Boolean).join(' · ')}</Text>
               </div>
             </div>
           ))}
@@ -408,8 +408,8 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
                 <PlayPauseGlyph playing={audioPlaying && m.mediaId === curMediaId} size={22} className={s.rowGlyph} />
               </div>
               <div className={s.grow}>
-                <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{m.type === 'roundVideo' ? t('Video message') : t('Voice message')}</Text>
-                <Text size={13.5} color="var(--tg-textSecondary)">{[fmtDur(m.mediaDuration), when(m)].filter(Boolean).join(' · ')}</Text>
+                <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">{m.type === 'roundVideo' ? t('Video message') : t('Voice message')}</Text>
+                <Text size={13.5} color="var(--secondary-text-color)">{[fmtDur(m.mediaDuration), when(m)].filter(Boolean).join(' · ')}</Text>
               </div>
             </div>
           ))}

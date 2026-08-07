@@ -9,15 +9,15 @@
   height: 3.0625rem;
   padding: 0 0.5rem;
   min-width: 15rem;
-  border-top: 0.0625rem solid var(--tg-divider);
-  color: var(--tg-accent);
+  border-top: 0.0625rem solid var(--border-color);
+  color: var(--primary-color);
   background: var(--b-bg);
   cursor: pointer;
   user-select: none;
 
   @media (hover: hover) {
     &:hover {
-      background: color-mix(in srgb, var(--tg-accent) 8%, var(--b-bg));
+      background: color-mix(in srgb, var(--primary-color) 8%, var(--b-bg));
     }
   }
 }

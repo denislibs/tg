@@ -48,15 +48,15 @@ export default function SuggestPostPopup({ chatId, onClose }: {
       <div className={s.body}>
         {mine.length > 0 && (
           <>
-            <Text size={13.5} weight={600} color="var(--tg-accent)" className={s.label}>{t('Your suggestions')}</Text>
+            <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('Your suggestions')}</Text>
             <div className={s.mine}>
               {mine.map((p) => (
                 <div key={p.id} className={s.mineRow}>
-                  <Text size={12.5} weight={600} color={p.status === 'rejected' ? '#ff595a' : 'var(--tg-accent)'} className={s.badge}>
+                  <Text size={12.5} weight={600} color={p.status === 'rejected' ? '#ff595a' : 'var(--primary-color)'} className={s.badge}>
                     {t(statusKey[p.status])}
                   </Text>
-                  <Text size={14} color="var(--tg-textPrimary)" style={{ wordBreak: 'break-word' }}>
-                    <RichText text={p.text} entities={p.entities} linkColor="var(--tg-link)" />
+                  <Text size={14} color="var(--primary-text-color)" style={{ wordBreak: 'break-word' }}>
+                    <RichText text={p.text} entities={p.entities} linkColor="var(--link-color)" />
                   </Text>
                 </div>
               ))}
@@ -64,7 +64,7 @@ export default function SuggestPostPopup({ chatId, onClose }: {
           </>
         )}
 
-        <Text size={13.5} weight={600} color="var(--tg-accent)" className={s.label}>{t('Your post')}</Text>
+        <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('Your post')}</Text>
         <textarea
           className={s.textarea}
           rows={4}
@@ -73,9 +73,9 @@ export default function SuggestPostPopup({ chatId, onClose }: {
           onChange={(e) => setText(e.target.value)}
         />
 
-        <Text size={13.5} weight={600} color="var(--tg-accent)" className={s.label}>{t('Publishing time')}</Text>
+        <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('Publishing time')}</Text>
         <input className={s.input} type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />
-        <Text size={13} color="var(--tg-textSecondary)" style={{ padding: '2px 4px' }}>
+        <Text size={13} color="var(--secondary-text-color)" style={{ padding: '2px 4px' }}>
           {t('Leave empty to publish anytime.')}
         </Text>
       </div>

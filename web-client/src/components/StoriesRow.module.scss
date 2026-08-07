@@ -48,7 +48,7 @@
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  background: var(--tg-sidebarBg);
+  background: var(--surface-color);
   padding: 2px;
   box-sizing: border-box;
   display: flex;
@@ -65,7 +65,7 @@
   height: 20px;
   border-radius: 50%;
   background: linear-gradient(215deg, #34c76f -1.61%, #3da1fd 97.44%);
-  border: 2px solid var(--tg-sidebarBg);
+  border: 2px solid var(--surface-color);
   box-sizing: border-box;
   display: flex;
   align-items: center;

@@ -8,7 +8,7 @@ interface SliderProps {
   max?: number
   step?: number
   onChange: (v: number) => void
-  /** цвет трека/ползунка (по умолчанию --tg-accent) */
+  /** цвет трека/ползунка (по умолчанию --primary-color) */
   color?: string
   className?: string
 }

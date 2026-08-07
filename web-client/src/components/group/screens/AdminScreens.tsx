@@ -31,14 +31,14 @@ export function AdminsScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }
       <div className={s.search}><InputSearch value={q} onChange={setQ} placeholder={t('Search')} /></div>
       <Section>
         {g.canManageAdmins && (
-          <Row icon={<TgIcon name="adduser" size={22} color="var(--tg-accent)" />} label="Add Admin" accent onClick={() => setPicking(true)} />
+          <Row icon={<TgIcon name="adduser" size={22} color="var(--primary-color)" />} label="Add Admin" accent onClick={() => setPicking(true)} />
         )}
         {list.map((m) => (
           <div key={m.userId} className={s.memberRow} onClick={() => g.canManageAdmins && m.role !== 'creator' && setEditing(m)}>
             <UserAvatar id={m.userId} name={m.name} avatarUrl={m.avatarUrl} />
             <div className={s.memberBody}>
-              <Text noWrap size={16} color="var(--tg-textPrimary)">{m.name}</Text>
-              <Text noWrap size={14} color="var(--tg-textSecondary)">
+              <Text noWrap size={16} color="var(--primary-text-color)">{m.name}</Text>
+              <Text noWrap size={14} color="var(--secondary-text-color)">
                 {t(m.role === 'creator' ? 'Owner' : 'Admin')}
               </Text>
             </div>
@@ -90,7 +90,7 @@ function AdminRightsScreen({
       onBack={onBack}
       zIndex={80}
       headerRight={
-        <IconButton onClick={() => onSave(bits)} color="var(--tg-accent)">
+        <IconButton onClick={() => onSave(bits)} color="var(--primary-color)">
           <TgIcon name="check" />
         </IconButton>
       }
@@ -99,7 +99,7 @@ function AdminRightsScreen({
         <div className={s.memberRow}>
           <UserAvatar id={member.userId} name={member.name} avatarUrl={member.avatarUrl} />
           <div className={s.memberBody}>
-            <Text noWrap size={16} color="var(--tg-textPrimary)">{member.name}</Text>
+            <Text noWrap size={16} color="var(--primary-text-color)">{member.name}</Text>
           </div>
         </div>
       </Section>

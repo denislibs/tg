@@ -51,16 +51,16 @@ export default function SuggestedPostsView({ chatId, mode, onClose }: {
         transition={{ duration: 0.2, ease: EASE }}
       >
         <div className={s.header}>
-          <Text size={17} weight={600} color="var(--tg-textPrimary)" style={{ flex: 1 }}>
+          <Text size={17} weight={600} color="var(--primary-text-color)" style={{ flex: 1 }}>
             {t('Suggested Posts')}
           </Text>
-          <IconButton onClick={onClose} color="var(--tg-textSecondary)" aria-label={t('Close')}>
+          <IconButton onClick={onClose} color="var(--secondary-text-color)" aria-label={t('Close')}>
             <TgIcon name="close" size={22} />
           </IconButton>
         </div>
         <div className={s.list}>
           {posts != null && list.length === 0 && (
-            <Text size={14.5} color="var(--tg-textSecondary)" style={{ padding: '2rem 1rem', textAlign: 'center', display: 'block' }}>
+            <Text size={14.5} color="var(--secondary-text-color)" style={{ padding: '2rem 1rem', textAlign: 'center', display: 'block' }}>
               {t('No suggested posts here yet…')}
             </Text>
           )}
@@ -69,30 +69,30 @@ export default function SuggestedPostsView({ chatId, mode, onClose }: {
               <div className={s.bubble}>
                 <div className={s.bubbleHead}>
                   {mode === 'admin' && p.authorName && (
-                    <Text size={12.5} color="var(--tg-accent)" weight={600}>{p.authorName}</Text>
+                    <Text size={12.5} color="var(--primary-color)" weight={600}>{p.authorName}</Text>
                   )}
                   {mode === 'author' && (
-                    <Text size={12.5} weight={600} color={p.status === 'rejected' ? '#ff595a' : 'var(--tg-accent)'}>
+                    <Text size={12.5} weight={600} color={p.status === 'rejected' ? '#ff595a' : 'var(--primary-color)'}>
                       {t(statusKey[p.status])}
                     </Text>
                   )}
                   {p.publishAt != null && (
-                    <Text size={12} color="var(--tg-textSecondary)">
+                    <Text size={12} color="var(--secondary-text-color)">
                       <TgIcon name="schedule" size={12} /> {fmtWhen(p.publishAt)}
                     </Text>
                   )}
                 </div>
-                <Text size={15} color="var(--tg-textPrimary)" style={{ wordBreak: 'break-word' }}>
-                  <RichText text={p.text} entities={p.entities} linkColor="var(--tg-link)" />
+                <Text size={15} color="var(--primary-text-color)" style={{ wordBreak: 'break-word' }}>
+                  <RichText text={p.text} entities={p.entities} linkColor="var(--link-color)" />
                 </Text>
               </div>
               {mode === 'admin' && p.status === 'pending' && (
                 <div className={s.actions}>
                   <IconButton size="small" onClick={() => { void approve(p.id) }} title={t('Publish')} aria-label={t('Publish')}>
-                    <TgIcon name="check" size={18} color="var(--tg-accent)" />
+                    <TgIcon name="check" size={18} color="var(--primary-color)" />
                   </IconButton>
                   <IconButton size="small" onClick={() => setScheduleFor(p.id)} title={t('Schedule')} aria-label={t('Schedule')}>
-                    <TgIcon name="schedule" size={18} color="var(--tg-accent)" />
+                    <TgIcon name="schedule" size={18} color="var(--primary-color)" />
                   </IconButton>
                   <IconButton size="small" onClick={() => { void reject(p.id) }} title={t('Reject')} aria-label={t('Reject')}>
                     <TgIcon name="close" size={18} color="#ff595a" />

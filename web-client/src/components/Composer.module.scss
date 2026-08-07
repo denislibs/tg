@@ -1,5 +1,5 @@
 // Composer — строка ввода сообщения (reply/edit-бары + contenteditable + запись
-// голоса). Порт разметки из MUI sx. Цвета — токены --tg-*.
+// голоса). Порт разметки из MUI sx. Цвета — CSS-переменные темы.
 
 // контейнер композера (reply-секция + строка ввода в одном боксе)
 .container {
@@ -7,7 +7,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  background: var(--tg-bubble);
+  background: var(--surface-color);
   border-radius: 24px;
   overflow: hidden;
   box-shadow: 0 1px 8px 1px rgba(0, 0, 0, 0.12);
@@ -72,7 +72,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  background: color-mix(in srgb, var(--tg-accent) 16%, transparent);
+  background: color-mix(in srgb, var(--primary-color) 16%, transparent);
   border-radius: 18px;
   padding: 6px 10px 6px 8px;
 }
@@ -82,7 +82,7 @@
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--tg-accent);
+  background: var(--primary-color);
   flex-shrink: 0;
 }
 
@@ -110,7 +110,7 @@
   flex: 1;
   min-width: 0;
   border-radius: 2px;
-  background: var(--tg-accent);
+  background: var(--primary-color);
 }
 
 // обёртка contenteditable + плейсхолдер
@@ -137,7 +137,7 @@
 .editor {
   font-size: 16px;
   line-height: 21px;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
   outline: none;
   overflow-y: hidden;
   transition: height 0.12s ease;
@@ -167,28 +167,28 @@
     display: block;
     font-size: 11px;
     font-weight: 700;
-    color: var(--tg-accent);
+    color: var(--primary-color);
     text-transform: uppercase;
     margin-bottom: 4px;
     user-select: none;
   }
   :global(.md-spoiler) {
-    background: color-mix(in srgb, var(--tg-textPrimary) 18%, transparent);
+    background: color-mix(in srgb, var(--primary-text-color) 18%, transparent);
     border-radius: 4px;
   }
   // custom mention юзера без username (text_mention) — акцент, как ссылка
   :global(.md-mention) {
-    color: var(--tg-accent);
+    color: var(--primary-color);
     cursor: text;
   }
   :global(.md-quote) {
     display: inline-block;
-    border-left: 3px solid var(--tg-accent);
+    border-left: 3px solid var(--primary-color);
     padding-left: 8px;
     opacity: 0.95;
   }
   :global(a) {
-    color: var(--tg-accent);
+    color: var(--primary-color);
   }
 }
 
@@ -220,7 +220,7 @@
 // Микрофон отключён (в группе запрещены медиа): светло-серая кнопка вместо
 // акцентной, курсор обычный (клик показывает тост).
 .sendBtnMuted {
-  background: var(--tg-textFaint);
+  background: var(--secondary-text-color);
   cursor: default;
 }
 
@@ -257,13 +257,13 @@
     transition: background 0.12s ease, transform 0.12s ease;
 
     &:hover {
-      background: var(--tg-hover);
+      background: var(--light-secondary-text-color);
     }
   }
 }
 
 .effectPicked {
-  background: color-mix(in srgb, var(--tg-accent) 22%, transparent) !important;
+  background: color-mix(in srgb, var(--primary-color) 22%, transparent) !important;
   transform: scale(1.05);
 }
 
@@ -273,7 +273,7 @@
   align-items: center;
   gap: 6px;
   padding: 7px 14px;
-  border-bottom: 1px solid var(--tg-divider, rgba(0, 0, 0, 0.08));
+  border-bottom: 1px solid var(--border-color, rgba(0, 0, 0, 0.08));
 }
 
 // обратный отсчёт медленного режима на кнопке (tweb slowmode)
@@ -339,8 +339,8 @@
   margin-right: 2px;
   border: none;
   border-radius: 20px;
-  background: color-mix(in srgb, var(--tg-accent) 16%, transparent);
-  color: var(--tg-accent);
+  background: color-mix(in srgb, var(--primary-color) 16%, transparent);
+  color: var(--primary-color);
   font-size: 15px;
   font-weight: 500;
   white-space: nowrap;
@@ -348,7 +348,7 @@
   flex-shrink: 0;
   transition: background 0.12s ease;
 
-  &:hover { background: color-mix(in srgb, var(--tg-accent) 24%, transparent); }
+  &:hover { background: color-mix(in srgb, var(--primary-color) 24%, transparent); }
   &:active { transform: scale(0.97); }
 }
 
@@ -373,7 +373,7 @@
   padding: 8px 14px 4px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--tg-textSecondary);
+  color: var(--secondary-text-color);
 }
 
 .sendAsRow {
@@ -387,8 +387,8 @@
   cursor: pointer;
   text-align: left;
 
-  &:hover { background: var(--tg-hover); }
-  &[data-active] { background: color-mix(in srgb, var(--tg-accent) 14%, transparent); }
+  &:hover { background: var(--light-secondary-text-color); }
+  &[data-active] { background: color-mix(in srgb, var(--primary-color) 14%, transparent); }
 }
 
 .sendAsRowText {

@@ -508,7 +508,7 @@ export function handleFrame(evt: CallFrameEvt) {
     peerDhPub = typeof d.dh === 'string' ? b64ToBytes(d.dh) : null
     // имя/аватар звонящего подтягиваем асинхронно
     useCallStore.getState().set({
-      callId, peer: { id: from, name: `ID ${from}`, avatar: 'var(--tg-accent)' },
+      callId, peer: { id: from, name: `ID ${from}`, avatar: 'var(--primary-color)' },
       chatId: null, outgoing: false, video, phase: 'incoming',
       muted: false, camOn: video, screenOn: false, remoteMuted: false, remoteCamOn: false,
       connectedAt: null, localStream: null, remoteStream: null,

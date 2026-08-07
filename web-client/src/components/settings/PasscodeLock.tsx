@@ -70,7 +70,7 @@ export default function PasscodeLock({ onBack }: { onBack: () => void }) {
         onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter') onEnter() }}
       />
       <div style={{ position: 'absolute', right: 10, top: 8 }}>
-        <IconButton size="small" color="var(--tg-textFaint)" onClick={() => setShow((v) => !v)} aria-label="toggle passcode">
+        <IconButton size="small" color="var(--secondary-text-color)" onClick={() => setShow((v) => !v)} aria-label="toggle passcode">
           <TgIcon name={show ? 'eye2' : 'eye1'} size={22} />
         </IconButton>
       </div>
@@ -110,21 +110,21 @@ export default function PasscodeLock({ onBack }: { onBack: () => void }) {
       {!enabled ? (
         <>
           <div className={s.hero}>
-            <Text size={15} color="var(--tg-textSecondary)" style={{ lineHeight: 1.5 }}>
+            <Text size={15} color="var(--secondary-text-color)" style={{ lineHeight: 1.5 }}>
               {t('When a passcode is set, a lock icon appears above your chat list. Tap it to lock the app.')}
             </Text>
           </div>
           <div className={s.btnWrap}>
             <Button fullWidth uppercase onClick={startEnable}>{t('Turn Passcode On')}</Button>
           </div>
-          <Text size={13.5} color="var(--tg-textSecondary)" style={{ padding: '0 24px', lineHeight: 1.5 }}>
+          <Text size={13.5} color="var(--secondary-text-color)" style={{ padding: '0 24px', lineHeight: 1.5 }}>
             {t("Note: if you forget your passcode, you'll need to log out and log in again.")}
           </Text>
         </>
       ) : (
         <>
           {hintText && (
-            <Text size={14} color="var(--tg-accent)" style={{ textAlign: 'center', paddingBottom: 8 }}>{hintText}</Text>
+            <Text size={14} color="var(--primary-color)" style={{ textAlign: 'center', paddingBottom: 8 }}>{hintText}</Text>
           )}
           <Section
             footer="Note: if you forget your passcode, you'll need to log out and log in again."
@@ -164,7 +164,7 @@ export default function PasscodeLock({ onBack }: { onBack: () => void }) {
           },
         }}
       >
-        <Text size={15} color="var(--tg-textPrimary)" style={{ lineHeight: 1.5 }}>
+        <Text size={15} color="var(--primary-text-color)" style={{ lineHeight: 1.5 }}>
           {t('Are you sure you want to turn the passcode off?')}
         </Text>
       </Popup>

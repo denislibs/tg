@@ -31,13 +31,13 @@ function DataRow({ icon, label, value, masked, onCopy, right }: {
 }) {
   return (
     <div className={s.row} onClick={onCopy}>
-      <TgIcon name={icon} size={22} color="var(--tg-textSecondary)" />
+      <TgIcon name={icon} size={22} color="var(--secondary-text-color)" />
       <div className={s.rowBody}>
-        <Text size={12} color="var(--tg-textSecondary)">{label}</Text>
-        <Text size={15} color="var(--tg-textPrimary)" noWrap className={masked ? s.masked : undefined}>{value}</Text>
+        <Text size={12} color="var(--secondary-text-color)">{label}</Text>
+        <Text size={15} color="var(--primary-text-color)" noWrap className={masked ? s.masked : undefined}>{value}</Text>
       </div>
       {right}
-      <TgIcon name="copy" size={20} color="var(--tg-textSecondary)" />
+      <TgIcon name="copy" size={20} color="var(--secondary-text-color)" />
     </div>
   )
 }
@@ -58,7 +58,7 @@ export default function StreamSettingsPopup({ chatId, active, onClose }: Props) 
   return (
     <Popup open title={t(active ? 'Stream Settings' : 'Stream With...')} onClose={onClose} width={420}>
       <div className={s.body}>
-        <Text size={14} color="var(--tg-textSecondary)" className={s.desc}>
+        <Text size={14} color="var(--secondary-text-color)" className={s.desc}>
           {t('To stream video with another app, enter this Server URL and Stream Key in your streaming app. Software encoding recommended (x264 in OBS).')}
         </Text>
 
@@ -81,7 +81,7 @@ export default function StreamSettingsPopup({ chatId, active, onClose }: Props) 
                 onClick={(e) => { e.stopPropagation(); setKeyVisible((v) => !v) }}
                 type="button"
               >
-                <TgIcon name={keyVisible ? 'eye2' : 'eye1'} size={20} color="var(--tg-textSecondary)" />
+                <TgIcon name={keyVisible ? 'eye2' : 'eye1'} size={20} color="var(--secondary-text-color)" />
               </button>
             }
           />
@@ -92,7 +92,7 @@ export default function StreamSettingsPopup({ chatId, active, onClose }: Props) 
         </div>
 
         {!active && (
-          <Text size={13} color="var(--tg-textSecondary)" className={s.hint}>
+          <Text size={13} color="var(--secondary-text-color)" className={s.hint}>
             {t('Once you start broadcasting in your streaming app, click Start Streaming below.')}
           </Text>
         )}

@@ -14,7 +14,7 @@ function Tile({ story, onClick }: { story: StoryItem; onClick: () => void }) {
     <div
       onClick={onClick}
       role="button"
-      style={{ aspectRatio: '9 / 16', borderRadius: 10, overflow: 'hidden', background: 'var(--tg-inputSearchBg)', cursor: 'pointer' }}
+      style={{ aspectRatio: '9 / 16', borderRadius: 10, overflow: 'hidden', background: 'var(--input-search-background-color)', cursor: 'pointer' }}
     >
       {url && <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
     </div>
@@ -36,7 +36,7 @@ export default function PinnedStoriesSection({ peerId }: { peerId: number }) {
 
   return (
     <div style={{ padding: '0 16px 12px' }}>
-      <Text size={14} weight={600} color="var(--tg-accent)" style={{ padding: '0 4px 6px', display: 'block' }}>
+      <Text size={14} weight={600} color="var(--primary-color)" style={{ padding: '0 4px 6px', display: 'block' }}>
         {t('Stories')}
       </Text>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>

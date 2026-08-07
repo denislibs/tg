@@ -79,7 +79,7 @@ export default function NewGroupFlow({ onClose, onCreate }: Props) {
         position: 'absolute',
         inset: 0,
         zIndex: 41,
-        background: 'var(--tg-sidebarBg)',
+        background: 'var(--surface-color)',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
@@ -87,10 +87,10 @@ export default function NewGroupFlow({ onClose, onCreate }: Props) {
     >
       {/* Header */}
       <div className={s.header}>
-        <IconButton onClick={back} color="var(--tg-textSecondary)">
+        <IconButton onClick={back} color="var(--secondary-text-color)">
           <TgIcon name="back" />
         </IconButton>
-        <Text size={19} weight={600} color="var(--tg-textPrimary)">
+        <Text size={19} weight={600} color="var(--primary-text-color)">
           {step === 'members' ? t('Add Members') : t('New Group')}
         </Text>
       </div>
@@ -150,8 +150,8 @@ export default function NewGroupFlow({ onClose, onCreate }: Props) {
                     </div>
                     {renderAvatar(c, 'md')}
                     <div className={s.rowBody}>
-                      <Text noWrap size={15.5} weight={600} color="var(--tg-textPrimary)">{c.name}</Text>
-                      <Text noWrap size={13.5} color={presence[c.id]?.online ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'}>
+                      <Text noWrap size={15.5} weight={600} color="var(--primary-text-color)">{c.name}</Text>
+                      <Text noWrap size={13.5} color={presence[c.id]?.online ? 'var(--primary-color)' : 'var(--secondary-text-color)'}>
                         {statusOf(c.id)}
                       </Text>
                     </div>
@@ -159,7 +159,7 @@ export default function NewGroupFlow({ onClose, onCreate }: Props) {
                 ))}
                 {filtered.length === 0 && (
                   <div className={s.empty}>
-                    <Text size={15} color="var(--tg-textSecondary)">{t('No Results')}</Text>
+                    <Text size={15} color="var(--secondary-text-color)">{t('No Results')}</Text>
                   </div>
                 )}
               </div>
@@ -206,7 +206,7 @@ export default function NewGroupFlow({ onClose, onCreate }: Props) {
               </div>
               {selected.length > 0 && (
                 <>
-                  <Text size={15} weight={600} color="var(--tg-accent)" className={s.membersTitle}>
+                  <Text size={15} weight={600} color="var(--primary-color)" className={s.membersTitle}>
                     {`${selected.length} участников`}
                   </Text>
                   <div className={s.list}>
@@ -217,8 +217,8 @@ export default function NewGroupFlow({ onClose, onCreate }: Props) {
                         <div key={id} className={s.row}>
                           {renderAvatar(c, 'md')}
                           <div className={s.rowBody}>
-                            <Text noWrap size={15.5} weight={600} color="var(--tg-textPrimary)">{c.name}</Text>
-                            <Text noWrap size={13.5} color={presence[id]?.online ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'}>
+                            <Text noWrap size={15.5} weight={600} color="var(--primary-text-color)">{c.name}</Text>
+                            <Text noWrap size={13.5} color={presence[id]?.online ? 'var(--primary-color)' : 'var(--secondary-text-color)'}>
                               {statusOf(id)}
                             </Text>
                           </div>

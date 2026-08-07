@@ -87,10 +87,10 @@ export default function PremiumModal({ open, onClose, onExitComplete }: { open: 
                   <TgIcon name="close" />
                 </div>
                 <PremiumStar />
-                <Text size={26} weight={700} color="var(--tg-textPrimary)" className={s.title}>
+                <Text size={26} weight={700} color="var(--primary-text-color)" className={s.title}>
                   Telegram Premium
                 </Text>
-                <Text size={15.5} color="var(--tg-textSecondary)" className={s.subtitle}>
+                <Text size={15.5} color="var(--secondary-text-color)" className={s.subtitle}>
                   {t('More freedom and dozens of exclusive features with a Telegram Premium subscription.')}
                 </Text>
               </div>
@@ -118,17 +118,17 @@ export default function PremiumModal({ open, onClose, onExitComplete }: { open: 
                         </motion.div>
                       </div>
                       <div className={s.planBody}>
-                        <Text size={17} weight={500} color="var(--tg-textPrimary)">
+                        <Text size={17} weight={500} color="var(--primary-text-color)">
                           {t(p.labelKey)}
                         </Text>
                         <div className={s.planMeta}>
                           {discount > 0 && <span className={s.discount}>{`-${discount}%`}</span>}
-                          <Text size={15} color="var(--tg-textSecondary)">
+                          <Text size={15} color="var(--secondary-text-color)">
                             {formatUsd(perMonthCents(p))} {t('per month')}
                           </Text>
                         </div>
                       </div>
-                      <Text size={16} color="var(--tg-textPrimary)" className={s.planTotal}>
+                      <Text size={16} color="var(--primary-text-color)" className={s.planTotal}>
                         {formatUsd(p.priceCents)}
                       </Text>
                     </div>
@@ -144,10 +144,10 @@ export default function PremiumModal({ open, onClose, onExitComplete }: { open: 
                       <TgIcon name={f.icon} size={24} />
                     </div>
                     <div className={s.featureBody}>
-                      <Text size={16} weight={500} color="var(--tg-textPrimary)">
+                      <Text size={16} weight={500} color="var(--primary-text-color)">
                         {t(f.title)}
                       </Text>
-                      <Text size={14.5} color="var(--tg-textSecondary)" style={{ lineHeight: 1.35 }}>
+                      <Text size={14.5} color="var(--secondary-text-color)" style={{ lineHeight: 1.35 }}>
                         {t(f.subtitle)}
                       </Text>
                     </div>

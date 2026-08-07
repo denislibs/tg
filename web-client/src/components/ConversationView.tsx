@@ -1,11 +1,11 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import Text from '../shared/ui/Text'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import { useAvatarSrc } from './useAvatarSrc'
-import { chatThemeVariant, chatThemeBubbleOut } from '../chatThemes'
+import { chatThemeVariant } from '../chatThemes'
 import { PRESET_MODE, resolvePreset } from '../theme'
+import { applyChatTheme, clearChatTheme } from '../core/theme/themeController'
 import { useSettingsStore } from '../settings'
 import { CallProvider } from './call/CallProvider'
 import { startOutgoing } from '../core/calls/callEngine'
@@ -133,9 +133,15 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
   const headerAvatarSrc = useAvatarSrc(chat.avatarUrl)
   const [lang] = useLang()
 
+  // Контейнер колонки чата — applyChatTheme (Task 1/2) переопределяет --primary-color
+  // инлайном именно на этом элементе, так что accentColor ниже читается chat-specific,
+  // а не глобальный пресетный акцент.
+  const rootRef = useRef<HTMLDivElement | null>(null)
+
   // Реальное значение accent (нужно как цвет в JS: reply.color → hex, не var()).
-  // Читаем из CSS-переменной темы (как ChatBackground); обновляется при смене темы.
-  const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--tg-accent').trim() || '#3390ec'
+  // Читаем из CSS-переменной темы контейнера чата (см. rootRef выше); обновляется
+  // при смене темы/чата.
+  const accentColor = (rootRef.current && getComputedStyle(rootRef.current).getPropertyValue('--primary-color').trim()) || '#3390ec'
 
   const narrow = useMediaQuery('(max-width:900px)')
   const isChannel = chat.type === 'channel'
@@ -156,28 +162,26 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
 
   // Тема оформления чата (messages.setChatTheme): id читаем реактивно из стора
   // диалогов (chat_theme_update его патчит), с фолбэком на пропс. Тема
-  // применяется ЛОКАЛЬНО к области этого чата — переопределяем --tg-accent и
-  // рисуем фон-градиент темы поверх глобальных обоев, не трогая глобальные токены.
+  // применяется ЛОКАЛЬНО к колонке чата (tweb chat.ts:367-371 — applyTheme на
+  // this.container, а не на сайдбары): деривация — та же формула tweb, что и
+  // для глобальных пресетов (core/theme/themeController.ts:deriveChatThemeVars),
+  // применяется инлайном на .root через applyChatTheme/clearChatTheme ниже.
   const dialogThemeId = useChatsStore((st) => st.dialogs.find((d) => d.chatId === numericChatId)?.themeId)
   const activeThemeId = dialogThemeId ?? chat.themeId
   const themeChoice = useSettingsStore((st) => st.themeChoice)
-  const themeMode = PRESET_MODE[resolvePreset(themeChoice)]
+  const preset = resolvePreset(themeChoice)
+  const themeMode = PRESET_MODE[preset]
   const themeVariant = chatThemeVariant(activeThemeId, themeMode)
-  const themeStyle = themeVariant
-    ? ({
-        '--tg-accent': themeVariant.accent,
-        '--tg-accentGradient': `linear-gradient(135deg, ${themeVariant.accent}, ${themeVariant.accent})`,
-        // Акцент исходящих баблов (тики «прочитано», голосовые, ссылки, reply-полоса)
-        // идёт от --tg-bubbleOutAccent — тема должна перекрыть и его, иначе они
-        // остаются дефолтно-синими на теме.
-        '--tg-bubbleOutAccent': themeVariant.accent,
-        // Фон исходящего бабла тоже часть темы (как в tweb) — иначе бабл остаётся
-        // дефолтно-сиреневым/голубым на цветной теме.
-        '--tg-bubbleOut': chatThemeBubbleOut(themeVariant.accent, themeMode),
-        // Бейдж непрочитанных тоже от акцента темы (tweb .badge).
-        '--tg-badge': themeVariant.accent,
-      } as CSSProperties)
-    : undefined
+
+  useLayoutEffect(() => {
+    const el = rootRef.current
+    if (!el) return
+    if (themeVariant) {
+      applyChatTheme(el, preset, themeVariant.accent, themeVariant.messageColors)
+    } else {
+      clearChatTheme(el)
+    }
+  }, [preset, themeVariant])
 
   const draftPeerId = chat.id.startsWith('draft:') ? Number(chat.id.slice('draft:'.length)) : null
   const meId = useChatsStore((s) => s.meId)
@@ -851,7 +855,7 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
 
   return (
     <CallProvider chat={chat}>
-    <div className={s.root} style={themeStyle}>
+    <div className={s.root} ref={rootRef}>
       <div className={classNames(s.column, narrow ? s.columnNarrow : '')}>
         {/* Обои темы чата рисует глобальный ChatBackground (App), чтобы весь shell был
             в теме, а не только эта колонка — локальный слой убран. */}
@@ -866,25 +870,25 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
         {thread ? (
         <div className={s.threadHeaderBar} style={{ top: (narrow ? 8 : 16) + playerOffset }}>
           <div className={s.threadHeaderCard}>
-            <IconButton onClick={onCloseThread} color="var(--tg-textSecondary)" style={{ marginLeft: '-4px' }}>
+            <IconButton onClick={onCloseThread} color="var(--secondary-text-color)" style={{ marginLeft: '-4px' }}>
               <TgIcon name="back" />
             </IconButton>
             {thread.kind === 'topic' ? (
               <TopicIcon color={thread.iconColor ?? 0} title={thread.title} size={30} />
             ) : (
-              <TgIcon name="comments" size={26} color="var(--tg-accent)" />
+              <TgIcon name="comments" size={26} color="var(--primary-color)" />
             )}
             <div className={s.threadHeaderBody} onClick={() => setInfoOpen(true)} style={{ cursor: 'pointer' }}>
-              <Text noWrap weight={600} size={15.5} color="var(--tg-textPrimary)">{thread.title}</Text>
-              <Text noWrap size={12.5} color="var(--tg-textSecondary)">{thread.subtitle ?? chat.name}</Text>
+              <Text noWrap weight={600} size={15.5} color="var(--primary-text-color)">{thread.title}</Text>
+              <Text noWrap size={12.5} color="var(--secondary-text-color)">{thread.subtitle ?? chat.name}</Text>
             </div>
-            {thread.closed && <TgIcon name="lock" size={18} color="var(--tg-textFaint)" />}
+            {thread.closed && <TgIcon name="lock" size={18} color="var(--secondary-text-color)" />}
             <IconButton
               onClick={(e) => {
                 const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
                 pop.openThreadMenu({ top: r.bottom + 6, right: window.innerWidth - r.right })
               }}
-              color="var(--tg-textFaint)"
+              color="var(--secondary-text-color)"
             >
               <TgIcon name="more" />
             </IconButton>
@@ -1003,15 +1007,15 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
         ) : thread?.closed ? (
           <div className={classNames(s.footer, s.footerCompose)}>
             <div className={s.threadClosedBar}>
-              <TgIcon name="lock" size={16} color="var(--tg-textSecondary)" />
-              <Text size={14.5} color="var(--tg-textSecondary)">{t('Topic is closed')}</Text>
+              <TgIcon name="lock" size={16} color="var(--secondary-text-color)" />
+              <Text size={14.5} color="var(--secondary-text-color)">{t('Topic is closed')}</Text>
             </div>
           </div>
         ) : botStart ? (
           <div className={classNames(s.footer, s.footerMuted)}>
             {scrollDownFab}
             <motion.div whileTap={{ scale: 0.99 }} className={s.muteBtn} onClick={() => onComposerSend('/start')}>
-              <Text weight={600} size={15.5} color="var(--tg-accent)">{t('Start')}</Text>
+              <Text weight={600} size={15.5} color="var(--primary-color)">{t('Start')}</Text>
             </motion.div>
           </div>
         ) : secretLocked ? (
@@ -1022,7 +1026,7 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
             <div className={s.secretBar}>
               {secretStatus === 'requested' ? (
                 <>
-                  <Text size={14.5} style={{ textAlign: 'center' }} color="var(--tg-textSecondary)">
+                  <Text size={14.5} style={{ textAlign: 'center' }} color="var(--secondary-text-color)">
                     {t('Пользователь приглашает вас в секретный чат')}
                   </Text>
                   <div className={s.secretBarBtns}>
@@ -1042,12 +1046,12 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
                       disabled={secretBusy}
                       onClick={onSecretReject}
                     >
-                      <Text weight={600} size={15} color="var(--tg-textSecondary)">{t('Отклонить')}</Text>
+                      <Text weight={600} size={15} color="var(--secondary-text-color)">{t('Отклонить')}</Text>
                     </motion.button>
                   </div>
                 </>
               ) : (
-                <Text size={14.5} style={{ textAlign: 'center' }} color="var(--tg-textSecondary)">
+                <Text size={14.5} style={{ textAlign: 'center' }} color="var(--secondary-text-color)">
                   {secretStatus === 'rejected'
                     ? t('Секретный чат отклонён')
                     : t('Ожидание, пока собеседник примет секретный чат…')}
@@ -1127,8 +1131,8 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
           <div className={classNames(s.footer, s.footerMuted)}>
             {scrollDownFab}
             <div className={s.muteBtn} style={{ cursor: 'default' }}>
-              <TgIcon name="permissions" size={20} color="var(--tg-textSecondary)" />
-              <Text weight={600} size={15.5} color="var(--tg-textSecondary)">{t('Sending messages is not allowed in this group')}</Text>
+              <TgIcon name="permissions" size={20} color="var(--secondary-text-color)" />
+              <Text weight={600} size={15.5} color="var(--secondary-text-color)">{t('Sending messages is not allowed in this group')}</Text>
             </div>
           </div>
         ) : (
@@ -1136,18 +1140,18 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
             {scrollDownFab}
             {/* Нижняя кнопка канала (tweb ChatInput) переключает mute напрямую, без попапа */}
             <motion.div whileTap={{ scale: 0.995 }} className={s.muteBtn} onClick={() => isRealChat && applyMute(!muted)}>
-              <TgIcon name={muted ? 'unmute' : 'volume_off'} size={20} color="var(--tg-textSecondary)" />
+              <TgIcon name={muted ? 'unmute' : 'volume_off'} size={20} color="var(--secondary-text-color)" />
               <Text weight={600} size={15.5}>{t(muted ? 'Unmute' : 'Mute')}</Text>
             </motion.div>
             {/* Не-постер канала предлагает пост админам (Telegram suggested posts) */}
             {isChannel && isRealChat && (
               <motion.div whileTap={{ scale: 0.995 }} className={s.muteBtn} onClick={() => pop.openSuggest()}>
-                <TgIcon name="add" size={20} color="var(--tg-accent)" />
-                <Text weight={600} size={15.5} color="var(--tg-accent)">{t('Suggest a Post')}</Text>
+                <TgIcon name="add" size={20} color="var(--primary-color)" />
+                <Text weight={600} size={15.5} color="var(--primary-color)">{t('Suggest a Post')}</Text>
               </motion.div>
             )}
             <div className={s.giftBtn}>
-              <TgIcon name="gift" color="var(--tg-textSecondary)" />
+              <TgIcon name="gift" color="var(--secondary-text-color)" />
             </div>
           </div>
         )}

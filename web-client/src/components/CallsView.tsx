@@ -44,7 +44,7 @@ function CallRow({ call, onOpen }: { call: CallLogEntry; onOpen: (chatId: number
     <div className={s.row} onClick={() => onOpen(call.chatId)}>
       <Avatar background={gradientFor(call.peerId)} text={call.peerName.charAt(0).toUpperCase()} src={src} size={46} />
       <div className={s.rowText}>
-        <Text noWrap size={16} color={missed ? '#ff595a' : 'var(--tg-textPrimary)'}>
+        <Text noWrap size={16} color={missed ? '#ff595a' : 'var(--primary-text-color)'}>
           {call.peerName}
         </Text>
         <div className={s.sub}>
@@ -55,12 +55,12 @@ function CallRow({ call, onOpen }: { call: CallLogEntry; onOpen: (chatId: number
             color={call.out ? '#4dcd5e' : '#ff595a'}
             style={{ transform: call.out ? 'rotate(-45deg)' : 'rotate(135deg)', flexShrink: 0 }}
           />
-          <Text noWrap size={13.5} color="var(--tg-textSecondary)">
+          <Text noWrap size={13.5} color="var(--secondary-text-color)">
             {(call.out ? t('Outgoing') : missed ? t('Missed') : t('Incoming')) + ' · ' + hhmm(call.date)}
           </Text>
         </div>
       </div>
-      <IconButton onClick={startCall(false)} color="var(--tg-accent)">
+      <IconButton onClick={startCall(false)} color="var(--primary-color)">
         <TgIcon name={log.video ? 'videocamera' : 'phone'} size={22} />
       </IconButton>
     </div>
@@ -92,13 +92,13 @@ export default function CallsView({ onBack, onOpenChat }: { onBack: () => void; 
       initial="initial"
       animate="animate"
       exit="exit"
-      style={{ position: 'absolute', inset: 0, zIndex: 40, background: 'var(--tg-sidebarBg)', display: 'flex', flexDirection: 'column' }}
+      style={{ position: 'absolute', inset: 0, zIndex: 40, background: 'var(--surface-color)', display: 'flex', flexDirection: 'column' }}
     >
       <div className={s.header}>
-        <IconButton onClick={onBack} color="var(--tg-textSecondary)">
+        <IconButton onClick={onBack} color="var(--secondary-text-color)">
           <TgIcon name="back" />
         </IconButton>
-        <Text size={19} weight={600} color="var(--tg-textPrimary)" className={s.title}>
+        <Text size={19} weight={600} color="var(--primary-text-color)" className={s.title}>
           {t('Calls')}
         </Text>
       </div>
@@ -106,13 +106,13 @@ export default function CallsView({ onBack, onOpenChat }: { onBack: () => void; 
       <div className={s.list}>
         {calls != null && calls.length === 0 && (
           <div className={s.empty}>
-            <TgIcon name="phone" size={48} color="var(--tg-textFaint)" />
-            <Text size={15} color="var(--tg-textSecondary)">{t('No recent calls')}</Text>
+            <TgIcon name="phone" size={48} color="var(--secondary-text-color)" />
+            <Text size={15} color="var(--secondary-text-color)">{t('No recent calls')}</Text>
           </div>
         )}
         {groups.map((g) => (
           <div key={g.key}>
-            <Text size={13} weight={600} color="var(--tg-textSecondary)" className={s.dayLabel}>
+            <Text size={13} weight={600} color="var(--secondary-text-color)" className={s.dayLabel}>
               {g.label}
             </Text>
             {g.items.map((c) => (

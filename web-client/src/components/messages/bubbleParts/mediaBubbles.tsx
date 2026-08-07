@@ -24,7 +24,7 @@ export function DocumentBubble({ m, out, firstInGroup, lastInGroup }: Ctx) {
       {lastInGroup && <BubbleTail out={out} color="var(--bb-bg)" />}
       <div
         className={s.fileIcon}
-        style={{ background: out ? 'rgba(255,255,255,0.22)' : d?.color ?? 'var(--tg-accent)' }}
+        style={{ background: out ? 'rgba(255,255,255,0.22)' : d?.color ?? 'var(--primary-color)' }}
       >
         <TgIcon name="download" />
       </div>
@@ -60,7 +60,7 @@ export function AudioBubble({ m, out, firstInGroup, lastInGroup }: Ctx) {
       {lastInGroup && <BubbleTail out={out} color="var(--bb-bg)" />}
       <div
         className={classNames(s.fileIcon, s.fileIconAudio)}
-        style={{ background: out ? 'rgba(255,255,255,0.22)' : 'var(--tg-accent)' }}
+        style={{ background: out ? 'rgba(255,255,255,0.22)' : 'var(--primary-color)' }}
       >
         <TgIcon name="music" />
       </div>
@@ -113,8 +113,8 @@ export function RoundVideoBubble({ m, out }: Ctx) {
         <div className={s.roundDur}>{m.videoDuration ?? '0:08'}</div>
       </div>
       <div className={s.roundMeta}>
-        <Text size={12} color="var(--tg-textFaint)">{fmtTime(m.time)}</Text>
-        <Ticks status={m.status} color="var(--tg-textFaint)" />
+        <Text size={12} color="var(--secondary-text-color)">{fmtTime(m.time)}</Text>
+        <Ticks status={m.status} color="var(--secondary-text-color)" />
       </div>
     </div>
   )

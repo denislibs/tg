@@ -12,7 +12,7 @@
 .card {
   width: min(360px, calc(100vw - 32px));
   border-radius: 16px;
-  background: var(--tg-sidebarBg);
+  background: var(--surface-color);
   padding: 20px 24px 12px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
 }
@@ -30,13 +30,13 @@
   cursor: pointer;
   user-select: none;
   font-weight: 600;
-  color: var(--tg-accent);
+  color: var(--primary-color);
   text-transform: uppercase;
   font-size: 14px;
 
   @media (hover: hover) {
     &:hover {
-      background: var(--tg-hover);
+      background: var(--light-secondary-text-color);
     }
   }
 }

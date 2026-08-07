@@ -70,10 +70,10 @@ export default function InstantView({
   return createPortal(
     <div className={s.overlay} role="dialog" aria-modal="true">
       <div className={s.header}>
-        <IconButton onClick={onClose} aria-label={t('Close')} color="var(--tg-textSecondary)">
+        <IconButton onClick={onClose} aria-label={t('Close')} color="var(--secondary-text-color)">
           <TgIcon name="close" size={24} />
         </IconButton>
-        <Text size={15} weight={600} color="var(--tg-textPrimary)" className={s.domain}>
+        <Text size={15} weight={600} color="var(--primary-text-color)" className={s.domain}>
           {domain}
         </Text>
         <a className={s.openLink} href={url} target="_blank" rel="noopener noreferrer">

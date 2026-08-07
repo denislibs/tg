@@ -83,10 +83,10 @@ export default function PinnedMessagesScreen({ chatId, pins, meId, meName, canUn
         transition={{ duration: 0.2, ease: EASE }}
       >
         <div className={s.header}>
-          <Text size={17} weight={600} color="var(--tg-textPrimary)" style={{ flex: 1 }}>
+          <Text size={17} weight={600} color="var(--primary-text-color)" style={{ flex: 1 }}>
             {title}
           </Text>
-          <IconButton onClick={onClose} color="var(--tg-textSecondary)" aria-label={t('Close')}>
+          <IconButton onClick={onClose} color="var(--secondary-text-color)" aria-label={t('Close')}>
             <TgIcon name="close" size={22} />
           </IconButton>
         </div>
@@ -100,19 +100,19 @@ export default function PinnedMessagesScreen({ chatId, pins, meId, meName, canUn
                 <UserAvatar id={m.senderId} name={name} avatarUrl={peer?.avatarUrl} size="sm" />
                 <div className={s.rowBody}>
                   <div className={s.rowTop}>
-                    <Text noWrap size={14} weight={600} color="var(--tg-textPrimary)" style={{ flex: 1 }}>
+                    <Text noWrap size={14} weight={600} color="var(--primary-text-color)" style={{ flex: 1 }}>
                       {name}
                     </Text>
-                    <Text size={12} color="var(--tg-textFaint)">{hhmm(m.createdAt)}</Text>
+                    <Text size={12} color="var(--secondary-text-color)">{hhmm(m.createdAt)}</Text>
                   </div>
-                  <Text noWrap size={13.5} color={m.text ? 'var(--tg-textSecondary)' : 'var(--tg-accent)'}>
+                  <Text noWrap size={13.5} color={m.text ? 'var(--secondary-text-color)' : 'var(--primary-color)'}>
                     {m.text || replyMediaLabel(m.type) || t('Message')}
                   </Text>
                 </div>
                 <IconButton
                   size="small"
                   onClick={(e) => { e.stopPropagation(); unpin(m.id) }}
-                  color="var(--tg-textFaint)"
+                  color="var(--secondary-text-color)"
                   title={t('Unpin')}
                   aria-label={t('Unpin')}
                 >

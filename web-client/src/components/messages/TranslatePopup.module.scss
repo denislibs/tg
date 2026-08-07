@@ -2,7 +2,7 @@
 // мобильном Telegram (popups/translate.tsx).
 .card {
   border-radius: 14px;
-  background: var(--tg-secondaryBg, rgba(128, 128, 128, 0.1));
+  background: rgba(128, 128, 128, 0.1);
   overflow: hidden;
 }
 
@@ -21,7 +21,7 @@
 
 .divider {
   height: 1px;
-  background: var(--tg-borderColor, rgba(128, 128, 128, 0.22));
+  background: rgba(128, 128, 128, 0.22);
 }
 
 .targetRow {
@@ -37,8 +37,8 @@
   align-items: center;
   padding: 3px 10px;
   border-radius: 9px;
-  background: color-mix(in srgb, var(--tg-accent) 22%, transparent);
-  color: var(--tg-accent);
+  background: color-mix(in srgb, var(--primary-color) 22%, transparent);
+  color: var(--primary-color);
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
@@ -67,7 +67,7 @@
   cursor: pointer;
 
   &:disabled { opacity: 0.4; cursor: default; }
-  &:not(:disabled):hover { background: var(--tg-hover, rgba(128, 128, 128, 0.12)); }
+  &:not(:disabled):hover { background: var(--light-secondary-text-color, rgba(128, 128, 128, 0.12)); }
 }
 
 .loading {

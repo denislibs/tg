@@ -36,13 +36,13 @@ export function MembersScreen({ g, isChannel, onBack }: { g: GroupEdit; isChanne
     <SettingsScreen title={isChannel ? 'Subscribers' : 'Members'} onBack={onBack} zIndex={70}>
       <div className={s.search}><InputSearch value={q} onChange={setQ} placeholder={t('Search')} /></div>
       <Section>
-        <Row icon={<TgIcon name="adduser" size={22} color="var(--tg-accent)" />} label={isChannel ? 'Add Subscribers' : 'Add Members'} accent onClick={() => setPicking(true)} />
+        <Row icon={<TgIcon name="adduser" size={22} color="var(--primary-color)" />} label={isChannel ? 'Add Subscribers' : 'Add Members'} accent onClick={() => setPicking(true)} />
         {list.map((m) => (
           <div key={m.userId} className={s.memberRow}>
             <UserAvatar id={m.userId} name={m.name} avatarUrl={m.avatarUrl} />
             <div className={s.memberBody}>
-              <Text noWrap size={16} color="var(--tg-textPrimary)">{m.name}</Text>
-              <Text noWrap size={14} color="var(--tg-textSecondary)">
+              <Text noWrap size={16} color="var(--primary-text-color)">{m.name}</Text>
+              <Text noWrap size={14} color="var(--secondary-text-color)">
                 {t(m.role === 'creator' ? 'Owner' : m.role === 'admin' ? 'Admin' : 'Member')}
               </Text>
             </div>
@@ -50,11 +50,11 @@ export function MembersScreen({ g, isChannel, onBack }: { g: GroupEdit; isChanne
               <>
                 {/* restrict/ban — только в группе; у канала подписчиков лишь удаляют */}
                 {!isChannel && m.role !== 'admin' && (
-                  <IconButton size="small" color="var(--tg-textFaint)" onClick={() => setRestricting(m)} title={t('Restrict')}>
+                  <IconButton size="small" color="var(--secondary-text-color)" onClick={() => setRestricting(m)} title={t('Restrict')}>
                     <TgIcon name="permissions" size={20} />
                   </IconButton>
                 )}
-                <IconButton size="small" color="var(--tg-textFaint)" onClick={() => void g.kick(m.userId)} title={t('Remove')}>
+                <IconButton size="small" color="var(--secondary-text-color)" onClick={() => void g.kick(m.userId)} title={t('Remove')}>
                   <TgIcon name="close" size={20} />
                 </IconButton>
                 {!isChannel && (

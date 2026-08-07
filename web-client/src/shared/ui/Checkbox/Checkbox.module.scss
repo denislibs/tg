@@ -10,7 +10,7 @@
   position: absolute;
   inset: 0;
   border-radius: var(--cb-radius, 50%);
-  border: 1.5px solid var(--cb-ring, var(--tg-textFaint));
+  border: 1.5px solid var(--cb-ring, var(--secondary-text-color));
   box-sizing: border-box;
 }
 
@@ -18,7 +18,7 @@
   position: absolute;
   inset: 0;
   border-radius: var(--cb-radius, 50%);
-  background: var(--cb-accent, var(--tg-accent));
+  background: var(--cb-accent, var(--primary-color));
 }
 
 .svg {

@@ -18,15 +18,15 @@
   transition: background 0.18s ease;
 
   // Палитра контента строки (обычное состояние).
-  --cl-title: var(--tg-textPrimary);
-  --cl-subtitle: var(--tg-textSecondary);
-  --cl-meta: var(--tg-textFaint);
-  --cl-accent: var(--tg-accent);
-  --cl-muted: var(--tg-textFaint);
-  --cl-ring: var(--tg-sidebarBg);
+  --cl-title: var(--primary-text-color);
+  --cl-subtitle: var(--secondary-text-color);
+  --cl-meta: var(--secondary-text-color);
+  --cl-accent: var(--primary-color);
+  --cl-muted: var(--secondary-text-color);
+  --cl-ring: var(--surface-color);
   --cl-check: #fff;
 
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
   background: transparent;
 
   // контент (аватар + тело) над абсолютным слоем ripple
@@ -37,7 +37,7 @@
 
   @media (hover: hover) {
     &:hover {
-      background: var(--tg-hover);
+      background: var(--light-secondary-text-color);
     }
   }
 
@@ -50,8 +50,8 @@
     --cl-meta: rgba(255, 255, 255, 0.85);
     --cl-accent: #fff;
     --cl-muted: rgba(255, 255, 255, 0.7);
-    --cl-ring: var(--tg-accent);
-    --cl-check: var(--tg-accent);
+    --cl-ring: var(--primary-color);
+    --cl-check: var(--primary-color);
 
     &:hover {
       background: var(--tg-accentGradient);
@@ -88,17 +88,17 @@
   min-width: 20px;
   padding: 0 6px;
   border-radius: 10px;
-  background-color: var(--tg-badge, var(--tg-accent));
+  background-color: var(--primary-color, var(--primary-color));
   color: #fff;
   font-size: 0.8125rem;
   font-weight: 600;
   line-height: 1;
-  box-shadow: 0 0 0 2px var(--tg-sidebarBg);
+  box-shadow: 0 0 0 2px var(--surface-color);
   pointer-events: none;
 }
 
 .cornerBadgeMuted {
-  background-color: var(--tg-textFaint);
+  background-color: var(--secondary-text-color);
 }
 
 .body {

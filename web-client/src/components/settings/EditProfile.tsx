@@ -94,7 +94,7 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
               ? t('Username must be 5–32 chars: letters, digits, underscore.')
               : ''
   const usernameColor =
-    unameState === 'available' ? '#4dcd5e' : unameState === 'taken' || unameState === 'invalid' ? '#ff595a' : 'var(--tg-textSecondary)'
+    unameState === 'available' ? '#4dcd5e' : unameState === 'taken' || unameState === 'invalid' ? '#ff595a' : 'var(--secondary-text-color)'
 
   const onCropConfirm = async (blob: Blob, width: number, height: number) => {
     setCropFile(null)
@@ -196,8 +196,8 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
       title="Edit Profile"
       onBack={onBack}
       headerRight={
-        <IconButton onClick={onDone} disabled={saving} color="var(--tg-accent)">
-          {saving ? <Spinner size={22} color="var(--tg-accent)" /> : <TgIcon name="check" />}
+        <IconButton onClick={onDone} disabled={saving} color="var(--primary-color)">
+          {saving ? <Spinner size={22} color="var(--primary-color)" /> : <TgIcon name="check" />}
         </IconButton>
       }
     >
@@ -237,18 +237,18 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
         <Input label={t('Last name')} value={last} onChange={setLast} />
         <Input label={t('Bio (optional)')} value={bio} onChange={(v) => setBio(v.slice(0, BIO_MAX))} />
         <div className={s.bday} onClick={() => setBdayOpen(true)}>
-          <TgIcon name="gift" size={24} color="var(--tg-textSecondary)" />
-          <Text size={16} color={birthday ? 'var(--tg-textPrimary)' : 'var(--tg-accent)'}>
+          <TgIcon name="gift" size={24} color="var(--secondary-text-color)" />
+          <Text size={16} color={birthday ? 'var(--primary-text-color)' : 'var(--primary-color)'}>
             {birthday ? formatBirthday(birthday, lang) : t('Add birthday')}
           </Text>
         </div>
       </div>
-      <Text size={14} color="var(--tg-textSecondary)" style={{ paddingLeft: '24px', paddingRight: '24px', paddingTop: '8px', lineHeight: 1.45 }}>
+      <Text size={14} color="var(--secondary-text-color)" style={{ paddingLeft: '24px', paddingRight: '24px', paddingTop: '8px', lineHeight: 1.45 }}>
         {t('Any details such as age, occupation or city. Example: 23 y.o. designer from San Francisco.')}
       </Text>
 
       {/* username */}
-      <Text size={14} weight={600} color="var(--tg-accent)" className={s.usernameCaption}>
+      <Text size={14} weight={600} color="var(--primary-color)" className={s.usernameCaption}>
         {t('Username')}
       </Text>
       <div className={s.card}>
@@ -263,7 +263,7 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
           {usernameMsg}
         </Text>
       )}
-      <Text size={14} color="var(--tg-textSecondary)" style={{ paddingLeft: '24px', paddingRight: '24px', paddingTop: '8px', lineHeight: 1.45 }}>
+      <Text size={14} color="var(--secondary-text-color)" style={{ paddingLeft: '24px', paddingRight: '24px', paddingTop: '8px', lineHeight: 1.45 }}>
         {t('You can choose a public username so people can find you and contact you without knowing your phone number.')}
       </Text>
 

@@ -96,18 +96,18 @@ export default function AddContactView({
       >
         {/* Header — back + title */}
         <div className={s.header}>
-          <IconButton onClick={onClose} color="var(--tg-textSecondary)">
+          <IconButton onClick={onClose} color="var(--secondary-text-color)">
             <TgIcon name="back" />
           </IconButton>
-          <Text size={19} weight={600} color="var(--tg-textPrimary)">Добавить контакт</Text>
+          <Text size={19} weight={600} color="var(--primary-text-color)">Добавить контакт</Text>
         </div>
 
         <div className={s.body}>
           {/* Avatar + original name */}
           <div className={s.avatarBlock}>
             <Avatar background={chat.avatar} text={chat.avatarText ?? chat.name[0]} src={avatarSrc} size="profile" />
-            <Text size={22} weight={600} color="var(--tg-textPrimary)" style={{ marginTop: '16px' }}>{chat.name}</Text>
-            <Text size={14} color="var(--tg-textSecondary)" style={{ marginTop: '2px' }}>исходное имя</Text>
+            <Text size={22} weight={600} color="var(--primary-text-color)" style={{ marginTop: '16px' }}>{chat.name}</Text>
+            <Text size={14} color="var(--secondary-text-color)" style={{ marginTop: '2px' }}>исходное имя</Text>
           </div>
 
           {/* Fields card */}
@@ -133,16 +133,16 @@ export default function AddContactView({
                 wrapClassName={s.field}
               />
               <span className={s.noteIcon}>
-                <TgIcon name="smile" color="var(--tg-textFaint)" />
+                <TgIcon name="smile" color="var(--secondary-text-color)" />
               </span>
             </div>
 
             {/* Phone "hidden" row */}
             <div className={s.phoneRow}>
-              <TgIcon name="phone" size={24} color="var(--tg-textSecondary)" style={{ marginTop: 2 }} />
+              <TgIcon name="phone" size={24} color="var(--secondary-text-color)" style={{ marginTop: 2 }} />
               <div className={s.phoneText}>
-                <Text size={16} weight={600} color="var(--tg-textPrimary)">Номер скрыт</Text>
-                <Text size={14} color="var(--tg-textSecondary)" style={{ lineHeight: 1.35 }}>
+                <Text size={16} weight={600} color="var(--primary-text-color)">Номер скрыт</Text>
+                <Text size={14} color="var(--secondary-text-color)" style={{ lineHeight: 1.35 }}>
                   Номер телефона будет виден, когда {displayFirst} добавит Вас в контакты.
                 </Text>
               </div>
@@ -154,9 +154,9 @@ export default function AddContactView({
             <div className={`${s.check} ${sharePhone ? s.checkOn : ''}`}>
               {sharePhone && <TgIcon name="check" size={18} color="#fff" />}
             </div>
-            <Text size={16} color="var(--tg-textPrimary)">Показать номер телефона</Text>
+            <Text size={16} color="var(--primary-text-color)">Показать номер телефона</Text>
           </div>
-          <Text size={14} color="var(--tg-textSecondary)" className={s.shareHint}>
+          <Text size={14} color="var(--secondary-text-color)" className={s.shareHint}>
             Вы можете разрешить {displayFirst} видеть Ваш номер телефона.
           </Text>
         </div>
