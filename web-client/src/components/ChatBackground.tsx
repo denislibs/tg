@@ -1,17 +1,19 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import patternUrl from '../assets/pattern.svg'
 import { useSettings } from '../settings'
 import { activeBackground } from '../wallpapers'
 import { mediaContentUrl, useMediaTokenVersion } from '../core/mediaUrl'
 import { renderPattern, patternOpacity } from '../core/chat/patternRenderer'
+import ChatBackgroundGradientRenderer from '../core/chat/gradientRenderer'
 import { getAverageColor, hexToRgb, type ColorRgb } from '../shared/lib/color'
 import { applyHighlightingColorFromRgb } from '../core/theme/themeController'
 
 /**
  * Фон чата 1:1 с tweb (src/components/chat/bubbles/chatBackground.tsx): слой
- * градиента снизу + слой дудл-паттерна сверху через свой canvas-рендер
- * (core/chat/patternRenderer — порт tweb). Уходим от @twallpaper/react, чей зашитый
- * mix-blend overlay + opacity 0.5 пересвечивал дудлы на всех темах.
+ * анимированного mesh-градиента снизу (ChatBackgroundGradientRenderer, порт tweb —
+ * 50×50 canvas, растянут CSS = сглаженный многоцветный градиент, сдвиг позиций при
+ * отправке) + слой дудл-паттерна сверху (patternRenderer). Уходим от
+ * @twallpaper/react, чей зашитый overlay+opacity 0.5 пересвечивал дудлы.
  *
  * Стратегии приглушения паттерна (1:1 tweb):
  *  • night — MASK: canvas залит #000, дудлы выбиты дырками (destination-out);
@@ -19,10 +21,6 @@ import { applyHighlightingColorFromRgb } from '../core/theme/themeController'
  *  • day/light — soft-light overlay, приглушается ПАТТЕРН (opacity 0.5).
  *  • tinted — soft-light overlay + invert (чёрные дудлы → светлые на тёмно-синем),
  *    intensity форсится −38 (tweb Dark Blue).
- *
- * Анимированный mesh-градиент со сдвигом при отправке (tweb
- * ChatBackgroundGradientRenderer) — отложен в волну тяжёлых рендеров; здесь
- * статический многоцветный радиальный стек из 4 цветов обоев.
  */
 
 type PatternMode = { intensity: number; mask: boolean; invert: boolean }
@@ -51,22 +49,11 @@ function readTheme() {
   }
 }
 
-// Статический многоцветный фон из 4 цветов — радиальные пятна по углам
-// (аппроксимация tweb mesh-градиента; анимированный рендер — отдельная волна).
-function gradientStack(colors: string[]): string {
-  const [c0, c1, c2, c3] = colors
-  return [
-    `radial-gradient(60% 60% at 80% 10%, ${c0} 0%, transparent 70%)`,
-    `radial-gradient(60% 60% at 20% 90%, ${c1} 0%, transparent 70%)`,
-    `radial-gradient(60% 60% at 80% 90%, ${c2} 0%, transparent 70%)`,
-    `radial-gradient(60% 60% at 20% 10%, ${c3} 0%, transparent 70%)`,
-    c0,
-  ].join(', ')
-}
-
 export default function ChatBackground({ themeColors }: { themeColors?: string[] }) {
   const { wallpaper, wallpaperBlur, themeChoice, customWallpaperMediaId, customWallpaperBlur } = useSettings()
-  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const patternRef = useRef<HTMLCanvasElement>(null)
+  const gradientRef = useRef<HTMLCanvasElement>(null)
+  const rendererRef = useRef<ChatBackgroundGradientRenderer | null>(null)
   const imgRef = useRef<HTMLImageElement | null>(null)
   useMediaTokenVersion()
 
@@ -102,12 +89,28 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
   const gradientOpacity = mode.mask ? patternOpacityMax : 1
   const canvasOpacity = mode.mask ? 1 : patternOpacityMax
 
-  const gradientBg = useMemo(() => gradientStack(colors), [colors.join()]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Инициализация/переинициализация mesh-градиента при смене цветов/темы.
+  useEffect(() => {
+    if (overlay) return
+    const canvas = gradientRef.current
+    if (!canvas) return
+    canvas.dataset.colors = colors.filter(Boolean).join(',')
+    if (!rendererRef.current) rendererRef.current = new ChatBackgroundGradientRenderer()
+    rendererRef.current.init(canvas)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [themeChoice, colors.join(), !!overlay])
+
+  // Сдвиг градиента на одну позицию при отправке сообщения (tweb toNextPosition).
+  useEffect(() => {
+    const onSend = () => rendererRef.current?.toNextPosition()
+    window.addEventListener('tg-send', onSend)
+    return () => window.removeEventListener('tg-send', onSend)
+  }, [])
 
   // Отрисовка/перерисовка canvas-паттерна: под размер вьюпорта*dpr, стратегия по теме.
   useEffect(() => {
     if (overlay) return
-    const canvas = canvasRef.current
+    const canvas = patternRef.current
     if (!canvas) return
 
     const paint = () => {
@@ -156,26 +159,25 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', overflow: 'hidden' }}>
-      {/* нижний слой — цвет/градиент; при mask дим до 0.3 (сквозь дырки паттерна) */}
-      <div
+      {/* нижний слой — сплошной фон при mask (night), сквозь который дальше просвечивает дим-градиент */}
+      {mode.mask && <div style={{ position: 'absolute', inset: 0, background: th.appBg }} />}
+      {/* mesh-градиент: 50×50 canvas растянут на весь экран (браузер сглаживает) */}
+      <canvas
+        ref={gradientRef}
+        width={50}
+        height={50}
         style={{
           position: 'absolute',
           inset: 0,
-          background: mode.mask ? th.appBg : undefined,
-        }}
-      />
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background: gradientBg,
+          width: '100%',
+          height: '100%',
           opacity: gradientOpacity,
           filter: wallpaperBlur ? 'blur(6px)' : undefined,
         }}
       />
       {/* верхний слой — дудлы: mask (night) кроет чёрным с дырками; иначе soft-light overlay */}
       <canvas
-        ref={canvasRef}
+        ref={patternRef}
         style={{
           position: 'absolute',
           inset: 0,
