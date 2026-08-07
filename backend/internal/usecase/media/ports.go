@@ -111,6 +111,8 @@ type UploadInput struct {
 	Duration    int
 	BlurPreview []byte
 	FileName    string
+	// Waveform — пики голосового (5-бит, посчитаны клиентом), nil для остальных.
+	Waveform []byte
 }
 
 // FinalizeInput carries the final metadata the client reports once every chunk of

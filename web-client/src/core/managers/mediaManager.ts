@@ -1,3 +1,4 @@
+import { b64FromBytes } from '../secret/crypto'
 import type { RestClient } from '../net/restClient'
 import type { FileDownload } from '../net/dnp/fileDownload'
 import type { FileUpload } from '../net/dnp/fileUpload'
@@ -5,8 +6,8 @@ import type { FileUpload } from '../net/dnp/fileUpload'
 // Either `bytes` (already in memory, legacy) or `blob` (a File/Blob, preferred for
 // large files — sliced per-chunk so the whole file never sits in memory). Files
 // above CHUNK_THRESHOLD with a `blob` take the chunked/resumable path.
-export interface UploadArgs { bytes?: ArrayBuffer; blob?: Blob; mime: string; size: number; width?: number; height?: number; duration?: number; fileName?: string; progressId?: string }
-export interface MediaMeta { id: number; mime: string; size: number; width: number; height: number; duration: number; blurPreview: string; fileName: string; hasThumb: boolean }
+export interface UploadArgs { bytes?: ArrayBuffer; blob?: Blob; mime: string; size: number; width?: number; height?: number; duration?: number; fileName?: string; progressId?: string; waveform?: Uint8Array }
+export interface MediaMeta { id: number; mime: string; size: number; width: number; height: number; duration: number; blurPreview: string; fileName: string; hasThumb: boolean; waveform: string }
 
 interface RestLike {
   post: RestClient['post']
@@ -56,8 +57,8 @@ export function newMediaManager({ rest, onUploadProgress, fileDownload, fileUplo
     // Don't cache until the server has finished processing (a thumb may appear
     // a moment after upload); re-fetch while hasThumb is still false.
     if (hit && hit.hasThumb) return hit
-    const r = await rest.get<{ id: number; mime: string; size: number; width: number; height: number; duration: number; blur_preview: string; file_name?: string; has_thumb?: boolean }>(`/media/${id}`)
-    const m: MediaMeta = { id: r.id, mime: r.mime, size: r.size, width: r.width, height: r.height, duration: r.duration, blurPreview: r.blur_preview ?? '', fileName: r.file_name ?? '', hasThumb: !!r.has_thumb }
+    const r = await rest.get<{ id: number; mime: string; size: number; width: number; height: number; duration: number; blur_preview: string; file_name?: string; has_thumb?: boolean; waveform?: string }>(`/media/${id}`)
+    const m: MediaMeta = { id: r.id, mime: r.mime, size: r.size, width: r.width, height: r.height, duration: r.duration, blurPreview: r.blur_preview ?? '', fileName: r.file_name ?? '', hasThumb: !!r.has_thumb, waveform: r.waveform ?? '' }
     metaCache.set(id, m)
     return m
   }
@@ -138,6 +139,7 @@ export function newMediaManager({ rest, onUploadProgress, fileDownload, fileUplo
       const r = await rest.post<{ media_id: number }>('/media/upload', {
         mime: a.mime, size: a.size, width: a.width ?? 0, height: a.height ?? 0, duration: a.duration ?? 0,
         file_name: a.fileName ?? '',
+        waveform: a.waveform ? b64FromBytes(a.waveform) : undefined,
       })
       const progress = a.progressId && onUploadProgress
         ? (loaded: number, total: number) => onUploadProgress(a.progressId!, loaded, total)

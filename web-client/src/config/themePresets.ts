@@ -204,6 +204,15 @@ function messageOutBackgroundColor(messageOutPrimaryHex: string, surfaceHex: str
   return rgbaToHexa(boosted)
 }
 
+// Значения 1:1 из tweb `src/config/state.ts:391-398`; classic отсутствует — не портируем;
+// light = day-значение, т.к. в tweb light = base day.
+export const DEFAULT_HIGHLIGHTING_COLORS: Record<ThemePresetName, string> = {
+  day: 'hsla(210, 67.741935%, 50.588235%, .4)',
+  light: 'hsla(210, 67.741935%, 50.588235%, .4)',
+  night: 'hsla(299.142857, 44.166666%, 37.470588%, .4)',
+  tinted: 'hsla(258.461538, 50%, 65.490196%, .4)',
+}
+
 // Базовые hex-значения токенов для встроенной темы (без пользовательского акцента).
 export function presetToColorMap(preset: ThemePresetName): Record<AppColorName, string> {
   const base = presetColorMap[preset]

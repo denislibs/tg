@@ -5,6 +5,19 @@ type ReactionCount struct {
 	Count int    `json:"count"`
 	// Mine — зритель тоже поставил эту реакцию (клиент подсвечивает чип).
 	Mine bool `json:"mine,omitempty"`
+	// Recent — до 3 последних реагировавших (свежие первыми), с мини-карточкой для
+	// аватара. Клиент показывает их аватары вместо числа при count<4 (tweb
+	// reaction.ts:1060-1084, reactions.ts:305-307 — аватары при
+	// totalReactions<REACTIONS_DISPLAY_COUNTER_AT).
+	Recent []ReactionRecentPeer `json:"recent,omitempty"`
+}
+
+// ReactionRecentPeer — мини-карточка реагировавшего для аватара в чипе (id +
+// имя + url аватара). Отдаётся вместе с ReactionCount при count<4.
+type ReactionRecentPeer struct {
+	ID     int64  `json:"id"`
+	Name   string `json:"name"`
+	Avatar string `json:"avatar,omitempty"`
 }
 
 // ReactionUser — одна поставленная реакция (кто и каким эмодзи), для попапа

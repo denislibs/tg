@@ -1,0 +1,23 @@
+// Стек аватаров реагировавших (tweb _reaction.scss:157-163 / _stackedAvatars.scss).
+// Наложение --margin-right:-.875rem в block-контексте реакции; рамка .125rem
+// цвета подложки чипа (var(--r-bg) задаёт .reactionChip).
+.stack {
+  display: inline-flex;
+  align-items: center;
+  // компенсируем отрицательный отступ последнего элемента визуально не нужно —
+  // наложение начинается со второго аватара.
+}
+
+.item {
+  position: relative;
+  border-radius: 50%;
+  // рамка цвета подложки чипа — «прорезь» между наложенными аватарами (tweb
+  // --border-size:.125rem, --border-color = фон чипа).
+  box-shadow: 0 0 0 0.125rem var(--r-bg, transparent);
+
+  & + & {
+    // наложение: каждый следующий аватар заезжает на предыдущий (tweb -.875rem
+    // при avatarSize 24 ≈ треть аватара).
+    margin-inline-start: -0.4375rem;
+  }
+}

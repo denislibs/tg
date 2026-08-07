@@ -13,6 +13,9 @@
   background-color: rgba(127, 127, 127, 0.16);
   background-size: cover;
   background-position: center;
+  // tweb _chatBubble.scss:760 (.just-media) — тайм-пилюля без подписи берёт
+  // цвет подсветки темы вместо дефолтного тёмного оверлея (см. .timeBadge).
+  --message-time-background: var(--message-highlighting-color);
 
   img {
     cursor: pointer;
@@ -92,7 +95,7 @@
   gap: 2px;
   padding: 2px 6px;
   border-radius: 10px;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--message-time-background);
 }
 .play {
   position: absolute;

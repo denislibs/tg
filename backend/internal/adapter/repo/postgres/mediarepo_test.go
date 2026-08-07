@@ -42,6 +42,48 @@ func TestMediaRepo_CreateAndGet(t *testing.T) {
 	}
 }
 
+// Waveform (пики голосового) сохраняется и читается без искажений.
+func TestMediaRepo_Waveform(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewMediaRepo(pool)
+	ctx := context.Background()
+	owner := seedMediaOwner(t, repo, "+790")
+
+	wf := []byte{0, 31, 5, 200, 255, 1, 63}
+	m, err := repo.Create(ctx, domain.Media{
+		OwnerID: owner, Bucket: "media", ObjectKey: "voice1", Mime: "audio/ogg",
+		Duration: 3, Waveform: wf,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	got, err := repo.GetByID(ctx, m.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if len(got.Waveform) != len(wf) {
+		t.Fatalf("waveform len = %d, want %d", len(got.Waveform), len(wf))
+	}
+	for i := range wf {
+		if got.Waveform[i] != wf[i] {
+			t.Fatalf("waveform[%d] = %d, want %d", i, got.Waveform[i], wf[i])
+		}
+	}
+
+	// не-голосовое: waveform nil сохраняется как NULL и читается пустым.
+	m2, err := repo.Create(ctx, domain.Media{OwnerID: owner, Bucket: "media", ObjectKey: "img1", Mime: "image/png"})
+	if err != nil {
+		t.Fatalf("Create img: %v", err)
+	}
+	got2, err := repo.GetByID(ctx, m2.ID)
+	if err != nil {
+		t.Fatalf("GetByID img: %v", err)
+	}
+	if len(got2.Waveform) != 0 {
+		t.Fatalf("expected empty waveform for image, got %v", got2.Waveform)
+	}
+}
+
 func TestMediaRepo_ChunkedUploadTracking(t *testing.T) {
 	pool := storepostgres.NewTestDB(t)
 	repo := NewMediaRepo(pool)

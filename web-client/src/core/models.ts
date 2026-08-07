@@ -188,7 +188,7 @@ export interface RawMessage {
   views?: number
   forwards?: number
   media_unread?: boolean
-  reactions?: { emoji: string; count: number; mine?: boolean }[] | null
+  reactions?: { emoji: string; count: number; mine?: boolean; recent?: { id: number; name: string; avatar?: string }[] }[] | null
   geo?: RawGeo | null
   contact?: { user_id: number; name?: string; phone?: string } | null
   gift_id?: number | null
@@ -241,6 +241,9 @@ export interface ReactionCount {
   emoji: string
   count: number
   mine: boolean
+  /** до 3 последних реагировавших (свежие первыми) с мини-карточкой — клиент
+   *  показывает их аватары вместо числа при count<4 (tweb reaction.ts renderAvatars). */
+  recent?: { id: number; name: string; avatarUrl?: string }[]
 }
 
 // E2E-медиа секретного чата. Файл шифруется своим AES-ключом; ciphertext лежит на
@@ -731,7 +734,12 @@ export function mapMessage(r: RawMessage): Message {
     forwards: r.forwards,
     mediaUnread: r.media_unread,
     reactions: r.reactions?.length
-      ? r.reactions.map((x) => ({ emoji: x.emoji, count: x.count, mine: !!x.mine }))
+      ? r.reactions.map((x) => ({
+          emoji: x.emoji,
+          count: x.count,
+          mine: !!x.mine,
+          recent: x.recent?.map((p) => ({ id: p.id, name: p.name, avatarUrl: p.avatar || undefined })),
+        }))
       : undefined,
     geo: r.geo ? mapGeo(r.geo) : undefined,
     contact: r.contact

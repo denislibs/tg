@@ -17,6 +17,7 @@ import { BubbleAppear } from '../animations/bubbleAnimations'
 import Checkbox from '../../shared/ui/Checkbox'
 import StarIcon from '../stars/StarIcon'
 import Emoji from '../emoji/Emoji'
+import StackedAvatars from './StackedAvatars'
 import { emojiOnlyCount } from '../RichText'
 import MessageContent from './MessageContent'
 import { useSettings } from '../../settings'
@@ -107,8 +108,8 @@ function StarReactionChip({ total, mine, onClick }: { total: number; mine: numbe
 // Один чип. Свежедобавленная «моя» реакция монтируется без is-chosen и получает
 // класс кадром позже — CSS-transition подложки играет как tweb SetTransition(300).
 // Тап — тоггл своей реакции; long-press / правый клик — попап «кто отреагировал».
-function ReactionChip({ r, live, onToggle, onShow }: {
-  r: { emoji: string; count: number; mine: boolean }
+export function ReactionChip({ r, live, onToggle, onShow }: {
+  r: { emoji: string; count: number; mine: boolean; recent?: { id: number; name: string; avatarUrl?: string }[] }
   live: boolean
   onToggle: (emoji: string) => void
   onShow: (x: number, y: number) => void
@@ -127,7 +128,13 @@ function ReactionChip({ r, live, onToggle, onShow }: {
       onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onShow(e.clientX, e.clientY) }}
     >
       <span className={s.reactionEmoji}><Emoji e={r.emoji} size={22} /></span>
-      <span className={s.reactionCount}>{r.count}</span>
+      {/* tweb reaction.ts renderAvatars/renderCounter: при count<4 и наличии
+          списка реагировавших — аватары вместо числа; иначе счётчик. */}
+      {r.recent?.length && r.count < 4 ? (
+        <span className={s.reactionAvatars}><StackedAvatars peers={r.recent} size={24} /></span>
+      ) : (
+        <span className={s.reactionCount}>{r.count}</span>
+      )}
     </div>
   )
 }

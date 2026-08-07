@@ -23,10 +23,13 @@
     --row-mb: #{$bubble-margin-big}; // tweb $bubble-margin-big
   }
 
-  // Реакции (tweb _reaction.scss): фон невыбранного чипа — полупрозрачный акцент
-  // (--message-highlighting-color), выбранного — сплошной (--message-primary-color).
-  --r-bg: color-mix(in srgb, var(--primary-color) 10%, transparent);
-  --r-fg: var(--primary-color);
+  // Реакции (tweb _reaction.scss:81-96): фон невыбранного чипа — тёмная
+  // полупрозрачная подложка из обоев (--message-highlighting-color), счётчик белый
+  // (--counter-color:#fff); выбранного — сплошной акцент (--message-primary-color).
+  // Подложка/счётчик НЕ зависят от in/out (highlighting глобален, полупрозрачен и
+  // сам «просвечивает» цвет бабла под ним) — как в tweb.
+  --r-bg: var(--message-highlighting-color);
+  --r-fg: #fff;
   --r-chosen-bg: var(--primary-color);
   --r-chosen-fg: #fff;
 
@@ -37,10 +40,10 @@
     --b-link: var(--message-out-primary-color);
     --b-time: color-mix(in srgb, var(--message-out-primary-color) 70%, transparent);
     --b-secondary: color-mix(in srgb, var(--message-out-primary-color) 85%, transparent);
-    --r-bg: color-mix(in srgb, var(--message-out-primary-color) 12%, transparent);
-    --r-fg: var(--message-out-primary-color);
-    --r-chosen-bg: var(--message-out-primary-color);
-    --r-chosen-fg: var(--message-out-background-color);
+    // chosen в исходящем — тот же акцент (tweb --chosen-background-color:
+    // var(--message-primary-color)); фон невыбранного наследует highlighting.
+    --r-chosen-bg: var(--primary-color);
+    --r-chosen-fg: #fff;
   }
 
   &[data-selecting] {
@@ -137,13 +140,21 @@
 .stickerReal {
   position: relative;
   display: inline-block;
+  // tweb _chatBubble.scss:760 (.just-media) — без фона бабла тайм-пилюля берёт
+  // цвет подсветки темы вместо дефолтного тёмного оверлея.
+  --message-time-background: var(--message-highlighting-color);
 }
 .sticker {
   position: relative;
   display: inline-block;
   padding: 0 4px;
+  // tweb _chatBubble.scss:760 (.just-media) — то же самое для big-emoji.
+  --message-time-background: var(--message-highlighting-color);
 }
 .stickerGlyph {
+  // Размер глифа — из --emoji-size, выставленной на .sticker по шкале
+  // BIG_EMOJI_SIZES (tweb _chatBubble.scss:741 font-size: var(--emoji-size)).
+  font-size: var(--emoji-size);
   line-height: 1.1;
   user-select: none;
 }
@@ -156,7 +167,7 @@
   gap: 2px;
   padding: 3px 6px;
   border-radius: 11px;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--message-time-background);
 }
 
 // ── voice (type=voice, без mediaId) ──
@@ -437,6 +448,16 @@
   margin: 0 1px 0 6px;
   font-variant-numeric: tabular-nums;
   transition: color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+// Аватары реагировавших вместо счётчика (tweb count<4): над подложкой чипа,
+// с тем же левым отступом, что и счётчик.
+.reactionAvatars {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  margin-inline-start: 6px;
 }
 
 // Внутри медиабабла (mediaInner без паддингов) — своя подложка-строка.

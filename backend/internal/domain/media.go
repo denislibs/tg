@@ -13,6 +13,9 @@ type Media struct {
 	Height      int
 	Duration    int
 	BlurPreview []byte
+	// Waveform — 5-битно упакованные пики голосового (посчитаны клиентом при записи,
+	// ~63 байта; 1:1 tweb documentAttributeAudio.waveform). nil для не-голосовых.
+	Waveform []byte
 	// FileName is the original upload name (shown for documents/music).
 	FileName string
 	// ThumbKey is the object key of a server-generated thumbnail/poster (jpeg),

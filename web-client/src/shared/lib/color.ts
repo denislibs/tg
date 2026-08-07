@@ -282,3 +282,17 @@ export function getHexColorFromTelegramColor(color: number): string {
 export function getRgbColorFromTelegramColor(color: number): ColorRgb {
   return hexToRgb(getHexColorFromTelegramColor(color))
 }
+
+/**
+ * Порт из tweb `src/helpers/highlightingColor.ts` (PresentationData iOS).
+ * Применяет выделение цвета: повышает насыщенность, затемняет L на 65%, alpha .4.
+ * @returns hsla-строка с alpha = 0.4
+ */
+export function highlightingColor(rgba: [number, number, number, number?]): string {
+  let { h, s, l } = rgbaToHsla(rgba[0], rgba[1], rgba[2])
+  if (s > 0) {
+    s = Math.min(100, s + 5 + 0.1 * (100 - s))
+  }
+  l = Math.max(0, l * 0.65)
+  return `hsla(${h}, ${s}%, ${l}%, .4)`
+}

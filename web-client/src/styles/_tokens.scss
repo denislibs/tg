@@ -31,6 +31,14 @@
   --section-box-shadow: 0px 1px 4px 0px var(--section-box-shadow-color);
   --section-box-shadow-big: 0px 1px 8px 0px var(--section-box-shadow-big-color);
   --column-box-shadow: 0px 0px 4px 0px var(--column-box-shadow-color);
+
+  // tweb base.scss:82 — тёмная тайм-пилюля поверх стикера/медиа без подложки бабла
+  // (переопределяется в .just-media-подобных контекстах, см. MessageRow.module.scss).
+  --message-time-background: rgba(0, 0, 0, 0.35);
+  // tweb base.scss:320 — hover-подсветка сервис-баблов/дата-пилюль от подсветки темы;
+  // --message-highlighting-color(-rgb)/--message-highlighting-alpha пишет JS
+  // (themeController.applyHighlightingColor), не CSS-статика.
+  --message-highlighting-hover-color: rgba(var(--message-highlighting-color-rgb), calc(var(--message-highlighting-alpha) + 0.24));
 }
 
 // Бесхозные --tg-* (нет tweb-аналога) — декоративные тени/градиенты собственного UI,
@@ -58,9 +66,6 @@
   // токен; старое значение 1:1 (было тонировано под day-акцент, не по формуле
   // hover-alpha)
   --tg-bannerBg: rgba(51, 144, 236, 0.07);
-  // фон сервис-баблов/пилюль дат (tweb --message-highlighting-color) — тёмный
-  // полупрозрачный на светлой теме (белый текст читается на светлых обоях)
-  --message-highlighting-color: rgba(0, 0, 0, 0.24);
   // ripple wash on light surfaces (чуть заметнее tweb-овых .08 — иначе плохо читается)
   --ripple-color: rgba(0, 0, 0, 0.13);
   // Light: section .05, big .1, column .1 (tweb base.scss :root)
@@ -87,12 +92,19 @@
   // подложка баннеров/inline-плашек — нейтрально-белая (не акцентная), старое
   // значение night/dark 1:1
   --tg-bannerBg: rgba(255, 255, 255, 0.04);
-  // Тёмная тема: светлый полупрозрачный фон сервис-баблов (белый текст читается
-  // на тёмных обоях; отличается от светлой темы).
-  --message-highlighting-color: rgba(255, 255, 255, 0.16);
   --ripple-color: rgba(255, 255, 255, 0.18);
   // Night: section .12, big .24, column .24 (tweb base.scss .night)
   --section-box-shadow-color: rgba(0, 0, 0, 0.12);
   --section-box-shadow-big-color: rgba(0, 0, 0, 0.24);
   --column-box-shadow-color: rgba(0, 0, 0, 0.24);
+}
+
+// tinted («Dark Blue») — свой тёмно-синий градиент обоев (1:1 tweb state.ts:349-352),
+// НЕ яркий night-«sunset». Overlay-путь (soft-light+invert) делает дудлы светлыми
+// поверх тёмно-синего; яркий night-градиент тут пересвечивал бы (см. ChatBackground).
+[data-theme='tinted'] {
+  --tg-bgGrad0: #1e3557;
+  --tg-bgGrad1: #182036;
+  --tg-bgGrad2: #1c4352;
+  --tg-bgGrad3: #16263a;
 }
