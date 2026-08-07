@@ -74,7 +74,7 @@ function MessageRow({
   feedFns, autoDownload, albumSelectedKey, footer,
 }: MessageRowProps) {
   const textSize = useSettings((st) => st.textSize)
-  const rowStyle = { '--msg-text-size': `${textSize}px` } as CSSProperties
+  const rowStyle = { '--messages-text-size': `${textSize}px` } as CSSProperties
 
   // Реакции — единый Block-ряд под контентом бабла у ВСЕХ типов (tweb: reactions
   // всегда крепятся внутрь структуры бабла, не выносятся наружу). Само размещение

@@ -3,8 +3,8 @@ import classNames from '../../lib/classNames'
 import s from './Text.module.scss'
 
 interface TextProps extends HTMLAttributes<HTMLDivElement> {
-  /** font-size in px (same value used in the old sx) */
-  size?: number
+  /** font-size: число → px; строка → как есть (напр. var(--messages-time-text-size)) */
+  size?: number | string
   /** font-weight */
   weight?: number
   /** color — a token var() or literal */
@@ -19,7 +19,7 @@ interface TextProps extends HTMLAttributes<HTMLDivElement> {
 export default function Text({ size, weight, color, noWrap, className, style, children, ...rest }: TextProps) {
   const cls = classNames(s.root, noWrap ? s.noWrap : '', className ?? '')
   const vars: Record<string, string> = {}
-  if (size != null) vars['--text-size'] = `${size}px`
+  if (size != null) vars['--text-size'] = typeof size === 'number' ? `${size}px` : size
   if (weight != null) vars['--text-weight'] = String(weight)
   if (color != null) vars['--text-color'] = color
   return (
