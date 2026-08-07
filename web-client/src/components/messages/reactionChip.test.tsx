@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
-import { ReactionChip } from './MessageRow'
+import { ReactionChip } from './MessageReactions'
 
 // Emoji и StackedAvatars тянут контекст (managers) — мокаем: тестируем ветвление
 // «аватары vs число» в самом чипе (tweb count<4 → renderAvatars, иначе renderCounter).
