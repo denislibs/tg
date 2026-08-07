@@ -24,7 +24,7 @@
   background: #ffffff;
 
   :global(html[data-theme='night']) &,
-  :global(html[data-theme='dark']) & {
+  :global(html[data-theme='tinted']) & {
     background: #2b2b2b;
   }
 }
@@ -61,7 +61,7 @@
   --input-bg: #ffffff;
 
   :global(html[data-theme='night']) &,
-  :global(html[data-theme='dark']) & {
+  :global(html[data-theme='tinted']) & {
     --input-bg: #2b2b2b;
   }
 }

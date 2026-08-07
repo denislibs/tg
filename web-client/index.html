@@ -17,12 +17,16 @@
       try {
         var raw = localStorage.getItem('tg-settings')
         var choice = raw ? JSON.parse(raw).themeChoice : null
+        // legacy-пресеты, удалённые в cutover на themeController (Task 4): дублирует
+        // legacyToPreset из settings.tsx.
+        var legacyToPreset = { classic: 'day', dark: 'night' }
+        if (choice && legacyToPreset[choice]) choice = legacyToPreset[choice]
         if (!choice) {
           var legacy = localStorage.getItem('tg-theme')
-          choice = legacy === 'dark' ? 'night' : legacy === 'light' ? 'classic' : 'system'
+          choice = legacy === 'dark' ? 'night' : legacy === 'light' ? 'day' : 'system'
         }
         if (choice === 'system') {
-          choice = matchMedia('(prefers-color-scheme: dark)').matches ? 'night' : 'classic'
+          choice = matchMedia('(prefers-color-scheme: dark)').matches ? 'night' : 'day'
         }
         document.documentElement.dataset.theme = choice
       } catch (e) { /* приватный режим / битый JSON — останется дефолт */ }
@@ -40,7 +44,7 @@
         transition: opacity 0.2s ease-in-out;
       }
       html[data-theme='night'] #initial-loader,
-      html[data-theme='dark'] #initial-loader { background: #212121; }
+      html[data-theme='tinted'] #initial-loader { background: #212121; }
       #initial-loader.hide { opacity: 0; }
     </style>
   </head>

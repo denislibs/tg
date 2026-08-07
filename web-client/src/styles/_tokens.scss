@@ -1,152 +1,131 @@
 // src/styles/_tokens.scss
 //
-// Дизайн-токены тем как CSS custom properties. Значения 1:1 из theme.ts
-// (classic/day/night/dark — сэмплы палитр Telegram Web-K). Активная тема
-// выбирается атрибутом `data-theme` на <html> (см. App.tsx); смена темы — это
-// смена атрибута, без пересчёта стилей в JS. Структура повторяет спреды theme.ts:
-// :root = classic (база), day = дельты поверх classic, night = полный набор,
-// dark = дельты поверх night (одинаковая специфичность → решает порядок в файле).
+// Cutover на themeController (core/theme/themeController.ts): активная тема — 4
+// встроенных пресета tweb (day/night/light/tinted), выбор атрибутом `data-theme`
+// на <html>. Реальные цветовые значения (--primary-color, --surface-color, их
+// -rgb/light-/dark-/light-filled-/dark-filled- производные) больше НЕ живут тут
+// статикой на пресет — их синхронно инжектит `themeController.setTheme()` в
+// `<style id="theme">` (см. config/themePresets.ts + core/theme/themeController.ts).
 //
-// pattern/patternMask не здесь: это бандл-URL ассета (один на все темы), живёт в
-// theme.ts как литерал.
+// Здесь остаются два рода токенов:
+//  (а) семантические --tg-* — тонкие алиасы на инжектнутые tweb-токены (плюс пара
+//      статичных tweb 1:1 констант вроде --menu-box-shadow, которые в tweb сами не
+//      зависят от темы). Один :root — значение меняется само, когда themeController
+//      переинжектит :root-блок под новый пресет.
+//  (b) «бесхозные» --tg-* без прямого tweb-аналога (декоративные тени/градиенты
+//      нашего UI, дефолтный обойный градиент) — статика per-theme, сгруппированная
+//      под 2 визуальных лагеря: day+light (светлый) и night+tinted (тёмный).
 
 :root {
-  --tg-accent: #7d63e8;
-  --tg-accentGradient: linear-gradient(135deg, #8a6cf0 0%, #a079f6 100%);
-  --tg-appBg: #e7ddf5;
-  --tg-sidebarBg: #ffffff;
-  --tg-bubble: #ffffff;
-  --tg-bubbleOut: #ede9fc;
-  --tg-bubbleOutText: #1c1c1e;
-  // Фон сервис-баблов/пилюль дат (tweb --message-highlighting-color): тёмный
-  // полупрозрачный на светлой теме (белый текст читается на светлых обоях).
-  --message-highlighting-color: rgba(0, 0, 0, 0.24);
-  --tg-bubbleOutAccent: #7d63e8;
-  --tg-bubbleBorder: rgba(0, 0, 0, 0.04);
-  --tg-hover: rgba(0, 0, 0, 0.035);
-  --tg-selectedText: #ffffff;
-  --tg-divider: rgba(0, 0, 0, 0.07);
-  --tg-textPrimary: #1c1c1e;
-  --tg-textSecondary: #82868d;
-  --tg-textFaint: #a0a2a8;
-  --tg-link: #5b51d8;
-  --tg-searchBg: rgba(0, 0, 0, 0.045);
-  --tg-bannerBg: rgba(125, 99, 232, 0.06);
-  --tg-badge: #7d63e8;
-  --tg-composeShadow: 0 6px 22px rgba(120, 90, 240, 0.4);
-  --tg-menuBg: rgba(255, 255, 255, 0.82);
-  --tg-menuShadow: 0 12px 44px rgba(80, 60, 160, 0.2);
+  // ── Семантические алиасы (см. config/themePresets.ts AppColorName) ──
+  --tg-accent: var(--primary-color);
+  --tg-badge: var(--primary-color);
+  // фон-подложка целых экранов (паскод-лок и т.п.) и подложка секций-карточек
+  --tg-bg: var(--background-color);
+  --tg-appBg: var(--background-color);
+  --tg-sectionBackdrop: var(--background-color);
+  --tg-bubble: var(--surface-color);
+  --tg-sidebarBg: var(--surface-color);
+  --tg-skelBase: var(--surface-color);
+  --tg-bubbleOut: var(--message-out-background-color);
+  --tg-bubbleOutText: var(--message-out-primary-color);
+  // тики/ссылки/реакции поверх исходящего баббла — тот же текст/иконка-цвет, что и
+  // основной текст баббла (кастомные темы чата перекрывают инлайн-стилем, см.
+  // useShellTheme/ConversationView).
+  --tg-bubbleOutAccent: var(--message-out-primary-color);
+  --tg-dangerText: var(--danger-color);
+  --tg-divider: var(--border-color);
+  --tg-green: var(--green-color);
+  // hover-подсветка строк — лёгкий тон вторичного текста (нет отдельного --hover-color
+  // в themeController, ближайший семантический аналог)
+  --tg-hover: var(--light-secondary-text-color);
+  --tg-skelHi: var(--light-secondary-text-color);
+  --tg-inputSearchBg: var(--input-search-background-color);
+  --tg-searchBg: var(--input-search-background-color);
+  --tg-link: var(--link-color);
+  --tg-switchOff: var(--secondary-color);
+  --tg-textPrimary: var(--primary-text-color);
+  --tg-textSecondary: var(--secondary-text-color);
+  // нет отдельного "faint"-токена в tweb — ближайший аналог, secondary-text-color
+  --tg-textFaint: var(--secondary-text-color);
+
+  // ── Статичные tweb 1:1 константы (tweb scss/base.scss:121,232,258) ──
+  // menu-box-shadow(-color) в tweb НЕ переопределяется в .night — одна и та же тень
+  // на любой теме (плавающие меню одинаково тёмные поверх light/dark поверхностей).
+  --menu-box-shadow-color: rgba(0, 0, 0, 0.15);
+  --menu-box-shadow: 0px 0px 10px var(--menu-box-shadow-color);
+  --tg-menuShadow: var(--menu-box-shadow);
+  // menu-background-color = surface-color при --backdrop-opacity (per-theme, ниже),
+  // 1:1 tweb base.scss (:root .85 / .night .75).
+  --menu-background-color: rgba(var(--surface-color-rgb), var(--backdrop-opacity));
+  --tg-menuBg: var(--menu-background-color);
+
+  // tweb-набор теней секций/колонки (base.scss) — композиция здесь, цвета — по темам.
+  --section-box-shadow: 0px 1px 4px 0px var(--section-box-shadow-color);
+  --section-box-shadow-big: 0px 1px 8px 0px var(--section-box-shadow-big-color);
+  --column-box-shadow: 0px 0px 4px 0px var(--column-box-shadow-color);
+}
+
+// Бесхозные --tg-* (нет tweb-аналога) — декоративные тени/градиенты собственного UI,
+// сгруппированы под 2 визуальных лагеря: day+light (светлый), night+tinted (тёмный).
+// Значения — 1:1 из старых classic/day→light и night/dark→dark блоков.
+[data-theme='day'],
+[data-theme='light'] {
+  --backdrop-opacity: 0.85;
+  --tg-accentGradient: linear-gradient(135deg, #3390ec 0%, #58a6f5 100%);
+  --tg-composeShadow: 0 6px 22px rgba(51, 144, 236, 0.4);
   --tg-bgGrad0: #dbddbb;
   --tg-bgGrad1: #6ba587;
   --tg-bgGrad2: #d5d88d;
   --tg-bgGrad3: #88b884;
-  // ripple wash on light surfaces (чуть заметнее tweb-овых .08 — иначе плохо читается)
-  --ripple-color: rgba(0, 0, 0, 0.13);
-  // filled search-input background (tweb --old-input-background-color)
-  --tg-inputSearchBg: #f0f0f2;
-  // tweb-набор теней секций/колонки (base.scss) — имена и композиция 1:1.
-  // Композиция в :root, цвета — по темам (ниже). Light: section .05, big .1, column .1.
-  --section-box-shadow-color: rgba(0, 0, 0, 0.05);
-  --section-box-shadow-big-color: rgba(0, 0, 0, 0.1);
-  --column-box-shadow-color: rgba(0, 0, 0, 0.1); // #0000001A
-  --section-box-shadow: 0px 1px 4px 0px var(--section-box-shadow-color);
-  --section-box-shadow-big: 0px 1px 8px 0px var(--section-box-shadow-big-color);
-  --column-box-shadow: 0px 0px 4px 0px var(--column-box-shadow-color);
-  // нейтральная подложка под секции-карточки (tweb --background-color)
-  --tg-sectionBackdrop: #f0f0f2;
-  // тень плавающих плашек чата (selection/pinned/scroll-down FAB)
-  --tg-plateShadow: 0 1px 8px rgba(0, 0, 0, 0.16);
   // поисковая карточка в шапке чата (единая поверхность инпут + результаты)
   --tg-searchCardBg: #ffffff;
   --tg-searchCardShadow: 0 6px 28px -6px rgba(0, 0, 0, 0.22);
-  // рамка outlined-инпута в покое (tweb .input-field)
+  // тень плавающих плашек чата (selection/pinned/scroll-down FAB)
+  --tg-plateShadow: 0 1px 8px rgba(0, 0, 0, 0.16);
+  // рамка outlined-инпута в покое (tweb --input-search-border-color: #dfe1e5)
   --tg-inputBorderIdle: #dfe1e5;
-  // выключенный трек тумблера (tweb .checkbox-field-toggle)
-  --tg-switchOff: #c4c9cc;
-  // shimmer-скелетон списка диалогов
-  --tg-skelBase: #e6e6ea;
-  --tg-skelHi: #f2f2f5;
-  // акцент секретного чата (замок + имя) — зелёный tweb --green-color
-  --tg-green: #4dcd5e;
-}
-
-// "Day" — brighter light theme, teal/blue accent; rest inherits classic (:root).
-[data-theme='day'] {
-  --tg-accent: #3390ec;
-  --tg-accentGradient: linear-gradient(135deg, #3390ec 0%, #58a6f5 100%);
-  --tg-appBg: #dfe6ec;
-  --tg-bubbleOut: #e2f0fc;
-  --tg-bubbleOutAccent: #3390ec;
-  --tg-link: #3390ec;
+  // тонкая рамка входящего баббла
+  --tg-bubbleBorder: rgba(0, 0, 0, 0.04);
+  // подложка баннеров/inline-плашек (NotificationBanner) — нет tweb-аналога, свой
+  // токен; старое значение 1:1 (было тонировано под day-акцент, не по формуле
+  // hover-alpha)
   --tg-bannerBg: rgba(51, 144, 236, 0.07);
-  --tg-badge: #3390ec;
-  --tg-composeShadow: 0 6px 22px rgba(51, 144, 236, 0.4);
+  // фон сервис-баблов/пилюль дат (tweb --message-highlighting-color) — тёмный
+  // полупрозрачный на светлой теме (белый текст читается на светлых обоях)
+  --message-highlighting-color: rgba(0, 0, 0, 0.24);
+  // ripple wash on light surfaces (чуть заметнее tweb-овых .08 — иначе плохо читается)
+  --ripple-color: rgba(0, 0, 0, 0.13);
+  // Light: section .05, big .1, column .1 (tweb base.scss :root)
+  --section-box-shadow-color: rgba(0, 0, 0, 0.05);
+  --section-box-shadow-big-color: rgba(0, 0, 0, 0.1);
+  --column-box-shadow-color: rgba(0, 0, 0, 0.1);
 }
 
-// "Night" — full dark set (purple accАent). Also base for "dark".
 [data-theme='night'],
-[data-theme='dark'] {
-  --tg-accent: #8774e1;
+[data-theme='tinted'] {
+  --backdrop-opacity: 0.75;
   --tg-accentGradient: linear-gradient(135deg, #8774e1 0%, #9a86ec 100%);
-  --tg-appBg: #181818;
-  --tg-sidebarBg: #212121;
-  --tg-bubble: #212121;
-  // Тёмная тема: светлый полупрозрачный фон сервис-баблов (белый текст читается
-  // на тёмных обоях; отличается от светлой темы).
-  --message-highlighting-color: rgba(255, 255, 255, 0.16);
-  --tg-bubbleOut: #353246;
-  --tg-bubbleOutText: #ffffff;
-  --tg-bubbleOutAccent: #c3b9f0;
-  --tg-bubbleBorder: rgba(255, 255, 255, 0.04);
-  --tg-hover: rgba(255, 255, 255, 0.08);
-  --tg-selectedText: #ffffff;
-  --tg-divider: rgba(255, 255, 255, 0.08);
-  --tg-textPrimary: #ffffff;
-  --tg-textSecondary: #aaaaaa;
-  --tg-textFaint: #707579;
-  --tg-link: #8774e1;
-  --tg-searchBg: #2b2b2b;
-  --tg-bannerBg: rgba(255, 255, 255, 0.04);
-  --tg-badge: #8774e1;
   --tg-composeShadow: 0 6px 22px rgba(135, 116, 225, 0.5);
-  --tg-menuBg: rgba(30, 30, 30, 0.8);
-  --tg-menuShadow: 0 12px 44px rgba(0, 0, 0, 0.55);
   --tg-bgGrad0: #fec496;
   --tg-bgGrad1: #dd6cb9;
   --tg-bgGrad2: #962fbf;
   --tg-bgGrad3: #4f5bd5;
+  --tg-searchCardBg: #2c2c2e;
+  --tg-searchCardShadow: 0 6px 28px -4px rgba(0, 0, 0, 0.6);
+  --tg-plateShadow: 0 1px 8px rgba(0, 0, 0, 0.45);
+  // tweb --input-search-border-color night: #2f2f2f
+  --tg-inputBorderIdle: #2f2f2f;
+  --tg-bubbleBorder: rgba(255, 255, 255, 0.04);
+  // подложка баннеров/inline-плашек — нейтрально-белая (не акцентная), старое
+  // значение night/dark 1:1
+  --tg-bannerBg: rgba(255, 255, 255, 0.04);
+  // Тёмная тема: светлый полупрозрачный фон сервис-баблов (белый текст читается
+  // на тёмных обоях; отличается от светлой темы).
+  --message-highlighting-color: rgba(255, 255, 255, 0.16);
   --ripple-color: rgba(255, 255, 255, 0.18);
-  --tg-inputSearchBg: #181818;
-  // tweb night: section .12, big .24, column .24 (композиция наследуется из :root)
+  // Night: section .12, big .24, column .24 (tweb base.scss .night)
   --section-box-shadow-color: rgba(0, 0, 0, 0.12);
   --section-box-shadow-big-color: rgba(0, 0, 0, 0.24);
   --column-box-shadow-color: rgba(0, 0, 0, 0.24);
-  --tg-sectionBackdrop: #1c1c1c;
-  --tg-plateShadow: 0 1px 8px rgba(0, 0, 0, 0.45);
-  --tg-searchCardBg: #2c2c2e;
-  --tg-searchCardShadow: 0 6px 28px -4px rgba(0, 0, 0, 0.6);
-  --tg-inputBorderIdle: #2f2f2f;
-  --tg-switchOff: #707579;
-  --tg-skelBase: #2a2a2a;
-  --tg-skelHi: #3a3a3a;
-  --tg-green: #61d36b;
-}
-
-// "Dark" — neutral near-black (vs Night's purple), blue accent; deltas over night.
-[data-theme='dark'] {
-  --tg-accent: #5ea7e8;
-  --tg-accentGradient: linear-gradient(135deg, #5ea7e8 0%, #7bb8ee 100%);
-  --tg-appBg: #0e0e0e;
-  --tg-sidebarBg: #181818;
-  --tg-bubble: #181818;
-  --tg-bubbleOut: #263542;
-  --tg-bubbleOutAccent: #aed3f3;
-  --tg-searchBg: #222;
-  --tg-link: #5ea7e8;
-  --tg-badge: #5ea7e8;
-  --tg-composeShadow: 0 6px 22px rgba(94, 167, 232, 0.45);
-  --tg-bgGrad0: #4a5a6a;
-  --tg-bgGrad1: #2e3a48;
-  --tg-bgGrad2: #3a4654;
-  --tg-bgGrad3: #28323e;
 }

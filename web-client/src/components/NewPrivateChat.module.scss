@@ -21,7 +21,7 @@
   padding: 0 14px;
 
   :global(html[data-theme='night']) &,
-  :global(html[data-theme='dark']) & {
+  :global(html[data-theme='tinted']) & {
     background: #2b2b2b;
   }
 }
