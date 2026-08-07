@@ -10,8 +10,14 @@ import s from './RichText.module.scss'
 const ENTITY_RE = /(https?:\/\/\S+|t\.me\/\S+|@[A-Za-z0-9_]{3,}|#[\p{L}0-9_]+)/gu
 
 /**
- * If `text` is only 1–3 emoji (with optional ZWJ joins / skin tones), returns
+ * If `text` is only 1–7 emoji (with optional ZWJ joins / skin tones), returns
  * that count so the message can be rendered as a big emoji; otherwise 0.
+ *
+ * Порог 7 — 1:1 tweb (BIG_EMOJI: Math.min(7, count), bubbles.ts:319,7374).
+ * Custom-emoji (messageEntityCustomEmoji): document_id только подменяет рендер
+ * fallback-глифа на стикер — сам глиф остаётся обычным юникод-эмодзи в тексте
+ * (см. Composer.tsx insertCustomEmoji), поэтому этот regex уже считает их наравне
+ * с обычными эмодзи без отдельной обработки entities.
  */
 export function emojiOnlyCount(text: string): number {
   const t = text.replace(/[\s️]/g, '')
@@ -20,7 +26,7 @@ export function emojiOnlyCount(text: string): number {
   const matches = t.match(re)
   if (!matches) return 0
   if (t.replace(re, '').length > 0) return 0 // non-emoji characters present
-  return matches.length <= 3 ? matches.length : 0
+  return matches.length <= 7 ? matches.length : 0 // tweb BIG_EMOJI: min(7, count)
 }
 
 /** Linkifies a plain text run (auto-links URLs / @mentions / #hashtags). */
