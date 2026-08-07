@@ -164,4 +164,47 @@ describe('deriveChatThemeVars', () => {
     expect(el.style.getPropertyValue('--primary-color')).toBe('')
     expect(el.style.getPropertyValue('--light-primary-color')).toBe('')
   })
+
+  // Ревью-фикс Task 2: `--tg-accent` и т.п. в _tokens.scss объявлены ОДИН РАЗ на
+  // :root как `var(--primary-color)` — CSS не пересчитывает такой алиас, когда
+  // --primary-color переопределён инлайном на ДОЧЕРНЕМ элементе (устоявшееся
+  // поведение var()-подстановки: она вычисляется там, где объявлен сам алиас, а
+  // не там, где унаследован). Без моста applyChatTheme был бы no-op для всех
+  // потребителей, читающих --tg-*, а не --primary-color напрямую.
+  it('applyChatTheme bridges --tg-* aliases inline (review fix — --tg-accent was frozen at :root)', () => {
+    const el = document.createElement('div')
+    applyChatTheme(el, 'day', '#e17076', ['#e17076'])
+
+    const primary = el.style.getPropertyValue('--primary-color')
+    expect(primary).toBeTruthy()
+    // Не дефолтный акцент дня — иначе тест ничего не доказывает (может случайно
+    // совпасть, если деривация выше по факту no-op).
+    expect(primary).not.toBe('#3390ec')
+    expect(el.style.getPropertyValue('--tg-accent')).toBe(primary)
+    expect(el.style.getPropertyValue('--tg-badge')).toBe(primary)
+
+    const messageOutBg = el.style.getPropertyValue('--message-out-background-color')
+    const messageOutPrimary = el.style.getPropertyValue('--message-out-primary-color')
+    expect(el.style.getPropertyValue('--tg-bubbleOut')).toBe(messageOutBg)
+    expect(el.style.getPropertyValue('--tg-bubbleOutText')).toBe(messageOutPrimary)
+    expect(el.style.getPropertyValue('--tg-bubbleOutAccent')).toBe(messageOutPrimary)
+
+    // Токены, которые accent-путь не трогает (surface/border/link/...), всё равно
+    // должны быть отражены под --tg-* именем — тот же самый мост, единообразно.
+    expect(el.style.getPropertyValue('--tg-bubble')).toBe(el.style.getPropertyValue('--surface-color'))
+    expect(el.style.getPropertyValue('--tg-divider')).toBe(el.style.getPropertyValue('--border-color'))
+    expect(el.style.getPropertyValue('--tg-menuBg')).toBeTruthy()
+    expect(el.style.getPropertyValue('--tg-menuShadow')).toBeTruthy()
+  })
+
+  it('clearChatTheme also removes the --tg-* alias bridge', () => {
+    const el = document.createElement('div')
+    applyChatTheme(el, 'day', '#e17076', ['#e17076'])
+    expect(el.style.getPropertyValue('--tg-accent')).toBeTruthy()
+
+    clearChatTheme(el)
+    expect(el.style.getPropertyValue('--tg-accent')).toBe('')
+    expect(el.style.getPropertyValue('--tg-bubbleOut')).toBe('')
+    expect(el.style.getPropertyValue('--tg-menuBg')).toBe('')
+  })
 })
