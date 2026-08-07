@@ -364,22 +364,17 @@ export function applyChatTheme(
   for (const [name, value] of deriveChatThemeVars(preset, accentColor, messageColors)) {
     element.style.setProperty(name, value)
   }
-  // tweb chat.ts:564-566 — highlighting-переменные переприменяются на
-  // per-чатовый контейнер (per-chat скоуп поверх глобальной темы).
-  applyHighlightingColor(preset, element)
+  // highlighting-переменные НЕ пишем на per-чатовый контейнер: они глобальны и
+  // выводятся из среднего цвета активных обоев в ChatBackground
+  // (applyHighlightingColorFromRgb на documentElement, 1:1 tweb chatBackground.tsx:365).
+  // Инлайн на колонке затирал бы этот wallpaper-derived цвет.
 }
 
 // Набор имён переменных детерминирован (зависит только от appColorMap, не от
 // конкретных hex/preset/messageColors) — переиспользуем buildColorMapVars с
 // произвольным валидным colorMap только чтобы перечислить имена.
 const CHAT_THEME_BASE_VARS = buildColorMapVars(presetToColorMap('day'), false)
-const CHAT_THEME_VAR_NAMES = [
-  ...CHAT_THEME_BASE_VARS.map(([name]) => `--${name}`),
-  // три переменные, которые пишет applyHighlightingColor (см. applyChatTheme выше).
-  '--message-highlighting-color',
-  '--message-highlighting-color-rgb',
-  '--message-highlighting-alpha',
-]
+const CHAT_THEME_VAR_NAMES = CHAT_THEME_BASE_VARS.map(([name]) => `--${name}`)
 
 /** Снимает inline-переменные, записанные applyChatTheme (сброс на глобальную тему). */
 export function clearChatTheme(element: HTMLElement): void {

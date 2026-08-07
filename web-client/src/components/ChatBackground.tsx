@@ -4,6 +4,8 @@ import { useSettings } from '../settings'
 import { activeBackground } from '../wallpapers'
 import { mediaContentUrl, useMediaTokenVersion } from '../core/mediaUrl'
 import { renderPattern, patternOpacity } from '../core/chat/patternRenderer'
+import { getAverageColor, hexToRgb, type ColorRgb } from '../shared/lib/color'
+import { applyHighlightingColorFromRgb } from '../core/theme/themeController'
 
 /**
  * Фон чата 1:1 с tweb (src/components/chat/bubbles/chatBackground.tsx): слой
@@ -134,6 +136,19 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
     return () => window.removeEventListener('resize', paint)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [themeChoice, colors.join(), mode.mask, !!overlay])
+
+  // Средний цвет активных обоев → --message-highlighting-color (1:1 tweb
+  // chatBackground.tsx:365 highlightingColor(pixel)). Глобально на documentElement:
+  // фон/подложки реакций/сервис-баблов подстраиваются под обои открытого чата. Для
+  // своего фото/картинки (overlay) оставляем per-preset дефолт из setTheme.
+  useEffect(() => {
+    if (overlay) return
+    const rgbs = colors.filter(Boolean).map(hexToRgb)
+    if (!rgbs.length) return
+    const avg = rgbs.reduce((acc: ColorRgb, c) => getAverageColor(acc, c))
+    applyHighlightingColorFromRgb(avg)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [colors.join(), !!overlay])
 
   if (overlay) {
     return <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', ...overlay }} />
