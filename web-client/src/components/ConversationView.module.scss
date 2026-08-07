@@ -144,9 +144,9 @@
   max-width: 688px;
   margin: 0 auto;
 
-  // tweb: на handhelds плейты стоят в 8px от краёв (--page-chats-padding: 8px)
+  // tweb: на handhelds плейты стоят в 8px от краёв (--page-chats-padding: 8px);
+  // bottom сохраняем 16px (как на десктопе) — паритет зазора ленты
   @media (max-width: 900px) {
-    bottom: 8px;
     left: 8px;
     right: 8px;
     width: auto;
