@@ -225,7 +225,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 20px;
+  font-size: var(--font-size-20);
   line-height: 24px;
   font-weight: 700;
 }
@@ -235,7 +235,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
+  font-size: var(--font-size-14);
   line-height: 24px;
   opacity: 0.7;
 }
@@ -323,7 +323,7 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   font-weight: 700;
   color: #f7a02e;
 }
@@ -343,7 +343,7 @@
   border-radius: 50%;
   background: var(--light-secondary-text-color);
   color: var(--secondary-text-color);
-  font-size: 11px;
+  font-size: var(--font-size-11);
   font-weight: 700;
 }
 
@@ -368,7 +368,7 @@
   border: none;
   background: var(--primary-color);
   color: #fff;
-  font-size: 14px;
+  font-size: var(--font-size-14);
   font-weight: 600;
   cursor: pointer;
   transition: filter 0.15s ease;
@@ -429,7 +429,7 @@
   border-radius: 9px;
   background: rgba(0, 0, 0, 0.55);
   color: #fff;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   line-height: 18px;
 }
 
@@ -466,7 +466,7 @@
   align-items: center;
   justify-content: center;
   color: #fff;
-  font-size: 13px;
+  font-size: var(--font-size-13);
   font-weight: 700;
 }
 
@@ -512,7 +512,7 @@
   padding: 8px 0;
   border-radius: 12px;
   color: var(--primary-color);
-  font-size: 16px;
+  font-size: var(--font-size-16);
   font-weight: 600;
   cursor: pointer;
 
@@ -563,7 +563,7 @@
 // метка роли (tweb row-title-right-secondary: 12px на линии заголовка)
 .roleLabel {
   flex: 0 0 auto;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   line-height: 16px;
   color: var(--secondary-text-color);
   border-radius: 8px;
@@ -657,7 +657,7 @@
   border-radius: 14px;
   background: var(--tg-accentGradient);
   color: #fff;
-  font-size: 16px;
+  font-size: var(--font-size-16);
   font-weight: 600;
   cursor: pointer;
 }
@@ -667,7 +667,7 @@
   text-align: center;
   padding: 10px 0;
   margin-top: 8px;
-  font-size: 16px;
+  font-size: var(--font-size-16);
   color: #ff595a;
   cursor: pointer;
 }

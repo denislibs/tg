@@ -125,7 +125,7 @@
   border: none;
   outline: none;
   background: transparent;
-  font-size: 16px;
+  font-size: var(--font-size-16);
   color: var(--primary-text-color);
   padding: 10px 4px;
   border-bottom: 1px solid var(--light-secondary-text-color);
@@ -151,7 +151,7 @@
   background: transparent;
   border-radius: 8px;
   cursor: pointer;
-  font-size: 20px;
+  font-size: var(--font-size-20);
   line-height: 1;
   color: var(--secondary-text-color);
   transition: background 0.15s;
@@ -173,7 +173,7 @@
   border: none;
   outline: none;
   background: transparent;
-  font-size: 16px;
+  font-size: var(--font-size-16);
   color: var(--primary-text-color);
   font-family: inherit;
 

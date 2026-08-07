@@ -30,7 +30,7 @@
   // tweb --message-highlighting-color — зависит от темы (не всегда тёмный).
   background: var(--message-highlighting-color);
   color: #fff;
-  font-size: 15px; // messages-service-text-size (= textSize − 1, дефолт 16)
+  font-size: var(--font-size-15); // messages-service-text-size (= textSize − 1, дефолт 16)
   font-weight: 500;
   line-height: 20px; // service-text-size + 5
 }
@@ -84,7 +84,7 @@
   border-radius: 0.875rem;
   background: var(--message-highlighting-color);
   color: #fff;
-  font-size: 15px;
+  font-size: var(--font-size-15);
   font-weight: 500;
   line-height: 20px;
   transition: opacity 0.15s;
@@ -136,7 +136,7 @@
   line-height: 30px;
   margin-bottom: 12px; // tweb $bubble-overflow-big
   text-align: center;
-  font-size: 15px;
+  font-size: var(--font-size-15);
   font-weight: 700;
   color: var(--primary-color);
   background-color: var(--surface-color);

@@ -74,7 +74,7 @@
   border: none;
   outline: none;
   background: transparent;
-  font-size: 16px;
+  font-size: var(--font-size-16);
   font-family: inherit;
   color: var(--primary-text-color);
 }
@@ -99,7 +99,7 @@
 }
 
 .emoji {
-  font-size: 24px;
+  font-size: var(--font-size-24);
   line-height: 1;
 }
 
@@ -124,7 +124,7 @@
   border-radius: 8px;
   background: var(--background-color, transparent);
   color: var(--primary-text-color);
-  font-size: 15px;
+  font-size: var(--font-size-15);
   text-align: right;
   outline: none;
 

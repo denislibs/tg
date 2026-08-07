@@ -59,7 +59,7 @@
   display: flex;
 
   svg {
-    font-size: 24px;
+    font-size: var(--font-size-24);
   }
 }
 .rowBody {

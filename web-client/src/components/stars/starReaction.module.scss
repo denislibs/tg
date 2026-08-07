@@ -4,7 +4,7 @@
   align-items: center;
   gap: 4px;
   font-weight: 600;
-  font-size: 15px;
+  font-size: var(--font-size-15);
   color: var(--primary-text-color);
 }
 
@@ -89,7 +89,7 @@
   background: linear-gradient(to bottom, #ffaa00, #ffcd3a);
   border: 2px solid var(--background-color, #fff);
   color: #fff;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }

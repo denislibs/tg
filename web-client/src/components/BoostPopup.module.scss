@@ -24,7 +24,7 @@
   border-radius: 14px;
   background: linear-gradient(84.4deg, #6c93ff -4.85%, #976fff 51.72%, #df69d1 110.7%);
   color: #fff;
-  font-size: 15px;
+  font-size: var(--font-size-15);
   font-weight: 700;
 
   &::after {
@@ -58,7 +58,7 @@
   display: flex;
   justify-content: space-between;
   margin-top: 6px;
-  font-size: 13px;
+  font-size: var(--font-size-13);
   font-weight: 600;
   color: var(--secondary-text-color);
 }
@@ -68,7 +68,7 @@
 }
 
 .boosted {
-  font-size: 15px;
+  font-size: var(--font-size-15);
   font-weight: 600;
   color: var(--primary-color);
 }
@@ -84,7 +84,7 @@
   border-radius: 12px;
   background: var(--primary-color);
   color: #fff;
-  font-size: 15px;
+  font-size: var(--font-size-15);
   font-weight: 600;
   cursor: pointer;
 

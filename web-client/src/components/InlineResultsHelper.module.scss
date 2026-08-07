@@ -71,7 +71,7 @@
   font-size: 26px;
 }
 .title {
-  font-size: 15px;
+  font-size: var(--font-size-15);
   font-weight: 500;
   color: var(--primary-text-color);
   overflow: hidden;
@@ -79,7 +79,7 @@
   white-space: nowrap;
 }
 .desc {
-  font-size: 13px;
+  font-size: var(--font-size-13);
   color: var(--secondary-text-color);
   overflow: hidden;
   text-overflow: ellipsis;

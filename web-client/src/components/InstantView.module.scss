@@ -30,7 +30,7 @@
 .openLink {
   flex: none;
   color: var(--primary-color);
-  font-size: 14px;
+  font-size: var(--font-size-14);
   font-weight: 600;
   text-decoration: none;
   padding: 6px 10px;
@@ -52,7 +52,7 @@
   margin: 0 auto;
   padding: 24px 16px 64px;
   color: var(--primary-text-color);
-  font-size: 16px;
+  font-size: var(--font-size-16);
   line-height: 1.6;
   overflow-wrap: break-word;
 }
@@ -67,7 +67,7 @@
 .byline {
   margin-bottom: 20px;
   color: var(--secondary-text-color);
-  font-size: 14px;
+  font-size: var(--font-size-14);
 }
 
 .p {
@@ -94,7 +94,7 @@
   border-radius: 8px;
   background: var(--input-search-background-color);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 14px;
+  font-size: var(--font-size-14);
   line-height: 1.45;
   overflow-x: auto;
   white-space: pre;

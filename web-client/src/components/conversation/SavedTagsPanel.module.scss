@@ -53,13 +53,13 @@
 }
 
 .title {
-  font-size: 14px;
+  font-size: var(--font-size-14);
   font-weight: 500;
   white-space: nowrap;
 }
 
 .count {
-  font-size: 13px;
+  font-size: var(--font-size-13);
   opacity: 0.7;
 }
 
@@ -86,6 +86,6 @@
   outline: none;
   background: transparent;
   color: inherit;
-  font-size: 14px;
+  font-size: var(--font-size-14);
   margin-left: 4px;
 }

@@ -15,7 +15,7 @@ body,
 
 /* rem-базис как в tweb (1rem = 16px) — токены/отступы из tweb в rem мапятся 1:1. */
 html {
-  font-size: 16px;
+  font-size: var(--font-size-16);
 }
 
 /* Layout-переменные колонок — порт tweb (helpers/updateColumnWidths.ts + base.scss).
@@ -50,7 +50,7 @@ body {
 body {
   // базовый шрифт (раньше задавал MUI CssBaseline/theme; теперь глобально)
   font-family: Roboto, 'Helvetica Neue', Arial, sans-serif;
-  font-size: 16px;
+  font-size: var(--font-size-16);
   color: var(--primary-text-color);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;

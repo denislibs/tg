@@ -19,7 +19,7 @@
   border: 1.5px solid transparent;
   background: var(--input-search-background-color);
   color: var(--primary-text-color);
-  font-size: 16px;
+  font-size: var(--font-size-16);
   line-height: 21px;
   outline: none;
   transition: border-color 0.18s ease, background 0.18s ease;

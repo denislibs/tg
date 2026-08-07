@@ -23,7 +23,7 @@
   padding: 2px 12px;
   border-radius: 12px;
   background: rgba(247, 160, 46, 0.15);
-  font-size: 14px;
+  font-size: var(--font-size-14);
   font-weight: 700;
   color: #f7a02e;
 }
@@ -34,6 +34,6 @@
   border-radius: 16px;
   background: var(--primary-color);
   color: #fff;
-  font-size: 14px;
+  font-size: var(--font-size-14);
   font-weight: 600;
 }

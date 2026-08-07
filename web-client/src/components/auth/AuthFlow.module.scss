@@ -127,14 +127,14 @@
   }
 }
 .flagSmall {
-  font-size: 20px;
+  font-size: var(--font-size-20);
   line-height: 1;
 }
 
 // Поле ввода телефона.
 .phoneInput {
   flex: 1;
-  font-size: 16px;
+  font-size: var(--font-size-16);
   color: var(--primary-text-color);
   border: none;
   outline: none;
@@ -177,7 +177,7 @@
   border-radius: 12px;
   background: var(--primary-color);
   color: #fff;
-  font-size: 15px;
+  font-size: var(--font-size-15);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.3px;
@@ -201,7 +201,7 @@
 .linkBtn {
   margin-top: 20px;
   text-align: center;
-  font-size: 14px;
+  font-size: var(--font-size-14);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.3px;
@@ -263,7 +263,7 @@
   border-radius: 50%;
   background: var(--primary-color);
   color: #fff;
-  font-size: 13px;
+  font-size: var(--font-size-13);
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -284,7 +284,7 @@
   height: 56px;
   border: 1.5px solid var(--border-color);
   border-radius: 12px;
-  font-size: 24px;
+  font-size: var(--font-size-24);
   font-weight: 600;
   color: var(--primary-text-color);
   text-align: center;

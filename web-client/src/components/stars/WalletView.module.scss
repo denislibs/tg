@@ -35,7 +35,7 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  font-size: 16px;
+  font-size: var(--font-size-16);
   font-weight: 600;
   flex-shrink: 0;
 }

@@ -45,7 +45,7 @@
 
 // маскированный ключ: крупнее и плотнее (tweb _hidden)
 .masked {
-  font-size: 18px;
+  font-size: var(--font-size-18);
   letter-spacing: -1px;
   line-height: 1;
 }
@@ -82,7 +82,7 @@
   border: none;
   border-radius: 10px;
   cursor: pointer;
-  font-size: 15px;
+  font-size: var(--font-size-15);
   font-weight: 600;
   text-transform: uppercase;
   color: #fff;
