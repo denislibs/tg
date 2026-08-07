@@ -247,11 +247,15 @@ export function getCurrentPreset(): ThemePresetName | null {
 // per-чатовой темы (theme_settings.accent_color / message_colors в tweb,
 // уже сконвертированные в hex — см. бриф Task 1).
 //
-// Переопределяются только два токена, 1:1 как в applyTheme:
+// Переопределяются три токена, 1:1 как в applyTheme:
 //   - primary-color               — themeController.ts:792-798 (changeColorAccent)
+//   - saved-color                 — themeController.ts:811-816 (тот же newAccentHex,
+//     что и primary-color; отдельного пересчёта акцента для saved-color в tweb нет —
+//     lightenAlpha:0.64/mixColor:[255,255,255] уже обеспечены существующим
+//     getColorOverride('saved-color', ...))
 //   - message-out-background/primary-color — themeController.ts:833-891
-// Остальные (включая saved-color) остаются literal-хексами пресета — как и в
-// buildThemeCss (см. шапку файла: "у нас это дефолтный/безакцентный случай").
+// Остальные токены остаются literal-хексами пресета — как и в buildThemeCss (см.
+// шапку файла: "у нас это дефолтный/безакцентный случай").
 // Не портировано: tinted iOS-деривация (themeController.ts:748-831) и
 // outbox_accent_color (themeController.ts:871, 887-891) — оба out-of-scope
 // Task 1 (см. бриф).
@@ -264,8 +268,9 @@ export function deriveChatThemeVars(
   const isNight = DARK_PRESETS.has(preset)
   const colorMap: Record<AppColorName, string> = { ...baseColorMap }
 
-  // primary: tweb :792-798 — changeColorAccent(rgbToHsv(base), rgbToHsv(accent),
-  // baseRgb, !isNight). В tweb `color`-параметр — это тот же baseColors['primary-color'],
+  // primary + saved-color: tweb :792-798, :811-816 — оба берут один и тот же
+  // newAccentHex = changeColorAccent(rgbToHsv(base), rgbToHsv(accent), baseRgb,
+  // !isNight). В tweb `color`-параметр — это тот же baseColors['primary-color'],
   // что и `baseHsv` — поэтому diffH-guard внутри changeColorAccent всегда 0 и не
   // срабатывает (диффузия хвоста применяется только когда base и color различны).
   const basePrimaryRgb = hexToRgb(baseColorMap['primary-color'])
@@ -275,7 +280,9 @@ export function deriveChatThemeVars(
     basePrimaryRgb,
     !isNight,
   )
-  colorMap['primary-color'] = rgbaToHexa(newPrimaryRgb)
+  const newAccentHex = rgbaToHexa(newPrimaryRgb)
+  colorMap['primary-color'] = newAccentHex
+  colorMap['saved-color'] = newAccentHex
 
   // out-bubble: tweb :833-891. Пустой messageColors — как early-return в tweb
   // (`if (!themeSettings.message_colors?.length) return`) — оставляем базовые
