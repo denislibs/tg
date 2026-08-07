@@ -266,6 +266,9 @@ npm test         # vitest
 
 ## Документация
 
+- [`docs/dnp-protocol.md`](docs/dnp-protocol.md) — **DNP (Denis Noise Protocol)**: собственный
+  транспорт-аналог MTProto поверх Noise (RPC + realtime + медиа одним зашифрованным каналом,
+  defense-in-depth внутри WSS). Полное техническое описание слоёв L0–L5.
 - [`docs/contracts.md`](docs/contracts.md) — контракты API.
 - [`backend/internal/openapi`](backend/internal/openapi) — OpenAPI-спека + Swagger UI (`GET /swagger`).
 - [`docs/bots/`](docs/bots/README.md) — **боты и mini-apps**: создание, Bot API, интеграция.
