@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/messenger-denis/backend/internal/domain"
 	storepostgres "github.com/messenger-denis/backend/internal/store/postgres"
 )
 
@@ -51,44 +52,56 @@ func TestReactionsFor_RecentUserIDs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReactionsFor: %v", err)
 	}
-	counts := byMsg[msgID]
-
-	var thumbs, heart *struct {
-		count  int
-		mine   bool
-		recent []int64
-	}
-	for _, rc := range counts {
-		v := &struct {
-			count  int
-			mine   bool
-			recent []int64
-		}{rc.Count, rc.Mine, rc.RecentUserIDs}
-		switch rc.Emoji {
+	var thumbs, heart *domain.ReactionCount
+	for i := range byMsg[msgID] {
+		switch byMsg[msgID][i].Emoji {
 		case "👍":
-			thumbs = v
+			thumbs = &byMsg[msgID][i]
 		case "❤️":
-			heart = v
+			heart = &byMsg[msgID][i]
 		}
 	}
 	if thumbs == nil || heart == nil {
-		t.Fatalf("expected both 👍 and ❤️, got %+v", counts)
+		t.Fatalf("expected both 👍 and ❤️, got %+v", byMsg[msgID])
+	}
+
+	recentIDs := func(rc *domain.ReactionCount) []int64 {
+		ids := make([]int64, len(rc.Recent))
+		for i, p := range rc.Recent {
+			ids[i] = p.ID
+		}
+		return ids
 	}
 
 	// 👍: 4 реакции, зритель u2 реагировал (mine), 3 свежих сверху (u4,u3,u2), u1 отсечён.
-	if thumbs.count != 4 || !thumbs.mine {
-		t.Fatalf("👍 count/mine = %d/%v, want 4/true", thumbs.count, thumbs.mine)
+	if thumbs.Count != 4 || !thumbs.Mine {
+		t.Fatalf("👍 count/mine = %d/%v, want 4/true", thumbs.Count, thumbs.Mine)
 	}
-	want := []int64{u4, u3, u2}
-	if len(thumbs.recent) != 3 || thumbs.recent[0] != want[0] || thumbs.recent[1] != want[1] || thumbs.recent[2] != want[2] {
-		t.Fatalf("👍 recent = %v, want %v (свежие первыми, cap 3)", thumbs.recent, want)
+	if got, want := recentIDs(thumbs), []int64{u4, u3, u2}; !equalInt64(got, want) {
+		t.Fatalf("👍 recent = %v, want %v (свежие первыми, cap 3)", got, want)
+	}
+	// карточка несёт display_name (в сидере = phone) и пустой avatar.
+	if thumbs.Recent[0].Name != "+7004" || thumbs.Recent[0].Avatar != "" {
+		t.Fatalf("👍 recent[0] card = %+v, want name=+7004 avatar=''", thumbs.Recent[0])
 	}
 
 	// ❤️: 1 реакция от u1, зритель u2 её не ставил, recent = [u1].
-	if heart.count != 1 || heart.mine {
-		t.Fatalf("❤️ count/mine = %d/%v, want 1/false", heart.count, heart.mine)
+	if heart.Count != 1 || heart.Mine {
+		t.Fatalf("❤️ count/mine = %d/%v, want 1/false", heart.Count, heart.Mine)
 	}
-	if len(heart.recent) != 1 || heart.recent[0] != u1 {
-		t.Fatalf("❤️ recent = %v, want [%d]", heart.recent, u1)
+	if got := recentIDs(heart); len(got) != 1 || got[0] != u1 {
+		t.Fatalf("❤️ recent = %v, want [%d]", got, u1)
 	}
+}
+
+func equalInt64(a, b []int64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
