@@ -351,11 +351,23 @@
 }
 
 // ── реакции (tweb _reaction.scss / _reactions.scss, layout Block) ──
-// Контейнер чипов: flex-wrap; в баблe идёт после текста/времени.
+// Контейнер чипов: flex-wrap; в баблe идёт после текста. Время+тики вливаются
+// последним элементом (tweb appendBubbleTime, .time order:100) — центрируем по
+// вертикали, чтобы время вставало ровно по центру пилюль (а не «криво» сверху).
 .reactions {
   display: flex;
   flex-wrap: wrap;
-  margin-top: 3px; // tweb: -margin-vertical/2 при margin-top 6px у чипов
+  align-items: center;
+  margin-top: 1px;
+
+  // время в строке чипов (tweb .reactions-like-block .time { order:100 }):
+  // сброс инлайн-нуджа (.meta translateY нужен только в строке текста); стоит
+  // сразу за последним чипом (без margin-left:auto — в tweb float:right в flex
+  // игнорируется, время не отбрасывается к правому краю).
+  .meta {
+    transform: none;
+    margin-left: 0;
+  }
 }
 
 // Один чип: пилюля 30px (reaction-size 22 + additional 8), radius = высоте.
@@ -369,7 +381,9 @@
   height: 30px;
   border-radius: 30px;
   padding: 0 8px;
-  margin-top: 6px;
+  // симметричный вертикальный отступ → align-items:center строки не даёт сдвига
+  // пилюли относительно времени; margin-right — зазор между чипами/до времени.
+  margin-block: 3px;
   margin-right: 6px;
   background: var(--r-bg);
   color: var(--r-fg);
@@ -465,31 +479,29 @@
   padding: 0 8px 8px;
 }
 
-// Колонка «бабл + плавающие реакции» для типов без текстового контейнера
-// (стикер/кружок/голосовое/звонок) — tweb reactions-out под баблом.
-.zoneCol {
-  flex: 1;
-  min-width: 0;
-  display: flex;
+// Колонка «контент + реакции под ним» для empty-media типов без текстового
+// контейнера (стикер/big-emoji/кружок/голос/документ/аудио/гео/контакт/звонок) —
+// tweb is-message-empty: reactions в bubble-content-wrapper, ПОД контентом,
+// прижаты к inline-концу контента (margin-inline-start:auto). Колонка сжата по
+// ширине контента, align-items:flex-end кладёт чипы к правому краю контента; сама
+// колонка встаёт по стороне сообщения через justify-content у .zone.
+.emptyMediaCol {
+  display: inline-flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: flex-end;
+  min-width: 0;
+  max-width: 100%;
 
-  .row[data-out] & {
-    align-items: flex-end;
-  }
-}
-
-// Плавающая строка чипов: над обоями, фон чипов тот же (tweb).
-.reactionsOut {
-  margin-top: 2px;
-
-  // tweb .bubble.is-out.is-message-empty (_chatBubble.scss:3489): под стикером/
-  // кружком/голосовым бабла нет, поэтому «моя» реакция не заливается out-акцентом,
-  // а инвертируется в surface-подложку + акцентный счётчик (читается поверх обоев).
-  // Входящий чип остаётся акцентным — как в tweb (--chosen-background-color:
-  // var(--primary-color)) и как внутри бабла.
+  // фон чипов ложится поверх обоев (у стикера/кружка нет фона бабла):
+  // tweb .bubble.is-out.is-message-empty (_chatBubble.scss:3549) — «моя» реакция
+  // у исходящего инвертируется в surface-подложку + акцентный счётчик (читается
+  // поверх обоев); входящий остаётся акцентным.
   .row[data-out] & {
     --r-chosen-bg: var(--surface-color);
     --r-chosen-fg: var(--primary-color);
+  }
+
+  .reactions {
+    margin-top: 4px;
   }
 }
