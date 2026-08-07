@@ -10,10 +10,16 @@ import s from './RichText.module.scss'
 const ENTITY_RE = /(https?:\/\/\S+|t\.me\/\S+|@[A-Za-z0-9_]{3,}|#[\p{L}0-9_]+)/gu
 
 /**
- * If `text` is only 1–7 emoji (with optional ZWJ joins / skin tones), returns
- * that count so the message can be rendered as a big emoji; otherwise 0.
+ * If `text` is only emoji (with optional ZWJ joins / skin tones), returns their
+ * count — any amount, ≥1 — so the message can be rendered as a big emoji;
+ * otherwise 0.
  *
- * Порог 7 — 1:1 tweb (BIG_EMOJI: Math.min(7, count), bubbles.ts:319,7374).
+ * 1:1 tweb: в живом `bubbles.ts:7373` условие big-emoji — ТОЛЬКО
+ * `emojiStrLength === strLength` (сообщение из одних эмодзи), часть
+ * `&& emojiEntities.length <= 3` закомментирована в исходнике. То есть big-emoji
+ * срабатывает при любом количестве эмодзи; `Math.min(7, count)` (bubbles.ts:319)
+ * — это кламп РАЗМЕРА глифа при рендере (BIG_EMOJI_SIZES[7]), а не порог детекта.
+ * Клампинг размера — забота рендера (BigEmojiBubble), не этой функции.
  * Custom-emoji (messageEntityCustomEmoji): document_id только подменяет рендер
  * fallback-глифа на стикер — сам глиф остаётся обычным юникод-эмодзи в тексте
  * (см. Composer.tsx insertCustomEmoji), поэтому этот regex уже считает их наравне
@@ -26,7 +32,7 @@ export function emojiOnlyCount(text: string): number {
   const matches = t.match(re)
   if (!matches) return 0
   if (t.replace(re, '').length > 0) return 0 // non-emoji characters present
-  return matches.length <= 7 ? matches.length : 0 // tweb BIG_EMOJI: min(7, count)
+  return matches.length
 }
 
 /** Linkifies a plain text run (auto-links URLs / @mentions / #hashtags). */
