@@ -14,7 +14,7 @@
   border-radius: 16px;
   background: transparent;
   color: var(--primary-text-color);
-  font-size: 16px;
+  font-size: var(--font-size-16);
   font-family: inherit;
   outline: none;
   transition: border-color 0.2s, border-width 0.2s;
@@ -48,14 +48,14 @@
   padding: 0 4px;
   background: transparent;
   color: var(--secondary-text-color);
-  font-size: 16px;
+  font-size: var(--font-size-16);
   pointer-events: none;
   transition: top 0.15s, font-size 0.15s, color 0.15s, font-weight 0.15s;
 }
 .input:focus ~ .label,
 .input:not(:placeholder-shown) ~ .label {
   top: 0;
-  font-size: 13px;
+  font-size: var(--font-size-13);
   background: var(--input-bg, var(--surface-color));
 }
 .input:focus ~ .label {
@@ -85,7 +85,7 @@
   box-sizing: border-box;
   padding: 13px 16px; // те же паддинги/размеры, что у input → каретка совпадает
   border: 1px solid transparent;
-  font-size: 16px;
+  font-size: var(--font-size-16);
   font-family: inherit;
   line-height: normal;
   color: var(--primary-text-color);

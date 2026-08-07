@@ -12,7 +12,7 @@
   padding: 8px 18px;
   background: var(--primary-color);
   color: #fff;
-  font-size: 15px;
+  font-size: var(--font-size-15);
   font-weight: 600;
   cursor: pointer;
   transition: opacity 0.15s, background 0.15s;

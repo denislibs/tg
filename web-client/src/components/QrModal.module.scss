@@ -88,7 +88,7 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   font-weight: 700;
-  font-size: 24px; // iOS-бакеты 24/22/16
+  font-size: var(--font-size-24); // iOS-бакеты 24/22/16
   letter-spacing: 0.3px;
   -webkit-background-clip: text;
   background-clip: text;
@@ -98,7 +98,7 @@
     font-size: 22px;
   }
   &[data-len='long'] {
-    font-size: 16px;
+    font-size: var(--font-size-16);
   }
 }
 
@@ -195,7 +195,7 @@
   bottom: 8px;
   left: 50%;
   translate: -50% 0;
-  font-size: 24px; // tweb 1.75rem
+  font-size: var(--font-size-24); // tweb 1.75rem
   line-height: 1;
   display: inline-block;
   transition: transform 0.25s ease;
@@ -219,7 +219,7 @@
   border-radius: 26px;
   background: var(--primary-color);
   color: #fff;
-  font-size: 14px;
+  font-size: var(--font-size-14);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.3px;

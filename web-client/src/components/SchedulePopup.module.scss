@@ -12,7 +12,7 @@
   border: none;
   background: transparent;
   color: var(--primary-color);
-  font-size: 15px;
+  font-size: var(--font-size-15);
   font-weight: 500;
   padding: 8px 0 2px;
   cursor: pointer;
@@ -25,7 +25,7 @@
   border: 1px solid var(--light-secondary-text-color);
   border-radius: 10px;
   padding: 10px 12px;
-  font-size: 15px;
+  font-size: var(--font-size-15);
   color: var(--primary-text-color);
   background: transparent;
   outline: none;

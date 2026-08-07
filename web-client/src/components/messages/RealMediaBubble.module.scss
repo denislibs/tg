@@ -55,7 +55,7 @@
   border-radius: 20px;
   background: rgba(0, 0, 0, 0.55);
   color: #fff;
-  font-size: 14px;
+  font-size: var(--font-size-14);
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
@@ -194,7 +194,7 @@
   display: block;
   padding: 25px 4px 0; // tweb 1.5625rem .25rem 0
   color: #fff;
-  font-size: 18px; // tweb 1.125rem
+  font-size: var(--font-size-18); // tweb 1.125rem
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;

@@ -74,7 +74,7 @@
   cursor: pointer;
   font: inherit;
   font-weight: 600;
-  font-size: 15px;
+  font-size: var(--font-size-15);
   color: #ff595a;
 
   &:hover {

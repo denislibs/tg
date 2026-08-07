@@ -39,7 +39,7 @@
   border-radius: 9px;
   background: color-mix(in srgb, var(--primary-color) 22%, transparent);
   color: var(--primary-color);
-  font-size: 16px;
+  font-size: var(--font-size-16);
   font-weight: 600;
   cursor: pointer;
 }

@@ -23,7 +23,7 @@
   padding: 9px 12px;
   border-radius: 10px;
   border: 1.5px solid rgba(128, 128, 128, 0.25);
-  font-size: 15px;
+  font-size: var(--font-size-15);
   font-weight: 600;
   color: var(--primary-text-color);
   cursor: pointer;
@@ -42,7 +42,7 @@
   border: 1.5px solid rgba(128, 128, 128, 0.25);
   background: transparent;
   color: var(--primary-text-color);
-  font-size: 15px;
+  font-size: var(--font-size-15);
   outline: none;
 
   &:focus {

@@ -103,7 +103,7 @@
   border: none;
   outline: none;
   background: transparent;
-  font-size: 15px;
+  font-size: var(--font-size-15);
   color: var(--b-text);
   padding: 6px 2px;
   border-bottom: 1px solid var(--light-secondary-text-color);

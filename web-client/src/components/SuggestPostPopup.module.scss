@@ -35,7 +35,7 @@
   border-radius: 10px;
   padding: 10px 12px;
   font: inherit;
-  font-size: 15px;
+  font-size: var(--font-size-15);
   color: var(--primary-text-color);
   background: transparent;
   outline: none;
@@ -51,7 +51,7 @@
   border-radius: 10px;
   padding: 10px 12px;
   font: inherit;
-  font-size: 15px;
+  font-size: var(--font-size-15);
   color: var(--primary-text-color);
   background: transparent;
   outline: none;

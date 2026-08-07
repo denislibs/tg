@@ -31,7 +31,7 @@
 
 .label {
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--font-size-13);
   color: var(--primary-color);
   font-family: inherit;
 }
@@ -41,7 +41,7 @@
   align-items: center;
   gap: 4px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--secondary-text-color);
 
   &.copied {

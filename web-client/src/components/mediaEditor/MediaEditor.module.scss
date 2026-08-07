@@ -104,7 +104,7 @@
 .wheelLabel {
   width: 42px; // DEGREE_DIST_PX
   text-align: center;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   line-height: 40px;
   color: rgba(255, 255, 255, 0.55);
   user-select: none;
@@ -128,7 +128,7 @@
   left: 50%;
   bottom: 0;
   transform: translateX(-50%);
-  font-size: 12px;
+  font-size: var(--font-size-12);
   font-weight: 600;
   color: var(--primary-color);
   pointer-events: none;
@@ -242,7 +242,7 @@
 
 // проценты энкода вместо галочки в FAB
 .fabProgress {
-  font-size: 15px;
+  font-size: var(--font-size-15);
   font-weight: 600;
 }
 
@@ -327,7 +327,7 @@
 }
 
 .label {
-  font-size: 15px;
+  font-size: var(--font-size-15);
   font-weight: 500;
   color: #aaa;
   padding: 0 0 8px;
@@ -359,7 +359,7 @@
 .presetRow {
   padding: 12px 14px;
   border-radius: 10px;
-  font-size: 15px;
+  font-size: var(--font-size-15);
   cursor: pointer;
 
   @media (hover: hover) {
@@ -378,7 +378,7 @@
   padding: 10px 14px;
   border-radius: 10px;
   text-align: center;
-  font-size: 14px;
+  font-size: var(--font-size-14);
   font-weight: 600;
   text-transform: uppercase;
   color: var(--primary-color);
@@ -430,7 +430,7 @@
   gap: 12px;
   padding: 8px 12px;
   border-radius: 10px;
-  font-size: 15px;
+  font-size: var(--font-size-15);
   cursor: pointer;
   user-select: none;
 
@@ -504,7 +504,7 @@
 .fontRow {
   padding: 8px 12px;
   border-radius: 10px;
-  font-size: 20px;
+  font-size: var(--font-size-20);
   line-height: 1.2;
   cursor: pointer;
   user-select: none;
@@ -580,7 +580,7 @@
 }
 
 .stickerSectionTitle {
-  font-size: 14px;
+  font-size: var(--font-size-14);
   font-weight: 500;
   color: #aaa;
   padding: 10px 2px 6px;
@@ -609,7 +609,7 @@
   padding: 24px 8px;
   text-align: center;
   color: #aaa;
-  font-size: 14px;
+  font-size: var(--font-size-14);
 }
 
 // кнопка удаления выбранного стикера — у его левого-верхнего угла

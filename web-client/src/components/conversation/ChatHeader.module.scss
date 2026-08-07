@@ -59,7 +59,7 @@
   border: none;
   outline: none;
   background: transparent;
-  font-size: 16px;
+  font-size: var(--font-size-16);
   color: var(--primary-text-color);
   font-family: inherit;
 
@@ -98,7 +98,7 @@
   background: var(--light-secondary-text-color);
   color: var(--secondary-text-color);
   font-family: inherit;
-  font-size: 14px;
+  font-size: var(--font-size-14);
   cursor: pointer;
 
   @media (hover: hover) {
@@ -132,7 +132,7 @@
 .reactionBtn {
   border: none;
   background: transparent;
-  font-size: 24px;
+  font-size: var(--font-size-24);
   line-height: 1;
   padding: 6px;
   border-radius: 8px;
@@ -195,7 +195,7 @@
   flex-shrink: 0;
 }
 .resultPreview {
-  font-size: 14px;
+  font-size: var(--font-size-14);
   color: var(--secondary-text-color);
   margin-top: 1px;
   overflow: hidden;
