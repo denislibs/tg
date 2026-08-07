@@ -39,17 +39,17 @@ export default function CloseFriendsSheet({ onClose }: { onClose: () => void }) 
         position: 'absolute',
         inset: 0,
         zIndex: 42,
-        background: 'var(--tg-sidebarBg)',
+        background: 'var(--surface-color)',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
       }}
     >
       <div className={s.header}>
-        <IconButton onClick={onClose} aria-label={t('Back')} color="var(--tg-textSecondary)">
+        <IconButton onClick={onClose} aria-label={t('Back')} color="var(--secondary-text-color)">
           <TgIcon name="back" />
         </IconButton>
-        <Text size={19} weight={600} color="var(--tg-textPrimary)">
+        <Text size={19} weight={600} color="var(--primary-text-color)">
           {t('Close Friends')}
         </Text>
       </div>
@@ -65,7 +65,7 @@ export default function CloseFriendsSheet({ onClose }: { onClose: () => void }) 
           />
           <div className={classNames(s.card, s.contactsList)}>
             {loaded && filtered.length === 0 && (
-              <Text size={15} color="var(--tg-textSecondary)" className={s.emptyRow}>
+              <Text size={15} color="var(--secondary-text-color)" className={s.emptyRow}>
                 {t('No contacts')}
               </Text>
             )}
@@ -85,7 +85,7 @@ export default function CloseFriendsSheet({ onClose }: { onClose: () => void }) 
                   className={s.contactRow}
                 >
                   <UserAvatar id={c.id} name={c.name} avatarUrl={c.avatarUrl} size="sm" />
-                  <Text noWrap size={16} color="var(--tg-textPrimary)" className={s.contactName}>
+                  <Text noWrap size={16} color="var(--primary-text-color)" className={s.contactName}>
                     {c.name}
                   </Text>
                   <div className={classNames(s.check, checked ? s.checkOn : '')}>

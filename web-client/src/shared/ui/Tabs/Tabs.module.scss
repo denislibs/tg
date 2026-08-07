@@ -12,7 +12,7 @@
   border-radius: $border-radius-big;
   overflow: hidden;
   box-shadow: var(--section-box-shadow-big);
-  background-color: var(--tg-sidebarBg);
+  background-color: var(--surface-color);
 }
 
 // overflow-x контейнер (tweb .scrollable.scrollable-x)
@@ -37,7 +37,7 @@
   position: relative;
   z-index: 2;
   padding: 0.25rem 0;
-  color: var(--tg-textSecondary);
+  color: var(--secondary-text-color);
 
   // вне framed — растягиваем на всю ширину и равномерно
   width: 100%;
@@ -70,19 +70,19 @@
 
   @media (hover: hover) {
     &:not(.active):hover {
-      background-color: var(--tg-hover);
+      background-color: var(--light-secondary-text-color);
     }
   }
 
   &.active {
-    color: var(--tg-accent);
+    color: var(--primary-color);
 
     .background {
       opacity: 1;
     }
 
     .badge {
-      background-color: var(--tg-accent);
+      background-color: var(--primary-color);
     }
   }
 }
@@ -103,7 +103,7 @@
   position: absolute;
   left: 0;
   opacity: 0;
-  background-color: color-mix(in srgb, var(--tg-accent) 12%, transparent);
+  background-color: color-mix(in srgb, var(--primary-color) 12%, transparent);
   height: 100%;
   width: 100%;
   border-radius: inherit;
@@ -131,6 +131,6 @@
   font-weight: 600;
   line-height: 1;
   color: #fff;
-  background-color: var(--tg-textFaint);
+  background-color: var(--secondary-text-color);
   transition: background-color 0.2s ease-in-out;
 }

@@ -56,7 +56,7 @@ export default function BoostPopup({ chatId, onClose }: { chatId: number; onClos
           </div>
         </div>
 
-        <Text size={15} color="var(--tg-textPrimary)" className={s.desc}>{description}</Text>
+        <Text size={15} color="var(--primary-text-color)" className={s.desc}>{description}</Text>
 
         {err && <Text size={13} color="#e5484d" className={s.desc}>{err}</Text>}
 

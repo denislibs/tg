@@ -41,8 +41,8 @@ export default function FactCheckEditor({ initial, onClose, onSubmit }: Props) {
         style={{
           width: '100%', resize: 'vertical', minHeight: 88,
           padding: '10px 12px', borderRadius: 10, boxSizing: 'border-box',
-          border: '1px solid var(--tg-borderColor, rgba(0,0,0,.12))',
-          background: 'transparent', color: 'var(--tg-textPrimary)',
+          border: '1px solid rgba(0,0,0,.12)',
+          background: 'transparent', color: 'var(--primary-text-color)',
           font: 'inherit', fontSize: 15, lineHeight: 1.4, marginBottom: 12,
         }}
       />

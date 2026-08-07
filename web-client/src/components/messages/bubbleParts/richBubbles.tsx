@@ -136,10 +136,10 @@ export function CallBubble({ m, out, firstInGroup, lastInGroup, onClick }: { m: 
     >
       {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
       <div className={s.callIcon}>
-        <TgIcon name={call.video ? 'videocamera' : 'phone'} size={24} color="var(--tg-accent)" />
+        <TgIcon name={call.video ? 'videocamera' : 'phone'} size={24} color="var(--primary-color)" />
       </div>
       <div className={s.callBody}>
-        <Text size={15.5} weight={600} color="var(--tg-textPrimary)">{title}</Text>
+        <Text size={15.5} weight={600} color="var(--primary-text-color)">{title}</Text>
         <div className={s.callSub}>
           <TgIcon
             name="arrow_next"

@@ -41,6 +41,6 @@
   height: max(8px, calc(var(--size) * 0.26));
   border-radius: 50%;
   background: #4dcd5e;
-  border: max(1.5px, calc(var(--size) * 0.037)) solid var(--avatar-ring, var(--tg-sidebarBg));
+  border: max(1.5px, calc(var(--size) * 0.037)) solid var(--avatar-ring, var(--surface-color));
   box-sizing: border-box;
 }

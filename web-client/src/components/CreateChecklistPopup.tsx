@@ -61,7 +61,7 @@ export default function CreateChecklistPopup({ onCreate, onClose }: {
   return (
     <Popup open title={t('New Checklist')} onClose={onClose} width={420} action={{ label: t('Create'), onClick: submit }}>
       <div className={s.body}>
-        <Text size={13.5} weight={600} color="var(--tg-accent)" className={s.label}>{t('Title')}</Text>
+        <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('Title')}</Text>
         <input
           className={s.title}
           value={title}
@@ -70,7 +70,7 @@ export default function CreateChecklistPopup({ onCreate, onClose }: {
           onChange={(e) => setTitle(e.target.value)}
         />
 
-        <Text size={13.5} weight={600} color="var(--tg-accent)" className={s.label}>{t('Tasks')}</Text>
+        <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('Tasks')}</Text>
         {items.map((it, i) => (
           <div key={i} className={s.itemRow}>
             <input
@@ -82,7 +82,7 @@ export default function CreateChecklistPopup({ onCreate, onClose }: {
             />
             {it !== '' && (
               <IconButton size="small" onClick={() => removeItem(i)} aria-label={t('Delete')}>
-                <TgIcon name="close" size={18} color="var(--tg-textSecondary)" />
+                <TgIcon name="close" size={18} color="var(--secondary-text-color)" />
               </IconButton>
             )}
           </div>

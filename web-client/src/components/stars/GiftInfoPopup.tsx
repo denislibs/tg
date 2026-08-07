@@ -76,10 +76,10 @@ export default function GiftInfoPopup({
           transition={{ duration: 0.18, ease: EASE }}
         >
           <div className={s.header}>
-            <IconButton onClick={onClose} color="var(--tg-textSecondary)">
+            <IconButton onClick={onClose} color="var(--secondary-text-color)">
               <TgIcon name="close" />
             </IconButton>
-            <Text size={18} weight={600} color="var(--tg-textPrimary)" className={s.headerTitle}>
+            <Text size={18} weight={600} color="var(--primary-text-color)" className={s.headerTitle}>
               {gift.gift.title}
             </Text>
           </div>
@@ -87,15 +87,15 @@ export default function GiftInfoPopup({
           <div className={s.body}>
             <div className={s.giftInfo}>
               <span className={s.chosenEmoji}>{gift.gift.emoji}</span>
-              <Text size={17} weight={600} color="var(--tg-textPrimary)">{gift.gift.title}</Text>
-              <Text size={14} color="var(--tg-textSecondary)">
+              <Text size={17} weight={600} color="var(--primary-text-color)">{gift.gift.title}</Text>
+              <Text size={14} color="var(--secondary-text-color)">
                 {t('From')}: {fromLabel}{dateLabel ? ` · ${dateLabel}` : ''}
               </Text>
               {isOwner && gift.hidden && (
-                <Text size={13} color="var(--tg-textFaint)">{t('Hidden from your profile')}</Text>
+                <Text size={13} color="var(--secondary-text-color)">{t('Hidden from your profile')}</Text>
               )}
               {gift.message && (
-                <Text size={15} color="var(--tg-textPrimary)" style={{ marginTop: 4 }}>{gift.message}</Text>
+                <Text size={15} color="var(--primary-text-color)" style={{ marginTop: 4 }}>{gift.message}</Text>
               )}
               <div className={s.giftPrice} style={{ marginTop: 6 }}>
                 <StarIcon size={14} />

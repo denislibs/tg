@@ -92,7 +92,7 @@ export default function LocationPicker({
         <div ref={mapEl} className={s.map} />
         <span className={s.pin}><TgIcon name="location" size={40} color="#e53935" /></span>
         <button className={s.locate} onClick={locateMe} title="Моё местоположение">
-          <TgIcon name="location" size={22} color="var(--tg-accent)" />
+          <TgIcon name="location" size={22} color="var(--primary-color)" />
         </button>
       </div>
 
@@ -100,24 +100,24 @@ export default function LocationPicker({
         <Input label="Название места (необязательно)" value={title} onChange={setTitle} wrapClassName={s.field} />
 
         <div className={s.sendRow} onClick={sendPoint}>
-          <TgIcon name="location" size={22} color="var(--tg-accent)" />
-          <Text size={16} color="var(--tg-accent)">Отправить эту точку</Text>
+          <TgIcon name="location" size={22} color="var(--primary-color)" />
+          <Text size={16} color="var(--primary-color)">Отправить эту точку</Text>
         </div>
 
         {!liveOpen ? (
           <div className={s.sendRow} onClick={() => setLiveOpen(true)}>
-            <TgIcon name="livelocation" size={22} color="var(--tg-accent)" />
-            <Text size={16} color="var(--tg-accent)">Транслировать геопозицию</Text>
+            <TgIcon name="livelocation" size={22} color="var(--primary-color)" />
+            <Text size={16} color="var(--primary-color)">Транслировать геопозицию</Text>
           </div>
         ) : (
           <div className={s.liveList}>
-            <Text size={13} weight={600} color="var(--tg-textSecondary)" className={s.liveHint}>
+            <Text size={13} weight={600} color="var(--secondary-text-color)" className={s.liveHint}>
               Транслировать в течение:
             </Text>
             {LIVE_DURATIONS.map((d) => (
               <div key={d.secs} className={s.sendRow} onClick={() => sendLive(d.secs)}>
-                <TgIcon name="livelocation" size={22} color="var(--tg-accent)" />
-                <Text size={16} color="var(--tg-textPrimary)">{d.label}</Text>
+                <TgIcon name="livelocation" size={22} color="var(--primary-color)" />
+                <Text size={16} color="var(--primary-text-color)">{d.label}</Text>
               </div>
             ))}
           </div>

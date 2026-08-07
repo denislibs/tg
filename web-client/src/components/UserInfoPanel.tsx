@@ -301,7 +301,7 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
             шапка прозрачная, иконки/текст белые поверх верхнего градиента
             (tweb .need-white). Скролл → filled: сплошной фон, обычные цвета. */}
         <div className={classNames(s.header, scrolled && !overPhoto ? s.headerScrolled : '', overPhoto ? s.headerWhite : '')}>
-          <IconButton onClick={filled ? scrollBackToProfile : onClose} color={overPhoto ? '#fff' : 'var(--tg-textSecondary)'}>
+          <IconButton onClick={filled ? scrollBackToProfile : onClose} color={overPhoto ? '#fff' : 'var(--secondary-text-color)'}>
             <TgIcon name={filled ? 'back' : 'close'} />
           </IconButton>
           <div className={s.headerTitles}>
@@ -315,8 +315,8 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
                   exit={{ y: 14, opacity: 0 }}
                   transition={{ duration: 0.2, ease: EASE }}
                 >
-                  <Text noWrap size={16} weight={600} color="var(--tg-textPrimary)">{isSaved ? t('Saved Messages') : chat.name}</Text>
-                  <Text noWrap size={13} color="var(--tg-textSecondary)">{countLabel(tab, activeCount, isChannel)}</Text>
+                  <Text noWrap size={16} weight={600} color="var(--primary-text-color)">{isSaved ? t('Saved Messages') : chat.name}</Text>
+                  <Text noWrap size={13} color="var(--secondary-text-color)">{countLabel(tab, activeCount, isChannel)}</Text>
                 </motion.div>
               ) : (
                 <motion.div
@@ -327,20 +327,20 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
                   exit={{ y: -14, opacity: 0 }}
                   transition={{ duration: 0.2, ease: EASE }}
                 >
-                  <Text noWrap size={19} weight={600} color={overPhoto ? '#fff' : 'var(--tg-textPrimary)'}>{t(title)}</Text>
+                  <Text noWrap size={19} weight={600} color={overPhoto ? '#fff' : 'var(--primary-text-color)'}>{t(title)}</Text>
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
           {(isGroup || isChannel) && (
-            <IconButton onClick={() => setEditing(true)} color={overPhoto ? '#fff' : 'var(--tg-textSecondary)'}>
+            <IconButton onClick={() => setEditing(true)} color={overPhoto ? '#fff' : 'var(--secondary-text-color)'}>
               <TgIcon name="edit" />
             </IconButton>
           )}
           {/* Приватный чат: карандаш открывает экран «Изменить контакт»
               (редактируемые поля живут там, инфо-панель — только просмотр). */}
           {isUser && peerId !== meId && onEditContact && (
-            <IconButton onClick={onEditContact} color={overPhoto ? '#fff' : 'var(--tg-textSecondary)'}>
+            <IconButton onClick={onEditContact} color={overPhoto ? '#fff' : 'var(--secondary-text-color)'}>
               <TgIcon name="edit" />
             </IconButton>
           )}
@@ -419,14 +419,14 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
                   <Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={headerAvatarSrc} size="profile" />
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginTop: '8px', paddingLeft: '16px', paddingRight: '16px' }}>
-                  <Text size={21} weight={600} color="var(--tg-textPrimary)" style={{ textAlign: 'center' }}>
+                  <Text size={21} weight={600} color="var(--primary-text-color)" style={{ textAlign: 'center' }}>
                     {chat.name}
                   </Text>
                   {profile?.verified && <VerifiedBadge size={22} />}
                   {profile?.premium && <PremiumBadge size={22} />}
                   {profile?.emojiStatus && <EmojiStatus emoji={profile.emojiStatus} size={22} />}
                 </div>
-                <Text size={14} color={statusOnline ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'}>
+                <Text size={14} color={statusOnline ? 'var(--primary-color)' : 'var(--secondary-text-color)'}>
                   {subtitleText}
                 </Text>
               </motion.div>
@@ -439,35 +439,35 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
           <Section>
             {isChannel ? (
               <div className={s.channelRow}>
-                <TgIcon name="info" size={24} color="var(--tg-textSecondary)" style={{ marginTop: 4 }} />
+                <TgIcon name="info" size={24} color="var(--secondary-text-color)" style={{ marginTop: 4 }} />
                 <div className={s.grow}>
-                  <Text size={15.5} color="var(--tg-textPrimary)" style={{ marginBottom: linkText ? '12px' : 0 }}>
+                  <Text size={15.5} color="var(--primary-text-color)" style={{ marginBottom: linkText ? '12px' : 0 }}>
                     {chat.description ?? t('Channel description.')}
                   </Text>
                   {linkText?.map((l) => (
                     <div key={l.label} style={{ marginBottom: '10px' }}>
-                      <Text size={15.5} color="var(--tg-textPrimary)">{l.label}:</Text>
-                      <Text size={15.5} color="var(--tg-link)" style={{ wordBreak: 'break-all' }}>
+                      <Text size={15.5} color="var(--primary-text-color)">{l.label}:</Text>
+                      <Text size={15.5} color="var(--link-color)" style={{ wordBreak: 'break-all' }}>
                         {l.value}
                       </Text>
                     </div>
                   ))}
-                  <Text size={13.5} color="var(--tg-textSecondary)">{t('Info')}</Text>
+                  <Text size={13.5} color="var(--secondary-text-color)">{t('Info')}</Text>
                 </div>
               </div>
             ) : isGroup ? (
               inviteUrl && (
                 <div className={s.linkRow} onClick={() => copyPanelLink()}>
-                  <TgIcon name="link" size={24} color="var(--tg-textSecondary)" />
+                  <TgIcon name="link" size={24} color="var(--secondary-text-color)" />
                   <div className={s.grow}>
-                    <Text size={16} color="var(--tg-textPrimary)" style={{ wordBreak: 'break-all' }}>{inviteShort}</Text>
-                    <Text size={13.5} color={panelLinkCopied ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'}>
+                    <Text size={16} color="var(--primary-text-color)" style={{ wordBreak: 'break-all' }}>{inviteShort}</Text>
+                    <Text size={13.5} color={panelLinkCopied ? 'var(--primary-color)' : 'var(--secondary-text-color)'}>
                       {panelLinkCopied ? t('Link copied to clipboard.') : t('Link')}
                     </Text>
                   </div>
                   <IconButton
                     size="small"
-                    color="var(--tg-textSecondary)"
+                    color="var(--secondary-text-color)"
                     onClick={(e) => { e.stopPropagation(); setQrOpen(true) }}
                     aria-label="QR"
                   >
@@ -545,11 +545,11 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
                   style={{ cursor: 'pointer' }}
                   onClick={() => setShowStats(true)}
                 >
-                  <TgIcon name="statistics" size={24} color="var(--tg-textSecondary)" />
-                  <Text size={16} color="var(--tg-textPrimary)" style={{ flex: 1 }}>
+                  <TgIcon name="statistics" size={24} color="var(--secondary-text-color)" />
+                  <Text size={16} color="var(--primary-text-color)" style={{ flex: 1 }}>
                     {t('Statistics')}
                   </Text>
-                  <TgIcon name="next" size={20} color="var(--tg-textSecondary)" />
+                  <TgIcon name="next" size={20} color="var(--secondary-text-color)" />
                 </div>
               </div>
             </div>
@@ -560,14 +560,14 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
           {/* Channel discussions: admin (creator/CHANGE_INFO) toggle / enabled state */}
           {isRealChat && isChannel && canManageDiscussion && (
             <div className={s.section}>
-              <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionTitle}>
+              <Text size={14} weight={600} color="var(--primary-color)" className={s.sectionTitle}>
                 Обсуждения
               </Text>
               <div className={s.cardPlain}>
                 {discussionChatId > 0 ? (
                   <div className={s.enabledRow}>
-                    <Text size={16} color="var(--tg-textPrimary)" style={{ flex: 1 }}>Обсуждения включены</Text>
-                    <TgIcon name="check" size={22} color="var(--tg-accent)" />
+                    <Text size={16} color="var(--primary-text-color)" style={{ flex: 1 }}>Обсуждения включены</Text>
+                    <TgIcon name="check" size={22} color="var(--primary-color)" />
                   </div>
                 ) : (
                   <div className={s.actionWrap}>
@@ -588,20 +588,20 @@ export default function UserInfoPanel({ chat, onClose, onOpenPeer, canAddMembers
           {/* Real group/channel: pending join requests (admins with INVITE_USERS / creator) */}
           {isRealChat && canInvite && joinRequests.length > 0 && (
             <div className={s.section}>
-              <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionTitle}>
+              <Text size={14} weight={600} color="var(--primary-color)" className={s.sectionTitle}>
                 Заявки на вступление
               </Text>
               <div className={s.cardPlain}>
                 {joinRequests.map((req) => (
                   <div key={req.userId} className={s.requestRow}>
-                    <Avatar background="var(--tg-accent)" text={req.displayName[0]?.toUpperCase()} size="md" />
+                    <Avatar background="var(--primary-color)" text={req.displayName[0]?.toUpperCase()} size="md" />
                     <div className={s.grow}>
-                      <Text noWrap size={16} color="var(--tg-textPrimary)">{req.displayName}</Text>
+                      <Text noWrap size={16} color="var(--primary-text-color)">{req.displayName}</Text>
                     </div>
                     <IconButton
                       aria-label={`Одобрить заявку: ${req.displayName}`}
                       onClick={() => void approveJoinRequest(req.userId)}
-                      color="var(--tg-accent)"
+                      color="var(--primary-color)"
                       style={{ flexShrink: 0 }}
                     >
                       <TgIcon name="check" size={22} />

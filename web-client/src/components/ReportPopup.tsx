@@ -74,8 +74,8 @@ export default function ReportPopup() {
             data-selected={reason === r.value || undefined}
             onClick={() => setReason(r.value)}
           >
-            <Text size={15} color="var(--tg-textPrimary)">{t(r.label)}</Text>
-            {reason === r.value && <TgIcon name="check" size={20} color="var(--tg-accent)" />}
+            <Text size={15} color="var(--primary-text-color)">{t(r.label)}</Text>
+            {reason === r.value && <TgIcon name="check" size={20} color="var(--primary-color)" />}
           </div>
         ))}
       </div>

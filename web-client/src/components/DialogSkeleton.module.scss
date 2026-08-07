@@ -24,7 +24,7 @@
   flex: 1;
 }
 .bar {
-  background: linear-gradient(90deg, var(--tg-skelBase) 25%, var(--tg-skelHi) 37%, var(--tg-skelBase) 63%);
+  background: linear-gradient(90deg, var(--surface-color) 25%, var(--light-secondary-text-color) 37%, var(--surface-color) 63%);
   background-size: 400% 100%;
   animation: skelShimmer 1.4s ease infinite;
 }

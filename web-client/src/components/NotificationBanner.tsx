@@ -21,14 +21,14 @@ export default function NotificationBanner({ onClose }: Props) {
     >
       <div className={s.banner}>
         <div className={s.body}>
-          <Text weight={600} size={15} color="var(--tg-textPrimary)">
+          <Text weight={600} size={15} color="var(--primary-text-color)">
             {t('Never miss a message! 🔔')}
           </Text>
-          <Text size={14} color="var(--tg-textSecondary)" style={{ marginTop: '2px' }}>
+          <Text size={14} color="var(--secondary-text-color)" style={{ marginTop: '2px' }}>
             {t('Enable notifications to stay updated.')}
           </Text>
         </div>
-        <IconButton size="small" onClick={onClose} color="var(--tg-textFaint)" className={s.close}>
+        <IconButton size="small" onClick={onClose} color="var(--secondary-text-color)" className={s.close}>
           <TgIcon name="close" size={20} />
         </IconButton>
       </div>

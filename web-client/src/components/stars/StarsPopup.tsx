@@ -54,10 +54,10 @@ export default function StarsPopup({ open, onClose }: { open: boolean; onClose: 
             transition={{ duration: 0.18, ease: EASE }}
           >
             <div className={s.header}>
-              <IconButton onClick={onClose} color="var(--tg-textSecondary)">
+              <IconButton onClick={onClose} color="var(--secondary-text-color)">
                 <TgIcon name="close" />
               </IconButton>
-              <Text size={18} weight={600} color="var(--tg-textPrimary)" className={s.headerTitle}>
+              <Text size={18} weight={600} color="var(--primary-text-color)" className={s.headerTitle}>
                 {t('Telegram Stars')}
               </Text>
             </div>
@@ -82,7 +82,7 @@ export default function StarsPopup({ open, onClose }: { open: boolean; onClose: 
                 ))}
               </div>
 
-              <Text size={13} color="var(--tg-textSecondary)" style={{ display: 'block', textAlign: 'center', marginTop: 16 }}>
+              <Text size={13} color="var(--secondary-text-color)" style={{ display: 'block', textAlign: 'center', marginTop: 16 }}>
                 {t('Demo: top-up adds Stars instantly, no real payment.')}
               </Text>
             </div>

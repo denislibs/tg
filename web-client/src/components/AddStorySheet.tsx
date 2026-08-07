@@ -110,7 +110,7 @@ export default function AddStorySheet({
         position: 'absolute',
         inset: 0,
         zIndex: 42,
-        background: 'var(--tg-sidebarBg)',
+        background: 'var(--surface-color)',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
@@ -118,10 +118,10 @@ export default function AddStorySheet({
     >
       {/* Шапка */}
       <div className={s.header}>
-        <IconButton onClick={onBack} aria-label="Назад" color="var(--tg-textSecondary)">
+        <IconButton onClick={onBack} aria-label="Назад" color="var(--secondary-text-color)">
           <TgIcon name="back" />
         </IconButton>
-        <Text size={19} weight={600} color="var(--tg-textPrimary)">
+        <Text size={19} weight={600} color="var(--primary-text-color)">
           Новая история
         </Text>
       </div>
@@ -145,7 +145,7 @@ export default function AddStorySheet({
 
         {/* Селектор приватности (сегментированные кнопки) */}
         <div className={s.privacyBlock}>
-          <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionLabel}>
+          <Text size={14} weight={600} color="var(--primary-color)" className={s.sectionLabel}>
             Кто может видеть
           </Text>
           <div className={classNames(s.card, s.segments)} role="radiogroup" aria-label="Кто может видеть историю">
@@ -175,7 +175,7 @@ export default function AddStorySheet({
 
         {/* Селектор периода (tweb story period): сколько часов история живёт */}
         <div className={s.privacyBlock} style={{ marginTop: 12 }}>
-          <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionLabel}>
+          <Text size={14} weight={600} color="var(--primary-color)" className={s.sectionLabel}>
             Сколько хранить
           </Text>
           <div className={classNames(s.card, s.segments)} role="radiogroup" aria-label="Сколько хранить историю">
@@ -206,7 +206,7 @@ export default function AddStorySheet({
         {/* 4d: reaction-стикер (media area). Минимальный редактор — выбор эмодзи,
             область ставится в нижнюю центральную часть истории. */}
         <div className={s.privacyBlock} style={{ marginTop: 12 }}>
-          <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionLabel}>
+          <Text size={14} weight={600} color="var(--primary-color)" className={s.sectionLabel}>
             Реакция-стикер
           </Text>
           <div className={classNames(s.card, s.segments)} role="radiogroup" aria-label="Реакция-стикер">
@@ -252,11 +252,11 @@ export default function AddStorySheet({
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onEditCloseFriends?.() } }}
               style={{ margin: 0, borderRadius: 16 }}
             >
-              <TgIcon name="newprivate" size={22} color="var(--tg-accent)" />
-              <Text size={15} color="var(--tg-textPrimary)" className={s.contactName}>
+              <TgIcon name="newprivate" size={22} color="var(--primary-color)" />
+              <Text size={15} color="var(--primary-text-color)" className={s.contactName}>
                 Список близких друзей{closeCount != null ? ` (${closeCount})` : ''}
               </Text>
-              <TgIcon name="next" size={20} color="var(--tg-textFaint)" />
+              <TgIcon name="next" size={20} color="var(--secondary-text-color)" />
             </div>
           </div>
         )}
@@ -264,12 +264,12 @@ export default function AddStorySheet({
         {/* Выбор контактов для аудитории "Выбранные" */}
         {privacy === 'selected' && (
           <div className={s.contactsBlock}>
-            <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionLabel}>
+            <Text size={14} weight={600} color="var(--primary-color)" className={s.sectionLabel}>
               Контакты
             </Text>
             <div className={classNames(s.card, s.contactsList)}>
               {contacts.length === 0 && (
-                <Text size={15} color="var(--tg-textSecondary)" className={s.emptyRow}>
+                <Text size={15} color="var(--secondary-text-color)" className={s.emptyRow}>
                   Нет контактов
                 </Text>
               )}
@@ -296,7 +296,7 @@ export default function AddStorySheet({
                       text={c.displayName.charAt(0).toUpperCase()}
                       size="sm"
                     />
-                    <Text noWrap size={16} color="var(--tg-textPrimary)" className={s.contactName}>
+                    <Text noWrap size={16} color="var(--primary-text-color)" className={s.contactName}>
                       {c.displayName}
                     </Text>
                     <div className={classNames(s.check, checked ? s.checkOn : '')}>

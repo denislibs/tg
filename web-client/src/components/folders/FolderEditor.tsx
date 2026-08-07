@@ -51,13 +51,13 @@ function SelectedPreview({ flagKeys, chatIds, chats }: { flagKeys: string[]; cha
   return (
     <>
       {flagKeys.map((k) => (
-        <Row key={k} icon={<TgIcon name={TYPE_LABELS[k].icon as never} size={24} color="var(--tg-accent)" />} label={TYPE_LABELS[k].label} />
+        <Row key={k} icon={<TgIcon name={TYPE_LABELS[k].icon as never} size={24} color="var(--primary-color)" />} label={TYPE_LABELS[k].label} />
       ))}
       {shown.map((c) => (
         <ChatPreviewRow key={c.id} chat={c} />
       ))}
       {hidden > 0 && (
-        <Row icon={<TgIcon name="down" size={24} color="var(--tg-accent)" />} label={`${t('Show more')} (${hidden})`} translate={false} accent onClick={() => setExpanded(true)} />
+        <Row icon={<TgIcon name="down" size={24} color="var(--primary-color)" />} label={`${t('Show more')} (${hidden})`} translate={false} accent onClick={() => setExpanded(true)} />
       )}
     </>
   )
@@ -119,10 +119,10 @@ function FolderShareSection({ folderId }: { folderId: number }) {
       {invite ? (
         <>
           <div className={s.linkBox} onClick={copy}>
-            <Text size={15.5} color="var(--tg-link)" style={{ wordBreak: 'break-all' }}>
+            <Text size={15.5} color="var(--link-color)" style={{ wordBreak: 'break-all' }}>
               {invite.url}
             </Text>
-            <Text size={13} color={copied ? 'var(--tg-accent)' : 'var(--tg-textFaint)'}>
+            <Text size={13} color={copied ? 'var(--primary-color)' : 'var(--secondary-text-color)'}>
               {copied ? t('Link copied to clipboard.') : t('Copy Link')}
             </Text>
           </div>
@@ -135,7 +135,7 @@ function FolderShareSection({ folderId }: { folderId: number }) {
         </>
       ) : (
         <Row
-          icon={<TgIcon name="link" size={22} color="var(--tg-accent)" />}
+          icon={<TgIcon name="link" size={22} color="var(--primary-color)" />}
           label="Share Folder"
           accent
           onClick={busy ? undefined : create}
@@ -221,13 +221,13 @@ export default function FolderEditor({
       onBack={onClose}
       zIndex={70}
       headerRight={
-        <IconButton onClick={saving ? undefined : save} color="var(--tg-accent)">
+        <IconButton onClick={saving ? undefined : save} color="var(--primary-color)">
           <TgIcon name="check" />
         </IconButton>
       }
     >
       <LottieSticker name="Folders_2" size={86} />
-      <Text size={14} color="var(--tg-textSecondary)" className={s.caption}>
+      <Text size={14} color="var(--secondary-text-color)" className={s.caption}>
         {t('Choose chats and types of chats that will appear and never appear in this folder.')}
       </Text>
 
@@ -256,7 +256,7 @@ export default function FolderEditor({
         footer="Choose chats or types of chats that will appear in this folder."
       >
         <Row
-          icon={<TgIcon name="add" size={24} color="var(--tg-accent)" />}
+          icon={<TgIcon name="add" size={24} color="var(--primary-color)" />}
           label="Add Chats"
           accent
           onClick={() => setPicker('include')}
@@ -269,7 +269,7 @@ export default function FolderEditor({
         footer="Choose chats or types of chats that will not appear in this folder."
       >
         <Row
-          icon={<TgIcon name="minus" size={24} color="var(--tg-accent)" />}
+          icon={<TgIcon name="minus" size={24} color="var(--primary-color)" />}
           label="Remove Chats"
           accent
           onClick={() => setPicker('exclude')}

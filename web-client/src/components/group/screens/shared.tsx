@@ -35,13 +35,13 @@ export function MemberPicker({
       <div className={s.search}><InputSearch value={q} onChange={setQ} placeholder={t('Search')} /></div>
       <Section>
         {list.length === 0 && (
-          <Text size={14.5} color="var(--tg-textSecondary)" style={{ padding: 12 }}>{t('No Results')}</Text>
+          <Text size={14.5} color="var(--secondary-text-color)" style={{ padding: 12 }}>{t('No Results')}</Text>
         )}
         {list.map((m) => (
           <div key={m.userId} className={s.memberRow} onClick={() => onPick(m)}>
             <UserAvatar id={m.userId} name={m.name} avatarUrl={m.avatarUrl} />
             <div className={s.memberBody}>
-              <Text noWrap size={16} color="var(--tg-textPrimary)">{m.name}</Text>
+              <Text noWrap size={16} color="var(--primary-text-color)">{m.name}</Text>
             </div>
           </div>
         ))}

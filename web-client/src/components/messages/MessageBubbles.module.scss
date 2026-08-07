@@ -17,11 +17,11 @@
 
 // ── document / audio (акцентный бабл при исходящем) ──
 .fileBubble {
-  --bb-bg: var(--tg-bubble);
-  --bb-text: var(--tg-textPrimary);
-  --bb-sub: var(--tg-textSecondary);
-  --bb-meta: var(--tg-textFaint);
-  --bb-tick: var(--tg-textFaint);
+  --bb-bg: var(--surface-color);
+  --bb-text: var(--primary-text-color);
+  --bb-sub: var(--secondary-text-color);
+  --bb-meta: var(--secondary-text-color);
+  --bb-tick: var(--secondary-text-color);
 
   position: relative;
   display: flex;
@@ -32,7 +32,7 @@
   color: var(--bb-text);
 
   &[data-out] {
-    --bb-bg: var(--tg-accent);
+    --bb-bg: var(--primary-color);
     --bb-text: #fff;
     --bb-sub: rgba(255, 255, 255, 0.8);
     --bb-meta: rgba(255, 255, 255, 0.8);
@@ -130,8 +130,8 @@
 
 // ── web page preview (внутри текстового бабла) ──
 .webpage {
-  --wp-title: var(--tg-textPrimary);
-  --wp-desc: var(--tg-textSecondary);
+  --wp-title: var(--primary-text-color);
+  --wp-desc: var(--secondary-text-color);
 
   margin-top: 4px;
   padding-left: 8px;
@@ -146,8 +146,8 @@
 }
 // Блок «Проверка фактов» (tweb factCheck) — тот же quote-стиль, что и webpage
 .factCheck {
-  --wp-title: var(--tg-textPrimary);
-  --wp-desc: var(--tg-textSecondary);
+  --wp-title: var(--primary-text-color);
+  --wp-desc: var(--secondary-text-color);
 
   margin-top: 4px;
   padding-left: 8px;
@@ -251,7 +251,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in srgb, var(--tg-accent) 12%, transparent);
+  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
 }
 .callBody {
   flex: 1;

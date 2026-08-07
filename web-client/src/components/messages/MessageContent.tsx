@@ -263,7 +263,7 @@ export default function MessageContent({
                   </span>
                   {m.time && (
                     <span className={s.mediaTime}>
-                      <span className={s.mediaTimeText} style={{ color: out ? 'var(--tg-bubbleOutAccent)' : 'var(--tg-textFaint)' }}>
+                      <span className={s.mediaTimeText} style={{ color: out ? 'var(--message-out-primary-color)' : 'var(--secondary-text-color)' }}>
                         {m.time}
                       </span>
                       {out && <Ticks status={m.status} color="var(--b-tick)" />}
@@ -343,7 +343,7 @@ export default function MessageContent({
                       {/* truthy как в tweb (messageRender.ts): views=0 приходит для не-канальных сообщений */}
                       {m.views ? <ViewsMeta views={m.views} className={s.metaViews} /> : null}
                       {m.forwards ? <ForwardsMeta forwards={m.forwards} className={s.metaViews} /> : null}
-                      <span className={s.mediaTimeText} style={{ color: out ? 'var(--tg-bubbleOutAccent)' : 'var(--tg-textFaint)' }}>
+                      <span className={s.mediaTimeText} style={{ color: out ? 'var(--message-out-primary-color)' : 'var(--secondary-text-color)' }}>
                         {m.time}
                       </span>
                       {out && <Ticks status={m.status} color="var(--b-tick)" />}
@@ -463,7 +463,7 @@ export default function MessageContent({
             {m.forwardFrom && (
               <div className={s.forward}>
                 <Text size={13} color="var(--b-time)">{t('Forwarded from')}</Text>
-                <Text size={14} weight={600} color={out ? 'var(--tg-bubbleOutAccent)' : (m.forwardFrom.color ?? 'var(--tg-accent)')}>
+                <Text size={14} weight={600} color={out ? 'var(--message-out-primary-color)' : (m.forwardFrom.color ?? 'var(--primary-color)')}>
                   {m.forwardFrom.name}
                 </Text>
               </div>
@@ -474,13 +474,13 @@ export default function MessageContent({
                 onClick={m.reply.seq != null ? (e) => { e.stopPropagation(); feedFns.jumpToSeq(m.reply!.seq) } : undefined}
                 style={{
                   cursor: m.reply.seq != null ? 'pointer' : 'default',
-                  borderLeft: `3px solid ${out ? 'var(--tg-bubbleOutAccent)' : m.reply.color ?? 'var(--tg-accent)'}`,
-                  background: out ? withAlpha('var(--tg-bubbleOutText)', 0.12) : withAlpha(m.reply.color ?? 'var(--tg-accent)', 0.12),
+                  borderLeft: `3px solid ${out ? 'var(--message-out-primary-color)' : m.reply.color ?? 'var(--primary-color)'}`,
+                  background: out ? withAlpha('var(--message-out-primary-color)', 0.12) : withAlpha(m.reply.color ?? 'var(--primary-color)', 0.12),
                 }}
               >
                 {m.reply.mediaId != null && <ReplyThumb id={m.reply.mediaId} />}
                 <div className={s.replyBody}>
-                  <Text noWrap size={13.5} weight={600} color={out ? 'var(--tg-bubbleOutAccent)' : m.reply.color ?? 'var(--tg-accent)'}>
+                  <Text noWrap size={13.5} weight={600} color={out ? 'var(--message-out-primary-color)' : m.reply.color ?? 'var(--primary-color)'}>
                     {m.reply.name}
                     {m.reply.quote && (
                       <TgIcon name="quote_outline" size={13} style={{ verticalAlign: '-1px', marginLeft: 4, opacity: 0.75 }} />

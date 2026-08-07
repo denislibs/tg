@@ -15,7 +15,7 @@
   flex-direction: column;
   border-radius: 12px;
   overflow: hidden;
-  background: var(--tg-fill-secondary, rgba(128, 128, 128, 0.12));
+  background: rgba(128, 128, 128, 0.12);
 }
 
 // строка URL / Key (клик = копирование)
@@ -27,7 +27,7 @@
   cursor: pointer;
 
   &:not(:last-child) {
-    border-bottom: 1px solid var(--tg-border, rgba(128, 128, 128, 0.15));
+    border-bottom: 1px solid rgba(128, 128, 128, 0.15);
   }
 
   @media (hover: hover) {
@@ -92,10 +92,10 @@
 
 .btnPrimary {
   @extend %streamBtn;
-  background: var(--tg-primary, #3390ec);
+  background: #3390ec;
 }
 
 .btnDanger {
   @extend %streamBtn;
-  background: var(--tg-danger, #e5484d);
+  background: #e5484d;
 }

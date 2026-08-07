@@ -67,7 +67,7 @@ export default function MainMenu({
   const meAvatar = useAvatarSrc(me?.avatarUrl)
   const meName = me?.displayName?.trim() || [me?.firstName, me?.lastName].filter(Boolean).join(' ').trim() || me?.username || 'Аккаунт'
   const divider = (
-    <div style={{ height: '1px', background: 'var(--tg-divider)', margin: '6px 0' }} />
+    <div style={{ height: '1px', background: 'var(--border-color)', margin: '6px 0' }} />
   )
 
   // Мультиаккаунт: реестр аккаунтов (кроме активного) + лимит 4.
@@ -140,7 +140,7 @@ export default function MainMenu({
       {/* Account row — same height as items, small ringed avatar in the icon slot (tweb) */}
       <MenuItem
         icon={
-          <span style={{ padding: 2, borderRadius: '50%', border: '2px solid var(--tg-accent)', display: 'flex' }}>
+          <span style={{ padding: 2, borderRadius: '50%', border: '2px solid var(--primary-color)', display: 'flex' }}>
             <Avatar background={gradientFor(me?.id ?? 0)} text={meName.charAt(0).toUpperCase()} src={meAvatar} size={26} />
           </span>
         }
@@ -172,7 +172,7 @@ export default function MainMenu({
       {divider}
       <MenuItem icon={<TgIcon name="card_outline" size={20} />} label={t('Wallet')} onClick={onOpenWallet ?? onClose} />
       <MenuItem
-        icon={<TgIcon name="star_filled" size={20} color="var(--tg-accent)" />}
+        icon={<TgIcon name="star_filled" size={20} color="var(--primary-color)" />}
         label={t('Telegram Premium')}
         onClick={onOpenPremium ?? onClose}
       />
@@ -182,7 +182,7 @@ export default function MainMenu({
         <MenuItem
           icon={<TgIcon name="more" size={20} />}
           label={t('More')}
-          right={<TgIcon name="next" size={20} color="var(--tg-textFaint)" />}
+          right={<TgIcon name="next" size={20} color="var(--secondary-text-color)" />}
           onClick={toggleMore}
         />
       </div>

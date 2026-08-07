@@ -72,7 +72,7 @@ export default function SecretMediaBubble({ secretMedia, out, time, status, tick
 
   const timeCluster: ReactNode = time ? (
     <div className={s.timeCluster}>
-      <Text size={12} color={out ? tickColor : 'var(--tg-textFaint)'} style={{ fontVariantNumeric: 'tabular-nums' }}>{time}</Text>
+      <Text size={12} color={out ? tickColor : 'var(--secondary-text-color)'} style={{ fontVariantNumeric: 'tabular-nums' }}>{time}</Text>
       {out && <Ticks status={status} color={tickColor} />}
     </div>
   ) : null
@@ -130,7 +130,7 @@ export default function SecretMediaBubble({ secretMedia, out, time, status, tick
       href={error ? undefined : url}
       download={name}
       data-out={out || undefined}
-      style={{ '--doc-color': DOC_EXT_COLORS[ext] ?? 'var(--tg-accent)' } as React.CSSProperties}
+      style={{ '--doc-color': DOC_EXT_COLORS[ext] ?? 'var(--primary-color)' } as React.CSSProperties}
     >
       <div className={s.docIco}>
         <span className={s.docExt}>{ext}</span>

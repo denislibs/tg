@@ -10,7 +10,7 @@
 
 // карточка-панель (общая база)
 .panel {
-  background: var(--tg-sidebarBg);
+  background: var(--surface-color);
   border-radius: 18px;
   overflow: hidden;
   display: flex;
@@ -156,12 +156,12 @@
   align-items: center;
   justify-content: center;
   transition: background 0.15s, border-color 0.15s;
-  border: 2px solid var(--tg-textFaint);
+  border: 2px solid var(--secondary-text-color);
 }
 
 .checkOn {
-  background: var(--tg-accent);
-  border-color: var(--tg-accent);
+  background: var(--primary-color);
+  border-color: var(--primary-color);
 }
 
 // подпись под чекбоксом
@@ -180,7 +180,7 @@
   height: 56px;
   border-radius: 50%;
   border: none;
-  background: var(--tg-accent);
+  background: var(--primary-color);
   color: #fff;
   display: flex;
   align-items: center;

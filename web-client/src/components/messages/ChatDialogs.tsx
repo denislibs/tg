@@ -46,8 +46,8 @@ export function DeleteMessageDialog({ canRevoke, onDeleteForEveryone, onDeleteFo
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.2, ease: EASE_STD }}
       >
-        <Text size={17} weight={600} color="var(--tg-textPrimary)" style={{ marginBottom: '8px' }}>{t('Delete message')}</Text>
-        <Text size={14.5} color="var(--tg-textSecondary)" style={{ marginBottom: '16px' }}>{t('Are you sure you want to delete this message?')}</Text>
+        <Text size={17} weight={600} color="var(--primary-text-color)" style={{ marginBottom: '8px' }}>{t('Delete message')}</Text>
+        <Text size={14.5} color="var(--secondary-text-color)" style={{ marginBottom: '16px' }}>{t('Are you sure you want to delete this message?')}</Text>
         <div className={s.confirmActions}>
           {canRevoke && (
             <div className={classNames(s.action, s.danger)} onClick={onDeleteForEveryone}>{t('Delete for everyone')}</div>
@@ -82,8 +82,8 @@ function ShareRow({ chat, sub, selected, onToggle }: { chat: Chat; sub: string; 
         {selected && <span className={s.shareCheck}><TgIcon name="check" size={13} color="#fff" /></span>}
       </div>
       <div className={s.pickerBody}>
-        <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{chat.name}</Text>
-        <Text noWrap size={13.5} color="var(--tg-textSecondary)">{sub}</Text>
+        <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">{chat.name}</Text>
+        <Text noWrap size={13.5} color="var(--secondary-text-color)">{sub}</Text>
       </div>
     </div>
   )
@@ -98,7 +98,7 @@ function RecentChip({ chat, selected, onToggle }: { chat: Chat; selected: boolea
         <Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={src} size={54} />
         {selected && <span className={s.shareCheck}><TgIcon name="check" size={13} color="#fff" /></span>}
       </div>
-      <Text noWrap size={12.5} color="var(--tg-textPrimary)" className={s.recentName}>{chat.name}</Text>
+      <Text noWrap size={12.5} color="var(--primary-text-color)" className={s.recentName}>{chat.name}</Text>
     </div>
   )
 }
@@ -164,7 +164,7 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
     >
       {/* поиск */}
       <div className={s.pickerSearch}>
-        <TgIcon name="search" size={20} color="var(--tg-textFaint)" />
+        <TgIcon name="search" size={20} color="var(--secondary-text-color)" />
         <input
           className={s.pickerSearchInput}
           autoFocus
@@ -232,7 +232,7 @@ export function ContactPicker({ dialogs, onPick, onClose }: {
       width={440}
     >
       <div className={s.pickerSearch}>
-        <TgIcon name="search" size={20} color="var(--tg-textFaint)" />
+        <TgIcon name="search" size={20} color="var(--secondary-text-color)" />
         <input
           className={s.pickerSearchInput}
           autoFocus
@@ -246,7 +246,7 @@ export function ContactPicker({ dialogs, onPick, onClose }: {
           <div key={r.userId} className={s.listRow} onClick={() => pick(r.userId, r.name)}>
             <Avatar background={peerColor(r.name)} text={r.name[0] ?? '?'} size="md" />
             <div className={s.pickerBody}>
-              <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{r.name}</Text>
+              <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">{r.name}</Text>
             </div>
           </div>
         ))}
@@ -287,7 +287,7 @@ export function ChatPicker({ dialogs, title, onPick, onClose }: {
       width={440}
     >
       <div className={s.pickerSearch}>
-        <TgIcon name="search" size={20} color="var(--tg-textFaint)" />
+        <TgIcon name="search" size={20} color="var(--secondary-text-color)" />
         <input
           className={s.pickerSearchInput}
           autoFocus
@@ -301,8 +301,8 @@ export function ChatPicker({ dialogs, title, onPick, onClose }: {
           <div key={r.chatId} className={s.listRow} onClick={() => pick(r.chatId)}>
             <Avatar background={peerColor(r.title)} text={r.title[0] ?? '?'} size="md" />
             <div className={s.pickerBody}>
-              <Text noWrap size={15.5} weight={500} color="var(--tg-textPrimary)">{r.title}</Text>
-              <Text noWrap size={13.5} color="var(--tg-textSecondary)">{r.sub}</Text>
+              <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">{r.title}</Text>
+              <Text noWrap size={13.5} color="var(--secondary-text-color)">{r.sub}</Text>
             </div>
           </div>
         ))}
@@ -329,13 +329,13 @@ export function ViewersPopup({ x, y, names, onClose }: {
         transition={{ duration: 0.18, ease: EASE_STD }}
         style={{ top: y, left: x }}
       >
-        <Text size={13} color="var(--tg-textFaint)" className={s.viewersTitle}>
+        <Text size={13} color="var(--secondary-text-color)" className={s.viewersTitle}>
           {names.length ? t('Seen by') : t('No views yet')}
         </Text>
         {names.map((n, i) => (
           <div key={i} className={s.viewersRow}>
             <Avatar background={peerColor(n)} text={n[0] ?? '?'} size={28} />
-            <Text noWrap size={14.5} color="var(--tg-textPrimary)">{n}</Text>
+            <Text noWrap size={14.5} color="var(--primary-text-color)">{n}</Text>
           </div>
         ))}
       </motion.div>
@@ -361,13 +361,13 @@ export function ReactedUsersPopup({ x, y, rows, onClose }: {
         transition={{ duration: 0.18, ease: EASE_STD }}
         style={{ top: y, left: x }}
       >
-        <Text size={13} color="var(--tg-textFaint)" className={s.viewersTitle}>
+        <Text size={13} color="var(--secondary-text-color)" className={s.viewersTitle}>
           {rows.length ? t('Reactions') : t('No reactions yet')}
         </Text>
         {rows.map((r, i) => (
           <div key={i} className={s.viewersRow}>
             <Avatar background={peerColor(r.name)} text={r.name[0] ?? '?'} src={r.avatarUrl || undefined} size={28} />
-            <Text noWrap size={14.5} color="var(--tg-textPrimary)" style={{ flex: 1 }}>{r.name}</Text>
+            <Text noWrap size={14.5} color="var(--primary-text-color)" style={{ flex: 1 }}>{r.name}</Text>
             <span style={{ fontSize: 18 }}>{r.emoji}</span>
           </div>
         ))}
@@ -395,10 +395,10 @@ export function DiscardVoiceDialog({ onCancel, onDiscard }: { onCancel: () => vo
         transition={{ duration: 0.18 }}
         onClick={(e) => e.stopPropagation()}
       >
-        <Text size={17} weight={600} color="var(--tg-textPrimary)" style={{ marginBottom: '8px' }}>
+        <Text size={17} weight={600} color="var(--primary-text-color)" style={{ marginBottom: '8px' }}>
           {t('Discard voice message?')}
         </Text>
-        <Text size={14.5} color="var(--tg-textSecondary)" style={{ marginBottom: '16px' }}>
+        <Text size={14.5} color="var(--secondary-text-color)" style={{ marginBottom: '16px' }}>
           {t('Are you sure you want to discard this voice message?')}
         </Text>
         <div className={s.discardActions}>

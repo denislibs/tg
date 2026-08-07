@@ -78,10 +78,10 @@ export default function GlobalOverlays({
             transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
             className={s.qrCard}
           >
-            <Text size={17} weight={600} color="var(--tg-textPrimary)" style={{ marginBottom: '8px' }}>
+            <Text size={17} weight={600} color="var(--primary-text-color)" style={{ marginBottom: '8px' }}>
               {t('Войти на новом устройстве?')}
             </Text>
-            <Text size={14.5} color="var(--tg-textSecondary)" style={{ lineHeight: 1.5 }}>
+            <Text size={14.5} color="var(--secondary-text-color)" style={{ lineHeight: 1.5 }}>
               {t('Подтвердите вход для нового устройства')}
             </Text>
             <div className={s.qrActions}>

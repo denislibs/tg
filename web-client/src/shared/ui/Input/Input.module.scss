@@ -1,5 +1,5 @@
 // Input — outlined-инпут с плавающим лейблом (порт tweb .input-field): радиус 16,
-// высота 48, рамка --tg-inputBorderIdle → 2px accent в фокусе; лейбл всплывает при
+// высота 48, рамка --input-search-border-color → 2px accent в фокусе; лейбл всплывает при
 // фокусе/заполнении, перекрывая рамку фоном --input-bg (по умолчанию surface).
 .field {
   position: relative;
@@ -10,27 +10,27 @@
   height: 48px;
   box-sizing: border-box;
   padding: 13px 16px;
-  border: 1px solid var(--tg-inputBorderIdle);
+  border: 1px solid var(--input-search-border-color);
   border-radius: 16px;
   background: transparent;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
   font-size: 16px;
   font-family: inherit;
   outline: none;
   transition: border-color 0.2s, border-width 0.2s;
 
   &::placeholder {
-    color: var(--tg-textFaint);
+    color: var(--secondary-text-color);
     opacity: 1;
   }
 
   @media (hover: hover) {
     &:hover {
-      border-color: var(--tg-accent);
+      border-color: var(--primary-color);
     }
   }
   &:focus {
-    border-color: var(--tg-accent);
+    border-color: var(--primary-color);
     border-width: 2px;
     padding: 12px 15px; // компенсация +1px рамки
   }
@@ -47,7 +47,7 @@
   transform: translateY(-50%);
   padding: 0 4px;
   background: transparent;
-  color: var(--tg-textFaint);
+  color: var(--secondary-text-color);
   font-size: 16px;
   pointer-events: none;
   transition: top 0.15s, font-size 0.15s, color 0.15s, font-weight 0.15s;
@@ -56,10 +56,10 @@
 .input:not(:placeholder-shown) ~ .label {
   top: 0;
   font-size: 13px;
-  background: var(--input-bg, var(--tg-sidebarBg));
+  background: var(--input-bg, var(--surface-color));
 }
 .input:focus ~ .label {
-  color: var(--tg-accent);
+  color: var(--primary-color);
   font-weight: 600;
 }
 
@@ -70,7 +70,7 @@
 // остаётся 1px (без смены паддинга), иначе overlay сдвинулся бы на 1px.
 .masked .input {
   color: transparent;
-  caret-color: var(--tg-accent);
+  caret-color: var(--primary-color);
   position: relative;
   z-index: 1;
 
@@ -88,10 +88,10 @@
   font-size: 16px;
   font-family: inherit;
   line-height: normal;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
   white-space: pre;
   pointer-events: none;
 }
 .maskDash {
-  color: var(--tg-textFaint);
+  color: var(--secondary-text-color);
 }

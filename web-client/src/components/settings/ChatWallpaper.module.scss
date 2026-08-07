@@ -12,7 +12,7 @@
   overflow: hidden;
 
   &[data-selected] {
-    outline: 2.5px solid var(--tg-accent);
+    outline: 2.5px solid var(--primary-color);
     outline-offset: -2.5px;
   }
 }
@@ -30,7 +30,7 @@
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: var(--tg-accent);
+  background: var(--primary-color);
   display: flex;
   align-items: center;
   justify-content: center;

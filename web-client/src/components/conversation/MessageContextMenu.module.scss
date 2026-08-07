@@ -15,7 +15,7 @@
   height: 2.5rem;
   border-radius: 2.5rem;
   padding: 0 0.0625rem;
-  background: var(--tg-menuBg);
+  background: var(--menu-background-color);
   backdrop-filter: blur(50px);
   -webkit-backdrop-filter: blur(50px);
   filter: drop-shadow(0 0.125rem 0.5rem rgba(0, 0, 0, 0.24));
@@ -54,11 +54,11 @@
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  color: var(--tg-textSecondary);
+  color: var(--secondary-text-color);
   cursor: pointer;
 
   &:hover {
-    background: color-mix(in srgb, var(--tg-textPrimary) 8%, transparent);
+    background: color-mix(in srgb, var(--primary-text-color) 8%, transparent);
   }
 }
 

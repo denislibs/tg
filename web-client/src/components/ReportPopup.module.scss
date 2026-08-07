@@ -14,11 +14,11 @@
   transition: background-color 0.15s ease;
 
   &:hover {
-    background-color: var(--tg-hover);
+    background-color: var(--light-secondary-text-color);
   }
 
   &[data-selected] {
-    background-color: var(--tg-hover);
+    background-color: var(--light-secondary-text-color);
   }
 }
 

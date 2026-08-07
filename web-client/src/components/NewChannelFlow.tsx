@@ -28,17 +28,17 @@ export default function NewChannelFlow({ onClose, onCreate }: Props) {
         position: 'absolute',
         inset: 0,
         zIndex: 41,
-        background: 'var(--tg-sidebarBg)',
+        background: 'var(--surface-color)',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
       }}
     >
       <div className={s.header}>
-        <IconButton onClick={onClose} color="var(--tg-textSecondary)">
+        <IconButton onClick={onClose} color="var(--secondary-text-color)">
           <TgIcon name="back" />
         </IconButton>
-        <Text size={19} weight={600} color="var(--tg-textPrimary)">
+        <Text size={19} weight={600} color="var(--primary-text-color)">
           {t('New Channel')}
         </Text>
       </div>
@@ -64,7 +64,7 @@ export default function NewChannelFlow({ onClose, onCreate }: Props) {
             wrapClassName={s.field}
           />
         </div>
-        <Text size={14.5} color="var(--tg-textSecondary)" className={s.hint}>
+        <Text size={14.5} color="var(--secondary-text-color)" className={s.hint}>
           {t('You can provide an optional description for your channel.')}
         </Text>
       </div>

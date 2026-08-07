@@ -12,7 +12,7 @@
   font-size: 0.875rem; // 14px
   line-height: 18px;
   font-weight: 500;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
   cursor: pointer;
   white-space: nowrap;
   -webkit-tap-highlight-color: transparent;
@@ -20,12 +20,12 @@
 
   @media (hover: hover) {
     &:hover {
-      background: var(--tg-hover);
+      background: var(--light-secondary-text-color);
     }
   }
   &:active {
     transform: scale(0.96);
-    background: var(--tg-hover);
+    background: var(--light-secondary-text-color);
   }
 }
 
@@ -34,7 +34,7 @@
   align-items: center;
   flex-shrink: 0;
   margin-right: 1.25rem; // tweb --icon-margin (20px, add=0)
-  color: var(--tg-textSecondary);
+  color: var(--secondary-text-color);
 }
 
 .label {
@@ -48,7 +48,7 @@
   display: flex;
   flex-shrink: 0;
   margin-left: 0.5rem;
-  color: var(--tg-textFaint);
+  color: var(--secondary-text-color);
 }
 
 .danger {

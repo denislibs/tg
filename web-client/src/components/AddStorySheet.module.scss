@@ -46,10 +46,10 @@
   min-height: 48px;
   max-height: 112px; // ~4 строки (maxRows={4})
   resize: none;
-  border: 1px solid var(--tg-divider);
+  border: 1px solid var(--border-color);
   border-radius: 14px;
   background: transparent;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
   font-size: 16px;
   font-family: inherit;
   line-height: 1.4;
@@ -58,11 +58,11 @@
 
   @media (hover: hover) {
     &:hover {
-      border-color: var(--tg-textFaint);
+      border-color: var(--secondary-text-color);
     }
   }
   &:focus {
-    border-color: var(--tg-accent);
+    border-color: var(--primary-color);
     border-width: 1.5px;
     padding: 12.5px 14.5px; // компенсация +0.5px рамки
   }
@@ -75,7 +75,7 @@
   top: 15px;
   padding: 0 4px;
   background: #ffffff;
-  color: var(--tg-textSecondary);
+  color: var(--secondary-text-color);
   font-size: 16px;
   pointer-events: none;
   transition: top 0.15s, font-size 0.15s, color 0.15s;
@@ -91,7 +91,7 @@
   font-size: 13px;
 }
 .captionInput:focus ~ .captionLabel {
-  color: var(--tg-accent);
+  color: var(--primary-color);
 }
 
 // Блок селектора приватности
@@ -121,13 +121,13 @@
   cursor: pointer;
   font-size: 15px;
   font-weight: 500;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
   background: transparent;
   transition: background 0.18s ease, color 0.18s ease;
 
   @media (hover: hover) {
     &:hover {
-      background: var(--tg-hover);
+      background: var(--light-secondary-text-color);
     }
   }
 }
@@ -172,7 +172,7 @@
 
   @media (hover: hover) {
     &:hover {
-      background: var(--tg-hover);
+      background: var(--light-secondary-text-color);
     }
   }
 }
@@ -191,13 +191,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid var(--tg-textFaint);
+  border: 2px solid var(--secondary-text-color);
   color: #fff;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .checkOn {
-  background: var(--tg-accent);
+  background: var(--primary-color);
   border: none;
 }
 

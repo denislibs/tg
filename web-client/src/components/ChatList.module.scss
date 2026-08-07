@@ -8,7 +8,7 @@
   // тонкий запас под скроллбар — ширина списка не прыгает при смене папки (tweb)
   scrollbar-gutter: stable;
   scrollbar-width: thin;
-  scrollbar-color: var(--tg-textFaint) transparent;
+  scrollbar-color: var(--secondary-text-color) transparent;
 
   &::-webkit-scrollbar {
     width: 6px;
@@ -19,7 +19,7 @@
     transition: background 0.2s;
   }
   &:hover::-webkit-scrollbar-thumb {
-    background: var(--tg-textFaint);
+    background: var(--secondary-text-color);
   }
 }
 

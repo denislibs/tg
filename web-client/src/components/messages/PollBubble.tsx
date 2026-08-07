@@ -92,7 +92,7 @@ export default function PollBubble({ poll, out }: { poll: Poll; out: boolean }) 
                         <TgIcon
                           name={isWrongChosen ? 'close' : 'check'}
                           size={14}
-                          color={isWrongChosen ? '#e5484d' : 'var(--tg-accent)'}
+                          color={isWrongChosen ? '#e5484d' : 'var(--primary-color)'}
                         />
                       )}
                       <Text size={12} color="var(--b-time)">{count}</Text>

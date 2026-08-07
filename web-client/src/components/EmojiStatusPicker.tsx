@@ -43,7 +43,7 @@ export default function EmojiStatusPicker({ open, onClose }: { open: boolean; on
           onClick={onClose}
         >
           <motion.div
-            style={{ width: 320, maxWidth: '90vw', background: 'var(--tg-sidebarBg)', borderRadius: 12, padding: 16, boxShadow: '0 8px 32px rgba(0,0,0,.25)' }}
+            style={{ width: 320, maxWidth: '90vw', background: 'var(--surface-color)', borderRadius: 12, padding: 16, boxShadow: '0 8px 32px rgba(0,0,0,.25)' }}
             initial={{ scale: 0.94, opacity: 0, y: 10 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.96, opacity: 0, y: 6 }}
@@ -51,16 +51,16 @@ export default function EmojiStatusPicker({ open, onClose }: { open: boolean; on
             onClick={(e: React.MouseEvent) => e.stopPropagation()}
           >
             <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
-              <Text size={17} weight={600} color="var(--tg-textPrimary)" style={{ flex: 1 }}>
+              <Text size={17} weight={600} color="var(--primary-text-color)" style={{ flex: 1 }}>
                 {t('Set Emoji Status')}
               </Text>
               {current && (
                 <span
                   onClick={() => void set('')}
-                  style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--tg-accent)' }}
+                  style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--primary-color)' }}
                 >
-                  <TgIcon name="close" size={16} color="var(--tg-accent)" />
-                  <Text size={14} color="var(--tg-accent)">{t('Remove')}</Text>
+                  <TgIcon name="close" size={16} color="var(--primary-color)" />
+                  <Text size={14} color="var(--primary-color)">{t('Remove')}</Text>
                 </span>
               )}
             </div>
@@ -78,7 +78,7 @@ export default function EmojiStatusPicker({ open, onClose }: { open: boolean; on
                     height: 36,
                     borderRadius: 8,
                     cursor: 'pointer',
-                    background: current === emoji ? 'var(--tg-sectionBackdrop)' : 'transparent',
+                    background: current === emoji ? 'var(--background-color)' : 'transparent',
                   }}
                 >
                   {emoji}

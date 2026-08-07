@@ -32,7 +32,7 @@
 .label {
   font-weight: 600;
   font-size: 13px;
-  color: var(--tg-accent);
+  color: var(--primary-color);
   font-family: inherit;
 }
 
@@ -42,10 +42,10 @@
   gap: 4px;
   cursor: pointer;
   font-size: 12px;
-  color: var(--tg-textSecondary);
+  color: var(--secondary-text-color);
 
   &.copied {
-    color: var(--tg-accent);
+    color: var(--primary-color);
   }
 }
 

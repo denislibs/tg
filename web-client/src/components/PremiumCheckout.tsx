@@ -82,7 +82,7 @@ export default function PremiumCheckout({
               <div className={s.close} onClick={onClose}>
                 <TgIcon name="close" />
               </div>
-              <Text size={19} weight={600} color="var(--tg-textPrimary)" className={s.title}>
+              <Text size={19} weight={600} color="var(--primary-text-color)" className={s.title}>
                 {t('Payment')}
               </Text>
             </div>
@@ -93,14 +93,14 @@ export default function PremiumCheckout({
                   <TgIcon name="star_filled" size={22} color="#fff" />
                 </div>
                 <div className={s.summaryBody}>
-                  <Text size={16} weight={500} color="var(--tg-textPrimary)">
+                  <Text size={16} weight={500} color="var(--primary-text-color)">
                     {t('Telegram Premium')} — {t(plan.labelKey)}
                   </Text>
-                  <Text size={14} color="var(--tg-textSecondary)">
+                  <Text size={14} color="var(--secondary-text-color)">
                     {formatUsd(perMonthCents(plan))} {t('per month')}
                   </Text>
                 </div>
-                <Text size={16} weight={600} color="var(--tg-textPrimary)">
+                <Text size={16} weight={600} color="var(--primary-text-color)">
                   {formatUsd(plan.priceCents)}
                 </Text>
               </div>
@@ -144,7 +144,7 @@ export default function PremiumCheckout({
               </div>
 
               {error && (
-                <Text size={14} color="var(--tg-danger, #e53935)" className={s.error}>
+                <Text size={14} color="#e53935" className={s.error}>
                   {error}
                 </Text>
               )}
@@ -160,7 +160,7 @@ export default function PremiumCheckout({
               >
                 {paying ? t('Processing…') : `${t('Pay')} ${formatUsd(plan.priceCents)}`}
               </motion.button>
-              <Text size={12.5} color="var(--tg-textFaint)" className={s.disclaimer}>
+              <Text size={12.5} color="var(--secondary-text-color)" className={s.disclaimer}>
                 {t('This is a demo checkout. No real payment is processed.')}
               </Text>
             </div>

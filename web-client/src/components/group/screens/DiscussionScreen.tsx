@@ -35,7 +35,7 @@ export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => vo
 
   return (
     <SettingsScreen title="Discussion" onBack={onBack} zIndex={70}>
-      <Text size={14.5} color="var(--tg-textSecondary)" className={s.bansCaption}>
+      <Text size={14.5} color="var(--secondary-text-color)" className={s.bansCaption}>
         {linkedId
           ? t('Users can now discuss your posts in the linked group.')
           : t('Select a group chat that will host comments from your channel.')}
@@ -48,8 +48,8 @@ export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => vo
               <div className={s.memberRow}>
                 <Avatar size="md" background={gradientFor(linked.id)} text={initials(linked.title)} />
                 <div className={s.memberBody}>
-                  <Text noWrap size={16} color="var(--tg-textPrimary)">{linked.title}</Text>
-                  <Text noWrap size={14} color="var(--tg-textSecondary)">
+                  <Text noWrap size={16} color="var(--primary-text-color)">{linked.title}</Text>
+                  <Text noWrap size={14} color="var(--secondary-text-color)">
                     {linked.username ? `@${linked.username}` : `${linked.memberCount} ${t('members')}`}
                   </Text>
                 </div>
@@ -62,13 +62,13 @@ export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => vo
         </>
       ) : (
         <Section>
-          <Row icon={<TgIcon name="newgroup" size={22} color="var(--tg-accent)" />} label="Create a New Group" accent onClick={() => void g.enableDiscussion()} />
+          <Row icon={<TgIcon name="newgroup" size={22} color="var(--primary-color)" />} label="Create a New Group" accent onClick={() => void g.enableDiscussion()} />
           {candidates.map((c) => (
             <div key={c.id} className={s.memberRow} onClick={() => setConfirming(c)}>
               <Avatar size="md" background={gradientFor(c.id)} text={initials(c.title)} />
               <div className={s.memberBody}>
-                <Text noWrap size={16} color="var(--tg-textPrimary)">{c.title}</Text>
-                <Text noWrap size={14} color="var(--tg-textSecondary)">
+                <Text noWrap size={16} color="var(--primary-text-color)">{c.title}</Text>
+                <Text noWrap size={14} color="var(--secondary-text-color)">
                   {c.username ? `@${c.username}` : `${c.memberCount} ${t('members')}`}
                 </Text>
               </div>

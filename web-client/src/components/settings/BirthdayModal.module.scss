@@ -10,7 +10,7 @@
 .dialog {
   width: min(92%, 420px);
   border-radius: 16px;
-  background: var(--tg-sidebarBg);
+  background: var(--surface-color);
   padding: 20px;
   position: relative;
 }
@@ -29,7 +29,7 @@
   width: 86px;
   height: 86px;
   border-radius: 50%;
-  background: var(--tg-hover);
+  background: var(--light-secondary-text-color);
   display: flex;
   align-items: center;
   justify-content: center;

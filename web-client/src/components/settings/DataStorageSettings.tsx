@@ -131,8 +131,8 @@ function AutoDownloadTypeScreen({ type, onBack }: { type: MediaType; onBack: () 
         {type === 'file' && (
           <div className={s.range}>
             <div className={s.rangeDetails}>
-              <Text size={16} color="var(--tg-textPrimary)">{t('Maximum file size')}</Text>
-              <Text size={15} color="var(--tg-textSecondary)">
+              <Text size={16} color="var(--primary-text-color)">{t('Maximum file size')}</Text>
+              <Text size={15} color="var(--secondary-text-color)">
                 {t('up to %1$s').replace('%1$s', formatBytes(sizeOf(sliderVal), t))}
               </Text>
             </div>
@@ -199,8 +199,8 @@ export default function DataStorageSettings({ onBack }: { onBack: () => void }) 
     <div className={s.quotaRow}>
       <div className={s.quotaIcon}><TgIcon name={icon} size={24} /></div>
       <div className={s.quotaBody}>
-        <Text size={16} color="var(--tg-textPrimary)">{t(label)}</Text>
-        <Text size={13.5} color="var(--tg-textSecondary)">{fmt(value)}</Text>
+        <Text size={16} color="var(--primary-text-color)">{t(label)}</Text>
+        <Text size={13.5} color="var(--secondary-text-color)">{fmt(value)}</Text>
       </div>
     </div>
   )
@@ -243,11 +243,11 @@ export default function DataStorageSettings({ onBack }: { onBack: () => void }) 
       <Section caption="Estimated storage quota" footer="Note that cache required for the app to function properly will not be cleared.">
         <div className={s.quotaRow}>
           <div className={s.quotaBody}>
-            <Text size={16} color="var(--tg-textPrimary)">{t('Cached files')}</Text>
-            <Text size={13.5} color="var(--tg-textSecondary)">{fmt(sizes?.total)}</Text>
+            <Text size={16} color="var(--primary-text-color)">{t('Cached files')}</Text>
+            <Text size={13.5} color="var(--secondary-text-color)">{fmt(sizes?.total)}</Text>
           </div>
           <div className={s.clearBtn} onClick={() => setConfirm('files')}>
-            <Text size={15} weight={600} color="var(--tg-accent)">{t('Clear')}</Text>
+            <Text size={15} weight={600} color="var(--primary-color)">{t('Clear')}</Text>
           </div>
         </div>
         {quotaIconRow('image', 'Images', sizes?.images)}
@@ -257,8 +257,8 @@ export default function DataStorageSettings({ onBack }: { onBack: () => void }) 
 
         <div className={s.range}>
           <div className={s.rangeDetails}>
-            <Text size={16} color="var(--tg-textPrimary)">{t('Clear cache older than')}</Text>
-            <Text size={15} color="var(--tg-textSecondary)">{t(CACHE_TIME_OPTIONS[timeIdx].label)}</Text>
+            <Text size={16} color="var(--primary-text-color)">{t('Clear cache older than')}</Text>
+            <Text size={15} color="var(--secondary-text-color)">{t(CACHE_TIME_OPTIONS[timeIdx].label)}</Text>
           </div>
           <Slider
             value={timeIdx} min={0} max={CACHE_TIME_OPTIONS.length - 1} step={1}
@@ -268,8 +268,8 @@ export default function DataStorageSettings({ onBack }: { onBack: () => void }) 
         </div>
         <div className={s.range}>
           <div className={s.rangeDetails}>
-            <Text size={16} color="var(--tg-textPrimary)">{t('Cache size limit')}</Text>
-            <Text size={15} color="var(--tg-textSecondary)">
+            <Text size={16} color="var(--primary-text-color)">{t('Cache size limit')}</Text>
+            <Text size={15} color="var(--secondary-text-color)">
               {CACHE_SIZE_VALUES[sizeIdx] === 0 ? t('Auto') : formatBytes(CACHE_SIZE_VALUES[sizeIdx], t)}
             </Text>
           </div>

@@ -81,7 +81,7 @@ export default function CreatePollPopup({ onCreate, onClose }: {
   return (
     <Popup open title={t('New Poll')} onClose={onClose} width={420} action={{ label: t('Create'), onClick: submit }}>
       <div className={s.body}>
-        <Text size={13.5} weight={600} color="var(--tg-accent)" className={s.label}>{t('Ask a Question')}</Text>
+        <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('Ask a Question')}</Text>
         <input
           className={s.question}
           value={question}
@@ -90,7 +90,7 @@ export default function CreatePollPopup({ onCreate, onClose }: {
           onChange={(e) => setQuestion(e.target.value)}
         />
 
-        <Text size={13.5} weight={600} color="var(--tg-accent)" className={s.label}>{t('Poll options')}</Text>
+        <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('Poll options')}</Text>
         {options.map((opt, i) => (
           <div key={i} className={s.optionRow}>
             {quiz && (
@@ -108,7 +108,7 @@ export default function CreatePollPopup({ onCreate, onClose }: {
             />
             {opt !== '' && (
               <IconButton size="small" onClick={() => removeOption(i)} aria-label={t('Delete')}>
-                <TgIcon name="close" size={18} color="var(--tg-textSecondary)" />
+                <TgIcon name="close" size={18} color="var(--secondary-text-color)" />
               </IconButton>
             )}
           </div>
@@ -131,7 +131,7 @@ export default function CreatePollPopup({ onCreate, onClose }: {
             <TgSwitch checked={quiz} />
           </div>
           {quiz && (
-            <Text size={13} color="var(--tg-textSecondary)" style={{ padding: '2px 4px' }}>
+            <Text size={13} color="var(--secondary-text-color)" style={{ padding: '2px 4px' }}>
               {t('Select the correct answer in the list of options.')}
             </Text>
           )}

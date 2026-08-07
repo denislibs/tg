@@ -93,7 +93,7 @@ export default function AddMembersScreen({
       </div>
       <div className={s.cardList}>
         {list.length === 0 && (
-          <Text size={14.5} color="var(--tg-textSecondary)" style={{ padding: 16, display: 'block', textAlign: 'center' }}>
+          <Text size={14.5} color="var(--secondary-text-color)" style={{ padding: 16, display: 'block', textAlign: 'center' }}>
             {t('No Results')}
           </Text>
         )}
@@ -105,8 +105,8 @@ export default function AddMembersScreen({
               <Checkbox checked={isMember || selected.includes(c.id)} disabled={isMember} shape="square" size={20} />
               <UserAvatar id={c.id} name={c.name} avatarUrl={c.avatarUrl} online={p?.online} />
               <div className={s.memberBody}>
-                <Text noWrap size={16} color="var(--tg-textPrimary)">{c.name}</Text>
-                <Text noWrap size={14} color="var(--tg-textSecondary)">
+                <Text noWrap size={16} color="var(--primary-text-color)">{c.name}</Text>
+                <Text noWrap size={14} color="var(--secondary-text-color)">
                   {p?.online ? t('online') : lastSeenLabel(p?.lastSeen ?? 0, lang)}
                 </Text>
               </div>

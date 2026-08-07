@@ -52,11 +52,11 @@ function ShortcutRow({ action, keys, hint }: { action: string; keys: string[]; h
   return (
     <div className={s.row}>
       <div className={s.label}>
-        <Text noWrap size={16} color="var(--tg-textPrimary)">
+        <Text noWrap size={16} color="var(--primary-text-color)">
           {t(action)}
         </Text>
         {hint && (
-          <Text noWrap size={12} color="var(--tg-textSecondary)">
+          <Text noWrap size={12} color="var(--secondary-text-color)">
             {t(hint)}
           </Text>
         )}
@@ -72,10 +72,10 @@ function InfoRow({ action, hint }: { action: string; hint: string }) {
   return (
     <div className={s.row}>
       <div className={s.label}>
-        <Text noWrap size={16} color="var(--tg-textPrimary)">
+        <Text noWrap size={16} color="var(--primary-text-color)">
           {t(action)}
         </Text>
-        <Text noWrap size={12} color="var(--tg-textSecondary)">
+        <Text noWrap size={12} color="var(--secondary-text-color)">
           {t(hint)}
         </Text>
       </div>

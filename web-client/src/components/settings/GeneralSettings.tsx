@@ -42,13 +42,13 @@ function RadioRow({
   return (
     <div className={s.radioRow} onClick={onClick}>
       {selected ? (
-        <TgIcon name="radioon" color="var(--tg-accent)" />
+        <TgIcon name="radioon" color="var(--primary-color)" />
       ) : (
-        <TgIcon name="radiooff" color="var(--tg-textFaint)" />
+        <TgIcon name="radiooff" color="var(--secondary-text-color)" />
       )}
       <div>
-        <Text size={16} color="var(--tg-textPrimary)">{t(label)}</Text>
-        {sublabel && <Text size={13} color="var(--tg-textSecondary)">{sublabel}</Text>}
+        <Text size={16} color="var(--primary-text-color)">{t(label)}</Text>
+        {sublabel && <Text size={13} color="var(--secondary-text-color)">{sublabel}</Text>}
       </div>
     </div>
   )
@@ -65,8 +65,8 @@ export default function GeneralSettings({ onBack }: { onBack: () => void }) {
       <Section caption="Settings">
         <div className={s.textSize}>
           <div className={s.textSizeTop}>
-            <Text size={16} color="var(--tg-textPrimary)">{t('Message Text Size')}</Text>
-            <Text size={16} color="var(--tg-textFaint)">{textSize}</Text>
+            <Text size={16} color="var(--primary-text-color)">{t('Message Text Size')}</Text>
+            <Text size={16} color="var(--secondary-text-color)">{textSize}</Text>
           </div>
           <Slider value={textSize} min={12} max={24} step={1} onChange={(v) => update({ textSize: v })} className={s.slider} />
         </div>

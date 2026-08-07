@@ -35,7 +35,7 @@ function readTheme() {
   const dt = document.documentElement.getAttribute('data-theme')
   return {
     mode: (dt === 'night' || dt === 'tinted' ? 'dark' : 'light') as 'light' | 'dark',
-    appBg: v('--tg-appBg'),
+    appBg: v('--background-color'),
     grad: [v('--tg-bgGrad0'), v('--tg-bgGrad1'), v('--tg-bgGrad2'), v('--tg-bgGrad3')],
   }
 }

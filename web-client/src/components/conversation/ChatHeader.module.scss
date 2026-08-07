@@ -51,7 +51,7 @@
   height: 40px;
   border-radius: 20px;
   padding: 0 8px 0 12px;
-  background: var(--tg-hover);
+  background: var(--light-secondary-text-color);
 }
 .searchInput {
   flex: 1;
@@ -60,11 +60,11 @@
   outline: none;
   background: transparent;
   font-size: 16px;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
   font-family: inherit;
 
   &::placeholder {
-    color: var(--tg-textFaint);
+    color: var(--secondary-text-color);
     opacity: 1;
   }
 }
@@ -95,25 +95,25 @@
   padding: 0 10px;
   border: none;
   border-radius: 15px;
-  background: var(--tg-hover);
-  color: var(--tg-textSecondary);
+  background: var(--light-secondary-text-color);
+  color: var(--secondary-text-color);
   font-family: inherit;
   font-size: 14px;
   cursor: pointer;
 
   @media (hover: hover) {
     &:hover {
-      background: var(--tg-divider);
+      background: var(--border-color);
     }
   }
 }
 .chipActive {
-  background: var(--tg-accent);
+  background: var(--primary-color);
   color: #fff;
 
   @media (hover: hover) {
     &:hover {
-      background: var(--tg-accent);
+      background: var(--primary-color);
     }
   }
 }
@@ -140,7 +140,7 @@
 
   @media (hover: hover) {
     &:hover {
-      background: var(--tg-hover);
+      background: var(--light-secondary-text-color);
     }
   }
 }
@@ -149,7 +149,7 @@
   overflow: hidden;
 }
 .divider {
-  border-top: 1px solid var(--tg-divider);
+  border-top: 1px solid var(--border-color);
 }
 .resultsScroll {
   max-height: 60vh;
@@ -161,7 +161,7 @@
 }
 .bold {
   font-weight: 700;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
 }
 .resultRow {
   display: flex;
@@ -172,11 +172,11 @@
 
   @media (hover: hover) {
     &:hover {
-      background: var(--tg-hover);
+      background: var(--light-secondary-text-color);
     }
   }
   &[data-active] {
-    background: var(--tg-hover);
+    background: var(--light-secondary-text-color);
   }
 }
 .resultBody {
@@ -196,7 +196,7 @@
 }
 .resultPreview {
   font-size: 14px;
-  color: var(--tg-textSecondary);
+  color: var(--secondary-text-color);
   margin-top: 1px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -205,7 +205,7 @@
 
 // ── ResultPreview (совпадения/медиа-превью) ──
 .match {
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
   font-weight: 600;
 }
 .mediaPreview {
@@ -229,7 +229,7 @@
   padding: 4px;
   height: var(--chat-plate-height);
   border-radius: 24px;
-  background: var(--tg-bubble);
+  background: var(--surface-color);
   box-shadow: var(--tg-plateShadow);
 }
 .peer {

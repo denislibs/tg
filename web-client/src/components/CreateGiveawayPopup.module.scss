@@ -22,30 +22,30 @@
   text-align: center;
   padding: 9px 12px;
   border-radius: 10px;
-  border: 1.5px solid var(--tg-fill-secondary, rgba(128, 128, 128, 0.25));
+  border: 1.5px solid rgba(128, 128, 128, 0.25);
   font-size: 15px;
   font-weight: 600;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
   cursor: pointer;
 }
 
 .typeOn {
-  border-color: var(--tg-accent);
-  color: var(--tg-accent);
-  background: color-mix(in srgb, var(--tg-accent) 10%, transparent);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 10%, transparent);
 }
 
 .input {
   width: 100%;
   padding: 10px 12px;
   border-radius: 10px;
-  border: 1.5px solid var(--tg-fill-secondary, rgba(128, 128, 128, 0.25));
+  border: 1.5px solid rgba(128, 128, 128, 0.25);
   background: transparent;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
   font-size: 15px;
   outline: none;
 
   &:focus {
-    border-color: var(--tg-accent);
+    border-color: var(--primary-color);
   }
 }

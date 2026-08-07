@@ -5,7 +5,7 @@
   z-index: 1400; // над чатом и меню, как остальные фуллскрины
   display: flex;
   flex-direction: column;
-  background: var(--tg-appBg);
+  background: var(--background-color);
 }
 
 .header {
@@ -15,8 +15,8 @@
   gap: 8px;
   height: 56px;
   padding: 0 12px;
-  border-bottom: 1px solid var(--tg-divider);
-  background: var(--tg-sidebarBg);
+  border-bottom: 1px solid var(--border-color);
+  background: var(--surface-color);
 }
 
 .domain {
@@ -29,7 +29,7 @@
 
 .openLink {
   flex: none;
-  color: var(--tg-accent);
+  color: var(--primary-color);
   font-size: 14px;
   font-weight: 600;
   text-decoration: none;
@@ -37,7 +37,7 @@
   border-radius: 8px;
 
   &:hover {
-    background: var(--tg-hover);
+    background: var(--light-secondary-text-color);
   }
 }
 
@@ -51,7 +51,7 @@
   max-width: 720px;
   margin: 0 auto;
   padding: 24px 16px 64px;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
   font-size: 16px;
   line-height: 1.6;
   overflow-wrap: break-word;
@@ -66,7 +66,7 @@
 
 .byline {
   margin-bottom: 20px;
-  color: var(--tg-textSecondary);
+  color: var(--secondary-text-color);
   font-size: 14px;
 }
 
@@ -84,15 +84,15 @@
 .quote {
   margin: 0 0 16px;
   padding: 2px 0 2px 14px;
-  border-left: 3px solid var(--tg-accent);
-  color: var(--tg-textSecondary);
+  border-left: 3px solid var(--primary-color);
+  color: var(--secondary-text-color);
 }
 
 .pre {
   margin: 0 0 16px;
   padding: 12px 14px;
   border-radius: 8px;
-  background: var(--tg-inputSearchBg);
+  background: var(--input-search-background-color);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 14px;
   line-height: 1.45;

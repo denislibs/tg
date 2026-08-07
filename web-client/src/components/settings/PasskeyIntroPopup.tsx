@@ -77,20 +77,20 @@ export default function PasskeyIntroPopup({
             <div className={s.sticker}>
               <LottieSticker name="Key" size={120} />
             </div>
-            <Text size={24} weight={700} color="var(--tg-textPrimary)" className={s.title}>
+            <Text size={24} weight={700} color="var(--primary-text-color)" className={s.title}>
               {t('Protect your account')}
             </Text>
-            <Text size={16} color="var(--tg-textPrimary)" className={s.subtitle}>
+            <Text size={16} color="var(--primary-text-color)" className={s.subtitle}>
               {t('Log in safely and keep your account secure.')}
             </Text>
 
             {ROWS.map((r) => (
               <div key={r.icon} className={s.row}>
                 <TgIcon name={r.icon} size={24} className={s.rowIcon} />
-                <Text size={16} weight={600} color="var(--tg-textPrimary)">
+                <Text size={16} weight={600} color="var(--primary-text-color)">
                   {t(r.title)}
                 </Text>
-                <Text size={16} color="var(--tg-textSecondary)" style={{ marginTop: 1, lineHeight: 1.3125 }}>
+                <Text size={16} color="var(--secondary-text-color)" style={{ marginTop: 1, lineHeight: 1.3125 }}>
                   {t(r.subtitle)}
                 </Text>
               </div>

@@ -76,7 +76,7 @@ export default function Passkeys({ onBack }: { onBack: () => void }) {
           {keys.map((k) => (
             <EntryRow
               key={k.id}
-              left={<TgIcon name="key" size={24} color="var(--tg-accent)" />}
+              left={<TgIcon name="key" size={24} color="var(--primary-color)" />}
               title={k.name || t('Passkey')}
               sub={
                 k.lastUsedAt

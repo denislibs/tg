@@ -79,7 +79,7 @@ export default function GiveawayBubble({ giveaway }: { giveaway: Giveaway }) {
 
       <div className={s.row}>
         <div className={s.rowTitle}>{active ? t('Winners Selection Date') : t('Giveaway Ended')}</div>
-        <Text size={14} weight={600} color="var(--tg-accent)">
+        <Text size={14} weight={600} color="var(--primary-color)">
           {active ? formatCountdown(remaining, t) : t('Winners selected')}
         </Text>
       </div>

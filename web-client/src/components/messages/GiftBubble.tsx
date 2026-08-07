@@ -19,7 +19,7 @@ export default function GiftBubble({ gift, out }: { gift: GiftInfo; out: boolean
     <>
       <div className={s.card} onClick={() => setOpen(true)}>
         <span className={s.emoji}>{gift.gift.emoji}</span>
-        <Text size={16} weight={600} color="var(--tg-textPrimary)" style={{ textAlign: 'center' }}>
+        <Text size={16} weight={600} color="var(--primary-text-color)" style={{ textAlign: 'center' }}>
           {gift.gift.title}
         </Text>
         <div className={s.price}>
@@ -27,7 +27,7 @@ export default function GiftBubble({ gift, out }: { gift: GiftInfo; out: boolean
           {gift.gift.priceStars}
         </div>
         {gift.message && (
-          <Text size={14} color="var(--tg-textPrimary)" style={{ textAlign: 'center', marginTop: 2 }}>
+          <Text size={14} color="var(--primary-text-color)" style={{ textAlign: 'center', marginTop: 2 }}>
             {gift.message}
           </Text>
         )}

@@ -16,7 +16,7 @@
   width: min(26.25rem, 100%);
   max-height: 92vh;
   border-radius: 2.5rem;
-  background: var(--tg-sidebarBg);
+  background: var(--surface-color);
   padding: 1rem;
   overflow-y: auto;
 }
@@ -32,11 +32,11 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: var(--tg-textSecondary);
+  color: var(--secondary-text-color);
 
   @media (hover: hover) {
     &:hover {
-      background: var(--tg-hover);
+      background: var(--light-secondary-text-color);
     }
   }
 }
@@ -68,7 +68,7 @@
   position: absolute;
   top: 1rem;
   inset-inline-start: 1.5rem;
-  color: var(--tg-accent);
+  color: var(--primary-color);
 }
 
 // футер: паддинг-топ 1.625rem, кнопки-пилюли 48px (popup-footer-abitlarger)
@@ -90,7 +90,7 @@
   font-weight: 600;
   cursor: pointer;
   user-select: none;
-  background: var(--tg-accent);
+  background: var(--primary-color);
   color: #fff;
 
   @media (hover: hover) {
@@ -101,12 +101,12 @@
 
   &.secondary {
     background: transparent;
-    color: var(--tg-accent);
+    color: var(--primary-color);
 
     @media (hover: hover) {
       &:hover {
         filter: none;
-        background: var(--tg-hover);
+        background: var(--light-secondary-text-color);
       }
     }
   }

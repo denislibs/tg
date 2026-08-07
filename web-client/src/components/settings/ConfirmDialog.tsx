@@ -27,8 +27,8 @@ export default function ConfirmDialog({ title, text, action, danger, zIndex, onC
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.2, ease: EASE }}
       >
-        <Text size={17} weight={600} color="var(--tg-textPrimary)" style={{ marginBottom: 8 }}>{title}</Text>
-        <Text size={14.5} color="var(--tg-textSecondary)">{text}</Text>
+        <Text size={17} weight={600} color="var(--primary-text-color)" style={{ marginBottom: 8 }}>{title}</Text>
+        <Text size={14.5} color="var(--secondary-text-color)">{text}</Text>
         <div className={s.actions}>
           <div className={s.action} onClick={onClose}>{t('Cancel')}</div>
           <div className={s.action} style={danger ? { color: '#ff595a' } : undefined} onClick={() => { onConfirm(); onClose() }}>

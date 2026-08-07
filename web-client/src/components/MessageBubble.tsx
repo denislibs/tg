@@ -21,34 +21,34 @@ export default function MessageBubble() {
 
         {/* Body */}
         <div className={s.body}>
-          <Text weight={700} size={15} color="var(--tg-textPrimary)" style={{ marginBottom: '10px' }}>
+          <Text weight={700} size={15} color="var(--primary-text-color)" style={{ marginBottom: '10px' }}>
             ОЧЕНЬ ВАЖНО!!!
           </Text>
 
-          <Text size={15} color="var(--tg-textPrimary)" style={{ lineHeight: 1.5, marginBottom: '12px' }}>
+          <Text size={15} color="var(--primary-text-color)" style={{ lineHeight: 1.5, marginBottom: '12px' }}>
             🧧 <span className={s.link}>Наш основной канал</span> заблокировали у большинства
             подписчиков
           </Text>
 
-          <Text size={15} color="var(--tg-textPrimary)" style={{ lineHeight: 1.5, marginBottom: '12px' }}>
+          <Text size={15} color="var(--primary-text-color)" style={{ lineHeight: 1.5, marginBottom: '12px' }}>
             Причина? Алгоритмы решили, что у нас тут порнография. Очень суровый комплемент нашей
             индустрии 🤝
           </Text>
 
-          <Text size={15} color="var(--tg-textPrimary)" style={{ lineHeight: 1.5, marginBottom: '12px' }}>
+          <Text size={15} color="var(--primary-text-color)" style={{ lineHeight: 1.5, marginBottom: '12px' }}>
             Но мы не из тех, кто сдается после первого раунда. <span className={s.link}>Новый канал</span>{' '}
             уже создан, весь контент перенесён, работа продолжается в штатном режиме.
           </Text>
 
-          <Text size={15} color="var(--tg-textPrimary)" style={{ lineHeight: 1.5, marginBottom: '12px' }}>
+          <Text size={15} color="var(--primary-text-color)" style={{ lineHeight: 1.5, marginBottom: '12px' }}>
             ГОСПОДА, <span className={s.link}>подписывайтесь на наш новый канал</span>. Тут мы
             будем продолжать делать всё ровно то же самое, что делали и до этого.
           </Text>
 
-          <Text size={15} color="var(--tg-textPrimary)" style={{ lineHeight: 1.5, marginBottom: '4px' }}>
+          <Text size={15} color="var(--primary-text-color)" style={{ lineHeight: 1.5, marginBottom: '4px' }}>
             Так что жмем по ссылке и продолжаем
           </Text>
-          <Text size={15} color="var(--tg-textPrimary)" style={{ lineHeight: 1.5 }}>
+          <Text size={15} color="var(--primary-text-color)" style={{ lineHeight: 1.5 }}>
             👉<span className={s.link}>https://t.me/+Y4yhqW7nAQcxNDdi</span>
           </Text>
 

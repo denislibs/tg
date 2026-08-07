@@ -117,7 +117,7 @@ export default function RealMediaBubble({
 
   const timeCluster: ReactNode = time ? (
     <div className={s.timeCluster}>
-      <Text size={12} color={out ? tickColor : 'var(--tg-textFaint)'} style={{ fontVariantNumeric: 'tabular-nums' }}>{time}</Text>
+      <Text size={12} color={out ? tickColor : 'var(--secondary-text-color)'} style={{ fontVariantNumeric: 'tabular-nums' }}>{time}</Text>
       {out && <Ticks status={status} color={tickColor} />}
     </div>
   ) : null
@@ -247,8 +247,8 @@ export default function RealMediaBubble({
       <AudioRow
         mediaId={mediaId} name={fileName || `audio-${mediaId}`} duration={duration} size={size}
         time={timeCluster}
-        primary={out ? '#fff' : 'var(--tg-textPrimary)'}
-        secondary={out ? 'rgba(255,255,255,0.7)' : 'var(--tg-textSecondary)'}
+        primary={out ? '#fff' : 'var(--primary-text-color)'}
+        secondary={out ? 'rgba(255,255,255,0.7)' : 'var(--secondary-text-color)'}
         uploadProgress={uploadProgress}
         onCancelUpload={cancelUpload}
       />
@@ -343,7 +343,7 @@ function DocRow({ name, size, mime, href, out, uploadProgress, onCancelUpload, t
       download={name}
       onClick={startDownload}
       data-out={out || undefined}
-      style={{ '--doc-color': DOC_EXT_COLORS[ext] ?? 'var(--tg-accent)' } as React.CSSProperties}
+      style={{ '--doc-color': DOC_EXT_COLORS[ext] ?? 'var(--primary-color)' } as React.CSSProperties}
     >
       <div className={s.docIco}>
         {ring != null ? (
@@ -437,7 +437,7 @@ function AudioRow({ mediaId, name, duration, size, primary, secondary, time, upl
         {isCurrent ? (
           <div className={s.progressRow}>
             <div className={s.progressTrack} onClick={onSeek}>
-              <div className={s.progressFill} style={{ width: `${frac * 100}%`, background: 'var(--tg-accent)' }} />
+              <div className={s.progressFill} style={{ width: `${frac * 100}%`, background: 'var(--primary-color)' }} />
             </div>
             <Text size={12.5} color={secondary} style={{ fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{fmtDur(Math.floor(curTime))}</Text>
             {time}

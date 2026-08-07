@@ -14,7 +14,7 @@
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  color: var(--tg-textSecondary);
+  color: var(--secondary-text-color);
 }
 
 .quotaBody {
@@ -31,7 +31,7 @@
 
   @media (hover: hover) {
     &:hover {
-      background: var(--tg-hover);
+      background: var(--light-secondary-text-color);
     }
   }
 }

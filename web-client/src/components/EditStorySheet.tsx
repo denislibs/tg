@@ -98,13 +98,13 @@ export default function EditStorySheet({
       animate={{ x: 0 }}
       exit={{ x: '100%' }}
       transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-      style={{ position: 'fixed', inset: 0, zIndex: 3200, background: 'var(--tg-sidebarBg)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 3200, background: 'var(--surface-color)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
     >
       <div className={s.header}>
-        <IconButton onClick={onClose} aria-label={t('Back')} color="var(--tg-textSecondary)">
+        <IconButton onClick={onClose} aria-label={t('Back')} color="var(--secondary-text-color)">
           <TgIcon name="back" />
         </IconButton>
-        <Text size={19} weight={600} color="var(--tg-textPrimary)">
+        <Text size={19} weight={600} color="var(--primary-text-color)">
           {t('Edit story')}
         </Text>
       </div>
@@ -126,7 +126,7 @@ export default function EditStorySheet({
         </div>
 
         <div className={s.privacyBlock}>
-          <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionLabel}>
+          <Text size={14} weight={600} color="var(--primary-color)" className={s.sectionLabel}>
             Кто может видеть
           </Text>
           <div className={classNames(s.card, s.segments)} role="radiogroup" aria-label="Кто может видеть историю">
@@ -151,12 +151,12 @@ export default function EditStorySheet({
 
         {privacy === 'selected' && (
           <div className={s.contactsBlock}>
-            <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionLabel}>
+            <Text size={14} weight={600} color="var(--primary-color)" className={s.sectionLabel}>
               Контакты
             </Text>
             <div className={classNames(s.card, s.contactsList)}>
               {contacts.length === 0 && (
-                <Text size={15} color="var(--tg-textSecondary)" className={s.emptyRow}>Нет контактов</Text>
+                <Text size={15} color="var(--secondary-text-color)" className={s.emptyRow}>Нет контактов</Text>
               )}
               {contacts.map((c) => {
                 const checked = allow.has(c.id)
@@ -172,7 +172,7 @@ export default function EditStorySheet({
                     className={s.contactRow}
                   >
                     <Avatar background={gradientFor(c.id)} text={c.displayName.charAt(0).toUpperCase()} size="sm" />
-                    <Text noWrap size={16} color="var(--tg-textPrimary)" className={s.contactName}>{c.displayName}</Text>
+                    <Text noWrap size={16} color="var(--primary-text-color)" className={s.contactName}>{c.displayName}</Text>
                     <div className={classNames(s.check, checked ? s.checkOn : '')}>
                       {checked && <TgIcon name="check" size={16} />}
                     </div>

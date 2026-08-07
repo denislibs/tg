@@ -5,7 +5,7 @@
   gap: 4px;
   font-weight: 600;
   font-size: 15px;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
 }
 
 .body {
@@ -21,7 +21,7 @@
   gap: 6px;
   font-size: 34px;
   font-weight: 700;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
   margin-bottom: 12px;
 }
 
@@ -54,7 +54,7 @@
   .line {
     flex: 1;
     height: 0.5px;
-    background: var(--tg-borderColor, rgba(0, 0, 0, 0.12));
+    background: rgba(0, 0, 0, 0.12);
   }
 }
 
@@ -87,7 +87,7 @@
   padding: 2px 7px;
   border-radius: 12px;
   background: linear-gradient(to bottom, #ffaa00, #ffcd3a);
-  border: 2px solid var(--tg-bg, #fff);
+  border: 2px solid var(--background-color, #fff);
   color: #fff;
   font-size: 12px;
   font-weight: 700;

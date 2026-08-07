@@ -88,19 +88,19 @@ export default function SettingsView({
     >
       {/* Header */}
       <div className={s.header}>
-        <IconButton onClick={onBack} color="var(--tg-textSecondary)">
+        <IconButton onClick={onBack} color="var(--secondary-text-color)">
           <TgIcon name="back" />
         </IconButton>
-        <Text size={19} weight={600} color="var(--tg-textPrimary)" className={s.headerTitle}>
+        <Text size={19} weight={600} color="var(--primary-text-color)" className={s.headerTitle}>
           {t('Settings')}
         </Text>
-        <IconButton onClick={() => setQrOpen(true)} color="var(--tg-textSecondary)">
+        <IconButton onClick={() => setQrOpen(true)} color="var(--secondary-text-color)">
           <TgIcon name="qr" />
         </IconButton>
-        <IconButton onClick={() => setEditProfile(true)} color="var(--tg-textSecondary)">
+        <IconButton onClick={() => setEditProfile(true)} color="var(--secondary-text-color)">
           <TgIcon name="edit" />
         </IconButton>
-        <IconButton color="var(--tg-textSecondary)">
+        <IconButton color="var(--secondary-text-color)">
           <TgIcon name="more" />
         </IconButton>
       </div>
@@ -111,12 +111,12 @@ export default function SettingsView({
         <div className={s.profile}>
           <Avatar background={avatarBg} src={avatarSrc} text={avatarText} size={130} />
           <div className={s.profileName} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Text size={21} weight={600} color="var(--tg-textPrimary)">
+            <Text size={21} weight={600} color="var(--primary-text-color)">
               {name}
             </Text>
             {me?.premium && <PremiumBadge size={20} />}
           </div>
-          <Text size={14} color="var(--tg-textSecondary)">{t('online')}</Text>
+          <Text size={14} color="var(--secondary-text-color)">{t('online')}</Text>
         </div>
 
         {/* Contact card */}
@@ -145,9 +145,9 @@ export default function SettingsView({
         <Section>
           <div className={s.rowClickable} onClick={(e) => onToggleMode({ x: e.clientX, y: e.clientY })}>
             <div className={s.rowIcon}>
-              <TgIcon name="darkmode" size={24} color="var(--tg-textSecondary)" />
+              <TgIcon name="darkmode" size={24} color="var(--secondary-text-color)" />
             </div>
-            <Text size={16} color="var(--tg-textPrimary)" className={s.rowBody}>{t('Night Mode')}</Text>
+            <Text size={16} color="var(--primary-text-color)" className={s.rowBody}>{t('Night Mode')}</Text>
             <TgSwitch checked={isDark} />
           </div>
           {settingsItems.map((it) => (
@@ -160,9 +160,9 @@ export default function SettingsView({
               }}
             >
               <div className={s.rowIcon}>{it.icon}</div>
-              <Text size={16} color="var(--tg-textPrimary)" className={s.rowBody}>{t(it.label)}</Text>
+              <Text size={16} color="var(--primary-text-color)" className={s.rowBody}>{t(it.label)}</Text>
               {it.value && (
-                <Text size={15} color="var(--tg-textFaint)">
+                <Text size={15} color="var(--secondary-text-color)">
                   {it.label === 'Language' ? currentLangName : t(it.value)}
                 </Text>
               )}
@@ -173,7 +173,7 @@ export default function SettingsView({
         {/* Premium / Gift */}
         <Section>
           <Row
-            icon={<TgIcon name="star_filled" size={24} color="var(--tg-accent)" />}
+            icon={<TgIcon name="star_filled" size={24} color="var(--primary-color)" />}
             label="Telegram Premium"
             sublabel={me?.premium ? t('Active — manage subscription') : t('Unlock exclusive features')}
             chevron
@@ -183,13 +183,13 @@ export default function SettingsView({
             icon={
               me?.emojiStatus
                 ? <span style={{ fontSize: 22, lineHeight: 1 }}>{me.emojiStatus}</span>
-                : <TgIcon name="smile" size={24} color="var(--tg-textSecondary)" />
+                : <TgIcon name="smile" size={24} color="var(--secondary-text-color)" />
             }
             label="Set Emoji Status"
             onClick={() => setEmojiStatusOpen(true)}
           />
           <Row
-            icon={<TgIcon name="gift" size={24} color="var(--tg-textSecondary)" />}
+            icon={<TgIcon name="gift" size={24} color="var(--secondary-text-color)" />}
             label="Send a Gift"
             onClick={() => {}}
           />

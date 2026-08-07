@@ -47,7 +47,7 @@ export default function ChatThemesPicker({
         {/* «Без темы» — сброс к дефолтному оформлению */}
         <button type="button" className={s.swatch} data-selected={selected === '' || undefined} onClick={() => apply('')}>
           <div className={s.preview} data-none>
-            <TgIcon name="close" size={22} color="var(--tg-textSecondary)" />
+            <TgIcon name="close" size={22} color="var(--secondary-text-color)" />
           </div>
           <span className={s.label}>{t('No Theme')}</span>
         </button>

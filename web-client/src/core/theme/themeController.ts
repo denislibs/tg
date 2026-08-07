@@ -210,79 +210,6 @@ function buildColorMapVars(colorMap: Record<AppColorName, string>, isNight: bool
   return declarations
 }
 
-// ВРЕМЕННЫЙ МОСТ (до Task 3 — codemod уберёт и :root-алиасы из _tokens.scss, и
-// этот inline-эмит). Ревью Task 2 обнаружило критический CSS-нюанс: в
-// _tokens.scss `--tg-accent` и т.п. объявлены ОДИН РАЗ на `:root` как
-// `var(--primary-color)`. Когда `applyChatTheme` переопределяет `--primary-color`
-// инлайном на ДОЧЕРНЕМ элементе (.root колонки чата), CSS не пересчитывает
-// `--tg-accent` — его подставленное значение вычисляется там, где `--tg-accent`
-// ФАКТИЧЕСКИ объявлен (на :root, видящим только глобальное `--primary-color`), а
-// не там, где он унаследован. Потомки, читающие `--tg-accent` (Composer,
-// MessageRow — бабблы/тики/реакции/badges), продолжали бы видеть глобальный
-// акцент — no-op. Фикс: эмитим здесь те же СЕМАНТИЧЕСКИЕ --tg-* алиасы инлайн,
-// с уже вычисленными (не var()-ссылками) значениями соответствующих tweb-токенов
-// — 1:1 зеркало таблицы алиасов из `styles/_tokens.scss :root`.
-const SIMPLE_TG_ALIASES: ReadonlyArray<readonly [tgName: string, sourceName: string]> = [
-  ['tg-accent', 'primary-color'],
-  ['tg-badge', 'primary-color'],
-  ['tg-bg', 'background-color'],
-  ['tg-appBg', 'background-color'],
-  ['tg-sectionBackdrop', 'background-color'],
-  ['tg-bubble', 'surface-color'],
-  ['tg-sidebarBg', 'surface-color'],
-  ['tg-skelBase', 'surface-color'],
-  ['tg-bubbleOut', 'message-out-background-color'],
-  ['tg-bubbleOutText', 'message-out-primary-color'],
-  ['tg-bubbleOutAccent', 'message-out-primary-color'],
-  ['tg-dangerText', 'danger-color'],
-  ['tg-divider', 'border-color'],
-  ['tg-green', 'green-color'],
-  ['tg-hover', 'light-secondary-text-color'],
-  ['tg-skelHi', 'light-secondary-text-color'],
-  ['tg-inputSearchBg', 'input-search-background-color'],
-  ['tg-searchBg', 'input-search-background-color'],
-  ['tg-link', 'link-color'],
-  ['tg-switchOff', 'secondary-color'],
-  ['tg-textPrimary', 'primary-text-color'],
-  ['tg-textSecondary', 'secondary-text-color'],
-  ['tg-textFaint', 'secondary-text-color'],
-]
-
-// tweb scss/base.scss:121 — статичная тень, НЕ зависящая от темы/акцента (одна и
-// та же на любом пресете) — 1:1 _tokens.scss `--menu-box-shadow`.
-const MENU_BOX_SHADOW = '0px 0px 10px rgba(0, 0, 0, 0.15)'
-
-// _tokens.scss `--backdrop-opacity`: 0.85 на day/light, 0.75 на night/tinted.
-function backdropOpacity(isNight: boolean): number {
-  return isNight ? 0.75 : 0.85
-}
-
-function mustGetVar(byName: ReadonlyMap<string, string>, name: string): string {
-  const value = byName.get(name)
-  if (value === undefined) throw new Error(`themeController: неизвестная переменная-источник алиаса "${name}"`)
-  return value
-}
-
-// Строит --tg-* алиасы (см. заголовок блока выше) поверх уже посчитанных
-// declarations (результат buildColorMapVars) — те же значения, что видит :root,
-// просто продублированные под именами, которые реально читают потребители в
-// колонке чата.
-function buildSemanticAliasVars(declarations: CssVar[], isNight: boolean): CssVar[] {
-  const byName = new Map(declarations)
-
-  const aliasVars: CssVar[] = SIMPLE_TG_ALIASES.map(
-    ([tgName, sourceName]) => [tgName, mustGetVar(byName, sourceName)] as CssVar,
-  )
-
-  // --tg-menuBg: var(--menu-background-color); --menu-background-color:
-  // rgba(var(--surface-color-rgb), var(--backdrop-opacity)) (_tokens.scss).
-  const surfaceRgb = mustGetVar(byName, 'surface-color-rgb')
-  aliasVars.push(['tg-menuShadow', MENU_BOX_SHADOW])
-  aliasVars.push(['tg-menuBg', `rgba(${surfaceRgb}, ${backdropOpacity(isNight)})`])
-
-  return aliasVars
-}
-
 function buildThemeCss(preset: ThemePresetName): { css: string; isNight: boolean } {
   const colorMap = presetToColorMap(preset)
   const isNight = DARK_PRESETS.has(preset)
@@ -393,13 +320,8 @@ export function deriveChatThemeVars(
   }
 
   const baseVars = buildColorMapVars(colorMap, isNight)
-  // Мост --tg-* (см. блок SIMPLE_TG_ALIASES выше) — без него потомки .root,
-  // читающие --tg-accent/--tg-bubbleOut/и т.п., не увидят переопределённые здесь
-  // tweb-токены (CSS не пересчитывает алиас, объявленный на :root, из override'а
-  // на дочернем элементе).
-  const aliasVars = buildSemanticAliasVars(baseVars, isNight)
 
-  return [...baseVars, ...aliasVars].map(([name, value]) => [`--${name}`, value])
+  return baseVars.map(([name, value]) => [`--${name}`, value])
 }
 
 /** Пишет vars из deriveChatThemeVars инлайном на element (--var через style.setProperty). */
@@ -414,14 +336,11 @@ export function applyChatTheme(
   }
 }
 
-// Набор имён переменных детерминирован (зависит только от appColorMap/
-// SIMPLE_TG_ALIASES, не от конкретных hex/preset/messageColors) —
-// переиспользуем buildColorMapVars/buildSemanticAliasVars с произвольным
-// валидным colorMap только чтобы перечислить имена (включая --tg-* мост).
+// Набор имён переменных детерминирован (зависит только от appColorMap, не от
+// конкретных hex/preset/messageColors) — переиспользуем buildColorMapVars с
+// произвольным валидным colorMap только чтобы перечислить имена.
 const CHAT_THEME_BASE_VARS = buildColorMapVars(presetToColorMap('day'), false)
-const CHAT_THEME_VAR_NAMES = [...CHAT_THEME_BASE_VARS, ...buildSemanticAliasVars(CHAT_THEME_BASE_VARS, false)].map(
-  ([name]) => `--${name}`,
-)
+const CHAT_THEME_VAR_NAMES = CHAT_THEME_BASE_VARS.map(([name]) => `--${name}`)
 
 /** Снимает inline-переменные, записанные applyChatTheme (сброс на глобальную тему). */
 export function clearChatTheme(element: HTMLElement): void {

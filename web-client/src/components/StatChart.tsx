@@ -4,7 +4,7 @@ import type { StatPoint } from '../core/managers/statsManager'
 // Лёгкий self-contained график на inline SVG (без внешних либ), в духе tweb
 // tchart: сглаженная линия с градиентной заливкой-областью под ней + подписи
 // дат снизу. Bar-вариант — столбцы (для «постов по дням»). Тема — через
-// CSS-переменные --tg-*.
+// tweb-семантические CSS-переменные (передаются через `color` пропом).
 //
 // SVG растягивается по ширине (preserveAspectRatio="none"): линии не «толстеют»
 // благодаря vectorEffect, а подписи дат вынесены в HTML-строку под графиком,
@@ -44,7 +44,7 @@ function fmtDate(iso: string): string {
 export default function StatChart({
   points,
   variant = 'line',
-  color = 'var(--tg-accent)',
+  color = 'var(--primary-color)',
   height = 160,
 }: {
   points: StatPoint[]
@@ -102,7 +102,7 @@ export default function StatChart({
           y1={VB_H - 1}
           x2={VB_W - PAD_X}
           y2={VB_H - 1}
-          stroke="var(--tg-borderColor, rgba(128,128,128,0.2))"
+          stroke="rgba(128,128,128,0.2)"
           strokeWidth="1"
           vectorEffect="non-scaling-stroke"
         />
@@ -146,7 +146,7 @@ export default function StatChart({
           justifyContent: 'space-between',
           marginTop: 4,
           fontSize: 11,
-          color: 'var(--tg-textSecondary)',
+          color: 'var(--secondary-text-color)',
         }}
       >
         <span>{fmtDate(first.date)}</span>

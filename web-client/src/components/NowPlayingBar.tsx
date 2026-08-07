@@ -137,23 +137,23 @@ function NowPlayingBar() {
           transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
         >
           <div className={s.bar}>
-            <RoundBtn onClick={prev} color="var(--tg-accent)" label="prev">
+            <RoundBtn onClick={prev} color="var(--primary-color)" label="prev">
               <TgIcon name="fast_rewind" />
             </RoundBtn>
-            <RoundBtn onClick={toggle} color="var(--tg-accent)" label="play/pause">
+            <RoundBtn onClick={toggle} color="var(--primary-color)" label="play/pause">
               <div className={s.playIconWrap}>
                 <PlayPauseGlyph playing={playing} className={s.playIcon} />
               </div>
             </RoundBtn>
-            <RoundBtn onClick={next} color="var(--tg-accent)" label="next">
+            <RoundBtn onClick={next} color="var(--primary-color)" label="next">
               <TgIcon name="fast_forward" />
             </RoundBtn>
 
             <div className={s.meta}>
-              <Text noWrap size={15} weight={600} color="var(--tg-textPrimary)" style={{ lineHeight: 1.25 }}>
+              <Text noWrap size={15} weight={600} color="var(--primary-text-color)" style={{ lineHeight: 1.25 }}>
                 {track.title}
               </Text>
-              <Text noWrap size={13} color="var(--tg-textSecondary)" style={{ lineHeight: 1.25 }}>
+              <Text noWrap size={13} color="var(--secondary-text-color)" style={{ lineHeight: 1.25 }}>
                 {fmt(currentTime)}
                 {track.subtitle ? ` • ${track.subtitle}` : ''}
               </Text>
@@ -169,7 +169,7 @@ function NowPlayingBar() {
             >
               <RoundBtn
                 onClick={toggleMute}
-                color={volOpen ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'}
+                color={volOpen ? 'var(--primary-color)' : 'var(--secondary-text-color)'}
                 active={volOpen}
                 label="volume"
               >
@@ -184,7 +184,7 @@ function NowPlayingBar() {
                 onClick={() => (rateOpen ? setRateOpen(false) : openRate())}
                 whileTap={{ scale: 0.9 }}
                 className={classNames(s.rateBtn, rateOpen ? s.rateBtnActive : '')}
-                style={rateOpen ? { color: 'var(--tg-accent)', background: 'color-mix(in srgb, var(--tg-accent) 16%, transparent)' } : undefined}
+                style={rateOpen ? { color: 'var(--primary-color)', background: 'color-mix(in srgb, var(--primary-color) 16%, transparent)' } : undefined}
               >
                 {rateLabel}
               </motion.button>
@@ -193,13 +193,13 @@ function NowPlayingBar() {
                   <MenuItem
                     key={r}
                     label={`${r}x`}
-                    right={rate === r ? <TgIcon name="check" size={18} color="var(--tg-accent)" /> : undefined}
+                    right={rate === r ? <TgIcon name="check" size={18} color="var(--primary-color)" /> : undefined}
                     onClick={() => { setRate(r); setRateOpen(false) }}
                   />
                 ))}
               </Menu>
             </div>
-            <RoundBtn onClick={closePlayer} color="var(--tg-textSecondary)" label="close">
+            <RoundBtn onClick={closePlayer} color="var(--secondary-text-color)" label="close">
               <TgIcon name="close" />
             </RoundBtn>
 

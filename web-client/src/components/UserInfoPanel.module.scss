@@ -4,7 +4,7 @@
 // карточка-панель (общая база) — фон как у экрана настроек (sectionBackdrop),
 // чтобы белые карточки-секции читались на нём
 .panel {
-  background: var(--tg-sectionBackdrop);
+  background: var(--background-color);
   border-radius: 18px;
   overflow: hidden;
   display: flex;
@@ -53,8 +53,8 @@
 // при скролле шапка заливается surface + нижняя граница-разделитель + мягкая тень
 // (tweb .header-filled: surface-color + --border-color / section-box-shadow).
 .headerScrolled {
-  background: var(--tg-sidebarBg);
-  border-bottom-color: var(--tg-divider);
+  background: var(--surface-color);
+  border-bottom-color: var(--border-color);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 }
 
@@ -100,7 +100,7 @@
     transition: background 0.2s;
   }
   &:hover::-webkit-scrollbar-thumb {
-    background: var(--tg-textFaint);
+    background: var(--secondary-text-color);
   }
 }
 
@@ -243,7 +243,7 @@
 // вложенная карточка без внешних margin (обсуждения/участники/ссылки/заявки)
 .cardPlain {
   border-radius: 16px;
-  background: var(--tg-sidebarBg); // surface, как у SidebarSection
+  background: var(--surface-color); // surface, как у SidebarSection
   padding: 6px 0;
 }
 
@@ -285,11 +285,11 @@
   gap: 6px;
   padding: 14px 6px 8px;
   border-radius: 14px;
-  background: var(--tg-sidebarBg);
+  background: var(--surface-color);
   cursor: pointer;
   transition: background 0.15s ease, transform 0.1s ease;
 
-  &:hover { background: var(--tg-hover); }
+  &:hover { background: var(--light-secondary-text-color); }
   &:active { transform: scale(0.97); }
 }
 // скрытый из витрины подарок (виден только владельцу) — приглушён
@@ -300,7 +300,7 @@
   position: absolute;
   top: 6px;
   left: 6px;
-  color: var(--tg-textSecondary);
+  color: var(--secondary-text-color);
 }
 // бейдж «Лимит» для ограниченного подарка (tweb StarGiftBadge)
 .giftTileBadge {
@@ -310,8 +310,8 @@
   font-size: 9px;
   font-weight: 600;
   line-height: 1;
-  color: var(--tg-textSecondary);
-  background: var(--tg-hover);
+  color: var(--secondary-text-color);
+  background: var(--light-secondary-text-color);
   border-radius: 8px;
   padding: 2px 5px;
 }
@@ -341,8 +341,8 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: var(--tg-hover);
-  color: var(--tg-textSecondary);
+  background: var(--light-secondary-text-color);
+  color: var(--secondary-text-color);
   font-size: 11px;
   font-weight: 700;
 }
@@ -366,7 +366,7 @@
   padding: 10px 22px;
   border-radius: 12px;
   border: none;
-  background: var(--tg-accent);
+  background: var(--primary-color);
   color: #fff;
   font-size: 14px;
   font-weight: 600;
@@ -409,7 +409,7 @@
   position: relative;
   aspect-ratio: 1 / 1;
   overflow: hidden;
-  background: var(--tg-hover);
+  background: var(--light-secondary-text-color);
   cursor: pointer;
 }
 
@@ -437,7 +437,7 @@
 .mediaList {
   margin: 8px 12px 0;
   border-radius: 16px;
-  background: var(--tg-sidebarBg); // surface, как у SidebarSection
+  background: var(--surface-color); // surface, как у SidebarSection
   padding: 6px 0;
 }
 
@@ -451,7 +451,7 @@
 
   @media (hover: hover) {
     &:hover {
-      background: var(--tg-hover);
+      background: var(--light-secondary-text-color);
     }
   }
 }
@@ -511,14 +511,14 @@
   gap: 8px;
   padding: 8px 0;
   border-radius: 12px;
-  color: var(--tg-accent);
+  color: var(--primary-color);
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
 
   @media (hover: hover) {
     &:hover {
-      background: var(--tg-hover);
+      background: var(--light-secondary-text-color);
     }
   }
 }
@@ -537,7 +537,7 @@
 
   @media (hover: hover) {
     &:hover {
-      background: var(--tg-hover);
+      background: var(--light-secondary-text-color);
     }
   }
 }
@@ -565,7 +565,7 @@
   flex: 0 0 auto;
   font-size: 12px;
   line-height: 16px;
-  color: var(--tg-textSecondary);
+  color: var(--secondary-text-color);
   border-radius: 8px;
 }
 
@@ -575,7 +575,7 @@
 
   @media (hover: hover) {
     &:hover {
-      background: var(--tg-hover);
+      background: var(--light-secondary-text-color);
     }
   }
 }
@@ -621,7 +621,7 @@
   position: absolute;
   inset: 0;
   z-index: 60;
-  background: var(--tg-sectionBackdrop);
+  background: var(--background-color);
   display: flex;
   flex-direction: column;
 }
@@ -645,7 +645,7 @@
 
   @media (hover: hover) {
     &:hover {
-      background: var(--tg-hover);
+      background: var(--light-secondary-text-color);
     }
   }
 }
@@ -682,6 +682,6 @@
   cursor: pointer;
 
   &:hover {
-    background: var(--tg-hover);
+    background: var(--light-secondary-text-color);
   }
 }

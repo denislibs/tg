@@ -11,7 +11,7 @@
     height: 6px;
   }
   &::-webkit-scrollbar-thumb {
-    background: var(--tg-textFaint);
+    background: var(--secondary-text-color);
     border-radius: 3px;
   }
 }
@@ -43,7 +43,7 @@
 
   // плитка «Без темы» — нейтральный фон секции
   &[data-none] {
-    background: var(--tg-hover);
+    background: var(--light-secondary-text-color);
   }
 }
 
@@ -78,10 +78,10 @@
 .label {
   font-size: 20px;
   line-height: 1;
-  color: var(--tg-textSecondary);
+  color: var(--secondary-text-color);
 }
 
 // активная плитка — accent-рамка (tweb .theme.active)
 .swatch[data-selected] .preview {
-  box-shadow: inset 0 0 0 2px var(--tg-accent);
+  box-shadow: inset 0 0 0 2px var(--primary-color);
 }

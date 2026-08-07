@@ -14,7 +14,7 @@
   width: min(420px, 100%);
   max-height: 92vh;
   border-radius: 16px;
-  background: var(--tg-sidebarBg);
+  background: var(--surface-color);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -32,11 +32,11 @@
   padding: 6px;
   border-radius: 50%;
   cursor: pointer;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
 
   @media (hover: hover) {
     &:hover {
-      background: var(--tg-hover);
+      background: var(--light-secondary-text-color);
     }
   }
 }
@@ -87,28 +87,28 @@
 }
 .label {
   font-size: 13px;
-  color: var(--tg-textSecondary);
+  color: var(--secondary-text-color);
 }
 .input {
   height: 46px;
   padding: 0 12px;
   border-radius: 10px;
-  border: 1px solid var(--tg-borderColor, rgba(128, 128, 128, 0.35));
-  background: var(--tg-inputBg, transparent);
-  color: var(--tg-textPrimary);
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  background: transparent;
+  color: var(--primary-text-color);
   font-size: 16px;
   outline: none;
   transition: border-color 0.15s;
 
   &:focus {
-    border-color: var(--tg-accent);
+    border-color: var(--primary-color);
   }
   &::placeholder {
-    color: var(--tg-textFaint);
+    color: var(--secondary-text-color);
   }
 }
 .inputError {
-  border-color: var(--tg-danger, #e53935);
+  border-color: #e53935;
 }
 .error {
   margin-top: 12px;

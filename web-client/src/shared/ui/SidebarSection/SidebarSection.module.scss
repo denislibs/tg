@@ -10,7 +10,7 @@
 
 // tweb .sidebar-left-section — сама карточка
 .section {
-  background-color: var(--tg-sidebarBg); // --surface-color
+  background-color: var(--surface-color); // --surface-color
   padding: 0.5rem 0;
   border-radius: $section-rounded-border-radius; // = $border-radius-big (24px)
   margin-bottom: 1rem; // --section-padding-bottom (= --section-padding-inline)
@@ -32,7 +32,7 @@
   justify-content: space-between;
   align-items: center;
   gap: 0.5rem;
-  color: var(--tg-accent);
+  color: var(--primary-color);
   font-size: 16px; // --font-size-16
   font-weight: 600;
 }

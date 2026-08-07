@@ -25,7 +25,7 @@
   min-height: 24px;
 
   & + & {
-    border-top: 1px solid var(--tg-borderSubtle, rgba(0, 0, 0, 0.08));
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
   }
 
   :global(html[data-theme='night']) & + &,

@@ -52,35 +52,35 @@ export default function ScheduledView({ chatId, onClose, onChanged }: {
         transition={{ duration: 0.2, ease: EASE }}
       >
         <div className={s.header}>
-          <Text size={17} weight={600} color="var(--tg-textPrimary)" style={{ flex: 1 }}>
+          <Text size={17} weight={600} color="var(--primary-text-color)" style={{ flex: 1 }}>
             {t('Scheduled Messages')}
           </Text>
-          <IconButton onClick={onClose} color="var(--tg-textSecondary)" aria-label={t('Close')}>
+          <IconButton onClick={onClose} color="var(--secondary-text-color)" aria-label={t('Close')}>
             <TgIcon name="close" size={22} />
           </IconButton>
         </div>
         <div className={s.list}>
           {list != null && list.length === 0 && (
-            <Text size={14.5} color="var(--tg-textSecondary)" style={{ padding: '2rem 1rem', textAlign: 'center', display: 'block' }}>
+            <Text size={14.5} color="var(--secondary-text-color)" style={{ padding: '2rem 1rem', textAlign: 'center', display: 'block' }}>
               {t('No scheduled messages here yet…')}
             </Text>
           )}
           {(list ?? []).map((m) => (
             <div key={m.id} className={s.row}>
               <div className={s.bubble}>
-                <Text size={12.5} color="var(--tg-accent)" weight={600}>
+                <Text size={12.5} color="var(--primary-color)" weight={600}>
                   {fmtWhen(m)}
                 </Text>
-                <Text size={15} color="var(--tg-textPrimary)" style={{ wordBreak: 'break-word' }}>
-                  <RichText text={m.text} entities={m.entities} linkColor="var(--tg-link)" />
+                <Text size={15} color="var(--primary-text-color)" style={{ wordBreak: 'break-word' }}>
+                  <RichText text={m.text} entities={m.entities} linkColor="var(--link-color)" />
                 </Text>
               </div>
               <div className={s.actions}>
                 <IconButton size="small" onClick={() => sendNow(m.id)} title={t('Send Now')} aria-label={t('Send Now')}>
-                  <TgIcon name="send" size={18} color="var(--tg-accent)" />
+                  <TgIcon name="send" size={18} color="var(--primary-color)" />
                 </IconButton>
                 <IconButton size="small" onClick={() => setReschedule({ id: m.id, sendAt: m.sendAt })} title={t('Reschedule')} aria-label={t('Reschedule')}>
-                  <TgIcon name="schedule" size={18} color="var(--tg-accent)" />
+                  <TgIcon name="schedule" size={18} color="var(--primary-color)" />
                 </IconButton>
                 <IconButton size="small" onClick={() => remove(m.id)} title={t('Delete')} aria-label={t('Delete')}>
                   <TgIcon name="delete" size={18} color="#ff595a" />

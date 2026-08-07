@@ -73,10 +73,10 @@ export default function TranslatePopup({
       <div className={s.card}>
         {/* Оригинал */}
         <div className={s.section}>
-          <Text size={16} weight={600} color="var(--tg-textPrimary)">
+          <Text size={16} weight={600} color="var(--primary-text-color)">
             {t('From language')}: {langName(source) || '…'}
           </Text>
-          <Text size={16} color="var(--tg-textPrimary)" className={s.body}>{text}</Text>
+          <Text size={16} color="var(--primary-text-color)" className={s.body}>{text}</Text>
         </div>
 
         <div className={s.divider} />
@@ -84,7 +84,7 @@ export default function TranslatePopup({
         {/* Перевод */}
         <div className={s.section}>
           <div className={s.targetRow}>
-            <Text size={16} weight={600} color="var(--tg-textPrimary)">{t('To language')}</Text>
+            <Text size={16} weight={600} color="var(--primary-text-color)">{t('To language')}</Text>
             <span className={s.pill}>
               {langName(lang)}
               <select className={s.pillSelect} value={lang} onChange={(e) => setLang(e.target.value)}>
@@ -92,15 +92,15 @@ export default function TranslatePopup({
               </select>
             </span>
             <button className={s.copyBtn} onClick={copy} title={t('Copy')} disabled={!result}>
-              <TgIcon name={copied ? 'check' : 'copy'} size={20} color="var(--tg-accent)" />
+              <TgIcon name={copied ? 'check' : 'copy'} size={20} color="var(--primary-color)" />
             </button>
           </div>
           {error ? (
-            <Text size={16} color="var(--tg-dangerText)" className={s.body}>{error}</Text>
+            <Text size={16} color="var(--danger-color)" className={s.body}>{error}</Text>
           ) : result == null ? (
             <div className={s.loading}><Spinner size={22} /></div>
           ) : (
-            <Text size={16} color="var(--tg-textPrimary)" className={s.body}>{result}</Text>
+            <Text size={16} color="var(--primary-text-color)" className={s.body}>{result}</Text>
           )}
         </div>
       </div>

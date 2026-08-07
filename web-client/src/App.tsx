@@ -199,7 +199,7 @@ export default function App() {
             zIndex: 5000,
             padding: '9px 18px',
             borderRadius: 20,
-            background: 'var(--tg-accent)',
+            background: 'var(--primary-color)',
             color: '#fff',
             fontSize: 14,
             fontWeight: 600,

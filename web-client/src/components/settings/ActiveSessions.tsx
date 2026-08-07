@@ -57,21 +57,21 @@ export default function ActiveSessions({ onBack }: { onBack: () => void }) {
         <div className={s.icon}><TgIcon name="devices" size={26} /></div>
         <div className={s.body}>
           <div className={s.top}>
-            <Text size={16} color="var(--tg-textPrimary)" className={s.app}>{appLabel(sess)}</Text>
+            <Text size={16} color="var(--primary-text-color)" className={s.app}>{appLabel(sess)}</Text>
             {sess.current ? (
               <Text size={13.5} color="#4dcd5e">{t('online')}</Text>
             ) : (
               <TgIcon
                 name="close"
                 size={20}
-                color="var(--tg-textFaint)"
+                color="var(--secondary-text-color)"
                 onClick={() => void terminate(sess.id)}
                 style={{ cursor: 'pointer' }}
               />
             )}
           </div>
-          <Text size={14} color="var(--tg-textSecondary)">{sess.name}</Text>
-          <Text size={13.5} color="var(--tg-textFaint)">
+          <Text size={14} color="var(--secondary-text-color)">{sess.name}</Text>
+          <Text size={13.5} color="var(--secondary-text-color)">
             {place ? `${place} · ${when}` : when}
           </Text>
         </div>
@@ -93,7 +93,7 @@ export default function ActiveSessions({ onBack }: { onBack: () => void }) {
         <Section caption="Active sessions">{others.map(sessionRow)}</Section>
       ) : (
         sessions != null && (
-          <Text size={14} color="var(--tg-textSecondary)" style={{ paddingLeft: '24px', paddingRight: '24px' }}>
+          <Text size={14} color="var(--secondary-text-color)" style={{ paddingLeft: '24px', paddingRight: '24px' }}>
             {t('No other active sessions.')}
           </Text>
         )

@@ -52,9 +52,9 @@ export default function MutePopup({
           <div key={tm.value} className={s.row} onClick={() => setValue(tm.value)}>
             <TgIcon
               name={value === tm.value ? 'radioon' : 'radiooff'}
-              color={value === tm.value ? 'var(--tg-accent)' : 'var(--tg-textFaint)'}
+              color={value === tm.value ? 'var(--primary-color)' : 'var(--secondary-text-color)'}
             />
-            <Text size={16} color="var(--tg-textPrimary)">{t(tm.label)}</Text>
+            <Text size={16} color="var(--primary-text-color)">{t(tm.label)}</Text>
           </div>
         ))}
       </div>

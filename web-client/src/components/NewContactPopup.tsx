@@ -92,7 +92,7 @@ export default function NewContactPopup({
         />
 
         {error && (
-          <Text size={14} color="var(--tg-dangerText)" className={s.error}>{error}</Text>
+          <Text size={14} color="var(--danger-color)" className={s.error}>{error}</Text>
         )}
       </div>
     </Popup>

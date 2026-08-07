@@ -10,7 +10,7 @@
 // linear-gradient + pattern.svg, что и превью пресетов в ChatWallpaper.
 
 export interface ChatThemeVariant {
-  /** акцентный цвет (--tg-accent) */
+  /** акцентный цвет (--primary-color) */
   accent: string
   /** 4-цветный градиент обоев чата */
   gradient: [string, string, string, string]

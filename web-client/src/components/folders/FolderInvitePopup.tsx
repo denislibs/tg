@@ -89,7 +89,7 @@ export default function FolderInvitePopup({
       action={action}
     >
       {loading ? (
-        <Text size={15} color="var(--tg-textSecondary)" style={{ display: 'block', padding: '16px', textAlign: 'center' }}>
+        <Text size={15} color="var(--secondary-text-color)" style={{ display: 'block', padding: '16px', textAlign: 'center' }}>
           {t('Loading…')}
         </Text>
       ) : error ? (
@@ -98,7 +98,7 @@ export default function FolderInvitePopup({
         </Text>
       ) : (
         <>
-          <Text size={14.5} color="var(--tg-textSecondary)" style={{ display: 'block', padding: '4px 16px 12px' }}>
+          <Text size={14.5} color="var(--secondary-text-color)" style={{ display: 'block', padding: '4px 16px 12px' }}>
             {chats.length > 0
               ? `${t('Do you want to add')} «${title}» ${t('and join its chats?')}`
               : `${t('Do you want to add the folder')} «${title}»?`}
@@ -106,7 +106,7 @@ export default function FolderInvitePopup({
           {chats.map((c) => (
             <Row
               key={c.id}
-              icon={<TgIcon name={c.type === 'channel' ? 'channel' : 'group'} size={24} color="var(--tg-accent)" />}
+              icon={<TgIcon name={c.type === 'channel' ? 'channel' : 'group'} size={24} color="var(--primary-color)" />}
               label={c.title}
               sublabel={c.members > 0 ? `${c.members} ${t('members')}` : undefined}
               translate={false}

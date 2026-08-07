@@ -204,7 +204,7 @@ function DevicePicker({
         {options.map((o) => (
           <div key={o.id} className={s.option} onClick={() => setValue(o.id)}>
             <span className={s.radio} data-on={value === o.id || undefined} />
-            <Text size={16} color="var(--tg-textPrimary)">{o.label}</Text>
+            <Text size={16} color="var(--primary-text-color)">{o.label}</Text>
           </div>
         ))}
       </div>

@@ -84,7 +84,7 @@ function ChatHeader({
           style={barTop}
         >
           {onBack && (
-            <IconButton onClick={onBack} color="var(--tg-textSecondary)" style={{ marginLeft: '-4px' }}>
+            <IconButton onClick={onBack} color="var(--secondary-text-color)" style={{ marginLeft: '-4px' }}>
               <TgIcon name="back" />
             </IconButton>
           )}
@@ -96,23 +96,23 @@ function ChatHeader({
               src={avatarSrc}
               size="sm"
               online={chat.online || peerOnline}
-              ringColor="var(--tg-bubble)"
+              ringColor="var(--surface-color)"
             />
             <div className={s.peerBody}>
               <div className={s.peerTitle}>
                 {/* секретный чат: замок + зелёное имя (tweb .is-secret) */}
                 {chat.type === 'secret' && (
-                  <TgIcon name="lock" size={16} color="var(--tg-green)" style={{ flexShrink: 0 }} />
+                  <TgIcon name="lock" size={16} color="var(--green-color)" style={{ flexShrink: 0 }} />
                 )}
-                <Text noWrap weight={500} size={16} color={chat.type === 'secret' ? 'var(--tg-green)' : 'var(--tg-textPrimary)'} style={{ lineHeight: 1.2 }}>
+                <Text noWrap weight={500} size={16} color={chat.type === 'secret' ? 'var(--green-color)' : 'var(--primary-text-color)'} style={{ lineHeight: 1.2 }}>
                   {chat.name}
                 </Text>
                 {chat.verified && <VerifiedBadge size={18} />}
                 {chat.premium && <PremiumBadge size={18} />}
                 {chat.emojiStatus && <EmojiStatus emoji={chat.emojiStatus} size={18} />}
               </div>
-              <Text noWrap size={13.5} color={typingActive || online ? 'var(--tg-accent)' : 'var(--tg-textSecondary)'} style={{ lineHeight: 1.2 }}>
-                {typingActive && <TypingIndicator kind={typingKind} color="var(--tg-accent)" />}
+              <Text noWrap size={13.5} color={typingActive || online ? 'var(--primary-color)' : 'var(--secondary-text-color)'} style={{ lineHeight: 1.2 }}>
+                {typingActive && <TypingIndicator kind={typingKind} color="var(--primary-color)" />}
                 {typingActive ? typingText : status}
               </Text>
             </div>
@@ -123,10 +123,10 @@ function ChatHeader({
               нельзя — у бот-аккаунтов нет звонков (Telegram). */}
           {chat.type === 'private' && chat.peerId !== SERVICE_USER_ID && !(isBot || chat.isBot) && (
             <>
-              <IconButton onClick={() => startCall(false)} color="var(--tg-textSecondary)" className={s.desktopOnly}>
+              <IconButton onClick={() => startCall(false)} color="var(--secondary-text-color)" className={s.desktopOnly}>
                 <TgIcon name="phone" />
               </IconButton>
-              <IconButton onClick={() => startCall(true)} color="var(--tg-textSecondary)" className={s.desktopOnly}>
+              <IconButton onClick={() => startCall(true)} color="var(--secondary-text-color)" className={s.desktopOnly}>
                 <TgIcon name="videocamera" />
               </IconButton>
             </>
@@ -136,11 +136,11 @@ function ChatHeader({
               В секретном чате поиска нет: сервер хранит только шифртекст, искать по
               нему нельзя (клиентского поиска по расшифрованным сообщениям тут нет). */}
           {chat.type !== 'secret' && (
-            <IconButton onClick={search.openSearch} color="var(--tg-textSecondary)" className={s.desktopOnly}>
+            <IconButton onClick={search.openSearch} color="var(--secondary-text-color)" className={s.desktopOnly}>
               <TgIcon name="search" />
             </IconButton>
           )}
-          <IconButton onClick={(e) => onOpenMenu(e.currentTarget.getBoundingClientRect())} color="var(--tg-textSecondary)">
+          <IconButton onClick={(e) => onOpenMenu(e.currentTarget.getBoundingClientRect())} color="var(--secondary-text-color)">
             <TgIcon name="more" />
           </IconButton>
         </motion.div>

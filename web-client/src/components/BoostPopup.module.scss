@@ -43,7 +43,7 @@
   height: 24px;
   width: 100%;
   border-radius: 8px;
-  background: var(--tg-fill-secondary, rgba(128, 128, 128, 0.2));
+  background: rgba(128, 128, 128, 0.2);
   overflow: hidden;
 }
 
@@ -60,7 +60,7 @@
   margin-top: 6px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--tg-textSecondary);
+  color: var(--secondary-text-color);
 }
 
 .desc {
@@ -70,7 +70,7 @@
 .boosted {
   font-size: 15px;
   font-weight: 600;
-  color: var(--tg-accent);
+  color: var(--primary-color);
 }
 
 .btn {
@@ -82,7 +82,7 @@
   padding: 11px 20px;
   border: none;
   border-radius: 12px;
-  background: var(--tg-accent);
+  background: var(--primary-color);
   color: #fff;
   font-size: 15px;
   font-weight: 600;

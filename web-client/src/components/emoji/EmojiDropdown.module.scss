@@ -1,16 +1,16 @@
 // Эмодзи-дропдаун — 1:1 порт tweb src/scss/partials/_emojiDropdown.scss +
 // .super-emojis/.super-emoji из base.scss. Размеры/тайминги дословно из tweb;
 // цветовые переменные tweb отображены на наши токены:
-//   --menu-background-color → --tg-menuBg (+ backdrop blur 50px, как shared Menu)
-//   --border-color          → --tg-divider
-//   rgba(--primary-text-color-rgb, X) → color-mix(--tg-textPrimary X%)
+//   --menu-background-color → --menu-background-color (+ backdrop blur 50px, как shared Menu)
+//   --border-color          → --border-color
+//   rgba(--primary-text-color-rgb, X) → color-mix(--primary-text-color X%)
 @use '../../styles/foundation' as *;
 
 $menu-height: 3.0625rem; // tweb $menu-height (49px)
 $esg-transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1); // tweb --esg-transition
 $standard-in: 0.3s cubic-bezier(0.4, 0, 0.2, 1); // tweb --transition-standard-in
-$active-bg: color-mix(in srgb, var(--tg-textPrimary) 6%, transparent); // rgba(text,.06)
-$active-fg: color-mix(in srgb, var(--tg-textPrimary) 80%, transparent); // rgba(text,.8)
+$active-bg: color-mix(in srgb, var(--primary-text-color) 6%, transparent); // rgba(text,.06)
+$active-fg: color-mix(in srgb, var(--primary-text-color) 80%, transparent); // rgba(text,.8)
 
 // .emoji-dropdown
 .emojiDropdown {
@@ -29,7 +29,7 @@ $active-fg: color-mix(in srgb, var(--tg-textPrimary) 80%, transparent); // rgba(
   transform: scale(0.85);
   opacity: 0;
   transform-origin: 100% 100%;
-  background-color: var(--tg-menuBg);
+  background-color: var(--menu-background-color);
   backdrop-filter: blur(50px);
   -webkit-backdrop-filter: blur(50px);
 
@@ -84,7 +84,7 @@ $active-fg: color-mix(in srgb, var(--tg-textPrimary) 80%, transparent); // rgba(
   height: $menu-height;
   max-width: 100%;
   position: relative;
-  border-bottom: 1px solid var(--tg-divider);
+  border-bottom: 1px solid var(--border-color);
   flex: 0 0 auto;
 }
 
@@ -127,7 +127,7 @@ $active-fg: color-mix(in srgb, var(--tg-textPrimary) 80%, transparent); // rgba(
   background: none;
   border-radius: 50%;
   cursor: pointer;
-  color: var(--tg-textSecondary);
+  color: var(--secondary-text-color);
 
   &:hover {
     color: $active-fg;
@@ -169,7 +169,7 @@ $active-fg: color-mix(in srgb, var(--tg-textPrimary) 80%, transparent); // rgba(
 .searchIcon {
   flex: 0 0 auto;
   margin-inline-start: 1rem; // tweb --icon-left-offset
-  color: var(--tg-textSecondary);
+  color: var(--secondary-text-color);
 }
 // .emoticons-search-input-arrow (кнопка сброса выбранной группы)
 .searchArrow {
@@ -180,7 +180,7 @@ $active-fg: color-mix(in srgb, var(--tg-textPrimary) 80%, transparent); // rgba(
   background: none;
   display: flex;
   cursor: pointer;
-  color: var(--tg-textSecondary);
+  color: var(--secondary-text-color);
 }
 .searchInput {
   flex: 1;
@@ -192,10 +192,10 @@ $active-fg: color-mix(in srgb, var(--tg-textPrimary) 80%, transparent); // rgba(
   padding-inline-start: 0.375rem;
   font-size: 1rem;
   font-family: inherit;
-  color: var(--tg-textPrimary);
+  color: var(--primary-text-color);
 
   &::placeholder {
-    color: var(--tg-textSecondary);
+    color: var(--secondary-text-color);
     opacity: 1;
   }
 }
@@ -273,7 +273,7 @@ $active-fg: color-mix(in srgb, var(--tg-textPrimary) 80%, transparent); // rgba(
   font-size: 1rem;
   font-weight: 500;
   line-height: 1.1875rem;
-  color: color-mix(in srgb, var(--tg-textPrimary) 42%, transparent);
+  color: color-mix(in srgb, var(--primary-text-color) 42%, transparent);
   padding: 0.75rem 0.875rem 0.375rem;
   width: 100%;
   position: relative;
@@ -305,10 +305,10 @@ $active-fg: color-mix(in srgb, var(--tg-textPrimary) 80%, transparent); // rgba(
   user-select: none;
 
   &:hover {
-    background-color: var(--tg-hover);
+    background-color: var(--light-secondary-text-color);
   }
   &:active {
-    background-color: color-mix(in srgb, var(--tg-textPrimary) 10%, transparent);
+    background-color: color-mix(in srgb, var(--primary-text-color) 10%, transparent);
   }
 }
 // .emoji-placeholder — серый кружок, пока картинка не загрузилась
@@ -319,7 +319,7 @@ $active-fg: color-mix(in srgb, var(--tg-textPrimary) 80%, transparent); // rgba(
   width: 1.75rem;
   height: 1.75rem;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--tg-textPrimary) 8%, transparent);
+  background: color-mix(in srgb, var(--primary-text-color) 8%, transparent);
 }
 .emojiImg {
   width: 100%;
@@ -377,10 +377,10 @@ $active-fg: color-mix(in srgb, var(--tg-textPrimary) 80%, transparent); // rgba(
   user-select: none;
 
   &:hover {
-    background-color: var(--tg-hover);
+    background-color: var(--light-secondary-text-color);
   }
   &:active {
-    background-color: color-mix(in srgb, var(--tg-textPrimary) 10%, transparent);
+    background-color: color-mix(in srgb, var(--primary-text-color) 10%, transparent);
   }
 }
 
@@ -426,7 +426,7 @@ $active-fg: color-mix(in srgb, var(--tg-textPrimary) 80%, transparent); // rgba(
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  color: color-mix(in srgb, var(--tg-textPrimary) 42%, transparent);
+  color: color-mix(in srgb, var(--primary-text-color) 42%, transparent);
   font-weight: 500;
   font-size: 0.875rem;
   white-space: nowrap;
@@ -441,7 +441,7 @@ $active-fg: color-mix(in srgb, var(--tg-textPrimary) 80%, transparent); // rgba(
   align-items: center;
   justify-content: center;
   position: relative;
-  border-top: 1px solid var(--tg-divider);
+  border-top: 1px solid var(--border-color);
 }
 // кнопки нижней панели: те же метрики, что пункты меню категорий
 .tabBtn {
@@ -456,7 +456,7 @@ $active-fg: color-mix(in srgb, var(--tg-textPrimary) 80%, transparent); // rgba(
   background: none;
   border-radius: 50%;
   cursor: pointer;
-  color: var(--tg-textSecondary);
+  color: var(--secondary-text-color);
 
   &:hover {
     color: $active-fg;

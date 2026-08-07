@@ -22,14 +22,14 @@
   border: none;
   border-radius: 6px; // tweb .375rem
   overflow: hidden;
-  background: color-mix(in srgb, var(--tg-accent) 40%, transparent); // tweb --message-highlighting-color
+  background: color-mix(in srgb, var(--primary-color) 40%, transparent); // tweb --message-highlighting-color
   color: #fff; // tweb: белый текст
   font-size: 14px;
   font-weight: 600; // tweb font-weight-bold
   cursor: pointer;
   transition: background 0.12s ease;
 
-  &:hover { background: color-mix(in srgb, var(--tg-accent) 62%, transparent); }
+  &:hover { background: color-mix(in srgb, var(--primary-color) 62%, transparent); }
   &:active { filter: brightness(0.95); }
 }
 // нижние внешние углы крайних кнопок последнего ряда — большой радиус (tweb 24px)

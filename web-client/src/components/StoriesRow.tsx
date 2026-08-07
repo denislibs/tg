@@ -115,7 +115,7 @@ export default function StoriesRow({
       {items.map((item) => {
         const isAdd = item.isMe && item.groupIndex === null
         const seen = !item.hasUnseen
-        const ringBg = isAdd ? 'transparent' : seen ? 'var(--tg-textFaint)' : UNSEEN_RING
+        const ringBg = isAdd ? 'transparent' : seen ? 'var(--secondary-text-color)' : UNSEEN_RING
         const onClick = () => {
           if (isAdd) onAddStory?.()
           else if (item.groupIndex !== null) onOpen(item.groupIndex)
@@ -140,7 +140,7 @@ export default function StoriesRow({
                 </div>
               )}
             </div>
-            <Text noWrap size={12} color="var(--tg-textSecondary)" className={s.label}>
+            <Text noWrap size={12} color="var(--secondary-text-color)" className={s.label}>
               {item.name}
             </Text>
           </div>
@@ -201,7 +201,7 @@ export function StoriesStack({
           }}
         >
           {items.map((it, i) => {
-            const ringBg = !it.hasUnseen ? 'var(--tg-textFaint)' : UNSEEN_RING
+            const ringBg = !it.hasUnseen ? 'var(--secondary-text-color)' : UNSEEN_RING
             return (
               <motion.div
                 key={it.key}
@@ -211,7 +211,7 @@ export function StoriesStack({
                   background: ringBg,
                   marginLeft: i === 0 ? 0 : '-10px',
                   zIndex: 3 - i,
-                  boxShadow: '0 0 0 2px var(--tg-inputSearchBg)',
+                  boxShadow: '0 0 0 2px var(--input-search-background-color)',
                 }}
               >
                 <Avatar background={it.bg} text={it.text} size={20} />

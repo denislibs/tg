@@ -61,7 +61,7 @@ export default function TwoStepVerification({ onBack }: { onBack: () => void }) 
       <div className={s.heroIcon}>
         <TgIcon name="lock" size={46} color="#fff" />
       </div>
-      <Text size={15} color="var(--tg-textSecondary)" style={{ lineHeight: 1.5 }}>{t(text)}</Text>
+      <Text size={15} color="var(--secondary-text-color)" style={{ lineHeight: 1.5 }}>{t(text)}</Text>
     </div>
   )
 
@@ -78,7 +78,7 @@ export default function TwoStepVerification({ onBack }: { onBack: () => void }) 
           label={t(label)}
         />
         <div style={{ position: 'absolute', right: 10, top: 8 }}>
-          <IconButton size="small" color="var(--tg-textFaint)" onClick={() => setShowPw((v) => !v)} aria-label="toggle password">
+          <IconButton size="small" color="var(--secondary-text-color)" onClick={() => setShowPw((v) => !v)} aria-label="toggle password">
             <TgIcon name={showPw ? 'eye2' : 'eye1'} size={22} />
           </IconButton>
         </div>
@@ -167,7 +167,7 @@ export default function TwoStepVerification({ onBack }: { onBack: () => void }) 
             },
           }}
         >
-          <Text size={15} color="var(--tg-textPrimary)" style={{ lineHeight: 1.5 }}>
+          <Text size={15} color="var(--primary-text-color)" style={{ lineHeight: 1.5 }}>
             {t('Are you sure you want to disable your password?')}
           </Text>
         </Popup>
@@ -212,7 +212,7 @@ export default function TwoStepVerification({ onBack }: { onBack: () => void }) 
       <SettingsScreen title="Recovery Email" onBack={() => setStep(emailOnly ? 'main' : 'hint')}>
         <div className={s.hero}>
           <Text size={44} style={{ lineHeight: 1 }}>💌</Text>
-          <Text size={15} color="var(--tg-textSecondary)" style={{ lineHeight: 1.5, marginTop: 8 }}>
+          <Text size={15} color="var(--secondary-text-color)" style={{ lineHeight: 1.5, marginTop: 8 }}>
             {t('Add a recovery email to restore access if you forget your password.')}
           </Text>
         </div>
@@ -221,7 +221,7 @@ export default function TwoStepVerification({ onBack }: { onBack: () => void }) 
         {btn(emailOnly ? 'Save' : 'Continue', () => void submit(email.trim()), emailOnly && !email.trim())}
         {!emailOnly && (
           <div className={s.btnWrap} onClick={() => !busy && void submit('')} style={{ textAlign: 'center', cursor: 'pointer' }}>
-            <Text size={15} weight={600} color="var(--tg-accent)">{t('Skip')}</Text>
+            <Text size={15} weight={600} color="var(--primary-color)">{t('Skip')}</Text>
           </div>
         )}
       </SettingsScreen>
@@ -232,10 +232,10 @@ export default function TwoStepVerification({ onBack }: { onBack: () => void }) 
     <SettingsScreen title="Two-Step Verification" onBack={onBack}>
       <div className={s.hero}>
         <Text size={44} style={{ lineHeight: 1 }}>🥳</Text>
-        <Text size={17} weight={600} color="var(--tg-textPrimary)" style={{ marginTop: 12 }}>
+        <Text size={17} weight={600} color="var(--primary-text-color)" style={{ marginTop: 12 }}>
           {t('Password Set!')}
         </Text>
-        <Text size={15} color="var(--tg-textSecondary)" style={{ lineHeight: 1.5, marginTop: 8 }}>
+        <Text size={15} color="var(--secondary-text-color)" style={{ lineHeight: 1.5, marginTop: 8 }}>
           {t('This password will be required when you log in on a new device in addition to the code you get via SMS.')}
         </Text>
       </div>

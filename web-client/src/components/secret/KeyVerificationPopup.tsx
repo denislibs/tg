@@ -46,7 +46,7 @@ export default function KeyVerificationPopup({
           </div>
           <Text
             size={14}
-            color="var(--tg-textSecondary)"
+            color="var(--secondary-text-color)"
             style={{ display: 'block', textAlign: 'center', padding: '0 8px' }}
           >
             {t('Compare these emoji with the ones your contact sees on their device. If they match, the chat is end-to-end encrypted.')}
@@ -55,7 +55,7 @@ export default function KeyVerificationPopup({
       ) : (
         <Text
           size={15}
-          color="var(--tg-textSecondary)"
+          color="var(--secondary-text-color)"
           style={{ display: 'block', textAlign: 'center', padding: '24px 8px' }}
         >
           {t('The encryption key has not been agreed yet.')}

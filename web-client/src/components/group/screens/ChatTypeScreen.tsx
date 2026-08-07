@@ -36,7 +36,7 @@ export function ChatTypeScreen({ g, isChannel, onBack }: { g: GroupEdit; isChann
       zIndex={70}
       headerRight={
         changed ? (
-          <IconButton onClick={() => void apply()} color="var(--tg-accent)">
+          <IconButton onClick={() => void apply()} color="var(--primary-color)">
             {saving ? <Spinner size={22} /> : <TgIcon name="check" />}
           </IconButton>
         ) : undefined
@@ -66,7 +66,7 @@ export function ChatTypeScreen({ g, isChannel, onBack }: { g: GroupEdit; isChann
           ? 'People can share this link with others and find your channel using Telegram search.'
           : 'People can share this link with others and find your group using Telegram search.'}>
           <div className={s.usernameWrap}>
-            <Text size={16} color="var(--tg-textSecondary)">t.me/</Text>
+            <Text size={16} color="var(--secondary-text-color)">t.me/</Text>
             <input
               className={s.usernameInput}
               value={username}
@@ -82,7 +82,7 @@ export function ChatTypeScreen({ g, isChannel, onBack }: { g: GroupEdit; isChann
             ? 'People can join your channel by following this link. You can revoke the link any time.'
             : 'People can join your group by following this link. You can revoke the link any time.'}>
             <div className={s.linkBox} onClick={() => void navigator.clipboard.writeText(primary.url)}>
-              <Text size={15.5} color="var(--tg-link)" style={{ wordBreak: 'break-all' }}>{primary.url}</Text>
+              <Text size={15.5} color="var(--link-color)" style={{ wordBreak: 'break-all' }}>{primary.url}</Text>
             </div>
             <Row
               icon={<TgIcon name="delete" size={22} color="#ff595a" />}

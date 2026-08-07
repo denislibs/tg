@@ -80,7 +80,7 @@ export async function enterAppPip(labels: { title: string; hint: string; back: s
   // Заглушка во вкладке.
   const stub = document.createElement('div')
   stub.style.cssText =
-    'position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding:24px;font-family:inherit;background:var(--tg-appBg,#212121);color:var(--tg-textPrimary,#fff)'
+    'position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding:24px;font-family:inherit;background:var(--background-color,#212121);color:var(--primary-text-color,#fff)'
   const h = document.createElement('div')
   h.textContent = labels.title
   h.style.cssText = 'font-size:20px;font-weight:600;max-width:420px'
@@ -90,7 +90,7 @@ export async function enterAppPip(labels: { title: string; hint: string; back: s
   const btn = document.createElement('button')
   btn.textContent = labels.back
   btn.style.cssText =
-    'margin-top:8px;padding:12px 28px;border:none;border-radius:22px;background:var(--tg-accent,#8774e1);color:#fff;font-size:15px;font-weight:600;cursor:pointer'
+    'margin-top:8px;padding:12px 28px;border:none;border-radius:22px;background:var(--primary-color,#8774e1);color:#fff;font-size:15px;font-weight:600;cursor:pointer'
   btn.onclick = () => pip.close()
   stub.append(h, p, btn)
   placeholder.replaceWith(stub)

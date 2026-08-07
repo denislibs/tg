@@ -23,10 +23,10 @@ export default function StoryStats({ storyId, onClose }: { storyId: number; onCl
     <div style={{ position: 'fixed', inset: 0, zIndex: 3000 }}>
       <motion.div variants={slideInRight} initial="initial" animate="animate" exit="exit" className={s.rights}>
         <div className={s.rightsHeader}>
-          <IconButton onClick={onClose} color="var(--tg-textSecondary)">
+          <IconButton onClick={onClose} color="var(--secondary-text-color)">
             <TgIcon name="back" />
           </IconButton>
-          <Text noWrap size={19} weight={600} color="var(--tg-textPrimary)" style={{ flex: 1 }}>
+          <Text noWrap size={19} weight={600} color="var(--primary-text-color)" style={{ flex: 1 }}>
             {t('Story statistics')}
           </Text>
         </div>
@@ -34,19 +34,19 @@ export default function StoryStats({ storyId, onClose }: { storyId: number; onCl
         <div className={s.body}>
           {loading && (
             <div style={{ padding: 24, textAlign: 'center' }}>
-              <Text size={15} color="var(--tg-textSecondary)">{t('Loading statistics…')}</Text>
+              <Text size={15} color="var(--secondary-text-color)">{t('Loading statistics…')}</Text>
             </div>
           )}
           {error && !loading && (
             <div style={{ padding: 24, textAlign: 'center' }}>
-              <Text size={15} color="var(--tg-textSecondary)">{t('Statistics are not available.')}</Text>
+              <Text size={15} color="var(--secondary-text-color)">{t('Statistics are not available.')}</Text>
             </div>
           )}
 
           {stats && !loading && (
             <>
               <div className={s.section} style={{ marginTop: 8 }}>
-                <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionTitle}>
+                <Text size={14} weight={600} color="var(--primary-color)" className={s.sectionTitle}>
                   {t('Overview')}
                 </Text>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -56,22 +56,22 @@ export default function StoryStats({ storyId, onClose }: { storyId: number; onCl
                       minWidth: 0,
                       padding: '10px 12px',
                       borderRadius: 12,
-                      background: 'var(--tg-sidebarBg)',
+                      background: 'var(--surface-color)',
                     }}
                   >
-                    <Text size={19} weight={600} color="var(--tg-accent)">{nf.format(stats.views)}</Text>
-                    <Text noWrap size={13} color="var(--tg-textSecondary)">{t('Views')}</Text>
+                    <Text size={19} weight={600} color="var(--primary-color)">{nf.format(stats.views)}</Text>
+                    <Text noWrap size={13} color="var(--secondary-text-color)">{t('Views')}</Text>
                   </div>
                 </div>
               </div>
 
               {stats.viewsByDay.length > 0 && (
                 <div className={s.section}>
-                  <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionTitle}>
+                  <Text size={14} weight={600} color="var(--primary-color)" className={s.sectionTitle}>
                     {t('Views by day')}
                   </Text>
                   <div className={s.cardPlain} style={{ padding: '12px 12px 8px' }}>
-                    <StatChart points={stats.viewsByDay} variant="line" color="var(--tg-green, #4dcd5e)" />
+                    <StatChart points={stats.viewsByDay} variant="line" color="var(--green-color, #4dcd5e)" />
                   </div>
                 </div>
               )}

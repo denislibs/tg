@@ -44,8 +44,8 @@ function RadioRow({ label, selected, onClick }: { label: string; selected: boole
   const t = useT()
   return (
     <div className={s.radioRow} onClick={onClick}>
-      <TgIcon name={selected ? 'radioon' : 'radiooff'} color={selected ? 'var(--tg-accent)' : 'var(--tg-textFaint)'} />
-      <Text size={16} color="var(--tg-textPrimary)">{t(label)}</Text>
+      <TgIcon name={selected ? 'radioon' : 'radiooff'} color={selected ? 'var(--primary-color)' : 'var(--secondary-text-color)'} />
+      <Text size={16} color="var(--primary-text-color)">{t(label)}</Text>
     </div>
   )
 }
@@ -71,7 +71,7 @@ export default function ChatFoldersSettings({ onBack, chats = [] }: { onBack: ()
   return (
     <SettingsScreen title="Chat Folders" onBack={onBack}>
       <LottieSticker name="Folders_1" size={86} />
-      <Text size={14} color="var(--tg-textSecondary)" className={s.caption}>
+      <Text size={14} color="var(--secondary-text-color)" className={s.caption}>
         {t('Create folders for different groups of chats and quickly switch between them.')}
       </Text>
       <div className={s.createWrap}>
@@ -100,8 +100,8 @@ export default function ChatFoldersSettings({ onBack, chats = [] }: { onBack: ()
           {suggested.map((sg) => (
             <div key={sg.title} className={s.suggestedRow}>
               <div className={s.suggestedBody}>
-                <Text size={16} color="var(--tg-textPrimary)">{t(sg.title)}</Text>
-                <Text size={13.5} color="var(--tg-textSecondary)">{t(sg.desc)}</Text>
+                <Text size={16} color="var(--primary-text-color)">{t(sg.title)}</Text>
+                <Text size={13.5} color="var(--secondary-text-color)">{t(sg.desc)}</Text>
               </div>
               <button type="button" className={s.addBtn} onClick={() => addSuggested(sg)}>
                 {t('Add')}

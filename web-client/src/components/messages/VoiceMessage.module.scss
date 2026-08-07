@@ -3,19 +3,19 @@
 // out — насыщенный bubbleOutAccent на светлой out-плашке, in — accent на серой.
 // Цвет бара по прогрессу (on/off) и высота — инлайн (зависят от данных).
 .wrap {
-  --v-accent: var(--tg-accent);
-  --v-off: var(--tg-textFaint);
-  --v-dur: var(--tg-textSecondary);
-  --v-time: var(--tg-textFaint);
+  --v-accent: var(--primary-color);
+  --v-off: var(--secondary-text-color);
+  --v-dur: var(--secondary-text-color);
+  --v-time: var(--secondary-text-color);
 
   display: flex;
   flex-direction: column;
 
   &:has([data-out]) {
-    --v-accent: var(--tg-bubbleOutAccent);
-    --v-off: color-mix(in srgb, var(--tg-bubbleOutAccent) 30%, transparent);
-    --v-dur: var(--tg-bubbleOutText);
-    --v-time: color-mix(in srgb, var(--tg-bubbleOutText) 70%, transparent);
+    --v-accent: var(--message-out-primary-color);
+    --v-off: color-mix(in srgb, var(--message-out-primary-color) 30%, transparent);
+    --v-dur: var(--message-out-primary-color);
+    --v-time: color-mix(in srgb, var(--message-out-primary-color) 70%, transparent);
   }
 }
 
@@ -82,7 +82,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--tg-accent);
+  background: var(--primary-color);
   flex-shrink: 0;
 }
 .spacer {

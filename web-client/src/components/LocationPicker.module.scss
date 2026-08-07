@@ -32,7 +32,7 @@
   height: 40px;
   border-radius: 50%;
   border: none;
-  background: var(--tg-sectionBackdrop, #fff);
+  background: var(--background-color, #fff);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
   display: flex;
   align-items: center;
@@ -61,7 +61,7 @@
   cursor: pointer;
 
   &:hover {
-    background: var(--tg-hover, rgba(0, 0, 0, 0.04));
+    background: var(--light-secondary-text-color, rgba(0, 0, 0, 0.04));
   }
 }
 

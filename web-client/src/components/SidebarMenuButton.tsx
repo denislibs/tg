@@ -35,7 +35,7 @@ function SidebarMenuButton({
     <>
       <IconButton
         onClick={() => (searching ? onBack() : setMenuOpen((o) => !o))}
-        color="var(--tg-textSecondary)"
+        color="var(--secondary-text-color)"
       >
         <AnimatePresence mode="wait" initial={false}>
           <motion.span

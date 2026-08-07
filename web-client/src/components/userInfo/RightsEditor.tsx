@@ -39,23 +39,23 @@ export default function RightsEditor({
       className={s.rights}
     >
       <div className={s.rightsHeader}>
-        <IconButton onClick={onBack} color="var(--tg-textSecondary)">
+        <IconButton onClick={onBack} color="var(--secondary-text-color)">
           <TgIcon name="back" />
         </IconButton>
-        <Text noWrap size={19} weight={600} color="var(--tg-textPrimary)" style={{ flex: 1 }}>
+        <Text noWrap size={19} weight={600} color="var(--primary-text-color)" style={{ flex: 1 }}>
           {member.displayName}
         </Text>
       </div>
 
       <div className={s.body}>
         <div className={s.section} style={{ marginTop: 0 }}>
-          <Text size={14} weight={600} color="var(--tg-accent)" className={s.sectionTitle}>
+          <Text size={14} weight={600} color="var(--primary-color)" className={s.sectionTitle}>
             Права администратора
           </Text>
           <div className={s.cardPlain}>
             {RIGHTS.map((r) => (
               <div key={r.bit} onClick={() => toggle(r.bit)} className={s.rightRow}>
-                <Text size={16} color="var(--tg-textPrimary)" style={{ flex: 1 }}>{r.label}</Text>
+                <Text size={16} color="var(--primary-text-color)" style={{ flex: 1 }}>{r.label}</Text>
                 <TgSwitch checked={(bits & r.bit) !== 0} />
               </div>
             ))}

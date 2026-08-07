@@ -16,11 +16,11 @@
   line-height: 1;
   text-align: center;
   color: #fff;
-  background-color: var(--tg-badge);
+  background-color: var(--primary-color);
   flex-shrink: 0;
 }
 
 // Muted dialogs: gray badge instead of the accent.
 .muted {
-  background-color: var(--tg-textFaint);
+  background-color: var(--secondary-text-color);
 }

@@ -67,15 +67,15 @@ export default function BirthdayModal({
             onClick={(e) => e.stopPropagation()}
             className={s.dialog}
           >
-            <IconButton onClick={onClose} color="var(--tg-textSecondary)" className={s.close}>
+            <IconButton onClick={onClose} color="var(--secondary-text-color)" className={s.close}>
               <TgIcon name="close" />
             </IconButton>
 
             <div className={s.hero}>
               <div className={s.heroIcon}>
-                <TgIcon name="gift" size={44} color="var(--tg-accent)" />
+                <TgIcon name="gift" size={44} color="var(--primary-color)" />
               </div>
-              <Text size={20} weight={700} color="var(--tg-textPrimary)">
+              <Text size={20} weight={700} color="var(--primary-text-color)">
                 {t('Birthday')}
               </Text>
             </div>
@@ -86,7 +86,7 @@ export default function BirthdayModal({
               <Input label={yearLabel} value={year} onChange={(v) => setYear(onlyDigits(v, 4))} inputMode="numeric" wrapClassName={s.year} />
             </div>
 
-            <Text size={14} color="var(--tg-textSecondary)" style={{ textAlign: 'center', marginTop: '14px', lineHeight: 1.45 }}>
+            <Text size={14} color="var(--secondary-text-color)" style={{ textAlign: 'center', marginTop: '14px', lineHeight: 1.45 }}>
               {t('In settings you can choose who will see your birthday.')}
             </Text>
 

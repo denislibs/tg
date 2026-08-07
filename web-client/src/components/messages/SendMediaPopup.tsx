@@ -99,7 +99,7 @@ export default function SendMediaPopup({
         <>
           <IconButton
             size="small"
-            color="var(--tg-textPrimary)"
+            color="var(--primary-text-color)"
             onClick={(e) => {
               const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
               setMenuPos({ top: r.bottom + 4, right: window.innerWidth - r.right })
@@ -119,20 +119,20 @@ export default function SendMediaPopup({
               <MenuItem
                 icon={<TgIcon name="image" size={20} />}
                 label={t('Send as media')}
-                right={!asFile ? <TgIcon name="check" size={18} color="var(--tg-accent)" /> : undefined}
+                right={!asFile ? <TgIcon name="check" size={18} color="var(--primary-color)" /> : undefined}
                 onClick={() => { setAsFile(false); setMenuOpen(false) }}
               />
               <MenuItem
                 icon={<TgIcon name="document" size={20} />}
                 label={t('Send as file')}
-                right={asFile ? <TgIcon name="check" size={18} color="var(--tg-accent)" /> : undefined}
+                right={asFile ? <TgIcon name="check" size={18} color="var(--primary-color)" /> : undefined}
                 onClick={() => { setAsFile(true); setPaidPrice(null); setMenuOpen(false) }}
               />
               {canPaid && (
                 <MenuItem
                   icon={<StarIcon size={20} />}
                   label={t('Make paid')}
-                  right={paidPrice != null ? <TgIcon name="check" size={18} color="var(--tg-accent)" /> : undefined}
+                  right={paidPrice != null ? <TgIcon name="check" size={18} color="var(--primary-color)" /> : undefined}
                   onClick={() => { setPaidPrice((p) => (p == null ? 10 : null)); setMenuOpen(false) }}
                 />
               )}
@@ -153,7 +153,7 @@ export default function SendMediaPopup({
                 onChange={(e) => setPaidPrice(Math.max(1, Math.floor(Number(e.target.value)) || 1))}
                 aria-label={t('Price in Stars')}
               />
-              <Text size={13} color="var(--tg-textSecondary)">{t('Price in Stars')}</Text>
+              <Text size={13} color="var(--secondary-text-color)">{t('Price in Stars')}</Text>
             </div>
           )}
           <div className={s.footer}>
@@ -202,8 +202,8 @@ export default function SendMediaPopup({
             <div key={i} className={s.fileRow}>
               <div className={s.fileIcon}>{ext || <TgIcon name="document" />}</div>
               <div className={s.fileBody}>
-                <Text noWrap size={14.5} weight={600} color="var(--tg-textPrimary)">{f.name}</Text>
-                <Text size={12.5} color="var(--tg-textSecondary)">{fmtSize(f.size)}</Text>
+                <Text noWrap size={14.5} weight={600} color="var(--primary-text-color)">{f.name}</Text>
+                <Text size={12.5} color="var(--secondary-text-color)">{fmtSize(f.size)}</Text>
               </div>
             </div>
           )

@@ -1,7 +1,7 @@
 // Slider — нативный range, стилизованный под tweb: тонкий трек с акцентным
 // заполнением до --fill, круглый акцентный ползунок 18px. Цвет — var(--sl-color).
 .slider {
-  --sl-color: var(--tg-accent);
+  --sl-color: var(--primary-color);
   --fill: 0%;
   -webkit-appearance: none;
   appearance: none;
@@ -22,7 +22,7 @@
     background: linear-gradient(
       to right,
       var(--sl-color) var(--fill),
-      color-mix(in srgb, var(--tg-textFaint) 45%, transparent) var(--fill)
+      color-mix(in srgb, var(--secondary-text-color) 45%, transparent) var(--fill)
     );
   }
   &::-webkit-slider-thumb {
@@ -40,7 +40,7 @@
   &::-moz-range-track {
     height: 2px;
     border-radius: 2px;
-    background: color-mix(in srgb, var(--tg-textFaint) 45%, transparent);
+    background: color-mix(in srgb, var(--secondary-text-color) 45%, transparent);
   }
   &::-moz-range-progress {
     height: 2px;
