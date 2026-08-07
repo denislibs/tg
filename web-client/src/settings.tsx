@@ -118,17 +118,28 @@ const DEFAULTS: Settings = {
 
 const KEY = 'tg-settings'
 
+// Пресеты, удалённые в ходе cutover на themeController (Task 4): 'classic' и
+// 'dark' (старый ThemePreset) больше не существуют — 'classic'/legacy 'light' →
+// 'day', 'dark' → 'night'. 'day'/'night'/'light'/'tinted'/'system' проходят как есть.
+const legacyToPreset: Record<string, ThemeChoice> = {
+  classic: 'day',
+  light: 'day',
+  dark: 'night',
+}
+
 function load(): Settings {
   try {
     const raw = localStorage.getItem(KEY)
     if (!raw) {
       // migrate the legacy stand-alone theme key, if present
       const legacy = localStorage.getItem('tg-theme')
-      if (legacy === 'light') return { ...DEFAULTS, themeChoice: 'classic' }
+      if (legacy === 'light') return { ...DEFAULTS, themeChoice: 'day' }
       if (legacy === 'dark') return { ...DEFAULTS, themeChoice: 'night' }
       return DEFAULTS
     }
-    return { ...DEFAULTS, ...(JSON.parse(raw) as Partial<Settings>) }
+    const s = { ...DEFAULTS, ...(JSON.parse(raw) as Partial<Settings>) }
+    const mapped = legacyToPreset[s.themeChoice as string]
+    return mapped ? { ...s, themeChoice: mapped } : s
   } catch {
     return DEFAULTS
   }

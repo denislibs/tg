@@ -13,18 +13,18 @@ import PowerSaving from './PowerSaving'
 import s from './GeneralSettings.module.scss'
 
 const THEME_CARDS: { preset: ThemePreset; emoji: string; colors: [string, string, string, string]; accent: string }[] = [
-  { preset: 'classic', emoji: '🏠', colors: ['#dbddbb', '#6ba587', '#d5d88d', '#88b884'], accent: '#7d63e8' },
   { preset: 'day', emoji: '🐤', colors: ['#dbddbb', '#6ba587', '#d5d88d', '#88b884'], accent: '#3390ec' },
   { preset: 'night', emoji: '⛄', colors: ['#fec496', '#dd6cb9', '#962fbf', '#4f5bd5'], accent: '#8774e1' },
-  { preset: 'dark', emoji: '💎', colors: ['#4a5a6a', '#2e3a48', '#3a4654', '#28323e'], accent: '#5ea7e8' },
+  { preset: 'light', emoji: '🏠', colors: ['#dbddbb', '#6ba587', '#d5d88d', '#88b884'], accent: '#2d7ed5' },
+  { preset: 'tinted', emoji: '💎', colors: ['#4a5a6a', '#2e3a48', '#3a4654', '#28323e'], accent: '#3685fa' },
 ]
 
 const THEME_RADIOS: { choice: ThemeChoice; label: string }[] = [
-  { choice: 'classic', label: 'Classic' },
-  { choice: 'night', label: 'Night' },
-  { choice: 'day', label: 'Day' },
-  { choice: 'dark', label: 'Tinted' },
   { choice: 'system', label: 'System' },
+  { choice: 'day', label: 'Day' },
+  { choice: 'night', label: 'Night' },
+  { choice: 'light', label: 'Light' },
+  { choice: 'tinted', label: 'Tinted' },
 ]
 
 function RadioRow({
