@@ -3,7 +3,7 @@
 // (см. vitest.config.ts test.environment) и jsdom не установлен как зависимость —
 // используем happy-dom, он даёт тот же document/head/style/classList API.
 import { describe, it, expect } from 'vitest'
-import { setTheme, getCurrentPreset } from './themeController'
+import { setTheme, getCurrentPreset, deriveChatThemeVars, applyChatTheme, clearChatTheme } from './themeController'
 
 const rootStyle = () => document.getElementById('theme')!.textContent || ''
 
@@ -63,5 +63,40 @@ describe('themeController', () => {
     // -> #7dbee3. Пастельно-голубой (base.scss:178 — аватарка Saved Messages), а не почти-белый,
     // который получился бы при generic mixColor=surface-color(#ffffff для day).
     expect(css).toContain('--light-filled-saved-color:#7dbee3')
+  })
+})
+
+describe('deriveChatThemeVars', () => {
+  it('shifts primary under a custom accent (day)', () => {
+    const vars = new Map(deriveChatThemeVars('day', '#e17076', ['#e17076']))
+    // primary сдвинут под красный акцент, не синий дефолт day
+    const primary = vars.get('--primary-color')!.toLowerCase()
+    expect(primary).not.toBe('#3390ec')
+    // производные присутствуют
+    expect(vars.has('--primary-color-rgb')).toBe(true)
+    expect(vars.has('--light-primary-color')).toBe(true)
+    // out-bubble посчитан из messageColors
+    expect(vars.get('--message-out-background-color')).toBeTruthy()
+  })
+
+  it('forces message-out-primary-color to white for night presets', () => {
+    const vars = new Map(deriveChatThemeVars('night', '#e17076', ['#e17076']))
+    expect(vars.get('--message-out-primary-color')).toBe('#ffffff')
+  })
+
+  it('applyChatTheme writes inline vars on element', () => {
+    const el = document.createElement('div')
+    applyChatTheme(el, 'day', '#e17076', ['#e17076'])
+    expect(el.style.getPropertyValue('--primary-color')).toBeTruthy()
+    expect(el.style.getPropertyValue('--light-primary-color')).toBeTruthy()
+  })
+
+  it('clearChatTheme removes the vars written by applyChatTheme', () => {
+    const el = document.createElement('div')
+    applyChatTheme(el, 'day', '#e17076', ['#e17076'])
+    expect(el.style.getPropertyValue('--primary-color')).toBeTruthy()
+    clearChatTheme(el)
+    expect(el.style.getPropertyValue('--primary-color')).toBe('')
+    expect(el.style.getPropertyValue('--light-primary-color')).toBe('')
   })
 })
