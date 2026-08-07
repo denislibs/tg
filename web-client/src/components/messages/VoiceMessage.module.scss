@@ -49,8 +49,17 @@
   align-items: center;
   justify-content: center;
   background: var(--v-accent);
+  // Глиф контрастирует с фоном кнопки (--v-accent). У входящего кнопка —
+  // насыщенный primary → белый глиф. У исходящего кнопка = --message-out-primary-color
+  // (на night это БЕЛЫЙ) → белый глиф был бы невидим; берём фон out-баббла
+  // (--message-out-background-color, purple) как контраст. tweb: кнопка цветная,
+  // иконка контрастна (_audio.scss .audio-toggle bg=primary, .part=white).
   color: #fff;
   cursor: pointer;
+
+  [data-out] & {
+    color: var(--message-out-background-color);
+  }
 }
 .glyph {
   position: absolute;
