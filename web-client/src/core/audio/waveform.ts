@@ -1,8 +1,31 @@
 import { useEffect, useState } from 'react'
-import { decryptMedia } from '../secret/crypto'
+import { decryptMedia, b64ToBytes } from '../secret/crypto'
 import { mediaContentUrl, primeMediaToken, resolveMediaContentUrl } from '../mediaUrl'
+import { unpack5bit, WAVEFORM_SAMPLES_COUNT } from './voiceWaveformAnalyser'
 
 export const WAVE_BARS = 44
+
+// Бары из ПЕРЕДАННЫХ пиков (посчитаны при записи, 1:1 tweb): base64 → 5-бит
+// распаковка (100 значений 0..31) → ресэмпл к n баров (0..1, пол 0.08 как у
+// recompute). Приоритетнее client-recompute: одинаково у всех получателей,
+// не требует скачивания/декода аудиофайла.
+export function decodeTransmittedBars(waveformB64: string, n = WAVE_BARS): number[] {
+  if (!waveformB64) return []
+  let bytes: Uint8Array
+  try {
+    bytes = b64ToBytes(waveformB64)
+  } catch {
+    return []
+  }
+  if (!bytes.length) return []
+  const vals = unpack5bit(bytes, WAVEFORM_SAMPLES_COUNT)
+  const out: number[] = []
+  for (let i = 0; i < n; i++) {
+    const idx = Math.floor((i * vals.length) / n)
+    out.push(Math.max(0.08, vals[idx] / 31))
+  }
+  return out
+}
 
 // Секретный трек (E2E): байты приходят ciphertext'ом, их надо расшифровать.
 export interface WaveSecret { keyB64: string; ivB64: string }

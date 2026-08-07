@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Text from '../../shared/ui/Text'
 import PlayPauseGlyph from '../PlayPauseGlyph'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useAudioStore, prefetchSecretAudio } from '../../stores/audioStore'
-import { useWaveform, WAVE_BARS } from '../../core/audio/waveform'
+import { useWaveform, WAVE_BARS, decodeTransmittedBars } from '../../core/audio/waveform'
 import { Ticks } from './MessageBubbles'
 import { useTranscription, TranscribeButton, TranscribedText } from './Transcription'
 import classNames from '../../shared/lib/classNames'
@@ -54,8 +54,12 @@ export default function VoiceMessage({
   const managers = useManagers()
   const tr = useTranscription(chatId, msgId, transcription)
   const decoded = useWaveform(mediaId, secretMedia ? { keyB64: secretMedia.keyB64, ivB64: secretMedia.ivB64 } : undefined)
-  const bars = decoded.length ? decoded : PLACEHOLDER
   const [metaDur, setMetaDur] = useState(0)
+  // Переданные пики (посчитаны при записи, приоритетнее client-recompute);
+  // фолбэк — recompute (старые сообщения без пиков / секретный голос).
+  const [metaWaveform, setMetaWaveform] = useState('')
+  const transmitted = useMemo(() => decodeTransmittedBars(metaWaveform), [metaWaveform])
+  const bars = transmitted.length ? transmitted : decoded.length ? decoded : PLACEHOLDER
 
   const isCurrent = useAudioStore((s) => s.track?.mediaId === mediaId)
   const playing = useAudioStore((s) => s.playing && s.track?.mediaId === mediaId)
@@ -71,7 +75,9 @@ export default function VoiceMessage({
     if (secretMedia) return
     let alive = true
     void managers.media.meta(mediaId).then((m) => {
-      if (alive) setMetaDur(m.duration || 0)
+      if (!alive) return
+      setMetaDur(m.duration || 0)
+      setMetaWaveform(m.waveform || '')
     })
     return () => {
       alive = false
