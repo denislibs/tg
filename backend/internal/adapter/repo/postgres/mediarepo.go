@@ -22,10 +22,10 @@ func NewMediaRepo(pool *pgxpool.Pool) *MediaRepo { return &MediaRepo{pool: pool}
 func (r *MediaRepo) Create(ctx context.Context, m domain.Media) (domain.Media, error) {
 	q := querier(ctx, r.pool)
 	err := q.QueryRow(ctx,
-		`INSERT INTO media (owner_id, bucket, object_key, mime, size, width, height, duration, blur_preview, file_name)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+		`INSERT INTO media (owner_id, bucket, object_key, mime, size, width, height, duration, blur_preview, file_name, waveform)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 		 RETURNING id, created_at`,
-		m.OwnerID, m.Bucket, m.ObjectKey, m.Mime, m.Size, m.Width, m.Height, m.Duration, m.BlurPreview, m.FileName,
+		m.OwnerID, m.Bucket, m.ObjectKey, m.Mime, m.Size, m.Width, m.Height, m.Duration, m.BlurPreview, m.FileName, m.Waveform,
 	).Scan(&m.ID, &m.CreatedAt)
 	return m, err
 }
@@ -34,10 +34,10 @@ func (r *MediaRepo) GetByID(ctx context.Context, id int64) (domain.Media, error)
 	q := querier(ctx, r.pool)
 	var m domain.Media
 	err := q.QueryRow(ctx,
-		`SELECT id, owner_id, bucket, object_key, mime, size, width, height, duration, blur_preview, file_name, thumb_key, upload_id, upload_total, created_at
+		`SELECT id, owner_id, bucket, object_key, mime, size, width, height, duration, blur_preview, file_name, thumb_key, upload_id, upload_total, waveform, created_at
 		 FROM media WHERE id=$1`, id).Scan(
 		&m.ID, &m.OwnerID, &m.Bucket, &m.ObjectKey, &m.Mime, &m.Size,
-		&m.Width, &m.Height, &m.Duration, &m.BlurPreview, &m.FileName, &m.ThumbKey, &m.UploadID, &m.UploadTotal, &m.CreatedAt)
+		&m.Width, &m.Height, &m.Duration, &m.BlurPreview, &m.FileName, &m.ThumbKey, &m.UploadID, &m.UploadTotal, &m.Waveform, &m.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Media{}, domain.ErrNotFound
 	}

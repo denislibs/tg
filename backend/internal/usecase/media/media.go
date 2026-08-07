@@ -42,6 +42,7 @@ func (s *Interactor) CreateUpload(ctx context.Context, in UploadInput) (domain.M
 		OwnerID: in.OwnerID, Bucket: s.storage.Bucket(), ObjectKey: objectKey,
 		Mime: in.Mime, Size: in.Size, Width: in.Width, Height: in.Height,
 		Duration: in.Duration, BlurPreview: in.BlurPreview, FileName: in.FileName,
+		Waveform: in.Waveform,
 	})
 	if err != nil {
 		return domain.Media{}, "", err

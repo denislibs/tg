@@ -56,6 +56,7 @@ type uploadBody struct {
 	Duration    int    `json:"duration"`
 	BlurPreview []byte `json:"blur_preview"` // base64 in JSON
 	FileName    string `json:"file_name"`
+	Waveform    []byte `json:"waveform"` // base64 in JSON — пики голосового (5-бит)
 }
 
 func (h *MediaHandler) CreateUpload(w http.ResponseWriter, r *http.Request) {
@@ -68,7 +69,7 @@ func (h *MediaHandler) CreateUpload(w http.ResponseWriter, r *http.Request) {
 	m, uploadURL, err := h.svc.CreateUpload(r.Context(), usecasemedia.UploadInput{
 		OwnerID: user.ID, Mime: body.Mime, Size: body.Size,
 		Width: body.Width, Height: body.Height, Duration: body.Duration, BlurPreview: body.BlurPreview,
-		FileName: body.FileName,
+		FileName: body.FileName, Waveform: body.Waveform,
 	})
 	if errors.Is(err, usecasemedia.ErrBadSize) {
 		writeError(w, http.StatusBadRequest, "invalid size")
@@ -119,6 +120,7 @@ func (h *MediaHandler) Get(w http.ResponseWriter, r *http.Request) {
 		"width": m.Width, "height": m.Height, "duration": m.Duration,
 		"blur_preview": m.BlurPreview, "download_url": downloadURL,
 		"file_name": m.FileName, "has_thumb": m.ThumbKey != "",
+		"waveform": m.Waveform,
 	})
 }
 
