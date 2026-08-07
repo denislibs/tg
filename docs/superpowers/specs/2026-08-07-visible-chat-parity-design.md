@@ -84,7 +84,8 @@
 
 ### Что делаем (1:1)
 1. Порог `≤3` → `≤7`; шкала → `96/90/84/72/60/48/36`, задать через `--emoji-size` (одна переменная вместо трёх литералов).
-2. Учитывать custom-emoji в детекте (наш `RichText` уже умеет `CustomEmoji` инлайном; big-путь должен принимать сообщение из одних custom-emoji и рендерить их крупными). Детект приблизить к tweb: «весь текст без пробелов = только эмодзи (обычные + custom)». Наш детект остаётся regex-based по тексту (серверные emoji-entities у нас не формируются так же, как в tweb MTProto) — но привести порог, набор (custom) и размеры к tweb.
+2. Учитывать custom-emoji в детекте (наш `RichText` уже умеет `CustomEmoji` инлайном; big-путь должен принимать сообщение из одних custom-emoji и рендерить их крупными). Детект: «весь текст без пробелов = только эмодзи (обычные + custom)».
+   - **Механика 1:1 с tweb, не отсебятина:** `messageEntityEmoji` в tweb создаётся **локально** парсером (`src/lib/richTextProcessor/parseEntities.ts:81`, `getEmojiEntityFromEmoji.ts`), сервер их не шлёт (шлёт только `messageEntityCustomEmoji` с documentId). То есть наш regex-детект (`emojiOnlyCount`) — та же механика (локальный разбор эмодзи из текста), backend для BigEmoji не нужен. Приводим к tweb: порог `min(7, count)`, добавляем подсчёт custom-emoji-атомов (documentId уже есть в тексте), шкалу размеров.
 3. Анимир. одиночный размер **160 → 96** (1:1 tweb).
 4. Тайм-пилюля big-emoji → `--message-time-background` (из узла 0), убрать хардкод `rgba(0,0,0,.45)`.
 5. Гейт настройки `emoji.big` — **out-of-scope** (у нас нет этой настройки; big всегда включён — оставляем как есть, tweb-дефолт тоже включён).
@@ -108,9 +109,9 @@
 
 ### Что делаем (1:1)
 1. **Фон чипа** `--r-bg` → `var(--message-highlighting-color)` (узел 0), счётчик `#fff`; is-chosen bg → `--primary-color` (in-bubble), на медиа/стикере — surface-инверсия (уже есть `MessageRow.module.scss:471-472`). Убрать `color-mix`-отсебятину.
-2. **Аватары реагировавших** — новый компонент `StackedAvatars` (порт tweb `stackedAvatars.ts`: наложение, size 24, border-color). Показ **вместо числа** при `count < 4` И (приватный чат ИЛИ `can_see_list`).
-   - **Backend-зависимость:** нужно поле «недавние реагировавшие» (список peer_id на реакцию). Требует: поле в протоколе/модели (`models.ts` `ReactionCount += recent?: peerId[]`), отдачу с бэкенда (реакции хранятся в БД — добавить выборку последних N реагировавших), маппинг. Аватары рендерятся из уже загруженных пиров (peer store).
-   - Порог/условие `can_see_list` — если бэк не отдаёт флаг, для приватных чатов (isUser) показываем всегда (tweb-ветка `peerId.isUser()`); для групп — при наличии данных.
+2. **Аватары реагировавших** — новый компонент `StackedAvatars` (порт tweb `stackedAvatars.ts`: наложение, size 24, border-color). Показ **вместо числа** при `count < 4` И (приватный чат ИЛИ `can_see_list`) — 1:1 условие tweb (`reactions.ts:305-307`).
+   - **Backend делаем полноценно** (пользователь: «сделай с бэком если надо»): поле «недавние реагировавшие» (список peer_id на реакцию) end-to-end. Бэк: выборка последних N реагировавших на реакцию из хранилища реакций + отдача во всех местах, где сериализуется сообщение (список/апдейты/реалтайм). Флаг `can_see_list` для групп — из настроек чата (в приватных `peerId.isUser()` истина всегда). Фронт: `models.ts` `ReactionCount += recent?: { peerId: number }[]` (+ соответствующее поле в сыром DTO и маппинге). Аватары рендерятся из peer store уже загруженных пиров.
+   - `StackedAvatars` — отдельная задача плана (порт компонента) перед задачей интеграции в чип.
 3. Свериться по значениям пилюли (высота, padding, margin, счётчик) с tweb — расхождения (у нас 30px/8px vs tweb `1.375rem+.5rem`/`.5rem`) привести к tweb-величинам в rem.
 4. Удалить демо `Reaction.tsx`/`Reaction.module.scss` (мёртвый код).
 
@@ -196,5 +197,6 @@
 **Фронт (реакции):** `components/messages/MessageRow.tsx`, `MessageRow.module.scss`, новый `components/StackedAvatars.tsx`, `core/models.ts`.
 **Фронт (обои):** `components/ChatBackground.tsx`, новый `core/chat/patternRenderer.ts`, `styles/_tokens.scss`, `wallpapers.ts`, `package.json` (убрать `@twallpaper/react`).
 **Фронт (голосовое):** новый `core/audio/voiceWaveformAnalyser.ts`, `core/hooks/useVoiceRecorder.ts`, `core/hooks/useChatSend.ts`, `core/managers/mediaManager.ts`, `components/messages/VoiceMessage.tsx`, `core/audio/waveform.ts` (фолбэк), `core/models.ts`.
-**Бэк (голосовое + реакции-аватары):** `internal/domain/media.go`, новая миграция `store/postgres/migrations/00NN_*.sql`, `adapter/repo/postgres/mediarepo.go`, `adapter/delivery/http/media_handler.go`; реакции — выборка recent-reactors в репо реакций + отдача.
+**Бэк (голосовое):** `internal/domain/media.go` (`Waveform []byte`), новая миграция `store/postgres/migrations/00NN_media_waveform.sql`, `adapter/repo/postgres/mediarepo.go` (INSERT/SELECT/Finalize), `adapter/delivery/http/media_handler.go`.
+**Бэк (реакции-аватары):** `adapter/repo/postgres/reactionsrepo.go` — расширить `ReactionsFor` (агрегация последних N `user_id` на `(message_id, emoji)` из таблицы `reactions`, данные уже есть); `domain.ReactionCount += RecentUserIDs []int64`; сериализация в местах отдачи сообщений (список/апдейты/ws). Полный список реагировавших уже есть в `ReactionUsers` (попап «кто реагировал») — переиспользовать модель пиров.
 **Удалить (мёртвый код):** `components/MessageBubble.tsx`, `components/MessageBubble.module.scss`, `components/Reaction.tsx`, `components/Reaction.module.scss` (после проверки отсутствия импортов).
