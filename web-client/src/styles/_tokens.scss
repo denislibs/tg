@@ -98,3 +98,13 @@
   --section-box-shadow-big-color: rgba(0, 0, 0, 0.24);
   --column-box-shadow-color: rgba(0, 0, 0, 0.24);
 }
+
+// tinted («Dark Blue») — свой тёмно-синий градиент обоев (1:1 tweb state.ts:349-352),
+// НЕ яркий night-«sunset». Overlay-путь (soft-light+invert) делает дудлы светлыми
+// поверх тёмно-синего; яркий night-градиент тут пересвечивал бы (см. ChatBackground).
+[data-theme='tinted'] {
+  --tg-bgGrad0: #1e3557;
+  --tg-bgGrad1: #182036;
+  --tg-bgGrad2: #1c4352;
+  --tg-bgGrad3: #16263a;
+}

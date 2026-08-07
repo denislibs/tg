@@ -1,5 +1,5 @@
-// Built-in chat wallpaper presets — each is a 4-colour gradient fed to the
-// @twallpaper renderer (same model as Telegram's built-in backgrounds).
+// Built-in chat wallpaper presets — each is a 4-colour gradient fed to our own
+// canvas pattern renderer (same model as Telegram's built-in backgrounds).
 export interface WallpaperPreset {
   id: string
   colors: [string, string, string, string]
