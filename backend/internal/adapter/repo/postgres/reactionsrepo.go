@@ -42,8 +42,11 @@ func (r *ReactionsRepo) ReactionsFor(ctx context.Context, messageIDs []int64, vi
 		return map[int64][]domain.ReactionCount{}, nil
 	}
 	q := querier(ctx, r.pool)
+	// array_agg(... ORDER BY created_at DESC)[1:3] — до 3 последних реагировавших
+	// на эту реакцию (свежие первыми), для аватаров в чипе (tweb count<4).
 	rows, err := q.Query(ctx,
-		`SELECT message_id, emoji, count(*), bool_or(user_id=$2)
+		`SELECT message_id, emoji, count(*), bool_or(user_id=$2),
+		        (array_agg(user_id ORDER BY created_at DESC))[1:3]
 		 FROM reactions WHERE message_id = ANY($1)
 		 GROUP BY message_id, emoji ORDER BY count(*) DESC, emoji ASC`,
 		messageIDs, viewerID)
@@ -55,7 +58,7 @@ func (r *ReactionsRepo) ReactionsFor(ctx context.Context, messageIDs []int64, vi
 	for rows.Next() {
 		var msgID int64
 		var rc domain.ReactionCount
-		if err := rows.Scan(&msgID, &rc.Emoji, &rc.Count, &rc.Mine); err != nil {
+		if err := rows.Scan(&msgID, &rc.Emoji, &rc.Count, &rc.Mine, &rc.RecentUserIDs); err != nil {
 			return nil, err
 		}
 		out[msgID] = append(out[msgID], rc)

@@ -5,6 +5,10 @@ type ReactionCount struct {
 	Count int    `json:"count"`
 	// Mine — зритель тоже поставил эту реакцию (клиент подсвечивает чип).
 	Mine bool `json:"mine,omitempty"`
+	// RecentUserIDs — id последних реагировавших (до 3, свежие первыми). Клиент
+	// показывает их аватары вместо числа при count<4 (tweb reaction.ts:1060-1084,
+	// reactions.ts:305-307 — аватары при totalReactions<REACTIONS_DISPLAY_COUNTER_AT).
+	RecentUserIDs []int64 `json:"recent_user_ids,omitempty"`
 }
 
 // ReactionUser — одна поставленная реакция (кто и каким эмодзи), для попапа
