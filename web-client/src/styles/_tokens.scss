@@ -20,8 +20,6 @@
   // ── Семантические алиасы (см. config/themePresets.ts AppColorName) ──
   --tg-accent: var(--primary-color);
   --tg-badge: var(--primary-color);
-  // низкоалембный акцент-тинт (tweb hover-alpha=.08) — подложка баннеров/inline-плашек
-  --tg-bannerBg: var(--light-primary-color);
   // фон-подложка целых экранов (паскод-лок и т.п.) и подложка секций-карточек
   --tg-bg: var(--background-color);
   --tg-appBg: var(--background-color);
@@ -89,6 +87,10 @@
   --tg-inputBorderIdle: #dfe1e5;
   // тонкая рамка входящего баббла
   --tg-bubbleBorder: rgba(0, 0, 0, 0.04);
+  // подложка баннеров/inline-плашек (NotificationBanner) — нет tweb-аналога, свой
+  // токен; старое значение 1:1 (было тонировано под day-акцент, не по формуле
+  // hover-alpha)
+  --tg-bannerBg: rgba(51, 144, 236, 0.07);
   // фон сервис-баблов/пилюль дат (tweb --message-highlighting-color) — тёмный
   // полупрозрачный на светлой теме (белый текст читается на светлых обоях)
   --message-highlighting-color: rgba(0, 0, 0, 0.24);
@@ -115,6 +117,9 @@
   // tweb --input-search-border-color night: #2f2f2f
   --tg-inputBorderIdle: #2f2f2f;
   --tg-bubbleBorder: rgba(255, 255, 255, 0.04);
+  // подложка баннеров/inline-плашек — нейтрально-белая (не акцентная), старое
+  // значение night/dark 1:1
+  --tg-bannerBg: rgba(255, 255, 255, 0.04);
   // Тёмная тема: светлый полупрозрачный фон сервис-баблов (белый текст читается
   // на тёмных обоях; отличается от светлой темы).
   --message-highlighting-color: rgba(255, 255, 255, 0.16);

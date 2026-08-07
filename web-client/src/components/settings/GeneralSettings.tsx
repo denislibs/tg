@@ -16,7 +16,7 @@ const THEME_CARDS: { preset: ThemePreset; emoji: string; colors: [string, string
   { preset: 'day', emoji: '🐤', colors: ['#dbddbb', '#6ba587', '#d5d88d', '#88b884'], accent: '#3390ec' },
   { preset: 'night', emoji: '⛄', colors: ['#fec496', '#dd6cb9', '#962fbf', '#4f5bd5'], accent: '#8774e1' },
   { preset: 'light', emoji: '🏠', colors: ['#dbddbb', '#6ba587', '#d5d88d', '#88b884'], accent: '#2d7ed5' },
-  { preset: 'tinted', emoji: '💎', colors: ['#4a5a6a', '#2e3a48', '#3a4654', '#28323e'], accent: '#3685fa' },
+  { preset: 'tinted', emoji: '💎', colors: ['#fec496', '#dd6cb9', '#962fbf', '#4f5bd5'], accent: '#3685fa' },
 ]
 
 const THEME_RADIOS: { choice: ThemeChoice; label: string }[] = [
