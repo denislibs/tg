@@ -95,7 +95,11 @@
 // ── media (photo/video/file) ──
 .media {
   position: relative;
-  max-width: min(340px, 82%);
+  max-width: min(420px, 100%); // tweb _chatBubble.scss:890
+}
+// альбом чуть шире одиночного медиа (tweb _chatBubble.scss:910)
+.mediaAlbum {
+  max-width: min(451px, 100%);
 }
 .mediaInner {
   position: relative;
