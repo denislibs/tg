@@ -19,7 +19,6 @@ import ChatSearchCard from './ChatSearchCard'
 import { useCall } from '../call/CallProvider'
 import { useChatHeaderSearch } from '../../core/hooks/useChatHeaderSearch'
 import { SERVICE_USER_ID } from '../../core/dialogToChat'
-import useMediaQuery from '../../shared/lib/useMediaQuery'
 import { EASE, DUR } from '../../motion'
 import type { Chat } from '../../data'
 import type { TypingKind } from '../../core/hooks/useTypingLabel'
@@ -52,9 +51,8 @@ function ChatHeader({
   const { start: startCall } = useCall()
   const search = useChatHeaderSearch(chat, onJumpToSeq)
 
-  // tweb: на handhelds плейты в 8px от краёв (--page-chats-padding: 8px)
-  const narrow = useMediaQuery('(max-width:900px)')
-  const barTop = { top: `${(narrow ? 8 : 16) + playerOffset}px` }
+  // top: 16px (как на десктопе) — паритет зазора ленты; + смещение плеера
+  const barTop = { top: `${16 + playerOffset}px` }
 
   return (
     <AnimatePresence initial={false}>
