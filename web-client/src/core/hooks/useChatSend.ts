@@ -98,7 +98,7 @@ export function useChatSend({
     onSecond: pingVoiceTyping,
     onComplete: async (r) => {
       if (!r) return
-      const { secs, blob, mime, mode } = r
+      const { secs, blob, mime, mode, waveform } = r
       if (!blob) return
       const type = mode === 'round' ? 'roundVideo' : 'voice' // кружок → круглое видеосообщение
       const clientMsgId = `c-${chat.id}-${performance.now()}-${Math.random().toString(36).slice(2)}`
@@ -118,7 +118,9 @@ export function useChatSend({
         if (draftPeerId != null) onChatCreated?.(cid)
         return
       }
-      const mediaId = await managers.media.upload({ blob, mime, size: blob.size, duration: secs })
+      // waveform (пики) шлём только для голосового; для secret-голоса (выше) он
+      // остаётся на client-recompute — пики в E2E-payload это отдельная работа.
+      const mediaId = await managers.media.upload({ blob, mime, size: blob.size, duration: secs, waveform: type === 'voice' ? (waveform ?? undefined) : undefined })
       let cid = numericChatId
       if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
       if (isRealChat) void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: '', type, media_id: mediaId })

@@ -6,6 +6,7 @@
 // back via onComplete, and the caller uploads + sends it.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useEvent } from './useEvent'
+import VoiceWaveformAnalyser from '../audio/voiceWaveformAnalyser'
 
 export const REC_WAVE_BARS = 90 // live recording waveform bar count (fills the pill width)
 
@@ -22,6 +23,8 @@ export interface VoiceResult {
   blob: Blob | null
   mime: string
   mode: RecordingMode
+  /** 5-битные пики waveform (голосовое) — посчитаны при записи; null для кружка */
+  waveform: Uint8Array | null
 }
 
 export interface VoiceRecorderOptions {
@@ -69,6 +72,8 @@ export function useVoiceRecorder(opts: VoiceRecorderOptions): VoiceRecorder {
   const secsRef = useRef(0)
   const audioCtx = useRef<AudioContext | null>(null)
   const analyser = useRef<AnalyserNode | null>(null)
+  // Анализатор пиков waveform (голосовое) — считает финальные пики при записи.
+  const waveformAnalyser = useRef<VoiceWaveformAnalyser | null>(null)
 
   // Keep the latest options in a ref so the async timers / MediaRecorder.onstop
   // callbacks always see fresh closures (onComplete with current managers/chat),
@@ -111,6 +116,10 @@ export function useVoiceRecorder(opts: VoiceRecorderOptions): VoiceRecorder {
     window.clearInterval(vizTimer.current)
     vizTimer.current = undefined
     analyser.current = null
+    // Финализируем пики waveform ДО закрытия AudioContext (finish отключает свой
+    // ScriptProcessor от графа). null для кружка / если анализатор не создавался.
+    const waveform = waveformAnalyser.current?.finish() ?? null
+    waveformAnalyser.current = null
     const ac = audioCtx.current
     audioCtx.current = null
     if (ac) void ac.close()
@@ -131,7 +140,7 @@ export function useVoiceRecorder(opts: VoiceRecorderOptions): VoiceRecorder {
     mediaRec.current = null
     if (!send || recordedSecs < 1) { o.current.onComplete(null); return }
     const blob = recordedChunks.length ? new Blob(recordedChunks, { type: mime }) : null
-    o.current.onComplete({ secs: recordedSecs, blob, mime, mode: modeRef.current })
+    o.current.onComplete({ secs: recordedSecs, blob, mime, mode: modeRef.current, waveform })
   }
 
   const modeRef = useRef<RecordingMode>('voice')
@@ -176,8 +185,11 @@ export function useVoiceRecorder(opts: VoiceRecorderOptions): VoiceRecorder {
         audioCtx.current = ac
         const an = ac.createAnalyser()
         an.fftSize = 512
-        ac.createMediaStreamSource(s).connect(an)
+        const src = ac.createMediaStreamSource(s)
+        src.connect(an)
         analyser.current = an
+        // Пики waveform считаем только для голосового (у кружка waveform не нужен).
+        if (m === 'voice') waveformAnalyser.current = new VoiceWaveformAnalyser(src)
         setBars([])
         startVizTimer()
       } catch { /* visualizer optional */ }
@@ -199,11 +211,13 @@ export function useVoiceRecorder(opts: VoiceRecorderOptions): VoiceRecorder {
       mr?.resume()
       startSecsTimer()
       startVizTimer()
+      waveformAnalyser.current?.setPaused(false)
       setPaused(false)
     } else {
       mr?.pause()
       window.clearInterval(timer.current)
       window.clearInterval(vizTimer.current)
+      waveformAnalyser.current?.setPaused(true)
       setPaused(true)
     }
   })
