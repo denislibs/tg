@@ -24,12 +24,14 @@
 // `presetToColorMap('tinted')` как есть. `setTheme` синхронный.
 
 import type { AppColor, AppColorName, ThemePresetName } from '../../config/themePresets'
-import { appColorMap, presetToColorMap } from '../../config/themePresets'
+import { appColorMap, DEFAULT_HIGHLIGHTING_COLORS, presetToColorMap } from '../../config/themePresets'
 import {
   changeColorAccent,
   getAccentColor,
   getAverageColor,
   hexToRgb,
+  highlightingColor,
+  hslaStringToRgba,
   hslaToRgba,
   mixColors,
   rgbaToHexa,
@@ -232,8 +234,36 @@ export function setTheme(preset: ThemePresetName): void {
   getOrCreateStyleEl().textContent = css
   document.documentElement.classList.toggle('night', isNight)
   document.documentElement.setAttribute('data-theme', preset)
+  applyHighlightingColor(preset)
 
   currentPreset = preset
+}
+
+// Порт `applyHighlightingColor` (tweb helpers/themeController.ts:293-316) —
+// пишет три инлайн-переменные подсветки (сервис-баблы/date-пилюли/hover) на
+// element. По умолчанию — на documentElement (глобальная тема), для per-чата
+// вызывается с element (см. applyChatTheme ниже, tweb chat.ts:564-566).
+function applyHighlightingColorHsla(hsla: string, element: HTMLElement): void {
+  const rgba = hslaStringToRgba(hsla)
+  element.style.setProperty('--message-highlighting-color', hsla)
+  element.style.setProperty('--message-highlighting-color-rgb', rgba.slice(0, 3).join(','))
+  element.style.setProperty('--message-highlighting-alpha', '' + rgba[3] / 255)
+}
+
+export function applyHighlightingColor(
+  preset: ThemePresetName,
+  element: HTMLElement = document.documentElement,
+): void {
+  applyHighlightingColorHsla(DEFAULT_HIGHLIGHTING_COLORS[preset], element)
+}
+
+// Для узла 3 (средний цвет обоев) — highlightingColor() из среднего RGB обоев,
+// а не из статичного пресетного hsla.
+export function applyHighlightingColorFromRgb(
+  rgb: [number, number, number],
+  element: HTMLElement = document.documentElement,
+): void {
+  applyHighlightingColorHsla(highlightingColor(rgb), element)
 }
 
 export function getCurrentPreset(): ThemePresetName | null {
@@ -334,13 +364,22 @@ export function applyChatTheme(
   for (const [name, value] of deriveChatThemeVars(preset, accentColor, messageColors)) {
     element.style.setProperty(name, value)
   }
+  // tweb chat.ts:564-566 — highlighting-переменные переприменяются на
+  // per-чатовый контейнер (per-chat скоуп поверх глобальной темы).
+  applyHighlightingColor(preset, element)
 }
 
 // Набор имён переменных детерминирован (зависит только от appColorMap, не от
 // конкретных hex/preset/messageColors) — переиспользуем buildColorMapVars с
 // произвольным валидным colorMap только чтобы перечислить имена.
 const CHAT_THEME_BASE_VARS = buildColorMapVars(presetToColorMap('day'), false)
-const CHAT_THEME_VAR_NAMES = CHAT_THEME_BASE_VARS.map(([name]) => `--${name}`)
+const CHAT_THEME_VAR_NAMES = [
+  ...CHAT_THEME_BASE_VARS.map(([name]) => `--${name}`),
+  // три переменные, которые пишет applyHighlightingColor (см. applyChatTheme выше).
+  '--message-highlighting-color',
+  '--message-highlighting-color-rgb',
+  '--message-highlighting-alpha',
+]
 
 /** Снимает inline-переменные, записанные applyChatTheme (сброс на глобальную тему). */
 export function clearChatTheme(element: HTMLElement): void {

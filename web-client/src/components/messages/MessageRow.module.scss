@@ -137,11 +137,16 @@
 .stickerReal {
   position: relative;
   display: inline-block;
+  // tweb _chatBubble.scss:760 (.just-media) — без фона бабла тайм-пилюля берёт
+  // цвет подсветки темы вместо дефолтного тёмного оверлея.
+  --message-time-background: var(--message-highlighting-color);
 }
 .sticker {
   position: relative;
   display: inline-block;
   padding: 0 4px;
+  // tweb _chatBubble.scss:760 (.just-media) — то же самое для big-emoji.
+  --message-time-background: var(--message-highlighting-color);
 }
 .stickerGlyph {
   line-height: 1.1;
@@ -156,7 +161,7 @@
   gap: 2px;
   padding: 3px 6px;
   border-radius: 11px;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--message-time-background);
 }
 
 // ── voice (type=voice, без mediaId) ──
