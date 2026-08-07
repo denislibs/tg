@@ -83,12 +83,12 @@ const MediaLightbox = lazy(() => import('./messages/MediaLightbox'))
 // tweb: fade = 3.5rem + page-chats-padding, контент-паддинг ленты =
 // chat-input-height + page-chats-padding; page-chats-padding = 16px desktop /
 // 8px handheld — см. _chat.scss:447,1104 и updateColumnWidths.ts.
-const padTop = (narrow: boolean) => (narrow ? 68 : 76) // real clearance under the header
+const padTop = (narrow: boolean) => (narrow ? 76 : 84) // clearance под хедером + 16px зазор до первого сообщения
 // Верхний фейд глубже клиренса: приглушение начинается заранее, ещё до того как
 // сообщение уйдёт под хедер (как в tweb — верх ленты приглушён уже в статике).
 const fadeTop = (narrow: boolean) => (narrow ? 100 : 108)
 const fadeBottom = (narrow: boolean) => (narrow ? 64 : 72) // mask only
-const padBottom = (narrow: boolean) => (narrow ? 56 : 64) // real feed padding
+const padBottom = (narrow: boolean) => (narrow ? 64 : 72) // clearance над композером + 16px зазор от последнего сообщения
 
 // Local start-of-day in ms (the date "bucket"), and a friendly day label for the
 // date divider — tweb shows Today / Yesterday / "14 June" (with year if not this year).
