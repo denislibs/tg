@@ -140,7 +140,7 @@ export default function VoiceMessage({
           </Text>
           {showUnplayedDot && <div className={s.dot} />}
           <div className={s.spacer} />
-          <Text size={12} color="var(--v-time)">
+          <Text size="var(--messages-time-text-size)" color="var(--v-time)">
             {time}
           </Text>
           {out && <Ticks status={status} color={tickColor} />}

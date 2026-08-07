@@ -109,7 +109,7 @@
   padding: 0 10px 4px;
 }
 .mediaText {
-  font-size: var(--msg-text-size);
+  font-size: var(--messages-text-size);
   color: var(--b-text);
   white-space: pre-wrap;
   word-break: break-word;
@@ -123,7 +123,7 @@
   margin-top: 4px;
 }
 .mediaTimeText {
-  font-size: var(--font-size-12);
+  font-size: var(--messages-time-text-size);
   font-variant-numeric: tabular-nums;
 }
 
@@ -279,7 +279,7 @@
   gap: 6px;
 }
 .msgText {
-  font-size: var(--msg-text-size);
+  font-size: var(--messages-text-size);
   line-height: 1.35;
   white-space: pre-wrap;
   word-break: break-word;
@@ -301,7 +301,7 @@
   }
 }
 .metaTime {
-  font-size: var(--font-size-12);
+  font-size: var(--messages-time-text-size);
   white-space: nowrap;
   color: var(--b-time);
 }

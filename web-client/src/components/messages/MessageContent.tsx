@@ -161,7 +161,7 @@ function BigEmojiBubble({ m, count, selecting, fmtTime }: {
         </div>
       )}
       <div className={s.stickerMeta}>
-        <Text size={12.5} color="#fff">{fmtTime(m.time)}</Text>
+        <Text size="var(--messages-time-text-size)" color="#fff">{fmtTime(m.time)}</Text>
         <Ticks status={m.status} color="var(--b-tick)" />
       </div>
     </div>
@@ -186,7 +186,7 @@ function StickerRealBubble({ m, fmtTime }: { m: ConvMsg; fmtTime: (hhmm?: string
     <div className={s.stickerReal}>
       <StickerMedia mediaId={m.mediaId!} width={w} height={h} autoplay loop={loopStickers} />
       <div className={s.stickerMeta}>
-        <Text size={12.5} color="#fff">{fmtTime(m.time)}</Text>
+        <Text size="var(--messages-time-text-size)" color="#fff">{fmtTime(m.time)}</Text>
         <Ticks status={m.status} color="var(--b-tick)" />
       </div>
     </div>
@@ -443,7 +443,7 @@ export default function MessageContent({
               <div className={s.voiceMeta}>
                 <Text size={12.5} color="var(--b-secondary)">{m.duration}</Text>
                 <div className={s.spacer} />
-                <Text size={12} color="var(--b-time)">{fmtTime(m.time)}</Text>
+                <Text size="var(--messages-time-text-size)" color="var(--b-time)">{fmtTime(m.time)}</Text>
                 <Ticks status={m.status} color="var(--b-tick)" />
               </div>
             </div>
