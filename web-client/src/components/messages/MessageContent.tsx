@@ -4,7 +4,7 @@
 // Презентационно: вынесено из MessageRow, чтобы держать мемоизированный ряд тонким.
 // Мемо/пропсы MessageRow не затронуты — этот компонент рендерится ровно там же,
 // где раньше был инлайн-тернарник (внутри ZoneBody), с теми же данными.
-import { useRef, useState, type ReactNode } from 'react'
+import { useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import Text from '../../shared/ui/Text'
 import classNames from '../../shared/lib/classNames'
 import { withAlpha } from '../../core/format/cssColor'
@@ -104,13 +104,15 @@ function EffectReplayButton({ kind }: { kind: EmojiEffectKind }) {
   )
 }
 
-// Big emoji (tweb bubbles.ts bigEmojis): сообщение из 1–3 эмодзи без текста —
-// крупный глиф без фона бабла. РОВНО один эмодзи, у которого есть лотти в
-// сид-наборе animated_emoji, рендерится анимированным стикером (tweb
+// Big emoji (tweb bubbles.ts bigEmojis): сообщение из одних только эмодзи, без
+// текста, — крупный глиф без фона бабла. РОВНО один эмодзи, у которого есть
+// лотти в сид-наборе animated_emoji, рендерится анимированным стикером (tweb
 // getAnimatedEmojiSticker → wrapSticker): autoplay ОДИН раз (не loop), replay по
 // клику. Клик по эффект-эмодзи (❤️/🎉/👍/…) — и по анимированному, и по
 // шрифтовому — запускает полноэкранный canvas-эффект из центра бабла.
-const ANIMATED_EMOJI_SIZE = 160
+// Шкала размеров 1:1 tweb bubbles.ts:319-328 (BIG_EMOJI_SIZES, индекс — число
+// эмодзи в сообщении; count клампится к 7 — длине этой шкалы, tweb bubbles.ts:7373).
+export const BIG_EMOJI_SIZES = [0, 96, 90, 84, 72, 60, 48, 36]
 function BigEmojiBubble({ m, count, selecting, fmtTime }: {
   m: ConvMsg
   count: number
@@ -122,6 +124,9 @@ function BigEmojiBubble({ m, count, selecting, fmtTime }: {
   const [replayToken, setReplayToken] = useState(0)
   const boxRef = useRef<HTMLDivElement>(null)
   const effect = emoji ? effectForEmoji(emoji) : null
+  // count теперь не ограничен сверху (Task 3) — клампим индекс шкалы, иначе
+  // выход за границы массива (tweb bubbles.ts:7373 Math.min(BIG_EMOJI_SIZES_LENGTH, …)).
+  const size = BIG_EMOJI_SIZES[Math.min(7, count)]
   // В selecting клик занят выбором, у error-бабла — меню переотправки.
   const clickable = !selecting && m.status !== 'error' && (effect != null || animated != null)
   const onClick = clickable
@@ -133,15 +138,15 @@ function BigEmojiBubble({ m, count, selecting, fmtTime }: {
         if (animated) setReplayToken((tk) => tk + 1)
       }
     : undefined
+  // Шкала — CSS-переменная на контейнере (tweb bubbles.ts:7381 --emoji-size),
+  // глиф читает её через var() (см. .stickerGlyph в MessageRow.module.scss).
+  const boxStyle: CSSProperties = { '--emoji-size': `${size}px`, ...(clickable ? { cursor: 'pointer' } : {}) } as CSSProperties
   return (
-    <div ref={boxRef} className={s.sticker} onClick={onClick} style={clickable ? { cursor: 'pointer' } : undefined}>
+    <div ref={boxRef} className={s.sticker} onClick={onClick} style={boxStyle}>
       {animated ? (
-        <StickerMedia mediaId={animated.mediaId} width={ANIMATED_EMOJI_SIZE} height={ANIMATED_EMOJI_SIZE} autoplay replayToken={replayToken} />
+        <StickerMedia mediaId={animated.mediaId} width={size} height={size} autoplay replayToken={replayToken} />
       ) : (
-        <div
-          className={s.stickerGlyph}
-          style={{ fontSize: count === 1 ? 56 : count === 2 ? 46 : 38, padding: '2px 0' }}
-        >
+        <div className={s.stickerGlyph} style={{ padding: '2px 0' }}>
           {m.text}
         </div>
       )}

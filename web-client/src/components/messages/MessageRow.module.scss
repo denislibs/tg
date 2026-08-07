@@ -149,6 +149,9 @@
   --message-time-background: var(--message-highlighting-color);
 }
 .stickerGlyph {
+  // Размер глифа — из --emoji-size, выставленной на .sticker по шкале
+  // BIG_EMOJI_SIZES (tweb _chatBubble.scss:741 font-size: var(--emoji-size)).
+  font-size: var(--emoji-size);
   line-height: 1.1;
   user-select: none;
 }
