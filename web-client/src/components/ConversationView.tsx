@@ -1,11 +1,11 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import Text from '../shared/ui/Text'
 import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import { useAvatarSrc } from './useAvatarSrc'
-import { chatThemeVariant, chatThemeBubbleOut } from '../chatThemes'
+import { chatThemeVariant } from '../chatThemes'
 import { PRESET_MODE, resolvePreset } from '../theme'
+import { applyChatTheme, clearChatTheme } from '../core/theme/themeController'
 import { useSettingsStore } from '../settings'
 import { CallProvider } from './call/CallProvider'
 import { startOutgoing } from '../core/calls/callEngine'
@@ -156,28 +156,27 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
 
   // Тема оформления чата (messages.setChatTheme): id читаем реактивно из стора
   // диалогов (chat_theme_update его патчит), с фолбэком на пропс. Тема
-  // применяется ЛОКАЛЬНО к области этого чата — переопределяем --tg-accent и
-  // рисуем фон-градиент темы поверх глобальных обоев, не трогая глобальные токены.
+  // применяется ЛОКАЛЬНО к колонке чата (tweb chat.ts:367-371 — applyTheme на
+  // this.container, а не на сайдбары): деривация — та же формула tweb, что и
+  // для глобальных пресетов (core/theme/themeController.ts:deriveChatThemeVars),
+  // применяется инлайном на .root через applyChatTheme/clearChatTheme ниже.
   const dialogThemeId = useChatsStore((st) => st.dialogs.find((d) => d.chatId === numericChatId)?.themeId)
   const activeThemeId = dialogThemeId ?? chat.themeId
   const themeChoice = useSettingsStore((st) => st.themeChoice)
-  const themeMode = PRESET_MODE[resolvePreset(themeChoice)]
+  const preset = resolvePreset(themeChoice)
+  const themeMode = PRESET_MODE[preset]
   const themeVariant = chatThemeVariant(activeThemeId, themeMode)
-  const themeStyle = themeVariant
-    ? ({
-        '--tg-accent': themeVariant.accent,
-        '--tg-accentGradient': `linear-gradient(135deg, ${themeVariant.accent}, ${themeVariant.accent})`,
-        // Акцент исходящих баблов (тики «прочитано», голосовые, ссылки, reply-полоса)
-        // идёт от --tg-bubbleOutAccent — тема должна перекрыть и его, иначе они
-        // остаются дефолтно-синими на теме.
-        '--tg-bubbleOutAccent': themeVariant.accent,
-        // Фон исходящего бабла тоже часть темы (как в tweb) — иначе бабл остаётся
-        // дефолтно-сиреневым/голубым на цветной теме.
-        '--tg-bubbleOut': chatThemeBubbleOut(themeVariant.accent, themeMode),
-        // Бейдж непрочитанных тоже от акцента темы (tweb .badge).
-        '--tg-badge': themeVariant.accent,
-      } as CSSProperties)
-    : undefined
+  const rootRef = useRef<HTMLDivElement | null>(null)
+
+  useLayoutEffect(() => {
+    const el = rootRef.current
+    if (!el) return
+    if (themeVariant) {
+      applyChatTheme(el, preset, themeVariant.accent, themeVariant.messageColors)
+    } else {
+      clearChatTheme(el)
+    }
+  }, [preset, themeVariant])
 
   const draftPeerId = chat.id.startsWith('draft:') ? Number(chat.id.slice('draft:'.length)) : null
   const meId = useChatsStore((s) => s.meId)
@@ -851,7 +850,7 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
 
   return (
     <CallProvider chat={chat}>
-    <div className={s.root} style={themeStyle}>
+    <div className={s.root} ref={rootRef}>
       <div className={classNames(s.column, narrow ? s.columnNarrow : '')}>
         {/* Обои темы чата рисует глобальный ChatBackground (App), чтобы весь shell был
             в теме, а не только эта колонка — локальный слой убран. */}

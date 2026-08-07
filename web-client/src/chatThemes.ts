@@ -14,6 +14,15 @@ export interface ChatThemeVariant {
   accent: string
   /** 4-цветный градиент обоев чата */
   gradient: [string, string, string, string]
+  /**
+   * Цвета исходящих баблов темы (tweb theme_settings.message_colors). У реальных
+   * облачных тем это отдельная палитра сервера; здесь встроенных 8 тем нет
+   * серверных message_colors, поэтому placeholder — тот же акцент, а
+   * out-bubble деривится из него формулой tweb (см.
+   * core/theme/themeController.ts:deriveChatThemeVars). Заменить на настоящие
+   * message_colors, когда появятся облачные темы.
+   */
+  messageColors: string[]
 }
 
 export interface ChatTheme {
@@ -31,62 +40,52 @@ export const CHAT_THEMES: ChatTheme[] = [
   {
     id: 'sky',
     emoji: '🏝',
-    light: { accent: '#f55783', gradient: ['#8dc0eb', '#b9d1ea', '#c6b1ef', '#ebd7ef'] },
-    dark: { accent: '#f97b98', gradient: ['#1e3557', '#182036', '#1c4352', '#16263a'] },
+    light: { accent: '#f55783', gradient: ['#8dc0eb', '#b9d1ea', '#c6b1ef', '#ebd7ef'], messageColors: ['#f55783'] },
+    dark: { accent: '#f97b98', gradient: ['#1e3557', '#182036', '#1c4352', '#16263a'], messageColors: ['#f97b98'] },
   },
   {
     id: 'sunrise',
     emoji: '🐥',
-    light: { accent: '#eb9500', gradient: ['#eaa36e', '#f0e486', '#f29ebf', '#e8c06e'] },
-    dark: { accent: '#f0c14b', gradient: ['#2c2512', '#45360b', '#221d08', '#3b2f13'] },
+    light: { accent: '#eb9500', gradient: ['#eaa36e', '#f0e486', '#f29ebf', '#e8c06e'], messageColors: ['#eb9500'] },
+    dark: { accent: '#f0c14b', gradient: ['#2c2512', '#45360b', '#221d08', '#3b2f13'], messageColors: ['#f0c14b'] },
   },
   {
     id: 'ice',
     emoji: '⛄',
-    light: { accent: '#2cb9ed', gradient: ['#aac8ea', '#cfe0f2', '#c2d9ee', '#b3d0ea'] },
-    dark: { accent: '#3e88f7', gradient: ['#1e3557', '#151a36', '#1c4352', '#2a4541'] },
+    light: { accent: '#2cb9ed', gradient: ['#aac8ea', '#cfe0f2', '#c2d9ee', '#b3d0ea'], messageColors: ['#2cb9ed'] },
+    dark: { accent: '#3e88f7', gradient: ['#1e3557', '#151a36', '#1c4352', '#2a4541'], messageColors: ['#3e88f7'] },
   },
   {
     id: 'tulip',
     emoji: '🌷',
-    light: { accent: '#ff5fa9', gradient: ['#f2b9c4', '#e89bb0', '#f5cdd6', '#eaa9bd'] },
-    dark: { accent: '#eb6ca4', gradient: ['#2c0b22', '#290020', '#160a22', '#3b1834'] },
+    light: { accent: '#ff5fa9', gradient: ['#f2b9c4', '#e89bb0', '#f5cdd6', '#eaa9bd'], messageColors: ['#ff5fa9'] },
+    dark: { accent: '#eb6ca4', gradient: ['#2c0b22', '#290020', '#160a22', '#3b1834'], messageColors: ['#eb6ca4'] },
   },
   {
     id: 'diamond',
     emoji: '💎',
-    light: { accent: '#7e5fe5', gradient: ['#e4b2ea', '#8376c2', '#eab9d9', '#b493e6'] },
-    dark: { accent: '#9472ee', gradient: ['#3a1c3a', '#24193c', '#392e3e', '#1a1632'] },
+    light: { accent: '#7e5fe5', gradient: ['#e4b2ea', '#8376c2', '#eab9d9', '#b493e6'], messageColors: ['#7e5fe5'] },
+    dark: { accent: '#9472ee', gradient: ['#3a1c3a', '#24193c', '#392e3e', '#1a1632'], messageColors: ['#9472ee'] },
   },
   {
     id: 'gold',
     emoji: '🌟',
-    light: { accent: '#f08200', gradient: ['#f0c07a', '#e8a268', '#f5d29b', '#e0b070'] },
-    dark: { accent: '#f0a030', gradient: ['#2c211b', '#442917', '#22191f', '#3b2714'] },
+    light: { accent: '#f08200', gradient: ['#f0c07a', '#e8a268', '#f5d29b', '#e0b070'], messageColors: ['#f08200'] },
+    dark: { accent: '#f0a030', gradient: ['#2c211b', '#442917', '#22191f', '#3b2714'], messageColors: ['#f0a030'] },
   },
   {
     id: 'forest',
     emoji: '🎄',
-    light: { accent: '#5a9e29', gradient: ['#c9e29b', '#9fd17a', '#dbe8a0', '#a7d77f'] },
-    dark: { accent: '#29b327', gradient: ['#2d4836', '#172b19', '#364331', '#103231'] },
+    light: { accent: '#5a9e29', gradient: ['#c9e29b', '#9fd17a', '#dbe8a0', '#a7d77f'], messageColors: ['#5a9e29'] },
+    dark: { accent: '#29b327', gradient: ['#2d4836', '#172b19', '#364331', '#103231'], messageColors: ['#29b327'] },
   },
   {
     id: 'arcade',
     emoji: '🎮',
-    light: { accent: '#199972', gradient: ['#a8e0d0', '#bfeae0', '#cdeee6', '#b3e6da'] },
-    dark: { accent: '#00b09b', gradient: ['#1c2731', '#1a1c25', '#27303b', '#1b1b21'] },
+    light: { accent: '#199972', gradient: ['#a8e0d0', '#bfeae0', '#cdeee6', '#b3e6da'], messageColors: ['#199972'] },
+    dark: { accent: '#00b09b', gradient: ['#1c2731', '#1a1c25', '#27303b', '#1b1b21'], messageColors: ['#00b09b'] },
   },
 ]
-
-// Фон исходящего бабла для темы. В Telegram/tweb фон out-бабла — часть темы
-// (themeSettings.message_colors), меняется вместе с обоями. У нас выводим из
-// акцента тем же соотношением, что и дефолтные токены (--tg-bubbleOut ≈ 13%
-// accent на белом в light): светлый тинт в light, тёмный — в dark.
-export function chatThemeBubbleOut(accent: string, mode: 'light' | 'dark'): string {
-  return mode === 'dark'
-    ? `color-mix(in srgb, ${accent} 22%, #1e1e1e)`
-    : `color-mix(in srgb, ${accent} 13%, #ffffff)`
-}
 
 // Тема по id (undefined — тема не задана / неизвестный id → дефолтное оформление).
 export function chatThemeById(id: string | undefined | null): ChatTheme | undefined {
