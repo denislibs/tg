@@ -112,7 +112,18 @@ function EffectReplayButton({ kind }: { kind: EmojiEffectKind }) {
 // шрифтовому — запускает полноэкранный canvas-эффект из центра бабла.
 // Шкала размеров 1:1 tweb bubbles.ts:319-328 (BIG_EMOJI_SIZES, индекс — число
 // эмодзи в сообщении; count клампится к 7 — длине этой шкалы, tweb bubbles.ts:7373).
+// Применяется ТОЛЬКО к шрифтовому глифу (tweb _chatBubble.scss:730 &:not(.sticker)) —
+// у анимированного эмодзи-стикера свой фиксированный размер, см. ANIMATED_EMOJI_SIZE.
 export const BIG_EMOJI_SIZES = [0, 96, 90, 84, 72, 60, 48, 36]
+// Размер шрифтового глифа по count, с клампом (tweb bubbles.ts:7373
+// Math.min(BIG_EMOJI_SIZES_LENGTH, …)) — count после Task 3 не ограничен сверху.
+export function bigEmojiGlyphSize(count: number): number {
+  return BIG_EMOJI_SIZES[Math.min(7, count)]
+}
+// Анимированный эмодзи-стикер (tweb mediaSizes.ts:72,90 emojiSticker: 112×112,
+// оба брейкпоинта desktop/handhelds) — фиксированный бокс, НЕ зависит от
+// шрифтовой шкалы выше (tweb bubbles.ts:6109 boxSize = isEmoji ? sizes.emojiSticker : …).
+const ANIMATED_EMOJI_SIZE = 112
 function BigEmojiBubble({ m, count, selecting, fmtTime }: {
   m: ConvMsg
   count: number
@@ -124,9 +135,7 @@ function BigEmojiBubble({ m, count, selecting, fmtTime }: {
   const [replayToken, setReplayToken] = useState(0)
   const boxRef = useRef<HTMLDivElement>(null)
   const effect = emoji ? effectForEmoji(emoji) : null
-  // count теперь не ограничен сверху (Task 3) — клампим индекс шкалы, иначе
-  // выход за границы массива (tweb bubbles.ts:7373 Math.min(BIG_EMOJI_SIZES_LENGTH, …)).
-  const size = BIG_EMOJI_SIZES[Math.min(7, count)]
+  const size = bigEmojiGlyphSize(count)
   // В selecting клик занят выбором, у error-бабла — меню переотправки.
   const clickable = !selecting && m.status !== 'error' && (effect != null || animated != null)
   const onClick = clickable
@@ -144,7 +153,7 @@ function BigEmojiBubble({ m, count, selecting, fmtTime }: {
   return (
     <div ref={boxRef} className={s.sticker} onClick={onClick} style={boxStyle}>
       {animated ? (
-        <StickerMedia mediaId={animated.mediaId} width={size} height={size} autoplay replayToken={replayToken} />
+        <StickerMedia mediaId={animated.mediaId} width={ANIMATED_EMOJI_SIZE} height={ANIMATED_EMOJI_SIZE} autoplay replayToken={replayToken} />
       ) : (
         <div className={s.stickerGlyph} style={{ padding: '2px 0' }}>
           {m.text}
