@@ -39,16 +39,22 @@ const ChatList = forwardRef<HTMLDivElement, ChatListProps>(function ChatList(
           <ArchiveRow chats={archived} onOpen={onOpenArchive} />
         )}
         {loaded ? (
-          chats.map((chat, i) => (
-            <ChatListItem
-              key={chat.id}
-              chat={chat}
-              index={i}
-              selected={chat.id === selectedId}
-              onSelect={onSelect}
-              collapsed={collapsed}
-            />
-          ))
+          /* tweb: строки лежат в `ul.chatlist` — от неё наследуется половина правил
+             ряда (`.user-title { display: flex }`, цвета статуса/бейджей,
+             `.dialog-subtitle` и т.д., _chatlist.scss). Без неё заголовок был
+             блочным и галочка верификации переносилась на вторую строку. */
+          <ul className="chatlist">
+            {chats.map((chat, i) => (
+              <ChatListItem
+                key={chat.id}
+                chat={chat}
+                index={i}
+                selected={chat.id === selectedId}
+                onSelect={onSelect}
+                collapsed={collapsed}
+              />
+            ))}
+          </ul>
         ) : (
           <DialogSkeleton />
         )}
