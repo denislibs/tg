@@ -16,13 +16,11 @@ import PollBubble from './PollBubble'
 import ChecklistBubble from './ChecklistBubble'
 import GiftBubble from './GiftBubble'
 import GiveawayBubble from './GiveawayBubble'
-import InlineKeyboard from './InlineKeyboard'
 import AlbumGrid from './AlbumGrid'
 import VoiceMessage from './VoiceMessage'
 import { MessageReactions } from './MessageReactions'
 import Time, { TimeClearfix, type TimeMode, type TimeCorner, type RenderTime } from './bubbleParts/Time'
 import {
-  BubbleTail,
   bubbleRadius,
   DocumentBubble,
   AudioBubble,
@@ -242,7 +240,6 @@ export default function MessageContent({
           )
         ) : m.mediaId && m.type === 'voice' ? (
           <div className={s.voiceMedia} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
-            {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
             <VoiceMessage
               mediaId={m.mediaId}
               msgId={m.id}
@@ -260,7 +257,6 @@ export default function MessageContent({
           // Альбом (медиагруппа): грид из элементов, подпись — под гридом.
           withMediaReactions(
           <div className={classNames(s.media, s.mediaAlbum)}>
-            {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
             <div
               className={classNames(s.mediaInner, s.framed)}
               style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}
@@ -305,7 +301,6 @@ export default function MessageContent({
           // аплоада (кольцо прогресса + отмена рисует RealMediaBubble).
           withMediaReactions(
           <div className={s.media}>
-            {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
             <div
               className={classNames(s.mediaInner, m.type === 'photo' || m.type === 'video' ? s.framed : '')}
               style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}
@@ -371,7 +366,7 @@ export default function MessageContent({
         ) : m.type === 'roundVideo' ? (
           withReactionsOutside(<RoundVideoBubble m={m} out={out} firstInGroup={firstInGroup} lastInGroup={lastInGroup} time={timeNode('floating', 'default', true)} />)
         ) : m.type === 'geo' && m.geo ? (
-          withReactionsOutside(<GeoBubble m={m} out={out} lastInGroup={lastInGroup} radius={bubbleRadius(out, firstInGroup, lastInGroup)} time={timeNode('floating', 'default', true)} />)
+          withReactionsOutside(<GeoBubble m={m} out={out} radius={bubbleRadius(out, firstInGroup, lastInGroup)} time={timeNode('floating', 'default', true)} />)
         ) : m.type === 'contact' && m.contact ? (
           <ContactBubble
             m={m}
@@ -393,24 +388,21 @@ export default function MessageContent({
             onClick={selecting ? undefined : () => feedFns.recall(!!m.call?.video)}
           />
         ) : m.type === 'gift' && m.gift ? (
-          <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
-            {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
+          <>
             <GiftBubble gift={m.gift} out={out} />
             {showReactions
               ? <div className={s.message}>{reactionsRow(timeNode('plain'))}</div>
               : timeNode('corner', 'poll')}
-          </div>
+          </>
         ) : m.type === 'giveaway' && m.giveaway ? (
-          <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
-            {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
+          <>
             <GiveawayBubble giveaway={m.giveaway} />
             {showReactions
               ? <div className={s.message}>{reactionsRow(timeNode('plain'))}</div>
               : timeNode('corner', 'poll')}
-          </div>
+          </>
         ) : m.type === 'poll' && m.poll ? (
-          <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
-            {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
+          <>
             {!out && m.sender && firstInGroup && (
               <Text size={14} weight={600} color={m.senderColor ?? peerColor(m.sender)}>
                 {m.sender}
@@ -420,10 +412,9 @@ export default function MessageContent({
             {showReactions
               ? <div className={s.message}>{reactionsRow(timeNode('plain'))}</div>
               : timeNode('corner', 'poll')}
-          </div>
+          </>
         ) : m.type === 'checklist' && m.checklist ? (
-          <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
-            {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
+          <>
             {!out && m.sender && firstInGroup && (
               <Text size={14} weight={600} color={m.senderColor ?? peerColor(m.sender)}>
                 {m.sender}
@@ -433,13 +424,11 @@ export default function MessageContent({
             {showReactions
               ? <div className={s.message}>{reactionsRow(timeNode('plain'))}</div>
               : timeNode('corner', 'poll')}
-          </div>
+          </>
         ) : (
           // tweb .bubble-content-wrapper: цветной бабл + reply-markup сиблингами;
           // кнопки лежат ВНЕ бабла (под ним), бабл растягивается на их ширину.
-          <div className={s.bubbleWrap}>
-          <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
-            {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
+          <>
             {!out && m.sender && firstInGroup && (
               <Text
                 className={s.name}
@@ -503,11 +492,7 @@ export default function MessageContent({
               )}
             </div>
             {footer && <div className={s.footerText}>{footer}</div>}
-          </div>
-          {m.replyMarkup?.inline && m.chatId != null && m.senderId != null && (
-            <InlineKeyboard rows={m.replyMarkup.inline} chatId={m.chatId} botId={m.senderId} msgId={m.id} />
-          )}
-          </div>
+          </>
         )}
     </>
   )

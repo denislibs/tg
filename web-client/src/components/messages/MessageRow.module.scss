@@ -3,96 +3,26 @@
 // от рантайм-флагов (радиусы группы, размер текста, размеры больших эмодзи) — инлайн.
 @use '../../styles/foundation' as *;
 
+// Палитра бабла: наши --b-* алиасы поверх токенов tweb. Раскладка, отступы,
+// подсветка/выделение и хвост — на классах tweb (_chatBubble.scss `.bubble`),
+// поэтому здесь остались только переменные.
 .row {
-  --row-mb: #{$bubble-margin}; // tweb $bubble-margin
-  --b-bg: var(--surface-color);
+  --b-bg: var(--message-background-color);
   --b-text: var(--primary-text-color);
   --b-link: var(--link-color);
   --b-secondary: var(--secondary-text-color);
 
-  position: relative;
-  display: flex;
-  align-items: center;
-  margin-bottom: var(--row-mb);
-  transform-origin: bottom left;
-  cursor: default;
-
-  &[data-last] {
-    --row-mb: #{$bubble-margin-big}; // tweb $bubble-margin-big
-  }
-
-  // Реакции (tweb _reaction.scss:81-96): фон невыбранного чипа — тёмная
-  // полупрозрачная подложка из обоев (--message-highlighting-color), счётчик белый
-  // (--counter-color:#fff); выбранного — сплошной акцент (--message-primary-color).
-  // Подложка/счётчик НЕ зависят от in/out (highlighting глобален, полупрозрачен и
-  // сам «просвечивает» цвет бабла под ним) — как в tweb.
+  // Реакции (tweb _reaction.scss:81-96): фон невыбранного чипа — подложка из
+  // обоев (--message-highlighting-color), счётчик белый; выбранного — акцент.
   --r-bg: var(--message-highlighting-color);
   --r-fg: #fff;
   --r-chosen-bg: var(--primary-color);
   --r-chosen-fg: #fff;
 
-  &[data-out] {
-    transform-origin: bottom right;
-    --b-bg: var(--message-out-background-color);
+  &:global(.is-out) {
     --b-text: var(--message-out-primary-color);
-    --b-link: var(--message-out-primary-color);
+    --b-link: var(--message-out-link-color);
     --b-secondary: color-mix(in srgb, var(--message-out-primary-color) 85%, transparent);
-    // tweb `.bubble.is-out` (_chatBubble.scss:3450-3451): время и тик исходящего
-    // переключаются на out-варианты токенов.
-    --message-time-color: var(--message-out-time-color);
-    --message-status-color: var(--message-out-status-color);
-    --message-icon-text-color: var(--message-out-icon-text-color);
-    --message-primary-color: var(--message-out-primary-color);
-    --light-filled-message-primary-color: var(--light-filled-message-out-primary-color);
-    // chosen в исходящем — тот же акцент (tweb --chosen-background-color:
-    // var(--message-primary-color)); фон невыбранного наследует highlighting.
-    --r-chosen-bg: var(--primary-color);
-    --r-chosen-fg: #fff;
-  }
-
-  &[data-selecting] {
-    cursor: pointer;
-  }
-}
-
-// Полоса на всю ширину: flash при переходе к сообщению и полоса выделения (accent .3).
-.band {
-  position: absolute;
-  top: 0;
-  bottom: calc(var(--row-mb) * -1);
-  left: 50%;
-  transform: translateX(-50%);
-  width: 100vw;
-  background: color-mix(in srgb, var(--primary-color) 30%, transparent);
-  z-index: 0;
-  pointer-events: none;
-}
-
-.check {
-  // tweb _chatBubble.scss:306-337: чекбокс у НИЗА бабла (bottom:.3125rem),
-  // не по центру; тень на боксе для читаемости поверх обоев.
-  position: absolute;
-  left: 4px;
-  bottom: 5px;
-  z-index: 2;
-  filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.4));
-}
-
-// Зона контента: выравнивание по стороне, сдвиг входящих при режиме выделения.
-.zone {
-  position: relative;
-  z-index: 1;
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  justify-content: flex-start;
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-
-  .row[data-out] & {
-    justify-content: flex-end;
-  }
-  .row[data-selecting]:not([data-out]) & {
-    transform: translateX(34px);
   }
 }
 
@@ -105,12 +35,13 @@
 .mediaAlbum {
   max-width: min(451px, 100%);
 }
+// Внутренний контейнер медиа. Фон/тень/радиусы бабла даёт .bubble-content (tweb),
+// здесь остаётся клиппинг медиа и рамка. Структура (.attachment.media-container)
+// приедет в Task 2.5.
 .mediaInner {
   position: relative;
-  background: var(--b-bg);
   color: var(--b-text);
   overflow: hidden;
-  box-shadow: var(--bubble-box-shadow);
 
   &.framed {
     padding: 1px; // 1px рамка цвета бабла вокруг фото/видео (tweb «обводка»)
@@ -133,9 +64,7 @@
 .voiceMedia {
   position: relative;
   max-width: min(340px, 82%);
-  background: var(--b-bg);
   color: var(--b-text);
-  box-shadow: var(--bubble-box-shadow);
 }
 
 // ── sticker / big emoji ──
@@ -162,31 +91,6 @@
   user-select: none;
 }
 
-// ── текстовый бабл ──
-// tweb .bubble-content-wrapper: колонка «цветной бабл + reply-markup». Ширина
-// подстраивается под самый широкий элемент (кнопки шире текста → бабл тянется),
-// но не больше лимита бабла. align-items:stretch = бабл получает min-width:100%.
-.bubbleWrap {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  max-width: 85%; // tweb --max-width: 85% (без px-кэпа)
-  min-width: 0;
-}
-// tweb `.bubble-content` (_chatBubble.scss:357-372): БЕЗ собственного padding —
-// отступы дают margin'ы детей (.name/.reply/.message), position:relative нужен
-// как containing block для абсолютного `.time-inner`.
-.textBubble {
-  position: relative;
-  max-width: 85%; // tweb --max-width: 85% (без px-кэпа)
-  min-width: 56px; // tweb min-width: 56px
-  display: flex;
-  flex-direction: column;
-  background: var(--b-bg);
-  color: var(--b-text);
-  box-shadow: var(--bubble-box-shadow);
-}
-
 // tweb `.message` (_chatBubble.scss:1132-1141) — тело сообщения: отступы бабла
 // живут здесь, position:relative делает его containing block'ом для времени,
 // которое плавает (`float: right`) в последней строке текста.
@@ -201,10 +105,6 @@
   // tweb _chatBubble.scss:380-384 — текст сообщения выделяем (body глушит
   // user-select на всём остальном хроме).
   user-select: text;
-}
-// внутри обёртки лимит несёт .bubbleWrap — бабл заполняет её ширину
-.bubbleWrap .textBubble {
-  max-width: 100%;
 }
 // Имя отправителя в бабле (tweb `.name`, _chatBubble.scss:1991-1997).
 .name {

@@ -37,22 +37,3 @@
     cursor: default;
   }
 }
-
-// Плашка «Непрочитанные сообщения» (tweb .is-first-unread::before): полоса на
-// всю ширину ленты, текст primary, фон surface, 30px, bold 15px.
-// TODO(Task 2.3): переехать на модификатор бабла .is-first-unread.
-.unreadDivider {
-  position: relative;
-  z-index: 2;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 100vw;
-  height: 30px;
-  line-height: 2.1; // tweb _chatBubble.scss:253
-  margin-bottom: 3px; // tweb $bubble-overflow-big = $bubble-margin-big/2 = 3px
-  text-align: center;
-  font-size: var(--font-size-15);
-  font-weight: 700;
-  color: var(--primary-color);
-  background-color: var(--surface-color);
-}

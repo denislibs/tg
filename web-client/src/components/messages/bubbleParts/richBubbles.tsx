@@ -16,7 +16,7 @@ import { useLiveShareStore } from '../../../stores/liveShareStore'
 import { stopLiveShare } from '../../../core/liveShareEngine'
 import type { IVArticle } from '../../../core/managers/ivManager'
 import type { ConvMsg } from '../../../data'
-import { BubbleTail, bubbleRadius } from './primitives'
+import { bubbleRadius } from './primitives'
 import s from '../MessageBubbles.module.scss'
 
 /** link preview card (rendered inside a text bubble) */
@@ -141,7 +141,6 @@ export function CallBubble({ m, out, firstInGroup, lastInGroup, time, reactions,
       onClick={onClick}
       style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup), cursor: onClick ? 'pointer' : undefined }}
     >
-      {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
       {/* tweb кладёт `.bubble-call` внутрь `.message` (bubbles.ts:8701) — отступы
           и точку отсчёта для времени даёт тело сообщения, а не padding бабла */}
       <div className={s.msgBody}>
@@ -176,10 +175,9 @@ const GEO_W = 277
 const GEO_H = 195
 const GEO_ZOOM = 15
 
-export function GeoBubble({ m, out, lastInGroup, radius, time }: {
+export function GeoBubble({ m, out, radius, time }: {
   m: ConvMsg
   out: boolean
-  lastInGroup: boolean
   radius: string
   time?: ReactNode
 }) {
@@ -218,7 +216,6 @@ export function GeoBubble({ m, out, lastInGroup, radius, time }: {
   }
   return (
     <div className={s.geoWrap}>
-      {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
       <a
         className={s.geoContainer}
         style={{ borderRadius: (isVenue || isLive) ? `${radius.split(' ')[0]} ${radius.split(' ')[0]} 0 0` : radius }}
@@ -293,7 +290,6 @@ export function ContactBubble({ m, out, firstInGroup, lastInGroup, time, reactio
   const initials = (c.name || '?').split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()
   return (
     <div className={s.contactBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
-      {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
       <div className={s.contactRow} onClick={onOpen} style={{ cursor: onOpen ? 'pointer' : 'default' }}>
         <Avatar background={peerColor(c.name || String(c.userId))} text={initials} size={54} />
         <div className={s.contactDetails}>

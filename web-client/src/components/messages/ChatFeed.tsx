@@ -48,7 +48,6 @@ function ChatFeed({
   feedFns, autoDownload, onOpenDiscussion,
 }: ChatFeedProps) {
   const [lang] = useLang()
-  const t = useT()
 
   // Group consecutive incoming messages from one sender so a single sticky avatar
   // can ride the scroll alongside the whole run (tweb). Per-day sections: each
@@ -192,16 +191,12 @@ function ChatFeed({
         startSection(dayKey, dayPill(dayKey, dayLabel(winMsgs[i].createdAt, lang), dayMs))
       }
     }
-    // Плашка «Непрочитанные сообщения» перед первым непрочитанным входящим
-    // (tweb .is-first-unread::before — полоса на всю ширину, primary на surface).
-    if (isRealChat && unreadDividerSeq != null && winMsgs[i]?.seq === unreadDividerSeq) {
-      flushGroup()
-      body().push(
-        <div key="unread-divider" className={s.unreadDivider} data-unread-divider>
-          {t('Unread Messages')}
-        </div>,
-      )
-    }
+    // Граница «Непрочитанные сообщения» — не отдельный узел, а модификатор
+    // самого бабла (tweb bubbles.ts:11609 `is-first-unread` + ::before на всю
+    // ширину ленты, _chatBubble.scss:238-258). Текст берётся из
+    // --unread-messages-text (ставит ConversationView из i18n).
+    const isFirstUnread = isRealChat && unreadDividerSeq != null && winMsgs[i]?.seq === unreadDividerSeq
+    if (isFirstUnread) flushGroup()
     if (m.type === 'date') {
       flushGroup()
       // у служебной дата-записи абсолютное время лежит в createdAt (time — «ЧЧ:ММ»)
@@ -261,6 +256,11 @@ function ChatFeed({
         selecting={selecting}
         isSelected={m.id != null && selected.has(m.id)}
         isHighlighted={isRealChat && highlightSeq != null && winMsgs[i]?.seq === highlightSeq}
+        // Имя в бабле показывается там же, где раньше решал MessageContent:
+        // групповой чат, входящее, первое сообщение серии.
+        showName={isGroup && !out && !!m.sender && firstInGroup}
+        isChannel={discussionsEnabled}
+        isFirstUnread={isFirstUnread}
         ladderActive={ladderActive}
         ladderDelay={ladderDelay}
         feedFns={feedFns}

@@ -191,19 +191,19 @@ export function diffTrees(expected, actual, opts = {}) {
 - Create: `web-client/src/styles/tweb/_quote.scss`, `_markup.scss`, `_spoiler.scss`, `_reaction.scss`, `_reactions.scss`, `_document.scss`, `_audio.scss`, `_peerTyping.scss` (зависимости баблов).
 - Modify: `web-client/src/styles/tweb/_index.scss`.
 
-- [ ] **Step 1: Скопировать партиалы и починить импорты**
+- [x] **Step 1: Скопировать партиалы и починить импорты**
 
 Копировать файлы 1:1, затем заменить только `@use`/`@import`-пути на наши (`../foundation` и т.п.). Никаких других правок на этом шаге.
 
-- [ ] **Step 2: Собрать и вычистить недостающие зависимости**
+- [x] **Step 2: Собрать и вычистить недостающие зависимости**
 
 `npx vite build` — sass покажет неизвестные переменные/миксины/функции. Каждую — либо портировать в `_foundation.scss`, либо (если тянет непортированную подсистему) удалить правило с комментарием `// не портировано: <что и почему>`. Итерировать до зелёной сборки.
 
-- [ ] **Step 3: Сверить критичные значения с живым референсом**
+- [x] **Step 3: Сверить критичные значения с живым референсом**
 
 По `docs/research/2026-08-08-tweb-live-dom-reference.md` §3/3b/3c проверить, что портированные значения дают живые: радиусы группы (`15px 5px 5px 15px` и пр.), `--max-width: 85%` + 30rem кап, стикер-бокс 200×200, floating-время (18px, font 12, padding 0 5px), тень бабла. Расхождение → правка в пользу живого + комментарий.
 
-- [ ] **Step 4: Проверки**
+- [x] **Step 4: Проверки**
 
 `npx vite build` зелёный; замерить прирост CSS (`ls -la dist/assets/*.css`) и записать в отчёт. `npm test -- --run` зелёный.
 
@@ -216,23 +216,23 @@ export function diffTrees(expected, actual, opts = {}) {
 **Interfaces:**
 - Produces: дерево `.bubbles > .bubbles-scrollable > .bubbles-inner > .bubbles-date-group > (.bubble.service.is-date | .bubbles-group)`; `.bubbles-group` содержит `.bubbles-group-avatar-container > .bubbles-group-avatar` и баблы; пропсы `MessageRow` не меняются.
 
-- [ ] **Step 1: Снять эталон группы из референса**
+- [x] **Step 1: Снять эталон группы из референса**
 
 Из `docs/research/tweb-dom/03-chat-overview.json` + `03-bubbles-123.json` выписать точное дерево обёрток (какие классы на каких уровнях, где `.bubbles-inner.is-chat`, где `with-message-avatars`).
 
-- [ ] **Step 2: Переписать рендер обёрток**
+- [x] **Step 2: Переписать рендер обёрток**
 
 Заменить `<section>/<header>/.group` на tweb-дерево с классами через `classNames` из `shared/lib/classNames`. Дата-разделитель — `.bubble.service.is-date > .bubble-content-wrapper > .bubble-content > .service-msg` (а не наша пилюля-кнопка; клик-обработчик сохранить на `.service-msg`).
 
-- [ ] **Step 3: Аватар группы**
+- [x] **Step 3: Аватар группы**
 
 `.bubbles-group-avatar-container` (absolute, column-reverse) + `.bubbles-group-avatar` sticky — как `_chatBubble.scss:45-88`; убрать нашу колонку с хардкодом `bottom: 72px`.
 
-- [ ] **Step 4: DOM-diff**
+- [x] **Step 4: DOM-diff**
 
 Прогнать харнес по обёрткам: findings уровня `.bubbles*`/`.bubbles-group*` пустые.
 
-- [ ] **Step 5: Проверки**
+- [x] **Step 5: Проверки**
 
 typecheck / tests / build зелёные; визуально лента не разъехалась (скриншот стенда).
 
@@ -247,27 +247,27 @@ typecheck / tests / build зелёные; визуально лента не р�
 **Interfaces:**
 - Produces: `.bubble` c набором модификаторов tweb (`is-in/is-out`, `is-group-first/last`, `can-have-tail`, `just-media`, `is-message-empty`, `sticker`, `emoji-big`, `photo`, `video`, `voice-message`, `audio-message`, `document-message`, `is-album`, `is-reply`, `forwarded`, `hide-name`, `service`, `is-first-unread`, `is-highlighted`, `is-selected`, `has-floating-time`, `with-reply-markup`, `channel-post`) вместо data-атрибутов; внутри — `.bubble-content-wrapper > .bubble-content` у **всех** типов.
 
-- [ ] **Step 1: Функция модификаторов**
+- [x] **Step 1: Функция модификаторов**
 
 Создать чистую функцию `bubbleClasses(msg, ctx)` рядом с `MessageRow.tsx`, возвращающую массив классов tweb по состоянию сообщения. Правила брать из `tweb/src/components/chat/bubbles.ts` (места, где `bubble.classList.add(...)`) и из аудита §4.1. Покрыть юнит-тестом: для набора фикстур (входящее первое/последнее в группе, исходящее с медиа, стикер, сервисное) ожидаемые наборы классов.
 
-- [ ] **Step 2: Переписать `MessageRow` на tweb-дерево**
+- [x] **Step 2: Переписать `MessageRow` на tweb-дерево**
 
 `.bubble` (с модификаторами) → `.bubble-content-wrapper` → `.bubble-content`. Полосу highlight/selection перевести с нашего `.band` на `::after` из tweb (правила уже в партиале). Чекбокс выделения — `.bubble-select-checkbox`.
 
-- [ ] **Step 3: Универсальные части внутри `.bubble-content`**
+- [x] **Step 3: Универсальные части внутри `.bubble-content`**
 
 `nameContainer` (имя/`.bubble-name-forwarded`+аватар 20px/via/rank), `.reply` (по `_quote.scss`), `.message`, `.attachment`, `svg.bubble-tail` — вставляются одинаково для **любого** типа (это и есть P0 №2). Для `just-media` — floating-плашка `.name-with-reply` поверх медиа (`_chatBubble.scss:1059-1125`).
 
-- [ ] **Step 4: Время**
+- [x] **Step 4: Время**
 
 `Time.tsx` уже близок к tweb (`span.time > .time-inner`) — перевести на глобальные классы, удалить `Time.module.scss`, убрать наш `forwards`-счётчик (в tweb его в строке времени нет), прокинуть `title` (полная дата).
 
-- [ ] **Step 5: DOM-diff по баблам**
+- [x] **Step 5: DOM-diff по баблам**
 
 Сравнить наше дерево с `expected/bubbles.json` для всех снятых типов. Цель: findings уровня структуры/классов = 0 (кроме задекларированных в `ignoreClasses`).
 
-- [ ] **Step 6: Проверки**
+- [x] **Step 6: Проверки**
 
 typecheck / tests (юнит на `bubbleClasses` зелёный) / build; скриншот-сверка со скриншотами tweb из `docs/research/tweb-dom/`.
 

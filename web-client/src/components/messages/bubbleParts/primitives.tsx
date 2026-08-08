@@ -3,7 +3,7 @@
 // радиусов и «хвост» бабла. Используются медиа- и rich-баблами (bubbleParts/*).
 import type { ReactNode } from 'react'
 import type { ConvMsg } from '../../../data'
-import s from '../MessageBubbles.module.scss'
+
 
 /** Общие пропсы простого бабла (media/file). */
 export interface Ctx {
@@ -31,23 +31,14 @@ export function bubbleRadius(out: boolean, firstInGroup: boolean, lastInGroup: b
 }
 
 /**
- * Хвостик в нижнем углу последнего бабла группы — точный путь из tweb
- * `#message-tail-filled`. Цвет — как у бабла; host-бабл должен быть
- * `position: relative` и не обрезать overflow.
+ * Хвостик бабла — `svg.bubble-tail` (tweb chat/utils.ts:50-62 generateTail).
+ * Геометрия и позиционирование целиком на _chatBubble.scss (`.can-have-tail
+ * .bubble-tail`), сторона/зеркало — по классам бабла; здесь только сам путь
+ * (в tweb он лежит в спрайте `#message-tail-filled`, у нас — инлайном).
  */
-export function BubbleTail({ out, color }: { out: boolean; color: string }) {
+export function BubbleTail() {
   return (
-    <svg
-      className={s.tail}
-      viewBox="0 0 11 20"
-      width="11"
-      height="20"
-      style={{
-        [out ? 'right' : 'left']: '-8.4px',
-        color,
-        transform: out ? 'translateY(1px) scaleX(-1)' : 'translateY(1px)',
-      }}
-    >
+    <svg className="bubble-tail" viewBox="0 0 11 20" width="11" height="20">
       <g transform="translate(9 -14)" fillRule="evenodd">
         <path
           d="M-6 16h6v17c-.193-2.84-.876-5.767-2.05-8.782-.904-2.325-2.446-4.485-4.625-6.48A1 1 0 01-6 16z"

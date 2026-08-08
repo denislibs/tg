@@ -1012,6 +1012,10 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
               // (.bubble.is-date) и низ sticky-аватара группы (_chatBubble.scss:47-49).
               ['--chat-padding-top' as string]: `${padTop(narrow) + playerOffset}px`,
               ['--chat-padding-bottom' as string]: `${padBottom(narrow)}px`,
+              // Текст границы непрочитанных — CSS-контент (tweb
+              // `.is-first-unread:before { content: var(--unread-messages-text) }`),
+              // поэтому значение подаётся строкой в кавычках.
+              ['--unread-messages-text' as string]: JSON.stringify(t('Unread Messages')),
             }}
           >
             {/* Render the list only once revealed, so rows mount at reveal time

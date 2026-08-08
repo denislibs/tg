@@ -32,7 +32,11 @@
   margin-top: 8px;
   padding: 7px 20px;
   border-radius: 16px;
-  background: var(--primary-color);
+  // ВНУТРИ бабла --primary-color переопределён на акцент бабла (tweb
+  // _chatBubble.scss:92 --primary-color: var(--message-primary-color)) — в
+  // исходящем это белый. Кнопка — как tweb .bubble-service-button: подложка из
+  // подсветки темы, текст белый.
+  background: var(--message-highlighting-color);
   color: #fff;
   font-size: var(--font-size-14);
   font-weight: 600;
