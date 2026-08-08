@@ -1,27 +1,15 @@
-// Checkbox — круглый чекбокс выбора (порт tweb .checkbox-field-round): кольцо в
-// невыбранном состоянии; при выборе вкатывается акцентный круг и рисуется белая
-// галочка. Цвета — через --cb-accent/--cb-ring (по умолчанию токены), размер — инлайн.
+// Checkbox рендерит глобальные `.checkbox-field[.checkbox-field-round]`
+// (_checkbox.scss): размеры от --size, кольцо, вкатывающийся круг, галочка.
+// Здесь — только раскладка: у tweb `.checkbox-field` — это ЦЕЛАЯ строка формы
+// (display:block, margin 1.5rem 1.1875rem, подпись через .checkbox-caption),
+// а у нас Checkbox — самостоятельный маленький контрол внутри чужой строки.
 .root {
-  position: relative;
+  margin: 0;
+  display: inline-block;
   flex-shrink: 0;
-}
-
-.ring {
-  position: absolute;
-  inset: 0;
-  border-radius: var(--cb-radius, 50%);
-  border: 2px solid var(--cb-ring, var(--secondary-text-color)); // tweb .checkbox-box-border 2px
-  box-sizing: border-box;
-}
-
-.fill {
-  position: absolute;
-  inset: 0;
-  border-radius: var(--cb-radius, 50%);
-  background: var(--cb-accent, var(--primary-color));
-}
-
-.svg {
-  position: absolute;
-  inset: 0;
+  width: var(--size);
+  height: var(--size);
+  // `.checkbox-box` внутри абсолютный (inset-inline-start: var(--offset-left);
+  // top: 50%) — корню нужен свой размер и позиционирование.
+  position: relative;
 }

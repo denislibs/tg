@@ -16,7 +16,6 @@ import { useLiveShareStore } from '../../../stores/liveShareStore'
 import { stopLiveShare } from '../../../core/liveShareEngine'
 import type { IVArticle } from '../../../core/managers/ivManager'
 import type { ConvMsg } from '../../../data'
-import { bubbleRadius } from './primitives'
 import s from '../MessageBubbles.module.scss'
 
 /** link preview card (rendered inside a text bubble) */
@@ -116,11 +115,9 @@ export function FactCheckBox({ fc, out, linkColor }: { fc: NonNullable<ConvMsg['
  * Лог 1:1 звонка (tweb .bubble-call): иконка телефона/камеры, заголовок,
  * стрелка (зелёная — состоялся, красная — нет) + длительность/причина, время + галочки.
  */
-export function CallBubble({ m, out, firstInGroup, lastInGroup, time, reactions, onClick }: {
+export function CallBubble({ m, out, time, reactions, onClick }: {
   m: ConvMsg
   out: boolean
-  firstInGroup: boolean
-  lastInGroup: boolean
   time?: ReactNode
   reactions?: ReactNode
   onClick?: () => void
@@ -140,7 +137,9 @@ export function CallBubble({ m, out, firstInGroup, lastInGroup, time, reactions,
     <div
       className={s.callBubble}
       onClick={onClick}
-      style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup), cursor: onClick ? 'pointer' : undefined }}
+      // Скругления/фон/тень — на `.bubble-content` снаружи (tweb): свои сюда
+      // не дублируем, иначе получается второй контур из-под бабла.
+      style={{ cursor: onClick ? 'pointer' : undefined }}
     >
       {/* tweb кладёт `.bubble-call` внутрь `.message` (bubbles.ts:8701) — отступы
           и точку отсчёта для времени даёт тело сообщения, а не padding бабла */}

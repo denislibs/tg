@@ -26,6 +26,14 @@
   white-space: nowrap !important;
 }
 
+// tweb scss/components/_global.scss:40-43 — снятие браузерного фокус-кольца.
+// Без него поверх акцентной рамки поля поиска (`.input-field-border`) Chrome
+// рисует свой синий/белый outline и получается двойной контур.
+input:focus,
+button:focus {
+  outline: none;
+}
+
 // tweb scss/components/_global.scss:143-148 — центрирование поверх контейнера
 // (в ленте это кнопка play поверх видео).
 .position-center {

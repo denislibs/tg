@@ -211,7 +211,10 @@ export default function Sidebar({
       <div className={classNames('sidebar-content', 'transition', 'zoom-fade', 'can-have-forum', s.content)}>
       {/* #chatlist-container несёт --stories-scrolled, .connection-status-bottom
           на него сдвигается (translateY(92px - var(--stories-scrolled))) */}
-      <div ref={chatlistContainerRef} id="chatlist-container" className={classNames('transition-item', 'active', folders.length > 0 ? 'has-filters' : '', s.body)}>
+      {/* `.transition > .transition-item:not(.active)` — display:none !important
+          (_transition.scss:12). Значит `active` носит РОВНО ОДИН из двух узлов:
+          при открытом поиске он уходит на #search-container, иначе на чатлист. */}
+      <div ref={chatlistContainerRef} id="chatlist-container" className={classNames('transition-item', searching ? '' : 'active', folders.length > 0 ? 'has-filters' : '', s.body)}>
       {/* tweb appDialogsManager.start(): bottomPart = .connection-status-bottom,
           в него prepend'ится .chatlist-overlay и append'ится #folders-container.
           Высота оверлея уезжает в --chatlist-overlay-height (ResizeObserver там же),
@@ -278,7 +281,7 @@ export default function Sidebar({
       </div>
 
         {searching && (
-          <div id="search-container" className={classNames('transition-item', 'sidebar-search', s.searchOverlay)}>
+          <div id="search-container" className={classNames('transition-item', 'active', 'sidebar-search', s.searchOverlay)}>
             <motion.div
               className={s.searchInner}
               initial={{ opacity: 0, scale: 0.96, y: -6 }}
