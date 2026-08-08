@@ -46,7 +46,9 @@ export interface ConvMsg {
   edited?: boolean // shows the "изменено" marker before the time
   views?: number // channel-post view count ("9.2K 👁"); undefined for non-posts
   forwards?: number // channel-post forward count (Telegram message.forwards); undefined for non-posts
-  reactions?: { emoji: string; count: number; mine: boolean }[] // чипы реакций под сообщением
+  // чипы реакций под сообщением; recent — карточки последних реагировавших
+  // (бэк отдаёт их только когда список доступен — tweb reactions.can_see_list)
+  reactions?: { emoji: string; count: number; mine: boolean; recent?: { id: number; name: string; avatarUrl?: string }[] }[]
   starReaction?: { total: number; mine: number } // платная ⭐-реакция (сумма звёзд + вклад зрителя)
   geo?: GeoData // гео-точка (type 'geo') + venue/live location
   contact?: { userId: number; name: string; phone: string } // контакт (type 'contact')
@@ -62,8 +64,6 @@ export interface ConvMsg {
   replyToPeerId?: number
   replySnapshotName?: string
   replySnapshotText?: string
-  duration?: string // voice message length, e.g. "0:14"
-  waveform?: number[] // voice waveform bar heights (0..1)
   // media (history read model — render the bubble fully, no per-media meta request)
   mediaId?: number
   mediaWidth?: number // real media dims → reserve box, no shift

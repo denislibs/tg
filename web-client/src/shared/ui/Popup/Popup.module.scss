@@ -3,7 +3,7 @@
   position: fixed;
   inset: 0;
   z-index: 4090;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.3); // tweb .popup background-color
   display: flex;
   overflow: auto;
   padding: 30px; // tweb .popup padding 1.875rem
@@ -17,8 +17,8 @@
   max-height: min(86vh, 720px);
   display: flex;
   flex-direction: column;
-  border-radius: 24px;
-  background: var(--background-color);
+  border-radius: 2.5rem; // tweb --popup-border-radius
+  background: var(--background-color); // tweb --popup-background-color
   box-shadow: var(--menu-box-shadow);
   padding: 12px 16px 16px;
 }
@@ -48,13 +48,24 @@
   flex: 0 0 auto;
   margin-top: 14px;
   text-align: center;
-  padding: 13px 0;
+  // tweb $popup-footer-abitlarger-button-size: 48px
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 24px;
-  background: var(--tg-accentGradient);
+  // tweb `.btn-primary` — сплошной акцент, а не градиент (градиент был нашей
+  // отсебятиной); наведение затемняет его до --dark-primary-color.
+  background: var(--primary-color);
   color: #fff;
   font-size: var(--font-size-15);
   font-weight: 600;
   letter-spacing: 0.5px;
+  transition: background-color 0.15s ease-out;
+
+  &:hover {
+    background: var(--dark-primary-color);
+  }
   text-transform: uppercase;
   cursor: pointer;
 }

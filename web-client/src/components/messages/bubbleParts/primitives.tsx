@@ -1,10 +1,8 @@
 // src/components/messages/bubbleParts/primitives.tsx
 // Общие примитивы баблов: галочки статуса, таймер самоуничтожения, геометрия
 // радиусов и «хвост» бабла. Используются медиа- и rich-баблами (bubbleParts/*).
-import { useEffect, useState } from 'react'
-import Text from '../../../shared/ui/Text'
-import TgIcon from '../../TgIcon'
-import type { ConvMsg, MsgStatus } from '../../../data'
+import type { ReactNode } from 'react'
+import type { ConvMsg } from '../../../data'
 import s from '../MessageBubbles.module.scss'
 
 /** Общие пропсы простого бабла (media/file). */
@@ -13,58 +11,11 @@ export interface Ctx {
   out: boolean
   firstInGroup: boolean
   lastInGroup: boolean
-}
-
-export function Ticks({ status, color }: { status?: MsgStatus; color: string }) {
-  if (!status) return null
-  if (status === 'sending') return <TgIcon name="sending" size={16} color={color} />
-  if (status === 'error') return <TgIcon name="sendingerror" size={16} color="#ff595a" />
-  return <TgIcon name={status === 'read' ? 'checks' : 'check'} size={16} color={color} />
-}
-
-// Остаток TTL в короткой форме: «5с» / «1м» / «1ч» / «1д» / «1нед» (как в tweb).
-function fmtTtlRemain(s: number): string {
-  if (s < 60) return `${s}с`
-  if (s < 3600) return `${Math.ceil(s / 60)}м`
-  if (s < 86400) return `${Math.ceil(s / 3600)}ч`
-  if (s < 604800) return `${Math.ceil(s / 86400)}д`
-  return `${Math.ceil(s / 604800)}нед`
-}
-
-// Таймер самоуничтожения секретного сообщения (tweb secret-chat self-destruct).
-// Пока получатель не прочитал — destructAt не задан: показываем «взведённый» глиф
-// с исходным TTL. После прочтения сервер ставит destructAt — тикаем обратный отсчёт.
-// Дошли до нуля — прячем локально (сервер всё равно пришлёт delete_message).
-export function SecretTimer({ destructAt, ttlSeconds, color }: {
-  destructAt?: string | null
-  ttlSeconds?: number | null
-  color: string
-}) {
-  const running = destructAt != null
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    if (!running) return
-    const t = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(t)
-  }, [running])
-
-  if (running) {
-    const remainSec = Math.floor((Date.parse(destructAt!) - now) / 1000)
-    if (remainSec <= 0) return null // ноль — прячем (delete_message приедет следом)
-    return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-        <TgIcon name="fire" size={14} color={color} />
-        <Text size={12} color={color} style={{ fontVariantNumeric: 'tabular-nums' }}>
-          {fmtTtlRemain(remainSec)}
-        </Text>
-      </span>
-    )
-  }
-  // Ещё не запущен: TTL «взведён», но отсчёт не начался — статичный глиф.
-  if (ttlSeconds && ttlSeconds > 0) {
-    return <TgIcon name="timer" size={14} color={color} />
-  }
-  return null
+  /** узел времени бабла (bubbleParts/Time) — рендерится внутри контейнера */
+  time?: ReactNode
+  /** ряд реакций: tweb кладёт его ВНУТРЬ тела сообщения (bubbles.ts:9869),
+   * и время переезжает в него */
+  reactions?: ReactNode
 }
 
 // Радиусы бабла — из tweb (_chatVariables.scss).

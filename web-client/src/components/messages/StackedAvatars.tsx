@@ -22,10 +22,9 @@ export default function StackedAvatars({
 }) {
   if (!peers.length) return null
   return (
-    <div className={s.stack} style={{ '--sa-size': `${size}px` } as CSSProperties} data-testid="stacked-avatars">
-      {peers.map((p, i) => (
-        // z-index убывает вправо, чтобы левый аватар «перекрывал» — как в tweb.
-        <div key={p.id} className={s.item} style={{ zIndex: peers.length - i }}>
+    <div className={s.stack} style={{ '--avatar-size': `${size}px` } as CSSProperties} data-testid="stacked-avatars">
+      {peers.map((p) => (
+        <div key={p.id} className={s.item}>
           <UserAvatar id={p.id} name={p.name} avatarUrl={p.avatarUrl} size={size} />
         </div>
       ))}

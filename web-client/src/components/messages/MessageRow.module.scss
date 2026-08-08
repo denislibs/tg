@@ -8,8 +8,6 @@
   --b-bg: var(--surface-color);
   --b-text: var(--primary-text-color);
   --b-link: var(--link-color);
-  --b-tick: var(--message-out-primary-color); // тики (только исходящие их показывают)
-  --b-time: var(--secondary-text-color);
   --b-secondary: var(--secondary-text-color);
 
   position: relative;
@@ -38,8 +36,14 @@
     --b-bg: var(--message-out-background-color);
     --b-text: var(--message-out-primary-color);
     --b-link: var(--message-out-primary-color);
-    --b-time: color-mix(in srgb, var(--message-out-primary-color) 70%, transparent);
     --b-secondary: color-mix(in srgb, var(--message-out-primary-color) 85%, transparent);
+    // tweb `.bubble.is-out` (_chatBubble.scss:3450-3451): время и тик исходящего
+    // переключаются на out-варианты токенов.
+    --message-time-color: var(--message-out-time-color);
+    --message-status-color: var(--message-out-status-color);
+    --message-icon-text-color: var(--message-out-icon-text-color);
+    --message-primary-color: var(--message-out-primary-color);
+    --light-filled-message-primary-color: var(--light-filled-message-out-primary-color);
     // chosen в исходящем — тот же акцент (tweb --chosen-background-color:
     // var(--message-primary-color)); фон невыбранного наследует highlighting.
     --r-chosen-bg: var(--primary-color);
@@ -112,26 +116,17 @@
     padding: 1px; // 1px рамка цвета бабла вокруг фото/видео (tweb «обводка»)
   }
 }
+// Подпись под медиа — то же тело сообщения, что и в текстовом бабле (tweb: это
+// тот же `.message` с `mt-shorter`), поэтому и время в ней плавает так же.
 .mediaCaption {
-  padding: 0 10px 4px;
-}
-.mediaText {
+  position: relative;
+  margin: #{$message-padding-top - 2px} $message-padding-horizontal $message-padding-bottom;
+  max-width: 100%;
   font-size: var(--messages-text-size);
   color: var(--b-text);
+  line-height: var(--line-height);
   white-space: pre-wrap;
   word-break: break-word;
-}
-.mediaTime {
-  float: right;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  margin-left: 8px;
-  margin-top: 4px;
-}
-.mediaTimeText {
-  font-size: var(--messages-time-text-size);
-  font-variant-numeric: tabular-nums;
 }
 
 // ── voice с mediaId (обёртка-бабл под VoiceMessage) ──
@@ -166,74 +161,6 @@
   line-height: 1.1;
   user-select: none;
 }
-.stickerMeta {
-  position: absolute;
-  right: 6px;
-  bottom: 4px;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 3px 6px;
-  border-radius: 11px;
-  background: var(--message-time-background);
-}
-
-// ── voice (type=voice, без mediaId) ──
-.voice {
-  position: relative;
-  max-width: min(320px, 82%);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  background: var(--b-bg);
-  color: var(--b-text);
-  box-shadow: var(--bubble-box-shadow);
-}
-.voiceBtn {
-  width: 40px;
-  height: 40px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  cursor: pointer;
-  background: var(--primary-color);
-
-  .row[data-out] & {
-    background: var(--message-out-primary-color);
-  }
-}
-.voiceBody {
-  min-width: 150px;
-}
-.wave {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  height: 22px;
-}
-.waveBar {
-  width: 2.5px;
-  flex-shrink: 0;
-  border-radius: 2px;
-  background: var(--secondary-text-color);
-
-  .row[data-out] & {
-    background: var(--message-out-primary-color);
-  }
-}
-.voiceMeta {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 4px;
-}
-.spacer {
-  flex: 1;
-}
 
 // ── текстовый бабл ──
 // tweb .bubble-content-wrapper: колонка «цветной бабл + reply-markup». Ширина
@@ -246,25 +173,51 @@
   max-width: 85%; // tweb --max-width: 85% (без px-кэпа)
   min-width: 0;
 }
+// tweb `.bubble-content` (_chatBubble.scss:357-372): БЕЗ собственного padding —
+// отступы дают margin'ы детей (.name/.reply/.message), position:relative нужен
+// как containing block для абсолютного `.time-inner`.
 .textBubble {
   position: relative;
   max-width: 85%; // tweb --max-width: 85% (без px-кэпа)
+  min-width: 56px; // tweb min-width: 56px
   display: flex;
   flex-direction: column;
-  padding: 0.375rem 0.625rem; // tweb bubble-content .375rem .625rem
   background: var(--b-bg);
   color: var(--b-text);
   box-shadow: var(--bubble-box-shadow);
+}
+
+// tweb `.message` (_chatBubble.scss:1132-1141) — тело сообщения: отступы бабла
+// живут здесь, position:relative делает его containing block'ом для времени,
+// которое плавает (`float: right`) в последней строке текста.
+.message {
+  position: relative;
+  margin: $message-padding-top $message-padding-horizontal $message-padding-bottom;
+  max-width: 100%;
+  font-size: var(--messages-text-size);
+  line-height: var(--line-height);
+  word-break: break-word;
+  white-space: pre-wrap; // фикс пробелов в начале строки
 }
 // внутри обёртки лимит несёт .bubbleWrap — бабл заполняет её ширину
 .bubbleWrap .textBubble {
   max-width: 100%;
 }
-.forward {
-  margin-bottom: 2px;
+// Имя отправителя в бабле (tweb `.name`, _chatBubble.scss:1991-1997).
+.name {
+  margin: $message-padding-top $message-padding-horizontal 0;
+  line-height: var(--messages-secondary-line-height);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: none;
 }
+.forward {
+  margin: 0 $message-padding-horizontal 2px;
+}
+// tweb `.reply` внутри бабла (_chatBubble.scss:1039-1043): margin 0 8px .5rem.
 .reply {
-  margin-bottom: 4px;
+  margin: 0 $reply-padding-horizontal 0.5rem;
   padding: 4px 8px;
   border-radius: 6px;
   display: flex;
@@ -282,77 +235,13 @@
   flex-shrink: 0;
   display: block;
 }
-.textLine {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 6px;
-}
-.msgText {
-  font-size: var(--messages-text-size);
-  line-height: 1.35;
-  white-space: pre-wrap;
-  word-break: break-word;
-
-  &.block {
-    width: 100%;
-  }
-}
-.meta {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  margin-left: auto;
-  transform: translateY(2px);
-
-  &.block {
-    width: 100%;
-    justify-content: flex-end;
-  }
-}
-.metaTime {
-  font-size: var(--messages-time-text-size);
-  white-space: nowrap;
-  color: var(--b-time);
-}
-// Кнопка повтора эффекта сообщения (наш аналог Telegram message effects).
-.effectReplay {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  margin-right: 3px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  font-size: var(--font-size-13);
-  line-height: 1;
-  transform: translateY(-1px);
-  transition: transform 0.12s ease;
-
-  &:hover {
-    transform: translateY(-1px) scale(1.15);
-  }
-}
-// Channel-post view count + eye icon (tweb .post-views), shown before the time.
-.metaViews {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  margin-right: 4px;
-  font-size: var(--font-size-12);
-  color: var(--b-time);
-  font-variant-numeric: tabular-nums;
-}
 
 // Replies-footer slot at the bottom of a channel post bubble (tweb .replies-footer
-// sits inside bubble-content). The slot makes it full-bleed to the bubble edges.
-// Text bubble: cancel the .375rem .625rem content padding; round the bottom to the
-// incoming bubble radius (bottom-left squared for the tail) and clip the footer to it.
+// sits inside bubble-content). У `.bubble-content` своего padding нет (tweb), так
+// что футер и так упирается в края бабла — остаётся скруглить нижний угол.
 .footerText {
-  margin: 0.375rem -0.625rem -0.375rem;
   overflow: hidden;
-  border-bottom-right-radius: 15px; // $bubble-border-radius-big
+  border-bottom-right-radius: $bubble-border-radius-big;
 }
 // Media bubble: .mediaInner already clips to its rounded corners; only cancel the
 // 1px framed border so the footer reaches the edges.
@@ -364,129 +253,164 @@
 // Контейнер чипов: flex-wrap; в баблe идёт после текста. Время+тики вливаются
 // последним элементом (tweb appendBubbleTime, .time order:100) — центрируем по
 // вертикали, чтобы время вставало ровно по центру пилюль (а не «криво» сверху).
+// position:relative — tweb `.is-message-empty .reactions-like-block`
+// (_chatBubble.scss:3550-3554): ряд становится containing block'ом для видимой
+// копии времени, которое переезжает сюда при наличии реакций (mode="plain").
+// ── реакции (порт tweb: _reactions.scss `.reactions-like-block` +
+// _reaction.scss `.reaction` / `.reaction-block` / `.reaction-like-block`) ──
+// Ряд чипов: вертикальный margin чипов компенсируется отрицательным margin-top
+// ряда, горизонтальный зазор снимается у последнего чипа (`.is-last`) —
+// в tweb именно класс, а не `:last-child`, потому что последним элементом ряда
+// может быть время.
 .reactions {
+  --margin-vertical: 0.375rem;
+  --margin-horizontal: 0.375rem;
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  margin-top: 1px;
+  margin-top: calc(var(--margin-vertical) / -2);
+}
 
-  // время в строке чипов (tweb .reactions-like-block .time { order:100 }):
-  // сброс инлайн-нуджа (.meta translateY нужен только в строке текста); стоит
-  // сразу за последним чипом (без margin-left:auto — в tweb float:right в flex
-  // игнорируется, время не отбрасывается к правому краю).
-  .meta {
-    transform: none;
-    margin-left: 0;
+// tweb `.bubble .message .reaction` (_chatBubble.scss:2238-2250): когда чипы
+// лежат ВНУТРИ тела сообщения, фон невыбранного — светлая заливка акцентом, а
+// счётчик — сам акцент. Тёмная подложка из обоев с белым счётчиком остаётся
+// только для реакций поверх контента без бабла (см. .emptyMediaCol).
+.reactionsInside .reactionChip {
+  --background-color: var(--light-filled-message-primary-color);
+
+  &:not(.reactionChosen) {
+    --counter-color: var(--message-primary-color);
+
+    .reactionAvatars {
+      --border-color: var(--background-color);
+    }
   }
 }
 
-// Один чип: пилюля 30px (reaction-size 22 + additional 8), radius = высоте.
-// «Моя» подложка — псевдоэлемент ::before (tweb .reaction-block:before):
-// transform scale(0→1) + opacity за .3s cubic-bezier(.4,0,.2,1); при снятии —
-// обратный transition. Hover — цветная подсветка opacity .08 ($hover-alpha).
+// Один чип. Подложка «моей» реакции — псевдоэлемент :before (scale 0→1 +
+// opacity), hover — :after с тем же цветом на $hover-alpha.
 .reactionChip {
+  --additional-height: 0.5rem;
+  --reaction-size: 1.375rem;
+  --reaction-total-size: calc(var(--reaction-size) + var(--additional-height));
+  --background-color: var(--message-highlighting-color);
+  --counter-color: #fff;
+  --chosen-background-color: var(--message-primary-color);
+
   position: relative;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  height: 30px;
-  border-radius: 30px;
-  padding: 0 8px;
-  // симметричный вертикальный отступ → align-items:center строки не даёт сдвига
-  // пилюли относительно времени; margin-right — зазор между чипами/до времени.
-  margin-block: 3px;
-  margin-right: 6px;
-  background: var(--r-bg);
-  color: var(--r-fg);
+  height: var(--reaction-total-size);
+  border-radius: var(--reaction-total-size);
+  padding: 0 0.5rem;
+  margin-top: var(--margin-vertical);
+  margin-inline-end: var(--margin-horizontal);
+  background-color: var(--background-color);
+  color: var(--counter-color);
   cursor: pointer;
   user-select: none;
 
+  &.isLast {
+    margin-inline-end: 0;
+  }
+
   &::before {
-    content: '';
+    content: ' ';
     position: absolute;
     inset: 0;
     border-radius: inherit;
-    background: var(--r-chosen-bg);
-    transform: scale(0);
+    background-color: var(--chosen-background-color);
+    transform: scale(0, 0);
     opacity: 0;
+  }
+
+  &::after {
+    content: ' ';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background-color: var(--chosen-background-color);
+    opacity: 0;
+    pointer-events: none;
+  }
+  &:hover::after {
+    opacity: $hover-alpha;
+  }
+}
+
+// tweb `.is-chosen.forwards` — подложка раскрыта; переход играет только когда
+// добавлен `.animating` (у нас — при живом добавлении реакции).
+.reactionChosen {
+  &::before {
+    transform: scale(1, 1);
+    opacity: 1;
+  }
+
+  .reactionAvatars {
+    --border-color: var(--chosen-background-color);
+  }
+}
+
+.reactionAnimating {
+  &::before {
     transition:
       transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
       opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
-  &::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    background: var(--r-chosen-bg);
-    opacity: 0;
-    pointer-events: none;
-  }
-  &:hover::after {
-    opacity: 0.08;
-  }
-
-  &:last-child {
-    margin-right: 0;
+  .reactionCount {
+    transition: color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 }
 
-// Вход/выход «моей» реакции — transition подложки (tweb SetTransition 300ms);
-// свежедобавленный чип монтируется без класса и получает его кадром позже
-// (см. ReactionChip), чтобы транзишн отработал и на новых чипах.
-.reactionChosen {
-  color: var(--r-chosen-fg);
-
-  &::before {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-// Платная ⭐-реакция (tweb .reaction.is-paid): при вкладе зрителя подложка —
-// звёздный градиент вместо акцента.
+// Платная ⭐-реакция (tweb `.reaction.is-paid`): своя пара цветов.
 .starChip {
+  --chosen-background-color: #ffbc2e;
+  --background-color: rgba(255, 188, 46, 0.2);
+  color: #e98111;
+
   &.reactionChosen {
     color: #fff;
-
-    &::before {
-      background: linear-gradient(to bottom, #ffaa00, #ffcd3a);
-    }
   }
 }
 
+// tweb `.reaction-sticker`: бокс ровно в размер реакции, события не ловит.
 .reactionEmoji {
   position: relative;
   z-index: 1;
+  width: var(--reaction-size);
+  height: var(--reaction-size);
   display: flex;
   align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  overflow: hidden;
 }
 
-// Счётчик: 15px bold, tabular (tweb .reaction-counter); цвет — плавно с подложкой
+// tweb `.reaction-block .reaction-counter`
 .reactionCount {
   position: relative;
   z-index: 1;
-  font-size: var(--font-size-15);
+  font-size: 0.9375rem;
   font-weight: 700;
-  line-height: 18px;
-  margin: 0 1px 0 6px;
+  margin-block: 0;
+  margin-inline: 0.375rem 0.0625rem;
+  line-height: 1.125rem;
+  pointer-events: none;
   font-variant-numeric: tabular-nums;
-  transition: color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-// Аватары реагировавших вместо счётчика (tweb count<4): над подложкой чипа,
-// с тем же левым отступом, что и счётчик.
+// tweb `.reaction-block .stacked-avatars` — аватары вместо счётчика.
 .reactionAvatars {
+  --border-color: transparent;
+  --border-size: 0.125rem;
+  --margin-right: -0.875rem;
   position: relative;
   z-index: 1;
   display: flex;
   align-items: center;
-  margin-inline-start: 6px;
-}
-
-// Внутри медиабабла (mediaInner без паддингов) — своя подложка-строка.
-.reactionsPad {
-  padding: 0 8px 8px;
+  margin-inline-start: 0.1875rem;
 }
 
 // Колонка «контент + реакции под ним» для empty-media типов без текстового

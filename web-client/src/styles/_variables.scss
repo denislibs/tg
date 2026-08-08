@@ -11,6 +11,11 @@ $bubble-margin: 0.125rem; // отступ между баблами в груп�
 $bubble-margin-big: 0.375rem; // отступ в конце группы
 $bubble-border-radius-medium: 5px; // скруглённый угол внутри группы
 $bubble-border-radius-big: 15px; // основной радиус бабла
+// отступы тела сообщения внутри бабла (tweb _chatVariables.scss:19-23)
+$message-padding-top: 4px;
+$message-padding-bottom: 5px;
+$message-padding-horizontal: 8px;
+$reply-padding-horizontal: 8px;
 
 $hover-alpha: .08;
 

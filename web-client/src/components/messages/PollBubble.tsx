@@ -56,7 +56,7 @@ export default function PollBubble({ poll, out }: { poll: Poll; out: boolean }) 
   return (
     <div className={classNames(s.poll, out ? s.out : '')}>
       <div className={s.question}>{poll.question}</div>
-      <Text size={13} color="var(--b-time)">{typeLabel}</Text>
+      <Text size={13} color="var(--message-time-color)">{typeLabel}</Text>
 
       <div className={s.options}>
         {poll.options.map((opt, idx) => {
@@ -95,7 +95,7 @@ export default function PollBubble({ poll, out }: { poll: Poll; out: boolean }) 
                           color={isWrongChosen ? '#e5484d' : 'var(--primary-color)'}
                         />
                       )}
-                      <Text size={12} color="var(--b-time)">{count}</Text>
+                      <Text size={12} color="var(--message-time-color)">{count}</Text>
                     </span>
                   )}
                 </div>
@@ -119,7 +119,7 @@ export default function PollBubble({ poll, out }: { poll: Poll; out: boolean }) 
             {t('Vote')}
           </span>
         ) : (
-          <Text size={13} color="var(--b-time)">
+          <Text size={13} color="var(--message-time-color)">
             {total === 0
               ? t(poll.closed ? 'No votes' : 'No votes yet')
               : `${poll.totalVoters} ${t(poll.quiz ? 'answered' : 'voted')}`}

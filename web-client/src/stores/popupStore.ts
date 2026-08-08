@@ -27,11 +27,14 @@ interface PopupEntry {
   id: number
   render: (api: PopupApi) => ReactNode
   closing: boolean
+  /** «сорт» попапа (tweb PopupElement kind): второй попап того же сорта
+   * закрывает предыдущий, а не встаёт поверх него */
+  kind?: string
 }
 
 interface PopupStore {
   popups: PopupEntry[]
-  push: (render: (api: PopupApi) => ReactNode) => number
+  push: (render: (api: PopupApi) => ReactNode, kind?: string) => number
   setClosing: (id: number) => void
   remove: (id: number) => void
   clear: () => void
@@ -41,9 +44,17 @@ let seq = 0
 
 export const usePopupStore = create<PopupStore>((set) => ({
   popups: [],
-  push: (render) => {
+  push: (render, kind) => {
     const id = ++seq
-    set((s) => ({ popups: [...s.popups, { id, render, closing: false }] }))
+    set((s) => ({
+      popups: [
+        // tweb перед открытием гасит уже открытые попапы того же сорта
+        // (например chatPreview.tsx:65) — иначе они копятся стопкой, и клик
+        // приходит в чужой, ещё висящий экземпляр.
+        ...(kind ? s.popups.map((p) => (p.kind === kind ? { ...p, closing: true } : p)) : s.popups),
+        { id, render, closing: false, kind },
+      ],
+    }))
     return id
   },
   setClosing: (id) => set((s) => ({ popups: s.popups.map((p) => (p.id === id ? { ...p, closing: true } : p)) })),
@@ -51,8 +62,11 @@ export const usePopupStore = create<PopupStore>((set) => ({
   clear: () => set({ popups: [] }),
 }))
 
-/** Открыть попап; возвращает id (обычно не нужен — попап закрывает себя через PopupApi). */
-export const openPopup = (render: (api: PopupApi) => ReactNode): number => usePopupStore.getState().push(render)
+/** Открыть попап; возвращает id (обычно не нужен — попап закрывает себя через
+ * PopupApi). `kind` делает попап одиночным: повторное открытие закрывает
+ * предыдущий экземпляр того же сорта (tweb PopupElement kind). */
+export const openPopup = (render: (api: PopupApi) => ReactNode, kind?: string): number =>
+  usePopupStore.getState().push(render, kind)
 /** Принудительно начать закрытие попапа по id (например при смене чата). */
 export const closePopup = (id: number) => usePopupStore.getState().setClosing(id)
 /** Снять все попапы немедленно (напр. при анмаунте колонки чата — попапы чат-скоупные). */

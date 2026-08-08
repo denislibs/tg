@@ -28,6 +28,8 @@ export interface FeedFns {
   toggleSelect: (id: number) => void
   openMsgMenu: (e: MouseEvent, m: ConvMsg) => void
   jumpToSeq: (seq?: number) => void
+  /** клик по дате-разделителю — открыть пикер даты на этом дне (мс) */
+  openDatePicker: (dayMs: number) => void
   openLightbox: (mediaId: number, el: HTMLElement) => void
   /** перезвонить по клику на бабл звонка (tweb: клик по messageMediaCall) */
   recall: (video: boolean) => void
@@ -66,12 +68,16 @@ export interface MessageRowProps {
   albumSelectedKey?: string
   // Optional slot rendered at the bottom of the bubble (channel post replies-footer).
   footer?: ReactNode
+  // Виден ли список реагировавших (tweb reactions.pFlags.can_see_list ||
+  // peerId.isUser()): от этого зависит, показывать в чипе аватары или число.
+  // Флага can_see_list бэк пока не отдаёт, поэтому берём приватность чата.
+  canSeeReactionList: boolean
 }
 
 function MessageRow({
   m, seq, out, firstInGroup, lastInGroup,
   selecting, isSelected, isHighlighted, ladderActive, ladderDelay,
-  feedFns, autoDownload, albumSelectedKey, footer,
+  feedFns, autoDownload, albumSelectedKey, footer, canSeeReactionList,
 }: MessageRowProps) {
   const textSize = useSettings((st) => st.textSize)
   const rowStyle = { '--messages-text-size': `${textSize}px` } as CSSProperties
@@ -142,6 +148,7 @@ function MessageRow({
           albumSelectedKey={albumSelectedKey}
           footer={footer}
           showReactions={showReactions}
+          canSeeReactionList={canSeeReactionList}
           rowLive={rowLiveRef.current}
           feedFns={feedFns}
         />

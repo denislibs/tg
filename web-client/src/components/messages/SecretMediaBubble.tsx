@@ -13,7 +13,7 @@ import classNames from '../../shared/lib/classNames'
 import TgIcon from '../TgIcon'
 import { getSecretMediaUrl } from '../../core/secret/mediaCache'
 import type { SecretMedia } from '../../core/models'
-import type { MsgStatus } from '../../data'
+import type { RenderTime } from './bubbleParts/Time'
 import s from './RealMediaBubble.module.scss'
 
 // Экран медиа (tweb mediaSizes.regular) — тот же бокс, что у RealMediaBubble.
@@ -24,13 +24,6 @@ function fmtSize(n: number): string {
   if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} МБ`
   if (n >= 1024) return `${Math.max(1, Math.round(n / 1024))} КБ`
   return `${n} Б`
-}
-
-function Ticks({ status, color }: { status?: MsgStatus; color: string }) {
-  if (!status) return null
-  if (status === 'sending') return <TgIcon name="sending" size={16} color={color} />
-  if (status === 'error') return <TgIcon name="sendingerror" size={16} color="#ff595a" />
-  return <TgIcon name={status === 'read' ? 'checks' : 'check'} size={16} color={color} />
 }
 
 // Расшифрованный blob-URL через общий кэш (getSecretMediaUrl) — тот же URL делят
@@ -54,9 +47,8 @@ function useSecretMediaUrl(sm: SecretMedia, localUrl?: string): { url?: string; 
 interface Props {
   secretMedia: SecretMedia
   out: boolean
-  time?: string
-  status?: MsgStatus
-  tickColor: string
+  /** рендер времени бабла (bubbleParts/Time) — форму выбирает сам бабл */
+  renderTime?: RenderTime
   /** локальное превью у отправителя (plaintext) — без fetch/decrypt */
   localUrl?: string
   radius?: string
@@ -64,18 +56,13 @@ interface Props {
   onOpen?: (mediaId: number, el: HTMLElement) => void
 }
 
-export default function SecretMediaBubble({ secretMedia, out, time, status, tickColor, localUrl, radius, onOpen }: Props) {
+export default function SecretMediaBubble({ secretMedia, out, renderTime, localUrl, radius, onOpen }: Props) {
   const { url, error } = useSecretMediaUrl(secretMedia, localUrl)
   const kind = secretMedia.mediaType
   const isImage = kind === 'photo' || (kind !== 'document' && secretMedia.mime.startsWith('image/'))
   const isVideo = kind === 'video' || (kind !== 'document' && secretMedia.mime.startsWith('video/'))
 
-  const timeCluster: ReactNode = time ? (
-    <div className={s.timeCluster}>
-      <Text size={12} color={out ? tickColor : 'var(--secondary-text-color)'} style={{ fontVariantNumeric: 'tabular-nums' }}>{time}</Text>
-      {out && <Ticks status={status} color={tickColor} />}
-    </div>
-  ) : null
+  const timeCluster: ReactNode = renderTime?.('corner')
 
   // ---- Фото / видео ----
   // secretMedia не несёт размеров (их нет в payload), поэтому изображение рисуем
@@ -109,12 +96,7 @@ export default function SecretMediaBubble({ secretMedia, out, time, status, tick
             <div className={s.play}><div className={s.playDisc}><TgIcon name="play" size={34} color="#fff" /></div></div>
           </>
         )}
-        {time && (
-          <div className={s.timeBadge}>
-            <Text size={12} color="#fff" style={{ fontVariantNumeric: 'tabular-nums' }}>{time}</Text>
-            {out && <Ticks status={status} color="#fff" />}
-          </div>
-        )}
+        {renderTime?.('floating')}
       </div>
     )
   }

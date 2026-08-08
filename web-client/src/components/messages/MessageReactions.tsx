@@ -15,13 +15,18 @@ import s from './MessageRow.module.scss'
 // с эмодзи + счётчиком; «моя» реакция — сплошной акцентный фон (is-chosen).
 // trailing — время+тики, вливаемые в конец строки (tweb appendBubbleTime); align
 // прижимает строку вправо у исходящих (tweb is-out is-message-empty flex-end).
-export function MessageReactions({ reactions, star, rowLive, trailing, onToggle, onShow, onStar }: {
+export function MessageReactions({ reactions, star, rowLive, canSeeList, inside, trailing, onToggle, onShow, onStar }: {
   reactions: NonNullable<ConvMsg['reactions']>
   /** платная ⭐-реакция сообщения (total>0) — отдельный чип-звезда перед эмодзи */
   star?: { total: number; mine: number }
   /** ряд уже был смонтирован, когда появились реакции (live-добавление) —
    * анимируем и первый чип сообщения, не только добавленные позже */
   rowLive: boolean
+  /** список реагировавших доступен (tweb can_see_list || приватный чат) */
+  canSeeList?: boolean
+  /** чипы лежат внутри тела сообщения (tweb `.message .reaction`) — светлая
+   * заливка акцентом вместо тёмной подложки из обоев */
+  inside?: boolean
   /** время+тики в конце строки (tweb appendBubbleTime → reactionsElement, order:100) */
   trailing?: ReactNode
   onToggle: (emoji: string) => void
@@ -32,16 +37,37 @@ export function MessageReactions({ reactions, star, rowLive, trailing, onToggle,
   // isConnected=false → duration 0) от добавленных кликом (с анимацией).
   const liveRef = useRef(false)
   useEffect(() => { liveRef.current = true }, [])
+
+  // tweb reactions.ts:304-307: аватары вместо счётчика показываются, только если
+  // список реагировавших вообще доступен и ВСЕГО реакций на сообщении меньше
+  // порога (Block → 4). Порог считается по сумме, а не по одной реакции.
+  const total = reactions.reduce((acc, r) => acc + r.count, 0) + (star?.total ?? 0)
+  const canRenderAvatars = !!canSeeList && total < REACTIONS_DISPLAY_COUNTER_AT
+
+  // tweb: `is-last` ставится последнему ЧИПУ по индексу, независимо от того,
+  // что время едет следом (reactions.ts:319) — свой отступ время несёт само.
+  const lastIndex = reactions.length - 1
   return (
-    <div className={s.reactions}>
+    <div className={classNames(s.reactions, inside ? s.reactionsInside : '')}>
       {star && <StarReactionChip total={star.total} mine={star.mine} onClick={onStar} />}
-      {reactions.map((r) => (
-        <ReactionChip key={r.emoji} r={r} live={rowLive || liveRef.current} onToggle={onToggle} onShow={onShow} />
+      {reactions.map((r, i) => (
+        <ReactionChip
+          key={r.emoji}
+          r={r}
+          live={rowLive || liveRef.current}
+          canRenderAvatars={canRenderAvatars}
+          isLast={i === lastIndex}
+          onToggle={onToggle}
+          onShow={onShow}
+        />
       ))}
       {trailing}
     </div>
   )
 }
+
+// tweb REACTIONS_DISPLAY_COUNTER_AT[Block] (reaction.ts:49-52).
+const REACTIONS_DISPLAY_COUNTER_AT = 4
 
 // Чип платной ⭐-реакции (tweb .reaction.is-paid): звезда + суммарное число звёзд;
 // подсвечен, если зритель вносил вклад (mine>0). Клик — попап выбора количества.
@@ -60,9 +86,13 @@ function StarReactionChip({ total, mine, onClick }: { total: number; mine: numbe
 // Один чип. Свежедобавленная «моя» реакция монтируется без is-chosen и получает
 // класс кадром позже — CSS-transition подложки играет как tweb SetTransition(300).
 // Тап — тоггл своей реакции; long-press / правый клик — попап «кто отреагировал».
-export function ReactionChip({ r, live, onToggle, onShow }: {
+export function ReactionChip({ r, live, canRenderAvatars, isLast, onToggle, onShow }: {
   r: { emoji: string; count: number; mine: boolean; recent?: { id: number; name: string; avatarUrl?: string }[] }
   live: boolean
+  /** список реагировавших доступен и реакций мало — можно показать аватары */
+  canRenderAvatars: boolean
+  /** последний чип в ряду — без правого зазора (tweb `.is-last`) */
+  isLast: boolean
   onToggle: (emoji: string) => void
   onShow: (x: number, y: number) => void
 }) {
@@ -73,17 +103,23 @@ export function ReactionChip({ r, live, onToggle, onShow }: {
     return () => cancelAnimationFrame(raf)
   }, [defer])
   const chosen = r.mine && !defer
+  // tweb reaction.ts:1013-1084 — счётчик рисуется при count >= порога ЛИБО когда
+  // аватары показать нельзя; аватары — ровно в обратном случае.
+  const showAvatars = canRenderAvatars && r.count < REACTIONS_DISPLAY_COUNTER_AT && !!r.recent?.length
   return (
     <div
-      className={classNames(s.reactionChip, chosen ? s.reactionChosen : '')}
+      className={classNames(
+        s.reactionChip,
+        chosen ? s.reactionChosen : '',
+        live ? s.reactionAnimating : '',
+        isLast ? s.isLast : '',
+      )}
       onClick={(e) => { e.stopPropagation(); onToggle(r.emoji) }}
       onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onShow(e.clientX, e.clientY) }}
     >
       <span className={s.reactionEmoji}><Emoji e={r.emoji} size={22} /></span>
-      {/* tweb reaction.ts renderAvatars/renderCounter: при count<4 и наличии
-          списка реагировавших — аватары вместо числа; иначе счётчик. */}
-      {r.recent?.length && r.count < 4 ? (
-        <span className={s.reactionAvatars}><StackedAvatars peers={r.recent} size={24} /></span>
+      {showAvatars ? (
+        <span className={s.reactionAvatars}><StackedAvatars peers={r.recent!} size={24} /></span>
       ) : (
         <span className={s.reactionCount}>{r.count}</span>
       )}

@@ -1,7 +1,7 @@
 // src/components/messages/bubbleParts/richBubbles.tsx
 // «Богатые» баблы: превью ссылки (+Instant View), блок проверки фактов, лог звонка,
 // гео-локация (статичная/live) и контакт.
-import { useEffect, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import Text from '../../../shared/ui/Text'
 import classNames from '../../../shared/lib/classNames'
 import Avatar from '../../../shared/ui/Avatar'
@@ -14,10 +14,9 @@ import { useT } from '../../../i18n'
 import { useManagers } from '../../../core/hooks/useManagers'
 import { useLiveShareStore } from '../../../stores/liveShareStore'
 import { stopLiveShare } from '../../../core/liveShareEngine'
-import { useTimeFormatter } from '../../../settings'
 import type { IVArticle } from '../../../core/managers/ivManager'
 import type { ConvMsg } from '../../../data'
-import { Ticks, BubbleTail, bubbleRadius } from './primitives'
+import { BubbleTail, bubbleRadius } from './primitives'
 import s from '../MessageBubbles.module.scss'
 
 /** link preview card (rendered inside a text bubble) */
@@ -116,7 +115,15 @@ export function FactCheckBox({ fc, out, linkColor }: { fc: NonNullable<ConvMsg['
  * Лог 1:1 звонка (tweb .bubble-call): иконка телефона/камеры, заголовок,
  * стрелка (зелёная — состоялся, красная — нет) + длительность/причина, время + галочки.
  */
-export function CallBubble({ m, out, firstInGroup, lastInGroup, onClick }: { m: ConvMsg; out: boolean; firstInGroup: boolean; lastInGroup: boolean; onClick?: () => void }) {
+export function CallBubble({ m, out, firstInGroup, lastInGroup, time, reactions, onClick }: {
+  m: ConvMsg
+  out: boolean
+  firstInGroup: boolean
+  lastInGroup: boolean
+  time?: ReactNode
+  reactions?: ReactNode
+  onClick?: () => void
+}) {
   const t = useT()
   const call = m.call!
   const title = out
@@ -135,25 +142,29 @@ export function CallBubble({ m, out, firstInGroup, lastInGroup, onClick }: { m: 
       style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup), cursor: onClick ? 'pointer' : undefined }}
     >
       {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
-      <div className={s.callIcon}>
-        <TgIcon name={call.video ? 'videocamera' : 'phone'} size={24} color="var(--primary-color)" />
-      </div>
-      <div className={s.callBody}>
-        <Text size={15.5} weight={600} color="var(--primary-text-color)">{title}</Text>
-        <div className={s.callSub}>
-          <TgIcon
-            name="arrow_next"
-            size={16}
-            color={call.duration != null ? '#4dcd5e' : '#ff595a'}
-            style={{ transform: call.duration != null ? 'rotate(135deg)' : 'rotate(-45deg)' }}
-          />
-          <Text size={13.5} color="var(--b-secondary)">{sub}</Text>
+      {/* tweb кладёт `.bubble-call` внутрь `.message` (bubbles.ts:8701) — отступы
+          и точку отсчёта для времени даёт тело сообщения, а не padding бабла */}
+      <div className={s.msgBody}>
+        <div className={s.call}>
+          {/* tweb `.bubble-call-icon`: просто глиф слева абсолютом, без подложки,
+              цветом текста бабла */}
+          <TgIcon name={call.video ? 'videocamera' : 'phone'} className={s.callIcon} size="1.5rem" />
+          <Text weight={600} size="var(--messages-text-size)">{title}</Text>
+          <div className={s.callSub}>
+            <TgIcon
+              name="arrow_next"
+              className={classNames(s.callArrow, call.duration != null ? s.callArrowGreen : s.callArrowRed)}
+              size="1rem"
+            />
+            {sub}
+            {/* tweb: `subtitle.append(timeSpan)` (bubbles.ts:8693) — распорка едет
+                flex-элементом в конце строки и резервирует место, видимая копия
+                прибивается к нижне-правому углу тела сообщения */}
+            {time}
+          </div>
         </div>
+        {reactions}
       </div>
-      <span className={s.callMeta}>
-        <Text size={12.5} color="var(--b-time)">{m.time}</Text>
-        {out && <Ticks status={m.status} color="var(--b-tick)" />}
-      </span>
     </div>
   )
 }
@@ -165,13 +176,13 @@ const GEO_W = 277
 const GEO_H = 195
 const GEO_ZOOM = 15
 
-export function GeoBubble({ m, out, lastInGroup, radius }: {
+export function GeoBubble({ m, out, lastInGroup, radius, time }: {
   m: ConvMsg
   out: boolean
   lastInGroup: boolean
   radius: string
+  time?: ReactNode
 }) {
-  const fmtTime = useTimeFormatter()
   const managers = useManagers()
   const geo = m.geo!
   const { lat, lng } = geo
@@ -229,10 +240,7 @@ export function GeoBubble({ m, out, lastInGroup, radius }: {
           <TgIcon name={isLive ? 'livelocation' : 'location'} size={38} color={expired ? '#9e9e9e' : '#e53935'} />
         </span>
         {isLive && !expired && <span className={s.geoLiveBadge}>LIVE</span>}
-        <span className={s.geoMeta}>
-          <Text size={12.5} color="#fff">{fmtTime(m.time)}</Text>
-          {m.out && <Ticks status={m.status} color="#fff" />}
-        </span>
+        {time}
       </a>
 
       {isVenue && !isLive && (
@@ -271,15 +279,16 @@ export function GeoBubble({ m, out, lastInGroup, radius }: {
 }
 
 // ── бабл контакта (tweb .bubble.contact-message: аватар 54 + имя + телефон) ──
-export function ContactBubble({ m, out, firstInGroup, lastInGroup, onOpen }: {
+export function ContactBubble({ m, out, firstInGroup, lastInGroup, time, reactions, onOpen }: {
   m: ConvMsg
   out: boolean
   firstInGroup: boolean
   lastInGroup: boolean
+  time?: ReactNode
+  reactions?: ReactNode
   /** клик по контакту — открыть чат/профиль (tweb contactDiv.dataset.peerId) */
   onOpen?: () => void
 }) {
-  const fmtTime = useTimeFormatter()
   const c = m.contact!
   const initials = (c.name || '?').split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()
   return (
@@ -292,10 +301,8 @@ export function ContactBubble({ m, out, firstInGroup, lastInGroup, onOpen }: {
           <Text size={14} color="var(--b-secondary)" noWrap>{c.phone ? `+${c.phone.replace(/^\+/, '')}` : ''}</Text>
         </div>
       </div>
-      <div className={s.contactMeta}>
-        <Text size={12} color="var(--b-time)">{fmtTime(m.time)}</Text>
-        {m.out && <Ticks status={m.status} color="var(--b-tick)" />}
-      </div>
+      {time}
+      {reactions}
     </div>
   )
 }

@@ -1,7 +1,7 @@
 // AlbumGrid — грид медиагруппы (tweb wrapAlbum + prepareAlbum поверх порта
 // tdesktop Layouter). В режиме выделения каждый элемент несёт свой
 // кружок-чекбокс и тогглится отдельно (tweb grouped-item).
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import Text from '../../shared/ui/Text'
 import TgIcon from '../TgIcon'
 import Checkbox from '../../shared/ui/Checkbox'
@@ -10,7 +10,7 @@ import { Layouter } from '../../core/dom/groupedLayout'
 import { mediaContentUrl, mediaThumbUrl, hasMediaToken, useMediaTokenVersion } from '../../core/mediaUrl'
 import { useUploadsStore } from '../../stores/uploadsStore'
 import { fmtDur } from '../../core/hooks/useVoiceRecorder'
-import type { ConvMsg, MsgStatus } from '../../data'
+import type { ConvMsg } from '../../data'
 import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import s from './AlbumGrid.module.scss'
 
@@ -21,24 +21,15 @@ const MAX_H = 420
 const MIN_W = 100
 const SPACING = 2
 
-function Ticks({ status, color }: { status?: MsgStatus; color: string }) {
-  if (!status) return null
-  if (status === 'sending') return <TgIcon name="sending" size={14} color={color} />
-  if (status === 'error') return <TgIcon name="sendingerror" size={14} color="#ff595a" />
-  return <TgIcon name={status === 'read' ? 'checks' : 'check'} size={14} color={color} />
-}
-
 export default function AlbumGrid({
-  items, selecting, selectedKey, time, status, out, onToggle, onOpen, autoDownload, radius,
+  items, selecting, selectedKey, time, onToggle, onOpen, autoDownload, radius,
 }: {
   items: ConvMsg[]
   selecting: boolean
   /** csv id выбранных элементов альбома (стабильный prop для memo) */
   selectedKey?: string
-  /** время+тики бейджем поверх грида (когда нет подписи) */
-  time?: string
-  status?: MsgStatus
-  out: boolean
+  /** время бейджем поверх грида (bubbleParts/Time, режим floating) — когда нет подписи */
+  time?: ReactNode
   onToggle: (id: number) => void
   onOpen?: (mediaId: number, el: HTMLElement) => void
   autoDownload?: ChatAutoDownload
@@ -121,12 +112,7 @@ export default function AlbumGrid({
           </div>
         )
       })}
-      {time && (
-        <div className={s.timeBadge}>
-          <Text size={12} color="#fff" style={{ fontVariantNumeric: 'tabular-nums' }}>{time}</Text>
-          {out && <Ticks status={status} color="#fff" />}
-        </div>
-      )}
+      {time}
     </div>
   )
 }

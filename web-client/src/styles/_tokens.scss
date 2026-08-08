@@ -41,6 +41,11 @@
   // время читают эти токены → меняются синхронно с настройкой.
   --messages-text-size: 16px;
   --messages-time-text-size: calc(var(--messages-text-size) - 4px);
+  // tweb base.scss:87-88 — вторичный текст бабла (имя отправителя, reply, подписи).
+  --messages-secondary-text-size: calc(var(--messages-text-size) - 2px);
+  --messages-secondary-line-height: calc(var(--messages-secondary-text-size) + 4px);
+  // tweb base.scss:104 — межстрочный интервал тела сообщения (21/16).
+  --line-height: 1.3125;
 
   // ── Статичные tweb 1:1 константы (tweb scss/base.scss:121,232,258) ──
   // menu-box-shadow(-color) в tweb НЕ переопределяется в .night — одна и та же тень
@@ -64,6 +69,26 @@
   // tweb base.scss:82 — тёмная тайм-пилюля поверх стикера/медиа без подложки бабла
   // (переопределяется в .just-media-подобных контекстах, см. MessageRow.module.scss).
   --message-time-background: rgba(0, 0, 0, 0.35);
+
+  // ── Время и тик статуса (tweb base.scss:322,328,337-338 блок `.chat`) ──
+  // Время муted (secondary), тик — свой токен: во входящем совпадает со временем,
+  // в исходящем оба переключаются на out-варианты (см. .row[data-out]).
+  --message-time-color: var(--secondary-text-color);
+  --message-status-color: var(--secondary-text-color);
+  --message-error-color: var(--danger-color);
+  --message-out-status-color: var(--message-out-primary-color);
+  --message-out-time-color: var(--message-out-status-color);
+  // Цвет «частей» play-иконки и прочих глифов на цветной подложке (tweb
+  // base.scss:331,339): белый, а в night у исходящего — фон out-бабла.
+  --message-icon-text-color: #fff;
+  --message-out-icon-text-color: #fff;
+  // Акцент ВНУТРИ бабла (tweb base.scss:325): у входящего — обычный primary,
+  // у исходящего переключается на --message-out-primary-color (см. .row[data-out]).
+  // Им красится выбранная реакция, ссылки, полоса цитаты и т.п.
+  --message-primary-color: var(--primary-color);
+  // Светлая заливка акцентом (tweb base.scss:327) — фон невыбранной реакции,
+  // когда чипы лежат ВНУТРИ тела сообщения.
+  --light-filled-message-primary-color: var(--light-filled-primary-color);
   // tweb base.scss:320 — hover-подсветка сервис-баблов/дата-пилюль от подсветки темы;
   // --message-highlighting-color(-rgb)/--message-highlighting-alpha пишет JS
   // (themeController.applyHighlightingColor), не CSS-статика.
@@ -122,6 +147,14 @@
   // значение night/dark 1:1
   --tg-bannerBg: rgba(255, 255, 255, 0.04);
   --ripple-color: rgba(255, 255, 255, 0.18);
+  // Время/тик на тёмной теме (tweb base.scss:345-355 блок `.night .chat`): тик
+  // входящего ярче времени (--secondary-color), у исходящего тик белый, а время —
+  // белое с alpha .6.
+  --message-status-color: var(--secondary-color);
+  --message-error-color: #fff;
+  --message-out-status-color: #fff;
+  --message-out-time-color: rgba(255, 255, 255, 0.6);
+  --message-out-icon-text-color: var(--message-out-background-color);
   // Night: section .12, big .24, column .24 (tweb base.scss .night)
   --section-box-shadow-color: rgba(0, 0, 0, 0.12);
   --section-box-shadow-big-color: rgba(0, 0, 0, 0.24);

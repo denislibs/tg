@@ -1,0 +1,207 @@
+// Время сообщения — порт tweb `.time` / `.time-inner` (_chatBubble.scss:1713-1860).
+//
+// Модель tweb: ОДИН узел `.time` содержит содержимое ДВАЖДЫ.
+//  • внешний `.time` — скрытая распорка (`visibility: hidden`), которая участвует
+//    в потоке (`float: right` в тексте) и резервирует место, чтобы последняя
+//    строка текста не налезала на время;
+//  • вложенный `.inner` (tweb `.time-inner`) — единственная ВИДИМАЯ копия,
+//    прибитая абсолютом к нижне-правому углу контейнера; только она ловит
+//    события (родитель `pointer-events: none`, чтобы не всплывал title).
+// Контейнер обязан быть `position: relative` (tweb `.message`/`.bubble-content`).
+
+.time {
+  visibility: hidden; // не color:transparent — в содержимом могут быть эмодзи
+  font-size: var(--messages-time-text-size);
+  height: var(--messages-time-text-size);
+  user-select: none;
+  line-height: 1;
+  vertical-align: middle;
+  pointer-events: none;
+  display: inline-flex;
+  z-index: 1;
+  cursor: pointer;
+  margin-inline-start: 0.1875rem;
+  direction: ltr;
+  float: right;
+}
+
+// Смещения — переменными: у tweb-структурных контейнеров (тело сообщения с
+// margin'ами) это дефолтные 0, а баблы, ещё держащие отступы padding'ом,
+// компенсируют их сами (см. --time-corner-* ниже).
+.inner {
+  pointer-events: all;
+  position: absolute;
+  inset-inline-end: var(--time-corner-right, 0);
+  // tweb #{$message-padding-bottom - 6px} = 5px - 6px
+  bottom: calc(var(--time-corner-bottom, 0px) - 1px);
+  display: flex;
+  align-items: center;
+  line-height: 1;
+  padding: inherit;
+  white-space: nowrap;
+  height: var(--messages-time-text-size); // = font-size
+  visibility: visible;
+  color: var(--message-time-color);
+}
+
+// tweb `.time-sending-status`: глиф крупнее текста времени и своего цвета,
+// order:5 уводит его в самый конец строки (в DOM он, наоборот, первый).
+.status {
+  order: 5;
+  font-size: calc(var(--messages-text-size) + 3px);
+  line-height: var(--messages-time-text-size);
+  color: var(--message-status-color);
+}
+
+// tweb `.time-icon` / `.time-part` — иконки внутри кластера (views, forwards).
+.icon {
+  pointer-events: none;
+  height: 1.125rem;
+}
+.iconViews {
+  margin-inline-start: 2px;
+}
+.views {
+  font-variant-numeric: tabular-nums;
+}
+
+// tweb `.time-edited` — «изменено» перед временем, наследует размер кластера.
+.edited {
+  overflow: visible;
+  font-size: inherit;
+}
+
+// tweb `.time-effect` — глиф эффекта сообщения.
+.effect {
+  width: 0.75rem;
+  height: 0.75rem;
+  position: relative;
+  margin-inline-end: 0.125rem;
+}
+.effectButton {
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  line-height: 1;
+  font-size: var(--font-size-13);
+  transition: transform 0.12s ease;
+
+  &:hover {
+    transform: scale(1.15);
+  }
+}
+
+// tweb `.time.is-block` — время не плавает, а занимает свою строку (RTL / когда
+// перед ним блочный контент вроде кодоблока).
+.block {
+  float: none;
+  display: block;
+}
+
+// tweb `.bubble.has-webpage:not(.invert-media) .time { float: none }`
+// (_chatBubble.scss:1866) — под превью ссылки распорка не плавает, а просто
+// замыкает инлайн-поток.
+.noFloat {
+  float: none;
+}
+
+// tweb `clearfix()` после времени (bubbles.ts:7631, `.time + .clearfix`) —
+// схлопывает float, чтобы блок сообщения учитывал высоту плавающей распорки.
+.clearfix {
+  display: table;
+}
+
+// tweb `.time.is-floating` (_chatBubble.scss:1818-1855) — медиа без подписи:
+// время пилюлей поверх самого медиа.
+.floating {
+  margin-left: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 0.3125rem;
+  margin: 0;
+  white-space: nowrap;
+  height: calc(var(--messages-time-text-size) + 0.375rem);
+  max-width: inherit;
+  position: absolute;
+  bottom: 0.1875rem;
+  right: 0.1875rem;
+  z-index: 2;
+  opacity: 1;
+  float: none;
+
+  .inner {
+    color: #fff;
+    margin: inherit;
+    max-width: inherit;
+    border-radius: 0.75rem;
+    background-color: var(--message-time-background);
+    padding: inherit;
+    height: inherit;
+    bottom: 0;
+  }
+
+  .status {
+    color: currentColor;
+  }
+}
+
+// tweb `.audio .time` / `.poll-message .time` / `.contact-message .time`
+// (_chatBubble.scss:1630-1651) — контейнерные баблы прибивают саму распорку в
+// угол, а `.inner` позиционируется уже относительно неё.
+// Смещение уже отработала сама распорка — видимая копия садится в её угол,
+// иначе компенсация padding'а применилась бы дважды.
+.corner {
+  position: absolute;
+  right: var(--time-corner-right, 0);
+  bottom: var(--time-corner-bottom, 0);
+  float: none;
+
+  .inner {
+    inset-inline-end: 0;
+    bottom: -1px;
+  }
+}
+// tweb `.audio .time { bottom: -3px }`
+.cornerAudio {
+  bottom: calc(var(--time-corner-bottom, 0px) - 3px);
+}
+// tweb `&.poll-message .time { right: 8px; bottom: 5px }`
+.cornerPoll {
+  right: calc(var(--time-corner-right, 0px) + 8px);
+  bottom: calc(var(--time-corner-bottom, 0px) + 5px);
+}
+
+// tweb `.bubble.sticker/.emoji-big .time { bottom: 0; inset-inline-end: 0 }` —
+// у стикера/большого эмодзи пилюля прижата вплотную к углу.
+.floating.justMedia {
+  bottom: 0;
+  right: 0;
+}
+
+// tweb `.reactions-like-block .time` (_chatBubble.scss:2261-2269) — при наличии
+// реакций время переезжает в их ряд: распорка встаёт в поток flex-строки
+// последним элементом, а видимая копия цепляется за сам ряд (он relative).
+.plain {
+  position: unset;
+  right: auto;
+  bottom: auto;
+  order: 100;
+  margin-top: 0.125rem;
+  float: none;
+}
+
+// tweb `.bubble.is-out .time` (_chatBubble.scss:3411,3526) — у исходящего чуть
+// больший отступ от текста и подтяжка видимой копии к краю.
+.out {
+  margin-inline-start: 5px;
+
+  .inner {
+    margin-inline-end: -2px;
+  }
+}
+
+// tweb `.bubble.is-error .time-sending-status` (_chatBubble.scss:3539).
+.statusError {
+  color: var(--message-error-color);
+}

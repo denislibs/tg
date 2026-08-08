@@ -1,0 +1,208 @@
+// Пикер даты — порт tweb `scss/partials/popups/_datePicker.scss`.
+@use '../styles/foundation' as *;
+
+.popup {
+  --date-picker-cell: 2.5rem;
+  --date-picker-scroll-height: 312px;
+
+  @include respond-to(handhelds) {
+    --date-picker-scroll-height: 280px;
+  }
+}
+
+.controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.monthTitle {
+  font-weight: 600;
+  font-size: var(--font-size-20);
+  flex: 1 1 auto;
+}
+
+// Прокручиваемая область фиксированной высоты: секции месяцев внутри стоят
+// абсолютом, поэтому горизонтальное переполнение режем.
+.scrollable {
+  --date-picker-cell: 2.5rem;
+  --date-picker-scroll-height: 312px;
+  height: var(--date-picker-scroll-height);
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+  transition:
+    border-top-color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    border-bottom-color 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+
+  &.scrolledStart {
+    border-top-color: transparent;
+  }
+  &.scrolledEnd {
+    border-bottom-color: transparent;
+  }
+
+  @include respond-to(handhelds) {
+    --date-picker-scroll-height: 280px;
+  }
+}
+
+.months {
+  position: relative;
+  width: 100%;
+}
+
+.monthSection {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  padding-inline: 1rem;
+  box-sizing: border-box;
+}
+
+.monthLabel {
+  height: var(--date-picker-cell);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: var(--font-size);
+  color: var(--primary-text-color);
+}
+
+.weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.weekday {
+  height: var(--date-picker-cell);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-14);
+  color: var(--primary-text-color);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  row-gap: 0.25rem;
+}
+
+// Пустая ячейка выравнивания (дни соседних месяцев не рисуются).
+.spacer {
+  width: 100%;
+  height: var(--date-picker-cell);
+}
+
+// Кнопка занимает ВСЮ колонку сетки, а видимый круг 2.5rem рисует ::before —
+// он же берёт hover/active-заливку и служит подложкой миниатюре.
+.day {
+  position: relative;
+  width: 100%;
+  height: var(--date-picker-cell);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: var(--font-size-14);
+  color: var(--primary-text-color);
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  cursor: pointer;
+
+  .cellPhoto,
+  &::before {
+    position: absolute;
+    width: var(--date-picker-cell);
+    height: var(--date-picker-cell);
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+  }
+
+  &::before {
+    content: '';
+    z-index: 0;
+    background-color: transparent;
+    transition: background-color 0.12s;
+  }
+
+  &:hover:not(:disabled)::before {
+    background-color: var(--light-secondary-text-color);
+  }
+
+  // tweb гасит недоступные дни прозрачностью, НЕ перекрашивая их: выходные
+  // среди них остаются приглушённо-красными.
+  &:disabled {
+    cursor: default;
+    opacity: 0.4;
+  }
+}
+
+// Выбранный день — сплошной акцентный круг (tweb `.active`).
+.active {
+  color: var(--badge-text-color);
+
+  &::before {
+    background-color: var(--primary-color);
+  }
+}
+
+// Выходные (tweb `.danger`) — красная цифра и красноватый hover.
+.danger {
+  color: var(--danger-color);
+
+  &:hover:not(:disabled)::before {
+    background-color: var(--light-danger-color);
+  }
+}
+
+// День с медиа: миниатюра поверх круга (z:1), но под номером дня (z:2).
+.withMedia {
+  color: #fff;
+
+  .cellPhoto {
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 1;
+    transform: translate(-50%, -50%) scale(1);
+    transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    // Лёгкое затемнение, чтобы номер дня оставался читаемым.
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.35);
+      border-radius: inherit;
+    }
+  }
+
+  &.active .cellPhoto {
+    transform: translate(-50%, -50%) scale(0.8);
+  }
+}
+
+.dayNum {
+  font: inherit;
+  color: inherit;
+  pointer-events: none;
+  position: relative;
+  z-index: 2;
+}

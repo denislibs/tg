@@ -30,7 +30,6 @@ describe('RealMediaBubble: аплоад документа', () => {
         fileName="оферта.pdf"
         size={2 * 1024 * 1024}
         out
-        tickColor="#fff"
         clientId="c-9"
         onCancelUpload={onCancel}
       />,
@@ -51,7 +50,6 @@ describe('RealMediaBubble: аплоад документа', () => {
         fileName="оферта.pdf"
         size={2 * 1024 * 1024}
         out
-        tickColor="#fff"
         clientId="c-10"
       />,
     )

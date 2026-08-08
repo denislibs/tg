@@ -126,7 +126,7 @@ export default function ChatSearchCard({ chat, avatarSrc, search }: {
   const t = useT()
   const {
     query, onSearchChange, onSearchClear, onSearchClose,
-    dateInputRef, openDatePicker, onDatePick,
+    openDatePicker,
     isGroup, filters, setFilters, meId,
     filterMenu, setFilterMenu, openFilterMenu,
     members, memberPeers, senderName, typeLabel,
@@ -157,7 +157,6 @@ export default function ChatSearchCard({ chat, avatarSrc, search }: {
         <IconButton color="var(--secondary-text-color)" onClick={openDatePicker} title={t('Jump to Date')}>
           <TgIcon name="calendar" />
         </IconButton>
-        <input ref={dateInputRef} type="date" className={s.dateInput} onChange={(e) => onDatePick(e.target.value)} />
       </div>
 
       {/* чипы фильтров tweb topbarSearch: «от кого» (в группах) / «тип» / «реакция» */}
