@@ -41,6 +41,7 @@
     // переключаются на out-варианты токенов.
     --message-time-color: var(--message-out-time-color);
     --message-status-color: var(--message-out-status-color);
+    --message-icon-text-color: var(--message-out-icon-text-color);
     // chosen в исходящем — тот же акцент (tweb --chosen-background-color:
     // var(--message-primary-color)); фон невыбранного наследует highlighting.
     --r-chosen-bg: var(--primary-color);
@@ -254,16 +255,14 @@
 // (_chatBubble.scss:3550-3554): ряд становится containing block'ом для видимой
 // копии времени, которое переезжает сюда при наличии реакций (mode="plain").
 .reactions {
+  // tweb `.reactions-like-block` (_reactions.scss:4-10): вертикальный margin
+  // чипов компенсируется отрицательным margin-top ряда (--margin-vertical/-2).
+  --margin-vertical: 0.375rem;
   position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  margin-top: 1px;
-}
-// В текстовом бабле (у `.bubble-content` нет своего padding — tweb) ряд чипов
-// сам держит отступы тела сообщения.
-.textBubble > .reactions {
-  margin: 1px $message-padding-horizontal $message-padding-bottom;
+  margin-top: calc(var(--margin-vertical) / -2);
 }
 
 // Один чип: пилюля 30px (reaction-size 22 + additional 8), radius = высоте.
@@ -277,9 +276,9 @@
   height: 30px;
   border-radius: 30px;
   padding: 0 8px;
-  // симметричный вертикальный отступ → align-items:center строки не даёт сдвига
-  // пилюли относительно времени; margin-right — зазор между чипами/до времени.
-  margin-block: 3px;
+  // tweb: вертикальный margin чипа = --margin-vertical/2, его верхнюю половину
+  // гасит отрицательный margin-top ряда (см. .reactions).
+  margin-block: calc(var(--margin-vertical, 0.375rem) / 2);
   margin-right: 6px;
   background: var(--r-bg);
   color: var(--r-fg);
@@ -370,10 +369,6 @@
   margin-inline-start: 6px;
 }
 
-// Внутри медиабабла (mediaInner без паддингов) — своя подложка-строка.
-.reactionsPad {
-  padding: 0 8px 8px;
-}
 
 // Колонка «контент + реакции под ним» для empty-media типов без текстового
 // контейнера (стикер/big-emoji/кружок/голос/документ/аудио/гео/контакт/звонок) —

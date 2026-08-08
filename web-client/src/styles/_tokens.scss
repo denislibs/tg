@@ -78,6 +78,10 @@
   --message-error-color: var(--danger-color);
   --message-out-status-color: var(--message-out-primary-color);
   --message-out-time-color: var(--message-out-status-color);
+  // Цвет «частей» play-иконки и прочих глифов на цветной подложке (tweb
+  // base.scss:331,339): белый, а в night у исходящего — фон out-бабла.
+  --message-icon-text-color: #fff;
+  --message-out-icon-text-color: #fff;
   // tweb base.scss:320 — hover-подсветка сервис-баблов/дата-пилюль от подсветки темы;
   // --message-highlighting-color(-rgb)/--message-highlighting-alpha пишет JS
   // (themeController.applyHighlightingColor), не CSS-статика.
@@ -143,6 +147,7 @@
   --message-error-color: #fff;
   --message-out-status-color: #fff;
   --message-out-time-color: rgba(255, 255, 255, 0.6);
+  --message-out-icon-text-color: var(--message-out-background-color);
   // Night: section .12, big .24, column .24 (tweb base.scss .night)
   --section-box-shadow-color: rgba(0, 0, 0, 0.12);
   --section-box-shadow-big-color: rgba(0, 0, 0, 0.24);

@@ -115,12 +115,13 @@ export function FactCheckBox({ fc, out, linkColor }: { fc: NonNullable<ConvMsg['
  * Лог 1:1 звонка (tweb .bubble-call): иконка телефона/камеры, заголовок,
  * стрелка (зелёная — состоялся, красная — нет) + длительность/причина, время + галочки.
  */
-export function CallBubble({ m, out, firstInGroup, lastInGroup, time, onClick }: {
+export function CallBubble({ m, out, firstInGroup, lastInGroup, time, reactions, onClick }: {
   m: ConvMsg
   out: boolean
   firstInGroup: boolean
   lastInGroup: boolean
   time?: ReactNode
+  reactions?: ReactNode
   onClick?: () => void
 }) {
   const t = useT()
@@ -154,9 +155,13 @@ export function CallBubble({ m, out, firstInGroup, lastInGroup, time, onClick }:
             style={{ transform: call.duration != null ? 'rotate(135deg)' : 'rotate(-45deg)' }}
           />
           <Text size={13.5} color="var(--b-secondary)">{sub}</Text>
+          {/* tweb: `subtitle.append(timeSpan)` (bubbles.ts:8693) — распорка едет
+              flex-элементом в конце строки и резервирует место, видимая копия
+              прибивается к нижне-правому углу `.bubble-call` */}
+          {time}
         </div>
+        {reactions}
       </div>
-      {time}
     </div>
   )
 }
@@ -271,12 +276,13 @@ export function GeoBubble({ m, out, lastInGroup, radius, time }: {
 }
 
 // ── бабл контакта (tweb .bubble.contact-message: аватар 54 + имя + телефон) ──
-export function ContactBubble({ m, out, firstInGroup, lastInGroup, time, onOpen }: {
+export function ContactBubble({ m, out, firstInGroup, lastInGroup, time, reactions, onOpen }: {
   m: ConvMsg
   out: boolean
   firstInGroup: boolean
   lastInGroup: boolean
   time?: ReactNode
+  reactions?: ReactNode
   /** клик по контакту — открыть чат/профиль (tweb contactDiv.dataset.peerId) */
   onOpen?: () => void
 }) {
@@ -293,6 +299,7 @@ export function ContactBubble({ m, out, firstInGroup, lastInGroup, time, onOpen 
         </div>
       </div>
       {time}
+      {reactions}
     </div>
   )
 }

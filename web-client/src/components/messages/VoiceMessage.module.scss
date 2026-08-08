@@ -45,10 +45,16 @@
   }
 }
 
+// tweb `.audio-to-text-button` (_audio.scss:455-470): абсолют на СТАТИЧЕСКОЙ
+// позиции — align-self прижимает к концу колонки, отрицательные margin выносят
+// кнопку в зарезервированный `padding-inline-end` столбец справа.
 .transcribe {
   position: absolute;
-  top: 0;
-  right: 0;
+  align-self: flex-end;
+  width: 2rem;
+  height: 1.5rem;
+  margin-top: -1rem;
+  margin-right: -2.25rem;
 }
 
 // tweb `.audio-ico`: абсолют на статической позиции, отрицательный inline-start
@@ -63,21 +69,14 @@
   align-items: center;
   justify-content: center;
   background: var(--v-accent);
-  // Глиф контрастирует с фоном кнопки (--v-accent). У входящего кнопка —
-  // насыщенный primary → белый глиф. У исходящего кнопка = --message-out-primary-color
-  // (на night это БЕЛЫЙ) → белый глиф был бы невидим; берём фон out-баббла
-  // (--message-out-background-color, purple) как контраст. tweb: кнопка цветная,
-  // иконка контрастна (_audio.scss .audio-toggle bg=primary, .part=white).
-  color: #fff;
+  // Части play-иконки красит --message-icon-text-color (tweb): белый, а в night
+  // у исходящего — фон out-бабла, иначе белое на белом было бы невидимо.
+  overflow: hidden;
   cursor: pointer;
-
-  [data-out] & {
-    color: var(--message-out-background-color);
-  }
-}
-.glyph {
-  position: absolute;
-  display: flex;
+  // tweb `.audio` c --icon-size: 3rem переопределяет размер «частей» play-иконки
+  // на 112px (_audio.scss:444-447) — и для play, и для pause.
+  --play-part-size: 112px;
+  --play-part-size-idle: 112px;
 }
 
 .body {

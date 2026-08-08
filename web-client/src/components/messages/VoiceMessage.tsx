@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import Text from '../../shared/ui/Text'
-import PlayPauseGlyph from '../PlayPauseGlyph'
+import AudioPlayIcon from './AudioPlayIcon'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useAudioStore, prefetchSecretAudio } from '../../stores/audioStore'
 import { useWaveform, WAVE_BARS, decodeTransmittedBars } from '../../core/audio/waveform'
@@ -50,6 +50,7 @@ export default function VoiceMessage({
   secretMedia,
   out,
   time,
+  reactions,
   mediaUnread,
   onPlay,
 }: {
@@ -65,6 +66,8 @@ export default function VoiceMessage({
   out: boolean
   /** узел времени бабла (tweb `.audio .time` — абсолютом в нижний угол) */
   time?: ReactNode
+  /** ряд реакций — внутрь тела сообщения (tweb messageDiv.append) */
+  reactions?: ReactNode
   /** не прослушано получателем — точка после длительности (tweb is-unread) */
   mediaUnread?: boolean
   onPlay: () => void
@@ -137,7 +140,7 @@ export default function VoiceMessage({
     <div className={s.wrap}>
       <div className={classNames(s.voice, tr.available ? s.canTranscribe : '')} data-out={out || undefined}>
       <div className={s.playBtn} onClick={handlePlay}>
-        <PlayPauseGlyph playing={playing} size={26} className={s.glyph} />
+        <AudioPlayIcon playing={playing} />
       </div>
       <div className={s.body}>
         <div
@@ -174,6 +177,7 @@ export default function VoiceMessage({
         />
       )}
       </div>
+      {reactions}
       {tr.expanded && tr.text && <TranscribedText text={tr.text} color="var(--v-dur)" />}
     </div>
   )

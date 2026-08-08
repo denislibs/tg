@@ -13,6 +13,9 @@ export interface Ctx {
   lastInGroup: boolean
   /** узел времени бабла (bubbleParts/Time) — рендерится внутри контейнера */
   time?: ReactNode
+  /** ряд реакций: tweb кладёт его ВНУТРЬ тела сообщения (bubbles.ts:9869),
+   * и время переезжает в него */
+  reactions?: ReactNode
 }
 
 // Радиусы бабла — из tweb (_chatVariables.scss).

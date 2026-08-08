@@ -11,7 +11,7 @@ import { BubbleTail, bubbleRadius, type Ctx } from './primitives'
 import s from '../MessageBubbles.module.scss'
 
 /** document / file */
-export function DocumentBubble({ m, out, firstInGroup, lastInGroup, time }: Ctx) {
+export function DocumentBubble({ m, out, firstInGroup, lastInGroup, time, reactions }: Ctx) {
   const d = m.document
   return (
     <div
@@ -35,6 +35,7 @@ export function DocumentBubble({ m, out, firstInGroup, lastInGroup, time }: Ctx)
             {d?.size} · {d?.ext}
           </Text>
         </div>
+        {reactions}
       </div>
       {time}
     </div>
@@ -42,7 +43,7 @@ export function DocumentBubble({ m, out, firstInGroup, lastInGroup, time }: Ctx)
 }
 
 /** audio / music */
-export function AudioBubble({ m, out, firstInGroup, lastInGroup, time }: Ctx) {
+export function AudioBubble({ m, out, firstInGroup, lastInGroup, time, reactions }: Ctx) {
   const a = m.audio
   return (
     <div
@@ -69,6 +70,7 @@ export function AudioBubble({ m, out, firstInGroup, lastInGroup, time }: Ctx) {
             {a?.duration}
           </Text>
         </div>
+        {reactions}
       </div>
       {time}
     </div>

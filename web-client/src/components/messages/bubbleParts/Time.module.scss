@@ -25,11 +25,15 @@
   float: right;
 }
 
+// Смещения — переменными: у tweb-структурных контейнеров (тело сообщения с
+// margin'ами) это дефолтные 0, а баблы, ещё держащие отступы padding'ом,
+// компенсируют их сами (см. --time-corner-* ниже).
 .inner {
   pointer-events: all;
   position: absolute;
-  inset-inline-end: 0;
-  bottom: -1px; // tweb #{$message-padding-bottom - 6px} = 5px - 6px
+  inset-inline-end: var(--time-corner-right, 0);
+  // tweb #{$message-padding-bottom - 6px} = 5px - 6px
+  bottom: calc(var(--time-corner-bottom, 0px) - 1px);
   display: flex;
   align-items: center;
   line-height: 1;
@@ -145,14 +149,18 @@
 // tweb `.audio .time` / `.poll-message .time` / `.contact-message .time`
 // (_chatBubble.scss:1630-1651) — контейнерные баблы прибивают саму распорку в
 // угол, а `.inner` позиционируется уже относительно неё.
-// Смещение задаётся переменными: у tweb-структурных контейнеров (тело сообщения
-// с margin'ами) это дефолтные 0/0, а баблы, ещё не переведённые с padding на
-// tweb-модель (документ/аудио/контакт/звонок), компенсируют свой padding сами.
+// Смещение уже отработала сама распорка — видимая копия садится в её угол,
+// иначе компенсация padding'а применилась бы дважды.
 .corner {
   position: absolute;
   right: var(--time-corner-right, 0);
   bottom: var(--time-corner-bottom, 0);
   float: none;
+
+  .inner {
+    inset-inline-end: 0;
+    bottom: -1px;
+  }
 }
 // tweb `.audio .time { bottom: -3px }`
 .cornerAudio {
