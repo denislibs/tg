@@ -9,6 +9,7 @@ import PopupHost from './components/PopupHost'
 import ChatBackground from './components/ChatBackgroundLazy'
 import GlobalOverlays from './components/shell/GlobalOverlays'
 import ShellLayout from './components/shell/ShellLayout'
+import ChatsContainer from './components/shell/ChatsContainer'
 import AuthFlow from './components/auth/AuthFlow'
 import { useT } from './i18n'
 import classNames from './shared/lib/classNames'
@@ -109,7 +110,8 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 
   const { shellThemeVariant } = useShellTheme({ selected, openThread, threadChat })
 
-  // Ключ вкладки чата: его смена ремаунтит колонку (и весь её стейт).
+  // Ключ вкладки чата: его смена = переход между чатами. ChatsContainer держит
+  // уходящую вкладку в дереве такт анимации, дальше всё делает CSS tweb.
   const tabKey = openThread && threadChat
     ? `thread-${openThread.chatId}-${openThread.thread.rootMsgId}`
     : selected
@@ -137,7 +139,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   // .chats-container.tabs-container с колонкой чата (tweb §1).
   const chatArea = (
     <div id="column-center" className={classNames('tabs-tab', 'main-column')}>
-      <div className="chats-container tabs-container">{chatBody}</div>
+      <ChatsContainer tabKey={tabKey}>{chatBody}</ChatsContainer>
     </div>
   )
 

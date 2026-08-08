@@ -456,16 +456,22 @@ typecheck / tests / build; скриншоты «до/после» в отчёт.
 
 `_badge.scss` уже портирован (фаза 3, вместе с угловыми кнопками).
 
-- [ ] **Step 1:** Копирование + починка импортов + сборка.
+- [x] **Step 1:** Портированы дословно `_ripple`, `_button`, `_chatlist`, `_slider`,
+      `_leftSidebar`, `_avatar`, `_row`, `_transition`, `_stackedAvatars`; `_index.scss`
+      выстроен в порядке tweb `style.scss` (номера строк проставлены комментариями).
 - [ ] **Step 2:** Сверка с живым референсом §2 (строка 72px, порядок узлов, пилюли-табы папок).
-- [ ] **Step 3:** С портом `_slider.scss` вернуть **переход между чатами** (Task 3.5 Step 2,
-      откачен): `.tabs-container` становится гридом 100%×100%, оба `.chat` ложатся в одну
-      ячейку — уходящий перестаёт наезжать на сайдбар. Проверить, что `pages/_chats.scss`
-      перебивает грид на `display:flex` у `#main-columns`, а `#column-left/-center/-right`
-      не схлопываются в `display:none` от `.tabs-tab`.
-- [ ] **Step 4:** Убрать из `styles/tweb/_bridge.scss` то, что перекрыто портами
-      (`.btn-corner`, `.btn-circle`, `.chatlist-container`, `.chats-container.tabs-container`).
-- [ ] **Step 5:** Проверки.
+- [x] **Step 3:** Переход между чатами ВЕРНУЛСЯ: `.tabs-container` теперь грид 100%×100%,
+      обе вкладки лежат в одной ячейке, а `.chat { display: flex !important }` перебивает
+      `.tabs-tab:not(.active) { display: none }` — ровно механика tweb
+      (`appImManager.chatsSelectTab`: снять `active` у прежней, добавить новой, обе висят
+      такт анимации). Замерено: обе вкладки в одном боксе (y=16), уходящая едет 0→−60px
+      c opacity 1→0.7, входящая +200px→0; сайдбар (z-index 1) остаётся сверху — хит-тест
+      по его центру попадает в `#column-left`.
+- [x] **Step 4:** Мост очищен: `.btn-corner`, `.btn-circle`, `.chatlist-container`,
+      `.chats-container.tabs-container` теперь приходят из настоящих партиалов. Остались
+      только выдержки из `scss/components/_global.scss` (`.z-depth-1`, `.position-center`).
+- [x] **Step 5:** typecheck / 793 теста / build зелёные; на стенде замерены колонки,
+      топбар, лента, композер, кнопка «вниз» и FAB сайдбара — без сдвигов.
 
 ### Task 4.2: `ChatListItem` на дерево tweb
 

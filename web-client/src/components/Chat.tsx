@@ -109,13 +109,16 @@ export interface ThreadInfo {
 
 interface Props {
   chat: Chat
+  /** активная вкладка (tweb `.chat.active`): уходящий чат рисуется без неё и
+   *  уезжает переходом — см. shell/ChatsContainer */
+  active?: boolean
   onBack?: () => void
   /** режим треда (tweb setPeer({peerId, threadId})): окно/отправка ограничены
    * тредом, вместо ChatHeader — плашка темы, пины/анрид-плашка/звонки скрыты */
   thread?: ThreadInfo
 }
 
-export default function Chat({ chat, onBack, thread }: Props) {
+export default function Chat({ chat, active = true, onBack, thread }: Props) {
   const t = useT()
   // Навигация — из navigationStore/useNavigationActions напрямую (инвариант: View
   // читает из стора, а не через проброс из Shell). Имена локальные совпадают с
@@ -968,7 +971,8 @@ export default function Chat({ chat, onBack, thread }: Props) {
       <div
         ref={rootRef}
         className={classNames(
-          'chat', 'tabs-tab', 'active',
+          'chat', 'tabs-tab',
+          active ? 'active' : '',
           isRealChat ? 'can-click-date' : '',
           // tweb _chat.scss:1217 — видимость угловых кнопок даёт класс на колонке
           showScrollDown ? 'is-go-down-visible' : '',
