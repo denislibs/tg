@@ -1,41 +1,14 @@
-// IconButton — порт tweb `.btn-icon` (_button.scss): круглая кнопка-иконка с
-// hover-фоном. hover адаптирован на современный `@media (hover: hover)` вместо
-// tweb-класса `html.no-touch`. Цвет иконки = currentColor (каскадит в TgIcon),
-// задаётся через --ib-color.
+// IconButton рендерит глобальный `.btn-icon.rp` из tweb `_button.scss` — там уже
+// есть форма, паддинг, hover-фон (btn-hoverable), disabled и клип ripple.
+// Здесь остаётся только то, чего в партиале нет.
 .root {
-  appearance: none;
-  background: none;
-  outline: none;
-  border: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  padding: 0.5rem;
-  position: relative;
-  flex-shrink: 0;
-  line-height: 1;
+  // Цвет иконки задаётся пропом (каскадит в TgIcon через currentColor).
   color: var(--ib-color, var(--secondary-text-color));
-  transition: color 0.15s ease, background-color 0.15s ease, opacity 0.15s ease;
-
-  @media (hover: hover) {
-    &:hover {
-      background-color: var(--ib-hover, var(--light-secondary-text-color));
-    }
-  }
-
-  &:active {
-    background-color: var(--ib-hover, var(--light-secondary-text-color));
-  }
-
-  &:disabled {
-    pointer-events: none;
-    opacity: 0.5;
-  }
+  // Кнопка не должна сжиматься в узких флекс-шапках.
+  flex-shrink: 0;
 }
 
-// MUI `size="small"` parity — tighter padding.
+// Компактный вариант (наш API, в tweb его нет — там padding всегда .5rem).
 .small {
-  padding: 0.3125rem; // 5px, как MUI small
+  padding: 0.3125rem;
 }

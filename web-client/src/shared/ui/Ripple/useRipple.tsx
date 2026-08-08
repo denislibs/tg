@@ -7,10 +7,14 @@
 // как в tweb: при elapsed < duration круг ещё растёт, а hiding ставится в
 // max(delay − duration/2, 0) и удаление в delay (delay = max(duration − elapsed,
 // duration/2)); иначе hiding сразу + удаление через duration/2.
+//
+// Разметка — классы tweb: `.c-ripple` + `.c-ripple__circle[.hiding]` (_ripple.scss
+// уже портирован). Клипование по форме хоста tweb вешает на сам хост: `.btn-icon.rp`,
+// `.row-clickable`, либо утилита `.rp-overflow` — поэтому хост ОБЯЗАН нести `.rp`
+// (и `.rp-overflow`, если сам не режет overflow).
 import { useCallback, useRef, useState, type PointerEvent, type ReactNode } from 'react'
-import s from './Ripple.module.scss'
 
-const DURATION = 700 // --ripple-duration .7s (Ripple.module.scss)
+const DURATION = 700 // --ripple-duration .7s (styles/_tokens.scss)
 
 interface Drop {
   key: number
@@ -68,11 +72,11 @@ export function useRipple(): {
   )
 
   const ripple = (
-    <span className={s.root} aria-hidden>
+    <span className="c-ripple" aria-hidden>
       {drops.map((d) => (
         <span
           key={d.key}
-          className={d.hiding ? `${s.circle} ${s.hiding}` : s.circle}
+          className={d.hiding ? 'c-ripple__circle hiding' : 'c-ripple__circle'}
           style={{ left: d.x, top: d.y, width: d.size, height: d.size }}
         />
       ))}

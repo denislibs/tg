@@ -7,6 +7,7 @@ import { useState, type ReactNode } from 'react'
 import ConfirmPopup from '../shared/ui/ConfirmPopup'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
+import classNames from '../shared/lib/classNames'
 import { useRipple } from '../shared/ui/Ripple/useRipple'
 import { useT } from '../i18n'
 import s from './MutePopup.module.scss'
@@ -26,7 +27,7 @@ function RadioRow({ label, checked, onSelect }: { label: string; checked: boolea
   const { onPointerDown, ripple } = useRipple()
   return (
     <div
-      className={s.row}
+      className={classNames('rp', 'rp-overflow', s.row)}
       role="radio"
       aria-checked={checked}
       onPointerDown={onPointerDown}

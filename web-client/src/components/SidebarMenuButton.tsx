@@ -48,7 +48,7 @@ function SidebarMenuButton({
     <>
       <div className={classNames('animated-menu-icon', showBack ? 'state-back' : '')} />
       <IconButton
-        className={classNames('btn-icon', 'rp', 'btn-menu-toggle', 'sidebar-tools-button', showBack ? '' : 'is-visible')}
+        className={classNames('btn-menu-toggle', 'sidebar-tools-button', showBack ? '' : 'is-visible')}
         onClick={() => setMenuOpen((o) => !o)}
         color="var(--secondary-text-color)"
         aria-label="Меню"
