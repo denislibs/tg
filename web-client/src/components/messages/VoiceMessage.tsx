@@ -115,7 +115,7 @@ export default function VoiceMessage({
     <div className={s.wrap}>
       <div className={classNames(s.voice, tr.available ? s.canTranscribe : '')} data-out={out || undefined}>
       <div className={s.playBtn} onClick={handlePlay}>
-        <PlayPauseGlyph playing={playing} className={s.glyph} />
+        <PlayPauseGlyph playing={playing} size={26} className={s.glyph} />
       </div>
       <div className={s.body}>
         <div
@@ -135,7 +135,7 @@ export default function VoiceMessage({
           ))}
         </div>
         <div className={s.meta}>
-          <Text size="var(--messages-time-text-size)" color="var(--v-dur)">
+          <Text size={14} color="var(--v-dur)">
             {isCurrent ? `${fmt(curTime)} / ${fmt(duration)}` : fmt(duration)}
           </Text>
           {showUnplayedDot && <div className={s.dot} />}
