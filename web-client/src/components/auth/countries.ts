@@ -1,0 +1,295 @@
+// Список стран для авторизации — сгенерирован из tweb src/countries.ts
+// (help.countriesList, скрытые pFlags.hidden исключены; страна с несколькими
+// телефонными кодами даёт по записи на код, как в tweb countryInputField).
+// pattern — группировка цифр национального номера из patterns[0] ("XXX XXX XXXX" → [3,3,4]);
+// prefixes — префиксы национального номера для стран, делящих код (+1 CA / +7 KZ).
+
+export interface Country {
+  iso2: string
+  name: string
+  /** телефонный код с плюсом, напр. «+49» */
+  code: string
+  pattern?: number[]
+  prefixes?: string[]
+}
+
+// Флаг-эмодзи из ISO-кода через regional indicator symbols
+// (tweb vendor/emoji getCountryEmoji; виртуальная FT «Anonymous Numbers» — 🏴‍☠).
+export function countryFlag(iso2: string): string {
+  if (iso2 === 'FT') return '🏴\u200d☠'
+  return String.fromCharCode(55356, 56741 + iso2.charCodeAt(0), 55356, 56741 + iso2.charCodeAt(1))
+}
+
+export const COUNTRIES: Country[] = [
+  { iso2: 'AF', name: "Afghanistan", code: '+93', pattern: [3, 3, 3] },
+  { iso2: 'AL', name: "Albania", code: '+355', pattern: [2, 3, 4] },
+  { iso2: 'DZ', name: "Algeria", code: '+213', pattern: [3, 2, 2, 2] },
+  { iso2: 'AS', name: "American Samoa", code: '+1684', pattern: [3, 4] },
+  { iso2: 'AD', name: "Andorra", code: '+376', pattern: [2, 2, 2] },
+  { iso2: 'AO', name: "Angola", code: '+244', pattern: [3, 3, 3] },
+  { iso2: 'AI', name: "Anguilla", code: '+1264', pattern: [3, 4] },
+  { iso2: 'FT', name: "Anonymous Numbers", code: '+888' },
+  { iso2: 'AG', name: "Antigua & Barbuda", code: '+1268', pattern: [3, 4] },
+  { iso2: 'AR', name: "Argentina", code: '+54' },
+  { iso2: 'AM', name: "Armenia", code: '+374', pattern: [2, 3, 3] },
+  { iso2: 'AW', name: "Aruba", code: '+297', pattern: [3, 4] },
+  { iso2: 'AU', name: "Australia", code: '+61', pattern: [1, 4, 4] },
+  { iso2: 'AT', name: "Austria", code: '+43', pattern: [3, 6] },
+  { iso2: 'AZ', name: "Azerbaijan", code: '+994', pattern: [2, 3, 4] },
+  { iso2: 'BS', name: "Bahamas", code: '+1242', pattern: [3, 4] },
+  { iso2: 'BH', name: "Bahrain", code: '+973', pattern: [4, 4] },
+  { iso2: 'BD', name: "Bangladesh", code: '+880', pattern: [2, 3, 3] },
+  { iso2: 'BB', name: "Barbados", code: '+1246', pattern: [3, 4] },
+  { iso2: 'BY', name: "Belarus", code: '+375', pattern: [2, 3, 4] },
+  { iso2: 'BE', name: "Belgium", code: '+32', pattern: [3, 2, 2, 2] },
+  { iso2: 'BZ', name: "Belize", code: '+501' },
+  { iso2: 'BJ', name: "Benin", code: '+229', pattern: [2, 3, 3] },
+  { iso2: 'BM', name: "Bermuda", code: '+1441', pattern: [3, 4] },
+  { iso2: 'BT', name: "Bhutan", code: '+975', pattern: [2, 3, 3] },
+  { iso2: 'BO', name: "Bolivia", code: '+591', pattern: [1, 3, 4] },
+  { iso2: 'BQ', name: "Bonaire, Sint Eustatius & Saba", code: '+599' },
+  { iso2: 'BA', name: "Bosnia & Herzegovina", code: '+387', pattern: [2, 3, 3] },
+  { iso2: 'BW', name: "Botswana", code: '+267', pattern: [2, 3, 3] },
+  { iso2: 'BR', name: "Brazil", code: '+55', pattern: [2, 5, 4] },
+  { iso2: 'VG', name: "British Virgin Islands", code: '+1284', pattern: [3, 4] },
+  { iso2: 'BN', name: "Brunei Darussalam", code: '+673', pattern: [3, 4] },
+  { iso2: 'BG', name: "Bulgaria", code: '+359' },
+  { iso2: 'BF', name: "Burkina Faso", code: '+226', pattern: [2, 2, 2, 2] },
+  { iso2: 'BI', name: "Burundi", code: '+257', pattern: [2, 2, 4] },
+  { iso2: 'KH', name: "Cambodia", code: '+855', pattern: [2, 3, 3] },
+  { iso2: 'CM', name: "Cameroon", code: '+237', pattern: [4, 4] },
+  { iso2: 'CA', name: "Canada", code: '+1', pattern: [3, 3, 4], prefixes: ['403', '587', '780', '825', '236', '250', '604', '672', '778', '204', '431', '506', '709', '902', '782', '226', '249', '289', '343', '365', '416', '437', '519', '548', '613', '647', '705', '807', '905', '418', '438', '450', '514', '579', '581', '819', '873', '306', '639', '867'] },
+  { iso2: 'CV', name: "Cape Verde", code: '+238', pattern: [3, 4] },
+  { iso2: 'KY', name: "Cayman Islands", code: '+1345', pattern: [3, 4] },
+  { iso2: 'CF', name: "Central African Rep.", code: '+236', pattern: [2, 2, 2, 2] },
+  { iso2: 'TD', name: "Chad", code: '+235', pattern: [2, 2, 2, 2] },
+  { iso2: 'CL', name: "Chile", code: '+56', pattern: [1, 4, 4] },
+  { iso2: 'CN', name: "China", code: '+86', pattern: [3, 4, 4] },
+  { iso2: 'CO', name: "Colombia", code: '+57', pattern: [3, 3, 4] },
+  { iso2: 'KM', name: "Comoros", code: '+269', pattern: [3, 4] },
+  { iso2: 'CD', name: "Congo (Dem. Rep.)", code: '+243', pattern: [2, 3, 4] },
+  { iso2: 'CG', name: "Congo (Rep.)", code: '+242', pattern: [2, 3, 4] },
+  { iso2: 'CK', name: "Cook Islands", code: '+682' },
+  { iso2: 'CR', name: "Costa Rica", code: '+506', pattern: [4, 4] },
+  { iso2: 'CI', name: "Côte d\"Ivoire", code: '+225', pattern: [2, 2, 2, 4] },
+  { iso2: 'HR', name: "Croatia", code: '+385', pattern: [2, 3, 3] },
+  { iso2: 'CU', name: "Cuba", code: '+53', pattern: [1, 3, 4] },
+  { iso2: 'CW', name: "Curaçao", code: '+599', prefixes: ['9'] },
+  { iso2: 'CY', name: "Cyprus", code: '+357', pattern: [4, 4] },
+  { iso2: 'CZ', name: "Czech Republic", code: '+420', pattern: [3, 3, 3] },
+  { iso2: 'DK', name: "Denmark", code: '+45', pattern: [4, 4] },
+  { iso2: 'IO', name: "Diego Garcia", code: '+246', pattern: [3, 4] },
+  { iso2: 'DJ', name: "Djibouti", code: '+253', pattern: [2, 2, 2, 2] },
+  { iso2: 'DM', name: "Dominica", code: '+1767', pattern: [3, 4] },
+  { iso2: 'DO', name: "Dominican Rep.", code: '+1809', pattern: [3, 4] },
+  { iso2: 'DO', name: "Dominican Rep.", code: '+1829', pattern: [3, 4] },
+  { iso2: 'DO', name: "Dominican Rep.", code: '+1849', pattern: [3, 4] },
+  { iso2: 'EC', name: "Ecuador", code: '+593', pattern: [2, 3, 4] },
+  { iso2: 'EG', name: "Egypt", code: '+20', pattern: [2, 4, 4] },
+  { iso2: 'SV', name: "El Salvador", code: '+503', pattern: [4, 4] },
+  { iso2: 'GQ', name: "Equatorial Guinea", code: '+240', pattern: [3, 3, 3] },
+  { iso2: 'ER', name: "Eritrea", code: '+291', pattern: [1, 3, 3] },
+  { iso2: 'EE', name: "Estonia", code: '+372', pattern: [4, 3] },
+  { iso2: 'SZ', name: "Eswatini", code: '+268', pattern: [4, 4] },
+  { iso2: 'ET', name: "Ethiopia", code: '+251', pattern: [2, 3, 3] },
+  { iso2: 'FK', name: "Falkland Islands", code: '+500' },
+  { iso2: 'FO', name: "Faroe Islands", code: '+298', pattern: [3, 3] },
+  { iso2: 'FJ', name: "Fiji", code: '+679', pattern: [3, 4] },
+  { iso2: 'FI', name: "Finland", code: '+358' },
+  { iso2: 'FR', name: "France", code: '+33', pattern: [1, 2, 2, 2, 2] },
+  { iso2: 'GF', name: "French Guiana", code: '+594' },
+  { iso2: 'PF', name: "French Polynesia", code: '+689' },
+  { iso2: 'GA', name: "Gabon", code: '+241', pattern: [1, 2, 2, 2] },
+  { iso2: 'GM', name: "Gambia", code: '+220', pattern: [3, 4] },
+  { iso2: 'GE', name: "Georgia", code: '+995', pattern: [3, 3, 3] },
+  { iso2: 'DE', name: "Germany", code: '+49', pattern: [4, 7] },
+  { iso2: 'GH', name: "Ghana", code: '+233', pattern: [2, 3, 4] },
+  { iso2: 'GI', name: "Gibraltar", code: '+350', pattern: [4, 4] },
+  { iso2: 'GR', name: "Greece", code: '+30', pattern: [3, 3, 4] },
+  { iso2: 'GL', name: "Greenland", code: '+299', pattern: [3, 3] },
+  { iso2: 'GD', name: "Grenada", code: '+1473', pattern: [3, 4] },
+  { iso2: 'GP', name: "Guadeloupe", code: '+590', pattern: [3, 2, 2, 2] },
+  { iso2: 'GU', name: "Guam", code: '+1671', pattern: [3, 4] },
+  { iso2: 'GT', name: "Guatemala", code: '+502', pattern: [1, 3, 4] },
+  { iso2: 'GN', name: "Guinea", code: '+224', pattern: [3, 3, 3] },
+  { iso2: 'GW', name: "Guinea-Bissau", code: '+245', pattern: [3, 4] },
+  { iso2: 'GY', name: "Guyana", code: '+592' },
+  { iso2: 'HT', name: "Haiti", code: '+509', pattern: [4, 4] },
+  { iso2: 'HN', name: "Honduras", code: '+504', pattern: [4, 4] },
+  { iso2: 'HK', name: "Hong Kong", code: '+852', pattern: [1, 3, 4] },
+  { iso2: 'HU', name: "Hungary", code: '+36', pattern: [3, 3, 3] },
+  { iso2: 'IS', name: "Iceland", code: '+354', pattern: [3, 4] },
+  { iso2: 'IN', name: "India", code: '+91', pattern: [5, 5] },
+  { iso2: 'ID', name: "Indonesia", code: '+62', pattern: [3, 6] },
+  { iso2: 'IR', name: "Iran", code: '+98', pattern: [3, 3, 4] },
+  { iso2: 'IQ', name: "Iraq", code: '+964', pattern: [3, 3, 4] },
+  { iso2: 'IE', name: "Ireland", code: '+353', pattern: [2, 3, 4] },
+  { iso2: 'IL', name: "Israel", code: '+972', pattern: [2, 3, 4] },
+  { iso2: 'IT', name: "Italy", code: '+39', pattern: [3, 3, 4] },
+  { iso2: 'JM', name: "Jamaica", code: '+1876', pattern: [3, 4] },
+  { iso2: 'JP', name: "Japan", code: '+81', pattern: [2, 4, 4] },
+  { iso2: 'JO', name: "Jordan", code: '+962', pattern: [1, 4, 4] },
+  { iso2: 'KZ', name: "Kazakhstan", code: '+7', pattern: [3, 3, 2, 2], prefixes: ['6', '7'] },
+  { iso2: 'KE', name: "Kenya", code: '+254', pattern: [3, 3, 3] },
+  { iso2: 'KI', name: "Kiribati", code: '+686', pattern: [4, 4] },
+  { iso2: 'XK', name: "Kosovo", code: '+383', pattern: [4, 4] },
+  { iso2: 'KW', name: "Kuwait", code: '+965', pattern: [4, 4] },
+  { iso2: 'KG', name: "Kyrgyzstan", code: '+996', pattern: [3, 6] },
+  { iso2: 'LA', name: "Laos", code: '+856', pattern: [2, 2, 3, 3] },
+  { iso2: 'LV', name: "Latvia", code: '+371', pattern: [3, 5] },
+  { iso2: 'LB', name: "Lebanon", code: '+961' },
+  { iso2: 'LS', name: "Lesotho", code: '+266', pattern: [2, 3, 3] },
+  { iso2: 'LR', name: "Liberia", code: '+231', pattern: [2, 3, 4] },
+  { iso2: 'LY', name: "Libya", code: '+218', pattern: [2, 3, 4] },
+  { iso2: 'LI', name: "Liechtenstein", code: '+423', pattern: [3, 4] },
+  { iso2: 'LT', name: "Lithuania", code: '+370', pattern: [3, 5] },
+  { iso2: 'LU', name: "Luxembourg", code: '+352', pattern: [3, 3, 3] },
+  { iso2: 'MO', name: "Macau", code: '+853', pattern: [4, 4] },
+  { iso2: 'MG', name: "Madagascar", code: '+261', pattern: [2, 2, 3, 2] },
+  { iso2: 'MW', name: "Malawi", code: '+265', pattern: [2, 3, 4] },
+  { iso2: 'MY', name: "Malaysia", code: '+60' },
+  { iso2: 'MV', name: "Maldives", code: '+960', pattern: [3, 4] },
+  { iso2: 'ML', name: "Mali", code: '+223', pattern: [4, 4] },
+  { iso2: 'MT', name: "Malta", code: '+356', pattern: [2, 2, 2, 2] },
+  { iso2: 'MH', name: "Marshall Islands", code: '+692' },
+  { iso2: 'MQ', name: "Martinique", code: '+596' },
+  { iso2: 'MR', name: "Mauritania", code: '+222', pattern: [4, 4] },
+  { iso2: 'MU', name: "Mauritius", code: '+230', pattern: [4, 4] },
+  { iso2: 'MX', name: "Mexico", code: '+52' },
+  { iso2: 'FM', name: "Micronesia", code: '+691' },
+  { iso2: 'MD', name: "Moldova", code: '+373', pattern: [2, 3, 3] },
+  { iso2: 'MC', name: "Monaco", code: '+377', pattern: [4, 4] },
+  { iso2: 'MN', name: "Mongolia", code: '+976', pattern: [2, 2, 4] },
+  { iso2: 'ME', name: "Montenegro", code: '+382' },
+  { iso2: 'MS', name: "Montserrat", code: '+1664', pattern: [3, 4] },
+  { iso2: 'MA', name: "Morocco", code: '+212', pattern: [2, 3, 4] },
+  { iso2: 'MZ', name: "Mozambique", code: '+258', pattern: [2, 3, 4] },
+  { iso2: 'MM', name: "Myanmar", code: '+95' },
+  { iso2: 'NA', name: "Namibia", code: '+264', pattern: [2, 3, 4] },
+  { iso2: 'NR', name: "Nauru", code: '+674' },
+  { iso2: 'NP', name: "Nepal", code: '+977', pattern: [2, 4, 4] },
+  { iso2: 'NL', name: "Netherlands", code: '+31', pattern: [1, 2, 2, 2, 2] },
+  { iso2: 'NC', name: "New Caledonia", code: '+687' },
+  { iso2: 'NZ', name: "New Zealand", code: '+64', pattern: [4, 4] },
+  { iso2: 'NI', name: "Nicaragua", code: '+505', pattern: [4, 4] },
+  { iso2: 'NE', name: "Niger", code: '+227', pattern: [2, 2, 2, 2] },
+  { iso2: 'NG', name: "Nigeria", code: '+234', pattern: [2, 4, 4] },
+  { iso2: 'NU', name: "Niue", code: '+683' },
+  { iso2: 'NF', name: "Norfolk Island", code: '+672' },
+  { iso2: 'KP', name: "North Korea", code: '+850' },
+  { iso2: 'MK', name: "North Macedonia", code: '+389', pattern: [2, 6] },
+  { iso2: 'MP', name: "Northern Mariana Islands", code: '+1670', pattern: [3, 4] },
+  { iso2: 'NO', name: "Norway", code: '+47', pattern: [3, 2, 3] },
+  { iso2: 'OM', name: "Oman", code: '+968', pattern: [4, 4] },
+  { iso2: 'PK', name: "Pakistan", code: '+92', pattern: [3, 3, 4] },
+  { iso2: 'PW', name: "Palau", code: '+680' },
+  { iso2: 'PS', name: "Palestine", code: '+970', pattern: [3, 2, 4] },
+  { iso2: 'PA', name: "Panama", code: '+507', pattern: [4, 4] },
+  { iso2: 'PG', name: "Papua New Guinea", code: '+675' },
+  { iso2: 'PY', name: "Paraguay", code: '+595', pattern: [3, 3, 3] },
+  { iso2: 'PE', name: "Peru", code: '+51', pattern: [3, 3, 3] },
+  { iso2: 'PH', name: "Philippines", code: '+63', pattern: [3, 3, 4] },
+  { iso2: 'PL', name: "Poland", code: '+48', pattern: [3, 3, 3] },
+  { iso2: 'PT', name: "Portugal", code: '+351', pattern: [3, 3, 3] },
+  { iso2: 'PR', name: "Puerto Rico", code: '+1787', pattern: [3, 4] },
+  { iso2: 'PR', name: "Puerto Rico", code: '+1939', pattern: [3, 4] },
+  { iso2: 'QA', name: "Qatar", code: '+974', pattern: [2, 3, 3] },
+  { iso2: 'RE', name: "Réunion", code: '+262', pattern: [3, 3, 3] },
+  { iso2: 'RO', name: "Romania", code: '+40', pattern: [3, 3, 3] },
+  { iso2: 'RU', name: "Russian Federation", code: '+7', pattern: [3, 3, 4] },
+  { iso2: 'RW', name: "Rwanda", code: '+250', pattern: [3, 3, 3] },
+  { iso2: 'SH', name: "Saint Helena", code: '+247' },
+  { iso2: 'SH', name: "Saint Helena", code: '+290', pattern: [2, 3] },
+  { iso2: 'KN', name: "Saint Kitts & Nevis", code: '+1869', pattern: [3, 4] },
+  { iso2: 'LC', name: "Saint Lucia", code: '+1758', pattern: [3, 4] },
+  { iso2: 'PM', name: "Saint Pierre & Miquelon", code: '+508' },
+  { iso2: 'VC', name: "Saint Vincent & the Grenadines", code: '+1784', pattern: [3, 4] },
+  { iso2: 'WS', name: "Samoa", code: '+685' },
+  { iso2: 'SM', name: "San Marino", code: '+378' },
+  { iso2: 'ST', name: "São Tomé & Príncipe", code: '+239', pattern: [2, 5] },
+  { iso2: 'SA', name: "Saudi Arabia", code: '+966', pattern: [2, 3, 4] },
+  { iso2: 'SN', name: "Senegal", code: '+221', pattern: [2, 3, 4] },
+  { iso2: 'RS', name: "Serbia", code: '+381', pattern: [2, 3, 3] },
+  { iso2: 'SC', name: "Seychelles", code: '+248', pattern: [1, 2, 2, 2] },
+  { iso2: 'SL', name: "Sierra Leone", code: '+232', pattern: [2, 3, 3] },
+  { iso2: 'SG', name: "Singapore", code: '+65', pattern: [4, 4] },
+  { iso2: 'SX', name: "Sint Maarten", code: '+1721', pattern: [3, 4] },
+  { iso2: 'SK', name: "Slovakia", code: '+421', pattern: [3, 3, 3] },
+  { iso2: 'SI', name: "Slovenia", code: '+386', pattern: [2, 3, 3] },
+  { iso2: 'SB', name: "Solomon Islands", code: '+677' },
+  { iso2: 'SO', name: "Somalia", code: '+252', pattern: [2, 3, 3] },
+  { iso2: 'ZA', name: "South Africa", code: '+27', pattern: [2, 3, 4] },
+  { iso2: 'KR', name: "South Korea", code: '+82', pattern: [2, 4, 3] },
+  { iso2: 'SS', name: "South Sudan", code: '+211', pattern: [2, 3, 4] },
+  { iso2: 'ES', name: "Spain", code: '+34', pattern: [3, 3, 3] },
+  { iso2: 'LK', name: "Sri Lanka", code: '+94', pattern: [2, 3, 4] },
+  { iso2: 'SD', name: "Sudan", code: '+249', pattern: [2, 3, 4] },
+  { iso2: 'SR', name: "Suriname", code: '+597', pattern: [3, 4] },
+  { iso2: 'SE', name: "Sweden", code: '+46', pattern: [2, 3, 4] },
+  { iso2: 'CH', name: "Switzerland", code: '+41', pattern: [2, 3, 4] },
+  { iso2: 'SY', name: "Syria", code: '+963', pattern: [3, 3, 3] },
+  { iso2: 'TW', name: "Taiwan", code: '+886', pattern: [3, 3, 3] },
+  { iso2: 'TJ', name: "Tajikistan", code: '+992', pattern: [2, 3, 4] },
+  { iso2: 'TZ', name: "Tanzania", code: '+255', pattern: [2, 3, 4] },
+  { iso2: 'TH', name: "Thailand", code: '+66', pattern: [1, 4, 4] },
+  { iso2: 'TL', name: "Timor-Leste", code: '+670' },
+  { iso2: 'TG', name: "Togo", code: '+228', pattern: [2, 3, 3] },
+  { iso2: 'TK', name: "Tokelau", code: '+690' },
+  { iso2: 'TO', name: "Tonga", code: '+676' },
+  { iso2: 'TT', name: "Trinidad & Tobago", code: '+1868', pattern: [3, 4] },
+  { iso2: 'TN', name: "Tunisia", code: '+216', pattern: [2, 3, 3] },
+  { iso2: 'TR', name: "Turkey", code: '+90', pattern: [3, 3, 4] },
+  { iso2: 'TM', name: "Turkmenistan", code: '+993', pattern: [2, 6] },
+  { iso2: 'TC', name: "Turks & Caicos Islands", code: '+1649', pattern: [3, 4] },
+  { iso2: 'TV', name: "Tuvalu", code: '+688' },
+  { iso2: 'UG', name: "Uganda", code: '+256', pattern: [2, 3, 4] },
+  { iso2: 'UA', name: "Ukraine", code: '+380', pattern: [2, 3, 2, 2] },
+  { iso2: 'AE', name: "United Arab Emirates", code: '+971', pattern: [2, 3, 4] },
+  { iso2: 'GB', name: "United Kingdom", code: '+44', pattern: [4, 6] },
+  { iso2: 'UY', name: "Uruguay", code: '+598', pattern: [1, 3, 4] },
+  { iso2: 'VI', name: "US Virgin Islands", code: '+1340', pattern: [3, 4] },
+  { iso2: 'US', name: "USA", code: '+1', pattern: [3, 3, 4] },
+  { iso2: 'UZ', name: "Uzbekistan", code: '+998', pattern: [2, 3, 2, 2] },
+  { iso2: 'VU', name: "Vanuatu", code: '+678' },
+  { iso2: 'VE', name: "Venezuela", code: '+58', pattern: [3, 3, 4] },
+  { iso2: 'VN', name: "Vietnam", code: '+84' },
+  { iso2: 'WF', name: "Wallis & Futuna", code: '+681' },
+  { iso2: 'YE', name: "Yemen", code: '+967', pattern: [3, 3, 3] },
+  { iso2: 'ZM', name: "Zambia", code: '+260', pattern: [2, 3, 4] },
+  { iso2: 'ZW', name: "Zimbabwe", code: '+263', pattern: [2, 3, 4] },
+]
+
+// tweb countryInputField.filterCountries: регистронезависимый поиск по имени,
+// iso2 и аббревиатуре из первых букв слов («UK», «US»…).
+export function filterCountries(value: string): Country[] {
+  const v = value.toLowerCase()
+  if (!v) return COUNTRIES
+  return COUNTRIES.filter((c) => {
+    const names = [c.name, c.iso2]
+    const abbr = c.name.split(' ').filter((w) => /\w/.test(w)).map((w) => w[0]).join('')
+    if (abbr.length > 1) names.push(abbr)
+    return names.some((s) => s.toLowerCase().includes(v))
+  })
+}
+
+// Автоопределение страны по началу номера с кодом (tweb telInputField/formatPhoneNumber):
+// самое длинное совпадение кода; при равных кодах (+1, +7) решают prefixes
+// по следующим цифрам национальной части, иначе — запись без prefixes.
+export function countryByPhone(digits: string): Country | undefined {
+  let best: Country | undefined
+  let bestLen = 0
+  for (const c of COUNTRIES) {
+    const code = c.code.slice(1)
+    if (!digits.startsWith(code) || code.length < bestLen) continue
+    const national = digits.slice(code.length)
+    if (c.prefixes) {
+      if (!national || !c.prefixes.some((p) => national.startsWith(p) || p.startsWith(national))) continue
+      best = c
+      bestLen = code.length
+    } else if (code.length > bestLen || !best) {
+      best = c
+      bestLen = code.length
+    }
+  }
+  return best
+}

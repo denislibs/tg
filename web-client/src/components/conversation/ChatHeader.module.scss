@@ -152,8 +152,17 @@
   border-top: 1px solid var(--border-color);
 }
 .resultsScroll {
-  max-height: 60vh;
+  // tweb topbarSearch MAX_HEIGHT = 271
+  max-height: 271px;
   overflow-y: auto;
+  transition: max-height 0.2s ease-in-out;
+}
+// счётчик «N of M» рядом со стрелками prev/next
+.searchCounter {
+  flex-shrink: 0;
+  font-size: var(--font-size-14);
+  color: var(--secondary-text-color);
+  white-space: nowrap;
 }
 .noResults {
   padding: 16px;

@@ -1,0 +1,132 @@
+// CodeInput — стили порт tweb components/codeInputField.module.scss +
+// input-shake из scss/partials/_input.scss.
+.wrap {
+  position: relative;
+  pointer-events: none;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  width: 100%;
+
+  &.error {
+    animation: input-shake 0.2s ease-in-out forwards;
+  }
+}
+
+// Единый невидимый input поверх ряда (tweb .input: прозрачный текст/каретка,
+// letter-spacing -1em прячет символы).
+.input {
+  display: flex;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  color: transparent;
+  background: transparent;
+  caret-color: transparent;
+  border: 0 solid transparent;
+  outline: transparent solid 0;
+  box-shadow: none;
+  line-height: 1;
+  letter-spacing: -1em;
+  font-family: monospace;
+  font-variant-numeric: tabular-nums;
+  pointer-events: all;
+}
+
+// Ячейка 48×48, radius 12 (tweb .digit).
+.digit {
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition-property: border-color;
+  transition-duration: 0.1s;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+  font-size: var(--font-size-24);
+  font-weight: 600;
+  color: var(--primary-text-color);
+
+  &.active {
+    border-color: var(--primary-color);
+    transition: none;
+  }
+
+  .error & {
+    border-color: var(--danger-color, #e53935);
+  }
+}
+
+.digitContent {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+// Появление цифры: translateY(20px)→0 + opacity, spring-безье (tweb .s-enter).
+.enter {
+  animation: digit-enter 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+// Удаление: scale(.5)+fade (tweb .s-exit-to).
+.exit {
+  animation: digit-exit 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes digit-enter {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes digit-exit {
+  to {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+}
+
+// Мигающий caret в активной ячейке (tweb .caret: 1px, caret-blink).
+.caret {
+  height: 16px;
+  width: 1px;
+  animation: caret-blink 1.25s ease-out infinite;
+  background-color: var(--primary-text-color);
+}
+
+@keyframes caret-blink {
+  0%, 70%, 100% {
+    opacity: 1;
+  }
+  20%, 50% {
+    opacity: 0;
+  }
+}
+
+// Ошибка: тряска поля (tweb @keyframes input-shake, _input.scss).
+@keyframes input-shake {
+  0% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-0.5rem);
+  }
+  75% {
+    transform: translateX(0.5rem);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
