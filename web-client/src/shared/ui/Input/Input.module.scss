@@ -1,97 +1,43 @@
-// Input — outlined-инпут с плавающим лейблом (порт tweb .input-field): радиус 16,
-// высота 48, рамка --input-search-border-color → 2px accent в фокусе; лейбл всплывает при
-// фокусе/заполнении, перекрывая рамку фоном --input-bg (по умолчанию surface).
-.field {
-  position: relative;
-  display: flex;
-}
-.input {
-  width: 100%;
-  height: 48px;
-  box-sizing: border-box;
-  padding: 13px 16px;
-  border: 1px solid var(--input-search-border-color);
-  border-radius: 16px;
-  background: transparent;
-  color: var(--primary-text-color);
-  font-size: var(--font-size-16);
-  font-family: inherit;
-  outline: none;
-  transition: border-color 0.2s, border-width 0.2s;
+// Input рендерит глобальный `.input-field` (_input.scss): высота, радиус,
+// паддинги, рамка (--input-search-border-color → акцент в фокусе через
+// оверлей `.input-field-border`), всплывающий лейбл и его нотч.
+// Здесь — только то, чего в партиале нет.
 
-  &::placeholder {
-    color: var(--secondary-text-color);
-    opacity: 1;
-  }
-
-  @media (hover: hover) {
-    &:hover {
-      border-color: var(--primary-color);
-    }
-  }
-  &:focus {
-    border-color: var(--primary-color);
-    border-width: 2px;
-    padding: 12px 15px; // компенсация +1px рамки
-  }
-}
-
-// плавающий лейбл. Пока лежит по центру (placeholder) — фона нет (иначе
-// получалась «белая плашка» за текстом); фон-нотч включается только когда лейбл
-// всплывает наверх и должен перекрыть рамку. Цвет нотча берётся из контекста
-// (--input-bg задаёт поверхность: карточка попапа/секции), фолбэк — sidebarBg.
-.label {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  padding: 0 4px;
-  background: transparent;
-  color: var(--secondary-text-color);
-  font-size: var(--font-size-16);
-  pointer-events: none;
-  transition: top 0.15s, font-size 0.15s, color 0.15s, font-weight 0.15s;
-}
-.input:focus ~ .label,
-.input:not(:placeholder-shown) ~ .label {
-  top: 0;
-  font-size: var(--font-size-13);
-  background: var(--input-bg, var(--surface-color));
-}
-.input:focus ~ .label {
-  color: var(--primary-color);
-  font-weight: var(--font-weight-bold);
+// Лейбл перекрывает рамку своим фоном; у tweb он захардкожен в --surface-color,
+// а у нас поле стоит и на карточке попапа, и в секции — цвет приходит из
+// контекста через --input-bg.
+.field label {
+  background-color: var(--input-bg, var(--surface-color));
 }
 
 // ── Цифровая маска ──
-// value input'а всегда непустой (префикс+прочерки) → лейбл всплывает сам, а
-// :focus даёт акцент теми же правилами выше. Текст input'а прозрачен, каретка
-// видна; поверх — цветной дисплей (цифры белым, прочерки faint). Рамка на фокусе
-// остаётся 1px (без смены паддинга), иначе overlay сдвинулся бы на 1px.
+// value input'а всегда непустой (префикс+прочерки) → лейбл всплывает сам.
+// Текст input'а прозрачен, каретка видна; поверх — цветной дисплей.
 .masked .input {
   color: transparent;
   caret-color: var(--primary-color);
   position: relative;
   z-index: 1;
-
-  &:focus {
-    border-width: 1px;
-    padding: 13px 16px;
-  }
 }
+
+// Дисплей повторяет геометрию `.input-field-input` (padding у tweb —
+// `calc(var(--padding) - var(--border-width))` на
+// `calc(var(--padding-horizontal) - var(--border-width))`), иначе каретка
+// разъедется с видимым текстом.
 .maskDisplay {
   position: absolute;
   inset: 0;
   box-sizing: border-box;
-  padding: 13px 16px; // те же паддинги/размеры, что у input → каретка совпадает
-  border: 1px solid transparent;
+  padding: calc(var(--padding) - var(--border-width)) calc(var(--padding-horizontal) - var(--border-width));
+  border: var(--border-width) solid transparent;
   font-size: var(--font-size-16);
   font-family: inherit;
-  line-height: normal;
+  line-height: var(--line-height);
   color: var(--primary-text-color);
   white-space: pre;
   pointer-events: none;
 }
+
 .maskDash {
   color: var(--secondary-text-color);
 }
