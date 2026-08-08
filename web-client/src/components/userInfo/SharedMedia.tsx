@@ -3,7 +3,7 @@
 // липкий таб-ряд + скользящий контент по табам (Участники/Чаты/Подарки и
 // непустые медиа-табы Media/Files/Links/Music/Voice). Данные тянет per-filter
 // из mediaHistory, глобальный плеер — из audioStore, просмотрщик — MediaLightbox.
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import Text from '../../shared/ui/Text'
 import TgIcon from '../TgIcon'
 import Avatar from '../../shared/ui/Avatar'
@@ -75,9 +75,17 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
   const togglePlay = useAudioStore((st) => st.toggle)
   const curMediaId = useAudioStore((st) => st.track?.mediaId)
   const audioPlaying = useAudioStore((st) => st.playing)
-  // кэш по фильтру: загружаем таб один раз за открытие панели
-  const [byFilter, setByFilter] = useState<Partial<Record<string, Message[]>>>({})
+  // Кэш по фильтру с infinite scroll (tweb searchSuper.load + loadMutex):
+  // страницы аккумулируются, hasMore гасится по total count с бэка.
+  const [byFilter, setByFilter] = useState<Partial<Record<string, { msgs: Message[]; hasMore: boolean }>>>({})
+  const byFilterRef = useRef(byFilter)
+  byFilterRef.current = byFilter
+  // guard от параллельных загрузок одного фильтра (tweb loadMutex)
+  const loadingRef = useRef(new Set<string>())
+  // поколение кэша: инвалидация (новое сообщение) обесценивает in-flight ответы
+  const genRef = useRef(0)
   const filter = TAB_FILTER[tab]
+  const PAGE_SIZE = 30
 
   // Total-счётчики всех медиа-фильтров (tweb searchSuper counts): грузим один
   // лёгкий запрос на фильтр при открытии, чтобы скрывать пустые табы.
@@ -101,22 +109,71 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
   // Live: новое сообщение в открытом чате инвалидирует кэш табов — активный
   // таб перезагрузится и свежая отправка (голосовое/фото/…) появится сразу.
   const winLen = useMessagesStore((st) => (chatId != null ? st.byKey[String(chatId)]?.msgs.length ?? 0 : 0))
-  useEffect(() => { setByFilter({}) }, [winLen])
+  useEffect(() => {
+    genRef.current++
+    loadingRef.current.clear()
+    setByFilter({})
+  }, [winLen])
 
+  // Догрузка следующей страницы фильтра (append) с offset = уже загружено.
+  const loadPage = (f: (typeof TAB_FILTER)[string] | undefined, forTab: string) => {
+    if (chatId == null || !f || loadingRef.current.has(f)) return
+    const cur = byFilterRef.current[f]
+    if (cur && !cur.hasMore) return
+    const offset = cur?.msgs.length ?? 0
+    const gen = genRef.current
+    loadingRef.current.add(f)
+    void managers.messages
+      .mediaHistory(chatId, f, offset, PAGE_SIZE)
+      .then((r) => {
+        if (gen !== genRef.current) return
+        setByFilter((d) => {
+          const prev = d[f]?.msgs ?? []
+          const msgs = prev.concat(r.messages)
+          return { ...d, [f]: { msgs, hasMore: r.messages.length > 0 && msgs.length < r.count } }
+        })
+        // подзаголовок залитой шапки — TOTAL по фильтру (tweb onLengthChange)
+        onCount?.(forTab, r.count)
+      })
+      .catch(() => {
+        if (gen !== genRef.current) return
+        setByFilter((d) => ({ ...d, [f]: d[f] ?? { msgs: [], hasMore: false } }))
+      })
+      .finally(() => loadingRef.current.delete(f))
+  }
+  const loadPageRef = useRef(loadPage)
+  loadPageRef.current = loadPage
+
+  // первая страница активного таба (и после инвалидации кэша)
   useEffect(() => {
     if (chatId == null || !filter || byFilter[filter]) return
-    const forTab = tab
-    void managers.messages
-      .mediaHistory(chatId, filter)
-      .then((r) => {
-        setByFilter((d) => ({ ...d, [filter]: r.messages }))
-        onCount?.(forTab, r.messages.length)
-      })
-      .catch(() => setByFilter((d) => ({ ...d, [filter]: [] })))
+    loadPageRef.current(filter, tab)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatId, filter])
+  }, [chatId, filter, byFilter])
 
-  const msgs = byFilter[filter]
+  const entry = byFilter[filter]
+  const msgs = entry?.msgs
+  const hasMore = entry?.hasMore ?? false
+
+  // sentinel в конце грида/списка: доезжает до вьюпорта скролл-контейнера
+  // панели → следующая страница (tweb: onScrolledBottom searchSuper.load)
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el || !hasMore) return
+    // root — фактический скролл-контейнер (панель скроллится целиком)
+    let root: Element | null = el.parentElement
+    while (root && !/(auto|scroll)/.test(getComputedStyle(root).overflowY)) root = root.parentElement
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((en) => en.isIntersecting)) loadPageRef.current(filter, tab)
+      },
+      { root, rootMargin: '320px' },
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [filter, tab, hasMore, msgs?.length])
+
   const when = (m: Message) => friendlyMsgTime(m.createdAt, lang)
 
   // Клик по строке: текущий трек — play/pause, иначе очередь из всего таба
@@ -415,6 +472,9 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
           ))}
         </div>
       )}
+
+      {/* sentinel infinite scroll медиа-табов: виден → догрузка следующей страницы */}
+      {filter && msgs != null && hasMore && <div ref={sentinelRef} className={s.moreSentinel} />}
       </TabSlide>
 
       {/* вне TabSlide: transform слайда ломал бы position:fixed лайтбокса */}

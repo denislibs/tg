@@ -293,6 +293,11 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
   // Инфо-панель — локальный toggle (сосуществует с gift-попапом поверх профиля).
   // Остальные попапы колонки открываются императивно через popupStore (useChatPopups).
   const [infoOpen, setInfoOpen] = useState(false)
+  // Ленивый чанк панели монтируем при первом открытии и больше НЕ размонтируем
+  // (tweb #column-right: колонка всегда в DOM, закрыта transform'ом + inert) —
+  // повторное открытие не перезапрашивает профиль.
+  const [infoMounted, setInfoMounted] = useState(false)
+  useEffect(() => { if (infoOpen) setInfoMounted(true) }, [infoOpen])
   // Попапы чат-скоупные: снимаем их со стека при уходе с чата (колонка ремаунтится по key).
   useEffect(() => () => clearPopups(), [])
   // ⋮-меню тред-шапки требует права «Закрыть тему»
@@ -877,7 +882,7 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
   return (
     <CallProvider chat={chat}>
     <div className={s.root} ref={rootRef}>
-      <div className={classNames(s.column, narrow ? s.columnNarrow : '')}>
+      <div className={classNames(s.column, narrow ? s.columnNarrow : '', infoOpen && !narrow ? s.columnInfoOpen : '')}>
         {/* Обои темы чата рисует глобальный ChatBackground (App), чтобы весь shell был
             в теме, а не только эта колонка — локальный слой убран. */}
         {/* Global "now playing" plate — a floating pill above the header (tweb:
@@ -1178,12 +1183,13 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
         )}
       </div>
 
-      {/* Инфо-панель (private / group / channel) — локальный toggle; поверх неё
-          может открыться gift-попап (стек popupStore). */}
+      {/* Инфо-панель (private / group / channel) — после первого открытия всегда
+          смонтирована; открытие/закрытие — сдвиг transform самой панели (tweb
+          #column-right), поверх неё может открыться gift-попап (стек popupStore). */}
       <Suspense fallback={null}>
-      <AnimatePresence>
-        {infoOpen && (
+        {infoMounted && (
           <UserInfoPanel
+            open={infoOpen}
             chat={chat}
             onClose={() => setInfoOpen(false)}
             onOpenPeer={onOpenPeer}
@@ -1192,7 +1198,6 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
             onSendGift={chat.type === 'private' && chat.peerId != null && chat.peerId !== meId ? pop.openGift : undefined}
           />
         )}
-      </AnimatePresence>
       </Suspense>
 
       {/* Баннер идущего видеочата (tweb topbar-call): Join, пока сам не в звонке */}

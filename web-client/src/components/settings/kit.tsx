@@ -111,6 +111,7 @@ export function Row({
   checked,
   selected,
   translate = true,
+  multiline,
 }: {
   icon?: ReactNode
   label: string
@@ -124,6 +125,8 @@ export function Row({
   checked?: boolean
   selected?: boolean
   translate?: boolean
+  /** многострочный заголовок (tweb Row.Title class="pre-wrap" — Bio с переносами) */
+  multiline?: boolean
 }) {
   const t = useT()
   const color = danger ? '#ff595a' : accent ? 'var(--primary-color)' : 'var(--primary-text-color)'
@@ -131,7 +134,12 @@ export function Row({
     <div className={classNames(s.row, onClick ? s.rowClickable : '')} onClick={onClick}>
       {icon && <div className={s.rowIcon}>{icon}</div>}
       <div className={s.rowBody}>
-        <Text noWrap size={16} color={color}>
+        <Text
+          noWrap={!multiline}
+          size={16}
+          color={color}
+          style={multiline ? { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } : undefined}
+        >
           {translate ? t(label) : label}
         </Text>
         {sublabel && (
