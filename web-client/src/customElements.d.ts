@@ -12,6 +12,8 @@ declare module 'react' {
   namespace JSX {
     interface IntrinsicElements {
       'audio-element': TwebElement
+      'reactions-element': TwebElement
+      'reaction-element': TwebElement
       'middle-ellipsis-element': TwebElement
     }
   }

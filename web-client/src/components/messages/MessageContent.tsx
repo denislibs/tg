@@ -420,9 +420,6 @@ export default function MessageContent({
         ) : m.type === 'contact' && m.contact ? (
           <ContactBubble
             m={m}
-            out={out}
-            firstInGroup={firstInGroup}
-            lastInGroup={lastInGroup}
             time={showReactions ? undefined : timeNode('corner')}
             reactions={reactionsInside}
             onOpen={selecting ? undefined : () => feedFns.openSender(m.contact!.userId, m.contact!.name)}
@@ -453,27 +450,29 @@ export default function MessageContent({
           </>
         ) : m.type === 'poll' && m.poll ? (
           <>
+            <div className="attachment no-brb" />
+            <div className={classNames(s.message, 'message', 'spoilers-container', 'mt-shorter')}>
             {!out && m.sender && firstInGroup && (
               <Text size={14} weight={600} color="rgb(var(--peer-color-rgb))">
                 {m.sender}
               </Text>
             )}
-            <PollBubble poll={m.poll} out={out} />
-            {showReactions
-              ? <div className={classNames(s.message, 'message', 'spoilers-container')}>{reactionsRow(timeNode('plain'))}</div>
-              : timeNode('corner', 'poll')}
+            <div className="poll-message-content"><PollBubble poll={m.poll} out={out} /></div>
+            {showReactions ? reactionsRow(timeNode('plain')) : timeNode('corner', 'poll')}
+            </div>
           </>
         ) : m.type === 'checklist' && m.checklist ? (
           <>
+            <div className="attachment no-brb" />
+            <div className={classNames(s.message, 'message', 'spoilers-container', 'mt-shorter')}>
             {!out && m.sender && firstInGroup && (
               <Text size={14} weight={600} color="rgb(var(--peer-color-rgb))">
                 {m.sender}
               </Text>
             )}
-            <ChecklistBubble checklist={m.checklist} out={out} />
-            {showReactions
-              ? <div className={classNames(s.message, 'message', 'spoilers-container')}>{reactionsRow(timeNode('plain'))}</div>
-              : timeNode('corner', 'poll')}
+            <div className="poll-message-content"><ChecklistBubble checklist={m.checklist} out={out} /></div>
+            {showReactions ? reactionsRow(timeNode('plain')) : timeNode('corner', 'poll')}
+            </div>
           </>
         ) : (
           // tweb .bubble-content-wrapper: цветной бабл + reply-markup сиблингами;
@@ -526,7 +525,7 @@ export default function MessageContent({
             <div className={classNames(s.message, 'message', 'spoilers-container')}>
               <RichText text={m.text ?? ''} entities={m.entities} linkColor="var(--b-link)" />
               {m.webPage && (
-                <WebPagePreview wp={m.webPage} out={out} linkColor="var(--b-link)" />
+                <WebPagePreview wp={m.webPage} out={out} />
               )}
               {m.factCheck && (
                 <FactCheckBox fc={m.factCheck} out={out} linkColor="var(--b-link)" />
