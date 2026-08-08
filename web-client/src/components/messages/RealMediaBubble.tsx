@@ -374,7 +374,6 @@ function DocRow({ name, size, mime, href, uploadProgress, onCancelUpload, timeCl
   )
 }
 
-
 // Music row: plays through the GLOBAL audio player (same as voice messages), so a
 // track shows in the now-playing plate and only one thing plays at a time. While
 // this file is the active track the row flips to pause + a seekable progress bar

@@ -4,7 +4,6 @@
 import type { ReactNode } from 'react'
 import type { ConvMsg } from '../../../data'
 
-
 /** Общие пропсы простого бабла (media/file). */
 export interface Ctx {
   m: ConvMsg
