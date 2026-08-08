@@ -43,6 +43,26 @@ import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import type { FeedFns } from './MessageRow'
 import s from './MessageRow.module.scss'
 
+// Обёртки «одиночного документа» tweb (голос/аудио/файл): между .bubble-content и
+// самим элементом лежат фон-подложка, тело сообщения и контейнер документа
+// (живой DOM §3 — voice mid 21397, audio/document дампы).
+function DocumentContainer({ children, reactions }: { children: ReactNode; reactions?: ReactNode }) {
+  return (
+    <>
+      <div className="bubble-content-background" />
+      <div className="message spoilers-container">
+        <span className="clearfix" />
+        <div className="document-container is-first is-last">
+          <div className="document-wrapper">{children}</div>
+        </div>
+        {/* реакции — в теле сообщения после контейнера документа (tweb
+            bubbles.ts:9869 messageDiv.append), а не внутри audio-element */}
+        {reactions}
+      </div>
+    </>
+  )
+}
+
 // Big emoji (tweb bubbles.ts bigEmojis): сообщение из одних только эмодзи, без
 // текста, — крупный глиф без фона бабла. РОВНО один эмодзи, у которого есть
 // лотти в сид-наборе animated_emoji, рендерится анимированным стикером (tweb
@@ -238,7 +258,10 @@ export default function MessageContent({
             />,
           )
         ) : m.mediaId && m.type === 'voice' ? (
-          <div className={s.voiceMedia} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
+          // Обёртки tweb для «одиночного документа» (голос/аудио/файл), живой DOM §3:
+          // .bubble-content-background + .message.spoilers-container > span.clearfix
+          // + .document-container.is-first.is-last > .document-wrapper > контент.
+          <DocumentContainer reactions={reactionsInside}>
             <VoiceMessage
               mediaId={m.mediaId}
               msgId={m.id}
@@ -247,11 +270,10 @@ export default function MessageContent({
               secretMedia={m.secretMedia}
               out={out}
               time={showReactions ? undefined : timeNode('corner', 'audio')}
-              reactions={reactionsInside}
               mediaUnread={m.mediaUnread}
               onPlay={() => feedFns.playVoice(m.mediaId as number)}
             />
-          </div>
+          </DocumentContainer>
         ) : m.type === 'album' && m.albumItems ? (
           // Альбом (медиагруппа): грид из элементов, подпись — под гридом.
           withMediaReactions(

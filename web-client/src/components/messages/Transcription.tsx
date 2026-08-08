@@ -60,7 +60,7 @@ export function TranscribeButton({
   const t = useT()
   return (
     <div
-      className={classNames(s.button, className ?? '')}
+      className={classNames('audio-to-text-button', s.button, className ?? '')}
       role="button"
       aria-label={expanded ? t('Hide Transcription') : t('Transcribe Voice Message')}
       title={expanded ? t('Hide Transcription') : t('Transcribe Voice Message')}
@@ -95,8 +95,9 @@ export function TranscribeButton({
 // TranscribedText — блок расшифрованного текста под баблом (tweb
 // .audio-transcribed-text). Текст — обычной React-нодой, не raw HTML.
 export function TranscribedText({ text, color }: { text: string; color?: string }) {
+  // tweb `.audio-transcribed-text` — блок расшифровки под волной.
   return (
-    <div className={s.text}>
+    <div className={classNames('audio-transcribed-text', s.text)}>
       <Text size={14.5} color={color} style={{ lineHeight: 1.35, whiteSpace: 'pre-wrap' }}>
         {text}
       </Text>

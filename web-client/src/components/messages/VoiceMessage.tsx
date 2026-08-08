@@ -13,7 +13,6 @@ import {
 import { useTranscription, TranscribeButton, TranscribedText } from './Transcription'
 import classNames from '../../shared/lib/classNames'
 import type { SecretMedia } from '../../core/models'
-import s from './VoiceMessage.module.scss'
 
 // Пока пики не приехали — ровная «тихая» волна (пики 0..31, здесь минимум).
 const PLACEHOLDER_PEAKS = Array.from({ length: 100 }, () => 4)
@@ -33,7 +32,6 @@ export default function VoiceMessage({
   secretMedia,
   out,
   time,
-  reactions,
   mediaUnread,
   onPlay,
 }: {
@@ -49,8 +47,6 @@ export default function VoiceMessage({
   out: boolean
   /** узел времени бабла (tweb `.audio .time` — абсолютом в нижний угол) */
   time?: ReactNode
-  /** ряд реакций — внутрь тела сообщения (tweb messageDiv.append) */
-  reactions?: ReactNode
   /** не прослушано получателем — точка после длительности (tweb is-unread) */
   mediaUnread?: boolean
   onPlay: () => void
@@ -112,7 +108,7 @@ export default function VoiceMessage({
   // контейнера − высота бара, то есть выровнены по НИЗУ, а не по центру.
   const waveSvg = (
     <svg
-      className={s.waveBars}
+      className="audio-waveform-bars"
       width={wave.width}
       height={WAVEFORM_HEIGHT}
       viewBox={`0 0 ${wave.width} ${WAVEFORM_HEIGHT}`}
@@ -120,7 +116,7 @@ export default function VoiceMessage({
       {wave.bars.map((h, i) => (
         <rect
           key={i}
-          className={s.waveBar}
+          className="audio-waveform-bar"
           x={i * (WAVEFORM_BAR_WIDTH + WAVEFORM_BAR_MARGIN)}
           y={WAVEFORM_HEIGHT - h}
           width={WAVEFORM_BAR_WIDTH}
@@ -149,43 +145,51 @@ export default function VoiceMessage({
   // у отправителя — «не прослушал собеседник» (гаснет по media_read).
   const showUnplayedDot = !!mediaUnread
 
+  // Дерево tweb (живой DOM §3, голосовое mid 21397 + _audio.scss):
+  //   audio-element.audio.is-voice[.is-out][.is-unread][.can-transcribe]
+  //     div.audio-toggle.audio-ico[.playing] > div.audio-play-icon > .part.one/.two
+  //     div.audio-waveform-container > .audio-waveform-background + .audio-waveform-fake
+  //     div.audio-time
+  //     div.audio-to-text-button
+  //     span.time + span.clearfix
+  // Кастомный тег audio-element — как в оригинале (в tweb это web-component;
+  // у нас поведение на React, но имя узла держим, чтобы совпадали селекторы).
   return (
-    <div className={s.wrap}>
-      <div className={classNames(s.voice, tr.available ? s.canTranscribe : '')} data-out={out || undefined}>
-      <div className={s.playBtn} onClick={handlePlay}>
-        <AudioPlayIcon playing={playing} />
-      </div>
-      <div className={s.body}>
-        {/* tweb: два одинаковых SVG — фоновый (полупрозрачный) и его клон,
-            обрезаемый по ширине = прогрессу воспроизведения */}
-        <div
-          className={s.waveContainer}
-          onClick={handleSeek}
-          style={{ cursor: isCurrent ? 'pointer' : 'default' }}
-        >
-          <div className={classNames(s.waveform, s.waveformBackground)}>{waveSvg}</div>
-          <div className={classNames(s.waveform, s.waveformFake)} style={{ width: `${progress * 100}%` }}>
-            {waveSvg}
-          </div>
-        </div>
-        <div className={classNames(s.time, showUnplayedDot ? s.unread : '')}>
-          {isCurrent && curTime > 0 && curTime !== duration
-            ? `${fmt(curTime)} / ${fmt(duration)}`
-            : fmt(duration)}
-        </div>
-      </div>
-      {time}
-      {tr.available && (
-        <TranscribeButton
-          className={s.transcribe}
-          expanded={tr.expanded}
-          pending={tr.pending}
-          onClick={tr.toggle}
-        />
+    <audio-element
+      class={classNames(
+        'audio',
+        'is-voice',
+        out ? 'is-out' : '',
+        showUnplayedDot ? 'is-unread' : '',
+        tr.available ? 'can-transcribe' : '',
       )}
+    >
+      <div className={classNames('audio-toggle', 'audio-ico', playing ? 'playing' : '')} onClick={handlePlay}>
+        <AudioPlayIcon />
       </div>
-      {reactions}
-      {tr.expanded && tr.text && <TranscribedText text={tr.text} color="var(--v-dur)" />}
-    </div>
+      {/* tweb: два одинаковых SVG — фоновый (полупрозрачный) и его клон,
+          обрезаемый по ширине = прогрессу воспроизведения */}
+      <div
+        className="audio-waveform-container"
+        onClick={handleSeek}
+        style={{ cursor: isCurrent ? 'pointer' : 'default' }}
+      >
+        <div className="audio-waveform audio-waveform-background">{waveSvg}</div>
+        <div className="audio-waveform audio-waveform-fake" style={{ width: `${progress * 100}%` }}>
+          {waveSvg}
+        </div>
+      </div>
+      <div className="audio-time">
+        {isCurrent && curTime > 0 && curTime !== duration
+          ? `${fmt(curTime)} / ${fmt(duration)}`
+          : fmt(duration)}
+      </div>
+      {tr.available && (
+        <TranscribeButton expanded={tr.expanded} pending={tr.pending} onClick={tr.toggle} />
+      )}
+      {time}
+      <span className="clearfix" />
+      {tr.expanded && tr.text && <TranscribedText text={tr.text} />}
+    </audio-element>
   )
 }
