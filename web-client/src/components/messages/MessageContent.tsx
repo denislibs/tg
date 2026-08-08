@@ -150,11 +150,14 @@ export interface MessageContentProps {
   showReactions: boolean
   // Ряд уже был смонтирован, когда появились реакции → анимируем вход первого чипа.
   rowLive: boolean
+  // Доступен ли список реагировавших (см. MessageRowProps) — аватары или число.
+  canSeeReactionList: boolean
   feedFns: FeedFns
 }
 
 export default function MessageContent({
-  m, out, firstInGroup, lastInGroup, selecting, autoDownload, albumSelectedKey, footer, showReactions, rowLive, feedFns,
+  m, out, firstInGroup, lastInGroup, selecting, autoDownload, albumSelectedKey, footer, showReactions, rowLive,
+  canSeeReactionList, feedFns,
 }: MessageContentProps) {
   const t = useT()
   const bigEmoji = m.type === 'text' && m.text ? emojiOnlyCount(m.text) : 0
@@ -186,9 +189,11 @@ export default function MessageContent({
   const reactionsRow = (trailing?: ReactNode) =>
     showReactions ? (
       <MessageReactions
+        inside={!!trailing}
         reactions={m.reactions ?? []}
         star={m.starReaction && m.starReaction.total > 0 ? m.starReaction : undefined}
         rowLive={rowLive}
+        canSeeList={canSeeReactionList}
         trailing={trailing}
         onToggle={(emoji) => feedFns.toggleReaction(m.id!, emoji)}
         onShow={(x, y) => feedFns.showReactedUsers(m.id!, x, y)}

@@ -82,6 +82,13 @@
   // base.scss:331,339): белый, а в night у исходящего — фон out-бабла.
   --message-icon-text-color: #fff;
   --message-out-icon-text-color: #fff;
+  // Акцент ВНУТРИ бабла (tweb base.scss:325): у входящего — обычный primary,
+  // у исходящего переключается на --message-out-primary-color (см. .row[data-out]).
+  // Им красится выбранная реакция, ссылки, полоса цитаты и т.п.
+  --message-primary-color: var(--primary-color);
+  // Светлая заливка акцентом (tweb base.scss:327) — фон невыбранной реакции,
+  // когда чипы лежат ВНУТРИ тела сообщения.
+  --light-filled-message-primary-color: var(--light-filled-primary-color);
   // tweb base.scss:320 — hover-подсветка сервис-баблов/дата-пилюль от подсветки темы;
   // --message-highlighting-color(-rgb)/--message-highlighting-alpha пишет JS
   // (themeController.applyHighlightingColor), не CSS-статика.

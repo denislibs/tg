@@ -223,6 +223,7 @@ function ChatFeed({
 
     const row = (
       <MessageRow
+        canSeeReactionList={!isGroup}
         key={k}
         m={m}
         seq={isRealChat ? winMsgs[i]?.seq : undefined}

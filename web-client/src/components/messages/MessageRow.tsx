@@ -66,12 +66,16 @@ export interface MessageRowProps {
   albumSelectedKey?: string
   // Optional slot rendered at the bottom of the bubble (channel post replies-footer).
   footer?: ReactNode
+  // Виден ли список реагировавших (tweb reactions.pFlags.can_see_list ||
+  // peerId.isUser()): от этого зависит, показывать в чипе аватары или число.
+  // Флага can_see_list бэк пока не отдаёт, поэтому берём приватность чата.
+  canSeeReactionList: boolean
 }
 
 function MessageRow({
   m, seq, out, firstInGroup, lastInGroup,
   selecting, isSelected, isHighlighted, ladderActive, ladderDelay,
-  feedFns, autoDownload, albumSelectedKey, footer,
+  feedFns, autoDownload, albumSelectedKey, footer, canSeeReactionList,
 }: MessageRowProps) {
   const textSize = useSettings((st) => st.textSize)
   const rowStyle = { '--messages-text-size': `${textSize}px` } as CSSProperties
@@ -142,6 +146,7 @@ function MessageRow({
           albumSelectedKey={albumSelectedKey}
           footer={footer}
           showReactions={showReactions}
+          canSeeReactionList={canSeeReactionList}
           rowLive={rowLiveRef.current}
           feedFns={feedFns}
         />
