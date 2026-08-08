@@ -18,6 +18,7 @@ import MessageRow, { type FeedFns } from './MessageRow'
 import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import type { ConvMsg } from '../../data'
 import type { Message } from '../../core/models'
+import classNames from '../../shared/lib/classNames'
 import s from './ChatFeed.module.scss'
 
 export interface ChatFeedProps {
@@ -34,7 +35,8 @@ export interface ChatFeedProps {
   selecting: boolean
   selected: Set<number>
   ladderActive: boolean
-  // top offset for the sticky date pill (header + player plate + pinned bar)
+  /** ключ дня прилипшей даты (tweb is-sticky) — считает Chat по скроллу */
+  stickyDateKey: string | null
   feedFns: FeedFns
   // Автозагрузка медиа для этого чата (tweb chat.autoDownload)
   autoDownload?: ChatAutoDownload
@@ -43,7 +45,7 @@ export interface ChatFeedProps {
 
 function ChatFeed({
   msgs, winMsgs, isRealChat, isGroup, discussionsEnabled, commentCounts,
-  highlightSeq, unreadDividerSeq, selecting, selected, ladderActive,
+  highlightSeq, unreadDividerSeq, selecting, selected, ladderActive, stickyDateKey,
   feedFns, autoDownload, onOpenDiscussion,
 }: ChatFeedProps) {
   const [lang] = useLang()
@@ -72,7 +74,13 @@ function ChatFeed({
   // Клик по дате открывает пикер — в tweb он висит на .bubble-content под
   // классом `.can-click-date` на колонке чата (_chatBubble.scss:511-514).
   const dayPill = (key: string, label: ReactNode, dayMs: number) => (
-    <div key={key} className="bubble service is-date">
+    <div
+      key={key}
+      data-date={key}
+      // tweb: прилипшая дата помечается `is-sticky` (у нас его считает Chat по
+      // скроллу и отдаёт сюда, чтобы React не стирал императивный класс)
+      className={classNames('bubble', 'service', 'is-date', stickyDateKey === key ? 'is-sticky' : '')}
+    >
       <div
         className="bubble-content"
         onClick={isRealChat ? () => feedFns.openDatePicker(dayMs) : undefined}

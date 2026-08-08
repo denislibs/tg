@@ -420,20 +420,20 @@ typecheck / tests / build; скриншоты «до/после» в отчёт.
 
 **Files:** Modify `conversation/PinnedBar.tsx`, `usePinnedBar.ts`; удалить `PinnedBar.module.scss`.
 
-- [ ] **Step 1:** Разметка `.pinned-container.pinned-message` из живого референса (§3, «пин»): `pinned-message-border-wrapper-1`/сегменты, `.pinned-container-title` 500/14 primary, `animated-counter`.
-- [ ] **Step 2:** Скролл-трекинг показываемого пина (`pinnedMessage.tsx:529-589`), throttle 100ms.
-- [ ] **Step 3:** Анимация смены — CSS-компонент по образцу `animated-super` (translateY ±20px, .2s ease-in-out), без framer.
-- [ ] **Step 4:** Медиа-превью 40×40 при `is-media`; кнопка-меню слева (pinlist/unpin).
-- [ ] **Step 5:** DOM-diff + проверки.
+- [x] **Step 1:** Разметка `.pinned-container.pinned-message` целиком; `PinnedBorder` переехал на классы tweb (`-border`, `-wrapper-1`, `-mask`/`mask-top`/`mask-bottom`, `-wrapper`, `-mark`).
+- [x] **Step 2:** Скролл-трекинг: `pinIndexForVisibleMid` (порт `testMid`) по нижнему видимому баблу, throttle 100ms — как `throttle(setCorrectIndex, 100)`.
+- [x] **Step 3:** Портирован партиал `_animatedSuper.scss` + компонент `AnimatedSuper` (ряды `is-hiding` + `from-top`/`from-bottom`), им живут подпись и медиа-превью.
+- [x] **Step 4:** Медиа-превью 40×40 (`is-media` + `.pinned-message-media`); слева `.pinned-message-pinlist` (только при `is-many`), справа `.pinned-message-unpin`.
+- [x] **Step 5:** Проверено на стенде (пин ставился и снимался), typecheck/тесты/build зелёные.
 
 ### Task 3.4: Corner-кнопки и sticky-date (P0 №9, №10)
 
 **Files:** Modify `conversation/ScrollDownFab.tsx` (→ `bubbles-corner-button` семейство), `ChatFeed.tsx`.
 
-- [ ] **Step 1:** `.bubbles-go-down` на классах tweb (54px, badge-24, появление только opacity/visibility `--layer-transition`).
-- [ ] **Step 2:** `.bubbles-go-mention` c badge — показ при непрочитанных упоминаниях, клик = прыжок; источник данных — тот же, что у mention-бейджа чат-листа.
-- [ ] **Step 3:** Sticky-date: класс `is-scrolling` на `.bubbles-inner` при скролле (снимается по debounce ~300ms); прилипшая дата без него — `opacity ~0`, transition `.3s ease`.
-- [ ] **Step 4:** DOM-diff + проверки.
+- [x] **Step 1:** `ScrollDownFab` = `button.btn-circle.btn-corner.z-depth-1.bubbles-corner-button.chat-secondary-button.bubbles-go-down` + `span.badge.badge-24.badge-primary`; появление — классом `is-go-down-visible` на `.chat`, кнопка всегда в DOM. Портирован `_badge.scss`, в мост добавлены `.btn-corner` и `.z-depth-1` (мост подключён ПЕРВЫМ — в tweb `_button.scss` идёт до `_chat.scss`).
+- [ ] **Step 2:** `.bubbles-go-mention` — отложено: непрочитанных упоминаний в модели пока нет (нужен счётчик из чат-листа).
+- [x] **Step 3:** `is-scrolling` на `.bubbles-inner` (снимается через 1350ms, как tweb bubbles.ts:4207-4230) + пометка прилипшей даты `is-sticky`; проверено: при скролле дата видна, в покое гаснет в `opacity: .00001`.
+- [ ] **Step 4:** DOM-diff каркаса (эталонов обёрток нет).
 
 ### Task 3.5: CommentsBar и переход между чатами (P0 №11, №12)
 

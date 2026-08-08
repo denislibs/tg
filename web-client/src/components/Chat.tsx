@@ -305,9 +305,6 @@ export default function Chat({ chat, onBack, thread }: Props) {
     return () => { alive = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [thread?.kind, numericChatId, isRealChat])
-  // Pinned messages in this chat (newest pin first) + индекс перелистывания
-  // плашки (tweb pinnedMessage) — drives the pinned bar.
-  const { pins, index: pinIndex, follow: followPin } = usePinnedBar(numericChatId, isRealChat)
   // Search is owned by ChatHeader now; here we only read whether it's open (single-sourced
   // in searchStore) to hide the pinned bar + adjust the sticky-date offset.
   const searchOpen = useSearchStore((s) => s.byChat[numericChatId]?.open ?? false)
@@ -403,8 +400,15 @@ export default function Chat({ chat, onBack, thread }: Props) {
     scrollRef, contentRef, atBottomRef, userScrolledUpRef,
     highlightSeq, showScrollDown, unreadBelow, jumpToSeq, onScrollDownClick,
   } = useChatScroll({ numericChatId, isRealChat, win, paddingTop: padTopPx, unreadDividerSeq, unreadStickyTop: padTopPx })
+  // Pinned messages in this chat (newest pin first) + индекс показанного пина
+  // (tweb pinnedMessage: перелистывание кликом + выбор по скроллу ленты).
+  const { pins, index: pinIndex, follow: followPin } = usePinnedBar(numericChatId, isRealChat, scrollRef)
   // Контейнер ленты tweb (.bubbles): класс has-sticky-dates ставится по замеру, см. эффект ниже.
   const bubblesRef = useRef<HTMLDivElement>(null)
+  // Ключ дня прилипшей даты (tweb `.bubble.is-date.is-sticky`) — считаем по
+  // скроллу и отдаём в ChatFeed: класс рендерит React, иначе его стёр бы
+  // ближайший ре-рендер ленты.
+  const [stickyDateKey, setStickyDateKey] = useState<string | null>(null)
   // Multi-select state + press-and-drag selection (extracted view-model hook).
   const { selected, setSelected, setSelectionMode, selecting, toggleSelect, clearSelection, dragSelect } =
     useChatSelection(scrollRef)
@@ -753,9 +757,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
 
   // Floating "scroll to bottom" button (tweb .bubbles-go-down), shown above the composer.
   // onScrollDownClick (reload-newest + pin, or smooth scroll) lives in useChatScroll.
-  const scrollDownFab = (
-    <ScrollDownFab show={showScrollDown} unreadBelow={unreadBelow} onClick={onScrollDownClick} />
-  )
+  const scrollDownFab = <ScrollDownFab unreadBelow={unreadBelow} onClick={onScrollDownClick} />
 
   // Sticky date-pill offset: below the floating header, plus the player plate
   // and the pinned-message bar when shown. На мобилке хедер на 8px выше (top 8 vs 16).
@@ -881,6 +883,41 @@ export default function Chat({ chat, onBack, thread }: Props) {
     box.classList.toggle('has-sticky-dates', sc.scrollHeight > sc.clientHeight)
   })
 
+  // tweb bubbles.ts:4207-4230 — во время скролла на `.bubbles-inner` висит
+  // `is-scrolling`, и только тогда липкая дата видна (_chat.scss:1345:
+  // `.is-scrolling .is-sticky { opacity: .99999 }`); через 1.35s после
+  // последнего события класс снимается и дата плавно гаснет.
+  useEffect(() => {
+    const sc = scrollRef.current
+    const inner = contentRef.current
+    if (!sc || !inner) return
+    let timer: ReturnType<typeof setTimeout> | undefined
+    // Прилипшая дата помечается `is-sticky` (в tweb это делает sticky-intersector
+    // по sentinel-узлам): в паре с `is-scrolling` она видна только при скролле,
+    // а в покое гаснет (_chatBubble.scss:497 opacity .00001 → _chat.scss:1343).
+    const markSticky = () => {
+      const scTop = sc.getBoundingClientRect().top
+      const dates = inner.querySelectorAll<HTMLElement>('.bubble.is-date')
+      let stuck: string | null = null
+      for (const d of dates) {
+        // прилипла = её верх дошёл до собственного sticky-порога (`top` из
+        // _chatBubble.scss:480 — calc(--chat-padding-top + overflow))
+        const stickyTop = parseFloat(getComputedStyle(d).top) || 0
+        if (d.getBoundingClientRect().top - scTop <= stickyTop + 2) stuck = d.dataset.date ?? null
+      }
+      setStickyDateKey((prev) => (prev === stuck ? prev : stuck))
+    }
+    const onScroll = () => {
+      inner.classList.add('is-scrolling')
+      markSticky()
+      clearTimeout(timer)
+      timer = setTimeout(() => inner.classList.remove('is-scrolling'), 1350)
+    }
+    markSticky()
+    sc.addEventListener('scroll', onScroll, { passive: true })
+    return () => { sc.removeEventListener('scroll', onScroll); clearTimeout(timer) }
+  }, [scrollRef, contentRef, feedLoading])
+
   // Форум-группы здесь НЕ перехватываются: как в tweb, клик по форуму открывает
   // панель топиков в ЛЕВОМ сайдбаре (Sidebar → TopicsPanel); тред топика — этот же
   // компонент в thread-режиме, а «Показать как сообщения» — обычный чат.
@@ -930,7 +967,12 @@ export default function Chat({ chat, onBack, thread }: Props) {
           позиционируются абсолютом относительно #column-center). */}
       <div
         ref={rootRef}
-        className={classNames('chat', 'tabs-tab', 'active', isRealChat ? 'can-click-date' : '')}
+        className={classNames(
+          'chat', 'tabs-tab', 'active',
+          isRealChat ? 'can-click-date' : '',
+          // tweb _chat.scss:1217 — видимость угловых кнопок даёт класс на колонке
+          showScrollDown ? 'is-go-down-visible' : '',
+        )}
         style={{
           // tweb topbar.setFloating: высота стека плейтов + плавающие плашки
           // плеера/звонка. Отсюда --chat-padding-top и верх маски фейдов.
@@ -1059,6 +1101,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
                 selecting={selecting}
                 selected={selected}
                 ladderActive={ladderActive}
+                stickyDateKey={stickyDateKey}
                 feedFns={feedFns}
                 onOpenDiscussion={openDiscussionThread}
               />
@@ -1082,6 +1125,8 @@ export default function Chat({ chat, onBack, thread }: Props) {
             --chat-input-height-surplus и нижнюю распорку ленты. */}
         <div ref={chatInputRef} className="chat-input chat-input-main">
         <div className="chat-input-container chat-input-main-container">
+        {/* tweb input.ts:615-616 — кнопка «вниз» живёт прямо в .chat-input-container */}
+        {scrollDownFab}
         {selecting ? (
           <SelectionBar
             count={selected.size}
@@ -1099,7 +1144,6 @@ export default function Chat({ chat, onBack, thread }: Props) {
           </div>
         ) : botStart ? (
           <div className={classNames(s.footer, s.footerMuted)}>
-            {scrollDownFab}
             <motion.div whileTap={{ scale: 0.99 }} className={s.muteBtn} onClick={() => onComposerSend('/start')}>
               <Text weight={600} size={15.5} color="var(--primary-color)">{t('Start')}</Text>
             </motion.div>
@@ -1108,7 +1152,6 @@ export default function Chat({ chat, onBack, thread }: Props) {
           // Секретный чат до завершения handshake: бар вместо композера (гейтинг
           // отправки — сам факт, что <Composer> тут не рендерится + secretLocked в useChatSend).
           <div className={classNames(s.footer, s.footerCompose)}>
-            {scrollDownFab}
             <div className={s.secretBar}>
               {secretStatus === 'requested' ? (
                 <>
@@ -1147,7 +1190,6 @@ export default function Chat({ chat, onBack, thread }: Props) {
           </div>
         ) : canType && canSendText ? (
           <div className={classNames(s.footer, s.footerCompose)}>
-            {scrollDownFab}
             {replyKeyboard && (
               <div className={s.replyKeyboard}>
                 {replyKeyboard.map((row, ri) => (
@@ -1215,7 +1257,6 @@ export default function Chat({ chat, onBack, thread }: Props) {
           /* Группа запрещает участникам писать (дефолт-права) — плашка вместо
              композера, как в tweb (вместо «молчаливого» отказа на бэке). */
           <div className={classNames(s.footer, s.footerMuted)}>
-            {scrollDownFab}
             <div className={s.muteBtn} style={{ cursor: 'default' }}>
               <TgIcon name="permissions" size={20} color="var(--secondary-text-color)" />
               <Text weight={600} size={15.5} color="var(--secondary-text-color)">{t('Sending messages is not allowed in this group')}</Text>
@@ -1223,7 +1264,6 @@ export default function Chat({ chat, onBack, thread }: Props) {
           </div>
         ) : (
           <div className={classNames(s.footer, s.footerMuted)}>
-            {scrollDownFab}
             {/* Нижняя кнопка канала (tweb ChatInput) переключает mute напрямую, без попапа */}
             <motion.div whileTap={{ scale: 0.995 }} className={s.muteBtn} onClick={() => isRealChat && applyMute(!muted)}>
               <TgIcon name={muted ? 'unmute' : 'volume_off'} size={20} color="var(--secondary-text-color)" />

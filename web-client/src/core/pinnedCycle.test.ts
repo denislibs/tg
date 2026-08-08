@@ -1,6 +1,6 @@
 // src/core/pinnedCycle.test.ts
 import { describe, it, expect } from 'vitest'
-import { nextPinIndex, clampPinIndex, pinBadgeNumber } from './pinnedCycle'
+import { nextPinIndex, clampPinIndex, pinBadgeNumber, pinIndexForVisibleMid } from './pinnedCycle'
 
 describe('nextPinIndex', () => {
   it('листает вниз по индексу (к более старым пинам)', () => {
@@ -56,5 +56,25 @@ describe('pinBadgeNumber (подпись «#N», tweb count - index)', () => {
   it('индекс вне диапазона — без номера', () => {
     expect(pinBadgeNumber(5, 5)).toBeNull()
     expect(pinBadgeNumber(-1, 5)).toBeNull()
+  })
+})
+
+describe('pinIndexForVisibleMid (tweb pinnedMessage.testMid)', () => {
+  // список приходит новейшим первым, как отдаёт бэкенд
+  const pins = [{ id: 300 }, { id: 200 }, { id: 100 }]
+
+  it('берёт первый пин не выше самого нижнего видимого сообщения', () => {
+    expect(pinIndexForVisibleMid(pins, 350)).toBe(0)
+    expect(pinIndexForVisibleMid(pins, 300)).toBe(0)
+    expect(pinIndexForVisibleMid(pins, 250)).toBe(1)
+    expect(pinIndexForVisibleMid(pins, 100)).toBe(2)
+  })
+
+  it('видимый кусок выше самого старого пина — показывает самый старый', () => {
+    expect(pinIndexForVisibleMid(pins, 50)).toBe(2)
+  })
+
+  it('пустой список — 0', () => {
+    expect(pinIndexForVisibleMid([], 10)).toBe(0)
   })
 })

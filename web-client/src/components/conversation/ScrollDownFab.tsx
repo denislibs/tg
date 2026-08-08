@@ -1,38 +1,40 @@
 // src/components/conversation/ScrollDownFab.tsx
-// The "scroll to bottom" floating button with an unread-count badge. Memoized;
-// the scroll/reload decision lives in the parent and arrives via onClick.
+// Кнопка «вниз» с бейджем непрочитанных — tweb `chat/input.ts:615`:
+//   ButtonCorner({icon: 'arrow_down', className: 'bubbles-corner-button chat-secondary-button bubbles-go-down'})
+// то есть `button.btn-circle.btn-corner.z-depth-1.bubbles-corner-button
+// .chat-secondary-button.bubbles-go-down` + `span.badge.badge-24.badge-primary`.
+//
+// Показ — НЕ размонтированием: кнопка всегда в DOM, а видимость даёт класс
+// `is-go-down-visible` на `.chat` (_chat.scss:1217-1231 → opacity/visibility по
+// --layer-transition). Поэтому сам компонент только рисует узел, а класс на
+// колонке ставит Chat.
 import { memo } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
-import s from './ScrollDownFab.module.scss'
+import classNames from '../../shared/lib/classNames'
 
 export interface ScrollDownFabProps {
-  show: boolean
   unreadBelow: number
   onClick: () => void
 }
 
-function ScrollDownFab({ show, unreadBelow, onClick }: ScrollDownFabProps) {
+function ScrollDownFab({ unreadBelow, onClick }: ScrollDownFabProps) {
   return (
-    <AnimatePresence>
-      {show && (
-        <motion.div
-          key="scroll-down"
-          className={s.fab}
-          onClick={onClick}
-          whileTap={{ scale: 0.92 }}
-          initial={{ y: 60, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: 60, opacity: 0 }}
-          transition={{ duration: 0.2, ease: [0.34, 1.56, 0.64, 1] }}
-        >
-          <TgIcon name="down" />
-          {unreadBelow > 0 && (
-            <div className={s.badge}>{unreadBelow > 99 ? '99+' : unreadBelow}</div>
-          )}
-        </motion.div>
+    <button
+      type="button"
+      tabIndex={-1}
+      className={classNames(
+        'btn-circle', 'btn-corner', 'z-depth-1',
+        'bubbles-corner-button', 'chat-secondary-button', 'bubbles-go-down',
       )}
-    </AnimatePresence>
+      onClick={onClick}
+      aria-label="Scroll to bottom"
+    >
+      <TgIcon name="down" />
+      {/* tweb: пустой бейдж скрыт классом is-badge-empty (_badge.scss) */}
+      <span className={classNames('badge', 'badge-24', 'badge-primary', unreadBelow > 0 ? '' : 'is-badge-empty')}>
+        {unreadBelow > 99 ? '99+' : unreadBelow}
+      </span>
+    </button>
   )
 }
 
