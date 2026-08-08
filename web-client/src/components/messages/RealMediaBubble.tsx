@@ -12,7 +12,7 @@ import type { ReactNode } from 'react'
 import Text from '../../shared/ui/Text'
 import classNames from '../../shared/lib/classNames'
 import TgIcon from '../TgIcon'
-import { calcImageInBox } from '../../core/dom/calcImageInBox'
+import { mediaSizes, setAttachmentSize } from '../../core/dom/mediaSizes'
 import { fmtDur } from '../../core/hooks/useVoiceRecorder'
 import { useAudioStore } from '../../stores/audioStore'
 import { mediaContentUrl, mediaThumbUrl, hasMediaToken, primeMediaToken, useMediaTokenVersion } from '../../core/mediaUrl'
@@ -25,9 +25,8 @@ import type { RenderTime } from './bubbleParts/Time'
 import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import s from './RealMediaBubble.module.scss'
 
-// Display box (tweb mediaSizes.regular): photos/videos fit within, aspect kept.
-const BOX_W = 320
-const BOX_H = 420
+// Порог инлайн-автоплея видео (tweb wrappers/video.ts:50).
+const MAX_VIDEO_AUTOPLAY_SIZE = 50 * 1024 * 1024
 
 function fmtSize(n: number): string {
   if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} МБ`
@@ -60,7 +59,11 @@ interface Props {
   clientId?: string
   /** крестик на кольце: отменить аплоад (tweb ProgressivePreloader cancel) */
   onCancelUpload?: (clientId: string) => void
-  radius?: string
+  /** у сообщения есть подпись/reply/webpage — tweb расширяет бокс и режет нижние
+   * радиусы вложения (no-brb) */
+  hasMessageBlock?: boolean
+  /** элемент альбома — tweb запрещает инлайн-автоплей таким видео */
+  isAlbumItem?: boolean
   /** платное медиа (Telegram paid media): цена + заблокировано ли для зрителя */
   paidMedia?: { price: number; locked: boolean }
   /** разблокировать платное медиа за звёзды (списывает у покупателя) */
@@ -69,8 +72,8 @@ interface Props {
 
 export default function RealMediaBubble({
   mediaId, type, width, height, mime, blur, hasThumb, duration, size, fileName,
-  out, renderTime, onOpen, autoDownload, localUrl, clientId, onCancelUpload, radius,
-  paidMedia, onUnlockPaid,
+  out, renderTime, onOpen, autoDownload, localUrl, clientId, onCancelUpload,
+  hasMessageBlock = false, isAlbumItem = false, paidMedia, onUnlockPaid,
 }: Props) {
   useMediaTokenVersion() // re-render when the media token is (re)primed → fresh URLs
   const t = useT()
@@ -87,18 +90,10 @@ export default function RealMediaBubble({
   // Кольцо прогресса аплоада (tweb ProgressivePreloader) — пока запись жива
   const uploadProgress = useUploadsStore((s) => (clientId ? s.byId[clientId] : undefined))
   const cancelUpload = clientId && onCancelUpload ? () => onCancelUpload(clientId) : undefined
-  // Image fade-in: blur/shimmer placeholder → image fades in once decoded. We read
-  // the browser's REAL cache state (img.complete) before paint instead of tracking
-  // a "loaded" flag ourselves: a cached <img> (e.g. a bubble remounted on chat
-  // switch) reports complete synchronously, so it shows instantly with no
-  // placeholder flash — while genuinely-new images still start hidden and fade in.
+  // Наш shimmer поверх blur-превью убран: в tweb его нет — картинка просто
+  // проявляется поверх подложки (blur как background-image контейнера).
   const imgRef = useRef<HTMLImageElement>(null)
-  const [imgLoaded, setImgLoaded] = useState(false)
-  useLayoutEffect(() => {
-    const img = imgRef.current
-    setImgLoaded(!!(img && img.complete && img.naturalWidth > 0))
-    setForced(false)
-  }, [mediaId])
+  useLayoutEffect(() => { setForced(false) }, [mediaId])
 
   // An audio file (mp3 etc.) renders as a music player even when sent "as a file"
   // (type document) — like Telegram. So audio mime overrides the document type.
@@ -112,7 +107,17 @@ export default function RealMediaBubble({
 
   // ---- Photo / video ----
   if (isImage || isVideo) {
-    const box = calcImageInBox(width || 0, height || 0, BOX_W, BOX_H)
+    // Бокс — порт tweb setAttachmentSize (mediaSizes.regular 420×400 / 340×340
+    // на узком экране + минимумы 200/320/120/368). Раньше был свой 320×420.
+    const canHavePlayer = isVideo && !isGifLike({ mime, fileName, duration })
+    const { size: box, isFit } = setAttachmentSize({
+      width: width || 0,
+      height: height || 0,
+      boxWidth: mediaSizes().regular.width,
+      boxHeight: mediaSizes().regular.height,
+      hasMessageBlock,
+      isVideoWithPlayer: canHavePlayer,
+    })
     const lqip = blur ? `url("data:image/jpeg;base64,${blur}")` : undefined
     // Платное медиа, ещё не оплачено (Telegram paid media): вместо контента —
     // размытый плейсхолдер (blur) с оверлеем «Разблокировать за N ⭐». media_id
@@ -120,8 +125,8 @@ export default function RealMediaBubble({
     if (paidMedia?.locked) {
       return (
         <div
-          className={classNames(s.media, s.paidLocked)}
-          style={{ width: box.width, height: box.height, borderRadius: radius, backgroundImage: lqip }}
+          className={classNames('attachment', 'media-container', 'no-background', s.paidLocked)}
+          style={{ width: box.width, height: box.height, backgroundImage: lqip }}
         >
           <button className={s.paidUnlockBtn} onClick={handleUnlock} disabled={unlocking} type="button">
             {unlocking ? (
@@ -144,6 +149,11 @@ export default function RealMediaBubble({
     // Локальное превью исходящего (localUrl) гейту не подлежит.
     const blocked = !forced && !localUrl && !!autoDownload
       && (isVideo || isGif ? autoDownload.video === 0 : autoDownload.photo === 0)
+    // Инлайн-автоплей видео (tweb wrapVideo: canAutoplay = size ≤ 50 МБ и это не
+    // элемент альбома). Автоплей есть → крутится <video muted loop> и в
+    // .video-time добавляется иконка nosound; иначе — большая play-кнопка.
+    const canAutoplay = isVideo && !blocked && (size == null || size <= MAX_VIDEO_AUTOPLAY_SIZE) && !isAlbumItem
+    const needPlayButton = isVideo && !gifVideo && !canAutoplay && !blocked
     // Synchronous src (no RPC). GIFs show the animated content; others prefer the
     // smaller server thumbnail, falling back to the original.
     const displaySrc = localUrl
@@ -153,42 +163,64 @@ export default function RealMediaBubble({
         : isGif || gifVideo
           ? mediaContentUrl(mediaId)
           : hasThumb ? mediaThumbUrl(mediaId) : mediaContentUrl(mediaId)
+    const videoSrc = canAutoplay && !gifVideo && tokenReady && mediaId != null ? mediaContentUrl(mediaId) : undefined
+    // Дерево tweb (живой DOM §3c, wrappers/photo.ts:134-180): контейнер
+    // .attachment.media-container; когда бокс пришлось раздвинуть (isFit=false —
+    // подпись/минимальная ширина), tweb добавляет .media-container-fitted, кладёт
+    // в контейнер приглушённую миниатюру .media-photo.thumbnail, а само медиа —
+    // в .media-container-aspecter.
+    const media = videoSrc ? (
+      <video
+        className="media-video"
+        src={videoSrc}
+        autoPlay
+        muted
+        loop
+        playsInline
+        onError={() => { void primeMediaToken(true) }}
+      />
+    ) : displaySrc ? (
+      gifVideo ? (
+        <video
+          className="media-video"
+          src={displaySrc}
+          autoPlay
+          muted
+          loop
+          playsInline
+          onError={() => { void primeMediaToken(true) }}
+        />
+      ) : (
+        <img ref={imgRef} className="media-photo" src={displaySrc} alt="" loading="lazy" decoding="async" onError={() => { void primeMediaToken(true) }} />
+      )
+    ) : null
     return (
       <div
-        className={s.media}
-        onClick={(e) => (blocked ? setForced(true) : mediaId != null ? onOpen?.(mediaId, e.currentTarget) : undefined)}
-        style={{ width: box.width, height: box.height, borderRadius: radius, backgroundImage: lqip }}
-      >
-        {/* Shimmer over the blur preview while the image loads. It sits BEHIND the
-            <img> (earlier in DOM, both absolute) so it never covers the picture;
-            the image itself is never opacity-gated, so a browser-cached image (e.g.
-            a bubble remounted on chat switch) paints instantly with no flash. */}
-        {!imgLoaded && !blocked && (
-          <div className={s.shimmerWrap}>
-            <div className={s.shimmer} />
-          </div>
+        className={classNames(
+          'attachment', 'media-container', 'no-background',
+          hasMessageBlock ? 'no-brb' : '',
+          isFit ? '' : 'media-container-fitted',
         )}
-        {displaySrc ? (
-          gifVideo ? (
-            <video
-              className={s.img}
-              src={displaySrc}
-              autoPlay
-              muted
-              loop
-              playsInline
-              onLoadedData={() => setImgLoaded(true)}
-              onError={() => { void primeMediaToken(true) }}
-            />
-          ) : (
-            <img ref={imgRef} className={s.img} src={displaySrc} alt="" loading="lazy" decoding="async" onLoad={() => setImgLoaded(true)} onError={() => { void primeMediaToken(true) }} />
-          )
-        ) : null}
-        {blocked && (
-          <div className={s.play}>
-            <div className={s.playDisc}>
-              <TgIcon name="download" size={30} color="#fff" />
-            </div>
+        onClick={(e) => (blocked ? setForced(true) : mediaId != null ? onOpen?.(mediaId, e.currentTarget) : undefined)}
+        style={{ width: box.width, height: box.height, backgroundImage: lqip }}
+      >
+        {(gifLike || (isVideo && !!duration)) && (
+          <span className="video-time">
+            {gifLike ? 'GIF' : fmtDur(duration!)}
+            {canAutoplay && !gifVideo && <TgIcon name="nosound" size="inherit" className="video-time-icon" />}
+          </span>
+        )}
+        {(needPlayButton || blocked) && (
+          <button type="button" className="btn-circle video-play position-center">
+            <TgIcon name={blocked ? 'download' : 'largeplay'} size="inherit" className="button-icon" />
+          </button>
+        )}
+        {!isFit && displaySrc && !videoSrc && (
+          <img className="media-photo thumbnail" src={displaySrc} alt="" loading="lazy" decoding="async" />
+        )}
+        {isFit ? media : (
+          <div className="media-container-aspecter" style={{ width: box.width, height: box.height }}>
+            {media}
           </div>
         )}
         {uploadProgress != null && (
@@ -200,23 +232,6 @@ export default function RealMediaBubble({
               <RadialProgress progress={uploadProgress} />
               {cancelUpload && <TgIcon name="close" size={24} color="#fff" className={s.cancelX} />}
             </div>
-          </div>
-        )}
-        {gifLike && (
-          <div className={s.badgeTL}>
-            <Text size={11} weight={700} color="#fff" style={{ letterSpacing: '0.04em' }}>GIF</Text>
-          </div>
-        )}
-        {isVideo && !blocked && !gifVideo && (
-          <div className={s.play}>
-            <div className={s.playDisc}>
-              <TgIcon name="play" size={34} color="#fff" />
-            </div>
-          </div>
-        )}
-        {isVideo && !gifVideo && !!duration && (
-          <div className={s.badgeTL}>
-            <Text size={12} color="#fff" style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtDur(duration)}</Text>
           </div>
         )}
         {renderTime?.('floating')}

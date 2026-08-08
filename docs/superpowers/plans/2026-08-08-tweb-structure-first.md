@@ -305,27 +305,27 @@ typecheck / tests (юнит на `bubbleClasses` зелёный) / build; скр
 - Modify: `web-client/src/components/messages/RealMediaBubble.tsx`, `AlbumGrid.tsx`, `SecretMediaBubble.tsx`, `bubbleParts/mediaBubbles.tsx`
 - Delete: `RealMediaBubble.module.scss`, `AlbumGrid.module.scss` (правила покрыты `_chatBubble.scss`)
 
-- [ ] **Step 1: `mediaSizes` + `setAttachmentSize`**
+- [x] **Step 1: `mediaSizes` + `setAttachmentSize`**
 
 Порт `tweb/src/helpers/mediaSizes.ts:64-101` (regular 420×400 desktop / 340×340 ≤600px; album 420/340; sticker 200/180; emojiSticker 112; round 280/240) и `setAttachmentSize.ts:64-94` (мин-сторона 200 через aspectCovered; расширение до 320 при тексте/reply; мин 120 / видео 368). Юнит-тест на несколько соотношений с ожидаемыми размерами.
 
-- [ ] **Step 2: Структура `.attachment`**
+- [x] **Step 2: Структура `.attachment`**
 
 `.attachment.media-container[.media-container-fitted]` + `img.media-photo.thumbnail` (blur-подложка) + `.media-container-aspecter` — как `wrappers/photo.ts:134-203`. Наш shimmer убрать (в tweb его нет), fade-in полного изображения — как tweb.
 
-- [ ] **Step 3: Альбом**
+- [x] **Step 3: Альбом**
 
 `.album-item.grouped-item` + `.album-item-media`; `maxWidth` 420/340, `spacing: 1`; углы per-item `calc(var(--border-*-radius) - spacing)` (`prepareAlbum.ts:43-57`). Алгоритм раскладки уже портирован — не трогать.
 
-- [ ] **Step 4: Инлайн-автоплей видео (P0 №5)**
+- [x] **Step 4: Инлайн-автоплей видео (P0 №5)**
 
 `<video muted loop autoplay playsInline>` для видео ≤ 50 МБ (`video.ts:50`), иконка `nosound` в `.video-time`, остаток времени на timeupdate, play-кнопка только когда автоплей недоступен. Живой референс §3c: в личке у нас будет play-кнопка при `is-sending`/крупном файле — сверить оба состояния.
 
-- [ ] **Step 5: `.video-time` единым компонентом**
+- [x] **Step 5: `.video-time` единым компонентом**
 
 top 3px/left 3px, height `calc(var(--messages-time-text-size) + .375rem)`, padding 0 6px, radius = высоте, фон `--message-time-background` — один компонент для одиночного медиа и альбома.
 
-- [ ] **Step 6: DOM-diff + проверки**
+- [x] **Step 6: DOM-diff + проверки**
 
 Сравнить с эталонами фото/альбома/видео/стикера/документа из референса; `RealMediaBubble.upload.test.tsx` зелёный; typecheck/build.
 

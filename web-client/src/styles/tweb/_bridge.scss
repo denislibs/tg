@@ -2,6 +2,7 @@
 // tweb, но без которых уже перестроенная поверхность рендерится неверно.
 // Каждое правило — дословная копия с указанием источника; файл целиком уходит,
 // когда его партиал будет портирован (см. план, фаза 3, Task 3.1).
+@use "../foundation" as *;
 
 // tweb partials/_chat.scss:1311-1316 — отступ под колонку аватаров в группах.
 // Без него баблы входящих в групповом чате наезжают на sticky-аватар.
@@ -19,4 +20,25 @@
       --max-width: 30rem;
     }
   }
+}
+
+// tweb partials/_button.scss:1181-1191 — круглая кнопка (в ленте это .video-play).
+.btn-circle {
+  --size: 54px;
+  border-radius: 50%;
+  height: var(--size);
+  width: var(--size);
+  line-height: var(--size);
+
+  @include respond-to(handhelds) {
+    --size: 46px;
+  }
+}
+
+// tweb scss/components/_global.scss:143-148 — центрирование поверх контейнера.
+.position-center {
+  position: absolute !important;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
 }

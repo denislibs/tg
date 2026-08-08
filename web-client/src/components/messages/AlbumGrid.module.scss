@@ -1,17 +1,8 @@
-// Грид альбома (tweb prepareAlbum): контейнер фиксированного размера,
-// элементы позиционируются в % от раскладки Layouter.
-.grid {
-  position: relative;
-  overflow: hidden;
-  cursor: pointer;
-  // tweb _chatBubble.scss:760 (.just-media) — тайм-пилюля без подписи берёт
-  // цвет подсветки темы вместо дефолтного тёмного оверлея (см. .timeBadge).
-  --message-time-background: var(--message-highlighting-color);
-}
-
+// Грид альбома. Контейнер и элементы живут на классах tweb
+// (.attachment.media-container / .album-item.grouped-item / .album-item-media,
+// _chatBubble.scss:864-975) — здесь только blur-подложка элемента и заливка
+// медиа, которых в партиале нет.
 .item {
-  position: absolute;
-  overflow: hidden;
   background-size: cover;
   background-position: center;
 }

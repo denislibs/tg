@@ -5,31 +5,6 @@
 @use '../../styles/foundation' as *;
 
 // ── фото / видео ──
-.media {
-  position: relative;
-  max-width: 100%;
-  cursor: pointer;
-  overflow: hidden;
-  background-color: rgba(127, 127, 127, 0.16);
-  background-size: cover;
-  background-position: center;
-  // tweb _chatBubble.scss:760 (.just-media) — тайм-пилюля без подписи берёт
-  // цвет подсветки темы вместо дефолтного тёмного оверлея (см. .timeBadge).
-  --message-time-background: var(--message-highlighting-color);
-
-  img {
-    cursor: pointer;
-  }
-}
-.img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-/* Платное медиа до оплаты: размытый плейсхолдер (blur как фон .media) + тёмный
-   слой и кнопка разблокировки по центру. */
 .paidLocked {
   display: flex;
   align-items: center;
@@ -65,27 +40,6 @@
     cursor: default;
   }
 }
-.shimmerWrap {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  overflow: hidden;
-}
-.shimmer {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.14) 50%, transparent 70%);
-  animation: mediaShimmer 1.25s infinite;
-}
-.badgeTL {
-  position: absolute;
-  left: 8px;
-  top: 8px;
-  padding: 2px 6px;
-  border-radius: 10px;
-  background: rgba(0, 0, 0, 0.45);
-  pointer-events: none;
-}
 .play {
   position: absolute;
   inset: 0;
@@ -94,17 +48,6 @@
   justify-content: center;
   pointer-events: none;
 }
-.playDisc {
-  width: 54px;
-  height: 54px;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-// ── документ / музыка ──
 .fileRow {
   --m-primary: var(--primary-text-color);
   --m-secondary: var(--secondary-text-color);

@@ -269,7 +269,6 @@ export default function MessageContent({
                 onToggle={feedFns.toggleSelect}
                 onOpen={feedFns.openLightbox}
                 autoDownload={autoDownload}
-                radius={m.text || showReactions ? '14px 14px 0 0' : '14px'}
               />
               {m.text ? (
                 <div className={s.mediaCaption}>
@@ -335,7 +334,7 @@ export default function MessageContent({
                   localUrl={m.localUrl}
                   clientId={m.clientId}
                   onCancelUpload={feedFns.cancelUpload}
-                  radius={(m.type === 'photo' || m.type === 'video') ? (m.text || showReactions ? '14px 14px 0 0' : '14px') : undefined}
+                  hasMessageBlock={!!m.text || !!m.reply || !!m.webPage || !!m.factCheck}
                   paidMedia={m.paidMedia}
                   onUnlockPaid={m.paidMedia?.locked && m.id != null ? () => feedFns.unlockPaid(m.id as number) : undefined}
                 />
