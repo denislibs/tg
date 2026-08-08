@@ -1,12 +1,12 @@
 // ChatList — контейнер прокрутки списка диалогов + слайд при смене папки.
-// Скроллбар тонкий-оверлейный (tweb): трек прозрачный, ползунок проявляется на hover.
+// Геометрия и скроллбар — на классах tweb (`.scrollable.scrollable-y` из
+// _scrollable.scss, `.folders-scrollable` из _leftSidebar.scss). Здесь остаётся
+// только то, чего в партиалах нет.
+//
+// Скроллбар: tweb включает его классом на <html> (`overlay-scroll`/`custom-scroll`,
+// core/dom/rootClasses.ts — не портировано), поэтому тонкий оверлейный ползунок
+// пока задаём здесь.
 .scroll {
-  position: absolute;
-  inset: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  // тонкий запас под скроллбар — ширина списка не прыгает при смене папки (tweb)
-  scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: var(--secondary-text-color) transparent;
 
@@ -30,13 +30,8 @@
   padding-bottom: 0;
 }
 
-// нижний отступ — клиренс compose-FAB; верхний появляется только когда над
-// списком есть оверлей табов папок (.withTabs, высота .chatlist-overlay)
+// нижний отступ — клиренс compose-FAB (в tweb его даёт .chatlist-bottom)
 .slide {
   padding-bottom: 84px;
   width: 100%;
-}
-
-.withTabs {
-  padding-top: 64px;
 }

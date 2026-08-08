@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { EASE } from '../motion'
 import { setFoldersSidebarShown } from '../core/dom/updateColumnWidths'
@@ -35,6 +35,7 @@ import { useSidebarActions } from '../core/hooks/useSidebarActions'
 import { useSidebarStories } from '../core/hooks/useSidebarStories'
 import { useForumPanel } from '../core/hooks/useForumPanel'
 import { useSidebarFolders } from '../core/hooks/useSidebarFolders'
+import useMeasuredHeight from '../shared/lib/useMeasuredHeight'
 
 interface Props {
   onToggleMode: (coords?: { x: number; y: number }) => void
@@ -89,6 +90,13 @@ export default function Sidebar({
     folders, folderId, tabOrder, filtered, archivedChats, folderUnread,
     changeFolder, onTabContextMenu, overlays: folderOverlays,
   } = useSidebarFolders({ chats, listScrollRef, onOpenFolderSettings: openFolderSettings })
+
+  // --chatlist-overlay-height: живая высота .chatlist-overlay (нотисы + табы папок).
+  // tweb ставит её ResizeObserver'ом на .connection-status-bottom, а .folders-scrollable
+  // читает как padding-top (appDialogsManager.start(), _leftSidebar.scss:418).
+  const [overlayHeight, setOverlayHeight] = useState(0)
+  const overlayRef = useMeasuredHeight(setOverlayHeight)
+  const overlayHeightVar = { '--chatlist-overlay-height': `${overlayHeight}px` } as CSSProperties
 
   // Вьюпортная модалка Premium — через глобальный popupStore (не экран колонки).
   const openPremium = () => openPopup((p) => (
@@ -190,7 +198,24 @@ export default function Sidebar({
       {/* #chatlist-container несёт --stories-scrolled, .connection-status-bottom
           на него сдвигается (translateY(92px - var(--stories-scrolled))) */}
       <div id="chatlist-container" className={classNames('transition-item', 'active', folders.length > 0 ? 'has-filters' : '', s.body)}>
-      <div className={classNames('connection-status-bottom', s.listOffset)}>
+      {/* tweb appDialogsManager.start(): bottomPart = .connection-status-bottom,
+          в него prepend'ится .chatlist-overlay и append'ится #folders-container.
+          Высота оверлея уезжает в --chatlist-overlay-height (ResizeObserver там же),
+          её читает padding-top у .folders-scrollable — так табы никогда не
+          накрывают первый ряд списка. */}
+      <div className="connection-status-bottom" style={overlayHeightVar}>
+        {!searching && folders.length > 0 && !foldersSidebarShown && (
+          <TabsBar mode="overlay" className="chatlist-overlay" barRef={overlayRef}>
+            <FolderTabs
+              value={folderId}
+              onChange={changeFolder}
+              folders={folders}
+              counts={folderUnread}
+              onTabContextMenu={onTabContextMenu}
+            />
+          </TabsBar>
+        )}
+        <div id="folders-container" className="tabs-container">
         <ChatList
           ref={listScrollRef}
           chats={filtered}
@@ -199,7 +224,6 @@ export default function Sidebar({
           loaded={loaded}
           folder={folderId}
           folderOrder={tabOrder}
-          tabsShown={folders.length > 0 && !foldersSidebarShown}
           archived={folderId === ALL_FOLDER_ID ? archivedChats : undefined}
           onOpenArchive={() => setArchiveOpen(true)}
           collapsed={!!forumChat}
@@ -235,17 +259,7 @@ export default function Sidebar({
             </motion.div>
           )}
         </AnimatePresence>
-        {!searching && folders.length > 0 && !foldersSidebarShown && (
-          <TabsBar mode="overlay" className="chatlist-overlay">
-            <FolderTabs
-              value={folderId}
-              onChange={changeFolder}
-              folders={folders}
-              counts={folderUnread}
-              onTabContextMenu={onTabContextMenu}
-            />
-          </TabsBar>
-        )}
+        </div>
       </div>
       </div>
 

@@ -5,6 +5,7 @@
 // re-render the list. The scroll container ref is forwarded back to Sidebar, which
 // owns the fold/reveal scroll listeners.
 import { forwardRef, memo } from 'react'
+import classNames from '../shared/lib/classNames'
 import { TabSlide } from '../shared/ui/Tabs'
 import ChatListItem from './ChatListItem'
 import ArchiveRow from './ArchiveRow'
@@ -19,8 +20,6 @@ export interface ChatListProps {
   loaded: boolean
   folder: number // id выбранной папки (0 = «Все чаты»)
   folderOrder: readonly number[] // порядок табов для направления слайда
-  /** над списком есть оверлей горизонтальных табов → верхний отступ */
-  tabsShown: boolean
   /** архивные чаты (только в папке «Все») → псевдо-закреплённый ряд «Архив» сверху */
   archived?: Chat[]
   onOpenArchive?: () => void
@@ -29,12 +28,27 @@ export interface ChatListProps {
 }
 
 const ChatList = forwardRef<HTMLDivElement, ChatListProps>(function ChatList(
-  { chats, selectedId, onSelect, loaded, folder, folderOrder, tabsShown, archived, onOpenArchive, collapsed },
+  { chats, selectedId, onSelect, loaded, folder, folderOrder, archived, onOpenArchive, collapsed },
   ref,
 ) {
   return (
-    <div ref={ref} className={collapsed ? `${s.scroll} ${s.collapsed}` : s.scroll}>
-      <TabSlide tab={folder} order={folderOrder} className={tabsShown ? `${s.slide} ${s.withTabs}` : s.slide}>
+    // tweb appDialogsManager.setFilterId → `scrollable.container.classList.add(
+    // 'tabs-tab', 'chatlist-parts', 'folders-scrollable')` внутри #folders-container.
+    // Геометрию и скроллбар даёт `.scrollable.scrollable-y` (_scrollable.scss),
+    // верхний отступ под оверлеем табов — `padding-top: var(--chatlist-overlay-height)`
+    // у `.folders-scrollable` (_leftSidebar.scss:418).
+    //
+    // Отступление: в tweb на КАЖДУЮ папку свой .folders-scrollable (свой scrollTop,
+    // слайд даёт .tabs-container). У нас один контейнер + TabSlide внутри — список
+    // не виртуализирован, N копий по M строк не потянуть (см. бэклог виртуализации).
+    <div
+      ref={ref}
+      className={classNames(
+        'scrollable', 'scrollable-y', 'tabs-tab', 'chatlist-parts', 'folders-scrollable', 'active',
+        s.scroll, collapsed ? s.collapsed : '',
+      )}
+    >
+      <TabSlide tab={folder} order={folderOrder} className={s.slide}>
         {loaded && !collapsed && archived != null && archived.length > 0 && onOpenArchive && (
           <ArchiveRow chats={archived} onOpen={onOpenArchive} />
         )}

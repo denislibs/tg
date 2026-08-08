@@ -55,14 +55,6 @@
   display: flex;
 }
 
-// tweb .connection-status-bottom — блок, который сдвигается по --stories-scrolled.
-.listOffset {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
 // tweb .sidebar-header (_sidebar.scss) + .main-search-sidebar-header (_leftSidebar.scss).
 // Высота — из $header-height (3.5rem), горизонтальный padding 1rem (слева под бургер);
 // справа .5rem — модификатор is-input-the-last-child (у нас инпут всегда последний).
