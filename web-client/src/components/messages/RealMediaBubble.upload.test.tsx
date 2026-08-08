@@ -29,7 +29,6 @@ describe('RealMediaBubble: аплоад документа', () => {
         type="document"
         fileName="оферта.pdf"
         size={2 * 1024 * 1024}
-        out
         clientId="c-9"
         onCancelUpload={onCancel}
       />,
@@ -49,7 +48,6 @@ describe('RealMediaBubble: аплоад документа', () => {
         mediaId={7}
         fileName="оферта.pdf"
         size={2 * 1024 * 1024}
-        out
         clientId="c-10"
       />,
     )

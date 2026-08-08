@@ -188,7 +188,6 @@ export default function MessageContent({
     <Time
       time={m.time}
       status={m.status}
-      out={out}
       edited={m.edited}
       views={m.views}
       forwards={m.forwards}
@@ -263,12 +262,12 @@ export default function MessageContent({
           // + .document-container.is-first.is-last > .document-wrapper > контент.
           <DocumentContainer reactions={reactionsInside}>
             <VoiceMessage
+              out={out}
               mediaId={m.mediaId}
               msgId={m.id}
               chatId={m.chatId}
               transcription={m.transcription}
               secretMedia={m.secretMedia}
-              out={out}
               time={showReactions ? undefined : timeNode('corner', 'audio')}
               mediaUnread={m.mediaUnread}
               onPlay={() => feedFns.playVoice(m.mediaId as number)}
@@ -329,8 +328,8 @@ export default function MessageContent({
                 // Секретное медиа (E2E): fetch ciphertext → decrypt → blob-objectURL.
                 // Прямой src=mediaContentUrl не годится — сервер хранит только шифртекст.
                 <SecretMediaBubble
-                  secretMedia={m.secretMedia}
                   out={out}
+                  secretMedia={m.secretMedia}
                   renderTime={m.text ? undefined : renderTime}
                   localUrl={m.localUrl}
                   radius={(m.type === 'photo' || m.type === 'video') ? (m.text || showReactions ? '14px 14px 0 0' : '14px') : undefined}
@@ -348,7 +347,6 @@ export default function MessageContent({
                   duration={m.mediaDuration}
                   size={m.mediaSize}
                   fileName={m.mediaName}
-                  out={out}
                   renderTime={m.text ? undefined : renderTime}
                   onOpen={feedFns.openLightbox}
                   autoDownload={autoDownload}

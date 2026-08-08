@@ -9,7 +9,6 @@
 // which is what used to make the feed jitter while scrolling.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import Text from '../../shared/ui/Text'
 import classNames from '../../shared/lib/classNames'
 import TgIcon from '../TgIcon'
 import { mediaSizes, setAttachmentSize } from '../../core/dom/mediaSizes'
@@ -19,6 +18,7 @@ import { mediaContentUrl, mediaThumbUrl, hasMediaToken, primeMediaToken, useMedi
 import { isGifLike } from '../../core/gifs'
 import { useUploadsStore } from '../../stores/uploadsStore'
 import RadialProgress from '../RadialProgress'
+import AudioPlayIcon from './AudioPlayIcon'
 import StarIcon from '../stars/StarIcon'
 import { useT } from '../../i18n'
 import type { RenderTime } from './bubbleParts/Time'
@@ -47,7 +47,6 @@ interface Props {
   duration?: number
   size?: number
   fileName?: string
-  out: boolean
   /** рендер времени бабла (bubbleParts/Time) — форму выбирает сам бабл:
    * плавающая пилюля поверх фото/видео либо угол у документа/аудио */
   renderTime?: RenderTime
@@ -72,7 +71,7 @@ interface Props {
 
 export default function RealMediaBubble({
   mediaId, type, width, height, mime, blur, hasThumb, duration, size, fileName,
-  out, renderTime, onOpen, autoDownload, localUrl, clientId, onCancelUpload,
+  renderTime, onOpen, autoDownload, localUrl, clientId, onCancelUpload,
   hasMessageBlock = false, isAlbumItem = false, paidMedia, onUnlockPaid,
 }: Props) {
   useMediaTokenVersion() // re-render when the media token is (re)primed → fresh URLs
@@ -245,8 +244,6 @@ export default function RealMediaBubble({
       <AudioRow
         mediaId={mediaId} name={fileName || `audio-${mediaId}`} duration={duration} size={size}
         time={timeCluster}
-        primary={out ? '#fff' : 'var(--primary-text-color)'}
-        secondary={out ? 'rgba(255,255,255,0.7)' : 'var(--secondary-text-color)'}
         uploadProgress={uploadProgress}
         onCancelUpload={cancelUpload}
       />
@@ -260,7 +257,7 @@ export default function RealMediaBubble({
   const href = tokenReady && mediaId != null ? mediaContentUrl(mediaId) : undefined
   return (
     <DocRow
-      name={name} size={size} mime={mime} href={href} out={out}
+      name={name} size={size} mime={mime} href={href}
       uploadProgress={uploadProgress} onCancelUpload={cancelUpload}
       timeCluster={timeCluster}
     />
@@ -270,12 +267,11 @@ export default function RealMediaBubble({
 // ---- Строка документа с управляемым скачиванием (tweb ProgressivePreloader):
 // клик → fetch с чтением потока и кольцом «скачано / всего» на иконке; клик по
 // кольцу — отмена. По завершении файл сохраняется как обычная загрузка.
-function DocRow({ name, size, mime, href, out, uploadProgress, onCancelUpload, timeCluster }: {
+function DocRow({ name, size, mime, href, uploadProgress, onCancelUpload, timeCluster }: {
   name: string
   size?: number
   mime?: string
   href?: string
-  out: boolean
   uploadProgress?: number
   onCancelUpload?: () => void
   timeCluster: ReactNode
@@ -334,16 +330,22 @@ function DocRow({ name, size, mime, href, out, uploadProgress, onCancelUpload, t
     : dl && dl.total > 0
       ? `${fmtSize(dl.loaded)} / ${fmtSize(dl.total)}`
       : size ? fmtSize(size) : ''
+  // Дерево tweb (живой DOM §3 «документ» + _document.scss):
+  //   div.document[.downloaded][.ext-<ext>]
+  //     div.document-ico > span.document-ico-text
+  //     div.document-name > middle-ellipsis-element
+  //     div.document-size > span
+  //     span.time + span.clearfix
+  // Ссылка-обёртка нужна нам для download-атрибута — оставляем <a> с теми же
+  // классами (в tweb загрузка вешается обработчиком).
   return (
     <a
-      className={classNames(s.fileRow, s.doc, s.docRow)}
+      className={classNames('document', ring == null ? 'downloaded' : '', `ext-${ext}`, s.docRow)}
       href={href}
       download={name}
       onClick={startDownload}
-      data-out={out || undefined}
-      style={{ '--doc-color': DOC_EXT_COLORS[ext] ?? 'var(--primary-color)' } as React.CSSProperties}
     >
-      <div className={s.docIco}>
+      <div className="document-ico">
         {ring != null ? (
           <span className={s.docProgress}>
             <RadialProgress progress={ring} size={44} />
@@ -351,42 +353,35 @@ function DocRow({ name, size, mime, href, out, uploadProgress, onCancelUpload, t
           </span>
         ) : (
           <>
-            <span className={s.docExt}>{ext}</span>
+            <span className="document-ico-text">{ext}</span>
             <span className={s.docDl}>
               <TgIcon name="download" size={26} color="#fff" />
             </span>
           </>
         )}
       </div>
-      <div className={s.fileBody}>
-        <Text noWrap size={16} weight={700} color="var(--m-primary)">{name}</Text>
-        <div className={s.fileSub}>
-          <Text size={14} color="var(--m-secondary)">{sub}</Text>
-          {timeCluster}
-        </div>
+      <div className="document-name">
+        <middle-ellipsis-element>{name}</middle-ellipsis-element>
       </div>
+      <div className="document-size">
+        <span>{sub}</span>
+      </div>
+      {timeCluster}
+      <span className="clearfix" />
     </a>
   )
 }
 
-// Цвета расширений (tweb _document.scss .ext-*)
-const DOC_EXT_COLORS: Record<string, string> = {
-  pdf: '#DF3F40',
-  zip: '#FB8C00',
-  apk: '#43A047',
-}
 
 // Music row: plays through the GLOBAL audio player (same as voice messages), so a
 // track shows in the now-playing plate and only one thing plays at a time. While
 // this file is the active track the row flips to pause + a seekable progress bar
 // (tweb). Otherwise it shows duration • size.
-function AudioRow({ mediaId, name, duration, size, primary, secondary, time, uploadProgress, onCancelUpload }: {
+function AudioRow({ mediaId, name, duration, size, time, uploadProgress, onCancelUpload }: {
   mediaId?: number
   name: string
   duration?: number
   size?: number
-  primary: string
-  secondary: string
   time: ReactNode
   uploadProgress?: number
   onCancelUpload?: () => void
@@ -418,35 +413,41 @@ function AudioRow({ mediaId, name, duration, size, primary, secondary, time, upl
   }
   const frac = curDur > 0 ? Math.min(1, curTime / curDur) : 0
 
+  // Дерево tweb (живой DOM §3 «аудио-трек» + _audio.scss):
+  //   audio-element.audio.audio-show-progress[.is-out]
+  //     div.audio-ico.audio-toggle[.playing] > .audio-play-icon > .part.one/.two
+  //     div.audio-details > .audio-title > middle-ellipsis-element
+  //                       > .audio-subtitle > .audio-time + .progress-line
+  //     span.time + span.clearfix
   return (
-    <div className={classNames(s.fileRow, s.audio)}>
+    <audio-element class={classNames('audio', 'audio-show-progress', isCurrent ? 'is-playing' : '')}>
       {uploadProgress != null ? (
-        <div className={classNames(s.circle, s.circleBtn, s.cancelRing)} onClick={onCancelUpload}>
+        <div className={classNames('audio-ico', 'audio-toggle', s.cancelRing)} onClick={onCancelUpload}>
           <RadialProgress progress={uploadProgress} size={44} />
           {onCancelUpload && <TgIcon name="close" size={20} color="#fff" className={s.cancelX} />}
         </div>
       ) : (
-        <div className={classNames(s.circle, s.circleBtn)} onClick={onPlay}>
-          {playing ? <TgIcon name="pause" size={28} /> : <TgIcon name="play" size={28} />}
+        <div className={classNames('audio-ico', 'audio-toggle', playing ? 'playing' : '')} onClick={onPlay}>
+          <AudioPlayIcon />
         </div>
       )}
-      <div className={s.fileBody}>
-        <Text noWrap size={14.5} weight={600} color={primary}>{name}</Text>
-        {isCurrent ? (
-          <div className={s.progressRow}>
-            <div className={s.progressTrack} onClick={onSeek}>
-              <div className={s.progressFill} style={{ width: `${frac * 100}%`, background: 'var(--primary-color)' }} />
-            </div>
-            <Text size={12.5} color={secondary} style={{ fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{fmtDur(Math.floor(curTime))}</Text>
-            {time}
-          </div>
-        ) : (
-          <div className={s.fileSub}>
-            <Text size={12.5} color={secondary}>{sub}</Text>
-            {time}
-          </div>
-        )}
+      <div className="audio-details">
+        <div className="audio-title">
+          <middle-ellipsis-element>{name}</middle-ellipsis-element>
+        </div>
+        <div className="audio-subtitle">
+          <div className="audio-time">{isCurrent ? fmtDur(Math.floor(curTime)) : sub}</div>
+          {isCurrent && (
+            <div
+              className="progress-line"
+              onClick={onSeek}
+              style={{ ['--progress' as string]: `${frac * 100}%` }}
+            />
+          )}
+        </div>
       </div>
-    </div>
+      {time}
+      <span className="clearfix" />
+    </audio-element>
   )
 }
