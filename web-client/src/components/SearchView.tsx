@@ -467,11 +467,10 @@ function ChatRow({ chat, q, onClick }: { chat: Chat; q?: string; onClick: () => 
   )
 }
 
-function ResultRow({ bg, src, t, tc, title, subtitle, verified, onClick }: {
+function ResultRow({ bg, src, t, title, subtitle, verified, onClick }: {
   bg: string
   src?: string
   t: string
-  tc?: string
   title: string
   subtitle: string
   verified?: boolean
@@ -480,7 +479,7 @@ function ResultRow({ bg, src, t, tc, title, subtitle, verified, onClick }: {
   const avatarSrc = useAvatarSrc(src)
   return (
     <div className={s.row} onClick={onClick}>
-      <Avatar background={bg} src={avatarSrc} text={t} size="lg" color={tc ?? '#fff'} />
+      <Avatar background={bg} src={avatarSrc} text={t} size="lg" />
       <div className={s.body}>
         <div className={s.top}>
           <Text noWrap size={16} weight={600} color="var(--primary-text-color)">{title}</Text>

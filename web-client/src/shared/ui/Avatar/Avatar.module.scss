@@ -1,47 +1,34 @@
-// Avatar — SCSS-модуль (подход/значения базового аватара tweb _avatar.scss, без MUI).
-// Размер задаётся CSS-переменной --size на корне; производные (шрифт, точка online,
-// толщина кольца) считаются в CSS через calc()/max() — без JS. Динамика пира (фон-
-// градиент, цвет инициалов, цвет кольца) приходит CSS-переменными на элементе.
+// Avatar рендерит глобальные классы tweb `.avatar.avatar-like.avatar-{N}`
+// (_avatar.scss): форма, размер, шрифт инициалов, uppercase, онлайн-точка.
+// Здесь — только то, чего в партиале нет.
+// ВАЖНО: без `overflow: hidden` — в tweb он у `.avatar` закомментирован
+// намеренно, из круга торчит онлайн-точка (`:after` 14px + рамка 2px по
+// координатам 39/39, то есть до 57px при аватаре 54). Фото клипует
+// `.avatar-photo { border-radius: inherit }`.
 .root {
-  position: relative;
   flex-shrink: 0;
-  width: var(--size);
-  height: var(--size);
-}
-
-.circle {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  background: var(--avatar-bg);
-  color: var(--avatar-color, #fff);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: var(--font-weight-bold);
-  font-size: calc(var(--size) * 0.42);
-  line-height: 1;
-  text-transform: uppercase; // tweb: инициалы аватара — uppercase
   user-select: none;
-  overflow: hidden;
+  // База для абсолютного глифа (в tweb это `.avatar-relative`/`.is-online`).
+  position: relative;
 }
 
-.image {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
+// Онлайн-точка. В tweb её координаты захардкожены под аватар 54
+// (`left/top: 2.4375rem` = 39px) — у нас `online` бывает и на 32/42
+// (шапка чата), поэтому считаем то же самое от --size: при 54 выходит
+// ровно 39px. Кольцо в tweb всегда --surface-color, у нас аватар бывает
+// на другом фоне — цвет приходит пропом.
+.root.root:global(.is-online):after {
+  left: calc(var(--size) - 15px);
+  top: calc(var(--size) - 15px);
+  border-color: var(--avatar-ring, var(--surface-color));
 }
 
-// Online dot — tweb places it bottom-right with a surface-coloured ring.
-.online {
+// SVG-глиф (Telegram/Избранное) — в tweb это иконка шрифта `.avatar-icon`,
+// tgico не портирован. Центруем: у `.avatar-like` центрирование через
+// line-height, к inline-svg оно не применимо.
+.glyph {
   position: absolute;
-  right: 6%;
-  bottom: 6%;
-  width: max(8px, calc(var(--size) * 0.26));
-  height: max(8px, calc(var(--size) * 0.26));
-  border-radius: 50%;
-  background: #4dcd5e;
-  border: max(1.5px, calc(var(--size) * 0.037)) solid var(--avatar-ring, var(--surface-color));
-  box-sizing: border-box;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
 }
