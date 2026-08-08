@@ -21,7 +21,7 @@ import TgIcon from './TgIcon'
 import classNames from '../shared/lib/classNames'
 import { mediaContentUrl, mediaThumbUrl, hasMediaToken, useMediaTokenVersion } from '../core/mediaUrl'
 import { useManagers } from '../core/hooks/useManagers'
-import { useT } from '../i18n'
+import { useT, useLang } from '../i18n'
 import type { CalendarDay } from '../core/managers/messagesManager'
 import s from './DatePickerPopup.module.scss'
 
@@ -121,10 +121,14 @@ export default function DatePickerPopup({
 }: DatePickerPopupProps) {
   const t = useT()
   const managers = useManagers()
-  const lang = typeof navigator !== 'undefined' ? navigator.language : 'ru'
+  // Язык берём из приложения (как tweb I18n), а не из navigator — иначе месяцы
+  // и дни недели рисуются на языке браузера, а не интерфейса.
+  const [lang] = useLang()
 
   const today = useMemo(() => startOfDay(new Date()), [])
-  const min = useMemo(() => startOfDay(new Date(minDate ?? initDate)), [minDate, initDate])
+  // tweb datePicker.tsx:141 — дефолтная нижняя граница «01.08.2013» (запуск
+  // Telegram): выбирать можно любой день истории, а не только день клика.
+  const min = useMemo(() => startOfDay(new Date(minDate ?? Date.parse('2013-08-01T00:00:00'))), [minDate])
   const init = useMemo(() => startOfDay(new Date(initDate)), [initDate])
   const [selected, setSelected] = useState(() => startOfDay(new Date(initDate)))
 
@@ -217,11 +221,11 @@ export default function DatePickerPopup({
   const weekdays = useMemo(() => {
     // Понедельник первым (tweb weekdayInfo)
     const base = new Date(2024, 0, 1) // понедельник
-    const fmt = new Intl.DateTimeFormat(lang, { weekday: 'short' })
+    const fmt = new Intl.DateTimeFormat(lang, { weekday: 'narrow' })
     return Array.from({ length: 7 }, (_, i) => {
       const d = new Date(base)
       d.setDate(base.getDate() + i)
-      return { name: fmt.format(d), weekend: weekend.has(d.getDay()) }
+      return { key: i, name: fmt.format(d).toUpperCase(), weekend: weekend.has(d.getDay()) }
     })
   }, [lang, weekend])
 
@@ -254,9 +258,15 @@ export default function DatePickerPopup({
         },
       }}
     >
+      {/* tweb `withBorders="both"` (_scrollable.scss:128-143): линии сверху/снизу
+          показываются, только когда прокрутка не упёрта в соответствующий край */}
       <div
         ref={scrollRef}
-        className={s.scrollable}
+        className={classNames(
+          s.scrollable,
+          scrollTop <= 0 ? s.scrolledStart : '',
+          scrollTop + viewportH >= totalHeight - 1 ? s.scrolledEnd : '',
+        )}
         onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
       >
         <div className={s.months} style={{ height: totalHeight }}>
@@ -271,7 +281,7 @@ export default function DatePickerPopup({
               </div>
               <div className={s.weekdays}>
                 {weekdays.map((w) => (
-                  <div key={w.name} className={classNames(s.weekday, w.weekend ? s.danger : '')}>
+                  <div key={w.key} className={classNames(s.weekday, w.weekend ? s.danger : '')}>
                     {w.name}
                   </div>
                 ))}

@@ -32,6 +32,18 @@
   overflow-y: auto;
   overflow-x: hidden;
   position: relative;
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+  transition:
+    border-top-color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    border-bottom-color 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+
+  &.scrolledStart {
+    border-top-color: transparent;
+  }
+  &.scrolledEnd {
+    border-bottom-color: transparent;
+  }
 
   @include respond-to(handhelds) {
     --date-picker-scroll-height: 280px;
