@@ -307,7 +307,7 @@ export default function MessageContent({
           </div>
         ) : m.type === 'album' && m.albumItems ? (
           // Альбом (медиагруппа): грид из элементов, подпись — под гридом.
-          <div className={s.media}>
+          <div className={classNames(s.media, s.mediaAlbum)}>
             {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
             <div
               className={classNames(s.mediaInner, s.framed)}

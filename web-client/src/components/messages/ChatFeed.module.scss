@@ -133,8 +133,8 @@
   transform: translateX(-50%);
   width: 100vw;
   height: 30px;
-  line-height: 30px;
-  margin-bottom: 12px; // tweb $bubble-overflow-big
+  line-height: 2.1; // tweb _chatBubble.scss:253
+  margin-bottom: 3px; // tweb $bubble-overflow-big = $bubble-margin-big/2 = 3px
   text-align: center;
   font-size: var(--font-size-15);
   font-weight: 700;

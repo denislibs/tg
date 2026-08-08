@@ -65,11 +65,13 @@
 }
 
 .check {
+  // tweb _chatBubble.scss:306-337: чекбокс у НИЗА бабла (bottom:.3125rem),
+  // не по центру; тень на боксе для читаемости поверх обоев.
   position: absolute;
   left: 4px;
-  top: 50%;
-  transform: translateY(-50%);
+  bottom: 5px;
   z-index: 2;
+  filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.4));
 }
 
 // Зона контента: выравнивание по стороне, сдвиг входящих при режиме выделения.
@@ -93,13 +95,18 @@
 // ── media (photo/video/file) ──
 .media {
   position: relative;
-  max-width: min(340px, 82%);
+  max-width: min(420px, 100%); // tweb _chatBubble.scss:890
+}
+// альбом чуть шире одиночного медиа (tweb _chatBubble.scss:910)
+.mediaAlbum {
+  max-width: min(451px, 100%);
 }
 .mediaInner {
   position: relative;
   background: var(--b-bg);
   color: var(--b-text);
   overflow: hidden;
+  box-shadow: var(--bubble-box-shadow);
 
   &.framed {
     padding: 1px; // 1px рамка цвета бабла вокруг фото/видео (tweb «обводка»)
@@ -133,6 +140,7 @@
   max-width: min(340px, 82%);
   background: var(--b-bg);
   color: var(--b-text);
+  box-shadow: var(--bubble-box-shadow);
 }
 
 // ── sticker / big emoji ──
@@ -180,6 +188,7 @@
   padding: 8px 10px;
   background: var(--b-bg);
   color: var(--b-text);
+  box-shadow: var(--bubble-box-shadow);
 }
 .voiceBtn {
   width: 40px;
@@ -234,17 +243,18 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  max-width: min(420px, 80%);
+  max-width: 85%; // tweb --max-width: 85% (без px-кэпа)
   min-width: 0;
 }
 .textBubble {
   position: relative;
-  max-width: min(420px, 80%);
+  max-width: 85%; // tweb --max-width: 85% (без px-кэпа)
   display: flex;
   flex-direction: column;
   padding: 0.375rem 0.625rem; // tweb bubble-content .375rem .625rem
   background: var(--b-bg);
   color: var(--b-text);
+  box-shadow: var(--bubble-box-shadow);
 }
 // внутри обёртки лимит несёт .bubbleWrap — бабл заполняет её ширину
 .bubbleWrap .textBubble {
