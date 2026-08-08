@@ -58,7 +58,7 @@ export function Tabs({
 
 // Ряд табов (tweb .menu-horizontal-div). `framed` оборачивает в карточку-скролл
 // (tweb .menu-horizontal-scrollable: surface-фон, скруглённый, с тенью).
-function List({ children, framed }: { children: ReactNode; framed?: boolean }) {
+function List({ children, framed, className }: { children: ReactNode; framed?: boolean; className?: string }) {
   const { value, items, bgs } = useTabs()
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevRef = useRef<TabValue | null>(null)
@@ -109,7 +109,7 @@ function List({ children, framed }: { children: ReactNode; framed?: boolean }) {
     </div>
   )
   if (!framed) return row
-  return <div className={classNames('menu-horizontal-scrollable', s.scrollable)}>{row}</div>
+  return <div className={classNames('menu-horizontal-scrollable', className ?? '')}>{row}</div>
 }
 
 function Tab({

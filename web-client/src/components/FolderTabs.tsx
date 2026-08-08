@@ -23,7 +23,10 @@ export default function FolderTabs({
   const t = useT()
   return (
     <Tabs value={value} onChange={(v) => onChange(Number(v))}>
-      <Tabs.List framed>
+      {/* tweb-класс папочных табов: он даёт зазор .5rem вокруг карточки и
+          крупную тень (--section-box-shadow-big), а показывается только при
+          body.has-horizontal-folders (_leftSidebar.scss). */}
+      <Tabs.List framed className="folders-tabs-scrollable">
         <Tabs.Tab
           value={ALL_FOLDER_ID}
           badge={counts?.[ALL_FOLDER_ID]}

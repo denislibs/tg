@@ -2,15 +2,6 @@
 // его текст, «переезжающая» подложка активного (.animate) и бейдж.
 // Здесь — только то, чего в партиале нет.
 
-// tweb-карточка табов лежит в секции и берёт отступ из --section-padding-inline;
-// у нас она бывает оверлеем над чат-листом, где нужен свой зазор (как у
-// .folders-tabs-scrollable: margin .5rem) и более заметная тень.
-.scrollable {
-  flex-shrink: 0;
-  margin: 0.5rem;
-  box-shadow: var(--section-box-shadow-big);
-}
-
 // `.scrollable.scrollable-x` из _scrollable.scss прячет скроллбар только в
 // Firefox/-ms; добавляем webkit и вертикальный клип.
 .scrollableX {
