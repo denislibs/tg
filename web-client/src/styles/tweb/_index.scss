@@ -12,3 +12,15 @@
 // но включатся сами, когда появится фича.
 //
 // @use добавляется по мере перестройки поверхностей (фаза 2 — лента и баблы).
+
+// --- Фаза 2: лента и баблы ---
+@use "chatBubble";
+@use "quote";
+@use "markup";
+@use "spoiler";
+@use "reaction";
+@use "reactions";
+@use "document";
+@use "audio";
+@use "peerTyping";
+

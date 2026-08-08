@@ -151,6 +151,71 @@
   // --message-highlighting-color(-rgb)/--message-highlighting-alpha пишет JS
   // (themeController.applyHighlightingColor), не CSS-статика.
   --message-highlighting-hover-color: rgba(var(--message-highlighting-color-rgb), calc(var(--message-highlighting-alpha) + 0.24));
+
+  // ── Досыпка блока `.chat` из tweb base.scss:318-341: то, что читают
+  // портированные партиалы ленты (_chatBubble/_reaction/_quote/_audio/_document).
+  --message-primary-color-rgb: var(--primary-color-rgb);
+  --message-secondary-color: var(--secondary-color);
+  // Цвет текста/иконок бабла БЕЗ подложки (стикер, big-emoji, кружок): tweb
+  // ставит его инлайном как --peer-color-rgb у таких баблов.
+  --message-empty-primary-color: #fff;
+  --message-empty-primary-color-rgb: 255, 255, 255;
+  --message-reaction-tag-dot-color: rgba(255, 255, 255, 0.4);
+  --message-out-reaction-tag-dot-color: var(--message-reaction-tag-dot-color);
+  --message-out-link-color: var(--link-color);
+  --message-out-selection-background-color: var(--selection-background-color);
+  --message-checkbox-color: #61c642;
+  --message-checkbox-border-color: #fff;
+
+  // ── Геометрия и типографика ленты (tweb base.scss:79-93,120,155,224,278-279) ──
+  --messages-line-height: 1.3125;
+  --messages-service-text-size: calc(var(--messages-text-size) - 1px);
+  --messages-custom-emoji-size: calc(var(--messages-text-size) + 4px);
+  --message-handhelds-margin: 5.5625rem;
+  --message-beside-button-size: 2.375rem;
+  --message-beside-button-margin: calc((var(--message-beside-button-size) + 0.5rem) * -1);
+  --bubble-transition-in: transform var(--transition-standard-in), opacity var(--transition-standard-in);
+  --bubble-transition-out: transform var(--transition-standard-out), opacity var(--transition-standard-out);
+  --round-video-size: 280px;
+  --chat-bubbles-padding: 0.5rem;
+  --star-golden-color: #fecf16;
+  --gc-blue-text-color: #3390ec;
+  --gc-red-text-color: #ff595a;
+  --selection-background-color: rgba(var(--primary-color-rgb), 0.4);
+
+  // tweb base.scss:32,46-47 — множитель зеркалирования и origin'ы для RTL.
+  // Класс is-rtl мы не ставим (RTL-режима нет) — значения LTR-ветки.
+  --reflect: 1;
+  --transform-origin-left-center: left center;
+  --transform-origin-right-center: right center;
+}
+
+// tweb base.scss:205-215 — на узком экране кружок и отступ ленты сжимаются.
+@include respond-to(handhelds) {
+  :root {
+    --round-video-size: 240px;
+  }
+}
+
+@include respond-to(not-handhelds) {
+  :root {
+    --chat-bubbles-padding: 0px;
+  }
+}
+
+// tweb base.scss:344-360 (.night .chat) — тёмная тема переопределяет часть
+// цветов бабла. У нас night-темы — night и tinted (см. themeController).
+[data-theme='night'],
+[data-theme='tinted'] {
+  --message-status-color: var(--secondary-color);
+  --message-error-color: #fff;
+  --message-checkbox-color: var(--primary-color);
+  --message-out-link-color: #fff;
+  --message-out-status-color: #fff;
+  --message-out-time-color: rgba(255, 255, 255, 0.6);
+  --message-out-icon-text-color: var(--message-out-background-color);
+  --message-out-selection-background-color: rgba(var(--surface-color-rgb), 0.4);
+  --message-out-reaction-tag-dot-color: var(--message-out-background-color);
 }
 
 // Бесхозные --tg-* (нет tweb-аналога) — декоративные тени/градиенты собственного UI,
