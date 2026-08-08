@@ -45,12 +45,12 @@ const InputSearch = forwardRef<HTMLInputElement, InputSearchProps>(function Inpu
         onBlur={onBlur}
       />
       <div className="input-field-border" />
-      <span className={classNames('tgico', 'input-search-part', 'input-search-icon', 'will-animate', s.icon)}>
+      <span className={classNames('tgico', 'input-search-part', 'input-search-icon', 'will-animate')}>
         <TgIcon name="search" size={24} />
       </span>
       {has && onClear && (
         <IconButton
-          className={classNames('input-search-clear', 'input-search-part', 'input-search-button', s.clear)}
+          className={classNames('input-search-clear', 'input-search-part', 'input-search-button')}
           size="small"
           onClick={onClear}
           aria-label="Clear"
@@ -59,7 +59,7 @@ const InputSearch = forwardRef<HTMLInputElement, InputSearchProps>(function Inpu
         </IconButton>
       )}
       {!has && placeholder && (
-        <span className={classNames('i18n', 'input-search-placeholder', 'will-animate', s.placeholder)}>{placeholder}</span>
+        <span className={classNames('i18n', 'input-search-placeholder', 'will-animate')}>{placeholder}</span>
       )}
     </div>
   )

@@ -1,13 +1,12 @@
-// Menu рендерит глобальный `.btn-menu.active` (_button.scss:98): min-width,
-// padding var(--btn-menu-padding), radius, --menu-box-shadow, width:max-content.
-// От --btn-menu-padding зависит инсетный ховер пунктов, поэтому класс на панели
-// обязателен.
+// Menu рендерит глобальный `.btn-menu[.active]` (_button.scss:98): min-width,
+// padding var(--btn-menu-padding), radius, --menu-box-shadow, width:max-content,
+// фон/backdrop-filter и весь показ/скрытие (visibility + opacity + scale(.8)
+// с переходом --btn-menu-transition). От --btn-menu-padding считается инсетный
+// ховер пунктов, поэтому класс на панели обязателен.
 //
-// ОТСТУПЛЕНИЕ (осознанное): механизм открытия у нас другой. tweb держит меню
-// абсолютом внутри `.btn-menu-toggle`-хоста и показывает переключением `.active`
-// (visibility/opacity/transform по CSS-переходу). У нас — портал + fixed-позиция
-// от точки клика + framer-motion. Поэтому глушим позиционную часть tweb-правила;
-// перевод на его механизм — отдельная задача (нужен порт positionMenu()).
+// Здесь — только позиционирование: у tweb меню лежит абсолютом внутри
+// `.btn-menu-toggle`-хоста (`top: 100%`) и угол выбирается классом; у нас
+// вызывающий даёт fixed-координаты точки клика, панель живёт в портале.
 .backdrop {
   position: fixed;
   inset: 0;
@@ -18,11 +17,4 @@
   position: fixed;
   top: auto;
   z-index: 2001;
-  // .btn-menu стартует скрытым (visibility/opacity/transform) — показ у нас
-  // делает framer-motion инлайн-стилями, поэтому снимаем скрытие и переход.
-  visibility: visible;
-  transition: none;
-  background: var(--menu-background-color);
-  backdrop-filter: blur(50px);
-  -webkit-backdrop-filter: blur(50px);
 }

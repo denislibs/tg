@@ -1,5 +1,5 @@
+import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { AnimatePresence, motion } from 'framer-motion'
 import type { CSSProperties, ReactNode } from 'react'
 import classNames from '../../lib/classNames'
 import { usePortalContainer } from '../../../core/pip'
@@ -19,12 +19,47 @@ interface MenuProps {
   children: ReactNode
 }
 
-// Shared menu surface — portal + backdrop + a single open/close animation
-// (scale .8 + fade, like tweb .btn-menu) so every dropdown/context menu behaves
-// identically. The caller positions it via `style` (top/left or right/bottom +
-// transform-origin) so the panel grows from the anchor (e.g. the click corner).
+// Плашка меню — механизм tweb 1:1 (_button.scss:98-212): панель ВСЕГДА в DOM,
+// показ/скрытие — только классом `.active`, который переключает
+// visibility/opacity/transform: scale(.8)→scale3d(1,1,1) по CSS-переходу
+// `--btn-menu-transition`. Никакого JS-анимирования (framer-motion убран).
+//
+// Отступление: позиционирование. tweb держит меню абсолютом внутри
+// `.btn-menu-toggle`-хоста и выбирает угол классом (`bottom-left` и т.п.);
+// у нас вызывающий передаёт готовые fixed-координаты точки клика, поэтому
+// панель живёт в портале. Порт positionMenu() — отдельная задача.
 export default function Menu({ open, onClose, onExitComplete, style, className, zIndex, children }: MenuProps) {
   const container = usePortalContainer()
+  const panelRef = useRef<HTMLDivElement>(null)
+  const wasOpen = useRef(open)
+  const exitRef = useRef(onExitComplete)
+  exitRef.current = onExitComplete
+
+  // Конец закрытия ловим по transitionend самой панели (как tweb ловит конец
+  // своего перехода); фолбэк по таймеру — на случай animation-level-0, где
+  // перехода нет вовсе и события не будет.
+  useEffect(() => {
+    const wasJustClosed = wasOpen.current && !open
+    wasOpen.current = open
+    if (!wasJustClosed) return
+
+    const el = panelRef.current
+    let done = false
+    const finish = () => {
+      if (done) return
+      done = true
+      el?.removeEventListener('transitionend', onEnd)
+      exitRef.current?.()
+    }
+    const onEnd = (e: TransitionEvent) => { if (e.target === el) finish() }
+    el?.addEventListener('transitionend', onEnd)
+    const timer = window.setTimeout(finish, 300)
+    return () => {
+      window.clearTimeout(timer)
+      el?.removeEventListener('transitionend', onEnd)
+    }
+  }, [open])
+
   return createPortal(
     <>
       {open && (
@@ -38,20 +73,13 @@ export default function Menu({ open, onClose, onExitComplete, style, className, 
           }}
         />
       )}
-      <AnimatePresence onExitComplete={onExitComplete}>
-        {open && (
-          <motion.div
-            className={classNames('btn-menu', 'active', s.panel, className ?? '')}
-            style={zIndex != null ? { ...style, zIndex: zIndex + 1 } : style}
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.8 }}
-            transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-          >
-            {children}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <div
+        ref={panelRef}
+        className={classNames('btn-menu', open ? 'active' : '', s.panel, className ?? '')}
+        style={zIndex != null ? { ...style, zIndex: zIndex + 1 } : style}
+      >
+        {children}
+      </div>
     </>,
     container,
   )
