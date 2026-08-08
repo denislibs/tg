@@ -3,37 +3,19 @@ import Text from '../../shared/ui/Text'
 import AudioPlayIcon from './AudioPlayIcon'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useAudioStore, prefetchSecretAudio } from '../../stores/audioStore'
-import { useWaveform, WAVE_BARS, decodeTransmittedBars } from '../../core/audio/waveform'
+import {
+  useWaveform,
+  decodeTransmittedPeaks,
+  buildWaveformBars,
+  WAVEFORM_BAR_WIDTH,
+} from '../../core/audio/waveform'
 import { useTranscription, TranscribeButton, TranscribedText } from './Transcription'
 import classNames from '../../shared/lib/classNames'
 import type { SecretMedia } from '../../core/models'
 import s from './VoiceMessage.module.scss'
 
-// A flat placeholder shown until the real waveform is decoded.
-const PLACEHOLDER = Array.from({ length: WAVE_BARS }, () => 0.25)
-
-// Геометрия волны 1:1 tweb (components/audio.ts createWaveformBars): бар 2px с
-// зазором 2px, высота 4..23px, а ШИРИНА волны растёт с длительностью — от 190px
-// (десктопный minW) до 256px (maxW), достигая максимума на минуте записи.
-const BAR_WIDTH = 2
-const BAR_MARGIN = 2
-const BAR_HEIGHT_MIN = 4
-const BAR_HEIGHT_MAX = 23
-const WAVE_MIN_W = 190
-const WAVE_MAX_W = 256
-// tweb slice(0, 63) — больше 63 пиков в документе не передаётся
-const WAVE_MAX_BARS = 63
-
-function waveBarCount(duration: number): number {
-  const availW = Math.min(WAVE_MAX_W, Math.max(WAVE_MIN_W, (duration / 60) * WAVE_MAX_W))
-  return Math.min(Math.floor(availW / (BAR_WIDTH + BAR_MARGIN)), WAVE_MAX_BARS)
-}
-
-// Ресэмпл готовых пиков к нужному числу баров (tweb сводит wfSize к barCount).
-function resample(bars: number[], n: number): number[] {
-  if (!bars.length || bars.length === n) return bars
-  return Array.from({ length: n }, (_, i) => bars[Math.floor((i * bars.length) / n)])
-}
+// Пока пики не приехали — ровная «тихая» волна (пики 0..31, здесь минимум).
+const PLACEHOLDER_PEAKS = Array.from({ length: 100 }, () => 4)
 
 function fmt(sec: number): string {
   if (!Number.isFinite(sec) || sec < 0) sec = 0
@@ -79,7 +61,7 @@ export default function VoiceMessage({
   // Переданные пики (посчитаны при записи, приоритетнее client-recompute);
   // фолбэк — recompute (старые сообщения без пиков / секретный голос).
   const [metaWaveform, setMetaWaveform] = useState('')
-  const transmitted = useMemo(() => decodeTransmittedBars(metaWaveform, WAVE_MAX_BARS), [metaWaveform])
+  const transmitted = useMemo(() => decodeTransmittedPeaks(metaWaveform), [metaWaveform])
 
   const isCurrent = useAudioStore((s) => s.track?.mediaId === mediaId)
   const playing = useAudioStore((s) => s.playing && s.track?.mediaId === mediaId)
@@ -113,10 +95,16 @@ export default function VoiceMessage({
 
   const duration = isCurrent && curDur ? curDur : metaDur
   const progress = isCurrent && duration ? curTime / duration : 0
-  // Число баров — от длительности (tweb), поэтому считается после duration.
+  // Высоты баров в пикселях — порт tweb createWaveformBars: и число баров, и
+  // нормировка зависят от записи, поэтому считается после duration.
   const bars = useMemo(() => {
-    const src = transmitted.length ? transmitted : decoded.length ? decoded : PLACEHOLDER
-    return resample(src, waveBarCount(duration))
+    // recompute-фолбэк отдаёт 0..1 — приводим к шкале пиков 0..31
+    const src = transmitted.length
+      ? transmitted
+      : decoded.length
+        ? decoded.map((v) => Math.round(v * 31))
+        : PLACEHOLDER_PEAKS
+    return buildWaveformBars(src, duration)
   }, [transmitted, decoded, duration])
 
   const handlePlay = () => {
@@ -153,8 +141,8 @@ export default function VoiceMessage({
               key={i}
               className={s.waveBar}
               style={{
-                height: `${Math.round(BAR_HEIGHT_MIN + h * (BAR_HEIGHT_MAX - BAR_HEIGHT_MIN))}px`,
-                width: `${BAR_WIDTH}px`,
+                height: `${h}px`,
+                width: `${WAVEFORM_BAR_WIDTH}px`,
                 background: i / bars.length <= progress ? 'var(--v-accent)' : 'var(--v-off)',
               }}
             />
@@ -162,7 +150,9 @@ export default function VoiceMessage({
         </div>
         <div className={s.meta}>
           <Text size={14} color="var(--v-dur)">
-            {isCurrent ? `${fmt(curTime)} / ${fmt(duration)}` : fmt(duration)}
+            {isCurrent && curTime > 0 && curTime !== duration
+              ? `${fmt(curTime)} / ${fmt(duration)}`
+              : fmt(duration)}
           </Text>
           {showUnplayedDot && <div className={s.dot} />}
         </div>

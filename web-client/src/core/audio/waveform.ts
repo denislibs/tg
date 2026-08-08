@@ -5,11 +5,11 @@ import { unpack5bit, WAVEFORM_SAMPLES_COUNT } from './voiceWaveformAnalyser'
 
 export const WAVE_BARS = 44
 
-// Бары из ПЕРЕДАННЫХ пиков (посчитаны при записи, 1:1 tweb): base64 → 5-бит
-// распаковка (100 значений 0..31) → ресэмпл к n баров (0..1, пол 0.08 как у
-// recompute). Приоритетнее client-recompute: одинаково у всех получателей,
-// не требует скачивания/декода аудиофайла.
-export function decodeTransmittedBars(waveformB64: string, n = WAVE_BARS): number[] {
+// ПЕРЕДАННЫЕ пики (посчитаны при записи): base64 → 5-бит распаковка в СЫРЫЕ
+// значения 0..31, как у tweb `decodeWaveform`. Приоритетнее client-recompute:
+// одинаковы у всех получателей и не требуют скачивания/декода аудиофайла.
+// Сведение к барам и высотам — `buildWaveformBars` (порт createWaveformBars).
+export function decodeTransmittedPeaks(waveformB64: string): number[] {
   if (!waveformB64) return []
   let bytes: Uint8Array
   try {
@@ -18,11 +18,52 @@ export function decodeTransmittedBars(waveformB64: string, n = WAVE_BARS): numbe
     return []
   }
   if (!bytes.length) return []
-  const vals = unpack5bit(bytes, WAVEFORM_SAMPLES_COUNT)
+  return unpack5bit(bytes, WAVEFORM_SAMPLES_COUNT)
+}
+
+// ── Геометрия волны — порт tweb `createWaveformBars` (components/audio.ts:83-126)
+const BAR_WIDTH = 2
+const BAR_MARGIN = 2
+const BAR_HEIGHT_MIN = 4
+const BAR_HEIGHT_MAX = 23
+const WAVE_MIN_W = 190 // desktop minW
+const WAVE_MAX_W = 256 // desktop maxW
+
+export const WAVEFORM_BAR_WIDTH = BAR_WIDTH
+export const WAVEFORM_BAR_MARGIN = BAR_MARGIN
+export const WAVEFORM_HEIGHT = BAR_HEIGHT_MAX
+
+/**
+ * Сводит пики (0..31) к барам с высотами В ПИКСЕЛЯХ — 1:1 tweb: ширина волны
+ * растёт с длительностью (190..256px), число баров = availW / (2+2), а сами
+ * пики агрегируются МАКСИМУМОМ по группе и нормируются на максимум записи —
+ * поэтому тихие места остаются низкими, а не сливаются в сплошную полосу.
+ */
+export function buildWaveformBars(peaks: number[], duration: number): number[] {
+  const wfSize = peaks.length
+  if (!wfSize) return []
+
+  const availW = Math.min(WAVE_MAX_W, Math.max(WAVE_MIN_W, (duration / 60) * WAVE_MAX_W))
+  const barCount = Math.min((availW / (BAR_WIDTH + BAR_MARGIN)) | 0, wfSize)
+  const normValue = Math.max(...peaks)
+  const maxDelta = BAR_HEIGHT_MAX - BAR_HEIGHT_MIN
+
   const out: number[] = []
-  for (let i = 0; i < n; i++) {
-    const idx = Math.floor((i * vals.length) / n)
-    out.push(Math.max(0.08, vals[idx] / 31))
+  let maxValue = 0
+  let sumI = 0
+  for (let i = 0; i < wfSize; ++i) {
+    const value = peaks[i] || 0
+    if (sumI + barCount >= wfSize) {
+      sumI = sumI + barCount - wfSize
+      if (sumI < (barCount + 1) / 2) {
+        if (maxValue < value) maxValue = value
+      }
+      out.push(Math.max((maxValue * maxDelta + (normValue + 1) / 2) / (normValue + 1), BAR_HEIGHT_MIN))
+      maxValue = sumI < (barCount + 1) / 2 ? 0 : value
+    } else {
+      if (maxValue < value) maxValue = value
+      sumI += barCount
+    }
   }
   return out
 }
