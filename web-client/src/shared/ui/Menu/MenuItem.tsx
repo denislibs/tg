@@ -11,13 +11,16 @@ interface MenuItemProps {
   onClick?: () => void
 }
 
-// Menu row — tweb .btn-menu-item metrics. Used inside <Menu> for consistent look.
+// Пункт меню — классы tweb (_button.scss:279): `.btn-menu-item[.danger]`
+// с `.btn-menu-item-icon` и `.btn-menu-item-text`. Высота, паддинги, шрифт,
+// инсетный скруглённый ховер (margin-inline: var(--btn-menu-padding) от .btn-menu),
+// active scale(.96) и красный ховер у danger — оттуда.
 export default function MenuItem({ icon, label, right, danger, onClick }: MenuItemProps) {
   return (
-    <div className={classNames(s.item, danger ? s.danger : '')} onClick={onClick}>
-      {icon && <span className={s.icon}>{icon}</span>}
-      <span className={s.label}>{label}</span>
-      {right && <span className={s.right}>{right}</span>}
+    <div className={classNames('btn-menu-item', danger ? 'danger' : '', s.item)} onClick={onClick}>
+      {icon && <span className={classNames('btn-menu-item-icon', s.icon)}>{icon}</span>}
+      <span className={classNames('btn-menu-item-text', s.label)}>{label}</span>
+      {right && <span className={classNames('btn-menu-item-icon-right', s.right)}>{right}</span>}
     </div>
   )
 }

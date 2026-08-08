@@ -6,10 +6,18 @@ interface BadgeProps {
   children: ReactNode
   /** muted dialogs use a gray badge instead of the accent (tweb .badge-gray) */
   muted?: boolean
+  /** размер пилюли: у tweb классы есть на 18/20/24, база (без класса) — 22 */
+  size?: 18 | 20 | 22 | 24
   className?: string
 }
 
-// Count pill — port of tweb `.badge`. For the unread counter, group call count, etc.
-export default function Badge({ children, muted, className }: BadgeProps) {
-  return <span className={classNames(s.root, muted ? s.muted : '', className ?? '')}>{children}</span>
+// Пилюля-счётчик — классы tweb (`createBadge('span', N, 'primary')`):
+// `span.badge.badge-{N}.badge-{primary|gray}` (_badge.scss). Размеры, цвета,
+// радиус и transition — оттуда; `badge-22` = база, своего правила у tweb нет.
+export default function Badge({ children, muted, size = 22, className }: BadgeProps) {
+  return (
+    <span className={classNames('badge', `badge-${size}`, muted ? 'badge-gray' : 'badge-primary', s.root, className ?? '')}>
+      {children}
+    </span>
+  )
 }

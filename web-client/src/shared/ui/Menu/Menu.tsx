@@ -41,7 +41,7 @@ export default function Menu({ open, onClose, onExitComplete, style, className, 
       <AnimatePresence onExitComplete={onExitComplete}>
         {open && (
           <motion.div
-            className={classNames(s.panel, className ?? '')}
+            className={classNames('btn-menu', 'active', s.panel, className ?? '')}
             style={zIndex != null ? { ...style, zIndex: zIndex + 1 } : style}
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
