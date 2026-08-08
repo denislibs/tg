@@ -36,6 +36,12 @@ type mentionRow struct {
 	chatID, msgID, seq, userID int64
 }
 
+// readMark — одна отметка продвижения горизонта чтения (chat_read_marks).
+type readMark struct {
+	upToSeq int64
+	at      time.Time
+}
+
 type store struct {
 	mu sync.Mutex
 
@@ -51,6 +57,7 @@ type store struct {
 	pins       map[int64][]int64                   // chatID -> pinned msgIDs (newest first)
 	viewed     map[int64]map[int64]bool            // msgID -> userID -> viewed (channel view dedup)
 	mentions   []mentionRow                        // message_mentions rows
+	readMarks  map[int64]map[int64][]readMark      // chatID -> userID -> история горизонта чтения
 
 	// автоудаление: период чата / глобальный период пользователя
 	autoDelete     map[int64]int
@@ -283,6 +290,35 @@ func (r fakeChats) SetRead(_ context.Context, chatID, userID, seq int64, unread 
 		m.unread = unread
 	}
 	return nil
+}
+
+func (r fakeChats) AppendReadMark(_ context.Context, chatID, userID, upToSeq int64) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	if r.s.readMarks == nil {
+		r.s.readMarks = map[int64]map[int64][]readMark{}
+	}
+	if r.s.readMarks[chatID] == nil {
+		r.s.readMarks[chatID] = map[int64][]readMark{}
+	}
+	r.s.readMarks[chatID][userID] = append(r.s.readMarks[chatID][userID], readMark{upToSeq: upToSeq, at: time.Now()})
+	return nil
+}
+
+func (r fakeChats) ReadAtForSeq(_ context.Context, chatID, userID, seq int64) (time.Time, bool, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var best *readMark
+	for i := range r.s.readMarks[chatID][userID] {
+		m := &r.s.readMarks[chatID][userID][i]
+		if m.upToSeq >= seq && (best == nil || m.upToSeq < best.upToSeq) {
+			best = m
+		}
+	}
+	if best == nil {
+		return time.Time{}, false, nil
+	}
+	return best.at, true, nil
 }
 
 func (r fakeChats) LastReadAt(_ context.Context, chatID, userID int64) (time.Time, bool, error) {
@@ -1001,6 +1037,28 @@ func (r fakeMsgs) ListThread(_ context.Context, chatID, threadRootID int64, offs
 		picked = picked[:limit]
 	}
 	return picked, nil
+}
+
+func (r fakeMsgs) RecentThreadRepliers(_ context.Context, chatID int64, rootIDs []int64, limit int) (map[int64][]int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	out := map[int64][]int64{}
+	for _, root := range rootIDs {
+		seen := map[int64]bool{}
+		msgs := r.s.messages[chatID]
+		for i := len(msgs) - 1; i >= 0; i-- {
+			m := msgs[i]
+			if m.ThreadRootID == nil || *m.ThreadRootID != root || m.Deleted || seen[m.SenderID] {
+				continue
+			}
+			seen[m.SenderID] = true
+			out[root] = append(out[root], m.SenderID)
+			if len(out[root]) >= limit {
+				break
+			}
+		}
+	}
+	return out, nil
 }
 
 func (r fakeMsgs) CountThread(_ context.Context, chatID, threadRootID int64) (int, error) {

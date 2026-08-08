@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react'
-// Presentational chat dialogs/popups extracted from ConversationView: delete
+// Presentational chat dialogs/popups extracted from Chat: delete
 // confirm, forward target picker, "seen by" popup, add-member picker, and the
 // discard-voice confirm. Each is dumb — it self-sources i18n + motion constants
 // and emits its actions via callbacks; the parent owns the state.

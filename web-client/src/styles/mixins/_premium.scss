@@ -1,0 +1,11 @@
+@mixin premium($yes: true) {
+  @if $yes {
+    body.is-premium & {
+      @content;
+    }
+  } @else {
+    body:not(.is-premium) & {
+      @content;
+    }
+  }
+}

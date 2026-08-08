@@ -47,8 +47,15 @@ export function MessageReactions({ reactions, star, rowLive, canSeeList, inside,
   // tweb: `is-last` ставится последнему ЧИПУ по индексу, независимо от того,
   // что время едет следом (reactions.ts:319) — свой отступ время несёт само.
   const lastIndex = reactions.length - 1
+  // Разметка tweb (живой DOM §3, _reactions.scss/_reaction.scss):
+  //   reactions-element.reactions.reactions-block.reactions-like-block
+  //     reaction-element.reaction.reaction-block.reaction-like-block[.is-chosen][.is-last][.forwards]
+  //       div.reaction-sticker.is-regular.media-sticker-wrapper
+  //       span.reaction-counter | div.stacked-avatars
   return (
-    <div className={classNames(s.reactions, inside ? s.reactionsInside : '')}>
+    <reactions-element
+      class={classNames('reactions', 'reactions-block', 'reactions-like-block', s.reactions, inside ? s.reactionsInside : '')}
+    >
       {star && <StarReactionChip total={star.total} mine={star.mine} onClick={onStar} />}
       {reactions.map((r, i) => (
         <ReactionChip
@@ -62,7 +69,7 @@ export function MessageReactions({ reactions, star, rowLive, canSeeList, inside,
         />
       ))}
       {trailing}
-    </div>
+    </reactions-element>
   )
 }
 
@@ -73,13 +80,17 @@ const REACTIONS_DISPLAY_COUNTER_AT = 4
 // подсвечен, если зритель вносил вклад (mine>0). Клик — попап выбора количества.
 function StarReactionChip({ total, mine, onClick }: { total: number; mine: number; onClick: () => void }) {
   return (
-    <div
-      className={classNames(s.reactionChip, s.starChip, mine > 0 ? s.reactionChosen : '')}
+    <reaction-element
+      class={classNames(
+        'reaction', 'reaction-block', 'reaction-like-block', 'is-paid',
+        mine > 0 ? 'is-chosen forwards' : '',
+        s.reactionChip, s.starChip, mine > 0 ? s.reactionChosen : '',
+      )}
       onClick={(e) => { e.stopPropagation(); onClick() }}
     >
-      <span className={s.reactionEmoji}><StarIcon size={18} /></span>
-      <span className={s.reactionCount}>{total}</span>
-    </div>
+      <div className={classNames('reaction-sticker', s.reactionEmoji)}><StarIcon size={18} /></div>
+      <span className={classNames('reaction-counter', s.reactionCount)}>{total}</span>
+    </reaction-element>
   )
 }
 
@@ -107,8 +118,12 @@ export function ReactionChip({ r, live, canRenderAvatars, isLast, onToggle, onSh
   // аватары показать нельзя; аватары — ровно в обратном случае.
   const showAvatars = canRenderAvatars && r.count < REACTIONS_DISPLAY_COUNTER_AT && !!r.recent?.length
   return (
-    <div
-      className={classNames(
+    <reaction-element
+      class={classNames(
+        'reaction', 'reaction-block', 'reaction-like-block',
+        chosen ? 'is-chosen forwards' : '',
+        live ? 'animating' : '',
+        isLast ? 'is-last' : '',
         s.reactionChip,
         chosen ? s.reactionChosen : '',
         live ? s.reactionAnimating : '',
@@ -117,12 +132,14 @@ export function ReactionChip({ r, live, canRenderAvatars, isLast, onToggle, onSh
       onClick={(e) => { e.stopPropagation(); onToggle(r.emoji) }}
       onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onShow(e.clientX, e.clientY) }}
     >
-      <span className={s.reactionEmoji}><Emoji e={r.emoji} size={22} /></span>
+      <div className={classNames('reaction-sticker', 'is-regular', 'media-sticker-wrapper', s.reactionEmoji)}>
+        <Emoji e={r.emoji} size={22} />
+      </div>
       {showAvatars ? (
-        <span className={s.reactionAvatars}><StackedAvatars peers={r.recent!} size={24} /></span>
+        <StackedAvatars peers={r.recent!} size={24} />
       ) : (
-        <span className={s.reactionCount}>{r.count}</span>
+        <span className={classNames('reaction-counter', s.reactionCount)}>{r.count}</span>
       )}
-    </div>
+    </reaction-element>
   )
 }

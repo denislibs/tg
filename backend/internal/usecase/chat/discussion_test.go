@@ -186,7 +186,11 @@ func TestPostComment_ThreadsAndAutoJoins(t *testing.T) {
 }
 
 func TestListComments_ReturnsThreadAndCount(t *testing.T) {
-	i, _, _, _ := newChannelTestInteractor(t)
+	i, fg, _, _ := newChannelTestInteractor(t)
+	// карточки комментаторов нужны CommentCounts: он отдаёт их клиенту под стек
+	// аватаров в футере «N комментариев»
+	fg.users[8] = domain.UserCard{ID: 8, DisplayName: "Боб"}
+	fg.users[9] = domain.UserCard{ID: 9, DisplayName: "Алиса"}
 	ch, _ := i.CreateChannel(context.Background(), 7, "News", "", "", true)
 	if _, err := i.EnableDiscussion(context.Background(), ch, 7); err != nil {
 		t.Fatalf("EnableDiscussion: %v", err)
@@ -215,11 +219,25 @@ func TestListComments_ReturnsThreadAndCount(t *testing.T) {
 		t.Fatalf("thread order = %q,%q, want c1,c2", msgs[0].Text, msgs[1].Text)
 	}
 
-	counts, err := i.CommentCounts(context.Background(), ch, []int64{postID, 200, 300})
+	counts, recent, err := i.CommentCounts(context.Background(), ch, []int64{postID, 200, 300})
 	if err != nil {
 		t.Fatalf("CommentCounts: %v", err)
 	}
 	if counts[postID] != 2 || counts[200] != 1 || counts[300] != 0 {
 		t.Fatalf("CommentCounts = %v", counts)
+	}
+	// Авторы последних комментариев — новейшие первыми, без повторов.
+	if len(recent[postID]) == 0 {
+		t.Fatalf("recent repliers for post = %v, want non-empty", recent[postID])
+	}
+	if len(recent[300]) != 0 {
+		t.Fatalf("recent repliers for post without comments = %v, want empty", recent[300])
+	}
+	seen := map[int64]bool{}
+	for _, u := range recent[postID] {
+		if seen[u.ID] {
+			t.Fatalf("recent repliers have duplicates: %v", recent[postID])
+		}
+		seen[u.ID] = true
 	}
 }

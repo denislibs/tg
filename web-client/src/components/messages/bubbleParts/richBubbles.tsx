@@ -16,22 +16,19 @@ import { useLiveShareStore } from '../../../stores/liveShareStore'
 import { stopLiveShare } from '../../../core/liveShareEngine'
 import type { IVArticle } from '../../../core/managers/ivManager'
 import type { ConvMsg } from '../../../data'
-import { BubbleTail, bubbleRadius } from './primitives'
+import { bubbleRadius } from './primitives'
 import s from '../MessageBubbles.module.scss'
 
 /** link preview card (rendered inside a text bubble) */
 export function WebPagePreview({
   wp,
   out,
-  linkColor,
 }: {
   wp: NonNullable<ConvMsg['webPage']>
   out: boolean
-  linkColor: string
 }) {
   const t = useT()
   const managers = useManagers()
-  const accent = out ? '#fff' : linkColor
   const [ivLoading, setIvLoading] = useState(false)
   const [ivArticle, setIvArticle] = useState<IVArticle | null>(null)
   // Кнопка ленивая: серверного флага «есть IV» нет — показываем всегда при наличии
@@ -48,32 +45,33 @@ export function WebPagePreview({
       setIvLoading(false)
     }
   }
+  // Разметка tweb (wrappers/webPage.tsx:105-142): .webpage.quote-like >
+  // .webpage-quote.quote-like-border > .webpage-content > (.webpage-preview-resizer,
+  // .webpage-name, .webpage-title, .webpage-text, .webpage-footer).
   return (
-    <div className={s.webpage} data-out={out || undefined} style={{ borderLeft: `3px solid ${accent}` }}>
-      {wp.imageUrl && (
-        <img className={s.webPhoto} src={wp.imageUrl} alt="" loading="lazy" draggable={false} referrerPolicy="no-referrer" />
-      )}
-      <Text size={14} weight={600} color={accent}>
-        {wp.siteName}
-      </Text>
-      <Text size={14.5} weight={600} color="var(--wp-title)">
-        {wp.title}
-      </Text>
-      {wp.description && (
-        <Text size={14} color="var(--wp-desc)" style={{ lineHeight: 1.35 }}>
-          {wp.description}
-        </Text>
-      )}
-      {wp.gradient && (
-        <div className={s.webImg} style={{ background: wp.gradient }}>
-          {wp.emoji && <Text size={56} style={{ zIndex: 1 }}>{wp.emoji}</Text>}
+    <div className={classNames('webpage', 'quote-like', s.webpage)} data-out={out || undefined}>
+      <div className={classNames('webpage-quote', 'quote-like-border')}>
+        <div className="webpage-content">
+          {wp.imageUrl && (
+            <div className="webpage-preview-resizer">
+              <img className={classNames('webpage-preview', s.webPhoto)} src={wp.imageUrl} alt="" loading="lazy" draggable={false} referrerPolicy="no-referrer" />
+            </div>
+          )}
+          <div className="webpage-name">{wp.siteName}</div>
+          <div className="webpage-title">{wp.title}</div>
+          {wp.description && <div className="webpage-text">{wp.description}</div>}
+          {wp.gradient && (
+            <div className={s.webImg} style={{ background: wp.gradient }}>
+              {wp.emoji && <Text size={56} style={{ zIndex: 1 }}>{wp.emoji}</Text>}
+            </div>
+          )}
+          {wp.url && (
+            <button type="button" className={classNames('webpage-footer', 'is-button', s.ivButton)} onClick={openIV}>
+              {ivLoading ? <Spinner size={16} thickness={2} /> : <>⚡ {t('Instant View')}</>}
+            </button>
+          )}
         </div>
-      )}
-      {wp.url && (
-        <button type="button" className={s.ivButton} style={{ color: accent }} onClick={openIV}>
-          {ivLoading ? <Spinner size={16} thickness={2} /> : <>⚡ {t('Instant View')}</>}
-        </button>
-      )}
+      </div>
       {ivArticle && wp.url && (
         <InstantView url={wp.url} article={ivArticle} onClose={() => setIvArticle(null)} />
       )}
@@ -92,7 +90,10 @@ export function FactCheckBox({ fc, out, linkColor }: { fc: NonNullable<ConvMsg['
   const [expanded, setExpanded] = useState(false)
   const collapsible = (fc.text?.length ?? 0) > 160
   return (
-    <div className={s.factCheck} data-out={out || undefined} style={{ borderLeft: `3px solid ${accent}` }}>
+    <div
+      className={classNames('bubble-fact-check', 'quote-like', 'quote-like-border', s.factCheck)}
+      data-out={out || undefined}
+    >
       <Text size={14} weight={600} color={accent}>{t('Fact Check')}</Text>
       <div className={classNames(s.factText, collapsible && !expanded ? s.clamped : '')}>
         <Text size={14.5} color="var(--wp-title)" style={{ lineHeight: 1.35 }}>
@@ -141,19 +142,18 @@ export function CallBubble({ m, out, firstInGroup, lastInGroup, time, reactions,
       onClick={onClick}
       style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup), cursor: onClick ? 'pointer' : undefined }}
     >
-      {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
       {/* tweb кладёт `.bubble-call` внутрь `.message` (bubbles.ts:8701) — отступы
           и точку отсчёта для времени даёт тело сообщения, а не padding бабла */}
-      <div className={s.msgBody}>
-        <div className={s.call}>
+      <div className={classNames('message', 'spoilers-container', s.msgBody)}>
+        <div className={classNames('bubble-call', s.call)}>
           {/* tweb `.bubble-call-icon`: просто глиф слева абсолютом, без подложки,
               цветом текста бабла */}
-          <TgIcon name={call.video ? 'videocamera' : 'phone'} className={s.callIcon} size="1.5rem" />
-          <Text weight={600} size="var(--messages-text-size)">{title}</Text>
-          <div className={s.callSub}>
+          <TgIcon name={call.video ? 'videocamera' : 'phone'} className={classNames('bubble-call-icon', s.callIcon)} size="1.5rem" />
+          <div className="bubble-call-title">{title}</div>
+          <div className={classNames('bubble-call-subtitle', s.callSub)}>
             <TgIcon
               name="arrow_next"
-              className={classNames(s.callArrow, call.duration != null ? s.callArrowGreen : s.callArrowRed)}
+              className={classNames('bubble-call-arrow', call.duration != null ? 'bubble-call-arrow-green' : 'bubble-call-arrow-red', s.callArrow, call.duration != null ? s.callArrowGreen : s.callArrowRed)}
               size="1rem"
             />
             {sub}
@@ -176,10 +176,9 @@ const GEO_W = 277
 const GEO_H = 195
 const GEO_ZOOM = 15
 
-export function GeoBubble({ m, out, lastInGroup, radius, time }: {
+export function GeoBubble({ m, out, radius, time }: {
   m: ConvMsg
   out: boolean
-  lastInGroup: boolean
   radius: string
   time?: ReactNode
 }) {
@@ -218,7 +217,6 @@ export function GeoBubble({ m, out, lastInGroup, radius, time }: {
   }
   return (
     <div className={s.geoWrap}>
-      {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
       <a
         className={s.geoContainer}
         style={{ borderRadius: (isVenue || isLive) ? `${radius.split(' ')[0]} ${radius.split(' ')[0]} 0 0` : radius }}
@@ -279,11 +277,8 @@ export function GeoBubble({ m, out, lastInGroup, radius, time }: {
 }
 
 // ── бабл контакта (tweb .bubble.contact-message: аватар 54 + имя + телефон) ──
-export function ContactBubble({ m, out, firstInGroup, lastInGroup, time, reactions, onOpen }: {
+export function ContactBubble({ m, time, reactions, onOpen }: {
   m: ConvMsg
-  out: boolean
-  firstInGroup: boolean
-  lastInGroup: boolean
   time?: ReactNode
   reactions?: ReactNode
   /** клик по контакту — открыть чат/профиль (tweb contactDiv.dataset.peerId) */
@@ -292,13 +287,16 @@ export function ContactBubble({ m, out, firstInGroup, lastInGroup, time, reactio
   const c = m.contact!
   const initials = (c.name || '?').split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()
   return (
-    <div className={s.contactBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
-      {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
-      <div className={s.contactRow} onClick={onOpen} style={{ cursor: onOpen ? 'pointer' : 'default' }}>
-        <Avatar background={peerColor(c.name || String(c.userId))} text={initials} size={54} />
-        <div className={s.contactDetails}>
-          <Text size={16} weight={700} color="var(--b-text)" noWrap>{c.name || `#${c.userId}`}</Text>
-          <Text size={14} color="var(--b-secondary)" noWrap>{c.phone ? `+${c.phone.replace(/^\+/, '')}` : ''}</Text>
+    <div className={classNames('message', 'spoilers-container', s.contactBubble)}>
+      {/* Дерево tweb (_chatBubble.scss:1319-1347): .contact > .contact-avatar +
+          .contact-details > .contact-name + .contact-number */}
+      <div className={classNames('contact', s.contactRow)} onClick={onOpen} style={{ cursor: onOpen ? 'pointer' : 'default' }}>
+        <div className="contact-avatar">
+          <Avatar background={peerColor(c.name || String(c.userId))} text={initials} size={54} />
+        </div>
+        <div className={classNames('contact-details', s.contactDetails)}>
+          <div className="contact-name">{c.name || `#${c.userId}`}</div>
+          <div className="contact-number">{c.phone ? `+${c.phone.replace(/^\+/, '')}` : ''}</div>
         </div>
       </div>
       {time}

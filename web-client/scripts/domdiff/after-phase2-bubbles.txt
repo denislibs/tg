@@ -1,0 +1,25 @@
+снимок: scripts/domdiff/snapshots/our-feed-final-51.json
+эталонов: 20, баблов в снимке: 26
+
+text-out-first-last-mid-21335                  20 findings  {"missing-class":7,"extra-class":7,"extra-node":2,"wrong-tag":2,"missing-node":2}
+text-in-first-last-mid-21395                   15 findings  {"missing-class":3,"extra-class":6,"extra-node":2,"missing-node":3,"wrong-tag":1}
+text-out-is-group-first-mid-21396              18 findings  {"missing-class":6,"extra-class":9,"extra-node":1,"missing-node":1,"wrong-tag":1}
+voice-out-is-group-last-mid-21397              16 findings  {"missing-class":4,"extra-class":4,"missing-attr":2,"missing-node":4,"extra-node":1,"wrong-tag":1}
+forwarded-channel-post-mid-21341               — в снимке нет бабла типа [forwarded,channel-post]
+big-animated-emoji-mid-21391                   14 findings  {"missing-class":7,"extra-class":4,"wrong-tag":1,"extra-node":1,"missing-node":1}
+photo-out-mid-21393                            20 findings  {"missing-class":10,"extra-class":5,"wrong-tag":1,"extra-node":1,"missing-node":3}
+service-date                                   0 findings  {}
+sticker-bubble-full                            — в снимке нет бабла типа [sticker]
+poll-bubble-full                               — в снимке нет бабла типа [poll-message]
+video-bubble-uploading-full                    20 findings  {"missing-class":9,"extra-class":5,"wrong-tag":1,"extra-node":1,"missing-node":4}
+document-bubble-2-full                         12 findings  {"missing-class":5,"extra-class":4,"extra-node":1,"missing-node":2}
+album-channel-post-bubble-full                 — в снимке нет бабла типа [is-album,photo,channel-post]
+document-bubble-full                           12 findings  {"missing-class":6,"extra-class":3,"extra-node":1,"missing-node":2}
+reply-bubble-full                              — в снимке нет бабла типа [is-reply]
+audio-song-bubble-full                         — в снимке нет бабла типа [audio-message]
+service-action-bubble                          3 findings  {"missing-attr":2,"missing-node":1}
+round-video-video-note                         — в снимке нет бабла типа [round,channel-post]
+video-bubble-single                            — в снимке нет бабла типа [video,channel-post]
+sponsored-bubble                               — в снимке нет бабла типа [photo,is-sponsored,has-webpage]
+
+missing-node не раскрывается вглубь: целое непортированное поддерево — одна строка.

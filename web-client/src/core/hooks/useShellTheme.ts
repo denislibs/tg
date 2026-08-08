@@ -2,9 +2,9 @@
 // глобальному ChatBackground (App), чтобы обои темы чата были видны за
 // колонками (tweb рисует обои per-peer, а не только в колонке). Цветовые
 // CSS-переменные (--primary-color и производные) больше НЕ поднимаются на
-// #app-shell — tweb применяет тему чата только на контейнере колонки чата
+// шелл — tweb применяет тему чата только на контейнере колонки чата
 // (chat.ts applyContainerTheme → applyTheme(theme, this.container)), боковые
-// колонки остаются на глобальной теме. Скоуп цвета — в ConversationView
+// колонки остаются на глобальной теме. Скоуп цвета — в Chat
 // (applyChatTheme/clearChatTheme на .root).
 import { chatThemeVariant, type ChatThemeVariant } from '../../chatThemes'
 import { resolvePreset, PRESET_MODE } from '../../theme'

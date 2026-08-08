@@ -26,6 +26,8 @@ interface AvatarProps {
   online?: boolean
   /** color of the ring around the online dot (defaults to the surface behind the avatar) */
   ringColor?: string
+  /** дополнительные классы на корне (например .person-avatar из tweb-топбара) */
+  className?: string
 }
 
 export default function Avatar({
@@ -37,6 +39,7 @@ export default function Avatar({
   color = '#fff',
   online = false,
   ringColor,
+  className,
 }: AvatarProps) {
   const px = typeof size === 'number' ? size : AVATAR_SIZE[size]
   // Dynamic per-instance values ride in as CSS variables; the module derives the
@@ -49,7 +52,7 @@ export default function Avatar({
   } as CSSProperties
 
   return (
-    <div className={s.root} style={style}>
+    <div className={className ? `${s.root} ${className}` : s.root} style={style}>
       <div className={s.circle}>
         {src ? (
           <img className={s.image} src={src} alt="" loading="lazy" decoding="async" />

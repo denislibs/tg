@@ -4,9 +4,9 @@
 // сегмент — сплошной «mark», остальные — подложка с opacity .4; при >4 пинах
 // трек скроллится внутри 40px окна с фейдами сверху/снизу (border-mask).
 // index — по треку сверху вниз (0 = верхний/старейший), как в tweb render().
+// Классы — tweb (styles/tweb/_chatPinned.scss `.pinned-message-border*`).
 import { useId } from 'react'
 import classNames from '../../shared/lib/classNames'
-import s from './PinnedBar.module.scss'
 
 const BAR_HEIGHTS = { ONE: 40, TWO: 19, THREE: 12, FOUR: 10, MORE: 10 } as const
 const GAP = 2
@@ -59,8 +59,8 @@ export default function PinnedBorder({ count, index }: { count: number; index: n
 
   if (count <= 1) {
     return (
-      <div className={s.border}>
-        <div className={s.borderOne} />
+      <div className="pinned-message-border">
+        <div className="pinned-message-border-wrapper-1" />
       </div>
     )
   }
@@ -75,14 +75,14 @@ export default function PinnedBorder({ count, index }: { count: number; index: n
   return (
     <div
       className={classNames(
-        s.border,
-        count > 4 ? s.borderMasked : '',
-        maskTop ? s.borderMaskTop : '',
-        maskBottom ? s.borderMaskBottom : '',
+        'pinned-message-border',
+        count > 4 ? 'pinned-message-border-mask' : '',
+        maskTop ? 'mask-top' : '',
+        maskBottom ? 'mask-bottom' : '',
       )}
     >
       <div
-        className={s.borderWrapper}
+        className="pinned-message-border-wrapper"
         style={{ clipPath: `url(#${clipId})`, width: WIDTH, height: trackHeight, transform: `translateY(-${trackTranslateY}px)` }}
       >
         <svg width={0} height={0}>
@@ -92,7 +92,7 @@ export default function PinnedBorder({ count, index }: { count: number; index: n
             </clipPath>
           </defs>
         </svg>
-        <div className={s.borderMark} style={{ height: barHeight, transform: `translateY(${markTranslateY}px)` }} />
+        <div className="pinned-message-border-mark" style={{ height: barHeight, transform: `translateY(${markTranslateY}px)` }} />
       </div>
     </div>
   )

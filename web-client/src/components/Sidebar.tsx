@@ -1,6 +1,7 @@
-import { useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { EASE } from '../motion'
+import { setFoldersSidebarShown } from '../core/dom/updateColumnWidths'
 import classNames from '../shared/lib/classNames'
 import s from './Sidebar.module.scss'
 import { useChatsStore, loadChats } from '../stores/chatsStore'
@@ -99,6 +100,9 @@ export default function Sidebar({
   const tabsInSidebar = useSettings((st) => st.tabsInSidebar)
   const narrowScreen = useMediaQuery('(max-width:900px)')
   const foldersSidebarShown = tabsInSidebar && folders.length > 0 && !narrowScreen && !fullWidth
+  // tweb stores/foldersSidebar.ts → setFoldersSidebarShown: панель папок резервирует
+  // место, значит правая колонка начинает всплывать раньше, а чат — уже.
+  useEffect(() => { setFoldersSidebarShown(foldersSidebarShown) }, [foldersSidebarShown])
 
   // Меню бургера и вертикальной колонки папок — один набор обработчиков на оба места.
   const menuActions: MainMenuHandlers = {
@@ -120,9 +124,10 @@ export default function Sidebar({
 
   return (
     <div
-      id="chatlist-column"
-      className={classNames(s.root, fullWidth ? s.fullWidth : '', forumChat ? s.hasForum : '')}
-      style={foldersSidebarShown ? ({ '--folders-sidebar-offset': '80px' } as CSSProperties) : undefined}
+      // #column-left — как в tweb (живой DOM §1); --folders-sidebar-offset и
+      // остальные ширины колонок пишет core/dom/updateColumnWidths.
+      id="column-left"
+      className={classNames(s.root, 'tabs-tab', 'chatlist-container', 'sidebar', 'sidebar-left', 'main-column', 'sidebar-left-common', 'can-menu-have-z-index', fullWidth ? s.fullWidth : '', forumChat ? s.hasForum : '')}
     >
       {/* tweb #folders-sidebar — вертикальная колонка папок в поле страницы */}
       {foldersSidebarShown && (
@@ -238,17 +243,20 @@ export default function Sidebar({
             </motion.div>
           </div>
         )}
+
+        {/* tweb: кнопка «новый чат» (#new-menu.btn-corner) живёт ВНУТРИ
+            .sidebar-content, рядом с чат-листом и выдачей поиска, — от него же
+            и позиционируется. */}
+        <ComposeFab
+          searching={searching || !!forumChat}
+          onNewGroup={() => setScreen('newGroup')}
+          onNewPrivate={() => setScreen('newPrivate')}
+          onNewChannel={() => setScreen('newChannel')}
+          onNewSecret={() => setScreen('newSecret')}
+        />
       </div>
 
       {forumPanel}
-
-      <ComposeFab
-        searching={searching || !!forumChat}
-        onNewGroup={() => setScreen('newGroup')}
-        onNewPrivate={() => setScreen('newPrivate')}
-        onNewChannel={() => setScreen('newChannel')}
-        onNewSecret={() => setScreen('newSecret')}
-      />
 
       {folderOverlays}
 

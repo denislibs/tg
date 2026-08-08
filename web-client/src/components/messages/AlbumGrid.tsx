@@ -6,7 +6,9 @@ import Text from '../../shared/ui/Text'
 import TgIcon from '../TgIcon'
 import Checkbox from '../../shared/ui/Checkbox'
 import RadialProgress from '../RadialProgress'
-import { Layouter } from '../../core/dom/groupedLayout'
+import { Layouter, RectPart } from '../../core/dom/groupedLayout'
+import { mediaSizes } from '../../core/dom/mediaSizes'
+import classNames from '../../shared/lib/classNames'
 import { mediaContentUrl, mediaThumbUrl, hasMediaToken, useMediaTokenVersion } from '../../core/mediaUrl'
 import { useUploadsStore } from '../../stores/uploadsStore'
 import { fmtDur } from '../../core/hooks/useVoiceRecorder'
@@ -14,15 +16,25 @@ import type { ConvMsg } from '../../data'
 import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import s from './AlbumGrid.module.scss'
 
-// Размеры грида — наш медиабокс (tweb mediaSizes.album 420 на десктопе;
-// у нас лента с боксом 320×420, minWidth/spacing — из tweb prepareAlbum).
-const MAX_W = 320
-const MAX_H = 420
+// Размеры грида — tweb wrappers/album.ts:56-60: maxWidth = mediaSizes.album
+// (420 десктоп / 340 узкий экран), minWidth 100, spacing 1.
 const MIN_W = 100
-const SPACING = 2
+const SPACING = 1
+
+// Углы элемента — tweb prepareAlbum.ts:42-58: наружные скругления берутся от
+// радиусов бабла минус spacing, внутренние остаются прямыми.
+function cornerRadii(sides: number): Record<string, string> {
+  const r: Record<string, string> = {}
+  const has = (p: number) => (sides & p) !== 0
+  if (has(RectPart.Left) && has(RectPart.Top)) r.borderStartStartRadius = `calc(var(--border-start-start-radius) - ${SPACING}px)`
+  if (has(RectPart.Left) && has(RectPart.Bottom)) r.borderEndStartRadius = `calc(var(--border-end-start-radius) - ${SPACING}px)`
+  if (has(RectPart.Right) && has(RectPart.Top)) r.borderStartEndRadius = `calc(var(--border-start-end-radius) - ${SPACING}px)`
+  if (has(RectPart.Right) && has(RectPart.Bottom)) r.borderEndEndRadius = `calc(var(--border-end-end-radius) - ${SPACING}px)`
+  return r
+}
 
 export default function AlbumGrid({
-  items, selecting, selectedKey, time, onToggle, onOpen, autoDownload, radius,
+  items, selecting, selectedKey, time, onToggle, onOpen, autoDownload,
 }: {
   items: ConvMsg[]
   selecting: boolean
@@ -33,7 +45,6 @@ export default function AlbumGrid({
   onToggle: (id: number) => void
   onOpen?: (mediaId: number, el: HTMLElement) => void
   autoDownload?: ChatAutoDownload
-  radius?: string
 }) {
   useMediaTokenVersion()
   const tokenReady = hasMediaToken()
@@ -47,7 +58,8 @@ export default function AlbumGrid({
       w: m.mediaWidth || 100,
       h: m.mediaHeight || 100,
     }))
-    return new Layouter(sizes, MAX_W, MIN_W, SPACING, MAX_H).layout()
+    const album = mediaSizes().album
+    return new Layouter(sizes, album.width, MIN_W, SPACING, album.height || undefined).layout()
   }, [items])
 
   // Габариты контейнера — по крайним элементам (tweb prepareAlbum)
@@ -55,7 +67,7 @@ export default function AlbumGrid({
   const height = useMemo(() => Math.max(...layout.map((l) => l.geometry.y + l.geometry.height)), [layout])
 
   return (
-    <div className={s.grid} style={{ width, height, borderRadius: radius }}>
+    <div className={classNames('attachment', 'media-container', 'no-background')} style={{ width, height }}>
       {items.map((m, i) => {
         const g = layout[i].geometry
         const isVideo = m.type === 'video'
@@ -71,13 +83,14 @@ export default function AlbumGrid({
         return (
           <div
             key={m.id ?? m.clientId ?? i}
-            className={s.item}
+            className={classNames('album-item', 'grouped-item', s.item)}
             style={{
               left: `${(g.x / width) * 100}%`,
               top: `${(g.y / height) * 100}%`,
               width: `${(g.width / width) * 100}%`,
               height: `${(g.height / height) * 100}%`,
               backgroundImage: lqip,
+              ...cornerRadii(layout[i].sides),
             }}
             onClick={(e) => {
               e.stopPropagation()
@@ -86,7 +99,7 @@ export default function AlbumGrid({
               if (m.mediaId != null) onOpen?.(m.mediaId, e.currentTarget)
             }}
           >
-            {src && <img className={s.img} src={src} alt="" loading="lazy" decoding="async" />}
+            {src && <img className={classNames('album-item-media', s.img)} src={src} alt="" loading="lazy" decoding="async" />}
             {isSel && <div className={s.selectedDim} />}
             {selecting && m.id != null && (
               <div className={s.check}>

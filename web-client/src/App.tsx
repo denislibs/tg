@@ -4,14 +4,18 @@ import { useConnectionStore, pingBackend } from './stores/connectionStore'
 import { MotionConfig } from 'framer-motion'
 import { useSettingsStore } from './settings'
 import Sidebar from './components/Sidebar'
-import ConversationView from './components/ConversationView'
+import Chat from './components/Chat'
 import PopupHost from './components/PopupHost'
 import ChatBackground from './components/ChatBackgroundLazy'
 import GlobalOverlays from './components/shell/GlobalOverlays'
 import ShellLayout from './components/shell/ShellLayout'
 import AuthFlow from './components/auth/AuthFlow'
 import { useT } from './i18n'
-import type { Chat } from './data'
+import classNames from './shared/lib/classNames'
+import { installColumnWidthsUpdater } from './core/dom/updateColumnWidths'
+// Сущность чата из модели данных; компонент ниже называется так же (как в tweb),
+// поэтому тип импортируется под алиасом.
+import type { Chat as ChatEntity } from './data'
 import { gradientFor } from './core/dialogToChat'
 import { usePipStore } from './core/pip'
 import { useAppBootstrap } from './core/hooks/useAppBootstrap'
@@ -38,6 +42,10 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   const t = useT()
 
   // Инфраструктура Shell (эффекты без общего стейта).
+  // Ширины колонок (порт tweb updateColumnWidths): JS пишет --chat-width /
+  // --left-column-width / --page-chats-padding и класс body.right-column-floats,
+  // из которых портированные партиалы раскладывают чат и ленту.
+  useLayoutEffect(() => { installColumnWidthsUpdater() }, [])
   useAppBootstrap()
   useShellEnterAnimation()
   useAutoLock()
@@ -58,7 +66,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   const backToList = narrow ? () => nav.setSelectedId(null) : undefined
 
   // Черновик-чат (id "draft:<peerId>"), когда реального диалога ещё нет.
-  const draftChat: Chat | null =
+  const draftChat: ChatEntity | null =
     draftPeer && selectedId === `draft:${draftPeer.id}`
       ? {
           id: `draft:${draftPeer.id}`,
@@ -87,7 +95,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 
   // Чат треда: диалог из списка, а для комментариев (discussion-группа, где мы
   // можем не состоять) — синтетический Chat.
-  const threadChat: Chat | null = openThread
+  const threadChat: ChatEntity | null = openThread
     ? chatList.find((c) => c.id === String(openThread.chatId)) ?? {
         id: String(openThread.chatId),
         name: openThread.thread.title,
@@ -101,31 +109,58 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 
   const { shellThemeVariant } = useShellTheme({ selected, openThread, threadChat })
 
-  const chatArea =
+  // Ключ вкладки чата: его смена ремаунтит колонку (и весь её стейт).
+  const tabKey = openThread && threadChat
+    ? `thread-${openThread.chatId}-${openThread.thread.rootMsgId}`
+    : selected
+      ? `chat-${selected.id}`
+      : 'empty'
+
+  const chatBody =
     openThread && threadChat ? (
-      <ConversationView
-        key={`thread-${openThread.chatId}-${openThread.thread.rootMsgId}`}
+      <Chat
+        key={tabKey}
         chat={threadChat}
         thread={openThread.thread}
         onBack={backToList}
       />
     ) : selected ? (
-      <ConversationView key={selectedId} chat={selected} onBack={backToList} />
+      <Chat key={tabKey} chat={selected} onBack={backToList} />
     ) : (
       <div className={s.empty}>
         <div className={s.emptyPill}>{t('Select a chat to start messaging')}</div>
       </div>
     )
 
+  // #column-center — как в tweb (живой DOM §1): у него свой --page-chats-padding,
+  // от него считаются инсеты .bubbles и маска фейдов ленты. Внутри —
+  // .chats-container.tabs-container с колонкой чата (tweb §1).
+  const chatArea = (
+    <div id="column-center" className={classNames('tabs-tab', 'main-column')}>
+      <div className="chats-container tabs-container">{chatBody}</div>
+    </div>
+  )
+
+  // Каркас страницы — 1:1 из живого tweb (§1):
+  //   div.sidebar-left-overlay
+  //   div.whole.page-chats#page-chats
+  //     div#main-columns.tabs-container[data-animation="navigation"]
+  //       #folders-sidebar (портал из Sidebar) + #column-left + #column-center
+  //       + #column-right (портал из UserInfoPanel)
   return (
-    <div id="app-shell" className={s.root}>
+    <>
       {/* Animated 4-point gradient wallpaper + doodle pattern (tweb-style). Обои темы
           активного чата поднимаются сюда, чтобы весь shell был в теме (осознанное
           отклонение от tweb-скоупа для цветов — см. useShellTheme). Цвета темы чата
-          при этом остаются локально в колонке (ConversationView). */}
+          при этом остаются локально в колонке (Chat). */}
       <ChatBackground themeColors={shellThemeVariant?.gradient} />
 
-      <ShellLayout narrow={narrow} selectedId={selectedId} renderSidebar={renderSidebar} chatArea={chatArea} />
+      <div className="sidebar-left-overlay" />
+      <div id="page-chats" className="whole page-chats">
+        <div id="main-columns" className="tabs-container" data-animation="navigation">
+          <ShellLayout narrow={narrow} selectedId={selectedId} renderSidebar={renderSidebar} chatArea={chatArea} />
+        </div>
+      </div>
 
       <GlobalOverlays
         chatList={chatList}
@@ -137,7 +172,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
         closeAddlist={deep.closeAddlist}
         onAddlistJoined={deep.onAddlistJoined}
       />
-    </div>
+    </>
   )
 }
 

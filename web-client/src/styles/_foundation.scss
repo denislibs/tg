@@ -1,7 +1,9 @@
 // src/styles/_foundation.scss — единая точка доступа к фундаменту (токены-консты,
-// функции, миксины), портированному 1:1 из tweb. Компоненты подключают так:
-//   @use '../styles/foundation' as *;
-// и используют $border-radius, respond-to(...), text-overflow(...) и т.д.
+// функции, миксины, глифы tgico), портированному 1:1 из tweb (там это shared.scss).
+// Компоненты и портированные партиалы подключают так:
+//   @use '../styles/foundation' as *;   /   @use '../foundation' as *;
+// и используют $border-radius, respond-to(...), hover-effect(...), $tgico-* и т.д.
 @forward "variables";
 @forward "functions";
 @forward "mixins";
+@forward "tgico/variables";

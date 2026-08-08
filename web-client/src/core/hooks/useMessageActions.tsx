@@ -179,7 +179,7 @@ export function useMessageActions({
     closeMsgMenu()
   }
   // Выбран целевой чат: кладём pending-reply в стор и переключаемся туда —
-  // ConversationView на маунте поставит reply-плашку с исходным чатом + снимком.
+  // Chat на маунте поставит reply-плашку с исходным чатом + снимком.
   const pickReplyAnotherChat = (targetChatId: number) => {
     const r = replyAnother
     setReplyAnother(null)

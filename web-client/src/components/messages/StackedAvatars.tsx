@@ -4,6 +4,7 @@
 // числа при count<4 (см. ReactionChip).
 import type { CSSProperties } from 'react'
 import UserAvatar from '../UserAvatar'
+import classNames from '../../shared/lib/classNames'
 import s from './StackedAvatars.module.scss'
 
 export interface StackedAvatarPeer {
@@ -22,9 +23,21 @@ export default function StackedAvatars({
 }) {
   if (!peers.length) return null
   return (
-    <div className={s.stack} style={{ '--avatar-size': `${size}px` } as CSSProperties} data-testid="stacked-avatars">
-      {peers.map((p) => (
-        <div key={p.id} className={s.item}>
+    <div
+      className={classNames('stacked-avatars', s.stack)}
+      style={{ '--avatar-size': `${size}px` } as CSSProperties}
+      data-testid="stacked-avatars"
+    >
+      {peers.map((p, i) => (
+        <div
+          key={p.id}
+          className={classNames(
+            'stacked-avatars-avatar-container',
+            i === 0 ? 'is-first' : '',
+            i === peers.length - 1 ? 'is-last' : '',
+            s.item,
+          )}
+        >
           <UserAvatar id={p.id} name={p.name} avatarUrl={p.avatarUrl} size={size} />
         </div>
       ))}

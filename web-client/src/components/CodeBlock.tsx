@@ -88,23 +88,24 @@ export default function CodeBlock({ code, language }: { code: string; language?:
 
   const label = lang?.label ?? (language ? language.toUpperCase() : 'Код')
 
+  // Разметка tweb (base.scss:1979-2041 → styles/tweb/_code.scss): контейнер
+  // `.quote-like.quote-like-border.code`, шапка `.code-header` (имя языка +
+  // круглая кнопка копирования) и тело `.code-code`.
   return (
-    <div onClick={(e) => e.stopPropagation()} className={s.root}>
-      {/* header: language name + copy */}
-      <div className={s.header}>
-        <span className={s.label}>{label}</span>
+    <div onClick={(e) => e.stopPropagation()} className="quote-like quote-like-border code">
+      <div className="code-header" onClick={copy}>
+        <span className="code-header-name">{label}</span>
         <span
           role="button"
           title="Скопировать"
           onClick={copy}
-          className={classNames(s.copy, copied ? s.copied : '')}
+          className={classNames('code-header-button', copied ? s.copied : '')}
         >
           <TgIcon name={copied ? 'check' : 'copy'} size={16} />
         </span>
       </div>
-      {/* body */}
-      <pre className={s.body}>
-        <code>{body}</code>
+      <pre className="code-content">
+        <code className="code-code">{body}</code>
       </pre>
     </div>
   )

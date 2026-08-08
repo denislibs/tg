@@ -35,11 +35,13 @@ export type TimeMode = 'inline' | 'block' | 'nofloat' | 'floating' | 'corner' | 
  * схлопывает его float, чтобы блок сообщения учёл высоту распорки.
  */
 export function TimeClearfix() {
-  return <span className={s.clearfix} />
+  return <span className={classNames('clearfix', s.clearfix)} />
 }
 
 /** Подвариант `corner` — значения смещения зависят от типа контейнера (tweb). */
-export type TimeCorner = 'default' | 'audio' | 'poll'
+// 'container' — позиционирует сам контейнер правилами tweb (.audio .time,
+// .document .time): используется там, где бабл уже на структуре tweb.
+export type TimeCorner = 'default' | 'audio' | 'poll' | 'container'
 
 /**
  * Рендер времени с выбором режима на стороне бабла: форму (пилюля поверх медиа
@@ -134,14 +136,14 @@ export default function Time({
       {out && status && (
         <TgIcon
           name={status === 'sending' ? 'sending' : status === 'error' ? 'sendingerror' : status === 'read' ? 'checks' : 'check'}
-          className={classNames(s.status, status === 'error' ? s.statusError : '')}
+          className={classNames('time-sending-status', s.status, status === 'error' ? s.statusError : '')}
           size="calc(var(--messages-text-size) + 3px)"
         />
       )}
       {edited && <span className={s.edited}>{t('edited')}</span>}
       {/* truthy как в tweb (messageRender.ts:273): views=0 приходит для не-канальных */}
       {views ? (
-        <span className={s.views}>
+        <span className={classNames('post-views', s.views)}>
           {fmtViews(views)}
           <TgIcon name="channelviews" className={classNames(s.icon, s.iconViews)} size="1.125rem" />
         </span>
@@ -175,18 +177,23 @@ export default function Time({
           {EFFECT_EMOJI[effect]}
         </button>
       )}
-      {fmtTime(time)}
+      <span className="i18n">{fmtTime(time)}</span>
     </>
   )
 
   return (
     <span
       className={classNames(
+        // базовые имена tweb — по ним работают правила портированных партиалов
+        // (.bubble .time, .audio .time, .document .time и т.д.)
+        'time',
+        mode === 'floating' ? 'is-floating' : '',
+        mode === 'block' ? 'is-block' : '',
         s.time,
         mode === 'block' ? s.block : '',
         mode === 'nofloat' ? s.noFloat : '',
         mode === 'floating' ? s.floating : '',
-        mode === 'corner' ? s.corner : '',
+        mode === 'corner' && corner !== 'container' ? s.corner : '',
         mode === 'corner' && corner === 'audio' ? s.cornerAudio : '',
         mode === 'corner' && corner === 'poll' ? s.cornerPoll : '',
         mode === 'plain' ? s.plain : '',
@@ -196,7 +203,7 @@ export default function Time({
       )}
     >
       {parts(false)}
-      <span className={s.inner} title={title}>
+      <span className={classNames('time-inner', s.inner)} title={title}>
         {parts(true)}
       </span>
     </span>

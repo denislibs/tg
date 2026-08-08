@@ -1,0 +1,11 @@
+{
+  "_": "Настройки сверки. ignoreClasses — классы, которые differ не считает расхождением: только те, у которых в tweb нет и не будет аналога, каждый с обоснованием в README. Строка вида /regex/ трактуется как регулярка.",
+  "ignoreClasses": [],
+  "attrKeys": ["data-mid", "data-peer-id"],
+  "tolerance": {
+    "width": 0.5,
+    "height": 0.5,
+    "font-size": 0.5,
+    "line-height": 0.5
+  }
+}

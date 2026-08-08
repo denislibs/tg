@@ -1,6 +1,6 @@
 // src/core/hooks/useChatInfoCard.ts
 // View-model hook for a real group/channel's header card (extracted from
-// ConversationView): fetches type + member count + my rights, and for groups the
+// Chat): fetches type + member count + my rights, and for groups the
 // member snapshot (seeding their presence into the store as the single source of
 // truth). Derives the post/type permissions, discussion wiring, and the live online
 // count. Behaviour is unchanged.

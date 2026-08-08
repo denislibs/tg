@@ -3,12 +3,13 @@
 // Channel-only wiring for the conversation: live subscription (which also drives
 // the worker's per-channel pts funnel — cursor seed + catch-up via typed
 // /difference), plus per-post comment/view counts. No-ops for non-channels. (Сам
-// тред комментариев — обычный ConversationView в thread-режиме; открытие — через
+// тред комментариев — обычный Chat в thread-режиме; открытие — через
 // App.openThread.)
 import { useEffect, useState } from 'react'
 import { useMessagesStore } from '../../stores/messagesStore'
 import { useManagers } from './useManagers'
 import type { MessageWindow } from './useMessageWindow'
+import type { CommentReplier } from '../managers/channelsManager'
 
 interface UseChannelExtrasArgs {
   isRealChat: boolean
@@ -20,9 +21,12 @@ interface UseChannelExtrasArgs {
 
 export function useChannelExtras({ isRealChat, isChannel, numericChatId, win, discussionsEnabled }: UseChannelExtrasArgs): {
   commentCounts: Map<number, number>
+  /** авторы последних комментариев по посту — стек аватаров в футере */
+  commentRepliers: Map<number, CommentReplier[]>
 } {
   const managers = useManagers()
   const [commentCounts, setCommentCounts] = useState<Map<number, number>>(new Map())
+  const [commentRepliers, setCommentRepliers] = useState<Map<number, CommentReplier[]>>(new Map())
 
   // Channel live + catch-up: subscribeChannel подписывает на топик (живые посты и
   // метаданные приходят через per-channel funnel воркера) и открывает канал в
@@ -38,14 +42,15 @@ export function useChannelExtras({ isRealChat, isChannel, numericChatId, win, di
   // Channel discussions: fetch comment counts for the loaded post ids (debounced on
   // msgs change). Only real channel posts with discussions enabled get a count.
   useEffect(() => {
-    if (!discussionsEnabled) { setCommentCounts(new Map()); return }
+    if (!discussionsEnabled) { setCommentCounts(new Map()); setCommentRepliers(new Map()); return }
     const ids = win.msgs.map((m) => m.id).filter((id) => id > 0)
     if (ids.length === 0) return
     let alive = true
     const timer = window.setTimeout(() => {
-      void managers.channels.commentCounts(numericChatId, ids).then((counts) => {
+      void managers.channels.commentCounts(numericChatId, ids).then(({ counts, recent }) => {
         if (!alive) return
         setCommentCounts(new Map(Object.entries(counts).map(([k, v]) => [Number(k), v])))
+        setCommentRepliers(new Map(Object.entries(recent).map(([k, v]) => [Number(k), v])))
       })
     }, 300)
     return () => { alive = false; window.clearTimeout(timer) }
@@ -71,5 +76,5 @@ export function useChannelExtras({ isRealChat, isChannel, numericChatId, win, di
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRealChat, isChannel, numericChatId, win.msgs.length, managers])
 
-  return { commentCounts }
+  return { commentCounts, commentRepliers }
 }

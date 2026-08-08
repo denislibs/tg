@@ -250,6 +250,52 @@ func TestChatsRepo_ReadState(t *testing.T) {
 	}
 }
 
+// История горизонта чтения: разные продвижения дают разное время, и для seq
+// берётся ближайшая СВЕРХУ отметка (иначе «Прочитано в HH:MM» было бы одинаковым
+// у всех сообщений — см. usecase OutboxReadDate).
+func TestChatsRepo_ReadMarks(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewChatsRepo(pool)
+	ctx := context.Background()
+
+	a := seedUser(t, pool, "+790")
+	b := seedUser(t, pool, "+791")
+	chatID := createPrivate(t, pool, a, b)
+
+	// Нет отметок — даты нет.
+	if _, ok, err := repo.ReadAtForSeq(ctx, chatID, b, 1); err != nil || ok {
+		t.Fatalf("ReadAtForSeq without marks = ok:%v, %v; want false, nil", ok, err)
+	}
+
+	if err := repo.AppendReadMark(ctx, chatID, b, 2); err != nil {
+		t.Fatalf("AppendReadMark #1: %v", err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	if err := repo.AppendReadMark(ctx, chatID, b, 5); err != nil {
+		t.Fatalf("AppendReadMark #2: %v", err)
+	}
+
+	at1, ok, err := repo.ReadAtForSeq(ctx, chatID, b, 1)
+	if err != nil || !ok {
+		t.Fatalf("ReadAtForSeq(seq=1) = ok:%v, %v", ok, err)
+	}
+	at2, ok, err := repo.ReadAtForSeq(ctx, chatID, b, 4)
+	if err != nil || !ok {
+		t.Fatalf("ReadAtForSeq(seq=4) = ok:%v, %v", ok, err)
+	}
+	if !at2.After(at1) {
+		t.Fatalf("seq из более поздней отметки должен иметь более позднее время: %v vs %v", at1, at2)
+	}
+	// seq выше последней отметки — ещё не прочитан.
+	if _, ok, _ := repo.ReadAtForSeq(ctx, chatID, b, 6); ok {
+		t.Fatal("ReadAtForSeq(seq выше горизонта) должен вернуть ok=false")
+	}
+	// Повтор той же отметки не создаёт дубль (PK) и не ломает вставку.
+	if err := repo.AppendReadMark(ctx, chatID, b, 5); err != nil {
+		t.Fatalf("AppendReadMark duplicate: %v", err)
+	}
+}
+
 func TestChatsRepo_UnreadMentions(t *testing.T) {
 	pool := storepostgres.NewTestDB(t)
 	repo := NewChatsRepo(pool)

@@ -16,7 +16,7 @@ import { useChatsStore } from '../../stores/chatsStore'
 import { useMessagesStore } from '../../stores/messagesStore'
 import type { Chat, OpenPeer } from '../../data'
 import type { Message } from '../models'
-import type { ThreadInfo } from '../../components/ConversationView'
+import type { ThreadInfo } from '../../components/Chat'
 import HeaderMenu from '../../components/HeaderMenu'
 import AttachMenu from '../../components/AttachMenu'
 import Menu, { MenuItem } from '../../shared/ui/Menu'
@@ -61,7 +61,7 @@ export interface ChatPopupDeps {
   pins: Message[]
   deleteLabels: { title: string; text: string; action: string }
   livestreamActive: boolean
-  /** инфо-панель живёт локальным стейтом в ConversationView (toggle + сосуществует с gift) */
+  /** инфо-панель живёт локальным стейтом в Chat (toggle + сосуществует с gift) */
   setInfoOpen: (v: boolean | ((o: boolean) => boolean)) => void
   applyMute: (next: boolean, seconds?: number | null) => void
   toggleMute: () => void

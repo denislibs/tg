@@ -33,21 +33,11 @@
 }
 
 // Плашка "сейчас играет" (tweb .pinned-audio).
+// Ряд управления внутри плашки: фон, высоту, радиус, позицию и z-index (поверх
+// полосы прогресса) даёт tweb-партиал через .pinned-container-wrapper /
+// .pinned-audio-wrapper — здесь остаются только наши отступы под круглые кнопки.
 .bar {
-  position: relative;
-  overflow: hidden; // скругляет концы полоски прогресса (попап громкости — в портале)
-  display: flex;
-  align-items: center;
-  height: var(--chat-plate-height);
-  padding: 0 4px;
-  border-radius: 24px;
-  background: var(--surface-color);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
-
-  :global(html[data-theme='night']) &,
-  :global(html[data-theme='tinted']) & {
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
-  }
+  padding: 0 4px !important;
 }
 
 // Обёртка play/pause с кросс-фейдом иконок
@@ -157,16 +147,3 @@
 // Меню скорости — общий shared <Menu> (портал+бэкдроп), свои классы не нужны.
 
 // Линия прогресса вдоль низа плашки (tweb)
-.progress {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 3px;
-  background: var(--light-secondary-text-color);
-  cursor: pointer;
-}
-.progressFill {
-  height: 100%;
-  background: var(--primary-color);
-}

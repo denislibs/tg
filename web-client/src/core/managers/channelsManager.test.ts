@@ -86,7 +86,27 @@ describe('ChannelsManager.commentCounts', () => {
     const mgr = newChannelsManager({ rest })
     const r = await mgr.commentCounts(7, [5, 6])
     expect(get).toHaveBeenCalledWith('/channels/7/comment_counts', { ids: '5,6' })
-    expect(r).toEqual({ 5: 2, 6: 0 })
+    expect(r.counts).toEqual({ 5: 2, 6: 0 })
+  })
+
+  it('маппит recent_repliers в карточки для стека аватаров', async () => {
+    const get = vi.fn(async () => ({
+      counts: { '5': 2 },
+      recent_repliers: { '5': [{ id: 8, display_name: 'Боб', avatar_url: '' }, { id: 9, display_name: 'Алиса', avatar_url: 'u' }] },
+    }))
+    const rest = { post: vi.fn(), get } as unknown as RestClient
+    const r = await newChannelsManager({ rest }).commentCounts(7, [5])
+    expect(r.recent[5]).toEqual([
+      { id: 8, name: 'Боб', avatarUrl: undefined },
+      { id: 9, name: 'Алиса', avatarUrl: 'u' },
+    ])
+  })
+
+  it('без recent_repliers в ответе стек пустой', async () => {
+    const get = vi.fn(async () => ({ counts: { '5': 1 } }))
+    const rest = { post: vi.fn(), get } as unknown as RestClient
+    const r = await newChannelsManager({ rest }).commentCounts(7, [5])
+    expect(r.recent).toEqual({})
   })
 
   it('short-circuits empty ids without hitting REST', async () => {
@@ -94,7 +114,7 @@ describe('ChannelsManager.commentCounts', () => {
     const rest = { post: vi.fn(), get } as unknown as RestClient
     const mgr = newChannelsManager({ rest })
     const r = await mgr.commentCounts(7, [])
-    expect(r).toEqual({})
+    expect(r).toEqual({ counts: {}, recent: {} })
     expect(get).not.toHaveBeenCalled()
   })
 })

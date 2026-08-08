@@ -1,4 +1,4 @@
-import { memo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { memo, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import Text from '../shared/ui/Text'
 import Menu, { MenuItem } from '../shared/ui/Menu'
@@ -71,7 +71,7 @@ function VolumeSlider({ value, onChange }: { value: number; onChange: (v: number
 // a flat surface strip (not a floating pill) with rewind/play/forward, a title +
 // thin seek line, and right-side utils (volume slider, speed, close).
 // Takes no props and owns its own audio-store subscriptions, so memo() keeps it
-// from re-rendering whenever the parent (ConversationView) does — only its own
+// from re-rendering whenever the parent (Chat) does — only its own
 // store updates (play/seek/time tick) drive it.
 function NowPlayingBar() {
   const track = useAudioStore((s) => s.track)
@@ -89,6 +89,13 @@ function NowPlayingBar() {
   const toggleMute = useAudioStore((s) => s.toggleMute)
   const setVolume = useAudioStore((s) => s.setVolume)
   const closePlayer = useAudioStore((s) => s.close)
+
+  // tweb topbar: `body.is-pinned-audio-shown` поднимает --topbar-floating-audio-height,
+  // и топбар (а с ним верх ленты) уезжает вниз под плашку плеера.
+  useEffect(() => {
+    document.body.classList.toggle('is-pinned-audio-shown', !!track)
+    return () => document.body.classList.remove('is-pinned-audio-shown')
+  }, [track])
 
   const [volOpen, setVolOpen] = useState(false)
   const [rateOpen, setRateOpen] = useState(false)
@@ -128,15 +135,15 @@ function NowPlayingBar() {
 
   return (
     <>
-    <AnimatePresence>
-      {track && (
-        <motion.div
-          initial={{ y: -56, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: -56, opacity: 0 }}
-          transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-        >
-          <div className={s.bar}>
+    {/* tweb .pinned-container.pinned-audio (_chatPinned.scss:492): абсолютная
+        плашка у верха #column-center; спрятанная — уведена трансформом за верх,
+        показанная — на месте, а топбар уезжает вниз на --topbar-floating-audio-height
+        (его поднимает body.is-pinned-audio-shown, _chatTopbar.scss:7-9). */}
+    <div className={classNames('pinned-container', 'pinned-audio', track ? 'is-visible' : '')}>
+          {/* Ряд управления — tweb .pinned-container-wrapper.pinned-audio-wrapper:
+              именно он несёт z-index 1 и потому лежит ПОВЕРХ полосы прогресса
+              (её обёртка растянута на всю плашку и иначе съедала бы клики). */}
+          <div className={classNames('pinned-container-wrapper', 'pinned-audio-wrapper', s.bar)}>
             <RoundBtn onClick={prev} color="var(--primary-color)" label="prev">
               <TgIcon name="fast_rewind" />
             </RoundBtn>
@@ -151,11 +158,11 @@ function NowPlayingBar() {
 
             <div className={s.meta}>
               <Text noWrap size={15} weight={600} color="var(--primary-text-color)" style={{ lineHeight: 1.25 }}>
-                {track.title}
+                {track?.title}
               </Text>
               <Text noWrap size={13} color="var(--secondary-text-color)" style={{ lineHeight: 1.25 }}>
                 {fmt(currentTime)}
-                {track.subtitle ? ` • ${track.subtitle}` : ''}
+                {track?.subtitle ? ` • ${track.subtitle}` : ''}
               </Text>
             </div>
 
@@ -203,20 +210,33 @@ function NowPlayingBar() {
               <TgIcon name="close" />
             </RoundBtn>
 
-            {/* progress line along the bottom of the plate (tweb) */}
+          </div>
+          {/* Полоса прогресса — разметка tweb (RangeSelector + _chatPinned.scss):
+              .pinned-audio-progress-wrapper (absolute inset 0, radius плашки,
+              overflow hidden — иначе полоса торчала бы за скруглённые углы)
+              > .progress-line.use-transform.pinned-audio-progress[--progress]
+                > .progress-line__filled (scaleX по прогрессу) + input[type=range].
+              В покое полоса приспущена на --translateY, по ховеру всплывает и
+              проявляется трек. */}
+          <div className="pinned-audio-progress-wrapper">
             <div
-              className={s.progress}
-              onClick={(e) => {
-                const r = e.currentTarget.getBoundingClientRect()
-                seekFraction((e.clientX - r.left) / r.width)
-              }}
+              className={classNames('progress-line', 'use-transform', 'pinned-audio-progress')}
+              style={{ ['--progress' as string]: String(frac) }}
             >
-              <div className={s.progressFill} style={{ width: `${Math.round(frac * 100)}%` }} />
+              <div className="progress-line__filled" style={{ transform: `scaleX(${frac})` }} />
+              <input
+                className="progress-line__seek"
+                type="range"
+                min={0}
+                max={duration || 0}
+                step={0.001}
+                value={currentTime}
+                aria-label="seek"
+                onChange={(e) => { if (duration > 0) seekFraction(Number(e.target.value) / duration) }}
+              />
             </div>
           </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+    </div>
     {/* Слайдер громкости — портал в document.body (вне overflow:hidden плашки),
         позиция fixed под кнопкой. Hover на попапе продлевает открытие. */}
     {createPortal(

@@ -54,7 +54,7 @@
 **Interfaces:**
 - Produces: `serializeTree(rootSelector, opts) => Node` где `Node = {tag, classes: string[], attrs?: Record<string,string>, computed?: Record<string,string>, children?: Node[]}`; `diffTrees(expected, actual, opts) => Finding[]` где `Finding = {path: string, kind: 'missing-class'|'extra-class'|'wrong-tag'|'missing-node'|'extra-node'|'computed', expected: string, actual: string}`.
 
-- [ ] **Step 1: Написать сериализатор**
+- [x] **Step 1: Написать сериализатор**
 
 ```js
 // scripts/domdiff/serialize.js
@@ -90,7 +90,7 @@ export const SERIALIZE_FN = `(rootSelector, opts) => {
 }`;
 ```
 
-- [ ] **Step 2: Написать differ**
+- [x] **Step 2: Написать differ**
 
 ```js
 // scripts/domdiff/diff.js
@@ -125,19 +125,19 @@ export function diffTrees(expected, actual, opts = {}) {
 }
 ```
 
-- [ ] **Step 3: Извлечь первый эталон из референса**
+- [x] **Step 3: Извлечь первый эталон из референса**
 
 Из `docs/research/tweb-dom/03-bubbles-123.json` вынуть поддеревья баблов (текст in/out, voice, forward, big-emoji, фото-с-реакцией) в `scripts/domdiff/expected/bubbles.json` — привести к форме сериализатора (tag/classes/children, классы отсортированы).
 
-- [ ] **Step 4: README с процедурой сверки**
+- [x] **Step 4: README с процедурой сверки**
 
 Описать: как снять актуальное дерево нашего стенда через chrome-devtools/playwright MCP (`evaluate` с `SERIALIZE_FN`), как прогнать `diffTrees`, как читать findings; список `ignoreClasses` (наши технические классы, у которых нет аналога в tweb) ведём в README и держим коротким — каждый пункт с обоснованием.
 
-- [ ] **Step 5: Прогнать на текущей ленте (baseline)**
+- [x] **Step 5: Прогнать на текущей ленте (baseline)**
 
 Снять наше дерево ленты, сдиффить с `expected/bubbles.json`, сохранить отчёт `scripts/domdiff/baseline-bubbles.txt`. Это стартовая точка: в конце фазы 2 findings по структуре должны стать пустыми.
 
-- [ ] **Step 6: Проверки и стоп**
+- [x] **Step 6: Проверки и стоп**
 
 `npm run typecheck` (скрипты вне tsconfig — убедиться, что не ломают), `npm test -- --run`. Коммит не делаем — коммитит оркестратор.
 
@@ -156,11 +156,11 @@ export function diffTrees(expected, actual, opts = {}) {
 **Interfaces:**
 - Produces: соглашение — каждый портированный партиал кладётся как `src/styles/tweb/_<имя>.scss` (имя = имя файла tweb), подключается через `@use` в `_index.scss` в том же порядке, что в tweb `style.scss`.
 
-- [ ] **Step 1: Проверить покрытие foundation**
+- [x] **Step 1: Проверить покрытие foundation**
 
 Сверить `web-client/src/styles/_foundation.scss` c `tweb/src/scss/variables.scss` и `tweb/src/scss/mixins/*`: какие `$`-переменные и миксины (`respond-to`, `hover-effect`, `hover-background-effect`, `animation-level`, `splitColor`, `ellipsis` и др.) уже есть, каких нет. Недостающие — портировать дословно.
 
-- [ ] **Step 2: Создать агрегатор**
+- [x] **Step 2: Создать агрегатор**
 
 ```scss
 // src/styles/tweb/_index.scss
@@ -169,11 +169,11 @@ export function diffTrees(expected, actual, opts = {}) {
 // @use добавляется по мере перестройки поверхностей.
 ```
 
-- [ ] **Step 3: Подключить в index.scss**
+- [x] **Step 3: Подключить в index.scss**
 
 `@use 'tweb';` последним (после токенов/шрифтов/глобалок), чтобы каскад tweb перекрывал наши legacy-глобалки.
 
-- [ ] **Step 4: Проверки**
+- [x] **Step 4: Проверки**
 
 `npx vite build` — CSS собирается, размер не вырос (партиалов пока нет). `npm test -- --run` зелёный.
 
@@ -191,19 +191,19 @@ export function diffTrees(expected, actual, opts = {}) {
 - Create: `web-client/src/styles/tweb/_quote.scss`, `_markup.scss`, `_spoiler.scss`, `_reaction.scss`, `_reactions.scss`, `_document.scss`, `_audio.scss`, `_peerTyping.scss` (зависимости баблов).
 - Modify: `web-client/src/styles/tweb/_index.scss`.
 
-- [ ] **Step 1: Скопировать партиалы и починить импорты**
+- [x] **Step 1: Скопировать партиалы и починить импорты**
 
 Копировать файлы 1:1, затем заменить только `@use`/`@import`-пути на наши (`../foundation` и т.п.). Никаких других правок на этом шаге.
 
-- [ ] **Step 2: Собрать и вычистить недостающие зависимости**
+- [x] **Step 2: Собрать и вычистить недостающие зависимости**
 
 `npx vite build` — sass покажет неизвестные переменные/миксины/функции. Каждую — либо портировать в `_foundation.scss`, либо (если тянет непортированную подсистему) удалить правило с комментарием `// не портировано: <что и почему>`. Итерировать до зелёной сборки.
 
-- [ ] **Step 3: Сверить критичные значения с живым референсом**
+- [x] **Step 3: Сверить критичные значения с живым референсом**
 
 По `docs/research/2026-08-08-tweb-live-dom-reference.md` §3/3b/3c проверить, что портированные значения дают живые: радиусы группы (`15px 5px 5px 15px` и пр.), `--max-width: 85%` + 30rem кап, стикер-бокс 200×200, floating-время (18px, font 12, padding 0 5px), тень бабла. Расхождение → правка в пользу живого + комментарий.
 
-- [ ] **Step 4: Проверки**
+- [x] **Step 4: Проверки**
 
 `npx vite build` зелёный; замерить прирост CSS (`ls -la dist/assets/*.css`) и записать в отчёт. `npm test -- --run` зелёный.
 
@@ -216,23 +216,23 @@ export function diffTrees(expected, actual, opts = {}) {
 **Interfaces:**
 - Produces: дерево `.bubbles > .bubbles-scrollable > .bubbles-inner > .bubbles-date-group > (.bubble.service.is-date | .bubbles-group)`; `.bubbles-group` содержит `.bubbles-group-avatar-container > .bubbles-group-avatar` и баблы; пропсы `MessageRow` не меняются.
 
-- [ ] **Step 1: Снять эталон группы из референса**
+- [x] **Step 1: Снять эталон группы из референса**
 
 Из `docs/research/tweb-dom/03-chat-overview.json` + `03-bubbles-123.json` выписать точное дерево обёрток (какие классы на каких уровнях, где `.bubbles-inner.is-chat`, где `with-message-avatars`).
 
-- [ ] **Step 2: Переписать рендер обёрток**
+- [x] **Step 2: Переписать рендер обёрток**
 
 Заменить `<section>/<header>/.group` на tweb-дерево с классами через `classNames` из `shared/lib/classNames`. Дата-разделитель — `.bubble.service.is-date > .bubble-content-wrapper > .bubble-content > .service-msg` (а не наша пилюля-кнопка; клик-обработчик сохранить на `.service-msg`).
 
-- [ ] **Step 3: Аватар группы**
+- [x] **Step 3: Аватар группы**
 
 `.bubbles-group-avatar-container` (absolute, column-reverse) + `.bubbles-group-avatar` sticky — как `_chatBubble.scss:45-88`; убрать нашу колонку с хардкодом `bottom: 72px`.
 
-- [ ] **Step 4: DOM-diff**
+- [x] **Step 4: DOM-diff**
 
 Прогнать харнес по обёрткам: findings уровня `.bubbles*`/`.bubbles-group*` пустые.
 
-- [ ] **Step 5: Проверки**
+- [x] **Step 5: Проверки**
 
 typecheck / tests / build зелёные; визуально лента не разъехалась (скриншот стенда).
 
@@ -247,27 +247,27 @@ typecheck / tests / build зелёные; визуально лента не р�
 **Interfaces:**
 - Produces: `.bubble` c набором модификаторов tweb (`is-in/is-out`, `is-group-first/last`, `can-have-tail`, `just-media`, `is-message-empty`, `sticker`, `emoji-big`, `photo`, `video`, `voice-message`, `audio-message`, `document-message`, `is-album`, `is-reply`, `forwarded`, `hide-name`, `service`, `is-first-unread`, `is-highlighted`, `is-selected`, `has-floating-time`, `with-reply-markup`, `channel-post`) вместо data-атрибутов; внутри — `.bubble-content-wrapper > .bubble-content` у **всех** типов.
 
-- [ ] **Step 1: Функция модификаторов**
+- [x] **Step 1: Функция модификаторов**
 
 Создать чистую функцию `bubbleClasses(msg, ctx)` рядом с `MessageRow.tsx`, возвращающую массив классов tweb по состоянию сообщения. Правила брать из `tweb/src/components/chat/bubbles.ts` (места, где `bubble.classList.add(...)`) и из аудита §4.1. Покрыть юнит-тестом: для набора фикстур (входящее первое/последнее в группе, исходящее с медиа, стикер, сервисное) ожидаемые наборы классов.
 
-- [ ] **Step 2: Переписать `MessageRow` на tweb-дерево**
+- [x] **Step 2: Переписать `MessageRow` на tweb-дерево**
 
 `.bubble` (с модификаторами) → `.bubble-content-wrapper` → `.bubble-content`. Полосу highlight/selection перевести с нашего `.band` на `::after` из tweb (правила уже в партиале). Чекбокс выделения — `.bubble-select-checkbox`.
 
-- [ ] **Step 3: Универсальные части внутри `.bubble-content`**
+- [x] **Step 3: Универсальные части внутри `.bubble-content`**
 
 `nameContainer` (имя/`.bubble-name-forwarded`+аватар 20px/via/rank), `.reply` (по `_quote.scss`), `.message`, `.attachment`, `svg.bubble-tail` — вставляются одинаково для **любого** типа (это и есть P0 №2). Для `just-media` — floating-плашка `.name-with-reply` поверх медиа (`_chatBubble.scss:1059-1125`).
 
-- [ ] **Step 4: Время**
+- [x] **Step 4: Время**
 
 `Time.tsx` уже близок к tweb (`span.time > .time-inner`) — перевести на глобальные классы, удалить `Time.module.scss`, убрать наш `forwards`-счётчик (в tweb его в строке времени нет), прокинуть `title` (полная дата).
 
-- [ ] **Step 5: DOM-diff по баблам**
+- [x] **Step 5: DOM-diff по баблам**
 
 Сравнить наше дерево с `expected/bubbles.json` для всех снятых типов. Цель: findings уровня структуры/классов = 0 (кроме задекларированных в `ignoreClasses`).
 
-- [ ] **Step 6: Проверки**
+- [x] **Step 6: Проверки**
 
 typecheck / tests (юнит на `bubbleClasses` зелёный) / build; скриншот-сверка со скриншотами tweb из `docs/research/tweb-dom/`.
 
@@ -278,23 +278,23 @@ typecheck / tests (юнит на `bubbleClasses` зелёный) / build; скр
 - Modify/Delete: `web-client/src/components/RichText.module.scss`
 - Modify: `web-client/src/components/CodeBlock.tsx` (+ удалить его модуль, перейдя на tweb-классы `.code`, `.code-header`, `.code-code`)
 
-- [ ] **Step 1: Blockquote на tweb-разметку**
+- [x] **Step 1: Blockquote на tweb-разметку**
 
 `.quote.quote-block.quote-like.quote-like-border.quote-like-icon` + иконка цитаты + коллапс до 3 строк с экспандером (`_quote.scss:57-106`). Peer-цвет — через переменную `--peer-color-rgb` на бабле (см. Task 2.6).
 
-- [ ] **Step 2: pre → `.code`**
+- [x] **Step 2: pre → `.code`**
 
 Структура из `base.scss:1979-2041`: контейнер `.quote-like.quote-like-border.code` + `.code-header` (язык bold + круглая кнопка копирования) + `.code-code`. Prism-подсветку сохранить, лимиты длины не трогать.
 
-- [ ] **Step 3: inline code и spoiler**
+- [x] **Step 3: inline code и spoiler**
 
 `.monospace-text` — без фона, акцентный цвет, клик = копировать. Spoiler — `_spoiler.scss` (фон-плашка + `opacity:0` текста + reveal-переход), вместо нашего blur.
 
-- [ ] **Step 4: Ссылки**
+- [x] **Step 4: Ссылки**
 
 `.anchor-url` с постоянным underline внутри бабла (`_chatBubble.scss:1970-1972`).
 
-- [ ] **Step 5: Проверки**
+- [x] **Step 5: Проверки**
 
 `RichText.security.test.ts` и `richtext.bigemoji.test.ts` зелёные (поведение по безопасности не меняем); typecheck/build.
 
@@ -305,27 +305,27 @@ typecheck / tests (юнит на `bubbleClasses` зелёный) / build; скр
 - Modify: `web-client/src/components/messages/RealMediaBubble.tsx`, `AlbumGrid.tsx`, `SecretMediaBubble.tsx`, `bubbleParts/mediaBubbles.tsx`
 - Delete: `RealMediaBubble.module.scss`, `AlbumGrid.module.scss` (правила покрыты `_chatBubble.scss`)
 
-- [ ] **Step 1: `mediaSizes` + `setAttachmentSize`**
+- [x] **Step 1: `mediaSizes` + `setAttachmentSize`**
 
 Порт `tweb/src/helpers/mediaSizes.ts:64-101` (regular 420×400 desktop / 340×340 ≤600px; album 420/340; sticker 200/180; emojiSticker 112; round 280/240) и `setAttachmentSize.ts:64-94` (мин-сторона 200 через aspectCovered; расширение до 320 при тексте/reply; мин 120 / видео 368). Юнит-тест на несколько соотношений с ожидаемыми размерами.
 
-- [ ] **Step 2: Структура `.attachment`**
+- [x] **Step 2: Структура `.attachment`**
 
 `.attachment.media-container[.media-container-fitted]` + `img.media-photo.thumbnail` (blur-подложка) + `.media-container-aspecter` — как `wrappers/photo.ts:134-203`. Наш shimmer убрать (в tweb его нет), fade-in полного изображения — как tweb.
 
-- [ ] **Step 3: Альбом**
+- [x] **Step 3: Альбом**
 
 `.album-item.grouped-item` + `.album-item-media`; `maxWidth` 420/340, `spacing: 1`; углы per-item `calc(var(--border-*-radius) - spacing)` (`prepareAlbum.ts:43-57`). Алгоритм раскладки уже портирован — не трогать.
 
-- [ ] **Step 4: Инлайн-автоплей видео (P0 №5)**
+- [x] **Step 4: Инлайн-автоплей видео (P0 №5)**
 
 `<video muted loop autoplay playsInline>` для видео ≤ 50 МБ (`video.ts:50`), иконка `nosound` в `.video-time`, остаток времени на timeupdate, play-кнопка только когда автоплей недоступен. Живой референс §3c: в личке у нас будет play-кнопка при `is-sending`/крупном файле — сверить оба состояния.
 
-- [ ] **Step 5: `.video-time` единым компонентом**
+- [x] **Step 5: `.video-time` единым компонентом**
 
 top 3px/left 3px, height `calc(var(--messages-time-text-size) + .375rem)`, padding 0 6px, radius = высоте, фон `--message-time-background` — один компонент для одиночного медиа и альбома.
 
-- [ ] **Step 6: DOM-diff + проверки**
+- [x] **Step 6: DOM-diff + проверки**
 
 Сравнить с эталонами фото/альбома/видео/стикера/документа из референса; `RealMediaBubble.upload.test.tsx` зелёный; typecheck/build.
 
@@ -335,29 +335,29 @@ top 3px/left 3px, height `calc(var(--messages-time-text-size) + .375rem)`, paddi
 - Modify: `web-client/src/components/messages/MessageRow.tsx`, `web-client/src/components/peerColor.ts`
 - Create: `web-client/src/styles/tweb/_peerColors.scss` (если нужны CSS-переменные палитры)
 
-- [ ] **Step 1: Палитра как в tweb**
+- [x] **Step 1: Палитра как в tweb**
 
 `getPeerColorById` — палитра `['#CC5049','#D67722','#955CDB','#40A920','#309EBA','#368AD1','#C7508B']`, индекс по `abs(peerId) % 7` (а не по хешу имени).
 
-- [ ] **Step 2: Переменные на бабле**
+- [x] **Step 2: Переменные на бабле**
 
 На `.bubble` ставить `--peer-color-rgb` (и `--peer-border-background` для градиентных случаев) — от них уже питаются `.name`, `.reply`, `.quote`, `.monospace-text` в портированных партиалах.
 
-- [ ] **Step 3: Проверки**
+- [x] **Step 3: Проверки**
 
 Юнит на индекс цвета; typecheck/build; DOM-diff (inline-style с переменной допустим — добавить в `ignoreClasses`/исключения差 по атрибуту `style`).
 
 ### Task 2.7: Зачистка фазы 2
 
-- [ ] **Step 1: Удалить мёртвые модули**
+- [x] **Step 1: Удалить мёртвые модули**
 
 Убедиться, что `MessageRow.module.scss`, `MessageBubbles.module.scss`, `RealMediaBubble.module.scss`, `AlbumGrid.module.scss`, `Time.module.scss`, `RichText.module.scss` больше не импортируются, и удалить. `grep` по проекту — ни одного импорта.
 
-- [ ] **Step 2: Финальный DOM-diff ленты**
+- [x] **Step 2: Финальный DOM-diff ленты**
 
 Полный отчёт по всем снятым типам баблов: структура — 0 findings; computed — расхождения только в задекларированном списке допусков.
 
-- [ ] **Step 3: Проверки + коммит-точка**
+- [x] **Step 3: Проверки + коммит-точка**
 
 typecheck / tests / build; скриншоты «до/после» в отчёт.
 
@@ -365,61 +365,107 @@ typecheck / tests / build; скриншоты «до/после» в отчёт.
 
 ## Фаза 3 — Каркас чата (P0 №7–12)
 
+### Task 3.0: Колоночный каркас оболочки (ПРЕДУСЛОВИЕ, найдено при попытке 3.1)
+
+**Почему:** пробный порт `_chat.scss` показал, что партиал не самодостаточен. `.bubbles`
+позиционируется **абсолютом относительно колоночной системы tweb**:
+`inset-inline: calc(var(--page-chats-padding) * -1)`, а внутри `#column-center` —
+через `--folders-sidebar-offset`, `--left-column-width`, `--right-column-width` и
+`body.is-right-column-shown:not(.right-column-floats)`; `.bubbles-inner` считает
+`max-width: calc(var(--chat-width) - var(--chat-bubbles-padding) * 2)`, где
+`--chat-width` пишет `helpers/updateColumnWidths.ts`. У нас оболочка — flex-ряд
+(сайдбар + колонка), этих переменных и узла `#column-center` нет, поэтому
+подключение партиала выносит ленту из раскладки (проверено на стенде: лента
+уехала под сайдбар). Партиал верный — не хватает подсистемы, на которую он опирается.
+
+Проба откачена, ветка оставлена в зелёном состоянии фазы 2.
+
+**Files:**
+- Create: `web-client/src/core/dom/updateColumnWidths.ts` (порт `tweb/src/helpers/updateColumnWidths.ts`).
+- Modify: `web-client/src/App.tsx` — скелет `#column-left` / `#column-center` / `#column-right` внутри `.tabs-container`, как в живом DOM §1.
+- Modify: `web-client/src/components/Chat.tsx`, `Sidebar.tsx` — переезд на этот скелет.
+- Modify: `web-client/src/styles/index.scss` — убрать наши layout-переменные колонок, оставив те, что пишет порт.
+
+- [x] **Step 1:** Снять с живого tweb значения `--chat-width`, `--left-column-width`, `--right-column-width`, `--page-chats-padding`, `--folders-sidebar-offset` в трёх режимах (узкий / обычный / открытая правая колонка) — эталон для порта.
+- [x] **Step 2:** Портировать `updateColumnWidths.ts` дословно; классы состояния (`body.is-right-column-shown`, `body.right-column-floats`, `body.is-left-column-shown`) ставить там же, где tweb.
+- [x] **Step 3:** Перевести оболочку на скелет колонок; проверить три режима по DOM-diff обёрток.
+- [x] **Step 4:** Только после этого — Task 3.1 (партиалы `_chat`/`_chatTopbar`/`_chatPinned`).
+
 ### Task 3.1: Порт `_chat.scss` (без секции chat-input), `_chatTopbar.scss`, `_chatPinned.scss`
 
 **Files:** Create `web-client/src/styles/tweb/_chat.scss`, `_chatTopbar.scss`, `_chatPinned.scss`; Modify `_index.scss`.
 
-- [ ] **Step 1:** Скопировать, починить импорты, добиться сборки (та же процедура, что в Task 2.1).
-- [ ] **Step 2:** Сверить с живым референсом §1/§3: топбар-пилюля 696×48 radius 24, `topbar-floating-plates` (щель 1px), `--chat-width: 696px`, маска фейдов.
-- [ ] **Step 3:** Проверки: build зелёный, прирост CSS зафиксирован.
+- [x] **Step 1:** Скопировать, починить импорты, добиться сборки (та же процедура, что в Task 2.1).
+      Сверх плана понадобились `_sidebar.scss` (от него наследует `.topbar`),
+      `_scrollable.scss` (без него лента не скроллит — скроллила страница),
+      `pages/_chats.scss` и выдержка `.whole` из base.scss (каркас `#main-columns`).
+- [x] **Step 2:** Сверено на стенде при vw=1728: топбар 696×48 @ (704,16), плейт пина
+      696×48 @ (704,72) — щель 8px, `--chat-width: 696px`, `.bubbles` 376..1728,
+      `bubbles-padding-top` 72 (128 с пином), `-bottom` 64. Всё совпало с tweb.
+- [x] **Step 3:** typecheck/тесты (788)/build зелёные.
 
-### Task 3.2: `ConversationView` — каркас и плейты (P0 №7)
+### Task 3.2: `Chat` — каркас и плейты (P0 №7)
 
-**Files:** Modify `ConversationView.tsx`, удалить покрытое из `ConversationView.module.scss`.
+**Files:** Modify `Chat.tsx`, удалить покрытое из `Chat.module.scss`.
 
-- [ ] **Step 1:** Дерево `.chat > .sidebar-header.topbar + .bubbles + .chat-input` с `--chat-padding-top/bottom`, где `padding-top` включает `--pinned-floating-height` (сумму высот плейтов) — это и есть фикс P0 №7.
-- [ ] **Step 2:** Стек `topbar-floating-plates` — контейнер для пин-бара/плеера/баннеров вместо отдельных плашек с ручным `top`.
-- [ ] **Step 3:** Маска скролла: верхняя точка растёт вместе с плейтами (`--bubbles-scrollable-fade-top-add`).
-- [ ] **Step 4:** DOM-diff каркаса + проверки.
+- [x] **Step 1:** Дерево собрано; распорки `.bubbles-padding-top/-bottom` вместо паддингов
+      контента, высоты — по `chat.ts recomputePaddings`. P0 №7 закрыт.
+- [x] **Step 2:** `topbar-floating-plates` — стек пин-бара и тегов «Избранного»; высоту
+      меряет `useMeasuredHeight` и пишет в `--pinned-floating-height` (tweb setFloating).
+      Плеер — отдельная плашка `.pinned-container.pinned-audio` + `body.is-pinned-audio-shown`.
+- [x] **Step 3:** Маску считает CSS (`.bubbles-scrollable`), инлайн-градиент удалён.
+- [ ] **Step 4:** DOM-diff каркаса (эталонов обёрток пока нет — снят только по баблам).
 
 ### Task 3.3: Пин-бар (P0 №8)
 
 **Files:** Modify `conversation/PinnedBar.tsx`, `usePinnedBar.ts`; удалить `PinnedBar.module.scss`.
 
-- [ ] **Step 1:** Разметка `.pinned-container.pinned-message` из живого референса (§3, «пин»): `pinned-message-border-wrapper-1`/сегменты, `.pinned-container-title` 500/14 primary, `animated-counter`.
-- [ ] **Step 2:** Скролл-трекинг показываемого пина (`pinnedMessage.tsx:529-589`), throttle 100ms.
-- [ ] **Step 3:** Анимация смены — CSS-компонент по образцу `animated-super` (translateY ±20px, .2s ease-in-out), без framer.
-- [ ] **Step 4:** Медиа-превью 40×40 при `is-media`; кнопка-меню слева (pinlist/unpin).
-- [ ] **Step 5:** DOM-diff + проверки.
+- [x] **Step 1:** Разметка `.pinned-container.pinned-message` целиком; `PinnedBorder` переехал на классы tweb (`-border`, `-wrapper-1`, `-mask`/`mask-top`/`mask-bottom`, `-wrapper`, `-mark`).
+- [x] **Step 2:** Скролл-трекинг: `pinIndexForVisibleMid` (порт `testMid`) по нижнему видимому баблу, throttle 100ms — как `throttle(setCorrectIndex, 100)`.
+- [x] **Step 3:** Портирован партиал `_animatedSuper.scss` + компонент `AnimatedSuper` (ряды `is-hiding` + `from-top`/`from-bottom`), им живут подпись и медиа-превью.
+- [x] **Step 4:** Медиа-превью 40×40 (`is-media` + `.pinned-message-media`); слева `.pinned-message-pinlist` (только при `is-many`), справа `.pinned-message-unpin`.
+- [x] **Step 5:** Проверено на стенде (пин ставился и снимался), typecheck/тесты/build зелёные.
 
 ### Task 3.4: Corner-кнопки и sticky-date (P0 №9, №10)
 
 **Files:** Modify `conversation/ScrollDownFab.tsx` (→ `bubbles-corner-button` семейство), `ChatFeed.tsx`.
 
-- [ ] **Step 1:** `.bubbles-go-down` на классах tweb (54px, badge-24, появление только opacity/visibility `--layer-transition`).
-- [ ] **Step 2:** `.bubbles-go-mention` c badge — показ при непрочитанных упоминаниях, клик = прыжок; источник данных — тот же, что у mention-бейджа чат-листа.
-- [ ] **Step 3:** Sticky-date: класс `is-scrolling` на `.bubbles-inner` при скролле (снимается по debounce ~300ms); прилипшая дата без него — `opacity ~0`, transition `.3s ease`.
-- [ ] **Step 4:** DOM-diff + проверки.
+- [x] **Step 1:** `ScrollDownFab` = `button.btn-circle.btn-corner.z-depth-1.bubbles-corner-button.chat-secondary-button.bubbles-go-down` + `span.badge.badge-24.badge-primary`; появление — классом `is-go-down-visible` на `.chat`, кнопка всегда в DOM. Портирован `_badge.scss`, в мост добавлены `.btn-corner` и `.z-depth-1` (мост подключён ПЕРВЫМ — в tweb `_button.scss` идёт до `_chat.scss`).
+- [ ] **Step 2:** `.bubbles-go-mention` — отложено: непрочитанных упоминаний в модели пока нет (нужен счётчик из чат-листа).
+- [x] **Step 3:** `is-scrolling` на `.bubbles-inner` (снимается через 1350ms, как tweb bubbles.ts:4207-4230) + пометка прилипшей даты `is-sticky`; проверено: при скролле дата видна, в покое гаснет в `opacity: .00001`.
+- [ ] **Step 4:** DOM-diff каркаса (эталонов обёрток нет).
 
 ### Task 3.5: CommentsBar и переход между чатами (P0 №11, №12)
 
 **Files:** Modify `CommentsBar.tsx` (+ бэкенд, если нет recent-авторов треда), `App.tsx`.
 
-- [ ] **Step 1:** `.replies-footer` на классах tweb; аватары — реальные (при отсутствии на бэке добавить `recent_repliers` в DTO треда по образцу `ReactionsFor`).
-- [ ] **Step 2:** Переход между чатами: `.chat.tabs-tab` — вход `translate3d(±200px)→0` + fade `.2s ease-in-out`, вместо ремаунта по key.
-- [ ] **Step 3:** Проверки (фронт + `go build ./... && go vet ./...` при правке бэка).
+- [x] **Step 1:** `.replies-footer` — сделано раньше; аватары теперь реальные: бэкенд
+      отдаёт `recent_repliers` (до 3 последних комментаторов карточками id/имя/аватар)
+      в ответе `/channels/{id}/comment_counts`; репозиторий — `RecentThreadRepliers`.
+- [ ] **Step 2:** Переход между чатами — ОТКАТАН. Реализация сдвигом ±200px давала
+      не тот эффект (уходящий чат уезжал поверх сайдбара), потому что `.chats-container`
+      у нас блочный: в tweb оба таба лежат в одной ячейке грида `.tabs-container`
+      (_slider.scss), который у нас ещё не портирован. Вернуть вместе с фазой 4.
+- [x] **Step 3:** Проверки: фронт (typecheck/793 теста/build) + `go build ./... && go vet ./...`.
 
 ---
 
 ## Фаза 4 — Чат-лист (P0 №13)
 
-### Task 4.1: Порт `_chatlist.scss`, `_row.scss`, `_leftSidebar.scss`, `_badge.scss`, `_avatar.scss`
+### Task 4.1: Порт `_chatlist.scss`, `_row.scss`, `_leftSidebar.scss`, `_avatar.scss`, `_slider.scss`
 
-**Files:** Create соответствующие файлы в `styles/tweb/`; Modify `_index.scss`.
+`_badge.scss` уже портирован (фаза 3, вместе с угловыми кнопками).
 
 - [ ] **Step 1:** Копирование + починка импортов + сборка.
 - [ ] **Step 2:** Сверка с живым референсом §2 (строка 72px, порядок узлов, пилюли-табы папок).
-- [ ] **Step 3:** Проверки.
+- [ ] **Step 3:** С портом `_slider.scss` вернуть **переход между чатами** (Task 3.5 Step 2,
+      откачен): `.tabs-container` становится гридом 100%×100%, оба `.chat` ложатся в одну
+      ячейку — уходящий перестаёт наезжать на сайдбар. Проверить, что `pages/_chats.scss`
+      перебивает грид на `display:flex` у `#main-columns`, а `#column-left/-center/-right`
+      не схлопываются в `display:none` от `.tabs-tab`.
+- [ ] **Step 4:** Убрать из `styles/tweb/_bridge.scss` то, что перекрыто портами
+      (`.btn-corner`, `.btn-circle`, `.chatlist-container`, `.chats-container.tabs-container`).
+- [ ] **Step 5:** Проверки.
 
 ### Task 4.2: `ChatListItem` на дерево tweb
 
@@ -534,6 +580,6 @@ typecheck / tests / build; скриншоты «до/после» в отчёт.
 | Риск | Митигация |
 |---|---|
 | Глобальные классы tweb конфликтуют с нашими глобалками | Наших глобальных классов мало (`.tgico`, prism `.token.*`, `.main-screen-*`, `.chatlist-exit*`) — пересечений с tweb нет; проверять `grep` при каждом новом партиале |
-| Рост CSS-бандла | Замерять после каждого партиала; целевой ориентир — не более +150 КБ несжатого суммарно (tweb-партиалы ленты+чата+листа); при превышении — резать только заведомо мёртвые подсистемы с комментарием |
+| Рост CSS-бандла | База на старте фазы 2: `dist/assets/index-*.css` = **184 632 Б**. Замерять после каждого партиала; целевой ориентир — не более +150 КБ несжатого суммарно (tweb-партиалы ленты+чата+листа); при превышении — резать только заведомо мёртвые подсистемы с комментарием |
 | Промежуточные состояния «наполовину tweb, наполовину модули» | Переход поверхности делается одной задачей и заканчивается удалением её модуля; частично перестроенных поверхностей между коммитами не остаётся |
 | Регресс поведения при переписывании view | Слой данных не трогаем; существующие тесты (746) — страховка; после каждой фазы — живой смок стенда |

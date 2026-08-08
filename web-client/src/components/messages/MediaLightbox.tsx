@@ -370,7 +370,7 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
     document.body.appendChild(a); a.click(); a.remove()
   }
 
-  // Портал в body: ConversationView живёт под framer-motion-предком с transform,
+  // Портал в body: Chat живёт под framer-motion-предком с transform,
   // а он создаёт containing block для position:fixed — без портала лайтбокс
   // привязывался бы к колонке чата (съезжал вправо, сайдбар просвечивал).
   return createPortal(

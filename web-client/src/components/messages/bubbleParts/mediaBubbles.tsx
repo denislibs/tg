@@ -7,7 +7,7 @@ import TgIcon from '../../TgIcon'
 import { mediaContentUrl } from '../../../core/mediaUrl'
 import type { ConvMsg } from '../../../data'
 import { useTranscription, TranscribeButton, TranscribedText } from '../Transcription'
-import { BubbleTail, bubbleRadius, type Ctx } from './primitives'
+import { bubbleRadius, type Ctx } from './primitives'
 import s from '../MessageBubbles.module.scss'
 
 /** document / file */
@@ -19,7 +19,6 @@ export function DocumentBubble({ m, out, firstInGroup, lastInGroup, time, reacti
       data-out={out || undefined}
       style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}
     >
-      {lastInGroup && <BubbleTail out={out} color="var(--bb-bg)" />}
       <div
         className={s.fileIcon}
         style={{ background: out ? 'rgba(255,255,255,0.22)' : d?.color ?? 'var(--primary-color)' }}
@@ -51,7 +50,6 @@ export function AudioBubble({ m, out, firstInGroup, lastInGroup, time, reactions
       data-out={out || undefined}
       style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}
     >
-      {lastInGroup && <BubbleTail out={out} color="var(--bb-bg)" />}
       <div
         className={classNames(s.fileIcon, s.fileIconAudio)}
         style={{ background: out ? 'rgba(255,255,255,0.22)' : 'var(--primary-color)' }}

@@ -94,7 +94,7 @@ export default function MainMenu({
     onClose()
     if (me?.id != null) localStorage.setItem(PREV_ACCOUNT_KEY, String(me.id))
     localStorage.setItem(ANIMATE_AUTH_KEY, '1')
-    await playMainScreenExit(document.getElementById('app-shell'))
+    await playMainScreenExit(document.getElementById('page-chats'))
     await managers.auth.addAccount()
     location.reload()
   }

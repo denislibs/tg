@@ -26,7 +26,6 @@ interface UseVoiceQueueArgs {
 export function useVoiceQueue({ win, isRealChat, meId, meName, peers, chatName, numericChatId, lang }: UseVoiceQueueArgs): {
   playVoice: (mediaId: number) => void
   attachRound: (msgId: number, el: HTMLMediaElement) => void
-  playerOffset: number
 } {
   const playQueue = useAudioStore((s) => s.playQueue)
   const playExternal = useAudioStore((s) => s.playExternal)
@@ -78,10 +77,8 @@ export function useVoiceQueue({ win, isRealChat, meId, meName, peers, chatName, 
     )
   }
 
-  // When the global player is showing, push the floating header + feed down so it
-  // slides in above the conversation instead of overlapping it.
-  const nowPlayingActive = useAudioStore((s) => !!s.track)
-  const playerOffset = nowPlayingActive ? 56 : 0 // plate height (48) + gap (8)
-
-  return { playVoice, attachRound, playerOffset }
+  // Сдвиг топбара/ленты под плашку плеера — на CSS: NowPlayingBar ставит
+  // body.is-pinned-audio-shown, а --topbar-floating-audio-height двигает топбар
+  // (styles/tweb/_chatTopbar.scss) и растит --chat-padding-top.
+  return { playVoice, attachRound }
 }

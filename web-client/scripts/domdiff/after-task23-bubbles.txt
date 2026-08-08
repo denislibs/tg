@@ -1,0 +1,25 @@
+снимок: scripts/domdiff/snapshots/our-feed-task23.json
+эталонов: 20, баблов в снимке: 37
+
+text-out-first-last-mid-21335                  15 findings  {"missing-class":5,"extra-class":5,"missing-attr":1,"wrong-tag":1,"extra-node":1,"missing-node":2}
+text-in-first-last-mid-21395                   15 findings  {"extra-class":4,"missing-attr":1,"missing-class":4,"extra-node":2,"missing-node":4}
+text-out-is-group-first-mid-21396              18 findings  {"missing-class":7,"extra-class":7,"missing-attr":1,"extra-node":1,"missing-node":2}
+voice-out-is-group-last-mid-21397              11 findings  {"missing-class":3,"extra-class":3,"missing-attr":1,"extra-node":2,"missing-node":2}
+forwarded-channel-post-mid-21341               26 findings  {"missing-class":14,"extra-class":5,"missing-attr":2,"wrong-tag":1,"missing-node":4}
+big-animated-emoji-mid-21391                   13 findings  {"missing-class":6,"extra-class":2,"missing-attr":1,"wrong-tag":1,"extra-node":2,"missing-node":1}
+photo-out-mid-21393                            21 findings  {"missing-class":10,"extra-class":5,"missing-attr":1,"wrong-tag":1,"extra-node":1,"missing-node":3}
+service-date                                   0 findings  {}
+sticker-bubble-full                            15 findings  {"missing-class":5,"extra-class":5,"missing-attr":1,"wrong-tag":1,"extra-node":2,"missing-node":1}
+poll-bubble-full                               13 findings  {"missing-class":5,"extra-class":3,"missing-attr":1,"extra-node":2,"missing-node":2}
+video-bubble-uploading-full                    21 findings  {"missing-class":6,"extra-class":7,"missing-attr":1,"wrong-tag":1,"extra-node":2,"missing-node":4}
+document-bubble-2-full                         11 findings  {"missing-class":3,"extra-class":4,"missing-attr":1,"extra-node":1,"missing-node":2}
+album-channel-post-bubble-full                 32 findings  {"missing-class":15,"extra-class":5,"missing-attr":2,"wrong-tag":1,"missing-node":9}
+document-bubble-full                           11 findings  {"missing-class":4,"extra-class":3,"missing-attr":1,"extra-node":1,"missing-node":2}
+reply-bubble-full                              21 findings  {"missing-class":10,"extra-class":6,"missing-attr":1,"extra-node":1,"missing-node":3}
+audio-song-bubble-full                         14 findings  {"missing-class":5,"extra-class":5,"missing-attr":1,"extra-node":1,"missing-node":2}
+service-action-bubble                          12 findings  {"missing-class":4,"extra-class":5,"missing-attr":1,"extra-node":2}
+round-video-video-note                         31 findings  {"missing-class":15,"extra-class":5,"missing-attr":2,"wrong-tag":1,"missing-node":8}
+video-bubble-single                            28 findings  {"missing-class":15,"extra-class":5,"missing-attr":1,"wrong-tag":1,"missing-node":5,"extra-node":1}
+sponsored-bubble                               21 findings  {"missing-class":12,"extra-class":3,"missing-attr":1,"extra-node":3,"missing-node":2}
+
+missing-node не раскрывается вглубь: целое непортированное поддерево — одна строка.

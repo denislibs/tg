@@ -1,0 +1,15 @@
+// Обёртка страницы `.whole` — выдержка из tweb `src/scss/base.scss:513-522`
+// (целиком base.scss не портируем: это глобальный ресет, конфликтующий с нашим
+// styles/index.scss). Скопировано дословно.
+@use "../foundation" as *;
+
+.whole {
+  min-height: 100%;
+  width: 100%;
+  //min-width: 100%;
+  margin: 0 auto;
+
+  //@include respond-to(not-handhelds) {
+    height: 100%;
+  //}
+}

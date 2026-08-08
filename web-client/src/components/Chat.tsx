@@ -71,33 +71,25 @@ import SendMediaPopup from './messages/SendMediaPopup'
 import { joinGroupCall } from '../core/calls/groupCallEngine'
 import { watchLivestream } from '../core/calls/livestreamEngine'
 import classNames from '../shared/lib/classNames'
-import s from './ConversationView.module.scss'
+import s from './Chat.module.scss'
 import useMediaQuery from '../shared/lib/useMediaQuery'
+import useMeasuredHeight from '../shared/lib/useMeasuredHeight'
 
 // Инфо-панель и просмотрщик медиа — не первый кадр; ленивые чанки.
 const UserInfoPanel = lazy(() => import('./UserInfoPanel'))
 const MediaLightbox = lazy(() => import('./messages/MediaLightbox'))
 
-// tweb's exact bubbles-scrollable fade: a pure alpha mask on the scroll viewport
-// (no blur, no colour) so messages simply fade out to a 0.24 floor behind the
-// floating header/composer, eased iOS-style (cubic-bezier sampled at 0/.2/.4/.6/.8/1).
-// tweb: fade = 3.5rem + page-chats-padding, контент-паддинг ленты =
-// chat-input-height + page-chats-padding; page-chats-padding = 16px desktop /
-// 8px handheld — см. _chat.scss:447,1104 и updateColumnWidths.ts.
-const padTop = (narrow: boolean) => (narrow ? 76 : 84) // clearance под хедером + 16px зазор до первого сообщения
-// Верхний фейд глубже клиренса: приглушение начинается заранее, ещё до того как
-// сообщение уйдёт под хедер (как в tweb — верх ленты приглушён уже в статике).
-const fadeTop = (narrow: boolean) => (narrow ? 100 : 108)
-const fadeBottom = (narrow: boolean) => (narrow ? 64 : 72) // mask only
-const padBottom = (narrow: boolean) => (narrow ? 64 : 72) // clearance над композером + 16px зазор от последнего сообщения
-
-// Local start-of-day in ms (the date "bucket"), and a friendly day label for the
-// date divider — tweb shows Today / Yesterday / "14 June" (with year if not this year).
-const FLOOR = 'rgba(255,255,255,0.24)'
-// Both edges keep the same faint floor (tweb --bubbles-scrollable-fade-color):
-// messages stay slightly visible behind the floating header AND composer.
-const mix = (k: number) => `color-mix(in srgb, #000 ${k}%, ${FLOOR})`
-const feedMask = (fadeT: number, fadeB: number) => `linear-gradient(to bottom, ${FLOOR} 0, ${mix(8.6)} ${fadeT * 0.2}px, ${mix(33.4)} ${fadeT * 0.4}px, ${mix(66.6)} ${fadeT * 0.6}px, ${mix(91.4)} ${fadeT * 0.8}px, #000 ${fadeT}px, #000 calc(100% - ${fadeB}px), ${mix(91.4)} calc(100% - ${fadeB * 0.8}px), ${mix(66.6)} calc(100% - ${fadeB * 0.6}px), ${mix(33.4)} calc(100% - ${fadeB * 0.4}px), ${mix(8.6)} calc(100% - ${fadeB * 0.2}px), ${FLOOR} 100%)`
+// Распорки ленты (.bubbles-padding-top/-bottom) — 1:1 из tweb chat.ts
+// recomputePaddings(): десктоп резервирует 4.5rem сверху и 4rem снизу под
+// плавающие плейты и композер, handheld схлопывает обе до 3.5rem; сверху
+// добавляется суммарная высота плейтов, снизу — «излишек» композера
+// (reply-плашка / многострочный инпут). Маску фейдов считает CSS
+// (styles/tweb/_chat.scss `.bubbles-scrollable`), а не JS.
+const REM = 16
+const padTop = (narrow: boolean, platesPx: number) => Math.round((narrow ? 3.5 : 4.5) * REM) + platesPx
+const padBottom = (narrow: boolean, surplusPx: number) => Math.round((narrow ? 3.5 : 4) * REM) + surplusPx
+// tweb topbar.setFloating: зазор между топбаром и стеком плейтов.
+const TOPBAR_GAP = 8
 
 // Telegram's per-peer color palette (used to tint reply previews by their author)
 
@@ -123,7 +115,7 @@ interface Props {
   thread?: ThreadInfo
 }
 
-export default function ConversationView({ chat, onBack, thread }: Props) {
+export default function Chat({ chat, onBack, thread }: Props) {
   const t = useT()
   // Навигация — из navigationStore/useNavigationActions напрямую (инвариант: View
   // читает из стора, а не через проброс из Shell). Имена локальные совпадают с
@@ -158,6 +150,8 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
   const isRealChat = Number.isFinite(numericChatId) && String(numericChatId) === chat.id
   // Сброс фильтра тегов «Избранного» при смене чата.
   useEffect(() => { setSavedTagFilter(null) }, [numericChatId])
+  // Сколько тегов реально есть — от этого зависит, показывать ли стек плейтов.
+  const [savedTagsCount, setSavedTagsCount] = useState(0)
   // Кандидаты @упоминаний — участники группы (tweb mentionsHelper)
   const mentionPeers = useMentionPeers(isRealChat ? numericChatId : null, isRealChat && isGroup)
 
@@ -287,7 +281,7 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
     })
   }
   // Voice/audio play queue for the global player + the player plate offset.
-  const { playVoice, attachRound, playerOffset } = useVoiceQueue({
+  const { playVoice, attachRound } = useVoiceQueue({
     win, isRealChat, meId, meName: me?.displayName, peers, chatName: chat.name, numericChatId, lang,
   })
   // Инфо-панель — локальный toggle (сосуществует с gift-попапом поверх профиля).
@@ -311,9 +305,6 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
     return () => { alive = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [thread?.kind, numericChatId, isRealChat])
-  // Pinned messages in this chat (newest pin first) + индекс перелистывания
-  // плашки (tweb pinnedMessage) — drives the pinned bar.
-  const { pins, index: pinIndex, follow: followPin } = usePinnedBar(numericChatId, isRealChat)
   // Search is owned by ChatHeader now; here we only read whether it's open (single-sourced
   // in searchStore) to hide the pinned bar + adjust the sticky-date offset.
   const searchOpen = useSearchStore((s) => s.byChat[numericChatId]?.open ?? false)
@@ -391,14 +382,33 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
   }
   const unreadDividerSeq = unreadDividerRef.current
 
-  // Верхний отступ sticky-плашек (хедер + плейт плеера + пин-бар): его же
-  // использует скролл к плашке непрочитанных, чтобы она не пряталась под хедером.
-  const dateStickyTop = playerOffset + (pins.length > 0 && !searchOpen ? 122 : 66) - (narrow ? 8 : 0)
+  // Высота стека плавающих плейтов под топбаром (tweb topbar.setFloating):
+  // измеряем контейнер .topbar-floating-plates — он уже включает 1px-разделители
+  // между плашками — и добавляем зазор до топбара. От неё зависят и распорка
+  // ленты, и --pinned-floating-height (маска фейдов, sticky-дата).
+  const [platesHeight, setPlatesHeight] = useState(0)
+  const platesRef = useMeasuredHeight((h) => setPlatesHeight(h > 0 ? h + TOPBAR_GAP : 0))
+  // Излишек композера над базовой строкой (reply-плашка, многострочный ввод) —
+  // tweb --chat-input-height-surplus (chat.ts setChatInputSurplus).
+  const [inputSurplus, setInputSurplus] = useState(0)
+  const chatInputRef = useMeasuredHeight((h) => setInputSurplus(Math.max(0, h - REM * 3)))
+
+  const padTopPx = padTop(narrow, platesHeight)
+  const padBottomPx = padBottom(narrow, inputSurplus)
 
   const {
     scrollRef, contentRef, atBottomRef, userScrolledUpRef,
     highlightSeq, showScrollDown, unreadBelow, jumpToSeq, onScrollDownClick,
-  } = useChatScroll({ numericChatId, isRealChat, win, playerOffset, unreadDividerSeq, unreadStickyTop: dateStickyTop })
+  } = useChatScroll({ numericChatId, isRealChat, win, paddingTop: padTopPx, unreadDividerSeq, unreadStickyTop: padTopPx })
+  // Pinned messages in this chat (newest pin first) + индекс показанного пина
+  // (tweb pinnedMessage: перелистывание кликом + выбор по скроллу ленты).
+  const { pins, index: pinIndex, follow: followPin } = usePinnedBar(numericChatId, isRealChat, scrollRef)
+  // Контейнер ленты tweb (.bubbles): класс has-sticky-dates ставится по замеру, см. эффект ниже.
+  const bubblesRef = useRef<HTMLDivElement>(null)
+  // Ключ дня прилипшей даты (tweb `.bubble.is-date.is-sticky`) — считаем по
+  // скроллу и отдаём в ChatFeed: класс рендерит React, иначе его стёр бы
+  // ближайший ре-рендер ленты.
+  const [stickyDateKey, setStickyDateKey] = useState<string | null>(null)
   // Multi-select state + press-and-drag selection (extracted view-model hook).
   const { selected, setSelected, setSelectionMode, selecting, toggleSelect, clearSelection, dragSelect } =
     useChatSelection(scrollRef)
@@ -440,7 +450,7 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
   // (Scroll state machine — pagination, scroll-restore, pin-to-bottom, jump-to-message,
   // read-marker — lives in useChatScroll; see the hook call above.)
 
-  // No chat-switch reset effect needed: App renders <ConversationView key={selectedId}>,
+  // No chat-switch reset effect needed: App renders <Chat key={selectedId}>,
   // so switching chats fully remounts this component and every useState/useRef (here and
   // in useChatSend/useChatSelection/useChatSearch) re-initialises to its default. A manual
   // reset effect keyed on `chat` was not only redundant but harmful — `chat` gets a new
@@ -555,7 +565,7 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
 
   // Channel-only wiring: live subscribe + catch-up, pts persistence, the open
   // discussion-thread overlay, and per-post comment counts.
-  const { commentCounts } = useChannelExtras({
+  const { commentCounts, commentRepliers } = useChannelExtras({
     isRealChat, isChannel, numericChatId, win, discussionsEnabled,
   })
   // Клик по «N комментариев» под постом канала — тред комментариев в этой же
@@ -633,6 +643,8 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
       uiEvents.emit('ui:toast', t('Not enough Stars to unlock'))
     }
   })
+  // Кнопка «переслать» сбоку поста канала (tweb .bubble-beside-button.forward).
+  const forwardMsgE = useEvent((msgId: number) => openForwardFor([msgId]))
   const feedFns = useMemo(
     () => ({
       openSender: openSenderE,
@@ -650,8 +662,9 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
       openStarReaction,
       cancelUpload: cancelUploadE,
       unlockPaid: unlockPaidE,
+      forwardMsg: forwardMsgE,
     }),
-    [openSenderE, playVoiceE, toggleSelectE, openMsgMenuE, jumpToSeqE, openDatePickerE, openLightboxE, recallE, mediaPlayedE, roundPlayingE, toggleReaction, showReactedUsers, openStarReaction, cancelUploadE, unlockPaidE],
+    [openSenderE, playVoiceE, toggleSelectE, openMsgMenuE, jumpToSeqE, openDatePickerE, openLightboxE, recallE, mediaPlayedE, roundPlayingE, toggleReaction, showReactedUsers, openStarReaction, cancelUploadE, unlockPaidE, forwardMsgE],
   )
 
   // (Ack reconcile + send-rejection run in realtimeBridge → messagesStore; live
@@ -744,9 +757,7 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
 
   // Floating "scroll to bottom" button (tweb .bubbles-go-down), shown above the composer.
   // onScrollDownClick (reload-newest + pin, or smooth scroll) lives in useChatScroll.
-  const scrollDownFab = (
-    <ScrollDownFab show={showScrollDown} unreadBelow={unreadBelow} onClick={onScrollDownClick} />
-  )
+  const scrollDownFab = <ScrollDownFab unreadBelow={unreadBelow} onClick={onScrollDownClick} />
 
   // Sticky date-pill offset: below the floating header, plus the player plate
   // and the pinned-message bar when shown. На мобилке хедер на 8px выше (top 8 vs 16).
@@ -861,6 +872,52 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
     return () => window.removeEventListener('keydown', onKey)
   }, [isRealChat, scrollRef, onScrollDownClick])
 
+  // tweb bubbles.ts:10166-10180 (onRenderScrollSet): `has-sticky-dates` на
+  // контейнере ленты появляется, когда история прокручиваема — без него
+  // _chatBubble.scss прячет липкий дата-разделитель (`.bubbles:not(.has-sticky-dates)
+  // .bubble.is-date { visibility: hidden }`) и показывает его is-fake-двойник.
+  useEffect(() => {
+    const box = bubblesRef.current
+    const sc = scrollRef.current
+    if (!box || !sc) return
+    box.classList.toggle('has-sticky-dates', sc.scrollHeight > sc.clientHeight)
+  })
+
+  // tweb bubbles.ts:4207-4230 — во время скролла на `.bubbles-inner` висит
+  // `is-scrolling`, и только тогда липкая дата видна (_chat.scss:1345:
+  // `.is-scrolling .is-sticky { opacity: .99999 }`); через 1.35s после
+  // последнего события класс снимается и дата плавно гаснет.
+  useEffect(() => {
+    const sc = scrollRef.current
+    const inner = contentRef.current
+    if (!sc || !inner) return
+    let timer: ReturnType<typeof setTimeout> | undefined
+    // Прилипшая дата помечается `is-sticky` (в tweb это делает sticky-intersector
+    // по sentinel-узлам): в паре с `is-scrolling` она видна только при скролле,
+    // а в покое гаснет (_chatBubble.scss:497 opacity .00001 → _chat.scss:1343).
+    const markSticky = () => {
+      const scTop = sc.getBoundingClientRect().top
+      const dates = inner.querySelectorAll<HTMLElement>('.bubble.is-date')
+      let stuck: string | null = null
+      for (const d of dates) {
+        // прилипла = её верх дошёл до собственного sticky-порога (`top` из
+        // _chatBubble.scss:480 — calc(--chat-padding-top + overflow))
+        const stickyTop = parseFloat(getComputedStyle(d).top) || 0
+        if (d.getBoundingClientRect().top - scTop <= stickyTop + 2) stuck = d.dataset.date ?? null
+      }
+      setStickyDateKey((prev) => (prev === stuck ? prev : stuck))
+    }
+    const onScroll = () => {
+      inner.classList.add('is-scrolling')
+      markSticky()
+      clearTimeout(timer)
+      timer = setTimeout(() => inner.classList.remove('is-scrolling'), 1350)
+    }
+    markSticky()
+    sc.addEventListener('scroll', onScroll, { passive: true })
+    return () => { sc.removeEventListener('scroll', onScroll); clearTimeout(timer) }
+  }, [scrollRef, contentRef, feedLoading])
+
   // Форум-группы здесь НЕ перехватываются: как в tweb, клик по форуму открывает
   // панель топиков в ЛЕВОМ сайдбаре (Sidebar → TopicsPanel); тред топика — этот же
   // компонент в thread-режиме, а «Показать как сообщения» — обычный чат.
@@ -879,46 +936,99 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
     onOpenPeer, onCloseThread,
   })
 
+  // Стек плавающих плашек под топбаром (tweb .topbar-floating-plates): пин-бар и
+  // панель тегов «Избранного». Пустой стек прячется классом .hide, как в tweb
+  // topbar.setFloating — и тогда лента не резервирует под него место.
+  const hasPinPlate = !thread && !searchOpen && pins.length > 0
+  const hasTagsPlate = isSaved && !thread && savedTagsCount > 0
+  const plates = (
+    <>
+      {!thread && (
+        <PinnedBar
+          pins={pins}
+          index={pinIndex}
+          searchOpen={searchOpen}
+          onFollow={onPinFollow}
+          onUnpin={onUnpin}
+          onOpenList={onOpenPinList}
+        />
+      )}
+      {isSaved && !thread && (
+        <SavedTagsPanel activeTag={savedTagFilter} onFilter={setSavedTagFilter} onCountChange={setSavedTagsCount} />
+      )}
+    </>
+  )
+
   return (
     <CallProvider chat={chat}>
-    <div className={s.root} ref={rootRef}>
-      <div className={classNames(s.column, narrow ? s.columnNarrow : '', infoOpen && !narrow ? s.columnInfoOpen : '')}>
-        {/* Обои темы чата рисует глобальный ChatBackground (App), чтобы весь shell был
-            в теме, а не только эта колонка — локальный слой убран. */}
-        {/* Global "now playing" plate — a floating pill above the header (tweb:
-            the topbar slides down to make room). Matches the header geometry. */}
-        <div className={classNames(s.nowPlaying, narrow ? s.nowPlayingNarrow : '')}>
-          <div className={s.nowPlayingInner}>
-            <NowPlayingBar />
-          </div>
-        </div>
+      {/* Колонка чата = tweb `.chat.tabs-tab.active`; `can-click-date` включает
+          клик по дате-разделителю (_chatBubble.scss:511-514, bubbles.ts:3058-3090).
+          Геометрия — из styles/tweb/_chat.scss (topbar/bubbles/chat-input внутри
+          позиционируются абсолютом относительно #column-center). */}
+      <div
+        ref={rootRef}
+        className={classNames(
+          'chat', 'tabs-tab', 'active',
+          isRealChat ? 'can-click-date' : '',
+          // tweb _chat.scss:1217 — видимость угловых кнопок даёт класс на колонке
+          showScrollDown ? 'is-go-down-visible' : '',
+        )}
+        style={{
+          // tweb topbar.setFloating: высота стека плейтов + плавающие плашки
+          // плеера/звонка. Отсюда --chat-padding-top и верх маски фейдов.
+          ['--pinned-floating-height' as string]:
+            `calc(${platesHeight}px + var(--topbar-floating-call-height) + var(--topbar-floating-audio-height))`,
+          ['--chat-input-height-surplus' as string]: `${inputSurplus}px`,
+          // Текст границы непрочитанных — CSS-контент (tweb
+          // `.is-first-unread:before { content: var(--unread-messages-text) }`),
+          // поэтому значение подаётся строкой в кавычках.
+          ['--unread-messages-text' as string]: JSON.stringify(t('Unread Messages')),
+        }}
+      >
+        {/* Плейт «сейчас играет» — tweb .pinned-container.pinned-audio: абсолют
+            у верха #column-center, топбар уезжает вниз на --topbar-floating-audio-height
+            (класс body.is-pinned-audio-shown ставит сам NowPlayingBar). */}
+        <NowPlayingBar />
 
         {thread ? (
-        <div className={s.threadHeaderBar} style={{ top: (narrow ? 8 : 16) + playerOffset }}>
-          <div className={s.threadHeaderCard}>
-            <IconButton onClick={onCloseThread} color="var(--secondary-text-color)" style={{ marginLeft: '-4px' }}>
+        <div className={classNames('sidebar-header', 'topbar', 'has-avatar')}>
+          <div className="chat-info-container">
+            <IconButton onClick={onCloseThread} color="var(--secondary-text-color)" className="sidebar-close-button">
               <TgIcon name="back" />
             </IconButton>
-            {thread.kind === 'topic' ? (
-              <TopicIcon color={thread.iconColor ?? 0} title={thread.title} size={30} />
-            ) : (
-              <TgIcon name="comments" size={26} color="var(--primary-color)" />
-            )}
-            <div className={s.threadHeaderBody} onClick={() => setInfoOpen(true)} style={{ cursor: 'pointer' }}>
-              <Text noWrap weight={600} size={15.5} color="var(--primary-text-color)">{thread.title}</Text>
-              <Text noWrap size={12.5} color="var(--secondary-text-color)">{thread.subtitle ?? chat.name}</Text>
+            <div className="chat-info" onClick={() => setInfoOpen(true)} style={{ cursor: 'pointer' }}>
+              <div className="person">
+                {thread.kind === 'topic' ? (
+                  <TopicIcon color={thread.iconColor ?? 0} title={thread.title} size={30} />
+                ) : (
+                  <TgIcon name="comments" size={26} color="var(--primary-color)" />
+                )}
+                <div className="content">
+                  <div className="top">
+                    <div className="user-title">
+                      <span className="peer-title">{thread.title}</span>
+                      {thread.closed && <TgIcon name="lock" size={18} color="var(--secondary-text-color)" />}
+                    </div>
+                  </div>
+                  <div className="bottom">
+                    <span className="info">{thread.subtitle ?? chat.name}</span>
+                  </div>
+                </div>
+              </div>
             </div>
-            {thread.closed && <TgIcon name="lock" size={18} color="var(--secondary-text-color)" />}
-            <IconButton
-              onClick={(e) => {
-                const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
-                pop.openThreadMenu({ top: r.bottom + 6, right: window.innerWidth - r.right })
-              }}
-              color="var(--secondary-text-color)"
-            >
-              <TgIcon name="more" />
-            </IconButton>
+            <div className="chat-utils">
+              <IconButton
+                onClick={(e) => {
+                  const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                  pop.openThreadMenu({ top: r.bottom + 6, right: window.innerWidth - r.right })
+                }}
+                color="var(--secondary-text-color)"
+              >
+                <TgIcon name="more" />
+              </IconButton>
+            </div>
           </div>
+          <div ref={platesRef} className={classNames('topbar-floating-plates', 'hide')} />
         </div>
         ) : (
         <ChatHeader
@@ -931,27 +1041,14 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
           status={headerStatus}
           online={headerOnline}
           isBot={isBotChat}
-          playerOffset={playerOffset}
+          plates={plates}
+          platesHidden={!hasPinPlate && !hasTagsPlate}
+          platesRef={platesRef}
           onJumpToSeq={jumpToSeqE}
           onBack={onBack}
           onToggleInfo={onToggleInfo}
           onOpenMenu={onOpenHeaderMenu}
         />
-        )}
-
-        {!thread && <PinnedBar
-          pins={pins}
-          index={pinIndex}
-          searchOpen={searchOpen}
-          playerOffset={playerOffset}
-          onFollow={onPinFollow}
-          onUnpin={onUnpin}
-          onOpenList={onOpenPinList}
-        />}
-
-        {/* Панель тегов-реакций «Избранного» (Telegram saved reaction tags). */}
-        {isSaved && !thread && (
-          <SavedTagsPanel activeTag={savedTagFilter} onFilter={setSavedTagFilter} />
         )}
 
         {/* First-load spinner — only after the grace delay (skipped on cache hits) */}
@@ -971,23 +1068,22 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
           )}
         </AnimatePresence>
 
-        {/* Conversation — own scroll container, masked like tweb's bubbles-scrollable */}
+        {/* Лента — дерево tweb: .bubbles > .scrollable.bubbles-scrollable >
+            .bubbles-padding-top + .bubbles-inner + .bubbles-padding-bottom
+            (bubbles.ts:4178-4186). Распорки заменяют паддинги контента: их высота
+            меняется вместе с плейтами, и скролл компенсируется по дельте. */}
+        <div ref={bubblesRef} className={classNames('bubbles', feedMsgs.length ? 'has-groups' : '', selecting ? 'is-selecting' : '')}>
         <div
           ref={scrollRef}
           onMouseDown={dragSelect.onMouseDown}
-          className={s.scroll}
-          style={{ maskImage: feedMask(fadeTop(narrow), fadeBottom(narrow)), WebkitMaskImage: feedMask(fadeTop(narrow), fadeBottom(narrow)) }}
+          className={classNames(s.scroll, 'scrollable', 'scrollable-y', 'bubbles-scrollable')}
         >
+          <div className="bubbles-padding bubbles-padding-top" style={{ height: `${padTopPx}px` }} />
           <div
             ref={contentRef}
-            className={s.content}
-            style={{
-              // fade messages in once the first page has loaded (tweb-like)
-              opacity: feedLoading ? 0 : 1,
-              // clear the floating header/composer
-              paddingTop: `${padTop(narrow) + playerOffset}px`,
-              paddingBottom: `${padBottom(narrow)}px`,
-            }}
+            className={classNames(s.content, 'bubbles-inner', isGroup ? 'is-chat' : '', feedMsgs.length ? '' : 'no-messages')}
+            // fade messages in once the first page has loaded (tweb-like)
+            style={{ opacity: feedLoading ? 0 : 1 }}
           >
             {/* Render the list only once revealed, so rows mount at reveal time
                 and the ladder is seen (not played hidden behind the spinner). */}
@@ -1000,12 +1096,13 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
                 isGroup={isGroup}
                 discussionsEnabled={discussionsEnabled}
                 commentCounts={commentCounts}
+                commentRepliers={commentRepliers}
                 highlightSeq={highlightSeq}
                 unreadDividerSeq={unreadDividerSeq}
                 selecting={selecting}
                 selected={selected}
                 ladderActive={ladderActive}
-                dateStickyTop={dateStickyTop}
+                stickyDateKey={stickyDateKey}
                 feedFns={feedFns}
                 onOpenDiscussion={openDiscussionThread}
               />
@@ -1016,12 +1113,21 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
               <SimilarChannels chatId={numericChatId} onOpen={onOpenChannel} />
             )}
           </div>
+          <div className="bubbles-padding bubbles-padding-bottom" style={{ height: `${padBottomPx}px` }} />
           {!feedLoading && emptyGreeting && (
             <EmptyChatGreeting onGreet={() => onComposerSend('👋')} />
           )}
         </div>
+        </div>
 
-        {/* Footer */}
+        {/* Композер и его замены — tweb .chat-input.chat-input-main (absolute
+            bottom 0 внутри #column-center) > .chat-input-container (max-width
+            --chat-width, центрируется). Высота этого узла задаёт
+            --chat-input-height-surplus и нижнюю распорку ленты. */}
+        <div ref={chatInputRef} className="chat-input chat-input-main">
+        <div className="chat-input-container chat-input-main-container">
+        {/* tweb input.ts:615-616 — кнопка «вниз» живёт прямо в .chat-input-container */}
+        {scrollDownFab}
         {selecting ? (
           <SelectionBar
             count={selected.size}
@@ -1039,7 +1145,6 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
           </div>
         ) : botStart ? (
           <div className={classNames(s.footer, s.footerMuted)}>
-            {scrollDownFab}
             <motion.div whileTap={{ scale: 0.99 }} className={s.muteBtn} onClick={() => onComposerSend('/start')}>
               <Text weight={600} size={15.5} color="var(--primary-color)">{t('Start')}</Text>
             </motion.div>
@@ -1048,7 +1153,6 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
           // Секретный чат до завершения handshake: бар вместо композера (гейтинг
           // отправки — сам факт, что <Composer> тут не рендерится + secretLocked в useChatSend).
           <div className={classNames(s.footer, s.footerCompose)}>
-            {scrollDownFab}
             <div className={s.secretBar}>
               {secretStatus === 'requested' ? (
                 <>
@@ -1087,7 +1191,6 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
           </div>
         ) : canType && canSendText ? (
           <div className={classNames(s.footer, s.footerCompose)}>
-            {scrollDownFab}
             {replyKeyboard && (
               <div className={s.replyKeyboard}>
                 {replyKeyboard.map((row, ri) => (
@@ -1155,7 +1258,6 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
           /* Группа запрещает участникам писать (дефолт-права) — плашка вместо
              композера, как в tweb (вместо «молчаливого» отказа на бэке). */
           <div className={classNames(s.footer, s.footerMuted)}>
-            {scrollDownFab}
             <div className={s.muteBtn} style={{ cursor: 'default' }}>
               <TgIcon name="permissions" size={20} color="var(--secondary-text-color)" />
               <Text weight={600} size={15.5} color="var(--secondary-text-color)">{t('Sending messages is not allowed in this group')}</Text>
@@ -1163,7 +1265,6 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
           </div>
         ) : (
           <div className={classNames(s.footer, s.footerMuted)}>
-            {scrollDownFab}
             {/* Нижняя кнопка канала (tweb ChatInput) переключает mute напрямую, без попапа */}
             <motion.div whileTap={{ scale: 0.995 }} className={s.muteBtn} onClick={() => isRealChat && applyMute(!muted)}>
               <TgIcon name={muted ? 'unmute' : 'volume_off'} size={20} color="var(--secondary-text-color)" />
@@ -1181,6 +1282,8 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
             </div>
           </div>
         )}
+        </div>
+        </div>
       </div>
 
       {/* Инфо-панель (private / group / channel) — после первого открытия всегда
@@ -1249,8 +1352,6 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
 
       {/* Попапы действий над сообщением (state-driven из useMessageActions) */}
       <ChatMsgActionPopups msgActions={msgActions} numericChatId={numericChatId} isRealChat={isRealChat} />
-
-    </div>
     </CallProvider>
   )
 }
