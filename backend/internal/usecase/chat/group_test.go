@@ -750,6 +750,10 @@ func (c groupChats) IncUnreadReactions(context.Context, int64, int64) (int, erro
 func (c groupChats) ClearUnreadReactions(context.Context, int64, int64) error      { return nil }
 func (c groupChats) CurrentReadSeq(context.Context, int64, int64) (int64, error)   { return 0, nil }
 func (c groupChats) SetRead(context.Context, int64, int64, int64, int) error       { return nil }
+func (c groupChats) AppendReadMark(context.Context, int64, int64, int64) error     { return nil }
+func (c groupChats) ReadAtForSeq(context.Context, int64, int64, int64) (time.Time, bool, error) {
+	return time.Time{}, false, nil
+}
 func (c groupChats) LastReadAt(context.Context, int64, int64) (time.Time, bool, error) {
 	return time.Time{}, false, nil
 }

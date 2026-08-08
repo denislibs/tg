@@ -623,6 +623,13 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 		if e := i.chats.SetRead(ctx, chatID, userID, effective, unread); e != nil {
 			return e
 		}
+		// История горизонта: по отметке на каждое продвижение — из неё берётся
+		// дата «Прочитано в HH:MM» для конкретного сообщения (OutboxReadDate).
+		if advanced {
+			if e := i.chats.AppendReadMark(ctx, chatID, userID, effective); e != nil {
+				return e
+			}
+		}
 		// Прочитанное до effective снимает непрочитанные упоминания с seq<=effective
 		// и пересчитывает счётчик «@» (Telegram readMentions).
 		if _, e := i.chats.ClearMentions(ctx, chatID, userID, effective); e != nil {
@@ -751,9 +758,18 @@ func (i *Interactor) OutboxReadDate(ctx context.Context, chatID, msgID, viewerID
 			return time.Time{}, domain.ErrForbidden
 		}
 	}
-	at, ok, err := i.chats.LastReadAt(ctx, chatID, peerID)
+	// Дата — из истории горизонта: ближайшая сверху отметка, покрывшая этот seq.
+	// Фолбэк на общую last_read_at нужен для сообщений, прочитанных ДО появления
+	// истории (и для тех, чья отметка вышла за срок хранения).
+	at, ok, err := i.chats.ReadAtForSeq(ctx, chatID, peerID, msg.Seq)
 	if err != nil {
 		return time.Time{}, err
+	}
+	if !ok {
+		at, ok, err = i.chats.LastReadAt(ctx, chatID, peerID)
+		if err != nil {
+			return time.Time{}, err
+		}
 	}
 	if !ok {
 		return time.Time{}, domain.ErrNotFound

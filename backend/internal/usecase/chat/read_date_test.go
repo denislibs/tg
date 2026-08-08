@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -90,5 +91,47 @@ func TestOutboxReadDate_Reciprocity(t *testing.T) {
 	_ = in2.MarkRead(ctx, chatID2, b, msg2.Seq)
 	if _, err := in2.OutboxReadDate(ctx, chatID2, msg2.ID, a); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("I hid my read-time: want ErrForbidden, got %v", err)
+	}
+}
+
+// Дата прочтения — ПОМЕССАЖНАЯ: сообщения, попавшие в разные продвижения
+// горизонта, получают разные времена (раньше отдавалась одна last_read_at
+// на весь чат, и все сообщения показывали одно и то же время).
+func TestOutboxReadDate_PerMessage(t *testing.T) {
+	in, _ := newInteractor()
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+
+	m1, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "first"})
+	if err := in.MarkRead(ctx, chatID, b, m1.Seq); err != nil {
+		t.Fatalf("MarkRead #1: %v", err)
+	}
+	at1, err := in.OutboxReadDate(ctx, chatID, m1.ID, a)
+	if err != nil {
+		t.Fatalf("OutboxReadDate #1: %v", err)
+	}
+
+	// Второе сообщение читается ПОЗЖЕ — у него своя отметка горизонта.
+	time.Sleep(2 * time.Millisecond)
+	m2, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "second"})
+	if err := in.MarkRead(ctx, chatID, b, m2.Seq); err != nil {
+		t.Fatalf("MarkRead #2: %v", err)
+	}
+	at2, err := in.OutboxReadDate(ctx, chatID, m2.ID, a)
+	if err != nil {
+		t.Fatalf("OutboxReadDate #2: %v", err)
+	}
+
+	if !at2.After(at1) {
+		t.Fatalf("read dates must differ per message: first=%v second=%v", at1, at2)
+	}
+	// Первое сообщение НЕ должно «переехать» на время второго прочтения.
+	again, err := in.OutboxReadDate(ctx, chatID, m1.ID, a)
+	if err != nil {
+		t.Fatalf("OutboxReadDate #1 again: %v", err)
+	}
+	if !again.Equal(at1) {
+		t.Fatalf("first message read date changed after a later read: was %v, now %v", at1, again)
 	}
 }

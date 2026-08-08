@@ -51,6 +51,14 @@ type ChatRepo interface {
 	// LastReadAt — когда участник в последний раз продвинул read-горизонт
 	// (для read-date исходящих). ok=false, если участник ещё ничего не прочитал.
 	LastReadAt(ctx context.Context, chatID, userID int64) (at time.Time, ok bool, err error)
+	// AppendReadMark — записать продвижение горизонта чтения (история нужна для
+	// «Прочитано в HH:MM» у КОНКРЕТНОГО сообщения; одной отметки last_read_at на
+	// чат для этого не хватает). Вызывать только когда горизонт реально сдвинулся.
+	AppendReadMark(ctx context.Context, chatID, userID, upToSeq int64) error
+	// ReadAtForSeq — когда участник прочитал сообщение с этим seq: read_at
+	// ближайшей сверху отметки. ok=false — отметки нет (не прочитано либо она
+	// уже вышла за срок хранения).
+	ReadAtForSeq(ctx context.Context, chatID, userID, seq int64) (at time.Time, ok bool, err error)
 	// Непрочитанные упоминания (Telegram unread_mentions_count). AddMention
 	// отмечает сообщение (chat/msg/seq), где упомянут userID, и бампит его
 	// счётчик. ClearMentions снимает упоминания с seq<=uptoSeq (прочитано) и

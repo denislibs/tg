@@ -452,13 +452,20 @@ typecheck / tests / build; скриншоты «до/после» в отчёт.
 
 ## Фаза 4 — Чат-лист (P0 №13)
 
-### Task 4.1: Порт `_chatlist.scss`, `_row.scss`, `_leftSidebar.scss`, `_badge.scss`, `_avatar.scss`
+### Task 4.1: Порт `_chatlist.scss`, `_row.scss`, `_leftSidebar.scss`, `_avatar.scss`, `_slider.scss`
 
-**Files:** Create соответствующие файлы в `styles/tweb/`; Modify `_index.scss`.
+`_badge.scss` уже портирован (фаза 3, вместе с угловыми кнопками).
 
 - [ ] **Step 1:** Копирование + починка импортов + сборка.
 - [ ] **Step 2:** Сверка с живым референсом §2 (строка 72px, порядок узлов, пилюли-табы папок).
-- [ ] **Step 3:** Проверки.
+- [ ] **Step 3:** С портом `_slider.scss` вернуть **переход между чатами** (Task 3.5 Step 2,
+      откачен): `.tabs-container` становится гридом 100%×100%, оба `.chat` ложатся в одну
+      ячейку — уходящий перестаёт наезжать на сайдбар. Проверить, что `pages/_chats.scss`
+      перебивает грид на `display:flex` у `#main-columns`, а `#column-left/-center/-right`
+      не схлопываются в `display:none` от `.tabs-tab`.
+- [ ] **Step 4:** Убрать из `styles/tweb/_bridge.scss` то, что перекрыто портами
+      (`.btn-corner`, `.btn-circle`, `.chatlist-container`, `.chats-container.tabs-container`).
+- [ ] **Step 5:** Проверки.
 
 ### Task 4.2: `ChatListItem` на дерево tweb
 
