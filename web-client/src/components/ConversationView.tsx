@@ -65,7 +65,7 @@ import { openWebApp } from '../core/webapp'
 import { useSearchStore } from '../stores/searchStore'
 import { useChatPopups } from '../core/hooks/useChatPopups'
 import { clearPopups, openPopup } from '../stores/popupStore'
-import DatePickerPopup from './DatePickerPopup'
+import DatePickerPopup, { DATE_PICKER_POPUP_KIND } from './DatePickerPopup'
 import ChatMsgActionPopups from './conversation/ChatMsgActionPopups'
 import SendMediaPopup from './messages/SendMediaPopup'
 import { joinGroupCall } from '../core/calls/groupCallEngine'
@@ -585,7 +585,7 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
           })
         }}
       />
-    ))
+    ), DATE_PICKER_POPUP_KIND)
   })
   // Сайдбар-поиск открыл чат «вокруг сообщения» → прыгаем к найденному seq
   const pendingJump = useSearchStore((s) => s.pendingJump)

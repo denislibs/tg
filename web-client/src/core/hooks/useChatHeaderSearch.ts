@@ -4,7 +4,7 @@
 import { createElement, useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useManagers } from './useManagers'
 import { openPopup } from '../../stores/popupStore'
-import DatePickerPopup from '../../components/DatePickerPopup'
+import DatePickerPopup, { DATE_PICKER_POPUP_KIND } from '../../components/DatePickerPopup'
 import { useChatSearch } from './useChatSearch'
 import { usePeers } from './usePeers'
 import { useChatsStore } from '../../stores/chatsStore'
@@ -48,6 +48,7 @@ export function useChatHeaderSearch(chat: Chat, onJumpToSeq: (seq: number) => vo
           })
         },
       }),
+      DATE_PICKER_POPUP_KIND,
     )
   }
 

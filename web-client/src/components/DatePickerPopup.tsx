@@ -45,6 +45,10 @@ const startOfDay = (d: Date) => {
   return out
 }
 
+/** Сорт попапа (tweb DATE_PICKER_POPUP_KIND): пикер всегда один — повторный
+ * клик по дате закрывает предыдущий экземпляр, а не открывает второй. */
+export const DATE_PICKER_POPUP_KIND = 'date-picker'
+
 /** Ячейка сетки: реальный день либо выравнивающий пропуск. */
 type Cell =
   | { kind: 'day'; date: Date; disabled: boolean }
