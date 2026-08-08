@@ -1,5 +1,10 @@
 # P0 tweb-parity Implementation Plan
 
+> **СТАТУС (2026-08-08): batch 1 ВЫПОЛНЕН и влит в ветку `feat/p0-tweb-parity`** (волны A/G/H/J + verify-проход — P0 №1, 14–20, 32–35).
+> **Batch 2 и 3 ОТМЕНЕНЫ** и заменены планом [«tweb structure-first»](./2026-08-08-tweb-structure-first.md):
+> после съёма живого DOM-референса tweb решено сначала перестроить структуру и стили на классы tweb,
+> и только потом доделывать поведение. Задачи batch 2/3 перенесены в фазы 2–7 нового плана.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Закрыть все 35 находок P0 из аудита `docs/research/2026-08-08-tweb-deep-structural-audit.md` — довести web-client до tweb 1:1 по критичным расхождениям DOM/стилей/анимаций/поведения.
