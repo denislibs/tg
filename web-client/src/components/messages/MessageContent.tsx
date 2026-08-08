@@ -391,14 +391,14 @@ export default function MessageContent({
           <>
             <GiftBubble gift={m.gift} out={out} />
             {showReactions
-              ? <div className={s.message}>{reactionsRow(timeNode('plain'))}</div>
+              ? <div className={classNames(s.message, 'message', 'spoilers-container')}>{reactionsRow(timeNode('plain'))}</div>
               : timeNode('corner', 'poll')}
           </>
         ) : m.type === 'giveaway' && m.giveaway ? (
           <>
             <GiveawayBubble giveaway={m.giveaway} />
             {showReactions
-              ? <div className={s.message}>{reactionsRow(timeNode('plain'))}</div>
+              ? <div className={classNames(s.message, 'message', 'spoilers-container')}>{reactionsRow(timeNode('plain'))}</div>
               : timeNode('corner', 'poll')}
           </>
         ) : m.type === 'poll' && m.poll ? (
@@ -410,7 +410,7 @@ export default function MessageContent({
             )}
             <PollBubble poll={m.poll} out={out} />
             {showReactions
-              ? <div className={s.message}>{reactionsRow(timeNode('plain'))}</div>
+              ? <div className={classNames(s.message, 'message', 'spoilers-container')}>{reactionsRow(timeNode('plain'))}</div>
               : timeNode('corner', 'poll')}
           </>
         ) : m.type === 'checklist' && m.checklist ? (
@@ -422,7 +422,7 @@ export default function MessageContent({
             )}
             <ChecklistBubble checklist={m.checklist} out={out} />
             {showReactions
-              ? <div className={s.message}>{reactionsRow(timeNode('plain'))}</div>
+              ? <div className={classNames(s.message, 'message', 'spoilers-container')}>{reactionsRow(timeNode('plain'))}</div>
               : timeNode('corner', 'poll')}
           </>
         ) : (
@@ -473,7 +473,7 @@ export default function MessageContent({
             )}
             {/* tweb `.message`: тело сообщения — текст, превью ссылки, фактчек и
                 время, которое плавает (float:right) в последней строке текста. */}
-            <div className={s.message}>
+            <div className={classNames(s.message, 'message', 'spoilers-container')}>
               <RichText text={m.text ?? ''} entities={m.entities} linkColor="var(--b-link)" />
               {m.webPage && (
                 <WebPagePreview wp={m.webPage} out={out} linkColor="var(--b-link)" />

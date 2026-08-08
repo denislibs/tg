@@ -278,23 +278,23 @@ typecheck / tests (юнит на `bubbleClasses` зелёный) / build; скр
 - Modify/Delete: `web-client/src/components/RichText.module.scss`
 - Modify: `web-client/src/components/CodeBlock.tsx` (+ удалить его модуль, перейдя на tweb-классы `.code`, `.code-header`, `.code-code`)
 
-- [ ] **Step 1: Blockquote на tweb-разметку**
+- [x] **Step 1: Blockquote на tweb-разметку**
 
 `.quote.quote-block.quote-like.quote-like-border.quote-like-icon` + иконка цитаты + коллапс до 3 строк с экспандером (`_quote.scss:57-106`). Peer-цвет — через переменную `--peer-color-rgb` на бабле (см. Task 2.6).
 
-- [ ] **Step 2: pre → `.code`**
+- [x] **Step 2: pre → `.code`**
 
 Структура из `base.scss:1979-2041`: контейнер `.quote-like.quote-like-border.code` + `.code-header` (язык bold + круглая кнопка копирования) + `.code-code`. Prism-подсветку сохранить, лимиты длины не трогать.
 
-- [ ] **Step 3: inline code и spoiler**
+- [x] **Step 3: inline code и spoiler**
 
 `.monospace-text` — без фона, акцентный цвет, клик = копировать. Spoiler — `_spoiler.scss` (фон-плашка + `opacity:0` текста + reveal-переход), вместо нашего blur.
 
-- [ ] **Step 4: Ссылки**
+- [x] **Step 4: Ссылки**
 
 `.anchor-url` с постоянным underline внутри бабла (`_chatBubble.scss:1970-1972`).
 
-- [ ] **Step 5: Проверки**
+- [x] **Step 5: Проверки**
 
 `RichText.security.test.ts` и `richtext.bigemoji.test.ts` зелёные (поведение по безопасности не меняем); typecheck/build.
 
