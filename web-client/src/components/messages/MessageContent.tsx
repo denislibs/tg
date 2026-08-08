@@ -163,6 +163,11 @@ function replyColorVar(out: boolean, color?: string): CSSProperties {
   return (rgb ? { ['--peer-color-rgb' as string]: rgb } : {}) as CSSProperties
 }
 
+// Превью в цитате рисуется только у медиа, У КОТОРЫХ ОНО ЕСТЬ (tweb
+// wrapReplyDivAndCaption ставит isMediaSet лишь для визуальных типов). У голоса,
+// аудио и файла картинки нет — иначе <img> уходил бы в 404 и рисовал «битое фото».
+const REPLY_THUMB_TYPES = new Set(['photo', 'video', 'roundVideo', 'sticker', 'gif', 'album'])
+
 // Small rounded thumbnail of the replied-to message's photo/video, shown in the
 // quote box (Telegram). Synchronous URL via the main-thread media token.
 function ReplyThumb({ id }: { id: number }) {
@@ -529,8 +534,8 @@ export default function MessageContent({
                   ...replyColorVar(out, m.reply.color),
                 }}
               >
-                {m.reply.mediaId != null && (
-                  <div className="reply-media">
+                {m.reply.mediaId != null && REPLY_THUMB_TYPES.has(m.reply.mediaType ?? '') && (
+                  <div className={classNames('reply-media', m.reply.mediaType === 'roundVideo' ? 'is-round' : '')}>
                     <ReplyThumb id={m.reply.mediaId} />
                   </div>
                 )}

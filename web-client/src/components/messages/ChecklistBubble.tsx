@@ -79,7 +79,10 @@ export default function ChecklistBubble({ checklist, out }: { checklist: Checkli
               onClick={() => toggle(it.id)}
             >
               <span className={classNames(s.check, marked ? s.checked : '')}>
-                {marked && <TgIcon name="check" size={14} color="#fff" />}
+                {/* Внутри бабла --primary-color подменён на акцент сообщения
+                    (у исходящих он белый), поэтому галочку красим в цвет
+                    подложки бабла — иначе белое по белому. */}
+                {marked && <TgIcon name="check" size={14} color="var(--message-background-color)" />}
               </span>
               <div className={s.body}>
                 <Text size={15} color="var(--b-text)" className={marked ? s.textDone : undefined}>
@@ -97,15 +100,19 @@ export default function ChecklistBubble({ checklist, out }: { checklist: Checkli
         })}
       </div>
 
-      <div className={s.footer}>
-        <Text size={13} color="var(--message-time-color)">{`${done} ${t('of')} ${total} ${t('done')}`}</Text>
-        {canAdd && !adding && (
-          <span className={s.addBtn} onClick={() => setAdding(true)}>
-            <TgIcon name="add" size={16} color="var(--primary-color)" />
-            <Text size={13} weight={600} color="var(--primary-color)">{t('Add a Task')}</Text>
-          </span>
-        )}
+      {/* tweb checklist.module.scss `.completed`: прогресс — отдельной строкой по
+          центру, а не в ряд с кнопкой; правый нижний угол бабла занят временем. */}
+      <div className={s.completed}>
+        {`${done} ${t('of')} ${total} ${t('done')}`}
       </div>
+      {canAdd && !adding && (
+        <div className={s.addRow}>
+          <span className={s.addBtn} onClick={() => setAdding(true)}>
+            <TgIcon name="add" size={16} />
+            {t('Add a Task')}
+          </span>
+        </div>
+      )}
 
       {adding && (
         <div className={s.addRow}>
