@@ -123,19 +123,58 @@ func (i *Interactor) ListComments(ctx context.Context, channelID, postID, userID
 	return msgs, cnt, err
 }
 
-// CommentCounts returns a postID -> comment count map for the given posts. When
-// discussions aren't enabled it returns an empty map (no error).
-func (i *Interactor) CommentCounts(ctx context.Context, channelID int64, postIDs []int64) (map[int64]int, error) {
+// RecentRepliersLimit — сколько аватаров показывает футер «N комментариев»
+// (Telegram рисует стек последних комментаторов).
+const RecentRepliersLimit = 3
+
+// CommentCounts returns a postID -> comment count map for the given posts plus
+// the authors of each thread's latest comments (newest first, up to
+// RecentRepliersLimit distinct). When discussions aren't enabled it returns
+// empty maps (no error).
+func (i *Interactor) CommentCounts(ctx context.Context, channelID int64, postIDs []int64) (map[int64]int, map[int64][]domain.UserCard, error) {
 	out := map[int64]int{}
+	empty := map[int64][]domain.UserCard{}
 	disc, _ := i.groups.GetDiscussion(ctx, channelID)
 	if disc == 0 {
-		return out, nil
+		return out, empty, nil
 	}
 	for _, p := range postIDs {
 		c, _ := i.msgs.CountThread(ctx, disc, p)
 		out[p] = c
 	}
-	return out, nil
+	recent, err := i.msgs.RecentThreadRepliers(ctx, disc, postIDs, RecentRepliersLimit)
+	if err != nil {
+		return out, empty, err
+	}
+	// Карточки комментаторов тянем одним запросом: клиенту нужны имя и аватар,
+	// а не голые id (иначе стек аватаров пришлось бы дорезолвливать по одному).
+	seen := map[int64]bool{}
+	ids := make([]int64, 0, len(recent)*RecentRepliersLimit)
+	for _, users := range recent {
+		for _, u := range users {
+			if !seen[u] {
+				seen[u] = true
+				ids = append(ids, u)
+			}
+		}
+	}
+	cards, err := i.groups.UsersByIDs(ctx, ids)
+	if err != nil {
+		return out, empty, err
+	}
+	byID := make(map[int64]domain.UserCard, len(cards))
+	for _, c := range cards {
+		byID[c.ID] = c
+	}
+	res := make(map[int64][]domain.UserCard, len(recent))
+	for root, users := range recent {
+		for _, u := range users {
+			if c, ok := byID[u]; ok {
+				res[root] = append(res[root], c)
+			}
+		}
+	}
+	return out, res, nil
 }
 
 // ViewCounts returns the current view count for each of the given channel post

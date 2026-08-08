@@ -109,16 +109,23 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 
   const { shellThemeVariant } = useShellTheme({ selected, openThread, threadChat })
 
+  // Ключ вкладки чата: его смена ремаунтит колонку (и весь её стейт).
+  const tabKey = openThread && threadChat
+    ? `thread-${openThread.chatId}-${openThread.thread.rootMsgId}`
+    : selected
+      ? `chat-${selected.id}`
+      : 'empty'
+
   const chatBody =
     openThread && threadChat ? (
       <Chat
-        key={`thread-${openThread.chatId}-${openThread.thread.rootMsgId}`}
+        key={tabKey}
         chat={threadChat}
         thread={openThread.thread}
         onBack={backToList}
       />
     ) : selected ? (
-      <Chat key={selectedId} chat={selected} onBack={backToList} />
+      <Chat key={tabKey} chat={selected} onBack={backToList} />
     ) : (
       <div className={s.empty}>
         <div className={s.emptyPill}>{t('Select a chat to start messaging')}</div>

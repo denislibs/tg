@@ -237,6 +237,9 @@ type MessageRepo interface {
 	HideForUser(ctx context.Context, userID, msgID int64) error
 	ListThread(ctx context.Context, chatID, threadRootID int64, offset, limit int) ([]domain.Message, error)
 	CountThread(ctx context.Context, chatID, threadRootID int64) (int, error)
+	// RecentThreadRepliers — авторы последних комментариев по каждому треду
+	// (новейшие первыми, не более limit различных на тред).
+	RecentThreadRepliers(ctx context.Context, chatID int64, rootIDs []int64, limit int) (map[int64][]int64, error)
 	CountMessages(ctx context.Context, chatID int64) (int, error)
 	CountUnread(ctx context.Context, chatID, userID, afterSeq int64) (int, error)
 	MessageChatID(ctx context.Context, messageID int64) (int64, error)

@@ -7,7 +7,7 @@
 import { useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import Text from '../../shared/ui/Text'
 import classNames from '../../shared/lib/classNames'
-import { withAlpha } from '../../core/format/cssColor'
+import { hexToRgbTriplet } from '../peerColor'
 import { mediaThumbUrl, hasMediaToken, useMediaTokenVersion } from '../../core/mediaUrl'
 import TgIcon from '../TgIcon'
 import RealMediaBubble from './RealMediaBubble'
@@ -152,12 +152,23 @@ function StickerRealBubble({ m, time }: { m: ConvMsg; time: ReactNode }) {
   )
 }
 
+// --peer-color-rgb для цитаты ответа: у исходящих — акцент бабла (tweb ставит
+// --message-out-primary-color-rgb), у входящих — цвет цитируемого автора; без
+// цвета переменная не выставляется, чтобы унаследовать её от бабла (иначе
+// самоссылка var(--peer-color-rgb) сделала бы значение невалидным и цитата
+// стала бы чёрной).
+function replyColorVar(out: boolean, color?: string): CSSProperties {
+  if (out) return { ['--peer-color-rgb' as string]: 'var(--message-out-primary-color-rgb)' } as CSSProperties
+  const rgb = color ? hexToRgbTriplet(color) : ''
+  return (rgb ? { ['--peer-color-rgb' as string]: rgb } : {}) as CSSProperties
+}
+
 // Small rounded thumbnail of the replied-to message's photo/video, shown in the
 // quote box (Telegram). Synchronous URL via the main-thread media token.
 function ReplyThumb({ id }: { id: number }) {
   useMediaTokenVersion()
   if (!hasMediaToken()) return null
-  return <img className={s.replyThumb} src={mediaThumbUrl(id)} alt="" loading="lazy" decoding="async" />
+  return <img src={mediaThumbUrl(id)} alt="" loading="lazy" decoding="async" />
 }
 
 export interface MessageContentProps {
@@ -498,27 +509,41 @@ export default function MessageContent({
                 </Text>
               </div>
             )}
+            {/* Цитата ответа — разметка tweb (живой DOM §3, «reply bubble»):
+                .reply.quote-like.quote-like-hoverable.quote-like-border.mb-shorter
+                > (.reply-media) + .reply-content > .reply-title>span.peer-title
+                + .reply-subtitle. Цвет полосы и подложки берётся из
+                --peer-color-rgb цитируемого автора (_quote.scss). */}
             {m.reply && (
               <div
-                className={s.reply}
+                className={classNames(
+                  'reply', 'quote-like', 'quote-like-hoverable', 'quote-like-border', 'mb-shorter',
+                  m.reply.quote ? 'quote-like-icon' : '',
+                )}
                 onClick={m.reply.seq != null ? (e) => { e.stopPropagation(); feedFns.jumpToSeq(m.reply!.seq) } : undefined}
                 style={{
                   cursor: m.reply.seq != null ? 'pointer' : 'default',
-                  borderLeft: `3px solid ${out ? 'var(--message-out-primary-color)' : m.reply.color ?? 'var(--primary-color)'}`,
-                  background: out ? withAlpha('var(--message-out-primary-color)', 0.12) : withAlpha(m.reply.color ?? 'var(--primary-color)', 0.12),
+                  // Цвет цитаты — цвет ЦИТИРУЕМОГО автора; у исходящих tweb
+                  // подменяет его на белый акцент бабла. Если цвета нет,
+                  // переменную не задаём — она наследуется от бабла.
+                  ...replyColorVar(out, m.reply.color),
                 }}
               >
-                {m.reply.mediaId != null && <ReplyThumb id={m.reply.mediaId} />}
-                <div className={s.replyBody}>
-                  <Text noWrap size={13.5} weight={600} color={out ? 'var(--message-out-primary-color)' : m.reply.color ?? 'var(--primary-color)'}>
-                    {m.reply.name}
+                {m.reply.mediaId != null && (
+                  <div className="reply-media">
+                    <ReplyThumb id={m.reply.mediaId} />
+                  </div>
+                )}
+                <div className="reply-content">
+                  <div className="reply-title">
+                    <span className="peer-title">{m.reply.name}</span>
                     {m.reply.quote && (
                       <TgIcon name="quote_outline" size={13} style={{ verticalAlign: '-1px', marginLeft: 4, opacity: 0.75 }} />
                     )}
-                  </Text>
-                  <Text noWrap size={13.5} color="var(--b-secondary)" style={{ maxWidth: 240 }}>
-                    <RichText text={m.reply.text} entities={m.reply.entities} linkColor="var(--b-link)" />
-                  </Text>
+                  </div>
+                  <div className="reply-subtitle">
+                    <span><RichText text={m.reply.text} entities={m.reply.entities} linkColor="var(--b-link)" /></span>
+                  </div>
                 </div>
               </div>
             )}

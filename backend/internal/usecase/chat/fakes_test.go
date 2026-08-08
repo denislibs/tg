@@ -1003,6 +1003,28 @@ func (r fakeMsgs) ListThread(_ context.Context, chatID, threadRootID int64, offs
 	return picked, nil
 }
 
+func (r fakeMsgs) RecentThreadRepliers(_ context.Context, chatID int64, rootIDs []int64, limit int) (map[int64][]int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	out := map[int64][]int64{}
+	for _, root := range rootIDs {
+		seen := map[int64]bool{}
+		msgs := r.s.messages[chatID]
+		for i := len(msgs) - 1; i >= 0; i-- {
+			m := msgs[i]
+			if m.ThreadRootID == nil || *m.ThreadRootID != root || m.Deleted || seen[m.SenderID] {
+				continue
+			}
+			seen[m.SenderID] = true
+			out[root] = append(out[root], m.SenderID)
+			if len(out[root]) >= limit {
+				break
+			}
+		}
+	}
+	return out, nil
+}
+
 func (r fakeMsgs) CountThread(_ context.Context, chatID, threadRootID int64) (int, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()

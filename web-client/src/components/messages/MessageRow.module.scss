@@ -118,26 +118,9 @@
 .forward {
   margin: 0 $message-padding-horizontal 2px;
 }
-// tweb `.reply` внутри бабла (_chatBubble.scss:1039-1043): margin 0 8px .5rem.
-.reply {
-  margin: 0 $reply-padding-horizontal 0.5rem;
-  padding: 4px 8px;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.replyBody {
-  min-width: 0;
-}
-.replyThumb {
-  width: 34px;
-  height: 34px;
-  border-radius: 4px;
-  object-fit: cover;
-  flex-shrink: 0;
-  display: block;
-}
+// Цитата ответа живёт на классах tweb (.reply + .quote-like из
+// styles/tweb/_chatPinned.scss и _quote.scss): отступы, полоса, подложка по
+// --peer-color-rgb и превью .reply-media — оттуда.
 
 // Replies-footer slot at the bottom of a channel post bubble (tweb .replies-footer
 // sits inside bubble-content). У `.bubble-content` своего padding нет (tweb), так

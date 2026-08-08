@@ -795,6 +795,38 @@ func (r *MessagesRepo) CountThread(ctx context.Context, chatID, threadRootID int
 	return n, err
 }
 
+// RecentThreadRepliers returns, for each thread root, the авторы последних
+// комментариев (новейшие первыми, не более limit различных). Нужен футеру
+// «N комментариев» под постом канала — Telegram показывает там стек аватаров
+// последних комментаторов.
+func (r *MessagesRepo) RecentThreadRepliers(ctx context.Context, chatID int64, rootIDs []int64, limit int) (map[int64][]int64, error) {
+	out := map[int64][]int64{}
+	if len(rootIDs) == 0 || limit <= 0 {
+		return out, nil
+	}
+	q := querier(ctx, r.pool)
+	rows, err := q.Query(ctx, `
+		SELECT thread_root_id, sender_id FROM (
+			SELECT thread_root_id, sender_id,
+			       row_number() OVER (PARTITION BY thread_root_id ORDER BY max(seq) DESC) AS rn
+			FROM messages
+			WHERE chat_id=$1 AND thread_root_id = ANY($2) AND deleted_at IS NULL
+			GROUP BY thread_root_id, sender_id
+		) t WHERE rn <= $3`, chatID, rootIDs, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var root, sender int64
+		if err := rows.Scan(&root, &sender); err != nil {
+			return nil, err
+		}
+		out[root] = append(out[root], sender)
+	}
+	return out, rows.Err()
+}
+
 // CountMessages returns the total number of messages in a chat.
 func (r *MessagesRepo) CountMessages(ctx context.Context, chatID int64) (int, error) {
 	q := querier(ctx, r.pool)

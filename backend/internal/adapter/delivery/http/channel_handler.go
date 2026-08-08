@@ -316,7 +316,7 @@ func (h *ChannelHandler) CommentCounts(w http.ResponseWriter, r *http.Request) {
 		}
 		ids = append(ids, id)
 	}
-	counts, err := h.uc.CommentCounts(r.Context(), chatID, ids)
+	counts, recent, err := h.uc.CommentCounts(r.Context(), chatID, ids)
 	if err != nil {
 		h.mapErr(w, err)
 		return
@@ -325,7 +325,18 @@ func (h *ChannelHandler) CommentCounts(w http.ResponseWriter, r *http.Request) {
 	for id, n := range counts {
 		out[strconv.FormatInt(id, 10)] = n
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"counts": out})
+	// Авторы последних комментариев — под стек аватаров в футере поста.
+	rec := make(map[string][]map[string]any, len(recent))
+	for id, users := range recent {
+		cards := make([]map[string]any, 0, len(users))
+		for _, u := range users {
+			cards = append(cards, map[string]any{
+				"id": u.ID, "display_name": u.DisplayName, "avatar_url": u.AvatarURL,
+			})
+		}
+		rec[strconv.FormatInt(id, 10)] = cards
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"counts": out, "recent_repliers": rec})
 }
 
 func (h *ChannelHandler) ViewCounts(w http.ResponseWriter, r *http.Request) {

@@ -565,7 +565,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
 
   // Channel-only wiring: live subscribe + catch-up, pts persistence, the open
   // discussion-thread overlay, and per-post comment counts.
-  const { commentCounts } = useChannelExtras({
+  const { commentCounts, commentRepliers } = useChannelExtras({
     isRealChat, isChannel, numericChatId, win, discussionsEnabled,
   })
   // Клик по «N комментариев» под постом канала — тред комментариев в этой же
@@ -1096,6 +1096,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
                 isGroup={isGroup}
                 discussionsEnabled={discussionsEnabled}
                 commentCounts={commentCounts}
+                commentRepliers={commentRepliers}
                 highlightSeq={highlightSeq}
                 unreadDividerSeq={unreadDividerSeq}
                 selecting={selecting}

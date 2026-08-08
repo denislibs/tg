@@ -439,9 +439,14 @@ typecheck / tests / build; скриншоты «до/после» в отчёт.
 
 **Files:** Modify `CommentsBar.tsx` (+ бэкенд, если нет recent-авторов треда), `App.tsx`.
 
-- [ ] **Step 1:** `.replies-footer` на классах tweb; аватары — реальные (при отсутствии на бэке добавить `recent_repliers` в DTO треда по образцу `ReactionsFor`).
-- [ ] **Step 2:** Переход между чатами: `.chat.tabs-tab` — вход `translate3d(±200px)→0` + fade `.2s ease-in-out`, вместо ремаунта по key.
-- [ ] **Step 3:** Проверки (фронт + `go build ./... && go vet ./...` при правке бэка).
+- [x] **Step 1:** `.replies-footer` — сделано раньше; аватары теперь реальные: бэкенд
+      отдаёт `recent_repliers` (до 3 последних комментаторов карточками id/имя/аватар)
+      в ответе `/channels/{id}/comment_counts`; репозиторий — `RecentThreadRepliers`.
+- [ ] **Step 2:** Переход между чатами — ОТКАТАН. Реализация сдвигом ±200px давала
+      не тот эффект (уходящий чат уезжал поверх сайдбара), потому что `.chats-container`
+      у нас блочный: в tweb оба таба лежат в одной ячейке грида `.tabs-container`
+      (_slider.scss), который у нас ещё не портирован. Вернуть вместе с фазой 4.
+- [x] **Step 3:** Проверки: фронт (typecheck/793 теста/build) + `go build ./... && go vet ./...`.
 
 ---
 

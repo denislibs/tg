@@ -935,7 +935,7 @@ paths:
         - { name: ids, in: query, schema: { type: string }, description: "CSV of post message ids, e.g. 55,56,57" }
       responses:
         "200":
-          description: post id (string key) -> comment count; empty object when discussions are off
+          description: post id (string key) -> comment count + авторы последних комментариев; пустые объекты, когда обсуждения выключены
           content:
             application/json:
               schema:
@@ -944,6 +944,12 @@ paths:
                   counts:
                     type: object
                     additionalProperties: { type: integer }
+                  recent_repliers:
+                    type: object
+                    description: post id (string key) -> user ids последних комментаторов, новейшие первыми (до 3)
+                    additionalProperties:
+                      type: array
+                      items: { type: integer, format: int64 }
 
   /search:
     get:

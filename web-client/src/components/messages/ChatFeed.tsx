@@ -18,6 +18,7 @@ import MessageRow, { type FeedFns } from './MessageRow'
 import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import type { ConvMsg } from '../../data'
 import type { Message } from '../../core/models'
+import type { CommentReplier } from '../../core/managers/channelsManager'
 import classNames from '../../shared/lib/classNames'
 import s from './ChatFeed.module.scss'
 
@@ -28,6 +29,8 @@ export interface ChatFeedProps {
   isGroup: boolean
   discussionsEnabled: boolean
   commentCounts: Map<number, number>
+  /** авторы последних комментариев по посту — стек аватаров в футере */
+  commentRepliers: Map<number, CommentReplier[]>
   highlightSeq: number | null
   /** seq первого непрочитанного входящего — перед ним рисуется плашка
    * «Непрочитанные сообщения» (tweb is-first-unread); null — плашки нет */
@@ -44,7 +47,7 @@ export interface ChatFeedProps {
 }
 
 function ChatFeed({
-  msgs, winMsgs, isRealChat, isGroup, discussionsEnabled, commentCounts,
+  msgs, winMsgs, isRealChat, isGroup, discussionsEnabled, commentCounts, commentRepliers,
   highlightSeq, unreadDividerSeq, selecting, selected, ladderActive, stickyDateKey,
   feedFns, autoDownload, onOpenDiscussion,
 }: ChatFeedProps) {
@@ -248,7 +251,11 @@ function ChatFeed({
     const postId = discussionsEnabled && lastInGroup ? (winMsgs[i]?.id ?? 0) : 0
     const footer =
       postId > 0 ? (
-        <CommentsBar count={commentCounts.get(postId) ?? 0} onOpen={() => onOpenDiscussion(postId, m.text)} />
+        <CommentsBar
+          count={commentCounts.get(postId) ?? 0}
+          recent={commentRepliers.get(postId)}
+          onOpen={() => onOpenDiscussion(postId, m.text)}
+        />
       ) : undefined
 
     const row = (
