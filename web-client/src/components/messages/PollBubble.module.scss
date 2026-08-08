@@ -48,7 +48,7 @@
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  border: 2px solid var(--b-time);
+  border: 2px solid var(--message-time-color);
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
@@ -122,7 +122,7 @@
 .voteBtn {
   font-size: var(--font-size-14);
   font-weight: 600;
-  color: var(--b-time);
+  color: var(--message-time-color);
   cursor: default;
   padding: 2px 12px;
   border-radius: 12px;

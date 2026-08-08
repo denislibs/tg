@@ -20,8 +20,8 @@ import InlineKeyboard from './InlineKeyboard'
 import AlbumGrid from './AlbumGrid'
 import VoiceMessage from './VoiceMessage'
 import { MessageReactions } from './MessageReactions'
+import Time, { TimeClearfix, type TimeMode, type TimeCorner, type RenderTime } from './bubbleParts/Time'
 import {
-  Ticks,
   BubbleTail,
   bubbleRadius,
   DocumentBubble,
@@ -33,68 +33,18 @@ import {
   RoundVideoRealBubble,
   GeoBubble,
   ContactBubble,
-  SecretTimer,
 } from './MessageBubbles'
 import RichText, { emojiOnlyCount } from '../RichText'
 import StickerMedia from '../StickerMedia'
 import { useAnimatedEmoji } from '../../core/hooks/useAnimatedEmoji'
-import { effectForEmoji, playEmojiEffect, type EmojiEffectKind } from '../../core/effects/emojiEffects'
+import { effectForEmoji, playEmojiEffect } from '../../core/effects/emojiEffects'
 import { peerColor } from '../peerColor'
-import { fmtViews } from '../../core/format/fmtViews'
 import { useT } from '../../i18n'
-import { useSettings, useTimeFormatter } from '../../settings'
+import { useSettings } from '../../settings'
 import type { ConvMsg } from '../../data'
 import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import type { FeedFns } from './MessageRow'
 import s from './MessageRow.module.scss'
-
-// The view-count span (count + eye icon) shown in a channel post's meta line.
-function ViewsMeta({ views, className }: { views: number; className: string }) {
-  return (
-    <span className={className}>
-      <TgIcon name="channelviews" size={15} color="var(--b-time)" />
-      {fmtViews(views)}
-    </span>
-  )
-}
-
-// The forward-count span (count + forward icon) shown in a channel post's meta
-// line, alongside the view count (tweb message.forwards / shares tooltip).
-function ForwardsMeta({ forwards, className }: { forwards: number; className: string }) {
-  return (
-    <span className={className}>
-      <TgIcon name="forward" size={15} color="var(--b-time)" />
-      {fmtViews(forwards)}
-    </span>
-  )
-}
-
-// Эмодзи-глиф вида эффекта (наш аналог Telegram message effects) — для кнопки
-// повторного проигрывания у бабла.
-const EFFECT_EMOJI: Record<EmojiEffectKind, string> = {
-  fireworks: '🎆', confetti: '🎉', hearts: '❤️', thumbs: '👍', poop: '💩', cake: '🎂',
-}
-
-// Кнопка повтора эффекта сообщения: клик запускает полноэкранный canvas-эффект
-// из центра кнопки (tweb: тап по сообщению с эффектом переигрывает его).
-function EffectReplayButton({ kind }: { kind: EmojiEffectKind }) {
-  const ref = useRef<HTMLButtonElement>(null)
-  return (
-    <button
-      ref={ref}
-      type="button"
-      className={s.effectReplay}
-      onClick={(e) => {
-        e.stopPropagation()
-        const r = ref.current?.getBoundingClientRect()
-        playEmojiEffect(kind, r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : undefined)
-      }}
-      aria-label="Replay message effect"
-    >
-      {EFFECT_EMOJI[kind]}
-    </button>
-  )
-}
 
 // Big emoji (tweb bubbles.ts bigEmojis): сообщение из одних только эмодзи, без
 // текста, — крупный глиф без фона бабла. РОВНО один эмодзи, у которого есть
@@ -116,11 +66,12 @@ export function bigEmojiGlyphSize(count: number): number {
 // оба брейкпоинта desktop/handhelds) — фиксированный бокс, НЕ зависит от
 // шрифтовой шкалы выше (tweb bubbles.ts:6109 boxSize = isEmoji ? sizes.emojiSticker : …).
 const ANIMATED_EMOJI_SIZE = 112
-function BigEmojiBubble({ m, count, selecting, fmtTime }: {
+function BigEmojiBubble({ m, count, selecting, time }: {
   m: ConvMsg
   count: number
   selecting: boolean
-  fmtTime: (hhmm?: string) => string | undefined
+  /** узел времени (tweb `.time.is-floating` поверх глифа) */
+  time: ReactNode
 }) {
   const emoji = count === 1 ? (m.text ?? '').trim() : null
   const animated = useAnimatedEmoji(emoji)
@@ -151,10 +102,7 @@ function BigEmojiBubble({ m, count, selecting, fmtTime }: {
           {m.text}
         </div>
       )}
-      <div className={s.stickerMeta}>
-        <Text size="var(--messages-time-text-size)" color="#fff">{fmtTime(m.time)}</Text>
-        <Ticks status={m.status} color="var(--b-tick)" />
-      </div>
+      {time}
     </div>
   )
 }
@@ -164,7 +112,7 @@ function BigEmojiBubble({ m, count, selecting, fmtTime }: {
 // lottie-web c loop из настройки «Зацикливать анимации», webp/png — <img>
 // (различает StickerMedia). Бейдж времени — тот же, что у big-emoji.
 const STICKER_BOX = 200
-function StickerRealBubble({ m, fmtTime }: { m: ConvMsg; fmtTime: (hhmm?: string) => string | undefined }) {
+function StickerRealBubble({ m, time }: { m: ConvMsg; time: ReactNode }) {
   const loopStickers = useSettings((st) => st.loopStickers)
   let w = STICKER_BOX
   let h = STICKER_BOX
@@ -176,10 +124,7 @@ function StickerRealBubble({ m, fmtTime }: { m: ConvMsg; fmtTime: (hhmm?: string
   return (
     <div className={s.stickerReal}>
       <StickerMedia mediaId={m.mediaId!} width={w} height={h} autoplay loop={loopStickers} />
-      <div className={s.stickerMeta}>
-        <Text size="var(--messages-time-text-size)" color="#fff">{fmtTime(m.time)}</Text>
-        <Ticks status={m.status} color="var(--b-tick)" />
-      </div>
+      {time}
     </div>
   )
 }
@@ -212,7 +157,6 @@ export default function MessageContent({
   m, out, firstInGroup, lastInGroup, selecting, autoDownload, albumSelectedKey, footer, showReactions, rowLive, feedFns,
 }: MessageContentProps) {
   const t = useT()
-  const fmtTime = useTimeFormatter()
   const bigEmoji = m.type === 'text' && m.text ? emojiOnlyCount(m.text) : 0
   // Block-level content (code block / quote) takes the full bubble width, so the
   // time drops onto its own line below it (right-aligned).
@@ -237,36 +181,43 @@ export default function MessageContent({
   // «Bare»-типы без контейнера для контента (стикер/эмодзи/кружок/голос-без-медиа/
   // документ/аудио/гео/контакт/звонок): реакции — колонкой ПОД контентом, прижаты
   // к inline-концу контента (tweb is-message-empty: reactions в bubble-content-wrapper,
-  // margin-inline-start:auto). Время у этих типов остаётся при контенте (плавающая
-  // пилюля / voice-мета), в строку чипов не вливается.
+  // margin-inline-start:auto). Время при этом переезжает в строку чипов — ровно как
+  // в tweb (appendBubbleTime → reactionsElement), поэтому в сам контент оно тогда
+  // не передаётся.
   const withReactionsBelow = (content: ReactNode) =>
     showReactions ? (
       <div className={s.emptyMediaCol}>
         {content}
-        {reactionsRow()}
+        {reactionsRow(timeNode('plain'))}
       </div>
     ) : content
 
-  // Время+тики текстового бабла. При наличии реакций (tweb appendBubbleTime) этот
-  // узел уходит trailing-ом в строку чипов, а из строки текста убирается; блочный
-  // (full-width) режим — только когда время осталось на своей строке под кодоблоком.
-  const textMeta = (
-    <span className={classNames(s.meta, hasBlock && !showReactions ? s.block : '')}>
-      {m.effect && <EffectReplayButton kind={m.effect} />}
-      {m.views ? <ViewsMeta views={m.views} className={s.metaViews} /> : null}
-      {m.forwards ? <ForwardsMeta forwards={m.forwards} className={s.metaViews} /> : null}
-      {m.secret && <SecretTimer destructAt={m.destructAt} ttlSeconds={m.ttlSeconds} color="var(--b-time)" />}
-      <span className={s.metaTime}>{m.edited ? `${t('edited')} ` : ''}{fmtTime(m.time)}</span>
-      <Ticks status={m.status} color="var(--b-tick)" />
-    </span>
+  // Время сообщения — единый tweb-компонент (см. bubbleParts/Time.tsx); режим
+  // задаёт способ размещения внутри конкретного бабла.
+  const timeNode = (mode: TimeMode, corner?: TimeCorner, justMedia?: boolean) => (
+    <Time
+      time={m.time}
+      status={m.status}
+      out={out}
+      edited={m.edited}
+      views={m.views}
+      forwards={m.forwards}
+      effect={m.effect}
+      destructAt={m.secret ? m.destructAt : undefined}
+      ttlSeconds={m.secret ? m.ttlSeconds : undefined}
+      mode={mode}
+      corner={corner}
+      justMedia={justMedia}
+    />
   )
-  // Время+тики для poll/checklist (простое: время + тики).
-  const simpleMeta = (
-    <span className={s.meta}>
-      <span className={s.metaTime}>{fmtTime(m.time)}</span>
-      <Ticks status={m.status} color="var(--b-tick)" />
-    </span>
-  )
+  // Медиа-баблы сами решают форму времени (пилюля поверх фото / угол документа),
+  // поэтому получают не готовый узел, а рендер (tweb: один и тот же timeSpan,
+  // разные точки вставки).
+  const renderTime: RenderTime = (mode, corner, justMedia) => timeNode(mode, corner, justMedia)
+  // Для «bare»-типов: при наличии реакций время уезжает в их строку, поэтому в
+  // сам контент оно не передаётся (tweb appendBubbleTime — одно место за раз).
+  const bareTime = (mode: TimeMode, corner?: TimeCorner, justMedia?: boolean) =>
+    showReactions ? undefined : timeNode(mode, corner, justMedia)
 
   return (
     <>
@@ -274,6 +225,7 @@ export default function MessageContent({
           withReactionsBelow(
             <RoundVideoRealBubble
               m={m}
+              time={showReactions ? undefined : timeNode('floating', 'default', true)}
               onPlayed={m.id != null ? () => feedFns.mediaPlayed(m.id as number) : undefined}
               onSoundPlay={m.id != null ? (el) => feedFns.roundPlaying(m.id as number, el) : undefined}
             />,
@@ -288,12 +240,11 @@ export default function MessageContent({
               transcription={m.transcription}
               secretMedia={m.secretMedia}
               out={out}
-              time={m.time}
-              status={m.status}
+              time={showReactions ? undefined : timeNode('corner', 'audio')}
               mediaUnread={m.mediaUnread}
               onPlay={() => feedFns.playVoice(m.mediaId as number)}
             />
-            {showReactions && <div className={s.reactionsPad}>{reactionsRow()}</div>}
+            {showReactions && <div className={s.reactionsPad}>{reactionsRow(timeNode('plain'))}</div>}
           </div>
         ) : m.type === 'album' && m.albumItems ? (
           // Альбом (медиагруппа): грид из элементов, подпись — под гридом.
@@ -307,9 +258,7 @@ export default function MessageContent({
                 items={m.albumItems}
                 selecting={selecting}
                 selectedKey={albumSelectedKey}
-                time={m.text ? undefined : m.time}
-                status={m.status}
-                out={out}
+                time={m.text || showReactions ? undefined : timeNode('floating')}
                 onToggle={feedFns.toggleSelect}
                 onOpen={feedFns.openLightbox}
                 autoDownload={autoDownload}
@@ -317,20 +266,16 @@ export default function MessageContent({
               />
               {m.text ? (
                 <div className={s.mediaCaption}>
-                  <span className={s.mediaText}>
-                    <RichText text={m.text} entities={m.entities} linkColor="var(--b-link)" />
-                  </span>
-                  {m.time && (
-                    <span className={s.mediaTime}>
-                      <span className={s.mediaTimeText} style={{ color: out ? 'var(--message-out-primary-color)' : 'var(--secondary-text-color)' }}>
-                        {m.time}
-                      </span>
-                      {out && <Ticks status={m.status} color="var(--b-tick)" />}
-                    </span>
+                  <RichText text={m.text} entities={m.entities} linkColor="var(--b-link)" />
+                  {!showReactions && (
+                    <>
+                      {timeNode('inline')}
+                      <TimeClearfix />
+                    </>
                   )}
                 </div>
               ) : null}
-              {showReactions && <div className={s.reactionsPad}>{reactionsRow()}</div>}
+              {showReactions && <div className={s.reactionsPad}>{reactionsRow(timeNode('plain'))}</div>}
             </div>
           </div>
         ) : m.type === 'sticker' && m.mediaId != null ? (
@@ -340,7 +285,7 @@ export default function MessageContent({
           // настроек; время+тики бейджем поверх нижнего угла, реакции — снаружи
           // reply/имя в группе не рисуются (как voice/round). Реакции — колонкой под
           // стикером, прижаты к его inline-концу (tweb is-message-empty).
-          withReactionsBelow(<StickerRealBubble m={m} fmtTime={fmtTime} />)
+          withReactionsBelow(<StickerRealBubble m={m} time={timeNode('floating', 'default', true)} />)
         ) : m.mediaId != null || m.localUrl || (m.clientId != null && m.mediaName != null) || m.paidMedia?.locked ? (
           // Outer (relative, NOT clipped) carries the tail; the inner clips the media
           // to the rounded corners. The tailed corner is squared off (like other bubbles).
@@ -359,9 +304,7 @@ export default function MessageContent({
                 <SecretMediaBubble
                   secretMedia={m.secretMedia}
                   out={out}
-                  time={m.text ? undefined : m.time}
-                  status={m.status}
-                  tickColor="var(--b-tick)"
+                  renderTime={m.text || showReactions ? undefined : renderTime}
                   localUrl={m.localUrl}
                   radius={(m.type === 'photo' || m.type === 'video') ? (m.text || showReactions ? '14px 14px 0 0' : '14px') : undefined}
                   onOpen={feedFns.openLightbox}
@@ -379,9 +322,7 @@ export default function MessageContent({
                   size={m.mediaSize}
                   fileName={m.mediaName}
                   out={out}
-                  time={m.text ? undefined : m.time}
-                  status={m.status}
-                  tickColor="var(--b-tick)"
+                  renderTime={m.text || showReactions ? undefined : renderTime}
                   onOpen={feedFns.openLightbox}
                   autoDownload={autoDownload}
                   localUrl={m.localUrl}
@@ -394,59 +335,31 @@ export default function MessageContent({
               )}
               {m.text ? (
                 <div className={s.mediaCaption}>
-                  <span className={s.mediaText}>
-                    <RichText text={m.text} entities={m.entities} linkColor="var(--b-link)" />
-                  </span>
-                  {m.time && (
-                    <span className={s.mediaTime}>
-                      {m.effect && <EffectReplayButton kind={m.effect} />}
-                      {/* truthy как в tweb (messageRender.ts): views=0 приходит для не-канальных сообщений */}
-                      {m.views ? <ViewsMeta views={m.views} className={s.metaViews} /> : null}
-                      {m.forwards ? <ForwardsMeta forwards={m.forwards} className={s.metaViews} /> : null}
-                      <span className={s.mediaTimeText} style={{ color: out ? 'var(--message-out-primary-color)' : 'var(--secondary-text-color)' }}>
-                        {m.time}
-                      </span>
-                      {out && <Ticks status={m.status} color="var(--b-tick)" />}
-                    </span>
+                  <RichText text={m.text} entities={m.entities} linkColor="var(--b-link)" />
+                  {!showReactions && (
+                    <>
+                      {timeNode('inline')}
+                      <TimeClearfix />
+                    </>
                   )}
                 </div>
               ) : null}
-              {showReactions && <div className={s.reactionsPad}>{reactionsRow()}</div>}
+              {showReactions && <div className={s.reactionsPad}>{reactionsRow(timeNode('plain'))}</div>}
               {footer && <div className={s.footerMedia}>{footer}</div>}
             </div>
           </div>
         ) : bigEmoji ? (
-          withReactionsBelow(<BigEmojiBubble m={m} count={bigEmoji} selecting={selecting} fmtTime={fmtTime} />)
-        ) : m.type === 'voice' ? (
           withReactionsBelow(
-          <div className={s.voice} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
-            {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
-            <div className={s.voiceBtn}>
-              <TgIcon name="play" />
-            </div>
-            <div className={s.voiceBody}>
-              <div className={s.wave}>
-                {(m.waveform ?? []).map((h, wi) => (
-                  <div key={wi} className={s.waveBar} style={{ height: `${Math.round(6 + h * 16)}px` }} />
-                ))}
-              </div>
-              <div className={s.voiceMeta}>
-                <Text size={12.5} color="var(--b-secondary)">{m.duration}</Text>
-                <div className={s.spacer} />
-                <Text size="var(--messages-time-text-size)" color="var(--b-time)">{fmtTime(m.time)}</Text>
-                <Ticks status={m.status} color="var(--b-tick)" />
-              </div>
-            </div>
-          </div>,
+            <BigEmojiBubble m={m} count={bigEmoji} selecting={selecting} time={timeNode('floating', 'default', true)} />,
           )
         ) : m.type === 'document' ? (
-          withReactionsBelow(<DocumentBubble m={m} out={out} firstInGroup={firstInGroup} lastInGroup={lastInGroup} />)
+          withReactionsBelow(<DocumentBubble m={m} out={out} firstInGroup={firstInGroup} lastInGroup={lastInGroup} time={bareTime('corner')} />)
         ) : m.type === 'audio' ? (
-          withReactionsBelow(<AudioBubble m={m} out={out} firstInGroup={firstInGroup} lastInGroup={lastInGroup} />)
+          withReactionsBelow(<AudioBubble m={m} out={out} firstInGroup={firstInGroup} lastInGroup={lastInGroup} time={bareTime('corner', 'audio')} />)
         ) : m.type === 'roundVideo' ? (
-          withReactionsBelow(<RoundVideoBubble m={m} out={out} firstInGroup={firstInGroup} lastInGroup={lastInGroup} />)
+          withReactionsBelow(<RoundVideoBubble m={m} out={out} firstInGroup={firstInGroup} lastInGroup={lastInGroup} time={bareTime('floating', 'default', true)} />)
         ) : m.type === 'geo' && m.geo ? (
-          withReactionsBelow(<GeoBubble m={m} out={out} lastInGroup={lastInGroup} radius={bubbleRadius(out, firstInGroup, lastInGroup)} />)
+          withReactionsBelow(<GeoBubble m={m} out={out} lastInGroup={lastInGroup} radius={bubbleRadius(out, firstInGroup, lastInGroup)} time={bareTime('floating', 'default', true)} />)
         ) : m.type === 'contact' && m.contact ? (
           withReactionsBelow(
           <ContactBubble
@@ -454,6 +367,7 @@ export default function MessageContent({
             out={out}
             firstInGroup={firstInGroup}
             lastInGroup={lastInGroup}
+            time={bareTime('corner')}
             onOpen={selecting ? undefined : () => feedFns.openSender(m.contact!.userId, m.contact!.name)}
           />,
           )
@@ -464,6 +378,7 @@ export default function MessageContent({
             out={out}
             firstInGroup={firstInGroup}
             lastInGroup={lastInGroup}
+            time={bareTime('corner')}
             onClick={selecting ? undefined : () => feedFns.recall(!!m.call?.video)}
           />,
           )
@@ -471,13 +386,13 @@ export default function MessageContent({
           <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
             {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
             <GiftBubble gift={m.gift} out={out} />
-            {reactionsRow()}
+            {showReactions ? reactionsRow(timeNode('plain')) : timeNode('corner', 'poll')}
           </div>
         ) : m.type === 'giveaway' && m.giveaway ? (
           <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
             {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
             <GiveawayBubble giveaway={m.giveaway} />
-            {reactionsRow()}
+            {showReactions ? reactionsRow(timeNode('plain')) : timeNode('corner', 'poll')}
           </div>
         ) : m.type === 'poll' && m.poll ? (
           <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
@@ -488,11 +403,7 @@ export default function MessageContent({
               </Text>
             )}
             <PollBubble poll={m.poll} out={out} />
-            {showReactions ? (
-              reactionsRow(simpleMeta)
-            ) : (
-              <div className={s.textLine} style={{ justifyContent: 'flex-end' }}>{simpleMeta}</div>
-            )}
+            {showReactions ? reactionsRow(timeNode('plain')) : timeNode('corner', 'poll')}
           </div>
         ) : m.type === 'checklist' && m.checklist ? (
           <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
@@ -503,11 +414,7 @@ export default function MessageContent({
               </Text>
             )}
             <ChecklistBubble checklist={m.checklist} out={out} />
-            {showReactions ? (
-              reactionsRow(simpleMeta)
-            ) : (
-              <div className={s.textLine} style={{ justifyContent: 'flex-end' }}>{simpleMeta}</div>
-            )}
+            {showReactions ? reactionsRow(timeNode('plain')) : timeNode('corner', 'poll')}
           </div>
         ) : (
           // tweb .bubble-content-wrapper: цветной бабл + reply-markup сиблингами;
@@ -517,8 +424,9 @@ export default function MessageContent({
             {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
             {!out && m.sender && firstInGroup && (
               <Text
+                className={s.name}
                 onClick={m.senderId != null ? () => feedFns.openSender(m.senderId!, m.sender!) : undefined}
-                size={14} weight={600} color={m.senderColor ?? peerColor(m.sender)}
+                size="var(--messages-secondary-text-size)" weight={600} color={m.senderColor ?? peerColor(m.sender)}
                 style={{ cursor: m.senderId != null ? 'pointer' : 'default' }}
               >
                 {m.sender}
@@ -526,7 +434,7 @@ export default function MessageContent({
             )}
             {m.forwardFrom && (
               <div className={s.forward}>
-                <Text size={13} color="var(--b-time)">{t('Forwarded from')}</Text>
+                <Text size={13} color="var(--message-time-color)">{t('Forwarded from')}</Text>
                 <Text size={14} weight={600} color={out ? 'var(--message-out-primary-color)' : (m.forwardFrom.color ?? 'var(--primary-color)')}>
                   {m.forwardFrom.name}
                 </Text>
@@ -556,21 +464,26 @@ export default function MessageContent({
                 </div>
               </div>
             )}
-            <div className={s.textLine}>
-              <span className={classNames(s.msgText, hasBlock ? s.block : '')}>
-                <RichText text={m.text ?? ''} entities={m.entities} linkColor="var(--b-link)" />
-              </span>
+            {/* tweb `.message`: тело сообщения — текст, превью ссылки, фактчек и
+                время, которое плавает (float:right) в последней строке текста. */}
+            <div className={s.message}>
+              <RichText text={m.text ?? ''} entities={m.entities} linkColor="var(--b-link)" />
+              {m.webPage && (
+                <WebPagePreview wp={m.webPage} out={out} linkColor="var(--b-link)" />
+              )}
+              {m.factCheck && (
+                <FactCheckBox fc={m.factCheck} out={out} linkColor="var(--b-link)" />
+              )}
               {/* без реакций — время на последней строке текста (tweb float);
                   с реакциями — оно уходит trailing-ом в строку чипов ниже */}
-              {!showReactions && textMeta}
+              {!showReactions && (
+                <>
+                  {timeNode(m.webPage || m.factCheck ? 'nofloat' : hasBlock ? 'block' : 'inline')}
+                  <TimeClearfix />
+                </>
+              )}
             </div>
-            {m.webPage && (
-              <WebPagePreview wp={m.webPage} out={out} linkColor="var(--b-link)" />
-            )}
-            {m.factCheck && (
-              <FactCheckBox fc={m.factCheck} out={out} linkColor="var(--b-link)" />
-            )}
-            {reactionsRow(textMeta)}
+            {reactionsRow(timeNode('plain'))}
             {footer && <div className={s.footerText}>{footer}</div>}
           </div>
           {m.replyMarkup?.inline && m.chatId != null && m.senderId != null && (

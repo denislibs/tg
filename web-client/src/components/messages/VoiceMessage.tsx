@@ -1,18 +1,39 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import Text from '../../shared/ui/Text'
 import PlayPauseGlyph from '../PlayPauseGlyph'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useAudioStore, prefetchSecretAudio } from '../../stores/audioStore'
 import { useWaveform, WAVE_BARS, decodeTransmittedBars } from '../../core/audio/waveform'
-import { Ticks } from './MessageBubbles'
 import { useTranscription, TranscribeButton, TranscribedText } from './Transcription'
 import classNames from '../../shared/lib/classNames'
-import type { MsgStatus } from '../../data'
 import type { SecretMedia } from '../../core/models'
 import s from './VoiceMessage.module.scss'
 
 // A flat placeholder shown until the real waveform is decoded.
 const PLACEHOLDER = Array.from({ length: WAVE_BARS }, () => 0.25)
+
+// Геометрия волны 1:1 tweb (components/audio.ts createWaveformBars): бар 2px с
+// зазором 2px, высота 4..23px, а ШИРИНА волны растёт с длительностью — от 190px
+// (десктопный minW) до 256px (maxW), достигая максимума на минуте записи.
+const BAR_WIDTH = 2
+const BAR_MARGIN = 2
+const BAR_HEIGHT_MIN = 4
+const BAR_HEIGHT_MAX = 23
+const WAVE_MIN_W = 190
+const WAVE_MAX_W = 256
+// tweb slice(0, 63) — больше 63 пиков в документе не передаётся
+const WAVE_MAX_BARS = 63
+
+function waveBarCount(duration: number): number {
+  const availW = Math.min(WAVE_MAX_W, Math.max(WAVE_MIN_W, (duration / 60) * WAVE_MAX_W))
+  return Math.min(Math.floor(availW / (BAR_WIDTH + BAR_MARGIN)), WAVE_MAX_BARS)
+}
+
+// Ресэмпл готовых пиков к нужному числу баров (tweb сводит wfSize к barCount).
+function resample(bars: number[], n: number): number[] {
+  if (!bars.length || bars.length === n) return bars
+  return Array.from({ length: n }, (_, i) => bars[Math.floor((i * bars.length) / n)])
+}
 
 function fmt(sec: number): string {
   if (!Number.isFinite(sec) || sec < 0) sec = 0
@@ -29,7 +50,6 @@ export default function VoiceMessage({
   secretMedia,
   out,
   time,
-  status,
   mediaUnread,
   onPlay,
 }: {
@@ -43,8 +63,8 @@ export default function VoiceMessage({
   /** секретный чат (E2E): ключ/iv/mime для расшифровки ciphertext'а голоса */
   secretMedia?: SecretMedia
   out: boolean
-  time?: string
-  status?: MsgStatus
+  /** узел времени бабла (tweb `.audio .time` — абсолютом в нижний угол) */
+  time?: ReactNode
   /** не прослушано получателем — точка после длительности (tweb is-unread) */
   mediaUnread?: boolean
   onPlay: () => void
@@ -56,8 +76,7 @@ export default function VoiceMessage({
   // Переданные пики (посчитаны при записи, приоритетнее client-recompute);
   // фолбэк — recompute (старые сообщения без пиков / секретный голос).
   const [metaWaveform, setMetaWaveform] = useState('')
-  const transmitted = useMemo(() => decodeTransmittedBars(metaWaveform), [metaWaveform])
-  const bars = transmitted.length ? transmitted : decoded.length ? decoded : PLACEHOLDER
+  const transmitted = useMemo(() => decodeTransmittedBars(metaWaveform, WAVE_MAX_BARS), [metaWaveform])
 
   const isCurrent = useAudioStore((s) => s.track?.mediaId === mediaId)
   const playing = useAudioStore((s) => s.playing && s.track?.mediaId === mediaId)
@@ -91,6 +110,11 @@ export default function VoiceMessage({
 
   const duration = isCurrent && curDur ? curDur : metaDur
   const progress = isCurrent && duration ? curTime / duration : 0
+  // Число баров — от длительности (tweb), поэтому считается после duration.
+  const bars = useMemo(() => {
+    const src = transmitted.length ? transmitted : decoded.length ? decoded : PLACEHOLDER
+    return resample(src, waveBarCount(duration))
+  }, [transmitted, decoded, duration])
 
   const handlePlay = () => {
     if (isCurrent) toggle()
@@ -126,7 +150,8 @@ export default function VoiceMessage({
               key={i}
               className={s.waveBar}
               style={{
-                height: `${Math.round(5 + h * 18)}px`,
+                height: `${Math.round(BAR_HEIGHT_MIN + h * (BAR_HEIGHT_MAX - BAR_HEIGHT_MIN))}px`,
+                width: `${BAR_WIDTH}px`,
                 background: i / bars.length <= progress ? 'var(--v-accent)' : 'var(--v-off)',
               }}
             />
@@ -139,14 +164,7 @@ export default function VoiceMessage({
           {showUnplayedDot && <div className={s.dot} />}
         </div>
       </div>
-      {/* Время+тик — АБСОЛЮТОМ в низ-правый угол бабла (tweb: .bubble .audio .time
-          { position:absolute; right:0; bottom:-3px }). Время-текст muted
-          (--message-time-color), тик .time-sending-status ЯРКИЙ
-          (--message-status-color, на night белый) + 19px (calc(text+3px)). */}
-      <span className={s.time}>
-        {time}
-        {out && <Ticks status={status} color="var(--message-out-primary-color)" size={19} />}
-      </span>
+      {time}
       {tr.available && (
         <TranscribeButton
           className={s.transcribe}

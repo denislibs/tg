@@ -62,8 +62,6 @@ export interface ConvMsg {
   replyToPeerId?: number
   replySnapshotName?: string
   replySnapshotText?: string
-  duration?: string // voice message length, e.g. "0:14"
-  waveform?: number[] // voice waveform bar heights (0..1)
   // media (history read model — render the bubble fully, no per-media meta request)
   mediaId?: number
   mediaWidth?: number // real media dims → reserve box, no shift

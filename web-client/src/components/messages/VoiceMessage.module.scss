@@ -1,13 +1,19 @@
-// VoiceMessage — голосовое: кнопка play/pause + волна + длительность/время.
-// Палитра (акцент кнопки/волны, off-бар, текст) — CSS-переменные на [data-out]:
-// out — насыщенный bubbleOutAccent на светлой out-плашке, in — accent на серой.
-// Цвет бара по прогрессу (on/off) и высота — инлайн (зависят от данных).
+// VoiceMessage — порт tweb `audio-element.is-voice` (_document.scss:191-248,
+// _audio.scss:426-434,559-610): колонка «волна + длительность», кнопка play
+// вынесена АБСОЛЮТОМ влево (а не флекс-элементом), высота ровно с кнопку.
+@use '../../styles/foundation' as *;
+
 .wrap {
   --v-accent: var(--primary-color);
   --v-off: var(--secondary-text-color);
   --v-dur: var(--secondary-text-color);
-  --v-time: var(--secondary-text-color);
 
+  // tweb `.message` / `.document-message`: тело сообщения внутри бабла — оно же
+  // containing block для времени, прибитого абсолютом в нижний угол.
+  position: relative;
+  margin: $message-padding-top $message-padding-horizontal $message-padding-bottom;
+  // flex-контекст: иначе margin-block дочернего `.voice` схлопывается с этим
+  // margin'ом и вертикальные отступы бабла теряются
   display: flex;
   flex-direction: column;
 
@@ -15,38 +21,43 @@
     --v-accent: var(--message-out-primary-color);
     --v-off: color-mix(in srgb, var(--message-out-primary-color) 30%, transparent);
     --v-dur: var(--message-out-primary-color);
-    --v-time: color-mix(in srgb, var(--message-out-primary-color) 70%, transparent);
   }
 }
 
+// tweb `.audio`: --icon-size 3rem, --icon-margin .5625rem, padding-inline-start
+// освобождает место под абсолютную кнопку, высота = размеру кнопки.
 .voice {
-  position: relative;
+  --icon-size: 3rem;
+  --icon-margin: 0.5625rem;
+  // tweb `.is-single-document .audio { margin-top/bottom: .5rem }`
+  // (_chatBubble.scss:1273-1278) — поверх отступов тела сообщения.
+  margin-block: 0.5rem;
+  padding-inline-start: calc(var(--icon-size) + var(--icon-margin));
+  height: var(--icon-size);
   display: flex;
-  // stretch: тело растягивается на высоту кнопки (48px), волна вверху, а строка
-  // «длительность … время» прижимается к НИЗУ бабла (как tweb: время у нижнего края).
-  align-items: stretch;
-  gap: 10px;
-  padding: 8px 10px;
-  min-width: 240px; // кнопка 48 + gap + waveform (tweb progress-line min 180)
+  flex-direction: column;
+  justify-content: center;
+  cursor: pointer;
 
-  // место под кнопку транскрибации в правом верхнем углу (tweb padding-inline-end)
+  // место под кнопку транскрибации справа (tweb `.audio.can-transcribe`)
   &.canTranscribe {
-    padding-right: 2.75rem;
+    padding-inline-end: 2.25rem;
   }
 }
 
 .transcribe {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 0;
+  right: 0;
 }
 
+// tweb `.audio-ico`: абсолют на статической позиции, отрицательный inline-start
+// вытягивает кнопку в освобождённый padding'ом левый столбец.
 .playBtn {
-  position: relative;
-  align-self: center; // кнопка по центру, даже когда тело растянуто на всю высоту
-  width: 48px; // tweb --icon-size: 3rem
-  height: 48px;
-  flex-shrink: 0;
+  position: absolute;
+  margin-inline-start: calc(var(--icon-size) * -1 - var(--icon-margin));
+  width: var(--icon-size);
+  height: var(--icon-size);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -70,52 +81,35 @@
 }
 
 .body {
-  flex: 1;
-  min-width: 0;
-  // волна вверху, мета (длительность+время) внизу — время прижато к нижнему краю
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
+  min-width: 11.25rem; // tweb `.is-voice .progress-line { min-width: 11.25rem }`
 }
+// tweb `.audio-waveform-container`: 23px + margin-top 1px
 .wave {
   display: flex;
   align-items: center;
-  gap: 2px;
-  height: 23px; // tweb .audio-waveform-container 23px
+  gap: 2px; // tweb barMargin
+  height: 23px; // tweb barHeightMax
+  margin-top: 1px;
 }
 .waveBar {
-  width: 2px; // tweb waveform bars 2px
   flex-shrink: 0;
-  border-radius: 2px;
+  border-radius: 1px; // tweb rect rx/ry=1
 }
+// tweb `.audio-time` в голосовом: 14px, line-height 1, margin-top 7px, -1px влево
 .meta {
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin-top: 2px;
-}
-// Время+тик — АБСОЛЮТОМ в низ-правый угол бабла (tweb .bubble .audio .time:
-// position:absolute; right:0; bottom:-3px). display:inline-flex/align-center/
-// line-height:1; фикс-высота = размеру времени (крупный тик 19px перекрывает
-// строку, а не растягивает). Стоит «ровно всегда» независимо от потока.
-.time {
-  position: absolute;
-  right: 10px; // padding-inline-end бабла
-  bottom: 7px;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
   line-height: 1;
-  white-space: nowrap;
-  height: var(--messages-time-text-size);
-  font-size: var(--messages-time-text-size);
-  color: var(--v-time);
-  font-variant-numeric: tabular-nums;
+  margin-top: 7px;
+  margin-left: -1px;
+  color: var(--v-dur);
 }
+// tweb `.is-voice.is-unread .audio-time:after` — точка «не прослушано»
 .dot {
-  width: 8px;
-  height: 8px;
+  width: 0.5rem;
+  height: 0.5rem;
   border-radius: 50%;
   background: var(--primary-color);
   flex-shrink: 0;
+  margin-left: 0.375rem;
 }

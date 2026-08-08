@@ -21,7 +21,7 @@ import { useUploadsStore } from '../../stores/uploadsStore'
 import RadialProgress from '../RadialProgress'
 import StarIcon from '../stars/StarIcon'
 import { useT } from '../../i18n'
-import type { MsgStatus } from '../../data'
+import type { RenderTime } from './bubbleParts/Time'
 import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import s from './RealMediaBubble.module.scss'
 
@@ -33,13 +33,6 @@ function fmtSize(n: number): string {
   if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} МБ`
   if (n >= 1024) return `${Math.max(1, Math.round(n / 1024))} КБ`
   return `${n} Б`
-}
-
-function Ticks({ status, color }: { status?: MsgStatus; color: string }) {
-  if (!status) return null
-  if (status === 'sending') return <TgIcon name="sending" size={16} color={color} />
-  if (status === 'error') return <TgIcon name="sendingerror" size={16} color="#ff595a" />
-  return <TgIcon name={status === 'read' ? 'checks' : 'check'} size={16} color={color} />
 }
 
 interface Props {
@@ -56,9 +49,9 @@ interface Props {
   size?: number
   fileName?: string
   out: boolean
-  time?: string
-  status?: MsgStatus
-  tickColor: string
+  /** рендер времени бабла (bubbleParts/Time) — форму выбирает сам бабл:
+   * плавающая пилюля поверх фото/видео либо угол у документа/аудио */
+  renderTime?: RenderTime
   onOpen?: (mediaId: number, el: HTMLElement) => void
   // Автозагрузка для чата (tweb autoDownloadSize): 0 = грузить только по клику
   autoDownload?: ChatAutoDownload
@@ -76,7 +69,7 @@ interface Props {
 
 export default function RealMediaBubble({
   mediaId, type, width, height, mime, blur, hasThumb, duration, size, fileName,
-  out, time, status, tickColor, onOpen, autoDownload, localUrl, clientId, onCancelUpload, radius,
+  out, renderTime, onOpen, autoDownload, localUrl, clientId, onCancelUpload, radius,
   paidMedia, onUnlockPaid,
 }: Props) {
   useMediaTokenVersion() // re-render when the media token is (re)primed → fresh URLs
@@ -115,12 +108,7 @@ export default function RealMediaBubble({
   const isVideo = !asFile && (type === 'video' || !!mime?.startsWith('video/'))
   const isAudio = !asFile && (type === 'audio' || isAudioMime)
 
-  const timeCluster: ReactNode = time ? (
-    <div className={s.timeCluster}>
-      <Text size={12} color={out ? tickColor : 'var(--secondary-text-color)'} style={{ fontVariantNumeric: 'tabular-nums' }}>{time}</Text>
-      {out && <Ticks status={status} color={tickColor} />}
-    </div>
-  ) : null
+  const timeCluster: ReactNode = renderTime?.('corner')
 
   // ---- Photo / video ----
   if (isImage || isVideo) {
@@ -231,12 +219,7 @@ export default function RealMediaBubble({
             <Text size={12} color="#fff" style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtDur(duration)}</Text>
           </div>
         )}
-        {time && (
-          <div className={s.timeBadge}>
-            <Text size={12} color="#fff" style={{ fontVariantNumeric: 'tabular-nums' }}>{time}</Text>
-            {out && <Ticks status={status} color="#fff" />}
-          </div>
-        )}
+        {renderTime?.('floating')}
       </div>
     )
   }

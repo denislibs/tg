@@ -1,19 +1,17 @@
 // src/components/messages/bubbleParts/mediaBubbles.tsx
 // Медиа-баблы: документ/файл, аудио, видео-кружок (превью и «настоящий» со звуком).
-import { useRef, useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import Text from '../../../shared/ui/Text'
 import classNames from '../../../shared/lib/classNames'
 import TgIcon from '../../TgIcon'
 import { mediaContentUrl } from '../../../core/mediaUrl'
-import { useTimeFormatter } from '../../../settings'
 import type { ConvMsg } from '../../../data'
 import { useTranscription, TranscribeButton, TranscribedText } from '../Transcription'
-import { Ticks, BubbleTail, bubbleRadius, type Ctx } from './primitives'
+import { BubbleTail, bubbleRadius, type Ctx } from './primitives'
 import s from '../MessageBubbles.module.scss'
 
 /** document / file */
-export function DocumentBubble({ m, out, firstInGroup, lastInGroup }: Ctx) {
-  const fmtTime = useTimeFormatter()
+export function DocumentBubble({ m, out, firstInGroup, lastInGroup, time }: Ctx) {
   const d = m.document
   return (
     <div
@@ -36,20 +34,15 @@ export function DocumentBubble({ m, out, firstInGroup, lastInGroup }: Ctx) {
           <Text size={13} color="var(--bb-sub)">
             {d?.size} · {d?.ext}
           </Text>
-          <div className={s.spacer} />
-          <Text size={12} color="var(--bb-meta)">
-            {fmtTime(m.time)}
-          </Text>
-          <Ticks status={m.status} color="var(--bb-tick)" />
         </div>
       </div>
+      {time}
     </div>
   )
 }
 
 /** audio / music */
-export function AudioBubble({ m, out, firstInGroup, lastInGroup }: Ctx) {
-  const fmtTime = useTimeFormatter()
+export function AudioBubble({ m, out, firstInGroup, lastInGroup, time }: Ctx) {
   const a = m.audio
   return (
     <div
@@ -75,20 +68,15 @@ export function AudioBubble({ m, out, firstInGroup, lastInGroup }: Ctx) {
           <Text size={12} color="var(--bb-meta)">
             {a?.duration}
           </Text>
-          <div className={s.spacer} />
-          <Text size={12} color="var(--bb-meta)">
-            {fmtTime(m.time)}
-          </Text>
-          <Ticks status={m.status} color="var(--bb-tick)" />
         </div>
       </div>
+      {time}
     </div>
   )
 }
 
 /** round video note (превью) */
-export function RoundVideoBubble({ m, out }: Ctx) {
-  const fmtTime = useTimeFormatter()
+export function RoundVideoBubble({ m, out, time }: Ctx) {
   return (
     <div className={s.round} data-out={out || undefined}>
       <div className={s.roundInner}>
@@ -111,10 +99,7 @@ export function RoundVideoBubble({ m, out }: Ctx) {
           />
         </svg>
         <div className={s.roundDur}>{m.videoDuration ?? '0:08'}</div>
-      </div>
-      <div className={s.roundMeta}>
-        <Text size={12} color="var(--secondary-text-color)">{fmtTime(m.time)}</Text>
-        <Ticks status={m.status} color="var(--secondary-text-color)" />
+        {time}
       </div>
     </div>
   )
@@ -126,8 +111,12 @@ export function RoundVideoBubble({ m, out }: Ctx) {
  * прогресса + остаток), повторный клик — пауза. Белая точка — media_unread, гаснет
  * на первом timeupdate со звуком (tweb readMessages).
  */
-export function RoundVideoRealBubble({ m, onPlayed, onSoundPlay }: { m: ConvMsg; onPlayed?: () => void; onSoundPlay?: (el: HTMLVideoElement) => void }) {
-  const fmtTime = useTimeFormatter()
+export function RoundVideoRealBubble({ m, time, onPlayed, onSoundPlay }: {
+  m: ConvMsg
+  time?: ReactNode
+  onPlayed?: () => void
+  onSoundPlay?: (el: HTMLVideoElement) => void
+}) {
   const ref = useRef<HTMLVideoElement>(null)
   const [sound, setSound] = useState(false)
   const [paused, setPaused] = useState(false)
@@ -218,11 +207,8 @@ export function RoundVideoRealBubble({ m, onPlayed, onSoundPlay }: { m: ConvMsg;
           {noSound && <TgIcon name="nosound" size={16} style={{ verticalAlign: '-3px', marginLeft: 2 }} />}
           {m.mediaUnread && <span className={s.roundRealDot} />}
         </div>
-        {/* время + галочки — внутри круга снизу (tweb) */}
-        <div className={s.roundRealMeta}>
-          <Text size={12} color="#fff">{fmtTime(m.time)}</Text>
-          {m.out && <Ticks status={m.status} color="#fff" />}
-        </div>
+        {/* время + галочки — внутри круга снизу (tweb .time.is-floating) */}
+        {time}
       </div>
       {tr.available && (
         <div className={s.roundRealTranscribe}>

@@ -39,7 +39,7 @@
   width: 20px;
   height: 20px;
   border-radius: 5px;
-  border: 2px solid var(--b-time);
+  border: 2px solid var(--message-time-color);
   box-sizing: border-box;
   flex-shrink: 0;
   margin-top: 1px;
@@ -113,6 +113,6 @@
   }
 
   &::placeholder {
-    color: var(--b-time);
+    color: var(--message-time-color);
   }
 }

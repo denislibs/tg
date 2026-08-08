@@ -12,8 +12,9 @@ export type { IconName }
 
 interface Props {
   name: IconName
-  /** glyph size in px (maps to font-size); default 24 */
-  size?: number
+  /** glyph size — число трактуется как px, строка идёт в font-size как есть
+   * (tweb задаёт размеры глифов через calc/rem: `calc(var(--messages-text-size) + 3px)`) */
+  size?: number | string
   /** glyph colour; defaults to currentColor (inherits text colour) */
   color?: string
   className?: string

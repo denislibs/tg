@@ -63,7 +63,7 @@ export default function ChecklistBubble({ checklist, out }: { checklist: Checkli
   return (
     <div className={classNames(s.checklist, out ? s.out : '')}>
       <div className={s.title}>{checklist.title}</div>
-      <Text size={13} color="var(--b-time)">
+      <Text size={13} color="var(--message-time-color)">
         {checklist.othersCanMark ? t('Group Checklist') : t('Checklist')}
       </Text>
 
@@ -88,7 +88,7 @@ export default function ChecklistBubble({ checklist, out }: { checklist: Checkli
                 {checklist.othersCanMark && marked && by != null && (
                   <span className={s.markedBy}>
                     <UserAvatar id={by} name={peer?.displayName ?? ''} avatarUrl={peer?.avatarUrl} size={16} />
-                    <Text size={12} color="var(--b-time)">{peer?.displayName ?? `#${by}`}</Text>
+                    <Text size={12} color="var(--message-time-color)">{peer?.displayName ?? `#${by}`}</Text>
                   </span>
                 )}
               </div>
@@ -98,7 +98,7 @@ export default function ChecklistBubble({ checklist, out }: { checklist: Checkli
       </div>
 
       <div className={s.footer}>
-        <Text size={13} color="var(--b-time)">{`${done} ${t('of')} ${total} ${t('done')}`}</Text>
+        <Text size={13} color="var(--message-time-color)">{`${done} ${t('of')} ${total} ${t('done')}`}</Text>
         {canAdd && !adding && (
           <span className={s.addBtn} onClick={() => setAdding(true)}>
             <TgIcon name="add" size={16} color="var(--primary-color)" />
