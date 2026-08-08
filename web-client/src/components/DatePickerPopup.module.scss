@@ -140,8 +140,9 @@
     background-color: var(--light-secondary-text-color);
   }
 
+  // tweb гасит недоступные дни прозрачностью, НЕ перекрашивая их: выходные
+  // среди них остаются приглушённо-красными.
   &:disabled {
-    color: var(--secondary-text-color);
     cursor: default;
     opacity: 0.4;
   }

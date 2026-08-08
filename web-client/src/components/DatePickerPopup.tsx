@@ -35,6 +35,10 @@ const SCROLL_BUFFER_PX = 200 // запас строк сверху/снизу в
 
 const monthKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}`
 const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+// В русской локали Intl отдаёт «август 2026 г.» со строчной — tweb показывает
+// месяц с заглавной, поэтому поднимаем первую букву.
+const capitalize = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s)
+
 const startOfDay = (d: Date) => {
   const out = new Date(d)
   out.setHours(0, 0, 0, 0)
@@ -230,7 +234,7 @@ export default function DatePickerPopup({
   }, [lang, weekend])
 
   const monthTitle = useMemo(
-    () => (current ? new Intl.DateTimeFormat(lang, { year: 'numeric', month: 'long' }).format(current.date) : ''),
+    () => (current ? capitalize(new Intl.DateTimeFormat(lang, { year: 'numeric', month: 'long' }).format(current.date)) : ''),
     [current, lang],
   )
 
@@ -277,7 +281,7 @@ export default function DatePickerPopup({
               style={{ transform: `translateY(${section.offset}px)`, height: section.height }}
             >
               <div className={s.monthLabel}>
-                {new Intl.DateTimeFormat(lang, { year: 'numeric', month: 'long' }).format(section.date)}
+                {capitalize(new Intl.DateTimeFormat(lang, { year: 'numeric', month: 'long' }).format(section.date))}
               </div>
               <div className={s.weekdays}>
                 {weekdays.map((w) => (
