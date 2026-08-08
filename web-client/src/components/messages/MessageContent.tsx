@@ -46,13 +46,19 @@ import s from './MessageRow.module.scss'
 // Обёртки «одиночного документа» tweb (голос/аудио/файл): между .bubble-content и
 // самим элементом лежат фон-подложка, тело сообщения и контейнер документа
 // (живой DOM §3 — voice mid 21397, audio/document дампы).
-function DocumentContainer({ children, reactions }: { children: ReactNode; reactions?: ReactNode }) {
+function DocumentContainer({ children, reactions, mid, peerId }: {
+  children: ReactNode
+  reactions?: ReactNode
+  mid?: number
+  peerId?: number
+}) {
   return (
     <>
       <div className="bubble-content-background" />
       <div className="message spoilers-container">
         <span className="clearfix" />
-        <div className="document-container is-first is-last">
+        {/* tweb дублирует id сообщения/отправителя на контейнере документа */}
+        <div className="document-container is-first is-last" data-mid={mid} data-peer-id={peerId}>
           <div className="document-wrapper">{children}</div>
         </div>
         {/* реакции — в теле сообщения после контейнера документа (tweb
@@ -266,7 +272,7 @@ export default function MessageContent({
           // Обёртки tweb для «одиночного документа» (голос/аудио/файл), живой DOM §3:
           // .bubble-content-background + .message.spoilers-container > span.clearfix
           // + .document-container.is-first.is-last > .document-wrapper > контент.
-          <DocumentContainer reactions={reactionsInside}>
+          <DocumentContainer reactions={reactionsInside} mid={m.id} peerId={m.senderId}>
             <VoiceMessage
               out={out}
               mediaId={m.mediaId}
@@ -327,7 +333,7 @@ export default function MessageContent({
           // Документ/музыка (файл без превью) идут в обёртках tweb для одиночного
           // документа; фото/видео — в своём медиа-контейнере.
           isFileLike ? (
-            <DocumentContainer reactions={reactionsInside}>
+            <DocumentContainer reactions={reactionsInside} mid={m.id} peerId={m.senderId}>
               <RealMediaBubble
                 mediaId={m.mediaId}
                 type={m.type}

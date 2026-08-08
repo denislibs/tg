@@ -179,6 +179,9 @@ function MessageRow({
             rowLive={rowLiveRef.current}
             feedFns={feedFns}
           />
+          {/* Хвостик — ПОСЛЕДНИЙ ребёнок .bubble-content (tweb
+              bubbleContainer.append(generateTail()), живой DOM §3). */}
+          {cls.includes('can-have-tail') && <BubbleTail />}
         </div>
         {/* Инлайн-клавиатура бота — СИБЛИНГ бабла внутри обёртки (tweb
             .reply-markup рядом с .bubble-content): кнопки лежат под баблом, а не
@@ -186,8 +189,6 @@ function MessageRow({
         {m.replyMarkup?.inline && m.chatId != null && m.senderId != null && (
           <InlineKeyboard rows={m.replyMarkup.inline} chatId={m.chatId} botId={m.senderId} msgId={m.id} />
         )}
-        {/* Хвостик — сиблинг контента внутри обёртки (tweb generateTail()). */}
-        {cls.includes('can-have-tail') && <BubbleTail />}
       </div>
     </BubbleAppear>
   )

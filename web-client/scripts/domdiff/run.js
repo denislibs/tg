@@ -61,11 +61,26 @@ if (has('--all')) {
   report.push(`эталонов: ${Object.keys(expected).length}, баблов в снимке: ${bubbles.length}\n`)
   const detail = flag('--detail')
   const details = []
+  // Классы-типы бабла: по ним отбираются кандидаты, иначе «лучшим» окажется
+  // самый КОРОТКИЙ бабл снимка (у него меньше узлов — меньше findings), и
+  // отчёт врёт: голосовое сравнивалось бы с сервисным.
+  const TYPE_CLASSES = ['voice-message', 'audio-message', 'document-message', 'poll-message',
+    'contact-message', 'call-message', 'is-album', 'sticker', 'emoji-big', 'round', 'photo',
+    'video', 'service', 'is-date', 'is-sponsored', 'is-reply', 'forwarded']
   for (const [key, v] of Object.entries(expected)) {
+    const wanted = v.tree.classes.filter((c) => TYPE_CLASSES.includes(c))
+    const sameType = wanted.length
+      ? bubbles.filter((b) => wanted.every((c) => b.classes.includes(c)))
+      : []
+    const candidates = sameType.length ? sameType : bubbles
     let best = null
-    for (const b of bubbles) {
+    for (const b of candidates) {
       const f = diffTrees(v.tree, b, opts)
       if (!best || f.length < best.length) best = f
+    }
+    if (!sameType.length && wanted.length) {
+      report.push(`${key.padEnd(46)} — в снимке нет бабла типа [${wanted.join(', ')}]`)
+      continue
     }
     const sum = best ? summarize(best) : {}
     report.push(`${key.padEnd(46)} ${best ? best.length : '—'} findings  ${JSON.stringify(sum)}`)
