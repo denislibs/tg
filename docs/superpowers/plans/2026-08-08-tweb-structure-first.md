@@ -386,9 +386,9 @@ typecheck / tests / build; скриншоты «до/после» в отчёт.
 - Modify: `web-client/src/components/Chat.tsx`, `Sidebar.tsx` — переезд на этот скелет.
 - Modify: `web-client/src/styles/index.scss` — убрать наши layout-переменные колонок, оставив те, что пишет порт.
 
-- [ ] **Step 1:** Снять с живого tweb значения `--chat-width`, `--left-column-width`, `--right-column-width`, `--page-chats-padding`, `--folders-sidebar-offset` в трёх режимах (узкий / обычный / открытая правая колонка) — эталон для порта.
-- [ ] **Step 2:** Портировать `updateColumnWidths.ts` дословно; классы состояния (`body.is-right-column-shown`, `body.right-column-floats`, `body.is-left-column-shown`) ставить там же, где tweb.
-- [ ] **Step 3:** Перевести оболочку на скелет колонок; проверить три режима по DOM-diff обёрток.
+- [x] **Step 1:** Снять с живого tweb значения `--chat-width`, `--left-column-width`, `--right-column-width`, `--page-chats-padding`, `--folders-sidebar-offset` в трёх режимах (узкий / обычный / открытая правая колонка) — эталон для порта.
+- [x] **Step 2:** Портировать `updateColumnWidths.ts` дословно; классы состояния (`body.is-right-column-shown`, `body.right-column-floats`, `body.is-left-column-shown`) ставить там же, где tweb.
+- [x] **Step 3:** Перевести оболочку на скелет колонок; проверить три режима по DOM-diff обёрток.
 - [ ] **Step 4:** Только после этого — Task 3.1 (партиалы `_chat`/`_chatTopbar`/`_chatPinned`).
 
 ### Task 3.1: Порт `_chat.scss` (без секции chat-input), `_chatTopbar.scss`, `_chatPinned.scss`

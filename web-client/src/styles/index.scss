@@ -24,15 +24,13 @@ html {
   font-size: var(--font-size-16);
 }
 
-/* Layout-переменные колонок — порт tweb (helpers/updateColumnWidths.ts + base.scss).
-   У нас нет ресайза колонок, поэтому значения статичны: ширина = min(vw, 360),
-   внешний отступ страницы 16px (0 на handheld), радиус $border-radius-big (0 на
-   handheld), offset папок-сайдбара 0. Компоненты читают только var(...). */
+/* Ширины колонок (--default-column-width, --left-column-*, --right-column-width,
+   --middle-column-width, --chat-width, --page-chats-padding, --folders-sidebar-*)
+   пишет JS — core/dom/updateColumnWidths.ts (порт tweb helpers/updateColumnWidths.ts).
+   SCSS их только читает; фолбэки на первый кадр — ниже, до вызова из App. */
 :root {
   --default-column-width: min(100vw, #{$default-column-width});
-  --left-column-visual-width: var(--default-column-width);
   --page-chats-padding: 16px;
-  --folders-sidebar-offset: 0px;
   --main-column-border-radius: #{$border-radius-big};
   // Высота плавающих плейтов чата (хедер, поиск, pinned, selection, плеер,
   // строка композера) — tweb --chat-input-height: 3rem (base.scss).

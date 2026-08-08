@@ -11,6 +11,8 @@ import GlobalOverlays from './components/shell/GlobalOverlays'
 import ShellLayout from './components/shell/ShellLayout'
 import AuthFlow from './components/auth/AuthFlow'
 import { useT } from './i18n'
+import classNames from './shared/lib/classNames'
+import { installColumnWidthsUpdater } from './core/dom/updateColumnWidths'
 // Сущность чата из модели данных; компонент ниже называется так же (как в tweb),
 // поэтому тип импортируется под алиасом.
 import type { Chat as ChatEntity } from './data'
@@ -40,6 +42,10 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   const t = useT()
 
   // Инфраструктура Shell (эффекты без общего стейта).
+  // Ширины колонок (порт tweb updateColumnWidths): JS пишет --chat-width /
+  // --left-column-width / --page-chats-padding и класс body.right-column-floats,
+  // из которых портированные партиалы раскладывают чат и ленту.
+  useLayoutEffect(() => { installColumnWidthsUpdater() }, [])
   useAppBootstrap()
   useShellEnterAnimation()
   useAutoLock()
@@ -103,7 +109,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 
   const { shellThemeVariant } = useShellTheme({ selected, openThread, threadChat })
 
-  const chatArea =
+  const chatBody =
     openThread && threadChat ? (
       <Chat
         key={`thread-${openThread.chatId}-${openThread.thread.rootMsgId}`}
@@ -119,8 +125,16 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
       </div>
     )
 
+  // #column-center — как в tweb (живой DOM §1): у него свой --page-chats-padding,
+  // от него считаются инсеты .bubbles и маска фейдов ленты.
+  const chatArea = (
+    <div id="column-center" className={classNames('tabs-tab', 'main-column', s.columnCenter)}>
+      {chatBody}
+    </div>
+  )
+
   return (
-    <div id="app-shell" className={s.root}>
+    <div id="app-shell" className={classNames(s.root, 'tabs-container')}>
       {/* Animated 4-point gradient wallpaper + doodle pattern (tweb-style). Обои темы
           активного чата поднимаются сюда, чтобы весь shell был в теме (осознанное
           отклонение от tweb-скоупа для цветов — см. useShellTheme). Цвета темы чата

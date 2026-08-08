@@ -9,6 +9,15 @@
   background: var(--background-color);
 }
 
+// #column-center — обёртка колонки чата (id + классы tweb). В нашей flex-раскладке
+// она занимает остаток ряда; сама геометрия чата — внутри (Chat.module.scss).
+.columnCenter {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-self: stretch;
+}
+
 // мобильная колонка (список чатов / чат) — фуллскрин-слой под классический
 // слайд 100%/-100% (tweb handheld: колонки перекрываются на весь экран)
 .mobileColumn {
