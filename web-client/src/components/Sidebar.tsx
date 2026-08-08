@@ -141,13 +141,22 @@ export default function Sidebar({
           menu={menuActions}
         />
       )}
-      {/* tweb .sidebar-header.main-search-sidebar-header. При включённой вертикальной
-          колонке папок бургер живёт в ней — в шапке остаётся только стрелка «назад». */}
-      <div className={s.header}>
+      {/* Дальше — дерево tweb 1:1 (живой DOM §2):
+          .sidebar-slider.tabs-container > .tabs-tab.sidebar-slider-item.item-main.active
+            > .sidebar-header.main-search-sidebar-header
+            + .stories-list
+            + .sidebar-content > #chatlist-container.transition-item > .connection-status-bottom
+                                 + #search-container.transition-item.sidebar-search
+                                 + кнопка «новый чат» */}
+      <div className={classNames('sidebar-slider', 'tabs-container', s.slider)}>
+      <div className={classNames('tabs-tab', 'sidebar-slider-item', 'item-main', 'active', s.sliderItem)}>
+      <div className={classNames('sidebar-header', 'main-search-sidebar-header', 'can-have-forum', 'is-input-the-last-child', s.header)}>
         {(!foldersSidebarShown || searching) && (
-          <SidebarMenuButton searching={searching} onBack={closeSearch} {...menuActions} />
+          <div className={classNames('sidebar-header__btn-container', 'left-sidebar-burger')}>
+            <SidebarMenuButton searching={searching} onBack={closeSearch} {...menuActions} />
+          </div>
         )}
-        <div className={s.search}>
+        <div className={classNames('input-search', 'old-style', s.search)}>
           <InputSearch
             ref={inputRef}
             value={query}
@@ -171,11 +180,17 @@ export default function Sidebar({
         )}
       </div>
       {!searching && !forumChat && (
-        <StoriesRow onOpen={stories.openViewer} onAddStory={stories.pickStoryFile} />
+        <div className="stories-list">
+          <StoriesRow onOpen={stories.openViewer} onAddStory={stories.pickStoryFile} />
+        </div>
       )}
 
-      {/* tweb #chatlist-container — список всегда смонтирован; поиск перекрывает его */}
-      <div className={s.body}>
+      {/* tweb .sidebar-content — общий слой чатлиста, выдачи поиска и FAB */}
+      <div className={classNames('sidebar-content', 'transition', 'zoom-fade', 'can-have-forum', s.content)}>
+      {/* #chatlist-container несёт --stories-scrolled, .connection-status-bottom
+          на него сдвигается (translateY(92px - var(--stories-scrolled))) */}
+      <div id="chatlist-container" className={classNames('transition-item', 'active', folders.length > 0 ? 'has-filters' : '', s.body)}>
+      <div className={classNames('connection-status-bottom', s.listOffset)}>
         <ChatList
           ref={listScrollRef}
           chats={filtered}
@@ -221,7 +236,7 @@ export default function Sidebar({
           )}
         </AnimatePresence>
         {!searching && folders.length > 0 && !foldersSidebarShown && (
-          <TabsBar mode="overlay">
+          <TabsBar mode="overlay" className="chatlist-overlay">
             <FolderTabs
               value={folderId}
               onChange={changeFolder}
@@ -231,8 +246,11 @@ export default function Sidebar({
             />
           </TabsBar>
         )}
+      </div>
+      </div>
+
         {searching && (
-          <div className={s.searchOverlay}>
+          <div id="search-container" className={classNames('transition-item', 'sidebar-search', s.searchOverlay)}>
             <motion.div
               className={s.searchInner}
               initial={{ opacity: 0, scale: 0.96, y: -6 }}
@@ -245,8 +263,7 @@ export default function Sidebar({
         )}
 
         {/* tweb: кнопка «новый чат» (#new-menu.btn-corner) живёт ВНУТРИ
-            .sidebar-content, рядом с чат-листом и выдачей поиска, — от него же
-            и позиционируется. */}
+            .sidebar-content, рядом с чатлистом и выдачей поиска. */}
         <ComposeFab
           searching={searching || !!forumChat}
           onNewGroup={() => setScreen('newGroup')}
@@ -256,7 +273,10 @@ export default function Sidebar({
         />
       </div>
 
-      {forumPanel}
+      {/* tweb .topics-slider — панель форум-тем поверх слайдера сайдбара */}
+      <div className="topics-slider">{forumPanel}</div>
+      </div>
+      </div>
 
       {folderOverlays}
 
