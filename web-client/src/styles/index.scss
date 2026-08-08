@@ -5,6 +5,9 @@
 @use 'tokens';
 @use 'fonts';
 @use 'foundation' as *;
+// Партиалы tweb — последними, чтобы их каскад перекрывал наши legacy-глобалки
+// (см. styles/tweb/_index.scss). Пока пуст: наполняется по фазам перестройки.
+@use 'tweb';
 
 html,
 body,
