@@ -23,6 +23,7 @@
 // --- Порядок как в tweb style.scss (номер — строка там) ---
 @use "ripple"; // :6
 @use "button"; // :10
+@use "animatedIcon"; // :11
 @use "badge"; // :14
 @use "progressLine"; // :15 (выдержка из ckin)
 @use "chatlist"; // :17

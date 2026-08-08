@@ -1,11 +1,23 @@
 // src/components/SidebarMenuButton.tsx
-// The sidebar's leading ≡ button. It owns the open/closed state of the main menu
-// (so Sidebar no longer holds menuOpen) and renders the MainMenu itself. When the
-// search is open it morphs into a back arrow that closes the search instead.
+// Содержимое tweb `.sidebar-header__btn-container.left-sidebar-burger` (живой DOM §2,
+// index.html:93-96 + sidebarLeft/index.ts:156-197):
+//
+//   div.animated-menu-icon[.state-back]                              ← сам глиф ≡ ↔ ←
+//   button.btn-icon.rp.btn-menu-toggle.sidebar-tools-button[.is-visible]  ← открыть меню
+//   div.btn-icon.sidebar-back-button[.is-visible]                    ← закрыть поиск
+//
+// Три «полоски» бургера рисует CSS (_animatedIcon.scss), морф в стрелку — класс
+// `state-back` на нём же. Обе кнопки лежат друг на друге (`.left-sidebar-burger
+// .btn-icon { position:absolute; inset:0 }`), видима та, у которой `is-visible` —
+// ровно как в эффекте tweb (sidebarLeft/index.ts:408-418):
+//   showBack = foldersSidebarShown || isLeftSearchActive
+// (панель папок у нас скрывает бургер целиком, поэтому здесь остаётся поиск).
+//
+// Не портировано: `span.badge.badge-20.badge-primary.sidebar-tools-button-notifications` —
+// это счётчик уведомлений ДРУГИХ аккаунтов (мультиаккаунта у нас нет).
 import { memo, useState } from 'react'
+import classNames from '../shared/lib/classNames'
 import IconButton from '../shared/ui/IconButton'
-import { AnimatePresence, motion } from 'framer-motion'
-import TgIcon from './TgIcon'
 import MainMenu from './MainMenu'
 
 export interface SidebarMenuButtonProps {
@@ -30,26 +42,21 @@ function SidebarMenuButton({
   const close = () => setMenuOpen(false)
   // Run a menu action then close the menu.
   const act = (fn: () => void) => () => { close(); fn() }
+  const showBack = searching
 
   return (
     <>
+      <div className={classNames('animated-menu-icon', showBack ? 'state-back' : '')} />
       <IconButton
-        onClick={() => (searching ? onBack() : setMenuOpen((o) => !o))}
+        className={classNames('btn-icon', 'rp', 'btn-menu-toggle', 'sidebar-tools-button', showBack ? '' : 'is-visible')}
+        onClick={() => setMenuOpen((o) => !o)}
         color="var(--secondary-text-color)"
-      >
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.span
-            key={searching ? 'back' : 'menu'}
-            initial={{ rotate: -90, opacity: 0 }}
-            animate={{ rotate: 0, opacity: 1 }}
-            exit={{ rotate: 90, opacity: 0 }}
-            transition={{ duration: 0.18 }}
-            style={{ display: 'inline-flex' }}
-          >
-            {searching ? <TgIcon name="back" size={24} /> : <TgIcon name="menu" size={24} />}
-          </motion.span>
-        </AnimatePresence>
-      </IconButton>
+        aria-label="Меню"
+      />
+      <div
+        className={classNames('btn-icon', 'sidebar-back-button', showBack ? 'is-visible' : '')}
+        onClick={onBack}
+      />
       <MainMenu
         open={menuOpen}
         onClose={close}
