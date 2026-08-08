@@ -3,17 +3,19 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 50px;
+  min-height: 48px; // tweb $button-height: 3rem
   padding: 0 1rem;
   border: none;
-  border-radius: 12px;
+  border-radius: 16px; // tweb $button-border-radius
   background: var(--primary-color);
   color: #fff;
   font-size: var(--font-size-15);
-  font-weight: 600;
+  font-weight: 500; // tweb --font-weight-bold: 500
   font-family: inherit;
   cursor: pointer;
-  transition: filter 0.15s ease, opacity 0.15s ease;
+  // tweb: transition .25s cubic-bezier(.4,0,.2,1) (у нас hover=brightness, а не
+  // фон→--dark-primary-color — цветовой паритет hover отдельным заходом к теме)
+  transition: filter 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 
   @media (hover: hover) {
     &:hover:not(:disabled) {
@@ -21,7 +23,7 @@
     }
   }
   &:disabled {
-    opacity: 0.4;
+    opacity: 0.3; // tweb --disabled-opacity: .3
     cursor: default;
   }
 }

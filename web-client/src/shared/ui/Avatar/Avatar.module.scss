@@ -21,6 +21,7 @@
   font-weight: 600;
   font-size: calc(var(--size) * 0.42);
   line-height: 1;
+  text-transform: uppercase; // tweb: инициалы аватара — uppercase
   user-select: none;
   overflow: hidden;
 }
