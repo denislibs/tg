@@ -112,7 +112,7 @@ function buildMonthCells(month: Date, minDate: Date, maxDate: Date): Cell[] {
 }
 
 // tweb datePicker.tsx getMaxScheduleDate: планировать можно на год вперёд (−1 день).
-const getMaxScheduleDate = () => {
+export const getMaxScheduleDate = () => {
   const date = new Date()
   date.setFullYear(date.getFullYear() + 1)
   date.setDate(date.getDate() - 1)

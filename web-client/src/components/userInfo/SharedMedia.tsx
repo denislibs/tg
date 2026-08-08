@@ -168,7 +168,8 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
       (entries) => {
         if (entries.some((en) => en.isIntersecting)) loadPageRef.current(filter, tab)
       },
-      { root, rootMargin: '320px' },
+      // порог дозагрузки — 300px до низа (tweb Scrollable.onScrollOffset = 300)
+      { root, rootMargin: '300px' },
     )
     io.observe(el)
     return () => io.disconnect()

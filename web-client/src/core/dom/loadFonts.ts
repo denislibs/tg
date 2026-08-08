@@ -1,35 +1,32 @@
 // Загрузка шрифтов вне критического рендер-пути (порт tweb helpers/dom/loadFonts +
-// index.ts fadeInWhenFontsReady). Раньше @fontsource/roboto/{400,500,700}.css
-// импортировались статикой в main.tsx — их @font-face попадал в критический CSS
-// бандла. Теперь CSS подтягивается динамическим импортом (отдельный чанк, off
-// критпуть), а `document.fonts.load` даёт промис готовности, по которому UI
-// плавно проявляется. Корректные unicode-подмножества @fontsource сохранены —
-// @font-face руками не переписываем.
+// index.ts fadeInWhenFontsReady). @font-face объявлены в styles/_fonts.scss
+// (tweb-бандл Roboto/Roboto Mono 400/500); здесь только прогрев через
+// `document.fonts.load` — его промис даёт точку, по которой UI плавно проявляется.
+// Веса — как tweb: [400, 500]; bold рендерится Medium-файлами (fix 600→Medium
+// в _fonts.scss), настоящего Bold 700 в tweb нет.
 import { pause } from '../accountTransition'
 
 // Пробы: латиница + кириллица (как tweb texts ['b','б']) — заставляют браузер
 // реально подтянуть нужные подмножества, а не только объявить @font-face.
 const PROBES = ['b', 'б']
-const WEIGHTS = [400, 500, 700]
+const WEIGHTS = [400, 500]
 
 let promise: Promise<void> | null = null
 
-// Один раз: подключить @font-face (dynamic import CSS) и дождаться готовности
-// всех начертаний Roboto + иконочного tgico. Никогда не реджектит; жёсткий кап 1с
+// Один раз: дождаться готовности начертаний Roboto + Roboto Mono + иконочного
+// tgico (как tweb helpers/dom/loadFonts.ts). Никогда не реджектит; жёсткий кап 1с
 // (как tweb Promise.race([all, pause(1000)])) — на медленной сети не ждём вечно.
 export function loadFonts(): Promise<void> {
   return (promise ??= (async () => {
-    // @font-face уводим в ленивый чанк (инъекция CSS происходит на резолве импорта).
-    await Promise.all([
-      import('@fontsource/roboto/400.css'),
-      import('@fontsource/roboto/500.css'),
-      import('@fontsource/roboto/700.css'),
-    ]).catch(() => { /* CSS не подгрузился — деградируем на системный фолбэк */ })
-
     if (!('fonts' in document)) return
 
     const loads: Promise<unknown>[] = []
-    for (const w of WEIGHTS) for (const t of PROBES) loads.push(document.fonts.load(`${w} 1rem Roboto`, t))
+    for (const w of WEIGHTS) {
+      for (const t of PROBES) {
+        loads.push(document.fonts.load(`${w} 1rem Roboto`, t))
+        loads.push(document.fonts.load(`${w} 1rem "Roboto Mono"`, t))
+      }
+    }
     loads.push(document.fonts.load('1rem tgico')) // иконочный шрифт (PUA-глифы)
 
     await Promise.race([

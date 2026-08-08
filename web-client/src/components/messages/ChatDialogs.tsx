@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 // Presentational chat dialogs/popups extracted from ConversationView: delete
 // confirm, forward target picker, "seen by" popup, add-member picker, and the
 // discard-voice confirm. Each is dumb — it self-sources i18n + motion constants
@@ -32,10 +32,11 @@ const EASE_STD = EASE
 
 // Delete confirmation — порт tweb PopupDeleteMessages (popups/deleteMessages.ts:84-160):
 // заголовок «Delete message»/«Delete N messages», описание, в личке — чекбокс
-// «Also delete for <имя>», в группе/канале с revoke — «Delete for all»; ОДНА
+// «Also delete for <имя>», в группе с revoke — «Delete for all members»; в канале
+// чекбокса НЕТ — удаление всегда для всех (tweb overrideRevoke=true). ОДНА
 // danger-кнопка DELETE (+ авто-Cancel). Выбор чекбокса решает revoke —
 // колбэки onDeleteForEveryone/onDeleteForMe сохранены для внешних потребителей.
-export function DeleteMessageDialog({ canRevoke, count = 1, chatType, peerFirstName, onDeleteForEveryone, onDeleteForMe, onClose }: {
+export function DeleteMessageDialog({ canRevoke, count = 1, chatType, peerFirstName, avatar, onDeleteForEveryone, onDeleteForMe, onClose }: {
   canRevoke: boolean
   /** число удаляемых сообщений (bulk-выбор) */
   count?: number
@@ -43,25 +44,34 @@ export function DeleteMessageDialog({ canRevoke, count = 1, chatType, peerFirstN
   chatType?: Dialog['type']
   /** first name собеседника личного чата (tweb wrapPeerTitle onlyFirstName) */
   peerFirstName?: string
+  /** аватар 32px слева от заголовка (tweb PopupPeer peerId → avatarNew 32) */
+  avatar?: ReactNode
   onDeleteForEveryone: () => void
   onDeleteForMe: () => void
   onClose: () => void
 }) {
   const t = useT()
   const single = count <= 1
+  // Канал: revoke всегда, без чекбокса (tweb: buttons[0].callback = callback(..., true))
+  const isChannel = chatType === 'channel'
+  const withCheckbox = canRevoke && !isChannel
   return (
     <ConfirmPopup
+      avatar={avatar}
       title={single ? t('Delete message') : t('Delete %d messages').replace('%d', String(count))}
       description={single ? t('Are you sure you want to delete this message?') : t('Are you sure you want to delete these messages?')}
-      checkboxes={canRevoke ? [{
+      checkboxes={withCheckbox ? [{
         text: chatType === 'private' && peerFirstName
           ? `${t('Also delete for')} ${peerFirstName}`
-          : t('Delete for all'),
+          : t('Delete for all members'),
       }] : undefined}
       buttons={[{
         text: t('Delete'),
         danger: true,
-        onClick: (checked) => { if (canRevoke && checked[0]) onDeleteForEveryone(); else onDeleteForMe() },
+        onClick: (checked) => {
+          if ((isChannel && canRevoke) || (withCheckbox && checked[0])) onDeleteForEveryone()
+          else onDeleteForMe()
+        },
       }]}
       onClose={onClose}
     />

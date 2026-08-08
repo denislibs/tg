@@ -9,6 +9,9 @@ import { AnimatePresence } from 'framer-motion'
 import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
+import { dialogToChat } from '../../core/dialogToChat'
+import Avatar from '../../shared/ui/Avatar'
+import { useAvatarSrc } from '../useAvatarSrc'
 import type { useMessageActions } from '../../core/hooks/useMessageActions'
 import MessageContextMenu from './MessageContextMenu'
 import FactCheckEditor from './FactCheckEditor'
@@ -28,10 +31,14 @@ export default function ChatMsgActionPopups({ msgActions, numericChatId, isRealC
   const t = useT()
   const managers = useManagers()
   const allDialogs = useChatsStore((s) => s.dialogs)
+  const meId = useChatsStore((s) => s.meId)
   const m = msgActions
-  // Для delete-конфирма (tweb PopupDeleteMessages): тип чата и first name
-  // собеседника подписывают чекбокс «Also delete for <имя>» / «Delete for all».
+  // Для delete-конфирма (tweb PopupDeleteMessages → PopupPeer peerId): тип чата и
+  // first name собеседника подписывают чекбокс «Also delete for <имя>» /
+  // «Delete for all members», а аватар чата (32) встаёт слева от заголовка.
   const dialog = allDialogs.find((d) => d.chatId === numericChatId)
+  const dialogChat = dialog ? dialogToChat(dialog, meId) : undefined
+  const dialogAvatarSrc = useAvatarSrc(dialogChat?.avatarUrl)
 
   return (
     <>
@@ -86,6 +93,9 @@ export default function ChatMsgActionPopups({ msgActions, numericChatId, isRealC
           count={m.delIds.ids.length}
           chatType={dialog?.type}
           peerFirstName={dialog?.peer?.displayName?.split(' ')[0]}
+          avatar={dialogChat ? (
+            <Avatar background={dialogChat.avatar} text={dialogChat.avatarText} emoji={dialogChat.avatarEmoji} src={dialogAvatarSrc} size={32} />
+          ) : undefined}
           onDeleteForEveryone={() => m.doDelete(true)}
           onDeleteForMe={() => m.doDelete(false)}
           onClose={m.closeDelete}

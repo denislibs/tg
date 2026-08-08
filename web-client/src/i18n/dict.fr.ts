@@ -230,7 +230,7 @@ const fr: Dict = {
   'Are you sure you want to delete this message?': 'Supprimer ce message ?',
   'Are you sure you want to delete these messages?': 'Supprimer ces messages ?',
   'Also delete for': 'Supprimer aussi pour',
-  'Delete for all': 'Supprimer pour tous',
+  'Delete for all members': 'Supprimer pour tous les membres',
   'Delete Group': 'Supprimer le groupe',
   'Leave Group': 'Quitter le groupe',
   'Live Stream': 'Diffusion en direct',

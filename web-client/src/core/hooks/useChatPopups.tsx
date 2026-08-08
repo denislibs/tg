@@ -20,6 +20,8 @@ import type { ThreadInfo } from '../../components/ConversationView'
 import HeaderMenu from '../../components/HeaderMenu'
 import AttachMenu from '../../components/AttachMenu'
 import Menu, { MenuItem } from '../../shared/ui/Menu'
+import Avatar from '../../shared/ui/Avatar'
+import { useAvatarSrc } from '../../components/useAvatarSrc'
 import TgIcon from '../../components/TgIcon'
 import { TopicIcon as _TopicIcon } from '../../components/TopicsPanel'
 import ConfirmDialog from '../../components/settings/ConfirmDialog'
@@ -98,8 +100,16 @@ export function useChatPopups(d: ChatPopupDeps) {
     <ChatThemesPicker open={p.open} onClose={p.requestClose} onExitComplete={p.onExitComplete} chatId={numericChatId} currentThemeId={d.activeThemeId} />
   ))
 
+  // Аватар чата для хедера MutePopup (tweb PopupMute → PopupPeer peerId → avatarNew 32)
+  const chatAvatarSrc = useAvatarSrc(chat.avatarUrl)
   const openMute = () => openPopup((p) => (
-    <MutePopup open={p.open} onClose={p.requestClose} onExitComplete={p.onExitComplete} onMute={(seconds) => d.applyMute(true, seconds)} />
+    <MutePopup
+      open={p.open}
+      onClose={p.requestClose}
+      onExitComplete={p.onExitComplete}
+      onMute={(seconds) => d.applyMute(true, seconds)}
+      avatar={<Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={chatAvatarSrc} size={32} />}
+    />
   ))
 
   const openConfirmDelete = () => openPopup((p) => (

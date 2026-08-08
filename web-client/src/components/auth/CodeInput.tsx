@@ -3,7 +3,8 @@
 // autocomplete=one-time-code> absolute поверх ряда отрисованных ячеек. Вставка
 // строки из N цифр из буфера заполняет всё; автозаполнение из SMS работает.
 // Цифра влетает translateY(20px)→0 spring-безье, при удалении — scale(.5)+fade;
-// в активной ячейке — мигающий caret. Ошибка — красные рамки + input-shake.
+// в активной ячейке — мигающий caret. Ошибка — красные рамки (tweb: без shake).
+// onFocusChange — для обезьянки TrackingMonkey (tweb вешает focus/blur на input).
 import { useRef, useState } from 'react'
 import classNames from '../../shared/lib/classNames'
 import s from './CodeInput.module.scss'
@@ -29,12 +30,13 @@ function Digit({ digit }: { digit: string }) {
   )
 }
 
-export default function CodeInput({ length, value, onChange, onComplete, error }: {
+export default function CodeInput({ length, value, onChange, onComplete, error, onFocusChange }: {
   length: number
   value: string
   onChange: (v: string) => void
   onComplete: (code: string) => void
   error?: boolean
+  onFocusChange?: (focused: boolean) => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [focused, setFocused] = useState(false)
@@ -65,10 +67,11 @@ export default function CodeInput({ length, value, onChange, onComplete, error }
         onChange={(e) => handleInput(e.target.value)}
         onFocus={(e) => {
           setFocused(true)
+          onFocusChange?.(true)
           // каретка всегда в конце — активная ячейка следует за длиной значения
           e.target.setSelectionRange(value.length, value.length)
         }}
-        onBlur={() => setFocused(false)}
+        onBlur={() => { setFocused(false); onFocusChange?.(false) }}
       />
       {Array.from({ length }).map((_, i) => (
         <div

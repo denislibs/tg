@@ -79,7 +79,7 @@ function CheckboxRow({ text, checked, onToggle }: { text: ReactNode; checked: bo
       onClick={onToggle}
     >
       {ripple}
-      <Checkbox checked={checked} shape="square" />
+      <Checkbox checked={checked} shape="square" size={20} />
       <span className={s.checkboxText}>{text}</span>
     </div>
   )
@@ -121,12 +121,13 @@ export default function ConfirmPopup({
 
   useNavLayer(open, dismiss) // браузерный/аппаратный Back закрывает попап
 
-  // Esc — закрыть; Enter — первая не-cancel кнопка (tweb btnConfirmOnEnter).
+  // Esc — закрыть; Enter — не-cancel кнопка, но только когда всего две кнопки
+  // с учётом авто-Cancel (tweb setButtons: btnConfirmOnEnter при buttons.length === 2).
   useEffect(() => {
     if (!open) return
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { e.stopPropagation(); dismiss() }
-      else if (e.key === 'Enter' && buttons.length) { e.stopPropagation(); activate(buttons[0]) }
+      else if (e.key === 'Enter' && buttons.length === 1) { e.stopPropagation(); activate(buttons[0]) }
     }
     document.addEventListener('keydown', onKeyDown, true)
     return () => document.removeEventListener('keydown', onKeyDown, true)

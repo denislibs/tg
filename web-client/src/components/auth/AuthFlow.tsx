@@ -122,6 +122,8 @@ export default function AuthFlow({ onComplete, onToggleMode }: { onComplete: () 
 
   // code step — единое значение CodeInput (tweb codeInputField)
   const [codeValue, setCodeValue] = useState('')
+  // фокус поля кода — для обезьянки (tweb monkeys/tracking: focus/blur input)
+  const [codeFocused, setCodeFocused] = useState(false)
 
   // password step (облачный пароль, 2FA): одноразовый токен из sign_in
   const [pwToken, setPwToken] = useState('')
@@ -236,8 +238,9 @@ export default function AuthFlow({ onComplete, onToggleMode }: { onComplete: () 
   const phoneStep = (
     <>
       {Logo}
+      {/* tweb SignInCard: заголовок «Sign in to Telegram» */}
       <Text size={26} weight={600} color="var(--primary-text-color)" style={{ textAlign: 'center' }}>
-        Telegram
+        {t('Sign in to Telegram')}
       </Text>
       <Text
         size={15} color="var(--secondary-text-color)"
@@ -255,15 +258,16 @@ export default function AuthFlow({ onComplete, onToggleMode }: { onComplete: () 
         }}
       />
 
-      {/* phone field */}
+      {/* phone field: лейбл всегда на рамке — в поле всегда есть код страны
+          (tweb .input-field-phone + плавающий label «Phone Number») */}
       <div className={s.fieldWrap}>
+        <label className={s.fieldLabel}>{t('Phone Number')}</label>
         <Text size={16} color="var(--primary-text-color)" style={{ marginRight: '8px' }}>{country.code}</Text>
         <input
           autoFocus
           className={s.phoneInput}
           value={phone}
           onChange={(e) => onPhoneInput(e.target.value)}
-          placeholder={t('Phone number')}
           inputMode="tel"
         />
       </div>
@@ -353,7 +357,7 @@ export default function AuthFlow({ onComplete, onToggleMode }: { onComplete: () 
   const codeStep = (
     <>
       {/* обезьянка следит за вводом кода (tweb monkeys/tracking) */}
-      <TrackingMonkey progress={codeValue.length / CODE_LEN} size={130} />
+      <TrackingMonkey typed={codeValue.length} length={CODE_LEN} focused={codeFocused} size={130} />
       <Text size={22} weight={600} color="var(--primary-text-color)" style={{ textAlign: 'center' }}>
         {country.code} {phone}
       </Text>
@@ -370,6 +374,7 @@ export default function AuthFlow({ onComplete, onToggleMode }: { onComplete: () 
         onChange={(v) => { setError(''); setCodeValue(v) }}
         onComplete={(v) => void submitCode(v)}
         error={!!error}
+        onFocusChange={setCodeFocused}
       />
 
       {/* резерв высоты под ошибку — layout не прыгает (tweb errorLabel 1lh) */}

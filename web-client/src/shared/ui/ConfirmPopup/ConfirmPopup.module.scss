@@ -15,7 +15,9 @@
   margin: auto;
   display: flex;
   flex-direction: column;
-  // tweb .popup-peer: --popup-min-width 19.5rem / --popup-max-width 25rem
+  overflow: hidden; // tweb .popup-container
+  // tweb .popup-peer .popup-container: width min-content в рамках 19.5–25rem
+  width: min-content;
   min-width: min(100%, 19.5rem);
   max-width: min(100%, 25rem);
   border-radius: 2.5rem; // tweb --popup-border-radius
@@ -31,6 +33,7 @@
   align-items: center;
   padding: 0 1rem;
   height: 2.5rem;
+  width: max-content;
   max-width: 100%;
   flex: 0 0 auto;
 }
@@ -48,13 +51,15 @@
   }
 }
 
-// tweb .popup-description: padding .625rem 1rem .5rem
+// tweb .popup-peer .popup-description: padding .625rem 1rem .5rem, цвет
+// наследуется от .popup (primary), ширина 15rem…fit-content
 .description {
   margin: 0;
   padding: 0.625rem 1rem 0.5rem;
+  min-width: min(100%, 15rem);
+  max-width: fit-content;
   font-size: var(--font-size-16);
   line-height: var(--line-height-16);
-  color: var(--secondary-text-color);
   white-space: pre-wrap;
   flex: 0 0 auto;
 }
@@ -64,7 +69,8 @@
   position: relative; // хост ripple
   display: flex;
   align-items: center;
-  gap: 1.125rem;
+  // tweb: caption padding-inline-start 3.375rem при боксе 1.25rem ⇒ зазор 2.125rem
+  gap: 2.125rem;
   min-height: 3rem;
   padding: 0.25rem 1.125rem;
   cursor: pointer;
@@ -99,7 +105,7 @@
   &.vertical {
     flex-direction: column;
     height: auto;
-    align-items: flex-end;
+    align-items: stretch;
 
     .button {
       margin: 0 !important;
@@ -139,11 +145,11 @@
   }
 
   &.danger {
-    color: var(--danger-color, #df3f40);
+    color: var(--danger-color);
 
     @media (hover: hover) {
       &:hover {
-        background: var(--light-danger-color, rgba(223, 63, 64, 0.08));
+        background: var(--light-danger-color);
       }
     }
   }

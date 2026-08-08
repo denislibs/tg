@@ -1,5 +1,4 @@
-// CodeInput — стили порт tweb components/codeInputField.module.scss +
-// input-shake из scss/partials/_input.scss.
+// CodeInput — стили порт tweb components/codeInputField.module.scss.
 .wrap {
   position: relative;
   pointer-events: none;
@@ -7,10 +6,6 @@
   gap: 10px;
   justify-content: center;
   width: 100%;
-
-  &.error {
-    animation: input-shake 0.2s ease-in-out forwards;
-  }
 }
 
 // Единый невидимый input поверх ряда (tweb .input: прозрачный текст/каретка,
@@ -35,22 +30,20 @@
   pointer-events: all;
 }
 
-// Ячейка 48×48, radius 12 (tweb .digit).
+// Ячейка 48×48, radius 12 (tweb .digit; шрифт наследуется — размер не задан).
 .digit {
   width: 48px;
   height: 48px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--input-search-border-color);
   border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition-property: border-color;
-  transition-duration: 0.1s;
+  transition-property: border-color, opacity;
+  transition-duration: 0.1s, 0.3s;
   flex-shrink: 0;
   position: relative;
   overflow: hidden;
-  font-size: var(--font-size-24);
-  font-weight: 600;
   color: var(--primary-text-color);
 
   &.active {
@@ -59,7 +52,7 @@
   }
 
   .error & {
-    border-color: var(--danger-color, #e53935);
+    border-color: var(--danger-color);
   }
 }
 
@@ -71,7 +64,8 @@
   justify-content: center;
 }
 
-// Появление цифры: translateY(20px)→0 + opacity, spring-безье (tweb .s-enter).
+// Появление цифры: translateY(20px)→0 spring-безье (tweb .s-enter — только
+// transform, без fade).
 .enter {
   animation: digit-enter 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
@@ -82,11 +76,9 @@
 
 @keyframes digit-enter {
   from {
-    opacity: 0;
     transform: translateY(20px);
   }
   to {
-    opacity: 1;
     transform: translateY(0);
   }
 }
@@ -112,21 +104,5 @@
   }
   20%, 50% {
     opacity: 0;
-  }
-}
-
-// Ошибка: тряска поля (tweb @keyframes input-shake, _input.scss).
-@keyframes input-shake {
-  0% {
-    transform: translateX(0);
-  }
-  25% {
-    transform: translateX(-0.5rem);
-  }
-  75% {
-    transform: translateX(0.5rem);
-  }
-  100% {
-    transform: translateX(0);
   }
 }

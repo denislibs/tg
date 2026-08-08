@@ -181,10 +181,10 @@
   // ripple 1:1 tweb base.scss:250-251 (rgba(0,0,0,$hover-alpha) = .08)
   --original-ripple-color: rgba(0, 0, 0, #{$hover-alpha});
   --ripple-color: var(--original-ripple-color);
-  // Light: section .05, big .1, column .1 (tweb base.scss :root)
+  // Light: section .05, big .1, column #0000001A (tweb base.scss :root)
   --section-box-shadow-color: rgba(0, 0, 0, 0.05);
   --section-box-shadow-big-color: rgba(0, 0, 0, 0.1);
-  --column-box-shadow-color: rgba(0, 0, 0, 0.1);
+  --column-box-shadow-color: #0000001A;
   // ── День, tweb base.scss:229-261 ──
   --scrollbar-color: rgba(0, 0, 0, .2);
   --chatlist-status-color: var(--avatar-online-color);

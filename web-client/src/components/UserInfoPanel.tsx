@@ -123,6 +123,14 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   // клик по «назад» в залитой шапке — к началу профиля (tweb closeBtn: scrollIntoView profile-content)
   const scrollBackToProfile = () => bodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
 
+  // колёсико по телу панели (tweb useCollapsable.onMove): вверх при scrollTop=0
+  // разворачивает шапку, вниз — сворачивает (не дожидаясь скролла)
+  const onBodyWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (!headerAvatarSrc) return
+    if (e.deltaY < 0 && e.currentTarget.scrollTop === 0 && !expanded) setExpanded(true)
+    else if (e.deltaY > 0 && expanded) setExpanded(false)
+  }
+
   // счётчики табов шаред-медиа для подзаголовка залитой шапки (tweb onLengthChange)
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({})
   const activeCount = tab === 'Members'
@@ -143,7 +151,6 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
           : lastSeenLabel(peerPresence.lastSeen, lang)
         : chat.status
       : null
-  const statusOnline = !!peerPresence?.online
 
   const subtitleText = isSaved
     ? chatsLabel(savedDialogs?.length ?? 0)
@@ -259,14 +266,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
       ? `${location.origin}/join/${inviteLinks[0].token}`
       : null
   const inviteShort = inviteUrl?.replace(/^https?:\/\//, '') ?? ''
-  const [panelLinkCopied, setPanelLinkCopied] = useState(false)
   const [qrOpen, setQrOpen] = useState(false)
-  const copyPanelLink = () => {
-    if (!inviteUrl) return
-    void navigator.clipboard.writeText(inviteUrl)
-    setPanelLinkCopied(true)
-    setTimeout(() => setPanelLinkCopied(false), 1500)
-  }
 
   const linkText = chat.links?.length ? chat.links : null
 
@@ -348,7 +348,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
           )}
         </div>
 
-        <div ref={bodyRef} className={s.body} onScroll={onBodyScroll}>
+        <div ref={bodyRef} className={s.body} onScroll={onBodyScroll} onWheel={onBodyWheel}>
           {/* Шапка-аватары (tweb .profile-avatars-container): ЕДИНЫЙ DOM-контейнер,
               collapsed ↔ expanded морфится классом is-collapsed чистыми CSS
               transition'ами — padding-bottom 100%↔66%, активный слайд
@@ -413,9 +413,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
                 {profile?.premium && <PremiumBadge size={22} />}
                 {profile?.emojiStatus && <EmojiStatus emoji={profile.emojiStatus} size={22} />}
               </div>
-              <div className={classNames(s.profileSubtitle, !expanded && statusOnline ? s.profileSubtitleOnline : '')}>
-                {subtitleText}
-              </div>
+              <div className={s.profileSubtitle}>{subtitleText}</div>
             </div>
           </div>
 
@@ -447,14 +445,14 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
                 </div>
               </div>
             ) : isGroup ? (
+              // клик копирует ссылку + глобальный тост (tweb PeerProfile.Link:
+              // copyTextToClipboard + toast(LinkCopied))
               inviteUrl && (
-                <div className={s.linkRow} onClick={() => copyPanelLink()}>
+                <div className={s.linkRow} onClick={() => copyInfo(inviteUrl, 'Link copied to clipboard.')}>
                   <TgIcon name="link" size={24} color="var(--secondary-text-color)" />
                   <div className={s.grow}>
                     <Text size={16} color="var(--primary-text-color)" style={{ wordBreak: 'break-all' }}>{inviteShort}</Text>
-                    <Text size={13.5} color={panelLinkCopied ? 'var(--primary-color)' : 'var(--secondary-text-color)'}>
-                      {panelLinkCopied ? t('Link copied to clipboard.') : t('Link')}
-                    </Text>
+                    <Text size={13.5} color="var(--secondary-text-color)">{t('Link')}</Text>
                   </div>
                   <IconButton
                     size="small"

@@ -231,7 +231,7 @@ const uk: Dict = {
   'Are you sure you want to delete this message?': 'Видалити це повідомлення?',
   'Are you sure you want to delete these messages?': 'Видалити ці повідомлення?',
   'Also delete for': 'Також видалити у',
-  'Delete for all': 'Видалити для всіх',
+  'Delete for all members': 'Видалити для всіх учасників',
   'Delete Group': 'Видалити групу',
   'Leave Group': 'Покинути групу',
   'Live Stream': 'Пряма трансляція',

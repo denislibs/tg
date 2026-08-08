@@ -41,6 +41,7 @@
   inset-inline-end: 16px;
   width: 360px; // tweb --right-column-width default
   border-radius: 24px; // tweb --main-column-border-radius
+  box-shadow: var(--column-box-shadow); // tweb #column-right
   z-index: 15;
   transform: translate3d(calc(100% + 16px), 0, 0);
   transition: transform var(--transition-standard-out);
@@ -70,7 +71,8 @@
   // transparent в базе — для плавного перехода цвета.
   background: transparent;
   border-bottom: 1px solid transparent;
-  transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+  // tweb .profile .sidebar-header: --transition: .1s ease-in-out
+  transition: background-color 0.1s ease-in-out, border-color 0.1s ease-in-out, box-shadow 0.1s ease-in-out;
 }
 
 // при скролле шапка заливается surface + нижняя граница-разделитель + мягкая тень
@@ -273,7 +275,7 @@
   white-space: nowrap;
   font-size: var(--font-size-20);
   line-height: 24px;
-  font-weight: 700;
+  font-weight: var(--font-weight-bold); // tweb .profile-name: var(--font-weight-bold) = 500
   transition: inset-inline-start var(--transition-standard-in), transform var(--transition-standard-in),
     color var(--transition-standard-in), max-width var(--transition-standard-in);
 }
@@ -341,14 +343,10 @@
       max-width: 21.25rem;
     }
 
+    // «в сети» НЕ акцентный: tweb .profile-avatars-info .online { color: inherit !important }
     .profileSubtitle {
       color: var(--secondary-text-color);
       opacity: 1;
-    }
-
-    // «в сети» — акцентный цвет (как раньше в свёрнутом блоке)
-    .profileSubtitle.profileSubtitleOnline {
-      color: var(--primary-color);
     }
   }
 }

@@ -273,6 +273,7 @@ function ChatListItem({ chat, selected, onSelect, collapsed }: Props) {
           onClose={() => setMuteOpen(false)}
           onExitComplete={() => setMuteOpen(null)}
           onMute={(seconds) => applyMute(true, seconds)}
+          avatar={<Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={avatarSrc} size={32} />}
         />
       )}
     </>
