@@ -53,5 +53,6 @@
 // конфликтующий с нашим styles/index.scss) и страничные партиалы.
 @use "code";
 @use "chatlistRow";
+@use "storiesList";
 @use "page";
 @use "pages/chats";

@@ -68,16 +68,6 @@
   z-index: 1;
 }
 
-// right-side slot (e.g. folded stories) when not searching
-.right {
-  position: absolute;
-  inset-inline-end: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 1;
-  display: flex;
-}
-
 // Focused/active (parent-controlled "searching"): accent border + accent icon.
 .root.focused .input,
 .input:focus {

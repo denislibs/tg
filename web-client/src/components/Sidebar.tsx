@@ -61,6 +61,9 @@ export default function Sidebar({
   const loaded = useChatsStore((st) => st.loaded)
   const passcodeEnabled = useSettingsStore((st) => st.passcodeEnabled)
   const listScrollRef = useRef<HTMLDivElement>(null)
+  // Узлы, которые нужны сворачиванию ряда историй (tweb setScrolledOn / listenWheelOn).
+  const chatlistContainerRef = useRef<HTMLDivElement>(null)
+  const bottomPartRef = useRef<HTMLDivElement>(null)
 
   // Навигация — из navigationStore/useNavigationActions напрямую; список чатов —
   // свой селектор (та же useChatList, что и в Shell; вторая подписка — норма).
@@ -157,24 +160,25 @@ export default function Sidebar({
                                  + #search-container.transition-item.sidebar-search
                                  + кнопка «новый чат» */}
       <div className={classNames('sidebar-slider', 'tabs-container', s.slider)}>
-      <div className={classNames('tabs-tab', 'sidebar-slider-item', 'item-main', 'active', s.sliderItem)}>
+      {/* tweb вешает is-search-active на .item-main (sidebarLeft/index.ts:1431) —
+          через него гаснет ряд историй (_storiesList.scss) */}
+      <div className={classNames('tabs-tab', 'sidebar-slider-item', 'item-main', 'active', searching ? 'is-search-active' : '', s.sliderItem)}>
       <div className={classNames('sidebar-header', 'main-search-sidebar-header', 'can-have-forum', 'is-input-the-last-child', s.header)}>
         {(!foldersSidebarShown || searching) && (
           <div className={classNames('sidebar-header__btn-container', 'left-sidebar-burger')}>
             <SidebarMenuButton searching={searching} onBack={closeSearch} {...menuActions} />
           </div>
         )}
-        <div className={classNames('input-search', 'old-style', s.search)}>
-          <InputSearch
-            ref={inputRef}
-            value={query}
-            onChange={setQuery}
-            onFocus={() => setSearching(true)}
-            onClear={() => setQuery('')}
-            placeholder={loaded ? t('Search') : t('Updating…')}
-            focused={searching}
-          />
-        </div>
+        <InputSearch
+          ref={inputRef}
+          className={classNames('old-style', s.search)}
+          value={query}
+          onChange={setQuery}
+          onFocus={() => setSearching(true)}
+          onClear={() => setQuery('')}
+          placeholder={loaded ? t('Search') : t('Updating…')}
+          focused={searching}
+        />
         {/* Замок над списком чатов при включённом код-пароле (tweb sidebar-lock-button). */}
         {passcodeEnabled && !searching && (
           <IconButton
@@ -187,9 +191,19 @@ export default function Sidebar({
           </IconButton>
         )}
       </div>
-      {!searching && !forumChat && (
+      {/* tweb: ряд историй ВСЕГДА в дереве (высотой 0), гаснет через
+          .is-search-active на .item-main; свёрнут/развёрнут — useCollapsable */}
+      {!forumChat && (
         <div className="stories-list">
-          <StoriesRow onOpen={stories.openViewer} onAddStory={stories.pickStoryFile} />
+          <StoriesRow
+            onOpen={stories.openViewer}
+            onAddStory={stories.pickStoryFile}
+            foldInto={() => inputRef.current}
+            setScrolledOn={() => chatlistContainerRef.current}
+            getScrollable={() => listScrollRef.current}
+            listenWheelOn={() => bottomPartRef.current}
+            onExpand={() => listScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+          />
         </div>
       )}
 
@@ -197,13 +211,13 @@ export default function Sidebar({
       <div className={classNames('sidebar-content', 'transition', 'zoom-fade', 'can-have-forum', s.content)}>
       {/* #chatlist-container несёт --stories-scrolled, .connection-status-bottom
           на него сдвигается (translateY(92px - var(--stories-scrolled))) */}
-      <div id="chatlist-container" className={classNames('transition-item', 'active', folders.length > 0 ? 'has-filters' : '', s.body)}>
+      <div ref={chatlistContainerRef} id="chatlist-container" className={classNames('transition-item', 'active', folders.length > 0 ? 'has-filters' : '', s.body)}>
       {/* tweb appDialogsManager.start(): bottomPart = .connection-status-bottom,
           в него prepend'ится .chatlist-overlay и append'ится #folders-container.
           Высота оверлея уезжает в --chatlist-overlay-height (ResizeObserver там же),
           её читает padding-top у .folders-scrollable — так табы никогда не
           накрывают первый ряд списка. */}
-      <div className="connection-status-bottom" style={overlayHeightVar}>
+      <div ref={bottomPartRef} className="connection-status-bottom" style={overlayHeightVar}>
         {!searching && folders.length > 0 && !foldersSidebarShown && (
           <TabsBar mode="overlay" className="chatlist-overlay" barRef={overlayRef}>
             <FolderTabs

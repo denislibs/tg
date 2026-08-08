@@ -1,0 +1,30 @@
+// Выдержка из tweb `src/components/stories/list.module.scss` — блок `:global(.stories-list)`
+// (остальное там — CSS-модуль solid-компонента, он лежит в StoriesRow.module.scss).
+//
+// Ключевое: `height: 0`. Ряд историй НЕ занимает места в потоке — он высотой в ноль
+// и выпадает поверх списка, а место под него освобождает `.connection-status-bottom`,
+// сдвигаясь вниз на `92px - var(--stories-scrolled)` (_leftSidebar.scss:483-497).
+@use "../foundation" as *;
+
+.stories-list {
+  z-index: 1;
+  pointer-events: none;
+  position: relative;
+  height: 0;
+  opacity: 1;
+  visibility: visible;
+
+  // tweb вешает `is-search-active` на `.item-main` (sidebarLeft/index.ts:1431)
+  .is-search-active & {
+    opacity: 0;
+    visibility: hidden;
+
+    @include animation-level(2) {
+      transition-delay: 0s, .15s;
+    }
+  }
+
+  @include animation-level(2) {
+    transition: opacity .15s ease, visibility 0s;
+  }
+}
