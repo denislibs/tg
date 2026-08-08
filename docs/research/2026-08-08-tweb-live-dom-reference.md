@@ -502,7 +502,72 @@ div.bubble.service.is-group-first.is-group-last [data-mid data-peer-id data-time
 
 `service-msg`: padding 4.5px 10px, radius 14px, font 15/20 (у is-date — font-weight 500, у экшена 400), bg полупрозрачный `rgba(119,48,144,.4)` (зависит от обоев).
 
-**Нет данных:** reply-бабл (цитата над сообщением) и обычный (не emoji-big) стикер — в доступных чатах не найдено; poll-бабл был в инвентаре «Секспедиции» (`bubble channel-post with-beside-button with-replies poll-message hide-name is-in…`), но выпал из DOM до дампа (виртуализация).
+### Reply-бабл (ответ на сообщение) — дамп `03-reply-audio.json`
+
+```text
+div.bubble.is-reply.hide-name.is-out.can-have-tail.is-group-first.is-sent [data-mid data-peer-id data-timestamp]
+  div.bubble-content-wrapper
+    div.bubble-content                                ← у group-first с продолжением: radius 15px 15px 5px
+      div.reply.quote-like.quote-like-hoverable.quote-like-border.rp.mb-shorter
+          [style="--peer-color-rgb: var(--message-out-primary-color-rgb); --pe…"]
+          ← цитата ВНУТРИ bubble-content, ПЕРЕД .message: 120×42, margin 8px 8px −2px,
+            border-radius 4px, bg rgba(255,255,255,.1) (от peer-color), font 14/18
+        div.c-ripple
+        div.reply-content
+          div.reply-title > span.peer-title "Дн"       ← 14px/18
+          div.reply-subtitle > span > span.i18n "Voice message"
+      div.message.spoilers-container > span.time (…) + span.clearfix
+      svg.bubble-tail > use[#message-tail-filled]
+```
+
+Та же структура `quote-like`, что и в reply-баре композера и webpage-превью — цветная полоска слева делается бордером `quote-like-border` (через `--peer-border-bac…`-переменные).
+
+### Аудио-трек (песня) — дамп `03-reply-audio.json`
+
+```text
+div.bubble.audio-message.min-content.is-single-document.hide-name.is-out.can-have-tail.is-sent
+  div.bubble-content-wrapper
+    div.bubble-content                                ← 335×64; в группе: radius 15px 5px 5px 15px
+      div.bubble-content-background
+      div.message.spoilers-container
+        span.clearfix
+        div.document-container.is-first.is-last [data-mid data-peer-id]
+          div.document-wrapper
+            audio-element.is-out.audio.is-outgoing.audio-show-progress [data-mid data-peer-id]   ← padding-left 57, margin 8px 0
+              div.audio-toggle.audio-ico[.playing]     ← 48×48, круг, bg #fff (на out-бабле)
+                div.audio-play-icon > div.part.one + div.part.two
+              div.audio-details
+                div.audio-title > middle-ellipsis-element "я тимлид.mp3"   ← font 500 16/21
+                div.audio-subtitle                     ← 14px
+                  div.audio-time "1:46"
+                  div.progress-line [--progress: 0.76] > div.progress-line__filled [width: N%] + input.progress-line__seek[type=range]
+              span.time (+time-inner) + span.clearfix
+      svg.bubble-tail
+```
+
+Отличия от voice: `audio-message` вместо `voice-message`, `audio-details` (title+subtitle+progress-line) вместо waveform, при загрузке исходящего — классы `is-outgoing.audio-show-progress`.
+
+### Плашка Pinned Message в топбаре — дамп `03-pinned-plate.json`
+
+При наличии пина `div.topbar-floating-plates` теряет `.hide` и висит **второй пилюлей под топбаром** (absolute top 56px, 696×48, radius 24, bg `--border-color` #0f0f0f как «щель», gap 1px, тот же shadow):
+
+```text
+div.pinned-container.pinned-message [data-mid="21402"]   ← 696×48, padding 4, bg #212121
+  button.btn-icon.rp.btn-menu-toggle.pinned-message-menu
+  div.pinned-container-wrapper.pinned-message-wrapper.hover-primary-effect.rp   ← 608×44, radius 8, padding 2px 4px
+    div.c-ripple
+    div.pinned-message-border > div.pinned-message-border-wrapper-1   ← полоска 3×40, radius 3, bg --primary; сегмент двигается transform: translateY() (мульти-пин)
+    div.pinned-container-content.pinned-message-content
+      div.animated-super.pinned-message-media-container
+      div.pinned-container-title.pinned-message-title    ← font 500 14/18, color --primary, transition transform .2s ease-in-out
+        span.i18n "Pinned Message" + div.animated-counter.is-last
+      div.pinned-container-subtitle.pinned-message-subtitle ← 14/18; контент через div.animated-super > div.animated-super-row (слайд-смена при переключении пинов)
+  div.pinned-message-action > button.btn-icon.pinned-message-unpin.rp   ← 40×40
+```
+
+Сервисный бабл о пине: `div.bubble.service > … div.service-msg > span.i18n > span.peer-title "Дн" + i > span…"🎵 …"` (текст «X pinned …» с инлайн-превью).
+
+**Нет данных:** обычный (не emoji-big) стикер-бабл — в доступных чатах не найдено; poll-бабл был в инвентаре «Секспедиции» (`bubble channel-post with-beside-button with-replies poll-message hide-name is-in…`), но выпал из DOM до дампа (виртуализация).
 
 ---
 
@@ -957,7 +1022,10 @@ div.transition-item.sidebar-search.active     ← #search-container
 17. **Sponsored-бабл** = обычный `.bubble.is-sponsored` с `a.webpage.quote-like` внутри (`data-mid="-1"`, `data-timestamp="0"`).
 18. В бургер-меню **нет «Dark Mode»** — тема в General Settings (radio Classic/Night/Day/Dark/System Default) + карусель `themes-container`.
 
-**Не удалось снять** (нет данных в аккаунте): reply-бабл (цитата в сообщении), обычный не-emoji стикер-бабл, бейдж unread/пин в чатлисте, poll-бабл (выпал из виртуализации до дампа), развёрнутое фото-хедер профиля (expanded avatar).
+**Не удалось снять** (нет данных в аккаунте): обычный не-emoji стикер-бабл, бейдж unread в чатлисте, poll-бабл (выпал из виртуализации до дампа), развёрнутое фото-хедер профиля (expanded avatar). Reply-бабл, аудио-трек и pinned-плашку пользователь добавил в «123 123» по ходу съёмки — сняты (см. §3b, дампы `03-reply-audio.json`, `03-pinned-plate.json`).
+
+19. **Reply-цитата — единый паттерн `quote-like`** (бабл, композер, webpage, форвард-попап): `div.reply.quote-like.quote-like-hoverable.quote-like-border` + `--peer-color-rgb`; в бабле radius 4px/bg rgba(peer,.1), в композере radius 8px.
+20. **Pinned-плашка — отдельная «пилюля» ПОД топбаром** (`topbar-floating-plates`, top 56px, gap 1px, bg-щель #0f0f0f), сегмент полоски пина ездит `translateY` внутри `pinned-message-border-wrapper-1`; смена контента — `animated-super`/`animated-counter`.
 
 *Съёмка: Chrome DevTools MCP, isolated context `tweb-verify-j`, вкладка своя (page 6); в аккаунте ничего не отправлено/не удалено/не изменено (тема возвращена в System Default, черновики не тронуты).*
 
