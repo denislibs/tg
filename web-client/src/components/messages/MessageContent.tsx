@@ -36,7 +36,6 @@ import RichText, { emojiOnlyCount } from '../RichText'
 import StickerMedia from '../StickerMedia'
 import { useAnimatedEmoji } from '../../core/hooks/useAnimatedEmoji'
 import { effectForEmoji, playEmojiEffect } from '../../core/effects/emojiEffects'
-import { peerColor } from '../peerColor'
 import { useT } from '../../i18n'
 import { useSettings } from '../../settings'
 import type { ConvMsg } from '../../data'
@@ -403,7 +402,7 @@ export default function MessageContent({
         ) : m.type === 'poll' && m.poll ? (
           <>
             {!out && m.sender && firstInGroup && (
-              <Text size={14} weight={600} color={m.senderColor ?? peerColor(m.sender)}>
+              <Text size={14} weight={600} color="rgb(var(--peer-color-rgb))">
                 {m.sender}
               </Text>
             )}
@@ -415,7 +414,7 @@ export default function MessageContent({
         ) : m.type === 'checklist' && m.checklist ? (
           <>
             {!out && m.sender && firstInGroup && (
-              <Text size={14} weight={600} color={m.senderColor ?? peerColor(m.sender)}>
+              <Text size={14} weight={600} color="rgb(var(--peer-color-rgb))">
                 {m.sender}
               </Text>
             )}
@@ -432,7 +431,7 @@ export default function MessageContent({
               <Text
                 className={s.name}
                 onClick={m.senderId != null ? () => feedFns.openSender(m.senderId!, m.sender!) : undefined}
-                size="var(--messages-secondary-text-size)" weight={600} color={m.senderColor ?? peerColor(m.sender)}
+                size="var(--messages-secondary-text-size)" weight={600} color="rgb(var(--peer-color-rgb))"
                 style={{ cursor: m.senderId != null ? 'pointer' : 'default' }}
               >
                 {m.sender}

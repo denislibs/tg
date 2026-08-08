@@ -1,0 +1,25 @@
+снимок: scripts/domdiff/snapshots/our-feed-phase2.json
+эталонов: 20, баблов в снимке: 26
+
+text-out-first-last-mid-21335                  13 findings  {"missing-class":6,"extra-class":2,"missing-attr":2,"missing-node":3}
+text-in-first-last-mid-21395                   13 findings  {"missing-class":5,"extra-class":2,"missing-attr":2,"missing-node":4}
+text-out-is-group-first-mid-21396              14 findings  {"missing-class":6,"extra-class":3,"missing-attr":2,"missing-node":3}
+voice-out-is-group-last-mid-21397              10 findings  {"missing-class":3,"extra-class":3,"extra-node":2,"missing-node":2}
+forwarded-channel-post-mid-21341               18 findings  {"missing-class":10,"extra-class":2,"missing-attr":2,"missing-node":4}
+big-animated-emoji-mid-21391                   14 findings  {"missing-class":7,"extra-class":4,"wrong-tag":1,"extra-node":1,"missing-node":1}
+photo-out-mid-21393                            19 findings  {"missing-class":11,"extra-class":2,"missing-attr":2,"missing-node":4}
+service-date                                   0 findings  {}
+sticker-bubble-full                            16 findings  {"missing-class":6,"extra-class":7,"wrong-tag":1,"extra-node":1,"missing-node":1}
+poll-bubble-full                               14 findings  {"missing-class":7,"extra-class":3,"missing-attr":2,"missing-node":2}
+video-bubble-uploading-full                    20 findings  {"missing-class":7,"extra-class":6,"wrong-tag":1,"extra-node":2,"missing-node":4}
+document-bubble-2-full                         12 findings  {"missing-class":5,"extra-class":4,"extra-node":1,"missing-node":2}
+album-channel-post-bubble-full                 24 findings  {"missing-class":11,"extra-class":2,"missing-attr":2,"missing-node":9}
+document-bubble-full                           12 findings  {"missing-class":6,"extra-class":3,"extra-node":1,"missing-node":2}
+reply-bubble-full                              20 findings  {"missing-class":11,"extra-class":3,"missing-attr":2,"missing-node":4}
+audio-song-bubble-full                         13 findings  {"missing-class":4,"extra-class":5,"extra-node":2,"missing-node":2}
+service-action-bubble                          3 findings  {"missing-attr":2,"missing-node":1}
+round-video-video-note                         23 findings  {"missing-class":11,"extra-class":2,"missing-attr":2,"missing-node":8}
+video-bubble-single                            23 findings  {"missing-class":12,"extra-class":2,"missing-attr":2,"missing-node":7}
+sponsored-bubble                               21 findings  {"missing-class":14,"extra-class":2,"missing-attr":2,"missing-node":3}
+
+missing-node не раскрывается вглубь: целое непортированное поддерево — одна строка.

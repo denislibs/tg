@@ -17,6 +17,7 @@ import classNames from '../../shared/lib/classNames'
 import { bubbleClasses } from './bubbleClasses'
 import { BubbleTail } from './bubbleParts/primitives'
 import { emojiOnlyCount } from '../RichText'
+import { hexToRgbTriplet, peerColorById } from '../peerColor'
 import InlineKeyboard from './InlineKeyboard'
 import MessageContent from './MessageContent'
 import { useSettings } from '../../settings'
@@ -90,7 +91,14 @@ function MessageRow({
   feedFns, autoDownload, albumSelectedKey, footer, canSeeReactionList,
 }: MessageRowProps) {
   const textSize = useSettings((st) => st.textSize)
-  const rowStyle = { '--messages-text-size': `${textSize}px` } as CSSProperties
+  // --peer-color-rgb на бабле (tweb ставит его инлайном, живой DOM §3): от него
+  // питаются имя отправителя, полоса reply/цитаты и моноширинный текст в
+  // портированных партиалах. Для входящих в группе — цвет отправителя по id.
+  const peerRgb = !out && m.senderId != null ? hexToRgbTriplet(peerColorById(m.senderId)) : undefined
+  const rowStyle = {
+    '--messages-text-size': `${textSize}px`,
+    ...(peerRgb ? { '--peer-color-rgb': peerRgb } : {}),
+  } as CSSProperties
   // Сообщение из одних эмодзи (tweb bigEmojis) — та же чистая функция, что и в
   // MessageContent; здесь нужна для модификаторов бабла.
   const bigEmojiCount = m.type === 'text' && m.text ? emojiOnlyCount(m.text) : 0
@@ -132,6 +140,9 @@ function MessageRow({
       delay={ladderDelay}
       className={classNames(...cls, s.row)}
       data-mid={m.id}
+      // tweb держит на бабле id отправителя (живой DOM §3) — по нему адресуются
+      // меню/аватары и наш DOM-diff.
+      data-peer-id={m.senderId}
       data-seq={seq}
       onContextMenu={selecting ? undefined : (e: MouseEvent) => feedFns.openMsgMenu(e, m)}
       // Обычный клик по error-баблу открывает то же меню (Переотправить/Удалить).

@@ -335,29 +335,29 @@ top 3px/left 3px, height `calc(var(--messages-time-text-size) + .375rem)`, paddi
 - Modify: `web-client/src/components/messages/MessageRow.tsx`, `web-client/src/components/peerColor.ts`
 - Create: `web-client/src/styles/tweb/_peerColors.scss` (если нужны CSS-переменные палитры)
 
-- [ ] **Step 1: Палитра как в tweb**
+- [x] **Step 1: Палитра как в tweb**
 
 `getPeerColorById` — палитра `['#CC5049','#D67722','#955CDB','#40A920','#309EBA','#368AD1','#C7508B']`, индекс по `abs(peerId) % 7` (а не по хешу имени).
 
-- [ ] **Step 2: Переменные на бабле**
+- [x] **Step 2: Переменные на бабле**
 
 На `.bubble` ставить `--peer-color-rgb` (и `--peer-border-background` для градиентных случаев) — от них уже питаются `.name`, `.reply`, `.quote`, `.monospace-text` в портированных партиалах.
 
-- [ ] **Step 3: Проверки**
+- [x] **Step 3: Проверки**
 
 Юнит на индекс цвета; typecheck/build; DOM-diff (inline-style с переменной допустим — добавить в `ignoreClasses`/исключения差 по атрибуту `style`).
 
 ### Task 2.7: Зачистка фазы 2
 
-- [ ] **Step 1: Удалить мёртвые модули**
+- [x] **Step 1: Удалить мёртвые модули**
 
 Убедиться, что `MessageRow.module.scss`, `MessageBubbles.module.scss`, `RealMediaBubble.module.scss`, `AlbumGrid.module.scss`, `Time.module.scss`, `RichText.module.scss` больше не импортируются, и удалить. `grep` по проекту — ни одного импорта.
 
-- [ ] **Step 2: Финальный DOM-diff ленты**
+- [x] **Step 2: Финальный DOM-diff ленты**
 
 Полный отчёт по всем снятым типам баблов: структура — 0 findings; computed — расхождения только в задекларированном списке допусков.
 
-- [ ] **Step 3: Проверки + коммит-точка**
+- [x] **Step 3: Проверки + коммит-точка**
 
 typecheck / tests / build; скриншоты «до/после» в отчёт.
 
