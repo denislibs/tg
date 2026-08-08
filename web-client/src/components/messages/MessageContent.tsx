@@ -245,6 +245,12 @@ export default function MessageContent({
   // разные точки вставки).
   const renderTime: RenderTime = (mode, corner, justMedia) => timeNode(mode, corner, justMedia)
 
+  // Файл/музыка (не фото и не видео) рендерятся строкой документа tweb, а не
+  // медиа-контейнером: у них другая обёртка (.document-container) и свои правила.
+  const isFileLike = !m.secretMedia && !m.paidMedia?.locked
+    && (m.type === 'document' || m.type === 'audio')
+    && !(m.mediaMime?.startsWith('image/') || m.mediaMime?.startsWith('video/'))
+
   return (
     <>
         {m.mediaId && m.type === 'roundVideo' ? (
@@ -268,7 +274,7 @@ export default function MessageContent({
               chatId={m.chatId}
               transcription={m.transcription}
               secretMedia={m.secretMedia}
-              time={showReactions ? undefined : timeNode('corner', 'audio')}
+              time={showReactions ? undefined : timeNode('corner', 'container')}
               mediaUnread={m.mediaUnread}
               onPlay={() => feedFns.playVoice(m.mediaId as number)}
             />
@@ -318,6 +324,25 @@ export default function MessageContent({
           // localUrl без mediaId = исходящее фото/видео в процессе аплоада;
           // clientId+mediaName без mediaId = исходящий документ/аудио в процессе
           // аплоада (кольцо прогресса + отмена рисует RealMediaBubble).
+          // Документ/музыка (файл без превью) идут в обёртках tweb для одиночного
+          // документа; фото/видео — в своём медиа-контейнере.
+          isFileLike ? (
+            <DocumentContainer reactions={reactionsInside}>
+              <RealMediaBubble
+                mediaId={m.mediaId}
+                type={m.type}
+                mime={m.mediaMime}
+                duration={m.mediaDuration}
+                size={m.mediaSize}
+                fileName={m.mediaName}
+                renderTime={renderTime}
+                autoDownload={autoDownload}
+                localUrl={m.localUrl}
+                clientId={m.clientId}
+                onCancelUpload={feedFns.cancelUpload}
+              />
+            </DocumentContainer>
+          ) : (
           withMediaReactions(
           <div className={s.media}>
             <div
@@ -372,6 +397,7 @@ export default function MessageContent({
               {footer && <div className={s.footerMedia}>{footer}</div>}
             </div>
           </div>,
+          )
           )
         ) : bigEmoji ? (
           withReactionsOutside(

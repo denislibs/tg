@@ -102,7 +102,9 @@ export default function RealMediaBubble({
   const isVideo = !asFile && (type === 'video' || !!mime?.startsWith('video/'))
   const isAudio = !asFile && (type === 'audio' || isAudioMime)
 
-  const timeCluster: ReactNode = renderTime?.('corner')
+  // документ/музыка уже на дереве tweb — время позиционируют правила
+  // `.document .time` / `.audio .time` из портированных партиалов
+  const timeCluster: ReactNode = renderTime?.('corner', 'container')
 
   // ---- Photo / video ----
   if (isImage || isVideo) {
