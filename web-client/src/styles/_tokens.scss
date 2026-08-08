@@ -121,6 +121,17 @@
   --section-box-shadow-big: 0px 1px 8px 0px var(--section-box-shadow-big-color);
   --column-box-shadow: 0px 0px 4px 0px var(--column-box-shadow-color);
 
+  // tweb base.scss:197-199 + :219 — геометрия секций сайдбара (_section.scss):
+  // боковой инсет контента 0 на телефонах и .5rem на десктопе, внешний отступ
+  // карточки = $section-rounded-padding.
+  --section-margin-inline: 0;
+  --section-padding-inline: #{$section-rounded-padding};
+  --section-padding-bottom: var(--section-padding-inline);
+
+  @media (min-width: 601px) {
+    --section-margin-inline: 0.5rem;
+  }
+
   // tweb _chatBubble.scss:365 — тень заполненного пузыря (.bubble-content); у
   // just-media (стикер/эмодзи/фото-без-подписи) в tweb снимается — мы её туда
   // и не ставим (стикер/big-emoji рисуются отдельными классами без этой тени).

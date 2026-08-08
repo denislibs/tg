@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { CSSProperties, ReactNode } from 'react'
 import classNames from '../../lib/classNames'
@@ -34,6 +34,17 @@ export default function Menu({ open, onClose, onExitComplete, style, className, 
   const wasOpen = useRef(open)
   const exitRef = useRef(onExitComplete)
   exitRef.current = onExitComplete
+
+  // `.active` вешаем НА КАДР ПОЗЖЕ появления узла. У tweb меню всегда в DOM,
+  // поэтому переход запускается сам; у нас владелец нередко создаёт <Menu>
+  // уже открытым — узел рождается сразу с `.active`, браузеру не от чего
+  // анимировать, и меню «выскакивает» рывком.
+  const [active, setActive] = useState(false)
+  useEffect(() => {
+    if (!open) { setActive(false); return }
+    const id = requestAnimationFrame(() => setActive(true))
+    return () => cancelAnimationFrame(id)
+  }, [open])
 
   // Конец закрытия ловим по transitionend самой панели (как tweb ловит конец
   // своего перехода); фолбэк по таймеру — на случай animation-level-0, где
@@ -75,7 +86,7 @@ export default function Menu({ open, onClose, onExitComplete, style, className, 
       )}
       <div
         ref={panelRef}
-        className={classNames('btn-menu', open ? 'active' : '', s.panel, className ?? '')}
+        className={classNames('btn-menu', active ? 'active' : '', s.panel, className ?? '')}
         style={zIndex != null ? { ...style, zIndex: zIndex + 1 } : style}
       >
         {children}

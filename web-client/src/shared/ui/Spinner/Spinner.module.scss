@@ -1,15 +1,23 @@
-// Spinner — крутящееся кольцо (замена MUI CircularProgress). Размер/цвет — инлайн.
-.spinner {
-  display: inline-block;
-  border-radius: 50%;
-  border-style: solid;
-  border-color: color-mix(in srgb, currentColor 25%, transparent);
-  border-top-color: currentColor;
-  animation: spinnerRotate 0.7s linear infinite;
-}
+// Spinner рендерит `.preloader-container.preloader-swing` (_preloader.scss):
+// вращение, дуга 75%, скруглённые концы, цвет из --color. Здесь — то, чем наш
+// инлайновый спиннер отличается от tweb-оверлея.
+.root.root {
+  // tweb-контейнер лежит абсолютом поверх медиа (inset: 0; margin: auto; 54x54);
+  // наш стоит в потоке и размер задаётся пропом.
+  position: relative;
+  inset: auto;
+  margin: 0;
+  display: inline-flex;
+  flex-shrink: 0;
+  cursor: inherit;
+  // `.preloader-container` стартует скрытым (opacity 0 / scale 0) и показывается
+  // JS-классами; у нас сам факт рендера = «виден».
+  opacity: 1;
+  transform: none;
+  transition: none;
 
-@keyframes spinnerRotate {
-  to {
-    transform: rotate(360deg);
+  :global(.preloader-path-new) {
+    // толщина у tweb фиксированная (2), у нас — проп
+    stroke-width: var(--preloader-stroke-width, 2);
   }
 }

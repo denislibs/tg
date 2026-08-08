@@ -130,8 +130,13 @@ function ChatListItem({ chat, selected, onSelect, collapsed }: Props) {
   // Бейджи подзаголовка — классы tweb (appDialogsManager.create*Badge): все несут
   // `dialog-subtitle-badge badge badge-22`, размер 22 задаётся базовым `.badge`
   // (в _badge.scss шкалы 22 нет — как и в tweb, там BADGE_SIZE = 22).
+  // `.dialog-subtitle-badge` в tweb по умолчанию `transform: scale(0)`
+  // (_chatlist.scss:651, миксин dialog-badge-transition под animation-level-2),
+  // а показывает его JS, добавляя `is-visible forwards`. У нас бейдж рендерится
+  // декларативно — раз он в дереве, значит виден: ставим оба класса сразу.
+  // Без них не видно НИ ОДНОГО бейджа строки (непрочитанные, реакции, пин).
   const badgeCls = (...extra: string[]) =>
-    classNames('dialog-subtitle-badge', 'badge', 'badge-22', ...extra)
+    classNames('dialog-subtitle-badge', 'badge', 'badge-22', 'is-visible', 'forwards', ...extra)
 
   return (
     <>

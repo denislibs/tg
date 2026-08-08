@@ -1,54 +1,15 @@
-// SidebarSection — порт tweb .sidebar-left-section (_section.scss):
-// .container (боковой padding) > .section (карточка surface, скруглённая, с тенью)
-// > [.name (заголовок + действие справа)] + .content (контент с боковым инсетом).
-@use '../../../styles/foundation' as *;
+// SidebarSection рендерит глобальные `.sidebar-left-section*` (_section.scss):
+// фон, радиус, тень, отступы карточки и контента, .no-shadow/.no-margin-bottom/
+// .full-width. Здесь — мелочи, которых в партиале нет.
 
-// tweb .sidebar-left-section-container — горизонтальный отступ вокруг карточки
-.container {
-  padding-inline: 1rem; // --section-padding-inline
-}
-
-// tweb .sidebar-left-section — сама карточка
-.section {
-  background-color: var(--surface-color); // --surface-color
-  padding: 0.5rem 0;
-  border-radius: $section-rounded-border-radius; // = $border-radius-big (24px)
-  margin-bottom: 1rem; // --section-padding-bottom (= --section-padding-inline)
-  box-shadow: var(--section-box-shadow);
-}
-
-.noShadow {
-  box-shadow: none;
-}
-
-.noMargin {
-  margin-bottom: 0;
-}
-
-// tweb .sidebar-left-section-name — строка заголовка (акцент, bold) + действие справа
+// tweb-заголовок — просто flex со space-between; у нас справа бывает кликабельное
+// действие, ему нужны выравнивание по центру и зазор.
 .name {
-  padding: 0.5rem 1rem;
-  display: flex;
-  justify-content: space-between;
   align-items: center;
   gap: 0.5rem;
-  color: var(--primary-color);
-  font-size: var(--font-size-16); // --font-size-16
-  font-weight: var(--font-weight-bold);
 }
 
-// tweb -name-right — действие (нормальный вес)
 .nameRight {
-  font-weight: 400;
   cursor: pointer;
   white-space: nowrap;
-}
-
-// tweb .sidebar-left-section-content — боковой инсет контента
-.content {
-  margin: 0 0.5rem; // --section-margin-inline (rounded)
-}
-
-.fullWidth {
-  margin: 0;
 }
