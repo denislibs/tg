@@ -4,6 +4,7 @@
 // badge непрочитанных), снизу кнопка настроек папок (equalizer). Показывается
 // при «Расположение папок → Слева от чатов» (settings.tabsInSidebar).
 import { useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import classNames from '../../shared/lib/classNames'
 import TgIcon from '../TgIcon'
 import type { IconName } from '../TgIcon'
@@ -89,8 +90,10 @@ export default function FoldersSidebar({
   const t = useT()
   const [menuOpen, setMenuOpen] = useState(false)
 
-  return (
-    <div className={s.root}>
+  // Портал в #main-columns: в tweb #folders-sidebar — соседняя колонка каркаса
+  // (живой DOM §1), а не потомок #column-left.
+  return createPortal(
+    <div id="folders-sidebar" className={classNames('folders-sidebar', 'sidebar-left-common', s.root)}>
       {/* tweb folders-sidebar__background: тинт + блюр обоев под колонкой */}
       <div className={s.background} />
       {/* tweb folders-sidebar__menu-button.is-first — бургер главного меню */}
@@ -154,6 +157,7 @@ export default function FoldersSidebar({
         onLogout={menu.onLogout}
         onToggleMode={menu.onToggleMode}
       />
-    </div>
+    </div>,
+    document.getElementById('main-columns') ?? document.body,
   )
 }

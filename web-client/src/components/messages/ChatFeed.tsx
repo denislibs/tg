@@ -35,7 +35,6 @@ export interface ChatFeedProps {
   selected: Set<number>
   ladderActive: boolean
   // top offset for the sticky date pill (header + player plate + pinned bar)
-  dateStickyTop: number
   feedFns: FeedFns
   // Автозагрузка медиа для этого чата (tweb chat.autoDownload)
   autoDownload?: ChatAutoDownload
@@ -44,7 +43,7 @@ export interface ChatFeedProps {
 
 function ChatFeed({
   msgs, winMsgs, isRealChat, isGroup, discussionsEnabled, commentCounts,
-  highlightSeq, unreadDividerSeq, selecting, selected, ladderActive, dateStickyTop,
+  highlightSeq, unreadDividerSeq, selecting, selected, ladderActive,
   feedFns, autoDownload, onOpenDiscussion,
 }: ChatFeedProps) {
   const [lang] = useLang()
@@ -73,7 +72,7 @@ function ChatFeed({
   // Клик по дате открывает пикер — в tweb он висит на .bubble-content под
   // классом `.can-click-date` на колонке чата (_chatBubble.scss:511-514).
   const dayPill = (key: string, label: ReactNode, dayMs: number) => (
-    <div key={key} className="bubble service is-date" style={{ top: `${dateStickyTop}px` }}>
+    <div key={key} className="bubble service is-date">
       <div
         className="bubble-content"
         onClick={isRealChat ? () => feedFns.openDatePicker(dayMs) : undefined}

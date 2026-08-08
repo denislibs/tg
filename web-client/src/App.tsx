@@ -126,22 +126,34 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     )
 
   // #column-center — как в tweb (живой DOM §1): у него свой --page-chats-padding,
-  // от него считаются инсеты .bubbles и маска фейдов ленты.
+  // от него считаются инсеты .bubbles и маска фейдов ленты. Внутри —
+  // .chats-container.tabs-container с колонкой чата (tweb §1).
   const chatArea = (
-    <div id="column-center" className={classNames('tabs-tab', 'main-column', s.columnCenter)}>
-      {chatBody}
+    <div id="column-center" className={classNames('tabs-tab', 'main-column')}>
+      <div className="chats-container tabs-container">{chatBody}</div>
     </div>
   )
 
+  // Каркас страницы — 1:1 из живого tweb (§1):
+  //   div.sidebar-left-overlay
+  //   div.whole.page-chats#page-chats
+  //     div#main-columns.tabs-container[data-animation="navigation"]
+  //       #folders-sidebar (портал из Sidebar) + #column-left + #column-center
+  //       + #column-right (портал из UserInfoPanel)
   return (
-    <div id="app-shell" className={classNames(s.root, 'tabs-container')}>
+    <>
       {/* Animated 4-point gradient wallpaper + doodle pattern (tweb-style). Обои темы
           активного чата поднимаются сюда, чтобы весь shell был в теме (осознанное
           отклонение от tweb-скоупа для цветов — см. useShellTheme). Цвета темы чата
           при этом остаются локально в колонке (Chat). */}
       <ChatBackground themeColors={shellThemeVariant?.gradient} />
 
-      <ShellLayout narrow={narrow} selectedId={selectedId} renderSidebar={renderSidebar} chatArea={chatArea} />
+      <div className="sidebar-left-overlay" />
+      <div id="page-chats" className="whole page-chats">
+        <div id="main-columns" className="tabs-container" data-animation="navigation">
+          <ShellLayout narrow={narrow} selectedId={selectedId} renderSidebar={renderSidebar} chatArea={chatArea} />
+        </div>
+      </div>
 
       <GlobalOverlays
         chatList={chatList}
@@ -153,7 +165,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
         closeAddlist={deep.closeAddlist}
         onAddlistJoined={deep.onAddlistJoined}
       />
-    </div>
+    </>
   )
 }
 

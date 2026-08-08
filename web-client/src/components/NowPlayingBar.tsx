@@ -1,4 +1,4 @@
-import { memo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { memo, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import Text from '../shared/ui/Text'
 import Menu, { MenuItem } from '../shared/ui/Menu'
@@ -90,6 +90,13 @@ function NowPlayingBar() {
   const setVolume = useAudioStore((s) => s.setVolume)
   const closePlayer = useAudioStore((s) => s.close)
 
+  // tweb topbar: `body.is-pinned-audio-shown` поднимает --topbar-floating-audio-height,
+  // и топбар (а с ним верх ленты) уезжает вниз под плашку плеера.
+  useEffect(() => {
+    document.body.classList.toggle('is-pinned-audio-shown', !!track)
+    return () => document.body.classList.remove('is-pinned-audio-shown')
+  }, [track])
+
   const [volOpen, setVolOpen] = useState(false)
   const [rateOpen, setRateOpen] = useState(false)
   // Слайдер громкости — в портале (document.body), чтобы его не резал overflow:hidden
@@ -128,14 +135,11 @@ function NowPlayingBar() {
 
   return (
     <>
-    <AnimatePresence>
-      {track && (
-        <motion.div
-          initial={{ y: -56, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: -56, opacity: 0 }}
-          transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-        >
+    {/* tweb .pinned-container.pinned-audio (_chatPinned.scss:492): абсолютная
+        плашка у верха #column-center; спрятанная — уведена трансформом за верх,
+        показанная — на месте, а топбар уезжает вниз на --topbar-floating-audio-height
+        (его поднимает body.is-pinned-audio-shown, _chatTopbar.scss:7-9). */}
+    <div className={classNames('pinned-container', 'pinned-audio', track ? 'is-visible' : '')}>
           <div className={s.bar}>
             <RoundBtn onClick={prev} color="var(--primary-color)" label="prev">
               <TgIcon name="fast_rewind" />
@@ -151,11 +155,11 @@ function NowPlayingBar() {
 
             <div className={s.meta}>
               <Text noWrap size={15} weight={600} color="var(--primary-text-color)" style={{ lineHeight: 1.25 }}>
-                {track.title}
+                {track?.title}
               </Text>
               <Text noWrap size={13} color="var(--secondary-text-color)" style={{ lineHeight: 1.25 }}>
                 {fmt(currentTime)}
-                {track.subtitle ? ` • ${track.subtitle}` : ''}
+                {track?.subtitle ? ` • ${track.subtitle}` : ''}
               </Text>
             </div>
 
@@ -214,9 +218,7 @@ function NowPlayingBar() {
               <div className={s.progressFill} style={{ width: `${Math.round(frac * 100)}%` }} />
             </div>
           </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+    </div>
     {/* Слайдер громкости — портал в document.body (вне overflow:hidden плашки),
         позиция fixed под кнопкой. Hover на попапе продлевает открытие. */}
     {createPortal(

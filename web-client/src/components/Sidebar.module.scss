@@ -18,13 +18,9 @@
   margin-inline-start: calc(var(--page-chats-padding) + var(--folders-sidebar-offset));
   // ↑↑↑ конец tweb #column-left ↑↑↑
 
-  // Наш шелл — flex-ряд с align-items:flex-start (в tweb высоту даёт
-  // растягивающийся родитель), поэтому высоту и sticky задаём здесь; отступ —
-  // из той же --page-chats-padding. Фон — surface.
+  // Высоту даёт растянутый flex-родитель (#main-columns, App.module.scss .root),
+  // как в tweb — вертикальные отступы уже заданы margin-block выше. Фон — surface.
   background: var(--surface-color);
-  position: sticky;
-  top: var(--page-chats-padding);
-  height: calc(100vh - 2 * var(--page-chats-padding));
 }
 
 // Полноширинный режим (narrow/drawer): колонка занимает всё.

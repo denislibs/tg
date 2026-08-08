@@ -24,6 +24,16 @@
 @use "document";
 @use "audio";
 @use "peerTyping";
-// Мост на время фазы 2: правила из ещё не портированных партиалов. Уходит в фазе 3.
+
+// --- Фаза 3: каркас чата ---
+@use "page";
+@use "pages/chats";
+@use "scrollable";
+@use "sidebar";
+@use "chat";
+@use "chatTopbar";
+@use "chatPinned";
+
+// Мост: правила из ещё не портированных партиалов. Уходит по мере их порта.
 @use "bridge";
 

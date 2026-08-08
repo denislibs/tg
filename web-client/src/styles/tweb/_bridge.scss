@@ -1,28 +1,11 @@
 // Временный мост: правила, которые принадлежат ЕЩЁ НЕ портированным партиалам
 // tweb, но без которых уже перестроенная поверхность рендерится неверно.
-// Каждое правило — дословная копия с указанием источника; файл целиком уходит,
-// когда его партиал будет портирован (см. план, фаза 3, Task 3.1).
+// Каждое правило — дословная копия с указанием источника; блок уходит, когда
+// его партиал будет портирован.
 @use "../foundation" as *;
 
-// tweb partials/_chat.scss:1311-1316 — отступ под колонку аватаров в группах.
-// Без него баблы входящих в групповом чате наезжают на sticky-аватар.
-.bubbles-inner {
-  &.is-chat,
-  &.with-message-avatars {
-    .is-in .bubble-content-wrapper {
-      margin-inline-start: 2.875rem;
-    }
-  }
-
-  // tweb partials/_chat.scss:1337-1341 — кап ширины бабла в не-канальных лентах.
-  &:not(.is-broadcast) {
-    .bubble {
-      --max-width: 30rem;
-    }
-  }
-}
-
 // tweb partials/_button.scss:1181-1191 — круглая кнопка (в ленте это .video-play).
+// Уйдёт с портом _button.scss.
 .btn-circle {
   --size: 54px;
   border-radius: 50%;
@@ -41,4 +24,25 @@
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
+}
+
+// tweb partials/_slider.scss:164-184 — `.tabs-container` (grid 100%×100%) даёт
+// `.chats-container` ширину, а `.chat.tabs-tab` — высоту строки. Целиком блок не
+// портируем: его `display: grid` рассчитан на переопределение в pages/_chats.scss
+// (`#main-columns { display: flex }`), которого у нас нет, — без него оболочка
+// схлопывается. Берём только размеры. Уйдёт с портом _slider.scss + pages.
+.chats-container.tabs-container {
+  min-width: 100%;
+  width: 100%;
+
+  > .chat {
+    height: 100%;
+  }
+}
+
+// tweb partials/_chatlist.scss:69-71 — #column-left несёт класс
+// `chatlist-container`, и именно эта строчка делает колонку контейнером для
+// абсолютов внутри (кнопка «новый чат», оверлеи). Уйдёт с портом _chatlist.scss.
+.chatlist-container {
+  position: relative;
 }

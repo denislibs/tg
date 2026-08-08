@@ -33,21 +33,16 @@
 }
 
 // Плашка "сейчас играет" (tweb .pinned-audio).
+// Ряд управления внутри плашки .pinned-container.pinned-audio — фон, высоту,
+// радиус и позицию даёт tweb-партиал (_chatPinned.scss), здесь только раскладка.
 .bar {
   position: relative;
   overflow: hidden; // скругляет концы полоски прогресса (попап громкости — в портале)
   display: flex;
   align-items: center;
-  height: var(--chat-plate-height);
+  flex: 1;
+  height: 100%;
   padding: 0 4px;
-  border-radius: 24px;
-  background: var(--surface-color);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
-
-  :global(html[data-theme='night']) &,
-  :global(html[data-theme='tinted']) & {
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
-  }
 }
 
 // Обёртка play/pause с кросс-фейдом иконок

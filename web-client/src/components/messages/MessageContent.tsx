@@ -194,6 +194,8 @@ export default function MessageContent({
     <Time
       time={m.time}
       status={m.status}
+      // без `out` Time не рисует тик статуса (tweb: тики только у исходящих)
+      out={out}
       edited={m.edited}
       views={m.views}
       forwards={m.forwards}

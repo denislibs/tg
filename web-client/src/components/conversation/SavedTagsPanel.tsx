@@ -11,9 +11,11 @@ import { useT } from '../../i18n'
 import type { SavedTag } from '../../core/managers/messagesManager'
 import s from './SavedTagsPanel.module.scss'
 
-function SavedTagsPanel({ activeTag, onFilter }: {
+function SavedTagsPanel({ activeTag, onFilter, onCountChange }: {
   activeTag: string | null
   onFilter: (reaction: string | null) => void
+  /** сколько тегов реально есть — Chat решает, показывать ли стек плейтов */
+  onCountChange?: (count: number) => void
 }) {
   const managers = useManagers()
   const t = useT()
@@ -37,6 +39,8 @@ function SavedTagsPanel({ activeTag, onFilter }: {
   useEffect(() => {
     if (editing) inputRef.current?.focus()
   }, [editing])
+
+  useEffect(() => { onCountChange?.(tags.length) }, [tags.length, onCountChange])
 
   const startRename = (tag: SavedTag) => {
     setEditing(tag.reaction)

@@ -1,20 +1,9 @@
-// Chat — корневая раскладка чата (окно сообщений + хедер + композер).
-// Порт разметки из MUI sx. Цвета — CSS-переменные темы. Динамика (maskImage/offset/
-// paddings по playerOffset) — инлайном.
+// Chat — то, что НЕ покрыто портированными партиалами tweb. Каркас колонки
+// (.chat / .topbar / .bubbles / .chat-input, их геометрия, маска фейдов ленты и
+// распорки) живёт в styles/tweb/_chat.scss + _chatTopbar.scss.
 
-// внешний ряд: чат + (info-панель справа)
-.root {
-  flex: 1;
-  min-width: 0;
-  min-height: 100vh;
-  display: flex;
-  align-items: flex-start;
-  position: relative;
-  background: transparent;
-}
-
-// колонка чата
-// Баннер идущего видеочата (tweb topbar-call: зелёный градиент, клик = Join)
+// Баннер идущего видеочата (tweb topbar-call: зелёный градиент, клик = Join).
+// Абсолют внутри #column-center — как и остальные плейты колонки.
 .groupCallBanner {
   position: absolute;
   top: 62px;
@@ -31,46 +20,6 @@
   background: linear-gradient(90deg, #52ce5d, #00b1c0);
   cursor: pointer;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
-}
-
-.column {
-  flex: 1;
-  min-width: 0;
-  height: 100dvh;
-  position: relative;
-  overflow: hidden;
-  // резерв под инфо-панель анимируется тем же transition, что и её сдвиг
-  // (tweb: transform колонки-панели + пересчёт ширин, 0.3s in / 0.25s out)
-  transition: margin-inline-end var(--transition-standard-out);
-}
-
-// открыта инфо-панель (широкий режим): чат уступает ей место справа —
-// панель 360 + зазор 8 + отступ от края 16 (tweb --right-column-width + паддинги)
-.columnInfoOpen {
-  margin-inline-end: 384px;
-  transition: margin-inline-end var(--transition-standard-in);
-}
-
-
-// плавающая пилюля «сейчас играет» над хедером
-.nowPlaying {
-  position: absolute;
-  top: 16px;
-  left: 0;
-  right: 0;
-  z-index: 25;
-  display: flex;
-  justify-content: center;
-  padding: 0 12px;
-}
-
-.nowPlayingNarrow {
-  padding: 0 8px;
-}
-
-.nowPlayingInner {
-  width: 100%;
-  max-width: 688px;
 }
 
 // оверлей спиннера первой загрузки
@@ -95,19 +44,11 @@
   justify-content: center;
 }
 
-// скролл-контейнер ленты (маска задаётся инлайном — FEED_MASK)
+// Скролл-контейнер ленты: позицию, размеры, overflow и маску фейдов задают
+// портированные партиалы tweb (_scrollable.scss `.scrollable.scrollable-y` +
+// _chat.scss `.bubbles-scrollable`). Здесь — только видимый тонкий скроллбар:
+// в tweb его рисует собственный .scrollable-thumb (JS), который не портирован.
 .scroll {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-
-  // тонкий скроллбар (tweb .scrollable / как в ChatList): 6px, трек прозрачный,
-  // thumb проявляется только при наведении — без толстого нативного бара
   &::-webkit-scrollbar {
     width: 6px;
   }
@@ -121,46 +62,19 @@
   }
 }
 
-// контент ленты (opacity/paddings по загрузке/playerOffset — инлайном).
-// max-width = 688 (плейты хедера/композера) + 2×боковой паддинг, чтобы край
-// баблов совпадал с краем плейтов при любой ширине (в tweb bubbles-inner
-// точно так же: chat-width − bubbles-padding×2).
+// Контент ленты: ширину/раскладку даёт .bubbles-inner из _chat.scss —
+// остаётся только плавное проявление после первой загрузки.
 .content {
-  width: 100%;
-  max-width: 696px;
-  padding: 0 4px;
   transition: opacity 0.2s ease;
-  margin-top: auto;
-  display: flex;
-  flex-direction: column;
-
-  // tweb --chat-bubbles-padding: .5rem на handhelds (base.scss)
-  @media (max-width: 900px) {
-    max-width: 704px;
-    padding: 0 8px;
-  }
 }
 
-// футер (композер / кнопка mute)
+// Ряд футера внутри .chat-input-container: позицию и ширину даёт композерный
+// контейнер tweb, здесь — только раскладка ряда.
 .footer {
-  position: absolute;
-  bottom: 16px;
-  left: 0;
-  right: 0;
-  z-index: 6;
   display: flex;
+  flex: 1;
+  min-width: 0;
   gap: 8px;
-  width: 100%;
-  max-width: 688px;
-  margin: 0 auto;
-
-  // tweb: на handhelds плейты стоят в 8px от краёв (--page-chats-padding: 8px);
-  // bottom сохраняем 16px (как на десктопе) — паритет зазора ленты
-  @media (max-width: 900px) {
-    left: 8px;
-    right: 8px;
-    width: auto;
-  }
 }
 
 .footerCompose {
@@ -230,41 +144,6 @@
   cursor: pointer;
 }
 
-// ── тред-режим (форум-топик / комментарии): плашка-шапка вместо ChatHeader ──
-// Геометрия 1:1 с ChatHeader-плейтом (--chat-plate-height, radius 24).
-.threadHeaderBar {
-  position: absolute;
-  left: 0;
-  right: 0;
-  z-index: 6;
-  width: 100%;
-  max-width: 688px;
-  margin: 0 auto;
-
-  @media (max-width: 900px) {
-    left: 8px;
-    right: 8px;
-    width: auto;
-  }
-}
-.threadHeaderCard {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 12px 4px 4px;
-  height: var(--chat-plate-height);
-  border-radius: 24px;
-  background: var(--surface-color);
-  box-shadow: var(--tg-plateShadow);
-}
-.threadHeaderBody {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  line-height: 1.25;
-}
-
 // «Тема закрыта» вместо композера (tweb: тред закрытого топика read-only)
 .threadClosedBar {
   flex: 1;
@@ -272,8 +151,8 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: var(--chat-plate-height);
-  border-radius: 24px;
+  height: var(--chat-input-height);
+  border-radius: var(--chat-input-border-radius);
   background: var(--surface-color);
   box-shadow: var(--tg-plateShadow);
 }
@@ -286,9 +165,9 @@
   align-items: center;
   justify-content: center;
   gap: 10px;
-  min-height: var(--chat-plate-height);
+  min-height: var(--chat-input-height);
   padding: 12px 16px;
-  border-radius: 24px;
+  border-radius: var(--chat-input-border-radius);
   background: var(--surface-color);
   box-shadow: var(--tg-plateShadow);
 }

@@ -183,6 +183,21 @@
   --gc-red-text-color: #ff595a;
   --selection-background-color: rgba(var(--primary-color-rgb), 0.4);
 
+  // ── Каркас чата: топбар-плейты и композер (tweb base.scss:145-161) ──
+  // Высоты плавающих плашек над топбаром; *-floating-* поднимаются из 0 в
+  // _chatTopbar.scss по body.is-calling / body.is-pinned-audio-shown и сдвигают
+  // топбар вниз. --chat-input-* читает .chat-input/.chat-input-main (_chat.scss).
+  --topbar-call-height: 1.5rem;
+  --topbar-audio-height: 3rem;
+  --topbar-floating-call-height: 0px;
+  --topbar-floating-audio-height: 0px;
+  --chat-input-border-radius: #{$border-radius-big};
+  --chat-input-max-width: var(--chat-width);
+  --chat-input-btn-send-margin: #{$btn-send-margin};
+  --chat-input-padding: 0px;
+  --chat-input-height: 3rem;
+  --plates-gap: 0.5rem;
+
   // tweb base.scss:32,46-47 — множитель зеркалирования и origin'ы для RTL.
   // Класс is-rtl мы не ставим (RTL-режима нет) — значения LTR-ветки.
   --reflect: 1;

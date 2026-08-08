@@ -44,11 +44,20 @@ html {
   }
 }
 
+// tweb base.scss:362-368 — высота 100% у html/body (её наследует `.whole`
+// и весь колоночный каркас). #root добавлен: у tweb React-корня нет.
+html,
+body,
+#root {
+  height: 100%;
+}
+
+// tweb base.scss:362-372 — страница не скроллится сама: скроллит только
+// внутренний .scrollable (лента, списки).
 html,
 body {
-  min-height: 100%;
+  overflow: hidden;
   overscroll-behavior: none;
-  scrollbar-gutter: stable;
 }
 
 // tweb base.scss:488-495 — form-контролы не наследуют шрифт, задаём явно.

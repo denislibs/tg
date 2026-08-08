@@ -30,7 +30,8 @@ interface UseChatScrollArgs {
   numericChatId: number
   isRealChat: boolean
   win: MessageWindow
-  playerOffset: number
+  /** высота верхней распорки ленты (.bubbles-padding-top) */
+  paddingTop: number
   /** seq первого непрочитанного входящего (плашка «Непрочитанные сообщения»);
    * null — открывать чат обычным пином к низу */
   unreadDividerSeq: number | null
@@ -39,7 +40,7 @@ interface UseChatScrollArgs {
   unreadStickyTop: number
 }
 
-export function useChatScroll({ numericChatId, isRealChat, win, playerOffset, unreadDividerSeq, unreadStickyTop }: UseChatScrollArgs) {
+export function useChatScroll({ numericChatId, isRealChat, win, paddingTop, unreadDividerSeq, unreadStickyTop }: UseChatScrollArgs) {
   const managers = useManagers()
   const [showScrollDown, setShowScrollDown] = useState(false)
   // Unread-below badge on the scroll-to-bottom button (tweb .bubbles-go-down count):
@@ -306,19 +307,16 @@ export function useChatScroll({ numericChatId, isRealChat, win, playerOffset, un
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [win.msgs])
 
-  // Opening/closing the player changes the feed's top padding by playerOffset.
-  // Compensate scrollTop by the delta so the viewport stays put (no jump up),
-  // unless we're pinned to the bottom (the resize observer re-pins there).
-  const prevPlayerOffset = useRef(playerOffset)
+  // Появление/исчезновение плейтов (пин, теги) меняет высоту верхней распорки
+  // ленты. Компенсируем scrollTop на дельту, чтобы вьюпорт остался на месте
+  // (tweb chat.ts preservePaddingScroll) — и в середине истории, и у низа.
+  const prevPaddingTop = useRef(paddingTop)
   useLayoutEffect(() => {
     const el = scrollRef.current
-    const delta = playerOffset - prevPlayerOffset.current
-    prevPlayerOffset.current = playerOffset
-    // Unconditional: the feed's top padding changed by `delta`, so shift
-    // scrollTop by the same amount — keeps the viewport fixed whether the user
-    // is mid-history or pinned to the bottom (no jump on play).
+    const delta = paddingTop - prevPaddingTop.current
+    prevPaddingTop.current = paddingTop
     if (el && delta !== 0) el.scrollTop += delta
-  }, [playerOffset])
+  }, [paddingTop])
 
   // Read-marker for a live message in THIS open chat: mark read if the user is at
   // the bottom & focused (tweb: read only what's seen). When scrolled up we do

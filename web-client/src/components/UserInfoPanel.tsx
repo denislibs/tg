@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import QrModal from './QrModal'
@@ -48,6 +49,12 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   // (tweb body.is-right-column-shown на постоянно смонтированном #column-right).
   const [shown, setShown] = useState(false)
   useEffect(() => { setShown(open) }, [open])
+  // tweb body.is-right-column-shown: пока правая колонка открыта и не «плавает»
+  // над чатом, #column-center сдвигает свою translateX-центровку (_chat.scss:439).
+  useEffect(() => {
+    document.body.classList.toggle('is-right-column-shown', open)
+    return () => document.body.classList.remove('is-right-column-shown')
+  }, [open])
   const isSaved = chat.type === 'saved'
   // группы — таб «Участники», избранное — «Чаты» (tweb savedDialogs first), остальные — «Медиа»
   const [tab, setTab] = useState(chat.type === 'group' ? 'Members' : isSaved ? 'Chats' : 'Media')
@@ -283,14 +290,18 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   // Шапка прозрачная (белые иконки) над развёрнутым фото до заливки скроллом.
   const overPhoto = expanded && !filled && !!headerAvatarSrc
 
-  return (
+  return createPortal(
     // tweb #column-right: панель ФИКСИРОВАННОЙ ширины, absolute у правого края,
     // ЗАКРЫТА = translate3d(100% + отступ), ОТКРЫТА = translate3d(0,0,0);
     // transition transform (in .3s / out .25s, cb(.4,0,.2,1)), без opacity-фейда.
     // Панель остаётся смонтированной; закрытая — inert (недоступна фокусу/AT).
+    // Портал в #main-columns: в tweb #column-right — СОСЕДНЯЯ колонка (§1), а не
+    // потомок #column-center; внутри него панель ловила бы его transform
+    // (translateX-центровку чата) и уезжала бы за край экрана.
     <div
+      id="column-right"
       inert={!open}
-      className={classNames(s.panel, narrow ? s.panelNarrow : s.panelWide, shown ? s.panelOpen : '')}
+      className={classNames('tabs-tab', 'sidebar', 'sidebar-right', 'main-column', s.panel, narrow ? s.panelNarrow : s.panelWide, shown ? s.panelOpen : '')}
     >
         {/* Шапка: absolute поверх контента. Над фото — прозрачная с белыми
             иконками (tweb .profile-container:not(.header-filled) .sidebar-header
@@ -740,6 +751,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
             />
           )}
         </AnimatePresence>
-    </div>
+    </div>,
+    document.getElementById('main-columns') ?? document.body,
   )
 }

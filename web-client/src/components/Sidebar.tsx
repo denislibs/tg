@@ -127,7 +127,7 @@ export default function Sidebar({
       // #column-left — как в tweb (живой DOM §1); --folders-sidebar-offset и
       // остальные ширины колонок пишет core/dom/updateColumnWidths.
       id="column-left"
-      className={classNames(s.root, 'tabs-tab', 'sidebar-left', 'main-column', fullWidth ? s.fullWidth : '', forumChat ? s.hasForum : '')}
+      className={classNames(s.root, 'tabs-tab', 'chatlist-container', 'sidebar', 'sidebar-left', 'main-column', 'sidebar-left-common', 'can-menu-have-z-index', fullWidth ? s.fullWidth : '', forumChat ? s.hasForum : '')}
     >
       {/* tweb #folders-sidebar — вертикальная колонка папок в поле страницы */}
       {foldersSidebarShown && (
@@ -243,17 +243,20 @@ export default function Sidebar({
             </motion.div>
           </div>
         )}
+
+        {/* tweb: кнопка «новый чат» (#new-menu.btn-corner) живёт ВНУТРИ
+            .sidebar-content, рядом с чат-листом и выдачей поиска, — от него же
+            и позиционируется. */}
+        <ComposeFab
+          searching={searching || !!forumChat}
+          onNewGroup={() => setScreen('newGroup')}
+          onNewPrivate={() => setScreen('newPrivate')}
+          onNewChannel={() => setScreen('newChannel')}
+          onNewSecret={() => setScreen('newSecret')}
+        />
       </div>
 
       {forumPanel}
-
-      <ComposeFab
-        searching={searching || !!forumChat}
-        onNewGroup={() => setScreen('newGroup')}
-        onNewPrivate={() => setScreen('newPrivate')}
-        onNewChannel={() => setScreen('newChannel')}
-        onNewSecret={() => setScreen('newSecret')}
-      />
 
       {folderOverlays}
 
