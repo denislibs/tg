@@ -8,7 +8,7 @@ interface Props {
 
 // Telegram verified badge (exact paths from tweb icon-verified.svg): scalloped
 // seal + white check.
-export default function VerifiedBadge({ size = 16, color = '#3aa0e3', checkColor = '#fff' }: Props) {
+export default function VerifiedBadge({ size = 16, color = 'var(--primary-color)', checkColor = '#fff' }: Props) {
   return (
     <svg
       width={size}
