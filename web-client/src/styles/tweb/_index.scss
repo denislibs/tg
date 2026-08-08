@@ -54,6 +54,10 @@
 @use "quote"; // :70
 @use "animatedSuper"; // :77
 
+// Попапы (tweb style.scss:83 и далее — по одному партиалу на попап).
+@use "popups/popup"; // :83
+@use "popups/confirmation"; // :114
+
 // Выдержки из base.scss (целиком не портируем — это глобальный ресет,
 // конфликтующий с нашим styles/index.scss) и страничные партиалы.
 @use "code";
