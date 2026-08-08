@@ -365,6 +365,32 @@ typecheck / tests / build; скриншоты «до/после» в отчёт.
 
 ## Фаза 3 — Каркас чата (P0 №7–12)
 
+### Task 3.0: Колоночный каркас оболочки (ПРЕДУСЛОВИЕ, найдено при попытке 3.1)
+
+**Почему:** пробный порт `_chat.scss` показал, что партиал не самодостаточен. `.bubbles`
+позиционируется **абсолютом относительно колоночной системы tweb**:
+`inset-inline: calc(var(--page-chats-padding) * -1)`, а внутри `#column-center` —
+через `--folders-sidebar-offset`, `--left-column-width`, `--right-column-width` и
+`body.is-right-column-shown:not(.right-column-floats)`; `.bubbles-inner` считает
+`max-width: calc(var(--chat-width) - var(--chat-bubbles-padding) * 2)`, где
+`--chat-width` пишет `helpers/updateColumnWidths.ts`. У нас оболочка — flex-ряд
+(сайдбар + колонка), этих переменных и узла `#column-center` нет, поэтому
+подключение партиала выносит ленту из раскладки (проверено на стенде: лента
+уехала под сайдбар). Партиал верный — не хватает подсистемы, на которую он опирается.
+
+Проба откачена, ветка оставлена в зелёном состоянии фазы 2.
+
+**Files:**
+- Create: `web-client/src/core/dom/updateColumnWidths.ts` (порт `tweb/src/helpers/updateColumnWidths.ts`).
+- Modify: `web-client/src/App.tsx` — скелет `#column-left` / `#column-center` / `#column-right` внутри `.tabs-container`, как в живом DOM §1.
+- Modify: `web-client/src/components/ConversationView.tsx`, `Sidebar.tsx` — переезд на этот скелет.
+- Modify: `web-client/src/styles/index.scss` — убрать наши layout-переменные колонок, оставив те, что пишет порт.
+
+- [ ] **Step 1:** Снять с живого tweb значения `--chat-width`, `--left-column-width`, `--right-column-width`, `--page-chats-padding`, `--folders-sidebar-offset` в трёх режимах (узкий / обычный / открытая правая колонка) — эталон для порта.
+- [ ] **Step 2:** Портировать `updateColumnWidths.ts` дословно; классы состояния (`body.is-right-column-shown`, `body.right-column-floats`, `body.is-left-column-shown`) ставить там же, где tweb.
+- [ ] **Step 3:** Перевести оболочку на скелет колонок; проверить три режима по DOM-diff обёрток.
+- [ ] **Step 4:** Только после этого — Task 3.1 (партиалы `_chat`/`_chatTopbar`/`_chatPinned`).
+
 ### Task 3.1: Порт `_chat.scss` (без секции chat-input), `_chatTopbar.scss`, `_chatPinned.scss`
 
 **Files:** Create `web-client/src/styles/tweb/_chat.scss`, `_chatTopbar.scss`, `_chatPinned.scss`; Modify `_index.scss`.
