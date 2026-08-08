@@ -915,11 +915,12 @@ func (h *ChatHandler) Calendar(w http.ResponseWriter, r *http.Request) {
 	out := make([]map[string]any, 0, len(days))
 	for _, d := range days {
 		out = append(out, map[string]any{
-			"day":      d.Day.Unix(),
-			"msg_id":   d.MsgID,
-			"seq":      d.Seq,
-			"media_id": d.MediaID,
-			"type":     d.Type,
+			"day":       d.Day.Unix(),
+			"msg_id":    d.MsgID,
+			"seq":       d.Seq,
+			"media_id":  d.MediaID,
+			"type":      d.Type,
+			"has_thumb": d.HasThumb,
 		})
 	}
 	writeJSON(w, http.StatusOK, out)

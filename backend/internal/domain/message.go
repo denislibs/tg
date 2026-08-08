@@ -210,4 +210,7 @@ type CalendarDay struct {
 	Seq     int64
 	MediaID int64
 	Type    string // photo|video|... — клиенту, чтобы выбрать вид превью
+	// HasThumb — для медиа сгенерирована миниатюра; без неё клиент должен
+	// запрашивать оригинал, иначе ?v=thumb ответит 404.
+	HasThumb bool
 }

@@ -23,8 +23,13 @@
   pointer-events: none;
 }
 
-// капсула service/date (tweb .service-msg)
+// капсула service/date (tweb .service-msg). Это <button> (клик открывает пикер
+// даты), поэтому гасим дефолты кнопки — иначе браузер добавляет свою рамку и
+// системный шрифт вместо наследуемого.
 .pill {
+  appearance: none;
+  border: none;
+  font: inherit;
   padding: 0.28125rem 0.625rem;
   border-radius: 0.875rem;
   // tweb --message-highlighting-color — зависит от темы (не всегда тёмный).
@@ -33,6 +38,15 @@
   font-size: var(--font-size-15); // messages-service-text-size (= textSize − 1, дефолт 16)
   font-weight: 500;
   line-height: 20px; // service-text-size + 5
+  user-select: none;
+  // обёртка .dayPill сквозная для событий (чтобы sticky-заголовок не перехватывал
+  // скролл/клики по ленте) — возвращаем их самой капсуле
+  pointer-events: auto;
+  cursor: pointer;
+
+  &:disabled {
+    cursor: default;
+  }
 }
 
 // service-сообщение по центру (при наличии фото — пилюля + кружок в столбик)

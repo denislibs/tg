@@ -9,6 +9,8 @@ export interface CalendarDay {
   seq: number
   media_id: number
   type: string
+  /** есть сгенерированная миниатюра; без неё нужен оригинал (?v=thumb вернёт 404) */
+  has_thumb: boolean
 }
 import { mapMessage, mapScheduled, mapGeo, mapWebPage, mapFactCheck, type Message, type MessageEntity, type RawMessage, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
 import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt } from '../realtime/events'

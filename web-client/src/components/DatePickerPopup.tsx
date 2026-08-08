@@ -19,7 +19,7 @@ import Popup from '../shared/ui/Popup'
 import IconButton from '../shared/ui/IconButton'
 import TgIcon from './TgIcon'
 import classNames from '../shared/lib/classNames'
-import { mediaThumbUrl, hasMediaToken, useMediaTokenVersion } from '../core/mediaUrl'
+import { mediaContentUrl, mediaThumbUrl, hasMediaToken, useMediaTokenVersion } from '../core/mediaUrl'
 import { useManagers } from '../core/hooks/useManagers'
 import { useT } from '../i18n'
 import type { CalendarDay } from '../core/managers/messagesManager'
@@ -310,7 +310,11 @@ function DayCell({ cell, media, active, weekend, onClick }: {
   onClick: () => void
 }) {
   useMediaTokenVersion()
-  const thumb = media && hasMediaToken() ? mediaThumbUrl(media.media_id) : undefined
+  // Миниатюра есть не у всякого медиа — тогда берём оригинал, иначе ?v=thumb
+  // ответит 404 (бэкенд отдаёт has_thumb вместе с днём).
+  const thumb = media && hasMediaToken()
+    ? (media.has_thumb ? mediaThumbUrl(media.media_id) : mediaContentUrl(media.media_id))
+    : undefined
   return (
     <button
       type="button"

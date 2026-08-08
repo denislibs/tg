@@ -223,16 +223,20 @@ func (r *MessagesRepo) MessageSeqByDate(ctx context.Context, chatID int64, from 
 
 // CalendarMonth returns one media message per day in [from, to) — the thumbnail
 // shown inside a day cell of the date picker (tweb getSearchResultsCalendar).
-// Latest message of the day wins; days without media are simply absent.
+// Only photos and videos: that's the filter tweb passes
+// (inputMessagesFilterPhotoVideo), and only those have a thumbnail to draw.
+// Latest message of the day wins; days without such media are simply absent.
 func (r *MessagesRepo) CalendarMonth(ctx context.Context, chatID int64, from, to time.Time) ([]domain.CalendarDay, error) {
 	q := querier(ctx, r.pool)
 	rows, err := q.Query(ctx,
-		`SELECT DISTINCT ON (date_trunc('day', created_at))
-		        date_trunc('day', created_at) AS day, id, seq, media_id, type
-		 FROM messages
-		 WHERE chat_id=$1 AND deleted_at IS NULL AND media_id IS NOT NULL
-		       AND created_at >= $2 AND created_at < $3
-		 ORDER BY date_trunc('day', created_at), created_at DESC`,
+		`SELECT DISTINCT ON (date_trunc('day', m.created_at))
+		        date_trunc('day', m.created_at) AS day, m.id, m.seq, m.media_id, m.type,
+		        COALESCE(md.thumb_key, '') <> '' AS has_thumb
+		 FROM messages m JOIN media md ON md.id = m.media_id
+		 WHERE m.chat_id=$1 AND m.deleted_at IS NULL AND m.media_id IS NOT NULL
+		       AND m.type IN ('photo','video')
+		       AND m.created_at >= $2 AND m.created_at < $3
+		 ORDER BY date_trunc('day', m.created_at), m.created_at DESC`,
 		chatID, from, to)
 	if err != nil {
 		return nil, err
@@ -241,7 +245,7 @@ func (r *MessagesRepo) CalendarMonth(ctx context.Context, chatID int64, from, to
 	out := make([]domain.CalendarDay, 0, 31)
 	for rows.Next() {
 		var d domain.CalendarDay
-		if err := rows.Scan(&d.Day, &d.MsgID, &d.Seq, &d.MediaID, &d.Type); err != nil {
+		if err := rows.Scan(&d.Day, &d.MsgID, &d.Seq, &d.MediaID, &d.Type, &d.HasThumb); err != nil {
 			return nil, err
 		}
 		out = append(out, d)
