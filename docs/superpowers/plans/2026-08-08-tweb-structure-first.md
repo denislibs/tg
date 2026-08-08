@@ -54,7 +54,7 @@
 **Interfaces:**
 - Produces: `serializeTree(rootSelector, opts) => Node` где `Node = {tag, classes: string[], attrs?: Record<string,string>, computed?: Record<string,string>, children?: Node[]}`; `diffTrees(expected, actual, opts) => Finding[]` где `Finding = {path: string, kind: 'missing-class'|'extra-class'|'wrong-tag'|'missing-node'|'extra-node'|'computed', expected: string, actual: string}`.
 
-- [ ] **Step 1: Написать сериализатор**
+- [x] **Step 1: Написать сериализатор**
 
 ```js
 // scripts/domdiff/serialize.js
@@ -90,7 +90,7 @@ export const SERIALIZE_FN = `(rootSelector, opts) => {
 }`;
 ```
 
-- [ ] **Step 2: Написать differ**
+- [x] **Step 2: Написать differ**
 
 ```js
 // scripts/domdiff/diff.js
@@ -125,19 +125,19 @@ export function diffTrees(expected, actual, opts = {}) {
 }
 ```
 
-- [ ] **Step 3: Извлечь первый эталон из референса**
+- [x] **Step 3: Извлечь первый эталон из референса**
 
 Из `docs/research/tweb-dom/03-bubbles-123.json` вынуть поддеревья баблов (текст in/out, voice, forward, big-emoji, фото-с-реакцией) в `scripts/domdiff/expected/bubbles.json` — привести к форме сериализатора (tag/classes/children, классы отсортированы).
 
-- [ ] **Step 4: README с процедурой сверки**
+- [x] **Step 4: README с процедурой сверки**
 
 Описать: как снять актуальное дерево нашего стенда через chrome-devtools/playwright MCP (`evaluate` с `SERIALIZE_FN`), как прогнать `diffTrees`, как читать findings; список `ignoreClasses` (наши технические классы, у которых нет аналога в tweb) ведём в README и держим коротким — каждый пункт с обоснованием.
 
-- [ ] **Step 5: Прогнать на текущей ленте (baseline)**
+- [x] **Step 5: Прогнать на текущей ленте (baseline)**
 
 Снять наше дерево ленты, сдиффить с `expected/bubbles.json`, сохранить отчёт `scripts/domdiff/baseline-bubbles.txt`. Это стартовая точка: в конце фазы 2 findings по структуре должны стать пустыми.
 
-- [ ] **Step 6: Проверки и стоп**
+- [x] **Step 6: Проверки и стоп**
 
 `npm run typecheck` (скрипты вне tsconfig — убедиться, что не ломают), `npm test -- --run`. Коммит не делаем — коммитит оркестратор.
 

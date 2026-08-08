@@ -25,6 +25,7 @@ export default defineConfig({
   },
   test: {
     environment: 'happy-dom',
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    // scripts/** — DOM-diff харнес (обычный JS вне tsconfig), его тесты гоняем тем же прогоном.
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'scripts/**/*.test.js'],
   },
 })
