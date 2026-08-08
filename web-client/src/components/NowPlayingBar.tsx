@@ -207,15 +207,30 @@ function NowPlayingBar() {
               <TgIcon name="close" />
             </RoundBtn>
 
-            {/* progress line along the bottom of the plate (tweb) */}
+          </div>
+          {/* Полоса прогресса — разметка tweb (RangeSelector + _chatPinned.scss):
+              .pinned-audio-progress-wrapper (absolute inset 0, radius плашки,
+              overflow hidden — иначе полоса торчала бы за скруглённые углы)
+              > .progress-line.use-transform.pinned-audio-progress[--progress]
+                > .progress-line__filled (scaleX по прогрессу) + input[type=range].
+              В покое полоса приспущена на --translateY, по ховеру всплывает и
+              проявляется трек. */}
+          <div className="pinned-audio-progress-wrapper">
             <div
-              className={s.progress}
-              onClick={(e) => {
-                const r = e.currentTarget.getBoundingClientRect()
-                seekFraction((e.clientX - r.left) / r.width)
-              }}
+              className={classNames('progress-line', 'use-transform', 'pinned-audio-progress')}
+              style={{ ['--progress' as string]: String(frac) }}
             >
-              <div className={s.progressFill} style={{ width: `${Math.round(frac * 100)}%` }} />
+              <div className="progress-line__filled" style={{ transform: `scaleX(${frac})` }} />
+              <input
+                className="progress-line__seek"
+                type="range"
+                min={0}
+                max={duration || 0}
+                step={0.001}
+                value={currentTime}
+                aria-label="seek"
+                onChange={(e) => { if (duration > 0) seekFraction(Number(e.target.value) / duration) }}
+              />
             </div>
           </div>
     </div>

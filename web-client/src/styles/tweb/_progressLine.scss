@@ -1,0 +1,167 @@
+// `.progress-line` — выдержка из tweb `src/scss/partials/_ckin.scss:270-427`
+// (полоса прогресса плеера + скрытый input[type=range] поверх неё).
+//
+// Целиком `_ckin.scss` не портируем: это партиал видеоплеера, и в нём очень
+// общие имена — `.default`, `.loading`, `.bottom-controls`, `.ckin`, — которые
+// столкнутся с нашим медиавьюером. Он приедет целиком в фазе 5, тогда этот
+// файл уйдёт. Скопировано дословно.
+@use "../foundation" as *;
+
+.progress-line {
+  --color: var(--primary-color);
+  --height: 5px;
+  --border-radius: 6px;
+  --thumb-size: 13px;
+  --focus-scale: 1.125;
+  border-radius: var(--border-radius);
+  height: var(--height);
+  position: relative;
+  cursor: pointer;
+
+  &:before {
+    position: absolute;
+    inset: 0;
+    display: block;
+    content: " ";
+    border-radius: inherit;
+  }
+
+  &__seek {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background: transparent;
+    width: 100%;
+    cursor: pointer;
+    padding: 0;
+    margin: 0;
+    outline: none;
+    caret-color: var(--color);
+    position: absolute;
+    top: -.5rem;
+    bottom: -.5rem;
+
+    &:focus {
+      outline: none;
+
+      /* &::-webkit-slider-runnable-track {
+        background: transparent;
+      }
+
+      &::-moz-range-track {
+        outline: none;
+      } */
+    }
+
+    &::-webkit-slider-thumb {
+      display: none;
+    }
+
+    &::-moz-range-thumb {
+      display: none;
+      width: 0;
+      height: 0;
+    }
+
+    &::-moz-range-track {
+      display: none;
+    }
+
+    &::-webkit-slider-runnable-track {
+      display: none;
+    }
+
+    /* &::-webkit-slider-thumb,
+    &::-moz-range-thumb,
+    &::-moz-range-track,
+    &::-webkit-slider-runnable-track {
+      -webkit-appearance: none;
+      background: transparent; 
+      border-color: transparent;
+      color: transparent;
+      width: 0;
+      height: 0;
+    } */
+  }
+
+  &__filled {
+    pointer-events: none;
+    // padding-right: 1px; // * need because there is border-radius
+    max-width: 100%;
+
+    &:not(.progress-line__loaded) {
+      background-color: var(--color);
+      z-index: 1;
+
+      &:after {
+        content: " ";
+        display: block;
+        height: var(--thumb-size);
+        width: var(--thumb-size);
+        border-radius: 50%;
+        background-color: var(--color);
+        cursor: pointer;
+        position: absolute;
+        inset-inline-end: 0;
+        top: calc((var(--thumb-size) - var(--height)) / -2);
+        transform: translateX(calc(var(--thumb-size) / 2 * var(--reflect))) scale(1);
+
+        @include animation-level(2) {
+          transition: transform .125s ease-in-out;
+        }
+      }
+    }
+  }
+
+  &.is-focused .progress-line__filled:not(.progress-line__loaded):after {
+    transform: translateX(calc(var(--thumb-size) / 2 * var(--reflect))) scale(var(--focus-scale));
+  }
+
+  &__loaded,
+  &:before {
+    opacity: .3;
+    background-color: var(--secondary-color);
+  }
+
+  &__filled, 
+  &__loaded {
+    border-radius: var(--border-radius);
+    position: absolute;
+    top: 0;
+    bottom: 0;
+  }
+
+  @include animation-level(2) {
+    &.with-transition {
+      .progress-line__filled {
+        transition: width .2s;
+      }
+    }
+  }
+
+  &.use-transform {
+    .progress-line__filled {
+      width: 100%;
+      transform-origin: var(--transform-origin-left-center);
+    }
+  }
+}
+
+input[type=range] {
+  &::-ms-track {
+    visibility: hidden;
+  }
+
+  &::-ms-ticks {
+    background: none;
+    color: none;
+    border: none;
+  }
+
+  &::-ms-thumb {
+    visibility: hidden;
+  }
+
+  &::-ms-tooltip {
+    visibility: hidden;
+  }
+}

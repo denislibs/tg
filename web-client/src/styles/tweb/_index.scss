@@ -18,6 +18,11 @@
 // когда специфичность одинаковая (например .btn-corner vs .bubbles-corner-button).
 @use "bridge";
 
+// `.progress-line` (выдержка из _ckin.scss). В tweb style.scss ckin идёт ДО
+// chat*/chatPinned — порядок важен: `.pinned-audio-progress` (absolute, к низу
+// плашки) обязан перебивать `.progress-line` (position: relative).
+@use "progressLine";
+
 // --- Фаза 2: лента и баблы ---
 @use "chatBubble";
 @use "quote";

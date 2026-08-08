@@ -37,7 +37,7 @@
 // радиус и позицию даёт tweb-партиал (_chatPinned.scss), здесь только раскладка.
 .bar {
   position: relative;
-  overflow: hidden; // скругляет концы полоски прогресса (попап громкости — в портале)
+  overflow: hidden; // попап громкости живёт в портале, остальное режем по плашке
   display: flex;
   align-items: center;
   flex: 1;
@@ -152,16 +152,3 @@
 // Меню скорости — общий shared <Menu> (портал+бэкдроп), свои классы не нужны.
 
 // Линия прогресса вдоль низа плашки (tweb)
-.progress {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 3px;
-  background: var(--light-secondary-text-color);
-  cursor: pointer;
-}
-.progressFill {
-  height: 100%;
-  background: var(--primary-color);
-}
