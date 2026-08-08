@@ -32,9 +32,11 @@ export function bubbleRadius(out: boolean, firstInGroup: boolean, lastInGroup: b
 
 /**
  * Хвостик бабла — `svg.bubble-tail` (tweb chat/utils.ts:50-62 generateTail).
- * Геометрия и позиционирование целиком на _chatBubble.scss (`.can-have-tail
- * .bubble-tail`), сторона/зеркало — по классам бабла; здесь только сам путь
- * (в tweb он лежит в спрайте `#message-tail-filled`, у нас — инлайном).
+ * Геометрия, позиционирование и ЗАЛИВКА целиком на _chatBubble.scss
+ * (`.can-have-tail .bubble-tail { fill: var(--message-background-color) }`),
+ * сторона/зеркало — по классам бабла; здесь только сам путь (в tweb он лежит
+ * в спрайте `#message-tail-filled`, у нас — инлайном). У пути НЕТ своего fill:
+ * презентационный атрибут перебил бы CSS-заливку и хвост стал бы белым.
  */
 export function BubbleTail() {
   return (
@@ -43,7 +45,6 @@ export function BubbleTail() {
         <path
           d="M-6 16h6v17c-.193-2.84-.876-5.767-2.05-8.782-.904-2.325-2.446-4.485-4.625-6.48A1 1 0 01-6 16z"
           transform="matrix(1 0 0 -1 0 49)"
-          fill="currentColor"
         />
       </g>
     </svg>
