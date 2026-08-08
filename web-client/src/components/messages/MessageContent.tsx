@@ -24,8 +24,6 @@ import {
   Ticks,
   BubbleTail,
   bubbleRadius,
-  BUBBLE_R_BIG,
-  BUBBLE_R_MED,
   DocumentBubble,
   AudioBubble,
   RoundVideoBubble,
@@ -49,13 +47,6 @@ import type { ConvMsg } from '../../data'
 import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import type { FeedFns } from './MessageRow'
 import s from './MessageRow.module.scss'
-
-// Радиус media/voice-бабла: скруглён везде, кроме хвостового угла последнего в группе.
-function mediaRadius(out: boolean, lastInGroup: boolean): string {
-  const B = BUBBLE_R_BIG
-  const last = lastInGroup ? 0 : BUBBLE_R_MED
-  return out ? `${B}px ${B}px ${last}px ${B}px` : `${B}px ${B}px ${B}px ${last}px`
-}
 
 // The view-count span (count + eye icon) shown in a channel post's meta line.
 function ViewsMeta({ views, className }: { views: number; className: string }) {
@@ -288,7 +279,7 @@ export default function MessageContent({
             />,
           )
         ) : m.mediaId && m.type === 'voice' ? (
-          <div className={s.voiceMedia} style={{ borderRadius: mediaRadius(out, lastInGroup) }}>
+          <div className={s.voiceMedia} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
             {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
             <VoiceMessage
               mediaId={m.mediaId}
@@ -311,7 +302,7 @@ export default function MessageContent({
             {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
             <div
               className={classNames(s.mediaInner, s.framed)}
-              style={{ borderRadius: mediaRadius(out, lastInGroup) }}
+              style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}
             >
               <AlbumGrid
                 items={m.albumItems}
@@ -361,7 +352,7 @@ export default function MessageContent({
             {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
             <div
               className={classNames(s.mediaInner, m.type === 'photo' || m.type === 'video' ? s.framed : '')}
-              style={{ borderRadius: mediaRadius(out, lastInGroup) }}
+              style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}
             >
               {m.secretMedia ? (
                 // Секретное медиа (E2E): fetch ciphertext → decrypt → blob-objectURL.
@@ -429,7 +420,7 @@ export default function MessageContent({
           withReactionsBelow(<BigEmojiBubble m={m} count={bigEmoji} selecting={selecting} fmtTime={fmtTime} />)
         ) : m.type === 'voice' ? (
           withReactionsBelow(
-          <div className={s.voice} style={{ borderRadius: mediaRadius(out, lastInGroup) }}>
+          <div className={s.voice} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
             {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
             <div className={s.voiceBtn}>
               <TgIcon name="play" />
@@ -456,7 +447,7 @@ export default function MessageContent({
         ) : m.type === 'roundVideo' ? (
           withReactionsBelow(<RoundVideoBubble m={m} out={out} firstInGroup={firstInGroup} lastInGroup={lastInGroup} />)
         ) : m.type === 'geo' && m.geo ? (
-          withReactionsBelow(<GeoBubble m={m} out={out} lastInGroup={lastInGroup} radius={mediaRadius(out, lastInGroup)} />)
+          withReactionsBelow(<GeoBubble m={m} out={out} lastInGroup={lastInGroup} radius={bubbleRadius(out, firstInGroup, lastInGroup)} />)
         ) : m.type === 'contact' && m.contact ? (
           withReactionsBelow(
           <ContactBubble

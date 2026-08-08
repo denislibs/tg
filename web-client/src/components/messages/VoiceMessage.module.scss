@@ -74,17 +74,17 @@
   display: flex;
   align-items: center;
   gap: 2px;
-  height: 24px;
+  height: 23px; // tweb .audio-waveform-container 23px
 }
 .waveBar {
-  width: 3px;
+  width: 2px; // tweb waveform bars 2px
   flex-shrink: 0;
   border-radius: 2px;
 }
 .meta {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   margin-top: 2px;
 }
 .dot {

@@ -135,7 +135,7 @@ export default function VoiceMessage({
           ))}
         </div>
         <div className={s.meta}>
-          <Text size={12.5} color="var(--v-dur)">
+          <Text size="var(--messages-time-text-size)" color="var(--v-dur)">
             {isCurrent ? `${fmt(curTime)} / ${fmt(duration)}` : fmt(duration)}
           </Text>
           {showUnplayedDot && <div className={s.dot} />}
