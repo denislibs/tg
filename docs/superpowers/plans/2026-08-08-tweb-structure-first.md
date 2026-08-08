@@ -389,24 +389,32 @@ typecheck / tests / build; скриншоты «до/после» в отчёт.
 - [x] **Step 1:** Снять с живого tweb значения `--chat-width`, `--left-column-width`, `--right-column-width`, `--page-chats-padding`, `--folders-sidebar-offset` в трёх режимах (узкий / обычный / открытая правая колонка) — эталон для порта.
 - [x] **Step 2:** Портировать `updateColumnWidths.ts` дословно; классы состояния (`body.is-right-column-shown`, `body.right-column-floats`, `body.is-left-column-shown`) ставить там же, где tweb.
 - [x] **Step 3:** Перевести оболочку на скелет колонок; проверить три режима по DOM-diff обёрток.
-- [ ] **Step 4:** Только после этого — Task 3.1 (партиалы `_chat`/`_chatTopbar`/`_chatPinned`).
+- [x] **Step 4:** Только после этого — Task 3.1 (партиалы `_chat`/`_chatTopbar`/`_chatPinned`).
 
 ### Task 3.1: Порт `_chat.scss` (без секции chat-input), `_chatTopbar.scss`, `_chatPinned.scss`
 
 **Files:** Create `web-client/src/styles/tweb/_chat.scss`, `_chatTopbar.scss`, `_chatPinned.scss`; Modify `_index.scss`.
 
-- [ ] **Step 1:** Скопировать, починить импорты, добиться сборки (та же процедура, что в Task 2.1).
-- [ ] **Step 2:** Сверить с живым референсом §1/§3: топбар-пилюля 696×48 radius 24, `topbar-floating-plates` (щель 1px), `--chat-width: 696px`, маска фейдов.
-- [ ] **Step 3:** Проверки: build зелёный, прирост CSS зафиксирован.
+- [x] **Step 1:** Скопировать, починить импорты, добиться сборки (та же процедура, что в Task 2.1).
+      Сверх плана понадобились `_sidebar.scss` (от него наследует `.topbar`),
+      `_scrollable.scss` (без него лента не скроллит — скроллила страница),
+      `pages/_chats.scss` и выдержка `.whole` из base.scss (каркас `#main-columns`).
+- [x] **Step 2:** Сверено на стенде при vw=1728: топбар 696×48 @ (704,16), плейт пина
+      696×48 @ (704,72) — щель 8px, `--chat-width: 696px`, `.bubbles` 376..1728,
+      `bubbles-padding-top` 72 (128 с пином), `-bottom` 64. Всё совпало с tweb.
+- [x] **Step 3:** typecheck/тесты (788)/build зелёные.
 
 ### Task 3.2: `Chat` — каркас и плейты (P0 №7)
 
 **Files:** Modify `Chat.tsx`, удалить покрытое из `Chat.module.scss`.
 
-- [ ] **Step 1:** Дерево `.chat > .sidebar-header.topbar + .bubbles + .chat-input` с `--chat-padding-top/bottom`, где `padding-top` включает `--pinned-floating-height` (сумму высот плейтов) — это и есть фикс P0 №7.
-- [ ] **Step 2:** Стек `topbar-floating-plates` — контейнер для пин-бара/плеера/баннеров вместо отдельных плашек с ручным `top`.
-- [ ] **Step 3:** Маска скролла: верхняя точка растёт вместе с плейтами (`--bubbles-scrollable-fade-top-add`).
-- [ ] **Step 4:** DOM-diff каркаса + проверки.
+- [x] **Step 1:** Дерево собрано; распорки `.bubbles-padding-top/-bottom` вместо паддингов
+      контента, высоты — по `chat.ts recomputePaddings`. P0 №7 закрыт.
+- [x] **Step 2:** `topbar-floating-plates` — стек пин-бара и тегов «Избранного»; высоту
+      меряет `useMeasuredHeight` и пишет в `--pinned-floating-height` (tweb setFloating).
+      Плеер — отдельная плашка `.pinned-container.pinned-audio` + `body.is-pinned-audio-shown`.
+- [x] **Step 3:** Маску считает CSS (`.bubbles-scrollable`), инлайн-градиент удалён.
+- [ ] **Step 4:** DOM-diff каркаса (эталонов обёрток пока нет — снят только по баблам).
 
 ### Task 3.3: Пин-бар (P0 №8)
 
