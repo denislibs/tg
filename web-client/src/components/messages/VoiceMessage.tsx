@@ -137,17 +137,16 @@ export default function VoiceMessage({
             {isCurrent ? `${fmt(curTime)} / ${fmt(duration)}` : fmt(duration)}
           </Text>
           {showUnplayedDot && <div className={s.dot} />}
-          <div className={s.spacer} />
-          {/* время+тик (tweb .time-inner: flex, align-center, line-height:1).
-              Время-текст — muted (--v-time = --message-time-color). Тик
-              .time-sending-status — ЯРКИЙ (--message-status-color, на night белый)
-              и крупнее: font-size calc(--messages-text-size + 3px) = 19px. */}
-          <span className={s.time}>
-            {time}
-            {out && <Ticks status={status} color="var(--message-out-primary-color)" size={19} />}
-          </span>
         </div>
       </div>
+      {/* Время+тик — АБСОЛЮТОМ в низ-правый угол бабла (tweb: .bubble .audio .time
+          { position:absolute; right:0; bottom:-3px }). Время-текст muted
+          (--message-time-color), тик .time-sending-status ЯРКИЙ
+          (--message-status-color, на night белый) + 19px (calc(text+3px)). */}
+      <span className={s.time}>
+        {time}
+        {out && <Ticks status={status} color="var(--message-out-primary-color)" size={19} />}
+      </span>
       {tr.available && (
         <TranscribeButton
           className={s.transcribe}

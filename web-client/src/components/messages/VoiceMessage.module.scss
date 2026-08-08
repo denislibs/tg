@@ -94,16 +94,19 @@
   gap: 4px;
   margin-top: 2px;
 }
-// время+тик (tweb .time-inner): flex, center, line-height 1, nowrap; цвет —
-// --v-time (и текст, и тик), tabular для стабильной ширины цифр.
+// Время+тик — АБСОЛЮТОМ в низ-правый угол бабла (tweb .bubble .audio .time:
+// position:absolute; right:0; bottom:-3px). display:inline-flex/align-center/
+// line-height:1; фикс-высота = размеру времени (крупный тик 19px перекрывает
+// строку, а не растягивает). Стоит «ровно всегда» независимо от потока.
 .time {
+  position: absolute;
+  right: 10px; // padding-inline-end бабла
+  bottom: 7px;
   display: inline-flex;
   align-items: center;
   gap: 2px;
   line-height: 1;
   white-space: nowrap;
-  // фикс-высота = размеру времени (tweb .time height:var(--messages-time-text-size));
-  // крупный тик (19px) перекрывает строку сверху/снизу, а не растягивает её.
   height: var(--messages-time-text-size);
   font-size: var(--messages-time-text-size);
   color: var(--v-time);
@@ -115,7 +118,4 @@
   border-radius: 50%;
   background: var(--primary-color);
   flex-shrink: 0;
-}
-.spacer {
-  flex: 1;
 }
