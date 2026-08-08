@@ -16,6 +16,7 @@ import Checkbox from '../../shared/ui/Checkbox'
 import classNames from '../../shared/lib/classNames'
 import { bubbleClasses } from './bubbleClasses'
 import { BubbleTail } from './bubbleParts/primitives'
+import TgIcon from '../TgIcon'
 import { emojiOnlyCount } from '../RichText'
 import { hexToRgbTriplet, peerColorById } from '../peerColor'
 import InlineKeyboard from './InlineKeyboard'
@@ -52,6 +53,8 @@ export interface FeedFns {
   cancelUpload: (clientId: string) => void
   /** разблокировать платное медиа за звёзды (Telegram paid media) */
   unlockPaid: (msgId: number) => Promise<void>
+  /** переслать сообщение — кнопка сбоку поста канала (tweb bubble-beside-button) */
+  forwardMsg: (msgId: number) => void
 }
 
 export interface MessageRowProps {
@@ -179,6 +182,16 @@ function MessageRow({
             rowLive={rowLiveRef.current}
             feedFns={feedFns}
           />
+          {/* Кнопка «переслать» сбоку поста канала (tweb bubbles.ts:7673-7681,
+              живой DOM §3): круглая, за пределами бабла, проявляется по ховеру. */}
+          {isChannel && m.id != null && !selecting && (
+            <div
+              className="bubble-beside-button with-hover forward"
+              onClick={(e) => { e.stopPropagation(); feedFns.forwardMsg(m.id as number) }}
+            >
+              <TgIcon name="forward" size="1.5rem" />
+            </div>
+          )}
           {/* Хвостик — ПОСЛЕДНИЙ ребёнок .bubble-content (tweb
               bubbleContainer.append(generateTail()), живой DOM §3). */}
           {cls.includes('can-have-tail') && <BubbleTail />}

@@ -1,37 +1,39 @@
 import TgIcon from './TgIcon'
-import Text from '../shared/ui/Text'
+import StackedAvatars, { type StackedAvatarPeer } from './messages/StackedAvatars'
+import classNames from '../shared/lib/classNames'
 import { useT, useLang } from '../i18n'
 import { commentsLabel } from '../core/format/commentsLabel'
 import s from './CommentsBar.module.scss'
 
-// Recent-commenter avatars (decorative stack, as tweb shows the last few
-// commenters' photos before the label).
-const commenters = [
-  { bg: 'linear-gradient(135deg,#ff5f6d,#ffc371)', label: 'ДЧ' },
-  { bg: 'linear-gradient(135deg,#43e97b,#38f9d7)', label: '' },
-  { bg: 'linear-gradient(135deg,#5b5b5b,#1a1a1a)', label: '' },
-]
-
-// Channel post replies-footer (tweb .replies.replies-footer): a row attached to
-// the bottom of the post bubble — commenter avatars + "N комментариев" + a chevron
-// pinned to the end. Clicking opens the discussion thread.
-export default function CommentsBar({ onOpen, count }: { onOpen?: () => void; count?: number }) {
+// Футер комментариев поста канала — разметка tweb (живой DOM §3, «video bubble
+// single»): replies-element.replies.replies-footer > .replies-footer-avatars
+// .stacked-avatars + span.replies-footer-text + span.replies-footer-icon
+// .replies-footer-icon-next.tgico. Клик открывает тред обсуждения.
+//
+// Аватары комментаторов рисуются ТОЛЬКО по реальным данным: раньше здесь стоял
+// хардкод из трёх выдуманных градиентов (P0 №11 аудита). Бэкенд пока не отдаёт
+// последних ответивших — когда в DTO треда появится recent_repliers (по образцу
+// ReactionsFor), их достаточно прокинуть сюда пропом `recent`.
+export default function CommentsBar({ onOpen, count, recent }: {
+  onOpen?: () => void
+  count?: number
+  /** последние ответившие (реальные пиры) — стек аватаров перед подписью */
+  recent?: StackedAvatarPeer[]
+}) {
   const t = useT()
   const [lang] = useLang()
 
   return (
-    <div className={s.footer} onClick={onOpen}>
-      <div className={s.avatars}>
-        {commenters.map((c, i) => (
-          <div key={i} className={s.avatar} style={{ background: c.bg }}>
-            {c.label}
-          </div>
-        ))}
-      </div>
-      <Text size={15} weight={700} color="var(--primary-color)" className={s.label}>
-        {commentsLabel(count ?? 0, lang, t)}
-      </Text>
-      <TgIcon name="next" size={24} color="var(--primary-color)" className={s.next} />
-    </div>
+    <replies-element class={classNames('replies', 'replies-footer', s.footer)} onClick={onOpen}>
+      {!!recent?.length && (
+        <div className={classNames('replies-footer-avatars', s.avatars)}>
+          <StackedAvatars peers={recent} size={30} />
+        </div>
+      )}
+      <span className={classNames('replies-footer-text', s.label)}>
+        <span className="i18n">{commentsLabel(count ?? 0, lang, t)}</span>
+      </span>
+      <TgIcon name="next" size={24} className={classNames('replies-footer-icon', 'replies-footer-icon-next', s.next)} />
+    </replies-element>
   )
 }

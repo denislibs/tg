@@ -119,7 +119,9 @@ export function bubbleClasses(m: ConvMsg, ctx: BubbleCtx): string[] {
   // Пересланное всегда показывает шапку «Forwarded from» (tweb bubbles.ts:9413,9645).
   if (m.forwardFrom) cls.push('forwarded', 'must-have-name')
   if (!ctx.showName && !m.forwardFrom) cls.push('hide-name')
-  if (ctx.isChannel) cls.push('channel-post')
+  // Пост канала: рядом с баблом висит круглая кнопка «переслать», под неё
+  // резервируется место (tweb bubbles.ts:7673-7681).
+  if (ctx.isChannel) cls.push('channel-post', 'with-beside-button')
   if (m.replyMarkup?.inline) cls.push('with-reply-markup')
 
   if (ctx.isFirstUnread) cls.push('is-first-unread')

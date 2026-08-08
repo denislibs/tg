@@ -14,6 +14,7 @@ declare module 'react' {
       'audio-element': TwebElement
       'reactions-element': TwebElement
       'reaction-element': TwebElement
+      'replies-element': TwebElement
       'middle-ellipsis-element': TwebElement
     }
   }

@@ -1,56 +1,28 @@
-// tweb .replies.replies-footer (_chatBubble.scss): full-width footer glued to the
-// post bubble bottom — height 3.0625rem, top divider, own .5rem padding, min-width
-// 15rem, accent text, chevron pinned to the end. Bleed/rounding are handled by the
-// bubble's footer slot (MessageRow .footerText/.footerMedia).
+// Футер комментариев живёт на классах tweb (`_chatBubble.scss` `.replies` /
+// `.replies-footer` / `-avatars` / `-text` / `-icon`): высота 3.0625rem, верхний
+// разделитель, padding .5rem, min-width 15rem, акцентный текст, шеврон в конце.
+// Здесь остались только hover-подсветка (в tweb её даёт ripple, который не
+// портирован) и курсор.
 .footer {
-  position: relative;
-  display: flex;
-  align-items: center;
-  height: 3.0625rem;
-  padding: 0 0.5rem;
-  min-width: 15rem;
-  border-top: 0.0625rem solid var(--border-color);
-  color: var(--primary-color);
-  background: var(--b-bg);
+  background: var(--message-background-color);
   cursor: pointer;
-  user-select: none;
 
   @media (hover: hover) {
     &:hover {
-      background: color-mix(in srgb, var(--primary-color) 8%, var(--b-bg));
+      background: color-mix(in srgb, var(--primary-color) 8%, var(--message-background-color));
     }
   }
 }
 
 .avatars {
-  display: flex;
   flex-shrink: 0;
 }
-.avatar {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  border: 2px solid var(--b-bg); // tweb --border-size: 2px
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--font-size-11);
-  font-weight: 700;
-  color: #fff;
 
-  &:not(:first-child) {
-    margin-left: -0.875rem; // tweb --margin-right: -.875rem
-  }
-}
-
-// tweb .replies-footer-text: bold .9375rem, .5rem inline-start margin, accent.
 .label {
   flex: 1;
-  margin-left: 0.5rem;
+  min-width: 0;
 }
 
-// tweb .replies-footer-icon-next: absolute at the end.
 .next {
-  position: absolute;
-  inset-inline-end: 0.1875rem;
+  flex-shrink: 0;
 }

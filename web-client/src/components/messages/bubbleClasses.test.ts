@@ -72,7 +72,7 @@ describe('bubbleClasses', () => {
 
   it('пересланное: forwarded + must-have-name, hide-name не ставится', () => {
     const cls = bubbleClasses(msg({ forwardFrom: { name: 'канал' } as ConvMsg['forwardFrom'] }), ctx({ out: true, isChannel: true }))
-    expect(cls).toEqual(expect.arrayContaining(['forwarded', 'must-have-name', 'channel-post']))
+    expect(cls).toEqual(expect.arrayContaining(['forwarded', 'must-have-name', 'channel-post', 'with-beside-button']))
     expect(cls).not.toContain('hide-name')
   })
 

@@ -66,20 +66,22 @@ if (has('--all')) {
   // отчёт врёт: голосовое сравнивалось бы с сервисным.
   const TYPE_CLASSES = ['voice-message', 'audio-message', 'document-message', 'poll-message',
     'contact-message', 'call-message', 'is-album', 'sticker', 'emoji-big', 'round', 'photo',
-    'video', 'service', 'is-date', 'is-sponsored', 'is-reply', 'forwarded']
+    'video', 'service', 'is-date', 'is-sponsored', 'is-reply', 'forwarded', 'channel-post',
+    'has-webpage']
+  const typeSet = (n) => TYPE_CLASSES.filter((c) => n.classes.includes(c)).join(',')
   for (const [key, v] of Object.entries(expected)) {
-    const wanted = v.tree.classes.filter((c) => TYPE_CLASSES.includes(c))
-    const sameType = wanted.length
-      ? bubbles.filter((b) => wanted.every((c) => b.classes.includes(c)))
-      : []
-    const candidates = sameType.length ? sameType : bubbles
+    // Кандидат должен иметь РОВНО тот же набор классов-типов: иначе обычный
+    // текстовый эталон (без типов) матчился бы на сервисный бабл или дату.
+    const wanted = typeSet(v.tree)
+    const sameType = bubbles.filter((b) => typeSet(b) === wanted)
+    const candidates = sameType
     let best = null
     for (const b of candidates) {
       const f = diffTrees(v.tree, b, opts)
       if (!best || f.length < best.length) best = f
     }
-    if (!sameType.length && wanted.length) {
-      report.push(`${key.padEnd(46)} — в снимке нет бабла типа [${wanted.join(', ')}]`)
+    if (!sameType.length) {
+      report.push(`${key.padEnd(46)} — в снимке нет бабла типа [${wanted || 'обычный текст'}]`)
       continue
     }
     const sum = best ? summarize(best) : {}

@@ -635,6 +635,8 @@ export default function Chat({ chat, onBack, thread }: Props) {
       uiEvents.emit('ui:toast', t('Not enough Stars to unlock'))
     }
   })
+  // Кнопка «переслать» сбоку поста канала (tweb .bubble-beside-button.forward).
+  const forwardMsgE = useEvent((msgId: number) => openForwardFor([msgId]))
   const feedFns = useMemo(
     () => ({
       openSender: openSenderE,
@@ -652,8 +654,9 @@ export default function Chat({ chat, onBack, thread }: Props) {
       openStarReaction,
       cancelUpload: cancelUploadE,
       unlockPaid: unlockPaidE,
+      forwardMsg: forwardMsgE,
     }),
-    [openSenderE, playVoiceE, toggleSelectE, openMsgMenuE, jumpToSeqE, openDatePickerE, openLightboxE, recallE, mediaPlayedE, roundPlayingE, toggleReaction, showReactedUsers, openStarReaction, cancelUploadE, unlockPaidE],
+    [openSenderE, playVoiceE, toggleSelectE, openMsgMenuE, jumpToSeqE, openDatePickerE, openLightboxE, recallE, mediaPlayedE, roundPlayingE, toggleReaction, showReactedUsers, openStarReaction, cancelUploadE, unlockPaidE, forwardMsgE],
   )
 
   // (Ack reconcile + send-rejection run in realtimeBridge → messagesStore; live
