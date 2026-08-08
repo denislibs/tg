@@ -2,13 +2,12 @@
 // The sidebar's compose FAB (bottom-right ✎). It owns the open/closed state of the
 // compose menu (so Sidebar no longer holds composeOpen) and renders ComposeMenu
 // itself. Hidden while the search is open.
-import { memo, useRef, useState, type CSSProperties } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { memo, useRef, useState } from 'react'
+import classNames from '../shared/lib/classNames'
+import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import IconButton from '../shared/ui/IconButton'
 import ComposeMenu from './ComposeMenu'
-
-const MotionFab = motion.create(IconButton)
 
 export interface ComposeFabProps {
   searching: boolean
@@ -33,38 +32,33 @@ function ComposeFab({ searching, onNewGroup, onNewPrivate, onNewChannel, onNewSe
 
   return (
     <>
-      {/* FAB (hidden while searching) */}
-      <AnimatePresence>
-        {!searching && (
-          <MotionFab
-            ref={fabRef}
-            onClick={toggle}
-            initial={{ y: 96, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 96, opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-            color="#fff"
-            style={{
-              position: 'absolute',
-              right: 20,
-              bottom: 20,
-              zIndex: 32,
-              width: 56,
-              height: 56,
-              background: 'var(--tg-accentGradient)',
-              '--ib-hover': 'var(--tg-accentGradient)',
-            } as CSSProperties}
-          >
-            <motion.span
-              animate={{ rotate: open ? 90 : 0 }}
-              transition={{ duration: 0.2 }}
-              style={{ display: 'inline-flex' }}
-            >
-              {open ? <TgIcon name="close" size={24} /> : <TgIcon name="newchat_filled" size={24} />}
-            </motion.span>
-          </MotionFab>
+      {/* FAB — tweb #new-menu (живой DOM §2): ButtonCorner-набор классов
+          `btn-new-menu btn-circle rp btn-corner z-depth-1 btn-menu-toggle
+          animated-button-icon`. Геометрию (54×54, right/bottom 20, пружинку
+          --btn-corner-transition, акцентный фон) даёт `.btn-corner`/`.btn-circle`
+          из _button.scss — свои inline-стили убраны.
+          Видимость — класс `is-visible` (tweb), а не размонтирование. */}
+      <IconButton
+        ref={fabRef}
+        id="new-menu"
+        tabIndex={-1}
+        onClick={toggle}
+        className={classNames(
+          'btn-new-menu', 'btn-circle', 'rp', 'btn-corner', 'z-depth-1',
+          'btn-menu-toggle', 'animated-button-icon',
+          searching ? '' : 'is-visible',
+          open ? 'menu-open' : '',
         )}
-      </AnimatePresence>
+        color="#fff"
+      >
+        <motion.span
+          animate={{ rotate: open ? 90 : 0 }}
+          transition={{ duration: 0.2 }}
+          style={{ display: 'inline-flex' }}
+        >
+          {open ? <TgIcon name="close" size={24} /> : <TgIcon name="newchat_filled" size={24} />}
+        </motion.span>
+      </IconButton>
 
       <ComposeMenu
         open={open}
