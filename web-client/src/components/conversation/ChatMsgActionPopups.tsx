@@ -29,6 +29,9 @@ export default function ChatMsgActionPopups({ msgActions, numericChatId, isRealC
   const managers = useManagers()
   const allDialogs = useChatsStore((s) => s.dialogs)
   const m = msgActions
+  // Для delete-конфирма (tweb PopupDeleteMessages): тип чата и first name
+  // собеседника подписывают чекбокс «Also delete for <имя>» / «Delete for all».
+  const dialog = allDialogs.find((d) => d.chatId === numericChatId)
 
   return (
     <>
@@ -76,10 +79,13 @@ export default function ChatMsgActionPopups({ msgActions, numericChatId, isRealC
         <ChatPicker dialogs={allDialogs} title={t('Reply in Another Chat')} onPick={m.pickReplyAnotherChat} onClose={m.closeReplyAnother} />
       )}
 
-      {/* Delete confirmation (for me / for everyone) */}
+      {/* Delete confirmation (чекбокс revoke, tweb PopupDeleteMessages) */}
       {m.delIds && (
         <DeleteMessageDialog
           canRevoke={m.delIds.canRevoke}
+          count={m.delIds.ids.length}
+          chatType={dialog?.type}
+          peerFirstName={dialog?.peer?.displayName?.split(' ')[0]}
           onDeleteForEveryone={() => m.doDelete(true)}
           onDeleteForMe={() => m.doDelete(false)}
           onClose={m.closeDelete}

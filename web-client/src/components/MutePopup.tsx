@@ -1,8 +1,9 @@
-// Попап выбора длительности mute — порт tweb PopupMute (src/components/popups/mute.ts):
-// заголовок «Notifications», радио «For 1 Hour … Forever» (по умолчанию Forever),
-// кнопка подтверждения «Mute».
+// Попап выбора длительности mute — порт tweb PopupMute (src/components/popups/mute.ts:29-52):
+// компактный tweb-конфирм (PopupPeer): заголовок «Notifications», радио-строки
+// «For 1 Hour … Forever» (Forever отмечен по умолчанию), кнопки MUTE / CANCEL
+// row-reverse. Радио — наша реализация (TgIcon radioon/radiooff), строки 48px.
 import { useState } from 'react'
-import Popup from '../shared/ui/Popup'
+import ConfirmPopup from '../shared/ui/ConfirmPopup'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import { useT } from '../i18n'
@@ -33,23 +34,26 @@ export default function MutePopup({
   const t = useT()
   const [value, setValue] = useState(-1) // tweb: Forever отмечен по умолчанию
   return (
-    <Popup
+    <ConfirmPopup
       open={open}
-      title={t('Notifications')}
       onClose={onClose}
       onExitComplete={onExitComplete}
-      width={360}
-      action={{
-        label: t('Mute'),
-        onClick: () => {
-          onMute(value === -1 ? null : value)
-          onClose()
-        },
-      }}
+      title={t('Notifications')}
+      buttons={[{
+        text: t('Mute'),
+        primary: true,
+        onClick: () => onMute(value === -1 ? null : value),
+      }]}
     >
-      <div className={s.list}>
+      <div className={s.list} role="radiogroup">
         {TIMES.map((tm) => (
-          <div key={tm.value} className={s.row} onClick={() => setValue(tm.value)}>
+          <div
+            key={tm.value}
+            className={s.row}
+            role="radio"
+            aria-checked={value === tm.value}
+            onClick={() => setValue(tm.value)}
+          >
             <TgIcon
               name={value === tm.value ? 'radioon' : 'radiooff'}
               color={value === tm.value ? 'var(--primary-color)' : 'var(--secondary-text-color)'}
@@ -58,6 +62,6 @@ export default function MutePopup({
           </div>
         ))}
       </div>
-    </Popup>
+    </ConfirmPopup>
   )
 }

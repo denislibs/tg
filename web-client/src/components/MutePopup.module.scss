@@ -1,16 +1,20 @@
-// MutePopup — радио-список длительностей (tweb PopupPeer с RadioForm)
+// MutePopup — радио-список длительностей (tweb PopupMute: RadioForm в body PopupPeer)
 .list {
-  padding: 4px 8px 8px;
+  padding: 0.25rem 0;
 }
+
+// строка радио — как чекбокс-строки PopupPeer: min-height 3rem, hover
 .row {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 10px 8px;
-  border-radius: 8px;
+  gap: 1.125rem;
+  min-height: 3rem;
+  padding: 0.25rem 1.125rem;
   cursor: pointer;
 
-  &:hover {
-    background: var(--light-secondary-text-color);
+  @media (hover: hover) {
+    &:hover {
+      background: var(--light-secondary-text-color);
+    }
   }
 }

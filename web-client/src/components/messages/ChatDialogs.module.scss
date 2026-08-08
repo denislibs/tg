@@ -1,28 +1,10 @@
-// ChatDialogs — презентационные диалоги ConversationView (удаление, форвард-пикер,
-// «просмотрено», добавление участника, сброс голосового). Цвета — токены,
-// danger — #ff595a. Затемнения/карточки/строки унифицированы.
-.overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 2100;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.45);
-}
+// ChatDialogs — презентационные диалоги ConversationView (форвард-пикер,
+// «просмотрено», пикеры контактов/чатов). Конфирмы (удаление, сброс голосового)
+// живут на shared/ui/ConfirmPopup и своих стилей здесь не имеют.
 .overlayBare {
   position: fixed;
   inset: 0;
   z-index: 2100;
-}
-.overlayTop {
-  z-index: 3000;
-}
-.scrim {
-  position: fixed;
-  inset: 0;
-  z-index: 2100;
-  background: rgba(0, 0, 0, 0.45);
 }
 
 .card {
@@ -31,50 +13,6 @@
   border-radius: 12px;
 }
 
-// подтверждение удаления
-.confirm {
-  width: 320px;
-  max-width: 90vw;
-  padding: 20px;
-}
-.confirmActions {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.action {
-  padding: 8px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: var(--font-size-15);
-  color: var(--primary-text-color);
-
-  &.danger {
-    color: #ff595a;
-  }
-  @media (hover: hover) {
-    &:hover {
-      background: var(--light-secondary-text-color);
-    }
-  }
-}
-
-// форвард-пикер
-.picker {
-  width: 360px;
-  max-width: 92vw;
-  max-height: 70vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.pickerTitle {
-  padding: 14px 16px;
-}
-.list {
-  overflow-y: auto;
-  padding-bottom: 8px;
-}
 .listRow {
   display: flex;
   align-items: center;
@@ -106,38 +44,6 @@
   align-items: center;
   gap: 10px;
   padding: 6px 16px;
-}
-
-// сброс голосового
-.discardCard {
-  width: min(92%, 360px);
-  border-radius: 14px;
-  background: var(--surface-color);
-  padding: 20px;
-}
-.discardActions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-.btnText {
-  padding: 8px 16px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: var(--font-size-15);
-  font-weight: 600;
-
-  @media (hover: hover) {
-    &:hover {
-      background: var(--light-secondary-text-color);
-    }
-  }
-}
-.accent {
-  color: var(--primary-color);
-}
-.danger {
-  color: #ff595a;
 }
 
 // ── ForwardPicker на Popup ──

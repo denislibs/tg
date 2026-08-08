@@ -1,0 +1,150 @@
+// ConfirmPopup — порт tweb .popup/.popup-peer (scss/partials/popups/_popup.scss,
+// _peer.scss): скрим .3, карточка min 19.5rem/max 25rem radius 2.5rem, header
+// 2.5rem, описание, чекбокс-строки 3rem, кнопки row-reverse UPPERCASE.
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 4090; // как shared/ui/Popup — поверх модалок
+  background: rgba(0, 0, 0, 0.3); // tweb .popup background-color
+  display: flex;
+  overflow: auto;
+  padding: 1.875rem; // tweb .popup padding
+}
+
+.card {
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  // tweb .popup-peer: --popup-min-width 19.5rem / --popup-max-width 25rem
+  min-width: min(100%, 19.5rem);
+  max-width: min(100%, 25rem);
+  border-radius: 2.5rem; // tweb --popup-border-radius
+  background: var(--background-color); // tweb --popup-background-color
+  padding: 0.75rem 0.5rem; // tweb .popup-peer .popup-container
+  color: var(--primary-text-color);
+  font-size: var(--font-size-16);
+}
+
+// tweb .popup-peer .popup-header: высота 2.5rem, [avatar 32] + title
+.header {
+  display: flex;
+  align-items: center;
+  padding: 0 1rem;
+  height: 2.5rem;
+  max-width: 100%;
+  flex: 0 0 auto;
+}
+
+.title {
+  font-size: 1.25rem;
+  font-weight: var(--font-weight-bold, 500);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  // tweb: заголовок после аватара отделяется паддингом
+  &:not(:first-child) {
+    padding-left: 1rem;
+  }
+}
+
+// tweb .popup-description: padding .625rem 1rem .5rem
+.description {
+  margin: 0;
+  padding: 0.625rem 1rem 0.5rem;
+  font-size: var(--font-size-16);
+  line-height: var(--line-height-16);
+  color: var(--secondary-text-color);
+  white-space: pre-wrap;
+  flex: 0 0 auto;
+}
+
+// tweb .popup-peer .checkbox-field: строка min-height 3rem с ripple/hover
+.checkboxRow {
+  position: relative; // хост ripple
+  display: flex;
+  align-items: center;
+  gap: 1.125rem;
+  min-height: 3rem;
+  padding: 0.25rem 1.125rem;
+  cursor: pointer;
+  overflow: hidden;
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--light-secondary-text-color);
+    }
+  }
+}
+
+.checkboxText {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-size-16);
+  line-height: var(--line-height-16);
+  color: var(--primary-text-color);
+}
+
+// tweb .popup-buttons: горизонталь row-reverse (первая кнопка справа), высота 3rem
+.buttons {
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: flex-start;
+  align-items: center;
+  height: 3rem;
+  padding: 0 0.5rem;
+  flex: 0 0 auto;
+
+  // tweb .is-vertical-layout при ≥3 кнопках
+  &.vertical {
+    flex-direction: column;
+    height: auto;
+    align-items: flex-end;
+
+    .button {
+      margin: 0 !important;
+    }
+  }
+}
+
+// tweb .popup-button btn: текстовая, 2.5rem, UPPERCASE, weight 500, radius 16
+.button {
+  position: relative; // хост ripple
+  height: 2.5rem;
+  max-width: 100%;
+  padding: 0 1rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--font-size-16);
+  font-weight: 500;
+  text-transform: uppercase;
+  border-radius: 16px; // tweb $border-radius-medium
+  color: var(--primary-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background-color 0.15s ease-out;
+
+  // tweb .popup-button + .popup-button (row-reverse: отступ между кнопками)
+  & + & {
+    margin-inline-end: 0.625rem;
+  }
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--light-primary-color);
+    }
+  }
+
+  &.danger {
+    color: var(--danger-color, #df3f40);
+
+    @media (hover: hover) {
+      &:hover {
+        background: var(--light-danger-color, rgba(223, 63, 64, 0.08));
+      }
+    }
+  }
+}
