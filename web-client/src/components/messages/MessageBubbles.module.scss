@@ -257,7 +257,11 @@
 }
 .callSub {
   font-size: var(--messages-secondary-text-size);
-  color: var(--secondary-text-color);
+  // tweb `.bubble` (_chatBubble.scss:94) внутри бабла подменяет
+  // --secondary-text-color на цвет статуса; у нас токены плоские (:root), такая
+  // подмена дала бы цикл, поэтому берём статус напрямую — иначе на цветном
+  // исходящем глобальный серый почти не читается.
+  color: var(--message-status-color);
   display: flex;
   align-items: center;
   margin-top: 0.0625rem;

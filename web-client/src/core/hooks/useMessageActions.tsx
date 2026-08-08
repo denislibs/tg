@@ -15,6 +15,11 @@ import { useReportStore } from '../../stores/reportStore'
 import { useSearchStore } from '../../stores/searchStore'
 import { useMessagesStore } from '../../stores/messagesStore'
 import { useChatsStore } from '../../stores/chatsStore'
+
+// tweb getLimit('reactions') → appConfig reactions_user_max_default/premium:
+// сколько РАЗНЫХ своих реакций помещается на одном сообщении.
+const REACTIONS_USER_MAX_DEFAULT = 1
+const REACTIONS_USER_MAX_PREMIUM = 3
 import { mediaLabel } from '../dialogToChat'
 import { useSettingsStore } from '../../settings'
 import { uiEvents } from './uiEvents'
@@ -369,9 +374,12 @@ export function useMessageActions({
 
   // Тоггл реакции (клик по чипу / полоске эмодзи в меню). Оптимистику применяет
   // воркер (tweb-модель, SSOT): react/unreact правят кэш и бродкастят эхо ДО сети —
-  // storeProjection единственный писатель стора, кросс-таб бесплатно. Несколько
-  // разных реакций на одно сообщение разрешены (как premium tweb): тап по эмодзи
-  // снимает/ставит ТОЛЬКО его, остальные не трогаем.
+  // storeProjection единственный писатель стора, кросс-таб бесплатно.
+  //
+  // Число СВОИХ реакций на одном сообщении ограничено (tweb getLimit('reactions')
+  // → reactions_user_max_default/premium): у обычного аккаунта — одна, у premium —
+  // до трёх. Ставя новую сверх лимита, tweb молча снимает самые старые
+  // (appReactionsManager.sendReaction: unsetReactions), а не копит их.
   const toggleReaction = useEvent((msgId: number, emoji: string) => {
     if (!isRealChat) return
     const raw = win.msgs.find((m) => m.id === msgId)
@@ -386,6 +394,21 @@ export function useMessageActions({
     // recent_reactions мгновенно), а не мигнул числом до серверного эха.
     const me = useChatsStore.getState().me
     const meCard = me ? { id: me.id, name: me.displayName, avatarUrl: me.avatarUrl || undefined } : undefined
+
+    if (action === 'add') {
+      // Снимаем свои прежние реакции, которые не помещаются в лимит вместе с новой.
+      // Порядок постановки (tweb chosen_order) сервер нам не отдаёт, поэтому
+      // старшинство берём по позиции в агрегате.
+      const limit = me?.premium ? REACTIONS_USER_MAX_PREMIUM : REACTIONS_USER_MAX_DEFAULT
+      const others = (raw.reactions ?? []).filter((r) => r.mine && r.emoji !== emoji)
+      for (const stale of others.slice(0, Math.max(0, others.length - limit + 1))) {
+        store.applyReactionOptimistic(numericChatId, msgId, stale.emoji, 'remove', meCard)
+        void managers.messages.unreact(numericChatId, msgId, stale.emoji).catch(() =>
+          store.applyReactionOptimistic(numericChatId, msgId, stale.emoji, 'add', meCard),
+        )
+      }
+    }
+
     store.applyReactionOptimistic(numericChatId, msgId, emoji, action, meCard)
     const req = mine
       ? managers.messages.unreact(numericChatId, msgId, emoji)
