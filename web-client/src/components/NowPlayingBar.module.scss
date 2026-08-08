@@ -33,16 +33,11 @@
 }
 
 // Плашка "сейчас играет" (tweb .pinned-audio).
-// Ряд управления внутри плашки .pinned-container.pinned-audio — фон, высоту,
-// радиус и позицию даёт tweb-партиал (_chatPinned.scss), здесь только раскладка.
+// Ряд управления внутри плашки: фон, высоту, радиус, позицию и z-index (поверх
+// полосы прогресса) даёт tweb-партиал через .pinned-container-wrapper /
+// .pinned-audio-wrapper — здесь остаются только наши отступы под круглые кнопки.
 .bar {
-  position: relative;
-  overflow: hidden; // попап громкости живёт в портале, остальное режем по плашке
-  display: flex;
-  align-items: center;
-  flex: 1;
-  height: 100%;
-  padding: 0 4px;
+  padding: 0 4px !important;
 }
 
 // Обёртка play/pause с кросс-фейдом иконок

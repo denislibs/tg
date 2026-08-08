@@ -140,7 +140,10 @@ function NowPlayingBar() {
         показанная — на месте, а топбар уезжает вниз на --topbar-floating-audio-height
         (его поднимает body.is-pinned-audio-shown, _chatTopbar.scss:7-9). */}
     <div className={classNames('pinned-container', 'pinned-audio', track ? 'is-visible' : '')}>
-          <div className={s.bar}>
+          {/* Ряд управления — tweb .pinned-container-wrapper.pinned-audio-wrapper:
+              именно он несёт z-index 1 и потому лежит ПОВЕРХ полосы прогресса
+              (её обёртка растянута на всю плашку и иначе съедала бы клики). */}
+          <div className={classNames('pinned-container-wrapper', 'pinned-audio-wrapper', s.bar)}>
             <RoundBtn onClick={prev} color="var(--primary-color)" label="prev">
               <TgIcon name="fast_rewind" />
             </RoundBtn>
