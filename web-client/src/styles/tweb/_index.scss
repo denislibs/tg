@@ -51,5 +51,6 @@
 // Выдержки из base.scss (целиком не портируем — это глобальный ресет,
 // конфликтующий с нашим styles/index.scss) и страничные партиалы.
 @use "code";
+@use "chatlistRow";
 @use "page";
 @use "pages/chats";

@@ -482,10 +482,18 @@ typecheck / tests / build; скриншоты «до/после» в отчёт.
 
 **Files:** Modify `ChatListItem.tsx`, `ChatList.tsx`, `ArchiveRow.tsx`; удалить их модули.
 
-- [ ] **Step 1:** Дерево `a.row.chatlist-chat.chatlist-chat-bigger > .avatar.dialog-avatar + .row-row.row-title-row + .row-row.row-subtitle-row` — **включая порядок узлов из живого DOM** (референс §2: subtitle→title→avatar в исходном порядке, визуальный порядок задаёт CSS).
-- [ ] **Step 2:** Иконка mute — в титуле сразу после имени; галочки статуса 20px с `--chatlist-status-color`.
-- [ ] **Step 3:** Бейджи: `dialog-subtitle-badge` с CSS-order (reaction 1 → mention 2 → unread 3 → pinned 4), scale-анимация появления через `--chatlist-badge-transition-*`.
-- [ ] **Step 4:** DOM-diff строки + проверки.
+- [x] **Step 1:** Дерево собрано в порядке живого DOM (subtitle → title → avatar),
+      строка — `a.row.no-wrap.row-with-padding.row-clickable.hover-effect.rp.chatlist-chat
+      .chatlist-chat-bigger.row-big`, выбранная несёт `active` (в tweb это она красит
+      строку в акцент и весь текст в белый), замьюченная — `is-muted`.
+      Портированы `_row`/`_chatlist`/`_avatar` + выдержка `base.scss:1600-1697`
+      (`.peer-title`, `.chatlist-chat`) в `_chatlistRow.scss`.
+- [x] **Step 2:** Mute-иконка в титуле после имени (`dialog-muted-icon`), статус —
+      `span.message-status.sending-status` 20px (цвет из `--chatlist-status-color`).
+- [x] **Step 3:** Бейджи на классах tweb (`dialog-subtitle-badge badge badge-22` +
+      `-reaction`/`-mention`/`-unread`/`-pinned`, размер 22 как BADGE_SIZE в
+      appDialogsManager); порядок в DOM — реакции → упоминания → непрочитанные → пин.
+- [ ] **Step 4:** DOM-diff строки (эталон строки в дампах есть — снять и сверить).
 
 ### Task 4.3: Сториз-fold (P0 №13)
 

@@ -15,6 +15,17 @@
   0 1px 5px 0 rgba(0, 0, 0, 0.2);
 }
 
+// tweb scss/components/_global.scss:187-193 — утилиты переноса строк. `.no-wrap`
+// висит на строке чат-листа и на её title/subtitle: без него длинное превью
+// разъезжается на несколько строк вместо многоточия.
+.pre-wrap {
+  white-space: pre-wrap !important;
+}
+
+.no-wrap {
+  white-space: nowrap !important;
+}
+
 // tweb scss/components/_global.scss:143-148 — центрирование поверх контейнера
 // (в ленте это кнопка play поверх видео).
 .position-center {
