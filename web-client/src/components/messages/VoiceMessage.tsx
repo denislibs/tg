@@ -138,12 +138,13 @@ export default function VoiceMessage({
           </Text>
           {showUnplayedDot && <div className={s.dot} />}
           <div className={s.spacer} />
-          {/* время+тик единым кластером (tweb .time-inner: flex, align-center,
-              line-height:1). Цвет тика = цвету времени (muted, как tweb
-              --message-status-color), не яркий --b-tick (на night белый). */}
+          {/* время+тик (tweb .time-inner: flex, align-center, line-height:1).
+              Время-текст — muted (--v-time = --message-time-color). Тик
+              .time-sending-status — ЯРКИЙ (--message-status-color, на night белый)
+              и крупнее: font-size calc(--messages-text-size + 3px) = 19px. */}
           <span className={s.time}>
             {time}
-            {out && <Ticks status={status} color="var(--v-time)" />}
+            {out && <Ticks status={status} color="var(--message-out-primary-color)" size={19} />}
           </span>
         </div>
       </div>

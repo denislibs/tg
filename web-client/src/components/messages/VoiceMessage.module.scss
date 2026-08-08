@@ -95,6 +95,9 @@
   gap: 2px;
   line-height: 1;
   white-space: nowrap;
+  // фикс-высота = размеру времени (tweb .time height:var(--messages-time-text-size));
+  // крупный тик (19px) перекрывает строку сверху/снизу, а не растягивает её.
+  height: var(--messages-time-text-size);
   font-size: var(--messages-time-text-size);
   color: var(--v-time);
   font-variant-numeric: tabular-nums;
