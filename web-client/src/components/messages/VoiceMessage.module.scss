@@ -87,6 +87,18 @@
   gap: 4px;
   margin-top: 2px;
 }
+// время+тик (tweb .time-inner): flex, center, line-height 1, nowrap; цвет —
+// --v-time (и текст, и тик), tabular для стабильной ширины цифр.
+.time {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  line-height: 1;
+  white-space: nowrap;
+  font-size: var(--messages-time-text-size);
+  color: var(--v-time);
+  font-variant-numeric: tabular-nums;
+}
 .dot {
   width: 8px;
   height: 8px;

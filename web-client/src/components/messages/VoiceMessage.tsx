@@ -31,7 +31,6 @@ export default function VoiceMessage({
   time,
   status,
   mediaUnread,
-  tickColor,
   onPlay,
 }: {
   mediaId: number
@@ -48,7 +47,6 @@ export default function VoiceMessage({
   status?: MsgStatus
   /** не прослушано получателем — точка после длительности (tweb is-unread) */
   mediaUnread?: boolean
-  tickColor: string
   onPlay: () => void
 }) {
   const managers = useManagers()
@@ -140,10 +138,13 @@ export default function VoiceMessage({
           </Text>
           {showUnplayedDot && <div className={s.dot} />}
           <div className={s.spacer} />
-          <Text size="var(--messages-time-text-size)" color="var(--v-time)">
+          {/* время+тик единым кластером (tweb .time-inner: flex, align-center,
+              line-height:1). Цвет тика = цвету времени (muted, как tweb
+              --message-status-color), не яркий --b-tick (на night белый). */}
+          <span className={s.time}>
             {time}
-          </Text>
-          {out && <Ticks status={status} color={tickColor} />}
+            {out && <Ticks status={status} color="var(--v-time)" />}
+          </span>
         </div>
       </div>
       {tr.available && (

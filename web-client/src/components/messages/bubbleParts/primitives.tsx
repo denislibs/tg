@@ -15,11 +15,14 @@ export interface Ctx {
   lastInGroup: boolean
 }
 
-export function Ticks({ status, color }: { status?: MsgStatus; color: string }) {
+// Тик статуса (tweb .time-sending-status): глиф крупнее текста времени —
+// font-size calc(--messages-text-size + 3px) = 19px у tweb; берём 18 (SVG).
+// Цвет передаёт вызывающий (tweb --message-status-color ≈ цвету времени, muted).
+export function Ticks({ status, color, size = 16 }: { status?: MsgStatus; color: string; size?: number }) {
   if (!status) return null
-  if (status === 'sending') return <TgIcon name="sending" size={16} color={color} />
-  if (status === 'error') return <TgIcon name="sendingerror" size={16} color="#ff595a" />
-  return <TgIcon name={status === 'read' ? 'checks' : 'check'} size={16} color={color} />
+  if (status === 'sending') return <TgIcon name="sending" size={size} color={color} />
+  if (status === 'error') return <TgIcon name="sendingerror" size={size} color="#ff595a" />
+  return <TgIcon name={status === 'read' ? 'checks' : 'check'} size={size} color={color} />
 }
 
 // Остаток TTL в короткой форме: «5с» / «1м» / «1ч» / «1д» / «1нед» (как в tweb).

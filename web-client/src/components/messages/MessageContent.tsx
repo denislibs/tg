@@ -291,7 +291,6 @@ export default function MessageContent({
               time={m.time}
               status={m.status}
               mediaUnread={m.mediaUnread}
-              tickColor="var(--b-tick)"
               onPlay={() => feedFns.playVoice(m.mediaId as number)}
             />
             {showReactions && <div className={s.reactionsPad}>{reactionsRow()}</div>}
