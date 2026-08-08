@@ -4,14 +4,16 @@ import { useConnectionStore, pingBackend } from './stores/connectionStore'
 import { MotionConfig } from 'framer-motion'
 import { useSettingsStore } from './settings'
 import Sidebar from './components/Sidebar'
-import ConversationView from './components/ConversationView'
+import Chat from './components/Chat'
 import PopupHost from './components/PopupHost'
 import ChatBackground from './components/ChatBackgroundLazy'
 import GlobalOverlays from './components/shell/GlobalOverlays'
 import ShellLayout from './components/shell/ShellLayout'
 import AuthFlow from './components/auth/AuthFlow'
 import { useT } from './i18n'
-import type { Chat } from './data'
+// Сущность чата из модели данных; компонент ниже называется так же (как в tweb),
+// поэтому тип импортируется под алиасом.
+import type { Chat as ChatEntity } from './data'
 import { gradientFor } from './core/dialogToChat'
 import { usePipStore } from './core/pip'
 import { useAppBootstrap } from './core/hooks/useAppBootstrap'
@@ -58,7 +60,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   const backToList = narrow ? () => nav.setSelectedId(null) : undefined
 
   // Черновик-чат (id "draft:<peerId>"), когда реального диалога ещё нет.
-  const draftChat: Chat | null =
+  const draftChat: ChatEntity | null =
     draftPeer && selectedId === `draft:${draftPeer.id}`
       ? {
           id: `draft:${draftPeer.id}`,
@@ -87,7 +89,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 
   // Чат треда: диалог из списка, а для комментариев (discussion-группа, где мы
   // можем не состоять) — синтетический Chat.
-  const threadChat: Chat | null = openThread
+  const threadChat: ChatEntity | null = openThread
     ? chatList.find((c) => c.id === String(openThread.chatId)) ?? {
         id: String(openThread.chatId),
         name: openThread.thread.title,
@@ -103,14 +105,14 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 
   const chatArea =
     openThread && threadChat ? (
-      <ConversationView
+      <Chat
         key={`thread-${openThread.chatId}-${openThread.thread.rootMsgId}`}
         chat={threadChat}
         thread={openThread.thread}
         onBack={backToList}
       />
     ) : selected ? (
-      <ConversationView key={selectedId} chat={selected} onBack={backToList} />
+      <Chat key={selectedId} chat={selected} onBack={backToList} />
     ) : (
       <div className={s.empty}>
         <div className={s.emptyPill}>{t('Select a chat to start messaging')}</div>
@@ -122,7 +124,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
       {/* Animated 4-point gradient wallpaper + doodle pattern (tweb-style). Обои темы
           активного чата поднимаются сюда, чтобы весь shell был в теме (осознанное
           отклонение от tweb-скоупа для цветов — см. useShellTheme). Цвета темы чата
-          при этом остаются локально в колонке (ConversationView). */}
+          при этом остаются локально в колонке (Chat). */}
       <ChatBackground themeColors={shellThemeVariant?.gradient} />
 
       <ShellLayout narrow={narrow} selectedId={selectedId} renderSidebar={renderSidebar} chatArea={chatArea} />

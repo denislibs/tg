@@ -1,5 +1,5 @@
 // src/components/messages/ChatFeed.tsx
-// The chat message feed, extracted from ConversationView and memoized. It owns the
+// The chat message feed, extracted from Chat and memoized. It owns the
 // per-day <section> sticky dividers, consecutive-message grouping (sticky avatar
 // runs for incoming group chats), and the channel comments bar — and delegates
 // each bubble to the memoized <MessageRow>. Because MessageRow is memo'd and the
@@ -194,7 +194,7 @@ function ChatFeed({
     // Граница «Непрочитанные сообщения» — не отдельный узел, а модификатор
     // самого бабла (tweb bubbles.ts:11609 `is-first-unread` + ::before на всю
     // ширину ленты, _chatBubble.scss:238-258). Текст берётся из
-    // --unread-messages-text (ставит ConversationView из i18n).
+    // --unread-messages-text (ставит Chat из i18n).
     const isFirstUnread = isRealChat && unreadDividerSeq != null && winMsgs[i]?.seq === unreadDividerSeq
     if (isFirstUnread) flushGroup()
     if (m.type === 'date') {

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { OpenPeer } from '../data'
-import type { ThreadInfo } from '../components/ConversationView'
+import type { ThreadInfo } from '../components/Chat'
 import type { TopicRow } from '../core/managers/groupsManager'
 
 // Навигация мессенджера (де-факто роутер): какой чат/тред/черновик открыт.

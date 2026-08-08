@@ -383,7 +383,7 @@ typecheck / tests / build; скриншоты «до/после» в отчёт.
 **Files:**
 - Create: `web-client/src/core/dom/updateColumnWidths.ts` (порт `tweb/src/helpers/updateColumnWidths.ts`).
 - Modify: `web-client/src/App.tsx` — скелет `#column-left` / `#column-center` / `#column-right` внутри `.tabs-container`, как в живом DOM §1.
-- Modify: `web-client/src/components/ConversationView.tsx`, `Sidebar.tsx` — переезд на этот скелет.
+- Modify: `web-client/src/components/Chat.tsx`, `Sidebar.tsx` — переезд на этот скелет.
 - Modify: `web-client/src/styles/index.scss` — убрать наши layout-переменные колонок, оставив те, что пишет порт.
 
 - [ ] **Step 1:** Снять с живого tweb значения `--chat-width`, `--left-column-width`, `--right-column-width`, `--page-chats-padding`, `--folders-sidebar-offset` в трёх режимах (узкий / обычный / открытая правая колонка) — эталон для порта.
@@ -399,9 +399,9 @@ typecheck / tests / build; скриншоты «до/после» в отчёт.
 - [ ] **Step 2:** Сверить с живым референсом §1/§3: топбар-пилюля 696×48 radius 24, `topbar-floating-plates` (щель 1px), `--chat-width: 696px`, маска фейдов.
 - [ ] **Step 3:** Проверки: build зелёный, прирост CSS зафиксирован.
 
-### Task 3.2: `ConversationView` — каркас и плейты (P0 №7)
+### Task 3.2: `Chat` — каркас и плейты (P0 №7)
 
-**Files:** Modify `ConversationView.tsx`, удалить покрытое из `ConversationView.module.scss`.
+**Files:** Modify `Chat.tsx`, удалить покрытое из `Chat.module.scss`.
 
 - [ ] **Step 1:** Дерево `.chat > .sidebar-header.topbar + .bubbles + .chat-input` с `--chat-padding-top/bottom`, где `padding-top` включает `--pinned-floating-height` (сумму высот плейтов) — это и есть фикс P0 №7.
 - [ ] **Step 2:** Стек `topbar-floating-plates` — контейнер для пин-бара/плеера/баннеров вместо отдельных плашек с ручным `top`.

@@ -91,7 +91,7 @@ export function registerStoreProjection(managers: Managers): void {
     // Append to the chat's message window (single source of truth). Resolve the
     // reply preview from the already-loaded window so a reply shows its quote
     // immediately (applyIncoming no-ops if the window isn't loaded). markRead /
-    // unread-below is decided in ConversationView (it needs scroll/focus state).
+    // unread-below is decided in Chat (it needs scroll/focus state).
     const ms = useMessagesStore.getState()
     const rt = evt.reply_to_id != null ? ms.byKey[String(evt.chat_id)]?.msgs.find((x) => x.id === evt.reply_to_id) : undefined
     // Резолвим превью ответа из уже загруженного окна, чтобы ответ показал цитату

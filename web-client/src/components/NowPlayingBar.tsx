@@ -71,7 +71,7 @@ function VolumeSlider({ value, onChange }: { value: number; onChange: (v: number
 // a flat surface strip (not a floating pill) with rewind/play/forward, a title +
 // thin seek line, and right-side utils (volume slider, speed, close).
 // Takes no props and owns its own audio-store subscriptions, so memo() keeps it
-// from re-rendering whenever the parent (ConversationView) does — only its own
+// from re-rendering whenever the parent (Chat) does — only its own
 // store updates (play/seek/time tick) drive it.
 function NowPlayingBar() {
   const track = useAudioStore((s) => s.track)

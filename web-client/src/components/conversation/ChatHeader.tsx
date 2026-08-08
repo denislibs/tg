@@ -1,6 +1,6 @@
 // src/components/conversation/ChatHeader.tsx
 // The floating chat header (avatar + title/status + call/search/menu actions, with
-// an animated search-mode swap). Extracted from ConversationView and memoized so
+// an animated search-mode swap). Extracted from Chat and memoized so
 // transient parent state (composer text, context menu, media viewer) never
 // re-renders it — only its own data (chat, presence/typing, search) does.
 // Логика поиска — в useChatHeaderSearch; UI поисковой карточки — в ChatSearchCard.

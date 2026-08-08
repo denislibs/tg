@@ -71,7 +71,7 @@ import SendMediaPopup from './messages/SendMediaPopup'
 import { joinGroupCall } from '../core/calls/groupCallEngine'
 import { watchLivestream } from '../core/calls/livestreamEngine'
 import classNames from '../shared/lib/classNames'
-import s from './ConversationView.module.scss'
+import s from './Chat.module.scss'
 import useMediaQuery from '../shared/lib/useMediaQuery'
 
 // Инфо-панель и просмотрщик медиа — не первый кадр; ленивые чанки.
@@ -123,7 +123,7 @@ interface Props {
   thread?: ThreadInfo
 }
 
-export default function ConversationView({ chat, onBack, thread }: Props) {
+export default function Chat({ chat, onBack, thread }: Props) {
   const t = useT()
   // Навигация — из navigationStore/useNavigationActions напрямую (инвариант: View
   // читает из стора, а не через проброс из Shell). Имена локальные совпадают с
@@ -442,7 +442,7 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
   // (Scroll state machine — pagination, scroll-restore, pin-to-bottom, jump-to-message,
   // read-marker — lives in useChatScroll; see the hook call above.)
 
-  // No chat-switch reset effect needed: App renders <ConversationView key={selectedId}>,
+  // No chat-switch reset effect needed: App renders <Chat key={selectedId}>,
   // so switching chats fully remounts this component and every useState/useRef (here and
   // in useChatSend/useChatSelection/useChatSearch) re-initialises to its default. A manual
   // reset effect keyed on `chat` was not only redundant but harmful — `chat` gets a new

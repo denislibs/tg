@@ -3,7 +3,7 @@
 // Channel-only wiring for the conversation: live subscription (which also drives
 // the worker's per-channel pts funnel — cursor seed + catch-up via typed
 // /difference), plus per-post comment/view counts. No-ops for non-channels. (Сам
-// тред комментариев — обычный ConversationView в thread-режиме; открытие — через
+// тред комментариев — обычный Chat в thread-режиме; открытие — через
 // App.openThread.)
 import { useEffect, useState } from 'react'
 import { useMessagesStore } from '../../stores/messagesStore'

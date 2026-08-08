@@ -1,5 +1,5 @@
 // src/core/hooks/useVoiceRecorder.ts
-// Owns the voice-message recording mechanics extracted from ConversationView:
+// Owns the voice-message recording mechanics extracted from Chat:
 // getUserMedia + MediaRecorder + the live waveform analyser + the elapsed/viz
 // timers + recording state. It is deliberately decoupled from the app (no
 // managers / chat / send logic): when a recording finishes it hands the result

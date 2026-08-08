@@ -1,5 +1,5 @@
 // Date-divider helpers shared by the chat feed: a day-bucket key and a localized
-// "Today / Yesterday / 5 июня" label. Extracted from ConversationView so the feed
+// "Today / Yesterday / 5 июня" label. Extracted from Chat so the feed
 // component can own its per-day sectioning.
 
 export function startOfDayMs(iso: string): number {

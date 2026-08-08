@@ -118,7 +118,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
   const onResultUser = (u: { id: number; displayName: string; username: string; avatarUrl: string }) => {
     onOpenPeer?.({ id: u.id, displayName: u.displayName || u.username || `#${u.id}`, username: u.username, avatarUrl: u.avatarUrl })
   }
-  // Клик по сообщению: открыть чат и прыгнуть к seq (pendingJump потребляет ConversationView)
+  // Клик по сообщению: открыть чат и прыгнуть к seq (pendingJump потребляет Chat)
   const openMessage = (m: Message) => {
     useSearchStore.getState().setPendingJump(m.chatId, m.seq)
     openDialog(String(m.chatId))

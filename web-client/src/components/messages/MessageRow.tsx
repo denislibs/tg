@@ -1,5 +1,5 @@
 // src/components/messages/MessageRow.tsx
-// ONE message bubble, memoized. Extracted from ConversationView's feed so that
+// ONE message bubble, memoized. Extracted from Chat's feed so that
 // appending/sending a message re-renders only the new (and the previous-last,
 // whose group tail flips) row — not all ~40 bubbles. memo() bails when its props
 // are unchanged; this works because `m` (ConvMsg) is given a STABLE reference by
@@ -26,7 +26,7 @@ import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import s from './MessageRow.module.scss'
 
 // Stable handler bundle the feed/rows close over (identities never change — see
-// ConversationView's useEvent wrappers), so passing it through doesn't bust memo.
+// Chat's useEvent wrappers), so passing it through doesn't bust memo.
 export interface FeedFns {
   openSender: (senderId: number, fallbackName: string) => void
   playVoice: (mediaId: number) => void
