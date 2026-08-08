@@ -894,6 +894,85 @@ CSSTransition **transform 300ms cubic-bezier(0.4,0,0.2,1)** одновремен
 
 ---
 
+## 7b. Профиль: развёрнутый фотохедер, подарки, сторис-вьюер (доснято)
+
+Дампы: `tweb-dom/07b-expanded-header.json`, `07b-expanded-live.json`, `07b-collapse-morph.json`, `07b-gifts.json`, `07b-stories-viewer.json`. Скриншот: `07b-expanded.jpeg`.
+
+### Развёрнутый фотохедер (expanded)
+
+Профиль «123 123» открылся collapsed; **клик по аватару** переключил в expanded (класс `is-collapsed` снят, добавлен **`need-white`**) и одновременно открыл медиавьюер фото (закрыт Esc). Состояние запоминается: следующее открытие панели — сразу expanded.
+
+```text
+div…profile-container.need-white.active            ← (вместо .is-collapsed), transition transform/filter .25s cb(.4,0,.2,1)
+  div.profile-avatars-container.is-single          ← 360×360: **padding-bottom: 100%** (у collapsed было 237.59px/h 276);
+                                                     морф = transition padding-bottom .3s cb(.4,0,.2,1)
+    div.avatar.avatar-120….profile-avatars-avatar-fake > img.avatar-photo
+    div.profile-avatars-avatars                     ← 100%×100%, transition transform .2s ease-in-out (перелистывание фото)
+      div.profile-avatars-avatar.media-container.active   ← padding-bottom 100%, transition transform .3s + border-radius .3s (морф круг↔квадрат)
+        div.avatar.avatar-full… > img.avatar-photo  ← 360×360, на всю ширину (в collapsed — круг 108×108)
+    div.profile-avatars-gradient                    ← низ, 360×100, absolute top 260, transition opacity .15s cb(.4,0,.2,1) **delay .15s**
+    div.profile-avatars-gradient.profile-avatars-gradient-top   ← верх, 100px (под кнопки шапки)
+    div.profile-avatars-tabs > div.profile-avatars-tab.active   ← сторис-полоски фото: высота 2px, radius 4, bg #fff, opacity .6 (active — 1), top 8, margin 0 2
+    div.profile-avatars-arrow / .profile-avatars-arrow-next     ← стрелки листания фото
+    div.profile-avatars-info                        ← absolute left/right 16, bottom 7 (48px высотой);
+                                                      transition transform/color/bottom .3s cb(.4,0,.2,1)
+      div.profile-name > span.peer-title "123 123"  ← 500 20/24, color **#fff поверх фото** (в collapsed — тоже #fff, но сдвинут translateX)
+      div.profile-subtitle > …rating + "last seen recently"  ← 14px, в expanded ТОЖЕ белый (в collapsed — #aaa)
+```
+
+### Морф expanded↔collapsed
+
+- Механика — не покадровый JS, а **CSS-transition end-state'ов**: `padding-bottom` контейнера (.3s), `transform`+`border-radius` аватара (.3s), `inset-inline-start/transform/color/max-width` имени и сабтайтла (.3s), `opacity` градиентов (.15s c delay .15s) — все cb(.4,0,.2,1).
+- Скролл в expanded НЕ схлопывает хедер в круг — фото просто уезжает, на `sidebar-header` добавляется `header-filled` (bg/opacity transition 100ms ease-in-out). Переключение circle↔full — только кликом по аватару (+ медиавьюер поверх).
+
+### Таб подарков (пилюля + грид) — solid-js CSS-модули
+
+Пилюля: `span.i18n.search-super-pinned-gifts-wrap > div.search-super-pinned-gifts > div.media-sticker-wrapper ×3 > img.media-sticker` (мини-превью трёх подарков вместо текста); при активации `i.menu-horizontal-div-item-background.animate`.
+
+```text
+div.search-super-tab-container.search-super-container-gifts.tabs-tab.active
+  div.search-super-content-container.search-super-content-gifts
+    div._tab_cr4s6_1 > div._contentWrapper_cr4s6_8 > div._collectionContent_cr4s6_15
+      div._grid_1nkpg_1._grid_cr4s6_20
+        div._gridItem_1nkpg_15._viewProfile_1nkpg_10 [--overlay-color: #000000]
+          div._itemSticker_1nkpg_158.media-sticker-wrapper > svg.lottie-vector.media-sticker.thumbnail + canvas.lottie
+          div._itemFrom_1nkpg_99 > div.avatar.avatar-20… [data-peer-id]      ← аватар дарителя
+```
+
+### Сторис-вьюер (#stories-viewer)
+
+Открыт кликом по превью в табе Stories; закрыт Esc. Полностью **solid-js** (`_hvblb_`-модули):
+
+```text
+div#stories-viewer > div > div
+  div._Viewer_hvblb_1._isReady_hvblb_23 [--stories-width: 484px; --stories-height: 861px]
+    div._ViewerBackground_hvblb_20
+    button.btn-icon._ViewerClose_hvblb_732.rp
+    div._ViewerStoryContainer_hvblb_28 [--translateX: 0px]         ← карусель сторис соседних пиров
+      div._ViewerStory_hvblb_28
+        div._ViewerStoryContent_hvblb_121
+          div._ViewerStoryContentItem_hvblb_269
+            div._ViewerStoryContentMediaContainer_hvblb_121
+              canvas.canvas-thumbnail.thumbnail.media-poster._ViewerStoryContentMedia_hvblb_121
+              video.media-video._ViewerStoryContentMedia_hvblb_121
+        div._hideOnSmall_hvblb_114
+          div._ViewerStoryShadow_hvblb_342
+          div._ViewerStorySlides_hvblb_136
+            div._ViewerStorySlidesSlide_hvblb_145 [--progress: 7.8%]   ← прогресс сегмента через CSS-переменную
+          div._ViewerStoryHeader_hvblb_164.night
+            …Left: avatar-32._ViewerStoryHeaderAvatar + Info (peer-title._ViewerStoryHeaderName + "• 1/30" + дата)
+            …Right: btn-icon ×2 + btn-menu-toggle.night
+        div._ViewerStoryInfo_hvblb_127 > avatar-162._ViewerStoryInfoAvatar + peer-title._ViewerStoryInfoName   ← большая заставка при переключении пира
+      div.chat-input.stories-input                                  ← ПОЛНЫЙ композер под сторей
+        div.chat-input-container.stories-input-container > …rows-wrapper.stories-input-wrapper [width: 372px !important]
+          …тот же new-message-wrapper (attach-menu-button, input "Reply Privately...", toggle-emoticons,
+           voice-recording-panel, btn-send.animated-button-icon.forward + menu-send)
+```
+
+Хедер/меню вьюера принудительно с классом `.night` (тёмные поверх медиа). Композер сторис = переиспользованный chat-input с плейсхолдером «Reply Privately…» и send-иконкой в состоянии `forward`.
+
+---
+
 ## 8. Настройки
 
 Дампы: `tweb-dom/08-burger-menu.json`, `08-settings-root.json`, `08-general-settings.json`, `08-privacy.json`. Ничего не менялось (кроме темы, см. §12, с откатом).
@@ -1095,7 +1174,10 @@ div.transition-item.sidebar-search.active     ← #search-container
 17. **Sponsored-бабл** = обычный `.bubble.is-sponsored` с `a.webpage.quote-like` внутри (`data-mid="-1"`, `data-timestamp="0"`).
 18. В бургер-меню **нет «Dark Mode»** — тема в General Settings (radio Classic/Night/Day/Dark/System Default) + карусель `themes-container`.
 
-**Не удалось снять** (нет данных в аккаунте): бейдж unread в чатлисте, развёрнутое фото-хедер профиля (expanded avatar). Досняты по ходу (пользователь готовил данные): reply-бабл, аудио-трек, pinned-плашка (§3b), обычный стикер, poll, видео с play-кнопкой, mp4-документ (§3c).
+**Не удалось снять** (нет данных в аккаунте): бейдж unread в чатлисте; кольцо сторис на аватаре в шапке чата (у пира истории в архиве профиля, но без активного кольца). Expanded-фотохедер, таб подарков и сторис-вьюер досняты — §7b.
+
+24. **Expanded-хедер профиля**: `padding-bottom: 100%` контейнера + `need-white`; морф — чистые CSS-transition (.3s cb(.4,0,.2,1) на padding/transform/border-radius/inset, градиенты .15s с delay .15s); скролл даёт только `header-filled`, circle↔full — кликом по аватару.
+25. **Подарки и сторис-вьюер — сплошной solid-js** (CSS-модули `_1nkpg_`/`_hvblb_`): грид подарков с `--overlay-color` и аватаром дарителя, вьюер с прогрессом через `--progress`-переменную и полным chat-input («Reply Privately…», send в состоянии `forward`); пилюля таба подарков — три img-превью вместо текста. Досняты по ходу (пользователь готовил данные): reply-бабл, аудио-трек, pinned-плашка (§3b), обычный стикер, poll, видео с play-кнопкой, mp4-документ (§3c).
 
 21. **Poll — новая solid-js разметка** с CSS-модульными классами (`poll-message-content._container_t24sq_1`, `_Checkbox_1jwdw_1`), старого `poll-element` в этом билде нет.
 22. **Обычный стикер = 200×200** (emoji-big — 112×112 с `--emoji-size: 96px`), `bubble-content` без фона/тени, время `is-floating` поверх; margin-bottom бабла 2px вместо 6px.
