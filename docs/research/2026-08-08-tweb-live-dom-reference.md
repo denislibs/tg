@@ -567,7 +567,80 @@ div.pinned-container.pinned-message [data-mid="21402"]   ← 696×48, padding 4,
 
 Сервисный бабл о пине: `div.bubble.service > … div.service-msg > span.i18n > span.peer-title "Дн" + i > span…"🎵 …"` (текст «X pinned …» с инлайн-превью).
 
-**Нет данных:** обычный (не emoji-big) стикер-бабл — в доступных чатах не найдено; poll-бабл был в инвентаре «Секспедиции» (`bubble channel-post with-beside-button with-replies poll-message hide-name is-in…`), но выпал из DOM до дампа (виртуализация).
+---
+
+## 3c. Доснятые типы (форум «тестовая» → топик General, данные подготовлены пользователем)
+
+Дамп: `tweb-dom/03c-sticker-poll-video.json`. Скриншот: `03c-testchat.jpeg`.
+
+### Обычный стикер (не emoji-big)
+
+```text
+div.bubble.sticker.sticker-animated.is-message-empty.has-floating-time.just-media.hide-name.is-out.is-sent
+    [style="--peer-color-rgb: var(--message-empty-primary-color-rgb); --…"]
+  div.bubble-content-wrapper
+    div.bubble-content [style="min-width: 200px; min-height: 200px; max-width: min(100%, 20…"]   ← 200×200, БЕЗ фона/тени,
+                                                                     border-radius в группе 15px 5px 5px 15px (стикеру не виден — фона нет)
+      div.attachment.media-sticker-wrapper [width/height 200px] > canvas.lottie
+      span.time.is-floating       ← absolute, внизу-справа ПОВЕРХ стикера: 18px высота, padding 0 5px, font 12/12,
+                                    transition opacity .3s cb(.4,0,.2,1); фон-плашку даёт .time-inner
+        span.tgico.time-sending-status + span.i18n "16:46" + div.time-inner (дубль)
+```
+
+Отличие от emoji-big: тот же набор классов минус `emoji-big.can-have-big-emoji` и без `--emoji-size`; бокс **200×200** (у emoji-big 112×112 c `--emoji-size: 96px`). У бабла margin-bottom **2px** (не 6): между just-media в группе зазор меньше.
+
+### Poll-бабл (исходящий, не отвеченный)
+
+Внутренности — **новая solid-js разметка с CSS-модульными классами** (не старый `poll-element`!):
+
+```text
+div.bubble.poll-message.hide-name.is-out.can-have-tail.is-group-first.is-sent
+  div.bubble-content-wrapper
+    div.bubble-content            ← 260×258, bg out, radius 15px 15px 5px
+      div.attachment.no-brb
+      div.message.spoilers-container.mt-shorter
+        div.poll-message-content._container_t24sq_1._outgoing_t24sq_57
+          div._header_t24sq_348
+            div._headerTitleContainer_t24sq_354
+              div._headerTitle_t24sq_354 > span.translatable-message "Секс"       ← вопрос
+              div._headerSubtitle_t24sq_363 > span.i18n "Poll"                     ← тип опроса
+          div._pollOption_t24sq_8 ×N
+            div._clickableArea_t24sq_158._outgoing_t24sq_57 > div.c-ripple
+            div._checkContainer_t24sq_246
+              div._Checkbox_1jwdw_1._checkbox_t24sq_252._isOutgoing_1asv0_1
+                div._Border_1jwdw_33 + div._Background_1jwdw_21 + svg._Check_1jwdw_1 > use[#check]
+            div._pollOptionSpacerFirst_t24sq_140
+            div._labelRow_t24sq_191 > div._labelText_t24sq_199 > span.translatable-message "Да"
+          div [overflow:hidden] > div._pollOption…._isAddOption_t24sq_148._isOutgoing_t24sq_151   ← "Add an Option" (multi-выбор)
+            … span.tgico._addOptionPlus_t24sq_397 …
+          div._footer_t24sq_301 > div._footerButton_t24sq_308._outgoing_t24sq_57 > span.i18n "Select an option"
+        span.time (+time-inner) + span.clearfix
+      svg.bubble-tail
+```
+
+### Видео исходящее (только что загруженное)
+
+```text
+div.bubble.hide-name.video.has-plain-media-tail.is-message-empty.has-floating-time.is-out.can-have-tail.is-group-last.is-sent
+  div.bubble-content-wrapper
+    div.bubble-content [max-width: min(100%, 420px)]      ← 420×236, radius группы 15px 5px 0 15px
+      div.attachment.media-container.no-background [width 420; height 236]   ← border 1px цвета бабла, radius 15px 5px 15px 15px
+        span.video-time "17:32"                            ← длительность текстом (без иконки — иконка `video-time-icon` только у стриминга)
+        button.btn-circle.video-play.position-center > span.tgico.button-icon   ← круглая кнопка Play по центру (у канального видео её не было — там автоплей)
+        img.media-photo
+      span.time.is-floating (+time-inner)
+      svg.bubble-tail
+```
+
+В процессе аплоада бабл имел классы `is-outgoing … is-sending` (вместо `is-sent`) — состояние загрузки живёт на самом бабле.
+
+### Документ #2 (mp4-файл)
+
+Структура идентична §3b (`document.ext-mp4` вместо `ext-pdf`): `div.document-ico` получает **bg #ffffff** (цвет по расширению; у pdf был #df3f40), `middle-ellipsis-element "001 Введение.mp4"`, size "64.5 MB" с невидимым дублем для измерения.
+
+**Unread-бейдж в чат-листе**: у строки этого чата бейджа не оказалось (свои сообщения) — по-прежнему не снят.
+
+**Нет данных:** poll-бабл снят выше (исходящий); входящий канальный poll «Секспедиции» так и выпал из виртуализации.
 
 ---
 
@@ -1022,7 +1095,11 @@ div.transition-item.sidebar-search.active     ← #search-container
 17. **Sponsored-бабл** = обычный `.bubble.is-sponsored` с `a.webpage.quote-like` внутри (`data-mid="-1"`, `data-timestamp="0"`).
 18. В бургер-меню **нет «Dark Mode»** — тема в General Settings (radio Classic/Night/Day/Dark/System Default) + карусель `themes-container`.
 
-**Не удалось снять** (нет данных в аккаунте): обычный не-emoji стикер-бабл, бейдж unread в чатлисте, poll-бабл (выпал из виртуализации до дампа), развёрнутое фото-хедер профиля (expanded avatar). Reply-бабл, аудио-трек и pinned-плашку пользователь добавил в «123 123» по ходу съёмки — сняты (см. §3b, дампы `03-reply-audio.json`, `03-pinned-plate.json`).
+**Не удалось снять** (нет данных в аккаунте): бейдж unread в чатлисте, развёрнутое фото-хедер профиля (expanded avatar). Досняты по ходу (пользователь готовил данные): reply-бабл, аудио-трек, pinned-плашка (§3b), обычный стикер, poll, видео с play-кнопкой, mp4-документ (§3c).
+
+21. **Poll — новая solid-js разметка** с CSS-модульными классами (`poll-message-content._container_t24sq_1`, `_Checkbox_1jwdw_1`), старого `poll-element` в этом билде нет.
+22. **Обычный стикер = 200×200** (emoji-big — 112×112 с `--emoji-size: 96px`), `bubble-content` без фона/тени, время `is-floating` поверх; margin-bottom бабла 2px вместо 6px.
+23. **video-time без иконки** у обычного видео (текст-длительность) + `button.btn-circle.video-play.position-center`; иконка `video-time-icon` и автоплей — у канальных видео. Состояние аплоада — классы `is-outgoing`/`is-sending` на бабле.
 
 19. **Reply-цитата — единый паттерн `quote-like`** (бабл, композер, webpage, форвард-попап): `div.reply.quote-like.quote-like-hoverable.quote-like-border` + `--peer-color-rgb`; в бабле radius 4px/bg rgba(peer,.1), в композере radius 8px.
 20. **Pinned-плашка — отдельная «пилюля» ПОД топбаром** (`topbar-floating-plates`, top 56px, gap 1px, bg-щель #0f0f0f), сегмент полоски пина ездит `translateY` внутри `pinned-message-border-wrapper-1`; смена контента — `animated-super`/`animated-counter`.
