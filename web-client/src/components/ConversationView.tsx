@@ -399,6 +399,8 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
     scrollRef, contentRef, atBottomRef, userScrolledUpRef,
     highlightSeq, showScrollDown, unreadBelow, jumpToSeq, onScrollDownClick,
   } = useChatScroll({ numericChatId, isRealChat, win, playerOffset, unreadDividerSeq, unreadStickyTop: dateStickyTop })
+  // Контейнер ленты tweb (.bubbles): класс has-sticky-dates ставится по замеру, см. эффект ниже.
+  const bubblesRef = useRef<HTMLDivElement>(null)
   // Multi-select state + press-and-drag selection (extracted view-model hook).
   const { selected, setSelected, setSelectionMode, selecting, toggleSelect, clearSelection, dragSelect } =
     useChatSelection(scrollRef)
@@ -861,6 +863,17 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
     return () => window.removeEventListener('keydown', onKey)
   }, [isRealChat, scrollRef, onScrollDownClick])
 
+  // tweb bubbles.ts:10166-10180 (onRenderScrollSet): `has-sticky-dates` на
+  // контейнере ленты появляется, когда история прокручиваема — без него
+  // _chatBubble.scss прячет липкий дата-разделитель (`.bubbles:not(.has-sticky-dates)
+  // .bubble.is-date { visibility: hidden }`) и показывает его is-fake-двойник.
+  useEffect(() => {
+    const box = bubblesRef.current
+    const sc = scrollRef.current
+    if (!box || !sc) return
+    box.classList.toggle('has-sticky-dates', sc.scrollHeight > sc.clientHeight)
+  })
+
   // Форум-группы здесь НЕ перехватываются: как в tweb, клик по форуму открывает
   // панель топиков в ЛЕВОМ сайдбаре (Sidebar → TopicsPanel); тред топика — этот же
   // компонент в thread-режиме, а «Показать как сообщения» — обычный чат.
@@ -882,7 +895,9 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
   return (
     <CallProvider chat={chat}>
     <div className={s.root} ref={rootRef}>
-      <div className={classNames(s.column, narrow ? s.columnNarrow : '', infoOpen && !narrow ? s.columnInfoOpen : '')}>
+      {/* Колонка чата = tweb `.chat`; `can-click-date` включает клик по дате-
+          разделителю (_chatBubble.scss:511-514, bubbles.ts:3058-3090). */}
+      <div className={classNames(s.column, 'chat', isRealChat ? 'can-click-date' : '', narrow ? s.columnNarrow : '', infoOpen && !narrow ? s.columnInfoOpen : '')}>
         {/* Обои темы чата рисует глобальный ChatBackground (App), чтобы весь shell был
             в теме, а не только эта колонка — локальный слой убран. */}
         {/* Global "now playing" plate — a floating pill above the header (tweb:
@@ -971,22 +986,32 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
           )}
         </AnimatePresence>
 
-        {/* Conversation — own scroll container, masked like tweb's bubbles-scrollable */}
+        {/* Лента — дерево tweb: .bubbles > .scrollable.bubbles-scrollable >
+            .bubbles-inner (bubbles.ts:1441, 5787-5791). Стили самих обёрток
+            приедут с _chat.scss (фаза 3); классы нужны уже сейчас, потому что
+            правила баблов селектят предков (.bubbles.is-selecting,
+            .bubbles.has-groups, .bubbles-inner.is-chat, .bubbles-inner.is-scrolling).
+            scrolled-down/has-sticky-dates — состояния скролла, приходят в Task 3.4. */}
+        <div ref={bubblesRef} className={classNames('bubbles', feedMsgs.length ? 'has-groups' : '', selecting ? 'is-selecting' : '')}>
         <div
           ref={scrollRef}
           onMouseDown={dragSelect.onMouseDown}
-          className={s.scroll}
+          className={classNames(s.scroll, 'scrollable', 'scrollable-y', 'bubbles-scrollable')}
           style={{ maskImage: feedMask(fadeTop(narrow), fadeBottom(narrow)), WebkitMaskImage: feedMask(fadeTop(narrow), fadeBottom(narrow)) }}
         >
           <div
             ref={contentRef}
-            className={s.content}
+            className={classNames(s.content, 'bubbles-inner', isGroup ? 'is-chat' : '', feedMsgs.length ? '' : 'no-messages')}
             style={{
               // fade messages in once the first page has loaded (tweb-like)
               opacity: feedLoading ? 0 : 1,
               // clear the floating header/composer
               paddingTop: `${padTop(narrow) + playerOffset}px`,
               paddingBottom: `${padBottom(narrow)}px`,
+              // те же величины под именами tweb: от них считают sticky-top даты
+              // (.bubble.is-date) и низ sticky-аватара группы (_chatBubble.scss:47-49).
+              ['--chat-padding-top' as string]: `${padTop(narrow) + playerOffset}px`,
+              ['--chat-padding-bottom' as string]: `${padBottom(narrow)}px`,
             }}
           >
             {/* Render the list only once revealed, so rows mount at reveal time
@@ -1019,6 +1044,7 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
           {!feedLoading && emptyGreeting && (
             <EmptyChatGreeting onGreet={() => onComposerSend('👋')} />
           )}
+        </div>
         </div>
 
         {/* Footer */}

@@ -1,62 +1,7 @@
-// ChatFeed — лента сообщений: секции по дням со sticky-пилюлей даты, service-
-// сообщения, sticky-аватар для входящих групповых серий, бар комментариев.
-// Пилюли даты/сервиса — по tweb .bubble.service .service-msg (_chatBubble.scss):
-// padding .28125rem .625rem, radius .875rem, #fff, service-text-size (textSize−1),
-// line-height service+5. Фон — нейтральный (tweb тинтует от обоев через
-// --message-highlighting-color; мы этого не считаем).
+// ChatFeed — остатки, не покрытые портированными партиалами tweb.
+// Каркас ленты (секции по дням, дата-разделитель, сервисные баблы, группы со
+// sticky-аватаром) переехал на глобальные классы tweb — styles/tweb/_chatBubble.scss.
 @use '../../styles/foundation' as *;
-
-.section {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-}
-
-// sticky-обёртка пилюли даты (top задаётся инлайн — динамический offset шапки)
-.dayPill {
-  display: flex;
-  justify-content: center;
-  margin: 8px 0;
-  position: sticky;
-  transition: top 0.22s ease;
-  z-index: 4;
-  pointer-events: none;
-}
-
-// капсула service/date (tweb .service-msg). Это <button> (клик открывает пикер
-// даты), поэтому гасим дефолты кнопки — иначе браузер добавляет свою рамку и
-// системный шрифт вместо наследуемого.
-.pill {
-  appearance: none;
-  border: none;
-  font: inherit;
-  padding: 0.28125rem 0.625rem;
-  border-radius: 0.875rem;
-  // tweb --message-highlighting-color — зависит от темы (не всегда тёмный).
-  background: var(--message-highlighting-color);
-  color: #fff;
-  font-size: var(--font-size-15); // messages-service-text-size (= textSize − 1, дефолт 16)
-  font-weight: 500;
-  line-height: 20px; // service-text-size + 5
-  user-select: none;
-  // обёртка .dayPill сквозная для событий (чтобы sticky-заголовок не перехватывал
-  // скролл/клики по ленте) — возвращаем их самой капсуле
-  pointer-events: auto;
-  cursor: pointer;
-
-  &:disabled {
-    cursor: default;
-  }
-}
-
-// service-сообщение по центру (при наличии фото — пилюля + кружок в столбик)
-.service {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  margin: 4px 0;
-}
 
 // Круглая миниатюра нового фото группы (tweb service media avatar)
 .servicePhoto {
@@ -71,22 +16,6 @@
     height: 100%;
     object-fit: cover;
     display: block;
-  }
-}
-.serviceMsg {
-  max-width: 80%;
-  text-align: center;
-  word-break: break-word;
-  white-space: break-spaces;
-  user-select: none;
-  cursor: pointer;
-  transition: background-color 0.12s;
-
-  // hover-подсветка сервис-сообщения (tweb выбор при наведении)
-  @media (hover: hover) {
-    &:hover {
-      background: color-mix(in srgb, var(--message-highlighting-color) 100%, #000 12%);
-    }
   }
 }
 
@@ -109,37 +38,9 @@
   }
 }
 
-// входящая групповая серия со sticky-аватаром
-.group {
-  position: relative;
-  display: flex;
-  gap: 10px;
-  align-items: stretch;
-}
-.groupAvatarCol {
-  width: 40px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  // последний бабл несёт 6px group-margin — подгоняем, чтобы аватар встал по низу бабла
-  padding-bottom: 6px;
-}
-.groupAvatar {
-  position: sticky;
-  bottom: 72px; // над плавающим композером (≈64px + 16px offset)
-  width: 40px;
-  height: 40px;
-}
-.groupBody {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
 // Плашка «Непрочитанные сообщения» (tweb .is-first-unread::before): полоса на
 // всю ширину ленты, текст primary, фон surface, 30px, bold 15px.
+// TODO(Task 2.3): переехать на модификатор бабла .is-first-unread.
 .unreadDivider {
   position: relative;
   z-index: 2;

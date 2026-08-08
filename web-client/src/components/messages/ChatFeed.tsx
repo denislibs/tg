@@ -66,17 +66,24 @@ function ChatFeed({
   // движущийся фон каждый кадр скролла и роняет FPS).
   // tweb вешает на колонку чата `can-click-date` и по клику на дату-разделитель
   // открывает пикер (bubbles.ts:3058-3090) — у нас клик прокидывается наверх.
+  // Дата-разделитель — бабл tweb `.bubble.service.is-date > .bubble-content >
+  // .service-msg > span.i18n` (живой DOM §3, «service date»): обёртки
+  // .bubble-content-wrapper у него НЕТ, в отличие от сервисных экшен-баблов.
+  // Sticky и его top задаёт _chatBubble.scss (top: --chat-padding-top + overflow);
+  // инлайн-top оставлен как страховка, пока --chat-padding-top не владеет фазой 3.
+  // Клик по дате открывает пикер — в tweb он висит на .bubble-content под
+  // классом `.can-click-date` на колонке чата (_chatBubble.scss:511-514).
   const dayPill = (key: string, label: ReactNode, dayMs: number) => (
-    <header key={key} className={s.dayPill} style={{ top: `${dateStickyTop}px` }}>
-      <button
-        type="button"
-        className={s.pill}
+    <div key={key} className="bubble service is-date" style={{ top: `${dateStickyTop}px` }}>
+      <div
+        className="bubble-content"
         onClick={isRealChat ? () => feedFns.openDatePicker(dayMs) : undefined}
-        disabled={!isRealChat}
       >
-        {label}
-      </button>
-    </header>
+        <div className="service-msg">
+          <span className="i18n">{label}</span>
+        </div>
+      </div>
+    </div>
   )
 
   let buf: ReactNode[] = []
@@ -85,18 +92,21 @@ function ChatFeed({
     if (buf.length && gm) {
       const g = gm
       const rows = buf
+      // Группа подряд идущих сообщений одного автора — дерево tweb
+      // (_chatBubble.scss:45-88): контейнер аватара абсолютный, column-reverse,
+      // сам аватар sticky и прижат к низу (`bottom: --chat-padding-bottom + …`),
+      // а баблы лежат прямо в .bubbles-group без промежуточной колонки.
       body().push(
-        <div key={`grp-${g.key}`} className={s.group}>
-          <div className={s.groupAvatarCol}>
+        <div key={`grp-${g.key}`} className="bubbles-group">
+          <div className="bubbles-group-avatar-container">
             <div
-              className={s.groupAvatar}
+              className="bubbles-group-avatar"
               onClick={g.senderId != null ? () => feedFns.openSender(g.senderId!, g.sender) : undefined}
-              style={{ cursor: g.senderId != null ? 'pointer' : 'default' }}
             >
               <Avatar background={g.senderId != null ? gradientFor(g.senderId) : g.color} text={g.sender[0]} size="sm" />
             </div>
           </div>
-          <div className={s.groupBody}>{rows}</div>
+          {rows}
         </div>,
       )
     }
@@ -204,11 +214,18 @@ function ChatFeed({
       // Предложение фото профиля: получателю (не out, не принято) под превью —
       // кнопка «Установить фото» (tweb bubble-service-media-button).
       const canAccept = m.photoSuggestion != null && !m.out && !m.photoSuggestion.accepted && m.id != null
+      // Сервисный бабл tweb: `.bubble.service > .bubble-content-wrapper >
+      // .bubble-content > .service-msg` (живой DOM §3, «service action bubble») —
+      // в отличие от дата-разделителя обёртка тут есть.
       body().push(
-        <div key={k} className={s.service}>
-          <div className={`${s.pill} ${s.serviceMsg}`}>{m.text}</div>
-          {m.mediaId != null && <ServicePhoto mediaId={m.mediaId} onOpen={feedFns.openLightbox} />}
-          {canAccept && <AcceptSuggestButton msgId={m.id!} />}
+        <div key={k} className="bubble service is-group-first is-group-last">
+          <div className="bubble-content-wrapper">
+            <div className="bubble-content">
+              <div className="service-msg">{m.text}</div>
+              {m.mediaId != null && <ServicePhoto mediaId={m.mediaId} onOpen={feedFns.openLightbox} />}
+              {canAccept && <AcceptSuggestButton msgId={m.id!} />}
+            </div>
+          </div>
         </div>,
       )
       return
@@ -276,7 +293,7 @@ function ChatFeed({
   return (
     <>
       {sections.map((sec) => (
-        <section key={sec.key} className={s.section}>
+        <section key={sec.key} className="bubbles-date-group">
           {sec.date}
           {sec.body}
         </section>
