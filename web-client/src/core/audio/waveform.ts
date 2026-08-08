@@ -3,8 +3,6 @@ import { decryptMedia, b64ToBytes } from '../secret/crypto'
 import { mediaContentUrl, primeMediaToken, resolveMediaContentUrl } from '../mediaUrl'
 import { unpack5bit, WAVEFORM_SAMPLES_COUNT } from './voiceWaveformAnalyser'
 
-export const WAVE_BARS = 44
-
 // ПЕРЕДАННЫЕ пики (посчитаны при записи): base64 → 5-бит распаковка в СЫРЫЕ
 // значения 0..31, как у tweb `decodeWaveform`. Приоритетнее client-recompute:
 // одинаковы у всех получателей и не требуют скачивания/декода аудиофайла.
@@ -39,9 +37,9 @@ export const WAVEFORM_HEIGHT = BAR_HEIGHT_MAX
  * пики агрегируются МАКСИМУМОМ по группе и нормируются на максимум записи —
  * поэтому тихие места остаются низкими, а не сливаются в сплошную полосу.
  */
-export function buildWaveformBars(peaks: number[], duration: number): number[] {
+export function buildWaveformBars(peaks: number[], duration: number): { bars: number[]; width: number } {
   const wfSize = peaks.length
-  if (!wfSize) return []
+  if (!wfSize) return { bars: [], width: WAVE_MIN_W }
 
   const availW = Math.min(WAVE_MAX_W, Math.max(WAVE_MIN_W, (duration / 60) * WAVE_MAX_W))
   const barCount = Math.min((availW / (BAR_WIDTH + BAR_MARGIN)) | 0, wfSize)
@@ -65,7 +63,7 @@ export function buildWaveformBars(peaks: number[], duration: number): number[] {
       sumI += barCount
     }
   }
-  return out
+  return { bars: out, width: availW }
 }
 
 // Секретный трек (E2E): байты приходят ciphertext'ом, их надо расшифровать.
@@ -76,18 +74,20 @@ const inflight = new Map<number, Promise<number[]>>()
 
 type AC = typeof AudioContext
 
-// Reduce raw audio bytes to WAVE_BARS peak amplitudes (0..1) — a real waveform,
-// computed identically on every client, so no server storage. Cached per mediaId.
+// Фолбэк для сообщений без переданных пиков: считаем их сами из аудио —
+// ровно столько же сэмплов, сколько кладёт в документ запись (100), иначе
+// buildWaveformBars упрётся в их число и нарисует меньше баров, чем tweb.
+// Значения нормализуются к 0..1; кэш — по mediaId.
 async function decodeBars(mediaId: number, raw: ArrayBuffer): Promise<number[]> {
   const Ctor: AC = window.AudioContext || (window as unknown as { webkitAudioContext: AC }).webkitAudioContext
   const ac = new Ctor()
   try {
     const audio = await ac.decodeAudioData(raw.slice(0))
     const ch = audio.getChannelData(0)
-    const block = Math.max(1, Math.floor(ch.length / WAVE_BARS))
+    const block = Math.max(1, Math.floor(ch.length / WAVEFORM_SAMPLES_COUNT))
     const bars: number[] = []
     let max = 0.0001
-    for (let i = 0; i < WAVE_BARS; i++) {
+    for (let i = 0; i < WAVEFORM_SAMPLES_COUNT; i++) {
       let peak = 0
       const start = i * block
       for (let j = 0; j < block; j++) {

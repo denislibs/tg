@@ -82,33 +82,58 @@
 .body {
   min-width: 11.25rem; // tweb `.is-voice .progress-line { min-width: 11.25rem }`
 }
-// tweb `.audio-waveform-container`: 23px + margin-top 1px
-.wave {
-  display: flex;
-  align-items: center;
-  gap: 2px; // tweb barMargin
-  height: 23px; // tweb barHeightMax
+
+// tweb `.audio-waveform-container` (_audio.scss:401-407)
+.waveContainer {
+  position: relative;
+  height: 23px;
   margin-top: 1px;
-}
-.waveBar {
-  flex-shrink: 0;
-  border-radius: 1px; // tweb rect rx/ry=1
-}
-// tweb `.audio-time` в голосовом: 14px, line-height 1, margin-top 7px, -1px влево
-.meta {
   display: flex;
   align-items: center;
+}
+// tweb `.audio-waveform`
+.waveform {
+  height: 100%;
+}
+// Фоновый слой: те же бары, но полупрозрачные (tweb `.audio-waveform-background`).
+.waveformBackground .waveBar {
+  opacity: 0.3;
+}
+// Клон поверх, обрезанный по ширине = прогрессу (tweb `.audio-waveform-fake`):
+// его бары непрозрачные, поэтому «проигранная» часть выглядит залитой.
+.waveformFake {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+// tweb `.audio-waveform-bar { fill: var(--primary-color) }` — цвет ОДИН,
+// разницу «сыграно/нет» даёт только opacity фонового слоя.
+.waveBar {
+  fill: var(--v-accent);
+}
+
+// tweb `.audio-time` + `.is-voice .audio-time` (_audio.scss:520-524,559-565):
+// 14px, line-height 1 (иначе строка «съедает» margin), 7px сверху, -1px влево.
+.time {
+  display: flex;
+  align-items: center;
+  font-size: 0.875rem;
   line-height: 1;
   margin-top: 7px;
   margin-left: -1px;
   color: var(--v-dur);
 }
 // tweb `.is-voice.is-unread .audio-time:after` — точка «не прослушано»
-.dot {
+.unread:after {
+  content: ' ';
   width: 0.5rem;
   height: 0.5rem;
+  background-color: var(--primary-color);
   border-radius: 50%;
-  background: var(--primary-color);
-  flex-shrink: 0;
   margin-left: 0.375rem;
 }

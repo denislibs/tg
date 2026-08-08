@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import Text from '../../shared/ui/Text'
 import AudioPlayIcon from './AudioPlayIcon'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useAudioStore, prefetchSecretAudio } from '../../stores/audioStore'
@@ -8,6 +7,8 @@ import {
   decodeTransmittedPeaks,
   buildWaveformBars,
   WAVEFORM_BAR_WIDTH,
+  WAVEFORM_BAR_MARGIN,
+  WAVEFORM_HEIGHT,
 } from '../../core/audio/waveform'
 import { useTranscription, TranscribeButton, TranscribedText } from './Transcription'
 import classNames from '../../shared/lib/classNames'
@@ -97,7 +98,7 @@ export default function VoiceMessage({
   const progress = isCurrent && duration ? curTime / duration : 0
   // Высоты баров в пикселях — порт tweb createWaveformBars: и число баров, и
   // нормировка зависят от записи, поэтому считается после duration.
-  const bars = useMemo(() => {
+  const wave = useMemo(() => {
     // recompute-фолбэк отдаёт 0..1 — приводим к шкале пиков 0..31
     const src = transmitted.length
       ? transmitted
@@ -106,6 +107,30 @@ export default function VoiceMessage({
         : PLACEHOLDER_PEAKS
     return buildWaveformBars(src, duration)
   }, [transmitted, decoded, duration])
+
+  // SVG-волна 1:1 tweb (createWaveformBars): бары — <rect> с y = высота
+  // контейнера − высота бара, то есть выровнены по НИЗУ, а не по центру.
+  const waveSvg = (
+    <svg
+      className={s.waveBars}
+      width={wave.width}
+      height={WAVEFORM_HEIGHT}
+      viewBox={`0 0 ${wave.width} ${WAVEFORM_HEIGHT}`}
+    >
+      {wave.bars.map((h, i) => (
+        <rect
+          key={i}
+          className={s.waveBar}
+          x={i * (WAVEFORM_BAR_WIDTH + WAVEFORM_BAR_MARGIN)}
+          y={WAVEFORM_HEIGHT - h}
+          width={WAVEFORM_BAR_WIDTH}
+          height={h}
+          rx={1}
+          ry={1}
+        />
+      ))}
+    </svg>
+  )
 
   const handlePlay = () => {
     if (isCurrent) toggle()
@@ -131,30 +156,22 @@ export default function VoiceMessage({
         <AudioPlayIcon playing={playing} />
       </div>
       <div className={s.body}>
+        {/* tweb: два одинаковых SVG — фоновый (полупрозрачный) и его клон,
+            обрезаемый по ширине = прогрессу воспроизведения */}
         <div
-          className={s.wave}
+          className={s.waveContainer}
           onClick={handleSeek}
           style={{ cursor: isCurrent ? 'pointer' : 'default' }}
         >
-          {bars.map((h, i) => (
-            <div
-              key={i}
-              className={s.waveBar}
-              style={{
-                height: `${h}px`,
-                width: `${WAVEFORM_BAR_WIDTH}px`,
-                background: i / bars.length <= progress ? 'var(--v-accent)' : 'var(--v-off)',
-              }}
-            />
-          ))}
+          <div className={classNames(s.waveform, s.waveformBackground)}>{waveSvg}</div>
+          <div className={classNames(s.waveform, s.waveformFake)} style={{ width: `${progress * 100}%` }}>
+            {waveSvg}
+          </div>
         </div>
-        <div className={s.meta}>
-          <Text size={14} color="var(--v-dur)">
-            {isCurrent && curTime > 0 && curTime !== duration
-              ? `${fmt(curTime)} / ${fmt(duration)}`
-              : fmt(duration)}
-          </Text>
-          {showUnplayedDot && <div className={s.dot} />}
+        <div className={classNames(s.time, showUnplayedDot ? s.unread : '')}>
+          {isCurrent && curTime > 0 && curTime !== duration
+            ? `${fmt(curTime)} / ${fmt(duration)}`
+            : fmt(duration)}
         </div>
       </div>
       {time}
