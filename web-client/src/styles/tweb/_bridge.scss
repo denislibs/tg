@@ -26,6 +26,17 @@
   white-space: nowrap !important;
 }
 
+// tweb base.scss:554-558 — базовые цвета текста и каретки в полях ввода.
+// base.scss целиком не портируем (глобальный ресет), но без этого правила
+// набранный текст в поле поиска остаётся браузерно-чёрным и на тёмной теме
+// не читается.
+input,
+[contenteditable="true"] {
+  caret-color: var(--primary-color);
+  color: var(--primary-text-color);
+  background-color: transparent;
+}
+
 // tweb scss/components/_global.scss:40-43 — снятие браузерного фокус-кольца.
 // Без него поверх акцентной рамки поля поиска (`.input-field-border`) Chrome
 // рисует свой синий/белый outline и получается двойной контур.

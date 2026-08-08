@@ -113,6 +113,8 @@
   // menu-background-color = surface-color при --backdrop-opacity (per-theme, ниже),
   // 1:1 tweb base.scss (:root .85 / .night .75).
   --menu-background-color: rgba(var(--surface-color-rgb), var(--backdrop-opacity));
+  // tweb base.scss:122 — блюр под меню (в mobile-теме tweb гасит его в none)
+  --menu-backdrop-filter: blur(50px);
 
   // tweb-набор теней секций/колонки (base.scss) — композиция здесь, цвета — по темам.
   --section-box-shadow: 0px 1px 4px 0px var(--section-box-shadow-color);
