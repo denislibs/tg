@@ -1,21 +1,23 @@
-// ChatHeader — плавающая шапка чата (пилюля) + режим поиска (единая карточка
-// инпут+результаты). top задаётся инлайн (динамический offset плеера).
+// ChatHeader — режим поиска (единая карточка инпут+результаты) и мелочи топбара.
+// Сама пилюля топбара живёт на классах tweb: `.sidebar-header.topbar`
+// (styles/tweb/_chatTopbar.scss) — геометрия, тень, радиус, сдвиг под плейты
+// плеера/звонка и типографика `.person`/`.user-title`/`.info` оттуда.
+
+// Карточка поиска замещает топбар: та же геометрия пилюли (absolute top 0
+// внутри #column-center, ширина --chat-width), но растёт вниз списком выдачи.
 .bar {
   position: absolute;
-  transition: top 0.22s ease;
-  left: 0;
-  right: 0;
+  top: 0;
+  inset-inline: 0;
   z-index: 6;
-  width: 100%;
-  max-width: 688px;
-  margin: 0 auto;
+  max-width: var(--chat-width);
+  margin-inline: auto;
+}
 
-  // tweb: на handhelds плейты стоят в 8px от краёв (--page-chats-padding: 8px)
-  @media (max-width: 900px) {
-    left: 8px;
-    right: 8px;
-    width: auto;
-  }
+// tweb `.topbar .person .bottom .online { color: var(--primary-color) }` —
+// у нас тот же цвет включается и для «печатает…».
+.infoOnline {
+  color: var(--primary-color);
 }
 
 // кнопки, скрытые на мобилке (tweb: на handhelds в шапке остаётся только меню)
@@ -228,34 +230,4 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-// ── обычная шапка ──
-.header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 4px;
-  height: var(--chat-plate-height);
-  border-radius: 24px;
-  background: var(--surface-color);
-  box-shadow: var(--tg-plateShadow);
-}
-.peer {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: 1;
-  min-width: 0;
-  cursor: pointer;
-}
-.peerBody {
-  flex: 1;
-  min-width: 0;
-}
-.peerTitle {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
 }

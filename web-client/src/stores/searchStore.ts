@@ -11,7 +11,7 @@ interface ChatSearch {
 }
 
 // Кросс-чат ответ (tweb ReplyToAnotherChat): выбран целевой чат → ждём его
-// открытия, ConversationView ставит reply-плашку с исходным чатом + снимком.
+// открытия, Chat ставит reply-плашку с исходным чатом + снимком.
 export interface PendingReply {
   targetChatId: number
   sourceChatId: number
@@ -22,7 +22,7 @@ export interface PendingReply {
 }
 
 // Пересылка (tweb initMessagesForward): выбран один целевой чат → ждём его
-// открытия, ConversationView ставит плашку форварда в композере (превью +
+// открытия, Chat ставит плашку форварда в композере (превью +
 // меню show/hide sender/caption). Финализация — по нажатию «Отправить».
 export interface PendingForward {
   targetChatId: number
@@ -38,7 +38,7 @@ export interface PendingForward {
 
 interface SearchState {
   byChat: Record<number, ChatSearch>
-  /** результат сайдбар-поиска ждёт открытия чата → ConversationView прыгает к seq */
+  /** результат сайдбар-поиска ждёт открытия чата → Chat прыгает к seq */
   pendingJump: { chatId: number; seq: number } | null
   /** «Ответить в другом чате» ждёт открытия целевого чата → ставится reply-плашка */
   pendingReply: PendingReply | null

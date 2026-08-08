@@ -1,13 +1,8 @@
 // App — корневая раскладка (сайдбар + чат) + оверлеи (join-тост, qr-подтверждение,
 // drawer сайдбара на узких экранах). Порт из MUI sx. Цвета — токены --tg-*.
 
-// корневой контейнер (flex-ряд)
-.root {
-  display: flex;
-  align-items: flex-start;
-  min-height: 100vh;
-  background: var(--background-color);
-}
+// #column-center: всю геометрию (position/inset/translateX-центровку, display)
+// задают портированные партиалы tweb — styles/tweb/_chat.scss и pages/_chats.scss.
 
 // мобильная колонка (список чатов / чат) — фуллскрин-слой под классический
 // слайд 100%/-100% (tweb handheld: колонки перекрываются на весь экран)
@@ -21,7 +16,7 @@
 // пустое состояние (нет выбранного чата)
 .empty {
   flex: 1;
-  min-height: 100vh;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;

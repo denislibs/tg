@@ -37,13 +37,13 @@
 // ЗАКРЫТА = translate3d(ширина + отступ), ОТКРЫТА = translate3d(0,0,0)
 .panelWide {
   position: absolute;
-  inset-block: 16px;
-  inset-inline-end: 16px;
-  width: 360px; // tweb --right-column-width default
-  border-radius: 24px; // tweb --main-column-border-radius
+  inset-block: var(--page-chats-padding);
+  inset-inline-end: var(--page-chats-padding);
+  width: var(--right-column-width); // tweb --right-column-width (JS)
+  border-radius: var(--main-column-border-radius);
   box-shadow: var(--column-box-shadow); // tweb #column-right
-  z-index: 15;
-  transform: translate3d(calc(100% + 16px), 0, 0);
+  z-index: 3; // tweb #column-right
+  transform: translate3d(calc(100% + var(--page-chats-padding)), 0, 0);
   transition: transform var(--transition-standard-out);
 
   // transform: none (не translate3d(0,0,0)) — см. комментарий у .panelNarrow

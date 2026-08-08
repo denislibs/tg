@@ -2,7 +2,7 @@
 //
 // Normalized message windows, single-sourced in a store so that (a) realtimeBridge
 // can apply server frames to a chat even when it isn't open, and (b) the window
-// survives a ConversationView unmount. `useMessageWindow` is a thin selector/
+// survives a Chat unmount. `useMessageWindow` is a thin selector/
 // actions wrapper over this store and keeps the same shape.
 //
 // Окна ключуются чатом ИЛИ тредом чата (tweb: history по threadId): "chatId" —

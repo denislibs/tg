@@ -1,6 +1,6 @@
 // Действия навигации, которым нужны managers (открыть/создать приватный чат,
 // вступить в публичный канал, субтитр темы). Чистые useCallback БЕЗ эффектов —
-// поэтому хук безопасно звать в любом View (Sidebar/ConversationView), а не только
+// поэтому хук безопасно звать в любом View (Sidebar/Chat), а не только
 // в Shell. Состояние навигации при этом читается из navigationStore напрямую.
 import { useCallback } from 'react'
 import type { TopicRow } from '../managers/groupsManager'

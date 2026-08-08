@@ -1,5 +1,5 @@
 // src/core/hooks/useChatSelection.ts
-// View-model hook for the feed's multi-select mode (extracted from ConversationView).
+// View-model hook for the feed's multi-select mode (extracted from Chat).
 // Owns the selected-id set + the "selection mode" flag, the refs the drag handler
 // reads without a stale closure, and the press-and-drag selection wiring. Behaviour
 // is unchanged — the component drives reset/menu actions through the returned setters.

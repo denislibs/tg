@@ -382,6 +382,50 @@ func (r *ChatsRepo) SetRead(ctx context.Context, chatID, userID, seq int64, unre
 	return err
 }
 
+// ReadMarkRetention — насколько назад держим историю горизонта чтения. Дата
+// прочтения нужна только у свежих сообщений (как в Telegram), а таблица при
+// этом не растёт бесконечно.
+const ReadMarkRetention = 30 * 24 * time.Hour
+
+// AppendReadMark записывает продвижение горизонта чтения (up_to_seq на момент
+// read_at) и подчищает отметки старше ReadMarkRetention у той же пары. Вызывать
+// ТОЛЬКО когда горизонт реально сдвинулся — иначе таблица наберёт дубли времени
+// на каждое переоткрытие чата.
+func (r *ChatsRepo) AppendReadMark(ctx context.Context, chatID, userID, upToSeq int64) error {
+	q := querier(ctx, r.pool)
+	if _, err := q.Exec(ctx,
+		`INSERT INTO chat_read_marks (chat_id, user_id, up_to_seq) VALUES ($1, $2, $3)
+		 ON CONFLICT (chat_id, user_id, up_to_seq) DO NOTHING`,
+		chatID, userID, upToSeq); err != nil {
+		return err
+	}
+	_, err := q.Exec(ctx,
+		`DELETE FROM chat_read_marks WHERE chat_id=$1 AND user_id=$2 AND read_at < now() - $3::interval`,
+		chatID, userID, ReadMarkRetention.String())
+	return err
+}
+
+// ReadAtForSeq возвращает, когда userID прочитал сообщение с данным seq:
+// read_at ближайшей сверху отметки горизонта (минимальный up_to_seq >= seq).
+// ok=false — такой отметки нет (сообщение ещё не прочитано либо его отметка уже
+// вышла за retention).
+func (r *ChatsRepo) ReadAtForSeq(ctx context.Context, chatID, userID, seq int64) (time.Time, bool, error) {
+	q := querier(ctx, r.pool)
+	var at time.Time
+	err := q.QueryRow(ctx,
+		`SELECT read_at FROM chat_read_marks
+		  WHERE chat_id=$1 AND user_id=$2 AND up_to_seq >= $3
+		  ORDER BY up_to_seq ASC LIMIT 1`,
+		chatID, userID, seq).Scan(&at)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return time.Time{}, false, nil
+	}
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	return at, true, nil
+}
+
 // LastReadAt returns when userID last advanced their read horizon in the chat.
 // ok=false when last_read_at is NULL (member has never read anything).
 func (r *ChatsRepo) LastReadAt(ctx context.Context, chatID, userID int64) (time.Time, bool, error) {

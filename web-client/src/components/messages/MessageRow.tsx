@@ -1,5 +1,5 @@
 // src/components/messages/MessageRow.tsx
-// ONE message bubble, memoized. Extracted from ConversationView's feed so that
+// ONE message bubble, memoized. Extracted from Chat's feed so that
 // appending/sending a message re-renders only the new (and the previous-last,
 // whose group tail flips) row — not all ~40 bubbles. memo() bails when its props
 // are unchanged; this works because `m` (ConvMsg) is given a STABLE reference by
@@ -11,9 +11,15 @@
 // Стили — MessageRow.module.scss; палитра исходящих/входящих через CSS-переменные
 // на .row ([data-out]); геометрия с рантайм-флагами (радиусы, textSize) — инлайн.
 import { memo, useEffect, useRef, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
-import { motion } from 'framer-motion'
 import { BubbleAppear } from '../animations/bubbleAnimations'
 import Checkbox from '../../shared/ui/Checkbox'
+import classNames from '../../shared/lib/classNames'
+import { bubbleClasses } from './bubbleClasses'
+import { BubbleTail } from './bubbleParts/primitives'
+import TgIcon from '../TgIcon'
+import { emojiOnlyCount } from '../RichText'
+import { hexToRgbTriplet, peerColorById } from '../peerColor'
+import InlineKeyboard from './InlineKeyboard'
 import MessageContent from './MessageContent'
 import { useSettings } from '../../settings'
 import type { ConvMsg } from '../../data'
@@ -21,7 +27,7 @@ import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import s from './MessageRow.module.scss'
 
 // Stable handler bundle the feed/rows close over (identities never change — see
-// ConversationView's useEvent wrappers), so passing it through doesn't bust memo.
+// Chat's useEvent wrappers), so passing it through doesn't bust memo.
 export interface FeedFns {
   openSender: (senderId: number, fallbackName: string) => void
   playVoice: (mediaId: number) => void
@@ -47,6 +53,8 @@ export interface FeedFns {
   cancelUpload: (clientId: string) => void
   /** разблокировать платное медиа за звёзды (Telegram paid media) */
   unlockPaid: (msgId: number) => Promise<void>
+  /** переслать сообщение — кнопка сбоку поста канала (tweb bubble-beside-button) */
+  forwardMsg: (msgId: number) => void
 }
 
 export interface MessageRowProps {
@@ -58,6 +66,12 @@ export interface MessageRowProps {
   selecting: boolean
   isSelected: boolean
   isHighlighted: boolean
+  /** показывать имя отправителя в бабле (групповой чат, входящее, первое в серии) */
+  showName: boolean
+  /** пост канала (tweb channel-post) */
+  isChannel: boolean
+  /** перед баблом проходит граница «непрочитанные» (tweb is-first-unread) */
+  isFirstUnread: boolean
   ladderActive: boolean
   ladderDelay: number
   feedFns: FeedFns
@@ -76,11 +90,25 @@ export interface MessageRowProps {
 
 function MessageRow({
   m, seq, out, firstInGroup, lastInGroup,
-  selecting, isSelected, isHighlighted, ladderActive, ladderDelay,
+  selecting, isSelected, isHighlighted, showName, isChannel, isFirstUnread, ladderActive, ladderDelay,
   feedFns, autoDownload, albumSelectedKey, footer, canSeeReactionList,
 }: MessageRowProps) {
   const textSize = useSettings((st) => st.textSize)
-  const rowStyle = { '--messages-text-size': `${textSize}px` } as CSSProperties
+  // --peer-color-rgb на бабле (tweb ставит его инлайном, живой DOM §3): от него
+  // питаются имя отправителя, полоса reply/цитаты и моноширинный текст в
+  // портированных партиалах. Для входящих в группе — цвет отправителя по id.
+  const peerRgb = !out && m.senderId != null ? hexToRgbTriplet(peerColorById(m.senderId)) : undefined
+  const rowStyle = {
+    '--messages-text-size': `${textSize}px`,
+    ...(peerRgb ? { '--peer-color-rgb': peerRgb } : {}),
+  } as CSSProperties
+  // Сообщение из одних эмодзи (tweb bigEmojis) — та же чистая функция, что и в
+  // MessageContent; здесь нужна для модификаторов бабла.
+  const bigEmojiCount = m.type === 'text' && m.text ? emojiOnlyCount(m.text) : 0
+  // sticker-animated: лотти-стикер отдаётся с mime application/json (StickerMedia
+  // различает его по Content-Type); у big-emoji анимация решается асинхронно —
+  // класс ставим только по достоверно известному признаку.
+  const animatedSticker = m.type === 'sticker' && m.mediaMime === 'application/json'
 
   // Реакции — единый Block-ряд под контентом бабла у ВСЕХ типов (tweb: reactions
   // всегда крепятся внутрь структуры бабла, не выносятся наружу). Само размещение
@@ -92,15 +120,32 @@ function MessageRow({
     ((m.reactions?.length ?? 0) > 0 || (!!m.starReaction && m.starReaction.total > 0)) &&
     m.id != null && !selecting
 
+  // Модификаторы бабла — единой функцией на классах tweb (см. bubbleClasses.ts).
+  // Подсветка перехода и полоса выделения теперь рисуются CSS'ом самого бабла
+  // (_chatBubble.scss `.is-highlighted:after` / `.is-selected:after`), поэтому
+  // отдельных band-слоёв на framer-motion больше нет.
+  const cls = bubbleClasses(m, {
+    out,
+    firstInGroup,
+    lastInGroup,
+    showName,
+    isChannel,
+    isSelected: selecting && m.id != null && isSelected,
+    isHighlighted,
+    isFirstUnread,
+    bigEmojiCount,
+    animatedSticker,
+  })
+
   return (
     <BubbleAppear
       appear={ladderActive}
       delay={ladderDelay}
-      className={s.row}
-      data-out={out || undefined}
-      data-last={lastInGroup || undefined}
-      data-selecting={selecting || undefined}
+      className={classNames(...cls, s.row)}
       data-mid={m.id}
+      // tweb держит на бабле id отправителя (живой DOM §3) — по нему адресуются
+      // меню/аватары и наш DOM-diff.
+      data-peer-id={m.senderId}
       data-seq={seq}
       onContextMenu={selecting ? undefined : (e: MouseEvent) => feedFns.openMsgMenu(e, m)}
       // Обычный клик по error-баблу открывает то же меню (Переотправить/Удалить).
@@ -113,45 +158,50 @@ function MessageRow({
       }
       style={rowStyle}
     >
-      {/* Jump-to-message flash (fades in then out). */}
-      {isHighlighted && (
-        <motion.div
-          className={s.band}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: [0, 0.5, 0.5, 0] }}
-          transition={{ duration: 2, times: [0, 0.12, 0.5, 1] }}
-        />
-      )}
-      {/* Full-width selection band (tweb: rgba(primary,.3), fades in). */}
-      {selecting && m.id != null && isSelected && (
-        <motion.div
-          className={s.band}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.2 }}
-        />
-      )}
       {selecting && m.id != null && m.type !== 'album' && (
-        <div className={s.check}>
+        <div className="bubble-select-checkbox">
           <Checkbox checked={isSelected} />
         </div>
       )}
 
-      <div className={s.zone}>
-        <MessageContent
-          m={m}
-          out={out}
-          firstInGroup={firstInGroup}
-          lastInGroup={lastInGroup}
-          selecting={selecting}
-          autoDownload={autoDownload}
-          albumSelectedKey={albumSelectedKey}
-          footer={footer}
-          showReactions={showReactions}
-          canSeeReactionList={canSeeReactionList}
-          rowLive={rowLiveRef.current}
-          feedFns={feedFns}
-        />
+      {/* Каркас tweb — одинаковый у ВСЕХ типов (живой DOM §3): контент бабла
+          всегда лежит в .bubble-content-wrapper > .bubble-content. */}
+      <div className="bubble-content-wrapper">
+        <div className="bubble-content">
+          <MessageContent
+            m={m}
+            out={out}
+            firstInGroup={firstInGroup}
+            lastInGroup={lastInGroup}
+            selecting={selecting}
+            autoDownload={autoDownload}
+            albumSelectedKey={albumSelectedKey}
+            footer={footer}
+            showReactions={showReactions}
+            canSeeReactionList={canSeeReactionList}
+            rowLive={rowLiveRef.current}
+            feedFns={feedFns}
+          />
+          {/* Кнопка «переслать» сбоку поста канала (tweb bubbles.ts:7673-7681,
+              живой DOM §3): круглая, за пределами бабла, проявляется по ховеру. */}
+          {isChannel && m.id != null && !selecting && (
+            <div
+              className="bubble-beside-button with-hover forward"
+              onClick={(e) => { e.stopPropagation(); feedFns.forwardMsg(m.id as number) }}
+            >
+              <TgIcon name="forward" size="1.5rem" />
+            </div>
+          )}
+          {/* Хвостик — ПОСЛЕДНИЙ ребёнок .bubble-content (tweb
+              bubbleContainer.append(generateTail()), живой DOM §3). */}
+          {cls.includes('can-have-tail') && <BubbleTail />}
+        </div>
+        {/* Инлайн-клавиатура бота — СИБЛИНГ бабла внутри обёртки (tweb
+            .reply-markup рядом с .bubble-content): кнопки лежат под баблом, а не
+            внутри цветной подложки. */}
+        {m.replyMarkup?.inline && m.chatId != null && m.senderId != null && (
+          <InlineKeyboard rows={m.replyMarkup.inline} chatId={m.chatId} botId={m.senderId} msgId={m.id} />
+        )}
       </div>
     </BubbleAppear>
   )

@@ -143,7 +143,11 @@ func (c groupMembershipChats) ClearUnreadReactions(context.Context, int64, int64
 func (c groupMembershipChats) CurrentReadSeq(context.Context, int64, int64) (int64, error) {
 	return 0, nil
 }
-func (c groupMembershipChats) SetRead(context.Context, int64, int64, int64, int) error { return nil }
+func (c groupMembershipChats) SetRead(context.Context, int64, int64, int64, int) error   { return nil }
+func (c groupMembershipChats) AppendReadMark(context.Context, int64, int64, int64) error { return nil }
+func (c groupMembershipChats) ReadAtForSeq(context.Context, int64, int64, int64) (time.Time, bool, error) {
+	return time.Time{}, false, nil
+}
 func (c groupMembershipChats) LastReadAt(context.Context, int64, int64) (time.Time, bool, error) {
 	return time.Time{}, false, nil
 }

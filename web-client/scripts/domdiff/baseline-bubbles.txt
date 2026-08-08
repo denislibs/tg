@@ -1,0 +1,91 @@
+снимок: scripts/domdiff/snapshots/our-feed-2026-08-08.json
+эталонов: 20, баблов в снимке: 32
+
+text-out-first-last-mid-21335                  23 findings  {"missing-class":12,"extra-class":5,"missing-attr":1,"wrong-tag":1,"extra-node":2,"missing-node":2}
+text-in-first-last-mid-21395                   23 findings  {"missing-class":11,"extra-class":5,"missing-attr":1,"wrong-tag":1,"extra-node":2,"missing-node":3}
+text-out-is-group-first-mid-21396              24 findings  {"missing-class":11,"extra-class":8,"missing-attr":1,"missing-node":2,"wrong-tag":2}
+voice-out-is-group-last-mid-21397              20 findings  {"missing-class":12,"extra-class":4,"missing-attr":1,"extra-node":1,"missing-node":2}
+forwarded-channel-post-mid-21341               32 findings  {"missing-class":18,"extra-class":5,"missing-attr":1,"wrong-tag":2,"missing-node":5,"extra-node":1}
+big-animated-emoji-mid-21391                   28 findings  {"missing-class":18,"extra-class":5,"missing-attr":1,"wrong-tag":1,"extra-node":2,"missing-node":1}
+photo-out-mid-21393                            29 findings  {"missing-class":17,"extra-class":5,"missing-attr":1,"wrong-tag":1,"extra-node":2,"missing-node":3}
+service-date                                   12 findings  {"missing-class":6,"extra-class":4,"wrong-tag":1,"extra-node":1}
+sticker-bubble-full                            24 findings  {"missing-class":14,"extra-class":5,"missing-attr":1,"wrong-tag":1,"extra-node":2,"missing-node":1}
+poll-bubble-full                               19 findings  {"missing-class":11,"extra-class":4,"missing-attr":1,"extra-node":1,"missing-node":2}
+video-bubble-uploading-full                    29 findings  {"missing-class":16,"extra-class":5,"missing-attr":1,"wrong-tag":1,"extra-node":2,"missing-node":4}
+document-bubble-2-full                         18 findings  {"missing-class":10,"extra-class":4,"missing-attr":1,"extra-node":1,"missing-node":2}
+album-channel-post-bubble-full                 43 findings  {"missing-class":22,"extra-class":7,"missing-attr":3,"wrong-tag":2,"extra-node":1,"missing-node":8}
+document-bubble-full                           20 findings  {"missing-class":12,"extra-class":4,"missing-attr":1,"extra-node":1,"missing-node":2}
+reply-bubble-full                              27 findings  {"missing-class":16,"extra-class":5,"missing-attr":1,"extra-node":2,"missing-node":3}
+audio-song-bubble-full                         19 findings  {"missing-class":11,"extra-class":4,"missing-attr":1,"extra-node":1,"missing-node":2}
+service-action-bubble                          14 findings  {"missing-class":7,"extra-class":4,"missing-attr":1,"missing-node":1,"extra-node":1}
+round-video-video-note                         37 findings  {"missing-class":20,"extra-class":8,"missing-attr":1,"missing-node":7,"wrong-tag":1}
+video-bubble-single                            36 findings  {"missing-class":20,"extra-class":6,"missing-attr":1,"wrong-tag":1,"extra-node":2,"missing-node":6}
+sponsored-bubble                               31 findings  {"missing-class":20,"extra-class":5,"missing-attr":1,"wrong-tag":1,"extra-node":2,"missing-node":2}
+
+text-out-first-last-mid-21335: 23 findings
+  [missing-class] div
+      tweb: bubble
+      наше: _row_1bz90_1
+  [missing-class] div
+      tweb: can-have-tail
+      наше: _row_1bz90_1
+  [missing-class] div
+      tweb: hide-name
+      наше: _row_1bz90_1
+  [missing-class] div
+      tweb: is-group-first
+      наше: _row_1bz90_1
+  [missing-class] div
+      tweb: is-group-last
+      наше: _row_1bz90_1
+  [missing-class] div
+      tweb: is-out
+      наше: _row_1bz90_1
+  [missing-class] div
+      tweb: is-read
+      наше: _row_1bz90_1
+  [extra-class] div
+      tweb: bubble can-have-tail hide-name is-group-first is-group-last is-out is-read
+      наше: _row_1bz90_1
+  [missing-attr] div
+      tweb: data-peer-id
+  [missing-class] div>div[0]
+      tweb: bubble-content-wrapper
+      наше: _zone_1bz90_61
+  [extra-class] div>div[0]
+      tweb: bubble-content-wrapper
+      наше: _zone_1bz90_61
+  [missing-class] div>div[0]>div[0]
+      tweb: bubble-content
+      наше: _bubbleWrap_1bz90_135
+  [extra-class] div>div[0]>div[0]
+      tweb: bubble-content
+      наше: _bubbleWrap_1bz90_135
+  [missing-class] div>div[0]>div[0]>div[0]
+      tweb: message
+      наше: _textBubble_1bz90_143
+  [missing-class] div>div[0]>div[0]>div[0]
+      tweb: spoilers-container
+      наше: _textBubble_1bz90_143
+  [extra-class] div>div[0]>div[0]>div[0]
+      tweb: message spoilers-container
+      наше: _textBubble_1bz90_143
+  [wrong-tag] div>div[0]>div[0]>div[0]>span[0]
+      tweb: span
+      наше: div
+  [missing-class] div>div[0]>div[0]>div[0]>span[0]
+      tweb: clearfix
+      наше: _message_1bz90_154
+  [extra-class] div>div[0]>div[0]>div[0]>span[0]
+      tweb: clearfix
+      наше: _message_1bz90_154
+  [extra-node] div>div[0]>div[0]>div[0]>span[0]>span[0]
+      наше: span._time_1btt2_1
+  [extra-node] div>div[0]>div[0]>div[0]>span[0]>span[1]
+      наше: span._clearfix_1btt2_86
+  [missing-node] div>div[0]>div[0]>div[0]>reactions-element[1]
+      tweb: reactions-element.reactions.reactions-block.reactions-like-block
+  [missing-node] div>div[0]>div[0]>svg[1]
+      tweb: svg.bubble-tail
+
+missing-node не раскрывается вглубь: целое непортированное поддерево — одна строка.

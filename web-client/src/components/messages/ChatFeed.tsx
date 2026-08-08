@@ -1,5 +1,5 @@
 // src/components/messages/ChatFeed.tsx
-// The chat message feed, extracted from ConversationView and memoized. It owns the
+// The chat message feed, extracted from Chat and memoized. It owns the
 // per-day <section> sticky dividers, consecutive-message grouping (sticky avatar
 // runs for incoming group chats), and the channel comments bar — and delegates
 // each bubble to the memoized <MessageRow>. Because MessageRow is memo'd and the
@@ -18,6 +18,8 @@ import MessageRow, { type FeedFns } from './MessageRow'
 import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import type { ConvMsg } from '../../data'
 import type { Message } from '../../core/models'
+import type { CommentReplier } from '../../core/managers/channelsManager'
+import classNames from '../../shared/lib/classNames'
 import s from './ChatFeed.module.scss'
 
 export interface ChatFeedProps {
@@ -27,6 +29,8 @@ export interface ChatFeedProps {
   isGroup: boolean
   discussionsEnabled: boolean
   commentCounts: Map<number, number>
+  /** авторы последних комментариев по посту — стек аватаров в футере */
+  commentRepliers: Map<number, CommentReplier[]>
   highlightSeq: number | null
   /** seq первого непрочитанного входящего — перед ним рисуется плашка
    * «Непрочитанные сообщения» (tweb is-first-unread); null — плашки нет */
@@ -34,8 +38,8 @@ export interface ChatFeedProps {
   selecting: boolean
   selected: Set<number>
   ladderActive: boolean
-  // top offset for the sticky date pill (header + player plate + pinned bar)
-  dateStickyTop: number
+  /** ключ дня прилипшей даты (tweb is-sticky) — считает Chat по скроллу */
+  stickyDateKey: string | null
   feedFns: FeedFns
   // Автозагрузка медиа для этого чата (tweb chat.autoDownload)
   autoDownload?: ChatAutoDownload
@@ -43,12 +47,11 @@ export interface ChatFeedProps {
 }
 
 function ChatFeed({
-  msgs, winMsgs, isRealChat, isGroup, discussionsEnabled, commentCounts,
-  highlightSeq, unreadDividerSeq, selecting, selected, ladderActive, dateStickyTop,
+  msgs, winMsgs, isRealChat, isGroup, discussionsEnabled, commentCounts, commentRepliers,
+  highlightSeq, unreadDividerSeq, selecting, selected, ladderActive, stickyDateKey,
   feedFns, autoDownload, onOpenDiscussion,
 }: ChatFeedProps) {
   const [lang] = useLang()
-  const t = useT()
 
   // Group consecutive incoming messages from one sender so a single sticky avatar
   // can ride the scroll alongside the whole run (tweb). Per-day sections: each
@@ -66,17 +69,30 @@ function ChatFeed({
   // движущийся фон каждый кадр скролла и роняет FPS).
   // tweb вешает на колонку чата `can-click-date` и по клику на дату-разделитель
   // открывает пикер (bubbles.ts:3058-3090) — у нас клик прокидывается наверх.
+  // Дата-разделитель — бабл tweb `.bubble.service.is-date > .bubble-content >
+  // .service-msg > span.i18n` (живой DOM §3, «service date»): обёртки
+  // .bubble-content-wrapper у него НЕТ, в отличие от сервисных экшен-баблов.
+  // Sticky и его top задаёт _chatBubble.scss (top: --chat-padding-top + overflow);
+  // инлайн-top оставлен как страховка, пока --chat-padding-top не владеет фазой 3.
+  // Клик по дате открывает пикер — в tweb он висит на .bubble-content под
+  // классом `.can-click-date` на колонке чата (_chatBubble.scss:511-514).
   const dayPill = (key: string, label: ReactNode, dayMs: number) => (
-    <header key={key} className={s.dayPill} style={{ top: `${dateStickyTop}px` }}>
-      <button
-        type="button"
-        className={s.pill}
+    <div
+      key={key}
+      data-date={key}
+      // tweb: прилипшая дата помечается `is-sticky` (у нас его считает Chat по
+      // скроллу и отдаёт сюда, чтобы React не стирал императивный класс)
+      className={classNames('bubble', 'service', 'is-date', stickyDateKey === key ? 'is-sticky' : '')}
+    >
+      <div
+        className="bubble-content"
         onClick={isRealChat ? () => feedFns.openDatePicker(dayMs) : undefined}
-        disabled={!isRealChat}
       >
-        {label}
-      </button>
-    </header>
+        <div className="service-msg">
+          <span className="i18n">{label}</span>
+        </div>
+      </div>
+    </div>
   )
 
   let buf: ReactNode[] = []
@@ -85,18 +101,21 @@ function ChatFeed({
     if (buf.length && gm) {
       const g = gm
       const rows = buf
+      // Группа подряд идущих сообщений одного автора — дерево tweb
+      // (_chatBubble.scss:45-88): контейнер аватара абсолютный, column-reverse,
+      // сам аватар sticky и прижат к низу (`bottom: --chat-padding-bottom + …`),
+      // а баблы лежат прямо в .bubbles-group без промежуточной колонки.
       body().push(
-        <div key={`grp-${g.key}`} className={s.group}>
-          <div className={s.groupAvatarCol}>
+        <div key={`grp-${g.key}`} className="bubbles-group">
+          <div className="bubbles-group-avatar-container">
             <div
-              className={s.groupAvatar}
+              className="bubbles-group-avatar"
               onClick={g.senderId != null ? () => feedFns.openSender(g.senderId!, g.sender) : undefined}
-              style={{ cursor: g.senderId != null ? 'pointer' : 'default' }}
             >
               <Avatar background={g.senderId != null ? gradientFor(g.senderId) : g.color} text={g.sender[0]} size="sm" />
             </div>
           </div>
-          <div className={s.groupBody}>{rows}</div>
+          {rows}
         </div>,
       )
     }
@@ -182,16 +201,12 @@ function ChatFeed({
         startSection(dayKey, dayPill(dayKey, dayLabel(winMsgs[i].createdAt, lang), dayMs))
       }
     }
-    // Плашка «Непрочитанные сообщения» перед первым непрочитанным входящим
-    // (tweb .is-first-unread::before — полоса на всю ширину, primary на surface).
-    if (isRealChat && unreadDividerSeq != null && winMsgs[i]?.seq === unreadDividerSeq) {
-      flushGroup()
-      body().push(
-        <div key="unread-divider" className={s.unreadDivider} data-unread-divider>
-          {t('Unread Messages')}
-        </div>,
-      )
-    }
+    // Граница «Непрочитанные сообщения» — не отдельный узел, а модификатор
+    // самого бабла (tweb bubbles.ts:11609 `is-first-unread` + ::before на всю
+    // ширину ленты, _chatBubble.scss:238-258). Текст берётся из
+    // --unread-messages-text (ставит Chat из i18n).
+    const isFirstUnread = isRealChat && unreadDividerSeq != null && winMsgs[i]?.seq === unreadDividerSeq
+    if (isFirstUnread) flushGroup()
     if (m.type === 'date') {
       flushGroup()
       // у служебной дата-записи абсолютное время лежит в createdAt (time — «ЧЧ:ММ»)
@@ -204,11 +219,18 @@ function ChatFeed({
       // Предложение фото профиля: получателю (не out, не принято) под превью —
       // кнопка «Установить фото» (tweb bubble-service-media-button).
       const canAccept = m.photoSuggestion != null && !m.out && !m.photoSuggestion.accepted && m.id != null
+      // Сервисный бабл tweb: `.bubble.service > .bubble-content-wrapper >
+      // .bubble-content > .service-msg` (живой DOM §3, «service action bubble») —
+      // в отличие от дата-разделителя обёртка тут есть.
       body().push(
-        <div key={k} className={s.service}>
-          <div className={`${s.pill} ${s.serviceMsg}`}>{m.text}</div>
-          {m.mediaId != null && <ServicePhoto mediaId={m.mediaId} onOpen={feedFns.openLightbox} />}
-          {canAccept && <AcceptSuggestButton msgId={m.id!} />}
+        <div key={k} className="bubble service is-group-first is-group-last">
+          <div className="bubble-content-wrapper">
+            <div className="bubble-content">
+              <div className="service-msg">{m.text}</div>
+              {m.mediaId != null && <ServicePhoto mediaId={m.mediaId} onOpen={feedFns.openLightbox} />}
+              {canAccept && <AcceptSuggestButton msgId={m.id!} />}
+            </div>
+          </div>
         </div>,
       )
       return
@@ -229,7 +251,11 @@ function ChatFeed({
     const postId = discussionsEnabled && lastInGroup ? (winMsgs[i]?.id ?? 0) : 0
     const footer =
       postId > 0 ? (
-        <CommentsBar count={commentCounts.get(postId) ?? 0} onOpen={() => onOpenDiscussion(postId, m.text)} />
+        <CommentsBar
+          count={commentCounts.get(postId) ?? 0}
+          recent={commentRepliers.get(postId)}
+          onOpen={() => onOpenDiscussion(postId, m.text)}
+        />
       ) : undefined
 
     const row = (
@@ -244,6 +270,11 @@ function ChatFeed({
         selecting={selecting}
         isSelected={m.id != null && selected.has(m.id)}
         isHighlighted={isRealChat && highlightSeq != null && winMsgs[i]?.seq === highlightSeq}
+        // Имя в бабле показывается там же, где раньше решал MessageContent:
+        // групповой чат, входящее, первое сообщение серии.
+        showName={isGroup && !out && !!m.sender && firstInGroup}
+        isChannel={discussionsEnabled}
+        isFirstUnread={isFirstUnread}
         ladderActive={ladderActive}
         ladderDelay={ladderDelay}
         feedFns={feedFns}
@@ -276,7 +307,7 @@ function ChatFeed({
   return (
     <>
       {sections.map((sec) => (
-        <section key={sec.key} className={s.section}>
+        <section key={sec.key} className="bubbles-date-group">
           {sec.date}
           {sec.body}
         </section>

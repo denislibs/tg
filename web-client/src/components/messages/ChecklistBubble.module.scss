@@ -70,27 +70,15 @@
   margin-top: 3px;
 }
 
-.footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 6px 2px 2px;
-}
-
-.addBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
-  border-radius: 12px;
-  padding: 2px 6px;
-
-  @media (hover: hover) {
-    &:hover {
-      background: rgba(0, 0, 0, 0.05);
-    }
-  }
+// tweb checklist.module.scss `.completed`: строка прогресса по центру, отдельно
+// от остального; 14px, вторичный цвет.
+.completed {
+  font-size: var(--font-size-14);
+  line-height: 1;
+  color: var(--message-time-color);
+  text-align: center;
+  margin-top: 0.75rem;
+  margin-bottom: 0.5rem;
 }
 
 .addRow {

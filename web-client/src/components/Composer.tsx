@@ -1,6 +1,6 @@
 // src/components/Composer.tsx
 // The message composer (input row + reply/edit bars + emoji picker), extracted
-// from ConversationView so the draft text lives in LOCAL state. Typing then
+// from Chat so the draft text lives in LOCAL state. Typing then
 // re-renders only this component — not the whole conversation (feed/header). The
 // parent stays in control via callbacks: it owns send/edit/reply/voice logic and
 // is notified on send. Keyed by chat in the parent, so it remounts (clearing the

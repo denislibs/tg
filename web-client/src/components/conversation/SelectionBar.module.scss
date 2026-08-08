@@ -1,29 +1,16 @@
 // SelectionBar — нижняя панель мультивыбора (счётчик + форвард + удалить).
+// Живёт внутри .chat-input-container (tweb .selection-wrapper), поэтому
+// позиционирование и ширину даёт композерный контейнер.
 .bar {
-  position: absolute;
-  bottom: 16px;
-  left: 0;
-  right: 0;
-  z-index: 6;
-  width: 100%;
-  max-width: 688px;
-  margin: 0 auto;
+  flex: 1;
   display: flex;
   align-items: center;
   gap: 4px;
   padding: 0 8px;
-  height: var(--chat-plate-height);
-  border-radius: 24px;
+  height: var(--chat-input-height);
+  border-radius: var(--chat-input-border-radius);
   background: var(--surface-color);
   box-shadow: var(--tg-plateShadow);
-
-  // мобилка: плейт в 8px от низа и краёв (как остальные плейты)
-  @media (max-width: 900px) {
-    bottom: 8px;
-    left: 8px;
-    right: 8px;
-    width: auto;
-  }
 }
 .count {
   flex: 1;

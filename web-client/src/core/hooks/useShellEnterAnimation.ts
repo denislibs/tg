@@ -8,7 +8,7 @@ import { ANIMATE_MAIN_KEY, playMainScreenEnter } from '../accountTransition'
 
 export function useShellEnterAnimation(): void {
   useLayoutEffect(() => {
-    const el = document.getElementById('app-shell')
+    const el = document.getElementById('page-chats')
     if (!el) return
 
     // Флаг читаем один раз и сразу удаляем: scale-enter — только на первый показ

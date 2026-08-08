@@ -1,59 +1,6 @@
-// Стили блока кода (перенос с MUI sx). Цвета токенов прокидываются inline
-// в TSX (accent/textSecondary), т.к. зависят от состояния copied.
-@use '../styles/foundation' as *;
-
-.root {
-  margin: 4px 0;
-  border-radius: 10px;
-  overflow: hidden;
-  background: rgba(0, 0, 0, 0.05);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.92em;
-
-  :global(html[data-theme='night']) &,
-  :global(html[data-theme='tinted']) & {
-    background: rgba(0, 0, 0, 0.28);
-  }
-}
-
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 10px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-
-  :global(html[data-theme='night']) &,
-  :global(html[data-theme='tinted']) & {
-    border-bottom-color: rgba(255, 255, 255, 0.08);
-  }
-}
-
-.label {
-  font-weight: 600;
-  font-size: var(--font-size-13);
+// Блок кода живёт на классах tweb (styles/tweb/_code.scss: .code / .code-header /
+// .code-code) — здесь остаётся только состояние «скопировано» у кнопки, которого
+// в tweb нет как отдельного стиля (там иконка меняется без цвета).
+.copied {
   color: var(--primary-color);
-  font-family: inherit;
-}
-
-.copy {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
-  font-size: var(--font-size-12);
-  color: var(--secondary-text-color);
-
-  &.copied {
-    color: var(--primary-color);
-  }
-}
-
-.body {
-  margin: 0;
-  padding: 8px 10px;
-  overflow-x: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-  line-height: 1.45;
 }

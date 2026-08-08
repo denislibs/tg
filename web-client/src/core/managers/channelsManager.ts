@@ -13,6 +13,11 @@ export interface SearchResult {
 // Кандидат в группу-обсуждение канала (Telegram getGroupsForDiscussion).
 export interface DiscussionCandidate { id: number; title: string; username: string; memberCount: number }
 
+// Последний комментатор поста — карточка под стек аватаров в футере
+// «N комментариев» (бэкенд отдаёт их вместе со счётчиками).
+export interface CommentReplier { id: number; name: string; avatarUrl?: string }
+interface RawReplier { id: number; display_name: string; avatar_url: string }
+
 export function newChannelsManager({ rest }: { rest: Pick<RestClient, 'post' | 'get' | 'put' | 'del'> }) {
   return {
     async createChannel(args: { title: string; about?: string; username?: string; isPublic?: boolean }): Promise<number> {
@@ -59,12 +64,21 @@ export function newChannelsManager({ rest }: { rest: Pick<RestClient, 'post' | '
       const r = await rest.get<{ messages: RawMessage[]; count: number }>(`/channels/${channelId}/posts/${postId}/comments`, { offset, limit })
       return { messages: (r.messages ?? []).map(mapMessage), count: r.count }
     },
-    async commentCounts(channelId: number, postIds: number[]): Promise<Record<number, number>> {
-      if (!postIds.length) return {}
-      const r = await rest.get<{ counts: Record<string, number> }>(`/channels/${channelId}/comment_counts`, { ids: postIds.join(',') })
-      const out: Record<number, number> = {}
-      for (const k in r.counts) out[+k] = r.counts[k]
-      return out
+    // Счётчики комментариев + авторы последних комментариев по каждому посту
+    // (стек аватаров в футере «N комментариев», как в Telegram).
+    async commentCounts(channelId: number, postIds: number[]): Promise<{ counts: Record<number, number>; recent: Record<number, CommentReplier[]> }> {
+      if (!postIds.length) return { counts: {}, recent: {} }
+      const r = await rest.get<{ counts: Record<string, number>; recent_repliers?: Record<string, RawReplier[]> }>(
+        `/channels/${channelId}/comment_counts`, { ids: postIds.join(',') })
+      const counts: Record<number, number> = {}
+      for (const k in r.counts) counts[+k] = r.counts[k]
+      const recent: Record<number, CommentReplier[]> = {}
+      for (const k in r.recent_repliers ?? {}) {
+        recent[+k] = (r.recent_repliers![k] ?? []).map((u) => ({
+          id: u.id, name: u.display_name, avatarUrl: u.avatar_url || undefined,
+        }))
+      }
+      return { counts, recent }
     },
     // Current view counts per channel post ("9.2K 👁"), fetched per open to stay
     // fresh (mirrors commentCounts — channel posts are cached by pts, so a snapshot

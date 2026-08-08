@@ -15,6 +15,18 @@ export function clampPinIndex(index: number, count: number): number {
 }
 
 /**
+ * Индекс пина, действующего для показанной части истории (tweb
+ * pinnedMessage.testMid): первый пин, чей id не выше самого нижнего видимого
+ * сообщения. Список — новейшим первым, поэтому это первое совпадение сверху;
+ * если все пины новее видимого куска, показываем самый старый.
+ */
+export function pinIndexForVisibleMid(pins: { id?: number | null }[], mid: number): number {
+  if (pins.length === 0) return 0
+  const i = pins.findIndex((p) => p.id != null && p.id <= mid)
+  return i === -1 ? pins.length - 1 : i
+}
+
+/**
  * Номер «#N» в подписи плашки (tweb AnimatedCounter: count - pinnedIndex,
  * скрыт на новейшем пине — класс is-last при index 0). null — без номера.
  */

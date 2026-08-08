@@ -1,0 +1,97 @@
+# DOM-diff харнес
+
+Приёмка программы «фронт 1:1 с tweb»: сравнение DOM нашего стенда с **живым**
+деревом tweb, а не на глаз. План — `docs/superpowers/plans/2026-08-08-tweb-structure-first.md`.
+
+```
+serialize.js        сериализатор (уезжает в страницу через evaluate)
+parseDump.js        разбор текстовых дампов docs/research/tweb-dom/*.json
+extract-expected.js генерация эталонов → expected/
+diff.js             сравнение двух деревьев
+run.js              CLI
+config.json         ignoreClasses / attrKeys / tolerance
+expected/           эталоны (генерируемые — руками не править)
+snapshots/          снимки нашего стенда
+baseline-bubbles.txt отчёт на старте фазы 2
+```
+
+## Процедура сверки
+
+**1. Снять дерево нашего стенда.** Стенд — `https://localhost:38443` (проект
+`msgrverify`), dev-вход по OTP `12345`. Получить выражение для `evaluate`:
+
+```bash
+node scripts/domdiff/run.js --snippet '.bubbles-inner'
+```
+
+Отдать его в `evaluate_script` (chrome-devtools MCP) с `filePath` в
+`scripts/domdiff/snapshots/`. Пока лента не перестроена, селектор — наш
+(`div[class*="_scroll_1vhji"]`); после фазы 2 это `.bubbles-inner`.
+
+Нужны computed-свойства — добавить флаги:
+
+```bash
+node scripts/domdiff/run.js --snippet '.bubbles-inner' \
+  --computed-for bubble,bubble-content --props border-radius,max-width,box-shadow
+```
+
+**2. Сдиффить.**
+
+```bash
+node scripts/domdiff/run.js --list                       # какие эталоны есть
+node scripts/domdiff/run.js --actual snapshots/x.json --all              # сводка по всем типам
+node scripts/domdiff/run.js --actual snapshots/x.json --all --detail photo-out-mid-21393
+node scripts/domdiff/run.js --actual snapshots/one-bubble.json --key photo-out-mid-21393
+```
+
+`--all` для каждого эталона берёт из снимка бабл с наименьшим числом расхождений
+(«какой тип узнан») — это метрика прогресса. Точная приёмка — `--key` по снимку
+конкретного бабла.
+
+**3. Читать findings.**
+
+| kind | значение |
+|---|---|
+| `missing-class` | класс tweb, которого у нас нет на этом узле |
+| `extra-class` | наш класс, которого нет в tweb (обычно хвост CSS-модуля) |
+| `wrong-tag` | другой тег — в tweb теги значимы (`span.time`, `svg.bubble-tail`) |
+| `missing-node` / `extra-node` | узла нет / узел лишний в этой позиции |
+| `missing-attr` | нет ключевого атрибута (значения не сравниваются) |
+| `computed` | разошлось вычисленное свойство сверх допуска |
+
+Дети сопоставляются **по индексу**: порядок узлов в tweb значим (`:first-child`,
+`+`, `~`, `order`), поэтому перестановка обязана быть расхождением. `missing-node`
+вглубь не раскрывается — целое непортированное поддерево даёт одну строку, так что
+абсолютное число findings меньше объёма работы.
+
+## Эталоны
+
+`expected/bubbles.json` — 20 деревьев баблов, вынутых из живого DOM tweb
+(`docs/research/tweb-dom/*.json`, снято 2026-08-08 с работающего клиента).
+`expected/computed.json` — блоки замеров из тех же дампов. Перегенерация:
+
+```bash
+node scripts/domdiff/extract-expected.js
+```
+
+Править эталоны руками нельзя: они производные. Нужен новый тип бабла — досняли
+дамп в `docs/research/tweb-dom/`, добавили файл в `SOURCES` в `extract-expected.js`.
+
+## config.json
+
+- **`ignoreClasses`** — классы, которые differ не считает расхождением. Держим
+  список коротким: только то, чему в tweb нет и не будет аналога, каждый пункт —
+  с обоснованием ниже. Строка вида `/^_re_/` трактуется как регулярка.
+  Сейчас список **пуст**: хвосты CSS-модулей (`_row_1bz90_1`) намеренно
+  показываются как `extra-class` — это и есть индикатор непортированной поверхности.
+- **`attrKeys`** — атрибуты, наличие которых сверяем (`data-mid`, `data-peer-id`).
+  Значения не сравниваем: id сообщений у нас и в tweb разные по определению.
+- **`tolerance`** — допуск в px для computed-свойств (сабпиксельная раскладка).
+
+## Тесты
+
+`domdiff.test.js` гоняется общим `npm test` (в `vitest.config.ts` добавлен паттерн
+`scripts/**/*.test.js`). Кроме парсера и differ-а он фиксирует инвариант живого
+tweb: у **всех** типов баблов каркас `.bubble > .bubble-content-wrapper >
+.bubble-content` — это и есть основание P0 №2 (reply/имя/forward одинаково
+вставляются в любой тип).

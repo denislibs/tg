@@ -5,6 +5,7 @@ import './styles/index.scss'
 import { ManagersProvider } from './core/hooks/useManagers'
 import { bootstrap } from './client/boot'
 import { loadFonts } from './core/dom/loadFonts'
+import { setRootClasses } from './core/dom/rootClasses'
 import { startDialogsPersist } from './stores/dialogsPersist'
 import { startFoldersPersist } from './stores/foldersStore'
 import { startDraftsPersist } from './stores/draftsStore'
@@ -15,6 +16,10 @@ import { startDraftsPersist } from './stores/draftsStore'
 // на первом заходе снимает font-display: swap (дефолт @fontsource); #root не
 // прячем, чтобы не ломать instant-boot (#57).
 void loadFonts()
+
+// Классы окружения на <html> до первого рендера — иначе hover/платформенные
+// правила портированных партиалов tweb не матчатся на первом кадре.
+setRootClasses()
 
 // Весь холодный старт — в bootstrap() (client/boot.ts). Здесь остаётся только
 // рендер после того, как критические данные подняты, и запуск персиста кэша.

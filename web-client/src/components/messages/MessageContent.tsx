@@ -7,7 +7,7 @@
 import { useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import Text from '../../shared/ui/Text'
 import classNames from '../../shared/lib/classNames'
-import { withAlpha } from '../../core/format/cssColor'
+import { hexToRgbTriplet } from '../peerColor'
 import { mediaThumbUrl, hasMediaToken, useMediaTokenVersion } from '../../core/mediaUrl'
 import TgIcon from '../TgIcon'
 import RealMediaBubble from './RealMediaBubble'
@@ -16,13 +16,11 @@ import PollBubble from './PollBubble'
 import ChecklistBubble from './ChecklistBubble'
 import GiftBubble from './GiftBubble'
 import GiveawayBubble from './GiveawayBubble'
-import InlineKeyboard from './InlineKeyboard'
 import AlbumGrid from './AlbumGrid'
 import VoiceMessage from './VoiceMessage'
 import { MessageReactions } from './MessageReactions'
 import Time, { TimeClearfix, type TimeMode, type TimeCorner, type RenderTime } from './bubbleParts/Time'
 import {
-  BubbleTail,
   bubbleRadius,
   DocumentBubble,
   AudioBubble,
@@ -38,13 +36,38 @@ import RichText, { emojiOnlyCount } from '../RichText'
 import StickerMedia from '../StickerMedia'
 import { useAnimatedEmoji } from '../../core/hooks/useAnimatedEmoji'
 import { effectForEmoji, playEmojiEffect } from '../../core/effects/emojiEffects'
-import { peerColor } from '../peerColor'
 import { useT } from '../../i18n'
 import { useSettings } from '../../settings'
 import type { ConvMsg } from '../../data'
 import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import type { FeedFns } from './MessageRow'
 import s from './MessageRow.module.scss'
+
+// Обёртки «одиночного документа» tweb (голос/аудио/файл): между .bubble-content и
+// самим элементом лежат фон-подложка, тело сообщения и контейнер документа
+// (живой DOM §3 — voice mid 21397, audio/document дампы).
+function DocumentContainer({ children, reactions, mid, peerId }: {
+  children: ReactNode
+  reactions?: ReactNode
+  mid?: number
+  peerId?: number
+}) {
+  return (
+    <>
+      <div className="bubble-content-background" />
+      <div className="message spoilers-container">
+        <span className="clearfix" />
+        {/* tweb дублирует id сообщения/отправителя на контейнере документа */}
+        <div className="document-container is-first is-last" data-mid={mid} data-peer-id={peerId}>
+          <div className="document-wrapper">{children}</div>
+        </div>
+        {/* реакции — в теле сообщения после контейнера документа (tweb
+            bubbles.ts:9869 messageDiv.append), а не внутри audio-element */}
+        {reactions}
+      </div>
+    </>
+  )
+}
 
 // Big emoji (tweb bubbles.ts bigEmojis): сообщение из одних только эмодзи, без
 // текста, — крупный глиф без фона бабла. РОВНО один эмодзи, у которого есть
@@ -129,12 +152,28 @@ function StickerRealBubble({ m, time }: { m: ConvMsg; time: ReactNode }) {
   )
 }
 
+// --peer-color-rgb для цитаты ответа: у исходящих — акцент бабла (tweb ставит
+// --message-out-primary-color-rgb), у входящих — цвет цитируемого автора; без
+// цвета переменная не выставляется, чтобы унаследовать её от бабла (иначе
+// самоссылка var(--peer-color-rgb) сделала бы значение невалидным и цитата
+// стала бы чёрной).
+function replyColorVar(out: boolean, color?: string): CSSProperties {
+  if (out) return { ['--peer-color-rgb' as string]: 'var(--message-out-primary-color-rgb)' } as CSSProperties
+  const rgb = color ? hexToRgbTriplet(color) : ''
+  return (rgb ? { ['--peer-color-rgb' as string]: rgb } : {}) as CSSProperties
+}
+
+// Превью в цитате рисуется только у медиа, У КОТОРЫХ ОНО ЕСТЬ (tweb
+// wrapReplyDivAndCaption ставит isMediaSet лишь для визуальных типов). У голоса,
+// аудио и файла картинки нет — иначе <img> уходил бы в 404 и рисовал «битое фото».
+const REPLY_THUMB_TYPES = new Set(['photo', 'video', 'roundVideo', 'sticker', 'gif', 'album'])
+
 // Small rounded thumbnail of the replied-to message's photo/video, shown in the
 // quote box (Telegram). Synchronous URL via the main-thread media token.
 function ReplyThumb({ id }: { id: number }) {
   useMediaTokenVersion()
   if (!hasMediaToken()) return null
-  return <img className={s.replyThumb} src={mediaThumbUrl(id)} alt="" loading="lazy" decoding="async" />
+  return <img src={mediaThumbUrl(id)} alt="" loading="lazy" decoding="async" />
 }
 
 export interface MessageContentProps {
@@ -171,6 +210,7 @@ export default function MessageContent({
     <Time
       time={m.time}
       status={m.status}
+      // без `out` Time не рисует тик статуса (tweb: тики только у исходящих)
       out={out}
       edited={m.edited}
       views={m.views}
@@ -229,6 +269,12 @@ export default function MessageContent({
   // разные точки вставки).
   const renderTime: RenderTime = (mode, corner, justMedia) => timeNode(mode, corner, justMedia)
 
+  // Файл/музыка (не фото и не видео) рендерятся строкой документа tweb, а не
+  // медиа-контейнером: у них другая обёртка (.document-container) и свои правила.
+  const isFileLike = !m.secretMedia && !m.paidMedia?.locked
+    && (m.type === 'document' || m.type === 'audio')
+    && !(m.mediaMime?.startsWith('image/') || m.mediaMime?.startsWith('video/'))
+
   return (
     <>
         {m.mediaId && m.type === 'roundVideo' ? (
@@ -241,26 +287,26 @@ export default function MessageContent({
             />,
           )
         ) : m.mediaId && m.type === 'voice' ? (
-          <div className={s.voiceMedia} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
-            {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
+          // Обёртки tweb для «одиночного документа» (голос/аудио/файл), живой DOM §3:
+          // .bubble-content-background + .message.spoilers-container > span.clearfix
+          // + .document-container.is-first.is-last > .document-wrapper > контент.
+          <DocumentContainer reactions={reactionsInside} mid={m.id} peerId={m.senderId}>
             <VoiceMessage
+              out={out}
               mediaId={m.mediaId}
               msgId={m.id}
               chatId={m.chatId}
               transcription={m.transcription}
               secretMedia={m.secretMedia}
-              out={out}
-              time={showReactions ? undefined : timeNode('corner', 'audio')}
-              reactions={reactionsInside}
+              time={showReactions ? undefined : timeNode('corner', 'container')}
               mediaUnread={m.mediaUnread}
               onPlay={() => feedFns.playVoice(m.mediaId as number)}
             />
-          </div>
+          </DocumentContainer>
         ) : m.type === 'album' && m.albumItems ? (
           // Альбом (медиагруппа): грид из элементов, подпись — под гридом.
           withMediaReactions(
           <div className={classNames(s.media, s.mediaAlbum)}>
-            {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
             <div
               className={classNames(s.mediaInner, s.framed)}
               style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}
@@ -273,7 +319,6 @@ export default function MessageContent({
                 onToggle={feedFns.toggleSelect}
                 onOpen={feedFns.openLightbox}
                 autoDownload={autoDownload}
-                radius={m.text || showReactions ? '14px 14px 0 0' : '14px'}
               />
               {m.text ? (
                 <div className={s.mediaCaption}>
@@ -303,9 +348,27 @@ export default function MessageContent({
           // localUrl без mediaId = исходящее фото/видео в процессе аплоада;
           // clientId+mediaName без mediaId = исходящий документ/аудио в процессе
           // аплоада (кольцо прогресса + отмена рисует RealMediaBubble).
+          // Документ/музыка (файл без превью) идут в обёртках tweb для одиночного
+          // документа; фото/видео — в своём медиа-контейнере.
+          isFileLike ? (
+            <DocumentContainer reactions={reactionsInside} mid={m.id} peerId={m.senderId}>
+              <RealMediaBubble
+                mediaId={m.mediaId}
+                type={m.type}
+                mime={m.mediaMime}
+                duration={m.mediaDuration}
+                size={m.mediaSize}
+                fileName={m.mediaName}
+                renderTime={renderTime}
+                autoDownload={autoDownload}
+                localUrl={m.localUrl}
+                clientId={m.clientId}
+                onCancelUpload={feedFns.cancelUpload}
+              />
+            </DocumentContainer>
+          ) : (
           withMediaReactions(
           <div className={s.media}>
-            {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
             <div
               className={classNames(s.mediaInner, m.type === 'photo' || m.type === 'video' ? s.framed : '')}
               style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}
@@ -314,8 +377,8 @@ export default function MessageContent({
                 // Секретное медиа (E2E): fetch ciphertext → decrypt → blob-objectURL.
                 // Прямой src=mediaContentUrl не годится — сервер хранит только шифртекст.
                 <SecretMediaBubble
-                  secretMedia={m.secretMedia}
                   out={out}
+                  secretMedia={m.secretMedia}
                   renderTime={m.text ? undefined : renderTime}
                   localUrl={m.localUrl}
                   radius={(m.type === 'photo' || m.type === 'video') ? (m.text || showReactions ? '14px 14px 0 0' : '14px') : undefined}
@@ -333,14 +396,13 @@ export default function MessageContent({
                   duration={m.mediaDuration}
                   size={m.mediaSize}
                   fileName={m.mediaName}
-                  out={out}
                   renderTime={m.text ? undefined : renderTime}
                   onOpen={feedFns.openLightbox}
                   autoDownload={autoDownload}
                   localUrl={m.localUrl}
                   clientId={m.clientId}
                   onCancelUpload={feedFns.cancelUpload}
-                  radius={(m.type === 'photo' || m.type === 'video') ? (m.text || showReactions ? '14px 14px 0 0' : '14px') : undefined}
+                  hasMessageBlock={!!m.text || !!m.reply || !!m.webPage || !!m.factCheck}
                   paidMedia={m.paidMedia}
                   onUnlockPaid={m.paidMedia?.locked && m.id != null ? () => feedFns.unlockPaid(m.id as number) : undefined}
                 />
@@ -360,6 +422,7 @@ export default function MessageContent({
             </div>
           </div>,
           )
+          )
         ) : bigEmoji ? (
           withReactionsOutside(
             <BigEmojiBubble m={m} count={bigEmoji} selecting={selecting} time={timeNode('floating', 'default', true)} />,
@@ -371,13 +434,10 @@ export default function MessageContent({
         ) : m.type === 'roundVideo' ? (
           withReactionsOutside(<RoundVideoBubble m={m} out={out} firstInGroup={firstInGroup} lastInGroup={lastInGroup} time={timeNode('floating', 'default', true)} />)
         ) : m.type === 'geo' && m.geo ? (
-          withReactionsOutside(<GeoBubble m={m} out={out} lastInGroup={lastInGroup} radius={bubbleRadius(out, firstInGroup, lastInGroup)} time={timeNode('floating', 'default', true)} />)
+          withReactionsOutside(<GeoBubble m={m} out={out} radius={bubbleRadius(out, firstInGroup, lastInGroup)} time={timeNode('floating', 'default', true)} />)
         ) : m.type === 'contact' && m.contact ? (
           <ContactBubble
             m={m}
-            out={out}
-            firstInGroup={firstInGroup}
-            lastInGroup={lastInGroup}
             time={showReactions ? undefined : timeNode('corner')}
             reactions={reactionsInside}
             onOpen={selecting ? undefined : () => feedFns.openSender(m.contact!.userId, m.contact!.name)}
@@ -393,58 +453,54 @@ export default function MessageContent({
             onClick={selecting ? undefined : () => feedFns.recall(!!m.call?.video)}
           />
         ) : m.type === 'gift' && m.gift ? (
-          <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
-            {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
+          <>
             <GiftBubble gift={m.gift} out={out} />
             {showReactions
-              ? <div className={s.message}>{reactionsRow(timeNode('plain'))}</div>
+              ? <div className={classNames(s.message, 'message', 'spoilers-container')}>{reactionsRow(timeNode('plain'))}</div>
               : timeNode('corner', 'poll')}
-          </div>
+          </>
         ) : m.type === 'giveaway' && m.giveaway ? (
-          <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
-            {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
+          <>
             <GiveawayBubble giveaway={m.giveaway} />
             {showReactions
-              ? <div className={s.message}>{reactionsRow(timeNode('plain'))}</div>
+              ? <div className={classNames(s.message, 'message', 'spoilers-container')}>{reactionsRow(timeNode('plain'))}</div>
               : timeNode('corner', 'poll')}
-          </div>
+          </>
         ) : m.type === 'poll' && m.poll ? (
-          <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
-            {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
+          <>
+            <div className="attachment no-brb" />
+            <div className={classNames(s.message, 'message', 'spoilers-container', 'mt-shorter')}>
             {!out && m.sender && firstInGroup && (
-              <Text size={14} weight={600} color={m.senderColor ?? peerColor(m.sender)}>
+              <Text size={14} weight={600} color="rgb(var(--peer-color-rgb))">
                 {m.sender}
               </Text>
             )}
-            <PollBubble poll={m.poll} out={out} />
-            {showReactions
-              ? <div className={s.message}>{reactionsRow(timeNode('plain'))}</div>
-              : timeNode('corner', 'poll')}
-          </div>
+            <div className="poll-message-content"><PollBubble poll={m.poll} out={out} /></div>
+            {showReactions ? reactionsRow(timeNode('plain')) : timeNode('corner', 'poll')}
+            </div>
+          </>
         ) : m.type === 'checklist' && m.checklist ? (
-          <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
-            {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
+          <>
+            <div className="attachment no-brb" />
+            <div className={classNames(s.message, 'message', 'spoilers-container', 'mt-shorter')}>
             {!out && m.sender && firstInGroup && (
-              <Text size={14} weight={600} color={m.senderColor ?? peerColor(m.sender)}>
+              <Text size={14} weight={600} color="rgb(var(--peer-color-rgb))">
                 {m.sender}
               </Text>
             )}
-            <ChecklistBubble checklist={m.checklist} out={out} />
-            {showReactions
-              ? <div className={s.message}>{reactionsRow(timeNode('plain'))}</div>
-              : timeNode('corner', 'poll')}
-          </div>
+            <div className="poll-message-content"><ChecklistBubble checklist={m.checklist} out={out} /></div>
+            {showReactions ? reactionsRow(timeNode('plain')) : timeNode('corner', 'poll')}
+            </div>
+          </>
         ) : (
           // tweb .bubble-content-wrapper: цветной бабл + reply-markup сиблингами;
           // кнопки лежат ВНЕ бабла (под ним), бабл растягивается на их ширину.
-          <div className={s.bubbleWrap}>
-          <div className={s.textBubble} style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}>
-            {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
+          <>
             {!out && m.sender && firstInGroup && (
               <Text
                 className={s.name}
                 onClick={m.senderId != null ? () => feedFns.openSender(m.senderId!, m.sender!) : undefined}
-                size="var(--messages-secondary-text-size)" weight={600} color={m.senderColor ?? peerColor(m.sender)}
+                size="var(--messages-secondary-text-size)" weight={600} color="rgb(var(--peer-color-rgb))"
                 style={{ cursor: m.senderId != null ? 'pointer' : 'default' }}
               >
                 {m.sender}
@@ -458,36 +514,50 @@ export default function MessageContent({
                 </Text>
               </div>
             )}
+            {/* Цитата ответа — разметка tweb (живой DOM §3, «reply bubble»):
+                .reply.quote-like.quote-like-hoverable.quote-like-border.mb-shorter
+                > (.reply-media) + .reply-content > .reply-title>span.peer-title
+                + .reply-subtitle. Цвет полосы и подложки берётся из
+                --peer-color-rgb цитируемого автора (_quote.scss). */}
             {m.reply && (
               <div
-                className={s.reply}
+                className={classNames(
+                  'reply', 'quote-like', 'quote-like-hoverable', 'quote-like-border', 'mb-shorter',
+                  m.reply.quote ? 'quote-like-icon' : '',
+                )}
                 onClick={m.reply.seq != null ? (e) => { e.stopPropagation(); feedFns.jumpToSeq(m.reply!.seq) } : undefined}
                 style={{
                   cursor: m.reply.seq != null ? 'pointer' : 'default',
-                  borderLeft: `3px solid ${out ? 'var(--message-out-primary-color)' : m.reply.color ?? 'var(--primary-color)'}`,
-                  background: out ? withAlpha('var(--message-out-primary-color)', 0.12) : withAlpha(m.reply.color ?? 'var(--primary-color)', 0.12),
+                  // Цвет цитаты — цвет ЦИТИРУЕМОГО автора; у исходящих tweb
+                  // подменяет его на белый акцент бабла. Если цвета нет,
+                  // переменную не задаём — она наследуется от бабла.
+                  ...replyColorVar(out, m.reply.color),
                 }}
               >
-                {m.reply.mediaId != null && <ReplyThumb id={m.reply.mediaId} />}
-                <div className={s.replyBody}>
-                  <Text noWrap size={13.5} weight={600} color={out ? 'var(--message-out-primary-color)' : m.reply.color ?? 'var(--primary-color)'}>
-                    {m.reply.name}
+                {m.reply.mediaId != null && REPLY_THUMB_TYPES.has(m.reply.mediaType ?? '') && (
+                  <div className={classNames('reply-media', m.reply.mediaType === 'roundVideo' ? 'is-round' : '')}>
+                    <ReplyThumb id={m.reply.mediaId} />
+                  </div>
+                )}
+                <div className="reply-content">
+                  <div className="reply-title">
+                    <span className="peer-title">{m.reply.name}</span>
                     {m.reply.quote && (
                       <TgIcon name="quote_outline" size={13} style={{ verticalAlign: '-1px', marginLeft: 4, opacity: 0.75 }} />
                     )}
-                  </Text>
-                  <Text noWrap size={13.5} color="var(--b-secondary)" style={{ maxWidth: 240 }}>
-                    <RichText text={m.reply.text} entities={m.reply.entities} linkColor="var(--b-link)" />
-                  </Text>
+                  </div>
+                  <div className="reply-subtitle">
+                    <span><RichText text={m.reply.text} entities={m.reply.entities} linkColor="var(--b-link)" /></span>
+                  </div>
                 </div>
               </div>
             )}
             {/* tweb `.message`: тело сообщения — текст, превью ссылки, фактчек и
                 время, которое плавает (float:right) в последней строке текста. */}
-            <div className={s.message}>
+            <div className={classNames(s.message, 'message', 'spoilers-container')}>
               <RichText text={m.text ?? ''} entities={m.entities} linkColor="var(--b-link)" />
               {m.webPage && (
-                <WebPagePreview wp={m.webPage} out={out} linkColor="var(--b-link)" />
+                <WebPagePreview wp={m.webPage} out={out} />
               )}
               {m.factCheck && (
                 <FactCheckBox fc={m.factCheck} out={out} linkColor="var(--b-link)" />
@@ -503,11 +573,7 @@ export default function MessageContent({
               )}
             </div>
             {footer && <div className={s.footerText}>{footer}</div>}
-          </div>
-          {m.replyMarkup?.inline && m.chatId != null && m.senderId != null && (
-            <InlineKeyboard rows={m.replyMarkup.inline} chatId={m.chatId} botId={m.senderId} msgId={m.id} />
-          )}
-          </div>
+          </>
         )}
     </>
   )
