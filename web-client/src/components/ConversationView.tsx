@@ -64,7 +64,8 @@ import type { InlineResult } from '../core/managers/botsManager'
 import { openWebApp } from '../core/webapp'
 import { useSearchStore } from '../stores/searchStore'
 import { useChatPopups } from '../core/hooks/useChatPopups'
-import { clearPopups } from '../stores/popupStore'
+import { clearPopups, openPopup } from '../stores/popupStore'
+import DatePickerPopup from './DatePickerPopup'
 import ChatMsgActionPopups from './conversation/ChatMsgActionPopups'
 import SendMediaPopup from './messages/SendMediaPopup'
 import { joinGroupCall } from '../core/calls/groupCallEngine'
@@ -567,6 +568,25 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
   const toggleSelectE = useEvent(toggleSelect)
   const openMsgMenuE = useEvent(openMsgMenu)
   const jumpToSeqE = useEvent(jumpToSeq)
+  // Клик по дате-разделителю открывает пикер (tweb bubbles.ts:3058-3090 →
+  // showDatePickerPopup с onPick = onDatePick). Выбор дня резолвится в seq
+  // (ручка message_by_date) и отдаётся той же машинерии прыжка.
+  const openDatePickerE = useEvent((dayMs: number) => {
+    openPopup((p) => (
+      <DatePickerPopup
+        open={p.open}
+        onClose={p.requestClose}
+        onExitComplete={p.onExitComplete}
+        initDate={dayMs}
+        chatId={numericChatId}
+        onPick={(timestamp) => {
+          void managers.messages.messageByDate(numericChatId, timestamp).then((seq) => {
+            if (seq != null) jumpToSeqE(seq)
+          })
+        }}
+      />
+    ))
+  })
   // Сайдбар-поиск открыл чат «вокруг сообщения» → прыгаем к найденному seq
   const pendingJump = useSearchStore((s) => s.pendingJump)
   useEffect(() => {
@@ -615,6 +635,7 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
       toggleSelect: toggleSelectE,
       openMsgMenu: openMsgMenuE,
       jumpToSeq: jumpToSeqE,
+      openDatePicker: openDatePickerE,
       openLightbox: openLightboxE,
       recall: recallE,
       mediaPlayed: mediaPlayedE,
@@ -625,7 +646,7 @@ export default function ConversationView({ chat, onBack, thread }: Props) {
       cancelUpload: cancelUploadE,
       unlockPaid: unlockPaidE,
     }),
-    [openSenderE, playVoiceE, toggleSelectE, openMsgMenuE, jumpToSeqE, openLightboxE, recallE, mediaPlayedE, roundPlayingE, toggleReaction, showReactedUsers, openStarReaction, cancelUploadE, unlockPaidE],
+    [openSenderE, playVoiceE, toggleSelectE, openMsgMenuE, jumpToSeqE, openDatePickerE, openLightboxE, recallE, mediaPlayedE, roundPlayingE, toggleReaction, showReactedUsers, openStarReaction, cancelUploadE, unlockPaidE],
   )
 
   // (Ack reconcile + send-rejection run in realtimeBridge → messagesStore; live

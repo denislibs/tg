@@ -1,5 +1,15 @@
 // src/core/managers/messagesManager.ts
 import { HttpError, type RestClient } from '../net/restClient'
+
+/** День месяца с медиа — превью в ячейке пикера даты (tweb getSearchResultsCalendar). */
+export interface CalendarDay {
+  /** полночь дня, unix-секунды (UTC) */
+  day: number
+  msg_id: number
+  seq: number
+  media_id: number
+  type: string
+}
 import { mapMessage, mapScheduled, mapGeo, mapWebPage, mapFactCheck, type Message, type MessageEntity, type RawMessage, type RawScheduled, type Scheduled, type SecretMedia } from '../models'
 import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt } from '../realtime/events'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
@@ -385,6 +395,17 @@ export function newMessagesManager({ rest, decryptSecret, getMeId }: MessagesDep
         return r.seq
       } catch {
         return null
+      }
+    },
+
+    // Медиа-превью по дням месяца для пикера даты (tweb
+    // getSearchResultsCalendar): по одному сообщению на день, дни без медиа
+    // просто отсутствуют. month — любой unix-момент внутри нужного месяца.
+    async calendarMonth(chatId: number, month: number): Promise<CalendarDay[]> {
+      try {
+        return await rest.get<CalendarDay[]>(`/chats/${chatId}/calendar`, { month })
+      } catch {
+        return [] // календарь работает и без миниатюр
       }
     },
 

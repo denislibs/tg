@@ -202,6 +202,10 @@ type MessageRepo interface {
 	// created_at>=from (jump-to-date); если таких нет — seq самого нового
 	// сообщения; для пустого чата — domain.ErrNotFound.
 	MessageSeqByDate(ctx context.Context, chatID int64, from time.Time) (int64, error)
+	// CalendarMonth — по одному медиа-сообщению на каждый день полуинтервала
+	// [from, to): превью в ячейках дня у пикера даты (tweb
+	// messages.getSearchResultsCalendar). Дни без медиа не возвращаются.
+	CalendarMonth(ctx context.Context, chatID int64, from, to time.Time) ([]domain.CalendarDay, error)
 	// GlobalSearchMessages searches across every chat userID is a member of;
 	// filter narrows by shared-media kind ("" = any type).
 	GlobalSearchMessages(ctx context.Context, userID int64, q, filter string, offset, limit int) ([]domain.Message, int, error)

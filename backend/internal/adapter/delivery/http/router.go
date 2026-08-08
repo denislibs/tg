@@ -170,6 +170,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/chats/{chatID}/history", ch.History)
 		pr.Get("/chats/{chatID}/search", ch.SearchMessages)
 		pr.Get("/chats/{chatID}/message_by_date", ch.MessageByDate)
+		pr.Get("/chats/{chatID}/calendar", ch.Calendar)
 		pr.Post("/translate", ch.Translate)
 		pr.Post("/chats/{chatID}/polls", ch.SendPoll)
 		pr.Get("/chats/{chatID}/group_call", ch.GroupCallParticipants)

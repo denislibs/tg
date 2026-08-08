@@ -1,8 +1,10 @@
 // Логика поиска в чате для шапки: открытие/запрос (single-sourced в searchStore),
 // дебаунс-фетч, фильтры (от кого / тип / реакция), участники группы и результаты
 // (имя отправителя + время резолвятся здесь из peers/me/lang). UI — в ChatSearchCard.
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { createElement, useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useManagers } from './useManagers'
+import { openPopup } from '../../stores/popupStore'
+import DatePickerPopup from '../../components/DatePickerPopup'
 import { useChatSearch } from './useChatSearch'
 import { usePeers } from './usePeers'
 import { useChatsStore } from '../../stores/chatsStore'
@@ -27,22 +29,26 @@ export function useChatHeaderSearch(chat: Chat, onJumpToSeq: (seq: number) => vo
 
   const onPickResult = (seq: number) => { search.reset(); onJumpToSeq(seq) }
 
-  // ── jump-to-date: скрытый нативный date-input, открывается кнопкой-календарём ──
-  const dateInputRef = useRef<HTMLInputElement>(null)
+  // ── jump-to-date: тот же пикер, что открывается кликом по дате в ленте
+  // (tweb showDatePickerPopup); свой нативный <input type=date> был отсебятиной ──
   const openDatePicker = () => {
-    const el = dateInputRef.current
-    if (!el) return
-    const withPicker = el as HTMLInputElement & { showPicker?: () => void }
-    if (withPicker.showPicker) withPicker.showPicker()
-    else el.click()
-  }
-  const onDatePick = (value: string) => {
-    if (!value) return
-    const d = new Date(`${value}T00:00:00`)
-    if (Number.isNaN(d.getTime())) return
-    void search.jumpToDate(Math.floor(d.getTime() / 1000)).then((seq) => {
-      if (seq != null) { search.reset(); onJumpToSeq(seq) }
-    })
+    openPopup((p) =>
+      createElement(DatePickerPopup, {
+        open: p.open,
+        onClose: p.requestClose,
+        onExitComplete: p.onExitComplete,
+        initDate: Date.now(),
+        chatId: numericChatId,
+        onPick: (timestamp: number) => {
+          void search.jumpToDate(timestamp).then((seq) => {
+            if (seq != null) {
+              search.reset()
+              onJumpToSeq(seq)
+            }
+          })
+        },
+      }),
+    )
   }
 
   // ── фильтры поиска (чипы + выпадающие меню) ──
@@ -98,7 +104,7 @@ export function useChatHeaderSearch(chat: Chat, onJumpToSeq: (seq: number) => vo
     onSearchClose: () => search.setOpen(false),
     hasFilter: search.hasFilter,
     filters, setFilters,
-    dateInputRef, openDatePicker, onDatePick,
+    openDatePicker,
     isGroup, meId,
     filterMenu, setFilterMenu, openFilterMenu,
     members, memberPeers,

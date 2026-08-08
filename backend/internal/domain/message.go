@@ -200,3 +200,14 @@ type ReplyPreview struct {
 	// цитаты нет, показывается превью всего сообщения (поле Text).
 	QuoteText string
 }
+
+// CalendarDay — одно медиа-сообщение, представляющее день в пикере даты
+// (tweb messages.getSearchResultsCalendar → миниатюра в ячейке дня).
+// Day — полночь этого дня (UTC), MediaID — что показать в кружке.
+type CalendarDay struct {
+	Day     time.Time
+	MsgID   int64
+	Seq     int64
+	MediaID int64
+	Type    string // photo|video|... — клиенту, чтобы выбрать вид превью
+}

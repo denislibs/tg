@@ -779,6 +779,26 @@ func (r fakeMsgs) SearchMessages(_ context.Context, chatID int64, q string, f Se
 	return hits, count, nil
 }
 
+func (r fakeMsgs) CalendarMonth(_ context.Context, chatID int64, from, to time.Time) ([]domain.CalendarDay, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var out []domain.CalendarDay
+	seen := map[string]bool{}
+	for _, m := range r.s.messages[chatID] {
+		if m.Deleted || m.MediaID == nil || m.CreatedAt.Before(from) || !m.CreatedAt.Before(to) {
+			continue
+		}
+		day := m.CreatedAt.UTC().Truncate(24 * time.Hour)
+		key := day.Format("2006-01-02")
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, domain.CalendarDay{Day: day, MsgID: m.ID, Seq: m.Seq, MediaID: *m.MediaID, Type: m.Type})
+	}
+	return out, nil
+}
+
 func (r fakeMsgs) MessageSeqByDate(_ context.Context, chatID int64, from time.Time) (int64, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()

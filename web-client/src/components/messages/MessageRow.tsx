@@ -28,6 +28,8 @@ export interface FeedFns {
   toggleSelect: (id: number) => void
   openMsgMenu: (e: MouseEvent, m: ConvMsg) => void
   jumpToSeq: (seq?: number) => void
+  /** клик по дате-разделителю — открыть пикер даты на этом дне (мс) */
+  openDatePicker: (dayMs: number) => void
   openLightbox: (mediaId: number, el: HTMLElement) => void
   /** перезвонить по клику на бабл звонка (tweb: клик по messageMediaCall) */
   recall: (video: boolean) => void

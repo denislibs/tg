@@ -892,6 +892,39 @@ func (h *ChatHandler) MessageByDate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"seq": seq})
 }
 
+// Calendar — GET /chats/{chatID}/calendar?month=<unix>: по одному медиа-сообщению
+// на каждый день месяца, которому принадлежит month (пикер даты рисует их
+// миниатюрами в ячейках дней — tweb getSearchResultsCalendar).
+func (h *ChatHandler) Calendar(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := pathInt(w, r, "chatID")
+	if !ok {
+		return
+	}
+	month := time.Unix(queryInt(r, "month", 0), 0).UTC()
+	from := time.Date(month.Year(), month.Month(), 1, 0, 0, 0, 0, time.UTC)
+	to := from.AddDate(0, 1, 0)
+	days, err := h.svc.CalendarMonth(r.Context(), chatID, h.meID(r), from, to)
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusForbidden, "not a member of this chat")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "calendar failed")
+		return
+	}
+	out := make([]map[string]any, 0, len(days))
+	for _, d := range days {
+		out = append(out, map[string]any{
+			"day":      d.Day.Unix(),
+			"msg_id":   d.MsgID,
+			"seq":      d.Seq,
+			"media_id": d.MediaID,
+			"type":     d.Type,
+		})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 // GlobalSearchMessages — GET /search/messages?q=&filter=&offset=&limit=: поиск
 // по сообщениям всех чатов юзера (сайдбар-поиск, tweb SearchTypes).
 func (h *ChatHandler) GlobalSearchMessages(w http.ResponseWriter, r *http.Request) {

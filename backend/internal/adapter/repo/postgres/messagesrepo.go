@@ -221,6 +221,34 @@ func (r *MessagesRepo) MessageSeqByDate(ctx context.Context, chatID int64, from 
 	return seq, err
 }
 
+// CalendarMonth returns one media message per day in [from, to) — the thumbnail
+// shown inside a day cell of the date picker (tweb getSearchResultsCalendar).
+// Latest message of the day wins; days without media are simply absent.
+func (r *MessagesRepo) CalendarMonth(ctx context.Context, chatID int64, from, to time.Time) ([]domain.CalendarDay, error) {
+	q := querier(ctx, r.pool)
+	rows, err := q.Query(ctx,
+		`SELECT DISTINCT ON (date_trunc('day', created_at))
+		        date_trunc('day', created_at) AS day, id, seq, media_id, type
+		 FROM messages
+		 WHERE chat_id=$1 AND deleted_at IS NULL AND media_id IS NOT NULL
+		       AND created_at >= $2 AND created_at < $3
+		 ORDER BY date_trunc('day', created_at), created_at DESC`,
+		chatID, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]domain.CalendarDay, 0, 31)
+	for rows.Next() {
+		var d domain.CalendarDay
+		if err := rows.Scan(&d.Day, &d.MsgID, &d.Seq, &d.MediaID, &d.Type); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
 // GlobalSearchMessages searches messages across every chat the user is a member
 // of (tweb global search: «Сообщения» section + Media/Links/Files/Music/Voice
 // tabs). q matches text or attached file name (case-insensitive substring);

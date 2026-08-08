@@ -64,9 +64,18 @@ function ChatFeed({
   // Flat translucent capsule (tweb .bubble.service .service-msg — только
   // background-color, без backdrop-filter: блюр sticky-элемента пересэмплирует
   // движущийся фон каждый кадр скролла и роняет FPS).
-  const dayPill = (key: string, label: ReactNode) => (
+  // tweb вешает на колонку чата `can-click-date` и по клику на дату-разделитель
+  // открывает пикер (bubbles.ts:3058-3090) — у нас клик прокидывается наверх.
+  const dayPill = (key: string, label: ReactNode, dayMs: number) => (
     <header key={key} className={s.dayPill} style={{ top: `${dateStickyTop}px` }}>
-      <div className={s.pill}>{label}</div>
+      <button
+        type="button"
+        className={s.pill}
+        onClick={isRealChat ? () => feedFns.openDatePicker(dayMs) : undefined}
+        disabled={!isRealChat}
+      >
+        {label}
+      </button>
     </header>
   )
 
@@ -168,8 +177,9 @@ function ChatFeed({
         // Key the section by the DAY bucket, not the first-loaded message — so a
         // loadOlder prepend (which changes which message is first in the window)
         // doesn't change the section key and remount the whole day's bubbles.
-        const dayKey = `day-${startOfDayMs(winMsgs[i].createdAt)}`
-        startSection(dayKey, dayPill(dayKey, dayLabel(winMsgs[i].createdAt, lang)))
+        const dayMs = startOfDayMs(winMsgs[i].createdAt)
+        const dayKey = `day-${dayMs}`
+        startSection(dayKey, dayPill(dayKey, dayLabel(winMsgs[i].createdAt, lang), dayMs))
       }
     }
     // Плашка «Непрочитанные сообщения» перед первым непрочитанным входящим
@@ -184,7 +194,8 @@ function ChatFeed({
     }
     if (m.type === 'date') {
       flushGroup()
-      startSection(k, dayPill(k, m.text))
+      // у служебной дата-записи абсолютное время лежит в createdAt (time — «ЧЧ:ММ»)
+      startSection(k, dayPill(k, m.text, m.createdAt ? startOfDayMs(m.createdAt) : Date.now()))
       return
     }
 
