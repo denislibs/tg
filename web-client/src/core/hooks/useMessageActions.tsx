@@ -14,6 +14,7 @@ import { useEvent } from './useEvent'
 import { useReportStore } from '../../stores/reportStore'
 import { useSearchStore } from '../../stores/searchStore'
 import { useMessagesStore } from '../../stores/messagesStore'
+import { useChatsStore } from '../../stores/chatsStore'
 import { mediaLabel } from '../dialogToChat'
 import { useSettingsStore } from '../../settings'
 import { uiEvents } from './uiEvents'
@@ -381,11 +382,17 @@ export function useMessageActions({
     // откат обратной дельтой. Раньше это делал worker fake-broadcast.
     const action: 'add' | 'remove' = mine ? 'remove' : 'add'
     const store = useMessagesStore.getState()
-    store.applyReactionOptimistic(numericChatId, msgId, emoji, action)
+    // Своя карточка — чтобы чип сразу показал аватар (tweb кладёт свой peer в
+    // recent_reactions мгновенно), а не мигнул числом до серверного эха.
+    const me = useChatsStore.getState().me
+    const meCard = me ? { id: me.id, name: me.displayName, avatarUrl: me.avatarUrl || undefined } : undefined
+    store.applyReactionOptimistic(numericChatId, msgId, emoji, action, meCard)
     const req = mine
       ? managers.messages.unreact(numericChatId, msgId, emoji)
       : managers.messages.react(numericChatId, msgId, emoji)
-    void req.catch(() => store.applyReactionOptimistic(numericChatId, msgId, emoji, action === 'add' ? 'remove' : 'add'))
+    void req.catch(() =>
+      store.applyReactionOptimistic(numericChatId, msgId, emoji, action === 'add' ? 'remove' : 'add', meCard),
+    )
     // В «Избранном» реакция = тег: пусть панель тегов пересчитает список/счётчики
     // (слушатель есть только когда открыт самочат).
     uiEvents.emit('ui:savedTagsChanged', undefined)

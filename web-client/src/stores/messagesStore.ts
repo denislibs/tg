@@ -144,7 +144,14 @@ interface MessagesState {
   applyReaction: (chatId: number, msgId: number, counts: { emoji: string; count: number }[], myEmoji: string | null, myAction: 'add' | 'remove' | null) => void
   /** Оптимистичный клик (дельта до эха, всегда моё действие): count±1 по emoji +
    * mine. Абсолютное эхо сервера следом перезапишет агрегат авторитетно. */
-  applyReactionOptimistic: (chatId: number, msgId: number, emoji: string, action: 'add' | 'remove') => void
+  applyReactionOptimistic: (
+    chatId: number,
+    msgId: number,
+    emoji: string,
+    action: 'add' | 'remove',
+    /** карточка зрителя — чтобы своя реакция сразу показала аватар, а не число */
+    me?: { id: number; name: string; avatarUrl?: string },
+  ) => void
   /** Платная ⭐-реакция: новый агрегат звёзд (total). mine задан только когда это
    * действие самого зрителя (оптимистично / эхо своего апдейта) — иначе не трогаем. */
   applyStarReaction: (chatId: number, msgId: number, total: number, mine?: number) => void
@@ -467,14 +474,14 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         return changed ? msgs : null
       })),
 
-  applyReactionOptimistic: (chatId, msgId, emoji, action) =>
+  applyReactionOptimistic: (chatId, msgId, emoji, action, me) =>
     set((s) =>
       patchChat(s, chatId, (w) => {
         if (!w.msgs.some((m) => m.id === msgId)) return null
         let changed = false
         const msgs = w.msgs.map((m) => {
           if (m.id !== msgId) return m
-          const next = reactionDelta(m.reactions, emoji, action, true)
+          const next = reactionDelta(m.reactions, emoji, action, true, me)
           if (next === null) return m
           changed = true
           return { ...m, reactions: next }

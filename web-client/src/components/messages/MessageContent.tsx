@@ -205,6 +205,11 @@ export default function MessageContent({
   // гео) — tweb `has-floating-time`: реакции уходят НАРУЖУ бабла, в его обёртку
   // (bubbles.ts:9849-9850), а время остаётся пилюлей поверх контента и никуда
   // не переезжает.
+  // Медиа: с подписью ряд живёт в ней (внутри тела сообщения), без подписи бабл
+  // становится has-floating-time и реакции уходят под него.
+  const withMediaReactions = (content: ReactNode) =>
+    m.text ? content : withReactionsOutside(content)
+
   const withReactionsOutside = (content: ReactNode) =>
     showReactions ? (
       <div className={s.emptyMediaCol}>
@@ -253,6 +258,7 @@ export default function MessageContent({
           </div>
         ) : m.type === 'album' && m.albumItems ? (
           // Альбом (медиагруппа): грид из элементов, подпись — под гридом.
+          withMediaReactions(
           <div className={classNames(s.media, s.mediaAlbum)}>
             {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
             <div
@@ -281,8 +287,8 @@ export default function MessageContent({
                 </div>
               ) : null}
             </div>
-            {!m.text && reactionsRow()}
-          </div>
+          </div>,
+          )
         ) : m.type === 'sticker' && m.mediaId != null ? (
           // Стикер (tweb .bubble.is-sticker + wrappers/sticker.ts): без фона
           // бабла и хвостика; бокс аспект-фитится в 200×200 (mediaSizes
@@ -297,6 +303,7 @@ export default function MessageContent({
           // localUrl без mediaId = исходящее фото/видео в процессе аплоада;
           // clientId+mediaName без mediaId = исходящий документ/аудио в процессе
           // аплоада (кольцо прогресса + отмена рисует RealMediaBubble).
+          withMediaReactions(
           <div className={s.media}>
             {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
             <div
@@ -351,8 +358,8 @@ export default function MessageContent({
               ) : null}
               {footer && <div className={s.footerMedia}>{footer}</div>}
             </div>
-            {!m.text && reactionsRow()}
-          </div>
+          </div>,
+          )
         ) : bigEmoji ? (
           withReactionsOutside(
             <BigEmojiBubble m={m} count={bigEmoji} selecting={selecting} time={timeNode('floating', 'default', true)} />,

@@ -1,23 +1,32 @@
-// Стек аватаров реагировавших (tweb _reaction.scss:157-163 / _stackedAvatars.scss).
-// Наложение --margin-right:-.875rem в block-контексте реакции; рамка .125rem
-// цвета подложки чипа (var(--r-bg) задаёт .reactionChip).
+// Стек аватаров реагировавших — порт tweb `_stackedAvatars.scss`.
+// Направление row-reverse: первый в DOM оказывается СПРАВА и лежит поверх
+// остальных, поэтому z-index не нужен.
+//
+// Перекрытие, толщину и цвет рамки задаёт ПОТРЕБИТЕЛЬ через переменные
+// (в чипе реакции — `--margin-right: -.875rem`, `--border-size: .125rem`,
+// `--border-color` = фон чипа либо его chosen-подложка). Дефолты живут не в
+// объявлении переменных, а в fallback'ах var() — иначе локальные значения
+// перебили бы унаследованные от потребителя.
 .stack {
-  display: inline-flex;
-  align-items: center;
-  // компенсируем отрицательный отступ последнего элемента визуально не нужно —
-  // наложение начинается со второго аватара.
+  display: flex;
+  flex-direction: row-reverse;
 }
 
 .item {
-  position: relative;
+  --total-size: calc(var(--avatar-size) + var(--border-size, 1px) * 2);
+  width: var(--total-size);
+  height: var(--total-size);
+  border: var(--border-size, 1px) solid var(--border-color, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 50%;
-  // рамка цвета подложки чипа — «прорезь» между наложенными аватарами (tweb
-  // --border-size:.125rem, --border-color = фон чипа).
-  box-shadow: 0 0 0 0.125rem var(--r-bg, transparent);
+  overflow: hidden;
+  position: relative;
+  margin-inline-end: var(--margin-right, -0.3125rem);
 
-  & + & {
-    // наложение: каждый следующий аватар заезжает на предыдущий (tweb -.875rem
-    // при avatarSize 24 ≈ треть аватара).
-    margin-inline-start: -0.4375rem;
+  // tweb `.is-first` — крайний (визуально правый) без перекрытия
+  &:first-child {
+    margin-inline-end: 0;
   }
 }

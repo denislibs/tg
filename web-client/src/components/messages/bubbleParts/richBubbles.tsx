@@ -142,23 +142,26 @@ export function CallBubble({ m, out, firstInGroup, lastInGroup, time, reactions,
       style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup), cursor: onClick ? 'pointer' : undefined }}
     >
       {lastInGroup && <BubbleTail out={out} color="var(--b-bg)" />}
-      <div className={s.callIcon}>
-        <TgIcon name={call.video ? 'videocamera' : 'phone'} size={24} color="var(--primary-color)" />
-      </div>
-      <div className={s.callBody}>
-        <Text size={15.5} weight={600} color="var(--primary-text-color)">{title}</Text>
-        <div className={s.callSub}>
-          <TgIcon
-            name="arrow_next"
-            size={16}
-            color={call.duration != null ? '#4dcd5e' : '#ff595a'}
-            style={{ transform: call.duration != null ? 'rotate(135deg)' : 'rotate(-45deg)' }}
-          />
-          <Text size={13.5} color="var(--b-secondary)">{sub}</Text>
-          {/* tweb: `subtitle.append(timeSpan)` (bubbles.ts:8693) — распорка едет
-              flex-элементом в конце строки и резервирует место, видимая копия
-              прибивается к нижне-правому углу `.bubble-call` */}
-          {time}
+      {/* tweb кладёт `.bubble-call` внутрь `.message` (bubbles.ts:8701) — отступы
+          и точку отсчёта для времени даёт тело сообщения, а не padding бабла */}
+      <div className={s.msgBody}>
+        <div className={s.call}>
+          {/* tweb `.bubble-call-icon`: просто глиф слева абсолютом, без подложки,
+              цветом текста бабла */}
+          <TgIcon name={call.video ? 'videocamera' : 'phone'} className={s.callIcon} size="1.5rem" />
+          <Text weight={600} size="var(--messages-text-size)">{title}</Text>
+          <div className={s.callSub}>
+            <TgIcon
+              name="arrow_next"
+              className={classNames(s.callArrow, call.duration != null ? s.callArrowGreen : s.callArrowRed)}
+              size="1rem"
+            />
+            {sub}
+            {/* tweb: `subtitle.append(timeSpan)` (bubbles.ts:8693) — распорка едет
+                flex-элементом в конце строки и резервирует место, видимая копия
+                прибивается к нижне-правому углу тела сообщения */}
+            {time}
+          </div>
         </div>
         {reactions}
       </div>

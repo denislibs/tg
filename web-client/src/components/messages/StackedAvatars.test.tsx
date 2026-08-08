@@ -24,11 +24,13 @@ describe('StackedAvatars', () => {
     expect(screen.getAllByTestId('ua')).toHaveLength(3)
   })
 
-  it('z-index убывает слева направо (левый перекрывает)', () => {
+  it('порядок DOM сохраняется — перекрытие даёт row-reverse, а не z-index', () => {
+    // tweb `_stackedAvatars.scss`: flex-direction: row-reverse, поэтому первый
+    // пир оказывается справа и поверх остальных без ручных z-index.
     const { container } = render(<StackedAvatars peers={peers} />)
     const items = container.querySelectorAll<HTMLElement>('[data-testid="stacked-avatars"] > div')
-    const z = Array.from(items).map((el) => Number(el.style.zIndex))
-    expect(z).toEqual([3, 2, 1])
+    expect(Array.from(items).map((el) => el.textContent)).toEqual(['D', 'C', 'B'])
+    expect(Array.from(items).every((el) => !el.style.zIndex)).toBe(true)
   })
 
   it('пустой список → ничего не рендерит', () => {
@@ -36,9 +38,9 @@ describe('StackedAvatars', () => {
     expect(container.querySelector('[data-testid="stacked-avatars"]')).toBeNull()
   })
 
-  it('прокидывает размер в --sa-size', () => {
+  it('прокидывает размер в --avatar-size (tweb)', () => {
     render(<StackedAvatars peers={peers} size={24} />)
     const stack = screen.getByTestId('stacked-avatars')
-    expect(stack.style.getPropertyValue('--sa-size')).toBe('24px')
+    expect(stack.style.getPropertyValue('--avatar-size')).toBe('24px')
   })
 })
