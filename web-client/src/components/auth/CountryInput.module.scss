@@ -1,0 +1,124 @@
+// CountryInput — поле страны с дропдауном (tweb countryInputField + .input-select).
+// Метрики сняты с живого tweb: input 48×?, radius 16, бордер 1px
+// --input-search-border-color; дропдаун .select-wrapper: max-height 376px (23.5rem),
+// radius 16, отступ 8px от поля; строка 48px grid «флаг 58px | имя | код».
+.wrap {
+  position: relative;
+  margin-bottom: 10px;
+}
+
+.field {
+  position: relative;
+  display: flex;
+}
+
+.input {
+  width: 100%;
+  height: 48px;
+  box-sizing: border-box;
+  padding: 0 44px 0 15px; // справа место под стрелку
+  border: 1px solid var(--input-search-border-color);
+  border-radius: 16px;
+  background: transparent;
+  color: var(--primary-text-color);
+  font-size: var(--font-size-16);
+  font-family: inherit;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s;
+
+  &:focus {
+    border-color: var(--primary-color);
+    cursor: text;
+  }
+}
+
+// Плавающий лейбл «Country» (tweb .input-field label): по центру пустого поля,
+// при фокусе/значении всплывает на рамку (transform scale(.75), как в tweb —
+// computed matrix(.75,0,0,.75,-3,-23)) с фоном-нотчем поверхности карточки.
+.label {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 0 4px;
+  color: var(--secondary-text-color);
+  font-size: var(--font-size-16);
+  pointer-events: none;
+  transition: top 0.2s, transform 0.2s, font-size 0.2s, color 0.2s;
+}
+.input:focus ~ .label,
+.input:not(:placeholder-shown) ~ .label {
+  top: 0;
+  transform: translate(-3px, -50%) scale(0.75);
+  background: var(--surface-color);
+}
+.input:focus ~ .label {
+  color: var(--primary-color);
+  font-weight: 500;
+}
+
+// Стрелка-шеврон (tweb .arrow-down: вращается при открытии).
+.arrow {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+.arrowUp {
+  transform: translateY(-50%) rotate(180deg);
+}
+
+// Дропдаун со всеми странами (tweb .select-wrapper: z-depth-3, max-height
+// 23.5rem, скролл).
+.dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: 376px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--surface-color);
+  border-radius: 16px;
+  box-shadow: var(--menu-box-shadow);
+}
+
+// Строка страны (tweb li: grid «флаг 58px | имя | серый код», 48px, 0 16px).
+.item {
+  display: grid;
+  grid-template-columns: 58px 1fr auto;
+  align-items: center;
+  height: 48px;
+  padding: 0 16px;
+  cursor: pointer;
+  font-size: var(--font-size-16);
+  color: var(--primary-text-color);
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--light-secondary-text-color);
+    }
+  }
+}
+.flag {
+  font-size: var(--font-size-16);
+  line-height: 1;
+}
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phoneCode {
+  flex-shrink: 0;
+  color: var(--secondary-text-color);
+}

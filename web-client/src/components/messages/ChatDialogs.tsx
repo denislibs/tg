@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 // Presentational chat dialogs/popups extracted from ConversationView: delete
 // confirm, forward target picker, "seen by" popup, add-member picker, and the
 // discard-voice confirm. Each is dumb — it self-sources i18n + motion constants
@@ -12,6 +12,7 @@ import { EASE } from '../../motion'
 import { useT, useLang } from '../../i18n'
 import Avatar from '../../shared/ui/Avatar'
 import Popup from '../../shared/ui/Popup'
+import ConfirmPopup from '../../shared/ui/ConfirmPopup'
 import { peerColor } from '../peerColor'
 import { useAvatarSrc } from '../useAvatarSrc'
 import { dialogToChat } from '../../core/dialogToChat'
@@ -29,35 +30,51 @@ import s from './ChatDialogs.module.scss'
 
 const EASE_STD = EASE
 
-// Delete confirmation (for me / for everyone).
-export function DeleteMessageDialog({ canRevoke, onDeleteForEveryone, onDeleteForMe, onClose }: {
+// Delete confirmation — порт tweb PopupDeleteMessages (popups/deleteMessages.ts:84-160):
+// заголовок «Delete message»/«Delete N messages», описание, в личке — чекбокс
+// «Also delete for <имя>», в группе с revoke — «Delete for all members»; в канале
+// чекбокса НЕТ — удаление всегда для всех (tweb overrideRevoke=true). ОДНА
+// danger-кнопка DELETE (+ авто-Cancel). Выбор чекбокса решает revoke —
+// колбэки onDeleteForEveryone/onDeleteForMe сохранены для внешних потребителей.
+export function DeleteMessageDialog({ canRevoke, count = 1, chatType, peerFirstName, avatar, onDeleteForEveryone, onDeleteForMe, onClose }: {
   canRevoke: boolean
+  /** число удаляемых сообщений (bulk-выбор) */
+  count?: number
+  /** тип чата — в личке чекбокс подписывается именем собеседника */
+  chatType?: Dialog['type']
+  /** first name собеседника личного чата (tweb wrapPeerTitle onlyFirstName) */
+  peerFirstName?: string
+  /** аватар 32px слева от заголовка (tweb PopupPeer peerId → avatarNew 32) */
+  avatar?: ReactNode
   onDeleteForEveryone: () => void
   onDeleteForMe: () => void
   onClose: () => void
 }) {
   const t = useT()
-  return createPortal(
-    <div className={s.overlay} onClick={onClose}>
-      <motion.div
-        className={classNames(s.card, s.confirm)}
-        onClick={(e) => e.stopPropagation()}
-        initial={{ opacity: 0, scale: 0.92 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.2, ease: EASE_STD }}
-      >
-        <Text size={17} weight={600} color="var(--primary-text-color)" style={{ marginBottom: '8px' }}>{t('Delete message')}</Text>
-        <Text size={14.5} color="var(--secondary-text-color)" style={{ marginBottom: '16px' }}>{t('Are you sure you want to delete this message?')}</Text>
-        <div className={s.confirmActions}>
-          {canRevoke && (
-            <div className={classNames(s.action, s.danger)} onClick={onDeleteForEveryone}>{t('Delete for everyone')}</div>
-          )}
-          <div className={classNames(s.action, s.danger)} onClick={onDeleteForMe}>{t('Delete for me')}</div>
-          <div className={s.action} onClick={onClose}>{t('Cancel')}</div>
-        </div>
-      </motion.div>
-    </div>,
-    document.body,
+  const single = count <= 1
+  // Канал: revoke всегда, без чекбокса (tweb: buttons[0].callback = callback(..., true))
+  const isChannel = chatType === 'channel'
+  const withCheckbox = canRevoke && !isChannel
+  return (
+    <ConfirmPopup
+      avatar={avatar}
+      title={single ? t('Delete message') : t('Delete %d messages').replace('%d', String(count))}
+      description={single ? t('Are you sure you want to delete this message?') : t('Are you sure you want to delete these messages?')}
+      checkboxes={withCheckbox ? [{
+        text: chatType === 'private' && peerFirstName
+          ? `${t('Also delete for')} ${peerFirstName}`
+          : t('Delete for all members'),
+      }] : undefined}
+      buttons={[{
+        text: t('Delete'),
+        danger: true,
+        onClick: (checked) => {
+          if ((isChannel && canRevoke) || (withCheckbox && checked[0])) onDeleteForEveryone()
+          else onDeleteForMe()
+        },
+      }]}
+      onClose={onClose}
+    />
   )
 }
 
@@ -376,36 +393,15 @@ export function ReactedUsersPopup({ x, y, rows, onClose }: {
     document.body,
   )
 }
+// Конфирм сброса записи голосового — tweb-конфирм (PopupPeer): DISCARD danger + CANCEL.
 export function DiscardVoiceDialog({ onCancel, onDiscard }: { onCancel: () => void; onDiscard: () => void }) {
   const t = useT()
   return (
-    <motion.div
-      className={classNames(s.overlay, s.overlayTop)}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.15 }}
-      onClick={onCancel}
-    >
-      <motion.div
-        className={s.discardCard}
-        initial={{ scale: 0.92, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.92, opacity: 0 }}
-        transition={{ duration: 0.18 }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <Text size={17} weight={600} color="var(--primary-text-color)" style={{ marginBottom: '8px' }}>
-          {t('Discard voice message?')}
-        </Text>
-        <Text size={14.5} color="var(--secondary-text-color)" style={{ marginBottom: '16px' }}>
-          {t('Are you sure you want to discard this voice message?')}
-        </Text>
-        <div className={s.discardActions}>
-          <div className={classNames(s.btnText, s.accent)} onClick={onCancel}>{t('Cancel')}</div>
-          <div className={classNames(s.btnText, s.danger)} onClick={onDiscard}>{t('Discard')}</div>
-        </div>
-      </motion.div>
-    </motion.div>
+    <ConfirmPopup
+      title={t('Discard voice message?')}
+      description={t('Are you sure you want to discard this voice message?')}
+      buttons={[{ text: t('Discard'), danger: true, onClick: onDiscard }]}
+      onClose={onCancel}
+    />
   )
 }

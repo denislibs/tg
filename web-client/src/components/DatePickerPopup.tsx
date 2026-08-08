@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Popup from '../shared/ui/Popup'
 import IconButton from '../shared/ui/IconButton'
+import Input from '../shared/ui/Input'
 import TgIcon from './TgIcon'
 import classNames from '../shared/lib/classNames'
 import { mediaContentUrl, mediaThumbUrl, hasMediaToken, useMediaTokenVersion } from '../core/mediaUrl'
@@ -110,22 +111,35 @@ function buildMonthCells(month: Date, minDate: Date, maxDate: Date): Cell[] {
   return cells
 }
 
+// tweb datePicker.tsx getMaxScheduleDate: планировать можно на год вперёд (−1 день).
+export const getMaxScheduleDate = () => {
+  const date = new Date()
+  date.setFullYear(date.getFullYear() + 1)
+  date.setDate(date.getDate() - 1)
+  return date
+}
+
 export interface DatePickerPopupProps {
   open: boolean
   onClose: () => void
   onExitComplete?: () => void
-  /** дата, на которой пикер открывается (мс) */
+  /** дата, на которой пикер открывается (мс); при withTime несёт и начальное время */
   initDate: number
   /** самая ранняя доступная дата (мс) — обычно дата первого сообщения чата */
   minDate?: number
   /** чат, из которого тянуть медиа-превью по дням; без него превью не грузятся */
   chatId?: number
-  /** выбранный день (unix-секунды полуночи) */
+  /** режим планирования (tweb withTime): под календарём поля часов/минут, живой
+   * лейбл «Send Today at HH:MM», минимум — текущая минута, максимум — год вперёд */
+  withTime?: boolean
+  /** вторичная кнопка под confirm (tweb footerAfter — «Send when online») */
+  secondaryAction?: { label: string; onClick: () => void }
+  /** выбранный день (unix-секунды полуночи); при withTime — полные дата+время */
   onPick: (timestamp: number) => void
 }
 
 export default function DatePickerPopup({
-  open, onClose, onExitComplete, initDate, minDate, chatId, onPick,
+  open, onClose, onExitComplete, initDate, minDate, chatId, withTime, secondaryAction, onPick,
 }: DatePickerPopupProps) {
   const t = useT()
   const managers = useManagers()
@@ -137,18 +151,21 @@ export default function DatePickerPopup({
   // tweb datePicker.tsx:141 — дефолтная нижняя граница «01.08.2013» (запуск
   // Telegram): выбирать можно любой день истории, а не только день клика.
   const min = useMemo(() => startOfDay(new Date(minDate ?? Date.parse('2013-08-01T00:00:00'))), [minDate])
+  // Верхняя граница: сегодня (jump-to-date) либо год вперёд (планирование) —
+  // tweb `maxDate = opts.withTime ? getMaxScheduleDate() : new Date()`.
+  const max = useMemo(() => (withTime ? startOfDay(getMaxScheduleDate()) : today), [withTime, today])
   const init = useMemo(() => startOfDay(new Date(initDate)), [initDate])
   const [selected, setSelected] = useState(() => startOfDay(new Date(initDate)))
 
-  // Все месяцы от минимального до текущего; высоты известны заранее, поэтому
+  // Все месяцы от минимального до максимального; высоты известны заранее, поэтому
   // виртуализация обходится без замеров (tweb monthSections).
   const sections = useMemo<MonthSection[]>(() => {
     const list: MonthSection[] = []
     const cursor = new Date(min.getFullYear(), min.getMonth(), 1)
-    const last = new Date(today.getFullYear(), today.getMonth(), 1)
+    const last = new Date(max.getFullYear(), max.getMonth(), 1)
     let offset = 0
     while (cursor <= last) {
-      const cells = buildMonthCells(cursor, min, today)
+      const cells = buildMonthCells(cursor, min, max)
       const rows = Math.ceil(cells.length / 7)
       // row-gap стоит только МЕЖДУ строками, поэтому для rows строк — rows-1 зазоров
       const height = MONTH_LABEL_HEIGHT + WEEKDAY_HEIGHT + rows * CELL_HEIGHT + Math.max(0, rows - 1) * ROW_GAP
@@ -157,7 +174,7 @@ export default function DatePickerPopup({
       cursor.setMonth(cursor.getMonth() + 1)
     }
     return list
-  }, [min, today])
+  }, [min, max])
 
   const totalHeight = sections.length ? sections[sections.length - 1].offset + sections[sections.length - 1].height : 0
 
@@ -242,6 +259,75 @@ export default function DatePickerPopup({
     [current, lang],
   )
 
+  // ── withTime: поля часов/минут + живой confirm (tweb datePicker.tsx:214-256, 518-600) ──
+  const initTime = useMemo(() => new Date(initDate), [initDate])
+  const [hours, setHours] = useState(() => String(initTime.getHours()).padStart(2, '0'))
+  const [minutes, setMinutes] = useState(() => String(initTime.getMinutes()).padStart(2, '0'))
+  const hoursRef = useRef<HTMLInputElement>(null)
+  const minutesRef = useRef<HTMLInputElement>(null)
+
+  // Живая минута: нижняя граница «сейчас» не замерзает на моменте открытия
+  // (tweb nowMinute-сигнал) — дизейбл кнопки пересчитывается раз в минуту.
+  const [nowMinute, setNowMinute] = useState(() => Math.floor(Date.now() / 60_000))
+  useEffect(() => {
+    if (!withTime) return
+    const id = setInterval(() => {
+      const m = Math.floor(Date.now() / 60_000)
+      setNowMinute((prev) => (prev === m ? prev : m))
+    }, 1000)
+    return () => clearInterval(id)
+  }, [withTime])
+
+  // Порт tweb handleTimeInput: только цифры, максимум 2; «9» при max 23 → «09»;
+  // переполнение часов перетекает второй цифрой в минуты; 2 цифры часов —
+  // фокус в минуты, пустые минуты по Backspace — фокус назад в часы.
+  const handleTimeInput = (
+    raw: string,
+    maxVal: number,
+    setValue: (v: string) => void,
+    onInput: (length: number) => void,
+    onOverflow?: (digit: number) => void,
+  ) => {
+    const maxString = String(maxVal)
+    let value = raw.replace(/\D/g, '')
+    if (value.length > 2) {
+      value = value.slice(0, 2)
+    } else if ((value.length === 1 && +value[0] > +maxString[0]) || (value.length === 2 && +value > maxVal)) {
+      if (value.length === 2 && onOverflow) onOverflow(+value[1])
+      value = '0' + value[0]
+    }
+    setValue(value)
+    onInput(value.length)
+  }
+  const onHoursChange = (v: string) => handleTimeInput(v, 23, setHours, (length) => {
+    if (length === 2) minutesRef.current?.focus()
+  }, (digit) => {
+    setMinutes((prev) => (String(digit) + prev).slice(0, 2))
+  })
+  const onMinutesChange = (v: string) => handleTimeInput(v, 59, setMinutes, (length) => {
+    if (!length) hoursRef.current?.focus()
+  })
+
+  // Итоговые дата+время; прошлое (поминутно) дизейблит confirm (tweb isConfirmDisabled).
+  const sendDate = useMemo(() => {
+    const d = new Date(selected)
+    d.setHours(+hours || 0, +minutes || 0, 0, 0)
+    return d
+  }, [selected, hours, minutes])
+  const isPast = withTime ? Math.floor(sendDate.getTime() / 60_000) < nowMinute : false
+
+  // Живой лейбл «Send Today at HH:MM» / «Send on <date> at HH:MM» (tweb confirmLabel).
+  const confirmLabel = useMemo(() => {
+    if (!withTime) return ''
+    const hm = `${hours.padStart(2, '0')}:${minutes.padStart(2, '0')}`
+    const now = new Date()
+    if (selected.getTime() === startOfDay(now).getTime()) return `${t('Send today at')} ${hm}`
+    const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' }
+    if (sendDate.getFullYear() !== now.getFullYear()) opts.year = 'numeric'
+    const dateLabel = new Intl.DateTimeFormat(lang, opts).format(sendDate)
+    return `${t('Send on')} ${dateLabel} ${t('at')} ${hm}`
+  }, [withTime, hours, minutes, selected, sendDate, lang, t])
+
   return (
     <Popup
       open={open}
@@ -258,13 +344,52 @@ export default function DatePickerPopup({
           </IconButton>
         </div>
       }
-      action={{
+      action={withTime ? undefined : {
         label: t('Jump to Date'),
         onClick: () => {
           onPick(Math.floor(startOfDay(selected).getTime() / 1000))
           onClose()
         },
       }}
+      footer={withTime ? (
+        <div>
+          {/* tweb .date-picker-time: два поля 80px с разделителем «:» */}
+          <div className={s.time}>
+            <Input
+              ref={hoursRef}
+              wrapClassName={s.timeField}
+              value={hours}
+              onChange={onHoursChange}
+              inputMode="numeric"
+              maxLength={2}
+            />
+            <div className={s.timeDelimiter}>:</div>
+            <Input
+              ref={minutesRef}
+              wrapClassName={s.timeField}
+              value={minutes}
+              onChange={onMinutesChange}
+              inputMode="numeric"
+              maxLength={2}
+            />
+          </div>
+          {/* confirm с живым лейблом; прошлое время — disabled (владелец закрывает попап сам) */}
+          <button
+            type="button"
+            className={s.confirmBtn}
+            disabled={isPast}
+            onClick={() => onPick(Math.floor(sendDate.getTime() / 1000))}
+          >
+            {confirmLabel}
+          </button>
+          {/* вторичная кнопка (tweb footerAfter — «Send when online») */}
+          {secondaryAction && (
+            <button type="button" className={s.secondaryBtn} onClick={secondaryAction.onClick}>
+              {secondaryAction.label}
+            </button>
+          )}
+        </div>
+      ) : undefined}
     >
       {/* tweb `withBorders="both"` (_scrollable.scss:128-143): линии сверху/снизу
           показываются, только когда прокрутка не упёрта в соответствующий край */}

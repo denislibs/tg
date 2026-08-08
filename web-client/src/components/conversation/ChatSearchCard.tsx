@@ -3,7 +3,7 @@
 // меню, и растущий список результатов. Презентационно: вся логика — в
 // useChatHeaderSearch, сюда приходит одним объектом `search`. Motion-обёртка и
 // ключи AnimatePresence остаются в ChatHeader (чтобы exit-анимация не сломалась).
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import Text from '../../shared/ui/Text'
 import IconButton from '../../shared/ui/IconButton'
@@ -130,8 +130,18 @@ export default function ChatSearchCard({ chat, avatarSrc, search }: {
     isGroup, filters, setFilters, meId,
     filterMenu, setFilterMenu, openFilterMenu,
     members, memberPeers, senderName, typeLabel,
-    hasFilter, searchResults, activeIdx, setActiveIdx, onPickResult,
+    hasFilter, searchResults, activeIdx, setActiveIdx, onPickResult, navigateResult,
   } = search
+
+  // Навигация стрелками — активная строка держится в центре списка
+  // (tweb topbarSearch onArrowButtonClick: scrollTop к центру MAX_HEIGHT 271).
+  const scrollRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const scroller = scrollRef.current
+    const row = scroller?.querySelector<HTMLElement>('[data-active]')
+    if (!scroller || !row) return
+    scroller.scrollTop = row.offsetTop - scroller.clientHeight / 2 + row.clientHeight / 2
+  }, [activeIdx])
 
   return (
     <>
@@ -146,9 +156,27 @@ export default function ChatSearchCard({ chat, avatarSrc, search }: {
             autoFocus
             value={query}
             onChange={(e) => onSearchChange(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); onSearchClose() } }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') { e.preventDefault(); onSearchClose() }
+              if (e.key === 'Enter') { e.preventDefault(); navigateResult('down') }
+            }}
             placeholder={t('Search')}
           />
+          {/* tools поля (tweb .topbar-search-input-tools): счётчик + стрелки
+              prev/next (скрыты при 0 результатов) + очистка */}
+          {searchResults.length > 0 && (
+            <>
+              <span className={s.searchCounter}>
+                {activeIdx + 1} {t('of')} {searchResults.length}
+              </span>
+              <IconButton size="small" onClick={() => navigateResult('up')} color="var(--secondary-text-color)" aria-label={t('Previous')}>
+                <TgIcon name="up" size={20} />
+              </IconButton>
+              <IconButton size="small" onClick={() => navigateResult('down')} color="var(--secondary-text-color)" aria-label={t('Next')}>
+                <TgIcon name="down" size={20} />
+              </IconButton>
+            </>
+          )}
           <IconButton size="small" onClick={() => { if (query) onSearchClear(); else onSearchClose() }} color="var(--secondary-text-color)">
             <TgIcon name="close" size={20} />
           </IconButton>
@@ -197,7 +225,7 @@ export default function ChatSearchCard({ chat, avatarSrc, search }: {
             transition={{ duration: DUR.in, ease: EASE }}
           >
             <div className={s.divider} />
-            <div className={s.resultsScroll}>
+            <div ref={scrollRef} className={s.resultsScroll}>
               {searchResults.length === 0 ? (
                 <Text size={15} color="var(--secondary-text-color)" className={s.noResults}>
                   {query.trim() ? (

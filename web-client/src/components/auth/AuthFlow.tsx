@@ -9,6 +9,10 @@ import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import QrCode from './QrCode'
 import PasswordMonkey from '../PasswordMonkey'
+import TrackingMonkey from '../TrackingMonkey'
+import CountryInput from './CountryInput'
+import CodeInput from './CodeInput'
+import { COUNTRIES, countryByPhone, type Country } from './countries'
 import { isWebAuthnSupported, getPasskeyAssertion } from '../../core/webauthnBrowser'
 import { ANIMATE_AUTH_KEY, ANIMATE_MAIN_KEY, PREV_ACCOUNT_KEY, playAuthHostEnter, playAuthHostExit } from '../../core/accountTransition'
 import ChatBackground from '../ChatBackgroundLazy'
@@ -19,29 +23,12 @@ const MotionIconButton = motion.create(IconButton)
 
 type Step = 'phone' | 'qr' | 'code' | 'password'
 
-interface Country {
-  name: string
-  code: string
-  flag: string
-  // National-number digit grouping (mask). Sum of the groups is the max length.
-  pattern: number[]
-}
-
-const COUNTRIES: Country[] = [
-  { name: 'Russia', code: '+7', flag: '🇷🇺', pattern: [3, 3, 2, 2] },
-  { name: 'Kazakhstan', code: '+7', flag: '🇰🇿', pattern: [3, 3, 2, 2] },
-  { name: 'Ukraine', code: '+380', flag: '🇺🇦', pattern: [2, 3, 2, 2] },
-  { name: 'United States', code: '+1', flag: '🇺🇸', pattern: [3, 3, 4] },
-  { name: 'United Kingdom', code: '+44', flag: '🇬🇧', pattern: [4, 6] },
-  { name: 'Germany', code: '+49', flag: '🇩🇪', pattern: [3, 4, 4] },
-  { name: 'France', code: '+33', flag: '🇫🇷', pattern: [1, 2, 2, 2, 2] },
-  { name: 'Spain', code: '+34', flag: '🇪🇸', pattern: [3, 3, 3] },
-]
-
 // Group raw digits per the country mask (e.g. RU 9990000001 → "999 000 00 01"),
-// truncating anything past the mask's total length.
+// truncating anything past the mask's total length. Без маски (у страны нет
+// pattern в tweb-данных) цифры остаются как есть.
 const maxDigits = (p: number[]) => p.reduce((a, b) => a + b, 0)
-function formatPhone(digits: string, pattern: number[]): string {
+function formatPhone(digits: string, pattern?: number[]): string {
+  if (!pattern) return digits
   const d = digits.slice(0, maxDigits(pattern))
   const groups: string[] = []
   let i = 0
@@ -109,17 +96,34 @@ export default function AuthFlow({ onComplete, onToggleMode }: { onComplete: () 
   }
 
   // phone step
-  const [country, setCountry] = useState<Country>(COUNTRIES[0])
-  const [countryOpen, setCountryOpen] = useState(false)
+  const [country, setCountry] = useState<Country>(() => COUNTRIES.find((c) => c.iso2 === 'RU')!)
   const [phone, setPhone] = useState('')
   const [keep, setKeep] = useState(true)
   const phoneDigits = phone.replace(/\D/g, '')
   const fullPhone = `${country.code}${phoneDigits}`
 
-  // code step
-  const [code, setCode] = useState<string[]>(Array(CODE_LEN).fill(''))
-  const codeRefs = useRef<(HTMLInputElement | null)[]>([])
-  const codeStr = code.join('')
+  // Ввод в поле телефона. Если начали с «+» — набирается международный код:
+  // автоопределяем страну по самому длинному совпадению (tweb telInputField /
+  // formatPhoneNumber), после чего в поле остаётся национальная часть.
+  const onPhoneInput = (raw: string) => {
+    if (raw.trimStart().startsWith('+')) {
+      const digits = raw.replace(/\D/g, '')
+      const detected = countryByPhone(digits)
+      if (detected) {
+        setCountry(detected)
+        setPhone(formatPhone(digits.slice(detected.code.length - 1), detected.pattern))
+      } else {
+        setPhone(raw) // код ещё не набран целиком
+      }
+      return
+    }
+    setPhone(formatPhone(raw.replace(/\D/g, ''), country.pattern))
+  }
+
+  // code step — единое значение CodeInput (tweb codeInputField)
+  const [codeValue, setCodeValue] = useState('')
+  // фокус поля кода — для обезьянки (tweb monkeys/tracking: focus/blur input)
+  const [codeFocused, setCodeFocused] = useState(false)
 
   // password step (облачный пароль, 2FA): одноразовый токен из sign_in
   const [pwToken, setPwToken] = useState('')
@@ -220,28 +224,8 @@ export default function AuthFlow({ onComplete, onToggleMode }: { onComplete: () 
       onComplete()
     } catch {
       setError(t('Invalid code'))
-      setCode(Array(CODE_LEN).fill(''))
-      codeRefs.current[0]?.focus()
+      setCodeValue('')
     } finally { setBusy(false) }
-  }
-
-  const setDigit = (i: number, v: string) => {
-    const d = v.replace(/\D/g, '').slice(-1)
-    let assembled = ''
-    setCode((prev) => {
-      const next = [...prev]
-      next[i] = d
-      assembled = next.join('') // capture the complete code synchronously
-      return next
-    })
-    if (d && i < CODE_LEN - 1) codeRefs.current[i + 1]?.focus()
-    if (d && i === CODE_LEN - 1) {
-      // all entered → sign in (no 2FA on the backend)
-      setTimeout(() => submitCode(assembled), 120)
-    }
-  }
-  const onCodeKey = (i: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace' && !code[i] && i > 0) codeRefs.current[i - 1]?.focus()
   }
 
   const Logo = (
@@ -254,8 +238,9 @@ export default function AuthFlow({ onComplete, onToggleMode }: { onComplete: () 
   const phoneStep = (
     <>
       {Logo}
+      {/* tweb SignInCard: заголовок «Sign in to Telegram» */}
       <Text size={26} weight={600} color="var(--primary-text-color)" style={{ textAlign: 'center' }}>
-        Telegram
+        {t('Sign in to Telegram')}
       </Text>
       <Text
         size={15} color="var(--secondary-text-color)"
@@ -264,56 +249,25 @@ export default function AuthFlow({ onComplete, onToggleMode }: { onComplete: () 
         {t('Please confirm your country code and enter your phone number.')}
       </Text>
 
-      {/* country selector */}
-      <div className={s.countryWrap}>
-        <div
-          onClick={() => setCountryOpen((o) => !o)}
-          className={classNames(s.fieldWrap, s.countrySelect)}
-        >
-          <div className={s.countryLabel}>
-            <span className={s.flag}>{country.flag}</span>
-            <Text size={16} color="var(--primary-text-color)">{country.name}</Text>
-          </div>
-          <TgIcon name="down" color="var(--secondary-text-color)" />
-        </div>
-        <AnimatePresence>
-          {countryOpen && (
-            <motion.div
-              initial={{ opacity: 0, y: -6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.16, ease: EASE }}
-              className={s.dropdown}
-            >
-              {COUNTRIES.map((c) => (
-                <div
-                  key={c.name}
-                  onClick={() => {
-                    setCountry(c)
-                    setPhone((prev) => formatPhone(prev.replace(/\D/g, ''), c.pattern))
-                    setCountryOpen(false)
-                  }}
-                  className={s.dropdownItem}
-                >
-                  <span className={s.flagSmall}>{c.flag}</span>
-                  <Text size={15} color="var(--primary-text-color)" style={{ flex: 1 }}>{c.name}</Text>
-                  <Text size={15} color="var(--secondary-text-color)">{c.code}</Text>
-                </div>
-              ))}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+      {/* country selector — полный список tweb countryInputField */}
+      <CountryInput
+        value={country}
+        onChange={(c) => {
+          setCountry(c)
+          setPhone((prev) => formatPhone(prev.replace(/\D/g, ''), c.pattern))
+        }}
+      />
 
-      {/* phone field */}
+      {/* phone field: лейбл всегда на рамке — в поле всегда есть код страны
+          (tweb .input-field-phone + плавающий label «Phone Number») */}
       <div className={s.fieldWrap}>
+        <label className={s.fieldLabel}>{t('Phone Number')}</label>
         <Text size={16} color="var(--primary-text-color)" style={{ marginRight: '8px' }}>{country.code}</Text>
         <input
           autoFocus
           className={s.phoneInput}
           value={phone}
-          onChange={(e) => setPhone(formatPhone(e.target.value.replace(/\D/g, ''), country.pattern))}
-          placeholder={t('Phone number')}
+          onChange={(e) => onPhoneInput(e.target.value)}
           inputMode="tel"
         />
       </div>
@@ -333,7 +287,7 @@ export default function AuthFlow({ onComplete, onToggleMode }: { onComplete: () 
           setError(''); setBusy(true)
           try {
             await managers.auth.requestCode(fullPhone)
-            setCode(Array(CODE_LEN).fill(''))
+            setCodeValue('')
             go('code', 1)
           } catch {
             setError(t('Could not send the code. Try again.'))
@@ -402,7 +356,8 @@ export default function AuthFlow({ onComplete, onToggleMode }: { onComplete: () 
 
   const codeStep = (
     <>
-      {Logo}
+      {/* обезьянка следит за вводом кода (tweb monkeys/tracking) */}
+      <TrackingMonkey typed={codeValue.length} length={CODE_LEN} focused={codeFocused} size={130} />
       <Text size={22} weight={600} color="var(--primary-text-color)" style={{ textAlign: 'center' }}>
         {country.code} {phone}
       </Text>
@@ -413,27 +368,21 @@ export default function AuthFlow({ onComplete, onToggleMode }: { onComplete: () 
         {t('We have sent you a message with the code.')}
       </Text>
 
-      <div className={s.codeRow}>
-        {code.map((d, i) => (
-          <input
-            key={i}
-            ref={(el) => { codeRefs.current[i] = el }}
-            className={classNames(s.codeCell, d ? s.codeCellFilled : '')}
-            value={d}
-            autoFocus={i === 0}
-            onChange={(e) => setDigit(i, e.target.value)}
-            onKeyDown={(e) => onCodeKey(i, e)}
-            inputMode="numeric"
-            maxLength={1}
-          />
-        ))}
-      </div>
+      <CodeInput
+        length={CODE_LEN}
+        value={codeValue}
+        onChange={(v) => { setError(''); setCodeValue(v) }}
+        onComplete={(v) => void submitCode(v)}
+        error={!!error}
+        onFocusChange={setCodeFocused}
+      />
 
-      {error && <Text size={13} color="#e53935" style={{ textAlign: 'center', marginTop: '12px' }}>{error}</Text>}
+      {/* резерв высоты под ошибку — layout не прыгает (tweb errorLabel 1lh) */}
+      <div className={s.codeError}>{error}</div>
 
       <div
-        className={classNames(s.accentBtn, codeStr.length === CODE_LEN ? '' : s.accentBtnDisabled)}
-        onClick={() => submitCode(codeStr)}
+        className={classNames(s.accentBtn, codeValue.length === CODE_LEN ? '' : s.accentBtnDisabled)}
+        onClick={() => submitCode(codeValue)}
       >
         {t('Next')}
       </div>

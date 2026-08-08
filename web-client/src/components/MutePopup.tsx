@@ -1,10 +1,13 @@
-// Попап выбора длительности mute — порт tweb PopupMute (src/components/popups/mute.ts):
-// заголовок «Notifications», радио «For 1 Hour … Forever» (по умолчанию Forever),
-// кнопка подтверждения «Mute».
-import { useState } from 'react'
-import Popup from '../shared/ui/Popup'
+// Попап выбора длительности mute — порт tweb PopupMute (src/components/popups/mute.ts:29-52):
+// компактный tweb-конфирм (PopupPeer): аватар чата (32) + заголовок «Notifications»,
+// радио-строки «For 1 Hour … Forever» (Forever отмечен по умолчанию, с ripple —
+// tweb RadioFormFromValues(..., true)), кнопки MUTE / CANCEL row-reverse.
+// Радио — наша реализация (TgIcon radioon/radiooff), строки 48px.
+import { useState, type ReactNode } from 'react'
+import ConfirmPopup from '../shared/ui/ConfirmPopup'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
+import { useRipple } from '../shared/ui/Ripple/useRipple'
 import { useT } from '../i18n'
 import s from './MutePopup.module.scss'
 
@@ -18,46 +21,62 @@ const TIMES: { value: number; label: string }[] = [
   { value: -1, label: 'Forever' },
 ]
 
+// Радио-строка с ripple (tweb RadioFormFromValues(..., ripple=true)).
+function RadioRow({ label, checked, onSelect }: { label: string; checked: boolean; onSelect: () => void }) {
+  const { onPointerDown, ripple } = useRipple()
+  return (
+    <div
+      className={s.row}
+      role="radio"
+      aria-checked={checked}
+      onPointerDown={onPointerDown}
+      onClick={onSelect}
+    >
+      {ripple}
+      <TgIcon
+        name={checked ? 'radioon' : 'radiooff'}
+        color={checked ? 'var(--primary-color)' : 'var(--secondary-text-color)'}
+      />
+      <Text size={16} color="var(--primary-text-color)">{label}</Text>
+    </div>
+  )
+}
+
 export default function MutePopup({
   open,
   onClose,
   onExitComplete,
   onMute,
+  avatar,
 }: {
   open: boolean
   onClose: () => void
   onExitComplete?: () => void
   /** seconds — длительность mute; null — навсегда */
   onMute: (seconds: number | null) => void
+  /** аватар чата 32px слева от заголовка (tweb PopupMute → PopupPeer peerId) */
+  avatar?: ReactNode
 }) {
   const t = useT()
   const [value, setValue] = useState(-1) // tweb: Forever отмечен по умолчанию
   return (
-    <Popup
+    <ConfirmPopup
       open={open}
-      title={t('Notifications')}
       onClose={onClose}
       onExitComplete={onExitComplete}
-      width={360}
-      action={{
-        label: t('Mute'),
-        onClick: () => {
-          onMute(value === -1 ? null : value)
-          onClose()
-        },
-      }}
+      avatar={avatar}
+      title={t('Notifications')}
+      buttons={[{
+        text: t('Mute'),
+        primary: true,
+        onClick: () => onMute(value === -1 ? null : value),
+      }]}
     >
-      <div className={s.list}>
+      <div className={s.list} role="radiogroup">
         {TIMES.map((tm) => (
-          <div key={tm.value} className={s.row} onClick={() => setValue(tm.value)}>
-            <TgIcon
-              name={value === tm.value ? 'radioon' : 'radiooff'}
-              color={value === tm.value ? 'var(--primary-color)' : 'var(--secondary-text-color)'}
-            />
-            <Text size={16} color="var(--primary-text-color)">{t(tm.label)}</Text>
-          </div>
+          <RadioRow key={tm.value} label={t(tm.label)} checked={value === tm.value} onSelect={() => setValue(tm.value)} />
         ))}
       </div>
-    </Popup>
+    </ConfirmPopup>
   )
 }

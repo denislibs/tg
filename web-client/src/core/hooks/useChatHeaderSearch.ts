@@ -1,7 +1,7 @@
 // Логика поиска в чате для шапки: открытие/запрос (single-sourced в searchStore),
 // дебаунс-фетч, фильтры (от кого / тип / реакция), участники группы и результаты
 // (имя отправителя + время резолвятся здесь из peers/me/lang). UI — в ChatSearchCard.
-import { createElement, useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { createElement, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useManagers } from './useManagers'
 import { openPopup } from '../../stores/popupStore'
 import DatePickerPopup, { DATE_PICKER_POPUP_KIND } from '../../components/DatePickerPopup'
@@ -94,7 +94,26 @@ export function useChatHeaderSearch(chat: Chat, onJumpToSeq: (seq: number) => vo
 
   // Активный (последний открытый) результат — подсветка строки в списке.
   const [activeIdx, setActiveIdx] = useState(0)
-  useEffect(() => { setActiveIdx(0) }, [search.query])
+  // Была ли уже навигация стрелками: первый up/down прыгает к текущему
+  // (свежайшему) результату, дальше — листает (tweb topbarSearch: первый клик
+  // по стрелке выбирает первую строку списка).
+  const navigatedRef = useRef(false)
+  useEffect(() => { setActiveIdx(0); navigatedRef.current = false }, [search.query])
+
+  // Стрелки prev/next (tweb topbarSearch ArrowButton): список идёт от новых к
+  // старым, «вверх» = к более старому сообщению (idx+1), «вниз» = к более
+  // новому (idx-1). Прыжок к сообщению — без сброса поиска (панель остаётся).
+  const navigateResult = (dir: 'up' | 'down') => {
+    if (!searchResults.length) return
+    let next = activeIdx
+    if (navigatedRef.current) {
+      next = dir === 'up' ? activeIdx + 1 : activeIdx - 1
+      if (next < 0 || next >= searchResults.length) return
+    }
+    navigatedRef.current = true
+    setActiveIdx(next)
+    onJumpToSeq(searchResults[next].seq)
+  }
 
   return {
     open: search.open,
@@ -110,7 +129,7 @@ export function useChatHeaderSearch(chat: Chat, onJumpToSeq: (seq: number) => vo
     filterMenu, setFilterMenu, openFilterMenu,
     members, memberPeers,
     senderName, typeLabel,
-    searchResults, activeIdx, setActiveIdx, onPickResult,
+    searchResults, activeIdx, setActiveIdx, onPickResult, navigateResult,
   }
 }
 

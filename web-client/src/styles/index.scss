@@ -3,6 +3,7 @@
 // `foundation` (консты/функции/миксины из tweb) подключён для валидации графа;
 // эмитит 0 CSS — реально используется в .module.scss компонентов при конвертации.
 @use 'tokens';
+@use 'fonts';
 @use 'foundation' as *;
 
 html,
@@ -10,7 +11,9 @@ body,
 #root {
   margin: 0;
   padding: 0;
-  background: #181818;
+  // tweb base.scss:443 — фон подложки от темы (эмитит themeController);
+  // фолбэк — night-фон до первого setTheme().
+  background: var(--body-background-color, #181818);
 }
 
 /* rem-базис как в tweb (1rem = 16px) — токены/отступы из tweb в rem мапятся 1:1. */
@@ -47,13 +50,43 @@ body {
   scrollbar-gutter: stable;
 }
 
+// tweb base.scss:488-495 — form-контролы не наследуют шрифт, задаём явно.
+button,
+input,
+optgroup,
+select,
+textarea,
+html {
+  font-family: var(--font-regular);
+}
+
+// tweb base.scss:436-439, 968-969 — инпуты и contenteditable выделяемы
+// (body ниже глушит user-select на всём хроме).
+input,
+textarea,
+[contenteditable='true'] {
+  user-select: text;
+}
+
 body {
-  // базовый шрифт (раньше задавал MUI CssBaseline/theme; теперь глобально)
-  font-family: Roboto, 'Helvetica Neue', Arial, sans-serif;
+  // базовый шрифт — tweb-стек (base.scss:126, через токен --font-regular)
+  font-family: var(--font-regular);
   font-size: var(--font-size-16);
   color: var(--primary-text-color);
+  // tweb base.scss:445 — хром не выделяется мышью; текст сообщений/инпуты
+  // возвращают user-select: text точечно.
+  user-select: none;
+  transition: background-color 0.2s; // tweb base.scss:447
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+// tweb base.scss:506-511 — моноширинный глобально.
+pre,
+code,
+kbd,
+samp {
+  font-family: var(--font-monospace);
 }
 
 * {

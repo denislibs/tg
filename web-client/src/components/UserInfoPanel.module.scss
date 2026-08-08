@@ -2,31 +2,55 @@
 // MUI sx. Цвета — CSS-переменные темы. Фон карточек (cardBg) зависит от темы.
 
 // карточка-панель (общая база) — фон как у экрана настроек (sectionBackdrop),
-// чтобы белые карточки-секции читались на нём
+// чтобы белые карточки-секции читались на нём.
+// Панель ВСЕГДА смонтирована: закрыта = сдвинута transform'ом за правый край
+// (tweb #column-right), открытие/закрытие — только transform, без width/opacity.
 .panel {
   background: var(--background-color);
-  border-radius: 18px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
-// узкий режим: фуллскрин-колонка (tweb handheld: колонки перекрываются на весь
-// экран), заезжает справа
+// узкий режим: фуллскрин-колонка (tweb handheld: translate3d(100vw) того же
+// элемента), заезжает справа
 .panelNarrow {
-  position: absolute;
+  position: fixed;
   inset: 0;
   width: 100%;
   border-radius: 0;
+  z-index: 1900;
+  transform: translate3d(100%, 0, 0);
+  transition: transform var(--transition-standard-out);
+
+  // открыта: transform снят совсем (none, а не translate3d(0,0,0)) — иначе
+  // панель стала бы containing block для fixed-потомков (MediaLightbox/попапы
+  // рендерятся внутри панели); none ↔ translate3d интерполируются как identity
+  &.panelOpen {
+    transform: none;
+    transition: transform var(--transition-standard-in);
+  }
 }
 
-// широкий режим: колонка внутри контента
+// широкий режим (tweb #column-right not-handhelds): фиксированная ширина 360,
+// absolute у правого края области чата с отступами страницы, radius 24;
+// ЗАКРЫТА = translate3d(ширина + отступ), ОТКРЫТА = translate3d(0,0,0)
 .panelWide {
-  width: 380px;
-  height: 100%;
-  margin-left: 8px;
-  margin-right: 16px;
-  position: relative;
+  position: absolute;
+  inset-block: 16px;
+  inset-inline-end: 16px;
+  width: 360px; // tweb --right-column-width default
+  border-radius: 24px; // tweb --main-column-border-radius
+  box-shadow: var(--column-box-shadow); // tweb #column-right
+  z-index: 15;
+  transform: translate3d(calc(100% + 16px), 0, 0);
+  transition: transform var(--transition-standard-out);
+
+  // transform: none (не translate3d(0,0,0)) — см. комментарий у .panelNarrow
+  &.panelOpen {
+    transform: none;
+    transition: transform var(--transition-standard-in);
+  }
 }
 
 // шапка: закрыть + заголовок + (ред.). Absolute поверх скролла — при скролле
@@ -47,7 +71,8 @@
   // transparent в базе — для плавного перехода цвета.
   background: transparent;
   border-bottom: 1px solid transparent;
-  transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+  // tweb .profile .sidebar-header: --transition: .1s ease-in-out
+  transition: background-color 0.1s ease-in-out, border-color 0.1s ease-in-out, box-shadow 0.1s ease-in-out;
 }
 
 // при скролле шапка заливается surface + нижняя граница-разделитель + мягкая тень
@@ -104,54 +129,62 @@
   }
 }
 
-// контент без фото начинается под прозрачной шапкой (tweb .has-simple-avatar
-// margin-top: 3.5rem)
-.bodyPad {
-  padding-top: 56px;
-}
+// --- шапка-аватары: ЕДИНЫЙ контейнер, collapsed ↔ expanded морфится классом
+// .isCollapsed чистыми CSS transition'ами (tweb .profile-avatars-container +
+// .profile-container.is-collapsed, _profile.scss) ---
 
-// аватар + имя по центру (tweb collapsed / avatar-120: круглый аватар, имя, статус)
-.avatarBlock {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding-top: 8px;
-  padding-bottom: 20px;
-}
-
-// --- развёрнутое большое фото (tweb unfold / .profile-avatars-container) ---
-
-// квадрат на всю ширину панели (tweb padding-bottom 100%, min-height 276px)
-.profileAvatars {
+.avatarsContainer {
   position: relative;
   width: 100%;
-  height: 0;
-  padding-bottom: 100%;
+  padding-bottom: 100%; // tweb: квадрат по ширине панели
   min-height: 276px;
   cursor: pointer;
   z-index: 1;
   margin-bottom: 12px;
-  overflow: hidden;
-  transform-origin: 50% 24%; // морф-разворот из круглого аватара (центр-верх)
+  transition: padding-bottom var(--transition-standard-in);
   touch-action: pan-y; // вертикальный скролл тела — браузеру, горизонт — свайп
   user-select: none;
   -webkit-user-select: none;
 }
 
-// дорожка фото каруселью (tweb .profile-avatars): флекс-ряд, перевод по индексу
+// дорожка фото каруселью (tweb .profile-avatars-avatars): флекс-ряд по центру,
+// перевод по индексу
 .avatarsTrack {
   position: absolute;
-  inset: 0;
+  width: 100%;
+  height: 100%;
   display: flex;
+  align-items: center;
   flex-wrap: nowrap;
   transition: transform 0.2s ease-in-out; // tweb .2s ease-in-out
 }
 
-// один слайд карусели = вся ширина шапки (tweb .profile-avatars-avatar)
+// один слайд карусели = квадрат по ширине шапки (tweb .profile-avatars-avatar:
+// height 0 + padding-bottom 100%); активный морфится в круг при collapse
 .avatarsSlide {
   position: relative;
   min-width: 100%;
-  height: 100%;
+  height: 0;
+  padding-bottom: 100%;
+  overflow: hidden; // клип фото под border-radius при морфе в круг
+  border-radius: 0;
+}
+
+.avatarsSlideActive {
+  transform: scale(1);
+  transition: transform var(--transition-standard-in), border-radius var(--transition-standard-in);
+}
+
+// без фото: фиксированный аватар-120 по центру (tweb is-topic — не сжимается)
+.avatarsSlideNoPhoto {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: auto;
+  padding-bottom: 0;
+  position: absolute;
+  inset: 0;
+  min-width: 0;
 }
 
 .profilePhoto {
@@ -160,10 +193,11 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  pointer-events: none;
 }
 
 // сегментная полоска-пейджер сверху фото (tweb .profile-avatars-tabs):
-// тонкие чёрточки с зазором, поверх верхнего градиента
+// тонкие чёрточки с зазором, поверх верхнего градиента; в collapsed — opacity 0
 .avatarsTabs {
   position: absolute;
   top: 8px; // tweb .5rem
@@ -173,6 +207,8 @@
   display: flex;
   z-index: 2;
   pointer-events: none;
+  opacity: 1;
+  transition: opacity var(--transition-standard-in);
 }
 
 // одна чёрточка (tweb .profile-avatars-tab): белая, полупрозрачная; активная ярче
@@ -190,7 +226,8 @@
   opacity: 0.6; // tweb .active
 }
 
-// нижний градиент под именем (tweb .profile-avatars-gradient)
+// нижний градиент под именем (tweb .profile-avatars-gradient); в collapsed
+// гаснет быстрым fade (100ms, без задержки)
 .avatarsGradient {
   position: absolute;
   left: 0;
@@ -199,6 +236,9 @@
   height: 100px;
   background: linear-gradient(360deg, rgba(0, 0, 0, 0.3) 8.98%, rgba(0, 0, 0, 0) 100%);
   pointer-events: none;
+  opacity: 1;
+  transition: opacity calc(var(--transition-standard-in-time) / 2) var(--transition-standard-easing)
+    calc(var(--transition-standard-in-time) / 2);
 }
 
 // верхний градиент под шапкой (tweb -gradient-top: scaleY(-1))
@@ -208,36 +248,107 @@
   transform: scaleY(-1);
 }
 
-// имя+статус поверх фото, слева внизу (tweb .profile-avatars-info)
+// имя+статус — одни узлы в обоих состояниях (tweb .profile-avatars-info):
+// развёрнуто — белые слева внизу; collapsed — центр + текстовый цвет (transition)
 .avatarsInfo {
   position: absolute;
   inset-inline: 16px;
-  bottom: 7px;
+  bottom: 7px; // tweb .4375rem
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   color: #fff;
   pointer-events: none;
+  transform: translateY(0);
+  transition: transform var(--transition-standard-in), color var(--transition-standard-in);
 }
 
 .profileName {
+  position: relative;
+  inset-inline-start: 0;
+  transform: translateX(0);
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: currentColor;
   white-space: nowrap;
   font-size: var(--font-size-20);
   line-height: 24px;
-  font-weight: 700;
+  font-weight: var(--font-weight-bold); // tweb .profile-name: var(--font-weight-bold) = 500
+  transition: inset-inline-start var(--transition-standard-in), transform var(--transition-standard-in),
+    color var(--transition-standard-in), max-width var(--transition-standard-in);
+}
+
+.profileNameText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .profileSubtitle {
+  position: relative;
+  inset-inline-start: 0;
+  transform: translateX(0);
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: currentColor;
   font-size: var(--font-size-14);
   line-height: 24px;
   opacity: 0.7;
+  transition: inset-inline-start var(--transition-standard-in), transform var(--transition-standard-in),
+    color var(--transition-standard-in);
+}
+
+// collapsed-состояние (tweb .profile-container.is-collapsed): контейнер ниже,
+// активный слайд сжимается в круг, пейджер/градиенты гаснут, имя центрируется
+// и перекрашивается в текстовые цвета
+.isCollapsed {
+  padding-bottom: 66%;
+
+  .avatarsSlideActive {
+    transform: translateY(-3%) scale(calc(120 / 400));
+    border-radius: 50%;
+  }
+
+  // без фото аватар-120 уже нужного размера — не сжимаем (tweb is-topic)
+  .avatarsSlideNoPhoto {
+    transform: none;
+  }
+
+  .avatarsTabs,
+  .avatarsGradient {
+    opacity: 0;
+  }
+
+  .avatarsGradient {
+    transition-delay: 0s;
+    transition-duration: 100ms;
+  }
+
+  .avatarsInfo {
+    transform: translateY(-33%);
+    color: var(--primary-text-color);
+
+    .profileName,
+    .profileSubtitle {
+      inset-inline-start: 50%;
+      transform: translateX(-50%);
+    }
+
+    .profileName {
+      max-width: 21.25rem;
+    }
+
+    // «в сети» НЕ акцентный: tweb .profile-avatars-info .online { color: inherit !important }
+    .profileSubtitle {
+      color: var(--secondary-text-color);
+      opacity: 1;
+    }
+  }
 }
 
 // вложенная карточка без внешних margin (обсуждения/участники/ссылки/заявки)
@@ -431,6 +542,11 @@
   color: #fff;
   font-size: var(--font-size-12);
   line-height: 18px;
+}
+
+// sentinel infinite scroll в конце грида/списка шаред-медиа
+.moreSentinel {
+  height: 1px;
 }
 
 // список строк (файлы/ссылки/музыка/голосовые)

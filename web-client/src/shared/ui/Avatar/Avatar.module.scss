@@ -18,7 +18,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 600;
+  font-weight: var(--font-weight-bold);
   font-size: calc(var(--size) * 0.42);
   line-height: 1;
   text-transform: uppercase; // tweb: инициалы аватара — uppercase

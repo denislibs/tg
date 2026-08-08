@@ -39,6 +39,16 @@
   height: 100dvh;
   position: relative;
   overflow: hidden;
+  // резерв под инфо-панель анимируется тем же transition, что и её сдвиг
+  // (tweb: transform колонки-панели + пересчёт ширин, 0.3s in / 0.25s out)
+  transition: margin-inline-end var(--transition-standard-out);
+}
+
+// открыта инфо-панель (широкий режим): чат уступает ей место справа —
+// панель 360 + зазор 8 + отступ от края 16 (tweb --right-column-width + паддинги)
+.columnInfoOpen {
+  margin-inline-end: 384px;
+  transition: margin-inline-end var(--transition-standard-in);
 }
 
 

@@ -60,6 +60,9 @@ const ru: Dict = {
   'You can create additional invite links and revoke them at any time.':
     'Вы можете создать дополнительные ссылки и отозвать их в любой момент.',
   'Link copied to clipboard.': 'Ссылка скопирована',
+  'Phone copied to clipboard': 'Телефон скопирован',
+  'Username copied to clipboard': 'Имя пользователя скопировано',
+  'Bio copied to clipboard': 'О себе скопировано',
   'Anyone who has Telegram installed will be able to join your group by following this link.':
     'Любой пользователь Telegram сможет вступить в вашу группу, перейдя по этой ссылке.',
   Reactions: 'Реакции',
@@ -303,6 +306,7 @@ const ru: Dict = {
   'Two-Step Verification': 'Двухэтапная аутентификация',
   Privacy: 'Конфиденциальность',
   'Phone Number': 'Номер телефона',
+  'Sign in to Telegram': 'Вход в Telegram',
   'My Contacts': 'Мои контакты',
   'Last Seen & Online': 'Время захода',
   Everybody: 'Все',
@@ -466,7 +470,11 @@ const ru: Dict = {
   edited: 'изменено',
   'Edit message': 'Редактировать',
   'Delete message': 'Удалить сообщение',
+  'Delete %d messages': 'Удалить %d сообщений',
   'Are you sure you want to delete this message?': 'Удалить это сообщение?',
+  'Are you sure you want to delete these messages?': 'Удалить эти сообщения?',
+  'Also delete for': 'Также удалить у',
+  'Delete for all members': 'Удалить у всех участников',
   'Delete for everyone': 'Удалить у всех',
   'Delete for me': 'Удалить у себя',
   'Forwarded from': 'Переслано от',
@@ -841,6 +849,10 @@ const ru: Dict = {
   "Create a password to protect your account.": "Создайте пароль для защиты аккаунта.",
   "Enter a password": "Введите пароль",
   "Next": "Далее",
+  // ── Авторизация: страна (country-picker) ──
+  "Country": "Страна",
+  // ── Поиск по чату: стрелка prev (счётчик «N of M» использует ключ of выше) ──
+  "Previous": "Предыдущее",
   "Re-enter Password": "Повторите пароль",
   "Please confirm your password.": "Подтвердите пароль.",
   "Re-enter your password": "Введите пароль ещё раз",
