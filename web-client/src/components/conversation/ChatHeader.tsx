@@ -66,16 +66,30 @@ function ChatHeader({
   const searchRef = useRef<HTMLDivElement>(null)
   const topbarRef = useRef<HTMLDivElement>(null)
   const firstRunRef = useRef(true)
-  useEffect(() => {
-    if (searchOpen) setSearchMounted(true)
-  }, [searchOpen])
+  // номер прогона: отложенное размонтирование отменяется, если поиск успели
+  // открыть заново (tweb `.then` снимает ЗАХВАЧЕННЫЙ узел, а не текущий).
+  const runRef = useRef(0)
+
+  // tweb создаёт узел поиска синхронно внутри того же прохода эффекта
+  // (chat.ts:779 → `topbar.container.append` → `animateElements`). У нас узел
+  // рисует React, поэтому монтируем его прямо в рендере: к моменту эффекта
+  // анимации `searchRef` уже заполнен, и эффекту не нужен второй прогон.
+  if (searchOpen && !searchMounted) setSearchMounted(true)
+
+  // Зависимость ТОЛЬКО от `searchOpen` — как единственный tweb-эффект по
+  // `needSearch()` (chat.ts:766). Размонтирование поиска меняет `searchMounted`,
+  // и если бы он был в списке зависимостей, эффект прогонялся бы второй раз и
+  // повторно проигрывал бы 0→1 на `.content`/`.chat-utils` — шапка мигала дважды.
   useEffect(() => {
     const topbar = topbarRef.current
     if (!topbar) return
-    if (searchOpen && !searchRef.current) return
-    const skip = firstRunRef.current && !searchOpen
-    firstRunRef.current = false
-    if (skip) return
+    if (firstRunRef.current) {
+      firstRunRef.current = false
+      // первый рендер с закрытым поиском: анимировать нечего (tweb — ранний
+      // выход `if(!needSearch()) { if(!topbarSearch) return; … }`, chat.ts:767)
+      if (!searchOpen) return
+    }
+    const run = ++runRef.current
 
     const keyframes: Keyframe[] = [{ opacity: 0 }, { opacity: 1 }]
     const options: KeyframeAnimationOptions = { fill: 'forwards', duration: 200, easing: 'ease-in-out' }
@@ -86,8 +100,12 @@ function ChatHeader({
     topbar.querySelectorAll<HTMLElement>('.content, .chat-utils').forEach((el) => {
       promises.push(el.animate(keyframes, options).finished)
     })
-    if (!searchOpen) void Promise.all(promises).then(() => setSearchMounted(false), () => setSearchMounted(false))
-  }, [searchOpen, searchMounted])
+    if (!searchOpen) {
+      // tweb chat.ts:773 — узел удаляется после окончания анимации ухода
+      const unmount = () => { if (run === runRef.current) setSearchMounted(false) }
+      void Promise.all(promises).then(unmount, unmount)
+    }
+  }, [searchOpen])
 
   return (
         // ── Топбар-пилюля tweb: .sidebar-header.topbar (_chatTopbar.scss:25) —
