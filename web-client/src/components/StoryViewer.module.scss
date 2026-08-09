@@ -1,168 +1,486 @@
-// StoryViewer — полноэкранный просмотрщик историй поверх ленты.
+// StoryViewer — порт `tweb/src/components/stories/viewer.module.scss`.
+//
+// Сториз-вьюер в tweb написан на solid-js + CSS-модулях, поэтому имена классов
+// там хешированные (`_Viewer_hvblb_1`) и дословно не переносимы. Оставлен свой
+// SCSS-модуль, но имена классов повторяют имена tweb БЕЗ хеша, а у каждого
+// правила стоит комментарий с исходным классом и строкой в `viewer.module.scss`
+// — так DOM-diff проверяем по соответствию.
+@use '../styles/mixins' as *;
+@use '../styles/variables' as *;
 
-// Затемняющая подложка на весь экран
-.overlay {
+// tweb viewer.module.scss:4-5
+$shadow: 0px 0 3px rgba(0, 0, 0, 0.20);
+$color-inactive: rgba(255, 255, 255, .5);
+
+// tweb `.Viewer` (viewer.module.scss:7-18)
+.Viewer {
   position: fixed;
-  inset: 0;
-  z-index: 3000;
-  background: rgba(0, 0, 0, 0.9);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-// Карточка истории (9:16), фон задаётся инлайном (runtime bg)
-.card {
-  position: relative;
-  aspect-ratio: 9 / 16;
-  height: min(92vh, 900px);
-  max-width: calc(min(92vh, 900px) * 9 / 16);
-  width: 100%;
-  border-radius: 12px;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-// Медиа (video/img)
-.media {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-// Плейсхолдер (первая буква автора)
-.placeholder {
-  font-size: 120px;
-  user-select: none;
-  line-height: 1;
-  color: #fff;
-}
-
-// Полоски прогресса
-.progress {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  right: 8px;
-  display: flex;
-  gap: 3px;
-  z-index: 2;
-}
-
-// Один сегмент прогресса (фон-дорожка)
-.segment {
-  flex: 1;
-  height: 2px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.3);
-  overflow: hidden;
-}
-
-// Заполненная часть (просмотренные / текущий)
-.segmentFill {
-  width: 100%;
-  height: 100%;
-  background: #fff;
-}
-
-// Активный сегмент: бегущее заполнение за 5с. CSS-анимация (не framer), чтобы
-// пауза (Space) замораживала прогресс через animation-play-state.
-.segmentActive {
-  height: 100%;
-  background: #fff;
-  animation: storyFill 5s linear forwards;
-}
-
-@keyframes storyFill {
-  from { width: 0%; }
-  to { width: 100%; }
-}
-
-// Шапка (аватар + имя + закрыть)
-.header {
-  position: absolute;
-  top: 18px;
-  left: 8px;
-  right: 4px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  z-index: 2;
-}
-
-// Распорка между именем и кнопкой закрытия
-.spacer {
-  flex: 1;
-}
-
-// Зоны тапа (назад / вперёд)
-.tapPrev {
-  position: absolute;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  width: 33.33%;
-  z-index: 1;
-  cursor: pointer;
-}
-.tapNext {
-  position: absolute;
   top: 0;
   right: 0;
   bottom: 0;
-  width: 66.66%;
-  z-index: 1;
-  cursor: pointer;
+  left: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  visibility: visible;
+
+  // tweb `.Viewer.isInvisible` (:22-29) — состояние до/после WAAPI-морфа открытия
+  // (Task 5.3 шаг 3): вьюер уже в DOM, но невидим, пока летит клон аватарки.
+  &.isInvisible {
+    visibility: hidden;
+  }
+
+  // tweb `.Viewer.isFull` (:31-76) — портрет/узкое окно: соседи не карусель, а
+  // грани куба; переход между авторами — rotateY(±90deg).
+  &.isFull {
+    .ViewerBackground {
+      background-color: #000;
+    }
+
+    &.isReady {
+      perspective: 1000px;
+      transform-style: preserve-3d;
+      overflow: hidden; // magic property
+    }
+
+    &.isReady .ViewerStoryContainer {
+      --transition-time: .3s;
+      visibility: hidden;
+      opacity: 0;
+      margin: 0;
+      transition-delay: 0s, 0s, var(--transition-time);
+
+      @include animation-level-global(2) {
+        transition: opacity var(--transition-time), transform var(--transition-time), visibility var(--transition-time);
+      }
+
+      &.fromLeft {
+        transform: rotateY(90deg) translateX(50%) rotateY(-90deg) translateX(-50%) rotateY(-90deg);
+
+        &.current {
+          transform: rotateY(90deg) translateX(50%) rotateY(0deg) translateX(-50%) rotateY(-90deg);
+        }
+      }
+
+      &.current {
+        opacity: 1;
+        visibility: visible;
+        transition-delay: 0s, 0s, 0s;
+      }
+
+      &.fromRight {
+        transform: rotateY(-90deg) translateX(-50%) rotateY(90deg) translateX(50%) rotateY(90deg);
+
+        &.current {
+          transform: rotateY(-90deg) translateX(-50%) rotateY(0deg) translateX(50%) rotateY(90deg);
+        }
+      }
+    }
+  }
+
+  // tweb `.ViewerBackground` (:108-119)
+  &Background {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    background-color: rgba(0, 0, 0, .9);
+    content: " ";
+    pointer-events: none;
+  }
+
+  // tweb `.ViewerStory` (:127-149)
+  &Story {
+    display: flex;
+    flex-direction: column;
+    width: var(--stories-width);
+    aspect-ratio: 9 / 16;
+    border-radius: calc(#{$border-radius-medium} * (1 / var(--scale)));
+    overflow: hidden;
+    position: relative;
+    z-index: 0;
+
+    @include animation-level-global(2) {
+      transition: border-radius var(--transition-standard-out);
+    }
+
+    // tweb `.ViewerStoryContainer` (:151-186)
+    &Container {
+      --translateX: 0;
+      --scale: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-bottom: 3.5rem;
+      margin: .75rem 0;
+      max-height: 100%;
+      // * use 3d to fix blinking
+      transform: translate3d(var(--translateX), 0, 0) scale3d(var(--scale), var(--scale), 1);
+      will-change: transform, opacity;
+      position: absolute;
+      opacity: 1;
+
+      @include animation-level-global(2) {
+        transition: transform var(--transition-standard-out), opacity var(--transition-standard-out);
+      }
+
+      &.fadeIn {
+        opacity: 0;
+      }
+
+      &.small {
+        --scale: 0.33;
+        cursor: pointer;
+      }
+
+      .hideOnSmall {
+        opacity: 1;
+      }
+
+      &.hold .hideOnSmall,
+      &.small .hideOnSmall,
+      &.small .storiesInput {
+        opacity: 0;
+        pointer-events: none;
+      }
+    }
+
+    // tweb :188-209
+    &Container .hideOnSmall,
+    &Container &ContentMediaContainer {
+      @include animation-level-global(2) {
+        transition: opacity var(--transition-standard-out) !important;
+      }
+    }
+
+    &Container.small &ContentMediaContainer {
+      opacity: .5;
+    }
+
+    &Container.small &Info {
+      opacity: 1;
+
+      @include animation-level-global(2) {
+        transition: opacity var(--transition-standard-out);
+      }
+    }
+
+    &Container.focused &ContentMediaContainer {
+      opacity: .8;
+    }
+
+    // tweb `.ViewerStorySlides` (:211-244)
+    &Slides {
+      position: absolute;
+      top: .625rem;
+      left: 0;
+      right: 0;
+      padding: 0 .625rem 0 .4375rem;
+      height: .125rem;
+      display: flex;
+
+      &Slide {
+        border-radius: 1px;
+        height: inherit;
+        background-color: rgba(255, 255, 255, .3);
+        margin-inline-start: .1875rem;
+        flex: 1 1 auto;
+        position: relative;
+        min-width: .375rem;
+        box-shadow: $shadow;
+
+        &:before {
+          position: absolute;
+          top: 0;
+          bottom: 0;
+          width: var(--progress);
+          border-radius: inherit;
+          background-color: #fff;
+          content: " ";
+        }
+      }
+    }
+
+    // tweb `.ViewerStoryHeader` (:246-341)
+    &Header {
+      position: absolute;
+      top: 1rem;
+      left: 0;
+      right: 0;
+      padding: 0 .5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #fff;
+      text-shadow: $shadow;
+
+      &Avatar {
+        width: 2rem;
+        height: 2rem;
+        margin-inline-end: .75rem;
+        flex: 0 0 auto;
+        box-shadow: $shadow;
+      }
+
+      &Name,
+      &Time {
+        @include text-overflow(true);
+      }
+
+      &Name {
+        font-weight: var(--font-weight-bold);
+      }
+
+      &Secondary {
+        font-size: var(--font-size-14);
+        opacity: .5;
+        flex: 0 0 auto;
+      }
+
+      &Time {
+        flex: 1 1 auto;
+        margin-top: -4px;
+        height: 21px;
+      }
+
+      &Left,
+      &Right {
+        display: flex;
+        align-items: center;
+      }
+
+      &Left {
+        padding: 0 .5rem;
+        overflow: hidden;
+        flex: 1 1 auto;
+        height: 2.25rem;
+        cursor: pointer;
+      }
+
+      &Right {
+        flex: 0 0 auto;
+      }
+
+      &Info {
+        flex: 1 1 auto;
+        overflow: hidden;
+      }
+
+      &Row {
+        max-width: 100%;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        white-space: pre-wrap;
+      }
+    }
+
+    // tweb `.ViewerStory :global .btn-icon` (:725-731)
+    :global(.btn-icon) {
+      color: #fff;
+      text-shadow: $shadow;
+    }
+
+    // tweb `.ViewerStoryMediaAreas` (:660-666)
+    &MediaAreas {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      opacity: 1;
+      pointer-events: none;
+    }
+
+    // tweb `.ViewerStoryContent` (:359-382)
+    &Content {
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      z-index: 0;
+      pointer-events: none;
+      background-color: #000;
+
+      &Item {
+        position: relative;
+        display: flex;
+        align-items: center;
+        width: 100%;
+        height: 100%;
+      }
+
+      &Media {
+        position: absolute;
+        object-fit: cover;
+        width: 100%;
+        height: 100%;
+      }
+    }
+
+    // tweb `.ViewerStoryShadow` (:462-471)
+    &Shadow {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(0, 0, 0, 0.2) 0%, rgba(0, 0, 0, 0) 10.86%);
+      pointer-events: none;
+
+      &.hasCaption {
+        background: linear-gradient(180deg, rgba(0, 0, 0, 0.2) 0%, rgba(0, 0, 0, 0) 11%, rgba(0, 0, 0, 0) 90%, rgba(0, 0, 0, 0.5) 100%);
+      }
+    }
+
+    // tweb `.ViewerStoryInfo` (:473-506) — большая заставка «аватар + имя» на соседях
+    &Info {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      opacity: 0;
+      pointer-events: none;
+      max-width: 100%;
+
+      @include animation-level-global(2) {
+        transition: opacity .1s var(--transition-standard-easing);
+      }
+
+      &Avatar {
+        margin-bottom: 1.25rem;
+        pointer-events: none !important;
+      }
+
+      &Name {
+        font-weight: var(--font-weight-bold);
+        font-size: 3rem;
+        color: #fff;
+        text-align: center;
+        line-height: var(--line-height);
+        @include text-overflow(true);
+        padding: 0 2rem;
+        max-width: 100%;
+        margin-bottom: -24px;
+      }
+    }
+
+    // tweb `.ViewerStoryFooter` (:385-457) — футер СВОЕЙ истории
+    &Footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 3rem;
+      color: $color-inactive;
+      padding: 0 .5rem;
+      font-weight: var(--font-weight-bold);
+
+      @include animation-level-global(2) {
+        transition: color var(--transition-standard-in);
+      }
+
+      @include hover-global() {
+        color: rgba(255, 255, 255, 1);
+      }
+
+      &Left,
+      &Right {
+        display: flex;
+        align-items: center;
+      }
+
+      &Icon {
+        display: flex;
+        align-items: center;
+
+        &Icon {
+          font-size: 1.5rem;
+          margin-inline-end: .375rem;
+        }
+      }
+
+      &.isMe &Left {
+        cursor: pointer;
+      }
+
+      // tweb :438-443
+      :global(.btn-icon) {
+        color: currentColor;
+        transition: none;
+      }
+    }
+  }
+
+  // tweb `.ViewerClose` (:979-989)
+  &Close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    color: $color-inactive;
+    transition: none;
+
+    @include hover-global() {
+      color: rgba(255, 255, 255, 1);
+    }
+  }
+
+  // tweb `.noSound` (:991-994)
+  .noSound {
+    color: $color-inactive;
+  }
+
+  img,
+  video {
+    dynamic-range-limit: no-limit;
+  }
 }
 
-// Подпись истории
-.caption {
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: 12px;
-  padding: 10px 16px;
-  border-radius: 16px;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  z-index: 2;
-}
-// подпись приподнята, когда снизу плашка просмотров (свои истории)
-.captionRaised {
-  bottom: 64px;
-}
-// подпись приподнята над футером ответа/реакции (чужие истории)
-.captionRaisedFooter {
-  bottom: 68px;
-}
+// ---------------------------------------------------------------------------
+// Ниже — поверхности, которые в tweb выглядят иначе и переезжают на tweb-разметку
+// в других задачах. Оставлены как есть, каждая помечена причиной.
+// ---------------------------------------------------------------------------
 
-// Футер чужой истории: поле ответа (DM) + кнопки реакции (tweb StoryInput)
-.footer {
+// отступление от tweb: композер приедет в фазе 6 (Task 6.2). В tweb здесь
+// `div.chat-input.stories-input` — переиспользованный ChatInput
+// (viewer.module.scss:735-939): position absolute, bottom 0, width var(--stories-width).
+.storiesInput {
   position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: 12px;
+  bottom: 0;
+  width: var(--stories-width);
+  height: 3rem;
   display: flex;
   align-items: center;
   gap: 8px;
-  z-index: 3;
+  padding: 0 .5rem;
+  opacity: 1;
+
+  @include animation-level-global(2) {
+    transition: opacity var(--transition-standard-out) !important;
+  }
+
+  // отступление от tweb: в композере tweb цвет иконок задаёт `--primary-text-color`
+  // самого chat-input (viewer.module.scss:740) — до фазы 6 красим напрямую.
+  :global(.btn-icon) {
+    color: #fff;
+  }
 }
 
-// Поле ввода ответа
+// отступление от tweb: голый input вместо ChatInput (см. .storiesInput)
 .replyInput {
   flex: 1;
   min-width: 0;
-  height: 44px;
+  height: 2.5rem;
   padding: 0 16px;
   border: none;
   outline: none;
-  border-radius: 22px;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  border-radius: $border-radius-medium;
+  background: rgba(0, 0, 0, .5);
+  backdrop-filter: var(--blur-off, blur(25px));
   color: #fff;
   font-size: var(--font-size-15);
   font-family: inherit;
@@ -172,23 +490,39 @@
   }
 }
 
-// Быстрая кнопка реакции (❤ / текущая реакция)
+// отступление от tweb: в tweb быстрая реакция — `btn-reaction` поверх инпута
+// (viewer.module.scss:735-939), у нас — своя круглая кнопка. P2 в аудите (§10.12).
 .heartBtn {
   position: relative;
   flex-shrink: 0;
-  width: 44px;
-  height: 44px;
+  width: 2.5rem;
+  height: 2.5rem;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(0, 0, 0, .5);
+  backdrop-filter: var(--blur-off, blur(25px));
   cursor: pointer;
+  transition: transform .12s var(--transition-standard-easing);
+
+  &:active {
+    transform: scale(0.8);
+  }
 }
+
 .heartActive {
   background: rgba(255, 255, 255, 0.15);
+}
+
+// Появление поставленной реакции (замена framer-spring на CSS-keyframes)
+.reactPop {
+  animation: storyReactPop .22s var(--transition-standard-easing);
+}
+
+@keyframes storyReactPop {
+  from { transform: scale(.4); }
+  to { transform: scale(1); }
 }
 
 // Счётчик реакций на кнопке
@@ -208,19 +542,25 @@
   text-align: center;
 }
 
-// Панель выбора реакции (над футером)
+// отступление от tweb: панель реакций в tweb — общий `btn-menu-reactions`
+// (viewer.module.scss:668-705), у нас своя. P2 в аудите (§10.12).
 .reactBar {
   position: absolute;
-  left: 0;
-  bottom: 52px;
+  right: 0;
+  bottom: 3rem;
   display: flex;
   align-items: center;
   gap: 4px;
   padding: 6px 10px;
   border-radius: 24px;
   background: rgba(20, 20, 20, 0.92);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: var(--blur-off, blur(25px));
+  animation: storyReactBarIn .16s var(--transition-standard-easing);
+}
+
+@keyframes storyReactBarIn {
+  from { opacity: 0; transform: translateY(8px) scale(.9); }
+  to { opacity: 1; transform: none; }
 }
 
 // Чип реакции в панели
@@ -234,37 +574,48 @@
   cursor: pointer;
   transition: background 0.15s ease, transform 0.12s ease;
 
-  @media (hover: hover) {
-    &:hover {
-      background: rgba(255, 255, 255, 0.12);
-      transform: scale(1.1);
-    }
+  @include hover-global() {
+    background: rgba(255, 255, 255, 0.12);
+    transform: scale(1.1);
   }
 }
+
 .reactChipActive {
   background: rgba(255, 255, 255, 0.18);
 }
 
-// Плашка "Просмотры" (свои истории)
-.viewsBar {
+// отступление от tweb: caption-оверлей во всю карточку со скроллом и разворотом
+// (viewer.module.scss:508-568) — P1 в аудите (§10.11), вне Task 5.3.
+.caption {
   position: absolute;
   left: 12px;
   right: 12px;
   bottom: 12px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 16px;
-  border-radius: 16px;
+  padding: 10px 16px;
+  border-radius: $border-radius-medium;
   background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  cursor: pointer;
+  backdrop-filter: var(--blur-off, blur(25px));
   z-index: 2;
 }
 
-// Шторка со списком просмотревших
+// отступление от tweb: плашка репоста в tweb — строка в шапке
+// (`ViewerStoryHeaderRepost`, viewer.module.scss:322-341). P2, вне Task 5.3.
+.repost {
+  position: absolute;
+  top: 3rem;
+  left: 12px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.35);
+  max-width: calc(100% - 24px);
+}
+
+// отступление от tweb: список зрителей в tweb — общий попап `showPickUserPopup`
+// (viewer.tsx:2339-2370). P2 в аудите (§10.13), вне Task 5.3.
 .viewersSheet {
   position: absolute;
   left: 0;
@@ -273,12 +624,17 @@
   max-height: 60%;
   overflow-y: auto;
   background: rgba(20, 20, 20, 0.96);
-  border-top-left-radius: 16px;
-  border-top-right-radius: 16px;
+  border-top-left-radius: $border-radius-medium;
+  border-top-right-radius: $border-radius-medium;
   z-index: 3;
+  animation: storySheetIn .25s var(--transition-standard-easing);
 }
 
-// Шапка шторки (sticky)
+@keyframes storySheetIn {
+  from { transform: translateY(100%); }
+  to { transform: none; }
+}
+
 .viewersHeader {
   display: flex;
   align-items: center;
@@ -288,15 +644,17 @@
   background: rgba(20, 20, 20, 0.96);
 }
 
-// Заголовок шторки (flex 1)
 .viewersTitle {
   flex: 1;
 }
 
-// Строка просмотревшего
 .viewerRow {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 8px 16px;
+}
+
+.viewersEmpty {
+  padding: 12px 16px;
 }

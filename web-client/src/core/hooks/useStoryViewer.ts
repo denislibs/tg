@@ -1,15 +1,15 @@
 // src/core/hooks/useStoryViewer.ts
 //
 // ViewModel for the full-screen StoryViewer: reads the selected author's story
-// group from the stories store, resolves each shown story's media via
-// managers.media, marks it viewed (server + store), and drives navigation /
-// the viewers sheet. The Esc-to-close listener lives here as a side-effect.
-import { useEffect, useState } from 'react'
+// group from the stories store, marks the shown story viewed (server + store),
+// and drives navigation / the viewers sheet. The Esc-to-close listener lives
+// here as a side-effect. Медиа резолвит View через `useStoryPreviewMedia` —
+// в карусели tweb его грузит каждый пир, а не только активный.
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { useStoriesStore } from '../../stores/storiesStore'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useManagers } from './useManagers'
 import { uiEvents } from './uiEvents'
-import { gradientFor } from '../dialogToChat'
 import type { StoryGroup, StoryItem, MediaArea, StoryFwd } from '../managers/storiesManager'
 
 interface Viewer {
@@ -21,16 +21,26 @@ interface Viewer {
 interface UseStoryViewerArgs {
   groupIndex: number
   onClose: () => void
+  // Переход между авторами (tweb getNearestStory, store.tsx:132-159): конец
+  // историй пира → следующий пир, начало → предыдущий. Возвращают false, если
+  // соседа нет (тогда next закрывает вьюер, prev остаётся на месте).
+  onNextPeer?: () => boolean
+  onPrevPeer?: () => boolean
 }
 
-export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
+// tweb getPeerInitialIndex (store.tsx:205-209): первая непрочитанная история
+// пира, иначе первая.
+export function initialStoryIndex(group: StoryGroup | undefined): number {
+  if (!group) return 0
+  return Math.max(0, group.stories.findIndex((s) => !s.viewed))
+}
+
+export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: UseStoryViewerArgs): {
   group: StoryGroup | undefined
   stories: StoryItem[]
   story: StoryItem | undefined
   isMe: boolean
   current: number
-  mediaUrl: string
-  isVideo: boolean
   showViewers: boolean
   setShowViewers: (v: boolean) => void
   viewers: Viewer[] | null
@@ -40,7 +50,6 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
   next: () => void
   prev: () => void
   openViewers: () => void
-  bg: string
   // Ручная пауза авто-прогресса (Space). Итоговый `paused` вьюер выводит как
   // manualPause || <открыт любой оверлей> || showStats.
   manualPause: boolean
@@ -72,9 +81,7 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
   const stories = group?.stories ?? []
   const isMe = group != null && meId != null && group.author.id === meId
 
-  const [current, setCurrent] = useState(0)
-  const [mediaUrl, setMediaUrl] = useState<string>('')
-  const [isVideo, setIsVideo] = useState(false)
+  const [current, setCurrent] = useState(() => initialStoryIndex(group))
   const [showViewers, setShowViewers] = useState(false)
   const [viewers, setViewers] = useState<Viewer[] | null>(null)
   // Оверлей «Статистика истории» (только своя история). Пока открыт — прогресс
@@ -86,64 +93,64 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
   // 4d: имя автора оригинала для плашки репоста (резолвится по fwd_from.authorId).
   const [fwdAuthorName, setFwdAuthorName] = useState<string | null>(null)
 
+  // Смена пира (клик по соседу в карусели / переход в конце историй) — сбрасываем
+  // индекс на initial-индекс нового пира (tweb actions.set → peer.index,
+  // store.tsx:319-330). Правка производного от пропа состояния прямо в рендере —
+  // штатный React-паттерн, дешевле лишнего эффекта с промежуточным кадром.
+  const [shownGroupIndex, setShownGroupIndex] = useState(groupIndex)
+  if (shownGroupIndex !== groupIndex) {
+    setShownGroupIndex(groupIndex)
+    setCurrent(initialStoryIndex(group))
+    setShowViewers(false)
+    setManualPause(false)
+  }
+
   const story = stories[current]
 
   const next = () => {
     setManualPause(false)
-    if (current >= stories.length - 1) onClose()
-    else {
-      setCurrent((c) => c + 1)
-      setShowViewers(false)
-    }
+    setShowViewers(false)
+    if (current < stories.length - 1) setCurrent((c) => c + 1)
+    else if (!onNextPeer?.()) onClose() // последний пир — вьюер закрывается (tweb ended → close)
   }
   const prev = () => {
     setManualPause(false)
-    setCurrent((c) => Math.max(0, c - 1))
     setShowViewers(false)
+    if (current > 0) setCurrent((c) => c - 1)
+    else onPrevPeer?.()
   }
   const togglePause = () => setManualPause((p) => !p)
 
   // Клавиатура сториз (tweb): Esc/↓ — закрыть, →/← — навигация, Space — пауза.
+  // Обработчики держим в ref — слушатель вешаем один раз, а внутри всегда свежие
+  // замыкания (иначе после смены пира стреляли бы устаревшие next/prev).
+  const keysRef = useRef({ next, prev, togglePause, onClose })
+  keysRef.current = { next, prev, togglePause, onClose }
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const k = keysRef.current
       // preventDefault — сигнал глобальному Esc-фолбэку (core/hotkeys), что Esc обработан
-      if (e.key === 'Escape' || e.key === 'ArrowDown') { e.preventDefault(); onClose(); return }
-      if (e.key === 'ArrowRight') { e.preventDefault(); next(); return }
-      if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); return }
-      if (e.key === ' ') { e.preventDefault(); togglePause() }
+      if (e.key === 'Escape' || e.key === 'ArrowDown') { e.preventDefault(); k.onClose(); return }
+      if (e.key === 'ArrowRight') { e.preventDefault(); k.next(); return }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); k.prev(); return }
+      if (e.key === ' ') { e.preventDefault(); k.togglePause() }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onClose, current, stories.length])
+  }, [])
 
   // Empty / out-of-range group → nothing to show.
   useEffect(() => {
     if (group == null || stories.length === 0) onClose()
   }, [group, stories.length, onClose])
 
-  // Resolve the current story's media + mark it viewed (once per story shown).
+  // Mark the shown story viewed (once per story shown) and reflect it in the
+  // store so the unseen ring clears. Skip own stories — the author isn't counted
+  // among their own viewers.
   useEffect(() => {
-    if (!story) return
-    let alive = true
-    setMediaUrl('')
-    setIsVideo(false)
-    void Promise.all([managers.media.contentUrl(story.mediaId), managers.media.meta(story.mediaId)]).then(
-      ([url, meta]) => {
-        if (!alive) return
-        setMediaUrl(url)
-        setIsVideo(meta.mime.startsWith('video/'))
-      },
-    )
-    // mark viewed and reflect it in the store so the unseen ring clears.
-    // Skip own stories — the author isn't counted among their own viewers.
-    if (!isMe && !story.viewed) {
-      void managers.stories.view(story.id)
-      markViewed(group!.author.id, story.id)
-    }
-    return () => {
-      alive = false
-    }
+    if (!story || isMe || story.viewed) return
+    void managers.stories.view(story.id)
+    markViewed(group!.author.id, story.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [story?.id])
 
@@ -222,16 +229,12 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
     })
   }
 
-  const bg = group ? gradientFor(group.author.id) : ''
-
   return {
     group,
     stories,
     story,
     isMe,
     current,
-    mediaUrl,
-    isVideo,
     showViewers,
     setShowViewers,
     viewers,
@@ -241,7 +244,6 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
     next,
     prev,
     openViewers,
-    bg,
     manualPause,
     togglePause,
     myReaction: story?.myReaction ?? null,
@@ -256,4 +258,50 @@ export function useStoryViewer({ groupIndex, onClose }: UseStoryViewerArgs): {
     fwdFrom: story?.fwdFrom,
     fwdAuthorName,
   }
+}
+
+interface UseStoryProgressArgs {
+  // Итоговая пауза сегмента: ручная пауза/оверлеи + буферизация + «контент ещё не готов»
+  // (tweb: paused || buffering, playOnReady гейтится loading(), viewer.tsx:1756-1765).
+  paused: boolean
+  // Длительность сегмента в мс: для видео — длительность ролика, иначе STORY_DURATION.
+  duration: number
+  // Меняется при смене истории/пира — прогресс начинается заново.
+  resetKey: string
+  onEnd: () => void
+}
+
+// Прогресс активного сегмента (tweb StorySlide, viewer.tsx:174-247): JS-тикер, а не
+// CSS-анимация на фиксированные 5s. Пишем `--progress` прямо в DOM-узел сегмента —
+// как tweb пишет style в свой slide; так рендер React не крутится по 60 раз в секунду.
+// Пауза сохраняет накопленное время (tweb elapsedTimeOnPause, store.tsx:494-512).
+export function useStoryProgress({ paused, duration, resetKey, onEnd }: UseStoryProgressArgs): RefObject<HTMLDivElement | null> {
+  const slideRef = useRef<HTMLDivElement | null>(null)
+  const elapsedRef = useRef(0)
+  const onEndRef = useRef(onEnd)
+  onEndRef.current = onEnd
+
+  useEffect(() => {
+    elapsedRef.current = 0
+    slideRef.current?.style.setProperty('--progress', '0%')
+  }, [resetKey])
+
+  useEffect(() => {
+    if (paused) return
+    const start = Date.now() - elapsedRef.current
+    let raf = 0
+    const tick = () => {
+      const ratio = (Date.now() - start) / duration
+      slideRef.current?.style.setProperty('--progress', `${Math.min(100, ratio * 100)}%`)
+      if (ratio >= 1) { onEndRef.current(); return }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => {
+      cancelAnimationFrame(raf)
+      elapsedRef.current = Date.now() - start
+    }
+  }, [paused, duration, resetKey])
+
+  return slideRef
 }
