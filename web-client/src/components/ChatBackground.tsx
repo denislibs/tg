@@ -104,6 +104,24 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
     if (gradientReadyRef.current && patternReadyRef.current) activateSlot(patternCachedRef.current)
   }
 
+  // Тему читаем из уже применённого DOM, поэтому нужен тик после её смены:
+  // `setTheme` вызывается в layout-эффекте ThemedApp (useThemeToggle), а React
+  // прогоняет layout-эффекты снизу вверх — на рендере, вызванном сменой
+  // themeChoice, переменные на <html> ещё старые, и градиент инициализировался бы
+  // цветами прошлой темы. На шелле это маскировалось последующими перерисовками,
+  // на статичном экране входа обои так и оставались от предыдущей темы.
+  // MutationObserver ловит момент, когда themeController уже записал атрибут и
+  // стиль (тот же приём, что в chatlist/dialogsPlaceholder).
+  const [themeTick, setThemeTick] = useState(0)
+  useEffect(() => {
+    const mo = new MutationObserver(() => setThemeTick((n) => n + 1))
+    // Только data-theme и .night: инлайн-style на <html> трогать нельзя — туда же
+    // пишет applyHighlightingColorFromRgb (ниже по файлу, из среднего цвета обоев),
+    // и наблюдение за ним закольцевало бы «запись → тик → рендер → запись».
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] })
+    return () => mo.disconnect()
+  }, [])
+
   const th = readTheme()
   const mode = modeFor(th.dataTheme)
   // Тема активного чата перекрывает глобальные обои; иначе пресет, затем дефолт темы.
@@ -173,7 +191,7 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
     gradientReadyRef.current = true
     maybeActivateSlot()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [themeChoice, colors.join(), !!overlay])
+  }, [themeChoice, themeTick, colors.join(), !!overlay])
 
   // Сдвиг градиента на одну позицию при отправке сообщения (tweb toNextPosition).
   useEffect(() => {
@@ -235,7 +253,7 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
     window.addEventListener('resize', paint)
     return () => window.removeEventListener('resize', paint)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [themeChoice, colors.join(), mode.mask, !!overlay])
+  }, [themeChoice, themeTick, colors.join(), mode.mask, !!overlay])
 
   // Средний цвет активных обоев → --message-highlighting-color (1:1 tweb
   // chatBackground.tsx:365 highlightingColor(pixel)). Глобально на documentElement:

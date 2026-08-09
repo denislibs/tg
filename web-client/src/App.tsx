@@ -115,8 +115,6 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
       }
     : null
 
-  const { shellThemeVariant } = useShellTheme({ selected, openThread, threadChat })
-
   // Ключ вкладки чата: его смена ремаунтит колонку — как в tweb, где на переход
   // между чатами из списка предыдущий `.chat` УДАЛЯЕТСЯ из DOM (см. ниже).
   const tabKey = openThread && threadChat
@@ -156,12 +154,6 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   //       + #column-right (портал из UserInfoPanel)
   return (
     <>
-      {/* Animated 4-point gradient wallpaper + doodle pattern (tweb-style). Обои темы
-          активного чата поднимаются сюда, чтобы весь shell был в теме (осознанное
-          отклонение от tweb-скоупа для цветов — см. useShellTheme). Цвета темы чата
-          при этом остаются локально в колонке (Chat). */}
-      <ChatBackground themeColors={shellThemeVariant?.gradient} />
-
       <div className="sidebar-left-overlay" />
       <div id="page-chats" className="whole page-chats">
         <div id="main-columns" className="tabs-container" data-animation="navigation">
@@ -186,6 +178,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 function ThemedApp() {
   const { authed, login, logout } = useAuthGate()
   const toggleMode = useThemeToggle()
+  const { shellThemeVariant } = useShellTheme()
 
   // Тема управляется атрибутом data-theme на <html> (useThemeToggle) — MUI
   // ThemeProvider не нужен.
@@ -195,6 +188,14 @@ function ThemedApp() {
   return (
     <>
       <SvgDefs />
+      {/* Анимированный 4-точечный градиент + узор. Как в tweb, слой монтируется
+          ДО ветвления по authState (index.ts:544 `appChatBackground.attach()`
+          стоит раньше разбора authState на :549) — поэтому обои видны и за
+          карточкой входа: её хост прозрачен, непрозрачна только сама карточка.
+          Обои темы активного чата поднимаются сюда, чтобы весь shell был в теме
+          (осознанное отклонение от tweb-скоупа для цветов — см. useShellTheme);
+          цвета темы чата при этом остаются локально в колонке (Chat). */}
+      <ChatBackground themeColors={shellThemeVariant?.gradient} />
       {authed ? (
         <Shell onToggleMode={toggleMode} onLogout={logout} />
       ) : (
