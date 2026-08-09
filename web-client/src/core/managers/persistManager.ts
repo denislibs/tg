@@ -7,8 +7,8 @@
 // ВСЁ. Секьюрити-гарды (locked/sanitizeDialog/E2E-фильтр) живут в persist.ts и
 // срабатывают здесь же, в воркере. main остаётся только READER: loadX на холодном
 // старте (данные прошлой сессии уже закоммичены) — конкуренции чтений нет.
-import { saveDialogs, saveMe, saveDrafts, saveStateKey, persistClearAll } from '../store/persist'
-import type { Dialog, Draft } from '../models'
+import { saveDialogs, saveMe, saveStateKey, persistClearAll } from '../store/persist'
+import type { Dialog } from '../models'
 import type { User } from './authManager'
 import type { AppState } from '../state/state'
 
@@ -18,7 +18,6 @@ export function newPersistManager() {
     // RPC вместо двух. saveDialogs и saveMe пишут разные сторы (dialogs/meta).
     dialogs: (dialogs: Dialog[], me: User | null): Promise<void> =>
       Promise.all([saveDialogs(dialogs), saveMe(me)]).then(() => {}),
-    drafts: (drafts: Draft[]): Promise<void> => saveDrafts(drafts),
     // Один ключ State (порт tweb appStateManager.setByKey). Пишется write-through
     // из stores/appState на каждое изменение — блоб маленький, дебаунс не нужен.
     // Через RPC-границу идут сериализуемые значения, поэтому ключ здесь строка;

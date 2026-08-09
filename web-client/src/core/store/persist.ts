@@ -8,8 +8,9 @@
 //   • meta     — token (скоуп мультиаккаунта) + me (свой профиль для мгновенного UI).
 //
 // ЕДИНЫЙ writer — воркер. Все saveX/persistClearAll вызываются из менеджеров воркера
-// (peersManager/messagesManager напрямую; dialogs/me/folders/drafts — через
-// persistManager по снапшоту с main): один SharedWorker = одно readwrite-соединение
+// (peersManager/messagesManager напрямую; dialogs/me — по снапшоту с main, ключи
+// State (folders/drafts/…) — write-through, всё через persistManager):
+// один SharedWorker = одно readwrite-соединение
 // на все вкладки, без конкуренции за транзакции одной БД. main — только READER
 // (loadX на холодном старте). persistScope зовётся и там, и там (идемпотентно).
 //

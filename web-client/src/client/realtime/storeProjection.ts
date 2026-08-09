@@ -10,7 +10,7 @@ import { useStarsStore } from '../../stores/starsStore'
 import { fromNewMessageEvt, mapDraft, mapPoll, mapChecklist, mapGeo, mapWebPage, mapFactCheck, mapBoostStatus, mapGiveaway, mapSuggestedPost, type RawPoll, type RawChecklist, type RawBoostStatus, type RawGiveaway } from '../../core/models'
 import { useBoostsStore } from '../../stores/boostsStore'
 import { useSuggestedPostsStore } from '../../stores/suggestedPostsStore'
-import { useDraftsStore } from '../../stores/draftsStore'
+import { removeDraft, setDraft } from '../../stores/draftsStore'
 import { useUploadsStore } from '../../stores/uploadsStore'
 import { uiEvents } from '../../core/hooks/uiEvents'
 import { mapReplyMarkup } from '../../core/managers/botsManager'
@@ -116,9 +116,8 @@ export function registerStoreProjection(managers: Managers): void {
   // Черновик изменён на другом устройстве/вкладке (или снят отправкой/очисткой)
   eventBus.subscribe(RT.draftUpdate, (raw) => {
     const e = raw as DraftUpdateEvt
-    const st = useDraftsStore.getState()
-    if (e.draft) st.setDraft(mapDraft(e.draft))
-    else st.removeDraft(e.chat_id)
+    if (e.draft) setDraft(mapDraft(e.draft))
+    else removeDraft(e.chat_id)
   })
   eventBus.subscribe(RT.presence, (p) => { store.setPresence(p as PresenceEvt) })
   eventBus.subscribe(RT.typing, (raw) => {

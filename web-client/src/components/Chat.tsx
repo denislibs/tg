@@ -45,7 +45,7 @@ import ChatFeed from './messages/ChatFeed'
 import EmptyChatGreeting from './messages/EmptyChatGreeting'
 import SimilarChannels from './messages/SimilarChannels'
 import { useChatAutoDownload } from '../core/hooks/useChatAutoDownload'
-import { useDraftsStore } from '../stores/draftsStore'
+import { useDrafts } from '../stores/draftsStore'
 import { draftReplyState, convMsgReplyState } from '../core/draftReply'
 import { useComposerDraft } from '../core/hooks/useComposerDraft'
 import { useMentionPeers } from '../core/hooks/useMentionPeers'
@@ -522,7 +522,8 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const { initialDraft, onDraftChange } = useComposerDraft(isRealChat && !thread ? numericChatId : null, reply?.msgId ?? null)
   // Восстановление reply-бара из черновика (draft.reply_to_id): один раз после
   // загрузки окна; сообщение ищем в окне, вне окна — скип (getById у бэка нет).
-  const draftReplyToId = useDraftsStore((s) => (isRealChat && !thread ? s.byChat[numericChatId]?.replyToId ?? null : null))
+  const drafts = useDrafts()
+  const draftReplyToId = isRealChat && !thread ? drafts[numericChatId]?.replyToId ?? null : null
   const replyRestoredRef = useRef(false)
   useEffect(() => {
     if (replyRestoredRef.current || draftReplyToId == null || msgs.length === 0) return

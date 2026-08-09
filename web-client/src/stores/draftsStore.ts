@@ -1,60 +1,42 @@
-// Облачные черновики: нормализованное хранилище по chatId. Наполняется
-// loadDrafts при старте, обновляется оптимистично из composer-хука и по
-// rt:draft_update (синк с других устройств/вкладок).
-import { create } from 'zustand'
+// Облачные черновики. Живут в State (tweb `drafts` в StateStorage) — читаются
+// одним батчем на старте (client/boot.ts), поэтому текст композера доступен уже
+// в первом кадре. Запись — write-through через setAppState, отдельного дебаунс-
+// персиста больше нет. Форма хранения — массив (как в State), доступ по чату —
+// через мемо-хук.
+import { useMemo } from 'react'
 import type { Draft } from '../core/models'
-import { loadDrafts as loadPersistedDrafts } from '../core/store/persist'
+import { useAppStateKey, useAppStateStore, setAppState } from './appState'
 
-interface DraftsState {
-  byChat: Record<number, Draft>
-  setDraft: (d: Draft) => void
-  removeDraft: (chatId: number) => void
-  setAll: (list: Draft[]) => void
-  clearAll: () => void
+/** Реактивное чтение черновиков по чатам — единственный способ получить их в UI. */
+export function useDrafts(): Record<number, Draft> {
+  const drafts = useAppStateKey('drafts')
+  return useMemo(() => Object.fromEntries(drafts.map((d) => [d.chatId, d])), [drafts])
 }
 
-export const useDraftsStore = create<DraftsState>((set) => ({
-  byChat: {},
-  setDraft: (d) => set((s) => ({ byChat: { ...s.byChat, [d.chatId]: d } })),
-  removeDraft: (chatId) =>
-    set((s) => {
-      if (!(chatId in s.byChat)) return s
-      const next = { ...s.byChat }
-      delete next[chatId]
-      return { byChat: next }
-    }),
-  setAll: (list) => set({ byChat: Object.fromEntries(list.map((d) => [d.chatId, d])) }),
-  clearAll: () => set({ byChat: {} }),
-}))
+/** Чтение вне React (storeProjection/хуки композера). */
+export function draftFor(chatId: number): Draft | undefined {
+  return useAppStateStore.getState().drafts.find((d) => d.chatId === chatId)
+}
+
+export function setDraft(d: Draft): void {
+  const rest = useAppStateStore.getState().drafts.filter((x) => x.chatId !== d.chatId)
+  setAppState('drafts', [...rest, d])
+}
+
+export function removeDraft(chatId: number): void {
+  setAppState('drafts', useAppStateStore.getState().drafts.filter((d) => d.chatId !== chatId))
+}
+
+export function setAllDrafts(list: Draft[]): void {
+  setAppState('drafts', list)
+}
 
 export async function loadDrafts(managers: { drafts: { list(): Promise<Draft[]> } }): Promise<void> {
-  const st = useDraftsStore.getState()
-  // offline-first: поднять персистнутые черновики (текст композера по чатам не
-  // теряется офлайн), сеть реконсайлит поверх. Пре-гидрация только при пустом сторе.
-  if (!Object.keys(st.byChat).length) {
-    const cached = await loadPersistedDrafts()
-    if (cached.length) st.setAll(cached)
-  }
+  // Персист тут больше НЕ читаем: State уже поднят в boot.ts до рендера.
+  // Остаётся только реконсайл поверх свежими данными сети.
   try {
-    st.setAll(await managers.drafts.list())
+    setAllDrafts(await managers.drafts.list())
   } catch {
-    /* оффлайн — остаёмся на персистнутых черновиках */
+    /* оффлайн — остаёмся на черновиках из State */
   }
-}
-
-// Подписка на стор: дебаунсом шлёт карту черновиков воркеру на запись (загрузка +
-// оптимистичные правки из композера + rt:draft_update), чтобы офлайн текст не
-// терялся. Физически пишет воркер (persistManager) — один writer. Вызывать один раз.
-export function startDraftsPersist(managers: { persist: { drafts(drafts: Draft[]): Promise<void> } }): void {
-  let timer: ReturnType<typeof setTimeout> | null = null
-  let last = useDraftsStore.getState().byChat
-  useDraftsStore.subscribe((s) => {
-    if (s.byChat === last) return
-    last = s.byChat
-    if (timer) clearTimeout(timer)
-    timer = setTimeout(() => {
-      timer = null
-      void managers.persist.drafts(Object.values(useDraftsStore.getState().byChat))
-    }, 800)
-  })
 }
