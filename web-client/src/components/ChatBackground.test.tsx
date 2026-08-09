@@ -188,7 +188,8 @@ describe('ChatBackground: обои следуют за сменой темы', (
     fresh.naturalWidth = 10
     fresh.onload?.()
     expect(renderPatternSpy).toHaveBeenCalled()
-    expect(renderPatternSpy.mock.calls.at(-1)?.[2]).toMatchObject({ mask: true })
+    const lastCall = renderPatternSpy.mock.calls[renderPatternSpy.mock.calls.length - 1]
+    expect(lastCall?.[2]).toMatchObject({ mask: true })
 
     // Сетевой доезжает после — и не должен ничего перерисовать.
     const callsBefore = renderPatternSpy.mock.calls.length
