@@ -1,30 +1,24 @@
-// ConfirmPopup — порт tweb .popup/.popup-peer (scss/partials/popups/_popup.scss,
-// _peer.scss): скрим .3, карточка min 19.5rem/max 25rem radius 2.5rem, header
-// 2.5rem, описание, чекбокс-строки 3rem, кнопки row-reverse UPPERCASE.
-.overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 4090; // как shared/ui/Popup — поверх модалок
-  background: rgba(0, 0, 0, 0.3); // tweb .popup background-color
-  display: flex;
-  overflow: auto;
-  padding: 1.875rem; // tweb .popup padding
+// ConfirmPopup рендерит глобальные `.popup[.active|.hiding]` / `.popup-container`
+// (портированный popups/_popup.scss): скрим rgba(0,0,0,.3), паддинг 1.875rem,
+// radius 2.5rem, фон карточки и весь показ/скрытие (opacity+visibility у скрима,
+// translate3d(x,3rem,0)→0 у карточки).
+// Здесь — только то, чего в партиале нет: слой над модалками и геометрия
+// PopupPeer (tweb popups/_peer.scss:5-24).
+.popup.popup {
+  // tweb ставит z-index 4 (попап живёт внутри своего слоя); у нас портал в общий
+  // контейнер, поэтому нужен собственный уровень над меню (2001).
+  z-index: 4090;
+  // tweb `.popup-peer { --popup-min-width: 19.5rem; --popup-max-width: 25rem }`
+  --popup-min-width: 19.5rem;
+  --popup-max-width: 25rem;
 }
 
-.card {
-  margin: auto;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden; // tweb .popup-container
-  // tweb .popup-peer .popup-container: width min-content в рамках 19.5–25rem
+// tweb `.popup-peer .popup-container { padding: .75rem .5rem; width: min-content }`.
+// Класс продублирован: у партиала есть своё `.popup-container { width: var(--popup-width) }`
+// той же специфичности, а партиалы эмитятся ПОСЛЕ CSS-модулей.
+.card.card {
   width: min-content;
-  min-width: min(100%, 19.5rem);
-  max-width: min(100%, 25rem);
-  border-radius: 2.5rem; // tweb --popup-border-radius
-  background: var(--background-color); // tweb --popup-background-color
-  padding: 0.75rem 0.5rem; // tweb .popup-peer .popup-container
-  color: var(--primary-text-color);
-  font-size: var(--font-size-16);
+  padding: 0.75rem 0.5rem;
 }
 
 // tweb .popup-peer .popup-header: высота 2.5rem, [avatar 32] + title
