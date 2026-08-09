@@ -78,6 +78,32 @@ textarea,
   user-select: text;
 }
 
+// tweb base.scss:968-972 — базовое оформление contenteditable. `outline: none`
+// обязателен: у наших полей своя рамка фокуса (`.input-field-border`), поверх
+// которой браузер рисовал второй контур. `cursor: text` и `white-space:
+// pre-wrap` из того же блока переносим тоже — без второго в композере
+// схлопываются повторные пробелы, а tweb их сохраняет (текст уходит на сервер
+// с пробелами как набран).
+[contenteditable='true'] {
+  outline: none;
+  cursor: text;
+  white-space: pre-wrap;
+}
+
+// tweb components/_global.scss:13-22 — сброс браузерного списка. Без него
+// `ul` выпадающего списка стран получает `padding-inline-start: 40px` и строки
+// уезжают (замерено: li 320px вместо 360).
+ul {
+  &:not(.browser-default) {
+    padding-left: 0;
+    list-style-type: none;
+
+    & > li {
+      list-style-type: none;
+    }
+  }
+}
+
 body {
   // базовый шрифт — tweb-стек (base.scss:126, через токен --font-regular)
   font-family: var(--font-regular);

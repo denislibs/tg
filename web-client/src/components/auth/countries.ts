@@ -259,6 +259,28 @@ export const COUNTRIES: Country[] = [
   { iso2: 'ZW', name: 'Zimbabwe', code: '+263', pattern: [2, 3, 4] },
 ]
 
+// Маска международного номера страны: «7 XXX XXX XX XX» (tweb
+// helpers/formatPhoneNumber.ts `applyPattern`: у патерна цифры заменяются на «X»,
+// а перед ним приписывается телефонный код через пробел).
+// Отступление от tweb: у оригинала на код страны приходится НЕСКОЛЬКО патернов и
+// выбирается самый совпадающий; в нашем `countries.ts` с генерации лежит один
+// (patterns[0]) — этого хватает для группировки и подсказки, но у стран с
+// разной длиной номера маска будет только основная.
+export function phoneMask(c: Country): string {
+  if (!c.pattern) return ''
+  return `${c.code.slice(1)} ${c.pattern.map((n) => 'X'.repeat(n)).join(' ')}`
+}
+
+// Остаток недобранной маски — то, что tweb пишет в `data-left-pattern` и рисует
+// подсказкой `.input-field-phone .input-field-input::after{content: attr(...)}`.
+// Как в оригинале: хвост маски после уже набранного, «X» → «‒».
+export function leftPattern(c: Country, value: string): string {
+  const mask = phoneMask(c)
+  const typed = value.startsWith('+') ? value.slice(1) : value
+  if (!mask || mask.length <= typed.length) return ''
+  return mask.slice(typed.length).replace(/X/g, '‒')
+}
+
 // tweb countryInputField.filterCountries: регистронезависимый поиск по имени,
 // iso2 и аббревиатуре из первых букв слов («UK», «US»…).
 export function filterCountries(value: string): Country[] {

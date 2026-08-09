@@ -1,15 +1,17 @@
 // SignInCard — ввод номера телефона (порт карточки tweb `pages/cards/SignInCard.tsx`).
 // Хост владеет номером и страной (карточка размонтируется на каждый переход,
 // а номер нужен карточке кода) — здесь только ввод, отправка кода и переходы.
-import { useState } from 'react'
-import classNames from '../../../shared/lib/classNames'
+import { useRef, useState } from 'react'
+import { placeCaretAtEnd } from '../../../shared/lib/caret'
 import { useT } from '../../../i18n'
 import { useManagers } from '../../../core/hooks/useManagers'
 import { isWebAuthnSupported, getPasskeyAssertion } from '../../../core/webauthnBrowser'
 import MediaHeader from '../MediaHeader'
 import { PrimaryButton, SecondaryButton } from '../AuthButton'
 import CountryInput from '../CountryInput'
-import type { Country } from '../countries'
+import TelInput from '../TelInput'
+import GrowHeightReveal from '../../../shared/ui/GrowHeightReveal'
+import { leftPattern, type Country } from '../countries'
 import s from '../AuthFlow.module.scss'
 
 export interface SignInCardProps {
@@ -42,8 +44,11 @@ export default function SignInCard({
 }: SignInCardProps) {
   const t = useT()
   const managers = useManagers()
-  const [error, setError] = useState('')
+  // Ошибка — не отдельная строка, а состояние поля: `.error` на инпуте плюс
+  // подменённый текст `label` (tweb `telInputField.setError()` + `replaceContent`).
+  const [phoneError, setPhoneError] = useState(false)
   const [busy, setBusy] = useState(false)
+  const telRef = useRef<HTMLDivElement>(null)
 
   const phoneDigits = phone.replace(/\D/g, '')
   const canSubmit = phoneDigits.length >= 7 && !busy
@@ -52,22 +57,32 @@ export default function SignInCard({
 
   const sendCode = async () => {
     if (!canSubmit) return
-    setError('')
+    setPhoneError(false)
     setBusy(true)
     try {
       await managers.auth.requestCode(fullPhone)
       onCodeSent()
     } catch {
-      setError(t('Could not send the code. Try again.'))
+      setPhoneError(true)
     } finally {
       setBusy(false)
     }
   }
 
+  // tweb `countryInputField.onCountryChange`: после выбора страны фокус
+  // возвращается в поле телефона, каретка — в конец (без этого `focus()` на
+  // contenteditable ставит её в НАЧАЛО и следующая цифра уходит перед кодом).
+  const pickCountry = (c: Country) => {
+    onCountryChange(c)
+    setTimeout(() => {
+      const el = telRef.current
+      if (el) placeCaretAtEnd(el)
+    }, 0)
+  }
+
   // Вход по ключу доступа (WebAuthn discoverable credential): без телефона.
   const passkeyLogin = async () => {
     if (busy) return
-    setError('')
     setBusy(true)
     try {
       const { session, options } = await managers.auth.passkeyLoginBegin()
@@ -75,7 +90,8 @@ export default function SignInCard({
       await managers.auth.passkeyLoginFinish(session, assertion, 'web', 'browser')
       onComplete()
     } catch {
-      setError(t('Passkey sign-in failed'))
+      // tweb PasskeyLoginButton показывает тост и остаётся на карточке; поле
+      // телефона к этой ошибке отношения не имеет и в error не уходит.
     } finally {
       setBusy(false)
     }
@@ -95,8 +111,12 @@ export default function SignInCard({
           <span className="i18n">{t('Sign in to Telegram')}</span>
         </MediaHeader.Title>
         <MediaHeader.Subtitle secondary>
+          {/* В tweb строка `Login.StartText` несёт перевод строки, и i18n рисует
+              его как `<br>` внутри `span.i18n` — отсюда две строки подзаголовка. */}
           <span className="i18n">
-            {t('Please confirm your country code and enter your phone number.')}
+            {t('Please confirm your country code')}
+            <br />
+            {t('and enter your phone number.')}
           </span>
         </MediaHeader.Subtitle>
       </MediaHeader>
@@ -105,44 +125,38 @@ export default function SignInCard({
           «passkey» остались СНАРУЖИ грида полей. */}
       <div className="input-wrapper">
         {/* селектор страны — полный список tweb countryInputField */}
-        <CountryInput value={country} onChange={onCountryChange} />
+        <CountryInput value={country} onChange={pickCountry} />
 
-        <div className={classNames('input-field', 'input-field-phone')}>
-          <input
-            autoFocus
-            className={classNames('input-field-input', error ? 'error' : '')}
-            inputMode="decimal"
-            required
-            value={telValue}
-            onChange={(e) => {
-              setError('')
-              onPhoneInput(e.target.value)
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void sendCode()
-            }}
-          />
-          <div className="input-field-border" />
-          {/* ошибку tweb показывает не отдельной строкой, а `telInputField.setError()`:
-              красная рамка (`.error`) + подменённый текст label */}
-          <label>
-            <span className="i18n">{error || t('Phone Number')}</span>
-          </label>
-        </div>
+        <TelInput
+          autoFocus
+          elementRef={telRef}
+          value={telValue}
+          leftPattern={leftPattern(country, telValue)}
+          error={phoneError}
+          label={phoneError ? t('Phone Number Invalid') : t('Phone Number')}
+          onInput={(raw) => {
+            setPhoneError(false)
+            onPhoneInput(raw)
+          }}
+          onEnter={() => void sendCode()}
+        />
 
         <PrimaryButton disabled={!canSubmit} onClick={() => void sendCode()}>
           {t('Next')}
         </PrimaryButton>
+        {/* tweb: следом здесь идёт `GrowHeightReveal` с LanguageChangeButton
+            («Продолжить на русском»). Не заводим — у нас нет его данных
+            (suggested lang code от сервера), это был бы мёртвый узел. */}
       </div>
 
       <SecondaryButton arrow onClick={onSignQR}>
         {t('Log in by QR Code')}
       </SecondaryButton>
-      {isWebAuthnSupported() && (
-        <SecondaryButton arrow onClick={() => void passkeyLogin()}>
+      <GrowHeightReveal when={isWebAuthnSupported()}>
+        <SecondaryButton arrow disabled={busy} onClick={() => void passkeyLogin()}>
           {t('Log in with a Passkey')}
         </SecondaryButton>
-      )}
+      </GrowHeightReveal>
     </div>
   )
 }
