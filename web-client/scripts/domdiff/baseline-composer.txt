@@ -1,0 +1,108 @@
+chat-input-full-reply: 41 findings
+  [missing-class] div
+      tweb: chat-input
+      наше: _composerBox_cj9xx_274
+  [missing-class] div
+      tweb: chat-input-main
+      наше: _composerBox_cj9xx_274
+  [extra-class] div
+      tweb: chat-input chat-input-main
+      наше: _composerBox_cj9xx_274
+  [missing-class] div>div[0]
+      tweb: chat-input-container
+      наше: _container_cj9xx_1
+  [missing-class] div>div[0]
+      tweb: chat-input-main-container
+      наше: _container_cj9xx_1
+  [extra-class] div>div[0]
+      tweb: chat-input-container chat-input-main-container
+      наше: _container_cj9xx_1
+  [missing-class] div>div[0]>div[0]
+      tweb: rows-wrapper-wrapper
+      наше: _inputRow_cj9xx_39
+  [extra-class] div>div[0]>div[0]
+      tweb: rows-wrapper-wrapper
+      наше: _inputRow_cj9xx_39
+  [wrong-tag] div>div[0]>div[0]>div[0]
+      tweb: div
+      наше: button
+  [missing-class] div>div[0]>div[0]>div[0]
+      tweb: chat-input-main-wrapper
+      наше: _sendAsBtn_cj9xx_310
+  [missing-class] div>div[0]>div[0]>div[0]
+      tweb: chat-input-wrapper
+      наше: _sendAsBtn_cj9xx_310
+  [missing-class] div>div[0]>div[0]>div[0]
+      tweb: chat-rows-wrapper
+      наше: _sendAsBtn_cj9xx_310
+  [missing-class] div>div[0]>div[0]>div[0]
+      tweb: rows-wrapper
+      наше: _sendAsBtn_cj9xx_310
+  [extra-class] div>div[0]>div[0]>div[0]
+      tweb: chat-input-main-wrapper chat-input-wrapper chat-rows-wrapper rows-wrapper
+      наше: _sendAsBtn_cj9xx_310
+  [missing-class] div>div[0]>div[0]>div[0]>div[0]
+      tweb: autocomplete-helper
+      наше: _root_vczg1_1 avatar avatar-30 avatar-gradient avatar-like
+  [missing-class] div>div[0]>div[0]>div[0]>div[0]
+      tweb: autocomplete-peer-helper
+      наше: _root_vczg1_1 avatar avatar-30 avatar-gradient avatar-like
+  [missing-class] div>div[0]>div[0]>div[0]>div[0]
+      tweb: bot-commands
+      наше: _root_vczg1_1 avatar avatar-30 avatar-gradient avatar-like
+  [missing-class] div>div[0]>div[0]>div[0]>div[0]
+      tweb: z-depth-1
+      наше: _root_vczg1_1 avatar avatar-30 avatar-gradient avatar-like
+  [extra-class] div>div[0]>div[0]>div[0]>div[0]
+      tweb: autocomplete-helper autocomplete-peer-helper bot-commands z-depth-1
+      наше: _root_vczg1_1
+  [extra-class] div>div[0]>div[0]>div[0]>div[0]
+      tweb: autocomplete-helper autocomplete-peer-helper bot-commands z-depth-1
+      наше: avatar
+  [extra-class] div>div[0]>div[0]>div[0]>div[0]
+      tweb: autocomplete-helper autocomplete-peer-helper bot-commands z-depth-1
+      наше: avatar-30
+  [extra-class] div>div[0]>div[0]>div[0]>div[0]
+      tweb: autocomplete-helper autocomplete-peer-helper bot-commands z-depth-1
+      наше: avatar-gradient
+  [extra-class] div>div[0]>div[0]>div[0]>div[0]
+      tweb: autocomplete-helper autocomplete-peer-helper bot-commands z-depth-1
+      наше: avatar-like
+  [missing-node] div>div[0]>div[0]>div[0]>div[1]
+      tweb: div.reply-wrapper.rows-wrapper-row
+  [missing-node] div>div[0]>div[0]>div[0]>div[2]
+      tweb: div.autocomplete-helper.stickers-helper.z-depth-1
+  [missing-node] div>div[0]>div[0]>div[0]>div[3]
+      tweb: div.autocomplete-helper.emoji-helper.z-depth-1
+  [missing-node] div>div[0]>div[0]>div[0]>div[4]
+      tweb: div.autocomplete-helper.autocomplete-peer-helper.commands-helper.z-depth-1
+  [missing-node] div>div[0]>div[0]>div[0]>div[5]
+      tweb: div.autocomplete-helper.autocomplete-peer-helper.mentions-helper.z-depth-1
+  [missing-node] div>div[0]>div[0]>div[0]>div[6]
+      tweb: div.autocomplete-helper.inline-helper.z-depth-1
+  [missing-node] div>div[0]>div[0]>div[0]>div[7]
+      tweb: div.new-message-wrapper.rows-wrapper-row
+  [extra-node] div>div[0]>div[0]>button[1]
+      наше: button.btn-icon.rp
+  [extra-node] div>div[0]>div[0]>div[2]
+      наше: div._editorWrap_cj9xx_90
+  [extra-node] div>div[0]>div[0]>span[3]
+      наше: span
+  [extra-node] div>div[0]>div[0]>div[4]
+      наше: div._sendBtn_cj9xx_173
+  [missing-node] div>div[0]>div[1]
+      tweb: div.fake-rows-wrapper.fake-wrapper
+  [missing-node] div>div[0]>div[2]
+      tweb: div.fake-selection-wrapper.fake-wrapper
+  [missing-node] div>div[0]>button[3]
+      tweb: button.btn-circle.btn-corner.bubbles-corner-button.bubbles-go-down.chat-secondary-button.rp.z-depth-1
+  [missing-node] div>div[0]>div[4]
+      tweb: div.chat-input-control.chat-input-wrapper
+  [missing-node] div>div[0]>button[5]
+      tweb: button.btn-circle.btn-corner.bubbles-corner-button.bubbles-go-mention.bubbles-go-reaction.chat-secondary-button.rp.z-depth-1
+  [missing-node] div>div[0]>button[6]
+      tweb: button.btn-circle.btn-corner.bubbles-corner-button.bubbles-go-mention.bubbles-go-reaction.chat-secondary-button.rp.z-depth-1
+  [missing-node] div>div[0]>button[7]
+      tweb: button.btn-circle.btn-corner.bubbles-corner-button.bubbles-go-mention.bubbles-go-reaction.chat-secondary-button.rp.z-depth-1
+
+сводка: {"missing-class":13,"extra-class":9,"wrong-tag":1,"missing-node":14,"extra-node":4}

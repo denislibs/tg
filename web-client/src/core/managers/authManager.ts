@@ -57,15 +57,48 @@ export function mapUser(r: RawUser): User {
   }
 }
 
-// Итог первого шага входа: либо сессия, либо запрос облачного пароля.
+// Итог первого шага входа: сессия, запрос облачного пароля либо шаг регистрации
+// (номер подтверждён, аккаунта под ним нет — Telegram auth.authorizationSignUpRequired).
 export type SignInOutcome =
-  | { user: User; passwordNeeded?: undefined }
-  | { passwordNeeded: true; passwordToken: string; hint: string; user?: undefined }
+  | { user: User; passwordNeeded?: undefined; signUpRequired?: undefined }
+  | { passwordNeeded: true; passwordToken: string; hint: string; user?: undefined; signUpRequired?: undefined }
+  | { signUpRequired: true; signUpToken: string; user?: undefined; passwordNeeded?: undefined }
+
+// Регистрация: сессия либо код ошибки сервера. Дискриминированный результат, а не
+// исключение, — HttpError не переживает границу worker-RPC (как ChangePhoneResult).
+export type SignUpResult =
+  | { user: User }
+  | { error: 'first_name_required' | 'name_too_long' | 'signup_token_expired' | 'phone_number_occupied' | 'too_many_requests' | 'failed' }
+
+// «Забыли пароль»: маска привязанной почты. Паузу повторной отправки держит
+// сервер (`resend_after` / 429 `resend_too_soon`) — клиент своего таймера не
+// заводит и потому это число не читает.
+export type RecoveryRequestResult =
+  | { emailPattern: string }
+  | { error: 'password_token_expired' | 'password_recovery_na' | 'resend_too_soon' | 'unavailable' | 'failed' }
+
+// Подтверждение кода с почты: сессия либо причина отказа. `recovery_expired` —
+// код протух ЛИБО исчерпаны 5 попыток (сервер не различает их намеренно).
+export type RecoveryConfirmResult =
+  | { user: User }
+  | { error: 'invalid_code' | 'recovery_expired' | 'unavailable' | 'failed' }
+
+// Импорт сессии по одноразовому веб-токену (#?tgWebAuthToken=…).
+export type SignImportResult =
+  | SignInOutcome
+  | { error: 'web_auth_token_invalid' | 'unavailable' | 'failed'; user?: undefined; passwordNeeded?: undefined; signUpRequired?: undefined }
+
+// Сброс аккаунта с экрана входа (tweb `appAccountManager.deleteAccount('Forgot password')`
+// в ветке PASSWORD_RECOVERY_NA). `recovery_available` — почта всё-таки привязана,
+// сбрасывать нельзя: надо идти восстановлением.
+export type AccountResetResult =
+  | { ok: true }
+  | { error: 'password_token_expired' | 'recovery_available' | 'failed' }
 
 export interface PasswordState {
   enabled: boolean
   hint: string
-  email: string // маскированный (de•••@gmail.com)
+  email: string // маскированный (d****@e******.com)
 }
 
 // Ключ доступа в списке настроек.
@@ -99,6 +132,17 @@ export interface AuthDeps {
   store: TokenStoreLike
 }
 
+// Проводной ответ шагов входа (бэк: `writeSignInResult`) — одна из трёх веток.
+interface SignInWire {
+  token?: string
+  user?: RawUser
+  password_needed?: boolean
+  password_token?: string
+  hint?: string
+  signup_required?: boolean
+  signup_token?: string
+}
+
 // Discriminated outcomes so the 400/409 cases survive the SharedWorker RPC
 // boundary (where HttpError identity would be lost), mirroring SetUsernameResult.
 export type ChangePhoneResult =
@@ -124,28 +168,133 @@ export function newAuthManager({ rest, store }: AuthDeps) {
       phone: u.phone,
     })
   }
+  // Разбор общего ответа шагов входа (`writeSignInResult` на бэке): сессия |
+  // облачный пароль | регистрация. Общий для sign_in, sign_up, recover/confirm и
+  // sign_import — держим в одном месте, чтобы ветки не разъезжались.
+  const toOutcome = async (res: SignInWire): Promise<SignInOutcome> => {
+    if (res.password_needed && res.password_token) {
+      return { passwordNeeded: true, passwordToken: res.password_token, hint: res.hint ?? '' }
+    }
+    if (res.signup_required && res.signup_token) {
+      return { signUpRequired: true, signUpToken: res.signup_token }
+    }
+    const u = mapUser(res.user!)
+    await persist(res.token!, u)
+    return { user: u }
+  }
   return {
+    // Страна по умолчанию для поля номера. Аналог tweb `help.getNearestDc`
+    // (там из ответа берётся `country`). Пустая строка — не определилось; это
+    // штатный ответ, а не ошибка, и экран входа просто остаётся на своём фолбэке.
+    async nearestCountry(): Promise<string> {
+      try {
+        const r = await rest.get<{ country_code?: string }>('/auth/nearest_country')
+        return r.country_code ?? ''
+      } catch {
+        return ''
+      }
+    },
+
     async requestCode(phone: string): Promise<void> {
       await rest.post('/auth/request_code', { phone })
     },
 
     // При включённом облачном пароле сервер вместо сессии выдаёт одноразовый
     // password_token — вход завершается шагом checkPassword (Telegram
-    // SESSION_PASSWORD_NEEDED).
+    // SESSION_PASSWORD_NEEDED). Если номер подтверждён, но аккаунта нет —
+    // signup_token и шаг signUp (Telegram auth.authorizationSignUpRequired).
     async signIn(phone: string, code: string, device: string, platform: string): Promise<SignInOutcome> {
-      const res = await rest.post<{
-        token?: string
-        user?: RawUser
-        password_needed?: boolean
-        password_token?: string
-        hint?: string
-      }>('/auth/sign_in', { phone, code, device, platform })
-      if (res.password_needed && res.password_token) {
-        return { passwordNeeded: true, passwordToken: res.password_token, hint: res.hint ?? '' }
+      return toOutcome(await rest.post<SignInWire>('/auth/sign_in', { phone, code, device, platform }))
+    },
+
+    // Регистрация нового номера. Аватар сюда НЕ передаётся: как и в tweb
+    // (`SignUpCard.sendAvatar` в ветке `auth.authorization`), он грузится уже под
+    // выданной сессией обычными ручками профиля.
+    async signUp(signUpToken: string, firstName: string, lastName: string, device: string, platform: string): Promise<SignUpResult> {
+      try {
+        const res = await rest.post<SignInWire>('/auth/sign_up', {
+          signup_token: signUpToken, first_name: firstName, last_name: lastName, device, platform,
+        })
+        const u = mapUser(res.user!)
+        await persist(res.token!, u)
+        return { user: u }
+      } catch (e) {
+        if (!(e instanceof HttpError)) throw e
+        if (e.message === 'first_name_required') return { error: 'first_name_required' }
+        if (e.message === 'name_too_long') return { error: 'name_too_long' }
+        if (e.status === 401) return { error: 'signup_token_expired' }
+        if (e.status === 409) return { error: 'phone_number_occupied' }
+        if (e.status === 429) return { error: 'too_many_requests' }
+        return { error: 'failed' }
       }
-      const u = mapUser(res.user!)
-      await persist(res.token!, u)
-      return { user: u }
+    },
+
+    // «Забыли пароль?»: код улетает на привязанную почту, обратно — её маска
+    // (d****@e******.com). Как в tweb, ссылка дёргает эту ручку на КАЖДЫЙ клик:
+    // паузу повторной отправки держит сервер, а не клиентский таймер.
+    async requestPasswordRecovery(passwordToken: string): Promise<RecoveryRequestResult> {
+      try {
+        const res = await rest.post<{ email_pattern: string }>(
+          '/auth/password/recover', { password_token: passwordToken },
+        )
+        return { emailPattern: res.email_pattern }
+      } catch (e) {
+        if (!(e instanceof HttpError)) throw e
+        if (e.message === 'resend_too_soon' || e.status === 429) return { error: 'resend_too_soon' }
+        if (e.status === 401) return { error: 'password_token_expired' }
+        if (e.status === 404) return { error: 'password_recovery_na' }
+        if (e.status === 503) return { error: 'unavailable' }
+        return { error: 'failed' }
+      }
+    },
+
+    // Сброс аккаунта, когда почта восстановления не привязана и пароль забыт
+    // (tweb: две подтверждающие плашки → `deleteAccount('Forgot password')`).
+    // Сессии тут нет — операцию авторизует тот же одноразовый password_token.
+    async resetAccount(passwordToken: string): Promise<AccountResetResult> {
+      try {
+        await rest.post('/auth/account/reset', { password_token: passwordToken })
+        return { ok: true }
+      } catch (e) {
+        if (!(e instanceof HttpError)) throw e
+        if (e.status === 401) return { error: 'password_token_expired' }
+        if (e.status === 409) return { error: 'recovery_available' }
+        return { error: 'failed' }
+      }
+    },
+
+    // Код с почты снимает облачный пароль и сразу выдаёт сессию.
+    async confirmPasswordRecovery(passwordToken: string, code: string, device: string, platform: string): Promise<RecoveryConfirmResult> {
+      try {
+        const res = await rest.post<SignInWire>('/auth/password/recover/confirm', {
+          password_token: passwordToken, code, device, platform,
+        })
+        const u = mapUser(res.user!)
+        await persist(res.token!, u)
+        return { user: u }
+      } catch (e) {
+        if (!(e instanceof HttpError)) throw e
+        if (e.message === 'recovery_expired') return { error: 'recovery_expired' }
+        if (e.status === 401) return { error: 'invalid_code' }
+        if (e.status === 503) return { error: 'unavailable' }
+        return { error: 'failed' }
+      }
+    },
+
+    // Обмен одноразового веб-токена из ссылки #?tgWebAuthToken=… на сессию.
+    // Может вернуть ветку облачного пароля — как `auth.importWebTokenAuthorization`
+    // с SESSION_PASSWORD_NEEDED в tweb.
+    async signImport(webAuthToken: string, device: string, platform: string): Promise<SignImportResult> {
+      try {
+        return await toOutcome(await rest.post<SignInWire>('/auth/sign_import', {
+          web_auth_token: webAuthToken, device, platform,
+        }))
+      } catch (e) {
+        if (!(e instanceof HttpError)) throw e
+        if (e.status === 401) return { error: 'web_auth_token_invalid' }
+        if (e.status === 503) return { error: 'unavailable' }
+        return { error: 'failed' }
+      }
     },
 
     async checkPassword(passwordToken: string, password: string, device: string, platform: string): Promise<{ user: User }> {

@@ -68,19 +68,6 @@
   transition: opacity 0.2s ease;
 }
 
-// Ряд футера внутри .chat-input-container: позицию и ширину даёт композерный
-// контейнер tweb, здесь — только раскладка ряда.
-.footer {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  gap: 8px;
-}
-
-.footerCompose {
-  align-items: flex-end;
-}
-
 // reply-клавиатура бота над композером (tweb replyKeyboardMarkup)
 .replyKeyboard {
   position: absolute;
@@ -111,88 +98,4 @@
 
   &:hover { background: var(--light-secondary-text-color); }
   &:active { transform: scale(0.99); }
-}
-
-.footerMuted {
-  align-items: center;
-  padding: 0;
-}
-
-// кнопка «Mute» (нет права писать)
-.muteBtn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  background: var(--surface-color);
-  border-radius: 14px;
-  padding: 12px 0;
-  cursor: pointer;
-  color: var(--primary-text-color);
-}
-
-// квадратная кнопка «подарок»
-.giftBtn {
-  width: 52px;
-  height: 52px;
-  border-radius: 14px;
-  background: var(--surface-color);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
-// «Тема закрыта» вместо композера (tweb: тред закрытого топика read-only)
-.threadClosedBar {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  height: var(--chat-input-height);
-  border-radius: var(--chat-input-border-radius);
-  background: var(--surface-color);
-  box-shadow: var(--tg-plateShadow);
-}
-
-// Бар handshake секретного чата (accept/await/rejected) вместо композера.
-.secretBar {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  min-height: var(--chat-input-height);
-  padding: 12px 16px;
-  border-radius: var(--chat-input-border-radius);
-  background: var(--surface-color);
-  box-shadow: var(--tg-plateShadow);
-}
-.secretBarBtns {
-  display: flex;
-  gap: 8px;
-  width: 100%;
-}
-.secretBtn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 40px;
-  padding: 8px 16px;
-  border: none;
-  border-radius: 12px;
-  background: var(--surface-color);
-  cursor: pointer;
-
-  &:hover { background: var(--light-secondary-text-color); }
-  &:disabled { opacity: 0.6; cursor: default; }
-}
-.secretBtnPrimary {
-  background: var(--primary-color);
-
-  &:hover { background: var(--primary-color); filter: brightness(1.05); }
 }

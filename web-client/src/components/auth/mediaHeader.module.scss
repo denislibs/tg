@@ -1,0 +1,48 @@
+/*
+ * Порт tweb `src/components/mediaHeader.module.scss` — дословно, 1:1.
+ * Общая шапка «стикер → тайтл → сабтайтл»: её носят все карточки экрана входа
+ * (`<MediaHeader>` в tweb), и она же переиспользуется интро-попапами.
+ *
+ * Оригинал не подключает shared — только эти пять классов, без миксинов и
+ * переменных SCSS. Ни одного отступления не потребовалось: `.title/.subtitle/
+ * .secondary/.sticker/.lottie` не пересекаются с глобальными классами на тех же
+ * узлах (глобальный `.secondary` из base.scss ставит тот же цвет).
+ */
+
+.title {
+  font-size: var(--font-size-24);
+  line-height: var(--line-height-24);
+  font-weight: var(--font-weight-bold);
+  margin-bottom: .25rem;
+}
+
+.subtitle {
+  font-size: var(--font-size-16);
+  line-height: var(--line-height-16);
+  margin-top: .125rem;
+
+  &.secondary {
+    color: var(--secondary-text-color);
+    font-size: var(--font-size-14);
+    line-height: var(--line-height-14);
+  }
+}
+
+.sticker {
+  --sticker-size: 130px;
+  position: relative;
+  margin: .125rem auto .5rem;
+  width: var(--sticker-size);
+  height: var(--sticker-size);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lottie {
+  width: var(--size);
+  height: var(--size);
+  max-width: 100%;
+  max-height: 100%;
+  position: relative;
+}

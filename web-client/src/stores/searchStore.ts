@@ -1,15 +1,42 @@
 // src/stores/searchStore.ts
-// In-chat search UI state (топбар-серч открыт + видна ли строка тегов-реакций), per
-// chat. Владелец поиска — TopbarSearch (tweb components/chat/topbarSearch.tsx);
-// сюда вынесено ровно то, что нужно ДРУГИМ узлам: пин-бар и sticky-дата смотрят на
-// `open`, колонка чата вешает `.chat.is-search-active` по `reactionsShown`
-// (tweb chat.ts:795 onActive). Сам запрос живёт в компоненте, как в tweb.
+// In-chat search UI state, per chat. Порт того, что в tweb живёт на уровне `Chat`
+// (chat.ts:763-766 + :1312 `initSearch`): четыре сигнала — `needSearch` и триада
+// `query`/`filterPeerId`/`reaction`, которыми поиск ОТКРЫВАЮТ уже настроенным.
+//
+// Рабочее состояние панели (текст в поле, дебаунс, выбранная строка) остаётся в
+// компоненте — как в tweb, где это локальные сигналы `topbarSearch.tsx:351-366`.
+// Здесь только «затравка»: `topbarSearch.tsx:403-407` («* full search replacement»)
+// эффектом засевает из неё своё состояние. Плюс то, что нужно ДРУГИМ узлам:
+// пин-бар и sticky-дата смотрят на `open`, колонка чата вешает
+// `.chat.is-search-active` по `reactionsShown` (tweb chat.ts:795 onActive).
 import { create } from 'zustand'
+
+/**
+ * Затравка поиска — аргументы tweb `chat.initSearch({query, filterPeerId, reaction})`.
+ *
+ * `nonce` заменяет `{equals: false}`, с которым созданы сигналы в chat.ts:763-765:
+ * там повторный `setQuery('x')` тем же значением ВСЁ РАВНО будит эффект-засев.
+ * Без счётчика повторный «искать от этого же пира» не перезасеял бы панель.
+ */
+export interface SearchSeed {
+  query: string
+  filterPeerId?: number
+  reaction?: string
+  nonce: number
+}
+
+/** Опции открытия — 1:1 с сигнатурой tweb `Chat.initSearch` (chat.ts:1312). */
+export interface InitSearchOptions {
+  query?: string
+  filterPeerId?: number
+  reaction?: string
+}
 
 interface ChatSearch {
   open: boolean
   /** tweb topbarSearch shouldShowReactions() → chat.ts onActive → `.is-search-active` */
   reactionsShown: boolean
+  seed: SearchSeed
 }
 
 // Кросс-чат ответ (tweb ReplyToAnotherChat): выбран целевой чат → ждём его
@@ -46,7 +73,15 @@ interface SearchState {
   pendingReply: PendingReply | null
   /** пересылка в один чат ждёт открытия целевого чата → ставится плашка форварда */
   pendingForward: PendingForward | null
-  setOpen: (chatId: number, open: boolean) => void
+  /**
+   * Открыть поиск по чату, при желании — сразу настроенным (tweb `Chat.initSearch`).
+   * Вызывается из лупы в шапке и из пункта «Поиск» в меню; точки входа с
+   * параметрами (хэштег, «искать выделенное», «от этого пира», тег-реакция) —
+   * см. backlogs/frontend/topbar-search-tweb-divergences.md.
+   */
+  initSearch: (chatId: number, options?: InitSearchOptions) => void
+  /** Закрыть поиск (tweb `searchSignal(undefined)`, chat.ts:792). */
+  closeSearch: (chatId: number) => void
   setReactionsShown: (chatId: number, shown: boolean) => void
   setPendingJump: (chatId: number, seq: number) => void
   clearPendingJump: () => void
@@ -56,14 +91,40 @@ interface SearchState {
   clearPendingForward: () => void
 }
 
-const EMPTY: ChatSearch = { open: false, reactionsShown: false }
+const EMPTY_SEED: SearchSeed = { query: '', nonce: 0 }
+const EMPTY: ChatSearch = { open: false, reactionsShown: false, seed: EMPTY_SEED }
 
 export const useSearchStore = create<SearchState>((set) => ({
   byChat: {},
   pendingJump: null,
   pendingReply: null,
   pendingForward: null,
-  setOpen: (chatId, open) => set((s) => ({ byChat: { ...s.byChat, [chatId]: { ...(s.byChat[chatId] ?? EMPTY), open, ...(open ? null : { reactionsShown: false }) } } })),
+  initSearch: (chatId, options = {}) =>
+    set((s) => {
+      const prev = s.byChat[chatId] ?? EMPTY
+      return {
+        byChat: {
+          ...s.byChat,
+          [chatId]: {
+            ...prev,
+            open: true,
+            // tweb chat.ts:822-825 — сигналы выставляются из `searchSignal()`
+            // целиком, так что не переданные поля обнуляются, а не «залипают».
+            seed: {
+              query: options.query ?? '',
+              filterPeerId: options.filterPeerId,
+              reaction: options.reaction,
+              nonce: prev.seed.nonce + 1,
+            },
+          },
+        },
+      }
+    }),
+  // Затравку тут НЕ трогаем: панель ещё доигрывает 200мс-анимацию ухода и читает
+  // её (tweb снимает узел только по окончании, chat.ts:773). Обнулит её следующий
+  // `initSearch` — как `searchSignal(undefined)` → `setQuery(s?.query)` в tweb.
+  closeSearch: (chatId) =>
+    set((s) => ({ byChat: { ...s.byChat, [chatId]: { ...(s.byChat[chatId] ?? EMPTY), open: false, reactionsShown: false } } })),
   setReactionsShown: (chatId, reactionsShown) =>
     set((s) => ({ byChat: { ...s.byChat, [chatId]: { ...(s.byChat[chatId] ?? EMPTY), reactionsShown } } })),
   setPendingJump: (chatId, seq) => set({ pendingJump: { chatId, seq } }),

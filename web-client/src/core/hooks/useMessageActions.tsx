@@ -161,7 +161,7 @@ export function useMessageActions({
 
   const startReply = () => {
     const m = msgMenu && msgs[msgMenu.idx]
-    const rs = m ? convMsgReplyState(m, menuRawMsg()?.id, chat.name, accent) : null
+    const rs = m ? convMsgReplyState(m, menuRawMsg()?.id, chat.name, accent, { meId: meId ?? undefined, peerId: chat.peerId }) : null
     if (rs) {
       setReply({ ...rs, quote: pendingQuoteRef.current ?? undefined })
       setEditing(null)
@@ -175,7 +175,7 @@ export function useMessageActions({
   const startReplyAnother = () => {
     const m = msgMenu && msgs[msgMenu.idx]
     const raw = menuRawMsg()
-    const rs = m ? convMsgReplyState(m, raw?.id, chat.name, accent) : null
+    const rs = m ? convMsgReplyState(m, raw?.id, chat.name, accent, { meId: meId ?? undefined, peerId: chat.peerId }) : null
     if (rs && raw?.id != null) {
       setReplyAnother({ msgId: raw.id, name: rs.name, text: rs.text || mediaLabel(m!.type), color: rs.color })
     }

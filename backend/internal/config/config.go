@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -58,6 +59,11 @@ type Config struct {
 	// DNPServerPrivKey — hex 32-байтного Curve25519 приватного статик-ключа
 	// сервера (DNP). Пусто → DNP выключен.
 	DNPServerPrivKey string
+
+	// AccountResetWait — окно ожидания отложенного сброса аккаунта («забыли
+	// пароль» без почты восстановления). Неделя, как в Telegram; сокращается
+	// только на стенде, иначе сценарий непроверяем.
+	AccountResetWait time.Duration
 }
 
 func Load() (*Config, error) {
@@ -91,6 +97,11 @@ func Load() (*Config, error) {
 	c.TenorAPIKey = os.Getenv("TENOR_API_KEY")
 	c.RTMPBaseURL = getenv("RTMP_BASE_URL", "rtmp://localhost/live")
 	c.DNPServerPrivKey = os.Getenv("DNP_SERVER_PRIVKEY")
+	accountResetWait, err := parseDuration("ACCOUNT_RESET_WAIT", defAccountResetWait)
+	if err != nil {
+		return nil, err
+	}
+	c.AccountResetWait = accountResetWait
 
 	// Fail-fast: в проде дефолтные секреты — это доступ к чужому медиа (форж
 	// media-токена на MEDIA_URL_SECRET), TURN и хранилищу, плюс статичный OTP.
@@ -112,6 +123,12 @@ func Load() (*Config, error) {
 		if len(bad) > 0 {
 			return nil, fmt.Errorf("APP_ENV=production, но используются дефолтные секреты: %s — задайте их через окружение", strings.Join(bad, ", "))
 		}
+		// Укороченное окно сброса аккаунта — прямая дыра: владельцу не остаётся
+		// времени войти и отменить чужую попытку удаления. Сокращать можно только
+		// на стенде.
+		if c.AccountResetWait < defAccountResetWait {
+			return nil, fmt.Errorf("APP_ENV=production, но ACCOUNT_RESET_WAIT=%s короче недели — окно отмены сброса аккаунта укорачивать нельзя", c.AccountResetWait)
+		}
 	}
 	return c, nil
 }
@@ -123,7 +140,27 @@ const (
 	defTurnSecret     = "dev-turn-secret-change-me"
 	defMinioCred      = "minioadmin"
 	defOTPCode        = "12345"
+	// defAccountResetWait — окно ожидания сброса аккаунта: неделя, как в Telegram.
+	// Одновременно нижняя граница для прода.
+	defAccountResetWait = 7 * 24 * time.Hour
 )
+
+// parseDuration читает длительность из окружения ("168h", "30s"). Пусто —
+// дефолт; мусор — ошибка старта, а не молчаливый откат к дефолту.
+func parseDuration(key string, def time.Duration) (time.Duration, error) {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return def, nil
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%s=%q: %w", key, raw, err)
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("%s=%q: должно быть положительным", key, raw)
+	}
+	return d, nil
+}
 
 func getenv(key, def string) string {
 	if v := os.Getenv(key); v != "" {

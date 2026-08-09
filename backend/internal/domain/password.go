@@ -22,17 +22,33 @@ func CheckPasswordHash(hash, password string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
 }
 
-// MaskEmail прячет локальную часть почты для показа в настройках/логине
-// (Telegram login_email_pattern): den…@gmail.com → «de•••@gmail.com».
+// MaskEmail прячет почту для показа в настройках и на экране восстановления
+// (Telegram login_email_pattern): «denis@example.com» → «d****@e******.com».
+//
+// Формат ровно как у Telegram: скрытые символы — звёздочки, по одной на каждый
+// настоящий символ (длина не скрывается, это часть подсказки пользователю),
+// первая буква локальной части и первая буква домена остаются, доменная зона
+// видна целиком. Прежняя версия отдавала фиксированные «•••» и **полный
+// домен** — и длину теряла, и адрес прятала слабее.
 func MaskEmail(email string) string {
 	at := strings.LastIndexByte(email, '@')
 	if at <= 0 {
 		return email
 	}
-	local := email[:at]
-	keep := 2
-	if len(local) < keep {
-		keep = len(local)
+	host := email[at+1:]
+	// Зона (последняя точка и всё после) не маскируется — так же у Telegram.
+	zone := ""
+	if dot := strings.LastIndexByte(host, '.'); dot > 0 {
+		zone, host = host[dot:], host[:dot]
 	}
-	return local[:keep] + "•••" + email[at:]
+	return maskKeepFirst(email[:at]) + "@" + maskKeepFirst(host) + zone
+}
+
+// maskKeepFirst оставляет первый символ, остальные заменяет звёздочками.
+func maskKeepFirst(s string) string {
+	r := []rune(s)
+	if len(r) <= 1 {
+		return s
+	}
+	return string(r[0]) + strings.Repeat("*", len(r)-1)
 }

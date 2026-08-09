@@ -90,8 +90,9 @@ func provideMinio(cfg *config.Config, ctx context.Context) MinioResult {
 func provideAuthRepo(pool *pgxpool.Pool) *pgadapter.AuthRepo { return pgadapter.NewAuthRepo(pool) }
 
 func provideAuthUsecase(cfg *config.Config, repo *pgadapter.AuthRepo) *usecaseauth.Interactor {
-	uc := usecaseauth.New(repo, repo, repo, repo, cfg.DevOTPCode, log.Printf)
+	uc := usecaseauth.New(repo, repo, repo, repo, repo, cfg.DevOTPCode, log.Printf)
 	uc.SetPremiumRepo(repo)
+	uc.SetAccountResetWindow(cfg.AccountResetWait)
 	return uc
 }
 

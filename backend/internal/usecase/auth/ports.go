@@ -9,7 +9,13 @@ import (
 )
 
 type UserRepo interface {
-	UpsertByPhone(ctx context.Context, phone string) (domain.User, error)
+	// ByPhone возвращает пользователя с этим номером или domain.ErrNotFound —
+	// незнакомый номер НЕ создаётся молча (вход отправляет клиента на шаг
+	// регистрации, Telegram auth.authorizationSignUpRequired).
+	ByPhone(ctx context.Context, phone string) (domain.User, error)
+	// CreateWithName заводит пользователя с подтверждённым номером и именем
+	// (шаг auth.signUp). domain.ErrConflict, если номер заняли параллельно.
+	CreateWithName(ctx context.Context, phone, first, last string) (domain.User, error)
 	GetByID(ctx context.Context, id int64) (domain.User, error)
 	UpdateProfile(ctx context.Context, id int64, first, last, bio string, birthday *time.Time, phoneVisibility string) (domain.User, error)
 	UsernameAvailable(ctx context.Context, username string, excludeID int64) (bool, error)
@@ -84,6 +90,71 @@ type PasswordRepo interface {
 	SavePasswordToken(ctx context.Context, tokenHash string, userID int64, expires time.Time) error
 	PasswordTokenUser(ctx context.Context, tokenHash string) (int64, error) // domain.ErrNotFound если нет/истёк
 	DeletePasswordToken(ctx context.Context, tokenHash string) error
+}
+
+// SignUpTokenStore — одноразовые токены шага регистрации: номер уже подтверждён
+// кодом, но пользователя ещё нет. Хранится только хеш токена (как у
+// password_login_tokens), сырой токен живёт только у клиента.
+type SignUpTokenStore interface {
+	SaveSignUpToken(ctx context.Context, tokenHash, phone string, expires time.Time) error
+	SignUpTokenPhone(ctx context.Context, tokenHash string) (string, error) // domain.ErrNotFound если нет/истёк
+	DeleteSignUpToken(ctx context.Context, tokenHash string) error
+}
+
+// PasswordRecoveryStore — коды сброса облачного пароля по почте. Ключ —
+// хеш того же password_token, что выдал SignIn: восстановление привязано к
+// уже пройденному шагу OTP. Код хранится хешем, nextSendAt — серверный таймер
+// повторной отправки.
+type PasswordRecoveryStore interface {
+	SaveRecoveryCode(ctx context.Context, tokenHash string, userID int64, codeHash string, expires, nextSendAt time.Time) error
+	// RecoveryCode возвращает живую запись; domain.ErrNotFound если нет/истекла.
+	RecoveryCode(ctx context.Context, tokenHash string) (userID int64, codeHash string, nextSendAt time.Time, err error)
+	DeleteRecoveryCode(ctx context.Context, tokenHash string) error
+}
+
+// WebAuthTokenStore — одноразовые веб-токены входа (#?tgWebAuthToken=…,
+// Telegram auth.importWebTokenAuthorization). Тот же приём, что у QR-логина:
+// ключ — хеш токена, запись живёт TTL и сгорает при обмене.
+type WebAuthTokenStore interface {
+	SaveWebAuthToken(ctx context.Context, tokenHash string, userID int64, expires time.Time) error
+	WebAuthTokenUser(ctx context.Context, tokenHash string) (int64, error) // domain.ErrNotFound если нет/истёк
+	DeleteWebAuthToken(ctx context.Context, tokenHash string) error
+}
+
+// AccountResetStore — отложенные сбросы аккаунта: одна запись на пользователя.
+// Сброс планируется первым вызовом ручки, исполняется повторным (когда окно
+// истекло) и отменяется входом владельца.
+type AccountResetStore interface {
+	// ScheduleAccountReset заводит (или перезаписывает) отложенный сброс.
+	ScheduleAccountReset(ctx context.Context, userID int64, requestedAt, deleteAt time.Time) error
+	// AccountReset возвращает запланированный сброс: срок исполнения и момент
+	// отмены владельцем (нулевое время — не отменён). domain.ErrNotFound, если
+	// сброса не заказывали.
+	AccountReset(ctx context.Context, userID int64) (deleteAt, cancelledAt time.Time, err error)
+	// CancelAccountReset помечает ЖДУЩИЙ сброс отменённым; cancelled=false, если
+	// отменять было нечего (сброса нет или он уже отменён — отметку не двигаем,
+	// иначе карантин продлевался бы каждым входом).
+	CancelAccountReset(ctx context.Context, userID int64, at time.Time) (cancelled bool, err error)
+	// DeleteAccountReset убирает запись после исполнения сброса.
+	DeleteAccountReset(ctx context.Context, userID int64) error
+}
+
+// LoginStepRepo — единая точка подключения хранилищ артефактов входа
+// (регистрация, восстановление пароля, веб-токен, отложенный сброс аккаунта).
+// Реализуется тем же postgres-адаптером, что и остальные auth-порты.
+type LoginStepRepo interface {
+	SignUpTokenStore
+	PasswordRecoveryStore
+	WebAuthTokenStore
+	AccountResetStore
+}
+
+// Mailer доставляет письмо с кодом восстановления облачного пароля. Порт
+// опционален: без него код совпадает с dev-OTP (DEV_OTP_CODE) — ровно как код
+// входа по SMS на стенде. Реальная доставка подключается адаптером через
+// SetMailer.
+type Mailer interface {
+	SendRecoveryCode(ctx context.Context, email, code string) error
 }
 
 type SessionCache interface {

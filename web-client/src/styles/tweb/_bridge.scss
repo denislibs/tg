@@ -7,12 +7,251 @@
 // это не партиал, а набор утилит, который целиком тянуть незачем.
 @use "../foundation" as *;
 
+// tweb base.scss:11-23 — высота вьюпорта. `--vh` в CSS объявлена фолбэком `1vh`,
+// а на мобильных её перебивает JS (tweb index.ts:147) реальной высотой окна,
+// чтобы адресная строка не резала вёрстку. Мы этот JS не портировали — на
+// десктопе фолбэка достаточно.
+//
+// Без этих трёх строк `calc(var(--100vh-inset) - …)` был невычислим, и свойство
+// целиком отбрасывалось: правило молча не работало в `_leftSidebar.scss` (3 места,
+// высоты поиска и списка) и в `_emojiDropdown.scss:62`. `--page-chats-padding`
+// объявлена у нас в `styles/index.scss` и резолвится в точке использования, так
+// что своё значение подхватывается на каждом уровне (корень / колонка чата).
+:root {
+  --vh: 1vh;
+  --100vh: calc(var(--vh) * 100);
+  --100vh-inset: calc(var(--100vh) - 2 * var(--page-chats-padding));
+}
+
+// tweb base.scss:116-117, 213 — размер ячейки в лентах стикеров/кастом-эмодзи.
+// Их читают `_chatStickersHelper.scss:7,25` и `_chatInlineHelper.scss:90`.
+:root {
+  --esg-sticker-size: 72px;
+  --esg-custom-emoji-size: 36px;
+
+  @include respond-to(handhelds) {
+    --esg-sticker-size: 68px;
+  }
+}
+
+// tweb base.scss:675-738 — кейфреймы появления/исчезновения.
+//
+// Их НЕ БЫЛО в бандле вообще, хотя ссылаются на них семь уже портированных
+// партиалов: `_chatlist.scss:113`, `_avatar.scss:127`, `_chat.scss:1210`,
+// `_chatBubble.scss` (3 места), `_transition.scss` (6 мест), `_chatDrop.scss:23`,
+// `_autocompleteHelper.scss:30,40`. Неизвестное имя в `animation:` — не ошибка
+// сборки, а тихий no-op: правило есть, анимация не играет. Отсюда «мгновенные»
+// появления там, где в tweb плавные.
+@keyframes thumbnail-fade-in-opacity {
+  0% {
+    opacity: 0;
+  }
+
+  to {
+    opacity: .8;
+  }
+}
+
+@keyframes fade-in-opacity {
+  0% {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fade-out-opacity {
+  0% {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes fade-in-backwards-opacity {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes fade-out-backwards-opacity {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+// tweb base.scss:1082-1108 — морф кнопки отправки: приходящая иконка растёт
+// (`grow-icon`), уходящая схлопывается (`hide-icon`). Обе — 400 ms, на них
+// опирается `_chat.scss` (секция `.btn-send`).
+@keyframes grow-icon {
+  0% {
+    transform: scale(.5);
+    opacity: .8;
+  }
+
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes hide-icon {
+  from {
+    transform: scale(1);
+    opacity: .4;
+  }
+
+  to {
+    transform: scale(.5);
+    opacity: 0;
+  }
+}
+
+// tweb base.scss:1406-1411 — подсветка активной строки в списках с клавиатурной
+// навигацией (`attachListNavigation.ts:9` ставит класс `active`).
+.navigable-list {
+  .active {
+    background-color: var(--light-secondary-text-color);
+    border-radius: inherit;
+  }
+}
+
+// tweb base.scss:994-1026 — сетка ленты стикеров (хелпер подсказок, вкладка
+// стикеров дропдауна). Закомментированные в оригинале блоки не переносим.
+.super-stickers {
+  width: 100%;
+	display: grid;
+	grid-template-columns: repeat(auto-fill, var(--esg-sticker-size)); // 64px
+	justify-content: space-between;
+}
+
+.super-sticker {
+  @include hover-background-effect() {
+    border-radius: $border-radius-medium;
+  }
+}
+
+// tweb base.scss:1413-1502 — сетка и ячейка эмодзи (хелпер подсказок, вкладка
+// эмодзи дропдауна). Без неё у `.super-emoji` нет ни ширины, ни высоты.
+.super-emojis {
+  --esg-emoji-size: 2.125rem;
+  --esg-emoji-total-size: calc(var(--esg-emoji-size) + .5rem);
+  --custom-emoji-size: 2.25rem;
+  // ! No chrome 56 support
+  display: grid;
+  grid-template-columns: repeat(auto-fill, var(--esg-emoji-total-size));
+  justify-content: space-between;
+  position: relative;
+  font-size: var(--esg-emoji-size);
+  line-height: var(--esg-emoji-size);
+  column-gap: .25rem;
+
+  .custom-emoji {
+    display: block;
+
+    &-renderer {
+      z-index: 1;
+    }
+
+    &:before {
+      content: none;
+    }
+  }
+}
+
+.super-emoji {
+  display: inline-block;
+  padding: .25rem;
+  line-height: inherit;
+  border-radius: $border-radius;
+  cursor: pointer;
+  vertical-align: middle;
+  width: var(--esg-emoji-total-size);
+  height: var(--esg-emoji-total-size);
+  position: relative;
+
+  .emoji-placeholder {
+    position: absolute;
+    left: 7px;
+    top: 7px;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 50%;
+    background-color: var(--light-secondary-text-color);
+    pointer-events: none;
+
+    @include animation-level(2) {
+      opacity: 0;
+      transition: opacity .2s ease-in-out;
+    }
+  }
+
+  .emoji {
+    width: 100%;
+    height: 100%;
+    vertical-align: unset;
+    margin: 0;
+
+    @include animation-level(2) {
+      opacity: 1;
+      transition: opacity .2s ease-in-out;
+    }
+  }
+
+  .premium-sticker-lock {
+    left: auto;
+    inset-inline-end: 0;
+    transform: scale(.75);
+  }
+
+  &.active {
+    background-color: var(--light-secondary-text-color);
+  }
+
+  &-custom {
+    padding: .1875rem;
+  }
+
+  &-regular {
+    overflow: hidden;
+
+    html.native-emoji & {
+      padding-top: .3125rem;
+      padding-bottom: .3125rem;
+    }
+  }
+
+  @include hover-background-effect();
+}
+
 // tweb scss/components/_global.scss:57-61 — материал-тень 2dp (её носит
 // `.btn-corner`-кнопка «вниз»).
 .z-depth-1 {
   box-shadow: 0 2px 2px 0 rgba(0, 0, 0, 0.14),
   0 3px 1px -2px rgba(0, 0, 0, 0.12),
   0 1px 5px 0 rgba(0, 0, 0, 0.2);
+}
+
+// tweb scss/components/_global.scss:74-78 — материал-тень 12dp. Её носит
+// выпадающий список стран экрана входа (`.select-wrapper.z-depth-3`).
+.z-depth-3 {
+  box-shadow: 0 8px 17px 2px rgba(0,0,0,0.14),
+  0 3px 14px 2px rgba(0,0,0,0.12),
+  0 5px 5px -3px rgba(0, 0, 0, 0.2);
 }
 
 // tweb scss/components/_global.scss:187-193 — утилиты переноса строк. `.no-wrap`
@@ -35,6 +274,15 @@ input,
   caret-color: var(--primary-color);
   color: var(--primary-text-color);
   background-color: transparent;
+}
+
+// tweb base.scss:566-569 — сброс браузерной отрисовки полей. Без `font-size:
+// inherit` Chrome рисует внутри поля свой 13.33px вместо кегля контейнера
+// (заметно в поле ссылки тултипа форматирования: панель 16px, поле мельче).
+input,
+textarea {
+	-webkit-appearance: none;
+  font-size: inherit;
 }
 
 // tweb scss/components/_global.scss:40-43 — снятие браузерного фокус-кольца.
@@ -95,5 +343,197 @@ button:focus {
 
   .c-ripple__circle {
     background-color: var(--light-primary-color);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Экран авторизации: глобальные классы, живущие в base.scss (целиком его не
+// портируем — это ресет). Ниже — дословные выдержки с указанием строк.
+// ---------------------------------------------------------------------------
+
+// tweb base.scss:592-594 — приглушённый текст (`._subtitle.secondary` в шапке
+// карточек входа, а также подзаголовки строк).
+.secondary {
+  color: var(--secondary-text-color);
+}
+
+// tweb base.scss:2407-2409 — у нас без миксина `text-center()`: он в tweb равен
+// `text-align: center` (то же правило продублировано в components/_global.scss:122-124).
+.text-center {
+  text-align: center;
+}
+
+// tweb base.scss:1392-1404 — скрытые поля-ловушки автозаполнения (по одному до
+// и после настоящего поля пароля на карточке `password`).
+.stealthy {
+  left: 0;
+  margin: 0;
+  max-height: 1px;
+  max-width: 1px;
+  opacity: 0;
+  outline: none;
+  overflow: hidden;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  z-index: -1;
+}
+
+// tweb base.scss:1966-1973 — иконка внутри строки текста (стрелка `>` в
+// `span.i18n > span.tgico.inline-icon` вторичных кнопок входа).
+.inline-icon {
+  vertical-align: bottom;
+  line-height: inherit !important;
+
+  &-left {
+    margin-inline-end: .125rem;
+  }
+}
+
+// tweb base.scss:859-934 — выпадающий список стран (`CountryInputField`):
+// сама панель, телефонный код в строке и нативный эмодзи-флаг. Дословно.
+
+.select-wrapper {
+  max-height: 23.5rem;
+  /* height: auto; */
+  position: absolute;
+  width: 100%;
+  top: calc(100% + .5rem);
+  left: 0;
+  overflow: hidden;
+  background-color: var(--surface-color);
+  z-index: 3;
+  border-radius: $border-radius-medium;
+  display: flex;
+  flex-direction: column;
+  flex-wrap: wrap;
+  transition: opacity .2s ease-out, transform .2s ease-out;
+  transform: scale(.95);
+  transform-origin: top center;
+  opacity: 0;
+
+  &.active {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  ul {
+    margin: .5rem 0;
+  }
+
+  li {
+    /* display: flex; */
+    align-items: center;
+    padding: 0 1rem;
+    justify-content: space-between;
+    height: 3rem;
+    cursor: pointer;
+    /* font-weight: 500; */
+
+    text-align: start;
+    display: grid;
+    grid-template-columns: calc(26px + 2rem) 1fr 80px;
+
+    @include hover-background-effect();
+  }
+
+  // +2 px bc of whitespace
+  .emoji {
+    height: 26px;
+    width: 26px;
+    font-size: 26px;
+    line-height: 1;
+  }
+
+  .scrollable {
+    position: relative;
+  }
+}
+
+.phone-code {
+  color: $placeholder-color;
+  text-align: end;
+}
+
+// `.auth-image`, `.phone-edit`, `.phone-wrapper` used to live here; they're now
+// scoped to the auth flow in `src/pages/authFlow.module.scss`.
+
+.emoji-native {
+  display: inline !important;
+  //line-height: 1em;
+  //font-size: 1em;
+
+  font-family: apple color emoji,segoe ui emoji,noto color emoji,android emoji,emojisymbols,emojione mozilla,twemoji mozilla,segoe ui symbol;
+  vertical-align: unset !important;
+  line-height: 1 !important;
+  // vertical-align: text-top !important;
+}
+
+// tweb base.scss:797-849 — аватар-«редактор» карточки регистрации (`signUp`):
+// круглая маска, канва-подложка, иконка камеры по центру. Дословно, кроме
+// добавленных width/height — см. комментарий ниже.
+.avatar-edit {
+  // отступление от tweb: в оригинале размер задан ТОЛЬКО правилом
+  // `partials/pages/_chats.scss` → `.page-chats .avatar-edit {width/height: 120px}`,
+  // а auth-хост (`#auth-flow-root` → `#auth-pages`) смонтирован ВНЕ `#page-chats`.
+  // Из-за этого в самом tweb аватар на карточке регистрации схлопнут по высоте —
+  // замерено 120×66.5 при `--sticker-size: 120px`
+  // (docs/research/2026-08-09-tweb-auth-dom-reference.md §2.5, «Найденный баг оригинала»).
+  // Завязываем размер на `--sticker-size` родительского `.sticker` из mediaHeader,
+  // фолбэк 120px = значение из `.page-chats`. Специфичность 0,1,0 ниже, чем у
+  // `.page-chats .avatar-edit` (0,2,0), поэтому внутри мессенджера ничего не меняется.
+  width: var(--sticker-size, 120px);
+  height: var(--sticker-size, 120px);
+
+  position: relative;
+  border-radius: 50%;
+  cursor: pointer;
+  overflow: hidden;
+
+  &.is-forum {
+    border-radius: var(--avatar-border-radius-forum);
+  }
+
+  &-canvas {
+    max-width: 100%;
+    max-height: 100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(var(--avatar-color-top), var(--avatar-color-bottom));
+  }
+
+  html.no-touch body.animation-level-2 & {
+    .avatar-edit-icon {
+      transform: translateY(-50%) translateX(-50%) scale(1);
+      transition: transform .2s ease-in-out;
+    }
+
+    &:hover {
+      .avatar-edit-icon {
+        transform: translateY(-50%) translateX(-50%) scale(1.2);
+      }
+    }
+  }
+
+  &-icon {
+    position: absolute;
+    font-size: 3rem;
+	  line-height: 1;
+    width: 3rem;
+    height: 3rem;
+    top: 50%;
+    left: 50%;
+    transform: translateY(-50%) translateX(-50%);
+    z-index: 2;
+    color: #fff;
+  }
+
+  .avatar-placeholder {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    filter: brightness(0.7);
   }
 }

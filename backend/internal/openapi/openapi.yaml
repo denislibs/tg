@@ -231,7 +231,7 @@ paths:
   /auth/sign_in:
     post:
       tags: [auth]
-      summary: Verify the code, create the user+device, return a session token
+      summary: Verify the code and return a session token (unknown phone → signup_required)
       security: []
       requestBody:
         required: true
@@ -247,6 +247,72 @@ paths:
                 platform: { type: string, example: browser }
       responses:
         "200":
+          description: signed in, or a next-step envelope (password_needed / signup_required)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user: { $ref: "#/components/schemas/User" }
+                  password_needed: { type: boolean }
+                  password_token: { type: string }
+                  hint: { type: string }
+                  signup_required: { type: boolean }
+                  signup_token: { type: string }
+        "401": { description: invalid code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /auth/sign_up:
+    post:
+      tags: [auth]
+      summary: Register a new phone (second step after signup_required)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [signup_token, first_name]
+              properties:
+                signup_token: { type: string }
+                first_name: { type: string, example: "Денис" }
+                last_name: { type: string, example: "Уревич" }
+                device: { type: string, example: web }
+                platform: { type: string, example: browser }
+      responses:
+        "200":
+          description: registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user: { $ref: "#/components/schemas/User" }
+        "400": { description: first_name_required / name_too_long, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "401": { description: signup_token_expired, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409": { description: phone_number_occupied, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /auth/check_password:
+    post:
+      tags: [auth]
+      summary: Second sign-in step when a cloud password (2FA) is enabled
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password_token, password]
+              properties:
+                password_token: { type: string }
+                password: { type: string }
+                device: { type: string, example: web }
+                platform: { type: string, example: browser }
+      responses:
+        "200":
           description: signed in
           content:
             application/json:
@@ -255,7 +321,118 @@ paths:
                 properties:
                   token: { type: string }
                   user: { $ref: "#/components/schemas/User" }
-        "401": { description: invalid code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "401": { description: invalid password / password_token_expired, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /auth/password/recover:
+    post:
+      tags: [auth]
+      summary: Email a cloud-password reset code; returns the masked address
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password_token]
+              properties: { password_token: { type: string } }
+      responses:
+        "200":
+          description: code sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  email_pattern: { type: string, example: "de•••@gmail.com" }
+                  resend_after: { type: integer, example: 30 }
+        "401": { description: password_token_expired, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: password_recovery_na (no recovery email), content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "429":
+          description: resend_too_soon
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string, example: resend_too_soon }
+                  retry_after: { type: integer, example: 17 }
+
+  /auth/password/recover/confirm:
+    post:
+      tags: [auth]
+      summary: Confirm the emailed code — clears the cloud password and signs in
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password_token, code]
+              properties:
+                password_token: { type: string }
+                code: { type: string, example: "12345" }
+                device: { type: string, example: web }
+                platform: { type: string, example: browser }
+      responses:
+        "200":
+          description: signed in
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user: { $ref: "#/components/schemas/User" }
+        "401": { description: invalid code / recovery_expired, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /auth/sign_import:
+    post:
+      tags: [auth]
+      summary: Exchange a one-time web auth token (#?tgWebAuthToken=) for a session
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [web_auth_token]
+              properties:
+                web_auth_token: { type: string }
+                device: { type: string, example: web }
+                platform: { type: string, example: browser }
+      responses:
+        "200":
+          description: signed in (or password_needed when 2FA is on)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user: { $ref: "#/components/schemas/User" }
+                  password_needed: { type: boolean }
+                  password_token: { type: string }
+                  hint: { type: string }
+        "401": { description: web_auth_token_invalid, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /auth/web_token:
+    post:
+      tags: [auth]
+      summary: Issue a one-time web auth token for the current session
+      responses:
+        "200":
+          description: token issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  expires_at: { type: string, format: date-time }
+        "401": { description: unauthorized, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /auth/qr/new:
     post:

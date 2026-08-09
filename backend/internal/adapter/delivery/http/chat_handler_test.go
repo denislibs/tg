@@ -16,18 +16,9 @@ import (
 )
 
 // signUp creates a user via the auth flow and returns (token, userID).
-func signUp(t *testing.T, h http.Handler, pool *pgxpool.Pool, phone string) (string, int64) {
+func signUp(t *testing.T, h http.Handler, _ *pgxpool.Pool, phone string) (string, int64) {
 	t.Helper()
-	_ = postJSON(t, h, "/auth/request_code", map[string]string{"phone": phone})
-	rec := postJSON(t, h, "/auth/sign_in", map[string]string{"phone": phone, "code": "12345"})
-	var out struct {
-		Token string `json:"token"`
-		User  struct {
-			ID int64 `json:"id"`
-		} `json:"user"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &out)
-	return out.Token, out.User.ID
+	return loginViaHTTP(t, h, phone)
 }
 
 func authedReq(t *testing.T, h http.Handler, method, path, token string, body any) *httptest.ResponseRecorder {

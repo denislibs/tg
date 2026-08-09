@@ -22,7 +22,49 @@ import (
 // all three repo ports) for use in delivery tests.
 func newAuthUC(pool *pgxpool.Pool) *usecaseauth.Interactor {
 	r := pgadapter.NewAuthRepo(pool)
-	return usecaseauth.New(r, r, r, r, "12345", func(string, ...any) {})
+	return usecaseauth.New(r, r, r, r, r, "12345", func(string, ...any) {})
+}
+
+// loginViaHTTP проходит по HTTP полный вход: request_code → sign_in, а для
+// незнакомого номера ещё и sign_up. Возвращает bearer-токен и id пользователя.
+func loginViaHTTP(t *testing.T, h http.Handler, phone string) (string, int64) {
+	t.Helper()
+	if rec := postJSON(t, h, "/auth/request_code", map[string]string{"phone": phone}); rec.Code != http.StatusOK {
+		t.Fatalf("request_code: %d %s", rec.Code, rec.Body.String())
+	}
+	rec := postJSON(t, h, "/auth/sign_in", map[string]string{
+		"phone": phone, "code": "12345", "device": "web", "platform": "browser",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("sign_in: %d %s", rec.Code, rec.Body.String())
+	}
+	var step struct {
+		SignUpRequired bool   `json:"signup_required"`
+		SignUpToken    string `json:"signup_token"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &step)
+	if step.SignUpRequired {
+		if step.SignUpToken == "" {
+			t.Fatalf("signup_required без токена: %s", rec.Body.String())
+		}
+		rec = postJSON(t, h, "/auth/sign_up", map[string]string{
+			"signup_token": step.SignUpToken, "first_name": "Тест", "device": "web", "platform": "browser",
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("sign_up: %d %s", rec.Code, rec.Body.String())
+		}
+	}
+	var out struct {
+		Token string `json:"token"`
+		User  struct {
+			ID int64 `json:"id"`
+		} `json:"user"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if out.Token == "" || out.User.ID == 0 {
+		t.Fatalf("вход не выдал сессию: %s", rec.Body.String())
+	}
+	return out.Token, out.User.ID
 }
 
 // newChatUC builds the chat usecase from the postgres adapters for delivery tests.
@@ -44,7 +86,21 @@ func newChatUC(pool *pgxpool.Pool) *usecasechat.Interactor {
 
 func newTestRouter(t *testing.T) http.Handler {
 	pool := postgres.NewTestDB(t)
-	return NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	return routerFor(newAuthUC(pool), pool)
+}
+
+// newResetRouter — роутер с укороченным окном ожидания сброса аккаунта
+// (ACCOUNT_RESET_WAIT на стенде): иначе сценарий «запланировали → окно истекло →
+// удалили» непроверяем, ждать неделю.
+func newResetRouter(t *testing.T, window time.Duration) http.Handler {
+	pool := postgres.NewTestDB(t)
+	uc := newAuthUC(pool)
+	uc.SetAccountResetWindow(window)
+	return routerFor(uc, pool)
+}
+
+func routerFor(auth *usecaseauth.Interactor, pool *pgxpool.Pool) http.Handler {
+	return NewRouter(auth, newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil)
 }
 
 func postJSON(t *testing.T, h http.Handler, path string, body any) *httptest.ResponseRecorder {
@@ -59,23 +115,29 @@ func postJSON(t *testing.T, h http.Handler, path string, body any) *httptest.Res
 func TestAuthFlow_HTTP(t *testing.T) {
 	h := newTestRouter(t)
 
-	rec := postJSON(t, h, "/auth/request_code", map[string]string{"phone": "+79990000000"})
-	if rec.Code != http.StatusOK {
+	// Новый номер проходит через шаг регистрации.
+	token, userID := loginViaHTTP(t, h, "+79990000000")
+
+	// Знакомый номер входит одним шагом — сразу сессия того же пользователя.
+	if rec := postJSON(t, h, "/auth/request_code", map[string]string{"phone": "+79990000000"}); rec.Code != http.StatusOK {
 		t.Fatalf("request_code status = %d, body=%s", rec.Code, rec.Body.String())
 	}
-
-	rec = postJSON(t, h, "/auth/sign_in", map[string]string{
+	rec := postJSON(t, h, "/auth/sign_in", map[string]string{
 		"phone": "+79990000000", "code": "12345", "device": "web", "platform": "browser",
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("sign_in status = %d, body=%s", rec.Code, rec.Body.String())
 	}
 	var out struct {
-		Token string `json:"token"`
+		Token          string `json:"token"`
+		SignUpRequired bool   `json:"signup_required"`
+		User           struct {
+			ID int64 `json:"id"`
+		} `json:"user"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &out)
-	if out.Token == "" {
-		t.Fatal("expected non-empty token")
+	if out.SignUpRequired || out.Token == "" || out.Token == token || out.User.ID != userID {
+		t.Fatalf("повторный вход = %s", rec.Body.String())
 	}
 }
 
@@ -124,28 +186,10 @@ func TestQRLoginFlow_HTTP(t *testing.T) {
 	h := NewRouter(uc, newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	// Sign in a user → Bearer token.
-	if rec := postJSON(t, h, "/auth/request_code", map[string]string{"phone": "+79992223344"}); rec.Code != http.StatusOK {
-		t.Fatalf("request_code status = %d, body=%s", rec.Code, rec.Body.String())
-	}
-	rec := postJSON(t, h, "/auth/sign_in", map[string]string{
-		"phone": "+79992223344", "code": "12345", "device": "phone", "platform": "android",
-	})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("sign_in status = %d, body=%s", rec.Code, rec.Body.String())
-	}
-	var signin struct {
-		Token string `json:"token"`
-		User  struct {
-			ID int64 `json:"id"`
-		} `json:"user"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &signin)
-	if signin.Token == "" {
-		t.Fatal("expected non-empty sign-in token")
-	}
+	signinToken, signinUserID := loginViaHTTP(t, h, "+79992223344")
 
 	// POST /auth/qr/new → 200, capture token, url suffix.
-	rec = postJSON(t, h, "/auth/qr/new", map[string]string{"platform": "web"})
+	rec := postJSON(t, h, "/auth/qr/new", map[string]string{"platform": "web"})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("qr/new status = %d, body=%s", rec.Code, rec.Body.String())
 	}
@@ -180,7 +224,7 @@ func TestQRLoginFlow_HTTP(t *testing.T) {
 	}
 
 	// POST /auth/qr/confirm with Bearer → ok.
-	rec = postJSONAuth(t, h, "/auth/qr/confirm", map[string]string{"token": qrNew.Token}, signin.Token)
+	rec = postJSONAuth(t, h, "/auth/qr/confirm", map[string]string{"token": qrNew.Token}, signinToken)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("qr/confirm status = %d, body=%s", rec.Code, rec.Body.String())
 	}
@@ -205,8 +249,8 @@ func TestQRLoginFlow_HTTP(t *testing.T) {
 	if st.Status != "confirmed" || st.SessionToken == "" || st.User.ID == 0 {
 		t.Fatalf("expected confirmed with session+user, got %+v body=%s", st, rec.Body.String())
 	}
-	if st.User.ID != signin.User.ID {
-		t.Fatalf("confirmed user id = %d, want %d", st.User.ID, signin.User.ID)
+	if st.User.ID != signinUserID {
+		t.Fatalf("confirmed user id = %d, want %d", st.User.ID, signinUserID)
 	}
 
 	// Second GET → expired (single-use).
@@ -236,5 +280,377 @@ func TestSignIn_WrongCode_HTTP(t *testing.T) {
 	})
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+// HTTP-контракт шага регистрации: незнакомый номер отдаёт signup_required, а
+// отказы шага мапятся в 400/401.
+func TestSignUp_HTTP(t *testing.T) {
+	h := newTestRouter(t)
+
+	_ = postJSON(t, h, "/auth/request_code", map[string]string{"phone": "+79990040001"})
+	rec := postJSON(t, h, "/auth/sign_in", map[string]string{"phone": "+79990040001", "code": "12345"})
+	var step struct {
+		SignUpRequired bool   `json:"signup_required"`
+		SignUpToken    string `json:"signup_token"`
+		Token          string `json:"token"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &step)
+	if !step.SignUpRequired || step.SignUpToken == "" || step.Token != "" {
+		t.Fatalf("sign_in нового номера = %s", rec.Body.String())
+	}
+
+	// Пустое имя — 400.
+	rec = postJSON(t, h, "/auth/sign_up", map[string]string{"signup_token": step.SignUpToken, "first_name": " "})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("пустое имя: %d %s", rec.Code, rec.Body.String())
+	}
+	// Чужой токен — 401.
+	rec = postJSON(t, h, "/auth/sign_up", map[string]string{"signup_token": "deadbeef", "first_name": "Денис"})
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("чужой токен: %d %s", rec.Code, rec.Body.String())
+	}
+	// Успех — сессия.
+	rec = postJSON(t, h, "/auth/sign_up", map[string]string{
+		"signup_token": step.SignUpToken, "first_name": "Денис", "last_name": "У",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("sign_up: %d %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Token string `json:"token"`
+		User  struct {
+			DisplayName string `json:"display_name"`
+		} `json:"user"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if out.Token == "" || out.User.DisplayName != "Денис У" {
+		t.Fatalf("sign_up ответ = %s", rec.Body.String())
+	}
+	// Токен одноразовый — 401.
+	rec = postJSON(t, h, "/auth/sign_up", map[string]string{"signup_token": step.SignUpToken, "first_name": "Денис"})
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("повторный sign_up: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// HTTP-контракт восстановления пароля по почте (без Mailer код = dev-OTP).
+func TestPasswordRecovery_HTTP(t *testing.T) {
+	h := newTestRouter(t)
+
+	token, _ := loginViaHTTP(t, h, "+79990040002")
+	if rec := postJSONAuth(t, h, "/me/password", map[string]string{
+		"new_password": "s3cret", "hint": "hint", "email": "denis@example.com",
+	}, token); rec.Code != http.StatusOK {
+		t.Fatalf("set password: %d %s", rec.Code, rec.Body.String())
+	}
+
+	_ = postJSON(t, h, "/auth/request_code", map[string]string{"phone": "+79990040002"})
+	rec := postJSON(t, h, "/auth/sign_in", map[string]string{"phone": "+79990040002", "code": "12345"})
+	var step struct {
+		PasswordNeeded bool   `json:"password_needed"`
+		PasswordToken  string `json:"password_token"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &step)
+	if !step.PasswordNeeded || step.PasswordToken == "" {
+		t.Fatalf("sign_in с паролем = %s", rec.Body.String())
+	}
+
+	rec = postJSON(t, h, "/auth/password/recover", map[string]string{"password_token": step.PasswordToken})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("recover: %d %s", rec.Code, rec.Body.String())
+	}
+	var req struct {
+		EmailPattern string `json:"email_pattern"`
+		ResendAfter  int    `json:"resend_after"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &req)
+	if req.EmailPattern != "d****@e******.com" || req.ResendAfter != 30 {
+		t.Fatalf("recover ответ = %s", rec.Body.String())
+	}
+
+	// Повтор до истечения таймера — 429 с retry_after.
+	rec = postJSON(t, h, "/auth/password/recover", map[string]string{"password_token": step.PasswordToken})
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("повторная отправка: %d %s", rec.Code, rec.Body.String())
+	}
+	var retry struct {
+		Error      string `json:"error"`
+		RetryAfter int    `json:"retry_after"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &retry)
+	if retry.Error != "resend_too_soon" || retry.RetryAfter <= 0 {
+		t.Fatalf("429 тело = %s", rec.Body.String())
+	}
+
+	// Неверный код — 401.
+	rec = postJSON(t, h, "/auth/password/recover/confirm", map[string]string{
+		"password_token": step.PasswordToken, "code": "00000",
+	})
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("неверный код: %d %s", rec.Code, rec.Body.String())
+	}
+	// Верный (dev) код — сессия, пароль снят. Код восстановления шестизначный
+	// (RecoveryCodeLength), поэтому пятизначный dev-OTP дополняется нулём слева.
+	rec = postJSON(t, h, "/auth/password/recover/confirm", map[string]string{
+		"password_token": step.PasswordToken, "code": "012345", "device": "web", "platform": "browser",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("confirm: %d %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Token string `json:"token"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if out.Token == "" {
+		t.Fatalf("confirm не выдал сессию: %s", rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodGet, "/me/password", out.Token, nil)
+	var st struct {
+		Enabled bool `json:"enabled"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &st)
+	if st.Enabled {
+		t.Fatalf("пароль не снят: %s", rec.Body.String())
+	}
+}
+
+// HTTP-контракт входа по веб-токену: выпуск под сессией → обмен → одноразовость.
+func TestSignImport_HTTP(t *testing.T) {
+	h := newTestRouter(t)
+
+	token, userID := loginViaHTTP(t, h, "+79990040003")
+
+	rec := postJSONAuth(t, h, "/auth/web_token", map[string]string{}, token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("web_token: %d %s", rec.Code, rec.Body.String())
+	}
+	var issued struct {
+		Token     string `json:"token"`
+		ExpiresAt string `json:"expires_at"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &issued)
+	if issued.Token == "" || issued.ExpiresAt == "" {
+		t.Fatalf("web_token ответ = %s", rec.Body.String())
+	}
+	// Без сессии выпуск запрещён.
+	if rec := postJSON(t, h, "/auth/web_token", map[string]string{}); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("web_token без токена: %d", rec.Code)
+	}
+
+	rec = postJSON(t, h, "/auth/sign_import", map[string]string{
+		"web_auth_token": issued.Token, "device": "desktop", "platform": "web",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("sign_import: %d %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Token string `json:"token"`
+		User  struct {
+			ID int64 `json:"id"`
+		} `json:"user"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if out.Token == "" || out.User.ID != userID {
+		t.Fatalf("sign_import ответ = %s", rec.Body.String())
+	}
+	// Одноразовость и неизвестный токен — 401.
+	if rec := postJSON(t, h, "/auth/sign_import", map[string]string{"web_auth_token": issued.Token}); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("повторный обмен: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := postJSON(t, h, "/auth/sign_import", map[string]string{"web_auth_token": "deadbeef"}); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("чужой токен: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// resetError — тело отказа ручки сброса: код и (для 2fa_confirm_wait) остаток
+// секунд.
+type resetError struct {
+	Error      string `json:"error"`
+	RetryAfter int    `json:"retry_after"`
+}
+
+func postReset(t *testing.T, h http.Handler, pwToken string) (*httptest.ResponseRecorder, resetError) {
+	t.Helper()
+	rec := postJSON(t, h, "/auth/account/reset", map[string]string{"password_token": pwToken})
+	var out resetError
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	return rec, out
+}
+
+// enableCloudPassword ставит облачный пароль уже вошедшему пользователю.
+func enableCloudPassword(t *testing.T, h http.Handler, token, email string) {
+	t.Helper()
+	body := map[string]string{"new_password": "s3cret", "hint": "hint"}
+	if email != "" {
+		body["email"] = email
+	}
+	if rec := postJSONAuth(t, h, "/me/password", body, token); rec.Code != http.StatusOK {
+		t.Fatalf("set password: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// HTTP-контракт сброса аккаунта: «забыли пароль?» при облачном пароле БЕЗ
+// привязанной почты. Удаление отложенное: 409 2fa_confirm_wait с остатком
+// секунд, и только вызов после истечения окна отвечает 200 {"ok":true}.
+func TestAccountReset_HTTP(t *testing.T) {
+	const window = 300 * time.Millisecond
+	h := newResetRouter(t, window)
+
+	token, userID := loginViaHTTP(t, h, "+79990040010")
+	// Пароль без почты восстановления — единственный выход остаётся сброс.
+	enableCloudPassword(t, h, token, "")
+
+	pwToken := passwordStep(t, h, "+79990040010")
+	rec, wait := postReset(t, h, pwToken)
+	if rec.Code != http.StatusConflict || wait.Error != "2fa_confirm_wait" || wait.RetryAfter <= 0 {
+		t.Fatalf("планирование сброса: %d %s", rec.Code, rec.Body.String())
+	}
+	// Аккаунт цел, сессия жива: удаление только запланировано.
+	if rec := authedReq(t, h, http.MethodGet, "/me", token, nil); rec.Code != http.StatusOK {
+		t.Fatalf("сессия отозвана на этапе планирования: %d %s", rec.Code, rec.Body.String())
+	}
+	// Повтор внутри окна — тот же ответ, окно не продлевается и не обнуляется.
+	rec, again := postReset(t, h, pwToken)
+	if rec.Code != http.StatusConflict || again.Error != "2fa_confirm_wait" || again.RetryAfter > wait.RetryAfter {
+		t.Fatalf("повтор внутри окна: %d %s (было retry_after=%d)", rec.Code, rec.Body.String(), wait.RetryAfter)
+	}
+
+	time.Sleep(window + 100*time.Millisecond) // окно укорочено, а не выжидается неделю
+
+	rec, _ = postReset(t, h, pwToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("исполнение сброса: %d %s", rec.Code, rec.Body.String())
+	}
+	var ok struct {
+		OK bool `json:"ok"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &ok)
+	if !ok.OK {
+		t.Fatalf("reset тело = %s", rec.Body.String())
+	}
+
+	// Сессия удалённого аккаунта отозвана.
+	if rec := authedReq(t, h, http.MethodGet, "/me", token, nil); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("сессия пережила сброс: %d %s", rec.Code, rec.Body.String())
+	}
+	// Токен шага пароля одноразовый → 401 password_token_expired.
+	rec, e := postReset(t, h, pwToken)
+	if rec.Code != http.StatusUnauthorized || e.Error != "password_token_expired" {
+		t.Fatalf("повторный сброс: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// Номер освобождён: вход по нему заводит НОВЫЙ аккаунт (шаг регистрации).
+	_, newID := loginViaHTTP(t, h, "+79990040010")
+	if newID == userID {
+		t.Fatalf("вход по освобождённому номеру вернул старый аккаунт %d", userID)
+	}
+}
+
+// Владелец вошёл за время окна → 409 2fa_recent_confirm, аккаунт цел. Вход по
+// одному SMS-коду отменой не считается: он упирается в шаг пароля.
+func TestAccountReset_CancelledByOwner_HTTP(t *testing.T) {
+	h := newTestRouter(t) // окно по умолчанию — неделя, отмена приходит раньше
+
+	token, userID := loginViaHTTP(t, h, "+79990040012")
+	enableCloudPassword(t, h, token, "")
+
+	pwToken := passwordStep(t, h, "+79990040012")
+	if rec, wait := postReset(t, h, pwToken); rec.Code != http.StatusConflict || wait.Error != "2fa_confirm_wait" {
+		t.Fatalf("планирование сброса: %d %s", rec.Code, rec.Body.String())
+	}
+	// Повторный вход по SMS-коду сессии не даёт — сброс в силе.
+	smsToken := passwordStep(t, h, "+79990040012")
+	if rec, wait := postReset(t, h, pwToken); rec.Code != http.StatusConflict || wait.Error != "2fa_confirm_wait" {
+		t.Fatalf("после входа по SMS-коду: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// Владелец вводит облачный пароль — вот это отмена.
+	rec := postJSON(t, h, "/auth/check_password", map[string]string{
+		"password_token": smsToken, "password": "s3cret", "device": "web", "platform": "browser",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("check_password: %d %s", rec.Code, rec.Body.String())
+	}
+
+	rec, e := postReset(t, h, pwToken)
+	if rec.Code != http.StatusConflict || e.Error != "2fa_recent_confirm" {
+		t.Fatalf("после входа владельца: %d %s", rec.Code, rec.Body.String())
+	}
+	// Аккаунт на месте: вход по номеру ведёт к тому же пользователю.
+	if rec := authedReq(t, h, http.MethodGet, "/me", token, nil); rec.Code != http.StatusOK {
+		t.Fatalf("сессия владельца пострадала: %d %s", rec.Code, rec.Body.String())
+	}
+	var me struct {
+		ID int64 `json:"id"`
+	}
+	_ = json.Unmarshal(authedReq(t, h, http.MethodGet, "/me", token, nil).Body.Bytes(), &me)
+	if me.ID != userID {
+		t.Fatalf("/me вернул %d, ожидался %d", me.ID, userID)
+	}
+}
+
+// Почта восстановления привязана → сброс запрещён (409 recovery_available):
+// иначе номер + SMS-код давали бы удаление чужого аккаунта в обход 2FA.
+func TestAccountReset_RecoveryAvailable_HTTP(t *testing.T) {
+	h := newTestRouter(t)
+
+	token, _ := loginViaHTTP(t, h, "+79990040011")
+	enableCloudPassword(t, h, token, "denis@example.com")
+
+	pwToken := passwordStep(t, h, "+79990040011")
+	rec, e := postReset(t, h, pwToken)
+	if rec.Code != http.StatusConflict || e.Error != "recovery_available" {
+		t.Fatalf("reset с почтой: %d %s", rec.Code, rec.Body.String())
+	}
+	// Отказ не тронул аккаунт: шаг пароля жив, восстановление по почте доступно.
+	if rec := postJSON(t, h, "/auth/password/recover", map[string]string{"password_token": pwToken}); rec.Code != http.StatusOK {
+		t.Fatalf("восстановление после 409: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// passwordStep доводит вход по номеру с включённым облачным паролем до шага
+// пароля и возвращает одноразовый password_token.
+func passwordStep(t *testing.T, h http.Handler, phone string) string {
+	t.Helper()
+	_ = postJSON(t, h, "/auth/request_code", map[string]string{"phone": phone})
+	rec := postJSON(t, h, "/auth/sign_in", map[string]string{"phone": phone, "code": "12345"})
+	var step struct {
+		PasswordNeeded bool   `json:"password_needed"`
+		PasswordToken  string `json:"password_token"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &step)
+	if !step.PasswordNeeded || step.PasswordToken == "" {
+		t.Fatalf("sign_in с паролем = %s", rec.Body.String())
+	}
+	return step.PasswordToken
+}
+
+// Страна для экрана входа: публичная ручка, без GeoIP отвечает 200 с пустым
+// кодом — мягкая деградация, а не 500 (клиент оставляет свой выбор).
+func TestNearestCountry_HTTP(t *testing.T) {
+	h := newTestRouter(t)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/auth/nearest_country", nil)
+	req.Header.Set("X-Real-IP", "81.2.69.142")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("nearest_country: %d %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		CountryCode string `json:"country_code"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("тело не JSON: %s", rec.Body.String())
+	}
+	// GeoIP в тестовом роутере не подключён (SetGeoResolver не вызывался).
+	if out.CountryCode != "" {
+		t.Fatalf("без GeoIP country_code = %q, want empty", out.CountryCode)
+	}
+	// Поле присутствует всегда — фронт читает его без проверки на undefined.
+	if !strings.Contains(rec.Body.String(), "country_code") {
+		t.Fatalf("в ответе нет country_code: %s", rec.Body.String())
 	}
 }

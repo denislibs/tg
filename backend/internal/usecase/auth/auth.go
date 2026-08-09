@@ -21,6 +21,7 @@ type Interactor struct {
 	devices  DeviceRepo
 	codes    CodeRepo
 	pw       PasswordRepo
+	steps    LoginStepRepo // одноразовые токены шагов входа (регистрация/восстановление/веб-токен)
 	devCode  string
 	logf     func(string, ...any)
 	cache    SessionCache       // optional
@@ -29,10 +30,14 @@ type Interactor struct {
 	svc      ServiceNotifier    // optional
 	geo      GeoResolver        // optional
 	premium  PremiumRepo        // optional
+	mail     Mailer             // optional: доставка кода восстановления на почту
 	pub      EventPublisher     // optional: realtime user_update fan-out
 	partners PartnersFunc       // optional: user_update recipient set (shared-chat peers)
 	updates  UpdateLog          // optional: per-user update log for user_update (dense pts)
 	pwFails  *failCounter       // счётчик неудачных попыток пароля на password_token
+	recFails *failCounter       // счётчик неудачных кодов восстановления на password_token
+	// resetWait — окно ожидания отложенного сброса аккаунта; 0 = дефолт (неделя).
+	resetWait time.Duration
 }
 
 // EventPublisher pushes a realtime WS frame to a user's connected sessions.
@@ -56,10 +61,12 @@ type UpdateLog interface {
 	AppendUpdate(ctx context.Context, userID int64, ptsCount int, date int64, typ string, payload json.RawMessage) (int64, error)
 }
 
-// GeoResolver turns an IP into a human place ("Москва, Россия"). Backed by a
-// MaxMind GeoLite2 lookup; optional, so auth runs without it (returns "").
+// GeoResolver turns an IP into a human place ("Москва, Россия") and into an ISO
+// 3166-1 alpha-2 country code ("RU"). Backed by a MaxMind GeoLite2 lookup;
+// optional, so auth runs without it (both return "").
 type GeoResolver interface {
 	Locate(ip string) string
+	Country(ip string) string
 }
 
 // ServiceNotifier delivers a system message into a user's official-service chat.
@@ -91,6 +98,25 @@ func clientInfoFromContext(ctx context.Context) ClientInfo {
 	return ci
 }
 
+// NearestCountry — страна, из которой пришёл клиент, ISO 3166-1 alpha-2 в
+// верхнем регистре (Telegram help.getNearestDc.country): экран входа
+// преднастраивает по ней выбор страны в поле телефона.
+//
+// IP берётся из ClientInfo в контексте — тот же механизм, что наполняет
+// местоположение сессии на экране активных сеансов. Определить не удалось (нет
+// базы GeoIP, нет IP, приватный/петлевой адрес, нет записи) — это НЕ ошибка:
+// возвращается "", клиент оставляет свой выбор по умолчанию.
+func (i *Interactor) NearestCountry(ctx context.Context) string {
+	if i.geo == nil {
+		return ""
+	}
+	ip := clientInfoFromContext(ctx).IP
+	if ip == "" {
+		return ""
+	}
+	return i.geo.Country(ip)
+}
+
 // buildLoginText composes the "new login" service message from whatever client
 // details we have (fields are omitted when unknown).
 func buildLoginText(ci ClientInfo) string {
@@ -118,8 +144,12 @@ func buildLoginText(ci ClientInfo) string {
 	return b.String()
 }
 
-func New(users UserRepo, devices DeviceRepo, codes CodeRepo, pw PasswordRepo, devCode string, logf func(string, ...any)) *Interactor {
-	return &Interactor{users: users, devices: devices, codes: codes, pw: pw, devCode: devCode, logf: logf, pwFails: newFailCounter()}
+func New(users UserRepo, devices DeviceRepo, codes CodeRepo, pw PasswordRepo, steps LoginStepRepo, devCode string, logf func(string, ...any)) *Interactor {
+	return &Interactor{
+		users: users, devices: devices, codes: codes, pw: pw, steps: steps,
+		devCode: devCode, logf: logf,
+		pwFails: newFailCounter(), recFails: newFailCounter(),
+	}
 }
 
 func (i *Interactor) SetCache(c SessionCache)                    { i.cache = c }
@@ -128,9 +158,14 @@ func (i *Interactor) SetGeoResolver(g GeoResolver)               { i.geo = g }
 func (i *Interactor) SetRevocationNotifier(n RevocationNotifier) { i.revoker = n }
 func (i *Interactor) SetQRStore(q QRStore)                       { i.qr = q }
 func (i *Interactor) SetPremiumRepo(p PremiumRepo)               { i.premium = p }
+func (i *Interactor) SetMailer(m Mailer)                         { i.mail = m }
 func (i *Interactor) SetPublisher(p EventPublisher)              { i.pub = p }
 func (i *Interactor) SetPartners(f PartnersFunc)                 { i.partners = f }
 func (i *Interactor) SetUpdateLog(u UpdateLog)                   { i.updates = u }
+
+// SetAccountResetWindow задаёт окно ожидания отложенного сброса аккаунта
+// (ACCOUNT_RESET_WAIT). Неположительное значение оставляет дефолт — неделю.
+func (i *Interactor) SetAccountResetWindow(d time.Duration) { i.resetWait = d }
 
 func (i *Interactor) RequestCode(ctx context.Context, rawPhone string) error {
 	phone := domain.NormalizePhone(rawPhone)
@@ -154,6 +189,11 @@ type SignInResult struct {
 	PasswordNeeded bool
 	PasswordToken  string
 	Hint           string
+	// Номер подтверждён, но аккаунта с ним нет: вместо сессии выдан одноразовый
+	// SignUpToken — клиент показывает форму имени и зовёт SignUp
+	// (Telegram auth.authorizationSignUpRequired).
+	SignUpRequired bool
+	SignUpToken    string
 }
 
 func (i *Interactor) SignIn(ctx context.Context, rawPhone, suppliedCode, deviceName, platform string) (SignInResult, error) {
@@ -168,24 +208,21 @@ func (i *Interactor) SignIn(ctx context.Context, rawPhone, suppliedCode, deviceN
 	if !domain.CodeMatches(stored, suppliedCode) {
 		return SignInResult{}, domain.ErrInvalidCode
 	}
-	user, err := i.users.UpsertByPhone(ctx, phone)
+	user, err := i.users.ByPhone(ctx, phone)
+	if errors.Is(err, domain.ErrNotFound) {
+		// Незнакомый номер: аккаунт НЕ создаём — отправляем на шаг регистрации.
+		return i.startSignUp(ctx, phone)
+	}
 	if err != nil {
 		return SignInResult{}, err
 	}
 	// Второй фактор: при включённом облачном пароле сессия не выдаётся — только
 	// короткий токен для шага «введите пароль».
-	if i.pw != nil {
-		if pwHash, hint, _, err := i.pw.Password(ctx, user.ID); err == nil && pwHash != nil {
-			pwToken, pwTokenHash, err := domain.GenerateToken()
-			if err != nil {
-				return SignInResult{}, err
-			}
-			if err := i.pw.SavePasswordToken(ctx, pwTokenHash, user.ID, time.Now().Add(passwordTokenTTL)); err != nil {
-				return SignInResult{}, err
-			}
-			_ = i.codes.DeleteCode(ctx, phone)
-			return SignInResult{PasswordNeeded: true, PasswordToken: pwToken, Hint: hint}, nil
-		}
+	if res, needed, err := i.startPasswordStep(ctx, user.ID); err != nil {
+		return SignInResult{}, err
+	} else if needed {
+		_ = i.codes.DeleteCode(ctx, phone)
+		return res, nil
 	}
 	res, err := i.mintSession(ctx, user, deviceName, platform)
 	if err != nil {
@@ -193,6 +230,27 @@ func (i *Interactor) SignIn(ctx context.Context, rawPhone, suppliedCode, deviceN
 	}
 	_ = i.codes.DeleteCode(ctx, phone)
 	return res, nil
+}
+
+// startPasswordStep выдаёт одноразовый password_token, если у пользователя
+// включён облачный пароль. needed=false — пароля нет, вход продолжается сессией.
+// Общий шаг для SignIn и SignImport.
+func (i *Interactor) startPasswordStep(ctx context.Context, userID int64) (SignInResult, bool, error) {
+	if i.pw == nil {
+		return SignInResult{}, false, nil
+	}
+	pwHash, hint, _, err := i.pw.Password(ctx, userID)
+	if err != nil || pwHash == nil {
+		return SignInResult{}, false, nil // нет пароля (или профиль не читается) — обычный вход
+	}
+	pwToken, pwTokenHash, err := domain.GenerateToken()
+	if err != nil {
+		return SignInResult{}, false, err
+	}
+	if err := i.pw.SavePasswordToken(ctx, pwTokenHash, userID, time.Now().Add(passwordTokenTTL)); err != nil {
+		return SignInResult{}, false, err
+	}
+	return SignInResult{PasswordNeeded: true, PasswordToken: pwToken, Hint: hint}, true, nil
 }
 
 // mintSession выдаёт новую сессию (строка devices + токен) и шлёт login-alert.
@@ -218,6 +276,9 @@ func (i *Interactor) mintSession(ctx context.Context, user domain.User, deviceNa
 	if _, err := i.devices.Create(ctx, user.ID, name, platform, hash, ci.IP, ci.Location); err != nil {
 		return SignInResult{}, err
 	}
+	// Владелец вошёл — чужая попытка сброса аккаунта снимается. Общий хвост всех
+	// веток входа: отмену вешаем здесь, а не в каждой из них.
+	i.cancelAccountReset(ctx, user.ID)
 	i.notifyLogin(user.ID, ci)
 	return SignInResult{Token: token, User: user}, nil
 }
@@ -317,6 +378,10 @@ func (i *Interactor) ConfirmQRLogin(ctx context.Context, token string, user doma
 	if _, err := i.devices.Create(ctx, user.ID, "QR login", rec.Platform, sessionHash, "", ""); err != nil {
 		return err
 	}
+	// Единственная выдача сессии мимо mintSession (метаданные берутся из записи
+	// QR, а не из запроса), поэтому отмена сброса дублируется здесь. Подтвердить
+	// QR может только уже вошедший владелец — это его активность.
+	i.cancelAccountReset(ctx, user.ID)
 	i.notifyLogin(user.ID, ClientInfo{Device: "QR-код", OS: rec.Platform})
 	rec.Status = domain.QRConfirmed
 	rec.SessionToken = sessionToken

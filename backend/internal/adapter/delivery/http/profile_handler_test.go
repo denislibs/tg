@@ -28,26 +28,10 @@ func reqJSONAuth(t *testing.T, h http.Handler, method, path string, body any, to
 	return rec
 }
 
-// signInToken signs a phone in and returns its bearer token + user id.
+// signInToken регистрирует номер и возвращает bearer-токен + id пользователя.
 func signInToken(t *testing.T, h http.Handler, phone string) (string, int64) {
 	t.Helper()
-	if rec := postJSON(t, h, "/auth/request_code", map[string]string{"phone": phone}); rec.Code != http.StatusOK {
-		t.Fatalf("request_code: %d %s", rec.Code, rec.Body.String())
-	}
-	rec := postJSON(t, h, "/auth/sign_in", map[string]string{
-		"phone": phone, "code": "12345", "device": "web", "platform": "browser",
-	})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("sign_in: %d %s", rec.Code, rec.Body.String())
-	}
-	var out struct {
-		Token string `json:"token"`
-		User  struct {
-			ID int64 `json:"id"`
-		} `json:"user"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &out)
-	return out.Token, out.User.ID
+	return loginViaHTTP(t, h, phone)
 }
 
 func TestProfileEndpoints_HTTP(t *testing.T) {

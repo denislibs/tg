@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestLoad_Defaults(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://localhost/db")
@@ -71,6 +74,52 @@ func TestLoad_DevAllowsDefaultSecrets(t *testing.T) {
 	t.Setenv("APP_ENV", "") // development по умолчанию
 	if _, err := Load(); err != nil {
 		t.Fatalf("dev with defaults должен работать: %v", err)
+	}
+}
+
+// Окно ожидания сброса аккаунта: по умолчанию неделя, на стенде укорачивается,
+// мусор в переменной — ошибка старта, а не тихий откат к дефолту.
+func TestLoad_AccountResetWait(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/db")
+
+	t.Setenv("ACCOUNT_RESET_WAIT", "")
+	c, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.AccountResetWait != 7*24*time.Hour {
+		t.Errorf("AccountResetWait default = %s, want 168h", c.AccountResetWait)
+	}
+
+	t.Setenv("ACCOUNT_RESET_WAIT", "30s")
+	if c, err := Load(); err != nil || c.AccountResetWait != 30*time.Second {
+		t.Errorf("ACCOUNT_RESET_WAIT=30s → %v, %v", c.AccountResetWait, err)
+	}
+
+	t.Setenv("ACCOUNT_RESET_WAIT", "неделя")
+	if _, err := Load(); err == nil {
+		t.Error("мусор в ACCOUNT_RESET_WAIT принят молча")
+	}
+}
+
+// В проде окно укорачивать нельзя: у владельца не остаётся времени отменить
+// чужую попытку удалить аккаунт.
+func TestLoad_ProdRejectsShortAccountResetWait(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/db")
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("MEDIA_URL_SECRET", "real-media-secret-xyz")
+	t.Setenv("TURN_SECRET", "real-turn-secret-xyz")
+	t.Setenv("MINIO_ACCESS_KEY", "realkey")
+	t.Setenv("MINIO_SECRET_KEY", "realsecret")
+	t.Setenv("DEV_OTP_CODE", "disabled-in-prod")
+
+	t.Setenv("ACCOUNT_RESET_WAIT", "30s")
+	if _, err := Load(); err == nil {
+		t.Fatal("прод принял укороченное окно сброса аккаунта")
+	}
+	t.Setenv("ACCOUNT_RESET_WAIT", "336h") // длиннее недели — можно
+	if _, err := Load(); err != nil {
+		t.Fatalf("прод отверг удлинённое окно: %v", err)
 	}
 }
 

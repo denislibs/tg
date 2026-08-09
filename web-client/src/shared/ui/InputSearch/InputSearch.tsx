@@ -31,10 +31,10 @@ const InputSearch = forwardRef<HTMLInputElement, InputSearchProps>(function Inpu
 ) {
   const has = value.length > 0
   return (
-    <div className={classNames('input-search', s.root, focused ? s.focused : '', className ?? '')}>
+    <div className={classNames('input-search', focused ? s.focused : '', className ?? '')}>
       <input
         ref={ref}
-        className={classNames('input-field-input', 'input-search-input', 'with-focus-effect', has ? '' : 'is-empty', s.input)}
+        className={classNames('input-field-input', 'input-search-input', 'with-focus-effect', has ? '' : 'is-empty', focused ? s.input : '')}
         type="text"
         autoComplete="off"
         dir="auto"

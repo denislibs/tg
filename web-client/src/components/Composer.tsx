@@ -1,26 +1,30 @@
 // src/components/Composer.tsx
-// The message composer (input row + reply/edit bars + emoji picker), extracted
-// from Chat so the draft text lives in LOCAL state. Typing then
-// re-renders only this component — not the whole conversation (feed/header). The
-// parent stays in control via callbacks: it owns send/edit/reply/voice logic and
-// is notified on send. Keyed by chat in the parent, so it remounts (clearing the
-// draft + autofocusing) when the chat changes.
+// Композер — дерево и классы tweb `components/chat/input.ts` (вариант А программы
+// parity: классы глобальные, CSS-модуля у поверхности нет):
 //
-// The input is a contenteditable div (not a textarea) so it can show rich
-// formatting inline (bold/italic/spoiler/code/quote/link), 1:1 with tweb. On send
-// the DOM is serialized to plain text + a MessageEntity[] (see core/markdown).
-import { lazy, memo, Suspense, useEffect, useRef, useState } from 'react'
+//   div.rows-wrapper-wrapper                                   input.ts:471-473
+//     div.rows-wrapper.chat-input-wrapper.chat-input-main-wrapper.chat-rows-wrapper
+//       <шесть .autocomplete-helper> + div.reply-wrapper       input.ts:1286-1296
+//       div.new-message-wrapper.rows-wrapper-row               input.ts:1012-1013
+//         attach · input-message-container · вторичные кнопки ·
+//         div.voice-recording-panel (ОВЕРЛЕЙ) · div.btn-send-container
+//
+// Внешние `.chat-input.chat-input-main` и `.chat-input-container` рендерит Chat.tsx —
+// композер начинается с `.rows-wrapper-wrapper` и вешает классы состояний
+// (`is-recording`, `is-locked`, `is-helper-active`) на найденных по DOM предков,
+// ровно как tweb делает это через ссылку на объект чата.
+//
+// Инпут — contenteditable (не textarea): в нём живёт инлайновое форматирование
+// (bold/italic/spoiler/code/quote/link), 1:1 с tweb. На отправке DOM
+// сериализуется в текст + MessageEntity[] (core/richtext/markdown).
+import { lazy, memo, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import IconButton from '../shared/ui/IconButton'
-import Text from '../shared/ui/Text'
-import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
+import classNames from '../shared/lib/classNames'
 import { useDropdownHover } from './emoji/useDropdownHover'
-import EmojiHelper from './EmojiHelper'
-import StickersHelper, { stickerSuggestEmoji } from './StickersHelper'
+import { stickerSuggestEmoji } from './StickersHelper'
 import type { Sticker } from '../core/managers/stickersManager'
 import type { GifItem } from '../core/gifs'
-import MentionsHelper from './MentionsHelper'
-import InlineResultsHelper from './InlineResultsHelper'
 import type { InlineResult } from '../core/managers/botsManager'
 import type { Peer } from '../core/managers/peersManager'
 import type { SendAsPeer } from '../core/managers/chatsManager'
@@ -28,29 +32,39 @@ import MarkupTooltip from './MarkupTooltip'
 import { serialize, apply as applyMarkup, entitiesToFragment, parseMarkdown } from '../core/richtext/markdown'
 import SendAsButton from './composer/SendAsButton'
 import RoundRecordPreview from './composer/RoundRecordPreview'
-import { MAX_LEN, SHORTCUTS, EFFECT_CHOICES, TTL_OPTIONS, ttlShort, htmlToRich, placeCaretEnd } from './composer/helpers'
+import ReplyWrapper from './composer/ReplyWrapper'
+import MessageInput from './composer/MessageInput'
+import SendButton, { type SendBtnIcon } from './composer/SendButton'
+import SendMenu from './composer/SendMenu'
+import VoiceRecordingPanel from './composer/VoiceRecordingPanel'
+import AutocompleteHelpers, { BotCommandsHelper } from './composer/AutocompleteHelpers'
+import ComposerMenus from './composer/ComposerMenus'
+import { useHostClasses } from './composer/useHostClasses'
+import { useInputHeight } from './composer/useInputHeight'
+import { MAX_LEN, EFFECT_CHOICES, ttlShort, placeCaretEnd } from './composer/helpers'
 import { useComposerAutocomplete } from './composer/useComposerAutocomplete'
+import { useComposerClipboard } from './composer/useComposerClipboard'
+import { useComposerHotkeys } from './composer/useComposerHotkeys'
+import { useSetTransition } from '../core/hooks/useSetTransition'
 import { playEmojiEffect, type EmojiEffectKind } from '../core/effects/emojiEffects'
 import type { EntityType, MessageEntity } from '../core/models'
-import { fmtDur, REC_WAVE_BARS, type VoiceRecorder } from '../core/hooks/useVoiceRecorder'
-import { EASE, DUR } from '../motion'
+import { type VoiceRecorder } from '../core/hooks/useVoiceRecorder'
 import { useT } from '../i18n'
 import { uiEvents } from '../core/hooks/uiEvents'
 import { useSettingsStore } from '../settings'
-import Menu, { MenuItem } from '../shared/ui/Menu'
 import SchedulePopup from './SchedulePopup'
 import { createPortal } from 'react-dom'
 import { DiscardVoiceDialog } from './messages/ChatDialogs.tsx'
-import s from './Composer.module.scss'
+import s from './composer/extras.module.scss'
 
 // Пикер эмодзи/стикеров/гифок — тяжёлый (сетки, StickersTab/GifsTab), но нужен
 // только по открытию. Грузим лениво отдельным чанком — вон из главного бандла.
 const EmojiDropdown = lazy(() => import('./emoji/EmojiDropdown'))
 
-const EASE_STD = EASE
-const DUR_OUT = DUR.out
+// chatRecording.ts:893 — long-press по кнопке отправки открывает выбор голос/кружок.
+const LONG_PRESS_MS = 400
 
-export interface ReplyState { msgId?: number; name: string; text: string; color: string; quote?: { text: string; offset: number }; chatId?: number; snapshotName?: string; snapshotText?: string }
+export interface ReplyState { msgId?: number; name: string; text: string; color: string; /** id автора оригинала — в `data-peer-id` на `span.peer-title` (tweb wrapPeerTitle) */ peerId?: number; quote?: { text: string; offset: number }; chatId?: number; snapshotName?: string; snapshotText?: string }
 export interface EditState { msgId: number; text: string; entities?: MessageEntity[] }
 // Плашка форварда (tweb forwarding): превью пересылаемого + опции меню.
 export interface ForwardBar { sourceChatId: number; msgIds: number[]; count: number; text: string; hasCaption: boolean; dropAuthor: boolean; dropCaption: boolean }
@@ -100,7 +114,6 @@ interface Props {
   onSchedule?: (text: string, entities: MessageEntity[] | undefined, sendAtUnix: number) => void
   // «Отправить, когда онлайн» (tweb Schedule.SendWhenOnline): доступно только в
   // личном чате, когда статус собеседника виден и он НЕ онлайн (canSendWhenOnline).
-  // Пункт SendMenu + вторичная кнопка в попапе планирования шлют текущий драфт.
   canSendWhenOnline?: boolean
   onSendWhenOnline?: (text: string, entities: MessageEntity[] | undefined) => void
   // Есть запланированные → кнопка-календарик (tweb btnScheduled) открывает список.
@@ -112,11 +125,11 @@ interface Props {
   // Секретный чат: показывает кнопку выбора таймера самоуничтожения (tweb secret
   // chat self-destruct). Выбранный TTL уходит третьим аргументом onSend.
   secret?: boolean
-  // Групповые дефолт-права: если false — медиа запрещены (attach/микрофон серые,
-  // вставка файлов блокируется). По умолчанию true.
+  // Групповые дефолт-права: если false — медиа запрещены (attach серый, рекордера
+  // нет — кнопка отправки не уходит в микрофон). По умолчанию true.
   canSendMedia?: boolean
   // Платные сообщения (Telegram paid messages): плата за сообщение в звёздах для
-  // не-админа (0/undefined — бесплатно). >0 показывает плашку над инпутом.
+  // не-админа (0/undefined — бесплатно). >0 показывает бейдж на кнопке отправки.
   chargeStars?: number
   // ↑ при пустом инпуте (без активных хелперов) — редактировать своё последнее
   // сообщение (tweb ↑ = editLastMessage). Родитель ищет сообщение и ставит editing.
@@ -126,17 +139,19 @@ interface Props {
   // Send-as (Telegram send_as): доступные «личности отправителя» (>1 → слева от
   // инпута аватар текущей + попап выбора). onSelect родитель запоминает per-chat.
   sendAs?: { peers: SendAsPeer[]; currentId: number; onSelect: (peerId: number) => void }
+  // data-peer-id инпута (input.ts) — маркер «инпут этого пира».
+  peerId?: number
 }
 
 function Composer({
   reply, editing, forward, rec, onSend, onTyping, onPickSticker, onPickGif, onCancelReply, onCancelEdit,
   onCancelForward, onForwardOption, onForwardAnother, onOpenAttach, onPasteFiles,
   initialDraft, onDraftChange, mentions, onInlineQuery, onPickInline, botMenuButton, onSchedule, canSendWhenOnline, onSendWhenOnline, scheduledCount, onOpenScheduled, slowmodeLeft, secret, canSendMedia = true, chargeStars,
-  onEditLast, onReplyPrev, sendAs,
+  onEditLast, onReplyPrev, sendAs, peerId,
 }: Props) {
+  const t = useT()
   const slowmodeBlocked = (slowmodeLeft ?? 0) > 0
   const slowmodeText = (slowmodeLeft ?? 0) >= 60 ? `${Math.ceil((slowmodeLeft ?? 0) / 60)}м` : String(slowmodeLeft ?? 0)
-  const t = useT()
   const [emptyDraft, setEmptyDraft] = useState(true)
   // Эмодзи-дропдаун: открытие по hover/клику (tweb DropdownHover); клики по
   // инпуту не закрывают его (tweb ignoreOutClickClassName: input-message-input).
@@ -149,28 +164,24 @@ function Composer({
   const [len, setLen] = useState(0)
   // While recording, Esc opens a "discard voice message?" confirm (tweb-style).
   const [cancelRecOpen, setCancelRecOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<HTMLDivElement>(null)
-  const hasText = !emptyDraft
-  // Плашка форварда активна → показываем «Отправить» (стрелку) даже при пустом
-  // инпуте: пустой коммент = просто пересылка (tweb forwarding без текста).
+  const fakeRef = useRef<HTMLDivElement>(null)
+  const newMessageWrapperRef = useRef<HTMLDivElement>(null)
+  const botCommandsTextRef = useRef<HTMLSpanElement>(null)
   const forwardActive = !!forward
-  const showSend = hasText || forwardActive
   // Меню плашки форварда (tweb reply-line-menu): show/hide sender/caption,
   // переслать в другой чат, не пересылать. Открывается кликом по плашке.
   const [fwdMenuOpen, setFwdMenuOpen] = useState(false)
   const fwdBarRef = useRef<HTMLDivElement>(null)
   const [fwdMenuPos, setFwdMenuPos] = useState<{ left: number; bottom: number } | null>(null)
   const openFwdMenu = () => {
+    if (!forward) return
     const r = fwdBarRef.current?.getBoundingClientRect()
     if (r) setFwdMenuPos({ left: r.left, bottom: window.innerHeight - r.top + 6 })
     setFwdMenuOpen(true)
   }
-  // Кнопка в режиме микрофона, но медиа в группе запрещены — светло-серая,
-  // клик показывает тост вместо записи.
-  const micDisabled = !canSendMedia && !showSend && !rec.recording && !slowmodeBlocked
-  // Серая (неактивная) кнопка: запрет медиа-микрофона ИЛИ отсчёт slowmode.
-  const sendBtnMuted = micDisabled || slowmodeBlocked
-  // Тип записи (голос/кружок) — персист в settings; long-press/ПКМ по кнопке
+  // Тип записи (голос/кружок) — персист в settings; long-press по кнопке
   // открывает меню переключения (tweb chatRecording.setupRecordingModeMenu).
   const recordingMediaType = useSettingsStore((st) => st.recordingMediaType)
   const updateSettings = useSettingsStore((st) => st.update)
@@ -180,12 +191,10 @@ function Composer({
   const [ttlMenu, setTtlMenu] = useState<{ left: number; bottom: number } | null>(null)
   const longPressTimer = useRef<number | undefined>(undefined)
   const longPressed = useRef(false)
-  const openRecMenu = (el: HTMLElement) => {
-    const r = el.getBoundingClientRect()
-    setRecMenu({ right: window.innerWidth - r.right, bottom: window.innerHeight - r.top + 8 })
-  }
   // Estimated message count once over the limit (the exact split happens on send).
   const msgCount = len > MAX_LEN ? Math.ceil(len / MAX_LEN) : 0
+
+  const autosize = useInputHeight(editorRef, fakeRef)
 
   const syncEmpty = () => {
     const txt = editorRef.current?.textContent ?? ''
@@ -196,24 +205,14 @@ function Composer({
     setLen(txt.length)
   }
 
-  // Auto-grow the input with its content, animated (tweb grows line-by-line up to
-  // ~30vh, then scrolls). The 'auto' measure + rAF restores a from-height so the
-  // height transition animates instead of jumping.
-  const autosize = () => {
-    const ed = editorRef.current
-    if (!ed) return
-    const max = Math.round(window.innerHeight * 0.3)
-    const prev = ed.style.height
-    ed.style.height = 'auto'
-    const target = Math.min(max, ed.scrollHeight)
-    ed.style.height = prev || `${target}px`
-    requestAnimationFrame(() => {
-      const e = editorRef.current
-      if (!e) return
-      e.style.height = `${target}px`
-      e.style.overflowY = e.scrollHeight > max ? 'auto' : 'hidden'
-    })
-  }
+  // ── Классы состояний на предках (tweb ставит их не на свой узел) ──
+  // `.chat-input`: is-recording через SetTransition 200 мс (chatRecording.ts:792 →
+  // input.ts:3630-3638) + is-locked (chatRecording.ts:946).
+  const recordingCls = useSetTransition(rec.recording, 'is-recording', 200)
+  useHostClasses(rootRef, '.chat-input', classNames(recordingCls, rec.recording ? 'is-locked' : ''))
+  // `.chat`: is-helper-active раскрывает reply-плашку 0 → 3rem (input.ts:4886-4890).
+  const helperActive = !!(reply || editing || forward)
+  useHostClasses(rootRef, '.chat', helperActive ? 'is-helper-active' : '')
 
   // Edit start: prefill the draft with the message's formatted content + focus.
   useEffect(() => {
@@ -250,25 +249,33 @@ function Composer({
     const id = window.setTimeout(() => editorRef.current?.focus(), 0)
     return () => window.clearTimeout(id)
   }, [])
-    // While recording, Esc asks to discard (tweb-style confirm), not silently drop.
-    useEffect(() => {
-        if (!rec.recording) return
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') { e.preventDefault(); setCancelRecOpen(true) }
-        }
-        window.addEventListener('keydown', onKey)
-        return () => window.removeEventListener('keydown', onKey)
-    }, [rec.recording])
+
+  // While recording, Esc asks to discard (tweb-style confirm), not silently drop.
+  useEffect(() => {
+    if (!rec.recording) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.preventDefault(); setCancelRecOpen(true) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [rec.recording])
+
+  // input.ts:2718-2724 — ширину кнопки меню бота tweb МЕРЯЕТ и кладёт в
+  // `--commands-size` на строке: от неё считается сдвиг инпута (`has-offset`).
+  useLayoutEffect(() => {
+    const wrapper = newMessageWrapperRef.current
+    if (!wrapper) return
+    if (!botMenuButton) { wrapper.style.removeProperty('--commands-size'); return }
+    const text = botCommandsTextRef.current
+    if (text) wrapper.style.setProperty('--commands-size', `${Math.ceil(text.scrollWidth) + 22}px`)
+  }, [botMenuButton])
 
   const clearEditor = () => {
-    if (editorRef.current) {
-      editorRef.current.replaceChildren()
-      editorRef.current.style.height = '' // collapse back to one line
-      editorRef.current.style.overflowY = 'hidden'
-    }
+    if (editorRef.current) editorRef.current.replaceChildren()
     setEmptyDraft(true)
     setLen(0)
     setStickerEmoji(null) // пустой инпут — саджесты стикеров гаснут
+    autosize() // высота возвращается к одной строке (37px)
     // selection is gone after clearing — tell the markup tooltip to hide
     window.getSelection()?.removeAllRanges()
     document.dispatchEvent(new Event('selectionchange'))
@@ -349,178 +356,9 @@ function Composer({
     onTyping()
   }
 
-  // Insert plain text at the caret as a SINGLE text node. Crucial for large pastes:
-  // `execCommand('insertText')` turns every '\n' into its own <div>, so pasting
-  // 1000 lines spawns ~1000 nodes + reflows and freezes the tab for seconds. One
-  // text node + white-space:pre-wrap renders the newlines with a single mutation.
-  const insertPlainText = (text: string) => {
-    const root = editorRef.current
-    if (!root) return
-    const sel = window.getSelection()
-    const node = document.createTextNode(text)
-    if (sel && sel.rangeCount && root.contains(sel.getRangeAt(0).commonAncestorContainer)) {
-      const range = sel.getRangeAt(0)
-      range.deleteContents()
-      range.insertNode(node)
-      range.setStartAfter(node)
-      range.collapse(true)
-      sel.removeAllRanges()
-      sel.addRange(range)
-    } else {
-      root.appendChild(node)
-    }
-  }
-
-  // Insert a prepared DocumentFragment (formatted paste) at the caret.
-  const insertFragment = (frag: DocumentFragment) => {
-    const root = editorRef.current
-    if (!root) return
-    const last = frag.lastChild
-    const sel = window.getSelection()
-    if (sel && sel.rangeCount && root.contains(sel.getRangeAt(0).commonAncestorContainer)) {
-      const range = sel.getRangeAt(0)
-      range.deleteContents()
-      range.insertNode(frag)
-      if (last) { range.setStartAfter(last); range.collapse(true); sel.removeAllRanges(); sel.addRange(range) }
-    } else {
-      root.appendChild(frag)
-    }
-  }
-
-  // Insert clipboard/drop content. Order: (1) files/images → attach flow;
-  // (2) HTML → entities (keep formatting), but only when its visible text matches
-  // the plain text (skip garbage from tables/lists); (3) plain text otherwise.
-  // We never inject raw HTML (always our own sanitized DOM), and never run the
-  // live parsers on bulk content, so a huge paste stays safe + cheap.
-  const insertClipboard = (plain: string, html: string) => {
-    if (html && html.trim()) {
-      const rich = htmlToRich(html)
-      const richLen = rich.text.replace(/\s/g, '').length
-      const plainLen = plain.replace(/\s/g, '').length
-      if (rich.entities.length && richLen === plainLen) {
-        insertFragment(entitiesToFragment(rich.text, rich.entities))
-        return
-      }
-    }
-    insertPlainText(plain)
-  }
-
-  const onPaste = (e: React.ClipboardEvent) => {
-    e.preventDefault()
-    const files = Array.from(e.clipboardData.files || [])
-    if (files.length && onPasteFiles) { onPasteFiles(files); return }
-    insertClipboard(e.clipboardData.getData('text/plain').replace(/\r/g, ''), e.clipboardData.getData('text/html'))
-    syncEmpty()
-    autosize()
-    onTyping()
-  }
-  const onDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    const files = Array.from(e.dataTransfer.files || [])
-    if (files.length && onPasteFiles) { onPasteFiles(files); return }
-    insertClipboard(e.dataTransfer.getData('text/plain').replace(/\r/g, ''), e.dataTransfer.getData('text/html'))
-    syncEmpty()
-    autosize()
-  }
-
-  const onEditorKeyDown = (e: React.KeyboardEvent) => {
-    // Inline-хелпер (tweb InlineHelper list-навигация): стрелки/Enter/Tab/Escape.
-    if (inlineSug) {
-      if (e.key === 'Escape') { e.preventDefault(); setInlineSug(null); return }
-      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-        e.preventDefault()
-        const dir = e.key === 'ArrowUp' ? -1 : 1
-        setInlineSug((sug) => sug && { ...sug, idx: (sug.idx + dir + sug.list.length) % sug.list.length })
-        return
-      }
-      if (e.key === 'Enter' || e.key === 'Tab') {
-        e.preventDefault()
-        pickInline(inlineSug.list[inlineSug.idx])
-        return
-      }
-    }
-    // Mentions-хелпер (tweb attachListNavigation тип 'y'): стрелки вверх/вниз,
-    // Enter/Tab выбирают, Escape закрывает.
-    if (mentionSug) {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        setMentionSug(null)
-        return
-      }
-      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-        e.preventDefault()
-        const dir = e.key === 'ArrowUp' ? -1 : 1
-        setMentionSug((sug) => sug && { ...sug, idx: (sug.idx + dir + sug.list.length) % sug.list.length })
-        return
-      }
-      if (e.key === 'Enter' || e.key === 'Tab') {
-        e.preventDefault()
-        pickMention(mentionSug.list[mentionSug.idx])
-        return
-      }
-    }
-    // Эмодзи-хелпер перехватывает навигацию (tweb attachListNavigation):
-    // Escape закрывает; стрелки двигают (и «будят» навигацию для слова);
-    // Enter/Tab выбирают только когда навигация активна.
-    if (emojiSug) {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        setEmojiSug(null)
-        return
-      }
-      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
-        e.preventDefault()
-        const dir = e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 1
-        setEmojiSug((sug) =>
-          sug && {
-            ...sug,
-            idx: sug.idx < 0 ? 0 : (sug.idx + dir + sug.list.length) % sug.list.length,
-          },
-        )
-        return
-      }
-      if (emojiSug.idx >= 0 && (e.key === 'Enter' || e.key === 'Tab')) {
-        e.preventDefault()
-        pickEmojiSuggestion(emojiSug.list[emojiSug.idx])
-        return
-      }
-    }
-    // Стрелка вверх (хелперы уже отработали и вышли выше, если были активны):
-    // Ctrl/Cmd+↑ — ответ на предыдущее; чистая ↑ на пустом инпуте — правка своего
-    // последнего сообщения (tweb). Модификаторы Shift/Alt не трогаем.
-    if (e.key === 'ArrowUp' && !e.shiftKey && !e.altKey) {
-      if (e.ctrlKey || e.metaKey) {
-        if (onReplyPrev) { e.preventDefault(); onReplyPrev() }
-        return
-      }
-      if (emptyDraft && onEditLast) { e.preventDefault(); onEditLast() }
-      return
-    }
-    // Enter always sends; Shift+Enter adds a line (incl. inside a code block, so
-    // multi-line blocks are typed with Shift+Enter — Enter never traps the draft).
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      submit()
-      return
-    }
-    if ((e.ctrlKey || e.metaKey) && !e.altKey) {
-      // Ctrl/Cmd+K — ссылка на выделенный текст (tweb createLink). text_link
-      // требует URL: спрашиваем через prompt — в композере нет отдельного
-      // link-инпута, доступного из keydown (MarkupTooltip держит своё состояние).
-      if (e.code === 'KeyK') {
-        e.preventDefault()
-        const sel = window.getSelection()
-        const root = editorRef.current
-        if (sel && sel.rangeCount && !sel.isCollapsed && root && root.contains(sel.getRangeAt(0).commonAncestorContainer)) {
-          const url = window.prompt(t('Enter URL'))?.trim()
-          if (url) applyFmt('text_link', /^https?:\/\//i.test(url) ? url : `https://${url}`)
-        }
-        return
-      }
-      const fmt = SHORTCUTS[e.code]
-      if (fmt) { e.preventDefault(); applyFmt(fmt) }
-    }
-  }
+  const { insertFragment, onPaste, onDrop } = useComposerClipboard({
+    editorRef, onPasteFiles, syncEmpty, autosize, onTyping,
+  })
 
   const insertEmoji = (em: string) => {
     const root = editorRef.current
@@ -585,428 +423,289 @@ function Composer({
     syncEmpty, autosize, insertFragment, clearEditor, onDraftChange,
   })
 
+  const onEditorKeyDown = useComposerHotkeys({
+    editorRef, emptyDraft,
+    inlineSug, setInlineSug, pickInline,
+    mentionSug, setMentionSug, pickMention,
+    emojiSug, setEmojiSug, pickEmojiSuggestion,
+    onReplyPrev, onEditLast, submit, applyFmt, urlPromptLabel: t('Enter URL'),
+  })
+
+  // ── Кнопка отправки: состояние по updateSendBtn() (input.ts:3983-3995) ──
+  // Ветки Stories и ChatType.Scheduled у нас отсутствуют; `hasVoiceRecorder` —
+  // это наш `canSendMedia` (запрет медиа в группе = рекордера нет).
+  const hasVoiceRecorder = canSendMedia
+  const sendIcon: SendBtnIcon = editing
+    ? 'edit'
+    : (!hasVoiceRecorder || rec.recording || !emptyDraft || forwardActive)
+      ? 'send'
+      : recordingMediaType === 'round' ? 'record-video' : 'record'
+  const canSwitchRecordingMode = hasVoiceRecorder && emptyDraft && !rec.recording && !forwardActive && !editing
+
+  // input.ts:3728-3754 — обычный клик по пустому инпуту СТАРТУЕТ запись
+  // (удержание тут ни при чём: long-press открывает выбор голос/кружок).
+  const onSendClick = () => {
+    if (longPressed.current) { longPressed.current = false; return } // consumeLongPressSuppression
+    if (sendIcon !== 'record' && sendIcon !== 'record-video') {
+      if (rec.recording) rec.stop(true)
+      else submit()
+    } else {
+      void rec.start(recordingMediaType)
+    }
+  }
+  const openRecMenu = (el: HTMLElement) => {
+    const r = el.getBoundingClientRect()
+    setRecMenu({ right: window.innerWidth - r.right, bottom: window.innerHeight - r.top + 8 })
+  }
+
+  // Сдвиг строки под send-as / кнопку меню бота: `has-offset` + data-offset,
+  // SetTransition duration 300 (input.ts:2628-2644).
+  const offset = sendAs ? 'as' : botMenuButton ? 'commands' : undefined
+  const offsetCls = useSetTransition(!!offset, 'has-offset', 300)
+
+  const effectEmoji = selectedEffect ? EFFECT_CHOICES.find((c) => c.kind === selectedEffect)?.emoji ?? null : null
+
   return (
     <>
-      {/* composerBox — relative-якорь плашки эмодзи-подсказок над инпутом */}
-      <div className={s.composerBox}>
-      {/* Плашка эмодзи-автокомплита (tweb emoji-helper) */}
-      <AnimatePresence>
-        {inlineSug && !rec.recording && (
-          <InlineResultsHelper results={inlineSug.list} activeIdx={inlineSug.idx} onPick={pickInline} />
-        )}
-        {mentionSug && !inlineSug && !rec.recording && (
-          <MentionsHelper peers={mentionSug.list} activeIdx={mentionSug.idx} onPick={pickMention} />
-        )}
-        {emojiSug && !mentionSug && !inlineSug && !stickerEmoji && !rec.recording && (
-          <EmojiHelper emojis={emojiSug.list} activeIdx={emojiSug.idx} onPick={pickEmojiSuggestion} />
-        )}
-        {onPickSticker && stickerEmoji && !mentionSug && !inlineSug && !rec.recording && (
-          <StickersHelper key={stickerEmoji} emoji={stickerEmoji} onPick={pickStickerSuggestion} />
-        )}
-      </AnimatePresence>
-      {/* Composer container: reply section + input row in ONE box */}
-      <div className={s.container}>
-        {/* Платные сообщения (Telegram paid messages): плашка о стоимости для не-админа. */}
-        {(chargeStars ?? 0) > 0 && (
-          <div className={s.paidBar}>
-            <Text size={13.5} color="var(--secondary-text-color)">
-              {t('Each message costs')} {chargeStars} ⭐
-            </Text>
-          </div>
-        )}
-        {/* Animated reply bar (inside the container) */}
-        <AnimatePresence initial={false}>
-          {reply && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: DUR_OUT, ease: EASE_STD }}
-              style={{ overflow: 'hidden' }}
-            >
-              <div className={s.bar}>
-                <TgIcon name="reply" size={22} color={reply.color} />
-                <div className={s.barBody} style={{ background: `${reply.color}1f`, boxShadow: `inset 3px 0 0 ${reply.color}` }}>
-                  <Text size={14} weight={600} color={reply.color}>
-                    {t('Reply to')} {reply.snapshotName ?? reply.name}
-                  </Text>
-                  <Text noWrap size={14} color="var(--secondary-text-color)">
-                    {reply.quote ? (
-                      <>
-                        <TgIcon name="quote_outline" size={13} style={{ verticalAlign: '-1px', marginRight: 3, opacity: 0.7 }} />
-                        {reply.quote.text}
-                      </>
-                    ) : reply.snapshotText ?? reply.text}
-                  </Text>
-                </div>
-                <IconButton size="small" onClick={onCancelReply} color="var(--secondary-text-color)">
-                  <TgIcon name="close" size={20} />
-                </IconButton>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+      <div ref={rootRef} className="rows-wrapper-wrapper">
+        <div className="rows-wrapper chat-input-wrapper chat-input-main-wrapper chat-rows-wrapper">
+          <BotCommandsHelper />
+          <ReplyWrapper
+            reply={reply}
+            editing={editing}
+            forward={forward}
+            onCancelReply={onCancelReply}
+            onCancelEdit={() => { onCancelEdit(); clearEditor() }}
+            onCancelForward={onCancelForward}
+            onOpenForwardMenu={openFwdMenu}
+            bodyRef={fwdBarRef}
+          />
+          <AutocompleteHelpers
+            stickerEmoji={stickerEmoji}
+            onPickSticker={onPickSticker}
+            onPickStickerSuggestion={pickStickerSuggestion}
+            emojiSug={emojiSug}
+            onPickEmoji={pickEmojiSuggestion}
+            mentionSug={mentionSug}
+            onPickMention={pickMention}
+            inlineSug={inlineSug}
+            onPickInline={pickInline}
+          />
 
-        {/* Animated edit bar */}
-        <AnimatePresence initial={false}>
-          {editing && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: DUR_OUT, ease: EASE_STD }}
-              style={{ overflow: 'hidden' }}
-            >
-              <div className={s.bar}>
-                <TgIcon name="edit" size={22} color="var(--primary-color)" />
-                <div className={s.barBody} style={{ background: 'color-mix(in srgb, var(--primary-color) 12%, transparent)', boxShadow: 'inset 3px 0 0 var(--primary-color)' }}>
-                  <Text size={14} weight={600} color="var(--primary-color)">{t('Edit message')}</Text>
-                  <Text noWrap size={14} color="var(--secondary-text-color)">{editing.text}</Text>
-                </div>
-                <IconButton size="small" onClick={() => { onCancelEdit(); clearEditor() }} color="var(--secondary-text-color)">
-                  <TgIcon name="close" size={20} />
-                </IconButton>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Плашка форварда (tweb forwarding): иконка + превью (заголовок «Переслать
-            сообщение» + «Отправитель: текст») + акцентная полоса; клик по телу
-            открывает меню опций. Крестик — отмена (Do Not Forward). */}
-        <AnimatePresence initial={false}>
-          {forward && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: DUR_OUT, ease: EASE_STD }}
-              style={{ overflow: 'hidden' }}
-            >
-              <div className={s.bar}>
-                <TgIcon name="forward" size={22} color="var(--primary-color)" />
-                <div
-                  ref={fwdBarRef}
-                  className={s.barBody}
-                  style={{ background: 'color-mix(in srgb, var(--primary-color) 12%, transparent)', boxShadow: 'inset 3px 0 0 var(--primary-color)', cursor: 'pointer' }}
-                  onClick={openFwdMenu}
-                >
-                  <Text noWrap size={14} weight={600} color="var(--primary-color)">
-                    {forward.count === 1
-                      ? (forward.dropAuthor ? t('Forward Message (sender name hidden)') : t('Forward Message'))
-                      : `${t('Forward Messages')} (${forward.count})`}
-                  </Text>
-                  <Text noWrap size={14} color="var(--secondary-text-color)">{forward.text}</Text>
-                </div>
-                <IconButton size="small" onClick={onCancelForward} color="var(--secondary-text-color)">
-                  <TgIcon name="close" size={20} />
-                </IconButton>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Input row — buttons anchor to the BOTTOM so they stay put as the input grows */}
-        <div className={s.inputRow}>
-          {rec.recording ? (
-            <>
-              {/* cancel (discard) */}
-              <IconButton onClick={() => rec.stop(false)} color="#ff5a5a" style={{ width: 40, height: 40, flexShrink: 0 }}>
-                <TgIcon name="delete" />
-              </IconButton>
-              {/* tinted pill: dot/timer + live waveform (tweb voice-recording-pill) */}
-              <div className={s.recPill}>
-                {rec.paused ? (
-                  <div className={s.recDotPaused} />
-                ) : (
-                  <motion.span
-                    className={s.recDotLive}
-                    animate={{ opacity: [1, 0.25, 1] }}
-                    transition={{ duration: 1.1, repeat: Infinity, ease: 'easeInOut' }}
-                  />
-                )}
-                <Text size={16} color="var(--primary-text-color)" style={{ fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
-                  {fmtDur(rec.secs)}
-                </Text>
-                {/* live input-level waveform — fills the full pill width
-                    (left-padded with a baseline, each bar flexes to fill) */}
-                <div className={s.wave}>
-                  {[...Array(Math.max(0, REC_WAVE_BARS - rec.bars.length)).fill(0.05), ...rec.bars]
-                    .slice(-REC_WAVE_BARS)
-                    .map((h, i) => (
-                      <div
-                        key={i}
-                        className={s.waveBar}
-                        style={{ height: `${Math.round(4 + h * 20)}px`, opacity: 0.45 + 0.55 * (i / REC_WAVE_BARS) }}
-                      />
-                    ))}
-                </div>
-              </div>
-              {/* pause / resume toggle */}
-              <IconButton onClick={rec.togglePause} color="var(--primary-color)" style={{ width: 40, height: 40, flexShrink: 0 }}>
-                {rec.paused ? <TgIcon name="microphone_filled" /> : <TgIcon name="pause" />}
-              </IconButton>
-            </>
-          ) : (
-            <>
-              {/* Send-as: аватар текущей «личности отправителя» + попап выбора
-                  (tweb new-message-send-as) — только когда личностей больше одной */}
-              {sendAs && <SendAsButton {...sendAs} />}
-              {/* Кнопка-меню mini-app бота (tweb bot menu button) — пилюля слева */}
-              {botMenuButton && (
-                <button type="button" className={s.menuBtn} onMouseDown={(e) => e.preventDefault()} onClick={botMenuButton.onClick}>
-                  <TgIcon name="bots" size={20} />
-                  <span>{botMenuButton.text}</span>
-                </button>
-              )}
-              <IconButton
-                onClick={(e) => canSendMedia
-                  ? onOpenAttach(e.currentTarget.getBoundingClientRect())
-                  : uiEvents.emit('ui:toast', t('Media is not allowed in this group'))}
-                color={canSendMedia ? 'var(--secondary-text-color)' : 'var(--secondary-text-color)'}
-                style={{ width: 40, height: 40 }}
-              >
-                <TgIcon name="attach" />
-              </IconButton>
-              {/* Таймер самоуничтожения — только в секретном чате (tweb secret ttl).
-                  Тинт accent + короткая подпись, когда таймер включён. */}
-              {secret && (
-                <IconButton
-                  onClick={(e) => {
-                    const r = e.currentTarget.getBoundingClientRect()
-                    setTtlMenu({ left: r.left, bottom: window.innerHeight - r.top + 8 })
-                  }}
-                  color={secretTtl != null ? 'var(--primary-color)' : 'var(--secondary-text-color)'}
-                  style={{ width: 40, height: 40, position: 'relative' }}
-                >
-                  <TgIcon name="timer" />
-                  {secretTtl != null && (
-                    <span
-                      style={{
-                        position: 'absolute', bottom: 1, right: 0,
-                        fontSize: 9, fontWeight: 700, lineHeight: 1,
-                        color: 'var(--primary-color)', pointerEvents: 'none',
-                      }}
-                    >
-                      {ttlShort(secretTtl)}
-                    </span>
-                  )}
-                </IconButton>
-              )}
-              {/* Календарик при наличии запланированных (tweb btnScheduled) */}
-              {(scheduledCount ?? 0) > 0 && onOpenScheduled && (
-                <IconButton onClick={onOpenScheduled} color="var(--primary-color)" style={{ width: 40, height: 40 }}>
-                  <TgIcon name="scheduled" />
-                </IconButton>
-              )}
-              {/* contenteditable input + placeholder overlay. minHeight matches the
-                  40px buttons and centers a single line with them; multi-line grows
-                  upward (the row is flex-end, so buttons stay pinned to the bottom). */}
-              <div className={s.editorWrap}>
-                {emptyDraft && (
-                  <Text
-                    aria-hidden
-                    size={16}
-                    color="var(--secondary-text-color)"
-                    className={s.placeholder}
-                  >
-                    {t('Message')}
-                  </Text>
-                )}
-                <div
-                  ref={editorRef}
-                  contentEditable
-                  suppressContentEditableWarning
-                  role="textbox"
-                  aria-multiline
-                  // No live markdown conversion in the input (tweb keeps typed markers
-                  // raw; they're parsed on send). Only the toolbar/shortcuts format live.
-                  onInput={() => { syncEmpty(); autosize(); onTyping(); checkInlineAutocomplete(); checkMentionAutocomplete(); checkEmojiAutocomplete(); checkStickerSuggest(); onDraftChange?.(editorRef.current?.textContent ?? '') }}
-                  onKeyDown={onEditorKeyDown}
-                  onPaste={onPaste}
-                  onDrop={onDrop}
-                  className={s.editor}
-                />
-              </div>
-              {/* Near the limit: remaining chars. Over it: how many messages the
-                  draft will split into on send (tweb-style). */}
-              {(len > MAX_LEN - 256 || msgCount > 1) && (
-                <Text
-                  title={msgCount > 1 ? `Будет отправлено сообщений: ${msgCount}` : undefined}
-                  size={12}
-                  color={msgCount > 1 ? 'var(--primary-color)' : 'var(--secondary-text-color)'}
-                  className={s.counter}
-                >
-                  {msgCount > 1 ? `${msgCount} 💬` : MAX_LEN - len}
-                </Text>
-              )}
-              <span ref={emojiDd.buttonRef} {...emojiDd.buttonProps} style={{ display: 'inline-flex' }}>
-                <IconButton
-                  color={emojiDd.open ? 'var(--primary-color)' : 'var(--secondary-text-color)'}
-                  style={{ width: 40, height: 40 }}
-                >
-                  <TgIcon name="smile" />
-                </IconButton>
-              </span>
-            </>
-          )}
-          {/* Mic / Send — 48×40 rounded pill inside the bar (1:1 with TG .btn-send) */}
-          <motion.div
-            onClick={() => {
-              if (longPressed.current) { longPressed.current = false; return } // long-press открыл меню — клик глотаем
-              if (showSend) submit()
-              else if (rec.recording) rec.stop(true)
-              else if (!canSendMedia) uiEvents.emit('ui:toast', t('Media is not allowed in this group'))
-              else void rec.start(recordingMediaType)
-            }}
-            // Не отдавать фокус кнопке: без preventDefault тап/клик блюрит инпут и
-            // прячет клавиатуру на touch (tweb шлёт send на mousedown — фокус не теряется).
-            // Плюс long-press ~400ms (tweb) открывает меню выбора голос/кружок.
-            onMouseDown={(e) => {
-              e.preventDefault()
-              if (showSend || rec.recording || !canSendMedia) return
-              window.clearTimeout(longPressTimer.current)
-              // таймер лишь помечает long-press; меню откроется на mouseup —
-              // так click после отпускания глотается кнопкой, а не бэкдропом меню
-              longPressTimer.current = window.setTimeout(() => { longPressed.current = true }, 400)
-            }}
-            onMouseUp={(e) => {
-              window.clearTimeout(longPressTimer.current)
-              if (longPressed.current) openRecMenu(e.currentTarget as HTMLElement)
-            }}
-            onMouseLeave={() => { window.clearTimeout(longPressTimer.current); longPressed.current = false }}
-            onContextMenu={(e) => {
-              e.preventDefault()
-              // ПКМ/long-press по Send с текстом — меню отправки (tweb SendMenu):
-              // «Без звука» + «Запланировать».
-              if (hasText) {
-                setSendMenuOpen(true)
-                return
-              }
-              if (!showSend && !rec.recording && canSendMedia) openRecMenu(e.currentTarget as HTMLElement)
-            }}
-            whileTap={{ scale: sendBtnMuted ? 1 : 0.92 }}
-            className={sendBtnMuted ? `${s.sendBtn} ${s.sendBtnMuted}` : s.sendBtn}
+          <div
+            ref={newMessageWrapperRef}
+            className={classNames('new-message-wrapper', 'rows-wrapper-row', offsetCls)}
+            data-offset={offset}
           >
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.span
-                key={slowmodeBlocked ? 'slow' : showSend || rec.recording ? 'send' : 'mic'}
-                initial={{ scale: 0.5, opacity: 0.8 }}
-                animate={{ scale: [0.5, 1.1, 1], opacity: 1 }}
-                exit={{ scale: 0.5, opacity: 0 }}
-                transition={{ duration: 0.4, ease: 'easeInOut' }}
-                style={{ display: 'inline-flex' }}
+            {/* Send-as и кнопка меню бота в tweb PREPEND-ятся в строку и лежат
+                абсолютом (_chat.scss:865-874) — порядок остальных детей не меняют. */}
+            {sendAs && <SendAsButton {...sendAs} />}
+            {botMenuButton && (
+              <div
+                className="new-message-bot-commands"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={botMenuButton.onClick}
               >
-                {slowmodeBlocked
-                  ? <span className={s.slowmodeTimer}>{slowmodeText}</span>
-                  : showSend || rec.recording ? <TgIcon name="send" /> : <TgIcon name={recordingMediaType === 'round' ? 'recordround' : 'microphone_filled'} />}
-              </motion.span>
-            </AnimatePresence>
-            {/* Выбран эффект сообщения — маленький эмодзи-бейдж на кнопке отправки. */}
-            {selectedEffect && hasText && (
-              <span className={s.effectBadge} aria-hidden>
-                {EFFECT_CHOICES.find((c) => c.kind === selectedEffect)?.emoji}
+                <span ref={botCommandsTextRef} className="new-message-bot-commands-view">{botMenuButton.text}</span>
+              </div>
+            )}
+
+            {/* отступление от tweb: <button> вместо кастомного элемента
+                <attach-menu-button> (defineSolidElement) — селекторы
+                `.attach-file[.menu-open][.btn-disabled]` от тега не зависят. */}
+            <IconButton
+              className={classNames('btn-menu-toggle', 'attach-file', canSendMedia ? '' : 'btn-disabled')}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => canSendMedia
+                ? onOpenAttach(e.currentTarget.getBoundingClientRect())
+                : uiEvents.emit('ui:toast', t('Media is not allowed in this group'))}
+            >
+              <TgIcon name="attach" className="button-icon" size="inherit" />
+            </IconButton>
+
+            <MessageInput
+              inputRef={editorRef}
+              fakeRef={fakeRef}
+              empty={emptyDraft}
+              placeholder={t('Message')}
+              peerId={peerId}
+              onInput={() => {
+                syncEmpty(); autosize(); onTyping()
+                checkInlineAutocomplete(); checkMentionAutocomplete(); checkEmojiAutocomplete(); checkStickerSuggest()
+                onDraftChange?.(editorRef.current?.textContent ?? '')
+              }}
+              onKeyDown={onEditorKeyDown}
+              onPaste={onPaste}
+              onDrop={onDrop}
+            />
+
+            {/* Near the limit: remaining chars. Over it: how many messages the draft
+                will split into on send. Узла-аналога в tweb нет — отступление. */}
+            {(len > MAX_LEN - 256 || msgCount > 1) && (
+              <span
+                className={s.counter}
+                data-split={msgCount > 1 || undefined}
+                title={msgCount > 1 ? `Будет отправлено сообщений: ${msgCount}` : undefined}
+              >
+                {msgCount > 1 ? `${msgCount} 💬` : MAX_LEN - len}
               </span>
             )}
-          </motion.div>
-        </div>
-      </div>
-      </div>
 
-      {/* Меню планирования по ПКМ на Send (tweb SendMenu) */}
-      <Menu
-        open={sendMenuOpen}
-        onClose={() => setSendMenuOpen(false)}
-        style={{ right: 24, bottom: 72, transformOrigin: 'bottom right' }}
-      >
-        {/* Тихая отправка (tweb SendMenu «Send Without Sound») — per-send: шлём сразу */}
-        <MenuItem
-          icon={<TgIcon name="nosound" size={20} />}
-          label={t('Send Without Sound')}
-          onClick={() => { setSendMenuOpen(false); submit(true) }}
-        />
-        {onSchedule && (
-          <MenuItem
-            icon={<TgIcon name="schedule" size={20} />}
-            label={t('Schedule Message')}
-            onClick={() => { setSendMenuOpen(false); setScheduleOpen(true) }}
-          />
-        )}
-        {/* «Отправить, когда онлайн» (tweb Schedule.SendWhenOnline) — только когда
-            собеседник в личке офлайн со видимым статусом (canSendWhenOnline). */}
-        {onSendWhenOnline && canSendWhenOnline && (
-          <MenuItem
-            icon={<TgIcon name="online" size={20} />}
-            label={t('Send When Online')}
-            onClick={submitWhenOnline}
-          />
-        )}
-        {/* Эффект сообщения (наш аналог Telegram message effects): ряд эмодзи —
-            выбор ставит эффект для следующей отправки + короткое превью. */}
-        <div className={s.effectRow} role="group" aria-label={t('Message effect')}>
-          {EFFECT_CHOICES.map((c) => (
-            <button
-              key={c.kind}
-              type="button"
-              className={selectedEffect === c.kind ? s.effectPicked : undefined}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                const next = selectedEffect === c.kind ? null : c.kind
-                setSelectedEffect(next)
-                if (next) playEmojiEffect(next)
-                setSendMenuOpen(false)
+            {/* Календарик при наличии запланированных (tweb btnScheduled, input.ts:890).
+                `.float` + `.show` показывают кнопку только при пустом инпуте. */}
+            <IconButton
+              noRipple
+              className={classNames('btn-scheduled', 'float', (scheduledCount ?? 0) > 0 ? '' : 'hide', emptyDraft ? 'show' : '')}
+              onClick={onOpenScheduled}
+            >
+              <TgIcon name="scheduled" className="button-icon" size="inherit" />
+            </IconButton>
+            {/* Тумблер клавиатуры бота (input.ts:912-923). У нас reply-клавиатура
+                живёт в Chat.tsx, поэтому кнопка структурная и всегда скрыта. */}
+            <IconButton noRipple className={classNames('toggle-reply-markup', 'float', 'hide', emptyDraft ? 'show' : '')}>
+              <TgIcon name="keyboard" className="button-icon" size="inherit" />
+            </IconButton>
+            {/* «Предложить пост» (input.ts:1258) — фичи нет, узел структурный. */}
+            <IconButton className="hide">
+              <TgIcon name="suggested" className="button-icon" size="inherit" />
+            </IconButton>
+            {/* Таймер самоуничтожения секретного чата — место tweb-кнопки
+                btnAutoDeletePeriod (input.ts:1263). */}
+            <IconButton
+              className={secret ? '' : 'hide'}
+              style={secretTtl != null ? { color: 'var(--primary-color)' } : undefined}
+              onClick={(e) => {
+                const r = e.currentTarget.getBoundingClientRect()
+                setTtlMenu({ left: r.left, bottom: window.innerHeight - r.top + 8 })
               }}
             >
-              {c.emoji}
-            </button>
-          ))}
-        </div>
-      </Menu>
+              <TgIcon name="auto_delete_circle_clock" className="button-icon" size="inherit" />
+              {/* отступление от tweb: у btnAutoDeletePeriod подписи нет — у нас
+                  выбранный TTL иначе никак не виден. */}
+              {secretTtl != null && <span className={s.ttlLabel}>{ttlShort(secretTtl)}</span>}
+            </IconButton>
+            {/* Кнопка подарка (input.ts:1023) — фичи нет, узел структурный. */}
+            <IconButton noRipple className={classNames('toggle-send-gift', 'float', 'hide', emptyDraft ? 'show' : '')}>
+              <TgIcon name="gift" className="button-icon" size="inherit" />
+            </IconButton>
 
-      {/* Меню плашки форварда (tweb reply-line-menu): радио show/hide sender + (при
-          наличии подписи) show/hide caption, «переслать в другой чат», «не пересылать».
-          Галочка слева отмечает активный вариант; выравнивание — прозрачной иконкой. */}
-      <Menu
-        open={fwdMenuOpen}
-        onClose={() => setFwdMenuOpen(false)}
-        style={fwdMenuPos ? { left: fwdMenuPos.left, bottom: fwdMenuPos.bottom, transformOrigin: 'bottom left' } : undefined}
-      >
-        <MenuItem
-          icon={<TgIcon name="check" size={20} color={forward && !forward.dropAuthor ? 'var(--primary-color)' : 'transparent'} />}
-          label={t('Show sender name')}
-          onClick={() => { onForwardOption({ dropAuthor: false }); setFwdMenuOpen(false) }}
-        />
-        <MenuItem
-          icon={<TgIcon name="check" size={20} color={forward && forward.dropAuthor ? 'var(--primary-color)' : 'transparent'} />}
-          label={t('Hide sender name')}
-          onClick={() => { onForwardOption({ dropAuthor: true }); setFwdMenuOpen(false) }}
-        />
-        {forward?.hasCaption && (
-          <>
-            <MenuItem
-              icon={<TgIcon name="check" size={20} color={forward && !forward.dropCaption ? 'var(--primary-color)' : 'transparent'} />}
-              label={t('Show caption')}
-              onClick={() => { onForwardOption({ dropCaption: false }); setFwdMenuOpen(false) }}
+            <IconButton
+              noRipple
+              ref={emojiDd.buttonRef as React.RefObject<HTMLButtonElement>}
+              className={classNames('toggle-emoticons', emojiDd.open ? 'active' : '')}
+              {...emojiDd.buttonProps}
+            >
+              <TgIcon name="smile" className="button-icon" size="inherit" />
+            </IconButton>
+
+            {/* Скрытый файловый пикер строки ввода (input.ts:1268-1271). */}
+            <input
+              type="file"
+              multiple
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const files = Array.from(e.target.files ?? [])
+                e.currentTarget.value = ''
+                if (files.length) onPasteFiles?.(files)
+              }}
             />
-            <MenuItem
-              icon={<TgIcon name="check" size={20} color={forward && forward.dropCaption ? 'var(--primary-color)' : 'transparent'} />}
-              label={t('Hide caption')}
-              onClick={() => { onForwardOption({ dropCaption: true }); setFwdMenuOpen(false) }}
+
+            {/* Панель записи — ОВЕРЛЕЙ поверх строки, а не ветка рендера:
+                инпут, кнопки и каретка остаются на месте (chatRecording.ts:112). */}
+            <VoiceRecordingPanel rec={rec} onCancel={() => rec.stop(false)} />
+
+            <SendButton
+              icon={sendIcon}
+              disabled={slowmodeBlocked}
+              stars={chargeStars}
+              effectEmoji={emptyDraft ? null : effectEmoji}
+              slowmodeText={slowmodeBlocked ? slowmodeText : null}
+              onClick={onSendClick}
+              // Не отдавать фокус кнопке: без preventDefault тап/клик блюрит инпут
+              // и прячет клавиатуру на touch (tweb шлёт send на mousedown).
+              onMouseDown={(e) => {
+                e.preventDefault()
+                if (e.button !== 0 || !canSwitchRecordingMode) return
+                window.clearTimeout(longPressTimer.current)
+                // отступление от tweb: оригинал открывает меню прямо в таймауте
+                // (chatRecording.ts:889-893); у нас бэкдроп <Menu> поймал бы
+                // следующий click и закрыл меню мгновенно — открываем на mouseup,
+                // таймер лишь помечает long-press.
+                longPressTimer.current = window.setTimeout(() => { longPressed.current = true }, LONG_PRESS_MS)
+              }}
+              onMouseUp={(e) => {
+                window.clearTimeout(longPressTimer.current)
+                if (longPressed.current) openRecMenu(e.currentTarget)
+              }}
+              onMouseLeave={() => { window.clearTimeout(longPressTimer.current); longPressed.current = false }}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                // input.ts:1345-1352 — контекст-меню отправки только когда есть что
+                // отправлять и это не правка.
+                if (!emptyDraft || forwardActive || rec.recording) { if (!editing) setSendMenuOpen(true); return }
+                if (canSwitchRecordingMode) openRecMenu(e.currentTarget)
+              }}
+              menu={(
+                <SendMenu
+                  open={sendMenuOpen}
+                  onSilent={() => { setSendMenuOpen(false); submit(true) }}
+                  onSchedule={onSchedule ? () => { setSendMenuOpen(false); setScheduleOpen(true) } : undefined}
+                  onWhenOnline={onSendWhenOnline && canSendWhenOnline ? submitWhenOnline : undefined}
+                  onRemoveEffect={selectedEffect ? () => { setSelectedEffect(null); setSendMenuOpen(false) } : undefined}
+                  effects={(
+                    <div className={s.effectRow} role="group" aria-label={t('Message effect')}>
+                      {EFFECT_CHOICES.map((c) => (
+                        <button
+                          key={c.kind}
+                          type="button"
+                          className={selectedEffect === c.kind ? s.effectPicked : undefined}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            const next = selectedEffect === c.kind ? null : c.kind
+                            setSelectedEffect(next)
+                            if (next) playEmojiEffect(next)
+                            setSendMenuOpen(false)
+                          }}
+                        >
+                          {c.emoji}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                />
+              )}
             />
-          </>
-        )}
-        <MenuItem
-          icon={<TgIcon name="replace" size={20} />}
-          label={t('Forward to Another Chat')}
-          onClick={() => { setFwdMenuOpen(false); onForwardAnother() }}
+          </div>
+        </div>
+      </div>
+
+      {/* Бэкдроп меню отправки: tweb гасит его `.btn-menu-overlay` внутри
+          `.btn-send-container` (_chat.scss:122-124). */}
+      {sendMenuOpen && (
+        <div
+          className="btn-menu-overlay"
+          style={{ position: 'fixed', inset: 0, zIndex: 3 }}
+          onClick={() => setSendMenuOpen(false)}
+          onContextMenu={(e) => { e.preventDefault(); setSendMenuOpen(false) }}
         />
-        <MenuItem
-          icon={<TgIcon name="delete" size={20} />}
-          label={t('Do Not Forward')}
-          danger
-          onClick={() => { setFwdMenuOpen(false); onCancelForward() }}
-        />
-      </Menu>
+      )}
+
+      <ComposerMenus
+        forward={forward}
+        forwardMenuOpen={fwdMenuOpen}
+        forwardMenuAnchor={fwdMenuPos}
+        onCloseForwardMenu={() => setFwdMenuOpen(false)}
+        onForwardOption={onForwardOption}
+        onForwardAnother={onForwardAnother}
+        onCancelForward={onCancelForward}
+        ttlAnchor={ttlMenu}
+        ttlSeconds={secretTtl}
+        onPickTtl={(secs) => { setSecretTtl(secs); setTtlMenu(null) }}
+        onCloseTtl={() => setTtlMenu(null)}
+        recordAnchor={recMenu}
+        onPickRecordingMode={(mode) => { updateSettings({ recordingMediaType: mode }); setRecMenu(null) }}
+        onCloseRecord={() => setRecMenu(null)}
+      />
 
       {scheduleOpen && (
         <SchedulePopup
@@ -1020,6 +719,8 @@ function Composer({
       <MarkupTooltip editorRef={editorRef} onApply={applyFmt} />
 
       {emojiMounted && (
+        // отступление от tweb: обёртка `display: contents` нужна только чтобы
+        // отдать ref панели ленивому чанку — в раскладке её нет.
         <div ref={emojiDd.panelRef} style={{ display: 'contents' }}>
           <Suspense fallback={null}>
             <EmojiDropdown
@@ -1036,60 +737,19 @@ function Composer({
         </div>
       )}
 
-        {/* Меню таймера самоуничтожения секретного чата (tweb self-destruct ttl) */}
-        {ttlMenu && (
-          <Menu
-            open
-            onClose={() => setTtlMenu(null)}
-            style={{ left: ttlMenu.left, bottom: ttlMenu.bottom, transformOrigin: 'bottom left' }}
-          >
-            {TTL_OPTIONS.map((o) => (
-              <MenuItem
-                key={o.label}
-                icon={<TgIcon name="timer" size={20} />}
-                label={o.secs == null ? t('Off') : o.label}
-                right={secretTtl === o.secs ? <TgIcon name="check" size={18} color="var(--primary-color)" /> : undefined}
-                onClick={() => { setSecretTtl(o.secs); setTtlMenu(null) }}
-              />
-            ))}
-          </Menu>
-        )}
+      {/* Сцена записи кружка — в <body>, как tweb (chatRecording.ts:123) */}
+      {rec.recording && rec.mode === 'round' && rec.previewStream && createPortal(
+        <RoundRecordPreview stream={rec.previewStream} secs={rec.secs} paused={rec.paused} />,
+        document.body,
+      )}
 
-        {/* Выбор типа записи: голос / видео-кружок (tweb recording mode menu) */}
-        {recMenu && (
-          <Menu
-            open
-            onClose={() => setRecMenu(null)}
-            style={{ right: recMenu.right, bottom: recMenu.bottom, transformOrigin: 'bottom right' }}
-          >
-            <MenuItem
-              icon={<TgIcon name="microphone" size={20} />}
-              label={t('Record voice message')}
-              onClick={() => { updateSettings({ recordingMediaType: 'voice' }); setRecMenu(null) }}
-            />
-            <MenuItem
-              icon={<TgIcon name="recordround" size={20} />}
-              label={t('Record video message')}
-              onClick={() => { updateSettings({ recordingMediaType: 'round' }); setRecMenu(null) }}
-            />
-          </Menu>
-        )}
-
-        {/* Живое круглое превью записи кружка (tweb videoRecordingPanel, 360px) */}
-        {rec.recording && rec.mode === 'round' && rec.previewStream && createPortal(
-          <RoundRecordPreview stream={rec.previewStream} secs={rec.secs} />,
-          document.body,
-        )}
-
-        {/* Discard-recording confirm (Esc) */}
-        <AnimatePresence>
-            {cancelRecOpen && (
-                <DiscardVoiceDialog
-                    onCancel={() => setCancelRecOpen(false)}
-                    onDiscard={() => { setCancelRecOpen(false); rec.stop(false) }}
-                />
-            )}
-        </AnimatePresence>
+      {/* Discard-recording confirm (Esc) */}
+      {cancelRecOpen && (
+        <DiscardVoiceDialog
+          onCancel={() => setCancelRecOpen(false)}
+          onDiscard={() => { setCancelRecOpen(false); rec.stop(false) }}
+        />
+      )}
     </>
   )
 }

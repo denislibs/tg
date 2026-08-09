@@ -1793,5 +1793,4211 @@
         }
       ]
     }
+  },
+  "chat-input-full-reply": {
+    "source": "04-composer-rest.json",
+    "title": "chat-input (full, в покое; есть reply-хелпер из черновика)",
+    "selector": ".chat-input",
+    "mode": "classes",
+    "tree": {
+      "tag": "div",
+      "classes": [
+        "chat-input",
+        "chat-input-main"
+      ],
+      "children": [
+        {
+          "tag": "div",
+          "classes": [
+            "chat-input-container",
+            "chat-input-main-container"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "rows-wrapper-wrapper"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "chat-input-main-wrapper",
+                    "chat-input-wrapper",
+                    "chat-rows-wrapper",
+                    "rows-wrapper"
+                  ],
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "autocomplete-helper",
+                        "autocomplete-peer-helper",
+                        "bot-commands",
+                        "z-depth-1"
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "reply-wrapper",
+                        "rows-wrapper-row"
+                      ],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "reply-wrapper-content"
+                          ],
+                          "attrs": {
+                            "style": "--peer-color-rgb: var(--peer-0-color-rgb); --peer-border-bac"
+                          },
+                          "children": [
+                            {
+                              "tag": "button",
+                              "classes": [
+                                "btn-icon",
+                                "reply-icon"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "button-icon",
+                                    "tgico"
+                                  ],
+                                  "text": ""
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "quote-like",
+                                "quote-like-border",
+                                "quote-like-hoverable",
+                                "reply",
+                                "rp"
+                              ],
+                              "attrs": {
+                                "style": "--peer-color-rgb: var(--peer-0-color-rgb); --peer-border-bac"
+                              },
+                              "children": [
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "c-ripple"
+                                  ]
+                                },
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "reply-content"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "div",
+                                      "classes": [
+                                        "reply-title"
+                                      ],
+                                      "children": [
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "i18n"
+                                          ],
+                                          "children": [
+                                            {
+                                              "tag": "span",
+                                              "classes": [
+                                                "peer-title"
+                                              ],
+                                              "attrs": {
+                                                "data-peer-id": "7758297722"
+                                              },
+                                              "text": "Дн"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "tag": "div",
+                                      "classes": [
+                                        "reply-subtitle"
+                                      ],
+                                      "children": [
+                                        {
+                                          "tag": "span",
+                                          "classes": [],
+                                          "children": [
+                                            {
+                                              "tag": "span",
+                                              "classes": [
+                                                "i18n"
+                                              ],
+                                              "text": "Voice message"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "button",
+                              "classes": [
+                                "btn-icon",
+                                "reply-cancel"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "button-icon",
+                                    "tgico"
+                                  ],
+                                  "text": ""
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "autocomplete-helper",
+                        "stickers-helper",
+                        "z-depth-1"
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "autocomplete-helper",
+                        "emoji-helper",
+                        "z-depth-1"
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "autocomplete-helper",
+                        "autocomplete-peer-helper",
+                        "commands-helper",
+                        "z-depth-1"
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "autocomplete-helper",
+                        "autocomplete-peer-helper",
+                        "mentions-helper",
+                        "z-depth-1"
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "autocomplete-helper",
+                        "inline-helper",
+                        "z-depth-1"
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "new-message-wrapper",
+                        "rows-wrapper-row"
+                      ],
+                      "children": [
+                        {
+                          "tag": "attach-menu-button",
+                          "classes": [
+                            "_Container_bns2b_1",
+                            "attach-file",
+                            "btn-icon",
+                            "btn-menu-toggle",
+                            "rp"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "c-ripple"
+                              ]
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "_Icon_bns2b_9",
+                                "button-icon",
+                                "tgico"
+                              ],
+                              "text": ""
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "input-message-container"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "forwards",
+                                "input-message-input",
+                                "is-empty",
+                                "no-scrollbar",
+                                "scrollable",
+                                "scrollable-y"
+                              ],
+                              "attrs": {
+                                "data-peer-id": "444077753",
+                                "contenteditable": "true",
+                                "style": "max-height: 440px; transition-duration: 0ms; height: 37px;"
+                              }
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n",
+                                "input-field-placeholder",
+                                "is-empty"
+                              ],
+                              "text": "Message"
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "input-field-input-fake",
+                                "input-message-input",
+                                "is-empty",
+                                "no-scrollbar",
+                                "scrollable",
+                                "scrollable-y"
+                              ],
+                              "attrs": {
+                                "contenteditable": "true"
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-icon",
+                            "btn-scheduled",
+                            "float",
+                            "hide",
+                            "show"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "button-icon",
+                                "tgico"
+                              ],
+                              "text": ""
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-icon",
+                            "float",
+                            "hide",
+                            "show",
+                            "toggle-reply-markup"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "button-icon",
+                                "tgico"
+                              ],
+                              "text": ""
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-icon",
+                            "hide",
+                            "rp"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "c-ripple"
+                              ]
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "button-icon",
+                                "tgico"
+                              ],
+                              "text": ""
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-icon",
+                            "hide",
+                            "rp"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "c-ripple"
+                              ]
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "button-icon",
+                                "tgico"
+                              ],
+                              "text": ""
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-icon",
+                            "float",
+                            "hide",
+                            "show",
+                            "toggle-send-gift"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "button-icon",
+                                "tgico"
+                              ],
+                              "text": ""
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-icon",
+                            "toggle-emoticons"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "button-icon",
+                                "tgico"
+                              ],
+                              "text": ""
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "input",
+                          "classes": [],
+                          "attrs": {
+                            "type": "file",
+                            "style": "display: none;"
+                          }
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "voice-recording-panel",
+                            "voice-recording-panel--recording"
+                          ],
+                          "children": [
+                            {
+                              "tag": "button",
+                              "classes": [
+                                "btn-icon",
+                                "danger",
+                                "rp",
+                                "voice-recording-cancel"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "c-ripple"
+                                  ]
+                                },
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "tgico",
+                                    "voice-recording-cancel-icon"
+                                  ],
+                                  "text": ""
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "voice-recording-pill"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "voice-recording-lead"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "div",
+                                      "classes": [
+                                        "voice-recording-dot"
+                                      ]
+                                    },
+                                    {
+                                      "tag": "button",
+                                      "classes": [
+                                        "btn-icon",
+                                        "rp",
+                                        "voice-recording-play"
+                                      ],
+                                      "children": [
+                                        {
+                                          "tag": "div",
+                                          "classes": [
+                                            "c-ripple"
+                                          ]
+                                        },
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "tgico",
+                                            "voice-recording-play-icon",
+                                            "voice-recording-play-icon--play"
+                                          ],
+                                          "text": ""
+                                        },
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "tgico",
+                                            "voice-recording-play-icon",
+                                            "voice-recording-play-icon--pause"
+                                          ],
+                                          "text": ""
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "tag": "canvas",
+                                  "classes": [
+                                    "voice-recording-waveform"
+                                  ]
+                                },
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "voice-recording-timer"
+                                  ],
+                                  "text": "0:00,0"
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "button",
+                              "classes": [
+                                "btn-icon",
+                                "rp",
+                                "voice-recording-pause-toggle"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "c-ripple"
+                                  ]
+                                },
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "tgico",
+                                    "voice-recording-pause-icon",
+                                    "voice-recording-pause-icon--pause"
+                                  ],
+                                  "text": ""
+                                },
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "tgico",
+                                    "voice-recording-pause-icon",
+                                    "voice-recording-pause-icon--mic"
+                                  ],
+                                  "text": ""
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "btn-send-container"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "btn-send-stars-badge",
+                                "stars-badge-base"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "stars-badge-base__icon",
+                                    "tgico"
+                                  ],
+                                  "text": ""
+                                },
+                                {
+                                  "tag": "span",
+                                  "classes": []
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "button",
+                              "classes": [
+                                "animated-button-icon",
+                                "btn-circle",
+                                "btn-icon",
+                                "btn-send",
+                                "record",
+                                "rp"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "c-ripple"
+                                  ]
+                                },
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "animated-button-icon-icon",
+                                    "btn-send-icon-send",
+                                    "tgico"
+                                  ],
+                                  "text": ""
+                                },
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "animated-button-icon-icon",
+                                    "btn-send-icon-schedule",
+                                    "tgico"
+                                  ],
+                                  "text": ""
+                                },
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "animated-button-icon-icon",
+                                    "btn-send-icon-edit",
+                                    "tgico"
+                                  ],
+                                  "text": ""
+                                },
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "animated-button-icon-icon",
+                                    "btn-send-icon-record",
+                                    "tgico"
+                                  ],
+                                  "text": ""
+                                },
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "animated-button-icon-icon",
+                                    "btn-send-icon-record-video",
+                                    "tgico"
+                                  ],
+                                  "text": ""
+                                },
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "animated-button-icon-icon",
+                                    "btn-send-icon-forward",
+                                    "tgico"
+                                  ],
+                                  "text": ""
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "btn-send-effect-container"
+                              ]
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "btn-menu",
+                                "menu-send",
+                                "top-left"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "btn-menu-item",
+                                    "rp-overflow"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "btn-menu-item-icon",
+                                        "tgico"
+                                      ],
+                                      "text": ""
+                                    },
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "btn-menu-item-text",
+                                        "i18n"
+                                      ],
+                                      "text": "Send Without Sound"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "btn-menu-item",
+                                    "rp-overflow"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "btn-menu-item-icon",
+                                        "tgico"
+                                      ],
+                                      "text": ""
+                                    },
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "btn-menu-item-text",
+                                        "i18n"
+                                      ],
+                                      "text": "Schedule Message"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "btn-menu-item",
+                                    "rp-overflow"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "btn-menu-item-icon",
+                                        "tgico"
+                                      ],
+                                      "text": ""
+                                    },
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "btn-menu-item-text",
+                                        "i18n"
+                                      ],
+                                      "text": "Set a Reminder"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "btn-menu-item",
+                                    "rp-overflow"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "btn-menu-item-icon",
+                                        "tgico"
+                                      ],
+                                      "text": ""
+                                    },
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "btn-menu-item-text",
+                                        "i18n"
+                                      ],
+                                      "text": "Send When Online"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "btn-menu-item",
+                                    "danger",
+                                    "rp-overflow"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "btn-menu-item-icon",
+                                        "tgico"
+                                      ],
+                                      "text": ""
+                                    },
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "btn-menu-item-text",
+                                        "i18n"
+                                      ],
+                                      "text": "Remove Effect"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "fake-rows-wrapper",
+                "fake-wrapper"
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "fake-selection-wrapper",
+                "fake-wrapper"
+              ]
+            },
+            {
+              "tag": "button",
+              "classes": [
+                "btn-circle",
+                "btn-corner",
+                "bubbles-corner-button",
+                "bubbles-go-down",
+                "chat-secondary-button",
+                "rp",
+                "z-depth-1"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "c-ripple"
+                  ]
+                },
+                {
+                  "tag": "span",
+                  "classes": [
+                    "button-icon",
+                    "tgico"
+                  ],
+                  "text": ""
+                },
+                {
+                  "tag": "span",
+                  "classes": [
+                    "badge",
+                    "badge-24",
+                    "badge-primary",
+                    "is-badge-empty"
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "chat-input-control",
+                "chat-input-wrapper"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "chat-input-plate",
+                    "rows-wrapper-row"
+                  ],
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "chat-input-plate-side"
+                      ],
+                      "children": [
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-icon",
+                            "hide",
+                            "rp"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "c-ripple"
+                              ]
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "button-icon",
+                                "tgico"
+                              ],
+                              "text": ""
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "chat-input-plate-center"
+                      ],
+                      "children": [
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-primary",
+                            "btn-transparent",
+                            "chat-input-control-button",
+                            "chat-input-plate-button",
+                            "hide",
+                            "rp",
+                            "text-bold"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "c-ripple"
+                              ]
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "START"
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-primary",
+                            "btn-transparent",
+                            "chat-input-control-button",
+                            "chat-input-plate-button",
+                            "rp",
+                            "text-bold"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "c-ripple"
+                              ]
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Unblock"
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-color-primary",
+                            "btn-primary",
+                            "chat-input-control-button",
+                            "chat-input-plate-button",
+                            "hide",
+                            "rp",
+                            "text-bold"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "c-ripple"
+                              ]
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "JOIN"
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-primary",
+                            "btn-transparent",
+                            "chat-input-control-button",
+                            "chat-input-plate-button",
+                            "hide",
+                            "rp",
+                            "text-bold"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Unmute"
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-primary",
+                            "btn-transparent",
+                            "chat-input-control-button",
+                            "chat-input-plate-button",
+                            "hide",
+                            "rp",
+                            "text-bold"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "c-ripple"
+                              ]
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "peer-title"
+                                  ],
+                                  "attrs": {
+                                    "data-peer-id": "444077753"
+                                  },
+                                  "text": "123"
+                                },
+                                {
+                                  "tag": "br",
+                                  "classes": []
+                                },
+                                {
+                                  "tag": "a",
+                                  "classes": [],
+                                  "text": "Learn more..."
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-primary",
+                            "btn-transparent",
+                            "chat-input-control-button",
+                            "chat-input-plate-button",
+                            "hide",
+                            "rp",
+                            "text-bold"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "c-ripple"
+                              ]
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "chat-input-frozen-text"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "danger",
+                                    "i18n"
+                                  ],
+                                  "text": "Your Account is Frozen"
+                                },
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "chat-input-frozen-text-subtitle",
+                                    "i18n",
+                                    "secondary"
+                                  ],
+                                  "text": "Click to view details"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-primary",
+                            "btn-transparent",
+                            "chat-input-control-button",
+                            "chat-input-plate-button",
+                            "hide",
+                            "rp",
+                            "text-bold"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Unpin All Messages"
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-primary",
+                            "btn-transparent",
+                            "chat-input-control-button",
+                            "chat-input-plate-button",
+                            "hide",
+                            "rp",
+                            "text-bold"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "c-ripple"
+                              ]
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Open Chat"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "chat-input-plate-side"
+                      ],
+                      "children": [
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-icon",
+                            "hide",
+                            "rp"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "c-ripple"
+                              ]
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "button-icon",
+                                "tgico"
+                              ],
+                              "text": ""
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "button",
+              "classes": [
+                "btn-circle",
+                "btn-corner",
+                "bubbles-corner-button",
+                "bubbles-go-mention",
+                "bubbles-go-reaction",
+                "chat-secondary-button",
+                "rp",
+                "z-depth-1"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "c-ripple"
+                  ]
+                },
+                {
+                  "tag": "span",
+                  "classes": [
+                    "button-icon",
+                    "tgico"
+                  ],
+                  "text": ""
+                },
+                {
+                  "tag": "span",
+                  "classes": [
+                    "badge",
+                    "badge-24",
+                    "badge-primary",
+                    "is-badge-empty"
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "button",
+              "classes": [
+                "btn-circle",
+                "btn-corner",
+                "bubbles-corner-button",
+                "bubbles-go-mention",
+                "bubbles-go-reaction",
+                "chat-secondary-button",
+                "rp",
+                "z-depth-1"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "c-ripple"
+                  ]
+                },
+                {
+                  "tag": "span",
+                  "classes": [
+                    "button-icon",
+                    "tgico"
+                  ],
+                  "text": ""
+                },
+                {
+                  "tag": "span",
+                  "classes": [
+                    "badge",
+                    "badge-24",
+                    "badge-primary",
+                    "is-badge-empty"
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "button",
+              "classes": [
+                "btn-circle",
+                "btn-corner",
+                "bubbles-corner-button",
+                "bubbles-go-mention",
+                "bubbles-go-reaction",
+                "chat-secondary-button",
+                "rp",
+                "z-depth-1"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "c-ripple"
+                  ]
+                },
+                {
+                  "tag": "span",
+                  "classes": [
+                    "button-icon",
+                    "tgico"
+                  ],
+                  "text": ""
+                },
+                {
+                  "tag": "span",
+                  "classes": [
+                    "badge",
+                    "badge-24",
+                    "badge-primary",
+                    "is-badge-empty"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "emoji-dropdown-depth-7": {
+    "source": "04-emoji-dropdown.json",
+    "title": "emoji-dropdown (depth 7)",
+    "selector": ".emoji-dropdown",
+    "mode": "classes",
+    "tree": {
+      "tag": "div",
+      "classes": [
+        "active",
+        "emoji-dropdown"
+      ],
+      "attrs": {
+        "style": ""
+      },
+      "children": [
+        {
+          "tag": "div",
+          "classes": [
+            "emoji-container"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "tabs-container"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "active",
+                    "emoji-padding",
+                    "emoticons-container",
+                    "no-border-top",
+                    "tabs-tab"
+                  ],
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "emoticons-menu-wrapper",
+                        "emoticons-will-move-up",
+                        "menu-wrapper"
+                      ],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "scrollable",
+                            "scrollable-x"
+                          ],
+                          "children": [
+                            {
+                              "tag": "nav",
+                              "classes": [
+                                "emoticons-menu",
+                                "justify-start",
+                                "menu-horizontal-div",
+                                "no-stripe"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "button",
+                                  "classes": [
+                                    "active",
+                                    "btn-icon",
+                                    "menu-horizontal-div-item"
+                                  ],
+                                  "text": ""
+                                },
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "menu-horizontal-inner"
+                                  ],
+                                  "text": ""
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "emoticons-content"
+                      ],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "emoticons-will-move-up",
+                            "scrollable",
+                            "scrollable-y"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "emoticons-search-container",
+                                "emoticons-will-move-down"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "emoticons-search-input-container",
+                                    "input-search"
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [],
+                              "children": [
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "animated-item",
+                                    "emoticons-categories-container",
+                                    "emoticons-has-search",
+                                    "emoticons-will-move-down"
+                                  ],
+                                  "text": "Frequently Used😂😘❤️😍😊😁👍☺️😔😄😭💋\ud83d"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "tag": "div",
+                  "classes": [
+                    "emoticons-container",
+                    "stickers-padding",
+                    "tabs-tab"
+                  ],
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "emoticons-menu-wrapper",
+                        "emoticons-will-move-up",
+                        "menu-wrapper"
+                      ],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "scrollable",
+                            "scrollable-x"
+                          ],
+                          "children": [
+                            {
+                              "tag": "nav",
+                              "classes": [
+                                "emoticons-menu",
+                                "justify-start",
+                                "menu-horizontal-div",
+                                "no-stripe"
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "emoticons-content"
+                      ],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "emoticons-will-move-up",
+                            "scrollable",
+                            "scrollable-y"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "emoticons-search-container",
+                                "emoticons-will-move-down"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "emoticons-search-input-container",
+                                    "input-search"
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [],
+                              "children": [
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "animated-item",
+                                    "emoticons-categories-container",
+                                    "emoticons-has-search",
+                                    "emoticons-will-move-down"
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "tag": "div",
+                  "classes": [
+                    "emoticons-container",
+                    "gifs-padding",
+                    "no-menu",
+                    "tabs-tab"
+                  ],
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "emoticons-content"
+                      ],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "scrollable",
+                            "scrollable-y"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "emoticons-search-container"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "emoticons-search-input-container",
+                                    "input-search"
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [],
+                              "children": [
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "animated-item",
+                                    "emoticons-categories-container",
+                                    "emoticons-has-search"
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tag": "div",
+          "classes": [
+            "emoji-tabs",
+            "emoticons-menu",
+            "menu-horizontal-div",
+            "no-stripe"
+          ],
+          "children": [
+            {
+              "tag": "button",
+              "classes": [
+                "btn-icon",
+                "emoji-tabs-search",
+                "hide",
+                "justify-self-start",
+                "menu-horizontal-div-item"
+              ],
+              "children": [
+                {
+                  "tag": "span",
+                  "classes": [
+                    "button-icon",
+                    "tgico"
+                  ],
+                  "text": ""
+                }
+              ]
+            },
+            {
+              "tag": "button",
+              "classes": [
+                "active",
+                "btn-icon",
+                "emoji-tabs-emoji",
+                "menu-horizontal-div-item"
+              ],
+              "children": [
+                {
+                  "tag": "span",
+                  "classes": [
+                    "button-icon",
+                    "tgico"
+                  ],
+                  "text": ""
+                }
+              ]
+            },
+            {
+              "tag": "button",
+              "classes": [
+                "btn-icon",
+                "emoji-tabs-stickers",
+                "menu-horizontal-div-item"
+              ],
+              "children": [
+                {
+                  "tag": "span",
+                  "classes": [
+                    "button-icon",
+                    "tgico"
+                  ],
+                  "text": ""
+                }
+              ]
+            },
+            {
+              "tag": "button",
+              "classes": [
+                "btn-icon",
+                "emoji-tabs-gifs",
+                "menu-horizontal-div-item"
+              ],
+              "children": [
+                {
+                  "tag": "span",
+                  "classes": [
+                    "button-icon",
+                    "tgico"
+                  ],
+                  "text": ""
+                }
+              ]
+            },
+            {
+              "tag": "button",
+              "classes": [
+                "btn-icon",
+                "emoji-tabs-delete",
+                "justify-self-end",
+                "menu-horizontal-div-item"
+              ],
+              "children": [
+                {
+                  "tag": "span",
+                  "classes": [
+                    "button-icon",
+                    "tgico"
+                  ],
+                  "text": ""
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "attach-btn-menu": {
+    "source": "04-attach-menu.json",
+    "title": "attach btn-menu",
+    "selector": ".btn-menu.top-right",
+    "mode": "classes",
+    "tree": {
+      "tag": "div",
+      "classes": [
+        "active",
+        "btn-menu",
+        "top-right",
+        "was-open"
+      ],
+      "attrs": {
+        "style": "bottom: 68px; left: 708px;"
+      },
+      "children": [
+        {
+          "tag": "div",
+          "classes": [
+            "btn-menu-item",
+            "rp-overflow"
+          ],
+          "children": [
+            {
+              "tag": "span",
+              "classes": [
+                "btn-menu-item-icon",
+                "tgico"
+              ],
+              "text": ""
+            },
+            {
+              "tag": "span",
+              "classes": [
+                "btn-menu-item-text",
+                "i18n"
+              ],
+              "text": "Photo or Video"
+            }
+          ]
+        },
+        {
+          "tag": "div",
+          "classes": [
+            "btn-menu-item",
+            "rp-overflow"
+          ],
+          "children": [
+            {
+              "tag": "span",
+              "classes": [
+                "btn-menu-item-icon",
+                "tgico"
+              ],
+              "text": ""
+            },
+            {
+              "tag": "span",
+              "classes": [
+                "btn-menu-item-text",
+                "i18n"
+              ],
+              "text": "Document"
+            }
+          ]
+        },
+        {
+          "tag": "div",
+          "classes": [
+            "btn-menu-item",
+            "rp-overflow"
+          ],
+          "children": [
+            {
+              "tag": "span",
+              "classes": [
+                "btn-menu-item-icon",
+                "tgico"
+              ],
+              "text": ""
+            },
+            {
+              "tag": "span",
+              "classes": [
+                "btn-menu-item-text",
+                "i18n"
+              ],
+              "text": "Gift Premium"
+            }
+          ]
+        },
+        {
+          "tag": "div",
+          "classes": [
+            "btn-menu-item",
+            "rp-overflow"
+          ],
+          "children": [
+            {
+              "tag": "span",
+              "classes": [
+                "btn-menu-item-icon",
+                "tgico"
+              ],
+              "text": ""
+            },
+            {
+              "tag": "span",
+              "classes": [
+                "btn-menu-item-text",
+                "i18n"
+              ],
+              "text": "Checklist"
+            }
+          ]
+        },
+        {
+          "tag": "div",
+          "classes": [
+            "btn-menu-item",
+            "rp-overflow"
+          ],
+          "children": [
+            {
+              "tag": "span",
+              "classes": [
+                "btn-menu-item-icon",
+                "is-external",
+                "media-container",
+                "no-background"
+              ],
+              "attrs": {
+                "style": ""
+              },
+              "children": [
+                {
+                  "tag": "img",
+                  "classes": [
+                    "media-photo"
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "span",
+              "classes": [
+                "btn-menu-item-text"
+              ],
+              "text": "Wallet"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "auth-signqr-card": {
+    "source": "13-auth-signqr.json",
+    "title": "auth signQR card",
+    "selector": "#auth-pages",
+    "mode": "structure",
+    "tree": {
+      "tag": "div",
+      "classes": [
+        "_host_1b0yp_9",
+        "whole"
+      ],
+      "attrs": {
+        "id": "auth-pages"
+      },
+      "children": [
+        {
+          "tag": "button",
+          "classes": [
+            "_themeButton_1b0yp_25",
+            "btn-icon",
+            "darkmode_filled",
+            "rp"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "c-ripple"
+              ]
+            },
+            {
+              "tag": "span",
+              "classes": [
+                "button-icon",
+                "tgico"
+              ]
+            }
+          ]
+        },
+        {
+          "tag": "div",
+          "classes": [
+            "_scrollable_1b0yp_53",
+            "no-scrollbar",
+            "scrollable",
+            "scrollable-y"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholderTop_1b0yp_69",
+                "_placeholder_1b0yp_63"
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_cardsContainer_1b0yp_73"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "_card_1b0yp_73",
+                    "_pageSignQR_1b0yp_208"
+                  ],
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_qrContainer_1b0yp_179",
+                            "_sticker_1vq66_19"
+                          ],
+                          "attrs": {
+                            "style": "--sticker-size: 240px;"
+                          },
+                          "children": [
+                            {
+                              "tag": "canvas",
+                              "classes": [
+                                "_qrCanvas_1b0yp_186"
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_title_1vq66_1",
+                            "text-center",
+                            "text-overflow-wrap"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Log in by QR Code"
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_subtitle_1vq66_8",
+                            "secondary",
+                            "text-center"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Scan with Telegram app on your phone"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "ol",
+                      "classes": [
+                        "_qrDescription_1b0yp_147"
+                      ],
+                      "children": [
+                        {
+                          "tag": "li",
+                          "classes": [
+                            "_qrDescriptionItem_1b0yp_171"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "_qrDescriptionMarker_1b0yp_157"
+                              ],
+                              "text": "1"
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Open Telegram on your phone"
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "li",
+                          "classes": [
+                            "_qrDescriptionItem_1b0yp_171"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "_qrDescriptionMarker_1b0yp_157"
+                              ],
+                              "text": "2"
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Go to",
+                              "children": [
+                                {
+                                  "tag": "b",
+                                  "classes": [],
+                                  "text": "Settings"
+                                },
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "inline-icon",
+                                    "tgico"
+                                  ]
+                                },
+                                {
+                                  "tag": "b",
+                                  "classes": [],
+                                  "text": "Devices"
+                                },
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "inline-icon",
+                                    "tgico"
+                                  ]
+                                },
+                                {
+                                  "tag": "b",
+                                  "classes": [],
+                                  "text": "Add Device"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "li",
+                          "classes": [
+                            "_qrDescriptionItem_1b0yp_171"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "_qrDescriptionMarker_1b0yp_157"
+                              ],
+                              "text": "3"
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Point your phone at this screen to confirm login"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "button",
+                      "classes": [
+                        "btn-primary",
+                        "btn-primary-transparent",
+                        "btn-secondary",
+                        "primary",
+                        "rp"
+                      ],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "c-ripple"
+                          ]
+                        },
+                        {
+                          "tag": "span",
+                          "classes": [
+                            "i18n"
+                          ],
+                          "text": "Log in by phone number",
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "inline-icon",
+                                "tgico"
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [],
+                      "attrs": {
+                        "style": "overflow: hidden;"
+                      },
+                      "children": [
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-primary",
+                            "btn-primary-transparent",
+                            "btn-secondary",
+                            "primary",
+                            "rp"
+                          ],
+                          "text": "Продолжить на русском",
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "c-ripple"
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [],
+                      "attrs": {
+                        "style": "overflow: hidden;"
+                      },
+                      "children": [
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-primary",
+                            "btn-primary-transparent",
+                            "btn-secondary",
+                            "primary",
+                            "rp"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "c-ripple"
+                              ]
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Log in by passkey",
+                              "children": [
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "inline-icon",
+                                    "tgico"
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholder_1b0yp_63"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "auth-signin-card-country-list-collapsed": {
+    "source": "13-auth-signin.json",
+    "title": "auth signIn card (country list collapsed)",
+    "selector": "#auth-pages",
+    "mode": "structure",
+    "tree": {
+      "tag": "div",
+      "classes": [
+        "_host_1b0yp_9",
+        "whole"
+      ],
+      "attrs": {
+        "id": "auth-pages"
+      },
+      "children": [
+        {
+          "tag": "button",
+          "classes": [
+            "_themeButton_1b0yp_25",
+            "btn-icon",
+            "darkmode_filled",
+            "rp"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "c-ripple"
+              ]
+            },
+            {
+              "tag": "span",
+              "classes": [
+                "button-icon",
+                "tgico"
+              ]
+            }
+          ]
+        },
+        {
+          "tag": "div",
+          "classes": [
+            "_scrollable_1b0yp_53",
+            "no-scrollbar",
+            "scrollable",
+            "scrollable-y"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholderTop_1b0yp_69",
+                "_placeholder_1b0yp_63"
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_cardsContainer_1b0yp_73"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "_card_1b0yp_73"
+                  ],
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_logoContainer_1b0yp_95",
+                            "_sticker_1vq66_19"
+                          ],
+                          "attrs": {
+                            "style": "--sticker-size: 120px;"
+                          },
+                          "children": [
+                            {
+                              "tag": "svg",
+                              "classes": [
+                                "_logo_1b0yp_89"
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_title_1vq66_1",
+                            "text-center",
+                            "text-overflow-wrap"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Sign in to Telegram"
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_subtitle_1vq66_8",
+                            "secondary",
+                            "text-center"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Please confirm your country code and enter your phone number.",
+                              "children": [
+                                {
+                                  "tag": "br",
+                                  "classes": []
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "input-wrapper"
+                      ],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "input-field",
+                            "input-select"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "input-field-input"
+                              ],
+                              "attrs": {
+                                "contenteditable": "true"
+                              },
+                              "children": [
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "i18n"
+                                  ],
+                                  "text": "Kazakhstan"
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "input-field-border"
+                              ]
+                            },
+                            {
+                              "tag": "label",
+                              "classes": [],
+                              "attrs": {
+                                "style": "visibility: visible;"
+                              },
+                              "children": [
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "i18n"
+                                  ],
+                                  "text": "Country"
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "arrow",
+                                "arrow-down"
+                              ]
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "hide",
+                                "select-wrapper",
+                                "z-depth-3"
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "input-field",
+                            "input-field-phone"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "input-field-input"
+                              ],
+                              "attrs": {
+                                "contenteditable": "true",
+                                "inputmode": "decimal",
+                                "style": "--letter-spacing: -0.32px;"
+                              },
+                              "text": "+7"
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "input-field-border"
+                              ]
+                            },
+                            {
+                              "tag": "label",
+                              "classes": [],
+                              "attrs": {
+                                "style": "visibility: visible;"
+                              },
+                              "children": [
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "i18n"
+                                  ],
+                                  "text": "Phone Number"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-color-primary",
+                            "btn-primary",
+                            "rp"
+                          ],
+                          "attrs": {
+                            "disabled": ""
+                          },
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "c-ripple"
+                              ]
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Next"
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [],
+                          "attrs": {
+                            "style": "overflow: hidden;"
+                          },
+                          "children": [
+                            {
+                              "tag": "button",
+                              "classes": [
+                                "btn-primary",
+                                "btn-primary-transparent",
+                                "btn-secondary",
+                                "primary",
+                                "rp"
+                              ],
+                              "text": "Продолжить на русском",
+                              "children": [
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "c-ripple"
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "button",
+                      "classes": [
+                        "btn-primary",
+                        "btn-primary-transparent",
+                        "btn-secondary",
+                        "primary",
+                        "rp"
+                      ],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "c-ripple"
+                          ]
+                        },
+                        {
+                          "tag": "span",
+                          "classes": [
+                            "i18n"
+                          ],
+                          "text": "Log in by QR Code",
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "inline-icon",
+                                "tgico"
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [],
+                      "attrs": {
+                        "style": "overflow: hidden;"
+                      },
+                      "children": [
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-primary",
+                            "btn-primary-transparent",
+                            "btn-secondary",
+                            "primary",
+                            "rp"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "c-ripple"
+                              ]
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Log in by passkey",
+                              "children": [
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "inline-icon",
+                                    "tgico"
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholder_1b0yp_63"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "auth-country-dropdown-select-wrapper": {
+    "source": "13-auth-signin.json",
+    "title": "auth country dropdown (select-wrapper)",
+    "selector": ".input-field.input-select .select-wrapper",
+    "mode": "structure",
+    "tree": {
+      "tag": "div",
+      "classes": [
+        "active",
+        "select-wrapper",
+        "z-depth-3"
+      ],
+      "children": [
+        {
+          "tag": "div",
+          "classes": [
+            "scrollable",
+            "scrollable-y"
+          ],
+          "children": [
+            {
+              "tag": "ul",
+              "classes": []
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "auth-country-dropdown-li": {
+    "source": "13-auth-signin.json",
+    "title": "auth country dropdown li",
+    "selector": ".input-field.input-select .select-wrapper li",
+    "mode": "structure",
+    "tree": {
+      "tag": "li",
+      "classes": [],
+      "children": [
+        {
+          "tag": "span",
+          "classes": [],
+          "children": [
+            {
+              "tag": "span",
+              "classes": [
+                "emoji",
+                "emoji-native"
+              ],
+              "text": "🇦🇫"
+            }
+          ]
+        },
+        {
+          "tag": "span",
+          "classes": [
+            "i18n"
+          ],
+          "text": "Afghanistan"
+        },
+        {
+          "tag": "span",
+          "classes": [
+            "phone-code"
+          ],
+          "text": "+93"
+        }
+      ]
+    }
+  },
+  "auth-authcode-card-empty": {
+    "source": "13-auth-authcode.json",
+    "title": "auth authCode card (empty)",
+    "selector": "#auth-pages",
+    "mode": "structure",
+    "tree": {
+      "tag": "div",
+      "classes": [
+        "_host_1b0yp_9",
+        "whole"
+      ],
+      "attrs": {
+        "id": "auth-pages"
+      },
+      "children": [
+        {
+          "tag": "button",
+          "classes": [
+            "_themeButton_1b0yp_25",
+            "btn-icon",
+            "darkmode_filled",
+            "rp"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "c-ripple"
+              ]
+            },
+            {
+              "tag": "span",
+              "classes": [
+                "button-icon",
+                "tgico"
+              ]
+            }
+          ]
+        },
+        {
+          "tag": "div",
+          "classes": [
+            "_scrollable_1b0yp_53",
+            "no-scrollbar",
+            "scrollable",
+            "scrollable-y"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholderTop_1b0yp_69",
+                "_placeholder_1b0yp_63"
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_cardsContainer_1b0yp_73"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "_card_1b0yp_73",
+                    "_pageAuthCode_1b0yp_195"
+                  ],
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_sticker_1vq66_19"
+                          ],
+                          "attrs": {
+                            "style": "--sticker-size: 130px;"
+                          },
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [],
+                              "children": [
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "media-sticker-wrapper"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "canvas",
+                                      "classes": [
+                                        "lottie"
+                                      ]
+                                    },
+                                    {
+                                      "tag": "canvas",
+                                      "classes": [
+                                        "lottie"
+                                      ],
+                                      "attrs": {
+                                        "style": "display: none;"
+                                      }
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_title_1vq66_1",
+                            "text-center",
+                            "text-overflow-wrap"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_phoneWrapper_1b0yp_118"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "h4",
+                                  "classes": [
+                                    "_phone_1b0yp_118"
+                                  ],
+                                  "text": "+7 701 234 56 78"
+                                },
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "_phoneEdit_1b0yp_129"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "tgico"
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_subtitle_1vq66_8",
+                            "secondary",
+                            "text-center"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "We have sent you an SMS with the code.",
+                              "children": [
+                                {
+                                  "tag": "br",
+                                  "classes": []
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "_codeInputField_1b0yp_143",
+                        "_wrap_87tyg_1"
+                      ],
+                      "children": [
+                        {
+                          "tag": "input",
+                          "classes": [
+                            "_input_87tyg_11"
+                          ],
+                          "attrs": {
+                            "inputmode": "numeric",
+                            "autocomplete": "one-time-code",
+                            "pattern": "^d*$",
+                            "required": ""
+                          }
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_active_87tyg_48",
+                            "_digit_87tyg_33"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_caret_87tyg_86"
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_digit_87tyg_33"
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_digit_87tyg_33"
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_digit_87tyg_33"
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_digit_87tyg_33"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "_errorLabel_1b0yp_99"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholder_1b0yp_63"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "auth-authcode-card-3-of-5-digits": {
+    "source": "13-auth-authcode.json",
+    "title": "auth authCode card (3 of 5 digits)",
+    "selector": "#auth-pages",
+    "mode": "structure",
+    "tree": {
+      "tag": "div",
+      "classes": [
+        "_host_1b0yp_9",
+        "whole"
+      ],
+      "attrs": {
+        "id": "auth-pages"
+      },
+      "children": [
+        {
+          "tag": "button",
+          "classes": [
+            "_themeButton_1b0yp_25",
+            "btn-icon",
+            "darkmode_filled",
+            "rp"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "c-ripple"
+              ]
+            },
+            {
+              "tag": "span",
+              "classes": [
+                "button-icon",
+                "tgico"
+              ]
+            }
+          ]
+        },
+        {
+          "tag": "div",
+          "classes": [
+            "_scrollable_1b0yp_53",
+            "no-scrollbar",
+            "scrollable",
+            "scrollable-y"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholderTop_1b0yp_69",
+                "_placeholder_1b0yp_63"
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_cardsContainer_1b0yp_73"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "_card_1b0yp_73",
+                    "_pageAuthCode_1b0yp_195"
+                  ],
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_sticker_1vq66_19"
+                          ],
+                          "attrs": {
+                            "style": "--sticker-size: 130px;"
+                          },
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [],
+                              "children": [
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "media-sticker-wrapper"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "canvas",
+                                      "classes": [
+                                        "lottie"
+                                      ]
+                                    },
+                                    {
+                                      "tag": "canvas",
+                                      "classes": [
+                                        "lottie"
+                                      ],
+                                      "attrs": {
+                                        "style": "display: none;"
+                                      }
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_title_1vq66_1",
+                            "text-center",
+                            "text-overflow-wrap"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_phoneWrapper_1b0yp_118"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "h4",
+                                  "classes": [
+                                    "_phone_1b0yp_118"
+                                  ],
+                                  "text": "+7 701 234 56 78"
+                                },
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "_phoneEdit_1b0yp_129"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "tgico"
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_subtitle_1vq66_8",
+                            "secondary",
+                            "text-center"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "We have sent you an SMS with the code.",
+                              "children": [
+                                {
+                                  "tag": "br",
+                                  "classes": []
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "_codeInputField_1b0yp_143",
+                        "_wrap_87tyg_1"
+                      ],
+                      "children": [
+                        {
+                          "tag": "input",
+                          "classes": [
+                            "_input_87tyg_11"
+                          ],
+                          "attrs": {
+                            "inputmode": "numeric",
+                            "autocomplete": "one-time-code",
+                            "pattern": "^d*$",
+                            "required": ""
+                          }
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_digit_87tyg_33"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_digitContent_87tyg_59"
+                              ],
+                              "text": "1"
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_digit_87tyg_33"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_digitContent_87tyg_59"
+                              ],
+                              "text": "2"
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_digit_87tyg_33"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_digitContent_87tyg_59"
+                              ],
+                              "text": "3"
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_active_87tyg_48",
+                            "_digit_87tyg_33"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_caret_87tyg_86"
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_digit_87tyg_33"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "_errorLabel_1b0yp_99"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholder_1b0yp_63"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "auth-password-card": {
+    "source": "13-auth-password.json",
+    "title": "auth password card",
+    "selector": "#auth-pages",
+    "mode": "structure",
+    "tree": {
+      "tag": "div",
+      "classes": [
+        "_host_1b0yp_9",
+        "whole"
+      ],
+      "attrs": {
+        "id": "auth-pages"
+      },
+      "children": [
+        {
+          "tag": "button",
+          "classes": [
+            "_themeButton_1b0yp_25",
+            "btn-icon",
+            "darkmode_filled",
+            "rp"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "c-ripple"
+              ]
+            },
+            {
+              "tag": "span",
+              "classes": [
+                "button-icon",
+                "tgico"
+              ]
+            }
+          ]
+        },
+        {
+          "tag": "div",
+          "classes": [
+            "_scrollable_1b0yp_53",
+            "no-scrollbar",
+            "scrollable",
+            "scrollable-y"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholderTop_1b0yp_69",
+                "_placeholder_1b0yp_63"
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_cardsContainer_1b0yp_73"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "_card_1b0yp_73",
+                    "_pagePassword_1b0yp_200"
+                  ],
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_sticker_1vq66_19"
+                          ],
+                          "attrs": {
+                            "style": "--sticker-size: 130px;"
+                          },
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [],
+                              "children": [
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "media-sticker-wrapper"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "canvas",
+                                      "classes": [
+                                        "lottie"
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_title_1vq66_1",
+                            "text-center",
+                            "text-overflow-wrap"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Enter Your Password"
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_subtitle_1vq66_8",
+                            "text-center"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Your account is protected with an additional password",
+                              "children": [
+                                {
+                                  "tag": "br",
+                                  "classes": []
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "input-wrapper"
+                      ],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "input-field",
+                            "input-field-password"
+                          ],
+                          "children": [
+                            {
+                              "tag": "input",
+                              "classes": [
+                                "stealthy"
+                              ],
+                              "attrs": {
+                                "type": "password"
+                              }
+                            },
+                            {
+                              "tag": "input",
+                              "classes": [
+                                "input-field-input",
+                                "is-empty"
+                              ],
+                              "attrs": {
+                                "type": "password",
+                                "autocomplete": "off",
+                                "required": ""
+                              }
+                            },
+                            {
+                              "tag": "input",
+                              "classes": [
+                                "stealthy"
+                              ],
+                              "attrs": {
+                                "type": "password"
+                              }
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "input-field-border"
+                              ]
+                            },
+                            {
+                              "tag": "label",
+                              "classes": [],
+                              "attrs": {
+                                "style": "visibility: visible;"
+                              },
+                              "children": [
+                                {
+                                  "tag": "span",
+                                  "classes": [],
+                                  "text": "мой хинт"
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "toggle-visible"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "tgico"
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "span",
+                          "classes": [
+                            "_forgotLink_1b0yp_106",
+                            "i18n"
+                          ],
+                          "children": [
+                            {
+                              "tag": "a",
+                              "classes": [],
+                              "attrs": {
+                                "href": "#"
+                              },
+                              "text": "Forgot Password?"
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-color-primary",
+                            "btn-primary",
+                            "rp"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "c-ripple"
+                              ]
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Next"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholder_1b0yp_63"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "auth-signup-card": {
+    "source": "13-auth-signup.json",
+    "title": "auth signUp card",
+    "selector": "#auth-pages",
+    "mode": "structure",
+    "tree": {
+      "tag": "div",
+      "classes": [
+        "_host_1b0yp_9",
+        "whole"
+      ],
+      "attrs": {
+        "id": "auth-pages"
+      },
+      "children": [
+        {
+          "tag": "button",
+          "classes": [
+            "_themeButton_1b0yp_25",
+            "btn-icon",
+            "darkmode_filled",
+            "rp"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "c-ripple"
+              ]
+            },
+            {
+              "tag": "span",
+              "classes": [
+                "button-icon",
+                "tgico"
+              ]
+            }
+          ]
+        },
+        {
+          "tag": "div",
+          "classes": [
+            "_scrollable_1b0yp_53",
+            "no-scrollbar",
+            "scrollable",
+            "scrollable-y"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholderTop_1b0yp_69",
+                "_placeholder_1b0yp_63"
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_cardsContainer_1b0yp_73"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "_card_1b0yp_73",
+                    "_pageSignUp_1b0yp_191"
+                  ],
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_sticker_1vq66_19"
+                          ],
+                          "attrs": {
+                            "style": "--sticker-size: 120px;"
+                          },
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "avatar-edit"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "canvas",
+                                  "classes": [
+                                    "avatar-edit-canvas"
+                                  ],
+                                  "attrs": {
+                                    "id": "canvas-avatar"
+                                  }
+                                },
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "avatar-edit-icon",
+                                    "tgico"
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_title_1vq66_1",
+                            "text-center",
+                            "text-overflow-wrap"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Your Name"
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_subtitle_1vq66_8",
+                            "text-center"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Enter your name and add a profile photo",
+                              "children": [
+                                {
+                                  "tag": "br",
+                                  "classes": []
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "input-wrapper"
+                      ],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "input-field"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "input-field-input",
+                                "is-empty"
+                              ],
+                              "attrs": {
+                                "contenteditable": "true"
+                              }
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "input-field-border"
+                              ]
+                            },
+                            {
+                              "tag": "label",
+                              "classes": [],
+                              "attrs": {
+                                "style": "visibility: visible;"
+                              },
+                              "children": [
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "i18n"
+                                  ],
+                                  "text": "First name (required)"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "input-field"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "input-field-input",
+                                "is-empty"
+                              ],
+                              "attrs": {
+                                "contenteditable": "true"
+                              }
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "input-field-border"
+                              ]
+                            },
+                            {
+                              "tag": "label",
+                              "classes": [],
+                              "attrs": {
+                                "style": "visibility: visible;"
+                              },
+                              "children": [
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "i18n"
+                                  ],
+                                  "text": "Last name (optional)"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-color-primary",
+                            "btn-primary",
+                            "rp"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "c-ripple"
+                              ]
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Start Messaging"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholder_1b0yp_63"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "auth-emailrecover-card": {
+    "source": "13-auth-emailrecover.json",
+    "title": "auth emailRecover card",
+    "selector": "#auth-pages",
+    "mode": "structure",
+    "tree": {
+      "tag": "div",
+      "classes": [
+        "_host_1b0yp_9",
+        "whole"
+      ],
+      "attrs": {
+        "id": "auth-pages"
+      },
+      "children": [
+        {
+          "tag": "button",
+          "classes": [
+            "_themeButton_1b0yp_25",
+            "btn-icon",
+            "darkmode_filled",
+            "rp"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "c-ripple"
+              ]
+            },
+            {
+              "tag": "span",
+              "classes": [
+                "button-icon",
+                "tgico"
+              ]
+            }
+          ]
+        },
+        {
+          "tag": "div",
+          "classes": [
+            "_scrollable_1b0yp_53",
+            "no-scrollbar",
+            "scrollable",
+            "scrollable-y"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholderTop_1b0yp_69",
+                "_placeholder_1b0yp_63"
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_cardsContainer_1b0yp_73"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "_card_1b0yp_73"
+                  ],
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_sticker_1vq66_19"
+                          ],
+                          "attrs": {
+                            "style": "--sticker-size: 130px;"
+                          },
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_lottie_1vq66_30"
+                              ],
+                              "attrs": {
+                                "style": "--size: 130px;"
+                              },
+                              "children": [
+                                {
+                                  "tag": "canvas",
+                                  "classes": [
+                                    "lottie"
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_title_1vq66_1",
+                            "text-center",
+                            "text-overflow-wrap"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Reset Password"
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_subtitle_1vq66_8",
+                            "text-center"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Enter the code we just sent to your email .",
+                              "children": [
+                                {
+                                  "tag": "br",
+                                  "classes": []
+                                },
+                                {
+                                  "tag": "b",
+                                  "classes": [],
+                                  "text": "a @e .com",
+                                  "children": [
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "bluff-spoiler",
+                                        "is-visible"
+                                      ],
+                                      "attrs": {
+                                        "style": "mask-image: url('data:image/webp;base64,…')"
+                                      },
+                                      "children": [
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "bluff-spoiler-letter"
+                                          ],
+                                          "text": "⠇"
+                                        },
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "bluff-spoiler-letter"
+                                          ],
+                                          "text": "⣯"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "bluff-spoiler",
+                                        "is-visible"
+                                      ],
+                                      "attrs": {
+                                        "style": "mask-image: url('data:image/webp;base64,…')"
+                                      },
+                                      "children": [
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "bluff-spoiler-letter"
+                                          ],
+                                          "text": "⡯"
+                                        },
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "bluff-spoiler-letter"
+                                          ],
+                                          "text": "⢢"
+                                        },
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "bluff-spoiler-letter"
+                                          ],
+                                          "text": "⣫"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "input-wrapper"
+                      ],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_wrap_87tyg_1"
+                          ],
+                          "children": [
+                            {
+                              "tag": "input",
+                              "classes": [
+                                "_input_87tyg_11"
+                              ],
+                              "attrs": {
+                                "inputmode": "numeric",
+                                "autocomplete": "one-time-code",
+                                "pattern": "^d*$",
+                                "required": ""
+                              }
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_active_87tyg_48",
+                                "_digit_87tyg_33"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "_caret_87tyg_86"
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_digit_87tyg_33"
+                              ]
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_digit_87tyg_33"
+                              ]
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_digit_87tyg_33"
+                              ]
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_digit_87tyg_33"
+                              ]
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_digit_87tyg_33"
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_errorLabel_1b0yp_99"
+                          ]
+                        },
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-primary",
+                            "btn-primary-transparent",
+                            "btn-secondary",
+                            "primary",
+                            "rp"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "c-ripple"
+                              ]
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Cancel"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholder_1b0yp_63"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "auth-signimport-card": {
+    "source": "13-auth-signimport.json",
+    "title": "auth signImport card",
+    "selector": "#auth-pages",
+    "mode": "structure",
+    "tree": {
+      "tag": "div",
+      "classes": [
+        "_host_1b0yp_9",
+        "whole"
+      ],
+      "attrs": {
+        "id": "auth-pages"
+      },
+      "children": [
+        {
+          "tag": "button",
+          "classes": [
+            "_themeButton_1b0yp_25",
+            "btn-icon",
+            "darkmode_filled",
+            "rp"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "c-ripple"
+              ]
+            },
+            {
+              "tag": "span",
+              "classes": [
+                "button-icon",
+                "tgico"
+              ]
+            }
+          ]
+        },
+        {
+          "tag": "div",
+          "classes": [
+            "_scrollable_1b0yp_53",
+            "no-scrollbar",
+            "scrollable",
+            "scrollable-y"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholderTop_1b0yp_69",
+                "_placeholder_1b0yp_63"
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_cardsContainer_1b0yp_73"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "_card_1b0yp_73"
+                  ],
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "preloader"
+                          ],
+                          "children": [
+                            {
+                              "tag": "svg",
+                              "classes": [
+                                "preloader-circular"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "circle",
+                                  "classes": [
+                                    "preloader-path"
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholder_1b0yp_63"
+              ]
+            }
+          ]
+        }
+      ]
+    }
   }
 }

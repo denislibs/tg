@@ -78,6 +78,44 @@ textarea,
   user-select: text;
 }
 
+// tweb base.scss:968-972 — базовое оформление contenteditable. `outline: none`
+// обязателен: у наших полей своя рамка фокуса (`.input-field-border`), поверх
+// которой браузер рисовал второй контур. `cursor: text` и `white-space:
+// pre-wrap` из того же блока переносим тоже — без второго в композере
+// схлопываются повторные пробелы, а tweb их сохраняет (текст уходит на сервер
+// с пробелами как набран).
+[contenteditable='true'] {
+  outline: none;
+  cursor: text;
+  white-space: pre-wrap;
+}
+
+// tweb components/_global.scss:24-30 (то же в _typography.scss:1-3) — сброс
+// подчёркивания у ссылок. Без него браузер подчёркивал ВСЁ содержимое любого
+// узла-ссылки: строки результатов поиска по чату (`<a>` целиком), имя пира,
+// дату. Не подчёркнутым оставался только совпавший фрагмент — он
+// `display: inline-block` и потому не наследует декорацию предка.
+a {
+  text-decoration: none;
+
+  // Gets rid of tap active state
+  -webkit-tap-highlight-color: transparent;
+}
+
+// tweb components/_global.scss:13-22 — сброс браузерного списка. Без него
+// `ul` выпадающего списка стран получает `padding-inline-start: 40px` и строки
+// уезжают (замерено: li 320px вместо 360).
+ul {
+  &:not(.browser-default) {
+    padding-left: 0;
+    list-style-type: none;
+
+    & > li {
+      list-style-type: none;
+    }
+  }
+}
+
 body {
   // базовый шрифт — tweb-стек (base.scss:126, через токен --font-regular)
   font-family: var(--font-regular);
@@ -166,37 +204,9 @@ samp {
 .token.important, .token.bold { font-weight: 600; }
 .token.italic { font-style: italic; }
 
-/* Переходы смены аккаунта / появления мессенджера — 1:1 из tweb
-   (src/scss/partials/pages/_pages.scss .main-screen-* и .chatlist-*):
-   exit чата перед «Добавить аккаунт», enter после входа/возврата,
-   уход списка чатов при переключении аккаунта из меню. */
-.main-screen-enter {
-  transition: 0.2s;
-  transform: scale(1.75);
-  opacity: 0;
-}
-.main-screen-entering {
-  transform: scale(1);
-  opacity: 1;
-}
-.main-screen-exit {
-  transition: 0.2s, transform 0.2s ease-in;
-  transform: scale(1);
-  opacity: 1;
-}
-.main-screen-exiting {
-  transform: scale(1.75);
-  opacity: 0;
-}
-.chatlist-exit {
-  transition: 0.2s;
-  transform: translateY(0) scale(1);
-  opacity: 1;
-}
-.chatlist-exiting {
-  opacity: 0;
-  transform: translateY(18px) scale(1.01);
-}
+/* Переходы смены аккаунта / появления мессенджера (.main-screen-*, .chatlist-*)
+   переехали в порт партиала `styles/tweb/pages/_pages.scss` — здесь лежала
+   ручная копия тех же правил, снята как дубль. */
 
 // tlottie: canvas плеера (класс .lottie, создаётся LottiePlayer вне React)
 // вписывается в контейнер стикера. 1:1 с tweb base.scss (.lottie).

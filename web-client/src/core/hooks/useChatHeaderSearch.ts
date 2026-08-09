@@ -50,7 +50,25 @@ export function useChatHeaderSearch(chat: Chat, onJumpToSeq: (seq: number) => vo
   // индекс строки — он же `whichChild(target)` из tweb (:851).
   const [targetIdx, setTargetIdx] = useState<number | undefined>(undefined)
 
-  const close = useCallback(() => useSearchStore.getState().setOpen(numericChatId, false), [numericChatId])
+  const close = useCallback(() => useSearchStore.getState().closeSearch(numericChatId), [numericChatId])
+
+  // ── «* full search replacement» (tweb topbarSearch.tsx:403-407) ──
+  // Внешние сигналы chat.ts засевают локальное состояние панели:
+  //   inputSearch.onChange(inputSearch.value = props.query())
+  //   setFilteringSender(!!props.filterPeerId()); setFilterPeerId(…); setReaction(…)
+  // Присваивание `.value` кладёт текст в поле, а `onChange` (это `setValue`,
+  // :485) зовётся НАПРЯМУЮ — минуя дебаунс, поэтому и `text`, и `value` ставим
+  // разом. Сигналы созданы с {equals:false}, так что повтор с тем же значением
+  // тоже перезасевает — за это отвечает `seed.nonce`.
+  const seed = useSearchStore((s) => s.byChat[numericChatId]?.seed)
+  useEffect(() => {
+    if (!seed) return
+    setText(seed.query)
+    setValue(seed.query)
+    setFilteringSender(seed.filterPeerId != null)
+    setFilterPeerId(seed.filterPeerId)
+    setReaction(seed.reaction)
+  }, [seed])
 
   // * мемо (tweb :368-385)
   const choosingSender = filteringSender && filterPeerId == null

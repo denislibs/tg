@@ -9,18 +9,10 @@ import (
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
-// seedUser signs a user in and returns their id.
+// seedUser регистрирует пользователя (новый номер → шаг sign_up) и отдаёт его id.
 func seedUser(t *testing.T, i *Interactor, phone string) int64 {
 	t.Helper()
-	ctx := context.Background()
-	if err := i.RequestCode(ctx, phone); err != nil {
-		t.Fatalf("RequestCode: %v", err)
-	}
-	res, err := i.SignIn(ctx, phone, "12345", "web", "browser")
-	if err != nil {
-		t.Fatalf("SignIn: %v", err)
-	}
-	return res.User.ID
+	return registerUser(t, i, phone, "Профиль", "", "web", "browser").User.ID
 }
 
 func TestUpdateProfile(t *testing.T) {

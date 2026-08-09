@@ -332,5 +332,350 @@
       "state": "running",
       "target": "btn-icon _ViewerClose_hvblb_732 rp"
     }
+  ],
+  "04-emoji-dropdown.json:anims @100ms": [
+    {
+      "name": "opacity",
+      "type": "CSSTransition",
+      "prop": "opacity",
+      "duration": 200,
+      "delay": 0,
+      "easing": "cubic-bezier(0.4, 0, 0.2, 1)",
+      "state": "running",
+      "target": "emoji-dropdown active"
+    },
+    {
+      "name": "transform",
+      "type": "CSSTransition",
+      "prop": "transform",
+      "duration": 200,
+      "delay": 0,
+      "easing": "cubic-bezier(0.4, 0, 0.2, 1)",
+      "state": "running",
+      "target": "emoji-dropdown active"
+    },
+    {
+      "name": "background-color",
+      "type": "CSSTransition",
+      "prop": "background-color",
+      "duration": 200,
+      "delay": 0,
+      "easing": "ease-in-out",
+      "state": "running",
+      "target": "btn-icon menu-horizontal-div-item emoji-tabs-emoji active"
+    },
+    {
+      "name": "grow-input",
+      "type": "CSSAnimation",
+      "duration": 250,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico input-search-part input-search-icon will-animate"
+    },
+    {
+      "name": "grow-input",
+      "type": "CSSAnimation",
+      "duration": 250,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "i18n input-search-placeholder will-animate"
+    },
+    {
+      "name": "grow-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon animated-button-icon-icon-first"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon animated-button-icon-icon-last"
+    },
+    {
+      "name": "recordBlink",
+      "type": "CSSAnimation",
+      "duration": 1250,
+      "delay": 0,
+      "easing": "linear",
+      "state": "running",
+      "target": "voice-recording-dot"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon btn-send-icon-send"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon btn-send-icon-schedule"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon btn-send-icon-edit"
+    },
+    {
+      "name": "grow-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon btn-send-icon-record"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon btn-send-icon-record-video"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon btn-send-icon-forward"
+    },
+    {
+      "name": "grow-input",
+      "type": "CSSAnimation",
+      "duration": 250,
+      "delay": 0,
+      "easing": "linear",
+      "state": "running",
+      "target": "tgico input-search-part input-search-icon will-animate"
+    },
+    {
+      "name": "hide-input",
+      "type": "CSSAnimation",
+      "duration": 250,
+      "delay": 0,
+      "easing": "linear",
+      "state": "running",
+      "target": "btn-icon will-animate emoticons-search-input-arrow input-search-part input-searc"
+    },
+    {
+      "name": "rotate",
+      "type": "CSSAnimation",
+      "duration": 1000,
+      "delay": 0,
+      "easing": "linear",
+      "state": "running",
+      "target": "svg"
+    }
+  ],
+  "04-attach-menu.json:anims @80ms": [
+    {
+      "name": "opacity",
+      "type": "CSSTransition",
+      "prop": "opacity",
+      "duration": 350,
+      "delay": 0,
+      "easing": "ease",
+      "state": "running",
+      "target": "c-ripple__circle"
+    },
+    {
+      "name": "opacity",
+      "type": "CSSTransition",
+      "prop": "opacity",
+      "duration": 200,
+      "delay": 0,
+      "easing": "cubic-bezier(0.4, 0, 0.2, 1)",
+      "state": "running",
+      "target": "btn-menu top-right active was-open"
+    },
+    {
+      "name": "transform",
+      "type": "CSSTransition",
+      "prop": "transform",
+      "duration": 200,
+      "delay": 0,
+      "easing": "cubic-bezier(0.4, 0, 0.2, 1)",
+      "state": "running",
+      "target": "btn-menu top-right active was-open"
+    },
+    {
+      "name": "visibility",
+      "type": "CSSTransition",
+      "prop": "visibility",
+      "duration": 200,
+      "delay": 0,
+      "easing": "cubic-bezier(0.4, 0, 0.2, 1)",
+      "state": "running",
+      "target": "btn-menu top-right active was-open"
+    },
+    {
+      "name": "grow-input",
+      "type": "CSSAnimation",
+      "duration": 250,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico input-search-part input-search-icon will-animate"
+    },
+    {
+      "name": "grow-input",
+      "type": "CSSAnimation",
+      "duration": 250,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "i18n input-search-placeholder will-animate"
+    },
+    {
+      "name": "grow-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon animated-button-icon-icon-first"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon animated-button-icon-icon-last"
+    },
+    {
+      "name": "ripple-effect",
+      "type": "CSSAnimation",
+      "duration": 700,
+      "delay": 0,
+      "easing": "linear",
+      "state": "running",
+      "target": "c-ripple__circle"
+    },
+    {
+      "name": "recordBlink",
+      "type": "CSSAnimation",
+      "duration": 1250,
+      "delay": 0,
+      "easing": "linear",
+      "state": "running",
+      "target": "voice-recording-dot"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon btn-send-icon-send"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon btn-send-icon-schedule"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon btn-send-icon-edit"
+    },
+    {
+      "name": "grow-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon btn-send-icon-record"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon btn-send-icon-record-video"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon btn-send-icon-forward"
+    }
+  ],
+  "13-auth-signqr.json:anims: auth signQR": [
+    {
+      "name": "hide-icon",
+      "target": "div.preloader",
+      "duration": 400,
+      "easing": "linear",
+      "iterations": 1,
+      "playState": "finished"
+    },
+    {
+      "name": "rotate",
+      "target": "svg.preloader-circular",
+      "duration": 1000,
+      "easing": "linear",
+      "iterations": null,
+      "playState": "running"
+    }
+  ],
+  "13-auth-authcode.json:anims: auth authCode": [
+    {
+      "name": "_caret-blink_87tyg_1",
+      "duration": 1250,
+      "easing": "linear",
+      "iterations": null,
+      "playState": "running"
+    }
+  ],
+  "13-auth-signimport.json:anims: auth signImport": [
+    {
+      "name": "rotate",
+      "target": "svg.preloader-circular",
+      "duration": 1000,
+      "easing": "linear",
+      "iterations": null,
+      "playState": "running"
+    }
   ]
 }

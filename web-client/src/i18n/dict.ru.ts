@@ -611,6 +611,11 @@ const ru: Dict = {
   'Group members can discuss different topics in separate threads.': 'Участники смогут обсуждать разные темы в отдельных ветках.',
   'Sending messages is not allowed in this group': 'В этой группе запрещено отправлять сообщения',
   'Media is not allowed in this group': 'В этой группе запрещено отправлять медиа',
+  // Зона перетаскивания файлов в чат (tweb lang.ts:3469-3471 —
+  // Chat.DropTitle / Chat.DropAsFilesDesc / Chat.DropQuickDesc).
+  'Drop files here to send them': 'Перетащите файлы сюда, чтобы отправить',
+  'without compression': 'без сжатия',
+  'in a quick way': 'быстрым способом',
   'Revoked Links': 'Отозванные ссылки',
   'Delete All Revoked Links': 'Удалить все отозванные ссылки',
   'Edit Link': 'Изменить ссылку',
@@ -1043,6 +1048,56 @@ const ru: Dict = {
   'Last used': 'Использован',
   Created: 'Создан',
   'Log in with a Passkey': 'Войти по ключу доступа',
+  // Экран входа (tweb langSign.ts). `**…**` — жирный, ' > ' — стрелка-иконка,
+  // '\n' — перенос строки; разбор — components/auth/superFormatter.tsx.
+  'Log in by QR Code': 'Вход по QR-коду',
+  'Scan with Telegram app on your phone': 'Отсканируйте в приложении Telegram на телефоне',
+  'Open Telegram on your phone': 'Откройте Telegram на телефоне',
+  'Go to **Settings** > **Devices** > **Add Device**':
+    'Перейдите в **Настройки** > **Устройства** > **Подключить устройство**',
+  'Point your phone at this screen to confirm login':
+    'Наведите телефон на этот экран, чтобы подтвердить вход',
+  'Log in by phone number': 'Войти по номеру телефона',
+  'Log in by passkey': 'Войти по ключу доступа',
+  'We have sent you an SMS\nwith the code.': 'Мы отправили Вам SMS\nс кодом.',
+  'Invalid code': 'Неверный код',
+  'Your account is protected with\nan additional password':
+    'Ваш аккаунт защищён\nдополнительным паролем',
+  'Incorrect password': 'Неверный пароль',
+  'Please wait...': 'Пожалуйста, подождите...',
+  // Экран входа: подзаголовок ввода номера и ошибка номера (tweb Login.StartText,
+  // Login.PhoneLabelInvalid)
+  'Please confirm your country code': 'Пожалуйста, подтвердите код страны',
+  'and enter your phone number.': 'и введите номер телефона.',
+  'Phone Number Invalid': 'Неверный номер телефона',
+  // Регистрация (tweb signUp: YourName, Login.Register.Subtitle, FirstName,
+  // LastName, StartMessaging)
+  'Your Name': 'Ваше имя',
+  'Enter your name and\nadd a profile photo': 'Укажите своё имя\nи добавьте фото профиля',
+  'First name (required)': 'Имя (обязательно)',
+  'Last name (optional)': 'Фамилия (необязательно)',
+  'Start Messaging': 'Начать общение',
+  'Please enter your name': 'Пожалуйста, введите имя',
+  'Name is too long': 'Слишком длинное имя',
+  'Too many attempts. Please try again later.': 'Слишком много попыток. Попробуйте позже.',
+  // Восстановление доступа по почте (tweb Login.ResetPassword.*)
+  'Forgot Password?': 'Забыли пароль?',
+  'Reset Password': 'Сброс пароля',
+  'Enter the code we just sent to your email': 'Введите код, отправленный на почту',
+  'Code expired. Please request a new one.': 'Код истёк. Запросите новый.',
+  'Session expired. Please sign in again.': 'Сессия истекла. Войдите заново.',
+  // Сброс аккаунта, когда почта восстановления не привязана
+  // (tweb Login.ResetPassword.NoEmailText / Login.ResetPassword.ResetAccount /
+  // Login.ResetAccount.Title / Login.ResetAccount.Text / Login.ResetAccountFail.Title)
+  "Since you didn't provide a recovery email when setting up your password, your remaining options are either to remember your password or to reset your account.":
+    'Поскольку при установке пароля Вы не указали резервный e-mail, Вам остаётся либо вспомнить пароль, либо сбросить аккаунт.',
+  'Reset Account': 'Сбросить аккаунт',
+  Warning: 'Внимание',
+  "This action can't be undone.\n\nIf you reset your account, all your messages and chats will be deleted.":
+    'Это действие нельзя отменить.\n\nЕсли Вы сбросите аккаунт, все Ваши сообщения и чаты будут удалены.',
+  Sorry: 'Извините',
+  'A recovery email is linked to this account — reset it by email instead.':
+    'К аккаунту привязана почта восстановления — сбросьте пароль по ней.',
   // Черновики (tweb Draft/PrivacyDeleteCloudDrafts)
   Draft: 'Черновик',
   'Delete All Cloud Drafts': 'Удалить все черновики',

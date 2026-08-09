@@ -1,7 +1,30 @@
-import { useRef, useState } from 'react'
-import TgIcon from './TgIcon'
-import Menu, { MenuItem } from '../shared/ui/Menu'
+import { useRef, useState, type ReactNode } from 'react'
+import TgIcon, { type IconName } from './TgIcon'
+import Menu from '../shared/ui/Menu'
 import { useT } from '../i18n'
+
+// Пункт attach-меню — дерево tweb 1:1 (`ButtonMenuItem`, buttonMenu.ts:67-100):
+//
+//   div.btn-menu-item.rp-overflow
+//     span.tgico.btn-menu-item-icon      ← Icon(name, 'btn-menu-item-icon')
+//     span.i18n.btn-menu-item-text       ← i18n(key)
+//
+// Ripple tweb вешает на пункт ТОЛЬКО на мобильных (`if(IS_MOBILE) ripple(el)`),
+// поэтому узла `.c-ripple` внутри нет — остаётся лишь класс-клип `.rp-overflow`.
+// Живое десктопное дерево это подтверждает: docs/research/tweb-dom/04-attach-menu.json.
+//
+// Размеры/паддинги/шрифт/ховер/`active: scale(.96)` — из глобального `_button.scss`
+// (секция `.btn-menu-item`), здесь ничего своего.
+function AttachMenuItem({ icon, text, onClick }: { icon: IconName; text: ReactNode; onClick: () => void }) {
+  return (
+    <div className="btn-menu-item rp-overflow" onClick={onClick}>
+      {/* Размер глифа задаёт сам пункт через --icon-size (_button.scss:257),
+          поэтому передаём переменную, а не число. */}
+      <TgIcon name={icon} className="btn-menu-item-icon" size="var(--icon-size)" />
+      <span className="btn-menu-item-text i18n">{text}</span>
+    </div>
+  )
+}
 
 export default function AttachMenu({
   anchor,
@@ -34,14 +57,20 @@ export default function AttachMenu({
       open={open}
       onClose={() => setOpen(false)}
       onExitComplete={() => { onClose(); pending.current?.() }}
-      style={{ left: anchor.left, bottom: anchor.bottom, transformOrigin: 'bottom left' }}
+      // Угол раскрытия — классом, как в tweb (btn-menu positionMenu ставит
+      // `top-right` = меню растёт ВВЕРХ от кнопки, начало трансформы снизу-слева).
+      // `was-open` tweb вешает вместе с `active` при открытии и больше не снимает
+      // (contextMenuController.ts:140); у нас панель монтируется уже открытой,
+      // поэтому класс стоит с рождения — это то же состояние.
+      className="top-right was-open"
+      style={{ left: anchor.left, bottom: anchor.bottom }}
     >
-      <MenuItem icon={<TgIcon name="image" size={20} />} label={t('Photo or Video')} onClick={pick(onPhotoVideo)} />
-      <MenuItem icon={<TgIcon name="document" size={20} />} label={t('Document')} onClick={pick(onFile)} />
-      {onLocation && <MenuItem icon={<TgIcon name="location" size={20} />} label={t('Location')} onClick={pick(onLocation)} />}
-      {onContact && <MenuItem icon={<TgIcon name="newprivate" size={20} />} label={t('Contact')} onClick={pick(onContact)} />}
-      {onPoll && <MenuItem icon={<TgIcon name="poll" size={20} />} label={t('Poll')} onClick={pick(onPoll)} />}
-      {onChecklist && <MenuItem icon={<TgIcon name="check" size={20} />} label={t('Checklist')} onClick={pick(onChecklist)} />}
+      <AttachMenuItem icon="image" text={t('Photo or Video')} onClick={pick(onPhotoVideo)} />
+      <AttachMenuItem icon="document" text={t('Document')} onClick={pick(onFile)} />
+      {onLocation && <AttachMenuItem icon="location" text={t('Location')} onClick={pick(onLocation)} />}
+      {onContact && <AttachMenuItem icon="newprivate" text={t('Contact')} onClick={pick(onContact)} />}
+      {onPoll && <AttachMenuItem icon="poll" text={t('Poll')} onClick={pick(onPoll)} />}
+      {onChecklist && <AttachMenuItem icon="check" text={t('Checklist')} onClick={pick(onChecklist)} />}
     </Menu>
   )
 }

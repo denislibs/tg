@@ -116,7 +116,13 @@ Postgres (назначает монотонный `seq`) → `message_ack` от�
 | Метод/путь | Назначение |
 |---|---|
 | `POST /auth/request_code` | запросить OTP-код |
-| `POST /auth/sign_in` | вход по телефону + код |
+| `POST /auth/sign_in` | вход по телефону + код (незнакомый номер → `signup_required`) |
+| `POST /auth/sign_up` | регистрация нового номера (токен шага + имя) |
+| `POST /auth/check_password` | второй шаг при облачном пароле |
+| `POST /auth/password/recover` | код сброса пароля на привязанную почту |
+| `POST /auth/password/recover/confirm` | подтвердить код, снять пароль, выдать сессию |
+| `POST /auth/account/reset` | сброс аккаунта, когда почты для восстановления нет: первый вызов планирует удаление (`409 2fa_confirm_wait` + `retry_after`), вызов после истечения окна — исполняет (`200 {"ok":true}`); вход владельца отменяет (`409 2fa_recent_confirm`) |
+| `POST /auth/sign_import` | обменять веб-токен (`#?tgWebAuthToken=`) на сессию |
 | `POST /auth/qr/new` | начать QR-логин |
 | `GET /auth/qr/{token}` | опрос статуса QR |
 | `GET /media/{mediaID}/content` | скачать медиа (авторизация через `?token=`) |
@@ -124,7 +130,7 @@ Postgres (назначает монотонный `seq`) → `message_ack` от�
 
 **Защищённые** (основные группы):
 
-- **Профиль/сессии:** `GET/PATCH /me`, `PUT /me/username`, `GET /username/available`, `PUT /me/avatar`, `GET /sessions`, `DELETE /sessions/{deviceID}`, `POST /auth/logout`, `POST /auth/qr/confirm`
+- **Профиль/сессии:** `GET/PATCH /me`, `PUT /me/username`, `GET /username/available`, `PUT /me/avatar`, `GET /sessions`, `DELETE /sessions/{deviceID}`, `POST /auth/logout`, `POST /auth/qr/confirm`, `POST /auth/web_token`
 - **Чаты/сообщения:** `POST /chats`, `POST /saved`, `GET /chats`, `POST /chats/{id}/messages`, `PATCH|DELETE /chats/{id}/messages/{msgID}`, `POST /chats/{id}/forward`, `POST|DELETE /chats/{id}/messages/{msgID}/pin`, `GET /chats/{id}/pins`, `GET /chats/{id}/messages/{msgID}/viewers`, `GET /chats/{id}/history`, `GET /chats/{id}/search`, `POST /chats/{id}/read`
 - **Sync:** `GET /sync` — апдейты с момента последнего запроса
 - **Реакции:** `POST|DELETE|GET /chats/{id}/messages/{msgID}/reactions[/{emoji}]`
@@ -189,6 +195,7 @@ Postgres (назначает монотонный `seq`) → `message_ack` от�
 | `DATABASE_URL` | (обязательна) | строка подключения Postgres |
 | `REDIS_URL` | `redis://localhost:6379` | подключение Redis |
 | `DEV_OTP_CODE` | `12345` | OTP-код в dev-режиме |
+| `ACCOUNT_RESET_WAIT` | `168h` | окно ожидания сброса аккаунта («забыли пароль» без почты). Укорачивать только на стенде: в проде короче недели старт запрещён |
 | `SEED_DEMO` | `false` | посев демо-пользователей при старте |
 | `MEDIA_URL_SECRET` | `dev-media-url-secret-change-me` | секрет подписи токенов скачивания медиа |
 | `MINIO_ENDPOINT` | `localhost:9000` | адрес MinIO |

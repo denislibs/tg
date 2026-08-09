@@ -45,9 +45,11 @@ func isUniqueViolation(err error) bool {
 type AuthRepo struct{ pool *pgxpool.Pool }
 
 var (
-	_ usecaseauth.UserRepo   = (*AuthRepo)(nil)
-	_ usecaseauth.DeviceRepo = (*AuthRepo)(nil)
-	_ usecaseauth.CodeRepo   = (*AuthRepo)(nil)
+	_ usecaseauth.UserRepo      = (*AuthRepo)(nil)
+	_ usecaseauth.DeviceRepo    = (*AuthRepo)(nil)
+	_ usecaseauth.CodeRepo      = (*AuthRepo)(nil)
+	_ usecaseauth.PasswordRepo  = (*AuthRepo)(nil)
+	_ usecaseauth.LoginStepRepo = (*AuthRepo)(nil)
 )
 
 func NewAuthRepo(pool *pgxpool.Pool) *AuthRepo { return &AuthRepo{pool: pool} }
@@ -89,13 +91,27 @@ func (r *AuthRepo) DeleteCode(ctx context.Context, phone string) error {
 
 // --- UserRepo ---
 
-// UpsertByPhone returns the existing user for a phone or creates one.
-func (r *AuthRepo) UpsertByPhone(ctx context.Context, phone string) (domain.User, error) {
-	return scanUser(r.pool.QueryRow(ctx,
-		`INSERT INTO users (phone, display_name) VALUES ($1,$1)
-		 ON CONFLICT (phone) DO UPDATE SET phone=EXCLUDED.phone
+// ByPhone returns the user owning the phone, or domain.ErrNotFound. Soft-deleted
+// accounts hold a NULL phone and never match.
+func (r *AuthRepo) ByPhone(ctx context.Context, phone string) (domain.User, error) {
+	u, err := scanUser(r.pool.QueryRow(ctx, `SELECT `+userCols+` FROM users WHERE phone=$1`, phone))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.User{}, domain.ErrNotFound
+	}
+	return u, err
+}
+
+// CreateWithName inserts a brand-new account for an already verified phone
+// (sign-up step). A concurrent claim of the same number maps to domain.ErrConflict.
+func (r *AuthRepo) CreateWithName(ctx context.Context, phone, first, last string) (domain.User, error) {
+	u, err := scanUser(r.pool.QueryRow(ctx,
+		`INSERT INTO users (phone, first_name, last_name, display_name) VALUES ($1,$2,$3,$4)
 		 RETURNING `+userCols,
-		phone))
+		phone, first, last, domain.BuildDisplayName(first, last)))
+	if isUniqueViolation(err) {
+		return domain.User{}, domain.ErrConflict
+	}
+	return u, err
 }
 
 // GetByID returns the full user record, or domain.ErrNotFound.
@@ -508,5 +524,144 @@ func (r *AuthRepo) PasswordTokenUser(ctx context.Context, tokenHash string) (int
 // DeletePasswordToken сжигает токен после успешного входа.
 func (r *AuthRepo) DeletePasswordToken(ctx context.Context, tokenHash string) error {
 	_, err := r.pool.Exec(ctx, `DELETE FROM password_login_tokens WHERE token_hash=$1`, tokenHash)
+	return err
+}
+
+// --- Одноразовые шаги входа: usecase/auth.LoginStepRepo ---
+
+// SaveSignUpToken сохраняет токен шага регистрации (номер подтверждён, аккаунта ещё нет).
+func (r *AuthRepo) SaveSignUpToken(ctx context.Context, tokenHash, phone string, expires time.Time) error {
+	_, err := r.pool.Exec(ctx,
+		`INSERT INTO signup_tokens (token_hash, phone, expires_at) VALUES ($1,$2,$3)
+		 ON CONFLICT (token_hash) DO UPDATE SET phone=$2, expires_at=$3`,
+		tokenHash, phone, expires)
+	return err
+}
+
+// SignUpTokenPhone возвращает номер живого токена регистрации (истёкшие не считаются).
+func (r *AuthRepo) SignUpTokenPhone(ctx context.Context, tokenHash string) (string, error) {
+	var phone string
+	err := r.pool.QueryRow(ctx,
+		`SELECT phone FROM signup_tokens WHERE token_hash=$1 AND expires_at > now()`,
+		tokenHash).Scan(&phone)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", domain.ErrNotFound
+	}
+	return phone, err
+}
+
+// DeleteSignUpToken сжигает токен регистрации.
+func (r *AuthRepo) DeleteSignUpToken(ctx context.Context, tokenHash string) error {
+	_, err := r.pool.Exec(ctx, `DELETE FROM signup_tokens WHERE token_hash=$1`, tokenHash)
+	return err
+}
+
+// SaveRecoveryCode кладёт (или заменяет) код сброса пароля для шага входа.
+func (r *AuthRepo) SaveRecoveryCode(ctx context.Context, tokenHash string, userID int64, codeHash string, expires, nextSendAt time.Time) error {
+	_, err := r.pool.Exec(ctx,
+		`INSERT INTO password_recovery_codes (token_hash, user_id, code_hash, expires_at, next_send_at)
+		 VALUES ($1,$2,$3,$4,$5)
+		 ON CONFLICT (token_hash) DO UPDATE
+		   SET user_id=$2, code_hash=$3, expires_at=$4, next_send_at=$5`,
+		tokenHash, userID, codeHash, expires, nextSendAt)
+	return err
+}
+
+// RecoveryCode возвращает живой код сброса; истёкший — domain.ErrNotFound.
+func (r *AuthRepo) RecoveryCode(ctx context.Context, tokenHash string) (int64, string, time.Time, error) {
+	var userID int64
+	var codeHash string
+	var nextSendAt time.Time
+	err := r.pool.QueryRow(ctx,
+		`SELECT user_id, code_hash, next_send_at FROM password_recovery_codes
+		 WHERE token_hash=$1 AND expires_at > now()`,
+		tokenHash).Scan(&userID, &codeHash, &nextSendAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, "", time.Time{}, domain.ErrNotFound
+	}
+	return userID, codeHash, nextSendAt, err
+}
+
+// DeleteRecoveryCode сжигает код сброса (успех или исчерпание попыток).
+func (r *AuthRepo) DeleteRecoveryCode(ctx context.Context, tokenHash string) error {
+	_, err := r.pool.Exec(ctx, `DELETE FROM password_recovery_codes WHERE token_hash=$1`, tokenHash)
+	return err
+}
+
+// SaveWebAuthToken сохраняет одноразовый веб-токен входа.
+func (r *AuthRepo) SaveWebAuthToken(ctx context.Context, tokenHash string, userID int64, expires time.Time) error {
+	_, err := r.pool.Exec(ctx,
+		`INSERT INTO web_auth_tokens (token_hash, user_id, expires_at) VALUES ($1,$2,$3)
+		 ON CONFLICT (token_hash) DO UPDATE SET user_id=$2, expires_at=$3`,
+		tokenHash, userID, expires)
+	return err
+}
+
+// WebAuthTokenUser возвращает владельца живого веб-токена.
+func (r *AuthRepo) WebAuthTokenUser(ctx context.Context, tokenHash string) (int64, error) {
+	var userID int64
+	err := r.pool.QueryRow(ctx,
+		`SELECT user_id FROM web_auth_tokens WHERE token_hash=$1 AND expires_at > now()`,
+		tokenHash).Scan(&userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, domain.ErrNotFound
+	}
+	return userID, err
+}
+
+// DeleteWebAuthToken сжигает веб-токен после обмена.
+func (r *AuthRepo) DeleteWebAuthToken(ctx context.Context, tokenHash string) error {
+	_, err := r.pool.Exec(ctx, `DELETE FROM web_auth_tokens WHERE token_hash=$1`, tokenHash)
+	return err
+}
+
+// ScheduleAccountReset планирует отложенный сброс. ON CONFLICT перезаписывает
+// строку целиком (в том числе снимает cancelled_at): сюда доходят только новые
+// окна — ждущее и карантин usecase отсекает раньше.
+func (r *AuthRepo) ScheduleAccountReset(ctx context.Context, userID int64, requestedAt, deleteAt time.Time) error {
+	_, err := r.pool.Exec(ctx,
+		`INSERT INTO account_resets (user_id, requested_at, delete_at, cancelled_at)
+		 VALUES ($1,$2,$3,NULL)
+		 ON CONFLICT (user_id) DO UPDATE SET requested_at=$2, delete_at=$3, cancelled_at=NULL`,
+		userID, requestedAt, deleteAt)
+	return err
+}
+
+// AccountReset возвращает запланированный сброс; нулевой cancelledAt — ждёт
+// исполнения, ненулевой — отменён владельцем.
+func (r *AuthRepo) AccountReset(ctx context.Context, userID int64) (time.Time, time.Time, error) {
+	var deleteAt time.Time
+	var cancelledAt *time.Time
+	err := r.pool.QueryRow(ctx,
+		`SELECT delete_at, cancelled_at FROM account_resets WHERE user_id=$1`,
+		userID).Scan(&deleteAt, &cancelledAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return time.Time{}, time.Time{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+	if cancelledAt == nil {
+		return deleteAt, time.Time{}, nil
+	}
+	return deleteAt, *cancelledAt, nil
+}
+
+// CancelAccountReset отменяет ждущий сброс (владелец вошёл в аккаунт). Условие
+// cancelled_at IS NULL делает вызов идемпотентным: повторные входы не сдвигают
+// момент отмены, от которого отсчитывается карантин.
+func (r *AuthRepo) CancelAccountReset(ctx context.Context, userID int64, at time.Time) (bool, error) {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE account_resets SET cancelled_at=$2 WHERE user_id=$1 AND cancelled_at IS NULL`,
+		userID, at)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+// DeleteAccountReset убирает запись исполненного сброса.
+func (r *AuthRepo) DeleteAccountReset(ctx context.Context, userID int64) error {
+	_, err := r.pool.Exec(ctx, `DELETE FROM account_resets WHERE user_id=$1`, userID)
 	return err
 }

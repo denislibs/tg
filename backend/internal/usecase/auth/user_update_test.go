@@ -37,7 +37,7 @@ func (p *fakeAuthPub) PublishToUser(_ context.Context, userID int64, frame []byt
 func TestUserUpdate_LoggedToOwnAndPeers(t *testing.T) {
 	i, users, _, _ := newInteractor()
 	ctx := context.Background()
-	u, _ := users.UpsertByPhone(ctx, "+70000000001")
+	u, _ := users.CreateWithName(ctx, "+70000000001", "Пользователь", "")
 
 	log := newFakeUpdateLog()
 	pub := newFakeAuthPub()
@@ -80,7 +80,7 @@ func TestUserUpdate_LoggedToOwnAndPeers(t *testing.T) {
 func TestUserUpdate_DegradesWithoutDeps(t *testing.T) {
 	i, users, _, _ := newInteractor()
 	ctx := context.Background()
-	u, _ := users.UpsertByPhone(ctx, "+70000000002")
+	u, _ := users.CreateWithName(ctx, "+70000000002", "Пользователь", "")
 
 	// publisher only, no update log.
 	pub := newFakeAuthPub()
