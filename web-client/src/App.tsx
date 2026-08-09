@@ -31,7 +31,6 @@ import { useShellTheme } from './core/hooks/useShellTheme'
 import { useAppHotkeys } from './core/hooks/useAppHotkeys'
 import { useAuthGate } from './core/hooks/useAuthGate'
 import { useThemeToggle } from './core/hooks/useThemeToggle'
-import { removeInitialLoader } from './client/initialLoader'
 import { startVersionCheck } from './core/version/versionCheck'
 import { useUpdateStore } from './stores/updateStore'
 import s from './App.module.scss'
@@ -181,12 +180,6 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 function ThemedApp() {
   const { authed, login, logout } = useAuthGate()
   const toggleMode = useThemeToggle()
-
-  // Снимаем фон сплеша сразу на первом рендере: authed решён локально (по токену),
-  // так что и Shell, и экран входа рисуются без сетевого ожидания — как tweb.
-  useEffect(() => {
-    removeInitialLoader()
-  }, [])
 
   // Тема управляется атрибутом data-theme на <html> (useThemeToggle) — MUI
   // ThemeProvider не нужен.

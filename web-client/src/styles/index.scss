@@ -14,9 +14,10 @@ body,
 #root {
   margin: 0;
   padding: 0;
-  // tweb base.scss:443 — фон подложки от темы (эмитит themeController);
-  // фолбэк — night-фон до первого setTheme().
-  background: var(--body-background-color, #181818);
+  // tweb base.scss:443 — фон подложки от темы (эмитит themeController).
+  // Без фолбэка: до первого setTheme() холст белый (как в tweb) —
+  // переменная не задана, background резолвится в transparent.
+  background: var(--body-background-color);
 }
 
 /* rem-базис как в tweb (1rem = 16px) — токены/отступы из tweb в rem мапятся 1:1. */
