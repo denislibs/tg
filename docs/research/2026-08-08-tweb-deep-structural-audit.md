@@ -22,6 +22,27 @@
 
 ---
 
+## Ревизия 2026-08-09
+
+С даты аудита влиты 8 PR (#154, #156–#162): 518 файлов, +50k/−13k строк. Сводка §14 перепроверена
+по коду и размечена статусом: **§14.1** (таблица P0), **§14.2** (системные P1), **§14.3** (отсебятина),
+**§14.4** (волны).
+
+**Итог:** 33 из 35 P0 закрыты; **№3 (blockquote) открыт и по факту хуже, чем описано** — цитата
+рендерится вообще без класса; **№31 (параллакс navigation) закрыт частично и с неверной премисой**.
+Живой остаток документа — §14.3 (отсебятина почти вся на месте) и хвосты §14.2 (п. 5, п. 8).
+
+**Границы этой ревизии — важно:**
+- **Разделы §1–13 построчно НЕ переперепроверялись.** Внутри них наверняка есть закрытые находки
+  без пометки: сверка шла по сводке §14, а не по каждому из сотен пунктов.
+- Метод — поиск портированного кода по кодовой базе (наличие файлов, классов, ссылок на tweb),
+  **а не покадровое визуальное сличение**. Расхождение вида «портировано, но не 1:1» такой проход
+  не ловит: галочка означает «механика на месте», а не «пиксель в пиксель».
+- Пункты, по которым грепом однозначного ответа нет, помечены «не проверено» — их не считать
+  ни закрытыми, ни открытыми.
+
+---
+
 ## Оглавление
 
 1. [Фундамент дизайн-системы и примитивы](#1-фундамент-дизайн-системы-и-примитивы)
@@ -2925,76 +2946,124 @@ tweb desktop: панель absolute в топбаре; поле radius 21 h 40 (
 
 ### 14.1 Все P0 (ломает восприятие «это Telegram» — чинить в первую очередь)
 
-| # | Домен | Проблема | Референс tweb |
-|---|---|---|---|
-| 1 | Фундамент | **Roboto не бандлится** — всё приложение рендерится системным шрифтом | `src/scss/fonts/_roboto.scss` |
-| 2 | Баблы | reply/имя/forwarded не рендерятся ни в одном не-текстовом бабле (фото/альбом/voice/документ) | `_chatBubble.scss:1059-1125`, `bubbles.ts:9337-9598` |
-| 3 | Баблы | blockquote — полностью другой визуал (нет фона/иконки/коллапса до 3 строк) | `_quote.scss:57-106` |
-| 4 | Медиа | медиабокс 320×420 вместо 420×400 (моб. 340×340) + нет `setAttachmentSize` (мин. 200/320/120/368); альбом 320/spacing 2 вместо 420/spacing 1 | `mediaSizes.ts:64-101`, `setAttachmentSize.ts:64-94`, `album.ts:56-58` |
-| 5 | Медиа | видео ≤50 МБ не автоплеится инлайн в бабле | `video.ts:50,550-579` |
-| 6 | Voice/audio | музыкальный бабл вообще не воспроизводится (onClick не подключён) | `audio.ts:342-444` |
-| 7 | Каркас чата | paddingTop ленты не учитывает пин-бар — первый бабл перекрыт плашкой | `_chat.scss:486` |
-| 8 | Каркас чата | pinned bar: нет скролл-трекинга показанного пина и анимации смены (AnimatedSuper) | `pinnedMessage.tsx:529-589` |
-| 9 | Каркас чата | нет corner-кнопок goto-mention/goto-reaction/goto-poll | `input.ts:824-880` |
-| 10 | Каркас чата | плавающая дата не скрывается после остановки скролла | `_chatBubble.scss:498-506`, `_chat.scss:1343-1353` |
-| 11 | Каркас чата | CommentsBar: фейковые хардкод-аватары комментаторов | `chat/replies.ts` |
-| 12 | Каркас чата | нет анимации перехода между чатами (tabs-слайд ±200px) | `_chat.scss:489-506`, `appImManager.ts:2237-2270` |
-| 13 | Левый сайдбар | сториз-fold в поисковую строку не подключён (`--stories-fold` мёртв) | `stories/list.tsx:124-243` |
-| 14 | Попапы | delete-конфирм: две кнопки вместо чекбокса «Also delete for <имя>» + Delete | `popups/deleteMessages.ts:84-160` |
-| 15 | Попапы | SchedulePopup: нативные date/time-инпуты вместо календаря tweb с withTime | `popups/datePicker.tsx:214-256` |
-| 16 | Попапы | конфирмы не на каркасе PopupPeer (вертикальные lowercase-кнопки, свой скрим) | `popups/peer.ts:36-120` |
-| 17 | Правый сайдбар | анимация `width` вместо transform — reflow каждый кадр | `_rightSidebar.scss:3-77` |
-| 18 | Правый сайдбар | shared media без infinite scroll (одна загрузка) | `appSearchSuper.ts` |
-| 19 | Правый сайдбар | Phone/Username/Bio некликабельны (нет копирования) | `peerProfile.tsx:655-658` |
-| 20 | Правый сайдбар | аватар-хедер: два DOM-дерева вместо морфа `is-collapsed` | `_profile.scss:4-399` |
-| 21 | Медиавьюер | caption сообщения отсутствует | `mediaViewer.scss:113-217` |
-| 22 | Медиавьюер | нет слайд-анимации листания prev/next (moveTheMover 350ms) | `base.ts:1928-1956` |
-| 23 | Видеоплеер | нет большой центральной play-кнопки | `_ckin.scss:44-79` |
-| 24 | Сториз | нет карусели соседних авторов + перехода (слайд/куб) | `viewer.tsx:1742-1754` |
-| 25 | Сториз | нет анимации открытия из аватарки (полёт клона + морф) | `viewer.tsx:3151-3315` |
-| 26 | Сториз | видео-история живёт 5с вместо длительности видео | `viewer.tsx:1756-1765` |
-| 27 | Сториз | видео всегда muted, кнопки mute нет | `viewer.tsx:1792-1813` |
-| 28 | Анимации | animationIntersector — тип-shim без реализации | `animationIntersector.ts:43-452` |
-| 29 | Анимации | heavy-animation событий нет вообще | `useHeavyAnimationCheck.ts` |
-| 30 | Анимации | `reduceMotion` не гейтит CSS-анимации (SCSS не читает `data-reduce-motion`) | `mixins/_animationLevel.scss` |
-| 31 | Анимации | navigation-переходы без параллакса уходящего экрана (−25% + brightness 80%) | `transition.ts:23-43`, `_slider.scss:226-243` |
-| 32 | Auth | country-picker: 8 hardcoded стран без поиска | `countryInputField.ts` |
-| 33 | Auth | код-инпут: 5 отдельных input вместо единого поля (вставка кода не работает) | `codeInputField.tsx:187-291` |
-| 34 | Auth | нет TrackingMonkey на шаге кода | `monkeys/tracking.ts` |
-| 35 | Поиск по чату | нет стрелок prev/next | `topbarSearch.tsx:695-721` |
+Колонка «Статус» — ревизия 2026-08-09 (см. блок «Ревизия» в начале документа; там же границы проверки).
+
+| # | Домен | Проблема | Референс tweb | Статус 2026-08-09 |
+|---|---|---|---|---|
+| 1 | Фундамент | **Roboto не бандлится** — всё приложение рендерится системным шрифтом | `src/scss/fonts/_roboto.scss` | ✅ `styles/_fonts.scss` + 13 woff2 в `assets/fonts/` |
+| 2 | Баблы | reply/имя/forwarded не рендерятся ни в одном не-текстовом бабле (фото/альбом/voice/документ) | `_chatBubble.scss:1059-1125`, `bubbles.ts:9337-9598` | ✅ единый `bubble-content-wrapper`, `messages/MessageContent.tsx:500-560` |
+| 3 | Баблы | blockquote — полностью другой визуал (нет фона/иконки/коллапса до 3 строк) | `_quote.scss:57-106` | ❌ **ОТКРЫТ, и хуже описанного** — см. врезку под таблицей |
+| 4 | Медиа | медиабокс 320×420 вместо 420×400 (моб. 340×340) + нет `setAttachmentSize` (мин. 200/320/120/368); альбом 320/spacing 2 вместо 420/spacing 1 | `mediaSizes.ts:64-101`, `setAttachmentSize.ts:64-94`, `album.ts:56-58` | ✅ `core/dom/mediaSizes.ts` (+тест), `RealMediaBubble.tsx:120` |
+| 5 | Медиа | видео ≤50 МБ не автоплеится инлайн в бабле | `video.ts:50,550-579` | ✅ `RealMediaBubble.tsx:29,162-166` |
+| 6 | Voice/audio | музыкальный бабл вообще не воспроизводится (onClick не подключён) | `audio.ts:342-444` | ✅ `AudioRow` → `playQueue`/`toggle`, `RealMediaBubble.tsx:422-500` |
+| 7 | Каркас чата | paddingTop ленты не учитывает пин-бар — первый бабл перекрыт плашкой | `_chat.scss:486` | ✅ `--pinned-floating-height`, `styles/tweb/_chat.scss:486` |
+| 8 | Каркас чата | pinned bar: нет скролл-трекинга показанного пина и анимации смены (AnimatedSuper) | `pinnedMessage.tsx:529-589` | ✅ `conversation/PinnedBar.tsx` + `core/hooks/usePinnedBar.ts` |
+| 9 | Каркас чата | нет corner-кнопок goto-mention/goto-reaction/goto-poll | `input.ts:824-880` | ✅ `conversation/CornerButton.tsx` |
+| 10 | Каркас чата | плавающая дата не скрывается после остановки скролла | `_chatBubble.scss:498-506`, `_chat.scss:1343-1353` | ✅ снятие через 1.35 s, `Chat.tsx:1032-1039` |
+| 11 | Каркас чата | CommentsBar: фейковые хардкод-аватары комментаторов | `chat/replies.ts` | ✅ `recent` из `commentRepliers`, `messages/ChatFeed.tsx:271-273` |
+| 12 | Каркас чата | нет анимации перехода между чатами (tabs-слайд ±200px) | `_chat.scss:489-506`, `appImManager.ts:2237-2270` | ✅ `.chat.tabs-tab.active`, `Chat.tsx:1110-1117` |
+| 13 | Левый сайдбар | сториз-fold в поисковую строку не подключён (`--stories-fold` мёртв) | `stories/list.tsx:124-243` | ✅ `foldInto`, `StoriesRow.tsx:123-127` |
+| 14 | Попапы | delete-конфирм: две кнопки вместо чекбокса «Also delete for <имя>» + Delete | `popups/deleteMessages.ts:84-160` | ✅ `conversation/ChatMsgActionPopups.tsx:36,86` |
+| 15 | Попапы | SchedulePopup: нативные date/time-инпуты вместо календаря tweb с withTime | `popups/datePicker.tsx:214-256` | ✅ `DatePickerPopup.tsx` / `SchedulePopup.tsx` |
+| 16 | Попапы | конфирмы не на каркасе PopupPeer (вертикальные lowercase-кнопки, свой скрим) | `popups/peer.ts:36-120` | ✅ порт PopupPeer — `shared/ui/ConfirmPopup/` |
+| 17 | Правый сайдбар | анимация `width` вместо transform — reflow каждый кадр | `_rightSidebar.scss:3-77` | ✅ transform, `UserInfoPanel.module.scss:25,32,48,53` |
+| 18 | Правый сайдбар | shared media без infinite scroll (одна загрузка) | `appSearchSuper.ts` | ✅ offset/hasMore/onScrolledBottom, `userInfo/SharedMedia.tsx:118-159` |
+| 19 | Правый сайдбар | Phone/Username/Bio некликабельны (нет копирования) | `peerProfile.tsx:655-658` | ✅ `UserInfoPanel.tsx:293,490,499` |
+| 20 | Правый сайдбар | аватар-хедер: два DOM-дерева вместо морфа `is-collapsed` | `_profile.scss:4-399` | ✅ `is-collapsed`, `UserInfoPanel.module.scss:133-135` |
+| 21 | Медиавьюер | caption сообщения отсутствует | `mediaViewer.scss:113-217` | ✅ `messages/MediaLightbox.tsx:68-70,106` |
+| 22 | Медиавьюер | нет слайд-анимации листания prev/next (moveTheMover 350ms) | `base.ts:1928-1956` | ✅ порт `moveTheMover` 350 ms, `MediaLightbox.tsx:30-31` |
+| 23 | Видеоплеер | нет большой центральной play-кнопки | `_ckin.scss:44-79` | ✅ `default__button--big`, `messages/VideoPlayer.tsx:8` |
+| 24 | Сториз | нет карусели соседних авторов + перехода (слайд/куб) | `viewer.tsx:1742-1754` | ✅ порт `calculateTranslateX`, `StoryViewer.tsx:41,68` |
+| 25 | Сториз | нет анимации открытия из аватарки (полёт клона + морф) | `viewer.tsx:3151-3315` | ✅ `components/storyViewerMorph.ts` (+тест) |
+| 26 | Сториз | видео-история живёт 5с вместо длительности видео | `viewer.tsx:1756-1765` | ✅ `videoDurationMs`, `StoryViewer.tsx:236-237` |
+| 27 | Сториз | видео всегда muted, кнопки mute нет | `viewer.tsx:1792-1813` | ✅ `StoryViewer.tsx:211-212,316` |
+| 28 | Анимации | animationIntersector — тип-shim без реализации | `animationIntersector.ts:43-452` | ✅ полный порт, `components/animationIntersector.ts` (425 строк) |
+| 29 | Анимации | heavy-animation событий нет вообще | `useHeavyAnimationCheck.ts` | ✅ `core/dom/heavyAnimation.ts` |
+| 30 | Анимации | `reduceMotion` не гейтит CSS-анимации (SCSS не читает `data-reduce-motion`) | `mixins/_animationLevel.scss` | ✅ гейт `body.animation-level-0/2`, `App.tsx:268-272`; `data-reduce-motion` удалён |
+| 31 | Анимации | navigation-переходы без параллакса уходящего экрана (−25% + brightness 80%) | `transition.ts:23-43`, `_slider.scss:226-243` | ⚠️ **частично + премиса неверна** — см. врезку под таблицей |
+| 32 | Auth | country-picker: 8 hardcoded стран без поиска | `countryInputField.ts` | ✅ `auth/CountryInput.tsx` + `auth/countries.ts` |
+| 33 | Auth | код-инпут: 5 отдельных input вместо единого поля (вставка кода не работает) | `codeInputField.tsx:187-291` | ✅ единое поле, `auth/CodeInput.tsx` |
+| 34 | Auth | нет TrackingMonkey на шаге кода | `monkeys/tracking.ts` | ✅ `components/TrackingMonkey.tsx` |
+| 35 | Поиск по чату | нет стрелок prev/next | `topbarSearch.tsx:695-721` | ✅ `conversation/TopbarSearch.tsx:242,354` |
+
+#### №3 — открыт, и диагноз аудита занижен
+
+Аудит писал «другой визуал». По факту визуала **нет вообще**: `RichText.tsx:280` рендерит цитату как
+`<span className={s.quote}>`, но ключа `quote` в `RichText.module.scss` больше нет — его вместе с
+`.code` и `.spoiler` выпилили в `3633a6f` (тот самый «Task 2.4, P0 №3»), а `RichText.tsx` в том
+коммите **не тронули**. CSS-модуль на отсутствующий ключ отдаёт `undefined` → атрибут `class` не
+проставляется вовсе. Итог: ни полосы, ни фона, ни иконки кавычки, ни сворачивания до 3 строк.
+Та же беда у инлайн-кода (`RichText.tsx:266`, `s.code`) — спасает только элементный селектор
+`code { font-family: var(--font-monospace) }` в `styles/index.scss:135`.
+
+Это **третье срабатывание** одной и той же ловушки: раньше так же молча отвалились спойлер
+(починен в `1202baa`) и весь экран `ChangePhone` (см. `web-client/backlogs/frontend/changephone-lost-styles.md`,
+где предложено закрыть класс проблемы генерацией `.d.ts` на `*.module.scss`). Пока дыра не закрыта,
+любой такой обрыв проходит мимо сборки и тайпчека.
+
+#### №31 — частично, и премиса аудита неверна
+
+JS-порт `slideNavigation` сделан (`core/dom/navigationTransition.ts`) и применён к экранам настроек
+(`components/settings/kit.tsx:91`). Но исходное утверждение «navigation-переходы **колонок** без
+параллакса» ошибочно: в tweb у колонок такого перехода нет вовсе — параллакс живёт у вкладок слайдера.
+Параллакс для уходящей вкладки экранов левой колонки отложен осознанно: нужен разбор `Sidebar`,
+чтобы чат-лист стал вкладкой 0 (зафиксировано в PR #162).
 
 ### 14.2 Системные P1-темы (сквозные, дают наибольший выигрыш на единицу работы)
 
-1. **Портировать `:root`-блок tweb `base.scss:39-225`** в `_tokens.scss`: transition-токены, line-height-шкала, font-токены, ripple-токены, `--scrollbar-color`, `--danger-color`-семейство, `--chatlist-status-color`, `--badge-text-color` и пр. Затем волна замены хардкодов (`#ff595a`, `#fff`, rgba-литералы) на токены. Закрывает десятки P1/P2 из всех доменов разом.
-2. **font-weight 500 вместо 600** глобально (`--font-weight-bold`), line-height 1.3125 в `Text`, `user-select: none` на body.
-3. **Выпилить все 10 spring** framer-motion → длительность+безье из токенов (таблица в §12.9 даёт замену каждому). Путь к удалению framer-motion по программе parity.
-4. **Единый каркас бабла** `bubble-content-wrapper > bubble-content` для всех типов сообщений (открывает reply/имя/forward у медиа — P0 №2).
-5. **Единые примитивы**: `.scrollable` (скроллбары), Row (56px + ripple), Radio, RangeSelector/MediaProgressLine, video-time бейдж, ConfirmPopup (PopupPeer), z-index-шкала.
-6. **rAF-прогресс** для voice-закраски/кольца кружка/плеера (вместо 4 Гц timeupdate).
-7. **fastSmoothScroll** — честный JS-порт (power-easing 250-600ms) вместо нативного smooth.
-8. **hover-волна**: `0.15s → .2s` (~40 мест).
+1. ✅ **Портировать `:root`-блок tweb `base.scss:39-225`** в `_tokens.scss`: transition-токены, line-height-шкала, font-токены, ripple-токены, `--scrollbar-color`, `--danger-color`-семейство, `--chatlist-status-color`, `--badge-text-color` и пр. Затем волна замены хардкодов (`#ff595a`, `#fff`, rgba-литералы) на токены. Закрывает десятки P1/P2 из всех доменов разом.
+   → блок портирован (`styles/_tokens.scss`, 205 переменных: `--transition-standard-*`, `--ripple-*`, line-height). **Волна замены хардкодов НЕ проведена** — см. §14.3.
+2. ✅ **font-weight 500 вместо 600** глобально (`--font-weight-bold`), line-height 1.3125 в `Text`, `user-select: none` на body. → `styles/_tokens.scss:68`.
+3. ✅ **Выпилить все 10 spring** framer-motion → длительность+безье из токенов (таблица в §12.9 даёт замену каждому). Путь к удалению framer-motion по программе parity.
+   → сделано целиком: framer-motion удалён из зависимостей (PR #162), анимации на классах tweb + `useSetTransition`/`useMountTransition`.
+4. ✅ **Единый каркас бабла** `bubble-content-wrapper > bubble-content` для всех типов сообщений (открывает reply/имя/forward у медиа — P0 №2).
+5. ⚠️ **Единые примитивы**: `.scrollable` (скроллбары), Row (56px + ripple), Radio, RangeSelector/MediaProgressLine, video-time бейдж, ConfirmPopup (PopupPeer), z-index-шкала.
+   → частично: `.scrollable`, `SidebarSection`/Row, `ConfirmPopup`, `Ripple` есть; RangeSelector живёт как `shared/ui/Slider`. **Отдельного `Radio` в `shared/ui` нет**; z-index-шкала (§8.12) не сведена.
+6. ✅ **rAF-прогресс** для voice-закраски/кольца кружка/плеера (вместо 4 Гц timeupdate). → Task 7.3, коммит `dbddf65`.
+7. ✅ **fastSmoothScroll** — честный JS-порт (power-easing 250-600ms) вместо нативного smooth. → `core/dom/smoothScrollToElement.ts`.
+8. ❌ **hover-волна**: `0.15s → .2s` (~40 мест). → не проведена: **33 вхождения `0.15s`** в наших SCSS-модулях мимо портированных партиалов (`shared/ui/Popup`, `ConfirmPopup`, `UserInfoPanel`, `NowPlayingBar`, `TopicsPanel`, `DatePickerPopup` и др.).
 
 ### 14.3 Отсебятина к удалению (сводно)
 
-- Градиент `--tg-accentGradient` на FAB/send-кнопке/плеерах — tweb везде плоский `--primary-color`.
-- framer-spring повсюду (10 мест), whileTap/whileHover scale (~20 мест) — в tweb жестовых scale нет, есть ripple.
-- PiP-кнопка в topbar вьюера, счётчик «N из M», кольцевое листание, постоянные круглые стрелки, хоткей R.
-- «Keep me signed in», corner-back на внутренних auth-шагах, обои+тень на auth-карточке.
-- Счётчик символов у инпута, slowmode-текст в кнопке, paidBar-плашка, Location/Contact в attach-меню.
-- forwards-счётчик в Time, hover сервис-пилюли, headerScrolled-состояние шапки профиля, «Night Mode»-строка в настройках, rowActive-подсветка.
-- PlayPauseGlyph (framer-морф), Spinner (border-кольцо), `IconButton.small`.
-- Хардкод-цвета мимо токенов: `#ff595a`, `#ff3b30`, `#ff5a5a`, `#fff`/`#212121`/`#2b2b2b` в хелперах/тултипе, `#9275ff` у PremiumBadge, `#4dcd5e` у online-точки.
-- Фиолетовая тема `classic` и тема `dark` (не из tweb) — см. аудит 2026-08-07.
-- Мёртвый код: `EditContactView.module.scss`, `StoriesStack`, `monkeyField(onEnter)`.
+**Это самая живая часть документа: почти всё из списка на месте.**
+
+- ❌ Градиент `--tg-accentGradient` на FAB/send-кнопке/плеерах — tweb везде плоский `--primary-color`.
+  → жив: `styles/_tokens.scss:283,320`, `QrModal.tsx:177`, `UserInfoPanel.module.scss:596,728`.
+- ✅ framer-spring повсюду (10 мест), whileTap/whileHover scale (~20 мест) — в tweb жестовых scale нет, есть ripple. → удалено вместе с framer-motion (PR #162).
+- ⚠️ PiP-кнопка в topbar вьюера, счётчик «N из M», кольцевое листание, постоянные круглые стрелки, хоткей R.
+  → PiP-кнопки, счётчика и постоянных стрелок в `MediaLightbox` больше нет; **хоткей R (поворот) жив** — `MediaLightbox.tsx:565`. Кольцевое листание — не проверено.
+- ✅ «Keep me signed in», corner-back на внутренних auth-шагах — в коде отсутствуют (экран входа переписан, PR #159/#161). Обои+тень на auth-карточке — **не проверено** (обои экрана входа с тех пор переделаны по tweb).
+- ⚠️ Счётчик символов у инпута, slowmode-текст в кнопке, paidBar-плашка, Location/Contact в attach-меню.
+  → счётчика символов и Location/Contact нет; **slowmode-текст жив** (`Composer.tsx:153-154`), **paidBar жив** (`messages/SendMediaPopup.tsx`).
+- ❌ forwards-счётчик в Time, hover сервис-пилюли, headerScrolled-состояние шапки профиля, «Night Mode»-строка в настройках, rowActive-подсветка.
+  → живы: `bubbleParts/Time.tsx:155`, `UserInfoPanel.module.scss:81`, `SettingsView.tsx:148`, `SettingsView.module.scss:69` + `TopicsPanel.module.scss:52`. Hover сервис-пилюли — не проверено.
+- ❌ PlayPauseGlyph (framer-морф), Spinner (border-кольцо), `IconButton.small`.
+  → все три на месте: `components/PlayPauseGlyph.tsx` (уже без framer, но сам компонент — отсебятина), `shared/ui/Spinner/`, `shared/ui/IconButton/IconButton.tsx:8-9`.
+- ❌ Хардкод-цвета мимо токенов: `#ff595a`, `#ff3b30`, `#ff5a5a`, `#fff`/`#212121`/`#2b2b2b` в хелперах/тултипе, `#9275ff` у PremiumBadge, `#4dcd5e` у online-точки.
+  → живы: `CallsView.tsx:45,53`, `SuggestPostPopup.tsx:55`, `UserInfoPanel.module.scss:807`, `Menu/MenuItem.module.scss:32`, `StoryStats.tsx:72`.
+- ✅ Фиолетовая тема `classic` и тема `dark` (не из tweb) — см. аудит 2026-08-07. → удалены (Волна 1, PR #142).
+- ⚠️ Мёртвый код: `EditContactView.module.scss`, `StoriesStack`, `monkeyField(onEnter)`.
+  → первые два удалены; **`monkeyField(onEnter)` жив** — `settings/TwoStepVerification.tsx:69`.
 
 ### 14.4 Рекомендуемый порядок работ (волны)
 
-1. **Волна «Токены+шрифт»** (§14.2 п.1-2): Roboto, `:root`-блок, веса, danger/scrollbar/status-токены, замена хардкодов. Низкий риск, массовый эффект.
-2. **Волна «Анимационный фундамент»**: animationIntersector (этап 2 tlottie), heavy-animation, reduceMotion-гейт, transition-токены, параллакс navigation, деспринг.
-3. **Волна «Каркас бабла»**: bubble-content-wrapper для всех типов, reply/имя/forward у медиа, blockquote/pre/spoiler по tweb, peer-color переменные, mediaSizes/setAttachmentSize + альбом 420/1.
-4. **Волна «Каркас чата»**: floating-plates стек (padding/маска/пин-бар), скролл-трекинг пина + AnimatedSuper, goto-кнопки, sticky-date скрытие, переход между чатами.
-5. **Волна «Примитивы UI»**: Popup/ConfirmPopup/меню-позиционирование, Row/Radio/scrollable/ripple-покрытие, RangeSelector.
-6. **Волна «Экраны»**: правый сайдбар (transform, морф аватара, infinite scroll), левый сайдбар (72px строка, бейджи, zoom-fade, сториз-fold), медиавьюер/сториз (caption, слайд, карусель, полёт из аватарки), auth (country-picker, code-input, обезьянка), композер (морф send, voice-панель, reply-плашка, drop-зона).
+Волны 1-6 отработаны в PR #154, #156-#162. Остатки после ревизии 2026-08-09 отмечены ниже.
+
+1. ✅ **Волна «Токены+шрифт»** (§14.2 п.1-2): Roboto, `:root`-блок, веса, danger/scrollbar/status-токены, замена хардкодов. Низкий риск, массовый эффект. → всё, кроме **замены хардкод-цветов** (§14.3).
+2. ✅ **Волна «Анимационный фундамент»**: animationIntersector (этап 2 tlottie), heavy-animation, reduceMotion-гейт, transition-токены, параллакс navigation, деспринг. → фаза 7, PR #162; параллакс — с оговоркой (P0 №31).
+3. ⚠️ **Волна «Каркас бабла»**: bubble-content-wrapper для всех типов, reply/имя/forward у медиа, blockquote/pre/spoiler по tweb, peer-color переменные, mediaSizes/setAttachmentSize + альбом 420/1. → всё, кроме **blockquote** (P0 №3 — открыт).
+4. ✅ **Волна «Каркас чата»**: floating-plates стек (padding/маска/пин-бар), скролл-трекинг пина + AnimatedSuper, goto-кнопки, sticky-date скрытие, переход между чатами.
+5. ⚠️ **Волна «Примитивы UI»**: Popup/ConfirmPopup/меню-позиционирование, Row/Radio/scrollable/ripple-покрытие, RangeSelector. → остались Radio, z-index-шкала, hover-волна (§14.2 п.5, п.8).
+6. ✅ **Волна «Экраны»**: правый сайдбар (transform, морф аватара, infinite scroll), левый сайдбар (72px строка, бейджи, zoom-fade, сториз-fold), медиавьюер/сториз (caption, слайд, карусель, полёт из аватарки), auth (country-picker, code-input, обезьянка), композер (морф send, voice-панель, reply-плашка, drop-зона).
+
+**Что делать дальше (по остаткам):**
+
+1. Починить blockquote (P0 №3) — и закрыть класс проблемы: типизировать `*.module.scss`, иначе
+   четвёртый молчаливый обрыв — вопрос времени.
+2. Волна «отсебятина» по §14.3: accentGradient, хардкод-цвета, PlayPauseGlyph/Spinner/`IconButton.small`,
+   slowmode-текст, paidBar, forwards в Time, «Night Mode», rowActive, `monkeyField(onEnter)`, хоткей R.
+3. Хвосты §14.2: hover-волна `0.15s → .2s` (33 места), `Radio` в `shared/ui`, z-index-шкала.
+4. Отдельной задачей — **переперепроверить §1-13**: они размечены по состоянию на 2026-08-08.
 
 > Ссылки `файл:строки` во всех разделах — снимок на 2026-08-08. Перед фиксом перепроверять по контексту: tweb-чекаут живёт на `e52b5d931`.
 
