@@ -99,7 +99,9 @@ function dateText(createdAt: string, edited: boolean, t: (s: string) => string):
 /**
  * Полноэкранный просмотрщик историй — порт `tweb/src/components/stories/viewer.tsx`.
  *
- * Дерево 1:1 с живым DOM tweb (§7b дампа `07b-stories-viewer.json`):
+ * Дерево 1:1 с живым DOM tweb (§7b дампа `07b-stories-viewer.json`); маунт —
+ * `#stories-viewer` в index.html, как в tweb (у tweb внутри ещё обёртка solid-js
+ * Portal, у React-портала её нет):
  *   .Viewer[.isReady][.isFull] [--stories-width; --stories-height]
  *     .ViewerBackground
  *     button.btn-icon.ViewerClose.rp                       (только !isFull)
@@ -626,7 +628,9 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
       </div>
     )}
     </>,
-    document.body,
+    // tweb viewer.tsx:3434 — `<Portal mount={document.getElementById('stories-viewer')}>`;
+    // сам узел лежит в index.html. Фолбэк на body — для сред без нашего index.html (jsdom).
+    document.getElementById('stories-viewer') ?? document.body,
   )
 }
 

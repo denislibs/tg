@@ -422,12 +422,14 @@ export default function VideoPlayer({ videoRef, rate, onRateChange, locked, onTo
 
         <div className="bottom-controls night">
           <div className="left-controls">
+            {/* иконки кнопок в tweb ставит replaceButtonIcon → `Icon(name, 'button-icon')`,
+                то есть `span.tgico.button-icon` (button.ts:48-53) */}
             <button className="btn-icon default__button toggle" type="button" onClick={togglePlay} title={playing ? 'Пауза (Space)' : 'Играть (Space)'}>
-              <span className="tgico">{glyph(playing ? 'pause' : 'play')}</span>
+              <span className="tgico button-icon">{glyph(playing ? 'pause' : 'play')}</span>
             </button>
 
             <div className="player-volume" onClick={(e) => { if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains('player-volume__icon')) toggleMute() }}>
-              <span className="tgico player-volume__icon" title="Звук (M)">{glyph(volumeIcon(volume, muted))}</span>
+              <span className="tgico button-icon player-volume__icon" title="Звук (M)">{glyph(volumeIcon(volume, muted))}</span>
               <div
                 className="progress-line"
                 onPointerDown={onVolumeDown}
@@ -494,7 +496,7 @@ export default function VideoPlayer({ videoRef, rate, onRateChange, locked, onTo
               onClick={toggleFullscreen}
               title={fullscreen ? 'Свернуть (F)' : 'Во весь экран (F)'}
             >
-              <span className="tgico">{glyph(fullscreen ? 'smallscreen' : 'fullscreen')}</span>
+              <span className="tgico button-icon">{glyph(fullscreen ? 'smallscreen' : 'fullscreen')}</span>
             </button>
           </div>
         </div>

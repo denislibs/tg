@@ -66,16 +66,49 @@ node scripts/domdiff/run.js --actual snapshots/one-bubble.json --key photo-out-m
 
 ## Эталоны
 
-`expected/bubbles.json` — 20 деревьев баблов, вынутых из живого DOM tweb
-(`docs/research/tweb-dom/*.json`, снято 2026-08-08 с работающего клиента).
-`expected/computed.json` — блоки замеров из тех же дампов. Перегенерация:
+Все — из живого DOM tweb (`docs/research/tweb-dom/*.json`, снято 2026-08-08 с
+работающего клиента):
+
+| файл | что |
+|---|---|
+| `expected/bubbles.json` | 20 деревьев баблов ленты (фаза 2) |
+| `expected/viewers.json` | полноэкранные поверхности (фаза 5): медиавьюер, сториз-вьюер |
+| `expected/computed.json` | блоки замеров (`--computed`) |
+| `expected/anims.json` | списки бегущих анимаций (сверяются глазами по отчёту) |
+
+Перегенерация:
 
 ```bash
 node scripts/domdiff/extract-expected.js
 ```
 
 Править эталоны руками нельзя: они производные. Нужен новый тип бабла — досняли
-дамп в `docs/research/tweb-dom/`, добавили файл в `SOURCES` в `extract-expected.js`.
+дамп в `docs/research/tweb-dom/`, добавили файл в `BUBBLE_SOURCES`; новая
+полноэкранная поверхность — в `VIEWER_SOURCES` (`extract-expected.js`).
+
+### Полноэкранные поверхности
+
+`--list` печатает для каждой её селектор и режим; снять снимок —
+`--snippet-for <ключ>` (подставит нужный селектор), сверить — `--key <ключ>`.
+
+```bash
+node scripts/domdiff/run.js --snippet-for media-viewer-whole-full-depth-12
+node scripts/domdiff/run.js --actual snapshots/09-media-viewer-photo.json --key media-viewer-whole-full-depth-12
+node scripts/domdiff/run.js --actual snapshots/09-media-viewer-computed.json --computed '09-media-viewer.json:computed'
+```
+
+Режимы:
+
+- **`classes`** (медиавьюер) — обычная сверка: имена классов в tweb написаны руками
+  и обязаны совпадать.
+- **`structure`** (сториз-вьюер) — в tweb это solid-js + CSS-модули
+  (`_Viewer_hvblb_1`), дословный перенос имён невозможен. Differ гасит модульные
+  хеши **с обеих сторон** (`config.moduleClasses`) и сверяет теги, порядок,
+  вложенность, немодульные классы (`night`, `peer-title`, `avatar-32`, `btn-icon`)
+  и computed.
+
+Эталон сториз начинается с `._Viewer…`: маунт `#stories-viewer` (он есть и у tweb,
+и у нас) и обёртка solid-js Portal в дерево не входят — у React-портала обёртки нет.
 
 ## config.json
 
@@ -84,6 +117,9 @@ node scripts/domdiff/extract-expected.js
   с обоснованием ниже. Строка вида `/^_re_/` трактуется как регулярка.
   Сейчас список **пуст**: хвосты CSS-модулей (`_row_1bz90_1`) намеренно
   показываются как `extra-class` — это и есть индикатор непортированной поверхности.
+- **`moduleClasses`** — регулярка под хеш CSS-модуля (`_Viewer_hvblb_1`). Гасится
+  **только** у эталонов с `mode: "structure"` (сториз-вьюер), где такие имена и в
+  tweb, и у нас; на баблы и медиавьюер не влияет.
 - **`attrKeys`** — атрибуты, наличие которых сверяем (`data-mid`, `data-peer-id`).
   Значения не сравниваем: id сообщений у нас и в tweb разные по определению.
 - **`tolerance`** — допуск в px для computed-свойств (сабпиксельная раскладка).

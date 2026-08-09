@@ -3,13 +3,19 @@
 //
 //   node scripts/domdiff/run.js --list
 //   node scripts/domdiff/run.js --snippet ".bubbles-inner"
+//   node scripts/domdiff/run.js --snippet-for media-viewer-whole-full-depth-12
 //   node scripts/domdiff/run.js --actual /tmp/actual.json --key photo-out-mid-21393
 //   node scripts/domdiff/run.js --actual /tmp/feed.json --all [--out baseline.txt]
+//   node scripts/domdiff/run.js --actual /tmp/computed.json --computed '09-media-viewer.json:computed'
 //
 // `--actual` — файл со снимком нашего стенда (результат evaluate со SERIALIZE_FN).
-// `--all` — сопоставить снимок ленты со всеми эталонами: для каждого бабла из
-// снимка берётся эталон с наименьшим числом findings (какой тип узнан), и
+// `--all` — сопоставить снимок ленты со всеми эталонами баблов: для каждого бабла
+// из снимка берётся эталон с наименьшим числом findings (какой тип узнан), и
 // печатается сводка. Это режим прогресса фазы, а не точной приёмки.
+// `--key` работает и по баблам (`expected/bubbles.json`), и по полноэкранным
+// поверхностям (`expected/viewers.json`).
+// `--computed` — сверка блока замеров (`expected/computed.json`): `--actual` при
+// этом не дерево, а объект `{ярлык: {свойство: значение}}` с теми же ярлыками.
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -18,8 +24,13 @@ import { diffTrees, formatFindings, summarize } from './diff.js'
 import { evaluateSnippet } from './serialize.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const expected = JSON.parse(readFileSync(resolve(here, 'expected/bubbles.json'), 'utf8'))
-const config = JSON.parse(readFileSync(resolve(here, 'config.json'), 'utf8'))
+const load = (f) => JSON.parse(readFileSync(resolve(here, f), 'utf8'))
+const bubbles = load('expected/bubbles.json')
+const viewers = load('expected/viewers.json')
+const expectedComputed = load('expected/computed.json')
+// Ключи не пересекаются: у баблов слаг из заголовка секции ленты, у поверхностей — свой.
+const expected = { ...bubbles, ...viewers }
+const config = load('config.json')
 
 const argv = process.argv.slice(2)
 const flag = (name) => {
@@ -29,7 +40,23 @@ const flag = (name) => {
 const has = (name) => argv.includes(name)
 
 if (has('--list')) {
-  for (const [key, v] of Object.entries(expected)) console.log(`${key.padEnd(46)} ${v.title}  (${v.source})`)
+  for (const [key, v] of Object.entries(bubbles)) console.log(`${key.padEnd(46)} ${v.title}  (${v.source})`)
+  console.log('\nполноэкранные поверхности (сравнивать по --key, селектор снимка в скобках):')
+  for (const [key, v] of Object.entries(viewers)) console.log(`${key.padEnd(46)} ${v.selector}  [${v.mode}]  (${v.source})`)
+  console.log('\nблоки замеров (--computed):')
+  for (const key of Object.keys(expectedComputed)) console.log(`  ${key}`)
+  process.exit(0)
+}
+
+// Снять поверхность её собственным селектором, не вспоминая его руками.
+if (has('--snippet-for')) {
+  const key = flag('--snippet-for')
+  const entry = typeof key === 'string' ? expected[key] : undefined
+  if (!entry?.selector) {
+    console.error(`нужен --snippet-for <ключ поверхности из --list>. Получено: ${key}`)
+    process.exit(2)
+  }
+  console.log(evaluateSnippet(entry.selector, {}))
   process.exit(0)
 }
 
@@ -54,11 +81,40 @@ const actual = JSON.parse(readFileSync(resolve(process.cwd(), actualPath), 'utf8
 const opts = { ignoreClasses: config.ignoreClasses, tolerance: config.tolerance, attrKeys: config.attrKeys }
 const report = []
 
-if (has('--all')) {
+if (has('--computed')) {
+  const key = flag('--computed')
+  const block = typeof key === 'string' ? expectedComputed[key] : undefined
+  if (!block) {
+    console.error(`нужен --computed <ключ блока замеров из --list>. Получено: ${key}`)
+    process.exit(2)
+  }
+  report.push(`замеры: ${key}  (снимок ${actualPath})`)
+  let bad = 0
+  for (const [node, props] of Object.entries(block)) {
+    const ours = actual[node]
+    if (!ours) {
+      report.push(`  ${node}: НЕТ В СНИМКЕ`)
+      bad++
+      continue
+    }
+    const lines = []
+    for (const [p, v] of Object.entries(props)) {
+      const av = ours[p]
+      if (av === undefined) continue // свойство не снимали — не расхождение
+      const tol = config.tolerance[p] ?? 0
+      const num = (x) => parseFloat(String(x))
+      const near = tol && Number.isFinite(num(v)) && Number.isFinite(num(av)) && Math.abs(num(v) - num(av)) <= tol
+      if (av !== v && !near) lines.push(`      ${p}\n        tweb: ${v}\n        наше: ${av}`)
+    }
+    bad += lines.length
+    report.push(lines.length ? `  ${node}: ${lines.length} расхождений\n${lines.join('\n')}` : `  ${node}: ✓`)
+  }
+  report.push(`\nвсего расхождений: ${bad}`)
+} else if (has('--all')) {
   // Все узлы снимка, похожие на бабл (класс bubble или его модуль-аналог) — верхний уровень.
-  const bubbles = (actual.children ?? []).flatMap((g) => collectBubbles(g))
+  const snapshotBubbles = (actual.children ?? []).flatMap((g) => collectBubbles(g))
   report.push(`снимок: ${actualPath}`)
-  report.push(`эталонов: ${Object.keys(expected).length}, баблов в снимке: ${bubbles.length}\n`)
+  report.push(`эталонов: ${Object.keys(bubbles).length}, баблов в снимке: ${snapshotBubbles.length}\n`)
   const detail = flag('--detail')
   const details = []
   // Классы-типы бабла: по ним отбираются кандидаты, иначе «лучшим» окажется
@@ -69,11 +125,11 @@ if (has('--all')) {
     'video', 'service', 'is-date', 'is-sponsored', 'is-reply', 'forwarded', 'channel-post',
     'has-webpage']
   const typeSet = (n) => TYPE_CLASSES.filter((c) => n.classes.includes(c)).join(',')
-  for (const [key, v] of Object.entries(expected)) {
+  for (const [key, v] of Object.entries(bubbles)) {
     // Кандидат должен иметь РОВНО тот же набор классов-типов: иначе обычный
     // текстовый эталон (без типов) матчился бы на сервисный бабл или дату.
     const wanted = typeSet(v.tree)
-    const sameType = bubbles.filter((b) => typeSet(b) === wanted)
+    const sameType = snapshotBubbles.filter((b) => typeSet(b) === wanted)
     const candidates = sameType
     let best = null
     for (const b of candidates) {
@@ -96,7 +152,13 @@ if (has('--all')) {
     console.error(`нужен --key из списка (--list). Получено: ${key}`)
     process.exit(2)
   }
-  const findings = diffTrees(expected[key].tree, actual, opts)
+  const entry = expected[key]
+  // В режиме 'structure' имена классов — хеши CSS-модулей (у tweb и у нас разные
+  // по определению), гасим их с обеих сторон; всё остальное сверяется как обычно.
+  const keyOpts = entry.mode === 'structure'
+    ? { ...opts, ignoreClasses: [...opts.ignoreClasses, ...config.moduleClasses] }
+    : opts
+  const findings = diffTrees(entry.tree, actual, keyOpts)
   report.push(formatFindings(findings, key))
   report.push('\nсводка: ' + JSON.stringify(summarize(findings)))
 }

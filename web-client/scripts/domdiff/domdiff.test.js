@@ -41,6 +41,13 @@ describe('parseDump', () => {
     expect(sections[1].computed).toEqual({ a: 1 })
   })
 
+  it('тело-массив — это блок анимаций, а не дерево', () => {
+    const sections = parseDump(['=== anims ===', '[{"name": "opacity", "duration": 200}]'].join('\n'))
+    expect(sections).toHaveLength(1)
+    expect(sections[0].anims).toEqual([{ name: 'opacity', duration: 200 }])
+    expect(sections[0].tree).toBeUndefined()
+  })
+
   it('slugify', () => {
     expect(slugify('text out first+last (mid 21335)')).toBe('text-out-first-last-mid-21335')
   })
@@ -116,5 +123,37 @@ describe('expected/bubbles.json', () => {
       expect(v.tree.children[0].classes, key).toContain('bubble-content-wrapper')
       expect(v.tree.children[0].children[0].classes, key).toContain('bubble-content')
     }
+  })
+})
+
+describe('expected/viewers.json', () => {
+  const viewers = JSON.parse(readFileSync(resolve(here, 'expected/viewers.json'), 'utf8'))
+  const config = JSON.parse(readFileSync(resolve(here, 'config.json'), 'utf8'))
+
+  it('медиавьюер — дерево .media-viewer-whole со сверкой имён классов', () => {
+    const v = viewers['media-viewer-whole-full-depth-12']
+    expect(v.mode).toBe('classes')
+    expect(v.selector).toBe('.media-viewer-whole')
+    expect(v.tree.classes).toContain('media-viewer-whole')
+    // классы в узле отсортированы — проверяем вхождение, а не первый элемент
+    const marker = ['zoom-container', 'overlays', 'media-viewer-topbar', 'media-viewer-movers', 'media-viewer-caption']
+    expect(v.tree.children.map((c, i) => c.classes.includes(marker[i]))).toEqual(marker.map(() => true))
+  })
+
+  it('сториз — эталон начинается с `_Viewer…`, маунт и обёртка Portal в дерево не входят', () => {
+    const v = viewers['stories-viewer-root-stories-viewer']
+    expect(v.mode).toBe('structure')
+    expect(v.mount).toBe('stories-viewer')
+    expect(v.tree.tag).toBe('div')
+    expect(v.tree.classes.some((c) => c.startsWith('_Viewer_'))).toBe(true)
+  })
+
+  it('moduleClasses гасит хеши CSS-модулей и tweb, и наши — но не обычные классы', () => {
+    const opts = { ignoreClasses: config.moduleClasses }
+    const tweb = { tag: 'div', classes: ['_ViewerStoryHeader_hvblb_164', 'night'] }
+    const ours = { tag: 'div', classes: ['_ViewerStoryHeader_1rx1o_151', 'night'] }
+    expect(diffTrees(tweb, ours, opts)).toEqual([])
+    expect(diffTrees(tweb, { tag: 'div', classes: ['_ViewerStoryHeader_1rx1o_151'] }, opts))
+      .toEqual([expect.objectContaining({ kind: 'missing-class', expected: 'night' })])
   })
 })

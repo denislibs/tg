@@ -91,9 +91,10 @@ export function parseTree(body) {
 
 /**
  * Разбор целого файла-дампа на секции `=== заголовок ===`.
- * Секция `computed` (тело — JSON-объект) возвращается как `{computed: {...}}`.
+ * Тело-JSON-объект (`{`) — блок замеров: `{computed: {...}}`.
+ * Тело-JSON-массив (`[`) — список бегущих анимаций: `{anims: [...]}`.
  * @param {string} raw содержимое файла (уже распарсенный JSON-строкой текст)
- * @returns {Array<{title: string, tree?: object, computed?: object}>}
+ * @returns {Array<{title: string, tree?: object, computed?: object, anims?: object[]}>}
  */
 export function parseDump(raw) {
   const sections = []
@@ -105,11 +106,12 @@ export function parseDump(raw) {
     const to = i + 1 < marks.length ? marks[i + 1].index : raw.length
     const body = raw.slice(from, to).trim()
     if (!body || body.startsWith('NOT FOUND')) continue
-    if (body.startsWith('{')) {
+    if (body.startsWith('{') || body.startsWith('[')) {
       try {
-        sections.push({ title, computed: JSON.parse(body) })
+        const json = JSON.parse(body)
+        sections.push(Array.isArray(json) ? { title, anims: json } : { title, computed: json })
       } catch {
-        // Обрезанный дамп computed — не эталон дерева, просто пропускаем.
+        // Обрезанный дамп (снимался с лимитом длины) — не эталон, просто пропускаем.
       }
       continue
     }

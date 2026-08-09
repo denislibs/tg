@@ -89,6 +89,13 @@ $color-inactive: rgba(255, 255, 255, .5);
     background-color: rgba(0, 0, 0, .9);
     content: " ";
     pointer-events: none;
+
+    // В tweb селектор `html.night &` (:116-118); у нас ночные темы — data-theme
+    // night/tinted (та же подстановка, что в styles/tweb/_code.scss).
+    :global(html[data-theme='night']) &,
+    :global(html[data-theme='tinted']) & {
+      background-color: rgba(var(--body-background-color-rgb), .9);
+    }
   }
 
   // tweb `.ViewerStory` (:127-149)
@@ -416,8 +423,13 @@ $color-inactive: rgba(255, 255, 255, .5);
     }
   }
 
-  // tweb `.ViewerClose` (:979-989)
-  &Close {
+  // tweb `.ViewerClose` (:979-989).
+  // Селектор усилен до `.Viewer .ViewerClose` (в tweb — просто `.ViewerClose`):
+  // у нас глобальные партиалы попадают в бандл ПОСЛЕ CSS-модулей, поэтому при
+  // равной специфичности `.btn-icon` из `_button.scss` (position: relative,
+  // color, transition — партиал, строки 24-35) перебивал модуль, и кнопка
+  // теряла `position: absolute` и цвет.
+  & &Close {
     position: absolute;
     top: 1rem;
     right: 1rem;

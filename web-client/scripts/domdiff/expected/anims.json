@@ -1,0 +1,336 @@
+{
+  "09-media-viewer.json:anims @150ms": [
+    {
+      "name": "opacity",
+      "type": "CSSTransition",
+      "prop": "opacity",
+      "duration": 200,
+      "delay": 0,
+      "easing": "ease",
+      "state": "running",
+      "target": "overlays"
+    },
+    {
+      "name": "opacity",
+      "type": "CSSTransition",
+      "prop": "opacity",
+      "duration": 200,
+      "delay": 0,
+      "easing": "ease",
+      "state": "running",
+      "target": "media-viewer-topbar media-viewer-appear"
+    },
+    {
+      "name": "transform",
+      "type": "CSSTransition",
+      "prop": "transform",
+      "duration": 200,
+      "delay": 0,
+      "easing": "ease",
+      "state": "running",
+      "target": "media-viewer-mover opening active"
+    },
+    {
+      "name": "transform",
+      "type": "CSSTransition",
+      "prop": "transform",
+      "duration": 200,
+      "delay": 0,
+      "easing": "ease",
+      "state": "running",
+      "target": "media-viewer-aspecter"
+    },
+    {
+      "name": "width",
+      "type": "CSSTransition",
+      "prop": "width",
+      "duration": 200,
+      "delay": 0,
+      "easing": "ease",
+      "state": "running",
+      "target": "media-viewer-aspecter"
+    },
+    {
+      "name": "grow-input",
+      "type": "CSSAnimation",
+      "duration": 250,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico input-search-part input-search-icon will-animate"
+    },
+    {
+      "name": "grow-input",
+      "type": "CSSAnimation",
+      "duration": 250,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "i18n input-search-placeholder will-animate"
+    },
+    {
+      "name": "grow-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon animated-button-icon-icon-first"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon animated-button-icon-icon-last"
+    },
+    {
+      "name": "recordBlink",
+      "type": "CSSAnimation",
+      "duration": 1250,
+      "delay": 0,
+      "easing": "linear",
+      "state": "running",
+      "target": "voice-recording-dot"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon btn-send-icon-send"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon btn-send-icon-schedule"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon btn-send-icon-edit"
+    },
+    {
+      "name": "grow-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon btn-send-icon-record"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon btn-send-icon-record-video"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "delay": 0,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon btn-send-icon-forward"
+    }
+  ],
+  "07b-stories-viewer.json:anims @200ms open": [
+    {
+      "name": "grow-input",
+      "type": "CSSAnimation",
+      "duration": 250,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico input-search-part input-search-icon will-animate"
+    },
+    {
+      "name": "grow-input",
+      "type": "CSSAnimation",
+      "duration": 250,
+      "easing": "linear",
+      "state": "finished",
+      "target": "i18n input-search-placeholder will-animate"
+    },
+    {
+      "name": "grow-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon animated-button-icon-icon-first"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon animated-button-icon-icon-last"
+    },
+    {
+      "name": "recordBlink",
+      "type": "CSSAnimation",
+      "duration": 1250,
+      "easing": "linear",
+      "state": "running",
+      "target": "voice-recording-dot"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon btn-send-icon-send"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon btn-send-icon-schedule"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon btn-send-icon-edit"
+    },
+    {
+      "name": "grow-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon btn-send-icon-record"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon btn-send-icon-record-video"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "easing": "linear",
+      "state": "finished",
+      "target": "tgico animated-button-icon-icon btn-send-icon-forward"
+    },
+    {
+      "name": "fade-in-opacity",
+      "type": "CSSAnimation",
+      "duration": 200,
+      "easing": "linear",
+      "state": "running",
+      "target": "avatar-photo fade-in"
+    },
+    {
+      "name": "fade-in-opacity",
+      "type": "CSSAnimation",
+      "duration": 200,
+      "easing": "linear",
+      "state": "running",
+      "target": "avatar-photo fade-in"
+    },
+    {
+      "name": "recordBlink",
+      "type": "CSSAnimation",
+      "duration": 1250,
+      "easing": "linear",
+      "state": "running",
+      "target": "voice-recording-dot"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "easing": "linear",
+      "state": "running",
+      "target": "tgico animated-button-icon-icon btn-send-icon-send"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "easing": "linear",
+      "state": "running",
+      "target": "tgico animated-button-icon-icon btn-send-icon-schedule"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "easing": "linear",
+      "state": "running",
+      "target": "tgico animated-button-icon-icon btn-send-icon-edit"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "easing": "linear",
+      "state": "running",
+      "target": "tgico animated-button-icon-icon btn-send-icon-record"
+    },
+    {
+      "name": "hide-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "easing": "linear",
+      "state": "running",
+      "target": "tgico animated-button-icon-icon btn-send-icon-record-video"
+    },
+    {
+      "name": "grow-icon",
+      "type": "CSSAnimation",
+      "duration": 400,
+      "easing": "linear",
+      "state": "running",
+      "target": "tgico animated-button-icon-icon btn-send-icon-forward"
+    },
+    {
+      "type": "Animation",
+      "duration": 250,
+      "easing": "cubic-bezier(0.4, 0, 0.6, 1)",
+      "state": "running",
+      "target": "_ViewerStoryContainer_hvblb_28"
+    },
+    {
+      "type": "Animation",
+      "duration": 250,
+      "easing": "cubic-bezier(0.4, 0, 0.6, 1)",
+      "state": "running",
+      "target": "_ViewerBackground_hvblb_20"
+    },
+    {
+      "type": "Animation",
+      "duration": 250,
+      "easing": "cubic-bezier(0.4, 0, 0.6, 1)",
+      "state": "running",
+      "target": "btn-icon _ViewerClose_hvblb_732 rp"
+    }
+  ]
+}
