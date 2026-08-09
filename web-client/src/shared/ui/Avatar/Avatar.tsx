@@ -1,7 +1,77 @@
 import type { CSSProperties } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import classNames from '../../lib/classNames'
 import { glyph } from '../../../core/tgico-icons'
 import s from './Avatar.module.scss'
+
+// tweb avatarNew.tsx:52 — та же длительность, что и `.fade-in` в _avatar.scss (`.2s`).
+const FADE_IN_DURATION = 200
+
+type PhotoPhase = 'pending' | 'animating' | 'shown'
+
+// Фотография аватара — порт механики tweb avatarNew.tsx:549-604, а не буквально
+// «повесить fade-in при монтировании» (так и было раньше, ошибочно — см. отчёт
+// task-7). В tweb `<img>` создаётся ОТСОЕДИНЁННЫМ от DOM и вставляется только в
+// колбэке после реальной загрузки байтов (`_setMedia(element)`), поэтому часы
+// анимации стартуют в момент готовности фото, а не в момент рендера рамки.
+// Здесь тот же эффект получаем без ручного DOM: держим <img> невидимым
+// (opacity: 0, класс fade-in ещё не добавлен — иначе анимация отыграла бы
+// вхолостую, пока элемент скрыт) до `onLoad`, и лишь тогда одновременно
+// показываем картинку и добавляем `fade-in`.
+//
+// Гейты, которых не было у первой реализации:
+// - `cached` (avatarNew.tsx:549: `cached = !(result instanceof Promise)`) —
+//   браузерный аналог: `img.complete && naturalWidth > 0` сразу после монтирования
+//   означает, что байты уже были декодированы (тот же кэш соединений/памяти),
+//   грузить нечего — фото показывается без анимации, как и в tweb.
+// - `liteMode.isAvailable('animations')` (avatarNew.tsx:549) — здесь эквивалент
+//   репозитория: класс `animation-level-0` на body (см. dialogsPlaceholder.ts:39,
+//   spoilerSupport.ts:22-23).
+//
+// `key={src}` пересоздаёт DOM-узел на каждую новую фотографию — тот же эффект,
+// что у tweb, где `putAvatar` каждый раз создаёт новый `image = document.
+// createElement('img')`: класс `fade-in`, снятый императивно после предыдущей
+// загрузки, не может «залипнуть» и не вернуться при смене src на старом узле.
+function AvatarPhoto({ src }: { src: string }) {
+  const imgRef = useRef<HTMLImageElement | null>(null)
+  const [phase, setPhase] = useState<PhotoPhase>('pending')
+
+  // Синхронно (до пейнта) проверяем, не были ли байты уже доступны — иначе
+  // между «pending» и «shown» мелькнёт лишний кадр с opacity: 0.
+  useLayoutEffect(() => {
+    const img = imgRef.current
+    const cached = !!img && img.complete && img.naturalWidth > 0
+    setPhase(cached ? 'shown' : 'pending')
+  }, [src])
+
+  // tweb снимает fade-in по setTimeout(FADE_IN_DURATION), а не по animationend
+  // (avatarNew.tsx:600) — так класс уходит даже если сама CSS-анимация почему-то
+  // не отыграла (например, animation-level-0 подхватился между кадрами).
+  useEffect(() => {
+    if (phase !== 'animating') return
+    const timer = setTimeout(() => setPhase('shown'), FADE_IN_DURATION)
+    return () => clearTimeout(timer)
+  }, [phase])
+
+  const handleLoad = () => {
+    const animationsDisabled = document.body.classList.contains('animation-level-0')
+    setPhase(animationsDisabled ? 'shown' : 'animating')
+  }
+
+  return (
+    <img
+      key={src}
+      ref={imgRef}
+      className={classNames('avatar-photo', phase === 'animating' ? 'fade-in' : '')}
+      src={src}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      style={phase === 'pending' ? { opacity: 0 } : undefined}
+      onLoad={handleLoad}
+    />
+  )
+}
 
 // Canonical avatar sizes (px) by role — prefer a named size over a magic number
 // at call sites. A raw number is still accepted for genuine one-offs.
@@ -85,14 +155,7 @@ export default function Avatar({
       onClick={onClick}
     >
       {src ? (
-        <img
-          className="avatar-photo fade-in"
-          src={src}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          onAnimationEnd={(e) => e.currentTarget.classList.remove('fade-in')}
-        />
+        <AvatarPhoto src={src} />
       ) : emoji === 'tg-logo' ? (
         // отступление от tweb: в оригинале у сервисного аккаунта (id 777000)
         // обычная фотография пира — `img.avatar-photo`, никакого отдельного
