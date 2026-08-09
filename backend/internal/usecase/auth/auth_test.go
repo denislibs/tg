@@ -21,11 +21,21 @@ func newFakeUserRepo() *fakeUserRepo {
 	return &fakeUserRepo{byPhone: map[string]domain.User{}, nextID: 1, photos: map[int64][]domain.ProfilePhoto{}, nextPhotoID: 1}
 }
 
-func (r *fakeUserRepo) UpsertByPhone(_ context.Context, phone string) (domain.User, error) {
+func (r *fakeUserRepo) ByPhone(_ context.Context, phone string) (domain.User, error) {
 	if u, ok := r.byPhone[phone]; ok {
 		return u, nil
 	}
-	u := domain.User{ID: r.nextID, Phone: phone, DisplayName: phone}
+	return domain.User{}, domain.ErrNotFound
+}
+
+func (r *fakeUserRepo) CreateWithName(_ context.Context, phone, first, last string) (domain.User, error) {
+	if _, ok := r.byPhone[phone]; ok {
+		return domain.User{}, domain.ErrConflict
+	}
+	u := domain.User{
+		ID: r.nextID, Phone: phone, FirstName: first, LastName: last,
+		DisplayName: domain.BuildDisplayName(first, last),
+	}
 	r.nextID++
 	r.byPhone[phone] = u
 	return u, nil
@@ -399,17 +409,152 @@ func (r *fakePasswordRepo) DeletePasswordToken(_ context.Context, tokenHash stri
 	return nil
 }
 
+// fakeStepRepo — одноразовые токены шагов входа в памяти (LoginStepRepo).
+type fakeStepRepo struct {
+	signUp map[string]struct {
+		phone   string
+		expires time.Time
+	}
+	recovery map[string]struct {
+		userID     int64
+		codeHash   string
+		expires    time.Time
+		nextSendAt time.Time
+	}
+	web map[string]struct {
+		userID  int64
+		expires time.Time
+	}
+}
+
+func newFakeStepRepo() *fakeStepRepo {
+	return &fakeStepRepo{
+		signUp: map[string]struct {
+			phone   string
+			expires time.Time
+		}{},
+		recovery: map[string]struct {
+			userID     int64
+			codeHash   string
+			expires    time.Time
+			nextSendAt time.Time
+		}{},
+		web: map[string]struct {
+			userID  int64
+			expires time.Time
+		}{},
+	}
+}
+
+func (r *fakeStepRepo) SaveSignUpToken(_ context.Context, tokenHash, phone string, expires time.Time) error {
+	r.signUp[tokenHash] = struct {
+		phone   string
+		expires time.Time
+	}{phone, expires}
+	return nil
+}
+
+func (r *fakeStepRepo) SignUpTokenPhone(_ context.Context, tokenHash string) (string, error) {
+	e, ok := r.signUp[tokenHash]
+	if !ok || time.Now().After(e.expires) {
+		return "", domain.ErrNotFound
+	}
+	return e.phone, nil
+}
+
+func (r *fakeStepRepo) DeleteSignUpToken(_ context.Context, tokenHash string) error {
+	delete(r.signUp, tokenHash)
+	return nil
+}
+
+func (r *fakeStepRepo) SaveRecoveryCode(_ context.Context, tokenHash string, userID int64, codeHash string, expires, nextSendAt time.Time) error {
+	r.recovery[tokenHash] = struct {
+		userID     int64
+		codeHash   string
+		expires    time.Time
+		nextSendAt time.Time
+	}{userID, codeHash, expires, nextSendAt}
+	return nil
+}
+
+func (r *fakeStepRepo) RecoveryCode(_ context.Context, tokenHash string) (int64, string, time.Time, error) {
+	e, ok := r.recovery[tokenHash]
+	if !ok || time.Now().After(e.expires) {
+		return 0, "", time.Time{}, domain.ErrNotFound
+	}
+	return e.userID, e.codeHash, e.nextSendAt, nil
+}
+
+func (r *fakeStepRepo) DeleteRecoveryCode(_ context.Context, tokenHash string) error {
+	delete(r.recovery, tokenHash)
+	return nil
+}
+
+func (r *fakeStepRepo) SaveWebAuthToken(_ context.Context, tokenHash string, userID int64, expires time.Time) error {
+	r.web[tokenHash] = struct {
+		userID  int64
+		expires time.Time
+	}{userID, expires}
+	return nil
+}
+
+func (r *fakeStepRepo) WebAuthTokenUser(_ context.Context, tokenHash string) (int64, error) {
+	e, ok := r.web[tokenHash]
+	if !ok || time.Now().After(e.expires) {
+		return 0, domain.ErrNotFound
+	}
+	return e.userID, nil
+}
+
+func (r *fakeStepRepo) DeleteWebAuthToken(_ context.Context, tokenHash string) error {
+	delete(r.web, tokenHash)
+	return nil
+}
+
 func newInteractor() (*Interactor, *fakeUserRepo, *fakeDeviceRepo, *fakeCodeRepo) {
 	users := newFakeUserRepo()
 	devices := newFakeDeviceRepo(users)
 	codes := newFakeCodeRepo()
-	i := New(users, devices, codes, newFakePasswordRepo(), "12345", func(string, ...any) {})
+	i := New(users, devices, codes, newFakePasswordRepo(), newFakeStepRepo(), "12345", func(string, ...any) {})
 	return i, users, devices, codes
+}
+
+// registerUser проходит вход для НОВОГО номера целиком: код → sign_in
+// (signup_required) → sign_up. Возвращает выданную сессию.
+func registerUser(t *testing.T, i *Interactor, phone, first, last, device, platform string) SignInResult {
+	t.Helper()
+	ctx := context.Background()
+	if err := i.RequestCode(ctx, phone); err != nil {
+		t.Fatalf("RequestCode(%s): %v", phone, err)
+	}
+	res, err := i.SignIn(ctx, phone, "12345", device, platform)
+	if err != nil {
+		t.Fatalf("SignIn(%s): %v", phone, err)
+	}
+	if !res.SignUpRequired {
+		t.Fatalf("SignIn(%s): ожидался шаг регистрации, получено %+v", phone, res)
+	}
+	out, err := i.SignUp(ctx, res.SignUpToken, first, last, device, platform)
+	if err != nil {
+		t.Fatalf("SignUp(%s): %v", phone, err)
+	}
+	return out
 }
 
 func TestRequestAndSignIn(t *testing.T) {
 	ctx := context.Background()
 	i, _, _, _ := newInteractor()
+
+	// Новый номер: регистрация, затем повторный вход тем же номером — уже сразу
+	// сессия (номер знакомый).
+	reg := registerUser(t, i, "+79990000000", "Денис", "", "web", "browser")
+	if reg.Token == "" || reg.User.ID == 0 {
+		t.Fatalf("empty result: %+v", reg)
+	}
+	got, _, err := i.Authenticate(ctx, reg.Token)
+	if err != nil || got.ID != reg.User.ID {
+		t.Fatalf("Authenticate = %+v, %v", got, err)
+	}
 
 	if err := i.RequestCode(ctx, "+7 (999) 000-00-00"); err != nil {
 		t.Fatalf("RequestCode: %v", err)
@@ -418,13 +563,8 @@ func TestRequestAndSignIn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SignIn: %v", err)
 	}
-	if res.Token == "" || res.User.ID == 0 {
-		t.Fatalf("empty result: %+v", res)
-	}
-
-	got, _, err := i.Authenticate(ctx, res.Token)
-	if err != nil || got.ID != res.User.ID {
-		t.Fatalf("Authenticate = %+v, %v", got, err)
+	if res.SignUpRequired || res.Token == "" || res.User.ID != reg.User.ID {
+		t.Fatalf("повторный вход = %+v", res)
 	}
 }
 
@@ -451,11 +591,7 @@ func TestAuthenticateUsesCache(t *testing.T) {
 	cache := newFakeCache()
 	i.SetCache(cache)
 
-	_ = i.RequestCode(ctx, "+79991230000")
-	res, err := i.SignIn(ctx, "+79991230000", "12345", "web", "browser")
-	if err != nil {
-		t.Fatalf("SignIn: %v", err)
-	}
+	res := registerUser(t, i, "+79991230000", "Кэш", "", "web", "browser")
 
 	// First auth: cache miss -> populated via repo.
 	if _, _, err := i.Authenticate(ctx, res.Token); err != nil {
@@ -489,8 +625,7 @@ func TestRevokeSession(t *testing.T) {
 	i.SetCache(cache)
 	i.SetRevocationNotifier(rev)
 
-	_ = i.RequestCode(ctx, "+79991230001")
-	res, _ := i.SignIn(ctx, "+79991230001", "12345", "web", "browser")
+	res := registerUser(t, i, "+79991230001", "Сессия", "", "web", "browser")
 	_, deviceID, _ := i.Authenticate(ctx, res.Token) // populates cache
 
 	sessions, err := i.ListSessions(ctx, res.User.ID)
@@ -518,8 +653,7 @@ func TestListSessions(t *testing.T) {
 	ctx := context.Background()
 	i, _, _, _ := newInteractor()
 
-	_ = i.RequestCode(ctx, "+79990000001")
-	res, _ := i.SignIn(ctx, "+79990000001", "12345", "web", "browser")
+	res := registerUser(t, i, "+79990000001", "Список", "", "web", "browser")
 	_, _ = i.SignIn(ctx, "+79990000001", "12345", "phone", "ios") // code consumed; re-request
 
 	_ = i.RequestCode(ctx, "+79990000001")
@@ -538,8 +672,7 @@ func TestChangePhone(t *testing.T) {
 	ctx := context.Background()
 	i, users, _, codes := newInteractor()
 
-	_ = i.RequestCode(ctx, "+79990000010")
-	res, _ := i.SignIn(ctx, "+79990000010", "12345", "web", "browser")
+	res := registerUser(t, i, "+79990000010", "Номер", "", "web", "browser")
 
 	// Start the change: a code is queued for the new number.
 	if err := i.ChangePhone(ctx, res.User.ID, "+7 (999) 000-00-20"); err != nil {
@@ -573,11 +706,8 @@ func TestChangePhoneTaken(t *testing.T) {
 	i, _, _, _ := newInteractor()
 
 	// Occupy the target number with another account.
-	_ = i.RequestCode(ctx, "+79990000030")
-	_, _ = i.SignIn(ctx, "+79990000030", "12345", "web", "browser")
-
-	_ = i.RequestCode(ctx, "+79990000031")
-	me, _ := i.SignIn(ctx, "+79990000031", "12345", "web", "browser")
+	_ = registerUser(t, i, "+79990000030", "Чужой", "", "web", "browser")
+	me := registerUser(t, i, "+79990000031", "Я", "", "web", "browser")
 
 	if err := i.ChangePhone(ctx, me.User.ID, "+79990000030"); err != domain.ErrConflict {
 		t.Fatalf("expected ErrConflict, got %v", err)
@@ -588,8 +718,7 @@ func TestConfirmChangePhoneWrongCode(t *testing.T) {
 	ctx := context.Background()
 	i, _, _, _ := newInteractor()
 
-	_ = i.RequestCode(ctx, "+79990000040")
-	me, _ := i.SignIn(ctx, "+79990000040", "12345", "web", "browser")
+	me := registerUser(t, i, "+79990000040", "Я", "", "web", "browser")
 
 	if err := i.ChangePhone(ctx, me.User.ID, "+79990000041"); err != nil {
 		t.Fatalf("ChangePhone: %v", err)
@@ -603,8 +732,7 @@ func TestConfirmChangePhoneNoCode(t *testing.T) {
 	ctx := context.Background()
 	i, _, _, _ := newInteractor()
 
-	_ = i.RequestCode(ctx, "+79990000050")
-	me, _ := i.SignIn(ctx, "+79990000050", "12345", "web", "browser")
+	me := registerUser(t, i, "+79990000050", "Я", "", "web", "browser")
 
 	// No ChangePhone call ⇒ no code queued for the target number.
 	if _, err := i.ConfirmChangePhone(ctx, me.User.ID, "+79990000051", "12345"); err != domain.ErrInvalidCode {
@@ -620,8 +748,7 @@ func TestDeleteAccount(t *testing.T) {
 	i.SetCache(cache)
 	i.SetRevocationNotifier(rev)
 
-	_ = i.RequestCode(ctx, "+79990000060")
-	res, _ := i.SignIn(ctx, "+79990000060", "12345", "web", "browser")
+	res := registerUser(t, i, "+79990000060", "Удаляемый", "", "web", "browser")
 	_, deviceID, _ := i.Authenticate(ctx, res.Token) // populates cache
 
 	if err := i.DeleteAccount(ctx, res.User.ID); err != nil {

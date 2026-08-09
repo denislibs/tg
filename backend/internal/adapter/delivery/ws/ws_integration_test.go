@@ -44,6 +44,25 @@ func (e *wsEnv) close() {
 	e.mr.Close()
 }
 
+// registerWSUser регистрирует новый номер (вход нового номера двухшаговый:
+// sign_in отдаёт signup_token, SignUp заводит пользователя и сессию).
+func registerWSUser(t *testing.T, authUC *usecaseauth.Interactor, phone string) usecaseauth.SignInResult {
+	t.Helper()
+	ctx := context.Background()
+	if err := authUC.RequestCode(ctx, phone); err != nil {
+		t.Fatalf("RequestCode(%s): %v", phone, err)
+	}
+	step, err := authUC.SignIn(ctx, phone, "12345", "web", "browser")
+	if err != nil || !step.SignUpRequired {
+		t.Fatalf("SignIn(%s) = %+v, %v", phone, step, err)
+	}
+	res, err := authUC.SignUp(ctx, step.SignUpToken, "Тест", "", "web", "browser")
+	if err != nil {
+		t.Fatalf("SignUp(%s): %v", phone, err)
+	}
+	return res
+}
+
 func newWSEnv(t *testing.T) *wsEnv {
 	t.Helper()
 	pool := postgres.NewTestDB(t)
@@ -52,7 +71,7 @@ func newWSEnv(t *testing.T) *wsEnv {
 	ctx := context.Background()
 
 	repo := pgadapter.NewAuthRepo(pool)
-	authUC := usecaseauth.New(repo, repo, repo, repo, "12345", func(string, ...any) {})
+	authUC := usecaseauth.New(repo, repo, repo, repo, repo, "12345", func(string, ...any) {})
 	chatSvc := usecasechat.New(
 		pgadapter.NewTxManager(pool),
 		pgadapter.NewChatsRepo(pool),
@@ -74,10 +93,8 @@ func newWSEnv(t *testing.T) *wsEnv {
 	handler := ws.NewHandler(hub, authUC, chatSvc, presenceMgr, nil, "")
 	srv := httptest.NewServer(http.HandlerFunc(handler.ServeHTTP))
 
-	_ = authUC.RequestCode(ctx, "+700")
-	ra, _ := authUC.SignIn(ctx, "+700", "12345", "web", "browser")
-	_ = authUC.RequestCode(ctx, "+701")
-	rb, _ := authUC.SignIn(ctx, "+701", "12345", "web", "browser")
+	ra := registerWSUser(t, authUC, "+700")
+	rb := registerWSUser(t, authUC, "+701")
 	chatID, _ := chatSvc.CreatePrivateChat(ctx, ra.User.ID, rb.User.ID)
 	_, deviceA, _ := authUC.Authenticate(ctx, ra.Token)
 

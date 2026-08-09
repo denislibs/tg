@@ -14,11 +14,10 @@ func TestCloudPasswordFlow(t *testing.T) {
 	ctx := context.Background()
 	i, _, _, codes := newInteractor()
 
-	// первый вход без пароля — сразу сессия
-	_ = codes.SaveCode(ctx, "+79990001122", "12345", time.Now().Add(time.Hour))
-	res, err := i.SignIn(ctx, "+79990001122", "12345", "dev", "test")
-	if err != nil || res.PasswordNeeded || res.Token == "" {
-		t.Fatalf("plain sign in = %+v, %v", res, err)
+	// первая регистрация без пароля — сразу сессия
+	res := registerUser(t, i, "+79990001122", "Пароль", "", "dev", "test")
+	if res.PasswordNeeded || res.Token == "" {
+		t.Fatalf("plain sign up = %+v", res)
 	}
 	userID := res.User.ID
 
@@ -80,17 +79,13 @@ func TestCloudPassword_AttemptCapBurnsToken(t *testing.T) {
 	ctx := context.Background()
 	i, _, _, codes := newInteractor()
 
-	_ = codes.SaveCode(ctx, "+79990002233", "12345", time.Now().Add(time.Hour))
-	res, err := i.SignIn(ctx, "+79990002233", "12345", "dev", "test")
-	if err != nil {
-		t.Fatalf("sign in: %v", err)
-	}
+	res := registerUser(t, i, "+79990002233", "Пароль", "", "dev", "test")
 	userID := res.User.ID
 	if err := i.SetPassword(ctx, userID, "", "s3cret", "hint", ""); err != nil {
 		t.Fatalf("SetPassword: %v", err)
 	}
 	_ = codes.SaveCode(ctx, "+79990002233", "12345", time.Now().Add(time.Hour))
-	res, err = i.SignIn(ctx, "+79990002233", "12345", "dev", "test")
+	res, err := i.SignIn(ctx, "+79990002233", "12345", "dev", "test")
 	if err != nil || !res.PasswordNeeded {
 		t.Fatalf("2fa sign in = %+v, %v", res, err)
 	}

@@ -41,8 +41,8 @@ func (r *fakePremiumRepo) SetPremiumAutoRenew(_ context.Context, userID int64, a
 func newPremiumInteractor(t *testing.T) (*Interactor, int64) {
 	t.Helper()
 	users := newFakeUserRepo()
-	u, _ := users.UpsertByPhone(context.Background(), "+70000000001")
-	i := New(users, nil, nil, nil, "12345", func(string, ...any) {})
+	u, _ := users.CreateWithName(context.Background(), "+70000000001", "Премиум", "")
+	i := New(users, nil, nil, nil, nil, "12345", func(string, ...any) {})
 	i.SetPremiumRepo(newFakePremiumRepo())
 	return i, u.ID
 }

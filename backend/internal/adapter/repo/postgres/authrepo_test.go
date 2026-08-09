@@ -45,13 +45,23 @@ func TestAuthRepo_UserAndDeviceAndToken(t *testing.T) {
 	repo := NewAuthRepo(pool)
 	ctx := context.Background()
 
-	u1, err := repo.UpsertByPhone(ctx, "+702")
+	u1, err := repo.CreateWithName(ctx, "+702", "Денис", "У")
 	if err != nil {
-		t.Fatalf("UpsertByPhone: %v", err)
+		t.Fatalf("CreateWithName: %v", err)
 	}
-	u2, _ := repo.UpsertByPhone(ctx, "+702")
-	if u1.ID != u2.ID {
-		t.Fatalf("upsert created duplicate user: %d != %d", u1.ID, u2.ID)
+	if u1.DisplayName != "Денис У" {
+		t.Fatalf("display_name = %q, want %q", u1.DisplayName, "Денис У")
+	}
+	// Номер уникален: повтор — ErrConflict, а найти существующего можно по номеру.
+	if _, err := repo.CreateWithName(ctx, "+702", "Кто-то", ""); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("CreateWithName duplicate = %v, want ErrConflict", err)
+	}
+	u2, err := repo.ByPhone(ctx, "+702")
+	if err != nil || u1.ID != u2.ID {
+		t.Fatalf("ByPhone = %+v, %v", u2, err)
+	}
+	if _, err := repo.ByPhone(ctx, "+70299999"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("ByPhone unknown = %v, want ErrNotFound", err)
 	}
 
 	_, err = repo.Create(ctx, u1.ID, "web", "browser", "hash-abc", "", "")
@@ -75,7 +85,7 @@ func TestAuthRepo_ProfilePhotoGallery(t *testing.T) {
 	repo := NewAuthRepo(pool)
 	ctx := context.Background()
 
-	u, _ := repo.UpsertByPhone(ctx, "+7100")
+	u, _ := repo.CreateWithName(ctx, "+7100", "Галерея", "")
 
 	// Adding photos promotes each to the current avatar and lists newest-first.
 	p1, err := repo.AddProfilePhoto(ctx, u.ID, "/media/1/content", "")
@@ -118,7 +128,7 @@ func TestAuthRepo_ProfilePhotoGallery(t *testing.T) {
 	}
 
 	// Deleting another user's / unknown photo is a no-op returning the unchanged avatar.
-	other, _ := repo.UpsertByPhone(ctx, "+7101")
+	other, _ := repo.CreateWithName(ctx, "+7101", "Другой", "")
 	op, _ := repo.AddProfilePhoto(ctx, other.ID, "/media/9/content", "")
 	newURL, err = repo.DeleteProfilePhoto(ctx, u.ID, op.ID)
 	if err != nil || newURL != "" {
@@ -135,7 +145,7 @@ func TestAuthRepo_SessionListDelete(t *testing.T) {
 	repo := NewAuthRepo(pool)
 	ctx := context.Background()
 
-	u, _ := repo.UpsertByPhone(ctx, "+790")
+	u, _ := repo.CreateWithName(ctx, "+790", "Сессии", "")
 	d1, _ := repo.Create(ctx, u.ID, "web", "browser", "hash-1", "1.2.3.4", "Almaty, Kazakhstan")
 	_, _ = repo.Create(ctx, u.ID, "phone", "ios", "hash-2", "", "")
 
@@ -165,5 +175,79 @@ func TestAuthRepo_SessionListDelete(t *testing.T) {
 	// Deleting a non-existent / other-user device reports not found.
 	if _, found, _ := repo.Delete(ctx, u.ID, 99999); found {
 		t.Fatal("expected found=false for unknown device")
+	}
+}
+
+// Одноразовые артефакты шагов входа: живая запись читается, истёкшая — нет,
+// удаление сжигает.
+func TestAuthRepo_LoginSteps(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewAuthRepo(pool)
+	ctx := context.Background()
+
+	u, err := repo.CreateWithName(ctx, "+7300", "Шаги", "")
+	if err != nil {
+		t.Fatalf("CreateWithName: %v", err)
+	}
+	live := time.Now().Add(time.Minute)
+	dead := time.Now().Add(-time.Minute)
+
+	// signup_tokens
+	if err := repo.SaveSignUpToken(ctx, "su-hash", "+7301", live); err != nil {
+		t.Fatalf("SaveSignUpToken: %v", err)
+	}
+	if phone, err := repo.SignUpTokenPhone(ctx, "su-hash"); err != nil || phone != "+7301" {
+		t.Fatalf("SignUpTokenPhone = %q, %v", phone, err)
+	}
+	_ = repo.SaveSignUpToken(ctx, "su-hash", "+7301", dead)
+	if _, err := repo.SignUpTokenPhone(ctx, "su-hash"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("истёкший токен регистрации = %v, want ErrNotFound", err)
+	}
+	_ = repo.SaveSignUpToken(ctx, "su-hash", "+7301", live)
+	if err := repo.DeleteSignUpToken(ctx, "su-hash"); err != nil {
+		t.Fatalf("DeleteSignUpToken: %v", err)
+	}
+	if _, err := repo.SignUpTokenPhone(ctx, "su-hash"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("сожжённый токен регистрации = %v, want ErrNotFound", err)
+	}
+
+	// password_recovery_codes
+	next := time.Now().Add(30 * time.Second)
+	if err := repo.SaveRecoveryCode(ctx, "rc-hash", u.ID, "code-hash", live, next); err != nil {
+		t.Fatalf("SaveRecoveryCode: %v", err)
+	}
+	gotUser, gotCode, gotNext, err := repo.RecoveryCode(ctx, "rc-hash")
+	if err != nil || gotUser != u.ID || gotCode != "code-hash" || gotNext.Before(time.Now()) {
+		t.Fatalf("RecoveryCode = %d, %q, %v, %v", gotUser, gotCode, gotNext, err)
+	}
+	_ = repo.SaveRecoveryCode(ctx, "rc-hash", u.ID, "code-hash", dead, next)
+	if _, _, _, err := repo.RecoveryCode(ctx, "rc-hash"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("истёкший код = %v, want ErrNotFound", err)
+	}
+	_ = repo.SaveRecoveryCode(ctx, "rc-hash", u.ID, "code-hash", live, next)
+	if err := repo.DeleteRecoveryCode(ctx, "rc-hash"); err != nil {
+		t.Fatalf("DeleteRecoveryCode: %v", err)
+	}
+	if _, _, _, err := repo.RecoveryCode(ctx, "rc-hash"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("сожжённый код = %v, want ErrNotFound", err)
+	}
+
+	// web_auth_tokens
+	if err := repo.SaveWebAuthToken(ctx, "wt-hash", u.ID, live); err != nil {
+		t.Fatalf("SaveWebAuthToken: %v", err)
+	}
+	if got, err := repo.WebAuthTokenUser(ctx, "wt-hash"); err != nil || got != u.ID {
+		t.Fatalf("WebAuthTokenUser = %d, %v", got, err)
+	}
+	_ = repo.SaveWebAuthToken(ctx, "wt-hash", u.ID, dead)
+	if _, err := repo.WebAuthTokenUser(ctx, "wt-hash"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("истёкший веб-токен = %v, want ErrNotFound", err)
+	}
+	_ = repo.SaveWebAuthToken(ctx, "wt-hash", u.ID, live)
+	if err := repo.DeleteWebAuthToken(ctx, "wt-hash"); err != nil {
+		t.Fatalf("DeleteWebAuthToken: %v", err)
+	}
+	if _, err := repo.WebAuthTokenUser(ctx, "wt-hash"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("сожжённый веб-токен = %v, want ErrNotFound", err)
 	}
 }

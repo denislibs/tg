@@ -21,6 +21,7 @@ type Interactor struct {
 	devices  DeviceRepo
 	codes    CodeRepo
 	pw       PasswordRepo
+	steps    LoginStepRepo // одноразовые токены шагов входа (регистрация/восстановление/веб-токен)
 	devCode  string
 	logf     func(string, ...any)
 	cache    SessionCache       // optional
@@ -29,10 +30,12 @@ type Interactor struct {
 	svc      ServiceNotifier    // optional
 	geo      GeoResolver        // optional
 	premium  PremiumRepo        // optional
+	mail     Mailer             // optional: доставка кода восстановления на почту
 	pub      EventPublisher     // optional: realtime user_update fan-out
 	partners PartnersFunc       // optional: user_update recipient set (shared-chat peers)
 	updates  UpdateLog          // optional: per-user update log for user_update (dense pts)
 	pwFails  *failCounter       // счётчик неудачных попыток пароля на password_token
+	recFails *failCounter       // счётчик неудачных кодов восстановления на password_token
 }
 
 // EventPublisher pushes a realtime WS frame to a user's connected sessions.
@@ -118,8 +121,12 @@ func buildLoginText(ci ClientInfo) string {
 	return b.String()
 }
 
-func New(users UserRepo, devices DeviceRepo, codes CodeRepo, pw PasswordRepo, devCode string, logf func(string, ...any)) *Interactor {
-	return &Interactor{users: users, devices: devices, codes: codes, pw: pw, devCode: devCode, logf: logf, pwFails: newFailCounter()}
+func New(users UserRepo, devices DeviceRepo, codes CodeRepo, pw PasswordRepo, steps LoginStepRepo, devCode string, logf func(string, ...any)) *Interactor {
+	return &Interactor{
+		users: users, devices: devices, codes: codes, pw: pw, steps: steps,
+		devCode: devCode, logf: logf,
+		pwFails: newFailCounter(), recFails: newFailCounter(),
+	}
 }
 
 func (i *Interactor) SetCache(c SessionCache)                    { i.cache = c }
@@ -128,6 +135,7 @@ func (i *Interactor) SetGeoResolver(g GeoResolver)               { i.geo = g }
 func (i *Interactor) SetRevocationNotifier(n RevocationNotifier) { i.revoker = n }
 func (i *Interactor) SetQRStore(q QRStore)                       { i.qr = q }
 func (i *Interactor) SetPremiumRepo(p PremiumRepo)               { i.premium = p }
+func (i *Interactor) SetMailer(m Mailer)                         { i.mail = m }
 func (i *Interactor) SetPublisher(p EventPublisher)              { i.pub = p }
 func (i *Interactor) SetPartners(f PartnersFunc)                 { i.partners = f }
 func (i *Interactor) SetUpdateLog(u UpdateLog)                   { i.updates = u }
@@ -154,6 +162,11 @@ type SignInResult struct {
 	PasswordNeeded bool
 	PasswordToken  string
 	Hint           string
+	// Номер подтверждён, но аккаунта с ним нет: вместо сессии выдан одноразовый
+	// SignUpToken — клиент показывает форму имени и зовёт SignUp
+	// (Telegram auth.authorizationSignUpRequired).
+	SignUpRequired bool
+	SignUpToken    string
 }
 
 func (i *Interactor) SignIn(ctx context.Context, rawPhone, suppliedCode, deviceName, platform string) (SignInResult, error) {
@@ -168,24 +181,21 @@ func (i *Interactor) SignIn(ctx context.Context, rawPhone, suppliedCode, deviceN
 	if !domain.CodeMatches(stored, suppliedCode) {
 		return SignInResult{}, domain.ErrInvalidCode
 	}
-	user, err := i.users.UpsertByPhone(ctx, phone)
+	user, err := i.users.ByPhone(ctx, phone)
+	if errors.Is(err, domain.ErrNotFound) {
+		// Незнакомый номер: аккаунт НЕ создаём — отправляем на шаг регистрации.
+		return i.startSignUp(ctx, phone)
+	}
 	if err != nil {
 		return SignInResult{}, err
 	}
 	// Второй фактор: при включённом облачном пароле сессия не выдаётся — только
 	// короткий токен для шага «введите пароль».
-	if i.pw != nil {
-		if pwHash, hint, _, err := i.pw.Password(ctx, user.ID); err == nil && pwHash != nil {
-			pwToken, pwTokenHash, err := domain.GenerateToken()
-			if err != nil {
-				return SignInResult{}, err
-			}
-			if err := i.pw.SavePasswordToken(ctx, pwTokenHash, user.ID, time.Now().Add(passwordTokenTTL)); err != nil {
-				return SignInResult{}, err
-			}
-			_ = i.codes.DeleteCode(ctx, phone)
-			return SignInResult{PasswordNeeded: true, PasswordToken: pwToken, Hint: hint}, nil
-		}
+	if res, needed, err := i.startPasswordStep(ctx, user.ID); err != nil {
+		return SignInResult{}, err
+	} else if needed {
+		_ = i.codes.DeleteCode(ctx, phone)
+		return res, nil
 	}
 	res, err := i.mintSession(ctx, user, deviceName, platform)
 	if err != nil {
@@ -193,6 +203,27 @@ func (i *Interactor) SignIn(ctx context.Context, rawPhone, suppliedCode, deviceN
 	}
 	_ = i.codes.DeleteCode(ctx, phone)
 	return res, nil
+}
+
+// startPasswordStep выдаёт одноразовый password_token, если у пользователя
+// включён облачный пароль. needed=false — пароля нет, вход продолжается сессией.
+// Общий шаг для SignIn и SignImport.
+func (i *Interactor) startPasswordStep(ctx context.Context, userID int64) (SignInResult, bool, error) {
+	if i.pw == nil {
+		return SignInResult{}, false, nil
+	}
+	pwHash, hint, _, err := i.pw.Password(ctx, userID)
+	if err != nil || pwHash == nil {
+		return SignInResult{}, false, nil // нет пароля (или профиль не читается) — обычный вход
+	}
+	pwToken, pwTokenHash, err := domain.GenerateToken()
+	if err != nil {
+		return SignInResult{}, false, err
+	}
+	if err := i.pw.SavePasswordToken(ctx, pwTokenHash, userID, time.Now().Add(passwordTokenTTL)); err != nil {
+		return SignInResult{}, false, err
+	}
+	return SignInResult{PasswordNeeded: true, PasswordToken: pwToken, Hint: hint}, true, nil
 }
 
 // mintSession выдаёт новую сессию (строка devices + токен) и шлёт login-alert.

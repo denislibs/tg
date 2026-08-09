@@ -2,7 +2,6 @@ package http
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -20,17 +19,10 @@ func TestMe_RequiresToken(t *testing.T) {
 
 func TestMe_WithToken(t *testing.T) {
 	h := newTestRouter(t)
-	_ = postJSON(t, h, "/auth/request_code", map[string]string{"phone": "+79990000000"})
-	rec := postJSON(t, h, "/auth/sign_in", map[string]string{
-		"phone": "+79990000000", "code": "12345",
-	})
-	var signin struct {
-		Token string `json:"token"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &signin)
+	token, _ := loginViaHTTP(t, h, "+79990000000")
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/me", nil)
-	req.Header.Set("Authorization", "Bearer "+signin.Token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	rec2 := httptest.NewRecorder()
 	h.ServeHTTP(rec2, req)
 	if rec2.Code != http.StatusOK {

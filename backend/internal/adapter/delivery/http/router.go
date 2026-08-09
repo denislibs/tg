@@ -32,7 +32,11 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 	authH := NewAuthHandler(authUC)
 	r.Post("/auth/request_code", authH.RequestCode)
 	r.Post("/auth/sign_in", authH.SignIn)
+	r.Post("/auth/sign_up", authH.SignUp)
 	r.Post("/auth/check_password", authH.CheckPassword)
+	r.Post("/auth/password/recover", authH.RequestPasswordRecovery)
+	r.Post("/auth/password/recover/confirm", authH.ConfirmPasswordRecovery)
+	r.Post("/auth/sign_import", authH.SignImport)
 	if passkeyH != nil {
 		r.Post("/auth/passkey/begin", passkeyH.BeginLogin)
 		r.Post("/auth/passkey/finish", passkeyH.FinishLogin)
@@ -405,6 +409,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Delete("/sessions/{deviceID}", sh.Revoke)
 		pr.Post("/auth/logout", sh.Logout)
 		pr.Post("/auth/qr/confirm", authH.QRConfirm)
+		pr.Post("/auth/web_token", authH.NewWebAuthToken)
 	})
 	return r
 }
