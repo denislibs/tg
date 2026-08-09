@@ -42,12 +42,28 @@ export interface Collapsable {
   fold: () => void
 }
 
+// tweb `liteMode.isAvailable('animations')` — у нас гейт CSS-анимаций это
+// класс `body.animation-level-2` (index.html).
+const animationsAvailable = () => document.body.classList.contains('animation-level-2')
+
 export default function useCollapsable(props: CollapsableOptions): Collapsable {
-  const [progress, setProgress] = useState<number>(STATE_FOLDED)
+  const [progress, _setProgress] = useState<number>(STATE_FOLDED)
   const [isTransition, setIsTransition] = useState(false)
 
+  // tweb useCollapsable.ts:29-32: смена состояния СРАЗУ поднимает isTransition,
+  // не дожидаясь transitionstart, — иначе кадр между setProgress и стартом
+  // перехода контейнер уже кликабелен (disable-hover снят), а он ещё едет.
   const progressRef = useRef(progress)
   progressRef.current = progress
+
+  const setProgress = useCallback((value: number) => {
+    // отступление от tweb: холостую установку того же значения отбрасываем —
+    // иначе isTransition поднялся бы, а transitionend его не снял бы (перехода
+    // нет) и контейнер навсегда остался бы под disable-hover.
+    if (value === progressRef.current) return
+    if (animationsAvailable()) setIsTransition(true)
+    _setProgress(value)
+  }, [])
   const optsRef = useRef(props)
   optsRef.current = props
 
@@ -70,9 +86,13 @@ export default function useCollapsable(props: CollapsableOptions): Collapsable {
       e?.preventDefault()
       e?.stopPropagation()
     }
-  }, [])
+  }, [setProgress])
 
-  const fold = useCallback(() => setProgress(STATE_FOLDED), [])
+  // отступление от tweb: там `fold()` = `scrollTo(progress(), false)` — прогресс
+  // едет к 1 покадрово за 125 мс (animateSingle). Дробный прогресс имеет смысл
+  // только вместе с закороченной ветвью onMove; в бинарном режиме он даёт лишь
+  // рваный кадр поверх CSS-перехода, поэтому ставим состояние сразу.
+  const fold = useCallback(() => setProgress(STATE_FOLDED), [setProgress])
 
   // Колесо на .connection-status-bottom (tweb: listenWheelOn, passive: false).
   useEffect(() => {

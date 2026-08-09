@@ -28,3 +28,12 @@
     transition: opacity .15s ease, visibility 0s;
   }
 }
+
+// tweb `src/scss/components/_global.scss:198-201`. Живёт там в общем партиале,
+// которого у нас пока нет; свёрнутый ряд историй без него ловит на себя клики
+// по полю поиска и по первой строке чат-листа (у `.ListContainer`
+// `pointer-events: all`, а сам ряд лежит поверх шапки и верха списка).
+.disable-hover/* ,
+.disable-hover * */ {
+  pointer-events: none !important;
+}

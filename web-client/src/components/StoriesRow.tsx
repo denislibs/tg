@@ -1,17 +1,26 @@
 // Ряд историй — порт tweb `src/components/stories/list.tsx`.
 //
-// Дерево (живой DOM §2): `.stories-list > .ListContainer > .scrollable.scrollable-x > .List > .ListItem`.
-// `.stories-list` высотой 0 (styles/tweb/_storiesList.scss) — место под ряд
-// освобождает `.connection-status-bottom`, сдвигаясь на `92px - --stories-scrolled`.
+// Дерево (tweb appDialogsManager.ts:606,825 + index.html):
+//   .item-main > .sidebar-header + .stories-list + .sidebar-content
+//   .stories-list  — height: 0, z-index: 1, pointer-events: none (_storiesList.scss)
+//     .ListContainer — height: 92px, pointer-events: all, translateY(progress * -69px)
+//       .scrollable.scrollable-x
+//         .List > .ListItem × n
+// Ряд НЕ занимает места в потоке (нулевая высота) и выпадает поверх .sidebar-content.
+// Место под него освобождает `.connection-status-bottom` внутри #chatlist-container:
+// `transform: translateY(calc(92px - var(--stories-scrolled)))` (_leftSidebar.scss:483-497),
+// где `--stories-scrolled` пишет сюда же этот компонент (list.tsx:235).
 //
-// Сворачивание (useCollapsable, прогресс 0..1, на практике 0/1):
-//   • контейнер едет вверх на `progress * MOVE_Y`;
-//   • на `setScrolledOn` (#chatlist-container) пишется
-//     `--stories-scrolled: progress * CONTAINER_HEIGHT` — это опускает/поднимает список;
-//   • аватары летят в правый край поля поиска (`foldInto`) и уменьшаются:
-//     те, что попадают в стек — до 26.67/48, остальные — до 0.2.
+// Сворачивание (useCollapsable, прогресс ДВОИЧНЫЙ 0/1 — дробная ветка в tweb
+// закорочена `if(isWheel || true)`, плавность даёт CSS-переход
+// `transform var(--transition-standard-in)` = .3s cubic-bezier(.4,0,.2,1)):
+//   • свёрнуто (progress=1): контейнер уехал на -69px, --stories-scrolled=92px
+//     (список стоит вплотную к шапке), аватарки улетели к правому краю поля
+//     поиска и сжались, подписи погашены (opacity 1 - progress*1.25);
+//   • развёрнуто (progress=0): контейнер на месте, --stories-scrolled=0px —
+//     список уехал вниз ровно на высоту ряда (92px).
 // Формулы `calculateMovement` перенесены из tweb дословно.
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from 'react'
 import classNames from '../shared/lib/classNames'
 import TgIcon from './TgIcon'
 import Avatar from '../shared/ui/Avatar'
@@ -33,7 +42,17 @@ const MOVE_Y = -69
 const CONTAINER_PADDING = 6
 const CONTAINER_HEIGHT = 92
 
-const UNSEEN_RING = 'linear-gradient(215deg, #34c76f -1.61%, #3da1fd 97.44%)'
+// tweb avatarNew.tsx:191-203 `calculateSegmentsDimensions(54)`: у аватарки с
+// историями внешний узел остаётся 54px и получает padding (54-48)/2 = 3px, а
+// внутренняя аватарка — 48px. Кольцо (`.avatar-stories-simple`) — абсолютный
+// оверлей с inset -.25rem, в раскладку не входит.
+const ITEM_AVATAR_INNER_SIZE = Math.round(ITEM_AVATAR_SIZE * (1 - 6 / 54))
+const ITEM_AVATAR_PADDING = (ITEM_AVATAR_SIZE - ITEM_AVATAR_INNER_SIZE) / 2
+
+// Заливка аватарки-плейсхолдера «завести историю» — тот же градиент, что у
+// непрочитанного кольца (tweb _avatar.scss `.avatar-stories-simple.is-unread`).
+const STORY_UNREAD_GRADIENT =
+  'linear-gradient(215.87deg, var(--avatar-color-story-unread-from) -1.61%, var(--avatar-color-story-unread-to) 97.44%)'
 
 /** A row entry derived from the real stories feed. */
 export interface StoryItem {
@@ -76,7 +95,7 @@ export function buildStoryItems(groups: StoryGroup[], meId: number | null): Stor
     items.push({
       key: 'self-add',
       name: 'Моя история',
-      bg: UNSEEN_RING,
+      bg: STORY_UNREAD_GRADIENT,
       text: '',
       hasUnseen: false,
       isMe: true,
@@ -109,6 +128,12 @@ interface Rects {
   container: DOMRect
 }
 
+interface Movement {
+  isOut: boolean
+  isLastIn: boolean
+  style: CSSProperties
+}
+
 /** tweb `calculateMovement` внутри Item — дословно. */
 function itemMovement(
   index: number,
@@ -117,7 +142,7 @@ function itemMovement(
   peersLength: number,
   myIndex: number,
   offsetX: number,
-): { isOut: boolean; style: CSSProperties } | undefined {
+): Movement | undefined {
   const { to: toRect, from: fromRect, container: rect } = rects
 
   const marginEvenly = rect.width > peersLength * ITEM_WIDTH
@@ -157,7 +182,7 @@ function itemMovement(
   const translateX = distanceX * value
   const scaleValue = 1 - (value * (1 - scale))
   style.transform = `translateX(calc(var(--stories-additional-offset, 0px) * ${value} + ${translateX}px)) scale(${scaleValue})`
-  return { isOut, style }
+  return { isOut, isLastIn: !isOut && index === maxIndex, style }
 }
 
 /**
@@ -192,6 +217,7 @@ export default function StoriesRow({
   const items = useMemo(() => buildStoryItems(groups, meId), [groups, meId])
 
   const containerRef = useRef<HTMLDivElement>(null)
+  const scrollableXRef = useRef<HTMLDivElement>(null)
   const [rects, setRects] = useState<Rects | null>(null)
 
   // Узлы элементов ряда по groupIndex — из них морф вьюера берёт аватарку-источник
@@ -209,7 +235,7 @@ export default function StoriesRow({
     shouldIgnore: () => items.length === 0,
   })
 
-  // tweb onResize: три прямоугольника вокруг поля поиска.
+  // tweb onResize (list.tsx:277-284): три прямоугольника вокруг поля поиска.
   const measure = useCallback(() => {
     const input = foldInto()
     const from = input?.parentElement
@@ -222,22 +248,52 @@ export default function StoriesRow({
     })
   }, [foldInto])
 
-  useEffect(() => {
+  // tweb меряет синхронно (onResize() прямо в теле компонента) и переснимает на
+  // mediaSizes 'resize' + rootScope 'resizing_left_sidebar'. У нас это layout-эффект
+  // (до отрисовки — иначе первый кадр ряд рисуется без трансформов) плюс
+  // ResizeObserver на шапке: он ловит и ресайз окна, и смену ширины колонки.
+  useLayoutEffect(() => {
     measure()
-    window.addEventListener('resize', measure)
-    return () => window.removeEventListener('resize', measure)
-  }, [measure])
+    const header = foldInto()?.parentElement?.parentElement
+    if (!header) return
+    const ro = new ResizeObserver(measure)
+    ro.observe(header)
+    return () => ro.disconnect()
+  }, [measure, foldInto])
 
-  // tweb: `props.setScrolledOn.style.setProperty('--stories-scrolled', value * CONTAINER_HEIGHT + 'px')`
-  // — прямо в calculateMovement, то есть на каждый пересчёт прогресса.
-  useEffect(() => {
+  // tweb list.tsx:235 — `--stories-scrolled` пишется прямо в calculateMovement,
+  // то есть в том же кадре, что и transform контейнера.
+  useLayoutEffect(() => {
     setScrolledOn()?.style.setProperty('--stories-scrolled', `${progress * CONTAINER_HEIGHT}px`)
   }, [progress, setScrolledOn])
 
-  // tweb: «свернуть, когда истории пропали»
+  // отступление от tweb: там ряд из дерева не исчезает, у нас — исчезает (форум).
+  // Без сброса на свёрнутое значение список остался бы опущенным на 92px под
+  // рядом, которого уже нет.
+  useEffect(() => () => {
+    setScrolledOn()?.style.setProperty('--stories-scrolled', `${CONTAINER_HEIGHT}px`)
+  }, [setScrolledOn])
+
+  // tweb list.tsx:246-256: «свернуть, когда истории пропали»
   useEffect(() => {
     if (items.length === 0) fold()
   }, [items.length, fold])
+
+  // tweb list.tsx:222-231: свёрнутый ряд возвращает горизонтальную прокрутку к началу.
+  useEffect(() => {
+    const el = scrollableXRef.current
+    if (el?.scrollLeft) el.scrollTo({ left: 0, behavior: 'smooth' })
+  }, [progress])
+
+  // tweb list.tsx:260-267 — «* lock horizontal scroll when folded».
+  useEffect(() => {
+    if (!folded && !isTransition) return
+    const el = scrollableXRef.current
+    if (!el) return
+    const cancel = (e: WheelEvent) => { e.preventDefault(); e.stopPropagation() }
+    el.addEventListener('wheel', cancel, { capture: true, passive: false })
+    return () => el.removeEventListener('wheel', cancel, { capture: true })
+  }, [folded, isTransition])
 
   const myIndex = items.findIndex((it) => it.isMe)
   const spaceEvenly = rects != null && rects.container.width > items.length * ITEM_WIDTH
@@ -250,15 +306,13 @@ export default function StoriesRow({
   return (
     <div
       ref={containerRef}
-      className={classNames(s.container, folded || isTransition ? s.disableHover : '')}
+      // tweb useCollapsable.ts:194 вешает на контейнер ГЛОБАЛЬНЫЙ `disable-hover`
+      // (_global.scss: pointer-events: none !important) — свёрнутый ряд лежит
+      // поверх шапки и верха списка и не должен перехватывать клики.
+      className={classNames(s.container, folded || isTransition ? 'disable-hover' : '')}
       style={containerStyle}
-      onClick={(e) => {
-        if (progress === STATE_UNFOLDED) return
-        unfold(e)
-        onExpand?.()
-      }}
     >
-      <div className="scrollable scrollable-x">
+      <div ref={scrollableXRef} className="scrollable scrollable-x">
         <div className={classNames(s.list, spaceEvenly ? s.spaceEvenly : '')}>
           {items.map((item, index) => {
             const movement = rects ? itemMovement(index, progress, rects, items.length, myIndex, offsetX) : undefined
@@ -268,10 +322,13 @@ export default function StoriesRow({
 
             const isAdd = item.isMe && item.groupIndex === null
             const seen = !item.hasUnseen
-            const ringBg = isAdd ? 'transparent' : seen ? 'var(--secondary-text-color)' : UNSEEN_RING
-            const onClick = () => {
-              // tweb onItemClick: в свёрнутом виде клик по элементу = клик по контейнеру.
-              if (progress !== STATE_UNFOLDED) return
+            // tweb onItemClick (list.tsx:98-106)
+            const onClick = (e: MouseEvent) => {
+              if (progress !== STATE_UNFOLDED) {
+                unfold(e)
+                onExpand?.()
+                return
+              }
               if (isAdd) onAddStory?.()
               else if (item.groupIndex !== null) onOpen(item.groupIndex, getTarget)
             }
@@ -284,27 +341,44 @@ export default function StoriesRow({
                   if (node) itemNodes.current.set(gi, node)
                   else itemNodes.current.delete(gi)
                 }}
-                className={classNames(s.item, seen && !isAdd ? s.isRead : '')}
+                className={classNames(
+                  s.item,
+                  seen && !isAdd ? s.isRead : '',
+                  movement && !movement.isOut && !movement.isLastIn ? s.isMasked : '',
+                )}
                 style={movement?.style}
                 onClick={onClick}
               >
-                <div className={s.ring} style={{ background: ringBg, opacity: seen && !isAdd ? 0.45 : 1 }}>
-                  <div className={s.ringInner}>
-                    <Avatar background={item.bg} text={item.text} emoji={isAdd ? '➕' : undefined} size={ITEM_AVATAR_SIZE} />
+                {/* tweb avatarNew.tsx:1054-1064: внешний .avatar.has-stories (54px,
+                    padding 3px) → кольцо .avatar-stories-simple + подложка
+                    .avatar-background + внутренняя .avatar 48px. */}
+                <div
+                  className={classNames('avatar', 'avatar-like', `avatar-${ITEM_AVATAR_SIZE}`, 'has-stories')}
+                  style={{ padding: `${ITEM_AVATAR_PADDING}px` }}
+                >
+                  <div>
+                    <div className={classNames('avatar-stories-simple', seen && !isAdd ? 'is-read' : 'is-unread')} />
+                    <div className="avatar-background" />
+                    <Avatar
+                      background={item.bg}
+                      text={item.text}
+                      emoji={isAdd ? '➕' : undefined}
+                      size={ITEM_AVATAR_INNER_SIZE}
+                    />
+                    {/* «+» на своей аватарке — завести историю */}
+                    {item.isMe && !isAdd && onAddStory && (
+                      <div
+                        className={s.addBadge}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onAddStory()
+                        }}
+                        aria-label="Добавить историю"
+                      >
+                        <TgIcon name="add" size={13} />
+                      </div>
+                    )}
                   </div>
-                  {/* "+" add badge on the self avatar (always available to post a story) */}
-                  {item.isMe && !isAdd && onAddStory && (
-                    <div
-                      className={s.addBadge}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onAddStory()
-                      }}
-                      aria-label="Добавить историю"
-                    >
-                      <TgIcon name="add" size={13} />
-                    </div>
-                  )}
                 </div>
                 <div className={s.name}>{item.name}</div>
               </div>

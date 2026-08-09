@@ -66,6 +66,13 @@
   --badge-text-color: #fff;
   --avatar-online-color: var(--primary-color);
   --input-placeholder-color: #9BA0A5;
+  // Кольцо историй вокруг аватарки (tweb base.scss:184-188) — их читает
+  // `.avatar-stories-simple` в tweb/_avatar.scss.
+  --avatar-color-story-unread-from: #34c76f;
+  --avatar-color-story-unread-to: #3da1fd;
+  --avatar-color-story-close-from: #88D93A;
+  --avatar-color-story-close-to: #30B73B;
+  --avatar-color-story-read: var(--secondary-color);
   // ── Шкала размеров шрифта (tweb base.scss:105-115) — единый набор токенов
   // вместо хардкода font-size: NNpx по компонентам. Значения 1:1; шкала
   // ФИКСИРОВАННАЯ (UI-хром не масштабируется настройкой размера текста — им
@@ -267,10 +274,6 @@
   --input-search-border-color: #dfe1e5;
   // тонкая рамка входящего баббла
   --tg-bubbleBorder: rgba(0, 0, 0, 0.04);
-  // подложка баннеров/inline-плашек (NotificationBanner) — нет tweb-аналога, свой
-  // токен; старое значение 1:1 (было тонировано под day-акцент, не по формуле
-  // hover-alpha)
-  --tg-bannerBg: rgba(51, 144, 236, 0.07);
   // ripple 1:1 tweb base.scss:250-251 (rgba(0,0,0,$hover-alpha) = .08)
   --original-ripple-color: rgba(0, 0, 0, #{$hover-alpha});
   --ripple-color: var(--original-ripple-color);
@@ -305,9 +308,6 @@
   // tweb --input-search-border-color night: #2f2f2f
   --input-search-border-color: #2f2f2f;
   --tg-bubbleBorder: rgba(255, 255, 255, 0.04);
-  // подложка баннеров/inline-плашек — нейтрально-белая (не акцентная), старое
-  // значение night/dark 1:1
-  --tg-bannerBg: rgba(255, 255, 255, 0.04);
   // ripple 1:1 tweb base.scss:303-304 (.night)
   --original-ripple-color: rgba(255, 255, 255, #{$hover-alpha});
   --ripple-color: var(--original-ripple-color);
