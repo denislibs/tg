@@ -27,17 +27,19 @@ import {
   playAuthHostEnter,
   playAuthHostExit,
 } from '../../core/accountTransition'
-import { COUNTRIES, countryByPhone, type Country } from './countries'
+import { COUNTRIES, countryByPhone, phoneMask, type Country } from './countries'
 import SignQRCard from './cards/SignQRCard'
 import SignInCard from './cards/SignInCard'
 import AuthCodeCard from './cards/AuthCodeCard'
 import PasswordCard from './cards/PasswordCard'
+import SignUpCard from './cards/SignUpCard'
+import EmailRecoverCard from './cards/EmailRecoverCard'
+import SignImportCard from './cards/SignImportCard'
 import type { ToggleMode } from '../../App'
 import s from './AuthFlow.module.scss'
 
-/** Имена карточек — как в tweb `CardSpec.name` (три оставшихся экрана tweb
- *  — signUp / emailRecover / signImport — у нашего бэкенда нет, см. отчёт). */
-type Card = 'signQR' | 'signIn' | 'authCode' | 'password'
+/** Имена карточек — как в tweb `CardSpec.name`. */
+type Card = 'signQR' | 'signIn' | 'authCode' | 'password' | 'signUp' | 'emailRecover' | 'signImport'
 
 /** Длина кода подтверждения, который шлёт бэкенд. */
 const CODE_LEN = 5
@@ -46,20 +48,38 @@ const CODE_LEN = 5
 // `transition: opacity .18s ease, transform .2s ease` — ждём длинную из двух.
 const CARD_TRANSITION_MS = 200
 
-// Группировка цифр по маске страны (RU 9990000001 → «999 000 00 01») с обрезкой
-// хвоста сверх маски. Без маски (у страны нет pattern в tweb-данных) — как есть.
-const maxDigits = (p: number[]) => p.reduce((a, b) => a + b, 0)
-function formatPhone(digits: string, pattern?: number[]): string {
-  if (!pattern) return digits
-  const d = digits.slice(0, maxDigits(pattern))
-  const groups: string[] = []
-  let i = 0
-  for (const g of pattern) {
-    if (i >= d.length) break
-    groups.push(d.slice(i, i + g))
-    i += g
-  }
-  return groups.join(' ')
+// Порт tweb `helpers/formatPhoneNumber.ts:applyPattern` (ветка national=false):
+// маска берётся В МЕЖДУНАРОДНОЙ форме («7 XXX XXX XX XX»), пробелы вставляются
+// ровно на её позициях, а цифры сверх маски НЕ отбрасываются — остаются хвостом.
+function applyPattern(c: Country, digits: string): string {
+  const pattern = phoneMask(c) || c.code.slice(1)
+  let str = digits
+  pattern.split('').forEach((symbol, idx) => {
+    if (symbol === ' ' && str[idx] !== ' ' && str.length > idx) {
+      str = str.slice(0, idx) + ' ' + str.slice(idx)
+    }
+  })
+  return str
+}
+
+// Порт tweb `formatPhoneNumber`: значение поля целиком МЕЖДУНАРОДНОЕ — из него
+// выделяются цифры, по ним определяется страна, и остаток группируется её маской.
+// Страна не опознана — цифры отдаются как есть (в поле останется «+49…»).
+function formatPhoneNumber(raw: string): { formatted: string; country: Country | undefined } {
+  const digits = raw.replace(/\D/g, '')
+  const country = countryByPhone(digits)
+  return { formatted: country ? applyPattern(country, digits) : digits, country }
+}
+
+// Страна по умолчанию. В tweb её подставляет `help.getNearestDc` (ближайший DC),
+// у нас такой ручки нет — поле стартует с российского кода.
+const DEFAULT_COUNTRY = COUNTRIES.find((c) => c.iso2 === 'RU')!
+
+// tweb `index.ts`: вход с web.telegram.org приходит ссылкой `#?tgWebAuthToken=…`.
+function readWebAuthToken(): string {
+  const q = location.hash.indexOf('?')
+  if (q === -1) return ''
+  return new URLSearchParams(location.hash.slice(q + 1)).get('tgWebAuthToken') ?? ''
 }
 
 /**
@@ -175,44 +195,62 @@ export default function AuthFlow({
   const hostRef = useRef<HTMLDivElement>(null)
   const cardsRef = useRef<HTMLDivElement>(null)
 
-  const [card, setCard] = useState<Card>('signIn')
+  // Ссылка `#?tgWebAuthToken=…` ведёт сразу на импорт сессии (tweb authStateSignImport).
+  const [webAuthToken] = useState(readWebAuthToken)
+  const [card, setCard] = useState<Card>(() => (webAuthToken ? 'signImport' : 'signIn'))
   const renderedCard = useCardTransition(card, cardsRef)
 
   // Номер живёт в хосте: карточка кода показывает его в шапке и шлёт в sign_in,
   // а возврат «карандашом» на signIn не должен терять набранное.
-  const [country, setCountry] = useState<Country>(() => COUNTRIES.find((c) => c.iso2 === 'RU')!)
-  const [phone, setPhone] = useState('')
-  const phoneDigits = phone.replace(/\D/g, '')
-  const fullPhone = `${country.code}${phoneDigits}`
+  //
+  // Модель tweb (`telInputField`): источник истины — ЗНАЧЕНИЕ ПОЛЯ целиком, в
+  // международной форме («+7 701 234 56 78»). Страна из него ВЫВОДИТСЯ, а не
+  // приписывается к нему; поэтому чужой код («+49…») переопределяет страну, а не
+  // склеивается с прежним в «+7 +4…».
+  const [country, setCountry] = useState<Country | undefined>(DEFAULT_COUNTRY)
+  const [phone, setPhone] = useState(DEFAULT_COUNTRY.code)
+  const fullPhone = `+${phone.replace(/\D/g, '')}`
+  // Последняя ЯВНО выбранная из списка страна (tweb `lastCountrySelected`): она
+  // не должна перебиваться детектом при том же телефонном коде (+7 → RU/KZ).
+  const pickedRef = useRef<Country | undefined>(undefined)
 
   // Одноразовый токен + подсказка из sign_in при включённом облачном пароле.
   const [pwToken, setPwToken] = useState('')
   const [pwHint, setPwHint] = useState('')
+  // Токен шага регистрации (ветка `signup_required`).
+  const [signUpToken, setSignUpToken] = useState('')
+  // Маска почты восстановления и момент, раньше которого сервер не отправит код
+  // повторно (`resend_after` с сервера — свой счётчик не заводим).
+  const [recoverPattern, setRecoverPattern] = useState('')
+  const recoverUntilRef = useRef(0)
 
-  // Ввод в поле телефона. Начали с «+» — набирается международный код:
-  // автоопределяем страну по самому длинному совпадению (tweb telInputField /
-  // formatPhoneNumber), после чего в поле остаётся национальная часть.
-  const onPhoneInput = useCallback(
-    (raw: string) => {
-      if (raw.trimStart().startsWith('+')) {
-        const digits = raw.replace(/\D/g, '')
-        const detected = countryByPhone(digits)
-        if (detected) {
-          setCountry(detected)
-          setPhone(formatPhone(digits.slice(detected.code.length - 1), detected.pattern))
-        } else {
-          setPhone(raw) // код ещё не набран целиком
-        }
-        return
-      }
-      setPhone(formatPhone(raw.replace(/\D/g, ''), country.pattern))
-    },
-    [country],
-  )
+  // Ввод в поле телефона — порт `telInputField` + `SignInCard.onInput` из tweb.
+  const onPhoneInput = useCallback((raw: string) => {
+    // tweb: одинокий «+» остаётся как есть (иначе поле нельзя очистить до кода).
+    if (raw.replace(/\++/, '+') === '+') {
+      setPhone('+')
+      setCountry(undefined)
+      return
+    }
+    const { formatted, country: detected } = formatPhoneNumber(raw)
+    setPhone(formatted ? `+${formatted}` : '')
+    setCountry((cur) => {
+      // tweb: страна переопределяется, только если она реально другая И не спорит
+      // с явно выбранной из списка при СОВПАДАЮЩЕМ телефонном коде.
+      if (detected?.name === cur?.name) return cur
+      const picked = pickedRef.current
+      if (picked && detected && picked.code === detected.code) return cur
+      return detected
+    })
+  }, [])
 
+  // tweb `countryInputField.onCountryChange`: выбор страны СБРАСЫВАЕТ номер в
+  // «+код». Детект здесь не запускаем — иначе для «+7» он вернул бы Россию
+  // вместо только что выбранного Казахстана.
   const onCountryChange = useCallback((c: Country) => {
+    pickedRef.current = c
     setCountry(c)
-    setPhone((prev) => formatPhone(prev.replace(/\D/g, ''), c.pattern))
+    setPhone(c.code)
   }, [])
 
   const onPasswordNeeded = useCallback((token: string, hint: string) => {
@@ -220,6 +258,38 @@ export default function AuthFlow({
     setPwHint(hint)
     setCard('password')
   }, [])
+
+  const onSignUpRequired = useCallback((token: string) => {
+    setSignUpToken(token)
+    setCard('signUp')
+  }, [])
+
+  // «Forgot Password?»: код на привязанную почту → карточка восстановления.
+  // Возвращает ключ ошибки для надписи кнопки (tweb кладёт туда `err.type`).
+  const requestRecovery = async (): Promise<string> => {
+    // Сервер уже отправил код и держит паузу — второй запрос вернул бы 429,
+    // а код из первого ещё жив: просто возвращаемся на карточку.
+    if (recoverPattern && Date.now() < recoverUntilRef.current) {
+      setCard('emailRecover')
+      return ''
+    }
+    const res = await managers.auth.requestPasswordRecovery(pwToken)
+    if ('emailPattern' in res) {
+      setRecoverPattern(res.emailPattern)
+      recoverUntilRef.current = Date.now() + res.resendAfter * 1000
+      setCard('emailRecover')
+      return ''
+    }
+    if (res.error === 'resend_too_soon' && recoverPattern) {
+      setCard('emailRecover')
+      return ''
+    }
+    return res.error === 'password_recovery_na'
+      ? 'No recovery email is linked to this account'
+      : res.error === 'password_token_expired'
+        ? 'Session expired. Please sign in again.'
+        : 'Something went wrong. Try again.'
+  }
 
   // ---- добавление второго аккаунта (tweb showBackButton / hostEnter / hostExit) ----
   const [prevAccount] = useState<number | null>(() => {
@@ -257,18 +327,44 @@ export default function AuthFlow({
       <SignQRCard onSignIn={() => setCard('signIn')} onComplete={onComplete} />
     ) : renderedCard === 'authCode' ? (
       <AuthCodeCard
-        phone={`${country.code} ${phone}`}
+        phone={phone}
         fullPhone={fullPhone}
         length={CODE_LEN}
         onEditPhone={() => setCard('signIn')}
         onPasswordNeeded={onPasswordNeeded}
+        onSignUpRequired={onSignUpRequired}
         onComplete={onComplete}
       />
     ) : renderedCard === 'password' ? (
-      <PasswordCard token={pwToken} hint={pwHint} onComplete={onComplete} />
+      <PasswordCard
+        token={pwToken}
+        hint={pwHint}
+        onForgot={requestRecovery}
+        onComplete={onComplete}
+      />
+    ) : renderedCard === 'signUp' ? (
+      <SignUpCard
+        token={signUpToken}
+        onTokenLost={() => setCard('signIn')}
+        onComplete={onComplete}
+      />
+    ) : renderedCard === 'emailRecover' ? (
+      <EmailRecoverCard
+        token={pwToken}
+        emailPattern={recoverPattern}
+        onCancel={() => setCard('password')}
+        onComplete={onComplete}
+      />
+    ) : renderedCard === 'signImport' ? (
+      <SignImportCard
+        webAuthToken={webAuthToken}
+        onPasswordNeeded={onPasswordNeeded}
+        onFailed={() => setCard('signIn')}
+        onComplete={onComplete}
+      />
     ) : (
       <SignInCard
-        country={country}
+        country={country ?? null}
         phone={phone}
         fullPhone={fullPhone}
         onCountryChange={onCountryChange}

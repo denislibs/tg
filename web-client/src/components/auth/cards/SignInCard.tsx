@@ -15,11 +15,11 @@ import { leftPattern, type Country } from '../countries'
 import s from '../AuthFlow.module.scss'
 
 export interface SignInCardProps {
-  /** выбранная страна (источник истины — хост) */
-  country: Country
-  /** национальная часть номера, уже отформатированная по маске страны */
+  /** страна, выведенная из номера или выбранная из списка; null — код не опознан */
+  country: Country | null
+  /** ЗНАЧЕНИЕ поля целиком, в международной форме («+7 701 234 56 78») */
   phone: string
-  /** полный номер (код страны + цифры) для `auth.sendCode` */
+  /** тот же номер без разделителей — для `auth.sendCode` */
   fullPhone: string
   onCountryChange: (country: Country) => void
   /** сырой ввод поля телефона — форматирование и детект страны делает хост */
@@ -50,10 +50,9 @@ export default function SignInCard({
   const [busy, setBusy] = useState(false)
   const telRef = useRef<HTMLDivElement>(null)
 
-  const phoneDigits = phone.replace(/\D/g, '')
-  const canSubmit = phoneDigits.length >= 7 && !busy
-  // Как в tweb: код страны — часть значения поля, отдельного текста слева нет.
-  const telValue = phone ? `${country.code} ${phone}` : country.code
+  // tweb: `setHasValidInput(!!(country || (telInputField.value.length - 1) > 1))` —
+  // либо код страны опознан, либо в поле уже больше одной цифры.
+  const canSubmit = (!!country || phone.replace(/\D/g, '').length > 1) && !busy
 
   const sendCode = async () => {
     if (!canSubmit) return
@@ -130,8 +129,8 @@ export default function SignInCard({
         <TelInput
           autoFocus
           elementRef={telRef}
-          value={telValue}
-          leftPattern={leftPattern(country, telValue)}
+          value={phone}
+          leftPattern={country ? leftPattern(country, phone) : ''}
           error={phoneError}
           label={phoneError ? t('Phone Number Invalid') : t('Phone Number')}
           onInput={(raw) => {

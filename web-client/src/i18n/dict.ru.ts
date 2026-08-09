@@ -1065,6 +1065,28 @@ const ru: Dict = {
     'Ваш аккаунт защищён\nдополнительным паролем',
   'Incorrect password': 'Неверный пароль',
   'Please wait...': 'Пожалуйста, подождите...',
+  // Экран входа: подзаголовок ввода номера и ошибка номера (tweb Login.StartText,
+  // Login.PhoneLabelInvalid)
+  'Please confirm your country code': 'Пожалуйста, подтвердите код страны',
+  'and enter your phone number.': 'и введите номер телефона.',
+  'Phone Number Invalid': 'Неверный номер телефона',
+  // Регистрация (tweb signUp: YourName, Login.Register.Subtitle, FirstName,
+  // LastName, StartMessaging)
+  'Your Name': 'Ваше имя',
+  'Enter your name and\nadd a profile photo': 'Укажите своё имя\nи добавьте фото профиля',
+  'First name (required)': 'Имя (обязательно)',
+  'Last name (optional)': 'Фамилия (необязательно)',
+  'Start Messaging': 'Начать общение',
+  'Please enter your name': 'Пожалуйста, введите имя',
+  'Name is too long': 'Слишком длинное имя',
+  'Too many attempts. Please try again later.': 'Слишком много попыток. Попробуйте позже.',
+  // Восстановление доступа по почте (tweb Login.ResetPassword.*)
+  'Forgot Password?': 'Забыли пароль?',
+  'Reset Password': 'Сброс пароля',
+  'Enter the code we just sent to your email': 'Введите код, отправленный на почту',
+  'Code expired. Please request a new one.': 'Код истёк. Запросите новый.',
+  'No recovery email is linked to this account': 'К аккаунту не привязана почта',
+  'Session expired. Please sign in again.': 'Сессия истекла. Войдите заново.',
   // Черновики (tweb Draft/PrivacyDeleteCloudDrafts)
   Draft: 'Черновик',
   'Delete All Cloud Drafts': 'Удалить все черновики',

@@ -6,10 +6,10 @@
 // Ошибку tweb не выносит отдельной строкой: на поле вешается `.error`, а текст
 // уезжает в НАДПИСЬ КНОПКИ (`setNextKey('PASSWORD_HASH_INVALID')`) — здесь так же.
 //
-// Ссылки «Forgot Password?» у нас НЕТ: в tweb она ведёт на восстановление по
-// e-mail (`passwordManager.requestRecovery` → карточка emailRecover), а при
-// `PASSWORD_RECOVERY_NA` — на сброс аккаунта. Ни того, ни другого на нашем
-// бэкенде нет, а мёртвая ссылка хуже её отсутствия (см. отчёт волны).
+// «Forgot Password?» — `span.i18n.forgotLink > a[href="#"]` между полем и кнопкой,
+// ведёт на восстановление по e-mail (`passwordManager.requestRecovery` → карточка
+// emailRecover). Ветки «сброс аккаунта» при `PASSWORD_RECOVERY_NA` у нас нет —
+// сервер такую операцию не умеет, поэтому отказ показывается надписью кнопки.
 import { useState } from 'react'
 import TgIcon from '../../TgIcon'
 import classNames from '../../../shared/lib/classNames'
@@ -26,6 +26,9 @@ export interface PasswordCardProps {
   token: string
   /** подсказка к паролю с сервера (может быть пустой) */
   hint: string
+  /** «Forgot Password?» — хост шлёт код на почту и уводит на emailRecover;
+   *  возвращает ключ ошибки для надписи кнопки ('' — ушли на восстановление) */
+  onForgot: () => Promise<string>
   /** вход завершён */
   onComplete: () => void
 }
@@ -33,7 +36,7 @@ export interface PasswordCardProps {
 // tweb mediaSizes.isMobile ? 100 : 130
 const MONKEY_SIZE = 130
 
-export default function PasswordCard({ token, hint, onComplete }: PasswordCardProps) {
+export default function PasswordCard({ token, hint, onForgot, onComplete }: PasswordCardProps) {
   const t = useT()
   const managers = useManagers()
 
@@ -41,9 +44,26 @@ export default function PasswordCard({ token, hint, onComplete }: PasswordCardPr
   const [busy, setBusy] = useState(false)
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
+  // Отказ восстановления по почте — тоже в надпись кнопки, отдельной строки под
+  // него в tweb нет (`._forgotLink` несёт только саму ссылку).
+  const [forgotError, setForgotError] = useState('')
 
   // Надпись кнопки — как в tweb `nextKey`: Next → Please wait… → текст ошибки.
-  const nextLabel = busy ? t('Please wait...') : error ? t('Incorrect password') : t('Next')
+  const nextLabel = busy
+    ? t('Please wait...')
+    : error
+      ? t('Incorrect password')
+      : forgotError
+        ? t(forgotError)
+        : t('Next')
+
+  const forgot = async () => {
+    if (busy) return
+    setForgotError('')
+    setBusy(true)
+    setForgotError(await onForgot())
+    setBusy(false)
+  }
 
   const submitPassword = async () => {
     if (busy) return
@@ -97,6 +117,7 @@ export default function PasswordCard({ token, hint, onComplete }: PasswordCardPr
             value={password}
             onChange={(e) => {
               setError(false)
+              setForgotError('')
               setPassword(e.target.value)
             }}
             onKeyDown={(e) => {
@@ -118,6 +139,18 @@ export default function PasswordCard({ token, hint, onComplete }: PasswordCardPr
             <TgIcon name={showPw ? 'eye2' : 'eye1'} size="1.5rem" />
           </span>
         </div>
+
+        <span className={classNames('i18n', s.forgotLink)}>
+          <a
+            href="#"
+            onClick={(e) => {
+              e.preventDefault()
+              void forgot()
+            }}
+          >
+            {t('Forgot Password?')}
+          </a>
+        </span>
 
         {/* отступление от tweb: в оригинале на время отправки внутрь кнопки
             добавляется `svg.preloader-circular` СОСЕДОМ к `span.i18n`; наш

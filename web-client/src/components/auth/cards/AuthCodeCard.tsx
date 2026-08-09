@@ -29,6 +29,8 @@ export interface AuthCodeCardProps {
   onEditPhone: () => void
   /** сервер потребовал облачный пароль (SESSION_PASSWORD_NEEDED) */
   onPasswordNeeded: (token: string, hint: string) => void
+  /** номер подтверждён, аккаунта нет — шаг регистрации (auth.authorizationSignUpRequired) */
+  onSignUpRequired: (token: string) => void
   /** вход завершён */
   onComplete: () => void
 }
@@ -42,6 +44,7 @@ export default function AuthCodeCard({
   length,
   onEditPhone,
   onPasswordNeeded,
+  onSignUpRequired,
   onComplete,
 }: AuthCodeCardProps) {
   const t = useT()
@@ -61,6 +64,10 @@ export default function AuthCodeCard({
       const res = await managers.auth.signIn(fullPhone, value, 'web', 'browser')
       if (res.passwordNeeded) {
         onPasswordNeeded(res.passwordToken, res.hint)
+        return
+      }
+      if (res.signUpRequired) {
+        onSignUpRequired(res.signUpToken)
         return
       }
       onComplete()
