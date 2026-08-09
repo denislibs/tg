@@ -21,8 +21,11 @@
        animation-level), переключение по настройке reduceMotion — фаза 7;
        rounded-sections — из разметки tweb, живой DOM его подтверждает;
        has-horizontal-folders — папки табами над списком (а не вертикальной
-       колонкой): от него зависит показ .folders-tabs-scrollable. -->
-  <body class="rounded-sections animation-level-2 has-horizontal-folders">
+       колонкой): от него зависит показ .folders-tabs-scrollable;
+       has-auth-pages — как в tweb стоит статически в HTML; снимается
+       AuthFlow/Shell после doubleRaf() (bootstrapIm.ts:60-61), пока не снят —
+       глушит transition .main-column (styles/tweb/pages/_chats.scss). -->
+  <body class="rounded-sections animation-level-2 has-horizontal-folders has-auth-pages">
     <div id="root"></div>
     <!-- Маунт сториз-вьюера — как в tweb (public/index.html:115): отдельный узел
          в конце body, в него портируется StoryViewer. На id завязаны стили tweb

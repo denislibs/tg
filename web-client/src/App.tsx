@@ -13,6 +13,7 @@ import ShellLayout from './components/shell/ShellLayout'
 import AuthFlow from './components/auth/AuthFlow'
 import classNames from './shared/lib/classNames'
 import { installColumnWidthsUpdater } from './core/dom/updateColumnWidths'
+import { doubleRaf } from './core/accountTransition'
 // Сущность чата из модели данных; компонент ниже называется так же (как в tweb),
 // поэтому тип импортируется под алиасом.
 import type { Chat as ChatEntity } from './data'
@@ -43,6 +44,15 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   // --left-column-width / --page-chats-padding и класс body.right-column-floats,
   // из которых портированные партиалы раскладывают чат и ленту.
   useLayoutEffect(() => { installColumnWidthsUpdater() }, [])
+  // tweb appImManager.selectTab(CHATLIST) ставит body.is-left-column-shown.
+  // has-auth-pages снимается кадром позже (doubleRaf, bootstrapIm.ts:60-61) —
+  // иначе transition .main-column включится сразу и колонка «въедет» из
+  // офскрина в первом кадре; на логин-старте AuthFlow уже снял класс сам.
+  useLayoutEffect(() => {
+    document.body.classList.add('is-left-column-shown')
+    void doubleRaf().then(() => document.body.classList.remove('has-auth-pages'))
+    return () => { document.body.classList.remove('is-left-column-shown') }
+  }, [])
   useAppBootstrap()
   useShellEnterAnimation()
   useAutoLock()
