@@ -35,8 +35,9 @@ export interface ChatHeaderProps {
   isBot?: boolean // бот-собеседник: скрыть кнопки звонка (у ботов нет звонков)
   /** стек плавающих плашек под топбаром (tweb .topbar-floating-plates) */
   plates?: ReactNode
-  /** плашек нет → контейнер получает .hide (tweb topbar.setFloating) */
-  platesHidden?: boolean
+  /** число видимых плашек — tweb topbar.setFloating: `data-floating` на топбаре,
+   *  а пустой стек прячется классом `.hide` */
+  platesCount?: number
   /** ref на контейнер плейтов — его высоту меряет Chat (tweb setFloating) */
   platesRef?: Ref<HTMLDivElement>
   // The only thing the header needs from the parent for search: jump the feed to a
@@ -50,7 +51,7 @@ export interface ChatHeaderProps {
 
 function ChatHeader({
   chat, avatarSrc, peerOnline, typingActive, typingText, typingKind, status, online,
-  isBot, plates, platesHidden, platesRef, onJumpToSeq, onBack, onToggleInfo, onOpenMenu,
+  isBot, plates, platesCount = 0, platesRef, onJumpToSeq, onBack, onToggleInfo, onOpenMenu,
 }: ChatHeaderProps) {
   const { start: startCall } = useCall()
   const search = useChatHeaderSearch(chat, onJumpToSeq)
@@ -78,6 +79,7 @@ function ChatHeader({
         <motion.div
           key="normal"
           className={classNames('sidebar-header', 'topbar', 'has-avatar')}
+          data-floating={platesCount}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -155,7 +157,7 @@ function ChatHeader({
             </div>
           </div>
           {/* Стек плавающих плашек под топбаром (пин, теги «Избранного», …) */}
-          <div ref={platesRef} className={classNames('topbar-floating-plates', platesHidden ? 'hide' : '')}>{plates}</div>
+          <div ref={platesRef} className={classNames('topbar-floating-plates', platesCount === 0 ? 'hide' : '')}>{plates}</div>
         </motion.div>
       )}
     </AnimatePresence>

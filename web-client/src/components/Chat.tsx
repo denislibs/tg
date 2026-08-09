@@ -64,6 +64,7 @@ import { type MessageEntity } from '../core/models'
 import type { InlineResult } from '../core/managers/botsManager'
 import { openWebApp } from '../core/webapp'
 import { useSearchStore } from '../stores/searchStore'
+import { useAudioStore } from '../stores/audioStore'
 import { useChatPopups } from '../core/hooks/useChatPopups'
 import { clearPopups, openPopup } from '../stores/popupStore'
 import DatePickerPopup, { DATE_PICKER_POPUP_KIND } from './DatePickerPopup'
@@ -87,10 +88,23 @@ const MediaLightbox = lazy(() => import('./messages/MediaLightbox'))
 // (reply-плашка / многострочный инпут). Маску фейдов считает CSS
 // (styles/tweb/_chat.scss `.bubbles-scrollable`), а не JS.
 const REM = 16
-const padTop = (narrow: boolean, platesPx: number) => Math.round((narrow ? 3.5 : 4.5) * REM) + platesPx
+const padTop = (narrow: boolean, floatingPx: number) => Math.round((narrow ? 3.5 : 4.5) * REM) + floatingPx
 const padBottom = (narrow: boolean, surplusPx: number) => Math.round((narrow ? 3.5 : 4) * REM) + surplusPx
 // tweb topbar.setFloating: зазор между топбаром и стеком плейтов.
 const TOPBAR_GAP = 8
+// Плашка плеера стоит НАД топбаром и сдвигает его вниз на
+// --topbar-floating-audio-height = --topbar-audio-height (3rem) + --plates-gap
+// (0.5rem) — _chatTopbar.scss:7-9 по body.is-pinned-audio-shown (класс ставит
+// NowPlayingBar). Высота плашки в tweb захардкожена там же: createChatAudio →
+// createTopbarPlate({modifier: 'audio', height: 48}).
+// отступление от tweb: tweb отдаёт в chat.updatePinnedFloatingHeight только
+// floatingHeight (стек .topbar-floating-plates), хотя его же
+// --pinned-floating-height (topbar.ts:1571-1574), --chat-padding-top и
+// .bubbles-viewport считают плашки плеера/звонка. Из-за этого распорка ленты
+// недобирает ровно высоту плеера, и при играющем аудио верхнее сообщение
+// уезжает под топбар (проверено на референсе :8099: топбар 16→72, распорка
+// осталась 72px). Считаем распорку по тому же набору, что и CSS-переменная.
+const AUDIO_PLATE_FLOATING_HEIGHT = 56
 
 // Telegram's per-peer color palette (used to tint reply previews by their author)
 
@@ -393,8 +407,13 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // tweb --chat-input-height-surplus (chat.ts setChatInputSurplus).
   const [inputSurplus, setInputSurplus] = useState(0)
   const chatInputRef = useMeasuredHeight((h) => setInputSurplus(Math.max(0, h - REM * 3)))
+  // Плашка плеера — не часть стека .topbar-floating-plates: она лежит выше
+  // топбара и двигает его вниз (см. AUDIO_PLATE_FLOATING_HEIGHT). В резерв
+  // ленты она входит так же, как в --pinned-floating-height.
+  const audioPlateShown = useAudioStore((st) => st.track != null)
+  const floatingHeight = platesHeight + (audioPlateShown ? AUDIO_PLATE_FLOATING_HEIGHT : 0)
 
-  const padTopPx = padTop(narrow, platesHeight)
+  const padTopPx = padTop(narrow, floatingHeight)
   const padBottomPx = padBottom(narrow, inputSurplus)
 
   const {
@@ -955,8 +974,10 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // Стек плавающих плашек под топбаром (tweb .topbar-floating-plates): пин-бар и
   // панель тегов «Избранного». Пустой стек прячется классом .hide, как в tweb
   // topbar.setFloating — и тогда лента не резервирует под него место.
-  const hasPinPlate = !thread && !searchOpen && pins.length > 0
-  const hasTagsPlate = isSaved && !thread && savedTagsCount > 0
+  // Число видимых плашек — tweb topbar.setFloating пишет его в
+  // `topbar.container.dataset.floating` и по нему же решает, прятать ли обёртку.
+  const platesCount = (!thread && !searchOpen && pins.length > 0 ? 1 : 0) +
+    (isSaved && !thread && savedTagsCount > 0 ? 1 : 0)
   const plates = (
     <>
       {!thread && (
@@ -1007,7 +1028,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
         <NowPlayingBar />
 
         {thread ? (
-        <div className={classNames('sidebar-header', 'topbar', 'has-avatar')}>
+        <div className={classNames('sidebar-header', 'topbar', 'has-avatar')} data-floating="0">
           <div className="chat-info-container">
             <IconButton onClick={onCloseThread} color="var(--secondary-text-color)" className="sidebar-close-button">
               <TgIcon name="back" />
@@ -1058,7 +1079,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
           online={headerOnline}
           isBot={isBotChat}
           plates={plates}
-          platesHidden={!hasPinPlate && !hasTagsPlate}
+          platesCount={platesCount}
           platesRef={platesRef}
           onJumpToSeq={jumpToSeqE}
           onBack={onBack}
