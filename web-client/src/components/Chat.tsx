@@ -37,6 +37,9 @@ import { useLightbox } from '../core/hooks/useLightbox'
 import { useMessageActions } from '../core/hooks/useMessageActions'
 import { useChannelExtras } from '../core/hooks/useChannelExtras'
 import { useFeedReveal } from '../core/hooks/useFeedReveal'
+import { animateLadder, type LadderStep } from '../core/dom/ladder'
+import { shiftGradientWithScroll } from '../core/chat/activeGradient'
+import liteMode from '../helpers/liteMode'
 import Composer from './Composer'
 import ChatFeed from './messages/ChatFeed'
 import EmptyChatGreeting from './messages/EmptyChatGreeting'
@@ -586,6 +589,68 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // First-load reveal policy: grace-delayed spinner (no flash on cache hits),
   // `feedLoading` to gate the list, and the open-chat ladder arming.
   const { showSpinner, feedLoading, ladderActive } = useFeedReveal({ isRealChat, win, numericChatId })
+
+  // Лестница появления баблов при открытии чата — порт tweb
+  // `bubbles.ts:10363-10460` (animateAsLadder), см. `core/dom/ladder.ts`.
+  // Анимируются НЕ ряды `.bubble`, а их обёртки `.bubble-content-wrapper`
+  // (tweb `bubble.lastElementChild`) плюс аватар группы у последнего сообщения
+  // серии (bubbles.ts:10386-10390). Порядок — снизу вверх: у tweb это `topIds`,
+  // список сообщений «выше целевого», отсортированный от целевого к старым
+  // (bubbles.ts:10347), а при открытии чата целевое — самое новое.
+  // Аналог tweb-овского `chatInner` — `.bubbles-inner`, он же `contentRef`.
+  useLayoutEffect(() => {
+    if (!ladderActive) return
+    const inner = contentRef.current
+    if (!inner) return
+    const steps: LadderStep[] = []
+    for (const bubble of inner.querySelectorAll<HTMLElement>('.bubble')) {
+      const wrapper = bubble.lastElementChild as HTMLElement | null
+      // у дата-разделителя обёртки нет (последний ребёнок — сразу .bubble-content),
+      // в tweb он тоже не участвует в лестнице
+      if (!wrapper?.classList.contains('bubble-content-wrapper')) continue
+      const group = bubble.parentElement
+      const avatar = group?.classList.contains('bubbles-group') && group.lastElementChild === bubble
+        ? group.querySelector<HTMLElement>('.bubbles-group-avatar')
+        : null
+      steps.push(avatar ? [wrapper, avatar] : wrapper)
+    }
+    steps.reverse()
+    void animateLadder(inner, steps)
+  }, [ladderActive, contentRef])
+
+  // Сдвиг градиента обоев. В tweb он привязан НЕ к отправке, а к появлению нового
+  // сообщения, и едет вместе с прокруткой к нему:
+  //   • флаг ставится в обработчике `history_append` (bubbles.ts:1859-1864) — любое
+  //     новое сообщение в этом чате, входящее тоже, и только если
+  //     `liteMode.isAvailable('chat_background')`;
+  //   • применяется в `startCallback` прокрутки (bubbles.ts:4710-4714):
+  //     `gradientRenderer?.toNextPosition(dimensions.getProgress)` — прогресс
+  //     градиента равен прогрессу прокрутки, свободной самоанимации нет;
+  //   • флаг одноразовый (bubbles.ts:4713 `updateGradient = undefined`): если
+  //     прокрутки не было (мы не у низа ленты), сдвиг просто не случается.
+  // До этого мы слали событие `tg-send` из 13 точек отправки, а обои по нему звали
+  // `toNextPosition()` БЕЗ аргумента — ветку самоанимации (gradientRenderer.ts:258-288);
+  // отсюда и жалоба «много нажимаешь — фон сам меняется».
+  const updateGradientRef = useRef(false)
+  const lastFeedKeyRef = useRef<string | null>(null)
+  useLayoutEffect(() => {
+    // 1. tweb history_append — взвести флаг на новое сообщение в открытом чате.
+    const last = feedMsgs[feedMsgs.length - 1]
+    const key = last ? last.clientId ?? (last.id != null ? `m-${last.id}` : null) : null
+    const prev = lastFeedKeyRef.current
+    lastFeedKeyRef.current = key
+    // первый коммит ленты (открытие чата) и подгрузка истории вверх новым
+    // сообщением не считаются — там хвост ленты не меняется
+    if (prev != null && key != null && key !== prev && liteMode.isAvailable('chat_background')) {
+      updateGradientRef.current = true
+    }
+
+    // 2. tweb startCallback — применить флаг, если лента реально едет к низу.
+    // Не у низа (пользователь ушёл в историю) — прокрутки не будет, флаг ждёт.
+    if (!updateGradientRef.current || !atBottomRef.current) return
+    const sc = scrollRef.current
+    if (sc && shiftGradientWithScroll(sc)) updateGradientRef.current = false
+  }, [feedMsgs, scrollRef, atBottomRef])
 
   // (Scroll correction, prepend-restore, jump-scroll, down-arrow pin, and player-offset
   // compensation all live in useChatScroll.)
@@ -1185,7 +1250,6 @@ export default function Chat({ chat, onBack, thread }: Props) {
                 unreadDividerSeq={unreadDividerSeq}
                 selecting={selecting}
                 selected={selected}
-                ladderActive={ladderActive}
                 stickyDateKey={stickyDateKey}
                 feedFns={feedFns}
                 onOpenDiscussion={openDiscussionThread}

@@ -238,17 +238,10 @@
   }
 }
 
-.reactionAnimating {
-  &::before {
-    transition:
-      transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-      opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .reactionCount {
-    transition: color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-}
+// Переходов «оживающего» чипа здесь нет намеренно: `.3s cubic-bezier(.4,0,.2,1)`
+// — это ровно `--transition-standard-in`, и портированный `_reaction.scss:139-153`
+// уже эмитит их для `.reaction.is-chosen.animating` (:before, .reaction-counter,
+// .stacked-avatars-avatar-container). Оба класса чип и так несёт — дубль снят.
 
 // Платная ⭐-реакция (tweb `.reaction.is-paid`): своя пара цветов.
 .starChip {

@@ -226,7 +226,21 @@ export default function RealMediaBubble({
           </button>
         )}
         {!isFit && displaySrc && !videoSrc && (
-          <img className="media-photo thumbnail" src={displaySrc} alt="" loading="lazy" decoding="async" />
+          <img
+            className="media-photo thumbnail"
+            src={displaySrc}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            // Превью проявляется классом `fade-in` (tweb renderMediaWithFadeIn.ts:30
+            // ставит его перед вставкой картинки и снимает по `animationend`, :38-45).
+            // Сама анимация — в партиале: `.media-container-fitted > .thumbnail`
+            // держит opacity .8, а `.fade-in` крутит `thumbnail-fade-in-opacity .2s
+            // ease-in-out forwards` (_chatBubble.scss:874-879). Класс у нас не ставился
+            // нигде — превью появлялось рывком.
+            onLoad={(e) => e.currentTarget.classList.add('fade-in')}
+            onAnimationEnd={(e) => e.currentTarget.classList.remove('fade-in')}
+          />
         )}
         {isFit ? media : (
           <div className="media-container-aspecter" style={{ width: box.width, height: box.height }}>
@@ -347,7 +361,7 @@ function DocRow({ name, size, mime, href, uploadProgress, onCancelUpload, timeCl
       ? `${fmtSize(dl.loaded)} / ${fmtSize(dl.total)}`
       : size ? fmtSize(size) : ''
   // Дерево tweb (живой DOM §3 «документ» + _document.scss):
-  //   div.document[.downloaded][.ext-<ext>]
+  //   div.document[.downloading][.ext-<ext>]
   //     div.document-ico > span.document-ico-text
   //     div.document-name > middle-ellipsis-element
   //     div.document-size > span
@@ -356,7 +370,11 @@ function DocRow({ name, size, mime, href, uploadProgress, onCancelUpload, timeCl
   // классами (в tweb загрузка вешается обработчиком).
   return (
     <a
-      className={classNames('document', ring == null ? 'downloaded' : '', `ext-${ext}`, s.docRow)}
+      // `downloading` — пока крутится кольцо (tweb _document.scss:97-101: уголок
+      // листа при этом свёрнут). Раньше тут стоял `downloaded`, из-за чего
+      // ховер-правила партиала (`&:not(.downloaded)`, :70-83 — расширение гаснет,
+      // уголок разворачивается) не срабатывали никогда.
+      className={classNames('document', ring != null ? 'downloading' : '', `ext-${ext}`, s.docRow)}
       href={href}
       download={name}
       onClick={startDownload}

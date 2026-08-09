@@ -66,25 +66,18 @@
   font-size: inherit;
 }
 
-// tweb `.time-effect` — глиф эффекта сообщения.
+// tweb `.time-effect` (messageRender.ts:87) — глиф эффекта сообщения внутри
+// `.time-inner`. Своих стилей у класса в tweb нет: там это кастом-эмодзи-стикер,
+// размер которому задаёт обёртка. У нас — <button> ради клика-повтора, поэтому
+// остаётся только сброс дефолтов кнопки. Ховер-скейла в tweb нет (эффект
+// переигрывается по клику и по IntersectionObserver, bubbles.ts:2502-2503).
 .effect {
-  width: 0.75rem;
-  height: 0.75rem;
-  position: relative;
-  margin-inline-end: 0.125rem;
-}
-.effectButton {
   padding: 0;
   border: none;
   background: transparent;
   cursor: pointer;
   line-height: 1;
   font-size: var(--font-size-13);
-  transition: transform 0.12s ease;
-
-  &:hover {
-    transform: scale(1.15);
-  }
 }
 
 // tweb `.time.is-block` — время не плавает, а занимает свою строку (RTL / когда
