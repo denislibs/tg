@@ -31,6 +31,7 @@
 // держит контролы запертыми (`locked` = tweb `lockControls(false)`).
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 import classNames from '../../shared/lib/classNames'
+import IconButton from '../../shared/ui/IconButton'
 import Menu, { MenuItem } from '../../shared/ui/Menu'
 import { glyph, type IconName } from '../../core/tgico-icons'
 import { enterPip } from '../../core/pip'
@@ -423,10 +424,11 @@ export default function VideoPlayer({ videoRef, rate, onRateChange, locked, onTo
         <div className="bottom-controls night">
           <div className="left-controls">
             {/* иконки кнопок в tweb ставит replaceButtonIcon → `Icon(name, 'button-icon')`,
-                то есть `span.tgico.button-icon` (button.ts:48-53) */}
-            <button className="btn-icon default__button toggle" type="button" onClick={togglePlay} title={playing ? 'Пауза (Space)' : 'Играть (Space)'}>
+                то есть `span.tgico.button-icon` (button.ts:48-53). Сами кнопки —
+                ButtonIcon(` ${skin}__button …`, {noRipple: true}) (mediaPlayer/index.ts:319) */}
+            <IconButton noRipple className="default__button toggle" onClick={togglePlay} title={playing ? 'Пауза (Space)' : 'Играть (Space)'}>
               <span className="tgico button-icon">{glyph(playing ? 'pause' : 'play')}</span>
-            </button>
+            </IconButton>
 
             <div className="player-volume" onClick={(e) => { if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains('player-volume__icon')) toggleMute() }}>
               <span className="tgico button-icon player-volume__icon" title="Звук (M)">{glyph(volumeIcon(volume, muted))}</span>
@@ -459,10 +461,12 @@ export default function VideoPlayer({ videoRef, rate, onRateChange, locked, onTo
           </div>
 
           <div className="right-controls">
-            <button
+            {/* tweb createPlaybackRateButton → ButtonMenuToggle({icon: `mediaspeed_empty
+                ${skin}__button`}) без buttonOptions, то есть ButtonIcon БЕЗ noRipple
+                (playbackRateButton.tsx:99-101, buttonMenuToggle.ts:95-97) — ripple есть */}
+            <IconButton
               ref={rateBtnRef}
-              className={classNames('btn-icon', 'default__button', 'btn-menu-toggle', menu ? 'menu-open' : '')}
-              type="button"
+              className={classNames('default__button', 'btn-menu-toggle', menu ? 'menu-open' : '')}
               onClick={openMenu}
               title="Скорость"
             >
@@ -475,29 +479,29 @@ export default function VideoPlayer({ videoRef, rate, onRateChange, locked, onTo
                   ) : null
                 })}
               </span>
-            </button>
+            </IconButton>
 
             {/* tweb: PiP-кнопка есть только на десктопе (`!IS_MOBILE`) и только
-                при поддержке браузером */}
+                при поддержке браузером; ButtonIcon(`pip ${skin}__button`, {noRipple: true}) */}
             {!IS_MOBILE && typeof document !== 'undefined' && document.pictureInPictureEnabled && (
-              <button
-                className="btn-icon pip default__button"
-                type="button"
+              <IconButton
+                noRipple
+                className="pip default__button"
                 onClick={() => { const v = videoRef.current; if (v) void enterPip(v) }}
                 title="Картинка в картинке"
               >
                 <span className="tgico button-icon">{glyph('pip')}</span>
-              </button>
+              </IconButton>
             )}
 
-            <button
-              className="btn-icon default__button"
-              type="button"
+            <IconButton
+              noRipple
+              className="default__button"
               onClick={toggleFullscreen}
               title={fullscreen ? 'Свернуть (F)' : 'Во весь экран (F)'}
             >
               <span className="tgico button-icon">{glyph(fullscreen ? 'smallscreen' : 'fullscreen')}</span>
-            </button>
+            </IconButton>
           </div>
         </div>
       </div>

@@ -35,6 +35,8 @@ interface AvatarProps {
   ringColor?: string
   /** дополнительные классы на корне (например .person-avatar из tweb-топбара) */
   className?: string
+  /** id пира — уезжает в `data-peer-id` (tweb avatarNew.tsx:1076) */
+  peerId?: string | number
   /** клик по самому аватару (tweb вешает обработчик на узел .avatar) */
   onClick?: () => void
 }
@@ -45,10 +47,15 @@ interface AvatarProps {
 // (`.avatar-like` даёт --size, line-height и font-size от --multiplier).
 // Онлайн-точка — `.is-online` (псевдоэлемент :after там же).
 //
-// Отступление: tweb красит аватар классом `.avatar-gradient` + `data-color`
-// (7 цветов пира из base.scss). У нас цвет приходит готовой строкой градиента
-// из `gradientFor()` — те же 7 значений, но применяем инлайном; перевод на
-// data-color потребует токенов --peer-avatar-* и правки ~45 мест вызова.
+// Класс `avatar-gradient` в tweb стоит на узле `.avatar` БЕЗУСЛОВНО
+// (avatarNew.tsx:1073 — он в самой строке class, а не в classList), и заливка
+// приходит из `_avatar.scss:14` — `background: linear-gradient(--color-top,
+// --color-bottom)` по `data-color`. Ставим так же.
+//
+// Отступление: `data-color` мы не пишем — цвет приходит готовой строкой градиента
+// из `gradientFor()` (те же 7 значений) и применяется инлайном, поэтому
+// заливка `.avatar-gradient` перекрывается; перевод на data-color потребует
+// токенов --peer-avatar-* и правки ~45 мест вызова.
 export default function Avatar({
   background,
   text,
@@ -58,6 +65,7 @@ export default function Avatar({
   online = false,
   ringColor,
   className,
+  peerId,
   onClick,
 }: AvatarProps) {
   const px = typeof size === 'number' ? size : AVATAR_SIZE[size]
@@ -70,8 +78,9 @@ export default function Avatar({
 
   return (
     <div
-      className={classNames('avatar', 'avatar-like', known ? `avatar-${px}` : '', online ? 'is-online' : '', s.root, className ?? '')}
+      className={classNames('avatar', 'avatar-like', known ? `avatar-${px}` : '', 'avatar-gradient', online ? 'is-online' : '', s.root, className ?? '')}
       style={style}
+      data-peer-id={peerId}
       onClick={onClick}
     >
       {src ? (

@@ -37,6 +37,7 @@
 import { useLayoutEffect, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import IconButton from '../../shared/ui/IconButton'
+import Slider from '../../shared/ui/Slider'
 import classNames from '../../shared/lib/classNames'
 import TgIcon from '../TgIcon'
 import RichText from '../RichText'
@@ -174,9 +175,6 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
   // натуральные размеры direct-src картинки (аватарки) — меты у неё нет
   const [natSize, setNatSize] = useState<{ w: number; h: number } | null>(null)
   const [transform, setTransform] = useState<Transform>({ x: 0, y: 0, scale: ZOOM_INITIAL })
-  // tweb RangeSelector: `.is-focused` на контейнере полосы, пока её тянут
-  // (onMouseDown/onMouseUp) — от него растёт кругляш ползунка (_ckin.scss:375).
-  const [zoomFocused, setZoomFocused] = useState(false)
   const [rotation, setRotation] = useState(0)
   // tweb `.no-transition` на moversContainer во время жеста — трансформ идёт за
   // пальцем/колесом без сглаживания.
@@ -688,41 +686,33 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
       onClick={onWholeClick}
     >
       {/* зум-панель (tweb zoomElements.container, base.ts:366-397): обе кнопки —
-          ButtonIcon({noRipple: true}), полоса — RangeSelector({withTransition: true}) */}
+          ButtonIcon({noRipple: true}), полоса — RangeSelector({withTransition: true}),
+          то есть заполнение ШИРИНОЙ с переходом .2s (_ckin.scss:393-399). Ширину и
+          вертикальные отступы полосы задаёт `.zoom-container` (flex: 1 1 auto),
+          поэтому дефолтную раскладку Slider'а здесь гасим. */}
       <div className={classNames('zoom-container', isZooming ? 'is-visible' : '')}>
-        <button
-          type="button"
-          className={classNames('btn-icon', transform.scale <= ZOOM_MIN ? 'inactive' : '')}
+        <IconButton
+          noRipple
+          className={transform.scale <= ZOOM_MIN ? 'inactive' : ''}
           title="Уменьшить (−)"
           onClick={() => addZoomStep(false)}
-        ><span className="tgico button-icon">{glyph('zoomout')}</span></button>
-        {/* `.with-transition` (а не `.use-transform`): tweb заполняет полосу зума
-            ШИРИНОЙ с переходом .2s (_ckin.scss:393-399) — общий shared/ui/Slider
-            сюда не годится, он всегда рендерит `.use-transform` + scaleX. */}
-        <div
-          className={classNames('progress-line', 'with-transition', zoomFocused ? 'is-focused' : '')}
-          onPointerDown={() => setZoomFocused(true)}
-          onPointerUp={() => setZoomFocused(false)}
-          onPointerCancel={() => setZoomFocused(false)}
-        >
-          <div className="progress-line__filled" style={{ width: `${((transform.scale - ZOOM_MIN) / (ZOOM_MAX - ZOOM_MIN)) * 100}%` }} />
-          <input
-            className="progress-line__seek"
-            type="range"
-            min={ZOOM_MIN}
-            max={ZOOM_MAX}
-            step={0.01}
-            value={transform.scale}
-            onChange={(e) => { const v = Number(e.target.value); setTransform((t) => zoomAround(t, v - t.scale)) }}
-            aria-label="Масштаб"
-          />
-        </div>
-        <button
-          type="button"
-          className={classNames('btn-icon', transform.scale >= ZOOM_MAX ? 'inactive' : '')}
+        ><span className="tgico button-icon">{glyph('zoomout')}</span></IconButton>
+        <Slider
+          withTransition
+          min={ZOOM_MIN}
+          max={ZOOM_MAX}
+          step={0.01}
+          value={transform.scale}
+          onChange={(v) => setTransform((t) => zoomAround(t, v - t.scale))}
+          style={{ width: 'auto', marginBlock: 0 }}
+          ariaLabel="Масштаб"
+        />
+        <IconButton
+          noRipple
+          className={transform.scale >= ZOOM_MAX ? 'inactive' : ''}
           title="Увеличить (+)"
           onClick={() => addZoomStep(true)}
-        ><span className="tgico button-icon">{glyph('zoomin')}</span></button>
+        ><span className="tgico button-icon">{glyph('zoomin')}</span></IconButton>
       </div>
 
       {/* затемнение + центральный «слот» медиа: `.media-viewer-media` — невидимый
@@ -739,7 +729,11 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
 
       <div className="media-viewer-topbar media-viewer-appear">
         <div className="media-viewer-topbar-left">
-          <IconButton className="only-handhelds" title="Закрыть (Esc)" onClick={close}><TgIcon name="close" /></IconButton>
+          {/* мобильная «назад» — единственная кнопка вьюера С ripple (в дампе
+              §9 она `button.btn-icon.only-handhelds.rp` с `div.c-ripple`) */}
+          <IconButton className="only-handhelds" title="Закрыть (Esc)" onClick={close}>
+            <TgIcon name="close" className="button-icon" />
+          </IconButton>
           <div className="media-viewer-author no-select">
             {item?.sender && (
               <Avatar className="media-viewer-userpic" size={44} background={peerColor(item.sender)} text={item.sender.charAt(0)} />
@@ -769,22 +763,22 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
               PiP у видео чата стоит в своём слоте tweb — `.right-controls` плеера;
               здесь остаётся только для видео-аватарки, у которой плеера нет. */}
           {isAvatarVideo && pipSupported() && (
-            <button type="button" className="btn-icon" title="Картинка в картинке" onClick={() => { if (videoElRef.current) void enterPip(videoElRef.current) }}>
+            <IconButton noRipple title="Картинка в картинке" onClick={() => { if (videoElRef.current) void enterPip(videoElRef.current) }}>
               <span className="tgico button-icon">{glyph('pip')}</span>
-            </button>
+            </IconButton>
           )}
-          <button type="button" className="btn-icon" title="Скачать" onClick={download}>
+          <IconButton noRipple title="Скачать" onClick={download}>
             <span className="tgico button-icon">{glyph('download')}</span>
-          </button>
-          <button type="button" className="btn-icon" title="Повернуть (R)" onClick={() => setRotation((r) => r - 90)}>
+          </IconButton>
+          <IconButton noRipple title="Повернуть (R)" onClick={() => setRotation((r) => r - 90)}>
             <span className="tgico button-icon">{glyph('rotate_left')}</span>
-          </button>
-          <button type="button" className="btn-icon" title="Увеличить (+)" onClick={() => { if (isZooming) resetZoom(); else addZoomStep(true) }}>
+          </IconButton>
+          <IconButton noRipple title="Увеличить (+)" onClick={() => { if (isZooming) resetZoom(); else addZoomStep(true) }}>
             <span className="tgico button-icon">{glyph(isZooming ? 'zoomout' : 'zoomin')}</span>
-          </button>
-          <button type="button" className="btn-icon" title="Закрыть (Esc)" onClick={close}>
+          </IconButton>
+          <IconButton noRipple title="Закрыть (Esc)" onClick={close}>
             <span className="tgico button-icon">{glyph('close')}</span>
-          </button>
+          </IconButton>
         </div>
       </div>
 
