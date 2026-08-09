@@ -44,19 +44,22 @@ func (r *MediaRepo) GetByID(ctx context.Context, id int64) (domain.Media, error)
 	return m, err
 }
 
-// UpdateProcessed records server-side processing results (ffprobe dims/duration
-// and the generated thumbnail/poster key). Zero/empty values are left as-is so a
-// probe that only learns dimensions doesn't clobber an existing thumb.
-func (r *MediaRepo) UpdateProcessed(ctx context.Context, id int64, width, height, duration int, thumbKey string) error {
+// UpdateProcessed records server-side processing results (ffprobe dims/duration,
+// audio tags, and the generated thumbnail/poster key). Zero/empty values are left
+// as-is so a probe that only learns dimensions doesn't clobber an existing thumb;
+// a file without title/artist tags leaves those columns NULL.
+func (r *MediaRepo) UpdateProcessed(ctx context.Context, id int64, res usecasemedia.ProcessedMeta) error {
 	q := querier(ctx, r.pool)
 	_, err := q.Exec(ctx,
 		`UPDATE media SET
 		   width     = CASE WHEN $2 > 0 THEN $2 ELSE width END,
 		   height    = CASE WHEN $3 > 0 THEN $3 ELSE height END,
 		   duration  = CASE WHEN $4 > 0 THEN $4 ELSE duration END,
-		   thumb_key = CASE WHEN $5 <> '' THEN $5 ELSE thumb_key END
+		   thumb_key = CASE WHEN $5 <> '' THEN $5 ELSE thumb_key END,
+		   title     = CASE WHEN $6 <> '' THEN $6 ELSE title END,
+		   performer = CASE WHEN $7 <> '' THEN $7 ELSE performer END
 		 WHERE id=$1`,
-		id, width, height, duration, thumbKey)
+		id, res.Width, res.Height, res.Duration, res.ThumbKey, res.Title, res.Performer)
 	return err
 }
 

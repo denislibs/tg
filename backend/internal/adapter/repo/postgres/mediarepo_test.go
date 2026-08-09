@@ -7,6 +7,7 @@ import (
 
 	"github.com/messenger-denis/backend/internal/domain"
 	storepostgres "github.com/messenger-denis/backend/internal/store/postgres"
+	usecasemedia "github.com/messenger-denis/backend/internal/usecase/media"
 )
 
 func seedMediaOwner(t *testing.T, repo *MediaRepo, phone string) int64 {
@@ -81,6 +82,61 @@ func TestMediaRepo_Waveform(t *testing.T) {
 	}
 	if len(got2.Waveform) != 0 {
 		t.Fatalf("expected empty waveform for image, got %v", got2.Waveform)
+	}
+}
+
+// Теги трека, найденные ffprobe, сохраняются через UpdateProcessed и читаются
+// read-моделью сообщений (DimsByIDs). Файл без тегов оставляет колонки NULL —
+// DimsByIDs отдаёт пустые строки, а не падает на scan.
+func TestMediaRepo_AudioTags(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewMediaRepo(pool)
+	access := NewMediaAccessRepo(pool)
+	ctx := context.Background()
+	owner := seedMediaOwner(t, repo, "+791")
+
+	tagged, err := repo.Create(ctx, domain.Media{
+		OwnerID: owner, Bucket: "media", ObjectKey: "song1", Mime: "audio/mpeg",
+		Size: 3300000, FileName: "track.mp3",
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	bare, err := repo.Create(ctx, domain.Media{
+		OwnerID: owner, Bucket: "media", ObjectKey: "song2", Mime: "audio/mpeg",
+		Size: 100500, FileName: "notags.mp3",
+	})
+	if err != nil {
+		t.Fatalf("Create bare: %v", err)
+	}
+
+	if err := repo.UpdateProcessed(ctx, tagged.ID, usecasemedia.ProcessedMeta{
+		Duration: 139, Title: "Track One", Performer: "denis1488",
+	}); err != nil {
+		t.Fatalf("UpdateProcessed tagged: %v", err)
+	}
+	if err := repo.UpdateProcessed(ctx, bare.ID, usecasemedia.ProcessedMeta{Duration: 12}); err != nil {
+		t.Fatalf("UpdateProcessed bare: %v", err)
+	}
+
+	dims, err := access.DimsByIDs(ctx, []int64{tagged.ID, bare.ID})
+	if err != nil {
+		t.Fatalf("DimsByIDs: %v", err)
+	}
+	if d := dims[tagged.ID]; d.Title != "Track One" || d.Performer != "denis1488" || d.Duration != 139 {
+		t.Fatalf("tagged dims = %+v", d)
+	}
+	if d := dims[bare.ID]; d.Title != "" || d.Performer != "" || d.Duration != 12 {
+		t.Fatalf("bare dims = %+v", d)
+	}
+
+	// Повторная обработка без тегов не затирает уже найденные.
+	if err := repo.UpdateProcessed(ctx, tagged.ID, usecasemedia.ProcessedMeta{Duration: 139}); err != nil {
+		t.Fatalf("UpdateProcessed re-run: %v", err)
+	}
+	dims, _ = access.DimsByIDs(ctx, []int64{tagged.ID})
+	if d := dims[tagged.ID]; d.Title != "Track One" || d.Performer != "denis1488" {
+		t.Fatalf("tags clobbered by re-process: %+v", d)
 	}
 }
 

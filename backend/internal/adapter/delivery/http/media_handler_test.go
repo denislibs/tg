@@ -73,7 +73,7 @@ func (f *fakeMediaRepo) GetByID(_ context.Context, id int64) (domain.Media, erro
 	}
 	return f.m, nil
 }
-func (f *fakeMediaRepo) UpdateProcessed(_ context.Context, _ int64, _, _, _ int, _ string) error {
+func (f *fakeMediaRepo) UpdateProcessed(_ context.Context, _ int64, _ usecasemedia.ProcessedMeta) error {
 	return nil
 }
 func (f *fakeMediaRepo) SetUploadID(_ context.Context, _ int64, uploadID string) (string, error) {

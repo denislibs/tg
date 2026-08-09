@@ -37,8 +37,9 @@ const (
 type MediaRepo interface {
 	Create(ctx context.Context, m domain.Media) (domain.Media, error)
 	GetByID(ctx context.Context, id int64) (domain.Media, error) // domain.ErrNotFound if absent
-	// UpdateProcessed records ffprobe dims/duration and the thumbnail key.
-	UpdateProcessed(ctx context.Context, id int64, width, height, duration int, thumbKey string) error
+	// UpdateProcessed records ffprobe dims/duration, the audio tags (title/performer)
+	// and the thumbnail key.
+	UpdateProcessed(ctx context.Context, id int64, res ProcessedMeta) error
 
 	// SetUploadID sets the multipart upload id iff it is currently unset, and
 	// returns the effective (winning) id — so concurrent first parts converge on a
@@ -67,8 +68,20 @@ type UploadedPart struct {
 // ProcessResult is what the media processor extracts/produces from an original.
 type ProcessResult struct {
 	Width, Height, Duration int
+	// Title/Performer — теги трека (ID3 title/artist) для аудио; пустые, если
+	// тегов нет или медиа не аудио. 1:1 tweb documentAttributeAudio.
+	Title, Performer string
 	// Thumb is a generated jpeg thumbnail/poster (nil for non-visual media).
 	Thumb []byte
+}
+
+// ProcessedMeta is the persisted form of a ProcessResult: the thumbnail is already
+// stored, so only its object key travels. Zero/empty fields mean "not learned" and
+// must not clobber what the row already holds.
+type ProcessedMeta struct {
+	Width, Height, Duration int
+	Title, Performer        string
+	ThumbKey                string
 }
 
 // MediaProcessor probes and derives assets from an uploaded original (ffmpeg).

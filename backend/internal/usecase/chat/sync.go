@@ -248,6 +248,8 @@ func (i *Interactor) hydrateMedia(ctx context.Context, msgs []domain.Message) er
 			msgs[idx].MediaDuration = d.Duration
 			msgs[idx].MediaSize = d.Size
 			msgs[idx].MediaName = d.FileName
+			msgs[idx].MediaTitle = d.Title
+			msgs[idx].MediaPerformer = d.Performer
 		}
 	}
 	return nil

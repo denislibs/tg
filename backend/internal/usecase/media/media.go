@@ -216,7 +216,10 @@ func (s *Interactor) process(m domain.Media) {
 			thumbKey = ""
 		}
 	}
-	if err := s.repo.UpdateProcessed(ctx, m.ID, res.Width, res.Height, res.Duration, thumbKey); err != nil {
+	if err := s.repo.UpdateProcessed(ctx, m.ID, ProcessedMeta{
+		Width: res.Width, Height: res.Height, Duration: res.Duration,
+		Title: res.Title, Performer: res.Performer, ThumbKey: thumbKey,
+	}); err != nil {
 		log.Printf("media: process %d: update: %v", m.ID, err)
 	}
 }
