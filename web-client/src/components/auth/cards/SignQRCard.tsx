@@ -1,12 +1,15 @@
 // SignQRCard — вход по QR-коду (порт карточки tweb `pages/cards/SignQRCard.tsx`).
 // Ротация токена и опрос подтверждения живут в карточке: она размонтируется на
 // переходе, и таймеры снимаются вместе с ней (tweb делает то же в onCleanup).
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useT } from '../../../i18n'
 import { useManagers } from '../../../core/hooks/useManagers'
+import { isWebAuthnSupported, getPasskeyAssertion } from '../../../core/webauthnBrowser'
+import GrowHeightReveal from '../../../shared/ui/GrowHeightReveal'
 import MediaHeader from '../MediaHeader'
 import { SecondaryButton } from '../AuthButton'
 import QrCode from '../QrCode'
+import superFormatter from '../superFormatter'
 import s from '../AuthFlow.module.scss'
 
 export interface SignQRCardProps {
@@ -16,16 +19,19 @@ export interface SignQRCardProps {
   onComplete: () => void
 }
 
-// tweb: контейнер 240×240 с padding 16 → рабочая матрица 208×208.
-const QR_BOX = 240
-const QR_SIZE = QR_BOX - 32
+// tweb QR_SIZE = 240 — и контейнер, и матрица рисуются в 240 (× devicePixelRatio
+// в атрибутах канвы: замер живого tweb — 480×480); до 208 CSS её ужимает
+// `.qrCanvas{width/height:100%}` внутри контейнера с padding 16.
+const QR_SIZE = 240
 
 export default function SignQRCard({ onSignIn, onComplete }: SignQRCardProps) {
   const t = useT()
   const managers = useManagers()
 
   const [qrUrl, setQrUrl] = useState('')
-  const [qrError, setQrError] = useState(false)
+  // Пока QR не нарисован, в `._sticker` крутится прелоадер (tweb putPreloader).
+  const [painted, setPainted] = useState(false)
+  const [preloaderVisible, setPreloaderVisible] = useState(true)
   const qrTokenRef = useRef('')
 
   useEffect(() => {
@@ -42,9 +48,8 @@ export default function SignQRCard({ onSignIn, onComplete }: SignQRCardProps) {
         // Host-заголовков прокси и может потерять порт (за nginx →
         // «http://localhost/qr/...»), поэтому ему не доверяем.
         setQrUrl(`${location.origin}/qr/${token}`)
-        setQrError(false)
       } catch {
-        if (alive) setQrError(true)
+        /* следующая ротация повторит попытку — прелоадер остаётся на месте */
       }
     }
     const tick = async () => {
@@ -75,22 +80,46 @@ export default function SignQRCard({ onSignIn, onComplete }: SignQRCardProps) {
     return cleanup
   }, [managers, onComplete])
 
-  const steps = [
-    t('Open Telegram on your phone'),
-    t('Go to Settings → Devices → Link Desktop Device'),
-    t('Point your phone at this screen to confirm login'),
-  ]
+  const onPainted = useCallback(() => setPainted(true), [])
+
+  // Вход по ключу доступа (WebAuthn discoverable credential) — tweb держит эту
+  // кнопку на обеих стартовых карточках (signQR и signIn).
+  const [passkeyBusy, setPasskeyBusy] = useState(false)
+  const passkeyLogin = async () => {
+    if (passkeyBusy) return
+    setPasskeyBusy(true)
+    try {
+      const { session, options } = await managers.auth.passkeyLoginBegin()
+      const assertion = await getPasskeyAssertion(options)
+      await managers.auth.passkeyLoginFinish(session, assertion, 'web', 'browser')
+      onComplete()
+    } catch {
+      setPasskeyBusy(false)
+    }
+  }
 
   return (
     <div className={`${s.card} ${s.pageSignQR}`}>
       <MediaHeader>
         {/* Подложка QR — тематическая (`--light-filled-primary-color`), radius 16;
-            белой карточки и оверлея-логотипа, как было у нас, в tweb нет. */}
-        <MediaHeader.Sticker size={QR_BOX} className={s.qrContainer}>
-          {qrUrl && !qrError ? (
-            <QrCode className={s.qrCanvas} data={qrUrl} size={QR_SIZE} />
-          ) : (
-            <span className="i18n secondary">{qrError ? t('QR недоступен') : t('Обновление…')}</span>
+            логотип вшит в саму матрицу, оверлея поверх QR в tweb нет. */}
+        <MediaHeader.Sticker size={QR_SIZE} className={s.qrContainer}>
+          {/* tweb: `putPreloader(stickerHost, true)` до первой отрисовки, затем
+              прелоадер уезжает `hide-icon .4s forwards`, а канва въезжает
+              `grow-icon .4s forwards`. */}
+          {preloaderVisible && (
+            <div
+              className="preloader"
+              style={painted ? { animation: 'hide-icon .4s forwards' } : undefined}
+              onAnimationEnd={() => setPreloaderVisible(false)}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="preloader-circular" viewBox="25 25 50 50">
+                <circle className="preloader-path" cx="50" cy="50" r="20" fill="none" strokeMiterlimit="10" />
+              </svg>
+            </div>
+          )}
+          {qrUrl && (
+            <QrCode className={s.qrCanvas} data={qrUrl} size={QR_SIZE} onPainted={onPainted} />
           )}
         </MediaHeader.Sticker>
         <MediaHeader.Title>
@@ -102,17 +131,30 @@ export default function SignQRCard({ onSignIn, onComplete }: SignQRCardProps) {
       </MediaHeader>
 
       <ol className={s.qrDescription}>
-        {steps.map((line, i) => (
-          <li key={i} className={s.qrDescriptionItem}>
+        {/* Вторая подсказка несёт разметку словаря: `**…**` → <b>, ' > ' →
+            span.tgico.inline-icon (tweb Login.QR.Help2). */}
+        {[
+          'Open Telegram on your phone',
+          'Go to **Settings** > **Devices** > **Add Device**',
+          'Point your phone at this screen to confirm login',
+        ].map((key, i) => (
+          <li key={key} className={s.qrDescriptionItem}>
             <span className={s.qrDescriptionMarker}>{i + 1}</span>
-            <span className="i18n">{line}</span>
+            <span className="i18n">{superFormatter(t(key))}</span>
           </li>
         ))}
       </ol>
 
       <SecondaryButton arrow onClick={onSignIn}>
-        {t('Log in by phone Number')}
+        {t('Log in by phone number')}
       </SecondaryButton>
+      {/* tweb: LanguageChangeButton в такой же GrowHeightReveal стоит между
+          «войти по номеру» и passkey — у нас его нет (см. отчёт волны). */}
+      <GrowHeightReveal when={isWebAuthnSupported()}>
+        <SecondaryButton arrow disabled={passkeyBusy} onClick={() => void passkeyLogin()}>
+          {t('Log in by passkey')}
+        </SecondaryButton>
+      </GrowHeightReveal>
     </div>
   )
 }

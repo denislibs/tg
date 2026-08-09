@@ -1,10 +1,15 @@
 // PasswordCard — облачный пароль, 2FA (порт карточки tweb
-// `pages/cards/PasswordCard.tsx`): обезьянка подглядывает при показе пароля,
-// поле с «глазком», кнопка Next.
+// `pages/cards/PasswordCard.tsx` + `components/passwordInputField.ts`):
+// обезьянка подглядывает при показе пароля, поле с `stealthy`-ловушками
+// автозаполнения и «глазком» `span.toggle-visible`, кнопка Next.
 //
-// В tweb с этой карточки назад не уходят: там есть только «Forgot Password?»
-// (восстановление по e-mail) — у нашего бэкенда такого эндпоинта нет, поэтому
-// ссылку не рендерим (мёртвый узел).
+// Ошибку tweb не выносит отдельной строкой: на поле вешается `.error`, а текст
+// уезжает в НАДПИСЬ КНОПКИ (`setNextKey('PASSWORD_HASH_INVALID')`) — здесь так же.
+//
+// Ссылки «Forgot Password?» у нас НЕТ: в tweb она ведёт на восстановление по
+// e-mail (`passwordManager.requestRecovery` → карточка emailRecover), а при
+// `PASSWORD_RECOVERY_NA` — на сброс аккаунта. Ни того, ни другого на нашем
+// бэкенде нет, а мёртвая ссылка хуже её отсутствия (см. отчёт волны).
 import { useState } from 'react'
 import TgIcon from '../../TgIcon'
 import classNames from '../../../shared/lib/classNames'
@@ -13,6 +18,7 @@ import { useManagers } from '../../../core/hooks/useManagers'
 import PasswordMonkey from '../../PasswordMonkey'
 import MediaHeader from '../MediaHeader'
 import { PrimaryButton } from '../AuthButton'
+import superFormatter from '../superFormatter'
 import s from '../AuthFlow.module.scss'
 
 export interface PasswordCardProps {
@@ -24,24 +30,33 @@ export interface PasswordCardProps {
   onComplete: () => void
 }
 
+// tweb mediaSizes.isMobile ? 100 : 130
+const MONKEY_SIZE = 130
+
 export default function PasswordCard({ token, hint, onComplete }: PasswordCardProps) {
   const t = useT()
   const managers = useManagers()
 
-  const [error, setError] = useState('')
+  const [error, setError] = useState(false)
   const [busy, setBusy] = useState(false)
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
 
+  // Надпись кнопки — как в tweb `nextKey`: Next → Please wait… → текст ошибки.
+  const nextLabel = busy ? t('Please wait...') : error ? t('Incorrect password') : t('Next')
+
   const submitPassword = async () => {
-    if (busy || !password) return
-    setError('')
+    if (busy) return
+    if (!password) {
+      setError(true)
+      return
+    }
     setBusy(true)
     try {
       await managers.auth.checkPassword(token, password, 'web', 'browser')
       onComplete()
     } catch {
-      setError(t('Invalid password'))
+      setError(true)
     } finally {
       setBusy(false)
     }
@@ -50,15 +65,20 @@ export default function PasswordCard({ token, hint, onComplete }: PasswordCardPr
   return (
     <div className={classNames(s.card, s.pagePassword)}>
       <MediaHeader>
-        <MediaHeader.Sticker size={130}>
-          <PasswordMonkey peeking={showPw} />
+        <MediaHeader.Sticker size={MONKEY_SIZE}>
+          {/* tweb: `._sticker > monkeyContainer > .media-sticker-wrapper` */}
+          <div>
+            <PasswordMonkey peeking={showPw} size={MONKEY_SIZE} />
+          </div>
         </MediaHeader.Sticker>
         <MediaHeader.Title>
           <span className="i18n">{t('Enter Your Password')}</span>
         </MediaHeader.Title>
         {/* без `.secondary` — в tweb подзаголовок этой карточки белый */}
         <MediaHeader.Subtitle>
-          <span className="i18n">{t('Your account is protected with an additional password.')}</span>
+          <span className="i18n">
+            {superFormatter(t('Your account is protected with\nan additional password'))}
+          </span>
         </MediaHeader.Subtitle>
       </MediaHeader>
 
@@ -70,11 +90,13 @@ export default function PasswordCard({ token, hint, onComplete }: PasswordCardPr
             autoFocus
             className={classNames('input-field-input', password ? '' : 'is-empty', error ? 'error' : '')}
             type={showPw ? 'text' : 'password'}
+            name="notsearch_password"
             autoComplete="off"
             required
+            disabled={busy}
             value={password}
             onChange={(e) => {
-              setError('')
+              setError(false)
               setPassword(e.target.value)
             }}
             onKeyDown={(e) => {
@@ -83,11 +105,10 @@ export default function PasswordCard({ token, hint, onComplete }: PasswordCardPr
           />
           <input className="stealthy" type="password" tabIndex={-1} aria-hidden />
           <div className="input-field-border" />
-          {/* в tweb в label лежит подсказка к паролю (state.hint); ошибку показывает
-              класс `.error` на поле — отдельной строки ошибки на этой карточке нет */}
-          <label>
-            <span className="i18n">{error || hint || t('Password')}</span>
-          </label>
+          {/* В tweb в label лежит подсказка к паролю с сервера — как есть, без
+              класса `i18n` (это не строка словаря); своя строка `Password`
+              подставляется только когда подсказки нет. */}
+          <label>{hint ? <span>{hint}</span> : <span className="i18n">{t('Password')}</span>}</label>
           <span
             className="toggle-visible"
             onClick={() => setShowPw((v) => !v)}
@@ -98,8 +119,12 @@ export default function PasswordCard({ token, hint, onComplete }: PasswordCardPr
           </span>
         </div>
 
-        <PrimaryButton disabled={!password} onClick={() => void submitPassword()}>
-          {t('Next')}
+        {/* отступление от tweb: в оригинале на время отправки внутрь кнопки
+            добавляется `svg.preloader-circular` СОСЕДОМ к `span.i18n`; наш
+            AuthButton заворачивает всё содержимое в `span.i18n`, слота под
+            соседний узел у него нет — кружок не рисуем (см. отчёт волны). */}
+        <PrimaryButton disabled={busy} onClick={() => void submitPassword()}>
+          {nextLabel}
         </PrimaryButton>
       </div>
     </div>

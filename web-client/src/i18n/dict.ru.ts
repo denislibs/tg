@@ -1048,6 +1048,23 @@ const ru: Dict = {
   'Last used': 'Использован',
   Created: 'Создан',
   'Log in with a Passkey': 'Войти по ключу доступа',
+  // Экран входа (tweb langSign.ts). `**…**` — жирный, ' > ' — стрелка-иконка,
+  // '\n' — перенос строки; разбор — components/auth/superFormatter.tsx.
+  'Log in by QR Code': 'Вход по QR-коду',
+  'Scan with Telegram app on your phone': 'Отсканируйте в приложении Telegram на телефоне',
+  'Open Telegram on your phone': 'Откройте Telegram на телефоне',
+  'Go to **Settings** > **Devices** > **Add Device**':
+    'Перейдите в **Настройки** > **Устройства** > **Подключить устройство**',
+  'Point your phone at this screen to confirm login':
+    'Наведите телефон на этот экран, чтобы подтвердить вход',
+  'Log in by phone number': 'Войти по номеру телефона',
+  'Log in by passkey': 'Войти по ключу доступа',
+  'We have sent you an SMS\nwith the code.': 'Мы отправили Вам SMS\nс кодом.',
+  'Invalid code': 'Неверный код',
+  'Your account is protected with\nan additional password':
+    'Ваш аккаунт защищён\nдополнительным паролем',
+  'Incorrect password': 'Неверный пароль',
+  'Please wait...': 'Пожалуйста, подождите...',
   // Черновики (tweb Draft/PrivacyDeleteCloudDrafts)
   Draft: 'Черновик',
   'Delete All Cloud Drafts': 'Удалить все черновики',

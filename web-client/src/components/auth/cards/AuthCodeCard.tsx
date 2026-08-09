@@ -2,6 +2,9 @@
 // `pages/cards/AuthCodeCard.tsx`): обезьянка следит за вводом, поле-ячейки
 // (CodeInput), строка ошибки с зарезервированной высотой.
 //
+// Кнопки «Далее» на этой карточке в tweb НЕТ: код уходит на сервер, как только
+// набрана последняя цифра (`onFill`).
+//
 // «Назад» к вводу номера в tweb делает НЕ угловая кнопка, а карандаш рядом с
 // номером в шапке карточки (`.phoneEdit` → navigate('signIn')) — он и здесь.
 import { useState } from 'react'
@@ -11,8 +14,8 @@ import { useT } from '../../../i18n'
 import { useManagers } from '../../../core/hooks/useManagers'
 import TrackingMonkey from '../../TrackingMonkey'
 import MediaHeader from '../MediaHeader'
-import { PrimaryButton } from '../AuthButton'
 import CodeInput from '../CodeInput'
+import superFormatter from '../superFormatter'
 import s from '../AuthFlow.module.scss'
 
 export interface AuthCodeCardProps {
@@ -29,6 +32,9 @@ export interface AuthCodeCardProps {
   /** вход завершён */
   onComplete: () => void
 }
+
+// tweb mediaSizes.isMobile ? 100 : 130
+const STICKER_SIZE = 130
 
 export default function AuthCodeCard({
   phone,
@@ -69,8 +75,17 @@ export default function AuthCodeCard({
   return (
     <div className={classNames(s.card, s.pageAuthCode)}>
       <MediaHeader>
-        <MediaHeader.Sticker size={130}>
-          <TrackingMonkey typed={codeValue.length} length={length} focused={codeFocused} size={130} />
+        <MediaHeader.Sticker size={STICKER_SIZE}>
+          {/* tweb: `._sticker > stickerHost > .media-sticker-wrapper` —
+              stickerHost переживает смену типа кода (обезьянка ↔ jolly_roger) */}
+          <div>
+            <TrackingMonkey
+              typed={codeValue.length}
+              length={length}
+              focused={codeFocused}
+              size={STICKER_SIZE}
+            />
+          </div>
         </MediaHeader.Sticker>
         <MediaHeader.Title>
           <div className={s.phoneWrapper}>
@@ -82,7 +97,8 @@ export default function AuthCodeCard({
           </div>
         </MediaHeader.Title>
         <MediaHeader.Subtitle secondary>
-          <span className="i18n">{t('We have sent you a message with the code.')}</span>
+          {/* перевод строки в словаре — <br> (tweb Login.Code.SentSms) */}
+          <span className="i18n">{superFormatter(t('We have sent you an SMS\nwith the code.'))}</span>
         </MediaHeader.Subtitle>
       </MediaHeader>
 
@@ -96,16 +112,13 @@ export default function AuthCodeCard({
         }}
         onComplete={(v) => void submitCode(v)}
         error={!!error}
+        disabled={busy}
         onFocusChange={setCodeFocused}
       />
 
       {/* высота зарезервирована всегда — появление ошибки не двигает раскладку
           (tweb .errorLabel height: 1lh) */}
       <div className={s.errorLabel}>{error}</div>
-
-      <PrimaryButton disabled={codeValue.length !== length} onClick={() => void submitCode(codeValue)}>
-        {t('Next')}
-      </PrimaryButton>
     </div>
   )
 }
