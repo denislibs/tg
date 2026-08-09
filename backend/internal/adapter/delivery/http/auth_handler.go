@@ -299,8 +299,13 @@ func (h *AuthHandler) ConfirmPasswordRecovery(w http.ResponseWriter, r *http.Req
 }
 
 // ResetAccount — «забыли пароль?» при облачном пароле без привязанной почты:
-// восстанавливать нечем, аккаунт удаляется (анонимизируется) и вход начинается
-// заново. Публичная ручка: авторизует сам одноразовый password_token.
+// восстанавливать нечем, остаётся удалить аккаунт и начать заново. Публичная
+// ручка: авторизует сам одноразовый password_token.
+//
+// Удаление отложенное, поэтому 200 отдаётся только на вызове, который его
+// исполнил. Первый вызов планирует и отвечает 409 2fa_confirm_wait с остатком
+// секунд, а если владелец успел войти — 409 2fa_recent_confirm (Telegram
+// 2FA_CONFIRM_WAIT_<N> / 2FA_RECENT_CONFIRM).
 func (h *AuthHandler) ResetAccount(w http.ResponseWriter, r *http.Request) {
 	var body passwordTokenBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -313,10 +318,19 @@ func (h *AuthHandler) ResetAccount(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusTooManyRequests, "too many requests")
 		return
 	}
-	err := h.svc.ResetAccount(r.Context(), body.PasswordToken)
+	retryAfter, err := h.svc.ResetAccount(r.Context(), body.PasswordToken)
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusUnauthorized, "password_token_expired")
+		return
+	case errors.Is(err, usecaseauth.ErrResetPending):
+		writeJSON(w, http.StatusConflict, map[string]any{
+			"error":       "2fa_confirm_wait",
+			"retry_after": retryAfter,
+		})
+		return
+	case errors.Is(err, usecaseauth.ErrResetRecentConfirm):
+		writeError(w, http.StatusConflict, "2fa_recent_confirm")
 		return
 	case errors.Is(err, usecaseauth.ErrRecoveryAvailable):
 		writeError(w, http.StatusConflict, "recovery_available")

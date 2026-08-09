@@ -36,6 +36,8 @@ type Interactor struct {
 	updates  UpdateLog          // optional: per-user update log for user_update (dense pts)
 	pwFails  *failCounter       // счётчик неудачных попыток пароля на password_token
 	recFails *failCounter       // счётчик неудачных кодов восстановления на password_token
+	// resetWait — окно ожидания отложенного сброса аккаунта; 0 = дефолт (неделя).
+	resetWait time.Duration
 }
 
 // EventPublisher pushes a realtime WS frame to a user's connected sessions.
@@ -161,6 +163,10 @@ func (i *Interactor) SetPublisher(p EventPublisher)              { i.pub = p }
 func (i *Interactor) SetPartners(f PartnersFunc)                 { i.partners = f }
 func (i *Interactor) SetUpdateLog(u UpdateLog)                   { i.updates = u }
 
+// SetAccountResetWindow задаёт окно ожидания отложенного сброса аккаунта
+// (ACCOUNT_RESET_WAIT). Неположительное значение оставляет дефолт — неделю.
+func (i *Interactor) SetAccountResetWindow(d time.Duration) { i.resetWait = d }
+
 func (i *Interactor) RequestCode(ctx context.Context, rawPhone string) error {
 	phone := domain.NormalizePhone(rawPhone)
 	if phone == "" {
@@ -270,6 +276,9 @@ func (i *Interactor) mintSession(ctx context.Context, user domain.User, deviceNa
 	if _, err := i.devices.Create(ctx, user.ID, name, platform, hash, ci.IP, ci.Location); err != nil {
 		return SignInResult{}, err
 	}
+	// Владелец вошёл — чужая попытка сброса аккаунта снимается. Общий хвост всех
+	// веток входа: отмену вешаем здесь, а не в каждой из них.
+	i.cancelAccountReset(ctx, user.ID)
 	i.notifyLogin(user.ID, ci)
 	return SignInResult{Token: token, User: user}, nil
 }
@@ -369,6 +378,10 @@ func (i *Interactor) ConfirmQRLogin(ctx context.Context, token string, user doma
 	if _, err := i.devices.Create(ctx, user.ID, "QR login", rec.Platform, sessionHash, "", ""); err != nil {
 		return err
 	}
+	// Единственная выдача сессии мимо mintSession (метаданные берутся из записи
+	// QR, а не из запроса), поэтому отмена сброса дублируется здесь. Подтвердить
+	// QR может только уже вошедший владелец — это его активность.
+	i.cancelAccountReset(ctx, user.ID)
 	i.notifyLogin(user.ID, ClientInfo{Device: "QR-код", OS: rec.Platform})
 	rec.Status = domain.QRConfirmed
 	rec.SessionToken = sessionToken

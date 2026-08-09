@@ -614,3 +614,54 @@ func (r *AuthRepo) DeleteWebAuthToken(ctx context.Context, tokenHash string) err
 	_, err := r.pool.Exec(ctx, `DELETE FROM web_auth_tokens WHERE token_hash=$1`, tokenHash)
 	return err
 }
+
+// ScheduleAccountReset планирует отложенный сброс. ON CONFLICT перезаписывает
+// строку целиком (в том числе снимает cancelled_at): сюда доходят только новые
+// окна — ждущее и карантин usecase отсекает раньше.
+func (r *AuthRepo) ScheduleAccountReset(ctx context.Context, userID int64, requestedAt, deleteAt time.Time) error {
+	_, err := r.pool.Exec(ctx,
+		`INSERT INTO account_resets (user_id, requested_at, delete_at, cancelled_at)
+		 VALUES ($1,$2,$3,NULL)
+		 ON CONFLICT (user_id) DO UPDATE SET requested_at=$2, delete_at=$3, cancelled_at=NULL`,
+		userID, requestedAt, deleteAt)
+	return err
+}
+
+// AccountReset возвращает запланированный сброс; нулевой cancelledAt — ждёт
+// исполнения, ненулевой — отменён владельцем.
+func (r *AuthRepo) AccountReset(ctx context.Context, userID int64) (time.Time, time.Time, error) {
+	var deleteAt time.Time
+	var cancelledAt *time.Time
+	err := r.pool.QueryRow(ctx,
+		`SELECT delete_at, cancelled_at FROM account_resets WHERE user_id=$1`,
+		userID).Scan(&deleteAt, &cancelledAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return time.Time{}, time.Time{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+	if cancelledAt == nil {
+		return deleteAt, time.Time{}, nil
+	}
+	return deleteAt, *cancelledAt, nil
+}
+
+// CancelAccountReset отменяет ждущий сброс (владелец вошёл в аккаунт). Условие
+// cancelled_at IS NULL делает вызов идемпотентным: повторные входы не сдвигают
+// момент отмены, от которого отсчитывается карантин.
+func (r *AuthRepo) CancelAccountReset(ctx context.Context, userID int64, at time.Time) (bool, error) {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE account_resets SET cancelled_at=$2 WHERE user_id=$1 AND cancelled_at IS NULL`,
+		userID, at)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+// DeleteAccountReset убирает запись исполненного сброса.
+func (r *AuthRepo) DeleteAccountReset(ctx context.Context, userID int64) error {
+	_, err := r.pool.Exec(ctx, `DELETE FROM account_resets WHERE user_id=$1`, userID)
+	return err
+}

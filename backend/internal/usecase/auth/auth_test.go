@@ -425,6 +425,11 @@ type fakeStepRepo struct {
 		userID  int64
 		expires time.Time
 	}
+	resets map[int64]struct {
+		requestedAt time.Time
+		deleteAt    time.Time
+		cancelledAt time.Time
+	}
 }
 
 func newFakeStepRepo() *fakeStepRepo {
@@ -442,6 +447,11 @@ func newFakeStepRepo() *fakeStepRepo {
 		web: map[string]struct {
 			userID  int64
 			expires time.Time
+		}{},
+		resets: map[int64]struct {
+			requestedAt time.Time
+			deleteAt    time.Time
+			cancelledAt time.Time
 		}{},
 	}
 }
@@ -508,6 +518,38 @@ func (r *fakeStepRepo) WebAuthTokenUser(_ context.Context, tokenHash string) (in
 
 func (r *fakeStepRepo) DeleteWebAuthToken(_ context.Context, tokenHash string) error {
 	delete(r.web, tokenHash)
+	return nil
+}
+
+func (r *fakeStepRepo) ScheduleAccountReset(_ context.Context, userID int64, requestedAt, deleteAt time.Time) error {
+	r.resets[userID] = struct {
+		requestedAt time.Time
+		deleteAt    time.Time
+		cancelledAt time.Time
+	}{requestedAt: requestedAt, deleteAt: deleteAt}
+	return nil
+}
+
+func (r *fakeStepRepo) AccountReset(_ context.Context, userID int64) (time.Time, time.Time, error) {
+	e, ok := r.resets[userID]
+	if !ok {
+		return time.Time{}, time.Time{}, domain.ErrNotFound
+	}
+	return e.deleteAt, e.cancelledAt, nil
+}
+
+func (r *fakeStepRepo) CancelAccountReset(_ context.Context, userID int64, at time.Time) (bool, error) {
+	e, ok := r.resets[userID]
+	if !ok || !e.cancelledAt.IsZero() {
+		return false, nil
+	}
+	e.cancelledAt = at
+	r.resets[userID] = e
+	return true, nil
+}
+
+func (r *fakeStepRepo) DeleteAccountReset(_ context.Context, userID int64) error {
+	delete(r.resets, userID)
 	return nil
 }
 

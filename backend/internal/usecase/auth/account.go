@@ -81,35 +81,104 @@ func (i *Interactor) DeleteAccount(ctx context.Context, userID int64) error {
 	return nil
 }
 
-// ErrRecoveryAvailable — сброс аккаунта запрошен, хотя к облачному паролю
-// привязана почта: восстановление возможно, значит удалять нечего. Обратная
-// сторона ErrRecoveryUnavailable (Telegram PASSWORD_RECOVERY_NA).
-var ErrRecoveryAvailable = errors.New("password recovery available")
+// defaultAccountResetWindow — сколько ждать между запросом сброса и удалением
+// аккаунта: неделя, как в Telegram («we will delete it in 1 week for security
+// purposes»). Тем же сроком меряется карантин после отмены — текст клиента
+// обещает ровно его: «Please try again in 7 days».
+const defaultAccountResetWindow = 7 * 24 * time.Hour
+
+var (
+	// ErrRecoveryAvailable — сброс аккаунта запрошен, хотя к облачному паролю
+	// привязана почта: восстановление возможно, значит удалять нечего. Обратная
+	// сторона ErrRecoveryUnavailable (Telegram PASSWORD_RECOVERY_NA).
+	ErrRecoveryAvailable = errors.New("password recovery available")
+	// ErrResetPending — сброс запланирован, окно ожидания ещё идёт. Вместе с
+	// ошибкой возвращается остаток в секундах (Telegram 2FA_CONFIRM_WAIT_<N>).
+	ErrResetPending = errors.New("account reset pending")
+	// ErrResetRecentConfirm — сброс отменён: владелец за это время заходил в
+	// аккаунт (Telegram 2FA_RECENT_CONFIRM).
+	ErrResetRecentConfirm = errors.New("account reset recently confirmed")
+)
+
+// accountResetWindow — действующее окно ожидания. Переопределяется
+// SetAccountResetWindow (ACCOUNT_RESET_WAIT) — иначе сценарий сброса на стенде
+// непроверяем: ждать неделю.
+func (i *Interactor) accountResetWindow() time.Duration {
+	if i.resetWait > 0 {
+		return i.resetWait
+	}
+	return defaultAccountResetWindow
+}
 
 // ResetAccount — «забыли пароль?» при облачном пароле БЕЗ привязанной почты:
 // восстановить его нечем, и единственный выход в Telegram — удалить аккаунт и
 // начать заново (в tweb — account.deleteAccount('Forgot password') после
 // PASSWORD_RECOVERY_NA).
 //
+// Удаление НЕ мгновенное. Первый вызов только планирует его через окно ожидания
+// и возвращает ErrResetPending с остатком секунд; исполняет удаление повторный
+// вызов, когда окно истекло. Отдельного фонового задания нет — Telegram точно
+// так же лишь отдаёт клиенту счётчик 2FA_CONFIRM_WAIT_<секунды>. Смысл окна: у
+// настоящего владельца есть неделя, чтобы войти и отменить чужую попытку
+// (после этого — ErrResetRecentConfirm).
+//
 // Авторизует сам одноразовый password_token из SignIn: сессии на этом шаге ещё
 // нет. Разрешено ТОЛЬКО когда почта не привязана — иначе знание номера и SMS-кода
 // давало бы удаление чужого аккаунта в обход второго фактора.
-func (i *Interactor) ResetAccount(ctx context.Context, rawPasswordToken string) error {
-	if i.pw == nil {
-		return ErrLoginStepsUnavailable
+//
+// retryAfter — секунды до исполнения; заполнен только вместе с ErrResetPending.
+func (i *Interactor) ResetAccount(ctx context.Context, rawPasswordToken string) (retryAfter int, err error) {
+	if i.pw == nil || i.steps == nil {
+		return 0, ErrLoginStepsUnavailable
 	}
 	tokenHash := domain.HashToken(rawPasswordToken)
 	userID, err := i.pw.PasswordTokenUser(ctx, tokenHash)
 	if err != nil {
-		return err // ErrNotFound → токен истёк/использован/неизвестен
+		return 0, err // ErrNotFound → токен истёк/использован/неизвестен
 	}
 	hash, _, email, err := i.pw.Password(ctx, userID)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if hash != nil && email != "" {
-		return ErrRecoveryAvailable
+		return 0, ErrRecoveryAvailable
 	}
+
+	now := time.Now()
+	window := i.accountResetWindow()
+	deleteAt, cancelledAt, err := i.steps.AccountReset(ctx, userID)
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		// Сброса ещё не заказывали — планируем ниже.
+	case err != nil:
+		return 0, err
+	case !cancelledAt.IsZero():
+		// Владелец входил и снял попытку. Карантин той же длины: иначе отменённый
+		// сброс тут же перепланировался бы и окно можно было бы крутить вечно.
+		if now.Before(cancelledAt.Add(window)) {
+			return 0, ErrResetRecentConfirm
+		}
+		// Карантин выдержан — заказ разрешён заново (планируем ниже).
+	case now.Before(deleteAt):
+		// Повтор внутри окна — тот же срок, а не новая запись: клиенту показывают
+		// обратный отсчёт до фиксированной даты, и продлить/обнулить его нельзя.
+		return secondsUntil(now, deleteAt), ErrResetPending
+	default:
+		return 0, i.executeAccountReset(ctx, userID, tokenHash)
+	}
+
+	deleteAt = now.Add(window)
+	if err := i.steps.ScheduleAccountReset(ctx, userID, now, deleteAt); err != nil {
+		return 0, err
+	}
+	// Токен не логируем — только факт заказа.
+	i.logf("[auth] account reset scheduled user=%d in=%s", userID, window)
+	return secondsUntil(now, deleteAt), ErrResetPending
+}
+
+// executeAccountReset исполняет дозревший сброс: аккаунт удаляется тем же путём,
+// что и «удалить мой аккаунт» из настроек.
+func (i *Interactor) executeAccountReset(ctx context.Context, userID int64, tokenHash string) error {
 	// Снимаем облачный пароль до удаления: строка 2FA живёт отдельно от users и
 	// пережила бы анонимизацию, оставив хеш и подсказку от мёртвого аккаунта.
 	if err := i.pw.SetPassword(ctx, userID, nil, "", ""); err != nil {
@@ -119,9 +188,33 @@ func (i *Interactor) ResetAccount(ctx context.Context, rawPasswordToken string) 
 	if err := i.DeleteAccount(ctx, userID); err != nil {
 		return err
 	}
+	// Запись сброса исполнена: users остаётся (аккаунт анонимизируется, а не
+	// удаляется строкой), поэтому каскад её не заберёт — убираем явно.
+	if err := i.steps.DeleteAccountReset(ctx, userID); err != nil {
+		return err
+	}
 	i.pwFails.clear(tokenHash)
 	_ = i.pw.DeletePasswordToken(ctx, tokenHash) // шаг пароля сгорает
-	// Токен не логируем — только факт сброса.
-	i.logf("[auth] account reset (no recovery email) user=%d", userID)
+	i.logf("[auth] account reset executed (no recovery email) user=%d", userID)
 	return nil
+}
+
+// cancelAccountReset снимает запланированный сброс: владелец только что доказал,
+// что аккаунт живой. Вешается на выдачу сессии — а её при включённом облачном
+// пароле (а сброс возможен только при нём) даёт лишь пройденный ВТОРОЙ фактор:
+// SMS-кода, доступного и атакующему, для отмены не хватает.
+//
+// Best-effort: отказ хранилища не должен ронять вход.
+func (i *Interactor) cancelAccountReset(ctx context.Context, userID int64) {
+	if i.steps == nil {
+		return
+	}
+	cancelled, err := i.steps.CancelAccountReset(ctx, userID, time.Now())
+	if err != nil {
+		i.logf("cancel account reset failed for user=%d: %v", userID, err)
+		return
+	}
+	if cancelled {
+		i.logf("[auth] account reset cancelled by owner login user=%d", userID)
+	}
 }

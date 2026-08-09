@@ -29,17 +29,25 @@ func (m *fakeMailer) SendRecoveryCode(_ context.Context, email, code string) err
 // доводит вход до шага пароля. Возвращает id пользователя и password_token.
 func twoFactorLogin(t *testing.T, i *Interactor, codes *fakeCodeRepo, phone, email string) (int64, string) {
 	t.Helper()
-	ctx := context.Background()
 	res := registerUser(t, i, phone, "Восстановление", "", "dev", "test")
-	if err := i.SetPassword(ctx, res.User.ID, "", "s3cret", "hint", email); err != nil {
+	if err := i.SetPassword(context.Background(), res.User.ID, "", "s3cret", "hint", email); err != nil {
 		t.Fatalf("SetPassword: %v", err)
 	}
+	return res.User.ID, passwordStep(t, i, codes, phone)
+}
+
+// passwordStep проходит вход по SMS-коду до шага облачного пароля и возвращает
+// свежий password_token. Сессии этот шаг НЕ выдаёт — ровно то, что доступно
+// злоумышленнику, знающему номер и перехватившему код.
+func passwordStep(t *testing.T, i *Interactor, codes *fakeCodeRepo, phone string) string {
+	t.Helper()
+	ctx := context.Background()
 	_ = codes.SaveCode(ctx, phone, "12345", time.Now().Add(time.Hour))
 	step, err := i.SignIn(ctx, phone, "12345", "dev", "test")
 	if err != nil || !step.PasswordNeeded {
 		t.Fatalf("2fa sign in = %+v, %v", step, err)
 	}
-	return res.User.ID, step.PasswordToken
+	return step.PasswordToken
 }
 
 // Полный путь восстановления: код на почту → сброс пароля → сессия.
@@ -185,11 +193,86 @@ func TestPasswordRecovery_DevCodeWithoutMailer(t *testing.T) {
 	}
 }
 
+// setReset подменяет запись отложенного сброса целиком: тесты «доживают» до
+// нужного момента, а не ждут неделю. Нулевой cancelledAt — сброс ждёт исполнения.
+func setReset(t *testing.T, i *Interactor, userID int64, deleteAt, cancelledAt time.Time) {
+	t.Helper()
+	steps, ok := i.steps.(*fakeStepRepo)
+	if !ok {
+		t.Fatalf("steps = %T, ожидался fakeStepRepo", i.steps)
+	}
+	if _, ok := steps.resets[userID]; !ok {
+		t.Fatalf("отложенного сброса для user=%d нет", userID)
+	}
+	steps.resets[userID] = struct {
+		requestedAt time.Time
+		deleteAt    time.Time
+		cancelledAt time.Time
+	}{requestedAt: deleteAt.Add(-defaultAccountResetWindow), deleteAt: deleteAt, cancelledAt: cancelledAt}
+}
+
+// resetDeadline — срок исполнения запланированного сброса (для проверки, что
+// повторные запросы его не двигают).
+func resetDeadline(t *testing.T, i *Interactor, userID int64) time.Time {
+	t.Helper()
+	deleteAt, _, err := i.steps.AccountReset(context.Background(), userID)
+	if err != nil {
+		t.Fatalf("AccountReset(user=%d): %v", userID, err)
+	}
+	return deleteAt
+}
+
 // Восстановление невозможно (почта не привязана) → сброс аккаунта: единственный
 // выход в Telegram, tweb зовёт account.deleteAccount после PASSWORD_RECOVERY_NA.
-// Аккаунт анонимизируется, номер освобождается, все сессии отзываются, шаг
-// пароля сгорает.
-func TestResetAccount_NoRecoveryEmail(t *testing.T) {
+// Но удаление НЕ мгновенное: первый запрос только планирует его через неделю
+// (2FA_CONFIRM_WAIT_<секунды>), аккаунт при этом остаётся цел.
+func TestResetAccount_SchedulesAndWaits(t *testing.T) {
+	ctx := context.Background()
+	i, users, _, codes := newInteractor()
+
+	userID, pwToken := twoFactorLogin(t, i, codes, "+79990020010", "")
+
+	retryAfter, err := i.ResetAccount(ctx, pwToken)
+	if !errors.Is(err, ErrResetPending) {
+		t.Fatalf("первый сброс = %v, want ErrResetPending", err)
+	}
+	if want := int(defaultAccountResetWindow / time.Second); retryAfter > want || retryAfter < want-5 {
+		t.Fatalf("retry_after = %d, ожидалось около %d (неделя)", retryAfter, want)
+	}
+	// Аккаунт цел: сессии, номер, облачный пароль на месте.
+	if u, err := users.GetByID(ctx, userID); err != nil || u.Phone != "+79990020010" || u.DisplayName == "Deleted Account" {
+		t.Fatalf("аккаунт пострадал при планировании: %+v, %v", u, err)
+	}
+	if sessions, _ := i.ListSessions(ctx, userID); len(sessions) == 0 {
+		t.Fatal("сессии отозваны на этапе планирования")
+	}
+	if st, err := i.PasswordState(ctx, userID); err != nil || !st.Enabled {
+		t.Fatalf("облачный пароль снят на этапе планирования: %+v, %v", st, err)
+	}
+
+	// Повтор внутри окна не создаёт новую запись: срок исполнения тот же, а
+	// значит окно нельзя ни продлить, ни обнулить чередой запросов.
+	deadline := resetDeadline(t, i, userID)
+	again, err := i.ResetAccount(ctx, pwToken)
+	if !errors.Is(err, ErrResetPending) {
+		t.Fatalf("повтор внутри окна = %v, want ErrResetPending", err)
+	}
+	if !resetDeadline(t, i, userID).Equal(deadline) {
+		t.Fatal("повторный запрос сдвинул срок исполнения сброса")
+	}
+	if again > retryAfter {
+		t.Fatalf("остаток вырос: было %d, стало %d", retryAfter, again)
+	}
+	// Шаг пароля не сгорел — клиент возвращается к нему с тем же токеном.
+	if _, err := i.ResetAccount(ctx, pwToken); !errors.Is(err, ErrResetPending) {
+		t.Fatalf("третий запрос = %v, want ErrResetPending", err)
+	}
+}
+
+// Окно истекло — повторный вызов ручки действительно удаляет аккаунт: фонового
+// задания нет, исполняет сам запрос. Аккаунт анонимизируется, номер
+// освобождается, все сессии отзываются, шаг пароля сгорает.
+func TestResetAccount_ExecutesAfterWindow(t *testing.T) {
 	ctx := context.Background()
 	i, users, _, codes := newInteractor()
 	cache := newFakeCache()
@@ -197,15 +280,19 @@ func TestResetAccount_NoRecoveryEmail(t *testing.T) {
 	i.SetCache(cache)
 	i.SetRevocationNotifier(rev)
 
-	userID, pwToken := twoFactorLogin(t, i, codes, "+79990020010", "")
+	userID, pwToken := twoFactorLogin(t, i, codes, "+79990020012", "")
 	// Сессия, выданная до включения 2FA, должна быть отозвана вместе с аккаунтом.
-	sessions, _ := i.ListSessions(ctx, userID)
-	if len(sessions) == 0 {
+	if sessions, _ := i.ListSessions(ctx, userID); len(sessions) == 0 {
 		t.Fatal("нет активных сессий до сброса — тест бессмысленен")
 	}
+	if _, err := i.ResetAccount(ctx, pwToken); !errors.Is(err, ErrResetPending) {
+		t.Fatalf("планирование = %v, want ErrResetPending", err)
+	}
+	// Окно подменяем, а не ждём.
+	setReset(t, i, userID, time.Now().Add(-time.Second), time.Time{})
 
-	if err := i.ResetAccount(ctx, pwToken); err != nil {
-		t.Fatalf("ResetAccount: %v", err)
+	if retryAfter, err := i.ResetAccount(ctx, pwToken); err != nil || retryAfter != 0 {
+		t.Fatalf("исполнение сброса = %d, %v", retryAfter, err)
 	}
 
 	u, err := users.GetByID(ctx, userID)
@@ -229,27 +316,111 @@ func TestResetAccount_NoRecoveryEmail(t *testing.T) {
 	if st, err := i.PasswordState(ctx, userID); err != nil || st.Enabled || st.Email != "" {
 		t.Fatalf("PasswordState после сброса = %+v, %v", st, err)
 	}
+	// Запись отложенного сброса исполнена и убрана.
+	if _, _, err := i.steps.AccountReset(ctx, userID); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("запись сброса пережила исполнение: %v", err)
+	}
 	// Токен шага пароля одноразовый.
-	if err := i.ResetAccount(ctx, pwToken); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := i.ResetAccount(ctx, pwToken); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("повторный сброс = %v, want ErrNotFound", err)
 	}
 	// Номер освобождён — по нему заводится новый аккаунт.
-	fresh := registerUser(t, i, "+79990020010", "Заново", "", "web", "browser")
+	fresh := registerUser(t, i, "+79990020012", "Заново", "", "web", "browser")
 	if fresh.User.ID == userID {
 		t.Fatal("новый вход по освобождённому номеру вернул старый аккаунт")
 	}
 }
 
+// Владелец зашёл за время окна — сброс снимается (2FA_RECENT_CONFIRM). Вход по
+// одному лишь SMS-коду отменой НЕ считается: он останавливается на шаге пароля и
+// сессии не выдаёт, а значит доступен и тому, кто перехватил код.
+func TestResetAccount_CancelledByOwnerLogin(t *testing.T) {
+	ctx := context.Background()
+	i, users, _, codes := newInteractor()
+
+	userID, pwToken := twoFactorLogin(t, i, codes, "+79990020013", "")
+	if _, err := i.ResetAccount(ctx, pwToken); !errors.Is(err, ErrResetPending) {
+		t.Fatalf("планирование = %v, want ErrResetPending", err)
+	}
+
+	// Ещё один вход по SMS-коду: второй фактор не пройден — сброс всё ещё в силе.
+	smsToken := passwordStep(t, i, codes, "+79990020013")
+	if _, err := i.ResetAccount(ctx, smsToken); !errors.Is(err, ErrResetPending) {
+		t.Fatalf("после входа по SMS-коду = %v, want ErrResetPending (код не отменяет сброс)", err)
+	}
+
+	// Владелец вводит облачный пароль — вот это отмена.
+	if res, err := i.CheckPassword(ctx, smsToken, "s3cret", "dev", "test"); err != nil || res.Token == "" {
+		t.Fatalf("CheckPassword владельца = %+v, %v", res, err)
+	}
+	ownerToken := passwordStep(t, i, codes, "+79990020013")
+	if _, err := i.ResetAccount(ctx, ownerToken); !errors.Is(err, ErrResetRecentConfirm) {
+		t.Fatalf("после входа владельца = %v, want ErrResetRecentConfirm", err)
+	}
+
+	// Отмена сильнее истёкшего срока: дозревшая, но снятая запись не удаляет
+	// аккаунт.
+	setReset(t, i, userID, time.Now().Add(-time.Hour), time.Now().Add(-time.Minute))
+	if _, err := i.ResetAccount(ctx, ownerToken); !errors.Is(err, ErrResetRecentConfirm) {
+		t.Fatalf("снятый, но дозревший сброс = %v, want ErrResetRecentConfirm", err)
+	}
+	if u, err := users.GetByID(ctx, userID); err != nil || u.Phone != "+79990020013" {
+		t.Fatalf("аккаунт удалён отменённым сбросом: %+v, %v", u, err)
+	}
+
+	// Карантин выдержан — заказ разрешён заново, и с полным окном.
+	setReset(t, i, userID, time.Now().Add(-time.Hour), time.Now().Add(-defaultAccountResetWindow-time.Minute))
+	retryAfter, err := i.ResetAccount(ctx, ownerToken)
+	if !errors.Is(err, ErrResetPending) {
+		t.Fatalf("после карантина = %v, want ErrResetPending", err)
+	}
+	if want := int(defaultAccountResetWindow / time.Second); retryAfter > want || retryAfter < want-5 {
+		t.Fatalf("новое окно = %d с, ожидалось около %d", retryAfter, want)
+	}
+}
+
+// Подтверждение QR-кода — единственная выдача сессии мимо mintSession, и она
+// тоже снимает сброс: подтвердить может только уже вошедший владелец.
+func TestResetAccount_CancelledByQRConfirm(t *testing.T) {
+	ctx := context.Background()
+	i, _, _, codes := newInteractor()
+	i.SetQRStore(newFakeQRStoreTTL())
+
+	userID, pwToken := twoFactorLogin(t, i, codes, "+79990020014", "")
+	if _, err := i.ResetAccount(ctx, pwToken); !errors.Is(err, ErrResetPending) {
+		t.Fatalf("планирование = %v, want ErrResetPending", err)
+	}
+
+	owner, err := i.users.GetByID(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	qrToken, _, err := i.NewQRLogin(ctx, "web")
+	if err != nil {
+		t.Fatalf("NewQRLogin: %v", err)
+	}
+	if err := i.ConfirmQRLogin(ctx, qrToken, owner); err != nil {
+		t.Fatalf("ConfirmQRLogin: %v", err)
+	}
+	if _, err := i.ResetAccount(ctx, pwToken); !errors.Is(err, ErrResetRecentConfirm) {
+		t.Fatalf("после подтверждения QR = %v, want ErrResetRecentConfirm", err)
+	}
+}
+
 // Почта к паролю привязана — сбрасывать нельзя: иначе знание номера и SMS-кода
-// давало бы удаление чужого аккаунта в обход второго фактора. Аккаунт цел.
+// давало бы удаление чужого аккаунта в обход второго фактора. Аккаунт цел,
+// отложенный сброс не заводится.
 func TestResetAccount_RecoveryAvailable(t *testing.T) {
 	ctx := context.Background()
 	i, users, _, codes := newInteractor()
 
 	userID, pwToken := twoFactorLogin(t, i, codes, "+79990020011", "denis@example.com")
 
-	if err := i.ResetAccount(ctx, pwToken); !errors.Is(err, ErrRecoveryAvailable) {
+	if _, err := i.ResetAccount(ctx, pwToken); !errors.Is(err, ErrRecoveryAvailable) {
 		t.Fatalf("ResetAccount с почтой = %v, want ErrRecoveryAvailable", err)
+	}
+	if _, _, err := i.steps.AccountReset(ctx, userID); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("сброс запланирован вопреки отказу: %v", err)
 	}
 	u, err := users.GetByID(ctx, userID)
 	if err != nil || u.Phone != "+79990020011" || u.DisplayName == "Deleted Account" {
@@ -264,12 +435,13 @@ func TestResetAccount_RecoveryAvailable(t *testing.T) {
 	}
 }
 
-// Истёкший / неизвестный password_token — ErrNotFound (401), ничего не удаляется.
+// Истёкший / неизвестный password_token — ErrNotFound (401), ничего не
+// удаляется и не планируется.
 func TestResetAccount_ExpiredToken(t *testing.T) {
 	ctx := context.Background()
 	i, _, _, _ := newInteractor()
 
-	if err := i.ResetAccount(ctx, "неизвестный-токен"); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := i.ResetAccount(ctx, "неизвестный-токен"); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("неизвестный токен = %v, want ErrNotFound", err)
 	}
 }

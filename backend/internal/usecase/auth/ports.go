@@ -121,13 +121,32 @@ type WebAuthTokenStore interface {
 	DeleteWebAuthToken(ctx context.Context, tokenHash string) error
 }
 
-// LoginStepRepo — единая точка подключения хранилищ одноразовых артефактов
-// входа (регистрация, восстановление пароля, веб-токен). Реализуется тем же
-// postgres-адаптером, что и остальные auth-порты.
+// AccountResetStore — отложенные сбросы аккаунта: одна запись на пользователя.
+// Сброс планируется первым вызовом ручки, исполняется повторным (когда окно
+// истекло) и отменяется входом владельца.
+type AccountResetStore interface {
+	// ScheduleAccountReset заводит (или перезаписывает) отложенный сброс.
+	ScheduleAccountReset(ctx context.Context, userID int64, requestedAt, deleteAt time.Time) error
+	// AccountReset возвращает запланированный сброс: срок исполнения и момент
+	// отмены владельцем (нулевое время — не отменён). domain.ErrNotFound, если
+	// сброса не заказывали.
+	AccountReset(ctx context.Context, userID int64) (deleteAt, cancelledAt time.Time, err error)
+	// CancelAccountReset помечает ЖДУЩИЙ сброс отменённым; cancelled=false, если
+	// отменять было нечего (сброса нет или он уже отменён — отметку не двигаем,
+	// иначе карантин продлевался бы каждым входом).
+	CancelAccountReset(ctx context.Context, userID int64, at time.Time) (cancelled bool, err error)
+	// DeleteAccountReset убирает запись после исполнения сброса.
+	DeleteAccountReset(ctx context.Context, userID int64) error
+}
+
+// LoginStepRepo — единая точка подключения хранилищ артефактов входа
+// (регистрация, восстановление пароля, веб-токен, отложенный сброс аккаунта).
+// Реализуется тем же postgres-адаптером, что и остальные auth-порты.
 type LoginStepRepo interface {
 	SignUpTokenStore
 	PasswordRecoveryStore
 	WebAuthTokenStore
+	AccountResetStore
 }
 
 // Mailer доставляет письмо с кодом восстановления облачного пароля. Порт

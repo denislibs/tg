@@ -251,3 +251,56 @@ func TestAuthRepo_LoginSteps(t *testing.T) {
 		t.Fatalf("сожжённый веб-токен = %v, want ErrNotFound", err)
 	}
 }
+
+// Отложенный сброс аккаунта: одна запись на пользователя, отмена идемпотентна
+// (повторные входы не двигают момент отмены, от которого идёт карантин).
+func TestAuthRepo_AccountReset(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewAuthRepo(pool)
+	ctx := context.Background()
+
+	u, err := repo.CreateWithName(ctx, "+7310", "Сброс", "")
+	if err != nil {
+		t.Fatalf("CreateWithName: %v", err)
+	}
+	if _, _, err := repo.AccountReset(ctx, u.ID); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("сброса нет = %v, want ErrNotFound", err)
+	}
+
+	now := time.Now().Truncate(time.Millisecond)
+	deleteAt := now.Add(7 * 24 * time.Hour)
+	if err := repo.ScheduleAccountReset(ctx, u.ID, now, deleteAt); err != nil {
+		t.Fatalf("ScheduleAccountReset: %v", err)
+	}
+	gotDelete, gotCancel, err := repo.AccountReset(ctx, u.ID)
+	if err != nil || !gotDelete.Equal(deleteAt) || !gotCancel.IsZero() {
+		t.Fatalf("AccountReset = %v, %v, %v", gotDelete, gotCancel, err)
+	}
+
+	cancelledAt := now.Add(time.Hour)
+	if ok, err := repo.CancelAccountReset(ctx, u.ID, cancelledAt); err != nil || !ok {
+		t.Fatalf("CancelAccountReset = %v, %v", ok, err)
+	}
+	// Второй вход отменять уже нечего — отметка остаётся прежней.
+	if ok, err := repo.CancelAccountReset(ctx, u.ID, now.Add(2*time.Hour)); err != nil || ok {
+		t.Fatalf("повторная отмена = %v, %v, want false", ok, err)
+	}
+	if _, gotCancel, err = repo.AccountReset(ctx, u.ID); err != nil || !gotCancel.Equal(cancelledAt) {
+		t.Fatalf("момент отмены сдвинулся: %v, %v", gotCancel, err)
+	}
+
+	// Новый заказ после карантина перезаписывает строку целиком.
+	if err := repo.ScheduleAccountReset(ctx, u.ID, now, deleteAt); err != nil {
+		t.Fatalf("повторное планирование: %v", err)
+	}
+	if _, gotCancel, err = repo.AccountReset(ctx, u.ID); err != nil || !gotCancel.IsZero() {
+		t.Fatalf("отметка отмены пережила новый заказ: %v, %v", gotCancel, err)
+	}
+
+	if err := repo.DeleteAccountReset(ctx, u.ID); err != nil {
+		t.Fatalf("DeleteAccountReset: %v", err)
+	}
+	if _, _, err := repo.AccountReset(ctx, u.ID); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("исполненный сброс = %v, want ErrNotFound", err)
+	}
+}

@@ -86,7 +86,21 @@ func newChatUC(pool *pgxpool.Pool) *usecasechat.Interactor {
 
 func newTestRouter(t *testing.T) http.Handler {
 	pool := postgres.NewTestDB(t)
-	return NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	return routerFor(newAuthUC(pool), pool)
+}
+
+// newResetRouter — роутер с укороченным окном ожидания сброса аккаунта
+// (ACCOUNT_RESET_WAIT на стенде): иначе сценарий «запланировали → окно истекло →
+// удалили» непроверяем, ждать неделю.
+func newResetRouter(t *testing.T, window time.Duration) http.Handler {
+	pool := postgres.NewTestDB(t)
+	uc := newAuthUC(pool)
+	uc.SetAccountResetWindow(window)
+	return routerFor(uc, pool)
+}
+
+func routerFor(auth *usecaseauth.Interactor, pool *pgxpool.Pool) http.Handler {
+	return NewRouter(auth, newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil)
 }
 
 func postJSON(t *testing.T, h http.Handler, path string, body any) *httptest.ResponseRecorder {
@@ -449,23 +463,64 @@ func TestSignImport_HTTP(t *testing.T) {
 	}
 }
 
+// resetError — тело отказа ручки сброса: код и (для 2fa_confirm_wait) остаток
+// секунд.
+type resetError struct {
+	Error      string `json:"error"`
+	RetryAfter int    `json:"retry_after"`
+}
+
+func postReset(t *testing.T, h http.Handler, pwToken string) (*httptest.ResponseRecorder, resetError) {
+	t.Helper()
+	rec := postJSON(t, h, "/auth/account/reset", map[string]string{"password_token": pwToken})
+	var out resetError
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	return rec, out
+}
+
+// enableCloudPassword ставит облачный пароль уже вошедшему пользователю.
+func enableCloudPassword(t *testing.T, h http.Handler, token, email string) {
+	t.Helper()
+	body := map[string]string{"new_password": "s3cret", "hint": "hint"}
+	if email != "" {
+		body["email"] = email
+	}
+	if rec := postJSONAuth(t, h, "/me/password", body, token); rec.Code != http.StatusOK {
+		t.Fatalf("set password: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 // HTTP-контракт сброса аккаунта: «забыли пароль?» при облачном пароле БЕЗ
-// привязанной почты. 200 {"ok":true} → аккаунт удалён, шаг пароля сгорел.
+// привязанной почты. Удаление отложенное: 409 2fa_confirm_wait с остатком
+// секунд, и только вызов после истечения окна отвечает 200 {"ok":true}.
 func TestAccountReset_HTTP(t *testing.T) {
-	h := newTestRouter(t)
+	const window = 300 * time.Millisecond
+	h := newResetRouter(t, window)
 
 	token, userID := loginViaHTTP(t, h, "+79990040010")
 	// Пароль без почты восстановления — единственный выход остаётся сброс.
-	if rec := postJSONAuth(t, h, "/me/password", map[string]string{
-		"new_password": "s3cret", "hint": "hint",
-	}, token); rec.Code != http.StatusOK {
-		t.Fatalf("set password: %d %s", rec.Code, rec.Body.String())
-	}
+	enableCloudPassword(t, h, token, "")
 
 	pwToken := passwordStep(t, h, "+79990040010")
-	rec := postJSON(t, h, "/auth/account/reset", map[string]string{"password_token": pwToken})
+	rec, wait := postReset(t, h, pwToken)
+	if rec.Code != http.StatusConflict || wait.Error != "2fa_confirm_wait" || wait.RetryAfter <= 0 {
+		t.Fatalf("планирование сброса: %d %s", rec.Code, rec.Body.String())
+	}
+	// Аккаунт цел, сессия жива: удаление только запланировано.
+	if rec := authedReq(t, h, http.MethodGet, "/me", token, nil); rec.Code != http.StatusOK {
+		t.Fatalf("сессия отозвана на этапе планирования: %d %s", rec.Code, rec.Body.String())
+	}
+	// Повтор внутри окна — тот же ответ, окно не продлевается и не обнуляется.
+	rec, again := postReset(t, h, pwToken)
+	if rec.Code != http.StatusConflict || again.Error != "2fa_confirm_wait" || again.RetryAfter > wait.RetryAfter {
+		t.Fatalf("повтор внутри окна: %d %s (было retry_after=%d)", rec.Code, rec.Body.String(), wait.RetryAfter)
+	}
+
+	time.Sleep(window + 100*time.Millisecond) // окно укорочено, а не выжидается неделю
+
+	rec, _ = postReset(t, h, pwToken)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("reset: %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("исполнение сброса: %d %s", rec.Code, rec.Body.String())
 	}
 	var ok struct {
 		OK bool `json:"ok"`
@@ -480,16 +535,9 @@ func TestAccountReset_HTTP(t *testing.T) {
 		t.Fatalf("сессия пережила сброс: %d %s", rec.Code, rec.Body.String())
 	}
 	// Токен шага пароля одноразовый → 401 password_token_expired.
-	rec = postJSON(t, h, "/auth/account/reset", map[string]string{"password_token": pwToken})
-	if rec.Code != http.StatusUnauthorized {
+	rec, e := postReset(t, h, pwToken)
+	if rec.Code != http.StatusUnauthorized || e.Error != "password_token_expired" {
 		t.Fatalf("повторный сброс: %d %s", rec.Code, rec.Body.String())
-	}
-	var e struct {
-		Error string `json:"error"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &e)
-	if e.Error != "password_token_expired" {
-		t.Fatalf("401 тело = %s", rec.Body.String())
 	}
 
 	// Номер освобождён: вход по нему заводит НОВЫЙ аккаунт (шаг регистрации).
@@ -499,29 +547,61 @@ func TestAccountReset_HTTP(t *testing.T) {
 	}
 }
 
+// Владелец вошёл за время окна → 409 2fa_recent_confirm, аккаунт цел. Вход по
+// одному SMS-коду отменой не считается: он упирается в шаг пароля.
+func TestAccountReset_CancelledByOwner_HTTP(t *testing.T) {
+	h := newTestRouter(t) // окно по умолчанию — неделя, отмена приходит раньше
+
+	token, userID := loginViaHTTP(t, h, "+79990040012")
+	enableCloudPassword(t, h, token, "")
+
+	pwToken := passwordStep(t, h, "+79990040012")
+	if rec, wait := postReset(t, h, pwToken); rec.Code != http.StatusConflict || wait.Error != "2fa_confirm_wait" {
+		t.Fatalf("планирование сброса: %d %s", rec.Code, rec.Body.String())
+	}
+	// Повторный вход по SMS-коду сессии не даёт — сброс в силе.
+	smsToken := passwordStep(t, h, "+79990040012")
+	if rec, wait := postReset(t, h, pwToken); rec.Code != http.StatusConflict || wait.Error != "2fa_confirm_wait" {
+		t.Fatalf("после входа по SMS-коду: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// Владелец вводит облачный пароль — вот это отмена.
+	rec := postJSON(t, h, "/auth/check_password", map[string]string{
+		"password_token": smsToken, "password": "s3cret", "device": "web", "platform": "browser",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("check_password: %d %s", rec.Code, rec.Body.String())
+	}
+
+	rec, e := postReset(t, h, pwToken)
+	if rec.Code != http.StatusConflict || e.Error != "2fa_recent_confirm" {
+		t.Fatalf("после входа владельца: %d %s", rec.Code, rec.Body.String())
+	}
+	// Аккаунт на месте: вход по номеру ведёт к тому же пользователю.
+	if rec := authedReq(t, h, http.MethodGet, "/me", token, nil); rec.Code != http.StatusOK {
+		t.Fatalf("сессия владельца пострадала: %d %s", rec.Code, rec.Body.String())
+	}
+	var me struct {
+		ID int64 `json:"id"`
+	}
+	_ = json.Unmarshal(authedReq(t, h, http.MethodGet, "/me", token, nil).Body.Bytes(), &me)
+	if me.ID != userID {
+		t.Fatalf("/me вернул %d, ожидался %d", me.ID, userID)
+	}
+}
+
 // Почта восстановления привязана → сброс запрещён (409 recovery_available):
 // иначе номер + SMS-код давали бы удаление чужого аккаунта в обход 2FA.
 func TestAccountReset_RecoveryAvailable_HTTP(t *testing.T) {
 	h := newTestRouter(t)
 
 	token, _ := loginViaHTTP(t, h, "+79990040011")
-	if rec := postJSONAuth(t, h, "/me/password", map[string]string{
-		"new_password": "s3cret", "hint": "hint", "email": "denis@example.com",
-	}, token); rec.Code != http.StatusOK {
-		t.Fatalf("set password: %d %s", rec.Code, rec.Body.String())
-	}
+	enableCloudPassword(t, h, token, "denis@example.com")
 
 	pwToken := passwordStep(t, h, "+79990040011")
-	rec := postJSON(t, h, "/auth/account/reset", map[string]string{"password_token": pwToken})
-	if rec.Code != http.StatusConflict {
+	rec, e := postReset(t, h, pwToken)
+	if rec.Code != http.StatusConflict || e.Error != "recovery_available" {
 		t.Fatalf("reset с почтой: %d %s", rec.Code, rec.Body.String())
-	}
-	var e struct {
-		Error string `json:"error"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &e)
-	if e.Error != "recovery_available" {
-		t.Fatalf("409 тело = %s", rec.Body.String())
 	}
 	// Отказ не тронул аккаунт: шаг пароля жив, восстановление по почте доступно.
 	if rec := postJSON(t, h, "/auth/password/recover", map[string]string{"password_token": pwToken}); rec.Code != http.StatusOK {
