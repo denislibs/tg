@@ -16,7 +16,10 @@ import StarIcon from '../stars/StarIcon'
 import { useT } from '../../i18n'
 import s from './SendMediaPopup.module.scss'
 
+// «Медиа» для меню «как медиа / как файл» и заголовка — аудио тоже медиа,
 const isMediaFile = (f: File) => /^(image|video|audio)\//.test(f.type)
+// …но превью в попапе рисуется только для фото/видео: у аудио его нет.
+const hasPreview = (f: File) => /^(image|video)\//.test(f.type)
 
 function fmtSize(n: number): string {
   if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} МБ`
@@ -69,7 +72,7 @@ export default function SendMediaPopup({
 
   // Object URLs for previews; revoked when files change / on unmount.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const urls = useMemo(() => files.map((f) => (isMediaFile(f) ? URL.createObjectURL(f) : '')), [files, rev])
+  const urls = useMemo(() => files.map((f) => (hasPreview(f) ? URL.createObjectURL(f) : '')), [files, rev])
   useEffect(() => () => urls.forEach((u) => u && URL.revokeObjectURL(u)), [urls])
   useEffect(() => { inputRef.current?.focus() }, [])
 
@@ -77,7 +80,7 @@ export default function SendMediaPopup({
   const showAsMedia = !asFile && anyMedia
   // Платное медиа поддержано только для одиночного фото/видео «как медиа»
   // (бэкенд хранит цену на сообщение; альбомы/файлы — без цены).
-  const onlyPhotoVideo = files.length === 1 && files.every((f) => /^(image|video)\//.test(f.type))
+  const onlyPhotoVideo = files.length === 1 && files.every(hasPreview)
   const canPaid = showAsMedia && onlyPhotoVideo
   const allImages = files.every((f) => f.type.startsWith('image/'))
   const allVideos = files.every((f) => f.type.startsWith('video/'))
@@ -172,7 +175,7 @@ export default function SendMediaPopup({
         </div>
       }
     >
-      <div className={s.previews} data-media={showAsMedia || undefined}>
+      <div className={s.previews}>
         {files.map((f, i) => {
           if (showAsMedia && f.type.startsWith('image/')) {
             return (
