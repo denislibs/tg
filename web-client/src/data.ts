@@ -44,6 +44,9 @@ export interface ConvMsg {
   createdAt?: string // абсолютное время создания (ISO) — для live-локации/отсчётов
   status?: MsgStatus
   edited?: boolean // shows the "изменено" marker before the time
+  // сообщение закреплено в чате (Telegram message.pFlags.pinned): в кластере
+  // времени первым идёт глиф pinnedchat_filled (tweb messageRender.ts:301-303)
+  pinned?: boolean
   views?: number // channel-post view count ("9.2K 👁"); undefined for non-posts
   forwards?: number // channel-post forward count (Telegram message.forwards); undefined for non-posts
   // чипы реакций под сообщением; recent — карточки последних реагировавших
@@ -74,6 +77,10 @@ export interface ConvMsg {
   mediaDuration?: number
   mediaSize?: number
   mediaName?: string
+  // ID3-теги трека (tweb documentAttributeAudio.title/performer): заголовок бабла
+  // = mediaTitle ?? mediaName, подпись = mediaPerformer, а без него — размер файла
+  mediaTitle?: string
+  mediaPerformer?: string
   // платное медиа (Telegram paid media): цена в звёздах + заблокировано ли для зрителя
   paidMedia?: { price: number; locked: boolean }
   media?: MediaItem // single photo/video placeholder
@@ -87,10 +94,6 @@ export interface ConvMsg {
   gift?: import('./core/managers/starsManager').GiftInfo // подарок (type 'gift')
   replyMarkup?: import('./core/managers/botsManager').ReplyMarkup // inline-клавиатура сообщения бота
   videoDuration?: string // overlay on video / round video
-  // document
-  document?: { name: string; size: string; ext: string; color: string }
-  // audio / music
-  audio?: { title: string; artist: string; duration: string }
   // link preview attached to a text message (imageUrl — серверное og:image; gradient/emoji — легаси моков)
   webPage?: { siteName: string; title: string; description?: string; gradient?: string; emoji?: string; url?: string; imageUrl?: string }
   // «проверка фактов» (Telegram factCheck): блок в бабле (текст + сущности + опц. страна)

@@ -74,6 +74,8 @@ export interface NewMessageEvt { chat_id: number; msg_id: number; seq: number; s
   // Медиа-мета live-кадра (те же ключи, что history read model) — файл/фото
   // рисуется полноценно сразу, без ожидания перезагрузки истории.
   media_w?: number; media_h?: number; media_mime?: string; media_blur?: string; media_has_thumb?: boolean; media_duration?: number; media_size?: number; media_name?: string;
+  /** ID3-теги трека (tweb documentAttributeAudio.title/performer) — опциональны */
+  media_title?: string; media_performer?: string;
   /** E2E-медиа секретного чата — инжектится воркером после расшифровки enc_body (не проводное поле сервера) */
   secret_media?: import('../models').SecretMedia;
   /** вид эффекта сообщения (наш аналог Telegram message effects) */

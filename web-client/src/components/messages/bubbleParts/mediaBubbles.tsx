@@ -1,79 +1,14 @@
 // src/components/messages/bubbleParts/mediaBubbles.tsx
-// Медиа-баблы: документ/файл, аудио, видео-кружок (превью и «настоящий» со звуком).
+// Медиа-баблы: видео-кружок (превью и «настоящий» со звуком). Файл и трек живут в
+// RealMediaBubble на дереве tweb (.document / audio-element).
 import { useRef, useState, type ReactNode } from 'react'
 import Text from '../../../shared/ui/Text'
-import classNames from '../../../shared/lib/classNames'
 import TgIcon from '../../TgIcon'
 import { mediaContentUrl } from '../../../core/mediaUrl'
 import type { ConvMsg } from '../../../data'
 import { useTranscription, TranscribeButton, TranscribedText } from '../Transcription'
-import { bubbleRadius, type Ctx } from './primitives'
+import { type Ctx } from './primitives'
 import s from '../MessageBubbles.module.scss'
-
-/** document / file */
-export function DocumentBubble({ m, out, firstInGroup, lastInGroup, time, reactions }: Ctx) {
-  const d = m.document
-  return (
-    <div
-      className={classNames(s.fileBubble, s.doc)}
-      data-out={out || undefined}
-      style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}
-    >
-      <div
-        className={s.fileIcon}
-        style={{ background: out ? 'rgba(255,255,255,0.22)' : d?.color ?? 'var(--primary-color)' }}
-      >
-        <TgIcon name="download" />
-      </div>
-      <div className={s.fileBody}>
-        <Text noWrap size={15} weight={500}>
-          {d?.name}
-        </Text>
-        <div className={s.fileMetaRow}>
-          <Text size={13} color="var(--bb-sub)">
-            {d?.size} · {d?.ext}
-          </Text>
-        </div>
-        {reactions}
-      </div>
-      {time}
-    </div>
-  )
-}
-
-/** audio / music */
-export function AudioBubble({ m, out, firstInGroup, lastInGroup, time, reactions }: Ctx) {
-  const a = m.audio
-  return (
-    <div
-      className={classNames(s.fileBubble, s.audio)}
-      data-out={out || undefined}
-      style={{ borderRadius: bubbleRadius(out, firstInGroup, lastInGroup) }}
-    >
-      <div
-        className={classNames(s.fileIcon, s.fileIconAudio)}
-        style={{ background: out ? 'rgba(255,255,255,0.22)' : 'var(--primary-color)' }}
-      >
-        <TgIcon name="music" />
-      </div>
-      <div className={s.fileBody}>
-        <Text noWrap size={15} weight={500}>
-          {a?.title}
-        </Text>
-        <Text noWrap size={13} color="var(--bb-sub)">
-          {a?.artist}
-        </Text>
-        <div className={s.fileMetaRow} style={{ marginTop: 2 }}>
-          <Text size={12} color="var(--bb-meta)">
-            {a?.duration}
-          </Text>
-        </div>
-        {reactions}
-      </div>
-      {time}
-    </div>
-  )
-}
 
 /** round video note (превью) */
 export function RoundVideoBubble({ m, out, time }: Ctx) {

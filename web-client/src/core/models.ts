@@ -185,6 +185,10 @@ export interface RawMessage {
   media_duration?: number
   media_size?: number
   media_name?: string
+  /** ID3-теги трека (tweb documentAttributeAudio.title/performer); нет тегов —
+   * полей нет в JSON, подпись бабла падает в размер файла (tweb audio.ts:362-364) */
+  media_title?: string
+  media_performer?: string
   views?: number
   forwards?: number
   media_unread?: boolean
@@ -312,6 +316,9 @@ export interface Message {
   mediaDuration?: number
   mediaSize?: number
   mediaName?: string
+  /** ID3-теги трека (tweb documentAttributeAudio.title/performer) */
+  mediaTitle?: string
+  mediaPerformer?: string
   /** deduplicated viewer count for a channel post (undefined = not a channel post) */
   views?: number
   /** number of times a channel post was forwarded (Telegram message.forwards) */
@@ -730,6 +737,8 @@ export function mapMessage(r: RawMessage): Message {
     mediaDuration: r.media_duration,
     mediaSize: r.media_size,
     mediaName: r.media_name,
+    mediaTitle: r.media_title,
+    mediaPerformer: r.media_performer,
     views: r.views,
     forwards: r.forwards,
     mediaUnread: r.media_unread,
@@ -778,6 +787,7 @@ export function fromNewMessageEvt(evt: NewMessageEvt, replyTo: RawMessage['reply
     thread_root_id: evt.thread_root_id ?? null, media_w: evt.media_w, media_h: evt.media_h,
     media_mime: evt.media_mime, media_blur: evt.media_blur, media_has_thumb: evt.media_has_thumb,
     media_duration: evt.media_duration, media_size: evt.media_size, media_name: evt.media_name,
+    media_title: evt.media_title, media_performer: evt.media_performer,
     effect: evt.effect ?? null, paid_media: evt.paid_media ?? null,
   })
   // E2E-медиа секретного чата: воркер расшифровал enc_body и положил key/iv/mime в

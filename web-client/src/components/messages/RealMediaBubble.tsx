@@ -47,6 +47,14 @@ interface Props {
   duration?: number
   size?: number
   fileName?: string
+  /** ID3-теги трека (tweb documentAttributeAudio): заголовок и исполнитель */
+  mediaTitle?: string
+  mediaPerformer?: string
+  /** исходящее — tweb вешает `is-out` на сам audio-element (wrappers/document.ts:149) */
+  out?: boolean
+  /** tweb дублирует id сообщения/отправителя на audio-element (audio.ts:543-544) */
+  mid?: number
+  peerId?: number
   /** рендер времени бабла (bubbleParts/Time) — форму выбирает сам бабл:
    * плавающая пилюля поверх фото/видео либо угол у документа/аудио */
   renderTime?: RenderTime
@@ -71,6 +79,7 @@ interface Props {
 
 export default function RealMediaBubble({
   mediaId, type, width, height, mime, blur, hasThumb, duration, size, fileName,
+  mediaTitle, mediaPerformer, out, mid, peerId,
   renderTime, onOpen, autoDownload, localUrl, clientId, onCancelUpload,
   hasMessageBlock = false, isAlbumItem = false, paidMedia, onUnlockPaid,
 }: Props) {
@@ -244,7 +253,12 @@ export default function RealMediaBubble({
   if (isAudio) {
     return (
       <AudioRow
-        mediaId={mediaId} name={fileName || `audio-${mediaId}`} duration={duration} size={size}
+        mediaId={mediaId}
+        // tweb audio.ts:391 — `audioAttribute?.title ?? doc.file_name`
+        title={mediaTitle || fileName || `audio-${mediaId}`}
+        performer={mediaPerformer}
+        duration={duration} size={size}
+        out={out} mid={mid} peerId={peerId}
         time={timeCluster}
         uploadProgress={uploadProgress}
         onCancelUpload={cancelUpload}
@@ -375,14 +389,27 @@ function DocRow({ name, size, mime, href, uploadProgress, onCancelUpload, timeCl
 }
 
 // Music row: plays through the GLOBAL audio player (same as voice messages), so a
-// track shows in the now-playing plate and only one thing plays at a time. While
-// this file is the active track the row flips to pause + a seekable progress bar
-// (tweb). Otherwise it shows duration • size.
-function AudioRow({ mediaId, name, duration, size, time, uploadProgress, onCancelUpload }: {
+// track shows in the now-playing plate and only one thing plays at a time.
+//
+// Дерево 1:1 с tweb (audio.ts:373-378,543-544 + живой DOM `03-reply-audio.json`):
+//   audio-element.audio[.is-out][.audio-show-progress][data-mid,data-peer-id]
+//     div.audio-toggle.audio-ico[.playing] > .audio-play-icon > .part.one/.two
+//     div.audio-details
+//       div.audio-title > middle-ellipsis-element      ← title ?? file_name
+//       div.audio-subtitle
+//         div.audio-time                               ← длительность / currentTime
+//         div.audio-description " • performer"         ← в покое
+//         | div.progress-line > __filled + input.__seek ← во время игры (ЗАМЕНА описания)
+//     span.time + span.clearfix
+function AudioRow({ mediaId, title, performer, duration, size, out, mid, peerId, time, uploadProgress, onCancelUpload }: {
   mediaId?: number
-  name: string
+  title: string
+  performer?: string
   duration?: number
   size?: number
+  out?: boolean
+  mid?: number
+  peerId?: number
   time: ReactNode
   uploadProgress?: number
   onCancelUpload?: () => void
@@ -397,53 +424,69 @@ function AudioRow({ mediaId, name, duration, size, time, uploadProgress, onCance
   const toggle = useAudioStore((s) => s.toggle)
   const playQueue = useAudioStore((s) => s.playQueue)
 
-  const sizeStr = size ? fmtSize(size) : ''
-  // Пока грузится — «отдано / всего», после — длительность • размер.
-  const sub = uploadProgress != null && size
+  // tweb audio.ts:349-371: части описания = [performer]; formatBytes(size) идёт
+  // ТОЛЬКО когда частей нет. Строка всегда начинается с ' • '.
+  const description = performer || (size ? fmtSize(size) : '')
+  // Отступление от tweb: во время аплоада в описание кладём «отдано / всего»
+  // (tweb ограничивается кольцом ProgressivePreloader поверх кнопки) — иначе у
+  // отправителя нет числового прогресса.
+  const subtitleText = uploadProgress != null && size
     ? `${fmtSize(Math.round(uploadProgress * size))} / ${fmtSize(size)}`
-    : [duration ? fmtDur(duration) : '', sizeStr].filter(Boolean).join(' • ')
+    : description
+  // audio.ts:583-584 — в покое время трека, при игре подменяется на currentTime
+  const timeText = fmtDur(Math.floor(isCurrent ? curTime : duration ?? 0))
+  // tweb ставит `audio-show-progress` ТОЛЬКО с первого play и снимает на `ended`
+  // (audio.ts:405-434). До этого `.audio-subtitle` держит max-width:100%.
+  const showProgress = isCurrent && (playing || curTime > 0)
 
   const onPlay = () => {
     if (mediaId == null) return // ещё грузится
     if (isCurrent) toggle()
-    else playQueue([{ mediaId, title: name, subtitle: sizeStr }], 0)
-  }
-  const onSeek = (e: React.MouseEvent) => {
-    const r = e.currentTarget.getBoundingClientRect()
-    seekFraction((e.clientX - r.left) / r.width)
+    else playQueue([{ mediaId, title, subtitle: description }], 0)
   }
   const frac = curDur > 0 ? Math.min(1, curTime / curDur) : 0
 
-  // Дерево tweb (живой DOM §3 «аудио-трек» + _audio.scss):
-  //   audio-element.audio.audio-show-progress[.is-out]
-  //     div.audio-ico.audio-toggle[.playing] > .audio-play-icon > .part.one/.two
-  //     div.audio-details > .audio-title > middle-ellipsis-element
-  //                       > .audio-subtitle > .audio-time + .progress-line
-  //     span.time + span.clearfix
   return (
-    <audio-element class={classNames('audio', 'audio-show-progress', isCurrent ? 'is-playing' : '')}>
+    <audio-element
+      class={classNames('audio', out ? 'is-out' : '', showProgress ? 'audio-show-progress' : '')}
+      data-mid={mid}
+      data-peer-id={peerId}
+    >
       {uploadProgress != null ? (
-        <div className={classNames('audio-ico', 'audio-toggle', s.cancelRing)} onClick={onCancelUpload}>
+        <div className={classNames('audio-toggle', 'audio-ico', s.cancelRing)} onClick={onCancelUpload}>
           <RadialProgress progress={uploadProgress} size={44} />
           {onCancelUpload && <TgIcon name="close" size={20} color="#fff" className={s.cancelX} />}
         </div>
       ) : (
-        <div className={classNames('audio-ico', 'audio-toggle', playing ? 'playing' : '')} onClick={onPlay}>
+        <div className={classNames('audio-toggle', 'audio-ico', playing ? 'playing' : '')} onClick={onPlay}>
           <AudioPlayIcon />
         </div>
       )}
       <div className="audio-details">
         <div className="audio-title">
-          <middle-ellipsis-element>{name}</middle-ellipsis-element>
+          <middle-ellipsis-element>{title}</middle-ellipsis-element>
         </div>
         <div className="audio-subtitle">
-          <div className="audio-time">{isCurrent ? fmtDur(Math.floor(curTime)) : sub}</div>
-          {isCurrent && (
-            <div
-              className="progress-line"
-              onClick={onSeek}
-              style={{ ['--progress' as string]: `${frac * 100}%` }}
-            />
+          <div className="audio-time">{timeText}</div>
+          {showProgress ? (
+            // RangeSelector (tweb rangeSelector.ts:47-76): контейнер несёт
+            // --progress долей, .__filled — inline width в процентах, скраб —
+            // невидимым input[type=range] поверх полосы.
+            <div className="progress-line" style={{ ['--progress' as string]: String(frac) }}>
+              <div className="progress-line__filled" style={{ width: `${(frac * 100).toFixed(4)}%` }} />
+              <input
+                className="progress-line__seek"
+                type="range"
+                min={0}
+                max={curDur || 0}
+                step={1 / 60}
+                value={curTime}
+                aria-label="seek"
+                onChange={(e) => { if (curDur > 0) seekFraction(Number(e.target.value) / curDur) }}
+              />
+            </div>
+          ) : (
+            <div className="audio-description">{subtitleText ? ` • ${subtitleText}` : ''}</div>
           )}
         </div>
       </div>

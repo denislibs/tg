@@ -98,6 +98,9 @@ export interface TimeProps {
   out?: boolean
   /** Сообщение отредактировано — префикс «изменено» (tweb makeEdited). */
   edited?: boolean
+  /** Сообщение закреплено — глиф пина ПЕРЕД всем кластером (tweb messageRender.ts:301-303:
+   * `args.unshift(Icon('pinnedchat_filled', …))` уже после unshift «изменено»). */
+  pinned?: boolean
   /** Просмотры поста канала (tweb .post-views + иконка channelviews). */
   views?: number
   /** Пересылки поста канала (у tweb только в тултипе, у нас — видимый счётчик). */
@@ -121,7 +124,7 @@ export interface TimeProps {
  * контейнера бабла — видимая копия прибивается к его нижне-правому углу.
  */
 export default function Time({
-  time, status, out, edited, views, forwards, effect,
+  time, status, out, edited, pinned, views, forwards, effect,
   destructAt, ttlSeconds, title, mode = 'inline', corner = 'default', justMedia, className,
 }: TimeProps) {
   const fmtTime = useTimeFormatter()
@@ -129,7 +132,7 @@ export default function Time({
   const ttl = useSecretTtl(destructAt, ttlSeconds)
 
   // Части в порядке tweb (messageRender.ts): тик статуса prepend-ом первым в DOM
-  // (визуально уезжает в конец через order:5), затем «изменено», просмотры,
+  // (визуально уезжает в конец через order:5), затем пин, «изменено», просмотры,
   // пересылки, таймер секретки, эффект и последним — само время.
   const parts = (interactive: boolean): ReactNode => (
     <>
@@ -140,25 +143,26 @@ export default function Time({
           size="calc(var(--messages-text-size) + 3px)"
         />
       )}
+      {pinned && <TgIcon name="pinnedchat_filled" className="time-icon time-pinned time-part" size="1.125rem" />}
       {edited && <span className={s.edited}>{t('edited')}</span>}
       {/* truthy как в tweb (messageRender.ts:273): views=0 приходит для не-канальных */}
       {views ? (
         <span className={classNames('post-views', s.views)}>
           {fmtViews(views)}
-          <TgIcon name="channelviews" className={classNames(s.icon, s.iconViews)} size="1.125rem" />
+          <TgIcon name="channelviews" className="time-icon time-part time-icon-views" size="1.125rem" />
         </span>
       ) : null}
       {forwards ? (
         <span className={s.views}>
           {fmtViews(forwards)}
-          <TgIcon name="forward" className={classNames(s.icon, s.iconViews)} size="1.125rem" />
+          <TgIcon name="forward" className="time-icon time-part time-icon-views" size="1.125rem" />
         </span>
       ) : null}
       {ttl?.armed ? (
-        <TgIcon name="timer" className={s.icon} size="1.125rem" />
+        <TgIcon name="timer" className="time-icon time-part" size="1.125rem" />
       ) : ttl ? (
         <>
-          <TgIcon name="fire" className={s.icon} size="1.125rem" />
+          <TgIcon name="fire" className="time-icon time-part" size="1.125rem" />
           {ttl.label}
         </>
       ) : null}

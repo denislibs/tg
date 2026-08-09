@@ -1,7 +1,6 @@
-// Подкомпоненты баблов (document/audio/roundVideo/webpage) + хвост.
-// Исходящие document/audio — акцентный фон, белый текст (не bubbleOut); палитра
-// переключается через [data-out]. Динамика (цвет иконки по документу, градиенты,
-// радиус группы) — инлайн.
+// Подкомпоненты баблов (roundVideo/webpage/контакт/звонок/гео) + хвост.
+// Динамика (градиенты, радиус группы) — инлайн. Файл и трек живут на дереве tweb
+// в RealMediaBubble (.document / audio-element), своих правил здесь не имеют.
 @use '../../styles/foundation' as *;
 
 // Хвост бабла (SVG). Сторона/зеркало/цвет зависят от out — задаются инлайн.
@@ -13,61 +12,6 @@
   flex-shrink: 0;
   pointer-events: none;
   z-index: 0;
-}
-
-// ── document / audio (акцентный бабл при исходящем) ──
-.fileBubble {
-  --bb-bg: var(--surface-color);
-  --bb-text: var(--primary-text-color);
-  --bb-sub: var(--secondary-text-color);
-  --bb-meta: var(--secondary-text-color);
-  // бабл ещё держит отступы padding'ом (не переведён на tweb-модель «тело
-  // сообщения с margin»), поэтому время компенсирует их этими переменными
-  --time-corner-right: 10px;
-  --time-corner-bottom: 5px;
-
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  background: var(--bb-bg);
-  color: var(--bb-text);
-
-  &[data-out] {
-    --bb-bg: var(--primary-color);
-    --bb-text: #fff;
-    --bb-sub: rgba(255, 255, 255, 0.8);
-    --bb-meta: rgba(255, 255, 255, 0.8);
-  }
-}
-.doc {
-  max-width: min(340px, 82%);
-}
-.audio {
-  max-width: min(320px, 82%);
-}
-.fileIcon {
-  width: 46px;
-  height: 46px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.fileIconAudio {
-  cursor: pointer;
-}
-.fileBody {
-  min-width: 0;
-  flex: 1;
-}
-.fileMetaRow {
-  display: flex;
-  align-items: center;
-  gap: 4px;
 }
 
 // ── round video note ──
@@ -419,7 +363,7 @@
   padding: 0.375rem 0.625rem;
   background: var(--b-bg);
   color: var(--b-text);
-  // как у .fileBubble: padding-модель ещё не переведена на tweb «тело сообщения»
+  // padding-модель этого бабла ещё не переведена на tweb «тело сообщения»
   --time-corner-right: 0.625rem;
   --time-corner-bottom: 0.375rem;
 }

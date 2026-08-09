@@ -22,8 +22,6 @@ import { MessageReactions } from './MessageReactions'
 import Time, { TimeClearfix, type TimeMode, type TimeCorner, type RenderTime } from './bubbleParts/Time'
 import {
   bubbleRadius,
-  DocumentBubble,
-  AudioBubble,
   RoundVideoBubble,
   WebPagePreview,
   FactCheckBox,
@@ -213,6 +211,7 @@ export default function MessageContent({
       // без `out` Time не рисует тик статуса (tweb: тики только у исходящих)
       out={out}
       edited={m.edited}
+      pinned={m.pinned}
       views={m.views}
       forwards={m.forwards}
       effect={m.effect}
@@ -359,6 +358,11 @@ export default function MessageContent({
                 duration={m.mediaDuration}
                 size={m.mediaSize}
                 fileName={m.mediaName}
+                mediaTitle={m.mediaTitle}
+                mediaPerformer={m.mediaPerformer}
+                out={out}
+                mid={m.id}
+                peerId={m.senderId}
                 renderTime={renderTime}
                 autoDownload={autoDownload}
                 localUrl={m.localUrl}
@@ -427,10 +431,6 @@ export default function MessageContent({
           withReactionsOutside(
             <BigEmojiBubble m={m} count={bigEmoji} selecting={selecting} time={timeNode('floating', 'default', true)} />,
           )
-        ) : m.type === 'document' ? (
-          <DocumentBubble m={m} out={out} firstInGroup={firstInGroup} lastInGroup={lastInGroup} time={showReactions ? undefined : timeNode('corner')} reactions={reactionsInside} />
-        ) : m.type === 'audio' ? (
-          <AudioBubble m={m} out={out} firstInGroup={firstInGroup} lastInGroup={lastInGroup} time={showReactions ? undefined : timeNode('corner', 'audio')} reactions={reactionsInside} />
         ) : m.type === 'roundVideo' ? (
           withReactionsOutside(<RoundVideoBubble m={m} out={out} firstInGroup={firstInGroup} lastInGroup={lastInGroup} time={timeNode('floating', 'default', true)} />)
         ) : m.type === 'geo' && m.geo ? (
