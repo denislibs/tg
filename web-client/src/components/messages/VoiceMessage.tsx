@@ -106,7 +106,10 @@ export default function VoiceMessage({
 
   // SVG-волна 1:1 tweb (createWaveformBars): бары — <rect> с y = высота
   // контейнера − высота бара, то есть выровнены по НИЗУ, а не по центру.
-  const waveSvg = (
+  // Мемо обязательно: прогресс тикает по rAF (~60 Гц), и без стабильной ссылки на
+  // элемент React пересчитывал бы сотни <rect> каждый кадр — со стабильной он
+  // пропускает поддерево целиком, меняется только ширина обрезающего контейнера.
+  const waveSvg = useMemo(() => (
     <svg
       className="audio-waveform-bars"
       width={wave.width}
@@ -126,7 +129,7 @@ export default function VoiceMessage({
         />
       ))}
     </svg>
-  )
+  ), [wave])
 
   const handlePlay = () => {
     if (isCurrent) toggle()
