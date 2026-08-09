@@ -72,7 +72,7 @@ node scripts/domdiff/run.js --actual snapshots/one-bubble.json --key photo-out-m
 | файл | что |
 |---|---|
 | `expected/bubbles.json` | 20 деревьев баблов ленты (фаза 2) |
-| `expected/viewers.json` | полноэкранные поверхности (фаза 5): медиавьюер, сториз-вьюер |
+| `expected/viewers.json` | отдельные поверхности: медиавьюер и сториз-вьюер (фаза 5), композер, эмодзи-дропдаун и attach-меню (фаза 6) |
 | `expected/computed.json` | блоки замеров (`--computed`) |
 | `expected/anims.json` | списки бегущих анимаций (сверяются глазами по отчёту) |
 
@@ -86,7 +86,7 @@ node scripts/domdiff/extract-expected.js
 дамп в `docs/research/tweb-dom/`, добавили файл в `BUBBLE_SOURCES`; новая
 полноэкранная поверхность — в `VIEWER_SOURCES` (`extract-expected.js`).
 
-### Полноэкранные поверхности
+### Отдельные поверхности
 
 `--list` печатает для каждой её селектор и режим; снять снимок —
 `--snippet-for <ключ>` (подставит нужный селектор), сверить — `--key <ключ>`.

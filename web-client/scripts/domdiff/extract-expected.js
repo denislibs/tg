@@ -54,6 +54,25 @@ const VIEWER_SOURCES = [
     pick: /^_Viewer_/,
     mount: 'stories-viewer',
   },
+  // Фаза 6 — композер. Все три дампа сняты в чате «123 123»: композер в покое
+  // (в черновике был reply-хелпер — снят как есть), эмодзи-дропдаун открыт
+  // кликом по toggle-emoticons, attach-меню — кликом по скрепке.
+  {
+    file: '04-composer-rest.json',
+    selector: '.chat-input',
+    mode: 'classes',
+  },
+  {
+    file: '04-emoji-dropdown.json',
+    selector: '.emoji-dropdown',
+    mode: 'classes',
+  },
+  {
+    // Меню скрепки живёт не внутри композера, а отдельным узлом в body.
+    file: '04-attach-menu.json',
+    selector: '.btn-menu.top-right',
+    mode: 'classes',
+  },
 ]
 
 /** Спуск к первому узлу, чей класс подходит под `re` (обход в глубину). */
