@@ -416,10 +416,16 @@ import { useAppStateStore, setStateWriter } from './appState'
 import { loadFolders } from './foldersStore'
 
 const stateKey = vi.fn().mockResolvedValue(undefined)
-const work = { id: 7, title: 'Работа', peerIds: [1, 2], flags: 0 }
-const fun = { id: 8, title: 'Отдых', peerIds: [], flags: 0 }
+// Форма Folder — из core/managers/foldersManager.ts, не выдумывать.
+const mkFolder = (id: number, title: string): Folder => ({
+  id, title, pos: id,
+  contacts: false, nonContacts: false, groups: true, broadcasts: false,
+  excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [],
+})
+const work = mkFolder(7, 'Работа')
+const fun = mkFolder(8, 'Отдых')
 
-function managersWith(list: typeof work[], contacts: number[] = []) {
+function managersWith(list: Folder[], contacts: number[] = []) {
   return {
     folders: { list: vi.fn().mockResolvedValue(list) },
     contacts: { list: vi.fn().mockResolvedValue(contacts.map((userId) => ({ userId }))) },

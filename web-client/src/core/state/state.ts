@@ -34,3 +34,14 @@ export const STATE_INIT: AppState = {
 
 /** tweb `ALL_KEYS = Object.keys(STATE_INIT)` (loadState.ts:43) */
 export const STATE_KEYS = Object.keys(STATE_INIT) as (keyof AppState)[]
+
+/**
+ * Свежий экземпляр дефолтов. Нужен именно ГЛУБОКАЯ копия, а не `{ ...STATE_INIT }`:
+ * при поверхностной вложенные `folders`/`hiddenPinnedMessages` остались бы теми же
+ * объектами, что и в модульной константе, и первая же мутация отравила бы дефолты
+ * на весь сеанс. В tweb по этой же причине везде `copy(STATE_INIT)`
+ * (loadState.ts:122,164,204).
+ */
+export function initialState(): AppState {
+  return structuredClone(STATE_INIT)
+}

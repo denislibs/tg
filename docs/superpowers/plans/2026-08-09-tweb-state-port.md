@@ -615,7 +615,12 @@ import { useAppStateStore, setStateWriter } from './appState'
 import { loadFolders, useFoldersStore, ALL_FOLDER_ID } from './foldersStore'
 
 const stateKey = vi.fn().mockResolvedValue(undefined)
-const folder = { id: 7, title: 'Работа', peerIds: [], flags: 0 }
+// Форма Folder — из core/managers/foldersManager.ts, не выдумывать.
+const folder: Folder = {
+  id: 7, title: 'Работа', pos: 0,
+  contacts: false, nonContacts: false, groups: true, broadcasts: false,
+  excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [],
+}
 
 beforeEach(() => {
   useAppStateStore.setState({ ...STATE_INIT }, true)
