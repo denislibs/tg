@@ -319,8 +319,11 @@ export default function MessageContent({
                 onOpen={feedFns.openLightbox}
                 autoDownload={autoDownload}
               />
+              {/* подпись — тоже `.spoilers-container` (в tweb она лежит внутри
+                  `.message.spoilers-container`): без этого класса раскрытие спойлера
+                  в подписи некому обслуживать — ветки `_spoiler.scss` живут под ним */}
               {m.text ? (
-                <div className={s.mediaCaption}>
+                <div className={classNames(s.mediaCaption, 'spoilers-container')}>
                   <RichText text={m.text} entities={m.entities} linkColor="var(--b-link)" />
                   {showReactions ? reactionsRow(timeNode('plain')) : (
                     <>
@@ -411,8 +414,11 @@ export default function MessageContent({
                   onUnlockPaid={m.paidMedia?.locked && m.id != null ? () => feedFns.unlockPaid(m.id as number) : undefined}
                 />
               )}
+              {/* подпись — тоже `.spoilers-container` (в tweb она лежит внутри
+                  `.message.spoilers-container`): без этого класса раскрытие спойлера
+                  в подписи некому обслуживать — ветки `_spoiler.scss` живут под ним */}
               {m.text ? (
-                <div className={s.mediaCaption}>
+                <div className={classNames(s.mediaCaption, 'spoilers-container')}>
                   <RichText text={m.text} entities={m.entities} linkColor="var(--b-link)" />
                   {showReactions ? reactionsRow(timeNode('plain')) : (
                     <>

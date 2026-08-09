@@ -9,7 +9,8 @@
 import type { SpoilerRendererInMessage, SpoilerRendererOutMessage } from './spoilerRenderer.worker'
 
 export interface SpoilerRendererConnection {
-  postMessage: (message: SpoilerRendererInMessage) => void
+  /** `transfer` нужен оверлею: он отдаёт воркеру OffscreenCanvas своей канвы. */
+  postMessage: (message: SpoilerRendererInMessage, transfer?: Transferable[]) => void
   release: () => void
 }
 
@@ -49,8 +50,10 @@ export function retainSpoilerRenderer(
 
   let released = false
   return {
-    postMessage: (message) => {
-      if (!released) worker?.postMessage(message)
+    postMessage: (message, transfer) => {
+      if (released) return
+      if (transfer) worker?.postMessage(message, transfer)
+      else worker?.postMessage(message)
     },
     release: () => {
       if (released) return

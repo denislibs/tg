@@ -3,7 +3,8 @@ import type { EntityType, MessageEntity } from '../core/models'
 import { safeUrl } from '../core/safeUrl'
 import CodeBlock from './CodeBlock'
 import StickerMedia from './StickerMedia'
-import classNames from '../shared/lib/classNames'
+import MessageSpoilerOverlay from './messages/MessageSpoilerOverlay'
+import { revealSpoiler } from '@lib/spoiler/spoilerReveal'
 import s from './RichText.module.scss'
 
 // Matches URLs, t.me links, @usernames and #hashtags
@@ -93,16 +94,26 @@ function CustomEmoji({ documentId, fallback }: { documentId: number; fallback: s
   )
 }
 
-// Click-to-reveal spoiler (tweb-style blur until tapped).
+// Спойлер — разметка 1:1 tweb (wrapRichText.ts:700 `messageEntitySpoiler`):
+// внешний `.spoiler` держит заливку, внутренний `.spoiler-text` — сам текст
+// с `opacity: 0`. Классы ГЛОБАЛЬНЫЕ: правила живут в `styles/tweb/_spoiler.scss`,
+// а не в модуле этого компонента.
+//
+// Клик: если над сообщением поднялся оверлей частиц — раскрывает он (его
+// обработчик висит на элементе сообщения в capture-фазе, tweb делает так же),
+// и `revealSpoiler` сам ничего не трогает. Без оверлея работает CSS-путь tweb
+// (`is-spoiler-visible` на `.spoilers-container`).
+const handleSpoilerClick = (e: React.MouseEvent<HTMLSpanElement>) => {
+  if (revealSpoiler(e.currentTarget)) {
+    e.stopPropagation()
+    e.preventDefault()
+  }
+}
+
 function Spoiler({ children }: { children: ReactNode }) {
-  const [revealed, setRevealed] = useState(false)
   return (
-    <span
-      onClick={(e) => { e.stopPropagation(); setRevealed(true) }}
-      className={classNames(s.spoiler, revealed ? '' : s.spoilerHidden)}
-      style={{ cursor: revealed ? 'inherit' : 'pointer' }}
-    >
-      {children}
+    <span className="spoiler" onClick={handleSpoilerClick}>
+      <span className="spoiler-text">{children}</span>
     </span>
   )
 }
@@ -172,6 +183,10 @@ export default function RichText({
   // thousands of spans can't freeze the renderer. Backend caps too; this protects
   // the client regardless of source.
   const ents = entities.length > 500 ? entities.slice(0, 500) : entities
+  // Оверлей частиц — ОДИН на весь текст (в tweb он тоже один на `.message`,
+  // bubbles.ts:9780 addMessageSpoilerOverlay); идёт последним, чтобы его канва
+  // легла поверх слов.
+  const overlay = ents.some((e) => e.type === 'spoiler') ? <MessageSpoilerOverlay /> : null
   const pres = ents.filter((e) => e.type === 'pre').sort((a, b) => a.offset - b.offset)
   if (pres.length > 0) {
     const parts: ReactNode[] = []
@@ -194,9 +209,9 @@ export default function RichText({
       cursor = p.offset + p.length
     })
     pushInline(cursor, text.length, 'inEnd')
-    return <>{parts}</>
+    return <>{parts}{overlay}</>
   }
-  return <>{renderInline(text, ents, linkColor)}</>
+  return <>{renderInline(text, ents, linkColor)}{overlay}</>
 }
 
 // Inline (non-block) entity rendering: segment the text at entity boundaries and

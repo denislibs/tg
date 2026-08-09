@@ -7,36 +7,15 @@
 // Маска — групповой эффект: одного inline-обновления на обёртке хватает на всё
 // поддерево букв, и инвалидация стиля ограничена этим элементом (глобальное
 // правило заставляло бы браузер обходить документ на каждом кадре).
+import { retainSpoilerRenderer, type SpoilerRendererConnection } from './spoilerRendererConnection'
 import {
-  buildDotRendererConfig,
-  getDefaultParticlesCount,
-  type DotRendererConfig,
-} from './dotRendererCore'
-import {
-  hasSpoilerRendererFailed,
-  retainSpoilerRenderer,
-  type SpoilerRendererConnection,
-} from './spoilerRendererConnection'
+  animationsEnabled,
+  isWorkerSimSupported,
+  spoilerSimDpr,
+  TEXT_SPOILER_HEIGHT,
+  TEXT_SPOILER_WIDTH,
+} from './spoilerSupport'
 import type { SpoilerRendererOutMessage } from './spoilerRenderer.worker'
-
-// tweb components/dotRenderer.ts — размер тайла симуляции; его же ждёт
-// `styles/tweb/_spoiler.scss` (`mask-size: 240px 120px; mask-repeat: repeat`)
-const TEXT_SPOILER_WIDTH = 240
-const TEXT_SPOILER_HEIGHT = 120
-
-// tweb components/dotRenderer.ts getTextSpoilerConfig — текстовый спойлер мельче
-// и шустрее медийного
-const getTextSpoilerConfig = (dpr: number): Partial<DotRendererConfig> => ({
-  particlesCount: 4 * getDefaultParticlesCount(TEXT_SPOILER_WIDTH, TEXT_SPOILER_HEIGHT),
-  noiseSpeed: 5,
-  maxVelocity: 10,
-  timeScale: 1.2,
-  radius: 1.8 * dpr,
-  forceMult: 0.2,
-  velocityMult: 0.4,
-  dampingMult: 2.2,
-  longevity: 5.0,
-})
 
 // ЧЕСТНЫЙ ФОЛБЭК (в tweb его нет): статическая зернистая маска того же тайла.
 // Ставится, когда живой симуляции нет или она не поднялась — без маски буквы
@@ -59,34 +38,9 @@ const appliedMaskURLs = new WeakMap<HTMLElement, string>()
 
 let connection: SpoilerRendererConnection | undefined
 let latestMaskURL: string | undefined
-let workerSimSupported: boolean | undefined
 /** Ждём кадр из воркера; false — сидим на статическом фолбэке. */
 let live = false
 let firstFrameTimeoutId: number | undefined
-
-const animationsEnabled = () =>
-  !document.body.classList.contains('animation-level-0') &&
-  !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-
-/**
- * WebGL2 в OffscreenCanvas — то же, что понадобится воркеру. Контекст сразу
- * отпускаем: проверка одноразовая, а число живых GL-контекстов у браузера
- * ограничено (отступление от tweb — там пробный контекст остаётся висеть).
- */
-const isWorkerSimSupported = () => {
-  if (hasSpoilerRendererFailed()) return false
-  if (workerSimSupported === undefined) {
-    try {
-      const canvas = new OffscreenCanvas(1, 1)
-      const context = canvas.getContext('webgl2')
-      context?.getExtension('WEBGL_lose_context')?.loseContext()
-      workerSimSupported = !!context
-    } catch {
-      workerSimSupported = false
-    }
-  }
-  return workerSimSupported
-}
 
 const applyMask = (element: HTMLElement) => {
   const url = latestMaskURL ?? (live ? undefined : STATIC_MASK_URL)
@@ -132,20 +86,11 @@ const startWorkerSim = () => {
   connection = retainSpoilerRenderer(onMessage)
   live = true
 
-  // dpr ограничен двойкой (tweb): маска перекодируется в data-URL на каждом
-  // четвёртом кадре, а её вес растёт квадратично
-  const dpr = Math.min(2, window.devicePixelRatio)
   connection.postMessage({
     type: 'text-init',
     width: TEXT_SPOILER_WIDTH,
     height: TEXT_SPOILER_HEIGHT,
-    dpr,
-    config: buildDotRendererConfig(
-      TEXT_SPOILER_WIDTH,
-      TEXT_SPOILER_HEIGHT,
-      dpr,
-      getTextSpoilerConfig(dpr),
-    ),
+    dpr: spoilerSimDpr(),
   })
   connection.postMessage({ type: 'bluff-play' })
 
