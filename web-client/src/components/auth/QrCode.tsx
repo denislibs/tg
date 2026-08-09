@@ -4,8 +4,7 @@ import type QRCodeStyling from 'qr-code-styling'
 /**
  * A real (scannable) QR rendered with `qr-code-styling`, styled to match tweb's
  * login QR (rounded dots + extra-rounded finder corners). `data` is the URL to
- * encode; changing it re-renders (used for the 30s auto-rotation). The caller
- * overlays the center logo over the cleared area.
+ * encode; changing it re-renders (used for the 30s auto-rotation).
  *
  * Styling mirrors tweb's `paintQrCode` (`src/helpers/qrCode/paintQrCode.ts`):
  *   dotsOptions       { type: 'rounded', color }
@@ -18,11 +17,14 @@ import type QRCodeStyling from 'qr-code-styling'
 export default function QrCode({
   data,
   size = 220,
-  color = '#000',
+  /** цвет модулей; по умолчанию — тематический `--primary-text-color`, как в tweb */
+  color,
+  className = '',
 }: {
   data: string
   size?: number
   color?: string
+  className?: string
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const qrRef = useRef<QRCodeStyling | null>(null)
@@ -33,6 +35,12 @@ export default function QrCode({
     void import('qr-code-styling').then((mod) => {
       if (!alive || !ref.current) return
       const Ctor = mod.default
+      // tweb (paintQrCode) читает цвета из CSS-переменных в момент отрисовки —
+      // библиотеке нужно конкретное значение, `var(...)` она не понимает.
+      const resolved =
+        color ??
+        getComputedStyle(document.documentElement).getPropertyValue('--primary-text-color').trim() ??
+        '#fff'
       const opts = {
         width: size,
         height: size,
@@ -40,8 +48,8 @@ export default function QrCode({
         data,
         margin: 0,
         qrOptions: { errorCorrectionLevel: 'L' as const },
-        dotsOptions: { type: 'rounded' as const, color },
-        cornersSquareOptions: { type: 'extra-rounded' as const, color },
+        dotsOptions: { type: 'rounded' as const, color: resolved },
+        cornersSquareOptions: { type: 'extra-rounded' as const, color: resolved },
         backgroundOptions: { color: 'transparent' },
         imageOptions: { hideBackgroundDots: true, imageSize: 0.28, margin: 4 },
       }
@@ -56,5 +64,5 @@ export default function QrCode({
     }
   }, [data, size, color])
 
-  return <div ref={ref} style={{ width: size, height: size }} aria-label="QR code" />
+  return <div ref={ref} className={className} style={{ width: size, height: size }} aria-label="QR code" />
 }

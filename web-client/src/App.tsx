@@ -155,7 +155,6 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
           активного чата поднимаются сюда, чтобы весь shell был в теме (осознанное
           отклонение от tweb-скоупа для цветов — см. useShellTheme). Цвета темы чата
           при этом остаются локально в колонке (Chat). */}
-      <SvgDefs />
       <ChatBackground themeColors={shellThemeVariant?.gradient} />
 
       <div className="sidebar-left-overlay" />
@@ -191,10 +190,18 @@ function ThemedApp() {
 
   // Тема управляется атрибутом data-theme на <html> (useThemeToggle) — MUI
   // ThemeProvider не нужен.
-  return authed ? (
-    <Shell onToggleMode={toggleMode} onLogout={logout} />
-  ) : (
-    <AuthFlow onComplete={login} onToggleMode={toggleMode} />
+  //
+  // Спрайт `#svg-defs` — общий для мессенджера и экрана входа (там из него
+  // берётся `#logo`), поэтому монтируется до ветвления, как в tweb index.html.
+  return (
+    <>
+      <SvgDefs />
+      {authed ? (
+        <Shell onToggleMode={toggleMode} onLogout={logout} />
+      ) : (
+        <AuthFlow onComplete={login} onToggleMode={toggleMode} />
+      )}
+    </>
   )
 }
 

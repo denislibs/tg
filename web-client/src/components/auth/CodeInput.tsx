@@ -30,13 +30,15 @@ function Digit({ digit }: { digit: string }) {
   )
 }
 
-export default function CodeInput({ length, value, onChange, onComplete, error, onFocusChange }: {
+export default function CodeInput({ length, value, onChange, onComplete, error, onFocusChange, className = '' }: {
   length: number
   value: string
   onChange: (v: string) => void
   onComplete: (code: string) => void
   error?: boolean
   onFocusChange?: (focused: boolean) => void
+  /** доп. класс на `.wrap` — карточка кода вешает `.codeInputField` (margin-top 1.5rem) */
+  className?: string
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [focused, setFocused] = useState(false)
@@ -53,7 +55,7 @@ export default function CodeInput({ length, value, onChange, onComplete, error, 
   const activeIdx = Math.min(value.length, length - 1)
 
   return (
-    <div className={classNames(s.wrap, error ? s.error : '')}>
+    <div className={classNames(s.wrap, error ? s.error : '', className)}>
       <input
         ref={inputRef}
         className={s.input}
