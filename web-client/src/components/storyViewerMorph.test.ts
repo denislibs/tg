@@ -51,7 +51,6 @@ describe('animateStoryViewer', () => {
   afterEach(() => {
     document.body.innerHTML = ''
     document.body.className = ''
-    document.documentElement.removeAttribute('data-reduce-motion')
     vi.restoreAllMocks()
   })
 
@@ -118,13 +117,11 @@ describe('animateStoryViewer', () => {
     expect(calls.map((c) => c.el)).toEqual([els.activeContainer, els.root])
   })
 
+  // «Без анимаций» = App.tsx снимает body.animation-level-2 и ставит
+  // animation-level-0 (tweb appImManager.ts:2209-2211) — гейт ровно один.
   it('анимации выключены — ничего не проигрывается', async () => {
     document.body.classList.remove('animation-level-2')
-    await animateStoryViewer(makeElements(), true)
-    expect(calls).toHaveLength(0)
-
-    document.body.classList.add('animation-level-2')
-    document.documentElement.setAttribute('data-reduce-motion', '')
+    document.body.classList.add('animation-level-0')
     await animateStoryViewer(makeElements(), true)
     expect(calls).toHaveLength(0)
   })
