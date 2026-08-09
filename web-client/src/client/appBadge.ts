@@ -1,144 +1,217 @@
-// Счётчик непрочитанных на вкладке — порт tweb uiNotificationsManager:
-// title «(N) Telegram», navigator.setAppBadge (PWA) и favicon с красным
-// кружком-бейджем. Источник — chatsStore: muted-чаты бейдж не красят
-// (tweb folder_unread → unreadUnmutedPeerIds), архив в счёт не идёт
-// (tweb считает по папке «Все», архив — отдельная папка).
+// Вкладка при новых уведомлениях — порт tweb `src/lib/uiNotificationsManager.ts`:
+// пока вкладка «в простое» (idle), заголовок и фавиконка МИГАЮТ раз в секунду:
+// секунду — «N notifications» + синий круг с числом, секунду — исходные title/иконка
+// (tweb: onTitleInterval :605-661, resetTitle :665-672, toggleToggler :675-689,
+// setFavicon :691-700). Счётчик — число НЕПОКАЗАННЫХ уведомлений (tweb notify()
+// :712-718 инкрементит на каждое уведомляемое сообщение), он обнуляется, когда
+// пользователь возвращается во вкладку (tweb :541-556 idle→false → clear()).
+// Отдельно — PWA-бейдж на иконке приложения: navigator.setAppBadge получает
+// `folder.unreadUnmutedPeerIds.size` (tweb :194-199) — число ЧАТОВ с непрочитанным
+// (не сумму сообщений), по папке «Все» (архив в неё не входит).
 import { useChatsStore } from '../stores/chatsStore'
+import { useI18nStore, type Lang } from '../i18n'
+import { IS_MOBILE } from '../environment/userAgent'
+import IS_TOUCH_SUPPORTED from '../environment/touchSupport'
 
-export const BASE_TITLE = 'Telegram'
+// tweb config/font.ts:2 (FontFamily) — шрифт числа на фавиконке.
+const FONT_FAMILY =
+  'Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif'
 
-/** Сумма unread по незамьюченным неархивным диалогам. */
-export function countUnmutedUnread(dialogs: { unread: number; muted: boolean; archived: boolean }[]): number {
+// ── i18n: tweb lang.ts:317 'Notifications.Count' {one_value/other_value} ─────
+// У нас словарь плоский (ключ = английская строка), поэтому третья славянская
+// форма (2-4) живёт отдельным ключом; правило выбора формы — в коде, как в
+// core/format/commentsLabel.ts.
+const ONE = '%d notification'
+const FEW = '%d notifications (few)' // только ru/uk
+const OTHER = '%d notifications'
+
+/** «N notifications» для заголовка вкладки (tweb I18n.format('Notifications.Count')). */
+export function notificationsCountTitle(count: number, lang: Lang, t: (s: string) => string): string {
+  let key = OTHER
+  if (lang === 'ru' || lang === 'uk') {
+    const m10 = count % 10
+    const m100 = count % 100
+    if (m10 === 1 && m100 !== 11) key = ONE
+    else if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) key = FEW
+  } else if (count === 1) {
+    key = ONE
+  }
+  return t(key).replace('%d', String(count))
+}
+
+/** Число ЧАТОВ с непрочитанным среди незамьюченных неархивных (tweb unreadUnmutedPeerIds.size). */
+export function countUnmutedUnreadPeers(dialogs: { unread?: number; muted?: boolean; archived?: boolean }[]): number {
   let n = 0
-  for (const d of dialogs) if (!d.muted && !d.archived) n += d.unread
+  for (const d of dialogs) if (d.unread && !d.muted && !d.archived) n += 1
   return n
 }
 
-/** Заголовок вкладки: «(N) Telegram» при непрочитанных, иначе «Telegram». */
-export function titleFor(unread: number): string {
-  return unread > 0 ? `(${unread}) ${BASE_TITLE}` : BASE_TITLE
-}
+// ── favicon (tweb :691-700) ──────────────────────────────────────────────────
+// Ссылки не правятся на месте, а КЛОНИРУЮТСЯ и подменяют себя в DOM: только так
+// браузер перечитывает иконку. Исходный href запоминается в data-href на самой
+// ссылке (клон его наследует), а `arr[idx] = link` держит наш массив на живых
+// узлах — старые после replaceWith выкинуты из документа.
+let faviconElements: HTMLLinkElement[] = []
+let prevFavicon: string | undefined
 
-// ── favicon ──────────────────────────────────────────────────────────────────
-
-let baseIcon: HTMLImageElement | null = null // исходная иконка (favicon.svg)
-let baseIconFailed = false
-
-function loadBaseIcon(): Promise<void> {
-  return new Promise((resolve) => {
-    const link = document.head.querySelector<HTMLLinkElement>('link[rel="icon"]')
-    const img = new Image()
-    img.onload = () => { baseIcon = img; resolve() }
-    img.onerror = () => { baseIconFailed = true; resolve() }
-    img.src = link?.href || '/favicon.svg'
+function setFavicon(href?: string): void {
+  if (prevFavicon === href) return
+  prevFavicon = href
+  faviconElements.forEach((element, idx, arr) => {
+    const link = element.cloneNode() as HTMLLinkElement
+    link.dataset.href ||= link.href
+    link.href = href ?? link.dataset.href
+    element.replaceWith((arr[idx] = link))
   })
 }
 
-// Рисуем 32×32: исходная иконка (или фолбэк — синий круг с «T», цвет tweb
-// #3390ec) + при unread>0 красный кружок справа-сверху с числом (≤9, иначе 9+).
-function drawFavicon(unread: number): string | null {
+// tweb :627-660: круг во всю площадь канваса 32×dpr, #3390ec, белое число.
+// Базовая линия — height * .5625 (не центр), размер шрифта зависит от разрядности.
+function drawFavicon(count: number): string | null {
   const canvas = document.createElement('canvas')
-  canvas.width = 32
-  canvas.height = 32
+  canvas.width = 32 * window.devicePixelRatio
+  canvas.height = canvas.width
+
   const ctx = canvas.getContext('2d')
-  if (!ctx) return null
+  if (!ctx) return null // отступление от tweb: у нас strict TS, tweb контекст не проверяет
+  ctx.beginPath()
+  ctx.arc(canvas.width / 2, canvas.height / 2, canvas.width / 2, 0, 2 * Math.PI, false)
+  ctx.fillStyle = '#3390ec'
+  ctx.fill()
 
-  if (baseIcon) {
-    try {
-      ctx.drawImage(baseIcon, 0, 0, 32, 32)
-    } catch {
-      baseIconFailed = true
-    }
-  }
-  if (!baseIcon || baseIconFailed) {
-    ctx.beginPath()
-    ctx.arc(16, 16, 16, 0, 2 * Math.PI)
-    ctx.fillStyle = '#3390ec'
-    ctx.fill()
-    ctx.font = '700 18px Roboto, sans-serif'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillStyle = '#fff'
-    ctx.fillText('T', 16, 18)
+  let fontSize = 24
+  let str = '' + count
+  if (count < 10) fontSize = 22
+  else if (count < 100) fontSize = 20
+  else {
+    str = '99+'
+    fontSize = 16
   }
 
-  if (unread > 0) {
-    const str = unread > 9 ? '9+' : String(unread)
-    ctx.beginPath()
-    ctx.arc(22, 10, 10, 0, 2 * Math.PI)
-    ctx.fillStyle = '#e53935'
-    ctx.fill()
-    ctx.font = `700 ${str.length > 1 ? 11 : 13}px Roboto, sans-serif`
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillStyle = '#fff'
-    ctx.fillText(str, 22, 11)
-  }
+  fontSize *= window.devicePixelRatio
 
-  try {
-    return canvas.toDataURL('image/png')
-  } catch {
-    return null // svg «испачкал» canvas (не должен, но перестрахуемся)
-  }
+  ctx.font = `700 ${fontSize}px ${FONT_FAMILY}`
+  ctx.textBaseline = 'middle'
+  ctx.textAlign = 'center'
+  ctx.fillStyle = 'white'
+  ctx.fillText(str, canvas.width / 2, canvas.height * 0.5625)
+
+  return canvas.toDataURL()
 }
 
-// Подмена href у <link rel="icon"> (создаём, если её нет); при unread=0
-// возвращаем исходный favicon.svg (tweb setFavicon с data-href).
-function setFavicon(href: string | null): void {
-  let link = document.head.querySelector<HTMLLinkElement>('link[rel="icon"]')
-  if (!link) {
-    link = document.createElement('link')
-    link.rel = 'icon'
-    document.head.appendChild(link)
-  }
-  if (!link.dataset.href) link.dataset.href = link.href || '/favicon.svg'
-  const next = href ?? link.dataset.href
-  if (link.href !== next) link.href = next
+// ── мигание заголовка (tweb :605-689) ────────────────────────────────────────
+
+let titleBackup = ''
+let titleChanged = false
+let titleInterval: ReturnType<typeof setInterval> | null = null
+let notificationsCount = 0
+
+// Раз в секунду: если сейчас показан «тревожный» титул — вернуть исходный (это
+// вторая половина мигания и на этом тике всё), иначе — поставить тревожный.
+function onTitleInterval(): void {
+  const wasChanged = titleChanged
+  if (wasChanged) resetTitle()
+  if (!notificationsCount || wasChanged) return
+
+  titleChanged = true
+  const { t, lang } = useI18nStore.getState()
+  document.title = notificationsCountTitle(notificationsCount, lang, t)
+  const href = drawFavicon(notificationsCount)
+  if (href) setFavicon(href)
 }
 
-// ── подписка ─────────────────────────────────────────────────────────────────
+function resetTitle(): void {
+  if (!titleChanged) return
+  titleChanged = false
+  document.title = titleBackup
+  setFavicon()
+}
+
+function toggleToggler(enable = idle): void {
+  if (IS_MOBILE) return
+
+  if (titleInterval) {
+    clearInterval(titleInterval)
+    titleInterval = null
+  }
+
+  if (!enable) resetTitle()
+  // отступление от tweb: tweb крутит интервал в воркере (apiManagerProxy.setInterval),
+  // чтобы фон вкладки его не тормозил; у нас обычный setInterval (в скрытой вкладке
+  // браузер и так клампит его ровно до 1с — периода мигания).
+  else titleInterval = setInterval(onTitleInterval, 1000)
+}
+
+// ── idle (порт helpers/idleController в объёме, нужном уведомлениям) ─────────
+// idle = вкладка/окно без пользователя: blur → idle, focus или первое движение
+// мыши (на тач-устройствах — тач) → активен. Возврат пользователя обнуляет
+// счётчик уведомлений (tweb :541-556: clear() → setNotificationCount(0)).
+let idle = true
+
+function setIdle(value: boolean): void {
+  if (idle === value) return
+  idle = value
+  if (!idle) notificationsCount = 0
+  toggleToggler()
+}
+
+/** Уведомление показано (tweb notify() :712-718: ++count и перезапуск мигания). */
+export function incNotificationsCount(): void {
+  if (!started) return // tweb notify(): `if(this.stopped) return` — до construct() не считаем
+  ++notificationsCount
+  toggleToggler()
+}
+
+// ── PWA-бейдж ────────────────────────────────────────────────────────────────
+
+const setAppBadge: ((contents?: number) => Promise<void>) | undefined = (
+  navigator as Navigator & { setAppBadge?: (contents?: number) => Promise<void> }
+).setAppBadge?.bind(navigator)
+
+let lastAppBadge = -1
+
+function updateAppBadge(): void {
+  const count = countUnmutedUnreadPeers(useChatsStore.getState().dialogs)
+  if (count === lastAppBadge) return
+  lastAppBadge = count
+  void setAppBadge?.(count)
+}
+
+// ── старт ────────────────────────────────────────────────────────────────────
 
 let started = false
-let lastShown = -1
-let timer: ReturnType<typeof setTimeout> | null = null
-
-function apply(unread: number): void {
-  if (unread === lastShown) return // не перерисовывать зря
-  lastShown = unread
-
-  document.title = titleFor(unread)
-
-  // PWA-бейдж на иконке приложения (может отсутствовать / бросать)
-  try {
-    const nav = navigator as Navigator & {
-      setAppBadge?: (n: number) => Promise<void>
-      clearAppBadge?: () => Promise<void>
-    }
-    if (unread > 0) void nav.setAppBadge?.(unread)
-    else void nav.clearAppBadge?.()
-  } catch { /* not supported */ }
-
-  setFavicon(unread > 0 ? drawFavicon(unread) : null)
-}
+let badgeTimer: ReturnType<typeof setTimeout> | null = null
 
 /**
- * Подписка на chatsStore с троттлом 500мс: title + PWA-бейдж + favicon.
+ * tweb construct() :160-199: запомнить фавиконки и исходный заголовок, обнулить
+ * PWA-бейдж, подписаться на idle и на изменения непрочитанного.
  * Идемпотентна (Shell может перемонтироваться, StrictMode зовёт эффекты дважды).
  */
 export function initAppBadge(): void {
   if (started) return
   started = true
 
-  const schedule = () => {
-    if (timer) return // trailing-троттл: не чаще раза в 500мс
-    timer = setTimeout(() => {
-      timer = null
-      apply(countUnmutedUnread(useChatsStore.getState().dialogs))
-    }, 500)
-  }
+  faviconElements = Array.from(
+    document.head.querySelectorAll<HTMLLinkElement>('link[rel="icon"], link[rel="alternate icon"]'),
+  )
+  titleBackup = document.title
+  void setAppBadge?.(0)
 
-  void loadBaseIcon().then(() => {
-    apply(countUnmutedUnread(useChatsStore.getState().dialogs))
-    useChatsStore.subscribe(schedule)
+  window.addEventListener('blur', () => setIdle(true))
+  window.addEventListener('focus', () => setIdle(false))
+  window.addEventListener(IS_TOUCH_SUPPORTED ? 'touchstart' : 'mousemove', () => setIdle(false), {
+    once: true,
+    passive: true,
+  })
+
+  // отступление от tweb: события folder_unread у нас нет — пересчитываем по
+  // подписке на стор с trailing-троттлом 500мс (стор дёргается и на печать/презенс).
+  updateAppBadge()
+  useChatsStore.subscribe(() => {
+    if (badgeTimer) return
+    badgeTimer = setTimeout(() => {
+      badgeTimer = null
+      updateAppBadge()
+    }, 500)
   })
 }

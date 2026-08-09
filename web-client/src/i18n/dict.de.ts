@@ -68,6 +68,9 @@ const de: Dict = {
   'Notifications for channels': 'Benachrichtigungen für Kanäle',
   'Message Preview': 'Nachrichtenvorschau',
   'New notification': 'Neue Benachrichtigung',
+  // Tab-Titel bei neuen Benachrichtigungen (tweb 'Notifications.Count').
+  '%d notification': '%d Benachrichtigung',
+  '%d notifications': '%d Benachrichtigungen',
   'For 1 Hour': 'Für 1 Stunde',
   'For 4 Hours': 'Für 4 Stunden',
   'For 8 Hours': 'Für 8 Stunden',

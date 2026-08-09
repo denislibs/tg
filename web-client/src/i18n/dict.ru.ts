@@ -282,6 +282,11 @@ const ru: Dict = {
   'Notifications for channels': 'Уведомления из каналов',
   'Message Preview': 'Предпросмотр сообщений',
   'New notification': 'Новое уведомление',
+  // Заголовок вкладки при новых уведомлениях (tweb 'Notifications.Count').
+  // «(few)» — славянская форма 2-4, её выбирает client/appBadge.
+  '%d notification': '%d уведомление',
+  '%d notifications (few)': '%d уведомления',
+  '%d notifications': '%d уведомлений',
   'For 1 Hour': 'На 1 час',
   'For 4 Hours': 'На 4 часа',
   'For 8 Hours': 'На 8 часов',

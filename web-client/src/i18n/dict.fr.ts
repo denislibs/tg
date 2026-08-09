@@ -68,6 +68,9 @@ const fr: Dict = {
   'Notifications for channels': 'Notifications des canaux',
   'Message Preview': 'Aperçu du message',
   'New notification': 'Nouvelle notification',
+  // Titre de l'onglet en cas de nouvelles notifications (tweb 'Notifications.Count').
+  '%d notification': '%d notification',
+  '%d notifications': '%d notifications',
   'For 1 Hour': 'Pendant 1 heure',
   'For 4 Hours': 'Pendant 4 heures',
   'For 8 Hours': 'Pendant 8 heures',

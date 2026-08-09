@@ -10,6 +10,7 @@ import { useChatsStore } from '../stores/chatsStore'
 import { useI18nStore } from '../i18n'
 import { mediaLabel } from '../core/dialogToChat'
 import { playIncoming } from '../core/audio/sounds'
+import { incNotificationsCount } from './appBadge'
 
 export interface IncomingMsg {
   chat_id: number
@@ -27,6 +28,10 @@ export function notifyIncomingMessage(evt: IncomingMsg): void {
 
   // Открытый чат в видимой вкладке — ни звука, ни уведомления (читается на экране).
   if (s.activeChatId === evt.chat_id && !document.hidden) return
+
+  // Счётчик для мигающего заголовка вкладки — до проверок звука/разрешения, как в
+  // tweb (notify() инкрементит до `settings.desktop`/Notification.permission).
+  incNotificationsCount()
 
   const cfg = useSettingsStore.getState()
   if (cfg.notifySound && cfg.notifyVolume > 0) playIncoming(cfg.notifyVolume)
