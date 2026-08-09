@@ -7,7 +7,7 @@ import IconButton from '../../shared/ui/IconButton'
 import Text from '../../shared/ui/Text'
 import TgIcon from '../TgIcon'
 import { useManagers } from '../../core/hooks/useManagers'
-import { useStarsStore } from '../../stores/starsStore'
+import { useStarsBalance, setStarsBalance } from '../../stores/starsStore'
 import { usePortalContainer } from '../../core/pip'
 import { useT } from '../../i18n'
 import StarIcon from './StarIcon'
@@ -19,7 +19,7 @@ const TOPUP_OPTIONS = [100, 250, 500, 1000, 2500, 5000]
 export default function StarsPopup({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useT()
   const managers = useManagers()
-  const balance = useStarsStore((st) => st.balance)
+  const balance = useStarsBalance()
   const [busy, setBusy] = useState(false)
   const portalContainer = usePortalContainer()
   const { mounted, cls } = usePopupTransition(open)
@@ -29,7 +29,7 @@ export default function StarsPopup({ open, onClose }: { open: boolean; onClose: 
     setBusy(true)
     try {
       const bal = await managers.stars.topUp(amount)
-      useStarsStore.getState().setBalance(bal) // мгновенно (WS balance_update тоже придёт)
+      setStarsBalance(bal) // мгновенно (WS balance_update тоже придёт)
     } finally {
       setBusy(false)
     }

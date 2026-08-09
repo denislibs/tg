@@ -61,7 +61,9 @@ export function useSidebarFolders({ chats, listScrollRef, onOpenFolderSettings }
 
   const doDeleteFolder = (f: Folder) => {
     useFoldersStore.getState().remove(f.id) // оптимистично
-    managers.folders.del(f.id).catch(() => loadFolders(managers))
+    // Откат оптимистичного удаления: память уже разъехалась с сервером, поэтому
+    // cache-first обходим явным overwrite (tweb getDialogFilters(true)).
+    managers.folders.del(f.id).catch(() => loadFolders(managers, { overwrite: true }))
   }
 
   const openDeleteFolder = (f: Folder) => openPopup((p) => (

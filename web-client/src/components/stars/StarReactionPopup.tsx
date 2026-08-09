@@ -13,7 +13,7 @@ import StarIcon from './StarIcon'
 import StarsPopup from './StarsPopup'
 import { peerColor } from '../peerColor'
 import { useManagers } from '../../core/hooks/useManagers'
-import { useStarsStore } from '../../stores/starsStore'
+import { useStarsBalance, setStarsBalance } from '../../stores/starsStore'
 import { useMessagesStore } from '../../stores/messagesStore'
 import { useT } from '../../i18n'
 import type { StarSender } from '../../core/managers/messagesManager'
@@ -33,7 +33,7 @@ export default function StarReactionPopup({
 }) {
   const t = useT()
   const managers = useManagers()
-  const balance = useStarsStore((st) => st.balance)
+  const balance = useStarsBalance()
   const [count, setCount] = useState(DEFAULT_STARS)
   // «Показывать моё имя» — инверсия анонимности (по умолчанию показываем).
   const [showName, setShowName] = useState(true)
@@ -58,9 +58,9 @@ export default function StarReactionPopup({
     try {
       const res = await managers.messages.sendStarReaction(chatId, msgId, count, !showName)
       // Воркер пишет свой SSOT; агрегат сообщения (total + мой вклад) ставим в
-      // main-стор здесь; WS star_reaction затем реконсилит. Баланс — в starsStore.
+      // main-стор здесь; WS star_reaction затем реконсилит. Баланс — в State.
       useMessagesStore.getState().applyStarReaction(chatId, msgId, res.total, res.mine)
-      useStarsStore.getState().setBalance(res.balance)
+      setStarsBalance(res.balance)
       onClose()
     } catch {
       // Нехватка звёзд на сервере (гонка баланса) → предложить пополнение.

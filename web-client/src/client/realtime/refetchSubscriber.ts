@@ -9,7 +9,7 @@ import { eventBus } from '../../core/realtime/eventBus'
 import { RT, type PinMessageEvt } from '../../core/realtime/events'
 import { loadChats } from '../../stores/chatsStore'
 import { usePinsStore } from '../../stores/pinsStore'
-import { setAppState } from '../../stores/appState'
+import { applyFolderUpdate, type FolderUpdateEvt } from '../../stores/foldersStore'
 import type { Managers } from '../bootstrap'
 
 // Дебаунс полного /chats-рефетча: несколько триггеров подряд → один запрос.
@@ -31,10 +31,13 @@ export function registerRefetchSubscriber(managers: Managers): void {
   })
   // Метаданные чата сменились (title/photo/права/…) → рефетч списка диалогов.
   eventBus.subscribe(RT.chatUpdate, () => { reloadChats() })
-  // Папки изменились на другом устройстве/вкладке → перечитать список папок.
-  // Папки живут в State, поэтому пишем туда (write-through в персист).
-  eventBus.subscribe(RT.folderUpdate, () => {
-    void managers.folders.list().then((f) => setAppState('folders', f))
+  // Папки изменились на другом устройстве/вкладке. Бэкенд шлёт АБСОЛЮТНЫЙ снимок
+  // папки (backend folders.go:94-102), поэтому в сеть не идём — применяем прямо
+  // из события (обоснование, почему одного снимка хватает по `pos`, — в
+  // applyFolderUpdate). tweb здесь вынужден перезапрашивать список
+  // (filters.ts:167): апдейт MTProto самих фильтров не несёт.
+  eventBus.subscribe(RT.folderUpdate, (raw) => {
+    applyFolderUpdate(raw as FolderUpdateEvt)
   })
   // Полный resync (too_long) → перезагрузить диалоги.
   eventBus.subscribe('rt:resync', () => { void loadChats(managers) })
