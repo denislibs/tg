@@ -7,7 +7,6 @@ import { bootstrap } from './client/boot'
 import { loadFonts } from './core/dom/loadFonts'
 import { setRootClasses } from './core/dom/rootClasses'
 import { startDialogsPersist } from './stores/dialogsPersist'
-import { startFoldersPersist } from './stores/foldersStore'
 import { startDraftsPersist } from './stores/draftsStore'
 
 // Шрифты — вне критического рендер-пути: @font-face (@fontsource) уходит в ленивый
@@ -31,10 +30,10 @@ void bootstrap().then(({ managers }) => {
       </ManagersProvider>
     </React.StrictMode>,
   )
-  // Персист для мгновенного/офлайн следующего старта: диалоги+me, папки, черновики.
+  // Персист для мгновенного/офлайн следующего старта: диалоги+me, черновики.
   // main лишь собирает свежий вид и шлёт снапшот воркеру — физически пишет он один
-  // (persistManager), поэтому подписки получают managers.
+  // (persistManager), поэтому подписки получают managers. Папки сюда не входят:
+  // они живут в State и пишутся write-through через setAppState.
   startDialogsPersist(managers)
-  startFoldersPersist(managers)
   startDraftsPersist(managers)
 })

@@ -1,4 +1,4 @@
-// Единый writer офлайн-стора (msgr-store) — в воркере. Диалоги/me/папки/черновики
+// Единый writer офлайн-стора (msgr-store) — в воркере. Диалоги/me/черновики/State
 // правит main-thread-стор (их «свежий вид» проецирует storeProjection), но ФИЗИЧЕСКИ
 // в IndexedDB их пишет воркер: один SharedWorker = один writer на все вкладки, без
 // конкуренции нескольких main-thread-соединений за readwrite-транзакции одной БД
@@ -7,10 +7,9 @@
 // ВСЁ. Секьюрити-гарды (locked/sanitizeDialog/E2E-фильтр) живут в persist.ts и
 // срабатывают здесь же, в воркере. main остаётся только READER: loadX на холодном
 // старте (данные прошлой сессии уже закоммичены) — конкуренции чтений нет.
-import { saveDialogs, saveMe, saveFolders, saveDrafts, saveStateKey, persistClearAll } from '../store/persist'
+import { saveDialogs, saveMe, saveDrafts, saveStateKey, persistClearAll } from '../store/persist'
 import type { Dialog, Draft } from '../models'
 import type { User } from './authManager'
-import type { Folder } from './foldersManager'
 import type { AppState } from '../state/state'
 
 export function newPersistManager() {
@@ -19,7 +18,6 @@ export function newPersistManager() {
     // RPC вместо двух. saveDialogs и saveMe пишут разные сторы (dialogs/meta).
     dialogs: (dialogs: Dialog[], me: User | null): Promise<void> =>
       Promise.all([saveDialogs(dialogs), saveMe(me)]).then(() => {}),
-    folders: (folders: Folder[]): Promise<void> => saveFolders(folders),
     drafts: (drafts: Draft[]): Promise<void> => saveDrafts(drafts),
     // Один ключ State (порт tweb appStateManager.setByKey). Пишется write-through
     // из stores/appState на каждое изменение — блоб маленький, дебаунс не нужен.

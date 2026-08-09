@@ -1,5 +1,5 @@
 import { useMemo, useState, type CSSProperties, type RefObject } from 'react'
-import { useFoldersStore, loadFolders, ALL_FOLDER_ID } from '../../stores/foldersStore'
+import { useFolders, useFoldersStore, loadFolders, ALL_FOLDER_ID } from '../../stores/foldersStore'
 import { matchesFolder } from '../folderFilter'
 import { openPopup } from '../../stores/popupStore'
 import { useManagers } from './useManagers'
@@ -23,7 +23,7 @@ export function useSidebarFolders({ chats, listScrollRef, onOpenFolderSettings }
 }) {
   const managers = useManagers()
   const t = useT()
-  const folders = useFoldersStore((st) => st.folders)
+  const folders = useFolders()
   const folderId = useFoldersStore((st) => st.selectedId)
   const selectFolder = useFoldersStore((st) => st.select)
   const contactIds = useFoldersStore((st) => st.contactIds)

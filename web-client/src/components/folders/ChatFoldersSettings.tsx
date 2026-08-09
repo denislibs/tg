@@ -9,7 +9,7 @@ import LottieSticker from '../LottieSticker'
 import { useT, useLang } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useSettings } from '../../settings'
-import { useFoldersStore } from '../../stores/foldersStore'
+import { useFolders, useFoldersStore } from '../../stores/foldersStore'
 import { folderCounts } from '../../core/folderFilter'
 import type { Folder, FolderInput } from '../../core/managers/foldersManager'
 import type { Chat } from '../../data'
@@ -53,7 +53,7 @@ export default function ChatFoldersSettings({ onBack, chats = [] }: { onBack: ()
   const t = useT()
   const [lang] = useLang()
   const managers = useManagers()
-  const folders = useFoldersStore((st) => st.folders)
+  const folders = useFolders()
   const contactIds = useFoldersStore((st) => st.contactIds)
   const upsert = useFoldersStore((st) => st.upsert)
   const { tabsInSidebar, update } = useSettings()

@@ -8,7 +8,7 @@ import { initPwaInstall } from '../core/pwa'
 import { getInitial, loadLang } from '../i18n'
 import { setBootData } from './bootData'
 import { hydrateDialogsFromPersist } from '../stores/dialogsPersist'
-import { loadStateOnce, resetStateCache } from '../core/state/loadState'
+import { loadStateOnce, resetStateCache, stateWasResetToDefaults } from '../core/state/loadState'
 import { initialState, STATE_VERSION } from '../core/state/state'
 import { setAppState, setAppStateSilent, setStateWriter } from '../stores/appState'
 import { persistScope } from '../core/store/persist'
@@ -74,7 +74,10 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   setAppStateSilent(state)
   // Схема была чужой версии (или базы не было) — фиксируем текущую, чтобы
   // следующий старт прошёл версионный гейт (tweb пушит STATE_INIT при смене версии).
-  if (!locked && state.version !== STATE_VERSION) setAppState('version', STATE_VERSION)
+  // Спрашиваем именно ридер: в `state` версия уже подставлена из дефолтов, и по
+  // ней «сошлось» неотличимо от «сбросили» — без этого ключ не писался бы никогда,
+  // а State сбрасывался бы к дефолтам на КАЖДОМ старте.
+  if (!locked && stateWasResetToDefaults()) setAppState('version', STATE_VERSION)
   setBootData({ me, dialogs, hydratedFromCache, hasToken: !!token, locked })
 
   return { managers }

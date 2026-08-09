@@ -4,7 +4,7 @@ import { STATE_INIT, STATE_VERSION } from './state'
 const loadStateAll = vi.fn()
 vi.mock('../store/persist', () => ({ loadStateAll: () => loadStateAll() }))
 
-const { loadStateOnce, resetStateCache } = await import('./loadState')
+const { loadStateOnce, resetStateCache, stateWasResetToDefaults } = await import('./loadState')
 
 describe('loadStateOnce', () => {
   beforeEach(() => { resetStateCache(); loadStateAll.mockReset() })
@@ -54,5 +54,26 @@ describe('loadStateOnce', () => {
 
     state.folders.push({ id: 1 } as never)
     expect(STATE_INIT.folders).toEqual([])
+  })
+
+  // Регрессия: boot записывает текущую версию схемы только по этому признаку.
+  // Раньше он смотрел на `state.version` возвращённого объекта — а там версия уже
+  // подставлена из дефолтов, поэтому условие не срабатывало НИКОГДА: ключ version
+  // не попадал на диск, и следующий старт снова видел несовпадение и выбрасывал
+  // весь прочитанный State. Папки и черновики терялись на каждой перезагрузке.
+  it('сообщает, что состояние сброшено к дефолтам', async () => {
+    loadStateAll.mockResolvedValue({ version: 0, recentSearch: [1] })
+
+    await loadStateOnce()
+
+    expect(stateWasResetToDefaults()).toBe(true)
+  })
+
+  it('версия сошлась — сброса не было', async () => {
+    loadStateAll.mockResolvedValue({ version: STATE_VERSION, recentSearch: [1] })
+
+    await loadStateOnce()
+
+    expect(stateWasResetToDefaults()).toBe(false)
   })
 })

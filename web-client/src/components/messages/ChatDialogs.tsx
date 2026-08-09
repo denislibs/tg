@@ -17,7 +17,7 @@ import { dialogToChat } from '../../core/dialogToChat'
 import { matchesFolder } from '../../core/folderFilter'
 import { lastSeenLabel } from '../../core/presence'
 import { useChatsStore } from '../../stores/chatsStore'
-import { useFoldersStore, ALL_FOLDER_ID } from '../../stores/foldersStore'
+import { useFolders, useFoldersStore, ALL_FOLDER_ID } from '../../stores/foldersStore'
 import FolderTabs from '../FolderTabs'
 import type { Chat } from '../../data'
 import type { Dialog } from '../../core/models'
@@ -131,7 +131,7 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
   const [lang] = useLang()
   const meId = useChatsStore((st) => st.meId)
   const presence = useChatsStore((st) => st.presence)
-  const folders = useFoldersStore((st) => st.folders)
+  const folders = useFolders()
   const contactIds = useFoldersStore((st) => st.contactIds)
   const [q, setQ] = useState('')
   const [folderId, setFolderId] = useState(ALL_FOLDER_ID)
