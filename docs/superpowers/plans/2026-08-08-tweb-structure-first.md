@@ -567,29 +567,307 @@ typecheck / tests / build; скриншоты «до/после» в отчёт.
 
 - [ ] **Step 1:** Порт `animationIntersector` (единый IO, группы, `onlyOnePlayableGroup`, lock/unlock, пауза по visibilitychange); подключить lottie/video-стикеры и custom-emoji.
 - [ ] **Step 2:** `heavyAnimation` (dispatch/on/off/isInProgress) + вызовы в переходах, скролле к сообщению, смене темы; интерсектор глушит анимации на время.
-- [ ] **Step 3:** `animation-level`: переключать `body.animation-level-0/2` из настройки reduceMotion (как tweb `appImManager.ts:2209-2211`) — портированные партиалы уже содержат `@include animation-level(2)`, поэтому гейт заработает сам; плюс страховочное правило для не-tweb стилей.
-- [ ] **Step 4:** navigation-переход с параллаксом (−25% + brightness 80%) для стека экранов.
+- [ ] **Step 3:** `animation-level`: переключать `body.animation-level-0/2` из настройки reduceMotion (как tweb `appImManager.ts:2209-2211`).
+
+  **Важно — исходная формулировка шага была неверна.** Класс `animation-level-2` **уже стоит статикой** в `web-client/index.html:28`, поэтому портированные `@include animation-level(2)` (233 правила в 40 партиалах) не мёртвые, а всегда включены. Дыра ровно одна: ничто не ставит `animation-level-0`. Атрибут `data-reduce-motion` на `<html>` (`App.tsx:224`) **не читает ни одно CSS-правило** (проверено грепом по `styles/`) — он влияет только на `MotionConfig` framer-motion.
+
+  Работы: в `App.tsx` вместо `toggleAttribute('data-reduce-motion', …)` писать
+  ```ts
+  document.body.classList.toggle('animation-level-0', reduceMotion)
+  document.body.classList.toggle('animation-level-2', !reduceMotion)
+  ```
+  и снять `data-reduce-motion` вместе с его чтением в `components/storyViewerMorph.ts:47`.
+
+  Переключатель сразу оживляет уже разведённую, но всегда-ложную проводку: `components/chatlist/dialogsPlaceholder.ts:39`, `shared/ui/Avatar/Avatar.tsx:57`, `core/hooks/useCollapsable.ts:47`, `components/storyViewerMorph.ts:49`.
+
+- [ ] **Step 4:** navigation-переход с параллаксом для стека экранов. `App.tsx:159` уже вешает `data-animation="navigation"` на `#main-columns`, портированный `styles/tweb/_slider.scss:226-241` уже описывает переходы для `.animating`/`.backwards` — не хватает JS-части (`tweb components/transition.ts:23-32`): уходящему экрану `filter: brightness(80%)` + `transform: translate3d(-width*.25, 0, 0)`, приходящему `translate3d(width, 0, 0)` → reflex → сброс инлайновых стилей.
 - [ ] **Step 5:** Проверки + смок.
 
-### Task 7.2: Музыкальный бабл (P0 №6)
+### ~~Task 7.2: Музыкальный бабл (P0 №6)~~ — ЗАКРЫТА до старта фазы
 
-**Files:** Modify `bubbleParts/mediaBubbles.tsx`; Create `shared/ui/MediaProgressLine/*`.
-
-- [ ] **Step 1:** `audio-element.audio.audio-48` по живому референсу §3 «аудио-трек»: toggle 48×48 с clip-path play-иконкой, `audio-details` (title middle-ellipsis + subtitle с `audio-time` и `progress-line[--progress]`).
-- [ ] **Step 2:** Воспроизведение через `mediaPlaybackController` (отдельная очередь музыки), прогресс-линия с drag-scrub.
-- [ ] **Step 3:** Проверки.
+Сделана в батче фиксов (см. задачу «Батч фиксов: пин-бар, Time-пин, музыкальный бабл…»). Подтверждение в коде: `components/messages/RealMediaBubble.tsx:395-490` рендерит `audio-element.audio` с `audio-details`/`audio-time`; воспроизведение — `core/audio/mediaPlaybackController.ts`; drag-scrub — `input.progress-line__seek` (`RealMediaBubble.tsx:478-485`). Отдельного `shared/ui/MediaProgressLine/*` не заводили: линия живёт внутри бабла, как у tweb.
 
 ### Task 7.3: Остаточные поведенческие хвосты
 
-- [ ] **Step 1:** rAF-прогресс для voice-волны и кольца кружка (вместо 4 Гц timeupdate).
+- [ ] **Step 1:** rAF-прогресс для voice-волны и кольца кружка (вместо 4 Гц `timeupdate` — сейчас `core/audio/mediaPlaybackController.ts:23,116`).
 - [ ] **Step 2:** Общая очередь voice+round, per-type playbackRate с персистом.
 - [ ] **Step 3:** Проверки.
+
+### Task 7.4: Анимации баблов 1:1 с tweb
+
+CSS портирован байт-в-байт (`styles/tweb/_chatBubble.scss`), включая `@keyframes bubbleSelected`, `audio-dots`, `accuracy-wave`, `.can-zoom-fade`. Расхождения — на JS-стороне: класс, который анимацию запускает, либо не вешается, либо заменён собственной реализацией на framer-motion.
+
+**Files:**
+- Create: `web-client/src/core/dom/ladder.ts`, `web-client/src/core/dom/ladder.test.ts`
+- Modify: `web-client/src/components/messages/MessageRow.tsx:14,160-162`, `web-client/src/components/messages/ChatFeed.tsx:265-300`, `web-client/src/components/messages/RealMediaBubble.tsx:229`, `web-client/src/components/messages/RealMediaBubble.module.scss:61-68`, `web-client/src/components/messages/MessageRow.module.scss:241-251`, `web-client/src/components/messages/bubbleParts/Time.tsx:169-182`, `web-client/src/components/messages/bubbleParts/Time.module.scss:75-88`, `web-client/src/components/messages/EmptyChatGreeting.tsx`, `web-client/src/components/messages/bubbleClasses.ts:141`
+- Delete: `web-client/src/components/animations/bubbleAnimations.tsx`, `web-client/src/components/animations/bubbleAnimations.module.scss`
+
+**Interfaces:**
+- Produces: `animateLadder(chatInner: HTMLElement, wrappers: HTMLElement[], opts?: {delay?: number; offsetIndex?: number}): Promise<void>` — потребляется `ChatFeed.tsx` и (Step 2) обёрткой `dispatchHeavyAnimationEvent` из Task 7.1.
+- Consumes: `dispatchHeavyAnimationEvent(promise, timeout)` из `core/dom/heavyAnimation.ts` (Task 7.1, Step 2). **Task 7.4 идёт строго после 7.1.**
+
+- [ ] **Step 1: Лестница появления — переложить с framer-motion на `zoom-fade`**
+
+  Сейчас: `MessageRow.tsx:160` оборачивает **весь ряд** (`.bubble`) в `BubbleAppear` — `motion.div` с `initial={{opacity:0, scale:.8}}`, задержка `ChatFeed.tsx:267` = `min(msgs.length-1-i, 12) * 0.03`.
+
+  В tweb (`components/chat/bubbles.ts:10363-10460`) анимируется **не ряд**, а `.bubble-content-wrapper` (`bubble.lastElementChild`) плюс `item.group.avatar.node` у последнего в группе; класс `zoom-fading` вешается на `chatInner`; `delay = 40` мс (`10` для дорендера), `offsetIndex = 1`; порядок — `topIds` / `middleIds` / `bottomIds` относительно целевого сообщения; кэп на количество отсутствует.
+
+  Новый `core/dom/ladder.ts`:
+  ```ts
+  // Порт tweb bubbles.ts:10363-10460 (animateAsLadder).
+  // Анимирует .bubble-content-wrapper через классы zoom-fade/can-zoom-fade —
+  // сам переход описан в styles/tweb/_chatBubble.scss:3210-3222.
+  const TRANSITION_TIME = 300
+
+  export function animateLadder(
+    chatInner: HTMLElement,
+    wrappers: HTMLElement[],
+    {delay = 40, offsetIndex = 1}: {delay?: number; offsetIndex?: number} = {},
+  ): Promise<void> {
+    if (!wrappers.length) return Promise.resolve()
+
+    chatInner.classList.add('zoom-fading')
+
+    let lastMsDelay = 0
+    wrappers.forEach((el, idx) => {
+      lastMsDelay = ((idx + offsetIndex) || 0.1) * delay
+      el.classList.add('zoom-fade', 'can-zoom-fade')
+      el.style.setProperty('transition-delay', `${lastMsDelay}ms`, 'important')
+    })
+
+    const last = wrappers[wrappers.length - 1]
+    const done = new Promise<void>((resolve) => {
+      const onEnd = (e: TransitionEvent) => {
+        if (e.target !== last) return
+        last.removeEventListener('transitionend', onEnd)
+        resolve()
+      }
+      last.addEventListener('transitionend', onEnd)
+      // страховка: transitionend не придёт при animation-level-0
+      window.setTimeout(resolve, lastMsDelay + TRANSITION_TIME + 50)
+    })
+
+    requestAnimationFrame(() => {
+      wrappers.forEach((el) => el.classList.remove('zoom-fade'))
+    })
+
+    return done.then(() => {
+      requestAnimationFrame(() => {
+        wrappers.forEach((el) => {
+          el.style.transitionDelay = ''
+          el.classList.remove('can-zoom-fade')
+        })
+        chatInner.classList.remove('zoom-fading')
+      })
+    })
+  }
+  ```
+
+  Вызов идёт **из `Chat.tsx`, а не из `ChatFeed.tsx`**: `ChatFeed` рендерит фрагмент из `<section class="bubbles-date-group">`, а аналог tweb-овского `chatInner` — это `.bubbles-inner` в `Chat.tsx:1166-1169`, у него уже есть `contentRef`.
+  ```ts
+  // Chat.tsx, рядом с useFeedReveal
+  useLayoutEffect(() => {
+    if (!ladderActive) return
+    const inner = contentRef.current
+    if (!inner) return
+    const wrappers = Array.from(
+      inner.querySelectorAll<HTMLElement>('.bubble > .bubble-content-wrapper'),
+    ).reverse() // снизу вверх, как tweb bottomIds
+    void animateLadder(inner, wrappers)
+  }, [ladderActive])
+  ```
+  `ChatFeed.tsx`: убрать расчёт `ladderDelay` (строка 267) и одноимённый проп; сам `ladderActive` в `ChatFeed` больше не нужен — удалить из интерфейса пропсов (`ChatFeed.tsx:41`).
+  `MessageRow.tsx`: снять импорт `BubbleAppear` (строка 14) и пропсы `ladderActive`/`ladderDelay` (строки 78-79, 96), корень ряда — обычный `<div className={classNames(...cls, s.row)}>` с теми же `data-*` и обработчиками.
+
+- [ ] **Step 2: Обернуть лестницу в heavy-animation**
+
+  tweb (`bubbles.ts:10441-10444`) держит `dispatchHeavyAnimationEvent(promise, max(delays) + 300)` на всё время каскада — интерсектор из Task 7.1 глушит лотти и видео, иначе каскад конкурирует с десятком играющих стикеров. В `animateLadder` вернуть `dispatchHeavyAnimationEvent(done, lastMsDelay + TRANSITION_TIME)` вместо голого `done`.
+
+- [ ] **Step 3: Тест на лестницу**
+
+  `core/dom/ladder.test.ts` (vitest + jsdom): три `div.bubble > div.bubble-content-wrapper`, вызвать `animateLadder`, проверить —
+  - у всех трёх обёрток есть `zoom-fade` и `can-zoom-fade`, у `chatInner` — `zoom-fading`;
+  - `transition-delay` = `40ms`, `80ms`, `120ms` (offsetIndex 1);
+  - после одного `requestAnimationFrame` класс `zoom-fade` снят, `can-zoom-fade` остался;
+  - после `transitionend` на последней обёртке + rAF сняты `can-zoom-fade`, `transition-delay` и `zoom-fading`.
+
+  Запуск: `npx vitest run src/core/dom/ladder.test.ts`.
+
+- [ ] **Step 4: `.fade-in` у превью медиа**
+
+  `_chatBubble.scss:874-879`: `.media-container-fitted > .thumbnail { opacity: .8 }`, а `.thumbnail.fade-in` → `animation: thumbnail-fade-in-opacity .2s ease-in-out forwards`. Класс `fade-in` у нас не ставится нигде — превью проявляется рывком. В `RealMediaBubble.tsx:229` добавить `onLoad`, который вешает `fade-in` на сам `img.media-photo.thumbnail`.
+
+- [ ] **Step 5: `.backwards` при снятии выделения**
+
+  `_chatBubble.scss:268-282`: вход выделения — `fade-in-opacity .2s`, выход — `.backwards:after { fade-in-backwards-opacity .2s }`. Мы ставим `is-selected` (`bubbleClasses.ts:141`), но никогда `backwards` — снятие выделения происходит в один кадр. Провести `is-selected` через `useSetTransition(isSelected, 'is-selected', 200)` (хук уже есть, `core/hooks/useSetTransition.ts`) и подмешивать результат в классы ряда вместо безусловного `cls.push('is-selected')`.
+
+- [ ] **Step 6: Снять отсебятину**
+
+  Каждая позиция — проверена против tweb, аналога нет:
+  - `Time.module.scss:82-89` — `.effectButton { transition: transform .12s ease; &:hover { transform: scale(1.15) } }`. В tweb эффект сообщения — `span.time-effect` внутри `.time-inner` (`components/chat/messageRender.ts:87`), это кастом-эмодзи-стикер, переигрывается по клику и по IntersectionObserver (`bubbles.ts:2502-2503`), ховер-скейла нет. Убрать `transition`/`:hover`, переименовать класс в глобальный `time-effect`.
+  - `MessageRow.module.scss:241-251` — `.reactionAnimating` хардкодит `.3s cubic-bezier(.4,0,.2,1)`. Это ровно `--transition-standard-in`, и портированный `_reaction.scss:142-152` уже эмитит те же переходы для `reaction-element`. Дубль снять.
+  - `RealMediaBubble.module.scss:61-68` — `.docDl { opacity: 0; transition: opacity .2s ease-in-out }`. В `_document.scss` у tweb такого слоя нет; заменить на ховер-правило из портированного партиала.
+  - `EmptyChatGreeting.tsx:13-20` — `motion.div` со `scale .9 → 1` за `.22s`. В tweb `.empty-bubble-placeholder .bubble-content-wrapper { transition: var(--bubble-transition-in) }` (`_chatBubble.scss:4066-4072`) — те же `zoom-fade`-классы, `.3s` и `scale3d(.8,.8,1)`. Перевести на `animateLadder`-классы, framer-motion убрать (пересекается с Task 7.5).
+
+- [ ] **Step 7: Удалить мёртвый модуль анимаций**
+
+  После шагов 1 и 6 `components/animations/bubbleAnimations.tsx` (164 строки: `FadeIn`, `FadeOut`, `FadeInBackwards`, `FadeOutBackwards`, `Flash`, `BubbleHighlight`, `BubbleAppear`) не используется. Все эти эффекты уже есть в портированном CSS (`fade-in-opacity`, `fade-in-backwards-opacity`, `bubbleSelected`). Удалить файл и его `.module.scss`.
+
+- [ ] **Step 8: Проверки**
+
+  `npm run typecheck` && `npx vitest run` && `npx vite build`; DOM-diff по поверхности ленты (режим `classes`) — расхождений быть не должно; ручной смок: открытие чата (каскад снизу вверх), прыжок к сообщению (подсветка `bubbleSelected`), выделение/снятие, загрузка превью.
+
+- [ ] **Step 9: Коммит**
+
+  ```bash
+  git add web-client/src/core/dom/ladder.ts web-client/src/core/dom/ladder.test.ts \
+          web-client/src/components/messages web-client/src/components/animations
+  git commit -m "feat(bubbles): анимации баблов 1:1 с tweb — zoom-fade-лестница, thumbnail fade-in, backwards-выделение"
+  ```
+
+**Вне объёма задачи (осознанно):** свайп-ответ (`_chatBubble.scss:146-189`, классы `is-gesturing-reply` / `.is-visible` / `.is-hiding`) — у нас отсутствует целиком. Это не анимация, а тач-жест с трекингом указателя; заводится отдельной задачей, иначе Task 7.4 разрастается за пределы «привести анимации к эталону».
+
+### Task 7.5: Выпиливание framer-motion
+
+**Замер на 2026-08-09:** 80 файлов, поверхность API узкая — `motion.div` ×182, `AnimatePresence` ×178, `motion.button` ×10, `useTransform` ×6, `motion.span` ×4, `MotionConfig` ×4. Пружин (`type: 'spring'`) — 6; в tweb пружин нет вообще, overshoot делается кривой Безье (`--btn-corner-transition: .2s cubic-bezier(.34,1.56,.64,1)`).
+
+Почти всё идёт через три пресета из `web-client/src/motion.ts` — `slideInRight`, `fade`, `menuPop`, — и каждый имеет готовый CSS-аналог в уже портированных партиалах: `_slider.scss` (`.tabs-container[data-animation]`), `_transition.scss` (`.fade`), `_button.scss` (`.btn-menu.active`/`.was-open`). Поэтому задача — не переписывание анимаций, а замена движка на классы.
+
+**Files:**
+- Create: `web-client/src/core/hooks/useMountTransition.ts`, `web-client/src/core/hooks/useMountTransition.test.ts`
+- Delete (в конце): `web-client/src/motion.ts`; из `web-client/package.json` — зависимость `framer-motion`
+- Modify: 80 файлов волнами (список ниже)
+
+**Interfaces:**
+- Produces: `useMountTransition(open: boolean, className: string, duration: number): {mounted: boolean; cls: string}` — потребляется всеми волнами.
+- Consumes: `useSetTransition(forwards, className, duration): string` (`core/hooks/useSetTransition.ts`, уже есть).
+
+- [ ] **Step 1: Написать падающий тест на `useMountTransition`**
+
+  Хук закрывает единственное, чего не умеет `useSetTransition`: держать узел в DOM, пока играет exit-анимация (это и есть роль `AnimatePresence`). Семантика — tweb `PopupElement`: при закрытии вешается `backwards animating`, узел снимается после `duration`.
+
+  `core/hooks/useMountTransition.test.ts`:
+  ```ts
+  import {renderHook, act} from '@testing-library/react'
+  import {useMountTransition} from './useMountTransition'
+
+  it('держит узел смонтированным на время exit-анимации', () => {
+    vi.useFakeTimers()
+    const {result, rerender} = renderHook(
+      ({open}) => useMountTransition(open, 'active', 200),
+      {initialProps: {open: true}},
+    )
+    expect(result.current).toEqual({mounted: true, cls: 'active forwards'})
+
+    rerender({open: false})
+    expect(result.current).toEqual({mounted: true, cls: 'active backwards animating'})
+
+    act(() => { vi.advanceTimersByTime(200) })
+    expect(result.current).toEqual({mounted: false, cls: ''})
+    vi.useRealTimers()
+  })
+  ```
+
+- [ ] **Step 2: Запустить, убедиться что падает**
+
+  `npx vitest run src/core/hooks/useMountTransition.test.ts` → FAIL: `Failed to resolve import "./useMountTransition"`.
+
+- [ ] **Step 3: Реализовать хук**
+
+  ```ts
+  // core/hooks/useMountTransition.ts
+  // Роль AnimatePresence на классах tweb: узел живёт в DOM, пока играет
+  // backwards-анимация. Классы — те же, что у useSetTransition
+  // (порт components/singleTransition.ts).
+  import {useEffect, useRef, useState} from 'react'
+
+  export function useMountTransition(open: boolean, className: string, duration: number) {
+    const [mounted, setMounted] = useState(open)
+    const [cls, setCls] = useState(open ? `${className} forwards` : '')
+    const first = useRef(true)
+
+    useEffect(() => {
+      if (first.current) { first.current = false; return }
+
+      if (open) {
+        setMounted(true)
+        setCls(`${className} forwards animating`)
+        const id = window.setTimeout(() => setCls(`${className} forwards`), duration)
+        return () => window.clearTimeout(id)
+      }
+
+      setCls(`${className} backwards animating`)
+      const id = window.setTimeout(() => { setMounted(false); setCls('') }, duration)
+      return () => window.clearTimeout(id)
+    }, [open, className, duration])
+
+    return {mounted, cls}
+  }
+  ```
+
+- [ ] **Step 4: Тест зелёный + коммит**
+
+  `npx vitest run src/core/hooks/useMountTransition.test.ts` → PASS.
+  ```bash
+  git add web-client/src/core/hooks/useMountTransition.ts web-client/src/core/hooks/useMountTransition.test.ts
+  git commit -m "feat(motion): useMountTransition — замена AnimatePresence на классы tweb"
+  ```
+
+- [ ] **Step 5: Волна 1 — `shared/ui` (5 файлов)**
+
+  Наибольший рычаг: через эти примитивы анимируется большинство экранов.
+  `shared/ui/Popup/Popup.tsx`, `shared/ui/ConfirmPopup/ConfirmPopup.tsx`, `shared/ui/Menu/Menu.tsx`, `shared/ui/Checkbox/Checkbox.tsx`, `shared/ui/Tabs/TabSlide.tsx`.
+
+  Соответствия: `Popup`/`ConfirmPopup` → `.popup.active`/`.popup.hiding` из портированного `styles/tweb/popups/`; `Menu` → `.btn-menu.active.was-open` (`_button.scss`, `--btn-menu-transition: .2s cubic-bezier(.4,0,.2,1)`) — у `Menu.tsx` уже есть проп `onExitComplete`, он ложится на `mounted` из хука; `Checkbox` → `_checkbox.scss`; `TabSlide` → `_slider.scss`.
+
+  Коммит после волны. Прогон: `npm run typecheck && npx vitest run`.
+
+- [ ] **Step 6: Волна 2 — лента и разговор (7 файлов)**
+
+  `components/messages/{ChatDialogs,EmptyChatGreeting,MediaLightbox,MessageRow,SendMediaPopup}.tsx`, `components/conversation/{ChatMsgActionPopups,PinnedMessagesScreen}.tsx`, плюс `components/animations/bubbleAnimations.tsx` (удаляется в Task 7.4).
+
+  `MessageRow` и `EmptyChatGreeting` закрываются самой Task 7.4 — здесь остаётся хвост. `MediaLightbox` уже ведёт `backwards` вручную (`MediaLightbox.tsx:167-169`) — ему нужен только `useMountTransition` вместо `AnimatePresence`.
+
+- [ ] **Step 7: Волна 3 — оболочка и хуки-порталы (7 файлов)**
+
+  `App.tsx` (в т.ч. `MotionConfig` — после Task 7.1 Step 3 его роль берёт `body.animation-level-0`), `components/shell/{GlobalOverlays,ShellLayout}.tsx`, `core/hooks/{useChatPopups,useForumPanel,useSidebarFolders,useSidebarStories}.tsx`.
+
+- [ ] **Step 8: Волна 4 — экраны настроек и групп (19 файлов)**
+
+  `components/settings/*` (11), `components/group/GroupEditFlow.tsx` + `components/group/screens/*` (4), `components/stars/*` (3).
+  Здесь доминирует `slideInRight` → заменяется на `data-animation="navigation"` + механику из Task 7.1 Step 4.
+
+- [ ] **Step 9: Волна 5 — остальные экраны `components/` (35 файлов)**
+
+  `AddContactView`, `AddStorySheet`, `CallScreen`, `CallsView`, `ChannelStats`, `Chat`, `CloseFriendsSheet`, `ComposeFab`, `ContactsView`, `EditContactView`, `EditStorySheet`, `EmojiStatusPicker`, `GroupCallScreen`, `LivestreamScreen`, `NewChannelFlow`, `NewGroupFlow`, `NewPrivateChat`, `NowPlayingBar`, `PinnedStoriesSection`, `PlayPauseGlyph`, `PostStats`, `PremiumCheckout`, `PremiumModal`, `QrModal`, `ScheduledView`, `SearchView`, `SettingsSubScreen`, `SettingsView`, `Sidebar`, `SidebarScreens`, `StoriesArchiveSheet`, `StoryReadOnlyPreview`, `StoryStats`, `SuggestedPostsView`, `UserInfoPanel`, плюс `components/{call/CallOverlay,folders/ChatFoldersSettings,mediaEditor/MediaEditor,userInfo/RightsEditor,webapp/WebAppModal}.tsx`.
+
+  Шесть `type: 'spring'` встречаются здесь — заменять на `--btn-corner-transition` (`.2s cubic-bezier(.34,1.56,.64,1)`), это единственный overshoot, который признаёт tweb.
+
+- [ ] **Step 10: Снести движок**
+
+  ```bash
+  rm web-client/src/motion.ts
+  cd web-client && npm uninstall framer-motion
+  grep -rn "framer-motion" src/   # должно быть пусто
+  ```
+
+- [ ] **Step 11: Проверки и коммит**
+
+  `npm run typecheck && npx vitest run && npx vite build`. Замерить главный чанк до/после (framer-motion ≈ 60 КБ gzip) и записать дельту в тело PR. DOM-diff по всем поверхностям, где волны трогали разметку.
+
+  ```bash
+  git add -A web-client
+  git commit -m "refactor(motion): выпилен framer-motion — переходы на классах tweb"
+  ```
 
 ---
 
 ## Порядок и приёмка
 
 1. Фазы идут **последовательно** (2 → 3 → 4 → 5 → 6 → 7); внутри фазы задачи по стилям параллелятся с харнесом, задачи по структуре — строго по очереди (общие файлы).
+
+   **Внутри фазы 7 порядок жёсткий:** 7.1 → 7.4 → 7.5, затем 7.3. Причины: Task 7.4 Step 2 потребляет `dispatchHeavyAnimationEvent` из 7.1; Task 7.5 волна 2 доедает хвост того, что переписала 7.4 (иначе те же файлы правятся дважды); 7.5 волна 3 снимает `MotionConfig`, чью роль к тому моменту уже взял `body.animation-level-0` из 7.1 Step 3. Task 7.3 независима и может идти параллельно любой из них.
+
 2. Каждая задача завершается: `typecheck` + `tests` + `build` + **DOM-diff по своей поверхности**.
 3. Каждая фаза завершается verify-проходом: независимый агент сверяет результат с живым референсом и исходниками tweb и чинит расхождения (процедура себя оправдала на batch 1 — нашла 10+ расхождений в одной волне).
 4. Старый план `docs/superpowers/plans/2026-08-08-p0-tweb-parity.md` — **отменён** в части batch 2/3; его batch 1 уже влит в `feat/p0-tweb-parity`.
