@@ -94,6 +94,10 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
     }
     el.classList.add(s.SlotActive)
     hadPreviousRef.current = true
+    // .SlotFade сознательно не снимается: activateSlot вызывается ровно один раз за
+    // жизнь компонента (гард выше), дальше слот больше не меняет opacity — класс
+    // остаётся, но инертен (в отличие от tweb presentStagingSlot, где слоты
+    // переиспользуются double-buffer'ом и класс снимают перед каждым новым переходом).
   }
 
   const maybeActivateSlot = () => {
@@ -107,10 +111,15 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
   const ab = activeBackground({ customWallpaperMediaId, customWallpaperBlur, wallpaper })
 
   // Своё фото / сплошной цвет / загруженная картинка заменяют градиент+паттерн.
+  // overlayImageUrl вынесен отдельно (не только в backgroundImage) — по нему ниже
+  // честно отслеживается загрузка через new Image(), как узор ниже по файлу.
+  const overlayImageUrl = themeColors ? undefined :
+    ab.kind === 'custom' ? mediaContentUrl(ab.mediaId) :
+      wallpaper.kind === 'image' ? wallpaper.src : undefined
   const overlay = themeColors ? null :
     ab.kind === 'custom'
       ? {
-          backgroundImage: `url(${mediaContentUrl(ab.mediaId)})`,
+          backgroundImage: `url(${overlayImageUrl})`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           filter: ab.blur ? 'blur(10px)' : undefined,
@@ -120,7 +129,7 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
         ? { background: wallpaper.color }
         : wallpaper.kind === 'image'
           ? {
-              backgroundImage: `url(${wallpaper.src})`,
+              backgroundImage: `url(${overlayImageUrl})`,
               backgroundSize: 'cover',
               backgroundPosition: 'center',
               filter: wallpaperBlur ? 'blur(10px)' : undefined,
@@ -132,13 +141,23 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
   const gradientOpacity = mode.mask ? patternOpacityMax : 1
   const canvasOpacity = mode.mask ? 1 : patternOpacityMax
 
-  // Оверлей (своё фото/цвет/картинка) не отслеживает асинхронную загрузку — вне
-  // скоупа готовности «градиент + узор» брифа, считаем готовым сразу.
+  // Оверлей: сплошной цвет — честно готов сразу (нет сетевого ресурса). Своё
+  // фото/картинка — реальный img, ждём загрузку так же, как узор ниже по файлу
+  // (tweb TWEB/.../chatBackground.tsx:253-256,275-296 — readyPromise ждёт
+  // renderImageFromUrl прежде чем считать слот готовым); cached — синхронный
+  // img.complete сразу после простановки src.
   useEffect(() => {
-    if (!overlay) return
-    activateSlot(true)
+    if (!overlay || hadPreviousRef.current) return
+    if (!overlayImageUrl) {
+      activateSlot(true)
+      return
+    }
+    const img = new Image()
+    img.onload = () => activateSlot(false)
+    img.src = overlayImageUrl
+    if (img.complete && img.naturalWidth) activateSlot(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [!!overlay])
+  }, [!!overlay, overlayImageUrl])
 
   // Инициализация/переинициализация mesh-градиента при смене цветов/темы.
   useEffect(() => {
