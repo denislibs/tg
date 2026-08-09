@@ -474,7 +474,6 @@ const fr: Dict = {
   "Search Emoji": "Rechercher un emoji",
   "No emoji found.": "Aucun emoji trouvé.",
   "Frequently Used": "Fréquemment utilisés",
-  "Select a chat to start messaging": "Sélectionnez un chat pour commencer à discuter",
   // Privacy and Security
   'Manage your sessions on all your devices.': 'Gérez vos sessions sur tous vos appareils.',
   'Change who can send you messages.': 'Choisissez qui peut vous envoyer des messages.',

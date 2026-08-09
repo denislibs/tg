@@ -11,7 +11,6 @@ import SvgDefs from './components/SvgDefs'
 import GlobalOverlays from './components/shell/GlobalOverlays'
 import ShellLayout from './components/shell/ShellLayout'
 import AuthFlow from './components/auth/AuthFlow'
-import { useT } from './i18n'
 import classNames from './shared/lib/classNames'
 import { installColumnWidthsUpdater } from './core/dom/updateColumnWidths'
 // Сущность чата из модели данных; компонент ниже называется так же (как в tweb),
@@ -39,8 +38,6 @@ import useMediaQuery from './shared/lib/useMediaQuery'
 export type ToggleMode = (coords?: { x: number; y: number }) => void
 
 function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout: () => void }) {
-  const t = useT()
-
   // Инфраструктура Shell (эффекты без общего стейта).
   // Ширины колонок (порт tweb updateColumnWidths): JS пишет --chat-width /
   // --left-column-width / --page-chats-padding и класс body.right-column-floats,
@@ -128,9 +125,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     ) : selected ? (
       <Chat key={tabKey} chat={selected} onBack={backToList} />
     ) : (
-      <div className={s.empty}>
-        <div className={s.emptyPill}>{t('Select a chat to start messaging')}</div>
-      </div>
+      <div className="chat tabs-tab active" />
     )
 
   // #column-center — как в tweb (живой DOM §1): у него свой --page-chats-padding,

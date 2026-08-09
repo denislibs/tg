@@ -476,7 +476,6 @@ const uk: Dict = {
   "Search Emoji": "Пошук емодзі",
   "No emoji found.": "Емодзі не знайдено.",
   "Frequently Used": "Часто використовувані",
-  "Select a chat to start messaging": "Оберіть чат, щоб почати спілкування",
   // Privacy and Security
   'Manage your sessions on all your devices.': "Керування сеансами на всіх під'єднаних пристроях.",
   'Change who can send you messages.': 'Виберіть, від кого отримувати повідомлення.',

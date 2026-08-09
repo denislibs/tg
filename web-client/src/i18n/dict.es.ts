@@ -472,7 +472,6 @@ const es: Dict = {
   "Search Emoji": "Buscar emoji",
   "No emoji found.": "No se encontraron emojis.",
   "Frequently Used": "Usados frecuentemente",
-  "Select a chat to start messaging": "Selecciona un chat para empezar a chatear",
   // Privacy and Security
   'Manage your sessions on all your devices.': 'Gestiona tus sesiones en todos tus dispositivos.',
   'Change who can send you messages.': 'Elige quién puede enviarte mensajes.',
