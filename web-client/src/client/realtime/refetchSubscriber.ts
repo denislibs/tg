@@ -7,7 +7,7 @@
 // проектором не важен.
 import { eventBus } from '../../core/realtime/eventBus'
 import { RT, type PinMessageEvt } from '../../core/realtime/events'
-import { loadChats } from '../../stores/chatsStore'
+import { loadChats, useChatsStore } from '../../stores/chatsStore'
 import { usePinsStore } from '../../stores/pinsStore'
 import { applyFolderUpdate, type FolderUpdateEvt } from '../../stores/foldersStore'
 import type { Managers } from '../bootstrap'
@@ -29,8 +29,23 @@ export function registerRefetchSubscriber(managers: Managers): void {
     const e = raw as PinMessageEvt
     void managers.messages.listPins(e.chat_id).then((p) => usePinsStore.getState().setPins(e.chat_id, p))
   })
-  // Метаданные чата сменились (title/photo/права/…) → рефетч списка диалогов.
-  eventBus.subscribe(RT.chatUpdate, () => { reloadChats() })
+  // Метаданные чата сменились (title/photo/права/участники/…). Бэкенд шлёт
+  // АБСОЛЮТНЫЙ снимок (backend chat_update.go:18-42) — применяем его в уже
+  // известный диалог, в сеть не идём. Карточка чата (число участников, права,
+  // настройки) грузится отдельно (useChatInfoCard) и из /chats не приходила.
+  //
+  // Исключение — чата ещё НЕТ в списке: меня только что добавили в группу
+  // (group.go:145-151 — AddMember → publishChatUpdate), и единственный способ
+  // узнать про новый диалог у нас — /chats. Тогда, и только тогда, дебаунснутый
+  // рефетч. Раньше он уходил на КАЖДЫЙ chat_update, а publishChatUpdate зовётся
+  // из 13 мест бэкенда — и рефетч прилетал каждому участнику чата.
+  eventBus.subscribe(RT.chatUpdate, (evt) => {
+    if (useChatsStore.getState().dialogs.some((d) => d.chatId === evt.chat_id)) {
+      useChatsStore.getState().applyChatMeta(evt)
+    } else {
+      reloadChats()
+    }
+  })
   // Папки изменились на другом устройстве/вкладке. Бэкенд шлёт АБСОЛЮТНЫЙ снимок
   // папки (backend folders.go:94-102), поэтому в сеть не идём — применяем прямо
   // из события (обоснование, почему одного снимка хватает по `pos`, — в

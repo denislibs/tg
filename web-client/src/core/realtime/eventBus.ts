@@ -7,7 +7,7 @@ import { RT } from './events'
 import type {
   NewMessageEvt, EditMessageEvt, DeleteMessageEvt, PinMessageEvt, ReadEvt, MediaReadEvt,
   TypingEvt, PresenceEvt, ReactionEvt, StarReactionEvt, AckEvt, MessageErrorEvt, CallFrameEvt,
-  ChatRemovedEvt, DraftUpdateEvt, ChatThemeUpdateEvt, SuggestedPostEvt, BotCallbackAnswerEvt,
+  ChatRemovedEvt, DraftUpdateEvt, ChatThemeUpdateEvt, ChatUpdateEvt, SuggestedPostEvt, BotCallbackAnswerEvt,
   GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, StoryNewEvt, StoryDeletedEvt,
   StoryReactionEvt, ConnState,
 } from './events'
@@ -34,6 +34,7 @@ export interface RtEventMap {
   [RT.chatRemoved]: ChatRemovedEvt
   [RT.draftUpdate]: DraftUpdateEvt
   [RT.chatThemeUpdate]: ChatThemeUpdateEvt
+  [RT.chatUpdate]: ChatUpdateEvt
   [RT.dialogPin]: { chat_id: number; pinned: boolean }
   [RT.dialogArchive]: { chat_id: number; archived: boolean }
   [RT.dialogMute]: { chat_id: number; muted: boolean }

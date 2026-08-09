@@ -132,6 +132,20 @@ export interface ChatRemovedEvt { chat_id: number; removed: true }
 // Тема оформления чата сменилась (chat_theme_update) — общая для чата, приходит
 // обоим участникам. theme_id пустой — тема сброшена к дефолту.
 export interface ChatThemeUpdateEvt { chat_id: number; theme_id: string }
+// АБСОЛЮТНЫЙ снимок метаданных чата после мутации (переименование, фото, права,
+// участники, настройки) — backend/internal/usecase/chat/chat_update.go:18-42,
+// функция chatUpdatePayload. Абсолютность и делает применение идемпотентным:
+// порядок доставки (живой кадр / догон по pts) значения не имеет.
+// Здесь объявлены только поля, которые реально ложатся в модель `Dialog`
+// (core/models.ts:88-118); остальные (`about`, `is_public`, `settings`,
+// `signatures`, …) живут в карточке чата, которую грузит useChatInfoCard.
+export interface ChatUpdateEvt {
+  chat_id: number
+  title?: string
+  username?: string
+  /** id медиа фото чата; `null` — фото снято (chat_update.go:19-22) */
+  photo_media_id?: number | null
+}
 // Черновик изменён на другом устройстве/вкладке (draft null — удалён).
 export interface DraftUpdateEvt { chat_id: number; draft: import('../models').RawDraft | null }
 // upload_* — на время аплоада медиа (tweb sendMessageUpload*Action: «отправляет файл/фото/…»)

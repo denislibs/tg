@@ -2,7 +2,8 @@
 import { create } from 'zustand'
 import type { Dialog } from '../core/models'
 import type { User } from '../core/managers/authManager'
-import type { NewMessageEvt, ReadEvt, PresenceEvt, TypingAction } from '../core/realtime/events'
+import type { ChatUpdateEvt, NewMessageEvt, ReadEvt, PresenceEvt, TypingAction } from '../core/realtime/events'
+import { reconcileById } from '../core/store/reconcile'
 
 // Per-chat typing state: chatId -> userId -> {action, at}. `at` is the event
 // timestamp (ms) so stale entries can be ignored; entries are also actively
@@ -30,6 +31,8 @@ interface ChatsState {
   setDialogTheme: (chatId: number, themeId: string) => void
   setDialogArchived: (chatId: number, archived: boolean) => void
   removeDialog: (chatId: number) => void
+  /** снимок метаданных чата из realtime-кадра `chat_update` (title/username/фото) */
+  applyChatMeta: (m: ChatUpdateEvt) => void
   applyNewMessage: (m: NewMessageEvt) => void
   applyRead: (r: ReadEvt) => void
   /** кто-то отреагировал на моё сообщение → бампим бейдж непрочитанных реакций диалога */
@@ -108,6 +111,38 @@ export const useChatsStore = create<ChatsState>((set) => ({
       dialogs: s.dialogs.filter((d) => d.chatId !== chatId),
       activeChatId: s.activeChatId === chatId ? null : s.activeChatId,
     })),
+  // Бэкенд шлёт в `chat_update` АБСОЛЮТНЫЙ снимок метаданных чата
+  // (backend/internal/usecase/chat/chat_update.go:18-42), поэтому перезапрашивать
+  // список диалогов не нужно: сливаем снимок в существующий диалог. Раньше здесь
+  // был дебаунснутый рефетч всего /chats на каждое изменение — а publishChatUpdate
+  // зовётся из 13 мест бэкенда (переименование, фото, участники, права, слоумод),
+  // и рефетч прилетал КАЖДОМУ участнику чата.
+  applyChatMeta: (m) =>
+    set((s) => {
+      const idx = s.dialogs.findIndex((d) => d.chatId === m.chat_id)
+      if (idx === -1) return {} // чата нет в списке — приедет со следующей загрузкой
+      const next = s.dialogs.slice()
+      // Пишем только те поля, что реально пришли в снимке: '' и null — это
+      // «сброшено» (снимок абсолютный), отсутствие ключа — «не про это событие».
+      next[idx] = {
+        ...s.dialogs[idx],
+        ...(m.title !== undefined && { title: m.title }),
+        // username кладём verbatim — ровно как маппинг ответа /chats (models.ts:675),
+        // где пустая строка остаётся пустой строкой.
+        ...(m.username !== undefined && { username: m.username }),
+        ...(m.photo_media_id !== undefined && {
+          // Тот же путь, что отдаёт /chats (backend chatsrepo.go:190) и который
+          // умеет резолвить useAvatarSrc — НЕ готовый URL с медиа-токеном: токен
+          // живёт ~15 минут, и его нельзя класть в долгоживущую модель.
+          photoUrl: m.photo_media_id === null ? undefined : `/media/${m.photo_media_id}/content`,
+        }),
+      }
+      // Через реконсайл (Task 1): совпавший с памятью снимок вернёт ИСХОДНЫЙ массив,
+      // ссылки соседних диалогов не меняются — перерисуется только эта строка.
+      // Порядок берётся из `next`, а метаданные на сортировку не влияют, поэтому он
+      // сохраняется; когда появится общий `applyDialogs`, переключить сюда его.
+      return { dialogs: reconcileById(s.dialogs, next, (d) => d.chatId).list }
+    }),
   setPresence: (p) => set((s) => ({ presence: { ...s.presence, [p.user_id]: { online: p.online, lastSeen: p.last_seen } } })),
   setTyping: (chatId, userId, action, at) =>
     set((s) => ({
