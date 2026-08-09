@@ -709,15 +709,26 @@ CSS портирован байт-в-байт (`styles/tweb/_chatBubble.scss`), 
   - `RealMediaBubble.module.scss:61-68` — `.docDl { opacity: 0; transition: opacity .2s ease-in-out }`. В `_document.scss` у tweb такого слоя нет; заменить на ховер-правило из портированного партиала.
   - `EmptyChatGreeting.tsx:13-20` — `motion.div` со `scale .9 → 1` за `.22s`. В tweb `.empty-bubble-placeholder .bubble-content-wrapper { transition: var(--bubble-transition-in) }` (`_chatBubble.scss:4066-4072`) — те же `zoom-fade`-классы, `.3s` и `scale3d(.8,.8,1)`. Перевести на `animateLadder`-классы, framer-motion убрать (пересекается с Task 7.5).
 
-- [ ] **Step 7: Удалить мёртвый модуль анимаций**
+- [ ] **Step 7: Сдвиг градиента обоев — привязать к скроллу (сообщено с экрана: «много нажимаешь — фон сам меняется»)**
+
+  Сейчас `web-client/src/core/hooks/useChatSend.ts` шлёт `window.dispatchEvent(new Event('tg-send'))` из **13 мест**, а `ChatBackground.tsx:196-200` по этому событию зовёт `rendererRef.current?.toNextPosition()` — **без аргумента**, то есть ветку самоанимации (`gradientRenderer.ts:381-400`). Градиент уезжает сам по себе на каждую отправку, и при быстрой отправке подряд фон заметно «гуляет».
+
+  В tweb это устроено иначе, три отличия:
+  1. **Триггер — не отправка, а появление сообщения:** `bubbles.ts:1859-1864` ставит `updateGradient = true` в обработчике `history_append` (любое новое сообщение в этом чате, входящее тоже), и только `if (liteMode.isAvailable('chat_background'))`.
+  2. **Сдвиг едет вместе со скроллом:** `bubbles.ts:4710-4714` зовёт `gradientRenderer?.toNextPosition(dimensions.getProgress)` из `startCallback` у `scrollIntoViewNew`, то есть прогресс градиента = прогресс анимации прокрутки (`gradientRenderer.ts:373-378` — ветка `getProgress`, `animateSingle(drawNextPositionAnimated)`). Свободной самоанимации не происходит.
+  3. **Флаг одноразовый:** `bubbles.ts:4713` сбрасывает `updateGradient = undefined` сразу после применения; если прокрутки не было (мы не у низа ленты), сдвиг просто не случается.
+
+  Работы: убрать 13 диспатчей `tg-send` из `useChatSend.ts` и слушателя из `ChatBackground.tsx`; завести флаг «нужен сдвиг» по приходу нового сообщения в открытый чат, гейт по `animation-level`/lite-mode, а применять его в скролл-к-низу из `Chat.tsx`, передавая `getProgress` анимации прокрутки. Тест: два «сообщения» подряд без прокрутки → `toNextPosition` не вызван ни разу; с прокруткой → вызван один раз и с `getProgress`.
+
+- [ ] **Step 8: Удалить мёртвый модуль анимаций**
 
   После шагов 1 и 6 `components/animations/bubbleAnimations.tsx` (164 строки: `FadeIn`, `FadeOut`, `FadeInBackwards`, `FadeOutBackwards`, `Flash`, `BubbleHighlight`, `BubbleAppear`) не используется. Все эти эффекты уже есть в портированном CSS (`fade-in-opacity`, `fade-in-backwards-opacity`, `bubbleSelected`). Удалить файл и его `.module.scss`.
 
-- [ ] **Step 8: Проверки**
+- [ ] **Step 9: Проверки**
 
   `npm run typecheck` && `npx vitest run` && `npx vite build`; DOM-diff по поверхности ленты (режим `classes`) — расхождений быть не должно; ручной смок: открытие чата (каскад снизу вверх), прыжок к сообщению (подсветка `bubbleSelected`), выделение/снятие, загрузка превью.
 
-- [ ] **Step 9: Коммит**
+- [ ] **Step 10: Коммит**
 
   ```bash
   git add web-client/src/core/dom/ladder.ts web-client/src/core/dom/ladder.test.ts \

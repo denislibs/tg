@@ -82,6 +82,8 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
   const gradientReadyRef = useRef(false)
   const patternReadyRef = useRef(false)
   const patternCachedRef = useRef(false)
+  // Счётчик прогонов эффекта отрисовки узора — см. `superseded` ниже.
+  const patternRunRef = useRef(0)
 
   const activateSlot = (cached: boolean) => {
     if (hadPreviousRef.current) return
@@ -219,12 +221,29 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
       })
     }
 
+    // Токен прогона: у tweb стратегия (`mask`) вшита в инстанс рендерера в момент
+    // сборки контента (chatBackground.tsx:242-248 `getInstance({… mask: isDarkPattern
+    // && !useOverlayRender})`), а обогнанный прогон эффекта явно выбрасывается —
+    // `disposeBuilt`, chatBackground.tsx:299 «used when an effect run is superseded».
+    // У нас `paint` звался из `img.onload`, и опоздавший колбэк красил холст своим,
+    // уже неверным `mask`. Первый рендер идёт до применения темы (setTheme — layout-
+    // эффект ThemedApp, а они бегут снизу вверх), там dataTheme ещё null → mask=false;
+    // тик темы перезапускает эффект, но `imgRef` пуст, поэтому заводится ВТОРОЙ Image:
+    // он берётся из memory-кэша и красит маской сразу, а первый (сетевой) доезжает
+    // позже и перекрывает результат светлой стратегией. В night это давало вместо
+    // чёрной маски с прорезями-дудлами полностью открытый яркий градиент (замерено на
+    // живой странице: 6.5% непрозрачных пикселей холста вместо 92.9%; любой resize
+    // «чинил» фон, потому что resize зовёт уже актуальное замыкание).
+    const run = ++patternRunRef.current
+    const superseded = () => run !== patternRunRef.current
+
     // Ленивая загрузка дудла (один раз), затем перерисовки — синхронные. cached —
     // синхронная готовность (img.complete сразу после простановки src: браузер уже
     // держит декодированный pattern.svg в image-кэше страницы) — resolveTransition.
     if (!imgRef.current) {
       const img = new Image()
       img.onload = () => {
+        if (superseded()) return
         imgRef.current = img
         paint()
         patternReadyRef.current = true
