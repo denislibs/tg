@@ -154,6 +154,9 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
     }
     const img = new Image()
     img.onload = () => activateSlot(false)
+    // Сбой загрузки (404/протухший media-токен/удалённое медиа) не должен навсегда
+    // запереть слот на opacity:0 — активируем с тем, что есть (пустой div без фона).
+    img.onerror = () => activateSlot(false)
     img.src = overlayImageUrl
     if (img.complete && img.naturalWidth) activateSlot(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -206,6 +209,12 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
       img.onload = () => {
         imgRef.current = img
         paint()
+        patternReadyRef.current = true
+        maybeActivateSlot()
+      }
+      // Сбой загрузки узора не должен навсегда запереть слот на opacity:0 —
+      // активируем без паттерна (canvas останется пустым, градиент всё равно виден).
+      img.onerror = () => {
         patternReadyRef.current = true
         maybeActivateSlot()
       }
