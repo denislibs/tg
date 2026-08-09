@@ -351,7 +351,7 @@ func TestPasswordRecovery_HTTP(t *testing.T) {
 		ResendAfter  int    `json:"resend_after"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &req)
-	if req.EmailPattern != "de•••@example.com" || req.ResendAfter != 30 {
+	if req.EmailPattern != "d****@e******.com" || req.ResendAfter != 30 {
 		t.Fatalf("recover ответ = %s", rec.Body.String())
 	}
 
@@ -376,9 +376,10 @@ func TestPasswordRecovery_HTTP(t *testing.T) {
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("неверный код: %d %s", rec.Code, rec.Body.String())
 	}
-	// Верный (dev) код — сессия, пароль снят.
+	// Верный (dev) код — сессия, пароль снят. Код восстановления шестизначный
+	// (RecoveryCodeLength), поэтому пятизначный dev-OTP дополняется нулём слева.
 	rec = postJSON(t, h, "/auth/password/recover/confirm", map[string]string{
-		"password_token": step.PasswordToken, "code": "12345", "device": "web", "platform": "browser",
+		"password_token": step.PasswordToken, "code": "012345", "device": "web", "platform": "browser",
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("confirm: %d %s", rec.Code, rec.Body.String())

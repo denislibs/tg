@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -137,12 +138,19 @@ func (i *Interactor) ConfirmPasswordRecovery(ctx context.Context, rawPasswordTok
 	return res, nil
 }
 
+// RecoveryCodeLength — длина кода восстановления. Шесть цифр, как у Telegram;
+// поле ввода на экране восстановления рассчитано ровно на эту длину.
+const RecoveryCodeLength = 6
+
 // recoveryCode — код письма. Без подключённого Mailer доставки нет, поэтому
-// код статичен и равен dev-OTP (DEV_OTP_CODE) — так же, как код входа по SMS на
-// стенде. С Mailer — случайные 6 цифр.
+// код статичен и выводится из dev-OTP (DEV_OTP_CODE) — так же, как код входа по
+// SMS на стенде. С Mailer — случайные 6 цифр.
 func (i *Interactor) recoveryCode() (string, error) {
 	if i.mail == nil {
-		return i.devCode, nil
+		// dev-OTP пятизначный, а поле ввода ждёт шесть: без выравнивания
+		// автоотправка по заполнению не срабатывала никогда и сценарий
+		// восстановления через интерфейс был непроходим на стенде.
+		return padCode(i.devCode, RecoveryCodeLength), nil
 	}
 	n, err := rand.Int(rand.Reader, big.NewInt(1_000_000))
 	if err != nil {
@@ -156,6 +164,14 @@ func (i *Interactor) recoveryCode() (string, error) {
 		byte('0' + n.Int64()/10%10),
 		byte('0' + n.Int64()%10),
 	}), nil
+}
+
+// padCode дополняет код нулями слева до нужной длины (длиннее — не трогает).
+func padCode(code string, n int) string {
+	if len(code) >= n {
+		return code
+	}
+	return strings.Repeat("0", n-len(code)) + code
 }
 
 // secondsUntil — сколько целых секунд осталось до момента t (минимум 1).

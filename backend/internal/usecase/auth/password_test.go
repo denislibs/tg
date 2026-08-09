@@ -26,7 +26,7 @@ func TestCloudPasswordFlow(t *testing.T) {
 		t.Fatalf("SetPassword: %v", err)
 	}
 	st, err := i.PasswordState(ctx, userID)
-	if err != nil || !st.Enabled || st.Hint != "подсказка" || st.Email != "de•••@example.com" {
+	if err != nil || !st.Enabled || st.Hint != "подсказка" || st.Email != "d****@e******.com" {
 		t.Fatalf("PasswordState = %+v, %v", st, err)
 	}
 

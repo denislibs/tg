@@ -56,7 +56,7 @@ func TestPasswordRecovery_Flow(t *testing.T) {
 		t.Fatalf("RequestPasswordRecovery: %v", err)
 	}
 	// Наружу — только маскированный адрес.
-	if req.EmailPattern != "de•••@example.com" {
+	if req.EmailPattern != "d****@e******.com" {
 		t.Fatalf("email_pattern = %q", req.EmailPattern)
 	}
 	if req.ResendAfter != int(recoveryResendInterval/time.Second) {
@@ -163,7 +163,10 @@ func TestPasswordRecovery_Rejections(t *testing.T) {
 	}
 }
 
-// Без подключённого Mailer код равен dev-OTP — как код входа по SMS на стенде.
+// Без подключённого Mailer код выводится из dev-OTP — как код входа по SMS на
+// стенде, но дополненный нулями до шести цифр: поле ввода на экране
+// восстановления рассчитано ровно на RecoveryCodeLength, и пятизначный код
+// никогда не давал автоотправки по заполнению.
 func TestPasswordRecovery_DevCodeWithoutMailer(t *testing.T) {
 	ctx := context.Background()
 	i, _, _, codes := newInteractor()
@@ -172,7 +175,11 @@ func TestPasswordRecovery_DevCodeWithoutMailer(t *testing.T) {
 	if _, err := i.RequestPasswordRecovery(ctx, pwToken); err != nil {
 		t.Fatalf("RequestPasswordRecovery: %v", err)
 	}
-	res, err := i.ConfirmPasswordRecovery(ctx, pwToken, "12345", "dev", "test")
+	// Пятизначный dev-OTP «12345» на экране восстановления вводится как «012345».
+	if _, err := i.ConfirmPasswordRecovery(ctx, pwToken, "12345", "dev", "test"); err == nil {
+		t.Fatal("пятизначный dev-код принят, ожидался отказ")
+	}
+	res, err := i.ConfirmPasswordRecovery(ctx, pwToken, padCode("12345", RecoveryCodeLength), "dev", "test")
 	if err != nil || res.User.ID != userID || res.Token == "" {
 		t.Fatalf("подтверждение dev-кодом = %+v, %v", res, err)
 	}
