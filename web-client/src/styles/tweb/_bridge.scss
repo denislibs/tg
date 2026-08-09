@@ -268,6 +268,15 @@ input,
   background-color: transparent;
 }
 
+// tweb base.scss:566-569 — сброс браузерной отрисовки полей. Без `font-size:
+// inherit` Chrome рисует внутри поля свой 13.33px вместо кегля контейнера
+// (заметно в поле ссылки тултипа форматирования: панель 16px, поле мельче).
+input,
+textarea {
+	-webkit-appearance: none;
+  font-size: inherit;
+}
+
 // tweb scss/components/_global.scss:40-43 — снятие браузерного фокус-кольца.
 // Без него поверх акцентной рамки поля поиска (`.input-field-border`) Chrome
 // рисует свой синий/белый outline и получается двойной контур.

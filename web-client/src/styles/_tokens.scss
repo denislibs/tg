@@ -26,6 +26,23 @@
   --transition-standard-out-time: .25s;
   --transition-standard-in: var(--transition-standard-in-time) var(--transition-standard-easing);
   --transition-standard-out: var(--transition-standard-out-time) var(--transition-standard-easing);
+  // Начало трансформы для всплывающих панелей (base.scss:44-55). При первом
+  // порте этого блока пропущено — из-за чего `.btn-menu.top-right` и его
+  // соседи в `_button.scss` оставались без `transform-origin` и раскрывались
+  // из центра; attach-меню приходилось чинить inline-стилем.
+  --transform-origin-inline-start: left;
+  --transform-origin-inline-end: right;
+  --transform-origin-left-center: left center;
+  --transform-origin-right-center: right center;
+
+  &.is-rtl {
+    --reflect: -1;
+    --transform-origin-inline-start: right;
+    --transform-origin-inline-end: left;
+    --transform-origin-left-center: right center;
+    --transform-origin-right-center: left center;
+  }
+
   --pm-transition: .2s ease-in-out;
   --layer-transition: .2s cubic-bezier(.4, 0, .2, 1);
   --slide-header-transition: .4s ease-in-out;

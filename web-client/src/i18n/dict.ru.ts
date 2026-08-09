@@ -611,6 +611,11 @@ const ru: Dict = {
   'Group members can discuss different topics in separate threads.': 'Участники смогут обсуждать разные темы в отдельных ветках.',
   'Sending messages is not allowed in this group': 'В этой группе запрещено отправлять сообщения',
   'Media is not allowed in this group': 'В этой группе запрещено отправлять медиа',
+  // Зона перетаскивания файлов в чат (tweb lang.ts:3469-3471 —
+  // Chat.DropTitle / Chat.DropAsFilesDesc / Chat.DropQuickDesc).
+  'Drop files here to send them': 'Перетащите файлы сюда, чтобы отправить',
+  'without compression': 'без сжатия',
+  'in a quick way': 'быстрым способом',
   'Revoked Links': 'Отозванные ссылки',
   'Delete All Revoked Links': 'Удалить все отозванные ссылки',
   'Edit Link': 'Изменить ссылку',

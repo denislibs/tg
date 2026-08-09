@@ -58,6 +58,7 @@ import PinnedBar from './conversation/PinnedBar'
 import SavedTagsPanel from './conversation/SavedTagsPanel'
 import ScrollDownFab from './conversation/ScrollDownFab'
 import SelectionBar from './conversation/SelectionBar'
+import ChatDrops from './conversation/ChatDrops'
 import { useChatsStore, loadChats } from '../stores/chatsStore'
 import { useSecretChatStore } from '../stores/secretChatStore'
 import { type MessageEntity } from '../core/models'
@@ -1330,6 +1331,14 @@ export default function Chat({ chat, onBack, thread }: Props) {
         )}
         </div>
         </div>
+
+        {/* Зона перетаскивания файлов. tweb приклеивает `.drops-container`
+            последним ребёнком колонки чата (`this.chat.container.append(...)`,
+            appImManager.ts:2394) — здесь то же место в дереве. */}
+        <ChatDrops
+          enabled={isRealChat && canSendMedia}
+          onDropFiles={(files, asFile) => setPendingMedia({ files, asFile })}
+        />
       </div>
 
       {/* Инфо-панель (private / group / channel) — после первого открытия всегда
