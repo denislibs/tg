@@ -1,57 +1,112 @@
 // src/core/serviceMsg.ts
-// Сервисные сообщения групп: бэкенд хранит в text JSON-действие (зеркало
+// Сервисные сообщения: бэкенд хранит в text JSON-действие (зеркало
 // tweb messageAction — данные, а не готовая фраза), клиент собирает локализованный
 // текст пилюли. Тот же приём, что у лога звонков (parseCallLog).
+//
+// tweb собирает пилюлю из УЗЛОВ, а не из строки (messageActionTextNewUnsafe):
+// имена едут в `span.peer-title` (клик → профиль), ссылка на сообщение — в
+// `i[data-saved-from="peerId_mid"]` (клик → переход к сообщению). Поэтому
+// разбор возвращает сегменты, а `serviceMsgText` — их же, склеенные в строку
+// (для превью в списке чатов, где узлы не нужны).
+import { replyMediaLabel } from './messageToConvMsg'
 
 interface ServiceAction {
   action: string
   actor?: string
+  actor_id?: number
   user?: string
+  user_id?: number
   ttl?: number
   /** название канала (предложка постов: suggest_post_approved/rejected) */
   chat?: string
+  /** закрепление (pin_message): цель + разобранное превью (tweb messageForReply) */
+  msg_id?: number
+  msg_seq?: number
+  msg_type?: string
+  /** «имя» медиа: теги аудио «название - исполнитель» либо имя файла */
+  msg_name?: string
+  /** текст/подпись закреплённого (обрезан бэкендом до 100 символов) */
+  msg_text?: string
 }
+
+/** Кусок фразы сервисной пилюли: обычный текст, имя-пир или ссылка на сообщение. */
+export type ServiceSeg =
+  | { kind: 'text'; text: string }
+  | { kind: 'peer'; text: string; peerId?: number }
+  | { kind: 'msg'; text: string; msgId?: number; seq?: number }
 
 // Тексты — как в официальном ru-паке Telegram (ActionCreateGroup/ActionAddUser/…).
 // out — сообщение отправлено текущим пользователем (для формулировок «Вы …»).
-export function serviceMsgText(raw: string, out?: boolean): string {
-  if (!raw.startsWith('{')) return raw // локальные сервисные строки (уже готовый текст)
+export function serviceMsgSegs(raw: string, out?: boolean): ServiceSeg[] {
+  const plain = (text: string): ServiceSeg[] => [{ kind: 'text', text }]
+  if (!raw.startsWith('{')) return plain(raw) // локальные сервисные строки (уже готовый текст)
   let a: ServiceAction
   try {
     a = JSON.parse(raw) as ServiceAction
   } catch {
-    return raw
+    return plain(raw)
   }
-  const actor = a.actor || 'Пользователь'
-  const user = a.user || 'пользователя'
+  const t = (text: string): ServiceSeg => ({ kind: 'text', text })
+  const actor: ServiceSeg = { kind: 'peer', text: a.actor || 'Пользователь', peerId: a.actor_id }
+  const user: ServiceSeg = { kind: 'peer', text: a.user || 'пользователя', peerId: a.user_id }
   switch (a.action) {
     // Предложение фото профиля (tweb messageActionSuggestProfilePhoto).
     case 'suggest_photo':
       return out
-        ? `Вы предложили установить это фото профиля`
-        : `${actor} предлагает вам установить это фото профиля`
+        ? plain('Вы предложили установить это фото профиля')
+        : [actor, t(' предлагает вам установить это фото профиля')]
     // Решение по предложенному посту (Telegram suggested posts).
     case 'suggest_post_approved':
-      return a.chat
-        ? `Ваш предложенный пост одобрен в канале «${a.chat}»`
-        : `Ваш предложенный пост одобрен`
+      return plain(
+        a.chat ? `Ваш предложенный пост одобрен в канале «${a.chat}»` : 'Ваш предложенный пост одобрен',
+      )
     case 'suggest_post_rejected':
-      return a.chat
-        ? `Ваш предложенный пост отклонён в канале «${a.chat}»`
-        : `Ваш предложенный пост отклонён`
-    case 'group_create': return `${actor} создал(а) группу`
-    case 'add_user': return `${actor} добавил(а) ${user}`
-    case 'kick_user': return `${actor} удалил(а) ${user}`
-    case 'leave': return `${actor} покинул(а) группу`
-    case 'joined_by_link': return `${actor} присоединился(ась) к группе по ссылке-приглашению`
-    case 'edit_photo': return `${actor} обновил(а) фото группы`
-    case 'edit_title': return `${actor} изменил(а) название группы`
+      return plain(
+        a.chat ? `Ваш предложенный пост отклонён в канале «${a.chat}»` : 'Ваш предложенный пост отклонён',
+      )
+    case 'group_create': return [actor, t(' создал(а) группу')]
+    case 'add_user': return [actor, t(' добавил(а) '), user]
+    case 'kick_user': return [actor, t(' удалил(а) '), user]
+    case 'leave': return [actor, t(' покинул(а) группу')]
+    case 'joined_by_link': return [actor, t(' присоединился(ась) к группе по ссылке-приглашению')]
+    case 'edit_photo': return [actor, t(' обновил(а) фото группы')]
+    case 'edit_title': return [actor, t(' изменил(а) название группы')]
+    // Закрепление (tweb Chat.Service.Group.UpdatedPinnedMessage `%@ pinned "%@"`,
+    // без превью — ActionPinnedNoText «un1 pinned a message»).
+    case 'pin_message': {
+      const preview = pinPreview(a)
+      if (!preview) return [actor, t(' закрепил(а) сообщение')]
+      return [
+        actor,
+        t(' закрепил(а) "'),
+        { kind: 'msg', text: preview, msgId: a.msg_id, seq: a.msg_seq },
+        t('"'),
+      ]
+    }
     case 'set_ttl':
-      return a.ttl
-        ? `${actor} включил(а) автоудаление сообщений через ${ttlLabel(a.ttl)}`
-        : `${actor} отключил(а) автоудаление сообщений`
-    default: return raw
+      return [
+        actor,
+        t(a.ttl
+          ? ` включил(а) автоудаление сообщений через ${ttlLabel(a.ttl)}`
+          : ' отключил(а) автоудаление сообщений'),
+      ]
+    default: return plain(raw)
   }
+}
+
+/** Та же фраза одной строкой — для превью в списке чатов. */
+export function serviceMsgText(raw: string, out?: boolean): string {
+  return serviceMsgSegs(raw, out).map((s) => s.text).join('')
+}
+
+// Превью закреплённого — как tweb messageForReply: сначала «медийная» часть
+// (у аудио 🎵 + теги/имя файла, у документа имя файла, у прочего медиа — лейбл
+// типа), затем текст/подпись через запятую.
+function pinPreview(a: ServiceAction): string {
+  const media =
+    a.msg_type === 'audio' ? `🎵 ${a.msg_name || replyMediaLabel('audio')}`
+    : a.msg_name || replyMediaLabel(a.msg_type)
+  return [media, a.msg_text].filter(Boolean).join(', ')
 }
 
 // «1 день / 1 неделю / 1 месяц / N дней» — для пилюли set_ttl.

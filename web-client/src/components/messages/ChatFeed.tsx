@@ -13,6 +13,7 @@ import { peerColor } from '../peerColor'
 import { gradientFor } from '../../core/dialogToChat'
 import { useLang, useT } from '../../i18n'
 import { startOfDayMs, dayLabel } from '../../core/format/dayLabel'
+import { serviceMsgSegs, type ServiceSeg } from '../../core/serviceMsg'
 import { mediaContentUrl, hasMediaToken, useMediaTokenVersion } from '../../core/mediaUrl'
 import MessageRow, { type FeedFns } from './MessageRow'
 import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
@@ -223,14 +224,30 @@ function ChatFeed({
       // Предложение фото профиля: получателю (не out, не принято) под превью —
       // кнопка «Установить фото» (tweb bubble-service-media-button).
       const canAccept = m.photoSuggestion != null && !m.out && !m.photoSuggestion.accepted && m.id != null
+      // Фразу собираем из СЫРОГО JSON-экшена (winMsgs — тот же индекс, что и
+      // msgs): в ConvMsg.text он уже сплющен в строку, а узлы .peer-title /
+      // i[data-saved-from] нужны структурой. Демо-лента без winMsgs — строкой.
+      const segs = serviceMsgSegs((isRealChat && winMsgs[i]?.text) || m.text || '', m.out)
+      const ts = m.createdAt ? Math.floor(new Date(m.createdAt).getTime() / 1000) : undefined
       // Сервисный бабл tweb: `.bubble.service > .bubble-content-wrapper >
-      // .bubble-content > .service-msg` (живой DOM §3, «service action bubble») —
-      // в отличие от дата-разделителя обёртка тут есть.
+      // .bubble-content > .service-msg > span.i18n` (живой DOM §3, «service action
+      // bubble») — в отличие от дата-разделителя обёртка тут есть. data-mid/
+      // data-peer-id/data-timestamp несёт сам .bubble.
       body().push(
-        <div key={k} className="bubble service is-group-first is-group-last">
+        <div
+          key={k}
+          className="bubble service is-group-first is-group-last"
+          data-mid={m.id}
+          data-peer-id={m.chatId}
+          data-timestamp={Number.isFinite(ts) ? ts : undefined}
+        >
           <div className="bubble-content-wrapper">
             <div className="bubble-content">
-              <div className="service-msg">{m.text}</div>
+              <div className="service-msg">
+                <span className="i18n">
+                  {segs.map((sg, si) => serviceSeg(sg, si, m.chatId, feedFns))}
+                </span>
+              </div>
               {m.mediaId != null && <ServicePhoto mediaId={m.mediaId} onOpen={feedFns.openLightbox} />}
               {canAccept && <AcceptSuggestButton msgId={m.id!} />}
             </div>
@@ -318,6 +335,39 @@ function ChatFeed({
       ))}
     </>
   )
+}
+
+// Кусок фразы сервисной пилюли узлом (tweb messageActionTextNewUnsafe строит её
+// из элементов, не из строки): имя — `span.peer-title` с data-peer-id (клик →
+// профиль, bubbles.ts:3360-3395), ссылка на сообщение — `i[data-saved-from]`
+// (клик → переход к нему, там же). Остальное — обычный текст.
+function serviceSeg(sg: ServiceSeg, key: number, chatId: number | undefined, feedFns: FeedFns) {
+  if (sg.kind === 'peer') {
+    const peerId = sg.peerId
+    return (
+      <span
+        key={key}
+        className="peer-title"
+        data-peer-id={peerId}
+        onClick={peerId != null ? () => feedFns.openSender(peerId, sg.text) : undefined}
+      >
+        {sg.text}
+      </span>
+    )
+  }
+  if (sg.kind === 'msg') {
+    const seq = sg.seq
+    return (
+      <i
+        key={key}
+        data-saved-from={sg.msgId != null ? `${chatId ?? 0}_${sg.msgId}` : undefined}
+        onClick={seq != null ? () => feedFns.jumpToSeq(seq) : undefined}
+      >
+        {sg.text}
+      </i>
+    )
+  }
+  return sg.text
 }
 
 // Круглая миниатюра нового фото группы под сервисной пилюлей (tweb bubble
