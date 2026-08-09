@@ -1,19 +1,24 @@
-// Вкладка GIF эмодзи-дропдауна — порт tweb emoticonsDropdown/tabs/gifs (noMenu:
-// без ленты категорий, сверху поиск). Сетка — tweb gifs-masonry упрощённо:
-// ряды фиксированной высоты 117px, ширина элемента по аспекту, flex-wrap.
+// Вкладка GIF эмодзи-дропдауна — порт tweb emoticonsDropdown/tabs/gifs
+// (`noMenu: true`): контейнер `.tabs-tab.emoticons-container.no-menu.gifs-padding`,
+// без ленты категорий, сверху поиск. Кладка — tweb GifsMasonry:
+// `div.gifs-masonry > div.gif.grid-item` (gifsMasonry.ts:171), внутри
+// `video.media-video` / `img.media-photo`; геометрию задаёт партиал
+// styles/tweb/_gifsMasonry.scss (grid 3×, gap .125rem, ряды 1fr).
 // Превью ленивое: <video>/<img> монтируется только когда ячейка в вьюпорте
-// (IntersectionObserver), до того — серый плейсхолдер той же геометрии.
-// Внизу результатов поиска — сентинел догрузки следующей страницы Tenor (next).
-import { memo, useCallback, useEffect, useRef, useState } from 'react'
+// (IntersectionObserver). Внизу результатов поиска — сентинел догрузки Tenor.
+import { memo, useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import TgIcon from '../TgIcon'
+import EmoticonsTab, { EmoticonsSearch } from './EmoticonsTab'
 import Menu, { MenuItem } from '../../shared/ui/Menu'
 import { useGifsPanel } from '../../core/hooks/useGifs'
 import type { GifItem } from '../../core/gifs'
 import { mediaContentUrl, hasMediaToken, useMediaTokenVersion } from '../../core/mediaUrl'
 import { useT } from '../../i18n'
-import s from './EmojiDropdown.module.scss'
+// Одно глобальное правило геометрии ячейки `.gif.grid-item` — импорт ради
+// сайд-эффекта, локальных классов в файле нет (см. комментарий там).
+import './EmojiDropdown.module.scss'
 
-// tweb GifsMasonry: const width = 117 — высота ряда кладки
+// tweb GifsMasonry: высота ряда кладки — запас для rootMargin ленивой загрузки.
 const ROW_H = 117
 
 const GifCell = memo(function GifCell({
@@ -31,28 +36,24 @@ const GifCell = memo(function GifCell({
   onMenu: (g: GifItem, x: number, y: number) => void
   register: (key: string, el: HTMLElement | null) => void
 }) {
-  // Ширина по аспекту (width*117/height); flexGrow тем же числом — ряд
-  // растягивается на всю ширину без дыр (как пакует tweb GifsMasonry).
-  const w = Math.round((g.height > 0 ? g.width / g.height : 1) * ROW_H) || ROW_H
   let content = null
   if (visible) {
     if (g.mediaId != null) {
       // Сохранённые: наш сервер; mime решает тег (mp4-гифка ↔ настоящий image/gif)
       if (tokenReady) {
         content = g.mime === 'image/gif'
-          ? <img src={mediaContentUrl(g.mediaId)} alt="" draggable={false} />
-          : <video src={mediaContentUrl(g.mediaId)} muted loop autoPlay playsInline />
+          ? <img className="media-photo" src={mediaContentUrl(g.mediaId)} alt="" draggable={false} />
+          : <video className="media-video" src={mediaContentUrl(g.mediaId)} muted loop autoPlay playsInline />
       }
     } else {
       // Tenor: mp4 легче gif, играет напрямую с CDN
-      content = <video src={g.mp4Url} poster={g.previewUrl} muted loop autoPlay playsInline />
+      content = <video className="media-video" src={g.mp4Url} poster={g.previewUrl} muted loop autoPlay playsInline />
     }
   }
   return (
     <div
       ref={(el) => register(g.key, el)}
-      className={s.gifCell}
-      style={{ width: w, flexGrow: w }}
+      className="gif grid-item"
       onClick={() => onPick(g)}
       onContextMenu={g.mediaId != null ? (e) => { e.preventDefault(); onMenu(g, e.clientX, e.clientY) } : undefined}
     >
@@ -77,7 +78,7 @@ function Masonry({
   register: (key: string, el: HTMLElement | null) => void
 }) {
   return (
-    <div className={s.gifsMasonry}>
+    <div className="gifs-masonry">
       {items.map((g) => (
         <GifCell key={g.key} g={g} visible={visible.has(g.key)} tokenReady={tokenReady} onPick={onPick} onMenu={onMenu} register={register} />
       ))}
@@ -87,17 +88,23 @@ function Masonry({
 
 export default function GifsTab({
   active,
+  open,
+  inputRef,
   onPick,
 }: {
-  /** вкладка открыта (дропдаун виден и выбран таб GIF) — триггер ленивой загрузки */
+  /** выбранная вкладка (tweb `.tabs-tab.active`) */
   active: boolean
+  /** дропдаун открыт — триггер ленивой загрузки данных */
+  open: boolean
+  inputRef: RefObject<HTMLInputElement | null>
   onPick: (g: GifItem) => void
 }) {
   const t = useT()
   useMediaTokenVersion() // URL сохранённых GIF строятся синхронно из токена
   const tokenReady = hasMediaToken()
   const [query, setQuery] = useState('')
-  const panel = useGifsPanel(active, query)
+  const [focused, setFocused] = useState(false)
+  const panel = useGifsPanel(open && active, query)
   const scrollRef = useRef<HTMLDivElement>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
   const cellsRef = useRef(new Map<string, HTMLElement>())
@@ -142,69 +149,72 @@ export default function GifsTab({
   }, [])
 
   // Infinite scroll результатов: сентинел внизу дёргает следующую страницу Tenor.
-  const searching = panel.results != null
+  const searchingResults = panel.results != null
   const loadMore = panel.loadMore
   useEffect(() => {
     const el = sentinelRef.current
     const sc = scrollRef.current
-    if (!searching || !el || !sc) return
+    if (!searchingResults || !el || !sc) return
     const io = new IntersectionObserver(
       (entries) => { if (entries.some((e) => e.isIntersecting)) loadMore() },
       { root: sc, rootMargin: `${ROW_H * 2}px 0px` },
     )
     io.observe(el)
     return () => io.disconnect()
-  }, [searching, loadMore])
+  }, [searchingResults, loadMore])
 
   const openCtxMenu = useCallback((g: GifItem, x: number, y: number) => setCtxMenu({ g, x, y }), [])
 
-  const empty = panel.loaded && !searching && panel.saved.length === 0 && !panel.tenorAvailable
+  const empty = panel.loaded && !searchingResults && panel.saved.length === 0 && !panel.tenorAvailable
 
   return (
-    <div className={s.emoticonsContainer}>
-      <div className={s.emoticonsContent}>
-        <div ref={scrollRef} className={s.stickersScrollable}>
-          {/* поиск (tweb emoticons-search-container); без Tenor поиска нет */}
-          {panel.tenorAvailable && (
-            <div className={s.searchContainer}>
-              <TgIcon name="search" size={20} className={s.searchIcon} />
-              <input
-                className={s.searchInput}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={t('Search GIFs')}
-              />
-            </div>
-          )}
-
-          {searching ? (
-            panel.results!.length ? (
-              <>
-                <Masonry items={panel.results!} visible={visible} tokenReady={tokenReady} onPick={onPick} onMenu={openCtxMenu} register={register} />
-                <div ref={sentinelRef} style={{ height: 1 }} />
-              </>
-            ) : (
-              <span className={s.notFound}>{t('No GIFs found')}</span>
-            )
-          ) : (
-            <>
-              {panel.saved.length > 0 && (
-                <div className={s.emojiCategory}>
-                  <div className={s.categoryTitle}>{t('Saved GIFs')}</div>
-                  <Masonry items={panel.saved} visible={visible} tokenReady={tokenReady} onPick={onPick} onMenu={openCtxMenu} register={register} />
+    <>
+      <EmoticonsTab
+        padding="gifs-padding"
+        noMenu
+        active={active}
+        // `is-searching` у noMenu-вкладки в tweb тоже выставляется (tab.ts:176),
+        // но сдвигать нечего: классов emoticons-will-move-* у неё нет.
+        searching={focused || !!query.trim()}
+        scrollRef={scrollRef}
+        search={
+          <EmoticonsSearch
+            inputRef={inputRef}
+            value={query}
+            onChange={setQuery}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            placeholder={t('Search GIFs')}
+            focused={focused || !!query.trim()}
+          />
+        }
+        result={
+          searchingResults
+            ? panel.results!.length
+              ? (
+                <div className="emoticons-categories-container emoticons-has-search animated-item">
+                  <Masonry items={panel.results!} visible={visible} tokenReady={tokenReady} onPick={onPick} onMenu={openCtxMenu} register={register} />
+                  <div ref={sentinelRef} style={{ height: 1 }} />
                 </div>
-              )}
-              {panel.featured.length > 0 && (
-                <div className={s.emojiCategory}>
-                  <div className={s.categoryTitle}>{t('Trending')}</div>
-                  <Masonry items={panel.featured} visible={visible} tokenReady={tokenReady} onPick={onPick} onMenu={openCtxMenu} register={register} />
-                </div>
-              )}
-              {empty && <span className={s.notFound}>{t('No GIFs found')}</span>}
-            </>
-          )}
-        </div>
-      </div>
+              )
+              : <span className="emoticons-not-found animated-item">{t('No GIFs found')}</span>
+            : undefined
+        }
+      >
+        {panel.saved.length > 0 && (
+          <div className="emoji-category">
+            <div className="category-title">{t('Saved GIFs')}</div>
+            <Masonry items={panel.saved} visible={visible} tokenReady={tokenReady} onPick={onPick} onMenu={openCtxMenu} register={register} />
+          </div>
+        )}
+        {panel.featured.length > 0 && (
+          <div className="emoji-category">
+            <div className="category-title">{t('Trending')}</div>
+            <Masonry items={panel.featured} visible={visible} tokenReady={tokenReady} onPick={onPick} onMenu={openCtxMenu} register={register} />
+          </div>
+        )}
+        {empty && <span className="emoticons-not-found">{t('No GIFs found')}</span>}
+      </EmoticonsTab>
 
       {/* ПКМ по сохранённому GIF (tweb gif context menu) */}
       {ctxMenu && (
@@ -224,6 +234,6 @@ export default function GifsTab({
           />
         </Menu>
       )}
-    </div>
+    </>
   )
 }

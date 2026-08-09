@@ -1,14 +1,22 @@
 // Эмодзи-дропдаун — React-порт tweb EmoticonsDropdown (components/emoticonsDropdown).
-// Вёрстка и поведение 1:1:
-//  - открытие по hover с задержкой 200 мс (tweb DropdownHover TOGGLE_TIMEOUT), клик — toggle;
-//  - анимация scale(.85)→1 + fade за .2s через класс .active (не unmount — сохраняем скролл);
+// Дерево и классы 1:1 с живым дампом docs/research/tweb-dom/04-emoji-dropdown.json:
+//
+//   div.emoji-dropdown[.active]
+//     div.emoji-container > div.tabs-container > три .tabs-tab.emoticons-container
+//     div.emoji-tabs.menu-horizontal-div.emoticons-menu.no-stripe > 5×button.btn-icon
+//
+// Поведение тоже из tweb:
+//  - открытие по hover с задержкой 200 мс (DropdownHover TOGGLE_TIMEOUT), клик — toggle;
+//  - анимация scale(.85)→1 + fade за .2s классом `.active` (не unmount — сохраняем скролл),
+//    переход целиком из партиала styles/tweb/_emojiDropdown.scss;
 //  - ленивый рендер: содержимое категории живёт в DOM только пока категория видима
-//    (tweb VisibilityIntersector), у невидимых — заранее посчитанный minHeight,
-//    чтобы скролл не прыгал (tweb setCategoryItemsHeight);
-//  - меню категорий сверху со скролл-подсветкой, поиск со сдвигом панели вверх
-//    (tweb .is-searching / emoticons-will-move-*), полоска emoji-групп справа от поиска;
-//  - нижние табы: search / emoji / stickers / backspace (tweb .emoji-tabs); обе
-//    вкладки живут в DOM (переключение display), состояние/скролл сохраняются.
+//    (VisibilityIntersector), у невидимых — заранее посчитанный minHeight
+//    (StickersTabCategory.setCategoryItemsHeight), чтобы скролл не прыгал;
+//  - лента категорий: recent отдельной кнопкой, остальные — в схлопывающемся
+//    `.menu-horizontal-inner` (emoji.ts:463-467), наборы кастом-эмодзи после него;
+//  - поиск сдвигает панель вверх (`.is-searching` + `emoticons-will-move-*`);
+//  - нижние табы: search / emoji / stickers / gifs / delete, `.hide` по правилам
+//    index.ts:459-460. Все вкладки живут в DOM (`.tabs-tab.active` → display:flex).
 import {
   memo,
   useCallback,
@@ -22,6 +30,8 @@ import TgIcon, { type IconName } from '../TgIcon'
 import Emoji, { EMOJI_CDN_BASE, emojiCodepoints } from './Emoji'
 import StickersTab from './StickersTab'
 import GifsTab from './GifsTab'
+import EmoticonsTab, { EmoticonsSearch, MenuTab } from './EmoticonsTab'
+import IconButton from '../../shared/ui/IconButton'
 import StickerMedia from '../StickerMedia'
 import type { Sticker } from '../../core/managers/stickersManager'
 import { useCustomEmojiSets } from '../../core/hooks/useStickers'
@@ -30,14 +40,13 @@ import { CATEGORIES, DEFAULT_FREQUENT, QUICK_CHIPS, searchEmojisByWord } from '.
 import { useT } from '../../i18n'
 import classNames from '../../shared/lib/classNames'
 import { pushEsc } from '../../core/hotkeys'
-import s from './EmojiDropdown.module.scss'
 
 // tweb DropdownHover: ANIMATION_DURATION = 200 (scale/fade). Hover-открытие живёт
 // отдельным модулем useDropdownHover (Composer держит его в главном чанке).
 const ANIMATION_DURATION = 200
 
-// Метрики сетки из tweb: ячейка 42px (--esg-emoji-total-size), column-gap 4px,
-// горизонтальный padding .super-emojis 8px×2 (emoji-padding).
+// Метрики сетки из tweb: ячейка 42px (EMOJI_ELEMENT_SIZE / --esg-emoji-total-size),
+// column-gap 4px (EmoticonsTabStyles.Emoji.gapX), padding 16px (styles.padding).
 const CELL = 42
 const GAP_X = 4
 const GRID_PADDING = 16
@@ -45,8 +54,10 @@ const GRID_PADDING = 16
 const RECENT_KEY = 'tg-emoji-recent'
 const RECENT_MAX = 32 // tweb RECENT_MAX_LENGTH
 
-// tgico-иконки категорий (порядок и глифы — tweb EMOJI_CATEGORIES; у категории
-// symbols в tweb нет своей вкладки, глиф language — ближайший по смыслу).
+// tgico-иконки категорий: порядок и глифы — tweb EMOJI_CATEGORIES (emoji.ts:139).
+// отступление от tweb: у нас есть отдельная категория symbols (в tweb её строка
+// закомментирована, символы размазаны по остальным) — глиф language ближайший
+// по смыслу. Данные эмодзи (emojiData.ts) свои, вырезать категорию нельзя.
 const CAT_ICON: Record<string, IconName> = {
   recent: 'recent',
   smileys: 'smile',
@@ -59,6 +70,8 @@ const CAT_ICON: Record<string, IconName> = {
   flags: 'flag',
 }
 
+type TabId = 'emoji' | 'stickers' | 'gifs'
+
 function loadRecent(): string[] {
   try {
     return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]')
@@ -67,9 +80,10 @@ function loadRecent(): string[] {
   }
 }
 
-// ── Ячейка эмодзи (tweb appendEmoji: span.super-emoji > img.emoji) ───────────
-// Плейсхолдер-кружок до загрузки + fade-in; уже загружавшиеся URL пропускают
-// плейсхолдер (tweb loadedURLs), чтобы не мигать при перемонтировании категории.
+// ── Ячейка эмодзи (tweb appendEmoji, emoji.ts:49-110) ────────────────────────
+//   span.super-emoji.super-emoji-regular > img.emoji + span.emoji-placeholder
+// Плейсхолдер добавляется ТОЛЬКО пока URL не в loadedURLs, opacity гоняется
+// инлайном (emoji.ts:88-105) — так же и здесь.
 const loadedEmojis = new Set<string>()
 
 const EmojiCell = memo(function EmojiCell({
@@ -84,37 +98,40 @@ const EmojiCell = memo(function EmojiCell({
 
   let content
   if (attempt >= 2) {
-    content = <span className={s.emojiNative}>{e}</span>
+    // отступление от tweb: у него набор PNG в бандле и фолбэка нет; мы тянем
+    // Apple-набор с CDN, при промахе показываем нативный глиф.
+    content = <span className="emoji">{e}</span>
   } else {
     const file = emojiCodepoints(e, attempt === 1)
     content = (
       <>
-        {!loaded && <span className={s.emojiPlaceholder} />}
         <img
-          className={classNames(s.emojiImg, loaded ? s.loaded : '')}
+          className="emoji"
           src={`${EMOJI_CDN_BASE}${file}.png`}
           alt={e}
           loading="lazy"
           draggable={false}
+          style={loaded ? undefined : { opacity: 0 }}
           onLoad={() => {
             loadedEmojis.add(e)
             setLoaded(true)
           }}
           onError={() => setAttempt((a) => a + 1)}
         />
+        {!loaded && <span className="emoji-placeholder" style={{ opacity: 1 }} />}
       </>
     )
   }
   return (
-    <span className={s.superEmoji} onClick={() => onPick(e)}>
+    <span className="super-emoji super-emoji-regular" onClick={() => onPick(e)}>
       {content}
     </span>
   )
 })
 
-// ── Категория (tweb emoji-category) ──────────────────────────────────────────
-// Сетка резервирует высоту (rows × 42px) всегда; сами ячейки рендерятся только
-// когда категория видима (tweb onCategoryVisibility replaceChildren).
+// ── Категория (tweb StickersTabCategory: .emoji-category > .category-title +
+// .category-items). Сетка резервирует высоту (rows × 42px) всегда; ячейки
+// рендерятся только когда категория видима (tweb _onCategoryVisibility). ──────
 const EmojiCategory = memo(function EmojiCategory({
   catKey,
   title,
@@ -134,18 +151,16 @@ const EmojiCategory = memo(function EmojiCategory({
 }) {
   const rows = Math.ceil(emojis.length / cols)
   return (
-    <div ref={(el) => register(catKey, el)} className={s.emojiCategory}>
-      <div className={s.categoryTitle}>{title}</div>
-      <div className={s.superEmojis} style={{ minHeight: rows * CELL }}>
+    <div ref={(el) => register(catKey, el)} className="emoji-category">
+      <div className="category-title">{title}</div>
+      <div className="category-items super-emojis" style={{ minHeight: rows * CELL }}>
         {visible && emojis.map((e, i) => <EmojiCell key={`${e}-${i}`} e={e} onPick={onPick} />)}
       </div>
     </div>
   )
 })
 
-// ── Ячейка кастом-эмодзи (tweb super-emoji-custom: анимир. стикер-документ) ──
-// Тот же 42px-слот, что у обычного эмодзи; StickerMedia играет на hover (как в
-// пикере стикеров). Клик вставляет entity custom_emoji (document_id = media id).
+// ── Ячейка кастом-эмодзи (tweb appendEmoji с docId: span.super-emoji.super-emoji-custom) ──
 const CustomEmojiCell = memo(function CustomEmojiCell({
   st,
   onPick,
@@ -154,7 +169,7 @@ const CustomEmojiCell = memo(function CustomEmojiCell({
   onPick: (documentId: number, emoji: string) => void
 }) {
   return (
-    <span className={s.superEmoji} onClick={() => onPick(st.mediaId, st.emoji)}>
+    <span className="super-emoji super-emoji-custom" onClick={() => onPick(st.mediaId, st.emoji)}>
       <StickerMedia mediaId={st.mediaId} width={34} height={34} playOnHover />
     </span>
   )
@@ -180,9 +195,9 @@ const CustomEmojiCategory = memo(function CustomEmojiCategory({
 }) {
   const rows = Math.ceil(stickers.length / cols)
   return (
-    <div ref={(el) => register(catKey, el)} className={s.emojiCategory}>
-      <div className={s.categoryTitle}>{title}</div>
-      <div className={s.superEmojis} style={{ minHeight: rows * CELL }}>
+    <div ref={(el) => register(catKey, el)} className="emoji-category">
+      <div className="category-title">{title}</div>
+      <div className="category-items super-emojis" style={{ minHeight: rows * CELL }}>
         {visible && stickers.map((st) => <CustomEmojiCell key={st.id} st={st} onPick={onPick} />)}
       </div>
     </div>
@@ -225,6 +240,8 @@ export default function EmojiDropdown({
   const rootRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const stickersInputRef = useRef<HTMLInputElement>(null)
+  const gifsInputRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLElement>(null)
   const catElsRef = useRef(new Map<string, HTMLDivElement>())
   const hideTimer = useRef(0)
@@ -236,13 +253,22 @@ export default function EmojiDropdown({
   const [query, setQuery] = useState('')
   const [group, setGroup] = useState<{ e: string; q: string } | null>(null)
   const [focused, setFocused] = useState(false)
-  // Вкладки нижней панели (tweb tabs-container): все в DOM, переключение display;
-  // вкладки стикеров/GIF монтируются лениво при первом открытии.
-  const [tab, setTab] = useState<'emoji' | 'stickers' | 'gifs'>('emoji')
-  const [stickersMounted, setStickersMounted] = useState(false)
-  if (tab === 'stickers' && !stickersMounted) setStickersMounted(true)
-  const [gifsMounted, setGifsMounted] = useState(false)
-  if (tab === 'gifs' && !gifsMounted) setGifsMounted(true)
+  // tweb index.ts:651 — `no-border-top` держится, пока скролл вкладки на нуле.
+  const [atTop, setAtTop] = useState(true)
+
+  // tweb `tabsToRender` (index.ts:270): в композере три вкладки, в standalone —
+  // сколько передали. У нас набор задан наличием колбэков.
+  const tabs = useMemo<TabId[]>(
+    () => ['emoji', ...(onPickSticker ? (['stickers'] as const) : []), ...(onPickGif ? (['gifs'] as const) : [])],
+    [onPickSticker, onPickGif],
+  )
+  const [tab, setTab] = useState<TabId>('emoji')
+  // Вкладки стикеров/GIF инициализируются при первом выборе (tweb: tab.init()
+  // из horizontalMenu-колбэка), эмодзи — сразу (index.ts:376).
+  // (у GIF-вкладки нет меню, значит и `no-border-top` ей не полагается — флаг
+  // нужен только вкладке стикеров).
+  const [stickersInited, setStickersInited] = useState(false)
+  if (tab === 'stickers' && !stickersInited) setStickersInited(true)
 
   // Открытие/закрытие 1:1 tweb DropdownHover.toggle: display='' → форс-reflow →
   // класс active (transition играет); закрытие: снять active → через 200 мс display:none.
@@ -254,9 +280,9 @@ export default function EmojiDropdown({
       window.clearTimeout(hideTimer.current)
       el.style.display = ''
       void el.offsetLeft // force reflow
-      el.classList.add(s.active)
+      el.classList.add('active')
     } else {
-      el.classList.remove(s.active)
+      el.classList.remove('active')
       hideTimer.current = window.setTimeout(() => {
         el.style.display = 'none'
         onExitComplete?.()
@@ -359,6 +385,7 @@ export default function EmojiDropdown({
     spyRaf.current = requestAnimationFrame(() => {
       const sc = scrollRef.current
       if (!sc) return
+      setAtTop(sc.scrollTop <= 0)
       const top = sc.scrollTop + 50
       let cur = cats[0]?.key
       for (const c of [...cats, ...customCats]) {
@@ -370,7 +397,7 @@ export default function EmojiDropdown({
   }
   useEffect(() => {
     menuRef.current
-      ?.querySelector(`.${s.active}`)
+      ?.querySelector('.menu-horizontal-div-item.active')
       ?.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: 'smooth' })
   }, [activeCat])
 
@@ -386,7 +413,7 @@ export default function EmojiDropdown({
     () => (effectiveQuery ? searchEmojisByWord(effectiveQuery, 200, 1) : null),
     [effectiveQuery],
   )
-  // .is-searching: панель сдвигается вверх при фокусе/запросе/группе (tweb tab.ts)
+  // .is-searching: панель сдвигается вверх при фокусе/запросе/группе (tweb tab.ts:176)
   const searching = focused || !!query.trim() || !!group
   // Вход в поиск — к началу, чтобы результаты не оказались вне вьюпорта
   const hasResults = results != null
@@ -394,194 +421,203 @@ export default function EmojiDropdown({
     if (hasResults) scrollRef.current?.scrollTo({ top: 0 })
   }, [hasResults])
 
+  // Лента категорий: recent — отдельной кнопкой, остальные — внутри
+  // схлопывающегося `.menu-horizontal-inner` (tweb emoji.ts:463-467, раскрыт
+  // классом `active`, когда активна одна из вложенных категорий — index.ts:538).
+  const innerCats = cats.slice(1)
+  const innerActive = innerCats.some((c) => c.key === activeCat)
+
+  const emojiMenu = (
+    <>
+      <MenuTab active={activeCat === 'recent'} onClick={() => scrollToCat('recent')}>
+        <TgIcon name={CAT_ICON.recent} size="inherit" />
+      </MenuTab>
+      <div
+        className={classNames('menu-horizontal-inner', innerActive ? 'active' : '')}
+        // tweb index.ts:600-606: клик по схлопнутой ленте выбирает её первый пункт
+        onClick={innerActive ? undefined : () => innerCats[0] && scrollToCat(innerCats[0].key)}
+      >
+        <div className={classNames('scrollable', 'scrollable-x', 'menu-horizontal-inner-scroll')}>
+          {innerCats.map((c) => (
+            <MenuTab key={c.key} active={activeCat === c.key} onClick={() => scrollToCat(c.key)}>
+              <TgIcon name={CAT_ICON[c.key]} size="inherit" />
+            </MenuTab>
+          ))}
+        </div>
+      </div>
+      {customCats.map((c) => (
+        <MenuTab key={c.key} notLocal active={activeCat === c.key} onClick={() => scrollToCat(c.key)}>
+          {c.thumb != null ? <StickerMedia mediaId={c.thumb} width={32} height={32} /> : null}
+        </MenuTab>
+      ))}
+    </>
+  )
+
+  // Нижние табы (tweb renderEmojiDropdownElement, index.ts:66-90). Кнопки есть
+  // всегда — прячется по правилам index.ts:459-460 отдельная кнопка либо вся
+  // полоса (`tabsToRender.length <= 1`).
+  const tabButton = (id: TabId, cls: string, icon: IconName) => (
+    <IconButton
+      noRipple
+      className={classNames('menu-horizontal-div-item', cls, tab === id ? 'active' : '')}
+      onClick={() => tabs.includes(id) && setTab(id)}
+    >
+      <TgIcon name={icon} size="inherit" className="button-icon" />
+    </IconButton>
+  )
+
   return (
     <div
       ref={rootRef}
-      className={classNames(s.emojiDropdown, className ?? '')}
+      className={classNames('emoji-dropdown', className ?? '')}
       style={{ display: 'none' }}
       {...panelProps}
     >
-      <div className={s.emojiContainer}>
-        <div className={s.tabsContainer}>
-          <div
-            className={classNames(s.emoticonsContainer, searching ? s.isSearching : '')}
-            style={tab === 'emoji' ? undefined : { display: 'none' }}
-          >
-            {/* menu-wrapper: лента иконок категорий */}
-            <div className={classNames(s.menuWrapper, s.willMoveUp)}>
-              <nav ref={menuRef} className={s.emoticonsMenu}>
-                {cats.map((c) => (
-                  <button
-                    key={c.key}
-                    type="button"
-                    className={classNames(s.menuItem, activeCat === c.key ? s.active : '')}
-                    onClick={() => scrollToCat(c.key)}
+      <div className="emoji-container">
+        <div className="tabs-container">
+          <EmoticonsTab
+            padding="emoji-padding"
+            active={tab === 'emoji'}
+            searching={searching}
+            noBorderTop={atTop || searching}
+            menuRef={menuRef}
+            menu={emojiMenu}
+            scrollRef={scrollRef}
+            onScroll={onScroll}
+            search={
+              <EmoticonsSearch
+                inputRef={inputRef}
+                value={query}
+                onChange={setQuery}
+                onFocus={() => setFocused(true)}
+                onBlur={() => setFocused(false)}
+                placeholder={t('Search Emoji')}
+                focused={searching}
+                chips={QUICK_CHIPS.map((c) => (
+                  <div
+                    key={c.e}
+                    className={classNames(
+                      'emoticons-search-input-category',
+                      group?.e === c.e ? 'active' : '',
+                    )}
+                    onClick={() => setGroup((g) => (g?.e === c.e ? null : c))}
                   >
-                    <TgIcon name={CAT_ICON[c.key]} size={24} />
-                  </button>
-                ))}
-                {customCats.map((c) => (
-                  <button
-                    key={c.key}
-                    type="button"
-                    className={classNames(s.menuItem, activeCat === c.key ? s.active : '')}
-                    onClick={() => scrollToCat(c.key)}
-                  >
-                    {c.thumb != null ? <StickerMedia mediaId={c.thumb} width={24} height={24} /> : <TgIcon name="smile" size={24} />}
-                  </button>
-                ))}
-              </nav>
-            </div>
-
-            <div className={s.emoticonsContent}>
-              <div ref={scrollRef} className={classNames(s.scrollable, s.willMoveUp)} onScroll={onScroll}>
-                {/* строка поиска + emoji-группы (tweb emoticons-search-container) */}
-                <div className={classNames(s.searchContainer, s.willMoveDown)}>
-                  {group ? (
-                    <button type="button" className={s.searchArrow} onClick={() => setGroup(null)}>
-                      <TgIcon name="arrow_prev" size={24} />
-                    </button>
-                  ) : (
-                    <TgIcon name="search" size={20} className={s.searchIcon} />
-                  )}
-                  <input
-                    ref={inputRef}
-                    className={s.searchInput}
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    onFocus={() => setFocused(true)}
-                    onBlur={() => setFocused(false)}
-                    placeholder={t('Search Emoji')}
-                  />
-                  <div className={classNames(s.searchGroups, query.trim() ? s.hidden : '')}>
-                    {QUICK_CHIPS.map((c) => (
-                      <div
-                        key={c.e}
-                        className={classNames(s.searchGroup, group?.e === c.e ? s.active : '')}
-                        onClick={() => setGroup((g) => (g?.e === c.e ? null : c))}
-                      >
-                        <Emoji e={c.e} size={24} />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* категории; при поиске скрываются, показываются результаты */}
-                <div
-                  className={classNames(s.categoriesContainer, s.willMoveDown)}
-                  style={results ? { display: 'none' } : undefined}
-                >
-                  {cats.map((c) => (
-                    <EmojiCategory
-                      key={c.key}
-                      catKey={c.key}
-                      title={t(c.label)}
-                      emojis={c.emojis}
-                      cols={cols}
-                      visible={visibleCats.has(c.key)}
-                      onPick={pickEmoji}
-                      register={register}
-                    />
-                  ))}
-                  {onPickCustomEmoji &&
-                    customCats.map((c) => (
-                      <CustomEmojiCategory
-                        key={c.key}
-                        catKey={c.key}
-                        title={c.title}
-                        stickers={c.stickers}
-                        cols={cols}
-                        visible={visibleCats.has(c.key)}
-                        onPick={onPickCustomEmoji}
-                        register={register}
-                      />
-                    ))}
-                </div>
-                {results &&
-                  (results.length ? (
-                    <div className={classNames(s.superEmojis, s.willMoveDown)}>
-                      {results.map((e) => (
-                        <EmojiCell key={e} e={e} onPick={pickEmoji} />
-                      ))}
+                    <div className="emoticons-search-input-category-sticker">
+                      <Emoji e={c.e} size={24} />
                     </div>
-                  ) : (
-                    <span className={s.notFound}>{t('No emoji found.')}</span>
-                  ))}
-              </div>
-            </div>
-          </div>
-          {/* вкладка стикеров: keep-mounted после первого открытия (tweb tabs) */}
-          {stickersMounted && onPickSticker && (
-            <div style={tab === 'stickers' ? { height: '100%' } : { display: 'none' }}>
-              <StickersTab
-                active={open && tab === 'stickers'}
-                onPick={(st) => {
-                  onPickSticker(st)
-                  onClose()
-                }}
+                  </div>
+                ))}
               />
-            </div>
+            }
+            result={
+              results
+                ? results.length
+                  ? (
+                    <div className="emoticons-categories-container emoticons-will-move-down emoticons-has-search animated-item">
+                      <div className="emoji-category">
+                        <div className="category-items super-emojis">
+                          {results.map((e) => (
+                            <EmojiCell key={e} e={e} onPick={pickEmoji} />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                  : <span className="emoticons-not-found animated-item">{t('No emoji found.')}</span>
+                : undefined
+            }
+          >
+            {cats.map((c) => (
+              <EmojiCategory
+                key={c.key}
+                catKey={c.key}
+                title={t(c.label)}
+                emojis={c.emojis}
+                cols={cols}
+                visible={visibleCats.has(c.key)}
+                onPick={pickEmoji}
+                register={register}
+              />
+            ))}
+            {onPickCustomEmoji &&
+              customCats.map((c) => (
+                <CustomEmojiCategory
+                  key={c.key}
+                  catKey={c.key}
+                  title={c.title}
+                  stickers={c.stickers}
+                  cols={cols}
+                  visible={visibleCats.has(c.key)}
+                  onPick={onPickCustomEmoji}
+                  register={register}
+                />
+              ))}
+          </EmoticonsTab>
+          {onPickSticker && (
+            <StickersTab
+              active={tab === 'stickers'}
+              inited={stickersInited}
+              open={open}
+              inputRef={stickersInputRef}
+              onPick={(st) => {
+                onPickSticker(st)
+                onClose()
+              }}
+            />
           )}
-          {/* вкладка GIF: keep-mounted после первого открытия (tweb tabs) */}
-          {gifsMounted && onPickGif && (
-            <div style={tab === 'gifs' ? { height: '100%' } : { display: 'none' }}>
-              <GifsTab
-                active={open && tab === 'gifs'}
-                onPick={(g) => {
-                  onPickGif(g)
-                  onClose()
-                }}
-              />
-            </div>
+          {onPickGif && (
+            <GifsTab
+              active={tab === 'gifs'}
+              open={open}
+              inputRef={gifsInputRef}
+              onPick={(g) => {
+                onPickGif(g)
+                onClose()
+              }}
+            />
           )}
         </div>
       </div>
 
-      {/* нижние табы: search / emoji / stickers / delete (tweb .emoji-tabs) */}
-      <div className={s.emojiTabs}>
-        {tab === 'emoji' && (
-          <button
-            type="button"
-            className={classNames(s.tabBtn, s.tabSearch)}
-            onClick={() => inputRef.current?.focus()}
-          >
-            <TgIcon name="search" size={24} />
-          </button>
+      {/* нижние табы (tweb .emoji-tabs.menu-horizontal-div.emoticons-menu.no-stripe) */}
+      <div
+        className={classNames(
+          'emoji-tabs',
+          'menu-horizontal-div',
+          'emoticons-menu',
+          'no-stripe',
+          tabs.length <= 1 ? 'hide' : '',
         )}
-        <button
-          type="button"
-          className={classNames(s.tabBtn, tab === 'emoji' ? s.active : '')}
-          onClick={() => setTab('emoji')}
+      >
+        {/* search: в tweb открывает набор в правом сайдбаре; у нас его нет —
+            отступление от tweb: фокусируем поиск текущей вкладки */}
+        <IconButton
+          noRipple
+          className={classNames(
+            'menu-horizontal-div-item',
+            'emoji-tabs-search',
+            'justify-self-start',
+            tab === 'emoji' ? 'hide' : '',
+          )}
+          onClick={() => (tab === 'stickers' ? stickersInputRef : gifsInputRef).current?.focus()}
         >
-          <TgIcon name="smile" size={24} />
-        </button>
-        {onPickSticker && (
-          <button
-            type="button"
-            className={classNames(s.tabBtn, tab === 'stickers' ? s.active : '')}
-            onClick={() => setTab('stickers')}
-          >
-            <TgIcon name="stickers_face" size={24} />
-          </button>
-        )}
-        {onPickGif && (
-          <button
-            type="button"
-            className={classNames(s.tabBtn, tab === 'gifs' ? s.active : '')}
-            onClick={() => setTab('gifs')}
-          >
-            <TgIcon name="gifs" size={24} />
-          </button>
-        )}
-        {onDelete && (
-          <button
-            type="button"
-            className={classNames(s.tabBtn, s.tabDelete)}
-            onClick={onDelete}
-          >
-            <TgIcon name="deleteleft" size={24} />
-          </button>
-        )}
+          <TgIcon name="search" size="inherit" className="button-icon" />
+        </IconButton>
+        {tabButton('emoji', 'emoji-tabs-emoji', 'smile')}
+        {tabButton('stickers', 'emoji-tabs-stickers', 'stickers_face')}
+        {tabButton('gifs', 'emoji-tabs-gifs', 'gifs')}
+        <IconButton
+          noRipple
+          className={classNames(
+            'menu-horizontal-div-item',
+            'emoji-tabs-delete',
+            'justify-self-end',
+            tab === 'emoji' ? '' : 'hide',
+          )}
+          onClick={onDelete}
+        >
+          <TgIcon name="deleteleft" size="inherit" className="button-icon" />
+        </IconButton>
       </div>
     </div>
   )

@@ -1,20 +1,21 @@
 // Вкладка стикеров эмодзи-дропдауна — порт tweb emoticonsDropdown/tabs/stickers:
-// сверху menu-wrapper с превью категорий (recent, faved, первый стикер каждого
-// набора), ниже скролл с секциями. Ленивый рендер секций тем же
-// IntersectionObserver-паттерном, что эмодзи (ячейки только у видимых, minHeight
-// зарезервирован заранее). Сетка — tweb .super-stickers: ячейка 72px
-// (--esg-sticker-size), gap .25rem, padding 0 .1875rem.
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+// контейнер `.tabs-tab.emoticons-container.stickers-padding`, сверху лента
+// категорий (recent, faved, первый стикер каждого набора), в скролле — поиск и
+// секции `.emoji-category > .category-title + .category-items.super-stickers`
+// с ячейками `div.grid-item.super-sticker` (SuperStickerRenderer.ts:61).
+// Ленивый рендер секций тем же IntersectionObserver-паттерном, что у эмодзи:
+// ячейки только у видимых, minHeight зарезервирован заранее.
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import TgIcon, { type IconName } from '../TgIcon'
 import StickerMedia from '../StickerMedia'
+import EmoticonsTab, { EmoticonsSearch, MenuTab } from './EmoticonsTab'
 import Menu, { MenuItem } from '../../shared/ui/Menu'
 import { useStickersPanel } from '../../core/hooks/useStickers'
 import type { Sticker } from '../../core/managers/stickersManager'
 import { useT } from '../../i18n'
-import classNames from '../../shared/lib/classNames'
-import s from './EmojiDropdown.module.scss'
 
-// tweb base.scss: --esg-sticker-size 72px (desktop), gap .25rem, padding 0 .1875rem
+// tweb base.scss: --esg-sticker-size 72px (desktop); EmoticonsTabStyles.Stickers
+// gapX/gapY 4, padding 3*2.
 const CELL = 72
 const GAP = 4
 const PAD = 6
@@ -29,16 +30,17 @@ const StickerCell = memo(function StickerCell({
   onMenu: (st: Sticker, x: number, y: number) => void
 }) {
   return (
-    <span
-      className={s.superSticker}
+    <div
+      className="grid-item super-sticker"
       onClick={() => onPick(st)}
       onContextMenu={(e) => {
         e.preventDefault()
         onMenu(st, e.clientX, e.clientY)
       }}
     >
-      <StickerMedia mediaId={st.mediaId} width={CELL - 8} height={CELL - 8} playOnHover loop />
-    </span>
+      {/* tweb mediaSizes.active.esgSticker = 72×72 — стикер занимает всю ячейку */}
+      <StickerMedia mediaId={st.mediaId} width={CELL} height={CELL} playOnHover loop />
+    </div>
   )
 })
 
@@ -52,14 +54,23 @@ interface Section {
 
 export default function StickersTab({
   active,
+  inited,
+  open,
+  inputRef,
   onPick,
 }: {
-  /** вкладка открыта (дропдаун виден и выбран таб стикеров) — триггер ленивой загрузки */
+  /** выбранная вкладка (tweb `.tabs-tab.active`) */
   active: boolean
+  /** вкладку уже открывали — tweb инициализирует вкладку при первом выборе,
+   * до этого `no-border-top` на неё не вешается (index.ts:658) */
+  inited: boolean
+  /** дропдаун открыт — триггер ленивой загрузки данных */
+  open: boolean
+  inputRef: RefObject<HTMLInputElement | null>
   onPick: (st: Sticker) => void
 }) {
   const t = useT()
-  const panel = useStickersPanel(active)
+  const panel = useStickersPanel(open && active)
   const scrollRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLElement>(null)
   const catElsRef = useRef(new Map<string, HTMLDivElement>())
@@ -67,8 +78,11 @@ export default function StickersTab({
   const [activeCat, setActiveCat] = useState('recent')
   const [cols, setCols] = useState(5)
   const [ctxMenu, setCtxMenu] = useState<{ st: Sticker; x: number; y: number } | null>(null)
+  const [query, setQuery] = useState('')
+  const [focused, setFocused] = useState(false)
+  const [atTop, setAtTop] = useState(true)
 
-  const sections = useMemo<Section[]>(() => {
+  const allSections = useMemo<Section[]>(() => {
     const list: Section[] = []
     if (panel.recent.length) list.push({ key: 'recent', title: t('Frequently Used'), icon: 'recent', stickers: panel.recent })
     if (panel.faved.length) list.push({ key: 'faved', title: t('Favorites'), icon: 'favourites', stickers: panel.faved })
@@ -77,6 +91,31 @@ export default function StickersTab({
     }
     return list
   }, [panel.recent, panel.faved, panel.sets, t])
+
+  // отступление от tweb: у него поиск стикеров серверный
+  // (appStickersManager.searchStickers), у нас такого запроса в managers нет —
+  // фильтруем уже загруженные наборы по эмодзи стикера и названию набора.
+  // Слой данных при этом не трогаем (правило проекта).
+  const q = query.trim().toLowerCase()
+  const results = useMemo(() => {
+    if (!q) return null
+    const seen = new Set<number>()
+    const out: Sticker[] = []
+    for (const sec of allSections) {
+      const byTitle = sec.title.toLowerCase().includes(q)
+      for (const st of sec.stickers) {
+        if (seen.has(st.id)) continue
+        if (byTitle || st.emoji?.includes(q)) {
+          seen.add(st.id)
+          out.push(st)
+        }
+      }
+    }
+    return out
+  }, [q, allSections])
+
+  const sections = allSections
+  const searching = focused || !!q
 
   // Число колонок из фактической ширины (как у эмодзи-сетки).
   useLayoutEffect(() => {
@@ -132,6 +171,7 @@ export default function StickersTab({
     spyRaf.current = requestAnimationFrame(() => {
       const sc = scrollRef.current
       if (!sc) return
+      setAtTop(sc.scrollTop <= 0)
       const top = sc.scrollTop + 50
       let cur = sections[0]?.key
       for (const c of sections) {
@@ -143,7 +183,7 @@ export default function StickersTab({
   }
   useEffect(() => {
     menuRef.current
-      ?.querySelector(`.${s.active}`)
+      ?.querySelector('.menu-horizontal-div-item.active')
       ?.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: 'smooth' })
   }, [activeCat])
 
@@ -161,46 +201,76 @@ export default function StickersTab({
 
   const ctxFaved = ctxMenu != null && panel.faved.some((x) => x.id === ctxMenu.st.id)
 
-  return (
-    <div className={s.emoticonsContainer}>
-      <div className={s.menuWrapper}>
-        <nav ref={menuRef} className={s.emoticonsMenu}>
-          {sections.map((c) => (
-            <button
-              key={c.key}
-              type="button"
-              className={classNames(s.menuItem, activeCat === c.key ? s.active : '')}
-              onClick={() => scrollToCat(c.key)}
-            >
-              {c.icon ? <TgIcon name={c.icon} size={24} /> : c.thumb != null ? <StickerMedia mediaId={c.thumb} width={24} height={24} /> : null}
-            </button>
-          ))}
-        </nav>
-      </div>
+  const grid = (list: Sticker[], minHeight?: number) => (
+    <div className="category-items super-stickers" style={minHeight ? { minHeight } : undefined}>
+      {list.map((st) => (
+        <StickerCell key={st.id} st={st} onPick={pick} onMenu={openCtxMenu} />
+      ))}
+    </div>
+  )
 
-      <div className={s.emoticonsContent}>
-        <div ref={scrollRef} className={s.stickersScrollable} onScroll={onScroll}>
-          <div className={s.categoriesContainer}>
-            {sections.map((c) => {
-              const rows = Math.ceil(c.stickers.length / cols)
-              return (
-                <div key={c.key} ref={(el) => register(c.key, el)} className={s.emojiCategory}>
-                  <div className={s.categoryTitle}>{c.title}</div>
-                  <div className={s.superStickers} style={{ minHeight: rows * CELL }}>
-                    {visibleCats.has(c.key) &&
-                      c.stickers.map((st) => (
-                        <StickerCell key={st.id} st={st} onPick={pick} onMenu={openCtxMenu} />
-                      ))}
-                  </div>
+  return (
+    <>
+      <EmoticonsTab
+        padding="stickers-padding"
+        active={active}
+        searching={searching}
+        noBorderTop={inited && (atTop || searching)}
+        menuRef={menuRef}
+        menu={sections.map((c) => (
+          <MenuTab
+            key={c.key}
+            notLocal={!c.icon}
+            active={activeCat === c.key}
+            onClick={() => scrollToCat(c.key)}
+          >
+            {c.icon ? (
+              <TgIcon name={c.icon} size="inherit" />
+            ) : c.thumb != null ? (
+              <StickerMedia mediaId={c.thumb} width={32} height={32} />
+            ) : null}
+          </MenuTab>
+        ))}
+        scrollRef={scrollRef}
+        onScroll={onScroll}
+        search={
+          <EmoticonsSearch
+            inputRef={inputRef}
+            value={query}
+            onChange={setQuery}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            placeholder={t('Search Stickers')}
+            focused={searching}
+          />
+        }
+        result={
+          results
+            ? results.length
+              ? (
+                <div className="emoticons-categories-container emoticons-will-move-down emoticons-has-search animated-item">
+                  <div className="emoji-category">{grid(results)}</div>
                 </div>
               )
-            })}
-            {panel.loaded && sections.length === 0 && (
-              <span className={s.notFound}>{t('No stickers found')}</span>
-            )}
-          </div>
-        </div>
-      </div>
+              : <span className="emoticons-not-found animated-item">{t('No stickers found')}</span>
+            : undefined
+        }
+      >
+        {sections.map((c) => {
+          const rows = Math.ceil(c.stickers.length / cols)
+          return (
+            <div key={c.key} ref={(el) => register(c.key, el)} className="emoji-category">
+              <div className="category-title">{c.title}</div>
+              {visibleCats.has(c.key)
+                ? grid(c.stickers, rows * CELL)
+                : <div className="category-items super-stickers" style={{ minHeight: rows * CELL }} />}
+            </div>
+          )
+        })}
+        {panel.loaded && sections.length === 0 && (
+          <span className="emoticons-not-found">{t('No stickers found')}</span>
+        )}
+      </EmoticonsTab>
 
       {/* ПКМ/long-press по стикеру: избранное (tweb sticker context menu) */}
       {ctxMenu && (
@@ -221,6 +291,6 @@ export default function StickersTab({
           />
         </Menu>
       )}
-    </div>
+    </>
   )
 }
