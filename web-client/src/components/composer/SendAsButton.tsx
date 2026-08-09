@@ -1,6 +1,12 @@
 // composer/SendAsButton.tsx
-// Аватар текущей «личности отправителя» + попап выбора (tweb new-message-send-as).
-// Показывается только когда доступных личностей больше одной.
+// «Отправить от имени» — узлы tweb (_chat.scss:926-975, input.ts:2628-2644):
+//
+//   div.new-message-send-as-container      ← абсолютный, transform: scale(0)
+//     div.new-message-send-as-avatar[.is-visible.forwards]
+//
+// Сам сдвиг инпута под аватар делает `.new-message-wrapper.has-offset[data-offset="as"]`
+// — его ставит Composer. Появление аватара — пара классов `is-visible` + `forwards`
+// от SetTransition (singleTransition.ts), а не своя анимация.
 import { useState } from 'react'
 import Text from '../../shared/ui/Text'
 import Avatar from '../../shared/ui/Avatar'
@@ -8,8 +14,13 @@ import Menu from '../../shared/ui/Menu'
 import { useT } from '../../i18n'
 import { useAvatarSrc } from '../useAvatarSrc'
 import { peerColor } from '../peerColor'
+import { useSetTransition } from '../../core/hooks/useSetTransition'
+import classNames from '../../shared/lib/classNames'
 import type { SendAsPeer } from '../../core/managers/chatsManager'
-import s from '../Composer.module.scss'
+import s from './extras.module.scss'
+
+// _chat.scss:853 — `--send-as-size: 2.5rem`.
+const AVATAR_SIZE = 40
 
 export interface SendAsProps {
   peers: SendAsPeer[]
@@ -23,11 +34,12 @@ export default function SendAsButton({ peers, currentId, onSelect }: SendAsProps
   const [pos, setPos] = useState<{ left: number; bottom: number } | null>(null)
   const current = peers.find((p) => p.peerId === currentId) ?? peers[0]
   const curSrc = useAvatarSrc(current.avatarUrl)
+  // input.ts:2639-2644 — появление идёт через SetTransition, duration 300.
+  const visible = useSetTransition(true, 'is-visible', 300)
   return (
     <>
-      <button
-        type="button"
-        className={s.sendAsBtn}
+      <div
+        className="new-message-send-as-container"
         title={t('Send As…')}
         onMouseDown={(e) => e.preventDefault()}
         onClick={(e) => {
@@ -36,8 +48,14 @@ export default function SendAsButton({ peers, currentId, onSelect }: SendAsProps
           setOpen(true)
         }}
       >
-        <Avatar background={peerColor(current.title)} text={current.title[0] ?? '#'} src={curSrc || undefined} size={30} />
-      </button>
+        <Avatar
+          className={classNames('new-message-send-as-avatar', visible)}
+          background={peerColor(current.title)}
+          text={current.title[0] ?? '#'}
+          src={curSrc || undefined}
+          size={AVATAR_SIZE}
+        />
+      </div>
       {pos && (
         <Menu
           open={open}
