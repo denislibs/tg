@@ -57,7 +57,8 @@ function ChatHeader({
   const { start: startCall } = useCall()
   const numericChatId = Number(chat.id)
   const searchOpen = useSearchStore((st) => st.byChat[numericChatId]?.open ?? false)
-  const openSearch = () => useSearchStore.getState().setOpen(numericChatId, true)
+  // tweb topbar.ts:845 — лупа зовёт `chat.initSearch()` без параметров
+  const openSearch = () => useSearchStore.getState().initSearch(numericChatId)
 
   // tweb chat.ts:745-760 `animateElements`: контейнер поиска и пара
   // `.content`/`.chat-utils` анимируются встречно (opacity, 200ms ease-in-out,

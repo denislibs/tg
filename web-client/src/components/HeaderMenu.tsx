@@ -42,7 +42,7 @@ interface Props {
 
 export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddMember, onSelectMessages, onAddContact, onDeleteChat, onClearHistory, onChangeTheme, onSendGift, onBoost, onCreateGiveaway, onStartStream, onOpenSuggested }: Props) {
   const t = useT()
-  const setSearchOpen = useSearchStore((s) => s.setOpen)
+  const initSearch = useSearchStore((s) => s.initSearch)
   const [autoOpen, setAutoOpen] = useState(false)
   // Меню закрывается с exit-анимацией ui-kit Menu: сначала open=false, владелец
   // размонтирует нас в onExitComplete (иначе выход обрубается мгновенным unmount).
@@ -63,7 +63,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
   const numericChatId = Number(chat.id)
   const searchItems: Item[] =
     narrow && Number.isFinite(numericChatId) && String(numericChatId) === chat.id
-      ? [{ icon: <TgIcon name="search" size={20} />, label: 'Search', onClick: () => { setSearchOpen(numericChatId, true); close() } }]
+      ? [{ icon: <TgIcon name="search" size={20} />, label: 'Search', onClick: () => { initSearch(numericChatId); close() } }]
       : []
 
   // Блокировка собеседника живёт в ⋮-меню чата, как в tweb (topbar.ts:
