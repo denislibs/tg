@@ -753,14 +753,15 @@ const ru: Dict = {
   'Encryption key': 'Ключ шифрования',
   'If the emoji match on both devices, this call is end-to-end verified.':
     'Если эмодзи совпадают на обоих устройствах — звонок защищён сквозным шифрованием.',
-  // ── Поиск в чате: jump-to-date + фильтры (tweb topbarSearch) ──
+  // ── Топбар-поиск по чату (tweb topbarSearch: Search.* в src/lang.ts) ──
   // (Photos/Videos/Files/Links/Music/'No results' уже есть в словаре выше)
   'Jump to Date': 'Перейти к дате',
-  'Search from': 'От кого',
-  'Search by type': 'Тип',
-  'Search by reaction': 'По реакции',
-  'Voice messages': 'Голосовые',
-  'Round videos': 'Видеосообщения',
+  'From:': 'От:', // Search.From
+  'Search Members': 'Поиск участников', // Search.Member
+  'Search Hashtag': 'Поиск по хэштегу', // Search.Hashtag
+  'There were no messages from': 'Нет сообщений от', // Search.EmptyFrom
+  'Enter a hashtag to find messages containing it.':
+    'Введите хэштег, чтобы найти сообщения с ним.', // Search.HelpHashtag
   'New Poll': 'Новый опрос',
   'Ask a Question': 'Задайте вопрос',
   'Poll options': 'Варианты ответа',

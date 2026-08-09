@@ -1,13 +1,15 @@
 // src/stores/searchStore.ts
-// In-chat search UI state (panel open + query), per chat. ChatHeader owns the search
-// (drives this store via useChatSearch); other parts that only need to know whether
-// search is open — the pinned bar and the sticky-date offset — read it here, so the
-// `open` flag has a single source of truth and isn't drilled through props.
+// In-chat search UI state (топбар-серч открыт + видна ли строка тегов-реакций), per
+// chat. Владелец поиска — TopbarSearch (tweb components/chat/topbarSearch.tsx);
+// сюда вынесено ровно то, что нужно ДРУГИМ узлам: пин-бар и sticky-дата смотрят на
+// `open`, колонка чата вешает `.chat.is-search-active` по `reactionsShown`
+// (tweb chat.ts:795 onActive). Сам запрос живёт в компоненте, как в tweb.
 import { create } from 'zustand'
 
 interface ChatSearch {
   open: boolean
-  query: string
+  /** tweb topbarSearch shouldShowReactions() → chat.ts onActive → `.is-search-active` */
+  reactionsShown: boolean
 }
 
 // Кросс-чат ответ (tweb ReplyToAnotherChat): выбран целевой чат → ждём его
@@ -45,8 +47,7 @@ interface SearchState {
   /** пересылка в один чат ждёт открытия целевого чата → ставится плашка форварда */
   pendingForward: PendingForward | null
   setOpen: (chatId: number, open: boolean) => void
-  setQuery: (chatId: number, query: string) => void
-  reset: (chatId: number) => void
+  setReactionsShown: (chatId: number, shown: boolean) => void
   setPendingJump: (chatId: number, seq: number) => void
   clearPendingJump: () => void
   setPendingReply: (r: PendingReply) => void
@@ -55,16 +56,16 @@ interface SearchState {
   clearPendingForward: () => void
 }
 
-const EMPTY: ChatSearch = { open: false, query: '' }
+const EMPTY: ChatSearch = { open: false, reactionsShown: false }
 
 export const useSearchStore = create<SearchState>((set) => ({
   byChat: {},
   pendingJump: null,
   pendingReply: null,
   pendingForward: null,
-  setOpen: (chatId, open) => set((s) => ({ byChat: { ...s.byChat, [chatId]: { ...(s.byChat[chatId] ?? EMPTY), open } } })),
-  setQuery: (chatId, query) => set((s) => ({ byChat: { ...s.byChat, [chatId]: { ...(s.byChat[chatId] ?? EMPTY), query } } })),
-  reset: (chatId) => set((s) => ({ byChat: { ...s.byChat, [chatId]: EMPTY } })),
+  setOpen: (chatId, open) => set((s) => ({ byChat: { ...s.byChat, [chatId]: { ...(s.byChat[chatId] ?? EMPTY), open, ...(open ? null : { reactionsShown: false }) } } })),
+  setReactionsShown: (chatId, reactionsShown) =>
+    set((s) => ({ byChat: { ...s.byChat, [chatId]: { ...(s.byChat[chatId] ?? EMPTY), reactionsShown } } })),
   setPendingJump: (chatId, seq) => set({ pendingJump: { chatId, seq } }),
   clearPendingJump: () => set({ pendingJump: null }),
   setPendingReply: (r) => set({ pendingReply: r }),

@@ -1,24 +1,25 @@
 // src/components/conversation/ChatHeader.tsx
-// The floating chat header (avatar + title/status + call/search/menu actions, with
-// an animated search-mode swap). Extracted from Chat and memoized so
-// transient parent state (composer text, context menu, media viewer) never
-// re-renders it — only its own data (chat, presence/typing, search) does.
-// Логика поиска — в useChatHeaderSearch; UI поисковой карточки — в ChatSearchCard.
-import { memo, type ReactNode, type Ref } from 'react'
+// The floating chat header (avatar + title/status + call/search/menu actions).
+// Extracted from Chat and memoized so transient parent state (composer text,
+// context menu, media viewer) never re-renders it — only its own data does.
+//
+// Поиск по чату — как в tweb (chat.ts:767-818): `topbar-search-container`
+// ДОПИСЫВАЕТСЯ в тот же `.sidebar-header.topbar`, а `.content` и `.chat-utils`
+// уводятся в opacity 0 встречной анимацией (200ms ease-in-out). Топбар не
+// подменяется другой карточкой — аватар остаётся на месте.
+import { memo, useEffect, useRef, useState, type ReactNode, type Ref } from 'react'
 import IconButton from '../../shared/ui/IconButton'
 import classNames from '../../shared/lib/classNames'
-import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
 import Avatar from '../../shared/ui/Avatar'
 import VerifiedBadge from '../VerifiedBadge'
 import PremiumBadge from '../PremiumBadge'
 import EmojiStatus from '../EmojiStatus'
 import TypingIndicator from './TypingIndicator'
-import ChatSearchCard from './ChatSearchCard'
+import TopbarSearch from './TopbarSearch'
 import { useCall } from '../call/CallProvider'
-import { useChatHeaderSearch } from '../../core/hooks/useChatHeaderSearch'
+import { useSearchStore } from '../../stores/searchStore'
 import { SERVICE_USER_ID } from '../../core/dialogToChat'
-import { EASE, DUR } from '../../motion'
 import type { Chat } from '../../data'
 import type { TypingKind } from '../../core/hooks/useTypingLabel'
 import s from './ChatHeader.module.scss'
@@ -54,36 +55,48 @@ function ChatHeader({
   isBot, plates, platesCount = 0, platesRef, onJumpToSeq, onBack, onToggleInfo, onOpenMenu,
 }: ChatHeaderProps) {
   const { start: startCall } = useCall()
-  const search = useChatHeaderSearch(chat, onJumpToSeq)
+  const numericChatId = Number(chat.id)
+  const searchOpen = useSearchStore((st) => st.byChat[numericChatId]?.open ?? false)
+  const openSearch = () => useSearchStore.getState().setOpen(numericChatId, true)
+
+  // tweb chat.ts:745-760 `animateElements`: контейнер поиска и пара
+  // `.content`/`.chat-utils` анимируются встречно (opacity, 200ms ease-in-out,
+  // fill forwards); удаление узла — после окончания анимации ухода.
+  const [searchMounted, setSearchMounted] = useState(searchOpen)
+  const searchRef = useRef<HTMLDivElement>(null)
+  const topbarRef = useRef<HTMLDivElement>(null)
+  const firstRunRef = useRef(true)
+  useEffect(() => {
+    if (searchOpen) setSearchMounted(true)
+  }, [searchOpen])
+  useEffect(() => {
+    const topbar = topbarRef.current
+    if (!topbar) return
+    if (searchOpen && !searchRef.current) return
+    const skip = firstRunRef.current && !searchOpen
+    firstRunRef.current = false
+    if (skip) return
+
+    const keyframes: Keyframe[] = [{ opacity: 0 }, { opacity: 1 }]
+    const options: KeyframeAnimationOptions = { fill: 'forwards', duration: 200, easing: 'ease-in-out' }
+    if (!searchOpen) keyframes.reverse()
+    const promises: Promise<unknown>[] = []
+    if (searchRef.current) promises.push(searchRef.current.animate(keyframes, options).finished)
+    keyframes.reverse()
+    topbar.querySelectorAll<HTMLElement>('.content, .chat-utils').forEach((el) => {
+      promises.push(el.animate(keyframes, options).finished)
+    })
+    if (!searchOpen) void Promise.all(promises).then(() => setSearchMounted(false), () => setSearchMounted(false))
+  }, [searchOpen, searchMounted])
 
   return (
-    <AnimatePresence initial={false}>
-      {search.open ? (
-        // ── Unified search card: input row + (growing) results list as ONE rounded
-        //    surface. The list grows the card's height as you type. ──
-        <motion.div
-          key="search"
-          className={classNames(s.bar, s.searchCard)}
-          initial={{ opacity: 0, y: -6, scale: 0.985 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: -6, scale: 0.985 }}
-          transition={{ duration: DUR.in, ease: EASE }}
-          style={{ transformOrigin: 'top center' }}
-        >
-          <ChatSearchCard chat={chat} avatarSrc={avatarSrc} search={search} />
-        </motion.div>
-      ) : (
         // ── Топбар-пилюля tweb: .sidebar-header.topbar (_chatTopbar.scss:25) —
         //    absolute top 0 внутри #column-center, max-width --chat-width,
         //    48px, radius 24, сдвиг вниз под плейты плеера/звонка. ──
-        <motion.div
-          key="normal"
+        <div
+          ref={topbarRef}
           className={classNames('sidebar-header', 'topbar', 'has-avatar')}
           data-floating={platesCount}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: DUR.in, ease: EASE }}
         >
           <div className="chat-info-container">
             {onBack && (
@@ -147,7 +160,7 @@ function ChatHeader({
                   В секретном чате поиска нет: сервер хранит только шифртекст, искать по
                   нему нельзя (клиентского поиска по расшифрованным сообщениям тут нет). */}
               {chat.type !== 'secret' && (
-                <IconButton onClick={search.openSearch} color="var(--secondary-text-color)" className={s.desktopOnly}>
+                <IconButton onClick={openSearch} color="var(--secondary-text-color)" className={s.desktopOnly}>
                   <TgIcon name="search" />
                 </IconButton>
               )}
@@ -158,9 +171,11 @@ function ChatHeader({
           </div>
           {/* Стек плавающих плашек под топбаром (пин, теги «Избранного», …) */}
           <div ref={platesRef} className={classNames('topbar-floating-plates', platesCount === 0 ? 'hide' : '')}>{plates}</div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+          {/* tweb chat.ts:816 — контейнер поиска живёт ВНУТРИ топбара */}
+          {searchMounted && (
+            <TopbarSearch containerRef={searchRef} chat={chat} onJumpToSeq={onJumpToSeq} />
+          )}
+        </div>
   )
 }
 

@@ -323,6 +323,9 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // Search is owned by ChatHeader now; here we only read whether it's open (single-sourced
   // in searchStore) to hide the pinned bar + adjust the sticky-date offset.
   const searchOpen = useSearchStore((s) => s.byChat[numericChatId]?.open ?? false)
+  // tweb chat.ts:795 onActive → `.chat.is-search-active`: строка тегов-реакций
+  // топбар-поиска раздвигает ленту (_chat.scss:527 — распорка 3.75rem сверху).
+  const searchReactionsShown = useSearchStore((s) => s.byChat[numericChatId]?.reactionsShown ?? false)
   // Запланированные сообщения: счётчик (календарик в композере); оверлей списка — в popups.
   const [scheduledCount, setScheduledCount] = useState(0)
   useEffect(() => {
@@ -1009,6 +1012,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
           isRealChat ? 'can-click-date' : '',
           // tweb _chat.scss:1217 — видимость угловых кнопок даёт класс на колонке
           showScrollDown ? 'is-go-down-visible' : '',
+          searchReactionsShown ? 'is-search-active' : '',
         )}
         style={{
           // tweb topbar.setFloating: высота стека плейтов + плавающие плашки

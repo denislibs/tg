@@ -40,6 +40,9 @@
 @use "leftSidebar"; // :35
 @use "mediaViewer"; // :39 (в tweb это ../components/mediaViewer/mediaViewer)
 @use "scrollable"; // :40
+@use "selectorBase"; // выдержка из base.scss под partials/selector (см. файл)
+@use "selector"; // :42 (чип выбранного пира: .selector-user + @keyframes scaleIn,
+                 //      их использует .topbar-search-input-entity)
 @use "preloader"; // :44
 @use "avatar"; // :45
 @use "document"; // :46
@@ -54,6 +57,7 @@
 @use "shimmer"; // :67
 @use "markup"; // :69
 @use "quote"; // :70
+@use "topbarSearch"; // :74
 @use "animatedSuper"; // :77
 
 // Попапы (tweb style.scss:83 и далее — по одному партиалу на попап).

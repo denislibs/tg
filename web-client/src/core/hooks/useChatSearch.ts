@@ -1,78 +1,152 @@
 // src/core/hooks/useChatSearch.ts
-// In-chat message search. Open-state + query live in searchStore (single source of
-// truth, per chat) so other parts (pinned bar, sticky-date offset) can see whether
-// search is open without prop drilling; the debounced backend fetch + results +
-// filters stay local to whoever calls this hook (ChatHeader). The caller owns the
-// presentation (input + dropdown + filter chips) and decides what a result click
-// does (jump-to-message).
-import { useCallback, useEffect, useState } from 'react'
+// Загрузчики топбар-поиска — 1:1 по смыслу с tweb `components/chat/topbarSearch.tsx`:
+//   • createSearchLoader (topbarSearch.tsx:98)      → useMessageSearchLoader
+//   • createParticipantsLoader (topbarSearch.tsx:169) → useSenderSearchLoader
+// Оба — «загружаемый список» (createLoadableList): values + count + loadMore,
+// докачка страницами по 30, сброс при смене ключа запроса. Открытость панели
+// живёт в searchStore (её видят пин-бар и колонка чата), сам запрос — в компоненте.
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Message } from '../models'
 import { useManagers } from './useManagers'
-import { useSearchStore } from '../../stores/searchStore'
+import { usePeers } from './usePeers'
 
-// Media-type filter values (совпадают с бэком): tweb inputMessagesFilter*.
-export type SearchMediaType = 'photo' | 'video' | 'voice' | 'roundvideo' | 'file' | 'link' | 'music'
+// tweb topbarSearch.tsx:118 / :181 — limit: 30 у обоих загрузчиков
+const LIMIT = 30
 
-// Активные фильтры поиска (tweb topbarSearch: от кого / тип / реакция).
-export interface SearchFilters {
-  senderId?: number
-  mediaType?: SearchMediaType
-  reaction?: string
+export interface MessageSearchLoader {
+  messages: Message[]
+  /** tweb count() — сколько СТРОК уже отрисовано (от него считается высота списка) */
+  count: number | undefined
+  /** tweb totalCount() — сколько всего нашёл сервер */
+  totalCount: number | undefined
+  loading: boolean
+  /** tweb loader().loadMore — undefined, когда достигнут конец выдачи */
+  loadMore: (() => void) | undefined
 }
 
-export interface ChatSearch {
-  open: boolean
-  setOpen: (v: boolean) => void
-  query: string
-  setQuery: (v: string) => void
-  results: Message[]
-  filters: SearchFilters
-  setFilters: (f: SearchFilters) => void
-  /** есть ли активный фильтр (сужает выдачу даже при пустом запросе) */
-  hasFilter: boolean
-  /** jump-to-date: seq ближайшего сообщения на/после даты (unix, сек) или null */
-  jumpToDate: (date: number) => Promise<number | null>
-  reset: () => void
-}
-
-export function useChatSearch(chatId: number, enabled: boolean): ChatSearch {
+/**
+ * Поиск сообщений в чате (tweb createSearchLoader). Пустой запрос без фильтров
+ * «от кого»/«реакция» ничего не грузит и оставляет count undefined — так tweb
+ * держит список схлопнутым (topbarSearch.tsx:819).
+ */
+export function useMessageSearchLoader(
+  chatId: number,
+  o: { enabled: boolean; query: string; fromPeerId?: number; reaction?: string },
+): MessageSearchLoader {
   const managers = useManagers()
-  const st = useSearchStore((s) => s.byChat[chatId])
-  const open = st?.open ?? false
-  const query = st?.query ?? ''
-  const setOpen = useCallback((v: boolean) => useSearchStore.getState().setOpen(chatId, v), [chatId])
-  const setQuery = useCallback((v: string) => useSearchStore.getState().setQuery(chatId, v), [chatId])
+  const { enabled, query, fromPeerId, reaction } = o
 
-  const [results, setResults] = useState<Message[]>([])
-  const [filters, setFilters] = useState<SearchFilters>({})
-  const hasFilter = filters.senderId != null || filters.mediaType != null || filters.reaction != null
+  const [messages, setMessages] = useState<Message[]>([])
+  const [count, setCount] = useState<number | undefined>(undefined)
+  const [totalCount, setTotalCount] = useState<number | undefined>(undefined)
+  const [isEnd, setIsEnd] = useState(false)
+  const [loading, setLoading] = useState(false)
 
-  const reset = useCallback(() => {
-    useSearchStore.getState().reset(chatId)
-    setFilters({})
-  }, [chatId])
+  // tweb: isEmptyQuery = !query.trim() || query === '#'
+  const isEmptyQuery = !query.trim() || query === '#'
+  const idle = !enabled || (isEmptyQuery && !fromPeerId && !reaction)
 
-  // Debounced query/filters → backend; results power the dropdown. Пустой запрос
-  // без фильтров искать нечего.
-  useEffect(() => {
-    if (!enabled || !open) { setResults([]); return }
-    const q = query.trim()
-    if (!q && !hasFilter) { setResults([]); return }
-    let alive = true
-    const t = window.setTimeout(() => {
-      void managers.messages.searchMessages(chatId, q, {
-        senderId: filters.senderId,
-        mediaType: filters.mediaType,
-        reaction: filters.reaction,
-      }).then((r) => { if (alive) setResults(r.messages) })
-    }, 250)
-    return () => { alive = false; window.clearTimeout(t) }
-  }, [enabled, open, query, chatId, managers, filters, hasFilter])
+  // Ключ запроса: его смена — это новый загрузчик (tweb пересоздаёт createSearchLoader).
+  const key = `${chatId}|${query}|${fromPeerId ?? ''}|${reaction ?? ''}|${idle}`
+  const keyRef = useRef(key)
+  const busyRef = useRef(false)
 
-  const jumpToDate = useCallback(
-    (date: number) => managers.messages.messageByDate(chatId, date),
-    [chatId, managers],
+  const fetchPage = useCallback(
+    async (offset: number, forKey: string) => {
+      if (busyRef.current) return
+      busyRef.current = true
+      setLoading(true)
+      try {
+        const r = await managers.messages.searchMessages(chatId, query.trim(), {
+          senderId: fromPeerId,
+          reaction,
+          offset,
+          limit: LIMIT,
+        })
+        if (keyRef.current !== forKey) return
+        setMessages((prev) => (offset === 0 ? r.messages : [...prev, ...r.messages]))
+        setCount((prev) => (offset === 0 ? r.messages.length : (prev ?? 0) + r.messages.length))
+        setTotalCount(r.count)
+        setIsEnd(r.messages.length < LIMIT)
+      } finally {
+        if (keyRef.current === forKey) setLoading(false)
+        busyRef.current = false
+      }
+    },
+    [managers, chatId, query, fromPeerId, reaction],
   )
 
-  return { open, setOpen, query, setQuery, results, filters, setFilters, hasFilter, jumpToDate, reset }
+  useEffect(() => {
+    keyRef.current = key
+    busyRef.current = false
+    setMessages([])
+    setCount(undefined)
+    setTotalCount(undefined)
+    setIsEnd(false)
+    if (idle) {
+      setLoading(false)
+      return
+    }
+    void fetchPage(0, key)
+    // fetchPage меняется ровно вместе с key
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
+
+  const loadMore = useMemo(() => {
+    if (idle || isEnd) return undefined
+    return () => void fetchPage(messages.length, key)
+  }, [idle, isEnd, fetchPage, messages.length, key])
+
+  return { messages, count, totalCount, loading, loadMore }
+}
+
+export interface SenderSearchLoader {
+  peerIds: number[]
+  count: number | undefined
+  loading: boolean
+}
+
+/**
+ * Подбор отправителя для фильтра «From:» (tweb createParticipantsLoader →
+ * appProfileManager.getParticipants c фильтром channelParticipantsSearch).
+ *
+ * отступление от tweb: наш `/chats/:id/members` не принимает поисковую строку и
+ * не пагинируется, поэтому список участников тянется целиком один раз, а отбор по
+ * запросу идёт на клиенте по имени/@username. Серверный поиск по участникам —
+ * в отчёте как требование к бэкенду.
+ */
+export function useSenderSearchLoader(chatId: number, o: { enabled: boolean; query: string }): SenderSearchLoader {
+  const managers = useManagers()
+  const [members, setMembers] = useState<number[] | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!o.enabled) {
+      setMembers(null)
+      return
+    }
+    let alive = true
+    setLoading(true)
+    void managers.groups
+      .members(chatId)
+      .then((m) => { if (alive) setMembers(m.map((x) => x.userId)) })
+      .catch(() => { if (alive) setMembers([]) })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [o.enabled, chatId, managers])
+
+  const ids = useMemo(() => members ?? [], [members])
+  const peers = usePeers(ids)
+
+  const peerIds = useMemo(() => {
+    if (members === null) return []
+    const q = o.query.trim().toLowerCase()
+    if (!q) return members
+    return members.filter((id) => {
+      const p = peers.get(id)
+      return (p?.displayName ?? '').toLowerCase().includes(q) || (p?.username ?? '').toLowerCase().includes(q)
+    })
+  }, [members, peers, o.query])
+
+  return { peerIds, count: members === null ? undefined : peerIds.length, loading }
 }
