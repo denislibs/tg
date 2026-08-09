@@ -30,7 +30,6 @@ import { useNavigationActions } from '../core/hooks/useNavigationActions'
 import { openPopup } from '../stores/popupStore'
 import InputSearch from '../shared/ui/InputSearch'
 import FolderTabs from './FolderTabs'
-import { TabsBar } from '../shared/ui/Tabs'
 import { useT } from '../i18n'
 import { useSidebarSearch } from '../core/hooks/useSidebarSearch'
 import { useSidebarActions } from '../core/hooks/useSidebarActions'
@@ -258,10 +257,10 @@ export default function Sidebar({
       <div ref={bottomPartRef} className="connection-status-bottom" style={overlayHeightVar}>
         {/* tweb .chatlist-overlay — один абсолютный оверлей над списком, дети в нём
             текут обычным потоком: плашка-подсказка (appDialogsManager.ts:1079-1082
-            prepend'ит её сюда) СВЕРХУ, табы папок под ней. Позиционирование даёт
-            портированный `#column-left .chatlist-overlay` (_leftSidebar.scss:295),
-            поэтому TabsBar внутри идёт в обычном режиме, а не overlay. */}
-        <div ref={overlayRef} className={classNames('chatlist-overlay', s.chatlistOverlay)}>
+            prepend'ит её сюда) СВЕРХУ, градиент-фейд и карточка табов под ней.
+            Позиционирование даёт портированный `#column-left .chatlist-overlay`
+            (_leftSidebar.scss:295). */}
+        <div ref={overlayRef} className="chatlist-overlay">
           <PendingSuggestion collapsed={collapsed} />
           {/* tweb (живой DOM :8099): градиент-фейд — ПРЯМОЙ ребёнок .chatlist-overlay,
               а не часть плашки табов; `.folders-tabs-gradient-container { inset: 0 }`
@@ -271,16 +270,18 @@ export default function Sidebar({
           <div className={classNames('menu-horizontal-gradient-container', 'folders-tabs-gradient-container')}>
             <div className={classNames('menu-horizontal-gradient', 'menu-horizontal-gradient-color-surface', 'menu-horizontal-gradient-smaller', 'folders-tabs-gradient')} />
           </div>
+          {/* tweb (живой DOM :8099): карточка табов — ПРЯМОЙ ребёнок .chatlist-overlay
+              рядом с градиентом, без обёртки; слои даёт сам партиал
+              (`#column-left .item-main .menu-horizontal-scrollable`: position:relative,
+              z-index:2 — _leftSidebar.scss:274). */}
           {!searching && folders.length > 0 && !foldersSidebarShown && (
-            <TabsBar>
-              <FolderTabs
-                value={folderId}
-                onChange={changeFolder}
-                folders={folders}
-                counts={folderUnread}
-                onTabContextMenu={onTabContextMenu}
-              />
-            </TabsBar>
+            <FolderTabs
+              value={folderId}
+              onChange={changeFolder}
+              folders={folders}
+              counts={folderUnread}
+              onTabContextMenu={onTabContextMenu}
+            />
           )}
         </div>
         <div id="folders-container" className="tabs-container">

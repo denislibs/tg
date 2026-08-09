@@ -1,36 +1,21 @@
 // TabsBar — позиционирование плашки табов + градиент под ней.
 
+// липнет к верху скролл-контейнера (tweb .search-super-tabs-scrollable) — градиент
+// за плашкой гасит уплывающий контент, своего фона у плашки нет.
 .bar {
+  position: sticky;
+  top: 0;
   z-index: 2;
 }
 
-// оверлей над списком (tweb .folders-tabs: absolute поверх chatlist)
-.overlay {
-  position: absolute;
-  top: 0;
-  inset-inline: 0;
-}
-
-// липнет к верху скролл-контейнера (tweb .search-super-tabs-scrollable) — тот же
-// градиент-фейд, что и в overlay-режиме сайдбара, без отдельного фона.
-.sticky {
-  position: sticky;
-  top: 0;
-}
-
-// tweb .folders-tabs-gradient-container: absolute; z-index: -1. Верх поднимается
-// на --tabsbar-gap (sticky-зазор под шапкой), чтобы фейд закрыл щель.
+// Геометрию фейда целиком даёт партиал (_slider.scss): контейнер —
+// `position: relative; z-index: 2`, сам градиент — absolute, 80px, от
+// --background-color вниз до прозрачного; опаковый `.menu-horizontal-div`
+// (z-index 2, идёт позже в DOM) перекрывает его, поэтому фейд виден только
+// вокруг карточки табов.
+// отступление от tweb: у него плашка липнет вплотную, у нас панель профиля
+// даёт зазор под absolute-шапкой — поднимаем фейд на --tabsbar-gap, иначе в
+// щели просвечивает контент.
 .gradientContainer {
-  position: absolute;
   top: calc(-1 * var(--tabsbar-gap, 0px));
-  right: 0;
-  bottom: 0;
-  left: 0;
-  z-index: -1;
-}
-
-// surface → transparent (гасит уплывающие строки под табами)
-.gradient {
-  height: 100%;
-  background: linear-gradient(180deg, var(--tabsbar-from, var(--surface-color)), transparent 100%);
 }

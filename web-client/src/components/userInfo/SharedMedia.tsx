@@ -254,7 +254,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
     <>
       {/* Тот же framed-таб-ряд, что и у папок в списке чатов; липнет под
           absolute-шапку панели (tweb .search-super-tabs-scrollable: sticky) */}
-      <TabsBar mode="sticky" from="var(--background-color)" top={stickyTop} barRef={navRef}>
+      <TabsBar top={stickyTop} barRef={navRef}>
         <div className={s.tabsWrap}>
           <Tabs value={tab} onChange={(v) => onTab(v as string)}>
             <Tabs.List framed>
