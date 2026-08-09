@@ -9,6 +9,7 @@ import {
   saveUsers, loadUsers,
   saveMessages, loadMessages, deletePersistedMessage, clearPersistedChat,
   saveFolders, loadFolders, saveDrafts, loadDrafts,
+  DB_VERSION,
 } from './persist'
 import type { Dialog, Message, Draft } from '../models'
 import type { Folder } from '../managers/foldersManager'
@@ -173,14 +174,14 @@ describe('persist (normalized offline store)', () => {
     // не должен сработать (oldVersion уже == VERSION), схема и данные — на месте.
     let upgraded = false
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const req = indexedDB.open('msgr-store', 1)
+      const req = indexedDB.open('msgr-store', DB_VERSION)
       req.onupgradeneeded = () => { upgraded = true }
       req.onsuccess = () => resolve(req.result)
       req.onerror = () => reject(req.error)
     })
     try {
       expect(upgraded).toBe(false) // апгрейда нет — данные не тронуты
-      expect([...db.objectStoreNames].sort()).toEqual(['dialogs', 'messages', 'meta', 'users'])
+      expect([...db.objectStoreNames].sort()).toEqual(['dialogs', 'messages', 'meta', 'state', 'users'])
       const rows = await new Promise<unknown[]>((resolve, reject) => {
         const r = db.transaction('messages', 'readonly').objectStore('messages').index('byChat').getAll(IDBKeyRange.only(4))
         r.onsuccess = () => resolve(r.result as unknown[])
