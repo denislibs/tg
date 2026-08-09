@@ -492,7 +492,6 @@ const ru: Dict = {
   'Show caption': 'Показать подпись',
   Unpin: 'Открепить',
   Viewers: 'Просмотры',
-  'Pinned message': 'Закреплённое сообщение',
   'Seen by': 'Просмотрено',
   'No views yet': 'Ещё нет просмотров',
   Selected: 'Выбрано',

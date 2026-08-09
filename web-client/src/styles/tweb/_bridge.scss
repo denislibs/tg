@@ -81,3 +81,19 @@ button:focus {
   top: 50%;
   transform: translate(-50%, -50%);
 }
+
+// tweb base.scss:1182-1193 — утилиты hover-подсветки. `.hover-effect` носит строка
+// чат-листа (`row-clickable hover-effect rp`), `.hover-primary-effect` — тело плашки
+// закреплённого (pinnedMessage.tsx:50 `<TopbarPlate.Body class="hover-primary-effect">`).
+// `.hover-danger-effect` из того же блока не портирован — в нашей разметке его нет.
+.hover-effect {
+  @include hover-background-effect();
+}
+
+.hover-primary-effect {
+  @include hover-background-effect(primary);
+
+  .c-ripple__circle {
+    background-color: var(--light-primary-color);
+  }
+}
