@@ -37,6 +37,7 @@ import { useSidebarStories } from '../core/hooks/useSidebarStories'
 import { useForumPanel } from '../core/hooks/useForumPanel'
 import { useSidebarFolders } from '../core/hooks/useSidebarFolders'
 import useMeasuredHeight from '../shared/lib/useMeasuredHeight'
+import { useConnectionStatusLabel } from '../core/hooks/useConnectionStatusLabel'
 
 interface Props {
   onToggleMode: (coords?: { x: number; y: number }) => void
@@ -60,6 +61,7 @@ export default function Sidebar({
   const managers = useManagers()
   const t = useT()
   const loaded = useChatsStore((st) => st.loaded)
+  const showUpdating = useConnectionStatusLabel(loaded)
   const passcodeEnabled = useSettingsStore((st) => st.passcodeEnabled)
   const listScrollRef = useRef<HTMLDivElement>(null)
   // Узлы, которые нужны сворачиванию ряда историй (tweb setScrolledOn / listenWheelOn).
@@ -210,7 +212,7 @@ export default function Sidebar({
           onChange={setQuery}
           onFocus={() => setSearching(true)}
           onClear={() => setQuery('')}
-          placeholder={loaded ? t('Search') : t('Updating…')}
+          placeholder={showUpdating ? t('Updating…') : t('Search')}
           focused={searching}
         />
         {/* Замок над списком чатов при включённом код-пароле (tweb sidebar-lock-button). */}

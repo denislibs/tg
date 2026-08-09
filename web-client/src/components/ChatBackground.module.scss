@@ -1,0 +1,21 @@
+// Порт TWEB/src/components/chat/bubbles/chatBackground.module.scss (усечённо: у нас
+// один слот, не double-buffer — резкой подмены нет и без кросс-фейда между старым/новым).
+.Layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.Slot {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+}
+.SlotActive { opacity: 1; }
+.SlotFade { transition: opacity .2s ease; }
+.GradientCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}

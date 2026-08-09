@@ -7,6 +7,7 @@
          противоречил бы содержимому. -->
     <link rel="icon" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light">
     <title>Telegram</title>
     <!-- react-scan: версия запинена — npm-тег latest (0.5.7) несёт устаревший
          react-grab и сыпет ворнинг; 1.2.0 свежее самого тега -->
@@ -14,51 +15,17 @@
             crossOrigin="anonymous"
             src="//unpkg.com/react-scan@1.2.0/dist/auto.global.js"
     ></script> -->
-    <!-- Тема до первого paint (без FOUC и чтобы фон сплеша совпал с приложением).
-         Дублирует settings.tsx: tg-settings.themeChoice, legacy tg-theme, system→OS. -->
-    <script>
-      try {
-        var raw = localStorage.getItem('tg-settings')
-        var choice = raw ? JSON.parse(raw).themeChoice : null
-        // legacy-пресеты, удалённые в cutover на themeController (Task 4): дублирует
-        // legacyToPreset из settings.tsx.
-        var legacyToPreset = { classic: 'day', dark: 'night' }
-        if (choice && legacyToPreset[choice]) choice = legacyToPreset[choice]
-        if (!choice) {
-          var legacy = localStorage.getItem('tg-theme')
-          choice = legacy === 'dark' ? 'night' : legacy === 'light' ? 'day' : 'system'
-        }
-        if (choice === 'system') {
-          choice = matchMedia('(prefers-color-scheme: dark)').matches ? 'night' : 'day'
-        }
-        document.documentElement.dataset.theme = choice
-      } catch (e) { /* приватный режим / битый JSON — останется дефолт */ }
-    </script>
-    <!-- Стартовый фон темы (без спиннера — как tweb): перекрывает окно монтирования
-         React залитым фоном приложения, чтобы не мигало пустотой. authed решается
-         локально (по токену), сеть не ждём; фон снимает removeInitialLoader на первом
-         рендере. Фон совпадает с --tg-appBg (см. inline-скрипт темы выше). -->
-    <style>
-      #initial-loader {
-        position: fixed;
-        inset: 0;
-        z-index: 9999;
-        background: #ffffff;
-        transition: opacity 0.2s ease-in-out;
-      }
-      html[data-theme='night'] #initial-loader,
-      html[data-theme='tinted'] #initial-loader { background: #212121; }
-      #initial-loader.hide { opacity: 0; }
-    </style>
   </head>
   <!-- Классы <body> как в tweb (index.html:41 + appImManager.ts:2209-2211):
        animation-level-2 — гейт CSS-анимаций портированных партиалов (миксин
        animation-level), переключение по настройке reduceMotion — фаза 7;
        rounded-sections — из разметки tweb, живой DOM его подтверждает;
        has-horizontal-folders — папки табами над списком (а не вертикальной
-       колонкой): от него зависит показ .folders-tabs-scrollable. -->
-  <body class="rounded-sections animation-level-2 has-horizontal-folders">
-    <div id="initial-loader"></div>
+       колонкой): от него зависит показ .folders-tabs-scrollable;
+       has-auth-pages — как в tweb стоит статически в HTML; снимается
+       AuthFlow/Shell после doubleRaf() (bootstrapIm.ts:60-61), пока не снят —
+       глушит transition .main-column (styles/tweb/pages/_chats.scss). -->
+  <body class="rounded-sections animation-level-2 has-horizontal-folders has-auth-pages">
     <div id="root"></div>
     <!-- Маунт сториз-вьюера — как в tweb (public/index.html:115): отдельный узел
          в конце body, в него портируется StoryViewer. На id завязаны стили tweb

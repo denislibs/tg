@@ -935,7 +935,6 @@ const ru: Dict = {
   "Search Emoji": "Поиск эмодзи",
   "No emoji found.": "Эмодзи не найдены.",
   "Frequently Used": "Часто используемые",
-  "Select a chat to start messaging": "Выберите чат, чтобы начать общение",
   // Privacy and Security
   'Manage your sessions on all your devices.': 'Управление сеансами на всех подключённых устройствах.',
   'Change who can send you messages.': 'Выберите, от кого получать сообщения.',

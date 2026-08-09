@@ -13,27 +13,6 @@
   display: flex;
 }
 
-// пустое состояние (нет выбранного чата)
-.empty {
-  flex: 1;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-// пилюля-подсказка «выберите чат»
-.emptyPill {
-  padding: 6.8px 16px;
-  border-radius: 16px;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  color: #fff;
-  font-size: var(--font-size-15);
-  font-weight: 500;
-}
-
 // транзиентный баннер join-диплинка
 .joinToast {
   position: fixed;

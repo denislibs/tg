@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import patternUrl from '../assets/pattern.svg'
 import { useSettings } from '../settings'
 import { activeBackground } from '../wallpapers'
@@ -7,6 +8,8 @@ import { renderPattern, patternOpacity } from '../core/chat/patternRenderer'
 import ChatBackgroundGradientRenderer from '../core/chat/gradientRenderer'
 import { getAverageColor, hexToRgb, type ColorRgb } from '../shared/lib/color'
 import { applyHighlightingColorFromRgb } from '../core/theme/themeController'
+import { resolveTransition } from './chatBackgroundTransition'
+import s from './ChatBackground.module.scss'
 
 /**
  * Фон чата 1:1 с tweb (src/components/chat/bubbles/chatBackground.tsx): слой
@@ -21,6 +24,13 @@ import { applyHighlightingColorFromRgb } from '../core/theme/themeController'
  *  • day/light — soft-light overlay, приглушается ПАТТЕРН (opacity 0.5).
  *  • tinted — soft-light overlay + invert (чёрные дудлы → светлые на тёмно-синем),
  *    intensity форсится −38 (tweb Dark Blue).
+ *
+ * Монтируется порталом первым потомком body (tweb index.ts:544-545,
+ * `parent.insertBefore(element, parent.firstChild)`) — обои готовы/видны раньше
+ * построения интерфейса. Слот (`.Slot`) стартует с opacity:0 и раскрывается, когда
+ * градиент проинициализирован и паттерн загружен: первый показ — instant из кэша,
+ * иначе fade .2s (resolveTransition, tweb chatBackground.tsx:349-359); повторные
+ * активации (смена темы чата) всегда instant — hadPreviousRef.
  */
 
 type PatternMode = { intensity: number; mask: boolean; invert: boolean }
@@ -57,6 +67,43 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
   const imgRef = useRef<HTMLImageElement | null>(null)
   useMediaTokenVersion()
 
+  // Портал-контейнер обоев: создаётся один раз на инстанс, вставляется первым
+  // потомком body в layout-эффекте (эквивалент tweb insertBefore(..., firstChild)).
+  const [host] = useState(() => document.createElement('div'))
+  useLayoutEffect(() => {
+    document.body.insertBefore(host, document.body.firstChild)
+    return () => { host.remove() }
+  }, [host])
+
+  // Слот и его готовность к первому показу. hadPreviousRef взводится один раз —
+  // после первой активации все дальнейшие пересчёты (смена темы чата) мгновенные.
+  const slotRef = useRef<HTMLDivElement>(null)
+  const hadPreviousRef = useRef(false)
+  const gradientReadyRef = useRef(false)
+  const patternReadyRef = useRef(false)
+  const patternCachedRef = useRef(false)
+
+  const activateSlot = (cached: boolean) => {
+    if (hadPreviousRef.current) return
+    const el = slotRef.current
+    if (!el) return
+    const transition = resolveTransition({ hadPrevious: hadPreviousRef.current, cached })
+    if (transition === 'fade') {
+      el.classList.add(s.SlotFade)
+      void el.offsetWidth // принудительный reflow — tweb chatBackground.tsx:411-414
+    }
+    el.classList.add(s.SlotActive)
+    hadPreviousRef.current = true
+    // .SlotFade сознательно не снимается: activateSlot вызывается ровно один раз за
+    // жизнь компонента (гард выше), дальше слот больше не меняет opacity — класс
+    // остаётся, но инертен (в отличие от tweb presentStagingSlot, где слоты
+    // переиспользуются double-buffer'ом и класс снимают перед каждым новым переходом).
+  }
+
+  const maybeActivateSlot = () => {
+    if (gradientReadyRef.current && patternReadyRef.current) activateSlot(patternCachedRef.current)
+  }
+
   const th = readTheme()
   const mode = modeFor(th.dataTheme)
   // Тема активного чата перекрывает глобальные обои; иначе пресет, затем дефолт темы.
@@ -64,10 +111,15 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
   const ab = activeBackground({ customWallpaperMediaId, customWallpaperBlur, wallpaper })
 
   // Своё фото / сплошной цвет / загруженная картинка заменяют градиент+паттерн.
+  // overlayImageUrl вынесен отдельно (не только в backgroundImage) — по нему ниже
+  // честно отслеживается загрузка через new Image(), как узор ниже по файлу.
+  const overlayImageUrl = themeColors ? undefined :
+    ab.kind === 'custom' ? mediaContentUrl(ab.mediaId) :
+      wallpaper.kind === 'image' ? wallpaper.src : undefined
   const overlay = themeColors ? null :
     ab.kind === 'custom'
       ? {
-          backgroundImage: `url(${mediaContentUrl(ab.mediaId)})`,
+          backgroundImage: `url(${overlayImageUrl})`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           filter: ab.blur ? 'blur(10px)' : undefined,
@@ -77,7 +129,7 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
         ? { background: wallpaper.color }
         : wallpaper.kind === 'image'
           ? {
-              backgroundImage: `url(${wallpaper.src})`,
+              backgroundImage: `url(${overlayImageUrl})`,
               backgroundSize: 'cover',
               backgroundPosition: 'center',
               filter: wallpaperBlur ? 'blur(10px)' : undefined,
@@ -89,6 +141,27 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
   const gradientOpacity = mode.mask ? patternOpacityMax : 1
   const canvasOpacity = mode.mask ? 1 : patternOpacityMax
 
+  // Оверлей: сплошной цвет — честно готов сразу (нет сетевого ресурса). Своё
+  // фото/картинка — реальный img, ждём загрузку так же, как узор ниже по файлу
+  // (tweb TWEB/.../chatBackground.tsx:253-256,275-296 — readyPromise ждёт
+  // renderImageFromUrl прежде чем считать слот готовым); cached — синхронный
+  // img.complete сразу после простановки src.
+  useEffect(() => {
+    if (!overlay || hadPreviousRef.current) return
+    if (!overlayImageUrl) {
+      activateSlot(true)
+      return
+    }
+    const img = new Image()
+    img.onload = () => activateSlot(false)
+    // Сбой загрузки (404/протухший media-токен/удалённое медиа) не должен навсегда
+    // запереть слот на opacity:0 — активируем с тем, что есть (пустой div без фона).
+    img.onerror = () => activateSlot(false)
+    img.src = overlayImageUrl
+    if (img.complete && img.naturalWidth) activateSlot(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!overlay, overlayImageUrl])
+
   // Инициализация/переинициализация mesh-градиента при смене цветов/темы.
   useEffect(() => {
     if (overlay) return
@@ -97,6 +170,8 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
     canvas.dataset.colors = colors.filter(Boolean).join(',')
     if (!rendererRef.current) rendererRef.current = new ChatBackgroundGradientRenderer()
     rendererRef.current.init(canvas)
+    gradientReadyRef.current = true
+    maybeActivateSlot()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [themeChoice, colors.join(), !!overlay])
 
@@ -126,13 +201,35 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
       })
     }
 
-    // Ленивая загрузка дудла (один раз), затем перерисовки — синхронные.
+    // Ленивая загрузка дудла (один раз), затем перерисовки — синхронные. cached —
+    // синхронная готовность (img.complete сразу после простановки src: браузер уже
+    // держит декодированный pattern.svg в image-кэше страницы) — resolveTransition.
     if (!imgRef.current) {
       const img = new Image()
-      img.onload = () => { imgRef.current = img; paint() }
+      img.onload = () => {
+        imgRef.current = img
+        paint()
+        patternReadyRef.current = true
+        maybeActivateSlot()
+      }
+      // Сбой загрузки узора не должен навсегда запереть слот на opacity:0 —
+      // активируем без паттерна (canvas останется пустым, градиент всё равно виден).
+      img.onerror = () => {
+        patternReadyRef.current = true
+        maybeActivateSlot()
+      }
       img.src = patternUrl
+      if (img.complete && img.naturalWidth) {
+        imgRef.current = img
+        paint()
+        patternReadyRef.current = true
+        patternCachedRef.current = true
+        maybeActivateSlot()
+      }
     } else {
       paint()
+      patternReadyRef.current = true
+      maybeActivateSlot()
     }
 
     window.addEventListener('resize', paint)
@@ -153,41 +250,40 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [colors.join(), !!overlay])
 
-  if (overlay) {
-    return <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', ...overlay }} />
-  }
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', overflow: 'hidden' }}>
-      {/* нижний слой — сплошной фон при mask (night), сквозь который дальше просвечивает дим-градиент */}
-      {mode.mask && <div style={{ position: 'absolute', inset: 0, background: th.appBg }} />}
-      {/* mesh-градиент: 50×50 canvas растянут на весь экран (браузер сглаживает) */}
-      <canvas
-        ref={gradientRef}
-        width={50}
-        height={50}
-        style={{
-          position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height: '100%',
-          opacity: gradientOpacity,
-          filter: wallpaperBlur ? 'blur(6px)' : undefined,
-        }}
-      />
-      {/* верхний слой — дудлы: mask (night) кроет чёрным с дырками; иначе soft-light overlay */}
-      <canvas
-        ref={patternRef}
-        style={{
-          position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height: '100%',
-          opacity: canvasOpacity,
-          mixBlendMode: mode.mask ? 'normal' : 'soft-light',
-          filter: mode.invert ? 'invert(1)' : undefined,
-        }}
-      />
-    </div>
+  return createPortal(
+    <div className={s.Layer}>
+      <div ref={slotRef} className={s.Slot}>
+        {overlay ? (
+          <div style={{ position: 'absolute', inset: 0, ...overlay }} />
+        ) : (
+          <>
+            {/* нижний слой — сплошной фон при mask (night), сквозь который дальше просвечивает дим-градиент */}
+            {mode.mask && <div style={{ position: 'absolute', inset: 0, background: th.appBg }} />}
+            {/* mesh-градиент: 50×50 canvas растянут на весь экран (браузер сглаживает) */}
+            <canvas
+              ref={gradientRef}
+              width={50}
+              height={50}
+              className={s.GradientCanvas}
+              style={{ opacity: gradientOpacity, filter: wallpaperBlur ? 'blur(6px)' : undefined }}
+            />
+            {/* верхний слой — дудлы: mask (night) кроет чёрным с дырками; иначе soft-light overlay */}
+            <canvas
+              ref={patternRef}
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                opacity: canvasOpacity,
+                mixBlendMode: mode.mask ? 'normal' : 'soft-light',
+                filter: mode.invert ? 'invert(1)' : undefined,
+              }}
+            />
+          </>
+        )}
+      </div>
+    </div>,
+    host,
   )
 }

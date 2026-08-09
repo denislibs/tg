@@ -6,14 +6,14 @@ import { useSettingsStore } from './settings'
 import Sidebar from './components/Sidebar'
 import Chat from './components/Chat'
 import PopupHost from './components/PopupHost'
-import ChatBackground from './components/ChatBackgroundLazy'
+import ChatBackground from './components/ChatBackground'
 import SvgDefs from './components/SvgDefs'
 import GlobalOverlays from './components/shell/GlobalOverlays'
 import ShellLayout from './components/shell/ShellLayout'
 import AuthFlow from './components/auth/AuthFlow'
-import { useT } from './i18n'
 import classNames from './shared/lib/classNames'
 import { installColumnWidthsUpdater } from './core/dom/updateColumnWidths'
+import { doubleRaf } from './core/accountTransition'
 // Сущность чата из модели данных; компонент ниже называется так же (как в tweb),
 // поэтому тип импортируется под алиасом.
 import type { Chat as ChatEntity } from './data'
@@ -30,8 +30,8 @@ import { useChatNavigation } from './core/hooks/useChatNavigation'
 import { useShellTheme } from './core/hooks/useShellTheme'
 import { useAppHotkeys } from './core/hooks/useAppHotkeys'
 import { useAuthGate } from './core/hooks/useAuthGate'
+import { useLeftColumnShown } from './core/hooks/useLeftColumnShown'
 import { useThemeToggle } from './core/hooks/useThemeToggle'
-import { removeInitialLoader } from './client/initialLoader'
 import { startVersionCheck } from './core/version/versionCheck'
 import { useUpdateStore } from './stores/updateStore'
 import s from './App.module.scss'
@@ -40,13 +40,17 @@ import useMediaQuery from './shared/lib/useMediaQuery'
 export type ToggleMode = (coords?: { x: number; y: number }) => void
 
 function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout: () => void }) {
-  const t = useT()
-
   // Инфраструктура Shell (эффекты без общего стейта).
   // Ширины колонок (порт tweb updateColumnWidths): JS пишет --chat-width /
   // --left-column-width / --page-chats-padding и класс body.right-column-floats,
   // из которых портированные партиалы раскладывают чат и ленту.
   useLayoutEffect(() => { installColumnWidthsUpdater() }, [])
+  // has-auth-pages снимается кадром позже (doubleRaf, bootstrapIm.ts:60-61) —
+  // иначе transition .main-column включится сразу и колонка «въедет» из
+  // офскрина в первом кадре; на логин-старте AuthFlow уже снял класс сам.
+  useLayoutEffect(() => {
+    void doubleRaf().then(() => document.body.classList.remove('has-auth-pages'))
+  }, [])
   useAppBootstrap()
   useShellEnterAnimation()
   useAutoLock()
@@ -56,6 +60,9 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   // Навигация (navigationStore) + URL-хэш ↔ чат + deep-links + список чатов.
   const nav = useChatNavigation()
   const { selectedId, openThread, draftPeer } = nav
+  // tweb appImManager.selectTab: класс держится, пока активна вкладка чатлиста,
+  // то есть пока чат/тред/черновик НЕ выбран (см. useLeftColumnShown).
+  useLeftColumnShown(selectedId !== null)
   useUrlSync()
   const deep = useDeepLinks(showToast)
   const chatList = useChatList()
@@ -129,9 +136,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     ) : selected ? (
       <Chat key={tabKey} chat={selected} onBack={backToList} />
     ) : (
-      <div className={s.empty}>
-        <div className={s.emptyPill}>{t('Select a chat to start messaging')}</div>
-      </div>
+      <div className="chat tabs-tab active" />
     )
 
   // #column-center — как в tweb (живой DOM §1): у него свой --page-chats-padding,
@@ -181,12 +186,6 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 function ThemedApp() {
   const { authed, login, logout } = useAuthGate()
   const toggleMode = useThemeToggle()
-
-  // Снимаем фон сплеша сразу на первом рендере: authed решён локально (по токену),
-  // так что и Shell, и экран входа рисуются без сетевого ожидания — как tweb.
-  useEffect(() => {
-    removeInitialLoader()
-  }, [])
 
   // Тема управляется атрибутом data-theme на <html> (useThemeToggle) — MUI
   // ThemeProvider не нужен.
