@@ -1,256 +1,352 @@
-// Экран авторизации: телефон / QR / код. Порт с MUI sx на SCSS-модуль.
+/*
+ * Порт tweb `src/pages/authFlow.module.scss` — 1:1 по значениям и структуре
+ * классов. Шапка карточки (стикер / тайтл / сабтайтл) живёт в соседнем модуле
+ * `mediaHeader.module.scss` (порт tweb `src/components/mediaHeader.module.scss`),
+ * здесь — только оболочка auth-флоу, поверхность карточки и правки под страницы.
+ *
+ * Имя файла — `AuthFlow.module.scss`, а не `authFlow.module.scss` как в tweb:
+ * ФС macOS регистро-НЕзависима, два имени сосуществовать не могут, а компоненты
+ * (`AuthFlow.tsx`, `cards/*`) уже импортируют PascalCase — как и вся папка
+ * `components/*`. На хеши классов имя файла не влияет, сверка идёт в режиме
+ * `structure`.
+ *
+ * Отступления от оригинала — только два вида, каждое помечено ниже:
+ *   (б) правило тянет непортированную подсистему;
+ *   (в) у нас глобальные партиалы эмитятся ПОСЛЕ CSS-модулей (в tweb наоборот),
+ *       поэтому при равной специфичности правило модуля проигрывает партиалу —
+ *       такие селекторы удвоены (`.foo.foo`), значения не тронуты.
+ */
 
-// Полноэкранная подложка по центру. Фон рисует <ChatBackground> (обои),
-// поэтому подложка прозрачная.
-.overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 5000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow-y: auto;
-  padding: 16px;
+@use '../../styles/foundation' as *;
+
+// Inset and `.btn-icon` box size of the fixed corner buttons (`.closeButton` /
+// `.themeButton`). `.placeholderTop` reuses both to reserve matching clearance.
+$corner-button-inset: 24px;
+$corner-button-size: 2.5rem;
+
+// ----- Shell ---------------------------------------------------------
+
+// Outer auth-flow container. Hosts the back button and the scrollable.
+.host {
+  max-width: 100%;
+  overflow: hidden;
+
+  // Auth-flow-specific overrides for shared utility classes. The classes
+  // themselves live in the global design system; we only adjust them while
+  // they're inside the auth shell.
+  :global(.btn-primary) {
+    text-transform: uppercase;
+
+    :global(.inline-icon) {
+      margin-inline-start: .125rem;
+    }
+  }
+
+  :global(.input-wrapper) {
+    margin-top: 2rem;
+    flex: 0 0 auto;
+  }
 }
 
-// Кнопки-кружки в углах (tweb .closeButton/.themeButton: fixed, top 24px,
-// 2.5rem, полупрозрачная светлая заливка поверх обоев, белая иконка).
-.cornerBtn {
+// Floating buttons in the corners of the auth shell:
+// - `.closeButton` — back arrow shown when signing in to a non-primary account.
+// - `.themeButton` — day/night theme toggle (always shown).
+//
+// отступление от tweb (в): селекторы удвоены. Узел носит и `.btn-icon`
+// (`styles/tweb/_button.scss:24`, специфичность 0,1,0 — задаёт `color`,
+// `background-color: transparent`, `position: relative`), и этот модульный класс.
+// У нас партиал эмитится позже модуля, поэтому при 0,1,0 он бы перебил заливку и
+// позиционирование кнопок. Значения не тронуты.
+.closeButton.closeButton,
+.themeButton.themeButton {
   position: fixed;
-  top: 20px;
+  display: flex;
+  top: $corner-button-inset;
   z-index: 100;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s ease;
-
-  &:hover {
-    background: rgba(255, 255, 255, 0.32);
-  }
-}
-.cornerBtnLeft {
-  left: 20px;
-}
-.cornerBtnRight {
-  right: 20px;
-}
-
-// Белая карточка формы по центру поверх обоев (tweb .card: surface,
-// border-radius 2rem, padding).
-.card {
-  position: relative;
-  z-index: 1;
-  width: 100%;
-  max-width: 384px;
-  background: var(--surface-color);
-  border-radius: 32px;
-  padding: 40px 36px;
-  box-shadow: 0 8px 40px -12px rgba(0, 0, 0, 0.25);
-}
-
-// Логотип-кружок с самолётиком.
-.logo {
-  width: 96px;
-  height: 96px;
-  border-radius: 50%;
-  background: var(--tg-accentGradient);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 20px;
-  box-shadow: 0 8px 28px -8px rgba(0, 0, 0, 0.4);
-}
-
-// Общий бокс поля (селектор страны, ввод телефона): метрики live tweb
-// .input-field-input — 48px, radius 16, бордер 1px --input-search-border-color.
-.fieldWrap {
-  position: relative;
-  border: 1px solid var(--input-search-border-color);
-  border-radius: 16px;
-  padding: 0 15px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  transition: border-color 0.2s;
-
-  &:focus-within {
-    border-color: var(--primary-color);
-  }
-}
-
-// Плавающий лейбл поля телефона (tweb .input-field label): всегда на рамке,
-// т.к. в поле всегда есть код страны; фокус подкрашивает primary.
-.fieldLabel {
-  position: absolute;
-  left: 12px;
-  top: 0;
-  transform: translate(-3px, -50%) scale(0.75);
-  padding: 0 4px;
-  background: var(--surface-color);
-  color: var(--secondary-text-color);
-  font-size: var(--font-size-16);
-  pointer-events: none;
-  transition: color 0.2s;
-
-  .fieldWrap:focus-within & {
-    color: var(--primary-color);
-    font-weight: 500;
-  }
-}
-
-// Поле ввода телефона.
-.phoneInput {
-  flex: 1;
-  font-size: var(--font-size-16);
-  color: var(--primary-text-color);
-  border: none;
-  outline: none;
-  background: transparent;
-  min-width: 0;
-
-  &::placeholder {
-    color: var(--secondary-text-color);
-    opacity: 1;
-  }
-}
-
-// «Оставаться в системе».
-.keepRow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 16px;
-  cursor: pointer;
-  user-select: none;
-}
-.keepBox {
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 2px solid var(--secondary-text-color);
-  transition: background 0.15s ease;
-}
-.keepBoxOn {
-  background: var(--primary-color);
-  border: none;
-}
-
-// Акцентная кнопка (Next): live tweb .btn-primary — 48px, radius 16.
-.accentBtn {
-  height: 48px;
-  border-radius: 16px;
-  background: var(--primary-color);
+  background-color: var(--message-highlighting-color);
   color: #fff;
-  font-size: var(--font-size-15);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: filter 0.15s ease, opacity 0.15s ease;
-  margin-top: 24px;
 
-  &:hover {
-    filter: brightness(1.06);
-  }
-}
-.accentBtnDisabled {
-  opacity: 0.5;
-  pointer-events: none;
-}
-
-// Текстовая ссылка-переключатель шага.
-.linkBtn {
-  margin-top: 20px;
-  text-align: center;
-  font-size: var(--font-size-14);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-  color: var(--primary-color);
-  cursor: pointer;
-
-  &:hover {
-    text-decoration: underline;
+  @include hover-global() {
+    background-color: rgba(var(--message-highlighting-color-rgb), calc(var(--message-highlighting-alpha) + .24)) !important;
   }
 }
 
-// Карточка QR-кода.
-.qrCard {
-  position: relative;
-  width: fit-content;
-  margin: 0 auto;
-  padding: 16px;
-  border-radius: 18px;
-  background: #fff;
-}
-.qrFallback {
-  width: 220px;
-  height: 220px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-// Оверлей логотипа в центре QR.
-.qrLogo {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  background: var(--tg-accentGradient);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.closeButton.closeButton {
+  left: $corner-button-inset;
 }
 
-// Список инструкций под QR.
-.qrSteps {
-  margin-top: 24px;
+.themeButton.themeButton {
+  right: $corner-button-inset;
+}
+
+// `toIm()` sets `.leaving` on the host when the IM page takes over: the cards
+// are instantly hidden behind `#page-chats`, but these fixed buttons sit above
+// it (z-index: 100) — fade them out instead of letting them linger until the
+// host is disposed ~1s later.
+.leaving {
+  .closeButton,
+  .themeButton {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
+// `<Scrollable>` wrapper. The opacity transition is used for the fade-in
+// once webfonts are ready (see `runEnterSequence` in AuthCardsHost.tsx).
+//
+// отступление от tweb (в): селектор удвоен. Узел носит и глобальный `.scrollable`
+// (`styles/tweb/_scrollable.scss:84` — `position: absolute; inset: 0`), и этот
+// модульный класс; при равной специфичности позже эмитится партиал и вырывает
+// скроллер из потока. Значения не тронуты.
+.scrollable.scrollable {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  position: relative;
+  margin: 0 auto;
+  padding: 0 1rem;
+  opacity: 1;
+  transition: opacity var(--transition-standard-in);
 }
-.qrStepRow {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+
+// Top/bottom flex spacers — they push the active card to the vertical center.
+.placeholder {
+  flex: 1;
+  min-height: 1rem;
+  width: 100%;
 }
-.qrStepNum {
-  width: 24px;
-  height: 24px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background: var(--primary-color);
-  color: #fff;
-  font-size: var(--font-size-13);
-  font-weight: 700;
+
+// The top spacer also clears the fixed corner buttons: on a short viewport it
+// would otherwise collapse to `min-height` and tuck the first card under them.
+// Floor it at button inset + button box + a 1rem breathing gap.
+.placeholderTop {
+  min-height: calc(#{$corner-button-inset} + #{$corner-button-size} + 1rem);
+}
+
+// Horizontal max-width container around the active card.
+.cardsContainer {
+  margin: 0 auto;
+  position: relative;
+  width: min(24.5rem, 100%);
+}
+
+// ----- Card scaffold (see AuthCard.tsx) -----------------------------
+
+// Single card surface. Page-specific tweaks live in the `.pageX` classes.
+.card {
+  background-color: var(--surface-color);
+  border-radius: 2rem;
+  padding: 1rem;
+
+  :global(.btn-secondary) {
+    font-weight: var(--font-weight-normal);
+    margin-top: .5rem;
+  }
+}
+
+// Telegram logo SVG used by SignInCard inside <MediaHeader.Sticker element={...}>.
+.logo {
+  width: 100%;
+  height: 100%;
+  fill: var(--primary-color);
+}
+
+.logoContainer {
+  margin-block: 1rem 1.5rem !important;
+}
+
+// ----- Per-card pieces ----------------------------------------------
+
+// Inline error label under code / phone inputs.
+.errorLabel {
+  text-align: center;
+  height: 1lh;
+  font-size: 14px;
+  color: var(--danger-color);
+}
+
+// "Forgot password" / "Trouble with email" link container.
+.forgotLink {
+  text-align: left;
+  font-size: var(--font-size-14);
+  line-height: var(--line-height-14);
+  margin-top: -12px;
+  margin-left: 8px;
+  color: var(--secondary-text-color);
+
+  a { color: var(--primary-color); }
+}
+
+// Phone-number row in the AuthCode header — wrapped by <MediaHeader.Title>,
+// so it renders inside the title's text-center container.
+.phoneWrapper {
   display: flex;
   align-items: center;
   justify-content: center;
-}
-.linkQr {
-  margin-top: 24px;
+
+  .phone {
+    margin: 0;
+
+    &:global(.error) {
+      border-color: var(--danger-color) !important;
+    }
+  }
+
+  // Pencil icon next to the phone number; click → back to SignIn.
+  .phoneEdit {
+    width: 1.5rem;
+    height: 1.5rem;
+    margin-inline-start: .4rem;
+    opacity: .5;
+    transition: .2s opacity;
+    cursor: pointer;
+    font-size: 1.5rem;
+    line-height: 1;
+
+    // отступление от tweb (в): в оригинале `@include hover()`. Внутри
+    // *.module.scss он даёт `html._no-touch_xxx` — хешированный, т.е. мёртвый
+    // селектор. `hover-global()` — тот же миксин с `:global(html.no-touch)`.
+    @include hover-global() {
+      opacity: 1;
+    }
+  }
 }
 
-// Строка ошибки на шаге кода: высота зарезервирована (tweb errorLabel
-// height 1lh), чтобы появление текста не двигало layout.
-.codeError {
-  min-height: 1lh;
-  margin-top: 12px;
-  text-align: center;
-  font-size: var(--font-size-14); // tweb authFlow .errorLabel: 14px
-  line-height: 1.3;
-  color: var(--danger-color);
+.codeInputField {
+  margin-top: 1.5rem;
+}
+
+// Numbered help list on the QR card — wrapped by <MediaHeader.Subtitle>.
+// We override the subtitle's text-center alignment.
+.qrDescription {
+  --marker-size: 1.375rem;
+  max-width: 480px;
+  margin: 1.5rem auto 1rem;
+  padding-inline-start: 1rem;
+  line-height: var(--line-height);
+  text-align: start;
+  list-style: none;
+}
+
+.qrDescriptionMarker {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--marker-size);
+  height: var(--marker-size);
+  border-radius: 50%;
+  background-color: var(--light-primary-color);
+  color: var(--primary-color);
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-14);
+}
+
+.qrDescriptionItem {
+  display: flex;
+  align-items: flex-start;
+  gap: .75rem;
+  margin-top: .625rem;
+  line-height: var(--marker-size);
+}
+
+.qrContainer {
+  margin-block: 1rem 1.5rem !important;
+  padding: 1rem;
+  background-color: var(--light-filled-primary-color);
+  border-radius: $border-radius-medium;
+}
+
+.qrCanvas {
+  width: 100%;
+  height: 100%;
+}
+
+// ----- Page-specific modifiers --------------------------------------
+
+.pageSignUp {
+  :global(.input-field) {
+    text-align: initial;
+  }
+}
+
+.pageAuthCode {
+  :global(.input-wrapper) {
+    justify-items: center;
+  }
+}
+
+.pagePassword {
+  :global(.input-wrapper) {
+    @include respond-to(handhelds) {
+      margin-top: 31px;
+    }
+
+    :global(.btn-primary) {
+      margin-top: -.5rem;
+    }
+  }
+}
+
+.pageSignQR {
+  overflow: unset !important;
+
+  :global(.preloader) {
+    transform: none;
+    left: unset;
+    top: unset;
+  }
+}
+
+// ----- Animations ----------------------------------------------------
+
+// Host enter when arriving from another account (writes happen in
+// `runEnterSequence` in AuthCardsHost.tsx).
+.hostEnter {
+  transition: 0.4s;
+  opacity: 0;
+  transform: translateX(100px);
+}
+
+.hostEntering {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+// Host exit before changeAccount (back button in AuthCardsHost.tsx).
+.hostExit {
+  transition: 0.2s;
+  transform: scale(1);
+  opacity: 1;
+}
+
+.hostExiting {
+  transform: scale(1.025);
+  opacity: 0;
+}
+
+// Card-to-card transitions for `<Transition mode="outin">`. The leaving card
+// finishes its exit before the new one enters, and each card unmounts fully.
+.cardEnterActive,
+.cardExitActive {
+  transition: opacity 0.18s ease, transform 0.2s ease;
+}
+
+.cardEnter {
+  opacity: 0;
+  transform: translateX(24px);
+}
+
+.cardEnterTo {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.cardExit {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.cardExitTo {
+  opacity: 0;
+  transform: translateX(-24px);
 }

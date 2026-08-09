@@ -81,5 +81,6 @@
 @use "code";
 @use "chatlistRow";
 @use "storiesList";
-@use "page";
-@use "pages/chats";
+@use "whole"; // выдержка `.whole` из base.scss:513-522 (не путать с pages/pages)
+@use "pages/pages"; // :124
+@use "pages/chats"; // :125

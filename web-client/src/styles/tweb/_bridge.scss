@@ -246,6 +246,14 @@
   0 1px 5px 0 rgba(0, 0, 0, 0.2);
 }
 
+// tweb scss/components/_global.scss:74-78 — материал-тень 12dp. Её носит
+// выпадающий список стран экрана входа (`.select-wrapper.z-depth-3`).
+.z-depth-3 {
+  box-shadow: 0 8px 17px 2px rgba(0,0,0,0.14),
+  0 3px 14px 2px rgba(0,0,0,0.12),
+  0 5px 5px -3px rgba(0, 0, 0, 0.2);
+}
+
 // tweb scss/components/_global.scss:187-193 — утилиты переноса строк. `.no-wrap`
 // висит на строке чат-листа и на её title/subtitle: без него длинное превью
 // разъезжается на несколько строк вместо многоточия.
@@ -335,5 +343,197 @@ button:focus {
 
   .c-ripple__circle {
     background-color: var(--light-primary-color);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Экран авторизации: глобальные классы, живущие в base.scss (целиком его не
+// портируем — это ресет). Ниже — дословные выдержки с указанием строк.
+// ---------------------------------------------------------------------------
+
+// tweb base.scss:592-594 — приглушённый текст (`._subtitle.secondary` в шапке
+// карточек входа, а также подзаголовки строк).
+.secondary {
+  color: var(--secondary-text-color);
+}
+
+// tweb base.scss:2407-2409 — у нас без миксина `text-center()`: он в tweb равен
+// `text-align: center` (то же правило продублировано в components/_global.scss:122-124).
+.text-center {
+  text-align: center;
+}
+
+// tweb base.scss:1392-1404 — скрытые поля-ловушки автозаполнения (по одному до
+// и после настоящего поля пароля на карточке `password`).
+.stealthy {
+  left: 0;
+  margin: 0;
+  max-height: 1px;
+  max-width: 1px;
+  opacity: 0;
+  outline: none;
+  overflow: hidden;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  z-index: -1;
+}
+
+// tweb base.scss:1966-1973 — иконка внутри строки текста (стрелка `>` в
+// `span.i18n > span.tgico.inline-icon` вторичных кнопок входа).
+.inline-icon {
+  vertical-align: bottom;
+  line-height: inherit !important;
+
+  &-left {
+    margin-inline-end: .125rem;
+  }
+}
+
+// tweb base.scss:859-934 — выпадающий список стран (`CountryInputField`):
+// сама панель, телефонный код в строке и нативный эмодзи-флаг. Дословно.
+
+.select-wrapper {
+  max-height: 23.5rem;
+  /* height: auto; */
+  position: absolute;
+  width: 100%;
+  top: calc(100% + .5rem);
+  left: 0;
+  overflow: hidden;
+  background-color: var(--surface-color);
+  z-index: 3;
+  border-radius: $border-radius-medium;
+  display: flex;
+  flex-direction: column;
+  flex-wrap: wrap;
+  transition: opacity .2s ease-out, transform .2s ease-out;
+  transform: scale(.95);
+  transform-origin: top center;
+  opacity: 0;
+
+  &.active {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  ul {
+    margin: .5rem 0;
+  }
+
+  li {
+    /* display: flex; */
+    align-items: center;
+    padding: 0 1rem;
+    justify-content: space-between;
+    height: 3rem;
+    cursor: pointer;
+    /* font-weight: 500; */
+
+    text-align: start;
+    display: grid;
+    grid-template-columns: calc(26px + 2rem) 1fr 80px;
+
+    @include hover-background-effect();
+  }
+
+  // +2 px bc of whitespace
+  .emoji {
+    height: 26px;
+    width: 26px;
+    font-size: 26px;
+    line-height: 1;
+  }
+
+  .scrollable {
+    position: relative;
+  }
+}
+
+.phone-code {
+  color: $placeholder-color;
+  text-align: end;
+}
+
+// `.auth-image`, `.phone-edit`, `.phone-wrapper` used to live here; they're now
+// scoped to the auth flow in `src/pages/authFlow.module.scss`.
+
+.emoji-native {
+  display: inline !important;
+  //line-height: 1em;
+  //font-size: 1em;
+
+  font-family: apple color emoji,segoe ui emoji,noto color emoji,android emoji,emojisymbols,emojione mozilla,twemoji mozilla,segoe ui symbol;
+  vertical-align: unset !important;
+  line-height: 1 !important;
+  // vertical-align: text-top !important;
+}
+
+// tweb base.scss:797-849 — аватар-«редактор» карточки регистрации (`signUp`):
+// круглая маска, канва-подложка, иконка камеры по центру. Дословно, кроме
+// добавленных width/height — см. комментарий ниже.
+.avatar-edit {
+  // отступление от tweb: в оригинале размер задан ТОЛЬКО правилом
+  // `partials/pages/_chats.scss` → `.page-chats .avatar-edit {width/height: 120px}`,
+  // а auth-хост (`#auth-flow-root` → `#auth-pages`) смонтирован ВНЕ `#page-chats`.
+  // Из-за этого в самом tweb аватар на карточке регистрации схлопнут по высоте —
+  // замерено 120×66.5 при `--sticker-size: 120px`
+  // (docs/research/2026-08-09-tweb-auth-dom-reference.md §2.5, «Найденный баг оригинала»).
+  // Завязываем размер на `--sticker-size` родительского `.sticker` из mediaHeader,
+  // фолбэк 120px = значение из `.page-chats`. Специфичность 0,1,0 ниже, чем у
+  // `.page-chats .avatar-edit` (0,2,0), поэтому внутри мессенджера ничего не меняется.
+  width: var(--sticker-size, 120px);
+  height: var(--sticker-size, 120px);
+
+  position: relative;
+  border-radius: 50%;
+  cursor: pointer;
+  overflow: hidden;
+
+  &.is-forum {
+    border-radius: var(--avatar-border-radius-forum);
+  }
+
+  &-canvas {
+    max-width: 100%;
+    max-height: 100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(var(--avatar-color-top), var(--avatar-color-bottom));
+  }
+
+  html.no-touch body.animation-level-2 & {
+    .avatar-edit-icon {
+      transform: translateY(-50%) translateX(-50%) scale(1);
+      transition: transform .2s ease-in-out;
+    }
+
+    &:hover {
+      .avatar-edit-icon {
+        transform: translateY(-50%) translateX(-50%) scale(1.2);
+      }
+    }
+  }
+
+  &-icon {
+    position: absolute;
+    font-size: 3rem;
+	  line-height: 1;
+    width: 3rem;
+    height: 3rem;
+    top: 50%;
+    left: 50%;
+    transform: translateY(-50%) translateX(-50%);
+    z-index: 2;
+    color: #fff;
+  }
+
+  .avatar-placeholder {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    filter: brightness(0.7);
   }
 }
