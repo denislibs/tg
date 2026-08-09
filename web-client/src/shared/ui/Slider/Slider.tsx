@@ -13,8 +13,8 @@ interface SliderProps {
   className?: string
 }
 
-// Ползунок — разметка tweb RangeSelector (`.progress-line`, выдержка из
-// _ckin.scss в styles/tweb/_progressLine.scss):
+// Ползунок — разметка tweb RangeSelector (`.progress-line`, стили —
+// styles/tweb/_ckin.scss):
 //   div.progress-line.use-transform > div.progress-line__filled
 //                                   + input.progress-line__seek[type=range]
 // Полоса-фон рисуется псевдоэлементом `:before`, заполненная часть — отдельным
