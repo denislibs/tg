@@ -6,7 +6,7 @@
 import { useMemo, useRef } from 'react'
 import type { Chat } from '../../data'
 import { useChatsStore } from '../../stores/chatsStore'
-import { useDraftsStore } from '../../stores/draftsStore'
+import { useDrafts } from '../../stores/draftsStore'
 import { useNotifyStore, notifyTypeForChat } from '../../stores/notifyStore'
 import { dialogToChat } from '../dialogToChat'
 
@@ -14,7 +14,7 @@ export function useChatList(): Chat[] {
   const dialogs = useChatsStore((s) => s.dialogs)
   const meId = useChatsStore((s) => s.meId)
   const notifySettings = useNotifyStore((s) => s.settings)
-  const draftsByChat = useDraftsStore((s) => s.byChat)
+  const draftsByChat = useDrafts()
   const chatCacheRef = useRef<Map<number, { json: string; chat: Chat }>>(new Map())
 
   return useMemo<Chat[]>(() => {

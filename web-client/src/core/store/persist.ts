@@ -8,8 +8,9 @@
 //   • meta     — token (скоуп мультиаккаунта) + me (свой профиль для мгновенного UI).
 //
 // ЕДИНЫЙ writer — воркер. Все saveX/persistClearAll вызываются из менеджеров воркера
-// (peersManager/messagesManager напрямую; dialogs/me/folders/drafts — через
-// persistManager по снапшоту с main): один SharedWorker = одно readwrite-соединение
+// (peersManager/messagesManager напрямую; dialogs/me — по снапшоту с main, ключи
+// State (folders/drafts/…) — write-through, всё через persistManager):
+// один SharedWorker = одно readwrite-соединение
 // на все вкладки, без конкуренции за транзакции одной БД. main — только READER
 // (loadX на холодном старте). persistScope зовётся и там, и там (идемпотентно).
 //
@@ -23,13 +24,17 @@ import { idbGet } from './idbKv'
 import type { Dialog, Message, Draft } from '../models'
 import type { User } from '../managers/authManager'
 import type { Folder } from '../managers/foldersManager'
+import type { AppState } from '../state/state'
 
 const DB = 'msgr-store'
-const VERSION = 1
+/** Текущая версия схемы. Экспортируется для тестов, чтобы они не прибивались к литералу. */
+export const DB_VERSION = 2
+const VERSION = DB_VERSION
 const S_META = 'meta'
 const S_DIALOGS = 'dialogs'
 const S_USERS = 'users'
 const S_MESSAGES = 'messages'
+const S_STATE = 'state'
 
 // Нормализованный peer (то, что отдаёт peersManager) — минимум для офлайн-резолва
 // имени/аватара при отсутствии сети.
@@ -61,6 +66,19 @@ const MIGRATIONS: Record<number, Migration> = {
     if (!db.objectStoreNames.contains(S_USERS)) db.createObjectStore(S_USERS, { keyPath: 'id' })
     if (!db.objectStoreNames.contains(S_MESSAGES)) {
       db.createObjectStore(S_MESSAGES, { keyPath: 'pk' }).createIndex('byChat', 'chatId')
+    }
+  },
+  // v2 — стор `state`: единый объект персистентного состояния (порт tweb
+  // StateStorage поверх стора `session`). Ключи out-of-line — имена полей AppState.
+  // Переливаем уже накопленные folders/drafts из meta, чтобы апгрейд не сбросил
+  // папки и черновики (конвенция выше: миграция расширяет, а не стирает).
+  2: (db, tx) => {
+    if (!db.objectStoreNames.contains(S_STATE)) db.createObjectStore(S_STATE)
+    const meta = tx.objectStore(S_META)
+    const state = tx.objectStore(S_STATE)
+    for (const key of ['folders', 'drafts'] as const) {
+      const req = meta.get(key)
+      req.onsuccess = () => { if (req.result !== undefined) state.put(req.result, key) }
     }
   },
 }
@@ -204,6 +222,7 @@ export async function persistScope(token: string | null): Promise<void> {
         enqueue(S_USERS, { kind: 'clear' }),
         enqueue(S_MESSAGES, { kind: 'clear' }),
         enqueue(S_META, { kind: 'delete', key: 'me' }, { kind: 'delete', key: 'folders' }, { kind: 'delete', key: 'drafts' }),
+        enqueue(S_STATE, { kind: 'clear' }),
       )
     }
     writes.push(enqueue(S_META, token ? { kind: 'put', value: token, key: 'token' } : { kind: 'delete', key: 'token' }))
@@ -218,6 +237,7 @@ export async function persistClearAll(): Promise<void> {
       enqueue(S_USERS, { kind: 'clear' }),
       enqueue(S_MESSAGES, { kind: 'clear' }),
       enqueue(S_META, { kind: 'clear' }),
+      enqueue(S_STATE, { kind: 'clear' }),
     ])
   } catch { /* idb недоступен */ }
 }
@@ -321,4 +341,39 @@ export async function deletePersistedMessage(chatId: number, seq: number): Promi
 
 export async function clearPersistedChat(chatId: number): Promise<void> {
   try { await enqueue(S_MESSAGES, { kind: 'clearByChat', chatId }) } catch { /* idb недоступен */ }
+}
+
+// ── State: единый объект персистентного состояния ─────────────────────────────
+// Пишется по одному ключу (tweb appStateManager.setByKey), читается ВЕСЬ одной
+// транзакцией на старте (tweb loadStateForAllAccounts) — это и есть то самое
+// «одно асинхронное чтение на весь запуск».
+
+export async function saveStateKey<K extends keyof AppState>(key: K, value: AppState[K]): Promise<void> {
+  if (await locked()) return
+  try { await enqueue(S_STATE, { kind: 'put', value, key }) } catch { /* idb недоступен */ }
+}
+
+export async function loadStateAll(): Promise<Partial<AppState>> {
+  if (await locked()) return {}
+  try {
+    await flushStore(S_STATE)
+    const db = await open()
+    return await new Promise<Partial<AppState>>((resolve, reject) => {
+      const tx = db.transaction(S_STATE, 'readonly')
+      const s = tx.objectStore(S_STATE)
+      // getAll + getAllKeys в ОДНОЙ транзакции: значения и ключи приходят в
+      // одинаковом порядке (спека IDB — обход по возрастанию ключа).
+      const valuesReq = s.getAll()
+      const keysReq = s.getAllKeys()
+      tx.oncomplete = () => {
+        const out: Record<string, unknown> = {}
+        // Ключи стора — имена полей AppState, то есть всегда строки. Нестроковый
+        // ключ ключом State быть не может, поэтому просто пропускаем такой мусор.
+        keysReq.result.forEach((k, i) => { if (typeof k === 'string') out[k] = valuesReq.result[i] })
+        resolve(out as Partial<AppState>)
+      }
+      tx.onerror = () => reject(tx.error)
+      tx.onabort = () => reject(tx.error)
+    })
+  } catch { return {} }
 }

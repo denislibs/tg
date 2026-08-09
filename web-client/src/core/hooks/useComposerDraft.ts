@@ -6,7 +6,7 @@
 import { useEffect, useRef } from 'react'
 import { useManagers } from './useManagers'
 import { useEvent } from './useEvent'
-import { useDraftsStore } from '../../stores/draftsStore'
+import { draftFor, removeDraft, setDraft, useDrafts } from '../../stores/draftsStore'
 
 const SAVE_DEBOUNCE_MS = 2500 // tweb saveDraftDebounced
 
@@ -18,7 +18,8 @@ export function useComposerDraft(chatId: number | null, replyToId: number | null
   onDraftChange: (text: string) => void
 } {
   const managers = useManagers()
-  const initialDraft = useDraftsStore((s) => (chatId != null ? s.byChat[chatId]?.text : undefined)) ?? ''
+  const drafts = useDrafts()
+  const initialDraft = (chatId != null ? drafts[chatId]?.text : undefined) ?? ''
   const textRef = useRef(initialDraft)
   const savedRef = useRef(sigOf(initialDraft, null))
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -33,9 +34,8 @@ export function useComposerDraft(chatId: number | null, replyToId: number | null
     savedRef.current = sig
     // Оптимистично — превью «Черновик:» в списке чатов обновляется сразу;
     // rt:draft_update с бэка сверит остальные вкладки/устройства.
-    const st = useDraftsStore.getState()
-    if (text.trim() || replyToId != null) st.setDraft({ chatId, text, replyToId, updatedAt: new Date().toISOString() })
-    else st.removeDraft(chatId)
+    if (text.trim() || replyToId != null) setDraft({ chatId, text, replyToId, updatedAt: new Date().toISOString() })
+    else removeDraft(chatId)
     void managers.drafts.save(chatId, text, replyToId).catch(() => {})
   })
 
@@ -47,8 +47,7 @@ export function useComposerDraft(chatId: number | null, replyToId: number | null
 
   // Смена чата: сбросить refs под новый чат; при уходе — немедленный сейв.
   useEffect(() => {
-    const st = useDraftsStore.getState()
-    const d = chatId != null ? st.byChat[chatId] : undefined
+    const d = chatId != null ? draftFor(chatId) : undefined
     textRef.current = d?.text ?? ''
     savedRef.current = sigOf(d?.text ?? '', d?.replyToId ?? null)
     skipReplyEffect.current = true

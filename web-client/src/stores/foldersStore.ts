@@ -1,84 +1,61 @@
-// Папки чатов: определения с бэка + выбранная папка (таб) + set контактов
-// для матчинга правил contacts/non_contacts (tweb useFolders).
+// Папки чатов. Сами определения папок живут в State (tweb `filtersArr`) —
+// читаются с диска одним батчем на старте (client/boot.ts), поэтому табы есть
+// уже в первом кадре. Здесь остаётся только UI-состояние, которое в tweb тоже
+// не персистится: выбранный таб и set контактов для правил contacts/non_contacts.
 import { create } from 'zustand'
 import type { Folder } from '../core/managers/foldersManager'
 import type { Contact } from '../core/managers/contactsManager'
-import { loadFolders as loadPersistedFolders } from '../core/store/persist'
+import { useAppStateKey, useAppStateStore, setAppState } from './appState'
 
 // id псевдо-папки «Все чаты» (tweb FOLDER_ID_ALL)
 export const ALL_FOLDER_ID = 0
 
-interface FoldersState {
-  folders: Folder[]
-  selectedId: number // ALL_FOLDER_ID = «Все чаты»
+interface FoldersUiState {
+  selectedId: number
   contactIds: Set<number>
-  loaded: boolean
-  setFolders: (f: Folder[]) => void
   select: (id: number) => void
+  setContacts: (ids: number[]) => void
   upsert: (f: Folder) => void
   remove: (id: number) => void
-  setContacts: (ids: number[]) => void
 }
 
-export const useFoldersStore = create<FoldersState>((set) => ({
-  folders: [],
+export const useFoldersStore = create<FoldersUiState>((set) => ({
   selectedId: ALL_FOLDER_ID,
   contactIds: new Set(),
-  loaded: false,
-  setFolders: (folders) => set({ folders, loaded: true }),
   select: (selectedId) => set({ selectedId }),
-  upsert: (f) =>
-    set((s) => {
-      const idx = s.folders.findIndex((x) => x.id === f.id)
-      const folders = s.folders.slice()
-      if (idx === -1) folders.push(f)
-      else folders[idx] = f
-      return { folders }
-    }),
-  remove: (id) =>
-    set((s) => ({
-      folders: s.folders.filter((f) => f.id !== id),
-      selectedId: s.selectedId === id ? ALL_FOLDER_ID : s.selectedId,
-    })),
   setContacts: (ids) => set({ contactIds: new Set(ids) }),
+  upsert: (f) => {
+    const folders = useAppStateStore.getState().folders.slice()
+    const idx = folders.findIndex((x) => x.id === f.id)
+    if (idx === -1) folders.push(f)
+    else folders[idx] = f
+    setAppState('folders', folders)
+  },
+  remove: (id) => {
+    setAppState('folders', useAppStateStore.getState().folders.filter((f) => f.id !== id))
+    set((s) => (s.selectedId === id ? { selectedId: ALL_FOLDER_ID } : s))
+  },
 }))
+
+/** Реактивное чтение папок — единственный способ их получить в UI. */
+export function useFolders(): Folder[] {
+  return useAppStateKey('folders')
+}
 
 export async function loadFolders(managers: {
   folders: { list(): Promise<Folder[]> }
   contacts: { list(): Promise<Contact[]> }
 }): Promise<void> {
-  const st = useFoldersStore.getState()
-  // offline-first: показать персистнутые папки сразу (табы слева не пропадают
-  // офлайн), сеть реконсайлит поверх. Пре-гидрация только при пустом сторе.
-  if (!st.loaded) {
-    const cached = await loadPersistedFolders()
-    if (cached.length) st.setFolders(cached)
-  }
+  // Персист тут больше НЕ читаем: State уже поднят в boot.ts до рендера.
+  // Остаётся только реконсайл поверх свежими данными сети.
   try {
-    st.setFolders(await managers.folders.list())
+    setAppState('folders', await managers.folders.list())
   } catch {
-    /* оффлайн — остаёмся на персистнутых папках */
+    /* оффлайн — остаёмся на том, что подняли из State */
   }
   try {
-    st.setContacts((await managers.contacts.list()).map((c) => c.userId))
+    useFoldersStore.getState().setContacts((await managers.contacts.list()).map((c) => c.userId))
   } catch {
     /* без контактов правила contacts/non_contacts считают всех не-контактами */
   }
-}
-
-// Подписка на стор: дебаунсом шлёт папки воркеру на запись (загрузка + мутации
-// upsert/remove), чтобы следующий старт/офлайн показал табы мгновенно. Физически
-// пишет воркер (persistManager) — один writer на все вкладки. Вызывать один раз.
-export function startFoldersPersist(managers: { persist: { folders(folders: Folder[]): Promise<void> } }): void {
-  let timer: ReturnType<typeof setTimeout> | null = null
-  let last = useFoldersStore.getState().folders
-  useFoldersStore.subscribe((s) => {
-    if (s.folders === last) return
-    last = s.folders
-    if (timer) clearTimeout(timer)
-    timer = setTimeout(() => {
-      timer = null
-      if (useFoldersStore.getState().loaded) void managers.persist.folders(useFoldersStore.getState().folders)
-    }, 800)
-  })
 }
