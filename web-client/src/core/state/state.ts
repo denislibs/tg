@@ -19,6 +19,14 @@ export interface AppState {
   hiddenPinnedMessages: Record<number, number>
   /** недавние в глобальном поиске (tweb `recentSearch`) */
   recentSearch: number[]
+  /** порядок закреплённых по папкам: folderId → chatId[] (tweb `pinnedOrders`) */
+  pinnedOrders: Record<number, number[]>
+  /**
+   * баланс звёзд; null — ни разу не загружался. Отличие от списков: у баланса `0`
+   * это ЗАКОННОЕ значение, поэтому «пусто» и «не загружено» без явного null
+   * не различить.
+   */
+  starsBalance: number | null
 }
 
 export const STATE_VERSION = 1
@@ -30,6 +38,8 @@ export const STATE_INIT: AppState = {
   drafts: [],
   hiddenPinnedMessages: {},
   recentSearch: [],
+  pinnedOrders: {},
+  starsBalance: null,
 }
 
 /** tweb `ALL_KEYS = Object.keys(STATE_INIT)` (loadState.ts:43) */
