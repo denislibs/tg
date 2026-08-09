@@ -23,6 +23,221 @@
   --100vh-inset: calc(var(--100vh) - 2 * var(--page-chats-padding));
 }
 
+// tweb base.scss:116-117, 213 — размер ячейки в лентах стикеров/кастом-эмодзи.
+// Их читают `_chatStickersHelper.scss:7,25` и `_chatInlineHelper.scss:90`.
+:root {
+  --esg-sticker-size: 72px;
+  --esg-custom-emoji-size: 36px;
+
+  @include respond-to(handhelds) {
+    --esg-sticker-size: 68px;
+  }
+}
+
+// tweb base.scss:675-738 — кейфреймы появления/исчезновения.
+//
+// Их НЕ БЫЛО в бандле вообще, хотя ссылаются на них семь уже портированных
+// партиалов: `_chatlist.scss:113`, `_avatar.scss:127`, `_chat.scss:1210`,
+// `_chatBubble.scss` (3 места), `_transition.scss` (6 мест), `_chatDrop.scss:23`,
+// `_autocompleteHelper.scss:30,40`. Неизвестное имя в `animation:` — не ошибка
+// сборки, а тихий no-op: правило есть, анимация не играет. Отсюда «мгновенные»
+// появления там, где в tweb плавные.
+@keyframes thumbnail-fade-in-opacity {
+  0% {
+    opacity: 0;
+  }
+
+  to {
+    opacity: .8;
+  }
+}
+
+@keyframes fade-in-opacity {
+  0% {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fade-out-opacity {
+  0% {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes fade-in-backwards-opacity {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes fade-out-backwards-opacity {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+// tweb base.scss:1082-1108 — морф кнопки отправки: приходящая иконка растёт
+// (`grow-icon`), уходящая схлопывается (`hide-icon`). Обе — 400 ms, на них
+// опирается `_chat.scss` (секция `.btn-send`).
+@keyframes grow-icon {
+  0% {
+    transform: scale(.5);
+    opacity: .8;
+  }
+
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes hide-icon {
+  from {
+    transform: scale(1);
+    opacity: .4;
+  }
+
+  to {
+    transform: scale(.5);
+    opacity: 0;
+  }
+}
+
+// tweb base.scss:1406-1411 — подсветка активной строки в списках с клавиатурной
+// навигацией (`attachListNavigation.ts:9` ставит класс `active`).
+.navigable-list {
+  .active {
+    background-color: var(--light-secondary-text-color);
+    border-radius: inherit;
+  }
+}
+
+// tweb base.scss:994-1026 — сетка ленты стикеров (хелпер подсказок, вкладка
+// стикеров дропдауна). Закомментированные в оригинале блоки не переносим.
+.super-stickers {
+  width: 100%;
+	display: grid;
+	grid-template-columns: repeat(auto-fill, var(--esg-sticker-size)); // 64px
+	justify-content: space-between;
+}
+
+.super-sticker {
+  @include hover-background-effect() {
+    border-radius: $border-radius-medium;
+  }
+}
+
+// tweb base.scss:1413-1502 — сетка и ячейка эмодзи (хелпер подсказок, вкладка
+// эмодзи дропдауна). Без неё у `.super-emoji` нет ни ширины, ни высоты.
+.super-emojis {
+  --esg-emoji-size: 2.125rem;
+  --esg-emoji-total-size: calc(var(--esg-emoji-size) + .5rem);
+  --custom-emoji-size: 2.25rem;
+  // ! No chrome 56 support
+  display: grid;
+  grid-template-columns: repeat(auto-fill, var(--esg-emoji-total-size));
+  justify-content: space-between;
+  position: relative;
+  font-size: var(--esg-emoji-size);
+  line-height: var(--esg-emoji-size);
+  column-gap: .25rem;
+
+  .custom-emoji {
+    display: block;
+
+    &-renderer {
+      z-index: 1;
+    }
+
+    &:before {
+      content: none;
+    }
+  }
+}
+
+.super-emoji {
+  display: inline-block;
+  padding: .25rem;
+  line-height: inherit;
+  border-radius: $border-radius;
+  cursor: pointer;
+  vertical-align: middle;
+  width: var(--esg-emoji-total-size);
+  height: var(--esg-emoji-total-size);
+  position: relative;
+
+  .emoji-placeholder {
+    position: absolute;
+    left: 7px;
+    top: 7px;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 50%;
+    background-color: var(--light-secondary-text-color);
+    pointer-events: none;
+
+    @include animation-level(2) {
+      opacity: 0;
+      transition: opacity .2s ease-in-out;
+    }
+  }
+
+  .emoji {
+    width: 100%;
+    height: 100%;
+    vertical-align: unset;
+    margin: 0;
+
+    @include animation-level(2) {
+      opacity: 1;
+      transition: opacity .2s ease-in-out;
+    }
+  }
+
+  .premium-sticker-lock {
+    left: auto;
+    inset-inline-end: 0;
+    transform: scale(.75);
+  }
+
+  &.active {
+    background-color: var(--light-secondary-text-color);
+  }
+
+  &-custom {
+    padding: .1875rem;
+  }
+
+  &-regular {
+    overflow: hidden;
+
+    html.native-emoji & {
+      padding-top: .3125rem;
+      padding-bottom: .3125rem;
+    }
+  }
+
+  @include hover-background-effect();
+}
+
 // tweb scss/components/_global.scss:57-61 — материал-тень 2dp (её носит
 // `.btn-corner`-кнопка «вниз»).
 .z-depth-1 {
