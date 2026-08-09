@@ -1,4 +1,4 @@
-import { lazy, Suspense, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useRef, useState } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { useManagers } from './useManagers'
 import { loadStories } from '../../stores/storiesStore'
@@ -7,6 +7,7 @@ import StoryViewer from '../../components/StoryViewer'
 import AddStorySheet from '../../components/AddStorySheet'
 import CloseFriendsSheet from '../../components/CloseFriendsSheet'
 import StoriesArchiveSheet from '../../components/StoriesArchiveSheet'
+import type { StoryTargetGetter } from '../../components/StoriesRow'
 import type { MediaArea } from '../managers/storiesManager'
 
 // MediaEditor (+ WebGL sceneRender/enhanceGL) грузится лениво — только при
@@ -27,6 +28,10 @@ export function useSidebarStories() {
   const [showCloseFriends, setShowCloseFriends] = useState(false)
   const [showArchive, setShowArchive] = useState(false)
   const storyFileRef = useRef<HTMLInputElement>(null)
+  // Откуда вьюер летит на открытии и куда возвращается на закрытии: геттер
+  // аватарки ряда историй (tweb передаёт `target` в createStoriesViewer, list.tsx:95).
+  const storyTargetRef = useRef<StoryTargetGetter | null>(null)
+  const getStoryTarget = useCallback<StoryTargetGetter>((groupIndex) => storyTargetRef.current?.(groupIndex) ?? null, [])
 
   const pickStoryFile = () => storyFileRef.current?.click()
   const onStoryFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -84,12 +89,15 @@ export function useSidebarStories() {
       </AnimatePresence>
 
       {/* Полноэкранный просмотрщик историй */}
-      {storyOpen != null && <StoryViewer groupIndex={storyOpen} onClose={() => setStoryOpen(null)} />}
+      {storyOpen != null && <StoryViewer groupIndex={storyOpen} getTarget={getStoryTarget} onClose={() => setStoryOpen(null)} />}
     </>
   )
 
   return {
-    openViewer: (groupIndex: number) => setStoryOpen(groupIndex),
+    openViewer: (groupIndex: number, getTarget?: StoryTargetGetter) => {
+      storyTargetRef.current = getTarget ?? null
+      setStoryOpen(groupIndex)
+    },
     pickStoryFile,
     openArchive: () => setShowArchive(true),
     openCloseFriends: () => setShowCloseFriends(true),

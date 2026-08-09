@@ -443,4 +443,9 @@ const Icons = {
 
 export type IconName = keyof typeof Icons
 
+// Глиф строкой — так же, как tweb `Icon(name, ...)` кладёт символ в `span.tgico`.
+// Нужен там, где размер/цвет глифа задаёт CSS-класс, а не проп `<TgIcon size>`
+// (плеер: `.default__button--big` 4rem, `.player-volume__icon` 1.5rem).
+export const glyph = (name: IconName) => String.fromCharCode(parseInt(Icons[name], 16))
+
 export default Icons

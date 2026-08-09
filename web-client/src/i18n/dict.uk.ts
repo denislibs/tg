@@ -68,6 +68,11 @@ const uk: Dict = {
   'Notifications for channels': 'Сповіщення з каналів',
   'Message Preview': 'Попередній перегляд',
   'New notification': 'Нове сповіщення',
+  // Заголовок вкладки при нових сповіщеннях (tweb 'Notifications.Count').
+  // «(few)» — слов'янська форма 2-4, її обирає client/appBadge.
+  '%d notification': '%d сповіщення',
+  '%d notifications (few)': '%d сповіщення',
+  '%d notifications': '%d сповіщень',
   'For 1 Hour': 'На 1 годину',
   'For 4 Hours': 'На 4 години',
   'For 8 Hours': 'На 8 годин',
@@ -191,6 +196,10 @@ const uk: Dict = {
   'New Message': 'Нове повідомлення',
   'Never miss a message! 🔔': 'Не пропускайте повідомлення! 🔔',
   'Enable notifications to stay updated.': 'Увімкніть сповіщення, щоб бути в курсі.',
+  'You can turn notifications back on in the settings.':
+    'Ви можете знову увімкнути сповіщення в налаштуваннях.',
+  'Hold Shift to resize both columns at once':
+    'Утримуйте Shift, щоб змінювати ширину обох колонок одразу',
   subscribers: 'підписників',
   'There were no results for': 'Нічого не знайдено за запитом',
   '. Try a new search.': '. Спробуйте інший запит.',

@@ -9,6 +9,9 @@ export const en: Dict = {
   'Story.AddToProfile': 'Post to Profile',
   'Story.RemoveFromProfile': 'Remove from Profile',
   'Stories.StealthMode.View': 'Hide My View',
+  // Славянская форма 2-4 из 'Notifications.Count' (client/appBadge): в английском
+  // отдельной формы нет — страховка на случай, если чанк ru/uk не догрузился.
+  '%d notifications (few)': '%d notifications',
 }
 
 // The other languages are heavy (~40 kB each) and split into per-language chunks,

@@ -68,6 +68,9 @@ const de: Dict = {
   'Notifications for channels': 'Benachrichtigungen für Kanäle',
   'Message Preview': 'Nachrichtenvorschau',
   'New notification': 'Neue Benachrichtigung',
+  // Tab-Titel bei neuen Benachrichtigungen (tweb 'Notifications.Count').
+  '%d notification': '%d Benachrichtigung',
+  '%d notifications': '%d Benachrichtigungen',
   'For 1 Hour': 'Für 1 Stunde',
   'For 4 Hours': 'Für 4 Stunden',
   'For 8 Hours': 'Für 8 Stunden',
@@ -190,6 +193,10 @@ const de: Dict = {
   'Never miss a message! 🔔': 'Verpasse keine Nachricht! 🔔',
   'Enable notifications to stay updated.':
     'Aktiviere Benachrichtigungen, um auf dem Laufenden zu bleiben.',
+  'You can turn notifications back on in the settings.':
+    'Du kannst Benachrichtigungen in den Einstellungen wieder aktivieren.',
+  'Hold Shift to resize both columns at once':
+    'Halte Shift gedrückt, um beide Spalten gleichzeitig zu skalieren',
   subscribers: 'Abonnenten',
   'There were no results for': 'Keine Ergebnisse für',
   '. Try a new search.': '. Versuche eine neue Suche.',

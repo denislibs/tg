@@ -2082,6 +2082,15 @@ func messageJSON(m domain.Message) map[string]any {
 	if m.MediaName != "" {
 		j["media_name"] = m.MediaName
 	}
+	// Теги трека: подпись музыкального бабла (tweb audio.ts — performer, иначе
+	// размер файла) и его заголовок (title ?? file_name). Отсутствуют, если файл
+	// без тегов.
+	if m.MediaTitle != "" {
+		j["media_title"] = m.MediaTitle
+	}
+	if m.MediaPerformer != "" {
+		j["media_performer"] = m.MediaPerformer
+	}
 	if m.PaidMediaPrice != nil {
 		j["paid_media"] = map[string]any{"price": *m.PaidMediaPrice, "locked": m.PaidMediaLocked}
 	}

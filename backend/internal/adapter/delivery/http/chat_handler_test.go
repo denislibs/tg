@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/messenger-denis/backend/internal/domain"
 	"github.com/messenger-denis/backend/internal/store/postgres"
 )
 
@@ -187,5 +188,33 @@ func TestReactions_HTTP(t *testing.T) {
 	_ = json.Unmarshal(rec.Body.Bytes(), &listed)
 	if len(listed.Reactions) != 0 {
 		t.Fatalf("expected no reactions after remove, got %+v", listed.Reactions)
+	}
+}
+
+// Контракт медиа-меты в JSON сообщения: теги трека едут как media_title /
+// media_performer и отсутствуют у файла без тегов (клиент тогда подписывает бабл
+// размером файла — tweb audio.ts).
+func TestMessageJSON_AudioTags(t *testing.T) {
+	j := messageJSON(domain.Message{
+		ID: 1, ChatID: 2, Type: "audio",
+		MediaDuration: 139, MediaSize: 3300000, MediaName: "track.mp3",
+		MediaTitle: "Track One", MediaPerformer: "denis1488",
+	})
+	if j["media_title"] != "Track One" {
+		t.Fatalf("media_title = %v", j["media_title"])
+	}
+	if j["media_performer"] != "denis1488" {
+		t.Fatalf("media_performer = %v", j["media_performer"])
+	}
+	if j["media_duration"] != 139 {
+		t.Fatalf("media_duration = %v", j["media_duration"])
+	}
+
+	bare := messageJSON(domain.Message{ID: 1, ChatID: 2, Type: "audio", MediaSize: 3300000})
+	if _, ok := bare["media_title"]; ok {
+		t.Fatalf("media_title must be absent without tags: %v", bare["media_title"])
+	}
+	if _, ok := bare["media_performer"]; ok {
+		t.Fatalf("media_performer must be absent without tags: %v", bare["media_performer"])
 	}
 }

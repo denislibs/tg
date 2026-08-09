@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react'
 import classNames from '../../lib/classNames'
+import { glyph } from '../../../core/tgico-icons'
 import s from './Avatar.module.scss'
 
 // Canonical avatar sizes (px) by role — prefer a named size over a magic number
@@ -35,6 +36,10 @@ interface AvatarProps {
   ringColor?: string
   /** дополнительные классы на корне (например .person-avatar из tweb-топбара) */
   className?: string
+  /** id пира — уезжает в `data-peer-id` (tweb avatarNew.tsx:1076) */
+  peerId?: string | number
+  /** клик по самому аватару (tweb вешает обработчик на узел .avatar) */
+  onClick?: () => void
 }
 
 // Аватар — разметка tweb (avatarNew.tsx:1073): один узел
@@ -43,10 +48,15 @@ interface AvatarProps {
 // (`.avatar-like` даёт --size, line-height и font-size от --multiplier).
 // Онлайн-точка — `.is-online` (псевдоэлемент :after там же).
 //
-// Отступление: tweb красит аватар классом `.avatar-gradient` + `data-color`
-// (7 цветов пира из base.scss). У нас цвет приходит готовой строкой градиента
-// из `gradientFor()` — те же 7 значений, но применяем инлайном; перевод на
-// data-color потребует токенов --peer-avatar-* и правки ~45 мест вызова.
+// Класс `avatar-gradient` в tweb стоит на узле `.avatar` БЕЗУСЛОВНО
+// (avatarNew.tsx:1073 — он в самой строке class, а не в classList), и заливка
+// приходит из `_avatar.scss:14` — `background: linear-gradient(--color-top,
+// --color-bottom)` по `data-color`. Ставим так же.
+//
+// Отступление: `data-color` мы не пишем — цвет приходит готовой строкой градиента
+// из `gradientFor()` (те же 7 значений) и применяется инлайном, поэтому
+// заливка `.avatar-gradient` перекрывается; перевод на data-color потребует
+// токенов --peer-avatar-* и правки ~45 мест вызова.
 export default function Avatar({
   background,
   text,
@@ -56,6 +66,8 @@ export default function Avatar({
   online = false,
   ringColor,
   className,
+  peerId,
+  onClick,
 }: AvatarProps) {
   const px = typeof size === 'number' ? size : AVATAR_SIZE[size]
   const known = TWEB_AVATAR_SIZES.has(px)
@@ -67,19 +79,29 @@ export default function Avatar({
 
   return (
     <div
-      className={classNames('avatar', 'avatar-like', known ? `avatar-${px}` : '', online ? 'is-online' : '', s.root, className ?? '')}
+      className={classNames('avatar', 'avatar-like', known ? `avatar-${px}` : '', 'avatar-gradient', online ? 'is-online' : '', s.root, className ?? '')}
       style={style}
+      data-peer-id={peerId}
+      onClick={onClick}
     >
       {src ? (
         <img className="avatar-photo" src={src} alt="" loading="lazy" decoding="async" />
       ) : emoji === 'tg-logo' ? (
+        // отступление от tweb: в оригинале у сервисного аккаунта (id 777000)
+        // обычная фотография пира — `img.avatar-photo`, никакого отдельного
+        // глифа/иконки для него нет. У нас фото этого пира не приходит, поэтому
+        // рисуем логотип сами; убрать вместе с появлением аватарки сервисного бота.
         <svg className={s.glyph} width={px * 0.62} height={px * 0.62} viewBox="0 0 24 24" fill="#fff" aria-label="Telegram">
           <path d="M21.8 3.1 1.9 10.8c-1 .4-1 1.8 0 2.1l5 1.6 1.9 6c.3.9 1.4 1.1 2 .4l2.7-2.7 5 3.7c.7.5 1.7.1 1.9-.7l3.4-16c.2-1-.7-1.8-1.6-1.4zM9.5 14.3l8.6-5.3c.2-.1.4.2.2.3l-7 6.6c-.2.2-.3.5-.3.8l-.2 2.4-1.3-4.1c-.1-.3 0-.6.2-.7z" />
         </svg>
       ) : emoji === 'saved' ? (
-        <svg className={s.glyph} width={px * 0.5} height={px * 0.5} viewBox="0 0 24 24" fill="#fff" aria-label="Saved Messages">
-          <path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z" />
-        </svg>
+        // tweb avatarNew.tsx:737 ставит `icon: 'saved'`, а :1024 рендерит его
+        // глифом шрифта — `Icon(name, 'avatar-icon', 'avatar-icon-' + name)`,
+        // то есть `span.tgico.avatar-icon.avatar-icon-saved` без своих размеров:
+        // кегль даёт `_avatar.scss` (`.avatar-icon-saved { font-size:
+        // calc(30px / var(--multiplier)) !important }`), центрирование —
+        // `line-height: inherit` + `text-align: center` от `.avatar-like`.
+        <span className="tgico avatar-icon avatar-icon-saved" aria-hidden>{glyph('saved')}</span>
       ) : (
         text ?? emoji
       )}

@@ -23,9 +23,10 @@
   border-color: var(--avatar-ring, var(--surface-color));
 }
 
-// SVG-глиф (Telegram/Избранное) — в tweb это иконка шрифта `.avatar-icon`,
-// tgico не портирован. Центруем: у `.avatar-like` центрирование через
-// line-height, к inline-svg оно не применимо.
+// Глиф в центре аватарки. «Избранное» — иконка шрифта `.avatar-icon`, как в
+// tweb; сервисный аккаунт пока рисуется inline-svg (см. комментарий в Avatar.tsx).
+// Центруем абсолютом: у `.avatar-like` центрирование идёт через line-height, а к
+// inline-svg оно не применимо.
 .glyph {
   position: absolute;
   left: 50%;

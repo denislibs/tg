@@ -24,6 +24,7 @@ import { uiEvents } from '../core/hooks/uiEvents'
 import { markMediaPlayed } from '../core/mediaRead'
 import type { GifItem } from '../core/gifs'
 import { useChatSelection } from '../core/hooks/useChatSelection'
+import { useSetTransition } from '../core/hooks/useSetTransition'
 import { useChatInfoCard } from '../core/hooks/useChatInfoCard'
 import { usePinnedBar } from '../core/hooks/usePinnedBar'
 import { useChatSend } from '../core/hooks/useChatSend'
@@ -63,6 +64,7 @@ import { type MessageEntity } from '../core/models'
 import type { InlineResult } from '../core/managers/botsManager'
 import { openWebApp } from '../core/webapp'
 import { useSearchStore } from '../stores/searchStore'
+import { useAudioStore } from '../stores/audioStore'
 import { useChatPopups } from '../core/hooks/useChatPopups'
 import { clearPopups, openPopup } from '../stores/popupStore'
 import DatePickerPopup, { DATE_PICKER_POPUP_KIND } from './DatePickerPopup'
@@ -86,10 +88,23 @@ const MediaLightbox = lazy(() => import('./messages/MediaLightbox'))
 // (reply-плашка / многострочный инпут). Маску фейдов считает CSS
 // (styles/tweb/_chat.scss `.bubbles-scrollable`), а не JS.
 const REM = 16
-const padTop = (narrow: boolean, platesPx: number) => Math.round((narrow ? 3.5 : 4.5) * REM) + platesPx
+const padTop = (narrow: boolean, floatingPx: number) => Math.round((narrow ? 3.5 : 4.5) * REM) + floatingPx
 const padBottom = (narrow: boolean, surplusPx: number) => Math.round((narrow ? 3.5 : 4) * REM) + surplusPx
 // tweb topbar.setFloating: зазор между топбаром и стеком плейтов.
 const TOPBAR_GAP = 8
+// Плашка плеера стоит НАД топбаром и сдвигает его вниз на
+// --topbar-floating-audio-height = --topbar-audio-height (3rem) + --plates-gap
+// (0.5rem) — _chatTopbar.scss:7-9 по body.is-pinned-audio-shown (класс ставит
+// NowPlayingBar). Высота плашки в tweb захардкожена там же: createChatAudio →
+// createTopbarPlate({modifier: 'audio', height: 48}).
+// отступление от tweb: tweb отдаёт в chat.updatePinnedFloatingHeight только
+// floatingHeight (стек .topbar-floating-plates), хотя его же
+// --pinned-floating-height (topbar.ts:1571-1574), --chat-padding-top и
+// .bubbles-viewport считают плашки плеера/звонка. Из-за этого распорка ленты
+// недобирает ровно высоту плеера, и при играющем аудио верхнее сообщение
+// уезжает под топбар (проверено на референсе :8099: топбар 16→72, распорка
+// осталась 72px). Считаем распорку по тому же набору, что и CSS-переменная.
+const AUDIO_PLATE_FLOATING_HEIGHT = 56
 
 // Telegram's per-peer color palette (used to tint reply previews by their author)
 
@@ -308,6 +323,9 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // Search is owned by ChatHeader now; here we only read whether it's open (single-sourced
   // in searchStore) to hide the pinned bar + adjust the sticky-date offset.
   const searchOpen = useSearchStore((s) => s.byChat[numericChatId]?.open ?? false)
+  // tweb chat.ts:795 onActive → `.chat.is-search-active`: строка тегов-реакций
+  // топбар-поиска раздвигает ленту (_chat.scss:527 — распорка 3.75rem сверху).
+  const searchReactionsShown = useSearchStore((s) => s.byChat[numericChatId]?.reactionsShown ?? false)
   // Запланированные сообщения: счётчик (календарик в композере); оверлей списка — в popups.
   const [scheduledCount, setScheduledCount] = useState(0)
   useEffect(() => {
@@ -392,8 +410,13 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // tweb --chat-input-height-surplus (chat.ts setChatInputSurplus).
   const [inputSurplus, setInputSurplus] = useState(0)
   const chatInputRef = useMeasuredHeight((h) => setInputSurplus(Math.max(0, h - REM * 3)))
+  // Плашка плеера — не часть стека .topbar-floating-plates: она лежит выше
+  // топбара и двигает его вниз (см. AUDIO_PLATE_FLOATING_HEIGHT). В резерв
+  // ленты она входит так же, как в --pinned-floating-height.
+  const audioPlateShown = useAudioStore((st) => st.track != null)
+  const floatingHeight = platesHeight + (audioPlateShown ? AUDIO_PLATE_FLOATING_HEIGHT : 0)
 
-  const padTopPx = padTop(narrow, platesHeight)
+  const padTopPx = padTop(narrow, floatingHeight)
   const padBottomPx = padBottom(narrow, inputSurplus)
 
   const {
@@ -414,6 +437,11 @@ export default function Chat({ chat, onBack, thread }: Props) {
     useChatSelection(scrollRef)
   // Enter selection mode from the header menu with nothing selected yet.
   const startSelectMode = () => setSelectionMode(true)
+  // Классы режима выделения на `.bubbles` — ровно как tweb SetTransition в
+  // ChatSelection.onToggleSelection (selection.ts:1019-1030): `is-selecting` +
+  // `forwards`/`backwards` + `animating` на 200 мс. От `forwards` зависят сдвиг
+  // входящих баблов и масштаб аватарки группы (_chat.scss:1181-1204).
+  const selectingCls = useSetTransition(selecting, 'is-selecting', 200)
 
   // Удаление чата / выход. Владелец группы/канала удаляет для всех (DELETE
   // /chats/{id}); иначе — выхожу сам (DELETE members/me), приватный чат так же
@@ -581,6 +609,15 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const openSenderE = useEvent(openSender)
   const playVoiceE = useEvent(playVoice)
   const toggleSelectE = useEvent(toggleSelect)
+  // Клик по баблу-контейнеру альбома выделяет/снимает всю группу разом
+  // (tweb selection.ts:906-920).
+  const selectAlbumE = useEvent((ids: number[], select: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      for (const id of ids) select ? next.add(id) : next.delete(id)
+      return next
+    })
+  })
   const openMsgMenuE = useEvent(openMsgMenu)
   const jumpToSeqE = useEvent(jumpToSeq)
   // Клик по дате-разделителю открывает пикер (tweb bubbles.ts:3058-3090 →
@@ -650,6 +687,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
       openSender: openSenderE,
       playVoice: playVoiceE,
       toggleSelect: toggleSelectE,
+      selectAlbum: selectAlbumE,
       openMsgMenu: openMsgMenuE,
       jumpToSeq: jumpToSeqE,
       openDatePicker: openDatePickerE,
@@ -664,7 +702,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
       unlockPaid: unlockPaidE,
       forwardMsg: forwardMsgE,
     }),
-    [openSenderE, playVoiceE, toggleSelectE, openMsgMenuE, jumpToSeqE, openDatePickerE, openLightboxE, recallE, mediaPlayedE, roundPlayingE, toggleReaction, showReactedUsers, openStarReaction, cancelUploadE, unlockPaidE, forwardMsgE],
+    [openSenderE, playVoiceE, toggleSelectE, selectAlbumE, openMsgMenuE, jumpToSeqE, openDatePickerE, openLightboxE, recallE, mediaPlayedE, roundPlayingE, toggleReaction, showReactedUsers, openStarReaction, cancelUploadE, unlockPaidE, forwardMsgE],
   )
 
   // (Ack reconcile + send-rejection run in realtimeBridge → messagesStore; live
@@ -939,8 +977,10 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // Стек плавающих плашек под топбаром (tweb .topbar-floating-plates): пин-бар и
   // панель тегов «Избранного». Пустой стек прячется классом .hide, как в tweb
   // topbar.setFloating — и тогда лента не резервирует под него место.
-  const hasPinPlate = !thread && !searchOpen && pins.length > 0
-  const hasTagsPlate = isSaved && !thread && savedTagsCount > 0
+  // Число видимых плашек — tweb topbar.setFloating пишет его в
+  // `topbar.container.dataset.floating` и по нему же решает, прятать ли обёртку.
+  const platesCount = (!thread && !searchOpen && pins.length > 0 ? 1 : 0) +
+    (isSaved && !thread && savedTagsCount > 0 ? 1 : 0)
   const plates = (
     <>
       {!thread && (
@@ -972,6 +1012,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
           isRealChat ? 'can-click-date' : '',
           // tweb _chat.scss:1217 — видимость угловых кнопок даёт класс на колонке
           showScrollDown ? 'is-go-down-visible' : '',
+          searchReactionsShown ? 'is-search-active' : '',
         )}
         style={{
           // tweb topbar.setFloating: высота стека плейтов + плавающие плашки
@@ -991,7 +1032,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
         <NowPlayingBar />
 
         {thread ? (
-        <div className={classNames('sidebar-header', 'topbar', 'has-avatar')}>
+        <div className={classNames('sidebar-header', 'topbar', 'has-avatar')} data-floating="0">
           <div className="chat-info-container">
             <IconButton onClick={onCloseThread} color="var(--secondary-text-color)" className="sidebar-close-button">
               <TgIcon name="back" />
@@ -1042,7 +1083,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
           online={headerOnline}
           isBot={isBotChat}
           plates={plates}
-          platesHidden={!hasPinPlate && !hasTagsPlate}
+          platesCount={platesCount}
           platesRef={platesRef}
           onJumpToSeq={jumpToSeqE}
           onBack={onBack}
@@ -1072,7 +1113,12 @@ export default function Chat({ chat, onBack, thread }: Props) {
             .bubbles-padding-top + .bubbles-inner + .bubbles-padding-bottom
             (bubbles.ts:4178-4186). Распорки заменяют паддинги контента: их высота
             меняется вместе с плейтами, и скролл компенсируется по дельте. */}
-        <div ref={bubblesRef} className={classNames('bubbles', feedMsgs.length ? 'has-groups' : '', selecting ? 'is-selecting' : '')}>
+        {/* `no-select` — как в tweb (selection.ts:433): гасит `user-select: text`
+            у .bubble-content, чтобы drag-выделение не красило текст. */}
+        <div
+          ref={bubblesRef}
+          className={classNames('bubbles', feedMsgs.length ? 'has-groups' : '', selecting ? 'no-select' : '', selectingCls)}
+        >
         <div
           ref={scrollRef}
           onMouseDown={dragSelect.onMouseDown}
@@ -1124,7 +1170,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
             bottom 0 внутри #column-center) > .chat-input-container (max-width
             --chat-width, центрируется). Высота этого узла задаёт
             --chat-input-height-surplus и нижнюю распорку ленты. */}
-        <div ref={chatInputRef} className="chat-input chat-input-main">
+        <div ref={chatInputRef} className={classNames('chat-input', 'chat-input-main', selectingCls)}>
         <div className="chat-input-container chat-input-main-container">
         {/* tweb input.ts:615-616 — кнопка «вниз» живёт прямо в .chat-input-container */}
         {scrollDownFab}

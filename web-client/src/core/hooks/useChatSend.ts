@@ -24,6 +24,25 @@ import { useUploadsStore } from '../../stores/uploadsStore'
 import { scaleImageForSend } from '../media/scaleImageForSend'
 import tabId from '../../config/tabId'
 
+/**
+ * Длительность аудио/видео файла до аплоада — порт tweb (popups/newMedia.ts:1562-1579:
+ * `new Audio()` на objectURL + onMediaLoad → `params.duration`). Сервер считает
+ * длительность асинхронно, поэтому без этого первый `new_message` приезжает без
+ * media_duration и подпись трека остаётся пустой до перезагрузки истории.
+ * Ошибку/недоступность метаданных глотаем — длительность просто не уедет.
+ */
+function probeMediaDuration(file: File, kind: 'audio' | 'video'): Promise<number | undefined> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file)
+    const el = document.createElement(kind)
+    const done = (d?: number) => { URL.revokeObjectURL(url); el.src = ''; resolve(d) }
+    el.preload = 'metadata'
+    el.onloadedmetadata = () => done(Number.isFinite(el.duration) && el.duration > 0 ? Math.round(el.duration) : undefined)
+    el.onerror = () => done(undefined)
+    el.src = url
+  })
+}
+
 // Max characters per message (matches the backend's maxMessageRunes / Telegram 4096).
 // Longer drafts are split into several messages on send.
 const MAX_MESSAGE_LEN = 4096
@@ -291,6 +310,14 @@ export function useChatSend({
     const mime = file.type || origMime
     const width = prepared?.width ?? 0
     const height = prepared?.height ?? 0
+    // Длительность читаем ЗДЕСЬ (tweb newMedia.ts:1562-1579), а не ждём асинхронной
+    // обработки на сервере: иначе бабл первого new_message остаётся без неё. mp3,
+    // отправленный «как файл» (type='document'), тоже трек — смотрим на mime.
+    const duration = origMime.startsWith('audio/')
+      ? await probeMediaDuration(input, 'audio')
+      : origMime.startsWith('video/')
+        ? await probeMediaDuration(input, 'video')
+        : undefined
     const clientMsgId = `c-${chat.id}-${performance.now()}-${Math.random().toString(36).slice(2)}`
     // «Отправляет файл/фото/видео/аудио» у собеседника на время аплоада
     // (tweb sendMessageUpload*Action): пинг сразу и каждые 3с (TTL приёмника 6с).
@@ -330,7 +357,7 @@ export function useChatSend({
       useUploadsStore.getState().setProgress(clientMsgId, 0)
       const typingTimer = startUploadTyping()
       try {
-        const mediaId = await managers.media.upload({ blob: file, mime, size: file.size, width, height, fileName: file.name, progressId: clientMsgId })
+        const mediaId = await managers.media.upload({ blob: file, mime, size: file.size, width, height, duration, fileName: file.name, progressId: clientMsgId })
         void managers.realtime.attachPendingMedia({ chatId: numericChatId, threadRootId, clientMsgId, mediaId })
         void managers.realtime.sendMessage({ chatId: numericChatId, text: caption, clientMsgId, mediaId, type, groupedId, threadRootId, paidMediaPrice: paidMediaPrice ?? undefined })
       } catch {
@@ -349,7 +376,7 @@ export function useChatSend({
     useUploadsStore.getState().setProgress(clientMsgId, 0)
     const typingTimer = startUploadTyping()
     try {
-      const mediaId = await managers.media.upload({ blob: file, mime, size: file.size, width, height, fileName: file.name, progressId: clientMsgId })
+      const mediaId = await managers.media.upload({ blob: file, mime, size: file.size, width, height, duration, fileName: file.name, progressId: clientMsgId })
       void managers.realtime.attachPendingMedia({ chatId: numericChatId, threadRootId, clientMsgId, mediaId })
       void managers.realtime.sendMessage({ chatId: numericChatId, text: caption, clientMsgId, mediaId, type, groupedId, threadRootId })
     } catch {

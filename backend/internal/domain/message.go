@@ -103,6 +103,11 @@ type Message struct {
 	MediaDuration int
 	MediaSize     int64
 	MediaName     string
+	// Теги аудиотрека (ID3 title/artist), вычитанные ffprobe при обработке. Пустые
+	// у файлов без тегов и у не-аудио: тогда клиент подписывает бабл размером файла
+	// (tweb audio.ts — подпись из performer, иначе formatBytes).
+	MediaTitle     string
+	MediaPerformer string
 	// Views is the deduplicated viewer count for a channel post (0 for
 	// group/private messages, which don't track views).
 	Views int64

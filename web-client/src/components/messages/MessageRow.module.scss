@@ -102,9 +102,9 @@
   line-height: var(--line-height);
   word-break: break-word;
   white-space: pre-wrap; // фикс пробелов в начале строки
-  // tweb _chatBubble.scss:380-384 — текст сообщения выделяем (body глушит
-  // user-select на всём остальном хроме).
-  user-select: text;
+  // user-select текстом даёт партиал (_chatBubble.scss:382-384: `.bubble-content`
+  // выделяется только вне режима выделения и вне drag'а) — здесь не дублируем,
+  // иначе drag-выделение сообщений красило бы текст.
 }
 // Имя отправителя в бабле (tweb `.name`, _chatBubble.scss:1991-1997).
 .name {

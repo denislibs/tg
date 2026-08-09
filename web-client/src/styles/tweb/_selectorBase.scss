@@ -1,0 +1,9 @@
+// Выдержка из tweb `src/scss/base.scss:201` — переменная размера чипа
+// `.selector-user`. Целиком base.scss не портируем (глобальный ресет,
+// конфликтующий с нашим styles/index.scss) — та же причина, что у
+// `_chatlistRow.scss` / `_code.scss` / `_page.scss`. Без неё `_selector.scss`
+// (порт партиала) считает высоту чипа от несуществующей переменной.
+// Скопировано дословно.
+:root {
+  --selector-user-size: 1.875rem;
+}

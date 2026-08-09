@@ -207,7 +207,12 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
   } | null>(null)
   const openMedia = (index: number, e: React.MouseEvent<HTMLDivElement>) => {
     const list = (msgs ?? []).filter((m) => m.mediaId != null)
-    const items: LightboxItem[] = list.map((m) => ({ mediaId: m.mediaId as number, type: m.type, date: when(m), width: m.mediaWidth, height: m.mediaHeight }))
+    const items: LightboxItem[] = list.map((m) => ({
+      mediaId: m.mediaId as number, type: m.type, date: when(m),
+      // подпись к медиа (tweb `.media-viewer-caption`)
+      caption: m.text || undefined, captionEntities: m.entities,
+      width: m.mediaWidth, height: m.mediaHeight,
+    }))
     const el = e.currentTarget
     const r = el.getBoundingClientRect()
     const img = el.querySelector('img')
@@ -249,7 +254,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
     <>
       {/* Тот же framed-таб-ряд, что и у папок в списке чатов; липнет под
           absolute-шапку панели (tweb .search-super-tabs-scrollable: sticky) */}
-      <TabsBar mode="sticky" from="var(--background-color)" top={stickyTop} barRef={navRef}>
+      <TabsBar top={stickyTop} barRef={navRef}>
         <div className={s.tabsWrap}>
           <Tabs value={tab} onChange={(v) => onTab(v as string)}>
             <Tabs.List framed>

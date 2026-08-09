@@ -28,7 +28,8 @@ func (r *MediaAccessRepo) DimsByIDs(ctx context.Context, ids []int64) (map[int64
 	// blur_preview is bytea (scanned into []byte; NULL → nil). COALESCE the nullable
 	// text columns so a NULL doesn't fail a scan into a Go string.
 	rows, err := q.Query(ctx, `SELECT id, COALESCE(width,0), COALESCE(height,0), COALESCE(mime,''),
-		blur_preview, COALESCE(thumb_key,''), COALESCE(duration,0), COALESCE(size,0), COALESCE(file_name,'')
+		blur_preview, COALESCE(thumb_key,''), COALESCE(duration,0), COALESCE(size,0), COALESCE(file_name,''),
+		COALESCE(title,''), COALESCE(performer,'')
 		FROM media WHERE id = ANY($1)`, ids)
 	if err != nil {
 		return nil, err
@@ -38,7 +39,8 @@ func (r *MediaAccessRepo) DimsByIDs(ctx context.Context, ids []int64) (map[int64
 		var id int64
 		var d usecasechat.MediaDims
 		var thumbKey string
-		if e := rows.Scan(&id, &d.Width, &d.Height, &d.Mime, &d.Blur, &thumbKey, &d.Duration, &d.Size, &d.FileName); e != nil {
+		if e := rows.Scan(&id, &d.Width, &d.Height, &d.Mime, &d.Blur, &thumbKey, &d.Duration, &d.Size, &d.FileName,
+			&d.Title, &d.Performer); e != nil {
 			return nil, e
 		}
 		d.HasThumb = thumbKey != ""

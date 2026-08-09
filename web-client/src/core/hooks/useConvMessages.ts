@@ -11,7 +11,10 @@ import { messageToConvMsg } from '../messageToConvMsg'
 import { usePeers, peersKey } from './usePeers'
 import type { Peer } from '../managers/peersManager'
 import { useChatsStore } from '../../stores/chatsStore'
+import { usePinsStore } from '../../stores/pinsStore'
 import type { MessageWindow } from './useMessageWindow'
+
+const NO_PINS: never[] = []
 
 interface UseConvMessagesArgs {
   numericChatId: number
@@ -36,6 +39,12 @@ export function useConvMessages({ numericChatId, isRealChat, isGroup, win, meId,
   const peerReadSeq = useChatsStore((s) =>
     isRealChat ? s.dialogs.find((d) => d.chatId === numericChatId)?.peerReadSeq ?? 0 : 0,
   )
+
+  // Закреплённые сообщения чата уже лежат в сторе (usePinnedBar грузит listPins,
+  // realtimeBridge обновляет по rt:pin_message) — берём оттуда флаг для кластера
+  // времени (tweb message.pFlags.pinned → иконка pinnedchat_filled).
+  const pins = usePinsStore((s) => s.byChat[numericChatId]) ?? NO_PINS
+  const pinnedIds = useMemo(() => new Set(pins.map((p) => p.id)), [pins])
 
   // For real group chats, resolve incoming sender ids -> display names so bubbles
   // can show the author. Private chats never pass a senderName (unchanged).
@@ -77,6 +86,7 @@ export function useConvMessages({ numericChatId, isRealChat, isGroup, win, meId,
       if (m.seq === 0 && m.chatId !== numericChatId) {
         conv = { ...conv, out: false, status: undefined, sender: foreignRootName || conv.sender, senderId: undefined }
       }
+      if (m.id != null && pinnedIds.has(m.id)) conv = { ...conv, pinned: true }
       const key = m.clientId ?? m.id ?? m.seq
       seen.add(key)
       const json = JSON.stringify(conv)
@@ -87,7 +97,7 @@ export function useConvMessages({ numericChatId, isRealChat, isGroup, win, meId,
     })
     for (const key of cache.keys()) if (!seen.has(key)) cache.delete(key)
     return next
-  }, [isRealChat, win.msgs, meId, resolveSenders, peers, peerReadSeq, foreignRootName, numericChatId])
+  }, [isRealChat, win.msgs, meId, resolveSenders, peers, peerReadSeq, foreignRootName, numericChatId, pinnedIds])
 
   return { msgs, peers }
 }

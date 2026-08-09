@@ -68,6 +68,9 @@ const es: Dict = {
   'Notifications for channels': 'Notificaciones de canales',
   'Message Preview': 'Vista previa del mensaje',
   'New notification': 'Nueva notificación',
+  // Título de la pestaña con notificaciones nuevas (tweb 'Notifications.Count').
+  '%d notification': '%d notificación',
+  '%d notifications': '%d notificaciones',
   'For 1 Hour': 'Durante 1 hora',
   'For 4 Hours': 'Durante 4 horas',
   'For 8 Hours': 'Durante 8 horas',
@@ -189,6 +192,10 @@ const es: Dict = {
   'New Message': 'Nuevo mensaje',
   'Never miss a message! 🔔': '¡No te pierdas ningún mensaje! 🔔',
   'Enable notifications to stay updated.': 'Activa las notificaciones para estar al día.',
+  'You can turn notifications back on in the settings.':
+    'Puedes volver a activar las notificaciones en los ajustes.',
+  'Hold Shift to resize both columns at once':
+    'Mantén Shift para redimensionar ambas columnas a la vez',
   subscribers: 'suscriptores',
   'There were no results for': 'No hubo resultados para',
   '. Try a new search.': '. Prueba otra búsqueda.',

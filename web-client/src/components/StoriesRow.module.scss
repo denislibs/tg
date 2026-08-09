@@ -2,6 +2,12 @@
 // (.ListContainer / .List / .ListItem / .ListItemName). Значения дословные;
 // в tweb это тоже CSS-модуль, поэтому имена классов остаются локальными —
 // глобальный только `.stories-list`, он в styles/tweb/_storiesList.scss.
+//
+// ВАЖНО: внутри `*.module.scss` можно звать только `*-global` варианты миксинов
+// (`animation-level-global`, `hover-global`) — обычные пишут селектор
+// `body.animation-level-2 &` / `html.no-touch &`, и css-modules хеширует в них
+// ГЛОБАЛЬНЫЙ класс (`body._animation-level-2_xxxx`), после чего правило не
+// матчится никогда. tweb в этом файле по той же причине зовёт `-global`.
 @use '../styles/foundation' as *;
 
 // tweb .List
@@ -32,7 +38,6 @@
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  align-items: center;
   height: 82px;
   width: 74px;
   padding: .3125rem .625rem;
@@ -40,7 +45,7 @@
   border-radius: $border-radius;
   transform: translateX(0) scale(1);
 
-  @include animation-level(2) {
+  @include animation-level-global(2) {
     transition: transform var(--transition-standard-in);
   }
 }
@@ -51,9 +56,8 @@
   line-height: 14px;
   text-align: center;
   opacity: calc(1 - (var(--progress) * 1.25));
-  width: 100%;
 
-  @include animation-level(2) {
+  @include animation-level-global(2) {
     transition: opacity var(--transition-standard-in);
   }
 
@@ -62,6 +66,40 @@
 
 .isRead .name {
   color: var(--secondary-text-color);
+}
+
+// tweb .ListItem.isMasked: у всех элементов стопки, кроме последнего, кольцо
+// подрезается — из-под него выглядывает следующая аватарка.
+.isMasked {
+  :global(.avatar-stories-simple) {
+    mask-image: linear-gradient(calc(90deg * var(--reflect)), #fff 73%, transparent 0);
+    mask-composite: xor;
+  }
+}
+
+// tweb .ListItem:global(.menu-open)
+.item:global(.menu-open) {
+  --background-color: var(--light-filled-secondary-text-color);
+  background-color: var(--background-color);
+}
+
+// tweb `.ListItem :global { .avatar { &-background {…} } }`
+.item {
+  :global(.avatar-background) {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    background-color: var(--background-color);
+    border-radius: 50%;
+  }
+
+  // отступление от tweb: сегментное кольцо-канвас `.avatar-stories-svg`
+  // (dashedCircle) не портировано, поэтому правил
+  // `.avatar-stories-svg { opacity: calc(1 - var(--progress)); z-index: 1 }`
+  // и `.avatar-stories-simple { opacity: var(--progress) }` здесь нет:
+  // простое кольцо у нас единственное и видно в обоих состояниях.
 }
 
 // tweb .ListContainer
@@ -73,13 +111,15 @@
   height: 92px;
   transform: translateY(0);
 
-  @include animation-level(2) {
+  @include animation-level-global(2) {
     transition: transform var(--transition-standard-in);
   }
 
-  &:not(.disableHover) {
+  // `disable-hover` вешает useCollapsable (свёрнут или идёт переход); глобальное
+  // правило `pointer-events: none !important` — в styles/tweb/_storiesList.scss.
+  &:not(:global(.disable-hover)) {
     .item {
-      @include hover() {
+      @include hover-global() {
         --background-color: var(--light-filled-secondary-text-color);
         background-color: var(--background-color);
       }
@@ -92,34 +132,8 @@
   }
 }
 
-// --- Наше: кольцо истории. В tweb это canvas `.avatar-stories-svg` поверх
-// аватара (avatarNew.tsx:365) — подсистема не портирована, рисуем кольцом-фоном.
-.ring {
-  position: relative;
-  width: 62px;
-  height: 62px;
-  border-radius: 50%;
-  padding: 2px;
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.ringInner {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  background: var(--surface-color);
-  padding: 2px;
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-// Бейдж «+» на своём аватаре
+// Бейдж «+» на своём аватаре. Отступление от tweb: там завести историю можно
+// только из вьюера/меню, отдельного бейджа в ряду нет.
 .addBadge {
   position: absolute;
   right: -1px;
@@ -127,11 +141,12 @@
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: linear-gradient(215deg, #34c76f -1.61%, #3da1fd 97.44%);
+  background: linear-gradient(215.87deg, var(--avatar-color-story-unread-from) -1.61%, var(--avatar-color-story-unread-to) 97.44%);
   border: 2px solid var(--surface-color);
   box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
+  z-index: 1;
 }

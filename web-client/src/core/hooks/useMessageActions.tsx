@@ -43,7 +43,10 @@ type ReactedState = { x: number; y: number; rows: ReactedRow[] }
 // Read-date исходящего сообщения (приватный чат, tweb getOutboxReadDate):
 // лениво подгружается при открытии меню. null — строку не показываем.
 type ReadDateState = { state: 'loading' } | { state: 'done'; at: string } | { state: 'restricted' }
-export type MsgMenuItem = { icon: ReactNode; label: string; danger?: boolean; onClick?: (e: React.MouseEvent) => void }
+// label — ReactNode: у пункта read-date это скелетон-лоадер / кластер
+// «Read show when», а не строка (tweb кладёт в textElement узлы).
+// separatorDown — `hr` после пункта (tweb ButtonMenu separatorDown).
+export type MsgMenuItem = { icon: ReactNode; label: ReactNode; danger?: boolean; separatorDown?: boolean; onClick?: (e: React.MouseEvent) => void }
 
 interface UseMessageActionsArgs {
   chat: Chat
@@ -512,6 +515,34 @@ export function useMessageActions({
   ]
 
   const regularMenuItems: MsgMenuItem[] = [
+    // Исходящее сообщение — ПЕРВЫЙ видимый пункт (tweb contextMenu.ts:874,
+    // localName 'views'). Приватный чат: дата прочтения (getOutboxReadDate,
+    // :1504-1541) — пока запрос летит, вместо текста скелетон
+    // `.btn-menu-item-loader.shimmer` (:1508-1511), следом `hr` (:1514).
+    // Группа/канал: «Кто просмотрел» (без разделителя — tweb вешает `hr` только
+    // в ветке isUser).
+    ...(() => {
+      const isOut = isRealChat && (msgs[msgMenu?.idx ?? -1]?.out ?? false)
+      if (!isOut) return []
+      const icon = <TgIcon name="checks" size={20} />
+      if (chat.type !== 'private') return [{ icon, label: 'Viewers', onClick: showViewers }]
+      if (!readDate) return []
+      if (readDate.state === 'loading') {
+        return [{ icon, label: <div className="btn-menu-item-loader shimmer" />, separatorDown: true }]
+      }
+      // tweb :1526 — лоадер заменяется ТОЛЬКО датой (formatFullSentTime), слова
+      // «Прочитано» в успешном случае нет (закомментировано в оригинале).
+      if (readDate.state === 'done') return [{ icon, label: friendlyMsgTime(readDate.at, lang), separatorDown: true }]
+      // YOUR_PRIVACY_RESTRICTED (tweb :1537-1540): «Read» + `.show-when`.
+      // отступление от tweb: ключей 'Chat.ContextMenu.Read'/'PmReadShowWhen' в
+      // нашем словаре нет — язык берём напрямую, как это делает friendlyMsgTime.
+      const ru = lang === 'ru'
+      return [{
+        icon,
+        label: <>{ru ? 'Прочитано' : 'Read'} <span className="show-when">{ru ? 'показать когда' : 'show when'}</span></>,
+        separatorDown: true,
+      }]
+    })(),
     { icon: <TgIcon name="reply" size={20} />, label: 'Reply', onClick: startReply },
     // «Ответить в другом чате» (tweb ReplyToAnotherChat, icon replace) — рядом с
     // «Ответить». Не в секретном чате (кросс-чат перенос там неприменим).
@@ -566,21 +597,6 @@ export function useMessageActions({
     ...(isRealChat ? [{ icon: <TgIcon name="star" size={20} />, label: 'React with Stars', onClick: openStarReactionFromMenu }] : []),
     ...(isRealChat && !isSecret ? [{ icon: <TgIcon name="reply" size={20} style={{ transform: 'scaleX(-1)' }} />, label: 'Forward', onClick: openForward }] : []),
     ...(isRealChat ? [{ icon: <TgIcon name="checkround" size={20} />, label: 'Select', onClick: startSelect }] : []),
-    // Исходящее сообщение: в приватном чате — «Прочитано в HH:MM» (read-date,
-    // подгружается лениво); в группе/канале — «Кто просмотрел» (viewers).
-    ...(() => {
-      const isOut = isRealChat && (msgs[msgMenu?.idx ?? -1]?.out ?? false)
-      if (!isOut) return []
-      if (chat.type === 'private') {
-        if (!readDate) return []
-        // «Прочитано»/«Read» — как в friendlyMsgTime, ru vs остальные (en).
-        const readWord = lang === 'ru' ? 'Прочитано' : 'Read'
-        const label =
-          readDate.state === 'done' ? `${readWord} ${friendlyMsgTime(readDate.at, lang)}` : readWord
-        return [{ icon: <TgIcon name="checks" size={20} />, label }]
-      }
-      return [{ icon: <TgIcon name="checks" size={20} />, label: 'Viewers', onClick: showViewers }]
-    })(),
     // «Статистика» — пост канала, зритель админ/владелец (tweb can_view_stats).
     ...(canViewPostStats && menuRawMsg()?.id != null
       ? [{ icon: <TgIcon name="statistics" size={20} />, label: 'Statistics', onClick: openPostStats }]

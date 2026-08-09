@@ -1,7 +1,7 @@
 // `.peer-title` и `.chatlist-chat` — выдержка из tweb `src/scss/base.scss:1600-1697`
 // (типографика строки чат-листа и слоты имени пира). Целиком base.scss не
 // портируем: это глобальный ресет, конфликтующий с нашим styles/index.scss —
-// та же причина, что у `_code.scss`, `_page.scss`, `_progressLine.scss`.
+// та же причина, что у `_code.scss`, `_page.scss`.
 // Скопировано дословно.
 @use "../foundation" as *;
 

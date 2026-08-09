@@ -53,14 +53,9 @@
   color: var(--message-status-color);
 }
 
-// tweb `.time-icon` / `.time-part` — иконки внутри кластера (views, forwards).
-.icon {
-  pointer-events: none;
-  height: 1.125rem;
-}
-.iconViews {
-  margin-inline-start: 2px;
-}
+// Иконки кластера (пин, views, forwards, таймер секретки) носят ГЛОБАЛЬНЫЕ классы
+// tweb `time-icon time-part [time-icon-views]` — их правила уже в
+// _chatBubble.scss:1744-1765, дубля в модуле не нужно.
 .views {
   font-variant-numeric: tabular-nums;
 }

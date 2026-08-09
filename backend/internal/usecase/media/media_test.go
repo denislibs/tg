@@ -20,6 +20,9 @@ type fakeRepo struct {
 	// content tests).
 	m     domain.Media
 	parts map[int64]map[int]partRow
+	// processed, when set, receives what background processing persisted (the
+	// test awaits it instead of sleeping on the detached goroutine).
+	processed chan ProcessedMeta
 }
 
 func newFakeRepo() *fakeRepo { return &fakeRepo{rows: map[int64]domain.Media{}} }
@@ -47,7 +50,10 @@ func (r *fakeRepo) GetByID(_ context.Context, id int64) (domain.Media, error) {
 	return domain.Media{}, domain.ErrNotFound
 }
 
-func (r *fakeRepo) UpdateProcessed(_ context.Context, _ int64, _, _, _ int, _ string) error {
+func (r *fakeRepo) UpdateProcessed(_ context.Context, _ int64, res ProcessedMeta) error {
+	if r.processed != nil {
+		r.processed <- res
+	}
 	return nil
 }
 
@@ -256,6 +262,59 @@ func TestPutContent_OwnerOnly(t *testing.T) {
 	}
 	if err := s.PutContent(context.Background(), 1, 99, bytes.NewReader([]byte("12345")), 5); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("non-owner = %v, want ErrForbidden", err)
+	}
+}
+
+// fakeProcessor отдаёт заранее заданный результат «разбора» файла — как ffprobe
+// после чтения ID3-тегов.
+type fakeProcessor struct{ res ProcessResult }
+
+func (p fakeProcessor) Process(context.Context, io.Reader, string) (ProcessResult, error) {
+	return p.res, nil
+}
+
+// Теги трека, вычитанные процессором, доезжают до репозитория вместе с
+// размерами/длительностью и ключом превью (фоновая обработка после PutContent).
+func TestProcess_PersistsAudioTags(t *testing.T) {
+	repo := &fakeRepo{
+		m:         domain.Media{ID: 1, OwnerID: 7, ObjectKey: "7/x", Mime: "audio/mpeg", Size: 5},
+		processed: make(chan ProcessedMeta, 1),
+	}
+	s := New(repo, newFakeStorage(), fakeProcessor{res: ProcessResult{
+		Duration: 139, Title: "Track One", Performer: "denis1488",
+	}})
+	if err := s.PutContent(context.Background(), 1, 7, bytes.NewReader([]byte("12345")), 5); err != nil {
+		t.Fatalf("PutContent: %v", err)
+	}
+	select {
+	case got := <-repo.processed:
+		want := ProcessedMeta{Duration: 139, Title: "Track One", Performer: "denis1488"}
+		if got != want {
+			t.Fatalf("UpdateProcessed = %+v, want %+v", got, want)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("background processing did not persist anything")
+	}
+}
+
+// Файл без тегов: в репозиторий уезжают пустые title/performer — репозиторий по
+// ним ничего не перетирает, колонки остаются NULL.
+func TestProcess_NoTags(t *testing.T) {
+	repo := &fakeRepo{
+		m:         domain.Media{ID: 1, OwnerID: 7, ObjectKey: "7/x", Mime: "audio/mpeg", Size: 5},
+		processed: make(chan ProcessedMeta, 1),
+	}
+	s := New(repo, newFakeStorage(), fakeProcessor{res: ProcessResult{Duration: 12}})
+	if err := s.PutContent(context.Background(), 1, 7, bytes.NewReader([]byte("12345")), 5); err != nil {
+		t.Fatalf("PutContent: %v", err)
+	}
+	select {
+	case got := <-repo.processed:
+		if got.Title != "" || got.Performer != "" {
+			t.Fatalf("tags = %q/%q, want empty", got.Title, got.Performer)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("background processing did not persist anything")
 	}
 }
 

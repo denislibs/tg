@@ -1,0 +1,55 @@
+// Порт tweb `src/components/sidebarLeft/pendingSuggestion.module.scss`.
+// Геометрию плашки даёт глобальный `.row` (styles/tweb/_row.scss) — здесь только
+// то, что добавляет модуль: фон, размеры подзаголовка, крестик и свёрнутый вид.
+//
+// Не портирован блок `.suggestion.danger` — он нужен единственной плашке
+// `frozen`, а у неё нет источника данных (см. selectPendingSuggestion.ts).
+
+// отступление от tweb: жирность заголовка у него даёт ГЛОБАЛЬНЫЙ `.text-bold`
+// (scss/components/_global.scss:150), которого в наших портированных партиалах
+// нет, а `styles/tweb/*` правке не подлежит — поэтому правило живёт здесь.
+// Класс `.text-bold` в разметке всё равно оставлен: дерево совпадает с tweb.
+.suggestionTitle {
+  font-weight: var(--font-weight-bold);
+}
+
+.suggestionSubtitle {
+  font-size: var(--font-size-16);
+  line-height: var(--line-height-16);
+}
+
+.suggestionContainer {
+  overflow: hidden;
+  margin: 0.5rem;
+
+  :global(.has-vertical-folders) & {
+    margin-bottom: 0;
+  }
+}
+
+.secondary {
+  background-color: var(--light-filled-secondary-text-color) !important;
+}
+
+.collapsed {
+  width: 100%;
+  height: 3.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+// Селектор с тегом (специфичность 0,1,1) — глобальный `.btn-icon` из
+// styles/tweb/_button.scss попадает в бандл ПОСЛЕ CSS-модулей и при равной
+// специфичности перебивал бы `padding` модуля.
+// отступление от tweb: у него порядок импортов обратный и хватает `.close`.
+button.close {
+  font-size: 1.0625rem;
+  padding: 0.375rem;
+  position: absolute;
+  inset-inline-end: 0.25rem;
+  top: 0.25rem;
+  z-index: 1;
+}

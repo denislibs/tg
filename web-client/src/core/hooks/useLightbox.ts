@@ -50,6 +50,9 @@ export function useLightbox({ win, isRealChat, meId, meName, peers, chatName, la
         type: m.secretMedia?.mediaType ?? m.type,
         sender: m.senderId === meId ? (meName || 'Вы') : (peers.get(m.senderId)?.displayName || chatName),
         date: friendlyMsgTime(m.createdAt, lang),
+        // подпись к медиа — текст самого сообщения (tweb `.media-viewer-caption`)
+        caption: m.text || undefined,
+        captionEntities: m.entities,
         width: m.mediaWidth,
         height: m.mediaHeight,
         secret: m.secretMedia
@@ -66,6 +69,8 @@ export function useLightbox({ win, isRealChat, meId, meName, peers, chatName, la
         type: src?.secretMedia?.mediaType ?? 'photo',
         sender: src && src.senderId === meId ? (meName || 'Вы') : (peers.get(src?.senderId ?? -1)?.displayName || chatName),
         date: friendlyMsgTime(src?.createdAt ?? '', lang),
+        caption: src?.text || undefined,
+        captionEntities: src?.entities,
         width: src?.mediaWidth,
         height: src?.mediaHeight,
         secret: src?.secretMedia

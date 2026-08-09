@@ -1,23 +1,18 @@
-// TabsBar — плашка табов поверх скролла: градиент за табами гасит уплывающий
-// контент (tweb .folders-tabs-gradient-container / .search-super-tabs-gradient).
-// mode='overlay' — абсолютный оверлей над списком (сайдбар);
-// mode='sticky' — липнет к верху скролл-контейнера (панель профиля,
-// tweb .search-super-tabs-scrollable: position sticky).
+// TabsBar — плашка табов, липнущая к верху скролл-контейнера (tweb
+// .search-super-tabs-scrollable: position sticky), с градиентом за табами,
+// который гасит уплывающий контент.
+// Табы папок сайдбара так НЕ обёрнуты: там карточка и градиент — прямые дети
+// .chatlist-overlay, как в tweb (см. Sidebar.tsx).
 import type { CSSProperties, ReactNode, Ref } from 'react'
 import classNames from '../../lib/classNames'
 import s from './TabsBar.module.scss'
 
 export default function TabsBar({
-  mode = 'sticky',
-  from,
   top,
   barRef,
   className,
   children,
 }: {
-  mode?: 'sticky' | 'overlay'
-  /** цвет верха градиента (фон под контентом); по умолчанию — surface сайдбара */
-  from?: string
   /** отступ прилипания (sticky top) — под absolute-шапкой панели профиля */
   top?: number | string
   /** реф плашки — замер позиции при скролле (header-filled панели профиля) */
@@ -26,24 +21,23 @@ export default function TabsBar({
   children: ReactNode
 }) {
   // При sticky-зазоре (числовой top) градиент растягивается вверх на столько же
-  // (--tabsbar-gap), чтобы surface-часть фейда закрыла щель между шапкой и плашкой
-  // и контент под ней не просвечивал.
+  // (--tabsbar-gap), чтобы фейд закрыл щель между шапкой и плашкой и контент
+  // под ней не просвечивал.
   const gap = typeof top === 'number' ? top : 0
   const style: CSSProperties | undefined =
-    from || top != null
+    top != null
       ? {
-          ...(from ? ({ '--tabsbar-from': from } as CSSProperties) : {}),
-          ...(top != null ? { top } : {}),
+          top,
           ...(gap ? ({ '--tabsbar-gap': `${gap}px` } as CSSProperties) : {}),
         }
       : undefined
   return (
-    <div ref={barRef} className={classNames(s.bar, mode === 'overlay' ? s.overlay : s.sticky, className ?? '')} style={style}>
-      {/* tweb: градиентные края под табами папок —
-          .menu-horizontal-gradient-container.folders-tabs-gradient-container
-          (_slider.scss + _leftSidebar.scss), z-index -1 под самой карточкой. */}
-      <div className={classNames('menu-horizontal-gradient-container', 'folders-tabs-gradient-container', s.gradientContainer)}>
-        <div className={classNames('menu-horizontal-gradient', 'folders-tabs-gradient', s.gradient)} />
+    <div ref={barRef} className={classNames(s.bar, className ?? '')} style={style}>
+      {/* tweb `.menu-horizontal-gradient-container > .menu-horizontal-gradient`
+          (_slider.scss): фейд от --background-color вниз до прозрачного.
+          Цвет/высоту задаёт партиал — свои background/height здесь не нужны. */}
+      <div className={classNames('menu-horizontal-gradient-container', s.gradientContainer)}>
+        <div className="menu-horizontal-gradient" />
       </div>
       {children}
     </div>

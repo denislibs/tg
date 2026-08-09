@@ -7,7 +7,7 @@
 // разворачивает полный EmojiDropdown (tweb onMoreClick → EmojiTab). Lottie
 // appear/select-анимации реакций приходят с MTProto-сервера и вне Telegram
 // недоступны — замена: scale-подскок на hover.
-import { lazy, memo, Suspense, useRef, useState, type ReactNode, type MouseEvent, type CSSProperties } from 'react'
+import { Fragment, lazy, memo, Suspense, useRef, useState, type ReactNode, type MouseEvent, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import Menu, { MenuItem } from '../../shared/ui/Menu'
 import Emoji from '../emoji/Emoji'
@@ -26,8 +26,11 @@ const BAR_OFFSET = 48
 
 export interface MsgMenuItem {
   icon: ReactNode
-  label: string
+  /** строку прогоняем через t(), готовую ноду (скелетон read-date) — как есть */
+  label: ReactNode
   danger?: boolean
+  /** `hr` под пунктом — tweb ButtonMenu separatorDown */
+  separatorDown?: boolean
   onClick?: (e: MouseEvent) => void
 }
 
@@ -93,6 +96,7 @@ function MessageContextMenu({ menu, items, onClose, onExited, onReaction }: Mess
       open={!menu.closing}
       onClose={onClose}
       onExitComplete={onExited}
+      className={s.panel}
       style={{ ...xPos, ...yPos, transformOrigin: `${menu.originY} ${menu.originX}` }}
     >
       {onReaction && (
@@ -110,15 +114,20 @@ function MessageContextMenu({ menu, items, onClose, onExited, onReaction }: Mess
           </div>
         </div>
       )}
-      {items.map((it) => (
-        <div key={it.label} onClickCapture={(e) => (lastEvent.current = e)}>
-          <MenuItem
-            icon={it.icon}
-            label={t(it.label)}
-            danger={it.danger}
-            onClick={() => (it.onClick ? it.onClick(lastEvent.current as MouseEvent) : onClose())}
-          />
-        </div>
+      {items.map((it, i) => (
+        // Ключ — позиция: подписи больше не обязаны быть строками (read-date —
+        // нода), а порядок пунктов внутри открытого меню не меняется.
+        <Fragment key={i}>
+          <div onClickCapture={(e) => (lastEvent.current = e)}>
+            <MenuItem
+              icon={it.icon}
+              label={typeof it.label === 'string' ? t(it.label) : it.label}
+              danger={it.danger}
+              onClick={() => (it.onClick ? it.onClick(lastEvent.current as MouseEvent) : onClose())}
+            />
+          </div>
+          {it.separatorDown && <hr />}
+        </Fragment>
       ))}
     </Menu>
   )

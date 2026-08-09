@@ -14,23 +14,6 @@
   display: block;
 }
 
-// кружок выбора на элементе (tweb grouped-item checkbox) — правый верхний угол
-.check {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  z-index: 2;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
-}
-
-// затемнение выбранного элемента (tweb .is-selected media)
-.selectedDim {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  z-index: 1;
-}
-
 .play {
   position: absolute;
   inset: 0;

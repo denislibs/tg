@@ -1,34 +1,53 @@
 // SendMediaPopup — диалог отправки медиа (порт tweb popups/newMedia) на общем
 // Popup: превью файлов, подпись, «как медиа / как файл» в меню «⋮». Цвета — токены.
 
-// превью
+// Превью. Карточка Popup паддинга не даёт (каждый попап платит свой, см.
+// Popup.module.scss), поэтому inline-отступы раздаём здесь. В tweb контейнер
+// медиа (`.popup-photo` в popups/_mediaAttacher.scss) идёт во всю ширину
+// карточки без inline-паддинга, а «файловые» ряды лежат в Section с
+// --section-padding-inline: 1rem — отсюда 16px только у .fileRow.
 .previews {
   display: flex;
   padding: 4px 0 8px;
   flex-direction: column;
   gap: 8px;
   align-items: stretch;
-
-  &[data-media] {
-    align-items: center;
-  }
 }
 .preview {
   max-width: 100%;
   max-height: 360px;
   border-radius: 10px;
+
+  // Портированный `_ckin.scss:266` глушит нативную панель у ВСЕХ video
+  // (`video::-webkit-media-controls-enclosure { display: none !important }`) —
+  // в tweb нативных контролов нет нигде. Наше превью видео перед отправкой —
+  // единственное место с `controls`, поэтому возвращаем панель точечно.
+  // Уйдёт, когда превью переедет на плеер ckin.
+  &::-webkit-media-controls-enclosure {
+    display: flex !important;
+  }
 }
 .previewImg {
   object-fit: contain;
 }
-// обёртка превью-изображения с кнопкой «Редактировать» в углу
+// обёртка превью-изображения с кнопкой «Редактировать» в углу.
+// `align-self: center` — чтобы обёртка сжималась по ширине картинки и кнопка
+// (absolute, right: 8px) висела на углу самого превью, а не у края карточки.
+// Именно per-item, а не `align-items` на .previews: иначе центрирование
+// хватало бы и .fileRow, схлопывая ряд файла по контенту.
 .previewWrap {
   position: relative;
+  align-self: center;
   display: flex;
   justify-content: center;
   max-width: 100%;
 }
-.editBtn {
+// Селектор из двух классов: IconButton носит глобальный `.btn-icon`
+// (tweb _button.scss) с `position: relative` той же специфичности (0,1,0), а
+// партиалы эмитятся ПОСЛЕ CSS-модулей — с одиночным `.editBtn` кнопка
+// оставалась в потоке, растягивалась на всю высоту превью и вылезала за правый
+// край карточки (scrollWidth 430 при clientWidth 420).
+.previewWrap .editBtn {
   position: absolute;
   top: 8px;
   right: 8px;
@@ -38,6 +57,8 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  // tweb: документы/аудио в newMedia лежат в Section (--section-padding-inline: 1rem)
+  margin-inline: 16px;
   padding: 8px;
   border-radius: 10px;
   background: var(--light-secondary-text-color);
@@ -59,11 +80,20 @@
   min-width: 0;
 }
 
-// подпись + отправка (прибитый низ карточки Popup)
+// Подпись + отправка (прибитый низ карточки Popup).
+// отступление от tweb: в tweb это приподнятая карточка
+// `.simple-message-input-container` (_simpleMessageInput.scss) — surface-фон,
+// тень, свой радиус; у нас — ряд с разделителем сверху, потому что нет порта
+// InputFieldAnimated/кнопки btn-primary из tweb.
+// Геометрия — как у tweb: margin var(--section-padding-bottom)
+// var(--section-padding-inline) = 16px по бокам и снизу. Иначе кнопка отправки
+// (48×40) въезжает в дугу угла карточки (--popup-border-radius: 2.5rem = 40px,
+// у .popup-container overflow: hidden), а инпут не отбит от края.
 .footerCol {
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
+  padding: 0 16px 16px;
 }
 .paidBar {
   display: flex;

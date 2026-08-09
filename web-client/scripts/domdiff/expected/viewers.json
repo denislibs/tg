@@ -1,0 +1,1797 @@
+{
+  "media-viewer-whole-full-depth-12": {
+    "source": "09-media-viewer.json",
+    "title": "media-viewer-whole (full, depth 12)",
+    "selector": ".media-viewer-whole",
+    "mode": "classes",
+    "tree": {
+      "tag": "div",
+      "classes": [
+        "active",
+        "media-viewer-whole"
+      ],
+      "children": [
+        {
+          "tag": "div",
+          "classes": [
+            "zoom-container"
+          ],
+          "children": [
+            {
+              "tag": "button",
+              "classes": [
+                "btn-icon"
+              ],
+              "children": [
+                {
+                  "tag": "span",
+                  "classes": [
+                    "button-icon",
+                    "tgico"
+                  ],
+                  "text": ""
+                }
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "progress-line",
+                "with-transition"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "progress-line__filled"
+                  ],
+                  "attrs": {
+                    "style": "width: 14.2857%;"
+                  }
+                },
+                {
+                  "tag": "input",
+                  "classes": [
+                    "progress-line__seek"
+                  ],
+                  "attrs": {
+                    "type": "range"
+                  }
+                }
+              ]
+            },
+            {
+              "tag": "button",
+              "classes": [
+                "btn-icon"
+              ],
+              "children": [
+                {
+                  "tag": "span",
+                  "classes": [
+                    "button-icon",
+                    "tgico"
+                  ],
+                  "text": ""
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tag": "div",
+          "classes": [
+            "overlays"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "media-viewer"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "media-viewer-content"
+                  ],
+                  "attrs": {
+                    "style": "padding-top: 80px; padding-bottom: 110px;"
+                  },
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "media-viewer-container"
+                      ],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "media-viewer-media"
+                          ],
+                          "attrs": {
+                            "style": "width: 392px; height: 565px;"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tag": "div",
+          "classes": [
+            "media-viewer-appear",
+            "media-viewer-topbar"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "media-viewer-topbar-left"
+              ],
+              "children": [
+                {
+                  "tag": "button",
+                  "classes": [
+                    "btn-icon",
+                    "only-handhelds",
+                    "rp"
+                  ],
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "c-ripple"
+                      ]
+                    },
+                    {
+                      "tag": "span",
+                      "classes": [
+                        "button-icon",
+                        "tgico"
+                      ],
+                      "text": ""
+                    }
+                  ]
+                },
+                {
+                  "tag": "div",
+                  "classes": [
+                    "media-viewer-author",
+                    "no-select"
+                  ],
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "avatar",
+                        "avatar-44",
+                        "avatar-gradient",
+                        "avatar-like",
+                        "media-viewer-userpic"
+                      ],
+                      "attrs": {
+                        "data-peer-id": "7758297722"
+                      },
+                      "text": "Д"
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "media-viewer-author-right"
+                      ],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "media-viewer-name"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "peer-title"
+                              ],
+                              "attrs": {
+                                "data-peer-id": "7758297722"
+                              },
+                              "text": "Дн"
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "media-viewer-date"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "attrs": {
+                                "style": "text-transform: capitalize;"
+                              },
+                              "text": "yesterday"
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "at"
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "17:49"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "media-viewer-buttons"
+              ],
+              "children": [
+                {
+                  "tag": "button",
+                  "classes": [
+                    "btn-icon"
+                  ],
+                  "children": [
+                    {
+                      "tag": "span",
+                      "classes": [
+                        "button-icon",
+                        "tgico"
+                      ],
+                      "text": ""
+                    }
+                  ]
+                },
+                {
+                  "tag": "button",
+                  "classes": [
+                    "btn-icon"
+                  ],
+                  "children": [
+                    {
+                      "tag": "span",
+                      "classes": [
+                        "button-icon",
+                        "tgico"
+                      ],
+                      "text": ""
+                    }
+                  ]
+                },
+                {
+                  "tag": "button",
+                  "classes": [
+                    "btn-icon",
+                    "btn-menu-toggle",
+                    "quality-download-options-button-menu"
+                  ],
+                  "children": [
+                    {
+                      "tag": "span",
+                      "classes": [
+                        "button-icon",
+                        "tgico"
+                      ],
+                      "text": ""
+                    }
+                  ]
+                },
+                {
+                  "tag": "button",
+                  "classes": [
+                    "btn-icon"
+                  ],
+                  "children": [
+                    {
+                      "tag": "span",
+                      "classes": [
+                        "button-icon",
+                        "tgico"
+                      ],
+                      "text": ""
+                    }
+                  ]
+                },
+                {
+                  "tag": "button",
+                  "classes": [
+                    "btn-icon"
+                  ],
+                  "children": [
+                    {
+                      "tag": "span",
+                      "classes": [
+                        "button-icon",
+                        "tgico"
+                      ],
+                      "text": ""
+                    }
+                  ]
+                },
+                {
+                  "tag": "button",
+                  "classes": [
+                    "btn-icon"
+                  ],
+                  "children": [
+                    {
+                      "tag": "span",
+                      "classes": [
+                        "button-icon",
+                        "tgico"
+                      ],
+                      "text": ""
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "btn-icon",
+                "btn-menu-toggle",
+                "only-handhelds",
+                "rp"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "c-ripple"
+                  ]
+                },
+                {
+                  "tag": "span",
+                  "classes": [
+                    "button-icon",
+                    "tgico"
+                  ],
+                  "text": ""
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tag": "div",
+          "classes": [
+            "media-viewer-movers"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "hide",
+                "media-viewer-switcher",
+                "media-viewer-switcher-left"
+              ],
+              "children": [
+                {
+                  "tag": "span",
+                  "classes": [
+                    "media-viewer-prev-button",
+                    "media-viewer-sibling-button",
+                    "tgico"
+                  ],
+                  "text": ""
+                }
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "hide",
+                "media-viewer-switcher",
+                "media-viewer-switcher-right"
+              ],
+              "children": [
+                {
+                  "tag": "span",
+                  "classes": [
+                    "media-viewer-next-button",
+                    "media-viewer-sibling-button",
+                    "tgico"
+                  ],
+                  "text": ""
+                }
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "media-viewer-mover-wrapper"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "active",
+                    "center",
+                    "media-viewer-mover"
+                  ],
+                  "attrs": {
+                    "style": "width: 392px; height: 565px; transform: translate3d(-50%, -5"
+                  },
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "media-viewer-aspecter"
+                      ],
+                      "attrs": {
+                        "style": ""
+                      },
+                      "children": [
+                        {
+                          "tag": "img",
+                          "classes": [
+                            "thumbnail"
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tag": "div",
+          "classes": [
+            "hide",
+            "media-viewer-caption",
+            "spoilers-container"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "scrollable",
+                "scrollable-y"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "stories-viewer-root-stories-viewer": {
+    "source": "07b-stories-viewer.json",
+    "title": "stories viewer root: stories-viewer /",
+    "selector": "#stories-viewer > div",
+    "mode": "structure",
+    "mount": "stories-viewer",
+    "tree": {
+      "tag": "div",
+      "classes": [
+        "_Viewer_hvblb_1",
+        "_isReady_hvblb_23"
+      ],
+      "attrs": {
+        "style": "--stories-width: 484.3125px; --stories-height: 861px;"
+      },
+      "children": [
+        {
+          "tag": "div",
+          "classes": [
+            "_ViewerBackground_hvblb_20"
+          ]
+        },
+        {
+          "tag": "button",
+          "classes": [
+            "_ViewerClose_hvblb_732",
+            "btn-icon",
+            "rp"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "c-ripple"
+              ]
+            },
+            {
+              "tag": "span",
+              "classes": [
+                "tgico"
+              ],
+              "text": ""
+            }
+          ]
+        },
+        {
+          "tag": "div",
+          "classes": [
+            "_ViewerStoryContainer_hvblb_28"
+          ],
+          "attrs": {
+            "style": "--translateX: 0px;"
+          },
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "_ViewerStory_hvblb_28"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "_ViewerStoryContent_hvblb_121"
+                  ],
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "_ViewerStoryContentItem_hvblb_269"
+                      ],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_ViewerStoryContentMediaContainer_hvblb_121"
+                          ],
+                          "children": [
+                            {
+                              "tag": "canvas",
+                              "classes": [
+                                "_ViewerStoryContentMedia_hvblb_121",
+                                "canvas-thumbnail",
+                                "media-poster",
+                                "thumbnail"
+                              ]
+                            },
+                            {
+                              "tag": "video",
+                              "classes": [
+                                "_ViewerStoryContentMedia_hvblb_121",
+                                "media-video"
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "tag": "div",
+                  "classes": [
+                    "_hideOnSmall_hvblb_114"
+                  ],
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "_ViewerStoryShadow_hvblb_342"
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "_ViewerStorySlides_hvblb_136"
+                      ],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_ViewerStorySlidesSlide_hvblb_145"
+                          ],
+                          "attrs": {
+                            "style": "--progress: 7.8021973735056385%;"
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "_ViewerStoryHeader_hvblb_164",
+                        "night"
+                      ],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_ViewerStoryHeaderLeft_hvblb_206"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_ViewerStoryHeaderAvatar_hvblb_176",
+                                "avatar",
+                                "avatar-32",
+                                "avatar-gradient",
+                                "avatar-like"
+                              ],
+                              "attrs": {
+                                "data-peer-id": "444077753"
+                              },
+                              "children": [
+                                {
+                                  "tag": "img",
+                                  "classes": [
+                                    "avatar-photo"
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_ViewerStoryHeaderInfo_hvblb_220"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "_ViewerStoryHeaderRow_hvblb_224"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "_ViewerStoryHeaderName_hvblb_183",
+                                        "peer-title"
+                                      ],
+                                      "attrs": {
+                                        "data-peer-id": "444077753"
+                                      },
+                                      "text": "123 123"
+                                    },
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "_ViewerStoryHeaderSecondary_hvblb_191"
+                                      ],
+                                      "text": "• 1/30"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "_ViewerStoryHeaderSecondary_hvblb_191",
+                                    "_ViewerStoryHeaderTime_hvblb_183"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "span",
+                                      "classes": [],
+                                      "children": [
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "i18n"
+                                          ],
+                                          "text": "May 12"
+                                        },
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "i18n"
+                                          ],
+                                          "text": "at"
+                                        },
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "i18n"
+                                          ],
+                                          "text": "09:33"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_ViewerStoryHeaderRight_hvblb_206"
+                          ],
+                          "children": [
+                            {
+                              "tag": "button",
+                              "classes": [
+                                "btn-icon",
+                                "rp"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "c-ripple"
+                                  ]
+                                },
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "tgico"
+                                  ],
+                                  "text": ""
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "button",
+                              "classes": [
+                                "btn-icon",
+                                "rp"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "c-ripple"
+                                  ]
+                                },
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "tgico"
+                                  ],
+                                  "text": ""
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "button",
+                              "classes": [
+                                "btn-icon",
+                                "btn-menu-toggle",
+                                "night",
+                                "rp"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "c-ripple"
+                                  ]
+                                },
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "button-icon",
+                                    "tgico"
+                                  ],
+                                  "text": ""
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "tag": "div",
+                  "classes": [
+                    "_ViewerStoryInfo_hvblb_127"
+                  ],
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "_ViewerStoryInfoAvatar_hvblb_366",
+                        "avatar",
+                        "avatar-162",
+                        "avatar-gradient",
+                        "avatar-like"
+                      ],
+                      "attrs": {
+                        "data-peer-id": "444077753"
+                      },
+                      "children": [
+                        {
+                          "tag": "img",
+                          "classes": [
+                            "avatar-photo"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "span",
+                      "classes": [
+                        "_ViewerStoryInfoName_hvblb_370",
+                        "peer-title"
+                      ],
+                      "attrs": {
+                        "data-peer-id": "444077753"
+                      },
+                      "text": "123"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "chat-input",
+                "stories-input"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "chat-input-container",
+                    "stories-input-container"
+                  ],
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "rows-wrapper-wrapper"
+                      ],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "chat-input-wrapper",
+                            "rows-wrapper",
+                            "stories-input-wrapper"
+                          ],
+                          "attrs": {
+                            "style": "width: 372.312px !important;"
+                          },
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "autocomplete-helper",
+                                "stickers-helper",
+                                "z-depth-1"
+                              ]
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "autocomplete-helper",
+                                "emoji-helper",
+                                "z-depth-1"
+                              ]
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "autocomplete-helper",
+                                "autocomplete-peer-helper",
+                                "mentions-helper",
+                                "z-depth-1"
+                              ]
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "autocomplete-helper",
+                                "inline-helper",
+                                "z-depth-1"
+                              ]
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "new-message-wrapper",
+                                "rows-wrapper-row"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "attach-menu-button",
+                                  "classes": [
+                                    "_Container_bns2b_1",
+                                    "attach-file",
+                                    "btn-icon",
+                                    "btn-menu-toggle",
+                                    "rp"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "div",
+                                      "classes": [
+                                        "c-ripple"
+                                      ]
+                                    },
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "_Icon_bns2b_9",
+                                        "button-icon",
+                                        "tgico"
+                                      ],
+                                      "text": ""
+                                    }
+                                  ]
+                                },
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "input-message-container"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "div",
+                                      "classes": [
+                                        "forwards",
+                                        "input-message-input",
+                                        "is-empty",
+                                        "no-scrollbar",
+                                        "scrollable",
+                                        "scrollable-y"
+                                      ],
+                                      "attrs": {
+                                        "data-peer-id": "444077753",
+                                        "contenteditable": "true",
+                                        "style": "max-height: 440px; transition-duration: 0ms; height: 37px;"
+                                      }
+                                    },
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "i18n",
+                                        "input-field-placeholder",
+                                        "is-empty"
+                                      ],
+                                      "text": "Reply Privately..."
+                                    },
+                                    {
+                                      "tag": "div",
+                                      "classes": [
+                                        "input-field-input-fake",
+                                        "input-message-input",
+                                        "is-empty",
+                                        "no-scrollbar",
+                                        "scrollable",
+                                        "scrollable-y"
+                                      ],
+                                      "attrs": {
+                                        "contenteditable": "true"
+                                      }
+                                    }
+                                  ]
+                                },
+                                {
+                                  "tag": "button",
+                                  "classes": [
+                                    "btn-icon",
+                                    "hide",
+                                    "rp"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "div",
+                                      "classes": [
+                                        "c-ripple"
+                                      ]
+                                    },
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "button-icon",
+                                        "tgico"
+                                      ],
+                                      "text": ""
+                                    }
+                                  ]
+                                },
+                                {
+                                  "tag": "button",
+                                  "classes": [
+                                    "btn-icon",
+                                    "hide",
+                                    "rp"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "div",
+                                      "classes": [
+                                        "c-ripple"
+                                      ]
+                                    },
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "button-icon",
+                                        "tgico"
+                                      ],
+                                      "text": ""
+                                    }
+                                  ]
+                                },
+                                {
+                                  "tag": "button",
+                                  "classes": [
+                                    "btn-icon",
+                                    "float",
+                                    "hide",
+                                    "show",
+                                    "toggle-send-gift"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "button-icon",
+                                        "tgico"
+                                      ],
+                                      "text": ""
+                                    }
+                                  ]
+                                },
+                                {
+                                  "tag": "button",
+                                  "classes": [
+                                    "btn-icon",
+                                    "toggle-emoticons"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "button-icon",
+                                        "tgico"
+                                      ],
+                                      "text": ""
+                                    }
+                                  ]
+                                },
+                                {
+                                  "tag": "input",
+                                  "classes": [],
+                                  "attrs": {
+                                    "type": "file",
+                                    "style": "display: none;"
+                                  }
+                                },
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "voice-recording-panel",
+                                    "voice-recording-panel--recording"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "button",
+                                      "classes": [
+                                        "btn-icon",
+                                        "danger",
+                                        "rp",
+                                        "voice-recording-cancel"
+                                      ],
+                                      "children": [
+                                        {
+                                          "tag": "div",
+                                          "classes": [
+                                            "c-ripple"
+                                          ]
+                                        },
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "tgico",
+                                            "voice-recording-cancel-icon"
+                                          ],
+                                          "text": ""
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "tag": "div",
+                                      "classes": [
+                                        "voice-recording-pill"
+                                      ],
+                                      "children": [
+                                        {
+                                          "tag": "div",
+                                          "classes": [
+                                            "voice-recording-lead"
+                                          ],
+                                          "children": [
+                                            {
+                                              "tag": "div",
+                                              "classes": [
+                                                "voice-recording-dot"
+                                              ]
+                                            },
+                                            {
+                                              "tag": "button",
+                                              "classes": [
+                                                "btn-icon",
+                                                "rp",
+                                                "voice-recording-play"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "tag": "div",
+                                                  "classes": [
+                                                    "c-ripple"
+                                                  ]
+                                                },
+                                                {
+                                                  "tag": "span",
+                                                  "classes": [
+                                                    "tgico",
+                                                    "voice-recording-play-icon",
+                                                    "voice-recording-play-icon--play"
+                                                  ],
+                                                  "text": ""
+                                                },
+                                                {
+                                                  "tag": "span",
+                                                  "classes": [
+                                                    "tgico",
+                                                    "voice-recording-play-icon",
+                                                    "voice-recording-play-icon--pause"
+                                                  ],
+                                                  "text": ""
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "tag": "canvas",
+                                          "classes": [
+                                            "voice-recording-waveform"
+                                          ]
+                                        },
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "voice-recording-timer"
+                                          ],
+                                          "text": "0:00,0"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "tag": "button",
+                                      "classes": [
+                                        "btn-icon",
+                                        "rp",
+                                        "voice-recording-pause-toggle"
+                                      ],
+                                      "children": [
+                                        {
+                                          "tag": "div",
+                                          "classes": [
+                                            "c-ripple"
+                                          ]
+                                        },
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "tgico",
+                                            "voice-recording-pause-icon",
+                                            "voice-recording-pause-icon--pause"
+                                          ],
+                                          "text": ""
+                                        },
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "tgico",
+                                            "voice-recording-pause-icon",
+                                            "voice-recording-pause-icon--mic"
+                                          ],
+                                          "text": ""
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "btn-send-container"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "btn-send-stars-badge",
+                                        "stars-badge-base"
+                                      ],
+                                      "children": [
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "stars-badge-base__icon",
+                                            "tgico"
+                                          ],
+                                          "text": ""
+                                        },
+                                        {
+                                          "tag": "span",
+                                          "classes": []
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "tag": "button",
+                                      "classes": [
+                                        "animated-button-icon",
+                                        "btn-circle",
+                                        "btn-icon",
+                                        "btn-send",
+                                        "forward"
+                                      ],
+                                      "children": [
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "animated-button-icon-icon",
+                                            "btn-send-icon-send",
+                                            "tgico"
+                                          ],
+                                          "text": ""
+                                        },
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "animated-button-icon-icon",
+                                            "btn-send-icon-schedule",
+                                            "tgico"
+                                          ],
+                                          "text": ""
+                                        },
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "animated-button-icon-icon",
+                                            "btn-send-icon-edit",
+                                            "tgico"
+                                          ],
+                                          "text": ""
+                                        },
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "animated-button-icon-icon",
+                                            "btn-send-icon-record",
+                                            "tgico"
+                                          ],
+                                          "text": ""
+                                        },
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "animated-button-icon-icon",
+                                            "btn-send-icon-record-video",
+                                            "tgico"
+                                          ],
+                                          "text": ""
+                                        },
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "animated-button-icon-icon",
+                                            "btn-send-icon-forward",
+                                            "tgico"
+                                          ],
+                                          "text": ""
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "tag": "div",
+                                      "classes": [
+                                        "btn-send-effect-container"
+                                      ]
+                                    },
+                                    {
+                                      "tag": "div",
+                                      "classes": [
+                                        "btn-menu",
+                                        "menu-send",
+                                        "top-left"
+                                      ],
+                                      "children": [
+                                        {
+                                          "tag": "div",
+                                          "classes": [
+                                            "btn-menu-item",
+                                            "rp-overflow"
+                                          ],
+                                          "children": [
+                                            {
+                                              "tag": "span",
+                                              "classes": [
+                                                "btn-menu-item-icon",
+                                                "tgico"
+                                              ],
+                                              "text": ""
+                                            },
+                                            {
+                                              "tag": "span",
+                                              "classes": [
+                                                "btn-menu-item-text",
+                                                "i18n"
+                                              ],
+                                              "text": "Send Without Sound"
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "tag": "div",
+                                          "classes": [
+                                            "btn-menu-item",
+                                            "rp-overflow"
+                                          ],
+                                          "children": [
+                                            {
+                                              "tag": "span",
+                                              "classes": [
+                                                "btn-menu-item-icon",
+                                                "tgico"
+                                              ],
+                                              "text": ""
+                                            },
+                                            {
+                                              "tag": "span",
+                                              "classes": [
+                                                "btn-menu-item-text",
+                                                "i18n"
+                                              ],
+                                              "text": "Schedule Message"
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "tag": "div",
+                                          "classes": [
+                                            "btn-menu-item",
+                                            "rp-overflow"
+                                          ],
+                                          "children": [
+                                            {
+                                              "tag": "span",
+                                              "classes": [
+                                                "btn-menu-item-icon",
+                                                "tgico"
+                                              ],
+                                              "text": ""
+                                            },
+                                            {
+                                              "tag": "span",
+                                              "classes": [
+                                                "btn-menu-item-text",
+                                                "i18n"
+                                              ],
+                                              "text": "Set a Reminder"
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "tag": "div",
+                                          "classes": [
+                                            "btn-menu-item",
+                                            "rp-overflow"
+                                          ],
+                                          "children": [
+                                            {
+                                              "tag": "span",
+                                              "classes": [
+                                                "btn-menu-item-icon",
+                                                "tgico"
+                                              ],
+                                              "text": ""
+                                            },
+                                            {
+                                              "tag": "span",
+                                              "classes": [
+                                                "btn-menu-item-text",
+                                                "i18n"
+                                              ],
+                                              "text": "Send When Online"
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "tag": "div",
+                                          "classes": [
+                                            "btn-menu-item",
+                                            "danger",
+                                            "rp-overflow"
+                                          ],
+                                          "children": [
+                                            {
+                                              "tag": "span",
+                                              "classes": [
+                                                "btn-menu-item-icon",
+                                                "tgico"
+                                              ],
+                                              "text": ""
+                                            },
+                                            {
+                                              "tag": "span",
+                                              "classes": [
+                                                "btn-menu-item-text",
+                                                "i18n"
+                                              ],
+                                              "text": "Remove Effect"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "fake-rows-wrapper",
+                        "fake-wrapper"
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "fake-selection-wrapper",
+                        "fake-wrapper"
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "chat-input-control",
+                        "chat-input-wrapper"
+                      ],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "chat-input-plate",
+                            "rows-wrapper-row"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "chat-input-plate-side"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "button",
+                                  "classes": [
+                                    "btn-icon",
+                                    "hide"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "button-icon",
+                                        "tgico"
+                                      ],
+                                      "text": ""
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "chat-input-plate-center"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "button",
+                                  "classes": [
+                                    "btn-primary",
+                                    "btn-transparent",
+                                    "chat-input-control-button",
+                                    "chat-input-plate-button",
+                                    "hide",
+                                    "rp",
+                                    "text-bold"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "div",
+                                      "classes": [
+                                        "c-ripple"
+                                      ]
+                                    },
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "i18n"
+                                      ],
+                                      "text": "START"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "tag": "button",
+                                  "classes": [
+                                    "btn-primary",
+                                    "btn-transparent",
+                                    "chat-input-control-button",
+                                    "chat-input-plate-button",
+                                    "rp",
+                                    "text-bold"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "div",
+                                      "classes": [
+                                        "c-ripple"
+                                      ]
+                                    },
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "i18n"
+                                      ],
+                                      "text": "Unblock"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "tag": "button",
+                                  "classes": [
+                                    "btn-primary",
+                                    "btn-transparent",
+                                    "chat-input-control-button",
+                                    "chat-input-plate-button",
+                                    "hide",
+                                    "rp",
+                                    "text-bold"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "div",
+                                      "classes": [
+                                        "c-ripple"
+                                      ]
+                                    },
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "i18n"
+                                      ],
+                                      "text": "Mute"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "tag": "button",
+                                  "classes": [
+                                    "btn-primary",
+                                    "btn-transparent",
+                                    "chat-input-control-button",
+                                    "chat-input-plate-button",
+                                    "hide",
+                                    "rp",
+                                    "text-bold"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "div",
+                                      "classes": [
+                                        "c-ripple"
+                                      ]
+                                    },
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "i18n"
+                                      ],
+                                      "children": [
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "peer-title"
+                                          ],
+                                          "attrs": {
+                                            "data-peer-id": "444077753"
+                                          },
+                                          "text": "123"
+                                        },
+                                        {
+                                          "tag": "br",
+                                          "classes": []
+                                        },
+                                        {
+                                          "tag": "a",
+                                          "classes": [],
+                                          "text": "Learn more..."
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "tag": "button",
+                                  "classes": [
+                                    "btn-primary",
+                                    "btn-transparent",
+                                    "chat-input-control-button",
+                                    "chat-input-plate-button",
+                                    "hide",
+                                    "rp",
+                                    "text-bold"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "div",
+                                      "classes": [
+                                        "c-ripple"
+                                      ]
+                                    },
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "chat-input-frozen-text"
+                                      ],
+                                      "children": [
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "danger",
+                                            "i18n"
+                                          ],
+                                          "text": "Your Account is Frozen"
+                                        },
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "chat-input-frozen-text-subtitle",
+                                            "i18n",
+                                            "secondary"
+                                          ],
+                                          "text": "Click to view details"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "tag": "button",
+                                  "classes": [
+                                    "btn-primary",
+                                    "btn-transparent",
+                                    "chat-input-control-button",
+                                    "chat-input-plate-button",
+                                    "hide",
+                                    "rp",
+                                    "text-bold"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "i18n"
+                                      ],
+                                      "text": "Unpin All Messages"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "tag": "button",
+                                  "classes": [
+                                    "btn-primary",
+                                    "btn-transparent",
+                                    "chat-input-control-button",
+                                    "chat-input-plate-button",
+                                    "hide",
+                                    "rp",
+                                    "text-bold"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "div",
+                                      "classes": [
+                                        "c-ripple"
+                                      ]
+                                    },
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "i18n"
+                                      ],
+                                      "text": "Open Chat"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "chat-input-plate-side"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "button",
+                                  "classes": [
+                                    "btn-icon",
+                                    "hide"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "button-icon",
+                                        "tgico"
+                                      ],
+                                      "text": ""
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "button",
+                      "classes": [
+                        "btn-circle",
+                        "btn-icon",
+                        "btn-reaction",
+                        "chat-input-secondary-button",
+                        "chat-secondary-button"
+                      ],
+                      "children": [
+                        {
+                          "tag": "span",
+                          "classes": [
+                            "btn-reaction-icon",
+                            "tgico"
+                          ],
+                          "text": ""
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

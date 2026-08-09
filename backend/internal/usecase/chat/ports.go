@@ -382,6 +382,11 @@ type MediaDims struct {
 	Duration int
 	Size     int64
 	FileName string
+	// Title/Performer — теги аудиотрека (ID3), пустые если файл без тегов или это
+	// не аудио. Клиент строит из них подпись бабла (tweb audio.ts), а без них
+	// показывает размер файла.
+	Title     string
+	Performer string
 }
 
 // DialogsCache — опциональный per-user кэш снапшота диалогов (bounded-staleness

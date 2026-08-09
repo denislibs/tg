@@ -1,5 +1,14 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import updateColumnWidths, { DEFAULT_COLUMN_WIDTH } from './updateColumnWidths'
+import updateColumnWidths, {
+  DEFAULT_COLUMN_WIDTH,
+  MAX_SIDEBAR_WIDTH,
+  MIN_SIDEBAR_WIDTH,
+  SIDEBAR_COLLAPSED_WIDTH,
+  isUserCollapsedLeft,
+  setOpenTabsLeftSidebar,
+  setUserPreferredLeft,
+  setUserPreferredRight,
+} from './updateColumnWidths'
 
 const read = (name: string) => document.documentElement.style.getPropertyValue(name)
 
@@ -66,5 +75,49 @@ describe('updateColumnWidths', () => {
     } finally {
       center.remove()
     }
+  })
+})
+
+// Пользовательская ширина колонок из ручки ресайза (tweb setUserPreferredLeft /
+// setUserPreferredRight, updateColumnWidths.ts:156-176). Тесты идут последними:
+// модуль держит предпочтения в своём состоянии, сбросить его нечем.
+describe('updateColumnWidths — предпочтения ресайза', () => {
+  // Стиль НЕ сбрасываем: модуль пишет переменную только когда значение
+  // изменилось (кэш `last`), а сбросить кэш извне нечем.
+  beforeEach(() => {
+    Object.defineProperty(window, 'innerWidth', { value: 1728, configurable: true })
+    updateColumnWidths()
+  })
+
+  it('ширина зажимается в MIN/MAX', () => {
+    setUserPreferredLeft(1000)
+    expect(read('--left-column-width')).toBe(`${MAX_SIDEBAR_WIDTH}px`)
+    setUserPreferredLeft(100)
+    expect(read('--left-column-width')).toBe(`${MIN_SIDEBAR_WIDTH}px`)
+    setUserPreferredRight(10_000)
+    expect(read('--right-column-width')).toBe(`${MAX_SIDEBAR_WIDTH}px`)
+  })
+
+  it('0 = свёрнутая колонка: visual/layout уходят в 80', () => {
+    setUserPreferredLeft(0)
+    expect(isUserCollapsedLeft()).toBe(true)
+    expect(read('--left-column-visual-width')).toBe(`${SIDEBAR_COLLAPSED_WIDTH}px`)
+    expect(read('--left-column-width')).toBe(`${SIDEBAR_COLLAPSED_WIDTH}px`)
+  })
+
+  it('открытая вкладка всплывает свёрнутую колонку визуально, но не в потоке', () => {
+    setUserPreferredLeft(0)
+    setOpenTabsLeftSidebar(true)
+    expect(read('--left-column-visual-width')).toBe(`${DEFAULT_COLUMN_WIDTH}px`)
+    expect(read('--left-column-width')).toBe(`${SIDEBAR_COLLAPSED_WIDTH}px`)
+    setOpenTabsLeftSidebar(false)
+    expect(read('--left-column-visual-width')).toBe(`${SIDEBAR_COLLAPSED_WIDTH}px`)
+  })
+
+  it('в floating-диапазоне (601-925) свёрнутость игнорируется', () => {
+    setUserPreferredLeft(0)
+    Object.defineProperty(window, 'innerWidth', { value: 800, configurable: true })
+    updateColumnWidths()
+    expect(read('--left-column-visual-width')).toBe(`${DEFAULT_COLUMN_WIDTH}px`)
   })
 })

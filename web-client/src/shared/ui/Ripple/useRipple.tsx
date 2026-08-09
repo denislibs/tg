@@ -9,9 +9,10 @@
 // duration/2)); иначе hiding сразу + удаление через duration/2.
 //
 // Разметка — классы tweb: `.c-ripple` + `.c-ripple__circle[.hiding]` (_ripple.scss
-// уже портирован). Клипование по форме хоста tweb вешает на сам хост: `.btn-icon.rp`,
-// `.row-clickable`, либо утилита `.rp-overflow` — поэтому хост ОБЯЗАН нести `.rp`
-// (и `.rp-overflow`, если сам не режет overflow).
+// уже портирован), оба узла — `div`. Клипование по форме хоста tweb вешает на сам
+// хост: `.btn-icon.rp`, `.row-clickable`, либо утилита `.rp-overflow` — поэтому хост
+// ОБЯЗАН нести `.rp` (и `.rp-overflow`, если сам не режет overflow) и класть
+// `{ripple}` ПЕРВЫМ ребёнком (tweb `ripple()` делает `elem.prepend`).
 import { useCallback, useRef, useState, type PointerEvent, type ReactNode } from 'react'
 
 const DURATION = 700 // --ripple-duration .7s (styles/_tokens.scss)
@@ -71,16 +72,19 @@ export function useRipple(): {
     [setHiding, remove],
   )
 
+  // Теги — как в tweb `_ripple` (ripple.ts:31-33 контейнер, :48 круг): оба `div`.
+  // Хост обязан класть этот узел ПЕРВЫМ ребёнком — tweb делает `elem.prepend(r)`
+  // (ripple.ts:41-43, prepend по умолчанию true).
   const ripple = (
-    <span className="c-ripple" aria-hidden>
+    <div className="c-ripple" aria-hidden>
       {drops.map((d) => (
-        <span
+        <div
           key={d.key}
           className={d.hiding ? 'c-ripple__circle hiding' : 'c-ripple__circle'}
           style={{ left: d.x, top: d.y, width: d.size, height: d.size }}
         />
       ))}
-    </span>
+    </div>
   )
 
   return { onPointerDown, ripple }

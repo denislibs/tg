@@ -53,8 +53,21 @@ function statusClass(m: ConvMsg): string | null {
   }
 }
 
+/**
+ * Трек ли это (music-плеер, а не строка файла). В tweb класс бабла выбирается по
+ * `doc.type`, а его ставит appDocsManager по documentAttributeAudio — поэтому mp3,
+ * отправленный «как файл», всё равно приезжает doc.type === 'audio'. У нас такой
+ * файл приходит type='document' с аудийным mime, и решает именно mime — ровно как
+ * в RealMediaBubble (иначе бабл получал бы document-message без фикс. ширины и
+ * заголовок резался бы middle-ellipsis).
+ */
+export function isAudioTrack(m: ConvMsg): boolean {
+  return m.type === 'audio' || (m.type === 'document' && !!m.mediaMime?.startsWith('audio/'))
+}
+
 /** Классы по типу медиа (tweb bubbles.ts:7889,8097-8100,8530,8635-8642,8811,8751,8700). */
 function typeClasses(m: ConvMsg): string[] {
+  if (isAudioTrack(m)) return ['audio-message', 'min-content', 'is-single-document']
   switch (m.type) {
     case 'photo': return ['photo']
     case 'video': return ['video']
@@ -64,7 +77,6 @@ function typeClasses(m: ConvMsg): string[] {
     // min-content + is-single-document — из живого DOM: одиночный документ/аудио/
     // голосовое сжимают бабл по контенту (tweb bubbles.ts:8638-8642).
     case 'voice': return ['voice-message', 'min-content', 'is-single-document']
-    case 'audio': return ['audio-message', 'min-content', 'is-single-document']
     case 'document': return ['document-message', 'is-single-document']
     case 'poll': return ['poll-message']
     case 'checklist': return ['poll-message']

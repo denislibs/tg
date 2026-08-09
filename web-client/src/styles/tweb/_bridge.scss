@@ -45,6 +45,34 @@ button:focus {
   outline: none;
 }
 
+// tweb scss/components/_global.scss:98-116 — утилиты, на которые опираются уже
+// портированные партиалы: `.hide` прячет крайние свитчеры медиавьюера и пустую
+// подпись, `.no-transition` снимает сглаживание на время жеста (зум/драг),
+// `.hide-overflow` — клип контейнера.
+.hide {
+  display: none !important;
+}
+
+.hide-overflow {
+  overflow: hidden;
+}
+
+.no-transition {
+  &,
+  &:before,
+  &:after {
+    transition: none !important;
+  }
+}
+
+// tweb base.scss:524-528 — узлы «только для узких экранов» (в медиавьюере это
+// мобильная кнопка закрытия и ⋮-меню топбара).
+@include respond-to(not-handhelds) {
+  .only-handhelds {
+    display: none !important;
+  }
+}
+
 // tweb scss/components/_global.scss:143-148 — центрирование поверх контейнера
 // (в ленте это кнопка play поверх видео).
 .position-center {
@@ -52,4 +80,20 @@ button:focus {
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
+}
+
+// tweb base.scss:1182-1193 — утилиты hover-подсветки. `.hover-effect` носит строка
+// чат-листа (`row-clickable hover-effect rp`), `.hover-primary-effect` — тело плашки
+// закреплённого (pinnedMessage.tsx:50 `<TopbarPlate.Body class="hover-primary-effect">`).
+// `.hover-danger-effect` из того же блока не портирован — в нашей разметке его нет.
+.hover-effect {
+  @include hover-background-effect();
+}
+
+.hover-primary-effect {
+  @include hover-background-effect(primary);
+
+  .c-ripple__circle {
+    background-color: var(--light-primary-color);
+  }
 }

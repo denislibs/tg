@@ -36,7 +36,7 @@ func (r *upFakeRepo) GetByID(_ context.Context, id int64) (domain.Media, error) 
 	return domain.Media{}, domain.ErrNotFound
 }
 
-func (r *upFakeRepo) UpdateProcessed(_ context.Context, _ int64, _, _, _ int, _ string) error {
+func (r *upFakeRepo) UpdateProcessed(_ context.Context, _ int64, _ usecasemedia.ProcessedMeta) error {
 	return nil
 }
 func (r *upFakeRepo) SetUploadID(_ context.Context, _ int64, uploadID string) (string, error) {

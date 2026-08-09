@@ -105,6 +105,12 @@ func messageUpdatePayload(m domain.Message) map[string]any {
 	if m.MediaName != "" {
 		p["media_name"] = m.MediaName
 	}
+	if m.MediaTitle != "" {
+		p["media_title"] = m.MediaTitle
+	}
+	if m.MediaPerformer != "" {
+		p["media_performer"] = m.MediaPerformer
+	}
 	if m.PaidMediaPrice != nil {
 		p["paid_media"] = map[string]any{"price": *m.PaidMediaPrice, "locked": m.PaidMediaLocked}
 	}
