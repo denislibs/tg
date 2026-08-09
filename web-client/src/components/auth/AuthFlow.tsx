@@ -31,7 +31,7 @@ import { COUNTRIES, countryByPhone, phoneMask, type Country } from './countries'
 import SignQRCard from './cards/SignQRCard'
 import SignInCard from './cards/SignInCard'
 import AuthCodeCard from './cards/AuthCodeCard'
-import PasswordCard from './cards/PasswordCard'
+import PasswordCard, { type ForgotOutcome, type ResetOutcome } from './cards/PasswordCard'
 import SignUpCard from './cards/SignUpCard'
 import EmailRecoverCard from './cards/EmailRecoverCard'
 import SignImportCard from './cards/SignImportCard'
@@ -71,8 +71,10 @@ function formatPhoneNumber(raw: string): { formatted: string; country: Country |
   return { formatted: country ? applyPattern(country, digits) : digits, country }
 }
 
-// Страна по умолчанию. В tweb её подставляет `help.getNearestDc` (ближайший DC),
-// у нас такой ручки нет — поле стартует с российского кода.
+// Страна по умолчанию до ответа сервера. В tweb поле стартует ПУСТЫМ и
+// заполняется по `help.getNearestDc`; у нас пустой старт означал бы кадр без
+// кода страны на каждой загрузке, поэтому фолбэк — российский код, а ответ
+// `GET /auth/nearest_country` перекрывает его, пока поля не тронули.
 const DEFAULT_COUNTRY = COUNTRIES.find((c) => c.iso2 === 'RU')!
 
 // tweb `index.ts`: вход с web.telegram.org приходит ссылкой `#?tgWebAuthToken=…`.
@@ -219,13 +221,33 @@ export default function AuthFlow({
   const [pwHint, setPwHint] = useState('')
   // Токен шага регистрации (ветка `signup_required`).
   const [signUpToken, setSignUpToken] = useState('')
-  // Маска почты восстановления и момент, раньше которого сервер не отправит код
-  // повторно (`resend_after` с сервера — свой счётчик не заводим).
+  // Маска почты восстановления, полученная от сервера вместе с отправкой кода.
   const [recoverPattern, setRecoverPattern] = useState('')
-  const recoverUntilRef = useRef(0)
+
+  // Поля номера/страны уже трогали руками — ответ `nearest_country` их не перебьёт
+  // (tweb применяет `help.getNearestDc`, только пока оба поля пусты).
+  const touchedRef = useRef(false)
+
+  // Страна по умолчанию с сервера — аналог `help.getNearestDc` в tweb
+  // `SignInCard.tryAgain`. Пустой ответ и любая ошибка — тихий фолбэк: менеджер
+  // отдаёт '' и поле остаётся на DEFAULT_COUNTRY.
+  useEffect(() => {
+    let alive = true
+    void managers.auth.nearestCountry().then((iso2) => {
+      if (!alive || !iso2 || touchedRef.current) return
+      const detected = COUNTRIES.find((c) => c.iso2 === iso2.toUpperCase())
+      if (!detected || detected.iso2 === DEFAULT_COUNTRY.iso2) return
+      setCountry(detected)
+      setPhone(detected.code)
+    })
+    return () => {
+      alive = false
+    }
+  }, [managers])
 
   // Ввод в поле телефона — порт `telInputField` + `SignInCard.onInput` из tweb.
   const onPhoneInput = useCallback((raw: string) => {
+    touchedRef.current = true
     // tweb: одинокий «+» остаётся как есть (иначе поле нельзя очистить до кода).
     if (raw.replace(/\++/, '+') === '+') {
       setPhone('+')
@@ -248,6 +270,7 @@ export default function AuthFlow({
   // «+код». Детект здесь не запускаем — иначе для «+7» он вернул бы Россию
   // вместо только что выбранного Казахстана.
   const onCountryChange = useCallback((c: Country) => {
+    touchedRef.current = true
     pickedRef.current = c
     setCountry(c)
     setPhone(c.code)
@@ -265,30 +288,40 @@ export default function AuthFlow({
   }, [])
 
   // «Forgot Password?»: код на привязанную почту → карточка восстановления.
-  // Возвращает ключ ошибки для надписи кнопки (tweb кладёт туда `err.type`).
-  const requestRecovery = async (): Promise<string> => {
-    // Сервер уже отправил код и держит паузу — второй запрос вернул бы 429,
-    // а код из первого ещё жив: просто возвращаемся на карточку.
-    if (recoverPattern && Date.now() < recoverUntilRef.current) {
-      setCard('emailRecover')
-      return ''
-    }
+  //
+  // Как в tweb (`PasswordCard.resetLink`): КАЖДЫЙ клик идёт на сервер, своего
+  // окна паузы клиент не держит — переход на карточку разрешает ответ сервера,
+  // а не наш таймер. Повторной отправки на самой карточке восстановления в tweb
+  // нет (`EmailRecoverCard` — только код и «Cancel»), поэтому единственный путь
+  // к повтору — вернуться сюда и нажать ссылку ещё раз.
+  const requestRecovery = async (): Promise<ForgotOutcome> => {
     const res = await managers.auth.requestPasswordRecovery(pwToken)
     if ('emailPattern' in res) {
       setRecoverPattern(res.emailPattern)
-      recoverUntilRef.current = Date.now() + res.resendAfter * 1000
       setCard('emailRecover')
       return ''
     }
+    // Сервер держит паузу повторной отправки: код из прошлой отправки ещё жив,
+    // и маска у нас уже есть — возвращаем на ту же карточку, вводить его.
     if (res.error === 'resend_too_soon' && recoverPattern) {
       setCard('emailRecover')
       return ''
     }
-    return res.error === 'password_recovery_na'
-      ? 'No recovery email is linked to this account'
-      : res.error === 'password_token_expired'
-        ? 'Session expired. Please sign in again.'
-        : 'Something went wrong. Try again.'
+    return res.error
+  }
+
+  // Сброс аккаунта, когда почты восстановления нет (tweb `deleteAccount` в ветке
+  // PASSWORD_RECOVERY_NA): успех возвращает на карточку ввода номера.
+  const resetAccount = async (): Promise<ResetOutcome> => {
+    const res = await managers.auth.resetAccount(pwToken)
+    if ('ok' in res) {
+      setPwToken('')
+      setPwHint('')
+      setRecoverPattern('')
+      setCard('signIn')
+      return ''
+    }
+    return res.error
   }
 
   // ---- добавление второго аккаунта (tweb showBackButton / hostEnter / hostExit) ----
@@ -340,6 +373,7 @@ export default function AuthFlow({
         token={pwToken}
         hint={pwHint}
         onForgot={requestRecovery}
+        onResetAccount={resetAccount}
         onComplete={onComplete}
       />
     ) : renderedCard === 'signUp' ? (

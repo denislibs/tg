@@ -7,10 +7,19 @@
 //
 // Стрелка «>» у вторичных кнопок — `span.tgico.inline-icon` ВНУТРИ `span.i18n`,
 // а не отдельный узел рядом.
+//
+// На время отправки tweb добавляет в кнопку `svg.preloader-circular` СОСЕДОМ к
+// `span.i18n` (`SignInCard`/`SignUpCard`/`PasswordCard`: `{submitting() && <svg…>}`),
+// а надпись меняет на `PleaseWait`. Отсюда проп `loading` у PrimaryButton: svg
+// остаётся ПРЯМЫМ ребёнком кнопки — на нём держится
+// `.btn-primary > svg{height: calc(100% - 20px); inset-inline-end: 15px}`, во
+// вложенном узле это правило не сработало бы. У вторичных кнопок прелоадера нет
+// и в tweb (`PasskeyLoginButton` на отправке только `disabled`), пропа тоже нет.
 import type { ButtonHTMLAttributes, PointerEvent, ReactNode } from 'react'
 import classNames from '../../shared/lib/classNames'
 import { useRipple } from '../../shared/ui/Ripple/useRipple'
 import TgIcon from '../TgIcon'
+import { PreloaderCircular } from './Preloader'
 
 interface AuthButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode
@@ -29,10 +38,14 @@ function useRippleHandlers(onPointerDown: AuthButtonProps['onPointerDown']) {
 export function PrimaryButton({
   className = '',
   children,
+  loading,
   onPointerDown,
   type = 'button',
   ...rest
-}: AuthButtonProps) {
+}: AuthButtonProps & {
+  /** идёт отправка — рядом с надписью крутится `svg.preloader-circular` (tweb) */
+  loading?: boolean
+}) {
   const { handle, ripple } = useRippleHandlers(onPointerDown)
   return (
     <button
@@ -43,6 +56,7 @@ export function PrimaryButton({
     >
       {ripple}
       <span className="i18n">{children}</span>
+      {loading && <PreloaderCircular />}
     </button>
   )
 }

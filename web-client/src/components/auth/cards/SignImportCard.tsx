@@ -11,6 +11,7 @@
 //           circle.preloader-path
 import { useEffect, useRef } from 'react'
 import { useManagers } from '../../../core/hooks/useManagers'
+import Preloader from '../Preloader'
 import s from '../AuthFlow.module.scss'
 
 export interface SignImportCardProps {
@@ -55,11 +56,7 @@ export default function SignImportCard({
     <div className={s.card}>
       {/* высота хоста — 0: `.preloader` позиционирован абсолютно и вылезает вверх */}
       <div>
-        <div className="preloader">
-          <svg xmlns="http://www.w3.org/2000/svg" className="preloader-circular" viewBox="25 25 50 50">
-            <circle className="preloader-path" cx="50" cy="50" r="20" fill="none" strokeMiterlimit="10" />
-          </svg>
-        </div>
+        <Preloader />
       </div>
     </div>
   )

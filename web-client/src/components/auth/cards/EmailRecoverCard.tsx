@@ -15,8 +15,10 @@
 //       button.btn-primary.btn-secondary.btn-primary-transparent.primary.rp
 //
 // Кнопки «Далее» тут нет: код уходит на сервер, как только набрана последняя цифра.
-// Повторной отправки в дереве tweb тоже нет — интервалом `resend_after` с сервера
-// распоряжается хост (AuthFlow), чтобы не плодить узлов сверх оригинала.
+// Повторной отправки тут тоже нет — в `EmailRecoverCard.tsx` у tweb ровно два
+// действия: `onFill` (подтвердить код) и «Cancel» → `navigate({name:'password'})`.
+// Единственный путь к повтору — вернуться на карточку пароля и нажать «Forgot
+// Password?» ещё раз; та ссылка в tweb каждый раз идёт на сервер (см. AuthFlow).
 import { useState } from 'react'
 import { useT } from '../../../i18n'
 import { useManagers } from '../../../core/hooks/useManagers'
@@ -29,7 +31,7 @@ import s from '../AuthFlow.module.scss'
 export interface EmailRecoverCardProps {
   /** одноразовый токен из sign_in — им же подтверждается код с почты */
   token: string
-  /** маска адреса с сервера, напр. `de•••@gmail.com` */
+  /** маска адреса с сервера, напр. `d****@e******.com` */
   emailPattern: string
   /** «Cancel» — назад на карточку облачного пароля */
   onCancel: () => void

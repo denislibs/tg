@@ -7,6 +7,7 @@ import { useManagers } from '../../../core/hooks/useManagers'
 import { isWebAuthnSupported, getPasskeyAssertion } from '../../../core/webauthnBrowser'
 import GrowHeightReveal from '../../../shared/ui/GrowHeightReveal'
 import MediaHeader from '../MediaHeader'
+import Preloader from '../Preloader'
 import { SecondaryButton } from '../AuthButton'
 import QrCode from '../QrCode'
 import superFormatter from '../superFormatter'
@@ -108,15 +109,10 @@ export default function SignQRCard({ onSignIn, onComplete }: SignQRCardProps) {
               прелоадер уезжает `hide-icon .4s forwards`, а канва въезжает
               `grow-icon .4s forwards`. */}
           {preloaderVisible && (
-            <div
-              className="preloader"
+            <Preloader
               style={painted ? { animation: 'hide-icon .4s forwards' } : undefined}
               onAnimationEnd={() => setPreloaderVisible(false)}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="preloader-circular" viewBox="25 25 50 50">
-                <circle className="preloader-path" cx="50" cy="50" r="20" fill="none" strokeMiterlimit="10" />
-              </svg>
-            </div>
+            />
           )}
           {qrUrl && (
             <QrCode className={s.qrCanvas} data={qrUrl} size={QR_SIZE} onPainted={onPainted} />

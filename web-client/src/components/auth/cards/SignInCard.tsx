@@ -140,8 +140,10 @@ export default function SignInCard({
           onEnter={() => void sendCode()}
         />
 
-        <PrimaryButton disabled={!canSubmit} onClick={() => void sendCode()}>
-          {t('Next')}
+        {/* tweb `SignInCard.onSubmit`: на отправке содержимое кнопки целиком
+            подменяется на `PleaseWait` + `svg.preloader-circular`. */}
+        <PrimaryButton loading={busy} disabled={!canSubmit} onClick={() => void sendCode()}>
+          {busy ? t('Please wait...') : t('Next')}
         </PrimaryButton>
         {/* tweb: следом здесь идёт `GrowHeightReveal` с LanguageChangeButton
             («Продолжить на русском»). Не заводим — у нас нет его данных

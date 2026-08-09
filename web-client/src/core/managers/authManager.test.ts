@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { newAuthManager, type AuthDeps } from './authManager'
+import { HttpError } from '../net/restClient'
 
 function deps(overrides: Partial<{ token: string | null; qrConfirmed: boolean }> = {}) {
   let token: string | null = overrides.token ?? null
@@ -93,5 +94,48 @@ describe('AuthManager', () => {
     const auth = newAuthManager(d)
     await auth.qrConfirm('tok123')
     expect(calls).toContainEqual(['/auth/qr/confirm', { token: 'tok123' }])
+  })
+
+  // GET /auth/nearest_country: пустой ответ и любая ошибка — штатный исход,
+  // наружу уходит '' и экран входа остаётся на своём фолбэке.
+  it('nearestCountry: код страны, пустая строка и ошибка — всё без исключения', async () => {
+    const make = (get: (path: string) => Promise<unknown>) =>
+      newAuthManager({
+        rest: { get } as unknown as AuthDeps['rest'],
+        store: { get: () => null, set: async () => {}, clear: async () => {}, ready: async () => {} },
+      })
+    await expect(make(async () => ({ country_code: 'DE' })).nearestCountry()).resolves.toBe('DE')
+    await expect(make(async () => ({ country_code: '' })).nearestCountry()).resolves.toBe('')
+    await expect(make(async () => ({})).nearestCountry()).resolves.toBe('')
+    await expect(
+      make(() => Promise.reject(new Error('offline'))).nearestCountry(),
+    ).resolves.toBe('')
+  })
+
+  // POST /auth/account/reset: 401/409 — дискриминированный результат, не throw
+  // (HttpError не переживает границу worker-RPC).
+  it('resetAccount маппит статусы сервера в результат', async () => {
+    const make = (post: (path: string, body: unknown) => Promise<unknown>) =>
+      newAuthManager({
+        rest: { post } as unknown as AuthDeps['rest'],
+        store: { get: () => null, set: async () => {}, clear: async () => {}, ready: async () => {} },
+      })
+    const fail = (status: number, message: string) => () =>
+      Promise.reject(new HttpError(status, message))
+
+    const calls: Array<[string, unknown]> = []
+    const ok = make(async (path, body) => {
+      calls.push([path, body])
+      return { ok: true }
+    })
+    await expect(ok.resetAccount('PWTOK')).resolves.toEqual({ ok: true })
+    expect(calls).toEqual([['/auth/account/reset', { password_token: 'PWTOK' }]])
+
+    await expect(make(fail(401, 'password_token_expired')).resetAccount('x'))
+      .resolves.toEqual({ error: 'password_token_expired' })
+    await expect(make(fail(409, 'recovery_available')).resetAccount('x'))
+      .resolves.toEqual({ error: 'recovery_available' })
+    await expect(make(fail(500, 'boom')).resetAccount('x'))
+      .resolves.toEqual({ error: 'failed' })
   })
 })

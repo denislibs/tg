@@ -1085,8 +1085,19 @@ const ru: Dict = {
   'Reset Password': 'Сброс пароля',
   'Enter the code we just sent to your email': 'Введите код, отправленный на почту',
   'Code expired. Please request a new one.': 'Код истёк. Запросите новый.',
-  'No recovery email is linked to this account': 'К аккаунту не привязана почта',
   'Session expired. Please sign in again.': 'Сессия истекла. Войдите заново.',
+  // Сброс аккаунта, когда почта восстановления не привязана
+  // (tweb Login.ResetPassword.NoEmailText / Login.ResetPassword.ResetAccount /
+  // Login.ResetAccount.Title / Login.ResetAccount.Text / Login.ResetAccountFail.Title)
+  "Since you didn't provide a recovery email when setting up your password, your remaining options are either to remember your password or to reset your account.":
+    'Поскольку при установке пароля Вы не указали резервный e-mail, Вам остаётся либо вспомнить пароль, либо сбросить аккаунт.',
+  'Reset Account': 'Сбросить аккаунт',
+  Warning: 'Внимание',
+  "This action can't be undone.\n\nIf you reset your account, all your messages and chats will be deleted.":
+    'Это действие нельзя отменить.\n\nЕсли Вы сбросите аккаунт, все Ваши сообщения и чаты будут удалены.',
+  Sorry: 'Извините',
+  'A recovery email is linked to this account — reset it by email instead.':
+    'К аккаунту привязана почта восстановления — сбросьте пароль по ней.',
   // Черновики (tweb Draft/PrivacyDeleteCloudDrafts)
   Draft: 'Черновик',
   'Delete All Cloud Drafts': 'Удалить все черновики',

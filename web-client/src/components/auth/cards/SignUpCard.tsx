@@ -180,11 +180,7 @@ export default function SignUpCard({ token, onTokenLost, onComplete }: SignUpCar
           }}
           onEnter={() => void submit()}
         />
-        {/* отступление от tweb: в оригинале на время отправки внутрь кнопки
-            добавляется `svg.preloader-circular` СОСЕДОМ к `span.i18n`; наш
-            AuthButton заворачивает содержимое в `span.i18n`, слота под соседний
-            узел у него нет (то же ограничение, что и на карточке пароля). */}
-        <PrimaryButton disabled={busy || tooLong} onClick={() => void submit()}>
+        <PrimaryButton loading={busy} disabled={busy || tooLong} onClick={() => void submit()}>
           {nextLabel}
         </PrimaryButton>
       </div>

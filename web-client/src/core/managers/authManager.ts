@@ -70,9 +70,11 @@ export type SignUpResult =
   | { user: User }
   | { error: 'first_name_required' | 'name_too_long' | 'signup_token_expired' | 'phone_number_occupied' | 'too_many_requests' | 'failed' }
 
-// «Забыли пароль»: маска привязанной почты + серверный интервал повторной отправки.
+// «Забыли пароль»: маска привязанной почты. Паузу повторной отправки держит
+// сервер (`resend_after` / 429 `resend_too_soon`) — клиент своего таймера не
+// заводит и потому это число не читает.
 export type RecoveryRequestResult =
-  | { emailPattern: string; resendAfter: number }
+  | { emailPattern: string }
   | { error: 'password_token_expired' | 'password_recovery_na' | 'resend_too_soon' | 'unavailable' | 'failed' }
 
 // Подтверждение кода с почты: сессия либо причина отказа. `recovery_expired` —
@@ -86,10 +88,17 @@ export type SignImportResult =
   | SignInOutcome
   | { error: 'web_auth_token_invalid' | 'unavailable' | 'failed'; user?: undefined; passwordNeeded?: undefined; signUpRequired?: undefined }
 
+// Сброс аккаунта с экрана входа (tweb `appAccountManager.deleteAccount('Forgot password')`
+// в ветке PASSWORD_RECOVERY_NA). `recovery_available` — почта всё-таки привязана,
+// сбрасывать нельзя: надо идти восстановлением.
+export type AccountResetResult =
+  | { ok: true }
+  | { error: 'password_token_expired' | 'recovery_available' | 'failed' }
+
 export interface PasswordState {
   enabled: boolean
   hint: string
-  email: string // маскированный (de•••@gmail.com)
+  email: string // маскированный (d****@e******.com)
 }
 
 // Ключ доступа в списке настроек.
@@ -174,6 +183,18 @@ export function newAuthManager({ rest, store }: AuthDeps) {
     return { user: u }
   }
   return {
+    // Страна по умолчанию для поля номера. Аналог tweb `help.getNearestDc`
+    // (там из ответа берётся `country`). Пустая строка — не определилось; это
+    // штатный ответ, а не ошибка, и экран входа просто остаётся на своём фолбэке.
+    async nearestCountry(): Promise<string> {
+      try {
+        const r = await rest.get<{ country_code?: string }>('/auth/nearest_country')
+        return r.country_code ?? ''
+      } catch {
+        return ''
+      }
+    },
+
     async requestCode(phone: string): Promise<void> {
       await rest.post('/auth/request_code', { phone })
     },
@@ -209,19 +230,35 @@ export function newAuthManager({ rest, store }: AuthDeps) {
     },
 
     // «Забыли пароль?»: код улетает на привязанную почту, обратно — её маска
-    // (de•••@gmail.com) и интервал, раньше которого сервер не отправит повторно.
+    // (d****@e******.com). Как в tweb, ссылка дёргает эту ручку на КАЖДЫЙ клик:
+    // паузу повторной отправки держит сервер, а не клиентский таймер.
     async requestPasswordRecovery(passwordToken: string): Promise<RecoveryRequestResult> {
       try {
-        const res = await rest.post<{ email_pattern: string; resend_after: number }>(
+        const res = await rest.post<{ email_pattern: string }>(
           '/auth/password/recover', { password_token: passwordToken },
         )
-        return { emailPattern: res.email_pattern, resendAfter: res.resend_after }
+        return { emailPattern: res.email_pattern }
       } catch (e) {
         if (!(e instanceof HttpError)) throw e
         if (e.message === 'resend_too_soon' || e.status === 429) return { error: 'resend_too_soon' }
         if (e.status === 401) return { error: 'password_token_expired' }
         if (e.status === 404) return { error: 'password_recovery_na' }
         if (e.status === 503) return { error: 'unavailable' }
+        return { error: 'failed' }
+      }
+    },
+
+    // Сброс аккаунта, когда почта восстановления не привязана и пароль забыт
+    // (tweb: две подтверждающие плашки → `deleteAccount('Forgot password')`).
+    // Сессии тут нет — операцию авторизует тот же одноразовый password_token.
+    async resetAccount(passwordToken: string): Promise<AccountResetResult> {
+      try {
+        await rest.post('/auth/account/reset', { password_token: passwordToken })
+        return { ok: true }
+      } catch (e) {
+        if (!(e instanceof HttpError)) throw e
+        if (e.status === 401) return { error: 'password_token_expired' }
+        if (e.status === 409) return { error: 'recovery_available' }
         return { error: 'failed' }
       }
     },
