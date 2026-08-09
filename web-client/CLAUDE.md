@@ -33,7 +33,16 @@ npx vite build --outDir ../client-build
   маленький стор, колокейтед со своей фичей (`settings`, `i18n`, `pip`, `pwa`, `webapp`), живёт
   рядом с ней — это норма (не растаскивать по `stores/` в ущерб когезии). Не плодить
   React-контексты под то, что уже в сторах.
-- **framer-motion** — анимации. **TS strict** — без `any`, неиспользуемые переменные не пройдут сборку.
+- **Анимации — только CSS-классами tweb**; JS их лишь переключает. **framer-motion убран** — не возвращать
+  (как и MUI). Механика: `core/hooks/useSetTransition` (порт `singleTransition.ts` — классы
+  `forwards`/`backwards`/`animating`) и `core/hooks/useMountTransition` (роль `AnimatePresence`: узел живёт
+  в DOM, пока играет exit). Гейт — `body.animation-level-0/2`, ставит `App.tsx` по настройке «Без анимаций».
+  Тяжёлые переходы объявлять через `core/dom/heavyAnimation` — на их время `animationIntersector` глушит
+  стикеры/видео. **TS strict** — без `any`, неиспользуемые переменные не пройдут сборку.
+- **Ловушка CSS-модулей:** Vite хеширует любое имя в `animation`, включая ссылку на глобальный кейфрейм
+  партиала — `animation: fade-in-opacity` внутри `*.module.scss` станет `_fade-in-opacity_xxx` и молча
+  ничего не сыграет (ни сборка, ни тайпчек не поймают). Нужен локальный `@keyframes`-дубль;
+  `animation: :global(name)` не компилируется.
 - Тяжёлые списки: `MessageRow`/`ChatFeed` мемоизированы — не ломай стабильность пропсов/рефов.
 - **Импорт-алиасы** (tsconfig + vite + vitest, держать синхронно): `@core @stores @shared @rpc
   @lib @helpers @components @config @environment @vendor @customEmoji @/*`. Раскладка кросс-каттинга:

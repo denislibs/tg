@@ -1,9 +1,7 @@
 import { createPortal } from 'react-dom'
-import { motion } from 'framer-motion'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
-import { slideInRight } from '../motion'
 import { useT } from '../i18n'
 import { useStoryStats } from '../core/hooks/useStoryStats'
 import StatChart from './StatChart'
@@ -21,7 +19,7 @@ export default function StoryStats({ storyId, onClose }: { storyId: number; onCl
 
   return createPortal(
     <div style={{ position: 'fixed', inset: 0, zIndex: 3000 }}>
-      <motion.div variants={slideInRight} initial="initial" animate="animate" exit="exit" className={s.rights}>
+      <div className={`${s.rights} ${s.slideIn}`}>
         <div className={s.rightsHeader}>
           <IconButton onClick={onClose} color="var(--secondary-text-color)">
             <TgIcon name="back" />
@@ -78,7 +76,7 @@ export default function StoryStats({ storyId, onClose }: { storyId: number; onCl
             </>
           )}
         </div>
-      </motion.div>
+      </div>
     </div>,
     document.body,
   )

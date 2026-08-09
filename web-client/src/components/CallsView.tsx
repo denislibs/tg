@@ -6,9 +6,7 @@
 import { useMemo } from 'react'
 import Text from '../shared/ui/Text'
 import IconButton from '../shared/ui/IconButton'
-import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
-import { slideInRight } from '../motion'
 import Avatar from '../shared/ui/Avatar'
 import { useAvatarSrc } from './useAvatarSrc'
 import { useCallsLog } from '../core/hooks/useCallsLog'
@@ -87,13 +85,7 @@ export default function CallsView({ onBack, onOpenChat }: { onBack: () => void; 
   }, [calls, lang])
 
   return (
-    <motion.div
-      variants={slideInRight}
-      initial="initial"
-      animate="animate"
-      exit="exit"
-      style={{ position: 'absolute', inset: 0, zIndex: 40, background: 'var(--surface-color)', display: 'flex', flexDirection: 'column' }}
-    >
+    <div className={s.screen}>
       <div className={s.header}>
         <IconButton onClick={onBack} color="var(--secondary-text-color)">
           <TgIcon name="back" />
@@ -121,6 +113,6 @@ export default function CallsView({ onBack, onOpenChat }: { onBack: () => void; 
           </div>
         ))}
       </div>
-    </motion.div>
+    </div>
   )
 }

@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { AnimatePresence } from 'framer-motion'
 import Text from '../shared/ui/Text'
 import { useT } from '../i18n'
 import { useMediaThumb } from '../core/hooks/useMediaThumb'
@@ -44,9 +43,7 @@ export default function PinnedStoriesSection({ peerId }: { peerId: number }) {
           <Tile key={it.id} story={it} onClick={() => setOpenId(it.id)} />
         ))}
       </div>
-      <AnimatePresence>
-        {open && <StoryReadOnlyPreview key={open.id} story={open} onClose={() => setOpenId(null)} />}
-      </AnimatePresence>
+      {open && <StoryReadOnlyPreview key={open.id} story={open} onClose={() => setOpenId(null)} />}
     </div>
   )
 }

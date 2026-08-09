@@ -11,8 +11,6 @@ import { useRef, useState } from 'react'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import Input from '../shared/ui/Input'
-import { motion } from 'framer-motion'
-import { EASE, DUR } from '../motion'
 import TgIcon from './TgIcon'
 import Avatar from '../shared/ui/Avatar'
 import { Section, Row } from './settings/kit'
@@ -68,31 +66,10 @@ export default function EditContactView({
   }
 
   return (
-    <motion.div
-      initial={narrow ? { opacity: 0 } : { width: 0, opacity: 0 }}
-      animate={narrow ? { opacity: 1 } : { width: 404, opacity: 1 }}
-      exit={narrow ? { opacity: 0 } : { width: 0, opacity: 0 }}
-      transition={{ duration: DUR.in, ease: EASE }}
-      style={
-        narrow
-          ? { position: 'fixed', inset: 0, zIndex: 1900 }
-          : {
-              overflow: 'hidden',
-              flexShrink: 0,
-              position: 'sticky',
-              top: '16px',
-              alignSelf: 'flex-start',
-              height: 'calc(100vh - 32px)',
-              zIndex: 15,
-            }
-      }
-    >
+    <div className={narrow ? add.dockNarrow : add.dockWide}>
       {narrow && <div className={add.backdrop} onClick={onClose} />}
-      <motion.div
-        {...(narrow
-          ? { initial: { x: '100%' }, animate: { x: '0%' }, transition: { duration: DUR.in, ease: EASE } }
-          : {})}
-        className={`${add.panel} ${narrow ? add.panelNarrow : add.panelWide}`}
+      <div
+        className={`${add.panel} ${narrow ? `${add.panelNarrow} ${add.panelNarrowIn}` : add.panelWide}`}
         style={{ background: 'var(--background-color)' }}
       >
         <div className={add.header}>
@@ -178,20 +155,21 @@ export default function EditContactView({
           </Section>
         </div>
 
-        <motion.button
-          whileTap={{ scale: 0.92 }}
+        {/* tweb не масштабирует кнопки по нажатию — отклик даёт ripple/фон
+            (_button.scss:75-77), поэтому whileTap снят. */}
+        <button
           onClick={submit}
           disabled={!canSave}
           className={add.fab}
           style={{ cursor: canSave ? 'pointer' : 'default', opacity: canSave ? 1 : 0.5 }}
         >
           <TgIcon name="check" size={28} />
-        </motion.button>
-      </motion.div>
+        </button>
+      </div>
 
       <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFilePicked} />
       {cropFile && <AvatarCropper file={cropFile} onCancel={() => setCropFile(null)} onConfirm={(blob, w, h) => { setCropFile(null); void onCropConfirm(blob, w, h) }} />}
       <BirthdayModal open={birthdayOpen} initial={null} onClose={() => setBirthdayOpen(false)} onSave={() => setBirthdayOpen(false)} />
-    </motion.div>
+    </div>
   )
 }

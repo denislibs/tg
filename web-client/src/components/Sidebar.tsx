@@ -1,6 +1,4 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
-import { EASE } from '../motion'
 import { isUserCollapsedLeft, setFoldersSidebarShown, setOpenTabsLeftSidebar } from '../core/dom/updateColumnWidths'
 import installColumnResize from '../core/dom/installColumnResize'
 import PendingSuggestion from './sidebarLeft/pendingSuggestion'
@@ -300,15 +298,12 @@ export default function Sidebar({
           collapsed={!!forumChat}
         />
 
-        <AnimatePresence>
-          {archiveOpen && (
-            <motion.div
-              className={s.archiveOverlay}
-              initial={{ x: 80, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: 80, opacity: 0 }}
-              transition={{ duration: 0.22, ease: EASE }}
-            >
+        {/* Архив — в tweb отдельная вкладка слайдера (AppArchivedTab,
+            SliderSuperTab), поэтому появление у неё то же, что у прочих вкладок:
+            въезд справа за --transition-standard-in. Кейфрейм на вставке узла
+            вместо движка анимаций. */}
+        {archiveOpen && (
+            <div className={s.archiveOverlay}>
               <div className={s.archiveHeader}>
                 <IconButton onClick={() => setArchiveOpen(false)} color="var(--secondary-text-color)" aria-label={t('Back')}>
                   <TgIcon name="back" size={24} />
@@ -327,23 +322,21 @@ export default function Sidebar({
                   </div>
                 )}
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+            </div>
+        )}
         </div>
       </div>
       </div>
 
         {searching && (
           <div id="search-container" className={classNames('transition-item', 'active', 'sidebar-search', s.searchOverlay)}>
-            <motion.div
-              className={s.searchInner}
-              initial={{ opacity: 0, scale: 0.96, y: -6 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              transition={{ duration: 0.22, ease: EASE }}
-            >
+            {/* tweb: выдача поиска — `.transition-item` внутри
+                `.sidebar-content.transition.zoom-fade`, приходящий узел играет
+                `fade-in-opacity .15s ease, zoom-fade-in-move .15s ease`
+                (_transition.scss:25-40) — scale 1.1 → 1 с фейдом. */}
+            <div className={s.searchInner}>
               <SearchView query={query} chats={chats} onSelect={handleSelect} searchReal={searchReal} onJoin={onJoin} onOpenPeer={onOpenPeer} />
-            </motion.div>
+            </div>
           </div>
         )}
 

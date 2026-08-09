@@ -1,16 +1,18 @@
 // Модалка Telegram Premium: оверлей + карточка + планы + фичи + CTA.
-.overlay {
-  position: fixed;
-  inset: 0;
+//
+// Скрим, центровка и показ/скрытие — глобальные `.popup`/`.popup-container`
+// (портированный `styles/tweb/popups/_popup.scss`, оригинал
+// `tweb src/scss/partials/popups/_popup.scss:29-90`). Здесь — только слой,
+// геометрия и собственный фон карточки; классы продублированы, потому что
+// партиалы эмитятся ПОСЛЕ CSS-модулей и при равной специфичности побеждают.
+@use '../styles/foundation' as *;
+
+.overlay.overlay {
   z-index: 1300;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
   padding: 12px;
 }
 
-.dialog {
+.dialog.dialog {
   width: min(440px, 100%);
   max-height: 92vh;
   border-radius: 16px;
@@ -115,6 +117,10 @@
 .radioOn {
   border-color: var(--primary-color);
 }
+
+// Заливка радио — как у tweb `.radio-field-main::after`
+// (`tweb src/scss/partials/_checkbox.scss:252-264`): scale(0) → scale(1) с
+// `transition: transform .1s ease`, гейт по уровню анимаций. Пружины в tweb нет.
 .radioFill {
   position: absolute;
   inset: -2px;
@@ -123,6 +129,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  transform: scale(0);
+  transform-origin: center;
+
+  @include animation-level-global(2) {
+    transition: transform .1s ease;
+  }
+
+  .radioOn & {
+    transform: scale(1);
+  }
 }
 .planBody {
   flex: 1;

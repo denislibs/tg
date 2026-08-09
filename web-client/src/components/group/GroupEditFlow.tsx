@@ -6,7 +6,6 @@
 // isChannel = chat.type === 'channel'. Каркас — SettingsScreen/Section/Row
 // (settings/kit), данные — useGroupEdit.
 import { useRef, useState } from 'react'
-import { AnimatePresence } from 'framer-motion'
 import { SettingsScreen, Section, Row } from '../settings/kit'
 import IconButton from '../../shared/ui/IconButton'
 import Input from '../../shared/ui/Input'
@@ -105,6 +104,18 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
             {saving ? <Spinner size={22} /> : <TgIcon name="check" />}
           </IconButton>
         ) : undefined
+      }
+      sub={
+        sub === 'type' ? <ChatTypeScreen g={g} isChannel={isChannel} onBack={() => setSub(null)} /> :
+        sub === 'links' ? <InviteLinksScreen g={g} isChannel={isChannel} onBack={() => setSub(null)} /> :
+        sub === 'reactions' ? <ReactionsScreen g={g} onBack={() => setSub(null)} /> :
+        sub === 'discussion' ? <DiscussionScreen g={g} onBack={() => setSub(null)} /> :
+        sub === 'permissions' ? <PermissionsScreen g={g} onBack={() => setSub(null)} /> :
+        sub === 'admins' ? <AdminsScreen g={g} onBack={() => setSub(null)} /> :
+        sub === 'members' ? <MembersScreen g={g} isChannel={isChannel} onBack={() => setSub(null)} /> :
+        sub === 'banned' ? <RemovedUsersScreen g={g} onBack={() => setSub(null)} /> :
+        sub === 'restricted' ? <RestrictedUsersScreen g={g} onBack={() => setSub(null)} /> :
+        null
       }
     >
       {/* аватар + имя + описание (tweb editPeer) */}
@@ -225,17 +236,6 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
         />
       )}
 
-      <AnimatePresence>
-        {sub === 'type' && <ChatTypeScreen g={g} isChannel={isChannel} onBack={() => setSub(null)} />}
-        {sub === 'links' && <InviteLinksScreen g={g} isChannel={isChannel} onBack={() => setSub(null)} />}
-        {sub === 'reactions' && <ReactionsScreen g={g} onBack={() => setSub(null)} />}
-        {sub === 'discussion' && <DiscussionScreen g={g} onBack={() => setSub(null)} />}
-        {sub === 'permissions' && <PermissionsScreen g={g} onBack={() => setSub(null)} />}
-        {sub === 'admins' && <AdminsScreen g={g} onBack={() => setSub(null)} />}
-        {sub === 'members' && <MembersScreen g={g} isChannel={isChannel} onBack={() => setSub(null)} />}
-        {sub === 'banned' && <RemovedUsersScreen g={g} onBack={() => setSub(null)} />}
-        {sub === 'restricted' && <RestrictedUsersScreen g={g} onBack={() => setSub(null)} />}
-      </AnimatePresence>
     </SettingsScreen>
   )
 }

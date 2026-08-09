@@ -2,11 +2,8 @@ import { useState } from 'react'
 import type { ReactNode } from 'react'
 import Text from '../shared/ui/Text'
 import IconButton from '../shared/ui/IconButton'
-import { AnimatePresence, motion } from 'framer-motion'
-import { slideInRight } from '../motion'
 import SettingsSubScreen, { hasSubScreen } from './SettingsSubScreen'
 import EditProfile from './settings/EditProfile'
-import ChangePhone from './settings/ChangePhone'
 import PremiumModal from './PremiumModal'
 import PremiumManage from './PremiumManage'
 import PremiumBadge from './PremiumBadge'
@@ -20,6 +17,7 @@ import classNames from '../shared/lib/classNames'
 import { useT, useLang, LANGS } from '../i18n'
 import { useChatsStore } from '../stores/chatsStore'
 import { gradientFor } from '../core/dialogToChat'
+import { uiEvents } from '../core/hooks/uiEvents'
 import { useAvatarSrc } from './useAvatarSrc'
 import { useSettings } from '../settings'
 import { resolvePreset, PRESET_MODE } from '../theme'
@@ -67,7 +65,6 @@ export default function SettingsView({
   const [active, setActive] = useState(initialSub ?? 'Notifications and Sounds')
   const [sub, setSub] = useState<string | null>(initialSub ?? null)
   const [editProfile, setEditProfile] = useState(false)
-  const [changePhone, setChangePhone] = useState(false)
   const [premiumOpen, setPremiumOpen] = useState(false)
   const [premiumManageOpen, setPremiumManageOpen] = useState(false)
   const [emojiStatusOpen, setEmojiStatusOpen] = useState(false)
@@ -79,13 +76,7 @@ export default function SettingsView({
   const avatarSrc = useAvatarSrc(me?.avatarUrl)
 
   return (
-    <motion.div
-      className={s.screen}
-      variants={slideInRight}
-      initial="initial"
-      animate="animate"
-      exit="exit"
-    >
+    <div className={s.screen}>
       {/* Header */}
       <div className={s.header}>
         <IconButton onClick={onBack} color="var(--secondary-text-color)">
@@ -121,13 +112,20 @@ export default function SettingsView({
 
         {/* Contact card */}
         <Section>
+          {/* Клик копирует номер и показывает тост — 1:1 tweb peerProfile.tsx:655-668
+              (`copyPhoneNumber` + `toast(I18n.format('PhoneCopied'))`). Экрана смены
+              номера в tweb нет вовсе: `account.changePhone` описан в схеме MTProto,
+              но UI его не вызывает нигде, и вкладки под него в настройках нет —
+              поэтому шеврона тут тоже нет, строка никуда не ведёт. */}
           <Row
             icon={<TgIcon name="phone" size={24} />}
             label={formatPhone(me?.phone) || '—'}
             sublabel={t('Phone')}
             translate={false}
-            chevron
-            onClick={() => setChangePhone(true)}
+            onClick={me?.phone ? () => {
+              void navigator.clipboard?.writeText(formatPhone(me.phone).replace(/\s/g, '')).catch(() => {})
+              uiEvents.emit('ui:toast', t('Phone copied to clipboard'))
+            } : undefined}
           />
           {me?.username && (
             <Row
@@ -196,28 +194,17 @@ export default function SettingsView({
         </Section>
       </div>
 
-      {/* Sub-screen overlay */}
-      <AnimatePresence>
-        {sub && <SettingsSubScreen title={sub} onBack={() => setSub(null)} chats={chats} />}
-      </AnimatePresence>
+      {/* Оверлеи-подэкраны: въезд справа играет CSS самого экрана (кейфрейм на
+          вставке узла), обёртки-презенсы не нужны. */}
+      {sub && <SettingsSubScreen title={sub} onBack={() => setSub(null)} chats={chats} />}
 
-      {/* Edit profile overlay */}
-      <AnimatePresence>
-        {editProfile && <EditProfile onBack={() => setEditProfile(false)} />}
-      </AnimatePresence>
-
-      {/* Change phone number overlay (tweb Change Number) */}
-      <AnimatePresence>
-        {changePhone && <ChangePhone onBack={() => setChangePhone(false)} />}
-      </AnimatePresence>
+      {editProfile && <EditProfile onBack={() => setEditProfile(false)} />}
 
       {/* Telegram Premium modal (features → checkout) */}
       <PremiumModal open={premiumOpen} onClose={() => setPremiumOpen(false)} />
 
       {/* Manage active subscription (plan, expiry, cancel auto-renew) */}
-      <AnimatePresence>
-        {premiumManageOpen && <PremiumManage onBack={() => setPremiumManageOpen(false)} />}
-      </AnimatePresence>
+      {premiumManageOpen && <PremiumManage onBack={() => setPremiumManageOpen(false)} />}
 
       {/* Emoji-status picker (own status) */}
       <EmojiStatusPicker open={emojiStatusOpen} onClose={() => setEmojiStatusOpen(false)} />
@@ -231,6 +218,6 @@ export default function SettingsView({
         label={me?.username ? `@${me.username}` : name}
         avatar={{ src: avatarSrc, background: avatarBg, text: avatarText }}
       />
-    </motion.div>
+    </div>
   )
 }

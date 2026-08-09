@@ -1,18 +1,13 @@
-.overlay {
-  position: absolute;
-  inset: 0;
+// Скрим, центровка, радиус, фон карточки и показ/скрытие — глобальные
+// `.popup`/`.popup-container` (портированный `styles/tweb/popups/_popup.scss`).
+// Здесь — только слой и геометрия; классы продублированы, потому что партиалы
+// эмитятся ПОСЛЕ CSS-модулей и при равной специфичности побеждают.
+.overlay.overlay {
   z-index: 80;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  --popup-width: min(92%, 420px);
 }
-.dialog {
-  width: min(92%, 420px);
-  border-radius: 16px;
-  background: var(--surface-color);
+.dialog.dialog {
   padding: 20px;
-  position: relative;
 }
 .close {
   position: absolute;

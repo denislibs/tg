@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import IconButton from '../shared/ui/IconButton'
-import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import Avatar from '../shared/ui/Avatar'
 import Text from '../shared/ui/Text'
@@ -101,21 +100,7 @@ export default function AddStorySheet({
   }
 
   return (
-    <motion.div
-      initial={{ x: '100%' }}
-      animate={{ x: 0 }}
-      exit={{ x: '100%' }}
-      transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-      style={{
-        position: 'absolute',
-        inset: 0,
-        zIndex: 42,
-        background: 'var(--surface-color)',
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-      }}
-    >
+    <div className={s.sheet}>
       {/* Шапка */}
       <div className={s.header}>
         <IconButton onClick={onBack} aria-label="Назад" color="var(--secondary-text-color)">
@@ -311,17 +296,17 @@ export default function AddStorySheet({
       </div>
 
       {/* FAB публикации */}
-      <motion.div
+      {/* tweb не масштабирует угловую кнопку по hover/tap — отклик там даёт
+          ripple и смена фона (_button.scss:75-77); whileHover/whileTap сняты. */}
+      <div
         onClick={publish}
         role="button"
         aria-label="Опубликовать"
         aria-disabled={busy}
-        whileHover={{ scale: busy ? 1 : 1.06 }}
-        whileTap={{ scale: busy ? 1 : 0.92 }}
         className={classNames(s.fab, busy ? s.fabBusy : '')}
       >
         <TgIcon name="check" />
-      </motion.div>
-    </motion.div>
+      </div>
+    </div>
   )
 }

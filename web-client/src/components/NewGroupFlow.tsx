@@ -8,9 +8,9 @@ import IconButton from '../shared/ui/IconButton'
 import Input from '../shared/ui/Input'
 import UserAvatar from './UserAvatar'
 import Checkbox from '../shared/ui/Checkbox'
-import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import AvatarCropper from './settings/AvatarCropper'
+import classNames from '../shared/lib/classNames'
 import { useT, useLang } from '../i18n'
 import { useGroupCandidates, type GroupCandidate } from '../core/hooks/useGroupCandidates'
 import { useChatsStore } from '../stores/chatsStore'
@@ -70,21 +70,7 @@ export default function NewGroupFlow({ onClose, onCreate }: Props) {
   )
 
   return (
-    <motion.div
-      initial={{ x: '100%' }}
-      animate={{ x: 0 }}
-      exit={{ x: '100%' }}
-      transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-      style={{
-        position: 'absolute',
-        inset: 0,
-        zIndex: 41,
-        background: 'var(--surface-color)',
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-      }}
-    >
+    <div className={s.screen}>
       {/* Header */}
       <div className={s.header}>
         <IconButton onClick={back} color="var(--secondary-text-color)">
@@ -96,153 +82,126 @@ export default function NewGroupFlow({ onClose, onCreate }: Props) {
       </div>
 
       <div className={s.stepArea}>
-        <AnimatePresence mode="wait" initial={false}>
-          {step === 'members' ? (
-            <motion.div
-              key="members"
-              initial={{ opacity: 0, x: 30 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -30 }}
-              transition={{ duration: 0.13, ease: [0.3, 0, 0.2, 1] }}
-              className={s.step1}
-            >
-              {/* tweb .selector-search: чипы выбранных + поле ввода одной обёрткой */}
-              <div className={s.selector}>
-                <AnimatePresence initial={false}>
+        {/* Шаги — переход tweb `slide-fade` (_transition.scss:88-140): приходящий
+            шаг въезжает на 1.5rem с фейдом. Вперёд («участники» → «имя») — набор
+            `.to`, назад — набор `.to` из `.backwards` (въезд с другой стороны). */}
+        {step === 'members' ? (
+          <div key="members" className={classNames(s.step1, s.stepBackwards)}>
+            {/* tweb .selector-search: чипы выбранных + поле ввода одной обёрткой */}
+            <div className={s.selector}>
+              {selected.map((id) => {
+                const c = byId.get(id)
+                if (!c) return null
+                return (
+                  <div key={id} className={s.chip} onClick={() => toggle(id)}>
+                    <div className={s.chipAvatar}>
+                      {renderAvatar(c, 32)}
+                      <span className={s.chipClose}>
+                        <TgIcon name="close" size={16} />
+                      </span>
+                    </div>
+                    <span className={s.chipName}>{c.name}</span>
+                  </div>
+                )
+              })}
+              <input
+                autoFocus
+                className={s.selectorInput}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t('Search')}
+              />
+            </div>
+
+            <div className={s.list}>
+              {filtered.map((c) => (
+                <div key={c.id} className={s.row} onClick={() => toggle(c.id)}>
+                  <div className={s.rowCheck}>
+                    <Checkbox checked={selected.includes(c.id)} shape="square" size={20} />
+                  </div>
+                  {renderAvatar(c, 'md')}
+                  <div className={s.rowBody}>
+                    <Text noWrap size={15.5} weight={600} color="var(--primary-text-color)">{c.name}</Text>
+                    <Text noWrap size={13.5} color={presence[c.id]?.online ? 'var(--primary-color)' : 'var(--secondary-text-color)'}>
+                      {statusOf(c.id)}
+                    </Text>
+                  </div>
+                </div>
+              ))}
+              {filtered.length === 0 && (
+                <div className={s.empty}>
+                  <Text size={15} color="var(--secondary-text-color)">{t('No Results')}</Text>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div key="name" className={classNames(s.step1, s.stepForwards)}>
+            <div className={s.card}>
+              <div className={s.avatarWrap}>
+                {/* tweb не масштабирует кнопку аватара по hover/tap — отклик
+                    там даёт ripple и фон (_button.scss:75-77); прежние
+                    whileHover/whileTap убраны, а не переложены на CSS. */}
+                <div className={s.avatarBtn} onClick={() => fileInputRef.current?.click()}>
+                  {photoUrl ? <img className={s.avatarPreview} src={photoUrl} alt="" /> : <TgIcon name="cameraadd" size={44} />}
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  onChange={(e) => {
+                    const f = e.target.files?.[0]
+                    if (f) setCropFile(f)
+                    e.target.value = ''
+                  }}
+                />
+              </div>
+              <Input
+                autoFocus
+                label={t('Group Name')}
+                value={name}
+                onChange={setName}
+                onKeyDown={(e) => e.key === 'Enter' && next()}
+                wrapClassName={s.field}
+              />
+            </div>
+            {selected.length > 0 && (
+              <>
+                <Text size={15} weight={600} color="var(--primary-color)" className={s.membersTitle}>
+                  {`${selected.length} участников`}
+                </Text>
+                <div className={s.list}>
                   {selected.map((id) => {
                     const c = byId.get(id)
                     if (!c) return null
                     return (
-                      <motion.div
-                        key={id}
-                        className={s.chip}
-                        initial={{ scale: 0.6, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        exit={{ scale: 0.6, opacity: 0 }}
-                        transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
-                        onClick={() => toggle(id)}
-                      >
-                        <div className={s.chipAvatar}>
-                          {renderAvatar(c, 32)}
-                          <span className={s.chipClose}>
-                            <TgIcon name="close" size={16} />
-                          </span>
+                      <div key={id} className={s.row}>
+                        {renderAvatar(c, 'md')}
+                        <div className={s.rowBody}>
+                          <Text noWrap size={15.5} weight={600} color="var(--primary-text-color)">{c.name}</Text>
+                          <Text noWrap size={13.5} color={presence[id]?.online ? 'var(--primary-color)' : 'var(--secondary-text-color)'}>
+                            {statusOf(id)}
+                          </Text>
                         </div>
-                        <span className={s.chipName}>{c.name}</span>
-                      </motion.div>
+                      </div>
                     )
                   })}
-                </AnimatePresence>
-                <input
-                  autoFocus
-                  className={s.selectorInput}
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder={t('Search')}
-                />
-              </div>
-
-              <div className={s.list}>
-                {filtered.map((c) => (
-                  <div key={c.id} className={s.row} onClick={() => toggle(c.id)}>
-                    <div className={s.rowCheck}>
-                      <Checkbox checked={selected.includes(c.id)} shape="square" size={20} />
-                    </div>
-                    {renderAvatar(c, 'md')}
-                    <div className={s.rowBody}>
-                      <Text noWrap size={15.5} weight={600} color="var(--primary-text-color)">{c.name}</Text>
-                      <Text noWrap size={13.5} color={presence[c.id]?.online ? 'var(--primary-color)' : 'var(--secondary-text-color)'}>
-                        {statusOf(c.id)}
-                      </Text>
-                    </div>
-                  </div>
-                ))}
-                {filtered.length === 0 && (
-                  <div className={s.empty}>
-                    <Text size={15} color="var(--secondary-text-color)">{t('No Results')}</Text>
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="name"
-              initial={{ opacity: 0, x: 30 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -30 }}
-              transition={{ duration: 0.13, ease: [0.3, 0, 0.2, 1] }}
-              className={s.step1}
-            >
-              <div className={s.card}>
-                <div className={s.avatarWrap}>
-                  <motion.div
-                    className={s.avatarBtn}
-                    whileHover={{ scale: 1.04 }}
-                    whileTap={{ scale: 0.96 }}
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    {photoUrl ? <img className={s.avatarPreview} src={photoUrl} alt="" /> : <TgIcon name="cameraadd" size={44} />}
-                  </motion.div>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    hidden
-                    onChange={(e) => {
-                      const f = e.target.files?.[0]
-                      if (f) setCropFile(f)
-                      e.target.value = ''
-                    }}
-                  />
                 </div>
-                <Input
-                  autoFocus
-                  label={t('Group Name')}
-                  value={name}
-                  onChange={setName}
-                  onKeyDown={(e) => e.key === 'Enter' && next()}
-                  wrapClassName={s.field}
-                />
-              </div>
-              {selected.length > 0 && (
-                <>
-                  <Text size={15} weight={600} color="var(--primary-color)" className={s.membersTitle}>
-                    {`${selected.length} участников`}
-                  </Text>
-                  <div className={s.list}>
-                    {selected.map((id) => {
-                      const c = byId.get(id)
-                      if (!c) return null
-                      return (
-                        <div key={id} className={s.row}>
-                          {renderAvatar(c, 'md')}
-                          <div className={s.rowBody}>
-                            <Text noWrap size={15.5} weight={600} color="var(--primary-text-color)">{c.name}</Text>
-                            <Text noWrap size={13.5} color={presence[id]?.online ? 'var(--primary-color)' : 'var(--secondary-text-color)'}>
-                              {statusOf(id)}
-                            </Text>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* угловая кнопка-стрелка (tweb btn-corner) */}
-      <motion.div
+      <div
         onClick={next}
-        whileHover={{ scale: canNext ? 1.06 : 1 }}
-        whileTap={{ scale: canNext ? 0.92 : 1 }}
         className={s.fab}
         style={{ cursor: canNext ? 'pointer' : 'default', opacity: canNext ? 1 : 0.45 }}
       >
         <TgIcon name="arrow_next" />
-      </motion.div>
+      </div>
 
       {cropFile && (
         <AvatarCropper
@@ -258,6 +217,6 @@ export default function NewGroupFlow({ onClose, onCreate }: Props) {
           }}
         />
       )}
-    </motion.div>
+    </div>
   )
 }

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
-import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import Avatar from '../shared/ui/Avatar'
 import { useAvatarSrc } from './useAvatarSrc'
@@ -53,21 +52,7 @@ export default function NewPrivateChat({ chats, onClose, onSelect, title = 'New 
   )
 
   return (
-    <motion.div
-      initial={{ x: '100%' }}
-      animate={{ x: 0 }}
-      exit={{ x: '100%' }}
-      transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-      style={{
-        position: 'absolute',
-        inset: 0,
-        zIndex: 41,
-        background: 'var(--surface-color)',
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-      }}
-    >
+    <div className={s.screen}>
       {/* Header */}
       <div className={s.header}>
         <IconButton onClick={onClose} color="var(--secondary-text-color)">
@@ -106,6 +91,6 @@ export default function NewPrivateChat({ chats, onClose, onSelect, title = 'New 
           ))
         )}
       </div>
-    </motion.div>
+    </div>
   )
 }

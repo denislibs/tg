@@ -6,9 +6,7 @@ import { useMemo, useRef, useState, type ReactNode } from 'react'
 import Text from '../../shared/ui/Text'
 import classNames from '../../shared/lib/classNames'
 import { createPortal } from 'react-dom'
-import { motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
-import { EASE } from '../../motion'
 import { useT, useLang } from '../../i18n'
 import Avatar from '../../shared/ui/Avatar'
 import Popup from '../../shared/ui/Popup'
@@ -28,7 +26,6 @@ import s from './ChatDialogs.module.scss'
 // Only the fields the add-member list renders (Dialog.peer is narrower than the
 // full Peer type, so we keep this minimal and structurally compatible).
 
-const EASE_STD = EASE
 
 // Delete confirmation — порт tweb PopupDeleteMessages (popups/deleteMessages.ts:84-160):
 // заголовок «Delete message»/«Delete N messages», описание, в личке — чекбокс
@@ -338,12 +335,9 @@ export function ViewersPopup({ x, y, names, onClose }: {
   const t = useT()
   return createPortal(
     <div className={s.overlayBare} onClick={onClose}>
-      <motion.div
+      <div
         className={classNames(s.card, s.viewers)}
         onClick={(e) => e.stopPropagation()}
-        initial={{ opacity: 0, scale: 0.92 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.18, ease: EASE_STD }}
         style={{ top: y, left: x }}
       >
         <Text size={13} color="var(--secondary-text-color)" className={s.viewersTitle}>
@@ -355,7 +349,7 @@ export function ViewersPopup({ x, y, names, onClose }: {
             <Text noWrap size={14.5} color="var(--primary-text-color)">{n}</Text>
           </div>
         ))}
-      </motion.div>
+      </div>
     </div>,
     document.body,
   )
@@ -370,12 +364,9 @@ export function ReactedUsersPopup({ x, y, rows, onClose }: {
   const t = useT()
   return createPortal(
     <div className={s.overlayBare} onClick={onClose}>
-      <motion.div
+      <div
         className={classNames(s.card, s.viewers)}
         onClick={(e) => e.stopPropagation()}
-        initial={{ opacity: 0, scale: 0.92 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.18, ease: EASE_STD }}
         style={{ top: y, left: x }}
       >
         <Text size={13} color="var(--secondary-text-color)" className={s.viewersTitle}>
@@ -388,7 +379,7 @@ export function ReactedUsersPopup({ x, y, rows, onClose }: {
             <span style={{ fontSize: 18 }}>{r.emoji}</span>
           </div>
         ))}
-      </motion.div>
+      </div>
     </div>,
     document.body,
   )

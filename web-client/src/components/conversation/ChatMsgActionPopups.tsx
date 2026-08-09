@@ -5,7 +5,6 @@
 // декларативно здесь, а не через popupStore. Всего ~3 пропса — данные (диалоги)
 // и t/managers берём из стора/контекста внутри.
 import { lazy, Suspense } from 'react'
-import { AnimatePresence } from 'framer-motion'
 import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
@@ -49,11 +48,9 @@ export default function ChatMsgActionPopups({ msgActions, numericChatId, isRealC
 
       {/* Статистика поста канала (slide-in сабвью, tweb messageStatistics) */}
       <Suspense fallback={null}>
-        <AnimatePresence>
-          {m.postStats && (
-            <PostStats chatId={numericChatId} msgId={m.postStats.msgId} onBack={m.closePostStats} />
-          )}
-        </AnimatePresence>
+        {m.postStats && (
+          <PostStats chatId={numericChatId} msgId={m.postStats.msgId} onBack={m.closePostStats} />
+        )}
       </Suspense>
 
       {/* Редактор «проверки фактов» (канал, автор/админ) */}

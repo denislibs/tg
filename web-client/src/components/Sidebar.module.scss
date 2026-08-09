@@ -205,3 +205,29 @@
     animation: fade-in-opacity .15s ease, zoom-fade-in-move .15s ease;
   }
 }
+
+// CSS-модули хешируют ЛЮБОЕ имя в `animation`, поэтому сослаться на глобальный
+// кейфрейм из партиала отсюда нельзя — ссылка переименовывается и анимация молча
+// не играет. Кейфреймы ниже — дословные копии глобальных
+// (styles/tweb/_bridge.scss / styles/tweb/_transition.scss, оригиналы
+// `tweb src/scss/base.scss:675-738,1082-1108` и `_transition.scss`, `_selector.scss:4-14`).
+
+@keyframes fade-in-opacity {
+  0% {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes zoom-fade-in-move {
+  0% {
+    transform: scale(1.1);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}

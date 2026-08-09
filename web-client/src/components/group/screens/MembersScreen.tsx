@@ -2,7 +2,6 @@
 // Участники / Подписчики (tweb chatMembers): список, добавление через пикер,
 // restrict/kick/ban (для группы) или удаление (для канала).
 import { useMemo, useState } from 'react'
-import { AnimatePresence } from 'framer-motion'
 import { SettingsScreen, Section, Row } from '../../settings/kit'
 import Text from '../../../shared/ui/Text'
 import IconButton from '../../../shared/ui/IconButton'
@@ -33,7 +32,31 @@ export function MembersScreen({ g, isChannel, onBack }: { g: GroupEdit; isChanne
   )
 
   return (
-    <SettingsScreen title={isChannel ? 'Subscribers' : 'Members'} onBack={onBack} zIndex={70}>
+    <SettingsScreen
+      title={isChannel ? 'Subscribers' : 'Members'}
+      onBack={onBack}
+      zIndex={70}
+      sub={picking ? (
+        <MemberPicker
+          title={isChannel ? 'Add Subscribers' : 'Add Members'}
+          members={addable}
+          onBack={() => setPicking(false)}
+          onPick={(m) => {
+            setPicking(false)
+            void g.addMember(m.userId)
+          }}
+        />
+      ) : restricting ? (
+        <MemberRestrictScreen
+          member={restricting}
+          initialDenied={g.restricted.find((r) => r.userId === restricting.userId)?.deniedRights ?? 0}
+          onBack={() => setRestricting(null)}
+          onSave={(denied, untilSeconds) => {
+            void g.restrict(restricting.userId, denied, untilSeconds).then(() => setRestricting(null))
+          }}
+        />
+      ) : null}
+    >
       <div className={s.search}><InputSearch value={q} onChange={setQ} placeholder={t('Search')} /></div>
       <Section>
         <Row icon={<TgIcon name="adduser" size={22} color="var(--primary-color)" />} label={isChannel ? 'Add Subscribers' : 'Add Members'} accent onClick={() => setPicking(true)} />
@@ -68,29 +91,6 @@ export function MembersScreen({ g, isChannel, onBack }: { g: GroupEdit; isChanne
         ))}
       </Section>
 
-      <AnimatePresence>
-        {picking && (
-          <MemberPicker
-            title={isChannel ? 'Add Subscribers' : 'Add Members'}
-            members={addable}
-            onBack={() => setPicking(false)}
-            onPick={(m) => {
-              setPicking(false)
-              void g.addMember(m.userId)
-            }}
-          />
-        )}
-        {restricting && (
-          <MemberRestrictScreen
-            member={restricting}
-            initialDenied={g.restricted.find((r) => r.userId === restricting.userId)?.deniedRights ?? 0}
-            onBack={() => setRestricting(null)}
-            onSave={(denied, untilSeconds) => {
-              void g.restrict(restricting.userId, denied, untilSeconds).then(() => setRestricting(null))
-            }}
-          />
-        )}
-      </AnimatePresence>
     </SettingsScreen>
   )
 }

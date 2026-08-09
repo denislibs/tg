@@ -23,6 +23,11 @@
 }
 
 // оверлей спиннера первой загрузки
+// Спиннер первой загрузки. Состояния — как у tweb ProgressivePreloader
+// (`_preloader.scss:44-55`): в покое `opacity: 0`, видимым делает пара классов
+// `is-visible.forwards`, переход навешивается только вне `animation-level-0`.
+// Классы приезжают из `useMountTransition` (порт SetTransition), поэтому здесь
+// они глобальные, а не модульные.
 .spinnerOverlay {
   position: absolute;
   inset: 0;
@@ -31,6 +36,15 @@
   align-items: center;
   justify-content: center;
   pointer-events: none;
+  opacity: 0;
+
+  :global(body:not(.animation-level-0)) & {
+    transition: opacity 0.2s ease;
+  }
+
+  &:global(.is-visible.forwards) {
+    opacity: 1;
+  }
 }
 
 .spinnerBox {

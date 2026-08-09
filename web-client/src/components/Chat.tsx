@@ -1,6 +1,5 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import Text from '../shared/ui/Text'
-import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import { useAvatarSrc } from './useAvatarSrc'
 import { chatThemeVariant } from '../chatThemes'
@@ -36,6 +35,7 @@ import { useVoiceQueue } from '../core/hooks/useVoiceQueue'
 import { useLightbox } from '../core/hooks/useLightbox'
 import { useMessageActions } from '../core/hooks/useMessageActions'
 import { useChannelExtras } from '../core/hooks/useChannelExtras'
+import { useMountTransition } from '../core/hooks/useMountTransition'
 import { useFeedReveal } from '../core/hooks/useFeedReveal'
 import { animateLadder, type LadderStep } from '../core/dom/ladder'
 import { shiftGradientWithScroll } from '../core/chat/activeGradient'
@@ -589,6 +589,9 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // First-load reveal policy: grace-delayed spinner (no flash on cache hits),
   // `feedLoading` to gate the list, and the open-chat ladder arming.
   const { showSpinner, feedLoading, ladderActive } = useFeedReveal({ isRealChat, win, numericChatId })
+  // Спиннер держится в DOM до конца обратного перехода — tweb снимает узел в
+  // onTransitionEnd у SetTransition (preloader.ts:248-256).
+  const { mounted: spinnerMount, cls: spinnerCls } = useMountTransition(showSpinner, 'is-visible', 200)
 
   // Лестница появления баблов при открытии чата — порт tweb
   // `bubbles.ts:10363-10460` (animateAsLadder), см. `core/dom/ladder.ts`.
@@ -1195,22 +1198,17 @@ export default function Chat({ chat, onBack, thread }: Props) {
         />
         )}
 
-        {/* First-load spinner — only after the grace delay (skipped on cache hits) */}
-        <AnimatePresence>
-          {showSpinner && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className={s.spinnerOverlay}
-            >
-              <div className={s.spinnerBox}>
-                <Preloader size={30} stroke={2.5} color="#fff" />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* Спиннер первой загрузки (только после grace-задержки, на попадании в
+            кэш пропускается). Появление/уход — как tweb ProgressivePreloader:
+            SetTransition по классу `is-visible` с duration 200 и снятие узла по
+            окончании перехода (preloader.ts:248-256, TRANSITION_TIME = 200). */}
+        {spinnerMount && (
+          <div className={classNames(s.spinnerOverlay, spinnerCls)}>
+            <div className={s.spinnerBox}>
+              <Preloader size={30} stroke={2.5} color="#fff" />
+            </div>
+          </div>
+        )}
 
         {/* Лента — дерево tweb: .bubbles > .scrollable.bubbles-scrollable >
             .bubbles-padding-top + .bubbles-inner + .bubbles-padding-bottom

@@ -1,4 +1,13 @@
 // Оверлей «Предложенные посты» (по мотивам ScheduledView)
+@use '../styles/foundation' as *;
+
+
+// Появление модалки — механика tweb `.popup`/`.popup-container`
+// (`tweb src/scss/partials/popups/_popup.scss:33-90`, у нас
+// styles/tweb/popups/_popup.scss): скрим набирает opacity, карточка едет
+// translate3d(0, 3rem, 0) → 0 за --popup-transition-time/--popup-transition-function.
+// Кейфреймы, а не transition: узел появляется в DOM уже на своём месте, переходу
+// не от чего стартовать (tweb держит попап в DOM заранее и переключает `.active`).
 .overlay {
   position: fixed;
   inset: 0;
@@ -7,6 +16,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
+
+  @include animation-level-global(2) {
+    animation: fade-in-opacity var(--popup-transition-time) var(--popup-transition-function);
+  }
+}
+
+@keyframes popup-container-in {
+  from {
+    transform: translate3d(0, 3rem, 0);
+  }
 }
 
 .card {
@@ -18,6 +37,10 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+
+  @include animation-level-global(2) {
+    animation: popup-container-in var(--popup-transition-time) var(--popup-transition-function);
+  }
 }
 
 .header {
@@ -60,4 +83,20 @@
   flex-direction: column;
   gap: 2px;
   flex-shrink: 0;
+}
+
+// CSS-модули хешируют ЛЮБОЕ имя в `animation`, поэтому сослаться на глобальный
+// кейфрейм из партиала отсюда нельзя — ссылка переименовывается и анимация молча
+// не играет. Кейфреймы ниже — дословные копии глобальных
+// (styles/tweb/_bridge.scss / styles/tweb/_transition.scss, оригиналы
+// `tweb src/scss/base.scss:675-738,1082-1108` и `_transition.scss`, `_selector.scss:4-14`).
+
+@keyframes fade-in-opacity {
+  0% {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }

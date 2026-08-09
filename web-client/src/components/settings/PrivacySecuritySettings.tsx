@@ -3,7 +3,6 @@
 // код-пароль, облачный пароль, ключи доступа, сеансы) + секция privacy-правил
 // с живыми значениями и счётчиками исключений.
 import { useEffect, useState, type ReactNode } from 'react'
-import { AnimatePresence } from 'framer-motion'
 import TgIcon from '../TgIcon'
 import { SettingsScreen, Section, Row } from './kit'
 import BlockedUsers from './BlockedUsers'
@@ -108,7 +107,7 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
   const passcodeEnabled = useSettingsStore((st) => st.passcodeEnabled)
 
   return (
-    <SettingsScreen title="Privacy and Security" onBack={onBack} zIndex={50}>
+    <SettingsScreen title="Privacy and Security" onBack={onBack} zIndex={50} sub={renderSub()}>
       <Section footer="Manage your sessions on all your devices.">
         <Row
           icon={<TgIcon name="deleteuser" size={24} />}
@@ -210,7 +209,6 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
         />
       )}
 
-      <AnimatePresence>{renderSub()}</AnimatePresence>
       <PasskeyIntroPopup
         open={passkeyIntro}
         onClose={() => setPasskeyIntro(false)}

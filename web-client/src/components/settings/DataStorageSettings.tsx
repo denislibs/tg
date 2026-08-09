@@ -3,7 +3,6 @@
 // под-экранами, сброс с confirm) + секция «Расчётный объём хранения»
 // (подсчёт кэша по типам, очистка, слайдеры TTL/лимита).
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AnimatePresence } from 'framer-motion'
 import Text from '../../shared/ui/Text'
 import Checkbox from '../../shared/ui/Checkbox'
 import Slider from '../../shared/ui/Slider'
@@ -206,7 +205,12 @@ export default function DataStorageSettings({ onBack }: { onBack: () => void }) 
   )
 
   return (
-    <SettingsScreen title="Data and Storage" onBack={onBack} zIndex={50}>
+    <SettingsScreen
+      title="Data and Storage"
+      onBack={onBack}
+      zIndex={50}
+      sub={sub ? <AutoDownloadTypeScreen type={sub} onBack={() => setSub(null)} /> : null}
+    >
       <Section caption="Automatic media download" footer="Voice messages are tiny, so they're always downloaded automatically.">
         <Row
           icon={<Checkbox checked={settings.autoDownloadEnabled} shape="square" size={20} />}
@@ -287,10 +291,6 @@ export default function DataStorageSettings({ onBack }: { onBack: () => void }) 
           onClick={() => setConfirm('all')}
         />
       </Section>
-
-      <AnimatePresence>
-        {sub && <AutoDownloadTypeScreen type={sub} onBack={() => setSub(null)} />}
-      </AnimatePresence>
 
       {confirm === 'reset' && (
         <ConfirmDialog

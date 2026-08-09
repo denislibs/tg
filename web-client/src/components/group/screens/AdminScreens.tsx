@@ -2,7 +2,6 @@
 // Администраторы (tweb chatAdministrators + EditAdmin): список админов, добавление
 // через пикер и экран прав админа.
 import { useMemo, useState } from 'react'
-import { AnimatePresence } from 'framer-motion'
 import { SettingsScreen, Section, Row } from '../../settings/kit'
 import Text from '../../../shared/ui/Text'
 import IconButton from '../../../shared/ui/IconButton'
@@ -27,7 +26,31 @@ export function AdminsScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }
   const candidates = useMemo(() => g.members.filter((m) => m.role === 'member'), [g.members])
 
   return (
-    <SettingsScreen title="Administrators" onBack={onBack} zIndex={70}>
+    <SettingsScreen
+      title="Administrators"
+      onBack={onBack}
+      zIndex={70}
+      sub={picking ? (
+        <MemberPicker
+          title="Add Admin"
+          members={candidates}
+          onBack={() => setPicking(false)}
+          onPick={(m) => {
+            setPicking(false)
+            setEditing(m)
+          }}
+        />
+      ) : editing ? (
+        <AdminRightsScreen
+          member={editing}
+          onBack={() => setEditing(null)}
+          onSave={(bits) => {
+            void g.promote(editing.userId, bits).then(() => setEditing(null))
+          }}
+          onDismiss={editing.role === 'admin' ? () => void g.demote(editing.userId).then(() => setEditing(null)) : undefined}
+        />
+      ) : null}
+    >
       <div className={s.search}><InputSearch value={q} onChange={setQ} placeholder={t('Search')} /></div>
       <Section>
         {g.canManageAdmins && (
@@ -46,29 +69,6 @@ export function AdminsScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }
         ))}
       </Section>
 
-      <AnimatePresence>
-        {picking && (
-          <MemberPicker
-            title="Add Admin"
-            members={candidates}
-            onBack={() => setPicking(false)}
-            onPick={(m) => {
-              setPicking(false)
-              setEditing(m)
-            }}
-          />
-        )}
-        {editing && (
-          <AdminRightsScreen
-            member={editing}
-            onBack={() => setEditing(null)}
-            onSave={(bits) => {
-              void g.promote(editing.userId, bits).then(() => setEditing(null))
-            }}
-            onDismiss={editing.role === 'admin' ? () => void g.demote(editing.userId).then(() => setEditing(null)) : undefined}
-          />
-        )}
-      </AnimatePresence>
     </SettingsScreen>
   )
 }

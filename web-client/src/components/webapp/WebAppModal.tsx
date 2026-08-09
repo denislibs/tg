@@ -5,7 +5,6 @@
 // biometry (на вебе недоступна — отвечаем по протоколу).
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { motion, AnimatePresence } from 'framer-motion'
 import TgIcon from '../TgIcon'
 import Text from '../../shared/ui/Text'
 import { usePortalContainer } from '../../core/pip'
@@ -84,10 +83,9 @@ type BarcodeDetectorCtor = new (opts?: { formats?: string[] }) => BarcodeDetecto
 export default function WebAppModal() {
   const container = usePortalContainer()
   const open = useWebAppStore((st) => st.open)
-  return createPortal(
-    <AnimatePresence>{open && <WebAppInner />}</AnimatePresence>,
-    container,
-  )
+  // Появление/уход рисует CSS самой модалки (кейфреймы на вставке узла),
+  // обёртка-презенс не нужна.
+  return createPortal(open ? <WebAppInner /> : null, container)
 }
 
 function WebAppInner() {
@@ -321,21 +319,11 @@ function WebAppInner() {
   const onQrClose = () => { setQr(null); post('scan_qr_popup_closed') }
 
   return (
-    <motion.div
+    <div
       className={s.overlay}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.18 }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) requestClose() }}
     >
-      <motion.div
-        className={s.panel}
-        initial={{ scale: 0.96, y: 12, opacity: 0 }}
-        animate={{ scale: 1, y: 0, opacity: 1 }}
-        exit={{ scale: 0.96, y: 12, opacity: 0 }}
-        transition={{ duration: 0.2 }}
-      >
+      <div className={s.panel}>
         <div className={s.header}>
           {backVisible ? (
             <button className={s.hbtn} onClick={() => post('back_button_pressed')} aria-label="back">
@@ -379,7 +367,7 @@ function WebAppInner() {
             </button>
           </div>
         )}
-      </motion.div>
+      </div>
 
       {/* web_app_open_popup — нативный попап mini-app */}
       {popup && (
@@ -408,7 +396,7 @@ function WebAppInner() {
 
       {/* web_app_open_scan_qr_popup — сканер QR через BarcodeDetector */}
       {qr && <QrScanner text={qr.text} onText={onQrText} onClose={onQrClose} t={t} />}
-    </motion.div>
+    </div>
   )
 }
 

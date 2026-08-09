@@ -3,8 +3,7 @@
 // директория) → «Сообщения» (полнотекст по всем чатам); пустой запрос —
 // «Недавние». Табы Медиа/Ссылки/Файлы/Музыка/Голосовые — глобальный
 // searchGlobal с фильтром типа (tweb inputMessagesFilter*).
-import { useEffect, useRef, useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { useEffect, useState } from 'react'
 import Text from '../shared/ui/Text'
 import Avatar from '../shared/ui/Avatar'
 import SidebarSection from '../shared/ui/SidebarSection'
@@ -27,10 +26,12 @@ import { friendlyMsgTime } from '../core/format/friendlyTime'
 import { gradientFor, mediaLabel } from '../core/dialogToChat'
 import { EXT_COLORS, extOf, firstUrl, fmtDur, fmtSize, hostOf } from '../core/format/sharedMediaFmt'
 import { useLang, useT } from '../i18n'
-import { Tabs } from '../shared/ui/Tabs'
+import { Tabs, TabSlide } from '../shared/ui/Tabs'
 import s from './SearchView.module.scss'
 
 const TABS = ['Chats', 'Channels', 'Media', 'Links', 'Files', 'Music', 'Voice'] as const
+// порядок вкладок для TabSlide — по нему считается направление слайда
+const TAB_ORDER = TABS.map((_, i) => i)
 const TAB_FILTER: Partial<Record<number, 'media' | 'links' | 'files' | 'music' | 'voice'>> = {
   2: 'media', 3: 'links', 4: 'files', 5: 'music', 6: 'voice',
 }
@@ -74,7 +75,6 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
   const t = useT()
   const [lang] = useLang()
   const [tab, setTab] = useState(0)
-  const dirRef = useRef(0)
   const [results, setResults] = useState<SearchResult>(EMPTY_RESULT)
   const [recentIds, setRecentIds] = useState<string[]>(loadRecent)
   const [confirmClear, setConfirmClear] = useState(false)
@@ -148,10 +148,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
     if (m.senderId !== meId && m.mediaUnread) markMediaPlayed(m.chatId, m.id)
   }
 
-  const goTab = (i: number) => {
-    dirRef.current = i > tab ? 1 : -1
-    setTab(i)
-  }
+  const goTab = (i: number) => setTab(i)
 
   // Локальные совпадения по своим диалогам (tweb: contacts + local dialogs)
   const localMatches = q
@@ -210,24 +207,13 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
         </Tabs>
       </div>
 
-      {/* Анимированный контент */}
+      {/* Содержимое вкладок — общий <TabSlide> (порт tweb TransitionSlider типа
+          `tabs`: оба кадра живут в DOM, инлайновые transform ∓width, переход
+          `transform var(--tabs-transition)`; см. shared/ui/Tabs/TabSlide.tsx).
+          Скроллер, как и в ChatList, стоит СНАРУЖИ слайдера. */}
       <div className={s.content}>
-        <AnimatePresence mode="wait" custom={dirRef.current} initial={false}>
-          <motion.div
-            key={tab}
-            className={s.scroll}
-            onScroll={onScroll}
-            custom={dirRef.current}
-            variants={{
-              enter: (d: number) => ({ x: d >= 0 ? 80 : -80, opacity: 0 }),
-              center: { x: 0, opacity: 1 },
-              exit: (d: number) => ({ x: d >= 0 ? -80 : 80, opacity: 0 }),
-            }}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-          >
+        <div className={s.scroll} onScroll={onScroll}>
+          <TabSlide tab={tab} order={TAB_ORDER}>
             <div className={s.pad}>
               {tab === 0 && !q && (
                 recentChats.length > 0 ? (
@@ -425,8 +411,8 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                 )
               )}
             </div>
-          </motion.div>
-        </AnimatePresence>
+          </TabSlide>
+        </div>
       </div>
 
       {confirmClear && (

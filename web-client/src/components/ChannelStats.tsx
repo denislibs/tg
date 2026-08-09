@@ -1,8 +1,6 @@
-import { motion } from 'framer-motion'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
-import { slideInRight } from '../motion'
 import { useT } from '../i18n'
 import { useChannelStats } from '../core/hooks/useChannelStats'
 import StatChart from './StatChart'
@@ -69,7 +67,7 @@ export default function ChannelStats({
       : 0
 
   return (
-    <motion.div variants={slideInRight} initial="initial" animate="animate" exit="exit" className={s.rights}>
+    <div className={`${s.rights} ${s.slideIn}`}>
       <div className={s.rightsHeader}>
         <IconButton onClick={onBack} color="var(--secondary-text-color)">
           <TgIcon name="back" />
@@ -155,6 +153,6 @@ export default function ChannelStats({
           </>
         )}
       </div>
-    </motion.div>
+    </div>
   )
 }

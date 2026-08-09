@@ -3,7 +3,6 @@
 // «1 канал и 1 группа»), «Рекомендованные папки» (с кнопкой Добавить),
 // «Расположение папок» (radio → settings.tabsInSidebar, tweb Folders view).
 import { useState } from 'react'
-import { AnimatePresence } from 'framer-motion'
 import Text from '../../shared/ui/Text'
 import TgIcon from '../TgIcon'
 import LottieSticker from '../LottieSticker'
@@ -69,7 +68,13 @@ export default function ChatFoldersSettings({ onBack, chats = [] }: { onBack: ()
   }
 
   return (
-    <SettingsScreen title="Chat Folders" onBack={onBack}>
+    <SettingsScreen
+      title="Chat Folders"
+      onBack={onBack}
+      sub={editor ? (
+        <FolderEditor folder={editor === 'new' ? null : editor} chats={chats} onClose={() => setEditor(null)} />
+      ) : null}
+    >
       <LottieSticker name="Folders_1" size={86} />
       <Text size={14} color="var(--secondary-text-color)" className={s.caption}>
         {t('Create folders for different groups of chats and quickly switch between them.')}
@@ -116,11 +121,6 @@ export default function ChatFoldersSettings({ onBack, chats = [] }: { onBack: ()
         <RadioRow label="Folders above chats" selected={!tabsInSidebar} onClick={() => update({ tabsInSidebar: false })} />
       </Section>
 
-      <AnimatePresence>
-        {editor && (
-          <FolderEditor folder={editor === 'new' ? null : editor} chats={chats} onClose={() => setEditor(null)} />
-        )}
-      </AnimatePresence>
     </SettingsScreen>
   )
 }

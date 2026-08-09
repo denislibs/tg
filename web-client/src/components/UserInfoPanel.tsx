@@ -3,10 +3,9 @@ import { createPortal } from 'react-dom'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import QrModal from './QrModal'
-import { AnimatePresence, motion } from 'framer-motion'
-import { EASE } from '../motion'
 import { uiEvents } from '../core/hooks/uiEvents'
 import TgIcon from './TgIcon'
+import AnimatedSuper from './conversation/AnimatedSuper'
 import ChannelStats from './ChannelStats'
 import Avatar from '../shared/ui/Avatar'
 import { useAvatarSrc } from './useAvatarSrc'
@@ -330,32 +329,21 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
             <TgIcon name={filled ? 'back' : 'close'} />
           </IconButton>
           <div className={s.headerTitles}>
-            <AnimatePresence initial={false}>
+            {/* Смена заголовка — вертикальный слайд tweb `AnimatedSuper`
+                (порт `components/animatedSuper.ts` + `_animatedSuper.scss`):
+                уходящий ряд уезжает вверх/вниз с фейдом за --pm-transition.
+                Индекс 1 (имя собеседника) больше индекса 0 (название раздела),
+                поэтому «вниз по списку» = уходящий ряд наверх, как в tweb. */}
+            <AnimatedSuper index={filled && activeCount != null ? 1 : 0} rowClassName={s.headerTitleItem}>
               {filled && activeCount != null ? (
-                <motion.div
-                  key="peer"
-                  className={s.headerTitleItem}
-                  initial={{ y: 14, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  exit={{ y: 14, opacity: 0 }}
-                  transition={{ duration: 0.2, ease: EASE }}
-                >
+                <>
                   <Text noWrap size={16} weight={600} color="var(--primary-text-color)">{isSaved ? t('Saved Messages') : chat.name}</Text>
                   <Text noWrap size={13} color="var(--secondary-text-color)">{countLabel(tab, activeCount, isChannel)}</Text>
-                </motion.div>
+                </>
               ) : (
-                <motion.div
-                  key="title"
-                  className={s.headerTitleItem}
-                  initial={{ y: -14, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  exit={{ y: -14, opacity: 0 }}
-                  transition={{ duration: 0.2, ease: EASE }}
-                >
-                  <Text noWrap size={19} weight={600} color={overPhoto ? '#fff' : 'var(--primary-text-color)'}>{t(title)}</Text>
-                </motion.div>
+                <Text noWrap size={19} weight={600} color={overPhoto ? '#fff' : 'var(--primary-text-color)'}>{t(title)}</Text>
               )}
-            </AnimatePresence>
+            </AnimatedSuper>
           </div>
           {(isGroup || isChannel) && (
             <IconButton onClick={() => setEditing(true)} color={overPhoto ? '#fff' : 'var(--secondary-text-color)'}>
@@ -588,14 +576,15 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
                   </div>
                 ) : (
                   <div className={s.actionWrap}>
-                    <motion.div
-                      whileTap={{ scale: 0.98 }}
+                    {/* tweb не даёт кнопкам press-scale: отклик — ripple и фон
+                        (_button.scss:75-77), поэтому whileTap снят. */}
+                    <div
                       onClick={() => void enableDiscussion()}
                       className={s.actionBtn}
                       style={{ opacity: enablingDiscussion ? 0.6 : 1 }}
                     >
                       Включить обсуждения
-                    </motion.div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -712,57 +701,47 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
 
         {/* Group add-member FAB (tweb btnAddMembers) */}
         {isGroup && canAddMembers && isRealChat && (
-          <motion.div
-            whileHover={{ scale: 1.06 }}
-            whileTap={{ scale: 0.92 }}
-            className={s.fab}
-            onClick={() => setAddingMembers(true)}
-          >
+          <div className={s.fab} onClick={() => setAddingMembers(true)}>
             <TgIcon name="adduser" />
-          </motion.div>
+          </div>
         )}
 
-        {/* Edit screen overlay */}
-        <AnimatePresence>
-          {editing && isRealChat && (isGroup || isChannel) && (
-            <GroupEditFlow chatId={Number(chat.id)} chat={chat} onClose={() => setEditing(false)} />
-          )}
-          {addingMembers && isRealChat && (
-            <AddMembersScreen
-              chatId={Number(chat.id)}
-              existingIds={(realMembers ?? []).map((m) => m.userId)}
-              onClose={() => setAddingMembers(false)}
-              onAdded={() => {
-                setAddingMembers(false)
-                void refreshMembers()
-              }}
-            />
-          )}
-        </AnimatePresence>
+        {/* Оверлеи-подэкраны: въезд справа играет CSS самого экрана, обёртки-
+            презенсы не нужны. */}
+        {editing && isRealChat && (isGroup || isChannel) && (
+          <GroupEditFlow chatId={Number(chat.id)} chat={chat} onClose={() => setEditing(false)} />
+        )}
+        {addingMembers && isRealChat && (
+          <AddMembersScreen
+            chatId={Number(chat.id)}
+            existingIds={(realMembers ?? []).map((m) => m.userId)}
+            onClose={() => setAddingMembers(false)}
+            onAdded={() => {
+              setAddingMembers(false)
+              void refreshMembers()
+            }}
+          />
+        )}
 
         {/* Статистика канала/супергруппы (slide-in сабвью, tweb statistics) */}
-        <AnimatePresence>
-          {showStats && isRealChat && (
-            <ChannelStats
-              chatId={Number(chat.id)}
-              isChannel={isChannel}
-              onBack={() => setShowStats(false)}
-            />
-          )}
-        </AnimatePresence>
+        {showStats && isRealChat && (
+          <ChannelStats
+            chatId={Number(chat.id)}
+            isChannel={isChannel}
+            onBack={() => setShowStats(false)}
+          />
+        )}
 
         {/* Admin-rights editor overlay (slide-in sub-view, mirrors tweb userPermissions) */}
-        <AnimatePresence>
-          {editMember && (
-            <RightsEditor
-              key={editMember.userId}
-              member={editMember}
-              onBack={() => setEditMember(null)}
-              onSave={(bitmask) => saveRights(editMember.userId, bitmask)}
-              onRemove={() => removeRights(editMember.userId)}
-            />
-          )}
-        </AnimatePresence>
+        {editMember && (
+          <RightsEditor
+            key={editMember.userId}
+            member={editMember}
+            onBack={() => setEditMember(null)}
+            onSave={(bitmask) => saveRights(editMember.userId, bitmask)}
+            onRemove={() => removeRights(editMember.userId)}
+          />
+        )}
     </div>,
     document.getElementById('main-columns') ?? document.body,
   )

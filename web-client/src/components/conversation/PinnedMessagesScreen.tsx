@@ -6,7 +6,6 @@
 // «Открепить все» (tweb chat input: Chat.Input.UnpinAll) с подтверждением.
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { motion } from 'framer-motion'
 import Text from '../../shared/ui/Text'
 import TgIcon from '../TgIcon'
 import IconButton from '../../shared/ui/IconButton'
@@ -17,7 +16,6 @@ import { replyMediaLabel } from '../../core/messageToConvMsg'
 import type { Message } from '../../core/models'
 import type { Peer } from '../../core/managers/peersManager'
 import { useT } from '../../i18n'
-import { EASE } from '../../motion'
 import s from './PinnedMessagesScreen.module.scss'
 
 // Русские формы числительного (идиома проекта: UserInfoPanel.plural)
@@ -75,13 +73,7 @@ export default function PinnedMessagesScreen({ chatId, pins, meId, meName, canUn
 
   return createPortal(
     <div className={s.overlay} onClick={onClose}>
-      <motion.div
-        className={s.card}
-        onClick={(e: React.MouseEvent) => e.stopPropagation()}
-        initial={{ opacity: 0, y: 14 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.2, ease: EASE }}
-      >
+      <div className={s.card} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
         <div className={s.header}>
           <Text size={17} weight={600} color="var(--primary-text-color)" style={{ flex: 1 }}>
             {title}
@@ -139,7 +131,7 @@ export default function PinnedMessagesScreen({ chatId, pins, meId, meName, canUn
             onClose={() => setConfirmAll(false)}
           />
         )}
-      </motion.div>
+      </div>
     </div>,
     document.body,
   )

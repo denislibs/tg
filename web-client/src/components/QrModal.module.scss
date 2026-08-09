@@ -1,17 +1,17 @@
 // «QR-код» — порт tweb myQrCode.module.scss + геометрия iOS ChatQrCodeScreen:
 // модалка 376px r20, верх — обои темы, карта 300×330 r42 (всегда белая),
 // аватар 100 с белым кольцом нависает на 70%, панель/карусель/кнопка снизу.
-.overlay {
-  position: fixed;
-  inset: 0;
+// Скрим, центровка и показ/скрытие — глобальные `.popup`/`.popup-container`
+// (портированный `styles/tweb/popups/_popup.scss`, оригинал
+// `tweb src/scss/partials/popups/_popup.scss:29-90`): скрим набирает opacity,
+// карточка едет translate3d(0, 3rem, 0) → 0. Здесь — только слой и геометрия;
+// классы продублированы, потому что партиалы эмитятся ПОСЛЕ CSS-модулей и при
+// равной специфичности побеждают.
+.overlay.overlay {
   z-index: 3200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.45);
 }
 
-.modal {
+.modal.modal {
   --qr-panel-bg: #fff;
   --qr-panel-text: #000;
   --qr-panel-secondary: #707579;

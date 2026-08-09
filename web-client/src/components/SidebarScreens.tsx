@@ -1,5 +1,4 @@
 import { lazy, Suspense } from 'react'
-import { AnimatePresence } from 'framer-motion'
 import ContactsView from './ContactsView'
 import NewGroupFlow, { type GroupPhoto } from './NewGroupFlow'
 import NewChannelFlow from './NewChannelFlow'
@@ -14,9 +13,12 @@ const WalletView = lazy(() => import('./stars/WalletView'))
 const CallsView = lazy(() => import('./CallsView'))
 
 // Взаимоисключающие экраны левой колонки (в tweb в #column-left всегда один поверх
-// списка чатов). null = список. Suspense — СНАРУЖИ AnimatePresence: прямым потомком
-// остаётся motion-компонент экрана, поэтому выезд/заезд панели сохраняются; Suspense
-// срабатывает лишь на самой первой загрузке ленивого чанка.
+// списка чатов). null = список.
+//
+// Въезд справа играет CSS самого экрана — кейфрейм на вставке узла, как у tweb,
+// где вкладки слайдера анимируются классами/кейфреймами, а не JS-движком
+// (`tweb src/scss/partials/_slider.scss:226-241`). Поэтому обёрток-презенсов
+// здесь больше нет: экран просто монтируется и размонтируется.
 export type SidebarScreen =
   | 'settings' | 'contacts' | 'wallet' | 'calls'
   | 'newGroup' | 'newChannel' | 'newPrivate' | 'newSecret' | null
@@ -53,54 +55,38 @@ export default function SidebarScreens({
   return (
     <>
       <Suspense fallback={null}>
-        <AnimatePresence>
-          {screen === 'settings' && (
-            <SettingsView onBack={onSettingsBack} onToggleMode={onToggleMode} chats={chats} initialSub={settingsSub ?? undefined} />
-          )}
-        </AnimatePresence>
+        {screen === 'settings' && (
+          <SettingsView onBack={onSettingsBack} onToggleMode={onToggleMode} chats={chats} initialSub={settingsSub ?? undefined} />
+        )}
       </Suspense>
       <Suspense fallback={null}>
-        <AnimatePresence>
-          {screen === 'wallet' && <WalletView onBack={close} />}
-        </AnimatePresence>
+        {screen === 'wallet' && <WalletView onBack={close} />}
       </Suspense>
       <Suspense fallback={null}>
-        <AnimatePresence>
-          {screen === 'calls' && (
-            <CallsView onBack={close} onOpenChat={(chatId) => { close(); onSelect(String(chatId)) }} />
-          )}
-        </AnimatePresence>
+        {screen === 'calls' && (
+          <CallsView onBack={close} onOpenChat={(chatId) => { close(); onSelect(String(chatId)) }} />
+        )}
       </Suspense>
-      <AnimatePresence>
-        {screen === 'contacts' && (
-          <ContactsView
-            chats={chats}
-            onSelect={(id) => { close(); onSelect(id) }}
-            onBack={close}
-            onOpenChat={(chatId) => { close(); onChatCreated?.(chatId) }}
-          />
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {screen === 'newGroup' && (
-          <NewGroupFlow onClose={close} onCreate={(name, memberIds, photo) => { onCreateGroup(name, memberIds, photo); close() }} />
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {screen === 'newChannel' && (
-          <NewChannelFlow onClose={close} onCreate={(name, description) => { onCreateChannel(name, description); close() }} />
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {screen === 'newPrivate' && (
-          <NewPrivateChat chats={chats} onClose={close} onSelect={onSelect} />
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {screen === 'newSecret' && (
-          <NewPrivateChat chats={chats} title="New Secret Chat" excludeBots onClose={close} onSelect={(id) => onStartSecret(id)} />
-        )}
-      </AnimatePresence>
+      {screen === 'contacts' && (
+        <ContactsView
+          chats={chats}
+          onSelect={(id) => { close(); onSelect(id) }}
+          onBack={close}
+          onOpenChat={(chatId) => { close(); onChatCreated?.(chatId) }}
+        />
+      )}
+      {screen === 'newGroup' && (
+        <NewGroupFlow onClose={close} onCreate={(name, memberIds, photo) => { onCreateGroup(name, memberIds, photo); close() }} />
+      )}
+      {screen === 'newChannel' && (
+        <NewChannelFlow onClose={close} onCreate={(name, description) => { onCreateChannel(name, description); close() }} />
+      )}
+      {screen === 'newPrivate' && (
+        <NewPrivateChat chats={chats} onClose={close} onSelect={onSelect} />
+      )}
+      {screen === 'newSecret' && (
+        <NewPrivateChat chats={chats} title="New Secret Chat" excludeBots onClose={close} onSelect={(id) => onStartSecret(id)} />
+      )}
     </>
   )
 }

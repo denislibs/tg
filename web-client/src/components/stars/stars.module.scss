@@ -1,25 +1,18 @@
 // Попапы Stars/Gifts: пополнение, каталог/отправка, инфо подарка.
 
-.overlay {
-  position: fixed;
-  inset: 0;
+// Скрим, центровка, радиус, фон карточки и весь показ/скрытие — глобальные
+// `.popup`/`.popup-container` (портированный `styles/tweb/popups/_popup.scss`:
+// у `.popup` анимируются opacity+visibility, у `.popup-container` —
+// translate3d(x, 3rem, 0) → 0). Здесь — только слой и геометрия; классы
+// продублированы, потому что партиалы эмитятся ПОСЛЕ CSS-модулей.
+.overlay.overlay {
   z-index: 3000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.4);
-  padding: 16px;
+  --popup-width: 100%;
+  --popup-max-width: 420px;
+  --popup-max-height: calc(100vh - 64px);
 }
 
-.modal {
-  width: 100%;
-  max-width: 420px;
-  max-height: calc(100vh - 64px);
-  display: flex;
-  flex-direction: column;
-  background: var(--surface-color);
-  border-radius: 16px;
-  overflow: hidden;
+.modal.modal {
   box-shadow: 0 12px 48px -12px rgba(0, 0, 0, 0.4);
 }
 

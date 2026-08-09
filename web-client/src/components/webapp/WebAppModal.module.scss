@@ -1,5 +1,13 @@
 // Модалка mini-app (tweb popup-web-app): затемнение + панель с шапкой,
 // iframe на всю площадь и футер с MainButton.
+//
+// Появление — механика попапа tweb (`tweb src/scss/partials/popups/_popup.scss:33-90`,
+// у нас styles/tweb/popups/_popup.scss): скрим набирает opacity, карточка едет
+// translate3d(0, 3rem, 0) → 0 за --popup-transition-time/--popup-transition-function.
+// Кейфреймы, а не transition: узел появляется в DOM уже на месте, переходу не от
+// чего стартовать (tweb держит попап в DOM заранее и переключает `.active`).
+@use '../../styles/foundation' as *;
+
 .overlay {
   position: fixed;
   inset: 0;
@@ -8,7 +16,18 @@
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.45);
+
+  @include animation-level-global(2) {
+    animation: fade-in-opacity var(--popup-transition-time) var(--popup-transition-function);
+  }
 }
+
+@keyframes popup-container-in {
+  from {
+    transform: translate3d(0, 3rem, 0);
+  }
+}
+
 .panel {
   display: flex;
   flex-direction: column;
@@ -20,6 +39,10 @@
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 12px 48px rgba(0, 0, 0, 0.4);
+
+  @include animation-level-global(2) {
+    animation: popup-container-in var(--popup-transition-time) var(--popup-transition-function);
+  }
 
   @media (max-width: 480px) {
     width: 100vw;
@@ -113,3 +136,19 @@
   animation: waSpin 0.7s linear infinite;
 }
 @keyframes waSpin { to { transform: rotate(360deg); } }
+
+// CSS-модули хешируют ЛЮБОЕ имя в `animation`, поэтому сослаться на глобальный
+// кейфрейм из партиала отсюда нельзя — ссылка переименовывается и анимация молча
+// не играет. Кейфреймы ниже — дословные копии глобальных
+// (styles/tweb/_bridge.scss / styles/tweb/_transition.scss, оригиналы
+// `tweb src/scss/base.scss:675-738,1082-1108` и `_transition.scss`, `_selector.scss:4-14`).
+
+@keyframes fade-in-opacity {
+  0% {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}

@@ -1,9 +1,7 @@
-import { motion } from 'framer-motion'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import Emoji from './emoji/Emoji'
-import { slideInRight } from '../motion'
 import { useT } from '../i18n'
 import { usePostStats } from '../core/hooks/usePostStats'
 import StatChart from './StatChart'
@@ -45,7 +43,7 @@ export default function PostStats({
   const { stats, loading, error } = usePostStats(chatId, msgId)
 
   return (
-    <motion.div variants={slideInRight} initial="initial" animate="animate" exit="exit" className={s.rights}>
+    <div className={`${s.rights} ${s.slideIn}`}>
       <div className={s.rightsHeader}>
         <IconButton onClick={onBack} color="var(--secondary-text-color)">
           <TgIcon name="back" />
@@ -115,6 +113,6 @@ export default function PostStats({
           </>
         )}
       </div>
-    </motion.div>
+    </div>
   )
 }

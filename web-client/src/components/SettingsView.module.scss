@@ -1,4 +1,9 @@
 // Экран настроек: слайд-скрин + шапка + аватар-блок. Карточки/строки — из kit.
+@use '../styles/foundation' as *;
+
+// Въезд экрана справа — см. развёрнутый разбор механики в
+// ContactsView.module.scss (`tweb src/components/transition.ts:23-42` +
+// `tweb src/scss/partials/_slider.scss:226-241`).
 .screen {
   position: absolute;
   inset: 0;
@@ -6,6 +11,16 @@
   background: var(--background-color);
   display: flex;
   flex-direction: column;
+
+  @include animation-level-global(2) {
+    animation: slide-in-from-right var(--transition-standard-in-time) var(--transition-standard-easing);
+  }
+}
+
+@keyframes slide-in-from-right {
+  from {
+    transform: translate3d(100%, 0, 0);
+  }
 }
 
 .header {

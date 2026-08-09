@@ -1,7 +1,6 @@
 // BlockedUsers — чёрный список (tweb AppBlockedUsersTab): реальный список с
 // бэка, добавление через пикер («Block user...»), разблокировка крестиком.
 import { useCallback, useEffect, useState } from 'react'
-import { AnimatePresence } from 'framer-motion'
 import TgIcon from '../TgIcon'
 import UserAvatar from '../UserAvatar'
 import Text from '../../shared/ui/Text'
@@ -48,7 +47,19 @@ export default function BlockedUsers({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <SettingsScreen title="Blocked Users" onBack={onBack}>
+    <SettingsScreen
+      title="Blocked Users"
+      onBack={onBack}
+      sub={picking ? (
+        <PrivacyUserPicker
+          title="Blocked Users"
+          placeholder="Block user..."
+          multi={false}
+          onPick={(id) => void block(id)}
+          onBack={() => setPicking(false)}
+        />
+      ) : null}
+    >
       <Section footer="Blocked users can't send you messages or add you to groups. They will not see your profile photos, online and last seen status.">
         <Row icon={<TgIcon name="restrict" size={24} />} label="Block User" accent onClick={() => setPicking(true)} />
       </Section>
@@ -72,17 +83,6 @@ export default function BlockedUsers({ onBack }: { onBack: () => void }) {
         </Text>
       )}
 
-      <AnimatePresence>
-        {picking && (
-          <PrivacyUserPicker
-            title="Blocked Users"
-            placeholder="Block user..."
-            multi={false}
-            onPick={(id) => void block(id)}
-            onBack={() => setPicking(false)}
-          />
-        )}
-      </AnimatePresence>
     </SettingsScreen>
   )
 }
