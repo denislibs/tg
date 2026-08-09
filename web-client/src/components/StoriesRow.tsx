@@ -160,8 +160,15 @@ function itemMovement(
   return { isOut, style }
 }
 
+/**
+ * Аватарка автора в ряду — источник морфа открытия вьюера.
+ * tweb list.tsx:80-83: `target` — мемо `items.get(stories.peer)?.querySelector('.avatar')`,
+ * то есть аватарка ТЕКУЩЕГО автора, перечитываемая и на закрытии.
+ */
+export type StoryTargetGetter = (groupIndex: number) => Element | null
+
 export interface StoriesRowProps {
-  onOpen: (index: number) => void
+  onOpen: (index: number, getTarget: StoryTargetGetter) => void
   onAddStory?: () => void
   /** поле поиска — цель, в которую сворачивается ряд (tweb foldInto) */
   foldInto: () => HTMLElement | null
@@ -186,6 +193,14 @@ export default function StoriesRow({
 
   const containerRef = useRef<HTMLDivElement>(null)
   const [rects, setRects] = useState<Rects | null>(null)
+
+  // Узлы элементов ряда по groupIndex — из них морф вьюера берёт аватарку-источник
+  // (tweb list.tsx:72 `items = new WeakMap<PeerStories, HTMLDivElement>()`).
+  const itemNodes = useRef(new Map<number, HTMLDivElement>())
+  const getTarget = useCallback<StoryTargetGetter>(
+    (groupIndex) => itemNodes.current.get(groupIndex)?.querySelector('.avatar') ?? null,
+    [],
+  )
 
   const { progress, folded, isTransition, unfold, fold } = useCollapsable({
     scrollable: getScrollable,
@@ -258,11 +273,17 @@ export default function StoriesRow({
               // tweb onItemClick: в свёрнутом виде клик по элементу = клик по контейнеру.
               if (progress !== STATE_UNFOLDED) return
               if (isAdd) onAddStory?.()
-              else if (item.groupIndex !== null) onOpen(item.groupIndex)
+              else if (item.groupIndex !== null) onOpen(item.groupIndex, getTarget)
             }
             return (
               <div
                 key={item.key}
+                ref={(node) => {
+                  const gi = item.groupIndex
+                  if (gi === null) return
+                  if (node) itemNodes.current.set(gi, node)
+                  else itemNodes.current.delete(gi)
+                }}
                 className={classNames(s.item, seen && !isAdd ? s.isRead : '')}
                 style={movement?.style}
                 onClick={onClick}

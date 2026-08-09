@@ -440,6 +440,17 @@ $color-inactive: rgba(255, 255, 255, .5);
   }
 }
 
+// Клон аватарки, летящий в шапку вьюера. В tweb стили ставятся узлу аватарки
+// инлайном (viewer.tsx:3083):
+//   position: absolute; visibility: hidden; z-index: 1000; transform-origin: top left;
+// top/left пишутся перед стартом анимации, visibility снимается на её время.
+.flyAvatar {
+  position: absolute;
+  visibility: hidden;
+  z-index: 1000;
+  transform-origin: top left;
+}
+
 // ---------------------------------------------------------------------------
 // Ниже — поверхности, которые в tweb выглядят иначе и переезжают на tweb-разметку
 // в других задачах. Оставлены как есть, каждая помечена причиной.

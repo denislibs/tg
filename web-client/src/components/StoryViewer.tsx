@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom'
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import Text from '../shared/ui/Text'
 import IconButton from '../shared/ui/IconButton'
 import Menu, { MenuItem } from '../shared/ui/Menu'
@@ -21,6 +21,8 @@ import { useStoriesStore } from '../stores/storiesStore'
 import { useManagers } from '../core/hooks/useManagers'
 import { uiEvents } from '../core/hooks/uiEvents'
 import classNames from '../shared/lib/classNames'
+import { animateStoryViewer, type StoryMorphElements } from './storyViewerMorph'
+import type { StoryTargetGetter } from './StoriesRow'
 import type { StoryGroup } from '../core/managers/storiesManager'
 import s from './StoryViewer.module.scss'
 
@@ -108,8 +110,15 @@ function dateText(createdAt: string, edited: boolean, t: (s: string) => string):
  *           .ViewerStoryShadow / .ViewerStorySlides > .ViewerStorySlidesSlide [--progress] / .ViewerStoryHeader.night
  *         .ViewerStoryInfo > avatar-162 + peer-title       (заставка соседа)
  *       .ViewerStoryFooter | .storiesInput
+ *
+ * Открытие/закрытие — WAAPI-морф из аватарки ряда историй (`storyViewerMorph.ts`).
  */
-export default function StoryViewer({ groupIndex, onClose }: { groupIndex: number; onClose: () => void }) {
+export default function StoryViewer({ groupIndex, getTarget, onClose }: {
+  groupIndex: number
+  /** аватарка-источник морфа по индексу группы (tweb `props.target`) */
+  getTarget?: StoryTargetGetter
+  onClose: () => void
+}) {
   const t = useT()
   const groups = useStoriesStore((st) => st.groups)
   const managers = useManagers()
@@ -118,9 +127,61 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
 
   // Активный пир карусели. Клик по соседу и переход в конце историй меняют его.
   const [peerIndex, setPeerIndex] = useState(groupIndex)
+
+  // --- морф открытия/закрытия (tweb animate(), viewer.tsx:3150-3313) -----------
+  const rootRef = useRef<HTMLDivElement>(null)
+  const backgroundRef = useRef<HTMLDivElement>(null)
+  const closeBtnRef = useRef<HTMLButtonElement>(null)
+  const flyRef = useRef<HTMLDivElement>(null)
+  const activeContainerRef = useRef<HTMLDivElement>(null)
+  // Актуальные значения для эффектов, которые должны отработать ровно один раз.
+  const peerIndexRef = useRef(peerIndex)
+  peerIndexRef.current = peerIndex
+  const getTargetRef = useRef(getTarget)
+  getTargetRef.current = getTarget
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+
+  // tweb open() (viewer.tsx:3070-3075): клон аватарки заводится, только если
+  // источник — сама аватарка; иначе контейнер морфит из бокса цели без полёта.
+  const [hasFly] = useState(() => !!getTarget?.(groupIndex)?.classList.contains('avatar'))
+
+  // show() (tweb :2762) — снимает .isInvisible; hasViewer (:2962) — .isReady.
+  const [shown, setShown] = useState(false)
+  const [ready, setReady] = useState(false)
+  const [closing, setClosing] = useState(false)
+  // tweb `animating` (:3366) — пока морф играет, клики и закрытие игнорируются.
+  const animatingRef = useRef(true)
+
+  const collectMorph = useCallback((): StoryMorphElements | null => {
+    const root = rootRef.current
+    if (!root) return null
+    const activeContainer = activeContainerRef.current
+    return {
+      root,
+      background: backgroundRef.current,
+      closeButton: closeBtnRef.current,
+      containers: Array.from(root.querySelectorAll<HTMLElement>(`.${s.ViewerStoryContainer}`)),
+      activeContainer,
+      headerAvatar: activeContainer?.querySelector<HTMLElement>(`.${s.ViewerStoryHeaderAvatar}`) ?? null,
+      flyAvatar: flyRef.current,
+      target: getTargetRef.current?.(peerIndexRef.current) ?? null,
+    }
+  }, [])
+
+  // tweb close() (viewer.tsx:2844-2862): pause + viewerReady(false) + setShow(false),
+  // после чего Transition играет те же кадры в обратную сторону и только потом
+  // размонтирует вьюер.
+  const requestClose = useCallback(() => {
+    if (animatingRef.current) return
+    animatingRef.current = true
+    setReady(false)
+    setClosing(true)
+  }, [])
+
   const vm = useStoryViewer({
     groupIndex: peerIndex,
-    onClose,
+    onClose: requestClose,
     onNextPeer: () => {
       if (peerIndex >= groups.length - 1) return false
       setPeerIndex(peerIndex + 1)
@@ -166,7 +227,8 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
   // любой оверлей (меню удаления, подтверждение, панель реакций, ввод ответа,
   // редактирование, stealth, share/репост) или показана статистика.
   const holds = menuOpen || confirmDel || pickerOpen || reply.length > 0 || editOpen || stealthOpen || othersMenuOpen || shareOpen || repostOpen
-  const paused = vm.manualPause || holds || vm.showStats
+  // closing — tweb close() дёргает actions.pause() до анимации выхода (viewer.tsx:2857).
+  const paused = vm.manualPause || holds || vm.showStats || closing
 
   // Длительность сегмента: для видео — длительность ролика (+0.001, чтобы отличать
   // видео от фото, tweb playOnReady viewer.tsx:1756-1765), иначе STORY_DURATION.
@@ -178,14 +240,52 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
     onEnd: vm.next,
   })
 
-  // isReady (tweb hasViewer): включает перспективу куба в isFull и «карусель
-  // раскрыта». Ставится следующим кадром после монтирования; WAAPI-морф открытия
-  // (Task 5.3 шаг 3) заменит этот rAF на завершение своей анимации.
-  const [ready, setReady] = useState(false)
+  // tweb держит вьюер в DOM с .isInvisible и запускает морф, когда готово медиа
+  // видимых стори, но не дольше 250 мс (openOnReady + страховочный setTimeout,
+  // viewer.tsx:2880-2898).
+  // Отступление от tweb: там ждут готовности ВСЕХ отрисованных пиров, у нас —
+  // активного (готовность соседей наверх не поднимается).
   useEffect(() => {
-    const r = requestAnimationFrame(() => setReady(true))
-    return () => cancelAnimationFrame(r)
-  }, [])
+    if (shown) return
+    if (contentReady) {
+      setShown(true)
+      return
+    }
+    const timeout = setTimeout(() => setShown(true), 250)
+    return () => clearTimeout(timeout)
+  }, [shown, contentReady])
+
+  // Открытие: onEnter → animate(el, true) → onAfterEnter → viewerReady(true)
+  // (tweb viewer.tsx:3369-3379). isReady (= hasViewer) выставляется завершением
+  // морфа, а не таймером.
+  useLayoutEffect(() => {
+    if (!shown) return
+    const els = collectMorph()
+    if (!els) {
+      animatingRef.current = false
+      setReady(true)
+      return
+    }
+    let alive = true
+    void animateStoryViewer(els, true).then(() => {
+      if (!alive) return
+      animatingRef.current = false
+      setReady(true)
+    })
+    return () => { alive = false }
+  }, [shown, collectMorph])
+
+  // Закрытие: те же кадры в обратную сторону, размонтирование — после них
+  // (tweb onExit/onAfterExit, viewer.tsx:3382-3390).
+  useLayoutEffect(() => {
+    if (!closing) return
+    const els = collectMorph()
+    if (!els) {
+      onCloseRef.current()
+      return
+    }
+    void animateStoryViewer(els, false).then(() => onCloseRef.current())
+  }, [closing, collectMorph])
 
   if (!vm.group || !vm.story) return null
 
@@ -223,7 +323,7 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
       </IconButton>
       {/* в isFull кнопка закрытия переезжает в шапку (tweb viewer.tsx:2710-2715) */}
       {isFull && (
-        <IconButton onClick={onClose} aria-label={t('Close')}>
+        <IconButton onClick={requestClose} aria-label={t('Close')}>
           <TgIcon name="close" />
         </IconButton>
       )}
@@ -352,15 +452,20 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
   )
 
   return createPortal(
+    <>
     <div
-      className={classNames(s.Viewer, ready ? s.isReady : '', isFull ? s.isFull : '')}
+      ref={rootRef}
+      className={classNames(s.Viewer, shown ? '' : s.isInvisible, ready ? s.isReady : '', isFull ? s.isFull : '')}
       style={{ '--stories-width': `${storiesWidth}px`, '--stories-height': `${storiesHeight}px` } as React.CSSProperties}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+      // tweb вешает click в фазе перехвата и глушит все клики, пока играет морф
+      // (viewer.tsx:3113-3116, 2966-2969).
+      onClickCapture={(e) => { if (animatingRef.current) { e.stopPropagation(); e.preventDefault() } }}
+      onClick={(e) => { if (e.target === e.currentTarget) requestClose() }}
     >
-      <div className={s.ViewerBackground} />
+      <div ref={backgroundRef} className={s.ViewerBackground} />
       {/* tweb: на десктопе close лежит отдельной кнопкой вне карточки (viewer.tsx:2980) */}
       {!isFull && (
-        <IconButton className={s.ViewerClose} onClick={onClose} aria-label={t('Close')}>
+        <IconButton ref={closeBtnRef} className={s.ViewerClose} onClick={requestClose} aria-label={t('Close')}>
           <TgIcon name="close" />
         </IconButton>
       )}
@@ -375,6 +480,7 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
         return (
           <StoryPeer
             key={group.author.id}
+            containerRef={active ? activeContainerRef : undefined}
             group={group}
             storyIndex={active ? vm.current : initialStoryIndex(group)}
             active={active}
@@ -502,12 +608,31 @@ export default function StoryViewer({ groupIndex, onClose }: { groupIndex: numbe
           onClose={() => setRepostOpen(false)}
         />
       )}
-    </div>,
+    </div>
+
+    {/* Клон аватарки, летящий из ряда историй в шапку (tweb `avatarFrom`,
+        viewer.tsx:3077-3084). Лежит рядом с вьюером (в tweb — в overlayRoot),
+        перерисовывается на текущего автора, вне анимации спрятан.
+        Отступление от tweb: там позиционируется сам узел аватарки, у нас —
+        обёртка (аватар рисует React-компонент). */}
+    {hasFly && (
+      <div ref={flyRef} className={s.flyAvatar}>
+        <Avatar
+          background={gradientFor(vm.group.author.id)}
+          src={vm.group.author.avatarUrl || undefined}
+          text={vm.group.author.displayName.charAt(0)}
+          size={32}
+        />
+      </div>
+    )}
+    </>,
     document.body,
   )
 }
 
 interface StoryPeerProps {
+  /** ref на `.ViewerStoryContainer` — ставится только активному (морф мерит его бокс) */
+  containerRef?: React.RefObject<HTMLDivElement | null>
   group: StoryGroup
   storyIndex: number
   active: boolean
@@ -536,7 +661,7 @@ interface StoryPeerProps {
 // «аватар + имя» (.ViewerStoryInfo); клик по соседу переключает на него.
 function StoryPeer(props: StoryPeerProps) {
   const {
-    group, storyIndex, active, diff, isFull, storiesWidth, fadeInOnMount,
+    containerRef, group, storyIndex, active, diff, isFull, storiesWidth, fadeInOnMount,
     paused, muted, progressRef, headerRight, overlay, footer,
     onSelect, onNext, onPrev, onBuffering, onDuration, onContentReady,
   } = props
@@ -593,6 +718,7 @@ function StoryPeer(props: StoryPeerProps) {
 
   return (
     <div
+      ref={containerRef}
       className={classNames(
         s.ViewerStoryContainer,
         // isFull — грани куба (fromLeft/current/fromRight); иначе — карусель (.small)
