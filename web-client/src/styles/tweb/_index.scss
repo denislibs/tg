@@ -27,6 +27,8 @@
 @use "inputSearch"; // :9
 @use "button"; // :10
 @use "animatedIcon"; // :11
+@use "autocompleteHelper"; // :12
+@use "autocompletePeerHelper"; // :13
 @use "badge"; // :14
 @use "ckin"; // :15
 @use "checkbox"; // :16
@@ -35,14 +37,24 @@
 @use "chatTopbar"; // :19
 @use "chatBubble"; // :20
 @use "chatPinned"; // :21
+@use "chatMarkupTooltip"; // :22
+@use "chatStickersHelper"; // :23
+@use "chatEmojiHelper"; // :24
+@use "chatInlineHelper"; // :25
+@use "chatDrop"; // :27
+@use "chatBotCommands"; // :28
+@use "voiceRecordingPanel"; // :29
+@use "videoRecordingPanel"; // :30
 @use "sidebar"; // :32
 @use "slider"; // :34
 @use "leftSidebar"; // :35
 @use "mediaViewer"; // :39 (в tweb это ../components/mediaViewer/mediaViewer)
 @use "scrollable"; // :40
+@use "emojiDropdown"; // :41
 @use "selectorBase"; // выдержка из base.scss под partials/selector (см. файл)
 @use "selector"; // :42 (чип выбранного пира: .selector-user + @keyframes scaleIn,
                  //      их использует .topbar-search-input-entity)
+@use "gifsMasonry"; // :43
 @use "preloader"; // :44
 @use "avatar"; // :45
 @use "document"; // :46
