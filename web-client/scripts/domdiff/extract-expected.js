@@ -73,6 +73,57 @@ const VIEWER_SOURCES = [
     selector: '.btn-menu.top-right',
     mode: 'classes',
   },
+  // Экран авторизации (дампы `13-auth-*.json`, снято живьём 2026-08-09 в
+  // изолированном браузерном контексте `tweb-auth-recon`). В tweb auth-флоу —
+  // единственная поверхность на CSS-модулях (`pages/authFlow.module.scss`,
+  // `components/mediaHeader.module.scss`, `components/codeInputField.module.scss`),
+  // поэтому режим только 'structure': дословный перенос хешей невозможен, но
+  // теги, порядок, вложенность и ГЛОБАЛЬНЫЕ классы (`whole`, `btn-icon`, `rp`,
+  // `c-ripple`, `tgico`, `scrollable`, `input-wrapper`, `input-field`,
+  // `input-select`, `select-wrapper`, `btn-primary`, `i18n`, `text-center`,
+  // `media-sticker-wrapper`, `preloader`, `avatar-edit`…) обязаны совпасть.
+  // Корень эталона — маунт `#auth-pages`: он есть и в tweb, и в целевой вёрстке.
+  // `selectors` — переопределение селектора для отдельных секций файла
+  // (выпадающий список стран снимается своим селектором, не от `#auth-pages`).
+  {
+    file: '13-auth-signqr.json',
+    selector: '#auth-pages',
+    mode: 'structure',
+  },
+  {
+    file: '13-auth-signin.json',
+    selector: '#auth-pages',
+    mode: 'structure',
+    selectors: {
+      'auth-country-dropdown-select-wrapper': '.input-field.input-select .select-wrapper',
+      'auth-country-dropdown-li': '.input-field.input-select .select-wrapper li',
+    },
+  },
+  {
+    file: '13-auth-authcode.json',
+    selector: '#auth-pages',
+    mode: 'structure',
+  },
+  {
+    file: '13-auth-password.json',
+    selector: '#auth-pages',
+    mode: 'structure',
+  },
+  {
+    file: '13-auth-signup.json',
+    selector: '#auth-pages',
+    mode: 'structure',
+  },
+  {
+    file: '13-auth-emailrecover.json',
+    selector: '#auth-pages',
+    mode: 'structure',
+  },
+  {
+    file: '13-auth-signimport.json',
+    selector: '#auth-pages',
+    mode: 'structure',
+  },
 ]
 
 /** Спуск к первому узлу, чей класс подходит под `re` (обход в глубину). */
@@ -122,7 +173,7 @@ for (const src of VIEWER_SOURCES) {
     viewers[key] = {
       source: src.file,
       title: section.title,
-      selector: src.selector,
+      selector: src.selectors?.[key] ?? src.selector,
       mode: src.mode,
       ...(src.mount ? { mount: src.mount } : {}),
       tree,

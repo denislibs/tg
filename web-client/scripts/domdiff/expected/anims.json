@@ -640,5 +640,42 @@
       "state": "finished",
       "target": "tgico animated-button-icon-icon btn-send-icon-forward"
     }
+  ],
+  "13-auth-signqr.json:anims: auth signQR": [
+    {
+      "name": "hide-icon",
+      "target": "div.preloader",
+      "duration": 400,
+      "easing": "linear",
+      "iterations": 1,
+      "playState": "finished"
+    },
+    {
+      "name": "rotate",
+      "target": "svg.preloader-circular",
+      "duration": 1000,
+      "easing": "linear",
+      "iterations": null,
+      "playState": "running"
+    }
+  ],
+  "13-auth-authcode.json:anims: auth authCode": [
+    {
+      "name": "_caret-blink_87tyg_1",
+      "duration": 1250,
+      "easing": "linear",
+      "iterations": null,
+      "playState": "running"
+    }
+  ],
+  "13-auth-signimport.json:anims: auth signImport": [
+    {
+      "name": "rotate",
+      "target": "svg.preloader-circular",
+      "duration": 1000,
+      "easing": "linear",
+      "iterations": null,
+      "playState": "running"
+    }
   ]
 }

@@ -3657,5 +3657,2347 @@
         }
       ]
     }
+  },
+  "auth-signqr-card": {
+    "source": "13-auth-signqr.json",
+    "title": "auth signQR card",
+    "selector": "#auth-pages",
+    "mode": "structure",
+    "tree": {
+      "tag": "div",
+      "classes": [
+        "_host_1b0yp_9",
+        "whole"
+      ],
+      "attrs": {
+        "id": "auth-pages"
+      },
+      "children": [
+        {
+          "tag": "button",
+          "classes": [
+            "_themeButton_1b0yp_25",
+            "btn-icon",
+            "darkmode_filled",
+            "rp"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "c-ripple"
+              ]
+            },
+            {
+              "tag": "span",
+              "classes": [
+                "button-icon",
+                "tgico"
+              ]
+            }
+          ]
+        },
+        {
+          "tag": "div",
+          "classes": [
+            "_scrollable_1b0yp_53",
+            "no-scrollbar",
+            "scrollable",
+            "scrollable-y"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholderTop_1b0yp_69",
+                "_placeholder_1b0yp_63"
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_cardsContainer_1b0yp_73"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "_card_1b0yp_73",
+                    "_pageSignQR_1b0yp_208"
+                  ],
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_qrContainer_1b0yp_179",
+                            "_sticker_1vq66_19"
+                          ],
+                          "attrs": {
+                            "style": "--sticker-size: 240px;"
+                          },
+                          "children": [
+                            {
+                              "tag": "canvas",
+                              "classes": [
+                                "_qrCanvas_1b0yp_186"
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_title_1vq66_1",
+                            "text-center",
+                            "text-overflow-wrap"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Log in by QR Code"
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_subtitle_1vq66_8",
+                            "secondary",
+                            "text-center"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Scan with Telegram app on your phone"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "ol",
+                      "classes": [
+                        "_qrDescription_1b0yp_147"
+                      ],
+                      "children": [
+                        {
+                          "tag": "li",
+                          "classes": [
+                            "_qrDescriptionItem_1b0yp_171"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "_qrDescriptionMarker_1b0yp_157"
+                              ],
+                              "text": "1"
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Open Telegram on your phone"
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "li",
+                          "classes": [
+                            "_qrDescriptionItem_1b0yp_171"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "_qrDescriptionMarker_1b0yp_157"
+                              ],
+                              "text": "2"
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Go to",
+                              "children": [
+                                {
+                                  "tag": "b",
+                                  "classes": [],
+                                  "text": "Settings"
+                                },
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "inline-icon",
+                                    "tgico"
+                                  ]
+                                },
+                                {
+                                  "tag": "b",
+                                  "classes": [],
+                                  "text": "Devices"
+                                },
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "inline-icon",
+                                    "tgico"
+                                  ]
+                                },
+                                {
+                                  "tag": "b",
+                                  "classes": [],
+                                  "text": "Add Device"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "li",
+                          "classes": [
+                            "_qrDescriptionItem_1b0yp_171"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "_qrDescriptionMarker_1b0yp_157"
+                              ],
+                              "text": "3"
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Point your phone at this screen to confirm login"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "button",
+                      "classes": [
+                        "btn-primary",
+                        "btn-primary-transparent",
+                        "btn-secondary",
+                        "primary",
+                        "rp"
+                      ],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "c-ripple"
+                          ]
+                        },
+                        {
+                          "tag": "span",
+                          "classes": [
+                            "i18n"
+                          ],
+                          "text": "Log in by phone number",
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "inline-icon",
+                                "tgico"
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [],
+                      "attrs": {
+                        "style": "overflow: hidden;"
+                      },
+                      "children": [
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-primary",
+                            "btn-primary-transparent",
+                            "btn-secondary",
+                            "primary",
+                            "rp"
+                          ],
+                          "text": "Продолжить на русском",
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "c-ripple"
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [],
+                      "attrs": {
+                        "style": "overflow: hidden;"
+                      },
+                      "children": [
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-primary",
+                            "btn-primary-transparent",
+                            "btn-secondary",
+                            "primary",
+                            "rp"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "c-ripple"
+                              ]
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Log in by passkey",
+                              "children": [
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "inline-icon",
+                                    "tgico"
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholder_1b0yp_63"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "auth-signin-card-country-list-collapsed": {
+    "source": "13-auth-signin.json",
+    "title": "auth signIn card (country list collapsed)",
+    "selector": "#auth-pages",
+    "mode": "structure",
+    "tree": {
+      "tag": "div",
+      "classes": [
+        "_host_1b0yp_9",
+        "whole"
+      ],
+      "attrs": {
+        "id": "auth-pages"
+      },
+      "children": [
+        {
+          "tag": "button",
+          "classes": [
+            "_themeButton_1b0yp_25",
+            "btn-icon",
+            "darkmode_filled",
+            "rp"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "c-ripple"
+              ]
+            },
+            {
+              "tag": "span",
+              "classes": [
+                "button-icon",
+                "tgico"
+              ]
+            }
+          ]
+        },
+        {
+          "tag": "div",
+          "classes": [
+            "_scrollable_1b0yp_53",
+            "no-scrollbar",
+            "scrollable",
+            "scrollable-y"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholderTop_1b0yp_69",
+                "_placeholder_1b0yp_63"
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_cardsContainer_1b0yp_73"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "_card_1b0yp_73"
+                  ],
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_logoContainer_1b0yp_95",
+                            "_sticker_1vq66_19"
+                          ],
+                          "attrs": {
+                            "style": "--sticker-size: 120px;"
+                          },
+                          "children": [
+                            {
+                              "tag": "svg",
+                              "classes": [
+                                "_logo_1b0yp_89"
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_title_1vq66_1",
+                            "text-center",
+                            "text-overflow-wrap"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Sign in to Telegram"
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_subtitle_1vq66_8",
+                            "secondary",
+                            "text-center"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Please confirm your country code and enter your phone number.",
+                              "children": [
+                                {
+                                  "tag": "br",
+                                  "classes": []
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "input-wrapper"
+                      ],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "input-field",
+                            "input-select"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "input-field-input"
+                              ],
+                              "attrs": {
+                                "contenteditable": "true"
+                              },
+                              "children": [
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "i18n"
+                                  ],
+                                  "text": "Kazakhstan"
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "input-field-border"
+                              ]
+                            },
+                            {
+                              "tag": "label",
+                              "classes": [],
+                              "attrs": {
+                                "style": "visibility: visible;"
+                              },
+                              "children": [
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "i18n"
+                                  ],
+                                  "text": "Country"
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "arrow",
+                                "arrow-down"
+                              ]
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "hide",
+                                "select-wrapper",
+                                "z-depth-3"
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "input-field",
+                            "input-field-phone"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "input-field-input"
+                              ],
+                              "attrs": {
+                                "contenteditable": "true",
+                                "inputmode": "decimal",
+                                "style": "--letter-spacing: -0.32px;"
+                              },
+                              "text": "+7"
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "input-field-border"
+                              ]
+                            },
+                            {
+                              "tag": "label",
+                              "classes": [],
+                              "attrs": {
+                                "style": "visibility: visible;"
+                              },
+                              "children": [
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "i18n"
+                                  ],
+                                  "text": "Phone Number"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-color-primary",
+                            "btn-primary",
+                            "rp"
+                          ],
+                          "attrs": {
+                            "disabled": ""
+                          },
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "c-ripple"
+                              ]
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Next"
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [],
+                          "attrs": {
+                            "style": "overflow: hidden;"
+                          },
+                          "children": [
+                            {
+                              "tag": "button",
+                              "classes": [
+                                "btn-primary",
+                                "btn-primary-transparent",
+                                "btn-secondary",
+                                "primary",
+                                "rp"
+                              ],
+                              "text": "Продолжить на русском",
+                              "children": [
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "c-ripple"
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "button",
+                      "classes": [
+                        "btn-primary",
+                        "btn-primary-transparent",
+                        "btn-secondary",
+                        "primary",
+                        "rp"
+                      ],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "c-ripple"
+                          ]
+                        },
+                        {
+                          "tag": "span",
+                          "classes": [
+                            "i18n"
+                          ],
+                          "text": "Log in by QR Code",
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "inline-icon",
+                                "tgico"
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [],
+                      "attrs": {
+                        "style": "overflow: hidden;"
+                      },
+                      "children": [
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-primary",
+                            "btn-primary-transparent",
+                            "btn-secondary",
+                            "primary",
+                            "rp"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "c-ripple"
+                              ]
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Log in by passkey",
+                              "children": [
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "inline-icon",
+                                    "tgico"
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholder_1b0yp_63"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "auth-country-dropdown-select-wrapper": {
+    "source": "13-auth-signin.json",
+    "title": "auth country dropdown (select-wrapper)",
+    "selector": ".input-field.input-select .select-wrapper",
+    "mode": "structure",
+    "tree": {
+      "tag": "div",
+      "classes": [
+        "active",
+        "select-wrapper",
+        "z-depth-3"
+      ],
+      "children": [
+        {
+          "tag": "div",
+          "classes": [
+            "scrollable",
+            "scrollable-y"
+          ],
+          "children": [
+            {
+              "tag": "ul",
+              "classes": []
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "auth-country-dropdown-li": {
+    "source": "13-auth-signin.json",
+    "title": "auth country dropdown li",
+    "selector": ".input-field.input-select .select-wrapper li",
+    "mode": "structure",
+    "tree": {
+      "tag": "li",
+      "classes": [],
+      "children": [
+        {
+          "tag": "span",
+          "classes": [],
+          "children": [
+            {
+              "tag": "span",
+              "classes": [
+                "emoji",
+                "emoji-native"
+              ],
+              "text": "🇦🇫"
+            }
+          ]
+        },
+        {
+          "tag": "span",
+          "classes": [
+            "i18n"
+          ],
+          "text": "Afghanistan"
+        },
+        {
+          "tag": "span",
+          "classes": [
+            "phone-code"
+          ],
+          "text": "+93"
+        }
+      ]
+    }
+  },
+  "auth-authcode-card-empty": {
+    "source": "13-auth-authcode.json",
+    "title": "auth authCode card (empty)",
+    "selector": "#auth-pages",
+    "mode": "structure",
+    "tree": {
+      "tag": "div",
+      "classes": [
+        "_host_1b0yp_9",
+        "whole"
+      ],
+      "attrs": {
+        "id": "auth-pages"
+      },
+      "children": [
+        {
+          "tag": "button",
+          "classes": [
+            "_themeButton_1b0yp_25",
+            "btn-icon",
+            "darkmode_filled",
+            "rp"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "c-ripple"
+              ]
+            },
+            {
+              "tag": "span",
+              "classes": [
+                "button-icon",
+                "tgico"
+              ]
+            }
+          ]
+        },
+        {
+          "tag": "div",
+          "classes": [
+            "_scrollable_1b0yp_53",
+            "no-scrollbar",
+            "scrollable",
+            "scrollable-y"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholderTop_1b0yp_69",
+                "_placeholder_1b0yp_63"
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_cardsContainer_1b0yp_73"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "_card_1b0yp_73",
+                    "_pageAuthCode_1b0yp_195"
+                  ],
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_sticker_1vq66_19"
+                          ],
+                          "attrs": {
+                            "style": "--sticker-size: 130px;"
+                          },
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [],
+                              "children": [
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "media-sticker-wrapper"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "canvas",
+                                      "classes": [
+                                        "lottie"
+                                      ]
+                                    },
+                                    {
+                                      "tag": "canvas",
+                                      "classes": [
+                                        "lottie"
+                                      ],
+                                      "attrs": {
+                                        "style": "display: none;"
+                                      }
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_title_1vq66_1",
+                            "text-center",
+                            "text-overflow-wrap"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_phoneWrapper_1b0yp_118"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "h4",
+                                  "classes": [
+                                    "_phone_1b0yp_118"
+                                  ],
+                                  "text": "+7 701 234 56 78"
+                                },
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "_phoneEdit_1b0yp_129"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "tgico"
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_subtitle_1vq66_8",
+                            "secondary",
+                            "text-center"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "We have sent you an SMS with the code.",
+                              "children": [
+                                {
+                                  "tag": "br",
+                                  "classes": []
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "_codeInputField_1b0yp_143",
+                        "_wrap_87tyg_1"
+                      ],
+                      "children": [
+                        {
+                          "tag": "input",
+                          "classes": [
+                            "_input_87tyg_11"
+                          ],
+                          "attrs": {
+                            "inputmode": "numeric",
+                            "autocomplete": "one-time-code",
+                            "pattern": "^d*$",
+                            "required": ""
+                          }
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_active_87tyg_48",
+                            "_digit_87tyg_33"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_caret_87tyg_86"
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_digit_87tyg_33"
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_digit_87tyg_33"
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_digit_87tyg_33"
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_digit_87tyg_33"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "_errorLabel_1b0yp_99"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholder_1b0yp_63"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "auth-authcode-card-3-of-5-digits": {
+    "source": "13-auth-authcode.json",
+    "title": "auth authCode card (3 of 5 digits)",
+    "selector": "#auth-pages",
+    "mode": "structure",
+    "tree": {
+      "tag": "div",
+      "classes": [
+        "_host_1b0yp_9",
+        "whole"
+      ],
+      "attrs": {
+        "id": "auth-pages"
+      },
+      "children": [
+        {
+          "tag": "button",
+          "classes": [
+            "_themeButton_1b0yp_25",
+            "btn-icon",
+            "darkmode_filled",
+            "rp"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "c-ripple"
+              ]
+            },
+            {
+              "tag": "span",
+              "classes": [
+                "button-icon",
+                "tgico"
+              ]
+            }
+          ]
+        },
+        {
+          "tag": "div",
+          "classes": [
+            "_scrollable_1b0yp_53",
+            "no-scrollbar",
+            "scrollable",
+            "scrollable-y"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholderTop_1b0yp_69",
+                "_placeholder_1b0yp_63"
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_cardsContainer_1b0yp_73"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "_card_1b0yp_73",
+                    "_pageAuthCode_1b0yp_195"
+                  ],
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_sticker_1vq66_19"
+                          ],
+                          "attrs": {
+                            "style": "--sticker-size: 130px;"
+                          },
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [],
+                              "children": [
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "media-sticker-wrapper"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "canvas",
+                                      "classes": [
+                                        "lottie"
+                                      ]
+                                    },
+                                    {
+                                      "tag": "canvas",
+                                      "classes": [
+                                        "lottie"
+                                      ],
+                                      "attrs": {
+                                        "style": "display: none;"
+                                      }
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_title_1vq66_1",
+                            "text-center",
+                            "text-overflow-wrap"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_phoneWrapper_1b0yp_118"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "h4",
+                                  "classes": [
+                                    "_phone_1b0yp_118"
+                                  ],
+                                  "text": "+7 701 234 56 78"
+                                },
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "_phoneEdit_1b0yp_129"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "tgico"
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_subtitle_1vq66_8",
+                            "secondary",
+                            "text-center"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "We have sent you an SMS with the code.",
+                              "children": [
+                                {
+                                  "tag": "br",
+                                  "classes": []
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "_codeInputField_1b0yp_143",
+                        "_wrap_87tyg_1"
+                      ],
+                      "children": [
+                        {
+                          "tag": "input",
+                          "classes": [
+                            "_input_87tyg_11"
+                          ],
+                          "attrs": {
+                            "inputmode": "numeric",
+                            "autocomplete": "one-time-code",
+                            "pattern": "^d*$",
+                            "required": ""
+                          }
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_digit_87tyg_33"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_digitContent_87tyg_59"
+                              ],
+                              "text": "1"
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_digit_87tyg_33"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_digitContent_87tyg_59"
+                              ],
+                              "text": "2"
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_digit_87tyg_33"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_digitContent_87tyg_59"
+                              ],
+                              "text": "3"
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_active_87tyg_48",
+                            "_digit_87tyg_33"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_caret_87tyg_86"
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_digit_87tyg_33"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "_errorLabel_1b0yp_99"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholder_1b0yp_63"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "auth-password-card": {
+    "source": "13-auth-password.json",
+    "title": "auth password card",
+    "selector": "#auth-pages",
+    "mode": "structure",
+    "tree": {
+      "tag": "div",
+      "classes": [
+        "_host_1b0yp_9",
+        "whole"
+      ],
+      "attrs": {
+        "id": "auth-pages"
+      },
+      "children": [
+        {
+          "tag": "button",
+          "classes": [
+            "_themeButton_1b0yp_25",
+            "btn-icon",
+            "darkmode_filled",
+            "rp"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "c-ripple"
+              ]
+            },
+            {
+              "tag": "span",
+              "classes": [
+                "button-icon",
+                "tgico"
+              ]
+            }
+          ]
+        },
+        {
+          "tag": "div",
+          "classes": [
+            "_scrollable_1b0yp_53",
+            "no-scrollbar",
+            "scrollable",
+            "scrollable-y"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholderTop_1b0yp_69",
+                "_placeholder_1b0yp_63"
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_cardsContainer_1b0yp_73"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "_card_1b0yp_73",
+                    "_pagePassword_1b0yp_200"
+                  ],
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_sticker_1vq66_19"
+                          ],
+                          "attrs": {
+                            "style": "--sticker-size: 130px;"
+                          },
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [],
+                              "children": [
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "media-sticker-wrapper"
+                                  ],
+                                  "children": [
+                                    {
+                                      "tag": "canvas",
+                                      "classes": [
+                                        "lottie"
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_title_1vq66_1",
+                            "text-center",
+                            "text-overflow-wrap"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Enter Your Password"
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_subtitle_1vq66_8",
+                            "text-center"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Your account is protected with an additional password",
+                              "children": [
+                                {
+                                  "tag": "br",
+                                  "classes": []
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "input-wrapper"
+                      ],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "input-field",
+                            "input-field-password"
+                          ],
+                          "children": [
+                            {
+                              "tag": "input",
+                              "classes": [
+                                "stealthy"
+                              ],
+                              "attrs": {
+                                "type": "password"
+                              }
+                            },
+                            {
+                              "tag": "input",
+                              "classes": [
+                                "input-field-input",
+                                "is-empty"
+                              ],
+                              "attrs": {
+                                "type": "password",
+                                "autocomplete": "off",
+                                "required": ""
+                              }
+                            },
+                            {
+                              "tag": "input",
+                              "classes": [
+                                "stealthy"
+                              ],
+                              "attrs": {
+                                "type": "password"
+                              }
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "input-field-border"
+                              ]
+                            },
+                            {
+                              "tag": "label",
+                              "classes": [],
+                              "attrs": {
+                                "style": "visibility: visible;"
+                              },
+                              "children": [
+                                {
+                                  "tag": "span",
+                                  "classes": [],
+                                  "text": "мой хинт"
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "toggle-visible"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "tgico"
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "span",
+                          "classes": [
+                            "_forgotLink_1b0yp_106",
+                            "i18n"
+                          ],
+                          "children": [
+                            {
+                              "tag": "a",
+                              "classes": [],
+                              "attrs": {
+                                "href": "#"
+                              },
+                              "text": "Forgot Password?"
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-color-primary",
+                            "btn-primary",
+                            "rp"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "c-ripple"
+                              ]
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Next"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholder_1b0yp_63"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "auth-signup-card": {
+    "source": "13-auth-signup.json",
+    "title": "auth signUp card",
+    "selector": "#auth-pages",
+    "mode": "structure",
+    "tree": {
+      "tag": "div",
+      "classes": [
+        "_host_1b0yp_9",
+        "whole"
+      ],
+      "attrs": {
+        "id": "auth-pages"
+      },
+      "children": [
+        {
+          "tag": "button",
+          "classes": [
+            "_themeButton_1b0yp_25",
+            "btn-icon",
+            "darkmode_filled",
+            "rp"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "c-ripple"
+              ]
+            },
+            {
+              "tag": "span",
+              "classes": [
+                "button-icon",
+                "tgico"
+              ]
+            }
+          ]
+        },
+        {
+          "tag": "div",
+          "classes": [
+            "_scrollable_1b0yp_53",
+            "no-scrollbar",
+            "scrollable",
+            "scrollable-y"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholderTop_1b0yp_69",
+                "_placeholder_1b0yp_63"
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_cardsContainer_1b0yp_73"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "_card_1b0yp_73",
+                    "_pageSignUp_1b0yp_191"
+                  ],
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_sticker_1vq66_19"
+                          ],
+                          "attrs": {
+                            "style": "--sticker-size: 120px;"
+                          },
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "avatar-edit"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "canvas",
+                                  "classes": [
+                                    "avatar-edit-canvas"
+                                  ],
+                                  "attrs": {
+                                    "id": "canvas-avatar"
+                                  }
+                                },
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "avatar-edit-icon",
+                                    "tgico"
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_title_1vq66_1",
+                            "text-center",
+                            "text-overflow-wrap"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Your Name"
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_subtitle_1vq66_8",
+                            "text-center"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Enter your name and add a profile photo",
+                              "children": [
+                                {
+                                  "tag": "br",
+                                  "classes": []
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "input-wrapper"
+                      ],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "input-field"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "input-field-input",
+                                "is-empty"
+                              ],
+                              "attrs": {
+                                "contenteditable": "true"
+                              }
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "input-field-border"
+                              ]
+                            },
+                            {
+                              "tag": "label",
+                              "classes": [],
+                              "attrs": {
+                                "style": "visibility: visible;"
+                              },
+                              "children": [
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "i18n"
+                                  ],
+                                  "text": "First name (required)"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "input-field"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "input-field-input",
+                                "is-empty"
+                              ],
+                              "attrs": {
+                                "contenteditable": "true"
+                              }
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "input-field-border"
+                              ]
+                            },
+                            {
+                              "tag": "label",
+                              "classes": [],
+                              "attrs": {
+                                "style": "visibility: visible;"
+                              },
+                              "children": [
+                                {
+                                  "tag": "span",
+                                  "classes": [
+                                    "i18n"
+                                  ],
+                                  "text": "Last name (optional)"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-color-primary",
+                            "btn-primary",
+                            "rp"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "c-ripple"
+                              ]
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Start Messaging"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholder_1b0yp_63"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "auth-emailrecover-card": {
+    "source": "13-auth-emailrecover.json",
+    "title": "auth emailRecover card",
+    "selector": "#auth-pages",
+    "mode": "structure",
+    "tree": {
+      "tag": "div",
+      "classes": [
+        "_host_1b0yp_9",
+        "whole"
+      ],
+      "attrs": {
+        "id": "auth-pages"
+      },
+      "children": [
+        {
+          "tag": "button",
+          "classes": [
+            "_themeButton_1b0yp_25",
+            "btn-icon",
+            "darkmode_filled",
+            "rp"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "c-ripple"
+              ]
+            },
+            {
+              "tag": "span",
+              "classes": [
+                "button-icon",
+                "tgico"
+              ]
+            }
+          ]
+        },
+        {
+          "tag": "div",
+          "classes": [
+            "_scrollable_1b0yp_53",
+            "no-scrollbar",
+            "scrollable",
+            "scrollable-y"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholderTop_1b0yp_69",
+                "_placeholder_1b0yp_63"
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_cardsContainer_1b0yp_73"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "_card_1b0yp_73"
+                  ],
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_sticker_1vq66_19"
+                          ],
+                          "attrs": {
+                            "style": "--sticker-size: 130px;"
+                          },
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_lottie_1vq66_30"
+                              ],
+                              "attrs": {
+                                "style": "--size: 130px;"
+                              },
+                              "children": [
+                                {
+                                  "tag": "canvas",
+                                  "classes": [
+                                    "lottie"
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_title_1vq66_1",
+                            "text-center",
+                            "text-overflow-wrap"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Reset Password"
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_subtitle_1vq66_8",
+                            "text-center"
+                          ],
+                          "children": [
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Enter the code we just sent to your email .",
+                              "children": [
+                                {
+                                  "tag": "br",
+                                  "classes": []
+                                },
+                                {
+                                  "tag": "b",
+                                  "classes": [],
+                                  "text": "a @e .com",
+                                  "children": [
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "bluff-spoiler",
+                                        "is-visible"
+                                      ],
+                                      "attrs": {
+                                        "style": "mask-image: url('data:image/webp;base64,…')"
+                                      },
+                                      "children": [
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "bluff-spoiler-letter"
+                                          ],
+                                          "text": "⠇"
+                                        },
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "bluff-spoiler-letter"
+                                          ],
+                                          "text": "⣯"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "tag": "span",
+                                      "classes": [
+                                        "bluff-spoiler",
+                                        "is-visible"
+                                      ],
+                                      "attrs": {
+                                        "style": "mask-image: url('data:image/webp;base64,…')"
+                                      },
+                                      "children": [
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "bluff-spoiler-letter"
+                                          ],
+                                          "text": "⡯"
+                                        },
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "bluff-spoiler-letter"
+                                          ],
+                                          "text": "⢢"
+                                        },
+                                        {
+                                          "tag": "span",
+                                          "classes": [
+                                            "bluff-spoiler-letter"
+                                          ],
+                                          "text": "⣫"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "div",
+                      "classes": [
+                        "input-wrapper"
+                      ],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_wrap_87tyg_1"
+                          ],
+                          "children": [
+                            {
+                              "tag": "input",
+                              "classes": [
+                                "_input_87tyg_11"
+                              ],
+                              "attrs": {
+                                "inputmode": "numeric",
+                                "autocomplete": "one-time-code",
+                                "pattern": "^d*$",
+                                "required": ""
+                              }
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_active_87tyg_48",
+                                "_digit_87tyg_33"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "div",
+                                  "classes": [
+                                    "_caret_87tyg_86"
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_digit_87tyg_33"
+                              ]
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_digit_87tyg_33"
+                              ]
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_digit_87tyg_33"
+                              ]
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_digit_87tyg_33"
+                              ]
+                            },
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "_digit_87tyg_33"
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "_errorLabel_1b0yp_99"
+                          ]
+                        },
+                        {
+                          "tag": "button",
+                          "classes": [
+                            "btn-primary",
+                            "btn-primary-transparent",
+                            "btn-secondary",
+                            "primary",
+                            "rp"
+                          ],
+                          "children": [
+                            {
+                              "tag": "div",
+                              "classes": [
+                                "c-ripple"
+                              ]
+                            },
+                            {
+                              "tag": "span",
+                              "classes": [
+                                "i18n"
+                              ],
+                              "text": "Cancel"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholder_1b0yp_63"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "auth-signimport-card": {
+    "source": "13-auth-signimport.json",
+    "title": "auth signImport card",
+    "selector": "#auth-pages",
+    "mode": "structure",
+    "tree": {
+      "tag": "div",
+      "classes": [
+        "_host_1b0yp_9",
+        "whole"
+      ],
+      "attrs": {
+        "id": "auth-pages"
+      },
+      "children": [
+        {
+          "tag": "button",
+          "classes": [
+            "_themeButton_1b0yp_25",
+            "btn-icon",
+            "darkmode_filled",
+            "rp"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "c-ripple"
+              ]
+            },
+            {
+              "tag": "span",
+              "classes": [
+                "button-icon",
+                "tgico"
+              ]
+            }
+          ]
+        },
+        {
+          "tag": "div",
+          "classes": [
+            "_scrollable_1b0yp_53",
+            "no-scrollbar",
+            "scrollable",
+            "scrollable-y"
+          ],
+          "children": [
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholderTop_1b0yp_69",
+                "_placeholder_1b0yp_63"
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_cardsContainer_1b0yp_73"
+              ],
+              "children": [
+                {
+                  "tag": "div",
+                  "classes": [
+                    "_card_1b0yp_73"
+                  ],
+                  "children": [
+                    {
+                      "tag": "div",
+                      "classes": [],
+                      "children": [
+                        {
+                          "tag": "div",
+                          "classes": [
+                            "preloader"
+                          ],
+                          "children": [
+                            {
+                              "tag": "svg",
+                              "classes": [
+                                "preloader-circular"
+                              ],
+                              "children": [
+                                {
+                                  "tag": "circle",
+                                  "classes": [
+                                    "preloader-path"
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "div",
+              "classes": [
+                "_placeholder_1b0yp_63"
+              ]
+            }
+          ]
+        }
+      ]
+    }
   }
 }
