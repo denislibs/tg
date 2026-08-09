@@ -85,7 +85,14 @@ export default function Avatar({
       onClick={onClick}
     >
       {src ? (
-        <img className="avatar-photo" src={src} alt="" loading="lazy" decoding="async" />
+        <img
+          className="avatar-photo fade-in"
+          src={src}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onAnimationEnd={(e) => e.currentTarget.classList.remove('fade-in')}
+        />
       ) : emoji === 'tg-logo' ? (
         // отступление от tweb: в оригинале у сервисного аккаунта (id 777000)
         // обычная фотография пира — `img.avatar-photo`, никакого отдельного
