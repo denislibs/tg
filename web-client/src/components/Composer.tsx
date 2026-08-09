@@ -591,7 +591,7 @@ function Composer({
 
             <IconButton
               noRipple
-              ref={emojiDd.buttonRef as unknown as React.RefObject<HTMLButtonElement>}
+              ref={emojiDd.buttonRef as React.RefObject<HTMLButtonElement>}
               className={classNames('toggle-emoticons', emojiDd.open ? 'active' : '')}
               {...emojiDd.buttonProps}
             >

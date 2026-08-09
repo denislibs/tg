@@ -50,6 +50,10 @@
   --btn-menu-transition: .2s cubic-bezier(.4, 0, .2, 1);
   --esg-transition: var(--btn-menu-transition);
   --input-transition: .2s ease-out;
+  // base.scss:64 — на неё опирается `_input.scss:244` (плейсхолдер поля ввода);
+  // без объявления весь `transition` там невалиден и уезд плейсхолдера при
+  // фокусе не анимируется вовсе.
+  --input-placeholder-transition: .15s ease-out;
   --popup-transition-function: cubic-bezier(.4, 0, .2, 1);
   --popup-transition-time: .15s;
   --popup-transition: var(--popup-transition-time) var(--popup-transition-function);
