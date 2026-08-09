@@ -52,7 +52,7 @@ const MAX_MESSAGE_LEN = 4096
 // chatId — кросс-чат ответ (tweb ReplyToAnotherChat): исходный чат оригинала;
 // != текущего → уходит полем reply_to_peer_id. snapshotName/snapshotText — готовый
 // снимок превью оригинала (его нет в текущем сторе), рисуется в плашке ответа.
-export type ReplyState = { msgId?: number; name: string; text: string; color: string; quote?: { text: string; offset: number }; chatId?: number; snapshotName?: string; snapshotText?: string } | null
+export type ReplyState = { msgId?: number; name: string; text: string; color: string; peerId?: number; quote?: { text: string; offset: number }; chatId?: number; snapshotName?: string; snapshotText?: string } | null
 export type EditState = { msgId: number; text: string; entities?: MessageEntity[] } | null
 // Пересылка через плашку композера (tweb initMessagesForward): исходный чат +
 // id сообщений ждут финализации по «Отправить». dropAuthor/dropCaption — опции

@@ -81,7 +81,7 @@ export default function ReplyWrapper({
       icon: 'reply',
       // input.ts:4630 — `i18n('ReplyTo', [title])`, где title — узел
       // `span.peer-title` с именем автора (wrapPeerTitle).
-      title: <>{t('Reply to')} <span className="peer-title">{reply.snapshotName ?? reply.name}</span></>,
+      title: <>{t('Reply to')} <span className="peer-title" data-peer-id={reply.peerId}>{reply.snapshotName ?? reply.name}</span></>,
       subtitle: reply.quote ? (
         <>
           <TgIcon name="quote_outline" size={13} style={{ verticalAlign: '-1px', marginRight: 3, opacity: 0.7 }} />

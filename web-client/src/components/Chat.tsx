@@ -57,6 +57,9 @@ import { TopicIcon } from './TopicsPanel'
 import PinnedBar from './conversation/PinnedBar'
 import SavedTagsPanel from './conversation/SavedTagsPanel'
 import ScrollDownFab from './conversation/ScrollDownFab'
+import CornerButton from './conversation/CornerButton'
+import ChatInputControl, { isControlNeeded, type ControlFlags } from './conversation/ChatInputControl'
+import { useChatInputCenter } from './conversation/useChatInputCenter'
 import SelectionBar from './conversation/SelectionBar'
 import ChatDrops from './conversation/ChatDrops'
 import { useChatsStore, loadChats } from '../stores/chatsStore'
@@ -522,9 +525,9 @@ export default function Chat({ chat, onBack, thread }: Props) {
     if (replyRestoredRef.current || draftReplyToId == null || msgs.length === 0) return
     replyRestoredRef.current = true
     if (reply) return
-    const rs = draftReplyState(msgs, draftReplyToId, chat.name, accentColor)
+    const rs = draftReplyState(msgs, draftReplyToId, chat.name, accentColor, { meId: meId ?? undefined, peerId: chat.peerId })
     if (rs) setReply(rs)
-  }, [draftReplyToId, msgs, reply, chat.name, accentColor, setReply])
+  }, [draftReplyToId, msgs, reply, chat.name, chat.peerId, meId, accentColor, setReply])
 
   // Кросс-чат ответ (tweb ReplyToAnotherChat): целевой чат открыт → ставим
   // reply-плашку из pending-reply (исходный чат + снимок оригинала) и чистим стор.
@@ -798,6 +801,40 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // onScrollDownClick (reload-newest + pin, or smooth scroll) lives in useChatScroll.
   const scrollDownFab = <ScrollDownFab unreadBelow={unreadBelow} onClick={onScrollDownClick} />
 
+  // ── Плашка вместо строки ввода (tweb .chat-input-control) ──
+  // Цепочка условий повторяет приоритет прежних веток футера; в самой плашке она
+  // раскладывается в `haveSomethingInControl` из finishPeerChange (input.ts:2448-2567).
+  const composerUsable = canType && canSendText
+  const threadClosed = !!thread?.closed
+  const botStartPlate = !threadClosed && botStart
+  const secretPlate = !threadClosed && !botStartPlate && secretLocked
+  const groupRestricted = !threadClosed && !botStartPlate && !secretPlate && !composerUsable && isGroup && !canSendText
+  const channelMutePlate = !threadClosed && !botStartPlate && !secretPlate && !groupRestricted && !composerUsable
+  const controlFlags = useMemo<ControlFlags>(() => ({
+    // tweb unblockBtn: `!isBot && peerId.isUser()`. Разблокировки у нас нет —
+    // кнопка структурная, но её `hide` считается тем же условием, что в оригинале.
+    canUnblock: chat.type === 'private' && !isBotChat,
+    botStart: botStartPlate,
+    channelMute: channelMutePlate,
+    gift: channelMutePlate,
+    groupRestricted,
+    threadClosed,
+    // статус ещё не приехал (secret.sync в полёте) — это «ожидание», а не «можно писать»
+    secret: secretPlate
+      ? { status: secretStatus === 'requested' ? 'requested' : secretStatus === 'rejected' ? 'rejected' : 'awaiting',
+          busy: secretBusy, onAccept: onSecretAccept, onReject: onSecretReject }
+      : null,
+  }), [chat.type, isBotChat, botStartPlate, channelMutePlate, groupRestricted, threadClosed, secretPlate, secretStatus, secretBusy, onSecretAccept, onSecretReject])
+  const onBotStartClick = useEvent(() => onComposerSend('/start'))
+  const onControlMuteClick = useEvent(() => { if (isRealChat) applyMute(!muted) })
+  const onControlGiftClick = useEvent(() => pop.openGift())
+  const onSuggestPostClick = useEvent(() => pop.openSuggest())
+
+  // Порт _center(): подмена строки ввода панелью выделения / плашкой —
+  // классы `is-centering` + `is-centering-to-control` и морф `.rows-wrapper`.
+  const inputContainerRef = useRef<HTMLDivElement | null>(null)
+  useChatInputCenter(inputContainerRef, selecting ? 'selection' : isControlNeeded(controlFlags) ? 'control' : null)
+
   // Sticky date-pill offset: below the floating header, plus the player plate
   // and the pinned-message bar when shown. На мобилке хедер на 8px выше (top 8 vs 16).
 
@@ -888,7 +925,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
     for (let i = msgs.length - 1; i >= 0; i--) {
       const m = msgs[i]
       if (m.deleted || m.type === 'date' || m.type === 'service') continue
-      const rs = convMsgReplyState(m, winV.msgs[i]?.id, chat.name, accentColor)
+      const rs = convMsgReplyState(m, winV.msgs[i]?.id, chat.name, accentColor, { meId: meId ?? undefined, peerId: chat.peerId })
       if (rs) { setReply(rs); setEditing(null); return }
     }
   })
@@ -1170,102 +1207,20 @@ export default function Chat({ chat, onBack, thread }: Props) {
         {/* Композер и его замены — tweb .chat-input.chat-input-main (absolute
             bottom 0 внутри #column-center) > .chat-input-container (max-width
             --chat-width, центрируется). Высота этого узла задаёт
-            --chat-input-height-surplus и нижнюю распорку ленты. */}
+            --chat-input-height-surplus и нижнюю распорку ленты.
+
+            Порядок детей контейнера — ровно как в input.ts (construct(): 471-490,
+            :566-568, constructGoDownButton :615, constructMentionButton :827):
+              .rows-wrapper-wrapper (композер) · два .fake-wrapper · «вниз» ·
+              .chat-input-control · три угловые кнопки упоминаний/реакций.
+            Композер и плашка живут в DOM ОДНОВРЕМЕННО, видимую выбирает _center()
+            (useChatInputCenter) — поэтому здесь нет ветвления рендера. */}
         <div ref={chatInputRef} className={classNames('chat-input', 'chat-input-main', selectingCls)}>
-        <div className="chat-input-container chat-input-main-container">
-        {/* tweb input.ts:615-616 — кнопка «вниз» живёт прямо в .chat-input-container */}
-        {scrollDownFab}
-        {selecting ? (
-          <SelectionBar
-            count={selected.size}
-            onClear={clearSelection}
-            onForward={() => openForwardFor([...selected])}
-            onDelete={() => openDeleteFor([...selected])}
-            canForward={!isSecret}
-          />
-        ) : thread?.closed ? (
-          <div className={classNames(s.footer, s.footerCompose)}>
-            <div className={s.threadClosedBar}>
-              <TgIcon name="lock" size={16} color="var(--secondary-text-color)" />
-              <Text size={14.5} color="var(--secondary-text-color)">{t('Topic is closed')}</Text>
-            </div>
-          </div>
-        ) : botStart ? (
-          <div className={classNames(s.footer, s.footerMuted)}>
-            <motion.div whileTap={{ scale: 0.99 }} className={s.muteBtn} onClick={() => onComposerSend('/start')}>
-              <Text weight={600} size={15.5} color="var(--primary-color)">{t('Start')}</Text>
-            </motion.div>
-          </div>
-        ) : secretLocked ? (
-          // Секретный чат до завершения handshake: бар вместо композера (гейтинг
-          // отправки — сам факт, что <Composer> тут не рендерится + secretLocked в useChatSend).
-          <div className={classNames(s.footer, s.footerCompose)}>
-            <div className={s.secretBar}>
-              {secretStatus === 'requested' ? (
-                <>
-                  <Text size={14.5} style={{ textAlign: 'center' }} color="var(--secondary-text-color)">
-                    {t('Пользователь приглашает вас в секретный чат')}
-                  </Text>
-                  <div className={s.secretBarBtns}>
-                    <motion.button
-                      type="button"
-                      whileTap={{ scale: 0.98 }}
-                      className={classNames(s.secretBtn, s.secretBtnPrimary)}
-                      disabled={secretBusy}
-                      onClick={onSecretAccept}
-                    >
-                      <Text weight={600} size={15} color="#fff">{t('Принять')}</Text>
-                    </motion.button>
-                    <motion.button
-                      type="button"
-                      whileTap={{ scale: 0.98 }}
-                      className={s.secretBtn}
-                      disabled={secretBusy}
-                      onClick={onSecretReject}
-                    >
-                      <Text weight={600} size={15} color="var(--secondary-text-color)">{t('Отклонить')}</Text>
-                    </motion.button>
-                  </div>
-                </>
-              ) : (
-                <Text size={14.5} style={{ textAlign: 'center' }} color="var(--secondary-text-color)">
-                  {secretStatus === 'rejected'
-                    ? t('Секретный чат отклонён')
-                    : t('Ожидание, пока собеседник примет секретный чат…')}
-                </Text>
-              )}
-            </div>
-          </div>
-        ) : canType && canSendText ? (
-          <div className={classNames(s.footer, s.footerCompose)}>
-            {replyKeyboard && (
-              <div className={s.replyKeyboard}>
-                {replyKeyboard.map((row, ri) => (
-                  <div key={ri} className={s.replyKeyboardRow}>
-                    {row.map((label, bi) => (
-                      <button key={bi} type="button" className={s.replyKeyboardBtn} onClick={() => onComposerSend(label)}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            )}
-            {/* Hidden file picker — triggered by the attach menu (openPicker). */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              hidden
-              multiple
-              onChange={(e) => {
-                const files = Array.from(e.target.files ?? [])
-                e.currentTarget.value = ''
-                if (files.length) setPendingMedia({ files, asFile: pickAsFileRef.current })
-              }}
-            />
+        <div ref={inputContainerRef} className="chat-input-container chat-input-main-container">
             {/* Composer: owns the draft text locally so typing re-renders only it. */}
             <Composer
               key={chat.id}
+              peerId={chat.peerId}
               reply={reply}
               editing={editing}
               forward={forward}
@@ -1300,37 +1255,77 @@ export default function Chat({ chat, onBack, thread }: Props) {
               onEditLast={onComposerEditLast}
               onReplyPrev={onComposerReplyPrev}
             />
-          </div>
-        ) : isGroup && !canSendText ? (
-          /* Группа запрещает участникам писать (дефолт-права) — плашка вместо
-             композера, как в tweb (вместо «молчаливого» отказа на бэке). */
-          <div className={classNames(s.footer, s.footerMuted)}>
-            <div className={s.muteBtn} style={{ cursor: 'default' }}>
-              <TgIcon name="permissions" size={20} color="var(--secondary-text-color)" />
-              <Text weight={600} size={15.5} color="var(--secondary-text-color)">{t('Sending messages is not allowed in this group')}</Text>
-            </div>
-          </div>
-        ) : (
-          <div className={classNames(s.footer, s.footerMuted)}>
-            {/* Нижняя кнопка канала (tweb ChatInput) переключает mute напрямую, без попапа */}
-            <motion.div whileTap={{ scale: 0.995 }} className={s.muteBtn} onClick={() => isRealChat && applyMute(!muted)}>
-              <TgIcon name={muted ? 'unmute' : 'volume_off'} size={20} color="var(--secondary-text-color)" />
-              <Text weight={600} size={15.5}>{t(muted ? 'Unmute' : 'Mute')}</Text>
-            </motion.div>
-            {/* Не-постер канала предлагает пост админам (Telegram suggested posts) */}
-            {isChannel && isRealChat && (
-              <motion.div whileTap={{ scale: 0.995 }} className={s.muteBtn} onClick={() => pop.openSuggest()}>
-                <TgIcon name="add" size={20} color="var(--primary-color)" />
-                <Text weight={600} size={15.5} color="var(--primary-color)">{t('Suggest a Post')}</Text>
-              </motion.div>
+
+            {/* Невидимые эталоны геометрии для _center() — input.ts:484-490. */}
+            <div className="fake-wrapper fake-rows-wrapper" />
+            <div className="fake-wrapper fake-selection-wrapper" />
+
+            {/* tweb input.ts:615-616 — кнопка «вниз» живёт прямо в .chat-input-container */}
+            {scrollDownFab}
+
+            <ChatInputControl
+              peerId={chat.peerId}
+              muted={muted}
+              onBotStart={onBotStartClick}
+              onToggleMute={onControlMuteClick}
+              onGift={onControlGiftClick}
+              onSuggestPost={isChannel && isRealChat ? onSuggestPostClick : undefined}
+              {...controlFlags}
+            />
+
+            {/* Три угловые кнопки «к следующему упоминанию / реакции / голосованию»
+                (input.ts:827). Данных о непрочитанных упоминаниях у нас нет —
+                узлы структурные, `is-visible` никто не ставит, как и в tweb до
+                прихода счётчика. */}
+            <CornerButton icon="mention" role="bubbles-go-mention bubbles-go-reaction" />
+            <CornerButton icon="reactions" role="bubbles-go-mention bubbles-go-reaction" />
+            <CornerButton icon="poll" role="bubbles-go-mention bubbles-go-reaction" />
+
+            {/* Панель выделения в tweb добавляется последним ребёнком контейнера
+                и снимается по окончании обратной анимации (selection.ts:1130). */}
+            {selecting && (
+              <SelectionBar
+                count={selected.size}
+                onClear={clearSelection}
+                onForward={() => openForwardFor([...selected])}
+                onDelete={() => openDeleteFor([...selected])}
+                canForward={!isSecret}
+              />
             )}
-            <div className={s.giftBtn}>
-              <TgIcon name="gift" color="var(--secondary-text-color)" />
-            </div>
-          </div>
-        )}
+
+            {/* отступление от tweb: reply-клавиатура бота у оригинала живёт внутри
+                строки ввода (btnToggleReplyMarkup + replyKeyboard), у нас — своя
+                плавающая панель над композером. Рендерится только когда есть. */}
+            {replyKeyboard && (
+              <div className={s.replyKeyboard}>
+                {replyKeyboard.map((row, ri) => (
+                  <div key={ri} className={s.replyKeyboardRow}>
+                    {row.map((label, bi) => (
+                      <button key={bi} type="button" className={s.replyKeyboardBtn} onClick={() => onComposerSend(label)}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
         </div>
         </div>
+
+        {/* Скрытый файловый пикер attach-меню (openPicker). Держим ВНЕ
+            `.chat-input-container`: у tweb в строке ввода ровно один `input[file]`,
+            и он уже есть в композере — второй сломал бы совпадение дерева. */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          hidden
+          multiple
+          onChange={(e) => {
+            const files = Array.from(e.target.files ?? [])
+            e.currentTarget.value = ''
+            if (files.length) setPendingMedia({ files, asFile: pickAsFileRef.current })
+          }}
+        />
 
         {/* Зона перетаскивания файлов. tweb приклеивает `.drops-container`
             последним ребёнком колонки чата (`this.chat.container.append(...)`,

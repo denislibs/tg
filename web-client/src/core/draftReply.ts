@@ -6,18 +6,28 @@ import { peerColor } from '../components/peerColor'
 import type { ConvMsg } from '../data'
 import type { ReplyState } from './hooks/useChatSend'
 
+/** Кто есть кто в этом чате — чтобы у плашки был id автора оригинала
+ *  (tweb кладёт его в `data-peer-id` на `span.peer-title`, wrapPeerTitle). */
+export interface ReplyAuthors {
+  /** мой id (для своих сообщений) */
+  meId?: number
+  /** id собеседника — фолбэк для входящих в личном чате, где senderId не приходит */
+  peerId?: number
+}
+
 // ReplyState для одного сообщения; date-плашки не реплаются.
-export function convMsgReplyState(m: ConvMsg, msgId: number | undefined, chatName: string, accent: string): NonNullable<ReplyState> | null {
+export function convMsgReplyState(m: ConvMsg, msgId: number | undefined, chatName: string, accent: string, authors?: ReplyAuthors): NonNullable<ReplyState> | null {
   if (m.type === 'date') return null
   const name = m.out ? 'Дн' : m.sender ?? chatName
   const color = m.out ? accent : m.senderColor ?? peerColor(name)
-  return { msgId, name, text: m.text ?? m.emoji ?? '', color }
+  const peerId = m.out ? authors?.meId : m.senderId ?? authors?.peerId
+  return { msgId, name, text: m.text ?? m.emoji ?? '', color, peerId }
 }
 
 // Восстановление reply-бара из черновика: сообщение ищем в загруженном окне
 // (msgs — read-model окна); вне окна — null, восстановление скипается.
-export function draftReplyState(msgs: ConvMsg[], replyToId: number, chatName: string, accent: string): NonNullable<ReplyState> | null {
+export function draftReplyState(msgs: ConvMsg[], replyToId: number, chatName: string, accent: string, authors?: ReplyAuthors): NonNullable<ReplyState> | null {
   const m = msgs.find((x) => x.id === replyToId)
   if (!m) return null
-  return convMsgReplyState(m, replyToId, chatName, accent)
+  return convMsgReplyState(m, replyToId, chatName, accent, authors)
 }

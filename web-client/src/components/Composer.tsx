@@ -64,7 +64,7 @@ const EmojiDropdown = lazy(() => import('./emoji/EmojiDropdown'))
 // chatRecording.ts:893 — long-press по кнопке отправки открывает выбор голос/кружок.
 const LONG_PRESS_MS = 400
 
-export interface ReplyState { msgId?: number; name: string; text: string; color: string; quote?: { text: string; offset: number }; chatId?: number; snapshotName?: string; snapshotText?: string }
+export interface ReplyState { msgId?: number; name: string; text: string; color: string; /** id автора оригинала — в `data-peer-id` на `span.peer-title` (tweb wrapPeerTitle) */ peerId?: number; quote?: { text: string; offset: number }; chatId?: number; snapshotName?: string; snapshotText?: string }
 export interface EditState { msgId: number; text: string; entities?: MessageEntity[] }
 // Плашка форварда (tweb forwarding): превью пересылаемого + опции меню.
 export interface ForwardBar { sourceChatId: number; msgIds: number[]; count: number; text: string; hasCaption: boolean; dropAuthor: boolean; dropCaption: boolean }
