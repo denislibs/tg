@@ -2,8 +2,8 @@
 // чтобы покрыть тестами без DOM. Референс — tweb (toHHMMSS, MediaProgressLine
 // .setLoadProgress, playbackRateButton rates).
 
-/** Набор скоростей воспроизведения (tweb rates урезан до вьюер-набора). */
-export const VIDEO_RATES = [0.5, 1, 1.5, 2] as const
+/** Набор скоростей воспроизведения — tweb `mediaPlayer/playbackRateButton.tsx:23`. */
+export const VIDEO_RATES = [0.5, 1, 1.5, 2, 3] as const
 
 /** TimeRanges-подобный объект (video.buffered) — минимум для расчёта буфера. */
 export interface TimeRangesLike {
@@ -47,9 +47,9 @@ export function bufferedPercent(buffered: TimeRangesLike, currentTime: number, d
   return Math.max(0, Math.min(100, (end / duration) * 100))
 }
 
-// Следующая скорость из списка (циклически). Неизвестная текущая → первый элемент.
-export function nextRate(current: number, rates: readonly number[] = VIDEO_RATES): number {
-  const idx = rates.indexOf(current)
-  if (idx === -1) return rates[0]
-  return rates[(idx + 1) % rates.length]
+// Подпись кнопки скорости — tweb playbackRateButton: `1.0` → `1x`, `0.5` → `0.5`.
+// Каждый символ рисуется отдельным глифом моноширинной «геометрической» гарнитуры,
+// поэтому наружу отдаём строку, а не готовый текст.
+export function rateToString(rate: number): string {
+  return rate.toFixed(1).replace(/\.0$/, 'x')
 }

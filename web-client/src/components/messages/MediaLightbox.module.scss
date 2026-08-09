@@ -1,49 +1,11 @@
 // MediaLightbox рендерит глобальные классы tweb (`.media-viewer-whole`,
-// `.overlays`, `.zoom-container`, `.media-viewer-*`) — вся раскладка, тайминги и
-// анимации приходят из портированного партиала `styles/tweb/_mediaViewer.scss`.
-// Здесь — только то, чего в партиале нет.
-@use "../../styles/foundation" as *;
+// `.overlays`, `.zoom-container`, `.media-viewer-*`, `.ckin__player`) — вся
+// раскладка, тайминги и анимации приходят из портированных партиалов
+// `styles/tweb/_mediaViewer.scss` и `_ckin.scss`. Здесь — только то, чего в них нет.
 
 .whole {
   // tweb ставит вьюеру z-index 4 (он живёт в собственном overlay-руте). У нас
   // портал уходит в общий body, где уже есть меню (2001) и попапы (4090), —
   // нужен свой уровень: выше меню, ниже попапов.
   z-index: 4000;
-
-  // Утилиты из `scss/components/_global.scss` и `base.scss` — эти файлы не
-  // партиалы и целиком не портируются, а вьюер на них опирается: `.hide` гасит
-  // крайние свитчеры и пустую подпись, `.no-transition` снимает сглаживание
-  // трансформа во время жеста зума/пана, `.only-handhelds` прячет мобильную
-  // кнопку закрытия на десктопе.
-  :global(.hide) {
-    display: none !important;
-  }
-
-  :global(.no-transition) {
-    &,
-    &:before,
-    &:after {
-      transition: none !important;
-    }
-  }
-
-  @include respond-to(not-handhelds) {
-    :global(.only-handhelds) {
-      display: none !important;
-    }
-  }
-
-  // Наш VideoControls вместо tweb'овского `.ckin__player`: в фуллскрине мовер
-  // растягивается на весь экран, поэтому морф-transform снимаем, а видео
-  // переводим в contain (в обычном режиме бокс уже по аспекту — cover == contain).
-  :global(.media-viewer-mover):fullscreen {
-    transform: none !important;
-    width: 100vw !important;
-    height: 100vh !important;
-    background: #000;
-
-    video {
-      object-fit: contain;
-    }
-  }
 }

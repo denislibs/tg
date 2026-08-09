@@ -12,6 +12,7 @@
 //     div.media-viewer-movers
 //       .media-viewer-switcher.media-viewer-switcher-left|right[.hide] > span.tgico
 //       .media-viewer-mover-wrapper > .media-viewer-mover > .media-viewer-aspecter
+//                                     [> .ckin__player.default > video.ckin__video]
 //     div.media-viewer-caption.spoilers-container[.hide] > .scrollable.scrollable-y
 //
 // Все стили — из портированного партиала `styles/tweb/_mediaViewer.scss`; локальный
@@ -41,7 +42,7 @@ import classNames from '../../shared/lib/classNames'
 import TgIcon from '../TgIcon'
 import RichText from '../RichText'
 import Avatar from '../../shared/ui/Avatar'
-import Icons, { type IconName } from '../../core/tgico-icons'
+import { glyph } from '../../core/tgico-icons'
 import { peerColor } from '../peerColor'
 import { calcImageInBox } from '../../core/dom/calcImageInBox'
 import { useManagers } from '../../core/hooks/useManagers'
@@ -52,7 +53,7 @@ import type { MessageEntity } from '../../core/models'
 import { enterPip, pipSupported, usePortalContainer } from '../../core/pip'
 import { pushEsc } from '../../core/hotkeys'
 import { useSettingsStore } from '../../settings'
-import VideoControls from './VideoControls'
+import VideoPlayer from './VideoPlayer'
 import s from './MediaLightbox.module.scss'
 
 export interface LightboxItem {
@@ -102,10 +103,7 @@ const ZOOM_INITIAL = 1 // tweb ZOOM_INITIAL_VALUE
 const clampN = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi)
 
 // tweb base.ts:1111 — зоны, клик по которым НЕ считается кликом по фону.
-const CHROME = ['media-viewer-buttons', 'media-viewer-author', 'media-viewer-caption', 'zoom-container', 'media-viewer-topbar']
-
-// Глиф tgico строкой — так же, как tweb `Icon(name, ...)` строит `span.tgico`.
-const glyph = (name: IconName) => String.fromCharCode(parseInt(Icons[name], 16))
+const CHROME = ['ckin__player', 'media-viewer-buttons', 'media-viewer-author', 'media-viewer-caption', 'zoom-container', 'media-viewer-topbar']
 
 // Радиусы углов миниатюры [tl, tr, br, bl] — mover масштабируется не-униформно,
 // поэтому радиус компенсируется эллиптически (x/sx, y/sy), как в tweb.
@@ -169,7 +167,6 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
   // `.backwards` ставится на закрытии.
   const [active, setActive] = useState(false)
   const [backwards, setBackwards] = useState(false)
-  const [closing, setClosing] = useState(false)
   const [meta, setMeta] = useState<MediaMeta | null>(null)
   const [url, setUrl] = useState('')
   // Shown image: starts as the clicked thumbnail (already cached, so the morph
@@ -182,6 +179,13 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
   // tweb `.no-transition` на moversContainer во время жеста — трансформ идёт за
   // пальцем/колесом без сглаживания.
   const [gesturing, setGesturing] = useState(false)
+  // Мовер в полёте: аспектер контр-масштабирован, поэтому контролы плеера заперты
+  // спрятанными (tweb base.ts:2735 `videoPlayer.lockControls(false)`).
+  const [flying, setFlying] = useState(true)
+  // tweb: `has-video` + `has-video-controls` на wholeDiv — подпись и топбар гаснут
+  // вместе с панелью плеера; `hide-caption` — пока открыто меню плеера.
+  const [controlsShown, setControlsShown] = useState(true)
+  const [menuOpen, setMenuOpen] = useState(false)
   const [viewport, setViewport] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }))
 
   const wholeRef = useRef<HTMLDivElement>(null)
@@ -371,6 +375,7 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
     void m.offsetLeft // reflow — центр встаёт без анимации
     m.style.transition = ''
     m.classList.add('active')
+    setFlying(false) // мовер приземлился — контролы плеера можно отпирать
   }
 
   useLayoutEffect(() => {
@@ -384,6 +389,8 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
       return
     }
     flownKeyRef.current = cur.key
+
+    setFlying(true)
 
     if (cur.from === 0) {
       // ── открытие: из rect миниатюры в центр (tweb setMoverToTarget) ──
@@ -478,7 +485,6 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
     resetZoom()
     setRotation(0)
     onClosingStart?.() // reveal the source thumbnail now (no empty-bubble gap)
-    setClosing(true)
     setBackwards(true)
     setActive(false) // хром гаснет CSS-переходом из партиала
 
@@ -615,10 +621,9 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
     if (closingRef.current || navLockRef.current) return
     const t = e.target as HTMLElement
     if (t.tagName === 'A') return
-    // отступление от tweb: у нас вместо `.ckin__player` — свой VideoControls,
-    // поэтому «кликнули по управлению» опознаём по кнопкам/инпутам/меню и по video.
-    const hitChrome = CHROME.some((c) => t.closest(`.${c}`)) ||
-      t.closest('button, input, .btn-menu') !== null || t.tagName === 'VIDEO'
+    // отступление от tweb: `.btn-menu` — меню плеера уходит в портал на body, но в
+    // React-дереве остаётся потомком вьюера, так что клик по нему всплывает сюда.
+    const hitChrome = CHROME.some((c) => t.closest(`.${c}`)) || t.closest('.btn-menu') !== null
     if (!hitChrome || t.tagName === 'IMG') close()
   }
 
@@ -640,12 +645,44 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
   const multi = items.length > 1
   const caption = item?.caption
 
+  // `<video class="ckin__video">` — tweb VideoPlayer вешает этот класс на видео,
+  // которое ему передали (mediaPlayer/index.ts:147). Узел один и тот же и для
+  // видео чата (внутри плеера), и для видео-аватарки (голым в аспектере).
+  const videoNode = (
+    <video
+      ref={videoElRef}
+      className="ckin__video"
+      src={url}
+      poster={isAvatarVideo ? imgSrc || item.src : undefined}
+      autoPlay
+      muted={isAvatarVideo}
+      loop={isAvatarVideo}
+      playsInline
+      onLoadedMetadata={isChatVideo ? (e) => { e.currentTarget.playbackRate = videoRate } : undefined}
+      onClick={isChatVideo && !isZooming ? (e) => {
+        // tweb mediaPlayer: клик по видео (не на тач) переключает play/pause
+        const v = e.currentTarget
+        if (v.paused) void v.play().catch(() => {})
+        else v.pause()
+      } : undefined}
+    />
+  )
+
   // Портал в body: Chat живёт под предком с transform, а он создаёт containing
   // block для position:fixed — без портала вьюер привязывался бы к колонке чата.
   return createPortal(
     <div
       ref={wholeRef}
-      className={classNames('media-viewer-whole', s.whole, active ? 'active' : '', backwards ? 'backwards' : '', isZooming ? 'is-zooming' : '')}
+      className={classNames(
+        'media-viewer-whole', s.whole,
+        active ? 'active' : '',
+        backwards ? 'backwards' : '',
+        isZooming ? 'is-zooming' : '',
+        // tweb base.ts:2715 — хром вьюера живёт по состоянию плеера
+        isChatVideo ? 'has-video' : '',
+        isChatVideo && controlsShown ? 'has-video-controls' : '',
+        menuOpen ? 'hide-caption' : '',
+      )}
       onClick={onWholeClick}
     >
       {/* зум-панель (tweb zoomElements.container) */}
@@ -699,9 +736,10 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
           </div>
         </div>
         <div className="media-viewer-buttons">
-          {/* отступление от tweb: PiP и поворот — наши кнопки, в tweb их нет в
-              этом слоте; кладём в тот же `.media-viewer-buttons` */}
-          {isVideo && pipSupported() && (
+          {/* отступление от tweb: поворот — наша кнопка, в tweb её нет в этом слоте.
+              PiP у видео чата стоит в своём слоте tweb — `.right-controls` плеера;
+              здесь остаётся только для видео-аватарки, у которой плеера нет. */}
+          {isAvatarVideo && pipSupported() && (
             <IconButton title="Картинка в картинке" onClick={() => { if (videoElRef.current) void enterPip(videoElRef.current) }}><TgIcon name="pip" /></IconButton>
           )}
           <IconButton title="Скачать" onClick={download}><TgIcon name="download" /></IconButton>
@@ -751,39 +789,26 @@ export default function MediaLightbox({ items, index, originRect, originSrc, ori
                   {!isCurrent
                     ? (mv.snapshot ? <img className="thumbnail" src={mv.snapshot} alt="" draggable={false} /> : null)
                     : isVideo && url ? (
-                      // Видео-аватар — muted-loop autoplay без контролов (tweb photo_video),
-                      // still-кадр как poster; обычное видео чата — с кастомными контролами
-                      // (VideoControls ниже), клик по видео играет/паузит.
-                      <video
-                        ref={videoElRef}
-                        src={url}
-                        poster={isAvatarVideo ? imgSrc || item.src : undefined}
-                        autoPlay
-                        muted={isAvatarVideo}
-                        loop={isAvatarVideo}
-                        playsInline
-                        onLoadedMetadata={isChatVideo ? (e) => { e.currentTarget.playbackRate = videoRate } : undefined}
-                        onClick={isChatVideo && !isZooming ? (e) => {
-                          const v = e.currentTarget
-                          if (v.paused) void v.play().catch(() => {})
-                          else v.pause()
-                        } : undefined}
-                      />
+                      // tweb (base.ts:2580 + mediaPlayer): видео чата живёт ВНУТРИ
+                      // `.ckin__player`, который лежит в аспектере; видео-аватарка
+                      // (photo_video) плеера не получает — muted-loop autoplay,
+                      // still-кадр как poster. Клик по видео играет/паузит.
+                      isChatVideo ? (
+                        <VideoPlayer
+                          videoRef={videoElRef}
+                          rate={videoRate}
+                          onRateChange={(r) => updateSettings({ videoRate: r })}
+                          locked={flying || isZooming || rotation !== 0}
+                          onToggleControls={setControlsShown}
+                          onMenuToggle={setMenuOpen}
+                        >
+                          {videoNode}
+                        </VideoPlayer>
+                      ) : videoNode
                     ) : imgSrc ? (
                       <img className="thumbnail" src={imgSrc} alt="" draggable={false} />
                     ) : null}
                 </div>
-                {/* отступление от tweb: наша панель управления видео — сиблинг
-                    аспектера внутри мовера (в tweb плеер лежит ВНУТРИ аспектера),
-                    иначе контролы искажаются контр-скейлом во время полёта */}
-                {isCurrent && isChatVideo && url && !closing && (
-                  <VideoControls
-                    videoRef={videoElRef}
-                    fullscreenRef={moverRef}
-                    rate={videoRate}
-                    onRateChange={(r) => updateSettings({ videoRate: r })}
-                  />
-                )}
               </div>
             </div>
           )

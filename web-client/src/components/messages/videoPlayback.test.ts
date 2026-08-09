@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatVideoTime, bufferedEnd, bufferedPercent, nextRate, VIDEO_RATES, type TimeRangesLike } from './videoPlayback'
+import { formatVideoTime, bufferedEnd, bufferedPercent, rateToString, VIDEO_RATES, type TimeRangesLike } from './videoPlayback'
 
 // Мини-фабрика TimeRanges-подобного объекта из массива [start, end] пар.
 function ranges(pairs: [number, number][]): TimeRangesLike {
@@ -64,19 +64,18 @@ describe('bufferedPercent', () => {
   })
 })
 
-describe('nextRate', () => {
-  it('циклический перебор дефолтного списка', () => {
-    expect(nextRate(0.5)).toBe(1)
-    expect(nextRate(1)).toBe(1.5)
-    expect(nextRate(1.5)).toBe(2)
-    expect(nextRate(2)).toBe(0.5)
+describe('VIDEO_RATES', () => {
+  it('набор скоростей — как в tweb playbackRateButton', () => {
+    expect([...VIDEO_RATES]).toEqual([0.5, 1, 1.5, 2, 3])
   })
-  it('неизвестная скорость → первый элемент', () => {
-    expect(nextRate(3)).toBe(VIDEO_RATES[0])
-    expect(nextRate(0)).toBe(VIDEO_RATES[0])
-  })
-  it('кастомный список', () => {
-    expect(nextRate(2, [1, 2])).toBe(1)
-    expect(nextRate(1, [1, 2])).toBe(2)
+})
+
+describe('rateToString', () => {
+  it('целая скорость — с «x», дробная — как есть (tweb toFixed(1).replace(/\\.0$/, "x"))', () => {
+    expect(rateToString(1)).toBe('1x')
+    expect(rateToString(2)).toBe('2x')
+    expect(rateToString(3)).toBe('3x')
+    expect(rateToString(0.5)).toBe('0.5')
+    expect(rateToString(1.5)).toBe('1.5')
   })
 })
