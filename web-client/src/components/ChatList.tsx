@@ -10,7 +10,6 @@ import { TabSlide } from '../shared/ui/Tabs'
 import ChatListItem from './ChatListItem'
 import ArchiveRow from './ArchiveRow'
 import { DialogsPlaceholder } from './chatlist/dialogsPlaceholder'
-import { bootData } from '../client/bootData'
 import type { Chat } from '../data'
 import s from './ChatList.module.scss'
 
@@ -47,9 +46,12 @@ const ChatList = forwardRef<HTMLDivElement, ChatListProps>(function ChatList(
   // Канвас-скелетон показываем только на «первом в жизни» заходе — когда
   // IDB-кэша диалогов не было (гейт tweb loadedDialogsAtLeastOnce,
   // autonomousDialogList/base.ts:210-214). Ставим до первой отрисовки, чтобы
-  // пустой список не мигнул.
+  // пустой список не мигнул. `loaded` уже покрывает случай гидрации из кэша:
+  // hydrateDialogsFromPersist зовёт setDialogs → loaded=true (dialogsPersist.ts),
+  // а гидрация awaited в boot.ts до первого рендера — отдельной проверки
+  // bootData.hydratedFromCache тут не нужно (она недостижима без loaded=true).
   useLayoutEffect(() => {
-    if (loaded || bootData?.hydratedFromCache || !scrollRef.current) return
+    if (loaded || !scrollRef.current) return
     const placeholder = new DialogsPlaceholder()
     placeholderRef.current = placeholder
     placeholder.attach({ container: scrollRef.current, blockScrollable: scrollRef.current })

@@ -7,7 +7,7 @@ import s from './Avatar.module.scss'
 // tweb avatarNew.tsx:52 — та же длительность, что и `.fade-in` в _avatar.scss (`.2s`).
 const FADE_IN_DURATION = 200
 
-type PhotoPhase = 'pending' | 'animating' | 'shown'
+type PhotoPhase = 'pending' | 'animating' | 'shown' | 'error'
 
 // Фотография аватара — порт механики tweb avatarNew.tsx:549-604, а не буквально
 // «повесить fade-in при монтировании» (так и было раньше, ошибочно — см. отчёт
@@ -58,6 +58,13 @@ function AvatarPhoto({ src }: { src: string }) {
     setPhase(animationsDisabled ? 'shown' : 'animating')
   }
 
+  // Сбой загрузки (404/протухший media-токен/сеть) без обработчика оставлял бы
+  // фазу 'pending' навсегда: элемент прятался бы (opacity: 0) не по замыслу, а
+  // по совпадению — потому что под ним просто остаётся градиентная подложка
+  // `.avatar`. Явный терминальный статус: картинка остаётся скрытой (та же
+  // подложка видна), но состояние теперь осмысленное, а не залипший «грузится».
+  const handleError = () => setPhase('error')
+
   return (
     <img
       key={src}
@@ -67,8 +74,13 @@ function AvatarPhoto({ src }: { src: string }) {
       alt=""
       loading="lazy"
       decoding="async"
-      style={phase === 'pending' ? { opacity: 0 } : undefined}
+      style={phase === 'pending' || phase === 'error' ? { opacity: 0 } : undefined}
+      // Атрибут только для наблюдаемости состояния (тесты/отладка): без него
+      // 'pending' (грузится) и 'error' (сбой, но такая же скрытая картинка)
+      // визуально неотличимы — и до фикса это было единственное состояние навсегда.
+      data-photo-phase={phase}
       onLoad={handleLoad}
+      onError={handleError}
     />
   )
 }

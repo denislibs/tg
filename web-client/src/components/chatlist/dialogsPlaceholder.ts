@@ -318,8 +318,15 @@ export class DialogsPlaceholder {
     const { ctx, canvas } = this
     const tempId = ++this.tempId
     // Пустой канвас (колонка ещё не разложена / скрыта) — createPattern на нём
-    // бросает InvalidStateError, поэтому просто не начинаем рисовать.
+    // бросает InvalidStateError, поэтому просто не начинаем рисовать. Сбрасываем
+    // length/dialogHeight: иначе после resize с нулевым rect (пока диалоги ещё
+    // грузятся) в них остаётся значение от ПРЕДЫДУЩЕГО удачного createPattern —
+    // detach() тогда решает, что рисовать было что, отдаёт снятие волне, а
+    // rAF-цикл волны из-за этого же раннего выхода не запущен — канвас и
+    // blockScrollable.style.overflowY = 'hidden' зависают навсегда.
     if (!ctx || !canvas.width || !canvas.height) {
+      this.length = 0
+      this.dialogHeight = 0
       return
     }
 

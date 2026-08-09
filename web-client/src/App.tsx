@@ -30,6 +30,7 @@ import { useChatNavigation } from './core/hooks/useChatNavigation'
 import { useShellTheme } from './core/hooks/useShellTheme'
 import { useAppHotkeys } from './core/hooks/useAppHotkeys'
 import { useAuthGate } from './core/hooks/useAuthGate'
+import { useLeftColumnShown } from './core/hooks/useLeftColumnShown'
 import { useThemeToggle } from './core/hooks/useThemeToggle'
 import { startVersionCheck } from './core/version/versionCheck'
 import { useUpdateStore } from './stores/updateStore'
@@ -44,14 +45,11 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   // --left-column-width / --page-chats-padding и класс body.right-column-floats,
   // из которых портированные партиалы раскладывают чат и ленту.
   useLayoutEffect(() => { installColumnWidthsUpdater() }, [])
-  // tweb appImManager.selectTab(CHATLIST) ставит body.is-left-column-shown.
   // has-auth-pages снимается кадром позже (doubleRaf, bootstrapIm.ts:60-61) —
   // иначе transition .main-column включится сразу и колонка «въедет» из
   // офскрина в первом кадре; на логин-старте AuthFlow уже снял класс сам.
   useLayoutEffect(() => {
-    document.body.classList.add('is-left-column-shown')
     void doubleRaf().then(() => document.body.classList.remove('has-auth-pages'))
-    return () => { document.body.classList.remove('is-left-column-shown') }
   }, [])
   useAppBootstrap()
   useShellEnterAnimation()
@@ -62,6 +60,9 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   // Навигация (navigationStore) + URL-хэш ↔ чат + deep-links + список чатов.
   const nav = useChatNavigation()
   const { selectedId, openThread, draftPeer } = nav
+  // tweb appImManager.selectTab: класс держится, пока активна вкладка чатлиста,
+  // то есть пока чат/тред/черновик НЕ выбран (см. useLeftColumnShown).
+  useLeftColumnShown(selectedId !== null)
   useUrlSync()
   const deep = useDeepLinks(showToast)
   const chatList = useChatList()

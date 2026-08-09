@@ -98,4 +98,20 @@ describe('Avatar: fade-in фотографии — механика tweb avatarN
     fireEvent.load(img)
     expect(img.classList.contains('fade-in')).toBe(true)
   })
+
+  it('находка ревью (финальная зачистка): onError переводит фазу в явный error, а не оставляет вечный pending', () => {
+    render(<Avatar background="#000" src="/media/1/content" />)
+    const img = getPhotoImg()!
+    expect(img.dataset.photoPhase).toBe('pending') // до события
+
+    fireEvent.error(img)
+
+    // Без onError-обработчика фаза осталась бы 'pending' навсегда — этот expect
+    // ловит именно отсутствие перехода (без фикса упал бы: phase так и 'pending').
+    // Визуально ничего не меняется (opacity: 0 и там, и там — под картинкой
+    // градиентная подложка `.avatar`), но состояние теперь явное, а не совпадение.
+    expect(img.dataset.photoPhase).toBe('error')
+    expect(img.classList.contains('fade-in')).toBe(false)
+    expect(img.style.opacity).toBe('0')
+  })
 })

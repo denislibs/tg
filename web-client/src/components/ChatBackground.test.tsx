@@ -76,3 +76,42 @@ describe('ChatBackground: onerror не запирает слот навсегд�
     expect(slot?.classList.contains(s.SlotActive)).toBe(true)
   })
 })
+
+// Ключевое поведение задачи про обои (см. ChatBackground.tsx:78-101,
+// resolveTransition): первый показ БЕЗ кэша фейдит (.SlotFade + .SlotActive),
+// первый показ ИЗ кэша — сразу активен, без фейда (только .SlotActive).
+describe('ChatBackground: готовность слота — первый показ без кэша / из кэша', () => {
+  it('без кэша (pattern.svg грузится) — .SlotFade + .SlotActive', () => {
+    vi.stubGlobal('Image', FakeImage)
+
+    render(<ChatBackground />)
+
+    const patternImg = FakeImage.instances[0]
+    expect(patternImg).toBeTruthy()
+    expect(patternImg.complete).toBe(false) // ещё не «из кэша»
+    patternImg.onload?.()
+
+    const slot = document.body.querySelector(`.${s.Slot}`)
+    expect(slot?.classList.contains(s.SlotFade)).toBe(true)
+    expect(slot?.classList.contains(s.SlotActive)).toBe(true)
+  })
+
+  it('из кэша (img.complete сразу после простановки src) — сразу .SlotActive, без .SlotFade', () => {
+    class CachedFakeImage extends FakeImage {
+      override complete = true
+      override naturalWidth = 10
+    }
+    vi.stubGlobal('Image', CachedFakeImage)
+
+    render(<ChatBackground />)
+
+    const patternImg = FakeImage.instances[0]
+    expect(patternImg).toBeTruthy()
+    // Синхронная ветка cached в компоненте активирует слот ещё внутри эффекта —
+    // без ручного onload.
+
+    const slot = document.body.querySelector(`.${s.Slot}`)
+    expect(slot?.classList.contains(s.SlotActive)).toBe(true)
+    expect(slot?.classList.contains(s.SlotFade)).toBe(false)
+  })
+})
