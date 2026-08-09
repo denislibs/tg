@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react'
 import classNames from '../../lib/classNames'
+import { glyph } from '../../../core/tgico-icons'
 import s from './Avatar.module.scss'
 
 // Canonical avatar sizes (px) by role — prefer a named size over a magic number
@@ -90,9 +91,12 @@ export default function Avatar({
           <path d="M21.8 3.1 1.9 10.8c-1 .4-1 1.8 0 2.1l5 1.6 1.9 6c.3.9 1.4 1.1 2 .4l2.7-2.7 5 3.7c.7.5 1.7.1 1.9-.7l3.4-16c.2-1-.7-1.8-1.6-1.4zM9.5 14.3l8.6-5.3c.2-.1.4.2.2.3l-7 6.6c-.2.2-.3.5-.3.8l-.2 2.4-1.3-4.1c-.1-.3 0-.6.2-.7z" />
         </svg>
       ) : emoji === 'saved' ? (
-        <svg className={s.glyph} width={px * 0.5} height={px * 0.5} viewBox="0 0 24 24" fill="#fff" aria-label="Saved Messages">
-          <path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z" />
-        </svg>
+        // tweb avatarNew.tsx:737 ставит icon: 'saved', а :1024 рендерит его
+        // глифом шрифта: Icon(name, 'avatar-icon', 'avatar-icon-' + name).
+        // Своя SVG-закладка тут была отсебятиной — форма отличалась от tgico.
+        <span className={classNames('tgico', 'avatar-icon', 'avatar-icon-saved', s.glyph)} style={{ fontSize: px * 0.56 }}>
+          {glyph('saved')}
+        </span>
       ) : (
         text ?? emoji
       )}
