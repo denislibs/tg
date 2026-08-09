@@ -2,7 +2,6 @@
 // Управление участниками: чёрный список (tweb removedUsers), ограниченные
 // участники и экран гранулярных ограничений (tweb userPermissions).
 import { useMemo, useState } from 'react'
-import { AnimatePresence } from 'framer-motion'
 import { SettingsScreen, Section, Row } from '../../settings/kit'
 import Text from '../../../shared/ui/Text'
 import IconButton from '../../../shared/ui/IconButton'
@@ -30,7 +29,22 @@ export function RemovedUsersScreen({ g, onBack }: { g: GroupEdit; onBack: () => 
   )
 
   return (
-    <SettingsScreen title="Removed Users" onBack={onBack} zIndex={70}>
+    <SettingsScreen
+      title="Removed Users"
+      onBack={onBack}
+      zIndex={70}
+      sub={picking ? (
+        <MemberPicker
+          title="Removed Users"
+          members={bannable}
+          onBack={() => setPicking(false)}
+          onPick={(m) => {
+            setPicking(false)
+            void g.ban(m.userId)
+          }}
+        />
+      ) : null}
+    >
       <div className={s.search}><InputSearch value={q} onChange={setQ} placeholder={t('Search')} /></div>
       <Text size={13.5} color="var(--secondary-text-color)" className={s.bansCaption}>
         {t('Users removed by group admins cannot rejoin via invite links.')}
@@ -63,19 +77,6 @@ export function RemovedUsersScreen({ g, onBack }: { g: GroupEdit; onBack: () => 
         </div>
       )}
 
-      <AnimatePresence>
-        {picking && (
-          <MemberPicker
-            title="Removed Users"
-            members={bannable}
-            onBack={() => setPicking(false)}
-            onPick={(m) => {
-              setPicking(false)
-              void g.ban(m.userId)
-            }}
-          />
-        )}
-      </AnimatePresence>
     </SettingsScreen>
   )
 }

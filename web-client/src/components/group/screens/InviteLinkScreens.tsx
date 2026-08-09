@@ -3,7 +3,6 @@
 // chatInviteLink): список ссылок, создание/редактирование и детали со списком
 // вступивших.
 import { useEffect, useState } from 'react'
-import { AnimatePresence } from 'framer-motion'
 import { SettingsScreen, Section, Row } from '../../settings/kit'
 import Text from '../../../shared/ui/Text'
 import IconButton from '../../../shared/ui/IconButton'
@@ -67,7 +66,25 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
   }
 
   return (
-    <SettingsScreen title="Invite Links" onBack={onBack} zIndex={70}>
+    <SettingsScreen
+      title="Invite Links"
+      onBack={onBack}
+      zIndex={70}
+      sub={editing ? (
+        <EditInviteLinkScreen
+          g={g}
+          link={editing === 'new' ? null : editing}
+          onBack={() => setEditing(null)}
+        />
+      ) : detail ? (
+        <InviteLinkDetailScreen
+          g={g}
+          link={detail}
+          onEdit={() => { setEditing(detail); setDetail(null) }}
+          onBack={() => setDetail(null)}
+        />
+      ) : null}
+    >
       <div className={s.duck}>
         <LottieSticker name="UtyanLinks" size={120} loop />
         <Text size={14.5} color="var(--secondary-text-color)" className={s.duckCaption}>
@@ -160,23 +177,6 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
         />
       )}
 
-      <AnimatePresence>
-        {editing && (
-          <EditInviteLinkScreen
-            g={g}
-            link={editing === 'new' ? null : editing}
-            onBack={() => setEditing(null)}
-          />
-        )}
-        {detail && (
-          <InviteLinkDetailScreen
-            g={g}
-            link={detail}
-            onEdit={() => { setEditing(detail); setDetail(null) }}
-            onBack={() => setDetail(null)}
-          />
-        )}
-      </AnimatePresence>
     </SettingsScreen>
   )
 }

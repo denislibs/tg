@@ -126,7 +126,6 @@ export function ReactionChip({ r, live, canRenderAvatars, isLast, onToggle, onSh
         isLast ? 'is-last' : '',
         s.reactionChip,
         chosen ? s.reactionChosen : '',
-        live ? s.reactionAnimating : '',
         isLast ? s.isLast : '',
       )}
       onClick={(e) => { e.stopPropagation(); onToggle(r.emoji) }}

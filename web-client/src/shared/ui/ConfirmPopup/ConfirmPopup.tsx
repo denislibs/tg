@@ -4,8 +4,15 @@
 // [avatar? + title], описанием, опц. чекбоксами и рядом текстовых UPPERCASE-кнопок
 // (flex row-reverse; ≥3 — колонкой). Cancel добавляется автоматически последним
 // (tweb addCancelButton). Esc закрывает, Enter кликает первую не-cancel кнопку
-// (tweb btnConfirmOnEnter). Анимация — как shared/ui/Popup: fade скрима +
-// translateY(3rem)→0, .15s cubic-bezier(.4,0,.2,1).
+// (tweb btnConfirmOnEnter).
+//
+// Показ/скрытие — КЛАССЫ, как у tweb PopupElement (popups/index.ts:359 `show()`
+// вешает `active` после reflow; popups/index.ts:420-421 `destroy()` вешает
+// `hiding` и снимает `active`, узел удаляется по таймауту). Правила — в
+// портированном `styles/tweb/popups/_popup.scss`: у `.popup` анимируются
+// opacity+visibility, у `.popup-container` — translate3d(x, 3rem, 0) → 0.
+// Важно: `.hiding` ОСТАВЛЯЕТ карточку на месте (_popup.scss:65-69) — на закрытии
+// гаснет только скрим, вниз карточка не уезжает. framer-motion не нужен.
 //
 // Два режима владения:
 //  • uncontrolled (open не передан): монтируется открытым; клик по кнопке/скриму/Esc
@@ -15,7 +22,6 @@
 //    владелец сам гасит open и размонтирует в onExitComplete.
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { AnimatePresence, motion } from 'framer-motion'
 import Checkbox from '../Checkbox'
 import { useRipple } from '../Ripple/useRipple'
 import classNames from '../../lib/classNames'
@@ -23,9 +29,6 @@ import { usePortalContainer } from '../../../core/pip'
 import { useNavLayer } from '../../../core/hooks/useNavLayer'
 import { useT } from '../../../i18n'
 import s from './ConfirmPopup.module.scss'
-
-const EASE: [number, number, number, number] = [0.4, 0, 0.2, 1]
-const DUR = 0.15 // tweb --popup-transition-time
 
 export interface ConfirmPopupButton {
   text: string
@@ -93,6 +96,7 @@ export default function ConfirmPopup({
   const controlled = openProp !== undefined
   const [innerOpen, setInnerOpen] = useState(true)
   const open = controlled ? openProp : innerOpen
+  const rootRef = useRef<HTMLDivElement>(null)
   // uncontrolled: действие кнопки откладывается до конца exit-анимации
   // (владелец размонтирует попап из этого колбэка — анимация успевает доиграть).
   const pendingRef = useRef<(() => void) | null>(null)
@@ -133,54 +137,81 @@ export default function ConfirmPopup({
     return () => document.removeEventListener('keydown', onKeyDown, true)
   })
 
+  // `.active` — кадром позже появления узла: tweb перед добавлением класса делает
+  // reflow (`void this.element.offsetWidth`, popups/index.ts:357), иначе браузеру
+  // нечего анимировать. Попап обычно монтируется уже открытым.
+  const [active, setActive] = useState(false)
+  useEffect(() => {
+    if (!open) { setActive(false); return }
+    const id = requestAnimationFrame(() => setActive(true))
+    return () => cancelAnimationFrame(id)
+  }, [open])
+
+  // `hiding` вешается только на реально открывавшийся попап (tweb ставит его в
+  // destroy(), т.е. после show()).
+  const openedRef = useRef(false)
+  if (open) openedRef.current = true
+  const hiding = !open && openedRef.current
+
+  // Конец закрытия — по transitionend корня (opacity скрима); таймерный фолбэк
+  // на случай animation-level-0, где перехода нет и события не будет.
+  const wasOpen = useRef(open)
+  const exitRef = useRef(handleExit)
+  exitRef.current = handleExit
+  useEffect(() => {
+    const justClosed = wasOpen.current && !open
+    wasOpen.current = open
+    if (!justClosed) return
+    const el = rootRef.current
+    let done = false
+    const finish = () => {
+      if (done) return
+      done = true
+      el?.removeEventListener('transitionend', onEnd)
+      exitRef.current()
+    }
+    const onEnd = (e: TransitionEvent) => { if (e.target === el) finish() }
+    el?.addEventListener('transitionend', onEnd)
+    const timer = window.setTimeout(finish, 300)
+    return () => {
+      window.clearTimeout(timer)
+      el?.removeEventListener('transitionend', onEnd)
+    }
+  }, [open])
+
   const vertical = buttons.length + 1 >= 3 // + авто-Cancel (tweb is-vertical-layout при ≥3)
 
   return createPortal(
-    <AnimatePresence onExitComplete={handleExit}>
-      {open && (
-        <motion.div
-          key="overlay"
-          className={s.overlay}
-          onClick={dismiss}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: DUR, ease: EASE }}
-        >
-          <motion.div
-            className={s.card}
-            onClick={(e) => e.stopPropagation()}
-            initial={{ y: 48 }}
-            animate={{ y: 0 }}
-            exit={{ y: 48 }}
-            transition={{ duration: DUR, ease: EASE }}
-          >
-            {(title != null || avatar != null) && (
-              <div className={s.header}>
-                {avatar}
-                <div className={s.title}>{title}</div>
-              </div>
-            )}
-            {description != null && <p className={s.description}>{description}</p>}
-            {(checkboxes ?? []).map((c, i) => (
-              <CheckboxRow
-                key={i}
-                text={c.text}
-                checked={checked[i]}
-                onToggle={() => setChecked((prev) => prev.map((v, j) => (j === i ? !v : v)))}
-              />
-            ))}
-            {children}
-            <div className={classNames(s.buttons, vertical ? s.vertical : '')}>
-              {buttons.map((b, i) => (
-                <ConfirmButton key={i} text={b.text} danger={b.danger} onClick={() => activate(b)} />
-              ))}
-              <ConfirmButton text={t('Cancel')} onClick={dismiss} />
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>,
+    <div
+      ref={rootRef}
+      className={classNames('popup', open && active ? 'active' : hiding ? 'hiding' : '', s.popup)}
+      onClick={dismiss}
+    >
+      <div className={classNames('popup-container', s.card)} onClick={(e) => e.stopPropagation()}>
+        {(title != null || avatar != null) && (
+          <div className={s.header}>
+            {avatar}
+            <div className={s.title}>{title}</div>
+          </div>
+        )}
+        {description != null && <p className={s.description}>{description}</p>}
+        {(checkboxes ?? []).map((c, i) => (
+          <CheckboxRow
+            key={i}
+            text={c.text}
+            checked={checked[i]}
+            onToggle={() => setChecked((prev) => prev.map((v, j) => (j === i ? !v : v)))}
+          />
+        ))}
+        {children}
+        <div className={classNames(s.buttons, vertical ? s.vertical : '')}>
+          {buttons.map((b, i) => (
+            <ConfirmButton key={i} text={b.text} danger={b.danger} onClick={() => activate(b)} />
+          ))}
+          <ConfirmButton text={t('Cancel')} onClick={dismiss} />
+        </div>
+      </div>
+    </div>,
     container,
   )
 }

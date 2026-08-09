@@ -5,7 +5,6 @@
 // «Копировать QR-код» — PNG в буфер (blob пре-печётся, фолбэк — ссылка).
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AnimatePresence, motion } from 'framer-motion'
 import type QRCodeStyling from 'qr-code-styling'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
@@ -19,10 +18,8 @@ import { WALLPAPER_PRESETS } from '../wallpapers'
 import patternUrl from '../assets/pattern.svg'
 import logoUrl from '../assets/logo_padded.svg'
 import { usePortalContainer } from '../core/pip'
+import { usePopupTransition } from './settings/kit'
 import s from './QrModal.module.scss'
-
-const EASE: [number, number, number, number] = [0.4, 0, 0.2, 1]
-const DUR = 0.15
 
 // tweb ChatQrCodeScreen: QR 220, карта 300×330 r42, аватар 100 (+кольцо 4)
 const QR_SIZE = 220
@@ -80,6 +77,7 @@ export interface QrModalProps {
 export default function QrModal({ open, onClose, url, label, avatar }: QrModalProps) {
   const t = useT()
   const portalContainer = usePortalContainer()
+  const { mounted, cls } = usePopupTransition(open)
   const themeChoice = useSettings((s) => s.themeChoice)
   const [themeIdx, setThemeIdx] = useState(0)
   // tweb: дефолт луны — текущая яркость темы приложения
@@ -164,100 +162,86 @@ export default function QrModal({ open, onClose, url, label, avatar }: QrModalPr
     }
   }
 
+  // Показ/скрытие — классы tweb `PopupElement` (`active`/`hiding`), см.
+  // usePopupTransition в settings/kit.tsx. Узел живёт в DOM до конца затухания —
+  // роль AnimatePresence.
+  if (!mounted) return null
+
   return createPortal(
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          key="qr-overlay"
-          className={s.overlay}
-          onClick={onClose}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: DUR, ease: EASE }}
-        >
-          <motion.div
-            className={classNames(s.modal, night ? s.night : '')}
-            onClick={(e) => e.stopPropagation()}
-            initial={{ y: 48 }}
-            animate={{ y: 0 }}
-            exit={{ y: 48 }}
-            transition={{ duration: DUR, ease: EASE }}
-          >
-            {/* верхняя секция: обои темы + белая карта с QR + аватар */}
-            <div className={s.top} style={{ background: gradientCss(bgColors) }}>
-              <div className={s.pattern} style={{ backgroundImage: `url("${patternUrl}")` }} />
-              <div className={s.avatarWrap}>
-                <Avatar background={avatar.background ?? 'var(--tg-accentGradient)'} text={avatar.text} src={avatar.src} size={100} />
-              </div>
-              <div className={s.card}>
-                <div ref={qrHostRef} className={s.qr} />
-                <div
-                  className={s.username}
-                  style={{ backgroundImage: gradientCss(inkStops) }}
-                  data-len={label.length > 15 ? 'long' : label.length > 10 ? 'mid' : undefined}
-                >
-                  {label.toUpperCase()}
+    <div className={classNames('popup', cls, s.overlay)} onClick={onClose}>
+      <div className={classNames('popup-container', s.modal, night ? s.night : '')} onClick={(e) => e.stopPropagation()}>
+        {/* верхняя секция: обои темы + белая карта с QR + аватар */}
+        <div className={s.top} style={{ background: gradientCss(bgColors) }}>
+          <div className={s.pattern} style={{ backgroundImage: `url("${patternUrl}")` }} />
+          <div className={s.avatarWrap}>
+            <Avatar background={avatar.background ?? 'var(--tg-accentGradient)'} text={avatar.text} src={avatar.src} size={100} />
+          </div>
+          <div className={s.card}>
+            <div ref={qrHostRef} className={s.qr} />
+            <div
+              className={s.username}
+              style={{ backgroundImage: gradientCss(inkStops) }}
+              data-len={label.length > 15 ? 'long' : label.length > 10 ? 'mid' : undefined}
+            >
+              {label.toUpperCase()}
+            </div>
+          </div>
+        </div>
+
+        {/* панель: [×, заголовок, луна] (tweb Header внутри body) */}
+        <div className={s.header}>
+          <IconButton size="small" onClick={onClose} color="var(--qr-panel-secondary)">
+            <TgIcon name="close" size={22} />
+          </IconButton>
+          <Text size={17} weight={600} className={s.title} color="var(--qr-panel-text)">
+            {t('QR Code')}
+          </Text>
+          <IconButton size="small" onClick={() => setNight((v) => !v)} color="var(--qr-panel-secondary)">
+            <TgIcon name={night ? 'darkmode_filled' : 'darkmode'} size={22} />
+          </IconButton>
+        </div>
+
+        {/* карусель тем (tweb chatThemesPicker) */}
+        <div className={s.themes}>
+          {QR_THEMES.map((th, i) => {
+            const p = WALLPAPER_PRESETS.find((w) => w.id === th.presetId) ?? WALLPAPER_PRESETS[0]
+            const colors = night ? p.colors.map(nightColor) : p.colors
+            return (
+              <div
+                key={th.presetId}
+                className={classNames(s.tile, i === themeIdx ? s.tileActive : '')}
+                onClick={() => pickTheme(i)}
+              >
+                <div className={s.tileBg} style={{ background: gradientCss(colors) }}>
+                  <div className={s.tilePattern} style={{ backgroundImage: `url("${patternUrl}")` }} />
+                  <div className={s.bubbleIn} />
+                  <div className={s.bubbleOut} />
+                  <span
+                    ref={(el) => {
+                      if (el) emojiRefs.current.set(i, el)
+                      else emojiRefs.current.delete(i)
+                    }}
+                    className={s.tileEmoji}
+                  >
+                    {th.emoji}
+                  </span>
                 </div>
               </div>
-            </div>
+            )
+          })}
+        </div>
 
-            {/* панель: [×, заголовок, луна] (tweb Header внутри body) */}
-            <div className={s.header}>
-              <IconButton size="small" onClick={onClose} color="var(--qr-panel-secondary)">
-                <TgIcon name="close" size={22} />
-              </IconButton>
-              <Text size={17} weight={600} className={s.title} color="var(--qr-panel-text)">
-                {t('QR Code')}
-              </Text>
-              <IconButton size="small" onClick={() => setNight((v) => !v)} color="var(--qr-panel-secondary)">
-                <TgIcon name={night ? 'darkmode_filled' : 'darkmode'} size={22} />
-              </IconButton>
-            </div>
+        {/* tweb FooterButton «Copy QR Code» */}
+        <div className={s.footer}>
+          <button type="button" className={s.copyBtn} onClick={copy}>
+            <TgIcon name="copy" size={20} />
+            {t('Copy QR Code')}
+          </button>
+        </div>
 
-            {/* карусель тем (tweb chatThemesPicker) */}
-            <div className={s.themes}>
-              {QR_THEMES.map((th, i) => {
-                const p = WALLPAPER_PRESETS.find((w) => w.id === th.presetId) ?? WALLPAPER_PRESETS[0]
-                const colors = night ? p.colors.map(nightColor) : p.colors
-                return (
-                  <div
-                    key={th.presetId}
-                    className={classNames(s.tile, i === themeIdx ? s.tileActive : '')}
-                    onClick={() => pickTheme(i)}
-                  >
-                    <div className={s.tileBg} style={{ background: gradientCss(colors) }}>
-                      <div className={s.tilePattern} style={{ backgroundImage: `url("${patternUrl}")` }} />
-                      <div className={s.bubbleIn} />
-                      <div className={s.bubbleOut} />
-                      <span
-                        ref={(el) => {
-                          if (el) emojiRefs.current.set(i, el)
-                          else emojiRefs.current.delete(i)
-                        }}
-                        className={s.tileEmoji}
-                      >
-                        {th.emoji}
-                      </span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-
-            {/* tweb FooterButton «Copy QR Code» */}
-            <div className={s.footer}>
-              <button type="button" className={s.copyBtn} onClick={copy}>
-                <TgIcon name="copy" size={20} />
-                {t('Copy QR Code')}
-              </button>
-            </div>
-
-            {toast && <div className={s.toast}>{toast}</div>}
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>,
+        {toast && <div className={s.toast}>{toast}</div>}
+      </div>
+    </div>,
     portalContainer,
   )
 }

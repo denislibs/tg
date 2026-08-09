@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AnimatePresence, motion } from 'framer-motion'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import classNames from '../shared/lib/classNames'
+import { usePopupTransition } from './settings/kit'
 import { useT } from '../i18n'
 import { useManagers } from '../core/hooks/useManagers'
 import { useChatsStore } from '../stores/chatsStore'
@@ -40,6 +40,7 @@ export default function PremiumCheckout({
   const [paying, setPaying] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const { mounted, cls } = usePopupTransition(open)
   const card = useMemo(() => ({ number, expiry, cvc }), [number, expiry, cvc])
   const valid = isValidCard(card)
 
@@ -59,115 +60,104 @@ export default function PremiumCheckout({
     }
   }
 
+  // Показ/скрытие — классы tweb `PopupElement` (`active`/`hiding`), см.
+  // usePopupTransition в settings/kit.tsx: скрим набирает opacity, карточка едет
+  // translate3d(0, 3rem, 0) → 0 за --popup-transition-time. Узел живёт в DOM до
+  // конца затухания — роль AnimatePresence.
+  if (!mounted) return null
+
   return createPortal(
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          className={s.overlay}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
-          onClick={onClose}
-        >
-          <motion.div
-            className={s.dialog}
-            initial={{ scale: 0.92, opacity: 0, y: 12 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.95, opacity: 0, y: 8 }}
-            transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-            onClick={(e: React.MouseEvent) => e.stopPropagation()}
+    <div className={classNames('popup', cls, s.overlay)} onClick={onClose}>
+      <div className={classNames('popup-container', s.dialog)} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+        <div className={s.header}>
+          <div className={s.close} onClick={onClose}>
+            <TgIcon name="close" />
+          </div>
+          <Text size={19} weight={600} color="var(--primary-text-color)" className={s.title}>
+            {t('Payment')}
+          </Text>
+        </div>
+
+        <div className={s.body}>
+          <div className={s.summary}>
+            <div className={s.summaryIcon}>
+              <TgIcon name="star_filled" size={22} color="#fff" />
+            </div>
+            <div className={s.summaryBody}>
+              <Text size={16} weight={500} color="var(--primary-text-color)">
+                {t('Telegram Premium')} — {t(plan.labelKey)}
+              </Text>
+              <Text size={14} color="var(--secondary-text-color)">
+                {formatUsd(perMonthCents(plan))} {t('per month')}
+              </Text>
+            </div>
+            <Text size={16} weight={600} color="var(--primary-text-color)">
+              {formatUsd(plan.priceCents)}
+            </Text>
+          </div>
+
+          <div className={s.field}>
+            <label className={s.label}>{t('Card Number')}</label>
+            <input
+              className={classNames(s.input, number && !isValidCardNumber(number) ? s.inputError : '')}
+              inputMode="numeric"
+              autoComplete="cc-number"
+              placeholder="4242 4242 4242 4242"
+              value={number}
+              onChange={(e) => setNumber(formatCardNumber(e.target.value))}
+            />
+          </div>
+
+          <div className={s.row}>
+            <div className={s.field}>
+              <label className={s.label}>{t('Expiry')}</label>
+              <input
+                className={classNames(s.input, expiry && !isValidExpiry(expiry) ? s.inputError : '')}
+                inputMode="numeric"
+                autoComplete="cc-exp"
+                placeholder="MM/YY"
+                value={expiry}
+                onChange={(e) => setExpiry(formatExpiry(e.target.value))}
+              />
+            </div>
+            <div className={s.field}>
+              <label className={s.label}>CVC</label>
+              <input
+                className={classNames(s.input, cvc && !isValidCvc(cvc) ? s.inputError : '')}
+                inputMode="numeric"
+                autoComplete="cc-csc"
+                placeholder="123"
+                value={cvc}
+                maxLength={4}
+                onChange={(e) => setCvc(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              />
+            </div>
+          </div>
+
+          {error && (
+            <Text size={14} color="#e53935" className={s.error}>
+              {error}
+            </Text>
+          )}
+        </div>
+
+        <div className={s.ctaWrap}>
+          {/* tweb не масштабирует кнопки по нажатию — отклик даёт ripple
+              и фон (_button.scss:75-77); whileTap снят. */}
+          <button
+            type="button"
+            className={s.cta}
+            disabled={!valid || paying}
+            onClick={() => void pay()}
           >
-            <div className={s.header}>
-              <div className={s.close} onClick={onClose}>
-                <TgIcon name="close" />
-              </div>
-              <Text size={19} weight={600} color="var(--primary-text-color)" className={s.title}>
-                {t('Payment')}
-              </Text>
-            </div>
-
-            <div className={s.body}>
-              <div className={s.summary}>
-                <div className={s.summaryIcon}>
-                  <TgIcon name="star_filled" size={22} color="#fff" />
-                </div>
-                <div className={s.summaryBody}>
-                  <Text size={16} weight={500} color="var(--primary-text-color)">
-                    {t('Telegram Premium')} — {t(plan.labelKey)}
-                  </Text>
-                  <Text size={14} color="var(--secondary-text-color)">
-                    {formatUsd(perMonthCents(plan))} {t('per month')}
-                  </Text>
-                </div>
-                <Text size={16} weight={600} color="var(--primary-text-color)">
-                  {formatUsd(plan.priceCents)}
-                </Text>
-              </div>
-
-              <div className={s.field}>
-                <label className={s.label}>{t('Card Number')}</label>
-                <input
-                  className={classNames(s.input, number && !isValidCardNumber(number) ? s.inputError : '')}
-                  inputMode="numeric"
-                  autoComplete="cc-number"
-                  placeholder="4242 4242 4242 4242"
-                  value={number}
-                  onChange={(e) => setNumber(formatCardNumber(e.target.value))}
-                />
-              </div>
-
-              <div className={s.row}>
-                <div className={s.field}>
-                  <label className={s.label}>{t('Expiry')}</label>
-                  <input
-                    className={classNames(s.input, expiry && !isValidExpiry(expiry) ? s.inputError : '')}
-                    inputMode="numeric"
-                    autoComplete="cc-exp"
-                    placeholder="MM/YY"
-                    value={expiry}
-                    onChange={(e) => setExpiry(formatExpiry(e.target.value))}
-                  />
-                </div>
-                <div className={s.field}>
-                  <label className={s.label}>CVC</label>
-                  <input
-                    className={classNames(s.input, cvc && !isValidCvc(cvc) ? s.inputError : '')}
-                    inputMode="numeric"
-                    autoComplete="cc-csc"
-                    placeholder="123"
-                    value={cvc}
-                    maxLength={4}
-                    onChange={(e) => setCvc(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  />
-                </div>
-              </div>
-
-              {error && (
-                <Text size={14} color="#e53935" className={s.error}>
-                  {error}
-                </Text>
-              )}
-            </div>
-
-            <div className={s.ctaWrap}>
-              <motion.button
-                type="button"
-                className={s.cta}
-                whileTap={valid && !paying ? { scale: 0.985 } : undefined}
-                disabled={!valid || paying}
-                onClick={() => void pay()}
-              >
-                {paying ? t('Processing…') : `${t('Pay')} ${formatUsd(plan.priceCents)}`}
-              </motion.button>
-              <Text size={12.5} color="var(--secondary-text-color)" className={s.disclaimer}>
-                {t('This is a demo checkout. No real payment is processed.')}
-              </Text>
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>,
+            {paying ? t('Processing…') : `${t('Pay')} ${formatUsd(plan.priceCents)}`}
+          </button>
+          <Text size={12.5} color="var(--secondary-text-color)" className={s.disclaimer}>
+            {t('This is a demo checkout. No real payment is processed.')}
+          </Text>
+        </div>
+      </div>
+    </div>,
     document.body,
   )
 }

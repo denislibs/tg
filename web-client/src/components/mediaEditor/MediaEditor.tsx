@@ -17,7 +17,6 @@ import '@fontsource/sedan/400.css'
 import '@fontsource/playwrite-be-vlg/400.css'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { motion } from 'framer-motion'
 import IconButton from '../../shared/ui/IconButton'
 import Slider from '../../shared/ui/Slider'
 import Text from '../../shared/ui/Text'
@@ -26,7 +25,6 @@ import TgIcon, { type IconName } from '../TgIcon'
 import ConfirmDialog from '../settings/ConfirmDialog'
 import { usePortalContainer } from '../../core/pip'
 import { useT } from '../../i18n'
-import { EASE } from '../../motion'
 import {
   ADJUSTMENTS, ASPECT_PRESETS, CROP_HANDLES, ENHANCE_DEFAULTS,
   aspectOf, centeredAspectCrop, contrastColor, coverScale, enhanceRange, fitScale,
@@ -1317,12 +1315,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
   })()
 
   return createPortal(
-    <motion.div
-      className={s.root}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.2, ease: EASE }}
-    >
+    <div className={s.root}>
       <div className={s.work} ref={workRef}>
         {img && crop && (
           <div className={s.stage} style={{ width: dispW, height: dispH }}>
@@ -1632,15 +1625,16 @@ export default function MediaEditor({ file, onDone, onCancel }: {
           )}
         </div>
 
-        <motion.div
+        {/* tweb не масштабирует угловую кнопку по нажатию — отклик даёт ripple
+            и фон (_button.scss:75-77); whileTap снят. */}
+        <div
           className={classNames(s.fab, busy ? s.fabBusy : '')}
-          whileTap={{ scale: 0.92 }}
           onClick={() => void doFinish()}
         >
           {exportProgress != null
             ? <span className={s.fabProgress}>{Math.round(exportProgress * 100)}%</span>
             : <TgIcon name="check" size={28} />}
-        </motion.div>
+        </div>
       </div>
 
       {confirmOpen && (
@@ -1654,7 +1648,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
           onClose={() => setConfirmOpen(false)}
         />
       )}
-    </motion.div>,
+    </div>,
     container,
   )
 }

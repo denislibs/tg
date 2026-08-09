@@ -4,7 +4,6 @@
 // itself. Hidden while the search is open.
 import { memo, useRef, useState } from 'react'
 import classNames from '../shared/lib/classNames'
-import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import IconButton from '../shared/ui/IconButton'
 import ComposeMenu from './ComposeMenu'
@@ -37,7 +36,14 @@ function ComposeFab({ searching, onNewGroup, onNewPrivate, onNewChannel, onNewSe
           animated-button-icon`. Геометрию (54×54, right/bottom 20, пружинку
           --btn-corner-transition, акцентный фон) даёт `.btn-corner`/`.btn-circle`
           из _button.scss — свои inline-стили убраны.
-          Видимость — класс `is-visible` (tweb), а не размонтирование. */}
+          Видимость — класс `is-visible` (tweb), а не размонтирование.
+          Морф ✎↔✕ — тоже tweb 1:1 (`sidebarLeft/index.ts:1071-1072`): ОБЕ иконки
+          всегда в DOM с классами `animated-button-icon-icon` +
+          `animated-button-icon-icon-first/-last`; по умолчанию каждая играет
+          `hide-icon .4s` (_animatedIcon.scss:159-170), а нужную выводит правило
+          `.btn-corner:not(.menu-open) …-first, .btn-corner.menu-open …-last`
+          (_leftSidebar.scss:455-460) через `grow-icon .4s`. Своего JS-поворота
+          на 90° в оригинале нет. */}
       <IconButton
         ref={fabRef}
         id="new-menu"
@@ -51,13 +57,8 @@ function ComposeFab({ searching, onNewGroup, onNewPrivate, onNewChannel, onNewSe
         )}
         color="#fff"
       >
-        <motion.span
-          animate={{ rotate: open ? 90 : 0 }}
-          transition={{ duration: 0.2 }}
-          style={{ display: 'inline-flex' }}
-        >
-          {open ? <TgIcon name="close" size={24} /> : <TgIcon name="newchat_filled" size={24} />}
-        </motion.span>
+        <TgIcon name="newchat_filled" size={24} className="animated-button-icon-icon animated-button-icon-icon-first" />
+        <TgIcon name="close" size={24} className="animated-button-icon-icon animated-button-icon-icon-last" />
       </IconButton>
 
       <ComposeMenu

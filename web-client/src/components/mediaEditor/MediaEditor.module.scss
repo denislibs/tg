@@ -1,13 +1,22 @@
 // MediaEditor — полноэкранный редактор перед отправкой (упрощённый порт
 // tweb mediaEditor.scss): тёмная рабочая область слева, панель ~360px справа.
 // Редактор всегда тёмный, как в tweb, поэтому цвета панели фиксированные.
+@use '../../styles/foundation' as *;
 
+// Появление слоя — кроссфейд tweb: `.transition.fade > .to { animation:
+// fade-in-opacity .15s ease }` (`tweb src/scss/partials/_transition.scss:62-76`).
+// Кейфрейм, а не transition: узел рождается уже видимым, переходу не от чего
+// стартовать — в tweb здесь по той же причине стоит animation.
 .root {
   position: fixed;
   inset: 0;
   z-index: 4200; // выше Popup (4090) и его меню (4100)
   display: flex;
   background: rgba(0, 0, 0, 0.85);
+
+  @include animation-level-global(2) {
+    animation: fade-in-opacity .15s ease;
+  }
 }
 
 // ── Рабочая область ──
@@ -653,4 +662,20 @@
 .fabBusy {
   opacity: 0.6;
   pointer-events: none;
+}
+
+// CSS-модули хешируют ЛЮБОЕ имя в `animation`, поэтому сослаться на глобальный
+// кейфрейм из партиала отсюда нельзя — ссылка переименовывается и анимация молча
+// не играет. Кейфреймы ниже — дословные копии глобальных
+// (styles/tweb/_bridge.scss / styles/tweb/_transition.scss, оригиналы
+// `tweb src/scss/base.scss:675-738,1082-1108` и `_transition.scss`, `_selector.scss:4-14`).
+
+@keyframes fade-in-opacity {
+  0% {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }

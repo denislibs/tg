@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AnimatePresence, motion } from 'framer-motion'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import type { IconName } from './TgIcon'
 import PremiumCheckout from './PremiumCheckout'
 import classNames from '../shared/lib/classNames'
+import { usePopupTransition } from './settings/kit'
 import { useT } from '../i18n'
 import { PREMIUM_PLANS, planById, formatUsd, perMonthCents, discountPct, type PremiumPlanId } from '../core/premium/plans'
 import s from './PremiumModal.module.scss'
@@ -59,126 +59,114 @@ export default function PremiumModal({ open, onClose, onExitComplete }: { open: 
   const [plan, setPlan] = useState<PremiumPlanId>('12m')
   const [checkoutOpen, setCheckoutOpen] = useState(false)
   const selected = planById(plan)
+  const { mounted, cls } = usePopupTransition(open)
+
+  // конец обратного перехода — владельцу (раньше это делал AnimatePresence)
+  const wasMounted = useRef(mounted)
+  useEffect(() => {
+    if (wasMounted.current && !mounted) onExitComplete?.()
+    wasMounted.current = mounted
+  }, [mounted, onExitComplete])
+
+  // Показ/скрытие — классы tweb `PopupElement` (`active`/`hiding`), см.
+  // usePopupTransition в settings/kit.tsx: скрим набирает opacity, карточка едет
+  // translate3d(0, 3rem, 0) → 0 за --popup-transition-time. Узел живёт в DOM до
+  // конца затухания — роль AnimatePresence, включая onExitComplete владельца.
+  if (!mounted) return null
 
   return createPortal(
-    <AnimatePresence onExitComplete={onExitComplete}>
-      {open && (
-        <motion.div
-          className={s.overlay}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
-          onClick={onClose}
-        >
-          <motion.div
-            className={s.dialog}
-            initial={{ scale: 0.92, opacity: 0, y: 12 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.95, opacity: 0, y: 8 }}
-            transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-            onClick={(e: React.MouseEvent) => e.stopPropagation()}
-          >
-            {/* scrollable content */}
-            <div className={s.content}>
-              {/* header */}
-              <div className={s.header}>
-                <div className={s.close} onClick={onClose}>
-                  <TgIcon name="close" />
-                </div>
-                <PremiumStar />
-                <Text size={26} weight={700} color="var(--primary-text-color)" className={s.title}>
-                  Telegram Premium
-                </Text>
-                <Text size={15.5} color="var(--secondary-text-color)" className={s.subtitle}>
-                  {t('More freedom and dozens of exclusive features with a Telegram Premium subscription.')}
-                </Text>
-              </div>
+    <div className={classNames('popup', cls, s.overlay)} onClick={onClose}>
+      <div className={classNames('popup-container', s.dialog)} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+        {/* scrollable content */}
+        <div className={s.content}>
+          {/* header */}
+          <div className={s.header}>
+            <div className={s.close} onClick={onClose}>
+              <TgIcon name="close" />
+            </div>
+            <PremiumStar />
+            <Text size={26} weight={700} color="var(--primary-text-color)" className={s.title}>
+              Telegram Premium
+            </Text>
+            <Text size={15.5} color="var(--secondary-text-color)" className={s.subtitle}>
+              {t('More freedom and dozens of exclusive features with a Telegram Premium subscription.')}
+            </Text>
+          </div>
 
-              {/* plans */}
-              <div className={s.plans}>
-                {PREMIUM_PLANS.map((p) => {
-                  const active = p.id === plan
-                  const discount = discountPct(p)
-                  return (
-                    <div
-                      key={p.id}
-                      onClick={() => setPlan(p.id)}
-                      className={classNames(s.plan, active ? s.planSelected : '')}
-                    >
-                      {/* radio — empty ring with the filled check scaling in (tweb-style) */}
-                      <div className={classNames(s.radio, active ? s.radioOn : '')}>
-                        <motion.div
-                          className={s.radioFill}
-                          initial={false}
-                          animate={{ scale: active ? 1 : 0, opacity: active ? 1 : 0 }}
-                          transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                        >
-                          <TgIcon name="check" size={17} color="#fff" />
-                        </motion.div>
-                      </div>
-                      <div className={s.planBody}>
-                        <Text size={17} weight={500} color="var(--primary-text-color)">
-                          {t(p.labelKey)}
-                        </Text>
-                        <div className={s.planMeta}>
-                          {discount > 0 && <span className={s.discount}>{`-${discount}%`}</span>}
-                          <Text size={15} color="var(--secondary-text-color)">
-                            {formatUsd(perMonthCents(p))} {t('per month')}
-                          </Text>
-                        </div>
-                      </div>
-                      <Text size={16} color="var(--primary-text-color)" className={s.planTotal}>
-                        {formatUsd(p.priceCents)}
-                      </Text>
+          {/* plans */}
+          <div className={s.plans}>
+            {PREMIUM_PLANS.map((p) => {
+              const active = p.id === plan
+              const discount = discountPct(p)
+              return (
+                <div
+                  key={p.id}
+                  onClick={() => setPlan(p.id)}
+                  className={classNames(s.plan, active ? s.planSelected : '')}
+                >
+                  {/* radio — empty ring with the filled check scaling in (tweb-style) */}
+                  <div className={classNames(s.radio, active ? s.radioOn : '')}>
+                    <div className={s.radioFill}>
+                      <TgIcon name="check" size={17} color="#fff" />
                     </div>
-                  )
-                })}
-              </div>
-
-              {/* features */}
-              <div className={s.features}>
-                {FEATURES.map((f) => (
-                  <div key={f.title} className={s.feature}>
-                    <div className={s.featureIcon} style={{ background: f.color }}>
-                      <TgIcon name={f.icon} size={24} />
-                    </div>
-                    <div className={s.featureBody}>
-                      <Text size={16} weight={500} color="var(--primary-text-color)">
-                        {t(f.title)}
-                      </Text>
-                      <Text size={14.5} color="var(--secondary-text-color)" style={{ lineHeight: 1.35 }}>
-                        {t(f.subtitle)}
+                  </div>
+                  <div className={s.planBody}>
+                    <Text size={17} weight={500} color="var(--primary-text-color)">
+                      {t(p.labelKey)}
+                    </Text>
+                    <div className={s.planMeta}>
+                      {discount > 0 && <span className={s.discount}>{`-${discount}%`}</span>}
+                      <Text size={15} color="var(--secondary-text-color)">
+                        {formatUsd(perMonthCents(p))} {t('per month')}
                       </Text>
                     </div>
                   </div>
-                ))}
+                  <Text size={16} color="var(--primary-text-color)" className={s.planTotal}>
+                    {formatUsd(p.priceCents)}
+                  </Text>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* features */}
+          <div className={s.features}>
+            {FEATURES.map((f) => (
+              <div key={f.title} className={s.feature}>
+                <div className={s.featureIcon} style={{ background: f.color }}>
+                  <TgIcon name={f.icon} size={24} />
+                </div>
+                <div className={s.featureBody}>
+                  <Text size={16} weight={500} color="var(--primary-text-color)">
+                    {t(f.title)}
+                  </Text>
+                  <Text size={14.5} color="var(--secondary-text-color)" style={{ lineHeight: 1.35 }}>
+                    {t(f.subtitle)}
+                  </Text>
+                </div>
               </div>
-            </div>
+            ))}
+          </div>
+        </div>
 
-            {/* sticky CTA */}
-            <div className={s.ctaWrap}>
-              <motion.div
-                className={s.cta}
-                whileHover={{ scale: 1.015 }}
-                whileTap={{ scale: 0.985 }}
-                onClick={() => setCheckoutOpen(true)}
-              >
-                {t('Subscribe for')} {formatUsd(perMonthCents(selected))} {t('per month')}
-              </motion.div>
-            </div>
-          </motion.div>
+        {/* sticky CTA */}
+        <div className={s.ctaWrap}>
+          {/* tweb не масштабирует кнопки по hover/tap — отклик даёт ripple
+              и фон (_button.scss:75-77); whileHover/whileTap сняты. */}
+          <div className={s.cta} onClick={() => setCheckoutOpen(true)}>
+            {t('Subscribe for')} {formatUsd(perMonthCents(selected))} {t('per month')}
+          </div>
+        </div>
+      </div>
 
-          {/* Мок-чекаут (оплата картой) для выбранного плана */}
-          <PremiumCheckout
-            plan={selected}
-            open={checkoutOpen}
-            onClose={() => setCheckoutOpen(false)}
-            onSuccess={onClose}
-          />
-        </motion.div>
-      )}
-    </AnimatePresence>,
+      {/* Мок-чекаут (оплата картой) для выбранного плана */}
+      <PremiumCheckout
+        plan={selected}
+        open={checkoutOpen}
+        onClose={() => setCheckoutOpen(false)}
+        onSuccess={onClose}
+      />
+    </div>,
     document.body,
   )
 }

@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react'
-import { motion } from 'framer-motion'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
@@ -30,21 +29,7 @@ export default function CloseFriendsSheet({ onClose }: { onClose: () => void }) 
   }, [candidates, query])
 
   return (
-    <motion.div
-      initial={{ x: '100%' }}
-      animate={{ x: 0 }}
-      exit={{ x: '100%' }}
-      transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-      style={{
-        position: 'absolute',
-        inset: 0,
-        zIndex: 42,
-        background: 'var(--surface-color)',
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-      }}
-    >
+    <div className={s.sheet}>
       <div className={s.header}>
         <IconButton onClick={onClose} aria-label={t('Back')} color="var(--secondary-text-color)">
           <TgIcon name="back" />
@@ -98,17 +83,17 @@ export default function CloseFriendsSheet({ onClose }: { onClose: () => void }) 
         </div>
       </div>
 
-      <motion.div
+      {/* tweb не масштабирует угловую кнопку по hover/tap — отклик там даёт
+          ripple и смена фона (_button.scss:75-77); whileHover/whileTap сняты. */}
+      <div
         onClick={save}
         role="button"
         aria-label={t('Save')}
         aria-disabled={busy}
-        whileHover={{ scale: busy ? 1 : 1.06 }}
-        whileTap={{ scale: busy ? 1 : 0.92 }}
         className={classNames(s.fab, busy ? s.fabBusy : '')}
       >
         <TgIcon name="check" />
-      </motion.div>
-    </motion.div>
+      </div>
+    </div>
   )
 }

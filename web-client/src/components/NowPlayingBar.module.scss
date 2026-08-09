@@ -71,6 +71,11 @@
   transform: translateX(-50%);
   z-index: 3000;
 }
+// Всплывашка громкости — механика меню tweb `.btn-menu`
+// (`tweb src/scss/partials/_button.scss:98-135`, у нас styles/tweb/_button.scss:98-135):
+// scale(.8) + opacity 0 → 1 за --btn-menu-transition (.2s cubic-bezier(.4, 0, .2, 1)),
+// начало трансформации — у якоря. Кейфрейм, а не transition: узел появляется в
+// DOM уже открытым (tweb держит меню в DOM всегда и переключает `.active`).
 .volPop {
   padding: 14px 0 12px;
   width: 36px;
@@ -81,6 +86,18 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  transform-origin: top center;
+
+  @include animation-level-global(2) {
+    animation: btn-menu-in var(--btn-menu-transition);
+  }
+}
+
+@keyframes btn-menu-in {
+  from {
+    opacity: 0;
+    transform: scale(.8);
+  }
 }
 // Вертикальный слайдер громкости (pointer-drag по Y).
 .volTrack {

@@ -1,20 +1,15 @@
-// Confirm-диалог настроек (по образцу DeleteMessageDialog)
-.overlay {
-  position: fixed;
-  inset: 0;
+// Confirm-диалог настроек. Скрим, центровка, радиус, фон карточки и весь
+// показ/скрытие приходят из глобальных `.popup`/`.popup-container`
+// (портированный `styles/tweb/popups/_popup.scss`); здесь — только геометрия
+// и слой. Классы продублированы (`.overlay.overlay`), потому что глобальные
+// партиалы эмитятся ПОСЛЕ CSS-модулей и при равной специфичности побеждают.
+.overlay.overlay {
   z-index: 1400;
-  background: rgba(0, 0, 0, 0.35);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  --popup-width: min(360px, calc(100vw - 32px));
 }
 
-.card {
-  width: min(360px, calc(100vw - 32px));
-  border-radius: 16px;
-  background: var(--surface-color);
+.card.card {
   padding: 20px 24px 12px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
 }
 
 .actions {

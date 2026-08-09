@@ -133,7 +133,6 @@ export function useChatSend({
         try {
           await managers.secret.sendMedia({ chatId: cid, bytes, name: 'voice', mime, size: blob.size, mediaType: 'voice', ttlSeconds: null, clientMsgId })
         } catch { /* ключ чата отсутствует / оффлайн — бабл не появится */ }
-        window.dispatchEvent(new Event('tg-send'))
         if (draftPeerId != null) onChatCreated?.(cid)
         return
       }
@@ -144,7 +143,6 @@ export function useChatSend({
       if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
       if (isRealChat) void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: '', type, media_id: mediaId })
       void managers.realtime.sendMessage({ chatId: cid, text: '', clientMsgId, mediaId, type, threadRootId })
-      window.dispatchEvent(new Event('tg-send'))
       if (draftPeerId != null) onChatCreated?.(cid)
     },
   })
@@ -189,14 +187,12 @@ export function useChatSend({
       void managers.messages.sendGeoLive(numericChatId, lat, lng, opts.livePeriod, opts.heading).then((m) => {
         startLiveShare(managers, numericChatId, m.id, Date.now() + opts.livePeriod! * 1000)
       })
-      window.dispatchEvent(new Event('tg-send'))
       return
     }
     const clientMsgId = mkClientMsgId()
     const geo = { lat, lng, ...opts }
     void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: '', type: 'geo', geo })
     void managers.realtime.sendMessage({ chatId: numericChatId, text: '', clientMsgId, type: 'geo', geo, threadRootId })
-    window.dispatchEvent(new Event('tg-send'))
   }
 
   // Стикер (пикер/саджесты): оптимистичный бабл type 'sticker' с mediaId, по WS —
@@ -212,7 +208,6 @@ export function useChatSend({
       if (isRealChat) void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: '', type: 'sticker', media_id: st.mediaId })
       void managers.realtime.sendMessage({ chatId: cid, text: '', clientMsgId, mediaId: st.mediaId, type: 'sticker', threadRootId })
       void managers.stickers.use(st.id).catch(() => {})
-      window.dispatchEvent(new Event('tg-send'))
       if (draftPeerId != null) onChatCreated?.(cid)
     })()
   }
@@ -236,7 +231,6 @@ export function useChatSend({
           void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: '', type: 'video', media_id: mediaId, media: { width: g.width, height: g.height, mime: g.mime, size: g.size, name: g.fileName } })
         }
         void managers.realtime.sendMessage({ chatId: cid, text: '', clientMsgId, mediaId, type: 'video', threadRootId })
-        window.dispatchEvent(new Event('tg-send'))
         if (draftPeerId != null) onChatCreated?.(cid)
       })()
       return
@@ -254,7 +248,6 @@ export function useChatSend({
       const localUrl = URL.createObjectURL(blob)
       void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: '', type: 'video', media: { localUrl, width: g.width, height: g.height, mime: 'video/mp4', size: blob.size, name: 'tenor.mp4' }, origin_tab: tabId })
       useUploadsStore.getState().setProgress(clientMsgId, 0)
-      window.dispatchEvent(new Event('tg-send'))
       try {
         const mediaId = await managers.media.upload({ blob, mime: 'video/mp4', size: blob.size, width: g.width, height: g.height, fileName: 'tenor.mp4', progressId: clientMsgId })
         void managers.realtime.attachPendingMedia({ chatId: numericChatId, threadRootId, clientMsgId, mediaId })
@@ -275,7 +268,6 @@ export function useChatSend({
     atBottomRef.current = true; userScrolledUpRef.current = false
     void managers.realtime.appendPending({ chat_id: numericChatId, thread_root_id: threadRootId ?? null, client_msg_id: clientMsgId, sender_id: meId ?? -1, text: '', type: 'contact', contact: { userId, name, phone: '' } })
     void managers.realtime.sendMessage({ chatId: numericChatId, text: '', clientMsgId, type: 'contact', contactUserId: userId, threadRootId })
-    window.dispatchEvent(new Event('tg-send'))
   }
 
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -348,7 +340,6 @@ export function useChatSend({
       } catch {
         if (isVisual) void managers.realtime.failPending({ chatId: numericChatId, threadRootId, clientMsgId })
       }
-      window.dispatchEvent(new Event('tg-send'))
       return
     }
     if (isVisual) {
@@ -419,7 +410,6 @@ export function useChatSend({
       const fwd = forward
       setForward(null)
       atBottomRef.current = true; userScrolledUpRef.current = false
-      window.dispatchEvent(new Event('tg-send'))
       void (async () => {
         try {
           await managers.messages.forwardMessages(numericChatId, fwd.sourceChatId, fwd.msgIds, { dropAuthor: fwd.dropAuthor, dropCaption: fwd.dropCaption })
@@ -451,7 +441,6 @@ export function useChatSend({
       // First message in a draft: create the private chat, send all parts, then let
       // the shell switch to the now-real chat (and surface it in the sidebar).
       setReply(null)
-      window.dispatchEvent(new Event('tg-send'))
       void (async () => {
         const id = await managers.chats.createPrivate(draftPeerId)
         for (let k = 0; k < parts.length; k++) {
@@ -467,7 +456,6 @@ export function useChatSend({
       // optimistic + scroll-to-bottom pattern. Live echo arrives via rt:new_message.
       // (Channel posts are plain text — no entities on this path yet.)
       setReply(null)
-      window.dispatchEvent(new Event('tg-send'))
       atBottomRef.current = true; userScrolledUpRef.current = false
       for (let k = 0; k < parts.length; k++) {
         const clientMsgId = mkClientMsgId(k)
@@ -478,7 +466,6 @@ export function useChatSend({
     }
     // Plain real chat (private/group).
     setReply(null)
-    window.dispatchEvent(new Event('tg-send'))
     // reply attaches to the first message only (Telegram behaviour); эффект тоже
     // применяется только к первому сообщению разбитого драфта.
     parts.forEach((p, k) => sendReal(p.text, entOf(p), k === 0 ? replyToId : null, ttlSeconds ?? null, silent, k === 0 ? effect : null))

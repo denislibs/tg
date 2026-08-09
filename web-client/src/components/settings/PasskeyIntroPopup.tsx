@@ -4,7 +4,6 @@
 // «Ключи доступа», пока ключей ещё нет.
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
 import Text from '../../shared/ui/Text'
 import LottieSticker from '../LottieSticker'
@@ -12,6 +11,7 @@ import classNames from '../../shared/lib/classNames'
 import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import { isWebAuthnSupported, createPasskey } from '../../core/webauthnBrowser'
+import { usePopupTransition } from './kit'
 import s from './PasskeyIntroPopup.module.scss'
 
 // Ряды 1:1 из tweb popups/passkey.tsx (Passkey.Row1..Row3).
@@ -32,6 +32,7 @@ export default function PasskeyIntroPopup({
 }) {
   const t = useT()
   const managers = useManagers()
+  const { mounted, cls } = usePopupTransition(open)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -51,77 +52,61 @@ export default function PasskeyIntroPopup({
     }
   }
 
+  if (!mounted) return null
+
   return createPortal(
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          className={s.overlay}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
-          onClick={onClose}
-        >
-          <motion.div
-            className={s.dialog}
-            initial={{ scale: 0.92, opacity: 0, y: 12 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.95, opacity: 0, y: 8 }}
-            transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-            onClick={(e: React.MouseEvent) => e.stopPropagation()}
-          >
-            <div className={s.close} onClick={onClose}>
-              <TgIcon name="close" size={24} />
-            </div>
+    <div className={classNames('popup', cls, s.overlay)} onClick={onClose}>
+      <div className={classNames('popup-container', s.dialog)} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+        <div className={s.close} onClick={onClose}>
+          <TgIcon name="close" size={24} />
+        </div>
 
-            <div className={s.sticker}>
-              <LottieSticker name="Key" size={120} />
-            </div>
-            <Text size={24} weight={700} color="var(--primary-text-color)" className={s.title}>
-              {t('Protect your account')}
-            </Text>
-            <Text size={16} color="var(--primary-text-color)" className={s.subtitle}>
-              {t('Log in safely and keep your account secure.')}
-            </Text>
+        <div className={s.sticker}>
+          <LottieSticker name="Key" size={120} />
+        </div>
+        <Text size={24} weight={700} color="var(--primary-text-color)" className={s.title}>
+          {t('Protect your account')}
+        </Text>
+        <Text size={16} color="var(--primary-text-color)" className={s.subtitle}>
+          {t('Log in safely and keep your account secure.')}
+        </Text>
 
-            {ROWS.map((r) => (
-              <div key={r.icon} className={s.row}>
-                <TgIcon name={r.icon} size={24} className={s.rowIcon} />
-                <Text size={16} weight={600} color="var(--primary-text-color)">
-                  {t(r.title)}
-                </Text>
-                <Text size={16} color="var(--secondary-text-color)" style={{ marginTop: 1, lineHeight: 1.3125 }}>
-                  {t(r.subtitle)}
-                </Text>
+        {ROWS.map((r) => (
+          <div key={r.icon} className={s.row}>
+            <TgIcon name={r.icon} size={24} className={s.rowIcon} />
+            <Text size={16} weight={600} color="var(--primary-text-color)">
+              {t(r.title)}
+            </Text>
+            <Text size={16} color="var(--secondary-text-color)" style={{ marginTop: 1, lineHeight: 1.3125 }}>
+              {t(r.subtitle)}
+            </Text>
+          </div>
+        ))}
+
+        {error && (
+          <Text size={14} color="#ff595a" className={s.error}>
+            {error}
+          </Text>
+        )}
+
+        <div className={s.footer}>
+          {isWebAuthnSupported() ? (
+            <>
+              <div className={classNames(s.button, busy ? s.disabled : '')} onClick={() => void create()}>
+                {t('Create Passkey')}
               </div>
-            ))}
-
-            {error && (
-              <Text size={14} color="#ff595a" className={s.error}>
-                {error}
-              </Text>
-            )}
-
-            <div className={s.footer}>
-              {isWebAuthnSupported() ? (
-                <>
-                  <div className={classNames(s.button, busy ? s.disabled : '')} onClick={() => void create()}>
-                    {t('Create Passkey')}
-                  </div>
-                  <div className={classNames(s.button, s.secondary)} onClick={onClose}>
-                    {t('Skip')}
-                  </div>
-                </>
-              ) : (
-                <div className={classNames(s.button, s.secondary)} onClick={onClose}>
-                  {t('Unsupported')}
-                </div>
-              )}
+              <div className={classNames(s.button, s.secondary)} onClick={onClose}>
+                {t('Skip')}
+              </div>
+            </>
+          ) : (
+            <div className={classNames(s.button, s.secondary)} onClick={onClose}>
+              {t('Unsupported')}
             </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>,
+          )}
+        </div>
+      </div>
+    </div>,
     document.body,
   )
 }

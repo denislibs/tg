@@ -6,9 +6,7 @@
 // Контракты закрытия (см. popupStore.PopupApi):
 //   • self-animating (HeaderMenu/AttachMenu/пикеры): onClose={p.destroy}
 //   • open-controlled (MutePopup/ChatThemesPicker/LocationPicker): open/requestClose/onExitComplete
-//   • presence (слайд-ины AddContact/EditContact): <AnimatePresence onExitComplete=…>
-//   • instant (ConfirmDialog и пр.): onClose={p.destroy}
-import { AnimatePresence } from 'framer-motion'
+//   • instant (ConfirmDialog, слайд-ины AddContact/EditContact и пр.): onClose={p.destroy}
 import { openPopup } from '../../stores/popupStore'
 import { useT } from '../../i18n'
 import { useManagers } from './useManagers'
@@ -134,16 +132,16 @@ export function useChatPopups(d: ChatPopupDeps) {
     />
   ))
 
+  // Слайд-ины карточек контакта — вкладки слайдера правой колонки (tweb
+  // `SidebarSlider.createTab`/`closeTab`, `components/slider.ts:41-46`): узел
+  // создаётся на открытии и снимается самим экраном по концу перехода, поэтому
+  // попапу достаточно instant-контракта (`onClose={p.destroy}`).
   const openAddContact = () => openPopup((p) => (
-    <AnimatePresence onExitComplete={p.onExitComplete}>
-      {p.open && <AddContactView chat={chat} onClose={p.requestClose} />}
-    </AnimatePresence>
+    <AddContactView chat={chat} onClose={p.destroy} />
   ))
 
   const openEditContact = () => openPopup((p) => (
-    <AnimatePresence onExitComplete={p.onExitComplete}>
-      {p.open && <EditContactView chat={chat} onClose={p.requestClose} />}
-    </AnimatePresence>
+    <EditContactView chat={chat} onClose={p.destroy} />
   ))
 
   const openPinned = () => {

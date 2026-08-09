@@ -1,0 +1,36 @@
+@use '../styles/foundation' as *;
+
+// Приходящая иконка растёт — `grow-icon .4s forwards ease-in-out`
+// (tweb `_animatedIcon.scss:159-170`; кейфрейм — `_bridge.scss:96`).
+// Гейт по уровню анимаций — как у tweb в том же партиале (`animation-level(0)`
+// там глушит анимацию иконки); в модуле нужен `-global`-вариант миксина, иначе
+// селектор `body.animation-level-*` тоже хешируется и правило мертво.
+.glyph {
+  display: inline-flex;
+
+  @include animation-level-global(2) {
+    animation: grow-icon .4s forwards ease-in-out;
+  }
+}
+
+// CSS-модули хешируют ЛЮБОЕ имя в `animation`, поэтому сослаться на глобальный
+// кейфрейм из партиала отсюда нельзя — ссылка переименовывается и анимация молча
+// не играет. Кейфреймы ниже — дословные копии глобальных
+// (styles/tweb/_bridge.scss / styles/tweb/_transition.scss, оригиналы
+// `tweb src/scss/base.scss:675-738,1082-1108` и `_transition.scss`, `_selector.scss:4-14`).
+
+@keyframes grow-icon {
+  0% {
+    transform: scale(.5);
+    opacity: .8;
+  }
+
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}

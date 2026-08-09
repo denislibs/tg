@@ -169,7 +169,7 @@ export default function Time({
       {effect && (
         <button
           type="button"
-          className={s.effectButton}
+          className={classNames('time-effect', s.effect)}
           tabIndex={interactive ? undefined : -1}
           onClick={interactive ? (e) => {
             e.stopPropagation()

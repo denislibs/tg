@@ -5,7 +5,7 @@ import type { ConvMsg } from '../../data'
 const msg = (over: Partial<ConvMsg> = {}): ConvMsg => ({ id: 1, type: 'text', text: 'hi', time: '12:00', ...over } as ConvMsg)
 const ctx = (over: Partial<BubbleCtx> = {}): BubbleCtx => ({
   out: false, firstInGroup: true, lastInGroup: true, showName: false, isChannel: false,
-  isSelected: false, isHighlighted: false, isFirstUnread: false, bigEmojiCount: 0, animatedSticker: false,
+  isHighlighted: false, isFirstUnread: false, bigEmojiCount: 0, animatedSticker: false,
   ...over,
 })
 
@@ -76,12 +76,16 @@ describe('bubbleClasses', () => {
     expect(cls).not.toContain('hide-name')
   })
 
-  it('ответ, клавиатура, выделение, подсветка, граница непрочитанных', () => {
+  // `is-selected` здесь не проверяется: он больше не из bubbleClasses, а из
+  // SetTransition в MessageRow (tweb selection.ts:497-502) — иначе не было бы
+  // фазы `backwards` на снятии выделения.
+  it('ответ, клавиатура, подсветка, граница непрочитанных', () => {
     const cls = bubbleClasses(
       msg({ reply: { name: 'Алиса', text: 'что' } as ConvMsg['reply'], replyMarkup: { inline: [[{ text: 'ok' }]] } as ConvMsg['replyMarkup'] }),
-      ctx({ isSelected: true, isHighlighted: true, isFirstUnread: true }),
+      ctx({ isHighlighted: true, isFirstUnread: true }),
     )
-    expect(cls).toEqual(expect.arrayContaining(['is-reply', 'with-reply-markup', 'is-selected', 'is-highlighted', 'is-first-unread']))
+    expect(cls).toEqual(expect.arrayContaining(['is-reply', 'with-reply-markup', 'is-highlighted', 'is-first-unread']))
+    expect(cls).not.toContain('is-selected')
   })
 
   it('опрос и чеклист — poll-message', () => {

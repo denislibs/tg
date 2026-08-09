@@ -1,5 +1,29 @@
 // NewChannelFlow — экран создания канала (порт tweb newChannel).
 // Карточка с полями + FAB «дальше». Цвета — через CSS-переменные темы.
+@use '../styles/foundation' as *;
+
+// Въезд экрана справа — см. развёрнутый разбор механики в
+// ContactsView.module.scss (`tweb src/components/transition.ts:23-42` +
+// `tweb src/scss/partials/_slider.scss:226-241`).
+.screen {
+  position: absolute;
+  inset: 0;
+  z-index: 41;
+  background: var(--surface-color);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  @include animation-level-global(2) {
+    animation: slide-in-from-right var(--transition-standard-in-time) var(--transition-standard-easing);
+  }
+}
+
+@keyframes slide-in-from-right {
+  from {
+    transform: translate3d(100%, 0, 0);
+  }
+}
 
 // шапка: назад + заголовок
 .header {

@@ -65,7 +65,7 @@ export type SignInOutcome =
   | { signUpRequired: true; signUpToken: string; user?: undefined; passwordNeeded?: undefined }
 
 // Регистрация: сессия либо код ошибки сервера. Дискриминированный результат, а не
-// исключение, — HttpError не переживает границу worker-RPC (как ChangePhoneResult).
+// исключение, — HttpError не переживает границу worker-RPC (как SetUsernameResult).
 export type SignUpResult =
   | { user: User }
   | { error: 'first_name_required' | 'name_too_long' | 'signup_token_expired' | 'phone_number_occupied' | 'too_many_requests' | 'failed' }
@@ -142,19 +142,6 @@ interface SignInWire {
   signup_required?: boolean
   signup_token?: string
 }
-
-// Discriminated outcomes so the 400/409 cases survive the SharedWorker RPC
-// boundary (where HttpError identity would be lost), mirroring SetUsernameResult.
-export type ChangePhoneResult =
-  | { ok: true }
-  | { taken: true }
-  | { invalid: true }
-
-export type ConfirmChangePhoneResult =
-  | { user: User }
-  | { invalidCode: true }
-  | { taken: true }
-  | { invalid: true }
 
 export function newAuthManager({ rest, store }: AuthDeps) {
   // Активный вход завершён: сохранить токен + занести аккаунт в реестр (мультиаккаунт).
@@ -386,43 +373,6 @@ export function newAuthManager({ rest, store }: AuthDeps) {
           const cached = await loadMe()
           if (cached) return cached
         }
-        throw e
-      }
-    },
-
-    // Смена номера, шаг 1: отправить код на новый номер (после проверки, что он
-    // не занят). Ошибки маппятся в дискриминированный результат (RPC-граница).
-    async changePhone(newPhone: string): Promise<ChangePhoneResult> {
-      try {
-        await rest.post('/me/change-phone', { new_phone: newPhone })
-        return { ok: true }
-      } catch (e) {
-        if (e instanceof HttpError && e.status === 409) return { taken: true }
-        if (e instanceof HttpError && e.status === 400) return { invalid: true }
-        throw e
-      }
-    },
-
-    // Смена номера, шаг 2: подтвердить кодом. При успехе номер обновлён — обновляем
-    // и активный аккаунт в реестре (телефон показывается в меню мультиаккаунта).
-    async confirmChangePhone(newPhone: string, code: string): Promise<ConfirmChangePhoneResult> {
-      try {
-        const u = mapUser(await rest.post<RawUser>('/me/change-phone/confirm', { new_phone: newPhone, code }))
-        const token = store.get()
-        if (token) {
-          await upsertAccount({
-            token,
-            id: u.id,
-            name: u.displayName || [u.firstName, u.lastName].filter(Boolean).join(' ') || u.username || u.phone,
-            avatarUrl: u.avatarUrl,
-            phone: u.phone,
-          })
-        }
-        return { user: u }
-      } catch (e) {
-        if (e instanceof HttpError && e.status === 401) return { invalidCode: true }
-        if (e instanceof HttpError && e.status === 409) return { taken: true }
-        if (e instanceof HttpError && e.status === 400) return { invalid: true }
         throw e
       }
     },

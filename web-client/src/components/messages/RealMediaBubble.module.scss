@@ -57,6 +57,15 @@
   color: inherit;
   cursor: pointer;
 }
+// Стрелка «скачать» поверх иконки документа. У tweb на этом месте
+// `.preloader-container`, и переключается он ЖЁСТКО, без своего перехода
+// (_document.scss:70-92: `:not(.downloading) .preloader-container {opacity: 0
+// !important}` + `:not(.downloaded):hover .preloader-container {opacity: 1
+// !important}`). Свой `transition: opacity .2s ease-in-out` тут был отсебятиной;
+// плавность даёт партиал — уголок листа разворачивается (`border-width .2s
+// ease-in-out`, _document.scss:64-66), а расширение под стрелкой гаснет.
+// Класс `preloader-container` навесить нельзя: партиал задаёт ему жёсткие
+// 2.5rem (_document.scss:172-175), а нам нужен слой во всю иконку.
 .docDl {
   position: absolute;
   inset: 0;
@@ -64,7 +73,6 @@
   align-items: center;
   justify-content: center;
   opacity: 0;
-  transition: opacity 0.2s ease-in-out;
 }
 // кольцо прогресса аплоада поверх иконки документа
 .docProgress {

@@ -46,6 +46,14 @@ export default function Menu({ open, onClose, onExitComplete, style, className, 
     return () => cancelAnimationFrame(id)
   }, [open])
 
+  // tweb вешает `active` и `was-open` ВМЕСТЕ (contextMenuController.ts:140,171)
+  // и `was-open` больше никогда не снимает. На мобиле (_button.scss:215) он
+  // оставляет панель в scale3d(1,1,1) при закрытии — уходят только opacity и
+  // visibility, зума наружу нет. До первого открытия класса нет, поэтому вход
+  // по-прежнему играет от scale(.8).
+  const everActive = useRef(false)
+  if (active) everActive.current = true
+
   // Конец закрытия ловим по transitionend самой панели (как tweb ловит конец
   // своего перехода); фолбэк по таймеру — на случай animation-level-0, где
   // перехода нет вовсе и события не будет.
@@ -86,7 +94,7 @@ export default function Menu({ open, onClose, onExitComplete, style, className, 
       )}
       <div
         ref={panelRef}
-        className={classNames('btn-menu', active ? 'active' : '', s.panel, className ?? '')}
+        className={classNames('btn-menu', active ? 'active' : '', everActive.current ? 'was-open' : '', s.panel, className ?? '')}
         style={zIndex != null ? { ...style, zIndex: zIndex + 1 } : style}
       >
         {children}

@@ -1,15 +1,17 @@
-import { useEffect, useLayoutEffect } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import { useManagers } from './core/hooks/useManagers'
 import { useConnectionStore, pingBackend } from './stores/connectionStore'
-import { MotionConfig } from 'framer-motion'
 import { useSettingsStore } from './settings'
+import animationIntersector from './components/animationIntersector'
+import liteMode, { type LiteModeKey } from './helpers/liteMode'
+import { dispatchHeavyAnimationEvent } from './core/dom/heavyAnimation'
+import pause from './helpers/schedulers/pause'
 import Sidebar from './components/Sidebar'
 import Chat from './components/Chat'
 import PopupHost from './components/PopupHost'
 import ChatBackground from './components/ChatBackground'
 import SvgDefs from './components/SvgDefs'
 import GlobalOverlays from './components/shell/GlobalOverlays'
-import ShellLayout from './components/shell/ShellLayout'
 import AuthFlow from './components/auth/AuthFlow'
 import classNames from './shared/lib/classNames'
 import { installColumnWidthsUpdater } from './core/dom/updateColumnWidths'
@@ -72,6 +74,39 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   const pipActive = usePipStore((st) => st.active)
   const narrow = useMediaQuery('(max-width:900px)') || pipActive
   const backToList = narrow ? () => nav.setSelectedId(null) : undefined
+
+  // Переключение список ↔ чат на узком экране — 1:1 tweb `appImManager.selectTab`
+  // (appImManager.ts:2588-2645). Само движение колонок там делает ОДИН класс на
+  // body — `is-left-column-shown` (appImManager.ts:2593; у нас его ставит
+  // useLeftColumnShown), под который уже написан портированный CSS: #column-center
+  // уезжает на `translate3d(100vw, 0, 0) opacity:0` (styles/tweb/_chat.scss:452-456,
+  // tweb _chat.scss:452-462), #column-left — на `translate3d(-25vw, 0, 0) opacity:0`
+  // (styles/tweb/_leftSidebar.scss:245-248), а сам переход задан на `.main-column`
+  // (`transform/opacity var(--tabs-transition)`, tweb pages/_chats.scss:52-54).
+  //
+  // JS-параллакса (`slideNavigation`) здесь НЕТ и в оригинале: `#main-columns`
+  // хоть и размечен `tabs-container[data-animation="navigation"]`
+  // (tweb index.html:88), TransitionSlider к нему не подключается — единственные
+  // 'navigation'-слайдеры это сайдбарный slider.ts:43, horizontalMenu.ts:153,
+  // popups/premium.ts:209 и `.chats-container` (appImManager.ts:308, переход
+  // между чатами внутри колонки).
+  //
+  // От JS остаётся ровно то, что делает selectTab (appImManager.ts:2606-2614):
+  // на время перехода объявить ТЯЖЁЛУЮ анимацию, чтобы animationIntersector
+  // погасил стикеры/видео и слайд не дёргался.
+  const chatOpen = selectedId !== null
+  const prevChatOpenRef = useRef<boolean | null>(null)
+  useLayoutEffect(() => {
+    const prev = prevChatOpenRef.current
+    prevChatOpenRef.current = chatOpen
+    // первый рендер переходом не считается (tweb: prevTabId === undefined)
+    if (prev === null || prev === chatOpen || !narrow) return
+    if (!liteMode.isAvailable('animations')) return
+    // tweb: `(mediaSizes.isMobile ? 250 : 200) + 100` — «cause transition time
+    // could be > 250ms» (appImManager.ts:2606)
+    const transitionTime = 250 + 100
+    void dispatchHeavyAnimationEvent(pause(transitionTime), transitionTime)
+  }, [chatOpen, narrow])
 
   // Черновик-чат (id "draft:<peerId>"), когда реального диалога ещё нет.
   const draftChat: ChatEntity | null =
@@ -152,12 +187,19 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   //     div#main-columns.tabs-container[data-animation="navigation"]
   //       #folders-sidebar (портал из Sidebar) + #column-left + #column-center
   //       + #column-right (портал из UserInfoPanel)
+  //
+  // Обе колонки всегда в DOM и всегда `display: flex` — на узком экране это
+  // делает `@include respond-to(handhelds) { .main-column { display: flex
+  // !important } }` (tweb pages/_chats.scss:20-24), и именно поэтому они могут
+  // разъезжаться переходом, а не появляться/исчезать. Кто из них видим, решает
+  // body.is-left-column-shown (см. эффект выше) — своего JS-слайда тут нет.
   return (
     <>
       <div className="sidebar-left-overlay" />
       <div id="page-chats" className="whole page-chats">
         <div id="main-columns" className="tabs-container" data-animation="navigation">
-          <ShellLayout narrow={narrow} selectedId={selectedId} renderSidebar={renderSidebar} chatArea={chatArea} />
+          {renderSidebar(narrow)}
+          {chatArea}
         </div>
       </div>
 
@@ -208,8 +250,10 @@ function ThemedApp() {
 export default function App() {
   const managers = useManagers()
   const backendOk = useConnectionStore((s) => s.backendOk)
-  // «Без анимаций» (меню «Ещё»): framer-анимации выключаются глобально.
+  // «Без анимаций» (меню «Ещё») — ниже раздаётся классами на body, как в tweb.
   const reduceMotion = useSettingsStore((st) => st.reduceMotion)
+  // Зацикливать анимированные стикеры (tweb appSettings.stickers.loop)
+  const loopStickers = useSettingsStore((st) => st.loopStickers)
   // Доступно ли обновление приложения (новая сборка задеплоена — см. versionCheck).
   const updateAvailable = useUpdateStore((st) => st.available)
   useEffect(() => {
@@ -220,12 +264,33 @@ export default function App() {
   useEffect(() => {
     startVersionCheck()
   }, [])
+  // Гейт CSS-анимаций. 1:1 tweb appImManager.ts:2209-2211: классы на body, под
+  // которые уже написаны 233 портированных правила `@include animation-level(2)`.
+  // animation-level-2 стоит статикой в index.html:28 (чтобы не мигало до гидрации),
+  // здесь он снимается/возвращается по настройке «Без анимаций».
   useLayoutEffect(() => {
-    document.documentElement.toggleAttribute('data-reduce-motion', reduceMotion)
+    document.body.classList.toggle('animation-level-0', reduceMotion)
+    document.body.classList.toggle('animation-level-1', false)
+    document.body.classList.toggle('animation-level-2', !reduceMotion)
   }, [reduceMotion])
 
+  // Настройки → уже живущие анимации (tweb appImManager.setSettings:2223-2228):
+  // смена «зацикливать стикеры»/«без анимаций» переписывает loop/autoplay у
+  // зарегистрированных плееров и перепроверяет, кому играть.
+  useEffect(() => {
+    const changedLoop = animationIntersector.setLoop(loopStickers)
+    const keys: LiteModeKey[] = ['stickers_chat', 'stickers_panel']
+    const changedAutoplay = keys.filter((key) => animationIntersector.setAutoplay(liteMode.isAvailable(key), key)).length > 0
+    if (changedLoop || changedAutoplay) {
+      animationIntersector.checkAnimations2(false)
+    }
+  }, [loopStickers, reduceMotion])
+
+  // Гасить анимации по настройке отдельным движком не нужно: это делает
+  // body.animation-level-0 из эффекта выше (tweb appImManager.ts:2209-2211) —
+  // под ним у портированных партиалов стоит `transition: none`.
   return (
-    <MotionConfig reducedMotion={reduceMotion ? 'always' : 'never'}>
+    <>
       <ThemedApp />
       {/* Стек попапов (popupStore) — единая точка рендера всех императивно
           открываемых попапов чата (порт tweb PopupManager). */}
@@ -261,6 +326,6 @@ export default function App() {
       >
         api: {backendOk == null ? '…' : backendOk ? 'ok' : 'down'}
       </div>
-    </MotionConfig>
+    </>
   )
 }

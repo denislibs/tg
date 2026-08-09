@@ -1,5 +1,4 @@
 import { useState, type CSSProperties } from 'react'
-import { AnimatePresence } from 'framer-motion'
 import Text from '../../shared/ui/Text'
 import Slider from '../../shared/ui/Slider'
 import TgIcon from '../TgIcon'
@@ -60,7 +59,15 @@ export default function GeneralSettings({ onBack }: { onBack: () => void }) {
   const [dedicated, setDedicated] = useState<'wallpaper' | 'power' | null>(null)
 
   return (
-    <SettingsScreen title="General Settings" onBack={onBack}>
+    <SettingsScreen
+      title="General Settings"
+      onBack={onBack}
+      sub={
+        dedicated === 'wallpaper' ? <ChatWallpaper onBack={() => setDedicated(null)} /> :
+        dedicated === 'power' ? <PowerSaving onBack={() => setDedicated(null)} /> :
+        null
+      }
+    >
       {/* Settings: text size + wallpaper + power saving */}
       <Section caption="Settings">
         <div className={s.textSize}>
@@ -139,10 +146,6 @@ export default function GeneralSettings({ onBack }: { onBack: () => void }) {
         />
       </Section>
 
-      <AnimatePresence>
-        {dedicated === 'wallpaper' && <ChatWallpaper onBack={() => setDedicated(null)} />}
-        {dedicated === 'power' && <PowerSaving onBack={() => setDedicated(null)} />}
-      </AnimatePresence>
     </SettingsScreen>
   )
 }

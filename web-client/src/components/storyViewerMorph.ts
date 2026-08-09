@@ -42,12 +42,11 @@ export interface StoryMorphElements {
   target: Element | null
 }
 
-// tweb `liteMode.isAvailable('animations')` (viewer.tsx:3152). У нас гейт
-// CSS-анимаций — класс `body.animation-level-2` (index.html), а настройка
-// reduceMotion ставит `data-reduce-motion` на <html> (App.tsx:217).
+// tweb `liteMode.isAvailable('animations')` (viewer.tsx:3152). У нас тот же гейт
+// выражен классом `body.animation-level-2`, который App.tsx переключает по
+// настройке reduceMotion (1:1 tweb appImManager.ts:2209-2211).
 function animationsAvailable(): boolean {
   return document.body.classList.contains('animation-level-2') &&
-    !document.documentElement.hasAttribute('data-reduce-motion') &&
     // отступление от tweb: страхуемся от среды без WAAPI (jsdom в тестах) —
     // иначе морф падает и вьюер остаётся заблокированным флагом animating.
     typeof Element.prototype.animate === 'function'

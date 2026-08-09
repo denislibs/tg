@@ -38,7 +38,6 @@ export interface ChatFeedProps {
   unreadDividerSeq: number | null
   selecting: boolean
   selected: Set<number>
-  ladderActive: boolean
   /** ключ дня прилипшей даты (tweb is-sticky) — считает Chat по скроллу */
   stickyDateKey: string | null
   feedFns: FeedFns
@@ -49,7 +48,7 @@ export interface ChatFeedProps {
 
 function ChatFeed({
   msgs, winMsgs, isRealChat, isGroup, discussionsEnabled, commentCounts, commentRepliers,
-  highlightSeq, unreadDividerSeq, selecting, selected, ladderActive, stickyDateKey,
+  highlightSeq, unreadDividerSeq, selecting, selected, stickyDateKey,
   feedFns, autoDownload, onOpenDiscussion,
 }: ChatFeedProps) {
   const [lang] = useLang()
@@ -262,9 +261,6 @@ function ChatFeed({
     const endIdx = albumRun ? albumRun[albumRun.length - 1] : i
     const firstInGroup = groupBreak(i - 1, i)
     const lastInGroup = groupBreak(endIdx, endIdx + 1)
-    // Open-chat ladder: only the first loaded batch animates (cascade from the
-    // bottom up, capped). Live appends mount with ladderActive=false → plain insert.
-    const ladderDelay = ladderActive ? Math.min(msgs.length - 1 - i, 12) * 0.03 : 0
 
     // Channel post with discussions on: the "N комментариев" replies-footer is
     // attached to the bottom of the post bubble (tweb .replies-footer), not a
@@ -296,8 +292,6 @@ function ChatFeed({
         showName={isGroup && !out && !!m.sender && firstInGroup}
         isChannel={discussionsEnabled}
         isFirstUnread={isFirstUnread}
-        ladderActive={ladderActive}
-        ladderDelay={ladderDelay}
         feedFns={feedFns}
         autoDownload={autoDownload}
         albumSelectedKey={

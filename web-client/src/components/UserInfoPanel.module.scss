@@ -1,5 +1,6 @@
 // UserInfoPanel — панель профиля (пользователь/группа/канал). Порт разметки из
 // MUI sx. Цвета — CSS-переменные темы. Фон карточек (cardBg) зависит от темы.
+@use '../styles/foundation' as *;
 
 // карточка-панель (общая база) — фон как у экрана настроек (sectionBackdrop),
 // чтобы белые карточки-секции читались на нём.
@@ -730,6 +731,25 @@
   justify-content: center;
   color: #fff;
   cursor: pointer;
+}
+
+// Въезд подэкрана справа: механика tweb — навигационный переход слайдера
+// (`tweb src/components/transition.ts:23-42` slideNavigation: приходящая вкладка
+// стартует с translate3d(width, 0, 0) и едет в 0 за --transition-standard-in,
+// `tweb src/scss/partials/_slider.scss:226-241`). Кейфрейм, а не transition:
+// узел появляется в DOM сразу на месте, переходу не от чего стартовать.
+// Отдельным классом, а не прямо в `.rights`: тот же `.rights` использует
+// userInfo/RightsEditor, который переводят в другой волне.
+.slideIn {
+  @include animation-level-global(2) {
+    animation: slide-in-from-right var(--transition-standard-in-time) var(--transition-standard-easing);
+  }
+}
+
+@keyframes slide-in-from-right {
+  from {
+    transform: translate3d(100%, 0, 0);
+  }
 }
 
 // --- RightsEditor (подвью прав администратора) ---

@@ -1,6 +1,11 @@
 @use '../styles/foundation' as *;
 
 // Полноэкранный экран звонка (портал в body).
+//
+// Появление — как у попапа tweb (экран звонка там и есть `.popup`, PopupCall):
+// слой набирает opacity за --popup-transition-time/--popup-transition-function
+// (`tweb src/scss/partials/popups/_popup.scss:33-40`). Кейфрейм, а не transition:
+// узел рождается уже видимым, переходу не от чего стартовать.
 .root {
   position: fixed;
   inset: 0;
@@ -10,14 +15,39 @@
   flex-direction: column;
   align-items: center;
   color: #fff;
+
+  @include animation-level-global(2) {
+    animation: fade-in-opacity var(--popup-transition-time) var(--popup-transition-function);
+  }
 }
 
-// Анимированный градиентный фон (сам градиент — инлайн, зависит от состояния)
+// Анимированный градиентный фон (сам градиент — инлайн, зависит от состояния).
+// Медленный дрейф позиции — наш собственный эффект (в tweb фон звонка рисует
+// canvas-градиент, отдельная подсистема); держим его чистым CSS-кейфреймом,
+// без движка анимаций.
 .bg {
   position: absolute;
   inset: 0;
   background-size: 300% 300%;
   transition: background 0.6s ease;
+
+  @include animation-level-global(2) {
+    animation: call-bg-drift 16s linear infinite;
+  }
+}
+
+@keyframes call-bg-drift {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
 }
 // Затемняющий слой
 .scrim {
@@ -79,4 +109,20 @@
   background: rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(8px);
   z-index: 2;
+}
+
+// CSS-модули хешируют ЛЮБОЕ имя в `animation`, поэтому сослаться на глобальный
+// кейфрейм из партиала отсюда нельзя — ссылка переименовывается и анимация молча
+// не играет. Кейфреймы ниже — дословные копии глобальных
+// (styles/tweb/_bridge.scss / styles/tweb/_transition.scss, оригиналы
+// `tweb src/scss/base.scss:675-738,1082-1108` и `_transition.scss`, `_selector.scss:4-14`).
+
+@keyframes fade-in-opacity {
+  0% {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }

@@ -1,5 +1,4 @@
 import { useState, type ReactNode } from 'react'
-import { AnimatePresence } from 'framer-motion'
 import { useT, useLang, LANGS } from '../i18n'
 import { SettingsScreen, Section, Row } from './settings/kit'
 import ActiveSessions from './settings/ActiveSessions'
@@ -153,7 +152,17 @@ export default function SettingsSubScreen({ title, onBack, chats }: { title: str
   if (title === 'Keyboard Shortcuts') return <HotkeysSettings onBack={onBack} />
 
   return (
-    <SettingsScreen title={title} onBack={onBack} zIndex={50}>
+    // Саб-саб-экран уходит ПРОПОМ `sub`, а не детьми: у SettingsScreen он
+    // должен стать вкладкой-соседом в `.tabs-container[data-animation="navigation"]`,
+    // иначе уходящему экрану некуда сдвигаться и узел не доживает до конца
+    // обратного слайда (kit.tsx:56-64,112-117; эталон — `SidebarSlider.closeTab`,
+    // tweb components/slider.ts:71-84).
+    <SettingsScreen
+      title={title}
+      onBack={onBack}
+      zIndex={50}
+      sub={dedicated ? renderDedicated(dedicated, () => setDedicated(null)) : null}
+    >
       {sections.map((section, si) => (
         <Section key={si} caption={section.caption} footer={section.footer}>
           {section.rows.map((r) => {
@@ -192,11 +201,6 @@ export default function SettingsSubScreen({ title, onBack, chats }: { title: str
           })}
         </Section>
       ))}
-
-      {/* dedicated sub-sub-screen overlay */}
-      <AnimatePresence>
-        {dedicated && renderDedicated(dedicated, () => setDedicated(null))}
-      </AnimatePresence>
     </SettingsScreen>
   )
 }

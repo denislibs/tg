@@ -97,8 +97,6 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Post("/me/photos", ph.AddPhoto)
 		pr.Delete("/me/photos/{photoID}", ph.DeletePhoto)
 		pr.Get("/users/{userID}/photos", ph.ListPhotos)
-		pr.Post("/me/change-phone", ph.ChangePhone)
-		pr.Post("/me/change-phone/confirm", ph.ConfirmChangePhone)
 		pr.Delete("/me", ph.DeleteAccount)
 
 		nh := NewNotifyHandler(notifyUC)

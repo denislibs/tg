@@ -4,7 +4,6 @@
 // одобрено / отклонено). Список живёт в suggestedPostsStore, live — realtimeBridge.
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { motion } from 'framer-motion'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import IconButton from '../shared/ui/IconButton'
@@ -13,7 +12,6 @@ import SchedulePopup from './SchedulePopup'
 import { useSuggestedPosts } from '../core/hooks/useSuggestedPosts'
 import type { SuggestedPost, SuggestedPostStatus } from '../core/models'
 import { useLang, useT } from '../i18n'
-import { EASE } from '../motion'
 import s from './SuggestedPostsView.module.scss'
 
 const statusKey: Record<SuggestedPostStatus, string> = {
@@ -43,13 +41,7 @@ export default function SuggestedPostsView({ chatId, mode, onClose }: {
 
   return createPortal(
     <div className={s.overlay} onClick={onClose}>
-      <motion.div
-        className={s.card}
-        onClick={(e: React.MouseEvent) => e.stopPropagation()}
-        initial={{ opacity: 0, y: 14 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.2, ease: EASE }}
-      >
+      <div className={s.card} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
         <div className={s.header}>
           <Text size={17} weight={600} color="var(--primary-text-color)" style={{ flex: 1 }}>
             {t('Suggested Posts')}
@@ -102,7 +94,7 @@ export default function SuggestedPostsView({ chatId, mode, onClose }: {
             </div>
           ))}
         </div>
-      </motion.div>
+      </div>
 
       {scheduleFor != null && (
         <SchedulePopup

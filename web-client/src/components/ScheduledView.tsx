@@ -2,7 +2,6 @@
 // своих запланированных в чате; сервисная подпись «Отправится …», действия
 // «Отправить сейчас» / «Удалить» (tweb MessageScheduleSend / delete).
 import { createPortal } from 'react-dom'
-import { motion } from 'framer-motion'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import IconButton from '../shared/ui/IconButton'
@@ -11,7 +10,6 @@ import SchedulePopup from './SchedulePopup'
 import { useScheduledMessages } from '../core/hooks/useScheduledMessages'
 import type { Scheduled } from '../core/models'
 import { useLang, useT } from '../i18n'
-import { EASE } from '../motion'
 import s from './ScheduledView.module.scss'
 
 export default function ScheduledView({ chatId, onClose, onChanged }: {
@@ -44,13 +42,7 @@ export default function ScheduledView({ chatId, onClose, onChanged }: {
     )}
     {createPortal(
     <div className={s.overlay} onClick={onClose}>
-      <motion.div
-        className={s.card}
-        onClick={(e: React.MouseEvent) => e.stopPropagation()}
-        initial={{ opacity: 0, y: 14 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.2, ease: EASE }}
-      >
+      <div className={s.card} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
         <div className={s.header}>
           <Text size={17} weight={600} color="var(--primary-text-color)" style={{ flex: 1 }}>
             {t('Scheduled Messages')}
@@ -89,7 +81,7 @@ export default function ScheduledView({ chatId, onClose, onChanged }: {
             </div>
           ))}
         </div>
-      </motion.div>
+      </div>
     </div>,
     document.body,
     )}

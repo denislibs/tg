@@ -90,6 +90,11 @@
 
 // tweb .sidebar-search — оверлей поиска поверх списка
 // Оверлей списка архива (tweb AppArchivedTab — слайд-таб над списком чатов)
+// Архив — отдельная вкладка слайдера в tweb (AppArchivedTab), поэтому въезд
+// такой же, как у прочих вкладок: с translate3d(width, 0, 0) в 0 за
+// --transition-standard-in (`tweb src/components/transition.ts:23-42`,
+// `tweb src/scss/partials/_slider.scss:226-241`). Кейфрейм, а не transition:
+// узел появляется в DOM уже на месте, переходу не от чего стартовать.
 .archiveOverlay {
   position: absolute;
   inset: 0;
@@ -98,6 +103,16 @@
   z-index: 9;
   display: flex;
   flex-direction: column;
+
+  @include animation-level-global(2) {
+    animation: slide-in-from-right var(--transition-standard-in-time) var(--transition-standard-easing);
+  }
+}
+
+@keyframes slide-in-from-right {
+  from {
+    transform: translate3d(100%, 0, 0);
+  }
 }
 
 .archiveHeader {
@@ -133,9 +148,14 @@
   z-index: 10;
 }
 
-// Панель форум-тем (tweb .topics-container.is-floating): выезжает справа на всю
-// высоту сайдбара, ширина = вся колонка минус 80px-полоса аватаров слева.
-// --sidebar-collapsed-width 80px из tweb _leftSidebar.scss.
+// Панель форум-тем (tweb .topics-container.is-floating, _topics.scss:19-45):
+// выезжает справа на всю высоту сайдбара, ширина = вся колонка минус 80px-полоса
+// аватаров слева. --sidebar-collapsed-width 80px из tweb _leftSidebar.scss.
+//
+// Классы состояния (`is-visible` / `forwards` / `animating` / `backwards`) вешает
+// SetTransition — у нас useSetTransition из useForumPanel. Они глобальные, поэтому
+// через :global; дублирование `.forumPanel.forumPanel` не нужно — конфликтующего
+// правила в партиалах нет (`.topics-container` не портирован).
 .forumPanel {
   position: absolute;
   top: 0;
@@ -147,6 +167,23 @@
   border-inline-start: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
+  transform: translateX(100%);
+
+  &:global(.is-visible.forwards) {
+    transform: translateX(0);
+  }
+
+  &:global(.is-visible.animating) {
+    transition: transform var(--transition-standard-in);
+  }
+
+  &:global(.is-visible.animating.backwards) {
+    transition: transform var(--transition-standard-out);
+  }
+
+  :global(body.animation-level-0) & {
+    transition: none;
+  }
 }
 
 // Форум открыт: список слева стал колонкой аватаров — прячем поиск в шапке
@@ -156,7 +193,41 @@
   pointer-events: none;
 }
 
+// Выдача поиска — приходящий `.transition-item` в `.sidebar-content.transition
+// .zoom-fade`: `fade-in-opacity .15s ease, zoom-fade-in-move .15s ease`
+// (`tweb src/scss/partials/_transition.scss:25-40`, у нас styles/tweb/_transition.scss).
+// Оба кейфрейма глобальные (_bridge.scss / _transition.scss).
 .searchInner {
   height: 100%;
-  transform-origin: top center;
+  transform-origin: center;
+
+  @include animation-level-global(2) {
+    animation: fade-in-opacity .15s ease, zoom-fade-in-move .15s ease;
+  }
+}
+
+// CSS-модули хешируют ЛЮБОЕ имя в `animation`, поэтому сослаться на глобальный
+// кейфрейм из партиала отсюда нельзя — ссылка переименовывается и анимация молча
+// не играет. Кейфреймы ниже — дословные копии глобальных
+// (styles/tweb/_bridge.scss / styles/tweb/_transition.scss, оригиналы
+// `tweb src/scss/base.scss:675-738,1082-1108` и `_transition.scss`, `_selector.scss:4-14`).
+
+@keyframes fade-in-opacity {
+  0% {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes zoom-fade-in-move {
+  0% {
+    transform: scale(1.1);
+  }
+
+  100% {
+    transform: scale(1);
+  }
 }

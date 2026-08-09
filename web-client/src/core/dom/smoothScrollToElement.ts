@@ -4,6 +4,8 @@
 // farther than `cap` px we jump to within `cap` of it first, then smooth-scroll the
 // last stretch — so a jump across a long list is a short, snappy glide instead of a
 // multi-second native crawl that layout shifts can derail.
+import { dispatchHeavyAnimationEvent } from './heavyAnimation'
+
 export function smoothCenterElement(container: HTMLElement, el: HTMLElement, cap = 1500): void {
   const scRect = container.getBoundingClientRect()
   const elRect = el.getBoundingClientRect()
@@ -12,6 +14,10 @@ export function smoothCenterElement(container: HTMLElement, el: HTMLElement, cap
   const cur = container.scrollTop
   if (Math.abs(target - cur) > cap) container.scrollTop = target > cur ? target - cap : target + cap
   container.scrollTo({ top: target, behavior: 'smooth' })
+  // tweb fastSmoothScroll.ts:87 — вертикальный скролл объявляется тяжёлой
+  // анимацией: пока лента едет, animationIntersector держит стикеры/видео на
+  // паузе, иначе на длинном прыжке кадры проседают.
+  void dispatchHeavyAnimationEvent(new Promise<void>((resolve) => afterScrollSettles(container, resolve)), 2200)
 }
 
 // Invoke `cb` once `container` stops scrolling. A fixed timeout is fragile (a long

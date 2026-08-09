@@ -67,6 +67,11 @@ export interface Settings {
   // Скорость воспроизведения видео в медиа-вьюере (tweb appMediaPlaybackController
   // .playbackRate): восстанавливается при открытии следующего видео. Дефолт 1.
   videoRate: number
+  // Скорость плеера ОТДЕЛЬНО на тип медиа (tweb playbackRates: Record<PlaybackMediaType,
+  // number>, appMediaPlaybackController.ts:152-156), переживает перезагрузку
+  // (tweb appSettings.playbackParams, appDialogsManager.ts:691-698). Голосовое и
+  // кружок — один тип 'voice', музыка — 'audio'; видео вьюера живёт в videoRate.
+  playbackRates: Record<'voice' | 'audio', number>
   // Пользовательская ширина колонок из ручки ресайза. tweb держит их в
   // localStorage-ключах 'sidebar-left-width' / 'sidebar-right-width'
   // (updateColumnWidths.ts:103-104); у нас всё, что переживает перезагрузку,
@@ -127,6 +132,7 @@ const DEFAULTS: Settings = {
   translateTo: '',
   loopStickers: true, // tweb stickers.loop default true
   videoRate: 1,
+  playbackRates: { voice: 1, audio: 1 },
   sidebarLeftWidth: undefined,
   sidebarRightWidth: undefined,
   seenSidebarResizeTip: false,
@@ -207,6 +213,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       translateTo: s.translateTo,
       loopStickers: s.loopStickers,
       videoRate: s.videoRate,
+      playbackRates: s.playbackRates,
       sidebarLeftWidth: s.sidebarLeftWidth,
       sidebarRightWidth: s.sidebarRightWidth,
       seenSidebarResizeTip: s.seenSidebarResizeTip,

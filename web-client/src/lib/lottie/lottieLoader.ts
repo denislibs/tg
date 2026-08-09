@@ -8,6 +8,7 @@ import IS_WEB_ASSEMBLY_SIMD_SUPPORTED from '@environment/webAssemblySimdSupport'
 import makeError from '@helpers/makeError';
 import toArray from '@helpers/array/toArray';
 import lottieMessagePort from '@lib/lottie/lottieMessagePort';
+import animationIntersector from '@components/animationIntersector';
 import tlottieWasmAssetUrl from '@vendor/tlottie/tlottie.wasm?url';
 
 const TLOTTIE_WASM_URL = new URL(tlottieWasmAssetUrl, location.href).href;
@@ -253,9 +254,15 @@ export class LottieLoader {
 
     const player = this.initPlayer(containers, params);
 
-    // Этап 1: без animationIntersector (авто play/pause по вьюпорту) — плеер
-    // с group:'none' самозапускается в onLoad; ручной play/pause делает UI
-    // (StickerMedia). Реальный intersector переносится на этапе 2.
+    animationIntersector.addAnimation({
+      animation: player,
+      group,
+      observeElement: player.el[0],
+      controlled: middleware,
+      liteModeKey: params.liteModeKey,
+      type: 'lottie'
+    });
+
     if(!params.sync) {
       // * have to use onClean here, SuperStickerRenderer relies on it
       middleware?.onClean(() => {

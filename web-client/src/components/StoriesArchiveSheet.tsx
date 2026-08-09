@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
@@ -44,13 +43,7 @@ export default function StoriesArchiveSheet({ onClose }: { onClose: () => void }
   const open = items?.find((i) => i.id === openId) ?? null
 
   return (
-    <motion.div
-      initial={{ x: '100%' }}
-      animate={{ x: 0 }}
-      exit={{ x: '100%' }}
-      transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-      style={{ position: 'absolute', inset: 0, zIndex: 42, background: 'var(--surface-color)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
-    >
+    <div className={s.sheet}>
       <div className={s.header}>
         <IconButton onClick={onClose} aria-label={t('Back')} color="var(--secondary-text-color)">
           <TgIcon name="back" />
@@ -75,9 +68,7 @@ export default function StoriesArchiveSheet({ onClose }: { onClose: () => void }
       </div>
 
       {/* Read-only просмотр архивной истории */}
-      <AnimatePresence>
-        {open && <StoryReadOnlyPreview key={open.id} story={open} onClose={() => setOpenId(null)} />}
-      </AnimatePresence>
-    </motion.div>
+      {open && <StoryReadOnlyPreview key={open.id} story={open} onClose={() => setOpenId(null)} />}
+    </div>
   )
 }

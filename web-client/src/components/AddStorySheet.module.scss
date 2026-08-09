@@ -1,6 +1,43 @@
 // AddStorySheet — панель подписи + приватности после выбора медиа истории.
 @use '../styles/foundation' as *;
 
+// Лист-экран поверх колонки: въезжает справа. Механика tweb — навигационный
+// переход слайдера: приходящая вкладка стартует с translate3d(width, 0, 0) и
+// едет в 0 (`tweb src/components/transition.ts:23-42` slideNavigation), кривая и
+// длительность — --transition-standard-in (`tweb src/scss/partials/_slider.scss:226-241`).
+// Кейфрейм, а не transition: узел появляется в DOM сразу на месте, переходу не
+// от чего стартовать.
+//
+// .sheet — лист внутри колонки (absolute), .sheetFixed — полноэкранный портал.
+.sheet,
+.sheetFixed {
+  inset: 0;
+  background: var(--surface-color);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  @include animation-level-global(2) {
+    animation: slide-in-from-right var(--transition-standard-in-time) var(--transition-standard-easing);
+  }
+}
+
+.sheet {
+  position: absolute;
+  z-index: 42;
+}
+
+.sheetFixed {
+  position: fixed;
+  z-index: 3200;
+}
+
+@keyframes slide-in-from-right {
+  from {
+    transform: translate3d(100%, 0, 0);
+  }
+}
+
 // Шапка панели
 .header {
   display: flex;

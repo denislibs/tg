@@ -4,7 +4,6 @@
 // Mute (зелёный↔синий градиент) / Leave (красный).
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { motion } from 'framer-motion'
 import Text from '../shared/ui/Text'
 import Avatar from '../shared/ui/Avatar'
 import TgIcon from './TgIcon'
@@ -15,7 +14,6 @@ import { usePeers } from '../core/hooks/usePeers'
 import { getLocalStream, getRemoteStream, leaveGroupCall, toggleGroupCam, toggleGroupMic } from '../core/calls/groupCallEngine'
 import { gradientFor } from '../core/dialogToChat'
 import { useT } from '../i18n'
-import { EASE } from '../motion'
 import s from './GroupCallScreen.module.scss'
 
 function RemoteAudio({ userId, version }: { userId: number; version: number }) {
@@ -73,12 +71,7 @@ export default function GroupCallScreen({ chatName }: { chatName: string }) {
   }
 
   return createPortal(
-    <motion.div
-      className={s.window}
-      initial={{ opacity: 0, scale: 0.96 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.2, ease: EASE }}
-    >
+    <div className={s.window}>
       <div className={s.header}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <Text noWrap size={16} weight={600} color="#fff">{chatName}</Text>
@@ -133,7 +126,7 @@ export default function GroupCallScreen({ chatName }: { chatName: string }) {
           <TgIcon name="close" size={24} color="#fff" />
         </button>
       </div>
-    </motion.div>,
+    </div>,
     document.body,
   )
 }

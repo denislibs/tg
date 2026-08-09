@@ -4,7 +4,6 @@
 // меня по номеру» (added_by_phone, без Nobody), видимая только при Nobody
 // (точное поведение tweb privacy/phoneNumber).
 import { useState } from 'react'
-import { AnimatePresence } from 'framer-motion'
 import TgIcon from '../TgIcon'
 import { SettingsScreen, Section, Row } from './kit'
 import PrivacyUserPicker from './PrivacyUserPicker'
@@ -119,7 +118,30 @@ export default function PrivacyRule({ title, onBack }: { title: string; onBack: 
   const denyTitle = meta.share ? 'Never Share With' : 'Never Allow'
 
   return (
-    <SettingsScreen title={title} onBack={onBack}>
+    <SettingsScreen
+      title={title}
+      onBack={onBack}
+      sub={picker ? (
+        <PrivacyUserPicker
+          title={picker === 'allow' ? allowTitle : denyTitle}
+          placeholder="Add Users or Groups..."
+          initial={picker === 'allow' ? rule.allowUserIds : rule.denyUserIds}
+          onDone={(ids) => {
+            // Пользователь не может быть в обоих списках: выбранный в одном
+            // убирается из другого (tweb PrivacySection).
+            const other = picker === 'allow' ? rule.denyUserIds : rule.allowUserIds
+            const cleaned = other.filter((id) => !ids.includes(id))
+            save(
+              picker === 'allow'
+                ? { ...rule, allowUserIds: ids, denyUserIds: cleaned }
+                : { ...rule, denyUserIds: ids, allowUserIds: cleaned },
+            )
+            setPicker(null)
+          }}
+          onBack={() => setPicker(null)}
+        />
+      ) : null}
+    >
       <Section caption={meta.title} footer={meta.caption}>
         {OPTIONS.map((o) => (
           <Row key={o.value} label={o.label} selected={rule.value === o.value} onClick={() => setValue(o.value)} />
@@ -170,28 +192,6 @@ export default function PrivacyRule({ title, onBack }: { title: string; onBack: 
         </Section>
       )}
 
-      <AnimatePresence>
-        {picker && (
-          <PrivacyUserPicker
-            title={picker === 'allow' ? allowTitle : denyTitle}
-            placeholder="Add Users or Groups..."
-            initial={picker === 'allow' ? rule.allowUserIds : rule.denyUserIds}
-            onDone={(ids) => {
-              // Пользователь не может быть в обоих списках: выбранный в одном
-              // убирается из другого (tweb PrivacySection).
-              const other = picker === 'allow' ? rule.denyUserIds : rule.allowUserIds
-              const cleaned = other.filter((id) => !ids.includes(id))
-              save(
-                picker === 'allow'
-                  ? { ...rule, allowUserIds: ids, denyUserIds: cleaned }
-                  : { ...rule, denyUserIds: ids, allowUserIds: cleaned },
-              )
-              setPicker(null)
-            }}
-            onBack={() => setPicker(null)}
-          />
-        )}
-      </AnimatePresence>
     </SettingsScreen>
   )
 }

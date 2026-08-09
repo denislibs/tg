@@ -7,7 +7,6 @@ import Text from '../../shared/ui/Text'
 import IconButton from '../../shared/ui/IconButton'
 import Popup from '../../shared/ui/Popup'
 import Menu, { MenuItem } from '../../shared/ui/Menu'
-import { motion } from 'framer-motion'
 import TgIcon from '../TgIcon'
 // MediaEditor грузится лениво — только когда открывают редактор конкретного вложения
 const MediaEditor = lazy(() => import('../mediaEditor/MediaEditor'))
@@ -168,9 +167,9 @@ export default function SendMediaPopup({
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
               placeholder={t('Add a caption…')}
             />
-            <motion.div className={s.send} whileTap={{ scale: 0.92 }} onClick={send}>
+            <div className={s.send} onClick={send}>
               <TgIcon name="send" />
-            </motion.div>
+            </div>
           </div>
         </div>
       }

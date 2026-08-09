@@ -8,6 +8,10 @@ export interface AudioTrack {
   subtitle: string
   chatId?: number
   msgId?: number
+  /** Вид медиа (tweb doc.type): голосовое, кружок или музыка. Голос и кружок —
+   * одна очередь и одна скорость (tweb PlaybackMediaType 'voice'), музыка — своя
+   * ('audio'). Отсутствие поля = музыка (плейлисты из поиска/shared media). */
+  type?: 'voice' | 'round' | 'audio'
   // Секретный чат (E2E): сервер хранит только ciphertext — байты надо скачать,
   // расшифровать ключом файла и играть blob-URL с верным mime (иначе <audio>
   // получает шифртекст и звук — «мусор»). Как в SecretMediaBubble для фото/видео.
@@ -32,8 +36,9 @@ interface AudioState {
   playQueue: (queue: AudioTrack[], index: number) => void
   /** Внешний медиа-элемент (видео кружка) как текущий трек: плашка плеера
    * управляет им (pause/seek/close) вместо внутреннего <audio> (tweb: round
-   * регистрируется в appMediaPlaybackController). */
-  playExternal: (track: AudioTrack, media: HTMLMediaElement) => void
+   * регистрируется в appMediaPlaybackController). Очередь та же, что у голосовых
+   * (tweb inputMessagesFilterRoundVoice) — доиграв, кружок едет по ней дальше. */
+  playExternal: (queue: AudioTrack[], index: number, media: HTMLMediaElement) => void
   toggle: () => void
   seekFraction: (f: number) => void
   cycleRate: () => void
@@ -59,7 +64,7 @@ export const useAudioStore = create<AudioState>((set) => ({
   volume: 1,
 
   playQueue: (queue, index) => mediaPlayback.playQueue(queue, index),
-  playExternal: (track, media) => mediaPlayback.playExternal(track, media),
+  playExternal: (queue, index, media) => mediaPlayback.playExternal(queue, index, media),
   toggle: () => mediaPlayback.toggle(),
   seekFraction: (f) => mediaPlayback.seekFraction(f),
   cycleRate: () => mediaPlayback.cycleRate(),
@@ -74,4 +79,4 @@ export const useAudioStore = create<AudioState>((set) => ({
 
 // Префетч секретного аудио — часть движка; ре-экспорт для мест, что импортировали
 // его из audioStore (напр. VoiceMessage прогревает URL по наведению).
-export { prefetchSecretAudio } from '../core/audio/mediaPlaybackController'
+export { prefetchSecretAudio, registerRoundMedia } from '../core/audio/mediaPlaybackController'

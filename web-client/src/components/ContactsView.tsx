@@ -1,9 +1,7 @@
 import { useMemo, useState } from 'react'
 import Text from '../shared/ui/Text'
 import IconButton from '../shared/ui/IconButton'
-import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
-import { slideInRight } from '../motion'
 import Avatar from '../shared/ui/Avatar'
 import { useNavLayer } from '../core/hooks/useNavLayer'
 import { useT } from '../i18n'
@@ -50,20 +48,7 @@ export default function ContactsView({
   }, [contacts])
 
   return (
-    <motion.div
-      variants={slideInRight}
-      initial="initial"
-      animate="animate"
-      exit="exit"
-      style={{
-        position: 'absolute',
-        inset: 0,
-        zIndex: 40,
-        background: 'var(--surface-color)',
-        display: 'flex',
-        flexDirection: 'column',
-      }}
-    >
+    <div className={s.screen}>
       {/* Header */}
       <div className={s.header}>
         <IconButton onClick={onBack} color="var(--secondary-text-color)">
@@ -130,6 +115,6 @@ export default function ContactsView({
         onClose={() => setNewOpen(false)}
         onCreated={(chatId) => { setNewOpen(false); onOpenChat?.(chatId) }}
       />
-    </motion.div>
+    </div>
   )
 }

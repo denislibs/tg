@@ -24,6 +24,15 @@ vi.mock('../core/chat/gradientRenderer', () => ({
   },
 }))
 
+// renderPattern рисует в 2D-контекст, которого в happy-dom нет (getContext → null),
+// поэтому вживую он молча выходит на первой строке и проверить стратегию нечем.
+// Подменяем шпионом, `patternOpacity` оставляем настоящим.
+const renderPatternSpy = vi.fn()
+vi.mock('../core/chat/patternRenderer', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../core/chat/patternRenderer')>()),
+  renderPattern: (...args: unknown[]) => renderPatternSpy(...args),
+}))
+
 import ChatBackground from './ChatBackground'
 
 class FakeImage {
@@ -145,5 +154,48 @@ describe('ChatBackground: обои следуют за сменой темы', (
     await waitFor(() => {
       expect(canvas()?.dataset.colors).toBe('#fec496,#dd6cb9,#962fbf,#4f5bd5')
     })
+  })
+
+  // Регрессия (сообщено с экрана): в тёмной теме фон выходил «недостаточно тёмным» —
+  // яркий градиент был виден целиком. Причина — гонка отложенной отрисовки узора.
+  // Первый прогон эффекта идёт ДО применения темы (dataTheme ещё null → стратегия
+  // light), заводит Image и ждёт; тик темы перезапускает эффект, но imgRef ещё пуст,
+  // поэтому заводится второй Image. Второй берётся из memory-кэша и красит маской,
+  // а первый (сетевой) доезжает позже и перекрывает холст светлой стратегией.
+  // В tweb такого не бывает: `mask` вшит в инстанс рендерера при сборке контента
+  // (chatBackground.tsx:242-248), а обогнанный прогон эффекта выбрасывается
+  // (`disposeBuilt`, chatBackground.tsx:299 — «used when an effect run is superseded»).
+  it('опоздавшая загрузка узора от прошлой темы не перекрашивает холст светлой стратегией', async () => {
+    vi.stubGlobal('Image', FakeImage)
+    useSettingsStore.setState({ wallpaper: { kind: 'default' } })
+    setThemeVars('day', ['#dbddbb', '#6ba587', '#d5d88d', '#88b884'])
+    renderPatternSpy.mockClear()
+
+    render(<ChatBackground />)
+
+    // Прогон №1 (тема ещё day) завёл свой Image и ждёт загрузки.
+    const stale = FakeImage.instances[0]
+    expect(stale).toBeTruthy()
+
+    setThemeVars('night', ['#fec496', '#dd6cb9', '#962fbf', '#4f5bd5'])
+
+    // Прогон №2 (night) заводит второй Image — imgRef ещё пуст.
+    await waitFor(() => expect(FakeImage.instances.length).toBe(2))
+    const fresh = FakeImage.instances[1]
+
+    // Кэш отдаёт свежий раньше: он красит маской.
+    fresh.complete = true
+    fresh.naturalWidth = 10
+    fresh.onload?.()
+    expect(renderPatternSpy).toHaveBeenCalled()
+    const lastCall = renderPatternSpy.mock.calls[renderPatternSpy.mock.calls.length - 1]
+    expect(lastCall?.[2]).toMatchObject({ mask: true })
+
+    // Сетевой доезжает после — и не должен ничего перерисовать.
+    const callsBefore = renderPatternSpy.mock.calls.length
+    stale.complete = true
+    stale.naturalWidth = 10
+    stale.onload?.()
+    expect(renderPatternSpy.mock.calls.length).toBe(callsBefore)
   })
 })

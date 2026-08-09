@@ -15,7 +15,7 @@
   CSS custom properties в `src/styles/_tokens.scss`, тема через атрибут `data-theme` на `<html>`.
   **MUI больше не используется** (историческая база была на MUI/`sx`, полностью мигрирована на SCSS).
 - **Zustand 5** — глобальное состояние (чаты, сообщения, истории, звонки, аудио…)
-- **framer-motion 12** — анимации
+- **Анимации** — CSS-классы из портированных партиалов tweb (framer-motion убран)
 - **prismjs** — подсветка кода в блоках
 - **qr-code-styling** — QR для логина; **vitest** + happy-dom — тесты
 

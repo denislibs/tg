@@ -1,15 +1,15 @@
 // userInfo/RightsEditor.tsx
 // Экран прав администратора (порт tweb sidebarRight/tabs/userPermissions.tsx):
-// строка участника + тумблер на каждое право; выезжает slideInRight-анимацией,
-// как остальные сабвью панели профиля.
+// строка участника + тумблер на каждое право. Выезд экрана — задача владельца
+// (UserInfoPanel), как в tweb, где сабвью профиля это вкладки `.tabs-tab`
+// правого сайдбар-слайдера (`tweb components/slider.ts:39-44`).
 import { useState } from 'react'
-import { motion } from 'framer-motion'
 import IconButton from '../../shared/ui/IconButton'
 import Text from '../../shared/ui/Text'
 import TgSwitch from '../TgSwitch'
 import TgIcon from '../TgIcon'
-import { slideInRight } from '../../motion'
 import { RIGHTS, type RealMember } from '../../core/hooks/useGroupInfo'
+import classNames from '../../shared/lib/classNames'
 import s from '../UserInfoPanel.module.scss'
 
 export default function RightsEditor({
@@ -30,14 +30,11 @@ export default function RightsEditor({
 
   const toggle = (bit: number) => setBits((b) => (b & bit ? b & ~bit : b | bit))
 
+  // `slideIn` — въезд справа, тот же, что у остальных экранов правой панели
+  // (UserInfoPanel.module.scss:743, порт входной половины tweb
+  // transition.ts:23-42). Отдельным классом, потому что `.rights` шарится.
   return (
-    <motion.div
-      variants={slideInRight}
-      initial="initial"
-      animate="animate"
-      exit="exit"
-      className={s.rights}
-    >
+    <div className={classNames(s.rights, s.slideIn)}>
       <div className={s.rightsHeader}>
         <IconButton onClick={onBack} color="var(--secondary-text-color)">
           <TgIcon name="back" />
@@ -63,8 +60,7 @@ export default function RightsEditor({
         </div>
 
         <div className={s.section} style={{ marginTop: 12 }}>
-          <motion.div
-            whileTap={{ scale: 0.98 }}
+          <div
             onClick={async () => {
               if (saving) return
               setSaving(true)
@@ -78,7 +74,7 @@ export default function RightsEditor({
             style={{ opacity: saving ? 0.6 : 1 }}
           >
             Сохранить
-          </motion.div>
+          </div>
           {isAdmin && (
             <div
               onClick={async () => {
@@ -97,6 +93,6 @@ export default function RightsEditor({
           )}
         </div>
       </div>
-    </motion.div>
+    </div>
   )
 }

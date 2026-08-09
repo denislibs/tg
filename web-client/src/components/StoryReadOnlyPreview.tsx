@@ -1,10 +1,9 @@
-import { motion } from 'framer-motion'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import { useT } from '../i18n'
 import { useStoryPreviewMedia } from '../core/hooks/useStoryPreviewMedia'
-import { EASE } from '../motion'
+import s from './StoryReadOnlyPreview.module.scss'
 import type { StoryItem } from '../core/managers/storiesManager'
 
 /**
@@ -17,13 +16,7 @@ export default function StoryReadOnlyPreview({ story, onClose }: { story: StoryI
   const { url, isVideo } = useStoryPreviewMedia(story.mediaId)
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.2, ease: EASE }}
-      style={{ position: 'fixed', inset: 0, zIndex: 3300, background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-    >
+    <div className={s.overlay}>
       <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 2 }}>
         <IconButton onClick={onClose} color="#fff" size="small"><TgIcon name="close" /></IconButton>
       </div>
@@ -36,6 +29,6 @@ export default function StoryReadOnlyPreview({ story, onClose }: { story: StoryI
           {story.edited && <Text color="rgba(255,255,255,0.6)" size={12}>{t('edited')}</Text>}
         </div>
       )}
-    </motion.div>
+    </div>
   )
 }

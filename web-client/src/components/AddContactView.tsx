@@ -10,8 +10,6 @@ import { useState } from 'react'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import Input from '../shared/ui/Input'
-import { motion } from 'framer-motion'
-import { EASE, DUR } from '../motion'
 import TgIcon from './TgIcon'
 import Avatar from '../shared/ui/Avatar'
 import { useAvatarSrc } from './useAvatarSrc'
@@ -68,31 +66,10 @@ export default function AddContactView({
   }
 
   return (
-    <motion.div
-      initial={narrow ? { opacity: 0 } : { width: 0, opacity: 0 }}
-      animate={narrow ? { opacity: 1 } : { width: 404, opacity: 1 }}
-      exit={narrow ? { opacity: 0 } : { width: 0, opacity: 0 }}
-      transition={{ duration: DUR.in, ease: EASE }}
-      style={
-        narrow
-          ? { position: 'fixed', inset: 0, zIndex: 1900 }
-          : {
-              overflow: 'hidden',
-              flexShrink: 0,
-              position: 'sticky',
-              top: '16px',
-              alignSelf: 'flex-start',
-              height: 'calc(100vh - 32px)',
-              zIndex: 15,
-            }
-      }
-    >
+    <div className={narrow ? s.dockNarrow : s.dockWide}>
       {narrow && <div className={s.backdrop} onClick={onClose} />}
-      <motion.div
-        {...(narrow
-          ? { initial: { x: '100%' }, animate: { x: '0%' }, transition: { duration: DUR.in, ease: EASE } }
-          : {})}
-        className={`${s.panel} ${narrow ? s.panelNarrow : s.panelWide}`}
+      <div
+        className={`${s.panel} ${narrow ? `${s.panelNarrow} ${s.panelNarrowIn}` : s.panelWide}`}
       >
         {/* Header — back + title */}
         <div className={s.header}>
@@ -162,16 +139,17 @@ export default function AddContactView({
         </div>
 
         {/* Floating submit */}
-        <motion.button
-          whileTap={{ scale: 0.92 }}
+        {/* tweb не масштабирует кнопки по нажатию — отклик даёт ripple/фон
+            (_button.scss:75-77), поэтому whileTap снят. */}
+        <button
           onClick={submit}
           disabled={!canSave}
           className={s.fab}
           style={{ cursor: canSave ? 'pointer' : 'default', opacity: canSave ? 1 : 0.5 }}
         >
           <TgIcon name="check" size={28} />
-        </motion.button>
-      </motion.div>
-    </motion.div>
+        </button>
+      </div>
+    </div>
   )
 }

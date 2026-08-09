@@ -6,6 +6,7 @@ import { activeBackground } from '../wallpapers'
 import { mediaContentUrl, useMediaTokenVersion } from '../core/mediaUrl'
 import { renderPattern, patternOpacity } from '../core/chat/patternRenderer'
 import ChatBackgroundGradientRenderer from '../core/chat/gradientRenderer'
+import { setActiveGradientRenderer } from '../core/chat/activeGradient'
 import { getAverageColor, hexToRgb, type ColorRgb } from '../shared/lib/color'
 import { applyHighlightingColorFromRgb } from '../core/theme/themeController'
 import { resolveTransition } from './chatBackgroundTransition'
@@ -82,6 +83,8 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
   const gradientReadyRef = useRef(false)
   const patternReadyRef = useRef(false)
   const patternCachedRef = useRef(false)
+  // Счётчик прогонов эффекта отрисовки узора — см. `superseded` ниже.
+  const patternRunRef = useRef(0)
 
   const activateSlot = (cached: boolean) => {
     if (hadPreviousRef.current) return
@@ -182,6 +185,8 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
 
   // Инициализация/переинициализация mesh-градиента при смене цветов/темы.
   useEffect(() => {
+    // Своё фото / сплошной цвет вместо градиента — сдвигать нечего (tweb в этом
+    // случае и не создаёт gradientRenderer, chatBackground.tsx:239-260).
     if (overlay) return
     const canvas = gradientRef.current
     if (!canvas) return
@@ -189,16 +194,14 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
     if (!rendererRef.current) rendererRef.current = new ChatBackgroundGradientRenderer()
     rendererRef.current.init(canvas)
     gradientReadyRef.current = true
+    // Публикуем рендерер активных обоев — лента сдвигает по нему градиент вместе
+    // с прокруткой к новому сообщению (tweb bubbles/chatBackground.tsx:531
+    // `gradientRendererRef(built.gradientRenderer)` → chat.ts:270 `chat.gradientRenderer`).
+    setActiveGradientRenderer(rendererRef.current)
     maybeActivateSlot()
+    return () => setActiveGradientRenderer(undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [themeChoice, themeTick, colors.join(), !!overlay])
-
-  // Сдвиг градиента на одну позицию при отправке сообщения (tweb toNextPosition).
-  useEffect(() => {
-    const onSend = () => rendererRef.current?.toNextPosition()
-    window.addEventListener('tg-send', onSend)
-    return () => window.removeEventListener('tg-send', onSend)
-  }, [])
 
   // Отрисовка/перерисовка canvas-паттерна: под размер вьюпорта*dpr, стратегия по теме.
   useEffect(() => {
@@ -219,12 +222,29 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
       })
     }
 
+    // Токен прогона: у tweb стратегия (`mask`) вшита в инстанс рендерера в момент
+    // сборки контента (chatBackground.tsx:242-248 `getInstance({… mask: isDarkPattern
+    // && !useOverlayRender})`), а обогнанный прогон эффекта явно выбрасывается —
+    // `disposeBuilt`, chatBackground.tsx:299 «used when an effect run is superseded».
+    // У нас `paint` звался из `img.onload`, и опоздавший колбэк красил холст своим,
+    // уже неверным `mask`. Первый рендер идёт до применения темы (setTheme — layout-
+    // эффект ThemedApp, а они бегут снизу вверх), там dataTheme ещё null → mask=false;
+    // тик темы перезапускает эффект, но `imgRef` пуст, поэтому заводится ВТОРОЙ Image:
+    // он берётся из memory-кэша и красит маской сразу, а первый (сетевой) доезжает
+    // позже и перекрывает результат светлой стратегией. В night это давало вместо
+    // чёрной маски с прорезями-дудлами полностью открытый яркий градиент (замерено на
+    // живой странице: 6.5% непрозрачных пикселей холста вместо 92.9%; любой resize
+    // «чинил» фон, потому что resize зовёт уже актуальное замыкание).
+    const run = ++patternRunRef.current
+    const superseded = () => run !== patternRunRef.current
+
     // Ленивая загрузка дудла (один раз), затем перерисовки — синхронные. cached —
     // синхронная готовность (img.complete сразу после простановки src: браузер уже
     // держит декодированный pattern.svg в image-кэше страницы) — resolveTransition.
     if (!imgRef.current) {
       const img = new Image()
       img.onload = () => {
+        if (superseded()) return
         imgRef.current = img
         paint()
         patternReadyRef.current = true

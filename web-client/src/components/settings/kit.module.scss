@@ -1,11 +1,37 @@
 // Общий набор для экранов настроек: слайд-скрин, секция (на SidebarSection),
 // строка. Экран — нейтральная подложка, карточки — surface (как tweb settings).
+
+// Корень экрана — слайдер-контейнер, 1:1 с tweb `.sidebar-slider`
+// (`tweb components/slider.ts:39-44`: `TransitionSlider({type: 'navigation'})`).
+// Раскладку (grid 100%×100%, `.tabs-tab` друг поверх друга) и сам переход даёт
+// портированный партиал `styles/tweb/_slider.scss:139-241`; здесь — только
+// позиционирование поверх родителя и подложка.
 .screen {
   position: absolute;
   inset: 0;
   background: var(--background-color);
-  display: flex;
-  flex-direction: column;
+  // приходящая вкладка стартует с translate3d(width, 0, 0) — за пределами
+  // контейнера; без обрезки это дало бы горизонтальный скролл у предка
+  overflow: hidden;
+}
+
+// Въезд экрана, открытого не из соседнего экрана настроек (см. kit.tsx):
+// кривая та же, что у `.tabs-container[data-animation="navigation"].animating
+// .tabs-tab` в `styles/tweb/_slider.scss:230-235`.
+.entering {
+  transition: transform var(--transition-standard-in);
+
+  :global(body.animation-level-0) & {
+    transition: none;
+  }
+}
+
+// Вкладка слайдера: экран целиком (шапка + тело) либо вложенный саб-экран.
+// `display: none/flex` и `flex-direction: column` приходят из `.tabs-tab`
+// (`_slider.scss:145-159`); фон нужен свой — во время параллакса уходящая
+// вкладка сдвигается влево и не должна просвечивать.
+.tab {
+  background: var(--background-color);
 }
 .header {
   display: flex;

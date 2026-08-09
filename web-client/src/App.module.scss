@@ -4,16 +4,9 @@
 // #column-center: всю геометрию (position/inset/translateX-центровку, display)
 // задают портированные партиалы tweb — styles/tweb/_chat.scss и pages/_chats.scss.
 
-// мобильная колонка (список чатов / чат) — фуллскрин-слой под классический
-// слайд 100%/-100% (tweb handheld: колонки перекрываются на весь экран)
-.mobileColumn {
-  position: fixed;
-  inset: 0;
-  z-index: 10;
-  display: flex;
-}
-
-// транзиентный баннер join-диплинка
+// Транзиентный баннер join-диплинка. Механика показа — как у tweb `.toast`
+// (base.scss:754-770): узел появляется с opacity 0, класс `.is-visible` даёт
+// opacity 1, анимируется ТОЛЬКО прозрачность и только при animation-level-2.
 .joinToast {
   position: fixed;
   top: 16px;
@@ -29,22 +22,43 @@
   font-size: var(--font-size-15);
   font-weight: 500;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+
+  // tweb: `@include animation-level(2) { transition: opacity var(--transition-standard-in) }`.
+  // Внутри *.module.scss миксин дал бы хешированный (мёртвый) `body._animation-level-2_*`,
+  // поэтому селектор написан руками через :global.
+  :global(body.animation-level-2) & {
+    transition: opacity var(--transition-standard-in);
+  }
 }
 
-// затемнение под qr-подтверждением
+// tweb `.toast.is-visible`
+.joinToastVisible {
+  opacity: 1;
+}
+
+// Затемнение под qr-подтверждением — роль `.popup` (popups/_popup.scss:33-39):
+// гаснет/зажигается по opacity за --popup-transition-time.
 .qrScrim {
   position: fixed;
   inset: 0;
   z-index: 4100;
   background: rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  transition: opacity var(--popup-transition-time) var(--popup-transition-function);
+
+  :global(body.animation-level-0) & {
+    transition: none;
+  }
 }
 
-// карточка qr-подтверждения
+// Карточка qr-подтверждения — роль `.popup-container` (popups/_popup.scss:84-88):
+// въезжает снизу на 3rem вместе с проявлением скрима.
 .qrCard {
   position: fixed;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, calc(-50% + 3rem));
   z-index: 4101;
   width: min(360px, calc(100vw - 32px));
   padding: 20px;
@@ -53,6 +67,25 @@
   -webkit-backdrop-filter: blur(40px);
   border-radius: 14px;
   box-shadow: var(--menu-box-shadow);
+  opacity: 0;
+  transition: transform var(--popup-transition-time) var(--popup-transition-function),
+    opacity var(--popup-transition-time) var(--popup-transition-function);
+
+  :global(body.animation-level-0) & {
+    transition: none;
+  }
+}
+
+// tweb `.popup.active` — открытое состояние обоих слоёв qr-подтверждения.
+.qrShown {
+  &.qrScrim {
+    opacity: 1;
+  }
+
+  &.qrCard {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
 }
 
 // ряд кнопок в qr-карточке

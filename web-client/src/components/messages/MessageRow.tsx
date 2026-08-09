@@ -11,7 +11,6 @@
 // Стили — MessageRow.module.scss; палитра исходящих/входящих через CSS-переменные
 // на .row ([data-out]); геометрия с рантайм-флагами (радиусы, textSize) — инлайн.
 import { memo, useEffect, useRef, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
-import { BubbleAppear } from '../animations/bubbleAnimations'
 import Checkbox from '../../shared/ui/Checkbox'
 import classNames from '../../shared/lib/classNames'
 import { bubbleClasses } from './bubbleClasses'
@@ -22,6 +21,7 @@ import { hexToRgbTriplet, peerColorById } from '../peerColor'
 import InlineKeyboard from './InlineKeyboard'
 import MessageContent from './MessageContent'
 import { useSettings } from '../../settings'
+import { useSetTransition } from '../../core/hooks/useSetTransition'
 import type { ConvMsg } from '../../data'
 import type { ChatAutoDownload } from '../../core/hooks/useChatAutoDownload'
 import s from './MessageRow.module.scss'
@@ -75,8 +75,6 @@ export interface MessageRowProps {
   isChannel: boolean
   /** перед баблом проходит граница «непрочитанные» (tweb is-first-unread) */
   isFirstUnread: boolean
-  ladderActive: boolean
-  ladderDelay: number
   feedFns: FeedFns
   // Автозагрузка медиа для этого чата (tweb chat.autoDownload); 0 = по клику.
   autoDownload?: ChatAutoDownload
@@ -93,7 +91,7 @@ export interface MessageRowProps {
 
 function MessageRow({
   m, seq, out, firstInGroup, lastInGroup,
-  selecting, isSelected, isHighlighted, showName, isChannel, isFirstUnread, ladderActive, ladderDelay,
+  selecting, isSelected, isHighlighted, showName, isChannel, isFirstUnread,
   feedFns, autoDownload, albumSelectedKey, footer, canSeeReactionList,
 }: MessageRowProps) {
   const textSize = useSettings((st) => st.textSize)
@@ -149,18 +147,24 @@ function MessageRow({
     lastInGroup,
     showName,
     isChannel,
-    isSelected: canSelect && rowSelected,
     isHighlighted,
     isFirstUnread,
     bigEmojiCount,
     animatedSticker,
   })
 
+  // Выделение — через SetTransition, как в tweb (selection.ts:497-502:
+  // `SetTransition({element, className: 'is-selected', forwards: isSelected,
+  // duration: 200})`). Класс не просто снимается: на выходе к нему добавляется
+  // `backwards`, под который в партиале написана обратная анимация
+  // (_chatBubble.scss:268-282: вход — `fade-in-opacity .2s`, выход —
+  // `.backwards:after { fade-in-backwards-opacity .2s }`). Без этого снятие
+  // выделения происходило в один кадр, без затухания полосы.
+  const selectedCls = useSetTransition(canSelect && rowSelected, 'is-selected', 200)
+
   return (
-    <BubbleAppear
-      appear={ladderActive}
-      delay={ladderDelay}
-      className={classNames(...cls, s.row)}
+    <div
+      className={classNames(...cls, selectedCls, s.row)}
       data-mid={m.id}
       // tweb держит на бабле id отправителя (живой DOM §3) — по нему адресуются
       // меню/аватары и наш DOM-diff.
@@ -224,7 +228,7 @@ function MessageRow({
           <InlineKeyboard rows={m.replyMarkup.inline} chatId={m.chatId} botId={m.senderId} msgId={m.id} />
         )}
       </div>
-    </BubbleAppear>
+    </div>
   )
 }
 

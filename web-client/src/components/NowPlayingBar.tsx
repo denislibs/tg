@@ -2,14 +2,14 @@ import { memo, useEffect, useRef, useState, type CSSProperties, type ReactNode }
 import { createPortal } from 'react-dom'
 import Text from '../shared/ui/Text'
 import Menu, { MenuItem } from '../shared/ui/Menu'
-import { AnimatePresence, motion } from 'framer-motion'
 import TgIcon, { type IconName } from './TgIcon'
 import PlayPauseGlyph from './PlayPauseGlyph'
 import { useAudioStore } from '../stores/audioStore'
 import classNames from '../shared/lib/classNames'
 import s from './NowPlayingBar.module.scss'
 
-// A round control button with a hover circle + press-scale feedback.
+// Круглая управляющая кнопка. Press-scale снят: tweb не масштабирует кнопки по
+// нажатию — отклик там даёт ripple и фон (_button.scss:75-77).
 function RoundBtn({
   onClick,
   color,
@@ -24,12 +24,10 @@ function RoundBtn({
   children: ReactNode
 }) {
   return (
-    <motion.button
+    <button
       type="button"
       aria-label={label}
       onClick={onClick}
-      whileTap={{ scale: 0.85 }}
-      transition={{ type: 'spring', stiffness: 500, damping: 30 }}
       className={classNames(s.roundBtn, active ? s.roundBtnActive : '')}
       // цвет иконки и фон активного состояния — рантайм-динамика по пропу color
       style={{
@@ -38,7 +36,7 @@ function RoundBtn({
       }}
     >
       {children}
-    </motion.button>
+    </button>
   )
 }
 
@@ -185,16 +183,15 @@ function NowPlayingBar() {
             </div>
 
             <div className={s.rateWrap}>
-              <motion.button
+              <button
                 ref={rateBtnRef}
                 type="button"
                 onClick={() => (rateOpen ? setRateOpen(false) : openRate())}
-                whileTap={{ scale: 0.9 }}
                 className={classNames(s.rateBtn, rateOpen ? s.rateBtnActive : '')}
                 style={rateOpen ? { color: 'var(--primary-color)', background: 'color-mix(in srgb, var(--primary-color) 16%, transparent)' } : undefined}
               >
                 {rateLabel}
-              </motion.button>
+              </button>
               <Menu open={rateOpen} onClose={() => setRateOpen(false)} style={rateStyle}>
                 {[0.5, 1, 1.5, 2].map((r) => (
                   <MenuItem
@@ -240,26 +237,18 @@ function NowPlayingBar() {
     {/* Слайдер громкости — портал в document.body (вне overflow:hidden плашки),
         позиция fixed под кнопкой. Hover на попапе продлевает открытие. */}
     {createPortal(
-      <AnimatePresence>
-        {track && volOpen && volRect && (
-          <div
-            className={s.volPortal}
-            style={{ left: volRect.left + volRect.width / 2, top: volRect.bottom - 6 }}
-            onMouseEnter={openVol}
-            onMouseLeave={scheduleCloseVol}
-          >
-            <motion.div
-              className={s.volPop}
-              initial={{ opacity: 0, y: -6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.14 }}
-            >
-              <VolumeSlider value={effVol} onChange={setVolume} />
-            </motion.div>
+      track && volOpen && volRect ? (
+        <div
+          className={s.volPortal}
+          style={{ left: volRect.left + volRect.width / 2, top: volRect.bottom - 6 }}
+          onMouseEnter={openVol}
+          onMouseLeave={scheduleCloseVol}
+        >
+          <div className={s.volPop}>
+            <VolumeSlider value={effVol} onChange={setVolume} />
           </div>
-        )}
-      </AnimatePresence>,
+        </div>
+      ) : null,
       document.body,
     )}
     </>

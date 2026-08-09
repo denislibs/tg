@@ -1,5 +1,33 @@
 // ContactsView — список контактов (порт tweb contacts): поиск + группы по буквам.
 // Цвета — через CSS-переменные темы.
+@use '../styles/foundation' as *;
+
+// Экран-панель левой колонки: въезжает справа. Механика tweb — навигационный
+// переход слайдера: приходящая вкладка стартует с translate3d(width, 0, 0) и
+// едет в 0 (`tweb src/components/transition.ts:23-42` slideNavigation),
+// длительность и кривая — `--transition-standard-in`
+// (`tweb src/scss/partials/_slider.scss:226-241`, у нас styles/tweb/_slider.scss:222-241).
+// Кейфрейм, а не transition: узел появляется в DOM сразу на своём месте, и
+// переходу не от чего стартовать — сам tweb по той же причине держит вход
+// вкладок на `animation` (_transition.scss).
+.screen {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  background: var(--surface-color);
+  display: flex;
+  flex-direction: column;
+
+  @include animation-level-global(2) {
+    animation: slide-in-from-right var(--transition-standard-in-time) var(--transition-standard-easing);
+  }
+}
+
+@keyframes slide-in-from-right {
+  from {
+    transform: translate3d(100%, 0, 0);
+  }
+}
 
 // шапка: назад + заголовок + добавить
 .header {

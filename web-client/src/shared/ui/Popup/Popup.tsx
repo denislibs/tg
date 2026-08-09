@@ -1,10 +1,13 @@
 // Popup — центрированная модалка на механизме tweb 1:1 (popups/_popup.scss):
 //   div.popup[.active] > div.popup-container > .popup-header(.popup-close +
 //   .popup-title) + .popup-body
-// Показ/скрытие делает КЛАСС `.active`: у `.popup` анимируются opacity и
-// visibility (с задержкой visibility на закрытии), у `.popup-container` —
-// transform translate3d(x, 3rem, 0) → translate3d(x, 0, 0), всё за
-// --popup-transition-time/--popup-transition-function. framer-motion не нужен.
+// Показ/скрытие делают КЛАССЫ `.active` (tweb popups/index.ts:359 `show()`) и
+// `.hiding` (tweb popups/index.ts:420-421 `destroy()` вешает `hiding` и снимает
+// `active`): у `.popup` анимируются opacity и visibility (с задержкой visibility
+// на закрытии), у `.popup-container` — transform translate3d(x, 3rem, 0) →
+// translate3d(x, 0, 0), всё за --popup-transition-time/--popup-transition-function.
+// `.hiding` ОСТАВЛЯЕТ карточку на месте (_popup.scss:65-69) — на закрытии гаснет
+// только скрим, вниз карточка не уезжает. framer-motion не нужен.
 //
 // Владелец держит компонент смонтированным и управляет `open`; размонтировать
 // можно в onExitComplete (он вызывается после окончания перехода).
@@ -54,6 +57,12 @@ export default function Popup({ open, title, onClose, onExitComplete, headerRigh
     return () => cancelAnimationFrame(id)
   }, [open])
 
+  // `hiding` вешается только на реально открывавшийся попап (tweb ставит его в
+  // destroy(), т.е. всегда после show()).
+  const openedRef = useRef(false)
+  if (open) openedRef.current = true
+  const hiding = !open && openedRef.current
+
   // Конец закрытия — по transitionend корня; таймерный фолбэк на случай
   // animation-level-0, где перехода нет.
   useEffect(() => {
@@ -80,7 +89,7 @@ export default function Popup({ open, title, onClose, onExitComplete, headerRigh
   return createPortal(
     <div
       ref={rootRef}
-      className={classNames('popup', active ? 'active' : '', s.popup)}
+      className={classNames('popup', open && active ? 'active' : hiding ? 'hiding' : '', s.popup)}
       onClick={onClose}
       style={{ ['--popup-width' as string]: `min(${width}px, calc(100vw - 32px))` }}
     >

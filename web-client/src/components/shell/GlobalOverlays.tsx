@@ -1,7 +1,7 @@
 // Глобальные оверлеи мессенджера поверх колонок: групповой звонок, RTMP-эфир,
 // тост, подтверждение QR-входа, приглашение в папку, экран звонка, mini-app бота,
 // жалобы, блокировка код-паролем. Вынесено из App ради читаемости Shell.
-import { AnimatePresence, motion } from 'framer-motion'
+import { useEffect, useState } from 'react'
 import Text from '../../shared/ui/Text'
 import classNames from '../../shared/lib/classNames'
 import { useT } from '../../i18n'
@@ -17,6 +17,9 @@ import PasscodeLockScreen from '../PasscodeLockScreen'
 import FolderInvitePopup from '../folders/FolderInvitePopup'
 import ReportPopup from '../ReportPopup'
 import s from '../../App.module.scss'
+
+/** tweb `toast.ts:28` — узел снимается через 200 мс после снятия `.is-visible` */
+const TOAST_HIDE_TIME = 200
 
 export default function GlobalOverlays({
   chatList,
@@ -42,41 +45,58 @@ export default function GlobalOverlays({
   const livestreamChatId = useLivestreamStore((st) => st.watchingChatId)
   const locked = useLockStore((st) => st.locked)
 
+  // Тост — контракт tweb `components/toast.ts`: узел сперва попадает в DOM без
+  // `.is-visible` (там это `toastsContainer.append(toastEl)` + reflow
+  // `void toastEl.offsetLeft`, toast.ts:41-46), затем вешается класс и играет
+  // ТОЛЬКО opacity; на скрытии класс снимается, а сам узел удаляется через 200 мс
+  // (toast.ts:26-30). Поэтому нужен свой «удержанный» текст: `toast` из стора
+  // обнуляется сразу, а бабл должен успеть погаснуть.
+  const [toastText, setToastText] = useState<string | null>(null)
+  const [toastShown, setToastShown] = useState(false)
+  useEffect(() => {
+    if (toast != null) {
+      setToastText(toast)
+      // класс — кадром позже монтирования, иначе анимировать не от чего
+      const raf = requestAnimationFrame(() => setToastShown(true))
+      return () => cancelAnimationFrame(raf)
+    }
+    setToastShown(false)
+    const id = window.setTimeout(() => setToastText(null), TOAST_HIDE_TIME)
+    return () => window.clearTimeout(id)
+  }, [toast])
+
+  // QR-подтверждение открывается сразу смонтированным, поэтому `.active`-класс
+  // (tweb popups/index.ts:359 `show()`) ставится следующим кадром — та же схема,
+  // что в shared/ui/Popup.
+  const [qrShown, setQrShown] = useState(false)
+  useEffect(() => {
+    if (!qrConfirmToken) { setQrShown(false); return }
+    const raf = requestAnimationFrame(() => setQrShown(true))
+    return () => cancelAnimationFrame(raf)
+  }, [qrConfirmToken])
+
   return (
     <>
-      <AnimatePresence>
-        {/* Групповой звонок — глобальное окно (живёт поверх любого чата) */}
-        {groupCallChatId != null && (
-          <GroupCallScreen chatName={chatList.find((c) => c.id === String(groupCallChatId))?.name ?? ''} />
-        )}
-        {/* RTMP-трансляция — глобальное окно просмотра (поверх любого чата) */}
-        {livestreamChatId != null && (
-          <LivestreamScreen chatName={chatList.find((c) => c.id === String(livestreamChatId))?.name ?? ''} />
-        )}
-        {toast && (
-          <motion.div
-            initial={{ opacity: 0, y: -12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12 }}
-            transition={{ duration: 0.24, ease: [0.4, 0, 0.2, 1] }}
-            className={s.joinToast}
-          >
-            {toast}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Групповой звонок — глобальное окно (живёт поверх любого чата) */}
+      {groupCallChatId != null && (
+        <GroupCallScreen chatName={chatList.find((c) => c.id === String(groupCallChatId))?.name ?? ''} />
+      )}
+      {/* RTMP-трансляция — глобальное окно просмотра (поверх любого чата) */}
+      {livestreamChatId != null && (
+        <LivestreamScreen chatName={chatList.find((c) => c.id === String(livestreamChatId))?.name ?? ''} />
+      )}
+      {toastText != null && (
+        <div className={classNames(s.joinToast, toastShown ? s.joinToastVisible : '')}>{toastText}</div>
+      )}
 
       {/* /qr/:token confirm overlay — approve a desktop QR login */}
       {qrConfirmToken && (
         <>
-          <div onClick={cancelQr} className={s.qrScrim} />
-          <motion.div
+          <div onClick={cancelQr} className={classNames(s.qrScrim, qrShown ? s.qrShown : '')} />
+          <div
             role="dialog"
             aria-label={t('Войти на новом устройстве?')}
-            initial={{ opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
-            className={s.qrCard}
+            className={classNames(s.qrCard, qrShown ? s.qrShown : '')}
           >
             <Text size={17} weight={600} color="var(--primary-text-color)" style={{ marginBottom: '8px' }}>
               {t('Войти на новом устройстве?')}
@@ -92,7 +112,7 @@ export default function GlobalOverlays({
                 {t('Подтвердить')}
               </div>
             </div>
-          </motion.div>
+          </div>
         </>
       )}
 

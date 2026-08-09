@@ -2,7 +2,6 @@ import { useState } from 'react'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import Input from '../shared/ui/Input'
-import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import { useT } from '../i18n'
 import s from './NewChannelFlow.module.scss'
@@ -19,21 +18,7 @@ export default function NewChannelFlow({ onClose, onCreate }: Props) {
   const canNext = name.trim().length > 0
 
   return (
-    <motion.div
-      initial={{ x: '100%' }}
-      animate={{ x: 0 }}
-      exit={{ x: '100%' }}
-      transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-      style={{
-        position: 'absolute',
-        inset: 0,
-        zIndex: 41,
-        background: 'var(--surface-color)',
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-      }}
-    >
+    <div className={s.screen}>
       <div className={s.header}>
         <IconButton onClick={onClose} color="var(--secondary-text-color)">
           <TgIcon name="back" />
@@ -46,9 +31,12 @@ export default function NewChannelFlow({ onClose, onCreate }: Props) {
       <div className={s.body}>
         <div className={s.card}>
           <div className={s.avatarWrap}>
-            <motion.div className={s.avatarBtn} whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
+            {/* tweb не масштабирует ни кнопку аватара, ни угловую кнопку по
+                hover/tap — отклик там даёт ripple и смена фона (_button.scss:75-77),
+                поэтому прежние whileHover/whileTap убраны, а не переложены на CSS. */}
+            <div className={s.avatarBtn}>
               <TgIcon name="cameraadd" size={44} />
-            </motion.div>
+            </div>
           </div>
           <Input
             autoFocus
@@ -69,15 +57,13 @@ export default function NewChannelFlow({ onClose, onCreate }: Props) {
         </Text>
       </div>
 
-      <motion.div
+      <div
         onClick={() => canNext && onCreate(name.trim(), desc.trim())}
-        whileHover={{ scale: canNext ? 1.06 : 1 }}
-        whileTap={{ scale: canNext ? 0.92 : 1 }}
         className={s.fab}
         style={{ cursor: canNext ? 'pointer' : 'default', opacity: canNext ? 1 : 0.45 }}
       >
         <TgIcon name="arrow_next" />
-      </motion.div>
-    </motion.div>
+      </div>
+    </div>
   )
 }

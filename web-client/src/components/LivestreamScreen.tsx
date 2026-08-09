@@ -3,14 +3,12 @@
 // зрителей, кнопка выйти. Реального видео-ingest в проекте нет, поэтому вместо
 // потока — честный плейсхолдер «Трансляция идёт» с LIVE-бейджем.
 import { createPortal } from 'react-dom'
-import { motion } from 'framer-motion'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import { useLivestreamStore } from '../stores/livestreamStore'
 import { useGroupCallStore } from '../stores/groupCallStore'
 import { leaveLivestream } from '../core/calls/livestreamEngine'
 import { useT } from '../i18n'
-import { EASE } from '../motion'
 import s from './LivestreamScreen.module.scss'
 
 export default function LivestreamScreen({ chatName }: { chatName: string }) {
@@ -22,12 +20,7 @@ export default function LivestreamScreen({ chatName }: { chatName: string }) {
   if (chatId == null) return null
 
   return createPortal(
-    <motion.div
-      className={s.window}
-      initial={{ opacity: 0, scale: 0.96 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.2, ease: EASE }}
-    >
+    <div className={s.window}>
       <div className={s.header}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className={s.titleRow}>
@@ -52,7 +45,7 @@ export default function LivestreamScreen({ chatName }: { chatName: string }) {
           <TgIcon name="close" size={24} color="#fff" />
         </button>
       </div>
-    </motion.div>,
+    </div>,
     document.body,
   )
 }

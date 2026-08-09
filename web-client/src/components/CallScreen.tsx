@@ -3,11 +3,9 @@
 // (ringing), connecting, активный (mute/cam/end + таймер), ended (причина).
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { motion } from 'framer-motion'
 import TgIcon from './TgIcon'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
-import { EASE } from '../motion'
 import { useT } from '../i18n'
 import Avatar from '../shared/ui/Avatar'
 import { useCallStore } from '../stores/callStore'
@@ -97,19 +95,8 @@ export default function CallScreen() {
   const endStyle = { width: 64, height: 64, background: '#ff595a', '--ib-hover': '#e84a4b' } as CSSProperties
 
   return createPortal(
-    <motion.div
-      className={s.root}
-      initial={{ opacity: 0, scale: 1.04 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 1.04 }}
-      transition={{ duration: 0.3, ease: EASE }}
-    >
-      <motion.div
-        className={s.bg}
-        style={{ background: gradient }}
-        animate={{ backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'] }}
-        transition={{ duration: 16, repeat: Infinity, ease: 'linear' }}
-      />
+    <div className={s.root}>
+      <div className={s.bg} style={{ background: gradient }} />
       <div className={s.scrim} />
 
       {/* E2E emoji-fingerprint (SAS): 4 эмодзи сверху-справа (модель Telegram-звонков).
@@ -233,7 +220,7 @@ export default function CallScreen() {
           </>
         )}
       </div>
-    </motion.div>,
+    </div>,
     document.body,
   )
 }

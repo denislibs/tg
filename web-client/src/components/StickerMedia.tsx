@@ -11,6 +11,7 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import lottieLoader from '../lib/lottie/lottieLoader'
 import type LottiePlayer from '../lib/lottie/lottiePlayer'
+import animationIntersector, { type AnimationItemGroup } from './animationIntersector'
 import { mediaContentUrl, primeMediaToken } from '../core/mediaUrl'
 
 export type StickerContent =
@@ -55,6 +56,7 @@ const StickerMedia = memo(function StickerMedia({
   autoplay = false,
   playOnHover = false,
   replayToken = 0,
+  group = 'chat',
 }: {
   mediaId: number
   width: number
@@ -67,6 +69,8 @@ const StickerMedia = memo(function StickerMedia({
   playOnHover?: boolean
   /** big-emoji: инкремент проигрывает lottie заново с первого кадра (replay по клику) */
   replayToken?: number
+  /** группа animationIntersector (tweb `group`): ею гасят/будят пачку анимаций разом */
+  group?: AnimationItemGroup
 }) {
   const boxRef = useRef<HTMLDivElement>(null)
   const playerRef = useRef<LottiePlayer | null>(null)
@@ -81,8 +85,9 @@ const StickerMedia = memo(function StickerMedia({
 
   // lottie монтируется лениво по факту загрузки json: декод в воркере tlottie,
   // отрисовка на <canvas> (плеер сам создаёт и аппендит его в контейнер на первом
-  // кадре). group:'none' → плеер самозапускается в onLoad при autoplay; без
-  // autoplay в контейнере остаётся статичный первый кадр.
+  // кадре). Плеер регистрируется в animationIntersector (это делает сам
+  // lottieLoader, как tweb lottieLoader.ts:274), поэтому play/pause по вьюпорту —
+  // на нём; без autoplay в контейнере остаётся статичный первый кадр.
   useEffect(() => {
     if (content?.kind !== 'lottie' || !boxRef.current) return
     const container = boxRef.current
@@ -99,15 +104,17 @@ const StickerMedia = memo(function StickerMedia({
         autoplay,
         width,
         height,
-        group: 'none',
+        group,
+        // tweb wrapSticker: стикеры в чате и в пикере — разные классы lite-mode,
+        // по ним intersector.setAutoplay гасит/будит их пачкой при смене настройки
+        liteModeKey: playOnHover ? 'stickers_panel' : 'stickers_chat',
         noOffscreen: true, // этап 1: legacy-рендер (декод в воркере, отрисовка на main)
         // Кэш кадров только для зацикленных стикеров. У one-shot (loop=false) при
         // завершении срабатывает onLap → clearCache → ImageBitmap.close(), и кадр,
         // который в этот момент дорисовывается, детачится (drawImage on detached).
-        // В tweb этот путь координирует animationIntersector, который на этапе 1 не
-        // переносим. Для one-shot кэш всё равно бесполезен (каждый кадр показывается
-        // один раз), а loop=true никогда не завершается → clearCache не вызывается,
-        // кэш безопасен и ускоряет повторы. Этап 2 (offscreen) кэширует в воркере.
+        // Для one-shot кэш всё равно бесполезен (каждый кадр показывается один раз),
+        // а loop=true никогда не завершается → clearCache не вызывается, кэш
+        // безопасен и ускоряет повторы. Этап 2 (offscreen) кэширует в воркере.
         noCache: !loop,
       })
       .then((p) => {
@@ -120,11 +127,15 @@ const StickerMedia = memo(function StickerMedia({
       alive = false
       if (player) {
         if (hoverPlaying === player) hoverPlaying = null
+        // снимаем с наблюдения И уничтожаем плеер (removeAnimation сам зовёт
+        // animation.remove() для lottie); player.remove() идемпотентен, поэтому
+        // второй вызов страхует случай, когда регистрация не состоялась
+        animationIntersector.removeAnimationByPlayer(player)
         player.remove()
       }
       playerRef.current = null
     }
-  }, [content, loop, autoplay, width, height, mediaId])
+  }, [content, loop, autoplay, width, height, mediaId, group, playOnHover])
 
   // Replay по клику big-emoji (tweb: клик по анимированному эмодзи проигрывает
   // его заново): рестарт с первого кадра при каждом инкременте токена.
@@ -133,24 +144,17 @@ const StickerMedia = memo(function StickerMedia({
     playerRef.current?.restart()
   }, [replayToken])
 
-  // Видео-стикер (webm): ленивая авто-пауза вне вьюпорта (аналог tweb
-  // animationIntersector) — офскрин-стикеры не декодируются/не жгут CPU. В пикере
-  // (playOnHover) проигрывание управляется наведением, а не вьюпортом.
+  // Видео-стикер (webm) — в общий animationIntersector, как tweb делает для
+  // любого <video> (wrappers/video.ts:649): пауза вне вьюпорта, в фоновой
+  // вкладке и на время тяжёлой анимации. В пикере (playOnHover) проигрывание
+  // управляется наведением, а не вьюпортом, — там не регистрируем.
   useEffect(() => {
-    if (content?.kind !== 'video' || playOnHover || !boxRef.current) return
+    if (content?.kind !== 'video' || playOnHover) return
     const video = videoRef.current
     if (!video) return
-    const io = new IntersectionObserver(
-      (entries) => {
-        const visible = entries[0]?.isIntersecting
-        if (visible && autoplay) void video.play().catch(() => {})
-        else video.pause()
-      },
-      { threshold: 0.01 },
-    )
-    io.observe(boxRef.current)
-    return () => io.disconnect()
-  }, [content, autoplay, playOnHover])
+    animationIntersector.addAnimation({ animation: video, group, observeElement: video, type: 'video' })
+    return () => animationIntersector.removeAnimationByPlayer(video)
+  }, [content, playOnHover, group])
 
   const hoverProps = playOnHover
     ? {

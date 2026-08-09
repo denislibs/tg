@@ -2,7 +2,7 @@
 // Владельцу — действия: показать/скрыть в профиле, обменять на звёзды.
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AnimatePresence, motion } from 'framer-motion'
+import classNames from '../../shared/lib/classNames'
 import IconButton from '../../shared/ui/IconButton'
 import Text from '../../shared/ui/Text'
 import TgIcon from '../TgIcon'
@@ -13,9 +13,8 @@ import { fmtWhen } from '../../core/dialogToChat'
 import { useT } from '../../i18n'
 import type { GiftInfo } from '../../core/managers/starsManager'
 import StarIcon from './StarIcon'
+import { usePopupTransition } from '../settings/kit'
 import s from './stars.module.scss'
-
-const EASE: [number, number, number, number] = [0.4, 0, 0.2, 1]
 
 export default function GiftInfoPopup({
   gift, isOwner, onClose, onChanged,
@@ -30,6 +29,7 @@ export default function GiftInfoPopup({
   const [busy, setBusy] = useState(false)
   const [hidden, setHidden] = useState(gift.hidden)
   const portalContainer = usePortalContainer()
+  const { cls } = usePopupTransition(true)
 
   const toggleHidden = async () => {
     if (busy) return
@@ -58,65 +58,49 @@ export default function GiftInfoPopup({
   const dateLabel = fmtWhen(gift.date)
 
   return createPortal(
-    <AnimatePresence>
-      <motion.div
-        className={s.overlay}
-        onClick={onClose}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.15, ease: EASE }}
-      >
-        <motion.div
-          className={s.modal}
-          onClick={(e) => e.stopPropagation()}
-          initial={{ y: 40, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: 40, opacity: 0 }}
-          transition={{ duration: 0.18, ease: EASE }}
-        >
-          <div className={s.header}>
-            <IconButton onClick={onClose} color="var(--secondary-text-color)">
-              <TgIcon name="close" />
-            </IconButton>
-            <Text size={18} weight={600} color="var(--primary-text-color)" className={s.headerTitle}>
-              {gift.gift.title}
+    <div className={classNames('popup', cls, s.overlay)} onClick={onClose}>
+      <div className={classNames('popup-container', s.modal)} onClick={(e) => e.stopPropagation()}>
+        <div className={s.header}>
+          <IconButton onClick={onClose} color="var(--secondary-text-color)">
+            <TgIcon name="close" />
+          </IconButton>
+          <Text size={18} weight={600} color="var(--primary-text-color)" className={s.headerTitle}>
+            {gift.gift.title}
+          </Text>
+        </div>
+
+        <div className={s.body}>
+          <div className={s.giftInfo}>
+            <span className={s.chosenEmoji}>{gift.gift.emoji}</span>
+            <Text size={17} weight={600} color="var(--primary-text-color)">{gift.gift.title}</Text>
+            <Text size={14} color="var(--secondary-text-color)">
+              {t('From')}: {fromLabel}{dateLabel ? ` · ${dateLabel}` : ''}
             </Text>
-          </div>
-
-          <div className={s.body}>
-            <div className={s.giftInfo}>
-              <span className={s.chosenEmoji}>{gift.gift.emoji}</span>
-              <Text size={17} weight={600} color="var(--primary-text-color)">{gift.gift.title}</Text>
-              <Text size={14} color="var(--secondary-text-color)">
-                {t('From')}: {fromLabel}{dateLabel ? ` · ${dateLabel}` : ''}
-              </Text>
-              {isOwner && gift.hidden && (
-                <Text size={13} color="var(--secondary-text-color)">{t('Hidden from your profile')}</Text>
-              )}
-              {gift.message && (
-                <Text size={15} color="var(--primary-text-color)" style={{ marginTop: 4 }}>{gift.message}</Text>
-              )}
-              <div className={s.giftPrice} style={{ marginTop: 6 }}>
-                <StarIcon size={14} />
-                {gift.gift.priceStars}
-              </div>
-            </div>
-
-            {isOwner && !gift.converted && (
-              <div className={s.giftInfoActions}>
-                <button type="button" className={s.secondaryBtn} disabled={busy} onClick={() => void toggleHidden()}>
-                  {hidden ? t('Show in Profile') : t('Hide from Profile')}
-                </button>
-                <button type="button" className={s.payBtn} disabled={busy} onClick={() => void convert()}>
-                  {t('Convert to')} <StarIcon size={16} /> {gift.convertStars}
-                </button>
-              </div>
+            {isOwner && gift.hidden && (
+              <Text size={13} color="var(--secondary-text-color)">{t('Hidden from your profile')}</Text>
             )}
+            {gift.message && (
+              <Text size={15} color="var(--primary-text-color)" style={{ marginTop: 4 }}>{gift.message}</Text>
+            )}
+            <div className={s.giftPrice} style={{ marginTop: 6 }}>
+              <StarIcon size={14} />
+              {gift.gift.priceStars}
+            </div>
           </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>,
+
+          {isOwner && !gift.converted && (
+            <div className={s.giftInfoActions}>
+              <button type="button" className={s.secondaryBtn} disabled={busy} onClick={() => void toggleHidden()}>
+                {hidden ? t('Show in Profile') : t('Hide from Profile')}
+              </button>
+              <button type="button" className={s.payBtn} disabled={busy} onClick={() => void convert()}>
+                {t('Convert to')} <StarIcon size={16} /> {gift.convertStars}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>,
     portalContainer,
   )
 }

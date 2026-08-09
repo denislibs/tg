@@ -33,16 +33,22 @@ export function useVoiceQueue({ win, isRealChat, meId, meName, peers, chatName, 
   // secret_media, не type), вид лежит в secretMedia.mediaType. Учитываем оба.
   const isVoiceMsg = (m: MessageWindow['msgs'][number]) =>
     !!m.mediaId && (m.type === 'voice' || m.secretMedia?.mediaType === 'voice')
+  const isRoundMsg = (m: MessageWindow['msgs'][number]) => !!m.mediaId && m.type === 'roundVideo'
+  // Голосовые и кружки — ОДНА очередь (tweb: и те и другие ищутся фильтром
+  // inputMessagesFilterRoundVoice, chat/bubbles.ts:8564,8601), поэтому доиграв
+  // голосовое, плеер едет на следующий кружок и наоборот. Музыка — своя очередь
+  // (inputMessagesFilterMusic), её собирают SearchView/SharedMedia.
   const voiceTracks: AudioTrack[] = useMemo(
     () =>
       (isRealChat ? win.msgs : [])
-        .filter(isVoiceMsg)
+        .filter((m) => isVoiceMsg(m) || isRoundMsg(m))
         .map((m) => ({
           mediaId: m.mediaId as number,
           title: m.senderId === meId ? meName || 'Вы' : peers.get(m.senderId)?.displayName || chatName,
           subtitle: friendlyMsgTime(m.createdAt, lang),
           chatId: numericChatId,
           msgId: m.id,
+          type: (m.type === 'roundVideo' ? 'round' : 'voice') as 'round' | 'voice',
           // Секретный голос: ключ/iv/mime для расшифровки ciphertext'а в плеере.
           secret: m.secretMedia
             ? { keyB64: m.secretMedia.keyB64, ivB64: m.secretMedia.ivB64, mime: m.secretMedia.mime }
@@ -61,20 +67,14 @@ export function useVoiceQueue({ win, isRealChat, meId, meName, peers, chatName, 
   }
 
   // Кружок заиграл со звуком → зарегистрировать его <video> в глобальном плеере
-  // (tweb: round идёт через appMediaPlaybackController и pinned-плашку).
+  // (tweb: round идёт через appMediaPlaybackController и pinned-плашку). Отдаём ту
+  // же очередь voice+round, что и у голосовых, — с позицией этого кружка.
   const attachRound = (msgId: number, el: HTMLMediaElement) => {
     const m = win.msgs.find((x) => x.id === msgId && x.type === 'roundVideo')
     if (!m || m.mediaId == null) return
-    playExternal(
-      {
-        mediaId: m.mediaId,
-        title: m.senderId === meId ? meName || 'Вы' : peers.get(m.senderId)?.displayName || chatName,
-        subtitle: friendlyMsgTime(m.createdAt, lang),
-        chatId: numericChatId,
-        msgId: m.id,
-      },
-      el,
-    )
+    const idx = voiceTracks.findIndex((t) => t.mediaId === m.mediaId)
+    if (idx < 0) return
+    playExternal(voiceTracks, idx, el)
   }
 
   // Сдвиг топбара/ленты под плашку плеера — на CSS: NowPlayingBar ставит

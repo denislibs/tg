@@ -1,6 +1,30 @@
 // NewGroupFlow — экран создания группы (порт tweb createNewGroupTab): шаг 1 —
 // выбор участников (tweb _selector.scss: чипы + чекбоксы слева), шаг 2 — имя +
 // секция участников. Цвета — через CSS-переменные темы.
+@use '../styles/foundation' as *;
+
+// Въезд экрана справа — см. развёрнутый разбор механики в
+// ContactsView.module.scss (`tweb src/components/transition.ts:23-42` +
+// `tweb src/scss/partials/_slider.scss:226-241`).
+.screen {
+  position: absolute;
+  inset: 0;
+  z-index: 41;
+  background: var(--surface-color);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  @include animation-level-global(2) {
+    animation: slide-in-from-right var(--transition-standard-in-time) var(--transition-standard-easing);
+  }
+}
+
+@keyframes slide-in-from-right {
+  from {
+    transform: translate3d(100%, 0, 0);
+  }
+}
 
 // шапка: назад + заголовок
 .header {
@@ -73,6 +97,30 @@
   flex-direction: column;
 }
 
+// Смена шага — переход tweb `slide-fade` (`tweb src/scss/partials/_transition.scss:88-140`,
+// у нас styles/tweb/_transition.scss). Приходящий шаг: вперёд едет с +1.5rem
+// (`slide-fade-in-move` + `fade-in-opacity` на --easeInSine), назад — с -1.5rem
+// (`slide-fade-out-backwards-move` + `fade-out-backwards-opacity` на --easeOutSine).
+// Кривые объявлены в самом партиале внутри `.transition.slide-fade`, поэтому
+// здесь повторены дословно.
+.stepForwards,
+.stepBackwards {
+  --easeOutSine: cubic-bezier(.39, .575, .565, 1);
+  --easeInSine: cubic-bezier(.47, 0, .745, .715);
+}
+
+.stepForwards {
+  @include animation-level-global(2) {
+    animation: fade-in-opacity .4s var(--easeInSine), slide-fade-in-move .4s;
+  }
+}
+
+.stepBackwards {
+  @include animation-level-global(2) {
+    animation: fade-out-backwards-opacity .4s var(--easeOutSine), slide-fade-out-backwards-move .4s;
+  }
+}
+
 // tweb .selector-search: чипы выбранных + инпут одной wrap-обёрткой
 .selector {
   display: flex;
@@ -99,6 +147,13 @@
   color: var(--primary-text-color);
   cursor: pointer;
   transition: background-color 0.2s ease;
+
+  // Появление чипа — tweb `.selector-user.scale-in { animation: scaleIn .15s ease
+  // forwards }` (`tweb src/scss/partials/_selector.scss:134-145`); кейфрейм
+  // `scaleIn` глобальный, из того же портированного партиала.
+  @include animation-level-global(2) {
+    animation: scaleIn .15s ease forwards;
+  }
 
   &:hover {
     background: rgba(219, 68, 55, 0.16);
@@ -217,4 +272,62 @@
   justify-content: center;
   color: #fff;
   transition: opacity 0.2s ease;
+}
+
+// CSS-модули хешируют ЛЮБОЕ имя в `animation`, поэтому сослаться на глобальный
+// кейфрейм из партиала отсюда нельзя — ссылка переименовывается и анимация молча
+// не играет. Кейфреймы ниже — дословные копии глобальных
+// (styles/tweb/_bridge.scss / styles/tweb/_transition.scss, оригиналы
+// `tweb src/scss/base.scss:675-738,1082-1108` и `_transition.scss`, `_selector.scss:4-14`).
+
+@keyframes fade-in-opacity {
+  0% {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fade-out-backwards-opacity {
+  0% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-fade-in-move {
+  0% {
+    transform: translateX(1.5rem);
+  }
+
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-fade-out-backwards-move {
+  0% {
+    transform: translateX(-1.5rem);
+  }
+
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(.2);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }

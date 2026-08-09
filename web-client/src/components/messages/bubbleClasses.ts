@@ -22,7 +22,6 @@ export interface BubbleCtx {
   /** имя отправителя показывается (групповой чат, входящее, первое в серии) */
   showName: boolean
   isChannel: boolean
-  isSelected: boolean
   isHighlighted: boolean
   /** перед этим баблом проходит граница «непрочитанные» (tweb bubbles.ts:11609) */
   isFirstUnread: boolean
@@ -138,7 +137,9 @@ export function bubbleClasses(m: ConvMsg, ctx: BubbleCtx): string[] {
 
   if (ctx.isFirstUnread) cls.push('is-first-unread')
   if (ctx.isHighlighted) cls.push('is-highlighted')
-  if (ctx.isSelected) cls.push('is-selected')
+  // `is-selected` сюда НЕ входит: в tweb он ведётся через SetTransition
+  // (selection.ts:497-502) — на выходе к нему добавляется `backwards`, иначе
+  // обратной анимации полосы выделения не будет. Ставит MessageRow.
 
   return cls
 }
