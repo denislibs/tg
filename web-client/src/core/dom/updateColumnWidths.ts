@@ -309,3 +309,12 @@ export function installColumnWidthsUpdater(): void {
   window.addEventListener('resize', updateColumnWidths)
   updateColumnWidths()
 }
+
+// Первая простановка — на импорте модуля, ДО того как браузер разрешит стиль
+// колонок. Иначе `.chats-container` успевает получить первый стиль с
+// `--left-column-width: 0` и уже армированным `transition: transform`, а
+// installColumnWidthsUpdater() (layout-эффект Shell, App.tsx) дописывает
+// переменные только после — колонка анимированно выезжает 0 → 188px на каждой
+// перезагрузке. Дальнейшие пересчёты — по resize-слушателю оттуда же.
+// (tweb helpers/updateColumnWidths.ts:390-394)
+updateColumnWidths()
