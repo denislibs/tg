@@ -14,17 +14,15 @@ const read = (name: string) => document.documentElement.style.getPropertyValue(n
 
 function atWidth(width: number) {
   Object.defineProperty(window, 'innerWidth', { value: width, configurable: true })
-  // модуль кэширует последние значения — сбрасываем через два прогона подряд
-  updateColumnWidths()
   updateColumnWidths()
 }
 
+// Состояние DOM между тестами НЕ сбрасываем: модуль пишет переменную только
+// когда значение изменилось (кэш `last`), а сбросить кэш извне нечем. Плюс
+// модуль красит корень уже на импорте (ранняя простановка, tweb :390-394) —
+// после `removeAttribute('style')` константы вроде --right-sidebar-fits не
+// переписались бы никогда. Тесты идут по порядку и читают накопленное состояние.
 describe('updateColumnWidths', () => {
-  beforeEach(() => {
-    document.documentElement.removeAttribute('style')
-    document.body.className = ''
-  })
-
   it('десктоп 1728 — значения совпадают с живым tweb', () => {
     atWidth(1728)
     expect(read('--default-column-width')).toBe('360px')
@@ -82,8 +80,6 @@ describe('updateColumnWidths', () => {
 // setUserPreferredRight, updateColumnWidths.ts:156-176). Тесты идут последними:
 // модуль держит предпочтения в своём состоянии, сбросить его нечем.
 describe('updateColumnWidths — предпочтения ресайза', () => {
-  // Стиль НЕ сбрасываем: модуль пишет переменную только когда значение
-  // изменилось (кэш `last`), а сбросить кэш извне нечем.
   beforeEach(() => {
     Object.defineProperty(window, 'innerWidth', { value: 1728, configurable: true })
     updateColumnWidths()
