@@ -580,7 +580,17 @@ typecheck / tests / build; скриншоты «до/после» в отчёт.
 
   Переключатель сразу оживляет уже разведённую, но всегда-ложную проводку: `components/chatlist/dialogsPlaceholder.ts:39`, `shared/ui/Avatar/Avatar.tsx:57`, `core/hooks/useCollapsable.ts:47`, `components/storyViewerMorph.ts:49`.
 
-- [ ] **Step 4:** navigation-переход с параллаксом для стека экранов. `App.tsx:159` уже вешает `data-animation="navigation"` на `#main-columns`, портированный `styles/tweb/_slider.scss:226-241` уже описывает переходы для `.animating`/`.backwards` — не хватает JS-части (`tweb components/transition.ts:23-32`): уходящему экрану `filter: brightness(80%)` + `transform: translate3d(-width*.25, 0, 0)`, приходящему `translate3d(width, 0, 0)` → reflex → сброс инлайновых стилей.
+- [ ] **Step 4:** navigation-переход для стека экранов.
+
+  **Постановка этого шага была неверна — исправлено по ходу выполнения.** Я решил, что раз `#main-columns` несёт `data-animation="navigation"`, то переключение список↔чат в tweb делает `TransitionSlider` типа `navigation` с инлайновым параллаксом из `transition.ts:23-32`. Это не так: `grep "'navigation'"` по `tweb/src` даёт ровно четыре места — `components/slider.ts:43` (слайдеры сайдбара), `horizontalMenu.ts:153`, `popups/premium.ts:209` и `appImManager.ts:308` (на `.chats-container`, то есть переход **чат↔чат** внутри колонки). К `#main-columns` слайдер **не подключается никогда**.
+
+  Переключение список↔чат делает `selectTab` (`appImManager.ts:2588-2645`) одним классом на `body` — `is-left-column-shown` (`:2593`), — а движение описано в CSS, который у нас уже портирован:
+  - `_chat.scss:453-455` — `body.is-left-column-shown &` → `translate3d(100vw, 0, 0)`, `opacity: 0` (центральная колонка);
+  - `_leftSidebar.scss:245-247` — `body:not(.is-left-column-shown) &` → `translate3d(-25vw, 0, 0)`, `opacity: 0` (левая колонка).
+
+  То есть «−25%» — это `-25vw` у **левой** колонки через класс на body, а не инлайновый transform у табов, и притемнения (`brightness`) в этом переходе нет вовсе.
+
+  Работы: ставить `is-left-column-shown` по «открыт ли чат» (не по «Shell смонтирован» — `selectTab(CHAT)` в tweb зовётся при открытии любого пира на всех ширинах, `appImManager.ts:2800,2819`) и объявлять тяжёлую анимацию на время перехода (`appImManager.ts:2606-2614`). Инлайновый `slideNavigation` (`core/dom/navigationTransition.ts`) остаётся нужен, но для **слайдера настроек** (`components/settings/kit.tsx`), а не для колонок.
 - [ ] **Step 5:** Проверки + смок.
 
 ### ~~Task 7.2: Музыкальный бабл (P0 №6)~~ — ЗАКРЫТА до старта фазы

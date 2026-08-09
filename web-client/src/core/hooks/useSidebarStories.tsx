@@ -1,5 +1,4 @@
 import { lazy, Suspense, useCallback, useRef, useState } from 'react'
-import { AnimatePresence } from 'framer-motion'
 import { useManagers } from './useManagers'
 import { loadStories } from '../../stores/storiesStore'
 import { uiEvents } from './uiEvents'
@@ -71,22 +70,20 @@ export function useSidebarStories() {
         </Suspense>
       )}
 
+      {/* Листы историй — вкладки слайдера сайдбара (tweb SidebarSlider: узел
+          создаётся на открытии и снимается по концу перехода, `slider.ts:41-46`).
+          Вход/уход ведёт сам лист, обёртка-презенс тут не нужна. */}
+
       {/* Лист создания истории (открывается после загрузки медиа) */}
-      <AnimatePresence>
-        {storyMediaId != null && (
-          <AddStorySheet onBack={() => setStoryMediaId(null)} onPublish={publishStory} onEditCloseFriends={() => setShowCloseFriends(true)} />
-        )}
-      </AnimatePresence>
+      {storyMediaId != null && (
+        <AddStorySheet onBack={() => setStoryMediaId(null)} onPublish={publishStory} onEditCloseFriends={() => setShowCloseFriends(true)} />
+      )}
 
       {/* Редактор списка близких друзей */}
-      <AnimatePresence>
-        {showCloseFriends && <CloseFriendsSheet onClose={() => setShowCloseFriends(false)} />}
-      </AnimatePresence>
+      {showCloseFriends && <CloseFriendsSheet onClose={() => setShowCloseFriends(false)} />}
 
       {/* Архив своих истёкших историй */}
-      <AnimatePresence>
-        {showArchive && <StoriesArchiveSheet onClose={() => setShowArchive(false)} />}
-      </AnimatePresence>
+      {showArchive && <StoriesArchiveSheet onClose={() => setShowArchive(false)} />}
 
       {/* Полноэкранный просмотрщик историй */}
       {storyOpen != null && <StoryViewer groupIndex={storyOpen} getTarget={getStoryTarget} onClose={() => setStoryOpen(null)} />}

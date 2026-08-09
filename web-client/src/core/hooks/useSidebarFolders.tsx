@@ -1,5 +1,4 @@
 import { useMemo, useState, type CSSProperties, type RefObject } from 'react'
-import { AnimatePresence } from 'framer-motion'
 import { useFoldersStore, loadFolders, ALL_FOLDER_ID } from '../../stores/foldersStore'
 import { matchesFolder } from '../folderFilter'
 import { openPopup } from '../../stores/popupStore'
@@ -114,13 +113,13 @@ export function useSidebarFolders({ chats, listScrollRef, onOpenFolderSettings }
     openTabMenu(id, { left: e.clientX, top: e.clientY })
   }
 
-  // Редактор папки из контекстного меню таба (экран колонки)
-  const overlays = (
-    <AnimatePresence>
-      {editingFolder && (
-        <FolderEditor folder={editingFolder} chats={chats} onClose={() => setEditingFolder(null)} />
-      )}
-    </AnimatePresence>
+  // Редактор папки из контекстного меню таба — экран колонки, то есть вкладка
+  // слайдера сайдбара (tweb `SidebarSlider.createTab` + `TransitionSlider` типа
+  // 'navigation', `components/slider.ts:41-46`). Вход/уход вкладки ведёт сам
+  // экран (`components/settings/kit.tsx` → SettingsScreen), обёртка-презенс тут
+  // не нужна: держать узел на время ухода — это его собственная забота.
+  const overlays = editingFolder && (
+    <FolderEditor folder={editingFolder} chats={chats} onClose={() => setEditingFolder(null)} />
   )
 
   return {
