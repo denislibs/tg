@@ -439,6 +439,10 @@ const ru: Dict = {
   'New Message': 'Новое сообщение',
   'Never miss a message! 🔔': 'Не пропускайте сообщения! 🔔',
   'Enable notifications to stay updated.': 'Включите уведомления, чтобы быть в курсе.',
+  'You can turn notifications back on in the settings.':
+    'Вы можете снова включить уведомления в настройках.',
+  'Hold Shift to resize both columns at once':
+    'Удерживайте Shift, чтобы менять ширину обеих колонок сразу',
   subscribers: 'подписчиков',
   'There were no results for': 'Ничего не найдено по запросу',
   '. Try a new search.': '. Попробуйте другой запрос.',

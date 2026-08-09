@@ -190,6 +190,10 @@ const de: Dict = {
   'Never miss a message! 🔔': 'Verpasse keine Nachricht! 🔔',
   'Enable notifications to stay updated.':
     'Aktiviere Benachrichtigungen, um auf dem Laufenden zu bleiben.',
+  'You can turn notifications back on in the settings.':
+    'Du kannst Benachrichtigungen in den Einstellungen wieder aktivieren.',
+  'Hold Shift to resize both columns at once':
+    'Halte Shift gedrückt, um beide Spalten gleichzeitig zu skalieren',
   subscribers: 'Abonnenten',
   'There were no results for': 'Keine Ergebnisse für',
   '. Try a new search.': '. Versuche eine neue Suche.',

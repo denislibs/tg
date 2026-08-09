@@ -189,6 +189,10 @@ const es: Dict = {
   'New Message': 'Nuevo mensaje',
   'Never miss a message! 🔔': '¡No te pierdas ningún mensaje! 🔔',
   'Enable notifications to stay updated.': 'Activa las notificaciones para estar al día.',
+  'You can turn notifications back on in the settings.':
+    'Puedes volver a activar las notificaciones en los ajustes.',
+  'Hold Shift to resize both columns at once':
+    'Mantén Shift para redimensionar ambas columnas a la vez',
   subscribers: 'suscriptores',
   'There were no results for': 'No hubo resultados para',
   '. Try a new search.': '. Prueba otra búsqueda.',

@@ -67,6 +67,19 @@ export interface Settings {
   // Скорость воспроизведения видео в медиа-вьюере (tweb appMediaPlaybackController
   // .playbackRate): восстанавливается при открытии следующего видео. Дефолт 1.
   videoRate: number
+  // Пользовательская ширина колонок из ручки ресайза. tweb держит их в
+  // localStorage-ключах 'sidebar-left-width' / 'sidebar-right-width'
+  // (updateColumnWidths.ts:103-104); у нас всё, что переживает перезагрузку,
+  // живёт в этом сторе, поэтому ключи переехали сюда.
+  // undefined = «предпочтения нет» → DEFAULT_COLUMN_WIDTH; 0 у левой = свёрнута.
+  sidebarLeftWidth?: number
+  sidebarRightWidth?: number
+  // Подсказку «зажмите Shift» показываем один раз за всё время
+  // (tweb appSettings.seenTooltips.sidebarResize, installColumnResize.ts:57).
+  seenSidebarResizeTip: boolean
+  // Плашка-подсказка «Never miss a message!» отклонена или отработана
+  // (tweb appSettings.notifications.suggested, notificationsSuggestion.tsx:14).
+  notifySuggested: boolean
 }
 
 // Галочки автозагрузки по типам чатов (tweb AutoDownloadPeerTypeSettings).
@@ -114,6 +127,10 @@ const DEFAULTS: Settings = {
   translateTo: '',
   loopStickers: true, // tweb stickers.loop default true
   videoRate: 1,
+  sidebarLeftWidth: undefined,
+  sidebarRightWidth: undefined,
+  seenSidebarResizeTip: false,
+  notifySuggested: false,
 }
 
 const KEY = 'tg-settings'
@@ -190,6 +207,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       translateTo: s.translateTo,
       loopStickers: s.loopStickers,
       videoRate: s.videoRate,
+      sidebarLeftWidth: s.sidebarLeftWidth,
+      sidebarRightWidth: s.sidebarRightWidth,
+      seenSidebarResizeTip: s.seenSidebarResizeTip,
+      notifySuggested: s.notifySuggested,
     }
     try {
       localStorage.setItem(KEY, JSON.stringify(toSave))

@@ -88,7 +88,17 @@
   background-color: var(--surface-color);
 }
 
-// tweb .chatlist-overlay: position:absolute; top:0; inset-inline:0; z-index:2.
+// tweb .chatlist-overlay: position:absolute; top:0; inset-inline:0; z-index:2
+// (портировано в styles/tweb/_leftSidebar.scss:295). Здесь — только цвет фейда:
+// tweb вешает на сам градиент модификатор `menu-horizontal-gradient-color-surface`
+// (_slider.scss), а наш общий <TabsBar> рисует ещё один градиент СВОИМ узлом и
+// этот класс не ставит — по умолчанию `.menu-horizontal-gradient` фейдит от
+// --background-color, и над сайдбаром (--surface-color) это тёмная полоса под
+// плашкой, читающаяся как тень. Переменная наследуется на оба градиента.
+.chatlistOverlay {
+  --gradient-color-rgb: var(--surface-color-rgb);
+}
+
 // tweb .sidebar-search — оверлей поиска поверх списка
 // Оверлей списка архива (tweb AppArchivedTab — слайд-таб над списком чатов)
 .archiveOverlay {

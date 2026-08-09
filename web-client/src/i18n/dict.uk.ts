@@ -191,6 +191,10 @@ const uk: Dict = {
   'New Message': 'Нове повідомлення',
   'Never miss a message! 🔔': 'Не пропускайте повідомлення! 🔔',
   'Enable notifications to stay updated.': 'Увімкніть сповіщення, щоб бути в курсі.',
+  'You can turn notifications back on in the settings.':
+    'Ви можете знову увімкнути сповіщення в налаштуваннях.',
+  'Hold Shift to resize both columns at once':
+    'Утримуйте Shift, щоб змінювати ширину обох колонок одразу',
   subscribers: 'підписників',
   'There were no results for': 'Нічого не знайдено за запитом',
   '. Try a new search.': '. Спробуйте інший запит.',

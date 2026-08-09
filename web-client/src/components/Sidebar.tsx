@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { EASE } from '../motion'
-import { setFoldersSidebarShown } from '../core/dom/updateColumnWidths'
+import { isUserCollapsedLeft, setFoldersSidebarShown, setOpenTabsLeftSidebar } from '../core/dom/updateColumnWidths'
+import installColumnResize from '../core/dom/installColumnResize'
+import PendingSuggestion from './sidebarLeft/pendingSuggestion'
 import classNames from '../shared/lib/classNames'
 import s from './Sidebar.module.scss'
 import { useChatsStore, loadChats } from '../stores/chatsStore'
@@ -115,6 +117,38 @@ export default function Sidebar({
   // место, значит правая колонка начинает всплывать раньше, а чат — уже.
   useEffect(() => { setFoldersSidebarShown(foldersSidebarShown) }, [foldersSidebarShown])
 
+  // --- Ресайз левой колонки (tweb sidebarLeft/index.ts:612-635 initSidebarResize) ---
+  const columnRef = useRef<HTMLDivElement>(null)
+  // tweb hasSomethingOpenInside(): открытые вкладки | активный поиск | форум-таб.
+  const somethingOpenInside = searching || screen !== null || archiveOpen || !!forumChat
+  // tweb isCollapsed(): в floating-диапазоне (<=925) колонка всегда развёрнута,
+  // предпочтение просто помнится для широких вьюпортов.
+  const floatingLeft = useMediaQuery('(max-width:925px)')
+  const [collapsedPref, setCollapsedPref] = useState(isUserCollapsedLeft)
+  const collapsed = collapsedPref && !floatingLeft && !fullWidth
+  // Ручка вешается один раз на живой узел — актуальные значения читаются из рефов.
+  const collapsedRef = useRef(collapsed)
+  collapsedRef.current = collapsed
+  const openInsideRef = useRef(somethingOpenInside)
+  openInsideRef.current = somethingOpenInside
+  useEffect(() => {
+    const columnEl = columnRef.current
+    if (!columnEl) return
+    // Не портированы побочные эффекты tweb-колбэка onCollapsedChange
+    // (fade/zoom-fade у чатлиста, бейджи непрочитанного на аватарах, подсказка
+    // Ctrl+F) и onSwipeTick → adjustChatPatternBackground: у нас нет этих подсистем.
+    return installColumnResize({
+      columnEl,
+      side: 'left',
+      isCollapsed: () => collapsedRef.current,
+      setCollapsed: setCollapsedPref,
+      preventCollapse: () => openInsideRef.current,
+    })
+  }, [])
+  // tweb onSomethingOpenInsideChange: свёрнутая колонка всплывает до полной
+  // ширины, пока внутри что-то открыто (sidebarLeft/index.ts:535).
+  useEffect(() => { setOpenTabsLeftSidebar(somethingOpenInside) }, [somethingOpenInside])
+
   // Меню бургера и вертикальной колонки папок — один набор обработчиков на оба места.
   const menuActions: MainMenuHandlers = {
     onOpenSettings: () => setScreen('settings'),
@@ -138,7 +172,8 @@ export default function Sidebar({
       // #column-left — как в tweb (живой DOM §1); --folders-sidebar-offset и
       // остальные ширины колонок пишет core/dom/updateColumnWidths.
       id="column-left"
-      className={classNames(s.root, 'tabs-tab', 'chatlist-container', 'sidebar', 'sidebar-left', 'main-column', 'sidebar-left-common', 'can-menu-have-z-index', fullWidth ? s.fullWidth : '', forumChat ? s.hasForum : '')}
+      ref={columnRef}
+      className={classNames(s.root, 'tabs-tab', 'chatlist-container', 'sidebar', 'sidebar-left', 'main-column', 'sidebar-left-common', 'can-menu-have-z-index', collapsed ? 'is-collapsed' : '', somethingOpenInside ? 'has-open-tabs' : '', fullWidth ? s.fullWidth : '', forumChat ? s.hasForum : '')}
     >
       {/* tweb #folders-sidebar — вертикальная колонка папок в поле страницы */}
       {foldersSidebarShown && (
@@ -221,17 +256,33 @@ export default function Sidebar({
           её читает padding-top у .folders-scrollable — так табы никогда не
           накрывают первый ряд списка. */}
       <div ref={bottomPartRef} className="connection-status-bottom" style={overlayHeightVar}>
-        {!searching && folders.length > 0 && !foldersSidebarShown && (
-          <TabsBar mode="overlay" className="chatlist-overlay" barRef={overlayRef}>
-            <FolderTabs
-              value={folderId}
-              onChange={changeFolder}
-              folders={folders}
-              counts={folderUnread}
-              onTabContextMenu={onTabContextMenu}
-            />
-          </TabsBar>
-        )}
+        {/* tweb .chatlist-overlay — один абсолютный оверлей над списком, дети в нём
+            текут обычным потоком: плашка-подсказка (appDialogsManager.ts:1079-1082
+            prepend'ит её сюда) СВЕРХУ, табы папок под ней. Позиционирование даёт
+            портированный `#column-left .chatlist-overlay` (_leftSidebar.scss:295),
+            поэтому TabsBar внутри идёт в обычном режиме, а не overlay. */}
+        <div ref={overlayRef} className={classNames('chatlist-overlay', s.chatlistOverlay)}>
+          <PendingSuggestion collapsed={collapsed} />
+          {/* tweb (живой DOM :8099): градиент-фейд — ПРЯМОЙ ребёнок .chatlist-overlay,
+              а не часть плашки табов; `.folders-tabs-gradient-container { inset: 0 }`
+              растягивает его на ВЕСЬ оверлей (плашка-подсказка + табы), и строки
+              списка, уезжающие под их поля, гаснут в --surface-color. Без него
+              чат-лист просвечивает в 8px-полях вокруг плашки. */}
+          <div className={classNames('menu-horizontal-gradient-container', 'folders-tabs-gradient-container')}>
+            <div className={classNames('menu-horizontal-gradient', 'menu-horizontal-gradient-color-surface', 'menu-horizontal-gradient-smaller', 'folders-tabs-gradient')} />
+          </div>
+          {!searching && folders.length > 0 && !foldersSidebarShown && (
+            <TabsBar>
+              <FolderTabs
+                value={folderId}
+                onChange={changeFolder}
+                folders={folders}
+                counts={folderUnread}
+                onTabContextMenu={onTabContextMenu}
+              />
+            </TabsBar>
+          )}
+        </div>
         <div id="folders-container" className="tabs-container">
         <ChatList
           ref={listScrollRef}

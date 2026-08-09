@@ -39,6 +39,7 @@ import KeyVerificationPopup from './secret/KeyVerificationPopup'
 import SharedMedia from './userInfo/SharedMedia'
 import RightsEditor from './userInfo/RightsEditor'
 import { membersLabel, chatsLabel, countLabel, sharedMediaChatId, HEADER_H, TAB_GAP } from './userInfo/helpers'
+import installColumnResize from '../core/dom/installColumnResize'
 
 export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddMembers, onEditContact, onSendGift }: { open: boolean; chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void; canAddMembers?: boolean; onEditContact?: () => void; onSendGift?: () => void }) {
   const t = useT()
@@ -55,6 +56,16 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
     document.body.classList.toggle('is-right-column-shown', open)
     return () => document.body.classList.remove('is-right-column-shown')
   }, [open])
+  // Правая колонка тоже тянется ручкой (tweb sidebarRight/index.ts:40
+  // `installColumnResize({columnEl: this.sidebarEl, side: 'right'})`): ширина
+  // без свёрнутого состояния, зажата в MIN/MAX. `.sidebar-resize-handle-right`
+  // скрыт до 925px, кроме non-touch (styles/tweb/_leftSidebar.scss:1330).
+  const columnRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const columnEl = columnRef.current
+    if (!columnEl) return
+    return installColumnResize({ columnEl, side: 'right' })
+  }, [])
   const isSaved = chat.type === 'saved'
   // группы — таб «Участники», избранное — «Чаты» (tweb savedDialogs first), остальные — «Медиа»
   const [tab, setTab] = useState(chat.type === 'group' ? 'Members' : isSaved ? 'Chats' : 'Media')
@@ -300,6 +311,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
     // (translateX-центровку чата) и уезжала бы за край экрана.
     <div
       id="column-right"
+      ref={columnRef}
       inert={!open}
       className={classNames('tabs-tab', 'sidebar', 'sidebar-right', 'main-column', s.panel, narrow ? s.panelNarrow : s.panelWide, shown ? s.panelOpen : '')}
     >

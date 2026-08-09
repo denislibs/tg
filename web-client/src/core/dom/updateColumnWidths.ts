@@ -5,15 +5,37 @@
 // `--right-column-width` / `--page-chats-padding`, а `.bubbles-inner` считает
 // ширину от `--chat-width`.
 //
-// НЕ портировано (нет подсистемы — вернуть вместе с ней):
-//   • пользовательская ширина сайдбаров (localStorage + ручки ресайза) — у нас
-//     колонки не тянутся, поэтому всегда «предпочтения нет»;
-//   • всплывание свёрнутого сайдбара при открытой вкладке (openTabsLeftSidebar).
-// Формулы, зависящие от этих величин, оставлены как в оригинале — вместе с
-// подсистемой достаточно будет вернуть переменные состояния.
+// Переменные (комментарий tweb updateColumnWidths.ts:1-61 в сжатом виде):
+//   --default-column-width      min(vw, 360) — эталонная ширина сайдбара, она же
+//                               фолбэк, когда пользователь ничего не тянул;
+//   --left-column-visual-width  нарисованная ширина #column-left;
+//   --left-column-width         ширина, которую #column-left занимает в потоке
+//                               (отличается от visual только когда свёрнутый
+//                               сайдбар всплыл под открытую вкладку: визуально
+//                               360, в раскладке — по-прежнему 80, колонка
+//                               наезжает на чат, а не двигает его);
+//   --right-column-width        ширина правой колонки (предпочтение, зажатое в
+//                               MIN/MAX); на узком экране — весь вьюпорт;
+//   --middle-column-width(-value), --chat-width, --right-sidebar-fits,
+//   --folders-sidebar-width/-offset, --page-chats-padding — см. tweb.
+//
+// Отступления от tweb:
+//   • пользовательская ширина лежит не в отдельных localStorage-ключах
+//     ('sidebar-left-width'/'sidebar-right-width'), а в общем сторе настроек
+//     (`settings.tsx`) — у нас так принято для всего, что переживает перезагрузку;
+//   • нет rootScope-события 'resizing_left_sidebar': пересчёт дёргается прямо из
+//     сеттеров, а побочные эффекты драга висят на `onSwipeTick` ручки ресайза.
+import clamp from '@helpers/number/clamp'
+import { useSettingsStore } from '../../settings'
 
-// Значения — 1:1 из tweb (updateColumnWidths.ts:66-99).
+// Значения — 1:1 из tweb (updateColumnWidths.ts:70-101).
 export const DEFAULT_COLUMN_WIDTH = 360
+export const MIN_SIDEBAR_WIDTH = 320
+export const MAX_SIDEBAR_WIDTH = 480
+export const SIDEBAR_COLLAPSE_FACTOR = 0.65
+// Ширина #column-left в свёрнутом виде. Совпадает с --sidebar-collapsed-width
+// из styles/tweb/_leftSidebar.scss:4.
+export const SIDEBAR_COLLAPSED_WIDTH = 80
 const FOLDERS_SIDEBAR_WIDTH = 72
 const FOLDERS_SIDEBAR_GAP = 8
 const FOLDERS_SIDEBAR_OFFSET = FOLDERS_SIDEBAR_WIDTH + FOLDERS_SIDEBAR_GAP
@@ -29,6 +51,158 @@ const RIGHT_SIDEBAR_FITS_EXTRA = 64
 const MOBILE_SIZE = 600
 const FLOATING_LEFT_SIDEBAR_SIZE = 925
 
+// Предпочтения пользователя по ширине пристыкованных сайдбаров (tweb
+// updateColumnWidths.ts:106-111). `undefined` — «предпочтения нет, брать
+// DEFAULT_COLUMN_WIDTH»; для левой колонки 0 дополнительно значит «свёрнута».
+let userPreferredLeftWidth: number | undefined
+let userPreferredLeftCollapsed = false
+let userPreferredRightWidth: number | undefined
+let preferencesLoaded = false
+
+// Транзиентное состояние: сайдбар свёрнут, но внутри открыта вкладка
+// (настройки и т.п.) — колонка всплывает до полной ширины, пока вкладка видна.
+// Анимацию делает CSS (transition: width у #column-left.is-collapsed), JS
+// переключает только установившийся флаг. (tweb updateColumnWidths.ts:117)
+let openTabsLeftSidebar = false
+
+// Виден ли сайдбар папок — зеркалит состояние Sidebar (в tweb это
+// setFoldersSidebarShown из stores/foldersSidebar.ts).
+let foldersSidebarShown = false
+
+// tweb читает localStorage прямо в теле модуля (IIFE loadUserPreferences,
+// :124-138). У нас источник — стор настроек, поэтому чтение отложено до первого
+// пересчёта: так модуль не зависит от порядка импортов.
+function loadUserPreferences(): void {
+  if (preferencesLoaded) return
+  preferencesLoaded = true
+  const { sidebarLeftWidth, sidebarRightWidth } = useSettingsStore.getState()
+  if (sidebarLeftWidth != null && !isNaN(sidebarLeftWidth)) {
+    if (sidebarLeftWidth === 0) userPreferredLeftCollapsed = true
+    else userPreferredLeftWidth = clamp(sidebarLeftWidth, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH)
+  }
+  if (sidebarRightWidth != null && !isNaN(sidebarRightWidth)) {
+    userPreferredRightWidth = clamp(sidebarRightWidth, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH)
+  }
+}
+
+// Порт tweb `@helpers/schedulers/throttle` (leading + trailing) — записывать
+// настройки на каждый тик драга нельзя, tweb троттлит персист на 200 мс
+// (updateColumnWidths.ts:140-149).
+function throttle(fn: () => void, ms: number): () => void {
+  let interval: ReturnType<typeof setInterval> | null = null
+  let isPending = false
+  return () => {
+    isPending = true
+    if (interval) return
+    isPending = false
+    fn()
+    interval = setInterval(() => {
+      if (!isPending) {
+        clearInterval(interval as ReturnType<typeof setInterval>)
+        interval = null
+        return
+      }
+      isPending = false
+      fn()
+    }, ms)
+  }
+}
+
+const persistLeftPreference = throttle(() => {
+  useSettingsStore.getState().update({
+    sidebarLeftWidth: userPreferredLeftCollapsed ? 0 : userPreferredLeftWidth,
+  })
+}, 200)
+
+const persistRightPreference = throttle(() => {
+  useSettingsStore.getState().update({ sidebarRightWidth: userPreferredRightWidth })
+}, 200)
+
+/**
+ * Дёргает левая ручка ресайза во время драга. `width <= 0` записывает свёрнутое
+ * предпочтение, любое другое значение зажимается в MIN/MAX. (tweb :156-166)
+ */
+export function setUserPreferredLeft(width: number): void {
+  loadUserPreferences()
+  if (width <= 0) {
+    userPreferredLeftCollapsed = true
+    userPreferredLeftWidth = undefined
+  } else {
+    userPreferredLeftCollapsed = false
+    userPreferredLeftWidth = clamp(width, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH)
+  }
+  persistLeftPreference()
+  updateColumnWidths()
+}
+
+/**
+ * Дёргает правая ручка ресайза. Ширина зажимается в MIN/MAX — у правой колонки
+ * свёрнутого состояния нет. (tweb :172-176)
+ */
+export function setUserPreferredRight(width: number): void {
+  loadUserPreferences()
+  userPreferredRightWidth = clamp(width, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH)
+  persistRightPreference()
+  updateColumnWidths()
+}
+
+/** Запомненное предпочтение «сайдбар свёрнут» (tweb :178-180). */
+export function isUserCollapsedLeft(): boolean {
+  loadUserPreferences()
+  return userPreferredLeftCollapsed
+}
+
+/**
+ * Переключатель «внутри открыта вкладка»: свёрнутый сайдбар всплывает до
+ * DEFAULT_COLUMN_WIDTH вместо SIDEBAR_COLLAPSED_WIDTH. Саму смену ширины
+ * анимирует CSS. (tweb :188-192)
+ */
+export function setOpenTabsLeftSidebar(value: boolean): void {
+  if (openTabsLeftSidebar === value) return
+  openTabsLeftSidebar = value
+  updateColumnWidths()
+}
+
+/**
+ * Зеркалит видимость сайдбара папок: он резервирует место, значит правая
+ * колонка начинает всплывать раньше. (tweb :199-203)
+ */
+export function setFoldersSidebarShown(value: boolean): void {
+  if (foldersSidebarShown === value) return
+  foldersSidebarShown = value
+  updateColumnWidths()
+}
+
+// tweb :205-221
+function computeVisualLeftWidth(vw: number, isMobile: boolean, isFloatingLeft: boolean): number {
+  const defaultColumnWidth = Math.min(vw, DEFAULT_COLUMN_WIDTH)
+  // Узкий экран — колонка занимает свою ячейку целиком.
+  if (isMobile) return vw
+  // 601-925px — выдвижная панель поверх чата, всегда дефолтной ширины.
+  if (isFloatingLeft) return defaultColumnWidth
+  // Свёрнута И внутри ничего не открыто → узкая полоса. Открытая вкладка
+  // подменяет это полной шириной, переход анимирует CSS у .is-collapsed.
+  if (userPreferredLeftCollapsed && !openTabsLeftSidebar) return SIDEBAR_COLLAPSED_WIDTH
+  return userPreferredLeftWidth ?? defaultColumnWidth
+}
+
+// Ширина, которую левая колонка резервирует в потоке. Совпадает с визуальной
+// везде, кроме «свёрнута + всплыла под вкладку»: там остаётся 80, и развёрнутый
+// сайдбар наезжает на чат, а не двигает его. (tweb :227-237)
+function computeLayoutLeftWidth(vw: number, isMobile: boolean, isFloatingLeft: boolean): number {
+  const defaultColumnWidth = Math.min(vw, DEFAULT_COLUMN_WIDTH)
+  if (isMobile) return vw
+  if (isFloatingLeft) return defaultColumnWidth
+  if (userPreferredLeftCollapsed) return SIDEBAR_COLLAPSED_WIDTH
+  return userPreferredLeftWidth ?? defaultColumnWidth
+}
+
+// tweb :239-243
+function computeRightWidth(vw: number, isMobile: boolean): number {
+  if (isMobile) return vw
+  return userPreferredRightWidth ?? Math.min(vw, DEFAULT_COLUMN_WIDTH)
+}
+
 const last = {
   visual: -1, layout: -1, right: -1, middle: -1, defaultColumn: -1,
   foldersWidth: -1, foldersOffset: -1, chatWidth: -1, rightSidebarFits: -1,
@@ -37,17 +211,9 @@ const last = {
 }
 
 let installed = false
-// Виден ли сайдбар папок — зеркалит состояние Sidebar (в tweb это
-// setFoldersSidebarShown из stores/foldersSidebar.ts).
-let foldersSidebarShown = false
-
-export function setFoldersSidebarShown(value: boolean): void {
-  if (foldersSidebarShown === value) return
-  foldersSidebarShown = value
-  updateColumnWidths()
-}
 
 export default function updateColumnWidths(): void {
+  loadUserPreferences()
   const root = document.documentElement
   const vw = window.innerWidth
   const isMobile = vw <= MOBILE_SIZE
@@ -60,10 +226,9 @@ export default function updateColumnWidths(): void {
   const availableWidth = vw - safeAreaPaddingX
 
   const defaultColumnWidth = Math.min(vw, DEFAULT_COLUMN_WIDTH)
-  // Ресайза колонок нет — визуальная и layout-ширина совпадают.
-  const visualLeftWidth = isMobile ? vw : defaultColumnWidth
-  const layoutLeftWidth = visualLeftWidth
-  const rightWidth = isMobile ? vw : defaultColumnWidth
+  const visualLeftWidth = computeVisualLeftWidth(vw, isMobile, isFloatingLeft)
+  const layoutLeftWidth = computeLayoutLeftWidth(vw, isMobile, isFloatingLeft)
+  const rightWidth = computeRightWidth(vw, isMobile)
 
   const foldersOffset = foldersSidebarShown ? FOLDERS_SIDEBAR_OFFSET : 0
   const rightColumnFits = foldersOffset + layoutLeftWidth + rightWidth + CHAT_WIDTH_MAX + PAGE_CHATS_PADDING * 4
